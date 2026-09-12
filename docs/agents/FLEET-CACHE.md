@@ -142,7 +142,7 @@ live for days, so a merged fix can sit inert on the running fleet with
 nothing to indicate it. Both daemons self-reload at the tick boundary:
 each hashes its own load-time source surface once per tick — the script
 itself plus, for the dispatcher, its `source`d files and `$FLEET_CONF`;
-for the scout, its import closure derived from `sys.modules` — and `exec`s
+for the scout, the import closure it bound at boot — and `exec`s
 itself in place when that hash moves. `exec` keeps the pid, so pid files,
 the dispatcher's singleton lock (adopted back from its own previous
 image), and the tmux pane survive; daemon-lifetime counters (run window,
@@ -151,9 +151,14 @@ image.
 
 Three gates stand between a moved surface and the `exec`: a two-tick
 debounce (a torn read taken mid-`git checkout` never re-execs a
-half-written file), a syntax gate (`bash -n` / `compile()` under the
-*running* interpreter, so a broken file cannot replace a working image
-with one that dies at parse), and an oscillation cap.
+half-written file), a syntax gate under the *running* interpreter, so a
+broken file cannot replace a working image with one that dies at parse
+(`bash -n` for the dispatcher; for the scout, the on-disk image's own
+`--print-surface` run in a fresh interpreter — an image that cannot import
+cannot report, and its answer is also the revision the reload is compared
+against, which is what lets a merged change that drops an imported module
+reload instead of wedging the old image on a path it can no longer read),
+and an oscillation cap.
 `FLEET_RELOAD_MAX` (default 3) is the number of attempts **permitted**
 per `FLEET_RELOAD_WINDOW_SECONDS` (default 900) — 3 allows three reloads
 and refuses the fourth, 1 allows one, `0` disables self-reload entirely —

@@ -5,18 +5,27 @@ script or to anything it imports reaches disk and never memory — including a
 watchdog, which sits in the same unloaded image as the bound it watches and so
 cannot fire on its own staleness.
 
-`_source_surface()` is derived from `sys.modules` at call time rather than
-from a hand-written list, so these tests are about that derivation: it must
-find the whole import closure, exclude everything the scout merely spawns as a
-subprocess, and be stable enough to compare across ticks.
+`_source_surface()` is derived from `sys.modules` rather than from a
+hand-written list, so one group of tests is about that derivation: it must
+find the whole import closure and exclude everything the scout merely spawns
+as a subprocess. The rest are about the two halves that keep the derivation
+honest once the process is running — the closure is frozen at boot
+(`_BOOT_SURFACE`), and the question "is there something new on disk to load?"
+is put to a fresh process (`_prospective_rev`) rather than to this one's
+module table.
 
 Import the script via importlib because it has no .py extension.
 """
+import ast
 import importlib.machinery
 import importlib.util
 import json
 import os
+import shutil
+import subprocess
+import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -71,6 +80,126 @@ class TestSourceSurface(unittest.TestCase):
     def test_all_entries_exist(self):
         for path in _mod._source_surface():
             self.assertTrue(path.is_file(), f"{path} is in the surface but absent")
+
+
+def _late_import():
+    """A function-local `import fleet_something` landing after boot.
+
+    Modelled as the module table growing by one sibling entry, which is all
+    such an import is to the surface derivation. The file it names is a real,
+    compilable sibling, so a surface that picked the entry up would clear a
+    syntax gate and go on to exec.
+    """
+    late = types.ModuleType("fleet_late_import_probe")
+    late.__file__ = str(_SCRIPT.parent / "fleet_task_class.py")
+    return patch.dict(sys.modules, {"fleet_late_import_probe": late})
+
+
+class TestBootSurfaceIsFrozen(unittest.TestCase):
+    """A lazy import must not be able to move this process's own revision."""
+
+    def setUp(self):
+        # The debounce and quiet markers are module state; leaving them set
+        # would make a later test's first tick behave like a second one.
+        self.addCleanup(setattr, _mod, "_reload_pending_hash",
+                        _mod._reload_pending_hash)
+        self.addCleanup(setattr, _mod, "_reload_quiet_hash",
+                        _mod._reload_quiet_hash)
+
+    def test_a_late_import_does_reach_the_module_table(self):
+        # Reachability for the two arms below: without it they would pass on
+        # a fixture that never grew the table in the first place.
+        with _late_import():
+            names = {p.name for p in _mod._source_surface()}
+        self.assertIn("fleet_task_class.py", names)
+
+    def test_a_late_import_does_not_move_the_revision(self):
+        with _late_import():
+            self.assertEqual(_mod._surface_hash(_mod._BOOT_SURFACE),
+                             _mod.SOURCE_REV)
+
+    def test_a_late_import_cannot_trigger_a_reload(self):
+        # Two ticks, because the debounce requires the same new hash twice. A
+        # surface that grew mid-life would exec here — into a process whose
+        # table has not run the lazy import yet, which then grows again on
+        # its own first call, once per boot until the oscillation cap eats
+        # the budget.
+        execs = []
+        with _late_import(), tempfile.TemporaryDirectory() as d, \
+                patch.object(_mod, "STATE_DIR", Path(d)), \
+                patch.object(_mod.os, "execv",
+                             lambda *a: execs.append(a)):
+            _mod.check_source_reload()
+            _mod.check_source_reload()
+        self.assertEqual(execs, [])
+
+
+class TestImportsAreTopLevel(unittest.TestCase):
+    def test_no_closure_file_imports_a_fleet_module_inside_a_function(self):
+        # What makes the frozen boot surface the WHOLE closure. A fleet_*
+        # module first imported inside a function is bound after the surface
+        # is captured, so nothing watches it and its merged fixes run inert
+        # in the one daemon this mechanism exists to keep current. Asserted
+        # over every file in the closure, not just the scout: a lazy import
+        # one level down is the same hole.
+        offenders = set()
+        for path in _mod._BOOT_SURFACE:
+            tree = ast.parse(Path(path).read_text())
+            for scope in ast.walk(tree):
+                if not isinstance(scope, (ast.FunctionDef,
+                                          ast.AsyncFunctionDef)):
+                    continue
+                for node in ast.walk(scope):
+                    if isinstance(node, ast.Import):
+                        names = [alias.name for alias in node.names]
+                    elif isinstance(node, ast.ImportFrom):
+                        names = [node.module or ""]
+                    else:
+                        continue
+                    if any(n.startswith("fleet_") for n in names):
+                        offenders.add(f"{Path(path).name}:{node.lineno}")
+        self.assertEqual(sorted(offenders), [])
+
+
+class TestProspectiveRev(unittest.TestCase):
+    def test_matches_a_fresh_boot_of_the_unchanged_image(self):
+        self.assertEqual(_mod._prospective_rev(), (_mod.SOURCE_REV, None))
+
+    def test_an_image_that_cannot_import_reports_nothing(self):
+        # The probe is the syntax gate as well: an image that dies at import
+        # cannot answer, and a None revision is what makes
+        # check_source_reload refuse instead of exec'ing into a process that
+        # will not come up. The reason is the refusal's whole diagnostic, so
+        # an empty one is a silent daemon.
+        with tempfile.TemporaryDirectory() as d:
+            broken = Path(d) / _SCRIPT.name
+            broken.write_text("def (\n")
+            with patch.object(_mod, "_SELF", broken):
+                rev, reason = _mod._prospective_rev()
+        self.assertIsNone(rev)
+        self.assertIn("SyntaxError", reason)
+
+    def test_a_dropped_module_reports_a_revision_rather_than_refusing(self):
+        # The membership failure the probe exists for: the running image
+        # holds a module the on-disk one no longer imports. Judged from the
+        # old surface, that path reads MISSING and then fails every syntax
+        # gate, refusing forever; asked of the new image, it answers with the
+        # revision that image would run.
+        with tempfile.TemporaryDirectory() as d:
+            staged = Path(d)
+            for source in _mod._BOOT_SURFACE:
+                shutil.copy2(source, staged / Path(source).name)
+            scout = staged / _SCRIPT.name
+            text = scout.read_text()
+            dropped = "from fleet_stack_base import unsafe_base_reason"
+            self.assertIn(dropped, text)
+            scout.write_text(text.replace(
+                dropped, "def unsafe_base_reason(*_a, **_k): return None"))
+            (staged / "fleet_stack_base.py").unlink()
+            with patch.object(_mod, "_SELF", scout):
+                rev, reason = _mod._prospective_rev()
+        self.assertIsNone(reason)
+        self.assertNotEqual(rev, _mod.SOURCE_REV)
 
 
 class TestSurfaceHash(unittest.TestCase):
@@ -160,8 +289,6 @@ class TestStateStamp(unittest.TestCase):
         # --print-surface arm in a fresh interpreter and require agreement:
         # that equality is the whole diagnostic, and it is what breaks when
         # the running daemon is stale.
-        import subprocess
-        import sys
         out = subprocess.run(
             [sys.executable, str(_SCRIPT), "--print-surface"],
             capture_output=True, text=True, env={**os.environ},

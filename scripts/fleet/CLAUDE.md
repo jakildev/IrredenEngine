@@ -408,17 +408,33 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   change** — a `source`d file outside the surface is a file whose merged fixes
   run inert forever, silently, which is the exact failure this closed. The
   scout needs no equivalent edit: `_source_surface()` derives the closure from
-  `sys.modules` at call time, so a new import joins the surface by
-  construction (a *function-local* import joins one tick after it first runs).
+  `sys.modules`, so a top-level import joins the surface by construction — but
+  it is called **once**, at import, and frozen into `_BOOT_SURFACE`. A
+  membership set re-derived per tick describes neither image: it grows when a
+  function-local import first runs (exec, then the fresh boot's table is small
+  again, then it grows again — a reload per lazy import until the oscillation
+  cap absorbs it) and it keeps a module the on-disk image no longer imports,
+  whose now-missing path fails every gate that reads it, wedging the daemon on
+  the old image permanently. So **a fleet_* import in that closure must be top
+  level** (`tests/test_scout_reload_unit.py` walks the AST of every closure
+  file and fails on a function-local one), and the question "is there anything
+  new on disk to load?" goes to the on-disk image itself — the tick check
+  spawns its `--print-surface` and compares that aggregate, which is also the
+  syntax gate, since an image that cannot import cannot answer.
   `tests/test_daemon_reload.sh` ratchets the dispatcher half — it counts
   `^\s*source ` lines against the array — and its corpus assertions ratchet
   the other direction too: `fleet_task_class.py` must stay out of BOTH
   surfaces, since a subprocess-spawned sibling already picks up merged fixes
-  and reloading on it is spurious churn. Syntax-gate a reload with the
+  and reloading on it is spurious churn. Syntax-gate a bash reload with the
   **running** interpreter (`"$BASH" -n`, not a bare `bash`): on macOS a bare
   `bash` is /bin/bash 3.2, which cannot parse the dispatcher's own bash-4
   source, so the gate would refuse every reload forever on exactly the hosts
-  it protects.
+  it protects. **Bound a reload E2E in ticks, not seconds** — a daemon tick is
+  not its poll interval (the scout's runs ~3s against a failing `gh` at
+  `--interval 1`), so a wall-clock wait sized for the reload passes a reload
+  that takes four times as many ticks; count a per-tick side effect and tag
+  each count with the boot generation, since `exec` keeps the pid and nothing
+  else separates the two images.
 - **Unattended daemons timeout-guard their network calls.** The host's
   connections to GitHub intermittently black-hole (silent TCP death), so a
   hung `git fetch` / `gh …` in a fleet daemon (dispatcher loop, `fleet-rebase`,

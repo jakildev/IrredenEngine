@@ -22,6 +22,13 @@
 #   - The new code is what is running: the `rev=` field on the second `started`
 #     line differs from the first. Asserting only that a reload was LOGGED
 #     would pass on a daemon that logs and then fails to exec.
+#   - It lands within three TICKS of the edit, counted rather than timed. A
+#     daemon tick is not its poll interval, so a wall-clock wait wide enough
+#     to be stable is also wide enough to pass a reload that needs four times
+#     the ticks.
+#   - It survives a change in closure MEMBERSHIP, not just in file contents:
+#     the scout arm renames an imported module, which is the shape that wedges
+#     a daemon judging the new image by the old one's module table.
 #
 # The daemons are driven in a sandbox HOME so nothing touches the operator's
 # live ~/.fleet: both derive every state/log/pid path from $HOME, and PATH is
@@ -247,8 +254,36 @@ mkdir -p "$SANDBOX_HOME/.fleet/state" "$SANDBOX_HOME/.fleet/logs" "$TMPROOT/bin"
 for stub in gh git tmux; do
     printf '#!/usr/bin/env bash\nexit 1\n' >"$TMPROOT/bin/$stub"
 done
-printf '#!/usr/bin/env bash\nexit 0\n' >"$TMPROOT/bin/fleet-gh-token"
-chmod +x "$TMPROOT/bin"/*
+# fleet-gh-token doubles as the tick counter. Both daemons call it exactly
+# once per tick and nowhere else — the dispatcher at the top of its loop, the
+# scout as the first statement of tick_once — so one appended line per call
+# IS the daemon's tick sequence, and "did the reload land within three ticks"
+# becomes a count instead of a stopwatch. A seconds-based bound cannot tell a
+# slow reload from a slow host, which is the whole distinction the bound
+# draws. The dispatcher resolves the bare name through PATH; the scout
+# prefers its own sibling (_fleet_script_argv), so the staged copy is
+# replaced too. Neither copy is in either daemon's source surface, so
+# replacing them does not itself look like a source change.
+#
+# Each line is tagged with the boot generation that wrote it. A reload keeps
+# the pid, so the daemon's own count of `started` lines is the only thing
+# that separates the two images — and tagging makes "ticks the pre-reload
+# image ran" a fact recoverable from the file at any later moment, rather
+# than a sample that has to be taken in the window between the reload and
+# the next tick.
+tick_stub='#!/usr/bin/env bash
+if [[ -n "${FLEET_TICK_LOG:-}" ]]; then
+    boots=0
+    if [[ -f "${FLEET_DAEMON_LOG:-}" ]]; then
+        boots=$(grep -c "started (pid=" "$FLEET_DAEMON_LOG")
+    fi
+    printf "tick boot=%s\n" "$boots" >>"$FLEET_TICK_LOG"
+fi
+exit 0
+'
+printf '%s' "$tick_stub" >"$TMPROOT/bin/fleet-gh-token"
+printf '%s' "$tick_stub" >"$STAGE/fleet-gh-token"
+chmod +x "$TMPROOT/bin"/* "$STAGE/fleet-gh-token"
 # Stubs first (they must shadow a real gh/git on this host), then the running
 # bash's directory ahead of /bin. The dispatcher re-execs through its
 # `#!/usr/bin/env bash` shebang, so the bash PATH order decides which
@@ -259,14 +294,22 @@ SANDBOX_PATH="$TMPROOT/bin":"$(dirname "$BASH")":/usr/bin:/bin:/usr/sbin:/sbin
 # wait_for <file> <fixed-string> <seconds> — poll rather than sleep a flat
 # worst case.
 #
-# Every limit is 12s, and the budget is deliberate: run_all.sh kills a suite at
-# 120s, and there are 8 waits, so generous per-wait limits sum past the cap and
-# a TOTAL regression comes back as "timed out after 120s" instead of naming the
-# assertions that failed — the diagnostic is worth more than the headroom.
-# 8 x 12 = 96s worst case. The daemons tick at 1s and a reload needs two ticks
-# (debounce) plus the exec, observed at ~2-3s, so 12s is ~4x headroom; the
-# happy path returns as soon as the condition holds and the whole suite runs
-# in ~12s.
+# The budget is deliberate: run_all.sh kills a suite at 120s, and there are 12
+# waits, so generous per-wait limits sum past the cap and a TOTAL regression
+# comes back as "timed out after 120s" instead of naming the assertions that
+# failed — the diagnostic is worth more than the headroom. Two sizes, because
+# the waits are not alike: 9 x 6 + 3 x 15 = 99s worst case, and the happy path
+# returns as soon as each condition holds, in ~25s for the suite.
+#
+# A reload costs two ticks (debounce) plus a prospective-image probe and the
+# exec, and the scout's tick is NOT its poll interval — a tick that builds
+# state against a failing gh runs ~3s here, so its reloads are the long pole
+# at a measured 4s and 6s. Boots, the first state.json write and a republish
+# are all 1-2s. That gap is the reason a tick-count bound exists at all:
+# seconds measure the tick body, not the number of ticks.
+WAIT_LIMIT=6
+RELOAD_WAIT_LIMIT=15
+
 wait_for() {
     local file="$1" needle="$2" limit="$3" waited=0
     while (( waited < limit )); do
@@ -279,6 +322,12 @@ wait_for() {
 
 started_revs() { grep -o 'rev=[0-9a-f]*' "$1" | sed 's/rev=//'; }
 started_pids() { grep -o 'started (pid=[0-9]*' "$1" | sed 's/.*pid=//'; }
+
+# ticks_of <tick-log> <generation> — ticks written so far by that boot
+# generation of the daemon (generation 1 is the image launched here).
+ticks_of() {
+    if [[ -f "$1" ]]; then grep -c "boot=$2\$" "$1"; else echo 0; fi
+}
 
 # wait_for_boots <log> <n> <seconds> — wait until the log holds N `started`
 # lines. NOT wait_for on a substring of that line: every marker on a boot line
@@ -297,19 +346,45 @@ wait_for_boots() {
     return 1
 }
 
+# assert_within_ticks <label> <tick-log> <ticks-at-edit> <deciding-offset> —
+# the contracted bound: a daemon completes an in-place reload within three
+# ticks of the surface edit. A reload that regressed to four or more ticks (a
+# debounce needing a third match, the check moved below a slow stage, a gate
+# that re-probes before it acts) still finishes inside every wall-clock wait
+# here, so this is the only arm that sees it.
+#
+# Counted from generation 1's own tick lines, so the reloaded image's ticks
+# cannot inflate it however late this runs. <deciding-offset> accounts for
+# where each daemon's tick calls fleet-gh-token relative to its reload check:
+# the dispatcher's call is above the check, so the tick that execs has
+# already written its line (0); the scout's is below it, so that tick leaves
+# no line (1). A result of 0 means no generation-1 tick was recorded at all
+# and the arm measured nothing, which fails rather than passes.
+assert_within_ticks() {
+    local label="$1" tick_log="$2" base="$3" offset="$4"
+    local n=$(( $(ticks_of "$tick_log" 1) - base + offset ))
+    if (( n >= 1 && n <= 3 )); then
+        ok "$label (took $n)"
+    else
+        bad "$label (took $n)"
+    fi
+}
+
 # ======================================================================
 # E2E: fleet-dispatcher
 # ======================================================================
 echo "T17-T20: fleet-dispatcher reloads in place"
 DLOG="$TMPROOT/dispatcher.log"
+DTICKS="$TMPROOT/dispatcher.ticks"
 env -i HOME="$SANDBOX_HOME" PATH="$SANDBOX_PATH" \
     FLEET_ENGINE_ROOT="$TMPROOT/no-such-engine" \
     FLEET_DISPATCHER_INTERVAL=1 \
+    FLEET_TICK_LOG="$DTICKS" FLEET_DAEMON_LOG="$DLOG" \
     "$BASH" "$STAGE/fleet-dispatcher" >"$DLOG" 2>&1 &
 DISP_PID=$!
 DAEMON_PIDS+=("$DISP_PID")
 
-if wait_for "$DLOG" "started (pid=" 12; then
+if wait_for "$DLOG" "started (pid=" "$WAIT_LIMIT"; then
     ok "T17: sandboxed dispatcher booted"
 else
     bad "T17: sandboxed dispatcher booted"
@@ -318,22 +393,27 @@ fi
 boot_rev=$(started_revs "$DLOG" | head -1)
 
 # Edit a SOURCED file rather than the daemon script — the harder half: the
-# running image re-reads it only through the surface hash.
+# running image re-reads it only through the surface hash. The tick count is
+# read AFTER the edit, so a tick already in flight is never charged to the
+# reload.
 echo "# reload probe" >>"$STAGE/fleet-common.sh"
+disp_edit_ticks=$(ticks_of "$DTICKS" 1)
 
-if wait_for "$DLOG" "reloading: source surface advanced" 12; then
+if wait_for "$DLOG" "reloading: source surface advanced" "$RELOAD_WAIT_LIMIT"; then
     ok "T18: dispatcher logs the reload after a surface edit"
 else
     bad "T18: dispatcher logs the reload after a surface edit"
     echo "        log (tail):"; tail -15 "$DLOG" | sed 's/^/          | /'
 fi
 
-if wait_for_boots "$DLOG" 2 12; then
+if wait_for_boots "$DLOG" 2 "$WAIT_LIMIT"; then
     ok "T19: dispatcher printed a second 'started' line (it re-exec'd)"
 else
     bad "T19: dispatcher printed a second 'started' line (it re-exec'd)"
     echo "        log (tail):"; tail -15 "$DLOG" | sed 's/^/          | /'
 fi
+assert_within_ticks "T19b: dispatcher reloaded within three post-edit ticks" \
+    "$DTICKS" "$disp_edit_ticks" 0
 
 # The lock-adoption regression lock. Same pid across both boots means the
 # process survived the exec and adopted its own lock dir; a second pid, or a
@@ -360,6 +440,7 @@ kill -TERM "$DISP_PID" 2>/dev/null
 # ======================================================================
 echo "T21-T23: fleet-state-scout reloads in place"
 SLOG="$TMPROOT/scout.log"
+STICKS="$TMPROOT/scout.ticks"
 SCOUT_HOME="$TMPROOT/home-scout"
 mkdir -p "$SCOUT_HOME/.fleet/state"
 # The scout aborts when the engine repo is absent, so give it an empty dir to
@@ -368,11 +449,12 @@ mkdir -p "$SCOUT_HOME/.fleet/state"
 # property this arm exercises by construction.
 mkdir -p "$SCOUT_HOME/src/IrredenEngine"
 env -i HOME="$SCOUT_HOME" PATH="$SANDBOX_PATH" \
+    FLEET_TICK_LOG="$STICKS" FLEET_DAEMON_LOG="$SLOG" \
     python3 "$STAGE/fleet-state-scout" --interval 1 >"$SLOG" 2>&1 &
 SCOUT_PID=$!
 DAEMON_PIDS+=("$SCOUT_PID")
 
-if wait_for "$SLOG" "started (pid=" 12; then
+if wait_for "$SLOG" "started (pid=" "$WAIT_LIMIT"; then
     ok "T21: sandboxed scout booted"
 else
     bad "T21: sandboxed scout booted"
@@ -385,7 +467,7 @@ fi
 # daemon's cache to agree — that equality IS the diagnostic, and it is exactly
 # what breaks when the running scout is stale.
 SCOUT_STATE="$SCOUT_HOME/.fleet/state/state.json"
-if wait_for "$SCOUT_STATE" "scout_source_rev" 12; then
+if wait_for "$SCOUT_STATE" "scout_source_rev" "$WAIT_LIMIT"; then
     ok "T21b: sandboxed scout stamped scout_source_rev into state.json"
 else
     bad "T21b: sandboxed scout stamped scout_source_rev into state.json"
@@ -394,18 +476,19 @@ boot_agg=$(python3 "$STAGE/fleet-state-scout" --print-surface | awk -F'\t' '/^ag
 state_rev=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("scout_source_rev",""))' "$SCOUT_STATE" 2>/dev/null)
 assert_eq "$state_rev" "$boot_agg" "T21c: state.json rev equals --print-surface aggregate"
 
-# Edit an IMPORTED module, not the script — the closure half, and what
-# _source_surface()'s sys.modules derivation exists to cover.
+# Edit an IMPORTED module, not the script — the closure half, and what the
+# sys.modules derivation of the boot surface exists to cover.
 echo "# reload probe" >>"$STAGE/fleet_stack_base.py"
+scout_edit_ticks=$(ticks_of "$STICKS" 1)
 
-if wait_for "$SLOG" "reloading: source surface advanced" 12; then
+if wait_for "$SLOG" "reloading: source surface advanced" "$RELOAD_WAIT_LIMIT"; then
     ok "T22: scout logs the reload after a closure-module edit"
 else
     bad "T22: scout logs the reload after a closure-module edit"
     echo "        log (tail):"; tail -15 "$SLOG" | sed 's/^/          | /'
 fi
 
-wait_for_boots "$SLOG" 2 12
+wait_for_boots "$SLOG" 2 "$WAIT_LIMIT"
 scout_pids=$(started_pids "$SLOG" | sort -u | wc -l | tr -d ' ')
 scout_boots=$(started_pids "$SLOG" | wc -l | tr -d ' ')
 if [[ "$scout_pids" == "1" && "$scout_boots" -ge 2 ]]; then
@@ -414,6 +497,8 @@ else
     bad "T23: both scout boots share one pid (execv kept the pid)"
     echo "        pids: $(started_pids "$SLOG" | tr '\n' ' ')"
 fi
+assert_within_ticks "T23b: scout reloaded within three post-edit ticks" \
+    "$STICKS" "$scout_edit_ticks" 1
 
 # ...and the reloaded image must republish. A cache still carrying the OLD
 # revision after a reload would mean the daemon logged a reload it did not
@@ -425,7 +510,7 @@ if [[ "$reload_agg" != "$boot_agg" ]]; then
 else
     bad "T24a: editing a closure module moved the on-disk aggregate"
 fi
-if wait_for "$SCOUT_STATE" "$reload_agg" 12; then
+if wait_for "$SCOUT_STATE" "$reload_agg" "$WAIT_LIMIT"; then
     ok "T24b: the reloaded scout republished the new rev into state.json"
 else
     bad "T24b: the reloaded scout republished the new rev into state.json"
@@ -434,5 +519,95 @@ else
 fi
 
 kill -TERM "$SCOUT_PID" 2>/dev/null
+
+# ======================================================================
+# E2E: the on-disk image renames a module the running one imported
+# ======================================================================
+# The membership half. Every arm above moves a file's CONTENTS, which the
+# running image can judge for itself. A merged change that removes or renames
+# an imported module cannot be judged that way: the old process still holds
+# the module, so the path it resolves to is gone, and any gate that reads the
+# old closure's files sees a permanently unreadable entry and refuses every
+# reload from then on — the daemon wedges on the old image with no way back
+# short of the manual restart this mechanism exists to remove. The decision
+# has to come from the image on disk, which imports neither the old path nor,
+# before the reload, anything the old image has ever seen.
+echo "T25: scout reloads when the new image renames a closure module"
+SLOG2="$TMPROOT/scout-rename.log"
+STICKS2="$TMPROOT/scout-rename.ticks"
+SCOUT2_HOME="$TMPROOT/home-scout-rename"
+mkdir -p "$SCOUT2_HOME/.fleet/state" "$SCOUT2_HOME/src/IrredenEngine"
+env -i HOME="$SCOUT2_HOME" PATH="$SANDBOX_PATH" \
+    FLEET_TICK_LOG="$STICKS2" FLEET_DAEMON_LOG="$SLOG2" \
+    python3 "$STAGE/fleet-state-scout" --interval 1 >"$SLOG2" 2>&1 &
+SCOUT2_PID=$!
+DAEMON_PIDS+=("$SCOUT2_PID")
+
+if wait_for "$SLOG2" "started (pid=" "$WAIT_LIMIT"; then
+    ok "T25a: sandboxed scout booted with the full closure"
+else
+    bad "T25a: sandboxed scout booted with the full closure"
+    echo "        log (tail):"; tail -15 "$SLOG2" | sed 's/^/          | /'
+fi
+rename_boot_agg=$(python3 "$STAGE/fleet-state-scout" --print-surface | awk -F'\t' '/^aggregate/{print $2}')
+
+# Rename the module on disk the way a merged change would, moving the file and
+# repointing the import together. A rename is the removal case plus the
+# addition case in one edit: the old image holds a path that no longer exists,
+# and the new one binds a module the old image never had. The new image is
+# fully functional, so a refusal here is the membership bug and nothing else.
+if python3 -c 'import pathlib, sys
+path = pathlib.Path(sys.argv[1])
+text = path.read_text()
+if sys.argv[2] not in text:
+    sys.exit("import line to rename not found: " + sys.argv[2])
+path.write_text(text.replace(sys.argv[2], sys.argv[3]))' \
+    "$STAGE/fleet-state-scout" \
+    "from fleet_stack_base import unsafe_base_reason" \
+    "from fleet_stack_base_v2 import unsafe_base_reason"; then
+    mv "$STAGE/fleet_stack_base.py" "$STAGE/fleet_stack_base_v2.py"
+    ok "T25b: staged a closure-module rename"
+else
+    bad "T25b: staged a closure-module rename"
+fi
+rename_edit_ticks=$(ticks_of "$STICKS2" 1)
+
+if wait_for "$SLOG2" "reloading: source surface advanced" "$RELOAD_WAIT_LIMIT"; then
+    ok "T25c: scout logs the reload after a closure module is renamed"
+else
+    bad "T25c: scout logs the reload after a closure module is renamed"
+    echo "        log (tail):"; tail -15 "$SLOG2" | sed 's/^/          | /'
+fi
+
+wait_for_boots "$SLOG2" 2 "$WAIT_LIMIT"
+rename_pids=$(started_pids "$SLOG2" | sort -u | wc -l | tr -d ' ')
+rename_boots=$(started_pids "$SLOG2" | wc -l | tr -d ' ')
+if [[ "$rename_pids" == "1" && "$rename_boots" -ge 2 ]]; then
+    ok "T25d: both boots share one pid across the rename reload"
+else
+    bad "T25d: both boots share one pid across the rename reload"
+    echo "        pids: $(started_pids "$SLOG2" | tr '\n' ' ')"
+fi
+assert_within_ticks "T25e: rename reload landed within three post-edit ticks" \
+    "$STICKS2" "$rename_edit_ticks" 1
+
+# The reloaded image must be running the RENAMED closure, not merely have
+# survived: a daemon that re-exec'd and then re-bound the old module would
+# republish the old revision.
+rename_surface=$(python3 "$STAGE/fleet-state-scout" --print-surface)
+rename_new_agg=$(printf '%s\n' "$rename_surface" | awk -F'\t' '/^aggregate/{print $2}')
+assert_contains "$rename_surface" "/fleet_stack_base_v2.py" \
+    "T25f: the new image's surface names the renamed module"
+assert_absent "$rename_surface" "/fleet_stack_base.py" \
+    "T25f: and no longer names the old one"
+if wait_for "$SCOUT2_HOME/.fleet/state/state.json" "$rename_new_agg" "$WAIT_LIMIT"; then
+    ok "T25g: the reloaded scout republished the post-rename rev"
+else
+    bad "T25g: the reloaded scout republished the post-rename rev"
+    echo "        expected : $rename_new_agg (boot was $rename_boot_agg)"
+    echo "        log (tail):"; tail -15 "$SLOG2" | sed 's/^/          | /'
+fi
+
+kill -TERM "$SCOUT2_PID" 2>/dev/null
 
 summarize "daemon self-reload"

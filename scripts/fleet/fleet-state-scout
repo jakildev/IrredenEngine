@@ -196,6 +196,10 @@ _SELF = Path(__file__).resolve()
 # Attempts PERMITTED per window (the next one is refused) — see _reload_gate.
 RELOAD_MAX = int(os.environ.get("FLEET_RELOAD_MAX", "3"))
 RELOAD_WINDOW_SECONDS = int(os.environ.get("FLEET_RELOAD_WINDOW_SECONDS", "900"))
+# Ceiling on the prospective-image probe. A fresh interpreter importing this
+# closure costs well under a second; the ceiling is there so an import that
+# hangs cannot stall the tick loop it is called from.
+RELOAD_PROBE_TIMEOUT_SECONDS = 20
 _reload_pending_hash = ""   # hash seen on the previous tick (debounce)
 _reload_quiet_hash = ""     # hash already refused + reported (quiet marker)
 
@@ -203,13 +207,19 @@ _reload_quiet_hash = ""     # hash already refused + reported (quiet marker)
 def _source_surface():
     """Absolute paths of the source files this process bound at import time.
 
-    Derived from `sys.modules` AT CALL TIME rather than from a hand-written
-    list: every loaded module whose `__file__` resolves inside this script's
-    own directory, plus the script itself. Re-deriving it each tick is what
-    closes the lazy-import gap by construction — a future function-local
-    `import fleet_something` joins the surface on the tick after it first
-    runs, with no edit here and no way to forget. (Today's closure is
-    import-time-complete; there are no function-local fleet_* imports.)
+    Derived from `sys.modules`: every loaded module whose `__file__` resolves
+    inside this script's own directory, plus the script itself.
+
+    Call this ONCE, at import — `_BOOT_SURFACE` freezes the result, and the
+    reload check reads that tuple, never a fresh call. `sys.modules` is
+    mutable for the life of the process, so a membership set re-derived each
+    tick describes neither the image running (which bound its closure at
+    import) nor the image on disk (which may bind a different one): a
+    function-local `import fleet_something` would enlarge it after boot, and
+    a module the on-disk image no longer imports would stay in it forever.
+    The on-disk side is answered by `_prospective_rev()` instead, which asks
+    a fresh process; the lazy-import side by every fleet_* import in this
+    closure being top level, which `test_scout_reload_unit.py` ratchets.
 
     Sibling *executables* and `fleet_task_class.py` are excluded for free by
     the same rule: the scout spawns them as subprocesses and never imports
@@ -281,8 +291,42 @@ def _reload_gate(state_file: Path, max_attempts: int, window: int) -> bool:
     return len(kept) <= max_attempts
 
 
+def _prospective_rev():
+    """The SOURCE_REV a fresh boot of the on-disk image would run with.
+
+    Obtained by asking that image: `--print-surface` is this same derivation
+    in a new interpreter, and its aggregate line IS that image's SOURCE_REV.
+    The question cannot be answered from inside this process — membership
+    belongs to whoever does the importing, and this process imported a
+    possibly older set.
+
+    Returns `(revision, None)`, or `(None, reason)` when the on-disk image
+    cannot answer: a syntax error, an import that raises, a torn file
+    mid-checkout, or a hang. That is the syntax gate too, and a stricter one
+    than compiling each file of the old surface — it refuses exactly the
+    images that would die at import, and only those. The reason carries the
+    failing image's own last line of output, which is the only place an
+    operator can read WHY their merged change is not being loaded.
+    """
+    try:
+        probe = subprocess.run(
+            [sys.executable, str(_SELF), "--print-surface"],
+            capture_output=True, text=True,
+            timeout=RELOAD_PROBE_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.SubprocessError) as e:
+        return None, str(e) or e.__class__.__name__
+    if probe.returncode != 0:
+        reported = (probe.stderr or probe.stdout).strip().splitlines()
+        return None, reported[-1] if reported else f"exit {probe.returncode}"
+    for line in probe.stdout.splitlines():
+        if line.startswith("aggregate\t"):
+            return line.split("\t", 1)[1].strip(), None
+    return None, "--print-surface printed no aggregate"
+
+
 def check_source_reload() -> None:
-    """Re-exec this daemon in place when its source surface has advanced.
+    """Re-exec this daemon in place when the image on disk has advanced.
 
     Called once per tick from main()'s loop, OUTSIDE the try/except around
     tick_once() — a tick that fails (no network, gh outage) must still reach
@@ -291,14 +335,20 @@ def check_source_reload() -> None:
 
     Three gates stand between "the surface moved" and the exec: a two-tick
     debounce (a torn read mid-`git checkout` must not re-exec a half-written
-    file), a syntax gate (a broken module must not replace a working image
-    with one that dies at import), and the oscillation cap. A refusal is
-    reported once per distinct surface hash and then goes quiet, re-arming
-    when the surface moves again.
+    file), the prospective-image probe (which both refuses an image that
+    cannot boot and supplies the revision to compare against), and the
+    oscillation cap. A refusal is reported once per distinct surface hash and
+    then goes quiet, re-arming when the surface moves again.
+
+    The content hash over `_BOOT_SURFACE` is the cheap trigger, not the
+    decision: it fires on any byte change under the files this image bound,
+    including one vanishing. Whether that constitutes something to load is
+    the probe's answer, which is why a module the new image dropped reloads
+    cleanly instead of wedging the old image on a path it can no longer read.
     """
     global _reload_pending_hash, _reload_quiet_hash
 
-    current = _surface_hash(_source_surface())
+    current = _surface_hash(_BOOT_SURFACE)
     if current == SOURCE_REV:
         _reload_pending_hash = ""
         return
@@ -308,14 +358,19 @@ def check_source_reload() -> None:
     if current == _reload_quiet_hash:
         return
 
-    for path in _source_surface():
-        try:
-            compile(Path(path).read_bytes(), str(path), "exec")
-        except (SyntaxError, ValueError, OSError) as e:
-            log(f"reload refused: {path} does not compile ({e}); staying on "
-                "the loaded image (re-checks when the surface moves again)")
-            _reload_quiet_hash = current
-            return
+    prospective, refusal = _prospective_rev()
+    if prospective is None:
+        log(f"reload refused: the image on disk does not load ({refusal}); "
+            "staying on the loaded image (re-checks when the surface moves "
+            "again)")
+        _reload_quiet_hash = current
+        return
+    if prospective == SOURCE_REV:
+        # The bytes under this process moved, but a fresh boot would bind a
+        # closure that hashes identically — there is nothing to load, and
+        # exec'ing would land on this same revision and re-fire next tick.
+        _reload_quiet_hash = current
+        return
 
     if not _reload_gate(STATE_DIR / "scout-reload-history",
                         RELOAD_MAX, RELOAD_WINDOW_SECONDS):
@@ -331,19 +386,24 @@ def check_source_reload() -> None:
     if LEADER_SERVER is not None:
         LEADER_SERVER.stop()
     log(f"reloading: source surface advanced ({SOURCE_REV[:12]} -> "
-        f"{current[:12]}); daemon-lifetime counters reset")
+        f"{prospective[:12]}); daemon-lifetime counters reset")
     # execv keeps the pid — so scout.pid stays correct, no `finally` runs
     # (cleanup_pid_file must NOT fire), and the reload has exactly the
     # semantics of the manual restart an operator performs today.
     os.execv(sys.executable, [sys.executable, str(_SELF), *sys.argv[1:]])
 
 
+# The import closure of the image actually running, frozen. Every later
+# question about "did my own source move?" is asked of these paths, so the
+# answer stays a property of this process rather than of a module table that
+# keeps changing under it.
+_BOOT_SURFACE = tuple(_source_surface())
 # The surface aggregate of the image actually running. Captured at import, so
 # it describes THIS process no matter what later lands on disk; re-derived by
 # the fresh image after every reload. Published into state.json as
 # `scout_source_rev` and printed by --print-surface, which is what lets any
 # consumer answer "is the scout running the code that is on disk?".
-SOURCE_REV = _surface_hash(_source_surface())
+SOURCE_REV = _surface_hash(_BOOT_SURFACE)
 
 
 def run_capture(cmd, cwd=None):
@@ -4217,12 +4277,15 @@ def main():
         # `fleet-dispatcher --print-surface`: one `<path>\t<hash>` line per
         # surface entry, then `aggregate\t<hash>`. Compare the aggregate
         # against state.json's `scout_source_rev` to tell whether the RUNNING
-        # scout has loaded what is on disk — this arm re-derives the surface
-        # in a fresh process, so it always reports the on-disk truth.
-        surface = _source_surface()
-        for path in surface:
+        # scout has loaded what is on disk — this arm runs in a fresh process,
+        # so its aggregate is by construction the revision a boot right now
+        # would report. A running daemon calls exactly this arm to decide
+        # whether the on-disk image differs from its own (_prospective_rev),
+        # which is why the aggregate must be SOURCE_REV itself and not a
+        # separately-derived value that could disagree with it.
+        for path in _BOOT_SURFACE:
             print(f"{path}\t{_surface_hash([path])}")
-        print(f"aggregate\t{_surface_hash(surface)}")
+        print(f"aggregate\t{SOURCE_REV}")
         return
 
     STATE_DIR.mkdir(parents=True, exist_ok=True)
