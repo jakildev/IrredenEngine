@@ -29,7 +29,12 @@
 #   Architects (opus-architect, game-architect): one long conversation,
 #   preserved across crashes AND across fleet-down/fleet-up cycles via
 #   ~/.fleet/sessions/<role>.session-id. Always --resume on relaunch
-#   so the human's interactive design conversation never resets.
+#   so the human's interactive design conversation never resets — UNLESS
+#   the saved session-id no longer resolves (its transcript was pruned
+#   after ~30 days idle, or N consecutive --resume launches exit 1
+#   immediately), in which case babysit condemns the pointer and falls
+#   back to a fresh session instead of crash-looping on a dead one forever
+#   (see "Dead-session detection" below).
 #   Architects are human-driven, NOT scout-trigger-driven — their sleep
 #   path ignores the trigger file.
 #
@@ -113,11 +118,13 @@ case "$ROLE" in
         ;;
 esac
 
-# Timing
-CRASH_DELAY=30        # seconds to wait after non-zero exit (crash)
-LIMIT_DELAY=900       # seconds to wait on suspected usage limit (exit 2)
-CLEAN_DELAY=60        # seconds to wait after clean exit (no LOOP_INTERVAL)
-MAX_ATTEMPTS=200      # safety valve — prevents infinite loops on hard failures
+# Timing. Overridable via env (mirrors FLEET_LONG_BACKOFF / FLEET_MIN_BACKOFF
+# below) so tests can shrink the crash-loop delays instead of waiting on the
+# real defaults; unset, the defaults below apply.
+CRASH_DELAY="${FLEET_CRASH_DELAY:-30}"      # seconds to wait after non-zero exit (crash)
+LIMIT_DELAY="${FLEET_LIMIT_DELAY:-900}"     # seconds to wait on suspected usage limit (exit 2)
+CLEAN_DELAY="${FLEET_CLEAN_DELAY:-60}"      # seconds to wait after clean exit (no LOOP_INTERVAL)
+MAX_ATTEMPTS="${FLEET_MAX_ATTEMPTS:-200}"   # safety valve — prevents infinite loops on hard failures
 
 # Seconds to sleep between iterations when in trigger-driven mode (default 30 min).
 # Set via env to override.
@@ -285,6 +292,73 @@ if [[ "$ARCHITECT_RESUME" -eq 1 ]]; then
     export FLEET_SESSION_ROLE="$ROLE"
     export FLEET_SESSION_MODE="$MODE"
 fi
+
+# --- Dead-session detection (architects) ------------------------------------
+#
+# Claude Code prunes conversation transcripts after ~30 days
+# (cleanupPeriodDays). A `.session-id` sidecar survives the prune untouched —
+# only the transcript it points at is gone — so `[[ -f $SESSION_FILE ]]`
+# alone can't tell a live pointer from a dead one. A `--resume` against a
+# dead pointer exits 1 immediately, which is exit-code-indistinguishable
+# from an ordinary mid-task crash — so an unvalidated pointer sends the
+# retry loop back to the same dead session every CRASH_DELAY until
+# MAX_ATTEMPTS (see #3004).
+#
+# Two independent signals catch it:
+#   1. Filesystem check (primary — cheap, no attempt burned): before
+#      building a --resume command, confirm the transcript file exists
+#      under ~/.claude/projects/<munged-cwd>/<session-id>.jsonl.
+#   2. Consecutive-immediate-exit-1 counter (fallback — catches whatever
+#      the filesystem check misses, e.g. a present-but-unusable
+#      transcript): N immediate exit-1s in a row on a --resume launch
+#      also condemns the pointer. In-process only — a plain bash var reset
+#      by any non-immediate-exit-1 resume, so it doesn't survive a babysit
+#      restart, which is fine: the filesystem check runs fresh every time.
+RESUME_FAIL_THRESHOLD="${FLEET_RESUME_FAIL_THRESHOLD:-3}"
+IMMEDIATE_EXIT_WINDOW_SECONDS="${FLEET_IMMEDIATE_EXIT_WINDOW:-15}"
+resume_fail_streak=0
+
+# ~/.claude/projects/<slug>/ — slug is the launch cwd with every non-alnum
+# byte mapped to '-' (Claude Code's own project-dir munging; runs are not
+# collapsed, so ".../.claude/worktrees" -> "...--claude-worktrees"). Derived
+# from `pwd` so it matches whatever worktree this babysit instance is
+# running in.
+project_transcripts_dir() {
+    printf '%s' "$(pwd)" | sed 's/[^A-Za-z0-9]/-/g'
+}
+
+# Exit 0 = the session-id's transcript exists on disk; 1 = missing/unreadable.
+session_transcript_exists() {
+    local session_id="$1"
+    [[ -n "$session_id" ]] || return 1
+    [[ -f "$HOME/.claude/projects/$(project_transcripts_dir)/$session_id.jsonl" ]]
+}
+
+# Log why, delete the stale sidecar so the caller's next `-f "$SESSION_FILE"`
+# check takes the fresh-session branch, and reset the streak — a fresh
+# session earns its own.
+condemn_stale_session() {
+    local session_id="$1" reason="$2"
+    log "stale architect session $session_id ($reason) — deleting $SESSION_FILE, falling back to a fresh session"
+    rm -f "$SESSION_FILE"
+    resume_fail_streak=0
+}
+
+# Called after every --resume launch attempt (architects only) with its
+# exit code and wall-clock duration. Bumps/resets the streak and condemns
+# the current $SESSION_ID's pointer once the streak crosses the threshold.
+record_resume_result() {
+    local rc="$1" elapsed="$2"
+    if [[ "$rc" -eq 1 && "$elapsed" -lt "$IMMEDIATE_EXIT_WINDOW_SECONDS" ]]; then
+        resume_fail_streak=$((resume_fail_streak + 1))
+        log "resume exited immediately (${elapsed}s, code 1) — streak=$resume_fail_streak/$RESUME_FAIL_THRESHOLD"
+        if [[ "$resume_fail_streak" -ge "$RESUME_FAIL_THRESHOLD" ]]; then
+            condemn_stale_session "$SESSION_ID" "$RESUME_FAIL_THRESHOLD consecutive immediate exit-1 resumes"
+        fi
+    else
+        resume_fail_streak=0
+    fi
+}
 
 # Heartbeat file (workers/reviewers only — architects aren't witness-
 # tracked). The convention every role file uses is
@@ -466,8 +540,20 @@ run_with_heartbeat() {
 
 launch_architect_first() {
     local -a cmd
+    local used_resume=0
+    # Dead-pointer check BEFORE the resume/fresh branch: a stale sidecar
+    # (transcript pruned) gets deleted here so the branch below sees "no
+    # SESSION_FILE" and takes the same fresh-session path as a first-ever
+    # launch. See "Dead-session detection" above.
     if [[ -f "$SESSION_FILE" ]]; then
         SESSION_ID=$(cat "$SESSION_FILE")
+        if ! session_transcript_exists "$SESSION_ID"; then
+            condemn_stale_session "$SESSION_ID" "no transcript under ~/.claude/projects/"
+        fi
+    fi
+    if [[ -f "$SESSION_FILE" ]]; then
+        SESSION_ID=$(cat "$SESSION_FILE")
+        used_resume=1
         log "resuming architect session $SESSION_ID (preserved across fleet restart)"
         # Resume with NO trailing prompt: load the prior conversation and drop
         # the human straight back into it, generating no model turn. The old
@@ -503,7 +589,12 @@ launch_architect_first() {
         printf '%s\n' "${cmd[*]}"
         exit 0
     fi
-    "${cmd[@]}"
+    local started_at rc=0 elapsed
+    started_at=$(date +%s)
+    "${cmd[@]}" || rc=$?
+    elapsed=$(( $(date +%s) - started_at ))
+    [[ "$used_resume" -eq 1 ]] && record_resume_result "$rc" "$elapsed"
+    return "$rc"
 }
 
 launch_worker_fresh() {
@@ -552,10 +643,34 @@ resume_mid_task() {
     # in-flight task from its claim/reservation (worker reservation gate
     # "step 0.5"; reviewers are read-only and just re-review) and carries on.
     # The crashed session's in-context scratch is lost, but the task is not.
+    #
+    # A mid-task "crash" is exit-code-indistinguishable from a --resume
+    # hitting a pruned transcript, so this path revalidates the sidecar
+    # before reusing it, exactly as launch_architect_first does. Condemning
+    # deletes the sidecar, which drops the branch below into the elif's
+    # fresh architect session.
     if [[ "$ARCHITECT_RESUME" -eq 1 && -f "$SESSION_FILE" ]]; then
+        SESSION_ID=$(cat "$SESSION_FILE")
+        if ! session_transcript_exists "$SESSION_ID"; then
+            condemn_stale_session "$SESSION_ID" "no transcript under ~/.claude/projects/"
+        fi
+    fi
+    if [[ "$ARCHITECT_RESUME" -eq 1 && -f "$SESSION_FILE" ]]; then
+        SESSION_ID=$(cat "$SESSION_FILE")
+        local started_at rc=0 elapsed
+        started_at=$(date +%s)
         # Crash recovery — not fleet restart; the prompt signals mid-task continuity, not cold-start burn.
-        claude --model "$MODEL" --effort "$EFFORT" --resume "$(cat "$SESSION_FILE")" \
-            "resume your work from where you left off"
+        claude --model "$MODEL" --effort "$EFFORT" --resume "$SESSION_ID" \
+            "resume your work from where you left off" || rc=$?
+        elapsed=$(( $(date +%s) - started_at ))
+        record_resume_result "$rc" "$elapsed"
+        return "$rc"
+    elif [[ "$ARCHITECT_RESUME" -eq 1 ]]; then
+        # Condemned above (or the sidecar never existed) — fall back to a
+        # fresh architect session via launch_architect_first's no-SESSION_FILE
+        # branch, NOT launch_worker_fresh: that's the workers' one-shot
+        # --print launcher, the wrong shape for an interactive architect.
+        launch_architect_first
     else
         launch_worker_fresh
     fi
