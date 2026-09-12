@@ -1188,7 +1188,7 @@ void switchToFrame(int frameIndex) {
     }
 
     IR_LOG_INFO(
-        "Frame: %d / %d  [%s  %.0f FPS]",
+        "Frame: {} / {}  [{}  {:.0f} FPS]",
         g_anim.activeFrame_ + 1,
         g_anim.frameCount(),
         g_anim.playing_ ? "PLAYING" : "PAUSED",
@@ -2569,7 +2569,7 @@ void initCommands() {
     // symmetry-disabled scene's saved META (sym_offset_*) untouched (#766 F-1.6).
     auto logSymmetry = []() {
         IR_LOG_INFO(
-            "Symmetry: X=%s Y=%s Z=%s",
+            "Symmetry: X={} Y={} Z={}",
             IRVoxelEditor::g_symmetry.enableX_ ? "ON" : "OFF",
             IRVoxelEditor::g_symmetry.enableY_ ? "ON" : "OFF",
             IRVoxelEditor::g_symmetry.enableZ_ ? "ON" : "OFF"
@@ -2674,7 +2674,7 @@ void initCommands() {
             if (anim.playing_)
                 anim.playDirection_ = 1;
             IR_LOG_INFO(
-                "Playback: %s  (%d frames at %.0f FPS)",
+                "Playback: {}  ({} frames at {:.0f} FPS)",
                 anim.playing_ ? "PLAYING" : "PAUSED",
                 anim.frameCount(),
                 anim.fps_
@@ -2801,7 +2801,7 @@ void initCommands() {
                                  ? IRVoxelEditor::LoopMode::PING_PONG
                                  : IRVoxelEditor::LoopMode::LOOP;
             IR_LOG_INFO(
-                "Loop mode: %s",
+                "Loop mode: {}",
                 anim.loopMode_ == IRVoxelEditor::LoopMode::LOOP ? "LOOP" : "PING-PONG"
             );
         }
