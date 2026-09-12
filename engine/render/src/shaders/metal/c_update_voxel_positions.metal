@@ -1,13 +1,13 @@
 #include <metal_stdlib>
 using namespace metal;
 
-// GPU voxel-position prepass (#1396). Mirrors shaders/c_update_voxel_positions.glsl
+// GPU voxel-position prepass. Mirrors shaders/c_update_voxel_positions.glsl
 // byte-for-byte: one thread per live voxel computes world = modelToWorld * localPos
 // for GPU-transformed voxels and writes the shared global-position buffer
 // (buffer 5); sentinel-slot (kVoxelTransformStatic) voxels are left untouched so
-// the CPU-direct path keeps owning them (byte-identical). The per-voxel transform
-// slot is bit-packed into the local-position .w lane. The threadgroup grid +
-// linear index reconstruction match c_voxel_visibility_compact.metal exactly.
+// the CPU-direct path owns them. The per-voxel transform slot is bit-packed into
+// the local-position .w lane. The threadgroup grid + linear index reconstruction
+// match c_voxel_visibility_compact.metal exactly.
 
 constant uint VOXEL_TRANSFORM_STATIC = 0xFFFFFFFFu;
 

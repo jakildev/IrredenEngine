@@ -8,9 +8,8 @@
 // world-placed detached re-voxelize canvas (model-frame R32I distance texture)
 // into a screen-space front-most iso-depth scratch buffer laid out exactly
 // like the main canvas distance texture, so BAKE_SUN_SHADOW_MAP can cast it
-// through its existing cardinal recovery (#1576 P4b-3, Q2 mechanism a′).
-// Scratch is a buffer (not a texture) because MSL has no portable image-atomic
-// syntax — same pattern as c_resolve_per_axis_screen_depth.metal.
+// through its cardinal recovery. Scratch is a buffer (not a texture) because
+// MSL has no portable image-atomic syntax.
 
 constant int kEmptyDistanceEncoded = 65535;
 
@@ -37,8 +36,8 @@ kernel void c_resolve_world_placed_depth(
     if (rawDist >= kEmptyDistanceEncoded) {
         return; // empty detached cell
     }
-    // Single-canvas encoding (flip carrier #2207): the flip is re-emitted into
-    // the re-projected encode below so polarity survives the resolve bridge.
+    // Single-canvas encoding: the flip is re-emitted into the re-projected
+    // encode so polarity survives the resolve bridge.
     const int rawDepth = decodeDepthSingle(rawDist);
     const int slot = decodeSlot(rawDist);
     const int flip = decodeFlipSingle(rawDist);
@@ -59,9 +58,8 @@ kernel void c_resolve_world_placed_depth(
     const int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
     int3 viewPos = worldPos;
     if (cardinalIndex != 0) {
-        // Plain cardinal rotation — no lower-corner shift (#2545); mirrors
-        // the stage-1 cardinal store, and the BAKE recovery
-        // (trixelCanvasPixelToWorld3D) dropped its undo symmetrically.
+        // Plain cardinal rotation with no lower-corner shift, mirroring the
+        // stage-1 cardinal store and the BAKE recovery (trixelCanvasPixelToWorld3D).
         viewPos = rotateCardinalZ(worldPos, cardinalIndex);
     }
 

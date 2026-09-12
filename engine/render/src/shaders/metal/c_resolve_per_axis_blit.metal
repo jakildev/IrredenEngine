@@ -4,7 +4,7 @@ using namespace metal;
 // Mirrors shaders/c_resolve_per_axis_blit.glsl. Materializes the scatter
 // pass's scratch buffer into the resolve R32I texture BAKE_SUN_SHADOW_MAP
 // reads, then resets each scratch slot to the empty sentinel so the next
-// frame needs no separate clear dispatch (#1435). Runs after a barrier, so a
+// frame needs no separate clear dispatch. Runs after a barrier, so a
 // plain device pointer (non-atomic) read/write is safe here.
 
 constant int kEmptyDistanceEncoded = 65535;

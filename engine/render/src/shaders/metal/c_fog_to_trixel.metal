@@ -13,16 +13,15 @@
 //   visible    (1.0)     — pass through
 //   explored   (128/255) — desaturate + darken
 //   unexplored (0.0)     — black
-// Texture reads have no hardware sampler, so OOB grid cells read as visible.
-// With no vision circles (count 0) the pass is grid-only — byte-identical to
-// the legacy bucket pass at the canonical 0/128/255 stored states.
+// With no vision circles (count 0) the pass is grid-only, and the canonical
+// 0/128/255 stored states land exactly on those three anchors.
 
 constant int kFogOfWarSize = 256;
 constant int kFogOfWarHalfExtent = 128;
 constant int kEmptyDistanceEncoded = 65535;
-// Normalized stored explored value (128/255, NOT 0.5) — the continuous
-// modulation pivots through this so the two-segment lerp passes exactly
-// through the legacy bucket outputs at the three canonical stored states.
+// Normalized stored explored value (128/255, NOT 0.5). The two-segment lerp
+// pivots through this so the three canonical stored states (0 / 128 / 255) land
+// exactly on the black / explored / source anchors.
 constant float kFogExploredValue = 128.0f / 255.0f;
 
 // Live analytic vision circles. Mirrors kMaxFogVisionCircles and
@@ -34,33 +33,32 @@ constant int kMaxFogVisionCircles = 8;
 struct FogObserverData {
     float4 visionCircles[kMaxFogVisionCircles];
     int visionCircleCount;
-    // Reserved padding lane. Previously carried the light-occlusion-grid
-    // availability flag for the retired ray+occupancy cut variant; the
-    // geometric cross-section cap needs no external occupancy source, so
-    // the lane is unread (kept for the std140/Metal layout).
+    // Unread padding lane, kept for the std140/Metal layout.
     int _fogObserverPad0;
-    // Per-circle height penalty (#2260, generalized by #2557), appended after
-    // the count so the existing fields keep their offsets (float4 re-aligns to
+    // Per-circle height penalty, appended after the count (float4 re-aligns to
     // 16). heights[i] = (observerZ, zCostUp, zCostDown, freeBand); the reveal
     // folds zCostUp * max(dzUp - freeBand, 0) + zCostDown *
     // max(dzDown - freeBand, 0) into the radial distance, where
     // dzUp = max(observerZ - z, 0) and dzDown = max(z - observerZ, 0). All-zero
-    // (the default) → byte-identical to pre-#2260.
+    // (the default) → the plain 2D disc.
     float4 visionCircleHeights[kMaxFogVisionCircles];
 };
 
-// Cross-section cap tuning — mirrors the GLSL twin (see there for the full
-// rationale: vertical faces only, radial band, no ray / occupancy reads).
+// Cross-section cap tuning — mirrors the GLSL twin. kFogCutTone is a pure
+// multiply with no constant lift, so hidden matter is never brighter than its
+// lit self; the cap band is RADIAL surface-XY distance past the rim, applied to
+// vertical faces only.
 constant float kFogCutTone = 0.85f;
 constant float kFogCutMaxRimCells = 2.0f;
-// Rim fade — mirrors the GLSL twin (see there for the full rationale and the
-// kFogHiddenKeepCells width coupling).
+// Rim fade — mirrors the GLSL twin. kFogRimFadeCells MUST equal
+// kFogHiddenKeepCells (ir_voxel_face_select.metal) so the fade reaches black
+// exactly where hidden columns stop rasterizing.
 constant float kFogRimFadeCells = 8.0f;
 constant float kFogRimFadeLevel = 0.75f;
 
-// Read the fog grid at a cell. Out-of-range cells read as visible (1.0):
-// texture reads have no sampler wrap mode, so this bounds check is load-bearing
-// (the OOB-as-visible invariant in the component header).
+// Out-of-range cells read as visible (1.0): texture reads have no sampler wrap
+// mode, so this bounds check is load-bearing. Matches the OOB-as-visible
+// contract on C_CanvasFogOfWar.
 static float fogTap(int2 cell, int2 fogSize, texture2d<float, access::read> fog) {
     if (cell.x < 0 || cell.x >= fogSize.x ||
         cell.y < 0 || cell.y >= fogSize.y) {
@@ -76,7 +74,8 @@ kernel void c_fog_to_trixel(
     texture2d<float, access::read> canvasFogOfWar [[texture(2)]],
     // buffer(27) ALIASES kBufferIndex_FrameDataLightingToTrixel — the Metal
     // 0-30 buffer table is full, and fog runs right after lighting (done with
-    // slot 27 by then). See kBufferIndex_FogObservers in ir_render_types.hpp.
+    // slot 27 by then). Must match kBufferIndex_FogObservers in
+    // ir_render_types.hpp.
     constant FogObserverData& fogObservers [[buffer(27)]],
     uint3 globalId [[thread_position_in_grid]]
 ) {
@@ -95,8 +94,7 @@ kernel void c_fog_to_trixel(
     }
 
     // R(-rasterYaw) recovers world coords from the cardinal-rotated raster
-    // frame; the fog grid is world-space (X-Y plane). At cardinalIndex==0
-    // the path collapses to master so yaw=0 stays byte-identical.
+    // frame; the fog grid is world-space (X-Y plane).
     const int rawDepth = decodeDepthSingle(encoded);
     float3 pos3D = trixelCanvasPixelToWorld3D(
         pixel,
@@ -116,22 +114,17 @@ kernel void c_fog_to_trixel(
         int(canvasFogOfWar.get_width()),
         int(canvasFogOfWar.get_height())
     );
-    // Kept separate from the circle-combined `state`: the cross-section band
-    // below applies only to UNEXPLORED surfaces (explored memory keeps its
-    // desaturated tone).
+    // Kept separate from the circle-combined `state`: the rim fade and the
+    // cross-section cap apply only to UNEXPLORED surfaces (explored memory
+    // keeps its desaturated tone).
     const float gridState = fogTap(fogCell, fogSize, canvasFogOfWar);
     float state = gridState;
     // This column's world distance PAST the nearest hard disc's radius —
-    // drives the cross-section cap band and the rim fade below. Initialized
-    // to the full fade width so no-hard-disc scenes (including soft Mode B
-    // discs) resolve to cap-off + fade 0 (legacy path).
+    // drives the cross-section cap band and the rim fade. Initialized to the
+    // full fade width so no-hard-disc scenes (including soft Mode B discs)
+    // resolve to cap-off + fade 0.
     float hardDistPastRim = kFogRimFadeCells;
 
-    // Live analytic vision circles: max-combine each disc's smooth visibility,
-    // evaluated against the CONTINUOUS world column so the edge is crisp at
-    // render resolution and reveals partial voxels as a moving observer slides
-    // sub-cell. The rim is floored at one canvas pixel for zoom-stable AA; at
-    // count 0 the loop is skipped and `state` stays the grid value (legacy).
     if (fogObservers.visionCircleCount > 0) {
         // Local world-units-per-pixel from the iso inverse-projection Jacobian:
         // recover the +x neighbour at the same depth and measure the world step.
@@ -146,20 +139,20 @@ kernel void c_fog_to_trixel(
             frameData.rasterYaw
         );
         const float worldPerPixel = length(pos3DNeighborX.xy - pos3D.xy);
-        // Shared with c_voxel_to_trixel_stage_1's per-voxel clip so the floor's
-        // per-pixel reveal here and the voxel-object edge there trace the same
-        // analytic curve (#2102). worldPerPixel floors the rim at ~1 canvas px.
+        // Must trace the same analytic curve as c_voxel_to_trixel_stage_1's
+        // per-voxel clip, so the floor's per-pixel reveal here and the
+        // voxel-object edge there coincide. worldPerPixel floors the rim at ~1
+        // canvas px for zoom-stable AA.
         for (int i = 0; i < fogObservers.visionCircleCount; ++i) {
-            // #2260 height-penalized reveal, generalized to an asymmetric,
-            // penalty-free-banded curve by #2557 — mirror of the GLSL twin:
-            // fold this pixel's world-Z penalty (zCostUp * max(dzUp - freeBand,
-            // 0) + zCostDown * max(dzDown - freeBand, 0)) into the radial
-            // distance so matter far above/below the observer's height reveals
-            // less at the same XY, asymmetrically and with a free band around
-            // the observer's height. The 2D reveal is inlined (not a shared
-            // ir_iso_common Z helper) to keep the cardinal fast path byte-
-            // identical (#1944). All-zero heights → distEff == the plain 2D
-            // length.
+            // Height-penalized reveal — mirror of the GLSL twin: fold this
+            // pixel's world-Z penalty (zCostUp * max(dzUp - freeBand, 0) +
+            // zCostDown * max(dzDown - freeBand, 0)) into the radial distance
+            // so matter far above/below the observer's height reveals less at
+            // the same XY, asymmetrically and with a free band around the
+            // observer's height. The 2D reveal is inlined rather than added to
+            // ir_iso_common as a Z-aware helper — a new symbol there perturbs
+            // the byte-identical cardinal fast path. All-zero heights →
+            // distEff == the plain 2D length.
             const float4 heights = fogObservers.visionCircleHeights[i];
             const float dzUp = max(heights.x - pos3D.z, 0.0f);
             const float dzDown = max(pos3D.z - heights.x, 0.0f);
@@ -182,23 +175,23 @@ kernel void c_fog_to_trixel(
         }
     }
 
-    // Fully-visible fast path: pass through untouched. Skips the store.
     if (state >= 1.0f) {
         return;
     }
 
     const float4 src = trixelColors.read(uint2(pixel));
 
-    // Cross-section cap (#2124) — mirrors the GLSL twin exactly (see there
-    // for the full rationale): VERTICAL faces (the depth encoding's slot bits
-    // resolved through visibleFaceIds) blend the cut tint over the fade with
-    // a weight that is 1 at the rim and 0 at kFogCutMaxRimCells, so the wall
-    // is one continuous curve converging to the top face's exact fade tone at
-    // the band's end — no hard band-edge line, no voxel-stepped teeth. TOP
-    // (Z) faces never cap (flat ground fades on the plain radial curve).
-    // Colour-only, after lighting — never touches trixelDistances.
+    // Cross-section cap — mirrors the GLSL twin: VERTICAL faces (the depth
+    // encoding's slot bits resolved through visibleFaceIds) blend the cut tint
+    // over the fade with a weight that is 1 at the rim and 0 at
+    // kFogCutMaxRimCells, so the wall is one continuous curve converging to the
+    // top face's exact fade tone at the band's end — no hard band-edge line, no
+    // voxel-stepped teeth. TOP (Z) faces never cap (flat ground fades on the
+    // plain radial curve). Colour-only, after lighting — never touches
+    // trixelDistances.
 
-    // Desaturate to luminance, then darken — the explored "memory" tone.
+    // The explored "memory" tone keeps shape silhouettes visible without being
+    // confused with what is *currently* in view.
     const float luminance = dot(src.rgb, float3(0.299f, 0.587f, 0.114f));
     const float3 exploredColor = float3(luminance) * 0.4f;
 
@@ -214,18 +207,15 @@ kernel void c_fog_to_trixel(
         outColor = mix(float3(0.0f), exploredColor, t);
     }
     if (gridState < kFogExploredValue) {
-        // Rim fade (see the const block): lift UNEXPLORED pixels toward their
-        // lit colour near the hard-disc rim. Explored memory keeps its tone.
         // The squared ease-out crushes the fade tail to black well before the
         // keep-ring drop, so the outermost kept columns' wall faces (whose
         // constant-depth recovery reads a column slightly INSIDE their true
         // one) can't catch a visible lift against the void behind them.
         const float u = 1.0f - smoothstep(0.0f, kFogRimFadeCells, hardDistPastRim);
         outColor = mix(outColor, src.rgb, kFogRimFadeLevel * u * u);
-        // Feathered cross-section cap on vertical faces (see the block
-        // comment above). `state` carries the disc's ~1px AA rim, so the
-        // junction with visible matter stays antialiased. Axis only — the
-        // riser-polarity flip (#2207) never changes a face's axis.
+        // `state` carries the disc's ~1px AA rim, so the junction with visible
+        // matter stays antialiased. Axis only — the riser-polarity flip never
+        // changes a face's axis, so it is not decoded here.
         const int faceAxis = frameData.visibleFaceIds[decodeSlot(encoded)] >> 1;
         if (fogObservers.visionCircleCount > 0 && faceAxis != 2) {
             const float capBlend =

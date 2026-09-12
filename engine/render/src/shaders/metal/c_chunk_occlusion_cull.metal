@@ -2,15 +2,15 @@
 using namespace metal;
 
 // Mirrors shaders/c_chunk_occlusion_cull.glsl. Chunk-occlusion pre-pass for the
-// voxel-pool render path (#1294 child 2/3). One thread per pool-chunk: sample
-// the MAX of last frame's Hi-Z (#1798) over the chunk's projected pixel
-// footprint and AND 0 into the chunk's ChunkVisibility entry (buffer 24) iff the
-// chunk's nearest depth is strictly behind that max. See the GLSL for the
-// conservative-eligibility rules, the background-sentinel rationale, and why the
-// pass is gated off by default.
+// voxel-pool render path. One thread per pool-chunk: sample the MAX of last
+// frame's Hi-Z over the chunk's projected pixel footprint and AND 0 into the
+// chunk's ChunkVisibility entry (buffer 24) iff the chunk's nearest depth is
+// strictly behind that max. Only chunks the CPU flagged `eligible_` are tested,
+// and a footprint that still sees background (the 65535 sentinel, the largest
+// encoded value) is never culled.
 
 constant constexpr int kMaxHiZMipLevels = 12;
-// One full depth step at the kDepthEncodeShift = 8 encode scale (GLSL twin).
+// One full depth step at the kDepthEncodeShift = 8 encode scale.
 constant constexpr int kOcclusionDepthMargin = 8;
 
 // Matches the std430 ChunkQuery (32 B). Record 0 of the buffer is the header:

@@ -1,5 +1,5 @@
-// Canonical-order the view-visibility overflow entry list (#2479) — Metal
-// twin of c_per_axis_overflow_sort.glsl. See the GLSL for the full contract:
+// Canonical-order the view-visibility overflow entry list — Metal twin of
+// c_per_axis_overflow_sort.glsl; keep the two in lockstep. Shared contract:
 // pass modes (0 sentinel-fill / 1 fused local sort / 2 fused strided slab),
 // the (cell, distance, color) = words (0, 2, 1) key, the mandatory
 // pre-network fill (the region above the live range holds stale prior-frame
@@ -14,10 +14,9 @@
 // threadgroupSizeForFunctionName (256,1,1); it is NOT an image-atomic
 // scratch consumer, so it stays OFF functionUsesImageAtomicScratch.
 //
-// The fusion exists FOR this backend: Metal creates one compute encoder per
-// dispatch with a full resource-table flush (~40 us) and memoryBarrier() is a
-// no-op (encoder boundaries serialize), so the unfused network's dispatch
-// count — not its arithmetic — was the whole measured cost.
+// Fusing strides bounds the dispatch count, which matters on this backend:
+// Metal creates one compute encoder per dispatch with a full resource-table
+// flush, and memoryBarrier() is a no-op (encoder boundaries serialize).
 #include "ir_iso_common.metal"
 
 constant uint kSortSentinelWord = 0xFFFFFFFFu;
@@ -81,14 +80,14 @@ kernel void c_per_axis_overflow_sort(
     const uint liveCount = min(
         scratch[uint(frameData.overflowScratchLayout.y) + 1u], capEntries
     );
-    // The network's ACTIVE span — see the GLSL twin for the full rationale.
-    // Smallest power of two covering the live entries, floored at one fused
-    // block and capped at the entry cap; everything at or above it is a VIRTUAL
-    // sentinel, substituted in registers and never read from or written back.
+    // The network's ACTIVE span: smallest power of two covering the live
+    // entries, floored at one fused block and capped at the entry cap;
+    // everything at or above it is a VIRTUAL sentinel, substituted in registers
+    // and never read from or written back. The reals never leave [0, span).
     // Derived GPU-side because the CPU cannot read ctrl[1] without a sync stall.
-    // Sizing the network to the CAP instead measured +31.8% frame time at the
-    // repro scene against a <8% gate — with 66,690 live under a 524,288 cap,
-    // 87% of every pass's traffic was shuffling sentinels.
+    // The pass's cost is dominated by memory traffic, so the network must not
+    // be sized to the CAP: with the cap far above the live count, most of every
+    // pass would shuffle sentinels.
     uint span = kSortBlock;
     while (span < liveCount) span <<= 1u;
     span = min(span, capEntries);
@@ -157,25 +156,24 @@ kernel void c_per_axis_overflow_sort(
     const uint slabElems = 1u << (pHi - pLo + 1u);
     const uint cBase = g * (kSortBlock / slabElems);
 
-    // A stage wider than the active span is a no-op — see the GLSL twin.
+    // A stage wider than the active span is a no-op: every pair it forms is
+    // either wholly virtual or (real, +inf) already in ascending order.
     if (k > span) return;
     // Skip a threadgroup whose LOWEST element is already at or above the span
     // (overflowExpandIndex is monotonic in c, so the minimum is at c = cBase,
     // active 0). Threadgroup-uniform, so the barriers stay uniform.
     //
-    // This guard — not the per-element substitution in the loop below — is what
-    // replaces the whole-block early-out this pass must NOT have: keying on
-    // liveCount is unsound here (the network migrates real records above it
-    // mid-sort — measured as 3 distinct rotated-shot hashes / 3 runs), while
-    // keying on `span` is sound because the reals provably never leave
+    // This guard — not the per-element substitution loop — is the mode-2 skip,
+    // and it must key on `span`, never liveCount: the network migrates real
+    // records above liveCount mid-sort, while the reals provably never leave
     // [0, span). span and kSortBlock are both powers of two with
     // span >= kSortBlock, so a threadgroup's element set is always wholly below
     // or wholly at/above span — never straddling — which is exactly what makes
     // this single threadgroup-uniform check decide the whole threadgroup.
     if (overflowExpandIndex(cBase, 0u, pLo, pHi) >= span) return;
 
-    // Per-element substitution below is defensive cover, not load-bearing: given
-    // the threadgroup-uniform guard above, every element that reaches this loop
+    // This per-element substitution is defensive cover, not load-bearing: the
+    // threadgroup-uniform span guard means every element that reaches this loop
     // already has i < span, so the `i >= span` branch is dead code.
     for (uint e = t; e < kSortBlock; e += kSortThreads) {
         const uint i =

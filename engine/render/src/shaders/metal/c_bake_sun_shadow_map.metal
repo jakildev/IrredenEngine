@@ -1,6 +1,6 @@
 #include "ir_iso_common.metal"
 #include "ir_per_axis_lighting.metal"
-// Shared caster/receiver sun-space projection + depth pack (#2083).
+// Shared caster/receiver sun-space projection + depth pack.
 #include "ir_sun_projection.metal"
 #include <metal_atomic>
 
@@ -25,16 +25,15 @@ struct FrameDataSun {
     float2 cascadeTexelSize_1;
     float cascadeSplitDepth;
     int cascadeCount;
-    // #2270 coverage-splat radius (sun texels), doubling as the kill switch —
-    // 0 => the exact single-write path (saturated hosts byte-identical). See
-    // FrameDataSun in ir_render_types.hpp.
+    // Coverage-splat radius (sun texels), doubling as the kill switch —
+    // 0 => the exact single-write path. Mirrors FrameDataSun in ir_render_types.hpp.
     float sunSplatMaxTexels;
-    float sunMaxShadowThrow;  // #2320; unused here (receiver-only)
+    float sunMaxShadowThrow;  // unused here (receiver-only)
 };
 
 // atomic_fetch_min the packed sun depth into one texel of a cascade, if in
-// bounds. The bounds check is a buffer-bounds guard, not a culling decision
-// (#2083): sunCascadeKernelInterior (ir_sun_projection.metal) routes receivers
+// bounds. The bounds check is a buffer-bounds guard, not a culling decision:
+// sunCascadeKernelInterior (ir_sun_projection.metal) routes receivers
 // near the map edge to the covering cascade whose wider AABB holds this
 // caster's write, and every caster is projected into BOTH cascades, so this
 // never drops a caster. Mirrors GLSL.
@@ -52,17 +51,16 @@ inline void writeSunTexel(
     );
 }
 
-// #2270 coverage splat. Writes the caster's own texel (the exact single write,
-// byte-identical when radius == 0), then atomic_fetch_min's the SAME depth into
-// a (2·radius+1)^2 box around it, filling the sun texels a grazing / point-
-// scattered caster footprint leaves empty (the moth-eaten cast-shadow holes).
-// atomic_fetch_min preserves saturated-host byte-identity: where nearer real
-// geometry already covers a box texel, the farther splat is a no-op, so a
-// dense-bake host sees no change and the fill concentrates on genuinely-empty
-// hole texels. The uniform box (rather than a per-pixel oriented walk) is
-// deliberate: the holes are 2D point-scatter, not a 1D silhouette line, so a
-// directional walk under-covers (measured — see
-// docs/design/sun-shadow-bake-coverage.md). Mirrors GLSL.
+// Coverage splat. Writes the caster's own texel (the exact single write when
+// radius == 0), then atomic_fetch_min's the SAME depth into a (2·radius+1)^2 box
+// around it, filling the sun texels a grazing / point-scattered caster footprint
+// leaves empty (the moth-eaten cast-shadow holes). atomic_fetch_min keeps a dense
+// bake unchanged: where nearer real geometry already covers a box texel, the
+// farther splat is a no-op, so a dense-bake host sees no change and the fill
+// concentrates on genuinely-empty hole texels. The uniform box (rather than a
+// per-pixel oriented walk) is deliberate: the holes are 2D point-scatter, not a 1D
+// silhouette line, so a directional walk under-covers
+// (docs/design/sun-shadow-bake-coverage.md). Mirrors GLSL.
 inline void bakeCascadeBox(
     device atomic_uint *sunDepthBuf, float3 sp,
     float2 origin, float2 texelSz, int cascadeOffset, int radius
@@ -70,13 +68,12 @@ inline void bakeCascadeBox(
     int2 base = int2(floor((sp.xy - origin) / texelSz));
     for (int dy = -radius; dy <= radius; ++dy) {
         for (int dx = -radius; dx <= radius; ++dx) {
-            // Splat provenance (#2319): store the DISPLACEMENT VECTOR (dx, dy) of
-            // this box texel from the caster's own (0,0) texel, so the receiver
-            // can reconstruct the write's true origin (px - (dx,dy)) and reject a
+            // Splat provenance: store the DISPLACEMENT VECTOR (dx, dy) of this box
+            // texel from the caster's own (0,0) texel, so the receiver can
+            // reconstruct the write's true origin (px - (dx,dy)) and reject a
             // same-plane self-occluder while keeping a genuine cast at the base
-            // bias (ir_sun_shadow_sample same-plane test). Free — the box loop
-            // already carries (dx, dy). radius 0 ⇒ only (0,0) ⇒ a direct write ⇒
-            // byte-identical to the pre-splat single write. Mirrors GLSL.
+            // bias (ir_sun_shadow_sample same-plane test). radius 0 ⇒ only (0,0) ⇒
+            // a direct write. Mirrors GLSL.
             writeSunTexel(sunDepthBuf, cascadeOffset, base + int2(dx, dy),
                           packSunDepth(sp.z, int2(dx, dy)));
         }
@@ -100,42 +97,39 @@ kernel void c_bake_sun_shadow_map(
     }
 
     int encoded = trixelDistances.read(uint2(pixel)).x;
-    // Per-axis canvas uses INT_MAX as empty sentinel (#1458); single-canvas keeps 65535.
+    // Per-axis canvas uses INT_MAX as the empty sentinel; single-canvas uses 65535.
     if (encoded >= (frameData.perAxisRoute != 0 ? 0x7FFFFFFF : kEmptyDistanceEncoded)) {
         return;
     }
     // Shared decode helpers (ir_iso_common) own both encodings' bit layouts
-    // (#1458 per-axis / single-canvas, flip carrier #2207). The bake is
-    // position-only — the flip bit never changes a caster's plane position, so
-    // it is decoded past, not consumed.
+    // (per-axis / single-canvas, flip carrier). The bake is position-only — the
+    // flip bit never changes a caster's plane position, so it is decoded past,
+    // not consumed.
     int rawDepth = decodeDepthRoute(encoded, frameData.perAxisRoute);
 
-    // Smooth camera Z-yaw (#1311): the per-axis voxel canvases bake into the same
-    // shared sun depth map as the main canvas (SDF/text) so voxels and shapes
-    // shadow each other under rotation. Per-axis stores the world frame
-    // face-locally; the single canvas stores the cardinal-snapped iso pixel.
+    // Smooth camera Z-yaw: per-axis voxel content bakes into the same shared sun
+    // depth map as the main canvas (SDF/text) so voxels and shapes shadow each
+    // other under rotation. Per-axis stores the world frame face-locally; the
+    // single canvas stores the cardinal-snapped iso pixel.
     float3 pos3D;
     if (frameData.perAxisRoute != 0) {
-        // LATTICE recovery, deliberately (#2816) — mirrors GLSL. Per-axis
-        // content never arrives here: the C++ driver casts per-axis canvases
-        // through RESOLVE_PER_AXIS_SCREEN_DEPTH into a CARDINAL-layout resolve
-        // texture and bakes that with `perAxisRoute` at 0, and that resolve
-        // bridge is where the sub-cell frac is applied. The branch survives as
-        // the direct-bake path #1435 replaced; if a future change ever routes a
-        // raw per-axis canvas into this bake, it must recover with
-        // perAxisCellToWorld3DSubCell.
+        // LATTICE recovery, deliberately — mirrors GLSL. Per-axis content never
+        // arrives here: the C++ driver casts per-axis canvases through
+        // RESOLVE_PER_AXIS_SCREEN_DEPTH into a CARDINAL-layout resolve texture and
+        // bakes that with `perAxisRoute` at 0, and that resolve bridge is where the
+        // sub-cell frac is applied. A raw per-axis canvas routed into this bake
+        // must recover with perAxisCellToWorld3DSubCell.
         pos3D = perAxisCellToWorld3D(
             pixel, rawDepth, frameData.visibleFaceIds[decodeSlot(encoded)], size,
             frameData.frameCanvasOffset, frameData.voxelRenderOptions
         );
     } else if (frameData.residualYaw != 0.0) {
-        // Smooth-yaw cast (#1719). While rotating, the single canvas's
-        // remaining SDF/text content is stored at the FULL visualYaw with
-        // view-frame depth (#1345/#1370) — recover with the matching smooth
-        // inverse so those casters bake at their true world positions. The
-        // CARDINAL-layout resolve textures (per-axis #1435 + world-placed
-        // P4b-3) bake with residualYaw zeroed by the C++ driver, so they keep
-        // the cardinal recovery below. Mirrors GLSL.
+        // Smooth-yaw cast. While rotating, the single canvas's remaining SDF/text
+        // content is stored at the FULL visualYaw with view-frame depth — recover
+        // with the matching smooth inverse so those casters bake at their true
+        // world positions. The CARDINAL-layout resolve textures (per-axis +
+        // world-placed) bake with residualYaw zeroed by the C++ driver, so they
+        // take the cardinal recovery. Mirrors GLSL.
         pos3D = trixelCanvasPixelToWorld3DSmoothYaw(
             pixel,
             rawDepth,
@@ -155,7 +149,7 @@ kernel void c_bake_sun_shadow_map(
         );
     }
 
-    // Shared caster/receiver projection (#2083) — the receiver lookup
+    // Shared caster/receiver projection — the receiver lookup
     // (ir_sun_shadow_sample.metal worldSunShadowFactor) derives its sun UV +
     // depth from this same function, so cast and receive cannot drift.
     float3 sunProj = sunSpaceProject(
@@ -165,17 +159,17 @@ kernel void c_bake_sun_shadow_map(
         sunFrameData.sunDirection.xyz
     );
 
-    // #2270 coverage splat. The gate is a DECODE-PATH predicate, not a
+    // Coverage splat. The gate is a DECODE-PATH predicate, not a
     // camera-cardinality one: the raw smooth-yaw and per-axis face-local inputs
     // skip it, so it engages for the cardinal main-canvas bake AND the two
-    // CARDINAL-layout resolve dispatches (per-axis #1435, world-placed P4b-3),
-    // which spoof residualYaw == 0 with perAxisRoute == 0. The C++ driver
-    // disambiguates via sunSplatMaxTexels: it zeros the radius for the PER-AXIS
-    // resolve (patchSunSplatRadius) so invariant #1's per-axis / smooth-yaw
-    // byte-identity is structural, but keeps it for the WORLD-PLACED resolve
-    // (whose cast carries the same point-scatter defect — measured). The
-    // atomic_fetch_min box preserves saturated-host byte-identity (farther splats
-    // no-op where geometry is dense). Mirrors GLSL.
+    // CARDINAL-layout resolve dispatches (per-axis, world-placed), which spoof
+    // residualYaw == 0 with perAxisRoute == 0. The C++ driver disambiguates via
+    // sunSplatMaxTexels: it zeros the radius for the PER-AXIS resolve
+    // (patchSunSplatRadius) so the per-axis / smooth-yaw bakes are single-write by
+    // construction, but keeps it for the WORLD-PLACED resolve (whose cast carries
+    // the same point-scatter holes the splat fills). The atomic_fetch_min box
+    // leaves a dense bake unchanged (farther splats no-op where geometry is
+    // dense). Mirrors GLSL.
     int radius = 0;
     if (frameData.perAxisRoute == 0 && frameData.residualYaw == 0.0 &&
         sunFrameData.sunSplatMaxTexels > 0.0) {

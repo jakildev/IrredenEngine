@@ -2,7 +2,7 @@
 #include <metal_atomic>
 using namespace metal;
 
-// Per-axis empty-cell compaction pre-pass (#1961). Mirror of
+// Per-axis empty-cell compaction pre-pass. Mirror of
 // shaders/c_per_axis_cell_compact.glsl. Scans one per-axis distance canvas and
 // atomic-appends each occupied cell's linear index into a per-axis SSBO region,
 // bumping the indirect instanced-draw instance count, so the scatter composite
@@ -12,10 +12,10 @@ using namespace metal;
 // is NOT in functionUsesImageAtomicScratch). Cardinal byte-identity is
 // structural: per-axis canvases are only allocated at non-zero residual yaw.
 
-// Per-axis canvas empty sentinel (#1458) — mirror of the GLSL.
+// Per-axis canvas empty sentinel — mirror of the GLSL.
 constant int kEmptyDistanceEncoded = 0x7FFFFFFF;
 
-// #2256: the compacted cell list also feeds the per-axis compute stages; the
+// The compacted cell list also feeds the per-axis compute stages; the
 // compute-indirect dims at [8..11] are derived from the final instanceCount by
 // the cheap c_per_axis_cell_finalize pass (a 3-thread dispatch after this scan).
 // Keeping the dims OUT of this kernel is deliberate: this kernel sweeps the FULL

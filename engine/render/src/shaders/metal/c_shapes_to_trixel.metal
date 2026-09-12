@@ -21,19 +21,19 @@ struct ShapesFrameData {
     int2 cullIsoMax;
     // Continuous Z-yaw is split into a cardinal-snap component (rasterYaw,
     // exact multiple of pi/2) and a residual component (residualYaw, in
-    // [-pi/4, pi/4]). The SDF rasterizes at rasterYaw so its output lines up
-    // with the voxel pool's cardinal-snap raster (T-055), then applies
+    // [-pi/4, pi/4]). The cardinal path rasterizes at rasterYaw so its output
+    // lines up with the voxel pool's cardinal-snap raster, then applies
     // faceDeform[face] to its sub-pixel offset to recover continuous yaw
-    // geometrically (T-293; the T-058 / T-322 bilinear path retired by T-323).
+    // geometrically.
     float visualYaw;
     float rasterYaw;
     float residualYaw;
     int tileGridX;
-    // Smooth camera Z-yaw (#1345). 1 = continuous-yaw SDF path (full visualYaw
-    // query + continuous center reposition + shared world-space x+y+z depth);
-    // 0 = cardinal rasterYaw + faceDeform path. Set per canvas (main world
-    // canvas only). Occupies the first word of the former 8-byte std140 pad
-    // before faceDeform; the second word stays pad.
+    // Smooth camera Z-yaw. 1 = continuous-yaw SDF path (full visualYaw query +
+    // continuous center reposition + yawedIsoDistance depth); 0 = cardinal
+    // rasterYaw + faceDeform path. Set per canvas (main world canvas only).
+    // smoothYawEnabled and _faceDeformPad fill the 8 bytes before faceDeform so
+    // the layout matches the std140 block and the C++ struct.
     int smoothYawEnabled;
     int _faceDeformPad;
     // Per-face deformation matrix packed column-major: .xy = col0, .zw = col1
@@ -61,9 +61,6 @@ struct ShapeTileDescriptor {
     int pad0;
     int2 tileIsoOrigin;
 };
-
-// Shape-type constants (SHAPE_BOX, SHAPE_SPHERE, …) and the SDF primitive
-// functions live in ir_sdf_common.metal, shared with the sun-shadow shader.
 
 constant uint FLAG_HOLLOW       = 1u;
 constant uint FLAG_VISIBLE      = 8u;
@@ -96,18 +93,11 @@ inline int stableCeilToInt(float x) {
 // boundary.
 constant float kSdfBiasEpsilon = 1.0e-3;
 
-// ---------- Color helpers ----------
-
 inline float3 hsvToRgb(float3 c) {
     const float4 K = float4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
     const float3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
     return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
 }
-
-// SDF primitives and `evaluateSDF` live in ir_sdf_common.metal, shared with
-// the sun-shadow shader.
-
-// ---------- O(1) analytical depth-axis intersections ----------
 
 inline bool boxSlabIntersect(
     float isoX,
@@ -156,14 +146,13 @@ inline bool circleDepthInterval(
 }
 
 // |a*d + b| <= H solved for d. Degenerate (a == 0) returns either an empty
-// or all-d slab depending on |b| vs H. Used by yaw-aware box and ellipsoid
-// analytical depth searches where each axis has its own slope/offset.
+// or all-d slab depending on |b| vs H.
 //
-// Threshold 1e-6 catches FP near-degenerate at irrational yaws near pi/4
-// where (cos-sin)/3 is tiny but nonzero (the exact pi/4 case has cos==sin
-// in IEEE-754 so (c-s)/3 == 0 already). 1e-10 missed the cluster around
-// it where 1/|a| blows up past 1e6; the explicit +/-1e18 sentinel reads
-// more clearly than the centered-far slab the downstream min/max swallows.
+// Threshold 1e-6 catches FP near-degenerate slopes at irrational yaws near
+// pi/4, where (cos-sin)/3 is tiny but nonzero (at exactly pi/4, cos==sin in
+// IEEE-754 so (c-s)/3 == 0). A smaller threshold lets 1/|a| blow up past 1e6
+// across that cluster. The +/-1e18 sentinel is an all-d slab the downstream
+// min/max swallows.
 inline bool slabFromLinear(
     float a,
     float b,
@@ -188,8 +177,7 @@ inline bool slabFromLinear(
 }
 
 // Yaw-aware box slab. pLocal_i(d) = a_i*d + b_i in shape-local coords, with
-// pLocal = R_z(+yaw) . pView, where yaw is the cardinal-snap rasterYaw the
-// shader rasterizes at. z-axis is rotation-invariant under z-yaw.
+// pLocal = R_z(+yaw) . pView. z-axis is rotation-invariant under z-yaw.
 inline bool boxSlabIntersectYaw(
     int2 isoRel,
     float3 hExt,
@@ -220,9 +208,7 @@ inline bool boxSlabIntersectYaw(
 
 // Transform pView (view space) to pLocal (shape-local). Camera yaws by
 // +yaw around +Z so world appears rotated by -yaw from view's POV; the
-// inverse R_z(+yaw) rotates back to shape-local coords. yaw here is the
-// cardinal-snap rasterYaw — yawC/yawS come from the cos/sin tables in
-// the kernel, so they are exactly ±1/0.
+// inverse R_z(+yaw) rotates back to shape-local coords.
 inline float3 viewToLocalYaw(float3 pView, float yawC, float yawS) {
     return float3(yawC * pView.x - yawS * pView.y,
                   yawS * pView.x + yawC * pView.y,
@@ -688,15 +674,12 @@ inline int generalDepthSearch(
     return kInvalidDepth;
 }
 
-// Yaw-aware general SDF depth search. Mirrors the GLSL counterpart in
-// c_shapes_to_trixel.glsl. The iso projection is fixed in view space, but
+// Yaw-aware general SDF depth search for shape types without an O(1)
+// analytical path (cone, torus, curved_panel). Mirrors the GLSL counterpart
+// in c_shapes_to_trixel.glsl. The iso projection is fixed in view space, but
 // the SDF's local frame is world-aligned. Camera yaw rotates the world by
-// -yaw from the view's POV (yaw is the cardinal-snap rasterYaw), so the
-// world-local query point is the view-local point rotated by +yaw around
-// Z. Used in smooth-mode for shape types without an O(1) analytical path
-// (cone, torus, curved_panel); those shapes have no yaw=0 fast path
-// either, so this is the per-step-SDF brute-force search. Snap-mode uses
-// snapLatticeWalk instead, which aligns with the integer voxel pool.
+// -yaw from the view's POV, so the world-local query point is the view-local
+// point rotated by +yaw around Z.
 inline int generalDepthSearchYaw(
     int2 isoRel,
     uint shapeType,
@@ -722,8 +705,8 @@ inline int generalDepthSearchYaw(
     return kInvalidDepth;
 }
 
-// Entity-rotation-aware general SDF depth search. Composes camera Z-yaw
-// (cardinal-snap rasterYaw) with an arbitrary per-entity quaternion rotation.
+// Entity-rotation-aware general SDF depth search. Composes camera Z-yaw with
+// an arbitrary per-entity quaternion rotation.
 inline int generalDepthSearchEntityRot(
     int2 isoRel,
     uint shapeType,
@@ -795,19 +778,14 @@ inline int snapLatticeWalk(
     return kInvalidDepth;
 }
 
-// O(1) surface depth dispatcher. Smooth-mode path; snap-mode bypasses this
-// via snapLatticeWalk. yawC/yawS come from cos/sin tables indexed by
-// rasterYawCardinalIndex(rasterYaw), so they are exactly ±1/0 — the
-// near-degenerate guards in the yaw-aware variants are protective at
-// runtime but never trip on this caller.
+// Analytical surface depth dispatcher for smooth mode and smooth yaw.
 // - Sphere: rotation-invariant (|p| under z-yaw unchanged); analytical works
 //   at any yaw without modification.
 // - Cylinder: z-axis aligned, |p.xy| invariant under z-yaw; same.
 // - Box, ellipsoid: shape-axes don't align with view-axes under yaw; the
 //   yaw-aware variant re-derives the per-axis linear coefficients.
-// - All other shapes: general SDF search (yaw-aware via R_z(+rasterYaw) on
-//   the query point). At yaw=0 each branch collapses to the original code
-//   path, keeping reference renders pixel-stable.
+// - All other shapes: general SDF search (yaw-aware via R_z(+yaw) on the
+//   query point).
 inline int findSurfaceDepth(
     int2 isoRel,
     uint shapeType,
@@ -843,8 +821,6 @@ inline int findSurfaceDepth(
                                 yawC, yawS);
 }
 
-// ---------- Kernel ----------
-
 kernel void c_shapes_to_trixel(
     constant ShapesFrameData& frameData [[buffer(23)]],
     device const ShapeDescriptor* shapes [[buffer(20)]],
@@ -852,8 +828,7 @@ kernel void c_shapes_to_trixel(
     device atomic_int* distanceScratch [[buffer(16)]],
     // `triangleCanvasColors` is read+write (not write-only) so the
     // SHAPE_FLAG_XRAY_OCCLUDED branch in pass 1 can load the existing
-    // pixel and blend the occluded shape's color on top at reduced alpha
-    // (T-164).
+    // pixel and blend the occluded shape's color on top at reduced alpha.
     texture2d<float, access::read_write> triangleCanvasColors [[texture(0)]],
     texture2d<int, access::write> triangleCanvasDistances [[texture(1)]],
     texture2d<uint, access::write> triangleCanvasEntityIds [[texture(2)]],
@@ -867,36 +842,29 @@ kernel void c_shapes_to_trixel(
     const int2 isoOrigin = tile.tileIsoOrigin;
     const ShapeDescriptor shape = shapes[shapeIndex];
 
-    // Cardinal-snap Z-yaw consumed by the SDF path. Mirrors the GLSL shader
-    // in c_shapes_to_trixel.glsl. The shapes shader rasterizes at rasterYaw
-    // (cardinal-snap multiple of pi/2 nearest visualYaw) so its output
-    // lines up trixel-for-trixel with the voxel pool's cardinal-snap
-    // raster (T-055); continuous yaw is recovered geometrically via
-    // faceDeform[] (T-293; the screen-space residual composite pass T-058
-    // was retired by T-323). cos/sin tables are bit-exact at cardinal yaws — safer than
-    // cos(rasterYaw), which drifts by ULP from an exact pi/2 multiple
-    // after the UBO upload. At cardinalIndex==0 the rotation is identity,
-    // every line below collapses to the integer-only yaw=0 path, and the
-    // existing reference renders stay pixel-exact.
+    // Cardinal-snap Z-yaw. Mirrors the GLSL shader in c_shapes_to_trixel.glsl.
+    // The cardinal path rasterizes at rasterYaw (the multiple of pi/2 nearest
+    // visualYaw) so its output lines up trixel-for-trixel with the voxel pool's
+    // cardinal-snap raster; continuous yaw is recovered geometrically via
+    // faceDeform[]. The cos/sin table is bit-exact at cardinal yaws, unlike
+    // cos(rasterYaw), which drifts by ULP from an exact pi/2 multiple after the
+    // UBO upload. At cardinalIndex==0 the rotation is identity and every line
+    // below collapses to the integer-only yaw=0 path.
     const int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
     const float2 cardinalCosSin = cardinalYawCosSin(cardinalIndex);
-    // Smooth camera Z-yaw (#1345). Mirrors c_shapes_to_trixel.glsl. Inside a
-    // residual bracket the SDF rotates by the FULL continuous visualYaw
-    // (cardinal snap + residual) instead of snapping to rasterYaw + faceDeform:
-    // the shape center repositions continuously (pos3DtoPos2DIsoYawed), the
-    // surface query rotates by the continuous yaw, and the written depth becomes
-    // the shared WORLD-space x+y+z (monotone along the view ray at rate
-    // 2cos(yaw)+1 for |residual|<45deg) so the SDF composites by depth with the
-    // per-axis voxel scatter (T3 #1310). residualYaw==0 keeps the byte-identical
-    // cardinal path (faceDeform identity, view-space depth).
+    // Smooth camera Z-yaw: the SDF rotates by the full continuous visualYaw
+    // (cardinal snap + residual) instead of snapping to rasterYaw + faceDeform.
+    // The shape center repositions continuously (pos3DtoPos2DIsoYawed) and the
+    // surface query rotates by the continuous yaw, so shapes glide between
+    // cardinals alongside the per-axis voxel canvases.
     const bool smoothYaw = (frameData.smoothYawEnabled != 0);
     const float yawC = smoothYaw ? cos(frameData.visualYaw) : cardinalCosSin.x;
     const float yawS = smoothYaw ? sin(frameData.visualYaw) : cardinalCosSin.y;
     const bool yawZero = (!smoothYaw) && (cardinalIndex == 0);
 
     const float3 worldPos = shape.worldPosition.xyz;
-    // viewPos = R_z(-rasterYaw) · worldPos. Camera yaws by +rasterYaw, so
-    // world coords appear rotated by -rasterYaw from the view's POV.
+    // viewPos = R_z(-yaw) · worldPos. Camera yaws by +yaw, so world coords
+    // appear rotated by -yaw from the view's POV.
     const float3 viewPos = yawZero
         ? worldPos
         : float3( yawC * worldPos.x + yawS * worldPos.y,
@@ -939,7 +907,7 @@ kernel void c_shapes_to_trixel(
         boundingHalf = paramsScaled.xyz * 0.5;
     }
     // Per-entity rotation expands the shape-local AABB before the camera-yaw
-    // expansion below. Spheres are rotation-invariant and skip this.
+    // expansion. Spheres are rotation-invariant and skip this.
     const bool hasEntityRotation = abs(shape.rotation.w) < 0.9999;
     if (hasEntityRotation && st != SHAPE_SPHERE) {
         const float3 ax = abs(rotateByQuat(float3(boundingHalf.x, 0.0, 0.0), shape.rotation));
@@ -959,7 +927,7 @@ kernel void c_shapes_to_trixel(
     // Smooth path repositions the center continuously (round the continuous-yaw
     // iso projection, matching the voxel pool's per-voxel roundHalfUp(
     // pos3DtoPos2DIsoYawed) reposition); cardinal path keeps the integer
-    // cardinal-snap origin (byte-identical).
+    // cardinal-snap origin.
     const int2 originIsoScaled = smoothYaw
         ? roundHalfUp(pos3DtoPos2DIsoYawed(worldPos * float(sub), frameData.visualYaw))
         : pos3DtoPos2DIso(originScaled);
@@ -992,7 +960,7 @@ kernel void c_shapes_to_trixel(
     }
 
     // Entity rotation bypasses the analytical fast paths and the snap lattice
-    // walk (the integer lattice no longer aligns with shape-local axes under
+    // walk (the integer lattice does not align with shape-local axes under
     // arbitrary rotation). Spheres are rotation-invariant so they still take
     // the analytical path.
     int surfaceD;
@@ -1017,10 +985,8 @@ kernel void c_shapes_to_trixel(
     }
 
     // Depth metric. Cardinal path: view-space x+y+z relative to the cardinal-
-    // snapped integer origin. Smooth path: the shared WORLD-space x+y+z of the
-    // surface point — the same metric the per-axis voxel scatter writes
-    // (pos3DtoDistance of the world face), so the framebuffer depth test
-    // composites SDF against the three voxel canvases.
+    // snapped integer origin. Smooth path: yawedIsoDistance of the subdivided
+    // world surface point.
     int baseDepth;
     if (smoothYaw) {
         const float3 viewOffset = isoToLocal3D(isoPixelRel, float(surfaceD));
@@ -1029,19 +995,17 @@ kernel void c_shapes_to_trixel(
                                           yawS * viewOffset.x + yawC * viewOffset.y,
                                           viewOffset.z);
         const float3 worldSurface = worldPos * float(sub) + worldOffset;
-        // Continuous-yaw composite depth (#1370/#1884) — mirror of the GLSL.
-        // Order by the SHARED yawedIsoDistance — the SAME continuous-yaw metric
-        // the per-axis voxel scatter key and the detached composite
-        // (IRMath::pos3DtoDistanceYawed) use — so SDF, voxels, and detached
-        // solids stay co-sorted at EVERY yaw and the depth tracks the on-screen
-        // projection (a low/back surface no longer wins against geometry above it
-        // near the +/-45 deg bracket). PLACEMENT is unchanged (worldSurface uses
-        // visualYaw); only the stored depth. At a cardinal pose yawedIsoDistance
-        // collapses to un-yawed x+y+z, so cardinal frames stay byte-identical. The
-        // depth is SUBDIVIDED to preserve the floor's sub-pixel depth gradient at
-        // high zoom; the per-axis voxel scatter is scaled to the same subdivided
-        // magnitude (peraxis_scatter) so SDF + voxels co-sort at every zoom (#1884
-        // high-zoom fix).
+        // Continuous-yaw composite depth — mirror of the GLSL. Order by
+        // yawedIsoDistance, the continuous-yaw metric the per-axis voxel scatter
+        // key and the detached composite (IRMath::pos3DtoDistanceYawed) use, so
+        // SDF, voxels, and detached solids co-sort at every yaw and the depth
+        // tracks the on-screen projection (the un-yawed x+y+z would let a
+        // low/back surface win against geometry above it near the +/-45 deg
+        // bracket). This sets only the stored depth, not placement. At a cardinal
+        // pose yawedIsoDistance equals the un-yawed x+y+z. The depth is
+        // SUBDIVIDED to keep the sub-pixel depth gradient at high zoom; the
+        // per-axis voxel scatter (peraxis_scatter) scales to the same subdivided
+        // magnitude so SDF + voxels co-sort at every zoom.
         baseDepth = roundHalfUp(yawedIsoDistance(worldSurface, frameData.visualYaw));
     } else {
         const int originDistance = originScaled.x + originScaled.y + originScaled.z;
@@ -1050,7 +1014,7 @@ kernel void c_shapes_to_trixel(
     float4 baseColor = unpackColor(shape.color);
 
     if ((shape.flags & FLAG_DEPTH_COLOR) != 0u) {
-        // dExtent above includes a +1 per-axis safety margin for the
+        // dExtent includes a +1 per-axis safety margin for the
         // lattice walk; use the unpadded view-space half-extent sum
         // (boundingHalfView) so the hue range matches the rotated
         // shape's actual iso-depth extent at any yaw.  Identical to
@@ -1073,15 +1037,13 @@ kernel void c_shapes_to_trixel(
         const int sx = (nx6 >= 0) ? (nx6 + 3) / 6 : -((-nx6 + 3) / 6);
         const int sy = (ny6 >= 0) ? (ny6 + 3) / 6 : -((-ny6 + 3) / 6);
         const int sz = (nz6 >= 0) ? (nz6 + 3) / 6 : -((-nz6 + 3) / 6);
-        // (sx, sy, sz) above is the recovered cell index in VIEW coords.
-        // Under camera yaw the shape's checker pattern is in world coords
-        // (it lives on the SDF, which we evaluated at the rotated point),
-        // so rotate (sx, sy) by +rasterYaw to recover the world-coord cell
-        // before the parity test. At cardinal rasterYaw the cos/sin table
-        // entries are exactly ±1/0, so wx/wy are integer and the
-        // floor(... + 0.5) recovery is bit-exact. At yaw=0 this is
-        // identity and the existing integer-only path is preserved
-        // bit-exact.
+        // (sx, sy, sz) is the recovered cell index in VIEW coords. Under
+        // camera yaw the shape's checker pattern is in world coords (it lives
+        // on the SDF, which is evaluated at the rotated point), so rotate
+        // (sx, sy) by +rasterYaw to recover the world-coord cell before the
+        // parity test. At cardinal rasterYaw the cos/sin table entries are
+        // exactly ±1/0, so wx/wy are integer and the floor(... + 0.5) recovery
+        // is bit-exact.
         int parity;
         if (yawZero || smoothYaw) {
             // Smooth-yaw keeps the view-space integer parity (continuous yaw
@@ -1106,7 +1068,7 @@ kernel void c_shapes_to_trixel(
         const int depthEncoded = encodeDepthWithFace(baseDepth, face);
         // mat2 D = faceDeformationMatrix(face, residualYaw) applied to the
         // un-yawed iso-pixel offset. Identity at residualYaw==0; otherwise
-        // deforms the trixel pair geometrically (T-293). Smooth-yaw emits the
+        // deforms the trixel pair geometrically. Smooth-yaw emits the
         // un-deformed 2x3 diamond: the continuous center reposition + continuous
         // surface query already place the silhouette, and the analytical surface
         // fills both parities densely so the gather de-tiles it without seams.

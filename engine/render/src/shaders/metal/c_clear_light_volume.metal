@@ -3,16 +3,14 @@ using namespace metal;
 
 // Mirrors shaders/c_clear_light_volume.glsl. Resets the 128³ light
 // volume to zero before the seed pass writes per-light origin texels.
-// The parallel winning-light ID read texture (#2318) is cleared to 0 in
-// the same pass so an unreached cell reports "no winning light" (id 0).
+// The parallel winning-light ID read texture is cleared to 0 in the same
+// pass so an unreached cell reports "no winning light" (id 0).
 
 // Integer mirror of `kLightVolumeSize` in component_canvas_light_volume.hpp —
 // the same extent ir_world_lighting.metal publishes as a float for the sampling
-// passes (which divide by it to reach texel centers). Deliberately NOT folded
-// into that fragment: this kernel needs one integer bound for a loop guard, and
-// including it would pull the light-source list + SPOT/ACES helpers into a pass
-// that clears two textures. Mirrors the GLSL twin, whose fold would additionally
-// declare an unbound binding-4 SSBO here. Keep the two in lockstep.
+// passes (which divide by it to reach texel centers). Not taken from that
+// fragment, mirroring the GLSL twin, where including it would declare an
+// unbound binding-4 SSBO. Keep the two in lockstep.
 constant int kLightVolumeSize = 128;
 
 kernel void c_clear_light_volume(

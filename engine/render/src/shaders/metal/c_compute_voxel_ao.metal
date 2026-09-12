@@ -6,9 +6,8 @@
 // and counts each as occluding when its decoded surface position sits in
 // front of the receiver's face plane by ~1 voxel along face-outward AND
 // belongs to a different visible face. The tilt-aware same-face resample
-// (#1718) then suppresses different-face steps that are really the 1-cell
-// riser of a quantized tilted-flat surface (re-voxelize / REBUILD_GRID
-// staircase) — see the GLSL for the full crease-vs-staircase rationale.
+// then suppresses different-face steps that are really the 1-cell riser of
+// a quantized tilted-flat surface (re-voxelize / REBUILD_GRID staircase).
 
 constant int kEmptyDistanceEncoded = 65535;
 
@@ -23,9 +22,9 @@ constant float kAOSubVoxelTolerance = 0.375;
 constant float kAOMinHeight = kAOOccluderHeight - kAOBandHalfWidth - kAOSubVoxelTolerance;
 constant float kAOMaxHeight = kAOOccluderHeight + kAOBandHalfWidth;
 
-// Per-axis compacted occupied-cell dispatch (#2256). On the per-axis path the
-// dispatch is 1-D over the compacted cells; the kernel recovers each cell's
-// canvas pixel from the linear index. Mirrors the GLSL twin.
+// Per-axis compacted occupied-cell dispatch. On the per-axis path the
+// dispatch runs over the compacted cells and each cell's canvas pixel is
+// recovered from its linear index.
 constant uint kDispatchArgsBaseUint = 8u;      // kPerAxisCellDispatchArgsOffsetBytes / 4
 constant uint kPerAxisCellComputeTile = 256u;  // kPerAxisCellComputeTile (16×16 threads)
 
@@ -48,8 +47,8 @@ struct FrameDataSun {
     float2 cascadeTexelSize_1;
     float cascadeSplitDepth;
     int cascadeCount;
-    float sunSplatMaxTexels;  // #2270; unused here (sun-map bake only)
-    float sunMaxShadowThrow;  // #2320; unused here (receiver-only)
+    float sunSplatMaxTexels;  // unused here (sun-map bake only)
+    float sunMaxShadowThrow;  // unused here (receiver-only)
 };
 
 kernel void c_compute_voxel_ao(
@@ -67,9 +66,9 @@ kernel void c_compute_voxel_ao(
     int2 size = int2(int(trixelDistances.get_width()), int(trixelDistances.get_height()));
     int2 pixel;
     if (frameData.perAxisRoute != 0) {
-        // #2256: indirect dispatch over the compacted occupied-cell list, folded
-        // into a capped 2-D threadgroup grid by c_per_axis_cell_finalize; recover
-        // the flat group index the same way c_voxel_visibility_compact does.
+        // Indirect dispatch over the compacted occupied-cell list, folded into
+        // a capped 2-D threadgroup grid by c_per_axis_cell_finalize; recover the
+        // flat group index the same way c_voxel_visibility_compact does.
         const uint groupIndex = groupId.x + groupId.y * numGroups.x;
         const uint idx = groupIndex * kPerAxisCellComputeTile + localIndex;
         if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
@@ -85,7 +84,7 @@ kernel void c_compute_voxel_ao(
     }
 
     int encoded = trixelDistances.read(uint2(pixel)).x;
-    // Per-axis canvas uses INT_MAX as empty sentinel (#1458); single-canvas keeps 65535.
+    // Per-axis canvas uses INT_MAX as empty sentinel; single-canvas uses 65535.
     const int kEmpty = (frameData.perAxisRoute != 0) ? 0x7FFFFFFF : kEmptyDistanceEncoded;
     if (encoded >= kEmpty) {
         canvasAO.write(float4(1.0, 0.0, 0.0, 0.0), uint2(pixel));
@@ -96,27 +95,28 @@ kernel void c_compute_voxel_ao(
         return;
     }
 
-    // Decode the visible-triplet slot (0/1/2) the rasterizer wrote, then
-    // resolve the world FaceId via `visibleFaceIds[slot]` (#1278). Single
-    // source of face metadata shared with the raster.
+    // The rasterizer writes the visible-triplet slot (0/1/2); resolve the
+    // world FaceId via `visibleFaceIds[slot]`. Single source of face metadata
+    // shared with the raster.
     int slot = decodeSlot(encoded);
-    // The riser-polarity flip (#2207) selects the OPPOSITE same-axis face, so
-    // the outward-normal step below walks out of the true surface instead of
-    // into the solid. The tangent pair is polarity-invariant.
+    // The riser-polarity flip selects the OPPOSITE same-axis face, so the
+    // outward-normal step walks out of the true surface instead of into the
+    // solid. The tangent pair is polarity-invariant.
     int flip = decodeFlipRoute(encoded, frameData.perAxisRoute);
     int faceId = frameData.visibleFaceIds[slot] ^ flip;
     // Shared decode helpers (ir_iso_common) own both encodings' bit layouts
-    // (#1458 per-axis / single-canvas, flip carrier #2207).
+    // (per-axis / single-canvas, and the flip carrier).
     int rawDepth = decodeDepthRoute(encoded, frameData.perAxisRoute);
     int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
-    // Smooth camera Z-yaw (#1311): a per-axis canvas stores the world frame
-    // face-locally (perAxisRoute != 0), recovered via isoPixelToPos3D; the
-    // single canvas uses the cardinal-snap reconstruction. Mirrors GLSL.
+    // A per-axis canvas stores the world frame face-locally (perAxisRoute != 0),
+    // recovered via isoPixelToPos3D; the single canvas uses the cardinal-snap
+    // reconstruction.
     // Lattice recovery (not perAxisCellToWorld3DSubCell) is deliberate here:
     // AO consumes pos3D only through `dot(neighbourPos3D - pos3D,
     // worldOutward)`, and a per-axis canvas holds a single face axis, so the
     // encoding's in-plane frac offsets are perpendicular to worldOutward on
-    // both operands and cancel exactly. Mirrors the GLSL note.
+    // both operands and cancel exactly. Absolute-position consumers must use
+    // the sub-cell variant.
     bool perAxis = frameData.perAxisRoute != 0;
     float3 pos3D = perAxis
         ? perAxisCellToWorld3D(
@@ -135,8 +135,7 @@ kernel void c_compute_voxel_ao(
     // World-frame outward normal + in-plane tangents for the camera-visible
     // face this pixel rendered. Tangents are rotated through R_z(-rasterYaw)
     // before iso projection so the neighbour-sample iso direction matches
-    // where the rasterizer wrote the +tangent neighbour at this cardinal
-    // (PR #1275 prep). Mirrors GLSL.
+    // where the rasterizer wrote the +tangent neighbour at this cardinal.
     float3 worldOutward = float3(faceOutwardNormal6I(faceId));
     int3 t1;
     int3 t2;
@@ -156,7 +155,7 @@ kernel void c_compute_voxel_ao(
     int2 deltaT1;
     int2 deltaT2;
     if (perAxis) {
-        // Per-axis canvas is BASE-RESOLUTION (#1458): 1 cell = 1 world voxel.
+        // Per-axis canvas is BASE-RESOLUTION: 1 cell = 1 world voxel.
         deltaT1 = int2(1, 0);
         deltaT2 = int2(0, 1);
     } else {
@@ -204,16 +203,15 @@ kernel void c_compute_voxel_ao(
         // contact occluder; a SAME-face neighbour at d ~ 1 is the round-to-cell
         // stair-step of a rotated voxel surface and is excluded by the slot test.
         // Flat cardinal faces (d ~ 0, below kAOMinHeight) never reach this gate.
-        // Mirrors the GLSL twin.
         float d = dot(neighbourPos3D - pos3D, worldOutward);
-        // Same-surface exclusion compares (slot, flip) — a flipped neighbour
-        // (#2207) is the opposite-polarity face, a genuinely different surface,
-        // so it stays eligible as a crease occluder.
+        // Same-surface exclusion compares (slot, flip) — a flipped neighbour is
+        // the opposite-polarity face, a genuinely different surface, so it stays
+        // eligible as a crease occluder.
         bool sameSurface = decodeSlot(neighbourEncoded) == slot &&
             decodeFlipRoute(neighbourEncoded, frameData.perAxisRoute) == flip;
         if (sameSurface || d <= kAOMinHeight || d >= kAOMaxHeight) continue;
 
-        // Tilt-aware same-face resample (#1718). A re-voxelized / REBUILD_GRID
+        // Tilt-aware same-face resample. A re-voxelized / REBUILD_GRID
         // rotating solid turns a tilted-flat surface into a true voxel staircase
         // whose tread and riser ARE different faces, so every 1-cell step reads
         // as a different-face crease at d ~ 1 — the venetian banding. The riser of
@@ -223,7 +221,7 @@ kernel void c_compute_voxel_ao(
         // monotone staircase continues as the next tread (same slot, still in
         // front), a real crease meets a multi-cell perpendicular wall that does
         // not. Single-canvas path only (per-axis holds one face; GRID solids
-        // raster cardinal). Mirrors the GLSL twin.
+        // raster cardinal).
         if (!perAxis) {
             int2 beyondPixel = pixel + 2 * delta;
             if (beyondPixel.x >= 0 && beyondPixel.x < size.x &&

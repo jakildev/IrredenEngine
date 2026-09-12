@@ -2,11 +2,13 @@
 using namespace metal;
 
 // Mirrors shaders/c_build_distance_hiz.glsl. Hi-Z (hierarchical max-depth)
-// downsample for voxel occlusion culling (#1294 child 1/3). One dispatch per
-// mip level: reads the previous distance level, writes each destination texel
-// the MAX of its (up to) 2x2 source footprint. See the GLSL for the
-// conservative-max rationale, the raw-encoded-int max justification, and the
-// ceil-division coverage guarantee that makes the clamp on the +1 taps safe.
+// downsample for voxel occlusion culling. One dispatch per mip level: reads the
+// previous distance level, writes each destination texel the MAX of its (up to)
+// 2x2 source footprint. The max runs over raw encoded ints (larger encoded
+// value <=> farther; the 65535 background sentinel is the largest, so a
+// footprint still seeing background never occludes). Ceil-division destination
+// sizing (makeHiZMipChain) makes the clamp on the +1 taps re-read only an
+// in-bounds texel.
 
 kernel void c_build_distance_hiz(
     texture2d<int, access::read> srcDistances [[texture(0)]],
