@@ -80,7 +80,7 @@
 // Camera prefab namespace (Z-yaw API)
 #include <irreden/render/camera.hpp>
 
-// Registry-driven command help overlay (#2550)
+// Registry-driven command help overlay
 #include <irreden/render/help_overlay.hpp>
 
 // Frame-based animation state (T-214, F-1.4)
@@ -419,7 +419,7 @@ constexpr IRVideo::GuiInputEvent kProbeADEvents[] = {
      IRInput::kKeyButtonA},
 };
 
-// F1 toggles the help overlay (#2620). The overlay builds its text lazily on
+// F1 toggles the help overlay. The overlay builds its text lazily on
 // the first open, so the open shot is the only place an assertion can read what
 // it actually rendered; a second press on the following shot closes it again so
 // the probe shots below run against a hidden overlay and an unpainted GUI
@@ -540,7 +540,7 @@ constexpr IRVideo::GuiTestShot kGuiTestShots[] = {
     {{1.5f, IRMath::vec2(0.0f), 0.0f, "editor_zoom_in"}, nullptr, 0},
     {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_gui_assert"}, kGuiAssertEvents, 3},
     {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_pick_voxel"}, kPickVoxelEvents, 1},
-    // Help-overlay open/closed pair (#2620), ahead of the probe shots so the
+    // Help-overlay open/closed pair, ahead of the probe shots so the
     // close half restores the hidden state they expect.
     {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_help_overlay_open"}, kHelpOverlayOpenEvents, 2},
     {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_help_overlay_closed"}, kHelpOverlayCloseEvents, 2},
@@ -617,7 +617,7 @@ bool evaluateEraseModeLabel(const void *, std::string &actual) {
 // `getCommandRegistrations()`: a registry-side check only repeats the formatter
 // expression, so it passes whether or not this creation has an overlay at all,
 // whether it is open, and whether its text stage ever queued a glyph — none of
-// which is what "the bindings appear when opened" asks (see #2620).
+// which is what "the bindings appear when opened" asks.
 struct ChordRow {
     const char *chord_;
     const char *name_;
@@ -2669,7 +2669,7 @@ void initSystems() {
             helpRenderSystem,
         }
     );
-    // Registry-driven command help overlay (#2550): draws every named PRESSED
+    // Registry-driven command help overlay: draws every named PRESSED
     // binding, including the ad-hoc lambdas above now that they pass
     // name/description. Must land after TEXT_TO_TRIXEL (already registered
     // above) and before the composite.
@@ -2746,7 +2746,7 @@ void initCommands() {
         IRInput::kModifierControl
     );
 
-    // F1 opens the registry-driven command help overlay (#2550, #2620). Every
+    // F1 opens the registry-driven command help overlay. Every
     // named PRESSED binding registered below appears automatically.
     IRPrefab::HelpOverlay::registerToggleCommand();
 
@@ -4050,7 +4050,7 @@ void initEntities() {
             "v_toggles_erase_mode"
         ),
     };
-    // The help overlay, opened by F1 on its own shot (#2620): it is actually
+    // The help overlay, opened by F1 on its own shot: it is actually
     // visible, it actually batched glyphs, and the text it built advertises every
     // modifier-bearing binding with its real chord. The closed shot is the
     // negative half — the toggle releases the overlay and the glyph count falls
