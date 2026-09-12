@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for fleet-iteration-summary's confirmation output. See #3115.
+# Tests for fleet-iteration-summary's confirmation output.
 #
 #   T1: successful invocation prints "recorded <path>" on stdout, exits 0,
 #       and the named path is a real file (byte-level check, not a grep for
