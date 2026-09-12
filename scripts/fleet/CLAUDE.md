@@ -93,12 +93,12 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   (A subject *inside* `scripts/` needs no entry: the filter's first glob
   already covers it.)
   **This is executed** — add the path to `OUT_OF_TREE_SUBJECTS` in
-  `tests/test_fleet_tests_workflow_paths.sh` in the same change, and the
-  ratchet asserts it appears in **both** `paths:` blocks (they are
-  hand-duplicated — GitHub Actions has no YAML anchors — so they drift
-  independently). The list is the ratchet's whole domain: a subject absent
-  from it is a subject nothing guards, however green the suite runs
-  (#2810). `OUT_OF_TREE_SUBJECTS` is `fleet-tests.yml`-scoped by design —
+  `tests/test_fleet_tests_workflow_paths.sh` in the same change; the ratchet
+  asserts it appears in **both** `paths:` blocks (hand-duplicated — GitHub
+  Actions has no YAML anchors), and `python3 scripts/fleet/fleet_test_subjects.py`
+  (also T5) fails naming any tracked path outside `scripts/fleet/` that a
+  suite source names and the list omits — run it, don't hand-audit the list.
+  `OUT_OF_TREE_SUBJECTS` is `fleet-tests.yml`-scoped by design —
   it is that one workflow's own subject-domain list, a different axis from
   whether a workflow's `push:` and `pull_request:` blocks *agree* on
   whatever they list. That second axis — the sync ratchet itself — is
@@ -114,11 +114,11 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   declares both blocks but is missing from `fleet-tests.yml`'s `paths:` is
   one this suite inspects and CI never runs it for. That is the pair the
   two ratchets have to agree on, and the derived side is the one a
-  hand-maintained list cannot follow, so `test_workflow_paths_sync.sh`'s T4
-  asserts the agreement directly off the glob: a newly-covered workflow
-  fails a suite instead of silently costing itself its trigger —
-  `python-lint.yml` (#2718) is the case that exercised it, and
-  `format-check.yml` (#3187) the second.
+  hand-maintained list cannot follow: `test_workflow_paths_sync.sh`'s T4
+  asserts the derived set against `fleet-tests.yml`'s `paths:` blocks, so a
+  newly-covered workflow fails a suite instead of losing its trigger;
+  `fleet_test_subjects.py`'s F2 asserts it against `OUT_OF_TREE_SUBJECTS`
+  (which T4 never reads); T6 asserts the two derivations agree.
 - **Bash tests source `tests/lib_assert.sh`** for the PASS/FAIL counters,
   `ok`/`bad`, `assert_eq`/`assert_contains`/`assert_absent`, and the
   `summarize` exit idiom — don't re-copy the helpers into a new test.
