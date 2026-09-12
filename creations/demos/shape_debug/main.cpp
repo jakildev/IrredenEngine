@@ -8,6 +8,7 @@
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_constants.hpp>
 #include <irreden/render/camera.hpp>
+#include <irreden/render/cull_viewport_state.hpp>
 
 #include <irreden/asset/voxel_set_format.hpp>
 #include <irreden/voxel/dense_bridge.hpp>
@@ -629,6 +630,53 @@ void logPivotFocusAssert(int shotIndex) {
         tolerance,
         viewHeld ? 1 : 0,
         worldDelta <= tolerance ? "PASS" : "FAIL"
+    );
+}
+
+// Per-shot `[cull-validate] DOMAIN-STATE` line for the --cull-validate sweep
+// (AutoScreenshotConfig::onCaptureFrame_, fired on the settled capture frame):
+// the state half of the cull gate. scripts/cull-verify.py's image assertion is
+// relative — cv_live_i against cv_frozen_i from the same run — so a freeze that
+// accepts the call and pins nothing makes the frozen phase a second live
+// capture and every pair byte-identical. That failure is invisible in pixels;
+// it is only visible in the viewport the frames were culled against, which is
+// what this line reports.
+//
+// Two freeze facts, because they fail independently: `frozen` is the flag
+// applyShotCameraState wrote, `cull_frozen` is what updateCullViewport last
+// honoured. A setter that is ignored reds the first; a cull update that stops
+// running on the captured frame reds the second.
+//
+// `cam` / `zoom` are getEffectiveCameraIso() and getCameraZoom() — the two
+// values updateCullViewport itself consumes — so pinned-vs-live is a
+// like-for-like comparison rather than a proxy that can disagree with the cull
+// under smooth-yaw pivot compensation. The capture-frame hook runs after
+// SHAPES_TO_TRIXEL, so getCullViewport() is post-update for the frame the
+// screenshot holds, not one frame stale.
+void logCullValidateState(int shotIndex) {
+    const auto &cull = IRRender::getCullViewport();
+    const vec2 liveCameraIso = IRRender::getEffectiveCameraIso();
+    const vec2 liveZoom = IRRender::getCameraZoom();
+    const bool labelKnown =
+        shotIndex >= 0 && shotIndex < static_cast<int>(g_cullValidateShotLabels.size());
+    IR_LOG_INFO(
+        "[cull-validate] DOMAIN-STATE shot={} index={} frozen={} cull_frozen={} "
+        "cull_cam={:.4f},{:.4f} cull_zoom={:.4f},{:.4f} cull_canvas={},{} "
+        "cam={:.4f},{:.4f} zoom={:.4f},{:.4f}",
+        labelKnown ? g_cullValidateShotLabels[shotIndex].data() : "unlabeled",
+        shotIndex,
+        IRRender::isCullingFrozen() ? 1 : 0,
+        cull.frozen_ ? 1 : 0,
+        cull.cameraIso_.x,
+        cull.cameraIso_.y,
+        cull.zoom_.x,
+        cull.zoom_.y,
+        cull.canvasSize_.x,
+        cull.canvasSize_.y,
+        liveCameraIso.x,
+        liveCameraIso.y,
+        liveZoom.x,
+        liveZoom.y
     );
 }
 
@@ -1718,6 +1766,7 @@ void initSystems() {
 
             cfg.shots_ = g_cullValidateShots.data();
             cfg.numShots_ = static_cast<int>(g_cullValidateShots.size());
+            cfg.onCaptureFrame_ = &logCullValidateState;
             IR_LOG_INFO(
                 "Cull-validate sweep: {} poses/phase, {} total shots (live + frozen) at zoom={}",
                 posesPerPhase,

@@ -109,11 +109,13 @@ Why not add one:
 - `CULL_THRESHOLDS` are calibrated to that live-vs-frozen AO residue (#1438),
   not to cross-run drift.
 
-**The vacuity above is a live gap, not an argument for the reader to accept.**
-The same measurement shows the *relative* check passes at exit 0 with the
-freeze fully disabled, and it is now the harness's only assertion — tracked in
-**#3209**, whose guard must be a viewport-state assertion rather than an image
-one (the images are identical in the failing case).
+**The image comparison is no longer the harness's only assertion.** The same
+measurement shows the *relative* check passing at exit 0 with the freeze fully
+disabled, so the harness also asserts the cull **viewport state** the demo
+reports per captured frame — see "The freeze guard" below. A viewport-state
+assertion is the only shape that can work here: the images are identical in the
+failing case, and the broken arm scores *better* than the working one, so the
+failure direction is inverted from what any image threshold detects.
 
 History: #1441 / `5b6a8859` shipped `--update-baselines` and 12
 `macos-debug/cull-verify/cv_frozen_*.png` as a manual-inspection artifact;
@@ -122,6 +124,54 @@ while the harness stayed green — because the harness never looked at them — 
 #2955 removed both. Want absolute coverage of a cull pose? Add the shot to
 `shape_debug`'s render-verify manifest — one reference discipline, one
 re-bless. `scripts/tests/test_cull_verify_contract.py` pins this section.
+
+## The freeze guard: asserting the mechanism, not the pixels
+
+`shape_debug --cull-validate` emits one line per captured frame, from the
+`AutoScreenshotConfig::onCaptureFrame_` hook that fires on the settled capture
+frame (the `light-verify` DOMAIN-STATE precedent):
+
+```
+[cull-validate] DOMAIN-STATE shot=<label> index=<i> frozen=<0|1> cull_frozen=<0|1>
+  cull_cam=<x>,<y> cull_zoom=<x>,<y> cull_canvas=<w>,<h> cam=<x>,<y> zoom=<x>,<y>
+```
+
+`cam` / `zoom` are `getEffectiveCameraIso()` and `getCameraZoom()` — the two
+values `updateCullViewport` itself consumes — so pinned-vs-live is a
+like-for-like comparison rather than a proxy that can disagree with the cull
+under smooth-yaw pivot compensation. The two freeze fields are separate facts
+that fail independently: `frozen` is the flag `setCullingFrozen` wrote,
+`cull_frozen` is what `updateCullViewport` last honoured.
+
+`scripts/cull-verify.py` parses those lines and fails the run on any of four
+arms:
+
+| arm | asserts | catches |
+|---|---|---|
+| census | one line per captured frame, labels aligned with the shot table | a freeze guard that silently parses nothing — the vacuity trap one level up |
+| engagement | frozen phase reports the freeze set and honoured; live phase reports it clear | a `setCullingFrozen` that accepts the call and pins nothing |
+| pinning | the frozen phase's cull viewport is constant, equals the freeze-reference shot's own reading, and does not track the live camera | a freeze whose flag stays true while `updateCullViewport` stops honouring it |
+| live tracking | the live phase moves its cull viewport across at least two poses | a cull that never updates at all, which would satisfy `pinning` by being globally frozen |
+
+Measured on macOS/Metal: with `setCullingFrozen` stubbed to `(void)frozen;`
+the harness exits 1 and prints `cull freeze not engaged` while the image table
+still reports all 12 poses PASS at 100.000 % — the arm that exited 0 before the
+guard existed. With the freeze working it exits 0, 12/12 PASS, 26 state lines
+parsed.
+
+Two properties worth keeping:
+
+- **An image-space "at least one pose must differ" arm is not a valid guard.**
+  A genuinely conservative cull at a cardinal pose is legitimately
+  byte-identical — 9 of 12 poses are, in a working run.
+- **The pinning arm's "differs from live" half is zoom-coupled.** The freeze
+  reference is hard-coded to zoom 1 while the sweep runs at `--zoom` (default
+  4). Under `--zoom 1` the two coincide in a *correct* build, so that half
+  stands down and the harness says so; the constancy half is zoom-independent
+  and stays in force.
+
+`scripts/tests/test_cull_verify_freeze_guard.py` drives all four arms on
+synthetic transcripts, with a red case per arm and no GPU.
 
 ## Findings (macOS / Metal, 2560×1440 framebuffer)
 
