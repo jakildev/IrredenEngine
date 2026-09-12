@@ -5,9 +5,12 @@ work it's serving (a claude process can't change model/effort after
 launch), so this resolution IS the per-task model routing. The invariants
 that matter:
 
-  - pickup priority mirrors the role docs: feedback PRs, then
-    semantic-conflict PRs, then unblocked open tasks (oldest first — slices
-    arrive sorted), then stackable `blocked` tasks, then needs_plan;
+  - dispatch priority puts conflicts first: semantic-conflict PRs, then
+    feedback PRs, then unblocked open tasks (oldest first — slices arrive
+    sorted), then stackable `blocked` tasks, then needs_plan. This is the
+    dispatch order, not the role doc's step numbering — a worker handed a
+    target works it and skips the scans, so role-worker.md running step 1c
+    after step 1 does not make feedback outrank conflicts here;
   - a semantic-conflict PR is one opus claimable item (role-worker step 1c is
     opus+-only; the scout pre-filters the slice's semantic_conflict_prs[]),
     so a conflicted PR generates opus dispatch pressure even when the task
@@ -775,8 +778,8 @@ class FeedbackPrHostGate(HostSeamCase):
 
 
 class SemanticConflictDispatchPressure(HostSeamCase):
-    """Semantic-conflict PRs are opus-class claimable work slotted between
-    feedback and task pickup (role-worker step 1c, opus+-classes-only). This
+    """Semantic-conflict PRs are opus-class claimable work dispatched ahead of
+    feedback and tasks (role-worker step 1c, opus+-classes-only). This
     tier is what gives the label dispatch pressure at all: before it, a
     conflicted PR was only resolved as a ride-along when opus queue work
     happened to be flowing, and starved when the opus lane was dry or
@@ -826,7 +829,7 @@ class SemanticConflictDispatchPressure(HostSeamCase):
         self.assertEqual(out, ["conflict:engine:2417", "feedback:engine:11"])
 
     def test_conflict_elected_before_open_tasks(self):
-        # Step 1c runs before task pickup (step 2), so the conflict outranks
+        # Conflicts dispatch ahead of task pickup, so the conflict outranks
         # a claimable sonnet task; the task holds more=1.
         out = resolve({
             "semantic_conflict_prs": [self._sc(2417)],

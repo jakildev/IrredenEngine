@@ -380,13 +380,17 @@ def _plan_class(issue, fable_blocked):
 def _candidates(slice_data, lane_default, host, fable_blocked=False):
     """Yield (class, effort, kind) per actionable item, dispatch-priority order.
 
-    Feedback PRs come first (the worker fixes review feedback before new work),
-    then semantic-conflict PRs (role-worker step 1c sits between feedback and
-    task pickup), then unblocked open tasks, then stackable `blocked` tasks (a
-    fallback tier, claimable only as a stack on the blocker's PR), then
-    needs_plan. This mirrors the worker role docs so the *elected* class
-    matches what the worker actually picks up, and one yield per item lets the
-    caller count claimable work per class for the dispatcher's fan-out cap.
+    Semantic-conflict PRs come first (a conflicted PR holds up every merge
+    queued behind it), then feedback PRs (review feedback before new work),
+    then unblocked open tasks, then stackable `blocked` tasks (a fallback
+    tier, claimable only as a stack on the blocker's PR), then needs_plan.
+    This is the *dispatch* priority, not the worker role doc's step numbering
+    — a worker launched with `FLEET_DISPATCH_TARGET` works that one target and
+    skips every scan, so step 1c following step 1 in role-worker.md orders
+    only an unassigned loop and does not constrain this order. The elected
+    class therefore matches the target the dispatcher hands over, and one
+    yield per item lets the caller count claimable work per class for the
+    dispatcher's fan-out cap.
     ``kind`` is "plan" for a needs_plan yield and "work" for everything else —
     `resolve` uses it to flag the elected class's planning candidate so the
     dispatcher pre-claims a specific issue for the dispatch (#2197).
