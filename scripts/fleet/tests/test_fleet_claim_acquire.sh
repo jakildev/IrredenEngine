@@ -179,22 +179,31 @@ echo "== _acquire_label_on force-sweep of a dead persistent holder (#2099) =="
 # echoes holders + posted; GET (labels, no --method POST) echoes holders;
 # events → STUB_EVENTS_TS for label_added_epoch; remove-label mutates holders.
 STUB_EVENTS_TS="2020-01-01T00:00:00Z"   # long past any TTL → holder is sweepable
+STUB_PAGE1_HOLDERS=""
+STUB_PAGE2_HOLDERS=""
+STUB_CALL_LOG=""
 gh() {
     case "${1:-}" in
         api)
-            local a posted="" is_events=0
+            [[ -z "$STUB_CALL_LOG" ]] || printf '%s\n' "$*" >> "$STUB_CALL_LOG"
+            local a posted="" is_events=0 paginate=0
             for a in "$@"; do
                 case "$a" in
                     labels\[\]=*) posted="${a#labels[]=}" ;;
                     *events*) is_events=1 ;;
+                    --paginate) paginate=1 ;;
                 esac
             done
             if [[ "$is_events" -eq 1 ]]; then
                 printf '%s\n' "$STUB_EVENTS_TS"
                 return 0
             fi
+            local visible_holders="$STUB_PAGE1_HOLDERS"
+            if [[ -n "$posted" || "$paginate" -eq 1 ]]; then
+                visible_holders+=" ${STUB_PAGE2_HOLDERS}"
+            fi
             local out='[' first=1 h
-            for h in $STUB_HOLDERS $posted; do
+            for h in $visible_holders $posted; do
                 [[ $first -eq 1 ]] || out+=','
                 out+="{\"name\":\"$h\"}"
                 first=0
@@ -210,10 +219,15 @@ gh() {
             done
             if [[ -n "$rl" ]]; then
                 local newh="" h
-                for h in $STUB_HOLDERS; do
+                for h in $STUB_PAGE1_HOLDERS; do
                     [[ "$h" == "$rl" ]] || newh+=" $h"
                 done
-                STUB_HOLDERS="${newh# }"
+                STUB_PAGE1_HOLDERS="${newh# }"
+                newh=""
+                for h in $STUB_PAGE2_HOLDERS; do
+                    [[ "$h" == "$rl" ]] || newh+=" $h"
+                done
+                STUB_PAGE2_HOLDERS="${newh# }"
             fi
             return 0
             ;;
@@ -225,6 +239,8 @@ export FLEET_TEST_HOST="mac"
 HBROOT=$(mktemp -d)
 HEARTBEATS_DIR="$HBROOT/heartbeats"
 mkdir -p "$HEARTBEATS_DIR"
+STUB_CALL_LOG="$HBROOT/gh-calls.log"
+touch "$STUB_CALL_LOG"
 trap 'rm -rf "$HBROOT"' EXIT
 
 # T9: dead persistent reviewing holder, past TTL → force-swept, I re-acquire.
@@ -233,10 +249,18 @@ trap 'rm -rf "$HBROOT"' EXIT
 # review-claim path passes, and what the force-sweep's prefix gate matches.
 RP="fleet:reviewing-"
 echo "T9: lex-min claimant vs TTL-stale persistent holder → force-sweep + win"
-STUB_HOLDERS="$LARGE"
+STUB_PAGE1_HOLDERS=""
+STUB_PAGE2_HOLDERS="$LARGE"
+control=$(gh api "repos/owner/repo/issues/1/labels?per_page=100")
+assert_eq "$control" "[]" "page-2 holder is absent when --paginate is omitted"
 rc=0
 _acquire_label_on "owner/repo" 1 "$SMALL" "$RP" >/dev/null 2>&1 || rc=$?
 assert_exit "$rc" 0 "TTL-stale reviewing holder force-swept → exit 0 (took the lock)"
+paginate_calls=$(grep -Fc \
+    "api repos/owner/repo/issues/1/labels?per_page=100 --paginate" \
+    "$STUB_CALL_LOG" || true)
+assert_eq "$paginate_calls" "1" \
+    "stale-holder sweep requests 100-item pages and pagination"
 
 # T10: dead cross-host amending holder, basename collides with a live local
 # worker — the exact #2099 geometry. Host-qualified heartbeat check does NOT
@@ -246,7 +270,8 @@ AP="fleet:amending-"
 AMINE="${AP}mac-worker-2"          # lex-smaller than windows-worker-1
 ADEAD="${AP}windows-worker-1"
 touch "$HEARTBEATS_DIR/worker-1"   # live LOCAL worker-1 (spoof bait)
-STUB_HOLDERS="$ADEAD"
+STUB_PAGE1_HOLDERS="$ADEAD"
+STUB_PAGE2_HOLDERS=""
 rc=0
 _acquire_label_on "owner/repo" 1 "$AMINE" "$AP" >/dev/null 2>&1 || rc=$?
 assert_exit "$rc" 0 "cross-host amending holder force-swept despite local same-basename heartbeat → exit 0"
@@ -257,7 +282,8 @@ echo "T11: live same-host amending holder (fresh heartbeat) → not swept, yield
 ALIVE="${AP}mac-worker-3"
 AMINE2="${AP}mac-worker-1"          # lex-smaller than mac-worker-3
 touch "$HEARTBEATS_DIR/worker-3"   # owner of the held label is alive
-STUB_HOLDERS="$ALIVE"
+STUB_PAGE1_HOLDERS="$ALIVE"
+STUB_PAGE2_HOLDERS=""
 rc=0
 _acquire_label_on "owner/repo" 1 "$AMINE2" "$AP" >/dev/null 2>&1 || rc=$?
 assert_exit "$rc" 1 "live same-host amending owner kept → exit 1 (yield, no theft)"
