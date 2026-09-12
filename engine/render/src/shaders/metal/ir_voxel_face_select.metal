@@ -1,10 +1,8 @@
 // Shared voxel face-selection + per-axis store-key math for the
 // c_voxel_to_trixel stage-1 / stage-2 kernel family — Metal twin of
-// ../ir_voxel_face_select.glsl (keep byte-identical math). Both stage BODIES
-// used to carry byte-identical copies of everything here under "MUST mirror
-// stage 1 EXACTLY" comments; one definition makes a one-sided edit
-// unrepresentable. Included by the kernel wrappers AFTER ir_iso_common.metal /
-// ir_constants.metal and BEFORE the stage body. Metal passes the fog texture +
+// ../ir_voxel_face_select.glsl (keep byte-identical math). Included by the
+// kernel wrappers AFTER ir_iso_common.metal / ir_constants.metal and BEFORE
+// the stage body. Metal passes the fog texture +
 // observer buffer as function arguments (no global bindings), so no
 // fog-binding macro is needed here — the GLSL side #defines
 // IR_VOXEL_FOG_GRID_BINDING instead.
@@ -15,7 +13,7 @@
 // nor a standalone glob-compile can raise a duplicate-symbol conflict.
 // ir_per_axis_lighting.metal carries its guard only because it uses
 // external-linkage `inline` functions — do NOT "fix" this file by switching
-// its functions to `inline` and reintroducing that hazard.
+// its functions to `inline` and introducing that hazard.
 
 // Prerequisite helpers (faceIsExposed, roundHalfUp, fogVisionCircleReveal,
 // faceMicroPositionFixed6, encodeDepthWithFaceFrac, …). The runtime include
@@ -24,11 +22,11 @@
 // ir_per_axis_lighting.metal idiom.
 #include "ir_iso_common.metal"
 
-// Per-voxel analytic fog clip inputs (#2102), mirroring
+// Per-voxel analytic fog clip inputs, mirroring
 // c_voxel_visibility_compact + c_fog_to_trixel. The world fog canvas binds its
 // 256² grid + live vision circles; every non-fog / detached canvas binds a 1×1
 // all-visible placeholder + count-0 observers, so `fogColumnReveal`
-// short-circuits to "fully visible" and those scenes stay byte-identical.
+// short-circuits to "fully visible".
 constant int kFogOfWarHalfExtent = 128;
 constant float kFogExploredThreshold = 0.25f;
 constant int kMaxFogVisionCircles = 8; // mirror of component_canvas_fog_of_war.hpp kMaxFogVisionCircles
@@ -38,19 +36,18 @@ struct FogObserverData {
     int _fogObsPad0;
     int _fogObsPad1;
     int _fogObsPad2;
-    // Per-circle height penalty (#2260, generalized by #2557), appended after
+    // Per-circle height penalty, appended after
     // the ivec4 tail to match FrameDataFogObservers::visionCircleHeights_
     // (offset 144) and the GLSL block. heights[i] = (observerZ, zCostUp,
     // zCostDown, freeBand), read only by stage 1's own-column DROP
     // (fogColumnRevealZ / fogColumnRevealNearestZ in
-    // c_voxel_to_trixel_stage_1_body.metal); the selection math below ignores
-    // it. All-zero heights (the default) → the drop is byte-identical to the
-    // pre-#2260 2D clip.
+    // c_voxel_to_trixel_stage_1_body.metal); the selection math in this file ignores
+    // it. All-zero heights (the default) make the drop equal the 2D column clip.
     float4 visionCircleHeights[kMaxFogVisionCircles];
 };
 
 // Fog reveal of world grid COLUMN `col` in [0,1]. Stage 1 emits the cut face's
-// DISTANCE for `reveal < 1.0` (#2126 P2) and stage 2 paints colour on the same
+// DISTANCE for `reveal < 1.0` and stage 2 paints colour on the same
 // set of faces — both through this one definition, so the cut wall's depth and
 // colour cannot desync. GLSL twin: fogColumnReveal in
 // ../ir_voxel_face_select.glsl.
@@ -76,10 +73,11 @@ static float fogColumnReveal(
 }
 
 // Own-column DROP reveal, evaluated at the cell point NEAREST each
-// vision-circle center (#2124 screen-space cross-section). The drop keeps a
+// vision-circle center. The drop keeps a
 // column iff this is > 0; kFogHiddenKeepCells widens the keep into a ring of
 // fog-hidden columns so FOG_TO_TRIXEL's image-space cut has hidden matter to
-// repaint. Grid-memory / OOB / placeholder short-circuits match
+// repaint. Mirrored in c_voxel_visibility_compact.metal's kCullSafetyCells
+// (keep superset). Grid-memory / OOB / placeholder short-circuits match
 // fogColumnReveal. GLSL twin in ../ir_voxel_face_select.glsl.
 constant float kFogColumnCellHalf = 0.5f;
 constant float kFogColumnKeepAa = 0.5f;
@@ -118,24 +116,24 @@ static float fogColumnRevealNearest(
 // The face-selection verdict both stage kernels branch on. `keepFace == false`
 // ⇒ the caller returns without emitting. `isCutFace` marks a non-exposed
 // VERTICAL face kept ONLY by the fog cut rule — stage 2 folds it into the
-// stored entity id (bit 29, #2124), stage 1 ignores it.
+// stored entity id (bit 29), stage 1 ignores it.
 struct VoxelFaceSelect {
-    int faceId;                 // possibly riser-flipped (#2207)
+    int faceId;                 // possibly riser-flipped
     int riserFlip;              // 1 = opposite polarity of the slot's triplet face
-    bool bothPolaritiesExposed; // #2157 dual-emit predicate (cardinal subdivided path)
-    bool fogActive;             // world fog route gate (#2125/#2127/#2128)
+    bool bothPolaritiesExposed; // dual-emit predicate (cardinal subdivided path)
+    bool fogActive;             // world fog route gate
     int2 worldColumn;           // world fog column (valid iff fogActive)
     bool keepFace;
     bool isCutFace;
 };
 
 // Face selection for one (voxel, slot) invocation — the visible-triplet ×
-// exposed-mask gate (#1278), the silhouette-riser flip (#2207) and dual-emit
-// predicate (#2157) for rotated content, and the fog cut-face widening
-// (#2125/#2126/#2127; per-axis #2128). Stage 1 keys its distance taps and
-// stage 2 its colour/entity-id taps off the SAME verdict. See the GLSL twin
-// for the full per-rule rationale (incl. why the `perAxisRouteIn <= 2`
-// comparison term is load-bearing for non-fog byte-identity).
+// exposed-mask gate, the silhouette-riser flip and dual-emit
+// predicate for rotated content, and the fog cut-face widening
+// (including the per-axis routes). Stage 1 keys its distance taps and
+// stage 2 its colour/entity-id taps off the SAME verdict. The exact form of the
+// `perAxisRouteIn <= 2` comparison term is load-bearing beyond its logic:
+// restructuring it reshuffles the per-axis tie-winner resolution.
 static VoxelFaceSelect selectVoxelFace(
     texture2d<float, access::read> fog,
     constant FogObserverData& obs,
@@ -150,8 +148,6 @@ static VoxelFaceSelect selectVoxelFace(
 ) {
     VoxelFaceSelect sel;
     sel.faceId = faceIdIn;
-    // Function-local intermediate — only the riserFlip gate and
-    // bothPolaritiesExposed predicate read it, so it stays off the verdict struct.
     const bool rotatedEmit = reVoxelize || (reserved & 4u) != 0u;
     sel.riserFlip = 0;
     if (rotatedEmit && !faceIsExposed(flagsByte, sel.faceId) &&
@@ -181,12 +177,14 @@ static VoxelFaceSelect selectVoxelFace(
     return sel;
 }
 
-// Per-axis base-resolution store position + encoded key (#1458 encoding,
-// #1944 un-yawed cardinal iso key). Returns the face-plane position whose
+// Per-axis base-resolution store position + encoded key (un-yawed cardinal iso
+// key). Returns the face-plane position whose
 // projection `perAxisBase + pos3DtoPos2DIso(facePos)` is the store cell;
-// writes the encoded distance key through `encodedDistance`. The "stage 2
-// MUST mirror stage 1's store exactly" contract in code — see the GLSL twin
-// for the full rationale (frac carrier, #2255 equal-key source).
+// writes the encoded distance key through `encodedDistance`. Stage 1's and
+// stage 2's store taps both derive the cell + key here, so stage 2's store
+// matches stage 1's exactly. Sub-cell fracs ride the encoding at 4-bit
+// quantization, so two offsets in one 1/16 bucket encode equal keys — what the
+// downstream store winner election resolves.
 static int3 perAxisStoreFacePos(
     const float4 voxelPosition,
     const int faceId,

@@ -1,7 +1,8 @@
 // Shared world-space lighting primitives — the light-source list layout, the
 // light-volume extent constants, analytic SPOT cone shaping, and the ACES
 // tonemap. Consumed by every pass that lights recovered WORLD positions
-// (c_lighting_to_trixel, c_light_overflow_faces). GLSL twin:
+// (c_lighting_to_trixel, c_light_overflow_faces) and by c_seed_light_volume
+// for the light list. GLSL twin:
 // ../ir_world_lighting.glsl — keep byte-identical math. Metal has no global
 // buffer bindings, so consumers pass the light list (`[[buffer(4)]]`) into
 // spotConeFactor explicitly.
@@ -13,7 +14,7 @@
 constant float kLightVolumeSize = 128.0;
 constant float kLightVolumeHalfExtent = 64.0;
 
-// SPOT cone shaping (#2318). Mirrors `LightType::SPOT` in
+// SPOT cone shaping. Mirrors `LightType::SPOT` in
 // component_light_source.hpp. The cone factor smoothly falls off across a
 // band from the nominal half-aperture to `kConeEdgeSoftness ×` that angle so
 // the cone edge is anti-aliased rather than a hard step.
@@ -31,10 +32,9 @@ struct GPULightSource {
 };
 
 // LIGHTING_TO_TRIXEL's own frame UBO (`[[buffer(27)]]`), shared by the
-// composite pass and the overflow-face relight that runs at its tail — both
-// carried byte-identical copies of this layout. The GLSL twins declare the
-// equivalent as a per-kernel `layout(std140)` interface block, which cannot be
-// hoisted the same way, so this fold is Metal-only.
+// composite pass and the overflow-face relight that runs at its tail. The GLSL
+// twins declare the equivalent as a per-kernel `layout(std140)` interface block
+// in each kernel, so this shared definition is Metal-only.
 struct FrameDataLightingToTrixel {
     int   lightingEnabled;
     int   lutEnabled;
@@ -50,17 +50,16 @@ struct FrameDataLightingToTrixel {
 // The light-volume UBO (`[[buffer(23)]]`), written once by the CPU and read by
 // every light-volume stage — the seed, the lighting composite, and the
 // overflow relight all bind the SAME buffer, so this layout must stay in
-// lockstep across them; that is exactly why it is one definition here rather
-// than a copy per kernel.
+// lockstep across them.
 //
-// The seed reads all five fields; the lighting/overflow passes read only
-// `worldOriginVoxel` (`.xyz` = the volume's camera-anchored world origin,
-// #360 Phase 1c; `.w` = the has-SPOT flag, #2318) and ignore the other four.
+// The seed reads every field except `stepFalloff`; the lighting/overflow passes
+// read only `worldOriginVoxel` (`.xyz` = the volume's camera-anchored world
+// origin; `.w` = the has-SPOT flag).
 //
-// c_propagate_light_volume.metal keeps its own copy of this layout on purpose:
-// it is the one consumer that does not include this fragment, and pulling the
-// light-source list + SPOT/ACES helpers into a kernel dispatched 32× a frame
-// to share a struct declaration is not worth it. Keep the two in lockstep.
+// c_propagate_light_volume.metal keeps its own copy of this layout: it is the
+// one consumer that does not include this fragment, which would pull the
+// light-source list + SPOT/ACES helpers into a kernel dispatched up to 32× a
+// frame. Keep the two in lockstep.
 struct LightVolumeParams {
     int   gridSize;
     int   halfExtent;

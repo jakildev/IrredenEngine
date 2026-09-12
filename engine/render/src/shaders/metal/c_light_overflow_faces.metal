@@ -1,17 +1,17 @@
 #include "ir_iso_common.metal"        // decode*, faceOutwardNormal6, unpack/packColor,
                                      // FrameDataVoxelToTrixel (with overflowScratchLayout)
-#include "ir_per_axis_lighting.metal" // perAxisCellToWorld3D
+#include "ir_per_axis_lighting.metal" // perAxisCellToWorld3DSubCell
 #include "ir_sun_shadow_sample.metal" // FrameDataSun + worldSunShadowFactor()
 #include "ir_world_lighting.metal"    // GPULightSource layout, spotConeFactor, ACESFilm,
                                      // FrameDataLightingToTrixel + LightVolumeParams
 
 // Mirrors shaders/c_light_overflow_faces.glsl — view-visibility overflow-face
-// lighting (#2334, epic #2331 phase C2). Dispatched inside LIGHTING_TO_TRIXEL
-// after the per-axis CELL lighting, this pass relights each C1 (#2333) overflow
-// entry at its recovered WORLD position (sun cascade + light-volume + Lambert,
-// AO = 1.0 — same world sample as c_lighting_to_trixel) and rewrites the entry's
-// stored colorPacked in place, so the unchanged scatter draws LIT slivers while
-// rotating. Runs ONLY while rotating; the cardinal fast path is byte-identical.
+// lighting. Dispatched inside LIGHTING_TO_TRIXEL after the per-axis CELL
+// lighting, this pass relights each per-axis overflow entry at its recovered
+// WORLD position (sun cascade + light-volume + Lambert, AO = 1.0 — same world
+// sample as c_lighting_to_trixel) and rewrites the entry's stored colorPacked in
+// place, so the scatter draws LIT slivers while rotating. Runs ONLY while
+// rotating; the cardinal path never dispatches this kernel.
 
 kernel void c_light_overflow_faces(
     constant FrameDataLightingToTrixel& frameData [[buffer(27)]],
@@ -42,7 +42,7 @@ kernel void c_light_overflow_faces(
     if (gid >= entryCount) {
         return;
     }
-    // UNLIT / debug overlays leave overflow slivers as raw albedo (see GLSL twin).
+    // UNLIT / debug overlays leave overflow slivers as raw albedo.
     if (frameData.lightingEnabled == 0 || frameData.debugOverlayMode != 0) {
         return;
     }
@@ -60,7 +60,7 @@ kernel void c_light_overflow_faces(
     // Recover cardinal store cell → world FaceId + world pos, bit-for-bit the
     // same decode/recovery the scatter's overflow branch + per-axis cell lighting
     // use. Sub-cell recovery, not lattice-only — the sun/volume samples must
-    // land on the drawn surface (see perAxisCellToWorld3DSubCell). Mirrors GLSL.
+    // land on the drawn surface. Mirrors GLSL.
     const int2 cell = int2(int(packedCell & 0xFFFFu), int(packedCell >> 16u));
     const int slot = decodeSlot(rawDist);
     const int flip = decodeFlipPerAxis(rawDist);

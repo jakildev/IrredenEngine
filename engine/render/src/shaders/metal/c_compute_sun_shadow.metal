@@ -2,7 +2,7 @@
 #include "ir_per_axis_lighting.metal"
 // FrameDataSun, the cascade PCF sampler, and the world-space
 // worldSunShadowFactor() lookup — shared with c_lighting_to_trixel's detached
-// world-receive path (#1576 P4b-2).
+// world-receive path.
 #include "ir_sun_shadow_sample.metal"
 
 // Mirrors shaders/c_compute_sun_shadow.glsl. Per-pixel directional sun
@@ -10,29 +10,29 @@
 
 constant int kEmptyDistanceEncoded = 65535;
 
-// Round-to-cell staircase band + near self-step rejection (#2010) — in lockstep
-// with the GLSL twin (c_compute_sun_shadow.glsl). See the GLSL twin for the full
-// rationale.
+// Round-to-cell staircase band + near self-step rejection — in lockstep with the
+// GLSL twin (c_compute_sun_shadow.glsl). kSelfStepDepthRange is deliberately
+// generous: detection already restricts the carve to staircase pixels, and the
+// shadow-throw window still rejects casters past the sweep.
 constant float kSelfStepMinHeight = 0.5;
 constant float kSelfStepMaxHeight = 1.5;
 constant float kSelfStepDepthRange = 3.0;
 
-// #2256: on the per-axis path this stage is dispatched indirectly over only each
-// axis's OCCUPIED cells (compacted by the STAGE_1 per-axis pre-pass). compactedCells
+// On the per-axis path this stage is dispatched indirectly over only each axis's
+// OCCUPIED cells (compacted by the STAGE_1 per-axis pre-pass). compactedCells
 // holds the occupied linear cell indices; cellDrawArgs carries visibleCount at
-// [kDispatchArgsBaseUint + 3]. Unused on the single-canvas 2D path (byte-identical).
+// [kDispatchArgsBaseUint + 3]. Unused on the single-canvas 2D path.
 constant uint kDispatchArgsBaseUint = 8u;      // kPerAxisCellDispatchArgsOffsetBytes / 4
 constant uint kPerAxisCellComputeTile = 256u;  // kPerAxisCellComputeTile (16×16 threads)
 
 // Is this single-canvas receiver on a round-to-cell staircase — the case where
 // its near sun-shadow blocker is its OWN in-cell step (venetian banding) rather
-// than a separate caster? Detected geometrically (#2010, the marker-free intent
-// of #1718/#2089): a tilted-flat surface quantized into a voxel staircase has a
-// SAME-face in-plane neighbour offset ~1 cell along the receiver normal (the
-// round-to-cell step), whereas a flat cardinal face is coplanar (offset ~0) and
-// a genuine concave crease is a DIFFERENT face. So a same-face neighbour at
-// [kSelfStepMinHeight, kSelfStepMaxHeight] along the outward normal is the
-// signature; 8 in-plane directions catch axis- and diagonal-aligned steps.
+// than a separate caster? Detected geometrically: a tilted-flat surface quantized
+// into a voxel staircase has a SAME-face in-plane neighbour offset ~1 cell along
+// the receiver normal (the round-to-cell step), whereas a flat cardinal face is
+// coplanar (offset ~0) and a genuine concave crease is a DIFFERENT face. So a
+// same-face neighbour at [kSelfStepMinHeight, kSelfStepMaxHeight] along the
+// outward normal is the signature; 8 in-plane directions catch axis- and diagonal-aligned steps.
 inline bool detectSelfStepStaircase(
     int2 pixel, int2 size, int slot, int flip, int rawDepth, int cardinalIndex,
     float3 centerPos3D,
@@ -69,7 +69,7 @@ inline bool detectSelfStepStaircase(
             samplePixel.y < 0 || samplePixel.y >= size.y) continue;
         int neighbourEncoded = trixelDistances.read(uint2(samplePixel)).x;
         if (neighbourEncoded >= kEmptyDistanceEncoded) continue;
-        // SAME-face only — a flipped neighbour (#2207) is the opposite-polarity
+        // SAME-face only — a flipped neighbour is the opposite-polarity
         // face, a DIFFERENT surface, so the gate compares (slot, flip).
         if (decodeSlot(neighbourEncoded) != slot ||
             decodeFlipSingle(neighbourEncoded) != flip) continue;
@@ -100,12 +100,9 @@ kernel void c_compute_sun_shadow(
         int(trixelDistances.get_width()),
         int(trixelDistances.get_height())
     );
-    // Per-axis path (#2256): decode the receiver pixel from this axis's compacted
-    // occupied-cell list under a 1-D indirect dispatch; the single-canvas 2D path
-    // keeps its full-grid xy invocation guard (byte-identical). Mirrors GLSL.
     int2 pixel;
     if (frameData.perAxisRoute != 0) {
-        // #2256: 2-D-folded indirect dispatch — recover the flat group index
+        // 2-D-folded indirect dispatch — recover the flat group index
         // (matches c_per_axis_cell_finalize's capped grid + c_voxel_visibility_compact).
         const uint groupIndex = groupId.x + groupId.y * numGroups.x;
         const uint idx = groupIndex * kPerAxisCellComputeTile + localIndex;
@@ -122,7 +119,7 @@ kernel void c_compute_sun_shadow(
     }
 
     int encoded = trixelDistances.read(uint2(pixel)).x;
-    // Per-axis canvas uses INT_MAX as empty sentinel (#1458); single-canvas keeps 65535.
+    // Per-axis canvas uses INT_MAX as the empty sentinel; single-canvas uses 65535.
     if (encoded >= (frameData.perAxisRoute != 0 ? 0x7FFFFFFF : kEmptyDistanceEncoded)) {
         canvasSunShadow.write(float4(1.0, 0.0, 0.0, 0.0), uint2(pixel));
         return;
@@ -133,15 +130,15 @@ kernel void c_compute_sun_shadow(
     }
 
     // Shared decode helpers (ir_iso_common) own both encodings' bit layouts
-    // (#1458 per-axis / single-canvas, flip carrier #2207).
+    // (per-axis / single-canvas, flip carrier).
     int rawDepth = decodeDepthRoute(encoded, frameData.perAxisRoute);
     int face = decodeSlot(encoded);
     int flip = decodeFlipRoute(encoded, frameData.perAxisRoute);
     int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
 
-    // Smooth camera Z-yaw (#1311): a per-axis canvas stores the world frame
+    // Smooth camera Z-yaw: a per-axis canvas stores the world frame
     // face-locally — recover world-pos via isoPixelToPos3D and read the
-    // world-frame outward normal directly. The single canvas keeps its
+    // world-frame outward normal directly. The single canvas uses its
     // cardinal-snap reconstruction + R_z(-rasterYaw) normal rotation. Mirrors GLSL.
     bool perAxis = frameData.perAxisRoute != 0;
     float3 pos3D;
@@ -149,20 +146,18 @@ kernel void c_compute_sun_shadow(
     if (perAxis) {
         int faceId = frameData.visibleFaceIds[face];
         // Sub-cell recovery — the receiver must sample the sun map at the
-        // drawn surface (see perAxisCellToWorld3DSubCell). Mirrors GLSL.
+        // drawn surface, not the lattice cell origin. Mirrors GLSL.
         pos3D = perAxisCellToWorld3DSubCell(
             pixel, encoded, faceId, size,
             frameData.frameCanvasOffset, frameData.voxelRenderOptions
         );
         normal = faceOutwardNormal6(faceId);
     } else if (frameData.residualYaw != 0.0) {
-        // Smooth-yaw receive (#1719). While rotating, voxels leave the single
-        // canvas (per-axis scatter) and its remaining SDF/text content is
-        // stored at the FULL visualYaw with view-frame depth (#1345/#1370) —
-        // recover with the matching smooth inverse. The cardinal recovery
-        // returns a residual-rotated world pos here, so receivers sampled the
-        // sun map off the true surface (frozen / vanishing floor shadows).
-        // residualYaw == 0 keeps the byte-identical cardinal path. Mirrors GLSL.
+        // Smooth-yaw receive. While rotating, voxels leave the single canvas
+        // (per-axis scatter) and its remaining SDF/text content is stored at the
+        // FULL visualYaw with view-frame depth — recover with the matching smooth
+        // inverse. The cardinal recovery would return a residual-rotated world pos
+        // here and sample the sun map off the true surface. Mirrors GLSL.
         pos3D = trixelCanvasPixelToWorld3DSmoothYaw(
             pixel,
             rawDepth,
@@ -186,7 +181,7 @@ kernel void c_compute_sun_shadow(
         // yaw. No-op at yaw=0 (cardinalIndex=0). Matches the AO shader pattern.
         normal = rotateCardinalZInv(faceOutwardNormal(face), cardinalIndex);
     }
-    // Riser-polarity flip (#2207): a flipped face's true outward normal is the
+    // Riser-polarity flip: a flipped face's true outward normal is the
     // NEGATION of the slot-derived one — without it the normal bias pushes the
     // shadow sample INTO the caster and the riser reads fully sun-shadowed.
     // Negation commutes with the frame rotations above, so one flip covers all
@@ -197,11 +192,11 @@ kernel void c_compute_sun_shadow(
 
     // World iso depth picks the cascade; rawDepth IS the world iso depth for the
     // world canvas this pass runs on. The cascade PCF lookup is shared with the
-    // detached world-receive path (ir_sun_shadow_sample.metal, #1576).
+    // detached world-receive path (ir_sun_shadow_sample.metal).
     float factor = worldSunShadowFactor(pos3D, normal, float(rawDepth), sunFrameData, sunDepthBuf);
-    // Round-to-cell staircase self-step suppression (#2010). Only a SHADOWED
-    // receiver (factor < 1.0) on a detected staircase needs the carve, so the
-    // neighbour probe runs only then — lit pixels and flats stay byte-identical.
+    // Round-to-cell staircase self-step suppression. Only a SHADOWED receiver
+    // (factor < 1.0) on a detected staircase needs the carve, so the neighbour
+    // probe runs only then — lit pixels and flats skip it.
     // Scoped to the static-camera GRID single-canvas raster (residualYaw == 0).
     // The recompute reuses the same pos/normal with the near self-step rejection
     // lifted, so genuine FAR contact shadows survive. Mirrors GLSL.

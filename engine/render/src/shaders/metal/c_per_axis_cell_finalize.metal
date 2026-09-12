@@ -1,18 +1,16 @@
 #include <metal_stdlib>
 using namespace metal;
 
-// Mirror of shaders/c_per_axis_cell_finalize.glsl (#2256). Derives each per-axis
+// Mirror of shaders/c_per_axis_cell_finalize.glsl. Derives each per-axis
 // canvas's compute-indirect dispatch dims from the occupied count the compaction
 // wrote, so the AO / sun-shadow / lighting / resolve stages indirect-dispatch
 // over only occupied cells. Split out of the compaction to keep that hot
 // full-grid scan barrier-free.
 //
 // Dispatched as 3 threadgroups of 1 thread each — one thread per axis, registered
-// explicitly as (1,1,1) in threadgroupSizeForFunctionName. Every non-*_body
-// c_*.metal in this directory needs an entry there, enforced by
-// cmake/run_metal_kernel_registry_check.cmake (#2798), whose glob is scoped to
-// this directory (test/render/shaders/metal/ kernels are outside it and
-// deliberately ride the 1x1x1 fallback). drawArgs is
+// explicitly as (1,1,1) in threadgroupSizeForFunctionName. The entry is required
+// even though it equals the fallback: cmake/run_metal_kernel_registry_check.cmake
+// fails on any c_*.metal kernel in this directory without one. drawArgs is
 // bound via bindBase (the whole indirect buffer); each thread owns one axis's
 // 256-byte region (no atomics — one writer per region).
 constant uint kStrideUints = 64u;             // kPerAxisCellIndirectStrideBytes / 4

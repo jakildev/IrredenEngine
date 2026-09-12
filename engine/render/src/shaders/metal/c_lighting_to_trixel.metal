@@ -1,8 +1,8 @@
 #include "ir_iso_common.metal"
 #include "ir_per_axis_lighting.metal"
 // FrameDataSun + the sun-depth buffer cascade lookup (worldSunShadowFactor) —
-// for the opt-in detached re-voxelize world-receive path (#1576 P4b-2). Shared
-// with c_compute_sun_shadow; replaces this kernel's former local FrameDataSun.
+// for the opt-in detached re-voxelize world-receive path. Shared with
+// c_compute_sun_shadow.
 #include "ir_sun_shadow_sample.metal"
 // GPULightSource layout, light-volume extents, spotConeFactor, ACESFilm, plus
 // the FrameDataLightingToTrixel + LightVolumeParams UBO layouts this kernel and
@@ -18,7 +18,7 @@
 // and tonemaps via the ACES Filmic curve before writing back to the
 // canvas.
 
-// Per-axis empty-cell compaction (#2256): on the per-axis route
+// Per-axis empty-cell compaction: on the per-axis route
 // (perAxisRoute != 0) this kernel is dispatched indirectly over only each axis's
 // OCCUPIED cells (compacted by the STAGE_1 per-axis pre-pass). compactedCells
 // holds the occupied linear cell indices; cellDrawArgs carries visibleCount at
@@ -32,9 +32,9 @@ kernel void c_lighting_to_trixel(
     constant FrameDataSun& sunFrameData [[buffer(29)]],
     constant LightVolumeParams& lightVolumeParams [[buffer(23)]],
     // Baked sun-aligned depth map — read by the detached world-receive path
-    // (#1576 P4b-2) to re-run the cascade lookup at a world-placed voxel's pos.
+    // to re-run the cascade lookup at a world-placed voxel's pos.
     device const uint* sunDepthBuf [[buffer(28)]],
-    // Light list for SPOT cone shaping (#2318): the winning-light ID indexes
+    // Light list for SPOT cone shaping: the winning-light ID indexes
     // this to recover cone axis/aperture/apex. Bound transiently at slot 4 by
     // LIGHTING_TO_TRIXEL; only read on the spot path.
     device const GPULightSource* lights [[buffer(4)]],
@@ -46,16 +46,16 @@ kernel void c_lighting_to_trixel(
     // space; cannot collide with paletteLUT(3) or lightVolume(5).
     texture2d<float, access::read> canvasSunShadow [[texture(4)]],
     texture3d<float, access::sample> lightVolume [[texture(5)]],
-    // Entity-id channel (#2124 lit-cross-section follow-up): read ONLY for the fog
-    // cut-face flag (bit 29, set by stage 2 / decodeCutFace). Bound at unit 6 on the
-    // single-canvas + detached routes; the `perAxisRoute == 0` guard skips the read
-    // on the rotation route. GLSL twin's binding 6.
+    // Entity-id channel: read ONLY for the fog cut-face flag (bit 29, set by
+    // stage 2, read via decodeCutFace). Bound at unit 6 on the single-canvas +
+    // detached routes; the `perAxisRoute == 0` guard skips the read on the
+    // rotation route. GLSL twin's binding 6.
     texture2d<uint, access::read> trixelEntityIds [[texture(6)]],
-    // Winning-light ID volume (#2318), unit 7. `.r` = light index+1 (÷255) of
+    // Winning-light ID volume, unit 7. `.r` = light index+1 (÷255) of
     // the flood winner per cell. Read only on the spot path; bound every tick
     // so Metal's slot table is populated. GLSL twin's binding 7.
     texture3d<float, access::read> lightVolumeId [[texture(7)]],
-    // Per-axis empty-cell compaction (#2256) — GLSL twin's bindings 25/26.
+    // Per-axis empty-cell compaction — GLSL twin's bindings 25/26.
     const device uint* compactedCells [[buffer(25)]],
     const device uint* cellDrawArgs [[buffer(26)]],
     uint3 globalId [[thread_position_in_grid]],
@@ -73,7 +73,7 @@ kernel void c_lighting_to_trixel(
     );
     int2 pixel;
     if (voxelFrameData.perAxisRoute != 0) {
-        // #2256: indirect dispatch over the compacted occupied-cell list, folded
+        // Indirect dispatch over the compacted occupied-cell list, folded
         // into a capped 2-D threadgroup grid by c_per_axis_cell_finalize —
         // idx = flat group index * tile + local flat index, guarded by the axis's
         // visibleCount, then decode the pixel from its linear cell.
@@ -92,28 +92,27 @@ kernel void c_lighting_to_trixel(
     }
 
     const int encoded = trixelDistances.read(uint2(pixel)).x;
-    // Per-axis canvas uses INT_MAX as empty sentinel (#1458); single-canvas keeps 65535.
+    // Per-axis canvas uses INT_MAX as empty sentinel; single-canvas keeps 65535.
     if (encoded >= (voxelFrameData.perAxisRoute != 0 ? 0x7FFFFFFF : 65535)) {
         return;
     }
 
-    // A detached re-voxelize canvas (#1558) is lit by AO + directional sun + sky
-    // only by DEFAULT; the opt-in world-placed path (#1576 P4b-2,
-    // detachedWorldReceive.w != 0) instead has it RECEIVE world sun-shadow + 128³
-    // light-volume bleed at its recovered world pos, like a GRID solid. Default
-    // path stays byte-identical. Mirrors c_lighting_to_trixel.glsl.
+    // A detached re-voxelize canvas is lit by AO + directional sun + sky
+    // only by DEFAULT; the opt-in world-placed path
+    // (detachedWorldReceive.w != 0) instead has it RECEIVE world sun-shadow + 128³
+    // light-volume bleed at its recovered world pos, like a GRID solid.
+    // Mirrors c_lighting_to_trixel.glsl.
     const bool detachedCanvas = voxelFrameData.isDetachedCanvas != 0.0f;
     const bool worldReceive = detachedCanvas && voxelFrameData.detachedWorldReceive.w != 0.0f;
 
     // Shared decode helpers (ir_iso_common) own both encodings' bit layouts
-    // (#1458 per-axis / single-canvas, flip carrier #2207).
+    // (per-axis / single-canvas, including the flip carrier).
     const int rawDepth = decodeDepthRoute(encoded, voxelFrameData.perAxisRoute);
-    // Decode the visible-triplet slot (#1278) → world FaceId → world-frame
-    // six-face outward normal. Used by Lambert, the sky-term, and the
-    // world-receive sun-shadow normal — hoisted above the shadow read.
-    // The riser-polarity flip (#2207) selects the OPPOSITE same-axis face, so
-    // a flipped silhouette riser shades with its true outward normal instead
-    // of the inverted triplet one (the venetian near-black rows at 180°).
+    // Visible-triplet slot → world FaceId → world-frame six-face outward normal,
+    // used by Lambert, the sky-term, and the world-receive sun-shadow normal.
+    // The riser-polarity flip selects the OPPOSITE same-axis face, so a flipped
+    // silhouette riser shades with its true outward normal instead of the
+    // inverted triplet one.
     const int slot = decodeSlot(encoded);
     const int faceId =
         voxelFrameData.visibleFaceIds[slot] ^ decodeFlipRoute(encoded, voxelFrameData.perAxisRoute);
@@ -166,24 +165,23 @@ kernel void c_lighting_to_trixel(
         return;
     }
 
-    // Fog cross-section CUT face (#2124 lit-cross-section follow-up) — see GLSL
-    // twin. The interior wall exposed at the vision boundary is geometrically
-    // buried, so the sun-shadow map reports it self-shadowed and AO reads it as a
-    // deep crease; force it fully lit (shadow + AO = 1) so it shades as a clean
-    // exposed face. Flag rides bit 29 of the stored id; the `perAxisRoute == 0`
-    // guard skips the read on the rotation route (id image unbound there).
+    // Fog cross-section CUT face. The interior wall exposed at the vision
+    // boundary is geometrically buried, so the sun-shadow map reports it
+    // self-shadowed and AO reads it as a deep crease; force it fully lit
+    // (shadow + AO = 1) so it shades as a clean exposed face. Flag rides bit 29
+    // of the stored id; the `perAxisRoute == 0` guard skips the read on the
+    // rotation route (id image unbound there).
     if (voxelFrameData.perAxisRoute == 0 &&
         decodeCutFace(trixelEntityIds.read(uint2(pixel)).xy)) {
         ao = 1.0f;
         shadow = 1.0f;
     }
 
-    // Sun direction is world frame; worldNormal (decoded above) is the matching
-    // world-frame surface normal; Lambert is a plain dot product. Mirrors GLSL.
+    // Sun direction and worldNormal are both world-frame.
     const float lambert = max(0.0f, dot(worldNormal, sunFrameData.sunDirection.xyz));
-    // Sun-shadow darkens only the directional term; ambient is never blocked —
-    // see the GLSL twin (a fully self-shadowed re-voxelize side face was
-    // collapsing to pure black). Unshadowed pixels stay byte-identical.
+    // Sun-shadow darkens only the directional term; ambient is indirect fill and
+    // is never blocked, so a fully self-shadowed face keeps its ambient floor
+    // instead of collapsing to pure black.
     const float faceFactor =
         (sunFrameData.sunAmbient + (1.0f - sunFrameData.sunAmbient) * lambert * shadow) *
         sunFrameData.sunIntensity;
@@ -200,21 +198,20 @@ kernel void c_lighting_to_trixel(
 
     // Light-volume bleed: the world / per-axis camera canvases sample the shared
     // 128³ volume; an opt-in world-placed detached solid samples it too, at its
-    // recovered world pos (#1576 P4b-2). A default detached overlay stays
-    // excluded — byte-identical. Mirrors GLSL.
+    // recovered world pos. A default detached overlay stays excluded. Mirrors
+    // GLSL.
     if (frameData.lightVolumeEnabled != 0 && (!detachedCanvas || worldReceive)) {
-        // Smooth camera Z-yaw (#1311): a per-axis canvas stores the world frame
-        // face-locally; the single canvas uses the cardinal-snap reconstruction.
-        // The shared world light volume is sampled the same way for both. The
-        // world-placed detached solid reuses worldReceivePos (model + offset).
-        // Smooth-yaw single-canvas recovery (#1719): while rotating, the main
-        // canvas's remaining SDF/text content stores at the FULL visualYaw
-        // with view-frame depth, so the light-volume sample position must use
-        // the smooth inverse or the glow drifts off the surface as |residual|
-        // grows. residualYaw == 0 (and every detached canvas, whose frame
-        // carries zero yaw) keeps the byte-identical cardinal recovery.
-        // Sub-cell recovery on the per-axis route — the volume sample must
-        // land on the drawn surface (see perAxisCellToWorld3DSubCell).
+        // World-position recovery for the volume sample — mirrors GLSL:
+        //   * world-placed detached solid: worldReceivePos (model + offset);
+        //   * per-axis canvas: stores the world frame face-locally; sub-cell
+        //     recovery, not lattice-only, so the volume sample lands on the
+        //     drawn surface;
+        //   * single canvas with residualYaw != 0: the remaining SDF/text
+        //     content stores at the FULL visualYaw with view-frame depth, so
+        //     the smooth inverse is required or the glow drifts off the surface
+        //     as |residual| grows;
+        //   * otherwise (including every detached canvas, whose frame carries
+        //     zero yaw) the cardinal-snap reconstruction.
         float3 pos3D = worldReceive
             ? worldReceivePos
             : (voxelFrameData.perAxisRoute != 0
@@ -251,11 +248,10 @@ kernel void c_lighting_to_trixel(
         const float4 lightSample = lightVolume.sample(volumeSampler, sampleCoord);
         float3 light = lightSample.rgb * lightSample.a;
 
-        // SPOT cone shaping (#2318). Gated on the has-SPOT flag
-        // (worldOriginVoxel.w) so no-spot scenes skip the ID fetch + light-list
-        // read entirely and stay byte-identical. Fetch the winning light's ID at
-        // the surface voxel's own cell (NEAREST — not interpolated); if it is a
-        // SPOT, attenuate its volume contribution by the analytic cone factor.
+        // SPOT cone shaping, gated on the has-SPOT flag (worldOriginVoxel.w).
+        // The winning light's ID is fetched at the surface voxel's own cell
+        // (NEAREST — not interpolated), and a SPOT winner's volume contribution
+        // is attenuated by the analytic cone factor.
         if (lightVolumeParams.worldOriginVoxel.w != 0) {
             const int3 idCell = int3(floor(localPos + float3(kLightVolumeHalfExtent) + float3(0.5)));
             if (all(idCell >= int3(0)) && all(idCell < int3(int(kLightVolumeSize)))) {

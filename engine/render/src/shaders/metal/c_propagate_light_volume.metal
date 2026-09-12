@@ -7,16 +7,14 @@ using namespace metal;
 // in-window, distance-discounted for out-of-window lights clamped to
 // the volume edge; decremented by `stepFalloff` per
 // Manhattan step, 0.0 past the radius). The cell picks whichever
-// air-neighbor candidate has the highest residual alpha so the closest
-// light wins overlap regions.
+// candidate (self or air-neighbor) has the highest residual alpha so
+// the closest light wins overlap regions.
 //
 // Blocker neighbors are skipped on the same rule as solid voxels: a cell
 // marked in the light-blocker bitfield (rasterized from
 // `C_ShapeDescriptor + C_LightBlocker(blocksLOS_=true)` entities by
 // `system_build_light_occlusion_grid`) blocks point/spot light
-// propagation. T-126 scoped this SSBO to the light-volume LOS path
-// (AO migrated to screen-space sampling in T-091), so the struct name
-// `LightOcclusionData` reflects the surviving consumer.
+// propagation.
 
 constant int kLightOcclusionGridSize = 256;
 constant int kLightOcclusionGridHalfExtent = 128;
@@ -31,19 +29,19 @@ constant uint kLightOcclusionBitfieldUintCount =
 
 // Deliberate local copy of the shared layout in ir_world_lighting.metal (which
 // the seed / lighting / overflow passes bind through): this is the one
-// light-volume consumer that does not include that fragment, and pulling the
-// light-source list + SPOT/ACES helpers into a kernel dispatched 32× a frame
-// just to share a struct declaration is not worth it. Keep the two in lockstep.
+// light-volume consumer that does not include that fragment, which would pull
+// the light-source list + SPOT/ACES helpers into a kernel dispatched up to 32×
+// a frame. Keep the two in lockstep.
 struct LightVolumeParams {
     int gridSize;
     int halfExtent;
     int lightCount;
     float stepFalloff;
-    // Phase 1c (#360): world voxel the volume is centered on this frame.
+    // World voxel the volume is centered on this frame; `.w` = has-SPOT flag.
     int4 worldOriginVoxel;
 };
 
-// Phase 1c (#360): camera-anchored light-occlusion SSBO layout — header
+// Camera-anchored light-occlusion SSBO layout — header
 // (worldOriginVoxel) followed by the voxel bitfield and the SDF-blocker
 // bitfield (each `kLightOcclusionBitfieldUintCount` uints).
 struct LightOcclusionData {
@@ -103,7 +101,7 @@ inline bool lightBlockerGetBit(
 kernel void c_propagate_light_volume(
     texture3d<float, access::read> lightVolumeRead [[texture(0)]],
     texture3d<float, access::write> lightVolumeWrite [[texture(1)]],
-    // Winning-light ID ping-pong (#2318): the winner's ID rides along with
+    // Winning-light ID ping-pong: the winner's ID rides along with
     // its color so the consumer knows which light lit each cell (SPOT cone).
     texture3d<float, access::read> lightVolumeIdRead [[texture(2)]],
     texture3d<float, access::write> lightVolumeIdWrite [[texture(3)]],
@@ -120,15 +118,13 @@ kernel void c_propagate_light_volume(
 
     float4 best = lightVolumeRead.read(uint3(cell));
     // Winning-light ID travels with `best` — seeded from self, overwritten
-    // whenever a neighbor candidate wins the residual contest below (#2318).
+    // whenever a neighbor candidate wins the residual contest.
     // Skipped when no SPOT was seeded (the consumer never reads it); the branch
     // is coherent across the dispatch, so no-spot scenes pay no extra bandwidth.
     const bool carryId = params.worldOriginVoxel.w != 0;
     float4 bestId = carryId ? lightVolumeIdRead.read(uint3(cell)) : float4(0.0);
-    // Phase 1c (#360): map the local volume cell back to world coords
-    // through the camera-anchored origin so the per-neighbor light-
-    // occlusion lookup queries the right cell of the (independently
-    // anchored) light-occlusion grid.
+    // The light-occlusion grid is anchored independently of the volume,
+    // so neighbor lookups go through world coords.
     const int3 worldCell = (cell - int3(params.halfExtent)) + params.worldOriginVoxel.xyz;
 
     const int3 deltas[6] = {

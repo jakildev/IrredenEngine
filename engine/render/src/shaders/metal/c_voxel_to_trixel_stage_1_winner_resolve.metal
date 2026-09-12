@@ -1,20 +1,20 @@
-// Stage-1 CARDINAL WINNER-ELECTION dispatch (#2346) — Metal twin of
+// Stage-1 CARDINAL WINNER-ELECTION dispatch — Metal twin of
 // c_voxel_to_trixel_stage_1_winner_resolve.glsl. A thin wrapper that
 // specializes the shared body at compile time: IR_STORE_WINNER_ELECTION 1
 // swaps every cardinal-branch distance tap for a resolveWinnerTap, so this
 // kernel re-runs the identical single-canvas geometry and atomic-mins each
 // tying face's run-stable voxel pool index into the buffer-28 winner scratch
-// (the #2255 per-axis election extended to the single-canvas store). Dispatched
+// (the per-axis election applied to the single-canvas store). Dispatched
 // over indirect struct 0 ONLY, between the stage-1 stores and stage 2, when the
-// ticking pool's storeTiesPossible_ flag is set. The kernel name resolves to
-// c_voxel_to_trixel_stage_1_winner_resolve (metalFunctionNameForStage keys off
-// the file stem) — it MUST be registered in metal_pipeline.cpp's
+// ticking pool's storeTiesPossible_ flag is set. IR_STAGE1_KERNEL_NAME must
+// equal the file stem (metalFunctionNameForStage derives the function name from
+// it), and that name MUST be registered in metal_pipeline.cpp's
 // threadgroupSizeForFunctionName (2,3,8) and functionUsesImageAtomicScratch
 // lists. Omission from either fails CI naming the kernel — the former via
-// cmake/run_metal_kernel_registry_check.cmake (#2798), the latter via
-// cmake/run_metal_scratch_consumer_check.cmake (#2878), which is what keeps a
-// missing entry from silently leaving the dispatch reading a dangling distance
-// scratch. The visible twin is c_voxel_to_trixel_stage_1.metal.
+// cmake/run_metal_kernel_registry_check.cmake, the latter via
+// cmake/run_metal_scratch_consumer_check.cmake; a missing scratch entry would
+// silently leave the dispatch reading a dangling distance scratch. The visible
+// twin is c_voxel_to_trixel_stage_1.metal.
 #include "ir_iso_common.metal"
 #include "ir_constants.metal"
 
