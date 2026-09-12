@@ -13,9 +13,8 @@
 #include <string>
 #include <unordered_set>
 
-// Phase 3 of the GUI + mouse verification harness (#1796). Capture-frame
-// assertions over the introspectable widget + picking state, driven by the
-// #1795 scripted-shot harness in engine/video. Evaluation lives here (the
+// Capture-frame assertions over the introspectable widget and picking state,
+// driven by the scripted-shot harness in engine/video. Evaluation lives here (the
 // prefab layer) rather than in engine/video because it needs widget / picking
 // components engine/video cannot see — the harness calls in through the
 // type-erased GuiTestConfig::onAssertFrame_ function pointer.
@@ -23,7 +22,7 @@
 // Usage (a creation, after its widgets exist): build a per-shot
 // `Assertion` table, own one `LatchState`, and forward the harness's
 // onAssertFrame_ callback to `onFrame`. Each evaluated assertion emits one
-// machine-readable `GUI-ASSERT ...` log line the P4 gui-verify skill greps
+// machine-readable `GUI-ASSERT ...` log line the gui-verify skill greps
 // the way render-verify parses image diffs.
 namespace IRPrefab::GuiTest {
 

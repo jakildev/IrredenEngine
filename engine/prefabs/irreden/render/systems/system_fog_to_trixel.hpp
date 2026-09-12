@@ -32,7 +32,7 @@ constexpr int kFogToTrixelGroupSize = 16;
 // the pos3D recovery ran on them.
 //
 // CPU→GPU sync: the dirty-gated `subImage2D` upload now lives in
-// VOXEL_TO_TRIXEL_STAGE_1 (#2008), which both performs the column cull
+// VOXEL_TO_TRIXEL_STAGE_1, which both performs the column cull
 // (it needs current-frame fog) and runs earlier in the pipeline. This
 // pass is read-only on the already-uploaded fog texture — hence the
 // const fog param — so the cull and this post-process always see the
@@ -58,7 +58,7 @@ template <> struct System<FOG_TO_TRIXEL> {
         // Live analytic vision circles. Small, GPU-read-only, re-authored by
         // gameplay each frame — uploaded unconditionally (no dirty flag). The
         // shader max-combines these with the grid memory above. (The grid fog
-        // texture itself is uploaded earlier in VOXEL_TO_TRIXEL_STAGE_1 (#2008);
+        // texture itself is uploaded earlier in VOXEL_TO_TRIXEL_STAGE_1;
         // this pass only reads it — hence the const fog param.) The shader's
         // cross-section cap is pure per-pixel geometry (face axis + radial
         // band), so no occupancy source is bound for this dispatch.

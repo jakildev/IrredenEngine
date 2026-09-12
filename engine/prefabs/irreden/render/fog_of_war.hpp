@@ -84,7 +84,7 @@ inline std::uint8_t getCell(int worldX, int worldY) {
     return IRComponents::kFogStateUnexplored;
 }
 
-/// Mark every cell within @p radius (Euclidean distance, since #1994) of
+/// Mark every cell within @p radius (Euclidean distance) of
 /// @p (cx, cy) as visible. See `C_CanvasFogOfWar::revealRadius` for the v1
 /// contract around the cells that are NOT downgraded.
 inline void revealRadius(int cx, int cy, int radius) {
@@ -100,7 +100,7 @@ inline void revealRadius(int cx, int cy, int radius) {
 /// without grid quantization, and reveals partial voxels at the boundary —
 /// distinct from the voxel-grid `revealRadius`. @p edge is the edge softness
 /// in world units (default reads as antialiasing). @p observerZ + @p zCostUp
-/// + @p zCostDown + @p freeBand (#2260, generalized by #2557) add an
+/// + @p zCostDown + @p freeBand add an
 /// asymmetric, penalty-free-banded height penalty — see
 /// `C_CanvasFogOfWar::addVisionCircle` for the exact effective-distance
 /// formula. @p zCostDown < 0 (the default) mirrors @p zCostUp; all-defaults
@@ -125,8 +125,8 @@ inline void setVisionCircle(
 
 /// Append one analytic vision disc to the live set (up to
 /// `kMaxFogVisionCircles`). See `setVisionCircle` for disc semantics (including
-/// the @p observerZ / @p zCostUp / @p zCostDown / @p freeBand height penalty,
-/// #2260/#2557); use this after `clearVisionCircles` to drive several vision
+/// the @p observerZ / @p zCostUp / @p zCostDown / @p freeBand height penalty);
+/// use this after `clearVisionCircles` to drive several vision
 /// sources in one frame.
 inline void addVisionCircle(
     float cx,

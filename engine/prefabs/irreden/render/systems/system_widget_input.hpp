@@ -49,9 +49,8 @@ namespace IRSystem {
 // drag or while focused, behavior is benign: the captured ID resolves
 // to no matching tick body (the iterator skips dead entities), and the
 // stored ID is cleared on the next mouse-button-release / Tab / click.
-// Editor widgets are not destroyed mid-interaction in practice; if a
-// future use case needs to destroy interactive widgets during a drag,
-// add an entity-validity guard in `beginTick`.
+// Editor widgets must not be destroyed mid-interaction; doing so requires an
+// entity-validity guard in `beginTick`.
 //
 // Pipeline order requirement: HITBOX_MOUSE_TEST_GUI → WIDGET_INPUT →
 // WIDGET_APPLY_SLIDER → WIDGET_APPLY_CHECKBOX, all in the INPUT pipeline.
@@ -205,7 +204,7 @@ template <> struct System<WIDGET_INPUT> {
     // lookups, unlike the per-entity tick). No singleton → no-op, so
     // non-test creations pay nothing. Read back via
     // IRPrefab::Widget::hoveredWidget(); used by the headless GUI-test
-    // harness (#1796) to assert hover without re-scanning hitboxes.
+    // harness to assert hover without re-scanning hitboxes.
     void endTick() {
         IREntity::forEachComponent<IRComponents::C_GuiHoverState>(
             [this](IREntity::EntityId &, IRComponents::C_GuiHoverState &hoverState) {

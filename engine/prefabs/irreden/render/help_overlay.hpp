@@ -1,7 +1,7 @@
 #ifndef IR_PREFAB_HELP_OVERLAY_H
 #define IR_PREFAB_HELP_OVERLAY_H
 
-// Adoption surface for the registry-driven command help overlay (#2550).
+// Adoption surface for the registry-driven command help overlay.
 //
 // A creation adopts the overlay with two calls — one in its pipeline setup,
 // one in its command setup:
@@ -53,9 +53,9 @@ inline constexpr int kDefaultToggleButton = IRInput::kKeyButtonF1;
 //
 // This deliberately does NOT auto-detect and prepend `TEXT_TO_TRIXEL`: no
 // available probe answers the question that matters. Both are sound about
-// *existence* — `getNamedResourceOrNull` reports a missing name as null (see
-// #2627) and `IRSystem::findSystem` reports an unregistered system as the
-// unreachable `kNullSystemId` (see #2540) — but `systems()` runs while the
+// *existence*: `getNamedResourceOrNull` reports a missing name as null, and
+// `IRSystem::findSystem` reports an unregistered system as the
+// unreachable `kNullSystemId`, but `systems` runs while the
 // adopter is still assembling its RENDER pipeline. A negative answer there
 // cannot distinguish "this creation has no text stage" from "its text stage is
 // about to be spliced in", and a positive answer says nothing about ORDER,
@@ -67,7 +67,7 @@ inline constexpr int kDefaultToggleButton = IRInput::kKeyButtonF1;
 //
 // A mis-ordered adopter draws nothing rather than crashing: `dispatchGuiText`
 // probes with `getNamedResourceOrNull` and no-ops when the text stage is
-// absent (see #2627).
+// absent.
 inline std::list<IRSystem::SystemId> systems() {
     return {IRSystem::System<IRSystem::HELP_OVERLAY>::create()};
 }
@@ -89,10 +89,10 @@ inline IRCommand::CommandId registerToggleCommand(int button = kDefaultToggleBut
 // The two observables a GUI test needs to prove the overlay actually fired,
 // rather than merely believing itself visible: the text it built, and how many
 // glyph commands it batched on the last frame. Both resolve the running system
-// through the `SystemName` registry (#2526) and degrade to empty / 0 when it
+// through the `SystemName` registry and degrade to empty / 0 when it
 // isn't registered, so a creation without the overlay reads a clean negative
 // instead of dereferencing null. The miss sentinel is `IRSystem::kNullSystemId`
-// — NOT `IREntity::kNullEntity`, which #2540 retired precisely because 0 is a
+// — NOT `IREntity::kNullEntity`, because 0 is a
 // live id (the first system a process registers gets it). Comparing against the
 // wrong one breaks the probe both ways: a genuine miss walks past the guard into
 // an out-of-range `getSystemParams`, and a system registered as id 0 reads as

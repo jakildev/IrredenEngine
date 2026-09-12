@@ -31,8 +31,8 @@
 #include <irreden/render/gpu_stage_timing_observer.hpp>
 #include <irreden/render/sun_shadow_constants.hpp>
 
-// World sun-shadow CAST for opt-in world-placed detached re-voxelize solids
-// (#1576 P4b-3): the resolve-then-bake driver reuses the main-frame restore
+// World sun-shadow cast for opt-in world-placed detached re-voxelize solids.
+// The resolve-then-bake driver reuses the main-frame restore
 // helpers and gathers the opt-in detached canvases off C_EntityCanvas (the
 // same component the composite iterates).
 #include <irreden/render/components/component_entity_canvas.hpp>
@@ -60,20 +60,20 @@ using IRPrefab::SunShadow::kSunShadowMaxDistance;
 constexpr int kBakeSunShadowGroupSize = 16;
 constexpr int kSunShadowCascadeCount = 2;
 constexpr float kCascadeSplitRatio = 0.4f;
-// #2270 coverage-splat radius (sun texels): c_bake_sun_shadow_map atomicMin's
+// coverage-splat radius (sun texels): c_bake_sun_shadow_map atomicMin's
 // each caster's depth into a (2·r+1)² box, filling the sun texels a grazing /
 // point-scattered caster footprint leaves empty (the moth-eaten cast-shadow
 // holes). Engaged for the cardinal main-canvas bake AND the world-placed cast
 // resolve (its cast has the same defect). The PER-AXIS resolve zeros it via
 // patchSunSplatRadius (structural byte-identity for invariant #1). Doubles as
 // the shader kill switch — 0 forces the exact single-write path. r is the
-// measured minimum on the decontaminated (post-#2319) genuine cast, and 7 is
-// also the nibble cap the displacement encoding can carry — a larger radius
-// needs the #2385 Phase-1 encoding widen. Radius sweeps + the #2204 atomic
+// measured minimum on a decontaminated genuine cast, and 7 is also the nibble
+// cap the displacement encoding can carry. A larger radius requires widening
+// that encoding. Radius sweeps and the atomic
 // cost rule: docs/design/sun-shadow-bake-coverage.md.
 //
 // Changing this radius is NOT output-neutral for world-placed detached
-// solids: the world-placed cast resolve (P4b-3) keeps the splat engaged, so
+// solids: the world-placed cast resolve keeps the splat engaged, so
 // their cast EDGES move with r. Only the per-axis resolve is radius-0 and
 // therefore radius-invariant — the canvas_stress so3_* / revoxelize_* shots
 // contain world-placed content and WILL diff on any radius change. Re-bless
@@ -128,9 +128,9 @@ inline ResolvedSun resolveSun() {
 } // namespace detail
 
 // World-placed re-voxelize caster gathered by gatherWorldPlacedCasters()
-// below (#1576 P4b-3). Hoisted to namespace scope (mirrors LightGatherRecord
+// below. Hoisted to namespace scope (mirrors LightGatherRecord
 // in system_compute_light_volume.hpp) so a read-back consumer — the culling
-// minimap's caster domain (#2316, V2) — can name the type without reaching
+// minimap's caster domain can name the type without reaching
 // into System<BAKE_SUN_SHADOW_MAP>'s private members.
 struct WorldPlacedCaster {
     const C_TriangleCanvasTextures *textures_ = nullptr;
@@ -145,23 +145,22 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
     Buffer *voxelFrameDataBuf_ = nullptr;
     FrameDataSun frameData_{};
 
-    // Smooth camera Z-yaw (#1435): main canvas + its per-axis voxel canvases,
+    // Smooth camera Z-yaw: main canvas + its per-axis voxel canvases,
     // re-resolved every frame in beginTick. Null unless allocated (rotating).
     IREntity::EntityId perAxisCanvasEntity_ = IREntity::kNullEntity;
     C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
 
-    // World sun-shadow CAST (#1576 P4b-3, Q2 mechanism a′ — resolve-then-bake).
+    // World sun-shadow cast uses resolve-then-bake.
     // Opt-in world-placed detached re-voxelize solids gathered once per frame in
     // beginTick (off C_EntityCanvas, the same component the composite iterates).
     // The cast mirrors the per-axis resolve precedent above faithfully: scatter
     // every caster's model-frame distances (+ its world cell origin) into ONE
     // shared main-canvas-layout scratch, blit to the resolve texture, then ONE
-    // extra bake dispatch through the unchanged cardinal recovery. Invariant
-    // (docs/design/detached-revoxelize-world-light.md, Q2 REVISED): the bake
+    // extra bake dispatch through the cardinal recovery. The bake
     // only ever reads main-canvas-layout depth sources — a foreign model-frame
-    // canvas texture is never a bake input (the direct read returns empty
-    // through Metal's image-atomic scratch indirection; that was PR #1626's
-    // first, rejected mechanism). Empty caster list → byte-identical to master.
+    // canvas texture is never a bake input because a direct read returns empty
+    // through Metal's image-atomic scratch indirection. An empty caster list
+    // leaves the main-canvas bake unchanged.
     // (`WorldPlacedCaster` itself lives at namespace scope above.)
     std::vector<WorldPlacedCaster> worldPlacedCasters_;
     FrameDataVoxelToCanvas voxelFrameScratch_{};
@@ -229,11 +228,11 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
     }
 
     // Patch the resident main frame's yaw split for a CARDINAL-layout bake
-    // input, then restore the camera split afterward (#1719). The resolve
-    // textures (per-axis #1435, world-placed P4b-3) re-projected their content
+    // input, then restore the camera split afterward. The resolve
+    // textures re-projected their content
     // into the cardinal main-canvas layout, but the resident main frame
     // carries the camera's residual yaw, which would route the bake shader's
-    // recovery onto the smooth-yaw inverse meant for the #1345 SDF store.
+    // recovery onto the smooth-yaw inverse meant for the SDF store.
     // subData orphans the UBO on Metal, so re-bind after patching (the
     // in-file convention).
     void patchFrameYawSplit(float visualYaw, float residualYaw) {
@@ -256,18 +255,18 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         }
     };
 
-    // Patch the resident FrameDataSun UBO's #2270 coverage-splat radius (binding
+    // Patch the resident FrameDataSun UBO's coverage-splat radius (binding
     // kBufferIndex_FrameDataSun) and re-bind — subData orphans the buffer on
     // Metal, same convention as patchFrameYawSplit. Used to zero the radius for
     // the PER-AXIS resolve dispatch. The shader's splat gate
     // (`perAxisRoute == 0 && residualYaw == 0 && sunSplatMaxTexels > 0`) reads the
     // *decode-path* predicate, not camera cardinality: the per-axis resolve
-    // (#1435) deliberately zeros residualYaw to reuse the cardinal recovery, so
-    // it would spuriously trip the splat while rotating and break invariant #1's
-    // per-axis / smooth-yaw byte-identity. Zeroing the radius there makes that
-    // byte-identity STRUCTURAL (radius 0 = pre-#2270 master) instead of leaning
-    // on the per-axis dense-footprint assumption. The world-placed resolve
-    // (P4b-3) does NOT use this — its cast has real point-scatter holes the splat
+    // deliberately zeros residualYaw to reuse the cardinal recovery, so
+    // it would spuriously trip the splat while rotating and change the per-axis
+    // smooth-yaw output. Zeroing the radius there makes that
+    // a structural no-splat path (radius 0) instead of leaning
+    // on the per-axis dense-footprint assumption. World-placed casting does not
+    // use this — it has point-scatter holes the splat
     // must fill (measured). See docs/design/sun-shadow-bake-coverage.md
     // § "Byte-identity regimes".
     void patchSunSplatRadius(float radiusTexels) {
@@ -328,18 +327,18 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
 
-        // Smooth camera Z-yaw (#1435): bake per-axis voxel sun shadows from the
+        // Smooth camera Z-yaw: bake per-axis voxel sun shadows from the
         // screen-space resolve texture RESOLVE_PER_AXIS_SCREEN_DEPTH produced.
         // The resolve scattered the three face-local per-axis canvases into the
         // main canvas's cardinal distance layout (front-most per screen pixel),
         // so we cast it through the SAME cardinal path as the main canvas
         // (perAxisRoute stays 0, recovery via trixelCanvasPixelToWorld3D) — no
         // shader change, just a second source texture. This is what fixed the
-        // #1380 cross-face self-occlusion: the per-screen-pixel flattening the
+        // cross-face self-occlusion: the per-screen-pixel flattening the
         // raw face-local store lacked. The per-axis RECEIVE
         // (COMPUTE_SUN_SHADOW, perAxisCellToWorld3DSubCell) recovers the
         // lattice origin PLUS the encoding's sub-cell frac, so the resolve
-        // applies that same frac before it emits (#2816) — but the agreement is
+        // applies that same frac before it emits — but the agreement is
         // only as fine as the destination layout: the resolve deposits into an
         // INTEGER cardinal layout at effSub resolution, so the frac survives to
         // 1/effSub of a world cell and at effSub == 1 it is quantized away
@@ -357,7 +356,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             perAxisCanvases_->isAllocated()) {
             // The resolve texture is CARDINAL-layout — zero the resident
             // frame's residual for this dispatch so the bake shader keeps the
-            // cardinal recovery (#1719), then restore the camera split for
+            // cardinal recovery, then restore the camera split for
             // downstream consumers (COMPUTE_SUN_SHADOW's smooth receive).
             const float cameraVisualYaw = IRPrefab::Camera::getYaw();
             const auto [cameraRasterYaw, cameraResidualYaw] =
@@ -365,8 +364,8 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             patchFrameYawSplit(cameraRasterYaw, 0.0f);
             const FrameYawRestoreGuard restoreGuard{*this, cameraVisualYaw, cameraResidualYaw};
             // This resolve reuses the cardinal recovery (residualYaw == 0), which
-            // would spuriously engage the #2270 coverage splat; the per-axis
-            // resolve is already footprint-dense (#1724), so gate it off
+            // would spuriously engage the coverage splat; the per-axis
+            // resolve is already footprint-dense, so gate it off
             // structurally for this dispatch (byte-identical to master).
             patchSunSplatRadius(0.0f);
             const SunSplatRestoreGuard splatGuard{*this, frameData_.sunSplatMaxTexels_};
@@ -384,7 +383,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         }
 
         // World sun-shadow CAST for opt-in world-placed detached re-voxelize
-        // solids (#1576 P4b-3, Q2 mechanism a′ — resolve-then-bake). Mirrors the
+        // solids through resolve-then-bake. Mirrors the
         // per-axis resolve precedent above: scatter every caster's model-frame
         // distances into ONE shared main-canvas-layout scratch (lifted to world
         // by its cell origin), blit to the resolve texture, then ONE extra bake
@@ -392,8 +391,8 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         // resolve texture is imageStore-written (real texture memory), so the
         // bake's read works on Metal — unlike the canvases' own imageAtomicMin
         // distance textures, whose data lives behind the image-atomic scratch
-        // indirection and reads empty in a second in-tick bake dispatch (the
-        // rejected first mechanism; backend gap tracked in #1640). Requires a
+        // indirection and reads empty in a second in-tick bake dispatch. A direct
+        // second bake therefore cannot consume them. Requires a
         // voxel main canvas (the frame restore below re-authors its UBO state).
         if (entity == perAxisCanvasEntity_ && !worldPlacedCasters_.empty() &&
             mainTextures_ != nullptr && mainPool_ != nullptr && mainRotation_ != nullptr) {
@@ -413,13 +412,13 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             // Passes 1–3 below project / recover through the CARDINAL layout
             // (the scatter reads rasterYaw only; pass 3's bake recovery must
             // not take the smooth-yaw branch) — zero the resident residual for
-            // the block and restore the camera split at the end (#1719).
+            // the block and restore the camera split at the end.
             const float cameraVisualYaw = IRPrefab::Camera::getYaw();
             const auto [cameraRasterYaw, cameraResidualYaw] =
                 IRPrefab::Camera::computeYawSplit(cameraVisualYaw);
             patchFrameYawSplit(cameraRasterYaw, 0.0f);
             const FrameYawRestoreGuard restoreGuard{*this, cameraVisualYaw, cameraResidualYaw};
-            // NOTE: unlike the per-axis resolve above, the #2270 coverage splat
+            // NOTE: unlike the per-axis resolve above, the coverage splat
             // is left ENGAGED for pass 3's bake. The world-placed re-voxelize
             // cast's resolve texture carries the SAME screen-space point-scatter
             // as the main canvas (its sun-UV projection undersamples grazing
@@ -511,13 +510,13 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         }
     }
 
-    // Collect world-placed detached re-voxelize solids (the default since
-    // #1624; screenLocked_ canvases opt out) for the cast resolve (#1576
-    // P4b-3). Iterates C_EntityCanvas — the same component the composite
+    // Collect world-placed detached re-voxelize solids for the cast resolve;
+    // screenLocked_ canvases opt out. Iterates C_EntityCanvas — the same
+    // component the composite
     // (ENTITY_CANVAS_TO_FRAMEBUFFER) reads screenLocked_ off — and
     // captures each world-placed canvas's distance texture + the world cell origin
     // PROPAGATE_CANVAS_ROTATION stamped on its C_CanvasLocalRotation (the same
-    // propagated values the P4b-2 receive consumes, so cast and receive share
+    // propagated values the world-receive path consumes, so cast and receive share
     // one world origin per frame). Once per frame in beginTick (few canvases),
     // so the per-canvas getComponentOptional is canvas iteration, not the
     // per-voxel ECS footgun.
@@ -560,7 +559,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
                 IRRender::getNamedResource<Buffer>("ComputeSunShadowFrameData");
         }
 
-        // Resolve the main canvas + its per-axis voxel canvases (#1435). Done
+        // Resolve the main canvas + its per-axis voxel canvases. Done
         // before the shadowsEnabled early-return so the pointer is always fresh.
         perAxisCanvasEntity_ = IRRender::getCanvas("main");
         perAxisCanvases_ = nullptr;
@@ -572,7 +571,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             }
         }
 
-        // World sun-shadow CAST (#1576 P4b-3): gather opt-in world-placed detached
+        // World sun-shadow cast: gather opt-in world-placed detached
         // re-voxelize solids + resolve the main canvas's voxel-frame inputs (for
         // the pre-scatter main-frame author). Done before the shadowsEnabled
         // early-return so the list is always fresh (tick won't cast when shadows
@@ -581,7 +580,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         // footgun — same pattern as resolveSun() above.
         gatherWorldPlacedCasters();
         {
-            // #2315 V1: surface the caster count + the widened shadow-feeder
+            // Surface the caster count and widened shadow-feeder
             // AABB on the perf HUD's CULL block (same GpuStageTiming counter
             // pattern as COMPUTE_LIGHT_VOLUME's lightsSeeded_/lightsEligible_).
             // Uses the canonical gated helper (frameShadowFeederParams()) so
@@ -693,7 +692,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         frameData_.cascadeSplitDepth_ = splitDepth;
         frameData_.cascadeCount_ = kSunShadowCascadeCount;
 
-        // #2270 coverage-splat radius / kill switch. c_bake_sun_shadow_map
+        // coverage-splat radius / kill switch. c_bake_sun_shadow_map
         // atomicMin's each caster's depth into a (2·r+1)² box to fill the
         // point-scattered cast-shadow holes; the atomicMin makes it a no-op where
         // geometry is already dense (saturated-host byte-identity). This resident
@@ -707,7 +706,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         frameData_.sunSplatMaxTexels_ = static_cast<float>(kSunSplatMaxTexels);
         // The receiver's shadow-throw window reads the SAME sweep distance the
         // feeder / bake AABB use, so a baked caster is receivable at its full
-        // throw and the two cannot drift (#2320).
+        // throw and the two cannot drift.
         frameData_.sunMaxShadowThrow_ = kSunShadowMaxDistance;
     }
 
@@ -720,7 +719,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             "BakeSunShadowMapProgram",
             std::vector{ShaderStage{IRRender::kFileCompBakeSunShadowMap, ShaderType::COMPUTE}}
         );
-        // World-placed detached cast resolve (#1576 P4b-3). The blit reuses the
+        // World-placed detached cast resolve. The blit reuses the
         // per-axis kernel FILE under a bake-owned program name so the cast does
         // not depend on RESOLVE_PER_AXIS_SCREEN_DEPTH being registered.
         IRRender::createNamedResource<ShaderProgram>(
@@ -764,7 +763,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
     }
 };
 
-// Read-back accessor (#2316, V2) — mirrors lightGatherRecords()'s pattern
+// Read-back accessor mirroring lightGatherRecords's pattern
 // (system_compute_light_volume.hpp). The culling minimap's caster domain
 // reads this frame's world-placed casters back rather than re-running
 // gatherWorldPlacedCasters() itself.

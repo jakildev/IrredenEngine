@@ -19,7 +19,7 @@ namespace IRSystem {
 // size first (e.g. `divCeil(liveCount, 64)`). Callers must guarantee
 // `count > 0`; the assert below enforces it. `count == 0` divides by zero
 // here — a SIGFPE on x86 Linux, but silently yields a (0,0) grid on Apple
-// Silicon (#1619), so the contract is asserted at entry rather than left to
+// Silicon, so the contract is asserted at entry rather than left to
 // each caller's discipline. The one legitimate empty-pool path
 // (`buildVoxelFrameData`, lighting on an empty canvas) clamps to 1 before
 // calling — see voxel_frame_data.hpp.

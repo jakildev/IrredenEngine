@@ -8,11 +8,11 @@
 // `C_GizmoHandle` marker for the interaction systems. Returns the root
 // entity of the group so callers can re-parent or destroy as a unit.
 //
-// Phase 1 renders handles at fixed world-space size. Phase 2 (T-164)
-// adds the screen-space sizing UPDATE system (`GIZMO_SCREEN_SPACE_SIZE`)
+// Handles are rendered at fixed world-space size, while the screen-space sizing
+// UPDATE system (`GIZMO_SCREEN_SPACE_SIZE`)
 // and opts each handle into the generic `SHAPE_FLAG_XRAY_OCCLUDED`
 // shader path so occluded handles still read as a faint silhouette.
-// Phase 3 (T-165) wires hover detection + drag interaction via the
+// Hover detection and drag interaction run through the
 // `GIZMO_HOVER` / `GIZMO_DRAG` INPUT-pipeline systems; each spawned
 // handle carries `baseColor_` (for the hover tint round-trip) and
 // `anchorEntity_` (the entity whose `C_LocalTransform` drag mutates — the
@@ -32,7 +32,7 @@ namespace IRPrefab::Gizmo {
 
 namespace detail {
 
-// Phase 1 handle sizing — tuned to be visible against the voxel_editor's
+// Handle sizing is tuned to be visible against the voxel_editor's
 // 16-unit axis indicators while staying small enough not to dominate.
 constexpr float kArrowShaftRadius = 0.4f;
 constexpr float kArrowShaftLength = 6.0f;
@@ -108,17 +108,17 @@ inline IREntity::EntityId spawnHandle(
 ) {
     // Opt the handle's shape into the generic xray-occlusion shader path
     // so SHAPES_TO_TRIXEL emits the faint-silhouette alpha blend where
-    // the handle sits behind closer geometry (T-164 Phase 2).
+    // the handle sits behind closer geometry.
     C_ShapeDescriptor shapeDesc{shapeType, shapeParams, color};
     shapeDesc.flags_ = IRRender::SHAPE_FLAG_VISIBLE | IRRender::SHAPE_FLAG_XRAY_OCCLUDED;
 
     // Capture construction-time reference values on the handle for
-    // downstream systems. Phase 2 screen-space sizing reads
+    // downstream systems. Screen-space sizing reads
     // `referenceParams_` / `referenceLocalPos_` as the unscaled baseline
     // and writes scaled copies back each UPDATE tick. `isAnchor_` is
     // true for single-entity markers whose own `C_LocalTransform` is the
     // world-space anchor (the editor writes it post-construction) —
-    // Phase 2 then scales params but leaves pos alone. Phase 3 records
+    // The sizing pass scales params but leaves pos alone. The component records
     // `baseColor_` for the hover-tint round-trip and `anchorEntity_` =
     // `parent` so drag mutations land on the gizmo group entity (so
     // every axis of a multi-handle gizmo shares one anchor). For
@@ -213,7 +213,7 @@ inline IREntity::EntityId createTranslateGizmo(IREntity::EntityId parent = IREnt
 /// moves, and its `C_GizmoHandle::anchorEntity_` points at `anchor` so a
 /// `GIZMO_DRAG` mutates the anchor directly. Use for per-target placement
 /// handles where the moved entity IS the visual anchor — e.g. a skeletal
-/// joint authored in the voxel editor (#1604). No group entity is
+/// joint authored in the voxel editor. No group entity is
 /// created; the returned id is `anchor` itself. (`createTranslateGizmo`,
 /// by contrast, anchors its arrows to the group it returns, so dragging
 /// moves the gizmo as a free-standing unit.)
@@ -237,7 +237,7 @@ inline IREntity::EntityId createRotateGizmo(IREntity::EntityId parent = IREntity
 /// and its `C_GizmoHandle::anchorEntity_` points at `anchor` so a
 /// `GIZMO_DRAG` rotation lands on the anchor directly. Use for per-target
 /// posing handles where the rotated entity IS the visual anchor — e.g. FK
-/// pose editing of a skeletal joint in the voxel editor (#1610). No group
+/// pose editing of a skeletal joint in the voxel editor. No group
 /// entity is created; the returned id is `anchor` itself.
 inline IREntity::EntityId createRotateGizmoForAnchor(IREntity::EntityId anchor) {
     using namespace detail;
@@ -347,9 +347,7 @@ inline IREntity::EntityId createBindPointMarker(IREntity::EntityId parent = IREn
     return group;
 }
 
-/// IK target marker — distinctive shape (cone, yellow). Phase 1 uses a
-/// cone as the "distinctive" primitive; Phase 2 may upgrade to a true
-/// tetrahedron once a 4-wedge composition or a new SDF primitive lands.
+/// IK target marker: a distinctive yellow cone.
 inline IREntity::EntityId createIKMarker(IREntity::EntityId parent = IREntity::kNullEntity) {
     using namespace detail;
     return spawnHandle(

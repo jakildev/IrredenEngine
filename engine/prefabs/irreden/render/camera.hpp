@@ -30,20 +30,20 @@ namespace IRPrefab::Camera {
 // system_voxel_to_trixel.hpp, the FrameDataVoxelToCanvas UBO, the sun-shadow
 // bake's frame patch) derives the same predicate from the same value and cannot
 // disagree. A split predicate freed the per-axis textures while the per-axis
-// path still read them, causing see-through coverage holes at 90°/180° (#1882).
+// path still read them, causing see-through coverage holes at 90°/180°.
 inline constexpr float kResidualYawDeadband = 1e-4f;
 
 /// Decompose a continuous Z-yaw value into (rasterYaw, residualYaw):
 ///   rasterYaw   = nearest cardinal multiple of π/2 to @p visualYaw
 ///   residualYaw = visualYaw - rasterYaw, lies in [-π/4, π/4], reported as
-///                 exactly 0 within kResidualYawDeadband (see above)
+///                 exactly 0 within kResidualYawDeadband
 /// rasterYaw selects the cardinal-snap basis for the integer trixel
-/// rasterizer; residualYaw is the leftover angle the screen-space
-/// residual composite pass rotates the canvas by.
+/// rasterizer; residualYaw is the leftover angle used by the screen-space
+/// composite.
 inline std::pair<float, float> computeYawSplit(float visualYaw) {
     const float rasterYaw = IRMath::round(visualYaw / IRMath::kHalfPi) * IRMath::kHalfPi;
     const float residualYaw = visualYaw - rasterYaw;
-    // Single-source deadband (#1882): a residual within float-noise of a
+    // Single-source deadband: a residual within float-noise of a
     // cardinal reports as exactly 0 so the allocation gate and the render
     // path-select gate agree. No-op for visible rotation (|residual| >
     // deadband) and for an exact cardinal (residual already 0) — byte-identical.

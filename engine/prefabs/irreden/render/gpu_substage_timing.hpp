@@ -9,14 +9,14 @@
 
 namespace IRRender {
 
-// Intra-tick GPU sub-stage timing (#2280).
+// Intra-tick GPU sub-stage timing.
 //
 // Where the per-system `GpuStageTimingObserver` brackets a whole system tick
 // with one timestamp pair, `GpuSubStageScope` brackets an individual dispatch
 // group *inside* one tick, so a bundled per-system row can be split into its
 // reserved sub-rows. VOXEL_TO_TRIXEL_STAGE_1 uses four of these
 // (`canvasClear` / `voxelCompact` / `voxelStage1` / `voxelStage2`) to attribute
-// what used to be one opaque `voxelStage1` measurement — see #2258.
+// the otherwise opaque `voxelStage1` measurement.
 //
 // Mechanism: reuses the device timestamp-pair machinery unchanged
 // (`createTimestampPair` / `writeTimestamp` / `readTimestampPairMs`) at the
@@ -25,14 +25,14 @@ namespace IRRender {
 // leaves that slot free. On Metal the sub-scope's `writeTimestamp(START)`
 // claims the sticky encoder attachment for the enclosed dispatch group's
 // encoders (compute encoders via `createComputeEncoder`, and the distance-clear
-// blit via `createBlitEncoder`); `END` releases it — exactly the #1746
-// semantics, scoped to the sub-window. On OpenGL the `glQueryCounter` markers
+// blit via `createBlitEncoder`); `END` releases it with the same semantics,
+// scoped to the sub-window. On OpenGL the `glQueryCounter` markers
 // bracket the enclosed commands in the stream.
 //
 // The per-scope async readback mirrors the observer's `kSamplesInFlight` ring,
 // so no `finish()` stall is introduced. Timers-off (the default) costs one bool
 // check per scope. A scope produces one sample per close; multi-canvas scenes
-// overwrite the row with the last canvas's sample (the single-canvas #2258
+// overwrite the row with the last canvas's sample (the single-canvas
 // target is exact), matching every `GpuStageTiming::*Ms_` field's existing
 // last-sample semantics.
 class GpuSubStageTimer {
@@ -130,7 +130,7 @@ class GpuSubStageTimer {
     // Only the entries a `GpuSubStageScope` names are ever initialized. The
     // timer outlives every scope (program-bound singleton) so the pairs and the
     // in-flight ring survive across frames; the pairs leak at process exit,
-    // which the OpenGL segfault-on-static-destruction lesson (#2031) makes the
+    // which the OpenGL segfault-on-static-destruction lesson makes the
     // deliberate choice over a static destructor that touches a dead GL context.
     std::array<SubStageState, kGpuStageCount> m_states{};
 };
@@ -143,7 +143,7 @@ inline GpuSubStageTimer &gpuSubStageTimer() {
 // RAII bracket for one intra-tick dispatch group. Construct just before the
 // group's first dispatch/clear, let it destruct after the group's last barrier.
 // A no-op unless per-frame GPU timing is enabled, the device supports timestamp
-// pairs, and the legacy `finish()`-bracketed path is off (that path can't nest
+// pairs, and the `finish()`-bracketed compatibility path is off (it cannot nest
 // sub-scopes without a stall per group, so sub-rows stay 0.0f under it).
 class GpuSubStageScope {
   public:

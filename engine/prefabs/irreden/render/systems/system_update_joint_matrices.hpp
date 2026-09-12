@@ -1,20 +1,18 @@
 #ifndef SYSTEM_UPDATE_JOINT_MATRICES_H
 #define SYSTEM_UPDATE_JOINT_MATRICES_H
 
-// PURPOSE: per-frame skeletal joint skin-matrix upload (#605 Phase 2.2 / #1603).
-//   For every C_Skeleton, computes each joint's skin matrix
+// Per-frame skeletal joint skin-matrix upload. For every C_Skeleton, computes
+// each joint's skin matrix
 //   (jointWorld × bindInverse, IRPrefab::Skeleton::skinMatrix) and writes it into
 //   the existing binding-18 EntityTransformBuffer that UPDATE_VOXEL_POSITIONS_GPU
-//   (#1396) already consumes. Cost is O(joints), not O(voxels). Phase 2.3 (#1605,
-//   `seedVoxelBoneSlots` below) seeds each skinned voxel's transform slot (`.w`)
+// already consumes. Cost is O(joints), not O(voxels). `seedVoxelBoneSlots`
+// seeds each skinned voxel's transform slot (`.w`)
 //   to `slotBase + bone_id` so the existing c_update_voxel_positions prepass
 //   skins it with no new shader.
 //
-// WHY NO NEW BUFFER: the architect's #605 re-plan unifies skeletal skinning onto
-//   the #1396 prepass — a per-bone skin matrix is exactly the per-voxel transform
-//   indirection the prepass already does, with the slot pointing at a bone instead
-//   of an entity. So this writes into the SAME binding-18 buffer; the speculative
-//   binding-21 JointTransformBuffer is retired for the voxel path in Phase 2.4.
+// A per-bone skin matrix uses the same per-voxel transform indirection as an
+// entity transform, with the slot pointing at a bone. Both therefore share the
+// binding-18 buffer; there is no separate joint-transform buffer.
 //
 // SHARED-BUDGET PARTITION (no clobber by construction): binding-18's 4096 slots
 //   are shared between dynamic voxel-set transforms and joint blocks. To keep the
@@ -32,19 +30,19 @@
 // SCHEDULING: register in the RENDER pipeline AFTER PROPAGATE_TRANSFORM (so each
 //   joint's C_WorldTransform is the current posed transform) and BEFORE
 //   UPDATE_VOXEL_POSITIONS_GPU (so binding 18 holds the joint matrices when the
-//   prepass reads them in Phase 2.3). A creation that authors skeletons must
+//   prepass reads them). A creation that authors skeletons must
 //   register UPDATE_VOXEL_POSITIONS_GPU too — this system reuses its buffer.
 //
 // ITERATION: iterates joints via the <C_Joint, C_WorldTransform> archetype, so a
 //   joint's world transform arrives by dense-column iteration with NO per-entity
 //   getComponent in tick. The per-skeleton rest pose (bindPose_) and target slot are
 //   gathered once per frame in beginTick (reading C_Skeleton's own fields).
-//   seedVoxelBoneSlots (called from beginTick, block-realloc-only) looks up
+//   seedVoxelBoneSlots runs during block reallocation and looks up
 //   C_VoxelSetNew and C_VoxelPool via getComponentOptional/getComponent — compliant:
 //   rare, beginTick-only, no iterator-invalidation risk.
 //
 // DEPENDENCIES: C_Skeleton (+ bindPose_), C_Joint, C_WorldTransform,
-//   IRPrefab::Skeleton::skinMatrix (#1602), GpuVoxelTransform / binding-18 slot
+// IRPrefab::Skeleton::skinMatrix, GpuVoxelTransform / binding-18 slot
 //   constants (ir_render_types.hpp). No shader, no new GPU resource of its own.
 
 #include <irreden/ir_render.hpp>
@@ -101,7 +99,7 @@ template <> struct System<UPDATE_JOINT_MATRICES> {
     std::vector<JointTarget> jointTargets_;
 
     // Persistent per-skeleton slot block, so a skeleton keeps the same slots
-    // across frames (Phase 2.3 seeds voxels against this base once) and its
+    // across frames (voxels are seeded against this base once) and its
     // block is released when the skeleton disappears. base_ is joint 0's slot.
     struct SlotBlock {
         std::uint32_t base_ = 0;
@@ -160,7 +158,7 @@ template <> struct System<UPDATE_JOINT_MATRICES> {
     // `numVoxels_` scalar clamped to the pool's writable tail. Reads the LIVE
     // pool size, never the captured `voxelSet.voxels_` span — a between-frame
     // canvas archetype migration deep-copies C_VoxelPool and frees that span's
-    // backing while `voxelStartIdx_` / `numVoxels_` stay valid (the #2032
+    // backing while `voxelStartIdx_` / `numVoxels_` stay valid (the
     // dangling-read hazard; mirrors C_VoxelSetNew::updateAsChild). The clamp
     // guarantees `[voxelStartIdx_, voxelStartIdx_ + count)` never runs past
     // live storage even if a migration shrank the pool.
@@ -176,7 +174,7 @@ template <> struct System<UPDATE_JOINT_MATRICES> {
     // but the capacity persists so repeated re-rigs don't churn).
     std::vector<std::uint32_t> boneSlotStaging_;
 
-    // Phase 2.3 (#1605): point each voxel of the rig root's voxel set at its
+    // Point each voxel of the rig root's voxel set at its
     // bone's binding-18 slot (`block.base_ + bone_id`) so the existing
     // c_update_voxel_positions prepass skins it — no new shader, no stage-1
     // change. A bone_id outside the joint list falls back to the SET's entity
@@ -212,7 +210,7 @@ template <> struct System<UPDATE_JOINT_MATRICES> {
         const SlotBlock &block = blockIt->second;
         // Read bone ids from the live pool, never the captured `voxelSet.voxels_`
         // span (see liveWritableVoxelCount — derefing the stale span here is the
-        // #2032 first-frame segfault).
+        // first-frame segfault).
         C_VoxelPool &pool = IREntity::getComponent<C_VoxelPool>(voxelSet.canvasEntity_);
         const std::size_t startIdx = voxelSet.voxelStartIdx_;
         const std::size_t count = liveWritableVoxelCount(voxelSet, pool);
@@ -247,7 +245,7 @@ template <> struct System<UPDATE_JOINT_MATRICES> {
         }
         // Stable `numVoxels_` clamped to the live pool, not `voxelSet.voxels_.size()`
         // — the captured span is invalidated by a canvas archetype migration (see
-        // liveWritableVoxelCount, #2032).
+        // liveWritableVoxelCount).
         C_VoxelPool &pool = IREntity::getComponent<C_VoxelPool>(voxelSet.canvasEntity_);
         const std::size_t count = liveWritableVoxelCount(voxelSet, pool);
         if (count == 0) {
@@ -290,7 +288,7 @@ template <> struct System<UPDATE_JOINT_MATRICES> {
                 if (block.count_ != 0) {
                     // The bone→slot mapping was just established or moved —
                     // re-stamp the rig's voxel set so binding 17 re-seeds
-                    // this frame (Phase 2.3, #1605).
+                    // this frame.
                     seedVoxelBoneSlots(rigRoot);
                 } else {
                     // Exhaustion: re-stamp voxels to rigid follow so stale
@@ -412,8 +410,8 @@ namespace IRPrefab::JointTransform {
 
 // Handle to the UPDATE_JOINT_MATRICES skeleton slot blocks — the same shape as
 // `IRPrefab::VoxelTransform` (the entity-slot half of the shared binding-18
-// budget). The id is resolved from SystemManager's `SystemName` registry
-// (#2526), so creating the system is all the wiring there is; a creation that
+// budget). The id is resolved from SystemManager's `SystemName` registry, so
+// creating the system is all the wiring there is; a creation that
 // rigs voxel sets needs no follow-up call.
 inline IRSystem::System<IRSystem::UPDATE_JOINT_MATRICES> *system() {
     const IRSystem::SystemId systemId = IRSystem::findSystem(IRSystem::UPDATE_JOINT_MATRICES);
@@ -429,7 +427,7 @@ inline IRSystem::System<IRSystem::UPDATE_JOINT_MATRICES> *system() {
 inline void setSystem(IRSystem::SystemId) {}
 
 // Absolute binding-18 slot of joint 0 in `rigRoot`'s skeleton block —
-// per-voxel skinning slots are `slotBase + bone_id` (#605 Phase 2.3). Returns
+// per-voxel skinning slots are `slotBase + bone_id`. Returns
 // `IRRender::kVoxelTransformStatic` when the system is unwired, the skeleton
 // has no block yet (first UPDATE_JOINT_MATRICES tick hasn't run), or the
 // joint region is exhausted.

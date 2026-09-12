@@ -22,7 +22,7 @@ enum class LightType : int {
 /// Light source component: marks an entity as a light emitter for all
 /// lighting phases (AO, shadows, flood-fill, fog-of-war LOS).
 ///
-/// Per-canvas scope (#363, T-116). A C_LightSource entity contributes to
+/// Per-canvas scope. A C_LightSource entity contributes to
 /// every canvas with a `C_CanvasLightVolume` by default. Calling
 /// `IREntity::setParent(lightEntity, canvasEntity)` scopes the light to
 /// that canvas only — useful when a UI / inset canvas should not be lit

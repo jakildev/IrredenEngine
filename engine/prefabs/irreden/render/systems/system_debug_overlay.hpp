@@ -14,7 +14,7 @@
 // The `namespace IRDebug` draw surface this system flushes. It sits in its own
 // header so non-render TUs (the Lua binding) can issue draws without the GPU
 // headers above; the buffers are shared across TUs by inline-function
-// static-local deduplication. See #2375.
+// static-local deduplication.
 #include <irreden/render/debug_overlay_draws.hpp>
 
 #include <vector>

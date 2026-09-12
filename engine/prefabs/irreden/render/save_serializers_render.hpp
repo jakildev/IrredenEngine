@@ -2,7 +2,7 @@
 #define IR_SAVE_SERIALIZERS_RENDER_H
 
 /// `SaveSerialize<C>` specializations for the heap-owning components in
-/// `engine/prefabs/irreden/render/` (#2242) — text, sprite playback state,
+/// `engine/prefabs/irreden/render/` — text, sprite playback state,
 /// the triangle-canvas pair, and the widget family.
 ///
 /// These are all **CPU-side** render components. The GPU-handle-owning ones

@@ -67,7 +67,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
     // permutation instead of open-coding the same cos/sin product.
     IRMath::CardinalIndex cardinalIndex_ = IRMath::CardinalIndex::k0;
     bool yawZero_ = true;
-    // Continuous-yaw snapshot for the smooth camera Z-yaw SDF path (#1345).
+    // Continuous-yaw snapshot for the smooth camera Z-yaw SDF path.
     // smoothYaw_ is true inside a residual bracket (residualYaw != 0); the cull
     // (any canvas — widening is conservative) and the main-canvas tile footprint
     // then project at the full visualYaw and grow by the continuous |cos|,|sin|
@@ -172,8 +172,8 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         // if a script mutates yaw mid-frame. The shape SDF
         // rasterizes at rasterYaw (cardinal-snap) so it lines up
         // trixel-for-trixel with the voxel pool's cardinal-snap
-        // raster (T-055); the screen-space residual rotate pass
-        // (T-058) handles the leftover residualYaw on screen.
+        // raster; the screen-space residual rotate pass
+        // handles the leftover residualYaw on screen.
         visualYaw_ = IRPrefab::Camera::getYaw();
         const auto [rasterYaw, residualYaw] = IRPrefab::Camera::computeYawSplit(visualYaw_);
         rasterYaw_ = rasterYaw;
@@ -183,7 +183,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         yawCos_ = cardinalCosSin.x;
         yawSin_ = cardinalCosSin.y;
         yawZero_ = (rasterYaw_ == 0.0f);
-        // Smooth camera Z-yaw (#1345): continuous-yaw cull/footprint inside a
+        // Smooth camera Z-yaw: continuous-yaw cull/footprint inside a
         // residual bracket. cos/sin of the full visualYaw (not the cardinal
         // table) so the rotated footprint grows to the true sqrt(2) extent.
         smoothYaw_ = (residualYaw_ != 0.0f);
@@ -254,15 +254,14 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             frameData_.visualYaw = visualYaw;
             frameData_.rasterYaw = rasterYaw;
             frameData_.residualYaw = residualYaw;
-            // Smooth camera Z-yaw (#1345): the continuous-yaw SDF path is enabled
+            // Smooth camera Z-yaw: the continuous-yaw SDF path is enabled
             // only on the rotating MAIN world canvas. Detached per-entity canvases
             // keep the cardinal rasterYaw + faceDeform path (their camera-rotation
             // is absorbed by their own SO(3) bake, not the SDF rasterizer).
             const bool canvasSmoothYaw = smoothYaw_ && (canvasId == mainCanvas);
             frameData_.smoothYawEnabled = canvasSmoothYaw ? 1 : 0;
-            // Residual yaw is folded into faceDeform per-face for the
-            // shapes shader (T-293, replaces the T-058 / T-322 bilinear
-            // path). Identity at residualYaw==0.
+            // Residual yaw is folded into faceDeform per-face for the shapes
+            // shader. Identity at residualYaw == 0.
             const mat2 fdX = IRMath::faceDeformationMatrix(IRMath::kXFace, residualYaw);
             const mat2 fdY = IRMath::faceDeformationMatrix(IRMath::kYFace, residualYaw);
             const mat2 fdZ = IRMath::faceDeformationMatrix(IRMath::kZFace, residualYaw);
@@ -310,7 +309,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             // `MTL_DEBUG_LAYER=1`. Colors is READ_WRITE (not WRITE_ONLY) so the
             // SHAPE_FLAG_GIZMO occluded-blend branch can imageLoad the existing
             // canvas color and blend the gizmo silhouette on top at reduced
-            // alpha (T-164); non-gizmo writes are still pure stores.
+            // alpha; non-gizmo writes are still pure stores.
             canvasTextures.getTextureColors()
                 ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
             canvasTextures.getTextureEntityIds()
@@ -332,8 +331,8 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             // Pass 1: color + entity ID where depth matches. Colors is bound
             // READ_WRITE (not WRITE_ONLY) so the SHAPE_FLAG_GIZMO occluded-
             // blend branch in the shader can imageLoad the existing canvas
-            // color and blend the gizmo silhouette on top at reduced alpha
-            // (T-164). Non-gizmo writes are still pure stores; the read
+            // color and blend the gizmo silhouette on top at reduced alpha.
+            // Non-gizmo writes are still pure stores; the read
             // capability is only exercised on the occluded gizmo path.
             canvasTextures.getTextureColors()
                 ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
@@ -377,9 +376,8 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             BufferTarget::UNIFORM,
             kBufferIndex_ShapesFrameData
         );
-        // Scaffolding for future SDF-shape joint deformation (binding 21,
-        // c_shapes_to_trixel.glsl). jointData[] is declared in the shader but not
-        // yet indexed — all shapes set jointIndex = 0. Not used by the voxel
+        // Binding 21 mirrors c_shapes_to_trixel.glsl's declared jointData[];
+        // shapes currently leave jointIndex at 0. It is not used by the voxel
         // skinning path (which uses EntityTransformBuffer at binding 18 and
         // per-voxel bone-slot indices at binding 17 via seedVoxelBoneSlots).
         IRRender::createNamedResource<Buffer>(
@@ -415,7 +413,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         p->shapesFrameDataBuf_ = IRRender::getNamedResource<Buffer>("ShapesFrameDataBuffer");
         p->shapeTileDescBuf_ = IRRender::getNamedResource<Buffer>("ShapeTileDescriptorBuffer");
         // Per-system bracket covers both pass 0 (depth) and pass 1 (color/id);
-        // the formerly-separate shapePass0 slot stays at 0.0f for API stability.
+        // shapePass0 stays at 0.0f for API stability.
         IRRender::tagGpuStage(systemId, "shapePass1");
         return systemId;
     }
@@ -431,12 +429,12 @@ template <> struct System<SHAPES_TO_TRIXEL> {
     // rotated AABB. At rasterYaw=0 both operations are identity and the
     // tile coverage is unchanged. The shader rasterizes at rasterYaw too,
     // so the iso footprint of each tile matches the pixels the shader
-    // writes; residualYaw is handled downstream in screen space (T-058).
+    // writes; residualYaw is handled downstream in screen space.
     // @p yawCos/@p yawSin are cos/sin of rasterYaw, snapshotted at frame
     // start so the cull pass and the per-tile dispatch see byte-identical
     // values even if a script mutates yaw mid-frame.
     //
-    // Smooth camera Z-yaw (#1345): when @p smoothYaw is set the tile footprint
+    // Smooth camera Z-yaw: when @p smoothYaw is set the tile footprint
     // is centered on the FULL-visualYaw iso projection (matching the shader's
     // continuous originIsoScaled) and grown by the continuous |cos|,|sin| up to
     // the sqrt(2) extent. @p visualYaw / @p yawCosVisual / @p yawSinVisual are

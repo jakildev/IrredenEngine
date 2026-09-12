@@ -7,8 +7,8 @@ namespace IRComponents {
 
 // Singleton: the z-ordered topmost hovered widget, published once per frame
 // by System<WIDGET_INPUT>::endTick from its private topHoveredId_ routing
-// result. Lets a consumer — chiefly the headless GUI-test harness (P3,
-// #1796) — read "which widget is hovered" without re-scanning every hitbox.
+// result. Lets a consumer, chiefly the headless GUI-test harness, read
+// "which widget is hovered" without re-scanning every hitbox.
 //
 // Create exactly one per world via IRPrefab::Widget::makeGuiHoverState() and
 // read it back with IRPrefab::Widget::hoveredWidget(). When no instance

@@ -1,10 +1,8 @@
 #ifndef LOD_UTILS_H
 #define LOD_UTILS_H
 
-// PURPOSE: Zoom-to-LOD level mapping and per-level voxel scale factors for
-//   level-of-detail rendering. Phase 1 wires this into LOD_UPDATE (writes
-//   C_ActiveLodLevel) and SHAPES_TO_TRIXEL (filters C_ShapeDescriptor by
-//   lodMin_). Design rationale in docs/design/lod-strategy.md.
+// Zoom-to-LOD mapping used by LOD_UPDATE and SHAPES_TO_TRIXEL. Design rationale
+// lives in docs/design/lod-strategy.md.
 //
 // Tier index goes DOWN as detail goes UP: LOD_0 is the highest-detail tier
 // (zoom-in close-up), LOD_4 is the coarsest silhouette tier (always
@@ -41,10 +39,7 @@ inline LodLevel computeLodLevel(float zoomLevel) {
     return LodLevel::LOD_4;
 }
 
-// Per-tier voxel scale factor for future content tiers — a single .vxs
-// authored at LOD_0 can be downsampled to coarser tiers by this ratio.
-// Not consumed by Phase 1 (the filter is binary per-shape), but kept here
-// so Phase 2's prefab-manifest composition has a shared scale table.
+// Per-tier voxel scale factor for content authored once at LOD_0.
 inline float lodVoxelScale(LodLevel lodLevel) {
     switch (lodLevel) {
     case LodLevel::LOD_0:
@@ -72,7 +67,7 @@ inline float lodVoxelScale(LodLevel lodLevel) {
 // <= LOD_4) — byte-identical to the pre-band single-sided filter. Authoring
 // co-located variants with disjoint bands yields exclusive LOD: exactly one
 // renders per zoom, so they swap rather than stack (the additive-overlap
-// glitch from #1467). The coarsest variant keeps lodMin = LOD_4 to persist at
+// visibility glitch). The coarsest variant keeps lodMin = LOD_4 to persist at
 // min zoom; the finest keeps lodMax = LOD_0 to persist past its threshold.
 inline bool shouldSkipAtLod(LodLevel lodMin, LodLevel lodMax, LodLevel activeLod) {
     const std::uint32_t active = toUnderlying(activeLod);
