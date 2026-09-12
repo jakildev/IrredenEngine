@@ -117,7 +117,8 @@ assert_eq "$(cat "$REL_LOG")" "release 42 pool-3" "still released"
 
 echo "T7: agent defaults to the cwd basename; --reason= form accepted"
 reset_state
-assert_eq "$(decline task 42 --reason="inline form")" "0" "agent-less decline exits 0"
+assert_eq "$(unset FLEET_ROLE FLEET_ROLE_MODEL; decline task 42 --reason="inline form")" "0" \
+    "agent-less decline exits 0"
 assert_contains "$(cat "$GH_LOG")" "body=declined: unknown/unknown @mac-$(basename "$PWD") inline form" \
     "unknown role/class spelled out, agent = cwd basename, reason from --reason="
 
