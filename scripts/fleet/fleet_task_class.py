@@ -6,9 +6,18 @@ This module reads a worker lane's projection slice (written every scout tick
 to ~/.fleet/state/projections/<role>.json) and answers: which model class
 should the next iteration for this lane launch with, and at what effort?
 
-Resolution order mirrors the worker role docs' pickup priority:
+Resolution order is the dispatch priority; a worker handed a target works
+that target regardless of its own in-iteration step order:
 
-  1. feedback PRs   — class from review severity: ``fleet:fable`` on the PR
+  1. semantic-conflict PRs — always opus: judging two sides' intent in a
+                      conflicted rebase is opus-tier work (role-worker step
+                      1c), and a conflicted PR holds up every merge queued
+                      behind it, so conflicts outrank feedback and tasks.
+                      The scout pre-filters the slice's
+                      ``semantic_conflict_prs[]`` (CONFLICTING-gated,
+                      step-1c label exclusions, fleet:resolving-* unclaimed,
+                      stacked-child-deferred), so every entry counts.
+  2. feedback PRs   — class from review severity: ``fleet:fable`` on the PR
                       routes the fix to fable (reviewer judged the approach
                       itself wrong; fable is opus+ so it also serves a
                       fable-tagged design-unblocked resume — checked first);
@@ -17,19 +26,6 @@ Resolution order mirrors the worker role docs' pickup priority:
                       (``fleet:needs-fix`` / ``human:needs-fix`` /
                       ``human:blocker``) routes to opus; nits-only feedback
                       routes to sonnet.
-  2. semantic-conflict PRs — always opus: role-worker step 1c ("judging two
-                      sides' intent in a conflicted rebase is opus-tier
-                      work") runs between feedback and task pickup, and only
-                      inside opus+-class iterations, so each claimable
-                      conflict is one opus item. Without this tier the label
-                      has no dispatch pressure at all — conflicts only
-                      resolve as a ride-along when opus queue work happens
-                      to be flowing, and starve when it isn't (engine
-                      #2417). The scout pre-filters the slice's
-                      ``semantic_conflict_prs[]`` (CONFLICTING-gated per
-                      #1654, step-1c label exclusions, fleet:resolving-*
-                      unclaimed, stacked-child-deferred), so every entry
-                      counts.
   3. open tasks     — the oldest claimable task's class (slices are sorted
                       by issue number; ``model`` comes from the
                       fleet:fable/opus/sonnet labels via the scout).
@@ -382,7 +378,7 @@ def _plan_class(issue, fable_blocked):
 
 
 def _candidates(slice_data, lane_default, host, fable_blocked=False):
-    """Yield (class, effort, kind) per actionable item, pickup-priority order.
+    """Yield (class, effort, kind) per actionable item, dispatch-priority order.
 
     Feedback PRs come first (the worker fixes review feedback before new work),
     then semantic-conflict PRs (role-worker step 1c sits between feedback and
@@ -418,6 +414,16 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False):
             cls = lane_default
         return cls, task.get("effort") or CLASS_DEFAULT_EFFORT[cls]
 
+    # A conflicted PR blocks the merge flow for everything queued behind it,
+    # so conflicts dispatch ahead of feedback and tasks. Resolving one is
+    # opus+-only work, so each conflict is one opus claimable item. The scout
+    # already filtered the slice (CONFLICTING-gated, step-1c label exclusions,
+    # no fleet:resolving-* claim, stacked children deferred to their base),
+    # so no re-filtering here. No host gate either: step 1c build-verifies
+    # IRShapeDebug, which every fleet host builds natively.
+    for pr in slice_data.get("semantic_conflict_prs", []) or []:
+        if not _declined("conflict", pr):
+            yield "opus", CLASS_DEFAULT_EFFORT["opus"], "work", _target("conflict", pr)
     for pr in slice_data.get("feedback_prs", []) or []:
         # Same #1998 host gate tasks get via `_task_claimable`: a
         # `fleet:needs-gl-host` feedback PR has GL-only work left, so
@@ -434,15 +440,6 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False):
             continue
         cls = feedback_pr_class(pr.get("labels", []))
         yield cls, CLASS_DEFAULT_EFFORT[cls], "work", _target("feedback", pr)
-    # Step-1c work is opus+-only, so each conflict is one opus claimable item.
-    # The scout already filtered the slice (CONFLICTING-gated per #1654,
-    # step-1c label exclusions, no fleet:resolving-* claim, stacked children
-    # deferred to their base), so no re-filtering here. No host gate either:
-    # step 1c build-verifies IRShapeDebug, which every fleet host builds
-    # natively, unlike the GL-locked tasks below.
-    for pr in slice_data.get("semantic_conflict_prs", []) or []:
-        if not _declined("conflict", pr):
-            yield "opus", CLASS_DEFAULT_EFFORT["opus"], "work", _target("conflict", pr)
     # A work item this host declined at its current updatedAt is not
     # claimable here: it neither counts toward the election nor reaches the
     # dispatcher's claim walk. (A numberless record still counts — the
@@ -546,7 +543,7 @@ def _held_for_review(pr):
 
 def pick(slice_data, cls, fable_blocked, lane_default="opus"):
     """Ordered dispatch targets for one worker class: every claimable work
-    item of that class in `_candidates` pickup order (feedback, conflict,
+    item of that class in `_candidates` pickup order (conflict, feedback,
     task, stack), then the class's planning candidates (`plan_pick`)."""
     if lane_default not in CLASS_DEFAULT_EFFORT:
         lane_default = "opus"
