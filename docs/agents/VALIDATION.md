@@ -19,7 +19,7 @@ prove is not done until one exists.
 | Format | clang-format on the branch's changed lines | `fleet-build --target format-changed`; no-configure path `cmake -DPROJECT_ROOT=$PWD -DCLANG_FORMAT_BIN=<bin> [-DFORMAT_DIFF_BASE=<commit>] -P cmake/run_clang_format_changed_standalone.cmake` | format-check.yml (changed lines only, clang-format pinned) |
 | Render regression | a demo's shots match committed references | `render-verify` skill; `python3 scripts/render-verify.py --target <Demo>` | render-harness-tests.yml tests the harness itself |
 | GUI behaviour | GUI-ASSERT shots pass for a creation | `gui-verify` skill; `python3 scripts/gui-verify.py <Creation>` | none |
-| Cull regression | occlusion-cull statistics against committed baselines | `python3 scripts/cull-verify.py` | none |
+| Cull regression | the live cull drops no on-screen content, and the freeze that check rests on is actually engaged | `python3 scripts/cull-verify.py` (needs a GL/Metal host) | none for the harness; render-harness-tests.yml runs its freeze-guard assertion arms hermetically |
 | Render metrics | shadow, silhouette, coverage, jitter, clip, depth-tier, feeder-margin, light, pivot readings | `python3 scripts/<metric>-verify.py` / `scripts/render-*-metric.py` | none |
 | Perf gate | frame-time cells against the committed perf baseline | `bash scripts/perf/perf_grid_matrix.sh` then `scripts/perf/compare_perf_runs.py` | perf-gate.yml |
 | Plan lint | a `## Plan` comment is structurally sound | `fleet-plan-lint <issue> [--repo game]` | none (planner-time) |
