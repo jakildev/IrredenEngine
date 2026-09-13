@@ -5,13 +5,11 @@
 /// (#2242). Opt-in serializer header: include it wherever a registry
 /// registers `C_PeriodicIdle`; never pulled by the component header.
 ///
-/// The two other heap-owning components in this domain — `C_GotoEasing3D` and
-/// `C_RotationTarget` — are **not** here: both store a resolved
-/// `GLMEasingFunction` (a `std::function`) rather than the
-/// `IREasingFunctions` enum they were built from, so the authored curve is
-/// unrecoverable at save time. They are opted OUT in
-/// `save_component_inventory.hpp` alongside the other callback-bearing
-/// components; see the note there.
+/// `C_PeriodicIdle` is the only component in this domain with an explicit
+/// serializer. `C_GotoEasing3D` and `C_RotationTarget` store their easing as
+/// the `IREasingFunctions` enum, which makes them trivially copyable and binds
+/// them to the raw-image arm — adding a specialization for either here would
+/// be the silent ODR hazard `engine/world/CLAUDE.md` forbids.
 
 #include <irreden/update/components/component_periodic_idle.hpp>
 #include <irreden/world/save_serialize.hpp>
@@ -26,9 +24,9 @@
 namespace IRWorld {
 
 /// `PeriodStage` stores its easing as the `IREasingFunctions` **enum**, not a
-/// resolved callback, so the stage list round-trips as plain records — the
-/// difference that makes this component serializable where its
-/// `C_GotoEasing3D` sibling is not.
+/// resolved callback, so the stage list round-trips as plain records. The
+/// explicit serializer is needed only for the heap-owning `stages_` vector and
+/// the derived private cache, not for the easing.
 ///
 /// The private cache (`m_angleIncrementPerTick`, `m_currentValue`,
 /// `m_previousValue`) is derived, so `read` reconstructs through the

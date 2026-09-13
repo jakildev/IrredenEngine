@@ -35,6 +35,7 @@ TEST(SaveTrait, ClassABearersOptOut) {
 // world snapshot.
 TEST(SaveTrait, SafetyCriticalOptOuts) {
     EXPECT_FALSE(shouldSave<C_LambdaModifiers>());
+    EXPECT_FALSE(shouldSave<C_LerpEntity>());
     EXPECT_FALSE(shouldSave<C_EntityEventHandlers>());
     EXPECT_FALSE(shouldSave<C_ContactEvent>());
     EXPECT_FALSE(shouldSave<C_SpatialIndex>());
@@ -60,6 +61,16 @@ TEST(SaveTrait, RepresentativeGameplayDataOptsIn) {
 
     EXPECT_TRUE(shouldSave<C_Locked>());
     EXPECT_EQ(saveVersion<C_Locked>(), 1u);
+}
+
+// These two store their easing as the IREasingFunctions enum rather than a
+// resolved GLMEasingFunction, which is what makes them Class F data.
+TEST(SaveTrait, EnumStoredEasingComponentsOptIn) {
+    EXPECT_TRUE(shouldSave<C_GotoEasing3D>());
+    EXPECT_EQ(saveVersion<C_GotoEasing3D>(), 1u);
+
+    EXPECT_TRUE(shouldSave<C_RotationTarget>());
+    EXPECT_EQ(saveVersion<C_RotationTarget>(), 1u);
 }
 
 // Class E — the two explicit-call opt-ins and the deprecated shim opt-out.

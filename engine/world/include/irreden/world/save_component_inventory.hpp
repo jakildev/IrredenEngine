@@ -225,18 +225,6 @@ IR_SAVE_OPT_OUT(IRComponents::C_EntityEventHandlers)
 // as C_LambdaModifiers above, so it opts out too.
 IR_SAVE_OPT_OUT(IRComponents::C_LerpEntity)
 
-// C_GotoEasing3D and C_RotationTarget store `GLMEasingFunction
-// easingFunction_` — a std::function, the same non-serializable shape as
-// C_LerpEntity and C_LambdaModifiers. Both are *constructed* from an
-// IREasingFunctions enum (`kEasingFunctions.at(e)`) but keep only the
-// resolved callable, so the authored curve cannot be recovered at save time:
-// a serializer would have to substitute some default easing on load, silently
-// changing the animation. Their live *output* still persists — both systems
-// write C_LocalTransform, which is opted in. Re-opting in means storing the
-// enum on the component; see #2597.
-IR_SAVE_OPT_OUT(IRComponents::C_GotoEasing3D)
-IR_SAVE_OPT_OUT(IRComponents::C_RotationTarget)
-
 // Class E — C_VoxelSetNew: OPT-IN, flagged provisional (custom serializer is P2/W-3+; flip to
 // OPT-OUT is one line if the slice can't absorb it)
 // v2 (#2563) appended the `anchor_` byte — a non-CORNER set's local origin is
@@ -264,6 +252,11 @@ IR_SAVE_OPT_IN(IRComponents::C_SizeTriangles, 1)
 IR_SAVE_OPT_IN(IRComponents::C_Direction3D, 1)
 IR_SAVE_OPT_IN(IRComponents::C_Magnitude, 1)
 IR_SAVE_OPT_IN(IRComponents::C_RotationMode, 1)
+// C_RotationTarget and C_GotoEasing3D store their easing as the
+// IREasingFunctions enum rather than a resolved GLMEasingFunction, so both
+// are trivially copyable and take the raw-image arm — neither gets an
+// explicit SaveSerialize<C>.
+IR_SAVE_OPT_IN(IRComponents::C_RotationTarget, 1)
 IR_SAVE_OPT_IN(IRComponents::C_AutoSpin, 1)
 IR_SAVE_OPT_IN(IRComponents::C_ChunkMembership, 1)
 IR_SAVE_OPT_IN(IRComponents::C_Velocity3D, 1)
@@ -272,6 +265,7 @@ IR_SAVE_OPT_IN(IRComponents::C_VelocityDrag, 1)
 IR_SAVE_OPT_IN(IRComponents::C_Acceleration3D, 1)
 IR_SAVE_OPT_IN(IRComponents::C_Gravity3D, 1)
 IR_SAVE_OPT_IN(IRComponents::C_HasGravity, 1)
+IR_SAVE_OPT_IN(IRComponents::C_GotoEasing3D, 1)
 IR_SAVE_OPT_IN(IRComponents::C_ReactiveReturn3D, 1)
 IR_SAVE_OPT_IN(IRComponents::C_SpringPlatform, 1)
 IR_SAVE_OPT_IN(IRComponents::C_WallBounce, 1)
