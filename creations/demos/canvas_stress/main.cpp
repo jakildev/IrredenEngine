@@ -1060,6 +1060,10 @@ void registerArgs() {
     args.flag("--no-lighting", "Disable world lighting");
     args.flag("--no-shadows", "Disable sun shadows while retaining directional shading");
     args.flag("--no-ao", "Disable ambient occlusion");
+    args.flag(
+        "--voxel-face-shadows",
+        "Experimental complete voxel-face sun coverage (voxel casters only)"
+    );
     args.flag("--probe-grid", "Render the shadowbox probe through the shared GRID canvas");
     args.numbers("--camera-iso", "Focused capture camera offset <x> <y>", 2);
     args.flag(
@@ -1313,7 +1317,10 @@ void initSystems() {
         // per-axis canvases gracefully degrade to an empty resolve — which is
         // most of this demo's runtime under the default --auto-rotate (#1719).
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::RESOLVE_PER_AXIS_SCREEN_DEPTH>());
-        renderPipeline.push_back(IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>());
+        const auto bakeSun = IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>();
+        IRSystem::getSystemParams<IRSystem::System<IRSystem::BAKE_SUN_SHADOW_MAP>>(bakeSun)
+            ->voxelFaceCoverage_ = IREngine::args().getFlag("--voxel-face-shadows");
+        renderPipeline.push_back(bakeSun);
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>());
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>());
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>());
