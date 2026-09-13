@@ -45,12 +45,14 @@ this ban together with the anonymous-namespace and `*Detail`-namespace bans,
 tree-wide, over every first-party header — including the generated GL
 wrapper (`engine/render/include/irreden/render/gl_wrap/`) and the Metal
 backend, which the style tools skip. Every consumer that feeds the executor
-passes `irreden_collect_quality_files(... INCLUDE_RENDER_BACKENDS)`; the two
-style-tool lists — `format*` / clang-tidy, and the `format-check` CI shim
-`cmake/run_clang_format_changed_standalone.cmake` — are the legitimate narrow
-calls (clang-format is a style tool, not a correctness gate). Only vendored
-code (`engine/render/third_party/metal-cpp/`, `build/`, `_deps/`,
-`third_party/`) is excluded.
+passes `irreden_collect_quality_files(... INCLUDE_RENDER_BACKENDS)`; the three
+style-tool lists — `format*` / clang-tidy, the `format-check` CI shim
+`cmake/run_clang_format_changed_standalone.cmake`, and the `ROOT`-form list
+`format-changed` sweeps when a downstream-creation build roots the diff at the
+creation worktree instead of the engine tree — are the legitimate narrow calls
+(clang-format is a style tool, not a correctness gate). Only vendored code
+(`engine/render/third_party/metal-cpp/`, `build/`, `_deps/`, `third_party/`)
+is excluded.
 
 ```
 cmake --build <build-dir> --target header-checks                              # pure CMake

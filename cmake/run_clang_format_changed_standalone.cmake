@@ -15,10 +15,10 @@
 #
 # ONE DELIBERATE DIFFERENCE from that sibling: this call is BARE — no
 # INCLUDE_RENDER_BACKENDS. Copying the header shim verbatim is the natural
-# move and is wrong here. Per .claude/rules/cpp-globals.md §Detection/Scope
+# move and is wrong here. Per .claude/rules/cpp-globals.md §Detection
 # the wide list backs the header-convention CORRECTNESS gate, while the style
-# tools deliberately take the narrow one — that table lists this call as one of
-# the two legitimate bare calls. clang-format is a style tool: widening it would
+# tools deliberately take the narrow one — that section names this call as one
+# of the legitimate narrow calls. clang-format is a style tool: widening it would
 # start rewriting the generated GL wrapper
 # (engine/render/include/irreden/render/gl_wrap/) and the Metal backend, which
 # are excluded from formatting on purpose. The list is collected rather than
@@ -84,6 +84,11 @@ endforeach()
 file(APPEND "${quality_file_list}" ")\n")
 
 set(QUALITY_FILE_LIST "${quality_file_list}")
+# The executor keys every git query and path reconstruction on FORMAT_ROOT,
+# which a configure resolves and may point at an attached creation worktree.
+# This entry point has no configure and asserts PROJECT_ROOT is the engine
+# repo above, so the two roots are the same tree here.
+set(FORMAT_ROOT "${PROJECT_ROOT}")
 include("${PROJECT_ROOT}/cmake/run_clang_format_changed.cmake")
 
 file(REMOVE "${quality_file_list}")

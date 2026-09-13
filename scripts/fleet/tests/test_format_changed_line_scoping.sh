@@ -84,7 +84,7 @@ run_format_changed() {
     } > "$list"
     cmake -DCLANG_FORMAT_BIN="$(command -v clang-format)" \
           -DQUALITY_FILE_LIST="$list" \
-          -DPROJECT_ROOT="$repo" \
+          -DFORMAT_ROOT="$repo" \
           -P "$CMAKE_SCRIPT" 2>&1
 }
 

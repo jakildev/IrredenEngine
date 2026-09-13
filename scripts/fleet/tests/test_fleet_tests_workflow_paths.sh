@@ -2,12 +2,14 @@
 # Tests for .github/workflows/fleet-tests.yml's path filters (#2810).
 #
 # The workflow path-filters on scripts/** — broadly the LOCATION of its
-# suites, not the SUBJECTS they test. Ten suites test files that live
+# suites, not the SUBJECTS they test. Eleven suites test files that live
 # outside that path (test_format_changed_line_scoping.sh covers
 # cmake/run_clang_format_changed.cmake; test_format_changed_standalone.sh
-# covers its sibling standalone CMake file; test_ir_build_dir_resolution.sh
-# covers engine/tools/lib/concurrency_helpers.sh; test_fleet_transition.sh
-# covers docs/agents/fleet-state-machine.json; test_lint_rules_commands.py
+# covers its sibling standalone CMake file;
+# test_format_changed_diff_root.sh covers cmake/ir_quality_tools.cmake;
+# test_ir_build_dir_resolution.sh covers
+# engine/tools/lib/concurrency_helpers.sh; test_fleet_transition.sh covers
+# docs/agents/fleet-state-machine.json; test_lint_rules_commands.py
 # covers every doc under .claude/rules/ and docs/agents/;
 # test_lint_comment_refs.py covers .claude/skills/simplify/**;
 # test_fleet_labels_check.sh covers the fleet state machine and label reference;
@@ -79,6 +81,7 @@ fi
 OUT_OF_TREE_SUBJECTS=(
     'cmake/run_clang_format_changed.cmake'
     'cmake/run_clang_format_changed_standalone.cmake'
+    'cmake/ir_quality_tools.cmake'
     'engine/tools/lib/concurrency_helpers.sh'
     'docs/agents/fleet-state-machine.json'
     'docs/agents/fleet-labels-reference.md'
