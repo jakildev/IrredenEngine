@@ -127,7 +127,7 @@ time-driven values (sun angle, color temp); `cycleSegment("day")` returns
 the current segment index (0 = before the first breakpoint). The service
 lives in `common/` (not `engine/time/`) because it reads ECS components,
 which `engine/time` must not depend on. Lua surface: the `IRSim` table
-(`engine/script/CLAUDE.md`). A consumer registers the three systems in
+(`engine/script/include/irreden/script/lua_sim_bindings.hpp`). A consumer registers the three systems in
 its UPDATE pipeline (SIM_CLOCK_ADVANCE first) and touches the clock once
 at init so the singleton exists. Day-specific gameplay stays game-side
 (game #44) — the engine knows only generic cycles.
