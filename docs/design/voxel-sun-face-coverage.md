@@ -95,3 +95,67 @@ selection with `--only revox,floor`, use zoom .55 and `--sweep-yaw 0 1.57079633 
 Local validation: native demo build and clean capture runs, four-view detached and
 GRID geometric regressions, header/Metal registry checks (33 kernels), Python lint,
 comment-reference lint, changed-line formatting and whitespace checks.
+
+## Attached controls and grounded probes
+
+Use `--only revox,shadowattached,floor` for the expanded comparison. Orange is
+attached GRID; cyan and purple use private detached revoxelization; the rainbow
+object is a carved L-prism, not a complete cube. All four centers are at z=-12
+above the floor top z=2. A size-derived squared-radius assertion includes lattice
+rounding clearance and rejects the old below-platform height. The legacy
+`--solo-revox` placement is retained for its isolated coverage ROI.
+
+The earlier rainbow center z=+42 placed it below the floor, while the cyan z=-42
+put it far above the other probes. The purple center z=-6 also allowed a rotated
+corner to intersect the floor. Corrected spacing/height makes these usable casting
+comparisons. Full-scene reference images containing the relocated revox group
+will require deliberate recapture; old reference positions are not an expected
+pixel match. The isolated solo coverage placement remains unchanged.
+
+```sh
+fleet-run --timeout 120 IRCanvasStress --only revox,shadowattached,floor --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 0.65 --auto-screenshot 6 --sweep-yaw 0 1.57079633 5 --voxel-face-shadows
+python3 scripts/render-shadow-probes-metric.py capture0.png capture1.png capture2.png capture3.png capture4.png
+```
+
+Add `--probe-upright` to remove the probes' authored tilt and freeze their spin;
+this flag does not require `--no-spin`. Add `--screen-lock-detached` to exercise
+overlay exclusion: the orange GRID object continues casting, while detached
+probes no longer cast world shadows or receive world lighting.
+
+![Upright and tilted controls](../pr-screenshots/codex/voxel-sun-face-coverage/probes/attached-detached-comparison.png)
+
+The ten 2560×1440 upright/tilted captures pass the new fixed-scene presence guard. It
+requires substantial orange/cyan/purple populations and visible blue in the
+rainbow model; it does not certify face geometry or shadow accuracy. The old
+concave screenshot fails because the attached control and rainbow model are
+absent. Native captures also cover five screen-locked views. Restoring the old
+z=+42 in the probe height constant causes compilation to fail at the clearance
+assertion, then restoring z=-12 builds successfully.
+
+### Remaining face alignment, now isolated
+
+At camera yaw 45 degrees the upright orange GRID cube has straight sides, while
+the cyan/purple detached cubes retain staircase risers. GRID camera rotation uses
+the per-axis store and `f_peraxis_scatter` deformation. Detached revoxelization
+instead bakes the inverse camera rotation into destination cells, derives exposed
+faces from destination adjacency, and renders through the cardinal single-canvas
+gather. It does not take the same per-axis fragment deformation path. Applying
+that deformation to the already rotated cells would rotate them twice.
+
+![Native pixel detail, magnified 2x](../pr-screenshots/codex/voxel-sun-face-coverage/probes/upright-yaw45-detail.png)
+
+Complete-face casting removes inflated sample splats, but still projects that
+resampled voxel staircase. Fixing this distinction requires retaining the source
+face frame through camera projection, with shared camera-facing and sun-facing
+coverage. Increasing private-canvas density or blurring shadows does not establish
+that correspondence, and per-entity private per-axis canvases would compound the
+existing memory/dispatch scaling problem. This remains an adoption blocker.
+
+Two smaller experiments were rejected in this iteration: applying triangular
+row reconstruction in the detached gather introduced serrated edges, and aligning
+PCF lookup to texel centers left the mostly occluded yaw-0 box at IoU .679 (below
+.70), although its other three views passed. Neither shader change is retained;
+the geometric threshold remains unchanged. The sampling phase, receiver normal
+bias and near-contact oracle need to be assessed together before that adjustment
+ships. Current shader behavior and the original four-view box results above are
+unchanged by the probe expansion.
