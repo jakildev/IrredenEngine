@@ -50,8 +50,7 @@ constexpr int kLightingToTrixelGroupSize = 16;
 // `trixelColors` instead — see ir_render_enums.hpp for the encoding.
 // std140 note: eight scalars pack at offsets 0..28 (32 bytes), then
 // skyColor_ (vec4) lands at offset 32 (already 16-byte aligned) for a
-// 48-byte UBO. Both C++ and the GLSL/MSL structs lay out identically —
-// no explicit padding is needed.
+// 64-byte UBO including the camera quaternion at offset 48.
 struct FrameDataLightingToTrixel {
     int lightingEnabled_ = 0;
     int lutEnabled_ = 0;
@@ -62,7 +61,14 @@ struct FrameDataLightingToTrixel {
     float exposure_ = 1.0f;
     float skyIntensity_ = 0.0f;
     vec4 skyColor_ = vec4(0.5f, 0.7f, 1.0f, 0.0f);
+    vec4 detachedViewToWorld_ = vec4(0.0f, 0.0f, 0.0f, 1.0f);
 };
+
+static_assert(
+    offsetof(FrameDataLightingToTrixel, detachedViewToWorld_) == 48,
+    "Quaternion must begin at byte 48"
+);
+static_assert(sizeof(FrameDataLightingToTrixel) == 64, "Lighting frame must match the shader UBO");
 
 // Screen-space lighting application pass. Inserts between the final
 // geometry stage and the compositing stage; reads the canvas distance
@@ -446,6 +452,7 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         frameData_.skyIntensity_ = IRRender::getSkyIntensity();
         const vec3 sc = IRRender::getSkyColor();
         frameData_.skyColor_ = vec4(sc, 0.0f);
+        frameData_.detachedViewToWorld_ = IRPrefab::Camera::getRotationQuat();
         frameDataBuf_->subData(0, sizeof(FrameDataLightingToTrixel), &frameData_);
 
         // Resolve the main canvas + its per-axis voxel canvases (#1311), plus

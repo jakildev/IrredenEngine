@@ -33,6 +33,10 @@ inline int2 pos3DtoPos2DIso(int3 position) {
     );
 }
 
+inline float pos3DtoDistance(float3 position) {
+    return position.x + position.y + position.z;
+}
+
 inline int pos3DtoDistance(int3 position) {
     return position.x + position.y + position.z;
 }

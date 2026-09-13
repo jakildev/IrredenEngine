@@ -257,6 +257,10 @@ inline void authorIteratingCanvasVoxelFrame(
         (*pool.value()).getLiveVoxelCount(),
         *rotation.value()
     );
+    if (rotation.value()->isDetached() && rotation.value()->reVoxelize_) {
+        // Decoding must use the density actually stored, including the footprint cap.
+        scratch.voxelRenderOptions_.y = IRMath::max(canvasTextures.renderedSubdivisions_, 1);
+    }
     voxelFrameDataBuf->subData(0, sizeof(FrameDataVoxelToCanvas), &scratch);
 }
 

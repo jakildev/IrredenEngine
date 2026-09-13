@@ -37,6 +37,7 @@ layout(std140, binding = 27) uniform FrameDataLightingToTrixel {
     uniform float exposure;
     uniform float skyIntensity;
     uniform vec4  skyColor;
+    uniform vec4  detachedViewToWorld;
 };
 
 layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
@@ -182,32 +183,26 @@ void main() {
     const int faceId = visibleFaceIds[slot] ^ decodeFlipRoute(encoded, perAxisRoute);
     vec3 worldNormal = faceOutwardNormal6(faceId);
 
-    // Recover this voxel's WORLD position once for an opt-in world-placed
-    // detached solid (model pos + the entity's world cell origin); shared by the
-    // sun-shadow receive below and the light-volume sample. The detached
-    // re-voxelize canvas rasters cardinal (rasterYaw == 0, perAxisRoute == 0), so
-    // trixelCanvasPixelToWorld3D recovers its pool-centered MODEL pos.
+    // The private raster is camera-relative; lighting and cascade selection use world units.
     vec3 worldReceivePos = vec3(0.0);
     if (worldReceive) {
         worldReceivePos = trixelCanvasPixelToWorld3D(
             pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, rasterYaw
-        ) + detachedWorldReceive.xyz;
+        );
+        // Detached pool cells already include inverse camera rotation.
+        worldReceivePos = rotateByQuat(worldReceivePos, detachedViewToWorld)
+                        + detachedWorldReceive.xyz;
+        worldNormal = rotateByQuat(worldNormal, detachedViewToWorld);
     }
 
     // Alpha is preserved so text/overlay antialiasing composites unchanged.
     float ao           = imageLoad(canvasAO, pixel).r;
-    // Shadow factor: the world canvas reads its per-pixel COMPUTE_SUN_SHADOW
-    // result; an opt-in world-placed detached solid re-runs that same cascade
-    // lookup at its recovered world pos (receive — world iso depth = model
-    // rawDepth + the offset's iso depth picks the cascade); a default detached
-    // overlay stays forced fully lit (no shadow map).
     float shadow;
     if (worldReceive) {
         shadow = shadowsEnabled != 0
             ? worldSunShadowFactor(
                   worldReceivePos, worldNormal,
-                  float(rawDepth) + detachedWorldReceive.x +
-                      detachedWorldReceive.y + detachedWorldReceive.z
+                  pos3DtoDistance(worldReceivePos)
               )
             : 1.0;
     } else {

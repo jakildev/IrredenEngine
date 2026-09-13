@@ -230,6 +230,9 @@ enum SpawnGroup : std::uint32_t {
     kGroupInterpenetrate = 1u << 7,
     kGroupSmallZoom = 1u << 8,
     kGroupOrbitSwap = 1u << 9,
+    kGroupShadowReceiver = 1u << 10,
+    kGroupShadowCaster = 1u << 11,
+    kGroupShadowBox = 1u << 12,
 };
 
 // 0.5 degrees per frame → full revolution in ~720 frames (~12 s at 60 fps)
@@ -423,6 +426,9 @@ std::uint32_t parseSpawnGroups(const char *arg) {
         {"interpenetrate", kGroupInterpenetrate},
         {"smallzoom", kGroupSmallZoom},
         {"orbitswap", kGroupOrbitSwap},
+        {"shadowreceiver", kGroupShadowReceiver},
+        {"shadowcaster", kGroupShadowCaster},
+        {"shadowbox", kGroupShadowBox},
     };
     std::uint32_t bits = 0u;
     const std::string list{arg};
@@ -1052,6 +1058,10 @@ void registerArgs() {
         g_settings.frozenPoseRad_
     );
     args.flag("--no-lighting", "Disable world lighting");
+    args.flag("--no-shadows", "Disable sun shadows while retaining directional shading");
+    args.flag("--no-ao", "Disable ambient occlusion");
+    args.flag("--probe-grid", "Render the shadowbox probe through the shared GRID canvas");
+    args.numbers("--camera-iso", "Focused capture camera offset <x> <y>", 2);
     args.flag(
         "--screen-lock-detached",
         "Opt every detached canvas into the screen-locked overlay placement (pre-#1624 scene)"
@@ -1064,7 +1074,8 @@ void registerArgs() {
     args.string(
         "--only",
         "Spawn only the named entity groups (comma-separated: maingrid,gridspin,canary,revox,"
-        "orbit,floor,compare,interpenetrate,smallzoom,orbitswap)",
+        "orbit,floor,compare,interpenetrate,smallzoom,orbitswap,shadowreceiver,shadowcaster,"
+        "shadowbox)",
         ""
     );
     args.numbers(
@@ -1423,6 +1434,15 @@ void initSystems() {
             if (g_settings.sweepFramesSettle_ > 0) {
                 settleFrames = g_settings.sweepFramesSettle_;
             }
+            for (auto &shot : g_allShots) {
+                if (g_settings.initialZoomSetByCli_) {
+                    shot.zoom_ = g_settings.initialZoom_;
+                }
+                if (IREngine::args().wasProvided("--camera-iso")) {
+                    const auto &offset = IREngine::args().getFloats("--camera-iso");
+                    shot.cameraIso_ = vec2(offset[0], offset[1]);
+                }
+            }
         } else {
             // Base SO(3) suite + dedicated re-voxelize framing shots. Detached
             // canvases rasterize their canvas-local pool against the MAIN camera's
@@ -1522,8 +1542,8 @@ void initEntities() {
         IRRender::setSunDirection(kSunDirection);
         IRRender::setSunIntensity(kSunIntensity);
         IRRender::setSunAmbient(kSunAmbient);
-        IRRender::setSunShadowsEnabled(true);
-        IRRender::setAOEnabled(true);
+        IRRender::setSunShadowsEnabled(!IREngine::args().getFlag("--no-shadows"));
+        IRRender::setAOEnabled(!IREngine::args().getFlag("--no-ao"));
 
         // Shadow floor (SDF box) just below the center GRID spin cluster.
         // Receives sun shadow + AO. The GRID-mode spin cubes and the grounded
@@ -1541,6 +1561,43 @@ void initEntities() {
                 }
             );
             IREntity::setComponent(floor, C_LightBlocker{false, false, 0.0f});
+        }
+    }
+
+    if ((g_settings.onlyGroups_ & kGroupShadowReceiver) != 0u) {
+        spawnPerTrixelDetachedUnit(100, vec3(0.0f), Color{80, 120, 240, 255}, 0, false);
+    }
+    if ((g_settings.onlyGroups_ & kGroupShadowCaster) != 0u) {
+        IREntity::createEntity(
+            C_LocalTransform{vec3(-8.0f, -10.0f, -15.0f)},
+            C_VoxelSetNew{ivec3(5, 5, 5), Color{240, 160, 70, 255}, true, mainCanvas}
+        );
+    }
+    if ((g_settings.onlyGroups_ & kGroupShadowBox) != 0u) {
+        constexpr ivec3 size{18, 6, 8};
+        constexpr vec3 position{0.0f, 0.0f, -12.0f};
+        const Color color{80, 120, 240, 255};
+        if (IREngine::args().getFlag("--probe-grid")) {
+            IREntity::createEntity(
+                C_LocalTransform{position},
+                C_VoxelSetNew{size, color, true, mainCanvas}
+            );
+        } else {
+            const auto canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
+                "shadow_box",
+                ivec2(128),
+                ivec3(32),
+                g_settings.screenLockDetached_
+            );
+            IREntity::createEntity(
+                C_LocalTransform{vec3(0.0f)},
+                C_VoxelSetNew{size, color, true, canvas.canvasEntity_}
+            );
+            IREntity::createEntity(
+                C_LocalTransform{position},
+                C_RotationMode{RotationMode::DETACHED_REVOXELIZE},
+                canvas
+            );
         }
     }
 

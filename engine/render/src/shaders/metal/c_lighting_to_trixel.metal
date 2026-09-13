@@ -119,31 +119,27 @@ kernel void c_lighting_to_trixel(
         voxelFrameData.visibleFaceIds[slot] ^ decodeFlipRoute(encoded, voxelFrameData.perAxisRoute);
     float3 worldNormal = faceOutwardNormal6(faceId);
 
-    // Recover this voxel's WORLD position once for an opt-in world-placed
-    // detached solid (model pos + the entity's world cell origin); shared by the
-    // sun-shadow receive and the light-volume sample. Mirrors GLSL.
+    // The private raster is camera-relative; lighting and cascade selection use world units.
     float3 worldReceivePos = float3(0.0f);
     if (worldReceive) {
         worldReceivePos = trixelCanvasPixelToWorld3D(
             pixel, rawDepth, voxelFrameData.trixelCanvasOffsetZ1,
             voxelFrameData.frameCanvasOffset, voxelFrameData.voxelRenderOptions,
             voxelFrameData.rasterYaw
-        ) + voxelFrameData.detachedWorldReceive.xyz;
+        );
+        // Detached pool cells already include inverse camera rotation.
+        worldReceivePos = rotateByQuat(worldReceivePos, frameData.detachedViewToWorld)
+                        + voxelFrameData.detachedWorldReceive.xyz;
+        worldNormal = rotateByQuat(worldNormal, frameData.detachedViewToWorld);
     }
 
     float        ao     = canvasAO.read(uint2(pixel)).r;
-    // Shadow factor: the world canvas reads its COMPUTE_SUN_SHADOW result; an
-    // opt-in world-placed detached solid re-runs that cascade lookup at its world
-    // pos (world iso depth = model rawDepth + the offset's iso depth picks the
-    // cascade); a default detached overlay stays forced fully lit.
     float shadow;
     if (worldReceive) {
         shadow = sunFrameData.shadowsEnabled != 0
             ? worldSunShadowFactor(
                   worldReceivePos, worldNormal,
-                  float(rawDepth) + voxelFrameData.detachedWorldReceive.x +
-                      voxelFrameData.detachedWorldReceive.y +
-                      voxelFrameData.detachedWorldReceive.z,
+                  pos3DtoDistance(worldReceivePos),
                   sunFrameData, sunDepthBuf
               )
             : 1.0f;
