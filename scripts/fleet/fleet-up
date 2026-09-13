@@ -190,6 +190,19 @@ if [[ ! -e "$FLEET_CONF" ]]; then
     fi
     unset _fleet_up_self _fleet_up_sample
 fi
+# Taken before this script exports a single knob: the knobs exported below
+# are resolutions, and this list is how fleet-dispatcher tells them apart from
+# the caller's own overrides (see fleet_env_override_names). It is handed to
+# the dispatcher's launch alone, never exported: a pane inherits the resolved
+# knobs too, and a dispatcher started by hand there must keep treating the
+# operator's own `FLEET_X=… fleet-dispatcher` as the override it is. Left
+# unset when fleet-common.sh is missing, which the dispatcher reads as "every
+# inherited knob is an override".
+_fleet_env_overrides_set=0
+if declare -F fleet_env_override_names >/dev/null; then
+    _fleet_env_overrides="$(fleet_env_override_names)"
+    _fleet_env_overrides_set=1
+fi
 # Capture env-set values before sourcing the conf so caller env still wins.
 _env_worker="${FLEET_CONCURRENCY_WORKER:-}"
 _env_opus_worker="${FLEET_CONCURRENCY_OPUS_WORKER:-}"
@@ -386,6 +399,7 @@ FLEET_RESOLVED_SONNET=""
 # --fallback-model, so a mid-session loss degrades per-iteration without
 # a fleet-up rerun; interactive architect panes can't take that flag
 # (it's --print-only) and rely on this launch-time resolution alone.
+_fable_pinned="$FLEET_MODEL_FABLE"
 if [[ -n "$FLEET_MODEL_FABLE" ]]; then
     echo "fleet-up: fable class pinned via FLEET_MODEL_FABLE -> $FLEET_MODEL_FABLE"
 elif [[ "${FLEET_MODEL_PROBE:-1}" == "0" ]]; then
@@ -410,6 +424,15 @@ else
     done
     unset _candidate _last_candidate
 fi
+# An unpinned fable class, published under a name of its own. fleet-dispatcher
+# redoes every other model resolution from the conf instead of inheriting it;
+# the probe is the one it cannot redo, so it reads this as the fallback below
+# the conf. Unset when pinned, so removing a pin never resurrects a stale probe.
+unset FLEET_MODEL_FABLE_PROBED
+if [[ -z "$_fable_pinned" ]]; then
+    export FLEET_MODEL_FABLE_PROBED="$FLEET_MODEL_FABLE"
+fi
+unset _fable_pinned
 
 FLEET_MODEL_OPUS="${FLEET_MODEL_OPUS:-$OPUS_CLASS_DEFAULT}"
 FLEET_MODEL_SONNET="${FLEET_MODEL_SONNET:-$SONNET_CLASS_DEFAULT}"
@@ -1341,6 +1364,11 @@ else
     fi
     mkdir -p "$HOME/.fleet/state" "$HOME/.fleet/logs"
     scout_log="$HOME/.fleet/logs/state-scout.log"
+    # Persistent daemon: it binds its modules at import, so it self-reloads at
+    # its tick boundary when its own source surface advances rather than
+    # running merged fixes inert until someone restarts it here. Its
+    # revision is in state.json's `scout_source_rev`; see
+    # docs/agents/FLEET-CACHE.md §"Daemon source staleness".
     nohup "$scout_cmd" >>"$scout_log" 2>&1 &
     disown
     echo "fleet-up: launched fleet-state-scout (pid $!, log $scout_log)"
@@ -1567,7 +1595,16 @@ else
     # on every boot so it can't go stale.
     printf '%s\n' "$MODE" > "$HOME/.fleet/state/dispatch-mode"
     dispatcher_log="$HOME/.fleet/logs/dispatcher.log"
-    nohup "$dispatcher_cmd" >>"$dispatcher_log" 2>&1 &
+    # Persistent daemon: bash parses its function bodies once at exec, so it
+    # self-reloads at its tick boundary when its own source surface advances
+    # rather than running merged fixes inert until someone restarts it here.
+    # `rev=` on each `started (pid=…)` line is the running image's
+    # revision; see docs/agents/FLEET-CACHE.md §"Daemon source staleness".
+    _dispatcher_env=()
+    if (( _fleet_env_overrides_set )); then
+        _dispatcher_env=(FLEET_ENV_OVERRIDES="$_fleet_env_overrides")
+    fi
+    nohup env ${_dispatcher_env[@]+"${_dispatcher_env[@]}"} "$dispatcher_cmd" >>"$dispatcher_log" 2>&1 &
     disown
     echo "fleet-up: launched fleet-dispatcher (pid $!, log $dispatcher_log)"
 fi
