@@ -17,30 +17,10 @@
 #include <irreden/voxel/systems/system_rebuild_detached_voxels.hpp>
 #include <irreden/voxel/voxel_pool_api.hpp>
 
-// #2830 regression guard: `C_VoxelPool`'s two derived cull caches must
-// re-derive on EVERY input their recompute reads, at chunk granularity.
-//
-// The defect: `rebuildChunkBounds`'s cardinal branch reads three inputs
-// (allocated prefix length, per-voxel alpha, per-voxel global position) but was
-// gated on a flag only allocate/deallocate and a yaw frame ever set. Every
-// producer that rewrote positions or alpha IN PLACE evicted only the sibling
-// world-AABB cache, so on a cardinal camera — the default, `residualYaw_ == 0`
-// — the chunk iso bounds froze at the last alloc/dealloc. Both consumers
-// (`buildChunkVisibilityMask` → the chunk-visibility SSBO, and `isRangeVisible`
-// → the UPDATE movers' cull gate) then dropped live geometry, and the drop was
-// self-latching: the movers stopped advancing the CPU mirror, so the frozen
-// bounds never became wrong in a way that recovered.
-//
-// These tests run headlessly against a real `C_VoxelPool` (no RenderManager)
-// and assert the POOL-DERIVED result — chunk bounds, the visibility mask, and
-// `isRangeVisible` — rather than voxel alpha or active-mask bits. That
-// distinction is the point: the shipping instance of this bug (the #766 bird)
-// passed 28/28 CPU occupancy assertions while rendering a blend of two poses,
-// because the alpha was correct and only the derived cull state was stale.
-//
-// The cache is still a cache. `StaticPoolStillCachesCardinalBounds` and the
-// `CacheLocality*` cases are the negative controls that fail if the fix is the
-// degenerate "recompute unconditionally" one.
+// Both cull caches depend on allocated length, voxel alpha, and world
+// position. Assert derived bounds and visibility against a headless pool:
+// correct occupancy alone cannot establish correct culling.
+// Static-pool and locality cases also reject unconditional full recomputes.
 
 namespace {
 
@@ -213,7 +193,7 @@ TEST_F(ChunkBoundsEvictionTest, AlphaOnlyPoseSwap) {
     ASSERT_TRUE(pool.isRangeVisible(0, kChunk, viewportAround(poseA)));
     ASSERT_FALSE(pool.isRangeVisible(0, kChunk, viewportAround(poseB)));
 
-    // Frame step: swap which half is live. Alpha only — the #766 bird's edit.
+    // Swap live halves using alpha alone, without reallocating the span.
     for (int i = 0; i < kChunk / 2; ++i) {
         pool.getColors()[static_cast<std::size_t>(i)].color_ = Color{0, 0, 0, 0};
         pool.getColors()[static_cast<std::size_t>(kChunk / 2 + i)].color_ =
@@ -559,14 +539,9 @@ TEST_F(ChunkBoundsEvictionTest, EditsAfterUploadQueueSaturationStillInvalidate) 
     expectBoundsMatchOracle(pool, 0, CardinalIndex::k0);
 }
 
-// The two channels are independent: a producer can owe the cull caches a
-// recompute without owing binding 5 an upload. Both live paths rely on it —
-// `UPDATE_VOXEL_SET_CHILDREN` stages a GPU-transform-indirected set's real
-// range for invalidation while deliberately NOT queuing its upload (the GPU
-// prepass owns binding 5 for those slots), and `REBUILD_GRID_VOXELS`'s identity
-// arm rewrites positions every frame but only queues on the restore frame.
-// Folding "don't upload" into a zeroed range, as the staging record did before
-// #2830, silently dropped invalidation for exactly the sets that move most.
+// Cull invalidation is independent of binding-5 uploads: GPU-indirected
+// sets still update CPU positions, and grid identity frames need invalidation
+// even when no restore upload is required. The real range must survive both.
 TEST_F(ChunkBoundsEvictionTest, BoundsInvalidationIsIndependentOfUploadQueue) {
     const vec3 nearPose(2, 2, 2);
     const vec3 movedPose(210, -30, 4);
@@ -619,25 +594,11 @@ TEST_F(ChunkBoundsEvictionTest, PendingInvalidationAdmitsUpdateWork) {
         << "once rebuilt the query is the ordinary overlap answer again";
 }
 
-// ---------------------------------------------------------------------------
-// The detached re-voxelize pool — the third `rebuildChunkBounds` branch.
-// ---------------------------------------------------------------------------
-//
-// `m_staticReVoxelizeBound` switches `rebuildChunkBounds` onto a branch that
-// owns EVERY chunk's cardinal answer and returns early (#1556): it re-derives
-// all of them on every call from a rotation-independent bound that reads
-// neither position nor alpha. It therefore has to consume the cardinal pending
-// bits on the way out. `allocateVoxels` arms them, nothing else on that branch
-// clears them, and `isRangeVisible` admits any pending chunk conservatively —
-// so bits left standing make every detached range answer visible FOREVER and
-// the UPDATE-side cull stops culling this pool mode at all. That is a
-// regression the cardinal-path cases above cannot see, because they never take
-// this branch.
-//
-// POSITIVE CONTROL: delete the `dropPendingChunks(m_pendingCardinalChunks, …)`
-// line from the static branch and the off-viewport expectations below fail
-// (the range reads visible); the on-bound ones keep passing, so the failure
-// isolates the latch rather than a broken bound.
+// Static detached bounds answer cardinal queries without reading position or
+// alpha, but still must consume pending bits armed by allocation. Otherwise
+// conservative admission makes every detached range visible indefinitely.
+// Deleting cardinal-bit consumption makes the off-viewport checks fail while
+// the on-bound checks still pass, isolating pending-state ownership.
 
 // The branch in isolation: `setStaticReVoxelizeBound` alone reproduces the
 // latch, because `allocateVoxels` armed the bits before the bound existed.

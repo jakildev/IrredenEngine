@@ -459,10 +459,8 @@ std::vector<std::array<char, 40>> g_pivotVerifyShotLabels;
 // (#2550). Flag-gated so the standing render-verify tables are untouched —
 // the overlay is default-hidden and this is the only run that opens it.
 bool g_guiTest = false;
-// --cull-evict-test: swap the capture table for the #2830 cull-invalidation
-// regression fixture. Same flag-gating rationale as --gui-test above: the
-// standing kShots table and every committed render-verify reference are
-// untouched, because this run replaces the scene as well as the shot list.
+// The cull-eviction fixture replaces both the scene and capture table;
+// keep it flag-gated so the standing render references retain their scene.
 bool g_cullEvictTest = false;
 // cursor-latch runs the same poses through the GUI-test cycler; its shots wrap
 // g_pivotVerifyShots (whose labels this table's label_ pointers still target,
@@ -1657,37 +1655,13 @@ bool g_quitAssertionsEmitted = false;
 // both the latching and the capture-frame dispatch.
 IRPrefab::GuiTest::LatchState g_helpOverlayLatch;
 
-// ---------------------------------------------------------------------------
-// #2830 cull-invalidation render fixture (--cull-evict-test)
-// ---------------------------------------------------------------------------
+// Cull-invalidation fixture: one allocation, a fixed cardinal camera, and
+// two poses in disjoint pool chunks. Reallocation or yaw-driven invalidation
+// would hide a missing in-place alpha notification. Edits use the public
+// editVoxels path, with no manual cache eviction.
 //
-// The defect this pins: `C_VoxelPool`'s cardinal chunk-bounds cache derives
-// from per-voxel ALPHA as well as position, but only allocate/deallocate and a
-// yawing frame ever evicted it. An in-place occupancy edit — a two-frame
-// animation swapping which cells of an already-allocated span are live, the
-// shipping instance measured on #766's bird — left the bounds frozen at the
-// previous pose. `buildChunkVisibilityMask` then stopped rasterizing the
-// chunks the new pose occupies, and the frame rendered a stable MIXTURE of the
-// two poses: not a lag, not a tear, a blend.
-//
-// The fixture reproduces exactly that shape and nothing else:
-//   * ONE voxel set, allocated once. No realloc between poses.
-//   * A fixed cardinal camera (yaw 0) — the branch the cache serves. A yawing
-//     frame self-invalidates, which would mask the bug.
-//   * No manual cache eviction anywhere: the pose swap goes through
-//     `C_VoxelSetNew::editVoxels`, the encapsulated raw-edit API a creation
-//     would really use.
-//   * Two poses in DISJOINT pool chunks, so a frozen bound is a visibly wrong
-//     bound rather than a conservatively-large correct one.
-//
-// Per shot it emits `GUI-ASSERT` lines over POOL-DERIVED state — the cached
-// chunk bounds and the visibility they produce — not over voxel alpha. That
-// distinction is the whole lesson of the #766 occurrence: its session asserted
-// occupancy on both poses and passed 28/28 while rendering the blend, because
-// the alpha was right and only the derived cull state was stale.
-//
-// POSITIVE CONTROL: this fixture compiles and runs unchanged against
-// 1750ef4ae (it calls no API this PR adds), and fails there. See the PR body.
+// GUI-ASSERT checks pool-derived bounds and visibility: correct voxel alpha
+// alone cannot prove that the new pose reaches the rasterizer.
 
 constexpr IRMath::ivec3 kCullEvictSize = IRMath::ivec3(16, 16, 8);        // 2048 slots = 8 chunks
 constexpr int kCullEvictLayerSlots = kCullEvictSize.x * kCullEvictSize.y; // 256 == one chunk

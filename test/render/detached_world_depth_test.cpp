@@ -32,6 +32,7 @@
 #include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/voxel/grid_rotation.hpp>
+#include <irreden/render/components/component_triangle_canvas_textures.hpp>
 
 #include <array>
 
@@ -226,4 +227,11 @@ TEST(DetachedWorldDepthTest, Pos3DtoDistanceIsLinearOverIntegerCells) {
             );
         }
     }
+}
+
+TEST(DetachedDisplayTest, DefaultRequestsVoxelReconstructionWithoutClaimingProducedData) {
+    const IRComponents::C_TriangleCanvasTextures canvas;
+    EXPECT_EQ(canvas.sampleLayout_, IRRender::TrixelSampleLayout::LOCAL_TRIANGLES);
+    EXPECT_EQ(canvas.renderedSampleLayout_, IRRender::TrixelSampleLayout::RECTANGULAR);
+    EXPECT_EQ(canvas.renderedSubdivisions_, 0);
 }
