@@ -2362,8 +2362,13 @@ cmd_decline() {
             -f "body=declined: ${who} @${host}-${agent} ${reason}" >/dev/null 2>&1 \
             || echo "fleet-claim decline: WARN could not post the declined: comment on ${repo}#${num}" >&2
     fi
-    # cmd_release reads only the number; the label arms take the agent too.
-    "cmd_${sub//-/_}" "$num" "$agent"
+    # cmd_release reads only the number; the label arms take the agent too
+    # (same branch fleet_release_assignment uses in fleet-common.sh).
+    if [[ "$sub" == release ]]; then
+        cmd_release "$num"
+    else
+        "cmd_${sub//-/_}" "$num" "$agent"
+    fi
     echo "declined: ${kind}#${num} (${who} @${host}-${agent}): ${reason}"
 }
 
