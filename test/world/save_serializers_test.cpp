@@ -22,8 +22,8 @@
 #include <type_traits>
 #include <vector>
 
-// Per-component SaveSerialize<C> coverage for the heap-owning components the
-// process-default registry gained in #2242, plus the membership assertion
+// Per-component SaveSerialize<C> coverage for heap-owning components, plus the
+// membership assertion
 // that proves that registry is *derived* from the inventory rather than
 // hand-curated.
 //
@@ -730,17 +730,17 @@ class DefaultRegistryTest : public testing::Test {
     IREntity::EntityManager m_entity_manager;
 };
 
-// The headline acceptance criterion for #2242: the process-default registry's
-// membership is *derived* from save_component_inventory.hpp, not a curated
-// list. If someone re-adds a hand-written registerComponent line, or an
+// The process-default registry's membership is *derived* from
+// save_component_inventory.hpp, not a curated list. If someone re-adds a
+// hand-written registerComponent line, or an
 // opt-in silently stops being registered, these two counts diverge.
 TEST_F(DefaultRegistryTest, MembershipIsDerivedFromInventory) {
     const IRWorld::SaveRegistry registry = IRWorld::makeDefaultSaveRegistry();
     constexpr std::size_t expected = IRWorld::detail::countOptIns<IRWorld::AllEngineComponents>();
 
     EXPECT_EQ(registry.size(), expected);
-    // Positive-fire guard: the pre-#2242 curated registry held 4 entries, so
-    // an assertion that passed at 4 would prove nothing about "derived".
+    // Positive-fire guard: a four-entry curated registry would not prove
+    // inventory-derived membership.
     EXPECT_GT(registry.size(), 4u);
 }
 

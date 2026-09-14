@@ -154,7 +154,7 @@ TEST_F(RegisterSystemTest, ParamsAccessibleAfterCreate) {
     EXPECT_EQ(params->scaleFromBegin_, 0);
 }
 
-// #2526 — the SystemName registry. Registration self-wires, which is what lets
+// the SystemName registry. Registration self-wires, which is what lets
 // the prefab handles drop their manual wire-once setters.
 TEST_F(RegisterSystemTest, FindSystemResolvesEachRegisteredName) {
     auto sysA = IRSystem::createSystem<IRSystem::TEST_REGISTER_SYSTEM_A>();
@@ -176,7 +176,7 @@ TEST_F(RegisterSystemTest, FindSystemReportsANameThatWasNeverCreated) {
 
 // The miss sentinel has to be unreachable as a real id, and id 0 — handed to
 // whichever system registers first — is the one value a `kNullEntity`-based
-// sentinel could not express (#2540).
+// sentinel could not express.
 TEST_F(RegisterSystemTest, FirstRegisteredSystemIsDistinguishableFromAMiss) {
     // A is the first system this fixture creates, so it holds id 0; B is never
     // created. The ASSERT pins that premise: if SystemManager ever

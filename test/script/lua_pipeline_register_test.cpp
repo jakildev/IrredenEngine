@@ -24,7 +24,7 @@ using IRComponents::TransformKind;
 using IREntity::EntityId;
 
 // Owns the EntityManager + SystemManager + LuaScript needed to exercise
-// the T-102 Lua bindings end-to-end. Order matters — Lua state must be
+// the Lua bindings end-to-end. Order matters — Lua state must be
 // destroyed last so any captured sol::function references in the
 // SystemManager's dynamic-system bodies finish lua_unref while the
 // lua_State is still open. See modifier_lua_test.cpp for the same
@@ -337,7 +337,7 @@ TEST_F(LuaPipelineRegisterTest, AddRejectsUnknownFieldName) {
     EXPECT_FALSE(result.valid());
 }
 
-// ---- #1540: IRSystem.appendSystem / insertSystemBefore/After --------------
+// ---- IRSystem.appendSystem / insertSystemBefore/After ----------------
 //
 // The gap these close: a runtime whose C++ pipeline is built before
 // main.lua runs (the midi runtime) had no way for Lua to add a system
@@ -487,7 +487,7 @@ TEST_F(LuaPipelineRegisterTest, AppendSystemRejectsInvalidEvent) {
     EXPECT_FALSE(result.valid());
 }
 
-// ---- Cadence bindings — the #2404 Lua seam --------------------------------
+// ---- Cadence bindings — the Lua seam --------------------------------
 
 // The six `IRSystem.*` cadence functions are a surface of their own: driving
 // `SystemManager` directly (test/system/system_cadence_test.cpp) proves
@@ -631,8 +631,8 @@ TEST_F(LuaCadenceTest, CadenceBelowOneRaisesLuaError) {
     auto &lua = m_lua.lua();
 
     // The Lua seam THROWS on cadence < 1 where the C++ manager normalizes
-    // 0 -> 1 — a deliberate asymmetry accepted in #2425's review. Assert the
-    // throw, not the normalization.
+    // 0 -> 1. The Lua seam deliberately throws while the C++ manager
+    // normalizes; assert the throw.
     auto result = lua.safe_script("IRSystem.setSystemCadence(g_sys, 0)", sol::script_pass_on_error);
     ASSERT_FALSE(result.valid());
     const std::string message = sol::error{result}.what();

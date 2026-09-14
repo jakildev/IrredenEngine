@@ -429,7 +429,7 @@ TEST_F(WorldSnapshotTest, EmptyWorldRoundTrips) {
 // surface mid-apply, after restoreEntitiesBatch has already spliced entities
 // into the live graph. Uses the fallible C_WsChecked serializer so a corrupt
 // row genuinely fails to decode (a trivially-copyable raw image accepts any
-// bytes and can't reproduce this). See #2213.
+// bytes and can't reproduce this).
 TEST_F(WorldSnapshotTest, CorruptColumnAbortsWithZeroMutation) {
     IRWorld::SaveRegistry reg;
     reg.registerComponent<C_WsPos>();
@@ -481,7 +481,7 @@ using IREntity::EntityId;
 // just-restored gameplay id and cross-wires onto it. A same-manager reload
 // can't reproduce this (after a save the watermark already sits past the
 // saved ids), so this drives a genuine second session with a fresh
-// EntityManager whose watermark is back at the reserved base. See #2213.
+// EntityManager whose watermark is back at the reserved base.
 TEST(WorldSnapshotFreshSession, WatermarkAdvancesBeforeSingletonLazyCreate) {
     const std::string path = testing::TempDir() + "/ir_ws_fresh_watermark.irws";
     std::vector<EntityId> gameplayIds;

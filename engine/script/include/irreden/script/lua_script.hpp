@@ -42,8 +42,8 @@ class LuaScript {
 
     // Bind the Lua-driven ECS surface — IRComponent.{register,bindField},
     // IREntity.{addLuaComponent,getLuaComponent,removeLuaComponent,
-    // hasLuaComponent}, and IRSystem.registerSystem (T-101 archetype-
-    // batched dispatch). Idempotent; safe to call multiple times.
+    // hasLuaComponent}, and IRSystem.registerSystem with archetype-batched
+    // dispatch. Idempotent; safe to call multiple times.
     // Required for any creation that registers Lua-defined components
     // or Lua-defined systems. See docs/design/lua-driven-ecs.md and
     // engine/script/CLAUDE.md.
@@ -84,7 +84,7 @@ class LuaScript {
         return m_ecsDefaultMode;
     }
 
-    // T-102: register a prefab system NAME so the Lua side's
+    // register a prefab system NAME so the Lua side's
     // `IRSystem.systemId(SystemName.NAME)` can return its SystemId.
     // Calls `IRSystem::createSystem<NAME>()` once and caches the
     // resulting SystemId in `m_prefabSystemIds`. Re-calling for the
@@ -146,7 +146,7 @@ class LuaScript {
         return it->second;
     }
 
-    // #2446: default-construct a C++-typed component, apply the optional
+    // default-construct a C++-typed component, apply the optional
     // Lua overrides table field-by-field, and attach it via the templated
     // `IREntity::setComponent<T>`. The entity core deliberately refuses to
     // default-row a C++-typed component through `addComponentDynamic` (some
@@ -292,7 +292,7 @@ class LuaScript {
     // so this is safe.
     std::unordered_map<IREntity::ComponentId, LuaCppColumnAccessor> m_cppColumnAccessors;
 
-    // T-102: SystemName enum value (cast to int) → SystemId returned by
+    // SystemName enum value (cast to int) → SystemId returned by
     // `IRSystem::createSystem<NAME>()`. Populated by
     // `registerPrefabSystem<N>()`. The Lua side's `IRSystem.systemId`
     // closure reads through `prefabSystemIds()`; the closure captures
@@ -300,7 +300,7 @@ class LuaScript {
     // without re-binding.
     std::unordered_map<int, IRSystem::SystemId> m_prefabSystemIds;
 
-    // T-103: per-Lua-system shared sol::protected_function reference. The
+    // per-Lua-system shared sol::protected_function reference. The
     // dynamic-system body lambda captures the shared_ptr; replacing the
     // pointed-to function via `*it->second = newFn` rebinds every future
     // invocation of the same SystemId — no re-create, no archetype change,
@@ -321,7 +321,7 @@ class LuaScript {
     // build-time default driven by `IR_LUA_ECS_DEFAULT_MODE`.
     EcsMode m_ecsDefaultMode = EcsMode::EVAL;
 
-    // T-223: per-system one-shot dedupe of the
+    // per-system one-shot dedupe of the
     // "PARALLEL_FOR requested under EVAL — forced to MAIN_THREAD"
     // warning. Specs that re-register on hot-reload would otherwise
     // log every call; one log per system name is enough to surface
@@ -338,10 +338,8 @@ class LuaScript {
     // "lua_close before captured-map destruction" inside LuaScript itself.
     sol::state m_lua;
 
-    // Wires `IRSystem.registerSystem` and the column-view usertypes
-    // into the Lua state. Called from the public `bindLuaDrivenEcs()`
-    // entry; the public API stays singular so creations only need one
-    // init call regardless of which Lua-driven-ECS PRs land.
+    // Wires `IRSystem.registerSystem` and the column-view usertypes into
+    // the Lua state while keeping Lua-driven ECS initialization singular.
     void bindLuaDrivenSystems();
 
     // Attach `componentId` to `entity`, routing on how the component
@@ -374,9 +372,8 @@ class LuaScript {
     // when none was recorded. Diagnostics only.
     std::string componentDisplayName(IREntity::ComponentId componentId) const;
 
-    // Build the read/replace accessor pair for a C++ component type
-    // and record it under the type's `ComponentId`. Called from
-    // `registerType` when `kHasLuaBinding<T>`.
+    // Builds the read/replace accessor pair for C++ component types with
+    // Lua bindings and records it under the type's `ComponentId`.
     template <typename T> void recordComponentLuaName(const std::string &name) {
         auto &em = IREntity::getEntityManager();
         IREntity::ComponentId componentId = em.getComponentType<T>();

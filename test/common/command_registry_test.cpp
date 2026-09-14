@@ -4,9 +4,9 @@
 
 #include <string>
 
-// Covers the introspectable command registry (#2550) — the read-only
-// `(binding, name, description)` surface the F1 help overlay renders and
-// #2551's settings menu consumes.
+// Covers the introspectable command registry — the read-only
+// `(binding, name, description)` surface consumed by the F1 help overlay and
+// settings menu.
 //
 // Three properties, each a defect this change fixes or a filter it must keep:
 //
@@ -138,7 +138,7 @@ TEST_F(CommandRegistryTest, UnnamedAndNonPressedRegistrationsAreFilteredWithoutB
     EXPECT_EQ(m_commandManager.getRegistrationGeneration(), initial);
 }
 
-// `isButtonBound` (#2570) reads `m_userCommands`, NOT the registration map —
+// `isButtonBound` reads `m_userCommands`, NOT the registration map —
 // so the two row classes the registry filters out (unnamed, and non-PRESSED)
 // must both be visible to it. Those arms are what discriminate a correct
 // implementation: an `isButtonBound` written over `getCommandRegistrations()`

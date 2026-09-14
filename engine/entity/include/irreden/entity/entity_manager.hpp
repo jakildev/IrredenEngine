@@ -43,7 +43,7 @@ struct PreDestroyHookEntry {
     PreDestroyHook hook_;
 };
 
-// T-225: per-worker staging buffer for deferred structural mutations
+// Per-worker staging buffer for deferred structural mutations
 // produced from a `PARALLEL_FOR` system body. One instance per worker
 // (index 0 == main thread, 1..N == IRJob worker threads). Workers
 // write only their own slot, so no lock is needed on the producer side;
@@ -78,7 +78,7 @@ class EntityManager {
     /// tolerate a dead id goes through this — never `m_entityIndex[...]`,
     /// whose `operator[]` mints a value-initialised `{nullptr, 0}` record on
     /// a miss. That mint is what turned one bad-id read into store
-    /// corruption (#2565): the minted record makes `entityExists` answer
+    /// corruption: the minted record makes `entityExists` answer
     /// `true` for the dead id from then on, so the next path that guards
     /// with `entityExists` and derefs `archetypeNode` crashes on an id it
     /// had every reason to trust.
@@ -106,7 +106,7 @@ class EntityManager {
         return m_entityIndex.contains(entity & IR_ENTITY_ID_BITS);
     }
 
-    // --- World-snapshot restore surface (persist P2, #2213) ---
+    // --- World-snapshot restore surface ---
     // Public wrapper over the archetype graph's node creation. The loader
     // must materialize the target node for a restored archetype that no
     // live entity currently occupies — findArchetypeNode alone can only
@@ -165,7 +165,7 @@ class EntityManager {
     void removeComponentById(EntityId entity, ComponentId componentType);
     void destroyEntity(EntityId entity);
     void destroyAllEntities();
-    /// Scene-transition teardown (#1814): destroy every live entity EXCEPT
+    /// Scene-transition teardown: destroy every live entity EXCEPT
     /// (1) singleton entities (everything in `m_singletonEntityByComponent`)
     /// and (2) entities holding any of the `preserveMarkers` component types.
     /// Unlike `destroyAllEntities`, the singleton cache is NOT cleared — the
@@ -191,8 +191,8 @@ class EntityManager {
 
     template <typename... Components> EntityId createEntity(const Components &...components) {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
-        // T-225: a `createEntity` from a `PARALLEL_FOR` worker body
-        // routes through the per-worker staging buffer. We pre-allocate
+        // a `createEntity` from a `PARALLEL_FOR` worker body
+        // routes through the per-worker staging buffer. The EntityId is allocated
         // the EntityId atomically so the caller can return it
         // immediately; the archetype-node insertion runs on the main
         // thread at the next `flushStructuralChanges`.
@@ -217,9 +217,8 @@ class EntityManager {
         return entity;
     }
 
-    // T-225: main-thread completion of a worker-deferred createEntity.
-    // The EntityId was already allocated atomically when the worker
-    // staged the request; we just complete the archetype-node insertion.
+    // Main-thread completion of a worker-deferred createEntity. The worker has
+    // already allocated the EntityId; this call completes archetype placement.
     template <typename... Components>
     void insertReservedEntity(EntityId entity, const Components &...components) {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
@@ -231,7 +230,7 @@ class EntityManager {
         updateRecord(entity, archetypeNode, index);
     }
 
-    // #2286: deferred dynamic entity create for the Lua EVAL binding. Reserve
+    // Deferred dynamic entity creation reserves
     // an id now (so a tick can reference / attach to the entity immediately)
     // and stage the bare-entity insert for the next `flushStructuralChanges`,
     // mirroring the worker-thread `createEntity` path. The archetype starts
@@ -399,7 +398,7 @@ class EntityManager {
 
     template <typename Component> void removeComponentDeferred(EntityId entity) {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
-        // T-225: route through the per-worker staging buffer so a
+        // route through the per-worker staging buffer so a
         // `PARALLEL_FOR` body in any worker can call this without
         // racing on the shared pending vector.
         int slot = workerSlotForCurrentThread();
@@ -412,14 +411,15 @@ class EntityManager {
     template <typename Component>
     void setComponentDeferred(EntityId entity, const Component &component) {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
-        // T-225: route through the per-worker staging buffer (see
+        // route through the per-worker staging buffer (see
         // `removeComponentDeferred`).
         int slot = workerSlotForCurrentThread();
         m_workerStaging[slot].structuralChanges_.push_back([this, entity, component]() {
             // `entityExists` alone is not enough: an id allocated but not yet
             // placed in an archetype node reports `true` while its record is
             // still `{nullptr, -1}`, and `setComponent` would deref that
-            // (#2565). Require a placed record.
+            // Require a placed record; allocated-but-unplaced entities cannot
+            // accept components yet.
             const EntityRecord *record = findRecord(entity);
             if (record == nullptr || record->archetypeNode == nullptr) {
                 return;
@@ -428,7 +428,7 @@ class EntityManager {
         });
     }
 
-    // #2286: stage an arbitrary structural mutation to run at the next
+    // stage an arbitrary structural mutation to run at the next
     // `flushStructuralChanges`, in the current thread's staging slot (slot 0
     // == main thread). The templated `setComponentDeferred` /
     // `removeComponentDeferred` cover C++-typed ops; this generic entry point
@@ -475,7 +475,7 @@ class EntityManager {
 
         // A dead or not-yet-placed id is an honest `nullopt`, not a crash —
         // and, crucially, not an `operator[]` probe that would mint a poison
-        // record for it (#2565).
+        // record for it.
         const EntityRecord *record = findRecord(entity);
         if (record == nullptr || record->archetypeNode == nullptr) {
             return std::nullopt;
@@ -601,27 +601,22 @@ class EntityManager {
     // TODO: Remove when entity is destroyed
     std::unordered_map<std::string, EntityId> m_namedEntities;
     EntityId m_liveEntityCount;
-    // Legacy main-thread deferred-mutation queues. After T-225 all
-    // public API writes go through m_workerStaging[0] (main thread)
-    // or m_workerStaging[slot] (workers), so these will always be
-    // empty in a correctly-running post-T-225 World. Retained as a
-    // safety net: flushStructuralChanges / destroyMarkedEntities drain
-    // them first, so any internal path that bypasses the public API
-    // (migration glue, future low-level ECS work) still gets picked up.
+    // Internal paths may still use these main-thread queues directly;
+    // flushStructuralChanges and destroyMarkedEntities drain them before the
+    // per-worker staging slots.
     std::vector<EntityId> m_entitiesMarkedForDeletion;
     std::vector<PendingComponentRemoval> m_pendingComponentRemovals;
     std::vector<std::function<void()>> m_pendingStructuralChanges;
-    // T-225: per-worker staging buffers for deferred mutations from
+    // per-worker staging buffers for deferred mutations from
     // worker threads. Sized to `IRJob::workerCount() + 1` by
     // `resizeWorkerStaging` after `JobManager` is constructed. Until
     // then the vector has a single slot for the main thread, so the
     // pre-`JobManager` path (engine init, tests with no worker pool)
     // works unchanged.
     std::vector<WorkerStaging> m_workerStaging;
-    // T-225: monotonic atomic counter for cross-thread EntityId
-    // allocation. Replaces the legacy `std::queue<EntityId>` pool —
+    // Monotonic atomic counter for cross-thread EntityId allocation.
     // worker threads can `fetch_add` without contending on a mutex.
-    // IDs are NOT recycled (the pool semantics are gone); the
+    // IDs are not recycled; the
     // 25-bit `IR_ENTITY_ID_BITS` space gives ~33M entities per
     // session, plenty for current workloads. If a long-running
     // session ever approaches the cap, switch to a tiered allocator.

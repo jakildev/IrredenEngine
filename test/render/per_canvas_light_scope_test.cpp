@@ -1,4 +1,4 @@
-// Per-canvas light scope (T-116, issue #363).
+// Per-canvas light scope.
 //
 // Verifies the gather logic in `IRSystem::detail::gatherLightSources`
 // scopes a `C_LightSource` to a specific canvas when the light is
@@ -257,7 +257,7 @@ TEST_F(PerCanvasLightScopeTest, GatherMaxRadiusCappedAtPropagateIterations) {
     EXPECT_EQ(maxRadius, IRRender::kLightVolumePropagateIterations);
 }
 
-// #2318: hasSpot gates the consumer's winning-light-ID read. It must stay
+// hasSpot gates the consumer's winning-light-ID read. It must stay
 // false for a scene with only non-SPOT lights so those scenes render exactly
 // as before (byte-identical).
 TEST_F(PerCanvasLightScopeTest, GatherHasSpotFalseWithoutSpotLights) {
@@ -282,7 +282,7 @@ TEST_F(PerCanvasLightScopeTest, GatherHasSpotFalseWithoutSpotLights) {
     EXPECT_FALSE(hasSpot);
 }
 
-// #2318: a seeded SPOT light flags hasSpot and carries its TRUE (unclamped)
+// a seeded SPOT light flags hasSpot and carries its TRUE (unclamped)
 // origin separately from the seed cell. An out-of-window spot seeds the
 // clamped window-boundary cell, but the cone consumer must orient from the
 // real apex — so trueOriginVoxel_ keeps the true position while
@@ -321,7 +321,7 @@ TEST_F(PerCanvasLightScopeTest, GatherSpotFlagsHasSpotAndCarriesTrueOrigin) {
     EXPECT_EQ(static_cast<int>(out[0].originAndType_.w), static_cast<int>(LightType::SPOT));
 }
 
-// #2341: COMPUTE_LIGHT_VOLUME re-uploads the GLOBAL LightSourceBuffer /
+// COMPUTE_LIGHT_VOLUME re-uploads the GLOBAL LightSourceBuffer /
 // LightVolumeParamsBuffer per canvas, so after its tick they describe only the
 // last processed canvas — while LIGHTING_TO_TRIXEL reads them per canvas. The
 // endTick guard trips exactly when that cannot be simultaneously correct.
@@ -340,8 +340,8 @@ TEST(LightVolumeGlobalBufferGuardTest, PermitsConfigurationsCorrectToday) {
     EXPECT_TRUE(IRSystem::detail::lightVolumeGlobalBufferSafe(1, /*anySpot=*/true));
     // Multi-canvas without a spot: the consumer's has-SPOT gate reads 0 for
     // every canvas, so the stale light list is never indexed. This is the
-    // case that keeps #363's two-canvas `lighting_per_canvas_scope` demo
-    // silent — its sentinel canvas B IS processed and counted (the default
+    // case that keeps the two-canvas `lighting_per_canvas_scope` demo silent:
+    // its sentinel canvas B is processed and counted (the default
     // C_TrixelCanvasRenderBehavior sets useCameraPositionIso_ = true), but
     // the scene is emissive-only.
     EXPECT_TRUE(IRSystem::detail::lightVolumeGlobalBufferSafe(2, /*anySpot=*/false));

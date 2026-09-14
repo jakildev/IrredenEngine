@@ -24,7 +24,7 @@ struct C_GuiTestAnchor {};
 // Apply one shot's camera state (zoom / pan / Z-yaw / pivot focus / cull
 // freeze) before the settle window. Shared by the auto-screenshot and GUI-test
 // cyclers — `GuiTestShot::render_` is an AutoScreenshotShot — so the per-shot
-// pivot-focus (#1921) and cull-freeze (#1438) handling can't drift between them.
+// pivot-focus and cull-freeze handling can't drift between them.
 void applyShotCameraState(const AutoScreenshotShot &shot) {
     IRRender::setCameraZoom(shot.zoom_);
     IRRender::setCameraPosition2DIso(shot.cameraIso_);
@@ -120,7 +120,7 @@ IRSystem::SystemId createAutoScreenshotSystem(const AutoScreenshotConfig &config
                 } else {
                     IRVideo::requestScreenshot();
                 }
-                // Per-shot capture hook (#1882): fire once on the settled frame
+                // Per-shot capture hook: fire once on the settled frame
                 // so the caller can record render state the capture reflects.
                 if (state->config_.onCaptureFrame_ != nullptr) {
                     state->config_.onCaptureFrame_(state->currentShot_);
@@ -193,7 +193,7 @@ IRSystem::SystemId createGuiTestSystem(const GuiTestConfig &config) {
             // captureAt: settleFrames_ full settle frames follow the last event.
             const int captureAt = maxOffset + 1 + state->config_.settleFrames_;
 
-            // Phase 3 assertion hook (#1796): fire every live frame so the
+            // Fire the assertion hook every live frame so the
             // consumer can latch one-frame pulses (C_WidgetState::fireAction_);
             // flag the capture frame for evaluation. Gated on
             // !screenshotRequested_ so the capture frame fires it exactly once

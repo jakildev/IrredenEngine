@@ -27,8 +27,8 @@
 #include <string>
 #include <vector>
 
-// Persist P7 (#2218, epic #667): the `IRPersist` Lua binding (W-9) + the
-// IR_PERSIST_DUMP `.json.txt` debug dump (W-11). Drives the real Lua surface
+// The `IRPersist` Lua binding and optional IR_PERSIST_DUMP `.json.txt` debug
+// dump. Drives the real Lua surface
 // (`m_lua.bindLuaDrivenEcs()`) against a live EntityManager built like
 // world_snapshot_test, so a Lua `saveWorld`/`loadWorld` round-trips real engine
 // components through the process-default registry (C_LocalTransform,
@@ -195,7 +195,7 @@ TEST_F(LuaWorldSnapshotTest, RoundTripThroughLua) {
 
 // `makeDefaultSaveRegistry()` registers C_VoxelSetNew (world_default_registry.cpp)
 // alongside the trivially-copyable PODs above — the one component with an
-// explicit SaveSerialize<C> (persist P6, #2217) rather than the default
+// explicit SaveSerialize<C> rather than the default
 // byte-copy path. Round-trips a headless, pool-free set (StagedInit — no
 // VoxelPool/canvas needed) through the Lua binding; reload always
 // reconstructs in staged mode (numVoxels_ == 0, pendingVoxels_ populated) —
@@ -242,7 +242,7 @@ TEST_F(LuaWorldSnapshotTest, RoundTripsVoxelSetNew) {
     }
 }
 
-// #2242 acceptance: the process-default registry now derives its membership
+// The process-default registry derives its membership
 // from the whole opted-in inventory, so heap-owning components round-trip
 // through the Lua binding too — not just the four hand-curated PODs P7
 // shipped with. C_Name is the issue's named criterion; C_WidgetLabel and
@@ -250,7 +250,7 @@ TEST_F(LuaWorldSnapshotTest, RoundTripsVoxelSetNew) {
 // (string + packed color, and two independent vectors).
 //
 // This is the wiring-level test `engine/world/CLAUDE.md` requires for any
-// component reachable through the default registry (#2244): the per-serializer
+// component reachable through the default registry: the per-serializer
 // unit coverage in test/world/save_serializers_test.cpp proves the bytes, but
 // only a run through the real IRPersist surface proves registry entry ->
 // binding -> reload.

@@ -1,6 +1,6 @@
 // Canvas-lifecycle contract of `IRPrefab::RotationMode::setMode`: DETACHED and
 // DETACHED_REVOXELIZE are one canvas-owning family, and the helper keeps
-// `C_EntityCanvas` in sync with the mode in both directions. See #2908.
+// `C_EntityCanvas` in sync with the mode in both directions.
 //
 // Every arm below runs headless. The one transition that cannot is
 // GRID -> a canvas-owning mode: it calls `IRPrefab::EntityCanvas::create`,

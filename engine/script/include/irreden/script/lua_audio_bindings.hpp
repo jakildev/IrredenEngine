@@ -14,7 +14,7 @@
 
 namespace IRScript::detail {
 
-// IRAudio file-playback Lua bindings (engine #1813).
+// IRAudio file-playback Lua bindings (engine).
 //
 // Exposes the miniaudio-backed file playback substrate as the `IRAudio` Lua
 // table: load + play `.wav`/`.ogg` one-shots and streamed music through
@@ -107,7 +107,7 @@ inline void bindAudioApi(LuaScript &script) {
         IRAudio::setListenerPosition(vec3FromLua(position));
     };
 
-    // Outbound-MIDI observer (engine #1869). A Lua monitor sees EVERY outbound
+    // Outbound-MIDI observer (engine). A Lua monitor sees EVERY outbound
     // message, including ones the C++ ECS audio path emits — not just what Lua
     // sent. `IRAudio.MidiStatus.*` is the message-type byte as an integer table
     // (the cpp-lua-enums.md convention) so a handler compares the status arg

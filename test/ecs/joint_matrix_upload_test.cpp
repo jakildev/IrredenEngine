@@ -15,13 +15,13 @@
 #include <irreden/voxel/components/component_skeleton.hpp>
 #include <irreden/voxel/rig_bridge.hpp>
 
-// #1603 — SYSTEM_UPDATE_JOINT_MATRICES (#605 Phase 2.2).
+// SYSTEM_UPDATE_JOINT_MATRICES.
 //
 // These tests exercise the CPU side of the joint-matrix uploader without a GPU
 // device: the high-region block allocator, and the per-skeleton staging fill
 // (identity at bind pose, severance holes identity, correct bone->slot routing).
 // The actual binding-18 subData upload (endTick) needs a render device and is
-// covered at runtime by the skeletal demo (#1611); endTick is never called here.
+// covered at runtime by the skeletal demo; these tests omit endTick.
 
 namespace {
 

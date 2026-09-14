@@ -5,7 +5,7 @@
 // miniaudio: this is the single translation unit that pulls in the
 // implementation. Playback-only (no encoders); the high-level engine API
 // brings the audio thread, decoding, mixing, sound groups (our buses),
-// a listener + 3D spatialization (the #207 seam), and fades.
+// a listener + 3D spatialization (the seam), and fades.
 #define MINIAUDIO_IMPLEMENTATION
 #define MA_NO_ENCODING
 #include <miniaudio.h>
@@ -41,7 +41,7 @@ struct AudioPlayback::Impl {
     }
 
     // Shared load+start path for every play* variant. `spatialPosition`
-    // non-null enables spatialization at that world position (the #207 seam);
+    // non-null enables spatialization at that world position (the seam);
     // null plays the sound non-positionally (UI / music).
     SoundHandle start(
         const std::string &path,

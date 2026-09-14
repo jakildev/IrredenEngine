@@ -7,8 +7,8 @@
 /// `include/` so `IRAsset::ChunkPayload` / `LoadedChunk` and the entity
 /// manager don't leak into the world-snapshot public API.
 ///
-/// Current occupant: the `RELN` relation chunk (persist P3, #2214) in
-/// `world_snapshot_relations.cpp`.
+/// Used by the `RELN` relation chunk implementation in
+/// `world_snapshot_relations.cpp`; kept private to the world module.
 
 #include <irreden/asset/binary_io.hpp>
 #include <irreden/asset/chunk_header.hpp>

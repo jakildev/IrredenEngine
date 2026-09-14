@@ -12,7 +12,7 @@
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 
-// #2346 regression guard: the cardinal store's tie-possibility signal
+// The cardinal store's tie-possibility signal
 // (`C_VoxelPool::storeTiesPossible_`) must re-arm on ACTIVATION-ONLY edits, not
 // just position writes. `VOXEL_TO_TRIXEL_STAGE_1` recomputes the signal on
 // frames whose CPU position upload changed (pending position ranges flushed, or
