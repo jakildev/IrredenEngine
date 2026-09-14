@@ -18,7 +18,7 @@
 // `IRPrefab::EntityCanvas::addVoxelPool`) both spawn GPU textures and cannot run
 // here, so the fixture calls `ensureCanvasTeardownHook()` — the arming function
 // those sites call — directly. The assertions below then destroy the canvas and
-// nothing else: no test hand-calls `restageFromPool`, so a hook that is not
+// nothing else: no test hand-calls `restageSet`, so a hook that is not
 // actually wired fails them.
 
 #include <gtest/gtest.h>

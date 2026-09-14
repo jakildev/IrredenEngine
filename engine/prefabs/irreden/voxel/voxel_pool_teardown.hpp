@@ -26,7 +26,48 @@
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/voxel_pool_api.hpp>
 
+#include <cstddef>
+#include <cstdint>
+
 namespace IRPrefab::VoxelPool {
+
+/// Inverse of `C_VoxelSetNew::attachToCanvas`: return one pool-resident set
+/// to STAGED mode, releasing its span to the pool on the set's canvas and
+/// leaving the set in the state `SEED_STAGED_VOXELS` re-homes from. A staged
+/// or empty set only has its dangling canvas id dropped.
+///
+/// The pool side lives here rather than on the component because it reaches
+/// into the canvas entity through the set's stored `canvasEntity_`
+/// (`engine/prefabs/CLAUDE.md` §"Component method rules"); the set's own
+/// field transition is `C_VoxelSetNew::detachToStaged`. This is the only
+/// caller of that method, and the order is load-bearing: the span descriptor
+/// is captured first, the set recovers its authored records and drops its
+/// views, and only then is the span deallocated — so the records are read
+/// while the pool storage they alias is still live, and nothing on the set
+/// references the span once it is gone. Mirrors the release `onDestroy()`
+/// performs for a set that dies while resident (priority aggregate, then
+/// span).
+///
+/// Call BEFORE the canvas entity is destroyed — the deallocate needs the
+/// pool to still exist.
+inline void restageSet(IRComponents::C_VoxelSetNew &set) {
+    const std::size_t spanStart = set.voxelStartIdx_;
+    const std::size_t spanCount =
+        set.numVoxels_ > 0 ? static_cast<std::size_t>(set.numVoxels_) : 0u;
+    const std::uint32_t priorityCount = set.perTrixelPriorityVoxelCount_;
+    const IREntity::EntityId canvas = set.canvasEntity_;
+
+    set.detachToStaged();
+
+    if (spanCount == 0) {
+        return;
+    }
+    if (priorityCount > 0) {
+        adjustPerTrixelPriorityVoxelCount(-static_cast<int>(priorityCount), canvas);
+    }
+    deallocate(spanStart, spanCount, canvas);
+    IRE_LOG_DEBUG("Re-staged {} voxels off canvas {}", spanCount, canvas);
+}
 
 /// Re-stage every `C_VoxelSetNew` whose pool lives on @p destroyed, leaving
 /// each one in the staged state `C_VoxelSetNew::attachToCanvas` seeds from.
@@ -50,7 +91,7 @@ inline void restageSetsOnCanvas(IREntity::EntityId destroyed) {
             if (set.canvasEntity_ != destroyed) {
                 return;
             }
-            set.restageFromPool();
+            restageSet(set);
         }
     );
 }
