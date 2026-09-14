@@ -305,7 +305,8 @@ touch "$HEARTBEATS_DIR/worker-5"   # pane alive, iteration dead
 printf '{"pr":1,"agent":"worker-5","acquired_epoch":1,"dispatch_id":"D1"}\n' \
     > "$FLEET_AMEND_SNAPSHOTS_DIR/1.json"
 printf 'D2\n' > "$FLEET_STATE_DIR/dispatch-current/worker-5"
-STUB_HOLDERS="$ADEAD2"
+STUB_PAGE1_HOLDERS="$ADEAD2"
+STUB_PAGE2_HOLDERS=""
 rc=0
 _acquire_label_on "owner/repo" 1 "$AMINE3" "$AP" >/dev/null 2>&1 || rc=$?
 assert_exit "$rc" 0 "superseded-dispatch amending holder force-swept despite a fresh pane heartbeat → exit 0"
