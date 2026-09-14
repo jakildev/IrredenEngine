@@ -21,6 +21,8 @@ prove is not done until one exists.
 | GUI behaviour | GUI-ASSERT shots pass for a creation | `gui-verify` skill; `python3 scripts/gui-verify.py <Creation>` | none |
 | Cull regression | the live cull drops no on-screen content, and the freeze that check rests on is actually engaged | `python3 scripts/cull-verify.py` (needs a GL/Metal host) | none for the harness; render-harness-tests.yml runs its freeze-guard assertion arms hermetically |
 | Render metrics | shadow, silhouette, coverage, jitter, clip, depth-tier, feeder-margin, light, pivot readings | `python3 scripts/<metric>-verify.py` / `scripts/render-*-metric.py` | none |
+| Shadow comparison presence | attached orange, detached cyan/purple and rainbow probe visibility | `python3 scripts/render-shadow-probes-metric.py <captures...>`; fixed capture recipe in script help | none |
+| Voxel face shadows | analytic box projection, visible area and overlap at four cardinal yaws | `python3 scripts/render-shadow-box-metric.py <yaw0.png> <yaw90.png> <yaw180.png> <yaw270.png>`; fixed capture recipe in script help | none |
 | Detached lighting | world-sun face colors at four cardinal camera yaws | `python3 scripts/render-detached-lighting-metric.py <yaw0.png> <yaw90.png> <yaw180.png> <yaw270.png>`; capture recipe in script help | none |
 | Perf gate | frame-time cells against the committed perf baseline | `bash scripts/perf/perf_grid_matrix.sh` then `scripts/perf/compare_perf_runs.py` | perf-gate.yml |
 | Plan lint | a `## Plan` comment is structurally sound | `fleet-plan-lint <issue> [--repo game]` | none (planner-time) |

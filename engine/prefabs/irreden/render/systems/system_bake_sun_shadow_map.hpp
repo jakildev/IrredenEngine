@@ -37,6 +37,7 @@
 // same component the composite iterates).
 #include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/render/voxel_frame_data.hpp>
+#include <irreden/render/voxel_dispatch_grid.hpp>
 
 #include <utility>
 
@@ -146,7 +147,17 @@ static_assert(
     offsetof(DetachedShadowFrame, viewToWorld_) == 16, "Quaternion must begin at byte 16"
 );
 
+struct VoxelSunFaceFrame {
+    vec4 worldOrigin_;
+    vec4 viewToWorld_;
+    ivec4 dispatch_;
+};
+static_assert(sizeof(VoxelSunFaceFrame) == 48, "Voxel sun-face frame must match the shader UBO");
+
 template <> struct System<BAKE_SUN_SHADOW_MAP> {
+    bool voxelFaceCoverage_ = false;
+    ShaderProgram *voxelFaceProgram_ = nullptr;
+    Buffer *voxelFaceFrameBuf_ = nullptr;
     ShaderProgram *clearProgram_ = nullptr;
     ShaderProgram *bakeProgram_ = nullptr;
     Buffer *sunShadowDepthMap_ = nullptr;
@@ -315,17 +326,15 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
 
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
 
-        // Clear the full depth map (both cascades) to 0xFFFFFFFF.
-        clearProgram_->use();
-        sunShadowDepthMap_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap);
-        const int totalClearDim = kSunShadowMapDim;
-        const int clearGroupsX = IRMath::divCeil(totalClearDim, kBakeSunShadowGroupSize);
-        // Y covers kSunShadowMapDim * kSunShadowCascadeCount rows — cascades
-        // are stacked vertically in the 1024×2048 linearised buffer.
-        const int clearGroupsY =
-            IRMath::divCeil(totalClearDim * kSunShadowCascadeCount, kBakeSunShadowGroupSize);
-        IRRender::device()->dispatchCompute(clearGroupsX, clearGroupsY, 1);
-        IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+        if (voxelFaceCoverage_) {
+            sunShadowFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
+            sunShadowDepthMap_->bindBase(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_SunShadowDepthMap
+            );
+            return;
+        }
+        clearDepthMap();
 
         // Bake: each pixel projects into both cascades in one pass.
         bakeProgram_->use();
@@ -605,6 +614,12 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             &mainRotation_
         );
 
+        if (!voxelFaceCoverage_) {
+            updateSunFrameData();
+        }
+    }
+
+    void updateSunFrameData() {
         const detail::ResolvedSun sun = detail::resolveSun();
         vec3 sunDir = sun.direction_;
         const float sunLen = IRMath::length(sunDir);
@@ -712,6 +727,68 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         frameData_.sunMaxShadowThrow_ = kSunShadowMaxDistance;
     }
 
+    void clearDepthMap() {
+        // Clear the full depth map (both cascades) to 0xFFFFFFFF.
+        clearProgram_->use();
+        sunShadowDepthMap_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap);
+        const int totalClearDim = kSunShadowMapDim;
+        const int clearGroupsX = IRMath::divCeil(totalClearDim, kBakeSunShadowGroupSize);
+        // Y covers kSunShadowMapDim * kSunShadowCascadeCount rows — cascades
+        // are stacked vertically in the 1024×2048 linearised buffer.
+        const int clearGroupsY =
+            IRMath::divCeil(totalClearDim * kSunShadowCascadeCount, kBakeSunShadowGroupSize);
+        IRRender::device()->dispatchCompute(clearGroupsX, clearGroupsY, 1);
+        IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+    }
+
+    // All voxel canvases share one clear and one cascade frame.
+    void beginVoxelFaceCoverage() {
+        if (sunShadowFrameDataBuf_ == nullptr) {
+            sunShadowFrameDataBuf_ =
+                IRRender::getNamedResource<Buffer>("ComputeSunShadowFrameData");
+        }
+        const auto mainCanvas = IRRender::getCanvas("main");
+        const auto textures = IREntity::getComponentOptional<C_TriangleCanvasTextures>(mainCanvas);
+        if (textures.has_value()) {
+            IRRender::updateCullViewport(
+                IRRender::getEffectiveCameraIso(),
+                IRRender::getCameraZoom(),
+                textures.value()->size_
+            );
+        }
+        updateSunFrameData();
+        sunShadowFrameDataBuf_->subData(0, sizeof(frameData_), &frameData_);
+        if (frameData_.shadowsEnabled_ != 0) {
+            clearDepthMap();
+        }
+    }
+
+    // Positions/colors remain resident only until the next canvas upload.
+    void bakeVoxelFaces(int count, int subdivisions, const C_CanvasLocalRotation &rotation) {
+        if (frameData_.shadowsEnabled_ == 0 || count == 0 ||
+            (rotation.isDetached() && (!rotation.worldPlaced_ || !rotation.reVoxelize_))) {
+            return;
+        }
+        const ivec2 grid = voxelDispatchGridForCount(IRMath::divCeil(count, 64));
+        const VoxelSunFaceFrame params{
+            vec4(rotation.isDetached() ? rotation.worldCellOffset_ : vec3(0.0f), 0.0f),
+            rotation.isDetached() ? IRPrefab::Camera::getRotationQuat()
+                                  : vec4(0.0f, 0.0f, 0.0f, 1.0f),
+            ivec4(count, grid.x, subdivisions, 0)
+        };
+        voxelFaceFrameBuf_->subData(0, sizeof(params), &params);
+        voxelFaceFrameBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_RevoxelizeDetachedParams);
+        sunShadowFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
+        sunShadowDepthMap_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap);
+        voxelFaceProgram_->use();
+        IRRender::device()->dispatchCompute(grid.x, grid.y, 1);
+        IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+        revoxelizeParamsBuf_->bindBase(
+            BufferTarget::UNIFORM,
+            kBufferIndex_RevoxelizeDetachedParams
+        );
+    }
+
     static SystemId create() {
         IRRender::createNamedResource<ShaderProgram>(
             "ClearSunShadowMapProgram",
@@ -751,6 +828,20 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             C_CanvasSunShadow,
             C_TrixelCanvasRenderBehavior>("BakeSunShadowMap");
         auto *p = getSystemParams<System<BAKE_SUN_SHADOW_MAP>>(systemId);
+        p->voxelFaceProgram_ =
+            IRRender::createNamedResource<ShaderProgram>(
+                "VoxelSunFacesProgram",
+                std::vector{ShaderStage{IRRender::kFileCompBakeVoxelSunFaces, ShaderType::COMPUTE}}
+            ).second;
+        p->voxelFaceFrameBuf_ = IRRender::createNamedResource<Buffer>(
+                                    "VoxelSunFaceFrameBuffer",
+                                    nullptr,
+                                    sizeof(VoxelSunFaceFrame),
+                                    BUFFER_STORAGE_DYNAMIC,
+                                    BufferTarget::UNIFORM,
+                                    kBufferIndex_RevoxelizeDetachedParams
+        )
+                                    .second;
         p->detachedShadowFrameBuf_ = IRRender::createNamedResource<Buffer>(
                                          "DetachedShadowFrameBuffer",
                                          nullptr,

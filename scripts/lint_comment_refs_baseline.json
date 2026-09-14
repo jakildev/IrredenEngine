@@ -14,7 +14,7 @@
  "creations/demos/audio_playback/config.lua": 1,
  "creations/demos/audio_playback/main.cpp": 1,
  "creations/demos/audio_playback/scripts/audio_demo.lua": 1,
- "creations/demos/canvas_stress/main.cpp": 123,
+ "creations/demos/canvas_stress/main.cpp": 118,
  "creations/demos/collision_overlap_demo/config.lua": 1,
  "creations/demos/collision_overlap_demo/main.lua": 1,
  "creations/demos/collision_overlap_demo/main_lua.cpp": 1,

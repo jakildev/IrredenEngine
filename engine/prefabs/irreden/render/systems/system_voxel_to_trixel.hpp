@@ -25,6 +25,7 @@
 #include <irreden/render/shapes_2d.hpp>
 #include <irreden/render/voxel_dispatch_grid.hpp>
 #include <irreden/render/voxel_frame_data.hpp>
+#include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 #include <irreden/render/components/component_detached_revoxelize_buffer.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
@@ -284,6 +285,7 @@ static_assert(
 );
 
 template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
+    System<BAKE_SUN_SHADOW_MAP> *voxelFaceBaker_ = nullptr;
     ShaderProgram *compactProgram_ = nullptr;
     ShaderProgram *stage1Program_ = nullptr;
     // #2258 Step B (architect a′): the feeder-pass compile-time specialization
@@ -1662,6 +1664,23 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             }
         }
         syncEntityIds(voxelPool, liveVoxelCount, voxelEntityIdBuf_);
+        if (voxelFaceBaker_ != nullptr) {
+            voxelPosBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SingleVoxelPositions);
+            voxelColorBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SingleVoxelColors);
+            voxelActiveMaskBuf_->bindBase(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_VoxelActiveMask
+            );
+            voxelFaceBaker_->bakeVoxelFaces(
+                effectiveVoxelCount,
+                renderMode == 0 ? 1 : effectiveSub,
+                canvasLocalRotation
+            );
+            winnerPlaceholderBuf_->bindBase(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_PerAxisResolveScratch
+            );
+        }
 
         // Smooth camera Z-yaw (T3 / #1310): while the MAIN canvas's per-axis
         // canvases are active, SKIP the single-canvas voxel rasterization. The
@@ -2068,6 +2087,19 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     }
 
     void beginTick() {
+        voxelFaceBaker_ = nullptr;
+        const auto bakeSystem = findSystem(BAKE_SUN_SHADOW_MAP);
+        if (bakeSystem != kNullSystemId) {
+            auto *baker = getSystemParams<System<BAKE_SUN_SHADOW_MAP>>(bakeSystem);
+            if (baker->voxelFaceCoverage_) {
+                voxelFaceBaker_ = baker;
+                baker->beginVoxelFaceCoverage();
+                winnerPlaceholderBuf_->bindBase(
+                    BufferTarget::SHADER_STORAGE,
+                    kBufferIndex_PerAxisResolveScratch
+                );
+            }
+        }
         // Resolve sun direction once per frame so the per-entity tick
         // reads the cached value instead of scanning C_LightSource
         // once per voxel-pool-canvas pair.

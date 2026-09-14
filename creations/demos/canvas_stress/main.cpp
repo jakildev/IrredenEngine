@@ -233,6 +233,7 @@ enum SpawnGroup : std::uint32_t {
     kGroupShadowReceiver = 1u << 10,
     kGroupShadowCaster = 1u << 11,
     kGroupShadowBox = 1u << 12,
+    kGroupShadowAttached = 1u << 13,
 };
 
 // 0.5 degrees per frame → full revolution in ~720 frames (~12 s at 60 fps)
@@ -274,18 +275,11 @@ constexpr float kGridSpinRadPerFrame = IRMath::kPi / 720.0f;
 constexpr ivec2 kReVoxCanvasSize{140, 140};
 constexpr ivec3 kReVoxPoolSize{22, 22, 22};
 constexpr ivec3 kReVoxSolidSize{12, 12, 12}; // base box; the L is carved from it
-// Detached canvases rasterize their canvas-local pool against the MAIN camera's
-// world cull viewport, so they only render while the camera sits near world
-// origin (a pan moves the viewport off the canvas-local pool and culls every
-// detached canvas). The framing shots therefore stay at camera (0,0); these
-// entities are placed on the screen-center column (separated in Z so iso-Y
-// stacks them vertically) where they read large and unobstructed at zoom ~1.
-constexpr vec3 kReVoxAsymWorld{0.0f, 0.0f, 42.0f};
-constexpr vec3 kReVoxCubeWorld{0.0f, 0.0f, -42.0f};
-// Grounded cast-proof solid (#1576 P4b-3): in line with the GRID spin-cube row
-// (y≈28, z=-6 → bottoms at z=0, floor 4 below) and offset +x past its end, so
-// its world sun shadow falls onto the open #1587 floor beside the GRID cubes'.
-constexpr vec3 kReVoxGroundedWorld{40.0f, 24.0f, -6.0f};
+// Keep the full rotated 12-cell cube above the floor at z=2.
+constexpr float kReVoxProbeHeight = -12.0f;
+constexpr vec3 kReVoxAsymWorld{-24.0f, -24.0f, kReVoxProbeHeight};
+constexpr vec3 kReVoxCubeWorld{20.0f, -24.0f, kReVoxProbeHeight};
+constexpr vec3 kReVoxGroundedWorld{20.0f, 18.0f, kReVoxProbeHeight};
 // ~0.5° / frame — full revolution in ~720 frames; slow enough to read as a
 // smooth true-3D tumble, not a strobe.
 constexpr float kReVoxSpinPerFrame = IRMath::kPi / 360.0f;
@@ -363,6 +357,14 @@ constexpr float kFloorThickness = 4.0f;
 // which drop to ambient — read as distinct dark patches. A dark floor washes
 // the shadows out (shadowed floor ≈ unlit floor → no contrast).
 constexpr Color kFloorColor{150, 152, 160, 255};
+constexpr float kProbeFloorClearance = kFloorZ - kFloorThickness * 0.5f - kReVoxProbeHeight - 1.0f;
+static_assert(
+    kProbeFloorClearance > 0.0f &&
+        kProbeFloorClearance * kProbeFloorClearance >
+            0.25f * (kReVoxSolidSize.x * kReVoxSolidSize.x + kReVoxSolidSize.y * kReVoxSolidSize.y +
+                     kReVoxSolidSize.z * kReVoxSolidSize.z),
+    "Rotated probes plus lattice rounding must clear the floor top"
+);
 
 CanvasStressSettings g_settings{};
 int g_autoWarmupFrames = 0;
@@ -429,6 +431,7 @@ std::uint32_t parseSpawnGroups(const char *arg) {
         {"shadowreceiver", kGroupShadowReceiver},
         {"shadowcaster", kGroupShadowCaster},
         {"shadowbox", kGroupShadowBox},
+        {"shadowattached", kGroupShadowAttached},
     };
     std::uint32_t bits = 0u;
     const std::string list{arg};
@@ -1060,6 +1063,11 @@ void registerArgs() {
     args.flag("--no-lighting", "Disable world lighting");
     args.flag("--no-shadows", "Disable sun shadows while retaining directional shading");
     args.flag("--no-ao", "Disable ambient occlusion");
+    args.flag(
+        "--voxel-face-shadows",
+        "Experimental complete voxel-face sun coverage (voxel casters only)"
+    );
+    args.flag("--probe-upright", "Use unrotated revoxelization and attached shadow probes");
     args.flag("--probe-grid", "Render the shadowbox probe through the shared GRID canvas");
     args.numbers("--camera-iso", "Focused capture camera offset <x> <y>", 2);
     args.flag(
@@ -1075,7 +1083,7 @@ void registerArgs() {
         "--only",
         "Spawn only the named entity groups (comma-separated: maingrid,gridspin,canary,revox,"
         "orbit,floor,compare,interpenetrate,smallzoom,orbitswap,shadowreceiver,shadowcaster,"
-        "shadowbox)",
+        "shadowbox,shadowattached)",
         ""
     );
     args.numbers(
@@ -1313,7 +1321,10 @@ void initSystems() {
         // per-axis canvases gracefully degrade to an empty resolve — which is
         // most of this demo's runtime under the default --auto-rotate (#1719).
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::RESOLVE_PER_AXIS_SCREEN_DEPTH>());
-        renderPipeline.push_back(IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>());
+        const auto bakeSun = IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>();
+        IRSystem::getSystemParams<IRSystem::System<IRSystem::BAKE_SUN_SHADOW_MAP>>(bakeSun)
+            ->voxelFaceCoverage_ = IREngine::args().getFlag("--voxel-face-shadows");
+        renderPipeline.push_back(bakeSun);
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>());
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>());
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>());
@@ -1767,12 +1778,19 @@ void initEntities() {
     // hides on). Seeded at a clear off-cardinal tilt so the first shot already
     // reads as a true 3D-rotated solid; a slow auto-spin then sweeps the full
     // SO(3) range to prove smoothness (no pop) and parade every residual pose.
-    const float reVoxSpin = g_settings.noSpin_ ? 0.0f : kReVoxSpinPerFrame;
+    const float reVoxSpin = (g_settings.noSpin_ || IREngine::args().getFlag("--probe-upright"))
+                                ? 0.0f
+                                : kReVoxSpinPerFrame;
     if (g_settings.soloRevox_ || groupEnabled(kGroupReVox)) {
         spawnDetachedReVoxelizeSolid(
             0,
-            kReVoxAsymWorld,
-            IRMath::quatAxisAngle(IRMath::normalize(vec3(1.0f, 0.6f, 0.3f)), IRMath::kPi / 4.5f),
+            g_settings.soloRevox_ ? vec3(0.0f, 0.0f, 42.0f) : kReVoxAsymWorld,
+            (IREngine::args().getFlag("--probe-upright")
+                 ? vec4(0.0f, 0.0f, 0.0f, 1.0f)
+                 : IRMath::quatAxisAngle(
+                       IRMath::normalize(vec3(1.0f, 0.6f, 0.3f)),
+                       IRMath::kPi / 4.5f
+                   )),
             vec3(1.0f, 1.0f, 0.4f),
             reVoxSpin,
             Color{255, 150, 60, 255},
@@ -1785,7 +1803,12 @@ void initEntities() {
         spawnDetachedReVoxelizeSolid(
             1,
             kReVoxCubeWorld,
-            IRMath::quatAxisAngle(IRMath::normalize(vec3(0.3f, 1.0f, 0.5f)), IRMath::kPi / 5.0f),
+            (IREngine::args().getFlag("--probe-upright")
+                 ? vec4(0.0f, 0.0f, 0.0f, 1.0f)
+                 : IRMath::quatAxisAngle(
+                       IRMath::normalize(vec3(0.3f, 1.0f, 0.5f)),
+                       IRMath::kPi / 5.0f
+                   )),
             vec3(0.4f, 1.0f, 0.6f),
             reVoxSpin,
             Color{70, 210, 210, 255},
@@ -1801,25 +1824,37 @@ void initEntities() {
         return;
     }
 
-    // Grounded world-placed CAST proof (#1576 P4b-3): a third re-voxelize cube
-    // in line with the GRID spin-cube row — same 12³ size, same z (bottoms at
-    // z=0, floor 4 below) — so its sun shadow lands on the #1587 floor right
-    // beside the GRID cubes' shadows, a direct GRID-vs-re-voxelize cast
-    // comparison. The z=±42 column solids above sit ~84 sun-Z voxels from the
-    // floor, past the kMaxShadowDepthRange=24 receive cutoff, so they can never
-    // demonstrate cast (the #1591 lesson); this one mirrors the proven GRID
-    // caster→floor geometry instead. Follows --screen-lock-revox like the rest.
     if (groupEnabled(kGroupReVox)) {
         spawnDetachedReVoxelizeSolid(
             2,
             kReVoxGroundedWorld,
-            IRMath::quatAxisAngle(IRMath::normalize(vec3(0.5f, 1.0f, 0.2f)), IRMath::kPi / 4.2f),
+            (IREngine::args().getFlag("--probe-upright")
+                 ? vec4(0.0f, 0.0f, 0.0f, 1.0f)
+                 : IRMath::quatAxisAngle(
+                       IRMath::normalize(vec3(0.5f, 1.0f, 0.2f)),
+                       IRMath::kPi / 4.2f
+                   )),
             vec3(0.7f, 0.3f, 1.0f),
             reVoxSpin,
             Color{210, 120, 255, 255},
             /*carveAsymmetric=*/false,
             /*multiColor=*/false,
             /*screenLocked=*/g_settings.screenLockDetached_
+        );
+    }
+
+    if ((g_settings.onlyGroups_ & kGroupShadowAttached) != 0u) {
+        const vec4 rotation = IREngine::args().getFlag("--probe-upright")
+                                  ? vec4(0.0f, 0.0f, 0.0f, 1.0f)
+                                  : IRMath::quatAxisAngle(
+                                        IRMath::normalize(vec3(0.3f, 1.0f, 0.5f)),
+                                        IRMath::kPi / 5.0f
+                                    );
+        IREntity::createEntity(
+            C_LocalTransform{vec3(-24.0f, 20.0f, kReVoxProbeHeight), rotation},
+            C_RotationMode{RotationMode::GRID},
+            C_AutoSpin{vec3(0.4f, 1.0f, 0.6f), reVoxSpin},
+            C_VoxelSetNew{kReVoxSolidSize, Color{245, 160, 65, 255}, true, mainCanvas}
         );
     }
 
