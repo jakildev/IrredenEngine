@@ -1,435 +1,131 @@
-# engine/prefabs/irreden/common/ — position, identity, tags
+# engine/prefabs/irreden/common/
 
-Foundation layer every other domain builds on. Position, transform, name,
-selection state, and the player tag. No simulation systems — those live
-in `update/`.
+Foundation prefab types for transforms, identity, tags, simulation time, and
+generic modifiers. Simulation writers live in `../update/`; this directory
+owns data types and header-only service APIs.
 
-## Key components
+## Transform and rotation contracts
 
-> **Retired (T-302):** `C_Position3D`, `C_PositionGlobal3D`,
-> `C_Rotation`, and the `SYSTEM_GLOBAL_POSITION_3D` writer were
-> deleted in T-302. The canonical replacement is the
-> `C_LocalTransform` / `C_WorldTransform` SQT pair below.
-> Ephemeral per-frame deltas (idle bob, gizmo nudges) travel through
-> the `TRANSFORM_TRANSLATION` modifier field — see
-> [`transform_modifier_fields.hpp`](transform_modifier_fields.hpp)
-> and `SYSTEM_PROPAGATE_TRANSFORM`.
+`IREntity::createEntity(...)` always attaches `C_LocalTransform` and
+`C_WorldTransform`, unless the caller supplies that same type. Never add a
+second copy after creation: duplicate component columns leave one value stale.
 
-- `C_LocalTransform` / `C_WorldTransform` — canonical SQT transform
-  pair. **Both auto-added by `createEntity(...)`**. See
-  [SQT transform pair + propagation](#sqt-transform-pair--propagation)
-  below. `C_LocalTransform::unbounded_` opts into sub-trixel
-  translation; only meaningful when paired with
-  `C_RotationMode::DETACHED` (GRID-mode entities snap to world cells
-  regardless).
-- `C_RotationMode` (Epic C C2) — `enum class RotationMode { GRID,
-  DETACHED, DETACHED_REVOXELIZE }`. GRID (default) puts the entity in the
-  shared world voxel pool with grid-quantized rotation; DETACHED lives in a
-  per-entity `C_EntityCanvas` whose voxel emit bakes the entity's full
-  SO(3) rotation directly (T-295, via `PROPAGATE_CANVAS_ROTATION` →
-  `C_CanvasLocalRotation`) — the composite stage just places the canvas.
-  DETACHED_REVOXELIZE (#1553 epic, P1 #1555) is like DETACHED but the
-  per-entity private pool is re-filled at the full-rotation CELL positions
-  each frame (`SYSTEM_REBUILD_DETACHED_VOXELS`) and rasterized through
-  CARDINAL frame data — the rotation lives in the cells, not a 2D deform,
-  so an asymmetric solid reads as a true 3D-rotated solid (the model the
-  forward-scatter deform cannot represent, #1551).
-  Attached by
-  `IRPrefab::Prefab::spawnPrefab` (default GRID, or
-  `rotation_mode = IRComponent.RotationMode.DETACHED` in the prefab
-  table — the enum value, not the string). Mutate at runtime with
-  `IRPrefab::RotationMode::setMode(entity, newMode, name, size)` —
-  allocates or destroys the canvas as needed. **DETACHED and
-  DETACHED_REVOXELIZE are one canvas-owning family**, spelled once as
-  `IRPrefab::RotationMode::ownsEntityCanvas(mode)` and read by both
-  lifecycle sites (`setMode` and `spawnPrefab`); a swap between them
-  keeps the canvas, and only a move to/from GRID allocates or destroys.
-  Adding a mode means classifying it there; the enum's size is
-  static-asserted in `test/ecs/rotation_mode_set_test.cpp` so a new mode
-  cannot reach one site and miss the other (#2908). That guarantee
-  covers the two **lifecycle** sites only — `PROPAGATE_CANVAS_ROTATION`
-  (`../render/systems/system_propagate_canvas_rotation.hpp`) still
-  hand-spells the two detached modes and a new mode must be added there
-  by hand. It is left off the predicate for **layering weight, not an
-  include cycle** (there is none — that header is a leaf, included only
-  by demo `main.cpp`s): `rotation_mode.hpp` pulls in
-  `render/entity_canvas.hpp` solely for `setMode`, so routing a
-  render-system header through the predicate would drag that whole chain
-  in. Splitting `ownsEntityCanvas` into a header free of the render side
-  is the clean fix if this is revisited. `setMode`'s
-  same-mode early return is gated on the canvas
-  matching the mode, not on the mode alone, so it doubles as the
-  documented recovery for an entity `spawnPrefab` tagged headlessly
-  without allocating. Non-prefab entities
-  without the component are implicitly GRID — on the render side that
-  default is carried by `REBUILD_GRID_VOXELS_IMPLICIT`, the
-  `Exclude<C_RotationMode>` twin a creation must register alongside
-  `REBUILD_GRID_VOXELS` (see
-  [`../voxel/CLAUDE.md`](../voxel/CLAUDE.md) §"Transform and revoxelization pipeline").
-- `C_ChunkMembership` — which streaming chunk an entity belongs to
-  (Epic E / `IRPrefab::Chunk::ChunkKey`). **NOT auto-added** —
-  single-chunk creations carry no chunk metadata. Attached by the
-  chunk-membership migration system when a creation opts into world
-  streaming via `IRWorld::ChunkResidencyManager`. Design contract:
-  [`docs/design/world-streaming.md`](../../../../docs/design/world-streaming.md).
-- `C_Modifiers` / `C_GlobalModifiers` / `C_NoGlobalModifiers` /
-  `C_LambdaModifiers` / `C_ResolvedFields` — generic modifier
-  framework. See [Modifier framework](#modifier-framework) below.
+`C_LocalTransform` is relative to the entity's `CHILD_OF` parent;
+`C_WorldTransform` is the resolved world transform. Both use SQT and the
+quaternion layout `IRMath::vec4(qx, qy, qz, qw)`. Identity is
+`vec4(0, 0, 0, 1)`; quaternion algebra follows
+[`engine/math/CLAUDE.md`](../../../math/CLAUDE.md) § "Quaternions".
 
-## Systems
-
-None. Position math is read-only in `common/` — write paths live in
-`update/systems/` (velocity, physics, animation, transform propagation).
-The sim-clock systems below are likewise registered from `update/systems/`.
-
-## Sim-clock substrate (#200)
-
-Deterministic simulation time + a generic cycle/timer framework.
-Two-clock model: the **engine tick** (`IRTime::tick()`, always advancing,
-`engine/time/`) drives wall-clock infra; the **sim tick** below pauses and
-scales so gameplay timers freeze on pause.
-
-- `C_SimClock` — singleton (`IREntity::singleton<C_SimClock>()`). Fields
-  `tickCount_` (sim ticks), `timeScale_` (0 = paused, N = fast, 1/N =
-  slow), `subTickAccum_` (sub-integer remainder for fractional scale).
-  `SYSTEM_SIM_CLOCK_ADVANCE` advances it once per UPDATE tick.
-- `C_Cycle` — a tick-aligned recurring period (`"day"`, `"boss_phase"`,
-  …). `SYSTEM_CYCLE_BOUNDARY_DETECT` recomputes the cycle index and
-  intra-period segment each tick and raises the **embedded** boundary
-  event (`boundaryCrossed_` + `fromCycle_`/`toCycle_` +
-  `fromSegment_`/`toSegment_`/`segmentIndex_`) on the crossing tick — the
-  events-as-components pattern (cf. `C_ContactEvent`), self-clearing, no
-  separate clear system. `lastCycleNum_` defaults to a sentinel so a
-  cycle created mid-sim primes silently (no spurious boundary).
-  **Multi-breakpoint support:** call `C_Cycle::addBreakpoint(fraction)` or
-  `IRSim::cycleAddBreakpoint(name, fraction)` to divide each period into
-  segments — the boundary event then fires on EVERY segment crossing, not
-  just the period wrap. Empty breakpoints = single period-wrap boundary
-  only (original behavior). `segmentIndex_` is updated every tick and
-  always reflects the current segment; query it via
-  `IRSim::cycleSegment(name)` by name.
-- `C_Timer` — fires `fired_` when the sim reaches `targetTick_`. One-shot
-  (`intervalTicks_ == 0`, deactivates) or recurring (re-arms past every
-  crossed interval). `SYSTEM_TIMER_FIRE` drives it.
-- `C_Stopwatch` — count-up elapsed with pause/resume. **No system** —
-  elapsed is computed on read by `IRSim::stopwatchElapsed`; pause/resume/
-  reset are imperative `IRSim::` calls that snapshot the sim tick.
-
-`IRSim::` service ([`sim_clock.hpp`](sim_clock.hpp), header-only): clock
-control (`tick`, `timeScale`, `setTimeScale`, `pause`, `resume`,
-`isPaused`), name-keyed cycle/timer/stopwatch create + query
-(`cycleFraction`/`cycleNumber`/`cycleBoundaryCrossed`/`cycleSegment`,
-`timerFraction`/`timerTicksRemaining`/`timerFired`/`timerActive`,
-`stopwatchElapsed`/`stopwatchRunning`/…), factory + breakpoint helpers
-(`createCycle`/`cycleAddBreakpoint`/`createTimer`/`createStopwatch`).
-`cycleFraction("day")` is the load-bearing continuous primitive for
-time-driven values (sun angle, color temp); `cycleSegment("day")` returns
-the current segment index (0 = before the first breakpoint). The service
-lives in `common/` (not `engine/time/`) because it reads ECS components,
-which `engine/time` must not depend on. Lua surface: the `IRSim` table
-(`engine/script/include/irreden/script/lua_sim_bindings.hpp`). A consumer registers the three systems in
-its UPDATE pipeline (SIM_CLOCK_ADVANCE first) and touches the clock once
-at init so the singleton exists. Day-specific gameplay stays game-side
-(game #44) — the engine knows only generic cycles.
-
-## SQT transform pair + propagation
-
-`C_LocalTransform` holds the entity's transform relative to its parent
-in the `CHILD_OF` graph. `C_WorldTransform` holds the resolved
-world-space transform after parent-chain composition. Both are SQT
-(scale, quat-rotation, translation) with the engine's canonical
-quaternion layout `IRMath::vec4(qx, qy, qz, qw)` — identity is
-`vec4(0, 0, 0, 1)`. See `engine/math/CLAUDE.md` "Quaternions" for the
-algebra contract (`IRMath::quatMul`, `IRMath::rotateVectorByQuat`).
-
-`PROPAGATE_TRANSFORM` in
-[`update/systems/system_propagate_transform.hpp`](../update/systems/system_propagate_transform.hpp)
-walks the parent chain in topological order each tick and writes
-`C_WorldTransform`. The composition formula:
+Register `PROPAGATE_TRANSFORM` after modifier resolution and before every
+consumer of `C_WorldTransform`. It processes parents before children and
+composes:
 
 ```
-world.scale       = parent.world.scale * local.scale * modifier_scale
-world.rotation    = quatMul(parent.world.rotation, local.rotation)
-world.translation = parent.world.translation
-                  + rotateVectorByQuat(parent.world.scale * local.translation,
-                                       parent.world.rotation)
+world.scale       = parent.scale * local.scale * modifier_scale
+world.rotation    = quatMul(parent.rotation, local.rotation)
+world.translation = parent.translation
+                  + rotateVectorByQuat(parent.scale * local.translation,
+                                       parent.rotation)
                   + modifier_translation
 ```
 
-Roots (no `CHILD_OF`, or parent's archetype lacks `C_WorldTransform`)
-use identity as the parent transform.
+A missing parent transform means identity. A relation change after propagation
+takes effect next frame. Any RENDER-phase writer of `C_LocalTransform` must
+also update `C_WorldTransform`, because propagation has already run.
 
-**Modifier integration.** Per-frame perturbations (shake, recoil,
-wobble, animation-blend overlays) push vec3 modifiers under the
-`TRANSFORM_TRANSLATION` / `TRANSFORM_SCALE` fields registered in
-[`transform_modifier_fields.hpp`](transform_modifier_fields.hpp). The
-propagation system reads the modifier-resolved values from
-`C_ResolvedFields` and folds them into the world transform per the
-formula above. Default fallbacks when no resolved field exists:
-translation `vec3(0)`, scale `vec3(1)` — i.e., no perturbation.
-Entities that don't push perturbations don't need `C_Modifiers`. The
-matching `ROTATION` quat field arrives with the quat modifier kind
-ticket (T-198); until then, `modifier_rotation` is identity.
+`C_LocalTransform::unbounded_` permits sub-trixel translation only with
+`RotationMode::DETACHED`; GRID entities still snap to world cells.
 
-**Pipeline placement.** Register `PROPAGATE_TRANSFORM`
-after the modifier resolver pipeline so the resolved fields are
-current, and before any consumer (render, gizmo, physics) that reads
-`C_WorldTransform`.
+`C_RotationMode` selects one of these representations:
 
-**Topological order is non-negotiable.** Iterating an archetype in
-arbitrary order computes stale-parent results for any non-root entity.
-The propagation system topo-sorts candidate archetype nodes per tick
-(by parent-chain depth) and processes them parents-first. Cost is
-O(N + passes × archetypes); passes ≤ tree depth.
+- `GRID`: shared voxel pool and grid-quantized rotation.
+- `DETACHED`: a private `C_EntityCanvas`; voxel emit bakes full rotation.
+- `DETACHED_REVOXELIZE`: a private pool rebuilt at rotated cell positions.
 
-**`setParent` during a tick.** If a system calls `setParent` after the
-propagation step has run, the new child won't see its parent's
-transform until the next frame. This matches the existing "structural
-changes during iteration" rule — defer the relation change to a frame
-boundary if the visual must update the same frame.
+`IRPrefab::Prefab::spawnPrefab` attaches the mode. Runtime changes go through
+`IRPrefab::RotationMode::setMode`; never mutate the component directly.
+`IRPrefab::RotationMode::ownsEntityCanvas` is authoritative for canvas
+lifecycle. Adding a mode also requires classifying it explicitly in
+`PROPAGATE_CANVAS_ROTATION`. Non-prefab entities without `C_RotationMode` are
+GRID; creations must register `REBUILD_GRID_VOXELS_IMPLICIT` alongside
+`REBUILD_GRID_VOXELS`.
 
-**A RENDER-phase writer of `C_LocalTransform` writes `C_WorldTransform`
-too.** `PROPAGATE_TRANSFORM` has already run for the frame, so a
-local-only write from a RENDER system or helper (picking highlight,
-gizmo handle, hover marker) renders one frame stale and no
-settled-frame capture sees it. Worked example:
-`../render/systems/system_voxel_picking.hpp` (#2682).
+`C_ChunkMembership` is opt-in metadata attached by world-streaming migration,
+not by `createEntity`. Its contract is
+[`world-streaming.md`](../../../../docs/design/world-streaming.md).
 
-**Auto-attach + caller-supplied conflict.** `createEntity(...)`
-auto-attaches default `C_LocalTransform` and `C_WorldTransform`
-alongside `C_PositionGlobal3D`. The free function detects when the
-caller passes one of these types explicitly and skips the default for
-that type, so `createEntity(C_LocalTransform{vec3(5,6,7)})` produces an
-entity whose local translation is `(5,6,7)`, not the default `(0,0,0)`.
-Without that guard the duplicate type would emplace a second column
-row, leaving the caller's value orphaned at `row + 1`.
+## Simulation-clock contract
+
+The ECS simulation clock pauses and scales independently of the always-running
+engine clock. A creation using it must instantiate the `C_SimClock` singleton
+and register these UPDATE systems in order:
+
+1. `SIM_CLOCK_ADVANCE`
+2. `CYCLE_BOUNDARY_DETECT`
+3. `TIMER_FIRE`
+
+`C_Cycle` primes silently when created mid-simulation. Its embedded,
+self-clearing boundary event fires on every configured segment crossing;
+without breakpoints it fires only on period wrap. `segmentIndex_` always
+describes the current segment.
+
+`C_Timer` is one-shot when `intervalTicks_ == 0` and recurring otherwise.
+`C_Stopwatch` has no system: `IRSim::stopwatchElapsed` computes elapsed time,
+while pause, resume, and reset snapshot the simulation tick.
+
+Use the header-only `IRSim::` service in [`sim_clock.hpp`](sim_clock.hpp) for
+clock control and name-keyed cycle, timer, and stopwatch creation and queries.
+The Lua surface is `IRSim`. Day-specific behavior belongs in the creation.
 
 ## Modifier framework
 
-`component_modifiers.hpp` declares the generic
-`base + N modifications → effective` framework that generalizes the
-position-offset / velocity-drag pattern. It is an engine-level
-mechanism: any feature that wants a stack of additive / multiplicative
-/ clamp / override modulations on a scalar field can register a
-`FieldBindingId` and push `Modifier` records onto the entity's
-`C_Modifiers` vector. The resolver pipeline composes them once per
-UPDATE tick and writes the result to `C_ResolvedFields`.
+The detailed design and API discriminators live in
+[`modifiers.md`](../../../../docs/design/modifiers.md). Register fields during
+initialization, then call `IRPrefab::Modifier::registerResolverPipeline()`
+once and splice its returned systems into UPDATE order.
 
-The framework ships in two phases: type declarations (component types,
-`Modifier` struct, static asserts) and the runtime
-(`IRPrefab::Modifier::` free-function API, `FieldBindingId` registry,
-the resolver systems, `applyToField`) shipped on top.
+- `registerField`, `registerFieldVec3`, and `registerFieldQuat` create distinct
+  typed IDs. A push with the wrong value type is rejected without changing
+  resolved storage.
+- `push` and `pushGlobal` create transient records; `upsertBySource` creates a
+  persistent writer-owned slot keyed by `(source, field, kind)`.
+- A system tick that already holds `C_Modifiers&` uses
+  `upsertBySourceInPlace`; do not perform an entity lookup for the same row.
+- Destroying a source automatically invokes `removeBySource` before its ID can
+  recycle. Call it directly when the source persists but its effect ends.
+- `applyToField` and the resolver use the same evaluator.
+- `applyVec3ModifierTo<TargetComponent, Member>` is only for an additive vec3
+  channel with one consumer and no global-modifier requirement. Other channels
+  use the structured resolver and `C_ResolvedFields`.
 
-Runtime entry points (all `inline`, header-only):
+Scalar and vec3 composition selects the latest `OVERRIDE` across globals then
+entity records, discards everything before it, applies `ADD`, `MULTIPLY`, and
+`SET` in push order, then applies all clamps. Vec3 operations are componentwise.
 
-- `registerField(name)` / `fieldName(id)` / `fieldCount()` — dense
-  registry, init-time only.
-- `push(target, field, kind, param, source, ticks)` — push one
-  **transient** modifier onto an entity (use `ticksRemaining` for decay).
-  `pushGlobal(...)` targets the singleton; `pushLambda(...)` writes the
-  escape-hatch component. All three reject `kInvalidFieldId` defensively.
-  Use `push` for one-shot effects (screen-shake, triggered pulses). Use
-  `upsertBySource` / `upsertBySourceInPlace` for steady-state writers.
-- `upsertBySource(target, field, kind, param, source)` — **steady-state
-  writer-owned slot** API. Slot key is `(source, field, kind)`. On hit:
-  overwrites `param_` and resets `ticksRemaining_ = -1` (no decay). On
-  miss: appends with `ticksRemaining_ = -1`. No `MODIFIER_DECAY`
-  dependency; the slot persists until `removeBySource` or source
-  destruction. `upsertBySourceGlobal(...)` targets the singleton.
-- `upsertBySourceInPlace(mods, field, kind, param, source)` — same slot
-  semantics as `upsertBySource` but takes a `C_Modifiers&` directly
-  (caller is a system tick that already holds the archetype reference);
-  skips `getComponentOptional` and the field-type check. Canonical for
-  system ticks that push the same slot every frame.
-- `removeBySource(source)` — sweeps every `C_Modifiers`,
-  `C_GlobalModifiers`, and `C_LambdaModifiers` in the world,
-  dropping entries whose `source_` matches. Wired automatically
-  into `EntityManager::destroyEntity` by `registerResolverPipeline()`
-  via a pre-destroy hook, so destroying a source entity sweeps its
-  attributed modifiers off live targets before the EntityId
-  recycles. Callable directly when an "ability ends but caster
-  persists" pattern needs the same sweep without destroying the
-  source entity.
-- `applyToField(target, field, base) → float` — direct query. Shares
-  one evaluator with the resolver pipeline so the cache and direct
-  paths give the same answer for the same input.
-- `registerResolverPipeline()` — call once at creation init. Creates
-  the singleton globals entity (named `"modifierGlobals"`) and
-  registers the six resolver systems in canonical order. Returns
-  the `SystemId`s in pipeline order so the caller splices them
-  into its `IRTime::UPDATE` pipeline.
-- `globalsEntity()` — returns the singleton globals entity created by
-  `registerResolverPipeline()`. Intended for tests and diagnostics;
-  production code should use `pushGlobal` / `removeBySource`.
+Quaternion `MULTIPLY` left-multiplies (`modifier * value`); `OVERRIDE` and
+`SET` follow scalar ordering. `ADD` and clamp kinds are invalid. Normalize once
+after composition only when a modifier changed the value. Lambda modifiers are
+scalar-only.
 
-Inline-apply factory: `IRPrefab::Modifier::applyVec3ModifierTo<
-TargetComponent, Member>(name, field)` in
-[`modifier_apply.hpp`](modifier_apply.hpp) generalizes the
-retired-in-T-300-Phase-2 `APPLY_POSITION_OFFSET` shape — *iterate
-`<TargetComponent, C_Modifiers>`, compose one vec3 field against a
-`vec3(0)` base, ADD the result to a vec3 member of the target
-component*. Use it for any per-frame additive vec3 channel with
-exactly one consumer where global-modifier integration is not
-required. Channels with multiple readers, global-modifier needs, or
-multiplicative apply semantics belong on the structured-resolver
-path (`MODIFIER_RESOLVE_GLOBAL` / `_EXEMPT` + read from
-`C_ResolvedFields`). See `docs/design/modifiers.md` §"Inline-apply
-pattern" for the discriminator and rationale.
+Keep `Modifier`, `ModifierVec3`, and `ModifierQuat` trivially copyable. Stateful
+or string-bearing behavior belongs outside `C_Modifiers`. Global exemption is
+implemented by include/exclude archetype routing, not per-row branching.
+Current intentional gaps are tracked in
+[`modifier-runtime-gaps.md`](../../../../.fleet/status/modifier-runtime-gaps.md).
 
-Composition core lives in `modifier_compose.hpp` and is called from
-both the resolver tick and `applyToField`. Order is non-obvious:
+## Command-suite contract
 
-1. Latest `OVERRIDE` in (`globals` ++ `entity_mods`) wins; an
-   `OVERRIDE` in `entity_mods` trumps one in `globals`. Everything
-   earlier than the chosen `OVERRIDE` is discarded.
-2. `ADD` / `MULTIPLY` / `SET` apply in push-order across both
-   vectors (vector A first, then vector B).
-3. `CLAMP_MIN` / `CLAMP_MAX` apply last across the surviving
-   modifiers — even if they appear earlier than the algebra in push-
-   order. This is the "always after the algebra so they bound the
-   result" rule from the design doc.
+`command_suite_registry.hpp` is the data-only definition of the camera and
+capture default bindings; do not include command bodies there. Registration
+lives in `command_suite_camera.hpp` and `command_suite_capture.hpp` and accepts
+`BindingOverrides` for omission or remapping. In-tree callers use the prefab
+wrapper, such as `IRPrefab::Camera::registerStandardKeyboardCommands`, rather
+than copying a suite or calling its bare registration function. See
+[`engine/command/CLAUDE.md`](../../../command/CLAUDE.md).
 
-Full design — locked choices, rationale, audit, public-API surface,
-and decomposition — is in `docs/design/modifiers.md`. Read that
-before adding to the framework or migrating an existing
-`base + offset` pattern onto it.
+## Checks
 
-The canonical visual reference is `creations/demos/modifier_demo/`:
-run `fleet-run IRModifierDemo` and press keys 1–8 to see each
-capability (Haste, Stun, Slow, Stack, GlobalSlow, LambdaSine,
-SourceKill, Clamp) live. The HUD shows per-cube resolved speed
-each tick.
-
-### Typed fields: scalar vs vec3 vs quat
-
-Fields are typed at registration time. `IRPrefab::Modifier::registerField`
-declares a scalar field; `registerFieldVec3` declares a vec3 field;
-`registerFieldQuat` declares a quaternion field. `fieldType(id)` returns
-`FieldValueType::{SCALAR,VEC3,QUAT}`. The `push` overload set is
-type-driven: `push(target, field, kind, float, ...)` routes into
-`C_Modifiers::modifiers_` (scalar), `push(target, field, kind,
-IRMath::vec3, ...)` routes into `C_Modifiers::modifiersVec3_`, and
-`push(target, field, kind, IRMath::vec4, ...)` routes into
-`C_Modifiers::modifiersQuat_`. Pushing the wrong type against a typed
-field silently no-ops (caller bug — wrong-type push doesn't corrupt the
-resolved-field storage). The same applies to `pushGlobal`.
-
-Compose semantics for vec3 mirror the scalar path component-wise:
-`ADD`/`MULTIPLY`/`SET` apply per-axis in push-order; `OVERRIDE`
-replaces the entire vec3 and short-circuits prior ops; `CLAMP_MIN`/
-`CLAMP_MAX` bound each axis independently, always last. The compose
-helper is `composeForFieldVec3`; the per-frame resolver systems
-(`MODIFIER_RESOLVE_GLOBAL`, `MODIFIER_RESOLVE_EXEMPT`) iterate both
-scalar and vec3 vectors on the same `C_Modifiers` /
-`C_GlobalModifiers` archetype and write to the matching scalar /
-vec3 vector on `C_ResolvedFields`.
-
-Quat compose follows the engine's quaternion convention
-(`IRMath::vec4(qx, qy, qz, qw)`, identity `vec4(0, 0, 0, 1)`) and the
-non-commutative nature of quaternion multiplication:
-
-- `MULTIPLY` → **left-multiply, post-rotate**:
-  `resolved = mod * base` via `IRMath::quatMul(mod.param_, value)`.
-  Stacked MULTIPLYs apply outer-first in push-order: for `[r1, r2, r3]`,
-  `resolved = r3 * r2 * r1 * base`. Consumers using the
-  `quatMul(parent_world, local)` bone-chain idiom are post-rotating in
-  the same direction.
-- `OVERRIDE` → replace value; latest OVERRIDE wins across the
-  combined `(globals ++ entity_mods)` sequence; everything earlier is
-  discarded (same short-circuit semantics as scalar/vec3).
-- `SET` → replace value in push-order (no short-circuit).
-- `ADD` / `CLAMP_MIN` / `CLAMP_MAX` → not meaningful on a unit
-  quaternion. The push API fires `IR_ASSERT` in debug and silently
-  skips in release; the compose path also defensively drops them so
-  direct-vector construction can't slip nonsense through. A future
-  "clamp angle around an axis" variant would land as a separate
-  `CLAMP_ANGLE_AXIS` kind.
-
-The compose helper is `composeForFieldQuat`; the resolver systems
-iterate the quat vector alongside scalar and vec3 on the same
-`C_Modifiers` archetype. The compose pass normalizes the final
-resolved quat **once** at the end (gate: only if any modifier touched
-the value — identity-only fast path skips the normalize and returns the
-caller's base unchanged, so callers passing a non-unit `baseValue` to
-`applyToFieldQuat` see it round-trip when no modifier is active).
-
-`C_ResolvedFields` carries three parallel vectors: `fields_` (scalar),
-`fieldsVec3_` (vec3), and `fieldsQuat_` (quat). Read with `get(field)` /
-`getVec3(field)` / `getQuat(field)`; seed with `reset(field, base)` /
-`resetVec3(field, base)` / `resetQuat(field, base)`. A scalar, vec3, and
-quat field id may share the same name but are distinct `FieldBindingId`s,
-so their resolved values live in separate slots.
-
-`LambdaModifier` stays scalar-only in v1 — `C_LambdaModifiers` does
-not have vec3 or quat counterparts. A vec3 or quat lambda channel is a
-Phase 2 follow-up if a per-frame procedural rotation curve (rather
-than the structured `MULTIPLY` / `OVERRIDE` / `SET` modifiers covered
-above) is needed.
-
-Key invariants the design rests on:
-
-- `Modifier`, `ModifierVec3`, and `ModifierQuat` all stay
-  **trivially-copyable**. Anything needing inline `std::function` or
-  `std::string` belongs in `C_LambdaModifiers`, not `C_Modifiers`.
-- Public API lives in the `IRPrefab::Modifier::` namespace per the
-  prefab-layer principle in `engine/prefabs/irreden/render/CLAUDE.md`,
-  NOT in `IRRender::` or any engine-library-level namespace.
-- Globals + exemption are dispatched via **archetype routing**
-  (separate include / exclude resolver systems on
-  `C_NoGlobalModifiers`), never via per-entity branching inside a
-  tick body.
-- Decay is built-in only as `ticksRemaining_` (an `int32_t` counter
-  with `-1` as the sentinel for "no decay"). Curved / source-driven
-  decay is the source entity's job, not the modifier struct's.
-
-### Open follow-ups (runtime gaps)
-
-See `.fleet/status/modifier-runtime-gaps.md` (queue-manager-owned;
-feature PRs do not edit) for the current list of pending modifier
-runtime work and architect-gated decisions.
-
-## Commands
-
-- `command_suite_registry.hpp` — the engine's default keybindings **as
-  data**: `constexpr DefaultBinding kCameraSuite[]` (11 rows) and
-  `kCaptureSuite[]` (3 rows), plus `Suite` and
-  `suiteDefaults(Suite)` for enumeration. One definition site per
-  suite. Deliberately data-only (no `Command<NAME>` body includes), so
-  `engine/script` can expose the suites on the Lua surface without
-  dragging the render/video command headers in.
-- `command_suite_camera.hpp` / `command_suite_capture.hpp` —
-  registration entry points. `registerCameraCommands()` binds
-  `CLOSE_WINDOW`, `ZOOM_IN`/`ZOOM_OUT`, and the WASD
-  `MOVE_CAMERA_*_START`/`_END` pairs; `registerCaptureCommands()` binds
-  F7/F8/F9. Both are loops over their manifest via
-  `IRCommand::registerBindings`, and both take an optional
-  `BindingOverrides` for registration-time omit/remap —
-  `registerCameraCommands({.omit_ = {CLOSE_WINDOW}})` is the shape a
-  creation that owns Escape wants instead of hand-copying the suite.
-  In-tree that shape always goes through the prefab wrapper —
-  `IRPrefab::Camera::registerStandardKeyboardCommands({.omit_ =
-  {CLOSE_WINDOW}})` — as both `creations/editors/voxel_editor` and
-  `creations/demos/shape_debug` (which frees Escape for
-  `IRPrefab::SettingsMenu`, #2551) do; outside that wrapper only the
-  manifest unit tests call the bare form. Full semantics:
-  [`engine/command/CLAUDE.md`](../../../command/CLAUDE.md)
-  §"Default-binding manifests (#2666)".
-
-## Gotchas
-
-- **`createEntity` always adds `C_LocalTransform` and
-  `C_WorldTransform`.** The canonical rendered position lives in
-  `C_WorldTransform.translation_`, composed by
-  `SYSTEM_PROPAGATE_TRANSFORM` from `C_LocalTransform` plus the
-  parent chain and the `TRANSFORM_TRANSLATION` / `TRANSFORM_SCALE`
-  modifier-resolved fields.
-- **Don't duplicate transform components.** Adding your own
-  `C_LocalTransform` or `C_WorldTransform` second on top of the
-  auto-added one leaves one column stale and causes jitter.
-  `createEntity(...)` detects user-supplied `C_LocalTransform` /
-  `C_WorldTransform` and skips the matching default; passing any
-  other auto-attached component twice is still a footgun.
-- **No systems means no ownership.** Any code is free to write to any
-  position component here — that's the coordination-by-convention part.
-  The `update/` domain's systems are the ones that write velocity-driven
-  updates.
+- `fleet-build --target header-checks`
+- `python3 scripts/lint_instruction_size.py`
+- `python3 scripts/lint_comment_refs.py`
+- `fleet-run IRModifierDemo` for modifier behavior
