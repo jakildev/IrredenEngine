@@ -248,18 +248,15 @@ split along a diagonal; `trixelFramebufferSamplePosition`
 conditionally decrementing **`origin.y`** by one row (parity bit + a sub-pixel
 `fract` test, byte-identical to CPU `IRMath::pos2DIsoToTriangleIndex`).
 
-**That shift feeds the hover/pick coordinate ONLY, on both backends.** The
-color/depth/tier reads sample the **raw** origin: both vertex twins build
-identical V-flipped `TexCoords`, and Metal's clip-Y negate (the note above) is
-cancelled by its own negate in the final blit, so both backends interpolate
-the same canvas position for the same screen pixel — the raw sample lands on
-the correct trixel row on both. The hover coordinate is shifted because it
-must match CPU `mouseTrixelPositionWorld()` → `pos2DIsoToTriangleIndex`; both
-gathers keep the two coordinates separate (raw sampleCoord / shifted
-hoverCoord). Applying the shift to the color/depth reads is the known
-regression shape — a 1px sawtooth on every iso-diagonal and vertical
-silhouette plus a garbage top-canvas-row line (#394 on Metal; the GL gather
-carried the same defect until 2026-08).
+**RECTANGULAR (the default) uses this shift only for hover/picking.**
+Color, depth and priority use raw coordinates. Applying world hover parity
+indiscriminately to display reads produces sawtooth edges and row underflow.
+
+Opt-in `LOCAL_TRIANGLES` on private revoxelized canvases uses local canvas
+parity, undilated writes and a row-corrected query for color/depth/priority.
+The compositor follows the effective layout recorded by the producer; it must
+not infer layout from depth scaling or world position. Contract and evidence:
+[`detached-local-triangles.md`](../../docs/design/detached-local-triangles.md).
 
 Before editing either `f_trixel_to_framebuffer` shader or
 `trixelFramebufferSamplePosition`, read

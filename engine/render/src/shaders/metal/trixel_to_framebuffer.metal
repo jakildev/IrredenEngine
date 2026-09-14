@@ -41,6 +41,8 @@ struct FrameDataIsoTriangles {
     // Two-tier composite depth partition (#1958): 0 = world content (clamped out
     // of the reserved near band), != 0 = foreground priority (pinned into it).
     int depthPriorityMode;
+    int overflowMode;
+    int trixelSampleLayout;
 };
 
 // SSBO populated by the fragment shader when the mouse hovers over a
@@ -97,19 +99,21 @@ fragment FragmentOut f_trixel_to_framebuffer(
     const float2 textureSize = float2(triangleColors.get_width(), triangleColors.get_height());
     const int2 z1 = trixelOriginOffsetZ1(int2(textureSize));
 
-    // Color / depth read at the RAW interpolated canvas position — the raw
-    // sample already lands on the correct trixel row (same convention as the
-    // GLSL twin). The shifted index IS still computed (`originShifted` below)
-    // and used for hover entity-id readback, so it stays in lockstep with
-    // CPU-side `mouseTrixelPositionWorld()` (same `pos2DIsoToTriangleIndex`
-    // formula). See trixelFramebufferSamplePosition in ir_iso_common.metal;
-    // #442, docs/design/trixel-parity-shift-442-investigation.md.
+    // Hover uses world parity; local display triangles use canvas parity.
     const float2 originRaw = in.texCoords * textureSize;
     const int originModifier = trixelOriginModifier(z1, frameData.canvasOffset);
     const float2 originShifted =
         trixelFramebufferSamplePosition(originRaw, originModifier);
 
-    const uint2 sampleCoord = trixelCanvasReadCoord(originRaw, textureSize);
+    float2 displayOrigin = originRaw;
+    if (frameData.trixelSampleLayout == 1) {
+        // Center the triangular footprint on the stored voxel origin.
+        displayOrigin = trixelFramebufferSamplePosition(
+            originRaw + float2(0.0f, 1.0f), (z1.x + z1.y) & 1);
+        if (any(displayOrigin < float2(0.0f)) ||
+            any(displayOrigin >= textureSize)) discard_fragment();
+    }
+    const uint2 sampleCoord = trixelCanvasReadCoord(displayOrigin, textureSize);
     const uint2 hoverCoord = trixelCanvasReadCoord(originShifted, textureSize);
 
     float4 color = triangleColors.read(sampleCoord);
@@ -124,20 +128,7 @@ fragment FragmentOut f_trixel_to_framebuffer(
     // cubeSub) lands odd rawDist values on exact .5 ties, where the GLSL
     // twin's round() is implementation-defined; both twins share roundHalfUp.
     int base = roundHalfUp(float(rawDist) * depthScale);
-    // Per-trixel priority tiers (#1960) — twin of f_trixel_to_framebuffer.glsl.
-    // No-priority perf fast-path (#2155): read this fragment's entity id (at the
-    // SAME texel its color/depth came from — sampleCoord, the raw position) only
-    // when the canvas carries a per-trixel priority. When it doesn't,
-    // decodePriority of an unread id would be 0, so tier == depthPriorityMode and
-    // the output is byte-identical. This read never feeds picking (the hover
-    // read below uses the shifted hoverCoord and is gated on isMouseHovered
-    // separately), so no `|| isMouseHovered` disjunct is needed — the GLSL twin
-    // carries the same sampleCoord/hoverCoord split. So a fragment that is BOTH
-    // prioritized and hovered reads triangleEntityIds TWICE — once here at
-    // sampleCoord, once at hoverCoord below. The two reads want different
-    // texels, so the pair is not redundant: one shared fetch has to pick a
-    // single coord, and either choice reintroduces a parity-shifted read on the
-    // path that needs the other (#394, #442).
+    // Priority and color/depth select the same stored cell.
     int tier = frameData.depthPriorityMode;
     if (frameData.anyPerTrixelPriority != 0) {
         const uint2 sampleEntityId = triangleEntityIds.read(sampleCoord).rg;

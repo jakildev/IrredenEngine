@@ -50,6 +50,8 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     // note above) and to the C++ FrameDataTrixelToFramebuffer.
     int anyPerTrixelPriority;
     int depthPriorityMode;
+    int overflowMode;
+    int trixelSampleLayout;
 };
 
 void main() {

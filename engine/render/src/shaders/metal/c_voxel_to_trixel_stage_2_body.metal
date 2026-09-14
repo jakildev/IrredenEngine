@@ -160,7 +160,7 @@ inline void emitDeformedFace(
     uint2 localId,
     bool isDetached,
     int faceId,
-    bool reVoxelize,
+    bool dilate,
     int2 canvasSize,
     device const atomic_int* distanceScratch,
     texture2d<float, access::write> triangleCanvasColors,
@@ -179,7 +179,7 @@ inline void emitDeformedFace(
     // tap claimed; writeColorTap's depth re-test paints only the occlusion winner.
     int2 su = int2(0);
     int2 sv = int2(0);
-    if (reVoxelize) {
+    if (dilate) {
         faceInPlaneIsoSteps(faceId, su, sv);
     }
     for (int sy = 0; sy < n; ++sy) {
@@ -192,7 +192,7 @@ inline void emitDeformedFace(
                 distanceScratch, perAxisWinnerIds, triangleCanvasColors,
                 triangleCanvasDistances, triangleCanvasEntityIds
             );
-            if (reVoxelize) {
+            if (dilate) {
                 writeColorTapCardinalWinner(
                     p + su, voxelDistance, voxelColor, packedEntityId, voxelIndex, canvasSize,
                     distanceScratch, perAxisWinnerIds, triangleCanvasColors,
@@ -220,7 +220,7 @@ inline void emitDeformedFace(
                 distanceScratch, triangleCanvasColors, triangleCanvasDistances,
                 triangleCanvasEntityIds
             );
-            if (reVoxelize) {
+            if (dilate) {
                 writeColorTap(
                     p + su, voxelDistance, voxelColor, packedEntityId, canvasSize,
                     distanceScratch, triangleCanvasColors, triangleCanvasDistances,
@@ -318,6 +318,7 @@ kernel void IR_STAGE2_KERNEL_NAME(
 
     // Re-voxelize marker — mirror of stage 1.
     const bool reVoxelize = frameData.visibleFaceIds.w != 0;
+    const bool dilateRevox = frameData.visibleFaceIds.w == 1;
 
     // Stage 2 mirrors stage 1's exposed-face gate (#1278) so it doesn't waste a
     // depth compare on faces stage 1 skipped — and is BYPASSED for re-voxelize
@@ -471,7 +472,7 @@ kernel void IR_STAGE2_KERNEL_NAME(
             localId,
             frameData.isDetachedCanvas > 0.5f,
             faceId,
-            reVoxelize,
+            dilateRevox,
             canvasSize,
             distanceScratch,
             triangleCanvasColors,
@@ -528,7 +529,7 @@ kernel void IR_STAGE2_KERNEL_NAME(
         localId,
         frameData.isDetachedCanvas > 0.5f,
         viewFaceId,
-        reVoxelize,
+        dilateRevox,
         canvasSize,
         distanceScratch,
         triangleCanvasColors,
@@ -563,7 +564,7 @@ kernel void IR_STAGE2_KERNEL_NAME(
             localId,
             frameData.isDetachedCanvas > 0.5f,
             viewFaceId ^ 1,
-            reVoxelize,
+            dilateRevox,
             canvasSize,
             distanceScratch,
             triangleCanvasColors,

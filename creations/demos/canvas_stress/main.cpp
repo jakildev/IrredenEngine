@@ -604,6 +604,11 @@ void spawnDetachedReVoxelizeSolid(
         screenLocked
     );
 
+    if (IREngine::args().getFlag("--local-trixel-display")) {
+        IREntity::getComponent<C_TriangleCanvasTextures>(canvas.canvasEntity_).sampleLayout_ =
+            IRRender::TrixelSampleLayout::LOCAL_TRIANGLES;
+    }
+
     // Centered around origin so SYSTEM_REBUILD_DETACHED_VOXELS can rotate the
     // cells about the pool origin (translation-free) and keep the solid centered
     // on its canvas as it tumbles.
@@ -843,6 +848,10 @@ void spawnSmallZoomRepro() {
         kPoolSize,
         g_settings.screenLockDetached_
     );
+    if (IREngine::args().getFlag("--local-trixel-display")) {
+        IREntity::getComponent<C_TriangleCanvasTextures>(canvas.canvasEntity_).sampleLayout_ =
+            IRRender::TrixelSampleLayout::LOCAL_TRIANGLES;
+    }
     IREntity::createEntity(
         C_LocalTransform{vec3(0.0f)},
         C_VoxelSetNew{kCubeSize, kColor, true, canvas.canvasEntity_}
@@ -1074,6 +1083,10 @@ void registerArgs() {
     args.flag(
         "--source-face-shadows",
         "Experimental authored-face shadows before detached resampling"
+    );
+    args.flag(
+        "--local-trixel-display",
+        "Experimental undilated local triangles on detached probes"
     );
     args.flag("--probe-upright", "Use unrotated revoxelization and attached shadow probes");
     args.flag("--probe-grid", "Render the shadowbox probe through the shared GRID canvas");
@@ -1647,6 +1660,10 @@ void initEntities() {
                 ivec3(32),
                 g_settings.screenLockDetached_
             );
+            if (IREngine::args().getFlag("--local-trixel-display")) {
+                IREntity::getComponent<C_TriangleCanvasTextures>(canvas.canvasEntity_)
+                    .sampleLayout_ = IRRender::TrixelSampleLayout::LOCAL_TRIANGLES;
+            }
             IREntity::createEntity(
                 C_LocalTransform{vec3(0.0f)},
                 C_VoxelSetNew{size, color, true, canvas.canvasEntity_}
