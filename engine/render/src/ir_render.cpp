@@ -362,18 +362,6 @@ void zoomMainBackgroundPatternOut() {
     getRenderManager().zoomMainBackgroundPatternOut();
 }
 
-void setGuiVisible(bool visible) {
-    getRenderManager().setGuiVisible(visible);
-}
-
-void toggleGuiVisible() {
-    getRenderManager().toggleGuiVisible();
-}
-
-bool isGuiVisible() {
-    return getRenderManager().isGuiVisible();
-}
-
 void setGuiScale(int scale) {
     getRenderManager().setGuiScale(scale);
 }

@@ -80,10 +80,6 @@ class RenderManager {
     void zoomMainBackgroundPatternIn();
     void zoomMainBackgroundPatternOut();
 
-    void setGuiVisible(bool visible);
-    void toggleGuiVisible();
-    bool isGuiVisible() const;
-
     void setGuiScale(int scale);
     int getGuiScale() const;
     // Opt-in (default off): resize the GUI canvas to the native framebuffer
@@ -218,7 +214,6 @@ class RenderManager {
     vec2 m_defaultPivotDerivedZoom = vec2(0.0f);
     bool m_hoveredTrixelVisible = true;
     int m_voxelRenderSubdivisions = 1;
-    bool m_guiVisible = false;
     // Unit vector pointing from surfaces toward the sun. Default is a
     // mostly-overhead pose with a small -X / -Y tilt: those are the
     // outward-normal directions of the visible X_FACE / Y_FACE in iso

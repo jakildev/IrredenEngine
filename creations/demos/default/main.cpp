@@ -28,8 +28,6 @@
 #include <irreden/common/command_suite_capture.hpp>
 #include <irreden/render/camera_controls.hpp>
 
-#include <irreden/render/commands/command_toggle_gui.hpp>
-
 void initSystems();
 void initEntities();
 void initCommands();
@@ -77,11 +75,6 @@ void initSystems() {
 void initCommands() {
     IRPrefab::Camera::registerStandardKeyboardCommands();
     IRCommand::registerCaptureCommands();
-    IRCommand::createCommand<IRCommand::TOGGLE_GUI>(
-        InputTypes::KEY_MOUSE,
-        ButtonStatuses::PRESSED,
-        KeyMouseButtons::kKeyButtonGraveAccent
-    );
 }
 
 void initEntities() {
