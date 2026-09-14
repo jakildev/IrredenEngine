@@ -110,10 +110,8 @@ void main() {
     if (gid >= entryCount) {
         return;
     }
-    // UNLIT overlay + false-color debug overlays leave overflow slivers as raw
-    // albedo (the lit cells route through those modes separately; the negligible
-    // sliver set is not worth a debug-parity branch), so the pass is a no-op there.
-    if (lightingEnabled == 0 || debugOverlayMode != 0) {
+    // Only the normals diagnostic recolors overflow faces; other overlays retain albedo.
+    if (lightingEnabled == 0 || (debugOverlayMode != 0 && debugOverlayMode != 8)) {
         return;
     }
 
@@ -142,6 +140,10 @@ void main() {
     const int rawDepth = decodeDepthPerAxis(rawDist);
     const int faceId = visibleFaceIds[slot] ^ flip;
     const vec3 worldNormal = faceOutwardNormal6(faceId);
+    if (debugOverlayMode == 8) {
+        overflowScratch[entryBase + 1u] = packColor(vec4(worldNormal * 0.5 + 0.5, albedo.a));
+        return;
+    }
     const vec3 pos3D = perAxisCellToWorld3DSubCell(
         cell, rawDist, faceId, canvasSizePixels, frameCanvasOffset, voxelRenderOptions
     );

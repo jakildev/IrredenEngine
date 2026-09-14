@@ -164,15 +164,9 @@ VoxelFaceSelect selectVoxelFace(
 ) {
     VoxelFaceSelect sel;
     sel.faceId = faceIdIn;
-    // Silhouette-riser face selection (rotated-footprint gap fix): if this
-    // slot's triplet face is occluded but the opposite same-axis face is
-    // exposed, emit that opposite face — the missing silhouette riser on a
-    // rotated staircase edge. Gated to ROTATED content (the re-voxelize
-    // uniform OR the per-voxel kRotatedEmit marker, reserved bit 2), so
-    // axis-aligned fast paths never flip and stay byte-identical. Kept a
-    // function-local intermediate — only the riserFlip gate and
-    // bothPolaritiesExposed predicate read it, so it stays off the verdict struct.
-    const bool rotatedEmit = reVoxelize || (reserved & 4u) != 0u;
+    // Resampled cells already have camera-aligned occupancy; their back faces
+    // cannot become visible silhouette risers.
+    const bool rotatedEmit = !reVoxelize && (reserved & 4u) != 0u;
     sel.riserFlip = 0;
     if (rotatedEmit && !faceIsExposed(flagsByte, sel.faceId) &&
         faceIsExposed(flagsByte, sel.faceId ^ 1)) {

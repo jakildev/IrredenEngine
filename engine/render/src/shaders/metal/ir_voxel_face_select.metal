@@ -150,9 +150,9 @@ static VoxelFaceSelect selectVoxelFace(
 ) {
     VoxelFaceSelect sel;
     sel.faceId = faceIdIn;
-    // Function-local intermediate — only the riserFlip gate and
-    // bothPolaritiesExposed predicate read it, so it stays off the verdict struct.
-    const bool rotatedEmit = reVoxelize || (reserved & 4u) != 0u;
+    // Resampled cells already have camera-aligned occupancy; their back faces
+    // cannot become visible silhouette risers.
+    const bool rotatedEmit = !reVoxelize && (reserved & 4u) != 0u;
     sel.riserFlip = 0;
     if (rotatedEmit && !faceIsExposed(flagsByte, sel.faceId) &&
         faceIsExposed(flagsByte, sel.faceId ^ 1)) {

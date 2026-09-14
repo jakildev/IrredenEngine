@@ -7,7 +7,7 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
 
 | Priority | Work | State / next acceptance |
 |---|---|---|
-| 1 | Detached face geometry and trixel display | Investigated in [display diagnosis](detached-trixel-display.md). Visible source faces, depth and picking still need a consistent projection. Origin Y compensation corrected; this does not fix dilation or face striping. |
+| 1 | Detached face geometry and trixel display | Investigated in [display diagnosis](detached-trixel-display.md). Visible source faces, depth and picking still need a consistent projection. Origin and camera placement corrected. [Back-facing emission](detached-face-normals.md) now has a targeted correction and normal oracle; dilation, rectangular display and source-face reconstruction remain. |
 | 2 | Shadow reception and contact | Source-face casting exists, but receivers still use reconstructed surfaces. Check concave faces and contact after visible geometry agrees. |
 | 3 | Shadow edges and filtering | Source casting improves outlines. Reassess residual jaggedness without masking geometry errors with blur or bias. |
 | 4 | Duplicate CPU occupancy reconstruction | Profile identified work overwritten by inverse GPU resampling. Preserve buffer-availability fallback and identity transitions before skipping it. |
