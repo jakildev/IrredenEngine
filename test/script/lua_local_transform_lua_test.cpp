@@ -19,7 +19,7 @@ using IRComponents::C_WorldTransform;
 
 constexpr float kEps = 1e-4f;
 
-// End-to-end coverage for the C_LocalTransform Lua binding (#2191): a
+// End-to-end coverage for the C_LocalTransform Lua binding: a
 // Lua-defined system writes the math-typed SQT fields (rotation/translation/
 // scale) in place through the same `:at(i)` column view any creation's EVAL
 // tick would use, and PROPAGATE_TRANSFORM composes them onto C_WorldTransform.

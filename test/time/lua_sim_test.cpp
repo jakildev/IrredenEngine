@@ -18,8 +18,8 @@ namespace {
 // Fixture: a LuaScript with the IRSim service bound, plus the real
 // SIM_CLOCK_ADVANCE / CYCLE_BOUNDARY_DETECT / TIMER_FIRE pipeline so Lua can
 // drive and observe sim time. The advance is stepped C++-side (the pipeline);
-// Lua reads/writes through the IRSim table. Stands in for #199's full Lua
-// round-trip until save/load lands.
+// Lua reads and writes through the IRSim table while the pipeline advances
+// the clock.
 class LuaSimTest : public testing::Test {
   protected:
     LuaSimTest()

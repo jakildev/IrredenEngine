@@ -14,7 +14,7 @@ namespace {
 using IRComponents::C_EntityEventHandlers;
 using IRSystem::ENTITY_HOVER_DETECT;
 
-// #2582 post-review addendum. previousHoveredEntity_ is an event *payload*,
+// previousHoveredEntity_ is an event *payload*,
 // not a cached handle with a lazy-respawn guard: when resetGameplay() destroys
 // the hovered entity, the next hover transition would hand the destroyed id to
 // every Lua onEntityUnhovered handler. Moving the state off the function-local
@@ -73,7 +73,7 @@ class HoverDetectResetTest : public testing::Test {
     IRSystem::System<ENTITY_HOVER_DETECT> *m_params{nullptr};
 };
 
-// The lane the addendum names: hover an entity, resetGameplay() destroys it,
+// Hover an entity, then let resetGameplay() destroy it;
 // the next transition must fire NO unhover for the dead id.
 //
 // Positive control: with the pre-destroy hook reverted, previousHoveredEntity_

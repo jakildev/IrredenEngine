@@ -178,7 +178,7 @@ EntityId setParent(EntityId child, EntityId parent);
 void destroyEntity(EntityId entity);
 void destroyAllEntities();
 
-/// Scene-transition teardown (#1814): destroy every live gameplay entity,
+/// Scene-transition teardown: destroy every live gameplay entity,
 /// preserving singletons and any entity tagged `C_Persistent`. The renderer's
 /// camera + canvas entities are stamped `C_Persistent` at construction so the
 /// render context survives. Call at a frame boundary (eager + snapshot-based,
@@ -242,7 +242,7 @@ template <typename Component> Component &getComponent(EntityId entity) {
     return getEntityManager().getComponent<Component>(entity);
 }
 
-// Delegates to getEntity — setup-time only, see above.
+// Setup-time only; missing names assert through getEntity.
 template <typename Component> Component &getComponent(const std::string &name) {
     return getEntityManager().getComponent<Component>(getEntity(name));
 }

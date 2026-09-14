@@ -45,7 +45,7 @@ template <typename Params> class ISystemParamsImpl : public ISystemParams {
 /// per-system telemetry can plug in using the same hook without
 /// touching SystemManager again.
 ///
-/// **Singleton-group only (T-224).** Observer fires bracket each
+/// **Singleton-group only.** Observer fires bracket each
 /// `executeSystem` call ONLY for single-system pipeline groups. Systems
 /// scheduled inside a multi-system parallel group dispatch from worker
 /// threads (`IRJob::parallelFor`), where the observer surface is
@@ -142,7 +142,7 @@ class SystemManager {
         return system < m_systemAccess.size() ? m_systemAccess[system] : kEmpty;
     }
 
-    /// #2404: per-system update cadence — run the system on 1-in-N phase
+    /// per-system update cadence — run the system on 1-in-N phase
     /// ticks of the pipeline it belongs to. `cadence == 1` (default) is
     /// every tick (0 is normalized to 1). Takes effect on the next phase
     /// tick with no re-registration; the change re-phases from the
@@ -155,7 +155,7 @@ class SystemManager {
         return system < m_cadence.size() ? m_cadence[system] : 1u;
     }
 
-    /// #2404 (amendment 1): initial phase stagger, `0..cadence-1`. Sibling
+    /// Initial phase stagger, `0..cadence-1`. Sibling
     /// systems registered together at cadence N with distinct offsets fire
     /// on distinct ticks (smoothed load) instead of spiking on the same
     /// tick. Setting it at runtime re-phases the system so the offset takes
@@ -165,7 +165,7 @@ class SystemManager {
         return system < m_cadenceOffset.size() ? m_cadenceOffset[system] : 0u;
     }
 
-    /// #2404: phase ticks covered by the system's current / most-recent
+    /// phase ticks covered by the system's current / most-recent
     /// execution — the multiplier a throttled integrator reads so its
     /// per-tick-rate math stays correct at the reduced rate. `>= 1` once
     /// the system has run; `0` before its first execution. For UPDATE-
@@ -186,7 +186,7 @@ class SystemManager {
     /// Asserts on out-of-range SystemId (debug), same as `replaceSystemBody`
     /// — this is the guard that turns an accidental index by
     /// `kNullSystemId` into a diagnosed failure instead of an unchecked
-    /// `std::vector::operator[]` past the end (#2540).
+    /// `std::vector::operator[]` past the end.
     template <typename Params>
     void setSystemParams(SystemId system, std::unique_ptr<Params> params) {
         IR_ASSERT(
@@ -242,13 +242,13 @@ class SystemManager {
 
     void registerPipeline(IRTime::Events event, std::list<SystemId> pipeline);
 
-    /// #1814: empty `event`'s pipeline (no systems run for it). The
+    /// empty `event`'s pipeline (no systems run for it). The
     /// scene-transition counterpart to `registerPipeline` — a scene machine
     /// clears the previous scene's pipeline, then registers the next scene's.
     /// Equivalent to `registerPipeline(event, {})`.
     void clearPipeline(IRTime::Events event);
 
-    /// T-224: pipeline-groups API. Each inner vector is a "parallel
+    /// pipeline-groups API. Each inner vector is a "parallel
     /// group" of systems that the cross-system validator (see
     /// `validateAllPipelineGroups`) has cleared to co-execute on the
     /// worker pool. Groups themselves run sequentially in declaration
@@ -258,7 +258,7 @@ class SystemManager {
     /// registration for `event`.
     void registerPipelineGroups(IRTime::Events event, std::vector<std::vector<SystemId>> groups);
 
-    /// #1540: append `system` to the END of `event`'s pipeline as its
+    /// append `system` to the END of `event`'s pipeline as its
     /// own singleton (serial) group, leaving every previously-registered
     /// group untouched. This is the composition primitive for a runtime
     /// where the C++ pipeline is built before a script runs (e.g. the
@@ -271,7 +271,7 @@ class SystemManager {
     /// second add would tick it twice per frame).
     void appendToPipeline(IRTime::Events event, SystemId system);
 
-    /// #1540: insert `system` as its own singleton group immediately
+    /// insert `system` as its own singleton group immediately
     /// before / after the group that contains `anchor` in `event`'s
     /// pipeline. The position-aware sibling of `appendToPipeline` for
     /// when ordering relative to an existing system matters. Asserts if
@@ -280,7 +280,7 @@ class SystemManager {
     void insertIntoPipelineBefore(IRTime::Events event, SystemId system, SystemId anchor);
     void insertIntoPipelineAfter(IRTime::Events event, SystemId system, SystemId anchor);
 
-    /// T-224: validate every registered pipeline group against the
+    /// validate every registered pipeline group against the
     /// cross-system access rules in `system_access.hpp`. Call once
     /// after all systems and pipelines are registered, before the
     /// loop starts. FATALs on the first conflict found, naming both
@@ -316,7 +316,7 @@ class SystemManager {
         return m_nextSystemId;
     }
 
-    /// #2526: record `name -> id` in the engine-system registry. Called by
+    /// record `name -> id` in the engine-system registry. Called by
     /// the enum-templated registration paths (`IRSystem::createSystem<N>` /
     /// `IRSystem::registerSystem<N, ...>`), the only two entry points that
     /// have the `SystemName` statically. Dynamic systems
@@ -346,9 +346,9 @@ class SystemManager {
         slot = id;
     }
 
-    /// #2526: resolve a `SystemName` to the `SystemId` it was registered
+    /// resolve a `SystemName` to the `SystemId` it was registered
     /// under, or `kNullSystemId` when it was never registered. The sentinel
-    /// is unreachable as a real id (#2540), so a system registered first in
+    /// is unreachable as a real id, so a system registered first in
     /// the process — id 0 — reads back as registered rather than as a miss.
     SystemId findEngineSystem(SystemName name) const {
         const auto it = m_engineSystemIds.find(name);
@@ -368,7 +368,7 @@ class SystemManager {
         return m_flattenedPipelines;
     }
 
-    /// T-224: read the group partition for `event` directly (one
+    /// read the group partition for `event` directly (one
     /// vector per parallel group, in declaration order). Empty if
     /// no pipeline was registered for `event`.
     const std::vector<std::vector<SystemId>> &getPipelineGroups(IRTime::Events event) const {
@@ -393,7 +393,7 @@ class SystemManager {
     /// scene transitions re-register pipelines, not systems.
     std::unordered_map<SystemName, SystemId> m_engineSystemIds;
 
-    /// T-224: canonical pipeline storage is per-group. The legacy
+    /// canonical pipeline storage is per-group. The legacy
     /// `registerPipeline(list<SystemId>)` translates each system into
     /// its own one-element group so existing call sites are
     /// unchanged.
@@ -420,7 +420,7 @@ class SystemManager {
     std::uint32_t m_nextObserverId = 1;
     std::vector<std::pair<TickObserverId, std::unique_ptr<TickObserver>>> m_observers;
 
-    // T-222: per-system concurrency policy + grain size + access
+    // per-system concurrency policy + grain size + access
     // descriptor. Parallel to m_ticks; emplaced in createSystem,
     // defaulted (SERIAL / kDefaultGrainSize / empty) for
     // createSystemDynamic.
@@ -428,7 +428,7 @@ class SystemManager {
     std::vector<int> m_grainSize;
     std::vector<SystemAccess> m_systemAccess;
 
-    // #2404: per-system update cadence. Parallel to m_ticks; emplaced in
+    // per-system update cadence. Parallel to m_ticks; emplaced in
     // both system-creation paths via emplaceCadenceState.
     //   m_cadence         run 1-in-N phase ticks (1 = every tick).
     //   m_cadenceOffset   initial phase stagger, 0..cadence-1.
@@ -452,7 +452,7 @@ class SystemManager {
     std::vector<std::uint64_t> m_accumulatedTicks;
     std::vector<IRTime::Events> m_cadenceEvent;
 
-    // #2404: SystemManager-owned per-event execution counter, bumped once
+    // SystemManager-owned per-event execution counter, bumped once
     // at the top of executePipeline so every cadence gate in a pass sees
     // the same `now`. Self-contained (no TimeManager dependency), so
     // cadence works for INPUT/RENDER phases and is unit-testable in
@@ -460,30 +460,30 @@ class SystemManager {
     // array END + 1.
     std::array<std::uint64_t, IRTime::END + 1> m_eventTickCounts{};
 
-    // #2404: reused scratch for filtering the due members of a multi-
+    // reused scratch for filtering the due members of a multi-
     // system group on the main thread before fan-out; reserved lazily,
     // never reallocated per frame in steady state.
     std::vector<SystemId> m_dueScratch;
 
-    // #2404: emplace the four cadence vectors for a newly-created system.
+    // emplace the four cadence vectors for a newly-created system.
     // Called by both createSystem and createSystemDynamic to keep the
     // parallel vectors in lockstep with m_ticks. cadence 0 -> 1; offset is
     // clamped into [0, cadence-1].
     void emplaceCadenceState(std::uint32_t cadence, std::uint32_t offset);
 
-    // #2404: main-thread cadence gate. Returns true and advances the
+    // main-thread cadence gate. Returns true and advances the
     // bookkeeping (accumulated ticks + last-run tick) when `system` is due
     // to run at phase tick `now`; returns false to skip the whole dispatch.
     bool pollCadenceDue(SystemId system, std::uint64_t now);
 
-    // #2404: seed a system's phase when it joins `event`'s pipeline, so its
+    // seed a system's phase when it joins `event`'s pipeline, so its
     // first accumulated delta measures from the join tick (plus its offset
     // stagger), not from counter zero. Also records `event` into
     // m_cadenceEvent so a later runtime re-phase (setSystemCadenceOffset)
     // binds to the same clock.
     void stampCadenceJoin(IRTime::Events event, SystemId system);
 
-    // #2404: true if `system` is still listed in `priorEvent`'s pipeline
+    // true if `system` is still listed in `priorEvent`'s pipeline
     // groups. Pure lookup (no side effects), so it's safe to call from an
     // IR_ASSERT condition — used by stampCadenceJoin to guard against a
     // system live in two event pipelines at once, which would thrash its
@@ -504,7 +504,7 @@ class SystemManager {
 
     // Tick functions are operated on each entity in the system
     // matching the archetype. The runtime stores one dispatch slot per
-    // system — the binder form established by T-222/T-333:
+    // system using one of two binder forms:
     //
     //   - `prepareRangedTick(node)` — main-thread binder. Resolves
     //     the per-component vector refs from `node` once via
@@ -611,7 +611,7 @@ class SystemManager {
                         Components &...,
                         std::optional<RelationComponents *>...>
                 ) {
-                    // Relation form: the validator (T-334 scope) rejects
+                    // Relation form: the validator (scope) rejects
                     // PARALLEL_FOR + relation, so this binder runs only
                     // on the main thread. Resolve component vectors AND
                     // the optional-relation pointers up-front; the

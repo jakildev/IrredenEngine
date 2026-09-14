@@ -3,7 +3,7 @@
 #include <irreden/ir_entity.hpp>
 
 // Tests for sortArchetypeNodesByRelationChildOf exercised via
-// queryArchetypeNodesRelational.  The bug (issue #750) was that the BFS
+// queryArchetypeNodesRelational. The bug was that the BFS
 // seeded from leaf archetypes (pointed-to by CHILD_OF edges) and walked
 // toward children — but leaves have no children, so parent archetypes
 // were silently absent from the output.  The fix seeds from true roots

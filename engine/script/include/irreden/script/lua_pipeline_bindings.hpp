@@ -1,7 +1,7 @@
 #ifndef LUA_PIPELINE_BINDINGS_H
 #define LUA_PIPELINE_BINDINGS_H
 
-// T-102: Lua bindings for IRSystem::registerPipeline + the SystemName enum.
+// Lua bindings for IRSystem::registerPipeline + the SystemName enum.
 // `IRSystem.SystemName.LIFETIME` is an integer table (the underlying
 // `SystemName` enum is C-style; binding it via sol's `new_enum` would
 // re-encode the same integers as a typed usertype but the consumer
@@ -184,7 +184,7 @@ inline void bindSystemNameEnum(LuaScript &script) {
     lua["IRSystem"]["SystemName"] = t;
 }
 
-// T-223: bind `IRSystem::Concurrency` as an integer table at
+// bind `IRSystem::Concurrency` as an integer table at
 // `IRSystem.Concurrency.{SERIAL, PARALLEL_FOR, MAIN_THREAD}`. The same
 // rationale as `IRSystem.SystemName` — strings drift; enum-keyed table
 // stays in sync with the C++ definition. Used by the optional
@@ -253,7 +253,7 @@ inline void bindRegisterPipelineAndSystemId(
         IRSystem::registerPipeline(static_cast<IRTime::Events>(event), std::move(pipeline));
     };
 
-    // #1814: clear an event's pipeline (no systems run for it). The scene-
+    // clear an event's pipeline (no systems run for it). The scene-
     // transition counterpart to registerPipeline — a Lua scene machine clears
     // the previous scene's pipeline, then registers the next scene's.
     //
@@ -263,7 +263,7 @@ inline void bindRegisterPipelineAndSystemId(
         IRSystem::clearPipeline(static_cast<IRTime::Events>(event));
     };
 
-    // T-224: groups-aware variant. Outer table is the sequence of
+    // groups-aware variant. Outer table is the sequence of
     // groups, each inner table a parallel group. The cross-system
     // validator runs at `World::start()` (engine-side hook); a typo
     // that lands a conflicting group raises a Lua-visible
@@ -300,7 +300,7 @@ inline void bindRegisterPipelineAndSystemId(
         IRSystem::registerPipelineGroups(static_cast<IRTime::Events>(event), std::move(built));
     };
 
-    // #1540: append a single system onto an ALREADY-REGISTERED event
+    // append a single system onto an ALREADY-REGISTERED event
     // pipeline as its own serial group, WITHOUT replacing the systems
     // already there. registerPipeline / registerPipelineGroups replace
     // the event's whole list; this composes. The supported path when the
@@ -317,7 +317,7 @@ inline void bindRegisterPipelineAndSystemId(
         );
     };
 
-    // #1540: position-aware variants — insert `sysId` as its own serial
+    // position-aware variants — insert `sysId` as its own serial
     // group immediately before / after `anchorId` (a SystemId already in
     // `event`'s pipeline). Same single-system, own-group semantics as
     // appendSystem; asserts in debug if the anchor isn't in the pipeline
@@ -347,13 +347,13 @@ inline void bindRegisterPipelineAndSystemId(
             );
         };
 
-    // #2404: per-system update cadence. A Lua throttle policy sets a
+    // per-system update cadence. A Lua throttle policy sets a
     // system to run 1-in-N phase ticks (`setSystemCadence`), staggers its
     // initial phase (`setSystemCadenceOffset`), and — for a throttled
     // Lua-registered system that must stay numerically correct at the
     // reduced rate — reads how many phase ticks / how much fixed-step
     // time its current execution covers (`getAccumulatedTicks` /
-    // `accumulatedDeltaTime`, amendment 2). `sysId` is any SystemId (from
+    // `accumulatedDeltaTime`). `sysId` is any SystemId (from
     // IRSystem.systemId or IRSystem.registerSystem).
     lua["IRSystem"]["setSystemCadence"] = [](lua_Integer sysId, lua_Integer cadence) {
         if (cadence < 1) {

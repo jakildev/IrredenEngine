@@ -1,8 +1,8 @@
 #ifndef LUA_DEBUG_OVERLAY_BINDINGS_H
 #define LUA_DEBUG_OVERLAY_BINDINGS_H
 
-// IRDebug immediate-mode overlay-draw Lua bindings (engine #2375) — issue
-// debug-overlay draws from an EVAL Lua system exactly like a C++ caller, so a
+// IRDebug immediate-mode overlay-draw Lua bindings. Debug-overlay draws from an
+// EVAL Lua system exactly like a C++ caller, so a
 // Lua-driven creation no longer needs a hand-rolled C++ system just to reach
 // the buffering draw calls.
 //
@@ -42,8 +42,8 @@
 //
 // Deliberately NOT bound: `clear()` (the flush owns clearing — a Lua caller
 // clearing mid-frame would silently drop other systems' draws) and
-// `worldToScreen`/`screenToWorld` (pure-math helpers; additive follow-up if a
-// creation needs them).
+// `worldToScreen`/`screenToWorld` (pure-math helpers that no current creation
+// needs).
 
 #define SOL_ALL_SAFETIES_ON 1
 #include <sol/sol.hpp>
@@ -74,8 +74,7 @@ namespace IRScript::detail {
 //      treats userdata as table-like — so a table-FIRST check here would admit
 //      every userdata regardless of (1), and the wrong-typed vector would reach
 //      `*FromLua` and come back as that helper's zero-default: a silent draw at
-//      the origin. The helpers carry the same ordering internally, for the same
-//      reason (see #2673).
+//      the origin. The helpers carry the same ordering internally.
 //
 // Hence: match the concrete usertype first, then the EXACT Lua table type.
 //

@@ -120,7 +120,7 @@ inline sol::object luaFromValue(sol::state_view lua, const IRAsset::Value &value
 }
 
 // Exposes a flat key/value persistence surface as the `IRSave` Lua table
-// (engine #1819) so gameplay can save high scores + settings across launches.
+// (engine) so gameplay can save high scores + settings across launches.
 // Mirrors the IR<Module> binding convention (IRSim, IRModifier, ...).
 //
 // Stores live in a per-LuaScript registry keyed by store basename, held in a

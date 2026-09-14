@@ -1,9 +1,9 @@
 #ifndef LUA_WIDGET_BINDINGS_H
 #define LUA_WIDGET_BINDINGS_H
 
-// IRGui widget Lua bindings (engine #1975) — build the C++ widget framework
+// IRGui widget Lua bindings (engine) — build the C++ widget framework
 // (IRPrefab::Widget) entirely from Lua, with a Lua `onClick` that fires on
-// click and a polling `wasClicked`. Supersedes the docs-only close of #1816.
+// click and a polling `wasClicked`.
 //
 //   local panel  = IRGui.makePanel(x, y, w, h, title?, drawBorder?, zOrder?)
 //   local label  = IRGui.makeLabel(x, y, text, color?)
@@ -167,8 +167,8 @@ inline void bindWidgets(LuaScript &script) {
         if (guiCanvas == IREntity::kNullEntity) {
             throw sol::error{"IRRender.getGuiCanvasSize: no \"gui\" canvas exists"};
         }
-        // getComponent at binding call-time is fine — same allowance as the
-        // IRPrefab::Widget::* readers, called from per-frame Lua, not a tick.
+        // Per-frame Lua readers share the binding-time getComponent allowance;
+        // they do not run inside a tick.
         const IRMath::ivec2 size =
             IREntity::getComponent<IRComponents::C_TriangleCanvasTextures>(guiCanvas).size_;
         return std::make_tuple(size.x, size.y);

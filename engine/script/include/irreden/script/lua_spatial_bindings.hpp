@@ -21,8 +21,7 @@ namespace IRScript::detail {
 // the spatial subsystem exists to remove. `id` is a raw EntityId integer,
 // the same shape arch.entityAt(i) / IRModifier.add already pass around.
 //
-// queryAabb is intentionally C++-only in v1 — rect-region Lua queries are a
-// future extension; nothing in the #1354 motivation needed them.
+// queryAabb remains C++-only; the Lua surface currently exposes point queries.
 inline void bindSpatialApi(LuaScript &script) {
     sol::state &lua = script.lua();
     if (!lua["IRSpatial"].valid()) {
