@@ -47,8 +47,10 @@ that the experimental rendering is ready to become the default.
   the full lighting oracle as passing on that default path.
 - The detached staircase at density 1 has alternating triangular shadow values
   on otherwise broad treads (capture 494 in the staircase visibility evidence).
-  Check per-trixel receiver-position recovery against the actual face plane;
-  detached reception never used the removed staircase rejection.
+  [Centered receiver recovery](detached-receiver-planes.md) removes the false
+  pattern: four cardinal unblocked views now match shadows-disabled exactly,
+  while the overhead shadow remains. Default depth casting and reconstructed
+  face boundaries still need agreement with actual geometry.
 - The unobstructed source-face plate has weak false self-shadowing at camera yaw
   90/270. Full direct visibility makes 1,048/16 pixels differ from the prior
   response, by at most 2/1 color levels. This is a receiver/caster agreement
