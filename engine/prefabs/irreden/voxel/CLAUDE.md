@@ -1,10 +1,8 @@
 # engine/prefabs/irreden/voxel/
 
-Voxel pools, owned voxel-set spans, GPU-resident SDF shapes, grid rotation,
-and skeletal binding. API-level contracts live beside the declarations in
-`components/component_voxel_set.hpp`, `voxel_pool_api.hpp`,
-`grid_rotation.hpp`, and `skeleton.hpp`; this file records the relationships
-and pipeline constraints that are not evident from one header.
+Voxel pools, owned voxel-set spans, SDF shapes, grid rotation, and skeletal
+binding. API contracts live in `components/component_voxel_set.hpp`, `voxel_pool_api.hpp`,
+`grid_rotation.hpp`, and `skeleton.hpp`; this file owns cross-header and pipeline constraints.
 
 ## Pool and voxel-set contracts
 
@@ -145,7 +143,7 @@ could keep an edited off-screen set permanently latched out. Validate changes
 with `test/ecs/chunk_bounds_eviction_test.cpp` and
 `IRShapeDebug --auto-screenshot --cull-evict-test`.
 
-## Dense assets, shapes, and staged sets
+## Prefab.spawn voxel_ref → ECS components
 
 - Primary entities use DENSE `.vxs` data. SHAPES are effects-only SDF
   entities, and HYBRID is backward-compatible load-only. Shape records become
@@ -154,6 +152,9 @@ with `test/ecs/chunk_bounds_eviction_test.cpp` and
 - `C_ShapeDescriptor` renders directly on the GPU and allocates no voxels. It
   snapshots the active canvas with the nullable accessor so headless prefab
   construction remains valid.
+
+## C_VoxelSetNew headless / staged mode
+
 - The dense-data voxel-set constructor stages records when no canvas exists;
   `numVoxels_ == 0` and `canvasEntity_ == kNullEntity` identify that state.
   `SEED_STAGED_VOXELS`, registered before `UPDATE_VOXEL_SET_CHILDREN`, calls
@@ -195,6 +196,5 @@ authoritative.
 | `C_VoxelPool::markChunkWorldBoundsDirty()` | `markCullBoundsDirty(start, count)` | #2830 |
 | `C_VoxelPool::markChunkBoundsDirty()` | `markCullBoundsDirty(start, count)` | #2830 |
 
-The compatibility forwarders invalidate both caches over the full allocated
-prefix. Out-of-tree callers stay correct but should migrate to the range form
-to avoid rebuilding the whole pool.
+The compatibility forwarders invalidate both caches over the full allocated prefix.
+Out-of-tree callers should migrate to the range form to avoid rebuilding the whole pool.
