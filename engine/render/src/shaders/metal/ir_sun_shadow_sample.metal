@@ -62,7 +62,8 @@ inline float sampleCascadeShadow(
     // origin must reproduce its own depth → h ~ 0 → lit). Mirrors the GLSL twin.
     float2 gradUV = float2(dot(normal, uHat), dot(normal, vHat)) / slope;
 
-    float2 sunPxF = (sunUV - origin) / texelSz;
+    // Map samples lie at texel centers; integer coordinates address those samples.
+    float2 sunPxF = (sunUV - origin) / texelSz - 0.5f;
     int2 base = int2(floor(sunPxF));
     float2 frac = sunPxF - float2(base);
     float shadowAccum = 0.0;
