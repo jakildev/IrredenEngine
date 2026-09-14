@@ -1073,6 +1073,10 @@ void registerArgs() {
     );
     args.flag("--probe-upright", "Use unrotated revoxelization and attached shadow probes");
     args.flag("--probe-grid", "Render the shadowbox probe through the shared GRID canvas");
+    args.flag(
+        "--probe-single-voxel",
+        "Use a single shadowbox voxel and a small receiver plate for magnified face inspection"
+    );
     args.numbers("--camera-iso", "Focused capture camera offset <x> <y>", 2);
     args.flag(
         "--screen-lock-detached",
@@ -1570,11 +1574,13 @@ void initEntities() {
         // they composite as overlays after the shadow bake and never write
         // world depth (#1582 Option B).
         if (!g_settings.soloRevox_ && groupEnabled(kGroupFloor)) {
+            const float floorSpan =
+                IREngine::args().getFlag("--probe-single-voxel") ? 12.0f : kFloorSpan;
             const EntityId floor = IREntity::createEntity(
                 C_LocalTransform{vec3(0.0f, 0.0f, kFloorZ)},
                 C_ShapeDescriptor{
                     IRRender::ShapeType::BOX,
-                    vec4(kFloorSpan, kFloorSpan, kFloorThickness, 0.0f),
+                    vec4(floorSpan, floorSpan, kFloorThickness, 0.0f),
                     kFloorColor
                 }
             );
@@ -1592,8 +1598,9 @@ void initEntities() {
         );
     }
     if ((g_settings.onlyGroups_ & kGroupShadowBox) != 0u) {
-        constexpr ivec3 size{18, 6, 8};
-        constexpr vec3 position{0.0f, 0.0f, -12.0f};
+        const bool singleVoxel = IREngine::args().getFlag("--probe-single-voxel");
+        const ivec3 size = singleVoxel ? ivec3(1) : ivec3(18, 6, 8);
+        const vec3 position{0.0f, 0.0f, singleVoxel ? -2.0f : -12.0f};
         const Color color{80, 120, 240, 255};
         if (IREngine::args().getFlag("--probe-grid")) {
             IREntity::createEntity(
