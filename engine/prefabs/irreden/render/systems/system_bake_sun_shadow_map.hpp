@@ -137,12 +137,23 @@ struct WorldPlacedCaster {
     vec3 worldCellOffset_{0.0f};
 };
 
+struct DetachedShadowFrame {
+    vec4 worldOriginAndDensity_;
+    vec4 viewToWorld_;
+};
+static_assert(sizeof(DetachedShadowFrame) == 32, "DetachedShadowFrame must match the shader UBO");
+static_assert(
+    offsetof(DetachedShadowFrame, viewToWorld_) == 16, "Quaternion must begin at byte 16"
+);
+
 template <> struct System<BAKE_SUN_SHADOW_MAP> {
     ShaderProgram *clearProgram_ = nullptr;
     ShaderProgram *bakeProgram_ = nullptr;
     Buffer *sunShadowDepthMap_ = nullptr;
     Buffer *sunShadowFrameDataBuf_ = nullptr;
     Buffer *voxelFrameDataBuf_ = nullptr;
+    Buffer *detachedShadowFrameBuf_ = nullptr;
+    Buffer *revoxelizeParamsBuf_ = nullptr;
     FrameDataSun frameData_{};
 
     // Smooth camera Z-yaw (#1435): main canvas + its per-axis voxel canvases,
@@ -430,26 +441,25 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             // cast is a coverage fix, not part of invariant #1's per-axis /
             // smooth-yaw byte-identity. See docs/design/sun-shadow-bake-coverage.md.
 
-            // Pass 1 — scatter each caster into the shared scratch (front-most
-            // per screen pixel via atomicMin). Only the 16-byte
-            // detachedWorldReceive_ lift is patched per caster; the UBO is
-            // re-bound after each subData because the Metal author orphans the
-            // buffer and breaks the encoder's binding table.
+            // Slot 16 is free after voxel rasterization; restore its owner before leaving.
             worldPlacedScatterProgram_->use();
             worldPlacedScratch_->bindBase(
                 BufferTarget::SHADER_STORAGE,
                 kBufferIndex_PerAxisResolveScratch
             );
+            const vec4 viewToWorld = IRPrefab::Camera::getRotationQuat();
             for (const auto &caster : worldPlacedCasters_) {
-                const vec4 lift = vec4(caster.worldCellOffset_, 1.0f);
-                voxelFrameDataBuf_->subData(
-                    offsetof(FrameDataVoxelToCanvas, detachedWorldReceive_),
-                    sizeof(vec4),
-                    &lift
-                );
-                voxelFrameDataBuf_->bindBase(
+                const DetachedShadowFrame casterFrame{
+                    vec4(
+                        caster.worldCellOffset_,
+                        static_cast<float>(IRMath::max(caster.textures_->renderedSubdivisions_, 1))
+                    ),
+                    viewToWorld
+                };
+                detachedShadowFrameBuf_->subData(0, sizeof(casterFrame), &casterFrame);
+                detachedShadowFrameBuf_->bindBase(
                     BufferTarget::UNIFORM,
-                    kBufferIndex_FrameDataVoxelToCanvas
+                    kBufferIndex_RevoxelizeDetachedParams
                 );
                 caster.textures_->getTextureDistances()
                     ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
@@ -460,18 +470,9 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
                 );
             }
             IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
-            // Reset the lift so every later consumer of the main frame (this
-            // tick's resolve bake, COMPUTE_SUN_SHADOW, LIGHTING_TO_TRIXEL's
-            // restore baseline) sees the world frame with the opt-in off.
-            const vec4 liftOff = vec4(0.0f);
-            voxelFrameDataBuf_->subData(
-                offsetof(FrameDataVoxelToCanvas, detachedWorldReceive_),
-                sizeof(vec4),
-                &liftOff
-            );
-            voxelFrameDataBuf_->bindBase(
+            revoxelizeParamsBuf_->bindBase(
                 BufferTarget::UNIFORM,
-                kBufferIndex_FrameDataVoxelToCanvas
+                kBufferIndex_RevoxelizeDetachedParams
             );
 
             // Pass 2 — blit the scratch into the resolve texture (and self-reset
@@ -750,6 +751,17 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             C_CanvasSunShadow,
             C_TrixelCanvasRenderBehavior>("BakeSunShadowMap");
         auto *p = getSystemParams<System<BAKE_SUN_SHADOW_MAP>>(systemId);
+        p->detachedShadowFrameBuf_ = IRRender::createNamedResource<Buffer>(
+                                         "DetachedShadowFrameBuffer",
+                                         nullptr,
+                                         sizeof(DetachedShadowFrame),
+                                         BUFFER_STORAGE_DYNAMIC,
+                                         BufferTarget::UNIFORM,
+                                         kBufferIndex_RevoxelizeDetachedParams
+        )
+                                         .second;
+        p->revoxelizeParamsBuf_ =
+            IRRender::getNamedResource<Buffer>("RevoxelizeDetachedParamsBuffer");
         p->clearProgram_ = IRRender::getNamedResource<ShaderProgram>("ClearSunShadowMapProgram");
         p->bakeProgram_ = IRRender::getNamedResource<ShaderProgram>("BakeSunShadowMapProgram");
         p->worldPlacedScatterProgram_ =

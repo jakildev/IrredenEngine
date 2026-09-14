@@ -36,6 +36,10 @@ ivec2 pos3DtoPos2DIso(ivec3 position) {
     );
 }
 
+float pos3DtoDistance(vec3 position) {
+    return position.x + position.y + position.z;
+}
+
 int pos3DtoDistance(ivec3 position) {
     return position.x + position.y + position.z;
 }

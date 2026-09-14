@@ -41,6 +41,7 @@ layout(std140, binding = 27) uniform FrameDataLightingToTrixel {
     float exposure;
     float skyIntensity;
     vec4  skyColor;
+    vec4  detachedViewToWorld;
 };
 
 // Prefix of FrameDataVoxelToCanvas (binding 7) through overflowScratchLayout_
