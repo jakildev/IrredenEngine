@@ -5,7 +5,7 @@
 **Parent epic:** [#937 — SDF runtime restriction (effects-only)](https://github.com/jakildev/IrredenEngine/issues/937)
 **Companion docs:**
 - [`entity-editor-epic.md`](entity-editor-epic.md) §"Architectural decisions (locked)" — D2 will amend this with the restriction shape.
-- [`engine/prefabs/irreden/render/CLAUDE.md`](../../engine/prefabs/irreden/render/CLAUDE.md) — system inventory.
+- [`engine/render/CLAUDE.md`](../../engine/render/CLAUDE.md) §"The pipeline, one frame" — system inventory; the prefab-side ordering contracts are in [`engine/prefabs/irreden/render/CLAUDE.md`](../../engine/prefabs/irreden/render/CLAUDE.md).
 - [`engine/prefabs/irreden/voxel/CLAUDE.md`](../../engine/prefabs/irreden/voxel/CLAUDE.md) — `C_ShapeDescriptor` vs `C_VoxelSetNew` choice.
 
 ## Purpose
