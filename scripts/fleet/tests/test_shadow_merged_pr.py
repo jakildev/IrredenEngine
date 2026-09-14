@@ -126,6 +126,31 @@ class ShadowMergedPrFires(unittest.TestCase):
         out = state["repos"]["engine"]["tasks"]["open"][0]
         self.assertEqual(out["shadow_merged_pr"]["number"], 3041)
 
+    def test_merge_time_wins_over_pr_number_order(self):
+        # PR number is creation order, not merge order: the lower-numbered
+        # branch here landed last and is the one to read.
+        landed_first = _merged(3041, "claude/2298-widen-cull-domain",
+                               merged_at="2026-08-22T22:23:03Z")
+        landed_last = _merged(2475, "claude/2298-occlusion-cull-feeder-domain",
+                              merged_at="2026-08-23T06:23:11Z")
+        state = _state(engine_tasks=[_task("#2298")],
+                       engine_merged=[landed_first, landed_last])
+        enrich_shadow_merged_pr_tasks(state)
+        out = state["repos"]["engine"]["tasks"]["open"][0]
+        self.assertEqual(out["shadow_merged_pr"]["number"], 2475)
+        self.assertEqual(out["shadow_merged_pr"]["mergedAt"],
+                         "2026-08-23T06:23:11Z")
+
+    def test_same_instant_tie_breaks_on_higher_number(self):
+        a = _merged(2475, "claude/2298-occlusion-cull-feeder-domain",
+                    merged_at="2026-08-22T22:23:03Z")
+        b = _merged(3041, "claude/2298-widen-cull-domain",
+                    merged_at="2026-08-22T22:23:03Z")
+        state = _state(engine_tasks=[_task("#2298")], engine_merged=[b, a])
+        enrich_shadow_merged_pr_tasks(state)
+        out = state["repos"]["engine"]["tasks"]["open"][0]
+        self.assertEqual(out["shadow_merged_pr"]["number"], 3041)
+
     def test_multiple_tasks_independent(self):
         state = _state(engine_tasks=[_task("#2298"), _task("#9001")],
                        engine_merged=[_PR_2475])
