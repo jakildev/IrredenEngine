@@ -304,63 +304,27 @@ vec3 RenderManager::getDefaultRotationPivotFocus() const {
     // background, and for a creation whose frame never reaches beginFrame — is
     // the pre-#2547 point exactly, so the fallback is the same expression
     // rather than a structurally different branch.
-    return IRMath::isoPixelToPos3D(getViewCenterIso(), m_defaultRotationPivotIsoDepth);
+    return IRMath::isoPixelToPos3D(getViewCenterIso(), m_defaultPivotLatch.isoDepth());
 }
 
 void RenderManager::updateDefaultRotationPivotFocus() {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
 
-    // The depth attachment this derive reads was written by the PREVIOUS frame
-    // (beginFrame runs ahead of the RENDER pipeline), so it only describes the
-    // current view once the camera has held still for a frame. Stamp what THIS
-    // frame is about to render with, then require the previous frame to have
-    // rendered the same pose before trusting its depth. Deriving on the frame a
-    // pan lands would read the pre-pan image and latch a depth for a view that
-    // no longer exists.
-    //
-    // Stamped BEFORE the mode gate below because the stamps describe what the
-    // frame renders, which is true in every pivot mode. Behind the gate they
-    // froze while the camera moved under ORIGIN / an explicit focus, so the
-    // first frame back on the default pivot could match a pose several frames
-    // stale and consume a depth attachment for a different view.
-    const float visualYaw = IRPrefab::Camera::getYaw();
-    const vec2 cameraIso = getCameraPosition2DIso();
-    const vec2 zoom = getCameraZoom();
-    // Settle predicate: the per-frame change in ABSOLUTE yaw, against this
-    // class's own kPivotYawSettleDelta. No residual and no computeYawSplit are
-    // involved — see the constant's declaration for why it isn't the shared
-    // Camera::kResidualYawDeadband.
-    const bool yawSettled = IRMath::abs(visualYaw - m_defaultPivotLastYaw) <= kPivotYawSettleDelta;
-    const bool depthMatchesView =
-        cameraIso == m_defaultPivotRenderedCameraIso && zoom == m_defaultPivotRenderedZoom;
-    m_defaultPivotLastYaw = visualYaw;
-    m_defaultPivotRenderedCameraIso = cameraIso;
-    m_defaultPivotRenderedZoom = zoom;
-
-    // Only the DEFAULT CAMERA_CENTER pivot derives a depth. ORIGIN mode ignores
-    // the focus entirely and an explicit setRotationPivotFocus overrides it, so
-    // neither should pay a readback.
-    if (m_rotationPivotMode != RotationPivotMode::CAMERA_CENTER || m_hasRotationPivotFocus) {
-        return;
-    }
-
-    // Latch policy (#2547), deterministic and gesture-free:
-    //  - Re-derive ONLY while visualYaw is NOT changing between frames. While
-    //    yaw moves, hold the latch — that is what pins the pre-rotation center
-    //    content through the whole rotation, identically for a mouse drag, a
-    //    key, or a programmatic setYaw (auto-screenshot needs no gesture
-    //    plumbing).
-    //  - Re-derive only when pan or zoom moved since the last derive. A
-    //    readback costs a full GPU flush, so a genuinely still camera does ZERO
-    //    readbacks — but the cost is not free during interaction: it lands on
-    //    the first still frame after ANY pan or zoom, i.e. on every motion-stop
-    //    frame of a real drag, not once at startup.
-    if (!yawSettled || !depthMatchesView) {
-        return;
-    }
-
-    if (m_hasDefaultRotationPivotIsoDepth && cameraIso == m_defaultPivotDerivedCameraIso &&
-        zoom == m_defaultPivotDerivedZoom) {
+    // Stamped in EVERY pivot mode, ahead of the mode gate below, because the
+    // pose describes what this frame renders — which is true whatever the pivot
+    // is. Only the DEFAULT CAMERA_CENTER pivot may pay a readback, though:
+    // ORIGIN mode ignores the focus entirely and an explicit
+    // setRotationPivotFocus overrides it. The whole decision — the settle
+    // predicate, the previous frame's depth attachment, the rotation-start edge
+    // (#2669) and the pan/zoom key (#2547) — is DefaultPivotLatch's.
+    const DefaultPivotPose pose{
+        IRPrefab::Camera::getYaw(),
+        getCameraPosition2DIso(),
+        getCameraZoom()
+    };
+    const bool pivotOwnsDepth =
+        m_rotationPivotMode == RotationPivotMode::CAMERA_CENTER && !m_hasRotationPivotFocus;
+    if (!m_defaultPivotLatch.observeFrame(pose, pivotOwnsDepth).derive_) {
         return;
     }
 
@@ -390,10 +354,7 @@ void RenderManager::updateDefaultRotationPivotFocus() {
         }
     }
 
-    m_defaultRotationPivotIsoDepth = isoDepth;
-    m_hasDefaultRotationPivotIsoDepth = true;
-    m_defaultPivotDerivedCameraIso = cameraIso;
-    m_defaultPivotDerivedZoom = zoom;
+    m_defaultPivotLatch.noteDerived(isoDepth);
 }
 
 void RenderManager::setVoxelRenderSubdivisions(int subdivisions) {

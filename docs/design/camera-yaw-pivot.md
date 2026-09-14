@@ -57,19 +57,103 @@ helper.
    arithmetic works exactly; treat it as descriptive of that case, **not** as a
    contract for extended bodies. The sentence above supersedes it.
 
-   **Latch policy.** `RenderManager::updateDefaultRotationPivotFocus` runs once
-   per frame from `beginFrame`, ahead of the RENDER pipeline, so every stage in
-   a frame reads ONE focus. It re-derives only while `visualYaw` is unchanged
-   between frames (per-frame absolute-yaw delta under
-   `RenderManager::kPivotYawSettleDelta`) AND the previous frame rendered the
-   current pan/zoom — the depth attachment
-   it reads belongs to the previous frame, so a derive is only sound one frame
-   after the camera settles. While yaw moves the latch is HELD: that is what
-   pins the pre-rotation center content through the whole rotation, identically
-   for a mouse drag, a key, or a programmatic `setYaw` (auto-screenshot needs no
-   gesture plumbing). A genuinely still camera does ZERO readbacks — a readback
-   costs a full GPU flush — but the cost lands on every motion-stop frame during
-   real interaction, not once at startup.
+   **Latch policy — a pan/zoom-scoped latch PLUS a rotation-start re-derive.**
+   `RenderManager::updateDefaultRotationPivotFocus` runs once per frame from
+   `beginFrame`, ahead of the RENDER pipeline, so every stage in a frame reads
+   ONE focus. The decision itself is `IRRender::DefaultPivotLatch`
+   (`engine/render/include/irreden/render/default_pivot_latch.hpp`), lifted out
+   of `RenderManager` so the policy is testable with no GPU. Every clause
+   requires that **the previous frame rendered the current pan/zoom** — the
+   depth attachment a derive reads belongs to that frame, so a derive is only
+   sound one frame after the camera settles. On top of that, exactly two things
+   re-derive (they are mutually exclusive: one needs a settled yaw, the other a
+   yaw delta):
+
+   - **Pan/zoom (#2547).** `visualYaw` unchanged between frames (per-frame
+     absolute-yaw delta under `DefaultPivotLatch::kYawSettleDelta`) and pan or
+     zoom moved since the last derive.
+   - **Rotation start (#2669, architect ruling 2026-08-05 — option 2).** The
+     first frame `visualYaw` changes, *whose previous frame was still* and
+     therefore left a valid depth attachment. **A yaw rotation alone now DOES
+     re-derive** — once, at the gesture's first yaw-delta frame.
+
+   **Gesture-start only.** Inside a continuous rotation the latch is still HELD:
+   the edge is "settled last frame, not settled now", so a rotation derives once
+   however long it runs. That is what pins the pre-rotation center content
+   through the whole rotation, identically for a mouse drag, a key, or a
+   programmatic `setYaw` (auto-screenshot needs no gesture plumbing). A drag
+   that pauses for a frame and resumes re-arms the edge, which is the ruling's
+   own definition of a rotation start and is sound (the paused frame's
+   attachment is a still view) — it is not a per-frame derive. A genuinely still
+   camera does ZERO readbacks — a readback costs a full GPU flush — but the cost
+   lands on every motion-stop frame during real interaction plus once per
+   rotation gesture, not once at startup.
+
+   **What the amendment resolves, precisely.** The two consequences #2669
+   enumerates are *not* symmetric under the ratified policy, and the difference
+   matters to anyone reading this later:
+
+   - **(b) post-rotate staleness — RESOLVED.** A rotation changes neither
+     `cameraIso` nor `zoom`, so before this amendment the pan/zoom key never
+     fired after a rotate and the second and every subsequent rotation pivoted
+     about the pre-first-rotation depth until the user happened to pan or zoom.
+     Every rotation now starts from a depth derived one frame earlier.
+   - **(a) pan-settle pop — NOT eliminated; the amendment adds no new one.** The
+     ruling keeps the pan/zoom-scoped derive ("in addition to", not "instead
+     of"), so the first still frame after a pan still re-latches and, at
+     non-zero yaw, still shifts the whole view by the amounts #2669 tabulates
+     (0 at yaw 0 — the cardinal fast path is untouched — up to `4h` iso at
+     180°). What the amendment guarantees is that the derive it ADDS costs no
+     visible pop of its own: it lands on the first frame of a rotation, so its
+     view shift is absorbed by the rotation that immediately follows. Removing
+     the pan-settle derive as well is a different product (it would make the
+     latch rotation-scoped) and was not ratified — see #3169 if it is ever
+     revisited.
+
+   **OPEN — the rotation-start derive is not idempotent at non-zero yaw
+   (measured 2026-09-10, #2669's PR is design-blocked on it).** The clause above
+   describes the ratified policy; it is implemented and it does not hold up
+   under `pivot-verify.py`. A derive latches `isoDepth` and the focus is
+   `isoPixelToPos3D(viewCenterIso, isoDepth)`, an expression with no yaw term —
+   so latching a depth read at yaw != 0 pins a point that is *not* the one under
+   the crosshair, which shifts the view, which changes what the NEXT rotation
+   start reads. #2669 §"Why these are one question, not two bugs" states the algebra: "only
+   `yaw == 0` is a fixed point of that map." One derive (the pre-amendment
+   policy) pays that once and stops; a derive per rotation start **compounds**.
+
+   Measured, `center-depth` at z4, arm-to-arm against master on the same host:
+   the derived focus holds `(19.17, -4.83, 7.17)` for all 9 shots on master;
+   with the rotation-start derive it holds through shot 1 (whose derive sources
+   the yaw-0 still frames — the fixed point), jumps to `(13.5, -10.5, 1.5)` at
+   shot 2 (sourced from yaw pi/6), and from shot 3 the center texel reads
+   BACKGROUND, collapsing the focus to the legacy depth-0 point `(12, -12, 0)`
+   for the rest of the sweep. `center-column` and `center-axis` walk the same
+   way; `background-center` (always depth 0) and `cursor-latch` (explicit focus,
+   no derive) are unaffected. `pivot-verify.py --zoom 4 --zoom 8` goes 16/16 ->
+   10/16. This is not a harness artifact: a user who rotates in several discrete
+   drags at non-zero yaw walks the pivot the same way.
+
+   Option 3 (iterate to the fixed point at derive time) is the construction that
+   makes a non-zero-yaw derive sound, and it was closed on cost — on the
+   assumption that option 2's derive was sound as-is. That assumption is what
+   the measurement contradicts, so the resolution is a ruling, not a fix.
+
+   **Verification.** No `scripts/pivot-verify.py` block can see (a) or (b) as
+   failure modes: every block holds pan/zoom FIXED across its shots (the harness
+   flags a view-moving block as *misconfigured*), so nothing there ever pans
+   between derives, and its pinned-point oracle asserts a *constant* focus
+   across the sweep — the pre-amendment contract. The guard for the amended
+   policy is therefore the headless unit test
+   `test/render/default_pivot_latch_test.cpp`, which pans and then rotates, and
+   rotates twice — epic #2544 Finding **F3**. A green `pivot-verify.py` sweep is
+   not evidence on this question.
+
+   What the harness *does* see, because its 9 shots are 8 discrete rotation
+   starts, is the non-idempotence above. That makes it the measurement of record
+   for the open question, and it means the two artifacts disagree by
+   construction until the ruling lands: the unit test asserts the policy the
+   ruling ratified, the sweep measures what that policy does to the pivot over
+   repeated rotations.
 
    **What is latched is the iso DEPTH, not the point.**
    `getDefaultRotationPivotFocus` recomputes
@@ -511,3 +595,12 @@ which is what still catches an SDF-side pivot regression (#2851).
   detached entity-canvas composite now consumes `getEffectiveCameraIso()` for
   placement, so detached + GRID share the corrected pivot. Fixes the panned-scene
   rotation swing (shape_debug) without reintroducing the detached drift (#1944).
+- #2547 / PR #2585 — the default pivot became depth-aware: the iso DEPTH under
+  the crosshair is latched (the point stays live), re-derived while the camera
+  is settled and pan or zoom moved.
+- #2669 — contract amendment (architect ruling 2026-08-05, option 2): the latch
+  also re-derives at **rotation start**, resolving post-rotate staleness. The
+  policy moved out of `RenderManager` into `IRRender::DefaultPivotLatch` so it
+  is machine-gated headlessly (`test/render/default_pivot_latch_test.cpp`) —
+  epic #2544 Finding F3. The pan-settle pop is unchanged; #3169 carries whether
+  the pan/zoom clause should be dropped.
