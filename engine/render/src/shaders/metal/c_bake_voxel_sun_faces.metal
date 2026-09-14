@@ -87,7 +87,7 @@ kernel void c_bake_voxel_sun_faces(
         } else if (!faceIsExposed(flags, faceId)) {
             continue;
         }
-        float3 corner = position;
+        float3 corner = position - kVoxelRasterCellAnchor;
         corner[axis] += positive ? 1.0 : 0.0;
         float3 edgeU = float3(0.0);
         float3 edgeV = float3(0.0);

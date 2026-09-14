@@ -21,7 +21,6 @@ that the experimental rendering is ready to become the default.
 
 | Priority | Finding | Evidence / next check |
 |---|---|---|
-| High, within geometry/contact | Source-shadow half-cell convention may disagree with visible geometry | `kVoxelRasterCellAnchor` subtracts half a cell for visible mass; the source shadow kernel currently builds corners from the source position through position+1. Reconcile the world-space convention and correct the shadow oracle independently; do not treat its existing pass as proof of alignment. |
 | High, within geometry | Detached centroid changes with camera yaw | After removing the constant Y offset, the visible box placement check still fails at 22.5, 67.5 and 90 degrees. GRID controls pass across all five views. Separate lattice anchoring and dilation asymmetry from composite placement. |
 | Medium, within geometry | Detached dilation expands the visible box | At yaw zero, zoom 2, its area is 1.219× the analytical box. The origin fix leaves that ratio unchanged. Preserve concavities when replacing dilation. |
 | Medium, validation | Small-voxel and picking coverage | Add a magnified isolated voxel with triangle-ID/face-color controls and a picked-surface oracle. A box silhouette cannot establish correct internal face shading or picking. |
@@ -78,3 +77,28 @@ four-probe scene. For example:
 python3 scripts/render-visible-box-metric.py docs/pr-screenshots/codex/visible-box-oracle/capture-125.png --placement-only
 python3 scripts/render-visible-box-metric.py docs/pr-screenshots/codex/visible-box-oracle/capture-132.png --yaw 45
 ```
+
+## Centered shadow corners
+
+The face-shadow kernel now subtracts `kVoxelRasterCellAnchor` from both source
+and resampled cell positions before projecting corners. This aligns the occupied
+mass with the visible renderer’s centered-voxel convention. The shadow oracle now
+uses min(center)-0.5 and max(center)+0.5; its old lower-corner expectation was
+part of the discrepancy, so earlier passes alone did not establish correctness.
+No thresholds were relaxed. Neighbor occupancy, projected face size, dispatch
+counts and buffer allocation are unchanged.
+
+Native Metal box checks: source 4/4, GRID 4/4 and resampled detached 4/4. This
+corrects the half-cell convention, not receiver reconstruction or large-scale
+performance. Current captures 146–149 (source), 150–153 (GRID), 154–157
+(resampled detached), and 158–162 (upright probes at 0/22.5/45/67.5/90 degrees)
+are retained under `docs/pr-screenshots/codex/voxel-shadow-cell-anchor/`.
+
+![Centered shadow corners: before and after](../pr-screenshots/codex/voxel-shadow-cell-anchor/upright-comparison.png)
+
+The comparison crops the same rectangle from full frames; left is captures
+136–140 (parent), right is 158–162. Face striping at 22.5 degrees and rectangular
+coverage at 45 degrees remain visible. Baseline source boxes 141–144 also pass
+the corrected oracle: IoU .710/.938/.918/.887, versus .716/.943/.913/.876
+afterward. These aggregate thresholds are not a precise contact-alignment test;
+the correction follows the independently checked centered-mass convention.
