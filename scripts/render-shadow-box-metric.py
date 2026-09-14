@@ -47,8 +47,8 @@ def expected_polygon(image: Image.Image, cardinal: int, grid: bool, source: bool
     for point in itertools.product(*[(-h, h) for h in BOX_HALF_CENTER_SPAN]):
         local = rotate(point, 0 if grid or source else -cardinal)
         centers.append(local if source else tuple(math.floor(value + 0.5) for value in local))
-    lower = [min(point[axis] for point in centers) for axis in range(3)]
-    upper = [max(point[axis] for point in centers) + 1 for axis in range(3)]
+    lower = [min(point[axis] for point in centers) - 0.5 for axis in range(3)]
+    upper = [max(point[axis] for point in centers) + 0.5 for axis in range(3)]
     projected = []
     for corner in itertools.product(*zip(lower, upper)):
         x, y, z = rotate(corner, 0 if grid or source else cardinal)

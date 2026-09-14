@@ -9,9 +9,11 @@ its world voxel pool; screen-locked canvases remain excluded. Defaults are uncha
 
 The source grid exists for inverse revoxelization already. Each source cell
 supplies its occupancy; at most three sun-facing neighbors determine exposed
-faces. Corners use `sourceCell + sourceGridMin + anchor`, preserving the authored
-half-cell pivot of even-sized models. Composing the camera quaternion with the
-private canvas quaternion cancels inverse camera rotation, yielding the entity's
+faces. Cell centers use `sourceCell + sourceGridMin + anchor`, preserving the authored
+half-cell pivot of even-sized models. Face corners subtract the existing
+`kVoxelRasterCellAnchor` (0.5 per axis) before orientation, so the occupied mass
+is centered on that authored position, as in the visible per-axis renderer.
+Composing the camera quaternion with the private canvas quaternion cancels inverse camera rotation, yielding the entity's
 world orientation. That orientation projects each source parallelogram directly
 into the existing sun cascades. The caster no longer inherits the camera-aligned
 destination lattice's stair steps. This does not change visible-surface rendering.
@@ -46,8 +48,9 @@ Add `--probe-upright` for the upright control. Replace `--source-face-shadows`
 with `--voxel-face-shadows` for resampled-cell casting.
 
 The box oracle's `--source` option uses the authored, unrounded box coordinates,
-independent of camera orientation. Its existing default and `--grid` conventions
-are unchanged; both existing four-view sets still pass. Thresholds remain IoU
+independent of camera orientation. All three modes now bound occupied mass at
+cell center ±0.5. Their rounding and camera conventions are unchanged; newly
+captured default and GRID four-view sets still pass. Thresholds remain IoU
 ≥.70 and visible-area ratio .75–1.30.
 
 ```sh
@@ -57,10 +60,14 @@ python3 scripts/render-shadow-box-metric.py yaw0.png yaw90.png yaw180.png yaw270
 
 | Yaw | Source-face IoU | Area / expected |
 | --- | ---: | ---: |
-| 0 | .739 | .941 |
-| 90 | .937 | .985 |
-| 180 | .906 | 1.007 |
-| 270 | .873 | .993 |
+| 0 | .716 | .878 |
+| 90 | .943 | .985 |
+| 180 | .913 | 1.002 |
+| 270 | .876 | .981 |
+
+The table uses centered face corners and the corrected detached origin; the
+comparison images above predate those small placement corrections. Current
+centering evidence is in [the rendering worklist](rendering-audit-todo.md).
 
 The tilted outlines are visibly straighter, but visible detached voxel faces still
 show the underlying revoxelization steps. Source casting can also disagree locally

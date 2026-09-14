@@ -102,7 +102,7 @@ void main() {
         } else if (!faceIsExposed(flags, faceId)) {
             continue;
         }
-        vec3 corner = position;
+        vec3 corner = position - kVoxelRasterCellAnchor;
         corner[axis] += positive ? 1.0 : 0.0;
         vec3 edgeU = vec3(0.0);
         vec3 edgeV = vec3(0.0);
