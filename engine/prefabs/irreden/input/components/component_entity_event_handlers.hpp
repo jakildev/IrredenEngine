@@ -15,20 +15,17 @@ namespace IRComponents {
 // rather than a process static — the sanctioned pattern for world-scoped
 // state per `.claude/rules/cpp-globals.md`.
 //
-// Lifetime is the reason this is a component (#2582). The vectors hold
-// `sol::protected_function` refs into the World's Lua VM, so they must be
-// destroyed while that VM is still open. `World` declares `m_lua` before the
-// manager block (T-100 / #2446) precisely so archetype-column sol refs unref
-// against a live `lua_State`, and `World::end()` runs `destroyAllEntities()`
-// during `gameLoop()` while the VM is provably alive. Both orderings are
-// structural, so nothing has to remember a teardown call — which is what
-// retired #2572's manual `IREngine::gameLoop()` tail `clear()`. As a
-// process-lifetime static this same state unref'd after `lua_close` at
-// `__cxa_finalize` and segfaulted any creation that registered a handler.
+// The vectors hold `sol::protected_function` refs into the World's Lua VM,
+// so they must be destroyed while that VM is still open — that dependency
+// is why this state is a component, not a process static. `World` declares
+// `m_lua` before the manager block precisely so archetype-column sol refs
+// unref against a live `lua_State`, and `World::end()` runs
+// `destroyAllEntities()` during `gameLoop()` while the VM is provably
+// alive. Both orderings are structural, so nothing has to remember a
+// teardown call.
 //
 // Singleton semantics: survives `resetGameplay()` (singleton entities are
 // preserved and the cache is not cleared), dies at `destroyAllEntities()`.
-// That matches the old static's scene-transition behaviour exactly.
 struct C_EntityEventHandlers {
     struct HandlerEntry {
         int id_;

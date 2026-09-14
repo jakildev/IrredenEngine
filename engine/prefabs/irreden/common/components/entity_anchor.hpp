@@ -2,7 +2,7 @@
 #define ENTITY_ANCHOR_H
 
 // How a discrete entity's geometry attaches to its world position
-// (`C_LocalTransform.translation_`) — #2563.
+// (`C_LocalTransform.translation_`).
 //
 // The engine-wide convention this enum establishes: a discrete entity's
 // position is its GROUND ANCHOR — the center of its footprint in XY and the
@@ -29,12 +29,12 @@
 // than assuming a convention.
 //
 // Not yet interpreted by `C_ColliderIso3DAABB`, SDF shapes, or
-// `C_EntityCanvas`; those migrate per this enum when touched (#2563
-// follow-ups). The detached-canvas path does not support GROUND — its
-// extent measurement is `abs()`-about-origin and assumes CENTER. That is
-// guarded at the re-voxelize consumer: `SYSTEM_REBUILD_DETACHED_VOXELS`
-// asserts the pool is origin-centered, so GROUND and CORNER both fire there
-// instead of silently orbiting their anchor (see #2911).
+// `C_EntityCanvas`; those migrate per this enum when touched. The
+// detached-canvas path does not support GROUND — its extent measurement is
+// `abs()`-about-origin and assumes CENTER. That is guarded at the
+// re-voxelize consumer: `SYSTEM_REBUILD_DETACHED_VOXELS` asserts the pool
+// is origin-centered, so GROUND and CORNER both fire there instead of
+// silently orbiting their anchor.
 
 #include <irreden/ir_math.hpp>
 

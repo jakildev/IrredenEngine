@@ -138,7 +138,7 @@ struct C_PeriodicIdle {
 
     // The offset this idle would produce at an arbitrary raw angle, without
     // disturbing the live animation state -- e.g. to bake a traveling wave's
-    // phase-0 value before PERIODIC_IDLE's first tick() (see #2332). Wraps
+    // phase-0 value before PERIODIC_IDLE's first tick(). Wraps
     // into [0, 2*pi) (a raw phase can span many cycles; the stages cover one)
     // then runs the same stage-search + easing tick() does, so the result
     // matches the running animation exactly.

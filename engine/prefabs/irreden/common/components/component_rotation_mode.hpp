@@ -5,9 +5,8 @@
 //
 // - GRID (default): rotation discretizes to world-grid cells. Voxels
 //   participate in the shared world voxel pool and a transform change
-//   triggers SYSTEM_REBUILD_GRID_VOXELS (C6) to re-rasterize the
-//   authored voxels into rotated world cells. Picks aliasing as a
-//   feature.
+//   triggers SYSTEM_REBUILD_GRID_VOXELS to re-rasterize the authored
+//   voxels into rotated world cells. Picks aliasing as a feature.
 // - DETACHED: rotation lives inside a per-entity child canvas
 //   (`C_EntityCanvas`) allocated at spawn time via
 //   `IRPrefab::EntityCanvas::create()`. The world composite stage
@@ -20,7 +19,7 @@
 // - DETACHED_REVOXELIZE: like DETACHED, but the private pool is re-filled
 //   at the full-rotation cell positions each frame (SYSTEM_REBUILD_DETACHED_VOXELS)
 //   and rasterized through cardinal frame data — the rotation lives in the
-//   cells, not a 2D deform, so asymmetric solids read as true-3D (#1553).
+//   cells, not a 2D deform, so asymmetric solids read as true-3D.
 //
 // Entities without `C_RotationMode` are implicitly GRID — consumers
 // default to GRID when the component is absent so non-prefab entities
@@ -30,7 +29,7 @@
 // queries.
 //
 // The re-rasterize path honors that default through a second query arm:
-// `SYSTEM_REBUILD_GRID_VOXELS_IMPLICIT` (#2376) runs the identical GRID
+// `SYSTEM_REBUILD_GRID_VOXELS_IMPLICIT` runs the identical GRID
 // body over `Exclude<C_RotationMode>`, so a creation that registers
 // `REBUILD_GRID_VOXELS` must register the implicit twin next to it — omit
 // it and a component-less entity's authored rotation renders as identity
@@ -59,24 +58,7 @@ namespace IRComponents {
 enum class RotationMode : std::uint8_t {
     GRID = 0,
     DETACHED = 1,
-    // Detached re-voxelize (#1553 epic, P1 #1555): the entity lives on its own
-    // `C_EntityCanvas` like DETACHED, but instead of baking the rotation as a
-    // per-face octahedral-snap residual deform (the forward-scatter path), its
-    // private voxel pool is RE-FILLED each frame at the full-rotation cell
-    // positions (`SYSTEM_REBUILD_DETACHED_VOXELS`, the detached analogue of
-    // `SYSTEM_REBUILD_GRID_VOXELS`) and the canvas rasterizes that pool through
-    // CARDINAL/static frame data. The rotation lives in the cells, not a deform
-    // — so an asymmetric solid reads as a true 3D-rotated solid, which the 2D
-    // forward-scatter skew cannot represent (#1551 root cause).
     DETACHED_REVOXELIZE = 2,
-    // Attached main-canvas SO(3) rotation is the GRID re-voxelize model
-    // (`SYSTEM_REBUILD_GRID_VOXELS`), where the camera alone drives trixel
-    // deformation and the entity's rotation only changes which cells are
-    // filled. The retired `MAIN_CANVAS_SO3` mode (#1272 / #1299) — a GPU
-    // position-transform + octahedral-snap + per-entity visible triplet on the
-    // shared canvas — was removed in #1443: a tilted-axis face deformation
-    // can't be represented under the main canvas's fixed-(1,1,1) iso-depth-axis
-    // invariant, so per-entity trixel deformation lives on DETACHED canvases.
 
     kFirst = GRID,
     kLast = DETACHED_REVOXELIZE,

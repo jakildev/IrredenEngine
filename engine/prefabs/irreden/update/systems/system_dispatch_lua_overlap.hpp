@@ -1,7 +1,7 @@
 #ifndef SYSTEM_DISPATCH_LUA_OVERLAP_H
 #define SYSTEM_DISPATCH_LUA_OVERLAP_H
 
-// DISPATCH_LUA_OVERLAP (#1817) — turns the batched overlap pairs that
+// DISPATCH_LUA_OVERLAP turns the batched overlap pairs that
 // COLLISION_NOTE_PLATFORM emits into Lua-facing enter/exit callbacks.
 //
 // Handlers are registered by collision-LAYER PAIR (not per-entity): a creation

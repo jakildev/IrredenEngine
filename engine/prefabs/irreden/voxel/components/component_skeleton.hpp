@@ -24,8 +24,8 @@
 //
 // Each entity listed in `joints_` carries:
 //   - C_Joint (tag — drives archetype queries like `<C_Joint, C_LocalTransform>`).
-//   - The engine's canonical local-transform component (C_LocalTransform,
-//     since #731 Phase 1 landed — PR #749). C_Skeleton intentionally does NOT
+//   - The engine's canonical local-transform component (C_LocalTransform).
+//     C_Skeleton intentionally does NOT
 //     name a transform component in its API — joints carry whatever the
 //     engine's canonical transform is at spawn time, and
 //     SYSTEM_PROPAGATE_TRANSFORM composes the parent chain uniformly with
@@ -51,7 +51,7 @@
 // ## Bind pose
 //
 // Skinning math needs the bind-pose inverse to recover skinning matrices.
-// `bindPose_` (added in #605 Phase 2 / #1602) holds joint `i`'s rest transform
+// `bindPose_` holds joint `i`'s rest transform
 // in rig-root-local space — the same space `C_WorldTransform` reports for a
 // joint left at rest, so `IRPrefab::Skeleton::skinMatrix(jointWorld, bindPose_[i])`
 // returns identity at the bind pose and the joint's posed motion otherwise.

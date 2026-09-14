@@ -20,15 +20,14 @@ using namespace IRMath;
 
 namespace IRSystem {
 template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
-    // #1803 — this 262K-entity position loop is one of the two dominant
-    // UPDATE costs (#1740), so it runs Concurrency::PARALLEL_FOR. The tick
+    // This 262K-entity position loop is one of the two dominant
+    // UPDATE costs, so it runs Concurrency::PARALLEL_FOR. The tick
     // keeps the per-entity-id form for the one-time owner registration
     // (`setEntityIdForRange` → GPU picking buffer), which makes the
     // registration validator demand the `IRSystem::ParallelSafe` opt-in. The
-    // body is audited thread-safe; the two architecture blockers the plan
-    // missed (worker-side pool lookup, shared `queuePositionRange` vector)
-    // are resolved by `beginTick` pre-resolution + a per-worker deferred
-    // merge below. See the PR #1891 architect direction (1a + 2a + 3).
+    // body is audited thread-safe; the two architecture blockers (worker-side
+    // pool lookup, shared `queuePositionRange` vector) are resolved by
+    // `beginTick` pre-resolution + a per-worker deferred merge below.
     static constexpr Concurrency kConcurrency = Concurrency::PARALLEL_FOR;
 
     // One deferred `queuePositionRange` call. The pool's
@@ -156,7 +155,7 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
             pool.getPositions(),
             pool.getPositionOffsets()
         );
-        // A GPU-transform-indirected set (#1396) has binding 5 written by the
+        // A GPU-transform-indirected set has binding 5 written by the
         // UPDATE_VOXEL_POSITIONS_GPU prepass each frame. We still recompute its
         // CPU global mirror above (a sane translation-only fallback for the
         // STAGE_1 canvas-switch re-seed, and for cull/picking), but we must NOT
@@ -196,8 +195,8 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
         // Main-thread merge. Every staged entry invalidates the cull caches over
         // the range it actually rewrote; only a static set additionally queues
         // that range for the binding-5 upload. Invalidation runs here, not in
-        // tick, to keep the shared-cache writes off the concurrent path (#1803
-        // TSan note) — the per-chunk pending bits are bit-packed, so a worker
+        // tick, to keep the shared-cache writes off the concurrent path (a
+        // TSan concern) — the per-chunk pending bits are bit-packed, so a worker
         // thread writing them would be a genuine race, not a benign same-value
         // store.
         for (std::vector<PendingRange> &worker : pendingByWorker_) {

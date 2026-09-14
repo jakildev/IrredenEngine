@@ -105,7 +105,7 @@ template <> struct System<COLLISION_NOTE_PLATFORM> {
                std::vector<C_ContactEvent> &events) {
                 IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_UPDATE);
 
-                // #1817: opt-in batched overlap-pair emission. The singleton
+                // Opt-in batched overlap-pair emission. The singleton
                 // exists only when a creation registered
                 // DISPATCH_LUA_OVERLAP, so existing C_ContactEvent-only
                 // users keep the fast first-contact break path below (nullptr).

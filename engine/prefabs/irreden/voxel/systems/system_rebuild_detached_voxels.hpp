@@ -55,7 +55,7 @@ template <> struct System<REBUILD_DETACHED_VOXELS> {
         // composed locals, so it orbits its anchor instead of spinning in
         // place — and the per-voxel halfCellAnchor uniformity assert in
         // seedResidentLocals stays silent, because anchor uniformity is not
-        // what breaks (#2911). Checked once per pool lifetime, before the
+        // what breaks. Checked once per pool lifetime, before the
         // seed, so a failing pool is never given a bound.
         const auto composedAt = [&](int i) { return localPositions[i].pos_ + localOffsets[i]; };
         IR_ASSERT(
