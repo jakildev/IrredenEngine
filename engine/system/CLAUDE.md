@@ -136,9 +136,16 @@ thread. `PARALLEL_FOR` chunks each matched node by `kGrainSize`; the main thread
 resolves component columns before workers receive range closures. Archetype
 iteration plus begin/end hooks remain serial.
 
+Opt in on `System<N>` with `kConcurrency` and optional `kGrainSize` constexpr
+members, or pass `Concurrency` and `grainSize` as the trailing `createSystem`
+registration arguments.
+
 A `PARALLEL_FOR` registration is invalid when it is batch-form, relation-form,
 `MainThread`-tagged, or entity-id-form without an explicit `ParallelSafe` tag.
 The tag is an audit claim: it does not make manager lookups thread-safe.
+If release mode bypasses pipeline-group validation and such a system reaches
+`executeSystem` from a worker, dispatch falls back to serial to avoid nested
+worker-pool fan-out.
 
 ### IR_ASSERT_MAIN_THREAD
 
