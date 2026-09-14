@@ -32,6 +32,12 @@ that the experimental rendering is ready to become the default.
 
 ## Newly observed during local-triangle validation
 
+- The 225-degree staircase still has triangular teeth with normal fragment
+  reconstruction and shadows disabled (analytic coexistence captures 610/612).
+  Raw-debug capture 611 exactly reproduces historical rectangular capture 585.
+  Resolve occupancy and face-boundary reconstruction; changing display defaults
+  alone does not fix this geometry, and blur is not an acceptable substitute.
+
 - Repeated identical upright captures differ in 104–952 pixels confined to the
   rainbow probe with triangle mode disabled. Investigate color/depth winner
   determinism before treating this probe as a strict pixel reference; the cause

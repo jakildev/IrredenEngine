@@ -10,9 +10,11 @@ The default shadow route and feature defaults are unchanged.
 ![Roof before and after](../pr-screenshots/codex/analytic-face-shadow-coexistence/roof-comparison.png)
 
 The comparison contains native-resolution crops at `(730,480)-(1810,850)`;
-full frames are retained alongside it. The detached 225-degree view still has
-the known rectangular display/edge artifacts. This fixes missing cast visibility,
-not reconstruction of those surfaces or analytic shadow boundaries.
+full frames are retained alongside it. These historical detached captures used
+raw rectangular display. Normal detached voxel display now reconstructs local
+triangles; reproducing the historical display requires `--debug-raw-trixels`.
+This change fixes missing cast visibility, not authored-surface reconstruction
+or analytic shadow boundaries.
 
 ## Data and lifetime contract
 
@@ -43,7 +45,8 @@ native run reported `RESULT=CLEAN`. Baseline is
 after captures use this change. The analytic roof uses full box dimensions
 `(16,8,1)` at `(0,-2,-2)` for all matched comparisons.
 
-Common staircase command:
+Historical staircase recipe (add `--debug-raw-trixels` on the current stack
+to reproduce the original detached display):
 
 ```sh
 fleet-run --timeout 120 IRCanvasStress --only shadowocclusion --probe-staircase --probe-analytic-blocker --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 4 --auto-screenshot 6 --sweep-yaw 3.14159265 3.14159265 1 --source-face-shadows
@@ -105,3 +108,30 @@ The next optimization round should compare finite-face projection against the
 legacy radius-seven bake's up-to-225 atomics per sample per cascade, and assess
 whether analytic depth can be emitted alongside the existing pass without
 duplicating SDF traversal. Preserve visual controls when consolidating that work.
+
+## Normal-display adoption check
+
+After the stack adopted local triangular reconstruction by default, the same
+native recipe produced captures 609 (180 degrees) and 610 (225 degrees), without
+an enabling display flag. The cardinal blocked patch has maximum error 0 and
+the outside patch maximum error 1: both pass the unchanged tolerance 2.
+
+Capture 611 adds `--debug-raw-trixels` at 225 degrees and is RGB pixel-identical
+to historical capture 585. Capture 612 instead uses normal display with
+`--no-shadows`. Triangular teeth remain along the same tread and silhouette
+boundaries with shadows disabled; they are not solely a lighting artifact.
+Correct local fragment footprints do not establish correct reconstructed
+occupancy or original authored surfaces. That geometry work remains open.
+
+The 225-degree controls use `--sweep-yaw 3.92699082 3.92699082 1`; all other
+arguments match the common recipe. All runs exit cleanly. The updated stack
+also passes 17 focused default-layout, detached-depth and rebuild-guard tests,
+changed-line formatting, header checks, and both comment/instruction ratchets.
+
+![Normal display, roof shadow enabled](../pr-screenshots/codex/analytic-face-shadow-coexistence/capture-610.png)
+
+![Normal display, shadows disabled](../pr-screenshots/codex/analytic-face-shadow-coexistence/capture-612.png)
+
+The flag-free display also preserves all four source-box shadow checks in
+captures 613–616: IoU .920/.967/.963/.948, area ratio
+.990/1.026/1.027/1.032, using the existing box recipe and thresholds.
