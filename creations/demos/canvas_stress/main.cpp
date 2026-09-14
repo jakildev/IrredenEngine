@@ -607,11 +607,6 @@ void spawnDetachedReVoxelizeSolid(
         screenLocked
     );
 
-    if (IREngine::args().getFlag("--local-trixel-display")) {
-        IREntity::getComponent<C_TriangleCanvasTextures>(canvas.canvasEntity_).sampleLayout_ =
-            IRRender::TrixelSampleLayout::LOCAL_TRIANGLES;
-    }
-
     // Centered around origin so SYSTEM_REBUILD_DETACHED_VOXELS can rotate the
     // cells about the pool origin (translation-free) and keep the solid centered
     // on its canvas as it tumbles.
@@ -851,10 +846,6 @@ void spawnSmallZoomRepro() {
         kPoolSize,
         g_settings.screenLockDetached_
     );
-    if (IREngine::args().getFlag("--local-trixel-display")) {
-        IREntity::getComponent<C_TriangleCanvasTextures>(canvas.canvasEntity_).sampleLayout_ =
-            IRRender::TrixelSampleLayout::LOCAL_TRIANGLES;
-    }
     IREntity::createEntity(
         C_LocalTransform{vec3(0.0f)},
         C_VoxelSetNew{kCubeSize, kColor, true, canvas.canvasEntity_}
@@ -1092,9 +1083,10 @@ void registerArgs() {
         "--source-face-shadows",
         "Experimental authored-face shadows before detached resampling"
     );
+    args.flag("--debug-raw-trixels", "Debug detached voxel storage as raw rectangular trixels");
     args.flag(
         "--local-trixel-display",
-        "Experimental undilated local triangles on detached probes"
+        "Compatibility flag: local triangle reconstruction is already the default"
     );
     args.flag("--probe-upright", "Use unrotated revoxelization and attached shadow probes");
     args.flag("--probe-staircase", "Use a stair-stepped plate and nearby overhead blocker");
@@ -1275,6 +1267,11 @@ int main(int argc, char **argv) {
     initSystems();
     initCommands();
     initEntities();
+    if (IREngine::args().getFlag("--debug-raw-trixels")) {
+        IREntity::forEachComponent<C_TriangleCanvasTextures>([](C_TriangleCanvasTextures &canvas) {
+            canvas.sampleLayout_ = IRRender::TrixelSampleLayout::RECTANGULAR;
+        });
+    }
 
     IRRender::setCameraPosition2DIso(vec2(0.0f, 0.0f));
     IRRender::setCameraZoom(g_settings.initialZoom_);
@@ -1689,10 +1686,6 @@ void initEntities() {
                     ivec3(64),
                     false
                 );
-                if (IREngine::args().getFlag("--local-trixel-display")) {
-                    IREntity::getComponent<C_TriangleCanvasTextures>(canvas.canvasEntity_)
-                        .sampleLayout_ = IRRender::TrixelSampleLayout::LOCAL_TRIANGLES;
-                }
             }
             const vec3 origin{0.0f, 0.0f, staircase ? -4.0f : -10.0f};
             const EntityId solid = IREntity::createEntity(
@@ -1754,10 +1747,6 @@ void initEntities() {
                 ivec3(32),
                 g_settings.screenLockDetached_
             );
-            if (IREngine::args().getFlag("--local-trixel-display")) {
-                IREntity::getComponent<C_TriangleCanvasTextures>(canvas.canvasEntity_)
-                    .sampleLayout_ = IRRender::TrixelSampleLayout::LOCAL_TRIANGLES;
-            }
             IREntity::createEntity(
                 C_LocalTransform{vec3(0.0f)},
                 C_VoxelSetNew{size, color, true, canvas.canvasEntity_}

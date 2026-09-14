@@ -86,7 +86,7 @@ class ProjectionFiresOnMerge(unittest.TestCase):
                          _hash(_state(engine_merged=merged)))
 
     def test_merged_to_non_master_is_distinguishable(self):
-        # PR #543 stranded-merge regression: a PR shows mergedAt set but
+        # A PR can show mergedAt set while
         # baseRefName points at a stale feature branch, not master. The
         # projection captures baseRefName so a downstream renderer can
         # distinguish reachable-from-master vs orphan merges.

@@ -340,16 +340,10 @@ struct C_VoxelSetNew {
         }
     }
 
-    // Tell the pool that this set's slots changed a value its derived cull
-    // caches read (#2830). Called UNCONDITIONALLY by every alpha-touching
-    // mutator below — including while `visible_` is false. Visibility gates
-    // the pool's active-MASK write, but the chunk bounds are derived from
-    // voxel ALPHA, which a hidden edit changes all the same; skipping the
-    // notification leaves the bounds frozen at the pre-edit extent and the
-    // set latched outside the cull viewport once it is shown. For a visible
-    // set the pool's own active-mask route already notifies, so this is a
-    // coalesced no-op there — cheap enough to call on both paths, which is
-    // what keeps the rule "every alpha mutator calls this" auditable.
+    // Every alpha mutator notifies, including hidden sets: visibility gates
+    // active-mask writes, but bounds derive from authored alpha. A skipped
+    // notification can leave a shown set rejected by stale off-screen bounds.
+    // Visible sets coalesce this with their active-mask notification.
     void markPoolCullBoundsDirty() {
         if (numVoxels_ <= 0) {
             return;
@@ -645,8 +639,7 @@ struct C_VoxelSetNew {
         if (numVoxels_ <= 0) {
             return;
         }
-        // Ahead of the visibility gate: a hidden set's raw alpha edits still
-        // move the pool's derived cull bounds (#2830).
+        // Hidden raw alpha edits still invalidate derived cull bounds.
         markPoolCullBoundsDirty();
         if (!visible_) {
             return;
