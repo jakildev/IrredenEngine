@@ -18,6 +18,10 @@
 #   - the reservation binds an UNDER-cap lane too, across a sequential
 #     multi-role tick (worker at cap, sonnet reviewer cap 4, opus reviewer
 #     cap 1): every pending under-cap role still gets a pane
+#   - the merger/reviewer lanes are served before the worker lane when one
+#     pane is free and both are pending
+#   - no tick reaches gh (the per-target dispatch cap is off; a gh call is
+#     a hermeticity failure, not a live write)
 
 set -euo pipefail
 unset FLEET_RUNTIMES FLEET_CROSS_PROVIDER_REVIEW FLEET_WORKER_RUNTIME FLEET_CAP_MODE
@@ -63,6 +67,10 @@ export FLEET_CONCURRENCY_SONNET_REVIEWER=1
 export FLEET_DISPATCH_MIN_GAP_SECONDS=0
 export FLEET_DISPATCHER_CLAIM_SETTLE_SECONDS=0
 export FLEET_DISPATCHER_BOOT_FANOUT_WINDOW_SECONDS=0
+# The same two targets are granted across every case, so the per-target
+# dispatch cap would trip mid-suite and park them through gh. The breaker is
+# test_dispatcher_class_dispatch.sh's subject (T32-T34), not this suite's.
+export FLEET_TARGET_DISPATCH_CAP=0
 
 STUB_BIN="$TMPROOT/bin"; mkdir -p "$STUB_BIN"
 export PATH="$STUB_BIN:$PATH"
@@ -77,6 +85,15 @@ esac
 exit 0
 EOF
 chmod +x "$STUB_BIN/fleet-claim"
+# Every gh reach is refused and logged: a tick that needs GitHub is a
+# hermeticity bug, asserted at the end of the suite.
+export GH_LOG="$TMPROOT/gh.log"; : > "$GH_LOG"
+cat > "$STUB_BIN/gh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$GH_LOG"
+exit 1
+EOF
+chmod +x "$STUB_BIN/gh"
 
 # Three pool panes on their own worktrees. BUSY_PANES (space-separated ids,
 # e.g. "%2 %3") report `claude` in the foreground; the rest sit at an idle
@@ -377,5 +394,9 @@ assert_absent "$out" "dispatching worker" \
     "the worker lane does not launch this tick"
 trigger_kept && ok "the worker trigger is kept for the next tick" \
     || bad "the worker trigger was consumed without a launch"
+
+echo "T15: no tick reached gh"
+assert_eq "$(wc -l < "$GH_LOG" | tr -d ' ')" "0" \
+    "the suite never called gh (every reach is logged by the stub)"
 
 summarize "fleet-dispatcher elastic cap tests"
