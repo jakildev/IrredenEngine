@@ -190,6 +190,45 @@ class WorkerCoversEveryTaskClass(unittest.TestCase):
         self.assertEqual(opus, sonnet)
 
 
+class ShadowMergedPrDoesNotFlipHash(unittest.TestCase):
+    """`shadow_merged_pr` rides the worker slice but stays out of the
+    projection item: a merge entering and later leaving the recent-merged
+    window would otherwise re-fire the worker lane with nothing to act on."""
+
+    def _project(self, tasks):
+        return project_worker(_state([], tasks=tasks))
+
+    def _shadowed(self):
+        task = _task("#2298", model="opus")
+        task["shadow_merged_pr"] = {
+            "number": 2475,
+            "headRefName": "claude/2298-occlusion-cull-feeder-domain",
+            "baseRefName": "master",
+            "mergedAt": "2026-08-22T22:23:03Z",
+            "title": "engine/render: widen the occlusion cull feeder domain",
+        }
+        return task
+
+    def test_projection_item_is_byte_identical(self):
+        plain = self._project({"open": [_task("#2298", model="opus")]})
+        shadowed = self._project({"open": [self._shadowed()]})
+        self.assertEqual(json.dumps(plain, sort_keys=True),
+                         json.dumps(shadowed, sort_keys=True))
+
+    def test_shadow_merged_pr_does_not_flip_hash(self):
+        plain = stable_hash(self._project({"open": [_task("#2298", model="opus")]}))
+        shadowed = stable_hash(self._project({"open": [self._shadowed()]}))
+        self.assertEqual(plain, shadowed)
+
+    def test_shadowed_task_still_reaches_the_worker_slice(self):
+        # Complement of the two arms above: a change dropping the field from
+        # the slice too would pass them and deliver nothing.
+        sliced = slice_worker(_state([], tasks={"open": [self._shadowed()]}))
+        self.assertEqual(len(sliced["tasks_open"]), 1)
+        self.assertEqual(sliced["tasks_open"][0]["shadow_merged_pr"]["number"],
+                         2475)
+
+
 class WorkerSkipLabelsDropPR(unittest.TestCase):
     """human:wip / fleet:gated exclude a PR from the projection entirely."""
 

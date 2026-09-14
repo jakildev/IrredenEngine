@@ -174,6 +174,21 @@ queuePositionRange(std::size_t startIndex, std::size_t count, IREntity::EntityId
     }
 }
 
+// Notify the pool that slots [startIndex, startIndex + count) had a position
+// or an alpha rewritten in place, so both derived cull caches re-derive the
+// chunks that range touches (#2830). The active-mask routes above already
+// carry this for a VISIBLE set; this is the bounds-only path a HIDDEN set
+// needs — `C_VoxelSetNew::visible_` suppresses the pool's active-mask write
+// but not the authored alpha the bounds are derived from, so a hidden edit
+// would otherwise leave the caches stale and the set latched off-screen when
+// it is shown again.
+inline void
+markCullBoundsDirty(std::size_t startIndex, std::size_t count, IREntity::EntityId canvasEntity) {
+    if (auto *pool = detail::poolForCanvas(canvasEntity)) {
+        pool->markCullBoundsDirty(startIndex, count);
+    }
+}
+
 // Push-at-mutation route for the per-trixel-priority aggregate (#2155). The
 // C_VoxelSetNew priority mutators call this with the delta of priority-carrying
 // voxels they just added (+) or removed (-) so the pool's count — read once per

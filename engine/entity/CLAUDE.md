@@ -1,492 +1,152 @@
 # engine/entity/ — IRECS archetype store
 
-Archetype-based ECS: groups entities sharing the same set of component types
-into dense arrays ("archetype nodes") and iterates them columnwise. Changing
-an entity's archetype (add/remove component) moves it between nodes.
+Archetype nodes store entities with the same component set in parallel dense
+columns. Adding or removing a component moves the entity to another node.
+The public creation-facing boundary is
+[`ir_entity.hpp`](include/irreden/ir_entity.hpp); internal code may use
+`EntityManager` directly when it deliberately needs eager behavior.
 
-## Entry point
+## Structural mutation and iteration
 
-`engine/entity/include/irreden/ir_entity.hpp` — exposes `IREntity::`
-free functions: `getEntityManager()`, `createEntity(...)`,
-`createEntityBatch(...)`, `createEntityBatchWithFunctions(...)`,
-`forEachComponent(...)`, `setParent(...)`, etc.
+`forEachComponent` supports per-component, entity-plus-component, and
+per-archetype column callbacks. Systems use the same signature dispatch; see
+[`engine/system/CLAUDE.md`](../system/CLAUDE.md). Never structurally mutate an
+archetype while iterating it. Use the deferred APIs and let
+`flushStructuralChanges()` drain them at a safe frame boundary.
 
-## Key types
+`destroyEntity` has two intentionally different meanings:
 
-- **`EntityId`** — `uint64_t` alias. High bits hold metadata flags
-  (`IR_PURE_ENTITY_BIT`, `kEntityFlagIsRelation`). Mask with
-  `IR_ENTITY_ID_BITS` to get the raw id.
-- **`ComponentId`** — distinct from `EntityId` at the type level; every
-  component type is registered once via `registerComponent<C>()` (lazy,
-  triggered by first use).
-- **`Archetype`** — `std::set<ComponentId>` describing an entity's set of
-  components.
-- **`ArchetypeNode`** — the dense SoA storage for one archetype: one vector
-  of `EntityId`, plus one parallel vector per component type.
-- **`ArchetypeGraph`** — holds all nodes and the add/remove edges between
-  them. `findCreateArchetypeNode()` walks or extends the graph as entities
-  mutate.
-- **`Relation`** enum — `NONE`, `CHILD_OF`, `PARENT_TO`, `SIBLING_OF`.
-  Relations are registered as pseudo-components via `registerRelation()`.
+| Spelling | Timing | Thread |
+|---|---|---|
+| `IREntity::destroyEntity(id)` | marks the entity; it stays queryable until `destroyMarkedEntities()` | main or worker |
+| `IREntity::getEntityManager().destroyEntity(id)` | tears the entity down immediately | main only |
 
-## Component registration: template vs dynamic
+Use the manager method only when the entity must be gone before the next
+statement. An unqualified manager member call is eager.
 
-`registerComponent<T>()` is the C++ path: a `ComponentId` is allocated
-the first time the type is referenced, backed by an
-`IComponentDataImpl<T>` storing one `std::vector<T>` per archetype.
+### Worker staging
 
-`registerComponentDynamic(typeName, smart_ComponentData)` is the
-runtime path: caller supplies a fully-constructed `IComponentData`
-impl and a user-visible name. Used by Lua-defined components (see
-`engine/script/CLAUDE.md` "Lua-defined components") which back their
-columns with the script-layer `IComponentDataLuaTyped`. Both paths
-share `m_pureComponentTypes` / `m_pureComponentVectors` so
-`ComponentId`s are drawn from one space; archetype storage,
-move/pack/remove, and pre-destroy hooks all work uniformly.
+Deferred operations append to the caller's per-worker slot. Entity creation
+allocates an id immediately, but a worker-created entity is not placed in an
+archetype until the next flush; do not read or mutate its components before
+then. Worker count is fixed after `World` constructs the entity manager.
+Flushes drain legacy main-thread buffers first and then staging slots in
+deterministic worker-id order.
 
-Dynamic add: `addComponentDynamic(entity, componentId)` adds a
-runtime-registered component using the impl's `appendDefaultRow()`.
-Default impl returns `false` — non-Lua impls reject this path so a
-caller is forced to use `setComponent<T>(entity, value)` with an
-explicit value (matters for components with `= delete`d default
-ctors, e.g. `C_CanvasAOTexture`). Dynamic readers go through
-`getComponentDataAndRow(entity, componentId)` which returns the
-type-erased `IComponentData*` and row index; the caller casts to
-the concrete impl.
+Worker-callable structural changes must route through staging: worker-side
+`createEntity`, deferred component mutation, and deferred destruction do so.
+Eager graph mutation, batch creation, direct manager destruction,
+`flushStructuralChanges()`, and `destroyMarkedEntities()` are main-thread-only.
+The debug assertions are not release-build synchronization.
+The general system-side rule lives in
+[the ECS rules](../../.claude/rules/cpp-ecs.md#deferred-entity-operations-during-tick).
 
-## Iteration API
+## Component registration
 
-`forEachComponent(lambda)` iterates all archetype nodes that contain a
-component type. The lambda's signature determines the iteration shape
-(detected at compile time via `std::is_invocable_v`):
+Typed and runtime-defined components share one `ComponentId` space and the
+same archetype storage and teardown hooks. Dynamic insertion calls the
+registered storage implementation's `appendDefaultRow()`; implementations
+that cannot default-construct a row must reject that path, and callers must
+supply an explicit value through the typed API.
 
-```cpp
-// per-component (most common)
-forEachComponent<C_Velocity3D>([](C_Velocity3D& v) { ... });
+## Record lookup
 
-// per-component with entity id
-forEachComponent<C_Velocity3D>([](EntityId id, C_Velocity3D& v) { ... });
+- `findRecord(id)` is the non-inserting probe for ids that may be dead or not
+  yet placed. A non-null record can still have a null node while creation or a
+  batch insert is pending.
+- `getRecord(id)` asserts that the record exists and is placed. Use it when a
+  missing id is a caller bug.
+- Never probe `m_entityIndex` with `operator[]`; a miss would create a bogus
+  record. Mask metadata bits before indexing by entity id.
 
-// per-archetype (batch / SIMD-friendly)
-forEachComponent<C_Velocity3D>(
-    [](const Archetype& arch, std::vector<EntityId>& ids,
-       std::vector<C_Velocity3D>& vels) { ... });
-```
-
-The same signature dispatch is what `IRSystem::createSystem<>` uses
-internally — see `engine/system/CLAUDE.md` for the system-side view.
-
-## Deferred structural changes
-
-Modifying an entity's archetype *during* iteration is unsafe. Use the
-deferred API:
-
-- `removeComponentDeferred(id, C)` — queue a removal.
-- `setComponentDeferred(id, C{...})` — queue an add/set.
-- `createEntityDeferred()` — reserve an id now, queue a bare-entity insert;
-  the id is returned immediately (like the worker-thread `createEntity`),
-  usable to attach components / destroy the entity before the insert runs.
-- `stageStructuralChange(fn)` — queue an arbitrary `void()` mutation (the
-  non-templated staging entry point the Lua `IREntity.deferredCreate` binding
-  uses to marshal runtime-typed component attachment).
-- `destroyEntity(id)` — **the `IREntity::` free function** (not the eager
-  `EntityManager::` method of the same name): delegates to
-  `markEntityForDeletion`, so the entity stays fully live until
-  `destroyMarkedEntities` drains the mark list. See the note below.
-- `flushStructuralChanges()` — apply queued changes at a safe point (the
-  frame boundary in most pipelines).
-
-> **`destroyEntity` names two functions with opposite timing.** The bare
-> spelling resolves to whichever one is in scope, so decide deliberately:
->
-> | Spelling | Timing | Callable from |
-> |---|---|---|
-> | `IREntity::destroyEntity(id)` — free function | **Deferred.** Delegates to `markEntityForDeletion`; the entity is only *marked*, and stays fully queryable until `destroyMarkedEntities` runs | main thread or a `PARALLEL_FOR` worker (routes to the caller's staging slot) |
-> | `IREntity::getEntityManager().destroyEntity(id)` — manager method | **Eager.** Tears the entity down in place; runs the pre-destroy hooks and asserts on a dead id | main thread only |
->
-> Creations reach the engine through the `ir_*.hpp` entry points
-> (`engine/CLAUDE.md` §"Module include discipline"), so the one a creation
-> writes is the **deferred** free function. Probing the id in the same tick
-> therefore still reports it alive — `entityExists` `true`, `hasComponent`
-> `true`, `getComponentOptional` returning a value. That is the
-> marked-but-not-yet-drained state working as designed, not the stale-record
-> corruption described in §"Record lookup". When the entity must be gone before
-> the next statement, call the manager method explicitly.
->
-> Unqualified `destroyEntity` elsewhere in this file means the eager manager
-> method.
-
-### Per-worker buffers + thread safety (T-225)
-
-The deferred API is callable from worker threads inside a
-`PARALLEL_FOR` system body. The mechanism is per-worker staging:
-
-- The `EntityManager` holds `m_workerStaging`, a vector indexed by
-  `IRJob::workerId()` (slot `0` = main thread, slots `1..N` =
-  IRJob worker threads). Workers append to their own slot; no
-  lock is needed on the producer side.
-- The vector is sized at `World` construction time, immediately
-  after `JobManager` is constructed, via
-  `EntityManager::resizeWorkerStaging(workerCount + 1)`. Worker
-  count must not change after that point — if the pool resized
-  mid-frame, queued worker writes would land in the wrong slot.
-- `createEntity` from a worker is also safe: the EntityId is
-  allocated atomically via `m_nextEntityId.fetch_add(1)` and
-  returned to the caller immediately. The actual archetype-node
-  insertion is staged into the worker's slot and runs on the
-  main thread at the next `flushStructuralChanges`. Callers may
-  hold the ID but must not call `getComponent` / `setComponent`
-  on it until after flush.
-- `markEntityForDeletion` from a worker queues into the worker's
-  slot; `destroyMarkedEntities` (run from `World::update` on the
-  main thread) drains the legacy main vector first, then each
-  worker slot in order.
-- `flushStructuralChanges` runs on the main thread (asserted)
-  and drains the legacy vectors first, then each per-worker slot
-  in `workerId` order. The drain order is deterministic so
-  `--auto-screenshot` reproducibility holds across sessions —
-  the same set of worker spawns/destroys produces the same
-  archetype-node row layout.
-
-#### Not callable from workers
-
-The following APIs must only be called from the **main thread**. Calling them
-from a `PARALLEL_FOR` worker body bypasses per-worker staging and produces a
-data race in release builds (the `isMainThreadForDeferred()` assert catches
-misuse only in debug builds):
-
-**Eager mutation APIs** (directly modify the archetype graph in place):
-- `setComponent<C>(id, value)` — use `setComponentDeferred` instead
-- `removeComponent<C>(id)` — use `removeComponentDeferred` instead
-- `removeComponentById(id, componentId)`
-- `EntityManager::destroyEntity(id)` — the **eager** teardown. Use
-  `markEntityForDeletion`, or the `IREntity::destroyEntity` free function that
-  wraps it, instead. Note the two spellings differ in semantics, not just in
-  reachability — see §"Deferred structural changes"
-- `setComponents(id, ...)` (multi-component overloads)
-- `insertNewComponent<C>(id, value)`
-- `createEntityBatch(...)` / `createEntitiesBatch(...)` — batch paths do not
-  route through per-worker staging
-
-**Flush APIs** (drain staging buffers; assert main-thread at entry):
-- `flushStructuralChanges()`
-- `destroyMarkedEntities()`
-
-A worker-callable `Spawns` or `Destroys` system in a `PARALLEL_FOR` group must
-use only the deferred API. The validator lifts `MUTATOR_IN_PARALLEL_GROUP`
-(T-225) for systems that follow this contract; it cannot enforce the contract
-at the call site — use the deferred variants deliberately.
-
-The atomic ID counter replaced the old recycle pool. IDs are no
-longer reused; the `IR_ENTITY_ID_BITS` (25-bit) space gives ~33M
-entities per session, sufficient for current workloads. Long-running
-sessions that approach the cap should switch to a tiered allocator —
-not yet needed.
-
-## Record lookup: `findRecord` to probe, `getRecord` to use
-
-`m_entityIndex` maps a masked `EntityId` to its `EntityRecord{archetypeNode,
-row}`. Two accessors, and the choice between them is a correctness decision,
-not a style one:
-
-- **`findRecord(id)` → `EntityRecord *`** — non-inserting; `nullptr` when the
-  id has no index entry. Every path that can legitimately reach a dead or
-  not-yet-placed id goes through this and answers honestly
-  (`getComponentOptional` → `nullopt`, `hasComponent` → `false`,
-  `getComponentDataAndRow` → `{nullptr, -1}`, the deferred-op flush → skip).
-- **`getRecord(id)` → `EntityRecord &`** — asserts the record exists **and**
-  that it is placed in an archetype node, naming the offending id. For paths
-  where a missing record is a caller bug (`getComponent`, `setComponent`,
-  `getEntityArchetype`, `setFlags`, a direct `destroyEntity`).
-
-> **Never reach into `m_entityIndex` with `operator[]`.** It value-initialises
-> `{nullptr, 0}` on a miss, so a *read* of a dead id silently mints a record
-> for it. From then on `entityExists` answers `true` for that id, and the next
-> path that guards with `entityExists` and then derefs `archetypeNode` crashes
-> — far from the bad access, in code that did nothing wrong. That failure mode
-> reads as accumulating store corruption, not as one bad lookup (#2565).
-
-A non-null `findRecord` does **not** imply placement. `allocateEntity` and
-`insertReservedEntity` seed `{nullptr, -1}` before the archetype-node insert,
-and `createEntitiesBatch` allocates every id in the batch before running its
-`updateRecord` loop — so during that window N entities report `entityExists ==
-true` with null nodes. Check `archetypeNode` too wherever that window is
-reachable; `row == -1` distinguishes "allocated, not yet placed" from a record
-corrupted after placement.
-
-The batch drains (`destroyMarkedEntities`, `destroyAllEntities`) are
-set-semantics and skip ids that are already gone, so double-marking an entity
-in one frame is safe. A **direct** `destroyEntity` on a dead id is a caller
-bug and asserts — before the pre-destroy hooks run, so a bogus id never
-reaches user callbacks.
-
-`creations/demos/reposition_stress/` is the headless harness for this surface:
-it repositions N voxel-set entities every tick through four different write
-paths (`--drive=none|column|lookup|node`, composable with `--churn`) and exits
-non-zero on any assert or store-invariant break.
+Deferred drains use set semantics and skip ids already gone. Direct eager
+destruction of a dead id is a caller error and asserts before hooks run.
 
 ## Pre-destroy hooks
 
-`EntityManager::registerPreDestroyHook(callback)` registers a
-`std::function<void(EntityId)>` that fires inside `destroyEntity`
-**before** the entity's components are torn down. The hook receives the
-dying `EntityId` while the entity (and every peer) is still fully
-queryable, so the callback can iterate other entities and strip
-references to the dying id — typical use is the modifier framework's
-auto-sweep of source-attributed modifiers off live target entities.
+`registerPreDestroyHook` callbacks run in registration order while the dying
+entity and its peers remain queryable. Keep each hook at most O(world), and
+put component-local cleanup in `onDestroy()` instead.
 
-Returns a `PreDestroyHookId` token. Pass to `unregisterPreDestroyHook`
-to remove. Hooks fire in registration order.
+During a callback:
 
-Constraints:
-
-- A hook MUST NOT unregister any hook (itself or others) while a
-  `destroyEntity` is in progress. Doing so would silently skip a
-  sibling hook; an `IR_ASSERT` fires in debug builds to catch this.
-  Defer any unregistration until `destroyEntity` returns.
-- A hook MUST NOT mutate the about-to-be-destroyed entity's archetype
-  (no `setComponent` / `removeComponent` on that id). Mutating peer
-  entities (other ids) is fine.
-- A hook MAY call `markEntityForDeletion` on peer entities, but SHOULD
-  NOT call `destroyEntity` reentrantly during the hook.
-- A hook MUST NOT call the lazy-create singleton accessor
-  (`IREntity::singletonEntity<T>` / `IREntity::singleton<T>`) during
-  `destroyAllEntities`. The bulk teardown iterates a snapshot of
-  `m_entityIndex` and clears `m_singletonEntityByComponent` only at
-  the end; a mid-loop lazy-create would mint a fresh singleton entity
-  that the snapshot can't see, leaving an unreachable "ghost" entity
-  in the index after the cache is cleared (cache empty, but
-  `forEachComponent<T>` still iterates the row — no way back to it
-  via `singletonEntity<T>`). Use the no-create variants
-  `singletonEntityOrNull<T>` / `singletonOrNull<T>` instead, or check
-  `entityExists` before reading; the same applies in any pre-destroy
-  hook that might run during a bulk reset. The ban is on
-  **reachability, not spelling** — a service free function that
-  resolves a singleton internally (`IRSim::setTimeScale` →
-  `singleton<C_SimClock>`) is the same call with the accessor hidden
-  (#2952).
-- A hook standing in for an existing teardown mirrors **all** of that
-  teardown's responsibilities, not just the id-clearing one — factor
-  the shared non-destructive tail so a partial mirror is
-  unrepresentable (`.claude/rules/cpp-ecs.md` §"System-owned
-  invariants"; #2946's hook dropped `destroyMenu`'s time-scale restore
-  and froze the sim).
-- The cost is O(hooks × destructions); each hook should be O(world)
-  at worst. Don't register hooks that run an expensive search per
-  destroy.
-
-The framework-level use case is wiring engine-wide invariants (modifier
-sweeps, owned-resource cleanup) that would otherwise force every caller
-to remember a manual cleanup step before `destroyEntity`. Per-component
-cleanup belongs in the component's `onDestroy()` member, not in a hook
-— see `engine/prefabs/CLAUDE.md` "Documented exceptions".
+- Do not unregister hooks or mutate the dying entity's archetype.
+- Peer mutation and deferred peer destruction are allowed; eager reentrant
+  destruction should be avoided.
+- Do not lazy-create a singleton during `destroyAllEntities()`, directly or
+  through another service. Use `singletonEntityOrNull<T>()` or
+  `singletonOrNull<T>()`.
+- A hook replacing an existing teardown path preserves all of that path's
+  invariants, not only its entity-id cleanup. The owning subsystem must keep
+  derived state consistent; see
+  [system-owned invariants](../../.claude/rules/cpp-ecs.md#system-owned-invariants-encapsulate-dont-delegate-to-callers).
 
 ## Singleton components
 
-A "singleton component" is a component for which exactly one record
-exists per world — framework-level globals, per-world settings, scratch
-state. The canonical example is the modifier framework's
-`C_GlobalModifiers` (one `"modifierGlobals"` entity per world); the
-sim-clock substrate (#200) and future per-world game-rules holders will
-adopt the same shape.
+Singleton components are normal ECS rows cached by `ComponentId`. They
+participate in archetype iteration and moves, so iteration order is not a
+singleton lookup contract. Use the typed singleton accessors for the specific
+row.
 
-`IREntity::singleton<T>()` is the public API for this pattern. Lazy-init
-on first call (creates an entity with default-constructed `T` and caches
-the id by `ComponentId`); subsequent calls return the same reference at
-the cost of one hash-map lookup. Singleton entities are normal ECS
-entities and participate in archetype iteration — a `forEachComponent<T>`
-that matches `T` will see the singleton row.
+- `singleton<T>()` lazy-creates with `T{}`; a non-default-constructible type
+  needs a feature-owned factory that supplies its initial value.
+- Every lookup validates the cached id. `destroyAllEntities()` clears the
+  cache; `resetGameplay()` preserves it and its values.
+- Use singleton components for world-scoped ECS data. External device
+  resources remain owned by their manager.
+- The API does not name singleton entities; callers may assign a diagnostic
+  name when useful.
 
-```cpp
-// Typed C++ entry points (engine/entity/include/irreden/ir_entity.hpp):
-template <typename C> IREntity::EntityId singletonEntity();        // lazy-create
-template <typename C> IREntity::EntityId singletonEntityOrNull();  // no-create
-template <typename C> C& singleton();                              // lazy-create + ref
-template <typename C> C* singletonOrNull();                        // no-create + ptr
-```
+World snapshots persist singleton values separately from regular archetype
+rows and map saved singleton ids to their live ids. Snapshot format and load
+ordering are owned by [`engine/world/CLAUDE.md`](../world/CLAUDE.md).
 
-Lua: `IREntity.singleton(componentDef) -> LuaEntity`. Works for
-codegen'd-as-C++ components and runtime-registered Lua-defined
-components — both share the same `ComponentId` space and the same
-cache. Pass the returned `LuaEntity` to the standard
-`IREntity.getLuaComponent` / `IREntity.setLuaField` accessors.
+## Snapshot restore surface
 
-```lua
-local C_GameRules = IRComponent.register("GameRules", { score = 0 })
-local entity = IREntity.singleton(C_GameRules)         -- lazy-creates first time
-IREntity.setLuaField(entity, C_GameRules, scoreIdx, 1) -- normal field accessor
-```
+The loader-only `EntityManager` restore APIs are frame-boundary,
+main-thread-only operations. They materialize empty archetypes, insert exact
+saved entity ids before columns are filled in matching row order, expose the
+save walker's preserve predicates, and only advance the monotonic id
+watermark. Normal ECS code does not use this surface.
 
-### Conventions
+## Scene reset
 
-- **Default-constructible.** The typed `singleton<T>()` path calls
-  `createEntity(T{})`. If `T` cannot be default-constructed, expose a
-  feature-specific factory wrapping `singletonEntity<T>` so callers can
-  seed the row with explicit values.
-- **Lazy validation.** The cache is keyed by `ComponentId` and validated
-  against `entityExists` on every lookup. If a singleton entity is
-  destroyed externally (manual `destroyEntity` call, end-of-world
-  `destroyAllEntities` reset), the next access lazy-recreates (typed
-  path) or returns `kNullEntity` / `nullptr` (or-null path).
-- **`destroyAllEntities` resets the cache.** Tests that tear down and
-  rebuild the world between cases get a fresh singleton on the first
-  post-reset access.
-- **Naming is optional.** The API does NOT auto-name the entity; callers
-  who want diagnostic visibility can `setName(singletonEntity<T>(),
-  "myThing")`. The modifier framework names its globals
-  `"modifierGlobals"` for the existing tooling that scans by name.
-- **Use the API for what it's for.** Singleton-shaped *components* — yes.
-  Things that should live on a manager (graphics device handles,
-  RenderManager fields) — no; manager fields are still the right
-  shape for device-level state. Rule of thumb: if the data is naturally
-  an ECS column (composable, iterable, save/load-friendly), use a
-  singleton component; if it's a pointer to an external resource that
-  the manager already owns, leave it on the manager.
+`IREntity::resetGameplay()` eagerly destroys gameplay entities while
+preserving singleton entities, `C_Persistent` entities, and component-type
+backing entities. Run it only at a frame boundary, then replace pipelines,
+then create the next scene. `destroyAllEntities()` is for world teardown and
+tests, not scene transitions.
 
-### Archetype implications
+After reset:
 
-A singleton entity is a normal entity in the archetype graph. Adding or
-removing components on it moves it between archetype nodes the same way
-any other entity does. Iteration order across nodes is implementation-
-defined, so don't assume the singleton appears first or last in a
-`forEachComponent` walk — query by `singletonEntity<T>()` when you need
-the specific row.
+- Registered pre-destroy hooks sweep only the fields they own. Reacquire any
+  surviving entity id that has no such hook.
+- Dead named-entity entries are pruned; surviving entities retain names.
+- System-owned state and Lua globals persist. Per-scene state belongs in
+  components that the reset destroys.
+- Assert repeatability by live counts and resource counts, never by ids;
+  entity ids do not recycle.
+- Relation entities are not preserved. Query the surviving relationship by
+  its child archetype rather than testing the old relation entity id.
 
-### Save/load implications
+## Cross-module contracts and pitfalls
 
-The world snapshot (`engine/world/world_snapshot.hpp`, persist P2 #2213)
-does **not** ride a singleton through the archetype chunk — it excludes
-singleton entities from the `ARCH` walk and persists each by value in the
-`SNGL` chunk instead, restoring it onto the live singleton via
-`getOrCreateSingleton<C>()` and overwriting the row. So on load the cache
-rebuilds against the (possibly freshly lazy-created) live entity, and the
-snapshot's `LoadResult.singletonAliases_` maps each saved singleton id to
-its live id (identity in the same-session `destroyAllEntities`-then-load
-case; a fresh id cross-session). The standard load contract still runs a
-teardown first, which clears the cache.
+- `createEntity(...)` automatically attaches `C_LocalTransform` and
+  `C_WorldTransform`; the facade avoids duplicate rows when either is passed
+  explicitly. Transform propagation is documented in
+  [`engine/prefabs/irreden/common/CLAUDE.md`](../prefabs/irreden/common/CLAUDE.md).
+- Relations are component-like archetype entries, so `setParent` can move an
+  entity to another node.
+- Never retain a component pointer or archetype row index across structural
+  mutation; retain the `EntityId` and look it up again.
+- `removeComponentsSimple()` performs one archetype mutation per entity; use
+  deferred removal and one flush for bulk work.
+- Component registration is lazy. Register explicitly before creation only
+  when stable registration order is required.
+- Manager access is valid only during `World`'s lifetime; the canonical
+  lifecycle and ownership rules are in
+  [the global-state rules](../../.claude/rules/cpp-globals.md#sanctioned-patterns).
 
-## World-snapshot restore surface (persist P2, #2213)
-
-`EntityManager` exposes a small surface the snapshot **loader** needs and
-the normal ECS flow doesn't:
-
-- `findCreateArchetypeNode(type)` — public wrapper over the archetype
-  graph's node creation (the loader must materialize a restored archetype
-  no live entity currently occupies; `findArchetypeNode` only *finds*).
-- `restoreEntitiesBatch(node, span<EntityId>)` — insert a batch of entities
-  with their **exact saved ids** into `node` (records + `entities_` +
-  `length_` + live count). Columns are filled afterward by the caller's
-  per-column readers, in the same entity order — the caller asserts the
-  end-of-node column/`length_` sync, mirroring the eager insert path.
-- `singletonEntityCache()` / `isComponentBackingEntity(id)` — the two
-  read-only predicates the **save** walker uses to mirror
-  `destroyAllExceptPreserved`'s exclusion set.
-- `entityIdWatermark()` / `advanceEntityIdWatermark(w)` — read/advance the
-  monotonic allocator watermark. Load restores exact ids (ids never
-  recycle) then advances the watermark past every restored id; new
-  allocations can't collide. `advance` never moves the watermark backward.
-
-These are frame-boundary, main-thread-only (asserted), like the rest of the
-eager mutation API.
-
-## Scene-transition reset (`resetGameplay`)
-
-`IREntity::resetGameplay()` (#1814) is the scene-transition teardown
-primitive: it destroys every live **gameplay** entity while preserving the
-engine's infrastructure entities, leaving the world immediately usable for the
-next scene (the contrast with `destroyAllEntities`, which tears down
-*everything* and is end-of-world / test-teardown only).
-
-**Preserve-by-default — three categories survive a reset:**
-
-1. **Singleton entities** — everything in the singleton cache
-   (`m_singletonEntityByComponent`). The cache IS the preserve registry, so the
-   common case ("global game state lives on a singleton component") needs zero
-   per-entity bookkeeping. Crucially the cache is **NOT cleared** (unlike
-   `destroyAllEntities`), so a surviving singleton keeps its entity id *and its
-   value* across the reset.
-2. **`C_Persistent`-tagged entities** — the opt-out for a non-singleton entity
-   that must outlive a reset. The RenderManager stamps `C_Persistent` on its
-   camera + framebuffer/canvas entities at construction
-   (`render_manager.cpp`), so the render context survives. Any engine- or
-   creation-created non-singleton entity that must persist needs this tag.
-3. **Component-type backing entities** — each registered component is itself
-   backed by an entity id; these stay alive so the next scene's
-   `createEntity<T>` keeps working.
-
-The low-level primitive is `EntityManager::destroyAllExceptPreserved(
-preserveMarkers)` — generic over a list of preserve-marker `ComponentId`s, so
-`engine/entity/` carries no dependency on the prefab-layer `C_Persistent`. The
-`C_Persistent` policy lives in the `IREntity::resetGameplay` facade.
-
-**Ordering contract.** Drive a scene swap at a **frame boundary** (not mid-tick
-— `resetGameplay` eager-destroys on a snapshot, mirroring `destroyAllEntities`;
-calling it inside a `forEachComponent` / parallel group is UB). The scene
-machine does, within one boundary: `resetGameplay()` → re-register the next
-scene's pipelines (`IRSystem::clearPipeline` / `registerPipeline`) → spawn the
-next scene's entities. Lua: `IRWorld.resetGameplay()` + `IRSystem.clearPipeline`.
-
-**Gotchas:**
-
-- **Dangling EntityIds.** A surviving singleton/persistent entity holding the
-  `EntityId` of a destroyed gameplay entity goes stale. The modifier
-  pre-destroy hook auto-sweeps *modifiers*; arbitrary id fields are not swept —
-  re-acquire ids after the next scene builds, or null them in a pre-destroy hook.
-- **Named entities are pruned.** `destroyEntity` does not remove `m_namedEntities`
-  entries, so `resetGameplay` prunes every name pointing at a now-dead id
-  (otherwise `getEntityByName` would assert on the corpse). Surviving entities
-  keep their names.
-- **System-internal / Lua-global state persists** — systems are never destroyed
-  and the Lua VM is not reset. Keep per-scene state in components (destroyed on
-  reset), not in system statics or Lua globals.
-- **Idempotency is a count, not ids.** Entity ids never recycle (atomic
-  counter), so assert on live-entity *count* (and resource counters) returning
-  to baseline across cycles, never on id values.
-- **CHILD_OF relation entities for preserved entities are destroyed.** A
-  `CHILD_OF` relation is itself an ECS entity and is NOT in any preserve
-  category, so `destroyAllExceptPreserved` destroys it even when both the
-  parent and child survive a reset. The relation remains functionally correct
-  because entity ids never recycle — the zombie relation id can never become a
-  real entity. Do not call `entityExists(relationId)` expecting `true` after a
-  reset; use `getParentEntityFromArchetype` to query the relationship instead.
-
-## Position + transform components are automatic
-
-`createEntity(...)` always adds `C_LocalTransform` and
-`C_WorldTransform`. You cannot opt out, but the free-function
-wrapper detects when the caller passes one of these types
-explicitly and skips the matching default — so
-`createEntity(C_LocalTransform{...})` lands the caller's value
-rather than emplacing a duplicate column row.
-
-Rendered position lives in `C_WorldTransform.translation_`,
-composed by `SYSTEM_PROPAGATE_TRANSFORM` from `C_LocalTransform`
-plus the parent chain — see `engine/prefabs/irreden/common/CLAUDE.md`
-"SQT transform pair + propagation" for the formula and pipeline
-placement. Per-frame additive offsets travel through the modifier
-framework's `TRANSFORM_TRANSLATION` / `TRANSFORM_SCALE` vec3 fields;
-entities that don't push offsets don't need `C_Modifiers`. The
-legacy `C_Position3D` / `C_PositionGlobal3D` / `C_Rotation`
-components and their writer chain were retired in T-302.
-
-## Relations
-
-`setParent<ParentKind>(child, parent)` creates a `CHILD_OF` relation. Query
-with `queryArchetypeNodesRelational(relation, include, exclude)`. Relations
-are implemented as special component-like entries in the archetype, so
-adding a relation moves the entity to a different archetype node.
-
-## Gotchas
-
-- **EntityId pointer/index instability.** Don't store a raw pointer or
-  column index into a node across a frame; the entity may have moved.
-  Store the `EntityId` and re-look-up.
-- **No bulk remove.** `removeComponentsSimple()` just loops
-  `removeComponent`, which is O(entities × archetype mutations). Prefer
-  the deferred API and one flush.
-- **Component registration is lazy.** The first use of a component type
-  auto-registers it; if you want a specific id, register explicitly before
-  any `createEntity` call.
-- **Global manager lifetime.** `g_entityManager` is valid only while the
-  `World` is alive. Don't capture it in lambdas that outlive the loop.
-
+Validators are indexed in [`docs/agents/VALIDATION.md`](../../docs/agents/VALIDATION.md);
+the relevant documentation gates are `lint_instruction_size.py` and
+`lint_comment_refs.py`.
