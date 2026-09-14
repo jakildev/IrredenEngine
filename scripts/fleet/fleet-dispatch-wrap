@@ -21,10 +21,12 @@
 #                 and releases the claim when done. Absent → unset — the
 #                 iteration does no planning work.
 #
-# On usage-limit exit (exit code 2), writes a Unix-epoch timestamp to
-# ~/.fleet/state/rate-limit/<pane_key>.ts. fleet-dispatcher checks that
-# file before dispatching a new iteration and skips the pane for
-# FLEET_DISPATCHER_LIMIT_DELAY seconds (default: 900).
+# On a usage-limit exit — the stream flagged a rejected rate_limit_event
+# (claude exits rc=1 at the wall) or the legacy exit code 2 — writes a
+# Unix-epoch timestamp to ~/.fleet/state/rate-limit/<pane_key>.ts.
+# fleet-dispatcher checks that file before dispatching a new iteration and
+# skips the pane for FLEET_DISPATCHER_LIMIT_DELAY seconds (default: 900),
+# and its cleanup reads the same marker as the dispatch's `quota` verdict.
 #
 # PIPESTATUS[0] captures claude's exit code even though its stdout is
 # piped to fleet-claude-stream — the pipe exit status would be
@@ -185,6 +187,15 @@ unset _tag
 mkdir -p "$RATE_LIMIT_DIR"
 export FLEET_THROTTLE_FLAG="$RATE_LIMIT_DIR/$PANE_KEY.throttle-seen"
 rm -f "$FLEET_THROTTLE_FLAG"
+
+# Usage-wall detection, same shape. fleet-claude-stream touches this flag on
+# a `status:"rejected"` rate_limit_event (or the wall's result text). claude
+# exits rc=1 there, not the rc=2 the cooldown below was keyed on, so until
+# this flag existed a wall death was classified as a crash: no cooldown, the
+# pane re-dispatched next tick, and a target-bound dispatch read as an
+# abandoned target (a feedback item lost its claim to two 1-second launches).
+export FLEET_QUOTA_FLAG="$RATE_LIMIT_DIR/$PANE_KEY.quota-seen"
+rm -f "$FLEET_QUOTA_FLAG"
 
 # Dispatch-outcome marker (#2698). fleet-claim touches this whenever the
 # iteration takes or releases a fleet lock — i.e. whenever it did productive
@@ -398,9 +409,15 @@ else
     rc="${PIPESTATUS[0]}"
 fi
 TRIGGERS_DIR="${FLEET_STATE_DIR:-$HOME/.fleet/state}/triggers"
-if [[ "$FLEET_RUNTIME" == claude && "$rc" == "2" ]]; then
-    # Usage-limit (quota) exit — long cooldown via the .ts marker.
+QUOTA_SEEN=0
+[[ -f "$FLEET_QUOTA_FLAG" ]] && QUOTA_SEEN=1
+rm -f "$FLEET_QUOTA_FLAG"
+if [[ "$FLEET_RUNTIME" == claude ]] && { [[ "$rc" == "2" ]] || (( rc != 0 && QUOTA_SEEN )); }; then
+    # Usage-limit (quota) exit — long cooldown via the .ts marker. Not
+    # re-armed: the dispatcher's usage gate holds Claude dispatch closed
+    # until the window resets, and the trigger is still standing.
     date +%s > "$RATE_LIMIT_DIR/$PANE_KEY.ts"
+    echo "fleet-dispatch-wrap: usage limit on $ROLE ($PANE_KEY, rc=$rc); wrote usage-limit cooldown" >&2
 elif [[ "$rc" != "0" && -f "$FLEET_THROTTLE_FLAG" ]]; then
     # Short-window 429 failure: claude exhausted its internal retries against a
     # per-minute load-shed (not a quota wall). Write the short throttle cooldown
@@ -439,9 +456,10 @@ fi
 
 # Session sidecar lifecycle. This runs only when claude EXITED (a hard kill skips
 # it, leaving the sidecar so the next dispatch resumes — the desired behavior):
-#   - a resume that failed on quota (rc=2) or a short-window 429 -> keep the
-#     sidecar untouched: the failure is the API's, not the session's, and the
-#     rate-limit / throttle cooldowns already pace the retry;
+#   - a resume that failed on quota (rejected event, or the legacy rc=2) or
+#     a short-window 429 -> keep the sidecar untouched: the failure is the
+#     API's, not the session's, and the rate-limit / throttle cooldowns
+#     already pace the retry;
 #   - a resume that failed any other way (rc!=0) -> allow ONE more attempt,
 #     then clear: a single transient network error must not destroy the only
 #     pointer to the session (it is needed most exactly during flaky outage
@@ -451,7 +469,7 @@ fi
 #   - otherwise (task finished + worktree reset, or a no-op iteration) -> clear.
 if (( _resume_role )); then
     if (( RESUMED )) && [[ "$rc" != "0" ]]; then
-        if [[ "$rc" == "2" || "$THROTTLE_SEEN" == "1" ]]; then
+        if [[ "$rc" == "2" || "$THROTTLE_SEEN" == "1" || "$QUOTA_SEEN" == "1" ]]; then
             :
         else
             _rfail=$(_read_sidecar resume_failures); _rfail=${_rfail:-0}

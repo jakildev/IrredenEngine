@@ -187,6 +187,43 @@ echo "T13: per-type override beats global override"
 out=$(FLEET_DISPATCHER_USAGE_GATE=0.50 FLEET_DISPATCHER_USAGE_GATE_DAILY_TOKENS=0.99 "$DISPATCHER" --gate-status)
 assert_starts_with "$out" "open:daily_tokens util=60%" "per-type beats global"
 
+# --- The wall itself ------------------------------------------------------------
+
+echo "T14: a latched rejected observation closes the gate and reads as rejected"
+rm -f "$FLEET_STATE_DIR/usage/daily_tokens.json"
+# What fleet-claude-stream writes for a status:"rejected" rate_limit_event
+# (utilization synthesized at 1.0 — the event itself carries none).
+printf '{"rateLimitType":"five_hour","utilization":1.0,"resetsAt":"%s","observed_at":%s,"status":"rejected"}\n' "$RESETS" "$NOW" \
+    > "$FLEET_STATE_DIR/usage/five_hour.json"
+out=$("$DISPATCHER" --gate-status)
+assert_starts_with "$out" "closed:five_hour rejected util=100% (>= 80%)" "rejected observation closes, named as such"
+
+echo "T15: a rejected observation stays binding past the observed_at cutoff while resetsAt is ahead"
+printf '{"rateLimitType":"seven_day","utilization":1.0,"resetsAt":"%s","observed_at":%s,"status":"rejected"}\n' "$RESETS" "$(( NOW - 7200 ))" \
+    > "$FLEET_STATE_DIR/usage/seven_day.json"
+rm -f "$FLEET_STATE_DIR/usage/five_hour.json"
+out=$("$DISPATCHER" --gate-status)
+assert_starts_with "$out" "closed:seven_day rejected util=100%" "two-hour-old rejection with a future reset still closes"
+
+echo "T16: a rejected observation ages out once resetsAt + grace has passed"
+printf '{"rateLimitType":"seven_day","utilization":1.0,"resetsAt":%s,"observed_at":%s,"status":"rejected"}\n' "$(( NOW - 1200 ))" "$(( NOW - 1300 ))" \
+    > "$FLEET_STATE_DIR/usage/seven_day.json"
+out=$("$DISPATCHER" --gate-status)
+assert_starts_with "$out" "open" "past the window the wall no longer binds"
+rm -f "$FLEET_STATE_DIR/usage/seven_day.json"
+
+echo "T17: --gate-status scopes: claude sees the Anthropic window, shared only the GitHub pools"
+printf '{"rateLimitType":"five_hour","utilization":1.0,"resetsAt":"%s","observed_at":%s,"status":"rejected"}\n' "$RESETS" "$NOW" \
+    > "$FLEET_STATE_DIR/usage/five_hour.json"
+printf '{"rateLimitType":"github_core","utilization":0.10,"resetsAt":"%s","observed_at":%s}\n' "$RESETS" "$NOW" \
+    > "$FLEET_STATE_DIR/usage/github-core.json"
+assert_starts_with "$("$DISPATCHER" --gate-status claude)" "closed:five_hour rejected" "claude scope: closed on the wall"
+assert_starts_with "$("$DISPATCHER" --gate-status shared)" "open:github_core util=10%" "shared scope: the GitHub pool alone, open"
+assert_starts_with "$("$DISPATCHER" --gate-status all)" "closed:five_hour rejected" "all: closed"
+out=$("$DISPATCHER" --gate-status bogus 2>&1 || true)
+assert_starts_with "$out" "usage: fleet-dispatcher --gate-status" "an unknown scope is a usage error"
+rm -f "$FLEET_STATE_DIR/usage/five_hour.json" "$FLEET_STATE_DIR/usage/github-core.json"
+
 echo
 echo "PASS: $PASS  FAIL: $FAIL"
 [[ "$FAIL" -eq 0 ]]

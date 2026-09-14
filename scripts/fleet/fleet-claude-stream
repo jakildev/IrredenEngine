@@ -31,6 +31,7 @@
 import json
 import os
 import pathlib
+import re
 import sys
 import tempfile
 import time
@@ -126,6 +127,15 @@ def handle_result(event):
     emit(f"\n{color}[done {subtype} turns={turns} ${cost:.4f} {dur_s:.1f}s]{RESET}\n")
     if is_err and event.get("result"):
         emit(f"{RED}{event['result']}{RESET}\n")
+        # The wall's result event: `{"subtype":"success","is_error":true,
+        # "api_error_status":429,"result":"You've hit your limit · resets
+        # 4:40pm"}` (captured 2026-05-12). The rate_limit_event that precedes
+        # it is the primary signal; this is the independent second one, so a
+        # CLI that stops emitting one still flags the other. Not every 429
+        # result is the wall — the short-window throttle also ends in 429
+        # after retries — so key on the wording, not the status.
+        if QUOTA_RESULT_RE.search(str(event["result"])):
+            note_quota_rejection()
 
 
 def latch_usage_observation(rl_type, info):
@@ -152,11 +162,23 @@ def latch_usage_observation(rl_type, info):
     if safe_type == "_":
         return
     util = info.get("utilization")
+    status = info.get("status")
+    if status == "rejected":
+        # The wall itself. A rejected event carries resetsAt and the type but
+        # NO utilization field (captured 2026-05-12: `{"status":"rejected",
+        # "resetsAt":1778629200,"rateLimitType":"five_hour"}`), so the
+        # utilization guard below used to drop the one observation that says
+        # "closed" — the gate then stayed open on whatever warning last
+        # latched, and every pane re-launched into the wall each tick (461
+        # dead-on-arrival sessions on 2026-08-19 alone). Latch it as 100%:
+        # resetsAt is authoritative in the dispatcher's gate, so this holds
+        # Claude dispatch closed until the window resets plus grace.
+        util = 1.0
     if util is None:
         # status:"allowed" events carry no utilization field; only
-        # "allowed_warning" and "rejected" do. Preserve the last known
-        # warning observation so a bare "allowed" burst between warning
-        # events can't silently re-open the dispatcher's gate.
+        # "allowed_warning" does. Preserve the last known warning
+        # observation so a bare "allowed" burst between warning events
+        # can't silently re-open the dispatcher's gate.
         return
     payload = {
         "rateLimitType": rl_type,
@@ -164,6 +186,8 @@ def latch_usage_observation(rl_type, info):
         "resetsAt": info.get("resetsAt"),
         "observed_at": int(time.time()),
     }
+    if status is not None:
+        payload["status"] = status
     try:
         USAGE_DIR.mkdir(parents=True, exist_ok=True)
         target = USAGE_DIR / f"{safe_type}.json"
@@ -204,16 +228,37 @@ BENIGN_WARNING_PREFIXES = (
 THROTTLE_ERROR_PREFIX = "API Error: Server is temporarily limiting requests"
 
 
-def note_throttle():
-    flag = os.environ.get("FLEET_THROTTLE_FLAG")
+def touch_flag(env_var):
+    """Touch the wrap-exported flag file named by env_var, if any.
+
+    Best-effort: a state-dir that isn't writable is non-fatal; the wrapper
+    just won't see the flag and skips that cooldown.
+    """
+    flag = os.environ.get(env_var)
     if not flag:
         return
     try:
         pathlib.Path(flag).touch()
     except OSError:
-        # State-dir not writable, etc. — non-fatal; the wrapper just won't see
-        # the flag and skips the short cooldown.
         pass
+
+
+def note_throttle():
+    touch_flag("FLEET_THROTTLE_FLAG")
+
+
+# The usage wall (5-hour / weekly quota). Distinct from the throttle above:
+# claude exits rc=1 here, not the rc=2 the wrapper's usage-limit cooldown was
+# keyed on, so without this flag a wall death read as an ordinary crash —
+# no cooldown, and for a target-bound dispatch an "abandoned" target. The
+# wording is what the CLI prints as the synthetic assistant text and the
+# result string ("You've hit your limit", "... your session limit",
+# "... your weekly limit").
+QUOTA_RESULT_RE = re.compile(r"hit your (?:\w+ )?limit", re.I)
+
+
+def note_quota_rejection():
+    touch_flag("FLEET_QUOTA_FLAG")
 
 
 def main():
@@ -250,7 +295,12 @@ def main():
             info = event.get("rate_limit_info", {})
             util = info.get("utilization", 0)
             rl_type = info.get("rateLimitType", "?")
-            emit(f"\n{YELLOW}[rate-limit {rl_type} util={util:.0%}]{RESET}\n")
+            if info.get("status") == "rejected":
+                resets = info.get("resetsAt")
+                emit(f"\n{RED}[rate-limit {rl_type} REJECTED resets={resets}]{RESET}\n")
+                note_quota_rejection()
+            else:
+                emit(f"\n{YELLOW}[rate-limit {rl_type} util={util:.0%}]{RESET}\n")
             latch_usage_observation(rl_type, info)
         elif t == "stream_event":
             handle_stream_event(event)

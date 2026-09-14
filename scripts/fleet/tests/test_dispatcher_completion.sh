@@ -11,7 +11,12 @@
 #   --complete-dispatches  one cleanup pass folding each verdict into the
 #                          outcome bookkeeping — `finished` clears the target's
 #                          ledgers, `declined` writes the decline memory the
-#                          resolver reads, legacy records never touch gh
+#                          resolver reads, legacy records never touch gh;
+#                          a usage-wall exit (the wrap's `<pane>.ts` marker)
+#                          is a `quota` verdict read BEFORE the contract —
+#                          the grant handed back, the abandon ledger and
+#                          empty-exit streak untouched, the claim released
+#                          only when the pane did no work (T15–T18)
 #
 # gh, fleet-claim, tmux and pgrep are PATH stubs (hermetic, per
 # scripts/fleet/CLAUDE.md); git runs for real against a scratch repo so the
@@ -252,5 +257,65 @@ out=$(complete)
 assert_contains "$out" "dispatch for worker on %1 completed" "dead wrapper: completion logged"
 [[ ! -f "$FLEET_STATE_DIR/dispatch/pane-1.json" ]] \
     && ok "dead wrapper: dispatch record consumed" || bad "dead wrapper: dispatch record retained"
+
+# --- Usage-wall exits ------------------------------------------------------------
+# The wrap stamps $FLEET_STATE_DIR/rate-limit/<pane>.ts when the stream flagged
+# a rejected rate_limit_event. Before that marker existed the same exit read
+# `abandoned` through the contract (the 2026-09-11 fold: two 1-second
+# launches into the session wall released the claim and wrote a handoff).
+RL_DIR="$FLEET_STATE_DIR/rate-limit"; mkdir -p "$RL_DIR"
+STREAK="$FLEET_STATE_DIR/empty-streak/worker__opus"
+quota_marker() { date +%s > "$RL_DIR/pane-$1.ts"; }
+
+echo "T15: a wall exit mid-task hands the grant back and keeps claim + session"
+issue "$CLAIM"                                   # label standing: the contract would say abandoned
+printf '3' > "$COUNTS_DIR/task-engine-42"
+rm -f "$FLEET_STATE_DIR/abandoned/task-engine-42" "$STREAK"
+printf '{"session":"abc"}\n' > "$FLEET_SESSIONS_DIR/pool-3.session.json"
+printf 'mid-task edit\n' > "$WT/tracked.txt"      # pool-3 is on claude/42-work with a tracked edit
+record 1 task:engine:42; : > "$CLAIM_LOG"; quota_marker 1
+out=$(complete)
+assert_contains "$out" "target=task:engine:42, verdict=quota" "verdict=quota logged"
+assert_contains "$out" "usage limit hit by pool-3 mid-task — claim and session kept" "mid-task arm logged"
+assert_absent "$out" "outcome=" "neither productive nor empty"
+assert_absent "$out" "abandoned" "never read through the contract as abandoned"
+assert_eq "$(cat "$GH_LOG")" "" "the contract's gh reads are skipped"
+assert_eq "$(cat "$CLAIM_LOG")" "" "claim left standing"
+assert_eq "$(cat "$COUNTS_DIR/task-engine-42")" "2" "the pre-launch grant is handed back (3 -> 2)"
+[[ ! -f "$FLEET_STATE_DIR/abandoned/task-engine-42" ]] && ok "abandon ledger untouched" || bad "abandon ledger bumped"
+[[ -f "$FLEET_SESSIONS_DIR/pool-3.session.json" ]] && ok "session sidecar kept for the resume" || bad "sidecar cleared"
+[[ ! -f "$STREAK" ]] && ok "empty-exit streak untouched" || bad "empty-exit streak bumped by a provider failure"
+[[ ! -f "$FLEET_STATE_DIR/dispatch/pane-1.json" ]] && ok "record consumed" || bad "record left"
+git -C "$WT" checkout -q -- tracked.txt
+
+echo "T16: a wall exit before any work releases the claim so another provider can take it"
+git -C "$WT" checkout -q -b claude/pool-3-scratch      # idle: scratch branch, clean tree
+printf '1' > "$COUNTS_DIR/task-engine-42"
+record 1 task:engine:42; : > "$CLAIM_LOG"; quota_marker 1
+out=$(complete)
+assert_contains "$out" "usage limit hit by pool-3 before any work — claim released" "idle arm logged"
+assert_eq "$(cat "$CLAIM_LOG")" "release 42" "task claim released (lock, label, reservation)"
+[[ ! -f "$COUNTS_DIR/task-engine-42" ]] && ok "a lone grant is cleared outright" || bad "dispatch counter left at $(cat "$COUNTS_DIR/task-engine-42")"
+[[ ! -f "$FLEET_SESSIONS_DIR/pool-3.session.json" ]] && ok "sidecar cleared — next launch goes fresh" || bad "sidecar left"
+[[ ! -f "$STREAK" ]] && ok "empty-exit streak untouched" || bad "empty-exit streak bumped"
+
+echo "T17: a marker older than the dispatch is not this dispatch's verdict"
+printf '%s' "$(( DISPATCHED - 60 ))" > "$RL_DIR/pane-1.ts"
+record 1 task:engine:42; : > "$CLAIM_LOG"
+out=$(complete)
+assert_contains "$out" "verdict=abandoned" "the contract runs (label standing -> abandoned)"
+assert_absent "$out" "verdict=quota" "stale marker ignored"
+rm -f "$FLEET_STATE_DIR/abandoned/task-engine-42" "$RL_DIR/pane-1.ts"
+
+echo "T18: a target-less wall exit skips the streak fold and logs the verdict"
+rm -f "$STREAK"
+printf '{"role":"worker","pane":"%%1","class":"opus","dispatched_at":"x","dispatched_epoch":%s,"claim_marker":1}\n' \
+    "$DISPATCHED" > "$FLEET_STATE_DIR/dispatch/pane-1.json"
+quota_marker 1
+out=$(complete)
+assert_contains "$out" "dispatch for worker on %1 completed (pane returned to shell, verdict=quota)" "verdict=quota, no outcome"
+[[ ! -f "$STREAK" ]] && ok "empty-exit streak untouched" || bad "empty-exit streak bumped"
+rm -f "$RL_DIR/pane-1.ts"
+issue ''
 
 summarize "fleet-dispatcher completion-contract tests"

@@ -14,8 +14,11 @@
 #   - resume: sidecar present -> --resume <id> with the STORED model/effort
 #     (not the dispatcher-passed class)
 #   - cleanup: failed resume keeps the sidecar ONCE (transient tolerance),
-#     clears on the second straight failure; quota (rc=2) and short-window
-#     429 failures never count against the streak
+#     clears on the second straight failure; quota (the stream's rejected
+#     flag on rc=1, or the legacy rc=2) and short-window 429 failures never
+#     count against the streak
+#   - usage wall (T5d/T5e): the stream's FLEET_QUOTA_FLAG on a non-zero exit
+#     writes the pane's usage-limit cooldown marker; a clean exit does not
 #   - cleanup: in-flight work (claude/* branch + dirty) keeps the sidecar
 #   - cleanup: in-flight work (reservation present, branch otherwise clean) keeps the sidecar
 #   - cleanup: in-flight work (claude/* branch, clean but ahead of master) keeps the sidecar
@@ -78,8 +81,10 @@ EOF
 cat > "$BIN/fleet-claude-stream" <<'EOF'
 #!/usr/bin/env bash
 # STUB_TOUCH_THROTTLE simulates the real stream formatter spotting a
-# short-window 429 and touching the wrap-exported flag file.
+# short-window 429 and touching the wrap-exported flag file;
+# STUB_TOUCH_QUOTA the same for a rejected rate_limit_event (the wall).
 [[ -n "${STUB_TOUCH_THROTTLE:-}" && -n "${FLEET_THROTTLE_FLAG:-}" ]] && touch "$FLEET_THROTTLE_FLAG"
+[[ -n "${STUB_TOUCH_QUOTA:-}" && -n "${FLEET_QUOTA_FLAG:-}" ]] && touch "$FLEET_QUOTA_FLAG"
 cat >/dev/null 2>&1 || true
 EOF
 cat > "$BIN/fleet-claim" <<'EOF'
@@ -206,6 +211,32 @@ STUB_TOUCH_THROTTLE=1 STUB_CLAUDE_RC=1 run_wrap sonnet high worker
 python3 -c "import json,sys;d=json.load(open(sys.argv[1]));assert not d.get('resume_failures')" "$SIDECAR" 2>/dev/null \
   && ok "throttled failure did not count against the streak" || bad "throttled failure bumped resume_failures"
 rm -f "$SIDECAR"
+
+echo "T5d: the usage wall (rejected flag + rc=1) writes the cooldown marker and spares the sidecar"
+RL_TS="$FLEET_STATE_DIR/rate-limit/pane-3.ts"
+rm -f "$RL_TS" "$FLEET_STATE_DIR/rate-limit/pane-3.throttle.ts"   # T5c's throttle marker
+printf '{"session_id":"SID-W","role":"worker","model":"sonnet","effort":"high","created_epoch":1}\n' > "$SIDECAR"
+before=$(date +%s)
+STUB_TOUCH_QUOTA=1 STUB_CLAUDE_RC=1 run_wrap sonnet high worker
+[[ -f "$RL_TS" ]] && ok "wall on rc=1: usage-limit cooldown marker written" || bad "wall on rc=1: no cooldown marker (the rc=2 key never matches the CLI's exit)"
+ts=$(cat "$RL_TS" 2>/dev/null || echo 0)
+[[ "$ts" =~ ^[0-9]+$ && "$ts" -ge "$before" ]] && ok "marker carries this exit's epoch" || bad "marker epoch wrong: $ts"
+[[ -f "$SIDECAR" ]] && ok "wall failure kept the sidecar" || bad "wall failure cleared the sidecar"
+python3 -c "import json,sys;d=json.load(open(sys.argv[1]));assert not d.get('resume_failures')" "$SIDECAR" 2>/dev/null \
+  && ok "wall failure did not count against the streak" || bad "wall failure bumped resume_failures"
+[[ ! -f "$FLEET_STATE_DIR/rate-limit/pane-3.throttle.ts" ]] && ok "not misread as a short-window throttle" || bad "throttle marker written for a quota exit"
+[[ ! -f "$FLEET_STATE_DIR/rate-limit/pane-3.quota-seen" ]] && ok "quota flag consumed" || bad "quota flag left behind"
+grep -q "usage limit on worker (pane-3, rc=1)" "$TMPROOT/stderr.log" && ok "wall logged with the real exit code" || bad "no wall log line"
+rm -f "$SIDECAR" "$RL_TS"
+
+echo "T5e: the flag without a failure is not a wall exit"
+STUB_TOUCH_QUOTA=1 STUB_CLAUDE_RC=0 run_wrap sonnet high worker
+[[ ! -f "$RL_TS" ]] && ok "rc=0 with the flag writes no cooldown" || bad "cooldown written on a clean exit"
+STUB_CLAUDE_RC=1 run_wrap sonnet high worker
+[[ ! -f "$RL_TS" ]] && ok "rc=1 without the flag is a crash, not a wall" || bad "cooldown written for an ordinary crash"
+STUB_CLAUDE_RC=2 run_wrap sonnet high worker
+[[ -f "$RL_TS" ]] && ok "legacy rc=2 still writes the cooldown" || bad "rc=2 cooldown regressed"
+rm -f "$SIDECAR" "$RL_TS"
 
 echo "T6: cleanup — in-flight (claude/* branch + dirty) keeps the sidecar"
 rm -f "$SIDECAR"
