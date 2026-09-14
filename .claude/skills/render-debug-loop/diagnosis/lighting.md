@@ -7,16 +7,14 @@ the light volume is computed on the GPU. Pipeline position:
 
 ## Evaluation pattern
 
-1. Capture a baseline shot set with lighting off — no `C_LightSource` in the
-   scene, or `frameData.lightingEnabled_ = 0` in
-   `system_lighting_to_trixel.hpp` (the CPU short-circuit that skips the
-   per-canvas dispatch).
-2. Capture the same shots with lighting on.
-3. Diff: lighting-on frames modulate voxel and shape canvas pixels;
-   GUI-canvas pixels must be untouched.
+Isolate the contribution under investigation (AO, sun shadow or local light) with
+the demo’s supported controls, then capture matching on/off shots. Removing local
+light entities does not necessarily disable sun lighting or AO. Verify the actual
+pass gate and keep geometry, camera and exposure fixed between captures.
 
-Keep the committed references under `creations/demos/<demo>/test/references/`
-(`render-verify`) and diff against them rather than eyeballing.
+Inspect unaffected canvases and compare against both the baseline and the intended
+lighting result; use the evidence criteria in
+[Capture and evaluation](../references/capture-and-evaluation.md).
 
 ## Symptom lookup
 
@@ -45,7 +43,6 @@ baselines:
 
 ```
 python3 scripts/light-verify.py                    # verify
-python3 scripts/light-verify.py --update-baselines  # bless new references
 ```
 
 Use it for a suspected light-gather / boundary-clamp regression; the symptom

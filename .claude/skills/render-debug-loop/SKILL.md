@@ -1,130 +1,65 @@
 ---
 name: render-debug-loop
 description: >-
-  Builds, runs, and visually evaluates a rendering demo in a loop: captures
-  screenshots across the demo's configured shot list (zoom, camera offset,
-  yaw, render-mode combinations), reads each image and ROI crop, diagnoses
-  against topic-indexed references (trixel / SDF shapes, lighting, backend
-  parity), applies fixes, and repeats. Use when iterating on render pipeline
-  bugs, shape alignment, lighting, parity drift, or any visual regression in
-  the engine.
+  Investigate and validate rendering defects with controlled captures, visual
+  and numerical evidence, and targeted fixes. Use for an isolated visual bug
+  or a continuing rendering audit across geometry, lighting and backends.
 ---
 
 # Render Debug Loop
 
-## Prerequisites
+## Scope and progress
 
-- Any preset ([`docs/agents/BUILD.md`](../../../docs/agents/BUILD.md)), driven
-  through `fleet-build --target <TARGET>` and `fleet-run <EXE_NAME>` so the
-  loop runs unattended; `fleet-run` launches from the exe directory so the
-  sibling `data/`, `shaders/`, `scripts/` resolve.
-- The demo opts into the auto-screenshot helper
-  ([`engine/video/CLAUDE.md`](../../../engine/video/CLAUDE.md)
-  §"Auto-screenshot helper"). If it does not, add the wire-up shown there or
-  use `shape_debug` when it exercises the code path.
+For a single defect, identify the symptom and a falsifiable acceptance criterion.
+For an ongoing audit, maintain an ordered TODO in the existing task or design
+artifact: distinguish diagnosed, experimentally tested, implemented and validated
+work. Preserve the user’s priorities when one symptom reveals another. A passing
+local experiment or an opened PR completes that slice, not the broader assignment.
+Use the existing commit-and-push workflow for reviewable slices; preserve the
+session’s authorization and draft/ready preference.
 
-## Loop
+An **experiment** tests a stated hypothesis by changing a controlled input or
+implementation and evaluating the resulting evidence. A multi-shot sweep is one
+experiment, not one iteration per screenshot. Unchanged rebuilds and verification
+reruns do not create new hypotheses.
 
-Run sequentially; stop after 5 iterations or when evaluation passes.
+There is no fixed iteration cap. After several attempts on the same symptom with
+no new evidence, reassess the hypothesis, instrumentation or abstraction level;
+do not keep varying shader constants blindly. Capture a smaller fixture, inspect
+an intermediate buffer, derive the coordinate transform, or move to independent
+authorized work while recording the unresolved item. Reassessment is not a reason
+to end the session or ask for renewed permission. Stop dependent work when it
+requires missing user input, unavailable capability or an explicit user limit;
+state that concrete limitation and continue other authorized work where possible.
 
-### 1. Build
+## Investigation
 
-```
-fleet-build --target <TARGET>
-```
+1. Establish the affected render path and coordinate/data contract. Trace the
+   producer, intermediates and consumer; a visible lighting defect may originate
+   in geometry or depth reconstruction. Treat topic diagnoses as hypotheses, not
+   proof, and read the applicable module instructions before edits.
+2. Choose a discriminating control: a known primitive, isolated pass, paired
+   rendering path or analytical projection. Establish the failure from an adequate existing capture or capture it before
+   changing it. If the demo cannot distinguish the hypotheses, extend its probes,
+   controls or metrics first.
+3. Run the smallest useful experiment using
+   [capture and evaluation](references/capture-and-evaluation.md). Vary one cause
+   at a time where possible. Record combined changes when they are necessary, so
+   their effects are not misattributed.
+4. Decide from evidence: retain and validate a fix, reject an experiment, or refine
+   the hypothesis. Restore rejected edits before the next independent experiment;
+   preserve a patch when the result will be cited. Report an unresolved finding
+   honestly rather than presenting improved screenshots as a complete fix.
+5. Validate the affected contracts and adjacent modes before publishing. Explain
+   remaining limitations and continue the ordered TODO within the user’s scope.
 
-### 2. Clear old screenshots
+## Topic references
 
-The screenshot counter never resets, so remove the previous batch first. The
-directory is `<dirname of EXE_PATH>/save_files/screenshots/` — find `EXE_PATH`
-by Glob `build/**/<EXE_NAME>` (`.exe` on Windows) or from the
-`fleet-run: <EXE_PATH>` line of the previous run — then `rm -rf` it.
+Load only the relevant diagnosis; follow evidence across topics when needed.
 
-### 3. Run
-
-```
-fleet-run <EXE_NAME> --auto-screenshot 10
-```
-
-The demo renders warmup frames (default 10), cycles its shots, captures one
-screenshot per shot, and closes. Gate on the `ir-run: RESULT=` line, not on
-screenshots existing: `RESULT=CRASH` (teardown included) fails the step even
-with every shot saved — the crash is this iteration's finding
-([`docs/agents/FLEET.md`](../../../docs/agents/FLEET.md) §"Clean-exit
-policy"); the saved shots remain diagnosis evidence.
-
-### 4. Read the screenshots
-
-Glob `<demo-cwd>/save_files/screenshots/screenshot_*.png` (or the subdirectory
-set via `IRVideo::configureScreenshotOutputDir`), sort by mtime, and Read the
-latest batch.
-
-**ROI crops.** Demos with `IRVideo::RoiCrop` tables also write
-`screenshot_<n>_<shot>__crop_<crop_label>.png` at 128×128 native. Read every
-crop as well as the full frame: the Read tool downscales 1080p+ frames, so
-one-pixel artifacts (cube-edge zigzag, parity drift) are only visible in the
-crops.
-
-**Baseline crops.** Compare each crop with the committed reference for this
-preset under `creations/demos/<demo>/test/references/<preset>/` (the
-`render-verify` set). For drift that is real but subtle:
-
-```
-build/tools/img_diff/img_diff <baseline.png> <current.png> /tmp/diff.png
-```
-
-(`tools/img_diff`, built with `IRREDEN_BUILD_TOOLS=ON`) renders drifted pixels
-solid red on a desaturated baseline — Read `/tmp/diff.png`. Use
-`scripts/render-compare.py` for aggregate pass/fail metrics (PSNR, max delta,
-match%) and `img_diff` for "show me where".
-
-**Temporal stability.** Stills cannot prove a moving scene is jitter-free. When
-the change touches the camera-offset decomposition, the per-axis scatter, the
-anti-vibration split, or the framebuffer/screen blit, also run a fine
-`--pan-sweep` / `--yaw-sweep` of an isolated shape and score it with
-`tools/jitter_probe` (SMOOTH vs JITTER, exit 0/1) — recipe in
-[`engine/render/CLAUDE.md`](../../../engine/render/CLAUDE.md) §"Verifying
-temporal stability (per-frame jitter)". Jitter and cardinal byte-identity are
-separate checks.
-
-### 5. Evaluate
-
-Apply to every screenshot and every crop — a bug may appear at one zoom, one
-offset, one render mode, or one edge.
-
-| Criterion | Look for |
+| Topic | Reference |
 |---|---|
-| All entities visible | Expected shapes present |
-| Correct silhouettes | Outlines match the shape type |
-| Consistent shading | Face shades match the lighting model |
-| No gaps or overlaps | Solid faces, no stray dots |
-| Pixel-level edge fidelity | Every silhouette pixel in a crop matches the baseline; no zigzag, parity drift, or colour shift |
-| Parity stable | Crops match pixel-for-pixel across camera-offset shots unless the PR intends the change |
-| Zoom stable | The same crop at zoom 4 and zoom 8 shows the same edge geometry, larger; mismatched stairs are a subdivision / zoom-rounding bug |
-| Rotation stable | yaw 0 vs π/2, π, 3π/2: every face stays solid (no checkerboard); yaw π/4 shows visible face deformation vs yaw 0; lighting falls on the rotated normals. Rotation-targeted demos put yaw-rotated shots in `kShots[]` (`AutoScreenshotShot::yawRadians_`) — a yaw-0-only list is blind to rotation bugs |
-| Backend parity | OpenGL and Metal frames match; backend-only drift hands off to `backend-parity` |
-
-### 6. Diagnose and fix
-
-Load the diagnosis file for the surface; if the symptom matches none, load all
-three — bugs cross surfaces (a lighting pass reading a stale trixel canvas).
-
-| Surface | Load for | File |
-|---|---|---|
-| Trixel / SDF shapes | `VOXEL_TO_TRIXEL_STAGE_*`, `SHAPES_TO_TRIXEL`, `TRIXEL_TO_TRIXEL`, `TRIXEL_TO_FRAMEBUFFER` — sizes, missing faces, bowtie edges, parity, depth sorting | [`diagnosis/shapes-trixel-sdf.md`](diagnosis/shapes-trixel-sdf.md) |
-| Lighting | `LIGHTING_TO_TRIXEL` — effect missing or wrong, AO at junctions, shadow direction, flood-fill, fog of war | [`diagnosis/lighting.md`](diagnosis/lighting.md) |
-| Backend parity | a defect on one backend only; capture evidence here, port via `backend-parity` | [`diagnosis/backend-parity.md`](diagnosis/backend-parity.md) |
-
-Apply the fix and return to step 1.
-
-## Notes
-
-- Zoom snaps to powers of 2 (1–64); higher zoom raises
-  `effective_subdivisions` and exposes subdivision-specific bugs.
-- Entities under test target the same canvas (log `canvasEntity_`).
-- Pipeline order: compute shaders write canvas textures (depth via
-  `imageAtomicMin`, then colour) → lighting modulates trixel-canvas pixels →
-  the fragment shader draws one full-screen quad per canvas into the
-  framebuffer.
-- When one PR changes several stages, capture a shot set per stage's branch
-  and diff pairwise to isolate the regressing stage.
+| Capture setup, baselines, image metrics and temporal/scale checks | [Capture and evaluation](references/capture-and-evaluation.md) |
+| Trixel/SDF geometry, silhouettes, parity and depth ordering | [Shapes](diagnosis/shapes-trixel-sdf.md) |
+| AO, sun shadows, light volumes and fog | [Lighting](diagnosis/lighting.md) |
+| OpenGL/Metal differences | [Backend parity](diagnosis/backend-parity.md) |
