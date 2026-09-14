@@ -202,12 +202,10 @@ if [[ -f "$FLEET_TESTS_WORKFLOW" ]] && (( ${#covered_workflows[@]} > 0 )); then
 fi
 
 echo "T6: the registry checker derives the same covered set this suite does"
-# This suite's derived population is also what fleet_test_subjects.py checks
-# OUT_OF_TREE_SUBJECTS against (F2) — a derived subject has no path literal
-# for its literal scan to find, so that check re-derives the population with
-# the same glob and the same both-blocks predicate. Two implementations of one
-# derivation is the drift risk; asserting they agree is what removes it, and
-# it is why neither side needs a hand-maintained workflow-name list.
+# fleet_test_subjects.py F2 re-derives this suite's population (same glob,
+# same both-blocks predicate) because a derived subject has no path literal
+# for its scan to find. Two copies of one derivation: this case is what keeps
+# them from drifting apart.
 #
 # `--print-covered-workflows` reads only the workflow files, so this case works
 # in a `git archive` stage with no .git — unlike the checker's default path,

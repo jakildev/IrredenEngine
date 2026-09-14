@@ -34,18 +34,11 @@
 # GitHub Actions has no YAML anchors, so the two lists are hand-duplicated and
 # can drift independently).
 #
-# They do NOT assert that the registry is complete, and they structurally
-# cannot: both the green run and the T2 positive control are computed FROM
-# OUT_OF_TREE_SUBJECTS, so a subject nobody added is a subject neither looks
-# at. This list is an *inclusion* list with no scan behind it — the opposite
-# of header_global_baseline in cmake/run_header_convention_checks.cmake, which
-# is an *exclusion* list riding on a tree-wide scan and therefore catches an
-# unlisted item by default. The two are complementary, not the same shape.
-#
-# T5 covers the complement: it executes scripts/fleet/fleet_test_subjects.py,
-# which derives the live subject population (path literals in every suite
-# source, plus the derived both-blocks workflow set) and fails on any member
-# this list does not cover.
+# T1-T3 quantify over OUT_OF_TREE_SUBJECTS, so they cannot report a subject
+# the list lacks. T5 executes scripts/fleet/fleet_test_subjects.py, which
+# derives the live subject population (path literals in every suite source,
+# plus the derived both-blocks workflow set) and fails on any member this list
+# does not cover.
 #
 # T5 is also the stricter of the two on the axis T1 does cover. T1 matches a
 # subject as a literal SUBSTRING of the block, so a longer entry that happens
@@ -69,10 +62,9 @@ if [[ ! -f "$WORKFLOW" ]]; then
     exit 3  # skip status — run_all.sh must not count this as a pass (#2786)
 fi
 
-# The out-of-tree subjects each suite actually needs triggered on. Extending
-# this by hand is not something to remember: fleet_test_subjects.py (T5)
-# derives the population and names any member this list misses, with the
-# referencing suite quoted. Add what it reports.
+# The out-of-tree subjects each suite actually needs triggered on.
+# fleet_test_subjects.py (T5) names any member this list misses, with the
+# referencing suite quoted; add what it reports.
 #
 # An entry covers a subject exactly, or as a segment-bounded recursive glob —
 # so a subject whose suite covers a whole directory is listed as the glob the
@@ -280,13 +272,9 @@ else
 fi
 
 echo "T5: the registry is COMPLETE — every derived subject is covered"
-# T1-T4 quantify over OUT_OF_TREE_SUBJECTS and over one named constant; none
-# of them can see a subject nobody registered. fleet_test_subjects.py derives
-# that population from the suite sources and the workflow glob, so this case
-# is the only one here whose failure mode is "the list is missing something".
-#
-# Executed, not re-implemented: the module is the single copy of the grammar,
-# and tests/test_fleet_test_subjects.py is its hermetic unit/control suite.
+# The one case here that reports a subject the list lacks. Executed, not
+# re-implemented: the module is the single copy of the grammar, and
+# tests/test_fleet_test_subjects.py is its unit/control suite.
 SUBJECTS_CHECK="$SCRIPT_DIR/scripts/fleet/fleet_test_subjects.py"
 if [[ ! -f "$SUBJECTS_CHECK" ]]; then
     bad "subject discovery checker not found at $SUBJECTS_CHECK (retire T5 with it)"

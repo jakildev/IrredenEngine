@@ -1,10 +1,5 @@
 """Unit + integration tests for fleet_test_subjects.py.
 
-The module under test is the scan behind `OUT_OF_TREE_SUBJECTS`: an inclusion
-list's complement is invisible to both a green run and a positive control
-computed from the list, so completeness has to come from a population derived
-independently of it.
-
 What each group proves:
 
   ScanText          the F1 grammar — path boundaries, longest match, and the
@@ -617,8 +612,9 @@ class CommittedTree(unittest.TestCase):
                      ".github/workflows/fleet-tests.yml"):
             self.assertIn(path, self.literals, path)
 
-    def test_the_three_unreported_gaps_are_discovered(self):
-        # Subjects no hand-maintained list carries; only the scan reaches them.
+    def test_variable_prefixed_references_are_discovered_in_the_tree(self):
+        # Each is named as "$SCRIPT_DIR/<path>" in a real suite: the boundary
+        # cut after the expansion is what exposes the tracked suffix.
         for path in (".clang-format",
                      "cmake/ir_quality_tools.cmake",
                      "cmake/run_header_checks_standalone.cmake"):

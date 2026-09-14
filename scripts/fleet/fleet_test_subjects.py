@@ -1,17 +1,10 @@
 #!/usr/bin/env python3
 """Ratchet: the fleet suites' out-of-tree subjects must be registered.
 
-`OUT_OF_TREE_SUBJECTS` in `tests/test_fleet_tests_workflow_paths.sh` is a
-hand-maintained *inclusion* list, and both proofs that guard it quantify over
-the list itself: a green run says every listed member is present in
-`fleet-tests.yml`, and the positive control says deleting a listed member is
-noticed. Neither can see the *complement* — a subject nobody added, which is a
-subject whose only regression coverage CI never triggers. The scan here
-quantifies over the tree instead, so the complement is visible.
-
-`header_global_baseline` in `cmake/run_header_convention_checks.cmake` is the
-shape that needs no such scan: an *exclusion* list riding on a tree-wide scan
-catches an unlisted item by default. An inclusion list has no scan behind it.
+`OUT_OF_TREE_SUBJECTS` in `tests/test_fleet_tests_workflow_paths.sh` is an
+inclusion list, and the ratchets that read it quantify over the list itself.
+This scan quantifies over the tree — every suite source plus the workflow
+glob — and reports each subject the list does not cover.
 
 Four checks, deliberately separate (each can fail while the others pass):
 
