@@ -12,7 +12,11 @@
 #     releases (a labelled target over a readable record beats a silent one).
 #
 # The release commands themselves are covered by their own suites; here they
-# are overridden to log the routing. gh is a function stub.
+# are overridden to log the routing, EXCEPT T10, which runs the real
+# `cmd_release` (task/stack) as an external process — a stub can't reject an
+# argument shape it never checks. gh is a function stub for the
+# sourced-library tests; T10 supplies its own `gh` binary on PATH for the
+# external-process run.
 
 set -euo pipefail
 
@@ -81,7 +85,7 @@ assert_eq "$(FLEET_ROLE=worker FLEET_ROLE_MODEL=opus decline task 42 pool-3 --re
 assert_eq "$(cat "$GH_LOG")" \
     "api repos/jakildev/IrredenEngine/issues/42/comments -f body=declined: worker/opus @mac-pool-3 needs a mac host" \
     "one gh call: the declined: comment, in the grammar fleet_completion reads"
-assert_eq "$(cat "$REL_LOG")" "release 42 pool-3" "task kind releases via cmd_release"
+assert_eq "$(cat "$REL_LOG")" "release 42" "task kind releases via cmd_release, agent dropped"
 assert_contains "$(cat "$TMPROOT/out")" "declined: task#42 (worker/opus @mac-pool-3): needs a mac host" \
     "stdout names the target, who, and why"
 
@@ -104,7 +108,7 @@ assert_eq "$(cat "$REL_LOG")" "amending-release 7 pool-3" "feedback releases via
 REPO_NS=""
 
 echo "T5: every kind releases through FLEET_TARGET_RELEASE"
-for pair in "stack:release 9 pool-3" "conflict:resolving-release 9 pool-3" "plan:planning-release 9 pool-3" \
+for pair in "stack:release 9" "conflict:resolving-release 9 pool-3" "plan:planning-release 9 pool-3" \
             "review:review-release 9 pool-3" "planreview:review-release 9 pool-3" "smoke:review-release 9 pool-3"; do
     kind="${pair%%:*}"; expected="${pair#*:}"
     reset_state
@@ -118,7 +122,7 @@ STUB_COMMENT_FAIL=1
 assert_eq "$(decline task 42 pool-3 --reason "x")" "0" "decline exits 0 despite the failed comment"
 STUB_COMMENT_FAIL=0
 assert_contains "$(cat "$TMPROOT/out")" "WARN could not post the declined: comment" "warned"
-assert_eq "$(cat "$REL_LOG")" "release 42 pool-3" "still released"
+assert_eq "$(cat "$REL_LOG")" "release 42" "still released, agent dropped"
 
 echo "T7: agent defaults to the cwd basename; --reason= form accepted"
 reset_state
@@ -132,6 +136,38 @@ rc=0; "$FLEET_CLAIM" decline task >/dev/null 2>&1 || rc=$?
 assert_eq "$rc" "2" "decline with no number exits 2"
 rc=0; "$FLEET_CLAIM" decline >/dev/null 2>&1 || rc=$?
 assert_eq "$rc" "2" "bare decline exits 2"
+
+echo "T10: task/stack decline against the REAL cmd_release (not the T1-T8 stub)"
+GH_STUB_DIR="$TMPROOT/bin"
+mkdir -p "$GH_STUB_DIR"
+cat > "$GH_STUB_DIR/gh" <<'GHSTUB'
+#!/usr/bin/env bash
+case "$1" in
+    pr) [[ "$2" == "list" ]] && echo "[]" ;;
+esac
+exit 0
+GHSTUB
+chmod +x "$GH_STUB_DIR/gh"
+export FLEET_RESERVATIONS_DIR="$TMPROOT/reservations"
+
+make_real_claim() {
+    mkdir -p "$FLEET_CLAIMS_DIR/$1"
+    printf '%s\n' "$2" > "$FLEET_CLAIMS_DIR/$1/owner"
+}
+
+for kind in task stack; do
+    make_real_claim 555 pool-3
+    rc=0
+    real_out=$(PATH="$GH_STUB_DIR:$PATH" "$FLEET_CLAIM" decline "$kind" 555 pool-3 --reason "real release check" 2>&1) || rc=$?
+    assert_eq "$rc" "0" "$kind decline exits 0 against the real cmd_release"
+    assert_absent "$real_out" "unknown flag" "$kind decline: cmd_release does not reject the agent arg"
+    [[ ! -d "$FLEET_CLAIMS_DIR/555" ]] \
+        && ok "$kind decline released the real FS claim" \
+        || bad "$kind decline left the FS claim standing"
+    check_rc=0
+    PATH="$GH_STUB_DIR:$PATH" "$FLEET_CLAIM" check 555 >/dev/null 2>&1 || check_rc=$?
+    assert_eq "$check_rc" "0" "$kind: fleet-claim check reports free after decline"
+done
 
 if [[ -z "${FLEET_TEST_SELFCHECK:-}" ]]; then
     echo "T9: suite is hermetic against ambient fleet role variables"
