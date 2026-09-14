@@ -7,6 +7,7 @@
 
 #include <irreden/common/components/entity_anchor.hpp>
 #include <irreden/render/components/component_canvas_local_rotation.hpp>
+#include <irreden/render/detached_revoxelize.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/grid_rotation.hpp>
@@ -43,10 +44,9 @@
 //
 // Headless: the explicit `targetCanvas` argument routes pool ops through a
 // specific canvas entity, bypassing the RenderManager active-canvas lookup, and
-// the rebuild tick is pure GridRotation math plus the face-occupancy recompute
-// — no render manager. A singleton pipeline group executes on the calling
-// thread, and nothing in `engine/system/` catches, so the debug `IR_ASSERT`
-// surfaces as a `std::runtime_error` out of `executePipeline`.
+// the bound-seeding tick is pure GridRotation math with no render manager. A singleton pipeline
+// group executes on the calling thread, and nothing in `engine/system/` catches, so the debug
+// `IR_ASSERT` surfaces as a `std::runtime_error` out of `executePipeline`.
 
 namespace {
 
@@ -265,6 +265,53 @@ TEST_F(RebuildDetachedVoxelsGuardTest, PoolIsOriginCenteredHandlesTheEmptyPool) 
     const auto never = [](int) { return vec3(0.0f); };
     EXPECT_TRUE(IRPrefab::GridRotation::poolIsOriginCentered(0, never));
     expectVec3Eq(IRPrefab::GridRotation::poolOriginAsymmetry(0, never), vec3(0.0f), "empty");
+}
+
+TEST_F(RebuildDetachedVoxelsGuardTest, BoundUpdateDoesNotRewriteRenderMasks) {
+    const auto canvas = makeCanvas(true);
+    IREntity::createEntity(C_VoxelSetNew{ivec3(2, 1, 1), kTestColor, EntityAnchor::CENTER, canvas});
+    auto &pool = IREntity::getComponent<C_VoxelPool>(canvas);
+    pool.getColors()[0].flags_ = 0xFFu;
+    tick();
+    EXPECT_TRUE(hasBound(canvas));
+    EXPECT_EQ(pool.getColors()[0].flags_, 0xFFu);
+}
+
+TEST_F(RebuildDetachedVoxelsGuardTest, SourceUploadMasksFollowRotationAndReturnToIdentity) {
+    const auto canvas = makeCanvas(true);
+    IREntity::createEntity(C_VoxelSetNew{ivec3(2, 1, 1), kTestColor, EntityAnchor::CENTER, canvas});
+    auto &pool = IREntity::getComponent<C_VoxelPool>(canvas);
+    auto &colors = pool.getColors();
+    colors[0].flags_ = IRComponents::VoxelFlags::kEmissive;
+    colors[0].reserved_ = 3u;
+    std::vector<ivec3> cells;
+    std::unordered_set<std::int64_t> occupancy;
+    const auto rebuild = [&](IRMath::vec4 rotation) {
+        IRPrefab::DetachedRevoxelize::detail::recomputeSourceFaceOccupancy(
+            pool,
+            rotation,
+            cells,
+            occupancy
+        );
+    };
+    const auto expectMask = [&](int index, std::uint8_t mask) {
+        EXPECT_EQ(colors[index].flags_ & IRComponents::VoxelFlags::kFaceOccludedMask, mask);
+    };
+    rebuild(kIdentityRotation);
+    expectMask(0, IRComponents::VoxelFlags::kFaceOccludedPosX);
+    expectMask(1, IRComponents::VoxelFlags::kFaceOccludedNegX);
+    const float halfAngle = IRMath::sqrt(0.5f);
+    rebuild(IRMath::vec4(0.0f, 0.0f, halfAngle, halfAngle));
+    expectMask(0, IRComponents::VoxelFlags::kFaceOccludedPosY);
+    expectMask(1, IRComponents::VoxelFlags::kFaceOccludedNegY);
+    rebuild(kIdentityRotation);
+    expectMask(0, IRComponents::VoxelFlags::kFaceOccludedPosX);
+    expectMask(1, IRComponents::VoxelFlags::kFaceOccludedNegX);
+    EXPECT_EQ(
+        colors[0].flags_ & IRComponents::VoxelFlags::kEmissive,
+        IRComponents::VoxelFlags::kEmissive
+    );
+    EXPECT_EQ(colors[0].reserved_, 3u);
 }
 
 } // namespace

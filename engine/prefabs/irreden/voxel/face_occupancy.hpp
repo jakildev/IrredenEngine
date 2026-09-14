@@ -112,23 +112,11 @@ inline void recomputeFaceOccupancy(std::span<IRComponents::C_Voxel> voxels, IRMa
     }
 }
 
-/// Recompute per-voxel face-occlusion bits for a pool whose voxels have been
-/// re-voxelized onto an ARBITRARY set of integer destination cells — the
-/// detached re-voxelize path (#1557), where the dense row-major
-/// `recomputeFaceOccupancy` above does not apply. SYSTEM_REBUILD_DETACHED_VOXELS
-/// bakes the entity rotation into the cell positions, so the model-space mask
-/// authored at build time is stale on the rotated grid: it would skip faces the
-/// rotation newly exposed (background holes) and pass faces the rotation buried
-/// (wrong-colored / spurious faces). This re-derives each active voxel's six
-/// face bits from whether the adjacent DESTINATION cell is occupied, so the
-/// raster's exposed-mask gate emits exactly the rotated solid's surface faces.
-///
-/// @p cells and @p voxels are parallel arrays; cells[i] holds voxel i's integer
-/// destination cell (the rotate+round result). Aliasing — several voxels rounding
-/// to one cell — is handled: a cell counts as occupied if any active voxel lands
-/// on it. Non-face flag bits (`kAoContrib`, `kEmissive`) are preserved; inactive
-/// voxels are cleared to all-zero. @p occupancy is a caller-owned scratch set
-/// reused across frames so the per-frame rebuild allocates nothing once warmed.
+/// Recompute face bits from arbitrary integer destination cells. Several source
+/// voxels may share a cell; any active one makes it occupied. Non-face flags are
+/// preserved, and inactive voxels have their face bits cleared.
+/// The parallel spans map each voxel to its rotated cell. The scratch set retains
+/// buckets across calls, but clearing it releases its occupied nodes.
 inline void recomputeFaceOccupancyOnCells(
     std::span<const IRMath::ivec3> cells,
     std::span<IRComponents::C_Voxel> voxels,
