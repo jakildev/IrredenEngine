@@ -8,9 +8,15 @@ and Metal backends.
 
 - `engine/render/include/irreden/ir_render.hpp` is the public entry point.
   Creations include it rather than internal render headers.
+
+### What belongs in engine/render/ vs engine/prefabs/irreden/render/
+
 - `engine/render/` owns device and pipeline primitives needed by every
   creation. Opt-in feature state belongs under
   `engine/prefabs/irreden/render/`; expose it through a prefab-scoped API.
+
+### Name identifiers after the rendering effect, not the caller
+
 - Names in this module describe rendering effects, never the first feature or
   caller that uses them. This applies to C++ types, flags, shader identifiers,
   binding names, and comments.
@@ -22,6 +28,8 @@ and Metal backends.
 
 ## Commands and validators
 
+### Verifying render changes
+
 Use the [validation index](../../docs/agents/VALIDATION.md) for the canonical
 commands. Render changes commonly need `header-checks`, `render-debug-loop`,
 `render-verify`, `backend-parity`, `cull-verify`, and the relevant
@@ -30,7 +38,13 @@ are in [`CODEX.md` § Rendering conversations](../../docs/agents/CODEX.md#render
 Pure documentation, tests, mechanical refactors, and build-only changes with
 no visual effect do not require render captures.
 
+### Verifying temporal stability (per-frame jitter)
+
+Use the validation index's jitter probe and the camera contracts below.
+
 ## Pipeline contracts
+
+### The pipeline, one frame
 
 - Pipeline order is INPUT, UPDATE, then RENDER. Within RENDER, geometry writes
   canvas depth/color/id before AO, shadow, and lighting consume them;
@@ -53,6 +67,9 @@ no visual effect do not require render captures.
 - A shader fragment may self-include only a macro-free prerequisite.
   Macro-parameterized fragments remain in each wrapper's explicit ordered
   include list after the wrapper's `#define`s.
+
+### Metal compute kernel threadgroup registry
+
 - Every dispatchable `c_*.metal` kernel, excluding `*_body.metal` fragments,
   needs its real threadgroup size in `threadgroupSizeForFunctionName`.
   `functionUsesImageAtomicScratch` must exactly match kernels whose resolved
@@ -61,8 +78,14 @@ no visual effect do not require render captures.
 - Metal AOT compilation treats top-level kernel wrappers as translation units.
   Include fragments must use the excluded `*_body.metal` or `ir_*.metal`
   naming forms. The opt-in metallib has no runtime consumer.
+
+### Metal negates clip `position.y`; GL does not
+
 - Every Metal full-screen or quad vertex stage negates clip-space
   `position.y`; its GLSL twin does not. This is the backend origin adapter.
+
+### Trixel→framebuffer hover parity shift
+
 - Trixel-to-framebuffer gathering uses the raw sample coordinate for
   color/depth/tier and the parity-shifted coordinate only for hover/picking.
   Read the [parity-shift design](../../docs/design/trixel-parity-shift-442-investigation.md)
@@ -98,6 +121,8 @@ no visual effect do not require render captures.
 
 ## Camera and raster contracts
 
+### Iso-depth-axis invariant (world-camera Z-yaw-only for GRID)
+
 - GRID rendering assumes world `(1,1,1)` is the iso-depth axis and supports
   camera Z-yaw only. Pitch and roll invalidate integer raster, picking,
   hitbox, drag, and SDF-cull shortcuts; DETACHED rendering is axis-agnostic.
@@ -107,6 +132,9 @@ no visual effect do not require render captures.
   raw camera offset. The default pivot depth is latched once in `beginFrame`,
   while its focus point is derived from the current camera position; see the
   [camera-pivot contract](../../docs/design/camera-yaw-pivot.md).
+
+### Voxel face rasterization (which faces a voxel emits)
+
 - Voxel faces follow `visible-face triplet × exposed-face mask`. Authored
   rotated GRID staircases may emit opposite-polarity risers and dual faces only
   when the rotated-content marker is set and the canvas is not revoxelized.
@@ -129,11 +157,8 @@ no visual effect do not require render captures.
 
 ## Lighting contracts
 
-- When sun shadows are enabled, visible geometry bounds include the
-  shadow-feeder sweep. The sun-map bake and receiver share
-  `kSunShadowMaxDistance`; read the
-  [coverage design](../../docs/design/sun-shadow-bake-coverage.md) before
-  changing the bake kernel or splat controls.
+### Lighting culling invariants
+
 - Light-occlusion-grid construction iterates the full voxel pool and never
   applies `visibleIsoViewport`. A visibility-freeze check is not a viewport
   cull.
@@ -142,7 +167,17 @@ no visual effect do not require render captures.
 - Chunk streaming must include the sun-direction shadow ring. Any world-space
   neighbor sampler also requires a one-chunk resident guard band.
 
+### Sun shadow bake AABB sweep
+
+- When sun shadows are enabled, visible geometry bounds include the
+  shadow-feeder sweep. The sun-map bake and receiver share
+  `kSunShadowMaxDistance`; read the
+  [coverage design](../../docs/design/sun-shadow-bake-coverage.md) before
+  changing the bake kernel or splat controls.
+
 ## Performance and lifecycle pitfalls
+
+### Gotchas
 
 - Compute grids cap X at `kMaxDispatchGroupsX` and spill into Y; consumers
   flatten both group dimensions consistently.
