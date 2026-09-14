@@ -26,6 +26,7 @@ add_executable(IrredenEngineTest
   ecs/entity_event_handlers_test.cpp
   ecs/entity_manager_test.cpp
   ecs/execute_query_test.cpp
+  ecs/field_clearance_test.cpp
   ecs/grid_rotation_test.cpp
   ecs/hitbox_2d_gui_test.cpp
   ecs/hover_detect_reset_test.cpp
@@ -51,6 +52,7 @@ add_executable(IrredenEngineTest
   ecs/voxel_set_edit_api_test.cpp
   ecs/voxel_set_target_canvas_test.cpp
   math/physics_test.cpp
+  math/edt_test.cpp
   math/ir_math_test.cpp
   math/ir_math_wrap_test.cpp
   math/ir_math_viewport_helpers_test.cpp
