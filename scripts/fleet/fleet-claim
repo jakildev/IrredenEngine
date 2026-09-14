@@ -494,7 +494,8 @@ _sweep_stale_prefix_holders() {
     esac
     command -v gh >/dev/null 2>&1 || return 1
     local labels_json
-    labels_json=$(gh api "repos/${repo}/issues/${target}/labels" 2>/dev/null) || return 1
+    labels_json=$(gh api "repos/${repo}/issues/${target}/labels?per_page=100" \
+        --paginate 2>/dev/null) || return 1
     local holders
     holders=$(echo "$labels_json" | python3 -c '
 import json, sys
@@ -2361,8 +2362,13 @@ cmd_decline() {
             -f "body=declined: ${who} @${host}-${agent} ${reason}" >/dev/null 2>&1 \
             || echo "fleet-claim decline: WARN could not post the declined: comment on ${repo}#${num}" >&2
     fi
-    # cmd_release reads only the number; the label arms take the agent too.
-    "cmd_${sub//-/_}" "$num" "$agent"
+    # cmd_release reads only the number; the label arms take the agent too
+    # (same branch fleet_release_assignment uses in fleet-common.sh).
+    if [[ "$sub" == release ]]; then
+        cmd_release "$num"
+    else
+        "cmd_${sub//-/_}" "$num" "$agent"
+    fi
     echo "declined: ${kind}#${num} (${who} @${host}-${agent}): ${reason}"
 }
 

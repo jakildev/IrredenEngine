@@ -10,13 +10,11 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"
 #include "ir_per_axis_lighting.glsl"
-// Shared caster/receiver sun-space projection (#2083); must precede
-// ir_sun_shadow_sample.glsl, which uses these symbols without including this
-// file itself.
+// Shared caster/receiver sun-space projection.
 #include "ir_sun_projection.glsl"
 // FrameDataSun UBO (29), sun-depth SSBO (28), the cascade PCF sampler, and the
 // world-space worldSunShadowFactor() lookup — shared with c_lighting_to_trixel's
-// detached world-receive path (#1576 P4b-2).
+// detached world-receive path.
 #include "ir_sun_shadow_sample.glsl"
 
 const int kEmptyDistanceEncoded = 65535;
@@ -29,7 +27,7 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform int voxelCount;
     // Smooth-camera-Z-yaw per-axis route selector (mirrors
     // FrameDataVoxelToCanvas::perAxisRoute_). 0 = single canvas; nonzero = a
-    // per-axis canvas bake (#1311), reconstruct world-pos face-locally.
+    // per-axis canvas bake, reconstruct world-pos face-locally.
     uniform int perAxisRoute;
     uniform ivec2 canvasSizePixels;
     uniform ivec2 cullIsoMin;
@@ -39,18 +37,18 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform float residualYaw;
     uniform float _yawPadding;            // isDetachedCanvas in the full UBO
     uniform vec4 _faceDeformPadding[3];   // faceDeform[3] in the full UBO
-    // Per-slot world FaceId (0..5); used only on the per-axis path (#1278/#1311).
+    // Per-slot world FaceId (0..5); used only on the per-axis path.
     uniform ivec4 visibleFaceIds;
 };
 
 layout(r32i, binding = 0) readonly uniform iimage2D trixelDistances;
 layout(rgba8, binding = 1) writeonly uniform image2D canvasSunShadow;
 
-// #2256: on the per-axis path this stage is dispatched indirectly over only each
-// axis's OCCUPIED cells (compacted by the STAGE_1 per-axis pre-pass) instead of
-// sweeping the full grid. compactedCells holds the occupied linear cell indices;
+// On the per-axis path this stage is dispatched indirectly over only each axis's
+// OCCUPIED cells (compacted by the STAGE_1 per-axis pre-pass) instead of sweeping
+// the full grid. compactedCells holds the occupied linear cell indices;
 // cellDrawArgs carries the visibleCount at [kDispatchArgsBaseUint + 3]. Unused on
-// the single-canvas 2D path (perAxisRoute == 0), which stays byte-identical.
+// the single-canvas 2D path (perAxisRoute == 0).
 layout(std430, binding = 25) readonly buffer PerAxisCellCompacted {
     uint compactedCells[];
 };
@@ -61,13 +59,10 @@ const uint kDispatchArgsBaseUint = 8u;      // kPerAxisCellDispatchArgsOffsetByt
 const uint kPerAxisCellComputeTile = 256u;  // kPerAxisCellComputeTile (16×16 threads)
 
 void main() {
-    // Per-axis path (#2256): decode the receiver pixel from this axis's compacted
-    // occupied-cell list under a 1-D indirect dispatch; the single-canvas 2D path
-    // keeps its full-grid xy invocation guard (byte-identical).
     const ivec2 size = imageSize(trixelDistances);
     ivec2 pixel;
     if (perAxisRoute != 0) {
-        // #2256: 2-D-folded indirect dispatch — recover the flat group index
+        // 2-D-folded indirect dispatch — recover the flat group index
         // (matches c_per_axis_cell_finalize's capped grid + c_voxel_visibility_compact).
         const uint groupIndex = gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x;
         const uint idx = groupIndex * kPerAxisCellComputeTile + gl_LocalInvocationIndex;
@@ -84,7 +79,7 @@ void main() {
     }
 
     int encoded = imageLoad(trixelDistances, pixel).x;
-    // Per-axis canvas uses INT_MAX as empty sentinel (#1458); single-canvas keeps 65535.
+    // Per-axis canvas uses INT_MAX as the empty sentinel; single-canvas uses 65535.
     if (encoded >= (perAxisRoute != 0 ? 0x7FFFFFFF : kEmptyDistanceEncoded)) {
         imageStore(canvasSunShadow, pixel, vec4(1.0, 0.0, 0.0, 0.0));
         return;
@@ -95,37 +90,33 @@ void main() {
     }
 
     // Shared decode helpers (ir_iso_common) own both encodings' bit layouts
-    // (#1458 per-axis / single-canvas, flip carrier #2207).
+    // (per-axis / single-canvas, flip carrier).
     int rawDepth = decodeDepthRoute(encoded, perAxisRoute);
     int face = decodeSlot(encoded);
     int flip = decodeFlipRoute(encoded, perAxisRoute);
     int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
 
-    // Smooth camera Z-yaw (#1311): a per-axis canvas stores the world frame
-    // face-locally, so recover world-pos via isoPixelToPos3D and read the
-    // world-frame outward normal directly (no cardinal rotation — the store
-    // already wrote world coords). The single canvas keeps its cardinal-snap
-    // reconstruction + R_z(-rasterYaw) normal rotation, byte-identical at the
-    // cardinal fast path (per-axis canvases are only allocated while rotating).
+    // Smooth camera Z-yaw: a per-axis canvas stores the world frame face-locally,
+    // so recover world-pos via isoPixelToPos3D and read the world-frame outward
+    // normal directly (no cardinal rotation — the store already wrote world
+    // coords). The single canvas uses its cardinal-snap reconstruction +
+    // R_z(-rasterYaw) normal rotation (per-axis canvases are only allocated while
+    // rotating).
     bool perAxis = perAxisRoute != 0;
     vec3 pos3D;
     vec3 normal;
     if (perAxis) {
         int faceId = visibleFaceIds[face];
         // Sub-cell recovery — the receiver must sample the sun map at the
-        // drawn surface (see perAxisCellToWorld3DSubCell).
+        // drawn surface, not the lattice cell origin.
         pos3D = perAxisCellToWorld3DSubCell(pixel, encoded, faceId, size, frameCanvasOffset, voxelRenderOptions);
         normal = faceOutwardNormal6(faceId);
     } else if (residualYaw != 0.0) {
-        // Smooth-yaw receive (#1719). While rotating, voxels leave the single
-        // canvas (per-axis scatter) and its remaining SDF/text content is
-        // stored at the FULL visualYaw with view-frame depth (#1345/#1370) —
-        // recover with the matching smooth inverse. The cardinal recovery
-        // returns a residual-rotated world pos here, so receivers sampled the
-        // sun map off the true surface: the floor shadow froze against the
-        // screen, mis-scaled against the deforming floor, and slid off the
-        // caster footprint entirely as |residual| grew. residualYaw == 0
-        // keeps the byte-identical cardinal path below.
+        // Smooth-yaw receive. While rotating, voxels leave the single canvas
+        // (per-axis scatter) and its remaining SDF/text content is stored at the
+        // FULL visualYaw with view-frame depth — recover with the matching smooth
+        // inverse. The cardinal recovery would return a residual-rotated world pos
+        // here and sample the sun map off the true surface.
         pos3D = trixelCanvasPixelToWorld3DSmoothYaw(
             pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, visualYaw
         );
@@ -139,18 +130,18 @@ void main() {
         // yaw. No-op at yaw=0 (cardinalIndex=0). Matches the AO shader pattern.
         normal = rotateCardinalZInv(faceOutwardNormal(face), cardinalIndex);
     }
-    // Riser-polarity flip (#2207): a flipped face's true outward normal is the
+    // Riser-polarity flip: a flipped face's true outward normal is the
     // NEGATION of the slot-derived one — without it the normal bias pushes the
     // shadow sample INTO the caster and the riser reads fully sun-shadowed.
-    // Negation commutes with the frame rotations above, so one flip covers all
-    // three recovery branches; flip == 0 everywhere on non-rotated content.
+    // Negation commutes with the per-branch frame rotations, so one flip covers
+    // all three recovery branches; flip == 0 everywhere on non-rotated content.
     if (flip != 0) {
         normal = -normal;
     }
 
     // World iso depth picks the cascade; rawDepth IS the world iso depth for the
     // world canvas this pass runs on. The cascade PCF lookup is shared with the
-    // detached world-receive path (ir_sun_shadow_sample.glsl, #1576).
+    // detached world-receive path (ir_sun_shadow_sample.glsl).
     float factor = worldSunShadowFactor(pos3D, normal, float(rawDepth));
     imageStore(canvasSunShadow, pixel, vec4(factor, 0.0, 0.0, 0.0));
 }

@@ -13,15 +13,21 @@
 #include <irreden/asset/voxel_set_format.hpp>
 #include <irreden/voxel/dense_bridge.hpp>
 
+#include <algorithm>
 #include <array>
+#include <cctype>
 #include <cstdio>
+#include <cstdlib>
+#include <filesystem>
 #include <numbers>
+#include <span>
 #include <string>
 #include <vector>
 // COMPONENTS
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
+#include <irreden/voxel/voxel_pool_api.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/voxel/components/component_joint.hpp>
 #include <irreden/voxel/components/component_skeleton.hpp>
@@ -206,9 +212,120 @@ bool g_initialYawSet = false;
 // an arc. Off by default so the demo exercises the shipped default.
 bool g_pivotOrigin = false;
 IRRender::DebugOverlayMode g_debugOverlay = IRRender::DebugOverlayMode::NONE;
-// --load-vxs <path>: load a DENSE-mode .vxs and render frame 0 alongside the
-// built-in shape fixtures. Empty = not requested.
+// --load-vxs <path>: load a DENSE-mode .vxs and render it alongside the built-in
+// shape fixtures. Empty = not requested. When the path names one file of a
+// `<base>_frame_<N>.vxs` set (what the voxel editor writes for a multi-frame
+// animation), every sibling frame loads and the set plays back.
 std::string g_loadVxsPath;
+// --vxs-frame <N>: pin a multi-frame set to frame N instead of playing it back,
+// so a screenshot names the pose it captured. Negative = play back.
+int g_vxsFrame = -1;
+
+// The loaded animation's frames and the entity they swap into. A single-frame
+// asset holds exactly one entry and never registers the playback system, so its
+// render path is byte-identical to the pre-animation one.
+std::vector<std::vector<IRComponents::C_Voxel>> g_vxsFrames;
+IREntity::EntityId g_vxsEntity = IREntity::kNullEntity;
+// Playback rate, read from frame 0's `fps` META entry (the editor writes it
+// from its FPS slider). The editor's own default when the key is absent.
+float g_vxsFps = 12.0f;
+// Ticks elapsed since the playback system started, so the cadence is counted in
+// engine ticks rather than wall time. File-scope rather than a tick-local
+// static, per .claude/rules/cpp-systems.md.
+int g_vxsPlaybackTick = 0;
+
+// Sibling frame files of a `<base>_frame_<N>.vxs` path, frame-ordered and
+// contiguous from 0. A path without that suffix — or one whose frame 0 sibling
+// is missing — resolves to just itself, so a single-file asset loads exactly as
+// it did before multi-frame support.
+//
+// The `_frame_<N>` shape is the voxel editor's, written by
+// `creations/editors/voxel_editor/scene_io.hpp` `detail::framePath` — this is
+// the only reader of it outside that editor, and the two have to agree. The
+// convention is not lifted into a shared header because there is exactly one
+// writer and one reader; a rename on either side is a two-file edit, which the
+// back-pointers here and at framePath are meant to make findable.
+std::vector<std::string> resolveVxsFramePaths(const std::string &path) {
+    namespace fs = std::filesystem;
+    const fs::path given(path);
+    const std::string stem = given.stem().string(); // drops the ".vxs"
+    const std::string marker = "_frame_";
+    const std::size_t markerAt = stem.rfind(marker);
+    if (markerAt == std::string::npos)
+        return {path};
+    const std::string index = stem.substr(markerAt + marker.size());
+    if (index.empty() || !std::all_of(index.begin(), index.end(), [](unsigned char c) {
+            return std::isdigit(c) != 0;
+        }))
+        return {path};
+
+    const fs::path dir = given.parent_path();
+    const std::string base = stem.substr(0, markerAt);
+    std::vector<std::string> frames;
+    for (int frame = 0;; ++frame) {
+        const fs::path candidate =
+            dir / (base + marker + std::to_string(frame) + given.extension().string());
+        if (!fs::exists(candidate))
+            break;
+        frames.push_back(candidate.string());
+    }
+    // A set that does not start at frame 0 (the caller pointed at frame 3 of a
+    // set whose earlier files are absent) is not an animation this can play, so
+    // fall back to the single file the caller actually named.
+    return frames.empty() ? std::vector<std::string>{path} : frames;
+}
+
+// Advance the loaded animation one step every `kVxsFramesPerStep` ticks. The
+// engine drives a fixed-step UPDATE under --auto-screenshot (isAutoCaptureActive
+// pins one tick per render frame), so a tick-counted cadence steps the same way
+// on every host instead of drifting with the frame time.
+void tickVxsPlayback();
+
+// Swap frame `index`'s voxels into the loaded set: a span copy over the
+// already-allocated pool records, no reallocation.
+//
+// The copy writes the raw `voxels_` span, so it closes with
+// `resyncAfterRawEdits()` (engine/prefabs/irreden/voxel/CLAUDE.md). The
+// load-bearing half is the pool's active mask: it mirrors `color_.alpha_ != 0`,
+// it is what `c_voxel_visibility_compact` reads *instead of* alpha (T-287), and
+// it lives in the pool rather than in the voxel records — so copying records
+// updates alpha and leaves the mask describing the frame that just left, and
+// the swap renders a blend of the two poses. Same call, same reason, as the
+// editor's own loadFrameToLive.
+void showVxsFrame(int index) {
+    if (g_vxsEntity == IREntity::kNullEntity || g_vxsFrames.empty())
+        return;
+    const std::vector<IRComponents::C_Voxel> &frame =
+        g_vxsFrames[static_cast<std::size_t>(index) % g_vxsFrames.size()];
+    auto &set = IREntity::getComponent<IRComponents::C_VoxelSetNew>(g_vxsEntity);
+    if (frame.size() != set.voxels_.size())
+        return;
+    std::copy(frame.begin(), frame.end(), set.voxels_.begin());
+    set.resyncAfterRawEdits();
+    // ...and evict the pool's cached chunk bounds. Those are the cull inputs and
+    // they are built by skipping voxels whose alpha is zero, so a swap that
+    // changes WHICH cells are active invalidates them — but nothing in
+    // resyncAfterRawEdits marks them, because the pool's own eviction points are
+    // all position changes (allocate / free / move). Without this the arriving
+    // pose renders culled against the departing pose's bounds and captures as a
+    // genuine mixture of the two (measured on the bird: of the 32880 pixels
+    // where the poses differ, 10680 drew the old pose and 16856 the new).
+    if (auto pool = IREntity::getComponentOptional<IRComponents::C_VoxelPool>(set.canvasEntity_)) {
+        pool.value()->markChunkBoundsDirty();
+        pool.value()->markChunkWorldBoundsDirty();
+    }
+}
+
+void tickVxsPlayback() {
+    if (g_vxsFrames.size() <= 1)
+        return;
+    const int ticksPerStep =
+        IRMath::max(1, static_cast<int>(static_cast<float>(IRConstants::kFPS) / g_vxsFps));
+    ++g_vxsPlaybackTick;
+    if (g_vxsPlaybackTick % ticksPerStep != 0)
+        return;
+    showVxsFrame(g_vxsPlaybackTick / ticksPerStep);
+}
 
 // --spin-yaw [deg/sec] (#1271): drive the camera's Z-yaw at a constant
 // rate so the cardinal/residual rebracket can be eyeballed (live) or sampled
@@ -342,6 +459,11 @@ std::vector<std::array<char, 40>> g_pivotVerifyShotLabels;
 // (#2550). Flag-gated so the standing render-verify tables are untouched —
 // the overlay is default-hidden and this is the only run that opens it.
 bool g_guiTest = false;
+// --cull-evict-test: swap the capture table for the #2830 cull-invalidation
+// regression fixture. Same flag-gating rationale as --gui-test above: the
+// standing kShots table and every committed render-verify reference are
+// untouched, because this run replaces the scene as well as the shot list.
+bool g_cullEvictTest = false;
 // cursor-latch runs the same poses through the GUI-test cycler; its shots wrap
 // g_pivotVerifyShots (whose labels this table's label_ pointers still target,
 // so both vectors must outlive the game loop).
@@ -814,8 +936,15 @@ void registerCliArgs() {
     args.flag("--cull-validate", "Frozen-cull free-fly validation sweep (#1438)");
     args.string(
         "--load-vxs",
-        "Path to a DENSE-mode .vxs to load and render alongside fixtures",
+        "Path to a DENSE-mode .vxs to load and render alongside fixtures (a "
+        "<base>_frame_<N>.vxs path loads the whole animation)",
         ""
+    );
+    args.number(
+        "--vxs-frame",
+        "Pin the loaded .vxs animation to this frame instead of playing "
+        "it back (#766)",
+        -1.0f
     );
     args.optionalInt(
         "--spin-yaw",
@@ -833,6 +962,11 @@ void registerCliArgs() {
         "--gui-test",
         "Replace the capture table with the headless help-overlay GUI test (#2550); "
         "needs --auto-screenshot"
+    );
+    args.flag(
+        "--cull-evict-test",
+        "Replace the scene + capture table with the #2830 cull-invalidation fixture: two "
+        "occupancy poses alternated in place at a fixed cardinal camera; needs --auto-screenshot"
     );
 }
 
@@ -859,6 +993,7 @@ void readCliArgs() {
     g_pivotVerifyBlock = args.getEnum("--pivot-verify");
     g_pivotVerifySdf = args.getFlag("--pivot-verify-sdf");
     g_guiTest = args.getFlag("--gui-test");
+    g_cullEvictTest = args.getFlag("--cull-evict-test");
     g_cursorPivotIndicator = args.getFlag("--cursor-pivot-indicator");
 
     if (args.wasProvided("--zoom")) {
@@ -881,6 +1016,9 @@ void readCliArgs() {
     g_cullValidate = args.getFlag("--cull-validate");
     if (args.wasProvided("--load-vxs")) {
         g_loadVxsPath = args.getString("--load-vxs");
+    }
+    if (args.wasProvided("--vxs-frame")) {
+        g_vxsFrame = static_cast<int>(args.getFloat("--vxs-frame"));
     }
     // --spin-yaw: 0 (disabled) when absent, else the rate (30 if bare). The
     // optional value reads as an int — fractional deg/sec is truncated.
@@ -1519,6 +1657,294 @@ bool g_quitAssertionsEmitted = false;
 // both the latching and the capture-frame dispatch.
 IRPrefab::GuiTest::LatchState g_helpOverlayLatch;
 
+// ---------------------------------------------------------------------------
+// #2830 cull-invalidation render fixture (--cull-evict-test)
+// ---------------------------------------------------------------------------
+//
+// The defect this pins: `C_VoxelPool`'s cardinal chunk-bounds cache derives
+// from per-voxel ALPHA as well as position, but only allocate/deallocate and a
+// yawing frame ever evicted it. An in-place occupancy edit — a two-frame
+// animation swapping which cells of an already-allocated span are live, the
+// shipping instance measured on #766's bird — left the bounds frozen at the
+// previous pose. `buildChunkVisibilityMask` then stopped rasterizing the
+// chunks the new pose occupies, and the frame rendered a stable MIXTURE of the
+// two poses: not a lag, not a tear, a blend.
+//
+// The fixture reproduces exactly that shape and nothing else:
+//   * ONE voxel set, allocated once. No realloc between poses.
+//   * A fixed cardinal camera (yaw 0) — the branch the cache serves. A yawing
+//     frame self-invalidates, which would mask the bug.
+//   * No manual cache eviction anywhere: the pose swap goes through
+//     `C_VoxelSetNew::editVoxels`, the encapsulated raw-edit API a creation
+//     would really use.
+//   * Two poses in DISJOINT pool chunks, so a frozen bound is a visibly wrong
+//     bound rather than a conservatively-large correct one.
+//
+// Per shot it emits `GUI-ASSERT` lines over POOL-DERIVED state — the cached
+// chunk bounds and the visibility they produce — not over voxel alpha. That
+// distinction is the whole lesson of the #766 occurrence: its session asserted
+// occupancy on both poses and passed 28/28 while rendering the blend, because
+// the alpha was right and only the derived cull state was stale.
+//
+// POSITIVE CONTROL: this fixture compiles and runs unchanged against
+// 1750ef4ae (it calls no API this PR adds), and fails there. See the PR body.
+
+constexpr IRMath::ivec3 kCullEvictSize = IRMath::ivec3(16, 16, 8);        // 2048 slots = 8 chunks
+constexpr int kCullEvictLayerSlots = kCullEvictSize.x * kCullEvictSize.y; // 256 == one chunk
+// Both pose predicates read "one z-layer IS one pool chunk". That holds only
+// while the layer's slot count equals the pool's chunk granularity — pin it,
+// or a chunk-size change silently turns the fixture into a weaker test.
+static_assert(
+    kCullEvictLayerSlots == IRRender::kVoxelChunkSize,
+    "cull-evict fixture: one z-layer must be exactly one pool chunk"
+);
+constexpr int kCullEvictLiveLayers = 2;
+constexpr Color kCullEvictColor = Color{80, 220, 160, 255};
+
+// Pose 0 lights the bottom two z-layers, pose 1 the top two. `index3DtoIndex1D`
+// is x-fastest with z slowest, so one z-layer is exactly one 256-slot chunk and
+// the two poses never share one.
+int cullEvictFirstLiveLayer(int pose) {
+    return pose == 0 ? 0 : kCullEvictSize.z - kCullEvictLiveLayers;
+}
+
+struct CullEvictFixture {
+    IREntity::EntityId setEntity_ = IREntity::kNullEntity;
+    IREntity::EntityId canvasEntity_ = IREntity::kNullEntity;
+    int lastShot_ = -1;
+    int pose_ = -1;
+};
+CullEvictFixture g_cullEvict;
+
+// One shot's expected pose, read by both the pose driver and the predicates.
+struct CullEvictShotSpec {
+    int pose_;
+    const char *label_;
+};
+constexpr CullEvictShotSpec kCullEvictSpecs[] = {
+    {0, "cull_evict_pose_a"},
+    {1, "cull_evict_pose_b"},
+    // Back to pose A: a fixture that only ever grows its bounds would pass the
+    // first two shots on a conservative superset. This one must SHRINK again.
+    {0, "cull_evict_pose_a_again"},
+};
+constexpr int kNumCullEvictShots =
+    static_cast<int>(sizeof(kCullEvictSpecs) / sizeof(kCullEvictSpecs[0]));
+
+constexpr IRVideo::GuiTestShot kCullEvictShots[] = {
+    {IRVideo::AutoScreenshotShot{4.0f, vec2(0, 0), 0.0f, kCullEvictSpecs[0].label_}, nullptr, 0},
+    {IRVideo::AutoScreenshotShot{4.0f, vec2(0, 0), 0.0f, kCullEvictSpecs[1].label_}, nullptr, 0},
+    {IRVideo::AutoScreenshotShot{4.0f, vec2(0, 0), 0.0f, kCullEvictSpecs[2].label_}, nullptr, 0},
+};
+static_assert(
+    sizeof(kCullEvictShots) / sizeof(kCullEvictShots[0]) ==
+        static_cast<std::size_t>(kNumCullEvictShots),
+    "kCullEvictShots and kCullEvictSpecs must stay paired"
+);
+
+// Swap which cells of the ALREADY-ALLOCATED span are live. Routes through the
+// encapsulated raw-edit API — no allocation, no position write, and no cache
+// eviction of any kind.
+void applyCullEvictPose(int pose) {
+    if (g_cullEvict.setEntity_ == IREntity::kNullEntity) {
+        return;
+    }
+    C_VoxelSetNew &voxelSet = IREntity::getComponent<C_VoxelSetNew>(g_cullEvict.setEntity_);
+    const int firstLive = cullEvictFirstLiveLayer(pose);
+    voxelSet.editVoxels([firstLive](int index, C_Voxel &voxel, vec3) {
+        const int layer = index / kCullEvictLayerSlots;
+        if (layer >= firstLive && layer < firstLive + kCullEvictLiveLayers) {
+            voxel.color_ = kCullEvictColor;
+        } else {
+            voxel.deactivate();
+        }
+    });
+    g_cullEvict.pose_ = pose;
+}
+
+// The bounds a from-scratch recompute would produce for a chunk's CURRENT
+// occupancy. The predicates below compare the pool's cached entry against this,
+// so a stale bound fails on its values rather than on a coarse "did it move".
+ChunkBounds cullEvictOracle(const C_VoxelPool &pool, int chunk) {
+    ChunkBounds bounds;
+    const int begin = chunk * IRRender::kVoxelChunkSize;
+    const int end = IRMath::min(begin + IRRender::kVoxelChunkSize, pool.getLiveVoxelCount());
+    for (int i = begin; i < end; ++i) {
+        if (pool.getColors()[i].color_.alpha_ == 0) {
+            continue;
+        }
+        const vec3 pos = pool.getPositionGlobals()[i].pos_;
+        bounds.expand(IRMath::pos3DtoPos2DIso(pos));
+        bounds.minDepth_ =
+            IRMath::min(bounds.minDepth_, static_cast<float>(IRMath::pos3DtoDistance(pos)));
+    }
+    return bounds;
+}
+
+C_VoxelPool *cullEvictPool() {
+    if (g_cullEvict.canvasEntity_ == IREntity::kNullEntity) {
+        return nullptr;
+    }
+    auto poolOpt = IREntity::getComponentOptional<C_VoxelPool>(g_cullEvict.canvasEntity_);
+    return poolOpt.has_value() ? poolOpt.value() : nullptr;
+}
+
+// Predicate 1 — every chunk's CACHED bounds equal its current occupancy's
+// bounds. This is the assertion the defect fails: a frozen chunk keeps the
+// previous pose's extent while the oracle follows the alpha.
+bool cullEvictBoundsMatchOccupancy(const void *, std::string &actual) {
+    C_VoxelPool *pool = cullEvictPool();
+    if (pool == nullptr) {
+        actual = "no-pool";
+        return false;
+    }
+    const int chunkCount = pool->getChunkCount();
+    const std::vector<ChunkBounds> &cached = pool->getChunkBounds();
+    if (static_cast<int>(cached.size()) < chunkCount) {
+        actual = "bounds-not-built";
+        return false;
+    }
+    for (int c = 0; c < chunkCount; ++c) {
+        const ChunkBounds want = cullEvictOracle(*pool, c);
+        const ChunkBounds &got = cached[static_cast<std::size_t>(c)];
+        if (got.isoMin_ != want.isoMin_ || got.isoMax_ != want.isoMax_) {
+            actual = "chunk=" + std::to_string(c) + " cached=[" + std::to_string(got.isoMin_.x) +
+                     "," + std::to_string(got.isoMin_.y) + ".." + std::to_string(got.isoMax_.x) +
+                     "," + std::to_string(got.isoMax_.y) + "] want=[" +
+                     std::to_string(want.isoMin_.x) + "," + std::to_string(want.isoMin_.y) + ".." +
+                     std::to_string(want.isoMax_.x) + "," + std::to_string(want.isoMax_.y) + "]";
+            return false;
+        }
+    }
+    actual = "all " + std::to_string(chunkCount) + " chunks match occupancy";
+    return true;
+}
+
+// Predicate 2 — the chunks with a non-empty bound are EXACTLY the ones this
+// shot's pose lights. Pins the pose rather than merely "something changed", so
+// the fixture cannot pass by holding a conservative superset of both poses.
+bool cullEvictLiveChunksMatchPose(const void *context, std::string &actual) {
+    const int pose = *static_cast<const int *>(context);
+    C_VoxelPool *pool = cullEvictPool();
+    if (pool == nullptr) {
+        actual = "no-pool";
+        return false;
+    }
+    const int firstLive = cullEvictFirstLiveLayer(pose);
+    const std::vector<ChunkBounds> &cached = pool->getChunkBounds();
+    std::string live;
+    bool ok = true;
+    for (int c = 0; c < pool->getChunkCount(); ++c) {
+        if (static_cast<std::size_t>(c) >= cached.size()) {
+            ok = false;
+            break;
+        }
+        // An empty chunk keeps the inverted sentinel, so min > max.
+        const bool nonEmpty = cached[static_cast<std::size_t>(c)].isoMin_.x <=
+                              cached[static_cast<std::size_t>(c)].isoMax_.x;
+        const bool expected = c >= firstLive && c < firstLive + kCullEvictLiveLayers;
+        if (nonEmpty) {
+            live += (live.empty() ? "" : ",") + std::to_string(c);
+        }
+        ok = ok && (nonEmpty == expected);
+    }
+    actual = "pose=" + std::to_string(pose) + " liveChunks=[" + live +
+             "] wantFirst=" + std::to_string(firstLive);
+    return ok;
+}
+
+// Predicate 3 — the cull query the UPDATE movers ask, per chunk range. A
+// chunk holding no live voxels keeps the inverted sentinel and must answer
+// "not visible" for ANY viewport; a chunk holding the live pose must answer
+// "visible" for a viewport around one of its voxels. Under the defect the
+// chunks that held the PREVIOUS pose keep its bounds, so the dark half answers
+// visible and the movers keep servicing geometry that is no longer there.
+//
+// Deliberately NOT phrased as "a viewport around the dark pose must miss the
+// live chunks": the iso projection collapses x, y and z onto two axes, so a
+// 16x16 slab's iso AABB legitimately contains a distant layer's corner. That
+// framing failed here against correct bounds — a false alarm, not a finding.
+bool cullEvictRangeVisibility(const void *context, std::string &actual) {
+    const int pose = *static_cast<const int *>(context);
+    C_VoxelPool *pool = cullEvictPool();
+    if (pool == nullptr || g_cullEvict.setEntity_ == IREntity::kNullEntity) {
+        actual = "no-pool";
+        return false;
+    }
+    const C_VoxelSetNew &voxelSet = IREntity::getComponent<C_VoxelSetNew>(g_cullEvict.setEntity_);
+    const int liveLayer = cullEvictFirstLiveLayer(pose);
+    const int darkLayer = cullEvictFirstLiveLayer(pose == 0 ? 1 : 0);
+    const auto slotOf = [&](int layer) {
+        return voxelSet.voxelStartIdx_ + static_cast<std::size_t>(layer * kCullEvictLayerSlots);
+    };
+    const std::size_t liveSlot = slotOf(liveLayer);
+    const vec2 iso = IRMath::pos3DtoPos2DIso(pool->getPositionGlobals()[liveSlot].pos_);
+    const IsoBounds2D atLiveVoxel{iso - vec2(0.25f), iso + vec2(0.25f)};
+    const std::size_t halfSpan =
+        static_cast<std::size_t>(kCullEvictLiveLayers * kCullEvictLayerSlots);
+    const bool liveRange = pool->isRangeVisible(liveSlot, halfSpan, atLiveVoxel);
+    const bool darkRange = pool->isRangeVisible(slotOf(darkLayer), halfSpan, atLiveVoxel);
+    actual = "liveChunkRange=" + std::string(liveRange ? "visible" : "culled") +
+             " darkChunkRange=" + std::string(darkRange ? "visible" : "culled");
+    return liveRange && !darkRange;
+}
+
+IRPrefab::GuiTest::LatchState g_cullEvictLatch;
+
+const IRPrefab::GuiTest::Assertion kCullEvictAssertions[] = {
+    IRPrefab::GuiTest::predicate(&cullEvictBoundsMatchOccupancy, nullptr, "bounds_match_occupancy"),
+    IRPrefab::GuiTest::predicate(
+        &cullEvictLiveChunksMatchPose, &g_cullEvict.pose_, "live_chunks_match_pose"
+    ),
+    IRPrefab::GuiTest::predicate(
+        &cullEvictRangeVisibility, &g_cullEvict.pose_, "range_visible_at_live_pose_only"
+    ),
+};
+constexpr int kNumCullEvictAssertions =
+    static_cast<int>(sizeof(kCullEvictAssertions) / sizeof(kCullEvictAssertions[0]));
+
+void onCullEvictAssertFrame(int shotIndex, bool isCaptureFrame) {
+    // Apply the pose once, on the shot's first live frame; the harness's settle
+    // frames then let the render pipeline re-derive bounds before capture.
+    if (shotIndex != g_cullEvict.lastShot_) {
+        g_cullEvict.lastShot_ = shotIndex;
+        applyCullEvictPose(kCullEvictSpecs[shotIndex].pose_);
+    }
+    IRPrefab::GuiTest::onFrame(
+        g_cullEvictLatch,
+        shotIndex,
+        isCaptureFrame,
+        kCullEvictSpecs[shotIndex].label_,
+        kCullEvictAssertions,
+        kNumCullEvictAssertions
+    );
+}
+
+void initCullEvictScene() {
+    const EntityId canvas = IRRender::getActiveCanvasEntity();
+    g_cullEvict.canvasEntity_ = canvas;
+    const EntityId entity = IREntity::createEntity(
+        C_LocalTransform{vec3(0.0f, 0.0f, 0.0f)},
+        C_VoxelSetNew{kCullEvictSize, kCullEvictColor, IRComponents::EntityAnchor::CENTER, canvas}
+    );
+    g_cullEvict.setEntity_ = entity;
+    const C_VoxelSetNew &voxelSet = IREntity::getComponent<C_VoxelSetNew>(entity);
+    IR_LOG_INFO(
+        "--- #2830 cull-eviction fixture: {} voxels at pool slot {} ({} chunks) ---",
+        voxelSet.numVoxels_,
+        voxelSet.voxelStartIdx_,
+        voxelSet.numVoxels_ / IRRender::kVoxelChunkSize
+    );
+    // The span must start chunk-aligned, or "one z-layer == one chunk" — the
+    // premise both pose predicates read — quietly stops holding.
+    IR_ASSERT(
+        voxelSet.voxelStartIdx_ % IRRender::kVoxelChunkSize == 0,
+        "cull-evict fixture expects a chunk-aligned span, got startIdx={}",
+        voxelSet.voxelStartIdx_
+    );
+    applyCullEvictPose(0);
+}
+
 void onHelpOverlayAssertFrame(int shotIndex, bool isCaptureFrame) {
     // Every live frame from the first menu shot on: the panel centers itself and
     // a dropdown's item strip exists only while expanded, so the targets have to
@@ -1551,14 +1977,39 @@ void onHelpOverlayAssertFrame(int shotIndex, bool isCaptureFrame) {
 } // namespace
 
 void initSystems() {
-    IRSystem::registerPipeline(
-        IRTime::Events::UPDATE,
-        {IRSystem::createSystem<IRSystem::LOD_UPDATE>(),
-         IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
-         IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
-         IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>(),
-         IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS_IMPLICIT>()}
-    );
+    std::list<IRSystem::SystemId> updatePipeline{
+        IRSystem::createSystem<IRSystem::LOD_UPDATE>(),
+        IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
+        IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
+        IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>(),
+        IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS_IMPLICIT>()
+    };
+    // --load-vxs animation playback: swap the next frame's voxels
+    // into the loaded set on a fixed tick cadence derived from the asset's own
+    // FPS. Registered whenever a set was requested for playback — the entity
+    // does not exist yet (initEntities runs after this), so the frame count is
+    // not knowable here; the tick no-ops for a single-frame asset.
+    //
+    // Pushed to the FRONT: the swap has to land before UPDATE_VOXEL_SET_CHILDREN
+    // and the grid rebuilds run, so everything downstream sees one pose for the
+    // whole tick. Appended at the end instead, the frame that swaps renders the
+    // arriving colours against the departing pose's uploaded state and captures
+    // as a blend of the two.
+    //
+    // The swap targets one known entity, so it runs in beginTick rather than a
+    // per-entity tick (.claude/rules/cpp-ecs.md, alternative 3). C_VoxelSetNew
+    // is the archetype filter only because the system needs SOME filter; the
+    // per-entity function is deliberately empty.
+    if (!g_loadVxsPath.empty() && g_vxsFrame < 0) {
+        updatePipeline.push_front(
+            IRSystem::createSystem<IRComponents::C_VoxelSetNew>(
+                "ShapeDebugVxsPlayback",
+                [](const IRComponents::C_VoxelSetNew &) {},
+                []() { tickVxsPlayback(); }
+            )
+        );
+    }
+    IRSystem::registerPipeline(IRTime::Events::UPDATE, updatePipeline);
     // Settings menu (#2551) rides the INPUT pipeline: its widget chain needs
     // the cursor state INPUT_KEY_MOUSE publishes, and polling the widgets in
     // INPUT means a toggle applies before the same frame renders.
@@ -1674,7 +2125,18 @@ void initSystems() {
         renderPipeline.push_back(autoProfileId);
     }
 
-    if (g_autoWarmupFrames > 0 && g_guiTest) {
+    if (g_autoWarmupFrames > 0 && g_cullEvictTest) {
+        IRVideo::GuiTestConfig cfg{};
+        cfg.warmupFrames_ = g_autoWarmupFrames;
+        // The pose swap lands on a shot's first live frame; the settle window
+        // has to be long enough for STAGE_1 to re-derive the bounds and
+        // rasterize from them before the capture frame.
+        cfg.settleFrames_ = 4;
+        cfg.shots_ = kCullEvictShots;
+        cfg.numShots_ = kNumCullEvictShots;
+        cfg.onAssertFrame_ = &onCullEvictAssertFrame;
+        renderPipeline.push_back(IRVideo::createGuiTestSystem(cfg));
+    } else if (g_autoWarmupFrames > 0 && g_guiTest) {
         IRVideo::GuiTestConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
         cfg.settleFrames_ = 3;
@@ -2610,6 +3072,12 @@ void setupCanvasLighting() {
 }
 
 void initEntities() {
+    if (g_cullEvictTest) {
+        IR_LOG_INFO("--- #2830 cull-invalidation fixture scene ---");
+        initCullEvictScene();
+        setupCanvasLighting();
+        return;
+    }
     if (g_pivotVerifyBlock != "off") {
         IR_LOG_INFO("--- Pivot-verify probe scene ({}) ---", g_pivotVerifyBlock);
         initPivotVerifyScene();
@@ -2900,26 +3368,176 @@ void initEntities() {
         C_LightSource{LightType::EMISSIVE, Color{80, 200, 255, 255}, 2.0f, static_cast<uint8_t>(30)}
     );
 
-    // --load-vxs: load a DENSE-mode .vxs file (frame 0) and place the voxel
-    // set at the origin so it can be compared against the procedural shapes.
+    // --load-vxs: load a DENSE-mode .vxs file and place the voxel set at the
+    // origin so it can be compared against the procedural shapes. A
+    // `<base>_frame_<N>.vxs` path brings in every sibling frame; frame 0 seeds
+    // the entity and the rest are kept for the playback swap.
     if (!g_loadVxsPath.empty()) {
-        auto loaded = IRAsset::loadDenseVoxelSet(g_loadVxsPath);
-        if (!loaded.ok()) {
-            IR_LOG_ERROR("--load-vxs: could not load '{}'", g_loadVxsPath);
-        } else if (loaded.value_.dense_.voxels_.size() != loaded.value_.dense_.voxelCount()) {
-            IR_LOG_ERROR("--load-vxs: voxel count mismatch in '{}'", g_loadVxsPath);
-        } else {
-            auto voxelSet = IRPrefab::DenseVoxel::toComponent(loaded.value_.dense_);
-            EntityId vxsEntity = IREntity::createEntity(
+        const std::vector<std::string> framePaths = resolveVxsFramePaths(g_loadVxsPath);
+
+        // Decode, translate and validate EVERY frame into CPU-owned vectors
+        // before any of them reaches a C_VoxelSetNew, then build exactly one
+        // set — the one the entity takes ownership of.
+        //
+        // The ordering is load-bearing. By this point the render canvas exists,
+        // so C_VoxelSetNew's dense ctor takes the pooled path and reserves a
+        // canvas voxel-pool span; the span comes back only in onDestroy(), which
+        // the ECS calls for a component an entity owns. There is no destructor,
+        // so a per-frame local strands a whole frame's worth of pool slots for
+        // the process lifetime — invisible in a capture, and it scales with
+        // animation length until the pool runs out. Building the one set after
+        // the loop is also what makes the refusal total: a malformed frame N
+        // leaves no entity and no reservation.
+        std::vector<std::vector<IRComponents::C_Voxel>> frames;
+        ivec3 frameBoundsMin{0};
+        ivec3 frameBoundsMax{0};
+        float framesFps = g_vxsFps;
+        bool loadFailed = false;
+
+        // Pool high-water mark, sampled either side of the load so the run log
+        // states how many slots the whole set actually reserved. Zero when the
+        // canvas has no pool component.
+        const auto poolLiveVoxelCount = []() -> int {
+            const IREntity::EntityId canvas = IRPrefab::VoxelPool::activeCanvasEntityOrNull();
+            if (canvas == IREntity::kNullEntity)
+                return 0;
+            auto pool = IREntity::getComponentOptional<IRComponents::C_VoxelPool>(canvas);
+            return pool ? pool.value()->getLiveVoxelCount() : 0;
+        };
+        const int poolLiveBefore = poolLiveVoxelCount();
+
+        for (const std::string &framePath : framePaths) {
+            auto loaded = IRAsset::loadDenseVoxelSet(framePath);
+            if (!loaded.ok()) {
+                IR_LOG_ERROR("--load-vxs: could not load '{}'", framePath);
+                loadFailed = true;
+                break;
+            }
+            const IRAsset::DenseVoxelSet &dense = loaded.value_.dense_;
+            if (dense.voxels_.size() != dense.voxelCount()) {
+                IR_LOG_ERROR("--load-vxs: voxel count mismatch in '{}'", framePath);
+                loadFailed = true;
+                break;
+            }
+            std::vector<IRComponents::C_Voxel> frameVoxels = IRPrefab::DenseVoxel::toVoxels(dense);
+            if (frames.empty()) {
+                frameBoundsMin = dense.boundsMin_;
+                frameBoundsMax = dense.boundsMax_;
+                // Frame 0's META carries the animation's playback rate.
+                for (const IRAsset::MetaEntry &entry : dense.meta_) {
+                    // A hand-edited or foreign sidecar can carry anything here,
+                    // and a throw would take down a demo run over a playback
+                    // rate — keep the editor's default instead.
+                    if (entry.key_ != "fps")
+                        continue;
+                    const float fps = std::strtof(entry.value_.c_str(), nullptr);
+                    if (fps > 0.0f)
+                        framesFps = fps;
+                }
+            } else {
+                // The one pooled set is built from frame 0's bounds and its
+                // records stay indexed by that extent, so a swap is only a copy
+                // when every frame shares frame 0's bounds — an equal count
+                // alone (16×16×16 vs 8×32×16) would copy a later pose in at
+                // the wrong coordinates. A partial animation would play a
+                // stutter nobody asked for, so refuse the whole set rather
+                // than the odd frame.
+                const bool matchesFrame0 = frameVoxels.size() == frames.front().size() &&
+                                           dense.boundsMin_ == frameBoundsMin &&
+                                           dense.boundsMax_ == frameBoundsMax;
+                if (!matchesFrame0) {
+                    const ivec3 extent = dense.boundsMax_ - dense.boundsMin_;
+                    const ivec3 extent0 = frameBoundsMax - frameBoundsMin;
+                    IR_LOG_ERROR(
+                        "--load-vxs: frame '{}' is {} voxels, {}x{}x{} from [{},{},{}]; frame 0 "
+                        "is {} voxels, {}x{}x{} from [{},{},{}] — not an animation",
+                        framePath,
+                        frameVoxels.size(),
+                        extent.x,
+                        extent.y,
+                        extent.z,
+                        dense.boundsMin_.x,
+                        dense.boundsMin_.y,
+                        dense.boundsMin_.z,
+                        frames.front().size(),
+                        extent0.x,
+                        extent0.y,
+                        extent0.z,
+                        frameBoundsMin.x,
+                        frameBoundsMin.y,
+                        frameBoundsMin.z
+                    );
+                    loadFailed = true;
+                    break;
+                }
+            }
+            frames.push_back(std::move(frameVoxels));
+        }
+
+        // `toVoxels` returns empty on a malformed record block; frame 0 empty
+        // would seed nothing and every later frame would then be rejected for
+        // disagreeing with it, so refuse the set outright and say why.
+        if (!loadFailed && (frames.empty() || frames.front().empty())) {
+            IR_LOG_ERROR("--load-vxs: '{}' decoded to zero voxels", g_loadVxsPath);
+            loadFailed = true;
+        }
+
+        if (!loadFailed) {
+            g_vxsFps = framesFps;
+            g_vxsEntity = IREntity::createEntity(
                 C_LocalTransform{vec3(-20.0f, -8.0f, 0.0f)},
-                std::move(voxelSet)
+                IRComponents::C_VoxelSetNew{
+                    frameBoundsMin,
+                    frameBoundsMax,
+                    std::span<const IRComponents::C_Voxel>{frames.front()}
+                }
             );
-            IR_LOG_INFO(
-                "--load-vxs: loaded '{}' -> entity {} ({} voxels)",
+            g_vxsFrames = std::move(frames);
+        }
+
+        // Refusing the set has to be total. Checking the entity before the pool
+        // count means a regression that moves entity creation back inside the
+        // loop reports the live entity rather than the pool-count symptom it
+        // also produces.
+        if (loadFailed) {
+            g_vxsFrames.clear();
+            IR_ASSERT(
+                g_vxsEntity == IREntity::kNullEntity,
+                "--load-vxs refused '{}' but left voxel-set entity {} live",
                 g_loadVxsPath,
-                vxsEntity,
-                loaded.value_.dense_.voxelCount()
+                g_vxsEntity
             );
+        }
+
+        // One frame's worth of slots for the whole set, however many frames it
+        // has — and nothing at all when the set was refused. Compared with `<=`
+        // because the pool hands a recycled free span back without moving the
+        // high-water mark, so the delta can only under-report a reservation,
+        // never invent one: the bound fails on exactly the leak it guards and
+        // has no false-positive branch.
+        const std::size_t expectedVoxels = g_vxsFrames.empty() ? 0u : g_vxsFrames.front().size();
+        const int poolReserved = poolLiveVoxelCount() - poolLiveBefore;
+        IR_ASSERT(
+            poolReserved <= static_cast<int>(expectedVoxels),
+            "--load-vxs reserved {} pool voxels for {} frame(s); one entity-owned set is {}",
+            poolReserved,
+            g_vxsFrames.size(),
+            expectedVoxels
+        );
+
+        if (!loadFailed) {
+            IR_LOG_INFO(
+                "--load-vxs: loaded '{}' -> entity {} ({} voxels, {} frame(s) at {} FPS, {} pool "
+                "voxels reserved)",
+                g_loadVxsPath,
+                g_vxsEntity,
+                expectedVoxels,
+                g_vxsFrames.size(),
+                g_vxsFps,
+                poolReserved
+            );
+            if (g_vxsFrame >= 0)
+                showVxsFrame(g_vxsFrame);
         }
     }
 
