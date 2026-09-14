@@ -167,6 +167,38 @@ static_assert(
 template <> struct System<BAKE_SUN_SHADOW_MAP> {
     bool voxelFaceCoverage_ = false;
     bool sourceFaceCoverage_ = false;
+    std::pair<ResourceId, Texture2D *> analyticCasterDepth_{0, nullptr};
+    ivec2 analyticCasterSize_{0};
+    bool analyticCasterReady_ = false;
+    FrameDataVoxelToCanvas analyticCasterFrame_{};
+
+    Texture2D *prepareAnalyticCasterDepth(const GPUShapesFrameData &shapeFrame) {
+        const ivec2 size = shapeFrame.canvasSize;
+        if (!voxelFaceCoverage_ || frameData_.shadowsEnabled_ == 0) {
+            return nullptr;
+        }
+        if (analyticCasterDepth_.second == nullptr || analyticCasterSize_ != size) {
+            if (analyticCasterDepth_.second != nullptr) {
+                IRRender::destroyResource<Texture2D>(analyticCasterDepth_.first);
+            }
+            analyticCasterDepth_ = IRComponents::detail::makeCanvasDistanceTexture(size);
+            analyticCasterSize_ = size;
+        }
+        const int empty = IRConstants::kTrixelDistanceMaxDistance;
+        // Device clear also initializes the Metal image-atomic scratch buffer.
+        IRRender::device()->clearTexImage(analyticCasterDepth_.second, 0, &empty);
+        analyticCasterFrame_.cameraTrixelOffset_ = shapeFrame.cameraTrixelOffset;
+        analyticCasterFrame_.trixelCanvasOffsetZ1_ = shapeFrame.trixelCanvasOffsetZ1;
+        analyticCasterFrame_.canvasSizePixels_ = shapeFrame.canvasSize;
+        analyticCasterFrame_.voxelRenderOptions_ = shapeFrame.voxelRenderOptions;
+        analyticCasterFrame_.visualYaw_ = shapeFrame.visualYaw;
+        analyticCasterFrame_.rasterYaw_ = shapeFrame.rasterYaw;
+        analyticCasterFrame_.residualYaw_ =
+            shapeFrame.smoothYawEnabled ? shapeFrame.residualYaw : 0.0f;
+        analyticCasterReady_ = true;
+        return analyticCasterDepth_.second;
+    }
+
     ShaderProgram *voxelFaceProgram_ = nullptr;
     Buffer *voxelFaceFrameBuf_ = nullptr;
     ShaderProgram *clearProgram_ = nullptr;
@@ -343,6 +375,33 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
                 BufferTarget::SHADER_STORAGE,
                 kBufferIndex_SunShadowDepthMap
             );
+            if (analyticCasterReady_ && &canvasTextures == mainTextures_) {
+                voxelFrameDataBuf_->subData(0, sizeof(analyticCasterFrame_), &analyticCasterFrame_);
+                // Only analytic geometry enters this input; voxel coverage already
+                // comes from finite faces and must not acquire depth-point splats.
+                bakeProgram_->use();
+                analyticCasterDepth_.second
+                    ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
+                voxelFrameDataBuf_->bindBase(
+                    BufferTarget::UNIFORM,
+                    kBufferIndex_FrameDataVoxelToCanvas
+                );
+                IRRender::device()->dispatchCompute(
+                    IRMath::divCeil(canvasTextures.size_.x, kBakeSunShadowGroupSize),
+                    IRMath::divCeil(canvasTextures.size_.y, kBakeSunShadowGroupSize),
+                    1
+                );
+                IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+                restoreMainCanvasVoxelFrame(
+                    voxelFrameScratch_,
+                    voxelFrameDataBuf_,
+                    mainTextures_,
+                    mainPool_,
+                    mainRotation_
+                );
+                canvasTextures.getTextureDistances()
+                    ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
+            }
             return;
         }
         clearDepthMap();
@@ -754,6 +813,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
 
     // All voxel canvases share one clear and one cascade frame.
     void beginVoxelFaceCoverage() {
+        analyticCasterReady_ = false;
         if (sunShadowFrameDataBuf_ == nullptr) {
             sunShadowFrameDataBuf_ =
                 IRRender::getNamedResource<Buffer>("ComputeSunShadowFrameData");

@@ -44,8 +44,18 @@ that the experimental rendering is ready to become the default.
 
 - [Overhead direction controls](lighting-direction-probes.md) expose 3,808 false
   shadow pixels on unblocked GRID staircase treads with the default caster.
-  Source-face casting matches shadows disabled exactly. Establish caster geometry
-  and resolve-normal provenance before correcting coverage; this remains unfixed.
+  Source-face casting matches shadows disabled exactly. [Footprint experiments](analytic-face-shadow-coexistence.md)
+  establish that top-surface splats alone reproduce the error; radius zero removes
+  it but fails box coverage. The default caster remains unfixed. Finite face
+  footprints remain the intended correction, with no blur or normal averaging.
+
+- [Analytic caster coexistence](analytic-face-shadow-coexistence.md) now preserves
+  main-canvas SDF shadows alongside voxel/source-face casting. The detached roof
+  control passes; the GRID outside patch retains an 8-level error and fails.
+  Analytic finite coverage, non-main producers, and the 32 changed plate-edge
+  pixels at three cardinal angles need validation before default adoption.
+  Profile the added SDF depth pass and consolidate traversal in the optimization
+  round after visual correctness.
 
 - [Staircase visibility](staircase-shadow-visibility.md) is corrected: a nearby
   external blocker no longer loses its shadow at tread boundaries. The default

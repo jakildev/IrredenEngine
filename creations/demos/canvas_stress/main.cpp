@@ -1098,6 +1098,7 @@ void registerArgs() {
     );
     args.flag("--probe-upright", "Use unrotated revoxelization and attached shadow probes");
     args.flag("--probe-staircase", "Use a stair-stepped plate and nearby overhead blocker");
+    args.flag("--probe-analytic-blocker", "Use an analytic box for the staircase roof");
     args.flag("--probe-unblocked", "Remove the shadowocclusion wall for a direct-light control");
     args.flag(
         "--probe-external-blocker",
@@ -1719,10 +1720,21 @@ void initEntities() {
         };
         spawnPart(true, blocked && !external && !staircase);
         if (blocked && staircase) {
-            IREntity::createEntity(
-                C_LocalTransform{vec3(0.0f, -2.0f, -2.0f)},
-                C_VoxelSetNew{ivec3(16, 8, 1), Color{245, 160, 65, 255}, true, mainCanvas}
-            );
+            if (IREngine::args().getFlag("--probe-analytic-blocker")) {
+                IREntity::createEntity(
+                    C_LocalTransform{vec3(0.0f, -2.0f, -2.0f)},
+                    C_ShapeDescriptor{
+                        IRRender::ShapeType::BOX,
+                        vec4(16.0f, 8.0f, 1.0f, 0.0f),
+                        Color{245, 160, 65, 255}
+                    }
+                );
+            } else {
+                IREntity::createEntity(
+                    C_LocalTransform{vec3(0.0f, -2.0f, -2.0f)},
+                    C_VoxelSetNew{ivec3(16, 8, 1), Color{245, 160, 65, 255}, true, mainCanvas}
+                );
+            }
         } else if (blocked && external) {
             spawnPart(false, true);
         }
