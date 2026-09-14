@@ -110,8 +110,7 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   one this suite inspects and CI never runs it for. That is the pair the
   two ratchets have to agree on, and the derived side is the one a
   hand-maintained list cannot follow: `test_workflow_paths_sync.sh`'s T4
-  asserts the derived set against `fleet-tests.yml`'s `paths:` blocks, so a
-  newly-covered workflow fails a suite instead of losing its trigger;
+  asserts the derived set against `fleet-tests.yml`'s `paths:` blocks;
   `fleet_test_subjects.py`'s F2 asserts it against `OUT_OF_TREE_SUBJECTS`
   (which T4 never reads); T6 asserts the two derivations agree.
 - **Bash tests source `tests/lib_assert.sh`** for the PASS/FAIL counters,
