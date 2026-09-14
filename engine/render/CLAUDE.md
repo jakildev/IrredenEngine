@@ -111,7 +111,8 @@ no visual effect do not require render captures.
   rotated GRID staircases may emit opposite-polarity risers and dual faces only
   when the rotated-content marker is set and the canvas is not revoxelized.
   Revoxelized detached occupancy uses the strict triplet; see the
-  [detached-face-normal contract](../../docs/design/detached-face-normals.md).
+  [face-rasterization model](../../docs/design/voxel-face-rasterization.md)
+  and the [detached-face-normal contract](../../docs/design/detached-face-normals.md).
 - Continuous-yaw GRID rendering uses three face-local canvases plus a
   forward-scatter composite. Its overflow lane, analytic edge coverage,
   ordering, and fixed-cost constraints live in the
