@@ -86,14 +86,16 @@ Use the validation index's jitter probe and the camera contracts below.
 
 ### Trixel→framebuffer hover parity shift
 
-- Default `RECTANGULAR` gathering uses raw coordinates for color/depth/tier
-  and parity-shifted coordinates only for hover/picking. Read the
+- Normal voxel display reconstructs voxel-face footprints through the fragment
+  gather; raw trixel texels are a debugging view, not the presentation default.
+  Private revoxelized canvases use undilated `LOCAL_TRIANGLES` with local parity
+  and row-corrected queries. The compositor follows the effective producer
+  layout, never depth scaling or world position. See the
+  [local-triangle contract](../../docs/design/detached-local-triangles.md).
+- General canvas producers retain their rectangular storage contract. Their
+  parity shift applies only to hover/picking; read the
   [parity-shift design](../../docs/design/trixel-parity-shift-442-investigation.md)
-  before changing either coordinate path.
-- Opt-in `LOCAL_TRIANGLES` on private revoxelized canvases uses local parity,
-  undilated writes and row-corrected display queries. The compositor follows
-  the effective layout recorded by the producer, never depth scaling or world
-  position. See the [local-triangle contract](../../docs/design/detached-local-triangles.md).
+  before changing that coordinate path.
 - CPU frame-data structs and shader blocks must agree on field order,
   `std140` padding, and binding index. Every hard-coded binding has a matching
   `kBufferIndex_*` constant.

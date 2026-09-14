@@ -7,7 +7,7 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
 
 | Priority | Work | State / next acceptance |
 |---|---|---|
-| 1 | Detached face geometry and trixel display | Investigated in [display diagnosis](detached-trixel-display.md). Visible source faces, depth and picking still need a consistent projection. Origin and camera placement corrected. [Back-facing emission](detached-face-normals.md) now has a targeted correction and normal oracle; [Local triangular display](detached-local-triangles.md) has an opt-in undilated layout and per-face oracle; source-face reconstruction, depth/picking and default adoption remain. |
+| 1 | Detached face geometry and trixel display | Investigated in [display diagnosis](detached-trixel-display.md). Visible source faces, depth and picking still need a consistent projection. Origin and camera placement corrected. [Back-facing emission](detached-face-normals.md) now has a targeted correction and normal oracle; [Local triangular display](detached-local-triangles.md) is the normal undilated display with a per-face oracle; raw rectangular display is debug-only. Source-face reconstruction and depth/picking remain. |
 | 2 | Shadow reception and contact | Source-face casting exists, but receivers still use reconstructed surfaces. Check concave faces and contact after visible geometry agrees. |
 | 3 | Projected face boundaries | Reconstruct voxel-face coverage from light direction and receiver geometry. Clean edges must follow projected geometry, not blur, inflated coverage or bias that hides errors. |
 | 4 | Duplicate CPU occupancy reconstruction | Profile identified work overwritten by inverse GPU resampling. Preserve buffer-availability fallback and identity transitions before skipping it. |
