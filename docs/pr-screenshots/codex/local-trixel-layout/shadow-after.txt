@@ -1,0 +1,4 @@
+yaw=0 iou=0.716 area_ratio=0.878 expected_pixels=929 observed_pixels=816 PASS
+yaw=90 iou=0.943 area_ratio=0.985 expected_pixels=4798 observed_pixels=4728 PASS
+yaw=180 iou=0.913 area_ratio=1.002 expected_pixels=4992 observed_pixels=5000 PASS
+yaw=270 iou=0.876 area_ratio=0.981 expected_pixels=4977 observed_pixels=4880 PASS

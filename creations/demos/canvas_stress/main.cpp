@@ -158,6 +158,9 @@ struct CanvasStressSettings {
     float sweepYawFrom_ = 0.0f;
     float sweepYawTo_ = 0.0f;
     int sweepYawCount_ = 0;
+    vec2 sweepPanFrom_{};
+    vec2 sweepPanTo_{};
+    int sweepPanCount_ = 0;
     int sweepFramesCount_ = 0;
     int sweepFramesSettle_ = 0;
     // `--auto-profile` enables per-system frame timing so the World dtor
@@ -1040,6 +1043,7 @@ void applyDepthProbeAssert(const std::string &value) {
 // working.
 void registerArgs() {
     IRArgs::Parser &args = IREngine::args();
+    args.flag("--pivot-origin", "Fix camera rotation pivot at the world origin");
     args.number("--yaw", "Initial camera yaw, radians", g_settings.cameraYaw_);
     args.integer(
         "--subdivisions",
@@ -1098,6 +1102,11 @@ void registerArgs() {
         "--sweep-yaw",
         "Focused capture: interpolate camera yaw (radians) <from> <to> across <n> shots",
         3
+    );
+    args.numbers(
+        "--sweep-pan",
+        "Focused capture: camera iso <fromX> <fromY> <toX> <toY> <n> shots",
+        5
     );
     args.numbers(
         "--sweep-frames",
@@ -1195,15 +1204,22 @@ void applyArgs() {
         g_settings.sweepYawTo_ = v[1];
         g_settings.sweepYawCount_ = static_cast<int>(v[2]);
     }
+    if (args.wasProvided("--sweep-pan")) {
+        const auto &v = args.getFloats("--sweep-pan");
+        g_settings.sweepPanFrom_ = vec2(v[0], v[1]);
+        g_settings.sweepPanTo_ = vec2(v[2], v[3]);
+        g_settings.sweepPanCount_ = static_cast<int>(v[4]);
+    }
     if (args.wasProvided("--sweep-frames")) {
         const std::vector<float> &v = args.getFloats("--sweep-frames");
         g_settings.sweepFramesCount_ = static_cast<int>(v[0]);
         g_settings.sweepFramesSettle_ = static_cast<int>(v[1]);
     }
-    if (g_settings.sweepYawCount_ > 0 || g_settings.sweepFramesCount_ > 0) {
+    if (g_settings.sweepYawCount_ > 0 || g_settings.sweepFramesCount_ > 0 ||
+        g_settings.sweepPanCount_ > 0) {
         // Sweep captures isolate one moving variable; continuous camera auto-yaw
         // would otherwise drift the pose during the settle frames and confound
-        // both sweep kinds.
+        // the sweep.
         g_settings.autoRotate_ = false;
         g_settings.autoRotateSetByCli_ = true;
     }
@@ -1233,6 +1249,9 @@ int main(int argc, char **argv) {
     IRRender::setCameraPosition2DIso(vec2(0.0f, 0.0f));
     IRRender::setCameraZoom(g_settings.initialZoom_);
     IRPrefab::Camera::setYaw(g_settings.cameraYaw_);
+    if (IREngine::args().getFlag("--pivot-origin")) {
+        IRRender::setRotationPivotMode(IRRender::RotationPivotMode::ORIGIN);
+    }
 
     // #2043 repro: force base subdivisions when requested (--subdivisions N). 0
     // leaves the engine default (1) so a flagless run stays byte-identical.
@@ -1430,12 +1449,14 @@ void initSystems() {
 
     if (g_autoWarmupFrames > 0) {
         int settleFrames = 60;
-        if (g_settings.sweepYawCount_ > 0 || g_settings.sweepFramesCount_ > 0) {
+        if (g_settings.sweepYawCount_ > 0 || g_settings.sweepFramesCount_ > 0 ||
+            g_settings.sweepPanCount_ > 0) {
             // #1721 sweep mode: a focused diagnostic capture REPLACES the base
             // suite — the swept variable (camera yaw, or entity spin phase via
             // inter-shot settle frames) should be the only thing changing.
             const int totalSweepShots = IRMath::max(g_settings.sweepYawCount_, 0) +
-                                        IRMath::max(g_settings.sweepFramesCount_, 0);
+                                        IRMath::max(g_settings.sweepFramesCount_, 0) +
+                                        IRMath::max(g_settings.sweepPanCount_, 0);
             g_sweepShotLabels.reserve(totalSweepShots);
             for (int i = 0; i < g_settings.sweepYawCount_; ++i) {
                 const float t =
@@ -1446,6 +1467,17 @@ void initSystems() {
                                   t * (g_settings.sweepYawTo_ - g_settings.sweepYawFrom_);
                 g_sweepShotLabels.push_back("sweep_yaw_" + std::to_string(i));
                 g_allShots.push_back({1.0f, vec2(0.0f), yaw, g_sweepShotLabels.back().c_str()});
+            }
+            for (int i = 0; i < g_settings.sweepPanCount_; ++i) {
+                const float t = g_settings.sweepPanCount_ > 1
+                                    ? static_cast<float>(i) / (g_settings.sweepPanCount_ - 1)
+                                    : 0.0f;
+                const vec2 cameraIso = g_settings.sweepPanFrom_ +
+                                       t * (g_settings.sweepPanTo_ - g_settings.sweepPanFrom_);
+                g_sweepShotLabels.push_back("sweep_pan_" + std::to_string(i));
+                g_allShots.push_back(
+                    {1.0f, cameraIso, g_settings.cameraYaw_, g_sweepShotLabels.back().c_str()}
+                );
             }
             for (int i = 0; i < g_settings.sweepFramesCount_; ++i) {
                 g_sweepShotLabels.push_back("sweep_frame_" + std::to_string(i));
@@ -1460,7 +1492,8 @@ void initSystems() {
                 if (g_settings.initialZoomSetByCli_) {
                     shot.zoom_ = g_settings.initialZoom_;
                 }
-                if (IREngine::args().wasProvided("--camera-iso")) {
+                if (IREngine::args().wasProvided("--camera-iso") &&
+                    g_settings.sweepPanCount_ == 0) {
                     const auto &offset = IREngine::args().getFloats("--camera-iso");
                     shot.cameraIso_ = vec2(offset[0], offset[1]);
                 }

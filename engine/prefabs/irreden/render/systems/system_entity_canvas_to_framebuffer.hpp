@@ -67,13 +67,7 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
     vec2 effectiveCameraIso_{};
     vec2 cameraZoom_{};
     float visualYaw_ = 0.0f;
-    // Game-pixel half of the anti-vibration decomposition — see
-    // IRMath::cameraSubPixelOffsets (the same value TRIXEL_TO_FRAMEBUFFER uses
-    // for the native-resolution main canvas). Derived from effectiveCameraIso_ /
-    // cameraZoom_. For this UPSCALED detached canvas the raw game-px value is
-    // sub-texel and must be snapped to the canvas texel grid before use (#1883,
-    // jitter fix) — see the tick.
-    vec2 isoPixelOffset_{};
+    vec2 cameraFramebufferOffset_{};
     // Global voxel subdivision factor the SHARED framebuffer depth buffer runs
     // at this frame (the main world canvas + SDF floor encode depth as
     // worldDepth × effSub × 4). A world-placed detached canvas rasters its pool
@@ -97,9 +91,13 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         cameraZoom_ = IRRender::getCameraZoom();
         visualYaw_ = IRPrefab::Camera::getYaw();
 
-        const IRMath::CameraSubPixelOffsets subPixelOffsets =
-            IRMath::cameraSubPixelOffsets(effectiveCameraIso_, cameraZoom_, ivec2(1));
-        isoPixelOffset_ = vec2(subPixelOffsets.framebufferGamePxOffset_);
+        // Private canvas transforms use Y-up coordinates on both backends.
+        // Consume whole framebuffer pixels; the final upscale owns the residual.
+        cameraFramebufferOffset_ =
+            IRMath::floor(
+                IRMath::fract(effectiveCameraIso_) * fbRes_ * cameraZoom_ / mainCanvasSize_
+            ) *
+            vec2(1.0f, -1.0f);
 
         effectiveSub_ = IRRender::getVoxelRenderEffectiveSubdivisions();
     }
@@ -159,32 +157,11 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         vec2 normalizedPos = entityOnMainCanvas / mainCanvasSize_;
 
         vec2 entityAPos = vec2(normalizedPos.x - 0.5f, 0.5f - normalizedPos.y);
-        // Camera sub-pixel offset, SNAPPED to the detached canvas's texel grid
-        // (#1883), re-expressed for the #2043 density divide. The detached canvas
-        // is an upscaled pixel-art texture — one of its texels spans `texelFb`
-        // framebuffer px: one main-canvas trixel (`fbRes × zoom / mainCanvasSize`)
-        // at cubeSub == 1, and 1/cubeSub of that once the quad scale below divides
-        // cubeSub out (the canvas rasters cubeSub texels per base unit, so each
-        // texel is correspondingly finer). The snap target is the actual canvas
-        // texel, not the base trixel, so it carries the `/cubeSubDensity` divide.
-        // `isoPixelOffset_` is an integer GAME-px offset, which is texel-aligned
-        // for the native-resolution main canvas (TRIXEL_TO_FRAMEBUFFER) but
-        // SUB-texel for this upscaled canvas: applying it raw shifts the gather's
-        // sample point a fraction of a texel, so the silhouette re-rasterizes every
-        // frame and the solid shimmers / jitters under a smooth camera pan (the
-        // world content stays put because it is texel-aligned). Snapping the offset
-        // to whole texels makes the detached move in clean texel steps — no
-        // sub-texel resample, so no shimmer — while still tracking the world to
-        // within half a texel. At an integer camera offset isoPixelOffset_ is 0, so
-        // the snap is a no-op and static / cardinal frames stay byte-identical (as
-        // does the whole expression at cubeSub == 1).
+        // Canvas density affects texture scale, never camera placement.
         const vec2 texelFb = fbRes_ * cameraZoom_ / mainCanvasSize_ / vec2(cubeSubDensity);
-        const vec2 texelSteps = isoPixelOffset_ / texelFb;
-        const vec2 snappedCamOffset =
-            vec2(IRMath::roundHalfUp(texelSteps.x), IRMath::roundHalfUp(texelSteps.y)) * texelFb;
         vec2 entityFbCenter = vec2(
-            fbRes_.x * 0.5f + snappedCamOffset.x + entityAPos.x * fbRes_.x * cameraZoom_.x,
-            fbRes_.y * 0.5f + snappedCamOffset.y + entityAPos.y * fbRes_.y * cameraZoom_.y
+            fbRes_.x * 0.5f + cameraFramebufferOffset_.x + entityAPos.x * fbRes_.x * cameraZoom_.x,
+            fbRes_.y * 0.5f + cameraFramebufferOffset_.y + entityAPos.y * fbRes_.y * cameraZoom_.y
         );
         // Texture Y increases down while framebuffer Y increases up. Cancel
         // the (-1,-1) canvas-origin offset in that framebuffer basis.
