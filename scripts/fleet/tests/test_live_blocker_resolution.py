@@ -31,11 +31,13 @@ enrich_stackable_blocker_prs = _mod.enrich_stackable_blocker_prs
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _state(engine_tasks=None, engine_prs=None, closed=None, merged_prs=None):
+def _state(engine_tasks=None, engine_tasks_in_progress=None, engine_prs=None,
+           closed=None, merged_prs=None):
     return {
         "repos": {
             "engine": {
-                "tasks": {"open": engine_tasks or []},
+                "tasks": {"open": engine_tasks or [],
+                          "in_progress": engine_tasks_in_progress or []},
                 "prs": engine_prs or [],
                 "closed_fleet_queued": closed or [],
                 "recent_merged_prs": merged_prs or [],
@@ -88,6 +90,18 @@ class TestResolveBlockedBy(unittest.TestCase):
         state = _state(engine_tasks=tasks, closed=[_closed_issue(100)])
         resolve_blocked_by(state)
         self.assertEqual(tasks[0]["blocked_by"], "(none)")
+
+    def test_in_progress_closed_ref_resolves_to_none(self):
+        """#2534: a claimed task (routed to tasks.in_progress by
+        fetch_task_queue, not tasks.open) must get the same blocked_by
+        reduction — otherwise its raw, unresolved value never reaches
+        `(none)` and a stale fleet:blocked label on an in-flight issue can
+        never clear via _ingest_unblock_candidates."""
+        in_progress_tasks = [_task("#259", "#257")]
+        state = _state(engine_tasks_in_progress=in_progress_tasks,
+                       closed=[_closed_issue(257)])
+        resolve_blocked_by(state)
+        self.assertEqual(in_progress_tasks[0]["blocked_by"], "(none)")
 
     def test_open_ref_unchanged(self):
         """Single ref that is still open → bare #NNN."""

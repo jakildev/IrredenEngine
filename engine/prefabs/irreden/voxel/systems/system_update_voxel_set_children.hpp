@@ -41,6 +41,14 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
         C_VoxelPool *pool_ = nullptr;
         std::size_t startIdx_ = 0;
         std::size_t count_ = 0;
+        // Whether this range is also a binding-5 upload. A GPU-transform-
+        // indirected set writes its CPU mirror but must NOT queue the upload
+        // (see the tick), yet its chunk bounds still moved — so the range is
+        // always the set's REAL span and the upload decision rides alongside
+        // it. Folding "don't upload" into a (0, 0) range, as this carried
+        // before #2830, silently lost cull invalidation for exactly the sets
+        // that move most.
+        bool upload_ = false;
     };
 
     // Resolved on the main thread in beginTick, read-only in the worker tick.
@@ -158,17 +166,22 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
         // STAGE_1 canvas-switch re-seed, and for cull/picking), but we must NOT
         // queue it for the steady-state binding-5 flush — that flush runs after
         // the prepass in the RENDER pipeline and would clobber the GPU positions.
-        // Both cases (static + GPU-slotted) defer to endTick via pendingByWorker_:
-        // count_ > 0 means "queue + dirty"; count_ == 0 means "dirty only". This
-        // keeps markChunkWorldBoundsDirty() on the main thread and off the hot
-        // concurrent path (eliminates the same-value concurrent store TSan would flag).
+        // Both cases (static + GPU-slotted) defer to endTick via pendingByWorker_,
+        // carrying the real written range plus an upload_ flag: the cull caches
+        // must follow the rewritten positions in BOTH cases, only the binding-5
+        // upload is static-only. This keeps markCullBoundsDirty() on the main
+        // thread and off the hot concurrent path (eliminates the same-value
+        // concurrent store TSan would flag).
         if (writtenCount > 0) {
             const bool isStatic = voxelSet.gpuTransformSlot_ == IRRender::kVoxelTransformStatic;
-            pendingByWorker_[static_cast<std::size_t>(IRJob::workerId())].push_back(PendingRange{
-                &pool,
-                isStatic ? voxelSet.voxelStartIdx_ : std::size_t{0},
-                isStatic ? static_cast<std::size_t>(writtenCount) : std::size_t{0}
-            });
+            pendingByWorker_[static_cast<std::size_t>(IRJob::workerId())].push_back(
+                PendingRange{
+                    &pool,
+                    voxelSet.voxelStartIdx_,
+                    static_cast<std::size_t>(writtenCount),
+                    isStatic
+                }
+            );
         }
         if (voxelSet.ownerEntityId_ == IREntity::kNullEntity && entityId != IREntity::kNullEntity &&
             voxelSet.numVoxels_ > 0) {
@@ -184,16 +197,19 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
     }
 
     void endTick() {
-        // Main-thread merge. For each staged entry: queue the position range when
-        // count_ > 0 (static voxel set), and always evict the chunk world-AABB
-        // cache (markChunkWorldBoundsDirty). Dirty marking runs here, not in tick,
-        // to keep the bool write off the concurrent path (#1803 TSan note).
+        // Main-thread merge. Every staged entry invalidates the cull caches over
+        // the range it actually rewrote; only a static set additionally queues
+        // that range for the binding-5 upload. Invalidation runs here, not in
+        // tick, to keep the shared-cache writes off the concurrent path (#1803
+        // TSan note) — the per-chunk pending bits are bit-packed, so a worker
+        // thread writing them would be a genuine race, not a benign same-value
+        // store.
         for (std::vector<PendingRange> &worker : pendingByWorker_) {
             for (const PendingRange &range : worker) {
-                if (range.count_ > 0) {
+                range.pool_->markCullBoundsDirty(range.startIdx_, range.count_);
+                if (range.upload_) {
                     range.pool_->queuePositionRange(range.startIdx_, range.count_);
                 }
-                range.pool_->markChunkWorldBoundsDirty();
             }
         }
     }
