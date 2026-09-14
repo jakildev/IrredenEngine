@@ -43,7 +43,7 @@ Parent revision: `09e4a8740a84739970288664df6691ba9a6771c1`.
 | 551 / 552 | Blocked GRID staircase, overhead default/source-face casting |
 | 553 | Blocked GRID, opposite-side (0.42,0.60,-0.55), source-face casting |
 | 554–556 | Unblocked overhead default/source/disabled controls described above |
-| 557–559 | Unblocked GRID, zero / NaN / below-ground direction; all RGB-identical fallback |
+| 557–560 | Unblocked GRID, zero / NaN / below-ground / infinite direction; all RGB-identical fallback |
 
 For blocked captures remove `--probe-unblocked` from the recipe. For opposite-side
 lighting replace its direction and add `--source-face-shadows`. The older numerical
@@ -52,7 +52,10 @@ it to these changed directions without rederiving its expected values and probes
 
 ![Light direction changes](../pr-screenshots/codex/lighting-direction-probes/light-directions.png)
 
-Native build and all capture runs exited cleanly. Default and invalid-input
+Native build and all listed capture runs exited cleanly. An extra infinity-input
+run through a Python subprocess failed to connect to macOS display services and
+produced no capture; it is not counted as validation. Direct `fleet-run` repeated
+the same arguments and exited cleanly with capture 560. Default and invalid-input
 comparisons validate the new control; overhead comparisons diagnose a preexisting
 coverage failure. OpenGL remains unverified. Grazing and detached angle sweeps,
 actual caster provenance and receiver reconstruction remain visual work.

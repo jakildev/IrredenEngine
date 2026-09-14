@@ -4,3 +4,4 @@
 555 -> 556: changed RGB pixels=0; bbox=None; extrema=((0, 0), (0, 0), (0, 0))
 557 -> 558: changed RGB pixels=0; bbox=None; extrema=((0, 0), (0, 0), (0, 0))
 557 -> 559: changed RGB pixels=0; bbox=None; extrema=((0, 0), (0, 0), (0, 0))
+557 -> 560: RGB difference bbox=None
