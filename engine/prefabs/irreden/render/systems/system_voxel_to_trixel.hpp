@@ -1314,6 +1314,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             IR_PROFILE_SCOPE("vs1_clear");
             IRRender::GpuSubStageScope gpuScope("canvasClear");
             clearCanvasAndDistances(entity, triangleCanvasTextures);
+            triangleCanvasTextures.renderedSampleLayout_ = TrixelSampleLayout::RECTANGULAR;
+            triangleCanvasTextures.renderedSubdivisions_ = 0;
         }
 
         // Fog-of-war column cull (#2008): resolve this canvas's optional fog

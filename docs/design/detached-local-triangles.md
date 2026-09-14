@@ -1,19 +1,30 @@
 # Local triangular display for detached voxels
 
-`IRCanvasStress --local-trixel-display` opts the revox, shadowbox and smallzoom
-probes into undilated triangular display. Other canvases retain rectangular
-sampling. This corrects the display of camera-aligned resampled cells; it does
-not reconstruct the original authored faces or smooth their staircase normals.
-Projected shadow boundaries remain a geometry problem, not a blur operation.
+Normal detached voxel rendering uses undilated local-triangle reconstruction.
+Raw rectangular trixel display is available only as a diagnostic override:
+`IRCanvasStress --debug-raw-trixels`. The old `--local-trixel-display` flag is
+a compatibility no-op because no presentation flag should be necessary.
+
+This reconstructs the display of camera-aligned resampled cells; it does not
+reconstruct the original authored faces or smooth staircase normals. Projected
+shadow boundaries remain a geometry problem, not a blur operation. Triangular
+teeth can still expose erroneous resampled occupancy even after rectangular
+display teeth are removed; those are separate correctness checks.
 
 ## Producer and consumer contract
 
-`C_TriangleCanvasTextures::sampleLayout_` requests `LOCAL_TRIANGLES` only for
-private voxel canvases. Callers must not mix SDF/text producers into this layout.
-The revoxelized branch of `buildVoxelFrameData` retains a nonzero resampling
-marker, so the back-face exclusion remains active, but disables face dilation.
-The raster records `renderedSampleLayout_`; the composite consumes that effective
-layout, so switching out of revoxelization restores rectangular sampling.
+`C_TriangleCanvasTextures::sampleLayout_` defaults to `LOCAL_TRIANGLES`. The
+request is interpreted only by the detached revoxelized voxel producer; main
+world, SDF and text retain their existing storage conventions. A revoxelized
+private canvas must not mix SDF/text writes into its local-triangle storage.
+The resampling marker stays nonzero so back-face exclusion remains active,
+but normal display disables face dilation. Rectangular sampling and its legacy
+dilation are a debug override, not an alternate presentation mode.
+
+The raster clears effective layout and density metadata before the empty-pool
+return, then records `renderedSampleLayout_` when it produces voxel data. The
+composite consumes that effective layout, so switching out of revoxelization or
+emptying the voxel pool cannot retain a stale local-triangle interpretation.
 
 The fragment gather uses local canvas parity and a one-row query correction to
 center each triangular footprint on the stored voxel origin. Color, depth and
@@ -54,6 +65,7 @@ alternating staircase faces, particularly at 45 degrees:
 
 ## Reproduction and retained evidence
 
+The following captures predate default adoption and use the explicit compatibility flag.
 All capture runs exited cleanly. Source base: `66622d60b` (merged rendering stack).
 Artifacts are under `docs/pr-screenshots/codex/detached-local-triangles/`.
 Captures 352–356 are the initial automatic-pivot normals sweep, which changes
@@ -100,4 +112,24 @@ silhouette. They use the single-cell recipe with `--screen-lock-detached`,
 without the normals overlay; lighting is intentionally absent for this overlay.
 
 OpenGL runtime, mixed producers, picking, comprehensive depth/contact agreement
-and large-population performance remain unverified. The layout stays opt-in.
+and large-population performance remain unverified. These remain follow-ups; normal voxel presentation still uses fragment reconstruction.
+
+## Default adoption validation
+
+Normal rendering is the flag-free single-cell recipe above: omit
+`--local-trixel-display`. Captures 591–595 at 0/22.5/45/67.5/90 degrees
+pass all 15 analytical face checks, with area ratio 1.000 for every face and
+no unexpected normal pixels. The component default test, five world-depth
+checks and nine detached-origin guard tests pass (15 tests total).
+
+Effective layout and density reset before an empty voxel-pool return. The
+diagnostic `--debug-raw-trixels` override is applied once after scene creation
+to all demo canvases; only the revoxelized producer interprets that request.
+Inherited comment/instruction lint failures were corrected without changing
+executable tokens in those cleanup files or raising budgets.
+
+The explicit `--debug-raw-trixels` negative control at 45 degrees is capture
+608. It fails all three face checks (IoU 0.256/0.330/0.195, area ratios
+4.0/2.0/2.0), while default capture 593 passes. Both use the same single-voxel
+scene and normals overlay, without shadows or AO. The debug capture uses
+`--sweep-yaw 0.78539816 0.78539816 1` with the otherwise identical recipe.
