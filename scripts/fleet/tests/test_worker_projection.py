@@ -382,8 +382,8 @@ class SemanticConflictDispatch(unittest.TestCase):
             self.assertEqual([p["number"] for p in feedback], [2417], label)
 
 
-class ReviewClaimBarsConflictResolutionPickup(unittest.TestCase):
-    """#3001 — the #2801 hazard, one lane over.
+class ActiveClaimBarsConflictResolutionPickup(unittest.TestCase):
+    """Live review or amend claims suppress conflict-resolution pickup.
 
     #2801 closed the fleet:reviewing-* -> fleet:amending-* direction
     (ReviewClaimBarsWorkerFeedbackPickup below). The conflict-resolution lane
@@ -480,17 +480,6 @@ class ReviewClaimBarsConflictResolutionPickup(unittest.TestCase):
         self.assertEqual([i["pr"] for i in self._items([held, clean])], [2418])
         self.assertEqual([p["number"] for p in self._slice([held, clean])],
                          [2418])
-
-
-class AmendClaimBarsConflictResolutionPickup(unittest.TestCase):
-    """A live amend claim suppresses conflict-resolution dispatch pressure."""
-
-    def _items(self, prs):
-        return [i for i in project_worker(_state(prs))
-                if i["kind"] == "semantic_conflict"]
-
-    def _slice(self, prs):
-        return slice_worker(_state(prs))["semantic_conflict_prs"]
 
     def test_amend_claim_suppresses_conflict_pressure_at_both_sites(self):
         held = [_sc_pr(2417, labels=["fleet:semantic-conflict",

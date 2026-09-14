@@ -2671,11 +2671,8 @@ def _semantic_conflict_claimable(pr, labels, head_labels):
     # release/verdict swap and to `fleet-claim cleanup --gh`'s orphan sweep,
     # which is what keeps this from stranding a PR. Backstopped claim-side by
     # fleet-claim's cmd_resolving_claim. Mirror in role-worker.md step 1c.
-    if any(
-        label.startswith(prefix)
-        for label in labels
-        for prefix in SEMANTIC_CONFLICT_SKIP_PREFIXES
-    ):
+    if any(label.startswith(SEMANTIC_CONFLICT_SKIP_PREFIXES)
+           for label in labels):
         return False
     # Stack-aware (role-worker step 1c): a stacked child whose base PR is
     # itself semantic-conflicted is skipped — the base resolves first, and
