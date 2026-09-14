@@ -35,11 +35,9 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
         functionName == "c_voxel_to_trixel_stage_1_winner_resolve" ||
         functionName == "c_voxel_to_trixel_stage_2" ||
         functionName == "c_voxel_to_trixel_stage_2_winner") {
-        // z-size = kStageMicroSlicesPerGroup (#2258): both stage kernels pack that
         // many micro-cell z-slices per threadgroup and re-derive their slice as
         // groupId.z * kStageMicroSlicesPerGroup + localId.z. MUST match the GLSL
         // local_size_z literal + shaders/ir_constants.{glsl,metal}. The stage-1
-        // feeder variant (#2258 Step B a′) and the #2346 winner-election /
         // winner-guarded variants are compile-time specializations of the same
         // two bodies, so they share the (2,3,8) shape.
         return MTL::Size(2, 3, 8);
@@ -60,7 +58,6 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
         functionName == "c_bake_voxel_sun_faces") {
         return MTL::Size(64, 1, 1);
     }
-    // #2479 overflow canonical sort: 256 threads over a 2048-element fused
     // slab (8 elements/thread). MUST match the GLSL local_size_x literal and
     // the kSortThreads constant in both kernels.
     if (functionName == "c_per_axis_overflow_sort") {
@@ -96,7 +93,6 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
         functionName == "c_resolve_world_placed_depth") {
         return MTL::Size(16, 16, 1);
     }
-    // Per-axis empty-cell compaction (#1961): one thread per per-axis canvas
     // cell, dispatched 2D over the axis grid (matches local_size_{x,y} = 16 in
     // c_per_axis_cell_compact.glsl). Reads the distance image via imageLoad —
     // no image-atomic scratch, so it is NOT in functionUsesImageAtomicScratch.
@@ -112,7 +108,6 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
     if (functionName == "c_propagate_light_volume") {
         return MTL::Size(8, 8, 4);
     }
-    // Per-axis dispatch-dim finalize (#2256): one thread per axis, dispatched
     // (kAxisCount, 1, 1). Explicit entry rather than implicit-by-coincidence
     // with the fallback below.
     if (functionName == "c_per_axis_cell_finalize") {
@@ -126,17 +121,13 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
 // per-frame scratch ONLY for these — slot 16 doubles as
 // kBufferIndex_RevoxelizeDetachedParams for c_revoxelize_detached (the Metal
 // 0-30 table has no free index), and an unconditional bind clobbered that
-// params UBO on every encode after the first distance-image bind (#1619: the
 // fill read distance-clear words as its params and authored nothing). Like
 // threadgroupSizeForFunctionName above — whose membership is enforced by
-// cmake/run_metal_kernel_registry_check.cmake (#2798) — this list is
 // hand-maintained but not un-checked:
-// cmake/run_metal_scratch_consumer_check.cmake (#2878) derives the expected
 // set from the kernels' own sources (an atomic parameter at
 // kMetalImageAtomicScratchSlot, reached through the wrapper → *_body.metal
 // include chain) and fails the same CI workflow and targets on drift in
 // either direction: a consumer missing here, or a name here that declares no
-// such parameter (the #1619 shape, since the bind would then land on
 // whatever it does declare).
 bool functionUsesImageAtomicScratch(const std::string &functionName) {
     return functionName == "c_voxel_to_trixel_stage_1" ||

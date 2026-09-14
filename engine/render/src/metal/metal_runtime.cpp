@@ -245,7 +245,6 @@ void bindMetalTexture(std::uint32_t unit, MTL::Texture *texture) {
     // space, so the two sticky tables are really one slot per unit: the most
     // recent bind wins. Evicting the sibling entry here is what enforces that —
     // otherwise both tables hold an entry and bindComputeResources' flush ORDER
-    // silently decides the winner (#2350/#2360: the image flush ran last, so a
     // stale image from an earlier dispatch shadowed every sampler read at the
     // same unit — no error, no warning). An unbind (nullptr) clears only its own
     // table, so it can't evict a live sibling bind.

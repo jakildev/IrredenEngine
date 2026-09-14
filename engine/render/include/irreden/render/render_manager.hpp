@@ -51,10 +51,8 @@ class RenderManager {
     void setRotationPivotMode(RotationPivotMode mode);
     RotationPivotMode getRotationPivotMode() const;
     // Explicit world-space point of interest to rotate the camera Z-yaw about
-    // (#1921). When set, CAMERA_CENTER pivots about this point at its true depth
     // — content there rotates in place instead of arcing about the z=0 world
     // point under screen center. When unset, the pivot falls back to that legacy
-    // screen-center point (byte-identical to the pre-#1921 path). The choice of
     // focus (cursor / selection / scene centroid) is a creation-level policy;
     // the engine only consumes the point.
     void setRotationPivotFocus(vec3 focusWorld);
@@ -63,11 +61,9 @@ class RenderManager {
     vec3 getRotationPivotFocus() const;
     // Focus the DEFAULT (no explicit override) CAMERA_CENTER pivot rotates
     // about: the content under the viewport center at its rendered depth
-    // (#2547). The point is derived LIVE from the current camera position on
     // every call; only the iso DEPTH is latched (re-derived by @ref
     // updateDefaultRotationPivotFocus on the frames the policy admits, held
     // otherwise). Depth 0 — before the first derive and whenever the center
-    // pixel reads background — is the pre-#2547 point exactly.
     vec3 getDefaultRotationPivotFocus() const;
     // Iso coordinate of the viewport center — the point a world position must
     // project to (before the camera offset) to land at screen center.
@@ -192,7 +188,6 @@ class RenderManager {
     // silently couple this settle threshold to a value tuned for those.
     // 1e-4 rad/frame is ~0.34 deg/s at 60 fps.
     static constexpr float kPivotYawSettleDelta = 1e-4f;
-    // Depth-aware default-pivot latch (#2547). Only the iso DEPTH is latched —
     // the focus POINT is re-derived from the live cameraIso on every read (see
     // getDefaultRotationPivotFocus), which is what keeps
     // IRMath::cameraMoveRelativeToYaw's pan identity true. NOT a dirty flag over
@@ -234,15 +229,11 @@ class RenderManager {
     float m_sunAmbient = 0.4f;
     bool m_sunShadowsEnabled = true;
     bool m_aoEnabled = true;
-    // Voxel-pool chunk-occlusion cull (#1294). Off by default — the pre-pass is
     // not dispatched unless this is set, so a default scene is byte-identical to
-    // master. The gating heuristic + camera-cut disable land in child 3 (#1800).
     bool m_voxelOcclusionCullEnabled = false;
-    // Per-voxel Hi-Z occlusion refine (#1812), layered on the chunk pre-pass
     // above. On by default, but only active when the chunk cull is enabled (the
     // per-voxel test shares getVoxelOcclusionCullEnabled()'s gate). Flip it off
     // (--no-per-voxel-occlusion) to isolate the chunk cull's contribution for the
-    // #1812 marginal acceptance gate.
     bool m_voxelPerVoxelOcclusionEnabled = true;
     DebugOverlayMode m_debugOverlayMode = DebugOverlayMode::NONE;
     bool m_depthColorDebugOn = false;

@@ -8,7 +8,6 @@ namespace IRRender {
 namespace detail {
 
 // Expands `#include "file.glsl"` directives in a GLSL source string against
-// `baseDir`, recursively, at most once per canonical path (#2514) — the GLSL
 // twin of Metal's `loadAndPreprocessMetalSource` (metal_pipeline.cpp). A
 // nested include resolves relative to the directory of the file that pulled
 // it in, not the top-level shader dir.

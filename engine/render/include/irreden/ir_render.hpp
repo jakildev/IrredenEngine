@@ -159,7 +159,6 @@ inline IREntity::EntityId getActiveCanvasEntity() {
 // Null-safe variant `getActiveCanvasEntityOrNull()` lives in
 // `<irreden/render/active_canvas.hpp>` — included on demand by callers
 // (e.g. C_ShapeDescriptor, C_VoxelSetNew) that need the headless-safe
-// snapshot without pulling in the full render surface. See #753 (T-205).
 /// @}
 
 /// @{
@@ -170,7 +169,6 @@ inline IREntity::EntityId getActiveCanvasEntity() {
 /// so re-issue these each frame from a RENDER-phase system to keep the shape on
 /// screen — the same contract the widget render systems follow. No-op when no
 /// "gui" canvas exists. Exposed to Lua as @c IRGui.drawDisc / @c IRGui.drawLine
-/// (engine #1615).
 void drawGuiDisc(ivec2 center, int radius, Color color);
 void drawGuiLine(ivec2 from, ivec2 to, Color color);
 /// @}
@@ -200,7 +198,6 @@ ivec2 getOutputScaleFactor();
 /// Copy a rectangular region from the default framebuffer into @p rgbaData (RGBA8).
 /// Returns @c false on GL error. Used by the screenshot system.
 bool readDefaultFramebuffer(int x, int y, int width, int height, void *rgbaData);
-/// Read and decode the main framebuffer's composite depth at pixel @p px (#1910).
 /// Coordinates are in the MAIN FRAMEBUFFER's texture space (its
 /// resolution-plus-buffer), top-left origin on both backends — NOT window /
 /// screenshot pixels. Returns @c valid_ == false when @p px is outside the
@@ -234,10 +231,8 @@ vec2 getMainCanvasSizeTrixels();
 /// Multiple iso-space mouse position variants are maintained because the render
 /// and update pipelines run at different rates and the camera offset matters.
 ///
-/// After T-293 the screen-space bilinear residual composite is gone —
 /// residual yaw is folded into per-face `faceDeform[]` matrices that the
 /// trixel emit shaders apply in 2D iso space (the residual-rotate stage that was
-/// a passthrough since T-293 has been fully retired by T-323).
 /// The picking helpers below therefore no longer apply a `R2D(-residualYaw)`
 /// inverse: the cursor's
 /// framebuffer pixel maps directly into the trixel-canvas frame. The 2D
@@ -266,7 +261,6 @@ vec2 mousePosition2DIsoWorldRender();
 ivec2 mouseTrixelPositionWorld();
 /// Mouse position lifted to a 3D world point in the **unrotated world frame**
 /// at the given **canvas-frame** iso depth. Composes the picking inverse
-/// `R_z(-rasterYaw) · isoPixelToPos3D · screen` — after T-293 the screen-
 /// space residual rotation is gone, so the `R2D(-residualYaw)` half of
 /// the chain is no longer needed.
 ///
@@ -340,16 +334,13 @@ SubdivisionMode getSubdivisionMode();
 void setRotationPivotMode(RotationPivotMode mode);
 RotationPivotMode getRotationPivotMode();
 /// Set an explicit world-space point of interest for camera Z-yaw to pivot
-/// about (#1921). In @c CAMERA_CENTER mode @ref getEffectiveCameraIso keeps this
 /// point pinned at its current screen position across a yaw sweep — content
 /// there rotates in place, at the point's true depth, instead of arcing about
 /// the z=0 world point under screen center. Choosing the focus (cursor under the
-/// pointer, the selected entity, a scene centroid, or a #1910 depth-probe of the
 /// screen-center pixel) is a creation-level policy; pass the resolved world
 /// point here, typically once per frame.
 void setRotationPivotFocus(vec3 focusWorld);
 /// Drop the explicit pivot focus, reverting to the legacy screen-center z=0
-/// pivot point (byte-identical to the pre-#1921 path). Idempotent.
 void clearRotationPivotFocus();
 /// True when an explicit pivot focus is set (see @ref setRotationPivotFocus).
 bool hasRotationPivotFocus();
@@ -358,7 +349,6 @@ bool hasRotationPivotFocus();
 vec3 getRotationPivotFocus();
 /// The focus the DEFAULT pivot (CAMERA_CENTER with no explicit override)
 /// rotates about: the SURFACE point under the viewport center, at the depth the
-/// content there actually renders at (#2547). Latched — re-derived once per
 /// frame by @c RenderManager::updateDefaultRotationPivotFocus on the frames its
 /// policy admits, held otherwise; falls back to the iso-depth-0 point under the
 /// viewport center before the first derive and whenever the center pixel reads
@@ -423,17 +413,14 @@ float getSunAmbient();
 /// When false, sun face shading remains active but projected shadows are disabled.
 void setSunShadowsEnabled(bool enabled);
 bool getSunShadowsEnabled();
-/// Voxel-pool chunk-occlusion cull (#1294 child 2/3). Off by default — the
 /// HZB pre-pass is dispatched only when enabled, so the default pipeline is
 /// byte-identical to master. When on, pool-chunks proven fully covered by
 /// closer geometry (last frame's Hi-Z) are dropped before the compact pass.
 void setVoxelOcclusionCullEnabled(bool enabled);
 bool getVoxelOcclusionCullEnabled();
-/// Per-voxel Hi-Z occlusion refine (#1812), layered on the chunk cull above. On
 /// by default, but only active when the chunk cull is enabled (the per-voxel
 /// test shares getVoxelOcclusionCullEnabled()'s gate), so a default scene stays
 /// byte-identical. Set false to isolate the chunk cull's contribution: the
-/// #1812 marginal acceptance gate A/Bs this while --occlusion-cull stays on, so
 /// cull-with-per-voxel vs cull-without-per-voxel must be bit-identical (the
 /// per-voxel test drops zero visible voxels; the chunk cull owns any holes).
 void setVoxelPerVoxelOcclusionEnabled(bool enabled);
@@ -471,7 +458,6 @@ vec3 getSkyColor();
 /// Replaces a pass's color output with a false-color visualization. Lighting
 /// modes (AO / LIGHT_LEVEL / SHADOW) swap the artistic composite in
 /// @c LIGHTING_TO_TRIXEL; the per-axis modes (PER_AXIS_ID / PER_AXIS_ORIGIN)
-/// recolor the per-axis forward-scatter composite (#1457) and are inert at
 /// cardinal yaw. See @c DebugOverlayMode for the per-mode color encoding.
 /// Upstream passes keep running so the values rendered are exactly what the
 /// normal path would consume.
@@ -482,7 +468,6 @@ DebugOverlayMode getDebugOverlay();
 /// @name Depth-color debug mode (scatter path)
 /// When on, the per-axis scatter fragment shader evaluates hue from the
 /// interpolated face-corner world depth rather than the pre-baked vColor,
-/// producing a smooth continuous gradient that matches the SDF twin (#1697).
 /// @c extent is the bounding half-sum (x+y+z) used to normalize depth to
 /// [0,1] across the whole pass. The extent is a single global value on
 /// RenderManager — in multi-shape scenes the last setDepthColorDebug call

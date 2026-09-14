@@ -10,7 +10,6 @@ namespace IRRender {
 
 class RenderDevice;
 
-// Headless render-device bring-up for GPU unit tests (vehicle A, #1640).
 // Creates a windowless Metal device, initializes the runtime with a null layer,
 // wires IRRender::device(), and opens an initial command buffer — everything a
 // compute test needs to drive dispatchCompute + readback without a swapchain.
@@ -26,7 +25,6 @@ class MetalPipelineStateProvider {
     // functionUsesImageAtomicScratch — the kernels that declare the R32I
     // image-atomic scratch at kMetalImageAtomicScratchSlot. Gates the
     // scratch bind in bindComputeResources so the slot stays free for
-    // kernels that declare an unrelated buffer there (#1619: the sticky
     // scratch clobbered c_revoxelize_detached's params UBO at slot 16).
     virtual bool usesImageAtomicScratch() const = 0;
     virtual MTL::RenderPipelineState *getRenderPipelineState(
@@ -88,7 +86,6 @@ MTL::Texture *boundMetalImageTexture(std::uint32_t unit);
 // Bindings are sticky (set on bind, never cleared), so a destroyed texture
 // otherwise lingers as a dangling pointer that bindRenderResources /
 // bindComputeResources re-binds on a later dispatch — setTexture on the freed
-// handle EXC_BAD_ACCESSes (#1961). Call from the Metal texture destructor
 // before releasing the handle.
 void untrackMetalTexture(MTL::Texture *texture);
 
@@ -127,7 +124,6 @@ void replaceMetalBufferInBindings(MTL::Buffer *oldBuffer, MTL::Buffer *newBuffer
 // buffer otherwise lingers as a dangling pointer that bindRenderResources /
 // bindComputeResources re-binds on a later dispatch — setBuffer objc_retains
 // the freed handle and EXC_BAD_ACCESSes. Realized by a rotation-lifecycle
-// buffer bound at a slot no cardinal-path pass re-binds (#2412: the #2334
 // overflow relight's slot-8 bind survived the per-axis release and crashed
 // STAGE_1's next dispatch at the yaw→0 transition). GL needs no equivalent —
 // deleting a GL buffer detaches it from every binding point. Call from the
@@ -150,8 +146,6 @@ bool wasMetalBufferEncoded(MTL::Buffer *buffer);
 // explicit kernel list in metal_pipeline.cpp. A new kernel that consumes
 // the scratch MUST be added to functionUsesImageAtomicScratch there — and
 // like the threadgroupSizeForFunctionName map (membership enforced by
-// cmake/run_metal_kernel_registry_check.cmake, #2798), that list is checked:
-// cmake/run_metal_scratch_consumer_check.cmake (#2878) fails the build's
 // header-checks / lint targets and the header-checks CI workflow if it drifts
 // from what the kernel sources actually declare at this slot. That checker
 // reads this constant's value rather than carrying its own copy of 16, so

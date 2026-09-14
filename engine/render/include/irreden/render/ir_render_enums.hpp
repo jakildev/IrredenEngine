@@ -32,7 +32,6 @@ enum class TextureFormat : std::uint8_t { RGBA8, RGBA16F, RGBA32F, R32I, RG32UI,
 /// CPU-side pixel format for @c glReadPixels / texture upload.
 /// @c DEPTH_COMPONENT reads the depth plane of a @c DEPTH24_STENCIL8 attachment
 /// back to a single-channel @c FLOAT32 buffer (window depth in [0, 1]); the
-/// #1910 composite-depth probe is its only consumer today.
 enum class PixelDataFormat : std::uint8_t { RGBA, RED_INTEGER, RG_INTEGER, DEPTH_COMPONENT };
 
 /// CPU-side pixel data type for @c glReadPixels / texture upload.
@@ -108,18 +107,15 @@ enum class DrawMode : std::uint8_t { TRIANGLES, LINES };
 ///                        pixel colored by WHICH axis canvas won the composite
 ///                        depth test (X = red, Y = green, Z = blue). Depth is
 ///                        untouched, so the winner is exactly the real
-///                        composite's winner (#1457 instrumentation).
 /// - @c PER_AXIS_ORIGIN — per-axis scatter recovered-origin field: scattered
 ///                        face color encodes the recovered un-yawed depth key
 ///                        (@c rawDepth = x+y+z from @c isoPixelToPos3D)
 ///                        on a long-period hue wheel, so a clean face reads as
 ///                        a smooth hue progression and a wrong-cell winner as
-///                        a hue discontinuity (#1457 instrumentation).
 /// - @c UNLIT           — disable the lighting modulation entirely
 ///                        (@c LIGHTING_TO_TRIXEL passes canvas colors through
 ///                        unchanged), exposing the raw rasterized colors on
 ///                        every path. Isolates color-content faults from
-///                        lighting faults (#1457 instrumentation).
 /// - @c PER_AXIS_MARGIN — per-axis scatter winner classification: axis hue
 ///                        (X = red, Y = green, Z = blue) at full brightness
 ///                        for MARGIN fragments (outside the quad's exact
@@ -129,7 +125,6 @@ enum class DrawMode : std::uint8_t { TRIANGLES, LINES };
 ///                        margin genuinely won the composite there —
 ///                        separates margin-vs-exact contests from
 ///                        footprint-overlap contests at shared face edges
-///                        (#2428 instrumentation).
 /// - @c NORMALS — shading normal encoded as RGB = normal * 0.5 + 0.5,
 ///   independent of albedo, AO, shadows, exposure and tonemapping.
 enum class DebugOverlayMode : std::uint8_t {

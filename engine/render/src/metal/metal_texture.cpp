@@ -106,7 +106,6 @@ class MetalTexture2DImpl final : public Texture2DImpl {
         removeClearSourceBuffer(m_texture);
         // Drop any sticky sampler/image bind slot that still references this
         // handle so a later dispatch's bind pass can't re-bind the freed
-        // texture (#1961).
         untrackMetalTexture(m_texture);
         if (m_texture != nullptr) {
             m_texture->release();
@@ -193,7 +192,6 @@ class MetalTexture2DImpl final : public Texture2DImpl {
         // blit then writes glyphs via a compute imageStore (GPU, survives the
         // clear), while the WIDGET_RENDER_* systems draw panels/borders/labels
         // via subImage2D — a CPU replaceRegion was erased by the queued clear, so
-        // widgets rendered invisible while text composited fine (#1436). Stage the
         // upload and blit copyFromBuffer so it lands in encoder order after the
         // clear/compute, matching OpenGL's submission-ordered subImage2D.
         // Per-call transient staging buffer. At current call frequency (a handful
@@ -353,7 +351,6 @@ class MetalTexture3DImpl final : public Texture3DImpl {
     }
 
     ~MetalTexture3DImpl() override {
-        // Drop any sticky bind slot referencing this handle (#1961).
         untrackMetalTexture(m_texture);
         if (m_texture != nullptr) {
             m_texture->release();
@@ -407,7 +404,6 @@ class MetalTexture3DImpl final : public Texture3DImpl {
         // NOTE: unlike uploadSubImage2D, this path does not check metalCommandBuffer()
         // and always uses a direct CPU replaceRegion. 3D textures (light-volume RGBA8
         // volumes) are seeded once at init and never cleared via GPU blit in the same
-        // frame as a CPU write, so the deferred-clear ordering hazard (#1436) cannot
         // occur today. If a future system clears a 3D texture per-frame via the command
         // buffer and writes it via uploadSubImage3D in the same tick, apply the same
         // commandBuffer-guard + staging-blit pattern used in uploadSubImage2D.

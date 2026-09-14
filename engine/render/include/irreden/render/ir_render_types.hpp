@@ -117,7 +117,6 @@ struct FrameDataTrixelToFramebuffer {
     /// (pos3DtoDistance(entityPos) * effSub * 8 — the encodeDepthWithFace ×8 over
     /// the ×subdivision depth scale).
     int distanceOffset_ = 0;
-    /// Smooth camera Z-yaw forward-scatter composite (T3 / #1310). Consumed
     /// only by the per-axis scatter shaders (v_/f_peraxis_scatter); the
     /// cardinal-fast-path gather shaders read only the prefix above, so these
     /// are an std140 append (existing field offsets unchanged → byte-identical
@@ -128,16 +127,12 @@ struct FrameDataTrixelToFramebuffer {
     ivec2 perAxisBase_{0, 0};
     float visualYaw_ = 0.0f;
     /// Raw @c IRRender::DebugOverlayMode value for the per-axis scatter's
-    /// instrumentation modes (PER_AXIS_ID / PER_AXIS_ORIGIN, #1457); 0 or any
     /// lighting-pass mode renders the normal composite. Occupies the std140
     /// pad slot at offset 124, so existing offsets are unchanged.
     int scatterDebugMode_ = 0;
     ivec4 visibleFaceIds_{0, 0, 0, 0};
     /// Reserved std140 slots at offsets 144 / 160. These formerly carried the
     /// detached-entity SO(3) forward-scatter residual quat + iso depth axis
-    /// (P3b / #1475), consumed only by v_peraxis_scatter_detached. That detached
-    /// forward-scatter path was retired in #1560 — detached SO(3) now renders
-    /// through the re-voxelize path (#1555–#1559) — but the two slots are kept
     /// (never written, never read) so `scatterFbResolution_` stays at the shared
     /// std140 offset 176 the CAMERA scatter shader reads. `v_peraxis_scatter.glsl`
     /// already declares these as `_detachedResidualPad` / `_detachedDepthAxisPad`
@@ -148,12 +143,10 @@ struct FrameDataTrixelToFramebuffer {
     /// Framebuffer resolution (.xy) the scatter renders into; .zw pad. Lets the
     /// per-axis scatter vertex shaders convert a screen-space conservative-
     /// coverage margin (in framebuffer pixels) into clip/NDC so a sub-pixel-thin
-    /// deformed face rhombus still covers a fragment center (#1494). std140-
     /// appended after detachedDepthAxis_ so the gather + world/detached scatter
     /// blocks that stop earlier stay byte-identical; only the scatter shaders
     /// that dilate read it.
     vec4 scatterFbResolution_{0.0f, 0.0f, 0.0f, 0.0f};
-    /// Depth-color debug mode for the per-axis scatter path (#1697). When
     /// depthColorMode_ != 0, the scatter fragment shader evaluates hue from the
     /// interpolated face-corner world depth (smooth continuous gradient, no moiré)
     /// instead of using the pre-baked per-voxel vColor. Matches the SDF twin's
@@ -163,8 +156,6 @@ struct FrameDataTrixelToFramebuffer {
     /// gather fast path stays byte-identical.
     int depthColorMode_ = 0;
     float depthColorExtent_ = 0.0f;
-    /// No-priority perf fast-path (#2155). 0 = no voxel drawn into this canvas
-    /// carries a non-zero per-trixel priority (#1960), so f_trixel_to_framebuffer
     /// skips the per-fragment `triangleEntityIds` decode read on the default path
     /// (still read for hovered fragments so picking is unaffected). != 0 = at
     /// least one priority voxel may be present, so the read runs and the tier is
@@ -176,21 +167,18 @@ struct FrameDataTrixelToFramebuffer {
     /// 4-byte scalar, so no size/offset change and the scatter UBO asserts below
     /// stay valid.
     int anyPerTrixelPriority_ = 0;
-    /// Two-tier composite depth partition (#1958). 0 = WORLD content: the gather
     /// (f_trixel_to_framebuffer) clamps `enc` OUT of the reserved near band
     /// (`enc = max(enc, kDepthForegroundCeil + 1)`) — a no-op for every in-budget
     /// demo, so the byte-identical fast path is preserved. != 0 = FOREGROUND
     /// priority: the gather pins this draw's model-frame local iso-depth INTO the
     /// reserved near band (`clamp(enc, kMin, kDepthForegroundCeil)`), so a floating
     /// solid is unconditionally nearer than any world fragment regardless of world
-    /// extent (the disjoint near-plane partition of the #1884 escalation). Only the
     /// detached composite (ENTITY_CANVAS_TO_FRAMEBUFFER) for a world-placed
     /// C_EntityCanvas with depthPriority_ != 0 uploads a non-zero value; the main
     /// gather + every other producer leave it 0. Repurposes the former
     /// `_depthColorPad1_` std140 slot (offset 204) — no size/offset change, so the
     /// scatter UBO asserts below stay valid.
     int depthPriorityMode_ = 0;
-    /// View-visibility overflow lane draw selector (#2333). 0 = the normal
     /// per-cell scatter / gather draws (the only value any non-overflow draw
     /// uploads). 1 = the overflow instanced indirect draw drawPerAxisScatter
     /// issues after the three per-axis cell draws: v_peraxis_scatter then pulls
@@ -218,7 +206,6 @@ static_assert(
     "Scatter UBO tail must std140-append after visibleFaceIds_ (ends at 144): "
     "detachedResidual_ 144 / detachedDepthAxis_ 160 / scatterFbResolution_ 176. "
     "The first two are now reserved padding (detached forward-scatter retired "
-    "#1560) holding scatterFbResolution_ at offset 176 for the camera scatter "
     "shader; the gather block stops at visibleFaceIds_, so it stays byte-identical"
 );
 static_assert(
@@ -240,28 +227,23 @@ static_assert(
     sizeof(FrameDataTrixelToFramebuffer) == 224,
     "FrameDataTrixelToFramebuffer size must mirror its std140 GLSL block. The "
     "camera scatter shaders (v_/f_peraxis_scatter) read the appended "
-    "perAxisBase_ / visualYaw_ / visibleFaceIds_ and the #1494 scatterFbResolution_ "
     "at offset 176; depthColorMode_ / depthColorExtent_ at offset 192 carry the "
-    "per-pixel depth-color mode for the scatter path (#1697); a silent reorder "
     "or resize would corrupt the scatter UBO with no compile diagnostic"
 );
 
 /// Multiplier in the @c encodeDepthWithFace convention (d·8 + flip·4 + face,
-/// #2207 silhouette-riser polarity carrier at bit 2), shared by the
 /// world-placed detached-canvas composite and any producer that converts world
 /// iso depth or model-frame rawDist into shared framebuffer depth units
 /// (×effSub × 8). Mirror of @c kDepthEncodeShift in
 /// `ir_iso_common.glsl` / `metal/ir_iso_common.metal`.
 constexpr int kDepthEncodeShift = 8;
 
-/// Two-tier composite depth partition (#1958; the #1884 sub-epic's Bug-A fix).
 /// The most-negative @c kDepthForegroundBandWidth codes of the shared
 /// `[kTrixelDistanceMinDistance, kTrixelDistanceMaxDistance]` depth range are
 /// RESERVED for foreground-priority detached solids. A fragment whose composite
 /// `enc` lands in that band is unconditionally nearer (GL_LESS +
 /// `normalizeDistance`) than any non-priority "world" fragment, INDEPENDENT of
 /// world extent — dominance is by partition membership, not by out-sizing the
-/// world iso-depth spread. This is the disjoint near-plane partition the #1884
 /// escalation settled on, retiring the additive priority band (no fixed band
 /// could dominate unbounded world placement — the radius-200 GRID orbit proved
 /// it). World content is clamped to stay OUT of the band; the clamp is a no-op
@@ -284,7 +266,6 @@ constexpr int kDepthForegroundCeil =
 constexpr int kDepthForegroundBandCenter =
     IRConstants::kTrixelDistanceMinDistance + kDepthForegroundBandWidth / 2;
 
-// Partition-layout asserts (#1958). These REPLACE the plan's original
 // world-extent band assert (`2·4·maxSubdividedIso + 3 < BAND`), which the
 // architect escalation proved unsatisfiable — world placement is unbounded, so
 // no sound compile-time `maxSubdividedIso` exists. The partition needs only that
@@ -299,20 +280,15 @@ static_assert(
     "foreground band [kMin, kDepthForegroundCeil] must lie inside the encodable depth range"
 );
 
-// ── Per-trixel priority tiers (#1960) ─────────────────────────────────────────
-// Generalizes #1958's two-tier partition (world vs ONE foreground band) into N
 // disjoint foreground tiers, selected per fragment by `tier = max(perEntityTier,
 // perTrixelTier)` at the depth-finalization chokepoint (f_trixel_to_framebuffer).
 // More-negative `enc` = nearer (GL_LESS), so a higher tier is a more-negative
 // disjoint sub-range of the reserved band — unconditionally in front of every
 // lower tier AND of all world content, independent of world extent. Default tier
-// 0 everywhere ⇒ byte-identical to #1958 master (the world clamp is unchanged and
 // every producer that authors no priority stays at tier 0).
 //
 // N = 3: tier 0 = world (clamped OUT of the band), tier 1 = entity-foreground
-// (the #1958 `C_EntityCanvas::depthPriority_` path), tier 2 = per-trixel override
 // (a voxel-authored priority that renders in front even of an entity-foreground
-// solid — Demo 2's "animate inside each other"). Architect ruling (#1884/#1958
 // steward direction) caps the carrier at K=2 stolen id bits ⇒ at most 4 tiers;
 // raise N only up to that ceiling, else switch to a dedicated attachment.
 constexpr int kDepthForegroundTierCount = 3;
@@ -320,7 +296,6 @@ constexpr int kDepthForegroundTierCount = 3;
 // tier holds a unit's subdivided local iso-depth spread at the effSub-16 cap; a
 // pathologically deep unit saturates against its tier edge (graceful degradation
 // — it stays pinned in front, loses only intra-tier depth resolution), exactly as
-// #1958's single band did.
 constexpr int kDepthForegroundTierWidth =
     kDepthForegroundBandWidth / (kDepthForegroundTierCount - 1);
 
@@ -356,12 +331,10 @@ static_assert(
     "lowest-priority foreground tier must stay within the reserved band"
 );
 
-// ── Composite-depth readback decode (#1910 / #2547) ───────────────────────────
 // One decode for the partitioned composite `enc`, shared by every CPU consumer
 // of a main-framebuffer depth readback: the diagnostic depth probe + tier assert
 // (`IRPrefab::DepthProbe`) and the depth-aware CAMERA_CENTER pivot focus
 // (`getEffectiveCameraIso`). Keeping the partition in ONE place is what stops a
-// consumer from open-coding the #1960 N-tier layout and drifting from it.
 
 /// Single-pixel main-framebuffer composite-depth readback.
 /// @c normDepth_ is the raw window depth in [0, 1] stored by the depth-test
@@ -389,9 +362,7 @@ struct CompositeDepthSample {
 constexpr float kBackgroundNormDepthThreshold = 0.99f;
 
 /// Decoded composite `enc`. @c tier_ 0 is WORLD content (encoded as
-/// `iso·kDepthEncodeShift + flip·4 + face`, #2207 riser-polarity carrier at bit
 /// 2); a non-zero tier names the reserved foreground sub-range the fragment
-/// landed in (1..N-1, #1960) and @c iso_ is then the unit's tier-center-relative
 /// local model-frame iso depth.
 ///
 /// @c iso_ is in SHARED FRAMEBUFFER depth units — `worldIsoDepth × effSub` — not
@@ -426,7 +397,6 @@ inline DecodedCompositeDepth decodeCompositeDepth(float rawDist) {
     return decoded;
 }
 
-// ── Per-trixel priority carrier (#1960) ───────────────────────────────────────
 // The per-trixel tier travels voxel authoring → trixel raster → finalization in
 // the top K=2 bits of the 64-bit entity id stored in the `triangleEntityIds`
 // channel (the only per-texel channel that already reaches finalization). Entity
@@ -441,7 +411,6 @@ constexpr int kEntityIdPriorityBits = 2;
 constexpr int kEntityIdPriorityShiftInHighWord = 30;
 constexpr std::uint32_t kEntityIdPriorityMaskInHighWord = ((1u << kEntityIdPriorityBits) - 1u)
                                                           << kEntityIdPriorityShiftInHighWord;
-// Fog cut-face carrier (#2124 lit-cross-section follow-up): bit 29 of the high
 // word, just below the priority tier. Set by c_voxel_to_trixel_stage_2 on a fog
 // cross-section CUT face; read by c_lighting_to_trixel to force it fully lit.
 // Folded into kEntityIdHighWordMask so the SAME decode chokepoint that strips the
@@ -470,7 +439,6 @@ inline std::uint32_t decodeCarrierPriority(uvec2 packed) {
     return (packed.y >> kEntityIdPriorityShiftInHighWord) & ((1u << kEntityIdPriorityBits) - 1u);
 }
 
-// ── Per-axis scatter sub-band tie order (#2411) ───────────────────────────────
 // The scatter path quantizes each fragment's final depth to a coarse band and
 // injects a priority-major tie code into the sub-band bits, so band ties resolve
 // by rank instead of by run-variant draw order. Mirrors of the tie constants in
@@ -500,7 +468,6 @@ inline std::uint32_t decodeCarrierPriority(uvec2 packed) {
 // needs a 32-step band — and a 32-step band breaks half A. The two asserts below
 // fail that change at compile time instead of letting margins silently start
 // beating their exact owners. The trap is specific to spending a RANK bit:
-// `kScatterMarginInteriorBiasKey` (#2428) orders interior-edge margins in KEY
 // space instead — a flat bias plus a yield-slope floor — which leaves maxCode at
 // 15 and is why that constant has its own bracket rather than widening this one.
 constexpr int kScatterCellTieStepShift = 23;     // kScatterCellTieStep = 2^-23
@@ -543,13 +510,11 @@ static_assert(
     "claiming band 16 is forced needs re-deriving."
 );
 
-// ── Per-axis scatter interior-edge margin yield (#2428) ───────────────────────
 // The composite key folds the cardinal encode's low bits in at unit scale
 // (`encodeDepthWithFace`: depth [31:3] | flip [2] | slot [1:0]), so two adjacent
 // visible faces' planes sit a CONSTANT, penetration-independent distance apart
 // across their whole shared edge. A conservative-dilation margin penetrating an
 // INTERIOR edge holds that advantage at arbitrarily small penetration, where the
-// #1883 penetration-scaled yield can never repay it — the #2428
 // fractional-offset shared-edge fringe. `kScatterMarginInteriorBiasKey` is the
 // flat, penetration-independent yield that cancels it, and it is bracketed from
 // both sides — by bounds that sit exactly ONE unit apart:
@@ -586,7 +551,6 @@ static_assert(
     kScatterMarginInteriorBiasKey > kScatterTieLowBitsSpan,
     "per-axis interior-edge margin bias no longer covers the (flip << 2) | slot "
     "tiebreak span: a sub-pixel interior margin can again hold a constant "
-    "advantage over the adjacent face's exact fragments, reviving the #2428 "
     "fractional-offset shared-edge fringe."
 );
 static_assert(
@@ -608,13 +572,9 @@ static_assert(
     "re-deriving."
 );
 
-// `kScatterMarginYieldGradScale` (#1883) acquired a SECOND, independent
-// requirement in #2428: the interior-edge yield slope is floored at
 // `scale * encScale`, which must cover the worst-case cross-face plane
-// divergence of `2*sqrt(2) * encScale` per world unit. Its #1883 definition site
 // documents only the original purpose, and that purpose's own goal ("sub-pixel
 // gap-fills still win") argues for a SMALLER scale — so the plausible direction
-// of a future retune is exactly the one that silently breaks #2428. This assert
 // is what that retune trips. Mirror kept integral so the bound is exact; a
 // fractional retune must re-express it in exact form (cf. the reciprocal
 // `kScatterMarginDepthBiasKeyInv` above).
@@ -624,10 +584,8 @@ constexpr int kScatterMarginYieldGradScale = 3;
 static_assert(
     kScatterMarginYieldGradScale * kScatterMarginYieldGradScale >= 8,
     "kScatterMarginYieldGradScale dropped below the 2*sqrt(2) cross-face "
-    "divergence bound that #2428's interior-edge yield floor depends on: an "
     "interior-edge margin can again beat the adjacent face's exact fragments at "
     "sub-pixel penetration (the shared-edge fringe). Raise it back to "
-    ">= 2*sqrt(2), or give the #2428 floor a constant of its own."
 );
 
 struct FrameDataVoxelToCanvas {
@@ -636,7 +594,6 @@ struct FrameDataVoxelToCanvas {
     ivec2 voxelRenderOptions_;
     ivec2 voxelDispatchGrid_;
     int voxelCount_;
-    // Doubles as the smooth-camera-Z-yaw per-axis route selector (T2 / #1309;
     // docs/design/per-axis-trixel-canvas-rotation.md). 0 = the normal single-
     // canvas raster (byte-identical to master — this is the only value the
     // single-canvas dispatch ever uploads). 1/2/3 = the per-axis dispatch for
@@ -659,14 +616,11 @@ struct FrameDataVoxelToCanvas {
     // rasterYaw_. The integer trixel rasterizer picks a basis permutation
     // from rasterYaw_; the trixel emit shader applies faceDeform_[face] to
     // its sub-pixel offset in 2D iso space to recover the continuous yaw
-    // geometrically (T-293, replaces the screen-space bilinear residual
-    // composite from T-058 / T-322).
     float visualYaw_ = 0.0f;
     float rasterYaw_ = 0.0f;
     float residualYaw_ = 0.0f;
     // 1.0 for a detached entity canvas; 0.0 for the world canvas. Used by
     // the voxel emit shaders to gate super-sampling (emitDeformedFace n > 1)
-    // to the detached path only, keeping the world canvas on T-293's single-tap
     // behavior and preserving its perf baseline. Occupies the std140 padding
     // slot after residualYaw_ so no struct padding changes.
     float isDetachedCanvas_ = 0.0f;
@@ -677,18 +631,14 @@ struct FrameDataVoxelToCanvas {
     // (0/1/2)**, not by axis — at non-zero cardinal the world face whose
     // matrix lives at slot s changes per `visibleFaceIds_[s]`. std140 vec4
     // array stride is 16 B so this is 48 B; mirrored as `vec4 faceDeform[3]`
-    // in the GLSL/Metal UBO declarations. (#1278 generalization of the
-    // T-293 per-axis upload — at cardinal 0 the per-slot matrices match
     // the per-axis ones bit-for-bit so the yaw=0 path stays unchanged.)
     vec4 faceDeform_[3] = {
         vec4(1.0f, 0.0f, 0.0f, 1.0f), vec4(1.0f, 0.0f, 0.0f, 1.0f), vec4(1.0f, 0.0f, 0.0f, 1.0f)
     };
     // Per-slot world `FaceId` (0..5 = X_NEG / X_POS / Y_NEG / Y_POS /
     // Z_NEG / Z_POS) — the three camera-visible faces resolved from the
-    // camera quaternion via `IRMath::visibleFaceTripletCardinal` (#1278).
     // Indexed by visible-triplet slot 0/1/2; `.w` (std140 ivec3 rounds up to
     // ivec4 stride anyway) doubles as the detached re-voxelize coverage marker
-    // (#1557 Option B): 0 = an ordinary canvas (world, identity, single-canvas /
     // per-axis detached) that emits the exact face footprint; non-zero = a
     // DETACHED_REVOXELIZE canvas whose voxels carry the rotation in their CELL
     // positions and raster at cardinal 0. Such a canvas KEEPS the visible-triplet
@@ -698,13 +648,11 @@ struct FrameDataVoxelToCanvas {
     // dilation — each surface face grown ±1px along its in-plane iso axes — that
     // closes the sub-cell gaps round-to-cell leaves between adjacent rotated
     // cells. `.w` was formerly written by VOXEL_TO_TRIXEL_STAGE_1 as the
-    // MAIN_CANVAS_SO3 canvas flag; that write was removed in #1443 when
     // MAIN_CANVAS_SO3 was retired. AO / lighting only ever index slots 0..2 (the
     // `& 3` neighbour decode is guarded behind a non-empty, per-axis test, and
     // re-voxelize is not a per-axis route), so the marker is invisible to them.
     // Defaults to {X_NEG, Y_NEG, Z_NEG, 0} = the historical lower-coordinate-faces
     // set, so a UBO that hasn't been populated by the new path renders identically
-    // to pre-#1278 master at cardinal 0.
     //
     // Consumed by raster (`c_voxel_to_trixel_stage_{1,2}` — exposed-mask
     // check + per-face micro-position) AND by `c_compute_voxel_ao` /
@@ -713,7 +661,6 @@ struct FrameDataVoxelToCanvas {
     // design-doc § "AO / lighting agree by construction".
     ivec4 visibleFaceIds_ = ivec4(0, 2, 4, 0);
     // Model-frame iso depth axis `R⁻¹·(1,1,1)` for the per-voxel occlusion
-    // metric (#1462). The world canvas and any identity entity keep the
     // default (1,1,1) so `isoDepthAlongAxis` collapses to `x+y+z` and the
     // GRID / identity raster stays byte-identical; a rotated DETACHED canvas
     // uploads `IRMath::isoDepthAxisModel(rotation)` so off-octahedral pitch /
@@ -724,7 +671,6 @@ struct FrameDataVoxelToCanvas {
     // (AO, lighting) are unaffected and need no declaration update.
     vec4 voxelDepthAxis_ = vec4(1.0f, 1.0f, 1.0f, 0.0f);
     // World-receive offset for a world-placed detached re-voxelize solid
-    // (#1576 P4b-2; world placement is the default since #1624). `.xyz` = the
     // entity's world cell origin
     // (`roundVec3HalfUp(C_WorldTransform::translation_)`, the SAME rounding the
     // composite depth offset uses); `.w` = 1.0 when the solid is world-placed
@@ -739,11 +685,9 @@ struct FrameDataVoxelToCanvas {
     // std140-appended after voxelDepthAxis_ (offset 160), so every prior field
     // offset is unchanged and shaders that read only the prefix need no update.
     // Declared by c_lighting_to_trixel (world-space receive) and by
-    // c_voxel_to_trixel_stage_{1,2} (#2127 — recovering a world-placed detached
     // re-voxelize voxel's world column for the fog cut-face cross-section).
     vec4 detachedWorldReceive_ = vec4(0.0f, 0.0f, 0.0f, 0.0f);
     // Un-widened (no shadow-feeder sweep) iso cull viewport for the depth-only
-    // shadow-feeder path (#1740). `.xy` = floor(min), `.zw` = ceil(max) of the
     // SAME viewport `cullIsoMin_/cullIsoMax_` derive from, but BEFORE
     // IRMath::shadowFeederIsoBounds widens it toward the sun. A voxel whose
     // cardinal iso position lies inside [cullIsoMin_, cullIsoMax_] (it passed
@@ -757,7 +701,6 @@ struct FrameDataVoxelToCanvas {
     // after detachedWorldReceive_ (offset 176) so every prior offset is
     // unchanged and the gather shaders that read only the prefix need no update.
     ivec4 visibleIsoBounds_ = ivec4(0, 0, 0, 0);
-    // Per-axis deterministic-winner resolve mode (#2255). 0 = the normal
     // distance store (the only value any non-per-axis dispatch uploads). 1 =
     // the winner-resolve dispatch dispatchPerAxisCanvases inserts between
     // stage 1 and stage 2 on each axis canvas: stage 1 re-runs the identical
@@ -770,14 +713,9 @@ struct FrameDataVoxelToCanvas {
     // matching the distance plane, whose atomicMin was always
     // order-independent. Read only by c_voxel_to_trixel_stage_1;
     // std140-appended after visibleIsoBounds_ (offset 192) so every prior
-    // offset is unchanged. Tail lanes: offset 196 is the #1812 per-voxel
-    // occlusion-cull gate; 200/204 are the #2258 Step-B shadow-feeder
     // dispatch partition (repurposed from the former resolveMode pads, shifted
-    // one slot down by the #1812 gate), packing the 192..208 16-byte std140
     // stride exactly for the full-struct subData uploads.
     int resolveMode_ = 0;
-    // Per-voxel Hi-Z occlusion-cull gate (#1812), refining the per-chunk cull
-    // (#1294 child 2/3). 0 = the compact's per-voxel test is skipped, so the
     // default (occlusion cull off) pipeline is byte-identical. Non-zero = the
     // Hi-Z chain level count; the compact samples level 0 at each surviving
     // voxel's canvas pixel and drops it when strictly behind the farthest visible
@@ -786,9 +724,7 @@ struct FrameDataVoxelToCanvas {
     // cardinal (not rotating), non-re-voxelize pool, Hi-Z chain built. Keeps the
     // first resolveMode tail pad slot (offset 196) it shipped on.
     int occlusionCullMipCount_ = 0;
-    // Shadow-feeder dispatch partition (#2258 Step B). The compact classifies
     // each surviving voxel as visible (inside visibleIsoBounds_) or off-screen
-    // shadow feeder (outside it, the exact stage-2 #1740 skip convention) and
     // tail-appends feeders into a SECOND indirect struct; stage 1 rasters that
     // struct in a second dispatch at a strided micro-grid capped to
     // feederSubCap_ per face edge, so feeder trixelDistances (bake-only, never
@@ -806,19 +742,14 @@ struct FrameDataVoxelToCanvas {
     // per-dispatch flag upload is needed and the hottest kernel carries none
     // of the feeder branches.
     int feederPassTailBase_ = 0;
-    // View-visibility overflow lane scratch layout (#2333). Region base offsets
     // (in uints) into the unified per-axis resolve scratch bound at
     // kBufferIndex_PerAxisResolveScratch, plus the overflow entry cap:
     // .x = view-mask base, .y = ctrl base (draw args + counters), .z = overflow
-    // entry base, .w = entry cap. The scratch's region 0 is the #2255 winner-id
     // array, so the existing perAxisWinnerIds[cell] indexing is unchanged.
     // Read/written by c_voxel_to_trixel_stage_1 at resolveMode 0 (view-mask
-    // write, folded from the former mode-2 sweep by #2487) and 3 (overflow
-    // append), rotating frames only; std140-appended after the #2258 feeder-
     // partition block (offset 208) so every prior offset — and every prefix-
     // reading shader — is unchanged.
     ivec4 overflowScratchLayout_ = ivec4(0, 0, 0, 0);
-    // Overflow-entry canonical-sort step descriptor (#2479), read only by
     // c_per_axis_overflow_sort between the mode-3 append and the overflow
     // draw: .x = pass mode (0 sentinel-fill, 1 fused local sort, 2 fused
     // strided slab), .y = bitonic stage size k, and for mode 2 the inclusive
@@ -861,7 +792,6 @@ enum class SubdivisionMode { NONE = 0, POSITION_ONLY = 1, FULL = 2 };
 /// Where camera Z-yaw rotation pivots.
 /// - @c ORIGIN        — yaw rotates content about the fixed world origin. A
 ///   panned-off-origin camera swings the scene in an arc. Deterministic; the
-///   pre-#1352 behavior, kept selectable for demos that rely on it.
 /// - @c CAMERA_CENTER — yaw rotates content about the world point under screen
 ///   center (the camera focus), so panning then rotating spins the scene in
 ///   place. The correction collapses to the identity at `yaw == 0`, so the
@@ -883,8 +813,6 @@ constexpr std::uint32_t kVoxelTransformStatic = 0xFFFFFFFFu;
 /// Matches the `GpuVoxelTransform` array size allocated by `UPDATE_VOXEL_POSITIONS_GPU`.
 constexpr int kMaxGpuVoxelTransforms = 4096;
 
-/// Skeletal joint transforms (#605 Phase 2.2 / #1603) share the same binding-18
-/// `EntityTransformBuffer`, NOT a second buffer — the #1396 prepass that consumes
 /// per-voxel transform slots is the same operation a per-bone skin matrix needs.
 /// The 4096-slot budget is partitioned so the two allocators can't collide and
 /// the prepass's contiguous `[0, maxSlotUsed_]` re-upload can never clobber a
@@ -903,7 +831,6 @@ constexpr int kJointTransformSlotBase = kMaxGpuVoxelTransforms - kMaxGpuJointTra
 /// SO(3)+translation (built CPU-side via `IRMath::sqtToMat4`). Column-major
 /// `mat4` matches the GLSL `mat4` / Metal `float4x4` layout byte-for-byte (64 B).
 /// Generic by design: an entity transform today, a bone transform for skeletal
-/// voxels (#605) tomorrow — the prepass never assumes which.
 struct GpuVoxelTransform {
     mat4 modelToWorld_ = mat4(1.0f);
 };
@@ -914,18 +841,15 @@ struct GPUUpdateParams {
 };
 
 /// Per-frame params for the detached re-voxelize GPU scatter compute
-/// (`c_revoxelize_detached`, #1556 + #1619). Carries the detached canvas's
 /// composed rotation quaternion (the ONLY per-frame upload — O(entities), the
 /// whole point of the GPU path over P1's CPU re-rasterize) and the dispatch
 /// domain descriptor. Quaternion layout matches `C_LocalTransform`/`IRMath` —
 /// `vec4(qx, qy, qz, qw)`, identity `(0,0,0,1)`.
 ///
 /// Two dispatch modes (`dest_.w`):
-///   0 — IDENTITY / source path (#1556, byte-identical to pre-#1619). One thread
 ///       per LIVE SOURCE voxel; the thread writes `position[slot]` from its
 ///       resident composed local. The CPU still uploads color + active for these
 ///       source-indexed slots, so only binding 5 is authored here.
-///   1 — INVERSE-RESAMPLE path (#1619). One thread per DEST cell of the
 ///       rotated-AABB cube (`dest_.y³` cells, center `dest_.z`). Each thread
 ///       inverse-maps its dest cell `roundHalfUp(R⁻¹·c)` into the per-pool source
 ///       occupancy+color grid (`srcGridMin_`/`srcGridDims_`); on a hit it authors
@@ -945,7 +869,6 @@ struct RevoxelizeDetachedParams {
     // roundHalfUp cell (-0.5 on even-sized centered axes, 0 on odd). The inverse
     // resample maps between LATTICE cells; the solid's true points sit at
     // cell + anchor, and ignoring that shifted the rotated raster by a constant
-    // half cell per even axis (#2349). w unused.
     vec4 anchor_ = vec4(0.0f, 0.0f, 0.0f, 0.0f);
 };
 static_assert(
@@ -1018,9 +941,6 @@ struct GPUShapesFrameData {
     // multiple of pi/2 nearest visualYaw, residualYaw = visualYaw - rasterYaw.
     // The shapes shader rasterizes at rasterYaw so the SDF surface lands on
     // the same integer voxel lattice as the voxel pool's cardinal-snap raster
-    // (T-055), then applies faceDeform[face] to its sub-pixel offset to
-    // recover continuous yaw geometrically (T-293, replaces the screen-space
-    // bilinear residual composite from T-058 / T-322).
     float visualYaw = 0.0f;
     float rasterYaw = 0.0f;
     float residualYaw = 0.0f;
@@ -1028,10 +948,8 @@ struct GPUShapesFrameData {
     // computes tileIdx = gl_WorkGroupID.x + gl_WorkGroupID.y * tileGridX so
     // the dispatch stays within GL_MAX_COMPUTE_WORK_GROUP_COUNT[0].
     int tileGridX = 1;
-    // Smooth camera Z-yaw (#1345): 1 enables the continuous-yaw SDF path
     // (full visualYaw query + continuous center reposition + shared world-space
     // x+y+z depth so the SDF composites with the per-axis voxel canvases, T3
-    // #1310); 0 keeps the cardinal-snap rasterYaw + faceDeform path. Set per
     // canvas — only the rotating MAIN world canvas turns it on, so detached
     // per-entity canvases keep their faceDeform path. Occupies the first word of
     // the former 8-byte std140 alignment pad before faceDeform (faceDeform stays
@@ -1093,30 +1011,23 @@ static_assert(
 );
 static_assert(
     offsetof(FrameDataVoxelToCanvas, occlusionCullMipCount_) == 196,
-    "FrameDataVoxelToCanvas::occlusionCullMipCount_ (#1812) must keep the "
     "first resolveMode tail pad slot (offset 196) it shipped on — "
     "c_voxel_visibility_compact reads it at that std140 offset"
 );
 static_assert(
     offsetof(FrameDataVoxelToCanvas, feederSubCap_) == 200 &&
         offsetof(FrameDataVoxelToCanvas, feederPassTailBase_) == 204,
-    "FrameDataVoxelToCanvas feeder lanes (#2258 Step B) must occupy the two "
     "int slots after occlusionCullMipCount_ (offsets 200/204, shifted one "
-    "slot down by the #1812 gate) — the compact + stage-1 GLSL/Metal blocks "
     "read them at those std140 offsets; no pad follows now the visible/feeder "
     "split is compile-time (IR_FEEDER_PASS)"
 );
 static_assert(
     offsetof(FrameDataVoxelToCanvas, overflowScratchLayout_) == 208,
-    "FrameDataVoxelToCanvas::overflowScratchLayout_ (#2333) must land at offset "
-    "208 (the #2258 feeder-partition block ends at 208). Appended after the prior "
     "last field so every existing offset — and the resolveMode==0 store path — "
     "stays unchanged"
 );
 static_assert(
     offsetof(FrameDataVoxelToCanvas, overflowSortStep_) == 224,
-    "FrameDataVoxelToCanvas::overflowSortStep_ (#2479) must land at offset 224 "
-    "(appended after the #2333 overflow layout) — c_per_axis_overflow_sort "
     "declares it there and every prefix-reading shader stays unchanged"
 );
 static_assert(
@@ -1158,7 +1069,6 @@ struct FrameDataSun {
     vec2 cascadeTexelSize_1_ = vec2(1.0f);
     float cascadeSplitDepth_ = 0.0f;
     int cascadeCount_ = 1;
-    // #2270 coverage-splat radius (sun texels): c_bake_sun_shadow_map atomicMin's
     // each caster's depth into a (2·r+1)² box, filling the sun texels a grazing /
     // point-scattered caster footprint leaves empty (the moth-eaten cast-shadow
     // holes). atomicMin makes the box a no-op where nearer geometry already
@@ -1175,7 +1085,6 @@ struct FrameDataSun {
     // (ir_sun_shadow_sample) rejects an occluder whose sun-Z gap exceeds this,
     // capping how far a caster throws its shadow. Set from the bake / feeder
     // AABB sweep distance (kSunShadowMaxDistance) by BAKE_SUN_SHADOW_MAP each
-    // frame (#2320) so a caster the sweep bakes is receivable at its full throw
     // and the two cannot drift; a shorter window truncates a floating caster's
     // top-face shadow (its farthest-from-floor caster). Occupies the trailing
     // std140 pad float (128-byte layout unchanged); default only matters before
@@ -1224,7 +1133,6 @@ constexpr std::uint32_t kBufferIndex_FrameDataVoxelToCanvas = 7;
 // Per-pool active-slot bitmask consumed by the visibility-compact compute
 // pass (`c_voxel_visibility_compact.{glsl,metal}`). One uint32 per
 // `kVoxelActiveMaskBits = 32` voxel slots; bit i mirrors
-// `C_VoxelPool::m_voxelColors[i].color_.alpha_ != 0`. T-287 / #950.
 // Repurposed from the legacy `VoxelSetUnlockedPositions` slot, which was
 // declared but unused.
 constexpr std::uint32_t kBufferIndex_VoxelActiveMask = 8;
@@ -1236,18 +1144,15 @@ constexpr std::uint32_t kBufferIndex_VoxelEntityIds = 13;
 constexpr std::uint32_t kBufferIndex_HoveredEntityId = 14;
 constexpr std::uint32_t kBufferIndex_DebugOverlayData = 15;
 // Per-frame params (canvas quat + voxel count) for the detached re-voxelize GPU
-// scatter compute (`c_revoxelize_detached`, #1556). Slot 16 was the only free
 // index in the Metal 0–30 range; the compute reuses slot 17 (LocalVoxelPositions)
 // for its per-pool resident locals SSBO, bound per-canvas before dispatch.
 // On Metal, slot 16 ALSO carries the R32I image-atomic scratch
 // (kMetalImageAtomicScratchSlot) for the raster kernels that declare it. The
 // two never meet in one kernel: the scratch is bound per-kernel via
-// metal_pipeline.cpp's functionUsesImageAtomicScratch (#1619 — the sticky
 // unconditional scratch bind used to clobber this UBO for the fill dispatch).
 constexpr std::uint32_t kBufferIndex_RevoxelizeDetachedParams = 16;
 constexpr std::uint32_t kBufferIndex_LocalVoxelPositions = 17;
 // Per-pool source occupancy+color grid for the detached re-voxelize INVERSE
-// resample (#1619). Dense 3D grid keyed by integer source-local cell; two uints
 // per cell ({colorPacked, materialFlagBone}, occupied iff the alpha byte of
 // colorPacked != 0). The inverse-resample fill (`c_revoxelize_detached` mode 1)
 // binds it here to answer `srcColor(roundHalfUp(R⁻¹·destCell))`. Aliases slot 9
@@ -1298,10 +1203,8 @@ constexpr std::uint32_t kBufferIndex_FogObservers = kBufferIndex_FrameDataLighti
 // the sun shadow lookup reads SunShadowDepthMap. Both consumers run on
 // different stages and rebind slot 28 to whichever resource they need
 // before their own dispatch, so the alias is safe. Phased-out producer:
-// this aliasing goes away in T-09Y once light-volume LOS moves off the
 // world-space bitfield.
 constexpr std::uint32_t kBufferIndex_SunShadowDepthMap = kBufferIndex_LightOcclusionGrid;
-// Aliases slot 28 again. RESOLVE_PER_AXIS_SCREEN_DEPTH (#1435) scatters the
 // three per-axis voxel canvases into this scratch SSBO via imageAtomicMin
 // (a screen-space front-most iso-depth, main-canvas sized), then blits it
 // into the per-axis resolve TEXTURE. The whole resolve runs as its own
@@ -1310,7 +1213,6 @@ constexpr std::uint32_t kBufferIndex_SunShadowDepthMap = kBufferIndex_LightOcclu
 // rationale as the LightOcclusionGrid/SunShadowDepthMap alias above. The
 // scratch lives on a buffer because Metal has no portable image-atomic
 // syntax (see c_voxel_to_trixel_stage_1.metal's distance scratch).
-// VOXEL_TO_TRIXEL_STAGE_1's per-axis winner election (#2255) is a THIRD
 // transient consumer: it binds its winner-election scratch (winnerIds_) here
 // for the deterministic color-winner atomicMin, then reads the settled winner
 // back. Both the write and the read complete inside that one system's per-axis
@@ -1318,7 +1220,6 @@ constexpr std::uint32_t kBufferIndex_SunShadowDepthMap = kBufferIndex_LightOcclu
 // resolve/bake consumer rebinds — same non-overlapping-stage safety, but a
 // narrower borrow than the resolve above: it never hands the resource across a
 // stage boundary.
-// VOXEL_TO_TRIXEL_STAGE_1's cardinal (single-canvas) winner election (#2346) is a
 // FOURTH transient consumer, and the narrowest borrow of the four: for a pool
 // whose storeTiesPossible_ flag is set (displaced voxels sharing a rounded cell)
 // it binds its own winner buffer (cardinalWinner_) here between the settled
@@ -1328,7 +1229,6 @@ constexpr std::uint32_t kBufferIndex_SunShadowDepthMap = kBufferIndex_LightOcclu
 // resolve/bake consumer. Same non-overlapping-stage safety as the per-axis
 // election above; a lattice (unflagged) pool never binds it at all.
 constexpr std::uint32_t kBufferIndex_PerAxisResolveScratch = kBufferIndex_LightOcclusionGrid;
-// View-visibility overflow-face lighting (#2334, epic #2331 C2). The overflow
 // entries live in the PerAxisResolveScratch (slot 28), but LIGHTING_TO_TRIXEL's
 // overflow-relight dispatch must ALSO sample the sun-depth map — which holds slot
 // 28 (kBufferIndex_SunShadowDepthMap) during that stage — so the two cannot share
@@ -1337,7 +1237,6 @@ constexpr std::uint32_t kBufferIndex_PerAxisResolveScratch = kBufferIndex_LightO
 // and rebound by the next frame's stage 1. Same non-overlapping-stage safety as
 // the slot-28 aliases; the relight binds it explicitly before its own dispatch.
 constexpr std::uint32_t kBufferIndex_OverflowLightingScratch = kBufferIndex_VoxelActiveMask;
-// Per-axis empty-cell compaction (#1961). The TRIXEL_TO_FRAMEBUFFER composite
 // compacts each per-axis canvas's occupied cells into an indirect instanced
 // draw, so the scatter rasterizes only non-empty cells instead of sweeping the
 // whole worst-case-sized per-axis grid (~12x the cardinal area, mostly empty).
@@ -1354,13 +1253,11 @@ constexpr std::uint32_t kBufferIndex_PerAxisCellIndirect = kBufferIndex_Indirect
 // sprite draw. Safety is enforced by a defensive rebind in
 // `SPRITE_TO_SCREEN::bindPipeline()` — both slots are re-asserted to the
 // sprite resources immediately before each draw call, displacing any earlier
-// occupant. Slot 0 (FrameDataUniform) is also used by the T-163 stateless
 // particle UBO; slot 25 (CompactedVoxelIndices) is written by
 // VOXEL_TO_TRIXEL_STAGE_1 and consumed by STAGE_2. Same Metal 0–30 cap
 // rationale as `kBufferIndex_SunShadowDepthMap`.
 constexpr std::uint32_t kBufferIndex_SpritesFrameData = kBufferIndex_FrameDataUniform;
 constexpr std::uint32_t kBufferIndex_SpritesInstances = kBufferIndex_CompactedVoxelIndices;
-// GPU particle slots (T-139 Phase 1). Metal caps bindings at 0–30, so we
 // alias the particle SSBO and UBO onto slots whose other consumers run on
 // non-overlapping compute encoders. Both `LightSourceBuffer` (slot 4) and
 // `LightVolumeParams` (slot 23) are bound only by the COMPUTE_LIGHT_VOLUME
@@ -1374,7 +1271,6 @@ constexpr std::uint32_t kBufferIndex_SpritesInstances = kBufferIndex_CompactedVo
 // this.
 constexpr std::uint32_t kBufferIndex_GpuParticleData = kBufferIndex_LightSourceBuffer;
 constexpr std::uint32_t kBufferIndex_FrameDataGpuParticles = kBufferIndex_LightVolumeParams;
-// Stateless particle slots (T-163 Phase 1). Split into a small per-frame
 // UBO (header: currentTime, emitterCount, projection inputs) and a separate
 // SSBO holding the emitter descriptor array. Splitting sidesteps the
 // observed Metal-side flakiness when nested-struct arrays live in a
@@ -1390,8 +1286,6 @@ constexpr std::uint32_t kBufferIndex_FrameDataGpuParticles = kBufferIndex_LightV
 // state; Metal compute and render encoders maintain independent argument
 // tables, so the alias is inherently safe there).
 // SSBO slot: aliases `kBufferIndex_LightSourceBuffer` (slot 4), already
-// shared with `kBufferIndex_GpuParticleData` — both T-139 SSBO particles
-// and T-163 stateless emitters can register on the same canvas, and each
 // dispatch rebinds slot 4 to its own SSBO immediately before its dispatch
 // (the established trixel pipeline order COMPUTE_LIGHT_VOLUME → particle
 // passes guarantees the light volume's seed dispatch finishes before
@@ -1420,7 +1314,6 @@ constexpr int kLightVolumePropagateIterations = 32;
 /// `LightSourceBuffer` SSBO. One entry per active `C_LightSource`
 /// entity. Layout follows std430: every member is a `vec4` so the GPU
 /// stride is 80 bytes per record. Decoded in `c_seed_light_volume` (seed
-/// / propagate) and `c_lighting_to_trixel` (spot-cone consume, #2318).
 struct GPULightSource {
     /// xyz = the volume texel origin the seed writes to: the light's
     /// world voxel origin (round-half-up of `C_WorldTransform.translation_`)
@@ -1443,7 +1336,6 @@ struct GPULightSource {
     /// xyz = the light's TRUE world voxel origin (unclamped apex), used by
     /// `c_lighting_to_trixel`'s spot-cone factor so an out-of-window spot's
     /// cone stays oriented from its real apex rather than the clamped seed
-    /// cell (#2318, winning-light ID channel). Equals `originAndType_.xyz`
     /// for in-window lights. w = std430 padding.
     vec4 trueOriginVoxel_ = vec4(0.0f);
 };
@@ -1473,15 +1365,12 @@ struct LightVolumeParams {
     /// The struct default mirrors the global cap so a fresh `LightVolumeParams{}`
     /// behaves like today's 32-cell radius before the first per-frame write.
     float stepFalloff_ = 1.0f / 32.0f;
-    /// Phase 1c (#360): camera-anchored origin. The 128³ light volume
     /// is centered on this world voxel each frame so a panned camera
     /// keeps lights in-range. Stored as `ivec4` for std140 alignment;
-    /// `.xyz` is the volume origin, `.w` is the has-SPOT flag (#2318).
     ivec4 worldOriginVoxel_ = ivec4(0);
 };
 static_assert(sizeof(LightVolumeParams) == 32, "LightVolumeParams must match std140 layout");
 
-/// Phase 1c (#360): camera-anchored light-occlusion SSBO header.
 /// Written to the first 16 bytes of `LightOcclusionGridBuffer` each
 /// frame by `system_build_light_occlusion_grid`; the voxel + SDF-blocker
 /// bitfields occupy the remainder (see `kLightOcclusionHeaderByteSize`
@@ -1510,7 +1399,6 @@ struct ShapeTileDescriptor {
 };
 
 /// Single GPU particle record uploaded to the `GpuParticleData` SSBO. Phase 1
-/// of T-139 — position + velocity drift + lifetime decay; spawn / collection
 /// query / attraction-point fields land in subsequent phases.
 ///
 /// Layout matches std430:
@@ -1574,7 +1462,6 @@ constexpr std::uint32_t kMaxStatelessEmitters = 64u;
 /// breaks thread ID decomposition.
 constexpr std::uint32_t kMaxParticlesPerEmitter = 256u;
 
-/// T-163 Phase 1 — single stateless particle emitter descriptor. Particles
 /// have no per-frame stored state; each shader thread reconstructs its
 /// particle's position and color from `(emitter, subIndex, currentTime)` via
 /// a closed-form gravity-with-jitter trajectory. The descriptor is purely an
@@ -1605,7 +1492,6 @@ static_assert(
     "GpuParticleEmitter must match std430 layout (80 B per emitter)"
 );
 
-/// T-163 Phase 1 — per-frame UBO for the stateless particle render pass.
 /// Header only: per-frame inputs (`currentTime_`, canvas projection
 /// parameters) plus emitter count. The descriptor array lives in a
 /// separate SSBO so the layout is straightforward `device` storage on
@@ -1643,7 +1529,6 @@ struct VoxelIndirectDispatchParams {
 };
 
 // GPU indirect draw-args for the per-axis empty-cell compaction composite
-// (#1961). The leading five uints are byte-identical to GL's
 // DrawElementsIndirectCommand and Metal's MTLDrawIndexedPrimitivesIndirectArguments,
 // so one compaction kernel fills a buffer both backends issue an indirect
 // instanced draw from. The compaction resets instanceCount to 0 and
@@ -1662,9 +1547,7 @@ struct PerAxisCellDrawCommand {
 };
 constexpr std::ptrdiff_t kPerAxisCellIndirectStrideBytes = 256;
 
-// Per-axis empty-cell compaction (#1961) additionally feeds the per-axis GPU
 // compute stages (AO / sun-shadow / lighting / resolve-scatter) via indirect
-// COMPUTE dispatch over the same compacted cell list (#2256), so those stages
 // process only occupied cells instead of the full worst-case (2W)(W+H) grid.
 // A VoxelIndirectDispatchParams block (numGroupsX/Y/Z, visibleCount) sits in each
 // axis's 256 B slot-26 region at a fixed offset ABOVE the 32 B
