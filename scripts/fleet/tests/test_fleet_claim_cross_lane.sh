@@ -155,13 +155,19 @@ wait_for_file() {
     return 1
 }
 
+assert_foreign_claim_refused() {
+    local held_label="$1" command="$2" pr="$3" agent="$4" lane="$5" rc=0
+    set_labels "$held_label"
+    "$FLEET_CLAIM" "$command" "$pr" "$agent" >/dev/null 2>&1 || rc=$?
+    assert_exit "$rc" 1 "foreign $lane refuses $command"
+    assert_eq "$(cat "$CLAIM_STATE")" "$held_label" \
+        "$command refusal preserves the exact label set"
+    assert_eq "$(wc -l < "$CLAIM_POST_LOG" | tr -d ' ')" "0" \
+        "$command refusal sends no POST"
+}
+
 echo "T1 fix: review claim refuses a foreign amend without POSTing"
-set_labels "$AMEND_LABEL"
-rc=0
-"$FLEET_CLAIM" review-claim 4101 poolB >/dev/null 2>&1 || rc=$?
-assert_exit "$rc" 1 "foreign amend refuses review claim"
-assert_eq "$(cat "$CLAIM_STATE")" "$AMEND_LABEL" "refusal preserves the exact label set"
-assert_eq "$(wc -l < "$CLAIM_POST_LOG" | tr -d ' ')" "0" "refusal sends no POST"
+assert_foreign_claim_refused "$AMEND_LABEL" review-claim 4101 poolB amend
 
 echo "T2 control: same suffix may hold both lane labels"
 set_labels "$AMEND_LABEL"
@@ -200,20 +206,10 @@ assert_contains "$(cat "$TMPROOT/t4b.out")" "WARN" "review coexistence state is 
 assert_eq "$(cat "$FLEET_CLAIMS_DIR/_prlabel-reviewing-poolB")" "4105" "review liveness marker is refreshed"
 
 echo "T4c fix: resolving claim refuses a foreign amend without POSTing"
-set_labels "$AMEND_LABEL"
-rc=0
-"$FLEET_CLAIM" resolving-claim 4106 poolB >/dev/null 2>&1 || rc=$?
-assert_exit "$rc" 1 "foreign amend refuses resolving claim"
-assert_eq "$(cat "$CLAIM_STATE")" "$AMEND_LABEL" "resolver refusal preserves the exact label set"
-assert_eq "$(wc -l < "$CLAIM_POST_LOG" | tr -d ' ')" "0" "resolver refusal sends no POST"
+assert_foreign_claim_refused "$AMEND_LABEL" resolving-claim 4106 poolB amend
 
 echo "T4d fix: amending claim refuses a foreign resolver without POSTing"
-set_labels "$RESOLVE_LABEL"
-rc=0
-"$FLEET_CLAIM" amending-claim 4107 poolA >/dev/null 2>&1 || rc=$?
-assert_exit "$rc" 1 "foreign resolver refuses amending claim"
-assert_eq "$(cat "$CLAIM_STATE")" "$RESOLVE_LABEL" "amender refusal preserves the exact label set"
-assert_eq "$(wc -l < "$CLAIM_POST_LOG" | tr -d ' ')" "0" "amender refusal sends no POST"
+assert_foreign_claim_refused "$RESOLVE_LABEL" amending-claim 4107 poolA resolver
 
 echo "T5 fix: pure contender filter covers the symmetric lane union"
 set --

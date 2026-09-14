@@ -412,18 +412,18 @@ class ActiveClaimBarsConflictResolutionPickup(unittest.TestCase):
     def _slice(self, prs):
         return slice_worker(_state(prs))["semantic_conflict_prs"]
 
-    def test_review_claim_suppresses_conflict_pressure_at_both_sites(self):
-        # The two-run delta IS the assertion: pre-fix, LIVE and
-        # minus-fleet:reviewing-* produced byte-identical output, i.e. the
-        # review claim contributed exactly zero suppression.
-        held = [_sc_pr(2417, labels=["fleet:semantic-conflict",
-                                     "fleet:reviewing-mac-pool-9"])]
+    def test_active_claim_suppresses_conflict_pressure_at_both_sites(self):
+        # The held/free delta proves each claim prefix contributes the
+        # suppression rather than relying on another exclusion.
         free = [_sc_pr(2417)]
 
-        self.assertEqual(self._items(held), [],
-                         "review claim must suppress the projection item")
-        self.assertEqual(self._slice(held), [],
-                         "review claim must suppress the slice payload")
+        for claim_label in ("fleet:reviewing-mac-pool-9",
+                            "fleet:amending-mac-pool-9"):
+            with self.subTest(claim_label=claim_label):
+                held = [_sc_pr(2417, labels=["fleet:semantic-conflict",
+                                             claim_label])]
+                self.assertEqual(self._items(held), [])
+                self.assertEqual(self._slice(held), [])
         self.assertEqual(len(self._items(free)), 1)
         self.assertEqual(len(self._slice(free)), 1)
 
@@ -480,26 +480,6 @@ class ActiveClaimBarsConflictResolutionPickup(unittest.TestCase):
         self.assertEqual([i["pr"] for i in self._items([held, clean])], [2418])
         self.assertEqual([p["number"] for p in self._slice([held, clean])],
                          [2418])
-
-    def test_amend_claim_suppresses_conflict_pressure_at_both_sites(self):
-        held = [_sc_pr(2417, labels=["fleet:semantic-conflict",
-                                     "fleet:amending-mac-pool-9"])]
-        free = [_sc_pr(2417)]
-
-        self.assertEqual(self._items(held), [])
-        self.assertEqual(self._slice(held), [])
-        self.assertEqual(len(self._items(free)), 1)
-        self.assertEqual(len(self._slice(free)), 1)
-
-    def test_projection_is_agent_blind_but_clearing_claim_rearms(self):
-        held = [_sc_pr(2417, labels=["fleet:semantic-conflict",
-                                     "fleet:amending-mac-pool-1"])]
-        cleared = [_sc_pr(2417)]
-
-        self.assertEqual(self._items(held), [])
-        self.assertEqual(self._slice(held), [])
-        self.assertEqual(len(self._items(cleared)), 1)
-        self.assertEqual(len(self._slice(cleared)), 1)
 
 
 class SliceWorkerSkipLabelsDropPR(unittest.TestCase):
