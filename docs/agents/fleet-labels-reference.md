@@ -210,7 +210,11 @@ label whatever the interleaving. The lock is bounded on both sides (a held
 lock is waited on, then the caller fails closed; a holder older than 10 min
 is stolen as crashed) and owned: each holder's release removes only its own
 token, so a stolen holder that turns out to be slow rather than dead cannot
-release its successor's lock when it resumes.
+release its successor's lock when it resumes — nor act on its section: a
+resumed claim stamps nothing and fails, and a resumed sweep whose label
+removal landed late re-adds the label if its agent re-claimed under the
+stolen lock (an intent file beside the lock carries that decision across
+the sweep's own death; the next lock holder settles it).
 
 ## Review verdicts (PRs)
 

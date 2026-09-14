@@ -482,8 +482,43 @@ _amend_snapshot_path() {
 #   is not atomic: a resumed holder's rmdir can land on the still-empty
 #   directory in between, which makes the token drop fail and the successor go
 #   round again rather than proceed on a lock it no longer holds.
+#
+#   Ownership also FENCES the critical section, not just the release. A
+#   resumed holder may be anywhere in its section — most dangerously inside
+#   the `gh` call that removes an amending label, a mutation that commits on
+#   GitHub's side with no conditional form, so it cannot be refused at commit
+#   time. It is fenced after the fact instead: every write in the section
+#   re-checks the token (_amend_lock_owned) and, on a lost lock,
+#     - a stamp of the ownership record is skipped (the successor's record
+#       stands), and a claim reports FAILURE — it cannot vouch for an outcome
+#       a successor has since arbitrated over — dropping the label it POSTed
+#       unless the successor is this same agent, whose label it now is;
+#     - a label removal is compensated: the removal was decided from the
+#       ownership record as it stood at lock acquisition, so if that record
+#       has since been re-stamped by the removed label's own agent (a
+#       successor claimed under the stolen lock), the label is re-added; a
+#       record that is unchanged, gone, or names another agent means the
+#       removal stands.
+#   The compensation must survive the holder dying mid-way, so each removal
+#   is preceded by an INTENT file beside the lock (`<pr>.sweep-<token>`:
+#   repo, label, writer pid, record fingerprint at acquisition) and followed
+#   by its settlement. A later lock holder that finds an intent whose writer
+#   is dead settles it itself; one whose writer is alive is a removal still
+#   in flight — a claim on any other label refuses and the sweep skips the
+#   label for this pass, since neither can know when that removal lands.
 _amend_lock_path() {
     printf '%s\n' "${FLEET_AMEND_SNAPSHOTS_DIR:-$HOME/.fleet/amend-snapshots}/${1}.lock"
+}
+# Fingerprint of the ownership record at lock acquisition; what a
+# compensating re-add compares against.
+_AMEND_LOCK_RECORD_FP=""
+# Label whose removal a live, stalled writer still has in flight on the PR
+# just locked (empty when none).
+_AMEND_PENDING_SWEEP=""
+_amend_lock_owned() {
+    [[ "${1:-}" =~ ^[0-9]+$ ]] || return 0
+    [[ -n "${_AMEND_LOCK_TOKEN:-}" ]] || return 1
+    [[ -f "$(_amend_lock_path "$1")/owner-$_AMEND_LOCK_TOKEN" ]]
 }
 _amend_lock_acquire() {
     local pr="$1" lock
@@ -497,6 +532,8 @@ _amend_lock_acquire() {
     while :; do
         if mkdir "$lock" 2>/dev/null; then
             if : > "$lock/owner-$_AMEND_LOCK_TOKEN" 2>/dev/null; then
+                _AMEND_LOCK_RECORD_FP=$(_amend_record_fingerprint "$pr")
+                _amend_sweep_intents_scan "$pr"
                 return 0
             fi
             continue
@@ -530,6 +567,178 @@ _amend_lock_release() {
     rmdir "$lock" 2>/dev/null || true
 }
 
+# _amend_record_fingerprint <pr>
+#   Content hash of the ownership record, or `absent`. Every stamp carries a
+#   fresh nonce, so two stamps never hash alike.
+_amend_record_fingerprint() {
+    local snap
+    snap=$(_amend_snapshot_path "$1")
+    [[ -f "$snap" ]] || { echo absent; return 0; }
+    python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' \
+        "$snap" 2>/dev/null || echo absent
+}
+
+# _amending_label_owner <label> → "<host>\t<agent>" on stdout; exit 1 when the
+#   label is not a fleet:amending-<host>-<agent> label.
+_amending_label_owner() {
+    local after="${1#fleet:amending-}" hp
+    [[ "$1" == fleet:amending-* ]] || return 1
+    for hp in mac linux windows; do
+        if [[ "$after" == "${hp}-"* ]]; then
+            printf '%s\t%s\n' "$hp" "${after#${hp}-}"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# _amend_sweep_intent_write <repo> <pr> <label> → intent path on stdout.
+_amend_sweep_intent_write() {
+    local repo="$1" pr="$2" label="$3" intent
+    intent="${FLEET_AMEND_SNAPSHOTS_DIR:-$HOME/.fleet/amend-snapshots}/${pr}.sweep-${_AMEND_LOCK_TOKEN}"
+    printf '{"pr":%s,"repo":"%s","label":"%s","pid":%s,"record":"%s"}\n' \
+        "$pr" "$repo" "$label" "$$" "$_AMEND_LOCK_RECORD_FP" > "$intent" 2>/dev/null || true
+    printf '%s\n' "$intent"
+}
+
+# _amend_sweep_intent_settle <intent-path>
+#   Runs under the amend lock. Re-adds the intent's label iff the ownership
+#   record has been re-stamped since the intent's writer acquired its lock,
+#   by that label's own same-host agent, and no other amending label has
+#   arrived on the PR meanwhile; then retires the intent.
+_amend_sweep_intent_settle() {
+    local intent="$1" fields pr repo label fp_then
+    fields=$(INTENT="$intent" python3 -c '
+import json, os
+try:
+    with open(os.environ["INTENT"]) as fh:
+        d = json.load(fh)
+except Exception:
+    d = {}
+print("%s\t%s\t%s\t%s" % (d.get("pr") or "", d.get("repo") or "",
+                          d.get("label") or "", d.get("record") or ""))
+' 2>/dev/null | tr -d '\r' || true)
+    IFS=$'\t' read -r pr repo label fp_then <<< "$fields" || true
+    if [[ ! "$pr" =~ ^[0-9]+$ || -z "$repo" || -z "$label" ]]; then
+        rm -f "$intent" 2>/dev/null || true
+        return 0
+    fi
+    local fp_now owner host agent snap_agent=""
+    fp_now=$(_amend_record_fingerprint "$pr")
+    owner=$(_amending_label_owner "$label") || owner=""
+    IFS=$'\t' read -r host agent <<< "$owner" || true
+    if [[ "$fp_now" != "$fp_then" && "$fp_now" != absent \
+            && -n "$agent" && "$host" == "$(derive_host)" ]]; then
+        snap_agent=$(SNAP="$(_amend_snapshot_path "$pr")" python3 -c '
+import json, os
+try:
+    with open(os.environ["SNAP"]) as fh:
+        print(json.load(fh).get("agent") or "")
+except Exception:
+    print("")
+' 2>/dev/null | tr -d '\r' || true)
+    fi
+    if [[ -n "$snap_agent" && "$snap_agent" == "$agent" ]]; then
+        # Unknown live labels (fetch failed) read as "another holder": the
+        # re-add is the one write here that could create a double hold.
+        local labels_json others=unknown
+        labels_json=$(gh api "repos/${repo}/issues/${pr}/labels?per_page=100" --paginate 2>/dev/null) || labels_json=""
+        [[ -z "$labels_json" ]] || others=$(echo "$labels_json" | python3 -c '
+import json, sys
+try:
+    labels = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+mine = sys.argv[1]
+print(sum(1 for l in labels if isinstance(l, dict)
+          and l.get("name", "").startswith("fleet:amending-") and l["name"] != mine))
+' "$label" 2>/dev/null || echo unknown)
+        if [[ "$others" == "0" ]] \
+                && gh api "repos/${repo}/issues/${pr}/labels" --method POST \
+                    -f "labels[]=${label}" >/dev/null 2>&1; then
+            echo "fleet-claim: restored '$label' on $repo PR#$pr — its agent re-claimed under the lock while the removal was in flight" >&2
+        else
+            echo "fleet-claim: WARN '$label' on $repo PR#$pr was removed after its agent re-claimed; not restored (other amending holder present, or the re-add failed)" >&2
+        fi
+    fi
+    rm -f "$intent" 2>/dev/null || true
+}
+
+# _amend_sweep_intents_scan <pr>
+#   On lock acquisition: settle every intent left by a dead writer; record a
+#   live writer's label in _AMEND_PENDING_SWEEP for the caller's decision.
+_amend_sweep_intents_scan() {
+    local pr="$1" dir intent pid label
+    _AMEND_PENDING_SWEEP=""
+    dir="${FLEET_AMEND_SNAPSHOTS_DIR:-$HOME/.fleet/amend-snapshots}"
+    for intent in "$dir/${pr}.sweep-"*; do
+        [[ -f "$intent" ]] || continue
+        [[ "$intent" == *".sweep-${_AMEND_LOCK_TOKEN}" ]] && continue
+        pid=$(INTENT="$intent" python3 -c '
+import json, os
+try:
+    with open(os.environ["INTENT"]) as fh:
+        d = json.load(fh)
+    print("%s\t%s" % (d.get("pid") or 0, d.get("label") or ""))
+except Exception:
+    print("0\t")
+' 2>/dev/null | tr -d '\r' || echo $'0\t')
+        IFS=$'\t' read -r pid label <<< "$pid" || true
+        if [[ "$pid" =~ ^[0-9]+$ ]] && (( pid > 0 )) && kill -0 "$pid" 2>/dev/null; then
+            _AMEND_PENDING_SWEEP="$label"
+            continue
+        fi
+        _amend_sweep_intent_settle "$intent"
+    done
+}
+
+# _amend_settle_dangling_intents
+#   `cleanup --gh`'s pass over intents whose PR no longer carries an amending
+#   label (the dead writer's removal landed): taking the lock is what settles
+#   them, and the per-label sweep never locks a PR it has no label for.
+_amend_settle_dangling_intents() {
+    local dir intent pr
+    dir="${FLEET_AMEND_SNAPSHOTS_DIR:-$HOME/.fleet/amend-snapshots}"
+    for intent in "$dir"/*.sweep-*; do
+        [[ -f "$intent" ]] || continue
+        pr="${intent##*/}"; pr="${pr%%.sweep-*}"
+        [[ "$pr" =~ ^[0-9]+$ ]] || continue
+        if _amend_lock_acquire "$pr"; then
+            _amend_lock_release "$pr"
+        fi
+    done
+}
+
+# _amend_label_remove_fenced <repo> <pr> <label>
+#   The one way an amending label is removed from inside the lock. Exit 0:
+#   removed, lock still ours. 1: the gh call failed (caller writes the orphan
+#   sentinel). 3: the lock was stolen while the call was out — the removal
+#   is settled (re-added if a successor of the same agent claimed meanwhile)
+#   and the caller must not act on its pre-removal verdict any further.
+_amend_label_remove_fenced() {
+    local repo="$1" pr="$2" label="$3" intent rc=0
+    intent=$(_amend_sweep_intent_write "$repo" "$pr" "$label")
+    gh issue edit "$pr" --repo "$repo" --remove-label "$label" >/dev/null 2>&1 || rc=1
+    if _amend_lock_owned "$pr"; then
+        rm -f "$intent" 2>/dev/null || true
+        return "$rc"
+    fi
+    echo "fleet-claim: amend lock on PR#$pr was stolen while '$label' was being removed; settling the removal against the successor's record" >&2
+    # The re-take must not disturb the caller's view of its ORIGINAL
+    # acquisition: a claim that reaches here (force-sweep) still voids
+    # itself against that fingerprint on the way out.
+    local fp_orig="$_AMEND_LOCK_RECORD_FP" pending_orig="$_AMEND_PENDING_SWEEP"
+    if _amend_lock_acquire "$pr"; then
+        _amend_sweep_intent_settle "$intent"
+        _amend_lock_release "$pr"
+        _AMEND_LOCK_RECORD_FP="$fp_orig"
+        _AMEND_PENDING_SWEEP="$pending_orig"
+    else
+        echo "fleet-claim: WARN could not re-take the amend lock on PR#$pr; leaving the sweep intent for the next holder to settle" >&2
+    fi
+    return 3
+}
+
 # _write_amend_ownership <pr> <agent>
 #   The ownership record for the sweep's liveness predicate. Called from
 #   _stamp_label_claim_liveness, which both a won POST and an already-held
@@ -549,8 +758,8 @@ _write_amend_ownership() {
     [[ "$pr" =~ ^[0-9]+$ ]] || return 0
     snap=$(_amend_snapshot_path "$pr")
     mkdir -p "$(dirname "$snap")" 2>/dev/null || true
-    printf '{"pr":%s,"agent":"%s","acquired_epoch":%s,"dispatch_id":"%s"}\n' \
-        "$pr" "$agent" "$(date +%s)" "${FLEET_DISPATCH_ID:-}" \
+    printf '{"pr":%s,"agent":"%s","acquired_epoch":%s,"dispatch_id":"%s","nonce":"%s"}\n' \
+        "$pr" "$agent" "$(date +%s)" "${FLEET_DISPATCH_ID:-}" "$$-$RANDOM-$RANDOM" \
         > "$snap" 2>/dev/null || true
 }
 
@@ -633,16 +842,9 @@ _amending_owner_live() {
     local label_name="$1" pr="${2:-}"
     _AMENDING_OWNER_DISPATCH=""
     _AMENDING_SUPERSEDED_BY=""
-    [[ "$label_name" == fleet:amending-* ]] || return 1
-    local after="${label_name#fleet:amending-}"
-    local claim_host="" claim_agent="" hp
-    for hp in mac linux windows; do
-        if [[ "$after" == "${hp}-"* ]]; then
-            claim_host="$hp"
-            claim_agent="${after#${hp}-}"
-            break
-        fi
-    done
+    local owner claim_host="" claim_agent=""
+    owner=$(_amending_label_owner "$label_name") || return 1
+    IFS=$'\t' read -r claim_host claim_agent <<< "$owner" || true
     [[ -n "$claim_agent" ]] || return 1
     # Cross-host: the owner's heartbeat and dispatch record live on its host,
     # not ours — we cannot vouch either way, so fall through to pure TTL.
@@ -764,7 +966,17 @@ for name in sorted(
         local _alive_rc=0
         _amending_owner_live "$h" "$target" || _alive_rc=$?
         (( _alive_rc == 0 )) && continue            # same-host live owner
-        if gh issue edit "$target" --repo "$repo" --remove-label "$h" >/dev/null 2>&1; then
+        local _rm_rc=0
+        if [[ "$h" == fleet:amending-* ]]; then
+            _amend_label_remove_fenced "$repo" "$target" "$h" || _rm_rc=$?
+            # Lock stolen mid-removal: the caller's whole claim is void
+            # (cmd_amending_claim checks ownership on the way out), so
+            # nothing more is swept here.
+            (( _rm_rc == 3 )) && break
+        else
+            gh issue edit "$target" --repo "$repo" --remove-label "$h" >/dev/null 2>&1 || _rm_rc=1
+        fi
+        if (( _rm_rc == 0 )); then
             echo "fleet-claim: force-swept TTL-stale '$h' on $repo#$target" \
                  "(age $(( (now - added) / 60 ))m); re-acquiring" >&2
             swept=0
@@ -2188,6 +2400,13 @@ _stamp_label_claim_liveness() {
     local prefix="$1" target="$2" agent="$3"
     case "$prefix" in
         fleet:amending-)
+            # Written only by the lock's current owner (see _amend_lock_acquire):
+            # a holder that resumed after a steal would overwrite the record a
+            # successor stamped, and with an older dispatch id.
+            if ! _amend_lock_owned "$target"; then
+                echo "fleet-claim: amend lock on PR#$target no longer ours; ownership record not stamped" >&2
+                return 1
+            fi
             mkdir -p "$HEARTBEATS_DIR"
             touch "$HEARTBEATS_DIR/$agent" 2>/dev/null || true
             _write_amend_ownership "$target" "$agent"
@@ -2240,7 +2459,7 @@ _cmd_pr_label_claim() {
     # leak is indistinguishable from a live claim (#2711). stewarding stays out of
     # scope — it runs one pane per host, so the label itself is the cross-host
     # signal and there is no second local claimant to vouch against.
-    _stamp_label_claim_liveness "$prefix" "$pr" "$agent"
+    _stamp_label_claim_liveness "$prefix" "$pr" "$agent" || return 1
 
     echo "${cmd_name} acquired: $repo ${target_word}#$pr ($agent)"
     return 0
@@ -2285,7 +2504,7 @@ _cross_lane_precheck() {
 #   Refresh an already-held claim only after the caller's remaining gates pass.
 _confirm_incumbent_claim() {
     local prefix="$1" cmd_name="$2" target="$3" agent="${4:-unknown}"
-    _stamp_label_claim_liveness "$prefix" "$target" "$agent"
+    _stamp_label_claim_liveness "$prefix" "$target" "$agent" || return 1
     echo "${cmd_name} acquired: $(repo_from_ns) PR#$target ($agent; already held)"
 }
 
@@ -2398,20 +2617,67 @@ cmd_amending_claim() {
     # _amend_lock_acquire): _cross_lane_precheck's snapshot is UNLOCKED, good
     # enough for the gates but not for deciding we still hold the label.
     _amend_lock_acquire "${1:-}" || return 1
-    local rc=0
+    local own_label="fleet:amending-$(derive_host)-${2:-unknown}"
+    if [[ -n "$_AMEND_PENDING_SWEEP" && "$_AMEND_PENDING_SWEEP" != "$own_label" ]]; then
+        # A stalled sweep still has a removal of another agent's label in
+        # flight on this PR; when it lands is unknowable, so nothing decided
+        # from the labels now would hold. Our own label in flight is fine:
+        # that sweep re-adds it once it sees our record.
+        echo "fleet-claim: amending-claim refused on PR#${1:-}: a removal of '$_AMEND_PENDING_SWEEP' by a stalled sweep is still in flight" >&2
+        _amend_lock_release "${1:-}"
+        return 1
+    fi
+    local rc=0 posted=0
     if [[ "$cross_lane_rc" -eq 3 ]] \
             && _amending_label_still_held "${1:-}" "${2:-unknown}"; then
-        _confirm_incumbent_claim "fleet:amending-" "amending-claim" "${1:-}" "${2:-unknown}"
+        _confirm_incumbent_claim "fleet:amending-" "amending-claim" "${1:-}" "${2:-unknown}" || rc=$?
     else
         # Fresh POST — or the snapshot's incumbent label was swept between
         # the precheck and the lock (a sweep that ran to completion before we
         # entered: its verdict was on the OLD record, so the label it removed
         # was a dead claim's, not ours). Either way the ownership record is
         # written under the lock, so a sweep entering after us sees it.
+        posted=1
         _cmd_pr_label_claim "fleet:amending-" "amending-claim" "$@" || rc=$?
+    fi
+    if ! _amend_lock_owned "${1:-}"; then
+        _amend_claim_void "${1:-}" "${2:-unknown}" "$posted"
+        rc=1
     fi
     _amend_lock_release "${1:-}"
     return "$rc"
+}
+
+# _amend_claim_void <pr> <agent> <posted 0|1>
+#   The lock was stolen during this claim's critical section, so a successor
+#   has arbitrated the PR from state this claim no longer controls; the claim
+#   fails. A label it POSTed is dropped unless the ownership record has been
+#   re-stamped by this same agent since the lock was first taken — then the
+#   successor is a later dispatch of this pane and the label is now its.
+_amend_claim_void() {
+    local pr="$1" agent="$2" posted="$3" fp_then="$_AMEND_LOCK_RECORD_FP"
+    echo "fleet-claim: amend lock on PR#$pr was stolen during amending-claim; the claim is void" >&2
+    (( posted )) || return 0
+    if ! _amend_lock_acquire "$pr"; then
+        echo "fleet-claim: WARN could not re-take the amend lock on PR#$pr to drop this claim's label; it ages out on TTL" >&2
+        return 0
+    fi
+    local snap_agent=""
+    if [[ "$(_amend_record_fingerprint "$pr")" != "$fp_then" ]]; then
+        snap_agent=$(SNAP="$(_amend_snapshot_path "$pr")" python3 -c '
+import json, os
+try:
+    with open(os.environ["SNAP"]) as fh:
+        print(json.load(fh).get("agent") or "")
+except Exception:
+    print("")
+' 2>/dev/null | tr -d '\r' || true)
+    fi
+    if [[ "$snap_agent" != "$agent" ]]; then
+        gh_release_label "$(repo_from_ns)" "$pr" "fleet:amending-$(derive_host)-${agent}" || true
+        echo "fleet-claim: dropped this claim's label on PR#$pr (no successor of this agent holds it)" >&2
+    fi
+    _amend_lock_release "$pr"
 }
 
 # _amending_label_still_held <pr> <agent>
@@ -2885,20 +3151,32 @@ _cleanup_sweep_pr_label() {
             _sweep_note="orphaned: no local marker on $this_host, ${_sweep_note}"
         fi
     fi
-    if gh issue edit "$pr_num" --repo "$repo" \
-            --remove-label "$label_name" >/dev/null 2>&1; then
-        echo "cleanup --gh: removed stale '$label_name' on $repo PR#$pr_num ($_sweep_note)"
-        total_removed=$((total_removed + 1))
-        # A confirmed-dead owner means the swept-but-alive deferral
-        # has nothing to protect: drop the record so R7 can re-arm
-        # fleet:design-unblocked on the next tick instead of waiting out
-        # 2xTTL. On the legacy TTL path the snapshot STAYS — liveness is
-        # unknown there, which is exactly when the deferral earns its keep.
-        (( _amend_rc == 2 )) && rm -f "$(_amend_snapshot_path "$pr_num")" 2>/dev/null || true
+    local _remove_rc=0
+    if [[ "$label_name" == fleet:amending-* ]]; then
+        _amend_label_remove_fenced "$repo" "$pr_num" "$label_name" || _remove_rc=$?
     else
-        write_orphan_sentinel "$repo" "$pr_num" "$label_name" \
-            "cleanup --gh: PR remove-label failed"
+        gh issue edit "$pr_num" --repo "$repo" \
+            --remove-label "$label_name" >/dev/null 2>&1 || _remove_rc=1
     fi
+    case "$_remove_rc" in
+        0)
+            echo "cleanup --gh: removed stale '$label_name' on $repo PR#$pr_num ($_sweep_note)"
+            total_removed=$((total_removed + 1))
+            # A confirmed-dead owner means the swept-but-alive deferral
+            # has nothing to protect: drop the record so R7 can re-arm
+            # fleet:design-unblocked on the next tick instead of waiting out
+            # 2xTTL. On the legacy TTL path the snapshot STAYS — liveness is
+            # unknown there, which is exactly when the deferral earns its keep.
+            (( _amend_rc == 2 )) && rm -f "$(_amend_snapshot_path "$pr_num")" 2>/dev/null || true
+            ;;
+        3)
+            echo "cleanup --gh: removal of '$label_name' on $repo PR#$pr_num settled against a successor's claim (amend lock was stolen mid-removal)"
+            ;;
+        *)
+            write_orphan_sentinel "$repo" "$pr_num" "$label_name" \
+                "cleanup --gh: PR remove-label failed"
+            ;;
+    esac
 }
 
 # cmd_cleanup_gh <repo> [<repo> ...]
@@ -2952,6 +3230,11 @@ for pr in prs:
                     echo "cleanup --gh: skipping '$label_name' on $repo PR#$pr_num this pass — amend lock held"
                     continue
                 fi
+                if [[ -n "$_AMEND_PENDING_SWEEP" ]]; then
+                    echo "cleanup --gh: skipping '$label_name' on $repo PR#$pr_num this pass — a stalled sweep's removal of '$_AMEND_PENDING_SWEEP' is still in flight"
+                    _amend_lock_release "$pr_num"
+                    continue
+                fi
                 _cleanup_sweep_pr_label "$repo" "$pr_num" "$label_name"
                 _amend_lock_release "$pr_num"
             else
@@ -2959,6 +3242,8 @@ for pr in prs:
             fi
         done <<< "$pr_review_plan"
     done
+
+    _amend_settle_dangling_intents
 
     # `fleet:claim-*` labels on closed issues are intentionally
     # preserved as a historical "who worked on this" record; no
@@ -5965,8 +6250,18 @@ commands:
                                     seen, never swept from a stale
                                     verdict; the lock is owned, so a
                                     stolen holder cannot release its
-                                    successor's. Cross-host labels age
-                                    out on pure TTL,
+                                    successor's, and the removal is
+                                    fenced: a sweep intent
+                                    (<snapshots>/<pr>.sweep-<token>)
+                                    precedes it, and if the lock was
+                                    stolen while the gh call was out
+                                    the label is re-added when its
+                                    agent re-claimed meanwhile. A
+                                    dead writer's intent is settled
+                                    by the next lock holder; a live
+                                    one holds the label for the pass.
+                                    Cross-host labels age out on pure
+                                    TTL,
                                 (2) fleet:claim-* labels off open
                                     issues where the claim is
                                     abandoned — age > TTL (default
@@ -6019,10 +6314,17 @@ commands:
                                 refuses (exit 1); one older than
                                 FLEET_AMEND_LOCK_STALE_SECS (600) is
                                 stolen. The lock is owned (a per-
-                                process token): a stolen holder that
-                                resumes releases nothing, so the
-                                successor's critical section stays
-                                closed.
+                                process token) and fences the whole
+                                section: a stolen holder that resumes
+                                releases nothing, stamps nothing, and
+                                reports failure (dropping a label it
+                                POSTed unless the successor is this
+                                same agent); a label removal it had in
+                                flight is settled against the
+                                successor's record. Refuses (exit 1)
+                                while a live, stalled sweep still has
+                                another agent's label removal in
+                                flight on the PR.
   amending-release <pr> <agent>
                                 release an amendment claim.
   steward-claim <umbrella-issue> <agent>

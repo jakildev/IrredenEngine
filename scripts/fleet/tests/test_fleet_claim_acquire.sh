@@ -238,7 +238,13 @@ gh() {
 export FLEET_TEST_HOST="mac"
 HBROOT=$(mktemp -d)
 HEARTBEATS_DIR="$HBROOT/heartbeats"
-mkdir -p "$HEARTBEATS_DIR"
+# The amending force-sweep is fenced on the per-PR amend lock its one real
+# caller (cmd_amending_claim) holds; the amending cases below take it the
+# same way. Sandboxed so the lock and record never touch the live ~/.fleet.
+export FLEET_STATE_DIR="$HBROOT/state"
+FLEET_AMEND_SNAPSHOTS_DIR="$HBROOT/amend-snapshots"
+mkdir -p "$HEARTBEATS_DIR" "$FLEET_STATE_DIR/dispatch-current" "$FLEET_AMEND_SNAPSHOTS_DIR"
+amending_acquire() { _amend_lock_acquire 1 && { _acquire_label_on "$@"; local rc=$?; _amend_lock_release 1; return $rc; }; }
 STUB_CALL_LOG="$HBROOT/gh-calls.log"
 touch "$STUB_CALL_LOG"
 trap 'rm -rf "$HBROOT"' EXIT
@@ -273,7 +279,7 @@ touch "$HEARTBEATS_DIR/worker-1"   # live LOCAL worker-1 (spoof bait)
 STUB_PAGE1_HOLDERS="$ADEAD"
 STUB_PAGE2_HOLDERS=""
 rc=0
-_acquire_label_on "owner/repo" 1 "$AMINE" "$AP" >/dev/null 2>&1 || rc=$?
+amending_acquire "owner/repo" 1 "$AMINE" "$AP" >/dev/null 2>&1 || rc=$?
 assert_exit "$rc" 0 "cross-host amending holder force-swept despite local same-basename heartbeat → exit 0"
 
 # T11: live SAME-HOST amending holder with a fresh heartbeat → NOT swept; the
@@ -285,7 +291,7 @@ touch "$HEARTBEATS_DIR/worker-3"   # owner of the held label is alive
 STUB_PAGE1_HOLDERS="$ALIVE"
 STUB_PAGE2_HOLDERS=""
 rc=0
-_acquire_label_on "owner/repo" 1 "$AMINE2" "$AP" >/dev/null 2>&1 || rc=$?
+amending_acquire "owner/repo" 1 "$AMINE2" "$AP" >/dev/null 2>&1 || rc=$?
 assert_exit "$rc" 1 "live same-host amending owner kept → exit 1 (yield, no theft)"
 
 # T12: same-host amending holder past TTL whose owning DISPATCH has been
@@ -296,9 +302,6 @@ assert_exit "$rc" 1 "live same-host amending owner kept → exit 1 (yield, no th
 # Force-swept, claimant wins. T11 above is the control: identical geometry
 # minus the two records, still yields.
 echo "T12: same-host amending holder with a superseded dispatch → force-sweep + win"
-export FLEET_STATE_DIR="$HBROOT/state"
-FLEET_AMEND_SNAPSHOTS_DIR="$HBROOT/amend-snapshots"
-mkdir -p "$FLEET_STATE_DIR/dispatch-current" "$FLEET_AMEND_SNAPSHOTS_DIR"
 ADEAD2="${AP}mac-worker-5"
 AMINE3="${AP}mac-worker-4"          # lex-smaller than mac-worker-5
 touch "$HEARTBEATS_DIR/worker-5"   # pane alive, iteration dead
@@ -308,7 +311,7 @@ printf 'D2\n' > "$FLEET_STATE_DIR/dispatch-current/worker-5"
 STUB_PAGE1_HOLDERS="$ADEAD2"
 STUB_PAGE2_HOLDERS=""
 rc=0
-_acquire_label_on "owner/repo" 1 "$AMINE3" "$AP" >/dev/null 2>&1 || rc=$?
+amending_acquire "owner/repo" 1 "$AMINE3" "$AP" >/dev/null 2>&1 || rc=$?
 assert_exit "$rc" 0 "superseded-dispatch amending holder force-swept despite a fresh pane heartbeat → exit 0"
 
 echo
