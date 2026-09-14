@@ -4,7 +4,8 @@
 Capture four cardinal views using IRCanvasStress --only shadowbox,floor
 --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 0.4 --auto-screenshot 6
 --sweep-yaw 0 4.71238898 4. Pass full-frame PNGs in yaw order.
-Use --grid when captures also use --probe-grid. The receiver plate supplies
+Use --grid when captures also use --probe-grid. Use --source for captures
+with --source-face-shadows (unrounded authored box coordinates). The receiver plate supplies
 pixel scale and origin; the expected shadow comes from the authored box and
 sun direction, independently of the renderer's shadow samples.
 """
@@ -51,7 +52,7 @@ def convex_hull(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
     return half(ordered) + half(reversed(ordered))
 
 
-def expected_polygon(image: Image.Image, cardinal: int, grid: bool):
+def expected_polygon(image: Image.Image, cardinal: int, grid: bool, source: bool):
     diff = ImageChops.difference(image, Image.new("RGB", image.size, FLOOR_COLOR))
     red, green, blue = diff.split()
     plate = ImageChops.lighter(ImageChops.lighter(red, green), blue).point(
@@ -68,13 +69,13 @@ def expected_polygon(image: Image.Image, cardinal: int, grid: bool):
              (bottom - top) / (4 * FLOOR_HALF_SPAN))
     centers = []
     for point in itertools.product(*[(-h, h) for h in BOX_HALF_CENTER_SPAN]):
-        local = rotate(point, 0 if grid else -cardinal)
-        centers.append(tuple(math.floor(value + 0.5) for value in local))
+        local = rotate(point, 0 if grid or source else -cardinal)
+        centers.append(local if source else tuple(math.floor(value + 0.5) for value in local))
     lower = [min(point[axis] for point in centers) for axis in range(3)]
     upper = [max(point[axis] for point in centers) + 1 for axis in range(3)]
     projected = []
     for corner in itertools.product(*zip(lower, upper)):
-        x, y, z = rotate(corner, 0 if grid else cardinal)
+        x, y, z = rotate(corner, 0 if grid or source else cardinal)
         z += BOX_Z
         x += (FLOOR_TOP - z) * SUN[0] / SUN[2]
         y += (FLOOR_TOP - z) * SUN[1] / SUN[2]
@@ -89,10 +90,10 @@ def expected_polygon(image: Image.Image, cardinal: int, grid: bool):
     return convex_hull(projected), floor_mask
 
 
-def measure(path: Path, cardinal: int, grid: bool, overlay_dir: Path | None) -> bool:
-    with Image.open(path) as source:
-        image = source.convert("RGB")
-    polygon, floor_mask = expected_polygon(image, cardinal, grid)
+def measure(path: Path, cardinal: int, grid: bool, overlay_dir: Path | None, source=False) -> bool:
+    with Image.open(path) as opened_image:
+        image = opened_image.convert("RGB")
+    polygon, floor_mask = expected_polygon(image, cardinal, grid, source)
     expected = Image.new("L", image.size)
     ImageDraw.Draw(expected).polygon(polygon, fill=255)
     expected_area = actual_area = intersection = 0
@@ -127,12 +128,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("images", nargs=4, type=Path, metavar="PNG")
     parser.add_argument("--grid", action="store_true")
+    parser.add_argument("--source", action="store_true",
+                        help="Use unrounded authored positions for --source-face-shadows")
     parser.add_argument("--overlay-dir", type=Path)
     args = parser.parse_args()
     results = []
     for cardinal, path in enumerate(args.images):
         try:
-            results.append(measure(path, cardinal, args.grid, args.overlay_dir))
+            results.append(measure(path, cardinal, args.grid, args.overlay_dir, args.source))
         except (OSError, ValueError) as error:
             print(f"{path}: FAIL ({error})")
             results.append(False)
