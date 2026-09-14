@@ -19,6 +19,13 @@
 # claim finishes inside the window and its label is removed behind it; with
 # the lock the claim waits for cleanup to leave, re-reads the live labels,
 # and re-POSTs.
+#
+# The lock's own recovery path is pinned the same way (T5): a holder stalled
+# past FLEET_AMEND_LOCK_STALE_SECS is stolen, and when it resumes its release
+# must not remove the successor's lock. Both holders park at their POST
+# (inside the lock) under a per-process GATE_TAG, so the test can back-date the
+# stalled holder's lock, let the successor steal it, and then release the
+# stalled holder while the successor is still inside its critical section.
 
 set -euo pipefail
 
@@ -144,6 +151,7 @@ case "${1:-} ${2:-}" in
             esac
             shift || true
         done
+        if [[ -n "$posted" && -n "${GATE_TAG:-}" ]]; then await_gate "post-$GATE_TAG"; fi
         lock_state
         if [[ -n "$posted" ]]; then
             present=0
@@ -182,6 +190,15 @@ label_present() { grep -qxF "$LABEL" "$CLAIM_STATE"; }
 record_dispatch() {
     python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("dispatch_id",""))' \
         "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.json" 2>/dev/null || echo "(no record)"
+}
+# plant_lock <token>: a held lock as fleet-claim writes it — the directory
+# plus the holder's token file.
+plant_lock() {
+    mkdir "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.lock"
+    : > "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.lock/owner-$1"
+}
+lock_owner() {
+    ls "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.lock" 2>/dev/null | sed -n 's/^owner-//p' | tr '\n' ' '
 }
 wait_for_file() {
     local path="$1" tick
@@ -262,7 +279,7 @@ fi
 
 echo "T3: a held lock is waited on, never bypassed — cleanup leaves the label for its next pass"
 reset_fixture
-mkdir "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.lock"
+plant_lock live-holder
 FLEET_AMEND_LOCK_WAIT_SECS=1 "$FLEET_CLAIM" cleanup --gh --repo jakildev/IrredenEngine \
     > "$cleanup_out" 2>&1 || true
 assert_contains "$(cat "$cleanup_out")" "amend lock held" \
@@ -277,7 +294,8 @@ FLEET_AMEND_LOCK_WAIT_SECS=1 FLEET_DISPATCH_ID=preclaim "$FLEET_CLAIM" amending-
     > "$claim_out" 2>&1 || rc=$?
 assert_eq "$rc" "1" "amending-claim refuses while the lock is held (exit 1)"
 assert_eq "$(record_dispatch)" "D1" "a refused claim leaves the ownership record untouched"
-rmdir "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.lock"
+assert_eq "$(lock_owner)" "live-holder " "the refused claim left the holder's token in place"
+rm -rf "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.lock"
 
 echo "T4: a lock older than FLEET_AMEND_LOCK_STALE_SECS is a crashed holder and is stolen"
 reset_fixture
@@ -293,5 +311,69 @@ if [[ -d "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.lock" ]]; then
 else
     ok "lock released on return"
 fi
+
+echo "T5: a stale holder that resumes after its lock was stolen must not release the successor's lock"
+reset_fixture
+printf '%s\n' "fleet:wip" > "$CLAIM_STATE"
+mkdir -p "$CLAIM_RUN"
+: > "$CLAIM_RUN/gate-remove"
+stalled_out="$TMPROOT/stalled.out"
+stalled_rc_file="$TMPROOT/stalled.rc"
+successor_out="$TMPROOT/successor.out"
+successor_rc_file="$TMPROOT/successor.rc"
+(rc=0; GATE_TAG=stalled FLEET_DISPATCH_ID=preclaim "$FLEET_CLAIM" amending-claim "$PR" "$AGENT" \
+    > "$stalled_out" 2>&1 || rc=$?
+ printf '%s\n' "$rc" > "$stalled_rc_file") &
+stalled_pid=$!
+if wait_for_file "$CLAIM_RUN/arrived-post-stalled"; then
+    ok "the first claimant holds the lock and is parked inside its critical section"
+else
+    bad "the first claimant never reached its POST"
+fi
+stalled_token=$(lock_owner)
+assert_contains "$stalled_token" "-" "the held lock carries its holder's token"
+# Age the lock past the stale threshold while its holder is still alive.
+touch -t 202001010000 "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.lock"
+(rc=0; GATE_TAG=successor FLEET_DISPATCH_ID=preclaim "$FLEET_CLAIM" amending-claim "$PR" "$AGENT" \
+    > "$successor_out" 2>&1 || rc=$?
+ printf '%s\n' "$rc" > "$successor_rc_file") &
+successor_pid=$!
+if wait_for_file "$CLAIM_RUN/arrived-post-successor"; then
+    ok "the successor stole the stale lock and is parked inside its own critical section"
+else
+    bad "the successor never reached its POST"
+fi
+successor_token=$(lock_owner)
+if [[ -n "$successor_token" && "$successor_token" != "$stalled_token" ]]; then
+    ok "the lock now carries the successor's token, not the stalled holder's"
+else
+    bad "lock owner after the steal: '$successor_token' (stalled holder's: '$stalled_token')"
+fi
+# The stalled holder resumes, finishes its POST and releases.
+: > "$CLAIM_RUN/gate-post-stalled"
+wait "$stalled_pid" || true
+assert_eq "$(cat "$stalled_rc_file" 2>/dev/null || echo "?")" "0" "the stalled holder still completes its own claim"
+if [[ -d "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.lock" ]]; then
+    ok "the successor's lock survives the stalled holder's release"
+else
+    bad "the stalled holder's release removed the successor's lock"
+fi
+assert_eq "$(lock_owner)" "$successor_token" "the surviving lock is still the successor's"
+: > "$CLAIM_RUN/gate-post-successor"
+wait "$successor_pid" || true
+assert_eq "$(cat "$successor_rc_file" 2>/dev/null || echo "?")" "0" "the successor completes its claim"
+assert_contains "$(cat "$successor_out")" "stealing amend lock" "the theft is logged by the successor"
+assert_absent "$(cat "$stalled_out")" "stealing amend lock" "the stalled holder never stole anything"
+if [[ -d "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.lock" ]]; then
+    bad "lock left behind after the successor released"
+else
+    ok "the successor's own release removes the lock"
+fi
+if label_present; then
+    ok "the amending label is on the PR after both claims"
+else
+    bad "the amending label is missing after both claims"
+fi
+rm -rf "$CLAIM_RUN"
 
 summarize "fleet-claim amending × cleanup race"

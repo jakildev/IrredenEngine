@@ -469,25 +469,49 @@ _amend_snapshot_path() {
 #   generous; the stale threshold sits above several FLEET_NET_TIMEOUT
 #   budgets (fleet-net.sh, 120 s each) so a holder stuck in one network
 #   timeout is not mistaken for a dead one and stolen mid-section.
+#
+#   The lock is OWNED: the holder drops a token file (`owner-<token>`, one
+#   token per process) inside the directory, and release removes only its own
+#   token and then rmdirs — which the kernel refuses while a successor's token
+#   is inside. "Presumed dead" is a threshold, not a fact: a holder stalled
+#   past it can resume after the lock was stolen, and an ownership-blind
+#   release would remove the successor's lock and admit a third party into the
+#   successor's critical section. A steal is an atomic rename of the stale
+#   directory out of the way, so two stealers cannot both win it, and the
+#   resumed holder's token leaves with it. The successor's own mkdir-then-drop
+#   is not atomic: a resumed holder's rmdir can land on the still-empty
+#   directory in between, which makes the token drop fail and the successor go
+#   round again rather than proceed on a lock it no longer holds.
 _amend_lock_path() {
     printf '%s\n' "${FLEET_AMEND_SNAPSHOTS_DIR:-$HOME/.fleet/amend-snapshots}/${1}.lock"
 }
 _amend_lock_acquire() {
     local pr="$1" lock
     [[ "$pr" =~ ^[0-9]+$ ]] || return 0
+    : "${_AMEND_LOCK_TOKEN:=$(date +%s)-$$-$RANDOM}"
     lock=$(_amend_lock_path "$pr")
     mkdir -p "$(dirname "$lock")" 2>/dev/null || true
     local wait_max="${FLEET_AMEND_LOCK_WAIT_SECS:-60}"
     local stale_secs="${FLEET_AMEND_LOCK_STALE_SECS:-600}"
     local deadline=$(( $(date +%s) + wait_max ))
-    while ! mkdir "$lock" 2>/dev/null; do
+    while :; do
+        if mkdir "$lock" 2>/dev/null; then
+            if : > "$lock/owner-$_AMEND_LOCK_TOKEN" 2>/dev/null; then
+                return 0
+            fi
+            continue
+        fi
         local held_since
         held_since=$(python3 -c \
             "import os,sys; print(int(os.path.getmtime(sys.argv[1])))" \
             "$lock" 2>/dev/null || echo 0)
         if [[ "$held_since" -gt 0 ]] && (( $(date +%s) - held_since >= stale_secs )); then
-            echo "fleet-claim: stealing amend lock on PR#$pr held since $held_since (holder presumed dead)" >&2
-            rmdir "$lock" 2>/dev/null || true
+            local aside="$lock.stale-$_AMEND_LOCK_TOKEN"
+            if python3 -c "import os,sys; os.rename(sys.argv[1], sys.argv[2])" \
+                    "$lock" "$aside" 2>/dev/null; then
+                echo "fleet-claim: stealing amend lock on PR#$pr held since $held_since (holder presumed dead)" >&2
+                rm -rf "$aside" 2>/dev/null || true
+            fi
             continue
         fi
         if (( $(date +%s) >= deadline )); then
@@ -496,11 +520,14 @@ _amend_lock_acquire() {
         fi
         sleep 0.1
     done
-    return 0
 }
 _amend_lock_release() {
     [[ "${1:-}" =~ ^[0-9]+$ ]] || return 0
-    rmdir "$(_amend_lock_path "$1")" 2>/dev/null || true
+    [[ -n "${_AMEND_LOCK_TOKEN:-}" ]] || return 0
+    local lock
+    lock=$(_amend_lock_path "$1")
+    rm -f "$lock/owner-$_AMEND_LOCK_TOKEN" 2>/dev/null || true
+    rmdir "$lock" 2>/dev/null || true
 }
 
 # _write_amend_ownership <pr> <agent>
@@ -5936,8 +5963,10 @@ commands:
                                     (<snapshots>/<pr>.lock), so a
                                     claim stamped moments earlier is
                                     seen, never swept from a stale
-                                    verdict. Cross-host labels age out
-                                    on pure TTL,
+                                    verdict; the lock is owned, so a
+                                    stolen holder cannot release its
+                                    successor's. Cross-host labels age
+                                    out on pure TTL,
                                 (2) fleet:claim-* labels off open
                                     issues where the claim is
                                     abandoned — age > TTL (default
@@ -5989,7 +6018,11 @@ commands:
                                 FLEET_AMEND_LOCK_WAIT_SECS (60)
                                 refuses (exit 1); one older than
                                 FLEET_AMEND_LOCK_STALE_SECS (600) is
-                                stolen.
+                                stolen. The lock is owned (a per-
+                                process token): a stolen holder that
+                                resumes releases nothing, so the
+                                successor's critical section stays
+                                closed.
   amending-release <pr> <agent>
                                 release an amendment claim.
   steward-claim <umbrella-issue> <agent>

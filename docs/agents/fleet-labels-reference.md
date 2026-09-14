@@ -208,7 +208,9 @@ inside it, and the claim re-reads the live labels inside it — re-POSTing if
 the sweep took the label first — so a claim that returned success holds its
 label whatever the interleaving. The lock is bounded on both sides (a held
 lock is waited on, then the caller fails closed; a holder older than 10 min
-is stolen as crashed).
+is stolen as crashed) and owned: each holder's release removes only its own
+token, so a stolen holder that turns out to be slow rather than dead cannot
+release its successor's lock when it resumes.
 
 ## Review verdicts (PRs)
 
