@@ -81,12 +81,11 @@ source/receiver mismatch needs its own correction. The default caster control
 passes these interior points, which does not establish complete hidden-face
 coverage for all objects or lights.
 
-`detectSelfStepStaircase` in the shared-canvas sun pass can reject blockers within
-three sun-depth units when neighboring same-normal faces differ by about one
-voxel. This does not establish blocker ownership. A close external blocker and
-rotated concave/staircase fixture are the next discriminating controls. Genuine
-staircase face normals should remain; their light visibility must be evaluated
-against geometry. See the [worklist](rendering-audit-todo.md).
+The shared-canvas staircase rejection heuristic is removed by the
+[staircase visibility correction](staircase-shadow-visibility.md): the new close
+blocker control proves it erased real external shadows. Genuine staircase face
+normals remain. Default depth-caster false self-shadowing and reconstructed
+receiver/contact geometry are still open; see the [worklist](rendering-audit-todo.md).
 
 No large-entity throughput claim follows from these small fixtures. The shader
 change removes a remap without adding work; source-face scalability and private

@@ -8,7 +8,7 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
 | Priority | Work | State / next acceptance |
 |---|---|---|
 | 1 | Detached face geometry and trixel display | Investigated in [display diagnosis](detached-trixel-display.md). Visible source faces, depth and picking still need a consistent projection. Origin and camera placement corrected. [Back-facing emission](detached-face-normals.md) now has a targeted correction and normal oracle; [Local triangular display](detached-local-triangles.md) has an opt-in undilated layout and per-face oracle; source-face reconstruction, depth/picking and default adoption remain. |
-| 2 | Shadow reception and contact | [Direct-sun occlusion response](sun-occlusion-response.md) now removes direct sunlight behind opaque blockers while retaining ambient. Paired self/external controls pass. Receivers still use reconstructed surfaces; check staircase near-rejection, concave faces and contact against actual geometry. |
+| 2 | Shadow reception and contact | [Direct-sun occlusion response](sun-occlusion-response.md) now removes direct sunlight behind opaque blockers while retaining ambient. Paired self/external controls pass. Receivers still use reconstructed surfaces; [Staircase near-rejection](staircase-shadow-visibility.md) no longer erases close external blockers. Check remaining concave faces, false self-shadowing and contact against actual geometry. |
 | 3 | Projected face boundaries | Reconstruct voxel-face coverage from light direction and receiver geometry. Clean edges must follow projected geometry, not blur, inflated coverage or bias that hides errors. |
 | 4 | Duplicate CPU occupancy reconstruction | Profile identified work overwritten by inverse GPU resampling. Preserve buffer-availability fallback and identity transitions before skipping it. |
 | 5 | Mode and scale validation | Extend density, screen-lock, pan, cascade, sparse/elongated asset and OpenGL coverage. Measure representative large populations and GPU cost before changing defaults. |
@@ -40,11 +40,15 @@ that the experimental rendering is ready to become the default.
 
 ## Newly observed during occlusion validation
 
-- The shared-canvas sun pass uses `detectSelfStepStaircase` to increase near
-  rejection to three sun-depth units. Nearby same-normal steps do not prove that
-  an occluder is the receiver's own cell. Add a rotated staircase with a nearby
-  external blocker and derive visibility from geometry before removing or
-  replacing this heuristic. Detached world reception has no such lift.
+- [Staircase visibility](staircase-shadow-visibility.md) is corrected: a nearby
+  external blocker no longer loses its shadow at tread boundaries. The default
+  depth caster still falsely shadows an outside control region, unlike full
+  voxel-face casting. Resolve caster/receiver geometry agreement before treating
+  the full lighting oracle as passing on that default path.
+- The detached staircase at density 1 has alternating triangular shadow values
+  on otherwise broad treads (capture 494 in the staircase visibility evidence).
+  Check per-trixel receiver-position recovery against the actual face plane;
+  detached reception never used the removed staircase rejection.
 - The unobstructed source-face plate has weak false self-shadowing at camera yaw
   90/270. Full direct visibility makes 1,048/16 pixels differ from the prior
   response, by at most 2/1 color levels. This is a receiver/caster agreement
