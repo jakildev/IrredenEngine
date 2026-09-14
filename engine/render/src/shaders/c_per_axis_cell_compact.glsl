@@ -1,28 +1,25 @@
 #version 450 core
 
-// Per-axis empty-cell compaction pre-pass (#1961).
+// Per-axis empty-cell compaction pre-pass.
 //
-// The smooth-camera-yaw forward-scatter composite (v_peraxis_scatter) used to
-// instance over EVERY cell of the worst-case-sized per-axis canvas
-// (size.x*size.y, ~12x the cardinal area), degenerating the mostly-empty cells
-// in the vertex shader — paying a full vertex-shader invocation per empty cell.
-// This kernel scans one per-axis distance canvas and atomic-appends each
-// OCCUPIED cell's linear index into a per-axis SSBO region, plus bumps the
-// indirect instanced-draw arg's instance count, so the composite draws only
-// occupied cells. Dispatched once per axis (the caller bindRange's this axis's
-// region of both SSBOs, so index 0 is the axis base). Cardinal byte-identity is
-// structural: the per-axis canvases are only allocated at non-zero residual
-// yaw, so this kernel never runs at a cardinal.
+// Scans one per-axis distance canvas and atomic-appends each OCCUPIED cell's
+// linear index into a per-axis SSBO region, plus bumps the indirect
+// instanced-draw arg's instance count, so the smooth-camera-yaw forward-scatter
+// composite (v_peraxis_scatter) draws only occupied cells instead of the
+// worst-case-sized per-axis canvas. Dispatched once per axis (the caller
+// bindRange's this axis's region of both SSBOs, so index 0 is the axis base).
+// Cardinal byte-identity is structural: the per-axis canvases are only
+// allocated at non-zero residual yaw, so this kernel never runs at a cardinal.
 //
-// Occupied test: the per-axis canvas clears to INT_MAX (#1458 encoding), the
-// same sentinel c_resolve_per_axis_screen_depth.glsl tests. This is a SUPERSET
-// of the scatter's own `color.a < 0.1` discard (a stored face writes color and
-// distance together), so the composite stays byte-identical — the scatter keeps
-// its color early-out as the exact authority and any extra cell degenerates.
+// Occupied test: the per-axis canvas clears to INT_MAX, the same sentinel
+// c_resolve_per_axis_screen_depth.glsl tests. This is a SUPERSET of the
+// scatter's own `color.a < 0.1` discard (a stored face writes color and
+// distance together): the scatter's color early-out stays the exact authority
+// and degenerates any extra cell.
 
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
-// Per-axis canvas empty sentinel (#1458) — mirror of
+// Per-axis canvas empty sentinel — mirror of
 // c_resolve_per_axis_screen_depth.glsl's kEmptyDistanceEncoded.
 const int kEmptyDistanceEncoded = 0x7FFFFFFF;
 
@@ -41,7 +38,7 @@ layout(std430, binding = 25) writeonly buffer PerAxisCellCompacted {
 //   [0] = indexCount (quad index count, CPU-reset each frame)
 //   [1] = instanceCount (atomic append counter — number of occupied cells)
 //   [2..4] = firstIndex / baseVertex / baseInstance = 0
-// #2256 also feeds the per-axis COMPUTE stages from this same compacted cell
+// The per-axis COMPUTE stages also dispatch over this same compacted cell
 // list; the compute-indirect dims at [8..11] are derived from the final
 // instanceCount by the cheap c_per_axis_cell_finalize pass (a 3-thread dispatch
 // after this scan). Keeping the dims OUT of this kernel is deliberate: this
