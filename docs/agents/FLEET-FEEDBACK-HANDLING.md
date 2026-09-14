@@ -40,11 +40,12 @@ beside it is not a verdict — the pending opus pass owns the PR).
 arbitration with `review-claim` closes the snapshot race. The scout's
 `worker_feedback_labels()` enforces the reviewing / opus-recheck skips in
 both the worker trigger and `projections/worker.json`; `human:needs-fix` /
-`human:blocker` outrank both and keep dispatching. The reviewing skip also
-bars the conflict-resolution lane (`role-worker.md` step 1c), which
-force-pushes too: `_semantic_conflict_claimable` suppresses the item and
-`resolving-claim` refuses the claim and participates in the same arbitration;
-a pane that reviewed the PR itself passes both gates.
+`human:blocker` outrank both and keep dispatching. The reviewing skip and a
+live foreign `fleet:amending-*` claim also bar the conflict-resolution lane
+(`role-worker.md` step 1c), which force-pushes too:
+`_semantic_conflict_claimable` suppresses the item and `resolving-claim`
+refuses the claim through the same POST-response arbitration. A pane already
+holding the other claim passes the claim-side gate.
 
 ## Step a — claim the PR atomically (before anything else)
 

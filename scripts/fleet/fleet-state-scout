@@ -2556,6 +2556,11 @@ _WORKER_RELEVANT_LABELS = FEEDBACK_LABELS | DESIGN_RESUME_LABELS
 # _acquire_label_on's lex-min tie-break. Anything added here must hold for
 # both; a prefix that should suppress only one lane needs its own constant.
 WORKER_SKIP_PREFIXES = ("fleet:reviewing-",)
+# A live amend claim independently bars conflict resolution: both lanes
+# rewrite the PR head, and their claim namespaces otherwise do not overlap.
+SEMANTIC_CONFLICT_SKIP_PREFIXES = WORKER_SKIP_PREFIXES + (
+    "fleet:amending-",
+)
 # fleet:has-nits stamped ALONGSIDE fleet:needs-opus-recheck is not a verdict:
 # REVIEWER-PROTOCOL.md has the sonnet reviewer set NO verdict label in that
 # case, and OPUS_REVIEWER_FLAG_LABELS documents the marker as the escalation
@@ -2666,7 +2671,11 @@ def _semantic_conflict_claimable(pr, labels, head_labels):
     # release/verdict swap and to `fleet-claim cleanup --gh`'s orphan sweep,
     # which is what keeps this from stranding a PR. Backstopped claim-side by
     # fleet-claim's cmd_resolving_claim. Mirror in role-worker.md step 1c.
-    if any(label.startswith(p) for label in labels for p in WORKER_SKIP_PREFIXES):
+    if any(
+        label.startswith(prefix)
+        for label in labels
+        for prefix in SEMANTIC_CONFLICT_SKIP_PREFIXES
+    ):
         return False
     # Stack-aware (role-worker step 1c): a stacked child whose base PR is
     # itself semantic-conflicted is skipped — the base resolves first, and

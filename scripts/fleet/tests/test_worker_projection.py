@@ -482,6 +482,37 @@ class ReviewClaimBarsConflictResolutionPickup(unittest.TestCase):
                          [2418])
 
 
+class AmendClaimBarsConflictResolutionPickup(unittest.TestCase):
+    """A live amend claim suppresses conflict-resolution dispatch pressure."""
+
+    def _items(self, prs):
+        return [i for i in project_worker(_state(prs))
+                if i["kind"] == "semantic_conflict"]
+
+    def _slice(self, prs):
+        return slice_worker(_state(prs))["semantic_conflict_prs"]
+
+    def test_amend_claim_suppresses_conflict_pressure_at_both_sites(self):
+        held = [_sc_pr(2417, labels=["fleet:semantic-conflict",
+                                     "fleet:amending-mac-pool-9"])]
+        free = [_sc_pr(2417)]
+
+        self.assertEqual(self._items(held), [])
+        self.assertEqual(self._slice(held), [])
+        self.assertEqual(len(self._items(free)), 1)
+        self.assertEqual(len(self._slice(free)), 1)
+
+    def test_projection_is_agent_blind_but_clearing_claim_rearms(self):
+        held = [_sc_pr(2417, labels=["fleet:semantic-conflict",
+                                     "fleet:amending-mac-pool-1"])]
+        cleared = [_sc_pr(2417)]
+
+        self.assertEqual(self._items(held), [])
+        self.assertEqual(self._slice(held), [])
+        self.assertEqual(len(self._items(cleared)), 1)
+        self.assertEqual(len(self._slice(cleared)), 1)
+
+
 class SliceWorkerSkipLabelsDropPR(unittest.TestCase):
     """slice_worker is the dispatch slice a woken worker reads (distinct from
     project_worker, the hash-input that decides *whether* to wake). It must
