@@ -119,10 +119,10 @@
 @@ -109,7 +109,8 @@
      const float2 originShifted =
          trixelFramebufferSamplePosition(originRaw, originModifier);
- 
+
 -    const uint2 sampleCoord = trixelCanvasReadCoord(originRaw, textureSize);
 +    const float2 displayOrigin = frameData.effectiveSubdivisionsForHover.y > 0.0f ? trixelFramebufferSamplePosition(originRaw, (z1.x + z1.y) & 1) : originRaw;
 +    const uint2 sampleCoord = trixelCanvasReadCoord(displayOrigin, textureSize);
      const uint2 hoverCoord = trixelCanvasReadCoord(originShifted, textureSize);
- 
+
      float4 color = triangleColors.read(sampleCoord);
