@@ -14,6 +14,10 @@ of the algorithm and the migration math so a future agent doesn't have
 to re-derive it.** Items below referring to "before" / "today" describe
 the pre-T-070 state.
 
+The current sampler returns direct-sun visibility in [0, 1], with ambient
+composed separately; see [occlusion response](sun-occlusion-response.md). The
+`kShadowDarken` remap in the historical pseudocode below is no longer used.
+
 **Problem owner:** rendering — `engine/prefabs/irreden/render/systems/system_compute_sun_shadow.hpp`
 and the corresponding compute shaders.
 

@@ -222,7 +222,7 @@
  "engine/render/src/shaders/ir_per_axis_lighting.glsl": 6,
  "engine/render/src/shaders/ir_resolve_cardinal_emit.glsl": 3,
  "engine/render/src/shaders/ir_sun_projection.glsl": 12,
- "engine/render/src/shaders/ir_sun_shadow_sample.glsl": 19,
+ "engine/render/src/shaders/ir_sun_shadow_sample.glsl": 16,
  "engine/render/src/shaders/ir_voxel_face_select.glsl": 24,
  "engine/render/src/shaders/ir_world_lighting.glsl": 1,
  "engine/render/src/shaders/metal/c_bake_sun_shadow_map.metal": 17,

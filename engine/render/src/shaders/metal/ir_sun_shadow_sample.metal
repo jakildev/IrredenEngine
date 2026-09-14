@@ -13,7 +13,6 @@
 // sunCascadeKernelInterior — one source with the caster bake (#2083).
 #include "ir_sun_projection.metal"
 
-constant float kShadowDarken = 0.45;
 constant float kNormalBiasVoxels = 0.5;
 constant float kShadowBiasTexelScale = 2.0;
 constant float kShadowBiasSlopeMin = 0.05;
@@ -113,10 +112,9 @@ inline float sampleCascadeShadow(
     return shadowAccum;
 }
 
-// Per-surface sun-shadow brightness factor for a WORLD-space surface point +
-// world normal, selecting the cascade by iso depth and blending across the
-// split. Returns 1.0 (lit) … kShadowDarken (shadowed). Mirrors the cascade body
-// of c_compute_sun_shadow's main(); shared with the detached world-receive path.
+// Direct-sun visibility at a world-space surface: 1.0 lit, 0.0 occluded.
+// Ambient lighting is composed separately. isoDepth selects/blends cascades;
+// selfStepDepthRange raises near-rejection for staircase receivers (0 disables).
 inline float worldSunShadowFactor(
     float3 pos3D, float3 normal, float isoDepth,
     constant FrameDataSun &sun, device const uint *sunDepthBuf,
@@ -182,7 +180,7 @@ inline float worldSunShadowFactor(
             shadowAccum = mix(nearShadow, farShadow, t);
         }
     }
-    return mix(1.0f, kShadowDarken, shadowAccum);
+    return 1.0f - shadowAccum;
 }
 
 #endif // IR_SUN_SHADOW_SAMPLE_METAL_INCLUDED

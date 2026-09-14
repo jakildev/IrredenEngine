@@ -237,6 +237,7 @@ enum SpawnGroup : std::uint32_t {
     kGroupShadowCaster = 1u << 11,
     kGroupShadowBox = 1u << 12,
     kGroupShadowAttached = 1u << 13,
+    kGroupShadowOcclusion = 1u << 14,
 };
 
 // 0.5 degrees per frame → full revolution in ~720 frames (~12 s at 60 fps)
@@ -435,6 +436,7 @@ std::uint32_t parseSpawnGroups(const char *arg) {
         {"shadowcaster", kGroupShadowCaster},
         {"shadowbox", kGroupShadowBox},
         {"shadowattached", kGroupShadowAttached},
+        {"shadowocclusion", kGroupShadowOcclusion},
     };
     std::uint32_t bits = 0u;
     const std::string list{arg};
@@ -1089,7 +1091,15 @@ void registerArgs() {
         "Experimental undilated local triangles on detached probes"
     );
     args.flag("--probe-upright", "Use unrotated revoxelization and attached shadow probes");
-    args.flag("--probe-grid", "Render the shadowbox probe through the shared GRID canvas");
+    args.flag("--probe-unblocked", "Remove the shadowocclusion wall for a direct-light control");
+    args.flag(
+        "--probe-external-blocker",
+        "Put the shadowocclusion wall on a separate voxel object"
+    );
+    args.flag(
+        "--probe-grid",
+        "Render shadowbox and shadowocclusion probes through the shared GRID canvas"
+    );
     args.flag(
         "--probe-single-voxel",
         "Use a single shadowbox voxel and a small receiver plate for magnified face inspection"
@@ -1108,7 +1118,7 @@ void registerArgs() {
         "--only",
         "Spawn only the named entity groups (comma-separated: maingrid,gridspin,canary,revox,"
         "orbit,floor,compare,interpenetrate,smallzoom,orbitswap,shadowreceiver,shadowcaster,"
-        "shadowbox,shadowattached)",
+        "shadowbox,shadowattached,shadowocclusion)",
         ""
     );
     args.numbers(
@@ -1631,6 +1641,52 @@ void initEntities() {
                 }
             );
             IREntity::setComponent(floor, C_LightBlocker{false, false, 0.0f});
+        }
+    }
+
+    if ((g_settings.onlyGroups_ & kGroupShadowOcclusion) != 0u) {
+        const bool blocked = !IREngine::args().getFlag("--probe-unblocked");
+        const bool external = IREngine::args().getFlag("--probe-external-blocker");
+        const auto spawnPart = [&](bool receiver, bool wall) {
+            const bool grid = IREngine::args().getFlag("--probe-grid");
+            C_EntityCanvas canvas{};
+            if (!grid) {
+                canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
+                    receiver ? "occlusion_receiver" : "occlusion_wall",
+                    ivec2(256),
+                    ivec3(64),
+                    false
+                );
+                if (IREngine::args().getFlag("--local-trixel-display")) {
+                    IREntity::getComponent<C_TriangleCanvasTextures>(canvas.canvasEntity_)
+                        .sampleLayout_ = IRRender::TrixelSampleLayout::LOCAL_TRIANGLES;
+                }
+            }
+            const vec3 origin{0.0f, 0.0f, -10.0f};
+            const EntityId solid = IREntity::createEntity(
+                C_LocalTransform{grid ? origin : vec3(0.0f)},
+                C_VoxelSetNew{
+                    ivec3(32, 32, 24),
+                    Color{160, 200, 240, 255},
+                    true,
+                    grid ? mainCanvas : canvas.canvasEntity_
+                }
+            );
+            IREntity::getComponent<C_VoxelSetNew>(solid).carve([&](vec3 p) {
+                const bool plateCell = p.z >= 10.0f;
+                return !((receiver && plateCell) || (wall && !plateCell && p.y < -12.0f));
+            });
+            if (!grid) {
+                IREntity::createEntity(
+                    C_LocalTransform{origin},
+                    C_RotationMode{RotationMode::DETACHED_REVOXELIZE},
+                    canvas
+                );
+            }
+        };
+        spawnPart(true, blocked && !external);
+        if (blocked && external) {
+            spawnPart(false, true);
         }
     }
 
