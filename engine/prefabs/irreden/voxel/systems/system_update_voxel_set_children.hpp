@@ -41,13 +41,9 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
         C_VoxelPool *pool_ = nullptr;
         std::size_t startIdx_ = 0;
         std::size_t count_ = 0;
-        // Whether this range is also a binding-5 upload. A GPU-transform-
-        // indirected set writes its CPU mirror but must NOT queue the upload
-        // (see the tick), yet its chunk bounds still moved — so the range is
-        // always the set's REAL span and the upload decision rides alongside
-        // it. Folding "don't upload" into a (0, 0) range, as this carried
-        // before #2830, silently lost cull invalidation for exactly the sets
-        // that move most.
+        // GPU-transform-indirected sets update the CPU mirror without uploading
+        // binding 5. Retain the real span for cull invalidation independently of
+        // the upload decision.
         bool upload_ = false;
     };
 
