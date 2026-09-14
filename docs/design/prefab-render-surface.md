@@ -151,8 +151,8 @@ double-creates named GPU resources (overlay) or double-fires every click
 (menu).
 
 The overlay's visibility is the `C_HelpOverlayState` singleton, not a
-`RenderManager` field (`.claude/rules/cpp-globals.md`; `m_guiVisible` is a
-pre-existing deviation, not a precedent). Hidden, the system iterates one
+`RenderManager` field (`.claude/rules/cpp-globals.md`). Hidden, the system
+iterates one
 singleton row and returns early — no string build, no rect, no glyphs — and
 text rebuilds only when `getRegistrationGeneration()` changes.
 
