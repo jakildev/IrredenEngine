@@ -507,34 +507,25 @@ Two things worth knowing before you add a producer:
 
 Because `isRangeVisible` feeds the UPDATE movers, which run *before* the render
 pipeline re-derives the bounds, a range with pending invalidation is admitted
-conservatively rather than answered from bounds that already owe a recompute.
-That costs at most one extra tick of work for a set that just changed, and it is
-what un-latches the failure below: an edited set whose stale bounds read
-"off-screen" had its mover skipped, so nothing ever advanced it back into view.
-
-The failure this replaced: the two caches had two separate evictors, every
-producer called only the world one, and `markChunkBoundsDirty()` had zero
-callers tree-wide — so on a cardinal camera (the default, `residualYaw_ == 0`)
-an in-place position or alpha rewrite froze the iso bounds at the last
-alloc/dealloc. Both consumers then dropped live geometry. It is invisible to
-CPU-side occupancy assertions — voxel alpha stays correct; only the derived cull
-state is stale — so test it by reading the pool's own bounds / visibility, or
-with a render compare. `test/ecs/chunk_bounds_eviction_test.cpp` and
+conservatively rather than answered from bounds that already owe a recompute
+— an edited set whose stale bounds read "off-screen" would otherwise stay
+skipped and never advance back into view. This is invisible to CPU-side
+occupancy assertions (voxel alpha stays correct; only the derived cull state
+is stale), so test it by reading the pool's own bounds / visibility, or with
+a render compare: `test/ecs/chunk_bounds_eviction_test.cpp` and
 `IRShapeDebug --auto-screenshot --cull-evict-test` are the guards.
 
 ## Deprecated
 
-| Surface | Replacement | Marked |
-|---|---|---|
-| `C_VoxelPool::markChunkWorldBoundsDirty()` | `markCullBoundsDirty(start, count)` | #2830, 2026-09-11 |
-| `C_VoxelPool::markChunkBoundsDirty()` | `markCullBoundsDirty(start, count)` | #2830, 2026-09-11 |
+| Surface | Replacement |
+|---|---|
+| `C_VoxelPool::markChunkWorldBoundsDirty()` | `markCullBoundsDirty(start, count)` |
+| `C_VoxelPool::markChunkBoundsDirty()` | `markCullBoundsDirty(start, count)` |
 
-Both are no-argument forwarders that now notify the whole allocated prefix for
-**both** caches. They were the split this issue closed: each evicted one cache,
-every producer called only the first, and the second had no callers at all. An
-out-of-tree caller of either therefore gets the correct (stronger) eviction
-rather than the half-eviction the names promised — but it re-derives the whole
-pool, so migrate to the range form.
+Both are no-argument forwarders that notify the whole allocated prefix for
+**both** caches — an out-of-tree caller gets the correct (stronger) eviction
+rather than a half-eviction, but re-derives the whole pool; migrate to the
+range form.
 
 ## Gotchas
 
