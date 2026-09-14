@@ -23,7 +23,8 @@ that the experimental rendering is ready to become the default.
 |---|---|---|
 | High, within geometry | Detached centroid changes with camera yaw | After removing the constant Y offset, the visible box placement check still fails at 22.5, 67.5 and 90 degrees. GRID controls pass across all five views. Separate lattice anchoring and dilation asymmetry from composite placement. |
 | Medium, within geometry | Detached dilation expands the visible box | At yaw zero, zoom 2, its area is 1.219× the analytical box. The origin fix leaves that ratio unchanged. Preserve concavities when replacing dilation. |
-| Medium, validation | Small-voxel and picking coverage | Add a magnified isolated voxel with triangle-ID/face-color controls and a picked-surface oracle. A box silhouette cannot establish correct internal face shading or picking. |
+| Medium, validation | Small-voxel and picking coverage | [Magnified single-voxel control](single-voxel-display-probe.md) now distinguishes detached failure from a 5/5 passing GRID control. Triangle-ID/face-color assertions and a picked-surface oracle remain. The detached composite explicitly disables hover readback, so picking needs implementation. |
+| Medium, validation | Density-dependent receiver calibration | The small SDF plate needs its smooth boundary convention accounted for at zoom 16. The new fixture does so; generalize the older large-box calibration before using it to judge other densities. |
 
 ## Origin correction evidence
 
