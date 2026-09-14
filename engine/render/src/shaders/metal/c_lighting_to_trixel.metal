@@ -133,6 +133,12 @@ kernel void c_lighting_to_trixel(
         worldNormal = rotateByQuat(worldNormal, frameData.detachedViewToWorld);
     }
 
+    if (frameData.debugOverlayMode == 8) {
+        const float alpha = trixelColors.read(uint2(pixel)).a;
+        trixelColors.write(float4(worldNormal * 0.5f + 0.5f, alpha), uint2(pixel));
+        return;
+    }
+
     float        ao     = canvasAO.read(uint2(pixel)).r;
     float shadow;
     if (worldReceive) {

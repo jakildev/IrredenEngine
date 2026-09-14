@@ -196,6 +196,12 @@ void main() {
     }
 
     // Alpha is preserved so text/overlay antialiasing composites unchanged.
+    if (debugOverlayMode == 8) {
+        const float alpha = imageLoad(trixelColors, pixel).a;
+        imageStore(trixelColors, pixel, vec4(worldNormal * 0.5 + 0.5, alpha));
+        return;
+    }
+
     float ao           = imageLoad(canvasAO, pixel).r;
     float shadow;
     if (worldReceive) {

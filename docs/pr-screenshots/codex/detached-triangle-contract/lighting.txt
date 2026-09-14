@@ -1,0 +1,12 @@
+yaw=0 face=left actual=(61, 91, 182) expected=(61, 91, 182) max_error=0 PASS
+yaw=0 face=right actual=(50, 75, 149) expected=(50, 75, 149) max_error=0 PASS
+yaw=0 face=top actual=(58, 86, 173) expected=(58, 86, 173) max_error=0 PASS
+yaw=90 face=left actual=(24, 36, 72) expected=(24, 36, 72) max_error=0 PASS
+yaw=90 face=right actual=(61, 91, 182) expected=(61, 91, 182) max_error=0 PASS
+yaw=90 face=top actual=(58, 86, 173) expected=(58, 86, 173) max_error=0 PASS
+yaw=180 face=left actual=(24, 36, 72) expected=(24, 36, 72) max_error=0 PASS
+yaw=180 face=right actual=(24, 36, 72) expected=(24, 36, 72) max_error=0 PASS
+yaw=180 face=top actual=(58, 86, 173) expected=(58, 86, 173) max_error=0 PASS
+yaw=270 face=left actual=(50, 75, 149) expected=(50, 75, 149) max_error=0 PASS
+yaw=270 face=right actual=(24, 36, 72) expected=(24, 36, 72) max_error=0 PASS
+yaw=270 face=top actual=(58, 86, 173) expected=(58, 86, 173) max_error=0 PASS

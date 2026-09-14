@@ -1,0 +1,5 @@
+capture-347.png: yaw=0 occupied=512 back_facing=0 invalid_normals=0 PASS
+capture-348.png: yaw=22.5 occupied=512 back_facing=0 invalid_normals=0 PASS
+capture-349.png: yaw=45 occupied=512 back_facing=0 invalid_normals=0 PASS
+capture-350.png: yaw=67.5 occupied=512 back_facing=0 invalid_normals=0 PASS
+capture-351.png: yaw=90 occupied=512 back_facing=0 invalid_normals=0 PASS

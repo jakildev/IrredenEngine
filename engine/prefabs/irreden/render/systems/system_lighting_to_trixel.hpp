@@ -446,7 +446,10 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             overlayMode == static_cast<int>(IRRender::DebugOverlayMode::UNLIT) ? 0 : 1;
         frameData_.lightVolumeEnabled_ = 1;
         frameData_.debugOverlayMode_ =
-            overlayMode <= static_cast<int>(IRRender::DebugOverlayMode::SHADOW) ? overlayMode : 0;
+            (overlayMode <= static_cast<int>(IRRender::DebugOverlayMode::SHADOW) ||
+             overlayMode == static_cast<int>(IRRender::DebugOverlayMode::NORMALS))
+                ? overlayMode
+                : 0;
         frameData_.hdrEnabled_ = IRRender::getHDREnabled() ? 1 : 0;
         frameData_.exposure_ = IRRender::getExposure();
         frameData_.skyIntensity_ = IRRender::getSkyIntensity();

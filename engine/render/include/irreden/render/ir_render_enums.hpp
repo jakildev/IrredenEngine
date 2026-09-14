@@ -130,6 +130,8 @@ enum class DrawMode : std::uint8_t { TRIANGLES, LINES };
 ///                        separates margin-vs-exact contests from
 ///                        footprint-overlap contests at shared face edges
 ///                        (#2428 instrumentation).
+/// - @c NORMALS — shading normal encoded as RGB = normal * 0.5 + 0.5,
+///   independent of albedo, AO, shadows, exposure and tonemapping.
 enum class DebugOverlayMode : std::uint8_t {
     NONE = 0,
     AO = 1,
@@ -138,13 +140,16 @@ enum class DebugOverlayMode : std::uint8_t {
     PER_AXIS_ID = 4,
     PER_AXIS_ORIGIN = 5,
     UNLIT = 6,
-    PER_AXIS_MARGIN = 7
+    PER_AXIS_MARGIN = 7,
+    NORMALS = 8
 };
 
 /// Parse a string to @c DebugOverlayMode. Accepts "none", "ao",
 /// "light_level", "shadow", "peraxis_id", "peraxis_origin", "unlit",
-/// "peraxis_margin". Returns @c NONE for unrecognized input.
+/// "peraxis_margin", "normals". Returns @c NONE for unrecognized input.
 inline DebugOverlayMode debugOverlayModeFromString(const char *s) {
+    if (std::strcmp(s, "normals") == 0)
+        return DebugOverlayMode::NORMALS;
     if (std::strcmp(s, "ao") == 0)
         return DebugOverlayMode::AO;
     if (std::strcmp(s, "light_level") == 0)
