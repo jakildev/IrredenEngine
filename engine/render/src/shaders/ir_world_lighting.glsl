@@ -1,7 +1,8 @@
 // Shared world-space lighting primitives — the light-source list layout, the
 // light-volume extent constants, analytic SPOT cone shaping, and the ACES
 // tonemap. Consumed by every pass that lights recovered WORLD positions
-// (c_lighting_to_trixel, c_light_overflow_faces). Metal twin:
+// (c_lighting_to_trixel, c_light_overflow_faces) and by c_seed_light_volume
+// for the light list. Metal twin:
 // metal/ir_world_lighting.metal — keep byte-identical math.
 
 // The winning-light ID indexes this list to recover the light's cone axis
@@ -26,7 +27,7 @@ layout(std430, binding = 4) readonly buffer LightSourceBuffer {
 const float kLightVolumeSize = 128.0;
 const float kLightVolumeHalfExtent = 64.0;
 
-// SPOT cone shaping (#2318). Mirrors `LightType::SPOT` in
+// SPOT cone shaping. Mirrors `LightType::SPOT` in
 // component_light_source.hpp. The cone factor smoothly falls off across a
 // band from the nominal half-aperture to `kConeEdgeSoftness ×` that angle so
 // the cone edge is anti-aliased rather than a hard step.

@@ -19,7 +19,9 @@ for single voxels and particles.
   see `components/component_voxel.hpp` and the per-pipeline shaders for
   the struct mirror.
 - `C_VoxelPool` — master allocator; allocates/deallocates contiguous spans,
-  tracks per-chunk bounds for visibility culling, and owns a per-slot
+  tracks per-chunk bounds for visibility culling (see "Cull-bounds
+  invalidation" below — **one** evictor, `markCullBoundsDirty(start, count)`),
+  and owns a per-slot
   active-mask (`m_activeMask`) that mirrors `m_voxelColors[i].color_.alpha_ != 0`.
   The mask is uploaded to slot `kBufferIndex_VoxelActiveMask` each frame
   and read by `c_voxel_visibility_compact.{glsl,metal}` in place of the
@@ -323,8 +325,10 @@ records:
   The bridge translates `IRAsset::DenseVoxelSet` → `C_VoxelSetNew`
   via a per-record copy (`VoxelRecord` and `C_Voxel` share the 12 B
   std430 layout but remain distinct types so layout drift surfaces as
-  a compile error). Also fires for HYBRID during backward-compat
-  load (both halves attach in a single spawn call).
+  a compile error). `toVoxels` stops at the `std::vector<C_Voxel>` with
+  no pool touch — for sets held but never attached (animation frames).
+  Also fires for HYBRID during backward-compat load (both halves attach
+  in a single spawn call).
 
 `C_ShapeDescriptor`'s constructors snapshot the active canvas via
 `IRRender::getActiveCanvasEntityOrNull()` rather than the
@@ -444,36 +448,122 @@ Optional tag on joint entities carrying the bone name string for editor
 a UX convenience for editors and animation clips that address joints by
 string.
 
+## Cull-bounds invalidation (#2830)
+
+`C_VoxelPool` caches two derived cull structures, both recomputed on demand by
+`rebuildChunkBounds`:
+
+| Cache | Consumer |
+|---|---|
+| `m_chunkBounds` (per-chunk iso AABB + front-most `minDepth_`) | the **cardinal** branch — `buildChunkVisibilityMask` -> the chunk-visibility SSBO, and `C_VoxelPool::isRangeVisible` -> the UPDATE movers' cull gate |
+| `m_chunkWorldBounds` (per-chunk, yaw-independent world AABB) | the **continuous-yaw** branch (#1439) |
+
+Both derive from the same three inputs: the allocated prefix length, each
+voxel's `color_.alpha_`, and each voxel's global position. So there is **one**
+evictor, and it takes the range that changed:
+
+```cpp
+pool.markCullBoundsDirty(startIdx, count);   // half-open, in pool slots
+// entity-keyed facade, for a component that holds a canvas id rather than a pool:
+IRPrefab::VoxelPool::markCullBoundsDirty(startIdx, count, canvasEntity);
+```
+
+**Call it after any in-place rewrite of a position or an alpha in a span you
+already own** — a realloc is not needed and neither is a yaw frame. Invalidation
+is per 256-slot chunk (`IRRender::kVoxelChunkSize`), so a moving set re-derives
+its own chunks and not the pool; duplicate and overlapping ranges coalesce, and
+a zero count is a no-op. The two caches carry independent pending bits, because
+their consumers run on different frames and one must never eat the other's work.
+
+Most code never calls it directly — the routes that already carry it are
+`queuePositionRange` (before its saturation early-return, deliberately: the
+upload queue drops ranges and flushes after the mask rebuild), every
+active-mask mutator (`setActiveBit` / `clearActiveBit` / `setActiveMaskRange` /
+`clearActiveMaskRange` / `resyncActiveMaskFromColors`), `allocateVoxels` /
+`deallocateVoxels`, and every `C_VoxelSetNew` mutator that touches alpha.
+
+Two things worth knowing before you add a producer:
+
+- **`C_VoxelSetNew::visible_` does not gate it.** Visibility suppresses the
+  pool's active-MASK write; the bounds are derived from authored ALPHA, which a
+  hidden edit changes all the same. Every set-level mutator notifies
+  unconditionally — skipping it while hidden leaves the set latched outside the
+  cull viewport when it is next shown.
+- **`REBUILD_DETACHED_VOXELS` is exempt as a *producer* — the branch it feeds
+  is not exempt as a *consumer*.** It writes `pool.getColors()`
+  (`system_rebuild_detached_voxels.hpp`), so a sweep for colour writers finds it
+  — but a detached pool seeds `setStaticReVoxelizeBound` once, and
+  `rebuildChunkBounds` returns on that branch *before* the cached path. Its CPU
+  global mirror is deliberately stale (#1556) and its bound is
+  rotation-independent, so adding a notification there would evict a cache the
+  path never reads. The other half is not optional: `allocateVoxels` arms the
+  cardinal bit before the bound exists, and the active-mask writes re-arm it
+  every tick, so the static branch **consumes** the pending cardinal set on its
+  way out. Leaving it armed leaves every detached chunk permanently pending, and
+  `isRangeVisible`'s admit-on-pending rule then answers TRUE forever — the
+  UPDATE-side cull stops culling detached pools at all. A branch that answers a
+  cache's queries owns that cache's pending state even when it derives the
+  answer from somewhere else.
+
+Because `isRangeVisible` feeds the UPDATE movers, which run *before* the render
+pipeline re-derives the bounds, a range with pending invalidation is admitted
+conservatively rather than answered from bounds that already owe a recompute.
+That costs at most one extra tick of work for a set that just changed, and it is
+what un-latches the failure below: an edited set whose stale bounds read
+"off-screen" had its mover skipped, so nothing ever advanced it back into view.
+
+The failure this replaced: the two caches had two separate evictors, every
+producer called only the world one, and `markChunkBoundsDirty()` had zero
+callers tree-wide — so on a cardinal camera (the default, `residualYaw_ == 0`)
+an in-place position or alpha rewrite froze the iso bounds at the last
+alloc/dealloc. Both consumers then dropped live geometry. It is invisible to
+CPU-side occupancy assertions — voxel alpha stays correct; only the derived cull
+state is stale — so test it by reading the pool's own bounds / visibility, or
+with a render compare. `test/ecs/chunk_bounds_eviction_test.cpp` and
+`IRShapeDebug --auto-screenshot --cull-evict-test` are the guards.
+
+## Deprecated
+
+| Surface | Replacement | Marked |
+|---|---|---|
+| `C_VoxelPool::markChunkWorldBoundsDirty()` | `markCullBoundsDirty(start, count)` | #2830, 2026-09-11 |
+| `C_VoxelPool::markChunkBoundsDirty()` | `markCullBoundsDirty(start, count)` | #2830, 2026-09-11 |
+
+Both are no-argument forwarders that now notify the whole allocated prefix for
+**both** caches. They were the split this issue closed: each evicted one cache,
+every producer called only the first, and the second had no callers at all. An
+out-of-tree caller of either therefore gets the correct (stronger) eviction
+rather than the half-eviction the names promised — but it re-derives the whole
+pool, so migrate to the range form.
+
 ## Gotchas
 
 - **Carving `reserved_` bits? Update the layout comment in the same change.**
-  When you repurpose sub-bits of a `reserved_` field in `C_Voxel` (or any
-  GPU-mirrored std430 struct with a layout comment), update that struct's
-  layout comment in the same commit. A stale "reserved for future fields"
-  comment leads the next allocator to believe the bits are free and silently
-  collide with the live encoding in the shader — no compile error, just
-  corrupted GPU decode.
+  A stale "reserved for future fields" comment on a GPU-mirrored std430
+  struct (`C_Voxel` and kin) leads the next allocator to believe the bits
+  are free and silently collide with the live shader encoding — no compile
+  error, just corrupted GPU decode.
 - **Never add `C_VoxelPool` to a non-canvas entity.** Pools are
-  canvas-scoped. Only the canvas entity created by
-  `IRRender::createCanvas` should own one.
+  canvas-scoped; only the canvas entity from `IRRender::createCanvas` owns one.
 - **`C_VoxelSetNew` allocates on construction.** The constructor goes
-  through `IRPrefab::VoxelPool::allocate(...)` (see `voxel_pool_api.hpp`),
-  which forwards into the render-side pool but keeps
-  `component_voxel_set.hpp` free of `<irreden/ir_render.hpp>` — see the
-  T-201 layering plan in `engine/script/CLAUDE.md`. If there's no active
-  canvas the dense-data ctor stages to `pendingVoxels_`; the element-count
-  ctor asserts (use the dense ctor for headless construction). Check
+  through `IRPrefab::VoxelPool::allocate(...)` (`voxel_pool_api.hpp`), which
+  forwards into the render-side pool while keeping `component_voxel_set.hpp`
+  free of `<irreden/ir_render.hpp>` (T-201 layering, `engine/script/CLAUDE.md`).
+  With no active canvas the dense-data ctor stages to `pendingVoxels_`; the
+  element-count ctor asserts (headless: use the dense ctor). Check
   `numVoxels_ > 0` after construction either way.
 - **Position lag by one frame.** `C_WorldTransform.translation_` on a
-  voxel set is only pushed to the pool by
-  `system_update_voxel_set_children`. Any system that writes the
-  entity's translation (or upstream modifier resolver +
-  `PROPAGATE_TRANSFORM`) must run **before** that system in the
-  pipeline or voxels lag a frame.
-- **`onDestroy()` must run.** Destroying a voxel set without the
-  destructor (e.g. by bypassing the entity manager) leaks its span.
-  Stick to `IREntity::destroyEntity(id)`.
+  voxel set is only pushed to the pool by `system_update_voxel_set_children`.
+  Any system that writes the entity's translation (or upstream modifier
+  resolver + `PROPAGATE_TRANSFORM`) must run **before** it in the pipeline
+  or voxels lag a frame.
+- **`onDestroy()` must run.** There is no destructor; the ECS calls
+  `onDestroy()` when it drops a stored component (`i_component_data.hpp`).
+  A span leaks if the entity is destroyed behind the entity manager (use
+  `IREntity::destroyEntity(id)`) or — the easier mistake — if the set never
+  becomes a component: with a canvas active the ctor reserves, so a
+  stack-local built to inspect dense data strands its span for the process.
+  Build one per set an entity will hold; `DenseVoxel::toVoxels` for the rest.
 - **Shape descriptors vs voxel sets.** `C_ShapeDescriptor` is GPU-only
   (shaders evaluate the SDF directly) — it does *not* reserve voxels.
   `C_VoxelSetNew` pays memory but you can mutate individual cells.
-  Choose the right tool for the use case.

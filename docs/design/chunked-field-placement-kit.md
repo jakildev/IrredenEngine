@@ -161,13 +161,14 @@ shape* sense in `engine/prefabs/irreden/render/CLAUDE.md` is a different thing.
 Always say *allocation* Pattern B and cite `spatial_grid.hpp:13`.)
 
 **When the summaries are current.** `min_`/`max_` are refreshed by
-`PlacementField::update()`, for every chunk in the dirty set, as part of the
-same pass that recomputes clearance and labels — and nowhere else. They are
-therefore authoritative immediately after `update()` and may be stale for any
-chunk mutated since. D8's chunk-first pruning reads them, so querying a field
-with a non-empty dirty set is a **precondition violation, not a stale-but-safe
-read**: a stale `max_` prunes a chunk that now holds valid cells, and the query
-returns too few hits with nothing to indicate why.
+`ChunkedField2D::update()`, invoked for each layer as part of
+`PlacementField::update()`, for every field chunk in the dirty set — and nowhere
+else. They are therefore authoritative immediately after the storage update
+and may be stale for any field chunk mutated since. D8's chunk-first pruning
+reads them, so querying a field with a non-empty dirty set is a **precondition
+violation, not a stale-but-safe read**: a stale `max_` prunes a field chunk that
+now holds valid cells, and the query returns too few hits with nothing to
+indicate why.
 
 #### Presence vs. retained storage — what `clear()` means
 
@@ -818,7 +819,7 @@ edits and carry a value ⇒ this kit.
 | Child | Deliverable | Status |
 |---|---|---|
 | **C1** | this doc + the cross-references (`engine/prefabs/irreden/spatial/CLAUDE.md`, `engine/math/CLAUDE.md`, the relationship line in `lua-world-space-neighbour-query.md`) | **landing** |
-| **C2** (#3160) | `chunked_field.hpp` — `ChunkedField2D<T>`, summaries, dirty tracking, `FieldChunkKey` (D2, D3) | not started |
+| **C2** (#3160) | `chunked_field.hpp` — `ChunkedField2D<T>`, summaries, dirty tracking, `FieldChunkKey` (D2, D3) | **shipped** |
 | **C3** (#3161) | `IRMath` 1-D squared-EDT kernel + `field_clearance.hpp` — capped windowed F–H (D4, D10) | not started |
 | **C4** (#3162) | `field_regions.hpp` — per-chunk CCL + seam-stitch union-find (D5) | not started |
 | **C5** (#3163) | `IRMath::Pcg32` + `IRMath::isqrt` + `field_placement.hpp` — draw, `PlacementField`, `queryPlacements` + stats (D6, D7, D8); flips this table to shipped | not started |

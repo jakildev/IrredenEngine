@@ -33,7 +33,7 @@ stable_hash = _mod.stable_hash
 
 def _state(*, engine_merged=None, engine_done=None, engine_human_approved=None,
            engine_closed=None, engine_tasks_open=None,
-           engine_tasks_plan_gated=None):
+           engine_tasks_in_progress=None, engine_tasks_plan_gated=None):
     """Build a minimal scout-state dict with the fields the projection reads."""
     return {
         "repos": {
@@ -41,7 +41,8 @@ def _state(*, engine_merged=None, engine_done=None, engine_human_approved=None,
                 "needs_plan": [],
                 "human_approved": engine_human_approved or [],
                 "tasks": {"open": engine_tasks_open or [],
-                          "in_progress": [], "done": engine_done or [],
+                          "in_progress": engine_tasks_in_progress or [],
+                          "done": engine_done or [],
                           "plan_gated": engine_tasks_plan_gated or []},
                 "closed_fleet_queued": engine_closed or [],
                 "recent_merged_prs": engine_merged or [],
@@ -396,10 +397,16 @@ class IngestHonorsBlockedBy(unittest.TestCase):
 
 class IngestUnblockRemovePath(unittest.TestCase):
     """#1527 remove-half: a queued task carrying fleet:blocked whose last
-    blocker has closed becomes an unblock-candidate sourced from tasks.open (it
-    has already left human_approved by carrying fleet:queued). The candidate
-    flips the ingest hash so fleet-queue-ingest re-fires and strips the marker,
-    then disappears the next tick once the label is gone."""
+    blocker has closed becomes an unblock-candidate sourced from tasks.open
+    AND tasks.in_progress (it has already left human_approved by carrying
+    fleet:queued). The candidate flips the ingest hash so fleet-queue-ingest
+    re-fires and strips the marker, then disappears the next tick once the
+    label is gone.
+
+    tasks.in_progress coverage is #2534: a task claimed (e.g. via
+    --stackable-on) while still blocked routes to tasks.in_progress, not
+    tasks.open, so a tasks.open-only source structurally excludes it and its
+    stale fleet:blocked never clears."""
 
     def _task(self, *, num, blocked, blocked_by):
         return {"id": f"#{num}", "issue": f"#{num}", "title": f"#{num}",
@@ -421,6 +428,21 @@ class IngestUnblockRemovePath(unittest.TestCase):
         # No fleet:blocked label (blocked=False) → never an unblock candidate,
         # even when blocked_by resolves to (none).
         st = self._st([self._task(num=811, blocked=False, blocked_by="(none)")])
+        self.assertEqual(_ingest_unblock_candidates(st["repos"]["engine"]), [])
+
+    def test_in_progress_unblocked_marked_task_is_candidate(self):
+        # #2534: a claimed (owner != free) task carrying fleet:blocked lives
+        # in tasks.in_progress, not tasks.open — must still surface once its
+        # last blocker closes.
+        task = self._task(num=259, blocked=True, blocked_by="(none)")
+        task["owner"] = "pool-1"
+        st = _state(engine_tasks_in_progress=[task])
+        self.assertEqual(_ingest_unblock_candidates(st["repos"]["engine"]), [259])
+
+    def test_in_progress_still_blocked_task_is_not_candidate(self):
+        task = self._task(num=259, blocked=True, blocked_by="#257")
+        task["owner"] = "pool-1"
+        st = _state(engine_tasks_in_progress=[task])
         self.assertEqual(_ingest_unblock_candidates(st["repos"]["engine"]), [])
 
     def test_candidate_in_projection_and_slice(self):
