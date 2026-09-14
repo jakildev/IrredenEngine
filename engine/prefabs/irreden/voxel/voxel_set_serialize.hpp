@@ -59,7 +59,7 @@ template <> struct SaveSerialize<IRComponents::C_VoxelSetNew> {
         // boundsMin: the local origin of voxel index (0,0,0), staged verbatim or
         // recovered from the resident span's seeded local position. The
         // component names that recovery (`C_VoxelSetNew::localOriginMin`), so
-        // the save path and the canvas-teardown re-stage (#2913) cannot drift
+        // the save path and the canvas-teardown re-stage cannot drift
         // apart on what "the origin" means. Integer origins — every
         // dense-authored / size-ctor set — round-trip exactly.
         const IRMath::ivec3 boundsMin = set.localOriginMin();

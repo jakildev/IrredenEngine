@@ -1,5 +1,5 @@
-// Canvas-teardown contract for the per-canvas voxel pool (#2913): destroying a
-// canvas re-stages every `C_VoxelSetNew` that allocated out of its pool, so no
+// Canvas-teardown contract for the per-canvas voxel pool: destroying a canvas
+// re-stages every `C_VoxelSetNew` that allocated out of its pool, so no
 // set is left naming a destroyed entity or indexing a dead pool.
 //
 // Every case runs headless. `C_VoxelPool` is constructible on a bare entity and
@@ -199,9 +199,10 @@ TEST_F(VoxelPoolTeardown, ArmingTwiceRegistersOneHook) {
     EXPECT_EQ(IREntity::singleton<IRComponents::C_VoxelPoolTeardownHook>().hookId_, first);
 }
 
-// The reachable production caller (#2913's title case): `setMode` leaving the
-// canvas-owning family destroys the canvas, which must take its pool's sets
-// with it rather than stranding them.
+// The reachable production caller, and the release-arm regression case the
+// issue named: `setMode` leaving the canvas-owning family destroys the canvas,
+// which must take its pool's sets with it rather than stranding them. This is
+// the case to run ALONE against a disarmed hook when re-proving the fix.
 TEST_F(VoxelPoolTeardown, SetModeToGridRestagesTheCanvasResidentSet) {
     const IREntity::EntityId canvas = makeCanvas();
     const IREntity::EntityId entity = IREntity::createEntity(

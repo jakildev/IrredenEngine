@@ -174,7 +174,7 @@ IR_SAVE_OPT_OUT(IRComponents::C_Sprite)
 IR_SAVE_OPT_OUT(IRComponents::C_VoxelPool)
 // C_VoxelPoolTeardownHook: OPT-OUT — a PreDestroyHookId into THIS process's
 // EntityManager hook vector. A loaded world re-arms the hook from its own
-// canvas-pool attach sites (#2913), so a persisted id would name nothing.
+// canvas-pool attach sites, so a persisted id would name nothing.
 IR_SAVE_OPT_OUT(IRComponents::C_VoxelPoolTeardownHook)
 IR_SAVE_OPT_OUT(IRComponents::C_SpatialIndex)
 IR_SAVE_OPT_OUT(IRComponents::C_RenderCache)

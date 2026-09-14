@@ -723,7 +723,7 @@ struct C_VoxelSetNew {
     // (every dense-authored / size-ctor set) recover exactly; a non-CORNER
     // set's half-integer origin cannot survive an `ivec3`, which is why
     // `stagedOrigin()` re-derives that case from `anchor_` instead of reading
-    // this back (#2563).
+    // this back.
     ivec3 localOriginMin() const {
         if (!pendingVoxels_.empty() || numVoxels_ <= 0) {
             return pendingBoundsMin_;
@@ -750,7 +750,7 @@ struct C_VoxelSetNew {
         return std::span<const C_Voxel>{voxels_.data(), count};
     }
 
-    // Self-side half of the canvas-teardown re-stage (#2913): fold the
+    // Self-side half of the canvas-teardown re-stage: fold the
     // authored records and local origin back into `pendingVoxels_` /
     // `pendingBoundsMin_` — exactly the staged state `attachToCanvas` seeds
     // from — and forget the span and the canvas. The canvas that owns a set's

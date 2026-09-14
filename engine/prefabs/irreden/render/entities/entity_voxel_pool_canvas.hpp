@@ -24,8 +24,8 @@ template <> struct Prefab<PrefabTypes::kVoxelPoolCanvas> {
         EntityId framebuffer = kNullEntity
     ) {
         // Arm the canvas-teardown sweep before the pool exists to depend on
-        // (#2913). Every path that gives a canvas a `C_VoxelPool` arms it, so
-        // no creation carries a "remember to register" contract; the call is
+        // it. Every path that gives a canvas a `C_VoxelPool` arms it, so no
+        // creation carries a "remember to register" contract; the call is
         // idempotent per world.
         IRPrefab::VoxelPool::ensureCanvasTeardownHook();
         EntityId canvas = createEntity(

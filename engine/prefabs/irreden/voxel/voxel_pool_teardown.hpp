@@ -1,7 +1,7 @@
 #ifndef IR_PREFAB_VOXEL_POOL_TEARDOWN_H
 #define IR_PREFAB_VOXEL_POOL_TEARDOWN_H
 
-// Canvas-teardown contract for the per-canvas voxel pool (#2913).
+// Canvas-teardown contract for the per-canvas voxel pool.
 //
 // A `C_VoxelPool` lives on a canvas entity, and `C_VoxelSetNew` allocates
 // pool-RELATIVE spans out of one specific pool — so destroying a canvas

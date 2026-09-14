@@ -101,7 +101,7 @@ inline void addVoxelPool(const IRComponents::C_EntityCanvas &entityCanvas, IRMat
     if (entityCanvas.canvasEntity_ == IREntity::kNullEntity)
         return;
     // The second of the two sites that attach a `C_VoxelPool`; both arm the
-    // canvas-teardown sweep so a pool cannot exist un-swept (#2913).
+    // canvas-teardown sweep so a pool cannot exist un-swept.
     IRPrefab::VoxelPool::ensureCanvasTeardownHook();
     IREntity::setComponent(entityCanvas.canvasEntity_, IRComponents::C_VoxelPool{poolSize});
     IREntity::setComponent(entityCanvas.canvasEntity_, IRComponents::C_CanvasLocalRotation{});
