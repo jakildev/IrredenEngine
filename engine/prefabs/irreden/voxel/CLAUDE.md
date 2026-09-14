@@ -4,56 +4,19 @@ Voxel rendering building blocks: pools, voxel sets (owned spans of a
 pool), shape descriptors (SDF-based, GPU-resident), and entity builders
 for single voxels and particles.
 
-## Key components
+## Pool and edit invariants
 
-- `C_Voxel` — per-voxel record (12 B std430): RGBA color + `material_id`,
-  `flags` (bit-packed: bit 0 `kAoContrib`, bit 1 `kEmissive`, bits 2..7
-  face-occlusion bits `kFaceOccluded{Neg,Pos}{X,Y,Z}`), `bone_id`,
-  `layer_id` (editor layer membership; 0 = default layer). Default ctor
-  sets `flags = kAoContrib` and the rest zero so v1 scenes render
-  unchanged. Face-occlusion bits are maintained by
-  `IRPrefab::Voxel::recomputeFaceOccupancy` (`voxel/face_occupancy.hpp`),
-  invoked from set-level `C_VoxelSetNew` mutators (`reshape`, `fillPlane`,
-  `activate/deactivateAll`, dense-data ctor). Voxels usually handled as
-  spans inside a `C_VoxelPool`. Layout matches the GPU SSBO at slot 6 —
-  see `components/component_voxel.hpp` and the per-pipeline shaders for
-  the struct mirror.
-- `C_VoxelPool` — master allocator; allocates/deallocates contiguous spans,
-  tracks per-chunk bounds for visibility culling (see "Cull-bounds
-  invalidation" below — **one** evictor, `markCullBoundsDirty(start, count)`),
-  and owns a per-slot
-  active-mask (`m_activeMask`) that mirrors `m_voxelColors[i].color_.alpha_ != 0`.
-  The mask is uploaded to slot `kBufferIndex_VoxelActiveMask` each frame
-  and read by `c_voxel_visibility_compact.{glsl,metal}` in place of the
-  per-voxel alpha test (T-287). Push-at-mutation: mutations through
-  `C_VoxelSetNew`'s helpers sync the mask automatically. **One pool per
-  canvas entity.**
-- `C_VoxelSetNew` — owns a span of voxels from a pool; pushes local → global
-  position updates; supports reshape (box/sphere SDF). Use the provided
-  helpers instead of iterating voxels individually: `deactivateAll()`,
-  `activateAll()`, `changeVoxelColor(ivec3, Color)`, `changeVoxelColorAll(Color)`,
-  `fillPlane(int axis, int planeIndex, Color)` (activates a single face slice),
-  `reshape(Shape3D)` (box or sphere fill). All of these keep the pool's
-  active-mask in sync. Custom carves/edits that these bulk mutators don't
-  cover go through the encapsulated raw-edit API (#2165), never a hand-rolled
-  `voxels_[i]` loop. `editVoxels(fn)` applies `fn(index, voxel, localPos)`
-  to every voxel then resyncs once; `carve(shouldDeactivate)` is sugar over
-  `editVoxels` for the common "deactivate voxels failing a predicate" case;
-  `resyncAfterRawEdits()` is the escape hatch for a multi-pass edit that must
-  still write the raw `voxels_` span directly across several loops — do all
-  the writes, then call it once. Each entry point resyncs every derived
-  invariant this set maintains (rotation-source mirror → pool active-mask →
-  face occupancy) internally.
+Voxel records use a 12-byte std430 layout mirrored by the GPU. Face-occlusion
+flags are maintained by set-level mutation, and each canvas owns exactly one
+pool. The pool active-mask normally mirrors authored alpha; whole-set visibility
+can suppress the mask without changing that alpha.
 
-  Callers must **not** hand-roll `syncActiveMask()` +
-  `IRPrefab::Voxel::recomputeFaceOccupancy(...)` themselves — dropping that
-  pairing renders the carved set black under the lit/rotated path while the
-  active-mask half looks done (the #2018/#2117/#2146 footgun the API exists
-  to close). `syncActiveMask()` stays public as the low-level pool primitive
-  for pre-existing raw-loop sites; prefer `editVoxels`/`carve` for new code.
-  `simplify-check-ecs` flags a hand-rolled `voxels_[i].activate()/.deactivate()`
-  carve loop followed by `syncActiveMask()`/`recomputeFaceOccupancy()` and
-  steers toward the API.
+Use `C_VoxelSetNew` mutators for ordinary edits. Custom edits use `editVoxels`
+or `carve`; multi-pass raw writes finish with `resyncAfterRawEdits`. These keep
+the rotation-source mirror, active-mask, and face occupancy synchronized.
+Hand-pairing `syncActiveMask` with occupancy recomputation can miss an invariant
+and leave carved geometry black on the lit/rotated path.
+
 ### Entity anchor: where geometry attaches to the position (#2563)
 
 `C_VoxelSetNew::anchor_` (`IRComponents::EntityAnchor`, declared in
@@ -87,30 +50,13 @@ is at its feet, so it would orbit rather than spin in place — that path
 assumes a centered solid), and `C_ColliderIso3DAABB` / SDF shapes /
 `C_EntityCanvas`, which migrate per the same enum when touched.
 
-The detached case is **guarded** (#2911). `SYSTEM_REBUILD_DETACHED_VOXELS`
-asserts, once per pool in the same block that seeds the conservative cull bound
-(and *before* seeding it), that the pool's composed locals are symmetric about
-the origin — per-axis `min + max` within 0.5 of zero. The message reports that
-per-axis asymmetry. It fires on **any** non-centered pool, not on the GROUND
-enum alone: CORNER orbits its min corner by the identical mechanism and the
-bound is equally wrong for it. CENTER measures exactly zero on every axis and
-is silent; a 1-cell CORNER set is genuinely centered and also passes. Like
-every engine diagnostic it is a debug assert and a no-op under `IR_RELEASE`.
-
-`DetachedRevoxelize`'s own per-voxel `halfCellAnchor` uniformity assert does
-**not** catch this and never did — a GROUND set's z residual is a uniform
-`-0.5`, so anchor uniformity holds; what breaks is the pivot, not the anchor.
-
-The guard sits at the consumer rather than at the authoring site because
-`IRPrefab::RotationMode::setMode` and `Prefab::spawnPrefab` — the two homes the
-issue proposed — never bind a voxel set to a pool: both allocate the canvas
-through `EntityCanvas::create` (textures, size, name), and the DENSE
-`C_VoxelSetNew` attaches afterwards from the *active* canvas. A check there
-would compare `anchor_` against a canvas the set never renders through. The
-rebuild tick, by contrast, owns the pool and gates on `reVoxelize_`, so every
-authoring path (C++ `targetCanvas`, the Lua 4-arg ctor, the post-load
-`attachToCanvas` seed) converges on it. That also moots the layering question
-the issue raised — no `common/` → `voxel/` include is needed.
+`SYSTEM_REBUILD_DETACHED_VOXELS` checks pool centering before seeding its
+conservative bound: per-axis `min + max` must be within 0.5 of zero. This debug
+assert covers every authoring path because it runs on the pool consumer; canvas
+creation precedes voxel attachment. It rejects non-centered CORNER and GROUND
+sets, while a one-cell CORNER set is centered and passes. The separate
+`halfCellAnchor` uniformity check cannot detect a wrong pivot: GROUND's uniform
+z residual still passes it. These diagnostics are disabled under `IR_RELEASE`.
 
 Lua spells it `IRComponent.EntityAnchor.GROUND` (integers, never string
 names) and it is the **3-arg** `C_VoxelSetNew.new(size, color, anchor)`
@@ -121,32 +67,11 @@ headless test) can allocate from a specific canvas instead of the active one;
 `test/script/lua_entity_anchor_test.cpp` uses it to assert the placement a Lua
 spawn actually produces.
 
-- `C_ShapeDescriptor` — SDF shape type + params + color + flags (visible,
-  hollow, mirror). Rendered directly by the GPU; **does not allocate voxels**.
-- `C_Skeleton` — rig-root component holding an ordered vector of joint
-  EntityIds. The position in the vector IS the bone_id stored in
-  `C_Voxel.bone_id_`. At skinning time `UPDATE_JOINT_MATRICES` maps each
-  bone_id to `slotBase + bone_id` in `EntityTransformBuffer` (binding 18)
-  via per-voxel slots in `LocalVoxelPositions` (binding 17) — binding 21
-  (`kBufferIndex_JointTransforms`) is SDF-shapes scaffolding only.
-  See "Entity-based joints" below.
-- `C_Joint` — tag marking an entity as a skeletal joint. Paired with the
-  engine's canonical local-transform component and a `CHILD_OF` relation
-  to the rig root (or to a parent joint).
-- `C_JointHierarchy` — DEPRECATED; superseded by `C_Skeleton` + `C_Joint`.
-  Remains for one release as a compile shim. See `component_joint_hierarchy.hpp`
-  for the migration note.
-- `C_BindPoints` — runtime mirror of an asset rig's BIND chunk
-  (`IRAsset::Rig::bindPoints_`). Each entry stores
-  `{boneId, offset, rotation}` keyed by name. Populated by
-  `Prefab.spawn` from `rig_ref`; the per-name world transform is
-  composed lazily by `IRPrefab::Rig::worldTransformForBindPoint` and
-  surfaced to Lua as `IREntity.bindPoint(entity, "name")`. Per-name lookups use
-  `unordered_map` and are documented as one-time queries at spawn or
-  on interaction, not per-tick — see `engine/script/CLAUDE.md` for
-  the Lua surface.
+Named bind-point lookups are one-time spawn/interaction queries, not per-tick
+work. Rig BIND entries describe attachment points; they are independent of the
+skinning bind pose described under "Entity-based joints".
 
-## Key systems
+## Update ordering and rotation
 
 - `UPDATE_VOXEL_SET_CHILDREN` (UPDATE pipeline) — pushes per-voxel-set
   world-position updates into the pool, also registers ownership lookups.
@@ -376,7 +301,8 @@ with the component.
 ## Entity-based joints
 
 Joint hierarchies are first-class entities, not vector entries inside a
-single component on the rig root. Three pieces:
+single component on the rig root. `C_JointHierarchy` is deprecated in favor
+of `C_Skeleton` + `C_Joint`; it remains a compatibility shim. Three pieces:
 
 - **`C_Skeleton`** on the rig root. Holds `std::vector<EntityId> joints_`
   — the canonical, ordered list of joint entities. The index of an entry
@@ -448,79 +374,30 @@ Optional tag on joint entities carrying the bone name string for editor
 a UX convenience for editors and animation clips that address joints by
 string.
 
-## Cull-bounds invalidation (#2830)
+## Cull-bounds invalidation
 
-`C_VoxelPool` caches two derived cull structures, both recomputed on demand by
-`rebuildChunkBounds`:
+Cardinal iso bounds and yaw-independent world AABBs both derive from allocated
+prefix length, voxel alpha, and global position. Notify completed in-place
+position/alpha writes with `markCullBoundsDirty(start, count)` on the pool or
+its entity-keyed facade. Ranges are half-open pool slots; notifications coalesce
+per 256-slot chunk, and zero count is a no-op. Each cache owns a separate pending
+bit because its consumer may run on a different frame.
 
-| Cache | Consumer |
-|---|---|
-| `m_chunkBounds` (per-chunk iso AABB + front-most `minDepth_`) | the **cardinal** branch — `buildChunkVisibilityMask` -> the chunk-visibility SSBO, and `C_VoxelPool::isRangeVisible` -> the UPDATE movers' cull gate |
-| `m_chunkWorldBounds` (per-chunk, yaw-independent world AABB) | the **continuous-yaw** branch (#1439) |
+Allocation, deallocation, active-mask mutation, set-level alpha mutation, and
+`queuePositionRange` already notify. Position queue notification must precede
+its saturation early return: upload flushing can discard/coalesce ranges and
+runs after the bounds consumer. A hidden set still notifies because visibility
+suppresses mask writes, not the authored alpha used by the bounds.
 
-Both derive from the same three inputs: the allocated prefix length, each
-voxel's `color_.alpha_`, and each voxel's global position. So there is **one**
-evictor, and it takes the range that changed:
+UPDATE movers run before render rebuilds bounds, so `isRangeVisible` admits
+pending ranges conservatively. Otherwise stale off-screen bounds could prevent
+the mover from ever bringing an edited set back into view.
 
-```cpp
-pool.markCullBoundsDirty(startIdx, count);   // half-open, in pool slots
-// entity-keyed facade, for a component that holds a canvas id rather than a pool:
-IRPrefab::VoxelPool::markCullBoundsDirty(startIdx, count, canvasEntity);
-```
-
-**Call it after any in-place rewrite of a position or an alpha in a span you
-already own** — a realloc is not needed and neither is a yaw frame. Invalidation
-is per 256-slot chunk (`IRRender::kVoxelChunkSize`), so a moving set re-derives
-its own chunks and not the pool; duplicate and overlapping ranges coalesce, and
-a zero count is a no-op. The two caches carry independent pending bits, because
-their consumers run on different frames and one must never eat the other's work.
-
-Most code never calls it directly — the routes that already carry it are
-`queuePositionRange` (before its saturation early-return, deliberately: the
-upload queue drops ranges and flushes after the mask rebuild), every
-active-mask mutator (`setActiveBit` / `clearActiveBit` / `setActiveMaskRange` /
-`clearActiveMaskRange` / `resyncActiveMaskFromColors`), `allocateVoxels` /
-`deallocateVoxels`, and every `C_VoxelSetNew` mutator that touches alpha.
-
-Two things worth knowing before you add a producer:
-
-- **`C_VoxelSetNew::visible_` does not gate it.** Visibility suppresses the
-  pool's active-MASK write; the bounds are derived from authored ALPHA, which a
-  hidden edit changes all the same. Every set-level mutator notifies
-  unconditionally — skipping it while hidden leaves the set latched outside the
-  cull viewport when it is next shown.
-- **`REBUILD_DETACHED_VOXELS` is exempt as a *producer* — the branch it feeds
-  is not exempt as a *consumer*.** It writes `pool.getColors()`
-  (`system_rebuild_detached_voxels.hpp`), so a sweep for colour writers finds it
-  — but a detached pool seeds `setStaticReVoxelizeBound` once, and
-  `rebuildChunkBounds` returns on that branch *before* the cached path. Its CPU
-  global mirror is deliberately stale (#1556) and its bound is
-  rotation-independent, so adding a notification there would evict a cache the
-  path never reads. The other half is not optional: `allocateVoxels` arms the
-  cardinal bit before the bound exists, and the active-mask writes re-arm it
-  every tick, so the static branch **consumes** the pending cardinal set on its
-  way out. Leaving it armed leaves every detached chunk permanently pending, and
-  `isRangeVisible`'s admit-on-pending rule then answers TRUE forever — the
-  UPDATE-side cull stops culling detached pools at all. A branch that answers a
-  cache's queries owns that cache's pending state even when it derives the
-  answer from somewhere else.
-
-Because `isRangeVisible` feeds the UPDATE movers, which run *before* the render
-pipeline re-derives the bounds, a range with pending invalidation is admitted
-conservatively rather than answered from bounds that already owe a recompute.
-That costs at most one extra tick of work for a set that just changed, and it is
-what un-latches the failure below: an edited set whose stale bounds read
-"off-screen" had its mover skipped, so nothing ever advanced it back into view.
-
-The failure this replaced: the two caches had two separate evictors, every
-producer called only the world one, and `markChunkBoundsDirty()` had zero
-callers tree-wide — so on a cardinal camera (the default, `residualYaw_ == 0`)
-an in-place position or alpha rewrite froze the iso bounds at the last
-alloc/dealloc. Both consumers then dropped live geometry. It is invisible to
-CPU-side occupancy assertions — voxel alpha stays correct; only the derived cull
-state is stale — so test it by reading the pool's own bounds / visibility, or
-with a render compare. `test/ecs/chunk_bounds_eviction_test.cpp` and
-`IRShapeDebug --auto-screenshot --cull-evict-test` are the guards.
+Detached re-voxelization is exempt as a producer: it uses a rotation-independent
+static bound and a deliberately stale CPU position mirror. The static-bound
+consumer must still clear cardinal pending bits when it answers those queries;
+leaving them armed makes `isRangeVisible` admit detached chunks forever. World
+bits remain pending until their own consumer satisfies them.
 
 ## Deprecated
 
@@ -529,12 +406,8 @@ with a render compare. `test/ecs/chunk_bounds_eviction_test.cpp` and
 | `C_VoxelPool::markChunkWorldBoundsDirty()` | `markCullBoundsDirty(start, count)` | #2830, 2026-09-11 |
 | `C_VoxelPool::markChunkBoundsDirty()` | `markCullBoundsDirty(start, count)` | #2830, 2026-09-11 |
 
-Both are no-argument forwarders that now notify the whole allocated prefix for
-**both** caches. They were the split this issue closed: each evicted one cache,
-every producer called only the first, and the second had no callers at all. An
-out-of-tree caller of either therefore gets the correct (stronger) eviction
-rather than the half-eviction the names promised — but it re-derives the whole
-pool, so migrate to the range form.
+Both no-argument forwarders invalidate both caches over the whole allocated
+prefix. Prefer the range form to retain chunk-local recomputation.
 
 ## Gotchas
 
