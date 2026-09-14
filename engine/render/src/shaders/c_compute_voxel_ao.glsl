@@ -13,19 +13,13 @@
 // speckle that reads as "missing sections" on rotating solids). Flat
 // cardinal faces are coplanar (d ~ 0) so the gate never changes them.
 //
-// Tilt-aware same-face resample (#1718): a re-voxelize / REBUILD_GRID
-// rotating solid is rebuilt as real voxels, so its tilted-flat surface
-// becomes a true voxel staircase whose tread (+Z) and riser (±X/±Y) ARE
-// different faces — the different-face gate alone would then count every
-// 1-cell step as a crease and re-introduce the banding. The resample
-// (search "Tilt-aware" below) looks one cell beyond a different-face
-// step: a monotone staircase returns to the receiver's own face there
-// (suppress), whereas a genuine concave crease (the L-prism notch) meets
-// a perpendicular wall (keep). Per-pixel, so legitimate creases keep AO.
-//
-// SDF shapes participate in crease AO automatically because their
-// `trixelDistances` writes are visible to the sampling — no separate
-// rasterization into a side buffer is needed.
+// A re-voxelize / REBUILD_GRID rotating solid is real voxels, so its
+// tilted-flat surface is a true voxel staircase whose tread (+Z) and riser
+// (±X/±Y) ARE different faces — the different-face gate alone would count
+// every 1-cell step as a crease. The tilt-aware resample looks one cell
+// beyond a different-face step: a monotone staircase returns to the
+// receiver's own face there (suppress), whereas a genuine concave crease
+// (the L-prism notch) meets a perpendicular wall (keep).
 
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
@@ -61,7 +55,7 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform int voxelCount;
     // Smooth-camera-Z-yaw per-axis route selector (mirrors
     // FrameDataVoxelToCanvas::perAxisRoute_). 0 = single-canvas raster; nonzero
-    // = lighting a per-axis canvas (#1311), so reconstruct world-pos face-locally.
+    // = lighting a per-axis canvas, so reconstruct world-pos face-locally.
     uniform int perAxisRoute;
     uniform ivec2 canvasSizePixels;
     uniform ivec2 cullIsoMin;
@@ -71,10 +65,9 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform float residualYaw;
     uniform float _yawPadding;            // isDetachedCanvas in the full UBO
     uniform vec4 _faceDeformPadding[3];   // faceDeform[3] in the full UBO
-    // Per-slot world FaceId (0..5) — see c_voxel_to_trixel_stage_1.glsl + #1278.
-    // AO maps the decoded depth slot → world FaceId via this lookup so the
-    // outward-normal step uses the rotation-aware six-face normal (not the
-    // cardinal-0 lower-coord assumption that broke at non-zero cardinal).
+    // Per-slot world FaceId (0..5), the table the stage-1 raster encodes slots
+    // against. AO maps the decoded depth slot → world FaceId via this lookup so
+    // the outward-normal step uses the rotation-aware six-face normal.
     uniform ivec4 visibleFaceIds;
 };
 
@@ -98,17 +91,17 @@ layout(std140, binding = 29) uniform FrameDataSun {
     uniform vec2 cascadeTexelSize_1;
     uniform float cascadeSplitDepth;
     uniform int cascadeCount;
-    uniform float sunSplatMaxTexels;  // #2270; unused here (sun-map bake only)
-    uniform float sunMaxShadowThrow;  // #2320; unused here (receiver-only)
+    uniform float sunSplatMaxTexels;  // unused here (sun-map bake only)
+    uniform float sunMaxShadowThrow;  // unused here (receiver-only)
 };
 
 layout(r32i, binding = 0) readonly uniform iimage2D trixelDistances;
 layout(rgba8, binding = 1) writeonly uniform image2D canvasAO;
 
-// Per-axis compacted occupied-cell list + per-axis indirect-args region (#2256).
-// On the per-axis path the dispatch is 1-D over the compacted cells; the shader
-// recovers each cell's canvas pixel from the linear index below. Bound per axis
-// via bindRange (offsets into the three axis regions).
+// Per-axis compacted occupied-cell list + per-axis indirect-args region.
+// On the per-axis path the dispatch runs over the compacted cells and each
+// cell's canvas pixel is recovered from its linear index. Bound per axis via
+// bindRange (offsets into the three axis regions).
 layout(std430, binding = 25) readonly buffer PerAxisCellCompacted {
     uint compactedCells[];
 };
@@ -122,9 +115,9 @@ void main() {
     const ivec2 size = imageSize(trixelDistances);
     ivec2 pixel;
     if (perAxisRoute != 0) {
-        // #2256: indirect dispatch over the compacted occupied-cell list, folded
-        // into a capped 2-D workgroup grid by c_per_axis_cell_finalize; recover
-        // the flat group index the same way c_voxel_visibility_compact does.
+        // Indirect dispatch over the compacted occupied-cell list, folded into
+        // a capped 2-D workgroup grid by c_per_axis_cell_finalize; recover the
+        // flat group index the same way c_voxel_visibility_compact does.
         const uint groupIndex = gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x;
         const uint idx = groupIndex * kPerAxisCellComputeTile + gl_LocalInvocationIndex;
         if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
@@ -140,7 +133,7 @@ void main() {
     }
 
     int encoded = imageLoad(trixelDistances, pixel).x;
-    // Per-axis canvas uses INT_MAX as empty sentinel (#1458); single-canvas keeps 65535.
+    // Per-axis canvas uses INT_MAX as empty sentinel; single-canvas uses 65535.
     const int kEmpty = (perAxisRoute != 0) ? 0x7FFFFFFF : kEmptyDistanceEncoded;
     if (encoded >= kEmpty) {
         imageStore(canvasAO, pixel, vec4(1.0, 0.0, 0.0, 0.0));
@@ -151,29 +144,25 @@ void main() {
         return;
     }
 
-    // Decode the visible-triplet slot (0/1/2) the rasterizer wrote (#1278).
-    // Slot → world FaceId via `visibleFaceIds[slot]` — single source of
-    // face metadata shared with the raster, so AO's "step out of the
-    // surface" arithmetic uses the actually-visible face's outward normal
-    // and tangents at every cardinal (not the cardinal-0 lower-coord
-    // assumption the pre-#1278 path baked in).
+    // The rasterizer writes the visible-triplet slot (0/1/2). Slot → world
+    // FaceId via `visibleFaceIds[slot]` — single source of face metadata
+    // shared with the raster, so AO's "step out of the surface" arithmetic
+    // uses the actually-visible face's outward normal and tangents at every
+    // cardinal.
     int slot = decodeSlot(encoded);
-    // The riser-polarity flip (#2207) selects the OPPOSITE same-axis face, so
-    // the outward-normal step below walks out of the true surface instead of
-    // into the solid. The tangent pair is polarity-invariant (both branches
-    // cover NEG and POS of each axis).
+    // The riser-polarity flip selects the OPPOSITE same-axis face, so the
+    // outward-normal step walks out of the true surface instead of into the
+    // solid. The tangent pair is polarity-invariant (both branches cover NEG
+    // and POS of each axis).
     int flip = decodeFlipRoute(encoded, perAxisRoute);
     int faceId = visibleFaceIds[slot] ^ flip;
     // Shared decode helpers (ir_iso_common) own both encodings' bit layouts
-    // (#1458 per-axis / single-canvas, flip carrier #2207).
+    // (per-axis / single-canvas, and the flip carrier).
     int rawDepth = decodeDepthRoute(encoded, perAxisRoute);
     int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
-    // Smooth camera Z-yaw (#1311): a per-axis canvas stores the world frame
-    // face-locally (perAxisRoute != 0), so recover world-pos via
-    // isoPixelToPos3D; the single canvas stores the cardinal-snapped iso
-    // pixel, recovered via trixelCanvasPixelToWorld3D. Per-axis canvases are
-    // only allocated while rotating, so the single-canvas path stays byte-
-    // identical at the cardinal fast path.
+    // A per-axis canvas stores the world frame face-locally (perAxisRoute != 0),
+    // so recover world-pos via isoPixelToPos3D; the single canvas stores the
+    // cardinal-snapped iso pixel, recovered via trixelCanvasPixelToWorld3D.
     // Lattice recovery (not perAxisCellToWorld3DSubCell) is deliberate here:
     // AO consumes pos3D only through `dot(neighbourPos3D - pos3D,
     // worldOutward)`, and a per-axis canvas holds a single face axis, so the
@@ -192,12 +181,11 @@ void main() {
     // face this pixel rendered. The tangent step is rotated through
     // R_z(-rasterYaw) before iso projection so the neighbour-sample
     // direction lands on the canvas pixel that actually holds the
-    // +tangent neighbour at this cardinal (PR #1275 prep).
+    // +tangent neighbour at this cardinal.
     vec3 worldOutward = vec3(faceOutwardNormal6I(faceId));
     ivec3 t1, t2;
-    // Pick the two in-plane tangents per face axis. The pair direction
-    // doesn't matter (AO samples ±t1, ±t2); the per-axis split must
-    // match across X / Y / Z faces of both polarities.
+    // The tangent sign doesn't matter (AO samples ±t1, ±t2), so both
+    // polarities of a face axis share one pair.
     if (faceId == kFaceZNeg || faceId == kFaceZPos) {
         t1 = ivec3(1, 0, 0);
         t2 = ivec3(0, 1, 0);
@@ -210,14 +198,11 @@ void main() {
         t2 = ivec3(0, 0, 1);
     }
 
-    // Subdivision modes scale canvas pixels by
-    // `effectiveTrixelSubdivisionScale` so the iso offset for a one-
-    // voxel step grows accordingly.
     int scale = effectiveTrixelSubdivisionScale(voxelRenderOptions);
     ivec2 deltaT1;
     ivec2 deltaT2;
     if (perAxis) {
-        // Per-axis canvas is BASE-RESOLUTION (#1458): 1 cell = 1 world voxel.
+        // Per-axis canvas is BASE-RESOLUTION: 1 cell = 1 world voxel.
         // A +/-1 cell step along each canvas axis is the +/-1 in-plane neighbour.
         deltaT1 = ivec2(1, 0);
         deltaT2 = ivec2(0, 1);
@@ -262,17 +247,16 @@ void main() {
         // contact occluder; a SAME-face neighbour at d ~ 1 is the round-to-cell
         // stair-step of a rotated (tilted-flat) surface (the "missing sections"
         // speckle) and is excluded by the slot test. Flat cardinal faces are
-        // coplanar (d ~ 0, below kAOMinHeight) so they never reach this gate and
-        // the cardinal fast path stays byte-identical.
+        // coplanar (d ~ 0, below kAOMinHeight) so they never reach this gate.
         float d = dot(neighbourPos3D - pos3D, worldOutward);
-        // Same-surface exclusion compares (slot, flip) — a flipped neighbour
-        // (#2207) is the opposite-polarity face, a genuinely different surface,
-        // so it stays eligible as a crease occluder.
+        // Same-surface exclusion compares (slot, flip) — a flipped neighbour is
+        // the opposite-polarity face, a genuinely different surface, so it stays
+        // eligible as a crease occluder.
         bool sameSurface = decodeSlot(neighbourEncoded) == slot &&
             decodeFlipRoute(neighbourEncoded, perAxisRoute) == flip;
         if (sameSurface || d <= kAOMinHeight || d >= kAOMaxHeight) continue;
 
-        // Tilt-aware same-face resample (#1718). A re-voxelized / REBUILD_GRID
+        // Tilt-aware same-face resample. A re-voxelized / REBUILD_GRID
         // rotating solid turns a tilted-flat surface into a true voxel staircase
         // whose tread (+Z) and riser (±X/±Y) ARE different faces, so every 1-cell
         // step reads as a different-face crease at d ~ 1 — the venetian banding.

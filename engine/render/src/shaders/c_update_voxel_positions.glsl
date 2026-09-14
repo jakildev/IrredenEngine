@@ -1,12 +1,11 @@
 #version 450 core
 
-// GPU voxel-position prepass (#1396). One thread per live voxel: look up the
-// voxel's transform slot (bit-packed into the local-position .w lane), and (for
-// GPU-transformed voxels only) compute world = modelToWorld * localPos and write
-// the shared global-position SSBO (binding 5) that VOXEL_TO_TRIXEL_STAGE_1 reads.
-// Voxels whose slot is the sentinel (kVoxelTransformStatic) are left untouched,
-// so the CPU-direct pending-range flush still owns their binding-5 slots
-// (byte-identical).
+// GPU voxel-position prepass. One thread per live voxel: for GPU-transformed
+// voxels, world = modelToWorld * localPos is written into the shared
+// global-position SSBO (binding 5) that VOXEL_TO_TRIXEL_STAGE_1 reads. The
+// transform slot is bit-packed into the local-position .w lane. Voxels whose
+// slot is the sentinel (kVoxelTransformStatic) are left untouched, so the
+// CPU-direct pending-range flush owns their binding-5 slots.
 //
 // The 2D workgroup grid + linear index reconstruction mirror
 // c_voxel_visibility_compact.glsl exactly (same dispatch helper on the CPU).

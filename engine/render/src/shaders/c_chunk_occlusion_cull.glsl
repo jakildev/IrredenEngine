@@ -1,12 +1,12 @@
 #version 450 core
 
-// Chunk-occlusion pre-pass for the voxel-pool render path (#1294 child 2/3;
-// docs/design/voxel-occlusion-culling.md § Implementation sketch step 2).
+// Chunk-occlusion pre-pass for the voxel-pool render path.
+// Design: docs/design/voxel-occlusion-culling.md § Implementation sketch.
 //
 // One invocation per pool-chunk. Each chunk's iso AABB is projected to canvas
 // pixels CPU-side and delivered in the query buffer alongside the chunk's
 // nearest encoded depth. This pass samples the MAX of LAST frame's Hi-Z
-// (#1798) over the chunk's pixel footprint, at the mip whose texel covers the
+// over the chunk's pixel footprint, at the mip whose texel covers the
 // footprint, and ANDs 0 into the chunk's ChunkVisibility entry (binding 24)
 // iff the chunk's nearest depth is strictly behind that max — i.e. closer
 // geometry already covers the whole footprint.
@@ -21,10 +21,6 @@
 //     positive is a visible hole; a false negative is only lost compute.
 //   * The footprint is expanded by one texel and the cull only fires on a
 //     strict-behind compare with a small margin.
-//
-// The whole pass is gated OFF by default at the call site (it is not dispatched
-// unless the occlusion cull is enabled), so a default scene is byte-identical
-// to master and pays zero cost.
 //
 // Mirror: shaders/metal/c_chunk_occlusion_cull.metal.
 
@@ -102,7 +98,6 @@ int hiZTexel(int level, ivec2 coord) {
 // `footprintPx`, as a 0-based index into hiZLevels (conceptual mip idx+1).
 int pickHiZLevel(int footprintPx, int mipCount) {
     int idx = 0;
-    // texelSpan(idx) = 2^(idx+1) source pixels.
     while (idx < mipCount - 1 && (1 << (idx + 1)) < footprintPx) {
         ++idx;
     }
@@ -118,7 +113,6 @@ void main() {
     if (chunk >= uint(chunkCount_)) return;
     if (mipCount_ <= 0) return;
 
-    // Already culled by frustum, or flagged not-testable this frame — leave it.
     if (chunkVisible[chunk] == 0u) return;
     ChunkQuery q = queries[chunk];
     if (q.eligible_ == 0) return;
@@ -127,9 +121,6 @@ void main() {
     int footprintPx = max(max(footprint.x, footprint.y), 1);
     int level = pickHiZLevel(footprintPx, mipCount_);
 
-    // Project the pixel AABB into this level's texel grid (level idx maps source
-    // px -> px >> (idx+1)), expand by one texel (conservative), and take the max
-    // over that small footprint.
     int shift = level + 1;
     ivec2 tMin = (q.pixelMin_ >> shift) - ivec2(1);
     ivec2 tMax = (q.pixelMax_ >> shift) + ivec2(1);
@@ -141,9 +132,6 @@ void main() {
         }
     }
 
-    // Strictly behind the farthest visible surface over the whole footprint =
-    // covered by closer geometry. Background (65535) keeps hiZMax large, so a
-    // footprint that still sees background is never culled.
     if (q.encodedNearest_ > hiZMax + kOcclusionDepthMargin) {
         chunkVisible[chunk] = 0u;
     }
