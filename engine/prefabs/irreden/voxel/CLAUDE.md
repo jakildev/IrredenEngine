@@ -32,9 +32,8 @@ binding. API contracts live in `components/component_voxel_set.hpp`, `voxel_pool
   rotated frame unless they use the encapsulated edit API.
 - `C_VoxelSetNew` reserves its span during construction when a canvas is
   active. A temporary constructed only to inspect dense data leaks that span
-  because cleanup is `onDestroy()`, not a destructor; attach one set per
-  entity and use `DenseVoxel::toVoxels` for unattached data. Destroy entities
-  through `IREntity::destroyEntity` so ECS cleanup runs.
+  because cleanup is `onDestroy()`; attach it to an entity or use `DenseVoxel::toVoxels`
+  for unattached data. Destroy entities through `IREntity::destroyEntity` so ECS cleanup runs.
 
 ## Entity anchors
 
@@ -190,11 +189,11 @@ authoritative.
 
 ## Deprecated
 
-| Surface | Replacement | Marked |
-|---|---|---|
-| `C_JointHierarchy` | `C_Skeleton` + joint entities | #605 |
-| `C_VoxelPool::markChunkWorldBoundsDirty()` | `markCullBoundsDirty(start, count)` | #2830 |
-| `C_VoxelPool::markChunkBoundsDirty()` | `markCullBoundsDirty(start, count)` | #2830 |
+| Surface | Replacement |
+|---|---|
+| `C_JointHierarchy` | `C_Skeleton` + joint entities |
+| `C_VoxelPool::markChunkWorldBoundsDirty()` | `markCullBoundsDirty(start, count)` |
+| `C_VoxelPool::markChunkBoundsDirty()` | `markCullBoundsDirty(start, count)` |
 
 The compatibility forwarders invalidate both caches over the full allocated prefix.
 Out-of-tree callers should migrate to the range form to avoid rebuilding the whole pool.
