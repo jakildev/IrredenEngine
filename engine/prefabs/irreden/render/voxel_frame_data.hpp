@@ -109,24 +109,13 @@ inline void buildVoxelFrameData(
         frameData.residualYaw_ = 0.0f;
         const auto cardinalIndex = IRMath::rasterYawCardinalIndex(0.0f);
         const auto visibleFaces = IRMath::visibleFaceTripletCardinal(cardinalIndex);
-        // Re-voxelize canvases mark `.w = 1` (#1557 Option B / #1570). The marker
-        // tells `c_voxel_to_trixel_stage_{1,2}` to dilate each emitted face ±1px
-        // along its in-plane iso axes to close the round-to-cell sub-cell gaps.
-        // It NO LONGER bypasses the exposed-mask gate: the GPU scatter
-        // (c_revoxelize_detached MODE 1) now authors the ROTATED-frame
-        // face-occlusion mask from dest-grid adjacency — the GPU twin of
-        // REBUILD_GRID_VOXELS' #1720 CPU mask — so stage 1/2 gate re-voxelize on
-        // `faceIsExposed` exactly like the GRID path. The old bypass (emit all
-        // three cardinal faces, depth-resolve the front) existed only because that
-        // mask used to be stale (P2 #1556 dropped P1's recompute without moving it
-        // to the GPU); its slot-tie checkerboard winner drove AO hatching on flat
-        // surfaces that GRID never had. Other canvases keep `.w = 0`
-        // (no dilation, real exposed-mask gate, byte-identical to master).
+        // Nonzero marks resampled occupancy; 1 additionally requests legacy
+        // dilation, while 2 preserves the local triangle lattice footprint.
         frameData.visibleFaceIds_ = ivec4(
             static_cast<int>(visibleFaces[0]),
             static_cast<int>(visibleFaces[1]),
             static_cast<int>(visibleFaces[2]),
-            1
+            canvas.sampleLayout_ == TrixelSampleLayout::LOCAL_TRIANGLES ? 2 : 1
         );
         const mat2 fd0 = IRMath::faceDeformationMatrix(visibleFaces[0], 0.0f);
         const mat2 fd1 = IRMath::faceDeformationMatrix(visibleFaces[1], 0.0f);

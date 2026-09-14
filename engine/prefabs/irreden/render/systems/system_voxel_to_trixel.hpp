@@ -1388,6 +1388,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // canvas (the main canvas's value is simply never read by the detached
         // composite).
         triangleCanvasTextures.renderedSubdivisions_ = frameData_.voxelRenderOptions_.y;
+        triangleCanvasTextures.renderedSampleLayout_ = frameData_.visibleFaceIds_.w == 2
+                                                           ? TrixelSampleLayout::LOCAL_TRIANGLES
+                                                           : TrixelSampleLayout::RECTANGULAR;
 
         // No-priority perf fast-path (#2155). Publish whether any voxel in this
         // canvas's pool carries a non-zero per-trixel priority (#1960), maintained

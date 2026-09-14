@@ -50,6 +50,8 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     // Composite depth tier for this draw: 0 = world content (clamped out of the
     // reserved near band), != 0 = foreground priority (pinned into it).
     int depthPriorityMode;
+    int overflowMode;
+    int trixelSampleLayout;
 };
 
 layout(std430, binding = 14) buffer HoveredEntityIdBuffer {
@@ -66,20 +68,24 @@ float normalizeDistance(int dist) {
 void main() {
     ivec2 textureSize = textureSize(triangleColors, 0);
     ivec2 z1 = trixelOriginOffsetZ1(textureSize);
-    // Color / depth / tier reads at the RAW interpolated canvas position — the
-    // raw sample already lands on the correct trixel row, same as the Metal
-    // twin (both vertex stages build identical V-flipped TexCoords, so the two
-    // backends interpolate the same canvas position for the same screen pixel).
-    // The parity-row shift (trixelFramebufferSamplePosition) is applied ONLY to
-    // the hover coordinate (`originShifted`), keeping picking in lockstep with
-    // CPU `mouseTrixelPositionWorld()` -> `pos2DIsoToTriangleIndex`. Before
-    // editing, read docs/design/trixel-parity-shift-442-investigation.md.
+    // Rectangular color/depth/tier reads use the raw interpolated canvas
+    // position. Hover uses the world-lattice mapping; local display triangles
+    // instead select cells in the private canvas basis.
     vec2 originRaw = TexCoords * vec2(textureSize);
     int originModifier = trixelOriginModifier(z1, canvasOffset);
     vec2 originShifted = trixelFramebufferSamplePosition(originRaw, originModifier);
 
-    vec4 color = textureLod(triangleColors, originRaw / textureSize, 0);
-    int rawDist = textureLod(triangleDistances, originRaw / textureSize, 0).r;
+    vec2 displayOrigin = originRaw;
+    if (trixelSampleLayout == 1) {
+        // The triangular cell footprint is centered one row below its
+        // stored index; offset the query to preserve the voxel origin.
+        displayOrigin = trixelFramebufferSamplePosition(
+            originRaw + vec2(0.0, 1.0), (z1.x + z1.y) & 1);
+        if (any(lessThan(displayOrigin, vec2(0.0))) ||
+            any(greaterThanEqual(displayOrigin, vec2(textureSize)))) discard;
+    }
+    vec4 color = textureLod(triangleColors, displayOrigin / textureSize, 0);
+    int rawDist = textureLod(triangleDistances, displayOrigin / textureSize, 0).r;
     // effectiveSubdivisionsForHover.y carries the per-canvas depth rescale
     // (effSub / cubeSub) for world-placed DETACHED canvases: their model-frame
     // rawDist was written at the canvas's own (possibly capped) subdivision, so
@@ -103,21 +109,11 @@ void main() {
     ivec2 originIndex = ivec2(floor(originShifted));
     ivec2 hoveredIndex = ivec2(floor(hoveredPosition));
     bool isMouseHovered = all(equal(hoveredIndex, originIndex));
-    // Per-trixel priority tiers. The tier read samples the SAME texel the
-    // color/depth came from (originRaw) and is needed only when some voxel in
-    // the canvas carries a per-trixel priority; on the no-priority path the
-    // read is skipped: decodePriority of an unread id would be 0, so
-    // tier == depthPriorityMode and the output is identical. The hover read
-    // uses originShifted and is gated on isMouseHovered separately (twin of
-    // trixel_to_framebuffer.metal's sampleCoord / hoverCoord split). So a
-    // fragment that is BOTH prioritized and hovered fetches triangleEntityIds
-    // TWICE — once at originRaw, once at originShifted. The two reads want
-    // different texels, so the pair is not redundant: one shared fetch has to
-    // pick a single origin, and either choice reintroduces a parity-shifted
-    // read on the path that needs the other.
+    // Priority and color/depth must select the same stored cell. Canvases
+    // without prioritized voxels avoid the extra entity-id fetch.
     int tier = depthPriorityMode;
     if (anyPerTrixelPriority != 0) {
-        uvec2 sampleEntityId = textureLod(triangleEntityIds, originRaw / vec2(textureSize), 0).rg;
+        uvec2 sampleEntityId = textureLod(triangleEntityIds, displayOrigin / vec2(textureSize), 0).rg;
         // Resolve the tier: the higher of this draw's per-entity tier
         // (depthPriorityMode, C_EntityCanvas::depthPriority_) and the
         // per-voxel tier authored into the id carrier.

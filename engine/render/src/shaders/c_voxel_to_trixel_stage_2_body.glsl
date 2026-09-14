@@ -215,7 +215,7 @@ void emitDeformedFace(
     const vec4 voxelColor,
     const uvec2 packedEntityId,
     const int faceId,
-    const bool reVoxelize
+    const bool dilate
 #if IR_STORE_WINNER_ELECTION
     , const uint voxelIndex
 #endif
@@ -229,7 +229,7 @@ void emitDeformedFace(
     // the occlusion-winning face per pixel, so gaps get the correct colour.
     ivec2 su = ivec2(0);
     ivec2 sv = ivec2(0);
-    if (reVoxelize) {
+    if (dilate) {
         faceInPlaneIsoSteps(faceId, su, sv);
     }
     for (int sy = 0; sy < n; ++sy) {
@@ -238,7 +238,7 @@ void emitDeformedFace(
             ivec2 p = base + roundHalfUp(D * src);
 #if IR_STORE_WINNER_ELECTION
             writeColorTapCardinalWinner(p, voxelDistance, voxelColor, packedEntityId, voxelIndex);
-            if (reVoxelize) {
+            if (dilate) {
                 writeColorTapCardinalWinner(
                     p + su, voxelDistance, voxelColor, packedEntityId, voxelIndex
                 );
@@ -254,7 +254,7 @@ void emitDeformedFace(
             }
 #else
             writeColorTap(p, voxelDistance, voxelColor, packedEntityId);
-            if (reVoxelize) {
+            if (dilate) {
                 writeColorTap(p + su, voxelDistance, voxelColor, packedEntityId);
                 writeColorTap(p - su, voxelDistance, voxelColor, packedEntityId);
                 writeColorTap(p + sv, voxelDistance, voxelColor, packedEntityId);
@@ -292,6 +292,7 @@ void main() {
     const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
 
     const bool reVoxelize = visibleFaceIds.w != 0;
+    const bool dilateRevox = visibleFaceIds.w == 1;
 
     // Stage 2 applies stage 1's exposed-face gate (for re-voxelize content, the
     // rotated-frame mask c_revoxelize_detached authors) so it doesn't waste an
@@ -414,7 +415,7 @@ void main() {
             trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions) +
             pos3DtoPos2DIso(voxelPositionInt);
         emitDeformedFace(
-            base, D, voxelDistance, voxelColor, packedEntityId, faceId, reVoxelize
+            base, D, voxelDistance, voxelColor, packedEntityId, faceId, dilateRevox
 #if IR_STORE_WINNER_ELECTION
             , voxelIndex
 #endif
@@ -453,7 +454,7 @@ void main() {
     const int voxelDistance = encodeDepthWithFace(depthBase, slot, riserFlip);
     const ivec2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
     emitDeformedFace(
-        base, D, voxelDistance, voxelColor, packedEntityId, viewFaceId, reVoxelize
+        base, D, voxelDistance, voxelColor, packedEntityId, viewFaceId, dilateRevox
 #if IR_STORE_WINNER_ELECTION
         , voxelIndex
 #endif
@@ -473,7 +474,7 @@ void main() {
         const int distanceOpposite = encodeDepthWithFace(depthOpposite, slot, riserFlip ^ 1);
         const ivec2 baseOpposite = frameOffsetFixed + pos3DtoPos2DIso(microOpposite);
         emitDeformedFace(
-            baseOpposite, D, distanceOpposite, voxelColor, packedEntityId, viewFaceId ^ 1, reVoxelize
+            baseOpposite, D, distanceOpposite, voxelColor, packedEntityId, viewFaceId ^ 1, dilateRevox
 #if IR_STORE_WINNER_ELECTION
             , voxelIndex
 #endif

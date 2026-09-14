@@ -259,7 +259,7 @@ inline void emitDeformedFace(
     uint2 localId,
     bool isDetached,
     int faceId,
-    bool reVoxelize,
+    bool dilate,
     device atomic_int* distanceScratch,
     int2 canvasSize
 #if IR_STORE_WINNER_ELECTION
@@ -277,7 +277,7 @@ inline void emitDeformedFace(
     // the occlusion winner; stage 2's depth re-test paints the matching colour).
     int2 su = int2(0);
     int2 sv = int2(0);
-    if (reVoxelize) {
+    if (dilate) {
         faceInPlaneIsoSteps(faceId, su, sv);
     }
     for (int sy = 0; sy < n; ++sy) {
@@ -286,7 +286,7 @@ inline void emitDeformedFace(
             const int2 p = base + roundHalfUp(D * src);
 #if IR_STORE_WINNER_ELECTION
             resolveWinnerTap(p, voxelDistance, voxelIndex, distanceScratch, perAxisWinnerIds, canvasSize);
-            if (reVoxelize) {
+            if (dilate) {
                 resolveWinnerTap(p + su, voxelDistance, voxelIndex, distanceScratch, perAxisWinnerIds, canvasSize);
                 resolveWinnerTap(p - su, voxelDistance, voxelIndex, distanceScratch, perAxisWinnerIds, canvasSize);
                 resolveWinnerTap(p + sv, voxelDistance, voxelIndex, distanceScratch, perAxisWinnerIds, canvasSize);
@@ -294,7 +294,7 @@ inline void emitDeformedFace(
             }
 #else
             writeDistanceTap(p, voxelDistance, distanceScratch, canvasSize);
-            if (reVoxelize) {
+            if (dilate) {
                 writeDistanceTap(p + su, voxelDistance, distanceScratch, canvasSize);
                 writeDistanceTap(p - su, voxelDistance, distanceScratch, canvasSize);
                 writeDistanceTap(p + sv, voxelDistance, distanceScratch, canvasSize);
@@ -475,6 +475,7 @@ kernel void IR_STAGE1_KERNEL_NAME(
 
     // Re-voxelize marker (frameData.visibleFaceIds.w != 0, #1557) — see GLSL.
     const bool reVoxelize = frameData.visibleFaceIds.w != 0;
+    const bool dilateRevox = frameData.visibleFaceIds.w == 1;
 
     // Exposed-face gate (#1278), BYPASSED for re-voxelize (#1570). The GPU
     // scatter (c_revoxelize_detached) rewrites only cell POSITIONS; the per-voxel
@@ -643,7 +644,7 @@ kernel void IR_STAGE1_KERNEL_NAME(
             pos3DtoPos2DIso(voxelPositionInt);
         emitDeformedFace(
             base, D, voxelDistance, localId, frameData.isDetachedCanvas > 0.5f, faceId,
-            reVoxelize, distanceScratch, canvasSize
+            dilateRevox, distanceScratch, canvasSize
 #if IR_STORE_WINNER_ELECTION
             , voxelIndex, perAxisWinnerIds
 #endif
@@ -698,7 +699,7 @@ kernel void IR_STAGE1_KERNEL_NAME(
     const int2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
     emitDeformedFace(
         base, D, voxelDistance, localId, frameData.isDetachedCanvas > 0.5f, viewFaceId,
-        reVoxelize, distanceScratch, canvasSize
+        dilateRevox, distanceScratch, canvasSize
 #if IR_STORE_WINNER_ELECTION
         , voxelIndex, perAxisWinnerIds
 #endif
@@ -721,7 +722,7 @@ kernel void IR_STAGE1_KERNEL_NAME(
         const int2 baseOpposite = frameOffsetFixed + pos3DtoPos2DIso(microOpposite);
         emitDeformedFace(
             baseOpposite, D, distanceOpposite, localId, frameData.isDetachedCanvas > 0.5f,
-            viewFaceId ^ 1, reVoxelize, distanceScratch, canvasSize
+            viewFaceId ^ 1, dilateRevox, distanceScratch, canvasSize
 #if IR_STORE_WINNER_ELECTION
             , voxelIndex, perAxisWinnerIds
 #endif

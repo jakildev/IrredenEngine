@@ -518,12 +518,9 @@ inline uint2 trixelCanvasReadCoord(float2 origin, float2 textureSize) {
 // parity bit + fract sub-pixel test pick which of the iso cell's two trixels
 // this fragment maps to, byte-identical to GLSL/CPU `pos2DIsoToTriangleIndex`.
 //
-// Both backends' gathers read color/depth/tier from the RAW (unshifted)
-// origin; this shift feeds the hover/pick coordinate only, keeping it in
-// lockstep with CPU `pos2DIsoToTriangleIndex`. Shifting the color/depth reads
-// is the #394 sawtooth regression (reverted on Metal in #438; removed from the
-// GL gather 2026-08). See #442;
-// docs/design/trixel-parity-shift-442-investigation.md.
+// RECTANGULAR display uses raw coordinates and reserves this mapping for
+// hover. LOCAL_TRIANGLES supplies canvas-local parity and a row-corrected
+// query; its caller rejects out-of-bounds results before texture reads.
 inline float2 trixelFramebufferSamplePosition(float2 origin, int originModifier) {
     const float2 originFloored = floor(origin);
     const float2 fractComp = fract(origin);

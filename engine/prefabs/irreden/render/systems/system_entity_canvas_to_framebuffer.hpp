@@ -214,6 +214,7 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         );
 
         FrameDataTrixelToFramebuffer fd{};
+        fd.trixelSampleLayout_ = static_cast<int>(canvasTextures->renderedSampleLayout_);
         fd.mpMatrix_ = calcProjectionMatrix(fbRes_) * model;
         fd.canvasZoomLevel_ = densityZoom;
         // The de-tile gather parity anchor scales with the raster density, the
