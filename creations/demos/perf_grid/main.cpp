@@ -426,6 +426,53 @@ void logFeederClassify(int shotIndex) {
 int g_autoProfileFrames = 0;
 int g_autoProfileCount = 0;
 int g_autoWarmupFrames = 0;
+
+// --auto-profile reports MEANS over the profiled window, not just the single
+// trailing frame the dump below has always printed (#2830 AC4).
+// `IRTime::renderFrameTimeMs()` is one inter-frame delta and `CpuFrameHistogram`
+// keeps only the last frame, so every `--auto-profile` number was an n=1 sample.
+// That cannot settle a "mean CPU frame time" bound, because the per-frame
+// samples are strongly bimodal: `update` ticks on only a subset of render
+// frames, and a frame that rebuilds chunk bounds costs several times a
+// cache-hit frame. A single sample reports whichever mode it landed in, and
+// repeating the run only adds one more such sample per run. Folding every
+// profiled frame into a running mean turns one run into `--auto-profile N`
+// samples, so the spread is measured instead of being sampled once.
+struct AutoProfileStat {
+    double sum_ = 0.0;
+    double sumSquares_ = 0.0;
+    unsigned int count_ = 0;
+
+    void add(double ms) {
+        sum_ += ms;
+        sumSquares_ += ms * ms;
+        ++count_;
+    }
+
+    double mean() const {
+        return count_ == 0 ? 0.0 : sum_ / count_;
+    }
+
+    double stddev() const {
+        if (count_ < 2) {
+            return 0.0;
+        }
+        const double meanMs = mean();
+        const double variance = (sumSquares_ / count_) - (meanMs * meanMs);
+        return variance <= 0.0 ? 0.0 : IRMath::sqrt(static_cast<float>(variance));
+    }
+};
+
+// The scopes the mean table reports, in the order the single-frame CPU line
+// prints them.
+constexpr const char *const kAutoProfileCpuScopes[] = {
+    "voxelStage1", "voxelStage2", "voxelCompact", "input", "update", "render"
+};
+constexpr std::size_t kAutoProfileCpuScopeCount =
+    sizeof(kAutoProfileCpuScopes) / sizeof(kAutoProfileCpuScopes[0]);
+
+AutoProfileStat g_autoProfileFrameTime;
+AutoProfileStat g_autoProfileCpu[kAutoProfileCpuScopeCount];
 // --occlusion-cull (#1294 child 3/3): force the voxel-pool chunk-occlusion HZB
 // pre-pass ON (off by default in the engine). This is the measurement + verify
 // toggle for the cull: pair `--mode voxel_set --auto-profile` runs with and
@@ -1411,6 +1458,18 @@ void initSystems() {
             [](C_Name &) {},
             []() {
                 ++g_autoProfileCount;
+                // Discard the first quarter of the window as warmup — shader
+                // compile, first-touch allocation and the GPU timer-query ramp
+                // all land there. The single-frame dump below was implicitly
+                // post-warmup by reading only the final frame; the mean has to
+                // exclude the cold prefix explicitly to match it.
+                if (g_autoProfileCount > g_autoProfileFrames / 4) {
+                    const auto &cpuThisFrame = IRProfile::cpuFrameHistogram();
+                    g_autoProfileFrameTime.add(IRTime::renderFrameTimeMs());
+                    for (std::size_t i = 0; i < kAutoProfileCpuScopeCount; ++i) {
+                        g_autoProfileCpu[i].add(cpuThisFrame.lastFrameMs(kAutoProfileCpuScopes[i]));
+                    }
+                }
                 if (g_autoProfileCount >= g_autoProfileFrames) {
                     IR_LOG_INFO("Auto-profile: {} frames collected, exiting", g_autoProfileFrames);
                     // Dump the last completed frame's CPU + GPU per-stage
@@ -1425,6 +1484,25 @@ void initSystems() {
                         IRTime::renderFps(),
                         IRTime::renderFrameTimeMs()
                     );
+                    // The lines above are n=1. These are the ones a perf gate
+                    // should quote: mean over every post-warmup frame in the
+                    // window, with the spread that makes two arms separable or
+                    // not.
+                    IR_LOG_INFO(
+                        "Auto-profile mean — frame:{:.3f}ms sd:{:.3f} n:{}",
+                        g_autoProfileFrameTime.mean(),
+                        g_autoProfileFrameTime.stddev(),
+                        g_autoProfileFrameTime.count_
+                    );
+                    for (std::size_t i = 0; i < kAutoProfileCpuScopeCount; ++i) {
+                        IR_LOG_INFO(
+                            "Auto-profile mean CPU — {}:{:.3f}ms sd:{:.3f} n:{}",
+                            kAutoProfileCpuScopes[i],
+                            g_autoProfileCpu[i].mean(),
+                            g_autoProfileCpu[i].stddev(),
+                            g_autoProfileCpu[i].count_
+                        );
+                    }
                     IR_LOG_INFO(
                         "Auto-profile CPU — voxelStage1:{:.3f} voxelStage2:{:.3f} "
                         "voxelCompact:{:.3f} input:{:.3f} update:{:.3f} render:{:.3f}",

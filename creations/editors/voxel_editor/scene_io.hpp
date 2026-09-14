@@ -58,6 +58,10 @@ struct LoadResult {
 
 namespace detail {
 
+// The animation's on-disk filename shape. `IRShapeDebug --load-vxs` parses it
+// back (resolveVxsFramePaths in creations/demos/shape_debug/main.cpp) to load a
+// whole animation from any one of its frame files, so a change here is a change
+// there.
 inline std::string framePath(const std::string &dir, const std::string &baseName, int frameIdx) {
     return dir + "/" + baseName + "_frame_" + std::to_string(frameIdx) + ".vxs";
 }

@@ -1,13 +1,18 @@
 name: Header Checks
 
-# Every text-only convention check the repo runs without a compiler:
-#   - header conventions (header-global ban, anonymous namespaces, `*Detail`
-#     namespaces) — cmake/run_header_convention_checks.cmake (#2794)
-#   - Metal threadgroup registry membership — cmake/run_metal_kernel_registry_check.cmake (#2798)
-#   - Metal image-atomic scratch consumer list — cmake/run_metal_scratch_consumer_check.cmake (#2878)
-#   - Save-inventory component population — cmake/run_save_inventory_population_check.cmake (#2834)
-# Adding another means extending run_header_checks_standalone.cmake, this
-# list, and the `paths:` filters below in the same change.
+# Every text-only convention check the repo runs without a compiler. They live
+# in cmake/run_*check*.cmake and reach CI through run_header_checks_standalone.cmake,
+# which include()s each of them.
+#
+# Adding one means adding its include() to that shim and a firing arm to
+# scripts/fleet/tests/test_header_checks_standalone.sh. The `paths:` filters
+# below are NOT a third leg any more: they match the checker glob, so a new
+# checker triggers this job by existing (#3118). Both halves of that are
+# executed — the suite's census section fails when a checker in cmake/ has no
+# shim include, and fails again if either `paths:` block below stops matching a
+# checker filename that does not exist yet. A convention statement drifting
+# from its executor is the #2727 failure this whole lineage is about, so the
+# structure enforces it rather than this comment.
 #
 # Standalone for the same reason fleet-tests.yml is: the only other caller of
 # these checks is the `lint` CMake target, and `lint` has no CI path — its only
@@ -33,11 +38,7 @@ on:
       - 'test/**'
       - 'tools/**'
       - 'cmake/ir_quality_tools.cmake'
-      - 'cmake/run_header_convention_checks.cmake'
-      - 'cmake/run_metal_kernel_registry_check.cmake'
-      - 'cmake/run_metal_scratch_consumer_check.cmake'
-      - 'cmake/run_save_inventory_population_check.cmake'
-      - 'cmake/run_header_checks_standalone.cmake'
+      - 'cmake/run_*check*.cmake'
       - 'scripts/fleet/tests/test_header_checks_standalone.sh'
       - '.github/workflows/header-checks.yml'
   pull_request:
@@ -47,11 +48,7 @@ on:
       - 'test/**'
       - 'tools/**'
       - 'cmake/ir_quality_tools.cmake'
-      - 'cmake/run_header_convention_checks.cmake'
-      - 'cmake/run_metal_kernel_registry_check.cmake'
-      - 'cmake/run_metal_scratch_consumer_check.cmake'
-      - 'cmake/run_save_inventory_population_check.cmake'
-      - 'cmake/run_header_checks_standalone.cmake'
+      - 'cmake/run_*check*.cmake'
       - 'scripts/fleet/tests/test_header_checks_standalone.sh'
       - '.github/workflows/header-checks.yml'
   workflow_dispatch:
