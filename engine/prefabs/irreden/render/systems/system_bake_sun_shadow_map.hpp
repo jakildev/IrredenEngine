@@ -38,6 +38,7 @@
 #include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/render/voxel_frame_data.hpp>
 #include <irreden/render/voxel_dispatch_grid.hpp>
+#include <irreden/render/components/component_detached_revoxelize_buffer.hpp>
 
 #include <utility>
 
@@ -151,11 +152,21 @@ struct VoxelSunFaceFrame {
     vec4 worldOrigin_;
     vec4 viewToWorld_;
     ivec4 dispatch_;
+    ivec4 sourceMin_;
+    ivec4 sourceDims_;
+    vec4 sourceAnchor_;
 };
-static_assert(sizeof(VoxelSunFaceFrame) == 48, "Voxel sun-face frame must match the shader UBO");
+static_assert(sizeof(VoxelSunFaceFrame) == 96, "Voxel sun-face frame must match the shader UBO");
+static_assert(
+    offsetof(VoxelSunFaceFrame, sourceMin_) == 48 &&
+        offsetof(VoxelSunFaceFrame, sourceDims_) == 64 &&
+        offsetof(VoxelSunFaceFrame, sourceAnchor_) == 80,
+    "Source grid bounds must match GLSL and Metal offsets"
+);
 
 template <> struct System<BAKE_SUN_SHADOW_MAP> {
     bool voxelFaceCoverage_ = false;
+    bool sourceFaceCoverage_ = false;
     ShaderProgram *voxelFaceProgram_ = nullptr;
     Buffer *voxelFaceFrameBuf_ = nullptr;
     ShaderProgram *clearProgram_ = nullptr;
@@ -764,17 +775,39 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
     }
 
     // Positions/colors remain resident only until the next canvas upload.
-    void bakeVoxelFaces(int count, int subdivisions, const C_CanvasLocalRotation &rotation) {
+    void bakeVoxelFaces(
+        int count,
+        int subdivisions,
+        const C_CanvasLocalRotation &rotation,
+        const C_DetachedRevoxelizeBuffer *source
+    ) {
         if (frameData_.shadowsEnabled_ == 0 || count == 0 ||
             (rotation.isDetached() && (!rotation.worldPlaced_ || !rotation.reVoxelize_))) {
             return;
         }
+        const bool useSource = sourceFaceCoverage_ && rotation.isDetached() && source != nullptr &&
+                               source->sourceGrid_.second != nullptr;
+        if (useSource) {
+            count =
+                source->sourceGridDims_.x * source->sourceGridDims_.y * source->sourceGridDims_.z;
+            source->sourceGrid_.second->bindBase(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_RevoxelizeSourceGrid
+            );
+        }
         const ivec2 grid = voxelDispatchGridForCount(IRMath::divCeil(count, 64));
+        vec4 orientation = rotation.isDetached() ? IRPrefab::Camera::getRotationQuat()
+                                                 : vec4(0.0f, 0.0f, 0.0f, 1.0f);
+        if (useSource) {
+            orientation = IRMath::quatMul(orientation, rotation.rotation_);
+        }
         const VoxelSunFaceFrame params{
             vec4(rotation.isDetached() ? rotation.worldCellOffset_ : vec3(0.0f), 0.0f),
-            rotation.isDetached() ? IRPrefab::Camera::getRotationQuat()
-                                  : vec4(0.0f, 0.0f, 0.0f, 1.0f),
-            ivec4(count, grid.x, subdivisions, 0)
+            orientation,
+            ivec4(count, grid.x, subdivisions, useSource ? 1 : 0),
+            ivec4(useSource ? source->sourceGridMin_ : ivec3(0), 0),
+            ivec4(useSource ? source->sourceGridDims_ : ivec3(0), 0),
+            vec4(useSource ? source->anchor_ : vec3(0.0f), 0.0f)
         };
         voxelFaceFrameBuf_->subData(0, sizeof(params), &params);
         voxelFaceFrameBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_RevoxelizeDetachedParams);

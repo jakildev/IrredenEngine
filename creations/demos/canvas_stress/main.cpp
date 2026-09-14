@@ -1067,6 +1067,10 @@ void registerArgs() {
         "--voxel-face-shadows",
         "Experimental complete voxel-face sun coverage (voxel casters only)"
     );
+    args.flag(
+        "--source-face-shadows",
+        "Experimental authored-face shadows before detached resampling"
+    );
     args.flag("--probe-upright", "Use unrotated revoxelization and attached shadow probes");
     args.flag("--probe-grid", "Render the shadowbox probe through the shared GRID canvas");
     args.numbers("--camera-iso", "Focused capture camera offset <x> <y>", 2);
@@ -1323,7 +1327,10 @@ void initSystems() {
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::RESOLVE_PER_AXIS_SCREEN_DEPTH>());
         const auto bakeSun = IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>();
         IRSystem::getSystemParams<IRSystem::System<IRSystem::BAKE_SUN_SHADOW_MAP>>(bakeSun)
-            ->voxelFaceCoverage_ = IREngine::args().getFlag("--voxel-face-shadows");
+            ->voxelFaceCoverage_ = IREngine::args().getFlag("--voxel-face-shadows") ||
+                                   IREngine::args().getFlag("--source-face-shadows");
+        IRSystem::getSystemParams<IRSystem::System<IRSystem::BAKE_SUN_SHADOW_MAP>>(bakeSun)
+            ->sourceFaceCoverage_ = IREngine::args().getFlag("--source-face-shadows");
         renderPipeline.push_back(bakeSun);
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>());
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>());

@@ -1671,10 +1671,15 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 BufferTarget::SHADER_STORAGE,
                 kBufferIndex_VoxelActiveMask
             );
+            voxelColorBuf_->bindBase(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_RevoxelizeSourceGrid
+            );
             voxelFaceBaker_->bakeVoxelFaces(
                 effectiveVoxelCount,
                 renderMode == 0 ? 1 : effectiveSub,
-                canvasLocalRotation
+                canvasLocalRotation,
+                revoxBuffer
             );
             winnerPlaceholderBuf_->bindBase(
                 BufferTarget::SHADER_STORAGE,
