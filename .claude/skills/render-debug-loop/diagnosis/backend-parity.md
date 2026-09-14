@@ -1,9 +1,9 @@
 # Diagnosis: Backend parity (OpenGL ↔ Metal)
 
-A defect on one backend only is a parity problem, not a pipeline bug. This
-loop captures the evidence (before/after shots from both backends); the
-`backend-parity` skill — GLSL↔MSL cheatsheet and port procedure — drives the
-port.
+A backend-specific defect calls for comparing bindings, layouts, sampling and
+synchronization as well as shader logic. It can expose a shared pipeline bug
+that the other backend happens to tolerate. Capture matching before/after shots;
+use the `backend-parity` skill when a backend port or correction is needed.
 
 ## Parity-only symptoms
 
