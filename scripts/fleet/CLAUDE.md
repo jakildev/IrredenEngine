@@ -390,10 +390,10 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
 - **A pane-keyed signal is not an iteration-keyed one.** Per-iteration claim
   liveness compares a dispatch identity (`FLEET_DISPATCH_ID` vs
   `~/.fleet/state/dispatch-current/<worktree>`), never a file a later role in
-  the same pane refreshes (`~/.fleet/heartbeats/<worktree>`,
-  `FLEET_CLAIM_FLAG`) — that probe answers *live* for a dead owner. A missing
-  identity means "cannot vouch", not "orphan"; a dispatcher pre-claim stamps
-  `FLEET_PRECLAIM_DISPATCH_ID`. Full rule: `_amending_owner_live` in `fleet-claim`.
+  the same pane refreshes (heartbeat, `FLEET_CLAIM_FLAG`) — that probe answers
+  *live* for a dead owner. Missing identity = "cannot vouch", not "orphan"; a
+  pre-claim stamps `FLEET_PRECLAIM_DISPATCH_ID`. The verdict is not a mutex:
+  claim and sweep serialize on `amend-snapshots/<pr>.lock` (`fleet-claim`).
 - **Unattended daemons timeout-guard their network calls.** The host's
   connections to GitHub intermittently black-hole (silent TCP death), so a
   hung `git fetch` / `gh …` in a fleet daemon (dispatcher loop, `fleet-rebase`,

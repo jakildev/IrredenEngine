@@ -198,6 +198,18 @@ fresh claim off a carried-over past-TTL label and admit a second feedback
 worker, because the pane it launches into is idle and that heartbeat still
 belongs to the previous iteration.
 
+Claim and sweep are separate processes, so the verdict alone does not close
+that window: `cleanup --gh` can judge the carried label from the old record,
+the claim can then re-read its label as held and stamp the sentinel, and the
+sweep removes the label off its earlier verdict. Both sides therefore run
+their read-decide-act under a per-PR lock beside the record
+(`~/.fleet/amend-snapshots/<pr>.lock`): the sweep ages, judges and removes
+inside it, and the claim re-reads the live labels inside it — re-POSTing if
+the sweep took the label first — so a claim that returned success holds its
+label whatever the interleaving. The lock is bounded on both sides (a held
+lock is waited on, then the caller fails closed; a holder older than 10 min
+is stolen as crashed).
+
 ## Review verdicts (PRs)
 
 - `fleet:approved` / `fleet:has-nits` / `fleet:needs-fix` / `fleet:blocker`

@@ -442,6 +442,67 @@ _amend_snapshot_path() {
     printf '%s\n' "${FLEET_AMEND_SNAPSHOTS_DIR:-$HOME/.fleet/amend-snapshots}/${1}.json"
 }
 
+# _amend_lock_acquire <pr> / _amend_lock_release <pr>
+#   The per-PR linearization point shared by everything that decides on a
+#   fleet:amending-* label from local state and then acts on GitHub: the
+#   amending-claim (re-read the live labels, POST, stamp the ownership
+#   record) and the two sweeps that remove such a label (`cleanup --gh`'s
+#   PR-label pass and _acquire_label_on's force-sweep). Without it the sweep's
+#   decide-then-remove straddles the claim's read-then-stamp: cleanup judges a
+#   carried past-TTL label dead from the OLD ownership record, the dispatcher
+#   sees its own label still present, stamps the pre-claim sentinel and
+#   returns success, and cleanup then removes the label off its earlier
+#   verdict — the dispatcher launches believing it holds the amend mutex while
+#   the PR is open to a second feedback claimant. Each side re-reads the live
+#   state INSIDE the lock, so whichever enters second sees the other's write.
+#
+#   Same primitive as the claim locks (atomic mkdir; flock is absent on
+#   macOS), keyed beside the ownership record so FLEET_AMEND_SNAPSHOTS_DIR
+#   sandboxes it with the record. Host-local by construction, which is the
+#   right scope: only the owning host ever vouches for or reaps its own
+#   amending labels; a cross-host label rides the pure TTL on both sides.
+#   Bounded: a holder older than FLEET_AMEND_LOCK_STALE_SECS is a crashed
+#   process and is stolen; a live holder is waited on for at most
+#   FLEET_AMEND_LOCK_WAIT_SECS, after which the caller fails CLOSED (the claim
+#   refuses, the sweep leaves the label for its next pass) — never proceeds
+#   unlocked. Every critical section here is a few gh calls, so the wait is
+#   generous; the stale threshold sits above several FLEET_NET_TIMEOUT
+#   budgets (fleet-net.sh, 120 s each) so a holder stuck in one network
+#   timeout is not mistaken for a dead one and stolen mid-section.
+_amend_lock_path() {
+    printf '%s\n' "${FLEET_AMEND_SNAPSHOTS_DIR:-$HOME/.fleet/amend-snapshots}/${1}.lock"
+}
+_amend_lock_acquire() {
+    local pr="$1" lock
+    [[ "$pr" =~ ^[0-9]+$ ]] || return 0
+    lock=$(_amend_lock_path "$pr")
+    mkdir -p "$(dirname "$lock")" 2>/dev/null || true
+    local wait_max="${FLEET_AMEND_LOCK_WAIT_SECS:-60}"
+    local stale_secs="${FLEET_AMEND_LOCK_STALE_SECS:-600}"
+    local deadline=$(( $(date +%s) + wait_max ))
+    while ! mkdir "$lock" 2>/dev/null; do
+        local held_since
+        held_since=$(python3 -c \
+            "import os,sys; print(int(os.path.getmtime(sys.argv[1])))" \
+            "$lock" 2>/dev/null || echo 0)
+        if [[ "$held_since" -gt 0 ]] && (( $(date +%s) - held_since >= stale_secs )); then
+            echo "fleet-claim: stealing amend lock on PR#$pr held since $held_since (holder presumed dead)" >&2
+            rmdir "$lock" 2>/dev/null || true
+            continue
+        fi
+        if (( $(date +%s) >= deadline )); then
+            echo "fleet-claim: amend lock on PR#$pr still held after ${wait_max}s; refusing rather than proceeding unlocked" >&2
+            return 1
+        fi
+        sleep 0.1
+    done
+    return 0
+}
+_amend_lock_release() {
+    [[ "${1:-}" =~ ^[0-9]+$ ]] || return 0
+    rmdir "$(_amend_lock_path "$1")" 2>/dev/null || true
+}
+
 # _write_amend_ownership <pr> <agent>
 #   The ownership record for the sweep's liveness predicate. Called from
 #   _stamp_label_claim_liveness, which both a won POST and an already-held
@@ -632,6 +693,10 @@ print("%s\t%s\t%s" % (
 #   in cmd_cleanup_gh and must not be second-guessed from the claim hot path.
 #   Reuses the cleanup sweep's host-qualified liveness predicate: a same-host
 #   amending label whose owning dispatch is still live is never force-swept.
+#   For the amending prefix this decide-then-remove runs inside the per-PR
+#   amend lock that cmd_amending_claim holds across the whole acquire — the
+#   only caller that reaches here with that prefix — so it does not take the
+#   lock itself (a nested mkdir would deadlock on our own hold).
 _sweep_stale_prefix_holders() {
     local repo="$1" target="$2" prefix="$3" mine="$4"
     case "$prefix" in
@@ -2301,11 +2366,42 @@ cmd_amending_claim() {
             && ! check_host_capability "$1" pr "${CROSS_LANE_INFO:-}"; then
         return 1
     fi
-    if [[ "$cross_lane_rc" -eq 3 ]]; then
+
+    # From here to the return, hold the per-PR amend lock (see
+    # _amend_lock_acquire): _cross_lane_precheck's snapshot is UNLOCKED, good
+    # enough for the gates but not for deciding we still hold the label.
+    _amend_lock_acquire "${1:-}" || return 1
+    local rc=0
+    if [[ "$cross_lane_rc" -eq 3 ]] \
+            && _amending_label_still_held "${1:-}" "${2:-unknown}"; then
         _confirm_incumbent_claim "fleet:amending-" "amending-claim" "${1:-}" "${2:-unknown}"
-        return 0
+    else
+        # Fresh POST — or the snapshot's incumbent label was swept between
+        # the precheck and the lock (a sweep that ran to completion before we
+        # entered: its verdict was on the OLD record, so the label it removed
+        # was a dead claim's, not ours). Either way the ownership record is
+        # written under the lock, so a sweep entering after us sees it.
+        _cmd_pr_label_claim "fleet:amending-" "amending-claim" "$@" || rc=$?
     fi
-    _cmd_pr_label_claim   "fleet:amending-" "amending-claim"   "$@"
+    _amend_lock_release "${1:-}"
+    return "$rc"
+}
+
+# _amending_label_still_held <pr> <agent>
+#   Live re-read, for use INSIDE the amend lock: true iff this host+agent's
+#   fleet:amending-* label is on the PR right now. Fails closed on a fetch
+#   failure (the caller then re-POSTs, which is safe: the POST arbitration
+#   sees our own label as ours).
+_amending_label_still_held() {
+    local pr="$1" agent="$2" info labels own_label label
+    info=$(fetch_issue_info "$pr") || true
+    [[ -n "$info" ]] || return 1
+    labels=$(_issue_info_field labels "$info")
+    own_label="fleet:amending-$(derive_host)-${agent}"
+    for label in $labels; do
+        [[ "$label" == "$own_label" ]] && return 0
+    done
+    return 1
 }
 cmd_amending_release() {
     # Drop the ownership record written by _write_amend_ownership, so R7's
@@ -2670,6 +2766,114 @@ cmd_cleanup() {
     fi
 }
 
+# _cleanup_sweep_pr_label <repo> <pr> <label>
+#   One PR-label claim (reviewing/resolving/amending) of cmd_cleanup_gh's
+#   first pass: age it, take the liveness verdict, and remove it when stale.
+#   Reads $now / $stale_secs / $this_host and bumps $total_removed in the
+#   caller's scope. Split out so the amending case can run under the per-PR
+#   amend lock as one unit — the label age, the liveness verdict and the
+#   removal are then a single critical section against a concurrent
+#   amending-claim (see _amend_lock_acquire), and a claim that stamped its
+#   ownership record before we entered is seen by the verdict here.
+_cleanup_sweep_pr_label() {
+    local repo="$1" pr_num="$2" label_name="$3"
+
+    local added_epoch
+    added_epoch=$(label_added_epoch "$repo" "$pr_num" "$label_name")
+    [[ "$added_epoch" -eq 0 ]] && return 0
+
+    local age=$(( now - added_epoch ))
+
+    # Dispatch-scoped amend liveness, resolved once per label:
+    # 0 = live owner, 1 = cannot vouch (fall through to TTL), 2 = the
+    # owning iteration is provably gone. Non-amending labels take no
+    # verdict at all (1), so neither branch below fires for them.
+    local _amend_rc=1 _amend_owner="" _amend_superseded=""
+    if [[ "$label_name" == fleet:amending-* ]]; then
+        _amend_rc=0
+        _amending_owner_live "$label_name" "$pr_num" || _amend_rc=$?
+        _amend_owner="$_AMENDING_OWNER_DISPATCH"
+        _amend_superseded="$_AMENDING_SUPERSEDED_BY"
+    fi
+
+    # Confirmed-orphan fast path for reviewing/resolving claims (the
+    # reviewer-side analog of the issue-claim fast path, #2111). These
+    # PR-label claims now drop a local marker ($CLAIMS_DIR/_prlabel-<tag>-
+    # <agent>, content = the PR number) on acquire and remove it on
+    # release; fleet-down wipes ~/.fleet/claims, so a same-host label with
+    # NO matching marker is a claim whose owning session died/restarted
+    # while the GitHub label survived (the #2137/#2138 stuck-reviewer
+    # shape). Sweep it after a short grace instead of the full TTL — the
+    # grace only spares the microsecond race between label-add and the
+    # marker write, and pre-fix claims during the one-time transition.
+    # amending is vouched for by its own dispatch-ownership record
+    # rather than a _prlabel-* marker, but a CONFIRMED-dead
+    # verdict lands in the same orphan lane: the short grace instead
+    # of the 30-min TTL. Cross-host labels can't be vouched for locally
+    # and stay on the full TTL either way.
+    local prlabel_orphan=0
+    case "$label_name" in
+        fleet:amending-*)
+            (( _amend_rc == 2 )) && prlabel_orphan=1
+            ;;
+        fleet:reviewing-*|fleet:resolving-*)
+            local _rest="${label_name#fleet:}"        # <tag>-<host>-<agent>
+            local _tag="${_rest%%-*}"                 # <tag>
+            local _ha="${_rest#*-}"                   # <host>-<agent>
+            local _chost="${_ha%%-*}"                 # <host>
+            local _cagent="${_ha#*-}"                 # <agent>
+            if [[ "$_chost" == "$this_host" ]]; then
+                local _marker="$CLAIMS_DIR/_prlabel-${_tag}-${_cagent}"
+                if [[ ! -f "$_marker" || "$(cat "$_marker" 2>/dev/null)" != "$pr_num" ]]; then
+                    prlabel_orphan=1
+                fi
+            fi
+            ;;
+    esac
+
+    local _orphan_grace="${FLEET_CLAIM_PRLABEL_ORPHAN_GRACE_SECS:-120}"
+    if (( prlabel_orphan )); then
+        [[ $age -lt $_orphan_grace ]] && return 0
+    elif [[ $age -lt $stale_secs ]]; then
+        return 0
+    fi
+
+    # For amending claims: skip the sweep while the owner is LIVE —
+    # TTL-sweeping an active amend causes duplicate dispatch by
+    # triggering the R7 heal. Liveness is host-qualified:
+    # heartbeats and dispatch records are host-local, so only a
+    # SAME-HOST amending label can be vouched for here; a cross-host
+    # stale label ages out on pure TTL — never honor a same-basename
+    # local worker's heartbeat for it.
+    if (( _amend_rc == 0 )); then
+        echo "cleanup --gh: skipping '$label_name' on $repo PR#$pr_num — same-host owning dispatch still live"
+        return 0
+    fi
+
+    local _sweep_note="age: $((age / 60))m"
+    if (( prlabel_orphan )); then
+        if [[ -n "$_amend_superseded" ]]; then
+            _sweep_note="orphaned: owning dispatch ${_amend_owner} superseded by ${_amend_superseded} on $this_host, ${_sweep_note}"
+        else
+            _sweep_note="orphaned: no local marker on $this_host, ${_sweep_note}"
+        fi
+    fi
+    if gh issue edit "$pr_num" --repo "$repo" \
+            --remove-label "$label_name" >/dev/null 2>&1; then
+        echo "cleanup --gh: removed stale '$label_name' on $repo PR#$pr_num ($_sweep_note)"
+        total_removed=$((total_removed + 1))
+        # A confirmed-dead owner means the swept-but-alive deferral
+        # has nothing to protect: drop the record so R7 can re-arm
+        # fleet:design-unblocked on the next tick instead of waiting out
+        # 2xTTL. On the legacy TTL path the snapshot STAYS — liveness is
+        # unknown there, which is exactly when the deferral earns its keep.
+        (( _amend_rc == 2 )) && rm -f "$(_amend_snapshot_path "$pr_num")" 2>/dev/null || true
+    else
+        write_orphan_sentinel "$repo" "$pr_num" "$label_name" \
+            "cleanup --gh: PR remove-label failed"
+    fi
+}
+
 # cmd_cleanup_gh <repo> [<repo> ...]
 #   Five-pass GitHub label sweep — see help text for the full contract.
 cmd_cleanup_gh() {
@@ -2716,100 +2920,15 @@ for pr in prs:
 
         while IFS=$'\t' read -r pr_num label_name; do
             [[ -z "$pr_num" || -z "$label_name" ]] && continue
-
-            local added_epoch
-            added_epoch=$(label_added_epoch "$repo" "$pr_num" "$label_name")
-            [[ "$added_epoch" -eq 0 ]] && continue
-
-            local age=$(( now - added_epoch ))
-
-            # Dispatch-scoped amend liveness, resolved once per label:
-            # 0 = live owner, 1 = cannot vouch (fall through to TTL), 2 = the
-            # owning iteration is provably gone. Non-amending labels take no
-            # verdict at all (1), so neither branch below fires for them.
-            local _amend_rc=1 _amend_owner="" _amend_superseded=""
             if [[ "$label_name" == fleet:amending-* ]]; then
-                _amend_rc=0
-                _amending_owner_live "$label_name" "$pr_num" || _amend_rc=$?
-                _amend_owner="$_AMENDING_OWNER_DISPATCH"
-                _amend_superseded="$_AMENDING_SUPERSEDED_BY"
-            fi
-
-            # Confirmed-orphan fast path for reviewing/resolving claims (the
-            # reviewer-side analog of the issue-claim fast path, #2111). These
-            # PR-label claims now drop a local marker ($CLAIMS_DIR/_prlabel-<tag>-
-            # <agent>, content = the PR number) on acquire and remove it on
-            # release; fleet-down wipes ~/.fleet/claims, so a same-host label with
-            # NO matching marker is a claim whose owning session died/restarted
-            # while the GitHub label survived (the #2137/#2138 stuck-reviewer
-            # shape). Sweep it after a short grace instead of the full TTL — the
-            # grace only spares the microsecond race between label-add and the
-            # marker write, and pre-fix claims during the one-time transition.
-            # amending is vouched for by its own dispatch-ownership record
-            # rather than a _prlabel-* marker, but a CONFIRMED-dead
-            # verdict lands in the same orphan lane: the short grace instead
-            # of the 30-min TTL. Cross-host labels can't be vouched for locally
-            # and stay on the full TTL either way.
-            local prlabel_orphan=0
-            case "$label_name" in
-                fleet:amending-*)
-                    (( _amend_rc == 2 )) && prlabel_orphan=1
-                    ;;
-                fleet:reviewing-*|fleet:resolving-*)
-                    local _rest="${label_name#fleet:}"        # <tag>-<host>-<agent>
-                    local _tag="${_rest%%-*}"                 # <tag>
-                    local _ha="${_rest#*-}"                   # <host>-<agent>
-                    local _chost="${_ha%%-*}"                 # <host>
-                    local _cagent="${_ha#*-}"                 # <agent>
-                    if [[ "$_chost" == "$this_host" ]]; then
-                        local _marker="$CLAIMS_DIR/_prlabel-${_tag}-${_cagent}"
-                        if [[ ! -f "$_marker" || "$(cat "$_marker" 2>/dev/null)" != "$pr_num" ]]; then
-                            prlabel_orphan=1
-                        fi
-                    fi
-                    ;;
-            esac
-
-            local _orphan_grace="${FLEET_CLAIM_PRLABEL_ORPHAN_GRACE_SECS:-120}"
-            if (( prlabel_orphan )); then
-                [[ $age -lt $_orphan_grace ]] && continue
-            elif [[ $age -lt $stale_secs ]]; then
-                continue
-            fi
-
-            # For amending claims: skip the sweep while the owner is LIVE —
-            # TTL-sweeping an active amend causes duplicate dispatch by
-            # triggering the R7 heal. Liveness is host-qualified:
-            # heartbeats and dispatch records are host-local, so only a
-            # SAME-HOST amending label can be vouched for here; a cross-host
-            # stale label ages out on pure TTL — never honor a same-basename
-            # local worker's heartbeat for it.
-            if (( _amend_rc == 0 )); then
-                echo "cleanup --gh: skipping '$label_name' on $repo PR#$pr_num — same-host owning dispatch still live"
-                continue
-            fi
-
-            local _sweep_note="age: $((age / 60))m"
-            if (( prlabel_orphan )); then
-                if [[ -n "$_amend_superseded" ]]; then
-                    _sweep_note="orphaned: owning dispatch ${_amend_owner} superseded by ${_amend_superseded} on $this_host, ${_sweep_note}"
-                else
-                    _sweep_note="orphaned: no local marker on $this_host, ${_sweep_note}"
+                if ! _amend_lock_acquire "$pr_num"; then
+                    echo "cleanup --gh: skipping '$label_name' on $repo PR#$pr_num this pass — amend lock held"
+                    continue
                 fi
-            fi
-            if gh issue edit "$pr_num" --repo "$repo" \
-                    --remove-label "$label_name" >/dev/null 2>&1; then
-                echo "cleanup --gh: removed stale '$label_name' on $repo PR#$pr_num ($_sweep_note)"
-                total_removed=$((total_removed + 1))
-                # A confirmed-dead owner means the swept-but-alive deferral
-                # has nothing to protect: drop the record so R7 can re-arm
-                # fleet:design-unblocked on the next tick instead of waiting out
-                # 2xTTL. On the legacy TTL path the snapshot STAYS — liveness is
-                # unknown there, which is exactly when the deferral earns its keep.
-                (( _amend_rc == 2 )) && rm -f "$(_amend_snapshot_path "$pr_num")" 2>/dev/null || true
+                _cleanup_sweep_pr_label "$repo" "$pr_num" "$label_name"
+                _amend_lock_release "$pr_num"
             else
-                write_orphan_sentinel "$repo" "$pr_num" "$label_name" \
-                    "cleanup --gh: PR remove-label failed"
+                _cleanup_sweep_pr_label "$repo" "$pr_num" "$label_name"
             fi
         done <<< "$pr_review_plan"
     done
@@ -5811,8 +5930,14 @@ commands:
                                     300s (FLEET_CLAIM_PRECLAIM_GRACE_
                                     SECS) without consulting the
                                     heartbeat, then falls back to it.
-                                    Cross-host labels age out on pure
-                                    TTL,
+                                    Each amending label is aged,
+                                    judged and removed under a per-PR
+                                    lock shared with amending-claim
+                                    (<snapshots>/<pr>.lock), so a
+                                    claim stamped moments earlier is
+                                    seen, never swept from a stale
+                                    verdict. Cross-host labels age out
+                                    on pure TTL,
                                 (2) fleet:claim-* labels off open
                                     issues where the claim is
                                     abandoned — age > TTL (default
@@ -5856,6 +5981,15 @@ commands:
                                 fleet:needs-fix amendment via a
                                 fleet:amending-<host>-<agent> label
                                 (reviewers skip the PR while held).
+                                Runs under the per-PR amend lock; an
+                                already-held label is re-read live
+                                inside it and re-POSTed if a sweep
+                                took it, so success always means the
+                                label is on the PR. A lock held past
+                                FLEET_AMEND_LOCK_WAIT_SECS (60)
+                                refuses (exit 1); one older than
+                                FLEET_AMEND_LOCK_STALE_SECS (600) is
+                                stolen.
   amending-release <pr> <agent>
                                 release an amendment claim.
   steward-claim <umbrella-issue> <agent>
