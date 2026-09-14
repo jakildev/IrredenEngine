@@ -15,6 +15,9 @@
 #   - utilization < threshold => gate open with util reported
 #   - worst-of across multiple types when only one is over threshold
 #   - defensive percent path (utilization > 1.5 treated as percent)
+#   - the wall: a rejected observation closes, is named, binds until its own
+#     resetsAt + grace, and (written by the real fleet-claude-stream) is not
+#     reopened by a later below-threshold warning from another pane
 
 set -euo pipefail
 
@@ -223,6 +226,42 @@ assert_starts_with "$("$DISPATCHER" --gate-status all)" "closed:five_hour reject
 out=$("$DISPATCHER" --gate-status bogus 2>&1 || true)
 assert_starts_with "$out" "usage: fleet-dispatcher --gate-status" "an unknown scope is a usage error"
 rm -f "$FLEET_STATE_DIR/usage/five_hour.json" "$FLEET_STATE_DIR/usage/github-core.json"
+
+# --- Rejection dominance across panes -------------------------------------------
+# Observations are written by the real fleet-claude-stream here, one event per
+# invocation, the way two panes' streams write the shared usage dir: the pane
+# that hit the wall emits `rejected`, a pane still mid-turn emits a later
+# `allowed_warning` below threshold for the same window.
+STREAM="$SCRIPT_DIR/fleet-claude-stream"
+feed_stream() {  # $1 = one rate_limit_info JSON object
+    printf '{"type":"rate_limit_event","rate_limit_info":%s}\n' "$1" \
+        | python3 "$STREAM" >/dev/null 2>&1
+}
+RESETS_EPOCH=$(( NOW + 3600 ))
+
+echo "T18: a later allowed_warning from another pane cannot reopen a latched rejection"
+rm -f "$FLEET_STATE_DIR/usage"/*.json
+feed_stream "{\"status\":\"rejected\",\"resetsAt\":$RESETS_EPOCH,\"rateLimitType\":\"seven_day\"}"
+assert_starts_with "$("$DISPATCHER" --gate-status claude)" "closed:seven_day rejected util=100%" "the wall closes the gate"
+feed_stream "{\"status\":\"allowed_warning\",\"utilization\":0.85,\"resetsAt\":$RESETS_EPOCH,\"rateLimitType\":\"seven_day\"}"
+assert_starts_with "$("$DISPATCHER" --gate-status claude)" "closed:seven_day rejected util=100%" "a late 85% warning (below the 95% weekly threshold) leaves it closed"
+[[ -f "$FLEET_STATE_DIR/usage/seven_day.rejected.json" && -f "$FLEET_STATE_DIR/usage/seven_day.json" ]] \
+    && { PASS=$((PASS + 1)); echo "  ok: the rejection is its own record beside the warning"; } \
+    || { FAIL=$((FAIL + 1)); echo "  FAIL: expected seven_day.rejected.json beside seven_day.json: $(ls "$FLEET_STATE_DIR/usage")"; }
+
+echo "T19: the rejection releases on its own reset, and the standing warning is what remains"
+# Same two records, the rejection's window now past reset + grace while the
+# warning's (a later observation of the next window) is still ahead.
+if python3 - "$FLEET_STATE_DIR/usage/seven_day.rejected.json" "$(( NOW - 1200 ))" <<'PY'
+import json, pathlib, sys
+p = pathlib.Path(sys.argv[1]); d = json.loads(p.read_text()); d["resetsAt"] = int(sys.argv[2]); p.write_text(json.dumps(d))
+PY
+then
+    assert_starts_with "$("$DISPATCHER" --gate-status claude)" "open:seven_day util=85%" "past the rejection's window the gate reopens on the live warning"
+else
+    FAIL=$((FAIL + 1)); echo "  FAIL: no rejection record to age (T18's fixture missing)"
+fi
+rm -f "$FLEET_STATE_DIR/usage"/*.json
 
 echo
 echo "PASS: $PASS  FAIL: $FAIL"

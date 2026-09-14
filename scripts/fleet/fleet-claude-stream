@@ -48,7 +48,8 @@ RESULT_PREVIEW_LEN = 200  # truncate tool results to this many chars
 
 # Where rate_limit_event observations are latched for the dispatcher's
 # usage gate. One file per rateLimitType (e.g. five_hour, output_tokens),
-# overwritten with the latest observation. fleet-dispatcher reads these
+# overwritten with the latest observation, plus a `<type>.rejected` record
+# for the wall (latch_usage_observation). fleet-dispatcher reads these
 # at the top of dispatch_role and defers when any utilization is past
 # FLEET_DISPATCHER_USAGE_GATE (default 0.80).
 USAGE_DIR = pathlib.Path(
@@ -144,7 +145,8 @@ def latch_usage_observation(rl_type, info):
     fleet-dispatcher reads these files to gate dispatch when any
     utilization is past FLEET_DISPATCHER_USAGE_GATE. Each rateLimitType
     gets its own file (overwritten); stale observations age out via the
-    `observed_at` timestamp the dispatcher checks.
+    `observed_at` timestamp the dispatcher checks. A rejection is its own
+    record, `<type>.rejected.json`, that no later warning overwrites.
 
     Best-effort: any IO error is swallowed so a state-dir mishap can't
     take down the live render of the pane.
@@ -163,6 +165,7 @@ def latch_usage_observation(rl_type, info):
         return
     util = info.get("utilization")
     status = info.get("status")
+    record = safe_type
     if status == "rejected":
         # The wall itself. A rejected event carries resetsAt and the type but
         # NO utilization field (captured 2026-05-12: `{"status":"rejected",
@@ -173,7 +176,16 @@ def latch_usage_observation(rl_type, info):
         # dead-on-arrival sessions on 2026-08-19 alone). Latch it as 100%:
         # resetsAt is authoritative in the dispatcher's gate, so this holds
         # Claude dispatch closed until the window resets plus grace.
+        #
+        # Its own record, not <type>.json: every pane's stream writes that
+        # one file, and a pane still mid-turn when the wall lands keeps
+        # emitting allowed_warning events below threshold that would replace
+        # the rejection and reopen the gate before the reset. A separate
+        # file stays dominant with no read-modify-write — the gate reads
+        # every *.json, so the rejection binds until its own resetsAt plus
+        # grace passes, whatever <type>.json says by then.
         util = 1.0
+        record = f"{safe_type}.rejected"
     if util is None:
         # status:"allowed" events carry no utilization field; only
         # "allowed_warning" does. Preserve the last known warning
@@ -190,9 +202,9 @@ def latch_usage_observation(rl_type, info):
         payload["status"] = status
     try:
         USAGE_DIR.mkdir(parents=True, exist_ok=True)
-        target = USAGE_DIR / f"{safe_type}.json"
+        target = USAGE_DIR / f"{record}.json"
         with tempfile.NamedTemporaryFile(
-            "w", dir=USAGE_DIR, prefix=f".{safe_type}.", suffix=".tmp", delete=False
+            "w", dir=USAGE_DIR, prefix=f".{record}.", suffix=".tmp", delete=False
         ) as tmp:
             json.dump(payload, tmp)
             tmp.flush()

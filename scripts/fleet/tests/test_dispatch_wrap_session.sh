@@ -227,16 +227,22 @@ python3 -c "import json,sys;d=json.load(open(sys.argv[1]));assert not d.get('res
 [[ ! -f "$FLEET_STATE_DIR/rate-limit/pane-3.throttle.ts" ]] && ok "not misread as a short-window throttle" || bad "throttle marker written for a quota exit"
 [[ ! -f "$FLEET_STATE_DIR/rate-limit/pane-3.quota-seen" ]] && ok "quota flag consumed" || bad "quota flag left behind"
 grep -q "usage limit on worker (pane-3, rc=1)" "$TMPROOT/stderr.log" && ok "wall logged with the real exit code" || bad "no wall log line"
-rm -f "$SIDECAR" "$RL_TS"
+# The dispatcher consumed the role's trigger at launch, and a kept claim +
+# reservation is invisible to every other re-arm; the wrap must write the
+# edge the resume needs, as the throttle arm does.
+[[ -f "$FLEET_STATE_DIR/triggers/worker" ]] && ok "wall exit re-armed the worker trigger" || bad "no trigger after a wall exit — a kept mid-task claim has no edge to resume on"
+rm -f "$SIDECAR" "$RL_TS" "$FLEET_STATE_DIR/triggers/worker"
 
 echo "T5e: the flag without a failure is not a wall exit"
 STUB_TOUCH_QUOTA=1 STUB_CLAUDE_RC=0 run_wrap sonnet high worker
 [[ ! -f "$RL_TS" ]] && ok "rc=0 with the flag writes no cooldown" || bad "cooldown written on a clean exit"
+[[ ! -f "$FLEET_STATE_DIR/triggers/worker" ]] && ok "rc=0 with the flag re-arms nothing" || bad "trigger written on a clean exit"
 STUB_CLAUDE_RC=1 run_wrap sonnet high worker
 [[ ! -f "$RL_TS" ]] && ok "rc=1 without the flag is a crash, not a wall" || bad "cooldown written for an ordinary crash"
 STUB_CLAUDE_RC=2 run_wrap sonnet high worker
 [[ -f "$RL_TS" ]] && ok "legacy rc=2 still writes the cooldown" || bad "rc=2 cooldown regressed"
-rm -f "$SIDECAR" "$RL_TS"
+[[ -f "$FLEET_STATE_DIR/triggers/worker" ]] && ok "legacy rc=2 re-arms too" || bad "rc=2 wrote no trigger"
+rm -f "$SIDECAR" "$RL_TS" "$FLEET_STATE_DIR/triggers/worker"
 
 echo "T6: cleanup — in-flight (claude/* branch + dirty) keeps the sidecar"
 rm -f "$SIDECAR"

@@ -2744,6 +2744,11 @@ dispatch_role() {
     # every 10 s. assign_budget_hit: the walk stopped on the per-tick claim
     # budget with candidates left — the trigger is kept instead.
     local assign_exhausted="" assign_budget_hit="" assign_rc=0
+    # reserved_held: a reserved worker pane sat out this tick in its
+    # usage-limit cooldown. Its reservation is the resume nobody else can
+    # serve (free panes fall through to the lane default and exhaust), so
+    # the trigger must outlive the tick instead of being consumed below.
+    local reserved_held=""
     PICKS_CACHE_KEY=""
     CLAIM_ATTEMPTS_LEFT=$CLAIM_ATTEMPTS_PER_TICK
     while IFS= read -r pane_id; do
@@ -2779,6 +2784,10 @@ dispatch_role() {
             if [[ -z "${RATE_LIMIT_COOLDOWN_LOGGED[$pane_key]+x}" ]]; then
                 log "pane $pane_id ($role) in usage-limit cooldown (${LIMIT_DELAY}s); trigger kept"
                 RATE_LIMIT_COOLDOWN_LOGGED["$pane_key"]=1
+            fi
+            if [[ "$role" == "worker" ]] \
+                && worktree_is_reserved "$(pane_worktree_basename "$pane_id" || true)"; then
+                reserved_held=1
             fi
             continue
         fi
@@ -2927,6 +2936,14 @@ dispatch_role() {
         return
     fi
     clear_gate_block "$role"
+    if [[ -n "$reserved_held" ]]; then
+        if [[ -z "${CAP_DEFER_LOGGED[$role-reserved-held]+x}" ]]; then
+            log "$role: dispatched $dispatched; a reserved pane is in usage-limit cooldown — trigger kept for its resume"
+            CAP_DEFER_LOGGED["$role-reserved-held"]=1
+        fi
+        return
+    fi
+    unset "CAP_DEFER_LOGGED[$role-reserved-held]"
     if [[ -n "$assign_exhausted" ]]; then
         rm -f "$trigger_file"
         # Pace the periodic re-arm too: an unchanged slice of held or refused

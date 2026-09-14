@@ -23,10 +23,11 @@
 #
 # On a usage-limit exit — the stream flagged a rejected rate_limit_event
 # (claude exits rc=1 at the wall) or the legacy exit code 2 — writes a
-# Unix-epoch timestamp to ~/.fleet/state/rate-limit/<pane_key>.ts.
-# fleet-dispatcher checks that file before dispatching a new iteration and
-# skips the pane for FLEET_DISPATCHER_LIMIT_DELAY seconds (default: 900),
-# and its cleanup reads the same marker as the dispatch's `quota` verdict.
+# Unix-epoch timestamp to ~/.fleet/state/rate-limit/<pane_key>.ts and
+# re-arms the role's trigger. fleet-dispatcher checks that file before
+# dispatching a new iteration and skips the pane for
+# FLEET_DISPATCHER_LIMIT_DELAY seconds (default: 900), and its cleanup reads
+# the same marker as the dispatch's `quota` verdict.
 #
 # PIPESTATUS[0] captures claude's exit code even though its stdout is
 # piped to fleet-claude-stream — the pipe exit status would be
@@ -413,11 +414,17 @@ QUOTA_SEEN=0
 [[ -f "$FLEET_QUOTA_FLAG" ]] && QUOTA_SEEN=1
 rm -f "$FLEET_QUOTA_FLAG"
 if [[ "$FLEET_RUNTIME" == claude ]] && { [[ "$rc" == "2" ]] || (( rc != 0 && QUOTA_SEEN )); }; then
-    # Usage-limit (quota) exit — long cooldown via the .ts marker. Not
-    # re-armed: the dispatcher's usage gate holds Claude dispatch closed
-    # until the window resets, and the trigger is still standing.
+    # Usage-limit (quota) exit — long cooldown via the .ts marker, and re-arm
+    # the role. The dispatcher consumed the trigger at launch, and nothing
+    # else re-arms a mid-task resume: the claim took the item out of the
+    # scout's projection (a pure removal never fires), and the periodic
+    # safety re-arm only fires for a claimable class, never for a standing
+    # reservation. The trigger sits behind the closed gate (the dispatcher
+    # keeps it while a launch is quota-blocked) until the window reopens.
+    mkdir -p "$TRIGGERS_DIR"
     date +%s > "$RATE_LIMIT_DIR/$PANE_KEY.ts"
-    echo "fleet-dispatch-wrap: usage limit on $ROLE ($PANE_KEY, rc=$rc); wrote usage-limit cooldown" >&2
+    touch "$TRIGGERS_DIR/$ROLE"
+    echo "fleet-dispatch-wrap: usage limit on $ROLE ($PANE_KEY, rc=$rc); wrote usage-limit cooldown + re-armed $ROLE" >&2
 elif [[ "$rc" != "0" && -f "$FLEET_THROTTLE_FLAG" ]]; then
     # Short-window 429 failure: claude exhausted its internal retries against a
     # per-minute load-shed (not a quota wall). Write the short throttle cooldown

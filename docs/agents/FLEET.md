@@ -364,9 +364,10 @@ implementation and thresholds: `scripts/fleet/fleet-dispatcher`
 (`usage_gate_status()`, "Usage gate" header); change `fleet-gate-status` too.
 
 - **Fleet-wide usage gate** — `fleet-claude-stream` latches every
-  `rate_limit_event` into `~/.fleet/state/usage/<type>.json` (the wall's
-  own `status:"rejected"` event latches at 100 %); the dispatcher defers
-  Claude dispatches while an observation is at or above threshold
+  `rate_limit_event` into `~/.fleet/state/usage/<type>.json`; the wall's
+  `status:"rejected"` event is its own `<type>.rejected.json` at 100 %,
+  which a later warning from another pane cannot overwrite. The dispatcher
+  defers Claude dispatches while an observation is at or above threshold
   (`five_hour` 80 %, `seven_day` 95 %;
   `FLEET_DISPATCHER_USAGE_GATE[_FIVE_HOUR|_SEVEN_DAY]`) until `resetsAt` +
   `FLEET_DISPATCHER_RESET_GRACE_SECONDS` (600); only an observation with no
@@ -388,8 +389,7 @@ implementation and thresholds: `scripts/fleet/fleet-dispatcher`
 `fleet-health [--since 24h|7d|ISO] [--json]` is the first read after
 autonomous running: per-role productive vs empty iterations, trigger
 sources, merger tier-0 vs LLM hand-offs, provider readiness, unstamped
-`fleet:author-*` PRs, standing alerts, iterations in flight; a
-mostly-no-op role is a WARN and exit 1.
+`fleet:author-*` PRs, standing alerts, iterations in flight; a mostly-no-op role is a WARN and exit 1.
 
 ---
 

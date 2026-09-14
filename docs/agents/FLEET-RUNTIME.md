@@ -183,9 +183,14 @@ working. The wrapper and dispatcher classify the exit as the wall — a
 the window resets (gate thresholds and the per-pane cooldown:
 [`FLEET.md § Rate-limit handling`](FLEET.md)):
 
-- `fleet-claude-stream` latches the `status:"rejected"` event at 100 % and
-  flags the wrapper, which writes the pane's cooldown marker (`claude`
-  exits 1 at the wall; the legacy exit 2 is honored too).
+- `fleet-claude-stream` latches the `status:"rejected"` event at 100 % (its
+  own `<type>.rejected.json`, so a later warning from another pane cannot
+  reopen the gate early) and flags the wrapper, which writes the pane's
+  cooldown marker (`claude` exits 1 at the wall; the legacy exit 2 is
+  honored too) and re-arms the role trigger — the dispatcher consumed it at
+  launch, and a kept mid-task claim is invisible to every other re-arm. The
+  trigger waits behind the closed gate; a tick that finds the reserved pane
+  still in its cooldown keeps it rather than standing the lane down.
 - Cleanup reads the marker as `verdict=quota` **before** the completion
   contract (§ "The dispatch target"): the pre-launch grant is handed back,
   the abandon ledger and empty-exit streak are untouched, and the claim is

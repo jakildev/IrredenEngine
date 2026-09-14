@@ -6,7 +6,9 @@ Covers:
   - junk "?" rateLimitType => no file written (no _.json created)
   - valid type with no utilization from the start => no file written
   - rejected event (the wall — carries resetsAt but NO utilization) => latched
-    at 100% with status, and the wrap's FLEET_QUOTA_FLAG touched
+    at 100% with status in its own <type>.rejected.json, which a later
+    warning for the same window leaves standing; the wrap's
+    FLEET_QUOTA_FLAG touched
   - the wall's result text is the independent second flag signal; an
     ordinary error result is not
 """
@@ -102,26 +104,44 @@ class LatchUsageObservation(unittest.TestCase):
 
     def test_rejected_event_latches_at_full_utilization(self):
         self._mod.latch_usage_observation("five_hour", dict(self.REJECTED))
-        data = self._read("five_hour")
+        data = self._read("five_hour.rejected")
         self.assertIsNotNone(data, "a rejected event must latch even without utilization")
         self.assertEqual(data["utilization"], 1.0)
         self.assertEqual(data["status"], "rejected")
         self.assertEqual(data["resetsAt"], 1778629200, "resetsAt is what holds the gate closed")
+        self.assertEqual(data["rateLimitType"], "five_hour", "the gate keys the threshold on this")
+        self.assertIsNone(self._read("five_hour"), "the per-type file is the warnings' alone")
 
-    def test_rejected_event_overrides_an_earlier_warning(self):
+    def test_rejected_event_stands_beside_an_earlier_warning(self):
         self._mod.latch_usage_observation(
             "five_hour",
             {"status": "allowed_warning", "utilization": 0.80, "resetsAt": 1778629200},
         )
         self._mod.latch_usage_observation("five_hour", dict(self.REJECTED))
-        self.assertEqual(self._read("five_hour")["utilization"], 1.0)
+        self.assertEqual(self._read("five_hour.rejected")["utilization"], 1.0)
+        self.assertEqual(self._read("five_hour")["utilization"], 0.80)
+
+    def test_later_warning_does_not_overwrite_the_rejection(self):
+        # Another pane, still mid-turn when the wall landed, reports the same
+        # window below threshold; the rejection record must not move.
+        self._mod.latch_usage_observation(
+            "seven_day", {**self.REJECTED, "rateLimitType": "seven_day"}
+        )
+        self._mod.latch_usage_observation(
+            "seven_day",
+            {"status": "allowed_warning", "utilization": 0.85, "resetsAt": 1778629200},
+        )
+        rejected = self._read("seven_day.rejected")
+        self.assertEqual(rejected["status"], "rejected")
+        self.assertEqual(rejected["utilization"], 1.0)
+        self.assertEqual(self._read("seven_day")["utilization"], 0.85)
 
     def test_allowed_event_preserves_rejected_observation(self):
         self._mod.latch_usage_observation("five_hour", dict(self.REJECTED))
         self._mod.latch_usage_observation(
             "five_hour", {"status": "allowed", "resetsAt": 1778629200}
         )
-        self.assertEqual(self._read("five_hour")["status"], "rejected")
+        self.assertEqual(self._read("five_hour.rejected")["status"], "rejected")
 
     def test_warning_event_carries_its_status(self):
         self._mod.latch_usage_observation(
@@ -170,7 +190,8 @@ class QuotaFlag(unittest.TestCase):
         self.assertTrue(self._flag.exists(), "rejected event must touch FLEET_QUOTA_FLAG")
         self.assertIn("REJECTED", out)
         self.assertTrue(
-            (self._mod.USAGE_DIR / "five_hour.json").exists(), "and latch the observation"
+            (self._mod.USAGE_DIR / "five_hour.rejected.json").exists(),
+            "and latch the rejection record",
         )
 
     def test_warning_event_leaves_the_flag_alone(self):
