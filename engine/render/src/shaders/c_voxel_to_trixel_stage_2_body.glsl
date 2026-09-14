@@ -62,9 +62,9 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform ivec4 visibleFaceIds;
     // Model-frame iso depth axis `R⁻¹·(1,1,1)` for the per-voxel occlusion
     // metric. Stage 2 MUST read the same axis stage 1 wrote the distance tap
-    // on, or the depth re-test below rejects every detached color tap off a
-    // snap. (1,1,1) for world / identity, so the GRID path matches the fixed
-    // iso axis. Offset 144, matching the CPU struct + stage 1's binding-7 layout.
+    // on, or its depth re-test rejects every detached color tap off a snap.
+    // (1,1,1) for world / identity, so the GRID path matches the fixed iso
+    // axis. Offset 144, matching the CPU struct + stage 1's binding-7 layout.
     uniform vec4 voxelDepthAxis;
     // detachedWorldReceive_ (offset 160): `.xyz` = the world cell origin of a
     // world-placed detached re-voxelize solid (`roundVec3HalfUp(translation)`),
@@ -382,8 +382,9 @@ void main() {
         // One definition with the compact cull's Step-B classify
         // (isShadowFeederIso, ir_iso_common.glsl) so the skip and the
         // classification cannot drift. The predicate re-tests the two route
-        // terms — provably true inside this gate; the gate itself stays as the
-        // cheap early-out that avoids the cardinal projection above.
+        // terms — provably true inside this gate; the outer residualYaw /
+        // isDetachedCanvas gate stays as the cheap early-out that skips the
+        // cardinal projection.
         if (isShadowFeederIso(
                 pos3DtoPos2DIso(feederPos), visibleIsoBounds, residualYaw, isDetachedCanvas
         )) {

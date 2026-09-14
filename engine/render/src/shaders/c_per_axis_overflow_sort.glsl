@@ -14,7 +14,7 @@
 // Sort key: lexicographic (packedCell, encodedDistance, colorPacked) =
 // entry words (0, 2, 1). Any total value order works; this one groups
 // cell ties adjacently. The key spans ALL THREE words, so key-equality and
-// record-equality coincide — which is why the compare-exchange below can be
+// record-equality coincide — which is why the compare-exchange can be
 // strict (equal records never swap) without making draw order depend on
 // arrival order: two fully-equal records are indistinguishable in the output.
 //
@@ -204,12 +204,12 @@ void main() {
         // Full local bitonic over one contiguous kBlock-element block:
         // stages k = 2..kBlock, all strides. Direction comes from the GLOBAL
         // element index so these fused stages compose exactly with the
-        // strided-slab steps below.
+        // mode-2 strided-slab steps.
         const uint blockBase = g * kBlock;
         if (blockBase >= span) {
             // Wholly virtual block: every element is +inf, and sorting a
             // constant block is a no-op. Workgroup-uniform condition, so the
-            // barriers below stay in uniform control flow.
+            // block's barriers stay in uniform control flow.
             return;
         }
         for (uint e = t; e < kBlock; e += kThreads) {

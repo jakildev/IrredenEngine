@@ -102,7 +102,7 @@ flat out float vMarginDepthBias;
 flat out float vMarginYieldGradU;
 flat out float vMarginYieldGradV;
 // Interior-edge yield-slope floor, vDepth units per unit quad-param
-// penetration. The per-axis slopes above are the OWN plane's depth gradients —
+// penetration. vMarginYieldGradU/V are the OWN plane's depth gradients —
 // near zero along a foreshortened axis — but a margin that penetrates an INTERIOR
 // edge extends over the ADJACENT visible face, whose plane can diverge from the
 // extrapolation at up to 2*sqrt(2)*encScale per world unit. At fractional offsets
@@ -226,8 +226,8 @@ void main() {
         // View-visibility overflow lane: this instance is an appended
         // entry carrying the exact (cardinal cell, encoded distance) pair the
         // store would have written for a view-visible face the per-cell store
-        // dropped, plus its packed color. Everything below is bit-identical to
-        // the cell path; only the data source differs.
+        // dropped, plus its packed color. The rest of the vertex path is
+        // bit-identical to the cell path; only the data source differs.
         const uint entryBase = uint(gl_InstanceID) * 3u;
         const uint packedCell = compactedCells[entryBase + 0u];
         ij = ivec2(int(packedCell & 0xFFFFu), int(packedCell >> 16u));
@@ -311,8 +311,8 @@ void main() {
     if (overflowMode != 0) {
         // Overflow entries are isolated revealed slivers, and the bound
         // triangleColors is whichever axis drew last (the overflow draw is
-        // axis-agnostic), so the same-axis occupancy taps below would read a
-        // foreign axis's cells. Classify every edge as boundary: the analytic
+        // axis-agnostic), so the cell path's same-axis occupancy taps would read
+        // a foreign axis's cells. Classify every edge as boundary: the analytic
         // coverage then trims the exact footprint, which tiles gap-free against
         // neighbouring faces' exact footprints in world space.
         vEdgeInterior = vec4(0.0);

@@ -55,23 +55,25 @@ float sampleCascadeShadow(
     float texelSize = max(texelSz.x, texelSz.y);
     // Base receiver near-rejection — the trustworthy tolerance for a DIRECT
     // (caster's-own-texel) sun-map write. selfStepDepthRange (0 except on a
-    // detected round-to-cell staircase riser) lifts it. Both tap regimes below use
-    // this same base with NO per-tap widening: a global bias cannot separate a
-    // same-face self-occluder from a real cast occluder, so widening it erodes
-    // genuine cast shadows (docs/design/sun-shadow-bake-coverage.md). The far
-    // shadow-throw window (maxShadowThrow) also uses this base `bias`.
+    // detected round-to-cell staircase riser) lifts it. Both tap regimes (DIRECT
+    // and coverage-SPLAT) use this same base with NO per-tap widening: a global
+    // bias cannot separate a same-face self-occluder from a real cast occluder,
+    // so widening it erodes genuine cast shadows
+    // (docs/design/sun-shadow-bake-coverage.md). The far shadow-throw window
+    // (maxShadowThrow) also uses this base `bias`.
     float bias = texelSize * kShadowBiasTexelScale / slope + kShadowBiasQuantNoise;
     float nearReject = max(bias, selfStepDepthRange);
 
     // Receiver-plane depth gradient in sun-UV, used only by the splat-tap
-    // same-plane test below. Derivation: with (uHat, vHat, sunDir) orthonormal
+    // same-plane test. Derivation: with (uHat, vHat, sunDir) orthonormal
     // and depth z = -dot(P, sunDir), a displacement dP within the receiver plane
     // (dot(dP, normal) = 0) gives dz/du = dot(uHat, normal)/dot(sunDir, normal)
     // and likewise for v; dot(sunDir, normal) is exactly `slope`. So the plane's
     // depth at sun-UV coordinate q is sunZ + dot(gradUV, q - sunUV). (Sign is +:
     // for a coplanar occluder at the write's origin this must reproduce that
-    // occluder's own depth, so h below is ~0 and it stays lit. The base bias
-    // absorbs the sub-texel origin-quantization error, a texel*|grad| term.)
+    // occluder's own depth, so the splat tap's h is ~0 and it stays lit. The
+    // base bias absorbs the sub-texel origin-quantization error, a texel*|grad|
+    // term.)
     vec2 gradUV = vec2(dot(normal, uHat), dot(normal, vHat)) / slope;
 
     vec2 sunPxF = (sunUV - origin) / texelSz;

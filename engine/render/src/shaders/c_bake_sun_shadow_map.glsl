@@ -70,8 +70,8 @@ layout(r32i, binding = 0) readonly uniform iimage2D trixelDistances;
 // caster outside THIS cascade's UV range is unreadable here by any receiver the
 // sample side accepts — sunCascadeKernelInterior (ir_sun_projection.glsl) routes
 // receivers near the map edge to the covering cascade, whose wider AABB holds
-// this caster's write. Every caster is projected into BOTH cascades below, so
-// this early-out never drops a caster from the pipeline.
+// this caster's write. Every caster is projected into BOTH cascades, so this
+// early-out never drops a caster from the pipeline.
 void writeSunTexel(int cascadeOffset, ivec2 px, uint packedDepth) {
     if (px.x < 0 || px.x >= kSunShadowMapDim ||
         px.y < 0 || px.y >= kSunShadowMapDim) {

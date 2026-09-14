@@ -385,7 +385,7 @@ ivec3 faceMicroPositionFixed(int face, ivec3 voxelPositionFixed, int u, int v, i
 // coordinate sits at `voxelPositionFixed.<axis> + subdivisions` (the
 // high-coordinate side of the voxel); for NEG faces it sits at
 // `voxelPositionFixed.<axis>` (the low-coordinate side, identical to
-// the 3-face `faceMicroPositionFixed` above). The other two axes sweep
+// the 3-face `faceMicroPositionFixed`). The other two axes sweep
 // `u, v ∈ [0, subdivisions)` exactly as the 3-face overload does.
 ivec3 faceMicroPositionFixed6(
     int faceId,
@@ -812,7 +812,7 @@ vec2 pos3DtoPos2DIsoYawedCellAnchor(vec3 rasterPos, float visualYaw) {
 // a continuous Z-yaw camera: pos3DtoDistance(R_z(-visualYaw) * worldPos) =
 // x(cos-sin) + y(sin+cos) + z. Smaller = nearer (GL_LESS). THE shared composite
 // depth metric for every world surface under smooth yaw: the SDF smooth path
-// (c_shapes_to_trixel), the scatterCompositeDepthKey below, and the detached
+// (c_shapes_to_trixel), scatterCompositeDepthKey, and the detached
 // composite (CPU twin IRMath::pos3DtoDistanceYawed) all derive their final
 // occlusion depth from this one function, so SDF + voxels + detached stay
 // co-sorted at EVERY yaw — not just cardinals. At a cardinal pose it collapses
@@ -981,8 +981,9 @@ const float kScatterMarginDepthBiasKey = 0.25;
 //                                   emergency faces collapse to rank 3 and
 //                                   fall to cell2. 6 face states don't fit in
 //                                   2 bits, and the band cannot widen to carry
-//                                   a 3rd — see PRECONDITION — so the collapse
-//                                   is forced, not a preference.)
+//                                   a 3rd (the PRECONDITION pins it at 16
+//                                   steps), so the collapse is forced, not a
+//                                   preference.)
 //   cell2 = (ij.x & 1) | (ij.y & 2) (2 bits — distinct for every same-plane /
 //                                   parallel-plane neighbor pair: in-plane
 //                                   steps only project to iso-diagonal
@@ -995,7 +996,7 @@ const float kScatterMarginDepthBiasKey = 0.25;
 //     no parity alternation; mirrors the cardinal encode's (flip<<2)|slot low
 //     bits.
 //   * same-slot ties, incl. the same-axis margin-yield crossover — fall to
-//     cell2, whose in-plane-step proof above covers exactly this same-plane /
+//     cell2, whose in-plane-step enumeration covers exactly this same-plane /
 //     parallel-plane case, so the winner is deterministic.
 //   * flipped vs flipped on DIFFERENT slots — NOT proven distinct. Both
 //     collapse to rank 3 and fall to cell2, but their ij index different axis
@@ -1020,7 +1021,7 @@ const float kScatterMarginDepthBiasKey = 0.25;
 //   (b) code-fits-in-band — maxCode <= bandSteps - 1, i.e. 15 <= 15: exact,
 //       zero slack. WIDENING the band RELAXES this half.
 // Together they bracket the band to [16, 16.0002], so 16 is the UNIQUE
-// admissible width — which is what forces rank2's collapse above. A pass that
+// admissible width — which is what forces rank2's 2-bit collapse. A pass that
 // adds tie levels (a 3-bit rank, fractional-edge tie levels) pushes maxCode
 // to 23, needing a 32-step band, which in turn needs depthRange <= subScale *
 // 2^16 = 65536 while it is 131070: the widening that fixes the code overflow
@@ -1030,7 +1031,7 @@ const float kScatterMarginDepthBiasKey = 0.25;
 // separations remain multiple bands, so no genuine occlusion is reordered;
 // only tie-band pixels gain a deterministic, priority-ordered winner.
 const float kScatterCellTieStep = 1.0 / 8388608.0;
-// Derived, not retunable alone: 16 is pinned by the PRECONDITION above and
+// Derived, not retunable alone: 16 is pinned by the tie-step PRECONDITION and
 // asserted CPU-side (kScatterCellTieBandSteps, ir_render_types.hpp). Exact
 // power-of-two product, so the derivation is bit-identical to the literal.
 // The overflow lane's two-band bias derives from this in turn
@@ -1055,7 +1056,7 @@ const float kScatterCellTieBand = 16.0 * kScatterCellTieStep;
 // (kScatterMarginInteriorBiasKey) — do not retune here.
 const float kScatterMarginInteriorBiasKey = 8.0;
 
-// Margin-yield gradient scale. The flat bias above only breaks SUB-PIXEL
+// Margin-yield gradient scale. The flat interior-edge bias only breaks SUB-PIXEL
 // same-plane ties. Where the margin reaches a cell-deep fraction on a
 // foreshortened face, it EXTRAPOLATES the face plane far enough that its depth
 // beats a NEIGHBORING face's exact footprint along a shared ridge (a doubled

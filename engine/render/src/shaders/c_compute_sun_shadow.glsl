@@ -206,8 +206,8 @@ void main() {
     // Riser-polarity flip: a flipped face's true outward normal is the
     // NEGATION of the slot-derived one — without it the normal bias pushes the
     // shadow sample INTO the caster and the riser reads fully sun-shadowed.
-    // Negation commutes with the frame rotations above, so one flip covers all
-    // three recovery branches; flip == 0 everywhere on non-rotated content.
+    // Negation commutes with the per-branch frame rotations, so one flip covers
+    // all three recovery branches; flip == 0 everywhere on non-rotated content.
     if (flip != 0) {
         normal = -normal;
     }

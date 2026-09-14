@@ -23,8 +23,8 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform float visualYaw;
     uniform float rasterYaw;
     uniform float residualYaw;
-    // Prefix through residualYaw is the shared binding-7 head. The fields below match the
-    // FrameDataVoxelToCanvas / stage-1 UBO offsets. This pass reads faceDeform and
+    // Prefix through residualYaw is the shared binding-7 head. The remaining fields
+    // match the FrameDataVoxelToCanvas / stage-1 UBO offsets. This pass reads faceDeform and
     // occlusionCullMipCount (per-voxel occlusion cull) and visibleIsoBounds,
     // isDetachedCanvas and feederSubCap (feeder classify); the rest are layout placeholders.
     uniform float isDetachedCanvas;     // offset 76

@@ -734,8 +734,8 @@ void main() {
     // yaw is recovered geometrically via faceDeform[]. The cos/sin table is
     // bit-exact at cardinal yaws, unlike cos(rasterYaw), which drifts by ULP
     // from an exact pi/2 multiple after the UBO upload. At cardinalIndex==0 the
-    // rotation is identity and every line below collapses to the integer-only
-    // yaw=0 path. Model: docs/design/iso-basis-baked-assumptions.md.
+    // rotation is identity and the whole raster path collapses to the
+    // integer-only yaw=0 path. Model: docs/design/iso-basis-baked-assumptions.md.
     int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
     vec2 cardinalCosSin = cardinalYawCosSin(cardinalIndex);
     // Smooth camera Z-yaw: the SDF rotates by the full continuous visualYaw
