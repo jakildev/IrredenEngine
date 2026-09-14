@@ -201,4 +201,35 @@ if [[ -f "$FLEET_TESTS_WORKFLOW" ]] && (( ${#covered_workflows[@]} > 0 )); then
     fi
 fi
 
+echo "T6: the registry checker derives the same covered set this suite does"
+# fleet_test_subjects.py F2 re-derives this suite's population (same glob,
+# same both-blocks predicate) because a derived subject has no path literal
+# for its scan to find. Two copies of one derivation: this case is what keeps
+# them from drifting apart.
+#
+# `--print-covered-workflows` reads only the workflow files, so this case works
+# in a `git archive` stage with no .git — unlike the checker's default path,
+# which needs the tracked-file index.
+SUBJECTS_CHECK="$REPO_ROOT/scripts/fleet/fleet_test_subjects.py"
+if [[ ! -f "$SUBJECTS_CHECK" ]]; then
+    bad "subject discovery checker not found at $SUBJECTS_CHECK (retire T6 with it)"
+else
+    checker_set=$(python3 "$SUBJECTS_CHECK" "$REPO_ROOT" --print-covered-workflows 2>&1)
+    checker_rc=$?
+    suite_set=""
+    # set -u-safe expansion: bash 3.2 (stock macOS) aborts on "${arr[@]}" when
+    # the array is empty, and T0 has already reported that as a real state.
+    for wf in ${covered_workflows[@]+"${covered_workflows[@]}"}; do
+        suite_set+=".github/workflows/$(basename "$wf")"$'\n'
+    done
+    suite_set=${suite_set%$'\n'}
+    if [[ "$checker_rc" -ne 0 ]]; then
+        bad "fleet_test_subjects.py --print-covered-workflows failed (exit $checker_rc)"
+        printf '%s\n' "$checker_set" | sed 's/^/        /'
+    else
+        assert_eq "$(printf '%s\n' "$checker_set" | sort)" "$(printf '%s\n' "$suite_set" | sort)" \
+            "derived covered-workflow population matches the registry checker's"
+    fi
+fi
+
 summarize "workflow push/pull_request paths: sync"
