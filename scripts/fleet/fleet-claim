@@ -494,7 +494,8 @@ _sweep_stale_prefix_holders() {
     esac
     command -v gh >/dev/null 2>&1 || return 1
     local labels_json
-    labels_json=$(gh api "repos/${repo}/issues/${target}/labels" 2>/dev/null) || return 1
+    labels_json=$(gh api "repos/${repo}/issues/${target}/labels?per_page=100" \
+        --paginate 2>/dev/null) || return 1
     local holders
     holders=$(echo "$labels_json" | python3 -c '
 import json, sys
