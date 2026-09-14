@@ -119,7 +119,7 @@
  "engine/prefabs/irreden/render/systems/system_compute_voxel_ao.hpp": 13,
  "engine/prefabs/irreden/render/systems/system_debug_culling_minimap.hpp": 5,
  "engine/prefabs/irreden/render/systems/system_debug_overlay.hpp": 1,
- "engine/prefabs/irreden/render/systems/system_entity_canvas_to_framebuffer.hpp": 36,
+ "engine/prefabs/irreden/render/systems/system_entity_canvas_to_framebuffer.hpp": 34,
  "engine/prefabs/irreden/render/systems/system_fog_to_trixel.hpp": 2,
  "engine/prefabs/irreden/render/systems/system_gizmo_drag.hpp": 1,
  "engine/prefabs/irreden/render/systems/system_help_overlay.hpp": 1,

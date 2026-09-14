@@ -1,0 +1,649 @@
+diff --git a/creations/demos/canvas_stress/main.cpp b/creations/demos/canvas_stress/main.cpp
+index 09cac98ec..09168e0c0 100644
+--- a/creations/demos/canvas_stress/main.cpp
++++ b/creations/demos/canvas_stress/main.cpp
+@@ -601,6 +601,11 @@ void spawnDetachedReVoxelizeSolid(
+         screenLocked
+     );
+ 
++    if (IREngine::args().getFlag("--local-trixel-display")) {
++        IREntity::getComponent<C_TriangleCanvasTextures>(canvas.canvasEntity_).sampleLayout_ =
++            IRRender::TrixelSampleLayout::LOCAL_TRIANGLES;
++    }
++
+     // Centered around origin so SYSTEM_REBUILD_DETACHED_VOXELS can rotate the
+     // cells about the pool origin (translation-free) and keep the solid centered
+     // on its canvas as it tumbles.
+@@ -1071,6 +1076,7 @@ void registerArgs() {
+         "--source-face-shadows",
+         "Experimental authored-face shadows before detached resampling"
+     );
++    args.flag("--local-trixel-display", "Experimental undilated local triangles on detached probes");
+     args.flag("--probe-upright", "Use unrotated revoxelization and attached shadow probes");
+     args.flag("--probe-grid", "Render the shadowbox probe through the shared GRID canvas");
+     args.flag(
+@@ -1614,6 +1620,10 @@ void initEntities() {
+                 ivec3(32),
+                 g_settings.screenLockDetached_
+             );
++            if (IREngine::args().getFlag("--local-trixel-display")) {
++                IREntity::getComponent<C_TriangleCanvasTextures>(canvas.canvasEntity_).sampleLayout_ =
++                    IRRender::TrixelSampleLayout::LOCAL_TRIANGLES;
++            }
+             IREntity::createEntity(
+                 C_LocalTransform{vec3(0.0f)},
+                 C_VoxelSetNew{size, color, true, canvas.canvasEntity_}
+diff --git a/docs/design/rendering-audit-todo.md b/docs/design/rendering-audit-todo.md
+index 45007161f..b34dfcd8b 100644
+--- a/docs/design/rendering-audit-todo.md
++++ b/docs/design/rendering-audit-todo.md
+@@ -24,6 +24,7 @@ that the experimental rendering is ready to become the default.
+ | High, within geometry | Detached centroid changes with camera yaw | After removing the constant Y offset, the visible box placement check still fails at 22.5, 67.5 and 90 degrees. GRID controls pass across all five views. Separate lattice anchoring and dilation asymmetry from composite placement. |
+ | Medium, within geometry | Detached dilation expands the visible box | At yaw zero, zoom 2, its area is 1.219× the analytical box. The origin fix leaves that ratio unchanged. Preserve concavities when replacing dilation. |
+ | Medium, validation | Small-voxel and picking coverage | [Magnified single-voxel control](single-voxel-display-probe.md) now distinguishes detached failure from a 5/5 passing GRID control. Triangle-ID/face-color assertions and a picked-surface oracle remain. The detached composite explicitly disables hover readback, so picking needs implementation. |
++| High, within scale validation | Detached composite has a 512-instance limit | `ENTITY_CANVAS_TO_FRAMEBUFFER` stops collecting after `kMaxEntityCanvasInstances`. Raising the limit alone does not meet the entity-count target; design and measure batching/culling for private canvases separately from attached GRID entities. |
+ | Medium, validation | Density-dependent receiver calibration | The small SDF plate needs its smooth boundary convention accounted for at zoom 16. The new fixture does so; generalize the older large-box calibration before using it to judge other densities. |
+ 
+ ## Origin correction evidence
+diff --git a/engine/prefabs/irreden/render/components/component_triangle_canvas_textures.hpp b/engine/prefabs/irreden/render/components/component_triangle_canvas_textures.hpp
+index 7a173072a..5257d74ba 100644
+--- a/engine/prefabs/irreden/render/components/component_triangle_canvas_textures.hpp
++++ b/engine/prefabs/irreden/render/components/component_triangle_canvas_textures.hpp
+@@ -111,6 +111,10 @@ struct C_TriangleCanvasTextures {
+     // overlay) — the composite then keeps the pre-#1624 raw offset.
+     int renderedSubdivisions_ = 0;
+ 
++    // LOCAL_TRIANGLES requires undilated, cardinal voxel writes in a private
++    // canvas. Mixed SDF/text producers retain rectangular sampling.
++    TrixelSampleLayout sampleLayout_ = TrixelSampleLayout::RECTANGULAR;
++
+     // No-priority perf fast-path signal (#2155). Stamped each frame by
+     // VOXEL_TO_TRIXEL_STAGE_1 from the canvas pool's per-trixel-priority
+     // aggregate: 1 iff some voxel drawn into this canvas carries a non-zero
+diff --git a/engine/prefabs/irreden/render/systems/system_entity_canvas_to_framebuffer.hpp b/engine/prefabs/irreden/render/systems/system_entity_canvas_to_framebuffer.hpp
+index 59835c4d5..065c70ae0 100644
+--- a/engine/prefabs/irreden/render/systems/system_entity_canvas_to_framebuffer.hpp
++++ b/engine/prefabs/irreden/render/systems/system_entity_canvas_to_framebuffer.hpp
+@@ -181,7 +181,10 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
+         const vec2 texelFb = fbRes_ * cameraZoom_ / mainCanvasSize_ / vec2(cubeSubDensity);
+         const vec2 texelSteps = isoPixelOffset_ / texelFb;
+         const vec2 snappedCamOffset =
+-            vec2(IRMath::roundHalfUp(texelSteps.x), IRMath::roundHalfUp(texelSteps.y)) * texelFb;
++            canvasTextures->sampleLayout_ == TrixelSampleLayout::LOCAL_TRIANGLES
++                ? IRMath::fract(effectiveCameraIso_) * vec2(1.0f, -1.0f) * fbRes_ * cameraZoom_ /
++                      mainCanvasSize_
++                : vec2(IRMath::roundHalfUp(texelSteps.x), IRMath::roundHalfUp(texelSteps.y)) * texelFb;
+         vec2 entityFbCenter = vec2(
+             fbRes_.x * 0.5f + snappedCamOffset.x + entityAPos.x * fbRes_.x * cameraZoom_.x,
+             fbRes_.y * 0.5f + snappedCamOffset.y + entityAPos.y * fbRes_.y * cameraZoom_.y
+@@ -238,6 +241,7 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
+ 
+         FrameDataTrixelToFramebuffer fd{};
+         fd.mpMatrix_ = calcProjectionMatrix(fbRes_) * model;
++        fd.trixelSampleLayout_ = static_cast<int>(canvasTextures->sampleLayout_);
+         fd.canvasZoomLevel_ = densityZoom;
+         // The de-tile gather parity anchor scales with the raster density, the
+         // direct mirror of the main canvas's `cameraTrixelOffset_ *= effSub`
+diff --git a/engine/prefabs/irreden/render/voxel_frame_data.hpp b/engine/prefabs/irreden/render/voxel_frame_data.hpp
+index 9c8868091..8860cff26 100644
+--- a/engine/prefabs/irreden/render/voxel_frame_data.hpp
++++ b/engine/prefabs/irreden/render/voxel_frame_data.hpp
+@@ -109,24 +109,13 @@ inline void buildVoxelFrameData(
+         frameData.residualYaw_ = 0.0f;
+         const auto cardinalIndex = IRMath::rasterYawCardinalIndex(0.0f);
+         const auto visibleFaces = IRMath::visibleFaceTripletCardinal(cardinalIndex);
+-        // Re-voxelize canvases mark `.w = 1` (#1557 Option B / #1570). The marker
+-        // tells `c_voxel_to_trixel_stage_{1,2}` to dilate each emitted face ±1px
+-        // along its in-plane iso axes to close the round-to-cell sub-cell gaps.
+-        // It NO LONGER bypasses the exposed-mask gate: the GPU scatter
+-        // (c_revoxelize_detached MODE 1) now authors the ROTATED-frame
+-        // face-occlusion mask from dest-grid adjacency — the GPU twin of
+-        // REBUILD_GRID_VOXELS' #1720 CPU mask — so stage 1/2 gate re-voxelize on
+-        // `faceIsExposed` exactly like the GRID path. The old bypass (emit all
+-        // three cardinal faces, depth-resolve the front) existed only because that
+-        // mask used to be stale (P2 #1556 dropped P1's recompute without moving it
+-        // to the GPU); its slot-tie checkerboard winner drove AO hatching on flat
+-        // surfaces that GRID never had. Other canvases keep `.w = 0`
+-        // (no dilation, real exposed-mask gate, byte-identical to master).
++        // Nonzero marks resampled occupancy; 1 additionally requests legacy
++        // dilation, while 2 preserves the local triangle lattice footprint.
+         frameData.visibleFaceIds_ = ivec4(
+             static_cast<int>(visibleFaces[0]),
+             static_cast<int>(visibleFaces[1]),
+             static_cast<int>(visibleFaces[2]),
+-            1
++            canvas.sampleLayout_ == TrixelSampleLayout::LOCAL_TRIANGLES ? 2 : 1
+         );
+         const mat2 fd0 = IRMath::faceDeformationMatrix(visibleFaces[0], 0.0f);
+         const mat2 fd1 = IRMath::faceDeformationMatrix(visibleFaces[1], 0.0f);
+diff --git a/engine/render/include/irreden/render/ir_render_types.hpp b/engine/render/include/irreden/render/ir_render_types.hpp
+index 728381d93..1180966f1 100644
+--- a/engine/render/include/irreden/render/ir_render_types.hpp
++++ b/engine/render/include/irreden/render/ir_render_types.hpp
+@@ -95,6 +95,8 @@ struct HoveredEntityIdLayout {
+     float _pad_{0.0f};
+ };
+ 
++enum class TrixelSampleLayout : int { RECTANGULAR = 0, LOCAL_TRIANGLES = 1 };
++
+ struct FrameDataTrixelToFramebuffer {
+     mat4 mpMatrix_;
+     vec2 canvasZoomLevel_;
+@@ -198,7 +200,8 @@ struct FrameDataTrixelToFramebuffer {
+     /// shaders; std140-appended (offset 208) so every prior offset — and the
+     /// gather shaders reading only the prefix — stays unchanged.
+     int overflowMode_ = 0;
+-    int overflowPad0_ = 0;
++    // Sampling contract for the private canvas color, depth and priority.
++    int trixelSampleLayout_ = static_cast<int>(TrixelSampleLayout::RECTANGULAR);
+     int overflowPad1_ = 0;
+     int overflowPad2_ = 0;
+ };
+@@ -229,6 +232,10 @@ static_assert(
+     "(ends at 208) so every prior offset — and the gather shaders reading only "
+     "the prefix — stays unchanged"
+ );
++static_assert(
++    offsetof(FrameDataTrixelToFramebuffer, trixelSampleLayout_) == 212,
++    "Gather sample layout must occupy the scalar slot at byte 212"
++);
+ static_assert(
+     sizeof(FrameDataTrixelToFramebuffer) == 224,
+     "FrameDataTrixelToFramebuffer size must mirror its std140 GLSL block. The "
+diff --git a/engine/render/src/shaders/c_voxel_to_trixel_stage_1_body.glsl b/engine/render/src/shaders/c_voxel_to_trixel_stage_1_body.glsl
+index cb26bf0da..0ec644120 100644
+--- a/engine/render/src/shaders/c_voxel_to_trixel_stage_1_body.glsl
++++ b/engine/render/src/shaders/c_voxel_to_trixel_stage_1_body.glsl
+@@ -403,7 +403,7 @@ void overflowAppendTap(
+ // scripts/feeder-margin-verify.py.
+ void emitDeformedFace(
+     const ivec2 base, const mat2 D, const int voxelDistance, const int faceId,
+-    const bool reVoxelize
++    const bool dilate
+ #if IR_STORE_WINNER_ELECTION
+     , const uint voxelIndex
+ #endif
+@@ -421,7 +421,7 @@ void emitDeformedFace(
+     // footprint — byte-identical to master.
+     ivec2 su = ivec2(0);
+     ivec2 sv = ivec2(0);
+-    if (reVoxelize) {
++    if (dilate) {
+         faceInPlaneIsoSteps(faceId, su, sv);
+     }
+     for (int sy = 0; sy < n; ++sy) {
+@@ -430,7 +430,7 @@ void emitDeformedFace(
+             ivec2 p = base + roundHalfUp(D * src);
+ #if IR_STORE_WINNER_ELECTION
+             resolveWinnerTap(p, voxelDistance, voxelIndex);
+-            if (reVoxelize) {
++            if (dilate) {
+                 resolveWinnerTap(p + su, voxelDistance, voxelIndex);
+                 resolveWinnerTap(p - su, voxelDistance, voxelIndex);
+                 resolveWinnerTap(p + sv, voxelDistance, voxelIndex);
+@@ -438,7 +438,7 @@ void emitDeformedFace(
+             }
+ #else
+             writeDistanceTap(p, voxelDistance);
+-            if (reVoxelize) {
++            if (dilate) {
+                 writeDistanceTap(p + su, voxelDistance);
+                 writeDistanceTap(p - su, voxelDistance);
+                 writeDistanceTap(p + sv, voxelDistance);
+@@ -582,7 +582,8 @@ void main() {
+ 
+     // Re-voxelize marker: detached canvases (visibleFaceIds.w != 0, #1557) bake
+     // the entity rotation into the CELL positions and raster at cardinal 0.
+-    const bool reVoxelize = visibleFaceIds.w != 0;
++    const bool reVoxelize = visibleFaceIds.w == 1;
++    const bool dilateRevox = visibleFaceIds.w == 1;
+ 
+     // Exposed-face gate (#1278): emit only when the world face this slot
+     // renders is BOTH camera-visible (the slot-to-faceId resolution above
+@@ -611,7 +612,7 @@ void main() {
+     // stages key their taps off ONE definition, so the colour tap cannot
+     // desync from the distance tap.
+     const VoxelFaceSelect sel = selectVoxelFace(
+-        faceId, reVoxelize, voxels[voxelIndex].reserved, flagsByte,
++        faceId, reVoxelize, (visibleFaceIds.w == 2 ? 0u : voxels[voxelIndex].reserved), flagsByte,
+         voxelPosition, perAxisRoute, isDetachedCanvas, detachedWorldReceive
+     );
+     if (!sel.keepFace) return;
+@@ -785,7 +786,7 @@ void main() {
+             trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions) +
+             pos3DtoPos2DIso(voxelPositionInt);
+         emitDeformedFace(
+-            base, D, voxelDistance, faceId, reVoxelize
++            base, D, voxelDistance, faceId, dilateRevox
+ #if IR_STORE_WINNER_ELECTION
+             , voxelIndex
+ #endif
+@@ -849,7 +850,7 @@ void main() {
+     const int voxelDistance = encodeDepthWithFace(depthBase, slot, riserFlip);
+     const ivec2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
+     emitDeformedFace(
+-        base, D, voxelDistance, viewFaceId, reVoxelize
++        base, D, voxelDistance, viewFaceId, dilateRevox
+ #if IR_STORE_WINNER_ELECTION
+         , voxelIndex
+ #endif
+@@ -871,7 +872,7 @@ void main() {
+         const int distanceOpposite = encodeDepthWithFace(depthOpposite, slot, riserFlip ^ 1);
+         const ivec2 baseOpposite = frameOffsetFixed + pos3DtoPos2DIso(microOpposite);
+         emitDeformedFace(
+-            baseOpposite, D, distanceOpposite, viewFaceId ^ 1, reVoxelize
++            baseOpposite, D, distanceOpposite, viewFaceId ^ 1, dilateRevox
+ #if IR_STORE_WINNER_ELECTION
+             , voxelIndex
+ #endif
+diff --git a/engine/render/src/shaders/c_voxel_to_trixel_stage_2_body.glsl b/engine/render/src/shaders/c_voxel_to_trixel_stage_2_body.glsl
+index a0a785afe..a01d1a28e 100644
+--- a/engine/render/src/shaders/c_voxel_to_trixel_stage_2_body.glsl
++++ b/engine/render/src/shaders/c_voxel_to_trixel_stage_2_body.glsl
+@@ -238,7 +238,7 @@ void emitDeformedFace(
+     const vec4 voxelColor,
+     const uvec2 packedEntityId,
+     const int faceId,
+-    const bool reVoxelize
++    const bool dilate
+ #if IR_STORE_WINNER_ELECTION
+     , const uint voxelIndex
+ #endif
+@@ -252,7 +252,7 @@ void emitDeformedFace(
+     // the occlusion-winning face per pixel, so gaps get the correct colour.
+     ivec2 su = ivec2(0);
+     ivec2 sv = ivec2(0);
+-    if (reVoxelize) {
++    if (dilate) {
+         faceInPlaneIsoSteps(faceId, su, sv);
+     }
+     for (int sy = 0; sy < n; ++sy) {
+@@ -261,7 +261,7 @@ void emitDeformedFace(
+             ivec2 p = base + roundHalfUp(D * src);
+ #if IR_STORE_WINNER_ELECTION
+             writeColorTapCardinalWinner(p, voxelDistance, voxelColor, packedEntityId, voxelIndex);
+-            if (reVoxelize) {
++            if (dilate) {
+                 writeColorTapCardinalWinner(
+                     p + su, voxelDistance, voxelColor, packedEntityId, voxelIndex
+                 );
+@@ -277,7 +277,7 @@ void emitDeformedFace(
+             }
+ #else
+             writeColorTap(p, voxelDistance, voxelColor, packedEntityId);
+-            if (reVoxelize) {
++            if (dilate) {
+                 writeColorTap(p + su, voxelDistance, voxelColor, packedEntityId);
+                 writeColorTap(p - su, voxelDistance, voxelColor, packedEntityId);
+                 writeColorTap(p + sv, voxelDistance, voxelColor, packedEntityId);
+@@ -316,7 +316,8 @@ void main() {
+     const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
+ 
+     // Re-voxelize marker — mirror of stage 1.
+-    const bool reVoxelize = visibleFaceIds.w != 0;
++    const bool reVoxelize = visibleFaceIds.w == 1;
++    const bool dilateRevox = visibleFaceIds.w == 1;
+ 
+     // Stage 2 mirrors stage 1's exposed-face gate so it doesn't waste an
+     // `imageLoad` + depth compare on faces stage 1 already skipped. Re-voxelize
+@@ -334,7 +335,7 @@ void main() {
+     // dropped those voxels' distances on every route, so the depth re-test in
+     // writeColorTap rejects their colour taps.
+     const VoxelFaceSelect sel = selectVoxelFace(
+-        faceId, reVoxelize, voxels[voxelIndex].reserved, flagsByte,
++        faceId, reVoxelize, (visibleFaceIds.w == 2 ? 0u : voxels[voxelIndex].reserved), flagsByte,
+         voxelPosition, perAxisRoute, isDetachedCanvas, detachedWorldReceive
+     );
+     if (!sel.keepFace) return;
+@@ -446,7 +447,7 @@ void main() {
+             trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions) +
+             pos3DtoPos2DIso(voxelPositionInt);
+         emitDeformedFace(
+-            base, D, voxelDistance, voxelColor, packedEntityId, faceId, reVoxelize
++            base, D, voxelDistance, voxelColor, packedEntityId, faceId, dilateRevox
+ #if IR_STORE_WINNER_ELECTION
+             , voxelIndex
+ #endif
+@@ -487,7 +488,7 @@ void main() {
+     const ivec2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
+     // packedEntityId, not voxelIndex — emitDeformedFace's 5th param is uvec2 (#1960 carrier).
+     emitDeformedFace(
+-        base, D, voxelDistance, voxelColor, packedEntityId, viewFaceId, reVoxelize
++        base, D, voxelDistance, voxelColor, packedEntityId, viewFaceId, dilateRevox
+ #if IR_STORE_WINNER_ELECTION
+         , voxelIndex
+ #endif
+@@ -508,7 +509,7 @@ void main() {
+         const int distanceOpposite = encodeDepthWithFace(depthOpposite, slot, riserFlip ^ 1);
+         const ivec2 baseOpposite = frameOffsetFixed + pos3DtoPos2DIso(microOpposite);
+         emitDeformedFace(
+-            baseOpposite, D, distanceOpposite, voxelColor, packedEntityId, viewFaceId ^ 1, reVoxelize
++            baseOpposite, D, distanceOpposite, voxelColor, packedEntityId, viewFaceId ^ 1, dilateRevox
+ #if IR_STORE_WINNER_ELECTION
+             , voxelIndex
+ #endif
+diff --git a/engine/render/src/shaders/f_trixel_to_framebuffer.glsl b/engine/render/src/shaders/f_trixel_to_framebuffer.glsl
+index fa7d866e8..1e248bc35 100644
+--- a/engine/render/src/shaders/f_trixel_to_framebuffer.glsl
++++ b/engine/render/src/shaders/f_trixel_to_framebuffer.glsl
+@@ -52,6 +52,8 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
+     // Two-tier composite depth partition (#1958): 0 = world content (clamped out
+     // of the reserved near band), != 0 = foreground priority (pinned into it).
+     int depthPriorityMode;
++    int overflowMode;
++    int trixelSampleLayout;
+ };
+ 
+ layout(std430, binding = 14) buffer HoveredEntityIdBuffer {
+@@ -69,21 +71,23 @@ float normalizeDistance(int dist) {
+ void main() {
+     ivec2 textureSize = textureSize(triangleColors, 0);
+     ivec2 z1 = trixelOriginOffsetZ1(textureSize);
+-    // Color / depth / tier reads at the RAW interpolated canvas position — the
+-    // raw sample already lands on the correct trixel row, same as the Metal
+-    // twin (both vertex stages build identical V-flipped TexCoords, so the two
+-    // backends interpolate the same canvas position for the same screen pixel).
+-    // The parity-row shift is applied ONLY to the hover coordinate
+-    // (`originShifted` below), keeping picking in lockstep with CPU
+-    // `mouseTrixelPositionWorld()` -> `pos2DIsoToTriangleIndex`. See
+-    // trixelFramebufferSamplePosition in ir_iso_common.glsl; #442,
+-    // docs/design/trixel-parity-shift-442-investigation.md.
++    // Hover uses the world-lattice mapping; local display triangles instead
++    // select cells in the private canvas basis, independent of world parity.
+     vec2 originRaw = TexCoords * vec2(textureSize);
+     int originModifier = trixelOriginModifier(z1, canvasOffset);
+     vec2 originShifted = trixelFramebufferSamplePosition(originRaw, originModifier);
+ 
+-    vec4 color = textureLod(triangleColors, originRaw / textureSize, 0);
+-    int rawDist = textureLod(triangleDistances, originRaw / textureSize, 0).r;
++    vec2 displayOrigin = originRaw;
++    if (trixelSampleLayout == 1) {
++        // The triangular cell footprint is centered one row below its
++        // stored index; offset the query to preserve the voxel origin.
++        displayOrigin = trixelFramebufferSamplePosition(
++            originRaw + vec2(0.0, 1.0), (z1.x + z1.y) & 1);
++        if (any(lessThan(displayOrigin, vec2(0.0))) ||
++            any(greaterThanEqual(displayOrigin, vec2(textureSize)))) discard;
++    }
++    vec4 color = textureLod(triangleColors, displayOrigin / textureSize, 0);
++    int rawDist = textureLod(triangleDistances, displayOrigin / textureSize, 0).r;
+     // effectiveSubdivisionsForHover.y carries the per-canvas depth rescale
+     // (effSub / cubeSub) for world-placed DETACHED canvases: their model-frame
+     // rawDist was written at the canvas's own (possibly #1570-D2-capped)
+@@ -110,23 +114,11 @@ void main() {
+     ivec2 originIndex = ivec2(floor(originShifted));
+     ivec2 hoveredIndex = ivec2(floor(hoveredPosition));
+     bool isMouseHovered = all(equal(hoveredIndex, originIndex));
+-    // Per-trixel priority tiers (#1960; generalizes #1958's two-tier partition).
+-    // The tier read samples the SAME texel the color/depth came from (originRaw)
+-    // and is needed only when some voxel in the canvas carries a per-trixel
+-    // priority; on the default no-priority path the read is skipped (#2155 fast
+-    // path): decodePriority of an unread id would be 0, so
+-    // tier == depthPriorityMode and the output is byte-identical. The hover
+-    // read below uses originShifted and is gated on isMouseHovered separately
+-    // (twin of trixel_to_framebuffer.metal's sampleCoord / hoverCoord split).
+-    // So a fragment that is BOTH prioritized and hovered fetches
+-    // triangleEntityIds TWICE — once here at originRaw, once at originShifted
+-    // below. The two reads want different texels, so the pair is not redundant:
+-    // one shared fetch has to pick a single origin, and either choice
+-    // reintroduces a parity-shifted read on the path that needs the other
+-    // (#394, #442).
++    // Priority and color/depth must select the same stored cell. Canvases
++    // without prioritized voxels avoid the extra entity-id fetch.
+     int tier = depthPriorityMode;
+     if (anyPerTrixelPriority != 0) {
+-        uvec2 sampleEntityId = textureLod(triangleEntityIds, originRaw / vec2(textureSize), 0).rg;
++        uvec2 sampleEntityId = textureLod(triangleEntityIds, displayOrigin / vec2(textureSize), 0).rg;
+         // Resolve the tier: the higher of this draw's per-entity tier
+         // (depthPriorityMode, #1958's C_EntityCanvas::depthPriority_) and the
+         // per-voxel tier authored into the id carrier.
+diff --git a/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_1_body.metal b/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_1_body.metal
+index 9f7d057b6..26e5eb202 100644
+--- a/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_1_body.metal
++++ b/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_1_body.metal
+@@ -259,7 +259,7 @@ inline void emitDeformedFace(
+     uint2 localId,
+     bool isDetached,
+     int faceId,
+-    bool reVoxelize,
++    bool dilate,
+     device atomic_int* distanceScratch,
+     int2 canvasSize
+ #if IR_STORE_WINNER_ELECTION
+@@ -277,7 +277,7 @@ inline void emitDeformedFace(
+     // the occlusion winner; stage 2's depth re-test paints the matching colour).
+     int2 su = int2(0);
+     int2 sv = int2(0);
+-    if (reVoxelize) {
++    if (dilate) {
+         faceInPlaneIsoSteps(faceId, su, sv);
+     }
+     for (int sy = 0; sy < n; ++sy) {
+@@ -286,7 +286,7 @@ inline void emitDeformedFace(
+             const int2 p = base + roundHalfUp(D * src);
+ #if IR_STORE_WINNER_ELECTION
+             resolveWinnerTap(p, voxelDistance, voxelIndex, distanceScratch, perAxisWinnerIds, canvasSize);
+-            if (reVoxelize) {
++            if (dilate) {
+                 resolveWinnerTap(p + su, voxelDistance, voxelIndex, distanceScratch, perAxisWinnerIds, canvasSize);
+                 resolveWinnerTap(p - su, voxelDistance, voxelIndex, distanceScratch, perAxisWinnerIds, canvasSize);
+                 resolveWinnerTap(p + sv, voxelDistance, voxelIndex, distanceScratch, perAxisWinnerIds, canvasSize);
+@@ -294,7 +294,7 @@ inline void emitDeformedFace(
+             }
+ #else
+             writeDistanceTap(p, voxelDistance, distanceScratch, canvasSize);
+-            if (reVoxelize) {
++            if (dilate) {
+                 writeDistanceTap(p + su, voxelDistance, distanceScratch, canvasSize);
+                 writeDistanceTap(p - su, voxelDistance, distanceScratch, canvasSize);
+                 writeDistanceTap(p + sv, voxelDistance, distanceScratch, canvasSize);
+@@ -474,7 +474,8 @@ kernel void IR_STAGE1_KERNEL_NAME(
+     const int2 canvasSize = frameData.canvasSizePixels;
+ 
+     // Re-voxelize marker (frameData.visibleFaceIds.w != 0, #1557) — see GLSL.
+-    const bool reVoxelize = frameData.visibleFaceIds.w != 0;
++    const bool reVoxelize = frameData.visibleFaceIds.w == 1;
++    const bool dilateRevox = frameData.visibleFaceIds.w == 1;
+ 
+     // Exposed-face gate (#1278), BYPASSED for re-voxelize (#1570). The GPU
+     // scatter (c_revoxelize_detached) rewrites only cell POSITIONS; the per-voxel
+@@ -495,7 +496,7 @@ kernel void IR_STAGE1_KERNEL_NAME(
+     // desync from the distance tap.
+     const VoxelFaceSelect sel = selectVoxelFace(
+         canvasFogOfWar, fogObservers, faceId, reVoxelize,
+-        voxels[voxelIndex].reserved, flagsByte, voxelPosition,
++        (frameData.visibleFaceIds.w == 2 ? 0u : voxels[voxelIndex].reserved), flagsByte, voxelPosition,
+         frameData.perAxisRoute, frameData.isDetachedCanvas,
+         frameData.detachedWorldReceive
+     );
+@@ -643,7 +644,7 @@ kernel void IR_STAGE1_KERNEL_NAME(
+             pos3DtoPos2DIso(voxelPositionInt);
+         emitDeformedFace(
+             base, D, voxelDistance, localId, frameData.isDetachedCanvas > 0.5f, faceId,
+-            reVoxelize, distanceScratch, canvasSize
++            dilateRevox, distanceScratch, canvasSize
+ #if IR_STORE_WINNER_ELECTION
+             , voxelIndex, perAxisWinnerIds
+ #endif
+@@ -698,7 +699,7 @@ kernel void IR_STAGE1_KERNEL_NAME(
+     const int2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
+     emitDeformedFace(
+         base, D, voxelDistance, localId, frameData.isDetachedCanvas > 0.5f, viewFaceId,
+-        reVoxelize, distanceScratch, canvasSize
++        dilateRevox, distanceScratch, canvasSize
+ #if IR_STORE_WINNER_ELECTION
+         , voxelIndex, perAxisWinnerIds
+ #endif
+@@ -721,7 +722,7 @@ kernel void IR_STAGE1_KERNEL_NAME(
+         const int2 baseOpposite = frameOffsetFixed + pos3DtoPos2DIso(microOpposite);
+         emitDeformedFace(
+             baseOpposite, D, distanceOpposite, localId, frameData.isDetachedCanvas > 0.5f,
+-            viewFaceId ^ 1, reVoxelize, distanceScratch, canvasSize
++            viewFaceId ^ 1, dilateRevox, distanceScratch, canvasSize
+ #if IR_STORE_WINNER_ELECTION
+             , voxelIndex, perAxisWinnerIds
+ #endif
+diff --git a/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_2_body.metal b/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_2_body.metal
+index 45298ad3f..bebfe76e9 100644
+--- a/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_2_body.metal
++++ b/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_2_body.metal
+@@ -160,7 +160,7 @@ inline void emitDeformedFace(
+     uint2 localId,
+     bool isDetached,
+     int faceId,
+-    bool reVoxelize,
++    bool dilate,
+     int2 canvasSize,
+     device const atomic_int* distanceScratch,
+     texture2d<float, access::write> triangleCanvasColors,
+@@ -179,7 +179,7 @@ inline void emitDeformedFace(
+     // tap claimed; writeColorTap's depth re-test paints only the occlusion winner.
+     int2 su = int2(0);
+     int2 sv = int2(0);
+-    if (reVoxelize) {
++    if (dilate) {
+         faceInPlaneIsoSteps(faceId, su, sv);
+     }
+     for (int sy = 0; sy < n; ++sy) {
+@@ -192,7 +192,7 @@ inline void emitDeformedFace(
+                 distanceScratch, perAxisWinnerIds, triangleCanvasColors,
+                 triangleCanvasDistances, triangleCanvasEntityIds
+             );
+-            if (reVoxelize) {
++            if (dilate) {
+                 writeColorTapCardinalWinner(
+                     p + su, voxelDistance, voxelColor, packedEntityId, voxelIndex, canvasSize,
+                     distanceScratch, perAxisWinnerIds, triangleCanvasColors,
+@@ -220,7 +220,7 @@ inline void emitDeformedFace(
+                 distanceScratch, triangleCanvasColors, triangleCanvasDistances,
+                 triangleCanvasEntityIds
+             );
+-            if (reVoxelize) {
++            if (dilate) {
+                 writeColorTap(
+                     p + su, voxelDistance, voxelColor, packedEntityId, canvasSize,
+                     distanceScratch, triangleCanvasColors, triangleCanvasDistances,
+@@ -317,7 +317,8 @@ kernel void IR_STAGE2_KERNEL_NAME(
+         encodeEntityIdWithPriority(entityIds[voxelIndex], voxels[voxelIndex].reserved & 0x3u);
+ 
+     // Re-voxelize marker — mirror of stage 1.
+-    const bool reVoxelize = frameData.visibleFaceIds.w != 0;
++    const bool reVoxelize = frameData.visibleFaceIds.w == 1;
++    const bool dilateRevox = frameData.visibleFaceIds.w == 1;
+ 
+     // Stage 2 mirrors stage 1's exposed-face gate (#1278) so it doesn't waste a
+     // depth compare on faces stage 1 skipped — and is BYPASSED for re-voxelize
+@@ -339,7 +340,7 @@ kernel void IR_STAGE2_KERNEL_NAME(
+     // writeColorTap rejects their colour taps.
+     const VoxelFaceSelect sel = selectVoxelFace(
+         canvasFogOfWar, fogObservers, faceId, reVoxelize,
+-        voxels[voxelIndex].reserved, flagsByte, voxelPosition,
++        (frameData.visibleFaceIds.w == 2 ? 0u : voxels[voxelIndex].reserved), flagsByte, voxelPosition,
+         frameData.perAxisRoute, frameData.isDetachedCanvas,
+         frameData.detachedWorldReceive
+     );
+@@ -471,7 +472,7 @@ kernel void IR_STAGE2_KERNEL_NAME(
+             localId,
+             frameData.isDetachedCanvas > 0.5f,
+             faceId,
+-            reVoxelize,
++            dilateRevox,
+             canvasSize,
+             distanceScratch,
+             triangleCanvasColors,
+@@ -528,7 +529,7 @@ kernel void IR_STAGE2_KERNEL_NAME(
+         localId,
+         frameData.isDetachedCanvas > 0.5f,
+         viewFaceId,
+-        reVoxelize,
++        dilateRevox,
+         canvasSize,
+         distanceScratch,
+         triangleCanvasColors,
+@@ -563,7 +564,7 @@ kernel void IR_STAGE2_KERNEL_NAME(
+             localId,
+             frameData.isDetachedCanvas > 0.5f,
+             viewFaceId ^ 1,
+-            reVoxelize,
++            dilateRevox,
+             canvasSize,
+             distanceScratch,
+             triangleCanvasColors,
+diff --git a/engine/render/src/shaders/metal/trixel_to_framebuffer.metal b/engine/render/src/shaders/metal/trixel_to_framebuffer.metal
+index 54ad1f810..67d05a224 100644
+--- a/engine/render/src/shaders/metal/trixel_to_framebuffer.metal
++++ b/engine/render/src/shaders/metal/trixel_to_framebuffer.metal
+@@ -41,6 +41,8 @@ struct FrameDataIsoTriangles {
+     // Two-tier composite depth partition (#1958): 0 = world content (clamped out
+     // of the reserved near band), != 0 = foreground priority (pinned into it).
+     int depthPriorityMode;
++    int overflowMode;
++    int trixelSampleLayout;
+ };
+ 
+ // SSBO populated by the fragment shader when the mouse hovers over a
+@@ -97,19 +99,21 @@ fragment FragmentOut f_trixel_to_framebuffer(
+     const float2 textureSize = float2(triangleColors.get_width(), triangleColors.get_height());
+     const int2 z1 = trixelOriginOffsetZ1(int2(textureSize));
+ 
+-    // Color / depth read at the RAW interpolated canvas position — the raw
+-    // sample already lands on the correct trixel row (same convention as the
+-    // GLSL twin). The shifted index IS still computed (`originShifted` below)
+-    // and used for hover entity-id readback, so it stays in lockstep with
+-    // CPU-side `mouseTrixelPositionWorld()` (same `pos2DIsoToTriangleIndex`
+-    // formula). See trixelFramebufferSamplePosition in ir_iso_common.metal;
+-    // #442, docs/design/trixel-parity-shift-442-investigation.md.
++    // Hover uses world parity; local display triangles use canvas parity.
+     const float2 originRaw = in.texCoords * textureSize;
+     const int originModifier = trixelOriginModifier(z1, frameData.canvasOffset);
+     const float2 originShifted =
+         trixelFramebufferSamplePosition(originRaw, originModifier);
+ 
+-    const uint2 sampleCoord = trixelCanvasReadCoord(originRaw, textureSize);
++    float2 displayOrigin = originRaw;
++    if (frameData.trixelSampleLayout == 1) {
++        // Center the triangular footprint on the stored voxel origin.
++        displayOrigin = trixelFramebufferSamplePosition(
++            originRaw + float2(0.0f, 1.0f), (z1.x + z1.y) & 1);
++        if (any(displayOrigin < float2(0.0f)) ||
++            any(displayOrigin >= textureSize)) discard_fragment();
++    }
++    const uint2 sampleCoord = trixelCanvasReadCoord(displayOrigin, textureSize);
+     const uint2 hoverCoord = trixelCanvasReadCoord(originShifted, textureSize);
+ 
+     float4 color = triangleColors.read(sampleCoord);
+@@ -124,20 +128,7 @@ fragment FragmentOut f_trixel_to_framebuffer(
+     // cubeSub) lands odd rawDist values on exact .5 ties, where the GLSL
+     // twin's round() is implementation-defined; both twins share roundHalfUp.
+     int base = roundHalfUp(float(rawDist) * depthScale);
+-    // Per-trixel priority tiers (#1960) — twin of f_trixel_to_framebuffer.glsl.
+-    // No-priority perf fast-path (#2155): read this fragment's entity id (at the
+-    // SAME texel its color/depth came from — sampleCoord, the raw position) only
+-    // when the canvas carries a per-trixel priority. When it doesn't,
+-    // decodePriority of an unread id would be 0, so tier == depthPriorityMode and
+-    // the output is byte-identical. This read never feeds picking (the hover
+-    // read below uses the shifted hoverCoord and is gated on isMouseHovered
+-    // separately), so no `|| isMouseHovered` disjunct is needed — the GLSL twin
+-    // carries the same sampleCoord/hoverCoord split. So a fragment that is BOTH
+-    // prioritized and hovered reads triangleEntityIds TWICE — once here at
+-    // sampleCoord, once at hoverCoord below. The two reads want different
+-    // texels, so the pair is not redundant: one shared fetch has to pick a
+-    // single coord, and either choice reintroduces a parity-shifted read on the
+-    // path that needs the other (#394, #442).
++    // Priority and color/depth select the same stored cell.
+     int tier = frameData.depthPriorityMode;
+     if (frameData.anyPerTrixelPriority != 0) {
+         const uint2 sampleEntityId = triangleEntityIds.read(sampleCoord).rg;
+diff --git a/engine/render/src/shaders/v_trixel_to_framebuffer.glsl b/engine/render/src/shaders/v_trixel_to_framebuffer.glsl
+index 7848cd946..bdedbe787 100644
+--- a/engine/render/src/shaders/v_trixel_to_framebuffer.glsl
++++ b/engine/render/src/shaders/v_trixel_to_framebuffer.glsl
+@@ -50,6 +50,8 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
+     // note above) and to the C++ FrameDataTrixelToFramebuffer.
+     int anyPerTrixelPriority;
+     int depthPriorityMode;
++    int overflowMode;
++    int trixelSampleLayout;
+ };
+ 
+ void main() {
