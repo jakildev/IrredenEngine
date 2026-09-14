@@ -3118,18 +3118,42 @@ void initEntities() {
                     if (fps > 0.0f)
                         framesFps = fps;
                 }
-            } else if (frameVoxels.size() != frames.front().size()) {
-                // A set whose frames disagree on size cannot be swapped in
-                // place, and a partial animation would play a stutter nobody
-                // asked for — refuse the whole set rather than the odd frame.
-                IR_LOG_ERROR(
-                    "--load-vxs: frame '{}' has {} voxels, frame 0 has {} — not an animation",
-                    framePath,
-                    frameVoxels.size(),
-                    frames.front().size()
-                );
-                loadFailed = true;
-                break;
+            } else {
+                // The one pooled set is built from frame 0's bounds and its
+                // records stay indexed by that extent, so a swap is only a copy
+                // when every frame shares frame 0's bounds — an equal count
+                // alone (16×16×16 vs 8×32×16) would copy a later pose in at
+                // the wrong coordinates. A partial animation would play a
+                // stutter nobody asked for, so refuse the whole set rather
+                // than the odd frame.
+                const bool matchesFrame0 = frameVoxels.size() == frames.front().size() &&
+                                           dense.boundsMin_ == frameBoundsMin &&
+                                           dense.boundsMax_ == frameBoundsMax;
+                if (!matchesFrame0) {
+                    const ivec3 extent = dense.boundsMax_ - dense.boundsMin_;
+                    const ivec3 extent0 = frameBoundsMax - frameBoundsMin;
+                    IR_LOG_ERROR(
+                        "--load-vxs: frame '{}' is {} voxels, {}x{}x{} from [{},{},{}]; frame 0 "
+                        "is {} voxels, {}x{}x{} from [{},{},{}] — not an animation",
+                        framePath,
+                        frameVoxels.size(),
+                        extent.x,
+                        extent.y,
+                        extent.z,
+                        dense.boundsMin_.x,
+                        dense.boundsMin_.y,
+                        dense.boundsMin_.z,
+                        frames.front().size(),
+                        extent0.x,
+                        extent0.y,
+                        extent0.z,
+                        frameBoundsMin.x,
+                        frameBoundsMin.y,
+                        frameBoundsMin.z
+                    );
+                    loadFailed = true;
+                    break;
+                }
             }
             frames.push_back(std::move(frameVoxels));
         }
