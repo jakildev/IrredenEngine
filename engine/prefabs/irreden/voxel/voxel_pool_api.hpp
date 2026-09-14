@@ -12,11 +12,11 @@
 // contract from `C_VoxelPool::allocateVoxels` (single canvas-map lookup,
 // no virtual indirection, no per-call hash beyond what's already there).
 //
-// Layering motivation: `engine/script/` consumers (prefab_api.cpp et al.)
-// transitively include this header through component_voxel_set.hpp; keeping
+// `engine/script/` consumers (prefab_api.cpp et al.) transitively include
+// this header through component_voxel_set.hpp; keeping
 // `<irreden/ir_render.hpp>` out of the component's public surface concentrates
 // the render dependency in this one shim header — see
-// `engine/script/CLAUDE.md` for the T-201 layering plan.
+// `engine/script/CLAUDE.md` for the layering contract.
 
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_entity.hpp>
@@ -166,7 +166,7 @@ resyncRangeFromColors(std::size_t startIndex, std::size_t count, IREntity::Entit
 // Queue a voxel range for GPU position upload on the next
 // VOXEL_TO_TRIXEL_STAGE_1 flush (mirrors the pending-range flush the per-frame
 // UPDATE_VOXEL_SET_CHILDREN uses). Used by the post-load canvas-attach seed
-// pass (`C_VoxelSetNew::attachToCanvas`, #2217) so a just-seeded set's local
+// pass (`C_VoxelSetNew::attachToCanvas`) so a just-seeded set's local
 // positions reach binding 5 on the first post-load frame.
 inline void
 queuePositionRange(std::size_t startIndex, std::size_t count, IREntity::EntityId canvasEntity) {
@@ -185,7 +185,7 @@ markCullBoundsDirty(std::size_t startIndex, std::size_t count, IREntity::EntityI
     }
 }
 
-// Push-at-mutation route for the per-trixel-priority aggregate (#2155). The
+// Push-at-mutation route for the per-trixel-priority aggregate. The
 // C_VoxelSetNew priority mutators call this with the delta of priority-carrying
 // voxels they just added (+) or removed (-) so the pool's count — read once per
 // frame by VOXEL_TO_TRIXEL_STAGE_1 to gate the finalization shader's entity-id

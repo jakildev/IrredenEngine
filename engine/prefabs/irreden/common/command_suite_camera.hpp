@@ -19,9 +19,9 @@ namespace IRCommand {
 ///
 /// `registerCameraCommands({.omit_ = {CLOSE_WINDOW}})` binds everything except
 /// Escape — the shape a creation that owns its own Escape handling wants,
-/// instead of hand-copying the rest of the suite. `IRPrefab::SettingsMenu` is
-/// the in-engine case (#2551): it binds Escape to open the menu and puts a QUIT
-/// button inside, so quitting stays two inputs away.
+/// instead of hand-copying the rest of the suite. `IRPrefab::SettingsMenu`
+/// binds Escape to open the menu and puts a QUIT button inside, so quitting
+/// stays two inputs away.
 /// `registerCameraCommands({.remap_ = {{IRInput::kKeyButtonW, IRInput::kKeyButtonUp}, …}})`
 /// moves pan onto the arrow keys, carrying each key's PRESSED + RELEASED rows
 /// together. Exact matching semantics: @ref BindingOverrides.

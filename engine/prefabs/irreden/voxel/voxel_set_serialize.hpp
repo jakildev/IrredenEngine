@@ -1,8 +1,8 @@
 #ifndef IR_VOXEL_SET_SERIALIZE_H
 #define IR_VOXEL_SET_SERIALIZE_H
 
-// `SaveSerialize<C_VoxelSetNew>` for the ECS world snapshot — persist P6 / W-10
-// (#2217, epic #667). C_VoxelSetNew owns `std::span` views into a process-local
+// `SaveSerialize<C_VoxelSetNew>` for the ECS world snapshot.
+// C_VoxelSetNew owns `std::span` views into a process-local
 // voxel pool plus (in staged mode) a `std::vector<C_Voxel>`, so it is NOT
 // trivially copyable and the primary `SaveSerialize` template (a raw byte
 // image) cannot handle it — a memcpy would persist dangling pool spans.
@@ -15,7 +15,7 @@
 //   - the per-voxel `C_Voxel` records (a fixed 12 B std430 POD — the same
 //     raw-image contract the primary template uses for POD components),
 //   - the owning canvas EntityId, for post-load canvas resolution, and
-//   - `anchor_` (v2, #2563). For a non-CORNER set the anchor — NOT `boundsMin`
+//   - `anchor_`. For a non-CORNER set the anchor — NOT `boundsMin`
 //     — is what reconstructs the local origin on load: that origin is
 //     half-integer (always for GROUND, on even axes for CENTER) and the
 //     `ivec3` boundsMin cannot represent it. v1 records predate the field and
@@ -69,7 +69,7 @@ template <> struct SaveSerialize<IRComponents::C_VoxelSetNew> {
 
         w.writeU64(static_cast<std::uint64_t>(set.canvasEntity_));
 
-        // v2 (#2563): the anchor. It is the ONLY record of a non-CORNER set's
+        // The anchor. It is the ONLY record of a non-CORNER set's
         // local origin that survives the round trip — the `boundsMin` above is
         // an ivec3 and GROUND's z origin is half-integer for every size — so
         // `read` reconstructs the origin from this rather than from boundsMin.
@@ -175,7 +175,7 @@ template <> struct SaveSerialize<IRComponents::C_VoxelSetNew> {
     }
 };
 
-// v1 predates the anchor byte (#2563). Every v1 set was authored through the
+// v1 predates the anchor byte. Every v1 set was authored through the
 // bool ctor, so its origin is exactly the `boundsMin` the record already
 // carries and CORNER is the faithful reading — CENTER sets round-trip through
 // boundsMin as they always did, with the pre-existing even-size lossiness the

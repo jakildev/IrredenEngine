@@ -12,7 +12,7 @@ using IRMath::vec3;
 namespace IRComponents {
 
 // One confirmed AABB overlap, stamped by COLLISION_NOTE_PLATFORM with BOTH
-// colliders' collision layers in hand (#1817). Because the producer already
+// colliders' collision layers in hand. Because the producer already
 // holds both `C_CollisionLayer`s during its broad+narrow scan, it records
 // each entity's layer here — so the DISPATCH_LUA_OVERLAP consumer never
 // reaches back to the foreign entity with `getComponent` (the batched-vector

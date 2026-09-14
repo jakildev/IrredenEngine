@@ -1,7 +1,7 @@
 #ifndef SYSTEM_PROPAGATE_CHUNK_MEMBERSHIP_H
 #define SYSTEM_PROPAGATE_CHUNK_MEMBERSHIP_H
 
-// PROPAGATE_CHUNK_MEMBERSHIP (T-359, Epic E E5) — UPDATE pipeline.
+// PROPAGATE_CHUNK_MEMBERSHIP — UPDATE pipeline.
 //
 // Detects when an entity's world position has crossed a chunk boundary,
 // updates its C_ChunkMembership, and migrates ownership through the
@@ -19,12 +19,12 @@
 // contract (chunk_residency.hpp `slot()`) requires migrations be
 // batched, not interleaved with per-entity reads.
 //
-// Rotated-entity interaction (Epic C C6 / #957): rotation acts on
+// Rotated-entity interaction: rotation acts on
 // entity-local space; chunk membership is decided by world-space root
 // position. A rotated entity whose AABB straddles two chunks remains a
 // single-chunk citizen for residency purposes — `worldToChunk` is fed
 // the root translation only, so the rotation does not perturb the
-// migration decision. Acceptance criterion (3).
+// migration decision.
 //
 // Wiring contract: a creation that opts into world streaming
 // constructs both an `IRWorld::ChunkResidencyManager` and the

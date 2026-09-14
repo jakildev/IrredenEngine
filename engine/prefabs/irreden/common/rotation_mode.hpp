@@ -37,7 +37,7 @@ namespace IRPrefab::RotationMode {
 /// than spelling their own mode list, so a new mode cannot be wired into
 /// one site and missed by the other. Adding a mode means classifying it
 /// here; `test/ecs/rotation_mode_set_test.cpp` static-asserts the enum's
-/// size so that stays mandatory rather than remembered. See #2908.
+/// size so that stays mandatory rather than remembered.
 inline constexpr bool ownsEntityCanvas(IRComponents::RotationMode mode) {
     return mode == IRComponents::RotationMode::DETACHED ||
            mode == IRComponents::RotationMode::DETACHED_REVOXELIZE;

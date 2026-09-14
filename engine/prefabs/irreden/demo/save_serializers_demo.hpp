@@ -1,8 +1,8 @@
 #ifndef IR_SAVE_SERIALIZERS_DEMO_H
 #define IR_SAVE_SERIALIZERS_DEMO_H
 
-/// `SaveSerialize<C>` specialization for `engine/prefabs/irreden/demo/`
-/// (#2242). One component, one string. It lives in its own header rather
+/// `SaveSerialize<C>` specialization for `engine/prefabs/irreden/demo/`.
+/// One component, one string. It lives in its own header rather
 /// than folding into `common/save_serializers_common.hpp` because a prefab
 /// header must not reach across domains (`engine/prefabs/CLAUDE.md`
 /// anti-patterns) — the serializer headers mirror the domain split of the

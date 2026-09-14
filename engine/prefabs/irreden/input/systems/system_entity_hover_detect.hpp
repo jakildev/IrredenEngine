@@ -14,7 +14,7 @@
 namespace IRSystem {
 
 // Spelling insurance: out-of-tree consumers may name this type directly
-// rather than going through the accessor (see #2582).
+// rather than going through the accessor.
 using EntityEventHandlers = IRComponents::C_EntityEventHandlers;
 
 // The world's Lua handler registry. Lazy-creates the singleton row on first
@@ -78,7 +78,7 @@ template <> struct System<ENTITY_HOVER_DETECT> {
     // Hover enter/leave dispatch. Kept separate from beginTick so it is
     // reachable without a GL context — beginTick's three resolution sources
     // go through IRRender/IRInput manager globals a headless test cannot
-    // stand up, so this is the half the gtests drive (see #2582).
+    // stand up, so this is the half the gtests drive.
     void applyHoverTransition(IREntity::EntityId currentHovered) {
         if (currentHovered == previousHoveredEntity_) {
             return;
@@ -113,7 +113,7 @@ template <> struct System<ENTITY_HOVER_DETECT> {
         // would hand the dead id to every Lua onEntityUnhovered handler.
         // Nulling it here deliberately SUPPRESSES that unhover rather than
         // delivering it against a corpse — the documented behaviour, see
-        // input/CLAUDE.md and #2582.
+        // input/CLAUDE.md.
         auto *params = getSystemParams<System<ENTITY_HOVER_DETECT>>(id);
         IREntity::getEntityManager().registerPreDestroyHook([params](IREntity::EntityId destroyed) {
             if (params->previousHoveredEntity_ == destroyed) {

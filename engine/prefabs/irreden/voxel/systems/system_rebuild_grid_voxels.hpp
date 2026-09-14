@@ -1,23 +1,24 @@
 #ifndef SYSTEM_REBUILD_GRID_VOXELS_H
 #define SYSTEM_REBUILD_GRID_VOXELS_H
 
-// SYSTEM_REBUILD_GRID_VOXELS — Epic C, C6 (T-294); inverse re-voxelize #1720.
+// SYSTEM_REBUILD_GRID_VOXELS — re-rasterizes GRID-mode entities via inverse
+// re-voxelize.
 //
 // Re-rasterizes a GRID-mode entity's authored voxels into rotated world
 // cells. Runs AFTER UPDATE_VOXEL_SET_CHILDREN in the UPDATE pipeline — the
 // translate-only path writes a baseline, this system overwrites with the
 // entity's full SQT (rotation/scale composed into world cells).
 //
-// Rotating sets render by DEST-LATTICE INVERSE RESAMPLING (#1720, the CPU
-// twin of the detached re-voxelize GPU fix #1619): walk the integer world
+// Rotating sets render by DEST-LATTICE INVERSE RESAMPLING (the CPU
+// twin of the detached re-voxelize GPU path): walk the integer world
 // cells of the rotated source AABB, inverse-map each through
 // `roundHalfUp(R⁻¹·c)` into a per-set source occupancy grid, and author
 // position + color + active per covered cell into the set's pool span.
 // Forward scatter (one authored voxel → `roundHalfUp(R·p)`) is not
 // surjective onto the covered dest cells — mid-rotation it left up to ~29%
-// of a solid 12³ uncovered (the #1720 row/strip holes).
+// of a solid 12³ uncovered (row/strip holes).
 //
-// Span contract (#1720 decision, measured across full spins, 2026-06-12):
+// Span contract, measured across full spins:
 // the span stays at `numVoxels_` — no allocation change. The covered
 // dest-cell count exceeds the span only by a boundary fluctuation (solid
 // 12³: ≤ 48 cells ≈ 2.8% observed; solid 16³: ≤ 144 ≈ 3.5%; carved/thin
@@ -211,13 +212,13 @@ template <> struct System<REBUILD_GRID_VOXELS> {
         ) {
             // Zero-scale solids have no inverse, and a pathological dest
             // volume is cheaper to render with holes than to walk — both
-            // keep the pre-#1720 forward map for the frame.
+            // keep the forward map for the frame.
             forwardArm(voxelSet, worldTransform, pool, baseIdx, safeCount);
         }
     }
 
     // ---- identity ------------------------------------------------------
-    // The pre-#1720 path, byte-identical for a set that never rotated. A
+    // The identity path, byte-identical for a set that never rotated. A
     // set arriving FROM a rotated pose additionally restores its authored
     // span from the snapshot (then clears it — see the component header)
     // and queues the restored positions for upload: the steady-state
@@ -264,7 +265,7 @@ template <> struct System<REBUILD_GRID_VOXELS> {
     }
 
     // ---- forward fallback ----------------------------------------------
-    // The pre-#1720 forward map for the rare frames the inverse walk is
+    // The forward map for the rare frames the inverse walk is
     // unavailable (zero scale / dest volume past kMaxDestWalkCells). Colors
     // are re-derived from the snapshot when one exists so a set that was
     // mid-spin renders its authored colors, not last frame's dest
@@ -312,7 +313,7 @@ template <> struct System<REBUILD_GRID_VOXELS> {
         recomputeMaskFromGlobals(pool, baseIdx, safeCount);
     }
 
-    // ---- inverse resample (#1720) ---------------------------------------
+    // ---- inverse resample ------------------------------------------------
     // Returns false when the dest walk would exceed kMaxDestWalkCells (the
     // caller falls back to the forward map); true on completion.
     bool inverseArm(
@@ -470,8 +471,8 @@ template <> struct System<REBUILD_GRID_VOXELS> {
 
         // Author the span: surface cells first, then interior while slots
         // remain (the span-cap drop policy above). Face-occlusion bits come
-        // from dest-grid adjacency — the rotated-frame generalization #1570
-        // introduced; non-face flag bits (AO contrib, emissive) ride along
+        // from dest-grid adjacency — the rotated-frame generalization
+        // introduced it; non-face flag bits (AO contrib, emissive) ride along
         // from the source voxel.
         int written = 0;
         auto writeCell = [&](int lin) {
@@ -543,13 +544,13 @@ template <> struct System<REBUILD_GRID_VOXELS> {
         return true;
     }
 
-    // Recompute the exposed-face mask against the ROTATED world cells (#1570
-    // GRID parity) for the identity arm and the forward fallback. The
+    // Recompute the exposed-face mask against the ROTATED world cells for
+    // the identity arm and the forward fallback. The
     // authored `C_Voxel.flags_` mask is in the entity's MODEL frame, but the
     // world cells live in WORLD space, so the world-canvas raster
     // (`c_voxel_to_trixel_stage_{1,2}` faceIsExposed) would gate
     // rotated-frame faces against an unrotated mask and drop / mis-colour
-    // whole faces — the defect #1570 fixed. The inverse arm derives the same
+    // whole faces. The inverse arm derives the same
     // bits directly from its dest grid instead. STAGE_1 re-uploads pool
     // colours (which carry flags_) every frame, so the rewrite reaches the
     // GPU.
@@ -587,7 +588,7 @@ template <> struct System<REBUILD_GRID_VOXELS> {
 };
 
 // REBUILD_GRID_VOXELS_IMPLICIT — the same re-rasterize for entities that
-// carry NO C_RotationMode (#2376).
+// carry NO C_RotationMode.
 //
 // `component_rotation_mode.hpp` documents absence of the component as
 // implicitly GRID; this arm is what makes that true of the re-rasterize,
