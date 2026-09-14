@@ -111,9 +111,10 @@ struct C_TriangleCanvasTextures {
     // overlay) — the composite then keeps the pre-#1624 raw offset.
     int renderedSubdivisions_ = 0;
 
-    // LOCAL_TRIANGLES requires undilated, cardinal voxel writes in a private
-    // canvas. Callers mixing SDF/text producers must keep RECTANGULAR.
-    TrixelSampleLayout sampleLayout_ = TrixelSampleLayout::RECTANGULAR;
+    // Detached voxel display reconstructs undilated local triangle footprints.
+    // RECTANGULAR is a raw-trixel debug override for that producer. Do not
+    // mix SDF/text into revoxelized voxel canvases; their storage differs.
+    TrixelSampleLayout sampleLayout_ = TrixelSampleLayout::LOCAL_TRIANGLES;
     // Effective producer layout; the composite must follow the stored data
     // when an owner switches away from revoxelization.
     TrixelSampleLayout renderedSampleLayout_ = TrixelSampleLayout::RECTANGULAR;
