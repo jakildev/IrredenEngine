@@ -215,7 +215,7 @@ IRRender::DebugOverlayMode g_debugOverlay = IRRender::DebugOverlayMode::NONE;
 // --load-vxs <path>: load a DENSE-mode .vxs and render it alongside the built-in
 // shape fixtures. Empty = not requested. When the path names one file of a
 // `<base>_frame_<N>.vxs` set (what the voxel editor writes for a multi-frame
-// animation, #766 F-1.6), every sibling frame loads and the set plays back.
+// animation), every sibling frame loads and the set plays back.
 std::string g_loadVxsPath;
 // --vxs-frame <N>: pin a multi-frame set to frame N instead of playing it back,
 // so a screenshot names the pose it captured. Negative = play back.
@@ -1685,7 +1685,7 @@ void initSystems() {
         IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>(),
         IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS_IMPLICIT>()
     };
-    // --load-vxs animation playback (#766 F-1.6): swap the next frame's voxels
+    // --load-vxs animation playback: swap the next frame's voxels
     // into the loaded set on a fixed tick cadence derived from the asset's own
     // FPS. Registered whenever a set was requested for playback — the entity
     // does not exist yet (initEntities runs after this), so the frame count is
@@ -3055,7 +3055,7 @@ void initEntities() {
     // --load-vxs: load a DENSE-mode .vxs file and place the voxel set at the
     // origin so it can be compared against the procedural shapes. A
     // `<base>_frame_<N>.vxs` path brings in every sibling frame; frame 0 seeds
-    // the entity and the rest are kept for the playback swap (#766 F-1.6).
+    // the entity and the rest are kept for the playback swap.
     if (!g_loadVxsPath.empty()) {
         const std::vector<std::string> framePaths = resolveVxsFramePaths(g_loadVxsPath);
 

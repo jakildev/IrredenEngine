@@ -642,10 +642,10 @@ inline Recipe buildAnt(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
 inline constexpr int kBirdBodySwatch = 6;  // blue
 inline constexpr int kBirdWingSwatch = 15; // near-white
 
-// The bird — the plan's PR-4 and the first two-frame entity (#766 F-1.6). A
-// small X-mirrored body with a wing pair authored twice: frame 0 holds the
-// wings level, frame 1 raises them into a stepped upstroke, so stepping the two
-// frames is a flap. Runs at the default 16 cubed.
+// The bird — the first two-frame entity. A small X-mirrored body with a wing
+// pair authored twice: frame 0 holds the wings level, frame 1 raises them into
+// a stepped upstroke, so stepping the two frames is a flap. Runs at the default
+// 16 cubed.
 //
 // It is also the first recipe to click the palette (selectPaletteSwatch) and the
 // first to touch the animation frames, so it carries the positive fires for
@@ -662,7 +662,7 @@ inline constexpr int kBirdWingSwatch = 15; // near-white
 //
 // Every wing cell grows in `-x` or `-z` from the cell before it: a voxel's `-y`
 // face does not reliably place its `-y` neighbour at the cardinal camera
-// (#2575, friction log M-2), so the wing's y depth is two rows authored
+// (friction log M-2), so the wing's y depth is two rows authored
 // independently rather than one row widened. The upstroke is built tier by
 // tier rather than chain by chain for the same reason the ant interleaves its
 // legs: finishing the y==7 chain first would put its outermost voxel in front
@@ -855,11 +855,10 @@ inline constexpr int kTreeFoliageSwatch = 3; // green
 inline constexpr int kTreeTrunkTiers = 16;
 inline constexpr int kTreeCanopyTiers = 6;
 
-// The tree — the plan's PR-4 taller-than-wide case (#766 F-1.6), authored at
-// `--scene-size 16 16 26`. A 22-tier column on a 4x4 root pad, carved down to a
-// 2x2 trunk for its lower 16 tiers so a 4x4 canopy is left standing on top,
-// with four foliage bumps hung off the canopy's sides and its top corners
-// rounded off.
+// The tree — the taller-than-wide case, authored at `--scene-size 16 16 26`.
+// A 22-tier column on a 4x4 root pad, carved down to a 2x2 trunk for its lower
+// 16 tiers so a 4x4 canopy is left standing on top, with four foliage bumps
+// hung off the canopy's sides and its top corners rounded off.
 //
 // Additive-then-subtractive, and that order is forced rather than stylistic.
 // The picker exposes only a voxel's -x / -y / -z faces, so every placement

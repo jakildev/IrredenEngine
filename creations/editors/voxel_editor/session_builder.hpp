@@ -324,7 +324,7 @@ struct GuiAimFixup {
 // shader reads *instead of* alpha (T-287), and it is pool state rather than
 // voxel-record state — so a raw write to a set's `voxels_` span updates one and
 // not the other. A recipe that steps animation frames asserts BOTH: the two
-// disagreeing is exactly the shape of a missing resyncAfterRawEdits (#766).
+// disagreeing is exactly the shape of a missing resyncAfterRawEdits.
 enum class CheckSource { VOXEL_ALPHA, POOL_ACTIVE_MASK };
 
 struct OccupancyCheck {

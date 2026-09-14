@@ -1418,8 +1418,8 @@ void loadFrameToLive(int idx) {
     // describing the frame that just left. A step then renders a blend of the
     // two poses: cells the departing frame had inactive stay culled however live
     // the arriving frame says they are. Every alpha-reading check still passes,
-    // which is why the bird session asserts the mask directly (#766 F-1.6,
-    // found authoring the two-frame flap: frame 1 drew a bird with no wings).
+    // which is why the bird session asserts the mask directly: a wingless
+    // frame 1 passes every alpha check and fails only the mask check.
     vs.resyncAfterRawEdits();
     // The pool's cached chunk bounds are the cull inputs, and they are built by
     // skipping voxels whose alpha is zero — so a swap that changes WHICH cells

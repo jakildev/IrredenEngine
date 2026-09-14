@@ -323,11 +323,10 @@ records:
   The bridge translates `IRAsset::DenseVoxelSet` → `C_VoxelSetNew`
   via a per-record copy (`VoxelRecord` and `C_Voxel` share the 12 B
   std430 layout but remain distinct types so layout drift surfaces as
-  a compile error). `toVoxels` in the same header stops at the
-  `std::vector<C_Voxel>` and touches no pool — the form to use when a
-  caller holds more dense sets than it attaches (animation frames).
-  Also fires for HYBRID during backward-compat load (both halves
-  attach in a single spawn call).
+  a compile error). `toVoxels` stops at the `std::vector<C_Voxel>` with
+  no pool touch — for sets held but never attached (animation frames).
+  Also fires for HYBRID during backward-compat load (both halves attach
+  in a single spawn call).
 
 `C_ShapeDescriptor`'s constructors snapshot the active canvas via
 `IRRender::getActiveCanvasEntityOrNull()` rather than the
@@ -450,40 +449,31 @@ string.
 ## Gotchas
 
 - **Carving `reserved_` bits? Update the layout comment in the same change.**
-  When you repurpose sub-bits of a `reserved_` field in `C_Voxel` (or any
-  GPU-mirrored std430 struct with a layout comment), update that struct's
-  layout comment in the same commit. A stale "reserved for future fields"
-  comment leads the next allocator to believe the bits are free and silently
-  collide with the live encoding in the shader — no compile error, just
-  corrupted GPU decode.
+  A stale "reserved for future fields" comment on a GPU-mirrored std430
+  struct (`C_Voxel` and kin) leads the next allocator to believe the bits
+  are free and silently collide with the live shader encoding — no compile
+  error, just corrupted GPU decode.
 - **Never add `C_VoxelPool` to a non-canvas entity.** Pools are
-  canvas-scoped. Only the canvas entity created by
-  `IRRender::createCanvas` should own one.
+  canvas-scoped; only the canvas entity from `IRRender::createCanvas` owns one.
 - **`C_VoxelSetNew` allocates on construction.** The constructor goes
-  through `IRPrefab::VoxelPool::allocate(...)` (see `voxel_pool_api.hpp`),
-  which forwards into the render-side pool but keeps
-  `component_voxel_set.hpp` free of `<irreden/ir_render.hpp>` — see the
-  T-201 layering plan in `engine/script/CLAUDE.md`. If there's no active
-  canvas the dense-data ctor stages to `pendingVoxels_`; the element-count
-  ctor asserts (use the dense ctor for headless construction). Check
+  through `IRPrefab::VoxelPool::allocate(...)` (`voxel_pool_api.hpp`), which
+  forwards into the render-side pool while keeping `component_voxel_set.hpp`
+  free of `<irreden/ir_render.hpp>` (T-201 layering, `engine/script/CLAUDE.md`).
+  With no active canvas the dense-data ctor stages to `pendingVoxels_`; the
+  element-count ctor asserts (headless: use the dense ctor). Check
   `numVoxels_ > 0` after construction either way.
 - **Position lag by one frame.** `C_WorldTransform.translation_` on a
-  voxel set is only pushed to the pool by
-  `system_update_voxel_set_children`. Any system that writes the
-  entity's translation (or upstream modifier resolver +
-  `PROPAGATE_TRANSFORM`) must run **before** that system in the
-  pipeline or voxels lag a frame.
-- **`onDestroy()` must run.** It is not a destructor — `C_VoxelSetNew`
-  has none; the ECS calls `onDestroy()` when it drops a component it
-  stores (`i_component_data.hpp`). So a set leaks its span two ways:
-  destroying the entity out from under the entity manager (stick to
-  `IREntity::destroyEntity(id)`), and — the easier mistake —
-  constructing a `C_VoxelSetNew` that never becomes a component at all.
-  Once a canvas exists the ctor reserves from the pool, so a
-  stack-local built to inspect or copy dense data strands its span for
-  the process lifetime. Build at most one per set an entity will hold
-  and use `IRPrefab::DenseVoxel::toVoxels` for the rest.
+  voxel set is only pushed to the pool by `system_update_voxel_set_children`.
+  Any system that writes the entity's translation (or upstream modifier
+  resolver + `PROPAGATE_TRANSFORM`) must run **before** it in the pipeline
+  or voxels lag a frame.
+- **`onDestroy()` must run.** There is no destructor; the ECS calls
+  `onDestroy()` when it drops a stored component (`i_component_data.hpp`).
+  A span leaks if the entity is destroyed behind the entity manager (use
+  `IREntity::destroyEntity(id)`) or — the easier mistake — if the set never
+  becomes a component: with a canvas active the ctor reserves, so a
+  stack-local built to inspect dense data strands its span for the process.
+  Build one per set an entity will hold; `DenseVoxel::toVoxels` for the rest.
 - **Shape descriptors vs voxel sets.** `C_ShapeDescriptor` is GPU-only
   (shaders evaluate the SDF directly) — it does *not* reserve voxels.
   `C_VoxelSetNew` pays memory but you can mutate individual cells.
-  Choose the right tool for the use case.
