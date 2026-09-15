@@ -1,4 +1,4 @@
-"""Codex CLI transport for a target-bound fleet iteration or interactive architect."""
+"""Codex CLI transport for transient fleet iterations or an interactive architect."""
 
 import argparse
 import json
@@ -13,10 +13,11 @@ from pathlib import Path
 
 from fleet_codex_doctor import probe
 from fleet_codex_policy import check, prepare
-from fleet_runtime import CODEX_MODELS, atomic_json
+from fleet_runtime import BATCH_ROLES, CODEX_MODELS, atomic_json
 
 ROOT = Path(__file__).resolve().parents[2]
-ROLES = ("worker", "sonnet-reviewer", "opus-reviewer", "smoke-worker", "opus-architect")
+ROLES = ("worker", "sonnet-reviewer", "opus-reviewer", "smoke-worker", *BATCH_ROLES,
+         "opus-architect")
 
 
 def prompt(role, mode, target, worktree=None):
@@ -31,6 +32,21 @@ def prompt(role, mode, target, worktree=None):
                 "Read the rendering skills linked from CODEX.md and inspect current open PRs "
                 "before proposing work. Wait for the human to choose the rendering problem. "
                 "Do not claim queue work or start implementation without a concrete assignment.")
+    if role in BATCH_ROLES:
+        if target:
+            raise ValueError("Codex batch roles require an empty dispatch target")
+        return (
+            f"Read AGENTS.md and docs/agents/CODEX.md, then {role_path}. "
+            f"Execute that role in {mode} mode. Runtime is codex, not Claude. "
+            "This role has no dispatch target; run its cached-projection batch pass exactly as "
+            "the role file describes, claiming only through that file's own claim etiquette. "
+            "Follow FLEET-RUNTIME.md's completion contract. Read the complete issue/PR threads. "
+            "Use the available Codex tools for referenced Claude tool names. "
+            "Use the real model/runtime in authorship. Preserve human merge authority. "
+            "A permissions failure is a blocked operation: report the exact command and "
+            "reason through the completion contract; do not repeatedly retry it. "
+            "Finish the assigned workflow and return a final response so this iteration exits."
+        )
     return (
         f"Read AGENTS.md and docs/agents/CODEX.md, then {role_path}. "
         f"Execute that role in {mode} mode. Runtime is codex, not Claude. "
@@ -165,7 +181,9 @@ def run(args):
             print(policy)
         return 0
     target = os.environ.get("FLEET_DISPATCH_TARGET", "")
-    if args.role != "opus-architect" and not target:
+    if args.role in BATCH_ROLES and target:
+        raise ValueError("Codex batch roles require an empty dispatch target")
+    if args.role not in (*BATCH_ROLES, "opus-architect") and not target:
         raise ValueError("Codex transient session requires an explicit dispatch target")
     sidecar = Path(os.environ.get("FLEET_CODEX_SIDECAR", str(state / "codex-architect.json")))
     argv = command(args.model, args.effort, worktree, writable_roots(worktree, state),

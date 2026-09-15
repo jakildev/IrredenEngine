@@ -58,8 +58,9 @@ Add `--repo game` before the subcommand when `FLEET_DISPATCH_REPO` is
 for the claimless kind too — the comment is the whole record.
 
 **Target unset** — a manual `/role-<role>`, a `dry-run` / `review-only`
-boot, or a reserved worktree resuming its own task — run the role's
-discovery flow, starting with the cache read.
+boot, a reserved worktree resuming its own task, or a target-less batch role
+running on the provider elected by the dispatcher — run the role's discovery
+flow, starting with the cache read.
 
 ## Startup — shared fleet state cache read
 
