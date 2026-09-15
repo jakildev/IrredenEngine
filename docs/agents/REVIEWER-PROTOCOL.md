@@ -212,7 +212,9 @@ nit is still open at merge, remove the body line so the issue lives on.
 
 Write the body with the **Write** tool to the worktree-local, gitignored
 `.review-body.md` (not `/tmp/`; the sandbox blocks writes outside the
-worktree). Read it first if it exists from a prior iteration so Write may
+worktree). A dispatched iteration starts without one — `fleet-dispatch-wrap`
+removes stale scratch bodies before a fresh launch. If one exists (an
+interactive session, or a resume mid-draft), read it first so Write may
 overwrite it; do not `rm -f` it. Then:
 
 ```

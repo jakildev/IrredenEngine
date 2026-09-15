@@ -339,6 +339,16 @@ if (( RESUMED )) && [[ "$FLEET_RUNTIME" == claude && -n "${FLEET_DISPATCH_TARGET
         FLEET_DISPATCH_NUMBER FLEET_DISPATCH_REASON FLEET_PLAN_ISSUE
 fi
 
+# Per-iteration scratch bodies (gitignored; consumed by the gh call that
+# posts them) carry nothing a later iteration can use, and a stale one breaks
+# a fresh Codex launch: apply_patch has no overwrite, and Delete + Add of one
+# path inside a single call is rejected. A resume keeps them — the prior
+# session may be mid-draft.
+if (( ! RESUMED )); then
+    rm -f "$PWD"/.review-body.md "$PWD"/.review-body-*.md "$PWD"/.pr-body.md \
+        "$PWD"/.merger-body.md "$PWD"/.coding-improvement-body.md
+fi
+
 # --fallback-model only exists in print mode, which is exactly this path. When
 # the dispatcher hands us a chain (fresh fable dispatch), claude retries on the
 # fallback model(s) if $MODEL is overloaded. Resume targets one specific session,

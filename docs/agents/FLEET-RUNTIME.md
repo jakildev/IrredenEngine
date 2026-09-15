@@ -154,7 +154,9 @@ dirty / unpushed `claude/*` worktrees and seeds a trigger for a surviving
 sidecar, and the boot claim sweep keeps the GitHub claim label on any
 issue a local reservation will resume. A resume that fails on quota keeps
 the sidecar; any other failure gets one more attempt before the next
-dispatch goes fresh.
+dispatch goes fresh. A fresh launch also starts without the gitignored
+scratch bodies (`.review-body.md`, `.pr-body.md`, `.merger-body.md`, …):
+the wrapper removes them, so no iteration inherits a stale one.
 
 ---
 
