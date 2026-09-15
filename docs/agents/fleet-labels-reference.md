@@ -159,7 +159,7 @@ hosts can share a pool basename.
 | Label | Surface | Taken by | Released by |
 |---|---|---|---|
 | `fleet:claim-<host>-<agent>` | issue | `fleet-claim claim` (after the per-host `mkdir` lock under `~/.fleet/claims/`) | retained through the PR lifecycle and on the closed issue as the record of who worked it; `release` clears it and `fleet:in-progress` only when no live PR backs the claim and no other host's claim is live |
-| `fleet:reviewing-<host>-<agent>` | PR (issue for plan review) | `review-claim` — reviewers and smoke runs | `review-release --require-verdict` after a verdict; plain `review-release` for no-verdict exits, smoke, plan review |
+| `fleet:reviewing-<host>-<agent>` | PR (issue for plan review) | `review-claim` — reviewers and smoke runs | `review-release --require-verdict` after a verdict; plain `review-release` for no-verdict exits, smoke, plan review; the orphan sweep covers both PRs and plan-review issues |
 | `fleet:amending-<host>-<agent>` | PR | `amending-claim` — the single mutex for every feedback path | `amending-release` at the terminal step |
 | `fleet:resolving-<host>-<agent>` | PR | `resolving-claim` — semantic-conflict resolution | `resolving-release` |
 | `fleet:planning-<host>-<agent>` | issue | `planning-claim` — the dispatcher before a plan dispatch, or the architect | `planning-release` after `plan-propose`; `fleet-dispatch-wrap` when a resume discards the assignment |
