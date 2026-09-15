@@ -349,6 +349,13 @@ condemn_stale_session() {
 # the current $SESSION_ID's pointer once the streak crosses the threshold.
 record_resume_result() {
     local rc="$1" elapsed="$2"
+    # An immediate exit-1 while the account is closed is the wall, not a
+    # dead pointer: leave the streak alone, or two relaunches into a weekly
+    # limit would condemn the architect's conversation.
+    if [[ "$rc" -eq 1 ]] && claude_gate_closed; then
+        log "resume exited immediately (${elapsed}s, code 1) with the claude usage gate closed — not counted against the session pointer"
+        return 0
+    fi
     if [[ "$rc" -eq 1 && "$elapsed" -lt "$IMMEDIATE_EXIT_WINDOW_SECONDS" ]]; then
         resume_fail_streak=$((resume_fail_streak + 1))
         log "resume exited immediately (${elapsed}s, code 1) — streak=$resume_fail_streak/$RESUME_FAIL_THRESHOLD"
@@ -455,6 +462,54 @@ elif [[ -x "$__BABYSIT_DIR/fleet-claude-stream" ]]; then
 else
     STREAM_FORMATTER=""
 fi
+
+# The dispatcher's Claude usage gate, read the same way it reads it
+# (`fleet-dispatcher --gate-status claude`): the pool panes' streams latch
+# every rate_limit_event — including the wall's `rejected` one — under
+# ~/.fleet/state/usage/, so this pane learns the account is closed without
+# launching into it. The sibling script first — under the ~/bin install it
+# is the same file PATH would find, and a checkout run from a worktree must
+# read its own gate, not the installed clone's; absent both (a host without
+# the dispatcher) reads as open, today's behavior.
+if [[ -x "$__BABYSIT_DIR/fleet-dispatcher" ]]; then
+    GATE_READER="$__BABYSIT_DIR/fleet-dispatcher"
+elif command -v fleet-dispatcher >/dev/null 2>&1; then
+    GATE_READER="fleet-dispatcher"
+else
+    GATE_READER=""
+fi
+
+# Prints the gate's one-line status ("open..." / "closed:<reason>").
+claude_gate_status() {
+    [[ -n "$GATE_READER" ]] || { echo open; return 0; }
+    "$GATE_READER" --gate-status claude 2>/dev/null || echo open
+}
+
+# Exit 0 = the Claude usage gate is closed (a window is at its threshold or
+# rejected outright); 1 = open or unknowable.
+claude_gate_closed() {
+    [[ "$(claude_gate_status)" == closed:* ]]
+}
+
+# Hold the relaunch while the Claude gate is closed. A crash exit at the
+# usage wall (claude exits rc=1 there) used to re-enter the CRASH_DELAY loop
+# every 30s — opus-architect crash-looped 22 times on 2026-07-08 — each
+# attempt a cold start against a closed account. Polls every
+# GATE_POLL_SECONDS with the interruptible sleep so shutdown still wins.
+# Returns 1 when shutdown was signaled mid-wait, 0 otherwise.
+GATE_POLL_SECONDS="${FLEET_GATE_POLL_SECONDS:-60}"
+wait_for_claude_gate() {
+    local status logged=0
+    while status=$(claude_gate_status); [[ "$status" == closed:* ]]; do
+        if (( ! logged )); then
+            log "claude usage gate ${status} — holding relaunch until it reopens (poll ${GATE_POLL_SECONDS}s)"
+            logged=1
+        fi
+        interruptible_sleep "$GATE_POLL_SECONDS" || return 1
+    done
+    (( logged )) && log "claude usage gate re-opened (${status}) — relaunching"
+    return 0
+}
 
 stream_claude() {
     # Both callers pass --print themselves (workers must one-shot exit
@@ -778,16 +833,25 @@ while true; do
                 log "shutdown signaled during limit wait — exiting"
                 break
             fi
+            if ! wait_for_claude_gate; then
+                log "shutdown signaled during usage-gate wait — exiting"
+                break
+            fi
             log "resuming session (attempt $attempt)..."
             run_with_heartbeat resume_mid_task || last_exit=$?
             ;;
         *)
             # Crash mid-task. Fresh relaunch (workers/reviewers) / --resume
             # (architects) — see resume_mid_task for why workers can't
-            # --continue a thinking session.
+            # --continue a thinking session. The usage wall exits this way
+            # too (rc=1), so hold on the gate before spending the relaunch.
             log "exit_code=$prev_exit attempt=$attempt (crash), resuming mid-task in ${CRASH_DELAY}s..."
             if ! interruptible_sleep "$CRASH_DELAY"; then
                 log "shutdown signaled during crash recovery wait — exiting"
+                break
+            fi
+            if ! wait_for_claude_gate; then
+                log "shutdown signaled during usage-gate wait — exiting"
                 break
             fi
             run_with_heartbeat resume_mid_task || last_exit=$?

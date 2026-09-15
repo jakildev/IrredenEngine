@@ -141,14 +141,7 @@ void initSystems() {
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>());
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>());
 
-    if (g_autoWarmupFrames > 0) {
-        IRVideo::AutoScreenshotConfig cfg{};
-        cfg.warmupFrames_ = g_autoWarmupFrames;
-        cfg.settleFrames_ = 3;
-        cfg.shots_ = kShots;
-        cfg.numShots_ = sizeof(kShots) / sizeof(kShots[0]);
-        renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(cfg));
-    }
+    IRVideo::appendAutoScreenshotIfRequested(renderPipeline, g_autoWarmupFrames, kShots);
 
     IRSystem::registerPipeline(IRTime::Events::RENDER, renderPipeline);
 }
