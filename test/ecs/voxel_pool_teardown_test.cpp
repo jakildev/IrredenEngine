@@ -50,6 +50,7 @@
 #include <irreden/voxel/systems/system_seed_staged_voxels.hpp>
 #include <irreden/voxel/voxel_pool_teardown.hpp>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <utility>
@@ -410,6 +411,47 @@ TEST_F(VoxelPoolTeardown, RehomedRiggedSetIsRestampedByTheSeedPass) {
     EXPECT_EQ(indices[set.voxelStartIdx_ + 0], base + 0);
     EXPECT_EQ(indices[set.voxelStartIdx_ + 1], base + 1);
     EXPECT_EQ(indices[set.voxelStartIdx_ + 2], kEntitySlot);
+}
+
+// The seed pass collects the entities it landed for endTick, and that list is
+// sized once per archetype batch — to the row count, before the row loop —
+// never grown a push at a time. `reserve` from empty allocates exactly the
+// request, so a batch of seven leaves capacity seven; a per-row push_back
+// path doubles to eight. Nothing to seed on the next pass leaves the
+// capacity and storage alone.
+TEST_F(VoxelPoolTeardown, SeedPassSizesItsSeededListOncePerBatch) {
+    const IRSystem::SystemId seedPass = IRSystem::createSystem<IRSystem::SEED_STAGED_VOXELS>();
+    m_systemManager.registerPipeline(IRTime::Events::UPDATE, {seedPass});
+    const IREntity::EntityId canvasA = makeCanvas();
+    const IREntity::EntityId canvasB = makeCanvas();
+    constexpr std::size_t kBatch = 7;
+    std::array<IREntity::EntityId, kBatch> objects{};
+    for (IREntity::EntityId &object : objects) {
+        object = makeResidentSet(canvasA);
+    }
+
+    destroyNow(canvasA);
+    for (const IREntity::EntityId object : objects) {
+        ASSERT_EQ(setOf(object).numVoxels_, 0);
+        mutableSetOf(object).canvasEntity_ = canvasB;
+    }
+    m_systemManager.executePipeline(IRTime::Events::UPDATE);
+
+    auto *pass =
+        IRSystem::getSystemParams<IRSystem::System<IRSystem::SEED_STAGED_VOXELS>>(seedPass);
+    ASSERT_NE(pass, nullptr);
+    EXPECT_EQ(pass->seeded_.size(), kBatch);
+    EXPECT_EQ(pass->seeded_.capacity(), kBatch);
+    for (const IREntity::EntityId object : objects) {
+        EXPECT_EQ(setOf(object).numVoxels_, kSetVoxels);
+        EXPECT_EQ(setOf(object).canvasEntity_, canvasB);
+    }
+    const IREntity::EntityId *storage = pass->seeded_.data();
+
+    m_systemManager.executePipeline(IRTime::Events::UPDATE);
+    EXPECT_TRUE(pass->seeded_.empty());
+    EXPECT_EQ(pass->seeded_.capacity(), kBatch);
+    EXPECT_EQ(pass->seeded_.data(), storage);
 }
 
 } // namespace

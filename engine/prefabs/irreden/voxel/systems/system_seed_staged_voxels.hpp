@@ -28,6 +28,11 @@
 // through `IRPrefab::JointTransform::seedVoxelBoneSlots` — a no-op for a set
 // with no skeleton block. Deferred to endTick so the per-entity lookup it
 // costs stays off the per-entity tick.
+//
+// The tick takes the archetype-batch form so the seeded list is sized once
+// per batch, to the row count, before the row loop — the loop itself never
+// grows it (cpp-ecs.md "Allocations in hot tick paths"). Capacity persists
+// across ticks, so a steady-state scene pays no allocation at all.
 
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_entity.hpp>
@@ -35,6 +40,7 @@
 #include <irreden/render/systems/system_update_joint_matrices.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 
+#include <cstddef>
 #include <vector>
 
 using namespace IRComponents;
@@ -50,9 +56,16 @@ template <> struct System<SEED_STAGED_VOXELS> {
         seeded_.clear();
     }
 
-    void tick(IREntity::EntityId entity, C_VoxelSetNew &voxelSet) {
-        if (voxelSet.attachToCanvas()) {
-            seeded_.push_back(entity);
+    void tick(
+        const Archetype &,
+        std::vector<IREntity::EntityId> &entities,
+        std::vector<C_VoxelSetNew> &voxelSets
+    ) {
+        seeded_.reserve(seeded_.size() + entities.size());
+        for (std::size_t i = 0; i < entities.size(); ++i) {
+            if (voxelSets[i].attachToCanvas()) {
+                seeded_.push_back(entities[i]);
+            }
         }
     }
 
