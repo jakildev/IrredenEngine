@@ -65,7 +65,7 @@ config = {
 - **Adding one:** extend `applyPreInitLuaConfig` to read the field, apply it
   to its consumer, and log the override at INFO; document it here and in the
   consuming module's `CLAUDE.md`. Never a CLI flag for the same purpose
-  (`creations/demos/CLAUDE.md` §"No runtime arguments").
+  (`creations/demos/CLAUDE.md` §"Conventions", "No runtime arguments").
 - `WorldConfig` fields are what `World` itself reads at construction; the
   pre-init pass covers what must precede `WorldConfig`'s consumers. One
   source of truth per file.
@@ -100,8 +100,8 @@ it; the renderer-side pointer is
 `IRWorld::saveWorld` / `loadWorld` (`world_snapshot.hpp`) is the
 **entity-level** save; mechanism (chunk layout, projection walk, load phases,
 version dispatch) is on the headers. Format contract:
-[`engine/asset/CLAUDE.md`](../asset/CLAUDE.md) §"Save format extensibility
-rules". Three author-facing contracts:
+[`engine/asset/CLAUDE.md`](../asset/CLAUDE.md) §"Binary-format contracts".
+Three author-facing contracts:
 
 - **Load contract:** `IREntity::resetGameplay()` at a frame boundary, then
   `loadWorld`. Entity ids restore exact; a same-world double-save is
@@ -192,8 +192,8 @@ The registry is built fresh per call (never per-frame), so its session-local
   `update()`.** `enableFixedStep()` zeroes the UPDATE lag accumulator and
   `endEvent<UPDATE>()` decrements it unconditionally, so a priming tick before
   the reset leaves every captured frame reading `IRTime::tick()` one high
-  ([`engine/time/CLAUDE.md`](../time/CLAUDE.md) §"`enableFixedStep()`
-  decouples UPDATE from wall-clock"). The constraint is on the block as a
-  whole: moving only the disarm below the priming call self-cancels; hoisting
-  the priming call above `enableFixedStep()` breaks the capture contract, and
-  no test covers it.
+  ([`engine/time/CLAUDE.md`](../time/CLAUDE.md) §"Gotchas", the
+  `enableFixedStep()` bullet). The constraint is on the block as a whole:
+  moving only the disarm below the priming call self-cancels; hoisting the
+  priming call above `enableFixedStep()` breaks the capture contract, and no
+  test covers it.

@@ -5,8 +5,10 @@ The rules a serializer author follows live in
 (`IRWS`)". This document keeps the reasoning behind them; the mechanism (file
 layout, projection walk, load phases, version dispatch) is documented on the
 headers under `engine/world/include/irreden/world/` and is not repeated here.
-The on-disk format contract is `engine/asset/CLAUDE.md` §"Save format
-extensibility rules".
+The on-disk format contract is `engine/asset/CLAUDE.md` §"Binary-format
+contracts"; the long-form rules are
+[`entity-editor-epic.md`](entity-editor-epic.md) §"Save format extensibility
+rules".
 
 ## Two save layers, no overlap
 
