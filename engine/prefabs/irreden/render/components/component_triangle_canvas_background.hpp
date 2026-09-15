@@ -52,20 +52,6 @@ struct C_TriangleCanvasBackground {
         m_randomColorData.resize(size.x * size.y);
         m_patternMask.resize(size.x * size.y);
         for (auto &color : m_colors) {
-            // color = colorHSVToColor(
-            //     colorToColorHSV(color)
-            // );
-            // ColorHSV colorHSV = colorToColorHSV(color);
-            // colorHSV.value_ = min(
-            //     colorHSV.value_ * 0.2f,
-            //     1.0f
-            // );
-
-            // colorHSV.saturation_ = min(
-            //     colorHSV.saturation_ * 1.2f,
-            //     1.0f
-            // );
-            // color = colorHSVToColor(colorHSV);
         }
     }
 
@@ -81,7 +67,6 @@ struct C_TriangleCanvasBackground {
               type, std::vector<Color>{colorA, colorB}, size, pulseSpeed, patternScale
           ) {}
 
-    // Default
     C_TriangleCanvasBackground()
         : C_TriangleCanvasBackground{
               BackgroundTypes::kSingleColor, {IRColors::kInvisable}, ivec2{1, 1}
@@ -100,9 +85,7 @@ struct C_TriangleCanvasBackground {
         }
 
         if (m_type == BackgroundTypes::kGradient) {
-            // FUTURE: implement linear gradient between m_colors[0..n] across
-            // the canvas. For now this falls through to the no-op branch and
-            // the canvas is left unchanged.
+            // Gradient is currently a no-op and leaves the canvas unchanged.
         }
 
         if (m_type == BackgroundTypes::kGradientRandom) {
@@ -186,24 +169,6 @@ struct C_TriangleCanvasBackground {
                 m_patternMaskInitialized = true;
             }
 
-            // TODO(perf): Move pulse/interference color transform to a trixel->trixel compute pass.
-            // Notes for future migration:
-            // 1) Keep this CPU side responsible only for low-frequency state (pattern mask /
-            // parameters),
-            //    then dispatch compute once per frame for animated color evaluation in trixel
-            //    space.
-            // 2) Use ping-pong textures (read from A, write to B, then swap) to avoid undefined
-            // read/write
-            //    hazards on the same image in one dispatch.
-            // 3) Preserve current iso-space phase projection and timing params so visual output
-            // matches:
-            //    - primary/secondary directions, phase scales, speed multipliers, start offsets,
-            //    mix.
-            // 4) Insert proper barriers after dispatch (image/texture fetch visibility) before the
-            //    framebuffer pass samples the output trixel color texture.
-            // 5) Prefer one invocation per trixel texel (not per-fragment) since each trixel
-            // resolves
-            //    to a uniform color in this effect.
             for (int y = 0; y < m_size.y; y++) {
                 for (int x = 0; x < m_size.x; x++) {
                     int index = index2DtoIndex1D(ivec2(x, y), m_size);
@@ -360,7 +325,7 @@ struct C_TriangleCanvasBackground {
     }
 
   private:
-    // The world-snapshot serializer (#2242) persists the authored subset of
+    // The world-snapshot serializer persists the authored subset of
     // the private state below — type, colors, size, and the pulse/pattern
     // tuning parameters — and lets the per-frame caches (m_randomColorData,
     // m_patternMask, and their initialization flags) rebuild on load.

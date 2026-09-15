@@ -1,9 +1,6 @@
 {
  ".claude/commands/role-worker.md": 303,
  "docs/agents/FLEET.md": 459,
- "engine/command/CLAUDE.md": 309,
  "engine/prefabs/irreden/common/CLAUDE.md": 435,
- "engine/prefabs/irreden/voxel/CLAUDE.md": 479,
- "engine/world/CLAUDE.md": 635,
  "scripts/fleet/CLAUDE.md": 438
 }

@@ -1,11 +1,9 @@
 #ifndef SYSTEM_RESOLVE_PER_AXIS_SCREEN_DEPTH_H
 #define SYSTEM_RESOLVE_PER_AXIS_SCREEN_DEPTH_H
 
-// Smooth camera Z-yaw — per-axis sun-shadow resolve (#1435).
+// Smooth camera Z-yaw — per-axis sun-shadow resolve.
 //
-// Restores faithful per-axis voxel sun-shadow CASTING under continuous Z-yaw
-// (deferred by #1380's option C, which stopped per-axis canvases casting to
-// avoid cross-face self-occlusion in the shared sun depth map). This stage
+// Provides per-axis voxel sun-shadow casting under continuous Z-yaw. This stage
 // re-projects the three face-local per-axis voxel canvases into ONE
 // screen-space front-most iso-depth texture laid out exactly like the main
 // canvas distance texture, so BAKE_SUN_SHADOW_MAP casts them through its
@@ -16,8 +14,7 @@
 // Pipeline order: after the geometry + per-axis raster stages (the per-axis
 // distance textures must be populated) and before BAKE_SUN_SHADOW_MAP (which
 // reads the resolve texture). No-ops at a cardinal — the per-axis canvases are
-// only allocated at non-zero residual yaw, so cardinal output stays
-// byte-identical.
+// only allocated at non-zero residual yaw.
 //
 // Two compute passes (both backends, no texture atomics — Metal lacks portable
 // image-atomic syntax):
@@ -70,7 +67,7 @@ template <> struct System<RESOLVE_PER_AXIS_SCREEN_DEPTH> {
     IREntity::EntityId perAxisCanvasEntity_ = IREntity::kNullEntity;
     C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
 
-    // Lazily-resolved voxel-compaction buffers (#1961/#2256), restored onto
+    // Lazily-resolved voxel-compaction buffers, restored onto
     // slots 25/26 after the scatter pass borrows them for its own per-axis
     // cell list. See IRPrefab::PerAxisCanvas::restoreVoxelCompactionSlots.
     Buffer *voxelCompactedBuf_ = nullptr;
@@ -127,7 +124,7 @@ template <> struct System<RESOLVE_PER_AXIS_SCREEN_DEPTH> {
         // Guarantee the scatter reads the MAIN canvas size from the UBO — a
         // per-axis store dispatch may have left a per-axis size in this field.
         // The bake never reads canvasSizePixels_, so this is safe to leave set.
-        // Also patch the #1431-capped subdivision density — the store restored
+        // Also patch the capped subdivision density — the store restored
         // the uncapped value on exit, but the scatter inverts face-plane origins
         // through effectiveTrixelSubdivisionScale(voxelRenderOptions.y), so it
         // must use the same capped density the store wrote. Restored below.
@@ -143,7 +140,7 @@ template <> struct System<RESOLVE_PER_AXIS_SCREEN_DEPTH> {
         voxelFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas);
 
         // Pass 1 — scatter the three face-local per-axis canvases into the
-        // scratch (front-most per screen pixel via atomicMin). #2256: dispatch
+        // scratch (front-most per screen pixel via atomicMin): dispatch
         // indirectly over only each axis's compacted occupied cells (filled by the
         // STAGE_1 per-axis compaction) instead of sweeping the full worst-case grid.
         scatterProgram_->use();
@@ -172,7 +169,7 @@ template <> struct System<RESOLVE_PER_AXIS_SCREEN_DEPTH> {
             voxelFrameDataBuf_,
             IRRender::getVoxelRenderEffectiveSubdivisions()
         );
-        // Restore slots 25/26 to the voxel-compaction buffers (#1961/#2256) the
+        // Restore slots 25/26 to the voxel-compaction buffers the
         // scatter pass above borrowed via bindRange — see the restore-slots note
         // in system_compute_voxel_ao.hpp for the corruption mode this avoids.
         IRPrefab::PerAxisCanvas::restoreVoxelCompactionSlots(voxelCompactedBuf_, voxelIndirectBuf_);

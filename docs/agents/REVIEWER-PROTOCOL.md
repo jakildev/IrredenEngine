@@ -111,7 +111,8 @@ exit 5 unless a submitted review pins the PR's current `headRefOid` (post
 the body first), then delegates to `fleet-transition`, which computes the
 delta against the live label set, writes it in one `gh pr edit`, verifies,
 and retries once. Every edge also removes `fleet:awaiting-upstream-review`
-and `fleet:needs-opus-recheck`; the remove/add sets live in
+and `fleet:needs-opus-recheck` and consumes the re-review triggers
+`fleet:changes-made` / `human:re-review`; the remove/add sets live in
 `fleet-state-machine.json`. `--repo <game-repo>` for game PRs.
 
 **Sonnet-reviewer, approve + "Opus recheck required"** → no verdict label
