@@ -185,6 +185,8 @@ void main() {
         worldReceivePos = trixelCanvasPixelToWorld3D(
             pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, rasterYaw
         );
+        // Raster coordinates use cell corners; geometry uses voxel centers.
+        worldReceivePos -= kVoxelRasterCellAnchor;
         // Detached pool cells already include inverse camera rotation.
         worldReceivePos = rotateByQuat(worldReceivePos, detachedViewToWorld)
                         + detachedWorldReceive.xyz;

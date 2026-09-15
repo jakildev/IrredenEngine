@@ -1,0 +1,31 @@
+capture-494.png blocked-floor: expected=(48, 60, 72) center=(48, 60, 72) max_error=0 PASS
+capture-494.png outside-floor: expected=(115, 144, 173) center=(99, 123, 148) max_error=25 FAIL
+exit=1
+
+capture-497.png blocked-floor: expected=(115, 144, 173) center=(115, 144, 173) max_error=0 PASS
+capture-497.png outside-floor: expected=(115, 144, 173) center=(99, 123, 148) max_error=25 FAIL
+exit=1
+
+capture-500.png blocked-floor: expected=(115, 144, 173) center=(115, 144, 173) max_error=0 PASS
+capture-500.png outside-floor: expected=(115, 144, 173) center=(115, 144, 173) max_error=0 PASS
+exit=0
+
+capture-501.png blocked-floor: expected=(48, 60, 72) center=(48, 60, 72) max_error=0 PASS
+capture-501.png outside-floor: expected=(115, 144, 173) center=(115, 144, 173) max_error=0 PASS
+exit=0
+
+capture-508.png blocked-floor: expected=(115, 144, 173) center=(115, 144, 173) max_error=0 PASS
+capture-508.png outside-floor: expected=(115, 144, 173) center=(115, 144, 173) max_error=0 PASS
+exit=0
+
+capture-509.png blocked-floor: expected=(48, 60, 72) center=(48, 60, 72) max_error=0 PASS
+capture-509.png outside-floor: expected=(115, 144, 173) center=(115, 144, 173) max_error=51 FAIL
+exit=1
+
+capture-518.png blocked-floor: expected=(48, 60, 72) center=(48, 60, 72) max_error=0 PASS
+capture-518.png outside-floor: expected=(115, 144, 173) center=(48, 60, 72) max_error=101 FAIL
+exit=1
+
+capture-519.png blocked-floor: expected=(115, 144, 173) center=(115, 144, 173) max_error=0 PASS
+capture-519.png outside-floor: expected=(115, 144, 173) center=(115, 144, 173) max_error=0 PASS
+exit=0

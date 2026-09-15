@@ -127,6 +127,8 @@ kernel void c_lighting_to_trixel(
             voxelFrameData.frameCanvasOffset, voxelFrameData.voxelRenderOptions,
             voxelFrameData.rasterYaw
         );
+        // Raster coordinates use cell corners; geometry uses voxel centers.
+        worldReceivePos -= kVoxelRasterCellAnchor;
         // Detached pool cells already include inverse camera rotation.
         worldReceivePos = rotateByQuat(worldReceivePos, frameData.detachedViewToWorld)
                         + voxelFrameData.detachedWorldReceive.xyz;
