@@ -1089,6 +1089,7 @@ void registerArgs() {
         "Compatibility flag: local triangle reconstruction is already the default"
     );
     args.flag("--probe-upright", "Use unrotated revoxelization and attached shadow probes");
+    args.integer("--probe-canvas-size", "Shadowocclusion private canvas edge, 256 to 2048", 256);
     args.flag("--probe-staircase", "Use a stair-stepped plate and nearby overhead blocker");
     args.flag("--probe-analytic-box", "Use an analytic box for shadowbox");
     args.flag("--probe-analytic-sphere", "Use an analytic sphere for shadowbox");
@@ -1702,7 +1703,7 @@ void initEntities() {
             if (!grid) {
                 canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
                     receiver ? "occlusion_receiver" : "occlusion_wall",
-                    ivec2(256),
+                    ivec2(IRMath::clamp(IREngine::args().getInt("--probe-canvas-size"), 256, 2048)),
                     ivec3(64),
                     false
                 );

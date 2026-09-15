@@ -48,6 +48,17 @@ that the experimental rendering is ready to become the default.
 
 ## Newly observed during occlusion validation
 
+- [Regular demo coverage](canvas-stress-shadow-gaps.md) reproduces the user's
+  four red/green/blue/yellow GRID cubes: default shadows have long interior
+  gaps, while finite face casting closes them at the matching camera angle
+  and at effective densities 1 and 4. This is still an opt-in path, not a
+  default-path fix. Retain these cubes alongside detached revox coverage.
+- The same investigation preserves a raster-phase/centroid experiment that
+  removes unblocked false shadows at cardinal angles and actual density 2.
+  It exposes a real thin-roof miss caused by the existing normal offset.
+  Zero offset reduces the blocked error from 101 to 5 but still fails the
+  unchanged tolerance of 2. Both patches are retained, not adopted. Resolve
+  receiver location and finite boundary sampling together before promotion.
 - [Finite analytic box casting](analytic-box-sun-coverage.md) now replaces BOX
   depth splats in the opt-in face-shadow path. Detached and GRID staircase
   outside controls both pass with zero error; rotated/fractional box hulls
@@ -55,16 +66,17 @@ that the experimental rendering is ready to become the default.
   unchanged IoU threshold (.668 versus .70); non-box shapes retain depth splats.
 - Centroid sampling remains experimental: a broader unblocked sweep exposes
   source/raster half-cell disagreement (12,544 false-shadow pixels at yaw zero).
-  Resampled face casting matches shadows-disabled exactly. Preserve the authored
-  anchor through raster placement/depth/reception before adopting centroids;
-  check odd/even effective densities and fractional source bounds.
+  Resampled face casting matches shadows-disabled exactly. The retained phase
+  experiment corrects the cardinal case but exposes the nearby-blocker miss
+  above. Check odd/even effective densities and fractional source bounds before
+  adopting the combined correction.
 
 - [Receiver sample positions](detached-shadow-receiver-samples.md): the current
   detached lookup fails all 30 triangle-centroid checks across five yaws. The
-  derived correction passes all 30, but exposes analytic-roof overcoverage
-  (outside-patch error 41). It remains an experiment, not an adopted fix.
-  Unblocked and finite voxel-roof controls pass. Correct analytic finite
-  coverage, then adopt centroid sampling and validate whole shadow boundaries.
+  derived correction passes all 30. Its original analytic-roof overcoverage
+  (outside-patch error 41) is resolved by finite box casting; phase and nearby
+  blocker sampling remain experimental as described above. Validate whole
+  shadow boundaries before adoption.
 
 - [Overhead direction controls](lighting-direction-probes.md) expose 3,808 false
   shadow pixels on unblocked GRID staircase treads with the default caster.

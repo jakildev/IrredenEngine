@@ -1,0 +1,23 @@
+Selected native-run log lines (verbose startup/teardown omitted).
+
+grid-default-log
+ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/canvas_stress/IRCanvasStress --only gridspin,floor --frozen-pose 0.6 --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 3 --auto-screenshot 6 --sweep-yaw 3.92699082 3.92699082 1 (timeout: 120s)
+[2026-09-14 18:15:59.815] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=4, effective_subdivisions=4
+[2026-09-14 18:16:00.589] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000750.png
+ir-run: IRCanvasStress exited cleanly after 3s
+ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+
+grid-source-log
+ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/canvas_stress/IRCanvasStress --only gridspin,floor --frozen-pose 0.6 --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 3 --auto-screenshot 6 --sweep-yaw 3.92699082 3.92699082 1 --source-face-shadows (timeout: 120s)
+[2026-09-14 18:17:15.687] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=4, effective_subdivisions=4
+[2026-09-14 18:17:16.423] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000751.png
+ir-run: IRCanvasStress exited cleanly after 2s
+ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+
+density2-log
+ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/canvas_stress/IRCanvasStress --only shadowocclusion --probe-staircase --probe-unblocked --probe-canvas-size 1024 --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 2 --zoom 1 --auto-screenshot 6 --sweep-yaw 0 1.57079633 2 --source-face-shadows --no-shadows (timeout: 120s)
+[2026-09-14 18:17:48.027] [EngineLog] [info] Voxel render mode=2, base_subdivisions=2, zoom_scale=1, effective_subdivisions=2
+[2026-09-14 18:17:48.713] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000752.png
+[2026-09-14 18:17:49.348] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000753.png
+ir-run: IRCanvasStress exited cleanly after 3s
+ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
