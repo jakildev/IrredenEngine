@@ -107,8 +107,8 @@ struct AutoScreenshotConfig {
 };
 
 /// Binds a fixed-size shot table to @c config, deducing @c numShots_ from the
-/// array so @c shots_ and @c numShots_ can never point at mismatched tables —
-/// see #2969. Use this in a configurator that selects among several
+/// array so @c shots_ and @c numShots_ can never point at mismatched tables.
+/// Use this in a configurator that selects among several
 /// candidate tables, sets a non-default @c settleFrames_ / @c
 /// onCaptureFrame_, or otherwise needs the full @c AutoScreenshotConfig
 /// surface — the common single-table case wants
@@ -180,7 +180,7 @@ IRSystem::SystemId createAutoScreenshotSystem(const AutoScreenshotConfig &config
 /// "Module include discipline"), declare a file-scope shot table, and call
 /// this once before @c registerPipeline fires. @c N is deduced from the
 /// array, closing the @c shots_ / @c numShots_ mismatch seam that a hand
-/// written `sizeof(kFoo) / sizeof(kFoo[0])` doesn't catch (#2969).
+/// written `sizeof(kFoo) / sizeof(kFoo[0])` doesn't catch.
 ///
 /// A configurator that selects among several candidate tables, needs a
 /// non-default @c settleFrames_, or sets @c onCaptureFrame_ still builds its
