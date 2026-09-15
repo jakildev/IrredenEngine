@@ -29,14 +29,10 @@
 // (so the SSBO mirrors the current frame's voxel state) and before
 // `LIGHTING_TO_TRIXEL` (which samples the light volume).
 //
-// Phase 1a (issue #359) replaced the previous CPU 6-connected BFS +
-// 8 MiB sub-image upload with the GPU pass chain above. The CPU portion
-// of this system is now bounded by the small per-frame light-source SSBO
-// upload (~20 KiB at the 256-light cap; 80 B/light since #2318 added the
-// true-origin field). Per-light radius variation and analytic point/spot
-// LOS are pending for later phases.
+// CPU work is bounded by the small per-frame light-source SSBO upload
+// (~20 KiB at the 256-light cap; 80 B/light).
 //
-// Winning-light ID channel (#2318, L2). A parallel RGBA8 ID ping-pong pair
+// Winning-light ID channel. A parallel RGBA8 ID ping-pong pair
 // on `C_CanvasLightVolume` records the index+1 of the light that won each
 // cell's residual contest: the clear zeroes it, the seed writes each light's
 // id at its origin cell, and the propagate carries the winning candidate's id
@@ -47,7 +43,7 @@
 // `LightVolumeParams::worldOriginVoxel_.w` (the has-SPOT flag set below), so
 // scenes with no seeded SPOT stay byte-identical.
 //
-// Phase 1c (#360) anchors the volume window on the camera so most scenes
+// The volume window is anchored on the camera so most scenes
 // keep every light in-range without growing the texture footprint. A light
 // whose origin falls outside the window is NOT dropped: it seeds the
 // per-axis-clamped boundary cell at a distance-discounted residual alpha,
@@ -58,7 +54,7 @@
 // whose discounted residual is ≤ 0 cannot reach the window and are skipped;
 // the gathered/eligible counts surface on the perf HUD's CULL block.
 //
-// #2330: a per-axis-clamped boundary cell is not automatically safe to seed
+// a per-axis-clamped boundary cell is not automatically safe to seed
 // — if it lands inside solid geometry, `c_propagate_light_volume`'s
 // neighbor occlusion gate traps the seed there and the light pops off
 // instead of fading. `gatherLightSources` checks the clamped cell against
@@ -94,16 +90,16 @@ using namespace IRRender;
 
 namespace IRSystem {
 
-// Per-light gather outcome (#2315, V1 DOMAIN-STATE instrumentation).
+// Per-light gather outcome used by DOMAIN-STATE instrumentation.
 // `SEEDED_FULL` — origin fell inside the camera-anchored window, no
 // boundary clamp. `BOUNDARY_DISCOUNTED` — origin clamped to the window
 // edge, and the clamped cell is free; `residual_` is the seed alpha the
-// clamp survived at. `BOUNDARY_RELOCATED` (#2330) — the clamped cell was
+// clamp survived at. `BOUNDARY_RELOCATED` — the clamped cell was
 // occluded (voxel or light-blocker bit set), so the seed moved to the
 // nearest unoccluded cell on a window face the clamp touched; `residual_`
 // includes the extra relocation distance's falloff. `SKIPPED` — the
 // discounted residual was ≤ 0 (light cannot reach the window); `residual_`
-// is 0. `SKIPPED_OCCLUDED` (#2330) — the clamped cell was occluded and no
+// is 0. `SKIPPED_OCCLUDED` — the clamped cell was occluded and no
 // unoccluded cell exists within the light's remaining reach; `residual_` is
 // 0. Public (not `detail`) — the DOMAIN-STATE emission hook in a lighting
 // demo's `main.cpp` reads these back via `lightGatherRecords()` below.
@@ -144,7 +140,7 @@ class ScopedCpuPhaseTimer {
 // origin for in-window lights, or the clamped window-boundary cell for an
 // out-of-window light); `trueOriginVoxel` is the light's unclamped apex,
 // carried separately so the spot-cone consumer orients the cone from the real
-// position even when the seed cell is clamped to the window edge (#2318).
+// position even when the seed cell is clamped to the window edge.
 inline GPULightSource toGpuLight(
     const C_LightSource &light,
     const ivec3 &seedCellVoxel,
@@ -184,7 +180,7 @@ inline ivec3 roundedLightOrigin(const C_WorldTransform &transform) {
     return IRMath::roundVec3HalfUp(transform.translation_);
 }
 
-// #2330: relocate an occluded per-axis-clamped boundary seed to the nearest
+// relocate an occluded per-axis-clamped boundary seed to the nearest
 // unoccluded cell on a window face the clamp touched. `clampedAxis[a]` marks
 // which axes the caller actually clamped (a light whose origin overshoots
 // only one axis has one candidate face to search; a corner clamp has two or
@@ -288,11 +284,11 @@ inline bool relocateOccludedBoundarySeed(
 // wide radius variance — the alternative (deriving stepFalloff from just the
 // seeded subset) would make a light's curve shift as another light crosses
 // the camera window boundary. Per-light falloff lands with the winning-light
-// ID channel (#2318, L2).
+// ID channel.
 // `outHasSpot` is set true when at least one SPOT light is actually seeded this
 // frame; it gates the consumer's winning-light-ID read so no-spot scenes stay
-// byte-identical (#2318).
-// `occlusion` (#2330), when non-null and valid, gates a boundary-clamped seed
+// byte-identical.
+// `occlusion`, when non-null and valid, gates a boundary-clamped seed
 // against the current frame's voxel/light-blocker occupancy and relocates it
 // off an occluded clamp cell — see `relocateOccludedBoundarySeed`. `nullptr`
 // reproduces today's behavior exactly (byte-identical `GPULightSource`).
@@ -371,8 +367,6 @@ inline std::uint32_t gatherLightSources(
                 // reserved to exactly kLightVolumeMaxSources at create(), so
                 // recording the tail would force a per-frame reallocation; this
                 // mirrors the GPU-staging cap the seed buffer already enforces.
-                // A future #2317 verify harness asserting total light counts
-                // against the log must account for this ceiling.
                 return static_cast<std::uint32_t>(out.size());
             }
             const ivec3 origin = roundedLightOrigin(transforms[i]);
@@ -396,7 +390,7 @@ inline std::uint32_t gatherLightSources(
                 }
                 continue;
             }
-            // #2330: the clamped boundary cell is not automatically safe. If
+            // the clamped boundary cell is not automatically safe. If
             // it lands inside solid geometry (an occupied voxel or an SDF
             // C_LightBlocker), `c_propagate_light_volume`'s symmetric
             // occlusion gate traps the seed's alpha at that cell and the
@@ -437,7 +431,7 @@ inline std::uint32_t gatherLightSources(
                 state = LightGatherState::BOUNDARY_RELOCATED;
             }
             // This light is actually seeded — flag SPOTs so the consumer only
-            // pays the winning-light-ID read when a cone can exist (#2318).
+            // pays the winning-light-ID read when a cone can exist.
             // Must stay below the occlusion block: a SKIPPED_OCCLUDED spot
             // never seeded and must not arm the consumer's winning-ID read.
             if (lights[i].type_ == LightType::SPOT) {
@@ -461,7 +455,7 @@ inline std::uint32_t gatherLightSources(
 // .xyz is the camera anchor, identical for all canvases). Returns false when
 // the globals cannot be correct for all processed canvases at once — 2+
 // processed canvases AND at least one SPOT. Multi-canvas SPOT scenes need
-// per-canvas storage (issue #2341 deferred option b).
+// per-canvas storage.
 inline bool
 lightVolumeGlobalBufferSafe(int processedLightVolumeCanvases, bool anyCanvasSeededSpot) {
     return !(processedLightVolumeCanvases >= 2 && anyCanvasSeededSpot);
@@ -482,7 +476,7 @@ static_assert(
     LightVolumeParams{}.halfExtent_ == kLightVolumeHalfExtent,
     "LightVolumeParams::halfExtent_ default must equal kLightVolumeHalfExtent"
 );
-// #2330: the occlusion-aware relocation search indexes the light-occlusion
+// the occlusion-aware relocation search indexes the light-occlusion
 // grid with light-volume window coordinates directly (no separate bounds
 // check beyond the window itself), which is only sound while the window is
 // no larger than the grid it queries.
@@ -499,7 +493,7 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
     Buffer *paramsBuf_ = nullptr;
     Buffer *occlusionBuf_ = nullptr;
     std::vector<GPULightSource> lightStaging_{};
-    // Per-light gather outcome (#2315, V1) — reused every frame, read back
+    // Per-light gather outcome reused every frame and read back
     // via `lightGatherRecords()` below by a lighting demo's DOMAIN-STATE
     // emission hook (`AutoScreenshotConfig::onCaptureFrame_`) for the
     // per-shot machine-readable log line.
@@ -511,7 +505,7 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
     // budget defaults to today's behavior if a frame ever dispatches
     // the loop without first running the upload phase.
     int propagateIterations_ = kLightVolumePropagateIterations;
-    // Per-frame tally backing the endTick global-buffer guard (#2341). Counts
+    // Per-frame tally backing the endTick global-buffer guard. Counts
     // only canvases this system actually PROCESSES, since a canvas that takes
     // the `useCameraPositionIso_` early-return never clobbers the shared
     // buffers.
@@ -549,7 +543,7 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
             return;
         // Counted only past the early-return — a skipped canvas never reaches
         // the uploads that clobber the shared buffers. The count DOES include
-        // #363's sentinel canvas B: `C_TrixelCanvasRenderBehavior`'s default
+        // a sentinel canvas: `C_TrixelCanvasRenderBehavior`'s default
         // ctor sets `useCameraPositionIso_ = true`, so that scene legitimately
         // reaches 2 processed canvases and stays under the guard by seeding no
         // SPOT, not by skipping the sentinel.
@@ -568,12 +562,12 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
         {
             detail::ScopedCpuPhaseTimer timer{phaseTiming.upload_};
             IR_PROFILE_BLOCK("ComputeLightVolume::Upload", IR_PROFILER_COLOR_RENDER);
-            // Phase 1c (#360): re-anchor the volume on the
+            // Re-anchor the volume on the
             // iso camera each frame; the seed/propagate/
             // lighting shaders subtract this origin before
             // indexing, so a panned camera keeps lights in
-            // range without resizing the texture. #2315 V1:
-            // freeze-aware — pins at the cull-freeze transition
+            // range without resizing the texture. The anchor pins at the
+            // cull-freeze transition
             // so F10 / shot-table FREEZE keeps lighting from the
             // pinned window instead of tracking a free-flying
             // camera.
@@ -582,7 +576,7 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
             int maxRadius = 0;
             std::uint32_t eligible = 0;
             bool hasSpot = false;
-            // #2330: resolved once per tick, never cached across frames —
+            // resolved once per tick, never cached across frames —
             // params pointers are not stable across a system re-create
             // (`.claude/rules/cpp-systems.md`). `findSystem` returns
             // `kNullSystemId` when BUILD_LIGHT_OCCLUSION_GRID isn't
@@ -607,7 +601,7 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
                 &occlusion
             );
             anyCanvasSeededSpot_ |= hasSpot;
-            // worldOriginVoxel_.w carries the has-SPOT flag (#2318): the
+            // worldOriginVoxel_.w carries the has-SPOT flag: the
             // consumer skips the winning-light-ID read entirely when 0, so
             // no-spot scenes stay byte-identical.
             params_.worldOriginVoxel_ =
@@ -637,7 +631,7 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
         // Phase: dispatch the GPU clear + seed + propagate
         // chain. The Clear bucket is reserved for the clear
         // pass alone; Populate covers seed + N propagate
-        // iterations so the legacy column name still maps
+        // iterations so the stable column name still maps
         // to "where the bulk of the work lives".
         paramsBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_LightVolumeParams);
 
@@ -647,7 +641,7 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
             clearProgram_->use();
             volume.getReadTexture()
                 ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
-            // Winning-light ID read texture cleared in lockstep (#2318).
+            // Winning-light ID read texture cleared in lockstep.
             volume.getIdReadTexture()
                 ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
             const int clearGroups = IRMath::divCeil(kVolumeSize, kClearGroupSize);
@@ -670,7 +664,7 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
                 volume.getReadTexture()
                     ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
                 // Seed writes the winning-light ID (index+1) alongside the
-                // color at each light's origin cell (#2318).
+                // color at each light's origin cell.
                 volume.getIdReadTexture()
                     ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
                 const int seedGroups = IRMath::divCeil(params_.lightCount_, kSeedGroupSize);
@@ -682,7 +676,7 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
             // gathered for this canvas — the cleared read texture would
             // propagate zeros and contribute nothing to LIGHTING_TO_TRIXEL.
             // Iteration count is the adaptive value derived from the
-            // gathered lights' max radius (set above), bounded by the
+            // gathered lights' max radius, bounded by the
             // global `kLightVolumePropagateIterations` cap.
             if (params_.lightCount_ > 0) {
                 propagateProgram_->use();
@@ -709,7 +703,7 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
                     volume.getWriteTexture()
                         ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
                     // Winning-light ID ping-pong, swapped in lockstep with the
-                    // color pair by volume.swap() below (#2318).
+                    // color pair by volume.swap below.
                     volume.getIdReadTexture()
                         ->bindAsImage(2, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
                     volume.getIdWriteTexture()
@@ -770,7 +764,7 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
         // LightOcclusionGridBuffer is created by
         // BUILD_LIGHT_OCCLUSION_GRID, which is registered ahead of this
         // system in every creation that uses either path; safe to look
-        // up at init time. Phase 1c (#360): the SSBO carries a 16-byte
+        // up at init time. The SSBO carries a 16-byte
         // header (worldOriginVoxel) followed by the voxel + blocker
         // bitfields, so the propagate shader reads the camera-anchored
         // origin from the same binding.
@@ -782,7 +776,7 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
     }
 };
 
-// Read-back accessor for the DOMAIN-STATE emission hook (#2315, V1) — a
+// Read-back accessor for the DOMAIN-STATE emission hook. A
 // lighting demo holds the `SystemId` returned by
 // `createSystem<COMPUTE_LIGHT_VOLUME>()` and calls this from its
 // `AutoScreenshotConfig::onCaptureFrame_` callback to format the per-shot

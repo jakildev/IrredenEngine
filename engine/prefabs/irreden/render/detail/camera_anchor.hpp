@@ -1,7 +1,7 @@
 #ifndef IRREDEN_RENDER_DETAIL_CAMERA_ANCHOR_H
 #define IRREDEN_RENDER_DETAIL_CAMERA_ANCHOR_H
 
-// Phase 1c (#360): camera-anchored light-occlusion + light-volume grids.
+// Camera-anchored light-occlusion and light-volume grids.
 //
 // `BUILD_LIGHT_OCCLUSION_GRID` and `COMPUTE_LIGHT_VOLUME` both need a
 // single world-voxel position to center their grid on each frame. Both
@@ -12,7 +12,7 @@
 // The iso camera position lives in 2D iso space (`vec2`); we invert
 // the iso projection at `z = 0` to recover the world voxel the camera
 // is looking at, then snap to integer voxel coords (the 1-voxel snap
-// avoids fractional shifts entirely; future incremental-update work
+// avoids fractional shifts entirely; incremental-update code
 // can raise the snap quantum to chunk size for cheaper recenters).
 
 #include <irreden/ir_math.hpp>
@@ -31,14 +31,14 @@ namespace IRRender::detail {
 /// Result is rounded to the nearest integer voxel. The negation is
 /// load-bearing: inverting the un-negated pan anchors the volume at the
 /// MIRROR of the viewed position, sliding the light window away from the
-/// view at twice the pan rate (see #2310).
+/// view at twice the pan rate.
 ///
 /// Coherence contract: both `BUILD_LIGHT_OCCLUSION_GRID` and
 /// `COMPUTE_LIGHT_VOLUME` must call this once per frame from the same
 /// camera state — guaranteed today by single-threaded render-pipeline
 /// execution (camera mutation lives in INPUT/UPDATE; both consumers
 /// run later in RENDER and share the same `IRRender` snapshot). If a
-/// future change introduces camera mutation between the two ticks,
+/// camera mutation is introduced between the two ticks,
 /// the propagate shader degrades gracefully (one extra subtract via
 /// `lightVolumeWorldOrigin` vs `occlusionWorldOrigin`) rather than
 /// misindexing.
@@ -49,7 +49,7 @@ inline IRMath::ivec3 cameraAnchorVoxel() {
     return IRMath::ivec3(IRMath::round(worldX), IRMath::round(worldY), 0);
 }
 
-/// Freeze-aware variant of `cameraAnchorVoxel()` (#2315, V1). While the cull
+/// Freeze-aware variant of `cameraAnchorVoxel`. While the cull
 /// is live, behaves identically to `cameraAnchorVoxel()`. On the freeze
 /// transition it captures the live anchor once and pins it in
 /// `IRRender::LightAnchorFreezeState`; every subsequent call while still

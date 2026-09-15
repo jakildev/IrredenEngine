@@ -1,20 +1,16 @@
 #ifndef SYSTEM_BUILD_DISTANCE_HIZ_H
 #define SYSTEM_BUILD_DISTANCE_HIZ_H
 
-// Hi-Z (hierarchical max-depth) distance mip-chain build (#1294 child 1/3;
-// docs/design/voxel-occlusion-culling.md § Implementation sketch step 1).
+// Hi-Z (hierarchical max-depth) distance mip-chain build. See
+// docs/design/voxel-occlusion-culling.md § Implementation sketch step 1.
 //
 // For each world canvas, downsample-max the R32I distance texture into the
 // canvas's hiZMips_ chain: one compute dispatch per level, reading the prior
 // level and writing the per-texel MAX (farthest) of its 2x2 source footprint.
 // Conceptual level 0 is the distance texture itself, so the chain holds the
 // downsampled levels 1..N. A max pyramid answers "the farthest visible surface
-// over this footprint"; next frame's chunk-occlusion pre-pass (child 2) culls a
+// over this footprint"; next frame's chunk-occlusion pre-pass culls a
 // pool-chunk only when its nearest depth is strictly behind that max.
-//
-// This PR PRODUCES the Hi-Z only — nothing consumes it yet, so render output is
-// byte-identical. The chunk-occlusion pre-pass (child 2) and the off-by-default
-// gate (child 3) follow in the blocked_by chain.
 //
 // Pipeline order: must run after every stage that writes trixelDistances
 // (VOXEL_TO_TRIXEL_STAGE_1, SHAPES_TO_TRIXEL) and after COMPUTE_VOXEL_AO, so the

@@ -324,7 +324,9 @@ unset _env_cap_mode
 # role drops back below cap.
 declare -A CAP_DEFER_LOGGED=()
 
-# Seconds to back off after a pane exits with code 2 (suspected usage limit).
+# Seconds to back off a pane whose launch died at the usage wall — the
+# wrap's `<pane>.ts` marker, written when the stream flagged a rejected
+# rate_limit_event (claude exits 1 there) or on the legacy exit code 2.
 # Mirrors fleet-babysit's LIMIT_DELAY. Per-pane: if one of the worker
 # panes hits a limit, the other keeps running.
 LIMIT_DELAY="${FLEET_DISPATCHER_LIMIT_DELAY:-900}"
@@ -445,8 +447,9 @@ read_dispatch_mode() {
 # but not enough to feel like a real wait.
 #
 # Sibling to LIMIT_DELAY's per-pane post-mortem cooldown: that fires
-# AFTER a pane hits the wall and exits with code 2; this fires BEFORE
-# the wall to spread the remaining budget across in-flight work.
+# AFTER a pane hits the wall; this fires BEFORE the wall to spread the
+# remaining budget across in-flight work — and, since the stream latches
+# the wall's own `rejected` event at 100%, holds closed once it is hit.
 USAGE_STALE_SECONDS="${FLEET_DISPATCHER_USAGE_STALE_SECONDS:-3600}"
 RESET_GRACE_SECONDS="${FLEET_DISPATCHER_RESET_GRACE_SECONDS:-600}"
 # Validate-and-clamp: a non-numeric override (operator typo, trailing
@@ -474,10 +477,10 @@ for _gate_var in $(compgen -A variable | grep '^FLEET_DISPATCHER_USAGE_GATE_' ||
 done
 unset _gate_var
 
-# Track whether the gate was logged-as-closed last tick so the
-# "deferring all dispatches" message fires once per closed-window,
-# not every 10s.
-USAGE_GATE_CLOSED_LOGGED=""
+# Track, per gate scope, whether it was logged-as-closed last tick so the
+# "deferring all dispatches" message fires once per closed-window, not
+# every 10s (log_gate_transition).
+declare -A GATE_CLOSED_LOGGED=()
 
 # Default poll cadence. Workers are transient — each iteration is a
 # one-shot `claude --print` spawned into an idle pane when a trigger
@@ -1412,13 +1415,18 @@ assess_target_completion() {
 # The decline memory the resolver reads (fleet_task_class._declined): the
 # item's updated_at as fetched AFTER the iteration's comment and release
 # bumped it — the value the scout's next poll carries — so this host skips
-# the item until it changes. $1 = target, $2 = updated_at, $3 = detail.
+# the item until it changes. Line 3 is the declining ROLE: a decline is
+# one lane's judgement ("fresh sonnet approval already posted; the
+# escalation is standing"), and the sonnet and opus reviewers share the
+# `review` kind, so an unscoped record let a sonnet decline hide the same
+# PR from the opus lane it was escalated to. $1 = target, $2 = updated_at,
+# $3 = detail, $4 = role.
 remember_decline() {
     local f
     f="$STATE_DIR/declined/$(fleet_target_key "$1")"
     [[ -n "$2" ]] || return 0
     mkdir -p "${f%/*}" 2>/dev/null || true
-    printf '%s\n%s\n' "$2" "$3" > "$f" 2>/dev/null || true
+    printf '%s\n%s\n%s\n' "$2" "$3" "${4:-}" > "$f" 2>/dev/null || true
 }
 
 # An abandoned target: the pane exited with its claim label standing and no
@@ -1468,6 +1476,74 @@ handle_abandoned_target() {
     log "$target: abandoned twice by $agent — claim released, worktrees salvaged (${salvage:-nothing dirty}), handoff at $STATE_DIR/handoff/$key.md"
 }
 
+# --- Usage-wall verdict --------------------------------------------------------
+#
+# A dispatch that died at the Claude usage wall is a PROVIDER event, not a
+# target outcome — the Claude twin of the Codex cooldown in fleet_codex.py
+# (CODEX.md: "provider cooldowns do not claim work or consume triggers").
+# fleet-dispatch-wrap stamps `$RATE_LIMIT_DIR/<pane>.ts` when the stream
+# flagged a rejected rate_limit_event (or the legacy rc=2), and cleanup reads
+# that marker BEFORE the completion contract: read through the contract, a
+# wall death is `abandoned` (claim standing, no record), so two 1-second
+# launches into the wall released the target, salvaged nothing, and wrote a
+# handoff (2026-09-11), while each grant also spent one of the target's
+# FLEET_TARGET_DISPATCH_CAP assignments.
+#
+# True when the pane's dispatch ended on the usage wall: the marker exists
+# and is no older than the dispatch. $1 = pane id, $2 = dispatched_epoch.
+dispatch_hit_usage_limit() {
+    local ts_file ts
+    ts_file="$RATE_LIMIT_DIR/$(pane_id_to_key "$1").ts"
+    [[ -f "$ts_file" ]] || return 1
+    ts=$(cat "$ts_file" 2>/dev/null || printf '0')
+    [[ "$ts" =~ ^[0-9]+$ && "$2" =~ ^[0-9]+$ ]] || return 1
+    (( ts >= $2 ))
+}
+
+# True when none of the agent's worktrees carries work a resumed session
+# would continue: no task branch (claude/<N>-*, scratch excluded) and no
+# tracked modification. The wrap's worktree_in_flight counts a reservation
+# as in flight, but the pre-claim writes one before any work exists, so
+# here the tree itself is the evidence. $1 = agent (worktree basename).
+pane_worktrees_idle() {
+    local wt br
+    while IFS= read -r wt; do
+        [[ -n "$wt" ]] || continue
+        br=$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+        [[ "$br" == claude/* && "$br" != *-scratch ]] && return 1
+        [[ -n "$(git -C "$wt" status --porcelain 2>/dev/null | grep -v '^??')" ]] && return 1
+    done < <(fleet_pane_worktrees "$1" "$ENGINE")
+    return 0
+}
+
+# Fold a usage-wall exit for a target-bound dispatch: hand the grant back
+# (the count was bumped pre-launch), never touch the abandon ledger, and —
+# when the launch did no work — release the claim and clear the sidecar so
+# the item re-enters assignment (a Codex pane can take it while Claude is
+# closed) instead of sitting under a dead pane until the window resets. A
+# mid-task death keeps claim and sidecar: the wrap already preserved the
+# session, and the pane resumes it once the gate reopens. $1 = target,
+# $2 = agent.
+handle_quota_target() {
+    local target="$1" agent="$2" f n
+    if (( TARGET_DISPATCH_CAP > 0 )); then
+        f=$(target_dispatch_count_file "$target")
+        n=$(target_dispatch_count "$target")
+        if (( n > 1 )); then
+            echo $(( n - 1 )) > "$f" 2>/dev/null || true
+        else
+            rm -f "$f"
+        fi
+    fi
+    if pane_worktrees_idle "$agent"; then
+        fleet_release_assignment "$target" "$agent"
+        rm -f "${FLEET_SESSIONS_DIR:-$HOME/.fleet/sessions}/$agent.session.json"
+        log "$target: usage limit hit by $agent before any work — claim released; re-enters assignment when the Claude gate reopens"
+    else
+        log "$target: usage limit hit by $agent mid-task — claim and session kept; resumes when the Claude gate reopens"
+    fi
+}
+
 cleanup_stale_dispatches() {
     if [[ ! -d "$DISPATCH_DIR" ]]; then
         return
@@ -1498,22 +1574,40 @@ cleanup_stale_dispatches() {
         agent=$(sed -n 's/.*"agent":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
         runtime=$(sed -n 's/.*"runtime":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
         verdict=""
-        if [[ -n "$target" && -n "$agent" && -n "$dispatched_epoch" ]]; then
+        if [[ "${runtime:-claude}" == claude ]] && dispatch_hit_usage_limit "$pane" "$dispatched_epoch"; then
+            # Provider event: neither productive nor empty for the lane's
+            # backoff, and not the target's fault (see handle_quota_target).
+            verdict=quota
+            claimed=""
+            # The wrap re-armed the role on its way out, but the wall answers
+            # within the launching tick, so that touch can land between
+            # dispatch_role's send-keys and its trigger consume and be erased
+            # by it. This pass runs at the tick top, after that call returned:
+            # re-arm here, unconditionally, so the resume edge survives; the
+            # cooldown tick's reserved-pane hold carries it to the reopening.
+            if [[ -n "$role" ]]; then
+                mkdir -p "$TRIGGERS_DIR" && touch "$TRIGGERS_DIR/$role" || true
+            fi
+            if [[ -n "$target" && -n "$agent" ]]; then
+                handle_quota_target "$target" "$agent"
+            fi
+        elif [[ -n "$target" && -n "$agent" && -n "$dispatched_epoch" ]]; then
             assess_target_completion "$target" "$agent" "$dispatched_epoch"
             IFS=$'\t' read -r verdict updated detail <<< "$ASSESS_LINE"
             case "$verdict" in
                 finished)  claimed=yes; target_complete "$target" ;;
                 declined)
                     claimed=no
-                    remember_decline "$target" "$updated" "$detail"
+                    remember_decline "$target" "$updated" "$detail" "$role"
                     rm -f "$STATE_DIR/abandoned/$(fleet_target_key "$target")"
                     ;;
                 abandoned) claimed=no; handle_abandoned_target "$target" "$agent" ;;
             esac
         fi
         # Fold the just-finished dispatch into the role's empty-exit streak.
-        # Legacy records (pre-upgrade, no dispatched_epoch) skip this silently.
-        if [[ -n "$dispatched_epoch" ]]; then
+        # Legacy records (pre-upgrade, no dispatched_epoch) skip this silently;
+        # so does a usage-wall exit, which says nothing about the lane.
+        if [[ -n "$dispatched_epoch" && "$verdict" != quota ]]; then
             record_dispatch_outcome "$role" "$(( $(date +%s) - dispatched_epoch ))" \
                 "$class" "$claimed"
         fi
@@ -1698,7 +1792,11 @@ for path in sorted(usage_dir.glob("*.json")):
     if util_f > 1.5:
         util_f = util_f / 100.0
     rl_type = data.get("rateLimitType", path.stem)
-    th = threshold_for(rl_type)
+    # A latched `status:"rejected"` is the wall itself (fleet-claude-stream
+    # writes it at 100%); name it so the log reads "rejected", not "util=100%".
+    if data.get("status") == "rejected":
+        rl_type = f"{rl_type} rejected"
+    th = threshold_for(data.get("rateLimitType", path.stem))
     if util_f >= th:
         breaches.append((util_f, th, rl_type, resets_at))
     if top_observation is None or util_f > top_observation[0]:
@@ -1723,25 +1821,37 @@ else:
 PY
 }
 
+# One-shot transition log for one gate scope: a line on open->closed and
+# one on closed->open, silence in between (GATE_CLOSED_LOGGED is the
+# per-scope latch). $1 = latch key, $2 = the gate status line, $3 = log
+# prefix, $4 = closed suffix, $5 = reopened suffix.
+log_gate_transition() {
+    local key="$1" status="$2" prefix="$3" closed="$4" reopened="$5"
+    if [[ "$status" == closed:* ]]; then
+        if [[ -z "${GATE_CLOSED_LOGGED[$key]:-}" ]]; then
+            log "$prefix ${status}; $closed"
+            GATE_CLOSED_LOGGED[$key]=1
+        fi
+    elif [[ -n "${GATE_CLOSED_LOGGED[$key]:-}" ]]; then
+        log "$prefix re-opened (${status}); $reopened"
+        unset "GATE_CLOSED_LOGGED[$key]"
+    fi
+}
+
+# The Claude-scope gate's transitions, for a mixed-runtime fleet whose
+# fleet-wide gate covers only the shared (GitHub) pools.
+log_claude_gate_transition() {
+    log_gate_transition claude "$(usage_gate_status claude)" "claude usage gate" \
+        "Claude dispatch deferred, Codex unaffected" "Claude dispatch resumes"
+}
+
 # Returns 0 (true) when the gate is open and dispatching may proceed.
-# Side effect: emits a one-shot log entry on transitions (open->closed
-# and closed->open) using USAGE_GATE_CLOSED_LOGGED to suppress
-# repeat-on-every-tick spam.
+# Side effect: the one-shot transition log above.
 usage_gate_open() {
     local status
     status=$(usage_gate_status "${FLEET_USAGE_RUNTIME:-all}")
-    if [[ "$status" == closed:* ]]; then
-        if [[ -z "$USAGE_GATE_CLOSED_LOGGED" ]]; then
-            log "usage gate ${status}; deferring all dispatches"
-            USAGE_GATE_CLOSED_LOGGED=1
-        fi
-        return 1
-    fi
-    if [[ -n "$USAGE_GATE_CLOSED_LOGGED" ]]; then
-        log "usage gate re-opened (${status}); resuming dispatch"
-        USAGE_GATE_CLOSED_LOGGED=""
-    fi
-    return 0
+    log_gate_transition fleet "$status" "usage gate" "deferring all dispatches" "resuming dispatch"
+    [[ "$status" != closed:* ]]
 }
 
 # --- Per-role active-iteration count ---------------------------------------
@@ -2648,6 +2758,11 @@ dispatch_role() {
     # every 10 s. assign_budget_hit: the walk stopped on the per-tick claim
     # budget with candidates left — the trigger is kept instead.
     local assign_exhausted="" assign_budget_hit="" assign_rc=0
+    # reserved_held: a reserved worker pane sat out this tick in its
+    # usage-limit cooldown. Its reservation is the resume nobody else can
+    # serve (free panes fall through to the lane default and exhaust), so
+    # the trigger must outlive the tick instead of being consumed below.
+    local reserved_held=""
     PICKS_CACHE_KEY=""
     CLAIM_ATTEMPTS_LEFT=$CLAIM_ATTEMPTS_PER_TICK
     while IFS= read -r pane_id; do
@@ -2674,15 +2789,19 @@ dispatch_role() {
             continue
         fi
         # Skip panes that hit a usage-limit recently. The per-pane
-        # rate-limit marker is written by fleet-dispatch-wrap when claude
-        # exits with code 2. Log the skip once per cooldown window to
-        # avoid repeating the message on every 10-second tick.
+        # rate-limit marker is written by fleet-dispatch-wrap when its
+        # launch died at the wall. Log the skip once per cooldown window
+        # to avoid repeating the message on every 10-second tick.
         local pane_key
         pane_key=$(pane_id_to_key "$pane_id")
         if pane_in_rate_limit_cooldown "$pane_key"; then
             if [[ -z "${RATE_LIMIT_COOLDOWN_LOGGED[$pane_key]+x}" ]]; then
                 log "pane $pane_id ($role) in usage-limit cooldown (${LIMIT_DELAY}s); trigger kept"
                 RATE_LIMIT_COOLDOWN_LOGGED["$pane_key"]=1
+            fi
+            if [[ "$role" == "worker" ]] \
+                && worktree_is_reserved "$(pane_worktree_basename "$pane_id" || true)"; then
+                reserved_held=1
             fi
             continue
         fi
@@ -2831,6 +2950,14 @@ dispatch_role() {
         return
     fi
     clear_gate_block "$role"
+    if [[ -n "$reserved_held" ]]; then
+        if [[ -z "${CAP_DEFER_LOGGED[$role-reserved-held]+x}" ]]; then
+            log "$role: dispatched $dispatched; a reserved pane is in usage-limit cooldown — trigger kept for its resume"
+            CAP_DEFER_LOGGED["$role-reserved-held"]=1
+        fi
+        return
+    fi
+    unset "CAP_DEFER_LOGGED[$role-reserved-held]"
     if [[ -n "$assign_exhausted" ]]; then
         rm -f "$trigger_file"
         # Pace the periodic re-arm too: an unchanged slice of held or refused
@@ -3419,6 +3546,11 @@ main() {
         # set stays accurate for when the gate re-opens.
         if [[ "${FLEET_RUNTIMES:-claude}" == *codex* ]]; then
             FLEET_USAGE_RUNTIME=shared
+            # The Claude pools are then gated per dispatch (assign_for_pane's
+            # `claude-quota-closed`), which never logs a transition — the
+            # 2026-09-12 seven_day close was only inferable from every launch
+            # reading runtime=codex. Log it here, once per closed window.
+            log_claude_gate_transition
         else
             FLEET_USAGE_RUNTIME=all
         fi
@@ -3727,8 +3859,13 @@ case "${1:-}" in
     --gate-status)
         # Print the live usage gate status (open / closed) and exit.
         # Used by operators to inspect the 5-hour-window state without
-        # tailing the dispatcher log.
-        usage_gate_status
+        # tailing the dispatcher log. Optional scope: all (default) |
+        # claude (Anthropic windows only — what a Claude launch is gated
+        # on) | shared (GitHub pools only).
+        case "${2:-all}" in
+            all|claude|shared) usage_gate_status "${2:-all}" ;;
+            *) echo "usage: fleet-dispatcher --gate-status [all|claude|shared]" >&2; exit 2 ;;
+        esac
         exit 0
         ;;
     --retain-trigger-check)

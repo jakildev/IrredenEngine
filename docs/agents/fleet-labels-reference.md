@@ -48,7 +48,11 @@ there, never here.
 | `smoke-verify-{linux,macos,windows}` | cross-host smoke passed |
 
 Every verdict edge also removes `fleet:needs-opus-recheck` and
-`fleet:awaiting-upstream-review`.
+`fleet:awaiting-upstream-review`, and consumes the re-review triggers
+`fleet:changes-made` / `human:re-review` (the escalation edge too): a
+trigger left standing under a verdict kept the PR a sonnet candidate while
+it waited on the author or the human, and the lane re-dispatched it every
+tick.
 
 ## Queue and planning (issues)
 
@@ -183,10 +187,13 @@ snapshot race leaves one holder. Same-agent lane transitions remain allowed.
   when its pass ends `Opus recheck required:`. The signal
   `project_opus_reviewer` wakes on; every opus-reviewer verdict edge
   removes it. Dormant under the review-skip labels. `fleet:has-nits`
-  alongside it is not a verdict; the worker feedback tier skips such PRs.
+  alongside it is not a verdict; the worker feedback tier skips such PRs,
+  and so does the sonnet lane until a re-review trigger appears (the
+  missing verdict label is the escalation, not an unreviewed PR).
 - `fleet:changes-made` — **author worker** after pushing a feedback fix,
-  and on the ESCALATE swap. Re-triggers review (`RECHECK_LABELS`). Also
-  added whenever clearing a feedback label would leave no verdict label.
+  and on the ESCALATE swap. Re-triggers review (`RECHECK_LABELS`); the
+  verdict edge consumes it. Also added whenever clearing a feedback label
+  would leave no verdict label.
 - `fleet:awaiting-upstream-review` — **reviewer**, on a stacked child whose
   upstream is not yet approved; cleared on the next pass or by any verdict
   edge. Keeps an approved child from pulling an unapproved parent in via a
