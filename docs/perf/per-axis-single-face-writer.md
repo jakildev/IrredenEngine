@@ -2,15 +2,14 @@
 
 The voxel stage's 2×3 local layout has two lanes per face. Cardinal rendering
 needs both triangles, but per-axis overflow stores a complete face record. Both
-lanes previously appended the same position, depth and color. Canonical sorting
-orders these records; it does not deduplicate them. The scatter therefore drew
-the same face twice and the duplicate consumed overflow capacity.
+lanes append the same position, depth and color. Canonical sorting
+orders these records; it does not deduplicate them. The scatter therefore draws
+the same face twice and the duplicate consumes overflow capacity.
 
-The GLSL and Metal stage-1 overflow branches now select the existing
-`faceOffset_2x3(slot, 0)` lane before appending. Other store, winner-election,
-stage-2, cardinal and detached-triangle paths keep their execution structure.
-The resulting face has the same geometry, depth and lighting inputs; this adds
-no smoothing, blur or coverage inflation.
+**The optimization is not shipped.** A fresh stack-integration control found a
+12-pixel lighting change with the overflow-only lane guard enabled. Both shader
+branches retain the parent renderer's two-lane append behavior. The measurements
+below describe rejected candidates, not a speedup present in this stack.
 
 ## Measurement
 
@@ -24,10 +23,10 @@ original and both single-writer candidates are in
 The broad exploratory candidate skipped a lane for every per-axis operation.
 It reduced scatter from 2.997 to 2.486 ms; restoring the original returned it
 to 2.999 ms. Frame means were 22.470 → 21.397 → 22.003 ms. However, one frozen
-entity-rotation pose changed 12 face-junction pixels reproducibly. The final
-patch is restricted to overflow appends; the broad candidate is not shipped.
+entity-rotation pose changed 12 face-junction pixels reproducibly. The narrower
+candidate is restricted to overflow appends; neither candidate is shipped.
 
-The final overflow-only version measures **2.474 ms scatter** (2.471–2.476),
+The rejected overflow-only version measures **2.474 ms scatter** (2.471–2.476),
 versus 2.999 ms (2.989–3.005) in the restored original: a 17.5% reduction.
 Frame mean is **21.310 ms** (20.910–21.610), versus 22.003 ms
 (21.620–22.310), about 3.2% lower. Storage is 5.060 versus 5.085 ms,
@@ -40,15 +39,16 @@ invocations on this host, not hardware counters or multi-canvas frame totals.
 
 The final candidate is compared against the unchanged parent renderer using
 native captures, with per-frame overlay pixels excluded only in IRPerfGrid.
-All 57 final pairs match exactly: 15 IRPerfGrid scene regions (x < 1800,
+All 57 pairs in that original run matched exactly: 15 IRPerfGrid scene regions (x < 1800,
 full height), 24 complete fog frames and 18 complete CanvasStress frames.
 [Representative full screenshots and all pair hashes](../pr-screenshots/codex/per-axis-single-face-writer/)
 are retained alongside the PR. Native builds of all three demos, changed-line
 formatting, header/Metal registry checks and comment-reference lint pass.
 
 The critical extra control holds entity rotation at 0.47 radians while camera
-yaw traverses all quadrants. All nine full CanvasStress frames match the
-original after narrowing the patch; the problematic 12 pixels match too.
+yaw traverses all quadrants. All nine full CanvasStress frames matched the
+original in that run after narrowing the patch. The subsequent control below
+shows that this result was insufficient to establish equivalence.
 Coverage includes attached entities and detached/revoxelized canvases in the
 default scene. The 24-pose fog cross-section fixture exercises face selection
 at partially revealed boundaries rather than only checking unoccluded cubes.
@@ -57,7 +57,29 @@ Saturated overflow lists can produce different images because fewer duplicate
 appends leave room for real faces previously dropped at capacity. That recovery
 is expected, but no saturated-scene equivalence or OpenGL runtime result is
 claimed here. Unrelated equal-depth winner scheduling remains a follow-up;
-the narrow change avoids altering those operations.
+the narrow change can still affect the order of tied overflow draws.
+
+## Stack-integration control
+
+At integrated head `910fa3f0ee7c71600a89b92577b90a9e3035af0a`, run:
+
+```text
+fleet-run IRCanvasStress --no-auto-rotate --no-spin --frozen-pose 0.47 --sweep-yaw 0 6.2831853 9 --auto-screenshot 6
+```
+
+Two fresh narrow-candidate sweeps (896–904 and 906–914) each match eight of nine
+original full RGB frames. At yaw 45°, twelve pixels in `[1300,1306) × [588,590)`
+change from `(86,184,86)` to `(76,161,76)` at a green face junction. Removing
+only the Metal overflow lane guard, rebuilding the shader assets and rerunning
+the same binary/command (915–923) restores the original pixels; all nine frames
+match 878–886. This is an output-equivalence acceptance failure despite unchanged face
+geometry. A single-pose invocation does not reproduce the sweep's darker seam.
+
+[Candidate and restored-control screenshots](../pr-screenshots/codex/per-axis-single-face-writer/stack-review-control/)
+retain the evidence. Sorting is conditional on displaced-cell tie detection and
+a lagged nonempty count; equal-depth cross-cell overflow ordering is a candidate
+cause, not a proven diagnosis. Resolve and test that ordering before reviving
+single-writer appends. Do not adjust depth tolerance or blur the seam.
 
 ## Remaining performance work
 
@@ -65,5 +87,5 @@ Expose generated samples, occupied cells, live overflow entries and scratch
 bytes with producer-matched readback. Separate screen-visible work from finite
 shadow-caster work before tightening rotated culling. Measure overflow sort
 launches versus live work, then light-volume and CPU update/upload costs.
-The current evidence establishes a downstream scatter improvement, not rotation
-parity or a reduction in every per-axis stage.
+The rejected candidate demonstrates potential downstream savings, not a shipped
+scatter improvement or rotation parity.

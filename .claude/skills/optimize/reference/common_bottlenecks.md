@@ -183,7 +183,9 @@ that found a new one; never add a pattern that was only suspected.
 - **Where**: per-axis overflow append in `c_voxel_to_trixel_stage_1_body` and
   its Metal counterpart.
 - **Symptom**: identical overflow records consume capacity and repeat downstream
-  scatter work without changing the rendered face.
-- **Fix**: select one existing face lane only for complete-face appends; keep
+  scatter work; removing them can change equal-depth draw ordering.
+- **Candidate**: select one existing face lane only for complete-face appends; keep
   actual triangle rasterization and unrelated winner scheduling unchanged. Validate collision winners,
   fog cuts and saturation behavior, and measure the downstream consumers too.
+  This candidate is deferred: a fresh integrated sweep changed a 12-pixel
+  lighting seam. Resolve tied overflow ordering before applying it.
