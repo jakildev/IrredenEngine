@@ -664,18 +664,20 @@ struct C_VoxelSetNew {
     // `resetGameplay`) > the active canvas. Queues the seeded range for GPU
     // position upload; colors + active-mask ride the unconditional per-frame
     // `subData`, and lighting/AO/shadow/fog textures re-derive from the
-    // re-seeded pool on the next render tick. Stays staged (returns without
-    // seeding) if no live pool can be resolved.
-    void attachToCanvas(IREntity::EntityId canvas = IREntity::kNullEntity) {
+    // re-seeded pool on the next render tick. Stays staged (returns false
+    // without seeding) if no live pool can be resolved; true means the set is
+    // now pool-resident, which is the driver's cue for the per-entity
+    // follow-up (`SEED_STAGED_VOXELS` re-stamps a rigged set's bone slots).
+    bool attachToCanvas(IREntity::EntityId canvas = IREntity::kNullEntity) {
         if (numVoxels_ > 0 || pendingVoxels_.empty()) {
-            return;
+            return false;
         }
         IREntity::EntityId target = canvas != IREntity::kNullEntity ? canvas : canvasEntity_;
         if (!IRPrefab::VoxelPool::hasPool(target)) {
             target = IRPrefab::VoxelPool::activeCanvasEntityOrNull();
         }
         if (!IRPrefab::VoxelPool::hasPool(target)) {
-            return; // no live pool to seed into — leave the set staged
+            return false; // no live pool to seed into — leave the set staged
         }
         // Move the staged records out and seed from the local copy, clearing
         // pendingVoxels_ up front so the "is this set staged" gate stays honest
@@ -693,13 +695,15 @@ struct C_VoxelSetNew {
         std::vector<C_Voxel> staged = std::move(pendingVoxels_);
         pendingVoxels_.clear();
         seedIntoPool(stagedOrigin(), staged, target);
-        if (numVoxels_ > 0) {
-            IRPrefab::VoxelPool::queuePositionRange(
-                voxelStartIdx_,
-                static_cast<std::size_t>(numVoxels_),
-                canvasEntity_
-            );
+        if (numVoxels_ <= 0) {
+            return false;
         }
+        IRPrefab::VoxelPool::queuePositionRange(
+            voxelStartIdx_,
+            static_cast<std::size_t>(numVoxels_),
+            canvasEntity_
+        );
+        return true;
     }
 
     // Local origin a staged set seeds at. CORNER keeps the authored integer
@@ -766,6 +770,12 @@ struct C_VoxelSetNew {
     // caller is `IRPrefab::VoxelPool::restageSet` (`voxel_pool_teardown.hpp`),
     // which captures the span descriptor first and deallocates after. Never
     // call this bare: a set detached without the pool release leaks its span.
+    //
+    // State derived from the span is dropped and re-derived by the next
+    // `seedIntoPool`: the per-trixel-priority count is recounted from the
+    // records (their tier bits travel with them), and the per-voxel transform
+    // indices are re-stamped from `gpuTransformSlot_`, which is the set's own
+    // (the slot allocator is world-scoped, not pool-scoped) and so survives.
     void detachToStaged() {
         if (numVoxels_ > 0) {
             // Recover the pool-independent form BEFORE the span views go away.
@@ -807,10 +817,12 @@ struct C_VoxelSetNew {
     // cannot express it (#2563). Captures the four pool spans, resyncs the pool
     // active-mask from per-voxel alpha, and recomputes face occupancy — leaving
     // the set pool-resident (`numVoxels_ > 0`), or empty (`numVoxels_ == 0`) on
-    // an allocation mismatch. `size_` must already be set and
-    // `src.size() == product(size_)`. Shared by the dense-data ctor and the
-    // post-load `attachToCanvas` seed pass (#2217, W-10) so the allocate +
-    // seed + resync sequence lives in exactly one place.
+    // an allocation mismatch. `size_` must already be set,
+    // `src.size() == product(size_)`, and `perTrixelPriorityVoxelCount_` is
+    // zero — every caller starts from a span-less set. Shared by the
+    // dense-data ctor and the post-load `attachToCanvas` seed pass (#2217,
+    // W-10) so the allocate + seed + resync sequence lives in exactly one
+    // place.
     void seedIntoPool(vec3 origin, std::span<const C_Voxel> src, IREntity::EntityId canvas) {
         canvasEntity_ = canvas;
         const ivec3 extent = size_;
@@ -852,6 +864,7 @@ struct C_VoxelSetNew {
         }
 
         const vec3 originOffset{origin};
+        std::uint32_t priorityVoxels = 0;
         for (int x = 0; x < extent.x; ++x) {
             for (int y = 0; y < extent.y; ++y) {
                 for (int z = 0; z < extent.z; ++z) {
@@ -859,6 +872,8 @@ struct C_VoxelSetNew {
                     positions_[idx] =
                         IRRender::VoxelGpuPosition{vec3(x, y, z) + originOffset, 0.0f};
                     voxels_[idx] = src[idx];
+                    priorityVoxels +=
+                        (src[idx].reserved_ & VoxelReserved::kPriorityMask) != 0u ? 1u : 0u;
                 }
             }
         }
@@ -869,6 +884,31 @@ struct C_VoxelSetNew {
             IRPrefab::VoxelPool::resyncRangeFromColors(voxelStartIdx_, numVoxels_, canvasEntity_);
         }
         IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, extent);
+        // The records carry their priority tiers, so the per-set count and the
+        // pool aggregate that gates the finalization decode are derived from
+        // them rather than assumed zero — a set seeded from staged records
+        // (post-load, or re-homed after a canvas teardown) keeps the tiers it
+        // was authored with. Counts every slot regardless of alpha, like
+        // `changeVoxelPriorityAll`: an over-count only costs the fast path.
+        perTrixelPriorityVoxelCount_ = priorityVoxels;
+        IRPrefab::VoxelPool::adjustPerTrixelPriorityVoxelCount(
+            static_cast<int>(priorityVoxels),
+            canvasEntity_
+        );
+        // A set routed through the GPU transform prepass keeps its slot across
+        // a re-stage, but the per-voxel indices live in the pool, so the fresh
+        // span must be pointed back at it. A skinned set lands on rigid follow;
+        // its bone stamps come back through
+        // `IRPrefab::JointTransform::seedVoxelBoneSlots`, which the seed pass
+        // runs for every set it lands.
+        if (gpuTransformSlot_ != IRRender::kVoxelTransformStatic) {
+            IRPrefab::VoxelPool::setTransformIndexForRange(
+                voxelStartIdx_,
+                static_cast<std::size_t>(numVoxels_),
+                gpuTransformSlot_,
+                canvasEntity_
+            );
+        }
     }
 
     // Single home for the resync order the bulk mutators run inline after a

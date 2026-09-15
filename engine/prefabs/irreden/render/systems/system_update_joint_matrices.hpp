@@ -185,8 +185,10 @@ template <> struct System<UPDATE_JOINT_MATRICES> {
     // stays CPU-direct — unrigged content pays nothing and renders unchanged.
     //
     // Called automatically from beginTick whenever the skeleton's slot block is
-    // (re)allocated (first rig, joint count change). After re-painting
-    // C_Voxel::bone_id_ without changing the joint list, call
+    // (re)allocated (first rig, joint count change), and by SEED_STAGED_VOXELS
+    // for every set it lands in a pool (the stamps live in the pool, so a load
+    // or a canvas-teardown re-stage starts the set on rigid follow). After
+    // re-painting C_Voxel::bone_id_ without changing the joint list, call
     // `IRPrefab::JointTransform::seedVoxelBoneSlots(rigRoot)` to re-stamp.
     void seedVoxelBoneSlots(IREntity::EntityId rigRoot) {
         const auto voxelSetOpt = IREntity::getComponentOptional<C_VoxelSetNew>(rigRoot);
@@ -446,7 +448,8 @@ inline std::uint32_t slotBase(IREntity::EntityId rigRoot) {
 // Re-stamp the per-voxel bone→slot indices of `rigRoot`'s voxel set (see the
 // member doc on `System<UPDATE_JOINT_MATRICES>::seedVoxelBoneSlots`). Call
 // after painting `C_Voxel::bone_id_` on an already-rigged set; rig/joint-count
-// changes re-stamp automatically. No-op when the system is unwired.
+// changes and the seed pass landing a staged set re-stamp automatically. No-op
+// when the system is unwired.
 inline void seedVoxelBoneSlots(IREntity::EntityId rigRoot) {
     if (auto *p = system()) {
         p->seedVoxelBoneSlots(rigRoot);

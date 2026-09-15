@@ -208,6 +208,19 @@ struct C_VoxelPool {
         m_entityIdsDirty = true;
         markCullBoundsDirty(startIndex, size);
 
+        // A freed slot is CPU-direct again. The transform indices outlive the
+        // span otherwise, and a static set seeded into the recycled span would
+        // have its binding-5 positions rewritten by the prepass from a slot it
+        // never owned while the static flush skips it. Gated on a real change
+        // so a pool with no GPU-transformed sets never queues a re-seed.
+        const auto rangeBegin = m_voxelTransformIndices.begin() + startIndex;
+        const bool anyDynamic = std::any_of(rangeBegin, rangeBegin + size, [](std::uint32_t idx) {
+            return idx != IRRender::kVoxelTransformStatic;
+        });
+        if (anyDynamic) {
+            setTransformIndexForRange(startIndex, size, IRRender::kVoxelTransformStatic);
+        }
+
         m_freeVoxelSpans.push_back({startIndex, size});
         updateFreeSpanLookup(startIndex, size);
     }

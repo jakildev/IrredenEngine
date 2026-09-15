@@ -20,32 +20,57 @@
 // those sites call — directly. The assertions below then destroy the canvas and
 // nothing else: no test hand-calls `restageSet`, so a hook that is not
 // actually wired fails them.
+//
+// The re-home cases (`Rehomed*`) continue past the teardown into
+// `attachToCanvas` on a second canvas — the production attach route with its
+// explicit target, since the active-canvas fallback needs a RenderManager —
+// and assert the state the span derived on the first canvas comes back on the
+// second: the per-trixel-priority count and pool aggregate, the GPU transform
+// slot's per-voxel stamps, and a rigged set's bone stamps. The last of those
+// is the seed pass's job, so that case drives `SEED_STAGED_VOXELS` through a
+// `SystemManager` pipeline rather than calling the re-stamp by hand.
 
 #include <gtest/gtest.h>
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
+#include <irreden/ir_render.hpp>
+#include <irreden/ir_system.hpp>
+#include <irreden/ir_time.hpp>
 
 #include <irreden/common/components/component_rotation_mode.hpp>
 #include <irreden/common/rotation_mode.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
+#include <irreden/render/systems/system_update_joint_matrices.hpp>
+#include <irreden/voxel/components/component_joint.hpp>
+#include <irreden/voxel/components/component_skeleton.hpp>
+#include <irreden/voxel/components/component_voxel.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
+#include <irreden/voxel/systems/system_seed_staged_voxels.hpp>
 #include <irreden/voxel/voxel_pool_teardown.hpp>
+
+#include <cstddef>
+#include <cstdint>
+#include <utility>
 
 namespace {
 
 using IRComponents::C_EntityCanvas;
+using IRComponents::C_Joint;
 using IRComponents::C_RotationMode;
+using IRComponents::C_Skeleton;
 using IRComponents::C_VoxelPool;
 using IRComponents::C_VoxelSetNew;
 using IRComponents::RotationMode;
+using IRComponents::VoxelReserved::kPriorityMask;
 using IRMath::Color;
 using IRMath::ivec3;
 
 const ivec3 kPoolSize{8, 8, 8};
 const ivec3 kSetSize{2, 3, 4};
 const int kSetVoxels = kSetSize.x * kSetSize.y * kSetSize.z;
+constexpr std::uint32_t kEntitySlot = 3;
 
 class VoxelPoolTeardown : public ::testing::Test {
   protected:
@@ -77,7 +102,40 @@ class VoxelPoolTeardown : public ::testing::Test {
         return IREntity::getComponent<C_VoxelSetNew>(entity);
     }
 
+    static C_VoxelSetNew &mutableSetOf(IREntity::EntityId entity) {
+        return IREntity::getComponent<C_VoxelSetNew>(entity);
+    }
+
+    static const C_VoxelPool &poolOf(IREntity::EntityId canvas) {
+        return IREntity::getComponent<C_VoxelPool>(canvas);
+    }
+
+    // Opt a resident set into the GPU transform prepass the way a creation
+    // does (`shape_debug --gpu-voxel-smoke`): the slot on the set, the
+    // per-voxel stamps on its pool span.
+    static void routeThroughGpuSlot(IREntity::EntityId object, std::uint32_t slot) {
+        C_VoxelSetNew &set = mutableSetOf(object);
+        set.gpuTransformSlot_ = slot;
+        IREntity::getComponent<C_VoxelPool>(set.canvasEntity_)
+            .setTransformIndexForRange(
+                set.voxelStartIdx_,
+                static_cast<std::size_t>(set.numVoxels_),
+                slot
+            );
+    }
+
+    static void expectSpanStampedWith(IREntity::EntityId object, std::uint32_t slot) {
+        const C_VoxelSetNew &set = setOf(object);
+        const auto &indices = poolOf(set.canvasEntity_).getTransformIndices();
+        for (int i = 0; i < set.numVoxels_; ++i) {
+            EXPECT_EQ(indices[set.voxelStartIdx_ + static_cast<std::size_t>(i)], slot)
+                << "voxel " << i;
+        }
+    }
+
+    // EntityManager first: system registration reaches the entity manager.
     IREntity::EntityManager m_entityManager;
+    IRSystem::SystemManager m_systemManager;
 };
 
 // The whole point: after the canvas is gone the set holds no reference to it and
@@ -219,6 +277,139 @@ TEST_F(VoxelPoolTeardown, SetModeToGridRestagesTheCanvasResidentSet) {
     EXPECT_EQ(set.numVoxels_, 0);
     EXPECT_EQ(set.canvasEntity_, IREntity::kNullEntity);
     EXPECT_EQ(set.pendingVoxels_.size(), static_cast<std::size_t>(kSetVoxels));
+}
+
+// Priority tiers ride the voxel records, so they survive the re-stage as data;
+// what the set and the pool COUNT has to follow them. The first canvas is
+// re-staged rather than destroyed so its aggregate is still readable: it must
+// drop to none, and the second canvas's must come up, with the set's own count
+// matching — otherwise the re-homed voxels carry tier bits the finalization
+// decode never looks at.
+TEST_F(VoxelPoolTeardown, RehomedSetKeepsItsPriorityTiersCounted) {
+    const IREntity::EntityId canvasA = makeCanvas();
+    const IREntity::EntityId canvasB = makeCanvas();
+    const IREntity::EntityId object = makeResidentSet(canvasA);
+    mutableSetOf(object).changeVoxelPriorityAll(2);
+    ASSERT_TRUE(poolOf(canvasA).hasPerTrixelPriority());
+    ASSERT_EQ(setOf(object).perTrixelPriorityVoxelCount_, static_cast<std::uint32_t>(kSetVoxels));
+
+    IRPrefab::VoxelPool::restageSetsOnCanvas(canvasA);
+    EXPECT_FALSE(poolOf(canvasA).hasPerTrixelPriority());
+    EXPECT_EQ(setOf(object).perTrixelPriorityVoxelCount_, 0u);
+
+    ASSERT_TRUE(mutableSetOf(object).attachToCanvas(canvasB));
+
+    const C_VoxelSetNew &set = setOf(object);
+    EXPECT_EQ(set.canvasEntity_, canvasB);
+    EXPECT_EQ(set.perTrixelPriorityVoxelCount_, static_cast<std::uint32_t>(kSetVoxels));
+    EXPECT_TRUE(poolOf(canvasB).hasPerTrixelPriority());
+    EXPECT_FALSE(poolOf(canvasA).hasPerTrixelPriority());
+    for (int i = 0; i < set.numVoxels_; ++i) {
+        EXPECT_EQ(set.voxels_[i].reserved_ & kPriorityMask, 2u) << "voxel " << i;
+    }
+}
+
+// A set routed through the GPU transform prepass owns its slot; what it loses
+// with the span is the per-voxel stamps in the pool. After the re-home the new
+// span must point at the same slot and be queued for the binding-17 re-seed —
+// with the slot retained but the span unstamped, UPDATE_VOXEL_SET_CHILDREN
+// withholds the CPU upload and the prepass never writes the set either.
+TEST_F(VoxelPoolTeardown, RehomedSetCarriesItsGpuTransformSlotOntoTheNewSpan) {
+    const IREntity::EntityId canvasA = makeCanvas();
+    const IREntity::EntityId canvasB = makeCanvas();
+    const IREntity::EntityId object = makeResidentSet(canvasA);
+    routeThroughGpuSlot(object, kEntitySlot);
+
+    destroyNow(canvasA);
+    ASSERT_EQ(setOf(object).gpuTransformSlot_, kEntitySlot);
+    ASSERT_TRUE(mutableSetOf(object).attachToCanvas(canvasB));
+
+    const C_VoxelSetNew &set = setOf(object);
+    EXPECT_EQ(set.gpuTransformSlot_, kEntitySlot);
+    expectSpanStampedWith(object, kEntitySlot);
+    const auto &pending = poolOf(canvasB).getPendingTransformIndexRanges();
+    ASSERT_EQ(pending.size(), 1u);
+    EXPECT_EQ(
+        pending[0],
+        std::make_pair(set.voxelStartIdx_, static_cast<std::size_t>(set.numVoxels_))
+    );
+}
+
+// The other half of the same hazard: a CPU-direct set re-homed into a span a
+// GPU-routed set vacated must not inherit that set's stamps. The pool resets a
+// freed range to static on release (and queues it, so binding 17 follows),
+// which is what makes the reused span come back clean.
+TEST_F(VoxelPoolTeardown, RehomedStaticSetDoesNotInheritTheVacatedSpansSlot) {
+    const IREntity::EntityId canvasA = makeCanvas();
+    const IREntity::EntityId canvasB = makeCanvas();
+    const IREntity::EntityId vacating = makeResidentSet(canvasB);
+    routeThroughGpuSlot(vacating, kEntitySlot);
+    const std::size_t vacatedStart = setOf(vacating).voxelStartIdx_;
+    const IREntity::EntityId object = makeResidentSet(canvasA);
+
+    destroyNow(vacating);
+    destroyNow(canvasA);
+    ASSERT_TRUE(mutableSetOf(object).attachToCanvas(canvasB));
+
+    const C_VoxelSetNew &set = setOf(object);
+    ASSERT_EQ(set.voxelStartIdx_, vacatedStart)
+        << "fixture: the re-home must reuse the vacated span";
+    EXPECT_EQ(set.gpuTransformSlot_, IRRender::kVoxelTransformStatic);
+    expectSpanStampedWith(object, IRRender::kVoxelTransformStatic);
+    EXPECT_FALSE(poolOf(canvasB).getPendingTransformIndexRanges().empty());
+}
+
+// A rigged set's bone→slot stamps are UPDATE_JOINT_MATRICES' to write, and it
+// writes them when the skeleton's block is allocated — which does not recur on
+// a re-home. The seed pass owns the re-stamp: it lands the set, then re-runs
+// `seedVoxelBoneSlots` for it in endTick. Driven through a SystemManager
+// pipeline so the case fails if that wiring is missing, not just the stamp.
+// The set names the second canvas as its target the way a saved canvas id
+// does; the active-canvas fallback needs a RenderManager.
+TEST_F(VoxelPoolTeardown, RehomedRiggedSetIsRestampedByTheSeedPass) {
+    IRSystem::createSystem<IRSystem::UPDATE_JOINT_MATRICES>();
+    m_systemManager.registerPipeline(
+        IRTime::Events::UPDATE,
+        {IRSystem::createSystem<IRSystem::SEED_STAGED_VOXELS>()}
+    );
+    const IREntity::EntityId canvasA = makeCanvas();
+    const IREntity::EntityId canvasB = makeCanvas();
+    const IREntity::EntityId rigRoot = IREntity::createEntity(
+        C_VoxelSetNew{ivec3(3, 1, 1), Color{200, 100, 50, 255}, false, canvasA}
+    );
+    {
+        C_VoxelSetNew &set = mutableSetOf(rigRoot);
+        set.gpuTransformSlot_ = kEntitySlot;
+        set.voxels_[0].bone_id_ = 0;
+        set.voxels_[1].bone_id_ = 1;
+        set.voxels_[2].bone_id_ = 7;
+        C_Skeleton skeleton;
+        for (int i = 0; i < 2; ++i) {
+            skeleton.joints_.push_back(IREntity::createEntity(C_Joint{}));
+            skeleton.bindPose_.push_back(IRMath::SQT{});
+        }
+        IREntity::setComponent(rigRoot, skeleton);
+    }
+    auto *joints = IRPrefab::JointTransform::system();
+    ASSERT_NE(joints, nullptr);
+    joints->beginTick();
+    const std::uint32_t base = joints->skeletonBlocks_.at(rigRoot).base_;
+    ASSERT_NE(base, IRRender::kVoxelTransformStatic);
+    ASSERT_EQ(poolOf(canvasA).getTransformIndices()[setOf(rigRoot).voxelStartIdx_], base);
+
+    destroyNow(canvasA);
+    ASSERT_EQ(setOf(rigRoot).numVoxels_, 0);
+    mutableSetOf(rigRoot).canvasEntity_ = canvasB;
+    m_systemManager.executePipeline(IRTime::Events::UPDATE);
+
+    const C_VoxelSetNew &set = setOf(rigRoot);
+    ASSERT_EQ(set.numVoxels_, 3);
+    ASSERT_EQ(set.canvasEntity_, canvasB);
+    EXPECT_EQ(set.gpuTransformSlot_, kEntitySlot);
+    const auto &indices = poolOf(canvasB).getTransformIndices();
+    EXPECT_EQ(indices[set.voxelStartIdx_ + 0], base + 0);
+    EXPECT_EQ(indices[set.voxelStartIdx_ + 1], base + 1);
+    EXPECT_EQ(indices[set.voxelStartIdx_ + 2], kEntitySlot);
 }
 
 } // namespace
