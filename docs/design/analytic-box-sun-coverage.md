@@ -1,6 +1,6 @@
 # Finite analytic box sun coverage
 
-The opt-in voxel/source-face sun paths cast main-canvas analytic BOX descriptors
+The finite voxel/source-face sun paths cast analytic BOX descriptors on eligible world canvases
 by intersecting texel-center sun rays with the rotated source box. Each covered
 texel stores its own entry depth. Boxes no longer contribute depth-point splats;
 non-box analytic shapes keep their independent depth pass. Normal display and the

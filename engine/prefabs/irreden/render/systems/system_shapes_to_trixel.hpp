@@ -156,6 +156,11 @@ template <> struct System<SHAPES_TO_TRIXEL> {
     }
 
     void beginTick() {
+        const auto bakeSystem = findSystem(BAKE_SUN_SHADOW_MAP);
+        if (bakeSystem != kNullSystemId) {
+            auto *baker = getSystemParams<System<BAKE_SUN_SHADOW_MAP>>(bakeSystem);
+            baker->beginVoxelFaceCoverage();
+        }
         gpuShapesByCanvas_.clear();
 
         // Snapshot the active LOD tier from the singleton written by
@@ -350,7 +355,11 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             );
             IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
 
-            if (canvasId == mainCanvas) {
+            const auto shadow = IREntity::getComponentOptional<C_CanvasSunShadow>(canvasId);
+            const auto behavior =
+                IREntity::getComponentOptional<C_TrixelCanvasRenderBehavior>(canvasId);
+            if (shadow.has_value() && behavior.has_value() &&
+                behavior.value()->useCameraPositionIso_) {
                 const auto bakeSystem = findSystem(BAKE_SUN_SHADOW_MAP);
                 if (bakeSystem != kNullSystemId) {
                     auto *baker = getSystemParams<System<BAKE_SUN_SHADOW_MAP>>(bakeSystem);
@@ -375,6 +384,9 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                         );
                         IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
                         IRRender::device()->resolveImageAtomicScratch(casterDepth);
+                        baker->bakeAnalyticCasterDepth();
+                        canvasTextures.getTextureColors()
+                            ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
                         canvasTextures.getTextureDistances()
                             ->bindAsImage(1, TextureAccess::READ_WRITE, TextureFormat::R32I);
                     }

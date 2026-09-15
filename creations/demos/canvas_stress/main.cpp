@@ -1077,12 +1077,12 @@ void registerArgs() {
     );
     args.flag(
         "--voxel-face-shadows",
-        "Experimental complete voxel-face sun coverage (voxel casters only)"
+        "Use resampled voxel faces instead of authored source faces for shadows"
     );
-    args.flag(
-        "--source-face-shadows",
-        "Experimental authored-face shadows before detached resampling"
-    );
+    args.flag("--source-face-shadows", "Use authored source faces for shadows (default)");
+    args.flag("--legacy-depth-shadows", "Debug legacy point-depth shadow casting");
+    args.integer("--probe-analytic-canvases", "Shadow-only analytic canvas mask: 1, 2 or 3", 0);
+    args.flag("--probe-no-voxel-pass", "Debug shape-only shadow initialization");
     args.flag("--debug-raw-trixels", "Debug detached voxel storage as raw rectangular trixels");
     args.flag(
         "--local-trixel-display",
@@ -1143,7 +1143,7 @@ void registerArgs() {
     );
     args.flag(
         "--auto-profile",
-        "Per-system frame timing; write save_files/profile_report.txt on the auto-screenshot exit"
+        "CPU and GPU timing; write save_files/profile_report.txt on the auto-screenshot exit"
     );
     args.enumValue(
         "--debug-overlay",
@@ -1276,6 +1276,7 @@ int main(int argc, char **argv) {
     readConfig();
     if (g_settings.autoProfile_) {
         IREngine::enableFrameTiming(true);
+        IRRender::gpuStageTiming().enabled_ = true;
     }
 
     initSystems();
@@ -1376,7 +1377,21 @@ void initSystems() {
     if (!g_settings.noLighting_) {
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>());
     }
-    renderPipeline.push_back(IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>());
+    const auto voxelStage = IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>();
+    if (IREngine::args().getFlag("--probe-no-voxel-pass")) {
+        renderPipeline.push_back(
+            IRSystem::createSystem<C_TriangleCanvasTextures>(
+                "ShapeOnlyCanvasClear",
+                [](C_TriangleCanvasTextures &textures) {
+                    textures.clear();
+                    const int empty = IRConstants::kTrixelDistanceMaxDistance;
+                    IRRender::device()->clearTexImage(textures.getTextureDistances(), 0, &empty);
+                }
+            )
+        );
+    } else {
+        renderPipeline.push_back(voxelStage);
+    }
     if (!g_settings.noLighting_) {
         // SDF floor pass — runs after the voxel raster and before the lighting/
         // shadow passes so the floor is in `trixelDistances` when BAKE_SUN_SHADOW_MAP
@@ -1391,10 +1406,10 @@ void initSystems() {
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::RESOLVE_PER_AXIS_SCREEN_DEPTH>());
         const auto bakeSun = IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>();
         IRSystem::getSystemParams<IRSystem::System<IRSystem::BAKE_SUN_SHADOW_MAP>>(bakeSun)
-            ->voxelFaceCoverage_ = IREngine::args().getFlag("--voxel-face-shadows") ||
-                                   IREngine::args().getFlag("--source-face-shadows");
+            ->voxelFaceCoverage_ = !IREngine::args().getFlag("--legacy-depth-shadows");
         IRSystem::getSystemParams<IRSystem::System<IRSystem::BAKE_SUN_SHADOW_MAP>>(bakeSun)
-            ->sourceFaceCoverage_ = IREngine::args().getFlag("--source-face-shadows");
+            ->sourceFaceCoverage_ = !IREngine::args().getFlag("--voxel-face-shadows") ||
+                                    IREngine::args().getFlag("--source-face-shadows");
         renderPipeline.push_back(bakeSun);
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>());
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>());
@@ -1762,6 +1777,25 @@ void initEntities() {
             C_VoxelSetNew{ivec3(5, 5, 5), Color{240, 160, 70, 255}, true, mainCanvas}
         );
     }
+    const int analyticCanvasMask =
+        IRMath::clamp(IREngine::args().getInt("--probe-analytic-canvases"), 0, 3);
+    for (int index = 0; index < 2; ++index) {
+        if ((analyticCanvasMask & (1 << index)) == 0)
+            continue;
+        const ivec2 canvasSize(index == 0 ? 128 : 256);
+        const EntityId canvas = IREntity::createEntity(
+            C_TriangleCanvasTextures{canvasSize},
+            C_CanvasSunShadow{canvasSize},
+            C_TrixelCanvasRenderBehavior{}
+        );
+        C_ShapeDescriptor sphere{IRRender::ShapeType::SPHERE, vec4(4.0f), Color{80, 120, 240, 255}};
+        sphere.canvasEntity_ = canvas;
+        IREntity::createEntity(
+            C_LocalTransform{vec3(index == 0 ? -18.0f : 18.0f, -6.0f, -12.0f)},
+            sphere
+        );
+    }
+
     if ((g_settings.onlyGroups_ & kGroupShadowBox) != 0u) {
         const bool singleVoxel = IREngine::args().getFlag("--probe-single-voxel");
         const ivec3 size = singleVoxel ? ivec3(1) : ivec3(18, 6, 8);

@@ -40,9 +40,19 @@ changes (occupied-only lists, indirect dispatch, subdivision caps).
   for the per-system observer; its per-canvas tick brackets each dispatch group
   with a `GpuSubStageScope`, so `voxelStage1` now measures the stage-1 dispatch
   ONLY and the other three rows carry the clear / compact / stage-2 costs. The
-  old whole-tick number = the sum of the four. (CPU `voxelStage1` stays the
+  original four rows cover clear, compact and the two raster stages. (CPU `voxelStage1` stays the
   whole tick — an `IR_PROFILE_SCOPE` replaces the observer's CPU bracket.)
-- **`shapePass1` is still a bundle** — it covers all of `SHAPES_TO_TRIXEL`.
+- **`voxelSunFaces` measures finite voxel casting** inside the voxel producer,
+  with its own CPU scope and non-nested GPU substage scope. It is not included
+  in GPU `voxelStage1` or `bakeSunShadowMap`. Samples are per canvas invocation,
+  not a sum over all canvases in a frame.
+- **`shapePass1` is still a bundle** — it covers all of `SHAPES_TO_TRIXEL`,
+  including finite analytic boxes and the non-box depth fallback. Do not add
+  nested Metal substage scopes: the timestamp attachment is shared.
+- **`bakeSunShadowMap` can be zero with finite casting active.** Finite geometry
+  is authored by the producer stages; this row then only publishes frame data.
+  Cascade clearing is at the first producer’s begin hook, outside the voxel
+  per-canvas scopes.
 
 ### Reading rules
 
