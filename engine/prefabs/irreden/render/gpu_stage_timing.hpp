@@ -21,7 +21,7 @@ struct GpuStageTiming {
     float voxelCompactMs_ = 0.0f;
     float voxelStage1Ms_ = 0.0f;
     float voxelStage2Ms_ = 0.0f;
-    // Rotating-only per-axis burst sub-rows (#2281 Phase 2). Attributed by
+    // Rotating-only per-axis burst sub-rows. Attributed by
     // GpuSubStageScope brackets inside the owning ticks; 0.0 at cardinal
     // (the per-axis canvases are released, none of the dispatches run).
     float voxelPerAxisStoreMs_ = 0.0f;
@@ -59,8 +59,8 @@ struct GpuStageTiming {
     std::uint32_t visibleVoxelCount_ = 0;
     std::uint32_t totalVoxelCount_ = 0;
     // Shadow-feeder (struct 1) survivors from the same prior-frame readback —
-    // the #2258 Step-B tail-append population the #2298 domain-widened cull
-    // targets. 0 whenever shadows are off / per-axis split active (feeders
+    // the shadow-feeder tail population targeted by the domain-widened cull.
+    // 0 whenever shadows are off / per-axis split active (feeders
     // exist only on the single-canvas path).
     std::uint32_t feederVoxelCount_ = 0;
     // Light-gather diagnostic. Populated by COMPUTE_LIGHT_VOLUME each
@@ -70,10 +70,10 @@ struct GpuStageTiming {
     // influence cannot reach the camera-anchored volume window.
     std::uint32_t lightsSeeded_ = 0;
     std::uint32_t lightsEligible_ = 0;
-    // Shadow-feeder diagnostic (#2315, V1). Populated by BAKE_SUN_SHADOW_MAP
+    // Shadow-feeder diagnostic. Populated by BAKE_SUN_SHADOW_MAP
     // each frame: `worldPlacedCasterCount_` = world-placed detached
     // re-voxelize canvases gathered for the cast resolve
-    // (`gatherWorldPlacedCasters()`, P4b-3); `shadowFeederMin_`/`Max_` = the
+    // (`gatherWorldPlacedCasters()`); `shadowFeederMin_`/`Max_` = the
     // iso-space AABB (shared cull viewport widened toward the sun by
     // `kSunShadowMaxDistance`, gated off when shadows are disabled) that
     // determines which off-screen casters still feed the bake.
@@ -84,8 +84,8 @@ struct GpuStageTiming {
     // INPUT/UPDATE, never RENDER). Stable across the RENDER pipeline, so
     // probes can read `enabled_` twice and rely on both values matching.
     bool enabled_ = false;
-    // Development fallback that preserves the old finish()-bracketed timing
-    // path. Keep this off for throughput runs; use it only for A/B checks.
+    // Compatibility fallback using finish()-bracketed timing. Keep this off for
+    // throughput runs; use it only for A/B checks.
     bool legacyFinishTiming_ = false;
 };
 
@@ -192,7 +192,7 @@ inline VoxelCullAccumulator &voxelCullAccumulator() {
 // `gpuStageRegistry()` order) at shutdown for true avg / min / max across the
 // run. The single `GpuStageTiming::*Ms_` field only ever holds the *last*
 // frame's sample, so without this accumulator the report can only echo that
-// one value — which is why every stage previously reported Avg == Max (#1738).
+// one value, so Avg and Max intentionally match in that mode.
 // `enableFrameTiming(true)` calls `resetGpuStageAccumulators()` so each
 // measurement run starts from zero.
 struct GpuStageAccumulator {
@@ -250,21 +250,20 @@ inline void commitGpuStageSample(const GpuStageInfo &info, int registryIndex, fl
 //   `shapePass1`   ← SHAPES_TO_TRIXEL (covers former shapePass0 + shapePass1)
 //   Most remaining names map 1:1 to single-stage systems.
 //
-// Intra-tick sub-stage rows (#2280): VOXEL_TO_TRIXEL_STAGE_1 is NOT tagged for
+// Intra-tick sub-stage rows: VOXEL_TO_TRIXEL_STAGE_1 is NOT tagged for
 // the per-system observer. Instead its per-canvas tick brackets each of its
 // four dispatch groups with a `GpuSubStageScope` (gpu_substage_timing.hpp),
 // so these rows are attributed individually rather than bundled:
 //   `canvasClear`  ← the per-frame distance-texture clear (blit)
 //   `voxelCompact` ← the visibility-compaction dispatch
-//   `voxelStage1`  ← the stage-1 raster dispatch ONLY (was the whole-tick
-//                    bundle before #2280 wired the sub-rows)
+//   `voxelStage1`  ← the stage-1 raster dispatch only
 //   `voxelStage2`  ← the stage-2 dispatch (runs inside STAGE_1's tick)
-// The old bundled `voxelStage1` value is reconstructed as the sum of these
+// The bundled `voxelStage1` value is reconstructed as the sum of these
 // four rows. Sub-scopes are single-canvas-exact and record the last canvas's
 // sample on multi-canvas scenes (like every `*Ms_` field's last-sample
 // semantics).
 //
-// Per-axis burst sub-rows (#2281 Phase 2): COMPUTE_VOXEL_AO,
+// Per-axis burst sub-rows: COMPUTE_VOXEL_AO,
 // LIGHTING_TO_TRIXEL, and TRIXEL_TO_FRAMEBUFFER are likewise NOT tagged for
 // the per-system observer; each brackets its dispatch groups with
 // GpuSubStageScopes so the rotating-only per-axis work is attributed
@@ -273,18 +272,15 @@ inline void commitGpuStageSample(const GpuStageInfo &info, int registryIndex, fl
 //   `computeVoxelAoPerAxis` ← the 3 per-axis AO dispatches
 //   `lightingToTrixel`      ← the main-canvas lighting dispatch ONLY
 //   `lightingPerAxis`       ← the 3 per-axis relight dispatches
-//   `lightingOverflow`      ← the overflow-face relight dispatch (#2334)
+// `lightingOverflow` ← the overflow-face relight dispatch
 //   `trixelToFb`            ← the single-canvas gather draw ONLY
 //   `perAxisScatter`        ← the 3 per-axis scatter draws + overflow draw
 // and VOXEL_TO_TRIXEL_STAGE_1's rotating-only per-axis dispatch groups get
 // their own rows (phases per docs/design/per-axis-trixel-canvas-rotation.md
 // §"The overflow lane"):
-//   `voxelPerAxisStore`     ← phase A: per-axis clears + cardinal stores +
-//                             view-mask writes ×3 (mask folded into the store
-//                             by #2487, formerly its own phase-B sweep)
-//   `voxelPerAxisOverflow`  ← phase C: overflow append ×3 (phase B's view mask
-//                             folded into the store above by #2487)
-//   `voxelPerAxisFinalize`  ← phase D: winner election + stage-2 ×3
+//   `voxelPerAxisStore`     ← per-axis clears + cardinal stores + view-mask writes ×3
+//   `voxelPerAxisOverflow`  ← overflow append ×3
+//   `voxelPerAxisFinalize`  ← winner election + stage-2 ×3
 //   `perAxisCellCompact`    ← the occupied-cell compaction + finalize
 //                             dispatches feeding every per-axis consumer
 // Every per-axis row reads 0.0 at cardinal (the canvases are released and
@@ -293,8 +289,8 @@ inline void commitGpuStageSample(const GpuStageInfo &info, int registryIndex, fl
 //
 // Two rows still have no current writer: `shapePass0` (folded into the
 // SHAPES_TO_TRIXEL per-system measurement) and `shapeCompact` (no system has
-// ever written it; reserved for a future shape-compaction pass). They stay in
-// the registry to keep the Lua API and perf overlay stable — the overlay still
+// a writer). They stay in the registry to keep the Lua API and perf overlay
+// stable — the overlay still
 // shows them at 0.0f; the shutdown profile report omits them (sampleCount_ == 0).
 inline const std::array<GpuStageInfo, kGpuStageCount> &gpuStageRegistry() {
     static const std::array<GpuStageInfo, kGpuStageCount> registry{{

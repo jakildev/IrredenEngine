@@ -15,6 +15,9 @@
 #   - utilization < threshold => gate open with util reported
 #   - worst-of across multiple types when only one is over threshold
 #   - defensive percent path (utilization > 1.5 treated as percent)
+#   - the wall: a rejected observation closes, is named, binds until its own
+#     resetsAt + grace, and (written by the real fleet-claude-stream) is not
+#     reopened by a later below-threshold warning from another pane
 
 set -euo pipefail
 
@@ -186,6 +189,102 @@ echo "T13: per-type override beats global override"
 # Same daily_tokens at 60%, but global set to 0.50, daily_tokens-specific set to 0.99 -> open
 out=$(FLEET_DISPATCHER_USAGE_GATE=0.50 FLEET_DISPATCHER_USAGE_GATE_DAILY_TOKENS=0.99 "$DISPATCHER" --gate-status)
 assert_starts_with "$out" "open:daily_tokens util=60%" "per-type beats global"
+
+# --- The wall itself ------------------------------------------------------------
+
+echo "T14: a latched rejected observation closes the gate and reads as rejected"
+rm -f "$FLEET_STATE_DIR/usage/daily_tokens.json"
+# What fleet-claude-stream writes for a status:"rejected" rate_limit_event
+# (utilization synthesized at 1.0 — the event itself carries none).
+printf '{"rateLimitType":"five_hour","utilization":1.0,"resetsAt":"%s","observed_at":%s,"status":"rejected"}\n' "$RESETS" "$NOW" \
+    > "$FLEET_STATE_DIR/usage/five_hour.json"
+out=$("$DISPATCHER" --gate-status)
+assert_starts_with "$out" "closed:five_hour rejected util=100% (>= 80%)" "rejected observation closes, named as such"
+
+echo "T15: a rejected observation stays binding past the observed_at cutoff while resetsAt is ahead"
+printf '{"rateLimitType":"seven_day","utilization":1.0,"resetsAt":"%s","observed_at":%s,"status":"rejected"}\n' "$RESETS" "$(( NOW - 7200 ))" \
+    > "$FLEET_STATE_DIR/usage/seven_day.json"
+rm -f "$FLEET_STATE_DIR/usage/five_hour.json"
+out=$("$DISPATCHER" --gate-status)
+assert_starts_with "$out" "closed:seven_day rejected util=100%" "two-hour-old rejection with a future reset still closes"
+
+echo "T16: a rejected observation ages out once resetsAt + grace has passed"
+printf '{"rateLimitType":"seven_day","utilization":1.0,"resetsAt":%s,"observed_at":%s,"status":"rejected"}\n' "$(( NOW - 1200 ))" "$(( NOW - 1300 ))" \
+    > "$FLEET_STATE_DIR/usage/seven_day.json"
+out=$("$DISPATCHER" --gate-status)
+assert_starts_with "$out" "open" "past the window the wall no longer binds"
+rm -f "$FLEET_STATE_DIR/usage/seven_day.json"
+
+echo "T17: --gate-status scopes: claude sees the Anthropic window, shared only the GitHub pools"
+printf '{"rateLimitType":"five_hour","utilization":1.0,"resetsAt":"%s","observed_at":%s,"status":"rejected"}\n' "$RESETS" "$NOW" \
+    > "$FLEET_STATE_DIR/usage/five_hour.json"
+printf '{"rateLimitType":"github_core","utilization":0.10,"resetsAt":"%s","observed_at":%s}\n' "$RESETS" "$NOW" \
+    > "$FLEET_STATE_DIR/usage/github-core.json"
+assert_starts_with "$("$DISPATCHER" --gate-status claude)" "closed:five_hour rejected" "claude scope: closed on the wall"
+assert_starts_with "$("$DISPATCHER" --gate-status shared)" "open:github_core util=10%" "shared scope: the GitHub pool alone, open"
+assert_starts_with "$("$DISPATCHER" --gate-status all)" "closed:five_hour rejected" "all: closed"
+out=$("$DISPATCHER" --gate-status bogus 2>&1 || true)
+assert_starts_with "$out" "usage: fleet-dispatcher --gate-status" "an unknown scope is a usage error"
+rm -f "$FLEET_STATE_DIR/usage/five_hour.json" "$FLEET_STATE_DIR/usage/github-core.json"
+
+# --- Rejection dominance across panes -------------------------------------------
+# Observations are written by the real fleet-claude-stream here, one event per
+# invocation, the way two panes' streams write the shared usage dir: the pane
+# that hit the wall emits `rejected`, a pane still mid-turn emits a later
+# `allowed_warning` below threshold for the same window.
+STREAM="$SCRIPT_DIR/fleet-claude-stream"
+feed_stream() {  # $1 = one rate_limit_info JSON object
+    printf '{"type":"rate_limit_event","rate_limit_info":%s}\n' "$1" \
+        | python3 "$STREAM" >/dev/null 2>&1
+}
+RESETS_EPOCH=$(( NOW + 3600 ))
+
+echo "T18: a later allowed_warning from another pane cannot reopen a latched rejection"
+rm -f "$FLEET_STATE_DIR/usage"/*.json
+feed_stream "{\"status\":\"rejected\",\"resetsAt\":$RESETS_EPOCH,\"rateLimitType\":\"seven_day\"}"
+assert_starts_with "$("$DISPATCHER" --gate-status claude)" "closed:seven_day rejected util=100%" "the wall closes the gate"
+feed_stream "{\"status\":\"allowed_warning\",\"utilization\":0.85,\"resetsAt\":$RESETS_EPOCH,\"rateLimitType\":\"seven_day\"}"
+assert_starts_with "$("$DISPATCHER" --gate-status claude)" "closed:seven_day rejected util=100%" "a late 85% warning (below the 95% weekly threshold) leaves it closed"
+[[ -f "$FLEET_STATE_DIR/usage/seven_day.rejected.json" && -f "$FLEET_STATE_DIR/usage/seven_day.json" ]] \
+    && { PASS=$((PASS + 1)); echo "  ok: the rejection is its own record beside the warning"; } \
+    || { FAIL=$((FAIL + 1)); echo "  FAIL: expected seven_day.rejected.json beside seven_day.json: $(ls "$FLEET_STATE_DIR/usage")"; }
+
+echo "T19: the rejection releases on its own reset, and the standing warning is what remains"
+# Same two records, the rejection's window now past reset + grace while the
+# warning's (a later observation of the next window) is still ahead.
+if python3 - "$FLEET_STATE_DIR/usage/seven_day.rejected.json" "$(( NOW - 1200 ))" <<'PY'
+import json, pathlib, sys
+p = pathlib.Path(sys.argv[1]); d = json.loads(p.read_text()); d["resetsAt"] = int(sys.argv[2]); p.write_text(json.dumps(d))
+PY
+then
+    assert_starts_with "$("$DISPATCHER" --gate-status claude)" "open:seven_day util=85%" "past the rejection's window the gate reopens on the live warning"
+else
+    FAIL=$((FAIL + 1)); echo "  FAIL: no rejection record to age (T18's fixture missing)"
+fi
+rm -f "$FLEET_STATE_DIR/usage"/*.json
+
+echo "T20: a result-only wall (no rate_limit_event) closes the claude gate on its own record"
+# The CLI's wall result text without the rejected event that normally
+# precedes it: the stream latches wall.rejected.json with no resetsAt, so the
+# record binds on the observed_at cutoff (USAGE_STALE_SECONDS) and ages out.
+printf '{"type":"result","subtype":"success","is_error":true,"api_error_status":429,"result":"You'"'"'ve hit your limit · resets 4:40pm"}\n' \
+    | python3 "$STREAM" >/dev/null 2>&1
+[[ -f "$FLEET_STATE_DIR/usage/wall.rejected.json" && ! -f "$FLEET_STATE_DIR/usage/five_hour.rejected.json" ]] \
+    && { PASS=$((PASS + 1)); echo "  ok: the fallback is its own record, not a forged event record"; } \
+    || { FAIL=$((FAIL + 1)); echo "  FAIL: expected wall.rejected.json alone: $(ls "$FLEET_STATE_DIR/usage")"; }
+assert_starts_with "$("$DISPATCHER" --gate-status claude)" "closed:five_hour rejected util=100%" "the result-only wall closes the gate"
+assert_starts_with "$("$DISPATCHER" --gate-status shared)" "open" "the shared (GitHub) scope is untouched"
+if python3 - "$FLEET_STATE_DIR/usage/wall.rejected.json" "$(( NOW - 4000 ))" <<'PY'
+import json, pathlib, sys
+p = pathlib.Path(sys.argv[1]); d = json.loads(p.read_text()); d["observed_at"] = int(sys.argv[2]); p.write_text(json.dumps(d))
+PY
+then
+    assert_starts_with "$("$DISPATCHER" --gate-status claude)" "open" \
+        "with no resetsAt the fallback ages out on the observed_at cutoff (3600s)"
+else
+    FAIL=$((FAIL + 1)); echo "  FAIL: no fallback record to age"
+fi
+rm -f "$FLEET_STATE_DIR/usage"/*.json
 
 echo
 echo "PASS: $PASS  FAIL: $FAIL"

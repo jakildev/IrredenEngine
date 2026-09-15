@@ -664,6 +664,47 @@ class DispatchTargets(HostSeamCase):
             finally:
                 os.environ.pop("FLEET_STATE_DIR", None)
 
+    def test_decline_memory_is_scoped_to_the_declining_role(self):
+        # The sonnet and opus reviewers share the `review` kind. A sonnet
+        # decline ("fresh approval already posted; the escalation is
+        # standing") is that lane's judgement, not the opus lane's: the PR
+        # was escalated TO opus, and an unscoped record hid it there for as
+        # long as nothing touched the PR (one sat three days). Line 3 of
+        # the record is the role; a record without one (written before the
+        # role was recorded) keeps its old reach.
+        with tempfile.TemporaryDirectory() as state_dir:
+            os.environ["FLEET_STATE_DIR"] = state_dir
+            try:
+                os.makedirs(os.path.join(state_dir, "declined"))
+                pr = {"number": 3286, "repo": "engine", "updatedAt": "2026-09-14T20:17:33Z",
+                      "labels": ["fleet:needs-opus-recheck"]}
+                sonnet = {"candidate_prs": [pr]}
+                opus = {"flagged_prs": [pr]}
+                path = os.path.join(state_dir, "declined", "review-engine-3286")
+                with open(path, "w") as handle:
+                    handle.write("2026-09-14T20:17:33Z\nescalation standing\nsonnet-reviewer\n")
+                self.assertEqual(pick_role(sonnet, "sonnet-reviewer"), [])
+                self.assertEqual(pick_role(opus, "opus-reviewer"), ["review:engine:3286"])
+                with open(path, "w") as handle:
+                    handle.write("2026-09-14T20:17:33Z\nnot mine\nopus-reviewer\n")
+                self.assertEqual(pick_role(sonnet, "sonnet-reviewer"), ["review:engine:3286"])
+                self.assertEqual(pick_role(opus, "opus-reviewer"), [])
+                with open(path, "w") as handle:
+                    handle.write("2026-09-14T20:17:33Z\nlegacy record, no role line\n")
+                self.assertEqual(pick_role(sonnet, "sonnet-reviewer"), [])
+                self.assertEqual(pick_role(opus, "opus-reviewer"), [])
+                # The worker lane's kinds are one role: any worker's decline
+                # of a task suppresses every worker class, as before.
+                task = _task("#1969", "sonnet")
+                task["repo"] = "engine"
+                task["updatedAt"] = "2026-09-06T12:00:00Z"
+                with open(os.path.join(state_dir, "declined", "task-engine-1969"), "w") as handle:
+                    handle.write("2026-09-06T12:00:00Z\nneeds a linux host\nworker\n")
+                self.assertEqual(self._pick_on("linux", {"tasks_open": [task]}, "sonnet"), [])
+                self.assertEqual(self._pick_on("linux", {"tasks_open": [task]}, "opus"), [])
+            finally:
+                os.environ.pop("FLEET_STATE_DIR", None)
+
     def test_prs_under_another_review_claim_are_not_targets(self):
         # The reviewers skip these from cached labels at zero cost; the
         # dispatcher's walk must too, or each costs a real review-claim round

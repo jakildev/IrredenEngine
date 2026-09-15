@@ -3,6 +3,7 @@
 
 #include <irreden/math/ir_math_types.hpp>
 #include <irreden/math/easing_functions.hpp>
+#include <irreden/math/edt.hpp>
 #include <irreden/math/color_palettes.hpp>
 #include <irreden/math/color.hpp>
 #include <irreden/math/physics.hpp>

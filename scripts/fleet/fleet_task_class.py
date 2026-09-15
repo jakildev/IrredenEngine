@@ -426,7 +426,7 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False):
     # so no re-filtering here. No host gate either: step 1c build-verifies
     # IRShapeDebug, which every fleet host builds natively.
     for pr in slice_data.get("semantic_conflict_prs", []) or []:
-        if not _declined("conflict", pr):
+        if not _declined("conflict", pr, "worker"):
             yield "opus", CLASS_DEFAULT_EFFORT["opus"], "work", _target("conflict", pr)
     for pr in slice_data.get("feedback_prs", []) or []:
         # Same #1998 host gate tasks get via `_task_claimable`: a
@@ -440,7 +440,7 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False):
         # concurrency cap (#2696).
         if _host_incompatible(pr, host):
             continue
-        if _declined("feedback", pr):
+        if _declined("feedback", pr, "worker"):
             continue
         cls = feedback_pr_class(pr.get("labels", []))
         yield cls, CLASS_DEFAULT_EFFORT[cls], "work", _target("feedback", pr)
@@ -451,16 +451,16 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False):
     tasks = slice_data.get("tasks_open", []) or []
     for task in tasks:
         if (_task_claimable(task, host) and not task.get("blocked")
-                and not _declined("task", task)):
+                and not _declined("task", task, "worker")):
             yield (*_class_effort(task), "work", _target("task", task))
     for task in tasks:
         if (_task_claimable(task, host) and task.get("blocked")
-                and not _declined("stack", task)):
+                and not _declined("stack", task, "worker")):
             base = (task.get("stackable_blocker_pr") or {}).get("number")
             yield (*_class_effort(task), "work", _target("stack", task, base))
     seen_plan_classes = set()
     for issue in slice_data.get("needs_plan") or []:
-        if _declined("plan", issue):
+        if _declined("plan", issue, "worker"):
             continue
         pcls = _plan_class(issue, fable_blocked)
         if pcls in seen_plan_classes:
@@ -499,17 +499,27 @@ def _record_number(record):
     return number
 
 
-def _declined(kind, record):
-    """True when this host declined the record and it has not changed since.
+def _declined(kind, record, role=None):
+    """True when this host's `role` declined the record and it has not
+    changed since.
 
     fleet-dispatcher writes `<state>/declined/<kind>-<repo>-<N>` on the
     completion contract's `declined` verdict, line 1 the item's `updated_at`
-    as fetched AFTER the iteration's comment and release bumped it. The
-    record is skipped while its own `updatedAt` is not newer than that stamp
-    — `<=`, not `==`, so a projection the scout has not refreshed since the
-    release (still carrying the pre-release stamp) cannot re-elect the item
-    in the gap. A record without `updatedAt` cannot be compared and is
-    offered (fail open); the memory expires by mtime after DECLINE_TTL_SECONDS.
+    as fetched AFTER the iteration's comment and release bumped it, line 3
+    the role that declined. The record is skipped while its own `updatedAt`
+    is not newer than that stamp — `<=`, not `==`, so a projection the scout
+    has not refreshed since the release (still carrying the pre-release
+    stamp) cannot re-elect the item in the gap. A record without `updatedAt`
+    cannot be compared and is offered (fail open); the memory expires by
+    mtime after DECLINE_TTL_SECONDS.
+
+    The memory is scoped to the declining role: a decline is one lane's
+    judgement of one head, and the sonnet and opus reviewers share the
+    `review` kind, so an unscoped record let a sonnet "fresh approval
+    already posted; escalation standing" decline hide that PR from the
+    opus lane it had just been escalated to, for as long as nothing touched
+    it. A record with no role line (written before the role was recorded)
+    keeps its old reach and suppresses every role.
     """
     number = _record_number(record)
     current = record.get("updatedAt") or ""
@@ -521,7 +531,11 @@ def _declined(kind, record):
             return False
         with open(path, encoding="utf-8") as handle:
             stored = handle.readline().strip()
+            handle.readline()
+            stored_role = handle.readline().strip()
     except OSError:
+        return False
+    if stored_role and role and stored_role != role:
         return False
     return bool(stored) and current <= stored
 
@@ -568,17 +582,17 @@ def pick_role(slice_data, role):
     picks = []
     if role == "sonnet-reviewer":
         picks = [_target("review", pr) for pr in slice_data.get("candidate_prs") or []
-                 if not _held_for_review(pr) and not _declined("review", pr)]
+                 if not _held_for_review(pr) and not _declined("review", pr, role)]
     elif role == "opus-reviewer":
         picks = [_target("review", pr) for pr in slice_data.get("flagged_prs") or []
-                 if not _held_for_review(pr) and not _declined("review", pr)]
+                 if not _held_for_review(pr) and not _declined("review", pr, role)]
         picks += [_target("planreview", issue)
                   for issue in slice_data.get("plan_review") or []
-                  if not _held_for_review(issue) and not _declined("planreview", issue)]
+                  if not _held_for_review(issue) and not _declined("planreview", issue, role)]
     elif role == "smoke-worker":
         picks = [_target("smoke", pr) for pr in smoke_prs_for_host(
             slice_data.get("smoke_pending_prs"), _current_host())
-            if not _held_for_review(pr) and not _declined("smoke", pr)]
+            if not _held_for_review(pr) and not _declined("smoke", pr, role)]
     return [p for p in picks if p is not None]
 
 
@@ -594,7 +608,7 @@ def plan_pick(slice_data, cls, fable_blocked):
     the dispatch (#2197).
     """
     picks = [_target("plan", issue) for issue in slice_data.get("needs_plan") or []
-             if _plan_class(issue, fable_blocked) == cls and not _declined("plan", issue)]
+             if _plan_class(issue, fable_blocked) == cls and not _declined("plan", issue, "worker")]
     return [p for p in picks if p is not None]
 
 

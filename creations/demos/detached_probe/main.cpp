@@ -890,11 +890,13 @@ void initSystems() {
     }
 
     if (g_autoWarmupFrames > 0) {
+        // Stays on the explicit-config path — onCaptureFrame_ is outside
+        // appendAutoScreenshotIfRequested's surface (engine/video/CLAUDE.md
+        // "Auto-screenshot helper").
         IRVideo::AutoScreenshotConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
         cfg.settleFrames_ = 3;
-        cfg.shots_ = kShots;
-        cfg.numShots_ = sizeof(kShots) / sizeof(kShots[0]);
+        IRVideo::setAutoScreenshotShots(cfg, kShots);
         cfg.onCaptureFrame_ = &runProbeAsserts;
         renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(cfg));
     }

@@ -12,23 +12,22 @@ struct C_EntityCanvas {
     IREntity::EntityId canvasEntity_ = IREntity::kNullEntity;
     ivec2 canvasSize_{0};
     bool visible_ = true;
-    // Screen-locked overlay opt-OUT (#1624; supersedes the #1582 Option B
-    // default — see docs/design/detached-canvas-depth-default.md). Default OFF
+    // Screen-locked overlay opt-out. Default OFF
     // means a detached canvas is WORLD-PLACED: ENTITY_CANVAS_TO_FRAMEBUFFER
     // sets distanceOffset_ = the entity's world iso depth so the canvas's
     // pool-centered trixel distances land in the shared world depth band and
     // depth-sort against GRID solids, the floor, and each other; re-voxelize
-    // solids also receive (P4b-2) and cast (P4b-3) world sun-shadow there.
+    // solids also receive and cast world sun-shadow there.
     // Set TRUE for genuine overlay cases (HUD props, billboards, floating
     // showcases): the composite writes the canvas at a fixed near-zero depth,
-    // on top of world geometry and unaffected by the entity's world iso depth
-    // — byte-identical to the pre-#1624 default. Read directly by the
+    // on top of world geometry and unaffected by the entity's world iso depth.
+    // Read directly by the
     // composite (which already iterates C_EntityCanvas), so no per-tick
     // foreign getComponent.
     bool screenLocked_ = false;
-    // Foreground depth priority (#1958 two-tier partition; the #1884 Bug-A fix).
+    // Foreground depth priority uses a two-tier partition.
     // 0 (default) = world content: the canvas depth-sorts against world geometry
-    // on the shared iso-depth convention (the #1624 world-placed default). != 0 =
+    // on the shared iso-depth convention (the world-placed default). != 0 =
     // FOREGROUND priority: ENTITY_CANVAS_TO_FRAMEBUFFER pins the canvas's
     // model-frame local iso-depth into a reserved near depth band
     // (kDepthForegroundCeil) so the solid renders unconditionally in front of the
@@ -36,8 +35,9 @@ struct C_EntityCanvas {
     // world extent — for floating showcases that must not clip behind the floor.
     // Only meaningful when !screenLocked_ (a screen-locked overlay already sits at
     // a fixed near depth). Two-tier for now: any non-zero value selects the single
-    // foreground tier; per-trixel priority tiers are #1960. Read directly by the
-    // composite (which already iterates C_EntityCanvas), so no per-tick getComponent.
+    // foreground tier; per-trixel priority tiers are unsupported. Read directly
+    // by the composite, which already iterates C_EntityCanvas, to avoid a per-tick
+    // getComponent.
     int depthPriority_ = 0;
 
     C_EntityCanvas() = default;
