@@ -430,8 +430,8 @@ bool getVoxelOcclusionCullEnabled();
 /// Per-voxel Hi-Z occlusion refine, layered on the chunk cull. On
 /// by default, but only active when the chunk cull is enabled (the per-voxel
 /// test shares getVoxelOcclusionCullEnabled()'s gate), so a default scene stays
-/// byte-identical. Set false to isolate the chunk cull's contribution: the
-/// With the chunk cull enabled, cull-with-per-voxel and
+/// byte-identical. Set false to isolate the chunk cull's contribution: with
+/// the chunk cull enabled, cull-with-per-voxel and
 /// cull-without-per-voxel must be bit-identical (the
 /// per-voxel test drops zero visible voxels; the chunk cull owns any holes).
 void setVoxelPerVoxelOcclusionEnabled(bool enabled);
