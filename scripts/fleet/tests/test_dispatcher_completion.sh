@@ -199,12 +199,15 @@ assert_eq "$(sed -n 1p "$FLEET_STATE_DIR/declined/task-engine-42")" "2026-09-06T
     "decline memory line 1 = the issue's post-release updated_at"
 assert_eq "$(sed -n 2p "$FLEET_STATE_DIR/declined/task-engine-42")" "declined this iteration: needs a mac host" \
     "decline memory line 2 = the detail"
+assert_eq "$(sed -n 3p "$FLEET_STATE_DIR/declined/task-engine-42")" "worker" \
+    "decline memory line 3 = the declining role (the memory is role-scoped)"
 declined_py=$(FLEET_STATE_DIR="$FLEET_STATE_DIR" python3 -c "
 import sys; sys.path.insert(0, sys.argv[1])
 import fleet_task_class as f
-print(f._declined('task', {'repo': 'engine', 'issue': '#42', 'updatedAt': '2026-09-06T18:30:00Z'}))
+print(f._declined('task', {'repo': 'engine', 'issue': '#42', 'updatedAt': '2026-09-06T18:30:00Z'}, 'worker'),
+      f._declined('task', {'repo': 'engine', 'issue': '#42', 'updatedAt': '2026-09-06T18:30:00Z'}, 'sonnet-reviewer'))
 " "$SCRIPT_DIR" 2>/dev/null | tr -d '\r' || true)
-assert_eq "$declined_py" "True" "the resolver reads that memory and skips the item"
+assert_eq "$declined_py" "True False" "the resolver reads that memory for the declining role only"
 
 echo "T9: abandoned folds through the abandonment counter"
 rm -f "$FLEET_STATE_DIR/abandoned/task-engine-42"

@@ -1412,13 +1412,18 @@ assess_target_completion() {
 # The decline memory the resolver reads (fleet_task_class._declined): the
 # item's updated_at as fetched AFTER the iteration's comment and release
 # bumped it — the value the scout's next poll carries — so this host skips
-# the item until it changes. $1 = target, $2 = updated_at, $3 = detail.
+# the item until it changes. Line 3 is the declining ROLE: a decline is
+# one lane's judgement ("fresh sonnet approval already posted; the
+# escalation is standing"), and the sonnet and opus reviewers share the
+# `review` kind, so an unscoped record let a sonnet decline hide the same
+# PR from the opus lane it was escalated to. $1 = target, $2 = updated_at,
+# $3 = detail, $4 = role.
 remember_decline() {
     local f
     f="$STATE_DIR/declined/$(fleet_target_key "$1")"
     [[ -n "$2" ]] || return 0
     mkdir -p "${f%/*}" 2>/dev/null || true
-    printf '%s\n%s\n' "$2" "$3" > "$f" 2>/dev/null || true
+    printf '%s\n%s\n%s\n' "$2" "$3" "${4:-}" > "$f" 2>/dev/null || true
 }
 
 # An abandoned target: the pane exited with its claim label standing and no
@@ -1505,7 +1510,7 @@ cleanup_stale_dispatches() {
                 finished)  claimed=yes; target_complete "$target" ;;
                 declined)
                     claimed=no
-                    remember_decline "$target" "$updated" "$detail"
+                    remember_decline "$target" "$updated" "$detail" "$role"
                     rm -f "$STATE_DIR/abandoned/$(fleet_target_key "$target")"
                     ;;
                 abandoned) claimed=no; handle_abandoned_target "$target" "$agent" ;;

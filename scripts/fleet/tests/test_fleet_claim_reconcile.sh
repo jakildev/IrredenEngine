@@ -171,6 +171,17 @@ mk_claim 500 opus-worker-1 $((NOW - 3600))   # stale → R1
 mk_claim 501 opus-worker-2 "$NOW"            # fresh → survives
 mk_claim 502 opus-worker-3 "$NOW"            # fresh, but reservation mismatches
 mk_claim 506 opus-worker-4 $((NOW - 3600))   # stale age, BUT PR #601 closes it via body
+mk_claim 508 opus-worker-5 $((NOW - 3600))   # stale age, BUT a live dispatch is working it
+
+# A dispatch record is the dispatcher's own "this pane is on this item now"
+# (written before launch, consumed at exit). Claim 508's owner is mid-task
+# and has not opened its PR yet; age alone reads that as a wedged claim, and
+# releasing it re-queues the issue under a working pane (a live worker's
+# claim was swept 38 minutes in and offered to the next worker).
+mkdir -p "$FLEET_STATE_DIR/dispatch"
+cat > "$FLEET_STATE_DIR/dispatch/pane-9.json" <<'JSON'
+{"role":"worker","pane":"%9","class":"opus","dispatched_at":"2026-09-14T21:57:05Z","dispatched_epoch":1789423025,"wrapper_pid":1,"claim_marker":1,"runtime":"codex","target":"task:engine:508","agent":"opus-worker-5"}
+JSON
 
 # Reservations: opus-worker-1 → #500 (consistent, dropped by R1 release),
 #               opus-worker-9 → #502 (owner mismatch vs claim → R3 drop)
@@ -186,6 +197,7 @@ assert_dir_present "$FLEET_CLAIMS_DIR/500" "report-only keeps stale FS claim #50
 assert_dir_present "$FLEET_CLAIMS_DIR/501" "report-only keeps fresh FS claim #501"
 assert_dir_present "$FLEET_CLAIMS_DIR/502" "report-only keeps FS claim #502"
 assert_dir_present "$FLEET_CLAIMS_DIR/506" "report-only keeps FS claim #506 (PR closes it via body)"
+assert_dir_present "$FLEET_CLAIMS_DIR/508" "report-only keeps FS claim #508 (live dispatch)"
 assert_file_present "$FLEET_RESERVATIONS_DIR/opus-worker-1.json" "report-only keeps reservation opus-worker-1"
 assert_file_present "$FLEET_RESERVATIONS_DIR/opus-worker-9.json" "report-only keeps reservation opus-worker-9"
 if [[ ! -s "$REMOVED_FILE" ]]; then ok "report-only issued no gh remove-label"; else bad "report-only mutated labels: $(cat "$REMOVED_FILE")"; fi
@@ -207,6 +219,12 @@ assert 501 not in r1_targets, "R1 must NOT flag fresh #501"
 # #506 is stale-aged but its PR closes it via a Closes #506 body ref (non-
 # standard branch claude/topic-506) — robust PR match must suppress R1.
 assert 506 not in r1_targets, "R1 must NOT flag #506 (PR closes it via body)"
+# Claim 508 is stale-aged with no PR, but its owner is live-dispatched on it: R1
+# reports it flag-only (no apply action) and names the dispatch.
+r1_508 = [f for f in r["findings"] if f["rule"] == "R1" and f["target"] == 508]
+assert r1_508 and all(f["apply"] is None for f in r1_508), "R1 #508 must be flag-only"
+assert "task:engine:508" in r1_508[0]["gated_by"], r1_508[0]["gated_by"]
+assert "opus-worker-5" in r1_508[0]["gated_by"], r1_508[0]["gated_by"]
 # Flag-only R2 carries no apply action.
 r2 = [f for f in r["findings"] if f["rule"] == "R2"]
 assert all(f["apply"] is None for f in r2), "R2 must be flag-only"
@@ -232,6 +250,8 @@ assert_removed_contains $'500\tfleet:in-progress' "--apply removed #500 fleet:in
 # Fresh claim survives; #506 survives because its PR closes it via body.
 assert_dir_present "$FLEET_CLAIMS_DIR/501" "--apply keeps fresh FS claim #501"
 assert_dir_present "$FLEET_CLAIMS_DIR/506" "--apply keeps FS claim #506 (PR closes it via body)"
+assert_dir_present "$FLEET_CLAIMS_DIR/508" "--apply keeps FS claim #508 (owner live-dispatched on it)"
+assert_removed_absent $'508\tfleet:claim-mac-opus-worker-5' "--apply left #508's claim label alone"
 
 # R3: mismatched reservation dropped, claim kept.
 assert_dir_present  "$FLEET_CLAIMS_DIR/502" "--apply keeps claim #502 (authoritative)"
