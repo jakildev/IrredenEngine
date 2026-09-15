@@ -644,6 +644,8 @@ void main() {
         const ivec3 facePos =
             perAxisStoreFacePos(voxelPosition, faceId, slot, axis, riserFlip, voxelDistance);
         if (resolveMode == 3) {
+            // One complete face record covers both triangle lanes.
+            if (any(notEqual(ivec2(gl_LocalInvocationID.xy), faceOffset_2x3(slot, 0)))) return;
             overflowAppendTap(perAxisBase, facePos, voxelDistance, voxels[voxelIndex].colorPacked);
             return;
         }

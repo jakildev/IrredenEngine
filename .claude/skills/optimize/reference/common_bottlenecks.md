@@ -175,3 +175,15 @@ that found a new one; never add a pattern that was only suspected.
   verify the parser accepts the report's actual columns before comparing runs.
   Measurement and ownership contracts:
   [GPU stage timing](../../../../docs/design/gpu-stage-timing-cost-model.md).
+
+### 15. Duplicate writers after changing the stored primitive
+
+- **Pattern**: a kernel retains two triangle lanes after its output becomes one
+  complete face record. Idempotent stores conceal duplicated append work.
+- **Where**: per-axis overflow append in `c_voxel_to_trixel_stage_1_body` and
+  its Metal counterpart.
+- **Symptom**: identical overflow records consume capacity and repeat downstream
+  scatter work without changing the rendered face.
+- **Fix**: select one existing face lane only for complete-face appends; keep
+  actual triangle rasterization and unrelated winner scheduling unchanged. Validate collision winners,
+  fog cuts and saturation behavior, and measure the downstream consumers too.
