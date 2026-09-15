@@ -442,6 +442,20 @@ _amend_snapshot_path() {
     printf '%s\n' "${FLEET_AMEND_SNAPSHOTS_DIR:-$HOME/.fleet/amend-snapshots}/${1}.json"
 }
 
+# _file_fresh <path> <secs>
+#   True iff <path> exists and its mtime is within the last <secs> seconds —
+#   the one freshness test behind every "is this writer still live" read of
+#   a heartbeat or intent file.
+_file_fresh() {
+    local path="$1" secs="$2" mtime
+    [[ -f "$path" ]] || return 1
+    mtime=$(python3 -c \
+        "import os,sys; print(int(os.path.getmtime(sys.argv[1])))" \
+        "$path" 2>/dev/null || echo 0)
+    [[ "$mtime" -gt 0 ]] || return 1
+    (( $(date +%s) - mtime < secs ))
+}
+
 # _amend_lock_acquire <pr> / _amend_lock_release <pr>
 #   The per-PR linearization point shared by everything that decides on a
 #   fleet:amending-* label from local state and then acts on GitHub: the
@@ -510,6 +524,17 @@ _amend_snapshot_path() {
 #   never issued (the next pass re-judges the label). No label is ever
 #   re-added from local state: the GitHub label set is the sole arbiter
 #   between hosts, and a re-add would be one more unfenced write into it.
+#
+#   The intent is the only fence a stale-lock successor can see, so it is
+#   never allowed to be unreadable: every publish is a whole file renamed
+#   into place (an in-place rewrite would truncate first, and a successor
+#   scanning in that instant would read no writer and admit a claim the
+#   resumed removal then lands on), the removal helper publishes BEFORE its
+#   ownership check (a stealer that runs between the check and the gh call
+#   must already find it), and a scan that cannot parse an intent still
+#   treats it as a live writer's — retiring it only once it is older than
+#   FLEET_AMEND_LOCK_STALE_SECS, the same bound past which a lock holder is
+#   presumed dead — rather than deleting it and opening the PR.
 _amend_lock_path() {
     printf '%s\n' "${FLEET_AMEND_SNAPSHOTS_DIR:-$HOME/.fleet/amend-snapshots}/${1}.lock"
 }
@@ -598,21 +623,34 @@ _amending_label_owner() {
 
 # _amend_sweep_intent_write <repo> <pr> <label> → intent path on stdout.
 #   One file per holder and PR (keyed by the lock token): the sweep declares
-#   its label on entry and the removal call re-writes the same path, so one
-#   retire on the way out covers both.
+#   its label on entry and the removal call re-publishes the same path, so
+#   one retire on the way out covers both. Published whole — written beside
+#   the intent under a name no intent glob matches, then renamed over it —
+#   so a concurrent scan reads either the previous intent or this one, never
+#   a truncated file. Exit 1 when nothing could be published: the caller
+#   then has no fence and must not issue its removal.
 _amend_sweep_intent_write() {
-    local repo="$1" pr="$2" label="$3" intent
-    intent="${FLEET_AMEND_SNAPSHOTS_DIR:-$HOME/.fleet/amend-snapshots}/${pr}.sweep-${_AMEND_LOCK_TOKEN}"
-    printf '{"pr":%s,"repo":"%s","label":"%s","pid":%s}\n' \
-        "$pr" "$repo" "$label" "$$" > "$intent" 2>/dev/null || true
+    local repo="$1" pr="$2" label="$3" dir intent staged
+    dir="${FLEET_AMEND_SNAPSHOTS_DIR:-$HOME/.fleet/amend-snapshots}"
+    intent="$dir/${pr}.sweep-${_AMEND_LOCK_TOKEN}"
+    staged="$dir/${pr}.intent-${_AMEND_LOCK_TOKEN}.tmp"
     printf '%s\n' "$intent"
+    printf '{"pr":%s,"repo":"%s","label":"%s","pid":%s}\n' \
+        "$pr" "$repo" "$label" "$$" > "$staged" 2>/dev/null \
+        && mv -f "$staged" "$intent" 2>/dev/null && return 0
+    rm -f "$staged" 2>/dev/null || true
+    return 1
 }
 
 # _amend_sweep_intents_scan <pr>
 #   On lock acquisition: retire every intent left by a dead writer; record a
 #   live writer's label in _AMEND_PENDING_SWEEP so the caller fails closed.
+#   An intent that cannot be read is treated as a live writer's until it is
+#   older than FLEET_AMEND_LOCK_STALE_SECS; deleting it would drop the only
+#   fence a stale-lock successor has.
 _amend_sweep_intents_scan() {
     local pr="$1" dir intent pid label
+    local stale_secs="${FLEET_AMEND_LOCK_STALE_SECS:-600}"
     _AMEND_PENDING_SWEEP=""
     dir="${FLEET_AMEND_SNAPSHOTS_DIR:-$HOME/.fleet/amend-snapshots}"
     for intent in "$dir/${pr}.sweep-"*; do
@@ -623,12 +661,21 @@ import json, os
 try:
     with open(os.environ["INTENT"]) as fh:
         d = json.load(fh)
-    print("%s\t%s" % (d.get("pid") or 0, d.get("label") or ""))
+    pid = int(d.get("pid") or 0)
+    label = d.get("label") or ""
+    if pid <= 0 or not label:
+        raise ValueError("incomplete intent")
+    print("%s\t%s" % (pid, label))
 except Exception:
-    print("0\t")
-' 2>/dev/null | tr -d '\r' || echo $'0\t')
+    print("unreadable\t")
+' 2>/dev/null | tr -d '\r' || echo $'unreadable\t')
         IFS=$'\t' read -r pid label <<< "$pid" || true
-        if [[ "$pid" =~ ^[0-9]+$ ]] && (( pid > 0 )) && kill -0 "$pid" 2>/dev/null; then
+        if [[ "$pid" == unreadable ]]; then
+            if _file_fresh "$intent" "$stale_secs"; then
+                _AMEND_PENDING_SWEEP="(unreadable intent ${intent##*/})"
+                continue
+            fi
+        elif kill -0 "$pid" 2>/dev/null; then
             _AMEND_PENDING_SWEEP="$label"
             continue
         fi
@@ -656,17 +703,24 @@ _amend_retire_dangling_intents() {
 # _amend_label_remove_fenced <repo> <pr> <label>
 #   The one way an amending label is removed from inside the lock. Exit 0:
 #   removed, lock still ours. 1: the gh call failed (caller writes the orphan
-#   sentinel). 3: the lock was stolen — before the call, which is then never
-#   issued, or while it was out, in which case the removal stands (the live
-#   intent kept every claim off the PR meanwhile) — and the caller must not
-#   act on its pre-removal verdict any further.
+#   sentinel). 3: the removal was never issued — the lock was stolen before
+#   the call, or the intent could not be published — or the lock was stolen
+#   while the call was out, in which case the removal stands (the live
+#   intent kept every claim off the PR meanwhile); either way the caller
+#   must not act on its pre-removal verdict any further. The intent goes
+#   out before the ownership check: a stealer that enters between that
+#   check and the gh call has to find the label already declared.
 _amend_label_remove_fenced() {
     local repo="$1" pr="$2" label="$3" intent rc=0
+    if ! intent=$(_amend_sweep_intent_write "$repo" "$pr" "$label"); then
+        echo "fleet-claim: could not declare the removal of '$label' on PR#$pr beside the amend lock; leaving it for the next pass" >&2
+        return 3
+    fi
     if ! _amend_lock_owned "$pr"; then
+        rm -f "$intent" 2>/dev/null || true
         echo "fleet-claim: amend lock on PR#$pr was stolen before '$label' could be removed; leaving it for the next pass" >&2
         return 3
     fi
-    intent=$(_amend_sweep_intent_write "$repo" "$pr" "$label")
     gh issue edit "$pr" --repo "$repo" --remove-label "$label" >/dev/null 2>&1 || rc=1
     rm -f "$intent" 2>/dev/null || true
     _amend_lock_owned "$pr" && return "$rc"
@@ -704,18 +758,7 @@ _write_amend_ownership() {
 #   _amending_owner_live, for a claim with no dispatch identity to compare —
 #   see there for when that applies and why it is not a confirmed orphan.
 _amending_pane_heartbeat_fresh() {
-    local claim_agent="$1"
-    local hb_file="$HEARTBEATS_DIR/$claim_agent"
-    [[ -f "$hb_file" ]] || return 1
-    local hb_mtime
-    hb_mtime=$(python3 -c \
-        "import os,sys; print(int(os.path.getmtime(sys.argv[1])))" \
-        "$hb_file" 2>/dev/null || echo 0)
-    [[ "$hb_mtime" -gt 0 ]] || return 1
-    local stale_secs="${FLEET_CLAIM_STALE_SECS:-1800}"
-    local now
-    now=$(date +%s)
-    (( now - hb_mtime < stale_secs ))
+    _file_fresh "$HEARTBEATS_DIR/$1" "${FLEET_CLAIM_STALE_SECS:-1800}"
 }
 
 # _amending_owner_live <label-name> [<pr>]
@@ -3176,7 +3219,11 @@ for pr in prs:
                 # a removal in flight from the first one, not just from the
                 # removal itself.
                 local _amend_intent
-                _amend_intent=$(_amend_sweep_intent_write "$repo" "$pr_num" "$label_name")
+                if ! _amend_intent=$(_amend_sweep_intent_write "$repo" "$pr_num" "$label_name"); then
+                    echo "cleanup --gh: skipping '$label_name' on $repo PR#$pr_num this pass — could not declare the sweep beside the amend lock"
+                    _amend_lock_release "$pr_num"
+                    continue
+                fi
                 _cleanup_sweep_pr_label "$repo" "$pr_num" "$label_name"
                 rm -f "$_amend_intent" 2>/dev/null || true
                 _amend_lock_release "$pr_num"
@@ -6270,7 +6317,9 @@ commands:
                                 returned under one could lose its
                                 label to the landing, and a claimant
                                 on another host could then take a
-                                second hold.
+                                second hold. An intent it cannot read
+                                refuses the same way until it is
+                                older than the stale bound.
   amending-release <pr> <agent>
                                 release an amendment claim.
   steward-claim <umbrella-issue> <agent>

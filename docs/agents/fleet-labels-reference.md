@@ -212,8 +212,9 @@ while that writer is alive every claim on the PR refuses — the label's own
 agent included, since a claimant on another host sees only the GitHub label
 set and could take a second hold nothing local can revoke — and every other
 sweep skips the label. Nothing is ever re-added from local state; a dead
-writer's intent is retired by the next lock holder. Full rationale:
-`fleet-claim`'s `_amend_lock_acquire` comment and `--help`.
+writer's intent is retired by the next lock holder; it is renamed into place,
+never rewritten, and an unreadable one is a live fence until it is past the
+lock's presumed-dead bound. Rationale: `fleet-claim`'s `_amend_lock_acquire`.
 
 ## Review verdicts (PRs)
 

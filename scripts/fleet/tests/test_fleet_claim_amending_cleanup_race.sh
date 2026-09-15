@@ -35,7 +35,10 @@
 # one of the two claims may return success, and it must be the one whose
 # label is on the PR. T9 is the same stall earlier in the section (inside the
 # age lookup), where the intent has to already exist. STUB_GATE_REMOVED and
-# STUB_GATE_EVENTS add the gates those two need.
+# STUB_GATE_EVENTS add the gates those two need. T10 and T11 pin the intent
+# as a fence a successor can never read as absent: it is published whole,
+# and one that cannot be parsed still refuses every claim until it is old
+# enough to belong to a presumed-dead writer.
 
 set -euo pipefail
 
@@ -644,5 +647,99 @@ rm -rf "$CLAIM_RUN"
 "$FLEET_CLAIM" cleanup --gh --repo jakildev/IrredenEngine > "$cleanup_out" 2>&1 || true
 assert_contains "$(cat "$cleanup_out")" "removed stale" "the next pass sweeps the dead D1 label"
 if label_present; then bad "the dead D1 label survived the next pass"; else ok "the dead D1 label is gone on the next pass"; fi
+
+echo "T10: a torn intent under a stolen lock is a live fence — the same-agent claim refuses, the removal lands, one owner remains"
+# An in-place rewrite of the intent truncates it first, and a stealer
+# scanning in that instant reads an empty file, maps it to no writer, deletes
+# it, and admits a claim the resumed removal then lands on. The publish is a
+# rename, so the code never produces that state; this case plants it by hand
+# and pins the scan's other half — an intent it cannot read is still a fence.
+reset_fixture
+mkdir -p "$CLAIM_RUN"
+STUB_GATE_REMOVED=1 "$FLEET_CLAIM" cleanup --gh --repo jakildev/IrredenEngine > "$cleanup_out" 2>&1 &
+cleanup_pid=$!
+if wait_for_file "$CLAIM_RUN/arrived-remove"; then
+    ok "cleanup is parked inside its gh remove-label call, lock held"
+else
+    bad "cleanup never reached the removal"
+fi
+torn_intent=$(ls "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.sweep-"* 2>/dev/null | head -1)
+intent_pid=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("pid",""))' \
+    "$torn_intent" 2>/dev/null || echo "(unreadable)")
+assert_eq "$intent_pid" "$cleanup_pid" \
+    "the re-published intent is whole and names the sweep's own pid"
+if ls "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.intent-"*.tmp >/dev/null 2>&1; then
+    bad "a staged intent was left beside the published one"
+else
+    ok "the publish left no staged file behind"
+fi
+touch -t 202001010000 "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.lock"
+# The pre-rename publish's truncate instant, frozen.
+: > "$torn_intent"
+rc=0
+FLEET_DISPATCH_ID=preclaim "$FLEET_CLAIM" amending-claim "$PR" "$AGENT" > "$claim_out" 2>&1 || rc=$?
+sed 's/^/    /' "$claim_out"
+local_rc=$rc
+assert_eq "$rc" "1" "the label's own agent is refused on an intent it cannot read"
+assert_contains "$(cat "$claim_out")" "stealing amend lock" "the theft is logged"
+assert_contains "$(cat "$claim_out")" "unreadable intent" "the refusal names the unreadable intent"
+assert_eq "$(record_dispatch)" "D1" "the refused claim stamped nothing"
+if [[ -f "$torn_intent" ]]; then
+    ok "the unreadable intent was left for its writer, not deleted"
+else
+    bad "the scan deleted the unreadable intent"
+fi
+if label_present; then ok "the label was still on the PR when the claim was refused"; else bad "label missing before the removal landed"; fi
+: > "$CLAIM_RUN/gate-remove"
+if wait_for_file "$CLAIM_RUN/arrived-removed"; then
+    ok "the stalled removal landed after the refused claim"
+else
+    bad "the removal never landed"
+fi
+FOREIGN_LABEL="fleet:amending-linux-$AGENT"
+foreign_snap="$TMPROOT/amend-snapshots-linux"
+mkdir -p "$foreign_snap" "$TMPROOT/heartbeats-linux"
+rc=0
+FLEET_TEST_HOST=linux FLEET_AMEND_SNAPSHOTS_DIR="$foreign_snap" \
+    FLEET_HEARTBEATS_DIR="$TMPROOT/heartbeats-linux" FLEET_DISPATCH_ID=L1 \
+    "$FLEET_CLAIM" amending-claim "$PR" "$AGENT" > "$successor_out" 2>&1 || rc=$?
+foreign_rc=$rc
+assert_eq "$rc" "0" "the foreign-host claimant wins the empty-label window"
+: > "$CLAIM_RUN/gate-removed"
+wait "$cleanup_pid" || true
+sed 's/^/    /' "$cleanup_out"
+assert_contains "$(cat "$cleanup_out")" "stolen while" "cleanup detected the lost lock after its removal returned"
+assert_absent "$(cat "$cleanup_out")" "restored" "nothing is re-added from local state"
+amending_count=$(grep -c '^fleet:amending-' "$CLAIM_STATE" || true)
+assert_eq "$amending_count" "1" "exactly one amending label on the PR after the sweep resumed"
+if grep -qxF "$FOREIGN_LABEL" "$CLAIM_STATE"; then ok "the one label is the foreign holder's"; else bad "$FOREIGN_LABEL missing"; fi
+successes=$(( (local_rc == 0) + (foreign_rc == 0) ))
+assert_eq "$successes" "1" "exactly one of the two claims returned success"
+assert_eq "$(record_dispatch)" "D1" "the local record is untouched"
+if ls "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.sweep-"* >/dev/null 2>&1; then bad "sweep intent left behind"; else ok "the resumed sweep retired its torn intent"; fi
+if [[ -d "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.lock" ]]; then bad "lock left behind"; else ok "no lock left behind"; fi
+rm -rf "$CLAIM_RUN" "$foreign_snap" "$TMPROOT/heartbeats-linux"
+
+echo "T11: an unreadable intent fails closed only inside the presumed-dead bound; past it the next holder retires it"
+reset_fixture
+printf '%s\n' "fleet:wip" > "$CLAIM_STATE"
+: > "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.sweep-torn-1-1"
+rc=0
+FLEET_DISPATCH_ID=D4 "$FLEET_CLAIM" amending-claim "$PR" "$AGENT" > "$claim_out" 2>&1 || rc=$?
+assert_eq "$rc" "1" "a fresh unreadable intent refuses the claim"
+assert_contains "$(cat "$claim_out")" "unreadable intent" "the refusal names it"
+if grep -qxF "$LABEL" "$CLAIM_STATE"; then bad "the refused claim posted its label"; else ok "the refused claim posted nothing"; fi
+[[ -f "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.sweep-torn-1-1" ]] && ok "the fresh unreadable intent is kept" || bad "the fresh unreadable intent was deleted"
+printf '%s\n' "fleet:wip" "$LABEL" > "$CLAIM_STATE"
+STUB_AGE=2000 "$FLEET_CLAIM" cleanup --gh --repo jakildev/IrredenEngine > "$cleanup_out" 2>&1 || true
+assert_contains "$(cat "$cleanup_out")" "still in flight" "cleanup skips the label under an unreadable intent"
+if label_present; then ok "cleanup left the label alone"; else bad "cleanup swept under an unreadable intent"; fi
+printf '%s\n' "fleet:wip" > "$CLAIM_STATE"
+touch -t 202001010000 "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.sweep-torn-1-1"
+rc=0
+FLEET_DISPATCH_ID=D4 "$FLEET_CLAIM" amending-claim "$PR" "$AGENT" > "$claim_out" 2>&1 || rc=$?
+assert_eq "$rc" "0" "an unreadable intent older than FLEET_AMEND_LOCK_STALE_SECS no longer blocks the claim"
+[[ -f "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.sweep-torn-1-1" ]] && bad "the aged unreadable intent was left behind" || ok "the aged unreadable intent was retired"
+if grep -qxF "$LABEL" "$CLAIM_POST_LOG"; then ok "the claim POSTed afresh"; else bad "the claim did not POST"; fi
 
 summarize "fleet-claim amending × cleanup race"
