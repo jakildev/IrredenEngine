@@ -13,9 +13,10 @@
 #      the same evaluation.)
 #
 #   2. Per-pane cooldowns — fleet-dispatch-wrap writes a Unix epoch to
-#      ~/.fleet/state/rate-limit/<pane_key>.ts when claude exits with
-#      code 2 (suspected wall-hit). The pane stays out of dispatch for
-#      LIMIT_DELAY seconds (default 900).
+#      ~/.fleet/state/rate-limit/<pane_key>.ts when its launch died at
+#      the usage wall (the stream's rejected flag, or the legacy exit
+#      code 2). The pane stays out of dispatch for LIMIT_DELAY seconds
+#      (default 900).
 #
 # Pure read-only: no mutations, no daemon contact. The dispatcher itself
 # auto-resumes when each rate-limit window's `resetsAt + grace` passes
@@ -50,7 +51,7 @@ Reports:
   • fleet-wide usage gate (5h / 7d / etc. rate-limit thresholds)
   • GitHub API quota (core / graphql / search pools, gated at 90%; search is
     surface-only and never gates)
-  • per-pane cooldowns (15-min default after a pane exits with code 2)
+  • per-pane cooldowns (15-min default after a pane's launch died at the wall)
 
 Auto-resume is automatic: the dispatcher re-opens the gate on its next
 poll (~10s) once `resetsAt + FLEET_DISPATCHER_RESET_GRACE_SECONDS` has
@@ -192,12 +193,16 @@ if usage_dir.is_dir():
         if not isinstance(util, (int, float)):
             continue
         observed_at = data.get("observed_at")
-        is_stale = (
-            isinstance(observed_at, (int, float))
-            and now - int(observed_at) > stale_s
-        )
         resets_raw = data.get("resetsAt")
         resets_dt = parse_resets(resets_raw)
+        # Mirrors usage_gate_status(): a parsed resetsAt is authoritative and
+        # the observed_at cutoff applies only when it is absent — a latched
+        # weekly rejection is hours old and still binding.
+        is_stale = (
+            resets_dt is None
+            and isinstance(observed_at, (int, float))
+            and now - int(observed_at) > stale_s
+        )
         # ISO-8601 for display so int-epoch payloads don't render as raw numbers.
         resets_at_str = (
             resets_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -221,6 +226,8 @@ if usage_dir.is_dir():
 
         obs = {
             "rateLimitType": rl_type,
+            # "rejected" when fleet-claude-stream latched the wall itself.
+            "status": data.get("status"),
             "utilization": round(util_f, 4),
             "threshold": thr,
             "resetsAt": resets_at_str,
@@ -313,8 +320,9 @@ else:
             else ""
         )
         resets_part = f" resets={o['resetsAt']}" if o.get("resetsAt") else ""
+        status_part = " REJECTED" if o.get("status") == "rejected" else ""
         return (
-            f"  {prefix:<10} {o['rateLimitType']} "
+            f"  {prefix:<10} {o['rateLimitType']}{status_part} "
             f"util={pct}% {threshold_text}{suffix}{resets_part}{eta}"
         )
 

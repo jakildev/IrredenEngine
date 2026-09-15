@@ -26,8 +26,7 @@ sessions alike. This file is the overview; each mechanism has one owner:
    runs `simplify`, pushes, `gh pr create`).
 3. **After a PR opens, `start-next-task`** resets the worktree; unrelated
    commits never pile onto one PR branch.
-4. **A separate reviewer agent** (`review-pr`, its own worktree) reviews
-   every PR; the human merges.
+4. **A separate reviewer agent** (`review-pr`, its own worktree) reviews every PR.
 5. **Never `--force` push to `master`; never `--no-verify`** unless the
    human asks.
 6. **The task queue is GitHub Issues.** Pick the next unblocked
@@ -36,9 +35,8 @@ sessions alike. This file is the overview; each mechanism has one owner:
 
 ### Who merges
 
-Every PR is merged by the human. `fleet-rebase` only rebases and
-re-arms the LLM merger pass, which resolves mechanical conflicts and
-never merges anything.
+Every PR is merged by the human; `fleet-rebase` only rebases and re-arms
+the LLM merger pass, which resolves mechanical conflicts, never merges.
 
 ### Claims
 
@@ -108,9 +106,8 @@ in one merge.
 
 Same correctness rules, different timing: the human drives when to commit.
 Iterate freely and do not propose committing after every change; quality
-skills (`simplify`, `polish-checkpoint`, `optimize`, `attach-screenshots`,
-`render-debug-loop`) run on request; never auto-invoke `commit-and-push`
-or `start-next-task`; the `fleet:queued` queue is fleet-only.
+skills (`simplify`, `optimize`, `render-debug-loop`, …) run on request; never
+auto-invoke `commit-and-push` or `start-next-task`; `fleet:queued` is fleet-only.
 
 | Cue | Runs |
 |---|---|
@@ -190,8 +187,7 @@ logs the resolved ids — a lagging alias means `claude update` and re-run.
   files and runnable acceptance, off core-invariant surfaces; tests
   against a clear spec; docs; mechanical refactors; parity ports with a
   recipe; render-verify refreshes; first-pass review; creation-level work;
-  nits-only fixes; the merger LLM pass (tier-0 `fleet-rebase` handles most
-  merger wakes for zero tokens).
+  nits-only fixes; the merger LLM pass (after tier-0 `fleet-rebase`).
 
 A task subtler than its class is re-tagged one class up and released, not
 ground through. Two-tier review is the norm: sonnet first pass, opus
@@ -213,10 +209,9 @@ lifetime, or a shared CPU-side feeder struct is opus work
 
 ### Verifying render changes
 
-A PR touching `engine/render/src/shaders/`,
-`engine/prefabs/irreden/render/systems/`, or pipeline ordering runs
-`render-debug-loop` and attaches a before/after screenshot pair.
-Exceptions: `engine/render/CLAUDE.md` "Verifying render changes".
+A PR touching `engine/render/src/shaders/`, `engine/prefabs/irreden/render/systems/`,
+or pipeline ordering runs `render-debug-loop` and attaches a before/after
+screenshot pair (exceptions: `engine/render/CLAUDE.md` "Verifying render changes").
 
 ### Clean-exit policy
 
@@ -366,30 +361,35 @@ parent = the blocker PR). With no live claim it prints `master` and warns
 
 Both gates auto-resume; there is no "wait for reset" command. Canonical
 implementation and thresholds: `scripts/fleet/fleet-dispatcher`
-(`usage_gate_status()` and its "Usage gate" header); change
-`scripts/fleet/fleet-gate-status` in the same commit.
+(`usage_gate_status()`, "Usage gate" header); change `fleet-gate-status` too.
 
 - **Fleet-wide usage gate** — `fleet-claude-stream` latches every
-  `rate_limit_event` into `~/.fleet/state/usage/<type>.json`; the
-  dispatcher defers new dispatches while a fresh observation is at or above
+  `rate_limit_event` into `~/.fleet/state/usage/<type>.json`; the wall's
+  `status:"rejected"` event is its own `<type>.rejected.json` at 100 %,
+  which a later warning from another pane cannot overwrite (the wall's
+  result text alone latches `wall.rejected.json`, no `resetsAt`). The
+  dispatcher defers Claude dispatches while an observation is at or above
   threshold (`five_hour` 80 %, `seven_day` 95 %;
-  `FLEET_DISPATCHER_USAGE_GATE[_FIVE_HOUR|_SEVEN_DAY]`) and reopens at
-  `resetsAt` + `FLEET_DISPATCHER_RESET_GRACE_SECONDS` (600); observations
-  older than `FLEET_DISPATCHER_USAGE_STALE_SECONDS` (3600) are dropped
-  (`fleet-up --reset-usage` wipes them after an account switch).
+  `FLEET_DISPATCHER_USAGE_GATE[_FIVE_HOUR|_SEVEN_DAY]`) until `resetsAt` +
+  `FLEET_DISPATCHER_RESET_GRACE_SECONDS` (600); only an observation with no
+  parsed `resetsAt` ages out (`FLEET_DISPATCHER_USAGE_STALE_SECONDS`, 3600;
+  `fleet-up --reset-usage` wipes them after an account switch).
 - **GitHub API quota** — the scout samples `gh api /rate_limit` into
   `github-{core,graphql,search}.json`; core and graphql gate at 90 %
   (`FLEET_DISPATCHER_USAGE_GATE_GITHUB_{CORE,GRAPHQL}`), search never.
-- **Per-pane cooldown** — exit code 2 excludes the pane for
-  `FLEET_DISPATCHER_LIMIT_DELAY` seconds (900).
+- **Per-pane cooldown** — a launch that died at the wall (`claude` exit 1
+  with a stream-flagged rejection; legacy exit 2) excludes the pane for
+  `FLEET_DISPATCHER_LIMIT_DELAY` seconds (900). The exit is a provider
+  event, not a target outcome, and `fleet-babysit` holds relaunches while
+  the gate is closed ([`FLEET-RUNTIME.md § Usage-limit handling`](FLEET-RUNTIME.md));
+  Codex twin: 15-minute `runtime-cooldown/codex.json` ([`CODEX.md`](CODEX.md)).
 
-`fleet-gate-status [--json]` prints gate state, breaching observation,
-reset ETA, cooldowns, and GitHub pool `remaining/limit`.
+`fleet-gate-status [--json]` prints gate state, breaching observation (`REJECTED`
+on the wall), reset ETA, cooldowns, GitHub pool `remaining/limit`; `fleet-dispatcher --gate-status [all|claude|shared]` is the one-liner.
 `fleet-health [--since 24h|7d|ISO] [--json]` is the first read after
 autonomous running: per-role productive vs empty iterations, trigger
 sources, merger tier-0 vs LLM hand-offs, provider readiness, unstamped
-`fleet:author-*` PRs, standing alerts, iterations in flight; a
-mostly-no-op role is a WARN and exit 1.
+`fleet:author-*` PRs, standing alerts, iterations in flight; a mostly-no-op role is a WARN and exit 1.
 
 ---
 
@@ -448,8 +448,8 @@ merger`; `--headlines`; `--clear` archives to
 on the human: the merge queue (`fleet:approved`, with `+nits` and any
 smoke hold), decisions parked on human-only labels (`fleet:needs-human`,
 `fleet:gated`, `fleet:human-deferred`, `fleet:design-blocked`,
-`fleet:steward-proposal`, `fleet:state-drift`), cues
-(`fleet:coding-improvement` backlog → `triage-coding-improvements`;
+`fleet:steward-proposal`, `fleet:state-drift`), cues (`fleet:coding-improvement`
+backlog → `triage-coding-improvements`;
 untriaged issues; feedback files newer than
 `~/.fleet/feedback/.last-reviewed` → `review-fleet-feedback`), and per-repo
 counts. `fleet-digest-tick` refreshes `~/.fleet/digest/latest.md` and
