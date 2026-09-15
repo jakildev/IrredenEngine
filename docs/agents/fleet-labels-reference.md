@@ -203,18 +203,17 @@ that window: `cleanup --gh` can judge the carried label from the old record,
 the claim can then re-read its label as held and stamp the sentinel, and the
 sweep removes the label off its earlier verdict. Both sides therefore run
 their read-decide-act under a per-PR lock beside the record
-(`~/.fleet/amend-snapshots/<pr>.lock`): the sweep ages, judges and removes
-inside it, and the claim re-reads the live labels inside it — re-POSTing if
-the sweep took the label first — so a claim that returned success holds its
-label whatever the interleaving. The lock is bounded on both sides (a held
-lock is waited on, then the caller fails closed; a holder older than 10 min
-is stolen as crashed) and owned: each holder's release removes only its own
-token, so a stolen holder that turns out to be slow rather than dead cannot
-release its successor's lock when it resumes — nor act on its section: a
-resumed claim stamps nothing and fails, and a resumed sweep whose label
-removal landed late re-adds the label if its agent re-claimed under the
-stolen lock (an intent file beside the lock carries that decision across
-the sweep's own death; the next lock holder settles it).
+(`~/.fleet/amend-snapshots/<pr>.lock`), bounded (a held lock is waited on,
+then the caller fails closed; a holder older than 10 min is stolen as
+crashed) and owned (a resumed stale holder releases nothing, stamps nothing,
+issues no removal, and fails). A removal already out cannot be recalled, so
+the sweep declares its label in an intent file beside the lock on entry, and
+while that writer is alive every claim on the PR refuses — the label's own
+agent included, since a claimant on another host sees only the GitHub label
+set and could take a second hold nothing local can revoke — and every other
+sweep skips the label. Nothing is ever re-added from local state; a dead
+writer's intent is retired by the next lock holder. Full rationale:
+`fleet-claim`'s `_amend_lock_acquire` comment and `--help`.
 
 ## Review verdicts (PRs)
 

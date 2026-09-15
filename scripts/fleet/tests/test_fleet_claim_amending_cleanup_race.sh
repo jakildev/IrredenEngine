@@ -26,6 +26,16 @@
 # (inside the lock) under a per-process GATE_TAG, so the test can back-date the
 # stalled holder's lock, let the successor steal it, and then release the
 # stalled holder while the successor is still inside its critical section.
+#
+# A stalled SWEEP is the other resumable holder, and its removal is a
+# mutation nothing can recall once issued. T6 is the interleaving that
+# matters across hosts: the removal is in flight, the label's own agent
+# claims, the removal lands, and a claimant on another host — which sees only
+# the GitHub label set — acquires before the local sweep has noticed. Exactly
+# one of the two claims may return success, and it must be the one whose
+# label is on the PR. T9 is the same stall earlier in the section (inside the
+# age lookup), where the intent has to already exist. STUB_GATE_REMOVED and
+# STUB_GATE_EVENTS add the gates those two need.
 
 set -euo pipefail
 
@@ -138,9 +148,12 @@ case "${1:-} ${2:-}" in
         mv "${CLAIM_STATE}.next" "$CLAIM_STATE"
         printf '%s\n' "$remove" >> "$REMOVED_LOG"
         unlock_state
+        # Landed on GitHub's side; the caller has not yet returned.
+        [[ -z "${STUB_GATE_REMOVED:-}" ]] || await_gate removed
         ;;
     "api "*)
         if printf '%s ' "$@" | grep -q 'events'; then
+            [[ -z "${STUB_GATE_EVENTS:-}" ]] || await_gate events
             python3 -c "import time;print(time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time()-${STUB_AGE})))"
             exit 0
         fi
@@ -426,14 +439,15 @@ assert_eq "$(record_dispatch)" "D3" "the ownership record is poolA's, not overwr
 if label_present; then ok "poolA's label is on the PR"; else bad "poolA's label is missing"; fi
 rm -rf "$CLAIM_RUN"
 
-echo "T6: cleanup stalls inside the removal, its lock is stolen, a fresh claim succeeds, cleanup resumes"
-# The reviewer's interleaving: the removal has been decided and issued but
-# has not landed; the lock goes stale under it; the same agent's fresh claim
-# steals the lock, sees its label still present, stamps and returns success;
-# then the removal lands. The claim must still hold its label at the end.
+echo "T6: removal in flight, same-agent claim, removal lands, foreign-host claim — at most one success"
+# The removal has been decided and issued but has not landed; the lock goes
+# stale under it; the label's own agent claims. Once the removal lands and
+# before the sweep has noticed, a claimant on another host acquires. The
+# local claim must have refused: had it returned success, the PR would now
+# carry two owners and nothing local could revoke the first.
 reset_fixture
 mkdir -p "$CLAIM_RUN"
-"$FLEET_CLAIM" cleanup --gh --repo jakildev/IrredenEngine > "$cleanup_out" 2>&1 &
+STUB_GATE_REMOVED=1 "$FLEET_CLAIM" cleanup --gh --repo jakildev/IrredenEngine > "$cleanup_out" 2>&1 &
 cleanup_pid=$!
 if wait_for_file "$CLAIM_RUN/arrived-remove"; then
     ok "cleanup is parked inside its gh remove-label call, lock held"
@@ -441,7 +455,7 @@ else
     bad "cleanup never reached the removal"
 fi
 if ls "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.sweep-"* >/dev/null 2>&1; then
-    ok "cleanup wrote its sweep intent before issuing the removal"
+    ok "cleanup's sweep intent is beside the lock while the removal is in flight"
 else
     bad "no sweep intent beside the lock while the removal is in flight"
 fi
@@ -449,37 +463,56 @@ touch -t 202001010000 "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.lock"
 rc=0
 FLEET_DISPATCH_ID=preclaim "$FLEET_CLAIM" amending-claim "$PR" "$AGENT" > "$claim_out" 2>&1 || rc=$?
 sed 's/^/    /' "$claim_out"
-assert_eq "$rc" "0" "the fresh claim steals the stale lock and succeeds"
+local_rc=$rc
+assert_eq "$rc" "1" "the label's own agent is refused while its removal is in flight"
 assert_contains "$(cat "$claim_out")" "stealing amend lock" "the theft is logged"
-assert_contains "$(cat "$claim_out")" "already held" \
-    "the claim took the incumbent path — the stalled removal had not landed"
-assert_eq "$(record_dispatch)" "preclaim" "the fresh claim stamped its record"
-if label_present; then ok "label present when the claim returned"; else bad "label missing when the claim returned"; fi
-# Now the stalled removal lands.
+assert_contains "$(cat "$claim_out")" "still in flight" "the refusal names the in-flight removal"
+assert_eq "$(record_dispatch)" "D1" "the refused claim stamped nothing"
+if label_present; then ok "the label was still on the PR when the claim was refused"; else bad "label missing before the removal landed"; fi
+# The removal lands; cleanup has not returned from its gh call yet.
 : > "$CLAIM_RUN/gate-remove"
+if wait_for_file "$CLAIM_RUN/arrived-removed"; then
+    ok "the stalled removal landed after the refused claim (the interleaving under test occurred)"
+else
+    bad "the removal never landed"
+fi
+if label_present; then bad "label still present after the removal landed"; else ok "the PR carries no amending label in the window"; fi
+# Another host's claimant sees only the GitHub label set: no local intent,
+# its own record and lock directories.
+FOREIGN_LABEL="fleet:amending-linux-$AGENT"
+foreign_snap="$TMPROOT/amend-snapshots-linux"
+mkdir -p "$foreign_snap" "$TMPROOT/heartbeats-linux"
+rc=0
+FLEET_TEST_HOST=linux FLEET_AMEND_SNAPSHOTS_DIR="$foreign_snap" \
+    FLEET_HEARTBEATS_DIR="$TMPROOT/heartbeats-linux" FLEET_DISPATCH_ID=L1 \
+    "$FLEET_CLAIM" amending-claim "$PR" "$AGENT" > "$successor_out" 2>&1 || rc=$?
+sed 's/^/    /' "$successor_out"
+foreign_rc=$rc
+assert_eq "$rc" "0" "the foreign-host claimant wins the window (it can see nothing but the label set)"
+if grep -qxF "$FOREIGN_LABEL" "$CLAIM_STATE"; then ok "$FOREIGN_LABEL is on the PR"; else bad "$FOREIGN_LABEL missing after a successful claim"; fi
+# The local sweep resumes, finds its lock gone, and must not touch the labels.
+: > "$CLAIM_RUN/gate-removed"
 wait "$cleanup_pid" || true
 sed 's/^/    /' "$cleanup_out"
-if grep -qxF "$LABEL" "$REMOVED_LOG"; then
-    ok "the stalled removal did land after the claim (the interleaving under test occurred)"
-else
-    bad "the removal never landed; the interleaving under test did not occur"
-fi
 assert_contains "$(cat "$cleanup_out")" "stolen while" "cleanup detected the lost lock after its removal returned"
-assert_contains "$(cat "$cleanup_out")" "restored '$LABEL'" "cleanup re-added the label off the successor's record"
-if label_present; then
-    ok "the successful claim retains its label after the stalled removal landed"
-else
-    bad "the stalled removal took the label from a claim that had already returned success"
-fi
-assert_eq "$(record_dispatch)" "preclaim" "the successor's ownership record was not dropped by the resumed sweep"
-assert_absent "$(cat "$cleanup_out")" "removed stale" "cleanup did not count the settled removal as a sweep"
-if ls "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.sweep-"* >/dev/null 2>&1; then
-    bad "sweep intent left behind after settlement"
-else
-    ok "sweep intent retired"
-fi
+assert_absent "$(cat "$cleanup_out")" "restored" "nothing is re-added from local state"
+assert_absent "$(cat "$cleanup_out")" "removed stale" "cleanup did not count the fenced removal as a sweep"
+amending_count=$(grep -c '^fleet:amending-' "$CLAIM_STATE" || true)
+assert_eq "$amending_count" "1" "exactly one amending label on the PR after the sweep resumed"
+if label_present; then bad "$LABEL was re-added beside the foreign holder's — two owners"; else ok "$LABEL stays off the PR"; fi
+successes=$(( (local_rc == 0) + (foreign_rc == 0) ))
+assert_eq "$successes" "1" "exactly one of the two claims returned success"
+assert_eq "$(record_dispatch)" "D1" "the local record is untouched (no local claim vouched for anything)"
+if ls "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.sweep-"* >/dev/null 2>&1; then bad "sweep intent left behind"; else ok "sweep intent retired"; fi
 if [[ -d "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.lock" ]]; then bad "lock left behind"; else ok "no lock left behind"; fi
-rm -rf "$CLAIM_RUN"
+# After the window the local agent's retry arbitrates on the labels alone
+# and yields to the holder it can now see.
+rc=0
+FLEET_DISPATCH_ID=D4 "$FLEET_CLAIM" amending-claim "$PR" "$AGENT" > "$claim_out" 2>&1 || rc=$?
+assert_eq "$rc" "1" "the local agent's retry yields to the foreign holder"
+amending_count=$(grep -c '^fleet:amending-' "$CLAIM_STATE" || true)
+assert_eq "$amending_count" "1" "still exactly one amending label after the retry"
+rm -rf "$CLAIM_RUN" "$foreign_snap" "$TMPROOT/heartbeats-linux"
 
 echo "T6b: control — the same resume with NO successor leaves the removal standing"
 reset_fixture
@@ -495,59 +528,55 @@ rm -rf "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.lock"
 wait "$cleanup_pid" || true
 sed 's/^/    /' "$cleanup_out"
 assert_contains "$(cat "$cleanup_out")" "stolen while" "cleanup detected the lost lock"
-assert_absent "$(cat "$cleanup_out")" "restored" "an unchanged record is not a successor: no re-add"
+assert_absent "$(cat "$cleanup_out")" "restored" "nothing is re-added"
 if label_present; then
     bad "the dead D1 label was resurrected with no successor behind it"
 else
     ok "the dead D1 label stays removed"
 fi
+if ls "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.sweep-"* >/dev/null 2>&1; then bad "sweep intent left behind"; else ok "sweep intent retired"; fi
 rm -rf "$CLAIM_RUN"
 
-echo "T7: a dead writer's dangling intent is settled by the next lock holder"
+echo "T7: a dead writer's dangling intent is retired by the next lock holder, never acted on"
 reset_fixture
-# The record has been re-stamped by the label's agent since the intent's
-# writer took its lock (its fingerprint is of the old D1 record), the label
-# is gone, and the writer's pid is not running.
-old_fp=$(python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' \
-    "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.json")
-printf '{"pr":%s,"agent":"%s","acquired_epoch":%s,"dispatch_id":"D3","nonce":"x"}\n' \
-    "$PR" "$AGENT" "$(date +%s)" > "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.json"
-printf 'D3\n' > "$DISPATCH_DIR/$AGENT"
+# The writer removed the label and died before retiring its intent.
 printf '%s\n' "fleet:wip" > "$CLAIM_STATE"
 dead_pid=$(bash -c 'echo $$')
-printf '{"pr":%s,"repo":"jakildev/IrredenEngine","label":"%s","pid":%s,"record":"%s"}\n' \
-    "$PR" "$LABEL" "$dead_pid" "$old_fp" > "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.sweep-dead-1-1"
+printf '{"pr":%s,"repo":"jakildev/IrredenEngine","label":"%s","pid":%s}\n' \
+    "$PR" "$LABEL" "$dead_pid" > "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.sweep-dead-1-1"
 "$FLEET_CLAIM" cleanup --gh --repo jakildev/IrredenEngine > "$cleanup_out" 2>&1 || true
 sed 's/^/    /' "$cleanup_out"
-if label_present; then
-    ok "the next lock holder restored the label the dead writer had removed"
-else
-    bad "the dangling intent was not settled"
-fi
 if [[ -f "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.sweep-dead-1-1" ]]; then
     bad "dangling intent left behind"
 else
-    ok "dangling intent retired"
+    ok "dangling intent retired by cleanup's pass over intent-bearing PRs"
 fi
-# Control: an intent whose record is unchanged settles to nothing.
-printf '%s\n' "fleet:wip" > "$CLAIM_STATE"
-cur_fp=$(python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' \
-    "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.json")
-printf '{"pr":%s,"repo":"jakildev/IrredenEngine","label":"%s","pid":%s,"record":"%s"}\n' \
-    "$PR" "$LABEL" "$dead_pid" "$cur_fp" > "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.sweep-dead-1-2"
-"$FLEET_CLAIM" cleanup --gh --repo jakildev/IrredenEngine > "$cleanup_out" 2>&1 || true
 if label_present; then
-    bad "an intent over an unchanged record re-added the label"
+    bad "a dead writer's intent re-added the label"
 else
-    ok "control: unchanged record, nothing restored"
+    ok "the landed removal stands — nothing is re-added from local state"
 fi
-[[ -f "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.sweep-dead-1-2" ]] && bad "control intent left behind" || ok "control intent retired"
+rc=0
+FLEET_DISPATCH_ID=D4 "$FLEET_CLAIM" amending-claim "$PR" "$AGENT" > "$claim_out" 2>&1 || rc=$?
+assert_eq "$rc" "0" "the label's agent recovers by POSTing afresh"
+if grep -qxF "$LABEL" "$CLAIM_POST_LOG"; then ok "the recovery was a fresh POST"; else bad "the recovery did not POST"; fi
+assert_eq "$(record_dispatch)" "D4" "the fresh claim stamped its record"
+# The other shape: the writer died BEFORE issuing the removal, so the label
+# is still there. The next holder retires the intent and re-judges the label.
+reset_fixture
+printf '{"pr":%s,"repo":"jakildev/IrredenEngine","label":"%s","pid":%s}\n' \
+    "$PR" "$LABEL" "$dead_pid" > "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.sweep-dead-1-2"
+"$FLEET_CLAIM" cleanup --gh --repo jakildev/IrredenEngine > "$cleanup_out" 2>&1 || true
+sed 's/^/    /' "$cleanup_out"
+[[ -f "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.sweep-dead-1-2" ]] && bad "dead intent left behind" || ok "dead intent retired"
+assert_contains "$(cat "$cleanup_out")" "removed stale" "the dead D1 label is re-judged and swept in the same pass"
+if label_present; then bad "the dead D1 label survived the pass"; else ok "the dead D1 label is gone"; fi
 
-echo "T8: a LIVE writer's in-flight removal refuses other agents' claims and holds the sweep"
+echo "T8: a LIVE writer's in-flight removal refuses every claim and holds the sweep"
 reset_fixture
 sleep 30 &
 live_pid=$!
-printf '{"pr":%s,"repo":"jakildev/IrredenEngine","label":"%s","pid":%s,"record":"x"}\n' \
+printf '{"pr":%s,"repo":"jakildev/IrredenEngine","label":"%s","pid":%s}\n' \
     "$PR" "$LABEL" "$live_pid" > "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.sweep-live-1-1"
 rc=0
 FLEET_DISPATCH_ID=D9 "$FLEET_CLAIM" amending-claim "$PR" "poolB" > "$claim_out" 2>&1 || rc=$?
@@ -563,13 +592,57 @@ assert_contains "$(cat "$cleanup_out")" "still in flight" "cleanup skips the lab
 if label_present; then ok "cleanup left the label alone"; else bad "cleanup swept under an in-flight removal"; fi
 rc=0
 FLEET_DISPATCH_ID=preclaim "$FLEET_CLAIM" amending-claim "$PR" "$AGENT" > "$claim_out" 2>&1 || rc=$?
-assert_eq "$rc" "0" "the label's own agent may re-claim — the in-flight removal settles against its record"
+assert_eq "$rc" "1" "the label's OWN agent is refused too — the landing could take the label from a success"
+assert_contains "$(cat "$claim_out")" "still in flight" "the own-agent refusal names the in-flight removal"
+assert_eq "$(record_dispatch)" "D1" "the own-agent refusal stamped nothing"
 if [[ -f "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.sweep-live-1-1" ]]; then
-    ok "a live writer's intent is left for the writer to settle"
+    ok "a live writer's intent is left for the writer to retire"
 else
     bad "a live writer's intent was retired by someone else"
 fi
 kill "$live_pid" 2>/dev/null || true
 wait "$live_pid" 2>/dev/null || true
+
+echo "T9: a sweep stalled BEFORE its removal (inside the age lookup) is fenced the same way"
+# The intent must exist from the section's first gh call, or a holder stalled
+# there is stolen with nothing declaring its label, a claim succeeds, and the
+# resumed sweep's removal lands on it.
+reset_fixture
+mkdir -p "$CLAIM_RUN"
+STUB_GATE_EVENTS=1 "$FLEET_CLAIM" cleanup --gh --repo jakildev/IrredenEngine > "$cleanup_out" 2>&1 &
+cleanup_pid=$!
+if wait_for_file "$CLAIM_RUN/arrived-events"; then
+    ok "cleanup is parked inside its age lookup, lock held, no removal issued"
+else
+    bad "cleanup never reached the age lookup"
+fi
+if ls "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.sweep-"* >/dev/null 2>&1; then
+    ok "the sweep declared its label on entry, before the age lookup"
+else
+    bad "no sweep intent while the sweep is parked before its removal"
+fi
+touch -t 202001010000 "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.lock"
+rc=0
+FLEET_DISPATCH_ID=preclaim "$FLEET_CLAIM" amending-claim "$PR" "$AGENT" > "$claim_out" 2>&1 || rc=$?
+sed 's/^/    /' "$claim_out"
+assert_eq "$rc" "1" "the label's own agent is refused while the sweep is live anywhere in its section"
+assert_contains "$(cat "$claim_out")" "still in flight" "the refusal names the in-flight sweep"
+assert_eq "$(record_dispatch)" "D1" "the refused claim stamped nothing"
+: > "$CLAIM_RUN/gate-events"
+wait "$cleanup_pid" || true
+sed 's/^/    /' "$cleanup_out"
+assert_contains "$(cat "$cleanup_out")" "stolen before" "the resumed sweep found its lock gone before issuing the removal"
+if grep -qxF "$LABEL" "$REMOVED_LOG"; then
+    bad "the resumed sweep issued its removal without the lock"
+else
+    ok "no removal was issued once the lock was lost"
+fi
+if label_present; then ok "the label is still on the PR"; else bad "the label is gone"; fi
+if ls "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.sweep-"* >/dev/null 2>&1; then bad "sweep intent left behind"; else ok "sweep intent retired"; fi
+rm -rf "$CLAIM_RUN"
+# Nothing is stuck: the next pass re-judges the label and sweeps it.
+"$FLEET_CLAIM" cleanup --gh --repo jakildev/IrredenEngine > "$cleanup_out" 2>&1 || true
+assert_contains "$(cat "$cleanup_out")" "removed stale" "the next pass sweeps the dead D1 label"
+if label_present; then bad "the dead D1 label survived the next pass"; else ok "the dead D1 label is gone on the next pass"; fi
 
 summarize "fleet-claim amending × cleanup race"
