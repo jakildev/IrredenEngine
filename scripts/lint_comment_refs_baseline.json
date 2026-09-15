@@ -224,7 +224,7 @@
  "engine/render/src/shaders/metal/ir_voxel_face_select.metal": 15,
  "engine/render/src/shaders/metal/ir_world_lighting.metal": 2,
  "engine/render/src/shaders/metal/peraxis_scatter.metal": 62,
-  "engine/render/src/shaders/metal/trixel_to_framebuffer.metal": 5,
+ "engine/render/src/shaders/metal/trixel_to_framebuffer.metal": 5,
  "engine/script/CMakeLists.txt": 4,
  "engine/script/include/irreden/script/ir_script_utils.hpp": 1,
  "engine/script/include/irreden/script/lua_audio_bindings.hpp": 2,

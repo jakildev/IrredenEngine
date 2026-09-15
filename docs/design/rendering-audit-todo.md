@@ -8,7 +8,7 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
 | Priority | Work | State / next acceptance |
 |---|---|---|
 | 1 | Detached face geometry and trixel display | Investigated in [display diagnosis](detached-trixel-display.md). Visible source faces, depth and picking still need a consistent projection. Origin and camera placement corrected. [Back-facing emission](detached-face-normals.md) now has a targeted correction and normal oracle; [Local triangular display](detached-local-triangles.md) is the normal undilated display with a per-face oracle; raw rectangular display is debug-only. Source-face reconstruction and depth/picking remain. |
-| 2 | Shadow reception and contact | Source-face casting exists, but receivers still use reconstructed surfaces. Check concave faces and contact after visible geometry agrees. |
+| 2 | Shadow reception and contact | [Direct-sun occlusion response](sun-occlusion-response.md) now removes direct sunlight behind opaque blockers while retaining ambient. Paired self/external controls pass. Receivers still use reconstructed surfaces; check staircase near-rejection, concave faces and contact against actual geometry. |
 | 3 | Projected face boundaries | Reconstruct voxel-face coverage from light direction and receiver geometry. Clean edges must follow projected geometry, not blur, inflated coverage or bias that hides errors. |
 | 4 | Duplicate CPU occupancy reconstruction | Profile identified work overwritten by inverse GPU resampling. Preserve buffer-availability fallback and identity transitions before skipping it. |
 | 5 | Mode and scale validation | Extend density, screen-lock, pan, cascade, sparse/elongated asset and OpenGL coverage. Measure representative large populations and GPU cost before changing defaults. |
@@ -37,6 +37,22 @@ that the experimental rendering is ready to become the default.
 - Actual private density 12 was exercised with the smallzoom fixture, but its
   high-density face coverage still needs a numerical oracle. Requested
   subdivisions alone must not stand in for measured effective density.
+
+## Newly observed during occlusion validation
+
+- The shared-canvas sun pass uses `detectSelfStepStaircase` to increase near
+  rejection to three sun-depth units. Nearby same-normal steps do not prove that
+  an occluder is the receiver's own cell. Add a rotated staircase with a nearby
+  external blocker and derive visibility from geometry before removing or
+  replacing this heuristic. Detached world reception has no such lift.
+- The unobstructed source-face plate has weak false self-shadowing at camera yaw
+  90/270. Full direct visibility makes 1,048/16 pixels differ from the prior
+  response, by at most 2/1 color levels. This is a receiver/caster agreement
+  follow-up, not evidence that normals should be averaged or shadows blurred.
+- Fully occluded direct sunlight previously retained 45% intensity, on top of
+  ambient. That response is corrected; ambient is still a constant fill rather
+  than physically traced indirect light. Local-light transport is a separate
+  visibility audit.
 
 ## Origin correction evidence
 

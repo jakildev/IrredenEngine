@@ -12,7 +12,6 @@
 // include of ir_sun_projection.glsl makes this a suppressed duplicate.
 #include "ir_sun_projection.glsl"
 
-const float kShadowDarken = 0.45;
 const float kNormalBiasVoxels = 0.5;
 const float kShadowBiasTexelScale = 2.0;
 const float kShadowBiasSlopeMin = 0.05;
@@ -123,14 +122,9 @@ float sampleCascadeShadow(
     return shadowAccum;
 }
 
-// Per-surface sun-shadow brightness factor for a WORLD-space surface point +
-// world normal, selecting the cascade by iso depth and blending across the
-// split. `isoDepth` is the surface's world iso depth (x+y+z under the (1,1,1)
-// axis). Returns 1.0 (fully lit) … kShadowDarken (fully shadowed). Shared by
-// c_compute_sun_shadow and the detached world-receive path.
-// `selfStepDepthRange` is the near-rejection lift for a round-to-cell staircase
-// riser (0 = no lift); threaded to every cascade sample so it applies regardless
-// of which cascade the receiver lands in.
+// Direct-sun visibility at a world-space surface: 1.0 lit, 0.0 occluded.
+// Ambient lighting is composed separately. isoDepth selects/blends cascades;
+// selfStepDepthRange raises near-rejection for staircase receivers (0 disables).
 float worldSunShadowFactor(vec3 pos3D, vec3 normal, float isoDepth, float selfStepDepthRange) {
     vec3 sunDir = sunDirection.xyz;
     vec3 uHat = sunBasisU.xyz;
@@ -187,7 +181,7 @@ float worldSunShadowFactor(vec3 pos3D, vec3 normal, float isoDepth, float selfSt
             shadowAccum = mix(nearShadow, farShadow, t);
         }
     }
-    return mix(1.0, kShadowDarken, shadowAccum);
+    return 1.0 - shadowAccum;
 }
 
 // Default 3-arg form — full self-occlusion (no staircase carve), for callers with
