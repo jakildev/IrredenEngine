@@ -1,0 +1,21 @@
+--- a/engine/render/src/shaders/metal/c_bake_box_sun_shadow.metal
++++ b/engine/render/src/shaders/metal/c_bake_box_sun_shadow.metal
+@@ -25,6 +25,7 @@
+     uint3 groupId [[threadgroup_position_in_grid]],
+     uint3 localId [[thread_position_in_threadgroup]]
+ ) {
++    return;
+     const uint index = groupId.y * uint(dispatch.y) + groupId.x;
+     if (index >= uint(dispatch.x)) return;
+     const ShapeDescriptor shape = shapes[index];
+--- a/engine/render/src/shaders/metal/c_shapes_to_trixel.metal
++++ b/engine/render/src/shaders/metal/c_shapes_to_trixel.metal
+@@ -867,7 +867,7 @@
+     if (shapeIndex < 0) return;
+     const int2 isoOrigin = tile.tileIsoOrigin;
+     const ShapeDescriptor shape = shapes[shapeIndex];
+-    if (frameData.passIndex == 2 && shape.shapeType == SHAPE_BOX) return;
++
+
+     // Cardinal-snap Z-yaw consumed by the SDF path. Mirrors the GLSL shader
+     // in c_shapes_to_trixel.glsl. The shapes shader rasterizes at rasterYaw

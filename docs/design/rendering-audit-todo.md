@@ -48,6 +48,17 @@ that the experimental rendering is ready to become the default.
 
 ## Newly observed during occlusion validation
 
+- [Finite analytic box casting](analytic-box-sun-coverage.md) now replaces BOX
+  depth splats in the opt-in face-shadow path. Detached and GRID staircase
+  outside controls both pass with zero error; rotated/fractional box hulls
+  pass 4/4. The nearly hidden unrotated analytic box shadow remains below the
+  unchanged IoU threshold (.668 versus .70); non-box shapes retain depth splats.
+- Centroid sampling remains experimental: a broader unblocked sweep exposes
+  source/raster half-cell disagreement (12,544 false-shadow pixels at yaw zero).
+  Resampled face casting matches shadows-disabled exactly. Preserve the authored
+  anchor through raster placement/depth/reception before adopting centroids;
+  check odd/even effective densities and fractional source bounds.
+
 - [Receiver sample positions](detached-shadow-receiver-samples.md): the current
   detached lookup fails all 30 triangle-centroid checks across five yaws. The
   derived correction passes all 30, but exposes analytic-roof overcoverage

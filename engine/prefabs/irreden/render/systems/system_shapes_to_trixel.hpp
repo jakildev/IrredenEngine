@@ -355,10 +355,14 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                 if (bakeSystem != kNullSystemId) {
                     auto *baker = getSystemParams<System<BAKE_SUN_SHADOW_MAP>>(bakeSystem);
                     if (auto *casterDepth = baker->prepareAnalyticCasterDepth(frameData_)) {
-                        // A depth-only pass keeps analytic casters independent of
-                        // voxel winners in the visible canvas.
+                        baker->bakeAnalyticBoxes(
+                            static_cast<int>(gpuShapes.size()),
+                            renderMode == SubdivisionMode::NONE ? 1 : effectiveSub
+                        );
+                        shapesProgram_->use();
+                        // Non-box analytic casters retain their separate depth input.
                         casterDepth->bindAsImage(1, TextureAccess::READ_WRITE, TextureFormat::R32I);
-                        frameData_.passIndex = 0;
+                        frameData_.passIndex = 2;
                         shapesFrameDataBuf_->subData(0, sizeof(GPUShapesFrameData), &frameData_);
                         shapesFrameDataBuf_->bindBase(
                             BufferTarget::UNIFORM,

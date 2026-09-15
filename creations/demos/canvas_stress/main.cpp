@@ -1090,6 +1090,10 @@ void registerArgs() {
     );
     args.flag("--probe-upright", "Use unrotated revoxelization and attached shadow probes");
     args.flag("--probe-staircase", "Use a stair-stepped plate and nearby overhead blocker");
+    args.flag("--probe-analytic-box", "Use an analytic box for shadowbox");
+    args.flag("--probe-analytic-sphere", "Use an analytic sphere for shadowbox");
+    args.numbers("--analytic-box-offset", "Analytic shadowbox translation offset <x> <y> <z>", 3);
+    args.number("--analytic-box-yaw", "Analytic shadowbox entity yaw, radians", 0.0f);
     args.flag("--probe-analytic-blocker", "Use an analytic box for the staircase roof");
     args.flag("--probe-unblocked", "Remove the shadowocclusion wall for a direct-light control");
     args.flag(
@@ -1762,7 +1766,25 @@ void initEntities() {
         const ivec3 size = singleVoxel ? ivec3(1) : ivec3(18, 6, 8);
         const vec3 position{0.0f, 0.0f, singleVoxel ? -2.0f : -12.0f};
         const Color color{80, 120, 240, 255};
-        if (IREngine::args().getFlag("--probe-grid")) {
+        if (IREngine::args().getFlag("--probe-analytic-sphere")) {
+            IREntity::createEntity(
+                C_LocalTransform{position},
+                C_ShapeDescriptor{IRRender::ShapeType::SPHERE, vec4(4.0f), color}
+            );
+        } else if (IREngine::args().getFlag("--probe-analytic-box")) {
+            const auto offsetValues = IREngine::args().getFloats("--analytic-box-offset");
+            const vec3 offset = offsetValues.empty()
+                                    ? vec3(0.0f)
+                                    : vec3(offsetValues[0], offsetValues[1], offsetValues[2]);
+            const auto rotation = IRMath::quatAxisAngle(
+                vec3(0.0f, 0.0f, 1.0f),
+                IREngine::args().getFloat("--analytic-box-yaw")
+            );
+            IREntity::createEntity(
+                C_LocalTransform{position + offset, rotation},
+                C_ShapeDescriptor{IRRender::ShapeType::BOX, vec4(vec3(size), 0.0f), color}
+            );
+        } else if (IREngine::args().getFlag("--probe-grid")) {
             IREntity::createEntity(
                 C_LocalTransform{position},
                 C_VoxelSetNew{size, color, true, mainCanvas}

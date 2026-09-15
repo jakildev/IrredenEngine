@@ -99,6 +99,7 @@ const char *const kFileCompResolvePerAxisBlit = "shaders/c_resolve_per_axis_blit
 const char *const kFileCompResolveWorldPlacedDepth = "shaders/c_resolve_world_placed_depth.glsl";
 const char *const kFileCompClearSunShadowMap = "shaders/c_clear_sun_shadow_map.glsl";
 const char *const kFileCompBakeVoxelSunFaces = "shaders/c_bake_voxel_sun_faces.glsl";
+const char *const kFileCompBakeBoxSunShadow = "shaders/c_bake_box_sun_shadow.glsl";
 const char *const kFileCompBakeSunShadowMap = "shaders/c_bake_sun_shadow_map.glsl";
 const char *const kFileCompComputeSunShadow = "shaders/c_compute_sun_shadow.glsl";
 const char *const kFileCompVoxelVisibilityCompact = "shaders/c_voxel_visibility_compact.glsl";
