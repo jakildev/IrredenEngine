@@ -1,0 +1,26 @@
+diff --git a/engine/render/src/shaders/ir_sun_shadow_sample.glsl b/engine/render/src/shaders/ir_sun_shadow_sample.glsl
+index 68d785806..52601018a 100644
+--- a/engine/render/src/shaders/ir_sun_shadow_sample.glsl
++++ b/engine/render/src/shaders/ir_sun_shadow_sample.glsl
+@@ -12,7 +12,7 @@
+ // include of ir_sun_projection.glsl makes this a suppressed duplicate.
+ #include "ir_sun_projection.glsl"
+ 
+-const float kNormalBiasVoxels = 0.5;
++const float kNormalBiasVoxels = 0.0;
+ const float kShadowBiasTexelScale = 2.0;
+ const float kShadowBiasSlopeMin = 0.05;
+ const float kShadowBiasQuantNoise = 4.0 / kSunDepthScale;
+diff --git a/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal b/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
+index 7a55c526c..92537aa5d 100644
+--- a/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
++++ b/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
+@@ -13,7 +13,7 @@
+ // sunCascadeKernelInterior — one source with the caster bake (#2083).
+ #include "ir_sun_projection.metal"
+ 
+-constant float kNormalBiasVoxels = 0.5;
++constant float kNormalBiasVoxels = 0.0;
+ constant float kShadowBiasTexelScale = 2.0;
+ constant float kShadowBiasSlopeMin = 0.05;
+ constant float kShadowBiasQuantNoise = 4.0 / kSunDepthScale;
