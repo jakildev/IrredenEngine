@@ -1,7 +1,7 @@
 #ifndef IR_PREFAB_SETTINGS_REGISTRY_H
 #define IR_PREFAB_SETTINGS_REGISTRY_H
 
-// World-scoped registry of live-togglable settings (#2551).
+// World-scoped registry of live-togglable settings.
 //
 // A creation (or an engine prefab) registers a named setting backed by a
 // getter/setter pair; `IRPrefab::SettingsMenu` renders one row per entry and
@@ -15,7 +15,7 @@
 //   );
 //
 // This is the *typed-settings* half of the discoverability pair. The other
-// half — which key does what — is the command registry #2550 renders through
+// half — which key does what — is the command registry that renders through
 // `IRPrefab::HelpOverlay`. Two registries, two concerns, one surface each;
 // the menu links to the overlay rather than duplicating its rows.
 //

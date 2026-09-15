@@ -2,7 +2,7 @@
 #define ENTITY_ANCHOR_H
 
 // How a discrete entity's geometry attaches to its world position
-// (`C_LocalTransform.translation_`) — #2563.
+// (`C_LocalTransform.translation_`).
 //
 // The engine-wide convention this enum establishes: a discrete entity's
 // position is its GROUND ANCHOR — the center of its footprint in XY and the
@@ -13,14 +13,14 @@
 // offsets — anchoring is a property of how geometry attaches to the position,
 // not something each consumer re-derives.
 //
-// Adoption is per-prefab opt-in:
-//   - New discrete-entity prefabs anchor GROUND.
-//   - Terrain-like / corner-authored content stays CORNER.
-//   - CENTER is the legacy `centerAroundOrigin = true` spelling.
-// Flipping existing content is a deliberate per-prefab change, never implicit
-// — the two legacy modes keep byte-identical placement.
+// Adoption is per-prefab:
+//   - Discrete-entity prefabs anchor GROUND.
+//   - Terrain-like / corner-authored content is CORNER.
+//   - CENTER is the `centerAroundOrigin = true` spelling.
+// Changing a prefab's anchor is a deliberate per-prefab change, never
+// implicit.
 //
-// The offsets below are baked into a set's local voxel positions at
+// `anchorOffset()` is baked into a set's local voxel positions at
 // construction time (`C_VoxelSetNew`), so every downstream path — grid
 // rebuild, GPU transform prepass, face occupancy, cull extents, picking —
 // consumes the anchor through those positions and needs no anchor branch of
@@ -28,13 +28,12 @@
 // world space are the exception: they must ask `anchorLocalCenter()` rather
 // than assuming a convention.
 //
-// Not yet interpreted by `C_ColliderIso3DAABB`, SDF shapes, or
-// `C_EntityCanvas`; those migrate per this enum when touched (#2563
-// follow-ups). The detached-canvas path does not support GROUND — its
+// Not interpreted by `C_ColliderIso3DAABB`, SDF shapes, or
+// `C_EntityCanvas`. The detached-canvas path does not support GROUND — its
 // extent measurement is `abs()`-about-origin and assumes CENTER. That is
 // guarded at the re-voxelize consumer: `SYSTEM_REBUILD_DETACHED_VOXELS`
 // asserts the pool is origin-centered, so GROUND and CORNER both fire there
-// instead of silently orbiting their anchor (see #2911).
+// instead of silently orbiting their anchor.
 
 #include <irreden/ir_math.hpp>
 
@@ -47,10 +46,10 @@ namespace IRComponents {
 // validator honest without each call site re-hard-coding the latest
 // sentinel. Pattern is documented in `.claude/rules/cpp-lua-enums.md`.
 enum class EntityAnchor : std::uint8_t {
-    // Legacy default: geometry extends +x/+y/+z from the translation, so the
+    // Default: geometry extends +x/+y/+z from the translation, so the
     // translation is the set's minimum corner.
     CORNER = 0,
-    // Legacy `centerAroundOrigin = true`: centered on all three axes.
+    // `centerAroundOrigin = true`: centered on all three axes.
     CENTER = 1,
     // Center XY, bottom Z. Cell faces span
     // [-sx/2, +sx/2) x [-sy/2, +sy/2) x [-sz, 0) relative to the translation,
@@ -68,9 +67,9 @@ enum class EntityAnchor : std::uint8_t {
 // GROUND's z term is `-(size.z - 0.5)`, not `-(size.z - 1) * 0.5`: it puts the
 // LAST cell's far face at z == 0 rather than centering the body. That makes
 // the z origin half-integer for EVERY size, unlike CENTER where it depends on
-// the axis's parity. The grid path already handles half-integer local origins
-// ubiquitously (every even-size CENTER set has them), so this exercises no new
-// rounding behavior there — but see the header note about the detached path.
+// the axis's parity. The grid path handles half-integer local origins
+// (every even-size CENTER set has them); the detached path does not support
+// GROUND.
 constexpr IRMath::vec3 anchorOffset(EntityAnchor anchor, IRMath::ivec3 size) {
     switch (anchor) {
     case EntityAnchor::CENTER:

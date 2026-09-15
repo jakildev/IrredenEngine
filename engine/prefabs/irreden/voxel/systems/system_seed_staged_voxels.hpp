@@ -1,8 +1,8 @@
 #ifndef SYSTEM_SEED_STAGED_VOXELS_H
 #define SYSTEM_SEED_STAGED_VOXELS_H
 
-// SEED_STAGED_VOXELS (UPDATE pipeline) — the W-10 canvas-attach / post-load
-// seed pass (#2217, epic #667). After IRWorld::loadWorld restores the ECS
+// SEED_STAGED_VOXELS (UPDATE pipeline) — the canvas-attach / post-load
+// seed pass. After IRWorld::loadWorld restores the ECS
 // graph, every C_VoxelSetNew deserialized by SaveSerialize<C_VoxelSetNew>
 // arrives in STAGED mode (numVoxels_ == 0, pendingVoxels_ holds the canonical
 // voxel data, empty pool spans) — invisible to the pool pipeline, which gates
