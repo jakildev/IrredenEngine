@@ -2541,10 +2541,10 @@ cmd_cleanup_gh() {
     this_host=$(derive_host)
 
     for repo in "${repos[@]}"; do
-        local prs_json pr_review_plan
+        local prs_json plan_review_issues label_sweep_plan
         prs_json=$(gh pr list --repo "$repo" --state open \
             --json number,labels --limit 200 2>/dev/null || echo "[]")
-        pr_review_plan=$(echo "$prs_json" | python3 -c '
+        label_sweep_plan=$(echo "$prs_json" | python3 -c '
 import json, sys
 try:
     prs = json.load(sys.stdin)
@@ -2555,24 +2555,41 @@ for pr in prs:
     for l in (pr.get("labels") or []):
         name = (l or {}).get("name", "") if isinstance(l, dict) else ""
         if name.startswith("fleet:reviewing-") or name.startswith("fleet:resolving-") or name.startswith("fleet:amending-"):
-            print(f"{n}\t{name}")
+            print(f"PR\t{n}\t{name}")
 ' 2>/dev/null | tr -d '\r' || echo "")
+        plan_review_issues=$(gh issue list --repo "$repo" --state open \
+            --label "fleet:plan-review" --json number,labels --limit 200 2>/dev/null \
+            | python3 -c '
+import json, sys
+try:
+    issues = json.load(sys.stdin)
+except Exception:
+    issues = []
+for issue in issues:
+    n = issue.get("number")
+    for l in (issue.get("labels") or []):
+        name = (l or {}).get("name", "") if isinstance(l, dict) else ""
+        if name.startswith("fleet:reviewing-"):
+            print(f"issue\t{n}\t{name}")
+' 2>/dev/null | tr -d '\r' || echo "")
+        label_sweep_plan+=$'\n'"$plan_review_issues"
 
-        [[ -z "$pr_review_plan" ]] && continue
+        [[ -z "$label_sweep_plan" ]] && continue
 
-        while IFS=$'\t' read -r pr_num label_name; do
-            [[ -z "$pr_num" || -z "$label_name" ]] && continue
+        while IFS=$'\t' read -r target_surface target_num label_name; do
+            [[ -z "$target_surface" || -z "$target_num" || -z "$label_name" ]] && continue
 
             local added_epoch
-            added_epoch=$(label_added_epoch "$repo" "$pr_num" "$label_name")
+            added_epoch=$(label_added_epoch "$repo" "$target_num" "$label_name")
             [[ "$added_epoch" -eq 0 ]] && continue
 
             local age=$(( now - added_epoch ))
 
-            # Confirmed-orphan fast path for reviewing/resolving claims (the
-            # reviewer-side analog of the issue-claim fast path, #2111). These
+            # Confirmed-orphan fast path for reviewing/resolving claims on PRs
+            # and plan-review issues (the reviewer-side analog of the issue-claim
+            # fast path, #2111). These
             # PR-label claims now drop a local marker ($CLAIMS_DIR/_prlabel-<tag>-
-            # <agent>, content = the PR number) on acquire and remove it on
+            # <agent>, content = the claimed target number) on acquire and remove it on
             # release; fleet-down wipes ~/.fleet/claims, so a same-host label with
             # NO matching marker is a claim whose owning session died/restarted
             # while the GitHub label survived (the #2137/#2138 stuck-reviewer
@@ -2591,7 +2608,7 @@ for pr in prs:
                     local _cagent="${_ha#*-}"                 # <agent>
                     if [[ "$_chost" == "$this_host" ]]; then
                         local _marker="$CLAIMS_DIR/_prlabel-${_tag}-${_cagent}"
-                        if [[ ! -f "$_marker" || "$(cat "$_marker" 2>/dev/null)" != "$pr_num" ]]; then
+                        if [[ ! -f "$_marker" || "$(cat "$_marker" 2>/dev/null)" != "$target_num" ]]; then
                             prlabel_orphan=1
                         fi
                     fi
@@ -2614,21 +2631,21 @@ for pr in prs:
             # cross-host stale label ages out on pure TTL — never honor a
             # same-basename local worker's heartbeat for it.
             if _amending_heartbeat_fresh "$label_name"; then
-                echo "cleanup --gh: skipping '$label_name' on $repo PR#$pr_num — same-host owner heartbeat fresh"
+                echo "cleanup --gh: skipping '$label_name' on $repo $target_surface#$target_num — same-host owner heartbeat fresh"
                 continue
             fi
 
             local _sweep_note="age: $((age / 60))m"
             (( prlabel_orphan )) && _sweep_note="orphaned: no local marker on $this_host, ${_sweep_note}"
-            if gh issue edit "$pr_num" --repo "$repo" \
+            if gh issue edit "$target_num" --repo "$repo" \
                     --remove-label "$label_name" >/dev/null 2>&1; then
-                echo "cleanup --gh: removed stale '$label_name' on $repo PR#$pr_num ($_sweep_note)"
+                echo "cleanup --gh: removed stale '$label_name' on $repo $target_surface#$target_num ($_sweep_note)"
                 total_removed=$((total_removed + 1))
             else
-                write_orphan_sentinel "$repo" "$pr_num" "$label_name" \
-                    "cleanup --gh: PR remove-label failed"
+                write_orphan_sentinel "$repo" "$target_num" "$label_name" \
+                    "cleanup --gh: $target_surface remove-label failed"
             fi
-        done <<< "$pr_review_plan"
+        done <<< "$label_sweep_plan"
     done
 
     # `fleet:claim-*` labels on closed issues are intentionally
@@ -5607,12 +5624,12 @@ commands:
                                 Remove claims whose linked issue is
                                 CLOSED. With --gh also runs five
                                 GitHub sweeps:
-                                (1) stale fleet:reviewing-*,
-                                    fleet:resolving-*, and
-                                    fleet:amending-* labels off open
-                                    PRs (>30 min age; a same-host
-                                    amending label is skipped if its
-                                    agent heartbeat is fresh — cross-
+                                (1) stale fleet:reviewing-* labels off open
+                                    PRs and fleet:plan-review issues; stale
+                                    fleet:resolving-* and fleet:amending-*
+                                    labels off open PRs (>30 min age;
+                                    a same-host amending label is skipped if
+                                    its agent heartbeat is fresh — cross-
                                     host ones age out on pure TTL),
                                 (2) fleet:claim-* labels off open
                                     issues where the claim is
