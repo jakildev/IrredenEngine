@@ -22,6 +22,11 @@ struct MetalTimestampPair {
     MTL::CounterSampleBuffer *sampleBuffer_ = nullptr;
     bool hasStart_ = false;
     bool hasEnd_ = false;
+    MTL::CommandBuffer *completionBuffer_ = nullptr;
+    MTL::CommandBufferStatus completionStatus_ = MTL::CommandBufferStatusNotEnqueued;
+    std::uint64_t previousBoundary_ = 0;
+    bool hasEncoders_ = false;
+    bool loggedInvalid_ = false;
 };
 
 struct MetalTimestampSampleAttachment {
@@ -350,6 +355,16 @@ class MetalRenderDevice final : public RenderDevice {
         }
         commandBuffer->commit();
         commandBuffer->waitUntilCompleted();
+        for (auto &pair : m_timestamps) {
+            if (pair.completionBuffer_ != nullptr) {
+                const auto status = pair.completionBuffer_->status();
+                if (status == MTL::CommandBufferStatusCompleted ||
+                    status == MTL::CommandBufferStatusError) {
+                    pair.completionStatus_ = status;
+                    releaseTimestampCompletion(pair);
+                }
+            }
+        }
         // Now that the GPU has finished consuming any encoders that
         // captured orphaned buffers, it is safe to release them.
         releaseDeferredMetalBuffers();
@@ -1000,6 +1015,7 @@ metalCurrentDepthPixelFormat(),
         }
 
         if (slot == TimestampSlot::START) {
+            releaseTimestampCompletion(*pair);
             g_nextComputeTimestampAttachment = {
                 pair->sampleBuffer_,
                 0,
@@ -1008,43 +1024,97 @@ metalCurrentDepthPixelFormat(),
             };
             pair->hasStart_ = true;
             pair->hasEnd_ = false;
+            pair->hasEncoders_ = false;
         } else {
             // Stop tagging once the stage ends: clear the sticky attachment so
             // encoders created in the gap before the next START stay untracked
             // (#1746). The end boundary was already attached to every encoder
             // of the stage up to this point, so the last one's index-1 write
             // bounds the pair.
+            pair->hasEncoders_ = !g_nextComputeTimestampAttachment.firstEncoder_;
+            pair->completionBuffer_ = metalCommandBuffer();
+            pair->completionStatus_ = MTL::CommandBufferStatusError;
+            if (pair->completionBuffer_ != nullptr) {
+                pair->completionStatus_ = pair->completionBuffer_->status();
+                pair->completionBuffer_->retain();
+            }
             g_nextComputeTimestampAttachment = {};
             pair->hasEnd_ = true;
         }
     }
 
     bool readTimestampPairMs(GpuTimestampHandle handle, float &outMs) override {
+        return pollTimestampPairMs(handle, outMs) == TimestampReadStatus::READY;
+    }
+
+    TimestampReadStatus pollTimestampPairMs(GpuTimestampHandle handle, float &outMs) override {
         MetalTimestampPair *pair = findTimestampPair(handle);
         if (pair == nullptr || pair->sampleBuffer_ == nullptr) {
-            return false;
+            return TimestampReadStatus::INVALID;
         }
         if (!pair->hasStart_ || !pair->hasEnd_) {
-            return false;
+            return TimestampReadStatus::PENDING;
         }
-
+        if (!pair->hasEncoders_) {
+            releaseTimestampCompletion(*pair);
+            return TimestampReadStatus::INVALID;
+        }
+        const auto status = pair->completionBuffer_ != nullptr
+                                ? pair->completionBuffer_->status()
+                                : pair->completionStatus_;
+        pair->completionStatus_ = status;
+        if (status == MTL::CommandBufferStatusError) {
+            releaseTimestampCompletion(*pair);
+            return TimestampReadStatus::INVALID;
+        }
+        if (status != MTL::CommandBufferStatusCompleted) {
+            return TimestampReadStatus::PENDING;
+        }
+        releaseTimestampCompletion(*pair);
         NS::Data *data = pair->sampleBuffer_->resolveCounterRange(NS::Range::Make(0, 2));
         if (data == nullptr || data->length() < sizeof(MTL::CounterResultTimestamp) * 2) {
-            return false;
+            return TimestampReadStatus::INVALID;
         }
         auto *samples = static_cast<MTL::CounterResultTimestamp *>(data->mutableBytes());
-        if (samples == nullptr ||
-            samples[0].timestamp == MTL::CounterErrorValue ||
-            samples[1].timestamp == MTL::CounterErrorValue ||
-            samples[1].timestamp < samples[0].timestamp) {
-            return false;
+        if (samples == nullptr) {
+            return TimestampReadStatus::INVALID;
         }
-
-        outMs = static_cast<float>(samples[1].timestamp - samples[0].timestamp) / 1'000'000.0f;
-        return true;
+        const auto start = samples[0].timestamp;
+        const auto end = samples[1].timestamp;
+        const bool valid = start != MTL::CounterErrorValue && end != MTL::CounterErrorValue &&
+                           start > pair->previousBoundary_ && end >= start;
+        const auto previousBoundary = pair->previousBoundary_;
+        if (start != MTL::CounterErrorValue) {
+            pair->previousBoundary_ = IRMath::max(pair->previousBoundary_, start);
+        }
+        if (end != MTL::CounterErrorValue) {
+            pair->previousBoundary_ = IRMath::max(pair->previousBoundary_, end);
+        }
+        if (!valid) {
+            if (!pair->loggedInvalid_) {
+                IR_LOG_WARN(
+                    "Discarded Metal GPU timestamp pair {}: start={}, end={}, previousBoundary={}",
+                    handle,
+                    start,
+                    end,
+                    previousBoundary
+                );
+                pair->loggedInvalid_ = true;
+            }
+            return TimestampReadStatus::INVALID;
+        }
+        outMs = static_cast<float>(end - start) / 1'000'000.0f;
+        return TimestampReadStatus::READY;
     }
 
   private:
+    static void releaseTimestampCompletion(MetalTimestampPair &pair) {
+        if (pair.completionBuffer_ != nullptr) {
+            pair.completionBuffer_->release();
+            pair.completionBuffer_ = nullptr;
+        }
+    }
+
     MetalTimestampPair *findTimestampPair(GpuTimestampHandle handle) {
         if (handle == kInvalidGpuTimestampHandle || handle > m_timestamps.size()) {
             return nullptr;
@@ -1053,6 +1123,7 @@ metalCurrentDepthPixelFormat(),
     }
 
     void releaseTimestampPair(MetalTimestampPair &pair) {
+        releaseTimestampCompletion(pair);
         if (pair.sampleBuffer_ != nullptr) {
             pair.sampleBuffer_->release();
             pair.sampleBuffer_ = nullptr;

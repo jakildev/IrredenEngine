@@ -1,0 +1,4 @@
+[2026-09-14 20:00:41.302] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=4, effective_subdivisions=4
+[2026-09-14 20:00:41.390] [ClientLog] [warning] Discarded Metal GPU timestamp pair 18: start=0, end=0, previousEnd=0
+[2026-09-14 20:00:41.390] [ClientLog] [warning] Discarded Metal GPU timestamp pair 3: start=0, end=1633839689797208, previousEnd=0
+[2026-09-14 20:00:41.390] [ClientLog] [warning] Discarded Metal GPU timestamp pair 20: start=0, end=0, previousEnd=0

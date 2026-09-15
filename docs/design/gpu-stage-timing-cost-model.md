@@ -27,7 +27,11 @@ changes (occupied-only lists, indirect dispatch, subdivision caps).
   first encoder claims the start boundary and every subsequent encoder
   re-writes the end, so the resolved pair spans [first encoder starts on
   GPU, last encoder ends on GPU] (#1746). OpenGL uses the device timestamp
-  pairs in `opengl_render_impl.cpp`. Readback is async (3 pairs in flight);
+  pairs in `opengl_render_impl.cpp`. OpenGL uses three pairs in flight; Metal
+  uses one because presentation currently waits for the frame to complete.
+  Polling gates Metal readback on the owning command buffer's completion and
+  rejects zero, reversed or stale boundaries. A completed invalid sample frees
+  its slot without entering statistics. Empty scopes have no GPU duration.
   the overlay shows the most recent *resolved* sample, and per-stage
   accumulators build the shutdown avg/min/max (#1738). A `finish()`-bracket
   legacy path exists for devices without timestamp support
@@ -40,8 +44,9 @@ changes (occupied-only lists, indirect dispatch, subdivision caps).
   for the per-system observer; its per-canvas tick brackets each dispatch group
   with a `GpuSubStageScope`, so `voxelStage1` now measures the stage-1 dispatch
   ONLY and the other three rows carry the clear / compact / stage-2 costs. The
-  original four rows cover clear, compact and the two raster stages. (CPU `voxelStage1` stays the
-  whole tick — an `IR_PROFILE_SCOPE` replaces the observer's CPU bracket.)
+  original four rows cover clear, compact and the two raster stages. (CPU
+  `voxelStage1` stays the whole tick — an `IR_PROFILE_SCOPE` replaces the
+  observer's CPU bracket.)
 - **`voxelSunFaces` measures finite voxel casting** inside the voxel producer,
   with its own CPU scope and non-nested GPU substage scope. It is not included
   in GPU `voxelStage1` or `bakeSunShadowMap`. Samples are per canvas invocation,
@@ -56,26 +61,31 @@ changes (occupied-only lists, indirect dispatch, subdivision caps).
 
 ### Reading rules
 
-1. A **0.000 row** is either *unwired* (check the registry comment for the
-   current writer list before quoting it) or *genuinely below the 0.005 ms
-   display floor*. Distinguish before drawing conclusions — both mistakes
-   have now been made in opposite directions (#2266 initially read unwired
-   rows as measurements; verifying #2271 required confirming
-   `resolvePerAxisScreenDepth` was NOT unwired).
+1. A **0.000 row** may be unwired, have no completed valid GPU samples, or
+   contain durations rounded by the report. Check the sample count and scope
+   before interpreting it as free work.
 2. A **bundle row** (`shapePass1`) cannot attribute cost to a sub-dispatch.
    The voxel path is no longer a bundle: since #2280, `voxelStage1` /
    `voxelCompact` / `canvasClear` / `voxelStage2` are per-dispatch GPU rows,
    so "stage-1's raster is the cost" IS answerable from `voxelStage1` alone
    (it measured ~65 ms of the ~140 ms at zoom 16 — see §2).
-3. Per-system rows for single-purpose systems (`computeVoxelAO`,
-   `computeSunShadow`, `lightingToTrixel`, `resolvePerAxisScreenDepth`,
-   `trixelToFb`, …) are trustworthy per-stage measurements on both
-   backends.
+3. Rows describe sampled invocations, not necessarily frame totals. Reusing a
+   Metal timer within one uncommitted frame cannot read a fresh result; its
+   single busy slot skips later invocations. Multi-canvas rows therefore do
+   not establish total canvas cost. Do not sum overlapping CPU/GPU scopes.
+4. Older Metal reports can include unwritten startup timestamps or stale
+   same-frame samples. Re-measure a suspected bottleneck with the validity
+   checks before using historical stage values as an optimization baseline.
+5. The current rotated voxel cull counter sums three per-axis candidate lists;
+   its numerator is not unique visible voxels and can exceed the pool size.
+   Do not compare that ratio with the cardinal unique-voxel ratio as if their
+   units were identical.
 
 ## 2. Measured dispatch cost model (Metal/macOS, 2026-07)
 
-Facts established by probes on real scenes; treat as the default model until
-a measurement says otherwise on a specific path:
+Historical findings from specific scenes and probes. They are hypotheses for
+current paths, not universal GPU rules; repeat with valid timing and comparable
+workload before applying them to a new optimization:
 
 - **Empty early-return invocations are effectively free** at the grid sizes
   the per-axis pipeline dispatches (~10⁵–10⁶ invocations): pre-#2273

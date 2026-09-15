@@ -46,6 +46,7 @@ SYSTEM_RE = re.compile(
     r"^(INPUT|UPDATE|RENDER)\s+(\S+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+"
     r"([\d.]+)\s+(\d+)\s+(\d+)"
 )
+GPU_SAMPLED_RE = re.compile(r"^(\S+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+(\d+)\s*$")
 GPU_RE = re.compile(r"^(\S+)\s+([\d.]+)\s+([\d.]+)\s*$")
 
 
@@ -76,6 +77,8 @@ class GpuStage:
     name: str
     avg_ms: float
     max_ms: float
+    min_ms: Optional[float] = None
+    samples: Optional[int] = None
 
 
 @dataclass
@@ -179,12 +182,15 @@ def parse_report(path: Path, cell_id: str) -> CellReport:
                     entities=int(m.group(8)),
                 ))
         elif section == "gpu":
-            m = GPU_RE.match(s)
+            sampled = GPU_SAMPLED_RE.match(s)
+            m = sampled or GPU_RE.match(s)
             if m:
                 report.gpu_stages.append(GpuStage(
                     name=m.group(1),
                     avg_ms=float(m.group(2)),
-                    max_ms=float(m.group(3)),
+                    max_ms=float(m.group(4) if sampled else m.group(3)),
+                    min_ms=float(m.group(3)) if sampled else None,
+                    samples=int(m.group(5)) if sampled else None,
                 ))
         elif section == "cull":
             m = CULL_VISIBLE_RE.match(s)
