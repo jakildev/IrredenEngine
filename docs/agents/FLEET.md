@@ -366,9 +366,10 @@ implementation and thresholds: `scripts/fleet/fleet-dispatcher`
 - **Fleet-wide usage gate** — `fleet-claude-stream` latches every
   `rate_limit_event` into `~/.fleet/state/usage/<type>.json`; the wall's
   `status:"rejected"` event is its own `<type>.rejected.json` at 100 %,
-  which a later warning from another pane cannot overwrite. The dispatcher
-  defers Claude dispatches while an observation is at or above threshold
-  (`five_hour` 80 %, `seven_day` 95 %;
+  which a later warning from another pane cannot overwrite (the wall's
+  result text alone latches `wall.rejected.json`, no `resetsAt`). The
+  dispatcher defers Claude dispatches while an observation is at or above
+  threshold (`five_hour` 80 %, `seven_day` 95 %;
   `FLEET_DISPATCHER_USAGE_GATE[_FIVE_HOUR|_SEVEN_DAY]`) until `resetsAt` +
   `FLEET_DISPATCHER_RESET_GRACE_SECONDS` (600); only an observation with no
   parsed `resetsAt` ages out (`FLEET_DISPATCHER_USAGE_STALE_SECONDS`, 3600;
@@ -383,9 +384,8 @@ implementation and thresholds: `scripts/fleet/fleet-dispatcher`
   the gate is closed ([`FLEET-RUNTIME.md § Usage-limit handling`](FLEET-RUNTIME.md));
   Codex twin: 15-minute `runtime-cooldown/codex.json` ([`CODEX.md`](CODEX.md)).
 
-`fleet-gate-status [--json]` prints gate state, breaching observation
-(`REJECTED` when the wall was latched), reset ETA, cooldowns, GitHub pool
-`remaining/limit`; `fleet-dispatcher --gate-status [all|claude|shared]` is the one-liner.
+`fleet-gate-status [--json]` prints gate state, breaching observation (`REJECTED`
+on the wall), reset ETA, cooldowns, GitHub pool `remaining/limit`; `fleet-dispatcher --gate-status [all|claude|shared]` is the one-liner.
 `fleet-health [--since 24h|7d|ISO] [--json]` is the first read after
 autonomous running: per-role productive vs empty iterations, trigger
 sources, merger tier-0 vs LLM hand-offs, provider readiness, unstamped

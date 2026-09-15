@@ -263,6 +263,29 @@ else
 fi
 rm -f "$FLEET_STATE_DIR/usage"/*.json
 
+echo "T20: a result-only wall (no rate_limit_event) closes the claude gate on its own record"
+# The CLI's wall result text without the rejected event that normally
+# precedes it: the stream latches wall.rejected.json with no resetsAt, so the
+# record binds on the observed_at cutoff (USAGE_STALE_SECONDS) and ages out.
+printf '{"type":"result","subtype":"success","is_error":true,"api_error_status":429,"result":"You'"'"'ve hit your limit · resets 4:40pm"}\n' \
+    | python3 "$STREAM" >/dev/null 2>&1
+[[ -f "$FLEET_STATE_DIR/usage/wall.rejected.json" && ! -f "$FLEET_STATE_DIR/usage/five_hour.rejected.json" ]] \
+    && { PASS=$((PASS + 1)); echo "  ok: the fallback is its own record, not a forged event record"; } \
+    || { FAIL=$((FAIL + 1)); echo "  FAIL: expected wall.rejected.json alone: $(ls "$FLEET_STATE_DIR/usage")"; }
+assert_starts_with "$("$DISPATCHER" --gate-status claude)" "closed:five_hour rejected util=100%" "the result-only wall closes the gate"
+assert_starts_with "$("$DISPATCHER" --gate-status shared)" "open" "the shared (GitHub) scope is untouched"
+if python3 - "$FLEET_STATE_DIR/usage/wall.rejected.json" "$(( NOW - 4000 ))" <<'PY'
+import json, pathlib, sys
+p = pathlib.Path(sys.argv[1]); d = json.loads(p.read_text()); d["observed_at"] = int(sys.argv[2]); p.write_text(json.dumps(d))
+PY
+then
+    assert_starts_with "$("$DISPATCHER" --gate-status claude)" "open" \
+        "with no resetsAt the fallback ages out on the observed_at cutoff (3600s)"
+else
+    FAIL=$((FAIL + 1)); echo "  FAIL: no fallback record to age"
+fi
+rm -f "$FLEET_STATE_DIR/usage"/*.json
+
 echo
 echo "PASS: $PASS  FAIL: $FAIL"
 [[ "$FAIL" -eq 0 ]]

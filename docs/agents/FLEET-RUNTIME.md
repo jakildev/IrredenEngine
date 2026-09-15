@@ -185,12 +185,16 @@ the window resets (gate thresholds and the per-pane cooldown:
 
 - `fleet-claude-stream` latches the `status:"rejected"` event at 100 % (its
   own `<type>.rejected.json`, so a later warning from another pane cannot
-  reopen the gate early) and flags the wrapper, which writes the pane's
-  cooldown marker (`claude` exits 1 at the wall; the legacy exit 2 is
-  honored too) and re-arms the role trigger — the dispatcher consumed it at
-  launch, and a kept mid-task claim is invisible to every other re-arm. The
-  trigger waits behind the closed gate; a tick that finds the reserved pane
-  still in its cooldown keeps it rather than standing the lane down.
+  reopen the gate early) and flags the wrapper; the wall's result text
+  ("hit your … limit") flags the wrapper too, and on its own — no event
+  seen — latches `wall.rejected.json` with no `resetsAt`, so the gate holds
+  for the observed-at cutoff rather than reopening on a released idle
+  claim. The wrapper writes the pane's cooldown marker (`claude` exits 1 at
+  the wall; the legacy exit 2 is honored too) and re-arms the role trigger
+  — the dispatcher consumed it at launch, and a kept mid-task claim is
+  invisible to every other re-arm. The trigger waits behind the closed
+  gate; a tick that finds the reserved pane still in its cooldown keeps it
+  rather than standing the lane down.
 - Cleanup reads the marker as `verdict=quota` **before** the completion
   contract (§ "The dispatch target") and re-arms the trigger again — the
   wall answers within the launching tick, whose own consume can erase the

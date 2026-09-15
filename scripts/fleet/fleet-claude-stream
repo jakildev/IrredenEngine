@@ -49,9 +49,10 @@ RESULT_PREVIEW_LEN = 200  # truncate tool results to this many chars
 # Where rate_limit_event observations are latched for the dispatcher's
 # usage gate. One file per rateLimitType (e.g. five_hour, output_tokens),
 # overwritten with the latest observation, plus a `<type>.rejected` record
-# for the wall (latch_usage_observation). fleet-dispatcher reads these
-# at the top of dispatch_role and defers when any utilization is past
-# FLEET_DISPATCHER_USAGE_GATE (default 0.80).
+# for the wall (latch_usage_observation) or `wall.rejected` when only the
+# wall's result text was seen (latch_result_rejection). fleet-dispatcher
+# reads these at the top of dispatch_role and defers when any utilization
+# is past FLEET_DISPATCHER_USAGE_GATE (default 0.80).
 USAGE_DIR = pathlib.Path(
     os.environ.get("FLEET_STATE_DIR", str(pathlib.Path.home() / ".fleet" / "state"))
 ) / "usage"
@@ -137,6 +138,64 @@ def handle_result(event):
         # after retries — so key on the wording, not the status.
         if QUOTA_RESULT_RE.search(str(event["result"])):
             note_quota_rejection()
+            if not REJECTION_LATCHED:
+                latch_result_rejection(str(event["result"]))
+
+
+def write_usage_record(record, payload):
+    """Atomically replace ~/.fleet/state/usage/<record>.json with payload.
+
+    Best-effort: any IO error is swallowed so a state-dir mishap can't
+    take down the live render of the pane.
+    """
+    try:
+        USAGE_DIR.mkdir(parents=True, exist_ok=True)
+        target = USAGE_DIR / f"{record}.json"
+        with tempfile.NamedTemporaryFile(
+            "w", dir=USAGE_DIR, prefix=f".{record}.", suffix=".tmp", delete=False
+        ) as tmp:
+            json.dump(payload, tmp)
+            tmp.flush()
+            os.fsync(tmp.fileno())
+            tmp_path = pathlib.Path(tmp.name)
+        os.replace(tmp_path, target)
+    except OSError:
+        # State-dir not writable, etc. Don't crash the stream renderer.
+        return
+
+
+# Set once this stream has latched the wall from its rate_limit_event, so
+# the result-text fallback below does not add a second record beside it.
+REJECTION_LATCHED = False
+
+
+def latch_result_rejection(text):
+    """Latch the wall from its result text alone, as `wall.rejected.json`.
+
+    The rejected rate_limit_event is the primary gate record. When a CLI
+    emits only the result wording, the quota flag still classifies the
+    exit, cleanup releases an idle claim and re-arms the role — and with
+    no gate record the next free pane would claim it and launch straight
+    into the same wall. The text carries no parseable reset boundary
+    ("resets 4:40pm" is wall-clock in an unstated day), so the record
+    has none and ages out on the dispatcher's observed_at cutoff
+    (FLEET_DISPATCHER_USAGE_STALE_SECONDS): Claude dispatch holds for
+    that long, then one launch probes the wall and re-latches if it is
+    still up. The wording names the window ("weekly" is the seven_day
+    pool; the session and bare forms are five_hour), carried as
+    rateLimitType for the gate's log line.
+    """
+    rl_type = "seven_day" if "weekly" in text.lower() else "five_hour"
+    write_usage_record(
+        "wall.rejected",
+        {
+            "rateLimitType": rl_type,
+            "utilization": 1.0,
+            "resetsAt": None,
+            "observed_at": int(time.time()),
+            "status": "rejected",
+        },
+    )
 
 
 def latch_usage_observation(rl_type, info):
@@ -147,10 +206,8 @@ def latch_usage_observation(rl_type, info):
     gets its own file (overwritten); stale observations age out via the
     `observed_at` timestamp the dispatcher checks. A rejection is its own
     record, `<type>.rejected.json`, that no later warning overwrites.
-
-    Best-effort: any IO error is swallowed so a state-dir mishap can't
-    take down the live render of the pane.
     """
+    global REJECTION_LATCHED
     if not isinstance(rl_type, str) or not rl_type:
         return
     # "?" is the sentinel default used when rateLimitType is absent from the
@@ -200,20 +257,9 @@ def latch_usage_observation(rl_type, info):
     }
     if status is not None:
         payload["status"] = status
-    try:
-        USAGE_DIR.mkdir(parents=True, exist_ok=True)
-        target = USAGE_DIR / f"{record}.json"
-        with tempfile.NamedTemporaryFile(
-            "w", dir=USAGE_DIR, prefix=f".{record}.", suffix=".tmp", delete=False
-        ) as tmp:
-            json.dump(payload, tmp)
-            tmp.flush()
-            os.fsync(tmp.fileno())
-            tmp_path = pathlib.Path(tmp.name)
-        os.replace(tmp_path, target)
-    except OSError:
-        # State-dir not writable, etc. Don't crash the stream renderer.
-        return
+    write_usage_record(record, payload)
+    if status == "rejected":
+        REJECTION_LATCHED = True
 
 
 # Known-benign claude stderr warnings — claude prints these AFTER the

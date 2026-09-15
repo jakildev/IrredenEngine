@@ -735,6 +735,94 @@ unset STUB_WALL_WRAP STUB_WALL_WT STUB_WALL_PATH STUB_WALL_LOG
 rm -f "$FLEET_RESERVATIONS_DIR/pool-2.json" "$FLEET_STATE_DIR/dispatch"/*.json \
     "$FLEET_STATE_DIR/triggers/worker" "$STUB_BIN/claude" "$FLEET_STATE_DIR/rate-limit"/*
 
+# --- T31d: a result-only wall must close the gate before the re-armed lane fires
+# The stub claude prints the wall's result text and exits 1 with NO rejected
+# rate_limit_event. The exit still classifies as the wall, and on an idle
+# pre-claim the exit fold releases the claim and re-arms the role — so the
+# stream's result-text fallback must have latched a gate record, or the next
+# tick hands the same item to a free pane and launches it into the same wall.
+# Routing is on (FLEET_RUNTIMES=claude) because the per-assignment Claude gate
+# check is what stops the launch; the engine root is sandboxed so the idle
+# verdict reads no live worktree.
+echo "T31d: wall result text with no rate_limit_event -> gate closed, released claim not re-launched"
+export FLEET_RUNTIMES=claude
+rm -f "$FLEET_STATE_DIR/dispatch"/*.json "$FLEET_STATE_DIR/rate-limit"/* \
+    "$FLEET_STATE_DIR/usage"/*.json
+write_slice worker '{"tasks_open":[{"issue":"#13","model":"sonnet","effort":null,"owner":"free","blocked":false,"repo":"engine"}],"feedback_prs":[],"needs_plan":[]}'
+cat > "$STUB_BIN/claude" <<'EOF'
+#!/usr/bin/env bash
+printf '{"type":"result","subtype":"success","is_error":true,"api_error_status":429,"result":"You'"'"'ve hit your limit · resets 4:40pm"}\n'
+exit 1
+EOF
+chmod +x "$STUB_BIN/claude"
+WT1="$TMPROOT/pool-1"; mkdir -p "$WT1"
+export STUB_WALL_WRAP="$WRAP" STUB_WALL_WT="$WT1" STUB_WALL_PATH="$STUB_BIN:$SCRIPT_DIR:$PATH" \
+    STUB_WALL_LOG="$TMPROOT/wrap-stderr-31d.log"
+: > "$STUB_WALL_LOG"
+: > "$FLEET_STATE_DIR/triggers/worker"
+: > "$SEND_LOG"; : > "$FLEET_CLAIM_LOG"
+out=$(STUB_WALL_WRAP_ON_PANE='%1' FLEET_ENGINE_ROOT="$TMPROOT/no-engine" \
+    "$DISPATCHER" --dispatch-role worker 1 2>&1 >/dev/null)
+case "$out" in
+    *"dispatching worker -> %1 [class=sonnet effort=high target=task:engine:13]"*)
+        PASS=$((PASS+1)); echo "  ok: the task launched on pool-1 with the gate open" ;;
+    *) FAIL=$((FAIL+1)); echo "  FAIL: no target-bound launch: $out" ;;
+esac
+grep -q "usage limit on worker (pane-1, rc=1)" "$STUB_WALL_LOG" \
+    && { PASS=$((PASS+1)); echo "  ok: the wrap classified the result-only exit as the wall"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: wall not classified: $(cat "$STUB_WALL_LOG")"; }
+# Precondition: no rejected event reached the stream, so the event-path
+# record is absent and only the fallback can hold the gate.
+[[ ! -f "$FLEET_STATE_DIR/usage/five_hour.rejected.json" && -f "$FLEET_STATE_DIR/usage/wall.rejected.json" ]] \
+    && { PASS=$((PASS+1)); echo "  ok: the stream latched the fallback record from the result text alone"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: usage dir: $(ls "$FLEET_STATE_DIR/usage" 2>/dev/null)"; }
+assert_eq "$("$DISPATCHER" --gate-status claude | cut -d' ' -f1,2)" "closed:five_hour rejected" \
+    "the claude gate is closed on the fallback"
+# The exit fold: idle pre-claim -> claim released, role re-armed.
+: > "$FLEET_CLAIM_LOG"
+out=$(FLEET_ENGINE_ROOT="$TMPROOT/no-engine" "$DISPATCHER" --complete-dispatches 2>&1 >/dev/null)
+case "$out" in
+    *"task:engine:13: usage limit hit by pool-1 before any work — claim released"*)
+        PASS=$((PASS+1)); echo "  ok: the exit fold released the idle claim" ;;
+    *) FAIL=$((FAIL+1)); echo "  FAIL: idle quota fold missing: $out" ;;
+esac
+grep -q '^release 13$' "$FLEET_CLAIM_LOG" \
+    && { PASS=$((PASS+1)); echo "  ok: task 13 released for another pane"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: no release in the claim log: $(cat "$FLEET_CLAIM_LOG")"; }
+[[ -f "$FLEET_STATE_DIR/triggers/worker" ]] \
+    && { PASS=$((PASS+1)); echo "  ok: the exit fold re-armed the worker trigger"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: no worker trigger after the quota exit fold: $out"; }
+# The re-armed tick: pool-1 cools down, four panes are free and the item is
+# claimable again — the closed gate must stop the launch and keep the trigger.
+: > "$SEND_LOG"; : > "$FLEET_CLAIM_LOG"
+out=$(FLEET_ENGINE_ROOT="$TMPROOT/no-engine" "$DISPATCHER" --dispatch-role worker 1 2>&1 >/dev/null)
+case "$out" in
+    *"dispatching worker"*) FAIL=$((FAIL+1)); echo "  FAIL: a free pane launched into the wall: $out" ;;
+    *) PASS=$((PASS+1)); echo "  ok: no free pane launched while the fallback holds the gate" ;;
+esac
+[[ ! -s "$SEND_LOG" ]] \
+    && { PASS=$((PASS+1)); echo "  ok: nothing sent to any pane"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: send-keys fired: $(cat "$SEND_LOG")"; }
+grep -q '^claim 13 ' "$FLEET_CLAIM_LOG" \
+    && { FAIL=$((FAIL+1)); echo "  FAIL: task 13 re-claimed behind the closed gate: $(cat "$FLEET_CLAIM_LOG")"; } \
+    || { PASS=$((PASS+1)); echo "  ok: the item was not re-claimed"; }
+[[ -f "$FLEET_STATE_DIR/triggers/worker" ]] \
+    && { PASS=$((PASS+1)); echo "  ok: trigger kept behind the closed gate"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: trigger consumed while the gate was closed: $out"; }
+# The fallback ages out (observed_at cutoff) and the cooldown elapses: the
+# item is dispatched again.
+rm -f "$FLEET_STATE_DIR/rate-limit/pane-1.ts" "$FLEET_STATE_DIR/usage"/*.json
+: > "$SEND_LOG"
+out=$(FLEET_ENGINE_ROOT="$TMPROOT/no-engine" "$DISPATCHER" --dispatch-role worker 1 2>&1 >/dev/null)
+case "$out" in
+    *"dispatching worker -> %1 [class=sonnet effort=high target=task:engine:13]"*)
+        PASS=$((PASS+1)); echo "  ok: the item re-launched on the first open tick" ;;
+    *) FAIL=$((FAIL+1)); echo "  FAIL: not re-dispatched after the fallback expired: $out" ;;
+esac
+unset FLEET_RUNTIMES STUB_WALL_WRAP STUB_WALL_WT STUB_WALL_PATH STUB_WALL_LOG
+rm -f "$FLEET_STATE_DIR/dispatch"/*.json "$FLEET_STATE_DIR/triggers/worker" \
+    "$STUB_BIN/claude" "$FLEET_STATE_DIR/rate-limit"/* "$FLEET_STATE_DIR/usage"/*.json
+
 # --- T32+: per-target dispatch cap (the planning circuit breaker, generalized)
 # gh is stubbed so park_target's label add + comment are observable.
 export GH_LOG="$TMPROOT/gh.log"
