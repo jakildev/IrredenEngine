@@ -46,21 +46,21 @@ template <> struct System<COMPUTE_VOXEL_AO> {
     // per-entity tick), so the per-entity tick can use it directly.
     Buffer *sunFrameDataBuf_ = nullptr;
 
-    // Smooth camera Z-yaw (#1311): the main canvas + its per-axis voxel
+    // Smooth camera Z-yaw: the main canvas + its per-axis voxel
     // canvases, re-resolved every frame in beginTick (never held across frames,
     // per .claude/rules/cpp-ecs.md). Null unless the main canvas owns the
     // component AND it is currently allocated (camera at a non-cardinal yaw).
     IREntity::EntityId perAxisCanvasEntity_ = IREntity::kNullEntity;
     C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
 
-    // Lazily-resolved voxel-compaction buffers (#1961/#2256), restored onto
+    // Lazily-resolved voxel-compaction buffers, restored onto
     // slots 25/26 after dispatchPerAxisAO borrows them for its own per-axis
     // cell list. See IRPrefab::PerAxisCanvas::restoreVoxelCompactionSlots.
     Buffer *voxelCompactedBuf_ = nullptr;
     Buffer *voxelIndirectBuf_ = nullptr;
 
     // Per-pass voxel-frame author/restore for multi-lit-canvas scenes
-    // (re-voxelize P4 / #1558). The shared voxel UBO (binding 7) is authored
+    // for re-voxelized canvases. The shared voxel UBO (binding 7) is authored
     // per canvas by VOXEL_TO_TRIXEL_STAGE_1, but only the LAST canvas it
     // processes stays resident — so a second lit canvas (a detached re-voxelize
     // solid) would read the main canvas's visible-triplet / detached flag and
@@ -84,13 +84,13 @@ template <> struct System<COMPUTE_VOXEL_AO> {
         if (!behavior.useCameraPositionIso_)
             return;
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
-        // CPU histogram bracket — this system is not observer-tagged (#2281),
+        // CPU histogram bracket — this system is not observer-tagged,
         // so without it the perf overlay's VOXEL-AO CPU row reads 0.0. The
         // IR_PROFILE_FUNCTION above feeds easy_profiler, not cpuFrameHistogram.
         IR_PROFILE_SCOPE("computeVoxelAO");
 
         // Author THIS canvas's voxel frame data so AO shades it with its own
-        // visible-triplet / detached state (#1558). No-op for a canvas with no
+        // visible-triplet / detached state. No-op for a canvas with no
         // voxel pool (a pure-SDF lit canvas keeps the resident frame, unchanged).
         // getComponentOptional on the iterating canvas is the canvas-iteration
         // pattern (few canvases; cf. system_trixel_to_framebuffer.hpp:63), not
@@ -103,7 +103,7 @@ template <> struct System<COMPUTE_VOXEL_AO> {
         );
 
         {
-            // Sub-scope (#2281): the main-canvas AO dispatch only — the system
+            // Sub-scope: the main-canvas AO dispatch only — the system
             // is untagged from the per-system observer so the per-axis rows
             // below stay separable (a sub-scope reuses the observer's slot).
             GpuSubStageScope aoScope("computeVoxelAO");
@@ -122,7 +122,7 @@ template <> struct System<COMPUTE_VOXEL_AO> {
             IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
         }
 
-        // Smooth camera Z-yaw (#1311): compute AO for each per-axis voxel
+        // Smooth camera Z-yaw: compute AO for each per-axis voxel
         // canvas so the framebuffer scatter composites LIT voxels while rotating.
         // Only the main canvas owns them, and only while at a non-cardinal yaw.
         if (entity == perAxisCanvasEntity_ && perAxisCanvases_ != nullptr &&
@@ -158,13 +158,13 @@ template <> struct System<COMPUTE_VOXEL_AO> {
             // One barrier after the 3 independent per-axis dispatches (each axis
             // writes its own AO image texture — disjoint outputs, so dispatch
             // order doesn't matter) so they overlap on the GPU instead of
-            // serializing per axis (#1311).
+            // serializing per axis.
             IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
         }
         // Restore the main-canvas image bindings the loop overwrote. The Metal
         // backend's image-binding table persists across frames and is read on
         // every dispatch; leaving the per-axis textures bound here would dangle
-        // when release() frees them next frame at the cardinal (#1311 crash).
+        // when release frees them next frame at the cardinal, causing a crash.
         mainTextures.getTextureDistances()
             ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
         mainAO.getTexture()->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
@@ -188,7 +188,7 @@ template <> struct System<COMPUTE_VOXEL_AO> {
         sunFrameDataBuf_->subData(offsetof(FrameDataSun, aoEnabled_), sizeof(int), &aoEnabledFlag);
 
         // Resolve the main canvas + its per-axis voxel canvases for the smooth-
-        // yaw lighting path (#1311). Re-resolved every frame; never held across
+        // yaw lighting path. Re-resolved every frame; never held across
         // frames. Null unless the component exists AND is currently allocated.
         perAxisCanvasEntity_ = IRRender::getCanvas("main");
         perAxisCanvases_ = nullptr;
@@ -199,8 +199,7 @@ template <> struct System<COMPUTE_VOXEL_AO> {
                 perAxisCanvases_ = perAxis.value();
             }
         }
-        // Cache the main canvas's voxel-frame inputs for the endTick restore
-        // (#1558).
+        // Cache the main canvas's voxel-frame inputs for the endTick restore.
         resolveMainCanvasVoxelFrameInputs(
             perAxisCanvasEntity_,
             &mainCanvasTextures_,
@@ -212,7 +211,7 @@ template <> struct System<COMPUTE_VOXEL_AO> {
     // Restore the main world canvas's voxel frame data so BAKE_SUN_SHADOW_MAP /
     // COMPUTE_SUN_SHADOW (which run after AO and read the shared voxel UBO) see
     // the world frame even when a detached re-voxelize canvas authored its own
-    // above (#1558). Byte-identical render output for single-lit-canvas scenes
+    // above. Byte-identical render output for single-lit-canvas scenes
     // (cullIso, the only field buildVoxelFrameData omits, is unused downstream).
     void endTick() {
         restoreMainCanvasVoxelFrame(
@@ -238,7 +237,7 @@ template <> struct System<COMPUTE_VOXEL_AO> {
         auto *p = getSystemParams<System<COMPUTE_VOXEL_AO>>(systemId);
         p->program_ = IRRender::getNamedResource<ShaderProgram>("ComputeVoxelAOProgram");
         p->voxelFrameDataBuf_ = IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
-        // NOT observer-tagged: the tick owns GpuSubStageScopes (#2281), which
+        // NOT observer-tagged: the tick owns GpuSubStageScopes, which
         // reuse the observer's timestamp attachment slot.
         return systemId;
     }

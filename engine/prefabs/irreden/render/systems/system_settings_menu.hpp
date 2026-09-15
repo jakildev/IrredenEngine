@@ -45,7 +45,7 @@ inline constexpr int kSettingsMenuEnumLabelPercent = 45;
 // values are integral and compare exactly.
 inline constexpr float kSettingsMenuFloatEpsilon = 1e-4f;
 
-// Standard pause/settings menu (#2551).
+// Standard pause/settings menu.
 //
 // Renders one interactive row per `C_SettingsRegistry` entry — checkbox for
 // BOOL, dropdown for ENUM, slider for FLOAT — and applies edits back through
@@ -412,7 +412,7 @@ template <> struct System<SETTINGS_MENU> {
     }
 
     // The Controls line links to the help overlay rather than re-rendering the
-    // key list: #2550 already owns that surface, and two renderers of one
+    // key list: already owns that surface, and two renderers of one
     // registry drift apart. The key is read back out of the command registry
     // so the line stays correct in a creation that rebound the toggle, and the
     // line is omitted entirely when no help overlay is bound.

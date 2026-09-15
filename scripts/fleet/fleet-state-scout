@@ -2761,8 +2761,21 @@ def _reviewable(pr, labels):
 def sonnet_review_admissible(pr, labels):
     if not _reviewable(pr, labels) or pr.get("isDraft"):
         return False
-    # Re-review triggers override the verdict check.
-    return not (labels & REVIEW_VERDICT_LABELS) or bool(labels & RECHECK_LABELS)
+    # Re-review triggers override every standing-state check below.
+    if labels & RECHECK_LABELS:
+        return True
+    # An escalated PR carries no verdict label BY DESIGN (the sonnet edge
+    # sets none; the opus verdict swap is what does), so "no verdict" is
+    # not "unreviewed" here. Admitting it re-elected the same head every
+    # tick: a full sonnet pass, the same `Opus recheck required:` ending,
+    # the same escalation edge, the projection unchanged — both sonnet
+    # slots spent confirming one PR while the unreviewed queue waited.
+    # The opus lane owns it (opus_review_admissible) until an author push
+    # re-adds a RECHECK label; the worker lane has the same guard
+    # (WORKER_SKIP_LABELS).
+    if labels & OPUS_REVIEWER_FLAG_LABELS:
+        return False
+    return not (labels & REVIEW_VERDICT_LABELS)
 
 
 def opus_review_admissible(pr, labels):

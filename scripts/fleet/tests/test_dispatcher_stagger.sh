@@ -7,8 +7,8 @@
 #      `--dispatch-gap-check <last-epoch> <now-epoch>` inspection subcommand.
 #   2. fleet-dispatch-wrap classifying a non-zero exit + a throttle flag as a
 #      short-window 429: writes `<pane>.throttle.ts` (short cooldown) and
-#      re-arms the role's trigger — vs. the usage-limit exit (code 2 → `.ts`)
-#      and the clean exit (no markers).
+#      re-arms the role's trigger — vs. the usage-limit exit (code 2 → `.ts`,
+#      also re-armed) and the clean exit (no markers).
 #   3. fleet-claude-stream touching FLEET_THROTTLE_FLAG when it sees the
 #      "Server is temporarily limiting requests" line.
 
@@ -131,11 +131,11 @@ assert_file    "$st/triggers/opus-reviewer"        "429 re-arms the role trigger
 assert_no_file "$st/rate-limit/pane-9.ts"          "429 does NOT write the usage-limit marker"
 assert_no_file "$st/rate-limit/pane-9.throttle-seen" "in-run throttle flag is cleaned up"
 
-echo "T5: usage-limit exit (rc==2) → long cooldown marker only"
+echo "T5: usage-limit exit (rc==2) → long cooldown marker + re-arm"
 st=$(run_wrap 2 0 opus-reviewer)
 assert_file    "$st/rate-limit/pane-9.ts"          "rc==2 writes the usage-limit marker"
 assert_no_file "$st/rate-limit/pane-9.throttle.ts" "rc==2 does NOT write the throttle marker"
-assert_no_file "$st/triggers/opus-reviewer"        "rc==2 does NOT re-arm (usage gate handles quota)"
+assert_file    "$st/triggers/opus-reviewer"        "rc==2 re-arms the role (the trigger was consumed at launch; the gate holds it)"
 
 echo "T6: clean exit (rc==0) → no markers, no re-arm, flag cleaned"
 st=$(run_wrap 0 1 opus-reviewer)

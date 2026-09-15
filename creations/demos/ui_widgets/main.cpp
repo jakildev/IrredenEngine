@@ -217,14 +217,11 @@ void initSystems() {
         }
     );
 
-    if (IRWidgetsDemo::g_autoWarmupFrames > 0) {
-        IRVideo::AutoScreenshotConfig cfg{};
-        cfg.warmupFrames_ = IRWidgetsDemo::g_autoWarmupFrames;
-        cfg.settleFrames_ = 3;
-        cfg.shots_ = IRWidgetsDemo::kShots;
-        cfg.numShots_ = sizeof(IRWidgetsDemo::kShots) / sizeof(IRWidgetsDemo::kShots[0]);
-        renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(cfg));
-    }
+    IRVideo::appendAutoScreenshotIfRequested(
+        renderPipeline,
+        IRWidgetsDemo::g_autoWarmupFrames,
+        IRWidgetsDemo::kShots
+    );
 
     IRSystem::registerPipeline(IRTime::Events::RENDER, renderPipeline);
 }

@@ -765,8 +765,7 @@ inline void initSystems(const DemoConfig &config) {
             screenshotConfig.shots_ = config.shots_;
             screenshotConfig.numShots_ = config.numShots_;
         } else {
-            screenshotConfig.shots_ = kShots;
-            screenshotConfig.numShots_ = sizeof(kShots) / sizeof(kShots[0]);
+            IRVideo::setAutoScreenshotShots(screenshotConfig, kShots);
         }
         sceneState().activeShots_ = screenshotConfig.shots_;
         screenshotConfig.onCaptureFrame_ = &logDomainState;

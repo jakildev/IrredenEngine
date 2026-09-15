@@ -1,7 +1,7 @@
 #ifndef SYSTEM_WIDGET_LUA_DISPATCH_H
 #define SYSTEM_WIDGET_LUA_DISPATCH_H
 
-// WIDGET_LUA_DISPATCH (#1975) — turns a widget's per-frame click pulse
+// WIDGET_LUA_DISPATCH — turns a widget's per-frame click pulse
 // (C_WidgetState::fireAction_, set by WIDGET_INPUT on click-release-over-
 // widget) into a Lua `onClick` callback. The one piece of net-new
 // infrastructure the widget framework lacked: click was poll-only
@@ -20,7 +20,7 @@
 // is destroyed, which `World` orders BEFORE the `sol::state` (`m_lua` leads
 // the manager block in `world.hpp`) — so the refs into Lua are always
 // released while the state is still open. Same lifetime contract
-// DISPATCH_LUA_OVERLAP (#1817) and the CommandManager rely on.
+// DISPATCH_LUA_OVERLAP and the CommandManager rely on.
 //
 // A destroyed widget leaves a stale `clickHandlers_` entry (bounded leak;
 // the handler simply never fires again, since the dead entity stops

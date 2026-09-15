@@ -16,9 +16,9 @@
 //
 // Control scheme:
 //   Pan              Space + left-drag  (mouse + trackpad)
-//                     or  middle-drag   (mouse only, legacy)
+//                     or  middle-drag   (mouse only)
 //   Orbit (yaw+pitch) Alt + left-drag  (mouse + trackpad)
-//                     or  Ctrl + middle-drag (mouse only, legacy)
+//                     or  Ctrl + middle-drag (mouse only)
 //   Zoom             scroll wheel / two-finger scroll  (register in INPUT)
 //   Pan              WASD               (keyboard)
 //   Zoom             +/-                (keyboard)
@@ -39,7 +39,7 @@ namespace IRPrefab::Camera {
 
 /// Mouse + trackpad drag systems for the RENDER pipeline.
 /// Bundles the modifier+left-drag systems (Space=pan, Alt=rotate) and
-/// the legacy middle-drag systems (middle-drag=pan, Ctrl+middle=rotate).
+/// the middle-drag systems (middle-drag=pan, Ctrl+middle=rotate).
 /// Callers must separately register CAMERA_SCROLL_ZOOM in INPUT — see
 /// the file-level comment above for why and how.
 inline std::list<IRSystem::SystemId> standardControlSystems() {
@@ -55,7 +55,7 @@ inline std::list<IRSystem::SystemId> standardControlSystems() {
 // Takes the same registration-time overrides — a creation that owns Escape
 // itself passes `{.omit_ = {IRCommand::CLOSE_WINDOW}}` rather than dropping to
 // hand-registering the rest of the suite. That is how a `IRPrefab::SettingsMenu`
-// adopter keeps Escape free for the menu (#2551).
+// adopter keeps Escape free for the menu.
 inline void registerStandardKeyboardCommands(const IRCommand::BindingOverrides &overrides) {
     IRCommand::registerCameraCommands(overrides);
 }
@@ -64,7 +64,7 @@ inline void registerStandardKeyboardCommands() {
     IRCommand::registerCameraCommands();
 }
 
-/// Which middle-drag chord latches the cursor pivot (#2548).
+/// Which middle-drag chord latches the cursor pivot.
 ///
 /// Off (the default): Ctrl+Shift+middle-drag rotates about the clicked surface
 /// point, plain Ctrl+middle-drag rotates about the screen-center default. On:
