@@ -323,6 +323,14 @@ Parallel-agent fleet (tmux + Claude)
                                  criterion in a drafted PR body; reads stdin or
                                  --body-file; can read or write a complete issue
                                  snapshot with --issue-json/--write-issue-json
+  fleet-pr-overlap [--base <branch>] [--repo engine|game|owner/repo]
+                                 grade this branch against every open PR before
+                                 publication: one `#<PR> <path>
+                                 conflicts|clean|upstream` row per shared path
+                                 (trial-merged with git merge-tree) and a
+                                 `VERDICT:` line; exits 0 clean / 1 overlap /
+                                 3 block (docs/agents/**, .claude/**, or a stale
+                                 stack base) / 2 could not grade
   fleet-validate-stack <umbrella> [--repo engine|game] [--children N…] [--strict]
                                  [--check-checklist]
                                  pre-approval check that an epic's child issues

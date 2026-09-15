@@ -225,10 +225,19 @@ and verify the number independently before proceeding.
   ```
   A hit is a block annotated "remove when #N closes" about to ship as dead
   code — remove it in a new commit, or re-point it at a live follow-up.
-- **Open-PR overlap.** Intersect changed files with open PRs' `files`
-  (`gh pr list --state open --json number,files`) and trial-merge each hit
-  with `git merge-tree --write-tree <this> <other>`. A hit on
-  `docs/agents/**` or `.claude/**` stops the open.
+- **Open-PR overlap.**
+  ```bash
+  fleet-pr-overlap --base "$base" --repo <repo>
+  ```
+  `$base` is the same value step 8 passes to `gh pr create --base` /
+  `gh pr edit --base`.
+
+  | exit | meaning | do |
+  |---|---|---|
+  | 0 | `VERDICT: clean` | proceed |
+  | 1 | `VERDICT: overlap` — shared paths, none blocking | proceed; quote the rows in the PR body |
+  | 3 | `VERDICT: block` — a `docs/agents/**` or `.claude/**` competitor, or a stale stack base | do not publish: base the branch on the overlapping PR and re-run with `--base <its head branch>`, or leave the PR `fleet:wip`, comment the rows on it, and re-run `commit-and-push` once it merges |
+  | 2 | could not grade | fix the invocation or environment; after `head moved` or a population delta, re-run |
 
 #### 8b. Host label
 

@@ -1,0 +1,403 @@
+#!/usr/bin/env python3
+"""Grade this branch against every open PR before publication.
+
+Prints one `#<PR> <path> conflicts|clean|upstream` row per shared path and a
+closing `VERDICT: clean|overlap|block` line.
+
+Exit: 0 clean, 1 overlap (informational), 3 block (do not publish),
+2 the tool could not grade (usage, environment, or a population that moved).
+"""
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+REPO_SLUGS = {
+    "engine": "jakildev/IrredenEngine",
+    "game": "jakildev/irreden",
+}
+BLOCK_TREES = ("docs/agents/", ".claude/")
+DEFAULT_LIMIT = 1000
+PR_FIELDS = (
+    "number,title,headRefName,headRefOid,baseRefName,isCrossRepository,changedFiles,files"
+)
+TOTAL_COUNT_QUERY = (
+    "query($owner:String!,$name:String!){repository(owner:$owner,name:$name)"
+    "{pullRequests(states:OPEN){totalCount}}}"
+)
+OID_RE = re.compile(r"^[0-9a-f]{40}$")
+SLUG_RES = (
+    re.compile(r"^git@github\.com:(?P<slug>[^/\s]+/[^/\s]+?)(?:\.git)?/?$"),
+    re.compile(r"^(?:https?|ssh)://(?:[^@/]+@)?github\.com/(?P<slug>[^/\s]+/[^/\s]+?)(?:\.git)?/?$"),
+)
+NET_TIMEOUT = 60
+
+EXIT_CLEAN, EXIT_OVERLAP, EXIT_ERROR, EXIT_BLOCK = 0, 1, 2, 3
+
+
+class OverlapError(Exception):
+    """The run cannot produce a verdict; the message names why."""
+
+
+def note(message):
+    print(f"note: {message}", file=sys.stderr)
+
+
+def run(argv, cwd=None):
+    try:
+        return subprocess.run(
+            argv, cwd=cwd, capture_output=True, text=True, timeout=NET_TIMEOUT, check=False
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise OverlapError(f"timed out: {' '.join(argv)}") from exc
+    except OSError as exc:
+        raise OverlapError(f"cannot run {argv[0]}: {exc}") from exc
+
+
+def git(*args, cwd=None):
+    result = run(["git", *args], cwd=cwd)
+    if result.returncode != 0:
+        raise OverlapError(f"git {' '.join(args)}: {result.stderr.strip()}")
+    return result.stdout.strip()
+
+
+def git_status(*args, cwd=None):
+    result = run(["git", *args], cwd=cwd)
+    return result.returncode, result.stdout, result.stderr.strip()
+
+
+def is_ancestor(commit, of):
+    rc, _, err = git_status("merge-base", "--is-ancestor", commit, of)
+    if rc == 0:
+        return True
+    if rc == 1:
+        return False
+    raise OverlapError(f"git merge-base --is-ancestor {commit} {of}: {err}")
+
+
+def origin_slug():
+    url = git("config", "--get", "remote.origin.url")
+    for pattern in SLUG_RES:
+        match = pattern.match(url)
+        if match:
+            return match.group("slug")
+    raise OverlapError(f"origin URL is not a GitHub repository: {url}")
+
+
+def resolve_repo(requested):
+    actual = origin_slug()
+    if requested is None:
+        return actual
+    wanted = REPO_SLUGS.get(requested, requested)
+    if wanted != actual:
+        raise OverlapError(f"--repo {wanted} does not match origin {actual}")
+    return actual
+
+
+def default_branch():
+    out = git("ls-remote", "--symref", "origin", "HEAD")
+    for line in out.splitlines():
+        match = re.match(r"^ref: refs/heads/(\S+)\tHEAD$", line)
+        if match:
+            return match.group(1)
+    raise OverlapError(f"cannot read origin's default branch from: {out!r}")
+
+
+def fetch_branch_tip(branch):
+    rc, _, err = git_status("fetch", "--quiet", "origin", branch)
+    if rc != 0:
+        raise OverlapError(f"git fetch origin {branch}: {err}")
+    return git("rev-parse", "FETCH_HEAD")
+
+
+class Gh:
+    """The two GitHub reads; `--pr-json` swaps both for a file and refuses every call."""
+
+    def __init__(self, slug, limit, pr_json):
+        self.slug = slug
+        self.limit = limit
+        self.pr_json = pr_json
+
+    def call(self, *args):
+        if self.pr_json is not None:
+            raise OverlapError(f"gh call under --pr-json: gh {' '.join(args)}")
+        result = run(["gh", *args])
+        if result.returncode != 0:
+            raise OverlapError(f"gh {' '.join(args[:2])}: {result.stderr.strip()}")
+        try:
+            return json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            raise OverlapError(f"gh {' '.join(args[:2])} returned invalid JSON: {exc}") from exc
+
+    def list_open(self):
+        if self.pr_json is not None:
+            try:
+                rows = json.loads(Path(self.pr_json).read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise OverlapError(f"cannot read --pr-json {self.pr_json}: {exc}") from exc
+            return rows, len(rows)
+        rows = self.call(
+            "pr", "list", "--repo", self.slug, "--state", "open",
+            "--limit", str(self.limit), "--json", PR_FIELDS,
+        )
+        owner, name = self.slug.split("/", 1)
+        probe = self.call(
+            "api", "graphql", "-f", f"query={TOTAL_COUNT_QUERY}",
+            "-F", f"owner={owner}", "-F", f"name={name}",
+        )
+        try:
+            total = probe["data"]["repository"]["pullRequests"]["totalCount"]
+        except (KeyError, TypeError) as exc:
+            raise OverlapError(f"totalCount probe returned an unexpected shape: {probe}") from exc
+        return rows, total
+
+
+def validate_rows(rows):
+    if not isinstance(rows, list):
+        raise OverlapError("PR list is not a JSON array")
+    snapshot = {}
+    for row in rows:
+        try:
+            number = int(row["number"])
+            files = row["files"]
+            entry = {
+                "number": number,
+                "headRefName": str(row["headRefName"]),
+                "headRefOid": str(row["headRefOid"]),
+                "baseRefName": str(row["baseRefName"]),
+                "isCrossRepository": bool(row["isCrossRepository"]),
+                "changedFiles": int(row["changedFiles"]),
+                "files": {str(item["path"]) for item in files},
+                "files_count": len(files),
+            }
+        except (KeyError, TypeError, ValueError) as exc:
+            raise OverlapError(f"PR row is missing a field: {row!r} ({exc})") from exc
+        if not OID_RE.match(entry["headRefOid"]):
+            raise OverlapError(f"#{number} headRefOid is not a 40-hex OID: {entry['headRefOid']}")
+        if number in snapshot:
+            raise OverlapError(f"#{number} listed twice")
+        snapshot[number] = entry
+    return snapshot
+
+
+def take_snapshot(gh):
+    """One complete enumeration, or an error: never a truncated population."""
+    rows, total = gh.list_open()
+    if len(rows) == gh.limit:
+        raise OverlapError(
+            f"gh pr list returned {len(rows)} rows at --limit {gh.limit}; "
+            "the open set may be truncated, raise --limit"
+        )
+    if len(rows) != total:
+        rows, total = gh.list_open()
+        if len(rows) != total:
+            raise OverlapError(
+                f"open-PR enumeration is incomplete: {len(rows)} rows listed, "
+                f"totalCount {total}"
+            )
+    return validate_rows(rows)
+
+
+def snapshot_delta(before, after):
+    delta = []
+    for number in sorted(set(after) - set(before)):
+        delta.append(f"+#{number}")
+    for number in sorted(set(before) - set(after)):
+        delta.append(f"-#{number}")
+    for number in sorted(set(before) & set(after)):
+        old, new = before[number]["headRefOid"], after[number]["headRefOid"]
+        if old != new:
+            delta.append(f"#{number} {old} → {new}")
+    return delta
+
+
+def resolve_self(snapshot, args):
+    if args.no_self:
+        return None
+    if args.self_pr is not None:
+        if args.self_pr not in snapshot:
+            raise OverlapError(f"--self-pr {args.self_pr} is not an open PR")
+        return snapshot[args.self_pr]
+    rc, out, _ = git_status("symbolic-ref", "--quiet", "--short", "HEAD")
+    if rc != 0:
+        return None
+    branch = out.strip()
+    matches = [
+        row for row in snapshot.values()
+        if not row["isCrossRepository"] and row["headRefName"] == branch
+    ]
+    if len(matches) > 1:
+        numbers = ", ".join(f"#{row['number']}" for row in matches)
+        raise OverlapError(f"ambiguous self: {numbers} all have head branch {branch}")
+    return matches[0] if matches else None
+
+
+def fetch_pr_head(row):
+    """Fetch the PR head and pin it to the snapshot's OID; returns the OID."""
+    number = row["number"]
+    rc, _, err = git_status("fetch", "--quiet", "origin", f"refs/pull/{number}/head")
+    if rc != 0:
+        raise OverlapError(f"#{number} git fetch origin refs/pull/{number}/head: {err}")
+    fetched = git("rev-parse", "FETCH_HEAD")
+    if fetched != row["headRefOid"]:
+        raise OverlapError(
+            f"#{number} head moved during the run ({row['headRefOid']} → {fetched}); re-run"
+        )
+    return fetched
+
+
+def widened_paths(row, default_tip):
+    """The branch delta from git, for a row whose GitHub `files` cannot stand in."""
+    base = git("merge-base", default_tip, row["headRefOid"])
+    paths = set(git("diff", "--name-only", f"{base}..{row['headRefOid']}").splitlines())
+    note(
+        f"#{row['number']} path set widened from git ({len(paths)} paths; "
+        f"GitHub files {row['files_count']} of {row['changedFiles']}, "
+        f"base {row['baseRefName']})"
+    )
+    return paths
+
+
+def hunk_ranges(base, head, path):
+    """Base-line ranges each `-U0` hunk of base..head replaces in `path`."""
+    ranges = []
+    out = git("diff", "-U0", base, head, "--", path)
+    for match in re.finditer(r"^@@ -(\d+)(?:,(\d+))? ", out, flags=re.M):
+        start = int(match.group(1))
+        count = int(match.group(2)) if match.group(2) is not None else 1
+        ranges.append((start, start + max(count, 1) - 1))
+    return ranges
+
+
+def conflict_paths(number, head_oid, other_oid, shared):
+    """Shared paths whose edited base-line ranges intersect on the two sides."""
+    rc, out, err = git_status("merge-base", head_oid, other_oid)
+    if rc != 0:
+        raise OverlapError(f"#{number} git merge-base {head_oid} {other_oid}: {err}")
+    base = out.strip()
+    conflicts = set()
+    for path in sorted(shared):
+        ours = hunk_ranges(base, head_oid, path)
+        theirs = hunk_ranges(base, other_oid, path)
+        if any(a0 <= b1 and b0 <= a1 for a0, a1 in ours for b0, b1 in theirs):
+            conflicts.add(path)
+    return conflicts
+
+
+def print_rows(rows):
+    for number, path, verdict, suffix in sorted(rows):
+        print(f"#{number} {path} {verdict}{suffix}")
+
+
+def grade(args):
+    slug = resolve_repo(args.repo)
+    gh = Gh(slug, args.limit, args.pr_json)
+    head_oid = git("rev-parse", "HEAD")
+    default = default_branch()
+
+    opening = take_snapshot(gh)
+    self_row = resolve_self(opening, args)
+    base = args.base or (self_row["baseRefName"] if self_row else default)
+
+    default_tip = fetch_branch_tip(default)
+    base_tip = default_tip if base == default else fetch_branch_tip(base)
+
+    if base != default and not is_ancestor(base_tip, head_oid):
+        parents = [
+            row for row in opening.values()
+            if not row["isCrossRepository"] and row["headRefName"] == base
+        ]
+        slot = f"#{parents[0]['number']}" if parents else "(no open PR)"
+        print(f"{slot} {base} stale (origin/{base} {base_tip[:9]} not in HEAD)")
+        print("VERDICT: block")
+        return EXIT_BLOCK
+
+    own = set(git("diff", "--name-only", f"{base_tip}...{head_oid}").splitlines())
+
+    candidates = sorted(
+        (row for row in opening.values() if row is not self_row), key=lambda row: row["number"]
+    )
+    paths_by_number = {}
+    fetched = set()
+    for row in candidates:
+        if row["baseRefName"] != default or row["files_count"] != row["changedFiles"]:
+            fetch_pr_head(row)
+            fetched.add(row["number"])
+            paths_by_number[row["number"]] = widened_paths(row, default_tip)
+        else:
+            paths_by_number[row["number"]] = row["files"]
+
+    rows = []
+    for row in candidates:
+        number = row["number"]
+        shared = own & paths_by_number[number]
+        if not shared:
+            continue
+        if number not in fetched:
+            fetch_pr_head(row)
+        other = row["headRefOid"]
+        if other == head_oid:
+            rows.extend((number, path, "clean", " (same head)") for path in shared)
+            continue
+        if is_ancestor(other, base_tip):
+            rows.extend((number, path, "upstream", "") for path in shared)
+            continue
+        if is_ancestor(other, head_oid):
+            raise OverlapError(
+                f"#{number} ({row['headRefName']}) is in HEAD but not in --base {base}; "
+                f"pass --base {row['headRefName']} or rebase"
+            )
+        conflicts = conflict_paths(number, head_oid, other, shared)
+        for path in shared | conflicts:
+            rows.append((number, path, "conflicts" if path in conflicts else "clean", ""))
+
+    closing = take_snapshot(gh)
+    delta = snapshot_delta(opening, closing)
+    if delta:
+        raise OverlapError("open-PR population moved during the run: " + ", ".join(delta))
+
+    print_rows(rows)
+    competitor_paths = [path for _, path, verdict, _ in rows if verdict != "upstream"]
+    if any(path.startswith(BLOCK_TREES) for path in competitor_paths):
+        print("VERDICT: block")
+        return EXIT_BLOCK
+    if competitor_paths:
+        print("VERDICT: overlap")
+        return EXIT_OVERLAP
+    print("VERDICT: clean")
+    return EXIT_CLEAN
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Grade this branch against every open PR: shared paths, trial merge, verdict."
+    )
+    parser.add_argument("--base", help="branch on origin the PR targets (default: self PR's base)")
+    parser.add_argument("--repo", help="engine|game|owner/repo; must match origin")
+    parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
+    parser.add_argument("--pr-json", help="open-PR rows from a file instead of gh (tests)")
+    parser.add_argument("--self-pr", type=int, help="this branch's own open PR number")
+    parser.add_argument("--no-self", action="store_true", help="treat no open PR as self")
+    args = parser.parse_args()
+
+    if args.repo is not None and args.repo not in REPO_SLUGS and not re.fullmatch(
+        r"[^/\s]+/[^/\s]+", args.repo
+    ):
+        parser.error("--repo must be engine, game, or owner/repo")
+    if args.limit < 1:
+        parser.error("--limit must be positive")
+    if args.self_pr is not None and args.no_self:
+        parser.error("--self-pr and --no-self are mutually exclusive")
+
+    try:
+        return grade(args)
+    except OverlapError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+
+
+if __name__ == "__main__":
+    sys.exit(main())
