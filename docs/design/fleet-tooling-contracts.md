@@ -95,7 +95,9 @@ the `push:` and `pull_request:` blocks are hand-duplicated and drift
 independently. `OUT_OF_TREE_SUBJECTS` in
 `tests/test_fleet_tests_workflow_paths.sh` is that one workflow's own
 subject-domain list; a subject absent from it is a subject nothing guards,
-however green the suite runs. Whether a workflow's two blocks *agree* is a
+however green the suite runs, which is why `fleet_test_subjects.py` derives
+the subject population from the suite sources themselves and fails on any
+member the list omits. Whether a workflow's two blocks *agree* is a
 different axis, and `tests/test_workflow_paths_sync.sh` checks it for every
 workflow that declares both blocks, deriving the population from a glob
 rather than a list. Those workflows live outside `scripts/fleet/**`, so they
