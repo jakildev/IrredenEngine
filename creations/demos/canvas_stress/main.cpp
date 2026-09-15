@@ -1083,6 +1083,7 @@ void registerArgs() {
         "Compatibility flag: local triangle reconstruction is already the default"
     );
     args.flag("--probe-upright", "Use unrotated revoxelization and attached shadow probes");
+    args.flag("--probe-staircase", "Use a stair-stepped plate and nearby overhead blocker");
     args.flag("--probe-unblocked", "Remove the shadowocclusion wall for a direct-light control");
     args.flag(
         "--probe-external-blocker",
@@ -1644,6 +1645,7 @@ void initEntities() {
     if ((g_settings.onlyGroups_ & kGroupShadowOcclusion) != 0u) {
         const bool blocked = !IREngine::args().getFlag("--probe-unblocked");
         const bool external = IREngine::args().getFlag("--probe-external-blocker");
+        const bool staircase = IREngine::args().getFlag("--probe-staircase");
         const auto spawnPart = [&](bool receiver, bool wall) {
             const bool grid = IREngine::args().getFlag("--probe-grid");
             C_EntityCanvas canvas{};
@@ -1655,18 +1657,19 @@ void initEntities() {
                     false
                 );
             }
-            const vec3 origin{0.0f, 0.0f, -10.0f};
+            const vec3 origin{0.0f, 0.0f, staircase ? -4.0f : -10.0f};
             const EntityId solid = IREntity::createEntity(
                 C_LocalTransform{grid ? origin : vec3(0.0f)},
                 C_VoxelSetNew{
-                    ivec3(32, 32, 24),
+                    ivec3(32, 32, staircase ? 32 : 24),
                     Color{160, 200, 240, 255},
                     true,
                     grid ? mainCanvas : canvas.canvasEntity_
                 }
             );
             IREntity::getComponent<C_VoxelSetNew>(solid).carve([&](vec3 p) {
-                const bool plateCell = p.z >= 10.0f;
+                const float top = staircase ? 4.0f - IRMath::floor(p.x / 4.0f) : 10.0f;
+                const bool plateCell = p.z >= top;
                 return !((receiver && plateCell) || (wall && !plateCell && p.y < -12.0f));
             });
             if (!grid) {
@@ -1677,8 +1680,13 @@ void initEntities() {
                 );
             }
         };
-        spawnPart(true, blocked && !external);
-        if (blocked && external) {
+        spawnPart(true, blocked && !external && !staircase);
+        if (blocked && staircase) {
+            IREntity::createEntity(
+                C_LocalTransform{vec3(0.0f, -2.0f, -2.0f)},
+                C_VoxelSetNew{ivec3(16, 8, 1), Color{245, 160, 65, 255}, true, mainCanvas}
+            );
+        } else if (blocked && external) {
             spawnPart(false, true);
         }
     }
