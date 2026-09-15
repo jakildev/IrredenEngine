@@ -4,23 +4,6 @@ layout(local_size_x = 64) in;
 
 #include "ir_iso_common.glsl"
 
-// T-139 Phase 1 — GPU particle → trixel canvas render pass.
-// One thread per particle slot; dead slots early-out. Each live particle
-// projects its world position into iso 2D and emits a 6-trixel voxel-diamond
-// (3 faces × 2 sub-pixels) using faceOffset_2x3 + face-priority depth
-// encoding, so LIGHTING_TO_TRIXEL can shade each face with its own outward
-// normal. Mirrors the loop shape in c_render_stateless_particles_to_trixel.
-//
-// Phase 1 uses NONE subdivision mode (subdivisions = 1): each particle maps
-// to exactly one 2×3 trixel diamond. Sub-voxel positional precision and
-// full FULL-mode expansion to match voxels land in a follow-up.
-//
-// Single-pass write (no two-stage compaction): particles are sparse and the
-// expected per-pixel collision rate is low. The strict-comparison
-// `faceDepth <= prevDistance` write decision keeps the depth test correct
-// under rare same-pixel collisions; a one-frame color smear on a tie is
-// invisible for ambient particle fields.
-
 layout(std140, binding = 23) uniform FrameDataGpuParticles {
     float _updateDeltaTime;
     uint particleCount;
