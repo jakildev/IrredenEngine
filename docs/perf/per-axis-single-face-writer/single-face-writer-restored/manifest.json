@@ -1,0 +1,50 @@
+{
+  "head": "a6ba54651917566b73b830cdd50ecd28a1bd299a",
+  "changes": "",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "binary_sha256": "08f963ca0551099efe7fa81153fe9f59430a3fc6a10bd2790fdb5f9e66f78a8a",
+  "shader_sha256": "b7b16af5777ba7bcac13ff82bd2b8276ced25cdeb2cf462621274ccb9be0dc47",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "120",
+    "IRPerfGrid",
+    "--mode",
+    "voxel_set",
+    "--grid-size",
+    "64",
+    "--zoom",
+    "4",
+    "--yaw",
+    "0.785398163",
+    "--subdivision-mode",
+    "full",
+    "--base-subdivisions",
+    "1",
+    "--auto-profile",
+    "300"
+  ],
+  "runs": [
+    {
+      "index": 1,
+      "exit_code": 0,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    },
+    {
+      "index": 2,
+      "exit_code": 0,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    },
+    {
+      "index": 3,
+      "exit_code": 0,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    }
+  ]
+}
