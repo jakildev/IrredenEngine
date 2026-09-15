@@ -5624,12 +5624,12 @@ commands:
                                 Remove claims whose linked issue is
                                 CLOSED. With --gh also runs five
                                 GitHub sweeps:
-                                (1) stale fleet:reviewing-*,
-                                    fleet:resolving-*, and
-                                    fleet:amending-* labels off open
-                                    PRs (>30 min age; a same-host
-                                    amending label is skipped if its
-                                    agent heartbeat is fresh — cross-
+                                (1) stale fleet:reviewing-* labels off open
+                                    PRs and fleet:plan-review issues; stale
+                                    fleet:resolving-* and fleet:amending-*
+                                    labels off open PRs (>30 min age;
+                                    a same-host amending label is skipped if
+                                    its agent heartbeat is fresh — cross-
                                     host ones age out on pure TTL),
                                 (2) fleet:claim-* labels off open
                                     issues where the claim is
