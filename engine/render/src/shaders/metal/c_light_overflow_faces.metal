@@ -5,13 +5,11 @@
 #include "ir_world_lighting.metal"    // GPULightSource layout, spotConeFactor, ACESFilm,
                                      // FrameDataLightingToTrixel + LightVolumeParams
 
-// Mirrors shaders/c_light_overflow_faces.glsl — view-visibility overflow-face
-// lighting. Dispatched inside LIGHTING_TO_TRIXEL after the per-axis CELL
-// lighting, this pass relights each per-axis overflow entry at its recovered
-// WORLD position (sun cascade + light-volume + Lambert, AO = 1.0 — same world
-// sample as c_lighting_to_trixel) and rewrites the entry's stored colorPacked in
-// place, so the scatter draws LIT slivers while rotating. Runs ONLY while
-// rotating; the cardinal path never dispatches this kernel.
+// Mirrors shaders/c_light_overflow_faces.glsl. Dispatched inside
+// LIGHTING_TO_TRIXEL after the per-axis CELL lighting, and ONLY while rotating
+// — the cardinal path never dispatches this kernel. The relight is the same
+// world sample as c_lighting_to_trixel with AO = 1.0, and it rewrites the
+// entry's colorPacked in place (the scatter reads the relit value).
 
 kernel void c_light_overflow_faces(
     constant FrameDataLightingToTrixel& frameData [[buffer(27)]],

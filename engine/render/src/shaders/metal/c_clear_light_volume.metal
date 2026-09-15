@@ -1,10 +1,8 @@
 #include <metal_stdlib>
 using namespace metal;
 
-// Mirrors shaders/c_clear_light_volume.glsl. Resets the 128³ light
-// volume to zero before the seed pass writes per-light origin texels.
-// The parallel winning-light ID read texture is cleared to 0 in the same
-// pass so an unreached cell reports "no winning light" (id 0).
+// Mirrors shaders/c_clear_light_volume.glsl. Winning-light id 0 means "no
+// winning light", so the id texture clears to 0 alongside the volume.
 
 // Integer mirror of `kLightVolumeSize` in component_canvas_light_volume.hpp —
 // the same extent ir_world_lighting.metal publishes as a float for the sampling

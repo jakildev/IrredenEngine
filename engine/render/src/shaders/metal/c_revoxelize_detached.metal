@@ -1,7 +1,6 @@
 #include <metal_stdlib>
 using namespace metal;
 
-// Detached re-voxelize GPU fill.
 // Mirrors shaders/c_revoxelize_detached.glsl byte-for-byte. Two dispatch modes
 // (RevoxelizeParams.dest_.w):
 //

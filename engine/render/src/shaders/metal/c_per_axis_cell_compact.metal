@@ -2,25 +2,19 @@
 #include <metal_atomic>
 using namespace metal;
 
-// Per-axis empty-cell compaction pre-pass. Mirror of
-// shaders/c_per_axis_cell_compact.glsl. Scans one per-axis distance canvas and
-// atomic-appends each occupied cell's linear index into a per-axis SSBO region,
-// bumping the indirect instanced-draw instance count, so the scatter composite
-// draws only occupied cells instead of the full worst-case grid. Dispatched
-// once per axis (the caller binds this axis's region of both SSBOs at offset 0).
-// Reads the distance via access::read — no image-atomic scratch (so this kernel
-// is NOT in functionUsesImageAtomicScratch). Cardinal byte-identity is
-// structural: per-axis canvases are only allocated at non-zero residual yaw.
+// Mirror of shaders/c_per_axis_cell_compact.glsl. Dispatched once per axis
+// (the caller binds this axis's region of both SSBOs at offset 0). Reads the
+// distance via access::read — no image-atomic scratch, so this kernel is NOT
+// in functionUsesImageAtomicScratch. Cardinal byte-identity is structural:
+// per-axis canvases are only allocated at non-zero residual yaw.
 
 // Per-axis canvas empty sentinel — mirror of the GLSL.
 constant int kEmptyDistanceEncoded = 0x7FFFFFFF;
 
-// The compacted cell list also feeds the per-axis compute stages; the
-// compute-indirect dims at [8..11] are derived from the final instanceCount by
-// the cheap c_per_axis_cell_finalize pass (a 3-thread dispatch after this scan).
-// Keeping the dims OUT of this kernel is deliberate: this kernel sweeps the FULL
-// per-axis grid, so a cross-workgroup completion barrier here would stall every
-// workgroup on the hot scan — the finalize computes the dims off-band instead.
+// The compute-indirect dims at [8..11] are written by c_per_axis_cell_finalize,
+// not here — deliberately: this kernel sweeps the FULL per-axis grid, so a
+// cross-workgroup completion barrier here would stall every workgroup on the
+// hot scan.
 kernel void c_per_axis_cell_compact(
     texture2d<int, access::read> perAxisDistances [[texture(0)]],
     device uint* compactedCells [[buffer(25)]],

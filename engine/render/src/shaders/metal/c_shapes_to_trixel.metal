@@ -2,13 +2,10 @@
 #include "ir_constants.metal"
 #include "ir_sdf_common.metal"
 
-// Iso-projected SDF surface finding for analytical shapes.  Mirrors
-// shaders/c_shapes_to_trixel.glsl.  Each workgroup handles one 8x8
-// iso-pixel tile of one shape; pass 0 writes atomic-min depth taps into
-// the scratch buffer (`distanceScratch`) and pass 1 reads back the
-// resolved depth and stamps color + entity id into the trixel canvas.
-//
-// Workgroup dimensions: (8, 8, 1).
+// Mirrors shaders/c_shapes_to_trixel.glsl. Two passes per shape: pass 0
+// writes atomic-min depth taps into `distanceScratch`; pass 1 reads the
+// settled depth back and stamps color + entity id. Workgroup dimensions:
+// (8, 8, 1).
 
 struct ShapesFrameData {
     float2 frameCanvasOffset;
@@ -735,16 +732,16 @@ inline int generalDepthSearchEntityRot(
 }
 
 // Snap-mode lattice walk. At sub=1 the analytical SDF entry point isn't on
-// the integer lattice, which can miss the true front-most voxel; so we walk
-// the (isoX + isoY) even sublattice in steps of 3 along the iso column and
-// take the first hit. Matches CPU voxel-pool carving exactly.
+// the integer lattice, which can miss the true front-most voxel; the walk
+// over the (isoX + isoY) even sublattice in steps of 3 along the iso column
+// matches CPU voxel-pool carving exactly.
 //
 // rasterYaw is always an exact multiple of pi/2, and R_z(+rasterYaw)
 // maps integer voxels to integer voxels — so the iso lattice still
-// aligns with world voxels at any cardinal yaw. We rotate the recovered
-// view-space integer voxel into shape-local (= world) coords before
-// evaluating the SDF. At cardinalIndex==0 the rotation is identity and
-// the body collapses to the bit-exact integer-only yaw=0 walk.
+// aligns with world voxels at any cardinal yaw, and the recovered view-space
+// integer voxel rotated into shape-local (= world) coords is still a lattice
+// voxel. At cardinalIndex==0 the rotation is identity and the body collapses
+// to the bit-exact integer-only yaw=0 walk.
 inline int snapLatticeWalk(
     int2 isoPixelRel,
     uint shapeType,

@@ -1,13 +1,7 @@
 #include "ir_iso_common.metal"
 #include "ir_per_axis_lighting.metal"
 
-// Mirrors shaders/c_compute_voxel_ao.glsl. Per-pixel ambient-occlusion
-// compute. Samples four face-tangent neighbour pixels in trixelDistances
-// and counts each as occluding when its decoded surface position sits in
-// front of the receiver's face plane by ~1 voxel along face-outward AND
-// belongs to a different visible face. The tilt-aware same-face resample
-// then suppresses different-face steps that are really the 1-cell riser of
-// a quantized tilted-flat surface (re-voxelize / REBUILD_GRID staircase).
+// Mirrors shaders/c_compute_voxel_ao.glsl.
 
 constant int kEmptyDistanceEncoded = 65535;
 
@@ -22,9 +16,6 @@ constant float kAOSubVoxelTolerance = 0.375;
 constant float kAOMinHeight = kAOOccluderHeight - kAOBandHalfWidth - kAOSubVoxelTolerance;
 constant float kAOMaxHeight = kAOOccluderHeight + kAOBandHalfWidth;
 
-// Per-axis compacted occupied-cell dispatch. On the per-axis path the
-// dispatch runs over the compacted cells and each cell's canvas pixel is
-// recovered from its linear index.
 constant uint kDispatchArgsBaseUint = 8u;      // kPerAxisCellDispatchArgsOffsetBytes / 4
 constant uint kPerAxisCellComputeTile = 256u;  // kPerAxisCellComputeTile (16×16 threads)
 
@@ -66,9 +57,8 @@ kernel void c_compute_voxel_ao(
     int2 size = int2(int(trixelDistances.get_width()), int(trixelDistances.get_height()));
     int2 pixel;
     if (frameData.perAxisRoute != 0) {
-        // Indirect dispatch over the compacted occupied-cell list, folded into
-        // a capped 2-D threadgroup grid by c_per_axis_cell_finalize; recover the
-        // flat group index the same way c_voxel_visibility_compact does.
+        // The compacted-cell dispatch is folded into a capped 2-D threadgroup
+        // grid by c_per_axis_cell_finalize (groupsX capped, remainder in groupsY).
         const uint groupIndex = groupId.x + groupId.y * numGroups.x;
         const uint idx = groupIndex * kPerAxisCellComputeTile + localIndex;
         if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {

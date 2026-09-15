@@ -6,12 +6,10 @@
 // the VIEW frame and the per-axis RECEIVE composes in the world frame.
 #include "ir_per_axis_lighting.metal"
 
-// Mirrors shaders/c_resolve_per_axis_screen_depth.glsl. Re-projects one
-// face-local per-axis voxel canvas into a screen-space front-most iso-depth
-// scratch buffer laid out exactly like the main canvas distance texture, so
-// BAKE_SUN_SHADOW_MAP can cast per-axis voxel shadows through its cardinal
-// recovery. Scratch is a buffer (not a texture) because MSL has no portable
-// image-atomic syntax.
+// Mirrors shaders/c_resolve_per_axis_screen_depth.glsl. The scratch is laid
+// out exactly like the main canvas distance texture, so BAKE_SUN_SHADOW_MAP
+// casts it through its cardinal recovery; it is a buffer (not a texture)
+// because MSL has no portable image-atomic syntax.
 
 // Per-axis canvases clear to INT_MAX (the per-axis encoding's empty sentinel).
 constant int kEmptyDistanceEncoded = 0x7FFFFFFF;
@@ -32,9 +30,8 @@ kernel void c_resolve_per_axis_screen_depth(
     uint localIndex [[thread_index_in_threadgroup]],
     uint3 numGroups [[threadgroups_per_grid]]
 ) {
-    // Recover the flat list index — the capped 2-D threadgroup grid
-    // c_per_axis_cell_finalize wrote (kPerAxisCellComputeTile occupied cells per
-    // group) — and decode the cell from the compacted list.
+    // The compacted-cell dispatch is folded into a capped 2-D threadgroup grid
+    // by c_per_axis_cell_finalize (groupsX capped, remainder in groupsY).
     const uint groupIndex = groupId.x + groupId.y * numGroups.x;
     const uint idx = groupIndex * kPerAxisCellComputeTile + localIndex;
     if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {

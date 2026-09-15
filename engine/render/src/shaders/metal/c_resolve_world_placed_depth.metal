@@ -4,12 +4,10 @@
 // c_resolve_per_axis_screen_depth.
 #include "ir_resolve_cardinal_emit.metal"
 
-// Mirrors shaders/c_resolve_world_placed_depth.glsl. Re-projects one opt-in
-// world-placed detached re-voxelize canvas (model-frame R32I distance texture)
-// into a screen-space front-most iso-depth scratch buffer laid out exactly
-// like the main canvas distance texture, so BAKE_SUN_SHADOW_MAP can cast it
-// through its cardinal recovery. Scratch is a buffer (not a texture) because
-// MSL has no portable image-atomic syntax.
+// Mirrors shaders/c_resolve_world_placed_depth.glsl. The scratch is laid out
+// exactly like the main canvas distance texture, so BAKE_SUN_SHADOW_MAP casts
+// it through its cardinal recovery; it is a buffer (not a texture) because MSL
+// has no portable image-atomic syntax.
 
 constant int kEmptyDistanceEncoded = 65535;
 

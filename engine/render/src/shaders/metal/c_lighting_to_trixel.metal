@@ -9,14 +9,7 @@
 // c_light_overflow_faces both bind.
 #include "ir_world_lighting.metal"
 
-// Mirrors shaders/c_lighting_to_trixel.glsl. Screen-space lighting
-// application pass — modulates trixelColors.rgb by (AO × sun-shadow),
-// with an optional LUT palette shading path keyed off lutEnabled and
-// an optional flood-fill light-volume additive contribution keyed off
-// lightVolumeEnabled. When hdrEnabled is set, computes in unclamped
-// float precision, adds the sky-term contribution, applies exposure,
-// and tonemaps via the ACES Filmic curve before writing back to the
-// canvas.
+// Mirrors shaders/c_lighting_to_trixel.glsl.
 
 // Per-axis empty-cell compaction: on the per-axis route
 // (perAxisRoute != 0) this kernel is dispatched indirectly over only each axis's
@@ -73,10 +66,8 @@ kernel void c_lighting_to_trixel(
     );
     int2 pixel;
     if (voxelFrameData.perAxisRoute != 0) {
-        // Indirect dispatch over the compacted occupied-cell list, folded
-        // into a capped 2-D threadgroup grid by c_per_axis_cell_finalize —
-        // idx = flat group index * tile + local flat index, guarded by the axis's
-        // visibleCount, then decode the pixel from its linear cell.
+        // The compacted-cell dispatch is folded into a capped 2-D threadgroup
+        // grid by c_per_axis_cell_finalize (groupsX capped, remainder in groupsY).
         const uint groupIndex = groupId.x + groupId.y * numGroups.x;
         const uint idx = groupIndex * kPerAxisCellComputeTile + localIndex;
         if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
@@ -108,8 +99,6 @@ kernel void c_lighting_to_trixel(
     // Shared decode helpers (ir_iso_common) own both encodings' bit layouts
     // (per-axis / single-canvas, including the flip carrier).
     const int rawDepth = decodeDepthRoute(encoded, voxelFrameData.perAxisRoute);
-    // Visible-triplet slot → world FaceId → world-frame six-face outward normal,
-    // used by Lambert, the sky-term, and the world-receive sun-shadow normal.
     // The riser-polarity flip selects the OPPOSITE same-axis face, so a flipped
     // silhouette riser shades with its true outward normal instead of the
     // inverted triplet one.
@@ -252,10 +241,8 @@ kernel void c_lighting_to_trixel(
         const float4 lightSample = lightVolume.sample(volumeSampler, sampleCoord);
         float3 light = lightSample.rgb * lightSample.a;
 
-        // SPOT cone shaping, gated on the has-SPOT flag (worldOriginVoxel.w).
         // The winning light's ID is fetched at the surface voxel's own cell
-        // (NEAREST — not interpolated), and a SPOT winner's volume contribution
-        // is attenuated by the analytic cone factor.
+        // (NEAREST — not interpolated).
         if (lightVolumeParams.worldOriginVoxel.w != 0) {
             const int3 idCell = int3(floor(localPos + float3(kLightVolumeHalfExtent) + float3(0.5)));
             if (all(idCell >= int3(0)) && all(idCell < int3(int(kLightVolumeSize)))) {

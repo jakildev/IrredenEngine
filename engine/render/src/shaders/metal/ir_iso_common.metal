@@ -38,9 +38,8 @@ inline int pos3DtoDistance(int3 position) {
     return position.x + position.y + position.z;
 }
 
-// Reconstruct 3D position from 2D iso coordinates and depth.  The isometric
-// depth axis (1,1,1) is perpendicular to the screen, so given (isoX, isoY)
-// and depth d = x + y + z, (x, y, z) is uniquely determined.
+// The isometric depth axis (1,1,1) is perpendicular to the screen, so given
+// (isoX, isoY) and depth d = x + y + z, (x, y, z) is uniquely determined.
 inline float3 isoPixelToPos3D(int isoX, int isoY, float depth) {
     float x = (2.0 * depth - 3.0 * float(isoX) - float(isoY)) / 6.0;
     float y = x + float(isoX);
@@ -134,8 +133,6 @@ inline int encodeDepthWithFace(int rawDepth, int face, int flip) {
     return rawDepth * kDepthEncodeShift + (flip << 2) + face;
 }
 
-// Unflipped overload — the common case (SDF shapes, particles, resolve
-// re-emits of unflipped cells, non-riser voxel faces).
 inline int encodeDepthWithFace(int rawDepth, int face) {
     return encodeDepthWithFace(rawDepth, face, 0);
 }
@@ -269,8 +266,6 @@ inline void fracToFrac4(
     }
 }
 
-// Convenience overload: compute all three fracs from fracInCell and encode
-// in one call.
 inline int encodeDepthWithFaceFrac(int rawDepth, int slot, int axis, float3 fracInCell, int flip) {
     int uFrac4, vFrac4, wFrac4;
     fracToFrac4(axis, fracInCell, uFrac4, vFrac4, wFrac4);
@@ -820,7 +815,6 @@ inline float3 rotateByQuat(float3 v, float4 q) {
     return v + w * t + cross(u, t);
 }
 
-// Rotates vector v by the inverse (conjugate) of unit quaternion q.
 inline float3 rotateByInverseQuat(float3 v, float4 q) {
     return rotateByQuat(v, float4(-q.xyz, q.w));
 }

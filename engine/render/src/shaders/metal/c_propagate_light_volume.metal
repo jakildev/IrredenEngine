@@ -1,14 +1,11 @@
 #include <metal_stdlib>
 using namespace metal;
 
-// Mirrors shaders/c_propagate_light_volume.glsl. One iteration of the
-// distance-tracked light dilation — alpha encodes residual strength
-// from the seed (the CPU-computed seed residual at the source: 1.0
-// in-window, distance-discounted for out-of-window lights clamped to
-// the volume edge; decremented by `stepFalloff` per
-// Manhattan step, 0.0 past the radius). The cell picks whichever
-// candidate (self or air-neighbor) has the highest residual alpha so
-// the closest light wins overlap regions.
+// Mirrors shaders/c_propagate_light_volume.glsl. Alpha is the residual light
+// strength: the CPU-computed seed residual at the source (1.0 in-window,
+// distance-discounted for out-of-window lights clamped to the volume edge),
+// less `stepFalloff` per Manhattan step, 0.0 past the radius. The highest
+// residual wins a cell, so the closest light wins overlap regions.
 //
 // Blocker neighbors are skipped on the same rule as solid voxels: a cell
 // marked in the light-blocker bitfield (rasterized from

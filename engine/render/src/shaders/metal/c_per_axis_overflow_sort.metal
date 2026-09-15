@@ -1,5 +1,5 @@
-// Canonical-order the view-visibility overflow entry list — Metal twin of
-// c_per_axis_overflow_sort.glsl; keep the two in lockstep. Shared contract:
+// Metal twin of c_per_axis_overflow_sort.glsl; keep the two in lockstep.
+// Shared contract:
 // pass modes (0 sentinel-fill / 1 fused local sort / 2 fused strided slab),
 // the (cell, distance, color) = words (0, 2, 1) key, the mandatory
 // pre-network fill (the region above the live range holds stale prior-frame
@@ -93,7 +93,6 @@ kernel void c_per_axis_overflow_sort(
     span = min(span, capEntries);
 
     if (mode == 0u) {
-        // Sentinel fill of [liveCount, span).
         const uint i = globalId.x;
         if (i >= span || i < liveCount) return;
         const uint b = entriesBase + i * 3u;

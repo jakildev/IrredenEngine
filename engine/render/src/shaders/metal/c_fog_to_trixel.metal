@@ -1,20 +1,9 @@
 #include "ir_iso_common.metal"
 
-// Mirrors shaders/c_fog_to_trixel.glsl. Screen-space fog-of-war pass —
-// recovers each rasterized pixel's source-voxel column, then masks trixelColors
-// by the MAX of two reveal sources:
-//   1. The voxel GRID — a single NEAREST read of the fog texture at the
-//      rounded cell. Coarse, voxel-quantized: explored/voxelized memory.
-//   2. Live analytic VISION CIRCLES — world-space discs (FogObserverData)
-//      tested against the CONTINUOUS world column `pos3D.xy` per pixel, so a
-//      disc edge is crisp at render resolution, slides smoothly with sub-voxel
-//      observer motion, and reveals partial voxels at the boundary.
-// The combined visibility drives a continuous two-segment lerp:
-//   visible    (1.0)     — pass through
-//   explored   (128/255) — desaturate + darken
-//   unexplored (0.0)     — black
-// With no vision circles (count 0) the pass is grid-only, and the canonical
-// 0/128/255 stored states land exactly on those three anchors.
+// Mirrors shaders/c_fog_to_trixel.glsl. The grid reveal is a NEAREST read
+// (coarse, voxel-quantized memory); the vision-circle reveal is tested against
+// the CONTINUOUS world column per pixel, so a disc edge is crisp at render
+// resolution and slides smoothly with sub-voxel observer motion.
 
 constant int kFogOfWarSize = 256;
 constant int kFogOfWarHalfExtent = 128;
@@ -105,9 +94,9 @@ kernel void c_fog_to_trixel(
         frameData.rasterYaw
     );
 
-    // Grid memory: a single NEAREST read at the rounded cell. Iso convention:
-    // X-Y is the floor plane, so the fog grid lookup is (x, y) with the
-    // half-extent offset; +Z is the downward height axis and plays no part.
+    // Iso convention: X-Y is the floor plane, so the fog grid lookup is (x, y)
+    // with the half-extent offset; +Z is the downward height axis and plays no
+    // part.
     const int3 surfaceVoxel = roundHalfUp(pos3D);
     const int2 fogCell = surfaceVoxel.xy + int2(kFogOfWarHalfExtent);
     const int2 fogSize = int2(
@@ -190,8 +179,6 @@ kernel void c_fog_to_trixel(
     // plain radial curve). Colour-only, after lighting — never touches
     // trixelDistances.
 
-    // The explored "memory" tone keeps shape silhouettes visible without being
-    // confused with what is *currently* in view.
     const float luminance = dot(src.rgb, float3(0.299f, 0.587f, 0.114f));
     const float3 exploredColor = float3(luminance) * 0.4f;
 

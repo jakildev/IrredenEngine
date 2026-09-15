@@ -5,8 +5,7 @@
 // world-receive path.
 #include "ir_sun_shadow_sample.metal"
 
-// Mirrors shaders/c_compute_sun_shadow.glsl. Per-pixel directional sun
-// shadow compute with cascaded shadow maps.
+// Mirrors shaders/c_compute_sun_shadow.glsl.
 
 constant int kEmptyDistanceEncoded = 65535;
 
@@ -36,8 +35,8 @@ kernel void c_compute_sun_shadow(
     );
     int2 pixel;
     if (frameData.perAxisRoute != 0) {
-        // 2-D-folded indirect dispatch — recover the flat group index
-        // (matches c_per_axis_cell_finalize's capped grid + c_voxel_visibility_compact).
+        // The compacted-cell dispatch is folded into a capped 2-D threadgroup
+        // grid by c_per_axis_cell_finalize (groupsX capped, remainder in groupsY).
         const uint groupIndex = groupId.x + groupId.y * numGroups.x;
         const uint idx = groupIndex * kPerAxisCellComputeTile + localIndex;
         if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {

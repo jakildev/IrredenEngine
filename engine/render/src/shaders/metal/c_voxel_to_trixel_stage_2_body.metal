@@ -13,12 +13,8 @@
 // The body is kept include-free to mirror the GLSL twin's wrapper-supplied
 // chain.
 
-// Each compacted visible voxel (c_voxel_visibility_compact.metal) re-tests
-// stage 1's settled depth and, on a match, writes its color/distance/entityId
-// taps into the trixel canvas textures. The depth is read from the image-atomic
-// scratch buffer (atomic_load) rather than the R32I texture, because stage 1's
-// atomic writes land in that scratch — see
-// engine/render/include/irreden/render/metal/metal_runtime.hpp.
+// The depth re-test reads the image-atomic scratch buffer (atomic_load) rather
+// than the R32I texture: stage 1's atomic writes land in that scratch.
 
 struct IndirectDispatchParamsRO {
     uint numGroupsX;
@@ -306,11 +302,6 @@ kernel void IR_STAGE2_KERNEL_NAME(
     const bool reVoxelize = frameData.visibleFaceIds.w != 0;
     const bool dilateRevox = frameData.visibleFaceIds.w == 1;
 
-    // Stage 2 applies stage 1's exposed-face gate (for re-voxelize content, the
-    // GPU-authored rotated-frame mask) so it doesn't waste a depth compare on
-    // faces stage 1 skipped — same face set as stage 1, so the colour tap
-    // matches the distance tap. writeColorTap's depth re-test keeps the
-    // occlusion winner among the emitted faces.
     const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
 
     // Face selection — the visible-triplet × exposed-mask gate, the

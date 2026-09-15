@@ -4,8 +4,7 @@
 #include "ir_sun_projection.metal"
 #include <metal_atomic>
 
-// Mirrors shaders/c_bake_sun_shadow_map.glsl. Projects each rasterized
-// iso pixel into both cascade regions of the sun shadow depth buffer.
+// Mirrors shaders/c_bake_sun_shadow_map.glsl.
 
 constant int kEmptyDistanceEncoded = 65535;
 
@@ -31,8 +30,7 @@ struct FrameDataSun {
     float sunMaxShadowThrow;  // unused here (receiver-only)
 };
 
-// atomic_fetch_min the packed sun depth into one texel of a cascade, if in
-// bounds. The bounds check is a buffer-bounds guard, not a culling decision:
+// The bounds check is a buffer-bounds guard, not a culling decision:
 // sunCascadeKernelInterior (ir_sun_projection.metal) routes receivers
 // near the map edge to the covering cascade whose wider AABB holds this
 // caster's write, and every caster is projected into BOTH cascades, so this
@@ -51,13 +49,11 @@ inline void writeSunTexel(
     );
 }
 
-// Coverage splat. Writes the caster's own texel (the exact single write when
-// radius == 0), then atomic_fetch_min's the SAME depth into a (2·radius+1)^2 box
-// around it, filling the sun texels a grazing / point-scattered caster footprint
-// leaves empty (the moth-eaten cast-shadow holes). atomic_fetch_min keeps a dense
-// bake unchanged: where nearer real geometry already covers a box texel, the
-// farther splat is a no-op, so a dense-bake host sees no change and the fill
-// concentrates on genuinely-empty hole texels. The uniform box (rather than a
+// Coverage splat: radius 0 is the exact single write. atomic_fetch_min keeps a
+// dense bake unchanged: where nearer real geometry already covers a box texel,
+// the farther splat is a no-op, so the fill concentrates on the genuinely-empty
+// hole texels a grazing / point-scattered caster footprint leaves (the
+// moth-eaten cast-shadow holes). The uniform box (rather than a
 // per-pixel oriented walk) is deliberate: the holes are 2D point-scatter, not a 1D
 // silhouette line, so a directional walk under-covers
 // (docs/design/sun-shadow-bake-coverage.md). Mirrors GLSL.
@@ -107,10 +103,9 @@ kernel void c_bake_sun_shadow_map(
     // not consumed.
     int rawDepth = decodeDepthRoute(encoded, frameData.perAxisRoute);
 
-    // Smooth camera Z-yaw: per-axis voxel content bakes into the same shared sun
-    // depth map as the main canvas (SDF/text) so voxels and shapes shadow each
-    // other under rotation. Per-axis stores the world frame face-locally; the
-    // single canvas stores the cardinal-snapped iso pixel.
+    // Per-axis stores the world frame face-locally; the single canvas stores
+    // the cardinal-snapped iso pixel. Both bake into the same shared sun depth
+    // map, so voxels and shapes shadow each other under rotation.
     float3 pos3D;
     if (frameData.perAxisRoute != 0) {
         // LATTICE recovery, deliberately — mirrors GLSL. Per-axis content never

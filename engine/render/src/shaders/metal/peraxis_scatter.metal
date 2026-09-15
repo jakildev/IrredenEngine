@@ -1,10 +1,7 @@
-// Project: Irreden Engine
-// File: metal/peraxis_scatter.metal
-// Smooth camera Z-yaw forward-scatter composite (Metal mirror of
-// v_/f_peraxis_scatter.glsl). Each instance is one per-axis canvas cell; the
-// vertex stage recovers the face origin and projects its true deformed face
-// quad, the fragment stage writes color + depth so the framebuffer depth test
-// composites the three per-axis canvases.
+// Metal mirror of v_/f_peraxis_scatter.glsl; keep the twins in lockstep. One
+// instance per per-axis canvas cell; the framebuffer depth test is what
+// composites the three per-axis canvases, so the fragment depth must be the
+// shared composite key.
 
 #include <metal_stdlib>
 using namespace metal;

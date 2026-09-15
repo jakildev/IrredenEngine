@@ -1,13 +1,11 @@
 #include <metal_stdlib>
 using namespace metal;
 
-// Mirrors shaders/c_seed_light_volume.glsl. One thread per active
-// light source writes its emissive RGB into the volume texel at the
-// light's world voxel origin, with alpha = the CPU-computed seed
-// residual (`coneAndSeedAlpha.y`): 1.0 for in-window lights,
-// distance-discounted for out-of-window lights seeded at the clamped
-// window edge (computed by `gatherLightSources`). The propagate pass decrements
-// alpha by `stepFalloff` per step.
+// Mirrors shaders/c_seed_light_volume.glsl. The seeded alpha is the
+// CPU-computed residual (`coneAndSeedAlpha.y`, from `gatherLightSources`): 1.0
+// for in-window lights, distance-discounted for out-of-window lights seeded at
+// the clamped window edge. The propagate pass decrements it by `stepFalloff`
+// per step.
 
 // GPULightSource layout (the light-list entry this kernel seeds from) and the
 // shared LightVolumeParams UBO layout. The seed subtracts

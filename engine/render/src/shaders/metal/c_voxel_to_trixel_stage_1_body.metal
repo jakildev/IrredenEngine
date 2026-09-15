@@ -11,11 +11,6 @@
 // runtime predication tax on the hottest kernel. The body is kept include-free to
 // mirror the GLSL twin's wrapper-supplied, macro-ordered include chain.
 
-// Stage 1 of the voxel→trixel pipeline: each surviving voxel writes a depth
-// tap into the canvas distance scratch buffer using atomic-min, so stage 2
-// can do front-face resolution.  Reads compacted visible voxel indices
-// produced by c_voxel_visibility_compact.metal.
-//
 // MSL has no portable image-atomic syntax across all macOS versions, so the
 // distance store goes through a sibling scratch buffer the same size as the
 // R32I distance texture.

@@ -1,11 +1,8 @@
 #include <metal_stdlib>
 using namespace metal;
 
-// Mirror of shaders/c_per_axis_cell_finalize.glsl. Derives each per-axis
-// canvas's compute-indirect dispatch dims from the occupied count the compaction
-// wrote, so the AO / sun-shadow / lighting / resolve stages indirect-dispatch
-// over only occupied cells. Split out of the compaction to keep that hot
-// full-grid scan barrier-free.
+// Mirror of shaders/c_per_axis_cell_finalize.glsl. Split out of the
+// compaction to keep that hot full-grid scan barrier-free.
 //
 // Dispatched as 3 threadgroups of 1 thread each — one thread per axis, registered
 // explicitly as (1,1,1) in threadgroupSizeForFunctionName. The entry is required
@@ -16,10 +13,10 @@ using namespace metal;
 constant uint kStrideUints = 64u;             // kPerAxisCellIndirectStrideBytes / 4
 constant uint kDispatchArgsBaseUint = 8u;     // kPerAxisCellDispatchArgsOffsetBytes / 4
 constant uint kPerAxisCellComputeTile = 256u; // kPerAxisCellComputeTile (16×16 threads)
-// Cap numGroupsX and spill the remainder into numGroupsY (mirror of the GLSL
-// twin) — matching CPU voxelDispatchGridForCount() and GPU writeDispatchDims().
-// Uncapped, >kPerAxisCellComputeTile × 65535 occupied cells overflows the X
-// dimension. Consumers recover the flat group index as
+// numGroupsX is capped with the remainder spilled into numGroupsY, matching
+// CPU voxelDispatchGridForCount() and GPU writeDispatchDims(): uncapped,
+// >kPerAxisCellComputeTile × 65535 occupied cells overflows the X dimension.
+// Consumers recover the flat group index as
 // groupId.x + groupId.y * threadgroups_per_grid.x.
 constant uint kMaxDispatchGroupsX = 1024u;
 
@@ -33,8 +30,8 @@ kernel void c_per_axis_cell_finalize(
     }
     const uint base = axis * kStrideUints;
     const uint count = drawArgs[base + 1u]; // instanceCount
-    // divCeil(count, tile) workgroups, folded into a capped 2-D grid. An empty
-    // axis (count 0 → groups 0) yields groupsX 1, numGroupsY 0 → a no-op dispatch.
+    // An empty axis (count 0 → groups 0) yields groupsX 1, numGroupsY 0 — a
+    // no-op dispatch.
     const uint groups = (count + kPerAxisCellComputeTile - 1u) / kPerAxisCellComputeTile;
     const uint groupsX = max(min(groups, kMaxDispatchGroupsX), 1u);
     drawArgs[base + kDispatchArgsBaseUint + 0u] = groupsX;

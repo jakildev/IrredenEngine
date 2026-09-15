@@ -1,20 +1,15 @@
 #include "ir_iso_common.metal"
 #include "ir_constants.metal"
 
-// IndirectDispatchParams per-struct layout (matches the GLSL std430 SSBO):
-//   [0] numGroupsX        (written by last group)
-//   [1] numGroupsY        (written by last group)
-//   [2] numGroupsZ        (written by last group)
-//   [3] visibleCount      (atomic increment, read by stage 1 / stage 2)
-//   [4] completedGroups   (atomic increment, last-group barrier)
-// All five fields are accessed through a single `device atomic_uint*` so
-// that we can mix atomic_fetch_add (3, 4) with atomic_store (0, 1, 2)
+// The slot layout matches the GLSL std430 IndirectDispatchParams SSBO. All
+// five slots go through a single `device atomic_uint*` so atomic_fetch_add
+// (visibleCount, completedGroups) and atomic_store (the group dims) mix
 // without rebinding the buffer.
 //
 // memory_order_relaxed is intentional. The happens-before edge that makes
 // the indirect-dispatch params visible to the following pipeline stage
 // comes from the encoder boundary between this kernel and stage 1 — Metal
-// orders device-memory operations between command-buffer encoders for us.
+// orders device-memory operations between command-buffer encoders.
 // Within this kernel, threadgroup_barrier(mem_device) handles intra-group
 // ordering; the last-group pattern relies on atomic_fetch_add being a
 // coherent RMW across threadgroups, not on C++ memory-order semantics.
