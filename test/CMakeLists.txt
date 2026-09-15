@@ -27,6 +27,7 @@ add_executable(IrredenEngineTest
   ecs/entity_manager_test.cpp
   ecs/execute_query_test.cpp
   ecs/field_clearance_test.cpp
+  ecs/field_regions_test.cpp
   ecs/grid_rotation_test.cpp
   ecs/hitbox_2d_gui_test.cpp
   ecs/hover_detect_reset_test.cpp
