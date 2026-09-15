@@ -123,6 +123,16 @@ kernel void c_lighting_to_trixel(
         worldNormal = rotateByQuat(worldNormal, frameData.detachedViewToWorld);
     }
 
+    // World-space receiver relative to its owner, encoded over [-2, 2].
+    if (frameData.debugOverlayMode == 9) {
+        const float4 src = trixelColors.read(uint2(pixel));
+        const float3 positionColor = worldReceive
+            ? (worldReceivePos - voxelFrameData.detachedWorldReceive.xyz) * 0.25f + 0.5f
+            : float3(0.0f);
+        trixelColors.write(float4(positionColor, src.a), uint2(pixel));
+        return;
+    }
+
     if (frameData.debugOverlayMode == 8) {
         const float alpha = trixelColors.read(uint2(pixel)).a;
         trixelColors.write(float4(worldNormal * 0.5f + 0.5f, alpha), uint2(pixel));

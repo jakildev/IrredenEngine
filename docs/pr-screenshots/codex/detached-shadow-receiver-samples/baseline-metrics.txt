@@ -1,0 +1,34 @@
+capture-618.png: axis=0 half=0 pixel=(1323, 592) expected=(96, 138, 117) observed=(53, 117, 117) max_error=43 FAIL
+capture-618.png: axis=0 half=1 pixel=(1301, 624) expected=(96, 117, 138) observed=(42, 106, 138) max_error=54 FAIL
+capture-618.png: axis=1 half=0 pixel=(1237, 592) expected=(138, 96, 117) observed=(85, 85, 117) max_error=53 FAIL
+capture-618.png: axis=1 half=1 pixel=(1259, 624) expected=(117, 96, 138) observed=(74, 74, 138) max_error=43 FAIL
+capture-618.png: axis=2 half=0 pixel=(1259, 560) expected=(138, 117, 96) observed=(96, 96, 96) max_error=42 FAIL
+capture-618.png: axis=2 half=1 pixel=(1301, 560) expected=(117, 138, 96) observed=(64, 128, 96) max_error=53 FAIL
+
+capture-619.png: axis=0 half=0 pixel=(1323, 592) expected=(94, 125, 117) observed=(63, 89, 117) max_error=36 FAIL
+capture-619.png: axis=0 half=1 pixel=(1301, 624) expected=(102, 105, 138) observed=(57, 75, 138) max_error=45 FAIL
+capture-619.png: axis=1 half=0 pixel=(1237, 592) expected=(150, 102, 117) observed=(104, 72, 117) max_error=46 FAIL
+capture-619.png: axis=1 half=1 pixel=(1259, 624) expected=(130, 94, 138) observed=(99, 58, 138) max_error=36 FAIL
+capture-619.png: axis=2 half=0 pixel=(1259, 560) expected=(141, 122, 96) observed=(110, 86, 96) max_error=36 FAIL
+capture-619.png: axis=2 half=1 pixel=(1301, 560) expected=(114, 133, 96) observed=(69, 103, 96) max_error=45 FAIL
+
+capture-620.png: axis=0 half=0 pixel=(1323, 592) expected=(97, 112, 117) observed=(82, 67, 117) max_error=45 FAIL
+capture-620.png: axis=0 half=1 pixel=(1301, 624) expected=(112, 97, 138) observed=(82, 52, 138) max_error=45 FAIL
+capture-620.png: axis=1 half=0 pixel=(1237, 592) expected=(158, 112, 117) observed=(128, 67, 117) max_error=45 FAIL
+capture-620.png: axis=1 half=1 pixel=(1259, 624) expected=(143, 97, 138) observed=(128, 52, 138) max_error=45 FAIL
+capture-620.png: axis=2 half=0 pixel=(1259, 560) expected=(143, 128, 96) observed=(128, 82, 96) max_error=46 FAIL
+capture-620.png: axis=2 half=1 pixel=(1301, 560) expected=(112, 128, 96) observed=(82, 82, 96) max_error=46 FAIL
+
+capture-621.png: axis=0 half=0 pixel=(1323, 592) expected=(105, 102, 117) observed=(109, 55, 117) max_error=47 FAIL
+capture-621.png: axis=0 half=1 pixel=(1301, 624) expected=(125, 94, 138) observed=(115, 41, 138) max_error=53 FAIL
+capture-621.png: axis=1 half=0 pixel=(1237, 592) expected=(161, 125, 117) observed=(151, 72, 117) max_error=53 FAIL
+capture-621.png: axis=1 half=1 pixel=(1259, 624) expected=(153, 105, 138) observed=(156, 58, 138) max_error=47 FAIL
+capture-621.png: axis=2 half=0 pixel=(1259, 560) expected=(141, 133, 96) observed=(145, 86, 96) max_error=47 FAIL
+capture-621.png: axis=2 half=1 pixel=(1301, 560) expected=(114, 122, 96) observed=(103, 69, 96) max_error=53 FAIL
+
+capture-622.png: axis=0 half=0 pixel=(1323, 592) expected=(117, 96, 117) observed=(138, 53, 117) max_error=43 FAIL
+capture-622.png: axis=0 half=1 pixel=(1301, 624) expected=(138, 96, 138) observed=(149, 42, 138) max_error=54 FAIL
+capture-622.png: axis=1 half=0 pixel=(1237, 592) expected=(159, 138, 117) observed=(170, 85, 117) max_error=53 FAIL
+capture-622.png: axis=1 half=1 pixel=(1259, 624) expected=(159, 117, 138) observed=(181, 74, 138) max_error=43 FAIL
+capture-622.png: axis=2 half=0 pixel=(1259, 560) expected=(138, 138, 96) observed=(159, 96, 96) max_error=42 FAIL
+capture-622.png: axis=2 half=1 pixel=(1301, 560) expected=(117, 117, 96) observed=(128, 64, 96) max_error=53 FAIL

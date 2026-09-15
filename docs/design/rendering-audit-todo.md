@@ -48,6 +48,13 @@ that the experimental rendering is ready to become the default.
 
 ## Newly observed during occlusion validation
 
+- [Receiver sample positions](detached-shadow-receiver-samples.md): the current
+  detached lookup fails all 30 triangle-centroid checks across five yaws. The
+  derived correction passes all 30, but exposes analytic-roof overcoverage
+  (outside-patch error 41). It remains an experiment, not an adopted fix.
+  Unblocked and finite voxel-roof controls pass. Correct analytic finite
+  coverage, then adopt centroid sampling and validate whole shadow boundaries.
+
 - [Overhead direction controls](lighting-direction-probes.md) expose 3,808 false
   shadow pixels on unblocked GRID staircase treads with the default caster.
   Source-face casting matches shadows disabled exactly. [Footprint experiments](analytic-face-shadow-coexistence.md)

@@ -141,13 +141,17 @@ enum class DebugOverlayMode : std::uint8_t {
     PER_AXIS_ORIGIN = 5,
     UNLIT = 6,
     PER_AXIS_MARGIN = 7,
-    NORMALS = 8
+    NORMALS = 8,
+    // Detached world receiver relative to its owner: RGB = position / 4 + 0.5.
+    RECEIVER_POSITION = 9
 };
 
 /// Parse a string to @c DebugOverlayMode. Accepts "none", "ao",
 /// "light_level", "shadow", "peraxis_id", "peraxis_origin", "unlit",
-/// "peraxis_margin", "normals". Returns @c NONE for unrecognized input.
+/// "peraxis_margin", "normals", "receiver_position". Returns @c NONE for unrecognized input.
 inline DebugOverlayMode debugOverlayModeFromString(const char *s) {
+    if (std::strcmp(s, "receiver_position") == 0)
+        return DebugOverlayMode::RECEIVER_POSITION;
     if (std::strcmp(s, "normals") == 0)
         return DebugOverlayMode::NORMALS;
     if (std::strcmp(s, "ao") == 0)

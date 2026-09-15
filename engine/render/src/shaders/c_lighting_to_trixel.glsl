@@ -193,6 +193,16 @@ void main() {
         worldNormal = rotateByQuat(worldNormal, detachedViewToWorld);
     }
 
+    // World-space receiver relative to its owner, encoded over [-2, 2].
+    if (debugOverlayMode == 9) {
+        const vec4 src = imageLoad(trixelColors, pixel);
+        const vec3 positionColor = worldReceive
+            ? (worldReceivePos - detachedWorldReceive.xyz) * 0.25 + 0.5
+            : vec3(0.0);
+        imageStore(trixelColors, pixel, vec4(positionColor, src.a));
+        return;
+    }
+
     // Alpha is preserved so text/overlay antialiasing composites unchanged.
     if (debugOverlayMode == 8) {
         const float alpha = imageLoad(trixelColors, pixel).a;
