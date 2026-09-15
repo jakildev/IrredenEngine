@@ -67,7 +67,8 @@ float sampleCascadeShadow(
     // term.)
     vec2 gradUV = vec2(dot(normal, uHat), dot(normal, vHat)) / slope;
 
-    vec2 sunPxF = (sunUV - origin) / texelSz;
+    // Map samples lie at texel centers; integer coordinates address those samples.
+    vec2 sunPxF = (sunUV - origin) / texelSz - 0.5;
     ivec2 base = ivec2(floor(sunPxF));
     vec2 frac = sunPxF - vec2(base);
     float shadowAccum = 0.0;

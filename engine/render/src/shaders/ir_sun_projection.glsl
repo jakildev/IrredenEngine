@@ -90,7 +90,7 @@ ivec2 unpackSunSplatOffset(uint packedDepth) {
 // cascade-0 AABB boundary the matching casters may have been bounds-dropped
 // by the bake — so edge receivers read a partially-baked region as "lit".
 bool sunCascadeKernelInterior(vec2 sunUV, vec2 origin, vec2 texelSz) {
-    ivec2 base = ivec2(floor((sunUV - origin) / texelSz));
+    ivec2 base = ivec2(floor((sunUV - origin) / texelSz - 0.5));
     return base.x >= kSunCascadeInteriorMarginTexels &&
            base.y >= kSunCascadeInteriorMarginTexels &&
            base.x + 1 < kSunShadowMapDim - kSunCascadeInteriorMarginTexels &&

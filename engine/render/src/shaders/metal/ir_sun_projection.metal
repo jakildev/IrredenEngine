@@ -95,7 +95,7 @@ inline int2 unpackSunSplatOffset(uint packedDepth) {
 // by the bake — so edge receivers read a partially-baked region as "lit"
 // (#2083 root cause 2, the silent-clip face dropout).
 inline bool sunCascadeKernelInterior(float2 sunUV, float2 origin, float2 texelSz) {
-    int2 base = int2(floor((sunUV - origin) / texelSz));
+    int2 base = int2(floor((sunUV - origin) / texelSz - 0.5f));
     return base.x >= kSunCascadeInteriorMarginTexels &&
            base.y >= kSunCascadeInteriorMarginTexels &&
            base.x + 1 < kSunShadowMapDim - kSunCascadeInteriorMarginTexels &&

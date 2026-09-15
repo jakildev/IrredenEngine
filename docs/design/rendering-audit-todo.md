@@ -9,7 +9,7 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
 |---|---|---|
 | 1 | Detached face geometry and trixel display | Investigated in [display diagnosis](detached-trixel-display.md). Visible source faces, depth and picking still need a consistent projection. Origin and camera placement corrected. [Back-facing emission](detached-face-normals.md) now has a targeted correction and normal oracle; [Local triangular display](detached-local-triangles.md) is the normal undilated display with a per-face oracle; raw rectangular display is debug-only. Source-face reconstruction and depth/picking remain. |
 | 2 | Shadow reception and contact | [Direct-sun occlusion response](sun-occlusion-response.md) now removes direct sunlight behind opaque blockers while retaining ambient. Paired self/external controls pass. Receivers still use reconstructed surfaces; [Staircase near-rejection](staircase-shadow-visibility.md) no longer erases close external blockers. Check remaining concave faces, false self-shadowing and contact against actual geometry. |
-| 3 | Projected face boundaries | Reconstruct voxel-face coverage from light direction and receiver geometry. Clean edges must follow projected geometry, not blur, inflated coverage or bias that hides errors. |
+| 3 | Projected face boundaries | Reconstruct voxel-face coverage from light direction and receiver geometry. [Sun sample alignment](sun-sample-centers.md) now follows texel centers without adding filter taps. Clean edges must follow projected geometry, not blur, inflated coverage or bias that hides errors. |
 | 4 | Duplicate CPU occupancy reconstruction | Profile identified work overwritten by inverse GPU resampling. Preserve buffer-availability fallback and identity transitions before skipping it. |
 | 5 | Mode and scale validation | Extend density, screen-lock, pan, cascade, sparse/elongated asset and OpenGL coverage. Measure representative large populations and GPU cost before changing defaults. |
 
@@ -50,7 +50,9 @@ that the experimental rendering is ready to become the default.
   [Centered receiver recovery](detached-receiver-planes.md) removes the false
   pattern: four cardinal unblocked views now match shadows-disabled exactly,
   while the overhead shadow remains. Default depth casting and reconstructed
-  face boundaries still need agreement with actual geometry.
+  face boundaries still need agreement with actual geometry. [Sample alignment](sun-sample-centers.md)
+  also fixes the detached default-caster outside control; GRID retains an
+  8-level error and still fails the unchanged 2-level tolerance.
 - The unobstructed source-face plate has weak false self-shadowing at camera yaw
   90/270. Full direct visibility makes 1,048/16 pixels differ from the prior
   response, by at most 2/1 color levels. This is a receiver/caster agreement

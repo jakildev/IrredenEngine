@@ -1,0 +1,1 @@
+Native crop: (1120,520)-(1504,808), 30px label margin. No image resampling.
