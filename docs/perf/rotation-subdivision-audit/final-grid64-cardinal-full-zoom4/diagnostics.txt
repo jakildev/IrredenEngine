@@ -1,0 +1,1 @@
+[2026-09-14 20:05:18.747] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=4, effective_subdivisions=4

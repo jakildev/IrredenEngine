@@ -1,0 +1,33 @@
+{
+  "head": "bfe8f0f1566e7268b586279d5530a557330dc47f",
+  "changes": " M .claude/skills/optimize/reference/common_bottlenecks.md\n M docs/design/gpu-stage-timing-cost-model.md\n M docs/perf/README.md\n M engine/prefabs/irreden/render/gpu_stage_timing_observer.hpp\n M engine/prefabs/irreden/render/gpu_substage_timing.hpp\n M engine/render/include/irreden/render/render_device.hpp\n M engine/render/src/metal/metal_render_impl.cpp\n M scripts/perf/compare_perf_runs.py\n M test/CMakeLists.txt\n?? docs/perf/rotation-subdivision-audit.md\n?? docs/perf/rotation-subdivision-audit/\n?? scripts/perf/repeat_profile.py\n?? scripts/perf/test_profile_parser.py\n?? test/render/gpu_timestamp_poll_test.cpp\n",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "binary_sha256": "92cb2a5fbe6dffc1fd0c568c89e87c77c553d7452e79efabc2fb08f811577e1e",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "120",
+    "IRPerfGrid",
+    "--auto-profile",
+    "120",
+    "--grid-size",
+    "64",
+    "--zoom",
+    "4",
+    "--yaw",
+    ".785398163",
+    "--subdivision-mode",
+    "full",
+    "--base-subdivisions",
+    "1"
+  ],
+  "runs": [
+    {
+      "index": 1,
+      "exit_code": 0,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    }
+  ]
+}

@@ -75,6 +75,7 @@ add_executable(IrredenEngineTest
   render/frame_data_sun_layout_test.cpp
   render/gizmo_drag_reset_test.cpp
   render/gpu_compute_dispatch_test.cpp
+  render/gpu_timestamp_poll_test.cpp
   render/light_volume_boundary_seed_test.cpp
   render/metal_sticky_untrack_test.cpp
   render/named_resource_probe_test.cpp

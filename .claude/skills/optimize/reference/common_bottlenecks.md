@@ -163,3 +163,15 @@ that found a new one; never add a pattern that was only suspected.
 - **Symptom**: a maintenance hazard rather than a hotspot — a fix on one side
   is forgotten on the other.
 - **Fix**: move to a shared include (`ir_iso_common.glsl`, `ir_constants.glsl`).
+
+### 14. Invalid or stale GPU samples masquerading as a bottleneck
+
+- **Pattern**: reading an encoder counter pair before its command buffer
+  completes, or treating unwritten/reused boundaries as a duration.
+- **Symptom**: an absolute device timestamp appears as a huge stage maximum,
+  or same-frame repeated scopes count stale measurements multiple times.
+- **Fix**: completion-aware polling with distinct pending/ready/invalid states;
+  release invalid slots without adding a zero sample. Preserve raw reports and
+  verify the parser accepts the report's actual columns before comparing runs.
+  Measurement and ownership contracts:
+  [GPU stage timing](../../../../docs/design/gpu-stage-timing-cost-model.md).

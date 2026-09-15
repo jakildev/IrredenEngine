@@ -78,6 +78,30 @@ scripts/perf/perf_summary.py save_files/perf/<sha>
 Customize what to vary by editing the matrix arrays at the top of
 `perf_grid_matrix.sh` — keep the defaults narrow so PR runs stay fast.
 
+## Repeat a targeted CPU/GPU profile
+
+The [rotation/subdivision audit](rotation-subdivision-audit.md) records the
+native timing validity checks, measured matrix and proposed optimization work.
+
+`python3 scripts/perf/repeat_profile.py --output save_files/perf/my-run --
+--auto-profile 300 --grid-size 64 --yaw 0.785398` runs the same `IRPerfGrid`
+configuration three times through the fleet benchmark lock. It retains fresh
+reports, full logs, source state, executable hash and mean/run-range summaries; it fails on a
+missing GPU measurement instead of reporting zero cost. Use `--target
+IRCanvasStress` before `--` for rotating/attached canvas workloads, with that
+demo’s `--auto-profile --auto-screenshot N` exit controls. Canvas stress enables
+both CPU and GPU timing for auto-profile.
+
+`--legacy-depth-shadows` on either demo provides the point-caster comparison.
+Use the same pose, population and flags in both arms. GPU values are encoder
+intervals, not exclusive costs that can always be summed into frame time; see
+[the timing contract](../design/gpu-stage-timing-cost-model.md).
+
+Parser regression check: `python3 scripts/perf/test_profile_parser.py`.
+Current GPU reports include avg/min/max/sample count; old avg/max reports
+remain readable. A row with no writer or no executed work is not proof of a
+free feature.
+
 ## Config presets
 
 Named, version-controlled test configs live in

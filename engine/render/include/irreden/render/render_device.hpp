@@ -19,6 +19,12 @@ enum class TimestampSlot {
     END,
 };
 
+enum class TimestampReadStatus {
+    PENDING,
+    READY,
+    INVALID,
+};
+
 class RenderDevice {
   public:
     virtual ~RenderDevice() = default;
@@ -110,6 +116,12 @@ class RenderDevice {
     virtual void writeTimestamp(GpuTimestampHandle, TimestampSlot) {}
     virtual bool readTimestampPairMs(GpuTimestampHandle, float &) {
         return false;
+    }
+    // INVALID completes a sample without a duration; callers must release its
+    // ring slot without adding a zero to their timing statistics.
+    virtual TimestampReadStatus pollTimestampPairMs(GpuTimestampHandle handle, float &outMs) {
+        return readTimestampPairMs(handle, outMs) ? TimestampReadStatus::READY
+                                                  : TimestampReadStatus::PENDING;
     }
 };
 

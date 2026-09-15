@@ -108,8 +108,11 @@ class GpuSubStageTimer {
             if (!state.pending_[i]) {
                 continue;
             }
-            if (IRRender::device()->readTimestampPairMs(state.handles_[i], ms)) {
+            const auto status = IRRender::device()->pollTimestampPairMs(state.handles_[i], ms);
+            if (status == TimestampReadStatus::READY) {
                 commitGpuStageSample(*state.info_, state.registryIndex_, ms);
+            }
+            if (status != TimestampReadStatus::PENDING) {
                 state.pending_[i] = false;
             }
         }
