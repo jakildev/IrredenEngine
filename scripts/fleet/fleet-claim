@@ -3038,20 +3038,21 @@ cmd_cleanup() {
     fi
 }
 
-# _cleanup_sweep_pr_label <repo> <pr> <label>
-#   One PR-label claim (reviewing/resolving/amending) of cmd_cleanup_gh's
-#   first pass: age it, take the liveness verdict, and remove it when stale.
-#   Reads $now / $stale_secs / $this_host and bumps $total_removed in the
-#   caller's scope. Split out so the amending case can run under the per-PR
-#   amend lock as one unit — the label age, the liveness verdict and the
-#   removal are then a single critical section against a concurrent
-#   amending-claim (see _amend_lock_acquire), and a claim that stamped its
-#   ownership record before we entered is seen by the verdict here.
-_cleanup_sweep_pr_label() {
-    local repo="$1" pr_num="$2" label_name="$3"
+# _cleanup_sweep_label <repo> <surface> <target> <label>
+#   One reviewing/resolving/amending label of cmd_cleanup_gh's first pass:
+#   age it, take the liveness verdict, and remove it when stale. The target
+#   is an open PR or an open fleet:plan-review issue. Reads $now /
+#   $stale_secs / $this_host and bumps $total_removed in the caller's scope.
+#   The amending case runs under the per-PR amend lock as one unit — the
+#   label age, the liveness verdict and the removal are then a single critical
+#   section against a concurrent amending-claim (see _amend_lock_acquire), and
+#   a claim that stamped its ownership record before we entered is seen by the
+#   verdict here.
+_cleanup_sweep_label() {
+    local repo="$1" target_surface="$2" target_num="$3" label_name="$4"
 
     local added_epoch
-    added_epoch=$(label_added_epoch "$repo" "$pr_num" "$label_name")
+    added_epoch=$(label_added_epoch "$repo" "$target_num" "$label_name")
     [[ "$added_epoch" -eq 0 ]] && return 0
 
     local age=$(( now - added_epoch ))
@@ -3063,15 +3064,16 @@ _cleanup_sweep_pr_label() {
     local _amend_rc=1 _amend_owner="" _amend_superseded=""
     if [[ "$label_name" == fleet:amending-* ]]; then
         _amend_rc=0
-        _amending_owner_live "$label_name" "$pr_num" || _amend_rc=$?
+        _amending_owner_live "$label_name" "$target_num" || _amend_rc=$?
         _amend_owner="$_AMENDING_OWNER_DISPATCH"
         _amend_superseded="$_AMENDING_SUPERSEDED_BY"
     fi
 
-    # Confirmed-orphan fast path for reviewing/resolving claims (the
+    # Confirmed-orphan fast path for reviewing/resolving claims on PRs and
+    # plan-review issues (the
     # reviewer-side analog of the issue-claim fast path, #2111). These
     # PR-label claims now drop a local marker ($CLAIMS_DIR/_prlabel-<tag>-
-    # <agent>, content = the PR number) on acquire and remove it on
+    # <agent>, content = the claimed target number) on acquire and remove it on
     # release; fleet-down wipes ~/.fleet/claims, so a same-host label with
     # NO matching marker is a claim whose owning session died/restarted
     # while the GitHub label survived (the #2137/#2138 stuck-reviewer
@@ -3096,7 +3098,7 @@ _cleanup_sweep_pr_label() {
             local _cagent="${_ha#*-}"                 # <agent>
             if [[ "$_chost" == "$this_host" ]]; then
                 local _marker="$CLAIMS_DIR/_prlabel-${_tag}-${_cagent}"
-                if [[ ! -f "$_marker" || "$(cat "$_marker" 2>/dev/null)" != "$pr_num" ]]; then
+                if [[ ! -f "$_marker" || "$(cat "$_marker" 2>/dev/null)" != "$target_num" ]]; then
                     prlabel_orphan=1
                 fi
             fi
@@ -3118,7 +3120,7 @@ _cleanup_sweep_pr_label() {
     # stale label ages out on pure TTL — never honor a same-basename
     # local worker's heartbeat for it.
     if (( _amend_rc == 0 )); then
-        echo "cleanup --gh: skipping '$label_name' on $repo PR#$pr_num — same-host owning dispatch still live"
+        echo "cleanup --gh: skipping '$label_name' on $repo $target_surface#$target_num — same-host owning dispatch still live"
         return 0
     fi
 
@@ -3132,28 +3134,28 @@ _cleanup_sweep_pr_label() {
     fi
     local _remove_rc=0
     if [[ "$label_name" == fleet:amending-* ]]; then
-        _amend_label_remove_fenced "$repo" "$pr_num" "$label_name" || _remove_rc=$?
+        _amend_label_remove_fenced "$repo" "$target_num" "$label_name" || _remove_rc=$?
     else
-        gh issue edit "$pr_num" --repo "$repo" \
+        gh issue edit "$target_num" --repo "$repo" \
             --remove-label "$label_name" >/dev/null 2>&1 || _remove_rc=1
     fi
     case "$_remove_rc" in
         0)
-            echo "cleanup --gh: removed stale '$label_name' on $repo PR#$pr_num ($_sweep_note)"
+            echo "cleanup --gh: removed stale '$label_name' on $repo $target_surface#$target_num ($_sweep_note)"
             total_removed=$((total_removed + 1))
             # A confirmed-dead owner means the swept-but-alive deferral
             # has nothing to protect: drop the record so R7 can re-arm
             # fleet:design-unblocked on the next tick instead of waiting out
             # 2xTTL. On the legacy TTL path the snapshot STAYS — liveness is
             # unknown there, which is exactly when the deferral earns its keep.
-            (( _amend_rc == 2 )) && rm -f "$(_amend_snapshot_path "$pr_num")" 2>/dev/null || true
+            (( _amend_rc == 2 )) && rm -f "$(_amend_snapshot_path "$target_num")" 2>/dev/null || true
             ;;
         3)
-            echo "cleanup --gh: amend lock on $repo PR#$pr_num was stolen during the sweep of '$label_name'; not counted (the label is re-judged next pass if still present)"
+            echo "cleanup --gh: amend lock on $repo PR#$target_num was stolen during the sweep of '$label_name'; not counted (the label is re-judged next pass if still present)"
             ;;
         *)
-            write_orphan_sentinel "$repo" "$pr_num" "$label_name" \
-                "cleanup --gh: PR remove-label failed"
+            write_orphan_sentinel "$repo" "$target_num" "$label_name" \
+                "cleanup --gh: $target_surface remove-label failed"
             ;;
     esac
 }
@@ -3183,10 +3185,10 @@ cmd_cleanup_gh() {
     this_host=$(derive_host)
 
     for repo in "${repos[@]}"; do
-        local prs_json pr_review_plan
+        local prs_json plan_review_issues label_sweep_plan
         prs_json=$(gh pr list --repo "$repo" --state open \
             --json number,labels --limit 200 2>/dev/null || echo "[]")
-        pr_review_plan=$(echo "$prs_json" | python3 -c '
+        label_sweep_plan=$(echo "$prs_json" | python3 -c '
 import json, sys
 try:
     prs = json.load(sys.stdin)
@@ -3197,21 +3199,37 @@ for pr in prs:
     for l in (pr.get("labels") or []):
         name = (l or {}).get("name", "") if isinstance(l, dict) else ""
         if name.startswith("fleet:reviewing-") or name.startswith("fleet:resolving-") or name.startswith("fleet:amending-"):
-            print(f"{n}\t{name}")
+            print(f"PR\t{n}\t{name}")
 ' 2>/dev/null | tr -d '\r' || echo "")
+        plan_review_issues=$(gh issue list --repo "$repo" --state open \
+            --label "fleet:plan-review" --json number,labels --limit 200 2>/dev/null \
+            | python3 -c '
+import json, sys
+try:
+    issues = json.load(sys.stdin)
+except Exception:
+    issues = []
+for issue in issues:
+    n = issue.get("number")
+    for l in (issue.get("labels") or []):
+        name = (l or {}).get("name", "") if isinstance(l, dict) else ""
+        if name.startswith("fleet:reviewing-"):
+            print(f"issue\t{n}\t{name}")
+' 2>/dev/null | tr -d '\r' || echo "")
+        label_sweep_plan+=$'\n'"$plan_review_issues"
 
-        [[ -z "$pr_review_plan" ]] && continue
+        [[ -z "$label_sweep_plan" ]] && continue
 
-        while IFS=$'\t' read -r pr_num label_name; do
-            [[ -z "$pr_num" || -z "$label_name" ]] && continue
+        while IFS=$'\t' read -r target_surface target_num label_name; do
+            [[ -z "$target_surface" || -z "$target_num" || -z "$label_name" ]] && continue
             if [[ "$label_name" == fleet:amending-* ]]; then
-                if ! _amend_lock_acquire "$pr_num"; then
-                    echo "cleanup --gh: skipping '$label_name' on $repo PR#$pr_num this pass — amend lock held"
+                if ! _amend_lock_acquire "$target_num"; then
+                    echo "cleanup --gh: skipping '$label_name' on $repo PR#$target_num this pass — amend lock held"
                     continue
                 fi
                 if [[ -n "$_AMEND_PENDING_SWEEP" ]]; then
-                    echo "cleanup --gh: skipping '$label_name' on $repo PR#$pr_num this pass — a stalled sweep's removal of '$_AMEND_PENDING_SWEEP' is still in flight"
-                    _amend_lock_release "$pr_num"
+                    echo "cleanup --gh: skipping '$label_name' on $repo PR#$target_num this pass — a stalled sweep's removal of '$_AMEND_PENDING_SWEEP' is still in flight"
+                    _amend_lock_release "$target_num"
                     continue
                 fi
                 # Declared before the age lookup: the section's gh calls are
@@ -3219,18 +3237,18 @@ for pr in prs:
                 # a removal in flight from the first one, not just from the
                 # removal itself.
                 local _amend_intent
-                if ! _amend_intent=$(_amend_sweep_intent_write "$repo" "$pr_num" "$label_name"); then
-                    echo "cleanup --gh: skipping '$label_name' on $repo PR#$pr_num this pass — could not declare the sweep beside the amend lock"
-                    _amend_lock_release "$pr_num"
+                if ! _amend_intent=$(_amend_sweep_intent_write "$repo" "$target_num" "$label_name"); then
+                    echo "cleanup --gh: skipping '$label_name' on $repo PR#$target_num this pass — could not declare the sweep beside the amend lock"
+                    _amend_lock_release "$target_num"
                     continue
                 fi
-                _cleanup_sweep_pr_label "$repo" "$pr_num" "$label_name"
+                _cleanup_sweep_label "$repo" "$target_surface" "$target_num" "$label_name"
                 rm -f "$_amend_intent" 2>/dev/null || true
-                _amend_lock_release "$pr_num"
+                _amend_lock_release "$target_num"
             else
-                _cleanup_sweep_pr_label "$repo" "$pr_num" "$label_name"
+                _cleanup_sweep_label "$repo" "$target_surface" "$target_num" "$label_name"
             fi
-        done <<< "$pr_review_plan"
+        done <<< "$label_sweep_plan"
     done
 
     _amend_retire_dangling_intents
