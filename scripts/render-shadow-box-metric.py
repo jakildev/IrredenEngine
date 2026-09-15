@@ -5,7 +5,9 @@ Capture four cardinal views using IRCanvasStress --only shadowbox,floor
 --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 0.4 --auto-screenshot 6
 --sweep-yaw 0 4.71238898 4. Pass full-frame PNGs in yaw order.
 Use --grid when captures also use --probe-grid. Use --source for captures
-with --source-face-shadows (unrounded authored box coordinates). The receiver plate supplies
+with --source-face-shadows (unrounded authored box coordinates), including
+--probe-analytic-box. --box-yaw and --box-offset mirror the analytic probe pose.
+The receiver plate supplies
 pixel scale and origin; the expected shadow comes from the authored box and
 sun direction, independently of the renderer's shadow samples.
 """
@@ -38,7 +40,8 @@ def rotate(point: tuple[float, float, float], cardinal: int) -> tuple[float, flo
     return x, y, z
 
 
-def expected_polygon(image: Image.Image, cardinal: int, grid: bool, source: bool):
+def expected_polygon(image: Image.Image, cardinal: int, grid: bool, source: bool,
+                     box_yaw=0.0, box_offset=(0.0, 0.0, 0.0)):
     left, top, right, bottom = plate_bounds(image)
     center = ((left + right - 1) / 2, (top + bottom - 1) / 2)
     scale = ((right - left) / (4 * FLOOR_HALF_SPAN),
@@ -52,7 +55,11 @@ def expected_polygon(image: Image.Image, cardinal: int, grid: bool, source: bool
     projected = []
     for corner in itertools.product(*zip(lower, upper)):
         x, y, z = rotate(corner, 0 if grid or source else cardinal)
-        z += BOX_Z
+        cosine, sine = math.cos(box_yaw), math.sin(box_yaw)
+        x, y = cosine * x - sine * y, sine * x + cosine * y
+        x += box_offset[0]
+        y += box_offset[1]
+        z += BOX_Z + box_offset[2]
         x += (FLOOR_TOP - z) * SUN[0] / SUN[2]
         y += (FLOOR_TOP - z) * SUN[1] / SUN[2]
         view_x, view_y, _ = rotate((x, y, FLOOR_TOP), -cardinal)
@@ -66,10 +73,11 @@ def expected_polygon(image: Image.Image, cardinal: int, grid: bool, source: bool
     return convex_hull(projected), floor_mask
 
 
-def measure(path: Path, cardinal: int, grid: bool, overlay_dir: Path | None, source=False) -> bool:
+def measure(path: Path, cardinal: int, grid: bool, overlay_dir: Path | None, source=False,
+            box_yaw=0.0, box_offset=(0.0, 0.0, 0.0)) -> bool:
     with Image.open(path) as opened_image:
         image = opened_image.convert("RGB")
-    polygon, floor_mask = expected_polygon(image, cardinal, grid, source)
+    polygon, floor_mask = expected_polygon(image, cardinal, grid, source, box_yaw, box_offset)
     expected = Image.new("L", image.size)
     ImageDraw.Draw(expected).polygon(polygon, fill=255)
     expected_area = actual_area = intersection = 0
@@ -107,11 +115,18 @@ def main() -> None:
     parser.add_argument("--source", action="store_true",
                         help="Use unrounded authored positions for --source-face-shadows")
     parser.add_argument("--overlay-dir", type=Path)
+    parser.add_argument("--box-yaw", type=float, default=0.0, help="Authored box yaw in radians")
+    parser.add_argument("--box-offset", type=float, nargs=3, default=(0.0, 0.0, 0.0))
     args = parser.parse_args()
+    if not math.isfinite(args.box_yaw) or any(not math.isfinite(v) for v in args.box_offset):
+        parser.error("box pose must be finite")
+    if (args.box_yaw or any(args.box_offset)) and not args.source:
+        parser.error("box pose options require --source")
     results = []
     for cardinal, path in enumerate(args.images):
         try:
-            results.append(measure(path, cardinal, args.grid, args.overlay_dir, args.source))
+            results.append(measure(path, cardinal, args.grid, args.overlay_dir, args.source,
+                                   args.box_yaw, args.box_offset))
         except (OSError, ValueError) as error:
             print(f"{path}: FAIL ({error})")
             results.append(False)

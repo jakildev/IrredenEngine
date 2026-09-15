@@ -15,6 +15,7 @@ struct ShapesFrameData {
     int2 trixelCanvasOffsetZ1;
     int2 canvasSize;
     int shapeCount;
+    // 0: all depth, 1: visible color/ID, 2: non-box caster depth.
     int passIndex;
     int2 voxelRenderOptions;
     int2 cullIsoMin;
@@ -866,6 +867,7 @@ kernel void c_shapes_to_trixel(
     if (shapeIndex < 0) return;
     const int2 isoOrigin = tile.tileIsoOrigin;
     const ShapeDescriptor shape = shapes[shapeIndex];
+    if (frameData.passIndex == 2 && shape.shapeType == SHAPE_BOX) return;
 
     // Cardinal-snap Z-yaw consumed by the SDF path. Mirrors the GLSL shader
     // in c_shapes_to_trixel.glsl. The shapes shader rasterizes at rasterYaw
@@ -1129,7 +1131,7 @@ kernel void c_shapes_to_trixel(
                 uint(canvasPixel.y) * uint(frameData.canvasSize.x) +
                 uint(canvasPixel.x);
 
-            if (frameData.passIndex == 0) {
+            if (frameData.passIndex != 1) {
                 atomic_fetch_min_explicit(
                     &distanceScratch[linearIndex],
                     depthEncoded,

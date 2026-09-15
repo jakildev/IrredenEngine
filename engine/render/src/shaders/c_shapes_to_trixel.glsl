@@ -15,6 +15,7 @@ layout(std140, binding = 23) uniform ShapesFrameData {
     uniform ivec2 trixelCanvasOffsetZ1;
     uniform ivec2 canvasSize;
     uniform int shapeCount;
+    // 0: all depth, 1: visible color/ID, 2: non-box caster depth.
     uniform int passIndex;
     uniform ivec2 voxelRenderOptions;
     uniform ivec2 cullIsoMin;
@@ -727,6 +728,7 @@ void main() {
     if (shapeIndex < 0) return;
     ivec2 isoOrigin = tile.tileIsoOrigin;
     ShapeDescriptor shape = shapes[shapeIndex];
+    if (passIndex == 2 && shape.shapeType == SHAPE_BOX) return;
 
     // Cardinal-snap Z-yaw. The cardinal path rasterizes at rasterYaw (the
     // multiple of pi/2 nearest visualYaw) so its output lines up
@@ -994,7 +996,7 @@ void main() {
 
             if (!isInsideCanvas(canvasPixel, canvasSize)) continue;
 
-            if (passIndex == 0) {
+            if (passIndex != 1) {
                 imageAtomicMin(triangleCanvasDistances, canvasPixel,
                                depthEncoded);
             } else {

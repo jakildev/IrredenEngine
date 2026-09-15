@@ -199,6 +199,26 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         return analyticCasterDepth_.second;
     }
 
+    ShaderProgram *boxSunProgram_ = nullptr;
+
+    void bakeAnalyticBoxes(int count, int subdivisions) {
+        if (!voxelFaceCoverage_ || frameData_.shadowsEnabled_ == 0 || count == 0)
+            return;
+        const ivec2 grid = voxelDispatchGridForCount(count);
+        const ivec4 params(count, grid.x, subdivisions, 0);
+        voxelFaceFrameBuf_->subData(0, sizeof(params), &params);
+        voxelFaceFrameBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_RevoxelizeDetachedParams);
+        sunShadowFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
+        sunShadowDepthMap_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap);
+        boxSunProgram_->use();
+        IRRender::device()->dispatchCompute(grid.x, grid.y, 1);
+        IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+        revoxelizeParamsBuf_->bindBase(
+            BufferTarget::UNIFORM,
+            kBufferIndex_RevoxelizeDetachedParams
+        );
+    }
+
     ShaderProgram *voxelFaceProgram_ = nullptr;
     Buffer *voxelFaceFrameBuf_ = nullptr;
     ShaderProgram *clearProgram_ = nullptr;
@@ -921,6 +941,11 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             C_CanvasSunShadow,
             C_TrixelCanvasRenderBehavior>("BakeSunShadowMap");
         auto *p = getSystemParams<System<BAKE_SUN_SHADOW_MAP>>(systemId);
+        p->boxSunProgram_ =
+            IRRender::createNamedResource<ShaderProgram>(
+                "BoxSunShadowProgram",
+                std::vector{ShaderStage{IRRender::kFileCompBakeBoxSunShadow, ShaderType::COMPUTE}}
+            ).second;
         p->voxelFaceProgram_ =
             IRRender::createNamedResource<ShaderProgram>(
                 "VoxelSunFacesProgram",
