@@ -53,12 +53,12 @@ inline IRComponents::C_EntityCanvas create(std::string canvasName, IRMath::ivec2
 /// targeting this canvas allocates cleanly with no post-hoc archetype
 /// migration.
 ///
-/// World-placed by default (`screenLocked = false`, the #1624 convention):
+/// World-placed by default (`screenLocked = false`, the convention):
 /// the canvas also gets `C_TrixelCanvasRenderBehavior` + `C_CanvasAOTexture`
 /// attached here, putting it in the `COMPUTE_VOXEL_AO` + `LIGHTING_TO_TRIXEL`
 /// archetypes so it participates in world lighting without every call site
-/// having to remember the pair (#2322 D1 — a spawn site that forgot them
-/// silently composited raw albedo). Pass `screenLocked = true` for a genuine
+/// having to remember the pair; omitting either silently composites raw albedo.
+/// Pass `screenLocked = true` for a genuine
 /// overlay (HUD prop, billboard, floating showcase); it skips both
 /// components entirely, matching the fixed-depth overlay contract.
 ///

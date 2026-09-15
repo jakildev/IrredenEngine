@@ -26,7 +26,7 @@
 // each path decode its own range.
 //
 // `assertCompositeWritesDepth` turns one readback into a machine-readable
-// PASS/FAIL so a future pass that disables the composite depth-write is caught
+// PASS/FAIL so an accidental composite depth-write disable is caught
 // headlessly (canvas_stress --depth-probe-assert).
 //
 // Pure readback: it touches no shader and no render state, so a scene with the
@@ -37,12 +37,11 @@
 // The readback + `enc` decode themselves live in `IRRender::`
 // (`readbackCompositeDepth` / `decodeCompositeDepth`) — engine/render's own
 // depth-aware camera pivot consumes them, and it sits upstream of this layer, so
-// a prefab-side implementation would invert the dependency and fork the #1960
+// a prefab-side implementation would invert the dependency and fork the
 // N-tier decode. What lives HERE is the debug vocabulary built on them: the
 // machine-readable log line and the two regression guards. The generic
 // depth-texture readback primitive underneath is
 // `Texture2D::getSubImage2D(..., PixelDataFormat::DEPTH_COMPONENT, FLOAT32, ...)`.
-// See #1910 (design), #1957 (depth-write guard).
 namespace IRPrefab::DepthProbe {
 
 /// Result of a single-pixel composite-depth readback (engine-side type).
@@ -64,9 +63,9 @@ namespace detail {
 
 /// The @c [depth-probe] integer-encode decode. Aliases the engine-side decode so
 /// every consumer partitions @c enc the same way (one source of truth for the
-/// #1960 N-tier layout).
+/// N-tier layout).
 /// @c enc > kDepthForegroundCeil is WORLD content (tier 0), encoded as
-/// @c iso*8 + flip*4 + face (#2207 riser-polarity carrier at bit 2); @c enc
+/// @c iso*8 + flip*4 + face, with the riser-polarity carrier at bit 2; @c enc
 /// inside the reserved band is a FOREGROUND fragment whose disjoint sub-range
 /// names its priority tier (1..N-1). iso/face is the @c encodeDepthWithFace
 /// inverse, taken tier-center-relative for a foreground fragment so @c iso reads
@@ -92,7 +91,7 @@ inline void logCompositeDepth(IRMath::ivec2 px) {
     // without it the partitioned enc reads as an opaque rawDist (the Finding-1-style
     // mis-read the plan flagged). Reporting the numeric tier makes the per-trixel
     // `tier = max(entity, trixel)` headlessly ground-truthable at an interpenetration
-    // pixel (#1960 acceptance G).
+    // pixel.
     const detail::DecodedComposite decoded = detail::decodeComposite(sample);
     IR_LOG_INFO(
         "[depth-probe] pixel=({},{}) normDepth={:.6f} rawDist={:.1f} enc={} tier={} ({}) iso={} "
@@ -109,7 +108,7 @@ inline void logCompositeDepth(IRMath::ivec2 px) {
     );
 }
 
-/// #1957 depth-write regression guard. Reads @p px (expected to fall inside a
+/// depth-write regression guard. Reads @p px (expected to fall inside a
 /// world-placed detached solid) and emits one machine-readable verdict line:
 /// @c [depth-probe-assert] pixel=(x,y) normDepth=… rawDist=… result=PASS|FAIL.
 /// PASS means the composite stored a non-background depth there — i.e. the
@@ -135,15 +134,15 @@ inline bool assertCompositeWritesDepth(IRMath::ivec2 px) {
     return wroteDepth;
 }
 
-/// #1960 per-trixel-priority tier regression guard. Reads @p px (expected to fall
+/// per-trixel-priority tier regression guard. Reads @p px (expected to fall
 /// on an interpenetration overlap where a priority-tagged solid must win) and
 /// emits one machine-readable verdict line:
 /// @c [depth-probe-assert] pixel=(x,y) normDepth=… rawDist=… enc=… tier=N
 /// expected=M result=PASS|FAIL. PASS iff the composite winner at @p px decodes to
-/// the @p expectedTier (the #1960 N-tier partition; @c detail::decodeComposite).
+/// the @p expectedTier (the N-tier partition; @c detail::decodeComposite).
 /// This is the positive ENABLED-path guard the per-trixel carrier needs (a
 /// default-off feature that byte-identity at default cannot prove works) — it
-/// catches a future pass that drops the carrier so the priority solid falls back
+/// catches a dropped carrier that makes the priority solid fall back
 /// to tier 0 and loses the depth contest. A failed readback (pixel out of range)
 /// decodes to tier 0 with @c valid_ == false, so an out-of-range probe reports
 /// FAIL for any non-default @p expectedTier rather than masquerading as a pass.

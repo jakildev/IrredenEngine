@@ -5,7 +5,7 @@
 
 namespace IRComponents {
 
-// Singleton row holding whether the settings menu is open (#2551). Same
+// Singleton row holding whether the settings menu is open. Same
 // world-scoped-state pattern as `C_HelpOverlayState`: a singleton component
 // rather than a header global or a RenderManager field, per
 // `.claude/rules/cpp-globals.md` and

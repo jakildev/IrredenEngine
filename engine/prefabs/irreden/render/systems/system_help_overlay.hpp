@@ -38,7 +38,7 @@ inline constexpr int kHelpOverlayBindingColumnChars = 16;
 // ~40-command list inside a 480-trixel canvas.
 inline constexpr int kHelpOverlayFontSize = 1;
 
-// Registry-driven command help overlay (#2550).
+// Registry-driven command help overlay.
 //
 // Iterates the `C_HelpOverlayState` singleton, so visibility arrives through
 // dense-column iteration rather than a per-frame singleton lookup, and the

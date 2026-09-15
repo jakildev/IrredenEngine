@@ -35,7 +35,7 @@
 // `REBUILD_GRID_VOXELS` must register the implicit twin next to it — omit
 // it and a component-less entity's authored rotation renders as identity
 // with nothing logged. See `engine/prefabs/irreden/voxel/CLAUDE.md`
-// §"Key systems" for the pair-registration rule.
+// §"Transform and revoxelization pipeline" for the pair-registration rule.
 //
 // Mode is mutable at runtime via `IRPrefab::RotationMode::setMode`
 // (in `engine/prefabs/irreden/common/rotation_mode.hpp`) at a
