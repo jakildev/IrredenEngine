@@ -373,7 +373,9 @@
         "fleet:blocker",
         "fleet:has-nits",
         "fleet:needs-opus-recheck",
-        "fleet:awaiting-upstream-review"
+        "fleet:awaiting-upstream-review",
+        "fleet:changes-made",
+        "human:re-review"
       ],
       "add": [
         "fleet:approved"
@@ -388,7 +390,9 @@
         "fleet:needs-fix",
         "fleet:blocker",
         "fleet:needs-opus-recheck",
-        "fleet:awaiting-upstream-review"
+        "fleet:awaiting-upstream-review",
+        "fleet:changes-made",
+        "human:re-review"
       ],
       "add": [
         "fleet:approved",
@@ -405,7 +409,9 @@
         "fleet:blocker",
         "fleet:has-nits",
         "fleet:needs-opus-recheck",
-        "fleet:awaiting-upstream-review"
+        "fleet:awaiting-upstream-review",
+        "fleet:changes-made",
+        "human:re-review"
       ],
       "add": [
         "fleet:needs-fix"
@@ -421,7 +427,9 @@
         "fleet:needs-fix",
         "fleet:has-nits",
         "fleet:needs-opus-recheck",
-        "fleet:awaiting-upstream-review"
+        "fleet:awaiting-upstream-review",
+        "fleet:changes-made",
+        "human:re-review"
       ],
       "add": [
         "fleet:blocker"
@@ -433,7 +441,9 @@
       "scope": "pr",
       "owner": "reviewer",
       "remove": [
-        "fleet:awaiting-upstream-review"
+        "fleet:awaiting-upstream-review",
+        "fleet:changes-made",
+        "human:re-review"
       ],
       "add": [
         "fleet:needs-opus-recheck"
