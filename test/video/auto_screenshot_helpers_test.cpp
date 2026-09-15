@@ -11,7 +11,7 @@
 // (`appendAutoScreenshotIfRequested`). Both deduce the shot count from the
 // array they bind, so `shots_` and `numShots_` cannot name different tables.
 // A hand-written `numShots_ = sizeof(kFoo) / sizeof(kFoo[0])` can, and nothing
-// catches it until the capture run walks off the end — see #2969.
+// catches it until the capture run walks off the end.
 //
 // Only the *inactive* half of `appendAutoScreenshotIfRequested` is unit
 // testable. Its active branch calls `createAutoScreenshotSystem`, which needs
