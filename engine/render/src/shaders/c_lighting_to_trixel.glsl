@@ -185,6 +185,16 @@ void main() {
         worldReceivePos = trixelCanvasPixelToWorld3D(
             pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, rasterYaw
         );
+        if (visibleFaceIds.w == 2) {
+            const ivec2 isoRel = trixelCanvasPixelToIsoRel(
+                pixel, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
+            // A displayed triangle centroid has iso delta (f - 1, -1) and
+            // depth delta +1 from the stored face-origin sample. Its in-plane
+            // centroid fraction f alternates with local triangle orientation.
+            const float centroidFraction = ((isoRel.x + isoRel.y) & 1) != 0 ? 1.0 / 3.0 : 2.0 / 3.0;
+            worldReceivePos += vec3(1.0 - 0.5 * centroidFraction, 0.5 * centroidFraction, 0.0)
+                / float(effectiveTrixelSubdivisionScale(voxelRenderOptions));
+        }
         // Raster coordinates use cell corners; geometry uses voxel centers.
         worldReceivePos -= kVoxelRasterCellAnchor;
         // Detached pool cells already include inverse camera rotation.
@@ -193,7 +203,7 @@ void main() {
         worldNormal = rotateByQuat(worldNormal, detachedViewToWorld);
     }
 
-    // World-space receiver relative to its owner, encoded over [-2, 2].
+    // World receiver relative to its canvas raster origin, encoded over [-2, 2].
     if (debugOverlayMode == 9) {
         const vec4 src = imageLoad(trixelColors, pixel);
         const vec3 positionColor = worldReceive
@@ -213,12 +223,12 @@ void main() {
     float ao           = imageLoad(canvasAO, pixel).r;
     float shadow;
     if (worldReceive) {
-        shadow = shadowsEnabled != 0
-            ? worldSunShadowFactor(
-                  worldReceivePos, worldNormal,
-                  pos3DtoDistance(worldReceivePos)
-              )
-            : 1.0;
+        shadow = 1.0;
+        if (shadowsEnabled != 0) {
+            shadow = visibleFaceIds.w == 2
+                ? worldSurfaceSunShadowFactor(worldReceivePos, worldNormal, pos3DtoDistance(worldReceivePos))
+                : worldSunShadowFactor(worldReceivePos, worldNormal, pos3DtoDistance(worldReceivePos));
+        }
     } else {
         shadow = detachedCanvas ? 1.0 : imageLoad(canvasSunShadow, pixel).r;
     }

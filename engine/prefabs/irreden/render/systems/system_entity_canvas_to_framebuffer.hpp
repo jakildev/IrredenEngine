@@ -148,7 +148,8 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         // offset). The two coincide at yaw == 0, so cardinal frames stay
         // byte-identical.
         vec2 entityIso = pos3DtoPos2DIso(worldTransform.translation_);
-        vec2 entityIsoPlacement = pos3DtoPos2DIsoYawed(worldTransform.translation_, visualYaw_);
+        vec2 entityIsoPlacement = pos3DtoPos2DIsoYawed(worldTransform.translation_, visualYaw_) +
+                                  pos3DtoPos2DIso(canvasTextures->renderedCellOffset_);
 
         ivec2 mainCanvasSizeI = ivec2(mainCanvasSize_);
         vec2 canvasOriginZ1 = vec2(trixelOriginOffsetZ1(mainCanvasSizeI));
@@ -305,6 +306,13 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
                 );
                 compositeDistanceOffset =
                     (cubeSub >= 1) ? worldDepth * effectiveSub_ * kDepthEncodeShift : worldDepth;
+                if (cubeSub >= 1) {
+                    const vec3 phase = canvasTextures->renderedCellOffset_;
+                    compositeDistanceOffset += IRMath::pos3DtoDistanceYawed(
+                        phase * static_cast<float>(effectiveSub_ * kDepthEncodeShift),
+                        0.0f
+                    );
+                }
             }
         }
         fd.distanceOffset_ = compositeDistanceOffset;

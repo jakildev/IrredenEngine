@@ -83,7 +83,7 @@ void main() {
                 }
             }
             if (hit && nearDepth <= farDepth) {
-                atomicMin(sunDepthBuf[cascade * kCascadeTexelCount + pixel.y * kSunShadowMapDim + pixel.x], packSunDepth(nearDepth, ivec2(0)));
+                atomicMin(sunDepthBuf[cascade * kCascadeTexelCount + pixel.y * kSunShadowMapDim + pixel.x], packSunSurfaceDepth(nearDepth));
             }
         }
     }

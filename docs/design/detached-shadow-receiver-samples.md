@@ -1,16 +1,24 @@
 # Detached shadow receiver sample positions
 
 The `receiver_position` diagnostic displays the actual world-space lighting
-sample relative to its detached owner: `RGB = position / 4 + 0.5`. Values
+sample relative to its detached canvas raster origin: `RGB = position / 4 + 0.5`.
+That origin includes the raster-phase correction when present; it equals the
+owner position in the isolated unit-voxel fixture. Values
 outside [-2,2] saturate in the color target, so the numerical oracle uses the
 isolated unit voxel. Main/per-axis regular samples are black in this diagnostic;
 overflow faces retain their existing albedo behavior. This is not a general
 world-position buffer or a probe for non-receiving screen-locked canvases.
 
-Normal rendering is unchanged in this slice. The experimental receiver correction
-is retained as a patch, because adopting it independently exposes analytic shadow
-overcoverage. Passing interior lighting checks with misplaced samples did not
-establish receiver correctness.
+Normal `LOCAL_TRIANGLES` receivers use the displayed triangle centroid, with
+the resampling phase carried through raster placement, depth, lighting and
+resampled casting. Finite caster depths carry a distinct provenance tag and
+are compared on the receiver plane at the nearest sun-map sample, without a
+normal displacement or coverage filtering. Legacy point samples retain their
+filtered comparison. Main/GRID and raw-debug receivers retain the legacy
+sampler until their surface reconstruction has a corresponding contract.
+
+See [surface sampling adoption](surface-shadow-sampling.md) for current evidence.
+The experiments below document why centroid recovery alone was insufficient.
 
 ## Geometric check
 
@@ -19,12 +27,12 @@ The oracle averages their three vertices to obtain the expected centroid, rotate
 it into world coordinates, and samples the diagnostic at its screen projection.
 It does not copy the renderer's inverse iso formula, parity selector or depth
 decode. Six samples cover both orientations of all three faces. Native Metal
-captures at 0/22.5/45/67.5/90 degrees fail all 30 checks with the current receiver
+captures at 0/22.5/45/67.5/90 degrees fail all 30 checks with the original receiver
 and pass all 30 exactly with the correction. Color quantization tolerance is one
 level. A single-cell result does not validate high-density faces, full SO(3),
 arbitrary geometry, or complete shadow boundaries.
 
-The current receiver combines the stored trixel index with the depth of the face
+The original receiver combined the stored trixel index with the depth of the face
 origin. In the undilated local layout, the displayed triangle's centroid instead
 has iso displacement `(f - 1, -1)` and depth displacement `+1`, where `f` is
 1/3 or 2/3 according to local parity. Inverse projection gives the correction
@@ -37,7 +45,7 @@ bias, filter taps, geometry, dispatches or allocations. It still assigns one
 lighting value to a whole trixel; exact boundaries crossing a triangle require
 additional coverage work.
 
-## Why the correction is not adopted yet
+## Historical centroid-only rejection
 
 The same source-face shadow route, sun and detached staircase distinguish the
 caster representations:
@@ -62,7 +70,7 @@ coverage and receiver positions, then check oblique boundaries against geometry.
 ## Reproduction
 
 Baseline: `bc0294535` plus the retained `baseline-instrumentation.patch`.
-The current PR has the same diagnostic; applying `centroid-correction.patch`
+The diagnostic-only PR retained the same diagnostic; applying `centroid-correction.patch`
 enables the rejected-for-adoption experiment on both backends. Both patches and
 all PNGs are under `docs/pr-screenshots/codex/detached-shadow-receiver-samples/`.
 Captured on Metal, Apple M4 Max, 2560x1440, output scale 2. Every capture run
@@ -89,7 +97,7 @@ capture 636 uses the same two-shot 180/225-degree recipe and is RGB pixel-identi
 to capture 610 after removing the experimental correction. The diagnostic-only
 change therefore preserves this ordinary rendering case.
 
-![Current receiver diagnostic at 45 degrees](../pr-screenshots/codex/detached-shadow-receiver-samples/capture-620.png)
+![Original receiver diagnostic at 45 degrees](../pr-screenshots/codex/detached-shadow-receiver-samples/capture-620.png)
 
 ![Experimental centroid diagnostic at 45 degrees](../pr-screenshots/codex/detached-shadow-receiver-samples/capture-625.png)
 

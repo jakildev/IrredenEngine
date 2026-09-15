@@ -66,7 +66,7 @@ kernel void c_bake_box_sun_shadow(
                 }
             }
             if (hit && nearDepth <= farDepth) {
-                atomic_fetch_min_explicit(&sunDepthBuf[cascade * kCascadeTexelCount + pixel.y * kSunShadowMapDim + pixel.x], packSunDepth(nearDepth, int2(0)), memory_order_relaxed);
+                atomic_fetch_min_explicit(&sunDepthBuf[cascade * kCascadeTexelCount + pixel.y * kSunShadowMapDim + pixel.x], packSunSurfaceDepth(nearDepth), memory_order_relaxed);
             }
         }
     }

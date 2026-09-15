@@ -65,6 +65,15 @@ inline uint packSunDepth(float sunZ, int2 splatOffset) {
     return (uint(biased * kSunDepthScale) << 8) | lowByte;
 }
 
+// Offset -8 is outside the legacy splat radius and identifies center-evaluated geometry.
+inline uint packSunSurfaceDepth(float sunZ) {
+    return packSunDepth(sunZ, int2(-8));
+}
+
+inline bool sunWriteIsSurface(uint packedDepth) {
+    return (packedDepth & 0xFFu) == 0x88u;
+}
+
 inline float unpackSunDepth(uint packedDepth) {
     return float(packedDepth >> 8) / kSunDepthScale - kSunDepthOffset;
 }
