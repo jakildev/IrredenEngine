@@ -84,7 +84,7 @@ struct SaveComponentEntry {
     // `SaveSerialize<C>::read` fast path.
     ColumnReadHooks reader_;
     // Read hooks for each retired on-disk version, keyed by that version.
-    // Populated from `SaveMigration<C>::migrators`; a
+    // Populated from `SaveMigration<C>::migrators()`; a
     // component that never changed its schema leaves this empty. The current
     // version is NOT keyed here — `reader_` owns it.
     std::unordered_map<std::uint32_t, ColumnReadHooks> migratorReaders_;
