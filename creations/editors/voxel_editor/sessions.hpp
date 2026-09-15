@@ -9,8 +9,7 @@
 // gestures replayed against the live UI by the GUI-test harness; selected at
 // run time with `--gui-session <name>`.
 //
-// `drag_probe` is the mechanism proof the plan sequences first (Phase 0's P0-3,
-// deferred out of the probe slice until the aiming primitive existed): it walks
+// `drag_probe` is the mechanism proof: it walks
 // the four gestures every entity recipe is built from — single-click place,
 // left-drag box fill, the V erase-mode toggle, and a carve click — and asserts
 // the live editable set's occupancy after each. The entity sessions (rock,
@@ -93,7 +92,7 @@ inline Recipe buildDragProbe(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) 
     builder.expectOccupancy(placed, true, "click_places_voxel");
     builder.expectOccupancy(untouched, false, "untouched_stays_empty");
 
-    // P0-3: press, move, release across four cells commits one box fill.
+    // Press, move, release across four cells commits one box fill.
     builder.segment("drag");
     builder.dragBox(dragStart, dragEnd);
     for (int x = dragStart.x; x <= dragEnd.x; ++x) {
@@ -118,8 +117,8 @@ inline Recipe buildDragProbe(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) 
     builder.expectOccupancy(placed, false, "erase_removes_voxel");
     builder.expectOccupancy(dragStart, true, "erase_spares_drag_run");
 
-    // Ctrl+S through the recipe's own chord scheduling. Phase 0's P0-1 proved
-    // the editor's save dispatch with a hand-written event list; this proves the
+    // Ctrl+S through the recipe's own chord scheduling. The save-dispatch probe
+    // drives the editor's save with a hand-written event list; this proves the
     // builder's `chordKey` timing drives it too — the modifier has to still be
     // held when the key press drains. The saved file itself is checked by the
     // 2d runner, which owns resolving the editor's run directory.
@@ -215,7 +214,7 @@ inline Recipe buildRock(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
 
     // --- Carve two base corners for irregularity ------------------------
     // Arm each carve in its own segment: hover the corner and pick-assert
-    // the aim while the voxel is still there (F-2c-4 — an erase is not
+    // the aim while the voxel is still there (an erase is not
     // diagnosable from occupancy alone, and a pick check must fire before the
     // click removes its own target, or the ray falls through to the cell behind).
     const IRMath::ivec3 carveA(fpLo.x, fpHi.y, gz - 1);
@@ -264,7 +263,7 @@ inline Recipe buildRock(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
 // Sequence: (1) clear the seeded ground slab down to the 2×2 stem base with
 // symmetry OFF (framing erase drags on the flat plane, every corner exposed),
 // (2) enable X+Y mirror and grow a 2×2 stem column, asserting the mirror-created
-// cells and hover-probing one (the F-1.2 positive fire), (3) add a cap layer (K)
+// cells and hover-probing one (the mirror positive fire), (3) add a cap layer (K)
 // and grow a wider disc, (4) hide/show the cap layer, (5) save + reload.
 inline Recipe buildMushroom(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
     Builder builder("mushroom", sceneSize, sceneOrigin);
@@ -309,9 +308,9 @@ inline Recipe buildMushroom(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
     builder.click(IRMath::ivec3(lx, ly, gz - 1));
     builder.click(IRMath::ivec3(lx, ly, gz - 2));
     builder.click(IRMath::ivec3(lx, ly, gz - 3));
-    // Positive fire for the mirror fix: every one of these is a *mirror-created*
-    // cell — the recipe only ever clicked (lx, ly, ·), so a broken mirror (the
-    // F-1.2 regression this PR fixes) leaves them empty and fails the run. The
+    // Positive fire for mirroring: every one of these is a *mirror-created*
+    // cell — the recipe only ever clicked (lx, ly, ·), so a broken mirror
+    // leaves them empty and fails the run. The
     // checks read the live editable set, not the shadow model, so they can't be
     // fooled by the builder's own bookkeeping.
     builder.expectOccupancy(IRMath::ivec3(cx, ly, gz - 1), true, "stem_x_mirror_filled");
@@ -500,10 +499,10 @@ inline Recipe buildAnt(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
     builder.expectOccupancy(ivec3(lx - 1, antennaLoY, gz), true, "antenna_kept");
     builder.expectOccupancy(ivec3(mirrorX(lx - 1), antennaHiY, gz), true, "antenna_mirror_kept");
     builder.expectOccupancy(ivec3(lx, antennaLoY, gz), false, "antenna_gap_cleared");
-    // F-2d-1 measured the plane fully reachable at 16³ but flagged that a
-    // larger scene could push its edges under the left GUI panels. The ant is
-    // the first 20³ session, so all four corners are re-instrumented: a
-    // swallowed erase drag fails here instead of shipping a slab in the asset.
+    // The plane is fully reachable at 16³, but a larger scene can push its
+    // edges under the left GUI panels. The ant is a 20³ session, so all four
+    // corners are instrumented: a swallowed erase drag fails here instead of
+    // shipping a slab in the asset.
     builder.expectOccupancy(ivec3(0, 0, gz), false, "ground_corner_lo_cleared");
     builder.expectOccupancy(ivec3(sceneSize.x - 1, 0, gz), false, "ground_corner_hi_x_cleared");
     builder.expectOccupancy(ivec3(0, sceneSize.y - 1, gz), false, "ground_corner_hi_y_cleared");
@@ -543,8 +542,8 @@ inline Recipe buildAnt(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
     // --- Legs: three chains of -x-face clicks, each mirrored into its pair ---
     // The only gesture in the session that grows sideways out of standing
     // geometry rather than up off the plane, so it is armed with a pick
-    // assertion first (F-2c-4) — and in its own segment, since the aim names a
-    // cell the very next click builds off (F-2d-2).
+    // assertion first — and in its own segment, since the aim names a
+    // cell the very next click builds off.
     builder.addLayer();
     builder.segment("legs_arm");
     builder.hover(ivec3(lx - 2, thoraxLoY, gz - 1));
@@ -689,7 +688,7 @@ inline Recipe buildBird(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
     const int wingRows[2] = {cy - 1, cy};
 
     // A scene too small clips the wing or the body and saves the result anyway,
-    // so refuse it outright rather than authoring a smaller animal (F-2f-5).
+    // so refuse it outright rather than authoring a smaller animal.
     // The upstroke's tip sits four tiers above the ground plane, so the scene
     // needs five z slices; anything less clips the wing and saves it clipped.
     const int wingLift = 4;
@@ -705,7 +704,7 @@ inline Recipe buildBird(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
 
     // --- Clear the seeded slab down to the belly footprint ------------------
     // With the X mirror on, each low-x erase drag clears its own strip and the
-    // reflection clears the matching high-x one (F-2f-1), so the whole plane is
+    // reflection clears the matching high-x one, so the whole plane is
     // framed from three gestures. Runs first, while the plane is flat and every
     // corner face is exposed.
     builder.segment("clear_ground");
@@ -757,7 +756,7 @@ inline Recipe buildBird(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
         .expectOccupancy(ivec3(mirrorX(levelTip.x), levelTip.y, gz - 1), true, "wing_mirror_tip");
 
     // --- Duplicate the frame ------------------------------------------------
-    // D is also the camera-right binding (P0-4), so the duplicate closes its
+    // D is also the camera-right binding, so the duplicate closes its
     // segment and the next one re-applies the camera before anything is aimed.
     builder.segment("duplicate");
     builder.duplicateFrame();
@@ -896,8 +895,8 @@ inline Recipe buildTree(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
     const int canopyTopZ = trunkTopZ - kTreeCanopyTiers;
 
     // A scene too short clips the canopy and a scene too narrow clips the
-    // foliage bumps; either authors a different tree and saves it anyway
-    // (F-2f-5), so refuse rather than scale down silently.
+    // foliage bumps; either authors a different tree and saves it anyway,
+    // so refuse rather than scale down silently.
     if (loX < 2 || loY < 1 || canopyTopZ < 1) {
         builder.recordError(
             "tree needs a scene at least 8 x 6 x " +
@@ -910,7 +909,7 @@ inline Recipe buildTree(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
 
     // --- Clear the seeded slab down to the 4x4 root pad ---------------------
     // Two erase drags under the X+Y mirrors clear all four quadrants of the
-    // plane (F-2f-1). Runs first, while the plane is flat and every corner face
+    // plane. Runs first, while the plane is flat and every corner face
     // is exposed.
     builder.segment("clear_ground");
     builder.enableSymmetry(true, true, false);

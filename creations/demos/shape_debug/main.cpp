@@ -99,8 +99,8 @@ constexpr IRVideo::RoiCrop kCropsZoom8Origin[] = {
 };
 
 // --pivot-focus-demo: a tall strip over screen center where the pinned
-// pillar sits. With the fix the pillar holds this crop steady across the yaw
-// sweep; with --pivot-origin it swings out of frame. Coords are a per-host
+// pillar sits. With the focus pinned the pillar holds this crop steady across
+// the yaw sweep; with --pivot-origin it swings out of frame. Coords are a per-host
 // iteration point (see the kCrops* note above). Tuned for the HiDPI 2x
 // framebuffer (pillar pivot-pins at frame center ~(1280,720) of 2560x1440).
 // Linux/1x smoke: update to ~{490, 100, 300, 520} (center≈(640,360) of
@@ -372,18 +372,18 @@ std::vector<std::array<char, 40>> g_cullValidateShotLabels;
 
 // --pivot-focus-demo: spawn a tall, off-center voxel pillar and drive a
 // yaw sweep that pins the camera Z-yaw pivot on the pillar's TRUE-depth center
-// via AutoScreenshotShot::pivotFocusWorld_. With the fix the pillar rotates in
-// place — it stays at screen center across the whole sweep, including its z>0
-// body. Add --pivot-origin for the A/B where the legacy z=0 screen-center pivot
-// swings it in an arc. Requires --auto-screenshot. Same stable-storage
-// discipline as the buffers above.
+// via AutoScreenshotShot::pivotFocusWorld_. With the focus set the pillar
+// rotates in place — it stays at screen center across the whole sweep,
+// including its z>0 body. Add --pivot-origin for the A/B where the z=0
+// screen-center pivot swings it in an arc. Requires --auto-screenshot. Same
+// stable-storage discipline as the buffers above.
 bool g_pivotFocusDemo = false;
 std::vector<IRVideo::AutoScreenshotShot> g_pivotFocusShots;
 std::vector<std::array<char, 40>> g_pivotFocusShotLabels;
 // World center of the --pivot-focus-demo pillar. Off the world origin in x/y AND
-// at z > 0, so the legacy pivot exhibits BOTH defects: the z=0 focus the
-// old path picks lands horizontally offset from a centered tall column, and an
-// off-origin column orbits the origin. Shared by the spawn and the shot table so
+// at z > 0, so the origin pivot exhibits BOTH defects: its z=0 focus lands
+// horizontally offset from a centered tall column, and an off-origin column
+// orbits the origin. Shared by the spawn and the shot table so
 // the focus exactly matches the rendered geometry.
 constexpr vec3 kPivotPillarCenter = vec3(8.0f, -8.0f, 10.0f);
 
@@ -1154,7 +1154,7 @@ constexpr IRVideo::GuiInputEvent kHelpCloseEvents[] = {
 };
 
 // Escape toggles the settings menu in this demo — the camera suite is
-// registered with `{.omit_ = {CLOSE_WINDOW}}`, so it no longer quits.
+// registered with `{.omit_ = {CLOSE_WINDOW}}`, so it does not quit.
 constexpr IRVideo::GuiInputEvent kMenuOpenEvents[] = {
     {0,
      IRVideo::GuiInputEvent::Type::PRESS,
@@ -2256,7 +2256,7 @@ void initSystems() {
             // across a yaw sweep. centerPan brings the pillar to screen
             // center at yaw 0; with the focus set it stays there for EVERY yaw —
             // the pillar rotates in place while the default scene sweeps around
-            // it. Run the same flag with --pivot-origin for the A/B: the legacy
+            // it. Run the same flag with --pivot-origin for the A/B: the
             // z=0 screen-center pivot swings the pillar out in an arc.
             const float sweepZoom = g_initialZoom > 0.0f ? g_initialZoom : 4.0f;
             // Pan so the pillar lands at screen center at yaw 0: the producers
@@ -2907,9 +2907,9 @@ struct ShapeTestCase {
 
 // Minimal scene for --pivot-focus-demo: a tall, off-center pillar plus
 // four distinct ground markers ringing it (one per world cardinal). The dedicated
-// shot table pins the camera Z-yaw pivot on the pillar's true center, so under
-// the fix the pillar holds dead-center while the markers visibly orbit it; with
-// --pivot-origin the legacy z=0 pivot swings the whole group in an arc. Isolated
+// shot table pins the camera Z-yaw pivot on the pillar's true center, so the
+// pillar holds dead-center while the markers visibly orbit it; with
+// --pivot-origin the z=0 origin pivot swings the whole group in an arc. Isolated
 // from the cluttered default scene so the pin is unambiguous.
 void initPivotFocusScene() {
     // Pillar at kPivotPillarCenter (z 0..20, off the world origin in x/y).

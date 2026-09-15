@@ -1,8 +1,8 @@
 // Build-time tool: scans Lua schema files for `IRComponent.register(...)` and
 // `IRSystem.registerSystem({...})` calls and emits a C++ header containing
 // component structs, Lua bindings, codegen system create-functions, and
-// registration helpers. The CODEGEN side of the Lua-driven ECS epic (see
-// docs/design/lua-driven-ecs.md).
+// registration helpers. The CODEGEN side of the Lua-driven ECS
+// (docs/design/lua-driven-ecs.md).
 //
 // Components: runs the input as Lua against a stub `IRComponent`
 // table whose `register` callback captures every call.

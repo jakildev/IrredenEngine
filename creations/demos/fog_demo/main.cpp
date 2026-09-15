@@ -318,14 +318,14 @@ constexpr IRVideo::AutoScreenshotShot kDetachedEdgeShots[] = {
 
 // --edge-smooth (Mode B): the SAME boundary-straddling voxel scene as
 // --edge-zoom, but the vision circle carries a wide edge softness so the reveal
-// has a SMOOTH analytic band, not a hard column-quantized edge. P1's per-voxel
-// own-column drop culls any column with reveal < 0.5, which pins the
+// has a SMOOTH analytic band, not a hard column-quantized edge. A per-voxel
+// own-column drop that culls any column with reveal < 0.5 pins the
 // object silhouette to the binary radius while the floor fades past it on the
-// soft band; P2 drops only FULLY-hidden columns (reveal <= 0) so the partially-
-// revealed boundary columns rasterize and FOG_TO_TRIXEL fades the object's
-// silhouette + cut wall on the same curve as the floor. This is the before/after
-// surface for the P2 fix; same geometry + camera as --edge-zoom so a side-by-side
-// reads the smooth silhouette directly.
+// soft band; the cull drops only FULLY-hidden columns (reveal <= 0) so the
+// partially-revealed boundary columns rasterize and FOG_TO_TRIXEL fades the
+// object's silhouette + cut wall on the same curve as the floor. Same geometry
+// + camera as --edge-zoom so a side-by-side reads the smooth silhouette
+// directly.
 bool g_edgeSmooth = false;              // --edge-smooth
 constexpr float kEdgeSmoothEdge = 3.0f; // world-unit soft-band half-width (≫ the 1-cell lattice)
 
@@ -476,7 +476,7 @@ constexpr IRVideo::AutoScreenshotShot kEntityRevealShots[] = {
 // origin vision circle) but steps the camera Z-yaw in fine increments inside one
 // cardinal quadrant (residual yaw 0.05..0.70 rad < π/4, constant visible-face
 // triplet) so the per-axis rotation route (perAxisRoute 1/2/3) drives the raster.
-// The headline P4 check: a boundary-cut object must keep its FILLED interior
+// The headline check: a boundary-cut object must keep its FILLED interior
 // cross-section through the whole sweep — no holes opening/closing, no flicker —
 // the same wall the cardinal --edge-zoom shots show at yaw 0. Built dynamically
 // (one shot per step) because the auto-screenshot harness applies shot.yawRadians_
@@ -980,9 +980,9 @@ void initEntities() {
     // exist to inspect the fog reveal boundary, and an angled sun drives shadow
     // TERMINATORS across the exact band under test — the pillar's terminator
     // crossing the slab-top fog arc composites into a kinked dark curve that
-    // reads as a fog artifact (it was reported as one: the "sharp turn" that
-    // appears to connect the elevated face's fade to the floor rim at the
-    // wrong height). --edge-sdf-blocker especially: the blocker box's -Y cut
+    // reads as a fog artifact (a "sharp turn" that appears to connect the
+    // elevated face's fade to the floor rim at the wrong height).
+    // --edge-sdf-blocker especially: the blocker box's -Y cut
     // face IS the band under test, so an angled sun's terminator across it would
     // masquerade as a cut defect. Fog x shadow composition stays covered by the
     // default grid scene's refs, which keep the angled sun.

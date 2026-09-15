@@ -1,21 +1,21 @@
-// reposition_stress — headless pass/fail harness: repositioning MANY
-// voxel-set entities every frame corrupted the entity store and SIGSEGV'd in
-// `getComponent` on a still-live handle (`record.archetypeNode == nullptr`).
+// reposition_stress — headless pass/fail harness locking the entity store
+// against corruption when MANY voxel-set entities reposition every frame. The
+// failure shape is a SIGSEGV in `getComponent` on a still-live handle
+// (`record.archetypeNode == nullptr`).
 //
-// The reporting creation (a game-side lattice demo) moved ~96 static voxel-set
-// entities per frame through a Lua binding and died after ~2s, with the time to
-// crash scaling INVERSELY with the number of sets moved. This harness rebuilds
-// that shape engine-side.
+// The shape it rebuilds engine-side: a game-side lattice moving ~96 static
+// voxel-set entities per frame through a Lua binding, where the time to crash
+// scales INVERSELY with the number of sets moved.
 //
 // Arms (compose freely). They differ in HOW the per-tick write reaches the
-// transform, because that is the axis the report's backtrace distinguishes:
+// transform, because that is the axis the crash backtrace distinguishes:
 //   --drive=none     control: full scene, no per-frame reposition (must run clean)
 //   --drive=column   dense archetype-column write, zero per-entity lookups
 //   --drive=lookup   per-id `getComponent<C_LocalTransform>` off a batched
 //                    driver vector of ids snapshotted at spawn
 //   --drive=node     dynamic system body over the matched `ArchetypeNode*`,
 //                    resolving ids read out of the node's LIVE `entities_`
-//                    array — structurally the reported stack (frames 0-3: Lua
+//                    array — structurally the crash stack (frames 0-3: Lua
 //                    EVAL tick -> setPosition binding -> getComponent)
 //   --churn          additionally create + destroy transient entities every tick,
 //                    exercising swap-remove / flush bookkeeping alongside the moves
@@ -34,7 +34,7 @@
 // `fleet-run IRRepositionStress` is a headless regression check.
 //
 // The horizon is counted in UPDATE ticks (fixed timestep), not render frames —
-// the reported crash horizon was ~2s of simulation, and the default 3600 ticks
+// the crash horizon is ~2s of simulation, and the default 3600 ticks
 // is roughly 3x that.
 
 #include <irreden/ir_engine.hpp>
@@ -338,7 +338,7 @@ void initSystems() {
     }
 
     if (g_drive == Drive::NODE) {
-        // The reported crash's own shape: a
+        // The crash's own shape: a
         // DYNAMIC system body that receives the matched `ArchetypeNode*` and
         // resolves each entity by id through `getComponent`. Unlike the LOOKUP
         // arm, the ids come out of the node's live `entities_` array rather

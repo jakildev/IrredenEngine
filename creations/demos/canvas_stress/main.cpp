@@ -86,9 +86,8 @@
 // solids receive + cast world sun-shadow at their
 // world pos. Plain-DETACHED orbiters depth-sort only (forward-scatter has no
 // faithful world-pos recovery for lighting). Run with --screen-lock-detached
-// to opt the whole demo back into fixed-depth overlays at the legacy
-// canary layout — byte-identical to the pre-flip default scene, the
-// regression canary for the screenLocked_ opt-out path.
+// to opt the whole demo back into fixed-depth overlays at the screen-locked
+// canary layout, the regression canary for the screenLocked_ opt-out path.
 // See render/CLAUDE.md "Rotation modes".
 
 using namespace IRComponents;
@@ -106,7 +105,7 @@ struct CanvasStressSettings {
     // detached small/low-zoom gap class only reproduces at baseSub > 1
     // (at baseSub == 1 effSub floors at 1 below zoom 1, so the detached canvas
     // already rasters at sub 1 — nothing to coarsen and no gaps). Set --subdivisions 8
-    // to reproduce the bug + verify the fix on the orbit-ring re-voxelize shapes.
+    // to reproduce the gap class on the orbit-ring re-voxelize shapes.
     int subdivisions_ = 0;
     float cameraYaw_ = 0.0f;
     bool autoRotate_ = true;
@@ -122,7 +121,7 @@ struct CanvasStressSettings {
     bool frozenPose_ = false;
     float frozenPoseRad_ = 0.0f;
     bool noLighting_ = false;
-    // Step-0 isolation harness (architect-mandated). Spawns exactly ONE
+    // Solo isolation harness. Spawns exactly ONE
     // rotated DETACHED_REVOXELIZE solid — the multi-color L-prism at its
     // off-cardinal initialRotation — and nothing else (no floor, no main grid,
     // no GRID spin cubes, no canary cubes, no second proof solid, no orbit
@@ -131,10 +130,10 @@ struct CanvasStressSettings {
     bool soloRevox_ = false;
     // OFF by default: every detached canvas in the demo rides the
     // world-placed engine default and depth-sorts against the SDF floor.
-    // Pass --screen-lock-detached (legacy alias --screen-lock-revox) to opt
-    // them ALL into C_EntityCanvas::screenLocked_ AND keep the legacy
-    // canary z — reproducing the pre-flip overlay scene byte-for-byte, the
-    // regression canary for the screen-locked opt-out path.
+    // Pass --screen-lock-detached (alias --screen-lock-revox) to opt
+    // them ALL into C_EntityCanvas::screenLocked_ AND keep the canaries at
+    // z = 0 — the fixed-depth overlay scene, the regression canary for the
+    // screen-locked opt-out path.
     bool screenLockDetached_ = false;
     // Diagnosis harness. `--only <group>[,<group>...]` spawns only the
     // named entity groups (maingrid, gridspin, canary, revox, orbit, floor);
@@ -276,7 +275,7 @@ constexpr float kGridSpinRadPerFrame = IRMath::kPi / 720.0f;
 // Canvas sized like the forward-scatter cubes (so the composite shows them at a
 // comparable scale, not shrunk) but with headroom for the rotated AABB; the pool
 // 3D bounds span that AABB (base extent × √3). A denser base box keeps the
-// round-to-cell surface readable (P1 tolerates aliasing; P3 refines it).
+// round-to-cell surface readable.
 constexpr ivec2 kReVoxCanvasSize{140, 140};
 constexpr ivec3 kReVoxPoolSize{22, 22, 22};
 constexpr ivec3 kReVoxSolidSize{12, 12, 12}; // base box; the L is carved from it
@@ -337,13 +336,12 @@ constexpr float kSunAmbient = 0.30f;
 // those casters drop visible sun shadows onto a surface. SDF (free at any size)
 // rather than a voxel slab so the plate costs nothing in the world pool.
 //
-// GRID-only focused shadow stage (architect decision). The
-// engine sun-shadow mechanism is sound — BAKE_SUN_SHADOW_MAP reads every
+// GRID-only focused shadow stage. BAKE_SUN_SHADOW_MAP reads every
 // rasterized trixel as a caster, so the GRID spin cubes (VOXEL_TO_TRIXEL) and
-// this SDF floor (SHAPES_TO_TRIXEL) both participate, like shape_debug's proven
-// floor. The earlier covers-the-orbit placement (kFloorZ=16, span=560) sat 3x
-// shape_debug's caster->floor gap below the casters, so the shadows never read.
-// This plate mirrors shape_debug instead: a focused floor a few u below the 12^3
+// this SDF floor (SHAPES_TO_TRIXEL) both participate, like shape_debug's
+// floor. A floor that covers the orbit (kFloorZ=16, span=560) sits 3x
+// shape_debug's caster->floor gap below the casters, and the shadows never read.
+// This plate mirrors shape_debug: a focused floor a few u below the 12^3
 // spin cubes, whose bottoms sit at z=0 (centered at z=-6), with the span
 // sized to the cluster — NOT out to the orbit radius (200) — so it doesn't
 // intersect the orbit shapes or the z=+-42 re-voxelize column.
@@ -357,7 +355,7 @@ constexpr float kSunAmbient = 0.30f;
 constexpr float kFloorZ = 4.0f;      // a few u below the spin-cube bottoms (z=0)
 constexpr float kFloorSpan = 120.0f; // covers the cluster + grid, short of orbit
 constexpr float kFloorThickness = 4.0f;
-// Light neutral gray (like shape_debug's proven floor) so the cast shadows —
+// Light neutral gray (like shape_debug's floor) so the cast shadows —
 // which drop to ambient — read as distinct dark patches. A dark floor washes
 // the shadows out (shadowed floor ≈ unlit floor → no contrast).
 constexpr Color kFloorColor{150, 152, 160, 255};
@@ -505,8 +503,8 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
 // ENTITY_CANVAS_TO_FRAMEBUFFER composites. Rides re-voxelize — the sole shipped
 // detached SO(3) renderer, where SYSTEM_REBUILD_DETACHED_VOXELS re-fills
 // the private pool at the full rotation's cell positions each frame — not plain
-// DETACHED's single-canvas faceDeformationMatrixSO3 deform, whose off-snap
-// degradation produced past artifacts. Reads cleanly at every pose.
+// DETACHED's single-canvas faceDeformationMatrixSO3 deform, which degrades
+// off-snap. Re-voxelize reads cleanly at every pose.
 
 void spawnDetachedVoxelObject(
     int index, vec3 worldPos, vec3 spinAxis, float spinRate, Color color
@@ -857,7 +855,7 @@ void spawnSmallZoomRepro() {
 
     // GRID twin of the same world extent — the size reference. GRID re-rasterizes
     // into the shared world pool, so its apparent size is always worldExtent ×
-    // zoom (no cubeSub factor); the detached subject must match it after the fix.
+    // zoom (no cubeSub factor); the detached subject must match it.
     IREntity::createEntity(
         C_LocalTransform{kGridPos},
         C_RotationMode{RotationMode::GRID},
@@ -1172,9 +1170,9 @@ void registerArgs() {
     );
 }
 
-// Read the parsed flags back into g_settings after IREngine::init. Replaces the
-// retired hand-rolled parseArgs; the trailing sweep latch (disable auto-yaw)
-// must run before readConfig() so config.lua can't re-enable it.
+// Read the parsed flags back into g_settings after IREngine::init. The
+// trailing sweep latch (disable auto-yaw) must run before readConfig() so
+// config.lua can't re-enable it.
 void applyArgs() {
     IRArgs::Parser &args = IREngine::args();
     g_settings.cameraYaw_ = args.getFloat("--yaw");
@@ -1203,13 +1201,13 @@ void applyArgs() {
     }
     if (args.getFlag("--solo-revox")) {
         g_settings.soloRevox_ = true;
-        // The solo harness spawns no floor to depth-sort against, and the
-        // step-0 GL evidence (committed crops) was captured on the screen-locked
-        // overlay path — keep the lone L-prism screen-locked rather than
-        // inheriting the world-place default.
+        // The solo harness spawns no floor to depth-sort against, and its
+        // committed reference crops are of the screen-locked overlay path —
+        // keep the lone L-prism screen-locked rather than inheriting the
+        // world-placed default.
         g_settings.screenLockDetached_ = true;
     }
-    // --only accepts the comma-separated group list in one token; the legacy
+    // --only accepts the comma-separated group list in one token; a
     // repeated-flag form collapses to the last value under the single parse.
     if (args.wasProvided("--only")) {
         g_settings.onlyGroups_ |= parseSpawnGroups(args.getString("--only").c_str());
@@ -1976,12 +1974,12 @@ void initEntities() {
         {70, 210, 210, 255},
     };
     // World-placed canaries must clear the floor slab
-    // (z ∈ [kFloorZ ± kFloorThickness/2] = [2, 6]): at the legacy z = 0 a
+    // (z ∈ [kFloorZ ± kFloorThickness/2] = [2, 6]): at z = 0 a
     // spinning 10³ cube (rotated half-diagonal 5√3 ≈ 8.66) sweeps into the
     // band and reads as sunk through the floor. z = -8 keeps the full SO(3)
-    // sweep above the floor top (max extent z ≈ 0.66 < 2). The legacy z is
-    // kept under --screen-lock-detached so the opt-out scene stays
-    // byte-identical to the legacy default.
+    // sweep above the floor top (max extent z ≈ 0.66 < 2). Screen-locked
+    // canaries never depth-sort against the floor, so --screen-lock-detached
+    // keeps z = 0 and its reference scene stays byte-identical.
     const float canaryZ = g_settings.screenLockDetached_ ? 0.0f : -8.0f;
     for (int i = 0; i < detached; ++i) {
         const int col = i % cols;
@@ -2048,7 +2046,7 @@ void initEntities() {
         );
     }
 
-    // Step-0 isolation: the L-prism above is the entire scene.
+    // Solo isolation: the L-prism above is the entire scene.
     if (g_settings.soloRevox_) {
         IR_LOG_INFO("canvas_stress: --solo-revox — single rotated DETACHED_REVOXELIZE L-prism");
         return;

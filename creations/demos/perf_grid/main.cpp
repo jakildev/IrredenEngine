@@ -489,8 +489,7 @@ bool g_noOverlay = false;
 // --auto-profile to measure the per-voxel cull's capture in the regime where the
 // WHOLE frustum is legally cullable — with shadows on, visibleVoxelCount is
 // dominated by off-screen shadow feeders the cull must not drop, so the ratio
-// understates the mechanism. This is the baseline number the widened-domain
-// feeder-occlusion follow-on needs.
+// understates the mechanism.
 bool g_noSunShadows = false;
 IRRender::DebugOverlayMode g_debugOverlay = IRRender::DebugOverlayMode::NONE;
 // --no-per-voxel-occlusion: with --occlusion-cull on, disable ONLY the

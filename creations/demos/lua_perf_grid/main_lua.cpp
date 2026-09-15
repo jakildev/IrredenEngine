@@ -159,7 +159,7 @@ void registerArgs() {
 // Read the parsed flags into g_autoWarmupFrames + g_autoProfileFrames +
 // g_cliOverrides. Runs inside the lua-bindings callback (which fires during
 // init, after the parse) so g_cliOverrides is populated before
-// applyCliOverrides() consumes it. Replaces the retired hand-rolled parseArgs.
+// applyCliOverrides() consumes it.
 void applyArgs() {
     const IRArgs::Parser &args = IREngine::args();
     // registerLuaBindings() builds the RENDER pipeline — including the
@@ -419,9 +419,8 @@ void registerLuaBindings() {
         // C_WorldTransform.translation_. Mirrors PERIODIC_IDLE_POSITION_OFFSET
         // for the C++ perf_grid demo, but reads the Lua-codegen-produced
         // C_LuaWaveState instead of C_PeriodicIdle. Without this bridge the
-        // wave runs but never reaches the rendered position (the legacy
-        // C_PositionOffset3D path is retired, so a creation-side
-        // writer is the only way to drive per-frame additive translation).
+        // wave runs but never reaches the rendered position: a creation-side
+        // writer is the only way to drive per-frame additive translation.
         const IRSystem::SystemId luaWaveOffsetId =
             IRSystem::createSystem<C_LuaWaveState, C_Modifiers>(
                 "LuaWaveStateToOffset",

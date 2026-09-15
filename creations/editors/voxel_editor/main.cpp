@@ -129,13 +129,12 @@ using namespace IRMath;
 
 namespace IRVoxelEditor {
 
-// Scene + palette config (kept as named constants so the editor never
-// inlines a hardcoded dimension — the architect direction
-// calls out that the size be configurable per scene).
+// Scene + palette config, kept as named constants so the editor never
+// inlines a hardcoded dimension: the size is configurable per scene.
 //
 // The editable grid dimensions are runtime-configurable via --scene-size W H D
 // (the ant needs 20³, the tree ~26 tall). g_editableSceneSize /
-// g_editableSceneOrigin default to the historical 16³ scene and are overwritten
+// g_editableSceneOrigin default to the 16³ scene and are overwritten
 // in main() after arg parse. deriveSceneOrigin keeps the scene centred in X/Y
 // and pins the seed ground plane (local z == size.z-1) at world z == 3 for any
 // height, so authoring recipes and probe cells stay height-agnostic.
@@ -168,11 +167,10 @@ constexpr Color kBoneColors[kBoneSwatchCount] = {
     Color{60, 200, 220, 255},
 };
 
-// Per-stroke undo record. One record per click; per-voxel drag-paint
-// is a follow-up — v1 commits one record per single-voxel place/erase
-// event. The "stroke" abstraction is still per-architect (D3) so a
-// follow-up that adds drag-paint can fold many edits into one record
-// without rewiring undo replay.
+// Per-stroke undo record. One record per click — each single-voxel
+// place/erase event commits one record — but the unit is a stroke so
+// drag-paint can fold many edits into one record without rewiring undo
+// replay.
 struct UndoEdit {
     IREntity::EntityId voxelSet_;
     ivec3 localIdx_;
@@ -187,7 +185,7 @@ struct UndoRecord {
     }
 };
 
-// Per-stroke byte budget with whole-stroke eviction (D3b). One mebibyte
+// Per-stroke byte budget with whole-stroke eviction. One mebibyte
 // is enough headroom for a 1024-edit stroke (24 KiB) to live ~40 strokes
 // deep before the oldest evicts. Applied per frame: each animation frame
 // has its own independent undo stack capped at this limit; total in-memory
@@ -195,10 +193,9 @@ struct UndoRecord {
 constexpr std::size_t kUndoByteBudget = 1u << 20;
 
 // Reserve capacity for the per-stroke edits vector at stroke-begin so
-// the per-voxel write hot path doesn't allocate (D3-aligned: the
-// architect's reference shape pre-sizes the vector at mouse-down with
-// the brush AABB). The brush is single-voxel today; the reserve is a
-// high-water-mark for the future drag-paint extension.
+// the per-voxel write hot path doesn't allocate. The brush is
+// single-voxel; the reserve is a high-water-mark sized for a drag-paint
+// stroke.
 constexpr std::size_t kUndoStrokeReserve = 1024;
 
 // Module-level state captured into systems via SystemParams. Holds the
@@ -347,10 +344,10 @@ constexpr IRVideo::GuiInputEvent kPickVoxelEvents[] = {
     {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(800, 450)},
 };
 
-// --- Phase 0 mechanism probes --------------------------------------
-// De-risk the auto-authoring premise before building session infrastructure:
-// prove keyboard→command dispatch, world→screen click mapping, and measure the
-// A/D binding overload — all through the live GUI harness on the seed scene.
+// --- Mechanism probes ----------------------------------------------
+// Prove the auto-authoring premise the session infrastructure rests on:
+// keyboard→command dispatch, world→screen click mapping, and the A/D binding
+// overload — all through the live GUI harness on the seed scene.
 // These shots append after the stable framings so existing labels and the
 // screen→world regression baseline (kPickVoxelShotIndex) stay untouched.
 
@@ -578,7 +575,7 @@ constexpr IRVideo::GuiTestShot kGuiTestShots[] = {
     // close half restores the hidden state they expect.
     {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_help_overlay_open"}, kHelpOverlayOpenEvents, 2},
     {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_help_overlay_closed"}, kHelpOverlayCloseEvents, 2},
-    // Phase 0 probes, appended after the stable shots so their indices
+    // Mechanism probes, appended after the stable shots so their indices
     // stay fixed. The eight mapping-accuracy shots come first (clean read-only
     // picks), then the Ctrl+S dispatch and A/D-overload shots (both mutate state).
     {{2.0f, IRMath::vec2(0.0f), 0.0f, "editor_probe_map_0"}, &g_probeMapMoves[0], 1},
@@ -612,7 +609,7 @@ constexpr int kPickVoxelShotIndex = 5;
 // input-free idle shot.
 constexpr int kHelpOverlayOpenShotIndex = kPickVoxelShotIndex + 1;
 constexpr int kHelpOverlayClosedShotIndex = kHelpOverlayOpenShotIndex + 1;
-// Phase 0 / erase-fill probe shot indices. Map shots occupy
+// Mechanism / erase-fill probe shot indices. Map shots occupy
 // [start, start+count); the erase probe, then the dispatch and overload shots
 // follow. Derived from the preceding shot index so they track any reordering of
 // the stable shots.
@@ -809,7 +806,7 @@ bool evaluatePanThenCtrlBalanced(const void *, std::string &actual) {
 // recipe-build time — then evaluates the segment's occupancy assertions. The
 // write is idempotent across the shot's frames and lands before the harness's
 // event phase on the same tick, so the scheduled MOVE injects the fresh pixel
-// (same ordering the Phase 0 probe-map shots rely on).
+// (same ordering the probe-map shots rely on).
 void onSessionAssertFrame(int shotIndex, bool isCaptureFrame) {
     if (shotIndex < 0 || shotIndex >= static_cast<int>(g_session.segments_.size()))
         return;
@@ -845,7 +842,7 @@ void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
     }
     if (shotIndex < 0 || shotIndex >= kNumGuiTestShots)
         return;
-    // Phase 0 probe 2: fill this probe-map shot's cursor move with the
+    // Fill this probe-map shot's cursor move with the
     // pixel worldPos3DToMouseScreenPx computes for the target cell at the shot's
     // live camera state. This runs before the harness's event phase on the same
     // tick, so the frame-0 MOVE injects the freshly-computed pixel; the write is
@@ -1047,7 +1044,7 @@ void commitStroke() {
     g_editor.pendingStroke_.edits_.clear();
     g_editor.pendingStroke_.edits_.reserve(kUndoStrokeReserve);
 
-    // Whole-stroke eviction from the front (D3b). Per-record eviction
+    // Whole-stroke eviction from the front. Per-record eviction
     // would split a stroke; Ctrl-Z partway through a half-evicted
     // stroke would only restore part of it.
     while (g_editor.undoTotalBytes_ > kUndoByteBudget && !g_editor.undoRecords_.empty()) {
@@ -3738,8 +3735,8 @@ void initEntities() {
         );
     }
 
-    // F-0.5 Phase 1 gizmo primitives — kept around the perimeter as
-    // visual references for the gizmo render pass.
+    // Gizmo primitives around the perimeter: visual references for the
+    // gizmo render pass.
     if (!sessionScene) {
         IREntity::EntityId translateGizmo = IRPrefab::Gizmo::createTranslateGizmo();
         IREntity::getComponent<C_LocalTransform>(translateGizmo).translation_ =
@@ -3777,8 +3774,8 @@ void initEntities() {
     // (default color, alpha=255 so cells are active at start) then
     // every voxel is deactivated so the user starts from an empty
     // scene. A single floor row stays activated as a "ground" for the
-    // first click to land on. Architect D1: the size is a named
-    // constant on the editor side, not hardcoded inline.
+    // first click to land on. The size is a named constant on the
+    // editor side, not hardcoded inline.
     g_editor.editableVoxelSet_ = IREntity::createEntity(
         C_LocalTransform{IRVoxelEditor::g_editableSceneOrigin},
         C_VoxelSetNew{IRVoxelEditor::g_editableSceneSize, Color{200, 200, 210, 255}}
@@ -3812,7 +3809,6 @@ void initEntities() {
         );
     }
 
-    // Canvas setup (unchanged from the F-0.5 baseline).
     IREntity::EntityId mainCanvas = IRRender::getActiveCanvasEntity();
     const ivec2 canvasSize = IREntity::getComponent<C_TriangleCanvasTextures>(mainCanvas).size_;
     IREntity::setComponent(mainCanvas, C_TrixelCanvasRenderBehavior{});
@@ -3828,9 +3824,9 @@ void initEntities() {
     IRRender::setSunDirection(vec3(0.35f, 0.85f, -0.4f));
 
     // Palette panel — fixed top-left dock at 200×220 trixels. The 16
-    // swatches lay out in a 4×4 grid below the title. Architect D4:
-    // mutable palette + voxels store raw RGBA, so editing a swatch
-    // (future workflow) does not repaint already-placed voxels.
+    // swatches lay out in a 4×4 grid below the title. The palette is
+    // mutable and voxels store raw RGBA, so editing a swatch does not
+    // repaint already-placed voxels.
     // Palette docks to the bottom-left of the GUI canvas so it sits
     // below the iso scene render and never covers the edit target.
     // Sized to fit a 4×4 grid of 22-trixel swatches inside a
@@ -4135,7 +4131,7 @@ void initEntities() {
             IRPrefab::GuiTest::picksVoxel(kScenePickExpected, "scene_pick"),
         };
     }
-    // Phase 0 probe 2: each probe-map shot asserts the ray landed on the
+    // Each probe-map shot asserts the ray landed on the
     // target cell's iso COLUMN (not the exact voxel) — mapping accuracy is a 2D
     // screen-projection property, and the seed scene's rig geometry can occlude
     // the ground cell along the aimed column. Target = scene origin + local cell

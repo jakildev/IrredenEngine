@@ -15,12 +15,10 @@
 //   3. The discrete boundary + timer events firing alongside the continuous
 //      query (logged on the tick they cross).
 //
-// Follow-ups (tracked on the issue, intentionally out of scope here):
-//   - Key-scrubbing pause / timeScale (needs enum-typed IRCommand entries).
-//   - Deterministic sim-seek so render-verify can pin per-phase references; a
-//      wall-clock fixed-step loop makes a time-varying scene non-deterministic
-//      by frame count, so no reference images are committed (cf. the
-//      wall-clock lighting_sun_orbit demo, which likewise commits none).
+// No reference images are committed: a wall-clock fixed-step loop makes a
+// time-varying scene non-deterministic by frame count, so render-verify has
+// no per-phase reference to pin (the wall-clock lighting_sun_orbit demo
+// likewise commits none).
 
 #include <irreden/ir_engine.hpp>
 #include <irreden/ir_entity.hpp>

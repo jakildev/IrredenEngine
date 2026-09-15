@@ -621,11 +621,11 @@ void assertPlacementParity(
             zoom
         );
 
-        // Tolerances calibrate to the measured post-fix residuals so any
-        // regression toward the fixed bug classes (whole-texel anchor drift,
+        // Tolerances calibrate to the measured residuals so any
+        // regression toward the known bug classes (whole-texel anchor drift,
         // camera-offset leaks — tens of px, and the half-cell rotation-anchor
         // shift of the revox inverse resample, ~4*zoom px in x) trips loudly:
-        // both detached flavors now track their GRID twin
+        // both detached flavors track their GRID twin
         // within the band-centroid lattice quantization + sub-texel snap bound
         // (~1.3*zoom px). The revox pair carries one extra DOCUMENTED term on
         // y only: GRID forward-rounds the totem's half-integer z coordinates

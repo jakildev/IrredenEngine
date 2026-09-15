@@ -427,7 +427,7 @@ endfunction()
 #            dylibs next to it and rewrites the load commands to
 #            @executable_path. NOTE: this is a SHALLOW (direct-dependency)
 #            bundle — transitive Homebrew deps (e.g. ffmpeg's codec libs) are
-#            NOT yet walked, so clean-box self-containment is follow-up work;
+#            NOT walked, so a bundle is not clean-box self-contained;
 #            verify a macOS bundle via cross-host smoke / the human.
 function(irreden_package_target target)
     set(_exedir "$<TARGET_FILE_DIR:${target}>")
