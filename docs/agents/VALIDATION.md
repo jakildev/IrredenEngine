@@ -29,6 +29,7 @@ prove is not done until one exists.
 | Perf gate | frame-time cells against the committed perf baseline | `bash scripts/perf/perf_grid_matrix.sh` then `scripts/perf/compare_perf_runs.py` | perf-gate.yml |
 | Plan lint | a `## Plan` comment is structurally sound | `fleet-plan-lint <issue> [--repo game]` | none (planner-time) |
 | PR-body acceptance lint | each closing issue's criteria have evidence rows before publication | `fleet-pr-body-lint <issue> --body-file .pr-body.md [--repo game]` | fleet-tests.yml |
+| Open-PR overlap | this branch's shared paths with every open PR are trial-merged, upstream PRs told apart by ancestry, and no `docs/agents/**` / `.claude/**` competitor or stale stack base remains before publication | `fleet-pr-overlap --base <branch> [--repo game]` — quote its rows and `VERDICT:` line; 0 clean, 1 overlap, 3 block, 2 could not grade | fleet-tests.yml |
 | Role/skill contract | every skill wrapper answers its shared flow's delta keys | `fleet-validate-roles` | fleet-tests.yml |
 | Label state machine | a label transition is a declared edge | `fleet-transition <edge> <N>` | fleet-tests.yml |
 | Rules sweep | a `.claude/rules/` detector over the tree without the `creations/` walker trap | `fleet-rules-sweep --pattern '<regex>' [--glob '<glob>'] [<scope>]` | none |
