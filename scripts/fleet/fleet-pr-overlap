@@ -236,7 +236,7 @@ def resolve_self(snapshot, args):
 
 
 def fetch_pr_head(row):
-    """Fetch the PR head and pin it to the snapshot's OID; returns the OID."""
+    """Fetch the PR head and require it to be the snapshot's OID."""
     number = row["number"]
     rc, _, err = git_status("fetch", "--quiet", "origin", f"refs/pull/{number}/head")
     if rc != 0:
@@ -246,7 +246,6 @@ def fetch_pr_head(row):
         raise OverlapError(
             f"#{number} head moved during the run ({row['headRefOid']} → {fetched}); re-run"
         )
-    return fetched
 
 
 def widened_paths(row, default_tip):
@@ -261,30 +260,30 @@ def widened_paths(row, default_tip):
     return paths
 
 
-def hunk_ranges(base, head, path):
-    """Base-line ranges each `-U0` hunk of base..head replaces in `path`."""
-    ranges = []
-    out = git("diff", "-U0", base, head, "--", path)
-    for match in re.finditer(r"^@@ -(\d+)(?:,(\d+))? ", out, flags=re.M):
-        start = int(match.group(1))
-        count = int(match.group(2)) if match.group(2) is not None else 1
-        ranges.append((start, start + max(count, 1) - 1))
-    return ranges
-
-
 def conflict_paths(number, head_oid, other_oid, shared):
-    """Shared paths whose edited base-line ranges intersect on the two sides."""
-    rc, out, err = git_status("merge-base", head_oid, other_oid)
-    if rc != 0:
-        raise OverlapError(f"#{number} git merge-base {head_oid} {other_oid}: {err}")
-    base = out.strip()
-    conflicts = set()
-    for path in sorted(shared):
-        ours = hunk_ranges(base, head_oid, path)
-        theirs = hunk_ranges(base, other_oid, path)
-        if any(a0 <= b1 and b0 <= a1 for a0, a1 in ours for b0, b1 in theirs):
-            conflicts.add(path)
-    return conflicts
+    """Shared paths git's trial merge of the two heads leaves conflicted.
+
+    The verdict is the pair (exit, stdout): exit 0 is clean; exit 1 with a
+    40-hex tree OID on line 1 lists the conflicted paths up to the first blank
+    line; anything else — an unresolvable head also exits 1, with nothing on
+    stdout — cannot be graded. A conflicted path outside the shared set is
+    one neither side's own delta touches, inherited from commits the other
+    head carries from the default branch, so it is not the competitor's.
+    """
+    rc, out, err = git_status("merge-tree", "--write-tree", "--name-only", head_oid, other_oid)
+    if rc == 0:
+        return set()
+    lines = out.splitlines()
+    if rc == 1 and lines and OID_RE.match(lines[0]):
+        conflicts = set()
+        for line in lines[1:]:
+            if not line:
+                break
+            conflicts.add(line)
+        return conflicts & shared
+    raise OverlapError(
+        f"#{number} git merge-tree --write-tree {head_oid} {other_oid} exited {rc}: {err}"
+    )
 
 
 def print_rows(rows):
@@ -351,7 +350,7 @@ def grade(args):
                 f"pass --base {row['headRefName']} or rebase"
             )
         conflicts = conflict_paths(number, head_oid, other, shared)
-        for path in shared | conflicts:
+        for path in shared:
             rows.append((number, path, "conflicts" if path in conflicts else "clean", ""))
 
     closing = take_snapshot(gh)
@@ -377,7 +376,10 @@ def main():
     )
     parser.add_argument("--base", help="branch on origin the PR targets (default: self PR's base)")
     parser.add_argument("--repo", help="engine|game|owner/repo; must match origin")
-    parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
+    parser.add_argument(
+        "--limit", type=int, default=DEFAULT_LIMIT,
+        help="open-PR enumeration cap; reaching it is an error, not a truncation",
+    )
     parser.add_argument("--pr-json", help="open-PR rows from a file instead of gh (tests)")
     parser.add_argument("--self-pr", type=int, help="this branch's own open PR number")
     parser.add_argument("--no-self", action="store_true", help="treat no open PR as self")
