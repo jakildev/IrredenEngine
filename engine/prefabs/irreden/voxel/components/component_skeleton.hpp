@@ -12,10 +12,9 @@
 // kBufferIndex_LocalVoxelPositions, slot 17) to `slotBase + bone_id`,
 // where slotBase is the skeleton's contiguous block in EntityTransformBuffer
 // (binding kBufferIndex_EntityTransforms, slot 18). Binding 21
-// (kBufferIndex_JointTransforms) is SDF-shapes-path scaffolding only — not
+// (kBufferIndex_JointTransforms) belongs to the SDF-shapes path and is not
 // used for voxel skinning. The index space is stable across saves and
-// severance — see "Severance leaves holes" — so re-baking voxel
-// bone_ids is not required when a joint detaches.
+// detached joints, so voxel bone_ids never need a re-bake.
 //
 // The SoA C_JointHierarchy is the deprecated alternative; rigs use
 // C_Skeleton + per-joint entities.
@@ -35,18 +34,12 @@
 //     sound emitters, particle attachments. The whole point of the
 //     entity-based model is that any ECS component composes onto a joint.
 //
-// ## Severance leaves holes, not shifts
+// ## Holes, not shifts
 //
-// `IRPrefab::Skeleton::severJoint(rigRoot, joint)` (designed, not
-// implemented) removes the CHILD_OF relation
-// between `joint` and `rigRoot`, walks descendants (also C_Joint, also
-// orphaned), and bakes the world position of each voxel skinned to a
-// severed bone into a new free-flying C_VoxelSetNew. The slot in
-// `joints_` is left as kNullEntity rather than spliced out — this keeps the
-// bone-index space stable so voxel `bone_id`s remain valid without a
-// re-bake pass. The matching slot in the GPU SSBO is uploaded as identity
-// so any pre-severance voxels still referencing the slot render in their
-// last bound world transform until the asset is reloaded.
+// A `kNullEntity` entry in `joints_` is a hole: the slot keeps its index
+// rather than being spliced out, so the bone-index space stays stable and
+// voxel `bone_id`s remain valid. UPDATE_JOINT_MATRICES identity-fills the
+// hole's transform slot, so voxels still referencing it are not deformed.
 //
 // ## Bind pose
 //
@@ -58,8 +51,8 @@
 // Populate it from a `.rig` via `IRPrefab::Rig::bindPose(rig)`, which composes
 // the JNTS rest chain — NOT the `.rig` BIND chunk, which stores named
 // attachment points (`C_BindPoints`) unrelated to per-joint skinning despite
-// the chunk name. The slot order matches `joints_`, so a kNullEntity severance
-// hole keeps its unused bind slot.
+// the chunk name. The slot order matches `joints_`, so a kNullEntity hole
+// keeps its unused bind slot.
 
 #include <irreden/entity/ir_entity_types.hpp>
 #include <irreden/ir_math.hpp>

@@ -5,8 +5,8 @@
 // authored local voxel positions through an entity's SQT world transform
 // to integer world-grid cells, and back (the inverse resample).
 //
-// Lives outside the system header so unit tests can exercise the math
-// without setting up an EntityManager + canvas + voxel pool.
+// Pure math over an SQT and a position: no EntityManager, canvas, or
+// voxel-pool dependency, so it is callable from any context.
 //
 // Semantics:
 // - Identity transform (rotation = (0,0,0,1), scale = (1,1,1)): returns

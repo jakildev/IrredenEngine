@@ -59,8 +59,8 @@ inline constexpr bool ownsEntityCanvas(IRComponents::RotationMode mode) {
 ///
 /// The mismatch case is load-bearing, not defensive. `spawnPrefab`
 /// deliberately tags an entity into a canvas-owning mode *without*
-/// allocating when it runs with no `RenderManager` (headless tooling,
-/// unit tests) and documents this call as the recovery once one exists.
+/// allocating when it runs with no `RenderManager` and documents this
+/// call as the recovery once one exists.
 /// Gating the early return on the mode alone would make that recovery a
 /// no-op and strand the entity canvas-less.
 ///

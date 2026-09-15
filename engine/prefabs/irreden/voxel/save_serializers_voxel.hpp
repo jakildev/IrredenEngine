@@ -38,8 +38,8 @@ template <> struct SaveSerialize<IRComponents::C_JointName> {
 /// snapshot restores entity ids **exact** (they never recycle — see
 /// `world_snapshot.hpp`), which is what makes a stored id meaningful across a
 /// save at all. The index of an entry is the bone_id baked into
-/// `C_Voxel.bone_id_`, so slot order is load-bearing and a severance hole
-/// (`kNullEntity`) must survive the round trip rather than being compacted
+/// `C_Voxel.bone_id_`, so slot order is load-bearing and a `kNullEntity`
+/// hole must survive the round trip rather than being compacted
 /// away — writing the vector verbatim is what preserves that.
 ///
 /// `bindPose_` is parallel to `joints_` but is NOT required to be the same

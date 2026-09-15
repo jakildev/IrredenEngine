@@ -22,8 +22,8 @@
 //   cells, not a 2D deform, so asymmetric solids read as true-3D.
 //
 // Entities without `C_RotationMode` are implicitly GRID — consumers
-// default to GRID when the component is absent so non-prefab entities
-// (test scaffolding, ad-hoc createEntity callers) are GRID.
+// default to GRID when the component is absent, so non-prefab entities
+// are GRID.
 // `IRPrefab::Prefab::spawnPrefab` always attaches the
 // component so prefab-driven entities are discoverable by archetype
 // queries.

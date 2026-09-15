@@ -31,10 +31,10 @@
 // `PROPAGATE_CHUNK_MEMBERSHIP` system, then injects the manager
 // pointer with `IRPrefab::Chunk::setMembershipMigrationManager` (or
 // directly via `getSystemParams<System<PROPAGATE_CHUNK_MEMBERSHIP>>`).
-// When the manager pointer is null — single-chunk creations or
-// unit tests — the system is a no-op and the per-entity tick still
-// updates `C_ChunkMembership` locally so consumers reading it stay
-// consistent.
+// When the manager pointer is null (no residency map, as in a
+// single-chunk creation) the migration step is a no-op and the
+// per-entity tick still updates `C_ChunkMembership` locally so
+// consumers reading it stay consistent.
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
@@ -63,7 +63,7 @@ template <> struct System<PROPAGATE_CHUNK_MEMBERSHIP> {
         IRPrefab::Chunk::ChunkKey newKey_;
     };
 
-    /// Creation-supplied; null in unit tests + single-chunk creations.
+    /// Creation-supplied; may be null (no residency map).
     /// The system's tick still rewrites `C_ChunkMembership` when the
     /// manager is null, so consumers reading membership stay consistent
     /// even without a residency map.
