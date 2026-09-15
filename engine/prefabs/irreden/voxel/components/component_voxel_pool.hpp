@@ -873,9 +873,8 @@ struct C_VoxelPool {
         }
     }
 
-    // Backing for the two deprecated no-argument evictors: notify the whole
-    // allocated prefix, which is the strongest eviction the old signature can
-    // express.
+    // Backing for the two deprecated no-argument evictors: with no range to
+    // narrow to, the whole allocated prefix is the only correct notification.
     void markAllocatedPrefixCullBoundsDirty() {
         markCullBoundsDirty(0, static_cast<std::size_t>(m_voxelPoolIndex));
     }

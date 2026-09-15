@@ -470,10 +470,11 @@ template <> struct System<REBUILD_GRID_VOXELS> {
         }
 
         // Author the span: surface cells first, then interior while slots
-        // remain (the span-cap drop policy above). Face-occlusion bits come
-        // from dest-grid adjacency — the rotated-frame generalization
-        // introduced it; non-face flag bits (AO contrib, emissive) ride along
-        // from the source voxel.
+        // remain (the span-cap drop policy above). Face-occlusion bits are
+        // derived from dest-grid adjacency, never copied: a source voxel's
+        // bits describe its neighbours in the source lattice, which the
+        // rotation does not preserve. Every other flag bit (AO contrib,
+        // emissive) is copied from the source voxel.
         int written = 0;
         auto writeCell = [&](int lin) {
             const int x = lin % destDims.x;
@@ -615,9 +616,8 @@ template <> struct System<REBUILD_GRID_VOXELS> {
 // because the GRID body carries a dozen pieces of reused per-frame scratch —
 // hoisting them into a shared struct just reinvents `System<N>`.
 //
-// Cost: component-less sets now pay the same cull-gated per-frame
-// re-rasterize an explicit `C_RotationMode{GRID}` set already pays — no new
-// cost CLASS, but it is new cost for that population, and the identity arm's
+// Cost: a component-less set pays the same cull-gated per-frame re-rasterize
+// as an explicit `C_RotationMode{GRID}` set, and the identity arm's
 // per-voxel face-occupancy recompute dominates it. Measured on shape_debug
 // (macOS/Metal, 300 frames, 8 component-less sets): ~0.19-0.26 ms per UPDATE
 // tick for this system, ~0.13 ms/frame at the demo's tick rate, against an

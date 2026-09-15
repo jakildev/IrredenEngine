@@ -28,13 +28,12 @@
 // world space are the exception: they must ask `anchorLocalCenter()` rather
 // than assuming a convention.
 //
-// Not yet interpreted by `C_ColliderIso3DAABB`, SDF shapes, or
-// `C_EntityCanvas`; those migrate per this enum when touched. The
-// detached-canvas path does not support GROUND — its extent measurement is
-// `abs()`-about-origin and assumes CENTER. That is guarded at the
-// re-voxelize consumer: `SYSTEM_REBUILD_DETACHED_VOXELS` asserts the pool
-// is origin-centered, so GROUND and CORNER both fire there instead of
-// silently orbiting their anchor.
+// Not interpreted by `C_ColliderIso3DAABB`, SDF shapes, or
+// `C_EntityCanvas`. The detached-canvas path does not support GROUND — its
+// extent measurement is `abs()`-about-origin and assumes CENTER. That is
+// guarded at the re-voxelize consumer: `SYSTEM_REBUILD_DETACHED_VOXELS`
+// asserts the pool is origin-centered, so GROUND and CORNER both fire there
+// instead of silently orbiting their anchor.
 
 #include <irreden/ir_math.hpp>
 

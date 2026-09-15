@@ -22,11 +22,10 @@ namespace IRComponents {
 ///               `IRPrefab::Voxel::recomputeFaceOccupancy` (see
 ///               `voxel/face_occupancy.hpp`).
 ///
-/// Bits 0..1 keep their pre-B2 positions so .vxs files saved before the
-/// face-occlusion bits existed still round-trip semantically — the old
-/// `kInteractive` bit (formerly bit 2) was never written by engine code
-/// (default ctor set only `kAoContrib`), so reusing bit 2 for the first
-/// face bit is safe for legacy saves.
+/// The byte is stored verbatim in `.vxs` records, so the bit positions are
+/// part of the on-disk format: bits 0..1 are fixed, and a record that
+/// carries zeros in bits 2..7 decodes as "no face occluded", which is the
+/// reading every save without face bits needs.
 ///
 /// The GPU mirror reads the same byte at offset 5 of the 12 B record
 /// (`(materialFlagBone >> 8) & 0xFFu` in stage 1). Face-bit indices
