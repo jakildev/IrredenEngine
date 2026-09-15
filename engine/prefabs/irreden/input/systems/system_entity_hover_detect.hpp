@@ -75,10 +75,9 @@ template <> struct System<ENTITY_HOVER_DETECT> {
         dispatchClicks(currentHovered);
     }
 
-    // Hover enter/leave dispatch. Kept separate from beginTick so it is
-    // reachable without a GL context — beginTick's three resolution sources
-    // go through IRRender/IRInput manager globals a headless test cannot
-    // stand up, so this is the half the gtests drive.
+    // Hover enter/leave dispatch. Callable without a GL context: beginTick's
+    // three resolution sources go through the IRRender/IRInput manager
+    // globals; this half does not.
     void applyHoverTransition(IREntity::EntityId currentHovered) {
         if (currentHovered == previousHoveredEntity_) {
             return;

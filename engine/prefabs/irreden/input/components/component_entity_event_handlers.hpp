@@ -88,7 +88,7 @@ struct C_EntityEventHandlers {
     // Drops every registered handler, destroying the sol::protected_functions
     // they hold. Shutdown does not depend on it (World teardown ordering owns
     // that); it is the explicit "unsubscribe everything" verb for creations
-    // swapping scripts mid-session and the tests' known-empty baseline.
+    // swapping scripts mid-session.
     // nextId_ is left as-is: ids never recycle within a world, so there is no
     // id-reuse hazard to guard.
     void clear() {

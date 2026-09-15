@@ -80,9 +80,9 @@ template <> struct System<PROPAGATE_TRANSFORM> {
     // fallback — lives in IRJob::parallelChunks. Its ParallelTuning
     // defaults are this system's values: parallelize at
     // ≥8 nodes OR ≥4096 rows; split a dominant node into ≥2048-row
-    // chunks targeting ~2 tasks/worker; small nodes stay whole. We pass
-    // a default-constructed tuning here, so the knobs live in one
-    // tested place instead of re-derived inline.
+    // chunks targeting ~2 tasks/worker; small nodes stay whole. This
+    // system passes a default-constructed tuning, so the knobs have a
+    // single home.
 
     // Cached level partition: levels_[d] holds archetype nodes whose
     // parent-chain depth is exactly d. parentWorlds_[d][i] is the

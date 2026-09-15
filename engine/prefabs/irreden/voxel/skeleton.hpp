@@ -4,8 +4,7 @@
 // IRPrefab::Skeleton — skinning helpers over C_Skeleton + its bind pose
 // (C_Skeleton.bindPose_). The transform algebra (SQT compose / inverse) lives
 // in IRMath; this prefab-layer free-function surface joins a joint's live
-// C_WorldTransform to its rest pose. The companion severJoint API documented
-// on C_Skeleton is not implemented.
+// C_WorldTransform to its rest pose.
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
