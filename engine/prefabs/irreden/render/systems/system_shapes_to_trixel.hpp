@@ -14,6 +14,7 @@
 #include <irreden/render/cull_viewport_state.hpp>
 #include <irreden/render/lod_utils.hpp>
 #include <irreden/render/sun_shadow_constants.hpp>
+#include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
 #include <irreden/render/camera.hpp>
 #include <irreden/render/voxel_dispatch_grid.hpp>
 
@@ -349,6 +350,33 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                 1
             );
             IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+
+            if (canvasId == mainCanvas) {
+                const auto bakeSystem = findSystem(BAKE_SUN_SHADOW_MAP);
+                if (bakeSystem != kNullSystemId) {
+                    auto *baker = getSystemParams<System<BAKE_SUN_SHADOW_MAP>>(bakeSystem);
+                    if (auto *casterDepth = baker->prepareAnalyticCasterDepth(frameData_)) {
+                        // A depth-only pass keeps analytic casters independent of
+                        // voxel winners in the visible canvas.
+                        casterDepth->bindAsImage(1, TextureAccess::READ_WRITE, TextureFormat::R32I);
+                        frameData_.passIndex = 0;
+                        shapesFrameDataBuf_->subData(0, sizeof(GPUShapesFrameData), &frameData_);
+                        shapesFrameDataBuf_->bindBase(
+                            BufferTarget::UNIFORM,
+                            kBufferIndex_ShapesFrameData
+                        );
+                        IRRender::device()->dispatchCompute(
+                            static_cast<std::uint32_t>(gridX),
+                            static_cast<std::uint32_t>(gridY),
+                            1
+                        );
+                        IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+                        IRRender::device()->resolveImageAtomicScratch(casterDepth);
+                        canvasTextures.getTextureDistances()
+                            ->bindAsImage(1, TextureAccess::READ_WRITE, TextureFormat::R32I);
+                    }
+                }
+            }
 
             auto &timing = IRRender::gpuStageTiming();
             timing.visibleShapeCount_ = static_cast<std::uint32_t>(gpuShapes.size());

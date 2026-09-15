@@ -32,6 +32,12 @@ that the experimental rendering is ready to become the default.
 
 ## Newly observed during local-triangle validation
 
+- The 225-degree staircase still has triangular teeth with normal fragment
+  reconstruction and shadows disabled (analytic coexistence captures 610/612).
+  Raw-debug capture 611 exactly reproduces historical rectangular capture 585.
+  Resolve occupancy and face-boundary reconstruction; changing display defaults
+  alone does not fix this geometry, and blur is not an acceptable substitute.
+
 - Repeated identical upright captures differ in 104–952 pixels confined to the
   rainbow probe with triangle mode disabled. Investigate color/depth winner
   determinism before treating this probe as a strict pixel reference; the cause
@@ -44,8 +50,18 @@ that the experimental rendering is ready to become the default.
 
 - [Overhead direction controls](lighting-direction-probes.md) expose 3,808 false
   shadow pixels on unblocked GRID staircase treads with the default caster.
-  Source-face casting matches shadows disabled exactly. Establish caster geometry
-  and resolve-normal provenance before correcting coverage; this remains unfixed.
+  Source-face casting matches shadows disabled exactly. [Footprint experiments](analytic-face-shadow-coexistence.md)
+  establish that top-surface splats alone reproduce the error; radius zero removes
+  it but fails box coverage. The default caster remains unfixed. Finite face
+  footprints remain the intended correction, with no blur or normal averaging.
+
+- [Analytic caster coexistence](analytic-face-shadow-coexistence.md) now preserves
+  main-canvas SDF shadows alongside voxel/source-face casting. The detached roof
+  control passes; the GRID outside patch retains an 8-level error and fails.
+  Analytic finite coverage, non-main producers, and the 32 changed plate-edge
+  pixels at three cardinal angles need validation before default adoption.
+  Profile the added SDF depth pass and consolidate traversal in the optimization
+  round after visual correctness.
 
 - [Staircase visibility](staircase-shadow-visibility.md) is corrected: a nearby
   external blocker no longer loses its shadow at tread boundaries. The default
