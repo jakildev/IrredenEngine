@@ -354,7 +354,17 @@ Parallel-agent fleet (tmux + Claude)
   fleet-assert-worktree [agent]  refuse a mutating flow run in the shared main
                                  clone (cwd must be a .claude/worktrees/* tree);
                                  wired into commit-and-push, start-next-task,
-                                 fleet-pr-checkout-detached
+                                 fleet-start-next-task, fleet-pr-checkout-detached
+  fleet-start-next-task [--branch <name>] [--worktree <basename>] [--dry-run]
+                                 executable form of the start-next-task skill
+                                 for per-iteration shutdown and for runtimes
+                                 with no skill invocation (Codex): asserts the
+                                 worktree, refuses tracked modifications or a
+                                 HEAD on no origin/* ref, fetches, then
+                                 checkout -B claude/<basename>-scratch
+                                 origin/master (or claude/<id>-<slug> on the
+                                 old branch when fleet-claim molecule resume
+                                 names a next issue)
   fleet-guard-worktree-edit      PreToolUse hook (Edit|Write|MultiEdit) —
                                  denies an absolute file_path that escapes the
                                  session's fleet worktree (silent main-clone
