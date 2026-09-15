@@ -1,10 +1,9 @@
-// Stage-1 VISIBLE dispatch (#2258 Step B, architect option a′) — Metal twin of
-// c_voxel_to_trixel_stage_1.glsl. A thin wrapper that specializes the shared
-// body at compile time: IR_FEEDER_PASS 0 compiles the body with the feeder
-// tail-read + strided micro-grid textually absent, so this kernel is byte-for-
-// byte master's stage-1 (no runtime predication tax). The kernel name resolves
-// to c_voxel_to_trixel_stage_1 (metalFunctionNameForStage keys off the file
-// stem). The feeder twin is c_voxel_to_trixel_stage_1_feeder.metal.
+// Stage-1 VISIBLE dispatch — Metal twin of c_voxel_to_trixel_stage_1.glsl. A
+// thin wrapper that specializes the shared body at compile time: IR_FEEDER_PASS 0
+// compiles the body with the feeder tail-read + strided micro-grid textually
+// absent (no runtime predication tax). IR_STAGE1_KERNEL_NAME must equal the file
+// stem — metalFunctionNameForStage derives the function name from it. The feeder
+// twin is c_voxel_to_trixel_stage_1_feeder.metal.
 #include "ir_iso_common.metal"
 #include "ir_constants.metal"
 

@@ -1,8 +1,8 @@
 // Shared cardinal-layout micro-cell emit for the sun-shadow RESOLVE scatter
 // kernels — Metal twin of ../ir_resolve_cardinal_emit.glsl (keep byte-identical
 // math). c_resolve_per_axis_screen_depth and c_resolve_world_placed_depth decode
-// differently but end in the same emit; one definition keeps the two resolve
-// routes' footprints from drifting against the BAKE recovery that reads them.
+// differently but end in this one emit, so both resolve routes' footprints agree
+// with the BAKE recovery that reads them.
 //
 // Included by the kernel wrappers AFTER ir_iso_common.metal. Unlike the GLSL
 // twin — which cannot pass an SSBO as an argument and so writes through a
@@ -12,9 +12,8 @@
 // No `#ifndef ..._INCLUDED` self-guard: the function is `static` (internal
 // linkage) and each wrapper includes this file exactly once, so neither in-TU
 // re-inclusion nor a standalone glob-compile can raise a duplicate-symbol
-// conflict — the ir_voxel_face_select.metal idiom. Do NOT switch it to
-// external-linkage `inline`, which is what forces ir_per_axis_lighting.metal
-// to carry a guard.
+// conflict. Do NOT switch it to external-linkage `inline`, which is what forces
+// ir_per_axis_lighting.metal to carry a guard.
 
 // Prerequisite helpers (pos3DtoDistance, pos3DtoPos2DIso, encodeDepthWithFace,
 // faceOffset_2x3, isInsideCanvas). The runtime include resolver is recursive
@@ -23,16 +22,16 @@
 #include "ir_iso_common.metal"
 #include <metal_atomic>
 
-// Emit one micro-cell's two-pixel diamond region (#1724) into the resolve
-// scratch, in the MAIN-canvas cardinal distance layout.
+// Emit one micro-cell's two-pixel diamond region into the resolve scratch, in
+// the MAIN-canvas cardinal distance layout.
 //
 // `viewPos` is the micro-cell already rotated into the cardinal VIEW frame and
 // expressed in subdivision units; `slot`/`flip` are the stored key bits, which
-// ride the encode so polarity survives the resolve bridge (#2207). Emitting the
+// ride the encode so polarity survives the resolve bridge. Emitting the
 // two-pixel region rather than the single origin pixel is load-bearing:
 // roundHalfUp collapses a region's input pixels onto one recovered cell, so a
-// single-pixel write left the resolve texture ~50% sparse — pinhole casters
-// whose shadows dithered with interior gaps.
+// single-pixel write would leave the resolve texture ~50% sparse and casters
+// would shadow with interior gaps.
 //
 // `regionAxis` is the VIEW-frame face axis that picks the diamond region, and
 // is NOT always derivable from `slot`: the per-axis store is already in the

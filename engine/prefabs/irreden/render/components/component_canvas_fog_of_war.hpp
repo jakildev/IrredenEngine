@@ -23,28 +23,15 @@
 // the .r channel carries fog state; the other channels are written 0
 // and unused.
 //
-// v1 scope: the texture and a CPU-side mirror plus a dirty flag the
-// system uses to gate the per-frame `subImage2D` upload. The upload is
-// performed by `VOXEL_TO_TRIXEL_STAGE_1` (#2008) — which also reads the
-// fog to cull unexplored-column voxels and so needs it current — not by
-// `FOG_TO_TRIXEL`, which is now a read-only consumer of the
-// already-uploaded texture. This is the documented exception to the
+// The CPU mirror's dirty flag gates `subImage2D`. VOXEL_TO_TRIXEL_STAGE_1
+// performs the upload before using fog to cull unexplored columns;
+// FOG_TO_TRIXEL is a read-only consumer. This is the documented exception to the
 // "no dirty flags on components" rule —
 // see `.claude/rules/cpp-ecs.md` § "No dirty flags on components".
-// The exception applies because the texture is CPU-authored,
-// GPU-read-only, and a per-cell `subImage2D` would split
-// `revealRadius`'s loop into hundreds of API calls. T-161 evaluated
-// migrating to per-region `subImage2D` and deferred — see
-// `docs/design/fog-of-war-upload-strategy.md` for the analysis, the
-// trigger conditions for revisiting, and the mechanical migration
-// sketch. Population is driver-side: gameplay calls
+// The texture is CPU-authored and GPU-read-only; per-cell uploads would split
+// `revealRadius` into hundreds of API calls. Population is driver-side: gameplay calls
 // `IRPrefab::Fog::setCell` / `IRPrefab::Fog::revealRadius` (see
-// `render/fog_of_war.hpp`) to drive the visibility set directly. LOS
-// ray casting against the occupancy grid (`castLOS`), heightmap-aware
-// LOS, and the visible→explored fade callback (`fadeExplored`) are
-// deferred to follow-up tasks — the fog-of-war foundation here lets
-// the render pass and Lua-side scripts ship before those algorithms
-// land.
+// `render/fog_of_war.hpp`) to drive the visibility set directly.
 //
 // Sized to match the light-occlusion SSBO's 256×256 footprint on the ground
 // plane (256 KiB CPU+GPU) and using the same `[-halfExtent, +halfExtent)`
@@ -114,19 +101,16 @@ constexpr float kFogVisionZCostMirrorUp = -1.0f;
 struct FrameDataFogObservers {
     IRMath::vec4 visionCircles_[kMaxFogVisionCircles] = {};
     std::int32_t visionCircleCount_ = 0;
-    /// Reserved padding lane. Previously the system-stamped
-    /// light-occlusion-grid availability flag for the retired ray+occupancy
-    /// cut variant; `c_fog_to_trixel`'s geometric cross-section cap needs no
-    /// occupancy source, so the lane is unread (kept for the layout).
+    /// Reserved padding lane kept to preserve the std140/Metal layout.
     std::int32_t pad0_ = 0;
     std::int32_t pad1_ = 0;
     std::int32_t pad2_ = 0;
-    /// Per-circle height penalty (#2260), std140-appended AFTER the tail so
-    /// every EXISTING member offset is unchanged — a shader that reads only
+    /// Per-circle height penalty, std140-appended after the tail so
+    /// every preceding member offset is unchanged. A shader that reads only
     /// `visionCircles_` / `visionCircleCount_` (c_voxel_to_trixel_stage_2,
     /// c_voxel_visibility_compact) sees byte-identical bytes and needs no edit.
-    /// `visionCircleHeights_[i]` = (observerZ, zCostUp, zCostDown, freeBand)
-    /// (#2557 generalizes #2260's symmetric `(observerZ, zCost, 0, 0)`): the
+    /// `visionCircleHeights_[i]` = (observerZ, zCostUp, zCostDown, freeBand).
+    /// The
     /// fog reveal adds `zCostUp * max(dzUp - freeBand, 0) + zCostDown *
     /// max(dzDown - freeBand, 0)` to the radial XY distance, where `dzUp =
     /// max(observerZ - z, 0)` and `dzDown = max(z - observerZ, 0)` (iso +Z is
@@ -134,7 +118,7 @@ struct FrameDataFogObservers {
     /// height reveals less at the same XY, asymmetrically and with a
     /// penalty-free band around the observer's height. All-zero (the default
     /// for every existing caller) makes the penalty term exactly 0, so the
-    /// whole struct uploads/decodes byte-identically to the pre-#2260 layout.
+    /// height term is inert for existing callers.
     /// Only the first `visionCircleCount_` entries are read, paired 1:1 with
     /// `visionCircles_`.
     IRMath::vec4 visionCircleHeights_[kMaxFogVisionCircles] = {};
@@ -167,7 +151,7 @@ struct C_CanvasFogOfWar {
     /// the upload payload the system pushes to the `kBufferIndex_FogObservers`
     /// UBO verbatim every frame — small and unconditional, so unlike the grid
     /// texture it needs no dirty flag. Cleared/added via `clearVisionCircles`
-    /// / `addVisionCircle`; empty (count 0) means grid-only (legacy behavior).
+    /// / `addVisionCircle`; empty (count 0) means grid-only.
     FrameDataFogObservers observers_{};
 
     C_CanvasFogOfWar()
@@ -267,7 +251,7 @@ struct C_CanvasFogOfWar {
         }
     }
 
-    /// Drop all live vision circles → grid-only fog (legacy behavior). A
+    /// Drop all live vision circles, returning to grid-only fog. A
     /// single moving observer calls this then `addVisionCircle` each frame.
     void clearVisionCircles() {
         observers_.visionCircleCount_ = 0;
@@ -286,8 +270,8 @@ struct C_CanvasFogOfWar {
     /// the grid separately (e.g. integer `revealRadius` for the voxelized
     /// floor).
     ///
-    /// @p observerZ + @p zCostUp + @p zCostDown + @p freeBand (#2260,
-    /// generalized by #2557) shape the disc into an XY radius with an
+    /// @p observerZ + @p zCostUp + @p zCostDown + @p freeBand shape the disc
+    /// into an XY radius with an
     /// asymmetric, penalty-free-banded height penalty: the effective reveal
     /// distance is `dist_xy + zCostUp * max(dzUp - freeBand, 0) + zCostDown *
     /// max(dzDown - freeBand, 0)`, where `dzUp = max(observerZ - z, 0)`
@@ -298,7 +282,7 @@ struct C_CanvasFogOfWar {
     /// independent rates. @p zCostDown < 0 (the default,
     /// `kFogVisionZCostMirrorUp`) mirrors @p zCostUp. All-defaults (@p
     /// zCostUp 0, @p freeBand 0) is the back-compat plain 2D disc —
-    /// byte-identical to the pre-#2260 reveal.
+    /// byte-identical to the reveal without vertical-cost weighting.
     void addVisionCircle(
         float cx,
         float cy,

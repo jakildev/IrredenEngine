@@ -12,11 +12,10 @@ using namespace IRRender;
 
 namespace IRComponents {
 
-// Per-pool resident GPU locals buffer for the detached re-voxelize GPU scatter
-// (#1556, epic #1553 P2). The resource-model decision behind it (architect, on
-// PR #1562): each DETACHED_REVOXELIZE pool owns a resident SSBO of its RIGID
+// Per-pool resident GPU locals buffer for the detached re-voxelize GPU scatter.
+// Each DETACHED_REVOXELIZE pool owns a resident SSBO of its RIGID
 // authored locals so the only per-frame GPU upload is the canvas rotation quat
-// (O(entities)), not the O(authored-voxels) re-rasterize P1 paid on the CPU.
+// (O(entities)), not O(authored voxels).
 //
 // `c_revoxelize_detached.{glsl,metal}` binds this buffer (per-canvas, slot
 // `kBufferIndex_LocalVoxelPositions`) + the per-frame quat and writes the shared
@@ -30,12 +29,10 @@ namespace IRComponents {
 // IRPrefab::DetachedRevoxelize::syncResidentBuffers(). A static / non-re-voxelize
 // canvas pays only the component slot, no GPU memory.
 //
-// The home is the architect's option (b) (a per-canvas render component, which
-// they noted "also works") rather than a field on C_VoxelPool (their option (a)
-// phrasing): C_VoxelPool is a voxel-domain component kept free of
-// <irreden/ir_render.hpp> (the T-201 layering boundary, voxel/CLAUDE.md), so the
-// GPU-RAII naturally lives on a render-domain sibling on the same canvas entity —
-// exactly the C_TriangleCanvasTextures pattern the decision pointed at.
+// This is a per-canvas render component rather than a C_VoxelPool field because
+// C_VoxelPool is a voxel-domain component kept free of
+// <irreden/ir_render.hpp> (the layering boundary, voxel/CLAUDE.md), so the
+// GPU-RAII lives on a render-domain sibling on the same canvas entity.
 struct C_DetachedRevoxelizeBuffer {
     // Resident SSBO of composed authored locals (local + per-voxel offset),
     // one vec4 per pool slot (.xyz = composed, .w unused). Seeded once, re-seeded
@@ -50,11 +47,11 @@ struct C_DetachedRevoxelizeBuffer {
     // pool's full capacity once, so a re-seed never reallocates.
     int capacity_ = 0;
 
-    // Source occupancy+color grid for the INVERSE-resample fill (#1619). Dense
+    // Source occupancy+color grid for the INVERSE-resample fill. Dense
     // 3D grid keyed by integer source-local cell, three uints per cell
     // ({colorPacked, materialFlagBone, reserved}); occupied iff the alpha byte of
     // colorPacked != 0. The reserved lane carries per-trixel priority through a
-    // rotating fill (#2023). Seeded with residentLocals_ (rigid). {0, nullptr} while
+    // rotating fill. Seeded with residentLocals_ (rigid). {0, nullptr} while
     // unallocated. The grid is the position→color/occupancy structure the
     // dest-cell inverse lookup needs (forward-scatter's source-indexed locals
     // can't answer "is there a source voxel at p?" in O(1)).
@@ -78,7 +75,7 @@ struct C_DetachedRevoxelizeBuffer {
     // center-around-origin offset is one shared vector. The inverse resample
     // maps between LATTICE cells while the solid's true points sit at
     // cell + anchor; the anchored mapping keeps the rotated raster from
-    // shifting by a constant half cell per even axis (#2349). Seeded with the
+    // shifting by a constant half cell per even axis. Seeded with the
     // grids (rigid).
     IRMath::vec3 anchor_{0.0f, 0.0f, 0.0f};
 
