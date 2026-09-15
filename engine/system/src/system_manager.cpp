@@ -73,7 +73,7 @@ SystemId SystemManager::createSystemDynamic(
     m_timingAccum.emplace_back();
     // dynamic systems are PARALLEL_FOR-ineligible (the body is
     // opaque to row-level chunking — `m_ticks[…].prepareRangedTick_` is
-    // never populated). still accepts SERIAL / MAIN_THREAD so the
+    // never populated). They still accept SERIAL / MAIN_THREAD so the
     // Lua surface can tag EVAL systems as MAIN_THREAD to opt them out of
     // pipeline-group parallelism (the sol2 / LuaJIT GC singletons are
     // not thread-safe). PARALLEL_FOR is normalized to MAIN_THREAD by the
@@ -611,7 +611,7 @@ void SystemManager::executeSystem(SystemId system) {
             // `getComponentData<>`) never runs concurrently from
             // workers. Workers only iterate captured refs.
             //
-            // `isMainThread` guards against nested dispatch:
+            // `isMainThread()` guards against nested dispatch:
             // when executeSystem is reached from a worker (multi-system
             // parallel group), IRJob::parallelFor would FATAL on its
             // own main-thread assert. validateAllPipelineGroups rejects

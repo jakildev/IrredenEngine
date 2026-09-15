@@ -761,7 +761,7 @@ constexpr mat2 faceDeformationMatrix(int face, float residualYaw) {
 /// face's iso footprint shape depends on its tangent plane, which is shared
 /// across the two opposite faces of the axis. Used by the per-slot
 /// `FrameDataVoxelToCanvas::faceDeform_[]` upload in
-/// `system_voxel_to_trixel::buildVoxelFrameData`.
+/// `buildVoxelFrameData`.
 constexpr mat2 faceDeformationMatrix(FaceId face, float residualYaw) {
     return faceDeformationMatrix(faceAxis(face), residualYaw);
 }
@@ -784,7 +784,7 @@ constexpr mat2 faceDeformationMatrix(FaceId face, float residualYaw) {
 /// applied directly to offsets, never inverted), so no degeneracy guard is
 /// needed.
 ///
-/// CPU-only by design: `system_voxel_to_trixel::buildVoxelFrameData` bakes the result into the
+/// CPU-only by design: `buildVoxelFrameData` bakes the result into the
 /// `faceDeform_` UBO that the voxel-emit shader already applies, so the shader
 /// stays rotation-agnostic — there is no GPU-side mirror to keep in sync.
 inline mat2 faceDeformationMatrixSO3(int face, const vec4 &rotationQuat) {
