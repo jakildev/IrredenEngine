@@ -470,7 +470,7 @@ template <> struct System<REBUILD_GRID_VOXELS> {
         }
 
         // Author the span: surface cells first, then interior while slots
-        // remain (the span-cap drop policy above). Face-occlusion bits are
+        // remain (the span-cap drop policy). Face-occlusion bits are
         // derived from dest-grid adjacency, never copied: a source voxel's
         // bits describe its neighbours in the source lattice, which the
         // rotation does not preserve. Every other flag bit (AO contrib,

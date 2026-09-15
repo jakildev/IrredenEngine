@@ -3,7 +3,7 @@
 
 // The camera suite's bindings are declared as data in `kCameraSuite`
 // (`command_suite_registry.hpp`); this header is just the registration entry
-// point. The command-body headers below are what give `bindPrefabCommand` the
+// point. The included command-body headers give `bindPrefabCommand` the
 // `Command<NAME>::create()` specializations it dispatches each manifest row to.
 
 #include <irreden/common/command_suite_registry.hpp>
