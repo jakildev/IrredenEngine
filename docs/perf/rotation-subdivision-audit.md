@@ -67,6 +67,10 @@ tracking the prior start boundary) passed the retained 120-frame
 audit before lifetime cleanup; their differing ranges are not an isolated
 before/after speedup measurement.
 
+A first measured optimization removes unused rotated micro-slices without changing
+scene pixels; see [rotated face dispatch density](per-axis-dispatch-density.md).
+The remaining work below still applies.
+
 ## Proposed optimization TODO
 
 1. Add counters with consistent units: unique source voxels, axis candidates,

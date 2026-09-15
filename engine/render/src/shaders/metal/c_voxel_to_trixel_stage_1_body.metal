@@ -418,7 +418,7 @@ kernel void IR_STAGE1_KERNEL_NAME(
     const int microSliceCount =
         (frameData.voxelRenderOptions.x != 0) ? (feederCap * feederCap) : 1;
 #else
-    const int microSliceCount = (frameData.voxelRenderOptions.x != 0)
+    const int microSliceCount = (frameData.voxelRenderOptions.x != 0 && frameData.perAxisRoute == 0)
         ? (max(frameData.voxelRenderOptions.y, 1) * max(frameData.voxelRenderOptions.y, 1))
         : 1;
 #endif
