@@ -6,10 +6,7 @@
 //     c_voxel_to_trixel_stage_2        (the default dispatch, the election
 //     guard textually absent)
 //   c_voxel_to_trixel_stage_2_winner.metal → ELECTION 1, kernel name
-//     c_voxel_to_trixel_stage_2_winner (cardinal winner-guarded dispatch:
-//     every cardinal colour/entity-id tap additionally requires
-//     `perAxisWinnerIds[cell] == voxelIndex`, run in place of the default when
-//     the ticking pool's storeTiesPossible_ flag is set)
+//     c_voxel_to_trixel_stage_2_winner (the cardinal winner-guarded dispatch)
 // The body is kept include-free to mirror the GLSL twin's wrapper-supplied
 // chain.
 

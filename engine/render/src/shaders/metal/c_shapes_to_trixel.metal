@@ -2,10 +2,7 @@
 #include "ir_constants.metal"
 #include "ir_sdf_common.metal"
 
-// Mirrors shaders/c_shapes_to_trixel.glsl. Two passes per shape: pass 0
-// writes atomic-min depth taps into `distanceScratch`; pass 1 reads the
-// settled depth back and stamps color + entity id. Workgroup dimensions:
-// (8, 8, 1).
+// Mirrors shaders/c_shapes_to_trixel.glsl.
 
 struct ShapesFrameData {
     float2 frameCanvasOffset;

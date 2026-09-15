@@ -1,14 +1,12 @@
 // Stage-1 CARDINAL WINNER-ELECTION dispatch — Metal twin of
 // c_voxel_to_trixel_stage_1_winner_resolve.glsl. A thin wrapper that
 // specializes the shared body at compile time: IR_STORE_WINNER_ELECTION 1
-// swaps every cardinal-branch distance tap for a resolveWinnerTap, so this
-// kernel re-runs the identical single-canvas geometry and atomic-mins each
-// tying face's run-stable voxel pool index into the buffer-28 winner scratch
-// (the per-axis election applied to the single-canvas store). Dispatched
-// over indirect struct 0 ONLY, between the stage-1 stores and stage 2, when the
-// ticking pool's storeTiesPossible_ flag is set. IR_STAGE1_KERNEL_NAME must
-// equal the file stem (metalFunctionNameForStage derives the function name from
-// it), and that name MUST be registered in metal_pipeline.cpp's
+// compiles the election path, which writes the buffer-28 winner scratch that
+// c_voxel_to_trixel_stage_2_winner guards on. Dispatched over indirect struct 0
+// ONLY, between the stage-1 stores and stage 2, when the ticking pool's
+// storeTiesPossible_ flag is set. IR_STAGE1_KERNEL_NAME must equal the file
+// stem (metalFunctionNameForStage derives the function name from it), and that
+// name MUST be registered in metal_pipeline.cpp's
 // threadgroupSizeForFunctionName (2,3,8) and functionUsesImageAtomicScratch
 // lists. Omission from either fails CI naming the kernel — the former via
 // cmake/run_metal_kernel_registry_check.cmake, the latter via

@@ -2,20 +2,14 @@
 using namespace metal;
 
 // Mirrors shaders/c_revoxelize_detached.glsl byte-for-byte. Two dispatch modes
-// (RevoxelizeParams.dest_.w):
-//
-//  MODE 0 — IDENTITY / source path. One thread per LIVE SOURCE voxel; writes its
-//    resident composed local (rotated + rounded under a non-identity rotation)
-//    into buffer 5. The CPU uploads color + active for these source-indexed slots.
-//
-//  MODE 1 — INVERSE RESAMPLE. One thread per DEST cell of the rotated-AABB cube.
-//    Forward scatter is not surjective onto the rotated lattice (holes); inverse
-//    resampling dispatches over the DEST lattice and pulls: dest cell `c`
-//    inverse-maps to source cell `roundHalfUp(R⁻¹·(c + anchor) - anchor)` (the
-//    half-cell-anchored map); if occupied (per-pool source grid, buffer 9) the
-//    thread authors position (5) + color (6) + the active bit (8, atomic).
-//    Surjective → hole-free. The shared compact → stage1 → stage2 raster is the
-//    same in both modes; here slot `i` means "dest cell i" not "source voxel i".
+// (RevoxelizeParams.dest_.w). MODE 0 authors only the position buffer (5); the
+// CPU uploads color + active for those source-indexed slots. MODE 1 resamples
+// over the DEST lattice because a forward scatter is not surjective onto the
+// rotated lattice (holes); the half-cell-anchored inverse map
+// `roundHalfUp(R⁻¹·(c + anchor) - anchor)` is, so the fill is hole-free. In
+// MODE 1 the kernel also authors color (6) and the active bit (8, atomic), and
+// slot `i` means "dest cell i", not "source voxel i", to the shared
+// compact → stage1 → stage2 raster.
 //
 // `rotateByQuat` / `rotateByInverseQuat` / `roundHalfUp` are the shared CPU↔GPU
 // helpers in ir_iso_common.metal, bit-identical with GLSL + CPU. MODE 1 also
