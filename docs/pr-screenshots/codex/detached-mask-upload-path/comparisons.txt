@@ -1,0 +1,10 @@
+530 -> 539: RGB difference bbox None
+531 -> 540: RGB difference bbox None
+532 -> 541: RGB difference bbox None
+533 -> 542: RGB difference bbox None
+533 -> 543: RGB difference bbox None
+532 -> 544: RGB difference bbox None
+531 -> 545: RGB difference bbox None
+530 -> 546: RGB difference bbox None
+535 -> 547: RGB difference bbox None
+536 -> 548: RGB difference bbox None

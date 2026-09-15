@@ -40,6 +40,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <limits>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -495,6 +496,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // ticks.
     std::vector<std::pair<IREntity::EntityId, C_DetachedRevoxelizeBuffer *>>
         detachedRevoxelizeBuffers_;
+
+    std::vector<ivec3> detachedFaceCells_;
+    std::unordered_set<std::int64_t> detachedFaceOccupancy_;
 
     // Zero / all-ones scratch for the inverse-resample re-voxelize path (#1619),
     // grown to a high-water mark and reused (cpp-ecs.md "no allocation in hot
@@ -1651,6 +1655,14 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // instead, so skip the CPU uploads there — they would clobber the GPU's
         // dest-cell color and the atomic-OR'd active bits with source-indexed data.
         if (!revoxInverse) {
+            if (canvasLocalRotation.reVoxelize_) {
+                IRPrefab::DetachedRevoxelize::detail::recomputeSourceFaceOccupancy(
+                    voxelPool,
+                    canvasLocalRotation.rotation_,
+                    detachedFaceCells_,
+                    detachedFaceOccupancy_
+                );
+            }
             voxelColorBuf_
                 ->subData(0, liveVoxelCount * sizeof(C_Voxel), voxelPool.getColors().data());
             // Active-mask covers the live prefix; upload the matching whole-word

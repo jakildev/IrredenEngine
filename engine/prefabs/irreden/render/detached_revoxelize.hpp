@@ -19,14 +19,53 @@
 #include <irreden/render/components/component_detached_revoxelize_buffer.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/grid_rotation.hpp>
+#include <irreden/voxel/face_occupancy.hpp>
 
 #include <cstdint>
+#include <span>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
 namespace IRPrefab::DetachedRevoxelize {
 
 namespace detail {
+
+// Source-indexed uploads need masks in the current rotated lattice. GPU inverse
+// resampling owns destination-indexed masks and must bypass this CPU work.
+inline void recomputeSourceFaceOccupancy(
+    IRComponents::C_VoxelPool &pool,
+    IRMath::vec4 rotation,
+    std::vector<IRMath::ivec3> &cells,
+    std::unordered_set<std::int64_t> &occupancy
+) {
+    const auto &positions = pool.getPositions();
+    const auto &offsets = pool.getPositionOffsets();
+    auto &colors = pool.getColors();
+    const int count = IRMath::min(
+        pool.getLiveVoxelCount(),
+        static_cast<int>(IRMath::min(IRMath::min(positions.size(), offsets.size()), colors.size()))
+    );
+    if (count <= 0) {
+        return;
+    }
+    const IRMath::vec3 anchor =
+        IRPrefab::GridRotation::halfCellAnchor(positions[0].pos_ + offsets[0]);
+    cells.resize(static_cast<std::size_t>(count));
+    for (int i = 0; i < count; ++i) {
+        cells[i] = IRPrefab::GridRotation::anchoredCellForDetachedVoxel(
+            positions[i].pos_ + offsets[i],
+            rotation,
+            anchor
+        );
+    }
+    IRPrefab::Voxel::recomputeFaceOccupancyOnCells(
+        std::span<const IRMath::ivec3>(cells.data(), static_cast<std::size_t>(count)),
+        std::span<IRComponents::C_Voxel>(colors.data(), static_cast<std::size_t>(count)),
+        count,
+        occupancy
+    );
+}
 
 // Seed (or re-seed) the per-pool GPU buffers the re-voxelize fill reads, from
 // the pool's RIGID authored locals + per-voxel offsets, composed exactly as the
