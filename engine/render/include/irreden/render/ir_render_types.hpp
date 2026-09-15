@@ -95,6 +95,8 @@ struct HoveredEntityIdLayout {
     float _pad_{0.0f};
 };
 
+enum class TrixelSampleLayout : int { RECTANGULAR = 0, LOCAL_TRIANGLES = 1 };
+
 struct FrameDataTrixelToFramebuffer {
     mat4 mpMatrix_;
     vec2 canvasZoomLevel_;
@@ -198,7 +200,8 @@ struct FrameDataTrixelToFramebuffer {
     /// shaders; std140-appended (offset 208) so every prior offset — and the
     /// gather shaders reading only the prefix — stays unchanged.
     int overflowMode_ = 0;
-    int overflowPad0_ = 0;
+    // Sampling contract for the private canvas color, depth and priority.
+    int trixelSampleLayout_ = static_cast<int>(TrixelSampleLayout::RECTANGULAR);
     int overflowPad1_ = 0;
     int overflowPad2_ = 0;
 };
@@ -228,6 +231,10 @@ static_assert(
     "overflowMode_ must std140-append after the depthColorMode_ block "
     "(ends at 208) so every prior offset — and the gather shaders reading only "
     "the prefix — stays unchanged"
+);
+static_assert(
+    offsetof(FrameDataTrixelToFramebuffer, trixelSampleLayout_) == 212,
+    "Gather sample layout must occupy the scalar slot at byte 212"
 );
 static_assert(
     sizeof(FrameDataTrixelToFramebuffer) == 224,

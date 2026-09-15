@@ -253,12 +253,8 @@ template <> struct System<REBUILD_GRID_VOXELS> {
                 worldTransform
             );
         }
-        // Both cull caches must follow the rewritten positions, or a stale
-        // (pre-rotation) box is projected and this set's chunks can be dropped
-        // — #1439 for the continuous-yaw cache, #2830 for the cardinal one this
-        // arm's identity frames run under. Note this fires on EVERY identity
-        // frame, not only restored ones: the positions above are rewritten
-        // unconditionally and the upload below is the only restored-only part.
+        // Positions change on every identity frame, so both cull caches need
+        // invalidation even when no GPU restore upload is required.
         pool.markCullBoundsDirty(baseIdx, static_cast<std::size_t>(safeCount));
         if (restored) {
             pool.queuePositionRange(baseIdx, static_cast<size_t>(safeCount));
@@ -530,8 +526,7 @@ template <> struct System<REBUILD_GRID_VOXELS> {
         if (written > 0) {
             pool.queuePositionRange(baseIdx, static_cast<size_t>(written));
         }
-        // The whole span, not just [0, written): the tail above was deactivated,
-        // which the position-range channel structurally cannot carry (#2830).
+        // Include the deactivated tail: position uploads cannot carry alpha edits.
         pool.markCullBoundsDirty(baseIdx, static_cast<std::size_t>(safeCount));
 
         if (dropped > dropHighWater_) {

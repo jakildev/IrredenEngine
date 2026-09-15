@@ -46,6 +46,8 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     float depthColorExtent;
     int anyPerTrixelPriority;
     int depthPriorityMode;
+    int overflowMode;
+    int trixelSampleLayout;
 };
 
 void main() {

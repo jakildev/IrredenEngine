@@ -345,7 +345,7 @@ void overflowAppendTap(
 // scripts/feeder-margin-verify.py.
 void emitDeformedFace(
     const ivec2 base, const mat2 D, const int voxelDistance, const int faceId,
-    const bool reVoxelize
+    const bool dilate
 #if IR_STORE_WINNER_ELECTION
     , const uint voxelIndex
 #endif
@@ -362,7 +362,7 @@ void emitDeformedFace(
     // (world, per-axis, detached forward-scatter) emits the exact footprint.
     ivec2 su = ivec2(0);
     ivec2 sv = ivec2(0);
-    if (reVoxelize) {
+    if (dilate) {
         faceInPlaneIsoSteps(faceId, su, sv);
     }
     for (int sy = 0; sy < n; ++sy) {
@@ -371,7 +371,7 @@ void emitDeformedFace(
             ivec2 p = base + roundHalfUp(D * src);
 #if IR_STORE_WINNER_ELECTION
             resolveWinnerTap(p, voxelDistance, voxelIndex);
-            if (reVoxelize) {
+            if (dilate) {
                 resolveWinnerTap(p + su, voxelDistance, voxelIndex);
                 resolveWinnerTap(p - su, voxelDistance, voxelIndex);
                 resolveWinnerTap(p + sv, voxelDistance, voxelIndex);
@@ -379,7 +379,7 @@ void emitDeformedFace(
             }
 #else
             writeDistanceTap(p, voxelDistance);
-            if (reVoxelize) {
+            if (dilate) {
                 writeDistanceTap(p + su, voxelDistance);
                 writeDistanceTap(p - su, voxelDistance);
                 writeDistanceTap(p + sv, voxelDistance);
@@ -517,6 +517,7 @@ void main() {
     // Re-voxelize marker: detached canvases (visibleFaceIds.w != 0) bake the
     // entity rotation into the CELL positions and raster at cardinal 0.
     const bool reVoxelize = visibleFaceIds.w != 0;
+    const bool dilateRevox = visibleFaceIds.w == 1;
 
     // Exposed-face gate: emit only when the world face this slot renders is
     // BOTH camera-visible (guaranteed by the slot-to-faceId resolution) AND
@@ -689,7 +690,7 @@ void main() {
             trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions) +
             pos3DtoPos2DIso(voxelPositionInt);
         emitDeformedFace(
-            base, D, voxelDistance, faceId, reVoxelize
+            base, D, voxelDistance, faceId, dilateRevox
 #if IR_STORE_WINNER_ELECTION
             , voxelIndex
 #endif
@@ -751,7 +752,7 @@ void main() {
     const int voxelDistance = encodeDepthWithFace(depthBase, slot, riserFlip);
     const ivec2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
     emitDeformedFace(
-        base, D, voxelDistance, viewFaceId, reVoxelize
+        base, D, voxelDistance, viewFaceId, dilateRevox
 #if IR_STORE_WINNER_ELECTION
         , voxelIndex
 #endif
@@ -773,7 +774,7 @@ void main() {
         const int distanceOpposite = encodeDepthWithFace(depthOpposite, slot, riserFlip ^ 1);
         const ivec2 baseOpposite = frameOffsetFixed + pos3DtoPos2DIso(microOpposite);
         emitDeformedFace(
-            baseOpposite, D, distanceOpposite, viewFaceId ^ 1, reVoxelize
+            baseOpposite, D, distanceOpposite, viewFaceId ^ 1, dilateRevox
 #if IR_STORE_WINNER_ELECTION
             , voxelIndex
 #endif

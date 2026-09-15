@@ -7,9 +7,9 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
 
 | Priority | Work | State / next acceptance |
 |---|---|---|
-| 1 | Detached face geometry and trixel display | Investigated in [display diagnosis](detached-trixel-display.md). Visible source faces, depth and picking still need a consistent projection. Origin and camera placement corrected. [Back-facing emission](detached-face-normals.md) now has a targeted correction and normal oracle; dilation, rectangular display and source-face reconstruction remain. |
+| 1 | Detached face geometry and trixel display | Investigated in [display diagnosis](detached-trixel-display.md). Visible source faces, depth and picking still need a consistent projection. Origin and camera placement corrected. [Back-facing emission](detached-face-normals.md) now has a targeted correction and normal oracle; [Local triangular display](detached-local-triangles.md) is the normal undilated display with a per-face oracle; raw rectangular display is debug-only. Source-face reconstruction and depth/picking remain. |
 | 2 | Shadow reception and contact | Source-face casting exists, but receivers still use reconstructed surfaces. Check concave faces and contact after visible geometry agrees. |
-| 3 | Shadow edges and filtering | Source casting improves outlines. Reassess residual jaggedness without masking geometry errors with blur or bias. |
+| 3 | Projected face boundaries | Reconstruct voxel-face coverage from light direction and receiver geometry. Clean edges must follow projected geometry, not blur, inflated coverage or bias that hides errors. |
 | 4 | Duplicate CPU occupancy reconstruction | Profile identified work overwritten by inverse GPU resampling. Preserve buffer-availability fallback and identity transitions before skipping it. |
 | 5 | Mode and scale validation | Extend density, screen-lock, pan, cascade, sparse/elongated asset and OpenGL coverage. Measure representative large populations and GPU cost before changing defaults. |
 
@@ -27,6 +27,16 @@ that the experimental rendering is ready to become the default.
 | High, within scale validation | Detached composite has a 512-instance limit | `ENTITY_CANVAS_TO_FRAMEBUFFER` stops collecting after `kMaxEntityCanvasInstances`. Raising the limit alone does not meet the entity-count target; design and measure batching/culling for private canvases separately from attached GRID entities. |
 | Medium, camera | Depth-derived pivot jumps during noncardinal pan | A zoom-16 isolated voxel jumps about 32 screenshot pixels as the default pivot changes. Verify with fixed-pivot controls; separate camera focus behavior from detached display. |
 | Medium, validation | Density-dependent receiver calibration | The small SDF plate needs its smooth boundary convention accounted for at zoom 16. The new fixture does so; generalize the older large-box calibration before using it to judge other densities. |
+
+## Newly observed during local-triangle validation
+
+- Repeated identical upright captures differ in 104–952 pixels confined to the
+  rainbow probe with triangle mode disabled. Investigate color/depth winner
+  determinism before treating this probe as a strict pixel reference; the cause
+  is not established. Retained comparisons: `codex/detached-local-triangles`.
+- Actual private density 12 was exercised with the smallzoom fixture, but its
+  high-density face coverage still needs a numerical oracle. Requested
+  subdivisions alone must not stand in for measured effective density.
 
 ## Origin correction evidence
 

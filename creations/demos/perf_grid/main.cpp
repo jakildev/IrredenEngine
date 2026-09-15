@@ -427,17 +427,8 @@ int g_autoProfileFrames = 0;
 int g_autoProfileCount = 0;
 int g_autoWarmupFrames = 0;
 
-// --auto-profile reports MEANS over the profiled window, not just the single
-// trailing frame the dump below has always printed (#2830 AC4).
-// `IRTime::renderFrameTimeMs()` is one inter-frame delta and `CpuFrameHistogram`
-// keeps only the last frame, so every `--auto-profile` number was an n=1 sample.
-// That cannot settle a "mean CPU frame time" bound, because the per-frame
-// samples are strongly bimodal: `update` ticks on only a subset of render
-// frames, and a frame that rebuilds chunk bounds costs several times a
-// cache-hit frame. A single sample reports whichever mode it landed in, and
-// repeating the run only adds one more such sample per run. Folding every
-// profiled frame into a running mean turns one run into `--auto-profile N`
-// samples, so the spread is measured instead of being sampled once.
+// Profile every frame in the window: update ticks and chunk-bound rebuilds
+// make CPU costs bimodal, so the last inter-frame delta is not a useful mean.
 struct AutoProfileStat {
     double sum_ = 0.0;
     double sumSquares_ = 0.0;

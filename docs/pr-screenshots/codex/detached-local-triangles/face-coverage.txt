@@ -1,0 +1,39 @@
+capture-366.png: unexpected_normal_pixels=0
+capture-366.png: yaw=0 axis=0 iou=0.962 area_ratio=1.000 PASS
+capture-366.png: yaw=0 axis=1 iou=0.969 area_ratio=1.000 PASS
+capture-366.png: yaw=0 axis=2 iou=0.962 area_ratio=1.000 PASS
+
+capture-367.png: unexpected_normal_pixels=0
+capture-367.png: yaw=22.5 axis=0 iou=0.962 area_ratio=1.000 PASS
+capture-367.png: yaw=22.5 axis=1 iou=0.969 area_ratio=1.000 PASS
+capture-367.png: yaw=22.5 axis=2 iou=0.962 area_ratio=1.000 PASS
+
+capture-368.png: unexpected_normal_pixels=0
+capture-368.png: yaw=45 axis=0 iou=0.962 area_ratio=1.000 PASS
+capture-368.png: yaw=45 axis=1 iou=0.969 area_ratio=1.000 PASS
+capture-368.png: yaw=45 axis=2 iou=0.962 area_ratio=1.000 PASS
+
+capture-369.png: unexpected_normal_pixels=0
+capture-369.png: yaw=67.5 axis=0 iou=0.962 area_ratio=1.000 PASS
+capture-369.png: yaw=67.5 axis=1 iou=0.969 area_ratio=1.000 PASS
+capture-369.png: yaw=67.5 axis=2 iou=0.962 area_ratio=1.000 PASS
+
+capture-370.png: unexpected_normal_pixels=0
+capture-370.png: yaw=90 axis=0 iou=0.962 area_ratio=1.000 PASS
+capture-370.png: yaw=90 axis=1 iou=0.969 area_ratio=1.000 PASS
+capture-370.png: yaw=90 axis=2 iou=0.962 area_ratio=1.000 PASS
+
+capture-324.png: unexpected_normal_pixels=0
+capture-324.png: yaw=0 axis=0 iou=0.256 area_ratio=4.000 FAIL
+capture-324.png: yaw=0 axis=1 iou=0.330 area_ratio=2.000 FAIL
+capture-324.png: yaw=0 axis=2 iou=0.195 area_ratio=2.000 FAIL
+
+capture-319.png: unexpected_normal_pixels=0
+capture-319.png: yaw=0 axis=0 iou=0.969 area_ratio=1.000 PASS
+capture-319.png: yaw=0 axis=1 iou=0.962 area_ratio=1.000 PASS
+capture-319.png: yaw=0 axis=2 iou=0.962 area_ratio=1.000 PASS
+
+local-voxel-invalid-normal.png: unexpected_normal_pixels=1
+local-voxel-invalid-normal.png: yaw=0 axis=0 iou=0.962 area_ratio=1.000 PASS
+local-voxel-invalid-normal.png: yaw=0 axis=1 iou=0.969 area_ratio=1.000 PASS
+local-voxel-invalid-normal.png: yaw=0 axis=2 iou=0.962 area_ratio=1.000 PASS
