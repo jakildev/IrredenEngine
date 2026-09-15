@@ -171,7 +171,8 @@ mk_claim 500 opus-worker-1 $((NOW - 3600))   # stale → R1
 mk_claim 501 opus-worker-2 "$NOW"            # fresh → survives
 mk_claim 502 opus-worker-3 "$NOW"            # fresh, but reservation mismatches
 mk_claim 506 opus-worker-4 $((NOW - 3600))   # stale age, BUT PR #601 closes it via body
-mk_claim 508 opus-worker-5 $((NOW - 3600))   # stale age, BUT a live dispatch is working it
+mk_claim 508 opus-worker-5 $((NOW - 3600))   # stale age, BUT its owner is live-dispatched on it
+mk_claim 509 opus-worker-6 $((NOW - 3600))   # stale age; a live dispatch exists but by ANOTHER agent
 
 # A dispatch record is the dispatcher's own "this pane is on this item now"
 # (written before launch, consumed at exit). Claim 508's owner is mid-task
@@ -181,6 +182,12 @@ mk_claim 508 opus-worker-5 $((NOW - 3600))   # stale age, BUT a live dispatch is
 mkdir -p "$FLEET_STATE_DIR/dispatch"
 cat > "$FLEET_STATE_DIR/dispatch/pane-9.json" <<'JSON'
 {"role":"worker","pane":"%9","class":"opus","dispatched_at":"2026-09-14T21:57:05Z","dispatched_epoch":1789423025,"wrapper_pid":1,"claim_marker":1,"runtime":"codex","target":"task:engine:508","agent":"opus-worker-5"}
+JSON
+# The keep is for the claim's own pane only: the dispatcher claims under the
+# target pane's basename before launch, so a dispatch by a different agent is
+# not this claim's work and the claim ages out as usual.
+cat > "$FLEET_STATE_DIR/dispatch/pane-10.json" <<'JSON'
+{"role":"worker","pane":"%10","class":"opus","dispatched_at":"2026-09-14T21:57:05Z","dispatched_epoch":1789423025,"wrapper_pid":1,"claim_marker":1,"runtime":"codex","target":"task:engine:509","agent":"opus-worker-7"}
 JSON
 
 # Reservations: opus-worker-1 → #500 (consistent, dropped by R1 release),
@@ -220,11 +227,20 @@ assert 501 not in r1_targets, "R1 must NOT flag fresh #501"
 # standard branch claude/topic-506) — robust PR match must suppress R1.
 assert 506 not in r1_targets, "R1 must NOT flag #506 (PR closes it via body)"
 # Claim 508 is stale-aged with no PR, but its owner is live-dispatched on it: R1
-# reports it flag-only (no apply action) and names the dispatch.
+# reports it flag-only (no apply action), names the dispatch, and marks it
+# escalate=False so the drift-escalation counter never accrues it.
 r1_508 = [f for f in r["findings"] if f["rule"] == "R1" and f["target"] == 508]
 assert r1_508 and all(f["apply"] is None for f in r1_508), "R1 #508 must be flag-only"
+assert all(f.get("escalate") is False for f in r1_508), "R1 #508 must not escalate"
 assert "task:engine:508" in r1_508[0]["gated_by"], r1_508[0]["gated_by"]
 assert "opus-worker-5" in r1_508[0]["gated_by"], r1_508[0]["gated_by"]
+# Claim 509's live dispatch belongs to another agent: an ordinary R1 release.
+r1_509 = [f for f in r["findings"] if f["rule"] == "R1" and f["target"] == 509]
+assert r1_509 and r1_509[0]["apply"] and r1_509[0]["apply"]["type"] == "stale_claim", \
+    "R1 #509 must release (dispatch agent != claim owner)"
+# Every other flag-only finding still accrues (the marker is opt-in).
+assert all(f.get("escalate", True) is not False for f in r["findings"] if f["rule"] != "R1"), \
+    "only the R1 keep carries escalate=False"
 # Flag-only R2 carries no apply action.
 r2 = [f for f in r["findings"] if f["rule"] == "R2"]
 assert all(f["apply"] is None for f in r2), "R2 must be flag-only"
@@ -252,6 +268,7 @@ assert_dir_present "$FLEET_CLAIMS_DIR/501" "--apply keeps fresh FS claim #501"
 assert_dir_present "$FLEET_CLAIMS_DIR/506" "--apply keeps FS claim #506 (PR closes it via body)"
 assert_dir_present "$FLEET_CLAIMS_DIR/508" "--apply keeps FS claim #508 (owner live-dispatched on it)"
 assert_removed_absent $'508\tfleet:claim-mac-opus-worker-5' "--apply left #508's claim label alone"
+assert_dir_absent  "$FLEET_CLAIMS_DIR/509" "--apply released FS claim #509 (live dispatch is another agent's)"
 
 # R3: mismatched reservation dropped, claim kept.
 assert_dir_present  "$FLEET_CLAIMS_DIR/502" "--apply keeps claim #502 (authoritative)"
@@ -274,6 +291,22 @@ r = json.load(open(sys.argv[1]))
 assert r["apply"] is True
 applied = [f for f in r["findings"] if f.get("apply")]
 assert applied and all(f["applied"] is True for f in applied), "fix findings should be applied=true"
+PY
+
+echo "=== Phase 3: past the drift-escalation threshold, the kept claim never accrues ==="
+# The scout runs `reconcile --apply` every tick; a flag-only finding that
+# survives FLEET_RECONCILE_DRIFT_TICKS (default 3) ticks files the deduped
+# fleet:state-drift tracker. A task legitimately running past the claim TTL
+# before its PR opens must not become "persistent drift" on the third tick.
+"$FLEET_CLAIM" reconcile --apply --repo jakildev/IrredenEngine >/dev/null 2>&1
+"$FLEET_CLAIM" reconcile --apply --repo jakildev/IrredenEngine >/dev/null 2>&1
+assert_dir_present "$FLEET_CLAIMS_DIR/508" "three --apply ticks keep FS claim #508"
+python3 - "$FLEET_STATE_DIR/drift-persistence.json" <<'PY' && ok "escalation counter skips the kept claim, still accrues real drift" || bad "escalation counter wrong"
+import sys, json
+state = json.load(open(sys.argv[1]))
+assert not [k for k in state if k.endswith(":508")], "R1 #508 must never accrue: %s" % list(state)
+r2 = state.get("R2:jakildev/IrredenEngine:pr:600")
+assert r2 and r2["count"] >= 3, "the flag-only R2 finding must still accrue across ticks: %s" % r2
 PY
 
 echo

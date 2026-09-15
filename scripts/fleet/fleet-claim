@@ -3352,11 +3352,17 @@ FEEDBACK = {"human:needs-fix", "human:blocker", "fleet:needs-fix",
             "fleet:has-nits", "fleet:design-unblocked"}
 
 findings = []
-def add(rule, repo, target, kind, surfaces, action, gated_by, apply=None):
+def add(rule, repo, target, kind, surfaces, action, gated_by, apply=None,
+        escalate=True):
+    # escalate=False marks a flag-only finding as expected state, not drift:
+    # reconcile_escalate_drift leaves it out of the persistence counter, so
+    # it never files the fleet:state-drift tracker. Apply-carrying findings
+    # are already exempt (the R8 shape); this is the same exemption for a
+    # finding that has nothing to apply.
     findings.append({"rule": rule, "repo": repo, "target": target,
                      "target_kind": kind, "surfaces": surfaces,
                      "action": action, "gated_by": gated_by,
-                     "apply": apply, "applied": None})
+                     "apply": apply, "applied": None, "escalate": escalate})
 
 def labelset(obj):
     return set(l.get("name", "") for l in (obj.get("labels") or [])
@@ -3437,12 +3443,16 @@ for c in fs_claims:
                 "stale claim suspected but its repo is outside the scan set; skipped",
                 "repo-not-scanned")
         continue
+    # The keep is for the claim's OWN pane: the dispatcher claims under the
+    # target pane's basename before launch, so a dispatch by another agent
+    # is not this claim's work and the claim ages out as usual.
     live = dispatched.get((c["ns"], c["issue"]))
-    if not op and age >= ttl and live is not None:
+    if not op and age >= ttl and live is not None and live["agent"] == c["owner"]:
         add("R1", repo, c["issue"], "issue", ["fs_claim", "dispatch"],
-            "stale-aged claim kept: a live dispatch is working it",
-            "age %dm >= TTL %dm, no open PR, but %s is dispatched on %s (pane %s)"
-            % (age // 60, ttl // 60, live["agent"], live["target"], live["pane"]))
+            "stale-aged claim kept: its owner is live-dispatched on it",
+            "age %dm >= TTL %dm, no open PR, but owner %s is dispatched on %s (pane %s)"
+            % (age // 60, ttl // 60, live["agent"], live["target"], live["pane"]),
+            escalate=False)
         continue
     if not op and age >= ttl:
         add("R1", repo, c["issue"], "issue", ["fs_claim", "label", "pr"],
@@ -4071,7 +4081,10 @@ except Exception:
 
 # Flag-only findings (no auto-fix action) are the "unresolved/ambiguous" drift
 # the auto-fix rules can't clear; only these accrue persistence and escalate.
-flag_only = [f for f in findings if not f.get("apply")]
+# A finding stamped escalate=False is expected long-lived state (a claim whose
+# owner is still working it), not drift, and never accrues.
+flag_only = [f for f in findings
+             if not f.get("apply") and f.get("escalate", True) is not False]
 
 def key(f):
     return "%s:%s:%s:%s" % (f["rule"], f["repo"], f["target_kind"], f["target"])

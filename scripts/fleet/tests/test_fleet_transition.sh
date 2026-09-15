@@ -288,6 +288,16 @@ assert_eq "$(run verdict-needs-opus-recheck 110)" "0" "T13 verdict-needs-opus-re
 assert_eq "$(get_labels pr 110)" "fleet:has-nits fleet:needs-opus-recheck" \
     "T13 the escalation consumed the triggers too (else the sonnet lane re-elects it)"
 assert_eq "$(edit_calls)" "1" "T13 exactly one edit call"
+reset_log
+set_labels pr 111 fleet:changes-made human:re-review fleet:needs-fix
+assert_eq "$(run verdict-approve-nits 111)" "0" "T13 verdict-approve-nits exits 0"
+assert_eq "$(get_labels pr 111)" "fleet:approved fleet:has-nits" \
+    "T13 approve-nits consumed both triggers"
+reset_log
+set_labels pr 112 fleet:changes-made human:re-review fleet:approved
+assert_eq "$(run verdict-blocker 112)" "0" "T13 verdict-blocker exits 0"
+assert_eq "$(get_labels pr 112)" "fleet:blocker" \
+    "T13 blocker consumed both triggers with the stale approval"
 
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"
