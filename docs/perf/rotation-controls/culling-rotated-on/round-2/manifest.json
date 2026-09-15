@@ -1,0 +1,39 @@
+{
+  "head": "8733fd44e4afdc1a2455fd574d23cdc74befb94d",
+  "changes": "?? scripts/perf/rotation_controls.py\n",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "binary_sha256": "08f963ca0551099efe7fa81153fe9f59430a3fc6a10bd2790fdb5f9e66f78a8a",
+  "shader_sha256": "b7b16af5777ba7bcac13ff82bd2b8276ced25cdeb2cf462621274ccb9be0dc47",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "120",
+    "IRPerfGrid",
+    "--mode",
+    "voxel_set",
+    "--wave-freeze",
+    "--auto-profile",
+    "300",
+    "--grid-size",
+    "64",
+    "--zoom",
+    "2",
+    "--yaw",
+    "0.785398163",
+    "--subdivision-mode",
+    "none",
+    "--base-subdivisions",
+    "1",
+    "--no-sun-shadows",
+    "--occlusion-cull"
+  ],
+  "runs": [
+    {
+      "index": 1,
+      "exit_code": 0,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    }
+  ]
+}

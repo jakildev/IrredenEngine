@@ -1,0 +1,74 @@
+=== PROFILE REPORT (300 frames) ===
+Frame time:   avg=20.00ms   p50=19.31ms   p95=21.52ms   p99=23.96ms   min=18.43ms   max=103.91ms
+Update ticks: avg=1.2/frame  max=6
+Entity count: 262321 (46 archetypes)
+
+--- Per-system timing (by pipeline, then total descending) ---
+Pipeline System                                Total(ms)   Avg(ms)   Min(ms)   Max(ms)   Calls   Entities
+INPUT    InputKeyMouse                              3.00     0.008     0.003     0.013     359      44875
+UPDATE   UpdateVoxelSetChildren                   608.62     1.695     1.324     5.472     359   94109696
+UPDATE   PropagateTransform                       106.31     0.296     0.215     0.570     359   94157083
+UPDATE   ModifierDecay                             41.14     0.115     0.091     0.334     359   94109696
+UPDATE   FogRevealEval                              1.82     0.005     0.003     0.038     359          0
+UPDATE   PeriodicIdle                               0.27     0.001     0.000     0.002     359          0
+UPDATE   PeriodicIdlePositionOffset                 0.27     0.001     0.000     0.005     359          0
+RENDER   SingleVoxelToCanvasFirst                 355.55     1.185     0.939    44.780     300        300
+RENDER   BuildLightOcclusionGrid                  126.13     0.420     0.382     1.680     300        300
+RENDER   CanvasToFramebuffer                       34.30     0.114     0.087     0.700     300        900
+RENDER   PerfStatsOverlay                          30.78     0.103     0.085     0.165     300        299
+RENDER   ComputeLightVolume                        30.22     0.101     0.087     0.310     300        300
+RENDER   TextToTrixel                              14.05     0.047     0.029     3.270     300        300
+RENDER   LightingToTrixel                          13.18     0.044     0.038     0.177     300        300
+RENDER   ComputeVoxelAO                            11.26     0.038     0.033     0.139     300        300
+RENDER   ComputeSunShadow                           7.32     0.024     0.021     0.091     300        300
+RENDER   ResolvePerAxisScreenDepth                  7.02     0.023     0.020     0.332     300        600
+RENDER   BuildDistanceHiZ                           5.65     0.019     0.015     0.087     300        600
+RENDER   FramebufferToScreen                        5.28     0.018     0.015     0.083     300        300
+RENDER   BakeSunShadowMap                           3.39     0.011     0.009     0.032     300        300
+RENDER   FogToTrixel                                2.87     0.010     0.008     0.038     300        300
+RENDER   AutoProfile                                2.10     0.007     0.005     0.185     300       1200
+RENDER   ShapesToTrixel                             1.65     0.005     0.004     0.038     300          0
+RENDER   CameraMousePan                             1.45     0.005     0.003     0.011     300        300
+RENDER   Camera                                     1.13     0.004     0.003     0.010     300        300
+RENDER   CameraKeyDragPan                           0.74     0.002     0.002     0.007     300        300
+RENDER   CameraMouseRotate                          0.61     0.002     0.001     0.003     300        300
+RENDER   CameraKeyDragRotate                        0.43     0.001     0.001     0.002     300        300
+
+--- GPU stage timing ---
+Stage                                  Avg(ms)   Min(ms)   Max(ms) Samples
+canvasClear                              0.027     0.015     0.093     299
+voxelCompact                             0.074     0.042     0.146     299
+voxelPerAxisStore                        5.293     2.575     8.321     299
+voxelPerAxisOverflow                     2.616     0.039     3.131     299
+voxelPerAxisFinalize                     3.026     0.809     3.689     299
+perAxisCellCompact                       0.082     0.070     0.184     299
+computeVoxelAoPerAxis                    0.021     0.019     0.027     298
+lightingPerAxis                          0.027     0.026     0.030     298
+lightingOverflow                         0.056     0.024     0.094     299
+perAxisScatter                           3.151     0.030     6.343     299
+textToTrixel                             0.012     0.005     0.528     299
+computeVoxelAO                           0.014     0.013     0.039     299
+computeSunShadow                         0.023     0.022     0.031     299
+computeLightVolume                       4.271     4.014    10.654     299
+lightingToTrixel                         0.010     0.009     0.016     299
+fogToTrixel                              0.020     0.008     0.042     299
+trixelToFb                               0.096     0.026     0.242     299
+resolvePerAxisScreenDepth                0.028     0.027     0.032     298
+fbToScreen                               0.037     0.034     0.051     299
+
+--- Voxel cull stats ---
+                        Avg            Max    Samples
+Visible            261267.3         262144        299
+Total              262144.0         262144        299
+AxisEntries        783801.8         786432        299
+Feeder                  0.0              0        299
+Ratio:               0.9967 (unique retained candidates / pool slots; includes separate feeders)
+Feeder ratio: cross-run only — this report's Avg is one config's feeder count, not a total to divide by. Compute pv-on Avg / pv-off Avg from two separate --occlusion-cull on/off invocations of the same scene.
+
+--- CPU phase timing ---
+Phase                                  Avg(ms)   Max(ms) Samples
+ComputeLightVolume::Clear                0.004     0.029     300
+ComputeLightVolume::Populate             0.065     0.257     300
+ComputeLightVolume::Upload               0.026     0.057     300
+
+=== END REPORT ===

@@ -77,10 +77,10 @@ The remaining work below still applies.
    have separate counters and producer-matched readback. Add generated subdivision
    samples, occupied cells, overflow entries and scratch bytes. Separate useful
    visible work from shadow-caster work.
-2. Extend the matrix with fixed poses, near-cardinal angles, a continuous camera
-   sweep and entity revoxelization. Add matched projected-area scenes with
-   adjusted object extent/zoom, and fixed zoom with varying subdivision density.
-   The four cells above keep the scene and framebuffer fixed, not projected area.
+2. [Frozen controls](rotation-controls.md) now cover fixed zoom/varying density,
+   one-degree yaw, matched projected block extents and culling toggles. Extend
+   repeatable timing to continuous sweeps and entity revoxelization. The original
+   four cells keep the scene and framebuffer fixed, not projected area.
 3. Profile culling before subdivision expansion. Reject hidden/off-screen face
    work early enough to avoid generating it, while retaining off-screen geometry
    whose shadows can reach visible receivers. Compare existing culling toggles
