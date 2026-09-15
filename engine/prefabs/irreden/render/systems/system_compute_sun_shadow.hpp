@@ -45,12 +45,12 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
     // links even when the bake system isn't registered.
     Buffer *sunShadowDepthMap_ = nullptr;
 
-    // Smooth camera Z-yaw (#1311): main canvas + per-axis voxel canvases,
+    // Smooth camera Z-yaw: main canvas + per-axis voxel canvases,
     // re-resolved every frame in beginTick. Null unless allocated (rotating).
     IREntity::EntityId perAxisCanvasEntity_ = IREntity::kNullEntity;
     C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
 
-    // Lazily-resolved voxel-compaction buffers (#1961/#2256), restored onto
+    // Lazily-resolved voxel-compaction buffers, restored onto
     // slots 25/26 after dispatchPerAxisSunShadow borrows them for its own
     // per-axis cell list. See IRPrefab::PerAxisCanvas::restoreVoxelCompactionSlots.
     Buffer *voxelCompactedBuf_ = nullptr;
@@ -79,7 +79,7 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
         IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
         IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
 
-        // Smooth camera Z-yaw (#1311): resolve the sun shadow for each per-axis
+        // Smooth camera Z-yaw: resolve the sun shadow for each per-axis
         // voxel canvas (reads the shared depth map baked from all four canvases).
         if (entity == perAxisCanvasEntity_ && perAxisCanvases_ != nullptr &&
             perAxisCanvases_->isAllocated()) {
@@ -113,10 +113,10 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
             // One barrier after the 3 independent per-axis dispatches (each axis
             // writes its own sun-shadow image texture — disjoint outputs, so
             // dispatch order doesn't matter) so they overlap on the GPU instead
-            // of serializing per axis (#1311).
+            // of serializing per axis.
             IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
         }
-        // Restore the main-canvas image bindings (see the #1311 note in
+        // Restore the main-canvas image bindings (see the note in
         // system_compute_voxel_ao.hpp — the persistent Metal image-binding table
         // would otherwise dangle when release() frees the per-axis textures).
         mainTextures.getTextureDistances()
@@ -135,7 +135,7 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
             sunShadowDepthMap_ = IRRender::getNamedResource<Buffer>("SunShadowDepthMap");
         }
 
-        // Resolve the main canvas + its per-axis voxel canvases (#1311).
+        // Resolve the main canvas + its per-axis voxel canvases.
         perAxisCanvasEntity_ = IRRender::getCanvas("main");
         perAxisCanvases_ = nullptr;
         if (perAxisCanvasEntity_ != IREntity::kNullEntity) {

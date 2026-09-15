@@ -8,7 +8,7 @@ namespace IRCommand {
 
 // The cull-freeze flag itself lives in IRRender (cull_viewport_state.hpp), next
 // to the cull state it gates, so lower layers can drive it without depending on
-// the command module (see #1438). This command is the interactive toggle;
+// the command module. This command is the interactive toggle;
 // IRCommand::isCullingFrozen() stays as a thin forwarder for existing callers.
 inline bool isCullingFrozen() {
     return IRRender::isCullingFrozen();

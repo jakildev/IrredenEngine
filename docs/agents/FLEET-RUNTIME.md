@@ -177,6 +177,35 @@ nothing.
 ## Usage-limit handling
 
 On a usage-limit error: print it and exit, and flag it in the iteration
-summary. The dispatcher has no per-role back-off, so the next trigger may
-hit the same limit. Sonnet-class iterations never switch to `/model opus`
-to keep working.
+summary. Sonnet-class iterations never switch to `/model opus` to keep
+working. The wrapper and dispatcher classify the exit as the wall — a
+**provider event, not a target outcome** — and hold Claude dispatch until
+the window resets (gate thresholds and the per-pane cooldown:
+[`FLEET.md § Rate-limit handling`](FLEET.md)):
+
+- `fleet-claude-stream` latches the `status:"rejected"` event at 100 % (its
+  own `<type>.rejected.json`, so a later warning from another pane cannot
+  reopen the gate early) and flags the wrapper; the wall's result text
+  ("hit your … limit") flags the wrapper too, and on its own — no event
+  seen — latches `wall.rejected.json` with no `resetsAt`, so the gate holds
+  for the observed-at cutoff rather than reopening on a released idle
+  claim. The wrapper writes the pane's cooldown marker (`claude` exits 1 at
+  the wall; the legacy exit 2 is honored too) and re-arms the role trigger
+  — the dispatcher consumed it at launch, and a kept mid-task claim is
+  invisible to every other re-arm. The trigger waits behind the closed
+  gate; a tick that finds the reserved pane still in its cooldown keeps it
+  rather than standing the lane down.
+- Cleanup reads the marker as `verdict=quota` **before** the completion
+  contract (§ "The dispatch target") and re-arms the trigger again — the
+  wall answers within the launching tick, whose own consume can erase the
+  wrapper's touch; cleanup runs at the next tick top, after that call
+  returned, so the marker is the durable half of the resume edge. Then the
+  pre-launch grant is handed back,
+  the abandon ledger and empty-exit streak are untouched, and the claim is
+  released (session sidecar cleared) only when the pane did no work, so
+  another provider can take the item; a mid-task death keeps claim and
+  session for the resume.
+- `fleet-babysit` reads the same gate (`fleet-dispatcher --gate-status
+  claude`) before a crash or limit relaunch of an architect pane and holds
+  while it is closed; an immediate exit-1 with the gate closed never counts
+  toward condemning the session pointer.

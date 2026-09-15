@@ -199,9 +199,9 @@ are tracked separately. They are:
   a layer's zero semantics, so the rule is stated at the storage level: nothing
   but an explicit `clear()` ever removes a chunk.
 - **Clearing a live chunk marks it dirty.** Its key stays in the dirty set even
-  though the chunk is gone — C3's recompute window must cover it, because
-  removing a chunk raises its neighbours' clearance exactly as removing
-  obstacles does (D4).
+  though the chunk is gone — C3 must rebuild derived membership because an
+  absent chunk is occupied under D4 and can only preserve or lower its
+  neighbours' clearance.
 
 ### D3 — key packing
 
@@ -245,7 +245,7 @@ constexpr int kMaxPlacementHits  = 65536;  // domain ceiling for K (D6)
 
 | Parameter | Domain | Enforced at |
 |---|---|---|
-| `maxClearance` (per field) | `[1, kMaxClearanceCells]` | `PlacementField` construction |
+| `maxClearance` (per field) | `[1, kMaxClearanceCells]` | `FieldClearance` construction; C5 delegates from `PlacementField` |
 | `minSpacing` (D6) | `[1, kMaxClearanceCells]` | `queryPlacements` param validation |
 | query radius `c` (D6) | `[0, maxClearance]` | `queryPlacements` param validation |
 | hits wanted `k` (D6) | `[1, kMaxPlacementHits]` | `queryPlacements` param validation |
@@ -277,10 +277,13 @@ reads that shortfall as "no space anywhere" (D6 has no failure sentinel). Rather
 than define a zero-spacing candidate path that would duplicate `minSpacing = 1`,
 the domain excludes zero.
 
-The asymmetry with `c` is deliberate: `clearance = 0` **is** valid, because
-`c*c = 0` makes the clearance predicate `0 <= clearanceSq`, vacuously true for
-every present cell — genuinely "no clearance requirement". Zero is a meaningful
-relaxation for `c` and a degenerate spelling for `minSpacing`.
+The asymmetry with `c` is deliberate: `clearance = 0` **is** valid and means no
+positive-radius clearance requirement, but it does not make occupied cells
+valid. The predicate requires a present cell with `clearanceSq > 0` before
+checking `c*c <= clearanceSq`. Exact squared distance is zero precisely at an
+occupied present cell, and an absent cell fails lookup, so the independent
+free-cell arm rejects both at `c = 0`. Zero remains a meaningful relaxation for
+`c` and a degenerate spelling for `minSpacing`.
 
 **`k <= 0` is rejected, and `PlacementParams`' default is deliberately out of
 domain.** `k` is the number of hits wanted, so zero asks the query to do
@@ -331,8 +334,20 @@ only on write-back, where saturation guarantees the value is
 `≤ maxClearance² ≤ 1,048,576`. `int64` covers any window a machine can allocate:
 `q ≤ 2^31` gives `q² ≤ 2^62`.
 
+The reusable kernel is the integer min-plus transform
+`IRMath::squaredDistanceTransform1D(input, output, scratch)`, computing
+`min_q(input[q] + (p-q)²)`. Both spans contain `int64`, have equal length, do
+not overlap, and are bounded to `INT32_MAX` elements. Finite costs are in
+`[0, (INT32_MAX-1)²]`; `IRMath::kSquaredEdtInfinity = INT64_MAX` is skipped
+rather than used in arithmetic, so an all-infinite input stays all-infinite.
+Caller-owned `SquaredEdtScratch` retains the lower-envelope storage. Integer
+breakpoints use mathematical floor division, including for negative
+numerators, with the lower-index parabola winning ties. Saturation happens
+only after the second separable axis, immediately before narrowing to int32.
 
-- **All integer, no `sqrt`, ever.** Queries compare `c*c <= clearanceSq`.
+
+- **All integer, no `sqrt`, ever.** Queries first require
+  `clearanceSq > 0`, then compare `c*c <= clearanceSq`.
   Felzenszwalb–Huttenlocher's two separable 1-D passes are exact for squared
   Euclidean distance, so the whole pipeline is bit-identical on every platform
   with no float determinism question to answer.
@@ -681,14 +696,26 @@ struct PlacementParams {
     std::uint64_t seed_       = 0;   // D7
 };
 
-class PlacementField {                       // owns the three layers
-    ChunkedField2D<std::uint8_t> occupancy_;
-    ChunkedField2D<std::int32_t> clearanceSq_;   // saturated at maxClearance²
-    /* region labels */
-    int maxClearance_ = 0;                       // [1, kMaxClearanceCells]
+class FieldClearance {
+    ChunkedField2D<std::int32_t> values_;
+    int maxClearance_ = 0;
   public:
-    explicit PlacementField(int maxClearance);   // rejects out-of-domain (D4)
-    int  maxClearance() const { return maxClearance_; }
+    explicit FieldClearance(int maxClearance);
+    int maxClearance() const;
+    void update(const ChunkedField2D<std::uint8_t> &occupancy,
+                std::span<const FieldChunkKey> dirtyKeys);
+    void rebuild(const ChunkedField2D<std::uint8_t> &occupancy);
+    const ChunkedField2D<std::int32_t> &values() const;
+    bool hasClearance(IRMath::ivec2 cell, int clearance) const;
+};
+
+class PlacementField {                       // C5 composes the three layers
+    ChunkedField2D<std::uint8_t> occupancy_;
+    FieldClearance clearance_;
+    /* region labels */
+  public:
+    explicit PlacementField(int maxClearance);   // delegates D4 validation
+    int  maxClearance() const { return clearance_.maxClearance(); }
     void update();   // EDT + relabel over the occupancy dirty set, then clear it
 };
 
@@ -703,6 +730,16 @@ void queryPlacements(
 
 - **Chunk-first pruning**: a chunk whose summary `max_ < c*c` in the clearance
   layer cannot contain a valid cell and is skipped without touching a cell.
+- **C3 owns the clearance lifecycle.** `FieldClearance::update` borrows the
+  complete occupancy dirty snapshot without acknowledging it; C5 passes the
+  same snapshot to the clearance and region layers, then acknowledges occupancy.
+  `rebuild` and incremental updates use the same window driver. Its result has
+  exactly the occupancy field's present keys and current summaries before the
+  call returns.
+- **A candidate is free before it is clear enough.** `hasClearance` requires a
+  present value with `clearanceSq > 0`, then compares the widened
+  `clearance*clearance <= clearanceSq`. C5 delegates anchor-hit and candidate
+  validity to that helper, including at `clearance = 0`.
 - **Domain validation is a precondition check, not a silent clamp** —
   `queryPlacements` rejects a `PlacementParams` outside D4's domain table
   rather than clamping into it, for the reason D4 gives: a clamped query
@@ -751,8 +788,8 @@ per-candidate foreign-read footgun unreachable from script.
 | `engine/prefabs/irreden/spatial/` | everything chunk-aware: storage, windowed EDT driver, region stitching, the draw, the query. Header-only per prefab convention — no CMake registration. |
 
 The split is the reusability line: a 1-D squared-EDT pass over a span is useful
-to anything with a scanline; a `2·maxClearance` write-back ring is meaningless
-outside this kit.
+to anything with a scanline; a `2·maxClearance` compute halo paired with a
+`1·maxClearance` write-back halo is meaningless outside this kit.
 
 ---
 
@@ -820,7 +857,7 @@ edits and carry a value ⇒ this kit.
 |---|---|---|
 | **C1** | this doc + the cross-references (`engine/prefabs/irreden/spatial/CLAUDE.md`, `engine/math/CLAUDE.md`, the relationship line in `lua-world-space-neighbour-query.md`) | **landing** |
 | **C2** (#3160) | `chunked_field.hpp` — `ChunkedField2D<T>`, summaries, dirty tracking, `FieldChunkKey` (D2, D3) | **shipped** |
-| **C3** (#3161) | `IRMath` 1-D squared-EDT kernel + `field_clearance.hpp` — capped windowed F–H (D4, D10) | not started |
+| **C3** (#3161) | `IRMath` 1-D squared-EDT kernel + `field_clearance.hpp` — capped windowed F–H (D4, D10) | **shipped** |
 | **C4** (#3162) | `field_regions.hpp` — per-chunk CCL + seam-stitch union-find (D5) | not started |
 | **C5** (#3163) | `IRMath::Pcg32` + `IRMath::isqrt` + `field_placement.hpp` — draw, `PlacementField`, `queryPlacements` + stats (D6, D7, D8); flips this table to shipped | not started |
 
@@ -859,13 +896,13 @@ default-passes:
   clamps edge clearance exactly as an occupied one does (the conservatism rule);
   `clearanceSq` saturates *equal to* `maxClearance²` on an empty field;
   incremental recompute **byte-equals** a from-scratch rebuild over seeded
-  mutation sequences; **numeric domain (D4)** — a `PlacementField` at
+  mutation sequences; **numeric domain (D4)** — a `FieldClearance` at
   `maxClearance = kMaxClearanceCells` saturates at exactly `1,048,576` with no
   overflow, construction accepts `1` and `kMaxClearanceCells` and rejects `0`
   and `kMaxClearanceCells + 1` (both arms, so the check cannot pass by
-  rejecting everything), and the 1-D pass is run over a window row long enough
-  that an int32 intermediate would overflow (> 46,340 cells) and asserted equal
-  to an `int64` reference.
+  rejecting everything), and the 1-D pass runs over 50,001 cells and returns
+  `2,500,000,000` at the far end. Its pure size validator accepts `INT32_MAX`
+  and rejects `INT32_MAX + 1` without constructing an invalid span.
 - **C4** — an L-shaped free region spanning ≥3 chunks gets one label; a wall
   splitting it yields two, with the wall's chunks re-stitched correctly;
   incremental relabel ≡ full relabel over seeded mutations; **the ids
@@ -888,6 +925,8 @@ default-passes:
   accepted (both arms, so the check cannot pass by rejecting everything), and a
   **default-constructed `PlacementParams`** asserted rejected, since its
   `k_ = 0` is the mistake the default invites (D4);
+  an occupied anchor at `c = 0` is not a hit while a present free control is,
+  proving that zero clearance relaxes radius without bypassing occupancy;
   **the caller's output vector is cleared, not appended to** — `out` pre-seeded
   with sentinel hits and asserted to contain none of them after a successful
   query, after a *rejected* one (the clear precedes validation, D7 — so

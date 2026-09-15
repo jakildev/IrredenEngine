@@ -1,7 +1,7 @@
 #ifndef IR_PREFAB_SETTINGS_MENU_H
 #define IR_PREFAB_SETTINGS_MENU_H
 
-// Adoption surface for the standard pause/settings menu (#2551).
+// Adoption surface for the standard pause/settings menu.
 //
 // A creation registers what is togglable and wires three lists; the menu owns
 // layout, interaction, and teardown:
@@ -130,9 +130,9 @@ inline IRCommand::CommandId registerToggleCommand(int button = kDefaultToggleBut
 //
 // `isOpen()` (from the component header) answers "did the toggle fire". These
 // answer "did the menu actually materialize", which a flag alone cannot prove.
-// Both resolve the running system through the `SystemName` registry (#2526)
+// Both resolve the running system through the `SystemName` registry
 // and read a clean negative when it is not registered — against
-// `IRSystem::kNullSystemId`, the miss sentinel #2540 moved off `kNullEntity`
+// `IRSystem::kNullSystemId`, the miss sentinel moved off `kNullEntity`
 // because 0 is a live system id. See `HelpOverlay::systemOrNull()` for why the
 // wrong sentinel fails in both directions.
 

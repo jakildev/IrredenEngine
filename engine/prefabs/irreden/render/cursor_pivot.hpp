@@ -1,16 +1,14 @@
 #ifndef IR_PREFAB_CURSOR_PIVOT_H
 #define IR_PREFAB_CURSOR_PIVOT_H
 
-// Cursor-latched camera Z-yaw pivot (#2548, epic #2544 Phase 4) — the two
-// pieces `System<CAMERA_MOUSE_ROTATE>`'s Ctrl+Shift+middle-drag needs beyond
+// Cursor-latched camera Z-yaw pivot. These are the two pieces
+// `System<CAMERA_MOUSE_ROTATE>`'s Ctrl+Shift+middle-drag needs beyond
 // the raw `IRRender::setRotationPivotFocus` call:
 //
 //   1. `resolveFocusWorld` — the world point under the cursor at its TRUE
-//      surface depth, via `IRPrefab::Picking::castVoxelRay`. The pre-#2548
-//      latch used `mouseWorldPos3DAtIsoDepth(0)`, an iso-depth-0 point on the
-//      cursor ray: for elevated content that lands well behind the clicked
-//      surface, so the scene arcs about a point the user never picked (the
-//      same wrong-depth class #2547 fixed for the DEFAULT pivot).
+// surface depth, via `IRPrefab::Picking::castVoxelRay`. An iso-depth-0 point on
+//      the cursor ray lands behind elevated content, making the scene arc about
+//      a point the user never picked.
 //   2. `createIndicator` / `showIndicator` / `hideIndicator` — the marker
 //      entity that shows where the pivot actually latched, so the mode is
 //      debuggable without guessing.
@@ -19,13 +17,13 @@
 // §"Exposing system public API from the prefab layer") — cursor-pivot is a
 // per-creation interaction feature, so none of it belongs on `RenderManager`.
 //
-// The latch is acquired once, on mouse-DOWN, and held for the drag (the #1352
-// open question — a pivot that re-follows the live cursor feeds back into the
-// rotation it controls). Callers own that policy; this header only resolves a
+// The latch is acquired once, on mouse-DOWN, and held for the drag because a
+// pivot that re-follows the live cursor feeds back into the rotation it
+// controls. Callers own that policy; this header only resolves a
 // point and draws a marker at it.
 //
-// Contract note (epic #2544 ledger D3): CPU picking never applied the #2545
-// raster anchor shift, so `castVoxelRay` already agrees with the raster at
+// CPU picking does not apply the raster anchor shift, so `castVoxelRay`
+// already agrees with the raster at
 // every cardinal — do NOT add a picking compensation here.
 
 #include <irreden/ir_entity.hpp>
@@ -51,10 +49,9 @@ constexpr IRMath::Color kIndicatorColor{255, 208, 64, 255};
 // On a background click there is no surface to latch, and the drag falls back
 // to @ref IRRender::getDefaultRotationPivotFocus — i.e. the click behaves
 // exactly like the DEFAULT (no-Shift) pivot, which is itself depth-derived and
-// already gated by `pivot-verify`'s default-pivot blocks. The alternative
-// (`mouseWorldPos3DAtIsoDepth(0)`, the old behavior, kept under the cursor)
-// would pin an arbitrary depth on the cursor ray, which is the defect this
-// task exists to remove.
+// already gated by `pivot-verify`'s default-pivot blocks. Do not use
+// `mouseWorldPos3DAtIsoDepth(0)` here; it pins an arbitrary depth on the cursor
+// ray.
 //
 // @p excludeEntity is skipped by the ray — pass the indicator from a previous
 // drag so the marker cannot catch its own ray.
