@@ -457,9 +457,11 @@ void main() {
                 // with the constant-base call sites in the single-list branch;
                 // constant bases at every call site keep the inlined stores
                 // foldable.
-                writeDispatchDims(0u, visibleSlices);
-                writeDispatchDims(kPerAxisIndirectStrideUints, visibleSlices);
-                writeDispatchDims(2u * kPerAxisIndirectStrideUints, visibleSlices);
+                // Face-local stores carry one sample; the scatter reconstructs
+                // their footprint independently of presentation subdivisions.
+                writeDispatchDims(0u, 1u);
+                writeDispatchDims(kPerAxisIndirectStrideUints, 1u);
+                writeDispatchDims(2u * kPerAxisIndirectStrideUints, 1u);
             }
         }
     }

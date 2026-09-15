@@ -289,7 +289,7 @@ kernel void IR_STAGE2_KERNEL_NAME(
     // distances for. See c_voxel_to_trixel_stage_1.glsl.
     const int zIdx =
         int(groupId.z) * kStageMicroSlicesPerGroup + int(localId3.z);
-    const int microSliceCount = (frameData.voxelRenderOptions.x != 0)
+    const int microSliceCount = (frameData.voxelRenderOptions.x != 0 && frameData.perAxisRoute == 0)
         ? (max(frameData.voxelRenderOptions.y, 1) * max(frameData.voxelRenderOptions.y, 1))
         : 1;
     if (zIdx >= microSliceCount) {

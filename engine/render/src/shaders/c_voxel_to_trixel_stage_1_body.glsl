@@ -488,7 +488,7 @@ void main() {
     const int microSliceCount = (voxelRenderOptions.x != 0) ? (feederCap * feederCap) : 1;
 #else
     const int microSliceCount =
-        (voxelRenderOptions.x != 0)
+        (voxelRenderOptions.x != 0 && perAxisRoute == 0)
             ? (max(voxelRenderOptions.y, 1) * max(voxelRenderOptions.y, 1))
             : 1;
 #endif

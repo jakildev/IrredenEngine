@@ -1,0 +1,48 @@
+{
+  "head": "b6d70bd3134b4a2c6be9fa32ed7fae2394ad79ef",
+  "changes": " M docs/perf/rotation-subdivision-audit.md\n M engine/render/src/shaders/c_voxel_to_trixel_stage_1_body.glsl\n M engine/render/src/shaders/c_voxel_to_trixel_stage_2_body.glsl\n M engine/render/src/shaders/c_voxel_visibility_compact.glsl\n M engine/render/src/shaders/metal/c_voxel_to_trixel_stage_1_body.metal\n M engine/render/src/shaders/metal/c_voxel_to_trixel_stage_2_body.metal\n M engine/render/src/shaders/metal/c_voxel_visibility_compact.metal\n M scripts/perf/repeat_profile.py\n?? docs/perf/per-axis-dispatch-density.md\n?? docs/pr-screenshots/codex/per-axis-dispatch-density/\n",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "binary_sha256": "92cb2a5fbe6dffc1fd0c568c89e87c77c553d7452e79efabc2fb08f811577e1e",
+  "shader_sha256": "2f109b3aea88e23f6cce2838901a8febe6affe824921d93a1966d273f3d20549",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "120",
+    "IRPerfGrid",
+    "--auto-profile",
+    "300",
+    "--grid-size",
+    "64",
+    "--zoom",
+    "4",
+    "--yaw",
+    "0",
+    "--subdivision-mode",
+    "full",
+    "--base-subdivisions",
+    "1"
+  ],
+  "runs": [
+    {
+      "index": 1,
+      "exit_code": 0,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    },
+    {
+      "index": 2,
+      "exit_code": 0,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    },
+    {
+      "index": 3,
+      "exit_code": 0,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    }
+  ]
+}

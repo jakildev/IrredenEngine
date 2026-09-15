@@ -274,7 +274,9 @@ void main() {
     // distances for.
     const int zIdx = int(gl_WorkGroupID.z) * kStageMicroSlicesPerGroup + int(gl_LocalInvocationID.z);
     const int microSliceCount =
-        (voxelRenderOptions.x != 0) ? (max(voxelRenderOptions.y, 1) * max(voxelRenderOptions.y, 1)) : 1;
+        (voxelRenderOptions.x != 0 && perAxisRoute == 0)
+            ? (max(voxelRenderOptions.y, 1) * max(voxelRenderOptions.y, 1))
+            : 1;
     if (zIdx >= microSliceCount) return;
 
     uint voxelIndex = compactedVoxelIndices[compactedIdx];

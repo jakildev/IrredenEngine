@@ -439,7 +439,7 @@ kernel void c_voxel_visibility_compact(
             } else {
                 for (int axis = 0; axis < 3; ++axis) {
                     writeDispatchDims(
-                        indirectParams, uint(axis) * kPerAxisIndirectStrideUints, visibleSlices
+                        indirectParams, uint(axis) * kPerAxisIndirectStrideUints, 1u
                     );
                 }
             }
