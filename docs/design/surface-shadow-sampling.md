@@ -42,8 +42,8 @@ shortcut that suppressed mixed legacy blockers.
 
 ## Remaining work
 
-- Enable finite face casting by default with shape-only and non-main producer
-  lifecycle coverage, then measure its cost at large populations.
+- [Finite defaults](finite-shadow-defaults.md) cover shape-only and non-main
+  producer lifecycles; particle pipelines retain legacy casting.
 - Preserve both the four GRID cubes and detached/attached entities in sweeps.
 - Main/per-axis exact surface reconstruction and finite edge coverage crossing a
   display triangle remain separate work; do not fix them with a larger blur.

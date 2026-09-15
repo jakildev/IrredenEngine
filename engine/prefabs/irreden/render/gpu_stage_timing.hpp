@@ -14,13 +14,14 @@ inline constexpr float kFrameTimeBudgetMs = 1000.0f / 60.0f;
 
 // Number of named GPU stages in `gpuStageRegistry()`. Single source of truth
 // for both the registry array and the parallel per-stage accumulator array.
-inline constexpr std::size_t kGpuStageCount = 28;
+inline constexpr std::size_t kGpuStageCount = 29;
 
 struct GpuStageTiming {
     float canvasClearMs_ = 0.0f;
     float voxelCompactMs_ = 0.0f;
     float voxelStage1Ms_ = 0.0f;
     float voxelStage2Ms_ = 0.0f;
+    float voxelSunFacesMs_ = 0.0f;
     // Rotating-only per-axis burst sub-rows (#2281 Phase 2). Attributed by
     // GpuSubStageScope brackets inside the owning ticks; 0.0 at cardinal
     // (the per-axis canvases are released, none of the dispatches run).
@@ -302,6 +303,7 @@ inline const std::array<GpuStageInfo, kGpuStageCount> &gpuStageRegistry() {
         {"voxelCompact", &GpuStageTiming::voxelCompactMs_, 0.10f},
         {"voxelStage1", &GpuStageTiming::voxelStage1Ms_, 0.20f},
         {"voxelStage2", &GpuStageTiming::voxelStage2Ms_, 0.15f},
+        {"voxelSunFaces", &GpuStageTiming::voxelSunFacesMs_, 0.0f},
         {"voxelPerAxisStore", &GpuStageTiming::voxelPerAxisStoreMs_, 0.10f},
         {"voxelPerAxisOverflow", &GpuStageTiming::voxelPerAxisOverflowMs_, 0.05f},
         {"voxelPerAxisFinalize", &GpuStageTiming::voxelPerAxisFinalizeMs_, 0.10f},

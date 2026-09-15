@@ -166,8 +166,11 @@ static_assert(
 );
 
 template <> struct System<BAKE_SUN_SHADOW_MAP> {
-    bool voxelFaceCoverage_ = false;
-    bool sourceFaceCoverage_ = false;
+    bool voxelFaceCoverage_ = true;
+    bool sourceFaceCoverage_ = true;
+    bool coverageFrameOpen_ = false;
+    bool frameUsesFiniteCoverage_ = false;
+    Buffer *analyticCasterFrameBuf_ = nullptr;
     std::pair<ResourceId, Texture2D *> analyticCasterDepth_{0, nullptr};
     ivec2 analyticCasterSize_{0};
     bool analyticCasterReady_ = false;
@@ -175,15 +178,17 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
 
     Texture2D *prepareAnalyticCasterDepth(const GPUShapesFrameData &shapeFrame) {
         const ivec2 size = shapeFrame.canvasSize;
-        if (!voxelFaceCoverage_ || frameData_.shadowsEnabled_ == 0) {
+        if (!frameUsesFiniteCoverage_ || frameData_.shadowsEnabled_ == 0) {
             return nullptr;
         }
-        if (analyticCasterDepth_.second == nullptr || analyticCasterSize_ != size) {
+        if (analyticCasterDepth_.second == nullptr || analyticCasterSize_.x < size.x ||
+            analyticCasterSize_.y < size.y) {
             if (analyticCasterDepth_.second != nullptr) {
                 IRRender::destroyResource<Texture2D>(analyticCasterDepth_.first);
             }
-            analyticCasterDepth_ = IRComponents::detail::makeCanvasDistanceTexture(size);
-            analyticCasterSize_ = size;
+            analyticCasterSize_ = IRMath::max(analyticCasterSize_, size);
+            analyticCasterDepth_ =
+                IRComponents::detail::makeCanvasDistanceTexture(analyticCasterSize_);
         }
         const int empty = IRConstants::kTrixelDistanceMaxDistance;
         // Device clear also initializes the Metal image-atomic scratch buffer.
@@ -200,10 +205,32 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         return analyticCasterDepth_.second;
     }
 
+    void bakeAnalyticCasterDepth() {
+        if (!analyticCasterReady_)
+            return;
+        analyticCasterFrameBuf_->subData(0, sizeof(analyticCasterFrame_), &analyticCasterFrame_);
+        analyticCasterFrameBuf_->bindBase(
+            BufferTarget::UNIFORM,
+            kBufferIndex_FrameDataVoxelToCanvas
+        );
+        sunShadowFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
+        sunShadowDepthMap_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap);
+        bakeProgram_->use();
+        analyticCasterDepth_.second->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
+        IRRender::device()->dispatchCompute(
+            IRMath::divCeil(analyticCasterFrame_.canvasSizePixels_.x, kBakeSunShadowGroupSize),
+            IRMath::divCeil(analyticCasterFrame_.canvasSizePixels_.y, kBakeSunShadowGroupSize),
+            1
+        );
+        IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+        voxelFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas);
+        analyticCasterReady_ = false;
+    }
+
     ShaderProgram *boxSunProgram_ = nullptr;
 
     void bakeAnalyticBoxes(int count, int subdivisions) {
-        if (!voxelFaceCoverage_ || frameData_.shadowsEnabled_ == 0 || count == 0)
+        if (!frameUsesFiniteCoverage_ || frameData_.shadowsEnabled_ == 0 || count == 0)
             return;
         const ivec2 grid = voxelDispatchGridForCount(count);
         const ivec4 params(count, grid.x, subdivisions, 0);
@@ -390,39 +417,12 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
 
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
 
-        if (voxelFaceCoverage_) {
+        if (frameUsesFiniteCoverage_) {
             sunShadowFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
             sunShadowDepthMap_->bindBase(
                 BufferTarget::SHADER_STORAGE,
                 kBufferIndex_SunShadowDepthMap
             );
-            if (analyticCasterReady_ && &canvasTextures == mainTextures_) {
-                voxelFrameDataBuf_->subData(0, sizeof(analyticCasterFrame_), &analyticCasterFrame_);
-                // Only analytic geometry enters this input; voxel coverage already
-                // comes from finite faces and must not acquire depth-point splats.
-                bakeProgram_->use();
-                analyticCasterDepth_.second
-                    ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
-                voxelFrameDataBuf_->bindBase(
-                    BufferTarget::UNIFORM,
-                    kBufferIndex_FrameDataVoxelToCanvas
-                );
-                IRRender::device()->dispatchCompute(
-                    IRMath::divCeil(canvasTextures.size_.x, kBakeSunShadowGroupSize),
-                    IRMath::divCeil(canvasTextures.size_.y, kBakeSunShadowGroupSize),
-                    1
-                );
-                IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
-                restoreMainCanvasVoxelFrame(
-                    voxelFrameScratch_,
-                    voxelFrameDataBuf_,
-                    mainTextures_,
-                    mainPool_,
-                    mainRotation_
-                );
-                canvasTextures.getTextureDistances()
-                    ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
-            }
             return;
         }
         clearDepthMap();
@@ -661,7 +661,12 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         }
     }
 
+    void endTick() {
+        coverageFrameOpen_ = false;
+    }
+
     void beginTick() {
+        beginVoxelFaceCoverage();
         if (sunShadowFrameDataBuf_ == nullptr) {
             sunShadowFrameDataBuf_ =
                 IRRender::getNamedResource<Buffer>("ComputeSunShadowFrameData");
@@ -711,7 +716,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             &mainRotation_
         );
 
-        if (!voxelFaceCoverage_) {
+        if (!frameUsesFiniteCoverage_) {
             updateSunFrameData();
         }
     }
@@ -839,7 +844,17 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
     }
 
     // All voxel canvases share one clear and one cascade frame.
-    void beginVoxelFaceCoverage() {
+    bool beginVoxelFaceCoverage() {
+        if (coverageFrameOpen_)
+            return frameUsesFiniteCoverage_;
+        coverageFrameOpen_ = true;
+        // Particle producers still publish casters through the canvas depth input.
+        frameUsesFiniteCoverage_ =
+            voxelFaceCoverage_ &&
+            findSystem(RENDER_STATELESS_PARTICLES_TO_TRIXEL) == kNullSystemId &&
+            findSystem(RENDER_GPU_PARTICLES_TO_TRIXEL) == kNullSystemId;
+        if (!frameUsesFiniteCoverage_)
+            return false;
         analyticCasterReady_ = false;
         if (sunShadowFrameDataBuf_ == nullptr) {
             sunShadowFrameDataBuf_ =
@@ -859,6 +874,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         if (frameData_.shadowsEnabled_ != 0) {
             clearDepthMap();
         }
+        return true;
     }
 
     // Positions/colors remain resident only until the next canvas upload.
@@ -956,6 +972,15 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             C_CanvasSunShadow,
             C_TrixelCanvasRenderBehavior>("BakeSunShadowMap");
         auto *p = getSystemParams<System<BAKE_SUN_SHADOW_MAP>>(systemId);
+        p->analyticCasterFrameBuf_ = IRRender::createNamedResource<Buffer>(
+                                         "AnalyticCasterFrameBuffer",
+                                         nullptr,
+                                         sizeof(FrameDataVoxelToCanvas),
+                                         BUFFER_STORAGE_DYNAMIC,
+                                         BufferTarget::UNIFORM,
+                                         kBufferIndex_FrameDataVoxelToCanvas
+        )
+                                         .second;
         p->boxSunProgram_ =
             IRRender::createNamedResource<ShaderProgram>(
                 "BoxSunShadowProgram",

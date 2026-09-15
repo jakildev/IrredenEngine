@@ -1700,13 +1700,17 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 BufferTarget::SHADER_STORAGE,
                 kBufferIndex_RevoxelizeSourceGrid
             );
-            voxelFaceBaker_->bakeVoxelFaces(
-                effectiveVoxelCount,
-                renderMode == 0 ? 1 : effectiveSub,
-                canvasLocalRotation,
-                revoxBuffer,
-                triangleCanvasTextures.renderedCellOffset_
-            );
+            {
+                IR_PROFILE_SCOPE("voxelSunFaces");
+                IRRender::GpuSubStageScope gpuScope("voxelSunFaces");
+                voxelFaceBaker_->bakeVoxelFaces(
+                    effectiveVoxelCount,
+                    renderMode == 0 ? 1 : effectiveSub,
+                    canvasLocalRotation,
+                    revoxBuffer,
+                    triangleCanvasTextures.renderedCellOffset_
+                );
+            }
             winnerPlaceholderBuf_->bindBase(
                 BufferTarget::SHADER_STORAGE,
                 kBufferIndex_PerAxisResolveScratch
@@ -2122,9 +2126,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         const auto bakeSystem = findSystem(BAKE_SUN_SHADOW_MAP);
         if (bakeSystem != kNullSystemId) {
             auto *baker = getSystemParams<System<BAKE_SUN_SHADOW_MAP>>(bakeSystem);
-            if (baker->voxelFaceCoverage_) {
+            if (baker->beginVoxelFaceCoverage()) {
                 voxelFaceBaker_ = baker;
-                baker->beginVoxelFaceCoverage();
                 winnerPlaceholderBuf_->bindBase(
                     BufferTarget::SHADER_STORAGE,
                     kBufferIndex_PerAxisResolveScratch

@@ -698,6 +698,7 @@ void registerCliArgs() {
         "--occlusion-cull",
         "Force the voxel-pool chunk-occlusion HZB pre-pass ON (off by default)"
     );
+    args.flag("--legacy-depth-shadows", "Benchmark the legacy point-depth shadow caster");
     args.flag("--no-overlay", "Drop PERF_STATS_OVERLAY so a captured frame is deterministic");
     args.flag(
         "--no-sun-shadows",
@@ -1321,6 +1322,12 @@ int main(int argc, char **argv) {
             "--no-per-voxel-occlusion is a no-op without --occlusion-cull (the whole "
             "cull is off, so the per-voxel refine never runs)."
         );
+    }
+
+    if (IREngine::args().getFlag("--legacy-depth-shadows")) {
+        const auto bakeSun = IRSystem::findSystem(IRSystem::BAKE_SUN_SHADOW_MAP);
+        IRSystem::getSystemParams<IRSystem::System<IRSystem::BAKE_SUN_SHADOW_MAP>>(bakeSun)
+            ->voxelFaceCoverage_ = false;
     }
 
     // #3010: after initSystems(), so VOXEL_TO_TRIXEL_STAGE_1 exists for the

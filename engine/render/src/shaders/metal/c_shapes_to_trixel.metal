@@ -1128,7 +1128,7 @@ kernel void c_shapes_to_trixel(
             }
 
             const uint linearIndex =
-                uint(canvasPixel.y) * uint(frameData.canvasSize.x) +
+                uint(canvasPixel.y) * triangleCanvasDistances.get_width() +
                 uint(canvasPixel.x);
 
             if (frameData.passIndex != 1) {
