@@ -145,10 +145,8 @@ TEST(SystemConcurrencyValidator, PerEntityIdFormAcceptedWithParallelSafe) {
 }
 
 TEST(SystemAccessTagFilter, EntityIdAndMainThreadComposeWithSignatureProbe) {
-    // The signature probes used to fail when tag types appeared in the
-    // Components pack alongside a real `EntityId`-aware tick signature.
-    // Sub-task D filters tags before probing; this asserts the combined
-    // derivation now returns the expected flags from a single call.
+    // Access-policy tags must be filtered before probing an `EntityId`-aware
+    // tick signature so one derivation returns both signature and tag flags.
     auto access = deriveAccessFromSignature<
         void(IREntity::EntityId &, C_VelA &),
         C_VelA,
@@ -178,7 +176,7 @@ TEST(SystemConcurrencyValidator, BatchFormRejected) {
 }
 
 TEST(SystemConcurrencyValidator, RelationFormRejected) {
-    // a tick with `(Components&..., std::optional<RelComps*>...)`
+    // A tick with `(Components&..., std::optional<RelComps*>...)`
     // is the relation form. `rangedFn`'s relation branch in
     // system_manager.hpp calls `getRelatedEntityFromArchetype` +
     // `getComponentOptional` on `EntityManager` inside the per-row
@@ -283,7 +281,7 @@ TEST_F(CreateSystemValidatorTest, RelationFormSerialAcceptedAtRegistration) {
 }
 
 TEST_F(CreateSystemValidatorTest, CatchAllWithRelationParamsFatalsAtRegistration) {
-    // a variadic catch-all tick simultaneously satisfies every
+    // A variadic catch-all tick simultaneously satisfies every
     // signature probe (entity-id, batch-form, relation-form). The
     // validator rules are ordered most-specific-first (relation →
     // batch → entity-id) so the isRelationForm_ assertion fires first.

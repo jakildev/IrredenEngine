@@ -589,7 +589,7 @@ void LuaScript::bindLuaDrivenEcs() {
         m_lua["IREntity"] = m_lua.create_table();
     }
 
-    // world-level scene-transition teardown. Destroys every gameplay
+    // World-level scene-transition teardown. Destroys every gameplay
     // entity, preserving singletons + C_Persistent-tagged entities (the
     // renderer's camera/canvas survive). The scene machine pairs this with
     // IRSystem.clearPipeline / registerPipeline at a frame boundary.
@@ -630,7 +630,7 @@ void LuaScript::bindLuaDrivenEcs() {
         return IREntity::getEntityManager().hasComponent(entity.entity, componentId);
     };
 
-    // deferred entity create/destroy for EVAL Lua systems. A structural
+    // Deferred entity create/destroy for EVAL Lua systems. A structural
     // change (create, destroy) issued from inside a per-entity tick would
     // invalidate the archetype iteration in progress, so these route through
     // the same deferred machinery C++ systems use: the create's archetype
@@ -792,7 +792,7 @@ void LuaScript::bindLuaDrivenEcs() {
 
     bindLuaDrivenSystems();
 
-    // pipeline composition + enum bindings + modifier-framework bindings.
+    // Pipeline composition + enum bindings + modifier-framework bindings.
     // After bindLuaDrivenSystems() so the IRSystem table already exists;
     // these calls extend it with `SystemName`, `systemId`, and
     // `registerPipeline`. `bindIRTimeEvents` populates `IRTime`;
@@ -988,7 +988,7 @@ void LuaScript::bindLuaDrivenSystems() {
                 "IRSystem.registerSystem: '" + systemName + "' missing required field 'tick'"
             };
         }
-        // stash the tick in a shared_ptr so `IRSystem.replaceSystemBody`
+        // Stash the tick in a shared_ptr so `IRSystem.replaceSystemBody`
         // can later reseat the underlying sol::protected_function. The body
         // lambda below captures `tickRef` (the shared_ptr); the registered-
         // system map (`m_luaSystemTicks[systemId] = tickRef`) keeps an
@@ -1017,7 +1017,7 @@ void LuaScript::bindLuaDrivenSystems() {
             excludeIds = resolveComponentList(*excludes, "excludes", systemName, *this, em);
         }
 
-        // optional `concurrency` field. Accept the integer-typed
+        // Optional `concurrency` field. Accept the integer-typed
         // `IRSystem.Concurrency.{SERIAL,PARALLEL_FOR,MAIN_THREAD}` table
         // entry only; string names are rejected per the cpp-lua-enums
         // rule. PARALLEL_FOR is structurally unsafe for EVAL — the body
@@ -1132,7 +1132,7 @@ void LuaScript::bindLuaDrivenSystems() {
 
     m_lua["IRSystem"]["registerSystem"] = registerSystem;
 
-    // hot-reload the tick body of a previously-registered Lua
+    // Hot-reload the tick body of a previously-registered Lua
     // system. Reseats the captured sol::protected_function inside the
     // shared_ptr that the registerSystem body lambda holds; the next
     // pipeline tick on `systemId` invokes `newTick`. SystemId, archetype

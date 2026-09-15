@@ -14,7 +14,7 @@ namespace {
 using IRComponents::C_EntityEventHandlers;
 using IRSystem::ENTITY_HOVER_DETECT;
 
-// previousHoveredEntity_ is an event *payload*,
+// `previousHoveredEntity_` is an event *payload*,
 // not a cached handle with a lazy-respawn guard: when resetGameplay() destroys
 // the hovered entity, the next hover transition would hand the destroyed id to
 // every Lua onEntityUnhovered handler. Moving the state off the function-local

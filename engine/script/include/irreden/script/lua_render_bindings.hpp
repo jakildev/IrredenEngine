@@ -10,7 +10,7 @@
 
 namespace IRScript::detail {
 
-// IRRender + IRGui shared Lua bindings (engine).
+// IRRender + IRGui shared Lua bindings.
 //
 // Render-glue setters (sun direction / intensity / ambient, sky color /
 // intensity) and a minimal GUI-canvas shape-draw primitive (filled disc,

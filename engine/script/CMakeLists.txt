@@ -29,7 +29,7 @@ target_link_libraries(
     IrredenEngineEntity
     IrredenEngineSystem
     IrredenEngineAsset
-    # lua_command_bindings.hpp exposes IRCommand on the Lua surface, so the
+    # The lua_command_bindings.hpp surface exposes IRCommand, so the
     # public scripting interface needs the IRCommand umbrella in scope wherever
     # LuaScript is included.
     IrredenEngineCommand
@@ -45,7 +45,7 @@ target_include_directories(
     IrredenEngineScripting PRIVATE
     $<TARGET_PROPERTY:IrredenEngineRendering,INTERFACE_INCLUDE_DIRECTORIES>
 )
-# lua_audio_bindings.hpp includes <irreden/ir_audio.hpp>. The same
+# The lua_audio_bindings.hpp surface includes <irreden/ir_audio.hpp>. The same
 # generator-expression include-only pattern as
 # the render glue above — IRAudio:: symbols resolve at final exe link time
 # through IrredenEngineWorld, no full library link here.

@@ -13,10 +13,6 @@
 // means a dispatch that never runs fails the assertion, so the test proves the
 // GPU actually wrote.
 //
-// Future children of assert heavier pipeline kernels (resolve footprint
-// density, sun-bake non-emptiness) through this same dispatch + readback harness
-// — the reusable piece is the hidden-context fixture, not this one shader.
-//
 // The fixture GTEST_SKIPs when a GL 4.5 context cannot be created (headless CI
 // with no display / no GPU), so the always-run CPU suite stays green there.
 

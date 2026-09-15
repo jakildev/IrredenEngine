@@ -257,7 +257,7 @@ TEST_F(PerCanvasLightScopeTest, GatherMaxRadiusCappedAtPropagateIterations) {
     EXPECT_EQ(maxRadius, IRRender::kLightVolumePropagateIterations);
 }
 
-// hasSpot gates the consumer's winning-light-ID read. It must stay
+// `hasSpot` gates the consumer's winning-light-ID read. It must stay
 // false for a scene with only non-SPOT lights so those scenes render exactly
 // as before (byte-identical).
 TEST_F(PerCanvasLightScopeTest, GatherHasSpotFalseWithoutSpotLights) {
@@ -282,7 +282,7 @@ TEST_F(PerCanvasLightScopeTest, GatherHasSpotFalseWithoutSpotLights) {
     EXPECT_FALSE(hasSpot);
 }
 
-// a seeded SPOT light flags hasSpot and carries its TRUE (unclamped)
+// A seeded SPOT light flags hasSpot and carries its TRUE (unclamped)
 // origin separately from the seed cell. An out-of-window spot seeds the
 // clamped window-boundary cell, but the cone consumer must orient from the
 // real apex — so trueOriginVoxel_ keeps the true position while

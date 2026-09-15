@@ -84,7 +84,7 @@ class LuaScript {
         return m_ecsDefaultMode;
     }
 
-    // register a prefab system NAME so the Lua side's
+    // Register a prefab system NAME so the Lua side's
     // `IRSystem.systemId(SystemName.NAME)` can return its SystemId.
     // Calls `IRSystem::createSystem<NAME>()` once and caches the
     // resulting SystemId in `m_prefabSystemIds`. Re-calling for the
@@ -146,7 +146,7 @@ class LuaScript {
         return it->second;
     }
 
-    // default-construct a C++-typed component, apply the optional
+    // Default-construct a C++-typed component, apply the optional
     // Lua overrides table field-by-field, and attach it via the templated
     // `IREntity::setComponent<T>`. The entity core deliberately refuses to
     // default-row a C++-typed component through `addComponentDynamic` (some
@@ -300,7 +300,7 @@ class LuaScript {
     // without re-binding.
     std::unordered_map<int, IRSystem::SystemId> m_prefabSystemIds;
 
-    // per-Lua-system shared sol::protected_function reference. The
+    // Per-Lua-system shared sol::protected_function reference. The
     // dynamic-system body lambda captures the shared_ptr; replacing the
     // pointed-to function via `*it->second = newFn` rebinds every future
     // invocation of the same SystemId — no re-create, no archetype change,
@@ -321,7 +321,7 @@ class LuaScript {
     // build-time default driven by `IR_LUA_ECS_DEFAULT_MODE`.
     EcsMode m_ecsDefaultMode = EcsMode::EVAL;
 
-    // per-system one-shot dedupe of the
+    // Per-system one-shot dedupe of the
     // "PARALLEL_FOR requested under EVAL — forced to MAIN_THREAD"
     // warning. Specs that re-register on hot-reload would otherwise
     // log every call; one log per system name is enough to surface
