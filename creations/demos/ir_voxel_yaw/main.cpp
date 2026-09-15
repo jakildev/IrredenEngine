@@ -296,8 +296,7 @@ void initSystems() {
                 sweepZoom
             );
         } else {
-            cfg.shots_ = kShots;
-            cfg.numShots_ = sizeof(kShots) / sizeof(kShots[0]);
+            IRVideo::setAutoScreenshotShots(cfg, kShots);
         }
         renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(cfg));
     }

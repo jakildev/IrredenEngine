@@ -5,13 +5,24 @@ Covers:
   - allowed event (no utilization) after warning => existing file NOT overwritten
   - junk "?" rateLimitType => no file written (no _.json created)
   - valid type with no utilization from the start => no file written
+  - rejected event (the wall — carries resetsAt but NO utilization) => latched
+    at 100% with status in its own <type>.rejected.json, which a later
+    warning for the same window leaves standing; the wrap's
+    FLEET_QUOTA_FLAG touched
+  - the wall's result text is the independent second flag signal, and on
+    its own latches a conservative wall.rejected.json (no resetsAt, five_hour
+    unless the wording says weekly) that the event's record supersedes; an
+    ordinary error result is neither
 """
 import importlib.machinery
 import importlib.util
+import io
 import json
+import os
 import pathlib
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 
 _SCRIPT = pathlib.Path(__file__).parent.parent / "fleet-claude-stream"
 _loader = importlib.machinery.SourceFileLoader("fleet_claude_stream", str(_SCRIPT))
@@ -80,6 +91,221 @@ class LatchUsageObservation(unittest.TestCase):
             {"resetsAt": "2026-05-28T00:00:00Z"},
         )
         self.assertIsNone(self._read("five_hour"), "no file when first event has no utilization")
+
+    # The shape the CLI emitted at the wall on 2026-05-12 (queue-ingest.log):
+    # no utilization field at all. Before the rejected arm this was dropped by
+    # the guard above — the gate stayed open on the last warning, and every
+    # pane relaunched into the wall each tick.
+    REJECTED = {
+        "status": "rejected",
+        "resetsAt": 1778629200,
+        "rateLimitType": "five_hour",
+        "overageStatus": "rejected",
+        "isUsingOverage": False,
+    }
+
+    def test_rejected_event_latches_at_full_utilization(self):
+        self._mod.latch_usage_observation("five_hour", dict(self.REJECTED))
+        data = self._read("five_hour.rejected")
+        self.assertIsNotNone(data, "a rejected event must latch even without utilization")
+        self.assertEqual(data["utilization"], 1.0)
+        self.assertEqual(data["status"], "rejected")
+        self.assertEqual(data["resetsAt"], 1778629200, "resetsAt is what holds the gate closed")
+        self.assertEqual(data["rateLimitType"], "five_hour", "the gate keys the threshold on this")
+        self.assertIsNone(self._read("five_hour"), "the per-type file is the warnings' alone")
+
+    def test_rejected_event_stands_beside_an_earlier_warning(self):
+        self._mod.latch_usage_observation(
+            "five_hour",
+            {"status": "allowed_warning", "utilization": 0.80, "resetsAt": 1778629200},
+        )
+        self._mod.latch_usage_observation("five_hour", dict(self.REJECTED))
+        self.assertEqual(self._read("five_hour.rejected")["utilization"], 1.0)
+        self.assertEqual(self._read("five_hour")["utilization"], 0.80)
+
+    def test_later_warning_does_not_overwrite_the_rejection(self):
+        # Another pane, still mid-turn when the wall landed, reports the same
+        # window below threshold; the rejection record must not move.
+        self._mod.latch_usage_observation(
+            "seven_day", {**self.REJECTED, "rateLimitType": "seven_day"}
+        )
+        self._mod.latch_usage_observation(
+            "seven_day",
+            {"status": "allowed_warning", "utilization": 0.85, "resetsAt": 1778629200},
+        )
+        rejected = self._read("seven_day.rejected")
+        self.assertEqual(rejected["status"], "rejected")
+        self.assertEqual(rejected["utilization"], 1.0)
+        self.assertEqual(self._read("seven_day")["utilization"], 0.85)
+
+    def test_allowed_event_preserves_rejected_observation(self):
+        self._mod.latch_usage_observation("five_hour", dict(self.REJECTED))
+        self._mod.latch_usage_observation(
+            "five_hour", {"status": "allowed", "resetsAt": 1778629200}
+        )
+        self.assertEqual(self._read("five_hour.rejected")["status"], "rejected")
+
+    def test_warning_event_carries_its_status(self):
+        self._mod.latch_usage_observation(
+            "seven_day",
+            {"status": "allowed_warning", "utilization": 0.85, "resetsAt": 1778961600},
+        )
+        self.assertEqual(self._read("seven_day")["status"], "allowed_warning")
+
+
+class QuotaFlag(unittest.TestCase):
+    """The wrap-exported FLEET_QUOTA_FLAG: the stream's exit classification
+    signal, touched on a rejected rate_limit_event and on the wall's result
+    text, and on nothing else."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self._flag = pathlib.Path(self._tmpdir.name) / "pane-3.quota-seen"
+        self._mod = importlib.util.module_from_spec(_spec)
+        _loader.exec_module(self._mod)
+        self._mod.USAGE_DIR = pathlib.Path(self._tmpdir.name) / "usage"
+        self._saved = os.environ.get("FLEET_QUOTA_FLAG")
+        os.environ["FLEET_QUOTA_FLAG"] = str(self._flag)
+
+    def tearDown(self):
+        if self._saved is None:
+            os.environ.pop("FLEET_QUOTA_FLAG", None)
+        else:
+            os.environ["FLEET_QUOTA_FLAG"] = self._saved
+        self._tmpdir.cleanup()
+
+    def _feed(self, *events):
+        import sys
+        stdin = sys.stdin
+        sys.stdin = io.StringIO("".join(json.dumps(e) + "\n" for e in events))
+        try:
+            with redirect_stdout(io.StringIO()) as out:
+                self._mod.main()
+        finally:
+            sys.stdin = stdin
+        return out.getvalue()
+
+    def test_rejected_event_touches_the_flag_and_names_it(self):
+        out = self._feed(
+            {"type": "rate_limit_event", "rate_limit_info": dict(LatchUsageObservation.REJECTED)}
+        )
+        self.assertTrue(self._flag.exists(), "rejected event must touch FLEET_QUOTA_FLAG")
+        self.assertIn("REJECTED", out)
+        self.assertTrue(
+            (self._mod.USAGE_DIR / "five_hour.rejected.json").exists(),
+            "and latch the rejection record",
+        )
+
+    def test_warning_event_leaves_the_flag_alone(self):
+        self._feed(
+            {
+                "type": "rate_limit_event",
+                "rate_limit_info": {
+                    "status": "allowed_warning",
+                    "utilization": 0.9,
+                    "rateLimitType": "five_hour",
+                },
+            }
+        )
+        self.assertFalse(self._flag.exists(), "a warning is not the wall")
+
+    def _read(self, name):
+        p = self._mod.USAGE_DIR / f"{name}.json"
+        if not p.exists():
+            return None
+        return json.loads(p.read_text())
+
+    def test_wall_result_text_touches_the_flag(self):
+        # The result event captured alongside the rejected event on 2026-05-12.
+        self._feed(
+            {
+                "type": "result",
+                "subtype": "success",
+                "is_error": True,
+                "api_error_status": 429,
+                "result": "You've hit your limit · resets 4:40pm (America/Los_Angeles)",
+            }
+        )
+        self.assertTrue(self._flag.exists(), "the wall's result text is the second signal")
+
+    def test_wall_result_text_alone_latches_a_gate_record(self):
+        # No rate_limit_event preceded the result: the flag alone would let
+        # cleanup release the idle claim and re-arm the role with the gate
+        # still open, so the wording latches its own conservative record.
+        self._feed(
+            {
+                "type": "result",
+                "subtype": "success",
+                "is_error": True,
+                "api_error_status": 429,
+                "result": "You've hit your limit · resets 4:40pm (America/Los_Angeles)",
+            }
+        )
+        data = self._read("wall.rejected")
+        self.assertIsNotNone(data, "a result-only wall must latch wall.rejected.json")
+        self.assertEqual(data["status"], "rejected")
+        self.assertEqual(data["utilization"], 1.0)
+        self.assertEqual(data["rateLimitType"], "five_hour")
+        self.assertIsNone(data["resetsAt"], "no reset boundary is parseable from the text")
+        self.assertIsInstance(data["observed_at"], int)
+        self.assertFalse(
+            (self._mod.USAGE_DIR / "five_hour.rejected.json").exists(),
+            "the event-path record is not forged",
+        )
+
+    def test_event_and_result_together_write_only_the_event_record(self):
+        self._feed(
+            {"type": "rate_limit_event", "rate_limit_info": dict(LatchUsageObservation.REJECTED)},
+            {
+                "type": "result",
+                "subtype": "success",
+                "is_error": True,
+                "result": "You've hit your limit · resets 4:40pm",
+            },
+        )
+        self.assertIsNotNone(self._read("five_hour.rejected"))
+        self.assertIsNone(
+            self._read("wall.rejected"),
+            "the event's record carries the real resetsAt; no fallback beside it",
+        )
+
+    def test_weekly_and_session_wordings_match(self):
+        for text, rl_type in (
+            ("You've hit your weekly limit · resets 8am", "seven_day"),
+            ("You've hit your session limit · resets 3:30am", "five_hour"),
+        ):
+            self._flag.unlink(missing_ok=True)
+            (self._mod.USAGE_DIR / "wall.rejected.json").unlink(missing_ok=True)
+            self._feed(
+                {"type": "result", "subtype": "success", "is_error": True, "result": text}
+            )
+            self.assertTrue(self._flag.exists(), text)
+            self.assertEqual(self._read("wall.rejected")["rateLimitType"], rl_type, text)
+
+    def test_other_error_results_do_not(self):
+        self._feed(
+            {
+                "type": "result",
+                "subtype": "error_during_execution",
+                "is_error": True,
+                "api_error_status": 429,
+                "result": (
+                    "API Error: Server is temporarily limiting requests (not your usage limit)"
+                ),
+            }
+        )
+        self.assertFalse(self._flag.exists(), "a 429 throttle result is not the wall")
+        self.assertFalse(
+            (self._mod.USAGE_DIR / "wall.rejected.json").exists(),
+            "and latches no gate record",
+        )
+
+    def test_no_flag_env_is_harmless(self):
+        os.environ.pop("FLEET_QUOTA_FLAG", None)
+        self._feed(
+            {"type": "rate_limit_event", "rate_limit_info": dict(LatchUsageObservation.REJECTED)}
+        )
+        self.assertFalse(self._flag.exists())
 
 
 if __name__ == "__main__":

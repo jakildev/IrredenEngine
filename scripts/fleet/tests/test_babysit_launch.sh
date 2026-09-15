@@ -28,6 +28,10 @@
 #   - T6: N consecutive immediate exit-1 resumes (transcript present, but
 #     every resume still exits 1) also condemns the pointer, end-to-end
 #     through the real relaunch loop
+#   - T7: a crash exit while the dispatcher's Claude usage gate is closed
+#     (a latched rejected window) holds the relaunch instead of crash-looping
+#     into the wall, never counts toward condemning the pointer, and
+#     relaunches once the window is gone
 
 set -euo pipefail
 
@@ -235,5 +239,72 @@ resume_calls=$(grep -c -- '--resume' "$T6_CALLS" 2>/dev/null || echo 0)
 [[ "$resume_calls" -eq 2 ]] \
     && ok "exactly threshold-many --resume attempts were made before falling back" \
     || bad "expected exactly 2 --resume attempts, saw $resume_calls (log: $T6_CALLS)"
+
+# --- T7: a crash exit at a closed Claude gate holds, never condemns -----------
+# claude exits rc=1 at the usage wall, the same code as T6's dead pointer, so
+# before the gate check every wall death re-entered the CRASH_DELAY loop
+# (opus-architect, 22 relaunches on 2026-07-08) and two of them condemned
+# the architect's session. The gate is read through
+# `fleet-dispatcher --gate-status claude` off the sandboxed $HOME's usage dir.
+echo "T7: crash exit with the Claude usage gate closed holds the relaunch"
+H7="$TMPROOT/h7"; mkdir -p "$H7/.fleet/sessions" "$H7/.fleet/state/usage"
+SID7="77777777-7777-7777-7777-777777777777"
+echo "$SID7" > "$H7/.fleet/sessions/opus-architect.session-id"
+make_transcript "$H7" "$SID7"
+T7_RESETS=$(python3 -c "import datetime,time; print(datetime.datetime.fromtimestamp(time.time()+3600,tz=datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'))")
+printf '{"rateLimitType":"five_hour","utilization":1.0,"resetsAt":"%s","observed_at":%s,"status":"rejected"}\n' \
+    "$T7_RESETS" "$(date +%s)" > "$H7/.fleet/state/usage/five_hour.json"
+T7_CALLS="$TMPROOT/t7-claude-calls.log"; : > "$T7_CALLS"
+(
+    cd "$PROJECT_CWD" && env HOME="$H7" PATH="$T6_BIN:$PATH" FLEET_CONF=/dev/null \
+        CLAUDE_CALLS_LOG="$T7_CALLS" \
+        FLEET_CRASH_DELAY=1 FLEET_CLEAN_DELAY=1 FLEET_GATE_POLL_SECONDS=1 \
+        FLEET_RESUME_FAIL_THRESHOLD=2 FLEET_MAX_ATTEMPTS=6 \
+        "$BABYSIT" 'claude-opus-4-8[1m]' opus-architect live \
+        >"$TMPROOT/t7-babysit.log" 2>&1
+) &
+BABYSIT_BG_PID=$!
+
+hold_line=""
+for _ in $(seq 1 50); do
+    if [[ -f "$H7/.fleet/logs/opus-architect.log" ]]; then
+        hold_line=$(grep "holding relaunch" "$H7/.fleet/logs/opus-architect.log" || true)
+        [[ -n "$hold_line" ]] && break
+    fi
+    sleep 0.3
+done
+assert_contains "$hold_line" "claude usage gate closed:five_hour rejected" "the hold names the closed window"
+sleep 3
+resume_calls=$(grep -c -- '--resume' "$T7_CALLS" 2>/dev/null || echo 0)
+[[ "$resume_calls" -eq 1 ]] \
+    && ok "one --resume (the death itself), none while the gate is closed" \
+    || bad "expected exactly 1 --resume while closed, saw $resume_calls"
+grep -q "stale architect session" "$H7/.fleet/logs/opus-architect.log" \
+    && bad "a wall death condemned the session pointer" \
+    || ok "session pointer not condemned by the wall"
+grep -q "not counted against the session pointer" "$H7/.fleet/logs/opus-architect.log" \
+    && ok "the immediate exit-1 was attributed to the closed gate" \
+    || bad "no gate attribution logged"
+
+rm -f "$H7/.fleet/state/usage/five_hour.json"     # the window is gone
+reopen_line=""
+for _ in $(seq 1 50); do
+    reopen_line=$(grep "re-opened" "$H7/.fleet/logs/opus-architect.log" || true)
+    [[ -n "$reopen_line" ]] && break
+    sleep 0.3
+done
+assert_contains "$reopen_line" "claude usage gate re-opened" "reopening is logged"
+for _ in $(seq 1 30); do
+    (( $(grep -c -- '--resume' "$T7_CALLS" 2>/dev/null || echo 0) >= 2 )) && break
+    sleep 0.3
+done
+resume_calls=$(grep -c -- '--resume' "$T7_CALLS" 2>/dev/null || echo 0)
+[[ "$resume_calls" -ge 2 ]] \
+    && ok "relaunched once the gate reopened" \
+    || bad "no relaunch after the gate reopened (saw $resume_calls --resume calls)"
+
+kill "$BABYSIT_BG_PID" 2>/dev/null || true
+wait "$BABYSIT_BG_PID" 2>/dev/null || true
+BABYSIT_BG_PID=""
 
 summarize

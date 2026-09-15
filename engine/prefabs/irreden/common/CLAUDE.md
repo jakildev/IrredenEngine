@@ -65,7 +65,7 @@ in `update/`.
   default is carried by `REBUILD_GRID_VOXELS_IMPLICIT`, the
   `Exclude<C_RotationMode>` twin a creation must register alongside
   `REBUILD_GRID_VOXELS` (see
-  [`../voxel/CLAUDE.md`](../voxel/CLAUDE.md) §"Key systems").
+  [`../voxel/CLAUDE.md`](../voxel/CLAUDE.md) §"Transform and revoxelization pipeline").
 - `C_ChunkMembership` — which streaming chunk an entity belongs to
   (Epic E / `IRPrefab::Chunk::ChunkKey`). **NOT auto-added** —
   single-chunk creations carry no chunk metadata. Attached by the

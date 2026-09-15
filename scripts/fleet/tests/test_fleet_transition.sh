@@ -265,6 +265,40 @@ grep -q "already satisfied" "$TMPROOT/out" && \
     { PASS=$((PASS+1)); echo "  ok: T12 re-apply reports already-satisfied"; } || \
     { FAIL=$((FAIL+1)); echo "  FAIL: T12 re-apply reports already-satisfied"; }
 
+# === T13: every verdict edge consumes the re-review triggers =============
+# fleet:changes-made / human:re-review are RECHECK_LABELS: the scout admits
+# a PR carrying either to the sonnet lane regardless of its verdict. A
+# verdict that left them standing kept the PR a review candidate while it
+# waited on the author (needs-fix + changes-made) or on the human (approved
+# + changes-made), and the lane re-dispatched it every tick.
+echo "T13: verdict edges remove fleet:changes-made and human:re-review"
+reset_log
+set_labels pr 108 fleet:changes-made human:re-review fleet:needs-fix fleet:wip
+assert_eq "$(run verdict-approve 108)" "0" "T13 verdict-approve exits 0"
+assert_eq "$(get_labels pr 108)" "fleet:approved fleet:wip" \
+    "T13 approve consumed both triggers with the needs-fix"
+reset_log
+set_labels pr 109 fleet:changes-made fleet:approved
+assert_eq "$(run verdict-needs-fix 109)" "0" "T13 verdict-needs-fix exits 0"
+assert_eq "$(get_labels pr 109)" "fleet:needs-fix" \
+    "T13 needs-fix consumed the trigger (PR waits on the author, not on review)"
+reset_log
+set_labels pr 110 fleet:changes-made human:re-review fleet:has-nits
+assert_eq "$(run verdict-needs-opus-recheck 110)" "0" "T13 verdict-needs-opus-recheck exits 0"
+assert_eq "$(get_labels pr 110)" "fleet:has-nits fleet:needs-opus-recheck" \
+    "T13 the escalation consumed the triggers too (else the sonnet lane re-elects it)"
+assert_eq "$(edit_calls)" "1" "T13 exactly one edit call"
+reset_log
+set_labels pr 111 fleet:changes-made human:re-review fleet:needs-fix
+assert_eq "$(run verdict-approve-nits 111)" "0" "T13 verdict-approve-nits exits 0"
+assert_eq "$(get_labels pr 111)" "fleet:approved fleet:has-nits" \
+    "T13 approve-nits consumed both triggers"
+reset_log
+set_labels pr 112 fleet:changes-made human:re-review fleet:approved
+assert_eq "$(run verdict-blocker 112)" "0" "T13 verdict-blocker exits 0"
+assert_eq "$(get_labels pr 112)" "fleet:blocker" \
+    "T13 blocker consumed both triggers with the stale approval"
+
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"
 (( FAIL == 0 ))

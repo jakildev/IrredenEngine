@@ -1,16 +1,13 @@
 #include <metal_stdlib>
 using namespace metal;
 
-// Mirrors shaders/c_chunk_occlusion_cull.glsl. Chunk-occlusion pre-pass for the
-// voxel-pool render path (#1294 child 2/3). One thread per pool-chunk: sample
-// the MAX of last frame's Hi-Z (#1798) over the chunk's projected pixel
-// footprint and AND 0 into the chunk's ChunkVisibility entry (buffer 24) iff the
-// chunk's nearest depth is strictly behind that max. See the GLSL for the
-// conservative-eligibility rules, the background-sentinel rationale, and why the
-// pass is gated off by default.
+// Mirrors shaders/c_chunk_occlusion_cull.glsl. The Hi-Z is last frame's, so a
+// cull is only ever strictly-behind that frame's max. Only chunks the CPU
+// flagged `eligible_` are tested, and a footprint that still sees background
+// (the 65535 sentinel, the largest encoded value) is never culled.
 
 constant constexpr int kMaxHiZMipLevels = 12;
-// One full depth step at the kDepthEncodeShift = 8 encode scale (GLSL twin).
+// One full depth step at the kDepthEncodeShift = 8 encode scale.
 constant constexpr int kOcclusionDepthMargin = 8;
 
 // Matches the std430 ChunkQuery (32 B). Record 0 of the buffer is the header:
@@ -24,8 +21,8 @@ struct ChunkQuery {
     int pad1_;
 };
 
-// Fetch one Hi-Z texel at `level` (clamped in-bounds). Metal allows dynamic
-// indexing of the texture array, so no constant-index ladder is needed.
+// Metal allows dynamic indexing of the texture array, so no constant-index
+// ladder is needed.
 static int hiZTexel(
     array<texture2d<int, access::read>, kMaxHiZMipLevels> hiZLevels,
     int level,
@@ -58,7 +55,6 @@ kernel void c_chunk_occlusion_cull(
     int chunkCount = records[0].pixelMin_.x;
     int mipCount = records[0].pixelMin_.y;
 
-    // Linear chunk index from the 2D threadgroup grid — mirrors the GLSL.
     uint workGroupIndex = tgPos.x + tgPos.y * tgPerGrid.x;
     int chunk = int(workGroupIndex * 64u + localId.x);
     if (chunk >= chunkCount) return;

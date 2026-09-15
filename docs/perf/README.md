@@ -168,47 +168,24 @@ script). All of these can also be set inside a preset file (except
 
 ## Voxel cull stats — the "is culling working?" diagnostic
 
-When `gpu_stage_timing` is enabled, `VOXEL_TO_TRIXEL_STAGE_1` reads the
-prior frame's `IndirectDispatchParams.visibleCount` before zeroing the
-buffer for the new frame. No explicit fence is required — the driver
-serializes the CPU read against the prior frame's already-retired write.
-The result is a per-frame sample of
-*how many voxels survived the iso-bounds cull*, alongside the pool's
-live count. The matrix script surfaces this as the `cull (vis/total)`
-column on `perf_summary.py` and a dedicated `voxel cull effectiveness`
-table on `compare_perf_runs.py`.
+When `gpu_stage_timing` is enabled, compact readback reports unique main-list
+candidates (`Visible`), separate shadow candidates (`Feeder`), repeated
+per-axis list entries (`AxisEntries`), and the producing dispatch's pool-slot
+domain (`Total`, including inactive slots). `Ratio` is
+`(Visible + Feeder) / Total`; it is candidate retention, not pixel visibility
+or a measurement of Hi-Z rejection alone.
 
-What to look for:
+Readback consumes the previous compact dispatch before its shared buffers are
+reset, using that producer's route and pool size. It can synchronize with the
+GPU, particularly between canvases. Startup and unprofiled dispatches are
+excluded; the last pending dispatch is not drained at shutdown.
 
-- **Ratio shrinks with zoom**, roughly as `1/zoom²` once the camera is
-  past full-screen coverage. If the ratio stays flat or shrinks much
-  less than `1/zoom²` while zoom goes up, that's the signature of an
-  ineffective viewport cull — frame time grows with the
-  subdivision-driven work multiplier while the visible set barely
-  changes.
-- **Same ratio across two PRs at the same `(zoom, sub_mode, sub_base)`
-  cell** is the no-regression baseline for any optimization PR that
-  claims to improve culling — pre-PR vs post-PR ratios at the same
-  cell.
-- **The `Feeder` row is the shadow-feeder cull population (#2298), and
-  its ratio is cross-run only.** `Feeder` is the struct-1 count — the
-  off-screen shadow-feeder voxels the compact tail-appended this frame
-  (the widened per-voxel occlusion cull's target population), read back
-  the same sync-free way as `Visible`. It has **no in-report
-  denominator**: the `Ratio:` line is visible/total only, and the report
-  prints the same caveat under the row. To read the feeder cull ratio,
-  run the same scene twice — `--occlusion-cull` (pv-on) and
-  `--occlusion-cull --no-per-voxel-occlusion` (pv-off) — and divide
-  pv-on Avg by pv-off Avg. `compare_perf_runs.py`'s cull table carries
-  an `avg feeder` column with that `head / base` factor, so a pv-off
-  baseline dir vs a pv-on head dir reads the ratio directly; a report
-  predating the row shows `—`, not 0 — a 0 is a real measurement (sun
-  shadows off ⇒ the compact classifies no feeders).
-
-Lua surface for ad-hoc inspection: `ir.render.getVoxelCullStats()`
-returns `{visible, total, feeder, samples, avgVisible, avgTotal,
-avgFeeder, maxVisible, maxTotal, maxFeeder}` — `feeder` / `avgFeeder` /
-`maxFeeder` are the `Feeder` row's live count / average / max.
+See [voxel cull work units](voxel-cull-work-units.md) for count semantics,
+validation, and the old-report compatibility boundary. Compare matching scenes,
+camera poses, subdivision modes, and shadow settings. A controlled culling
+on/off pair establishes rejection; screenshots establish that visible geometry
+was retained. Neither the candidate ratio nor a single timing run establishes
+a frame-time improvement.
 
 ## Lua-vs-C++ parity
 

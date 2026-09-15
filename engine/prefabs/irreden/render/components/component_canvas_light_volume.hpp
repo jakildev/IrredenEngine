@@ -14,7 +14,7 @@
 //
 // The volume is centered on `m_worldOriginVoxel` (defaults to `(0,0,0)`)
 // and covers `[origin - kLightVolumeHalfExtent, origin + kLightVolumeHalfExtent)`
-// voxels per axis at 1:1 voxel-per-texel resolution. Phase 1c (#360)
+// voxels per axis at 1:1 voxel-per-texel resolution. The camera anchor
 // wired COMPUTE_LIGHT_VOLUME to track the iso camera each frame so the
 // addressable region follows the visible scene instead of staying
 // pinned to world origin. Geometry outside the current range is sampled
@@ -31,12 +31,12 @@
 // CULL block reports seeded/eligible counts.
 //
 // Two textures (`textureRead_` / `textureWrite_`) form a ping-pong pair
-// for the GPU jump-flood propagation passes (Phase 1a / issue #359).
+// for the GPU jump-flood propagation passes.
 // The producer system swaps them after each propagation iteration so
 // `getReadTexture()` always yields the latest result for the
 // downstream lighting consumer to sample.
 //
-// Winning-light ID channel (#2318, L2). A parallel RGBA8 ping-pong pair
+// A parallel RGBA8 ping-pong pair
 // (`idTextureRead_` / `idTextureWrite_`) carries the index+1 of the light
 // that won each cell's residual contest, swapped in lockstep with the
 // color pair so IDs never desync from the colors mid-chain. The `.r`
@@ -45,7 +45,7 @@
 // factor at the winning light's true origin. RGBA8 (not R8UI, which the
 // engine's TextureFormat does not offer, nor R32I, whose Metal
 // image-atomic-scratch indirection makes cross-dispatch ping-pong reads
-// unreliable — the #1640 gap) round-trips across the propagate dispatches
+// unreliable) round-trips across the propagate dispatches
 // exactly like the color volume; the `.r`-only 0–255 range caps
 // spot-capable light indices at 255 (a non-issue for the "few dozen
 // lights" workload). The pair is always allocated but is only READ by the
@@ -73,7 +73,7 @@ constexpr int kLightVolumeHalfExtent = kLightVolumeSize / 2;
 struct C_CanvasLightVolume {
     std::pair<ResourceId, Texture3D *> textureRead_;
     std::pair<ResourceId, Texture3D *> textureWrite_;
-    // Winning-light ID ping-pong pair (#2318). `.r` holds `lightIndex/255`
+    // Winning-light ID ping-pong pair. `.r` holds `lightIndex/255`
     // (0 = no light) of the light that won each cell's residual contest;
     // swapped in lockstep with the color pair by `swap()`. NEAREST — IDs
     // must not interpolate (the seed/propagate passes bind these as images
@@ -155,7 +155,7 @@ struct C_CanvasLightVolume {
         return textureWrite_.second;
     }
 
-    /// Winning-light ID texture holding the latest propagated IDs (#2318).
+    /// Winning-light ID texture holding the latest propagated IDs.
     /// Fetched by `LIGHTING_TO_TRIXEL` to recover the winning light per cell
     /// for the SPOT cone factor. Ping-pongs in lockstep with the color pair.
     Texture3D *getIdReadTexture() const {
@@ -181,22 +181,20 @@ struct C_CanvasLightVolume {
     /// Promote `textureWrite_` to the read side after a propagation
     /// pass. Subsequent reads (`getReadTexture()`) see the new contents
     /// while the old read texture becomes the next pass's scratch. The ID
-    /// pair swaps in lockstep (#2318) so a cell's color and its winning
+    /// pair swaps in lockstep so a cell's color and its winning
     /// light ID always live on the same ping-pong side.
     void swap() {
         std::swap(textureRead_, textureWrite_);
         std::swap(idTextureRead_, idTextureWrite_);
     }
 
-    /// Backwards-compatible alias for the previously-named accessor;
-    /// still used by `LIGHTING_TO_TRIXEL`'s sampler binding. Yields
-    /// the read-side texture so the consumer always sees the latest
-    /// propagated state.
+    /// Alias for the read-side texture used by `LIGHTING_TO_TRIXEL`, ensuring
+    /// the consumer sees the latest propagated state.
     Texture3D *getTexture() const {
         return getReadTexture();
     }
 
-    /// World voxel the volume is centered on (Phase 1c / #360).
+    /// World voxel the volume is centered on.
     /// Defaults to `(0,0,0)` so static-camera scenes keep the original
     /// world-origin centering.
     ivec3 worldOriginVoxel() const {

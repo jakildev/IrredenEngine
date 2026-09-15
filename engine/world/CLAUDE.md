@@ -1,635 +1,199 @@
 # engine/world/ — the runtime root
 
-The `World` class is the singleton that owns every manager, brings the loop
-up, and tears it down. There is exactly one `World` per process, constructed
-by `IREngine::init()` and destroyed at shutdown.
+`World` (`include/irreden/world.hpp`) is the one-per-process object that
+owns every manager, runs the loop, and tears everything down. It is
+constructed by `IREngine::init()`; nothing else constructs one. Rationale for
+the persistence rules below:
+[`docs/design/world-snapshot-persistence.md`](../../docs/design/world-snapshot-persistence.md);
+streaming design: [`docs/design/world-streaming.md`](../../docs/design/world-streaming.md).
 
-## Entry point
+## Manager lifetime
 
-`engine/world/include/irreden/world.hpp` — declares `class World`.
+- `World` owns every manager as a member in dependency order; each manager's
+  own ctor stamps its module global and its dtor clears it. `World` assigns
+  none of them — **member order IS the set/clear order**. Adding a manager
+  means inserting it at the right point in the member list; the dtor order
+  follows. Pattern catalog:
+  [`.claude/rules/cpp-globals.md`](../../.claude/rules/cpp-globals.md);
+  creation-side contract: [`engine/CLAUDE.md`](../CLAUDE.md) §"Manager globals".
+- `LuaScript` leads the manager block so `sol::state` outlives
+  `EntityManager` (archetype columns can hold `sol::object` refs).
+  `JobManager` follows `SystemManager` and consumes only `WorldConfig`
+  ([`engine/job/CLAUDE.md`](../job/CLAUDE.md)).
+- Reach managers through the `IR<Module>::get*Manager()` free functions;
+  never store a manager reference or `g_*` pointer in anything that can
+  outlive the loop (a background `std::thread` capturing `g_renderManager`
+  crashes at shutdown).
+- `World` owns managers, not game state: no `setPlayer` / `setCameraPosition`
+  on it — those are components.
+- **Release GPU/GL resources in `end()`, never in `~World()`.** `end()` runs
+  inside `gameLoop()` with the context provably live and already drives
+  `destroyAllEntities()` for `onDestroy` GPU frees; the dtor is a no-op safety
+  net. `IREngine::gameLoop()` resets `g_world` as soon as the loop returns,
+  but two paths skip that reset — the loop's catch block calls `end()` and
+  rethrows, and an owner that constructs `World` directly picks its own
+  destruction point — so treat the reset as defense in depth.
 
-## Chunk residency (Epic E)
-
-`engine/world/include/irreden/world/chunk_residency.hpp` declares
-`IRWorld::ChunkResidencyManager` — the resident-set + per-chunk voxel
-sub-pool + entity manifest. **Not** owned by `World` — creations that
-opt into streaming construct one explicitly. Single-chunk creations
-ignore it entirely (zero-overhead). Companion chunk-coord utilities
-live in [`engine/prefabs/irreden/world/`](../prefabs/irreden/world/);
-full design contract in
-[`docs/design/world-streaming.md`](../../docs/design/world-streaming.md).
-
-### Camera-aware prefetch (E3)
-
-`beginFrame(vec3 cameraWorldVoxel)` drives both the E2 eviction policy
-(Euclidean distance + hysteresis → EVICTING) and the E3 chunk-coordinate
-derivation. `tickPrefetch()` then scans a Chebyshev ring of
-`Config::prefetchRadiusChunks_` around the derived chunk coordinate and
-`requestResident`s every chunk in the ring; eviction is left entirely to
-`beginFrame` + `endFrame` (no per-ring eviction in `tickPrefetch`). The
-distance from camera to each slot's chunk center is written to
-`ChunkResidencySlot::distanceVoxels_` for the budget-gate and future sorting.
-
-### Upload-bandwidth cap + low-LOD billboard (T-358)
-
-Opt in via `Config::deferredUpload_ = true`. With the toggle on,
-`requestResident` enqueues the chunk in `LOADING` instead of
-synchronously transitioning to `RESIDENT`, and `flushUploads(maxBytes)`
-drains the queue each frame in (priority, distance) order capped at
-the byte budget. `FORCED` requests bypass the budget. A
-single-chunk-exceeds-budget guard always drains at least one
-non-forced entry per call so streaming can never stall on a chunk
-larger than the cap. The default budget lives in
-`Config::defaultUploadBudgetBytes_` (4 MiB, matching the design doc's
-≈240 MiB/s @ 60 fps target); pass `0` to `flushUploads` to use it.
-
-Each `ChunkResidencySlot` carries low-LOD AABB billboard metadata —
-`aabbColor_` (default grey), `aabbMinVoxel_` / `aabbMaxVoxel_` (full
-chunk by default), `lowLodFlags_`. The renderer's low-LOD pass
-iterates `forEachLowLodSlot` to spawn a `BOX` `C_ShapeDescriptor` per
-non-`RESIDENT` chunk; once the chunk reaches `RESIDENT` the voxel pool
-takes over and the billboard is dropped. Full design and the on-disk
-`BBOX` chunk record that will eventually replace the defaults are in
-[`docs/design/world-streaming.md`](../../docs/design/world-streaming.md)
-§"Topic 4 — Upload-bandwidth cap + low-LOD fallback".
-
-When `deferredUpload_` is false (the default), the legacy E1
-synchronous behavior is preserved: `requestResident` reaches
-`RESIDENT` inline, `flushUploads` is a no-op, and the low-LOD fields
-remain at their defaults but no chunk is ever in the non-`RESIDENT`
-state long enough for them to matter. Existing E1+E2+E6 consumers
-keep working unchanged.
-
-`engine/world/include/irreden/world/chunk_persistence.hpp` declares
-`IRWorld::ChunkVoxelDiskPersistence` — per-chunk `.vxs` save/load under a
-`<saveRoot>/chunks/<x_div_64>/<y_div_64>/` two-level directory tree. One
-file per chunk; filename embeds the signed chunk coord (e.g.
-`chunks/0/-1/+00003_-00007_+00011.vxs`). When wired
-on `ChunkResidencyManager::Config::persistence_`, the manager loads
-the chunk slice from disk on first `requestResident` and saves dirty
-chunks on `requestEvict`. `flushPendingSaves()` is the editor's
-save-all hook. Synchronous in v1; E3 lifts the same calls into an
-async worker pool without changing the surface. Entity-level state
-(components beyond the chunk's voxel pool) belongs to the parallel
-world-snapshot path (#199), not this layer.
-
-### Eviction policy (E2)
-
-`ChunkResidencyManager::beginFrame(vec3 cameraWorldVoxel)` recomputes
-`distanceVoxels_` for every slot and marks slots beyond
-`R_prefetch + R_hysteresis` as `EVICTING`. `endFrame()` processes
-`EVICTING` slots (saves dirty ones via persistence, deallocates pool
-slices via the `PoolDeallocator` callback, erases the slot) then
-enforces the budget cap — evicting furthest-from-camera slots with
-LRU tie-breaking until `residentChunkCount() <= maxResidentChunks_`.
-
-Config knobs on `ChunkResidencyManager::Config`:
-- `maxResidentChunks_` (default 256)
-- `viewRadiusVoxels_` (default 128.0f — matches the light-volume window)
-- `prefetchRadiusVoxels_` (default 256.0f)
-- `hysteresisVoxels_` (default 32.0f = one chunk edge — prevents thrashing)
-
-`PoolDeallocator` is the deallocation counterpart to `PoolAllocator`:
-production wires it to return the pool slice to `C_VoxelPool`'s
-free-list via `deallocateVoxels(startIndex, size)`. The E1 skeleton
-leaked allocations on evict; E2 closes that path.
-
-`FrameStats` (via `frameStats()`) reports `evictedThisFrame_`,
-`loadedThisFrame_`, and `residentCount_` for HUD display and profiling.
-
-### Chunk mutation must route through `markChunkDirty`
-
-> Any code that writes to a chunk-owned `VoxelPoolAllocation` (the
-> slice exposed via `ChunkResidencySlot::poolAllocation_`) MUST call
-> `ChunkResidencyManager::markChunkDirty(key)` immediately after the
-> write. The same rule covers entity attach / detach / migrate when
-> a creation opts into streaming.
-
-The dirty bit is consulted at eviction and by `flushPendingSaves()`;
-a missed `markChunkDirty` call after a real mutation means the save
-is silently skipped and the chunk reverts to its pre-edit state on
-re-resident. This is the ECS-footgun class of bug — invisible under
-single-chunk creations, fires only after
-streaming load surfaces an eviction-then-re-resident cycle.
-
-`ChunkResidencySlot::isDirty()` is the read side; the underlying
-field is private with `ChunkResidencyManager` as a `friend`, so
-`slot->dirty_ = true` no longer compiles. The manager's
-`attachEntity` / `migrateEntity` already self-route through
-`markChunkDirty`; the voxel-mutation routing lands when push-at-
-mutation uploads (Epic B / #944) wire in.
-
-When you add a new mutation path (voxel-pool write, entity move,
-component write within `ownedEntities_`), route it through
-`markChunkDirty`. The cross-link from
-[`engine/render/CLAUDE.md`](../render/CLAUDE.md) at the voxel-pool
-section is the reciprocal pointer for renderer-side authors.
-
-Most code never touches `World` directly. It accesses managers via the
-`IR<Module>::get*Manager()` free functions in each module's `ir_*.hpp`
-header, which reach through the global pointers established during
-`World` construction (each manager's own ctor stamps its global — see
-Responsibilities below).
-
-## Save-trait policy layer (persist P1, #2212, epic #667)
-
-`engine/world/include/irreden/world/save_trait.hpp` declares
-`IRWorld::SaveTrait<C>` — a compile-time trait deciding whether component
-type `C` participates in a world snapshot, and if so, its schema
-`kSaveVersion` (`uint32_t`, lives on the trait, not the component struct —
-the snapshot serializes a *schema*, defined by the P2 per-component
-serialize function, not the struct's in-memory layout). The primary
-template means "no decision yet" (`kExplicit = false`), deliberately NOT
-"opt-out" — an engine component that never specializes the trait fails a
-compile-time completeness gate instead of silently being skipped by
-persistence. Two macros make the decision explicit:
-`IR_SAVE_OPT_IN(Type, Version)` and `IR_SAVE_OPT_OUT(Type)`.
-
-`engine/world/include/irreden/world/save_component_inventory.hpp` is the
-audited decision table — one `IR_SAVE_OPT_IN`/`IR_SAVE_OPT_OUT` line per
-engine component, plus `AllEngineComponents` (a `std::tuple` listing every
-one of them) and a `static_assert` that fails the build if any listed
-component lacks an explicit decision. It's a heavy include (pulls every
-component header) — only world-snapshot TUs and `test/world/save_trait_test.cpp`
-should include it, never a widely-included header.
-
-**Opt-out-by-omission is forbidden.** A component with no decision doesn't
-silently default to "don't save" — it breaks the build. This is enforced
-structurally: the primary `SaveTrait` template has `kExplicit = false`,
-and `save_component_inventory.hpp`'s `static_assert` walks
-`AllEngineComponents` checking every entry's `kExplicit`.
-
-**New-component contract.** Adding a new engine component requires adding
-a matching `IR_SAVE_OPT_IN`/`IR_SAVE_OPT_OUT` line (with its own include)
-and an `AllEngineComponents` tuple entry. The compile-time gate checks listed
-types, while `cmake/run_save_inventory_population_check.cmake` compares the
-table against declarations in engine headers so an entirely omitted type
-fails the merge-gating header checks. A templated
-component with more than one concrete instantiation (e.g.
-`C_SystemEvent<SystemEvent>`) gets ONE representative instantiation in
-the inventory, not one per specialization — see the inline comment beside
-`C_SystemEvent<IRSystem::TICK>` in `save_component_inventory.hpp` for the
-rationale (the archetype walk excludes those entities entirely, so the
-other specializations are never queried).
-
-P1 is pure metadata — no archetype walk, no IRWS writer, no serialize/
-deserialize functions, no Lua surface. P2+ (the `ComponentId → serialize
-descriptor` runtime bridge, migration registry, GPU-handle regeneration
-pass) consumes `shouldSave<C>()` / `saveVersion<C>()` / `AllEngineComponents`
-on top of this layer.
-
-P2 (#2213) added `SaveTrait<C>::kSaveName` (via the `IR_SAVE_OPT_IN/OPT_OUT`
-macros — the source spelling of the type, a compiler-stable on-disk key)
-and the `saveName<C>()` accessor. It's the CMPN name-table identity; nothing
-in P1's decision logic reads it.
-
-## World snapshot — the `IRWS` container (persist P2, #2213, epic #667)
-
-`engine/world/include/irreden/world/world_snapshot.hpp` declares
-`IRWorld::saveWorld(registry, path)` / `IRWorld::loadWorld(registry, path)`
-— the **entity-level** save path, distinct from `chunk_persistence.hpp`'s
-per-chunk `.vxs` **voxel-pool** save (that persists a streaming chunk's
-voxel slice, not entities/components; no code overlap). The file is a
-standard `engine/asset/` container (magic `IRWS`, `chunk_header.hpp`) with
-five chunks — `CMPN` (component name table, the local-index key space),
-`ARCH` (archetypes + entity ids + per-column data, each column carrying a
-`(saveVersion, byteLength)` header — the P5 migration seam), `SNGL`
-(singletons restored by value), `RELN` (relation name table + `CHILD_OF`
-edge triples — persist P3, #2214), `META` (nextEntityId watermark). A
-write-only `.json` sidecar (Rule #6) rides alongside.
-
-Three collaborating headers:
-
-- `save_serialize.hpp` — `IRWorld::SaveSerialize<C>`, the per-component
-  bytes customization point. The primary template is **declared but never
-  defined**; the two arms that exist are a constrained partial specialization
-  for trivially-copyable components (a raw byte image) and explicit
-  specializations for components owning heap storage
-  (`std::string`/`std::vector`/handles). Leaving the primary undefined is what
-  makes the companion `SaveSerializable<C>` concept in the same header a true
-  test of "does this component have a serializer" (#2242) — writing the
-  serializer IS the opt-in, with no second bookkeeping step to forget. P1
-  decides *whether*; this decides *how*.
-- `save_serialize_common.hpp` — the shared byte layouts most heap-owning
-  serializers need: counted vectors of trivially-copyable records, counted
-  string vectors, and `writeSortedStringMap` (ascending key order, so an
-  `unordered_map` member cannot make a double-save non-byte-identical). Also
-  home to the `IR_SAVE_READ*` bail-out macros the serializers read with.
-- `save_registry.hpp` — `IRWorld::SaveRegistry`, the type-erased bridge.
-  `registerComponent<C>()` is `if constexpr`-gated on `shouldSave<C>()`
-  (opted-out → no-op, and no `SaveSerialize<C>` instantiation), capturing
-  the save-name, version, session-local `ComponentId`, and the erased
-  row/singleton read-write hooks. The walker/loader compile once regardless
-  of how many components opt in.
-- `world_snapshot.hpp/.cpp` — the deterministic projection-merge walker,
-  chunk writers, and the two-phase loader.
-
-**Projection-merge + exclusion.** Only registered opt-in components are
-written; an entity's saved archetype is the projection of its live
-archetype onto them (two live archetypes differing only by a dropped
-component merge into one saved archetype). The walker excludes exactly what
-`resetGameplay`/`destroyAllExceptPreserved` preserves — singleton entities
-(they ride `SNGL`), `C_Persistent`-tagged entities, component-backing
-entities — so the load contract
-
-```
-IREntity::resetGameplay();          // frame boundary
-IRWorld::loadWorld(registry, path); // restores exact original EntityIds
-```
-
-is collision-free by construction. Entity IDs are restored **exact**
-(never remapped — they never recycle). Same-world double-save is
-byte-identical; every read is a recoverable `IRAsset::BinaryStatus` and a
-bad magic / truncation / version-too-new / live-id collision aborts with
-**zero** world mutation (Rule #5); unknown chunk tags and unresolvable
-component names skip with counts.
-
-**P2 scope is the mechanism.** It ships one headless gtest
-(`test/world/world_snapshot_test.cpp`) proving the round-trip with
-trivially-copyable *test* components. The `(path)`-only convenience wrapper
-over a process-default registry (for the P7 Lua binding) has since landed and
-now covers the **whole opted-in inventory** — see "Process-default registry"
-below.
-
-**Relation chunk `RELN` (persist P3, #2214).** `CHILD_OF` entity relations
-round-trip through one self-describing chunk: a `Relation`-enum name table at
-its head (Rule #2 — the name is the on-disk identity, so adding `OWNS`/
-`ATTACHED_TO` is a one-line `enum Relation` extension per Rule #4) followed by
-`(relationTypeId, child, parent)` triples. Only logical `CHILD_OF` edges are
-serialized — the synthetic relation *entities* (`kEntityFlagIsRelation`) are an
-archetype index-space artifact and are regenerated by replaying `setParent` on
-load. `PARENT_TO`/`SIBLING_OF` are unimplemented engine-wide, so they name-table
-for forward-compat but emit zero triples. A triple is emitted only when **both**
-endpoints are in the served set (the same ARCH/SNGL projection P2 wrote), so an
-edge to a `C_Persistent`/backing endpoint (recreated with a possibly-new id) is
-dropped rather than dangling. Triples are sorted by `(child, parent)` — a child
-has one `CHILD_OF` parent — so the double-save stays byte-identical. The writer/
-reader live in `src/world_snapshot_relations.cpp` behind the src-private
-`src/world_snapshot_internal.hpp` seam (`IRWorld::detail::makeRelationChunk` /
-`decodeRelationChunk` / `applyStagedRelations`), keeping the chunk logic off the
-public header. Load splits the RELN chunk across two phases to honor Rule #5.
-The **fallible parse** — name table, triple count, every triple's bytes into a
-staged buffer — runs in **Phase 2b** (`decodeRelationChunk`), alongside the
-ARCH/SNGL decode-validate and *before* the id-watermark advance and any phase-3
-entity write, so a structurally malformed chunk (bad name table, truncated /
-over-stated triple count) aborts the load with the world entirely pristine —
-zero entities, zero edges — exactly like a malformed column does. The
-**infallible replay** (`applyStagedRelations`) is the **final** load phase —
-after every entity, column, and singleton exists and the watermark has advanced,
-so `setParent`'s regenerated relation entities mint above every restored id; it
-makes no fallible read, so it cannot fail partway and strand a partial edge set.
-Endpoints resolve through `LoadResult::singletonAliases_` (identity for a regular
-restored entity, the alias for a singleton); an unknown relation name or missing
-endpoint skips with a diagnostic (`LoadResult::relationsSkipped_`), never fatal.
-Deferring the *parse* to the final phase (which must run after phase 3, since
-`setParent` needs the live entities) would leave the whole restored entity set
-live on a failed load — the "no partial world mutation on error" contract
-(Rule #5) is why only the mutation, not the parse, waits for phase 3.
-
-## Component migration registry (persist P5, #2216, epic #667)
-
-`engine/world/include/irreden/world/save_migration.hpp` declares
-`IRWorld::SaveMigration<C>` — the `(component, oldVersion) → reader`
-customization point that lets an old `IRWS` snapshot load into a newer build
-whose component has since bumped `SaveTrait<C>::kSaveVersion` (Save Format
-Extensibility Rule #3). It fills the seam P2 already stamped: every `ARCH`/`SNGL`
-column carries a `u32 saveVersion` header, and before P5 the loader **ignored
-it** — always reading at the current layout, which silently corrupts an old
-column. Now `SaveComponentEntry::readerForVersion(diskVersion)` dispatches four
-cases at load, in the mutation-free phase-2 gate (so any failure aborts with a
-pristine world, Rule #5):
-
-- **disk == current `kSaveVersion`** — the `SaveSerialize<C>::read` fast path
-  (`SaveComponentEntry::reader_`); no migrator lookup. Regresses nothing.
-- **disk < current** — the registered `SaveMigration<C>` reader for that
-  version, or (miss) a hard `BinaryIOError::MigratorMissing`. This is the **one
-  non-recoverable case**: reading old bytes at the current layout can't be
-  recovered from, so a known component at an unmigrated older version errors
-  out rather than degrading. Every other mismatch degrades gracefully.
-- **disk > current** — `BinaryIOError::VersionTooNew` (a future writer),
-  reusing the existing shape, naming the component + both versions.
-- **unknown component name** — resolves to no registry entry; the column skips
-  by byte length (`columnsSkipped_`), never reaching the version dispatch
-  (Rule #1 forward-compat, P2 behavior).
-
-**Direct per-version readers, never chained.** Each `SaveMigration<C>` entry
-decodes exactly its era's bytes straight to a current-build `C` (fields added
-since defaulted, renamed fields remapped); a v3 bump leaves the v1/v2 readers
-untouched. The current version is **not** listed in `SaveMigration<C>` —
-`SaveSerialize<C>::read` owns it; list only the retired `[1 .. kSaveVersion-1]`.
-The registry keys migrators on the current session-local `ComponentId` and the
-disk column key stays `SaveTrait<C>::kSaveName` (Rule #2) — never
-`typeid(C).name()`, which is compiler-mangled and would make a macOS save
-unreadable on Windows. Registration is `if constexpr`-gated on `shouldSave<C>()`
-(like `SaveSerialize<C>`), so an opted-out component never needs a migrator.
-The `SaveMigration<C>` header block has the worked specialization example; the
-generic loader path is proven end-to-end (v1→v2, `VersionTooNew`,
-`MigratorMissing`, unknown-skip compose, current fast path) in
-`test/world/component_migration_test.cpp`.
-
-## GPU-resident state regeneration on load (persist P6, #2217, epic #667)
-
-`loadWorld` restores CPU-side component data; every component whose
-GPU-resident state was opted OUT of serialization (P1 default for handle
-fields — textures/SSBOs/framebuffers/pool residency, all process-local)
-comes back holding no valid GPU state. **The load contract preserves and
-reuses the live render context** rather than reconstructing it: the
-`resetGameplay()` that must precede `loadWorld` (`world_snapshot.hpp`)
-destroys gameplay entities but keeps the `C_Persistent` canvas / framebuffer
-/ camera bundle + `C_VoxelPool` alive (mirroring `scene_reset`, #1857), so
-the loader never touches those GPU handles. The one class of gameplay
-GPU-resident state that must be rebuilt — `C_VoxelSetNew`'s pool span — is
-regenerated by the **canvas-attach seed pass**:
-
-- The saver opts `C_VoxelPool` + every canvas-bundle GPU-handle component
-  OUT (`save_component_inventory.hpp` Classes A/B); their contents re-derive
-  each render tick from the pool.
-- `C_VoxelSetNew` opts IN with a custom `SaveSerialize<C_VoxelSetNew>`
-  (`engine/prefabs/irreden/voxel/voxel_set_serialize.hpp`) that persists only
-  the canonical `{size, boundsMin, per-voxel records}` and reconstructs the
-  set in **staged mode** (`pendingVoxels_` populated, `numVoxels_ == 0`, no
-  pool span) — with zero pool interaction, so it is safe in the loader's
-  mutation-free phase-2b validate pass (which dry-runs `read`). The "per-voxel
-  records" are the *authored* truth, which is not always the live pool span: a
-  GRID-mode set saved **mid-rotation** has a derived, dest-lattice-resampled
-  span (see `REBUILD_GRID_VOXELS`), so the serializer reads the authored
-  snapshot `C_VoxelSetNew::rotationSourceVoxels_` when it is present and the
-  span only otherwise — a `saveWorld()` that lands mid-spin still round-trips
-  the source arrangement, not the frame's resample.
-- After `loadWorld`, the `SEED_STAGED_VOXELS` UPDATE system (or a direct
-  `C_VoxelSetNew::attachToCanvas` call) moves each staged set into a live
-  pool span and queues its GPU upload. Downstream lighting / AO / sun-shadow
-  / fog textures then re-derive from the re-seeded pool for free.
-
-Because `engine/world` must not depend on the voxel/render prefabs (layering),
-the seed pass is driven by the **caller**, not baked into `loadWorld`: a
-creation that loads a snapshot registers `SEED_STAGED_VOXELS` in its UPDATE
-pipeline (see `creations/demos/persist_roundtrip`).
-
-## Process-default registry + `(path)` overloads (persist P7, #2218, epic #667)
-
-`makeDefaultSaveRegistry()` (`src/world_default_registry.cpp`) builds the
-process-default `SaveRegistry` the no-registry-argument overloads
-`saveWorld(path)` / `loadWorld(path)` forward to — the surface the `IRPersist`
-Lua binding (`engine/script`) needs, since Lua passes no registry.
-
-**Membership is derived, never curated (#2242).** The function walks
-`AllEngineComponents` and hands every entry to `registerComponent<C>()`; the
-opt-outs no-op through that call's `if constexpr (shouldSave<C>())` gate, so
-the registry's membership *is* the inventory's opted-in set, by construction.
-There are deliberately **no per-component register lines** — adding one is the
-regression this design exists to prevent, and
-`test/world/save_serializers_test.cpp` asserts
-`makeDefaultSaveRegistry().size() == detail::countOptIns<AllEngineComponents>()`
-so the two cannot drift.
-
-**That walk is also the completeness gate.** Every opted-in entry instantiates
-`SaveSerialize<C>`, so a future `IR_SAVE_OPT_IN` with no serializer **breaks
-this build** with `registerComponent`'s `SaveSerializable<C>` `static_assert`
-instead of silently dropping the component from every Lua-driven save. Adding
-an engine component that opts in therefore means writing its serializer in the
-same change. Four consequences for authors:
-
-- **A heap-owning component needs a `SaveSerialize<C>` specialization** in its
-  domain's `engine/prefabs/irreden/<domain>/save_serializers_<domain>.hpp`
-  (`C_VoxelSetNew` keeps its own `voxel_set_serialize.hpp` — its read path has
-  a pool-interaction contract the others don't). Those headers are included by
-  `world_default_registry.cpp` only, never by the component headers, so the
-  prefab domains stay out of `engine/world`'s include graph. **`read` must
-  reject bytes it cannot honestly restore** — if the component has a class
-  invariant its constructors establish (a count bounded by an inline array's
-  capacity, parallel grids sized to a stored extent), re-check it after
-  reading and return `BinaryIOError::UnknownTag` on violation, so the
-  reader admits no more than the constructors do. Truncation is already
-  caught by the short read; this covers the well-formed-but-inconsistent
-  file, whose damage otherwise surfaces as an out-of-bounds access in an
-  unchecked accessor rather than as a load error. `SaveSerialize<C_Cycle>`
-  and `SaveSerialize<C_TrianglesOnlySet>` are the reference shape. Match
-  the **accessors'** requirements, not merely the constructors': where a
-  constructor is laxer than the indexing math its own accessors perform
-  (`C_TrianglesOnlySet`'s two-argument constructor and `resize()` both accept
-  a both-negative extent, which multiplies to a positive cell count), the
-  reader is deliberately the tighter of the two — a reader that only mirrored
-  the constructor would restore a component the accessors then index out of
-  bounds. A validity guard on a multi-dimensional value must constrain
-  **each dimension**, not a derived product — the reduction destroys sign
-  and magnitude information (#2613). When one guard covers two distinct faults, give each its own check
-  and message: a shared message necessarily mis-describes whichever fault it
-  wasn't written for, and a load-time diagnostic is the only thing the person
-  debugging a corrupt save has. **A reader guard that is tighter than the type
-  gets a debug-only `IR_ASSERT` mirror in `write`** (split the same way): the
-  state it rejects is state the component's own API can produce, so the mirror
-  catches the producer while the offending entity is still live, instead of one
-  save/load cycle later as a corrupt-file error with the culprit long gone.
-  `read` stays the enforcing check — the mirror compiles out under
-  `IR_RELEASE`. A guard that only re-checks what the type already enforces
-  needs **no** mirror (`SaveSerialize<C_Cycle>`'s breakpoint-count clamp: only
-  `addBreakpoint` writes the count and it bounds itself at `kMaxBreakpoints`,
-  so the clamp can fire on a corrupt file but never on a live component).
-- **A component whose state cannot honestly round-trip opts OUT**, with a
-  comment saying why: callables with no authored identity to recover
-  (`C_LambdaModifiers`, `C_LerpEntity`) and `C_EntityEventHandlers`, whose
-  `sol::protected_function` refs are bound to one `lua_State`. Do **not** write
-  a serializer that substitutes a default on load — a silent behavior change
-  wearing a round-trip's clothes. **Store the authored key, not the resolved
-  callable**: a component built from an enum keeps the enum and resolves it per
-  tick (`C_GotoEasing3D` / `C_RotationTarget` hold `IREasingFunctions`, looked
-  up in `kEasingFunctions`), so it stays trivially copyable and opts in through
-  the raw-image arm with no serializer.
-- **Any TU that builds a registry must include `save_component_inventory.hpp`.**
-  `registerComponent<C>` is `if constexpr`-gated on `shouldSave<C>()`, and
-  without the `IR_SAVE_OPT_IN` specializations in scope `SaveTrait<C>` resolves
-  to the "no decision yet" primary (`kSave = false`) — so every call silently
-  no-ops and you get an empty registry that saves an empty world without
-  erroring.
-- **Never write an explicit `SaveSerialize<C>` for a component that IS
-  trivially copyable.** A missing serializer header is loud today only because
-  every explicit specialization is on a non-trivially-copyable component: with
-  the primary declared-but-undefined, a TU that misses the header sees an
-  incomplete type, `SaveSerializable<C>` is false, and the `static_assert`
-  fires. A trivially-copyable component has the constrained partial
-  specialization to fall back on, so the same missing header binds **silently**
-  to the raw-image arm — different bytes under the same save-name and version,
-  no diagnostic, and formally an ODR violation across the two TUs. If you need
-  a hand-written layout (to skip a derived field, narrow an enum, drop
-  padding), make the component non-trivially-copyable or route the exception
-  through the inventory instead.
-
-**Adding a component here must also extend
-`test/script/lua_world_snapshot_test.cpp` with a round-trip case through the
-actual `IRPersist` Lua surface** — a standalone `SaveSerialize<C>` unit test
-(e.g. `save_serializers_test.cpp`, `voxel_set_serialize_test.cpp`) covers the
-serializer but leaves the wiring itself (registry entry → Lua binding →
-reload) unverified (#2244).
-
-The registry is built **fresh per call** — cheap (a few allocations, never a
-per-frame path) and, unlike a process-static, its session-local `ComponentId`s
-always match the live `EntityManager`.
-
-The `.json.txt` **debug dump** (W-11) is a second, richer writer over the same
-save walk (archetype members + `CHILD_OF` edges), gated by the
-`IR_PERSIST_DUMP` env flag (`IRUtility::envFlagSet`) and emitted *after* the
-binary — a pure side-output, so the binary is byte-identical flag-on or
-flag-off (W-8 parity holds). It is distinct from the always-on lightweight
-`.json` sidecar (a magic/version/count summary).
-
-## Responsibilities
-
-`World(const char* configFileName)`:
-
-1. Parses `configFileName` into a `WorldConfig` (resolution, FPS, target
-   window size, MIDI device, video-capture defaults, etc.).
-2. Constructs every manager in dependency order:
-   `IRGLFWWindow` → `LuaScript` → `EntityManager` → `SystemManager` →
-   `JobManager` → `InputManager` → `CommandManager` →
-   `RenderingResourceManager` → `RenderManager` → `AudioManager` →
-   `TimeManager` → `VideoManager`.
-   `LuaScript` leads the manager block so `sol::state` outlives
-   `EntityManager` — archetype columns can hold `sol::object` refs from
-   Lua-defined components (T-100), and C++ destructs members in reverse
-   declaration order. `JobManager` slots in after `SystemManager`
-   because the worker pool sits below the engine's high-level managers
-   (renderer, input, video) and consumes only `WorldConfig` —
-   see `engine/job/CLAUDE.md` for the IRJob surface and lifetime
-   contract (Phase 1 of the multithreading epic #226).
-3. Each manager's constructor stamps its module global as it is
-   constructed (`g_entityManager = this;` in `EntityManager`'s ctor, and
-   so on) — `World` itself assigns none of them; the member order above
-   IS the set order.
-4. Calls `initEngineSystems()`, `initIRInputSystems()`,
-   `initIRUpdateSystems()`, `initIRRenderSystems()` to register the
-   engine-provided prefab systems and assign them to pipelines.
-5. Runs any Lua startup scripts the creation registered via
-   `IREngine::registerLuaBindings`.
-
-`gameLoop()`:
-
-- Enters the fixed-step outer loop.
-- Each iteration: `executePipeline(INPUT)` → `executePipeline(UPDATE)`
-  (one or more times, driven by `TimeManager::shouldUpdate()`) →
-  `executePipeline(RENDER)`.
-- `IRGLFWWindow::swapBuffers()` + frame pacing at the end.
-
-Destructor:
-
-- Destroys managers in reverse declaration order; each manager's
-  destructor clears its own module global (if it still points at itself).
+`gameLoop()`: `executePipeline(INPUT)` → `executePipeline(UPDATE)` while
+`TimeManager::shouldUpdate()` → `executePipeline(RENDER)` → swap + pacing.
 
 ## Lua wiring
 
-`setupLuaBindings(std::vector<LuaBindingRegistration>)` is called before
-`gameLoop()`. Each registration is a callback that mutates `LuaScript`'s
-`sol::state`. Creations use this to register their enum/type/component
-bindings before the first Lua script runs.
-
-`runScript(const char* fileName)` loads and executes a Lua file. Bare
-filenames resolve from `ExeDir/<ExeStem>/`; paths with a directory component
-resolve from cwd.
+`setupLuaBindings(std::vector<LuaBindingRegistration>)` runs before
+`gameLoop()`; each registration mutates `LuaScript`'s `sol::state`, so
+creations register enum/type/component bindings there, before the first
+script runs. `runScript(fileName)`: a bare filename resolves from
+`ExeDir/<ExeStem>/`, a path with a directory component from cwd.
 
 ## Init-affecting runtime params
 
-Runtime parameters that must be applied **before** any manager is
-constructed (today: `IRRender::VoxelPoolConfig` sizing, which the
-`RenderManager` reads at construction time) live in the same
-`config = { ... }` table as the `WorldConfig` fields, in the same
-`config.lua`. `IREngine::init` runs a small pre-init pass that loads
-the file and applies these fields before constructing the `World`.
-
-The canonical pattern from a creation's side is therefore **nothing** —
-the demo's `main()` just calls `IREngine::init(argv[0])` and the
-engine handles the rest. The override lives in the creation's own
-`config.lua`:
+A parameter that must land **before** any manager is constructed
+(`IRRender::VoxelPoolConfig` sizing, read by `RenderManager`'s ctor) lives in
+the same `config = { ... }` table of the creation's `config.lua` as the
+`WorldConfig` fields; `IREngine::init` applies it in a non-fatal pre-init
+pass (`IREngine::detail::applyPreInitLuaConfig`, `engine/engine.cpp`).
+Missing field, missing table, or missing file → the consumer's compiled-in
+default.
 
 ```lua
 config = {
-    -- ... standard WorldConfig fields (init_window_width, etc) ...
-    voxel_pool_edge = 128,   -- override the default 64³ voxel pool
+    -- ... WorldConfig fields (init_window_width, ...) ...
+    voxel_pool_edge = 128,   -- default 64
 }
 ```
 
-Missing field → consumer's compiled-in default (`VoxelPoolConfig::kDefaultEdge`
-= 64); missing `config` table or missing `config.lua` → same. The pre-init
-pass is non-fatal.
+- **Adding one:** extend `applyPreInitLuaConfig` to read the field, apply it
+  to its consumer, and log the override at INFO; document it here and in the
+  consuming module's `CLAUDE.md`. Never a CLI flag for the same purpose
+  (`creations/demos/CLAUDE.md` §"Conventions", "No runtime arguments").
+- `WorldConfig` fields are what `World` itself reads at construction; the
+  pre-init pass covers what must precede `WorldConfig`'s consumers. One
+  source of truth per file.
 
-**Adding a new init-affecting param.** Extend
-`IREngine::detail::applyPreInitLuaConfig` in `engine/engine.cpp` to read
-the new field, apply it to its consumer, and log the override at INFO so
-startup logs surface non-default values. Document the field here in the
-list above and in the consuming module's `CLAUDE.md`. Do not add a CLI
-flag for the same purpose — `creations/demos/CLAUDE.md` "No runtime
-arguments" forbids it; the Lua config is the single canonical surface.
+## Chunk residency
 
-**vs. `WorldConfig` fields.** `WorldConfig` covers params that World
-itself reads at construction time (`init_window_width`, `fit_mode`,
-profiling toggles, etc.); the pre-init pass covers params that need to
-land **before** `WorldConfig`'s own consumers fire. Both read from the
-same `config = { ... }` table — there is one source of truth per file.
+`IRWorld::ChunkResidencyManager` (`include/irreden/world/chunk_residency.hpp`)
+is the resident set + per-chunk voxel sub-pool + entity manifest. **Not owned
+by `World`** — a creation that opts into streaming constructs one; a
+single-chunk creation never sees it. Config knobs, the eviction / prefetch /
+deferred-upload behavior, and `FrameStats` are documented on the header.
+Chunk-coordinate utilities: [`engine/prefabs/irreden/world/`](../prefabs/irreden/world/).
+`IRWorld::ChunkVoxelDiskPersistence` (`chunk_persistence.hpp`) is the
+per-chunk `.vxs` save/load wired via `Config::persistence_`; it persists a
+chunk's voxel slice only, never entities.
+
+### Chunk mutation must route through `markChunkDirty`
+
+Any write to a chunk-owned `VoxelPoolAllocation` (the slice behind
+`ChunkResidencySlot::poolAllocation_`) — and any entity attach / detach /
+migrate under streaming — calls `ChunkResidencyManager::markChunkDirty(key)`
+immediately after. The dirty bit is what eviction and `flushPendingSaves()`
+consult; a missed call silently skips the save and the chunk reverts on
+re-resident, which single-chunk creations never observe. `slot->dirty_` is
+private (`isDirty()` is the read side). New mutation paths — voxel-pool
+write, entity move, component write within `ownedEntities_` — route through
+it; the renderer-side pointer is
+[`engine/render/CLAUDE.md`](../render/CLAUDE.md) at the voxel-pool section.
+
+## World snapshot (`IRWS`)
+
+`IRWorld::saveWorld` / `loadWorld` (`world_snapshot.hpp`) is the
+**entity-level** save; mechanism (chunk layout, projection walk, load phases,
+version dispatch) is on the headers. Format contract:
+[`engine/asset/CLAUDE.md`](../asset/CLAUDE.md) §"Binary-format contracts".
+Three author-facing contracts:
+
+- **Load contract:** `IREntity::resetGameplay()` at a frame boundary, then
+  `loadWorld`. Entity ids restore exact; a same-world double-save is
+  byte-identical; every failure is a recoverable `IRAsset::BinaryStatus` with
+  **zero** world mutation; unknown chunks and unresolvable component names
+  skip with counts.
+- **GPU state:** `loadWorld` restores CPU data only. The caller registers
+  `SEED_STAGED_VOXELS` in its UPDATE pipeline (or calls `attachToCanvas`) to
+  move loaded `C_VoxelSetNew`s from staged mode into pool spans;
+  `engine/world` does not depend on the voxel/render prefabs.
+  `creations/demos/persist_roundtrip` is the reference.
+- **Debug dump:** `IR_PERSIST_DUMP` (env flag) emits a `.json.txt` after the
+  binary; the binary is byte-identical flag-on or flag-off.
+
+### New-component contract
+
+`SaveTrait<C>` (`save_trait.hpp`) has no default: an engine component with
+neither `IR_SAVE_OPT_IN(Type, Version)` nor `IR_SAVE_OPT_OUT(Type)` in
+`save_component_inventory.hpp` fails the build. **Opt-out-by-omission is
+forbidden.** Adding an engine component means:
+
+- one `IR_SAVE_OPT_IN` / `IR_SAVE_OPT_OUT` line with its include, and an
+  `AllEngineComponents` entry, in `save_component_inventory.hpp`. The include
+  block sorts alphabetically by full path (`simplify` check 16).
+  `cmake/run_save_inventory_population_check.cmake` (part of `header-checks`)
+  catches a type omitted from the table entirely.
+- a templated component with several instantiations gets ONE representative
+  entry (see the comment beside `C_SystemEvent<IRSystem::TICK>` there).
+- `kSaveVersion` lives on the trait, not the struct: the snapshot serializes
+  the schema `SaveSerialize<C>` defines, not the in-memory layout.
+
+`save_component_inventory.hpp` includes every component header. Only
+snapshot TUs and `test/world/save_trait_test.cpp` include it — never a
+widely-included header.
+
+### Process-default registry
+
+`makeDefaultSaveRegistry()` (`src/world_default_registry.cpp`) walks
+`AllEngineComponents`; its membership is **derived, never curated** — do not
+add per-component `register` lines (`test/world/save_serializers_test.cpp`
+asserts `size() == countOptIns<AllEngineComponents>()`). Every opted-in entry
+instantiates `SaveSerialize<C>`, so an opt-in without a serializer is a build
+error. Rules for the serializer:
+
+- **Heap-owning component → `SaveSerialize<C>` specialization** in its
+  domain's `engine/prefabs/irreden/<domain>/save_serializers_<domain>.hpp`
+  (`C_VoxelSetNew` keeps `voxel_set_serialize.hpp`). Those headers are
+  included by `world_default_registry.cpp` only, never by component headers.
+- **`read` rejects bytes it cannot honestly restore:** re-check every
+  invariant the *accessors* rely on (not merely the constructors), one check
+  and one message per fault, each dimension of a multi-dimensional value
+  separately, and return `BinaryIOError::UnknownTag`. A guard tighter than
+  the type gets a debug-only `IR_ASSERT` mirror in `write`; a guard that only
+  re-checks what the type enforces needs none. Reference shapes:
+  `SaveSerialize<C_Cycle>`, `SaveSerialize<C_TrianglesOnlySet>`.
+- **A component that cannot honestly round-trip opts OUT** with a comment
+  (callables with no authored identity, `sol::protected_function` refs).
+  Never substitute a default on load. Prefer storing the authored key (an
+  enum resolved per tick) over the resolved callable, so the component stays
+  trivially copyable and needs no serializer.
+- **Any TU that builds a registry includes `save_component_inventory.hpp`.**
+  Without the specializations in scope every `registerComponent<C>` no-ops
+  and you get an empty registry that saves an empty world without erroring.
+- **Never write an explicit `SaveSerialize<C>` for a trivially-copyable
+  component.** A TU missing the header binds silently to the raw-image arm —
+  an ODR violation with no diagnostic. Need a hand-written layout? Make the
+  component non-trivially-copyable or route the exception through the
+  inventory.
+- **Migration:** a retired `kSaveVersion` gets a `SaveMigration<C>` reader
+  (`save_migration.hpp`) — direct per-version, never chained, the current
+  version not listed. A disk version below current with no reader is a hard
+  `MigratorMissing`; above current is `VersionTooNew`; an unknown name skips.
+- **Every new opted-in component adds a round-trip case to
+  `test/script/lua_world_snapshot_test.cpp`** through the `IRPersist` Lua
+  surface; a serializer unit test alone leaves the wiring unverified.
+
+The registry is built fresh per call (never per-frame), so its session-local
+`ComponentId`s always match the live `EntityManager`.
 
 ## Gotchas
 
-- **Manager lifetime is bounded by `World`.** `g_entityManager` and friends
-  are set in the ctor and cleared in the dtor. Don't store references that
-  outlive the loop — e.g. a `std::thread` background task that captures
-  `g_renderManager` will crash at shutdown.
-- **Initialization order matters.** `SystemManager` depends on
-  `EntityManager`, `RenderManager` depends on `IRGLFWWindow`, etc. If you
-  add a new manager, insert it at the right point in the chain and update
-  the dtor order.
-- **No `setPlayer` / `setCameraPosition` API on `World`.** Those are ECS
-  components. `World` owns *managers*, not game state.
-- **`m_waitForFirstUpdateInput` / `m_startRecordingOnFirstInput`** delay
-  video recording until the first input arrives — used to keep capture
-  clips from starting mid-loading-screen. If video recording is not
-  starting, check these flags first.
-
-  **`m_waitForFirstUpdateInput` is force-disarmed under `--auto-screenshot`**
-  (see #2990). It is a live-operator affordance — it holds the sim at the
-  single priming `update()` until a real key press arrives. Under
-  `--auto-screenshot` there is no input source, so the gate can never open;
-  under the GUI-test path (`createGuiTestSystem`, which also sets
-  `g_autoCaptureActive` and arms synthetic input via
-  `IRInput::beginSyntheticInput()`) an input source does exist, but the sim
-  should still advance deterministically rather than wait on the shot
-  table's first injected press. Left armed in either case, the whole capture
-  window renders one frozen tick, silently defeating the
-  `enableFixedStep()` carve-out in the same `gameLoop()` block. The
-  auto-capture branch therefore clears the flag and logs the override at
-  INFO. `m_startRecordingOnFirstInput` is deliberately left armed:
-  `--auto-screenshot` is the screenshot path, not the video one, so there is
-  nothing for it to start.
-
-  **The auto-capture block must stay above the priming `update()`.**
-  `enableFixedStep()` zeroes the UPDATE lag accumulator
-  (`TimeManager::enableFixedStep` → `EventProfiler<UPDATE>::resetLag`), and
-  `endEvent<UPDATE>()` decrements that accumulator and bumps `m_fixedStepCount`
-  **unconditionally** — it never checks that lag was accumulated first. A
-  priming tick executed *before* the reset is therefore an uncompensated tick:
-  the loop enters one ahead and every captured frame reads `IRTime::tick()` one
-  high — the same off-by-one `resetLag()` exists to prevent (see
-  [`engine/time/CLAUDE.md`](../time/CLAUDE.md) §"`enableFixedStep()` decouples
-  UPDATE from wall-clock"). The constraint is on the block as a whole, not on
-  the order of the two statements inside it: moving only the disarm below the
-  priming call self-cancels (the priming tick drives lag to `-1` period, frame 1
-  restores it to `0`, and the per-shot tick count is unchanged). A refactor that
-  hoists the priming call above `enableFixedStep()`, or sinks this block below
-  it, is the one that breaks the capture contract, and no test covers it.
-- **Release GPU/GL resources in `end()`, never in `~World()`.** `end()` runs
-  during `gameLoop()` while the context is provably live, and is the canonical
-  spot for device-resource teardown (it already drives `destroyAllEntities()`
-  for `onDestroy` GPU frees). The dtor stays a no-op safety net.
-
-  The hazard it guards against: `g_world` is a global `unique_ptr`, so a
-  `~World()` that runs at process-exit static destruction lands past the point
-  where the GL driver/context may already be torn down (MSYS2 unloads it
-  first), and any `glDelete*` issued from a member/observer dtor crashes
-  against dead driver state (#2031).
-
-  **That static-destruction hazard is retired for the `IREngine` path** —
-  `IREngine::gameLoop()` resets `g_world` as soon as `World::gameLoop()`
-  returns (#2528), so `~World()` runs with `main` on the stack and the driver
-  loaded. The rule still stands, because the reset does not cover two paths:
-  `World::gameLoop()`'s catch block calls `end()` and rethrows, skipping the
-  reset entirely; and an owner who constructs a `World` directly (rather than
-  through `IREngine::init`) picks its own destruction point. Treat the reset
-  as defense in depth, not a licence to move device-resource frees into the
-  dtor.
+- **`m_waitForFirstUpdateInput` / `m_startRecordingOnFirstInput`** hold the
+  sim / video capture until the first key press. If recording is not
+  starting, check these first. `m_waitForFirstUpdateInput` is force-disarmed
+  when auto-capture is active (`--auto-screenshot`, the GUI-test path);
+  `m_startRecordingOnFirstInput` stays armed.
+- **The auto-capture block in `gameLoop()` stays above the priming
+  `update()`.** `enableFixedStep()` zeroes the UPDATE lag accumulator and
+  `endEvent<UPDATE>()` decrements it unconditionally, so a priming tick before
+  the reset leaves every captured frame reading `IRTime::tick()` one high
+  ([`engine/time/CLAUDE.md`](../time/CLAUDE.md) §"Gotchas", the
+  `enableFixedStep()` bullet). The constraint is on the block as a whole:
+  moving only the disarm below the priming call self-cancels; hoisting the
+  priming call above `enableFixedStep()` breaks the capture contract, and no
+  test covers it.

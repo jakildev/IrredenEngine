@@ -76,10 +76,10 @@ changes (occupied-only lists, indirect dispatch, subdivision caps).
 4. Older Metal reports can include unwritten startup timestamps or stale
    same-frame samples. Re-measure a suspected bottleneck with the validity
    checks before using historical stage values as an optimization baseline.
-5. The current rotated voxel cull counter sums three per-axis candidate lists;
-   its numerator is not unique visible voxels and can exceed the pool size.
-   Do not compare that ratio with the cardinal unique-voxel ratio as if their
-   units were identical.
+5. Cull counters separate unique retained candidates from repeated axis entries.
+   The ratio includes separate shadow feeders and uses the producing dispatch's
+   pool-slot domain. Old reports use different units; see
+   [voxel cull work units](../perf/voxel-cull-work-units.md) before comparing them.
 
 ## 2. Measured dispatch cost model (Metal/macOS, 2026-07)
 
