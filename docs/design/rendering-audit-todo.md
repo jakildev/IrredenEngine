@@ -1,6 +1,8 @@
 # Rendering audit worklist
 
-Keep the agreed work in this order. A diagnostic experiment is not an implemented
+Finish visual correctness before the next optimization round. Then profile the
+changed paths and other bottlenecks, consolidating logic and improving robustness
+against measured costs and the visual controls. Keep the agreed work in this order. A diagnostic experiment is not an implemented
 fix, and a small native scene does not establish fleet-scale rendering throughput.
 
 ## Agreed work
@@ -39,6 +41,11 @@ that the experimental rendering is ready to become the default.
   subdivisions alone must not stand in for measured effective density.
 
 ## Newly observed during occlusion validation
+
+- [Overhead direction controls](lighting-direction-probes.md) expose 3,808 false
+  shadow pixels on unblocked GRID staircase treads with the default caster.
+  Source-face casting matches shadows disabled exactly. Establish caster geometry
+  and resolve-normal provenance before correcting coverage; this remains unfixed.
 
 - [Staircase visibility](staircase-shadow-visibility.md) is corrected: a nearby
   external blocker no longer loses its shadow at tread boundaries. The default

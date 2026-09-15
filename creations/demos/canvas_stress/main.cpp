@@ -58,6 +58,7 @@
 // Command suites
 #include <irreden/common/command_suite_capture.hpp>
 
+#include <limits>
 #include <cstdint>
 #include <cstdio>
 #include <string>
@@ -1069,6 +1070,11 @@ void registerArgs() {
     args.flag("--no-lighting", "Disable world lighting");
     args.flag("--no-shadows", "Disable sun shadows while retaining directional shading");
     args.flag("--no-ao", "Disable ambient occlusion");
+    args.numbers(
+        "--sun-direction",
+        "World-to-sun vector <x> <y> <z>; nonzero, z <= 0 (+Z is down)",
+        3
+    );
     args.flag(
         "--voxel-face-shadows",
         "Experimental complete voxel-face sun coverage (voxel casters only)"
@@ -1615,7 +1621,31 @@ void initEntities() {
         IREntity::setComponent(mainCanvas, C_CanvasAOTexture{mainCanvasSize});
         IREntity::setComponent(mainCanvas, C_CanvasSunShadow{mainCanvasSize});
         IREntity::setComponent(mainCanvas, C_CanvasLightVolume{});
-        IRRender::setSunDirection(kSunDirection);
+        vec3 sunDirection = kSunDirection;
+        if (IREngine::args().wasProvided("--sun-direction")) {
+            const auto &values = IREngine::args().getFloats("--sun-direction");
+            const vec3 requested(values[0], values[1], values[2]);
+            const float scale = IRMath::max(
+                IRMath::max(IRMath::abs(requested.x), IRMath::abs(requested.y)),
+                IRMath::abs(requested.z)
+            );
+            if (scale > 0.0f && scale <= std::numeric_limits<float>::max() && requested.z <= 0.0f &&
+                requested.x == requested.x && requested.y == requested.y) {
+                sunDirection = requested / scale;
+            } else {
+                IR_LOG_WARN("Invalid --sun-direction; using the default sun direction");
+            }
+        }
+        IRRender::setSunDirection(sunDirection);
+        const vec3 normalizedSun = IRRender::getSunDirection();
+        IR_LOG_INFO(
+            "LIGHTING-PROBE sun=({},{},{}) shadows={} ao={}",
+            normalizedSun.x,
+            normalizedSun.y,
+            normalizedSun.z,
+            !IREngine::args().getFlag("--no-shadows"),
+            !IREngine::args().getFlag("--no-ao")
+        );
         IRRender::setSunIntensity(kSunIntensity);
         IRRender::setSunAmbient(kSunAmbient);
         IRRender::setSunShadowsEnabled(!IREngine::args().getFlag("--no-shadows"));
