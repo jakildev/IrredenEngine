@@ -2452,8 +2452,7 @@ void initSystems() {
                 sweepZoom
             );
         } else {
-            cfg.shots_ = kShots;
-            cfg.numShots_ = sizeof(kShots) / sizeof(kShots[0]);
+            IRVideo::setAutoScreenshotShots(cfg, kShots);
         }
         if (useGuiTestCycler) {
             IRVideo::GuiTestConfig guiCfg{};
