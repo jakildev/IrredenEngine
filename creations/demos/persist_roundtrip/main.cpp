@@ -1,5 +1,4 @@
-// persist_roundtrip — GPU-resident state regeneration on load (persist P6 /
-// W-10, #2217, epic #667).
+// persist_roundtrip — GPU-resident state regeneration on load.
 //
 // The render-stack half of W-10's acceptance that the headless serializer unit
 // test (`test/world/voxel_set_serialize_test.cpp`, no RenderManager / no pool)

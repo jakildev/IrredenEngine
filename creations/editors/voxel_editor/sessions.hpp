@@ -5,7 +5,7 @@
 
 #include <string>
 
-// Registered authoring sessions (#766 Part 2c). Each one is a recipe of editor
+// Registered authoring sessions. Each one is a recipe of editor
 // gestures replayed against the live UI by the GUI-test harness; selected at
 // run time with `--gui-session <name>`.
 //
@@ -16,22 +16,22 @@
 // the live editable set's occupancy after each. The entity sessions (rock,
 // mushroom, ant, bird, tree) land on this same spine.
 //
-// `rock` is the first committed entity (#766 Part 2d): an irregular, no-symmetry,
+// `rock` is the first committed entity: an irregular, no-symmetry,
 // single-layer blob. It clears the seeded ground slab down to a small central
 // footprint (four erase-mode box drags on the flat plane, before any rock voxel
 // exists to occlude the corner aims), then builds three asymmetric layers on that
 // footprint and carves two base corners, so the saved `.vxs` is the rock alone.
 //
-// `mushroom` is the second committed entity (#766 Part 2 mushroom slice): a
+// `mushroom` is the second committed entity: a
 // radially-symmetric cap + stem authored with X+Y mirror symmetry, so one
 // authored quadrant fills all four. It is the positive-fire regression test for
-// the F-1.2 mirror fix (this PR wires applyMirrors into the editor's edit path):
+// mirroring in the editor's edit path (applyMirrors):
 // every stem/cap assertion checks a *mirror-created* cell, and a hover probe
 // aims at a voxel the recipe never clicked — all of which read empty / wrong if
 // mirroring is broken. Two layers (stem default, cap added via K), a hide/show
 // visibility pair, and a save→reload round-trip round out the acceptance.
 //
-// `ant` is the third committed entity (#766 Part 2f) and the largest session:
+// `ant` is the third committed entity and the largest session:
 // an X-mirrored body on four named layers with six legs as three mirrored
 // pairs, authored at `--scene-size 20 20 20`. It is the first recipe to enable
 // the mirror *before* the ground clear, so the silhouette is carved from half
@@ -130,7 +130,7 @@ inline Recipe buildDragProbe(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) 
     return builder.finish();
 }
 
-// The rock — an irregular, no-symmetry, single-layer blob (#766 Part 2d). The
+// The rock — an irregular, no-symmetry, single-layer blob. The
 // recipe assumes a scene at least ~11 wide in x/y and 5 deep in z (the peak
 // voxel sits at gz - 4; the default 16³ satisfies both); the footprint and
 // layers derive from the live dims so it stays centred and clear of the
@@ -254,7 +254,7 @@ inline Recipe buildRock(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
 }
 
 // The mushroom — a radially-symmetric cap + stem authored with X+Y mirror
-// symmetry (#766 F-1.6 PR-2). The mirror planes sit at the scene centre (offset
+// symmetry. The mirror planes sit at the scene centre (offset
 // (size-1)/2 per axis, matching the editor's applyEdit reflection), so a voxel
 // authored at the low/front quadrant cell (cx-1, cy-1) fills all four of
 // {cx-1,cx}×{cy-1,cy}. Assumes a scene at least ~12 wide in x/y and ~6 deep in z
@@ -395,7 +395,7 @@ inline constexpr int kAntBodyRows = 16;
 inline constexpr int kAntLegReach = 5;
 inline constexpr int kAntBodyTiers = 2;
 
-// The ant — the plan's PR-3 and the largest session (#766 F-1.6). A bilaterally
+// The ant — the largest session. A bilaterally
 // symmetric body authored entirely from its low-x half under an **X mirror**,
 // with six legs as three mirrored pairs and four named layers (abdomen, thorax,
 // legs, head) stacked on the default layer the kept ground footprint lands on.
@@ -410,12 +410,12 @@ inline constexpr int kAntBodyTiers = 2;
 // plus eyes, (6) `[` back to the legs layer and hide/show it, (7) save + reload.
 //
 // Every occupancy check names a **mirror-created** cell or a cell the mirror was
-// responsible for clearing, so the whole session is a positive fire for the
-// F-1.2 fix — the recipe never clicks past the mirror plane.
+// responsible for clearing, so the whole session is a positive fire for
+// mirroring — the recipe never clicks past the mirror plane.
 //
 // The body grows only in `-x` and `-z` from the seeded plane: a voxel's `-y`
-// face does not reliably place its `-y` neighbour at the cardinal camera
-// (#2575), so no gesture here depends on one. Rows along y are reached from the
+// face does not reliably place its `-y` neighbour at the cardinal camera,
+// so no gesture here depends on one. Rows along y are reached from the
 // ground plane below them instead, which is why each tier is a box drag whose
 // two corners sit over kept footprint rather than a march along the body.
 inline Recipe buildAnt(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {

@@ -1,4 +1,4 @@
-// reposition_stress — headless pass/fail harness for #2565: repositioning MANY
+// reposition_stress — headless pass/fail harness: repositioning MANY
 // voxel-set entities every frame corrupted the entity store and SIGSEGV'd in
 // `getComponent` on a still-live handle (`record.archetypeNode == nullptr`).
 //
@@ -126,7 +126,7 @@ std::vector<IREntity::EntityId> g_churnEntities;
 
 // Ids of entities that are CONFIRMED dead, retained deliberately. The
 // --stale-probe arm re-probes these every tick: a creation that outlives its
-// entities holds exactly these, and probing one is what pre-#2565 turned into
+// entities holds exactly these, and probing one is what once turned into
 // delayed corruption. This is sound only because ids are never recycled
 // (entity_manager.hpp: monotonic `m_nextEntityId.fetch_add`, no recycle
 // pool) — under a recycling allocator a retained id could come back as a
@@ -338,7 +338,7 @@ void initSystems() {
     }
 
     if (g_drive == Drive::NODE) {
-        // The reported crash's own shape (#2565 backtrace frames 0-3): a
+        // The reported crash's own shape: a
         // DYNAMIC system body that receives the matched `ArchetypeNode*` and
         // resolves each entity by id through `getComponent`. Unlike the LOOKUP
         // arm, the ids come out of the node's live `entities_` array rather
@@ -512,7 +512,7 @@ void initEntities() {
 // had gone missing (or gone unplaced) while the entity was never destroyed, so
 // the honest check is: every id we spawned still resolves to a placed record.
 // `findRecord` is the non-inserting probe — a bare `entityExists` here would
-// answer from an index this very audit could have polluted pre-#2565.
+// answer from an index this very audit could have polluted.
 void checkStoreInvariants() {
     for (std::size_t i = 0; i < g_setEntities.size(); ++i) {
         const IREntity::EntityRecord *record =
@@ -550,7 +550,7 @@ void checkStoreInvariants() {
 //
 // The contract asserted here is engine/entity/CLAUDE.md §"Record lookup": a
 // dead id answers honestly through the optional/has/exists API, and probing it
-// must not mint an index record. On the actual #2565 regression, the first
+// must not mint an index record. On the actual regression, the first
 // three probes (existsBefore/optional/has) all answer honestly — the mint
 // happens DURING the probe, so those wrappers still return their negative
 // result before the poison record is observable. `existsAfter` is the only

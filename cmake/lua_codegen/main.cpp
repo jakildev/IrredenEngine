@@ -4,14 +4,14 @@
 // registration helpers. The CODEGEN side of the Lua-driven ECS epic (see
 // docs/design/lua-driven-ecs.md).
 //
-// Components (T-106): runs the input as Lua against a stub `IRComponent`
+// Components: runs the input as Lua against a stub `IRComponent`
 // table whose `register` callback captures every call.
 //
-// Systems (T-107): the `IRSystem.registerSystem` shim captures system
+// Systems: the `IRSystem.registerSystem` shim captures system
 // metadata + the source location of the `tick = function(arch) ... end`
 // block via Lua's `lua_getinfo` debug API. The body source is then sliced
 // out of the input file, parsed by `system_dsl.{hpp,cpp}` against the DSL
-// subset documented in #587, and emitted as a `IRSystem::createSystem<...>`
+// subset, and emitted as a `IRSystem::createSystem<...>`
 // call wrapped in a per-system create function.
 //
 // Usage: ir_lua_codegen --out <output.hpp> <input1.lua> [input2.lua ...]
@@ -160,7 +160,7 @@ std::string_view pathStem(std::string_view path) {
 
 // The per-run namespace identifier. Every symbol the registry block emits
 // lives in `IRScript::CodegenRegistry::<runId>`, so two codegen runs linked
-// into one binary get distinct mangled names instead of merging (#2609).
+// into one binary get distinct mangled names instead of merging.
 // Derived from the `--out` stem only — never the resolved path, which is
 // host-specific and would make the generated header non-reproducible across
 // build trees. Non-identifier bytes become `_`; a leading digit gets a `run_`
@@ -186,7 +186,7 @@ std::string deriveRunId(std::string_view outPath) {
     return id;
 }
 
-// The per-component link-time claim symbol (#2609). Spelled once so the
+// The per-component link-time claim symbol. Spelled once so the
 // header's declaration and the companion .cpp's definition cannot drift apart
 // — the symbol name IS the diagnostic a duplicate-symbol link error prints.
 std::string claimSymbol(const std::string &componentName) {
@@ -697,7 +697,7 @@ void registerSystemCb(
 
     std::vector<std::string> excludes = readStringArray(ts, schema["excludes"], name, "excludes");
 
-    // T-223: optional `concurrency` field. Accepts integer-typed
+    // Optional `concurrency` field. Accepts integer-typed
     // IRSystem.Concurrency.{SERIAL,PARALLEL_FOR,MAIN_THREAD}; strings
     // are rejected per the cpp-lua-enums rule. The value is threaded
     // into the emitted `IRSystem::createSystem<...>(...)` call's
@@ -779,7 +779,7 @@ void registerSystemCb(
 
 // Convert main.cpp's `Component` registry into the `ComponentSchema` shape
 // that system_dsl.hpp consumes. Fields keep their alphabetical order from
-// T-106's sort.
+// the component registration sort.
 std::vector<IRLuaCodegen::ComponentSchema>
 toComponentSchemas(const std::vector<Component> &comps) {
     std::vector<IRLuaCodegen::ComponentSchema> out;
@@ -816,7 +816,7 @@ void writeFile(const std::string &path, const std::string &contents) {
     out << contents;
 }
 
-// The companion translation unit for the run's component-name claims (#3091).
+// The companion translation unit for the run's component-name claims.
 // Emitted unconditionally, even with no components: `irreden_lua_codegen()`
 // declares it as an add_custom_command OUTPUT, and CMake requires every
 // declared OUTPUT to actually appear.
@@ -863,7 +863,7 @@ void writeOutput(
     }
     os << "#pragma once\n\n";
 
-    // #1616: pre-emit the CODEGEN system bodies into a buffer first, so we can
+    // Pre-emit the CODEGEN system bodies into a buffer first, so we can
     // collect the set of engine-binding headers their whitelisted
     // side-effecting calls (e.g. `IRRender.setSunIntensity`) require and emit
     // those #includes alongside the static core set below. The buffer is
@@ -913,7 +913,7 @@ void writeOutput(
     os << "#include <irreden/script/lua_binding_traits.hpp>\n";
     os << "#include <irreden/script/lua_script.hpp>\n";
     os << "#include <irreden/system/ir_system_types.hpp>\n";
-    // #1616: engine-binding headers required by whitelisted side-effecting
+    // Engine-binding headers required by whitelisted side-effecting
     // intrinsics used in this run's CODEGEN tick bodies (std::set → sorted,
     // deduped). Empty unless a body calls an IRRender.* (or future) binding.
     for (const auto &inc : extraIncludes) {
@@ -994,7 +994,7 @@ void writeOutput(
             os << "        &" << structName << "::" << f.name_ << "_";
         }
         os << "\n    );\n";
-        // #2446: the Lua attach path for this component. `addComponentDynamic`
+        // The Lua attach path for this component. `addComponentDynamic`
         // refuses to append a default row for a C++-typed impl (some engine
         // components have deleted default ctors), and applying the overrides
         // table needs per-field typed writes that only the codegen — which
@@ -1040,7 +1040,7 @@ void writeOutput(
     // names are captured in `kEvalSystemNames` below as a prepared hook for
     // a future runtime verification loop — not yet consumed.
     //
-    // #1616: the parse/emit pass ran earlier (so its required #includes could
+    // The parse/emit pass ran earlier (so its required #includes could
     // be hoisted into the include block above); `systemsBuf` already holds the
     // emitted create-functions. Flush it here in its original output position.
     //
@@ -1059,8 +1059,8 @@ void writeOutput(
     // Component-name claims. Everything below is namespaced per run, but three
     // emitted surfaces are keyed on the *user-authored* component name and so
     // live outside any per-run namespace by necessity: `IRComponents::C_<Name>`
-    // itself, `bindLuaType<C_<Name>>`, and the attach factory it registers
-    // (#2446). Two runs declaring the same component name merge those silently,
+    // itself, `bindLuaType<C_<Name>>`, and the attach factory it registers.
+    // Two runs declaring the same component name merge those silently,
     // swapping attach factories.
     //
     // One external-linkage constant per component turns that collision into a
@@ -1070,7 +1070,7 @@ void writeOutput(
     // `const` is internal-linkage in C++ and would never collide, making the
     // guard silently dead.
     //
-    // Only the *declarations* live here (#3091). The matching definitions go
+    // Only the *declarations* live here. The matching definitions go
     // into the companion .cpp `irreden_lua_codegen()` adds to the target's
     // sources, so exactly one definition per run reaches the link no matter how
     // many TUs include this header — while two runs still emit two definitions
@@ -1093,7 +1093,7 @@ void writeOutput(
     //
     // The per-run namespace gives each run its own mangled name for this
     // function, so its body carries no size budget — correctness does not rest
-    // on the compiler choosing to inline it (#2609). `bindLuaType<C_X>` remains
+    // on the compiler choosing to inline it. `bindLuaType<C_X>` remains
     // the home for per-component work as an organizational choice.
     //
     // The using-directive after the closing brace re-exports the whole run into
@@ -1205,7 +1205,7 @@ int main(int argc, char **argv) {
         IRArgs::Common::NONE
     );
     parser.string("--out", "Output .hpp path (required)", "");
-    // #3091: the claim definitions live in a companion TU, not the header, so a
+    // The claim definitions live in a companion TU, not the header, so a
     // target may include the header from as many TUs as it likes. CMake passes
     // this explicitly (its add_custom_command has to declare the same path as an
     // OUTPUT); a direct CLI run gets `deriveClaimsCppPath`'s default.
@@ -1219,7 +1219,7 @@ int main(int argc, char **argv) {
         "--default-mode", "Default mode for schemas without an explicit mode: codegen | eval",
         "codegen"
     );
-    // Per-run namespace id (#2609). Defaults to the --out stem, which is unique
+    // Per-run namespace id. Defaults to the --out stem, which is unique
     // per run for every in-tree caller; the override exists for the cases stem
     // derivation cannot serve (two same-stem outputs on one target, or a stem
     // that sanitizes to a C++ keyword).
@@ -1320,7 +1320,7 @@ int main(int argc, char **argv) {
         }
     );
 
-    // T-107: real `IRSystem.registerSystem` shim — captures the system
+    // Real `IRSystem.registerSystem` shim — captures the system
     // metadata + tick function source location for later parse + emit. The
     // remaining IRSystem surface stays stubbed because the codegen tool
     // doesn't run pipelines or hot-reload systems; only registration is
@@ -1341,7 +1341,7 @@ int main(int argc, char **argv) {
     irSystem.set_function("replaceSystemBody", [](sol::variadic_args) {});
     irSystem["SystemName"] = lua.create_table();
 
-    // T-223: expose IRSystem.Concurrency as an integer table so .lua
+    // Expose IRSystem.Concurrency as an integer table so .lua
     // schemas can reference `IRSystem.Concurrency.PARALLEL_FOR` etc. on
     // the registerSystem spec. Values mirror IRLuaCodegen::Concurrency
     // (which in turn mirrors IRSystem::Concurrency on the engine side).

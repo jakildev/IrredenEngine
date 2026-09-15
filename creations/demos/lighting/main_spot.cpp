@@ -1,7 +1,7 @@
 #include "common/lighting_demo_main.hpp"
 
 namespace {
-// Yaw sweep proving the winning-light-ID cone (#2318) stays world-oriented as
+// Yaw sweep proving the winning-light-ID cone stays world-oriented as
 // the camera rotates: cardinal (0°), ~30°, 45°, then a zoomed cardinal look.
 // The floor pool must keep its shape/position in world space across all four —
 // a camera-locked or mis-oriented cone would slide or distort under yaw.
@@ -13,7 +13,7 @@ constexpr IRVideo::AutoScreenshotShot kSpotConeShots[] = {
 };
 } // namespace
 
-// Dim the directional sun so the SPOT's winning-light-ID cone (#2318) is the
+// Dim the directional sun so the SPOT's winning-light-ID cone is the
 // dominant light in frame — the cone pool on the floor reads clearly instead
 // of washing out under full sun. Ambient stays default so shapes outside the
 // cone are still dimly legible.

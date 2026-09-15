@@ -1,4 +1,4 @@
-# Script-mode entry point for the header convention checks (#2794).
+# Script-mode entry point for the header convention checks.
 #
 # The `header-checks` and `lint` targets only exist after a full CMake
 # *configure*, which pulls the whole FetchContent dependency graph and needs a
@@ -9,23 +9,19 @@
 #   cmake -DPROJECT_ROOT=<repo-root> -P cmake/run_header_checks_standalone.cmake
 #
 # Deliberately a thin shim. It delegates every actual rule to
-# run_header_convention_checks.cmake, run_metal_kernel_registry_check.cmake
-# (#2798), run_metal_scratch_consumer_check.cmake (#2878), and
-# run_save_inventory_population_check.cmake (#2834), AND collects the same
+# run_header_convention_checks.cmake, run_metal_kernel_registry_check.cmake,
+# run_metal_scratch_consumer_check.cmake, and
+# run_save_inventory_population_check.cmake, AND collects the same
 # file set the `header-checks` / `lint` targets collect —
 # irreden_collect_quality_files with INCLUDE_RENDER_BACKENDS, the sibling call
 # site being irreden_add_quality_targets in cmake/ir_quality_tools.cmake — so
 # the CI path and the targets cannot drift into checking different things.
-# Rules were the drift #2727 was filed about; the file set is the same failure
-# in the other dimension (#2889).
 #
 # The flag is load-bearing, not decoration. Without it this call inherits the
 # style tools' reject list and the scan silently loses the 9 first-party headers
-# under engine/render/**/{gl_wrap,metal}/. Since this entry point is the ONLY
-# one that runs in CI — the `lint` target's only route was the umbrella
-# quality.yml, retired in #2718, so clang-tidy has no CI path at all (whether it
-# can gate here is the open spike #3189) — a narrow list here is a hole in the
-# merge gate, not a slower version of it (#2889).
+# under engine/render/**/{gl_wrap,metal}/. This entry point is the only one
+# that runs these checks in CI, so a narrow list here is a hole in the merge
+# gate, not a slower version of it.
 
 cmake_minimum_required(VERSION 3.20)
 

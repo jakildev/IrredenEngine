@@ -19,7 +19,7 @@
 // visible→explored→unexplored boundary at increasing magnification so the
 // per-state transitions are sampled at multiple pixel scales.
 //
-// `--moving-observer` (#2009) swaps the static grid reveal for a per-frame
+// `--moving-observer` swaps the static grid reveal for a per-frame
 // analytic VISION CIRCLE (`Fog::setVisionCircle`) orbiting the origin in
 // sub-cell steps. This is the vehicle for inspecting the SMOOTH reveal: the
 // disc is evaluated per pixel from the continuous world column, so its edge is
@@ -29,7 +29,7 @@
 // VOXELIZED grid reveal instead and owns the committed render-verify refs, so
 // the two reveal styles sit side by side in one demo.
 //
-// `--player-walk` (#2009) is the detached-player payoff: an SDF pillar "player"
+// `--player-walk` is the detached-player payoff: an SDF pillar "player"
 // walks a straight line in sub-voxel per-frame steps while `setVisionCircle`
 // keeps its analytic disc centered on the moving float position. Six fixed-
 // camera shots capture the glide; flat floor tiles in the player's path resolve
@@ -117,7 +117,7 @@ namespace {
 constexpr int kRevealRadius = 18;
 constexpr int kBandWidth = 8;
 
-// --moving-observer analytic vision circle (#2009). The center orbits the
+// --moving-observer analytic vision circle. The center orbits the
 // origin in sub-cell per-frame steps (orbit × angular-step ≈ 0.4 cell/frame
 // < 1 cell) so successive frames land on distinct sub-cell offsets — the case
 // that exposes per-cell popping if the reveal snapped to integers. The disc
@@ -151,7 +151,7 @@ void driveMovingObserver() {
     ++g_observerFrame;
 }
 
-// --player-walk (#2009 proof): a "detached player" — an SDF pillar marker —
+// --player-walk: a "detached player" — an SDF pillar marker —
 // walks in a straight line at a SUB-VOXEL per-frame step while its analytic
 // vision circle (radius kWalkVisionRadius) tracks its float position. The camera
 // is fixed (origin), so across the captured sequence the disc + marker slide
@@ -210,14 +210,14 @@ void drivePlayerWalk() {
     ++g_walkFrame;
 }
 
-// --edge-zoom (#2125 filled cross-section; #2124 P1): a STATIC analytic vision
+// --edge-zoom (filled cross-section): a STATIC analytic vision
 // circle at the origin with VOXEL objects straddling its boundary, zoomed in so
 // the cut edge fills the frame. Validates the cut-face cross-section: a
 // boundary-cut voxel object caps with a FILLED interior wall (not a see-through
 // hole or black wedge). Two mechanisms compose in VOXEL_TO_TRIXEL_STAGE_1/2:
-// columns fully outside the disc are dropped (#2102 own-column clip — the hidden
+// columns fully outside the disc are dropped (own-column clip — the hidden
 // half), and a revealed boundary voxel emits the interior VERTICAL face toward a
-// fog-hidden neighbor column (#2125 cut face — caps the revealed half). Cut faces
+// fog-hidden neighbor column (cut face — caps the revealed half). Cut faces
 // show only on CAMERA-VISIBLE cut surfaces, so at cardinal yaw 0 the -X-facing
 // cut (the green slab) shows its filled wall while the +X/+Y-facing cuts (the
 // pillars) cut on back faces and read as a clean object end. The grid stays
@@ -249,12 +249,11 @@ constexpr IRVideo::AutoScreenshotShot kEdgeShots[] = {
     {14.0f, vec2(0, 0), 0.0f, "fog_edge_zoom14"},
 };
 
-// --edge-sdf-blocker (#2247): the SAME --edge-zoom scene (hard-disc vision
+// --edge-sdf-blocker: the SAME --edge-zoom scene (hard-disc vision
 // circle + boundary VOXEL objects) PLUS one SDF BOX carrying
 // C_LightBlocker{blocksLOS_=true}, standing on the floor and straddling the -Y
-// disc arc (an arc the voxel objects leave clear). #2247's reported symptom was
-// an SDF blocker's fog-hidden half BLACK-BANDING the cut arc instead of capping.
-// Master's fog cut is now the geometric cap (#2274): it is content-independent —
+// disc arc (an arc the voxel objects leave clear). The fog cut is the
+// geometric cap: it is content-independent —
 // any surface that rasterizes caps at the disc boundary, so the box's fog-hidden
 // -Y half fills with the toned cut wall exactly like the voxel green slab on -X,
 // with no light-occlusion-bitfield read. This scene is the permanent enabled-path
@@ -292,7 +291,7 @@ constexpr IRVideo::AutoScreenshotShot kEdgeSdfBlockerShots[] = {
      sizeof(kCropsEdgeSdfBlocker9) / sizeof(kCropsEdgeSdfBlocker9[0])},
 };
 
-// --detached-edge (#2127 filled cross-section on a DETACHED canvas; #2124 P3):
+// --detached-edge (filled cross-section on a DETACHED canvas):
 // the SAME static origin vision circle as --edge-zoom, but the boundary-
 // straddling object is a WORLD-PLACED DETACHED_REVOXELIZE solid (its own canvas +
 // pool, composited by ENTITY_CANVAS_TO_FRAMEBUFFER) instead of a GRID voxel set. A
@@ -302,7 +301,7 @@ constexpr IRVideo::AutoScreenshotShot kEdgeSdfBlockerShots[] = {
 // cross-sections against the world boundary exactly like the GRID twin, instead of
 // rendering whole (no fog) or fully black. Identity rotation keeps the re-voxelize
 // raster on its deterministic SOURCE path (a spinning solid round-to-cell
-// speckles, #1557); the cut-face code is rotation-agnostic, so the static pose
+// speckles); the cut-face code is rotation-agnostic, so the static pose
 // proves the mechanism deterministically.
 bool g_detachedEdge = false; // --detached-edge
 constexpr float kDetachedVisionRadius = 9.0f;
@@ -317,10 +316,10 @@ constexpr IRVideo::AutoScreenshotShot kDetachedEdgeShots[] = {
     {9.0f, vec2(0, 0), 0.0f, "fog_detached_edge_zoom9"},
 };
 
-// --edge-smooth (#2126 Mode B): the SAME boundary-straddling voxel scene as
+// --edge-smooth (Mode B): the SAME boundary-straddling voxel scene as
 // --edge-zoom, but the vision circle carries a wide edge softness so the reveal
 // has a SMOOTH analytic band, not a hard column-quantized edge. P1's per-voxel
-// own-column drop (#2102) culls any column with reveal < 0.5, which pins the
+// own-column drop culls any column with reveal < 0.5, which pins the
 // object silhouette to the binary radius while the floor fades past it on the
 // soft band; P2 drops only FULLY-hidden columns (reveal <= 0) so the partially-
 // revealed boundary columns rasterize and FOG_TO_TRIXEL fades the object's
@@ -336,7 +335,7 @@ constexpr IRVideo::AutoScreenshotShot kEdgeSmoothShots[] = {
     {14.0f, vec2(0, 0), 0.0f, "fog_edge_smooth14"},
 };
 
-// --edge-zcost (#2260): the vision disc as an XY radius with a Z-COST HEIGHT
+// --edge-zcost: the vision disc as an XY radius with a Z-COST HEIGHT
 // PENALTY. The observer sits at floor level (kEdgeZCostObserverZ); a central
 // TALL voxel pillar at the observer's XY has its base at the floor (revealed —
 // |z - observerZ| small) and its top far above (penalized past the disc radius
@@ -372,7 +371,7 @@ constexpr IRVideo::AutoScreenshotShot kEdgeZCostShots[] = {
      sizeof(kCropsEdgeZCost9) / sizeof(kCropsEdgeZCost9[0])},
 };
 
-// --edge-zcost-asym (#2557): the same XY-radius vision disc as --edge-zcost,
+// --edge-zcost-asym: the same XY-radius vision disc as --edge-zcost,
 // generalized to ASYMMETRIC up/down height costs (freeBand 0). A pillar
 // standing UP from the observer (top at z ≈ -24, same geometry as the
 // --edge-zcost pillar) fades fast under kEdgeZCostAsymUpCost. A SHORT block
@@ -396,16 +395,15 @@ constexpr IRVideo::AutoScreenshotShot kEdgeZCostShots[] = {
 // `shadowFeederIsoBounds` to the un-widened viewport and changes nothing else
 // about the cull — an isolating variant for the sweep alone — and the up
 // pillar still rendered in full. (b) By construction: the sweep widens cull
-// ADMISSION, not visibility; under #1740 stage 2 returns before the colour +
+// ADMISSION, not visibility; stage 2 returns before the colour +
 // entity-id taps for any voxel in the widened region (`isShadowFeederIso`,
 // c_voxel_to_trixel_stage_2_body.glsl, on this scene's yaw-0 path), so a
 // feeder is never displayed and the widening cannot lengthen on-screen
-// geometry. #2900 tracks the open question — treat it as unanswered.
+// geometry. The open question is unresolved — treat it as unanswered.
 //
 // `kEdgeZCostAsymDownXOffset` sits close enough to the disc
 // radius that the small achievable |Δz| still produces a measurable reveal
-// delta between the shipped low cost and a mirrored (zCostUp-equal) cost —
-// see #2557 for the positive-fire A/B this geometry was tuned against.
+// delta between the shipped low cost and a mirrored (zCostUp-equal) cost.
 bool g_edgeZCostAsym = false; // --edge-zcost-asym
 constexpr float kEdgeZCostAsymUpCost = 1.0f;
 constexpr float kEdgeZCostAsymDownCost = 0.25f;
@@ -433,7 +431,7 @@ constexpr IRVideo::AutoScreenshotShot kEdgeZCostAsymShots[] = {
      sizeof(kCropsEdgeZCostAsym9) / sizeof(kCropsEdgeZCostAsym9[0])},
 };
 
-// --edge-zcost-ceiling (#2557): the same XY-radius vision disc and pillar
+// --edge-zcost-ceiling: the same XY-radius vision disc and pillar
 // geometry as --edge-zcost, but with a penalty-free BAND around the observer's
 // height (freeBand) and a near-radius zCostUp so the reveal collapses within
 // ~1 unit past the band — a hard ceiling instead of a linear fade. Matter
@@ -473,7 +471,7 @@ constexpr IRVideo::AutoScreenshotShot kEntityRevealShots[] = {
      sizeof(kCropsEntityReveal) / sizeof(kCropsEntityReveal[0])},
 };
 
-// --edge-yaw-sweep (#2128 P4): the edge-zoom cross-section under CONTINUOUS
+// --edge-yaw-sweep: the edge-zoom cross-section under CONTINUOUS
 // camera yaw. Reuses the static --edge-zoom scene (same boundary voxel objects +
 // origin vision circle) but steps the camera Z-yaw in fine increments inside one
 // cardinal quadrant (residual yaw 0.05..0.70 rad < π/4, constant visible-face
@@ -707,7 +705,7 @@ void initSystems() {
         IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>(),
         IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS_IMPLICIT>(),
     };
-    // --detached-edge adds the world-placed DETACHED_REVOXELIZE path (#2127):
+    // --detached-edge adds the world-placed DETACHED_REVOXELIZE path:
     // PROPAGATE_CANVAS_ROTATION publishes worldPlaced_ + worldCellOffset_ onto the
     // canvas (so STAGE_1/2 recover each detached voxel's world column), and
     // REBUILD_DETACHED_VOXELS fills the private pool. Must run AFTER
@@ -747,7 +745,7 @@ void initSystems() {
     );
     // --detached-edge composites the world-placed detached canvas (with its
     // cross-sectioned voxels from STAGE_1/2) onto the main framebuffer between
-    // TRIXEL_TO_FRAMEBUFFER and FRAMEBUFFER_TO_SCREEN (#2127). Added only for that
+    // TRIXEL_TO_FRAMEBUFFER and FRAMEBUFFER_TO_SCREEN. Added only for that
     // scene so the other reveal modes keep their committed refs byte-identical.
     if (g_detachedEdge) {
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::ENTITY_CANVAS_TO_FRAMEBUFFER>());
@@ -789,7 +787,7 @@ void initSystems() {
         cfg.warmupFrames_ = g_autoWarmupFrames;
         cfg.settleFrames_ = 3;
         // --edge-zcost-asym / --edge-zcost-ceiling capture the asymmetric /
-        // hard-ceiling height-penalty readouts (#2557); --detached-edge zooms on a
+        // hard-ceiling height-penalty readouts; --detached-edge zooms on a
         // detached-canvas cross-section; --edge-yaw-sweep sweeps the GRID
         // cross-section through the per-axis rotation route; --edge-zoom /
         // --edge-smooth zoom on the GRID cross-section clip edge (hard vs smooth
@@ -808,8 +806,8 @@ void initSystems() {
         } else if (g_edgeYawSweep) {
             // Fixed zoom + origin, step yaw across [0.05, 0.70] rad — one cardinal
             // quadrant (< π/4), constant visible-face triplet — so the cut-face
-            // cross-section is exercised purely through the per-axis rotation route
-            // (#2128). Mirror of shape_debug's --yaw-sweep shot construction.
+            // cross-section is exercised purely through the per-axis rotation route.
+            // Mirror of shape_debug's --yaw-sweep shot construction.
             constexpr float kEdgeSweepZoom = 9.0f;
             constexpr int kEdgeSweepShots = 24;
             constexpr float kYawLo = 0.05f;
@@ -888,7 +886,7 @@ void initEntities() {
     // visible → explored → unexplored across the screen. Centered on origin.
     // The cross-section scenes (--edge-zoom / --edge-smooth / --edge-sdf-blocker
     // / --detached-edge) skip it and bring their own VOXEL ground slab instead:
-    // the analytic fog cut (#2124) decides solid-vs-air from the light-occlusion
+    // the analytic fog cut decides solid-vs-air from the light-occlusion
     // VOXEL bitfield, which SDF geometry never enters, so an SDF surface
     // straddling the disc renders the cut band BLACK along whatever arc segments
     // cross it (the two-black-bands artifact) instead of capping with the toned
@@ -905,7 +903,7 @@ void initEntities() {
     }
 
     // The default + --moving-observer scenes dress the floor with SDF primitives
-    // and the #2008 column-cull pillar canary. --player-walk / --edge-zoom /
+    // and the column-cull pillar canary. --player-walk / --edge-zoom /
     // --edge-smooth / --detached-edge skip ALL of them: each wants a clean floor so
     // its own content (the gliding disc + marker / the boundary-straddling voxel
     // objects) reads clearly without the tall shapes' iso-projected tops poking
@@ -939,18 +937,18 @@ void initEntities() {
             Color{220, 140, 100, 255}
         );
 
-        // #2008 column-cull regression canary: a TALL voxel pillar standing on an
+        // Column-cull regression canary: a TALL voxel pillar standing on an
         // UNEXPLORED column (XY = (-22,-22), Euclidean distance ~31 > the reveal+band
         // radius of 26). It is a voxel set (not an SDF shape) so it travels the
         // voxel-pool path — VOXEL_TO_TRIXEL_STAGE_1 → c_voxel_visibility_compact —
-        // which is exactly where #2008 culls unexplored-column voxels.
+        // which is exactly where the cull removes unexplored-column voxels.
         //
         // -X-Y projects DOWN-screen in this iso (the +X+Y cone sits at the top of
         // the disk), so the pillar's base sits below the bright disk and its 44-tall
-        // extent projects its top straight up OVER the visible disk. Before #2008
-        // the whole pillar rasterized and FOG_TO_TRIXEL hard-blacked every pixel
-        // (its column is unexplored), painting a black silhouette across the lit
-        // disk — the reported bug. With the cull the pillar's voxels never
+        // extent projects its top straight up OVER the visible disk. Without the
+        // cull the whole pillar would rasterize and FOG_TO_TRIXEL would hard-black
+        // every pixel (its column is unexplored), painting a black silhouette
+        // across the lit disk. With the cull the pillar's voxels never
         // rasterize, so the disk stays clean.
         //
         // The canary is therefore a NEGATIVE one: in the fixed state the pillar is
@@ -1077,20 +1075,20 @@ void initEntities() {
         return;
     }
 
-    // --edge-zoom (#2125 filled cross-section; #2124 P1) and --edge-smooth (#2126
-    // P2 Mode B): a STATIC analytic vision circle at the origin with VOXEL objects
+    // --edge-zoom (filled cross-section) and --edge-smooth
+    // (Mode B): a STATIC analytic vision circle at the origin with VOXEL objects
     // straddling its boundary. Set once here — nothing re-clears it, so it persists
     // across warmup/settle/capture — and leave the grid all-unexplored so ONLY the
     // disc reveals. Validates the cut-face cross-section: the hidden half of each
-    // object is dropped (#2102 own-column clip) and the revealed half caps with a
-    // FILLED interior wall (#2125 cut face) wherever a revealed boundary voxel faces
+    // object is dropped (own-column clip) and the revealed half caps with a
+    // FILLED interior wall (cut face) wherever a revealed boundary voxel faces
     // a fog-hidden neighbor column — no see-through hole, no black wedge. Cut faces
     // appear only on CAMERA-VISIBLE cut surfaces (cardinal yaw 0 sees -X/-Y/-Z), so
     // the green slab's -X cut shows its wall while the pillars' +X/+Y cuts fall on
     // back faces and read as a clean end.
     if (g_edgeZoom || g_edgeSmooth || g_edgeSdfBlocker) {
         // --edge-zoom / --edge-sdf-blocker are the hard-disc binary cut (Mode A,
-        // edgeSoftness 0); --edge-smooth uses a wide soft band (Mode B, #2126)
+        // edgeSoftness 0); --edge-smooth uses a wide soft band (Mode B)
         // over the IDENTICAL geometry so the cut wall follows the analytic disc
         // instead of stair-stepping at the column boundary. The soft band is the
         // only difference among the voxel objects.
@@ -1133,13 +1131,12 @@ void initEntities() {
             C_VoxelSetNew{IRMath::ivec3{14, 6, 3}, Color{130, 230, 150, 255}, true}
         );
 
-        // --edge-sdf-blocker (#2247): one SDF BOX (C_ShapeDescriptor, NOT a voxel
+        // --edge-sdf-blocker: one SDF BOX (C_ShapeDescriptor, NOT a voxel
         // set) carrying C_LightBlocker{blocksLOS_=true}, standing on the floor and
         // straddling the -Y disc arc — an arc the voxel objects above leave clear.
         // It is an SDF, so its matter lives only in the light-occlusion blocker
-        // bitfield, never the voxel-existence bitfield — the exact case #2247
-        // reported black-banding in the fog cut. Master's geometric cut cap
-        // (#2274) is content-independent: the box's rendered surface caps at the
+        // bitfield, never the voxel-existence bitfield. The geometric cut cap
+        // is content-independent: the box's rendered surface caps at the
         // disc boundary regardless of any bitfield, so its fog-hidden -Y half fills
         // with the toned cut wall like the -X voxel slab. The C_LightBlocker is
         // retained so this stays the enabled-path proof that a blocksLOS_ SDF is
@@ -1161,7 +1158,7 @@ void initEntities() {
         return;
     }
 
-    // --detached-edge (#2127 / #2124 P3): the SAME static origin vision circle, but
+    // --detached-edge: the SAME static origin vision circle, but
     // the boundary-straddling object is a WORLD-PLACED DETACHED_REVOXELIZE solid on
     // its OWN canvas + pool — a canvas that carries no fog of its own. The
     // cross-section it shows is proof the WORLD fog + observers thread into the
@@ -1181,11 +1178,11 @@ void initEntities() {
         // (own-column drop) and the revealed boundary voxels face hidden columns
         // across their -X face (camera-visible at yaw 0) → a FILLED interior cut
         // wall, exactly like the GRID twin (no see-through hole, no black wedge).
-        // World-placed (the engine default since #1624) — NOT screen-locked — so
+        // World-placed (the engine default) — NOT screen-locked — so
         // PROPAGATE_CANVAS_ROTATION publishes worldCellOffset/worldPlaced and the
         // detached STAGE_1/2 dispatch world-receives the fog. createWithVoxelPool
         // also attaches the AO/lighting-behavior archetype pair by default for a
-        // non-screen-locked canvas (#2322 D1).
+        // non-screen-locked canvas.
         C_EntityCanvas canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
             "fog_detached_solid",
             kDetachedCanvasSize,
@@ -1196,7 +1193,7 @@ void initEntities() {
             C_VoxelSetNew{kDetachedSolidSize, Color{130, 230, 150, 255}, true, canvas.canvasEntity_}
         );
         // Identity rotation keeps the re-voxelize raster on its deterministic SOURCE
-        // path (a spinning solid round-to-cell speckles, #1557); the cut-face code
+        // path (a spinning solid round-to-cell speckles); the cut-face code
         // is rotation-agnostic, so this static pose proves the world-column recovery.
         IREntity::createEntity(
             C_LocalTransform{vec3(-9.0f, 0.0f, 2.0f)},
@@ -1206,7 +1203,7 @@ void initEntities() {
         return;
     }
 
-    // --edge-zcost-asym (#2557): the vision disc as an XY radius with ASYMMETRIC
+    // --edge-zcost-asym: the vision disc as an XY radius with ASYMMETRIC
     // up/down height costs (freeBand 0). Set once at the origin with the observer
     // at floor level — nothing re-clears it, so it persists across
     // warmup/settle/capture — and leave the grid all-unexplored so ONLY the disc
@@ -1257,7 +1254,7 @@ void initEntities() {
         return;
     }
 
-    // --edge-zcost-ceiling (#2557): the same disc + pillar geometry as
+    // --edge-zcost-ceiling: the same disc + pillar geometry as
     // --edge-zcost, but with a penalty-free height BAND and a near-radius
     // zCostUp so the reveal collapses within ~1 unit past the band instead of
     // fading linearly — a hard ceiling. zCostDown is left at the mirror
@@ -1298,7 +1295,7 @@ void initEntities() {
         return;
     }
 
-    // --edge-zcost (#2260): the vision disc as an XY radius with a Z-cost height
+    // --edge-zcost: the vision disc as an XY radius with a Z-cost height
     // penalty. Set the disc once at the origin with the observer at floor level
     // and a positive zCost — nothing re-clears it, so it persists across
     // warmup/settle/capture — and leave the grid all-unexplored so ONLY the disc

@@ -16,7 +16,7 @@
 #include <string>
 #include <vector>
 
-// Authoring sessions (#766 Part 2c) — compile a recipe of editor gestures into
+// Authoring sessions — compile a recipe of editor gestures into
 // the scripted-input streams the GUI-test harness replays against the live UI.
 //
 // The point of F-1.6 is that the five entities are authored *by using the
@@ -121,7 +121,7 @@ class OccupancyModel {
         m_occupied[flatIndex(local)] = on;
     }
 
-    // Mirror-symmetry-aware writes (#766 F-1.6 PR-2). The editor's applyEdit
+    // Mirror-symmetry-aware writes. The editor's applyEdit
     // reflects every edit across the enabled mirror planes (via applyMirrors);
     // the shadow model must mirror the same way, or aiming a later click at a
     // mirror-created voxel (or asserting its occupancy) would disagree with the
@@ -321,7 +321,7 @@ struct GuiAimFixup {
 // an empty asset.
 // Which copy of "is this cell live" a check reads. The per-voxel alpha is the
 // CPU-side truth; the pool's active mask is the GPU-side mirror the compact
-// shader reads *instead of* alpha (T-287), and it is pool state rather than
+// shader reads *instead of* alpha, and it is pool state rather than
 // voxel-record state — so a raw write to a set's `voxels_` span updates one and
 // not the other. A recipe that steps animation frames asserts BOTH: the two
 // disagreeing is exactly the shape of a missing resyncAfterRawEdits.
@@ -412,7 +412,7 @@ class Builder {
     //
     // Segments are shot boundaries: a segment's assertions evaluate ONCE, at
     // end of segment, against the state after ALL of that segment's events
-    // have fired — never interleaved with individual ops within it (#2560).
+    // have fired — never interleaved with individual ops within it.
     // A hover()/expectPick() pre-arm check for one target added to the same
     // segment as a later destructive click() on a different target therefore
     // evaluates against the post-click state, even though it reads as firing
@@ -503,7 +503,7 @@ class Builder {
         m_eraseMode = !m_eraseMode;
     }
 
-    // Enable mirror-symmetry axes for subsequent edits (#766 F-1.6 PR-2). Taps
+    // Enable mirror-symmetry axes for subsequent edits. Taps
     // the editor's X/Y/Z toggles so the live editor mirrors each edit, and turns
     // on the shadow model's mirroring against the same scene-centre planes the
     // editor uses (SymmetryState offsets set to (size-1)/2 in main() — the

@@ -1,6 +1,6 @@
 // Lighting demo — SDF blocker casts a point-light shadow.
 //
-// Acceptance scene for T-117 / #364: a `C_ShapeDescriptor` (BOX) tagged
+// Acceptance scene: a `C_ShapeDescriptor` (BOX) tagged
 // with `C_LightBlocker(blocksLOS_=true)` placed between a POINT light
 // and the canvas floor produces a visible shadow on the surface.
 // Without the fix, the point-light wavefront passes straight through

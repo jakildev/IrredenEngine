@@ -132,7 +132,7 @@ endfunction()
 #
 # REGISTRY_NAMESPACE names the inner namespace the run's registry symbols are
 # emitted into (`IRScript::CodegenRegistry::<id>`), which is what keeps N runs
-# in one binary from merging (#2609). It defaults to the OUTPUT_HPP stem, so
+# in one binary from merging. It defaults to the OUTPUT_HPP stem, so
 # every in-tree caller is zero-config; pass it explicitly when the stem is not
 # usable as an identifier (a C++ keyword) or when two runs on one target would
 # otherwise derive the same id — the latter is a configure-time FATAL_ERROR.
@@ -143,7 +143,7 @@ endfunction()
 # `IRScript::CodegenClaims`, so a second run declaring the same component name
 # fails the link naming the component. The header carries only the `extern`
 # declarations and the companion .cpp the single definition, so a target may
-# include the generated header from any number of TUs (#3091).
+# include the generated header from any number of TUs.
 #
 # All paths are resolved relative to the caller's CMAKE_CURRENT_SOURCE_DIR
 # unless absolute. The generated header is regenerated on Lua-source change
@@ -196,7 +196,7 @@ function(
 
     get_filename_component(_output_dir "${IRLC_OUTPUT_HPP}" DIRECTORY)
 
-    # #3091: the companion TU holding this run's claim definitions. Derived from
+    # The companion TU holding this run's claim definitions. Derived from
     # the OUTPUT_HPP *basename* (so a dot in a parent directory never eats the
     # filename) and passed explicitly, for the same reason REGISTRY_NAMESPACE is
     # — add_custom_command has to declare the exact path the tool writes, and two
@@ -206,7 +206,7 @@ function(
     string(REGEX REPLACE "\\.[^.]*$" "" _output_stem "${_output_name}")
     set(_output_cpp "${_output_dir}/${_output_stem}_claims.cpp")
 
-    # #2609: this run's registry namespace. Derived from the OUTPUT_HPP stem
+    # This run's registry namespace. Derived from the OUTPUT_HPP stem
     # (unique per run for every in-tree caller) unless REGISTRY_NAMESPACE
     # overrides it. Computed here and passed explicitly rather than left to the
     # tool's own stem derivation, so the duplicate check below is guaranteed to
@@ -282,7 +282,6 @@ function(
     target_include_directories(${target} PRIVATE "${_output_dir}")
 endfunction()
 
-# copyDLL copies dll file on windows build into dest path
 function(
     IR_copyDLL
     target
@@ -307,13 +306,11 @@ endfunction()
 # IrredenEngine_setSystemCompileDefinitions, so it is unreliable inside a
 # standalone helper. COMMAND_EXPAND_LISTS expands the DLL generator-list.
 #
-# Split out of irreden_bundle_assets so a group of executables that share one
-# asset-staging target (the lighting demos' one-primary/many-consumers shape,
-# creations/demos/lighting/CMakeLists.txt) can each still get their own DLL
-# copy: the asset directories are staged once via <primary>Assets, but
+# A group of executables that share one asset-staging target (the lighting
+# demos' one-primary/many-consumers shape) still needs its own call: the
+# asset directories are staged once via <primary>Assets, but
 # $<TARGET_RUNTIME_DLLS:...> is per-executable and never fires for a target
-# that never itself builds — only depends on the primary's Assets target
-# (#3075).
+# that never itself builds — only depends on the primary's Assets target.
 function(irreden_stage_runtime_dlls target)
     if(WIN32)
         add_custom_command(
@@ -355,9 +352,9 @@ function(irreden_bundle_assets target)
 
     irreden_stage_runtime_dlls(${target})
 
-    # Asset directories: merge engine/render/data + engine/data into data/, and
-    # the shader source tree into shaders/. copy_directory (not _if_different)
-    # to match the existing per-demo Assets targets exactly.
+    # Two sequential copy_directory calls merge engine/render/data and
+    # engine/data into one data/ directory; the shader source tree copies
+    # into shaders/.
     set(_asset_cmds
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${PROJECT_SOURCE_DIR}/engine/render/data ${_exedir}/data
@@ -368,8 +365,7 @@ function(irreden_bundle_assets target)
     )
 
     # Scripts -> <exedir>/scripts/<basename>. copy_if_different keeps the
-    # per-script copy cheap on incremental builds (matches the demos' OUTPUT
-    # form, which fed the Assets target's DEPENDS).
+    # per-script copy cheap on incremental builds.
     list(APPEND _asset_cmds
         COMMAND ${CMAKE_COMMAND} -E make_directory ${_exedir}/scripts)
     if(IRBA_SCRIPTS)
@@ -447,8 +443,8 @@ function(irreden_package_target target)
     string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" _arch)
     set(_zip "${CMAKE_BINARY_DIR}/${target}-${_os}-${_arch}.zip")
 
-    # Clean staging dir + the exe-relative asset layout (already built by
-    # <target>Assets, which we DEPEND on below).
+    # Clean staging dir + the exe-relative asset layout, already built by
+    # <target>Assets (this target's DEPENDS list names it).
     set(_pkg_cmds
         COMMAND ${CMAKE_COMMAND} -E rm -rf ${_stage}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${_stage}

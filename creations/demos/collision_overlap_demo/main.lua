@@ -1,4 +1,4 @@
--- collision_overlap_demo (#1817): prove the Lua-facing overlap callback.
+-- collision_overlap_demo: prove the Lua-facing overlap callback.
 --
 -- Two collision-layer pairs, isolated by their collidesWith masks:
 --   * pickup overlaps player    -> onOverlapEnter(PICKUP, PLAYER)

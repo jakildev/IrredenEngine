@@ -98,7 +98,7 @@ struct DemoConfig {
     // it replaces the shared `kShots` (still overridden by
     // `--light-boundary-sweep`) — used by the spot demo to add yaw shots that
     // prove the winning-light-ID cone stays world-oriented across camera yaw
-    // (#2318). Points at a static array; the config is copied by value but the
+    // Points at a static array; the config is copied by value but the
     // pointee outlives it.
     const IRVideo::AutoScreenshotShot *shots_ = nullptr;
     int numShots_ = 0;
@@ -121,9 +121,7 @@ inline constexpr IRVideo::AutoScreenshotShot kShots[] = {
     {4.0f, vec2(3, 5), 0.0f, "zoom4_offset_3_5"},
     // Higher-zoom shots make per-voxel-pool / SDF parity issues
     // (self-shadowing, AO mismatch from rounding-half-integer voxel
-    // positions) immediately visible — they're how the rounding bug
-    // fixed in commit `<this>` was found and how regressions on it
-    // would surface.
+    // positions) immediately visible, so a regression surfaces here.
     {8.0f, vec2(0, 0), 0.0f, "zoom8_origin"},
     {16.0f, vec2(0, 0), 0.0f, "zoom16_origin"},
 };
@@ -137,14 +135,14 @@ inline constexpr IRVideo::AutoScreenshotShot kShots[] = {
 // state is — one owner, one lifecycle, one access point.
 //
 // System ids do not belong here: resolve them at the read site with
-// `IRSystem::findSystem(SystemName)` (#2526), so nothing has to remember to
+// `IRSystem::findSystem(SystemName)`, so nothing has to remember to
 // stash a handle at registration time.
 struct SceneState {
     int autoWarmupFrames_ = 0;
     int autoProfileFrames_ = 0;
     int autoProfileCount_ = 0;
     float initialZoom_ = 0.0f;
-    // `--light-boundary-sweep` (see #2310): replaces kShots with a
+    // `--light-boundary-sweep`: replaces kShots with a
     // runtime-computed series that pans the camera anchor away from the emissive
     // light in world-X steps, walking the light through the light-volume window
     // boundary. Exercises the boundary-seeding path: contribution must fade
@@ -152,12 +150,12 @@ struct SceneState {
     // reach), never pop or band.
     bool lightBoundarySweep_ = false;
     IRVideo::IndexedSweepShots<48> boundarySweepShots_;
-    // `--light-domain-matrix` (V3, #2317): zoom x yaw x pan-distance shot matrix
+    // `--light-domain-matrix`: zoom x yaw x pan-distance shot matrix
     // over the same emissive-light-relative pan axis as the boundary sweep, for
     // light-verify.py's zoom/yaw/pan domain assertions.
     bool lightDomainMatrix_ = false;
     IRVideo::IndexedSweepShots<48> domainMatrixShots_;
-    // `--hover-sweep` (V3, #2317): see `kHoverSweepHeights`.
+    // `--hover-sweep`: see `kHoverSweepHeights`.
     bool hoverSweep_ = false;
     IRVideo::IndexedSweepShots<32> hoverSweepShots_;
     EntityId hoverSweepCube_{};
@@ -281,7 +279,7 @@ inline vec4 floorSdfParams() {
     return vec4(4.0f * kSpacingX + 16.0f, kSdfRowY + 24.0f, 2.0f, 0.0f);
 }
 
-// Shared by createGeometry and the --hover-sweep cube (V3, #2317) so a
+// Shared by createGeometry and the --hover-sweep cube so a
 // hover-sweep shot's "grounded" height lands exactly on the same floor
 // surface the row-case shapes rest on.
 inline float floorTopZ() {
@@ -331,7 +329,7 @@ inline void createGeometry() {
     IREntity::setComponent(floor, C_LightBlocker{false, false, 0.0f});
 }
 
-// --hover-sweep (V3, #2317): a single cube raised through increasing hover
+// --hover-sweep: a single cube raised through increasing hover
 // heights above the floor, so S2's shadow-throw unification work has a
 // hover-height shadow-footprint-truncation-curve baseline to diff against.
 // Positioned off to the side of the row-case shapes (negative X) so its
@@ -415,7 +413,7 @@ inline void createLights(const DemoConfig &config) {
     if (config.addSpot_) {
         // Mounted just above the shapes (up is -z here; floor top ≈ z 3, shape
         // tops ≈ z -3) and aimed straight down, so the winning-light-ID cone
-        // (#2318) casts a clean circular pool with a soft rim onto the floor —
+        // casts a clean circular pool with a soft rim onto the floor —
         // the unambiguous "cone, not a sphere" demonstration. Mounted close
         // (~14 voxels up) so the Manhattan-falloff residual is still strong at
         // the floor (alpha ≈ 0.55) instead of decaying to near-dark over the
@@ -464,7 +462,7 @@ inline void initEntities(const DemoConfig &config) {
 inline void initCommands() {
     IRPrefab::Camera::registerStandardKeyboardCommands();
     IRCommand::registerCaptureCommands();
-    // Culling-minimap visibility toggle (#2316, V2). F11 matches shape_debug's
+    // Culling-minimap visibility toggle. F11 matches shape_debug's
     // binding.
     IRCommand::createCommand<IRCommand::TOGGLE_CULLING_MINIMAP>(
         IRInput::KEY_MOUSE,
@@ -473,21 +471,19 @@ inline void initCommands() {
     );
 }
 
-// DOMAIN-STATE emission hook (#2315, V1): `AutoScreenshotConfig::onCaptureFrame_`
+// DOMAIN-STATE emission hook: `AutoScreenshotConfig::onCaptureFrame_`
 // callback wired below. Fires once per shot, on the settled capture frame,
 // after the frame's render systems (including COMPUTE_LIGHT_VOLUME) have
 // already run — so every value read here reflects what was actually
 // rendered. Emits one machine-readable log line per shot (the same
 // `IR_LOG_INFO` precedent as the `GUI-ASSERT` lines in
-// `gui_test_assertions.hpp`) for the V3 light-verify harness (#2317) to
-// parse; format is the contract — see issue #2315's plan "Sibling
-// reconciliation" note before changing it.
+// `gui_test_assertions.hpp`) for the light-verify harness to
+// parse; format is the contract, so changing it means updating every parser.
 //
-// Main canvas only for V1 (matches the minimap's V2 scope, #2314 plan
-// "Per-canvas gather scope" gotcha) — `lightGatherRecords` already reads
-// back COMPUTE_LIGHT_VOLUME's own per-canvas gather, so a multi-canvas demo
-// would need one call per canvas; none of the lighting demos have more than
-// the main canvas today.
+// Main canvas only (matches the minimap's scope) — `lightGatherRecords`
+// already reads back COMPUTE_LIGHT_VOLUME's own per-canvas gather, so a
+// multi-canvas demo would need one call per canvas; none of the lighting
+// demos have more than the main canvas today.
 inline void logDomainState(int shotIndex) {
     const char *label = (sceneState().activeShots_ != nullptr)
                             ? sceneState().activeShots_[shotIndex].label_
@@ -546,7 +542,7 @@ inline void logDomainState(int shotIndex) {
         gpu.worldPlacedCasterCount_
     );
 
-    // --hover-sweep (V3, #2317): reposition the cube for the NEXT shot here,
+    // --hover-sweep: reposition the cube for the NEXT shot here,
     // not the current one — this hook fires right after the current shot's
     // screenshot is requested, and the cycling system takes one more tick to
     // advance currentShot_ before it starts the next shot's settle window
@@ -629,14 +625,13 @@ inline void initSystems(const DemoConfig &config) {
     renderPipeline.push_back(
         IRSystem::System<IRSystem::DEBUG_CULLING_MINIMAP>::create({
             // The minimap reads these systems' own state back — per-light
-            // gather records and world-placed casters (#2315/#2316).
+            // gather records and world-placed casters.
             .lightVolumeSystemId_ = IRSystem::findSystem(IRSystem::COMPUTE_LIGHT_VOLUME),
             .bakeSunShadowSystemId_ = IRSystem::findSystem(IRSystem::BAKE_SUN_SHADOW_MAP),
         })
     );
     // Off during --auto-screenshot captures — the minimap is a live debug
-    // aid, not part of the render-verify golden image (#2316, V2 plan
-    // "Verification": map off during reference captures). Interactive runs
+    // aid, not part of the render-verify golden image. Interactive runs
     // (sceneState().autoWarmupFrames_ == 0) default it visible; F11 toggles it either way.
     IRRender::setCullingMinimapEnabled(sceneState().autoWarmupFrames_ == 0);
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>());
@@ -761,7 +756,7 @@ inline void initSystems(const DemoConfig &config) {
             screenshotConfig.numShots_ =
                 static_cast<int>(sceneState().boundarySweepShots_.shots_.size());
         } else if (config.shots_ != nullptr) {
-            // Per-demo shot table (e.g. the spot demo's yaw sweep, #2318).
+            // Per-demo shot table (e.g. the spot demo's yaw sweep).
             screenshotConfig.shots_ = config.shots_;
             screenshotConfig.numShots_ = config.numShots_;
         } else {

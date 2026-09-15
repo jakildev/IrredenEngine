@@ -98,7 +98,7 @@ constexpr IRVideo::RoiCrop kCropsZoom8Origin[] = {
     {300, 400, 128, 128, "lower_left_face"},
 };
 
-// --pivot-focus-demo (#1921): a tall strip over screen center where the pinned
+// --pivot-focus-demo: a tall strip over screen center where the pinned
 // pillar sits. With the fix the pillar holds this crop steady across the yaw
 // sweep; with --pivot-origin it swings out of frame. Coords are a per-host
 // iteration point (see the kCrops* note above). Tuned for the HiDPI 2x
@@ -126,12 +126,12 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
      kCropsZoom8Origin,
      sizeof(kCropsZoom8Origin) / sizeof(kCropsZoom8Origin[0])},
     {4.0f, vec2(3, 5), 0.0f, "zoom4_offset_3_5"},
-    // LOD swap (#1467): the co-located stack renders exactly ONE variant per
+    // LOD swap: the co-located stack renders exactly ONE variant per
     // zoom band — cube (zoom 1-3) -> cone (zoom 4-15) -> sphere (zoom >=16) —
     // never stacked. This whole-scene shot samples the finest (sphere) tier.
     {16.0f, vec2(0, 0), 0.0f, "zoom16_lod_fine_sphere"},
 
-    // Dedicated LOD swap series (#1467): cameraIso (16,-16) centers the
+    // Dedicated LOD swap series: cameraIso (16,-16) centers the
     // co-located LOD stack at world (0,-16,0) (= -pos3DtoPos2DIso((0,-16,0))),
     // with the single-LOD control cylinder beside it. As zoom climbs the stack
     // visibly swaps silhouette (cube -> cone -> sphere) while the control holds
@@ -142,8 +142,8 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
     {8.0f, vec2(16, -16), 0.0f, "lod_swap_zoom8_cone"},
     {16.0f, vec2(16, -16), 0.0f, "lod_swap_zoom16_sphere"},
 
-    // Rotation coverage (#1261): four cardinals + one inter-cardinal expose
-    // rotation-only regressions (#1256 checkerboard, #1257 inter-cardinal
+    // Rotation coverage: four cardinals + one inter-cardinal expose
+    // rotation-only regressions (checkerboard, inter-cardinal
     // deformation, future face-normal / shadow-AABB / chunk-mask bugs) that
     // a yaw=0 shot list cannot catch. zoom8 close-ups make sub-pixel
     // parity artifacts visible at full pixel scale.
@@ -158,11 +158,11 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
      kCropsZoom8Origin,
      sizeof(kCropsZoom8Origin) / sizeof(kCropsZoom8Origin[0])},
 
-    // Camera-focus pivot coverage (#1352): the camera is panned off-origin and
-    // then yawed. With RotationPivotMode::CAMERA_CENTER (the new engine default)
+    // Camera-focus pivot coverage: the camera is panned off-origin and
+    // then yawed. With RotationPivotMode::CAMERA_CENTER (the engine default)
     // the world point under screen center stays pinned across the whole sweep —
     // the same focused content sits at the same screen pixel in all four shots.
-    // The pre-#1352 ORIGIN pivot (reproducible via --pivot-origin) instead swings
+    // The ORIGIN pivot (reproducible via --pivot-origin) instead swings
     // that content in an arc. A shot list with only unpanned-or-yaw0 entries
     // cannot catch a pivot regression: the CAMERA_CENTER correction is the
     // identity unless the camera is BOTH panned and rotated, so every existing
@@ -182,18 +182,18 @@ bool g_checkerboard = false; // opt-in via --checkerboard; flickered, off by def
 // `System<SETTINGS_MENU>::destroyMenu()` keeps for its own pause path, and this
 // demo is the reference other creations copy the setter shape from.
 float g_timeScaleBeforePause = 1.0f;
-// --occlusion-cull (#1294 child 2/3): force the voxel-pool chunk-occlusion HZB
+// --occlusion-cull: force the voxel-pool chunk-occlusion HZB
 // pre-pass on (off by default in the engine). A test hook so the cull can be
-// exercised before the child-3 measurement demo lands. On the sparse shape_debug
+// exercised before the measurement demo lands. On the sparse shape_debug
 // scene nothing is inter-object-occluded, so output must stay identical (a hole
 // would be a false-positive cull bug).
 bool g_occlusionCull = false;
-// --gpu-voxel-smoke (#1396): spawn one voxel cube routed through the GPU
+// --gpu-voxel-smoke: spawn one voxel cube routed through the GPU
 // voxel-position prepass with a fixed 45° rotation. Off by default so the
 // standard scene stays byte-identical; the rotated cube is direct proof the
 // prepass applied modelToWorld (the CPU world-position path is translation-only).
 bool g_gpuVoxelSmoke = false;
-// --skin-smoke (#1605): spawn one 2-bone rigged voxel bar skinned through the
+// --skin-smoke: spawn one 2-bone rigged voxel bar skinned through the
 // binding-17 bone→slot seed path, with the second joint posed off its bind
 // pose. Off by default so the standard scene stays byte-identical; the visible
 // bend at the bar's midpoint is direct proof the per-voxel slots route through
@@ -205,7 +205,7 @@ float g_initialZoom = 0.0f; // 0 = use engine default
 float g_initialYawRadians = 0.0f;
 float g_initialYaw = 0.0f;
 bool g_initialYawSet = false;
-// --pivot-origin (#1352): force RotationPivotMode::ORIGIN (the pre-#1352
+// --pivot-origin: force RotationPivotMode::ORIGIN (the
 // world-origin pivot) instead of the CAMERA_CENTER engine default. Lets the
 // same panned+rotated shot list be captured in both modes for an A/B compare —
 // CAMERA_CENTER pins the focused content at screen center, ORIGIN swings it in
@@ -287,7 +287,7 @@ void tickVxsPlayback();
 // The copy writes the raw `voxels_` span, so it closes with
 // `resyncAfterRawEdits()` (engine/prefabs/irreden/voxel/CLAUDE.md). The
 // load-bearing half is the pool's active mask: it mirrors `color_.alpha_ != 0`,
-// it is what `c_voxel_visibility_compact` reads *instead of* alpha (T-287), and
+// it is what `c_voxel_visibility_compact` reads *instead of* alpha, and
 // it lives in the pool rather than in the voxel records — so copying records
 // updates alpha and leaves the mask describing the frame that just left, and
 // the swap renders a blend of the two poses. Same call, same reason, as the
@@ -327,7 +327,7 @@ void tickVxsPlayback() {
     showVxsFrame(g_vxsPlaybackTick / ticksPerStep);
 }
 
-// --spin-yaw [deg/sec] (#1271): drive the camera's Z-yaw at a constant
+// --spin-yaw [deg/sec]: drive the camera's Z-yaw at a constant
 // rate so the cardinal/residual rebracket can be eyeballed (live) or sampled
 // at N evenly-spaced angles (auto-screenshot). 0 = flag not requested.
 float g_spinYawDegPerSec = 0.0f;
@@ -336,7 +336,7 @@ float g_spinYawDegPerSec = 0.0f;
 // which hits every cardinal (0/90/180/270°) and every rebracket (45/135/...).
 int g_spinYawShotCount = 24;
 
-// --spin-shape <name> (#1922): spawn a single shape centred at the origin (so
+// --spin-shape <name>: spawn a single shape centred at the origin (so
 // camera Z-yaw-about-origin keeps it screen-centred) instead of the full
 // side-by-side fixture scene — the per-shape isolation the temporal-jitter
 // sweep harness (scripts/dev/shape-rotate-jitter-sweep) needs. Empty = full
@@ -359,7 +359,7 @@ IRVideo::RoiCrop g_spinShapeCrop{};
 std::vector<IRVideo::AutoScreenshotShot> g_spinYawShots;
 std::vector<std::array<char, 32>> g_spinYawShotLabels;
 
-// --cull-validate (#1438): frozen-cull free-fly validation harness. Requires
+// --cull-validate: frozen-cull free-fly validation harness. Requires
 // --auto-screenshot. Builds a paired live/frozen camera sweep — a live
 // (cull-tracking) pass followed by a frozen pass over the SAME poses with the
 // cull pinned at a deliberately wide reference. Pairwise-diffing the on-screen
@@ -370,7 +370,7 @@ bool g_cullValidate = false;
 std::vector<IRVideo::AutoScreenshotShot> g_cullValidateShots;
 std::vector<std::array<char, 40>> g_cullValidateShotLabels;
 
-// --pivot-focus-demo (#1921): spawn a tall, off-center voxel pillar and drive a
+// --pivot-focus-demo: spawn a tall, off-center voxel pillar and drive a
 // yaw sweep that pins the camera Z-yaw pivot on the pillar's TRUE-depth center
 // via AutoScreenshotShot::pivotFocusWorld_. With the fix the pillar rotates in
 // place — it stays at screen center across the whole sweep, including its z>0
@@ -381,7 +381,7 @@ bool g_pivotFocusDemo = false;
 std::vector<IRVideo::AutoScreenshotShot> g_pivotFocusShots;
 std::vector<std::array<char, 40>> g_pivotFocusShotLabels;
 // World center of the --pivot-focus-demo pillar. Off the world origin in x/y AND
-// at z > 0, so the legacy pivot exhibits BOTH defects (#1921): the z=0 focus the
+// at z > 0, so the legacy pivot exhibits BOTH defects: the z=0 focus the
 // old path picks lands horizontally offset from a centered tall column, and an
 // off-origin column orbits the origin. Shared by the spawn and the shot table so
 // the focus exactly matches the rendered geometry.
@@ -409,9 +409,8 @@ constexpr vec3 kPivotPillarCenter = vec3(8.0f, -8.0f, 10.0f);
 //                   viewport-center iso ray passes UNDER it (the ray is within
 //                   the column's radius only for |z| <= r/sqrt(2)), so the
 //                   center pixel reads background and the derive must fall back
-//                   to `isoPixelToPos3D(viewCenterIso, 0)` — the pre-#2547
-//                   point. Discharges epic #2544 Phase 3 acceptance criterion 2
-//                   (plan amendment A1); center-column cannot, because its
+//                   to `isoPixelToPos3D(viewCenterIso, 0)` — the depth-0
+//                   point. Discharges the acceptance criterion; center-column cannot, because its
 //                   center pixel hits the probe and so never exercises the
 //                   fallback.
 //   center-axis   — DEFAULT pivot, probe axis ON the viewport-center ray with
@@ -419,9 +418,9 @@ constexpr vec3 kPivotPillarCenter = vec3(8.0f, -8.0f, 10.0f);
 //                   surface point IS the probe's own axis point and rotating
 //                   about it maps the column onto itself — the derived-focus
 //                   twin of focus-ctr. It isolates how far the derive lands
-//                   from that axis: a regression to the pre-#2547 iso-depth-0
+//                   from that axis: a regression to the iso-depth-0
 //                   focus swings the probe about a point 8.5 world units away.
-//   cursor-latch  — CURSOR pivot (#2548): same geometry as center-axis, but
+//   cursor-latch  — CURSOR pivot: same geometry as center-axis, but
 //                   the focus comes from IRPrefab::CursorPivot::resolveFocusWorld
 //                   — the real castVoxelRay path — with a synthetic cursor
 //                   parked on the viewport-center anchor's screen pixel. The
@@ -430,7 +429,7 @@ constexpr vec3 kPivotPillarCenter = vec3(8.0f, -8.0f, 10.0f);
 //                   probe's own axis, this block carries BOTH oracles: the
 //                   whole-silhouette centroid gate AND a `[pivot-focus-assert]`
 //                   line against the same analytic oracle center-axis uses.
-//                   A regression to the pre-#2548 iso-depth-0 latch lands 8.5
+//                   A regression to the iso-depth-0 latch lands 8.5
 //                   world units off, an order of magnitude outside the gate.
 //                   Runs on the GUI-test cycler rather than the plain
 //                   auto-screenshot one: it needs synthetic cursor input and a
@@ -455,8 +454,8 @@ std::string g_pivotVerifyBlock = "off";
 bool g_pivotVerifySdf = false;
 std::vector<IRVideo::AutoScreenshotShot> g_pivotVerifyShots;
 std::vector<std::array<char, 40>> g_pivotVerifyShotLabels;
-// --gui-test: swap the capture table for the headless help-overlay GUI test
-// (#2550). Flag-gated so the standing render-verify tables are untouched —
+// --gui-test: swap the capture table for the headless help-overlay GUI test.
+// Flag-gated so the standing render-verify tables are untouched —
 // the overlay is default-hidden and this is the only run that opens it.
 bool g_guiTest = false;
 // The cull-eviction fixture replaces both the scene and capture table;
@@ -545,10 +544,10 @@ ivec3 pivotVerifyProbeHalfExtent() {
 // (notably that this is NOT a neighbouring-triangle sampling ambiguity — that
 // would be a fixed pixel offset, and the cap blocks' bias is instead constant
 // in WORLD units across a 16x zoom range):
-// docs/design/camera-yaw-pivot.md §"Known deviations" 2, see #2641.
+// docs/design/camera-yaw-pivot.md §"Known deviations" 2.
 //
 // The gate stays sharp — every failure this assert exists to catch is an order
-// of magnitude outside it: a regression to the pre-#2547 iso-depth-0 focus is
+// of magnitude outside it: a regression to the iso-depth-0 focus is
 // 3.46 world units off on center-column and 12.1 on center-depth, and electing
 // the far surface instead of the near one is 10.0 off on center-depth.
 //
@@ -567,7 +566,7 @@ constexpr float kPivotFocusAssertToleranceWorld = 0.58f;
 // cell's near corner and the measured delta is exactly 0.87 (macOS/Metal,
 // zoom 4). Rounding the bound up to a whole voxel keeps the assert off a
 // knife-edge float comparison without blunting it — the regression this block
-// exists to catch, a revert to the pre-#2548 iso-depth-0 latch, lands ~8.5
+// exists to catch, a revert to the iso-depth-0 latch, lands ~8.5
 // world units off (see the center-axis note above, same probe geometry), so
 // the gate still has ~8x of margin.
 constexpr float kCursorLatchFocusToleranceWorld = 1.0f;
@@ -832,7 +831,7 @@ void cursorLatchOnFrame(int shotIndex, bool isCaptureFrame) {
     }
 }
 
-// --pan-sweep (#1944 diagnosis): hold yaw + zoom fixed and step the camera iso
+// --pan-sweep: hold yaw + zoom fixed and step the camera iso
 // position in fine sub-trixel increments across ~2 trixels, capturing one frame
 // per step. A static scene must translate SMOOTHLY across the sweep — any
 // per-frame +/-1px oscillation as the camera crosses a trixel boundary is the
@@ -844,7 +843,7 @@ bool g_panSweep = false;
 std::vector<IRVideo::AutoScreenshotShot> g_panSweepShots;
 std::vector<std::array<char, 40>> g_panSweepShotLabels;
 
-// --yaw-sweep (#1944 diagnosis): hold camera position + zoom fixed and step the
+// --yaw-sweep: hold camera position + zoom fixed and step the
 // camera Z-yaw in fine increments, capturing one frame per step. The companion
 // to --pan-sweep: it exercises jitter during ROTATION (the effective camera iso
 // changes via the RotationPivotMode drift-cancel as yaw advances, so the per-axis
@@ -885,7 +884,7 @@ void emitSweepShots(
 // Register shape_debug's custom flags on the engine-owned parser. --help /
 // --auto-screenshot / --config-preset are pre-registered by the Parser ctor;
 // IREngine::init(argc, argv) parses common + these in one pass, so --help lists
-// every flag and exits before any window/GL/Metal init (epic #2057 P3, #2060).
+// every flag and exits before any window/GL/Metal init.
 void registerCliArgs() {
     IRArgs::Parser &args = IREngine::args();
     args.optionalInt(
@@ -1118,18 +1117,18 @@ int main(int argc, char **argv) {
 }
 
 // ---------------------------------------------------------------------------
-// Help-overlay + settings-menu GUI test (#2550, #2551, --gui-test)
+// Help-overlay + settings-menu GUI test (--gui-test)
 // ---------------------------------------------------------------------------
 // Positive-fire coverage for both discoverability surfaces: byte-identity with
 // them hidden (render-verify) only proves the OFF path is a no-op, so this
 // drives the ON paths end to end.
 //
-// Overlay (#2550): inject the toggle key, assert the overlay is visible AND
+// Overlay: inject the toggle key, assert the overlay is visible AND
 // actually emitted glyphs AND that its text carries a camera-suite entry with
 // its description (which is what proves adoption costs zero per-demo wiring),
 // then toggle back and assert it is hidden again.
 //
-// Menu (#2551): open on Escape and assert rows actually materialized, then
+// Menu: open on Escape and assert rows actually materialized, then
 // CLICK the "PAUSE SIMULATION" checkbox through the real input path and assert
 // BOTH halves — the widget latched checked, and `IRSim` actually stopped. The
 // second is the one that proves the registered setter ran; a widget that
@@ -1154,7 +1153,7 @@ constexpr IRVideo::GuiInputEvent kHelpCloseEvents[] = {
     {1, IRVideo::GuiInputEvent::Type::RELEASE, IRMath::ivec2(0), vec2(0.0f), IRInput::kKeyButtonF1},
 };
 
-// Escape toggles the settings menu in this demo (#2551) — the camera suite is
+// Escape toggles the settings menu in this demo — the camera suite is
 // registered with `{.omit_ = {CLOSE_WINDOW}}`, so it no longer quits.
 constexpr IRVideo::GuiInputEvent kMenuOpenEvents[] = {
     {0,
@@ -1350,7 +1349,7 @@ const IRPrefab::GuiTest::Assertion kHelpClosedAssertions[] = {
     IRPrefab::GuiTest::predicate(&helpOverlayGlyphsPredicate, &kExpectHidden, "no_glyphs_batched"),
 };
 
-// --- Settings-menu predicates (#2551) --------------------------------------
+// --- Settings-menu predicates --------------------------------------
 
 bool settingsMenuOpenPredicate(const void *context, std::string &actual) {
     const bool expected = *static_cast<const bool *>(context);
@@ -1984,7 +1983,7 @@ void initSystems() {
         );
     }
     IRSystem::registerPipeline(IRTime::Events::UPDATE, updatePipeline);
-    // Settings menu (#2551) rides the INPUT pipeline: its widget chain needs
+    // Settings menu rides the INPUT pipeline: its widget chain needs
     // the cursor state INPUT_KEY_MOUSE publishes, and polling the widgets in
     // INPUT means a toggle applies before the same frame renders.
     std::list<IRSystem::SystemId> inputPipeline{
@@ -2009,20 +2008,20 @@ void initSystems() {
             IRConstants::kFPS
         );
     }
-    // GPU voxel-position prepass (#1396) — writes binding 5 for
+    // GPU voxel-position prepass — writes binding 5 for
     // GPU-transform-indirected voxel sets before STAGE_1 reads it. A no-op (no
     // dispatch) unless a voxel set opts in via gpuTransformSlot_, so the default
     // scene stays byte-identical. Created up-front so its SystemId can order the
     // render pipeline below (before STAGE_1).
     const IRSystem::SystemId updateVoxelPositionsId =
         IRSystem::createSystem<IRSystem::UPDATE_VOXEL_POSITIONS_GPU>();
-    // Joint skin-matrix upload (#1603) + per-voxel bone→slot seeding (#1605).
+    // Joint skin-matrix upload + per-voxel bone→slot seeding.
     // Before UPDATE_VOXEL_POSITIONS_GPU so binding 18 holds the skin matrices
     // when the prepass dispatches; a no-op (zero skeletons) unless --skin-smoke
     // rigs a set, so the default scene stays byte-identical.
     const IRSystem::SystemId updateJointMatricesId =
         IRSystem::createSystem<IRSystem::UPDATE_JOINT_MATRICES>();
-    // Captured for the culling minimap's light + caster domains (#2316, V2) —
+    // Captured for the culling minimap's light + caster domains —
     // the minimap reads these systems' per-frame gather state back rather
     // than re-running its own light/caster query. Assigned in-place inside
     // the initializer list below (NOT hoisted out as their own create()
@@ -2043,8 +2042,8 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
             IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
             // Hi-Z max-depth mip chain over the (now final) distance texture,
-            // for next frame's voxel occlusion cull (#1294 child 1/3). Produces
-            // only — renders unchanged this PR.
+            // for next frame's voxel occlusion cull. Produces
+            // only — renders unchanged.
             IRSystem::createSystem<IRSystem::COMPUTE_DISTANCE_HIZ>(),
             IRSystem::createSystem<IRSystem::RESOLVE_PER_AXIS_SCREEN_DEPTH>(),
             (bakeSunShadowMapId = IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>()),
@@ -2053,7 +2052,7 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
         }
     );
-    // Registry-driven command help overlay (#2550), F1. TEXT_TO_TRIXEL first —
+    // Registry-driven command help overlay, F1. TEXT_TO_TRIXEL first —
     // shape_debug had no GUI text before, and the overlay needs its GUI-canvas
     // clear plus the shared text GPU resources. Both land before
     // TRIXEL_TO_FRAMEBUFFER composites the gui canvas. The overlay is hidden by
@@ -2061,7 +2060,7 @@ void initSystems() {
     // captures stay byte-identical.
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>());
     renderPipeline.splice(renderPipeline.end(), IRPrefab::HelpOverlay::systems());
-    // Settings-menu widgets (#2551) draw on the same GUI canvas, after the
+    // Settings-menu widgets draw on the same GUI canvas, after the
     // overlay so an open menu paints over it. Both are default-off and own no
     // entities until opened, so captures stay byte-identical.
     renderPipeline.splice(renderPipeline.end(), IRPrefab::SettingsMenu::renderSystems());
@@ -2078,8 +2077,7 @@ void initSystems() {
         }
     );
     // Off during --auto-screenshot captures — the minimap is a live debug
-    // aid, not part of the render-verify golden image (#2316, V2 plan
-    // "Verification": map off during reference captures). Interactive /
+    // aid, not part of the render-verify golden image. Interactive /
     // --auto-profile runs (g_autoWarmupFrames == 0) default it visible;
     // F11 (initCommands below) toggles it either way.
     IRRender::setCullingMinimapEnabled(g_autoWarmupFrames == 0);
@@ -2127,7 +2125,7 @@ void initSystems() {
         // plain auto-screenshot cycler.
         bool useGuiTestCycler = false;
         if (g_cullValidate) {
-            // Frozen-cull free-fly validation harness (#1438). Two phases over
+            // Frozen-cull free-fly validation harness. Two phases over
             // the SAME pose list: (1) live cull, (2) cull frozen at a wide
             // reference. A wide freeze reference (zoom 1 at origin) has an iso
             // cull viewport that is a superset of every sweep pose, so a frozen
@@ -2211,9 +2209,9 @@ void initSystems() {
             );
         } else if (g_spinYawDegPerSec > 0.0f) {
             // Sweep one full rotation at camera=(0,0). Default zoom=4 matches
-            // the rotation-coverage shots (#1261) for scene-scale smoothness;
+            // the rotation-coverage shots for scene-scale smoothness;
             // pass --zoom to sweep at high zoom (e.g. 16), where rotation-only
-            // parity glitches (#1218 black faces, #1256 checkerboard) are
+            // parity glitches (black faces, checkerboard) are
             // visible at full pixel scale. The regression set baselines both.
             const float sweepZoom = g_initialZoom > 0.0f ? g_initialZoom : 4.0f;
             const int n = IRMath::max(2, g_spinYawShotCount);
@@ -2255,7 +2253,7 @@ void initSystems() {
             );
         } else if (g_pivotFocusDemo) {
             // Pin the camera Z-yaw pivot on the tall pillar's true-depth center
-            // across a yaw sweep (#1921). centerPan brings the pillar to screen
+            // across a yaw sweep. centerPan brings the pillar to screen
             // center at yaw 0; with the focus set it stays there for EVERY yaw —
             // the pillar rotates in place while the default scene sweeps around
             // it. Run the same flag with --pivot-origin for the A/B: the legacy
@@ -2379,7 +2377,7 @@ void initSystems() {
                 sweepZoom
             );
         } else if (g_panSweep) {
-            // Fine pan sweep at a FIXED yaw (#1944 jitter diagnosis). Steps the
+            // Fine pan sweep at a FIXED yaw (jitter diagnosis). Steps the
             // camera iso across 2 trixels in X so the integer game-px part of the
             // anti-vibration decomposition ticks twice; a correct pipeline
             // translates the scene smoothly, a broken one oscillates +/-1px at
@@ -2417,7 +2415,7 @@ void initSystems() {
                 sweepZoom
             );
         } else if (g_yawSweep) {
-            // Fine yaw sweep at FIXED camera position (#1944 jitter diagnosis,
+            // Fine yaw sweep at FIXED camera position (jitter diagnosis,
             // rotation half). Steps yaw across [0.05, 0.70] rad — inside the first
             // cardinal quadrant (< π/4 ≈ 0.785), so the per-axis visible-face
             // triplet is constant and a vertical cylinder probe's silhouette is
@@ -2471,7 +2469,7 @@ void initSystems() {
 }
 
 void initCommands() {
-    // Escape opens the settings menu instead of quitting (#2551); the menu's
+    // Escape opens the settings menu instead of quitting; the menu's
     // QUIT button is the replacement exit, so quitting is two inputs away
     // rather than one. Omitting the one row leaves every other camera binding
     // unchanged.
@@ -2479,7 +2477,7 @@ void initCommands() {
         {.omit_ = {IRCommand::CLOSE_WINDOW}}
     );
     IRCommand::registerCaptureCommands();
-    // Interactive cull-freeze toggle (#1438): freeze the cull viewport at the
+    // Interactive cull-freeze toggle: freeze the cull viewport at the
     // current camera pose, then free-fly (WASD pan / mouse drag / scroll zoom,
     // all from standardControlSystems) to see exactly what the frozen cull
     // retains as the camera moves. F10 matches the other demos' binding.
@@ -2488,7 +2486,7 @@ void initCommands() {
         IRInput::PRESSED,
         IRInput::kKeyButtonF10
     );
-    // Culling-minimap visibility toggle (#2316, V2). F11 sits next to F10's
+    // Culling-minimap visibility toggle. F11 sits next to F10's
     // freeze toggle — the two are commonly used together (freeze, then
     // inspect the minimap's light/caster domains while free-flying).
     IRCommand::createCommand<IRCommand::TOGGLE_CULLING_MINIMAP>(
@@ -2497,11 +2495,11 @@ void initCommands() {
         IRInput::kKeyButtonF11
     );
     // F1 lists every command registered above — including the camera bundle
-    // and the two culling toggles — with its description (#2550).
+    // and the two culling toggles — with its description.
     IRPrefab::HelpOverlay::registerToggleCommand();
-    // Escape opens the settings menu built from registerDemoSettings() (#2551).
+    // Escape opens the settings menu built from registerDemoSettings().
     IRPrefab::SettingsMenu::registerToggleCommand();
-    // Rotation-pivot mode cycle (#2548): swap which Ctrl+middle-drag chord
+    // Rotation-pivot mode cycle: swap which Ctrl+middle-drag chord
     // latches the clicked surface point, so the screen-center default and the
     // cursor latch can be compared live under the SAME gesture instead of
     // across a restart. F9 sits with the other F-key demo toggles.
@@ -2517,7 +2515,7 @@ void initCommands() {
 }
 
 // ---------------------------------------------------------------------------
-// Live-togglable demo settings (#2551)
+// Live-togglable demo settings
 // ---------------------------------------------------------------------------
 
 // Re-apply the debug tint to every live SDF shape. `--depth-color` and
@@ -2701,7 +2699,7 @@ EntityId createVoxelPoolShape(
     if (g_depthColor) {
         applyDepthColor(vs, type, sdfParams);
         // Set the scatter path's per-pixel depth-color mode so non-cardinal
-        // yaw evaluates hue continuously in the fragment shader (#1697).
+        // yaw evaluates hue continuously in the fragment shader.
         vec3 bh = IRMath::SDF::boundingHalf(sdfType, sdfParams);
         IRRender::setDepthColorDebug(true, bh.x + bh.y + bh.z);
     } else if (g_checkerboard) {
@@ -2719,7 +2717,7 @@ EntityId createVoxelPoolShape(
 }
 
 // Directly-authored asymmetric voxel figure — the non-uniform stress case for
-// the #1937 analytic per-axis-scatter edge coverage. Unlike the symmetric SDF
+// analytic per-axis-scatter edge coverage. Unlike the symmetric SDF
 // primitives, it has appendages (a horizontal right arm, a RAISED diagonal
 // staircase left arm, two legs in an offset stance) and slanted, non-axis-aligned
 // surface planes (the staircase arm + a head visor), so under camera Z-yaw many
@@ -2802,7 +2800,7 @@ EntityId createSDFShape(vec3 position, IRRender::ShapeType type, vec4 params, Co
     return entity;
 }
 
-// Spawn one voxel cube routed through the GPU voxel-position prepass (#1396).
+// Spawn one voxel cube routed through the GPU voxel-position prepass.
 // The fixed 45° SO(3) rotation can only reach the rendered voxels via the
 // prepass — UPDATE_VOXEL_SET_CHILDREN folds in translation only — so a rotated
 // cube on screen is the smoke test that the prepass computed modelToWorld *
@@ -2841,7 +2839,7 @@ void createGpuVoxelTransformSmoke() {
 }
 
 // Spawn one 2-bone rigged voxel bar skinned through the per-voxel bone→slot
-// seed path (#1605). The bar spans x ∈ [-8, 8]; voxels left of the midpoint
+// seed path. The bar spans x ∈ [-8, 8]; voxels left of the midpoint
 // are painted bone 0 (root, at the left end), the rest bone 1 (elbow, at the
 // midpoint, posed 30° off its bind rotation). UPDATE_JOINT_MATRICES allocates
 // the skeleton's slot block on its first tick and auto-seeds binding 17 with
@@ -2907,7 +2905,7 @@ struct ShapeTestCase {
     Color color_;
 };
 
-// Minimal scene for --pivot-focus-demo (#1921): a tall, off-center pillar plus
+// Minimal scene for --pivot-focus-demo: a tall, off-center pillar plus
 // four distinct ground markers ringing it (one per world cardinal). The dedicated
 // shot table pins the camera Z-yaw pivot on the pillar's true center, so under
 // the fix the pillar holds dead-center while the markers visibly orbit it; with
@@ -3125,7 +3123,7 @@ void initEntities() {
     };
     constexpr int kNumCases = sizeof(cases) / sizeof(cases[0]);
 
-    // --spin-shape <name> (#1922): replace the side-by-side fixture scene with
+    // --spin-shape <name>: replace the side-by-side fixture scene with
     // ONE shape centred at the origin. Under camera Z-yaw-about-origin the shape
     // stays screen-centred, so the whole frame is that shape — clean per-shape
     // isolation for the temporal-jitter sweep. No floor / point light: a black
@@ -3134,7 +3132,7 @@ void initEntities() {
     if (!g_spinShapeType.empty()) {
         // "figure" is the non-uniform stress case (not an SDF primitive): a
         // directly-authored asymmetric voxel set with appendages + slanted
-        // planes, to verify the #1937 analytic edge coverage under camera yaw.
+        // planes, to verify analytic edge coverage under camera yaw.
         if (g_spinShapeType == "figure") {
             createCustomVoxelFigure(vec3(0.0f, 0.0f, 0.0f), Color{210, 180, 140, 255});
             IR_LOG_INFO("Spin-shape single fixture: custom voxel figure");
@@ -3193,7 +3191,7 @@ void initEntities() {
         createSDFShape(vec3(xPos, kRowSeparationY, 0.0f), tc.type_, tc.params_, tc.color_);
     }
 
-    // LOD demonstration (#1467). The engine LOD filter is an inclusive band
+    // LOD demonstration. The engine LOD filter is an inclusive band
     // [lodMax_ .. lodMin_], so co-located variants with DISJOINT bands render
     // exclusively — exactly one per zoom, swapping in place instead of
     // stacking. Three variants with deliberately distinct silhouettes

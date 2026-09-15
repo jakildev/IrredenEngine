@@ -1,4 +1,4 @@
-// day_cycle — visual proof-out of the sim-clock substrate (engine #200).
+// day_cycle — visual proof-out of the sim-clock substrate.
 //
 // This is the runnable counterpart to the 23 gtests in `test/time/`: it wires
 // the three sim-clock systems into a real UPDATE pipeline alongside the render
@@ -35,7 +35,7 @@
 #include <irreden/render/camera.hpp>
 #include <irreden/render/camera_controls.hpp>
 
-// Sim-clock substrate (#200).
+// Sim-clock substrate.
 #include <irreden/common/sim_clock.hpp>
 #include <irreden/update/systems/system_cycle_boundary_detect.hpp>
 #include <irreden/update/systems/system_sim_clock_advance.hpp>
@@ -259,7 +259,7 @@ void initEntities() {
             C_VoxelSetNew{IRMath::ivec3{6, 6, 12}, cubeColors[i], true}
         );
     }
-    // GROUND exemplar (#2563). Its translation IS the floor's top surface, with
+    // GROUND exemplar. Its translation IS the floor's top surface, with
     // no half-height term: a GROUND-anchored body's ground-contact face sits
     // exactly at translation.z for every size, so "stand this on the floor"
     // is spelled `translation.z = kFloorTopSurfaceZ` and nothing else. The two
