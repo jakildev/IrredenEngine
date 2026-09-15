@@ -189,7 +189,8 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
         const double samples = static_cast<double>(c.sampleCount_);
         const double avgVisible = static_cast<double>(c.visibleSum_) / samples;
         const double avgTotal = static_cast<double>(c.totalSum_) / samples;
-        const double ratio = avgTotal > 0.0 ? avgVisible / avgTotal : 0.0;
+        const double avgRetained = static_cast<double>(c.visibleSum_ + c.feederSum_) / samples;
+        const double ratio = avgTotal > 0.0 ? avgRetained / avgTotal : 0.0;
         std::fprintf(f, "--- Voxel cull stats ---\n");
         std::fprintf(f, "%-12s %14s %14s %10s\n", "", "Avg", "Max", "Samples");
         std::fprintf(
@@ -201,11 +202,20 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
             c.sampleCount_
         );
         std::fprintf(f, "%-12s %14.1f %14u %10u\n", "Total", avgTotal, c.maxTotal_, c.sampleCount_);
+        std::fprintf(
+            f,
+            "%-12s %14.1f %14u %10u\n",
+            "AxisEntries",
+            static_cast<double>(c.axisEntrySum_) / samples,
+            c.maxAxisEntries_,
+            c.sampleCount_
+        );
         const double avgFeeder = static_cast<double>(c.feederSum_) / samples;
         std::fprintf(f, "%-12s %14.1f %14u %10u\n", "Feeder", avgFeeder, c.maxFeeder_, c.sampleCount_);
         std::fprintf(
             f,
-            "Ratio:       %14.4f (visible/total — 1.0 = no cull, 0.0 = all culled)\n",
+            "Ratio:       %14.4f (unique retained candidates / pool slots; includes separate "
+            "feeders)\n",
             ratio
         );
         std::fprintf(

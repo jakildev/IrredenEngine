@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from compare_perf_runs import parse_report
+from compare_perf_runs import CellReport, parse_report, render_markdown
 
 
 class GpuReportParserTest(unittest.TestCase):
@@ -33,6 +33,35 @@ class GpuReportParserTest(unittest.TestCase):
         self.assertEqual((rows[0].avg_ms, rows[0].max_ms), (1.25, 3.75))
         self.assertIsNone(rows[0].min_ms)
         self.assertIsNone(rows[0].samples)
+
+    def test_mixed_cull_units_cannot_produce_a_delta(self):
+        before = CellReport("fixture")
+        after = CellReport("fixture")
+        before.cull.samples = after.cull.samples = 1
+        before.cull.ratio = 3.0
+        after.cull.ratio = 1.0
+        after.cull.avg_axis_entries = 30
+        report = render_markdown(
+            Path("before"), Path("after"), {"fixture": before},
+            {"fixture": after}, 5, 5, False, False
+        )
+        self.assertIn("incompatible count units", report)
+        self.assertNotIn("-200.0pp", report)
+
+    def test_axis_work_is_separate_from_unique_survivors(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "profile.txt"
+            path.write_text(
+                "--- Voxel cull stats ---\n"
+                "Visible 5768.0 5768 12\nTotal 32768.0 32768 12\n"
+                "AxisEntries 6144.0 6144 12\n"
+            )
+            cull = parse_report(path, "fixture").cull
+            self.assertEqual(cull.avg_visible, 5768)
+            self.assertEqual(cull.avg_axis_entries, 6144)
+            self.assertEqual(cull.max_axis_entries, 6144)
+            path.write_text("--- Voxel cull stats ---\nVisible 6144.0 6144 12\n")
+            self.assertIsNone(parse_report(path, "legacy").cull.avg_axis_entries)
 
     def test_other_sections_cannot_become_gpu_rows(self):
         rows = self.parse(

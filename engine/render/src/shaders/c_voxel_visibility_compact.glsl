@@ -305,7 +305,10 @@ bool voxelOccludedByHiZ(ivec3 voxelPos, ivec2 isoPos) {
     return encodeDepthWithFace(pos3DtoDistance(voxelPos), 0) > hiZMax + kOcclusionDepthMargin;
 }
 
+shared uint groupUniqueSurvivors[64];
+
 void main() {
+    groupUniqueSurvivors[gl_LocalInvocationIndex] = 0u;
     const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
     uint workGroupIndex = gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x;
     uint idx = workGroupIndex * 64u + gl_LocalInvocationID.x;
@@ -418,6 +421,7 @@ void main() {
                         for (int axis = 0; axis < 3; ++axis) {
                             if (faceIsExposed(flagsByte, 2 * axis) ||
                                 faceIsExposed(flagsByte, 2 * axis + 1)) {
+                                groupUniqueSurvivors[gl_LocalInvocationIndex] = 1u;
                                 uint base = uint(axis) * kPerAxisIndirectStrideUints;
                                 uint slot = atomicAdd(params[base + 3u], 1u);
                                 compactedVoxelIndices[uint(axis) * stride + slot] = idx;
@@ -433,6 +437,13 @@ void main() {
     memoryBarrierBuffer();
 
     if (gl_LocalInvocationIndex == 0u) {
+        if (perAxisSplitStride != 0) {
+            uint uniqueSurvivors = 0u;
+            for (int lane = 0; lane < 64; ++lane) {
+                uniqueSurvivors += groupUniqueSurvivors[lane];
+            }
+            atomicAdd(params[5], uniqueSurvivors);
+        }
         // params[4] (struct 0's completedGroups slot) is the shared cross-group
         // completion counter in both modes.
         uint finished = atomicAdd(params[4], 1u) + 1u;

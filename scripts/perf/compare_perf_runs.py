@@ -34,6 +34,7 @@ FRAME_RE = re.compile(
     r"p99=([\d.]+)ms\s+min=([\d.]+)ms\s+max=([\d.]+)ms"
 )
 ENTITY_RE = re.compile(r"Entity count:\s+(\d+)\s+\((\d+)\s+archetypes\)")
+CULL_AXIS_RE = re.compile(r"^AxisEntries\s+([\d.]+)\s+(\d+)\s+(\d+)")
 CULL_VISIBLE_RE = re.compile(r"^Visible\s+([\d.]+)\s+(\d+)\s+(\d+)")
 CULL_TOTAL_RE = re.compile(r"^Total\s+([\d.]+)\s+(\d+)\s+(\d+)")
 # The struct-1 shadow-feeder count (#2298). The report also prints a free-form
@@ -83,6 +84,8 @@ class GpuStage:
 
 @dataclass
 class CullStats:
+    avg_axis_entries: Optional[float] = None
+    max_axis_entries: Optional[int] = None
     avg_visible: float = 0.0
     avg_total: float = 0.0
     max_visible: int = 0
@@ -193,6 +196,11 @@ def parse_report(path: Path, cell_id: str) -> CellReport:
                     samples=int(m.group(5)) if sampled else None,
                 ))
         elif section == "cull":
+            m = CULL_AXIS_RE.match(s)
+            if m:
+                report.cull.avg_axis_entries = float(m.group(1))
+                report.cull.max_axis_entries = int(m.group(2))
+                continue
             m = CULL_VISIBLE_RE.match(s)
             if m:
                 report.cull.avg_visible = float(m.group(1))
@@ -389,7 +397,7 @@ def render_markdown(
     if not cpu_only:
         has_cull = any(c.cull.samples > 0 for c in list(base.values()) + list(head.values()))
         if has_cull:
-            out.append("## voxel cull effectiveness (visible / total)")
+            out.append("## voxel cull effectiveness")
             out.append("")
             out.append("| cell | ratio (base→head) | avg visible | total | avg feeder |")
             out.append("|------|-------------------|-------------|-------|------------|")
@@ -397,6 +405,13 @@ def render_markdown(
                 bc = base[cell_id].cull
                 hc = head[cell_id].cull
                 if bc.samples == 0 and hc.samples == 0:
+                    continue
+                if (bc.avg_axis_entries is None) != (hc.avg_axis_entries is None):
+                    out.append(
+                        f"| `{cell_id}` | incompatible count units | legacy / unique | "
+                        f"{bc.avg_total:.0f} → {hc.avg_total:.0f} | "
+                        f"{format_feeder_cell(bc, hc)} |"
+                    )
                     continue
                 ratio_delta_pp = (hc.ratio - bc.ratio) * 100.0  # percentage points
                 out.append(

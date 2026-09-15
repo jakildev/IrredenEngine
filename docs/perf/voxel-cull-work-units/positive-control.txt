@@ -1,0 +1,3 @@
+Intentional invalid staged counter; restored before final tail run.
+	ERROR: Unique compact survivors exceed the producing pool slot count
+ir-run: RESULT=CRASH exe=IRPerfGrid exit=134 signal=SIGABRT

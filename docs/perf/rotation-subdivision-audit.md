@@ -73,9 +73,10 @@ The remaining work below still applies.
 
 ## Proposed optimization TODO
 
-1. Add counters with consistent units: unique source voxels, axis candidates,
-   generated subdivision samples, occupied cells, overflow entries and scratch
-   bytes. Separate useful visible work from shadow-caster work.
+1. [Unique retained candidates and axis entries](voxel-cull-work-units.md) now
+   have separate counters and producer-matched readback. Add generated subdivision
+   samples, occupied cells, overflow entries and scratch bytes. Separate useful
+   visible work from shadow-caster work.
 2. Extend the matrix with fixed poses, near-cardinal angles, a continuous camera
    sweep and entity revoxelization. Add matched projected-area scenes with
    adjusted object extent/zoom, and fixed zoom with varying subdivision density.

@@ -35,16 +35,16 @@ struct CpuPhaseEntry {
     uint32_t sampleCount_ = 0;
 };
 
-/// Voxel cull-effectiveness summary populated from a per-frame
-/// accumulator in VOXEL_TO_TRIXEL_STAGE_1. avgVisible / avgTotal at
-/// zoom Z answer "did culling actually shrink the working set?" A
-/// flat ratio across zooms is the signature of broken culling.
+/// Per-compact-dispatch candidates and repeated axis work. Total counts pool
+/// slots, including inactive slots; visible plus feeder counts unique survivors.
 struct VoxelCullStatsSummary {
     uint64_t visibleSum_ = 0;
     uint64_t totalSum_ = 0;
     // Shadow-feeder (struct 1) survivors — the off-screen caster list the
     // #2298 domain-widened per-voxel cull targets. 0 with shadows off.
     uint64_t feederSum_ = 0;
+    uint64_t axisEntrySum_ = 0;
+    uint32_t maxAxisEntries_ = 0;
     uint32_t maxVisible_ = 0;
     uint32_t maxTotal_ = 0;
     uint32_t maxFeeder_ = 0;

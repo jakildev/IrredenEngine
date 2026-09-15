@@ -355,6 +355,7 @@ template <> struct System<PERF_STATS_OVERLAY> {
             "CULL\n"
             "  SHAPES V/Z %5u/%u\n"
             "  VOX  %7u/%7u\n"
+            "  AXIS %7u\n"
             "  LIGHTS %5u/%u\n"
             "  CASTERS %5u\n"
             "  FEED MIN %5.0f,%5.0f\n"
@@ -363,6 +364,7 @@ template <> struct System<PERF_STATS_OVERLAY> {
             gpu.shapeGroupsZ_,
             gpu.visibleVoxelCount_,
             gpu.totalVoxelCount_,
+            gpu.axisEntryCount_,
             gpu.lightsSeeded_,
             gpu.lightsEligible_,
             gpu.worldPlacedCasterCount_,
