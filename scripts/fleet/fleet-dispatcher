@@ -1574,6 +1574,15 @@ cleanup_stale_dispatches() {
             # backoff, and not the target's fault (see handle_quota_target).
             verdict=quota
             claimed=""
+            # The wrap re-armed the role on its way out, but the wall answers
+            # within the launching tick, so that touch can land between
+            # dispatch_role's send-keys and its trigger consume and be erased
+            # by it. This pass runs at the tick top, after that call returned:
+            # re-arm here, unconditionally, so the resume edge survives; the
+            # cooldown tick's reserved-pane hold carries it to the reopening.
+            if [[ -n "$role" ]]; then
+                mkdir -p "$TRIGGERS_DIR" && touch "$TRIGGERS_DIR/$role" || true
+            fi
             if [[ -n "$target" && -n "$agent" ]]; then
                 handle_quota_target "$target" "$agent"
             fi

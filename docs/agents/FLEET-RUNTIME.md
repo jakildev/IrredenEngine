@@ -192,7 +192,11 @@ the window resets (gate thresholds and the per-pane cooldown:
   trigger waits behind the closed gate; a tick that finds the reserved pane
   still in its cooldown keeps it rather than standing the lane down.
 - Cleanup reads the marker as `verdict=quota` **before** the completion
-  contract (§ "The dispatch target"): the pre-launch grant is handed back,
+  contract (§ "The dispatch target") and re-arms the trigger again — the
+  wall answers within the launching tick, whose own consume can erase the
+  wrapper's touch; cleanup runs at the next tick top, after that call
+  returned, so the marker is the durable half of the resume edge. Then the
+  pre-launch grant is handed back,
   the abandon ledger and empty-exit streak are untouched, and the claim is
   released (session sidecar cleared) only when the pane did no work, so
   another provider can take the item; a mid-task death keeps claim and

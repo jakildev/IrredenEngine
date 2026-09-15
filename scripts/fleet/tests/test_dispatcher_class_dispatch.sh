@@ -22,9 +22,11 @@
 #     fairness floor), all-refused stands the lane down, one launch per
 #     claimable item, in-flight dedup, every lane kind's claim arm, the
 #     reviewer lane's one-pane-per-PR fan-out, and dry-run's claim-free path
-#   - usage-wall resume (T31b): the real wrap + stream on a stub claude that
-#     dies at the wall re-arm the lane, the tick that finds the reserved pane
-#     in its cooldown keeps the trigger, the first open tick resumes it
+#   - usage-wall resume (T31b/c): the real wrap + stream on a stub claude that
+#     dies at the wall re-arm the lane — from the wrap's exit, and from the
+#     dispatcher's exit fold when the launching tick's own consume erased that
+#     touch — the tick that finds the reserved pane in its cooldown keeps the
+#     trigger, the first open tick resumes it
 #
 # The fable in-flight count comes from dispatch records under
 # $FLEET_STATE_DIR/dispatch, same records --count-active reads.
@@ -336,7 +338,19 @@ case "$sub" in
         fi
         exit 0
         ;;
-    send-keys) printf '%s\n' "$*" >> "$SEND_LOG"; exit 0 ;;
+    send-keys)
+        printf '%s\n' "$*" >> "$SEND_LOG"
+        # T31c: run the real wrap to completion inside the launching tick's
+        # send-keys, the way a pane whose claude dies at the wall in under a
+        # tick exits before dispatch_role reaches its trigger consume.
+        if [[ -n "${STUB_WALL_WRAP_ON_PANE:-}" && "$*" == *"-t $STUB_WALL_WRAP_ON_PANE "* ]]; then
+            pane_key="pane-${STUB_WALL_WRAP_ON_PANE#%}"
+            ( cd "$STUB_WALL_WT" && PATH="$STUB_WALL_PATH" \
+                "$STUB_WALL_WRAP" "$pane_key" sonnet high worker "" live \
+                2>>"$STUB_WALL_LOG" >/dev/null ) || true
+        fi
+        exit 0
+        ;;
     *) exit 0 ;;
 esac
 TMUXEOF
@@ -640,6 +654,86 @@ grep -q -- "-t %2 " "$SEND_LOG" \
     || { FAIL=$((FAIL+1)); echo "  FAIL: no send-keys to %2: $(cat "$SEND_LOG")"; }
 rm -f "$FLEET_RESERVATIONS_DIR/pool-2.json" "$FLEET_STATE_DIR/dispatch"/*.json \
     "$FLEET_STATE_DIR/triggers/worker" "$STUB_BIN/claude"
+
+# --- T31c: the launching tick itself erases the wrap's re-arm ----------------
+# T31b started the wrap by hand after the dispatch tick had returned. Live, a
+# wall death answers within the tick: the tmux stub now runs the real wrap to
+# completion inside dispatch_role's send-keys, so the wrap's trigger touch
+# lands before that call's own trigger consume and is erased by it. The
+# dispatcher's exit fold (cleanup_stale_dispatches, the tick top) is the
+# producer that necessarily runs after the launching call returned: it must
+# classify the wall from the cooldown marker and re-arm the lane, the
+# cooldown tick must hold the trigger, and the first open tick resumes pool-2.
+echo "T31c: wall death inside the launching tick -> exit fold re-arms, cooldown holds, pool-2 resumed"
+rm -f "$FLEET_STATE_DIR/dispatch"/*.json "$FLEET_STATE_DIR/rate-limit"/* \
+    "$FLEET_STATE_DIR/usage"/*.json
+write_slice worker "$OWNED_SLICE"
+printf '{"task":"#10","role":"worker"}\n' > "$FLEET_RESERVATIONS_DIR/pool-2.json"
+cat > "$STUB_BIN/claude" <<'EOF'
+#!/usr/bin/env bash
+printf '{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","resetsAt":%s,"rateLimitType":"seven_day"}}\n' "$STUB_RESETS_AT"
+printf '{"type":"result","subtype":"success","is_error":true,"api_error_status":429,"result":"You'"'"'ve hit your weekly limit"}\n'
+exit 1
+EOF
+chmod +x "$STUB_BIN/claude"
+export STUB_WALL_WRAP="$WRAP" STUB_WALL_WT="$WT2" STUB_WALL_PATH="$STUB_BIN:$SCRIPT_DIR:$PATH" \
+    STUB_WALL_LOG="$TMPROOT/wrap-stderr-31c.log"
+: > "$STUB_WALL_LOG"
+: > "$FLEET_STATE_DIR/triggers/worker"
+: > "$SEND_LOG"
+out=$(STUB_RESERVATION_ROLE=worker STUB_WALL_WRAP_ON_PANE='%2' \
+    STUB_RESETS_AT=$(( $(date +%s) + 3600 )) \
+    "$DISPATCHER" --dispatch-role worker 1 2>&1 >/dev/null)
+case "$out" in
+    *"dispatching worker -> %2"*) PASS=$((PASS+1)); echo "  ok: the reserved pane launched" ;;
+    *) FAIL=$((FAIL+1)); echo "  FAIL: pool-2 not dispatched: $out" ;;
+esac
+grep -q "usage limit on worker (pane-2, rc=1)" "$STUB_WALL_LOG" \
+    && { PASS=$((PASS+1)); echo "  ok: the wrap died at the wall inside send-keys"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: wall not classified inside send-keys: $(cat "$STUB_WALL_LOG")"; }
+[[ -f "$FLEET_STATE_DIR/rate-limit/pane-2.ts" ]] \
+    && { PASS=$((PASS+1)); echo "  ok: pane-2 cooldown marker written"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: no pane-2 cooldown marker"; }
+# Precondition, not the contract: the launching tick's consume erased the
+# wrap's touch, so what follows is exercised on a lane with no edge left.
+[[ ! -f "$FLEET_STATE_DIR/triggers/worker" ]] \
+    && { PASS=$((PASS+1)); echo "  ok: the launching tick consumed the wrap's re-arm (the race is live)"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: trigger survived the launching tick; the exit-fold re-arm is untested here: $out"; }
+[[ -f "$FLEET_STATE_DIR/dispatch/pane-2.json" ]] \
+    && { PASS=$((PASS+1)); echo "  ok: pane-2's dispatch record awaits the exit fold"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: no pane-2 dispatch record"; }
+# The exit fold: the pane is back at a shell, the marker postdates the launch.
+out=$(STUB_RESERVATION_ROLE=worker "$DISPATCHER" --complete-dispatches 2>&1 >/dev/null)
+case "$out" in
+    *"on %2 completed"*"verdict=quota"*) PASS=$((PASS+1)); echo "  ok: the exit fold classified the wall" ;;
+    *) FAIL=$((FAIL+1)); echo "  FAIL: no quota verdict for pane %2: $out" ;;
+esac
+[[ -f "$FLEET_STATE_DIR/triggers/worker" ]] \
+    && { PASS=$((PASS+1)); echo "  ok: the exit fold re-armed the worker trigger"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: no worker trigger after the quota exit fold: $out"; }
+[[ -f "$FLEET_RESERVATIONS_DIR/pool-2.json" ]] \
+    && { PASS=$((PASS+1)); echo "  ok: the mid-task reservation is kept"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: reservation dropped by the exit fold"; }
+# Gate closed + pane cooling down: the tick must neither launch nor consume.
+out=$(STUB_RESERVATION_ROLE=worker "$DISPATCHER" --dispatch-role worker 1 2>&1 >/dev/null)
+case "$out" in
+    *"dispatching worker"*) FAIL=$((FAIL+1)); echo "  FAIL: launched into the cooldown: $out" ;;
+    *) PASS=$((PASS+1)); echo "  ok: nothing launched while pool-2 cools down" ;;
+esac
+[[ -f "$FLEET_STATE_DIR/triggers/worker" ]] \
+    && { PASS=$((PASS+1)); echo "  ok: trigger kept through the cooldown tick"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: trigger consumed while the reserved pane was held: $out"; }
+# The window resets and the cooldown elapses: the next tick resumes pool-2.
+rm -f "$FLEET_STATE_DIR/rate-limit/pane-2.ts" "$FLEET_STATE_DIR/usage"/*.json
+: > "$SEND_LOG"
+out=$(STUB_RESERVATION_ROLE=worker "$DISPATCHER" --dispatch-role worker 1 2>&1 >/dev/null)
+case "$out" in
+    *"dispatching worker -> %2"*) PASS=$((PASS+1)); echo "  ok: pool-2 resumed on the first open tick" ;;
+    *) FAIL=$((FAIL+1)); echo "  FAIL: pool-2 not dispatched after the gate opened: $out" ;;
+esac
+unset STUB_WALL_WRAP STUB_WALL_WT STUB_WALL_PATH STUB_WALL_LOG
+rm -f "$FLEET_RESERVATIONS_DIR/pool-2.json" "$FLEET_STATE_DIR/dispatch"/*.json \
+    "$FLEET_STATE_DIR/triggers/worker" "$STUB_BIN/claude" "$FLEET_STATE_DIR/rate-limit"/*
 
 # --- T32+: per-target dispatch cap (the planning circuit breaker, generalized)
 # gh is stubbed so park_target's label add + comment are observable.

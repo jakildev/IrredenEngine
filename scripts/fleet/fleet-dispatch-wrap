@@ -419,8 +419,11 @@ if [[ "$FLEET_RUNTIME" == claude ]] && { [[ "$rc" == "2" ]] || (( rc != 0 && QUO
     # else re-arms a mid-task resume: the claim took the item out of the
     # scout's projection (a pure removal never fires), and the periodic
     # safety re-arm only fires for a claimable class, never for a standing
-    # reservation. The trigger sits behind the closed gate (the dispatcher
-    # keeps it while a launch is quota-blocked) until the window reopens.
+    # reservation. The wall answers within the launching tick, so this
+    # touch can still be erased by that tick's own consume; the .ts marker
+    # is the durable half — the dispatcher's exit fold re-arms from it once
+    # the launching call has returned, and keeps the trigger while the
+    # reserved pane cools down, until the window reopens.
     mkdir -p "$TRIGGERS_DIR"
     date +%s > "$RATE_LIMIT_DIR/$PANE_KEY.ts"
     touch "$TRIGGERS_DIR/$ROLE"
