@@ -3328,6 +3328,7 @@ cmd_reconcile() {
     local findings="$work/findings.jsonl"
     python3 - "$work" "$host" "$now" "$claim_ttl" "${repos[*]}" \
         "$work/fs_claims.json" "$work/reservations.json" \
+        "$state_dir/dispatch" \
         > "$findings" <<'PYEOF'
 import sys, os, json, re
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
@@ -3335,7 +3336,7 @@ from fleet_branch_match import issue_from_branch, PARKED_PR_LABELS
 
 work, host, now_s, ttl_s = sys.argv[1:5]
 repos = sys.argv[5].split() if sys.argv[5] else []
-fs_path, res_path = sys.argv[6], sys.argv[7]
+fs_path, res_path, dispatch_dir = sys.argv[6], sys.argv[7], sys.argv[8]
 now, ttl = int(now_s), int(ttl_s)
 
 def load(p, default):
@@ -3351,11 +3352,17 @@ FEEDBACK = {"human:needs-fix", "human:blocker", "fleet:needs-fix",
             "fleet:has-nits", "fleet:design-unblocked"}
 
 findings = []
-def add(rule, repo, target, kind, surfaces, action, gated_by, apply=None):
+def add(rule, repo, target, kind, surfaces, action, gated_by, apply=None,
+        escalate=True):
+    # escalate=False marks a flag-only finding as expected state, not drift:
+    # reconcile_escalate_drift leaves it out of the persistence counter, so
+    # it never files the fleet:state-drift tracker. Apply-carrying findings
+    # are already exempt (the R8 shape); this is the same exemption for a
+    # finding that has nothing to apply.
     findings.append({"rule": rule, "repo": repo, "target": target,
                      "target_kind": kind, "surfaces": surfaces,
                      "action": action, "gated_by": gated_by,
-                     "apply": apply, "applied": None})
+                     "apply": apply, "applied": None, "escalate": escalate})
 
 def labelset(obj):
     return set(l.get("name", "") for l in (obj.get("labels") or [])
@@ -3397,6 +3404,33 @@ def has_open_pr(repo, issue):
     return None if d is None else (issue in d["open_pr_issues"])
 
 # ---- R1/R5: host-local stale claim (FS lock + label, no PR, age>TTL) ----
+# A live dispatch record is the dispatcher's own statement that a pane is
+# working the item right now (written before launch, consumed at exit). Age
+# alone cannot tell a wedged claim from a long task that has not opened its
+# PR yet, and releasing the latter re-queues the issue under a working pane
+# — the next dispatch claims it again and two panes ship the same task.
+def live_dispatches(path):
+    live = {}
+    try:
+        names = os.listdir(path)
+    except OSError:
+        return live
+    for name in names:
+        if not name.endswith(".json"):
+            continue
+        try:
+            rec = json.load(open(os.path.join(path, name)))
+        except Exception:
+            continue
+        m = re.match(r"^(?:task|stack):(engine|game):(\d+)(?::|$)", rec.get("target") or "")
+        if m:
+            live[(m.group(1), int(m.group(2)))] = {
+                "agent": rec.get("agent") or "?", "pane": rec.get("pane") or "?",
+                "target": rec.get("target")}
+    return live
+
+dispatched = live_dispatches(dispatch_dir)
+
 fs_by_task = {}
 for c in fs_claims:
     repo = c["repo"]
@@ -3408,6 +3442,17 @@ for c in fs_claims:
             add("R1", repo, c["issue"], "issue", ["fs_claim"],
                 "stale claim suspected but its repo is outside the scan set; skipped",
                 "repo-not-scanned")
+        continue
+    # The keep is for the claim's OWN pane: the dispatcher claims under the
+    # target pane's basename before launch, so a dispatch by another agent
+    # is not this claim's work and the claim ages out as usual.
+    live = dispatched.get((c["ns"], c["issue"]))
+    if not op and age >= ttl and live is not None and live["agent"] == c["owner"]:
+        add("R1", repo, c["issue"], "issue", ["fs_claim", "dispatch"],
+            "stale-aged claim kept: its owner is live-dispatched on it",
+            "age %dm >= TTL %dm, no open PR, but owner %s is dispatched on %s (pane %s)"
+            % (age // 60, ttl // 60, live["agent"], live["target"], live["pane"]),
+            escalate=False)
         continue
     if not op and age >= ttl:
         add("R1", repo, c["issue"], "issue", ["fs_claim", "label", "pr"],
@@ -4036,7 +4081,10 @@ except Exception:
 
 # Flag-only findings (no auto-fix action) are the "unresolved/ambiguous" drift
 # the auto-fix rules can't clear; only these accrue persistence and escalate.
-flag_only = [f for f in findings if not f.get("apply")]
+# A finding stamped escalate=False is expected long-lived state (a claim whose
+# owner is still working it), not drift, and never accrues.
+flag_only = [f for f in findings
+             if not f.get("apply") and f.get("escalate", True) is not False]
 
 def key(f):
     return "%s:%s:%s:%s" % (f["rule"], f["repo"], f["target_kind"], f["target"])
@@ -5651,7 +5699,8 @@ commands:
                                 ~/.fleet/state/drift-report.json). With
                                 --apply, performs only host-local,
                                 TTL/corroboration-gated auto-fixes:
-                                  R1/R5 stale FS claim (no open PR + age>TTL)
+                                  R1/R5 stale FS claim (no open PR + age>TTL;
+                                  kept while a live dispatch works it)
                                         → release FS lock + this host's
                                         claim label + fleet:in-progress;
                                   R3    reservation/claim owner mismatch (or

@@ -33,13 +33,11 @@ struct FrameDataIsoTriangles {
     float4 scatterFbResolution;
     int depthColorMode;
     float depthColorExtent;
-    // No-priority perf fast-path (#2155): 0 = no per-trixel-priority voxel in this
-    // canvas, so the tier-decode triangleEntityIds read is skipped; != 0 = read +
-    // decode as before. Repurposes the former _depthColorPad0 slot at offset 200
-    // (4-byte scalar, layout-identical). Twin of f_trixel_to_framebuffer.glsl.
+    // Offset 200. 0 = no per-trixel-priority voxel in this canvas, so the tier
+    // read of triangleEntityIds is skipped; != 0 = read + decode the tier.
     int anyPerTrixelPriority;
-    // Two-tier composite depth partition (#1958): 0 = world content (clamped out
-    // of the reserved near band), != 0 = foreground priority (pinned into it).
+    // Composite depth tier for this draw: 0 = world content (clamped out of the
+    // reserved near band), != 0 = foreground priority (pinned into it).
     int depthPriorityMode;
     int overflowMode;
     int trixelSampleLayout;
@@ -119,9 +117,9 @@ fragment FragmentOut f_trixel_to_framebuffer(
     float4 color = triangleColors.read(sampleCoord);
     const int rawDist = triangleDistances.read(sampleCoord).r;
     // effectiveSubdivisionsForHover.y carries the per-canvas depth rescale
-    // (effSub / cubeSub) for world-placed DETACHED canvases — see
-    // f_trixel_to_framebuffer.glsl (#1624 world-placed depth fix). 0 → 1.0
-    // (the byte-identical world/overlay fast path).
+    // (effSub / cubeSub) for world-placed DETACHED canvases, lifting the
+    // model-frame rawDist into the shared framebuffer depth units before the
+    // world iso-depth offset is added. 0 (world/overlay canvases) → 1.0.
     float depthScale = frameData.effectiveSubdivisionsForHover.y;
     if (depthScale <= 0.0f) depthScale = 1.0f;
     // roundHalfUp, not hardware round(): a fractional depthScale (effSub /
@@ -137,8 +135,8 @@ fragment FragmentOut f_trixel_to_framebuffer(
     const int foregroundCeil = globals.kMinTriangleDistance + kDepthForegroundBandWidth;
     int enc;
     if (tier == 0) {
-        // World content: clamp OUT of the reserved band (no-op for in-budget
-        // content → byte-identical to #1958 master).
+        // World content: clamp OUT of the reserved band (a no-op for in-budget
+        // content).
         enc = max(base + frameData.distanceOffset, foregroundCeil + 1);
     } else {
         // Foreground tier: center the model-frame local iso-depth in the resolved
@@ -162,10 +160,10 @@ fragment FragmentOut f_trixel_to_framebuffer(
     const bool isMouseHovered = all(hoveredIndex == originIndex);
     if (isMouseHovered) {
         if (color.a >= 0.1f && depth <= hovered.hoveredDepth) {
-            // Strip the per-trixel priority carrier so picking reports the true id
-            // (#1960). The hover read uses the shifted hoverCoord (kept in lockstep
+            // Strip the per-trixel priority carrier so picking reports the true
+            // id. The hover read uses the shifted hoverCoord (kept in lockstep
             // with CPU mouseTrixelPositionWorld), distinct from the sampleCoord
-            // tier read above.
+            // tier read.
             const uint2 entityId = decodeEntityId(triangleEntityIds.read(hoverCoord).rg);
             if (any(entityId != uint2(0u))) {
                 hovered.hoveredEntityId = entityId;

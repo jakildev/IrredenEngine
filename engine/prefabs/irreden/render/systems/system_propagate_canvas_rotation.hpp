@@ -12,18 +12,18 @@
 #include <irreden/render/components/component_canvas_local_rotation.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
 
-// PROPAGATE_CANVAS_ROTATION (T-295, Epic C C7) — UPDATE pipeline.
+// PROPAGATE_CANVAS_ROTATION — UPDATE pipeline.
 //
 // Composes the inverse world-camera rotation with each DETACHED entity's
 // `C_LocalTransform` rotation and writes the result onto the per-entity
 // canvas as `C_CanvasLocalRotation`, so the RENDER pipeline's
 // VOXEL_TO_TRIXEL_STAGE_1 bakes the result into the canvas's voxel emit
-// (via IRMath::faceDeformationMatrixSO3, T-295). The camera composition
-// (T-319) cancels the camera basis the world canvas already applies to
+// via IRMath::faceDeformationMatrixSO3. The camera composition
+// cancels the camera basis the world canvas already applies to
 // the composited per-entity canvas, so a DETACHED entity at identity
 // rotation stays stationary in camera-space as the world camera spins
 // — matching GRID-mode behavior. The camera surface is just Z-yaw today;
-// the full SO(3) camera grow (issue #1076) flows in transparently via
+// a full SO(3) camera implementation would flow through
 // `IRPrefab::Camera::getRotationQuat()`.
 //
 // The canvas child carries `C_CanvasLocalRotation` (attached at creation
@@ -77,7 +77,7 @@ template <> struct System<PROPAGATE_CANVAS_ROTATION> {
             // Route the canvas to the re-voxelize render path (cardinal frame
             // data + SYSTEM_REBUILD_DETACHED_VOXELS) vs the forward-scatter deform.
             canvasRotation.value()->reVoxelize_ = reVoxelize;
-            // World placement (#1576 P4b-2 plumbing; default since #1624 —
+            // World placement defaults on;
             // the canvas mirror is the inverse of the owner's screenLocked_
             // opt-out: worldPlaced_ = !screenLocked_, set just below).
             // Mirror the resolved world-placement + the world cell

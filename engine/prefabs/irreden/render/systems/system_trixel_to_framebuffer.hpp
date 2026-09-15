@@ -37,24 +37,24 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     Buffer *frameDataBuf_ = nullptr;
     Buffer *hoveredIdBuf_ = nullptr;
     ShaderProgram *program_ = nullptr;
-    // Smooth camera Z-yaw forward-scatter composite (T3 / #1310). Replaces the
+    // Smooth camera Z-yaw forward-scatter composite. Replaces the
     // single-canvas gather draw on the main canvas while rotating; see
     // drawPerAxisScatter.
     ShaderProgram *scatterProgram_ = nullptr;
     VAO *quadVao_ = nullptr;
 
-    // Smooth camera Z-yaw (T3 / #1310). Re-resolved every frame in beginTick,
+    // Smooth camera Z-yaw state. Re-resolved every frame in beginTick,
     // never held across frames (.claude/rules/cpp-ecs.md). Non-null only on the
     // main world canvas AND only while the per-axis trixel canvases are
     // allocated (camera at a non-cardinal residual yaw). When set, the main
-    // canvas's single trixel→framebuffer draw is replaced by a three-pass depth
-    // composite of the X/Y/Z per-axis canvases (see drawPerAxisScatter). At a
+    // canvas uses a three-pass depth composite of the X/Y/Z per-axis canvases
+    // (see drawPerAxisScatter). At a
     // cardinal these are released, this is null, and the byte-identical
     // single-canvas fast path runs.
     IREntity::EntityId perAxisCanvasEntity_ = IREntity::kNullEntity;
     const C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
 
-    // Per-axis empty-cell compaction (#1961 / #2256) is run in
+    // Per-axis empty-cell compaction is run in
     // VOXEL_TO_TRIXEL_STAGE_1 (right after the per-axis stores) into the
     // component-owned cell buffers, so both the per-axis compute stages and this
     // system's scatter draw over only occupied cells. This system just consumes
@@ -69,10 +69,10 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     // restore never fires.
     Buffer *voxelCompactedBuf_ = nullptr;
     Buffer *voxelIndirectBuf_ = nullptr;
-    // #2333 kill switch (same pattern as the sun-splat one): setting
+    // kill switch (same pattern as the sun-splat one): setting
     // IR_PERAXIS_OVERFLOW_DISABLE in the environment skips the overflow entry
     // draw only — the mask/append dispatches still run but nothing consumes
-    // them, restoring the pre-#2333 rendered output for A/B triage. Resolved
+    // them, restoring the cardinal output for A/B triage. Resolved
     // once in create(); default off.
     bool overflowDrawDisabled_ = false;
 
@@ -81,7 +81,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         const C_TriangleCanvasTextures &triangleCanvasTextures,
         const C_Name &
     ) {
-        // CPU histogram bracket — this system is not observer-tagged (#2281).
+        // CPU histogram bracket — this system is not observer-tagged.
         IR_PROFILE_SCOPE("trixelToFb");
         auto &framebuffer = IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
         auto &frameData = IREntity::getComponent<C_FrameDataTrixelToFramebuffer>("mainFramebuffer");
@@ -111,12 +111,12 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         }
         frameData.frameData_.textureOffset_ = vec2(0);
         frameData.frameData_.distanceOffset_ = 0;
-        // Main world gather is always WORLD content (#1958): the gather clamps it
+        // Main world gather is always WORLD content: the gather clamps it
         // out of the reserved foreground near band (a no-op for in-budget content).
         // Explicit so the persistent mainFramebuffer frame-data (shared with the
         // per-axis scatter path) never carries a stale foreground flag.
         frameData.frameData_.depthPriorityMode_ = 0;
-        // No-priority perf fast-path (#2155): forward this canvas's stamp so the
+        // No-priority perf fast-path: forward this canvas's stamp so the
         // finalization shader skips the per-fragment entity-id decode read when no
         // voxel in the canvas carries a per-trixel priority (still read for hovered
         // fragments; byte-identical output either way).
@@ -141,18 +141,16 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                 (IRRender::isHoveredTrixelVisible() ? 1.0f : 0.0f);
         }
 
-        // Smooth camera Z-yaw composite (T3 / #1310). On the main world canvas
+        // Smooth camera Z-yaw composite. On the main world canvas
         // while rotating, replace the single cardinal-snapped gather draw with
         // the forward-scatter composite of the per-axis (X/Y/Z) canvases T2
-        // (#1309) populated. Each non-empty canvas cell is scattered as its true
+        // populated. Each non-empty canvas cell is scattered as its true
         // deformed face quad into the shared framebuffer depth buffer; the
         // GL_LESS depth test (enabled on framebuffer bind) resolves the nearest
         // face per pixel — that is the composite. The scatter is REPLACE-not-add:
         // the main canvas's cardinal-snapped single-canvas voxels sit at the same
         // world depth as the smooth copies, so drawing both would let depth ties
-        // ghost the snapped layer through. Lighting / AO on the resolved
-        // composite is T4 (#1311); during rotation the composite shows raw voxel
-        // color.
+        // ghost the snapped layer through. Lighting and AO are applied separately.
         if (entity == perAxisCanvasEntity_ && perAxisCanvases_ != nullptr &&
             perAxisCanvases_->isAllocated()) {
             drawPerAxisScatter(
@@ -166,10 +164,8 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             // content (its voxel pass is skipped in VOXEL_TO_TRIXEL_STAGE_1), so
             // the gather composites that content by depth alongside the smooth
             // voxels with no double-draw. SDF stays cardinal-snapped during
-            // rotation — splitting SDF into the per-axis canvases is the
-            // documented follow-up (design doc §Blast radius). Restore the
-            // main-canvas model-projection the scatter overwrote with its
-            // per-axis zoomEff matrix.
+            // rotation. Restore the main-canvas model-projection the scatter
+            // overwrote with its per-axis zoomEff matrix.
             frameData.frameData_.mpMatrix_ = calcProjectionMatrix(framebufferResolution) *
                                              calcModelMatrix(
                                                  framebufferResolution,
@@ -181,7 +177,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         frameData.updateFrameData(frameDataBuf_);
 
         {
-            // Sub-scope (#2281): the single-canvas gather draw only — the
+            // Sub-scope: the single-canvas gather draw only — the
             // per-axis scatter above owns its own row (perAxisScatter).
             GpuSubStageScope gatherScope("trixelToFb");
             triangleCanvasTextures.bind(0, 1, 2);
@@ -195,11 +191,11 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         }
     }
 
-    // Smooth camera Z-yaw forward-scatter composite (Option 4, T3 / #1310;
-    // docs/design/per-axis-trixel-canvas-rotation.md §"Mechanism chosen").
+    // Smooth camera Z-yaw forward-scatter composite. See
+    // docs/design/per-axis-trixel-canvas-rotation.md §"Mechanism chosen".
     //
-    // T2 (#1309) routes each visible voxel face into its axis canvas and
-    // stores ONE cell per face center (atomicMin on the shared world-space
+    // Each visible voxel face is routed into its axis canvas and stores one cell
+    // per face center (atomicMin on the shared world-space
     // `pos3DtoDistance`, so each non-empty cell is the occlusion winner on its
     // view ray). This pass forward-scatters each non-empty cell as its true
     // deformed face quad: instanced over the canvas grid (one instance per
@@ -209,7 +205,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     // (the index is un-yawed) — then projects the four cube-face
     // corners with pos3DtoPos2DIsoYawed (which IS P(θ)·corner, the deform
     // implicit). The framebuffer GL_LESS depth test (enabled on bind) composites
-    // the three canvases per pixel. No gather / parity inverse ⇒ the #1256
+    // the three canvases per pixel. No gather / parity inverse ⇒ the
     // stripe class cannot occur. Cardinal residualYaw==0 keeps the byte-
     // identical single-canvas gather (this path is taken only while rotating).
     //
@@ -221,24 +217,21 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     // main-canvas texel. The vertex shader uses the same canvas→clip mapping
     // the gather did, so the scatter lands at the same scale/position.
     //
-    // v1 cost: instances over all size.x·size.y cells, degenerating empties in
-    // the vertex shader. The compaction follow-up (compute pre-pass appending
-    // non-empty cell indices + indirect draw args) is scoped in the design doc
-    // if the perf gate flags the empty-cell sweep. Picking during rotation
-    // (winning entity-id from the composite) is also a follow-up — the gather
-    // fast path still resolves it at every cardinal.
+    // The draw uses the compacted non-empty cell indices and indirect draw args.
+    // Picking during rotation remains disabled; the gather path resolves it at
+    // every cardinal.
     void drawPerAxisScatter(
         C_FrameDataTrixelToFramebuffer &frameData,
         const C_PerAxisTrixelCanvases &axes,
         const ivec2 mainCanvasSize,
         const vec2 framebufferResolution
     ) {
-        // #1458 stores the per-axis face-local lattice at BASE (world-unit)
-        // resolution — camera zoom is no longer baked into the lattice, so the
+        // stores the per-axis face-local lattice at BASE (world-unit)
+        // resolution. Camera zoom is not baked into the lattice, so the
         // scatter's screen scale is the FULL camera zoom. canvasZoomLevel_ has
         // effSub divided out (for the subdivided cardinal canvas the gather
         // reads); multiply it back, then rescale component-wise for the larger
-        // per-axis texture extent. The pre-#1458 effSub/cappedDensity rescale
+        // per-axis texture extent. The effSub/cappedDensity rescale
         // assumed a density-scaled lattice; against the base-resolution store
         // it cancelled zoom entirely — zooming while rotated shrank the cull
         // viewport (crop) without magnifying content.
@@ -255,17 +248,17 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         const auto cardinalIndex =
             IRMath::rasterYawCardinalIndex(IRPrefab::Camera::computeYawSplit(visualYaw).first);
         const auto visibleFaces = IRMath::visibleFaceTripletCardinal(cardinalIndex);
-        // Whole-iso base anchor (#1944). The per-axis canvases are BASE-resolution
-        // (#1458), so the camera-pan anchor is the WHOLE-iso camera offset
+        // Whole-iso base anchor. The per-axis canvases are base-resolution, so
+        // the camera-pan anchor is the whole-iso camera offset
         // `floor(cameraIso)` — exactly the cardinal path's anchor — NOT scaled by
         // the subdivision density (the density-scaled anchor was vestigial since
-        // #1458 made the content base-resolution).
+        // made the content base-resolution).
         const vec2 cameraIso = IRRender::getEffectiveCameraIso();
         const vec2 anchorFloor = IRMath::floor(cameraIso);
         frameData.frameData_.perAxisBase_ =
             IRMath::trixelOriginOffsetZ1(axes.size_) + ivec2(anchorFloor);
 
-        // Sub-cell camera pan (#1944 — the jitter fix). The anchor above places
+        // Sub-cell camera pan. The anchor above places
         // content in WHOLE canvas cells; the remaining fraction must move the
         // scatter CONTINUOUSLY at the SAME screen scale as one anchor cell, or the
         // two disagree at every cell boundary and the scene snaps back ~1 cell per
@@ -306,45 +299,45 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             0
         );
         frameData.frameData_.distanceOffset_ = 0;
-        // Subdivided composite-depth scale (#1884 high-zoom fix). The per-axis
-        // store is BASE-resolution (#1458: rawDist>>10 = world units), but the SDF
+        // Subdivided composite-depth scale. The per-axis
+        // store is BASE-resolution (rawDist>>10 = world units), but the SDF
         // floor + cardinal voxel gather encode depth SUBDIVIDED (worldDepth×effSub).
         // At high zoom the floor's depth out-scaled the base scatter ~effSub× and
         // clipped the voxels into the floor. Carry effSub in effectiveSubdivisions-
         // ForHover_.x so the scatter (v_peraxis_scatter) lifts its iso-depth to the
-        // same subdivided magnitude. The store + the #1458 frac bits keep the
+        // same subdivided magnitude. The store + the frac bits keep the
         // recovered worldCorner sub-cell-exact, so the scale-up preserves precision.
         // The .y stays 0 → the fall-through gather clamps its depthScale to 1
         // (unchanged main-canvas path); .x only feeds hover, which is gated off here.
         frameData.frameData_.effectiveSubdivisionsForHover_ =
             vec2(static_cast<float>(effSub), 0.0f);
         // Conservative-coverage dilation needs the framebuffer extent the ortho
-        // mpMatrix maps into, to convert a pixel margin to NDC (#1494).
+        // mpMatrix maps into, to convert a pixel margin to NDC.
         frameData.frameData_.scatterFbResolution_ = vec4(framebufferResolution, 0.0f, 0.0f);
-        // Per-pixel depth-color debug (#1697): evaluate hue from interpolated
+        // Per-pixel depth-color debug: evaluate hue from interpolated
         // face-corner world depth in the fragment shader instead of pre-baked
         // per-voxel vColor, eliminating the 4/3-band moiré at non-cardinal yaw.
         frameData.frameData_.depthColorMode_ = IRRender::getDepthColorDebugMode() ? 1 : 0;
         frameData.frameData_.depthColorExtent_ = IRRender::getDepthColorDebugExtent();
-        // Composite instrumentation (#1457): the scatter shaders false-color by
+        // Composite instrumentation: the scatter shaders false-color by
         // winning axis canvas / recovered origin when the matching overlay mode
         // is active. Depth is untouched, so the visualized winner per pixel is
         // exactly the real composite's winner.
         frameData.frameData_.scatterDebugMode_ = static_cast<int>(IRRender::getDebugOverlay());
         frameData.updateFrameData(frameDataBuf_);
 
-        // Sub-scope (#2281): the 3 per-axis instanced scatter draws + the
+        // Sub-scope: the 3 per-axis instanced scatter draws + the
         // overflow-entry draw — the rotating-only composite work, separated
         // from the fall-through gather's trixelToFb row.
         GpuSubStageScope scatterScope("perAxisScatter");
         scatterProgram_->use();
         IRRender::device()->setPolygonMode(PolygonMode::FILL);
-        // #1961: instance over only the compacted occupied cells (filled by the
+        // instance over only the compacted occupied cells (filled by the
         // beginTick compaction pre-pass) via an indirect draw whose instance
         // count is the GPU-written occupied-cell count — instead of the full
         // worst-case grid (axes.size_.x * axes.size_.y, mostly empty). Each axis
         // binds its own compacted-list region + indirect-args struct.
-        // #1961 / #2256: the per-axis compaction (now run in VOXEL_TO_TRIXEL_STAGE_1
+        // the per-axis compaction (now run in VOXEL_TO_TRIXEL_STAGE_1
         // right after the per-axis stores) filled the component-owned cell buffers
         // this frame. Instance over only the occupied cells via the per-axis
         // indirect draw; recompute the region stride from the axis size the same
@@ -371,10 +364,10 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             );
         }
 
-        // View-visibility overflow lane (#2333): one indirect instanced draw
+        // View-visibility overflow lane: one indirect instanced draw
         // over the entries VOXEL_TO_TRIXEL_STAGE_1's mode-3 dispatch appended —
-        // the view-visible faces the cardinal-keyed store dropped (albedo-only
-        // in this child; lighting is #2334). The entry region of the unified
+        // the view-visible faces the cardinal-keyed store dropped. Entries are
+        // albedo-only here; LIGHTING_TO_TRIXEL applies lighting. The unified
         // resolve scratch rides binding 25 (the same transient reuse as the
         // cell lists above) and the ctrl block doubles as the draw args, with
         // instanceCount GPU-authored — an empty list draws zero instances for
@@ -401,13 +394,13 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             );
             frameData.frameData_.overflowMode_ = 0;
         }
-        // Restore slots 25/26 to the voxel-compaction buffers (#1961). The cell
+        // Restore slots 25/26 to the voxel-compaction buffers. The cell
         // compaction + the per-axis bindRange above leave 25/26 pointing at the
         // cell buffers; the next frame's VOXEL_TO_TRIXEL_STAGE_1 single-canvas
         // compact relies on those slots still holding its own buffers (it binds
         // them once at create() + sticky thereafter), so a leak here re-reads the
         // cell list as the voxel list and corrupts the world voxels the following
-        // frame (the #1961 center-cube regression).
+        // frame (the center-cube regression).
         restoreVoxelCompactionSlots();
         // Restore the gather program for any subsequent canvas's single-canvas
         // tick (background / gui / overlays draw after the main canvas).
@@ -415,7 +408,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     }
 
     // Rebind slots 25/26 to VOXEL_TO_TRIXEL_STAGE_1's compaction buffers after the
-    // cell compaction borrowed them (#1961). Looked up lazily by name (see the
+    // cell compaction borrowed them. Looked up lazily by name (see the
     // voxel*Buf_ field comment); a no-op if the voxel system isn't registered.
     void restoreVoxelCompactionSlots() {
         IRPrefab::PerAxisCanvas::restoreVoxelCompactionSlots(voxelCompactedBuf_, voxelIndirectBuf_);
@@ -427,7 +420,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
 
         // Resolve the main canvas's per-axis trixel canvases once per frame for
         // the per-entity tick to consume without a getComponent on its own
-        // iterating canvas (#1310). Re-resolved every frame; never held across
+        // iterating canvas. Re-resolved every frame; never held across
         // frames. Null unless the main canvas has the component AND it is
         // currently allocated (camera rotating) — VOXEL_TO_TRIXEL_STAGE_1's
         // beginTick already ran the per-frame allocate/release sync, so the
@@ -458,7 +451,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                 ShaderStage{IRRender::kFileFragTrixelToFramebuffer, ShaderType::FRAGMENT}
             }
         );
-        // Smooth camera Z-yaw forward-scatter composite (T3 / #1310) — see
+        // Smooth camera Z-yaw forward-scatter composite — see
         // drawPerAxisScatter. Instanced over the per-axis canvas grid.
         IRRender::createNamedResource<ShaderProgram>(
             "PerAxisScatterProgram",
@@ -502,7 +495,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         sys->scatterProgram_ = IRRender::getNamedResource<ShaderProgram>("PerAxisScatterProgram");
         sys->quadVao_ = IRRender::getNamedResource<VAO>("QuadVAO");
         sys->overflowDrawDisabled_ = std::getenv("IR_PERAXIS_OVERFLOW_DISABLE") != nullptr;
-        // NOT observer-tagged: the tick owns GpuSubStageScopes (#2281), which
+        // NOT observer-tagged: the tick owns GpuSubStageScopes, which
         // reuse the observer's timestamp attachment slot.
         return id;
     }
