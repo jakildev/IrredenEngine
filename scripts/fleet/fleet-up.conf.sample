@@ -386,6 +386,7 @@
 # FLEET_RUNTIMES="claude,codex"
 # FLEET_CROSS_PROVIDER_REVIEW=1
 # FLEET_WORKER_RUNTIME="balanced"
+# The same policy elects target-less merger and epic-steward launches.
 # Model classes remain provider-neutral scheduling/capacity classes.
 # FLEET_CODEX_MODEL_FABLE="gpt-6-astra"
 # FLEET_CODEX_MODEL_OPUS="gpt-5.6-sol"

@@ -19,6 +19,50 @@ import fleet_runtime as runtime
 
 
 class Routing(unittest.TestCase):
+    def test_targetless_role_routing(self):
+        cases = (
+            ({}, "merger", "sonnet", "sonnet", "high", "open",
+             ("claude", "sonnet", "sonnet", "high")),
+            ({}, "merger", "sonnet", "sonnet", "high", "closed",
+             ("codex", "sonnet", "gpt-5.6-terra", "medium")),
+            ({}, "epic-steward", "opus", "opus", "xhigh", "closed",
+             ("codex", "opus", "gpt-5.6-sol", "medium")),
+            ({"FLEET_CODEX_EFFORT_SONNET": "high"}, "merger", "sonnet", "sonnet",
+             "high", "closed", ("codex", "sonnet", "gpt-5.6-terra", "high")),
+            ({"FLEET_WORKER_RUNTIME": "claude"}, "merger", "sonnet", "sonnet",
+             "high", "closed", ("claude", "sonnet", "sonnet", "high")),
+            ({"FLEET_WORKER_RUNTIME": "codex"}, "merger", "sonnet", "sonnet",
+             "high", "open", ("codex", "sonnet", "gpt-5.6-terra", "medium")),
+            ({"FLEET_RUNTIMES": "claude"}, "merger", "sonnet", "sonnet", "high",
+             "closed", ("claude", "sonnet", "sonnet", "high")),
+            ({"FLEET_RUNTIMES": "codex"}, "merger", "sonnet", "sonnet", "high",
+             "open", ("codex", "sonnet", "gpt-5.6-terra", "medium")),
+        )
+        for overrides, role, cls, model, effort, gate, expected in cases:
+            with self.subTest(role=role, gate=gate, overrides=overrides):
+                env = {**self.env, **overrides}
+                self.assertEqual(runtime.route_role(role, cls, model, effort, gate, env),
+                                 expected)
+
+        with self.assertRaisesRegex(ValueError, "unavailable"):
+            runtime.route_role("merger", "sonnet", "sonnet", "high", "closed",
+                               {"FLEET_RUNTIMES": "codex",
+                                "FLEET_WORKER_RUNTIME": "claude"})
+        with self.assertRaisesRegex(ValueError, "target-less"):
+            runtime.route_role("worker", "sonnet", "sonnet", "high", "closed", self.env)
+        with self.assertRaisesRegex(ValueError, "class"):
+            runtime.route_role("merger", "unknown", "sonnet", "high", "closed", self.env)
+
+    def test_targetless_role_executable(self):
+        wrapper = Path(__file__).resolve().parents[1] / "fleet-runtime"
+        bash = shutil.which("bash") or "bash"
+        env = {**runtime.os.environ, **self.env}
+        result = subprocess.run([bash, str(wrapper), "route-role", "merger", "sonnet",
+                                 "sonnet", "high", "closed"], env=env,
+                                capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "codex sonnet gpt-5.6-terra medium")
+
     def test_route_diagnostic_escalates_reappears_and_clears(self):
         with tempfile.TemporaryDirectory() as temp:
             state = Path(temp) / "state"

@@ -2763,6 +2763,8 @@ dispatch_role() {
     # serve (free panes fall through to the lane default and exhaust), so
     # the trigger must outlive the tick instead of being consumed below.
     local reserved_held=""
+    local batch_route_checked=0 batch_claude_gate=""
+    local batch_runtime="" batch_class="" batch_model="" batch_effort=""
     PICKS_CACHE_KEY=""
     CLAIM_ATTEMPTS_LEFT=$CLAIM_ATTEMPTS_PER_TICK
     while IFS= read -r pane_id; do
@@ -2869,8 +2871,36 @@ dispatch_role() {
                 fi
             fi
         fi
+        if [[ -z "${ASSIGN_RUNTIME:-}" && -z "${ROLE_TARGET_BOUND[$role]+x}" \
+            && "${FLEET_RUNTIMES:-claude}" == *codex* ]]; then
+            if (( ! batch_route_checked )); then
+                local batch_route
+                batch_claude_gate="closed"
+                [[ "$(usage_gate_status claude)" == open* ]] && batch_claude_gate="open"
+                batch_route=$(python3 "$FLEET_LIB_DIR/fleet_runtime.py" route-role \
+                    "$role" "$(class_of_model "${ROLE_MODEL[$role]}")" \
+                    "${ROLE_MODEL[$role]}" "${ROLE_EFFORT[$role]}" "$batch_claude_gate") || {
+                        ASSIGN_BLOCK_REASON="route-failed"; assign_budget_hit=1; break;
+                    }
+                batch_route="${batch_route//$'\r'/}"
+                read -r batch_runtime batch_class batch_model batch_effort <<< "$batch_route"
+                batch_route_checked=1
+            fi
+            if [[ "$batch_runtime" == codex ]]; then
+                command -v codex >/dev/null 2>&1 || {
+                    ASSIGN_BLOCK_REASON="codex-unavailable"; assign_budget_hit=1; break;
+                }
+                python3 "$FLEET_LIB_DIR/fleet_runtime.py" ready "$STATE_DIR" || {
+                    ASSIGN_BLOCK_REASON="codex-cooldown"; assign_budget_hit=1; break;
+                }
+                ASSIGN_RUNTIME="$batch_runtime" ASSIGN_CLASS="$batch_class"
+                ASSIGN_MODEL="$batch_model" ASSIGN_EFFORT="$batch_effort"
+            fi
+        fi
         if [[ -z "${ASSIGN_RUNTIME:-}" && "${FLEET_RUNTIMES:-claude}" == *codex* ]]; then
-            [[ "$(usage_gate_status claude)" == open* ]] || {
+            local claude_gate_now="${batch_claude_gate:-}"
+            [[ -n "$claude_gate_now" ]] || claude_gate_now=$(usage_gate_status claude)
+            [[ "$claude_gate_now" == open* ]] || {
                 ASSIGN_BLOCK_REASON="claude-quota-closed"; assign_budget_hit=1; break;
             }
         fi

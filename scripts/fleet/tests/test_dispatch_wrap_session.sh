@@ -112,6 +112,16 @@ cat > "$BIN/tmux" <<'EOF'
 #!/usr/bin/env bash
 exit 0
 EOF
+cat > "$BIN/fleet-gh-token" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+cat > "$BIN/fleet-runtime" <<'EOF'
+#!/usr/bin/env bash
+[[ "${1:-}" == ready ]] || exit 99
+[[ -n "${STUB_CODEX_COOLDOWN:-}" ]] && exit 1
+exit 0
+EOF
 chmod +x "$BIN"/*
 export PATH="$BIN:$PATH"
 
@@ -425,5 +435,39 @@ run_wrap sonnet high queue-manager >/dev/null
 python3 -c "import json,sys;d=json.load(open(sys.argv[1]));assert d['wrapper_pid'] > 0 and d['sentinel'] == 'kept'" \
   "$FLEET_STATE_DIR/dispatch/pane-3.json" 2>/dev/null \
   && ok "wrapper PID stamped without losing record fields" || bad "wrapper PID missing or record fields changed"
+
+echo "T18: target-less Codex failures re-arm batch roles"
+BATCH_RUNTIME="$TMPROOT/batch-runtime"
+BATCH_WT="$TMPROOT/batch-worktree"
+mkdir -p "$BATCH_RUNTIME" "$BATCH_WT" "$FLEET_STATE_DIR/runtime-cooldown" \
+  "$FLEET_STATE_DIR/triggers"
+cp "$WRAP" "$BATCH_RUNTIME/fleet-dispatch-wrap"
+cat > "$BATCH_RUNTIME/fleet_codex.py" <<'PYEOF'
+import json
+import os
+import sys
+import time
+from pathlib import Path
+
+if os.environ.get("STUB_CODEX_COOLDOWN"):
+    path = Path(os.environ["FLEET_STATE_DIR"]) / "runtime-cooldown/codex.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"until": int(time.time()) + 900}) + "\n")
+sys.exit(int(os.environ.get("STUB_CODEX_RC", "0")))
+PYEOF
+rm -f "$FLEET_STATE_DIR/triggers/merger"
+( cd "$BATCH_WT" && STUB_CODEX_RC=2 STUB_CODEX_COOLDOWN=1 \
+    "$BATCH_RUNTIME/fleet-dispatch-wrap" pane-8 gpt-5.6-terra medium merger "" live \
+    target= codex sonnet >/dev/null 2>>"$TMPROOT/stderr.log" ) || true
+[[ -f "$FLEET_STATE_DIR/triggers/merger" ]] \
+  && ok "Codex preflight/cooldown exit re-armed merger" \
+  || bad "Codex preflight/cooldown exit lost the merger trigger"
+rm -f "$FLEET_STATE_DIR/triggers/merger" "$FLEET_STATE_DIR/runtime-cooldown/codex.json"
+( cd "$BATCH_WT" && STUB_CODEX_RC=0 \
+    "$BATCH_RUNTIME/fleet-dispatch-wrap" pane-8 gpt-5.6-terra medium merger "" live \
+    target= codex sonnet >/dev/null 2>>"$TMPROOT/stderr.log" )
+[[ ! -f "$FLEET_STATE_DIR/triggers/merger" ]] \
+  && ok "clean Codex batch exit does not re-arm" \
+  || bad "clean Codex batch exit wrote a trigger"
 
 summarize "fleet-dispatch-wrap session tests"

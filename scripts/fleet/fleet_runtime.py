@@ -13,6 +13,7 @@ from pathlib import Path
 
 RUNTIMES = ("claude", "codex")
 CODEX_MODELS = {"fable": "gpt-6-astra", "opus": "gpt-5.6-sol", "sonnet": "gpt-5.6-terra"}
+BATCH_ROLES = ("merger", "epic-steward")
 ROLE_CLASSES = {"sonnet-reviewer": "sonnet", "opus-reviewer": "opus", "smoke-worker": "sonnet"}
 TARGET_RECORDS = {
     "task": ("tasks_open",), "stack": ("tasks_open",),
@@ -106,24 +107,48 @@ def choose_runtime(kind, record, target, env):
     return chosen
 
 
-def route(data, target, role, cls, model, effort, env):
-    kind, record = target_record(data, target)
-    runtime = choose_runtime(kind, record, target, env)
-    cls = cls or ROLE_CLASSES.get(role, "opus")
+def resolve_assignment(runtime, role, cls, model, effort, env, explicit_effort=None):
     if cls not in CODEX_MODELS:
         raise ValueError("unknown queue class")
     if runtime == "codex":
         model = env.get(f"FLEET_CODEX_MODEL_{cls.upper()}", CODEX_MODELS[cls])
-        explicit = record.get("effort")
-        effort = explicit or env.get(f"FLEET_CODEX_EFFORT_{cls.upper()}",
-                                    "xhigh" if cls == "fable" else "medium")
-        if role == "opus-reviewer" and not explicit:
+        effort = explicit_effort or env.get(f"FLEET_CODEX_EFFORT_{cls.upper()}",
+                                            "xhigh" if cls == "fable" else "medium")
+        if role == "opus-reviewer" and not explicit_effort:
             effort = env.get("FLEET_CODEX_EFFORT_REVIEW", "high")
     if not re.fullmatch(r"[a-zA-Z0-9_.:/\[\]-]+", model):
         raise ValueError("invalid model identifier")
     if effort not in ("low", "medium", "high", "xhigh", "max"):
         raise ValueError("unsupported reasoning effort")
     return runtime, cls, model, effort
+
+
+def route(data, target, role, cls, model, effort, env):
+    kind, record = target_record(data, target)
+    runtime = choose_runtime(kind, record, target, env)
+    cls = cls or ROLE_CLASSES.get(role, "opus")
+    return resolve_assignment(runtime, role, cls, model, effort, env, record.get("effort"))
+
+
+def route_role(role, cls, model, effort, claude_gate, env):
+    if role not in BATCH_ROLES:
+        raise ValueError("unknown target-less role")
+    if claude_gate not in ("open", "closed"):
+        raise ValueError("Claude gate must be open or closed")
+    available = sorted({x.strip() for x in env.get("FLEET_RUNTIMES", "claude").split(",")})
+    if not available or any(x not in RUNTIMES for x in available):
+        raise ValueError("FLEET_RUNTIMES must contain claude and/or codex")
+    policy = env.get("FLEET_WORKER_RUNTIME", "balanced")
+    if policy in RUNTIMES:
+        runtime = policy
+    elif policy == "balanced":
+        runtime = "codex" if "codex" in available and (
+            "claude" not in available or claude_gate == "closed") else "claude"
+    else:
+        raise ValueError("FLEET_WORKER_RUNTIME must be balanced, claude, or codex")
+    if runtime not in available:
+        raise ValueError(f"required runtime {runtime} unavailable on this host")
+    return resolve_assignment(runtime, role, cls, model, effort, env)
 
 
 def stamp(pr, repo, runtime):
@@ -172,6 +197,9 @@ def main(argv=None):
     p = subs.add_parser("route")
     for name in ("slice", "target", "role", "cls", "model", "effort"):
         p.add_argument(name)
+    p = subs.add_parser("route-role", help="select a provider for a target-less batch role")
+    for name in ("role", "cls", "model", "effort", "claude_gate"):
+        p.add_argument(name)
     p = subs.add_parser("stamp", help="record the provider that last authored this PR")
     p.add_argument("pr")
     p.add_argument("--repo", required=True)
@@ -184,7 +212,8 @@ def main(argv=None):
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(newline="\n")
     state = os.environ.get("FLEET_STATE_DIR")
-    key = args.command + ":" + getattr(args, "target", getattr(args, "sidecar", ""))
+    key_subject = getattr(args, "target", getattr(args, "sidecar", getattr(args, "role", "")))
+    key = args.command + ":" + key_subject
     try:
         if args.command == "resume-route":
             result = resume_route(args.sidecar, os.environ)
@@ -198,6 +227,12 @@ def main(argv=None):
             return 0 if ready(args.state) else 1
         if args.command == "stamp":
             stamp(args.pr, args.repo, args.runtime)
+        elif args.command == "route-role":
+            result = route_role(args.role, args.cls, args.model, args.effort,
+                                args.claude_gate, os.environ)
+            if state:
+                routing_problem(state, key)
+            print(" ".join(result))
         else:
             data = json.loads(Path(args.slice).read_text())
             result = route(data, args.target, args.role, args.cls,
@@ -206,7 +241,7 @@ def main(argv=None):
                 routing_problem(state, key)
             print(" ".join(result))
     except (ValueError, OSError, subprocess.SubprocessError) as exc:
-        if state and args.command in ("route", "resume-route"):
+        if state and args.command in ("route", "route-role", "resume-route"):
             try:
                 routing_problem(state, key, str(exc))
             except (OSError, ValueError):
