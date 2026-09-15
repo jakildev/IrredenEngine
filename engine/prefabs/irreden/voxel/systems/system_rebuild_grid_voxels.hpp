@@ -15,7 +15,7 @@
 // `roundHalfUp(R⁻¹·c)` into a per-set source occupancy grid, and author
 // position + color + active per covered cell into the set's pool span.
 // Forward scatter (one authored voxel → `roundHalfUp(R·p)`) is not
-// surjective onto the covered dest cells — mid-rotation it left up to ~29%
+// surjective onto the covered dest cells — mid-rotation it leaves up to ~29%
 // of a solid 12³ uncovered (row/strip holes).
 //
 // Span contract, measured across full spins:
@@ -222,7 +222,7 @@ template <> struct System<REBUILD_GRID_VOXELS> {
     // set arriving FROM a rotated pose additionally restores its authored
     // span from the snapshot (then clears it — see the component header)
     // and queues the restored positions for upload: the steady-state
-    // identity frames after that queue nothing, exactly like master.
+    // identity frames after that queue nothing.
     void identityArm(
         C_VoxelSetNew &voxelSet,
         const C_WorldTransform &worldTransform,
@@ -500,9 +500,9 @@ template <> struct System<REBUILD_GRID_VOXELS> {
                 static_cast<std::uint8_t>(out.flags_ & ~VoxelFlags::kFaceOccludedMask) | face;
             // Mark this as a rotated re-voxelize cell so the voxel→trixel raster
             // emits the silhouette riser the convex visible-triplet drops on the
-            // staircase's grazing edge (the gap fix). Non-rotated sets never reach
-            // this arm, so their reserved_ bit stays 0 and the strict-triplet fast
-            // path is byte-identical.
+            // staircase's grazing edge. Non-rotated sets never reach this arm, so
+            // their reserved_ bit stays 0 and the strict-triplet fast path is
+            // byte-identical.
             out.reserved_ |= VoxelReserved::kRotatedEmit;
             poolColors[slot] = out;
             ++written;
@@ -604,17 +604,16 @@ template <> struct System<REBUILD_GRID_VOXELS> {
 // twice, and an entity that gains or loses the component (`setMode`) migrates
 // archetypes and switches arms on its own — no special handling.
 //
-// Composition, not a refactor of the hot body: this spec owns a
-// `System<REBUILD_GRID_VOXELS>` instance and delegates, so the inverse /
-// identity / forward arms and all of their reused scratch capacity stay in
-// exactly one place. The delegate's scratch is per-instance, so the two
-// systems never share buffers.
+// This spec owns a `System<REBUILD_GRID_VOXELS>` instance and delegates, so
+// the inverse / identity / forward arms and all of their reused scratch
+// capacity stay in exactly one place. The delegate's scratch is per-instance,
+// so the two systems never share buffers.
 //
-// The sibling include/exclude twin in the tree (MODIFIER_RESOLVE_GLOBAL /
-// MODIFIER_RESOLVE_EXEMPT) instead shares its body through a `detail::` free
-// function. That shape fits a pure compose step; it does not fit here,
-// because the GRID body carries a dozen pieces of reused per-frame scratch —
-// hoisting them into a shared struct just reinvents `System<N>`.
+// The `detail::` free-function shape the sibling include/exclude twin
+// (MODIFIER_RESOLVE_GLOBAL / MODIFIER_RESOLVE_EXEMPT) shares its body through
+// fits a pure compose step; it does not fit here, because the GRID body
+// carries a dozen pieces of reused per-frame scratch — hoisting them into a
+// shared struct just reinvents `System<N>`.
 //
 // Cost: a component-less set pays the same cull-gated per-frame re-rasterize
 // as an explicit `C_RotationMode{GRID}` set, and the identity arm's

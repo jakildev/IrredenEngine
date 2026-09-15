@@ -37,8 +37,8 @@
 //
 // ## Severance leaves holes, not shifts
 //
-// `IRPrefab::Skeleton::severJoint(rigRoot, joint)` (future ticket — declared
-// on the design side, not implemented here) removes the CHILD_OF relation
+// `IRPrefab::Skeleton::severJoint(rigRoot, joint)` (designed, not
+// implemented) removes the CHILD_OF relation
 // between `joint` and `rigRoot`, walks descendants (also C_Joint, also
 // orphaned), and bakes the world position of each voxel skinned to a
 // severed bone into a new free-flying C_VoxelSetNew. The slot in
@@ -59,7 +59,7 @@
 // the JNTS rest chain — NOT the `.rig` BIND chunk, which stores named
 // attachment points (`C_BindPoints`) unrelated to per-joint skinning despite
 // the chunk name. The slot order matches `joints_`, so a kNullEntity severance
-// hole keeps its (now-unused) bind slot.
+// hole keeps its unused bind slot.
 
 #include <irreden/entity/ir_entity_types.hpp>
 #include <irreden/ir_math.hpp>

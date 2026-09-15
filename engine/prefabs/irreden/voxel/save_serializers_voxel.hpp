@@ -62,8 +62,8 @@ template <> struct SaveSerialize<IRComponents::C_Skeleton> {
 
 /// `points_` is an `unordered_map`, whose iteration order is not a contract —
 /// writing it in hash order would make two saves of the same world differ
-/// byte-for-byte. `writeSortedStringMap` emits ascending key order so the
-/// double-save byte-identity requirement (world-snapshot criterion 6) holds.
+/// byte-for-byte. `writeSortedStringMap` emits ascending key order so two
+/// saves of the same world are byte-identical.
 template <> struct SaveSerialize<IRComponents::C_BindPoints> {
     static void write(IRAsset::BinaryWriter &w, const IRComponents::C_BindPoints &value) {
         detail::writeSortedStringMap(w, value.points_);

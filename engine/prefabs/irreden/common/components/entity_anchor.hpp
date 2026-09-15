@@ -13,12 +13,12 @@
 // offsets — anchoring is a property of how geometry attaches to the position,
 // not something each consumer re-derives.
 //
-// Adoption is per-prefab opt-in:
-//   - New discrete-entity prefabs anchor GROUND.
-//   - Terrain-like / corner-authored content stays CORNER.
-//   - CENTER is the legacy `centerAroundOrigin = true` spelling.
-// Flipping existing content is a deliberate per-prefab change, never implicit
-// — the two legacy modes keep byte-identical placement.
+// Adoption is per-prefab:
+//   - Discrete-entity prefabs anchor GROUND.
+//   - Terrain-like / corner-authored content is CORNER.
+//   - CENTER is the `centerAroundOrigin = true` spelling.
+// Changing a prefab's anchor is a deliberate per-prefab change, never
+// implicit.
 //
 // The offsets below are baked into a set's local voxel positions at
 // construction time (`C_VoxelSetNew`), so every downstream path — grid
@@ -46,10 +46,10 @@ namespace IRComponents {
 // validator honest without each call site re-hard-coding the latest
 // sentinel. Pattern is documented in `.claude/rules/cpp-lua-enums.md`.
 enum class EntityAnchor : std::uint8_t {
-    // Legacy default: geometry extends +x/+y/+z from the translation, so the
+    // Default: geometry extends +x/+y/+z from the translation, so the
     // translation is the set's minimum corner.
     CORNER = 0,
-    // Legacy `centerAroundOrigin = true`: centered on all three axes.
+    // `centerAroundOrigin = true`: centered on all three axes.
     CENTER = 1,
     // Center XY, bottom Z. Cell faces span
     // [-sx/2, +sx/2) x [-sy/2, +sy/2) x [-sz, 0) relative to the translation,
@@ -67,9 +67,9 @@ enum class EntityAnchor : std::uint8_t {
 // GROUND's z term is `-(size.z - 0.5)`, not `-(size.z - 1) * 0.5`: it puts the
 // LAST cell's far face at z == 0 rather than centering the body. That makes
 // the z origin half-integer for EVERY size, unlike CENTER where it depends on
-// the axis's parity. The grid path already handles half-integer local origins
-// ubiquitously (every even-size CENTER set has them), so this exercises no new
-// rounding behavior there — but see the header note about the detached path.
+// the axis's parity. The grid path handles half-integer local origins
+// (every even-size CENTER set has them); the detached path does not support
+// GROUND.
 constexpr IRMath::vec3 anchorOffset(EntityAnchor anchor, IRMath::ivec3 size) {
     switch (anchor) {
     case EntityAnchor::CENTER:

@@ -41,8 +41,8 @@ struct ContactPair {
 // Its existence is the opt-in switch: the dispatch system creates the
 // singleton in `create()`, so a creation that does NOT register the
 // dispatcher leaves it absent and the producer skips pair emission entirely
-// (`singletonOrNull` returns nullptr) — existing COLLISION_NOTE_PLATFORM users
-// (the music demo) pay nothing.
+// (`singletonOrNull` returns nullptr) — a COLLISION_NOTE_PLATFORM user
+// without the dispatcher pays nothing.
 struct C_OverlapContactBatch {
     std::vector<ContactPair> pairs_;
 };

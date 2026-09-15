@@ -1,9 +1,7 @@
 #ifndef COMPONENT_JOINT_HIERARCHY_H
 #define COMPONENT_JOINT_HIERARCHY_H
 
-// DEPRECATED — superseded by the entity-based joint model.
-//
-// New rigs use:
+// DEPRECATED — rigs use the entity-based joint model:
 //   - `C_Skeleton` (rig root, holds an ordered vector of joint EntityIds).
 //     See `component_skeleton.hpp`.
 //   - `C_Joint` tag on each joint entity. See `component_joint.hpp`.
@@ -17,8 +15,8 @@
 // CHILD_OF chain to produce world transforms. See
 // `engine/prefabs/irreden/voxel/CLAUDE.md` "Entity-based joints".
 //
-// This header is a deprecation shim that keeps existing callers compiling.
-// Do not add new code that depends on it.
+// This header is a deprecation shim for its remaining callers. Do not add
+// code that depends on it.
 
 #include <irreden/ir_math.hpp>
 

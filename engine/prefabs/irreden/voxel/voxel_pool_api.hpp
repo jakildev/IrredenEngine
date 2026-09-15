@@ -3,14 +3,11 @@
 
 // Prefab-scoped façade over the render-side voxel pool API.
 //
-// Lets pool-owning components (notably `C_VoxelSetNew`) drop their direct
-// `<irreden/ir_render.hpp>` and `<irreden/render/texture.hpp>` includes —
-// the call surface they need (allocate / deallocate / active canvas lookup)
-// is re-exposed here under `IRPrefab::VoxelPool::*` so the public component
-// header stays render-neutral. Implementation forwarders are inline and
-// route into `IRRender::*` directly, preserving the existing performance
-// contract from `C_VoxelPool::allocateVoxels` (single canvas-map lookup,
-// no virtual indirection, no per-call hash beyond what's already there).
+// Pool-owning components (notably `C_VoxelSetNew`) reach the pool through
+// `IRPrefab::VoxelPool::*` instead of `<irreden/ir_render.hpp>` /
+// `<irreden/render/texture.hpp>`, so the public component header stays
+// render-neutral. The forwarders are inline and route into `IRRender::*`
+// directly: one canvas-map lookup per call, no virtual indirection.
 //
 // `engine/script/` consumers (prefab_api.cpp et al.) transitively include
 // this header through component_voxel_set.hpp; keeping
