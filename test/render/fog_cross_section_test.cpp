@@ -1,5 +1,4 @@
-// FogCrossSection — the formal harness for the per-fragment fog clip
-// (see #2102).
+// FogCrossSection exercises the per-fragment fog clip.
 //
 // The clip lives in VOXEL_TO_TRIXEL_STAGE_1: a column the vision disc merely
 // CLIPS is KEPT and rasters its full footprint, and FOG_TO_TRIXEL then trims it
@@ -117,7 +116,7 @@ std::string normalizeShaderMath(const std::string &source) {
 // `get_width`), so comparing whole bodies there would fail on dialect alone.
 //
 // The anchor is `<name>(`, not the bare name: both files mention
-// `fogColumnRevealNearestZ` (the #2260 Z twin, which lives in the stage body)
+// `fogColumnRevealNearestZ` (the Z twin, which lives in the stage body)
 // in a comment ABOVE these definitions, and a bare-name search matches that
 // prefix — landing the span on fogColumnReveal in BOTH files, so the test
 // compares one function to itself and passes no matter how far the twins have
@@ -180,7 +179,7 @@ bool readShaderConstant(const std::string &source, const std::string &name, doub
 
 // Test E, part 1: the six constants the fog clip is parameterized by agree
 // across backends AND agree with this test's own mirrors. A one-sided bump to
-// kFogHiddenKeepCells (the keep-ring width the #2124 cross-section cut depends
+// kFogHiddenKeepCells (the keep-ring width the cross-section cut depends
 // on) is exactly the drift a GL-only smoke cannot see.
 TEST(FogCrossSectionShaderParity, ClipConstantsAgreeAcrossBackends) {
     const std::string glsl = readShaderSource(kGlslFaceSelectPath);
@@ -209,7 +208,7 @@ TEST(FogCrossSectionShaderParity, ClipConstantsAgreeAcrossBackends) {
 }
 
 // Test E, part 2: the shared analytic curve itself. `fogVisionCircleReveal` is
-// the #2102 "one formula, no CPU/GPU or GL/Metal drift" claim in code — both
+// the "one formula, no CPU/GPU or GL/Metal drift" claim in code — both
 // bodies must reduce to the same expression.
 TEST(FogCrossSectionShaderParity, VisionCircleRevealCurveIsIdenticalAcrossBackends) {
     const std::string glslBody =
@@ -468,7 +467,7 @@ const IRMath::vec4 kHardDisc{kDiscCentre.x, kDiscCentre.y, kDiscRadius, 0.0f};
 // boundary unrepresentable is that stage 1 never drops a column the disc
 // reaches: any column whose unit cell overlaps the reveal region is KEPT, so
 // its footprint rasters in full and FOG_TO_TRIXEL trims it per pixel on the
-// analytic edge. Under the pre-#2102 centre-only clip the object instead ended
+// analytic edge. Under a centre-only clip the object instead ended
 // on the voxel lattice and the faces past it were hard-blacked.
 TEST_F(FogCrossSectionTest, PartiallyRevealedColumnsAreNeverDropped) {
     const std::vector<FogColumnProbe> probes =
@@ -497,7 +496,7 @@ TEST_F(FogCrossSectionTest, PartiallyRevealedColumnsAreNeverDropped) {
 }
 
 // Test A, non-vacuity control. The assertion above is only meaningful if the
-// pre-#2102 clip would actually fail it: a centre-evaluated test
+// centre-only clip would actually fail it: a centre-evaluated test
 // (`fogColumnReveal <= 0`) DOES drop columns the disc reaches. Without this,
 // `PartiallyRevealedColumnsAreNeverDropped` would pass against a clip that
 // simply never drops anything.

@@ -14,7 +14,7 @@
 #include <sstream>
 #include <string>
 
-// Contract tests for IRRender::detail::resolveShaderIncludes (#2514): the
+// Contract tests for IRRender::detail::resolveShaderIncludes: the
 // resolver expands nested `#include "…"` recursively, and pastes each file at
 // most once per canonical path.
 //
@@ -194,7 +194,7 @@ TEST_F(GlslIncludeResolver, RecognizesIndentedDirectiveAndSkipsRepeats) {
 // self-include its own prerequisite — every existing wrapper already
 // includes that prerequisite first, so the canonical path is already in the
 // visited set when the fragment's own self-include is reached, and the
-// redundant directive is dropped as a no-op. See #2811.
+// redundant directive is dropped as a no-op.
 TEST_F(GlslIncludeResolver, SelfIncludedPrerequisiteIsANoOpWhenWrapperAlreadyIncludesIt) {
     writeShader("prerequisite.glsl", "int prerequisiteSymbol = 1;\n");
     writeShader("fragment_without_self_include.glsl", "int fragmentSymbol = 2;\n");

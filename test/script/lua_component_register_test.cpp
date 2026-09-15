@@ -150,9 +150,8 @@ TEST_F(LuaComponentTest, UnknownExplicitTypeTagFailsWithFieldName) {
 // must route it through `inferTypeFromDefault` (the documented short-form
 // path for a registered vec3/ivec3/vec4 usertype), not mistake it for the
 // explicit `{ type = ..., default = ... }` table form. `raw.is<sol::table>()`
-// reads TRUE for userdata, so the pre-fix guard took the explicit-form
-// branch and tried to read a `type` field off the vec3 userdata instead.
-// See #3178.
+// reads TRUE for userdata, so the guard must discriminate with `get_type()`.
+//
 TEST_F(LuaComponentTest, Vec3ShortFormUserdataDefaultInfersVec3Type) {
     auto &lua = m_lua.lua();
     lua.new_usertype<IRMath::vec3>(
@@ -190,10 +189,8 @@ TEST_F(LuaComponentTest, DuplicateRegistrationFails) {
 // `IRComponent.C_ZoomLevel` normally holds the table handle
 // `recordComponentLuaName` populated when the C++ type registered.
 // Simulate that slot being clobbered with a C_ZoomLevel USERDATA instance —
-// `existingHandle.is<sol::table>()` reads TRUE for userdata, so the pre-fix
-// guard handed the userdata straight back as `IRComponent.register`'s
-// return value instead of recognizing the slot as unusable and falling
-// back to a fresh (well-formed) registration. See #3178.
+// `existingHandle.is<sol::table>()` reads TRUE for userdata, so the guard
+// must discriminate with `get_type()` and fall back to a fresh registration.
 TEST_F(LuaComponentTest, RegisterCoexistenceFallsBackWhenHandleSlotIsCorrupted) {
     IRScript::bindLuaType<IRComponents::C_ZoomLevel>(m_lua);
     auto &lua = m_lua.lua();
@@ -341,9 +338,8 @@ TEST_F(LuaComponentTest, NonScalarFieldsHaveInvalidBindingId) {
 // default-constructed (invalid/nil) `sol::table{}` — the same "no default"
 // outcome every other wrong-typed default already produces — rather than
 // storing a `sol::table` wrapper around the userdata reference. Read back
-// through `readFieldAt`, which pushes the stored value's REAL Lua-side
-// type: `sol::type::userdata` pre-fix (the wrapper doesn't change what's
-// actually on the Lua stack), `sol::type::none` on the fix. See #3178.
+// through `readFieldAt`, which must push `sol::type::none`; a `sol::table`
+// wrapper does not change the userdata's actual Lua-side type.
 TEST_F(LuaComponentTest, TableFieldDefaultIgnoresUserdataDefault) {
     auto &lua = m_lua.lua();
     lua.new_usertype<IRMath::vec3>(
@@ -378,7 +374,7 @@ TEST_F(LuaComponentTest, TableFieldDefaultIgnoresUserdataDefault) {
         << "vec3 userdata default landed in the column";
 }
 
-// ---- #1368: packed vec3 / ivec3 field kinds (G1a) -------------------------
+// ---- Packed vec3 / ivec3 field kinds ----------------------------------
 
 TEST_F(LuaComponentTest, Vec3AndIvec3FieldsStoreAsNativeColumnsAndRoundTrip) {
     auto &lua = m_lua.lua();
@@ -399,7 +395,7 @@ TEST_F(LuaComponentTest, Vec3AndIvec3FieldsStoreAsNativeColumnsAndRoundTrip) {
     auto *typed = static_cast<IRScript::IComponentDataLuaTyped *>(data);
 
     // Packed fields materialise as real IRMath::vec3 / IRMath::ivec3 columns —
-    // byte-identical to a hand-written C++ component (G1a / Q3).
+    // byte-identical to a hand-written C++ component.
     const auto &posCol = typed->columnAt(typed->findFieldIndex("pos"));
     const auto *vec3Col = std::get_if<std::vector<IRMath::vec3>>(&posCol);
     ASSERT_NE(vec3Col, nullptr);
@@ -493,7 +489,7 @@ TEST_F(LuaComponentTest, Vec4AndQuatFieldsStoreAsNativeColumnAndRoundTrip) {
 // helper, where a `vec4` written to a vec3 field silently overwrites the
 // column. Asserting the stored value SURVIVES is the only assertion that
 // catches it — such a write neither raises nor changes the column's type.
-// See #2673.
+//
 TEST_F(LuaComponentTest, VectorFieldWriteIgnoresWrongTypedUserdata) {
     auto &lua = m_lua.lua();
     // Registered so the wrong-typed userdata has a metatable that answers
@@ -808,7 +804,7 @@ TEST_F(LuaComponentTest, IndexStyleOutOfRangeRaisesLuaError) {
     EXPECT_NE(std::string(setErr.what()).find("999"), std::string::npos);
 }
 
-// ---- Singleton (T-162) -----------------------------------------------------
+// ---- Singleton -----------------------------------------------------
 
 // `LuaEntity` is opaque to Lua under `bindLuaDrivenEcs()` alone (no
 // usertype registration). The behavior we care about is "subsequent

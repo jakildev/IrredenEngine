@@ -19,7 +19,7 @@ EntityManager::EntityManager()
     , m_entitiesMarkedForDeletion{}
     , m_pendingComponentRemovals{}
     , m_workerStaging(1) {
-    // T-225: start with a single staging slot for the main thread.
+    // Start with a single staging slot for the main thread.
     // `resizeWorkerStaging` grows the vector to
     // `IRJob::workerCount() + 1` once `JobManager` is constructed.
     g_entityManager = this;
@@ -53,7 +53,7 @@ EntityId EntityManager::allocateEntity() {
 }
 
 EntityId EntityManager::allocateEntityIdAtomic() {
-    // T-225: ID allocation is the only contended op when workers spawn
+    // ID allocation is the only contended op when workers spawn
     // entities from a `PARALLEL_FOR` body. `fetch_add` on `m_nextEntityId`
     // is cheap (one CAS-loop iteration on x86, single RMW on Apple
     // Silicon) and amortised over per-row work it is invisible. IDs are
@@ -122,9 +122,8 @@ void EntityManager::addNewEntityToBaseNode(EntityId id) {
 }
 
 void EntityManager::returnEntityToPool(EntityId entity) {
-    // T-225: the recycle pool is gone (replaced by the atomic
-    // `m_nextEntityId` counter). Destroy just removes the entity
-    // from the index — the ID itself is permanently retired.
+    // Entity IDs are monotonic and never recycled; destruction only removes
+    // the entity from the index.
     m_entityIndex.erase(entity & IR_ENTITY_ID_BITS);
     --m_liveEntityCount;
 }
@@ -138,7 +137,7 @@ EntityId EntityManager::setFlags(EntityId entity, EntityId flags) {
 }
 
 void EntityManager::markEntityForDeletion(EntityId &entity) {
-    // T-225: route into the per-worker buffer. Workers write only
+    // Route into the per-worker buffer. Workers write only
     // their own slot; the flag bit on the caller's `entity` ref is
     // the caller's memory, not ours. `destroyMarkedEntities`
     // drains every slot serially on the main thread.
@@ -152,7 +151,7 @@ void EntityManager::destroyEntity(EntityId entity) {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
     // Validate before the hooks fire: a bad id must not drive user callbacks,
     // and a double-destroy must name itself here rather than surface later as
-    // a null-archetypeNode deref in unrelated code (#2565).
+    // a null-archetypeNode deref in unrelated code.
     if (findRecord(entity) == nullptr) {
         IR_ASSERT(
             false,
@@ -246,7 +245,7 @@ void EntityManager::destroyMarkedEntities() {
         isMainThreadForDeferred(),
         "EntityManager::destroyMarkedEntities must run on the main thread"
     );
-    // T-225: drain the legacy main-thread list first (callers that
+    // Drain the legacy main-thread list first (callers that
     // bypass the per-worker buffer — pre-`World` startup, e.g. — still
     // funnel through this vector).
     // The drain is set-semantics, not sequence-semantics: an id can be marked
@@ -297,7 +296,7 @@ void EntityManager::flushStructuralChanges() {
         isMainThreadForDeferred(),
         "EntityManager::flushStructuralChanges must run on the main thread"
     );
-    // T-225: keep looping until every staging buffer (legacy main +
+    // Keep looping until every staging buffer (legacy main +
     // per-worker) is empty. A structural-change lambda may queue
     // further changes; the legacy single-buffer flush handled this
     // with a while loop and we preserve that semantics.
@@ -334,7 +333,7 @@ void EntityManager::flushStructuralChanges() {
             // A removal can outlive its entity (destroyed between queue and
             // flush) and can name an id whose insert has not drained yet.
             // Both are "no component to remove", not a crash — and neither
-            // may probe with `operator[]` (#2565).
+            // may probe with `operator[]`.
             EntityRecord *recordPtr = findRecord(pendingRemoval.entity_);
             if (recordPtr == nullptr || recordPtr->archetypeNode == nullptr) {
                 continue;
@@ -565,7 +564,7 @@ EntityRecord &EntityManager::getRecord(EntityId entity) {
     );
     // Unreachable in debug — IR_ASSERT throws. In IR_RELEASE the asserts
     // compile out and this derefs null: a hard crash at the offending access,
-    // and no write into m_entityIndex either way (see #2565).
+    // and no write into m_entityIndex either way.
     return *record;
 }
 
@@ -835,7 +834,7 @@ void EntityManager::updateBackEntityPosition(ArchetypeNode *node, unsigned int n
     // because the node's entity list and the index are two views of the same
     // placement. Probing it with `operator[]` would satisfy the write by
     // MINTING one — a `{nullptr, row}` record that then answers `entityExists`
-    // with `true` and crashes every later reader (see #2565).
+    // with `true` and crashes every later reader.
     EntityRecord *backRecord = findRecord(backEntity);
     IR_ASSERT(
         backRecord != nullptr,

@@ -8,7 +8,7 @@
 
 namespace {
 
-// Owns the minimum slice needed to exercise the T-193 IRCommand /
+// Owns the minimum slice needed to exercise the IRCommand /
 // IRInput Lua bindings end-to-end: CommandManager (sets g_commandManager
 // in its ctor), EntityManager (needed by any prefab command that
 // touches ECS state), and LuaScript with bindLuaCommands() called.
@@ -199,7 +199,7 @@ TEST_F(LuaCommandTest, LuaCommandBodyErrorDoesNotPropagate) {
     EXPECT_EQ(lua["before"].get<int>(), 2);
 }
 
-// ---- Named Lua commands + the help-overlay registry (#2550) ---------------
+// ---- Named Lua commands + the help-overlay registry ---------------
 
 // The trailing name / description strings are what put a Lua-defined command
 // in the help overlay: the registry records only NAMED PRESSED bindings, so
@@ -425,7 +425,7 @@ TEST_F(LuaCommandTest, KeypadKeysAreNameable) {
     EXPECT_EQ(result.get<int>(5), static_cast<int>(IRInput::kKeyButtonKPEqual));
 }
 
-// ---- IRCommand.isButtonBound / getRegisteredBindings (#2570) ---------------
+// ---- IRCommand.isButtonBound / getRegisteredBindings ---------------
 
 // The acceptance criterion: W is bound after the camera suite registers. The
 // RELEASED arm is the discriminator — `MOVE_CAMERA_UP_END` is

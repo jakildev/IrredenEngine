@@ -303,7 +303,7 @@ class IComponentDataLuaTyped : public IREntity::IComponentData {
     // second: `is<sol::table>()` is true for userdata, so a table-first test
     // admits every wrong-typed userdata and hands it to the helper, which
     // zero-defaults it into the column. Silently zeroing a field is not "no
-    // write". See #2673.
+    // write".
     void writeFieldAt(int row, int fieldIdx, const sol::object &value) {
         std::visit(
             [&](auto &v) {

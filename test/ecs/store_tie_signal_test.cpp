@@ -12,21 +12,14 @@
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 
-// #2346 regression guard: the cardinal store's tie-possibility signal
+// The cardinal store's tie-possibility signal
 // (`C_VoxelPool::storeTiesPossible_`) must re-arm on ACTIVATION-ONLY edits, not
 // just position writes. `VOXEL_TO_TRIXEL_STAGE_1` recomputes the signal on
 // frames whose CPU position upload changed (pending position ranges flushed, or
-// a canvas re-seed), but the active-mask mutators
-// (activate/deactivate/carve/fillPlane/reshape) change which voxels are live
-// WITHOUT queuing a position range — so before the fix, activating a voxel onto
-// an already-occupied `roundHalfUp` cell left the signal stale and the
-// last-writer-wins cardinal race this feature closes reappeared for
-// editor/carve/reveal workflows. The pool now flags every active-mask mutation
-// via `consumeActiveMaskChanged()`, which the system ORs into the recompute
-// trigger. These tests exercise that path headlessly (no RenderManager) against
-// a hand-seeded pool, and confirm the end-to-end reclassification — the positive
-// enabled-path test the render `CLAUDE.md` calls for (byte-identity at default
-// only proves the OFF path is a no-op).
+// a canvas re-seed), while active-mask mutators change which voxels are live
+// without queuing a position range. `consumeActiveMaskChanged()` supplies the
+// independent recompute trigger. These headless tests seed pool positions
+// directly because no RenderManager is available.
 
 namespace {
 
@@ -50,10 +43,6 @@ class StoreTieSignalTest : public ::testing::Test {
     IREntity::EntityManager m_entityManager;
 };
 
-// The exact bug: two voxels share a rounded world cell, one starts inactive.
-// Activating the second (pure activation — no position write) must re-arm the
-// tie signal so the winner-guarded stage 2 runs. Before the fix the signal
-// stayed false and the race persisted.
 TEST_F(StoreTieSignalTest, ActivationIntoCollisionReArmsTieSignal) {
     C_VoxelPool pool(ivec3(8, 8, 8));
     placeVoxel(pool, 0, vec3(2, 2, 2));

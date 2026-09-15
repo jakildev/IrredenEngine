@@ -12,15 +12,15 @@
 
 namespace IRScript::detail {
 
-// Exposes the ECS world snapshot (persist P7, #2218, epic #667) as the
-// `IRPersist` Lua table: whole-world binary save/load over the process-default
+// Exposes the ECS world snapshot as the `IRPersist` Lua table: whole-world
+// binary save/load over the process-default
 // SaveRegistry (IRWorld::makeDefaultSaveRegistry). Every binding is a thin
 // forward to an IRWorld:: entry point; no persistence logic lives here. Unlike
 // bindRenderGlue / bindAudioApi (include-only glue with no link edge), this
 // binding genuinely calls IRWorld::saveWorld/loadWorld, so IrredenEngineScripting
 // links IrredenEngineWorld (engine/script/CMakeLists.txt). World links
 // Scripting back, closing a static-lib cycle that CMake resolves by repeating
-// both archives on the final link line (#2499).
+// both archives on the final link line.
 //
 // Surface:
 //   IRPersist.saveWorld(path) -> bool   serialize the live world to `path`

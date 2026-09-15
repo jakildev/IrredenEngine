@@ -128,7 +128,7 @@ playSound(const std::string &path, AudioBus bus, float volume = 1.0f, bool loop 
 /// Streams @p path through the `Music` bus; loops by default.
 SoundHandle playMusic(const std::string &path, float volume = 1.0f, bool loop = true);
 /// Positional one-shot spatialized at world @p position against the engine
-/// listener (the #207 spatial-audio seam).
+/// listener (the spatial-audio seam).
 SoundHandle playSoundAt(
     const std::string &path,
     AudioBus bus,
@@ -148,7 +148,7 @@ void fadeOutSound(SoundHandle handle, unsigned int milliseconds);
 void setBusVolume(AudioBus bus, float volume);
 /// Sets the master mix volume.
 void setMasterVolume(float volume);
-/// Moves the single engine listener (the #207 positional-audio seam).
+/// Moves the single engine listener (the positional-audio seam).
 void setListenerPosition(const IRMath::vec3 &position);
 /// Reclaims finished one-shot sounds. Called once per frame by the engine
 /// runtime next to `MidiIn::tick()`; creations do not call this.
