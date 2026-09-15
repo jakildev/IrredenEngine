@@ -4,7 +4,7 @@ Foundation prefab types for transforms, identity, tags, simulation time, and
 generic modifiers. Simulation writers live in `../update/`; this directory
 owns data types and header-only service APIs.
 
-## Transform and rotation contracts
+## SQT transform pair + propagation
 
 `IREntity::createEntity(...)` always attaches `C_LocalTransform` and
 `C_WorldTransform`, unless the caller supplies that same type. Never add a
@@ -110,6 +110,9 @@ scalar-only.
 Keep `Modifier`, `ModifierVec3`, and `ModifierQuat` trivially copyable. Stateful
 or string-bearing behavior belongs outside `C_Modifiers`. Global exemption is
 implemented by include/exclude archetype routing, not per-row branching.
+
+### Open follow-ups (runtime gaps)
+
 Current intentional gaps are tracked in
 [`modifier-runtime-gaps.md`](../../../../.fleet/status/modifier-runtime-gaps.md).
 
