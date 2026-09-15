@@ -71,7 +71,7 @@ SystemId SystemManager::createSystemDynamic(
     m_relations.emplace_back(C_SystemRelation{Relation::NONE});
     m_systemParams.emplace_back(nullptr);
     m_timingAccum.emplace_back();
-    // dynamic systems are PARALLEL_FOR-ineligible (the body is
+    // Dynamic systems are PARALLEL_FOR-ineligible (the body is
     // opaque to row-level chunking — `m_ticks[…].prepareRangedTick_` is
     // never populated). They still accept SERIAL / MAIN_THREAD so the
     // Lua surface can tag EVAL systems as MAIN_THREAD to opt them out of
@@ -91,7 +91,7 @@ SystemId SystemManager::createSystemDynamic(
     return newSystemId;
 }
 
-// per-system update cadence -------------------------------------
+// Per-system update cadence -------------------------------------
 
 namespace {
 // True if `system` appears in any group of `groups`. Used to reject a
@@ -231,7 +231,7 @@ void SystemManager::replaceSystemBody(SystemId system, std::function<void(Archet
 }
 
 void SystemManager::registerPipeline(IRTime::Events event, std::list<SystemId> pipeline) {
-    // legacy single-list form becomes a per-system group
+    // Legacy single-list form becomes a per-system group
     // sequence. Each system runs as its own one-element group, which
     // dispatches serially through the same code path as before —
     // bit-for-bit equivalent to the previous behavior for existing
@@ -256,7 +256,7 @@ void SystemManager::registerPipelineGroups(
 ) {
     m_systemPipelineGroups[event] = std::move(groups);
     m_flattenedPipelinesDirty = true;
-    // seed each listed system's cadence phase from the current event
+    // Seed each listed system's cadence phase from the current event
     // tick (+ its offset), so a mid-run re-registration measures elapsed
     // from here rather than from counter zero.
     for (const auto &group : m_systemPipelineGroups[event]) {
@@ -402,10 +402,8 @@ void SystemManager::validateAllPipelineGroups() const {
                 );
                 break;
             case GroupConflictKind::TWO_SPAWNERS:
-                // validator no longer produces this kind —
-                // per-worker deferred-mutation buffers cover
-                // concurrent archetype-graph mutation. Kept as an
-                // exhaustive-switch sentinel; unreachable in practice.
+                // Per-worker deferred-mutation buffers make this kind
+                // unreachable. Keep it as an exhaustive-switch sentinel.
                 break;
             case GroupConflictKind::MUTATOR_IN_PARALLEL_GROUP:
                 // Per-worker deferred-mutation buffers make mutators safe in
@@ -458,13 +456,13 @@ void SystemManager::executePipeline(IRTime::Events event) {
     if (it == m_systemPipelineGroups.end()) {
         return;
     }
-    // bump this event's phase-tick counter once, so every cadence
+    // Bump this event's phase-tick counter once, so every cadence
     // gate in this pass compares against the same `now`.
     const std::uint64_t now = ++m_eventTickCounts[event];
     const auto &groups = it->second;
     for (const auto &group : groups) {
         if (group.size() == 1) {
-            // observer bracket fires on the main thread around
+            // Observer bracket fires on the main thread around
             // each singleton system — the only group shape that
             // preserves per-system timing semantics. The bracket lives
             // here (not in executeSystem) because executeSystem is
@@ -489,7 +487,7 @@ void SystemManager::executePipeline(IRTime::Events event) {
                 }
             }
         } else if (!group.empty()) {
-            // parallel group — fan out across the worker pool.
+            // Parallel group — fan out across the worker pool.
             // grainSize=1 makes each task one system; the validator
             // already guarantees no two members conflict.
             //
@@ -504,8 +502,7 @@ void SystemManager::executePipeline(IRTime::Events event) {
             // singleton group.
             //
             // Keep this on the fixed-grain IRJob path. It fans out *systems*
-            // at grain=1 (one
-            // system per task) — auto-grain would batch the group onto
+            // at grain=1 (one system per task). Auto-grain would batch the group onto
             // ~tasksPerWorker tasks and collapse a small group onto a
             // single worker, killing the parallelism. It shares only the
             // null-pool serial guard with the helper, not the
@@ -666,7 +663,7 @@ void SystemManager::executeSystem(SystemId system) {
         acc.totalEntityCount_ += entityCount;
     }
 
-    // observer fires moved to executePipeline (singleton groups
+    // Observer fires moved to executePipeline (singleton groups
     // only) — they need a main-thread context that executeSystem can
     // no longer guarantee. structural-changes flush also runs there,
     // per-group rather than per-system.

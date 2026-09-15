@@ -15,7 +15,7 @@ namespace IRScript {
 // from inside the helper (metatable-less userdata) or silently coerces through
 // the registered usertype's `__index` — both in place of the zero-default the
 // contract promises. `get_type() == sol::type::table` is the check that
-// discriminates (rule in engine/script/CLAUDE.md;
+// discriminates (rule in engine/script/CLAUDE.md).
 //
 // Component TABLES stay arity-blind by design: `{x = 1, y = 2}` passed where a
 // vec3 is wanted zero-fills `z`. Only the userdata path carries enough type

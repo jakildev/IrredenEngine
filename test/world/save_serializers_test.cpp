@@ -744,9 +744,8 @@ TEST_F(DefaultRegistryTest, MembershipIsDerivedFromInventory) {
     EXPECT_GT(registry.size(), 4u);
 }
 
-// Spot-check that components which previously had no serializer are now
-// actually reachable through the process-default registry by their on-disk
-// name — the registry is what the Lua IRPersist surface uses.
+// Heap-owning components must be reachable through the process-default
+// registry by their on-disk name; the Lua IRPersist surface uses this registry.
 TEST_F(DefaultRegistryTest, ResolvesHeapOwningComponents) {
     const IRWorld::SaveRegistry registry = IRWorld::makeDefaultSaveRegistry();
     for (const char *name :

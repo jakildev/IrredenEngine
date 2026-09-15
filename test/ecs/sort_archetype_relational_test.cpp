@@ -2,13 +2,6 @@
 
 #include <irreden/ir_entity.hpp>
 
-// Tests for sortArchetypeNodesByRelationChildOf exercised via
-// queryArchetypeNodesRelational. The bug was that the BFS
-// seeded from leaf archetypes (pointed-to by CHILD_OF edges) and walked
-// toward children — but leaves have no children, so parent archetypes
-// were silently absent from the output.  The fix seeds from true roots
-// (archetypes with no CHILD_OF relation of their own) and walks outward.
-
 namespace {
 
 struct C_BfsTestTag {
@@ -20,8 +13,6 @@ class SortArchetypeRelationalTest : public testing::Test {
     IREntity::EntityManager m_entity_manager;
 };
 
-// With the bug, only the child archetype node was returned; the parent
-// archetype node was silently dropped.
 TEST_F(SortArchetypeRelationalTest, ParentNodeIncludedInRelationalQuery) {
     auto parent = IREntity::createEntity(C_BfsTestTag{});
     auto child  = IREntity::createEntity(C_BfsTestTag{});
@@ -64,9 +55,6 @@ TEST_F(SortArchetypeRelationalTest, ParentNodeAppearsBeforeChildNode) {
     EXPECT_TRUE(child_second)  << "child entity should be in the second returned node";
 }
 
-// Three-level chain: grandparent → parent → grandchild.  With the bug,
-// only the grandchild (the leaf) was returned.  After the fix all three
-// archetype nodes must appear.
 TEST_F(SortArchetypeRelationalTest, ThreeLevelChainAllNodesReturned) {
     auto gp     = IREntity::createEntity(C_BfsTestTag{});
     auto parent = IREntity::createEntity(C_BfsTestTag{});

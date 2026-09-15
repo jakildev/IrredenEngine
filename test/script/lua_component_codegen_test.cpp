@@ -21,7 +21,7 @@
 // Path is added to the include search list by irreden_lua_codegen().
 #include "lua_component_codegen_fixtures.hpp"
 
-// the sibling TU that includes the generated header independently of
+// The sibling TU that includes the generated header independently of
 // this one. Declares only plain types, so it does not re-share the include.
 #include "lua_component_codegen_second_tu.hpp"
 
@@ -497,7 +497,7 @@ TEST(LuaComponentCodegenSchemaError, ExplicitInt32OverflowRaisesError) {
         << "codegen tool should not write output on schema error";
 }
 
-// the codegen IREnum shim validates member lists at build time. A
+// The codegen IREnum shim validates member lists at build time. A
 // non-string member must abort the tool with the same diagnostic the EVAL
 // path raises (shared detail::buildLuaEnumTable), and no header is written.
 TEST(LuaEnumCodegenSchemaError, NonStringMemberRaisesError) {

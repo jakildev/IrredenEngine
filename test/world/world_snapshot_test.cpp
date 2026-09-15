@@ -434,9 +434,8 @@ TEST_F(WorldSnapshotTest, CorruptColumnAbortsWithZeroMutation) {
     IRWorld::SaveRegistry reg;
     reg.registerComponent<C_WsPos>();
     reg.registerComponent<C_WsChecked>();
-    // A pure-{C_WsPos} archetype plus a {C_WsPos, C_WsChecked} one, so a
-    // decode failure in the checked column would (pre-fix) land after at least
-    // one archetype is already spliced — the partial mutation under test.
+    // Put a valid archetype before the checked one so its decode failure
+    // exercises the zero-mutation guarantee after staged work has begun.
     for (int i = 0; i < 5; ++i) {
         m_em.createEntity(C_WsPos{i, i, i});
     }

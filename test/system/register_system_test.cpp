@@ -154,8 +154,8 @@ TEST_F(RegisterSystemTest, ParamsAccessibleAfterCreate) {
     EXPECT_EQ(params->scaleFromBegin_, 0);
 }
 
-// the SystemName registry. Registration self-wires, which is what lets
-// the prefab handles drop their manual wire-once setters.
+// Registration populates the SystemName registry automatically, allowing
+// prefab handles to omit manual wire-once setters.
 TEST_F(RegisterSystemTest, FindSystemResolvesEachRegisteredName) {
     auto sysA = IRSystem::createSystem<IRSystem::TEST_REGISTER_SYSTEM_A>();
     auto sysB = IRSystem::createSystem<IRSystem::TEST_REGISTER_SYSTEM_B>();

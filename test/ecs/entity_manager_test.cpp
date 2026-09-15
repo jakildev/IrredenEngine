@@ -6,7 +6,7 @@
 
 #include <type_traits>
 
-// these canvas components must require an explicit size at
+// These canvas components must require an explicit size at
 // construction. Default-construction must be a compile error so a missing
 // size shows up at the call site rather than as a runtime null-texture.
 static_assert(
@@ -405,7 +405,7 @@ TEST_F(IREntityTest, SetComponentSupportsNonDefaultConstructibleType) {
     EXPECT_EQ(IREntity::getComponent<TestNonDefaultConstructible>(entity).value_, 42);
 }
 
-// resetGameplay: scene-transition teardown. Destroys every gameplay
+// `resetGameplay`: scene-transition teardown. Destroys every gameplay
 // entity but preserves singletons, C_Persistent-tagged entities, and the
 // component-type backing entities. The key contrast with destroyAllEntities is
 // that the singleton cache is NOT cleared and the world remains usable.

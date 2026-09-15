@@ -150,8 +150,7 @@ TEST_F(LuaComponentTest, UnknownExplicitTypeTagFailsWithFieldName) {
 // must route it through `inferTypeFromDefault` (the documented short-form
 // path for a registered vec3/ivec3/vec4 usertype), not mistake it for the
 // explicit `{ type = ..., default = ... }` table form. `raw.is<sol::table>()`
-// reads TRUE for userdata, so the pre-fix guard took the explicit-form
-// branch and tried to read a `type` field off the vec3 userdata instead.
+// reads TRUE for userdata, so the guard must discriminate with `get_type()`.
 //
 TEST_F(LuaComponentTest, Vec3ShortFormUserdataDefaultInfersVec3Type) {
     auto &lua = m_lua.lua();
@@ -190,10 +189,8 @@ TEST_F(LuaComponentTest, DuplicateRegistrationFails) {
 // `IRComponent.C_ZoomLevel` normally holds the table handle
 // `recordComponentLuaName` populated when the C++ type registered.
 // Simulate that slot being clobbered with a C_ZoomLevel USERDATA instance —
-// `existingHandle.is<sol::table>()` reads TRUE for userdata, so the pre-fix
-// guard handed the userdata straight back as `IRComponent.register`'s
-// return value instead of recognizing the slot as unusable and falling
-// back to a fresh (well-formed) registration.
+// `existingHandle.is<sol::table>()` reads TRUE for userdata, so the guard
+// must discriminate with `get_type()` and fall back to a fresh registration.
 TEST_F(LuaComponentTest, RegisterCoexistenceFallsBackWhenHandleSlotIsCorrupted) {
     IRScript::bindLuaType<IRComponents::C_ZoomLevel>(m_lua);
     auto &lua = m_lua.lua();
@@ -341,9 +338,8 @@ TEST_F(LuaComponentTest, NonScalarFieldsHaveInvalidBindingId) {
 // default-constructed (invalid/nil) `sol::table{}` — the same "no default"
 // outcome every other wrong-typed default already produces — rather than
 // storing a `sol::table` wrapper around the userdata reference. Read back
-// through `readFieldAt`, which pushes the stored value's REAL Lua-side
-// type: `sol::type::userdata` pre-fix (the wrapper doesn't change what's
-// actually on the Lua stack), `sol::type::none` on the fix.
+// through `readFieldAt`, which must push `sol::type::none`; a `sol::table`
+// wrapper does not change the userdata's actual Lua-side type.
 TEST_F(LuaComponentTest, TableFieldDefaultIgnoresUserdataDefault) {
     auto &lua = m_lua.lua();
     lua.new_usertype<IRMath::vec3>(

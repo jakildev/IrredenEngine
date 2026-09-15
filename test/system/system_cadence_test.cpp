@@ -10,12 +10,10 @@
 #include <stdexcept>
 #include <vector>
 
-// per-system update cadence. Exercises the SystemManager cadence
-// gate end-to-end through IRSystem::createSystem + registerPipeline(Groups),
-// using the g_jobManager == nullptr serial fallback (no worker pool in a
-// unit test) for deterministic dispatch. Execution counting rides beginTick
-// (fires once per due execution, even with zero matched entities), and
-// per-entity iteration counting rides the per-entity tick body.
+// These tests exercise the SystemManager cadence gate end-to-end through
+// IRSystem::createSystem + registerPipeline(Groups). A null g_jobManager keeps
+// dispatch deterministic; beginTick counts due executions even with zero
+// matches, while the per-entity tick body counts visited entities.
 
 namespace {
 
@@ -499,7 +497,7 @@ TEST_F(SystemCadenceTest, FirstEverJoinToRenderIsSilentWhenUpdateHostsAnotherSys
     EXPECT_NO_THROW(m_system_manager.appendToPipeline(IRTime::RENDER, sys));
 }
 
-// a System<N> spec's `kCadence` / `kCadenceOffset` members are both
+// A System<N> spec's `kCadence` / `kCadenceOffset` members are both
 // DETECTED (readable through the public getters) and DRIVE the gate (an
 // observable fire count), with no createSystem trailing-parameter spelling
 // anywhere in the path.
@@ -522,8 +520,8 @@ TEST_F(SystemCadenceTest, SpecMemberCadenceDetectedAndDrivesGate) {
     EXPECT_EQ(m_system_manager.getAccumulatedTicks(sys), 3u);
 }
 
-// the absent-members default. A spec that declares neither member
-// must register at cadence 1 / offset 0 and fire every tick — the guarantee
+// A spec that declares neither member must register at cadence 1 / offset 0
+// and fire every tick — the guarantee
 // that made the detectors safe to add to every legacy spec.
 TEST_F(SystemCadenceTest, SpecWithoutCadenceMembersDefaultsToEveryTick) {
     auto sys = IRSystem::createSystem<IRSystem::TEST_CADENCE_SPEC_DEFAULT>();

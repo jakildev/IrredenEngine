@@ -11,13 +11,9 @@
 ///
 /// `deriveAccessFromSignature<TickFn, Components...>()` returns a
 /// constexpr descriptor of a system's component access set. Registration
-/// consumes the descriptor to validate that
-/// PARALLEL_FOR systems don't write a component another concurrently-
-/// scheduled system reads; will compose the same descriptor
-/// across pipeline groups; will use the spawn/destroy flags to
-/// route the right deferred-mutation path.
-///
-/// **Unused in this phase.** Pure unit-test surface for now.
+/// derives this descriptor, validates each system with
+/// `detail::validateConcurrencyForAccess`, and composes descriptors across
+/// pipeline groups with `findPipelineGroupConflict`.
 
 namespace IRSystem {
 

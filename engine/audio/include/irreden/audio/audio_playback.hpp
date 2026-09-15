@@ -24,8 +24,7 @@ namespace IRAudio {
 /// never from miniaudio's audio callback.
 ///
 /// @ref setListenerPosition and @ref playSoundAt share the one built-in
-/// `ma_engine` listener. World-time scheduling and bus automation use
-/// `IRSim::tick()` / `IRSim::cycleFraction` as their clock.
+/// `ma_engine` listener.
 class AudioPlayback {
   public:
     AudioPlayback();
@@ -75,10 +74,10 @@ class AudioPlayback {
 
     /// Sets a category bus's linear volume — scales every sound on the bus.
     void setBusVolume(AudioBus bus, float volume);
-    /// Sets the master (engine) linear volume — scales the whole mix.
+    /// Sets the master linear volume — scales the whole mix.
     void setMasterVolume(float volume);
 
-    /// Moves the single engine listener (the positional-audio seam).
+    /// Moves the single engine listener.
     void setListenerPosition(const IRMath::vec3 &position);
 
     /// Reclaims finished non-looping sounds on the main thread. Called once per

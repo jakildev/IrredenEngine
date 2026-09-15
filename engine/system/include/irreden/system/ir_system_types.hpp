@@ -193,10 +193,10 @@ enum SystemName {
     SHAPES_TO_TRIXEL,
     BUILD_LIGHT_OCCLUSION_GRID,
     COMPUTE_VOXEL_AO,
-    // Hi-Z (max-depth) distance mip-chain build for voxel occlusion culling
-    // (child 1/3). Runs after the geometry + AO passes (distances final)
-    // and produces C_TriangleCanvasTextures::hiZMips_ for next frame's
-    // chunk-occlusion pre-pass; produces only — no consumer this PR.
+    // Hi-Z (max-depth) distance mip-chain build for voxel occlusion culling.
+    // Runs after the geometry + AO passes, when distances are final, and
+    // produces C_TriangleCanvasTextures::hiZMips_ for the next frame's
+    // chunk-occlusion pre-pass.
     COMPUTE_DISTANCE_HIZ,
     RESOLVE_PER_AXIS_SCREEN_DEPTH,
     BAKE_SUN_SHADOW_MAP,

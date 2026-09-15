@@ -232,11 +232,8 @@ TEST_F(PrefabApi, SpawnRejectsNonTableReturn) {
 
 // `root.is<sol::table>()` reads TRUE for userdata, so a table-first guard
 // admits a prefab file that returns a vec3/vec4 userdata instead of a real
-// table — the exact defect class fixed for the vector helpers. The
-// pre-fix path casts the userdata to `sol::table` unsafely and then indexes
-// `prefab_version` off it, which raises (no such member) rather than
-// producing the guard's controlled error — wrap in ASSERT_NO_THROW so that
-// failure mode surfaces as a test failure, not a crash.
+// table. The guard must check the exact Lua type before indexing
+// `prefab_version`; ASSERT_NO_THROW makes type confusion a test failure.
 TEST_F(PrefabApi, SpawnRejectsUserdataReturn) {
     PrefabFiles f = writeFixtureSet("userdata_return", "return vec3.new(1, 2, 3)\n");
     IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
@@ -630,9 +627,8 @@ TEST_F(PrefabApi, BindPointOverridesApplied) {
 // guard admits a `bind_point_overrides` entry that is a `DecoyBindPointOverride`
 // userdata instead of a real `{ offset = ..., rotation = ... }` table. Because
 // the decoy's member names AND types happen to match what the reader looks
-// up (`boneId`/`offset`/`rotation`), the pre-fix path casts it to `sol::table`
-// unsafely and successfully reads bogus values off it — silently applying an
-// override from a value that was never a table.
+// up (`boneId`/`offset`/`rotation`), an inexact type guard would silently
+// accept an override from a value that was never a table.
 // `vec4`-into-`vec3FromLua` test for the same "wrong type, same field names"
 // shape.
 TEST_F(PrefabApi, BindPointOverridesIgnoresUserdataEntry) {
@@ -671,8 +667,7 @@ TEST_F(PrefabApi, BindPointOverridesIgnoresUserdataEntry) {
     auto &lua = m_lua.lua();
     // The userdata entry is skipped entirely (guard's `continue`), so the
     // bind point keeps its rig-authored offset (0,0,1): world offset =
-    // chain world (5,7,9) + rig offset (0,0,1) = (5,7,10). A pre-fix guard
-    // would instead apply the decoy's (5,6,7) offset, landing at (10,13,16).
+    // chain world (5,7,9) + rig offset (0,0,1) = (5,7,10).
     EXPECT_FLOAT_EQ(lua["g_off_x"].get<float>(), 5.0f);
     EXPECT_FLOAT_EQ(lua["g_off_y"].get<float>(), 7.0f);
     EXPECT_FLOAT_EQ(lua["g_off_z"].get<float>(), 10.0f);
@@ -898,10 +893,9 @@ TEST_F(PrefabApi, ComponentsTableNonTableEntryErrors) {
 // `kv.second.is<sol::table>()` reads TRUE for userdata, so a table-first
 // guard admits a `components['C_ZoomLevel']` override that is a vec3
 // userdata instead of a real field-overrides table. Unlike the plain-42
-// case (`ComponentsTableNonTableEntryErrors`, not userdata), the pre-fix
-// path casts the userdata to `sol::table` and hands it to the factory,
-// which indexes `zoom` off it and raises. ASSERT_NO_THROW turns that raise
-// into a test failure instead of a crash.
+// case (`ComponentsTableNonTableEntryErrors`, not userdata), an inexact
+// type guard would hand the userdata to a factory that indexes `zoom`.
+// ASSERT_NO_THROW makes that type confusion a test failure.
 TEST_F(PrefabApi, ComponentsTableUserdataEntryErrors) {
     IRScript::bindLuaType<IRComponents::C_ZoomLevel>(m_lua);
 

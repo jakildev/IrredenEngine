@@ -482,8 +482,8 @@ constexpr CardinalIndex rasterYawCardinalIndex(float rasterYaw) {
 
 /// `(cos, sin)` of the cardinal angle named by @p cardinalIndex — exact
 /// `±1`/`0`, the snapped Z-yaw the `GRID` voxel/SDF rasterizer projects at.
-/// Pairs with @ref rasterYawCardinalIndex to retire the open-coded
-/// `kCardinalCos`/`kCardinalSin` tables callers used to inline.
+/// Pairs with @ref rasterYawCardinalIndex so callers share the exact cardinal
+/// values.
 ///
 /// GPU mirror: `cardinalYawCosSin` in `shaders/ir_iso_common.glsl`.
 constexpr vec2 cardinalYawCosSin(CardinalIndex cardinalIndex) {
@@ -546,9 +546,6 @@ constexpr vec3 rotateCardinalZ(const vec3 v, CardinalIndex cardinalIndex) {
 /// - cardinal 90:  {Y_NEG, X_POS, Z_NEG}
 /// - cardinal 180: {X_POS, Y_POS, Z_NEG}
 /// - cardinal 270: {Y_POS, X_NEG, Z_NEG}
-///
-/// At cardinal 0 the result is `{X_NEG, Y_NEG, Z_NEG}`. Every other cardinal
-/// selects the faces whose normals point toward the camera.
 ///
 /// DETACHED-canvas paths call @ref visibleTriplet instead — per-entity
 /// rotation determines which faces the octahedral-snap residual acts on, so
@@ -707,8 +704,7 @@ constexpr vec2 pos3DtoPos2DIsoYawed(const vec3 worldPos, float visualYaw) {
 /// `(cosYaw, sinYaw)`: each in-plane axis grows to `|c|·hX + |s|·hY` (the
 /// footprint the rotated box covers, up to the √2 extent at ±45°); Z is
 /// unchanged. Centralizes the iso-cull / GPU-tile-dispatch footprint expansion
-/// the SDF + voxel paths used to inline at each call site, so the CPU cull and
-/// the GPU rasterizer grow their bounds identically.
+/// so the CPU cull and GPU rasterizer grow their bounds identically.
 ///
 /// GPU mirror: `yawGrownIsoHalfExtent` in `shaders/ir_iso_common.glsl`.
 constexpr vec3 yawGrownIsoHalfExtent(const vec3 halfExtent, float cosYaw, float sinYaw) {

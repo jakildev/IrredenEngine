@@ -191,9 +191,9 @@ class EntityManager {
 
     template <typename... Components> EntityId createEntity(const Components &...components) {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
-        // a `createEntity` from a `PARALLEL_FOR` worker body
+        // A `createEntity` from a `PARALLEL_FOR` worker body
         // routes through the per-worker staging buffer. The EntityId is allocated
-        // the EntityId atomically so the caller can return it
+        // atomically so the caller can return it
         // immediately; the archetype-node insertion runs on the main
         // thread at the next `flushStructuralChanges`.
         if (!isMainThreadForDeferred()) {
@@ -398,7 +398,7 @@ class EntityManager {
 
     template <typename Component> void removeComponentDeferred(EntityId entity) {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
-        // route through the per-worker staging buffer so a
+        // Route through the per-worker staging buffer so a
         // `PARALLEL_FOR` body in any worker can call this without
         // racing on the shared pending vector.
         int slot = workerSlotForCurrentThread();
@@ -411,7 +411,7 @@ class EntityManager {
     template <typename Component>
     void setComponentDeferred(EntityId entity, const Component &component) {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
-        // route through the per-worker staging buffer (see
+        // Route through the per-worker staging buffer (see
         // `removeComponentDeferred`).
         int slot = workerSlotForCurrentThread();
         m_workerStaging[slot].structuralChanges_.push_back([this, entity, component]() {
@@ -428,7 +428,7 @@ class EntityManager {
         });
     }
 
-    // stage an arbitrary structural mutation to run at the next
+    // Stage an arbitrary structural mutation to run at the next
     // `flushStructuralChanges`, in the current thread's staging slot (slot 0
     // == main thread). The templated `setComponentDeferred` /
     // `removeComponentDeferred` cover C++-typed ops; this generic entry point
@@ -601,13 +601,13 @@ class EntityManager {
     // TODO: Remove when entity is destroyed
     std::unordered_map<std::string, EntityId> m_namedEntities;
     EntityId m_liveEntityCount;
-    // Internal paths may still use these main-thread queues directly;
-    // flushStructuralChanges and destroyMarkedEntities drain them before the
-    // per-worker staging slots.
+    // Every public deferred-write path uses m_workerStaging, so these queues
+    // remain empty. The drains read them before the per-worker staging slots as
+    // a safety net for future internal paths.
     std::vector<EntityId> m_entitiesMarkedForDeletion;
     std::vector<PendingComponentRemoval> m_pendingComponentRemovals;
     std::vector<std::function<void()>> m_pendingStructuralChanges;
-    // per-worker staging buffers for deferred mutations from
+    // Per-worker staging buffers for deferred mutations from
     // worker threads. Sized to `IRJob::workerCount() + 1` by
     // `resizeWorkerStaging` after `JobManager` is constructed. Until
     // then the vector has a single slot for the main thread, so the

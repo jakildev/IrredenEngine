@@ -85,7 +85,7 @@ World::World(const char *configFileName)
     m_videoManager.configureScreenshotOutputDir(
         m_worldConfig["screenshot_output_dir"].get_string()
     );
-    // size the EntityManager's per-worker deferred-mutation
+    // Size the EntityManager's per-worker deferred-mutation
     // staging vector now that JobManager exists. Slot 0 is main,
     // slots 1..N are IRJob worker threads, so the total is
     // `workerCount() + 1`.
@@ -95,12 +95,10 @@ World::World(const char *configFileName)
     // main-thread `createEntity`, so a *first* registration arriving from a Lua
     // callback inside a system tick would be a structural change mid-iteration
     // — the silent address-invalidation footgun. Seeding here makes every later
-    // accessor call a pure lookup. Create the singleton before the loop, as
-    // required by the modifier framework's global-row access pattern.
-    // Deliberately unnamed: setName would survive destroyAllEntities (which
+    // accessor call a pure lookup.
+    // Keep the singleton unnamed: setName would survive destroyAllEntities (which
     // prunes no names — only destroyAllExceptPreserved does), leaving a stale
-    // name -> dead-id entry that asserts on the next getEntityByName. The
-    // singleton is deliberately unnamed because no name lookup consumes it.
+    // name -> dead-id entry that asserts on the next getEntityByName.
     IREntity::singleton<IRComponents::C_EntityEventHandlers>();
     IR_PROFILE_MAIN_THREAD;
     IRE_LOG_INFO("Initalized game world");
@@ -317,7 +315,7 @@ void World::input() {
 }
 
 void World::start() {
-    // cross-system pipeline-group validation runs once after
+    // Cross-system pipeline-group validation runs once after
     // every system + pipeline is registered, before the first tick.
     // FATALs on the first conflict, naming both systems + the
     // offending component. Single-system groups (every legacy

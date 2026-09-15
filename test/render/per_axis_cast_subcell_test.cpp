@@ -256,9 +256,9 @@ TEST(PerAxisCastSubCell, IntegerContentAgreesExactlyBeforeAndAfter) {
 }
 
 // ---------------------------------------------------------------------------
-// Arm 2 — POSITIVE arm. Fractional content at effSub >= 2: the pre-fix delta is
-// non-zero and the post-fix delta is bounded by the layout quantum. The two arms
-// move in opposite directions, which is what makes the harness discriminating.
+// Arm 2 — POSITIVE arm. For fractional content at effSub >= 2, the lattice-only
+// delta is non-zero and the sub-cell delta is bounded by the layout quantum. The
+// two arms move in opposite directions, making the harness discriminating.
 // ---------------------------------------------------------------------------
 
 TEST(PerAxisCastSubCell, FractionalContentDeltaCollapsesToLayoutQuantum) {
@@ -276,8 +276,8 @@ TEST(PerAxisCastSubCell, FractionalContentDeltaCollapsesToLayoutQuantum) {
             const float before = maxAbsDelta(castWorldLatticeOnly(c), receive);
             const float after = maxAbsDelta(castWorldSubCell(c), receive);
 
-            // Pre-fix: the caster sits on the lattice, so the delta is the full
-            // sub-cell offset — independent of effSub.
+            // The lattice-only caster leaves the full sub-cell offset as a
+            // delta, independent of effSub.
             EXPECT_FLOAT_EQ(before, 0.3125f)
                 << "effSub=" << subdivisions << " axis=" << c.axis
                 << " cardinal=" << static_cast<int>(c.cardinal);

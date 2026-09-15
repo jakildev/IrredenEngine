@@ -19,7 +19,7 @@ EntityManager::EntityManager()
     , m_entitiesMarkedForDeletion{}
     , m_pendingComponentRemovals{}
     , m_workerStaging(1) {
-    // start with a single staging slot for the main thread.
+    // Start with a single staging slot for the main thread.
     // `resizeWorkerStaging` grows the vector to
     // `IRJob::workerCount() + 1` once `JobManager` is constructed.
     g_entityManager = this;
@@ -137,7 +137,7 @@ EntityId EntityManager::setFlags(EntityId entity, EntityId flags) {
 }
 
 void EntityManager::markEntityForDeletion(EntityId &entity) {
-    // route into the per-worker buffer. Workers write only
+    // Route into the per-worker buffer. Workers write only
     // their own slot; the flag bit on the caller's `entity` ref is
     // the caller's memory, not ours. `destroyMarkedEntities`
     // drains every slot serially on the main thread.
@@ -245,7 +245,7 @@ void EntityManager::destroyMarkedEntities() {
         isMainThreadForDeferred(),
         "EntityManager::destroyMarkedEntities must run on the main thread"
     );
-    // drain the legacy main-thread list first (callers that
+    // Drain the legacy main-thread list first (callers that
     // bypass the per-worker buffer — pre-`World` startup, e.g. — still
     // funnel through this vector).
     // The drain is set-semantics, not sequence-semantics: an id can be marked
@@ -296,7 +296,7 @@ void EntityManager::flushStructuralChanges() {
         isMainThreadForDeferred(),
         "EntityManager::flushStructuralChanges must run on the main thread"
     );
-    // keep looping until every staging buffer (legacy main +
+    // Keep looping until every staging buffer (legacy main +
     // per-worker) is empty. A structural-change lambda may queue
     // further changes; the legacy single-buffer flush handled this
     // with a while loop and we preserve that semantics.

@@ -1,7 +1,7 @@
 #ifndef LUA_WIDGET_BINDINGS_H
 #define LUA_WIDGET_BINDINGS_H
 
-// IRGui widget Lua bindings (engine) — build the C++ widget framework
+// IRGui widget Lua bindings — build the C++ widget framework
 // (IRPrefab::Widget) entirely from Lua, with a Lua `onClick` that fires on
 // click and a polling `wasClicked`.
 //
