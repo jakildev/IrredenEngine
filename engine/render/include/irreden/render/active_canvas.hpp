@@ -12,6 +12,7 @@ namespace IRRender {
 // Lives in a dedicated header (out of ir_render.hpp) so component
 // constructors that need the snapshot — see "Constructor snapshots
 // ambient state" exception in .claude/rules/cpp-ecs.md — do not pull
+// in the full render surface.
 IREntity::EntityId getActiveCanvasEntityOrNull();
 
 } // namespace IRRender

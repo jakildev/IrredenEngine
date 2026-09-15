@@ -33,6 +33,7 @@ struct MetalTimestampSampleAttachment {
     // boundary; every encoder re-writes the end boundary. Sequential GPU
     // execution makes the last encoder's end write win, so the resolved pair
     // spans [first-encoder start, last-encoder end] — the whole stage, not
+    // just its first encoder.
     bool firstEncoder_ = true;
 };
 
@@ -97,6 +98,7 @@ void bindComputeResources(MTL::ComputeCommandEncoder *encoder) {
         // / bindMetalImageTexture evict each other), so at most one of these is
         // non-null and the flush order no longer picks a winner — the most recent
         // bind does. Keep the else-if: an unconditional second setTexture would
+        // make flush order decide the winner again if the tables diverge.
         if (MTL::Texture *texture = boundMetalTexture(i); texture != nullptr) {
             encoder->setTexture(texture, i);
         } else if (MTL::Texture *imageTexture = boundMetalImageTexture(i);
@@ -111,6 +113,7 @@ void bindComputeResources(MTL::ComputeCommandEncoder *encoder) {
     // sticky (set by every R32I bindAsImage, never cleared), and slot 16
     // doubles as kBufferIndex_RevoxelizeDetachedParams — an unconditional bind
     // clobbered c_revoxelize_detached's params UBO on every encode after the
+    // first distance-image bind.
     if (MTL::Buffer *scratch = currentImageAtomicScratch(); scratch != nullptr) {
         const MetalPipelineStateProvider *pipeline = activeMetalPipeline();
         if (pipeline != nullptr && pipeline->usesImageAtomicScratch()) {
@@ -149,7 +152,9 @@ MTL::ComputeCommandEncoder *createComputeEncoder(MTL::CommandBuffer *commandBuff
 // Blit twin of createComputeEncoder: when a timestamp attachment is active
 // (a per-system observer pair or an intra-tick GpuSubStageScope), attach the
 // sticky sample buffer to the blit pass so a blit-only stage — the per-frame
+// distance-texture clear that backs the `canvasClear` sub-row — still
 // resolves a non-zero pair. Same first-encoder-claims-start / last-encoder-wins-
+// end semantics as the compute path. Returns a plain blit encoder when
 // no attachment is active.
 MTL::BlitCommandEncoder *createBlitEncoder(MTL::CommandBuffer *commandBuffer) {
     if (commandBuffer == nullptr) {
@@ -751,6 +756,7 @@ metalCurrentDepthPixelFormat(),
         if (commandBuffer != nullptr) {
             // GPU-side blit: no per-frame allocation, no replaceRegion stall.
             // Routed through createBlitEncoder so an active GpuSubStageScope
+            // samples this clear.
             auto *blit = createBlitEncoder(commandBuffer);
             blit->copyFromBuffer(
                 clearBuf,
@@ -777,6 +783,7 @@ metalCurrentDepthPixelFormat(),
             // nothing) and resolveImageAtomicScratch blits a solid nearest-depth
             // surface over the whole texture. Ensuring the buffer here is what
             // makes this mirror unconditional, which is what both consumers of
+            // that property already assume. Canvas distance textures
             // cleared here are image-bound later in the same frame, so the
             // ensure only moves their allocation earlier. The exception is the
             // per-axis resolveDepth_, cleared at (yaw-gated) allocation but
@@ -850,6 +857,7 @@ metalCurrentDepthPixelFormat(),
         const std::size_t totalBytes = bytesPerRow * static_cast<std::size_t>(height);
 
         // createBlitEncoder, never a raw blitCommandEncoder: sub-stage timing
+        // attribution rides on it, and this blit runs inside the
         // caller's GpuSubStageScope.
         auto *blit = createBlitEncoder(commandBuffer);
         blit->copyFromBuffer(
@@ -1003,7 +1011,8 @@ metalCurrentDepthPixelFormat(),
         } else {
             // Stop tagging once the stage ends: clear the sticky attachment so
             // encoders created in the gap before the next START stay untracked
-            // of the stage up to this point, so the last one's index-1 write
+            // after the end boundary is attached. Every encoder in the stage
+            // already carries that boundary, so the last one's index-1 write
             // bounds the pair.
             g_nextComputeTimestampAttachment = {};
             pair->hasEnd_ = true;
@@ -1069,6 +1078,7 @@ metalCurrentDepthPixelFormat(),
 // order between this TU and the `inline` `g_world` in `ir_engine.hpp` is
 // implementation-defined; without the leak, the device can be destroyed
 // before the textures, and `find()` crashes on the corpse of its
+// unordered_map.
 MetalRenderDevice &metalRenderDevice() {
     static auto *device = new MetalRenderDevice{};
     return *device;
@@ -1083,6 +1093,7 @@ std::unique_ptr<RenderImpl> createRenderer() {
     return std::make_unique<MetalRenderImpl>();
 }
 
+// Headless render-device bring-up for GPU unit tests. Wires
 // IRRender::device() to a windowless Metal device + command buffer so a test can
 // drive the real ShaderProgram / Texture2D / dispatchCompute path without a
 // swapchain. Mirrors MetalRenderImpl::init() minus the CAMetalLayer, which is

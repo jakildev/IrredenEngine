@@ -49,7 +49,8 @@ vec2 getEffectiveCameraIso() {
     }
     const float visualYaw = IRPrefab::Camera::getYaw();
     if (getRenderManager().hasRotationPivotFocus()) {
-        // about the focus at its TRUE depth so it rotates in place. The
+        // CAMERA_CENTER with an explicit point of interest pivots Z-yaw about
+        // the focus at its TRUE depth so it rotates in place. The
         // drift-cancel offset (`IRMath::cameraYawPivotOffset`) keeps the focus at
         // a constant on-screen position across the yaw sweep.
         return IRMath::cameraYawPivotOffset(
@@ -58,19 +59,22 @@ vec2 getEffectiveCameraIso() {
             visualYaw
         );
     }
-    // CAMERA_CENTER default — pivot Z-yaw about the content under the viewport
+    // CAMERA_CENTER defaults to pivoting Z-yaw about the content under the
+    // viewport center at its rendered depth, held fixed across the yaw sweep so
     // the scene rotates in place about what the player is looking at. The focus
     // is the latched depth-aware point (`RenderManager::
     // updateDefaultRotationPivotFocus`, re-derived once per frame from a
     // single-pixel composite-depth readback while yaw is settled); before the
     // first derive, and whenever the center pixel reads background, it falls
-    // default. Note "iso depth 0" is the plane `x + y + z == 0`, NOT `z == 0`:
+    // back to the iso-depth-0 point under the viewport center. Note "iso depth
+    // 0" is the plane `x + y + z == 0`, NOT `z == 0`:
     // `isoPixelToPos3D`'s third parameter is an iso depth (ir_math.hpp).
     // `cameraYawPivotOffset` then drift-cancels so screen(F) is yaw-independent.
     // At visualYaw == 0 it returns cameraIso, byte-identical to ORIGIN mode (the
     // cardinal fast path). The DETACHED entity-canvas composite must place
     // entities with getEffectiveCameraIso() (not the raw camera pos) so detached
-    // and GRID pivot together — see system_entity_canvas_to_framebuffer.hpp. See
+    // and GRID pivot together; the full contract is in
+    // docs/design/camera-yaw-pivot.md.
     const vec3 cameraFocusWorld = getRenderManager().getDefaultRotationPivotFocus();
     return IRMath::cameraYawPivotOffset(cameraIso, cameraFocusWorld, visualYaw);
 }
@@ -112,6 +116,7 @@ CompositeDepthSample readbackCompositeDepth(ivec2 px) {
     const int texelY = IRPlatform::kIsOpenGL ? (resolution.y - 1 - px.y) : px.y;
 
     // Flush so the readback sees this frame's committed composite. On Metal this
+    // is the mandatory commit-and-wait before getBytes; OpenGL uses glFinish.
     device()->finish();
 
     // gl_FragDepth is written directly as window depth in [0, 1] on both
@@ -187,7 +192,7 @@ namespace {
 // The picking chain needs no residualYaw inverse step: residual yaw lives in the
 // trixel emit shaders' faceDeform[], not in a screen-space stage. Iso-space
 // picking accuracy at non-cardinal yaws is bounded by the geometric trixel
-// deformation — a small per-face offset the picking math doesn't reverse-compose
+// deformation — a small per-face offset the picking math does not reverse-compose.
 vec2 mouseCanvasIso() {
     return IRMath::pos2DScreenToPos2DIso(
                IRRender::getMousePositionOutputView(),
@@ -207,6 +212,7 @@ vec2 mousePosition2DIsoWorldRender() {
 }
 
 vec3 mouseWorldPos3DAtIsoDepth(float canvasIsoDepth) {
+    // Screen-to-world picking uses the raster-yaw inverse only.
     // The inverse chain is the rasterYaw half only:
     //   world = R_z(-rasterYaw) · isoPixelToPos3D · screen
     // `mouseCanvasIso()` provides the canvas-frame iso pixel; isoPixelToPos3D
@@ -262,6 +268,7 @@ IREntity::EntityId getEntityIdAtMouseTrixel() {
     // that composites via ENTITY_CANVAS_TO_FRAMEBUFFER has no hover readback at
     // all and "nothing hovered" is the right answer. The probing lookup is what
     // makes that answer reachable — the asserting one throws in debug and
+    // dereferences an end iterator in release.
     auto *buf = IRRender::getNamedResourceOrNull<Buffer>("HoveredEntityIdBuffer");
     if (!buf)
         return IREntity::kNullEntity;
@@ -280,7 +287,8 @@ IREntity::EntityId getEntityIdAtMouseTrixel() {
     uvec2 packed;
     std::memcpy(&packed, mappedPtr, sizeof(uvec2));
 
-    // before reconstructing the 64-bit id — THE chokepoint so a prioritized
+    // Strip the per-trixel priority carrier from the high word before
+    // reconstructing the 64-bit id — THE chokepoint so a prioritized
     // fragment never reports a corrupted picked id.
     return static_cast<IREntity::EntityId>(IRRender::decodeCarrierEntityId(packed));
 }

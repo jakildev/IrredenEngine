@@ -5,7 +5,7 @@
 
 namespace IRRender::VoxelPoolConfig {
 
-/// Default cube edge length when no Lua override is supplied; preserves
+/// Default cube edge length when no Lua override is supplied.
 constexpr int kDefaultEdge = 64;
 
 /// Set the cube edge length applied to both the global voxel pool and the
@@ -29,15 +29,14 @@ int getEdge();
 IRMath::ivec3 getSize();
 
 /// Per-entity max allocation. Currently sized as a cube of the same
-/// separate override in a future task.
+/// edge length as the global pool.
 IRMath::ivec3 getMaxAllocationSize();
 
 /// Total voxels in the global pool (edge³).
 int getTotalSize();
 
 /// Total voxels in the per-entity max allocation (edge³). Currently
-/// per-entity total once the residency manager work introduces an
-/// independent per-entity override.
+/// tracks @ref getTotalSize.
 int getMaxAllocationSizeTotal();
 
 } // namespace IRRender::VoxelPoolConfig

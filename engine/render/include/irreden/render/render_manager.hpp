@@ -51,8 +51,9 @@ class RenderManager {
     void setRotationPivotMode(RotationPivotMode mode);
     RotationPivotMode getRotationPivotMode() const;
     // Explicit world-space point of interest to rotate the camera Z-yaw about
-    // — content there rotates in place instead of arcing about the z=0 world
-    // point under screen center. When unset, the pivot falls back to that legacy
+    // in CAMERA_CENTER mode. Content there rotates in place instead of arcing
+    // about the z=0 world point under screen center. When unset, the pivot falls
+    // back to that screen-center point. The choice of
     // focus (cursor / selection / scene centroid) is a creation-level policy;
     // the engine only consumes the point.
     void setRotationPivotFocus(vec3 focusWorld);
@@ -60,10 +61,12 @@ class RenderManager {
     bool hasRotationPivotFocus() const;
     vec3 getRotationPivotFocus() const;
     // Focus the DEFAULT (no explicit override) CAMERA_CENTER pivot rotates
-    // about: the content under the viewport center at its rendered depth
+    // about: the content under the viewport center at its rendered depth.
+    // The point is derived live from the current camera position on
     // every call; only the iso DEPTH is latched (re-derived by @ref
     // updateDefaultRotationPivotFocus on the frames the policy admits, held
     // otherwise). Depth 0 — before the first derive and whenever the center
+    // pixel reads background — is the fallback.
     vec3 getDefaultRotationPivotFocus() const;
     // Iso coordinate of the viewport center — the point a world position must
     // project to (before the camera offset) to land at screen center.
@@ -188,8 +191,8 @@ class RenderManager {
     // silently couple this settle threshold to a value tuned for those.
     // 1e-4 rad/frame is ~0.34 deg/s at 60 fps.
     static constexpr float kPivotYawSettleDelta = 1e-4f;
-    // the focus POINT is re-derived from the live cameraIso on every read (see
-    // getDefaultRotationPivotFocus), which is what keeps
+    // Only the iso depth is latched; the focus POINT is re-derived from the live
+    // cameraIso on every read (see getDefaultRotationPivotFocus), which is what keeps
     // IRMath::cameraMoveRelativeToYaw's pan identity true. NOT a dirty flag over
     // caller-authored data: the derive costs a full GPU flush (single-pixel
     // depth readback), and holding the depth WHILE yaw moves is the semantic
@@ -229,11 +232,15 @@ class RenderManager {
     float m_sunAmbient = 0.4f;
     bool m_sunShadowsEnabled = true;
     bool m_aoEnabled = true;
+    // Voxel-pool chunk-occlusion cull. Off by default: the pre-pass is
     // not dispatched unless this is set, so a default scene is byte-identical to
+    // the unculling path.
     bool m_voxelOcclusionCullEnabled = false;
-    // above. On by default, but only active when the chunk cull is enabled (the
+    // Per-voxel Hi-Z occlusion refine, layered on the chunk pre-pass above. On
+    // by default, but only active when the chunk cull is enabled (the
     // per-voxel test shares getVoxelOcclusionCullEnabled()'s gate). Flip it off
     // (--no-per-voxel-occlusion) to isolate the chunk cull's contribution for the
+    // cull-with-per-voxel versus cull-without-per-voxel comparison.
     bool m_voxelPerVoxelOcclusionEnabled = true;
     DebugOverlayMode m_debugOverlayMode = DebugOverlayMode::NONE;
     bool m_depthColorDebugOn = false;
