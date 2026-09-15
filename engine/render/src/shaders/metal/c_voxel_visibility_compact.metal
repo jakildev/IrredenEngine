@@ -262,6 +262,8 @@ kernel void c_voxel_visibility_compact(
     const int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
     const uint workGroupIndex = groupId.x + groupId.y * groupCount.x;
     const uint idx = workGroupIndex * 64u + localId.x;
+    threadgroup uint groupUniqueSurvivors[64];
+    groupUniqueSurvivors[localIndex] = 0u;
 
     if (idx < uint(frameData.voxelCount)) {
         const uint chunkIdx = idx / uint(VOXEL_CHUNK_SIZE);
@@ -366,6 +368,7 @@ kernel void c_voxel_visibility_compact(
                         for (int axis = 0; axis < 3; ++axis) {
                             if (faceIsExposed(flagsByte, 2 * axis) ||
                                 faceIsExposed(flagsByte, 2 * axis + 1)) {
+                                groupUniqueSurvivors[localIndex] = 1u;
                                 const uint base = uint(axis) * kPerAxisIndirectStrideUints;
                                 const uint slot = atomic_fetch_add_explicit(
                                     &indirectParams[base + kSlotVisibleCount],
@@ -381,9 +384,16 @@ kernel void c_voxel_visibility_compact(
         }
     }
 
-    threadgroup_barrier(mem_flags::mem_device);
+    threadgroup_barrier(mem_flags::mem_device | mem_flags::mem_threadgroup);
 
     if (localIndex == 0u) {
+        if (frameData.perAxisRoute != 0) {
+            uint uniqueSurvivors = 0u;
+            for (int lane = 0; lane < 64; ++lane) {
+                uniqueSurvivors += groupUniqueSurvivors[lane];
+            }
+            atomic_fetch_add_explicit(&indirectParams[5], uniqueSurvivors, memory_order_relaxed);
+        }
         // Slot kSlotCompletedGroups of struct 0 is the shared cross-group
         // completion counter in both modes.
         const uint finished = atomic_fetch_add_explicit(

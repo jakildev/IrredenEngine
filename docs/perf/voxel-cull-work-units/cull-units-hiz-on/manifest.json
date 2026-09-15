@@ -1,0 +1,35 @@
+{
+  "head": "c540ef35c70b60a36e9191f5d2772e0a46346ab7",
+  "changes": " M engine/prefabs/irreden/render/gpu_stage_timing.hpp\n M engine/prefabs/irreden/render/systems/system_perf_stats_overlay.hpp\n M engine/prefabs/irreden/render/systems/system_voxel_to_trixel.hpp\n M engine/profile/include/irreden/profile/profile_report.hpp\n M engine/profile/src/profile_report.cpp\n M engine/render/include/irreden/render/ir_render_types.hpp\n M engine/render/src/shaders/c_voxel_visibility_compact.glsl\n M engine/render/src/shaders/metal/c_voxel_visibility_compact.metal\n M engine/world/src/world.cpp\n M scripts/lint_comment_refs_baseline.json\n M scripts/perf/compare_perf_runs.py\n M scripts/perf/test_profile_parser.py\n?? docs/pr-screenshots/codex/voxel-cull-work-units/\n",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "binary_sha256": "24a8d85b480e8509c81a7d85dd0ee6115e0def0d34edaedb87cb29131feff3d2",
+  "shader_sha256": "b7b16af5777ba7bcac13ff82bd2b8276ced25cdeb2cf462621274ccb9be0dc47",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "120",
+    "IRPerfGrid",
+    "--auto-profile",
+    "120",
+    "--grid-size",
+    "64",
+    "--wave-freeze",
+    "--zoom",
+    "2",
+    "--yaw",
+    "0",
+    "--subdivision-mode",
+    "none",
+    "--no-sun-shadows",
+    "--occlusion-cull"
+  ],
+  "runs": [
+    {
+      "index": 1,
+      "exit_code": 0,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    }
+  ]
+}

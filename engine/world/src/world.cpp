@@ -439,6 +439,8 @@ void World::buildAndWriteProfileReport() {
     report.voxelCullStats_.visibleSum_ = cull.visibleSum_;
     report.voxelCullStats_.totalSum_ = cull.totalSum_;
     report.voxelCullStats_.feederSum_ = cull.feederSum_;
+    report.voxelCullStats_.axisEntrySum_ = cull.axisEntrySum_;
+    report.voxelCullStats_.maxAxisEntries_ = cull.maxAxisEntries_;
     report.voxelCullStats_.maxVisible_ = cull.maxVisible_;
     report.voxelCullStats_.maxTotal_ = cull.maxTotal_;
     report.voxelCullStats_.maxFeeder_ = cull.maxFeeder_;

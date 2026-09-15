@@ -51,14 +51,10 @@ struct GpuStageTiming {
     float fbToScreenMs_ = 0.0f;
     std::uint32_t visibleShapeCount_ = 0;
     std::uint32_t shapeGroupsZ_ = 0;
-    // Cull diagnostic. Populated by VOXEL_TO_TRIXEL_STAGE_1 each frame
-    // from the prior frame's indirect-dispatch params + the current
-    // pool live count, so the readback is sync-free (frame N+1 reads
-    // frame N's already-written value before zeroing the buffer).
-    // Reports the *last* sampled frame; running averages live in
-    // VoxelCullAccumulator below.
+    // Last sampled compact dispatch; axis entries count repeated face routes.
     std::uint32_t visibleVoxelCount_ = 0;
     std::uint32_t totalVoxelCount_ = 0;
+    std::uint32_t axisEntryCount_ = 0;
     // Shadow-feeder (struct 1) survivors from the same prior-frame readback —
     // the shadow-feeder tail population targeted by the domain-widened cull.
     // 0 whenever shadows are off / per-axis split active (feeders
@@ -147,24 +143,31 @@ inline ComputeLightVolumeTiming &computeLightVolumeTiming() {
     return instance;
 }
 
-// Running cull-effectiveness accumulator. Each per-frame sample comes
-// from VOXEL_TO_TRIXEL_STAGE_1 reading the prior frame's indirect
-// dispatch params. The world's profile-report builder drains this at
-// shutdown; `enableFrameTiming(true)` calls reset() so each measurement
-// run starts from zero.
+// Samples are compact dispatches, not frame totals: shared buffers can pass
+// between canvases within a frame. Visible and feeder are disjoint source
+// candidates; axis entries count repeated per-axis list work.
 struct VoxelCullAccumulator {
     std::uint64_t visibleSum_ = 0;
     std::uint64_t totalSum_ = 0;
     std::uint64_t feederSum_ = 0;
+    std::uint64_t axisEntrySum_ = 0;
     std::uint32_t maxVisible_ = 0;
     std::uint32_t maxTotal_ = 0;
     std::uint32_t maxFeeder_ = 0;
+    std::uint32_t maxAxisEntries_ = 0;
     std::uint32_t sampleCount_ = 0;
 
-    void record(std::uint32_t visible, std::uint32_t total, std::uint32_t feeder) {
+    void record(
+        std::uint32_t visible,
+        std::uint32_t total,
+        std::uint32_t feeder,
+        std::uint32_t axisEntries = 0
+    ) {
         visibleSum_ += visible;
         totalSum_ += total;
         feederSum_ += feeder;
+        axisEntrySum_ += axisEntries;
+        maxAxisEntries_ = IRMath::max(maxAxisEntries_, axisEntries);
         maxVisible_ = IRMath::max(maxVisible_, visible);
         maxTotal_ = IRMath::max(maxTotal_, total);
         maxFeeder_ = IRMath::max(maxFeeder_, feeder);
@@ -175,6 +178,8 @@ struct VoxelCullAccumulator {
         visibleSum_ = 0;
         totalSum_ = 0;
         feederSum_ = 0;
+        axisEntrySum_ = 0;
+        maxAxisEntries_ = 0;
         maxVisible_ = 0;
         maxTotal_ = 0;
         maxFeeder_ = 0;

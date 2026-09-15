@@ -1639,8 +1639,16 @@ struct VoxelIndirectDispatchParams {
     std::uint32_t numGroupsZ = 0;
     std::uint32_t visibleCount = 0;
     std::uint32_t completedGroups = 0;
-    std::uint32_t _padding[3] = {};
+    std::uint32_t uniqueVisibleCount = 0;
+    std::uint32_t _padding[2] = {};
 };
+static_assert(
+    sizeof(VoxelIndirectDispatchParams) == 32, "Indirect parameter ABI must remain 32 bytes"
+);
+static_assert(
+    offsetof(VoxelIndirectDispatchParams, uniqueVisibleCount) == 5 * sizeof(std::uint32_t),
+    "Visibility compact shaders write the unique count at indirect word 5"
+);
 
 // GPU indirect draw-args for the per-axis empty-cell compaction composite
 // (#1961). The leading five uints are byte-identical to GL's
