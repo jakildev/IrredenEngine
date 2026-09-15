@@ -131,8 +131,13 @@ inline void buildVoxelFrameData(
         // byte-identical. Only the re-voxelize path carries this — the
         // octahedral-snap / per-face-deform DETACHED branch below recovers pos
         // differently (residual face skew), so it is not world-receive-capable.
-        frameData.detachedWorldReceive_ =
-            vec4(canvasRotation.worldCellOffset_, canvasRotation.worldPlaced_ ? 1.0f : 0.0f);
+        frameData.detachedWorldReceive_ = vec4(
+            canvasRotation.worldCellOffset_ + IRMath::rotateVectorByQuat(
+                                                  canvas.renderedCellOffset_,
+                                                  IRPrefab::Camera::getRotationQuat()
+                                              ),
+            canvasRotation.worldPlaced_ ? 1.0f : 0.0f
+        );
         return;
     }
     if (detachedCanvas) {

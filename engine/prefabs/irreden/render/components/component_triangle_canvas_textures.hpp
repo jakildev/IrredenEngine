@@ -110,6 +110,9 @@ struct C_TriangleCanvasTextures {
     // the canvas did not raster a voxel pool this frame (pure SDF / text
     // overlay) — the composite then keeps the raw offset.
     int renderedSubdivisions_ = 0;
+    // View-local offset from rounded raster centers to resampled cell centers.
+    // Placement, depth, lighting and resampled casting consume the same phase.
+    vec3 renderedCellOffset_{0.0f};
 
     // Detached voxel display reconstructs undilated local triangle footprints.
     // RECTANGULAR is a raw-trixel debug override for that producer. Do not

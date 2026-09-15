@@ -1317,6 +1317,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             clearCanvasAndDistances(entity, triangleCanvasTextures);
             triangleCanvasTextures.renderedSampleLayout_ = TrixelSampleLayout::RECTANGULAR;
             triangleCanvasTextures.renderedSubdivisions_ = 0;
+            triangleCanvasTextures.renderedCellOffset_ = vec3(0.0f);
         }
 
         // Fog-of-war column cull: resolve this canvas's optional fog
@@ -1416,6 +1417,13 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
 
         const int renderMode = frameData_.voxelRenderOptions_.x;
         const int effectiveSub = frameData_.voxelRenderOptions_.y;
+        if (canvasLocalRotation.isDetached() && revoxBuffer != nullptr) {
+            const float density = static_cast<float>(renderMode == 0 ? 1 : effectiveSub);
+            const vec3 anchor = revoxBuffer->anchor_;
+            triangleCanvasTextures.renderedCellOffset_ =
+                anchor - vec3(roundVec3HalfUp(anchor * density)) / density;
+        }
+
         if (renderMode != previousRenderMode_ || effectiveSub != previousEffectiveSubdivisions_) {
             const vec2 zoom = IRRender::getCameraZoom();
             IRE_LOG_INFO(
@@ -1688,7 +1696,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 effectiveVoxelCount,
                 renderMode == 0 ? 1 : effectiveSub,
                 canvasLocalRotation,
-                revoxBuffer
+                revoxBuffer,
+                triangleCanvasTextures.renderedCellOffset_
             );
             winnerPlaceholderBuf_->bindBase(
                 BufferTarget::SHADER_STORAGE,

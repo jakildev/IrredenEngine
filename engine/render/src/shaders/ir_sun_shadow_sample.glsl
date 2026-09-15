@@ -48,8 +48,24 @@ layout(std430, binding = 28) readonly buffer SunShadowDepthMap {
 
 float sampleCascadeShadow(
     vec2 sunUV, float sunZ, vec3 normal, vec3 sunDir, vec3 uHat, vec3 vHat,
-    vec2 origin, vec2 texelSz, int bufferOffset, float maxShadowThrow
+    vec2 origin, vec2 texelSz, int bufferOffset, float maxShadowThrow, bool surfaceReceiver
 ) {
+    // Finite footprints are rasterized at sun texel centers. Query their cell
+    // without blending coverage across its boundary or moving the receiver.
+    ivec2 nearestPixel = ivec2(floor((sunUV - origin) / texelSz));
+    if (surfaceReceiver && nearestPixel.x >= 0 && nearestPixel.y >= 0 &&
+        nearestPixel.x < kSunShadowMapDim && nearestPixel.y < kSunShadowMapDim) {
+        uint nearest = sunDepthBuf[bufferOffset + nearestPixel.y * kSunShadowMapDim + nearestPixel.x];
+        if (sunWriteIsSurface(nearest)) {
+            float facing = dot(normal, sunDir);
+            if (facing <= 0.0) return 0.0;
+            vec2 gradient = vec2(dot(normal, uHat), dot(normal, vHat)) / facing;
+            vec2 tapUV = origin + (vec2(nearestPixel) + 0.5) * texelSz;
+            float receiverZ = sunZ + dot(gradient, tapUV - sunUV);
+            float separation = receiverZ - unpackSunDepth(nearest);
+            if (separation > kShadowBiasQuantNoise && separation < maxShadowThrow) return 1.0;
+        }
+    }
     float slope = max(kShadowBiasSlopeMin, dot(normal, sunDir));
     float texelSize = max(texelSz.x, texelSz.y);
     // Receiver tolerance accounts for slope, map resolution and depth quantization.
@@ -78,7 +94,7 @@ float sampleCascadeShadow(
             if (px.x < 0 || px.x >= kSunShadowMapDim ||
                 px.y < 0 || px.y >= kSunShadowMapDim) continue;
             uint stored = sunDepthBuf[bufferOffset + px.y * kSunShadowMapDim + px.x];
-            if (stored == 0xFFFFFFFFu) continue;
+            if (stored == 0xFFFFFFFFu || (surfaceReceiver && sunWriteIsSurface(stored))) continue;
             float nearestZ = unpackSunDepth(stored);
             float weight = mix(1.0 - frac.x, frac.x, float(dx))
                          * mix(1.0 - frac.y, frac.y, float(dy));
@@ -89,7 +105,7 @@ float sampleCascadeShadow(
             float depthDiff = sunZ - nearestZ;
             if (depthDiff - bias >= maxShadowThrow) continue;
 
-            if (sunWriteIsDirect(stored)) {
+            if (sunWriteIsDirect(stored) || sunWriteIsSurface(stored)) {
                 // Direct writes compare caster depth without splat-plane recovery.
                 if (depthDiff > bias) shadowAccum += weight;
             } else {
@@ -114,7 +130,7 @@ float sampleCascadeShadow(
 
 // Direct-sun visibility at a world-space surface: 1.0 lit, 0.0 occluded.
 // Ambient lighting is composed separately. isoDepth selects/blends cascades.
-float worldSunShadowFactor(vec3 pos3D, vec3 normal, float isoDepth) {
+float worldSunShadowFactorImpl(vec3 pos3D, vec3 normal, float isoDepth, bool surfaceReceiver) {
     vec3 sunDir = sunDirection.xyz;
     vec3 uHat = sunBasisU.xyz;
     vec3 vHat = sunBasisV.xyz;
@@ -122,7 +138,7 @@ float worldSunShadowFactor(vec3 pos3D, vec3 normal, float isoDepth) {
     // caster's sun UV + depth from this same function, so cast and receive
     // cannot drift.
     vec3 sunProj = sunSpaceProject(
-        pos3D + normal * kNormalBiasVoxels, uHat, vHat, sunDir
+        pos3D, uHat, vHat, sunDir
     );
     vec2 sunUV = sunProj.xy;
     float sunZ = sunProj.z;
@@ -131,7 +147,7 @@ float worldSunShadowFactor(vec3 pos3D, vec3 normal, float isoDepth) {
     if (cascadeCount <= 1) {
         shadowAccum = sampleCascadeShadow(
             sunUV, sunZ, normal, sunDir, uHat, vHat,
-            sunBufferOriginUV, sunBufferTexelSize, 0, sunMaxShadowThrow
+            sunBufferOriginUV, sunBufferTexelSize, 0, sunMaxShadowThrow, surfaceReceiver
         );
     } else {
         float distToSplit = isoDepth - cascadeSplitDepth;
@@ -150,25 +166,34 @@ float worldSunShadowFactor(vec3 pos3D, vec3 normal, float isoDepth) {
         if (nearInterior && distToSplit < -kCascadeBlendRange) {
             shadowAccum = sampleCascadeShadow(
                 sunUV, sunZ, normal, sunDir, uHat, vHat,
-                cascadeOriginUV_0, cascadeTexelSize_0, 0, sunMaxShadowThrow
+                cascadeOriginUV_0, cascadeTexelSize_0, 0, sunMaxShadowThrow, surfaceReceiver
             );
         } else if (!nearInterior || distToSplit > kCascadeBlendRange) {
             shadowAccum = sampleCascadeShadow(
                 sunUV, sunZ, normal, sunDir, uHat, vHat,
-                cascadeOriginUV_1, cascadeTexelSize_1, kCascadeTexelCount, sunMaxShadowThrow
+                cascadeOriginUV_1, cascadeTexelSize_1, kCascadeTexelCount, sunMaxShadowThrow, surfaceReceiver
             );
         } else {
             float nearShadow = sampleCascadeShadow(
                 sunUV, sunZ, normal, sunDir, uHat, vHat,
-                cascadeOriginUV_0, cascadeTexelSize_0, 0, sunMaxShadowThrow
+                cascadeOriginUV_0, cascadeTexelSize_0, 0, sunMaxShadowThrow, surfaceReceiver
             );
             float farShadow = sampleCascadeShadow(
                 sunUV, sunZ, normal, sunDir, uHat, vHat,
-                cascadeOriginUV_1, cascadeTexelSize_1, kCascadeTexelCount, sunMaxShadowThrow
+                cascadeOriginUV_1, cascadeTexelSize_1, kCascadeTexelCount, sunMaxShadowThrow, surfaceReceiver
             );
             float t = smoothstep(-kCascadeBlendRange, kCascadeBlendRange, distToSplit);
             shadowAccum = mix(nearShadow, farShadow, t);
         }
     }
     return 1.0 - shadowAccum;
+}
+
+// Raster-origin receivers retain their outward sampling offset.
+float worldSunShadowFactor(vec3 pos3D, vec3 normal, float isoDepth) {
+    return worldSunShadowFactorImpl(pos3D + normal * kNormalBiasVoxels, normal, isoDepth, false);
+}
+
+float worldSurfaceSunShadowFactor(vec3 pos3D, vec3 normal, float isoDepth) {
+    return worldSunShadowFactorImpl(pos3D, normal, isoDepth, true);
 }

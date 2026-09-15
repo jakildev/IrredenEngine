@@ -116,6 +116,17 @@ kernel void c_lighting_to_trixel(
             voxelFrameData.rasterYaw
         );
         // Raster coordinates use cell corners; geometry uses voxel centers.
+        if (voxelFrameData.visibleFaceIds.w == 2) {
+            const int2 isoRel = trixelCanvasPixelToIsoRel(
+                pixel, voxelFrameData.trixelCanvasOffsetZ1, voxelFrameData.frameCanvasOffset,
+                voxelFrameData.voxelRenderOptions);
+            // A displayed triangle centroid has iso delta (f - 1, -1) and
+            // depth delta +1 from the stored face-origin sample. Its in-plane
+            // centroid fraction f alternates with local triangle orientation.
+            const float centroidFraction = ((isoRel.x + isoRel.y) & 1) != 0 ? 1.0f / 3.0f : 2.0f / 3.0f;
+            worldReceivePos += float3(1.0f - 0.5f * centroidFraction, 0.5f * centroidFraction, 0.0f)
+                / float(effectiveTrixelSubdivisionScale(voxelFrameData.voxelRenderOptions));
+        }
         worldReceivePos -= kVoxelRasterCellAnchor;
         // Detached pool cells already include inverse camera rotation.
         worldReceivePos = rotateByQuat(worldReceivePos, frameData.detachedViewToWorld)
@@ -123,7 +134,7 @@ kernel void c_lighting_to_trixel(
         worldNormal = rotateByQuat(worldNormal, frameData.detachedViewToWorld);
     }
 
-    // World-space receiver relative to its owner, encoded over [-2, 2].
+    // World receiver relative to its canvas raster origin, encoded over [-2, 2].
     if (frameData.debugOverlayMode == 9) {
         const float4 src = trixelColors.read(uint2(pixel));
         const float3 positionColor = worldReceive
@@ -142,13 +153,12 @@ kernel void c_lighting_to_trixel(
     float        ao     = canvasAO.read(uint2(pixel)).r;
     float shadow;
     if (worldReceive) {
-        shadow = sunFrameData.shadowsEnabled != 0
-            ? worldSunShadowFactor(
-                  worldReceivePos, worldNormal,
-                  pos3DtoDistance(worldReceivePos),
-                  sunFrameData, sunDepthBuf
-              )
-            : 1.0f;
+        shadow = 1.0;
+        if (sunFrameData.shadowsEnabled != 0) {
+            shadow = voxelFrameData.visibleFaceIds.w == 2
+                ? worldSurfaceSunShadowFactor(worldReceivePos, worldNormal, pos3DtoDistance(worldReceivePos), sunFrameData, sunDepthBuf)
+                : worldSunShadowFactor(worldReceivePos, worldNormal, pos3DtoDistance(worldReceivePos), sunFrameData, sunDepthBuf);
+        }
     } else {
         shadow = detachedCanvas ? 1.0f : canvasSunShadow.read(uint2(pixel)).r;
     }

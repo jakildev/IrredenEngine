@@ -59,7 +59,7 @@ void rasterSunFace(vec3 corner, vec3 edgeU, vec3 edgeV, vec2 origin, vec2 texelS
                                     a.x * delta.y - a.y * delta.x) / determinant;
             if (any(lessThan(faceUV, vec2(-0.00001))) || any(greaterThan(faceUV, vec2(1.00001)))) continue;
             const float depth = corner.z + faceUV.x * edgeU.z + faceUV.y * edgeV.z;
-            atomicMin(sunDepthBuf[cascadeOffset + y * kSunShadowMapDim + x], packSunDepth(depth, ivec2(0)));
+            atomicMin(sunDepthBuf[cascadeOffset + y * kSunShadowMapDim + x], packSunSurfaceDepth(depth));
         }
     }
 }

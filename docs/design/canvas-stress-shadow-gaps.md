@@ -3,8 +3,9 @@
 The red, green, blue and yellow row in `IRCanvasStress` is `gridspin`:
 four `RotationMode::GRID` cubes rerasterized into the shared voxel pool.
 It is different from the detached cyan/purple/rainbow `revox` group.
-Both need coverage. These captures diagnose existing paths; this slice does
-not change the production renderer or enable experimental casting by default.
+Both need coverage. The captures below are historical diagnosis from the
+diagnostic-only slice. [Surface sampling adoption](surface-shadow-sampling.md)
+records the subsequent receiver fix; finite caster defaults remain separate.
 
 ## Four-cube reproduction
 
@@ -109,7 +110,7 @@ The regular detached sweep uses the same freeze/pivot flags, with
 the default caster additionally oversizes detached shadows and stipples the
 attached comparison shadow at 45 degrees.
 
-## Remaining acceptance
+## Acceptance after the diagnostic slice
 
 - Preserve nearby blockers while eliminating false self-shadowing; establish
   exact projected boundaries before adopting phase/centroid recovery.

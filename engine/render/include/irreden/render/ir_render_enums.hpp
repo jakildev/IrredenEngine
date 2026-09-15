@@ -142,7 +142,7 @@ enum class DebugOverlayMode : std::uint8_t {
     UNLIT = 6,
     PER_AXIS_MARGIN = 7,
     NORMALS = 8,
-    // Detached world receiver relative to its owner: RGB = position / 4 + 0.5.
+    // Detached world receiver relative to its raster origin: RGB = position / 4 + 0.5.
     RECEIVER_POSITION = 9
 };
 

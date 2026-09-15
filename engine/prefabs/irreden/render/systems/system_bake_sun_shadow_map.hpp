@@ -81,6 +81,7 @@ constexpr float kCascadeSplitRatio = 0.4f;
 // contain world-placed content and WILL diff on any radius change. Re-bless
 // those references deliberately, never reflexively.
 constexpr int kSunSplatMaxTexels = 7;
+static_assert(kSunSplatMaxTexels < 8, "Splat offsets must reserve -8 for finite surface writes");
 
 namespace detail {
 
@@ -648,7 +649,13 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
                 if (!rot.worldPlaced_ || !rot.reVoxelize_ || !rot.isDetached()) {
                     continue;
                 }
-                worldPlacedCasters_.push_back({textures.value(), rot.worldCellOffset_});
+                worldPlacedCasters_.push_back(
+                    {textures.value(),
+                     rot.worldCellOffset_ + IRMath::rotateVectorByQuat(
+                                                textures.value()->renderedCellOffset_,
+                                                IRPrefab::Camera::getRotationQuat()
+                                            )}
+                );
             }
         }
     }
@@ -858,7 +865,8 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         int count,
         int subdivisions,
         const C_CanvasLocalRotation &rotation,
-        const C_DetachedRevoxelizeBuffer *source
+        const C_DetachedRevoxelizeBuffer *source,
+        vec3 rasterCellOffset = vec3(0.0f)
     ) {
         if (frameData_.shadowsEnabled_ == 0 || count == 0 ||
             (rotation.isDetached() && (!rotation.worldPlaced_ || !rotation.reVoxelize_))) {
@@ -881,7 +889,14 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             orientation = IRMath::quatMul(orientation, rotation.rotation_);
         }
         const VoxelSunFaceFrame params{
-            vec4(rotation.isDetached() ? rotation.worldCellOffset_ : vec3(0.0f), 0.0f),
+            vec4(
+                rotation.isDetached()
+                    ? rotation.worldCellOffset_ +
+                          (useSource ? vec3(0.0f)
+                                     : IRMath::rotateVectorByQuat(rasterCellOffset, orientation))
+                    : vec3(0.0f),
+                0.0f
+            ),
             orientation,
             ivec4(count, grid.x, subdivisions, useSource ? 1 : 0),
             ivec4(useSource ? source->sourceGridMin_ : ivec3(0), 0),
