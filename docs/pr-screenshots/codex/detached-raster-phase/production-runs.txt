@@ -21,4 +21,3 @@ ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- /U
 [2026-09-14 18:17:49.348] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000753.png
 ir-run: IRCanvasStress exited cleanly after 3s
 ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
-

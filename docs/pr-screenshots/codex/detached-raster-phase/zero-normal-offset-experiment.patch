@@ -5,7 +5,7 @@ index 68d785806..52601018a 100644
 @@ -12,7 +12,7 @@
  // include of ir_sun_projection.glsl makes this a suppressed duplicate.
  #include "ir_sun_projection.glsl"
- 
+
 -const float kNormalBiasVoxels = 0.5;
 +const float kNormalBiasVoxels = 0.0;
  const float kShadowBiasTexelScale = 2.0;
@@ -18,7 +18,7 @@ index 7a55c526c..92537aa5d 100644
 @@ -13,7 +13,7 @@
  // sunCascadeKernelInterior — one source with the caster bake (#2083).
  #include "ir_sun_projection.metal"
- 
+
 -constant float kNormalBiasVoxels = 0.5;
 +constant float kNormalBiasVoxels = 0.0;
  constant float kShadowBiasTexelScale = 2.0;

@@ -4,7 +4,7 @@ index a533f10ae..3e85b3845 100644
 +++ b/docs/design/detached-shadow-receiver-samples.md
 @@ -1,7 +1,9 @@
  # Detached shadow receiver sample positions
- 
+
  The `receiver_position` diagnostic displays the actual world-space lighting
 -sample relative to its detached owner: `RGB = position / 4 + 0.5`. Values
 +sample relative to its detached canvas raster origin: `RGB = position / 4 + 0.5`.
@@ -24,7 +24,7 @@ index 3329cf575..28fe6a3ba 100644
 +    // View-local offset from rounded raster centers to resampled cell centers.
 +    // Placement, depth, lighting and resampled casting consume the same phase.
 +    vec3 renderedCellOffset_{0.0f};
- 
+
      // Detached voxel display reconstructs undilated local triangle footprints.
      // RECTANGULAR is a raw-trixel debug override for that producer. Do not
 diff --git a/engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp b/engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp
@@ -81,7 +81,7 @@ index b3861f160..674e70308 100644
 -        vec2 entityIsoPlacement = pos3DtoPos2DIsoYawed(worldTransform.translation_, visualYaw_);
 +        vec2 entityIsoPlacement = pos3DtoPos2DIsoYawed(worldTransform.translation_, visualYaw_) +
 +                                  pos3DtoPos2DIso(canvasTextures->renderedCellOffset_);
- 
+
          ivec2 mainCanvasSizeI = ivec2(mainCanvasSize_);
          vec2 canvasOriginZ1 = vec2(trixelOriginOffsetZ1(mainCanvasSizeI));
 @@ -305,6 +306,12 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
@@ -107,10 +107,10 @@ index 6f16d3ac3..80e81b5b7 100644
              triangleCanvasTextures.renderedSubdivisions_ = 0;
 +            triangleCanvasTextures.renderedCellOffset_ = vec3(0.0f);
          }
- 
+
          // Fog-of-war column cull (#2008): resolve this canvas's optional fog
 @@ -1424,6 +1425,13 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
- 
+
          const int renderMode = frameData_.voxelRenderOptions_.x;
          const int effectiveSub = frameData_.voxelRenderOptions_.y;
 +        if (canvasLocalRotation.isDetached() && revoxBuffer != nullptr) {
@@ -162,7 +162,7 @@ index b2ae319ab..0ba6e58a0 100644
 +    // Detached world receiver relative to its raster origin: RGB = position / 4 + 0.5.
      RECEIVER_POSITION = 9
  };
- 
+
 diff --git a/engine/render/src/shaders/c_lighting_to_trixel.glsl b/engine/render/src/shaders/c_lighting_to_trixel.glsl
 index 2bdd3e725..4544d8f04 100644
 --- a/engine/render/src/shaders/c_lighting_to_trixel.glsl
@@ -187,7 +187,7 @@ index 2bdd3e725..4544d8f04 100644
 @@ -193,7 +203,7 @@ void main() {
          worldNormal = rotateByQuat(worldNormal, detachedViewToWorld);
      }
- 
+
 -    // World-space receiver relative to its owner, encoded over [-2, 2].
 +    // World receiver relative to its canvas raster origin, encoded over [-2, 2].
      if (debugOverlayMode == 9) {
@@ -218,7 +218,7 @@ index 636b69670..c6818ebcf 100644
 @@ -135,7 +146,7 @@ kernel void c_lighting_to_trixel(
          worldNormal = rotateByQuat(worldNormal, frameData.detachedViewToWorld);
      }
- 
+
 -    // World-space receiver relative to its owner, encoded over [-2, 2].
 +    // World receiver relative to its canvas raster origin, encoded over [-2, 2].
      if (frameData.debugOverlayMode == 9) {
