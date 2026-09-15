@@ -108,7 +108,7 @@ template <> struct System<COLLISION_NOTE_PLATFORM> {
                 // Opt-in batched overlap-pair emission. The singleton
                 // exists only when a creation registered
                 // DISPATCH_LUA_OVERLAP, so existing C_ContactEvent-only
-                // users keep the fast first-contact break path below (nullptr).
+                // users keep the fast first-contact break path (nullptr).
                 auto *overlapBatch = IREntity::singletonOrNull<C_OverlapContactBatch>();
                 const bool emitPairs = overlapBatch != nullptr;
 

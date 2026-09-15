@@ -492,9 +492,8 @@ struct C_VoxelPool {
     // origin), which contains the solid under any rotation. Seeded ONCE at pool
     // allocation by SYSTEM_REBUILD_DETACHED_VOXELS — it never changes per frame,
     // so the GPU compute that rewrites binding 5 doesn't need a CPU mirror for
-    // the cull. Setting this switches rebuildChunkBounds onto the static-bound
-    // branch above; leaving it unset (every non-re-voxelize pool) is
-    // byte-identical.
+    // the cull. Setting this switches rebuildChunkBounds onto its static-bound
+    // branch; leaving it unset (every non-re-voxelize pool) is byte-identical.
     void setStaticReVoxelizeBound(vec3 halfExtents) {
         const float r = IRMath::length(halfExtents);
         m_staticReVoxelizeBound = ChunkWorldBounds{vec3(-r), vec3(r)};
@@ -578,8 +577,8 @@ struct C_VoxelPool {
         );
         m_activeMask[idx / kVoxelActiveMaskBits] |=
             (std::uint32_t{1} << (idx % kVoxelActiveMaskBits));
-        m_activeMaskChangedThisFrame = true; // see the member decl.
-        markCullBoundsDirty(idx, 1);         // Alpha is a bounds input.
+        m_activeMaskChangedThisFrame = true;
+        markCullBoundsDirty(idx, 1); // Alpha is a bounds input.
     }
 
     void clearActiveBit(std::size_t idx) {
@@ -591,14 +590,13 @@ struct C_VoxelPool {
         );
         m_activeMask[idx / kVoxelActiveMaskBits] &=
             ~(std::uint32_t{1} << (idx % kVoxelActiveMaskBits));
-        m_activeMaskChangedThisFrame = true; // see the member decl.
-        markCullBoundsDirty(idx, 1);         // Alpha is a bounds input.
+        m_activeMaskChangedThisFrame = true;
+        markCullBoundsDirty(idx, 1); // Alpha is a bounds input.
     }
 
-    // Bulk variants for span-shaped mutations on `C_VoxelSetNew`. The single-bit
-    // setters above use one OR/AND per word touched; the range variants below
-    // handle the partial-word prefix and suffix once and mass-write the middle
-    // words to all-ones / zeros.
+    // Bulk variants for span-shaped mutations on `C_VoxelSetNew`: the partial-word
+    // prefix and suffix are handled once and the middle words are mass-written
+    // to all-ones / zeros, instead of one OR/AND per bit.
     void setActiveMaskRange(std::size_t start, std::size_t count) {
         setMaskRange(start, count, true);
     }
@@ -736,7 +734,7 @@ struct C_VoxelPool {
             m_voxelTransformIndices.size()
         );
         // Caller guarantees every index satisfies kVoxelTransformStatic || <
-        // kMaxGpuVoxelTransforms. The loop assert below enforces the same invariant as
+        // kMaxGpuVoxelTransforms. The per-index assert enforces the same invariant as
         // setTransformIndexForRange in debug builds.
         for (std::size_t i = 0; i < indices.size(); ++i) {
             IR_ASSERT(

@@ -83,8 +83,8 @@ inline IRMath::vec3 halfCellAnchor(IRMath::vec3 composed) {
 /// Anchored dest cell of a rotated detached voxel: `roundHalfUp(R·composed - anchor)`
 /// — the CPU twin of `revoxSourceCellForDest`'s forward direction in
 /// `c_revoxelize_detached.{glsl,metal}`, rotation about the pool
-/// origin (translation 0, scale 1). Kept beside the GRID map above so the
-/// CPU↔GPU roundHalfUp handshake convention stays in one header.
+/// origin (translation 0, scale 1). Shares this header with the GRID map so
+/// the CPU↔GPU roundHalfUp handshake convention has one home.
 inline IRMath::ivec3 anchoredCellForDetachedVoxel(
     IRMath::vec3 composed, IRMath::vec4 rotation, IRMath::vec3 anchor
 ) {

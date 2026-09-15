@@ -20,7 +20,7 @@
 // Changing a prefab's anchor is a deliberate per-prefab change, never
 // implicit.
 //
-// The offsets below are baked into a set's local voxel positions at
+// `anchorOffset()` is baked into a set's local voxel positions at
 // construction time (`C_VoxelSetNew`), so every downstream path — grid
 // rebuild, GPU transform prepass, face occupancy, cull extents, picking —
 // consumes the anchor through those positions and needs no anchor branch of

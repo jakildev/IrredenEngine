@@ -19,7 +19,7 @@
 //     — is what reconstructs the local origin on load: that origin is
 //     half-integer (always for GROUND, on even axes for CENTER) and the
 //     `ivec3` boundsMin cannot represent it. v1 records predate the field and
-//     read as CORNER via `SaveMigration<C_VoxelSetNew>` below.
+//     read as CORNER via `SaveMigration<C_VoxelSetNew>`.
 //
 // `read` reconstructs the set in STAGED mode (`numVoxels_ == 0`,
 // `pendingVoxels_` populated) via the zero-pool `C_VoxelSetNew::StagedInit`
@@ -76,8 +76,8 @@ template <> struct SaveSerialize<IRComponents::C_VoxelSetNew> {
         w.writeU64(static_cast<std::uint64_t>(set.canvasEntity_));
 
         // The anchor. It is the ONLY record of a non-CORNER set's
-        // local origin that survives the round trip — the `boundsMin` above is
-        // an ivec3 and GROUND's z origin is half-integer for every size — so
+        // local origin that survives the round trip — `boundsMin` is an ivec3
+        // and GROUND's z origin is half-integer for every size — so
         // `read` reconstructs the origin from this rather than from boundsMin.
         w.writeU8(static_cast<std::uint8_t>(set.anchor_));
 

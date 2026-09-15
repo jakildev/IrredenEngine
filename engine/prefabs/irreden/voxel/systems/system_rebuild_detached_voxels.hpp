@@ -49,7 +49,7 @@ template <> struct System<REBUILD_DETACHED_VOXELS> {
         // origin-centered sphere [-|h|, |h|]^3 (a box of half-extents h reaches
         // its farthest point at |h|), so the bound contains the solid under ANY
         // rotation.
-        // Both the bound below and the GPU inverse-resample rotate about the
+        // Both the static bound and the GPU inverse-resample rotate about the
         // POOL ORIGIN and assume it is the body's center. A GROUND- or
         // CORNER-anchored C_VoxelSetNew bakes an asymmetric offset into its
         // composed locals, so it orbits its anchor instead of spinning in

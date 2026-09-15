@@ -94,7 +94,7 @@ namespace detail {
 
 // Resolve the C_VoxelPool owned by a canvas entity, or nullptr when the
 // entity is null / destroyed / has no pool. The entity-keyed pool ops
-// below route through this so any canvas that owns a pool — including a
+// route through this so any canvas that owns a pool — including a
 // detached entity's per-entity canvas — is a valid target, without
 // needing a RenderManager canvas-name-map entry.
 inline IRComponents::C_VoxelPool *poolForCanvas(IREntity::EntityId canvasEntity) {
@@ -107,7 +107,7 @@ inline IRComponents::C_VoxelPool *poolForCanvas(IREntity::EntityId canvasEntity)
 
 } // namespace detail
 
-// Entity-keyed pool ops. The name-keyed forms above resolve through
+// Entity-keyed pool ops. The name-keyed forms resolve through
 // RenderManager's canvas-name map, which only carries the ctor-time
 // "main" / "background" / "gui" canvases. These forms take the canvas
 // entity directly, so a detached entity's per-entity canvas can own and

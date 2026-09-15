@@ -301,9 +301,9 @@ template <> struct System<PROPAGATE_TRANSFORM> {
     }
 
     // Composes C_WorldTransform for rows [rowBegin, rowEnd) of node.
-    // The per-node column fetches and isRootArchetype check below are
-    // cheap relative to the row loop, so re-deriving them per chunk
-    // when a large node is split costs nothing meaningful.
+    // The per-node column fetches and isRootArchetype check are cheap
+    // relative to the row loop, so re-deriving them per chunk when a
+    // large node is split costs nothing meaningful.
     static void composeNodeRows(
         IREntity::ArchetypeNode *node,
         const IRComponents::C_WorldTransform &parentWorld,

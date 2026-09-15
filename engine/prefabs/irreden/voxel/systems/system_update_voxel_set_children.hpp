@@ -156,10 +156,10 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
             pool.getPositionOffsets()
         );
         // A GPU-transform-indirected set has binding 5 written by the
-        // UPDATE_VOXEL_POSITIONS_GPU prepass each frame. We still recompute its
-        // CPU global mirror above (a sane translation-only fallback for the
-        // STAGE_1 canvas-switch re-seed, and for cull/picking), but we must NOT
-        // queue it for the steady-state binding-5 flush — that flush runs after
+        // UPDATE_VOXEL_POSITIONS_GPU prepass each frame. Its CPU global mirror
+        // is still recomputed (a sane translation-only fallback for the
+        // STAGE_1 canvas-switch re-seed, and for cull/picking), but it must NOT
+        // be queued for the steady-state binding-5 flush — that flush runs after
         // the prepass in the RENDER pipeline and would clobber the GPU positions.
         // Both cases (static + GPU-slotted) defer to endTick via pendingByWorker_,
         // carrying the real written range plus an upload_ flag: the cull caches

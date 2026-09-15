@@ -82,7 +82,7 @@ struct C_VoxelSetNew {
     // Headless / pre-canvas staging. Populated by the dense-data ctor
     // when no render canvas is active at construction time (tests,
     // asset-only tooling, prefab spawn before a canvas exists). When
-    // present, `numVoxels_` is 0 and the pool spans above are empty —
+    // present, `numVoxels_` is 0 and the pool spans are empty —
     // the canonical data lives here and `recordCount()` reflects it.
     // `attachToCanvas` moves these into the pool span and clears the
     // staging vector.
@@ -106,7 +106,7 @@ struct C_VoxelSetNew {
     // rotating frame, and cleared again on the next identity frame after the
     // system restores the span — so its non-emptiness IS the "span is in a
     // re-voxelized arrangement" state, with no separate flag to drift.
-    // The color mutators below mirror writes into it while it exists so a
+    // The color mutators mirror writes into it while it exists so a
     // mutation during a spin survives the per-frame re-derivation. Raw
     // `voxels_` span writes (the SDF-carve pattern) bypass the mirror — they
     // are only valid on a set that has not begun GRID rotation (carve at
@@ -200,8 +200,8 @@ struct C_VoxelSetNew {
 
     // `bool` spelling of the CORNER / CENTER anchors. A separate overload
     // rather than a defaulted `EntityAnchor` parameter so
-    // `C_VoxelSetNew(size, color)` stays unambiguous — which is why the enum
-    // overload above deliberately does NOT default its anchor.
+    // `C_VoxelSetNew(size, color)` stays unambiguous — which is why the
+    // `EntityAnchor` overload deliberately does NOT default its anchor.
     C_VoxelSetNew(
         ivec3 size,
         Color color = IRColors::kGreen,
@@ -518,7 +518,7 @@ struct C_VoxelSetNew {
     }
 
     // ---- Encapsulated raw-edit API ------------------------------
-    // Supported entry points for custom carves/edits the bulk mutators above
+    // Supported entry points for custom carves/edits the bulk mutators
     // don't cover. Each restores every derived invariant this set maintains
     // (rotation-source mirror -> pool active-mask -> face occupancy) once at
     // the end, so callers must NOT hand-roll syncActiveMask() /

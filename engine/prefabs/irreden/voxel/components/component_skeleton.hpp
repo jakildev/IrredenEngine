@@ -14,7 +14,7 @@
 // (binding kBufferIndex_EntityTransforms, slot 18). Binding 21
 // (kBufferIndex_JointTransforms) is SDF-shapes-path scaffolding only — not
 // used for voxel skinning. The index space is stable across saves and
-// severance — see "Severance leaves holes" below — so re-baking voxel
+// severance — see "Severance leaves holes" — so re-baking voxel
 // bone_ids is not required when a joint detaches.
 //
 // The SoA C_JointHierarchy is the deprecated alternative; rigs use
