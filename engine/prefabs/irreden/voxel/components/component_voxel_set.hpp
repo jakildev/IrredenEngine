@@ -633,9 +633,10 @@ struct C_VoxelSetNew {
     // would overwrite surface pixels with the transparent inactive
     // ones at the same iso depth.
     //
-    // Prefer `editVoxels` / `carve` for new custom edits — they run this AND
-    // the face-occupancy recompute for you. This stays public as the
-    // low-level pool primitive (and for the pre-existing raw-loop sites).
+    // Prefer `editVoxels` / `carve` / `resyncAfterRawEdits` for custom edits
+    // — they run this AND the face-occupancy recompute together. This is the
+    // low-level pool primitive underneath them; a direct caller owns the
+    // matching `recomputeFaceOccupancy` call itself.
     void syncActiveMask() {
         if (numVoxels_ <= 0) {
             return;

@@ -7,7 +7,7 @@
 // component) related to the rig root via CHILD_OF.
 //
 // The position of a joint in `joints_` IS the bone_id stored in
-// C_Voxel.bone_id_. At skinning time, UPDATE_JOINT_MATRICES (P2.2/P2.3)
+// C_Voxel.bone_id_. At skinning time, UPDATE_JOINT_MATRICES
 // sets each voxel's transform slot in LocalVoxelPositions (binding
 // kBufferIndex_LocalVoxelPositions, slot 17) to `slotBase + bone_id`,
 // where slotBase is the skeleton's contiguous block in EntityTransformBuffer
@@ -17,8 +17,8 @@
 // severance — see "Severance leaves holes" below — so re-baking voxel
 // bone_ids is not required when a joint detaches.
 //
-// Replaces the SoA C_JointHierarchy. The legacy component remains for one
-// release as a deprecation shim; new rigs use C_Skeleton + per-joint entities.
+// The SoA C_JointHierarchy is the deprecated alternative; rigs use
+// C_Skeleton + per-joint entities.
 //
 // ## Joint entity shape
 //

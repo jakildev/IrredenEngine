@@ -90,7 +90,7 @@ template <> struct System<ENTITY_HOVER_DETECT> {
         );
         // singletonOrNull, never the lazy-creating singleton<>: a mid-tick
         // eager createEntity is a structural change during iteration. No
-        // registry yet ≡ the old empty-vectors no-op.
+        // registry yet means no handlers to dispatch — a no-op.
         auto *handlers = IREntity::singletonOrNull<IRComponents::C_EntityEventHandlers>();
         if (handlers != nullptr) {
             if (previousHoveredEntity_ != IREntity::kNullEntity) {

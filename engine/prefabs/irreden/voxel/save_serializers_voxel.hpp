@@ -2,10 +2,9 @@
 #define IR_SAVE_SERIALIZERS_VOXEL_H
 
 /// `SaveSerialize<C>` specializations for the heap-owning rig components in
-/// `engine/prefabs/irreden/voxel/`. `C_VoxelSetNew`'s serializer is
-/// the separate, older `voxel_set_serialize.hpp` — it stays on
-/// its own because its read path has a pool-interaction contract these do
-/// not.
+/// `engine/prefabs/irreden/voxel/`. `C_VoxelSetNew`'s serializer lives
+/// apart in `voxel_set_serialize.hpp` because its read path has a
+/// pool-interaction contract these do not.
 ///
 /// Opt-in serializer header: include it wherever a registry registers these
 /// components; never pulled by the component headers themselves.

@@ -7,7 +7,8 @@
 namespace IRScript {
 template <> inline constexpr bool kHasLuaBinding<IRComponents::C_VoxelSetNew> = true;
 
-// The 3-arg Lua ctor takes an `EntityAnchor`, NOT the legacy `bool`.
+// The 3-arg Lua ctor takes an `EntityAnchor`; the C++ `bool` overload is
+// deliberately not bound.
 //
 // Registering both would put a `bool` and an integer-backed enum in one sol2
 // overload set, where a Lua boolean and a Lua integer are mutually

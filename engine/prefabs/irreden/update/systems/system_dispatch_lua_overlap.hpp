@@ -125,8 +125,8 @@ template <> struct System<DISPATCH_LUA_OVERLAP> {
         previousPairs_.swap(currentPairs_);
         // Consume the batch: the producer refills from empty next frame. Owning
         // the clear here (rather than in COLLISION_EVENT_CLEAR) keeps
-        // produce → consume → clear local to the two new systems and leaves the
-        // existing per-entity clear untouched.
+        // produce → consume → clear local to the producer/consumer pair and
+        // leaves the per-entity clear independent of it.
         batch.pairs_.clear();
     }
 

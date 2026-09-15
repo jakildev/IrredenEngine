@@ -17,9 +17,8 @@
 // CHILD_OF chain to produce world transforms. See
 // `engine/prefabs/irreden/voxel/CLAUDE.md` "Entity-based joints".
 //
-// This header remains for one release as a deprecation shim so existing
-// callers compile while the consumer migration lands. Do not add new code
-// that depends on it.
+// This header is a deprecation shim that keeps existing callers compiling.
+// Do not add new code that depends on it.
 
 #include <irreden/ir_math.hpp>
 
