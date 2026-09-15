@@ -25,9 +25,9 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
     // keeps the per-entity-id form for the one-time owner registration
     // (`setEntityIdForRange` → GPU picking buffer), which makes the
     // registration validator demand the `IRSystem::ParallelSafe` opt-in. The
-    // body is audited thread-safe; the two architecture blockers (worker-side
-    // pool lookup, shared `queuePositionRange` vector) are resolved by
-    // `beginTick` pre-resolution + a per-worker deferred merge below.
+    // body is thread-safe: `beginTick` pre-resolves the pool lookup on the
+    // main thread and a per-worker deferred merge covers the shared
+    // `queuePositionRange` vector.
     static constexpr Concurrency kConcurrency = Concurrency::PARALLEL_FOR;
 
     // One deferred `queuePositionRange` call. The pool's

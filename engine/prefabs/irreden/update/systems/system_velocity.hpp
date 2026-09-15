@@ -20,7 +20,7 @@ template <> struct System<VELOCITY_3D> {
     // Both components stay non-const in the registration pack: marking
     // `C_Velocity3D` const would exercise the SystemManager's
     // `getComponentData<const T>(node)` resolution, which the
-    // const-in-pack dispatch path does not yet verify.
+    // const-in-pack dispatch path does not verify.
     static constexpr Concurrency kConcurrency = Concurrency::PARALLEL_FOR;
 
     void tick(C_LocalTransform &localXform, const C_Velocity3D &velocity) {

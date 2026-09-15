@@ -197,11 +197,10 @@ template <> struct SaveSerialize<IRComponents::C_VoxelSetNew> {
     }
 };
 
-// v1 predates the anchor byte. Every v1 set was authored through the
-// bool ctor, so its origin is exactly the `boundsMin` the record already
-// carries and CORNER is the faithful reading — CENTER sets round-trip through
-// boundsMin as they always did, with the pre-existing even-size lossiness the
-// v1 format had and this migrator deliberately reproduces rather than
+// v1 has no anchor byte. Every v1 set comes from the bool ctor, so its
+// origin is exactly the `boundsMin` the record carries and CORNER is the
+// faithful reading — a CENTER set round-trips through boundsMin with the v1
+// format's even-size lossiness, which this migrator reproduces rather than
 // silently "fixing" on load.
 template <> struct SaveMigration<IRComponents::C_VoxelSetNew> {
     static std::vector<std::pair<std::uint32_t, ColumnMigratorFn<IRComponents::C_VoxelSetNew>>>

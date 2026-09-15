@@ -43,7 +43,6 @@ template <> struct System<VOXEL_SQUASH_STRETCH> {
                 vec3 velDir =
                     speed > 0.0001f ? normalize(velocity.velocity_) : vec3(0.0f, 0.0f, 0.0f);
 
-                // Compute acceleration
                 const vec3 accel = dt > 0.0001f
                                        ? (velocity.velocity_ - squashStretch.prevVelocity_) / dt
                                        : vec3(0.0f, 0.0f, 0.0f);
@@ -54,7 +53,6 @@ template <> struct System<VOXEL_SQUASH_STRETCH> {
                 const float accelMag = length(accel);
                 vec3 accelDir = accelMag > 0.0001f ? normalize(accel) : vec3(0.0f, 0.0f, 0.0f);
 
-                // Optional smoothing
                 float useSpeed = speed;
                 vec3 useVelDir = velDir;
                 if (squashStretch.smoothing_ > 0.0f) {
@@ -71,7 +69,6 @@ template <> struct System<VOXEL_SQUASH_STRETCH> {
                     }
                 }
 
-                // Weights: stretch from velocity, squash from acceleration
                 const float stretchWeight =
                     squashStretch.stretchSpeedRef_ > 0.0f
                         ? IRMath::min(useSpeed / squashStretch.stretchSpeedRef_, 1.0f)
@@ -81,7 +78,6 @@ template <> struct System<VOXEL_SQUASH_STRETCH> {
                         ? IRMath::min(accelMag / squashStretch.squashAccelRef_, 1.0f)
                         : 0.0f;
 
-                // Impact boost (event-driven)
                 float squashWeight = squashWeightRaw;
                 auto launchOpt = IREntity::getComponentOptional<C_RhythmicLaunch>(entityId);
                 auto contactOpt = IREntity::getComponentOptional<C_ContactEvent>(entityId);
@@ -145,7 +141,6 @@ template <> struct System<VOXEL_SQUASH_STRETCH> {
                     deformAxis = vec3(0.0f, 0.0f, 0.0f);
                 }
 
-                // Event-driven impact burst (Z squash + XY expand)
                 float impactScaleZ = 1.0f;
                 float impactScaleXY = 1.0f;
                 if (launchOpt.has_value() && contactOpt.has_value() &&

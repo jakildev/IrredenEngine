@@ -200,7 +200,7 @@ template <> struct System<COLLISION_NOTE_PLATFORM> {
                             if (emitPairs) {
                                 // Emit each pair once (canonical self < other);
                                 // both layers are stamped so the dispatcher never
-                                // reaches the foreign entity. Keep scanning — D3
+                                // reaches the foreign entity. Keep scanning —
                                 // pair-level enter/exit needs ALL overlaps, not
                                 // just the first. The vector is cleared (not
                                 // freed) by the dispatcher each frame, so after

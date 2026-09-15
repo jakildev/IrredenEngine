@@ -86,11 +86,11 @@ struct C_EntityEventHandlers {
     }
 
     // Drops every registered handler, destroying the sol::protected_functions
-    // they hold. No longer load-bearing for shutdown — World teardown ordering
-    // owns that now — but kept as the explicit "unsubscribe everything" verb
-    // for creations swapping scripts mid-session, and as the tests' known-empty
-    // baseline. nextId_ is intentionally left as-is: ids never recycle within a
-    // world, so there is no id-reuse hazard to guard.
+    // they hold. Shutdown does not depend on it (World teardown ordering owns
+    // that); it is the explicit "unsubscribe everything" verb for creations
+    // swapping scripts mid-session and the tests' known-empty baseline.
+    // nextId_ is left as-is: ids never recycle within a world, so there is no
+    // id-reuse hazard to guard.
     void clear() {
         forEachHandlerVector([](std::vector<HandlerEntry> &vec) { vec.clear(); });
     }
@@ -112,12 +112,8 @@ struct C_EntityEventHandlers {
     }
 
   private:
-    // The single dispatch body behind all four fire* verbs — same
-    // consolidation `forEachHandlerVector` applies to clear()/removeHandler(),
-    // for the same reason: a fifth event category is one call site here, not a
-    // fourth hand-copied for/valid()/log block to keep in sync. `handlerName`
-    // is the Lua-facing spelling, so an error message names the callback the
-    // creation registered rather than this component's method.
+    // `handlerName` is the Lua-facing spelling, so an error message names the
+    // callback the creation registered rather than this component's method.
     //
     // `args` is passed to each handler as an lvalue, NOT std::forward'd: the
     // pack is reused once per registered handler, so forwarding would move

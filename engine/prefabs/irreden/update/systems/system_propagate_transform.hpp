@@ -22,8 +22,8 @@
 // C_ResolvedFields under the TRANSFORM_TRANSLATION / TRANSFORM_SCALE
 // vec3 fields (see transform_modifier_fields.hpp). Default values when
 // no resolved field exists: translation 0, scale 1 — i.e. no
-// perturbation. The matching ROTATION quat field does not exist yet;
-// until it lands, modifier_rotation is identity.
+// perturbation. There is no modifier rotation field; modifier_rotation is
+// identity.
 //
 // Two-pass architecture:
 //
@@ -78,7 +78,7 @@ namespace IRSystem {
 template <> struct System<PROPAGATE_TRANSFORM> {
     // Per-level dispatch policy — fan out, chunk sizing, and serial
     // fallback — lives in IRJob::parallelChunks. Its ParallelTuning
-    // defaults match this system's hand-tuned values: parallelize at
+    // defaults are this system's values: parallelize at
     // ≥8 nodes OR ≥4096 rows; split a dominant node into ≥2048-row
     // chunks targeting ~2 tasks/worker; small nodes stay whole. We pass
     // a default-constructed tuning here, so the knobs live in one

@@ -22,8 +22,8 @@
 // rotating a lattice forward leaves uncovered dest cells (coverage holes,
 // up to ~29% of a solid 12³ mid-rotation). SYSTEM_REBUILD_GRID_VOXELS
 // therefore renders rotating sets by walking DEST cells and inverse-mapping
-// each through `sourceCellForWorldCell` below, mirroring the detached
-// re-voxelize fix; the forward map remains the identity-path /
+// each through `sourceCellForWorldCell`, mirroring the detached
+// re-voxelize path; the forward map is the identity-path /
 // creation-facing helper.
 //
 // Rounding uses `IRMath::roundVec3HalfUp` (floor(x + 0.5)), NOT `IRMath::round`
@@ -31,10 +31,8 @@
 // handshake convention (`ir_math.hpp` roundHalfUp doc): the detached re-voxelize
 // GPU mirror `c_revoxelize_detached.{glsl,metal}` calls the shared `roundHalfUp`
 // helper, so CPU and GPU classify negative half-integers identically.
-// GRID re-voxelize (`REBUILD_GRID_VOXELS`) shares this helper; the rounding
-// switch only changes cells at exact negative half-integer post-rotation
-// coordinates (float-measure-zero) and aligns it with the same convention the
-// SDF lattice walk already uses.
+// GRID re-voxelize (`REBUILD_GRID_VOXELS`) and the SDF lattice walk use the
+// same convention.
 
 #include <irreden/ir_math.hpp>
 #include <irreden/common/components/component_world_transform.hpp>
@@ -65,8 +63,7 @@ inline IRMath::vec3 worldCellForGridVoxel(
     const IRMath::vec3 scaled = wt.scale_ * composed;
     const IRMath::vec3 rotated = IRMath::rotateVectorByQuat(scaled, wt.rotation_);
     const IRMath::vec3 world = wt.translation_ + rotated;
-    // roundHalfUp (not glm round) so the GPU mirror agrees byte-for-byte; see
-    // the header note above.
+    // roundHalfUp (not glm round) so the GPU mirror agrees byte-for-byte.
     return IRMath::vec3(IRMath::roundVec3HalfUp(world));
 }
 
@@ -74,7 +71,7 @@ inline IRMath::vec3 worldCellForGridVoxel(
 /// — -0.5 on axes where a center-around-origin solid authors at half-integers
 /// (even-sized axes), 0 on odd. The detached re-voxelize mapping rotates
 /// anchored POINTS (`cell + anchor`), not raw lattice cells; ignoring the
-/// anchor shifted a rotating solid by a constant half cell per even axis.
+/// anchor shifts a rotating solid by a constant half cell per even axis.
 /// This is the ONE home of the derivation — the seed
 /// (`IRPrefab::DetachedRevoxelize::seedResidentLocals`) and the CPU mask twin
 /// (`SYSTEM_REBUILD_DETACHED_VOXELS`) both call it; the GLSL/Metal kernels

@@ -23,8 +23,8 @@
 //
 // Entities without `C_RotationMode` are implicitly GRID — consumers
 // default to GRID when the component is absent so non-prefab entities
-// (test scaffolding, ad-hoc createEntity callers) keep today's
-// behavior. `IRPrefab::Prefab::spawnPrefab` always attaches the
+// (test scaffolding, ad-hoc createEntity callers) are GRID.
+// `IRPrefab::Prefab::spawnPrefab` always attaches the
 // component so prefab-driven entities are discoverable by archetype
 // queries.
 //

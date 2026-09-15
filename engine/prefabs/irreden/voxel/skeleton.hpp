@@ -5,7 +5,7 @@
 // (C_Skeleton.bindPose_). The transform algebra (SQT compose / inverse) lives
 // in IRMath; this prefab-layer free-function surface joins a joint's live
 // C_WorldTransform to its rest pose. The companion severJoint API documented
-// on C_Skeleton is not implemented yet.
+// on C_Skeleton is not implemented.
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
@@ -17,8 +17,8 @@ namespace IRPrefab::Skeleton {
 // skinMatrix = jointWorld × bindInverse: the rigid motion that carries a voxel
 // from its bind-pose position to the joint's current world pose. At the bind
 // pose (jointWorld == bind) it is identity; the per-joint result is written
-// into the binding-18 transform buffer and the existing
-// c_update_voxel_positions prepass applies it to each skinned voxel.
+// into the binding-18 transform buffer and the c_update_voxel_positions
+// prepass applies it to each skinned voxel.
 // The bind SQT is inverted analytically (IRMath::sqtInverse), not via a 4×4
 // inverse.
 inline IRMath::mat4 skinMatrix(const IRMath::SQT &jointWorld, const IRMath::SQT &bind) {
