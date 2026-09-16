@@ -94,7 +94,8 @@ The remaining work below still applies.
    bounds, density and memory traffic before changing either representation.
 6. [Native CPU sampling](native-cpu-sampling.md) now distinguishes presentation
    waiting from active update/bounds/upload stacks. [Contiguous update spans](voxel-update-spans.md)
-   are now batched. Repair mixed CPU/GPU upload-queue saturation next; preserve
+   are now batched. [Mixed upload saturation and Metal copy ordering](static-upload-saturation.md)
+   preserve GPU-owned positions. Measure fragmented copy overhead next; preserve
    fixed-workload controls and per-call versus per-frame counts.
 7. Establish Release and OpenGL controls, repeated run ranges and profiling-off
    overhead. Add full-frame multi-canvas GPU accounting before treating summed

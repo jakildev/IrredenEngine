@@ -545,3 +545,128 @@ TEST(GpuComputeDispatchTest, SkippedOnUnsupportedBackend) {
 }
 
 #endif // IR_GRAPHICS_OPENGL / IR_GRAPHICS_METAL
+
+#if defined(IR_GRAPHICS_OPENGL) || defined(IR_GRAPHICS_METAL)
+#include <irreden/render/systems/system_voxel_to_trixel.hpp>
+
+namespace {
+#if defined(IR_GRAPHICS_METAL)
+using PositionUploadTest = MetalGpuComputeDispatchTest;
+#else
+using PositionUploadTest = GpuComputeDispatchTest;
+#endif
+
+TEST_F(PositionUploadTest, SaturatedQueuePreservesGpuOwnedPositions) {
+    using namespace IRRender;
+    using namespace IRComponents;
+    using namespace IRMath;
+#if defined(IR_GRAPHICS_METAL)
+    const std::vector<bool> queuedWrites{false, true};
+#else
+    const std::vector<bool> queuedWrites{false};
+#endif
+    for (const bool queuedGpuWrite : queuedWrites) {
+        SCOPED_TRACE(queuedGpuWrite);
+        for (const unsigned gpuMask : {0u, 0x0Au, 0xFFu}) {
+            SCOPED_TRACE(gpuMask);
+            constexpr std::size_t slotCount = 8;
+            C_VoxelPool pool(ivec3(slotCount, 1, 1));
+            pool.allocateVoxels(slotCount);
+            std::vector<VoxelGpuPosition> seeded(slotCount, {vec3(-99.0f), 0.0f});
+            for (std::size_t i = 0; i < slotCount; ++i) {
+                pool.getPositionGlobals()[i].pos_ = vec3(static_cast<float>(i + 1));
+                pool.setTransformIndexForRange(
+                    i,
+                    1,
+                    (gpuMask & (1u << i)) ? 0u : kVoxelTransformStatic
+                );
+            }
+            Buffer positions(
+                seeded.data(),
+                seeded.size() * sizeof(VoxelGpuPosition),
+                BUFFER_STORAGE_DYNAMIC
+            );
+            for (std::size_t i = 0; i < C_VoxelPool::kMaxPendingPositionRanges; ++i) {
+                pool.queuePositionRange(0, 1);
+            }
+            pool.queuePositionRange(slotCount - 1, 1);
+            ASSERT_EQ(
+                pool.getPendingPositionRanges().size(),
+                C_VoxelPool::kMaxPendingPositionRanges
+            );
+#if defined(IR_GRAPHICS_METAL)
+            if (queuedGpuWrite) {
+                device_->fillBuffer(&positions, seeded.size() * sizeof(VoxelGpuPosition), 0);
+            }
+#endif
+            IRSystem::flushPendingPositionRanges(pool, &positions);
+#if defined(IR_GRAPHICS_METAL)
+            device_->finish();
+#endif
+            std::vector<VoxelGpuPosition> result(slotCount);
+            positions.getSubData(0, result.size() * sizeof(VoxelGpuPosition), result.data());
+            for (std::size_t i = 0; i < slotCount; ++i) {
+                const vec3 expected = (gpuMask & (1u << i))
+                                          ? (queuedGpuWrite ? vec3(0.0f) : seeded[i].pos_)
+                                          : pool.getPositionGlobals()[i].pos_;
+                EXPECT_EQ(result[i].pos_, expected) << "slot " << i;
+            }
+            EXPECT_TRUE(pool.getPendingPositionRanges().empty());
+        }
+    }
+}
+
+#if defined(IR_GRAPHICS_METAL)
+TEST_F(PositionUploadTest, ConsecutivePartialUploadsPreserveGpuWritesAndOldSnapshots) {
+    using namespace IRRender;
+    for (const bool reverse : {false, true}) {
+        std::vector<std::uint32_t> seed(4, 0u);
+        Buffer positions(seed.data(), seed.size() * sizeof(std::uint32_t), BUFFER_STORAGE_DYNAMIC);
+        Buffer snapshot(seed.data(), seed.size() * sizeof(std::uint32_t), BUFFER_STORAGE_DYNAMIC);
+        device_->fillBuffer(&positions, seed.size() * sizeof(std::uint32_t), 0x11);
+        auto *blit = metalCommandBuffer()->blitCommandEncoder();
+        blit->copyFromBuffer(
+            static_cast<MTL::Buffer *>(positions.getNativeBuffer()),
+            0,
+            static_cast<MTL::Buffer *>(snapshot.getNativeBuffer()),
+            0,
+            seed.size() * sizeof(std::uint32_t)
+        );
+        blit->endEncoding();
+        const std::uint32_t first = 0x22222222;
+        const std::uint32_t second = 0x33333333;
+        if (reverse) {
+            positions.subData(2 * sizeof(std::uint32_t), sizeof(second), &second);
+            positions.subData(sizeof(std::uint32_t), sizeof(first), &first);
+        } else {
+            positions.subData(sizeof(std::uint32_t), sizeof(first), &first);
+            positions.subData(2 * sizeof(std::uint32_t), sizeof(second), &second);
+        }
+        device_->finish();
+        std::vector<std::uint32_t> readback(4);
+        positions.getSubData(0, readback.size() * sizeof(std::uint32_t), readback.data());
+        EXPECT_EQ(readback, (std::vector<std::uint32_t>{0x11111111, first, second, 0x11111111}));
+        snapshot.getSubData(0, readback.size() * sizeof(std::uint32_t), readback.data());
+        EXPECT_EQ(readback, std::vector<std::uint32_t>(4, 0x11111111));
+    }
+}
+
+TEST_F(PositionUploadTest, UnalignedPartialUploadPreservesPendingGpuBytes) {
+    using namespace IRRender;
+    for (const std::size_t byteCount : {8u, 9u}) {
+        std::vector<std::uint8_t> seed(byteCount, 0x55);
+        Buffer bytes(seed.data(), seed.size(), BUFFER_STORAGE_DYNAMIC);
+        device_->fillBuffer(&bytes, 8, 0x11);
+        const std::uint8_t patch = 0x7F;
+        bytes.subData(3, 1, &patch);
+        device_->finish();
+        std::vector<std::uint8_t> result(byteCount);
+        bytes.getSubData(0, result.size(), result.data());
+        std::fill(seed.begin(), seed.begin() + 8, 0x11);
+        seed[3] = patch;
+        EXPECT_EQ(result, seed);
+    }
+}
+#endif
+} // namespace
+#endif

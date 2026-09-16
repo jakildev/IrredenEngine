@@ -104,6 +104,31 @@ inline void syncEntityIds(C_VoxelPool &pool, int liveCount, Buffer *entityIdBuf)
     pool.clearEntityIdsDirty();
 }
 
+// CPU uploads must leave GPU-transform-owned slots intact, including full-pool
+// fallback uploads after a canvas switch or queue saturation.
+inline void flushStaticPositionRanges(C_VoxelPool &pool, Buffer *buf, int liveCount) {
+    constexpr size_t kStride = sizeof(IRRender::VoxelGpuPosition);
+    const auto &globals = pool.getPositionGlobals();
+    const auto &indices = pool.getTransformIndices();
+    const int n = IRMath::min(liveCount, static_cast<int>(indices.size()));
+
+    int runStart = -1;
+    for (int i = 0; i <= n; ++i) {
+        const bool isStatic = (i < n) && (indices[i] == IRRender::kVoxelTransformStatic);
+        if (isStatic) {
+            if (runStart < 0)
+                runStart = i;
+        } else if (runStart >= 0) {
+            buf->subData(
+                static_cast<std::ptrdiff_t>(runStart) * kStride,
+                static_cast<size_t>(i - runStart) * kStride,
+                &globals[runStart]
+            );
+            runStart = -1;
+        }
+    }
+}
+
 // Drain `pool.getPendingPositionRanges()` to the position SSBO as one
 // `subData` per contiguous run. Mirrors `C_GPUParticlePool::flushPendingSpawns`
 // — sort, coalesce, emit. Empty list is a fast-path no-op so a static
@@ -116,16 +141,10 @@ inline void flushPendingPositionRanges(C_VoxelPool &pool, Buffer *buf) {
     constexpr size_t kStride = sizeof(IRRender::VoxelGpuPosition);
     const auto &globals = pool.getPositionGlobals();
 
-    // A saturated queue no longer represents a small moved subset — the
-    // ranges cover most of the live buffer (every moving voxel set
-    // re-queued across N catch-up update ticks). Sorting + coalescing
-    // thousands of fragments costs more than one whole-live-range
-    // upload, so take that path. See C_VoxelPool::kMaxPendingPositionRanges.
+    // Saturation discards later notifications, so revisit all CPU-owned slots.
+    // GPU-owned positions have already been produced by the transform prepass.
     if (ranges.size() >= C_VoxelPool::kMaxPendingPositionRanges) {
-        const int liveCount = pool.getLiveVoxelCount();
-        if (liveCount > 0) {
-            buf->subData(0, static_cast<size_t>(liveCount) * kStride, globals.data());
-        }
+        flushStaticPositionRanges(pool, buf, pool.getLiveVoxelCount());
         pool.clearPendingPositionRanges();
         return;
     }
@@ -170,35 +189,6 @@ inline void flushPendingPositionRanges(C_VoxelPool &pool, Buffer *buf) {
     );
 
     pool.clearPendingPositionRanges();
-}
-
-// Re-seed binding 5 on a canvas switch without clobbering GPU-prepass output.
-// Scans `pool.getTransformIndices()` up to `liveCount` and emits one `subData`
-// per contiguous static run. GPU-transformed slots (index != kVoxelTransformStatic)
-// are skipped — UPDATE_VOXEL_POSITIONS_GPU already wrote their correct world
-// positions ahead of this stage. When all voxels are static this produces a
-// single upload equivalent to a full-range subData.
-inline void flushStaticPositionRanges(C_VoxelPool &pool, Buffer *buf, int liveCount) {
-    constexpr size_t kStride = sizeof(IRRender::VoxelGpuPosition);
-    const auto &globals = pool.getPositionGlobals();
-    const auto &indices = pool.getTransformIndices();
-    const int n = IRMath::min(liveCount, static_cast<int>(indices.size()));
-
-    int runStart = -1;
-    for (int i = 0; i <= n; ++i) {
-        const bool isStatic = (i < n) && (indices[i] == IRRender::kVoxelTransformStatic);
-        if (isStatic) {
-            if (runStart < 0)
-                runStart = i;
-        } else if (runStart >= 0) {
-            buf->subData(
-                static_cast<std::ptrdiff_t>(runStart) * kStride,
-                static_cast<size_t>(i - runStart) * kStride,
-                &globals[runStart]
-            );
-            runStart = -1;
-        }
-    }
 }
 
 // Recompute the pool's cardinal-store tie-possibility signal from the

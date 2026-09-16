@@ -1,5 +1,6 @@
 #include <irreden/render/buffer.hpp>
 #include <irreden/render/metal/metal_runtime.hpp>
+#include <irreden/render/render_device.hpp>
 #include <irreden/ir_profile.hpp>
 
 #include <cstring>
@@ -60,37 +61,44 @@ class MetalBufferImpl final : public BufferImpl {
 
         const std::size_t writeOffset = static_cast<std::size_t>(offset);
 
-        // Fast path: the GPU is not reading this buffer through any
-        // command encoder queued since the last wait, so writing the
-        // patch directly into its `contents()` is safe. Saves the
-        // newBuffer alloc + whole-buffer head/tail memcpy that the
-        // orphan path below otherwise pays on every call. See
-        // metal_runtime.hpp's "Buffer orphaning" block for the contract.
+        // No queued encoder can observe this allocation yet.
         if (!wasMetalBufferEncoded(m_buffer)) {
             std::uint8_t *dst = static_cast<std::uint8_t *>(m_buffer->contents());
             std::memcpy(dst + writeOffset, data, size);
             return;
         }
 
-        // Slow path: the buffer is already encoded into an in-flight
-        // encoder. We must not mutate its contents (the GPU may read the
-        // pre-write snapshot). Orphan: allocate a fresh buffer, copy
-        // head + new patch + tail, swap, defer-release the old.
+        const bool partialWrite = writeOffset != 0 || size != m_size;
+        // macOS buffer blits require four-byte offsets and lengths. Preserve the
+        // byte-granular Buffer API by synchronizing only unsupported copy spans.
+        if (partialWrite && ((writeOffset | size | m_size) & 3u) != 0) {
+            device()->finish();
+            auto *dst = static_cast<std::uint8_t *>(m_buffer->contents());
+            std::memcpy(dst + writeOffset, data, size);
+            return;
+        }
+
         auto *newBuffer = metalDevice()->newBuffer(
             static_cast<NS::UInteger>(m_size),
             MTL::ResourceStorageModeShared
         );
         IR_ASSERT(newBuffer != nullptr, "Failed to orphan Metal buffer in subData");
-
-        std::uint8_t *src = static_cast<std::uint8_t *>(m_buffer->contents());
-        std::uint8_t *dst = static_cast<std::uint8_t *>(newBuffer->contents());
-        if (writeOffset > 0) {
-            std::memcpy(dst, src, writeOffset);
-        }
+        auto *dst = static_cast<std::uint8_t *>(newBuffer->contents());
         std::memcpy(dst + writeOffset, data, size);
-        const std::size_t tailStart = writeOffset + size;
-        if (tailStart < m_size) {
-            std::memcpy(dst + tailStart, src + tailStart, m_size - tailStart);
+
+        if (partialWrite) {
+            // Untouched bytes may be produced by queued GPU writes. CPU memcpy
+            // would read their previous contents before those writes execute.
+            auto *blit = createMetalBlitEncoder();
+            if (writeOffset > 0) {
+                blit->copyFromBuffer(m_buffer, 0, newBuffer, 0, writeOffset);
+            }
+            const std::size_t tailStart = writeOffset + size;
+            if (tailStart < m_size) {
+                blit->copyFromBuffer(m_buffer, tailStart, newBuffer, tailStart, m_size - tailStart);
+            }
+            blit->endEncoding();
+            markMetalBufferEncoded(newBuffer);
         }
 
         MTL::Buffer *oldBuffer = m_buffer;
