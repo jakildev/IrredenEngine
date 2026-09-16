@@ -27,6 +27,11 @@ _IR_HELPERS_LOADED=1
 # ir_enclosing_engine_root <dir> — nearest ancestor (including <dir>) that
 # looks like an engine checkout (CMakePresets.json + engine/). Returns 1
 # when no ancestor matches.
+#
+# The `cd ... && pwd` normalization is load-bearing, not incidental: it puts
+# <dir> in POSIX-drive form (/c/...) on MSYS2, which is what lets the "/"
+# sentinel terminate the walk. Drop it and this loop inherits the drive-root
+# fixed point documented on ir_creation_worktree_engine_root below.
 ir_enclosing_engine_root() {
     local here="$1"
     [[ -d "$here" ]] || return 1
@@ -84,14 +89,39 @@ ir_worktree_root() {
 # (creations/<name>/, two levels below the engine root) to the engine
 # root via its ../../ walk-up, so only nested *worktrees* reach this
 # detection — the main checkout keeps building through <engine>/build.
+#
+# Walks ancestors with `dirname` rather than delegating to
+# ir_enclosing_engine_root, because that helper's `cd ... && pwd` silently
+# normalizes to POSIX-drive form (/c/...) on MSYS2/Git-Bash, while
+# <worktree-root> — sourced from `git rev-parse --show-toplevel` in every
+# real caller — is spelled in Windows-drive form (C:/...). Comparing the
+# two spellings in the `case` below never matches (#3046). `dirname` is a
+# pure string operation, so walking directly on <worktree-root> keeps the
+# returned engine root in the SAME spelling as the input; the `-f`/`-d`
+# file tests resolve either spelling transparently. Matching spelling
+# matters downstream too: ir_default_build_dir prefix-strips <worktree-root>
+# with this return value, and ir-build feeds it straight into `cmake -S`
+# under cmd.exe, which cannot resolve a POSIX-style path.
+#
+# The walk terminates on a `dirname` fixed point, NOT on "." / "/" sentinels:
+# MSYS2/Git-Bash `dirname` is idempotent at a bare Windows drive root
+# ("C:" -> "C:", "C:/" -> "C:/"), so a Windows-drive-form <worktree-root> with
+# no engine-root ancestor never reaches either sentinel. Regression: T5 in
+# scripts/fleet/tests/test_ir_build_dir_resolution.sh.
 ir_creation_worktree_engine_root() {
     local root="$1"
     [[ -f "$root/CMakePresets.json" ]] && return 1
-    local eng
-    eng="$(ir_enclosing_engine_root "$root")" || return 1
-    case "$root" in
-        "$eng"/creations/*) echo "$eng"; return 0 ;;
-    esac
+    local candidate="$root" prev=""
+    while [[ "$candidate" != "$prev" ]]; do
+        prev="$candidate"
+        candidate="$(dirname "$candidate")"
+        if [[ -f "$candidate/CMakePresets.json" && -d "$candidate/engine" ]]; then
+            case "$root" in
+                "$candidate"/creations/*) echo "$candidate"; return 0 ;;
+                *) return 1 ;;
+            esac
+        fi
+    done
     return 1
 }
 
