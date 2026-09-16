@@ -37,7 +37,7 @@ ENTITY_RE = re.compile(r"Entity count:\s+(\d+)\s+\((\d+)\s+archetypes\)")
 CULL_AXIS_RE = re.compile(r"^AxisEntries\s+([\d.]+)\s+(\d+)\s+(\d+)")
 CULL_VISIBLE_RE = re.compile(r"^Visible\s+([\d.]+)\s+(\d+)\s+(\d+)")
 CULL_TOTAL_RE = re.compile(r"^Total\s+([\d.]+)\s+(\d+)\s+(\d+)")
-# The struct-1 shadow-feeder count (#2298). The report also prints a free-form
+# The struct-1 shadow-feeder count. The report also prints a free-form
 # "Feeder ratio: cross-run only …" note right after the Ratio: line; like every
 # other cull regex this one is ^-anchored to its own row token, so that note
 # (and the "Ratio:" one) fall through it.
@@ -92,7 +92,7 @@ class CullStats:
     max_total: int = 0
     samples: int = 0
     ratio: float = 0.0
-    # Feeder row (#2298). `has_feeder` distinguishes "row absent" (a report
+    # Feeder row. `has_feeder` distinguishes "row absent" (a report
     # predating the row) from a measured 0 (sun shadows off ⇒ the compact
     # classifies no feeders), so the table can print "—" for the former.
     avg_feeder: float = 0.0
@@ -342,7 +342,7 @@ def format_feeder_cell(base: CullStats, head: CullStats) -> str:
     denominator for it (see the "Feeder ratio:" note it prints) — so this
     comparator, which is where two runs meet, is the place that ratio lives:
     with a pv-off run as baseline and a pv-on run as head, the `(N×)` factor
-    is exactly "pv-on Avg / pv-off Avg", the number the #2298 acceptance gates
+    is exactly "pv-on Avg / pv-off Avg", the number the perf acceptance gates
     read. A side whose report predates the Feeder row shows "—", not 0 — a 0
     is a real measurement (sun shadows off ⇒ no feeders classified).
     """

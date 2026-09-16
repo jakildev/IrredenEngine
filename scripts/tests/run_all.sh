@@ -4,13 +4,13 @@
 # These suites are unittest, not CMake tests, so `ctest` never sees them; this
 # runner and the `render-harness-tests.yml` workflow that calls it are the only
 # things that execute them. Keep that workflow wired — an unexecuted suite goes
-# red silently (#2825).
+# red silently.
 #
 # One process per suite, and that is the point. These suites put scripts/ on
 # sys.path themselves so they can import the dashed-name subjects. Run in a
 # shared interpreter (`python3 -m unittest discover`), one suite's insert
 # satisfies the next one's import, so a suite that forgot the line still reports
-# green — the mask this runner exists to prevent (#2825).
+# green — the mask this runner exists to prevent.
 #
 # The fleet tooling tree has a same-shaped runner at
 # scripts/fleet/tests/run_all.sh with a wider option surface (--only, --list,

@@ -3,7 +3,7 @@
 The runner's whole reason to exist is that it runs each suite in its own
 interpreter. A shared-interpreter runner (`python3 -m unittest discover`)
 lets one suite's `sys.path.insert` satisfy the next suite's import, so a
-suite that forgot the line reports green (#2825).
+suite that forgot the line reports green.
 
 `test_isolation_*` below is the regression lock for exactly that: a fixture
 directory whose second suite imports a module only the first suite puts on
@@ -85,7 +85,7 @@ class RunAllRunnerTest(unittest.TestCase):
         self.assertIn("not a directory", r.stderr)
 
     # ------------------------------------------------------------------
-    # The #2825 regression lock: per-process isolation.
+    # The regression lock for per-process isolation.
     # ------------------------------------------------------------------
 
     def _isolation_fixture(self, d: Path) -> None:

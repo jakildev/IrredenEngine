@@ -1,7 +1,7 @@
 """Tests for render-verify.py — the ROI-crop + structural-metric gate (T-2)
-and the manifest-driven demo resolution (#2919).
+and the manifest-driven demo resolution.
 
-Proves the gate wiring added in epic #1766 T-2 without a GL/Metal build:
+Proves the T-2 gate wiring without a GL/Metal build:
 
   * full-frame pixel-diff still passes/fails as before (backward compat);
   * a manifest-declared ROI crop is compared against a committed reference
@@ -12,7 +12,7 @@ Proves the gate wiring added in epic #1766 T-2 without a GL/Metal build:
   * misconfigurations (unknown shot, missing reference, un-captured crop,
     unimplemented metric, threshold-less gate) are surfaced loudly.
 
-Plus the resolution + sweep layer (#2919):
+Plus the resolution + sweep layer:
 
   * a target is resolved from the manifest that *declares* it, so a demo
     whose directory name doesn't match its target stays reachable;
@@ -36,10 +36,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 _SCRIPTS = Path(__file__).resolve().parent.parent
-# render-verify.py does a bare `import verify_common` (#2461), which resolves
+# render-verify.py does a bare `import verify_common`, which resolves
 # only if scripts/ is on sys.path. Without this the suite dies at import when
 # run on its own, and passes only when an alphabetically-earlier sibling in
-# this directory happens to insert the path first (#2825).
+# this directory happens to insert the path first.
 sys.path.insert(0, str(_SCRIPTS))
 
 
@@ -252,13 +252,12 @@ class RenderVerifyHarness(unittest.TestCase):
     def test_structural_roi_at_scales_oversized_reference_roi_into_bounds(self):
         # `roi` was calibrated against a 64x64 reference capture (`roi_at`);
         # this capture is only 32x32 (e.g. a 1x backend vs. the 2x HiDPI
-        # reference #3016 hit). Applied literally, roi=(48,0,16,64) sits
-        # partly outside a 32x32 frame and render-shadow-metric.py raises
-        # (the pre-#3011 crash this scaling fixes) — proportional scaling
-        # to (24,0,8,32) brings it back in bounds. That scaled region falls
-        # entirely in the BLACK (hole) right half, so the gate still fires,
-        # proving the scaled roi is what actually got measured rather than
-        # a silently-clamped or ignored one.
+        # reference). Applied literally, roi=(48,0,16,64) sits partly outside
+        # a 32x32 frame and render-shadow-metric.py would raise without this
+        # scaling; proportional scaling to (24,0,8,32) brings it back in
+        # bounds. That scaled region falls entirely in the BLACK (hole) right
+        # half, so the gate still fires, proving the scaled roi is what
+        # actually got measured rather than a silently-clamped or ignored one.
         self._ref("shotA.png")
         self._ref("shotB.png")
         _write(self.frames[0], 32, 32, lambda x, y: MAGENTA if x < 16 else BLACK)
@@ -459,7 +458,7 @@ class ParseExtraRuns(unittest.TestCase):
     # ── per-pass structural_only guard ─────────────────────────────────
     # Mirrors the top-level 'structural_only' guard: a label with no
     # matching 'structural' entry for the same pass would be captured,
-    # never pixel-diffed, and never structurally gated either. See #2842.
+    # never pixel-diffed, and never structurally gated either.
     def test_structural_only_with_matching_structural_entry_parses(self):
         runs = _parse_extra_runs({"extra_runs": [{
             "name": "compare",
@@ -509,7 +508,7 @@ class ParseExtraRuns(unittest.TestCase):
             })
 
     def test_extra_runs_delegates_to_the_shared_validator(self):
-        # #2842's fix is one validator invoked per resolved pass, not one
+        # The fix is one validator invoked per resolved pass, not one
         # copy per lane. An inline re-copy in _parse_extra_runs would keep
         # every behavioural test above green while re-opening the drift, so
         # assert the delegation itself. The manifest below is the *violating*
@@ -528,7 +527,7 @@ class ParseExtraRuns(unittest.TestCase):
 
 
 class ValidateStructuralOnly(unittest.TestCase):
-    """The shared two-arm guard, driven on its top-level lane (#2842).
+    """The shared two-arm guard, driven on its top-level lane.
 
     ``main()`` is the other caller, and its lane is otherwise reachable only
     through a full CLI run against a demo dir — these arms cover it directly.
@@ -577,11 +576,11 @@ class ValidateStructuralOnly(unittest.TestCase):
 
 
 class DemoResolution(unittest.TestCase):
-    """Manifest-declared target -> demo dir (#2919).
+    """Manifest-declared target -> demo dir.
 
-    The pre-fix harness inferred the directory from the target name, which is
-    wrong for any demo whose directory doesn't echo its target. These build a
-    synthetic demo tree so the cases are exercised without the real manifests.
+    Inferring the directory from the target name is wrong for any demo whose
+    directory doesn't echo its target. These build a synthetic demo tree so
+    the cases are exercised without the real manifests.
     """
 
     def setUp(self):
@@ -680,10 +679,10 @@ class DemoResolution(unittest.TestCase):
 class CommittedManifestsResolve(unittest.TestCase):
     """Coverage guard against the real tree — no build, no demo run.
 
-    #2919's damage was a demo silently dropping out of a multi-target sweep.
-    The property that prevents it is that every committed manifest is
-    reachable from its own declared target with no `--demo` override, so this
-    asserts the round-trip over whatever manifests the tree currently ships
+    The property that prevents a demo from silently dropping out of a
+    multi-target sweep is that every committed manifest is reachable from its
+    own declared target with no `--demo` override, so this asserts the
+    round-trip over whatever manifests the tree currently ships
     rather than pinning a demo list that would need editing on every addition.
     """
 
@@ -741,8 +740,8 @@ class SweepSummary(unittest.TestCase):
         self.assertEqual(err, "")
 
     def test_a_demo_that_produced_no_checks_reads_as_error(self):
-        # The #2919 failure mode, one level up: a demo contributing zero must
-        # not look like a demo that simply had less to check. It is named on
+        # A demo contributing zero must not look like a demo that simply had
+        # less to check. It is named on
         # stderr AND its row says ERROR, so a smaller total can't pass as a
         # complete sweep.
         out, err = self._summary([

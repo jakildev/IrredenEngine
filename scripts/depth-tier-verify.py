@@ -2,7 +2,7 @@
 """depth-tier-verify — build canvas_stress, run it headless, gate a composite
 depth-priority tier at an overlapping-unit pixel.
 
-The deterministic headless tier gate for #2122. It drives a canvas_stress
+The deterministic headless tier gate. It drives a canvas_stress
 ``--only`` opt-in scene that spawns two world-placed detached units at the same
 screen position but different world depth, and asserts the composite winner at
 the overlap pixel decodes to the expected priority tier. This is the positive
@@ -12,11 +12,11 @@ load-bearing. If a future pass drops the carrier the far unit decodes ``tier=0``
 (the near unit wins by true depth) and the run FAILs.
 
 Two scenes, selected with ``--only``:
-  - ``interpenetrate`` (default, ``--tier 2``, #1960/#2023) — the per-TRIXEL
+  - ``interpenetrate`` (default, ``--tier 2``) — the per-TRIXEL
     carrier. The FAR unit is ROTATED to a fixed non-cardinal pose so its
     re-voxelize fill runs MODE 1 and is tagged the top per-trixel tier; the gate
     proves the carrier survives the rotating fill.
-  - ``orbitswap`` (``--tier 1``, #2154) — the per-ENTITY carrier
+  - ``orbitswap`` (``--tier 1``) — the per-ENTITY carrier
     (``C_EntityCanvas::depthPriority_``). The FAR unit's whole canvas is pinned
     into the entity-foreground near band (tier 1).
 Both scenes are origin-centered and overlap at ``--pixel``, so the same probe
@@ -56,7 +56,7 @@ _ASSERT_RE = re.compile(
 _DEFAULT_PIXEL = "639,362"
 _DEFAULT_TIER = 2
 # The canvas_stress --only opt-in scene to drive. Default "interpenetrate" is the
-# #1960 per-trixel carrier (tier 2); "orbitswap" is the #2154 per-ENTITY carrier
+# per-trixel carrier (tier 2); "orbitswap" is the per-ENTITY carrier
 # (tier 1). Both spawn an origin-centered overlapping pair, so _DEFAULT_PIXEL lands
 # on the far priority unit for either — pass --tier to match the scene.
 _DEFAULT_ONLY = "interpenetrate"
@@ -95,7 +95,7 @@ def main() -> None:
         metavar="GROUP",
         help=(
             f"canvas_stress --only opt-in group to isolate (default: {_DEFAULT_ONLY}). "
-            "Use 'orbitswap' for the #2154 per-entity tier-1 swap gate (--tier 1)."
+            "Use 'orbitswap' for the per-entity tier-1 swap gate (--tier 1)."
         ),
     )
     parser.add_argument(
@@ -109,7 +109,7 @@ def main() -> None:
         type=int,
         default=_DEFAULT_TIER,
         metavar="N",
-        help=f"Expected #1960 priority tier at the overlap (default: {_DEFAULT_TIER})",
+        help=f"Expected priority tier at the overlap (default: {_DEFAULT_TIER})",
     )
     parser.add_argument(
         "--warmup-frames",

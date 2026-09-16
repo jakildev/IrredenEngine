@@ -86,7 +86,7 @@ class RenderingResourceManager {
     // the result is dead code. Under IR_RELEASE the assert compiles out and the
     // miss becomes an end-iterator dereference, which a null check would not
     // catch either. Callers whose contract is "no-op when the resource is
-    // absent" want getNamedOrNull (see #2627).
+    // absent" want getNamedOrNull.
     template <typename T> T *getNamed(const std::string &name) {
         auto it = m_namedResources.find(name);
         IR_ASSERT(it != m_namedResources.end(), "Failed to find named resource: {}", name);

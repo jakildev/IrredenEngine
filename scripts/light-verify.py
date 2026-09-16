@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""light-verify — automated pass/fail harness for light/shadow domain culling (#2317, V3).
+"""light-verify — automated pass/fail harness for light/shadow domain culling (V3).
 
 Drives the lighting demo family's ``--light-domain-matrix`` (zoom x yaw x
-pan-distance), ``--light-boundary-sweep`` (#2310), and ``--hover-sweep``
+pan-distance), ``--light-boundary-sweep``, and ``--hover-sweep``
 auto-screenshot series, parses each shot's DOMAIN-STATE log line (emitted by
-``logDomainState`` in ``lighting_demo_scene.hpp``, #2315 V1), and asserts:
+``logDomainState`` in ``lighting_demo_scene.hpp``, V1), and asserts:
 
   1. Domain-matrix "inwin"/"band" shots never report SKIPPED — a light whose
      influence sphere intersects the viewport must always seed (V1's
@@ -86,7 +86,7 @@ SCREENSHOT_SUBDIR = "save_files/screenshots"
 # pass never touches the others' committed references.
 PASSES = ("light-domain-matrix", "light-boundary-sweep", "hover-sweep")
 
-# Thresholds mirror cull-verify.py's calibration (#1438): AO/light-volume
+# Thresholds mirror cull-verify.py's calibration: AO/light-volume
 # shading differs by a handful of bytes in a small fraction of pixels between
 # otherwise-identical scenes, but a genuine regression (a dropped light, a
 # truncated shadow) flips a visible region from lit/shadowed to the opposite,
@@ -104,7 +104,7 @@ LIGHT_VERIFY_THRESHOLDS: dict[str, Any] = {
 # globs against the DOMAIN-STATE `shot=` label; every pattern must match at
 # least one shot across the run's passes or the run fails.
 EXPECTED_LIGHT_STATES: dict[str, dict[str, str]] = {
-    # #2330: the d070 sweep shot's per-axis-clamped seed cell lands inside the
+    # The d070 sweep shot's per-axis-clamped seed cell lands inside the
     # demo's wall slab, so the gather must relocate it to the nearest free cell
     # on the clamped window face. d088 clamps to a free cell and must stay on
     # the untouched path. The domain-matrix "band" shots share d070's anchor.
@@ -176,7 +176,7 @@ def _check_domain_matrix(shots: list[dict[str, Any]]) -> list[str]:
             for light in s["lights"]:
                 # Both skip outcomes are defects here: residual-exhausted
                 # (SKIPPED) and occluded-with-no-reachable-face-cell
-                # (SKIPPED_OCCLUDED, #2330).
+                # (SKIPPED_OCCLUDED).
                 if light["state"].startswith("SKIPPED"):
                     failures.append(
                         f"{s['shot']}: light {light['entity']} reports {light['state']} but pan "
@@ -394,7 +394,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {'checked' if hit else 'NO MATCH'}  {pattern:28} -> {expected}")
         # A pattern that matched nothing is a stale or mistyped key, which would
         # otherwise read as a silent pass — the same vacuity the regex whitelist
-        # produced (#2330).
+        # produced.
         for pattern in expectations:
             if pattern not in matched_state_patterns:
                 all_assertion_failures.append(

@@ -30,7 +30,7 @@ per-backend like the full-frame path.
 A shot listed in the optional `structural_only` block is still captured but
 skips the full-frame pixel-diff and needs no committed reference PNG — it is
 gated solely by its `structural` entries. This lets an analytic-oracle scene
-(epic #1766 T-4) gate the zoom regime that pixel-diff excludes as
+(T-4) gate the zoom regime that pixel-diff excludes as
 non-deterministic: the structural metric is compared against a computed
 expectation, not a jittery captured reference, so it is deterministic at zoom
 and shared across backends. A manifest whose shots are *all* structural_only
@@ -57,8 +57,7 @@ every ``extra_runs`` pass, so a first run on a new host bootstraps all of them.
 with one aggregate tally. That is the first-class spelling of "verify the whole
 reference set": a hand-rolled shell loop over target names reports each demo
 separately, so a demo that drops out of the sweep leaves no hole in any single
-number (#2919 — the `lighting` demo went unverified across two review passes
-that way). The ``--all`` summary lists one row per demo and counts a demo that
+number. The ``--all`` summary lists one row per demo and counts a demo that
 failed to run as ERROR rather than as zero checks.
 
 Assumes this file lives at ``<repo>/scripts/render-verify.py``.
@@ -105,7 +104,7 @@ def _declared_targets(worktree: Path) -> dict[str, str]:
     target *name*, and the tree has a demo where the two disagree
     (``IRLightingSdfBlocker`` lives in ``creations/demos/lighting``). Reading
     the declaration instead of re-deriving it is what keeps that demo reachable
-    without out-of-band knowledge (#2919).
+    without out-of-band knowledge.
 
     Insertion order follows the glob's sort, so ``--all`` sweeps demos in a
     stable, filesystem-independent order.
@@ -190,7 +189,7 @@ def _load_manifest(demo_dir: Path) -> dict[str, Any]:
 
 # Crop-exclusion (the reason a bare ``screenshot_*.png`` glob is wrong) lives in
 # verify_common.FULL_FRAME_RE / collect_full_frames — one definition for the
-# whole harness family (#2819). Crops are still compared here, but via the
+# whole harness family. Crops are still compared here, but via the
 # manifest-driven ``crops`` gate (see ``evaluate_shots``), which *constructs*
 # each crop filename from its full frame rather than globbing.
 
@@ -299,7 +298,7 @@ def _label_index(shot_labels: list[str]) -> dict[str, int]:
 #     (``max_hole_ratio`` -> ``--max-hole-ratio`` etc.)
 #   * emits a JSON object on stdout; exit 0 = within thresholds, 1 = a
 #     threshold was exceeded, 2 = I/O or format error.
-# render-shadow-metric.py (#1765) is the first implementer; T-3 adds
+# render-shadow-metric.py is the first implementer; T-3 adds
 # coverage / silhouette / clip metrics behind the same contract.
 
 def _run_structural_metric(image: Path, entry: dict[str, Any],
@@ -319,7 +318,7 @@ def _run_structural_metric(image: Path, entry: dict[str, Any],
     if not script.exists():
         raise SystemExit(
             f"structural metric '{metric}' (shot '{shot_label}') is not "
-            f"implemented: no {script.name}. See epic #1766 T-3."
+            f"implemented: no {script.name}. See T-3."
         )
 
     cmd = [sys.executable, str(script), str(image)]
@@ -330,9 +329,9 @@ def _run_structural_metric(image: Path, entry: dict[str, Any],
             # `roi` was measured against a capture of size `roi_at` (e.g. a
             # macOS HiDPI 2x framebuffer); scale it proportionally to this
             # capture's actual size so the gate stays backend-agnostic across
-            # DPI scales (#3016 — a 1x windows-debug/linux-debug capture is
-            # half the pixel dimensions of the 2x macos-debug capture the ROI
-            # was originally calibrated against).
+            # DPI scales (a 1x windows-debug/linux-debug capture is half the
+            # pixel dimensions of the 2x macos-debug capture the ROI was
+            # originally calibrated against).
             actual_w, actual_h = verify_common.png_dimensions(image)
             ref_w, ref_h = roi_at
             rx, ry, rw, rh = roi
@@ -482,7 +481,7 @@ def _validate_structural_only(structural_only: set[str], shots: list[str],
     the pass's name. Both lanes must route through here rather than inline
     a copy — a check written into one lane reaches only that lane, which is
     how ``extra_runs`` (where most ``structural_only`` shots live) went
-    unguarded (#2842).
+    unguarded.
     """
     # Message shaping is the only thing the two lanes disagree on: a per-pass
     # failure has to name its pass and scope 'shots' / 'structural' to it.
@@ -673,7 +672,7 @@ def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
     # Shots gated purely by structural metrics: still captured (for the
     # index→reference alignment) but no full-frame pixel-diff and no committed
     # reference PNG. This is how an analytic-oracle scene gates the zoom regime
-    # that pixel-diff excludes (epic #1766 T-4). Each must be a declared shot
+    # that pixel-diff excludes (T-4). Each must be a declared shot
     # and must carry a structural gate, else it would be captured-but-ungated —
     # the same two arms `_parse_extra_runs` applies to each extra pass.
     structural_only: set[str] = set(manifest.get("structural_only", []))
@@ -899,8 +898,7 @@ def _print_sweep_summary(results: list[dict[str, Any]]) -> None:
 
     The row for a demo that never produced checks says ERROR, not ``0 checks``
     — the whole point of ``--all`` is that a demo dropping out of the sweep is
-    visible in the number, which is what a per-target shell loop cannot do
-    (#2919).
+    visible in the number, which is what a per-target shell loop cannot do.
     """
     print()
     print(f"[render-verify] --all summary over {len(results)} demo(s):")
@@ -961,7 +959,7 @@ def main(argv: list[str] | None = None) -> int:
                          "neutral against the committed references — e.g. "
                          "`--demo-arg --occlusion-cull` checks the voxel "
                          "occlusion cull renders bit-identical to the cull-off "
-                         "baseline (#1294 child 3/3).")
+                         "baseline.")
     args = ap.parse_args(argv)
 
     if args.all and args.demo:

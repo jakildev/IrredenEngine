@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Shadow-feeder classify-margin adequacy gate for Irreden Engine (#3010).
+"""Shadow-feeder classify-margin adequacy gate for Irreden Engine.
 
 Stage 2 skips the colour / entity-id taps of any voxel classified as an
-off-screen **shadow feeder** (the #1740 depth-only path).  That is only safe if
+off-screen **shadow feeder** (the depth-only path).  That is only safe if
 no *on-screen* pixel ever resolves from a feeder — which holds because
 ``visibleIsoBounds`` carries a ``+kGpuMargin`` (4 iso-texel) pad that covers
 stage 1's cardinal write set (``base + {0,1}x{0,1,2}``, reach +1 x / +2 y).
@@ -13,7 +13,7 @@ worthless as a gate (``engine/render/CLAUDE.md`` §"Verifying render changes").
 This harness makes it observable by running ``IRPerfGrid`` three times with the
 diagnostic ``--feeder-classify-pad`` knob, which pads
 ``frameData_.visibleIsoBounds_`` and nothing else — the cull box, the Hi-Z
-window and the #2488 ring guard keep reading the unpadded values, and at
+window and the ring guard keep reading the unpadded values, and at
 ``--subdivision-mode none`` (``feederSubCap == subdivisions == 1``) a voxel's
 stage-1 depth is identical on either side of the classification.  So a pixel
 can only change through stage 2's colour tap:
@@ -50,7 +50,7 @@ shot as ``FEEDER-CLASSIFY ... ring_non_empty=<0|1>``.
 
 Only **cardinal** shots are compared.  ``perf_grid``'s two rotated shots
 (``zoom4_rot`` / ``zoom4_rot_pan``) are run-to-run non-deterministic on this
-demo (3 distinct hashes in 3 runs, per #3010), so an identity claim over them
+demo (3 distinct hashes in 3 runs), so an identity claim over them
 would be noise.  The skip itself is structurally inert at ``residualYaw != 0``
 anyway — the predicate's own route terms exclude it — so cardinal is the only
 regime where the question is live.
@@ -212,7 +212,7 @@ def evaluate(
                 "the pad-0 arm reported an EMPTY off-screen shadow-feeder ring "
                 "(ring_non_empty=0 on every shot), so the adequacy arm had zero "
                 "feeders to promote and its 0-changed-pixels result is tautological. "
-                "Check that sun shadows are on in this scene (see #3010 plan-review C1).",
+                "Check that sun shadows are on in this scene.",
             )
         )
 
@@ -227,7 +227,7 @@ def evaluate(
                 "feeder-won on-screen pixels",
                 "widening the classify box changed on-screen pixels, so those pixels "
                 f"were resolving from a depth-only shadow feeder whose colour tap stage 2 "
-                f"skipped — the #1740 margin is inadequate against stage 1's emit hull. {detail}",
+                f"skipped — the margin is inadequate against stage 1's emit hull. {detail}",
             )
         )
 
@@ -275,7 +275,7 @@ def _run_arm(
     shift every positional arm-to-arm pairing.  Its ``collect_full_frames``
     excludes ROI crops for the same reason.  The arm stashes its captures to a
     sibling directory afterwards — never under ``shots_dir``, which the next
-    arm's ``run_pass`` would wipe (the #2356 hazard its docstring names).
+    arm's ``run_pass`` would wipe.
     """
     cmd = [
         "fleet-run", "--timeout", str(timeout), TARGET,
@@ -284,8 +284,8 @@ def _run_arm(
         "--subdivision-mode", subdivision_mode,
         "--wave-freeze",
         "--wave-amplitude", "5",
-        # Part of #3010's published recipe.  zoom4_pan is byte-identical either
-        # way, so this only keeps the numbers comparable with the issue.
+        # zoom4_pan is byte-identical with or without this flag; it is kept only
+        # to match the published recipe's numbers.
         "--occlusion-cull",
         "--feeder-classify-pad", str(pad),
         "--auto-screenshot", str(warmup),
@@ -314,7 +314,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--subdivision-mode", default="none",
                     help="Passthrough to --subdivision-mode (default: none). The shadow-neutral "
                          "argument rests on feederSubCap == subdivisions, which holds at 'none'; "
-                         "other modes are unmeasured (#3010 out-of-scope).")
+                         "other modes are unmeasured.")
     args = ap.parse_args(argv)
 
     if args.adequacy_pad <= 0:
@@ -327,7 +327,7 @@ def main(argv: list[str] | None = None) -> int:
             f"[feeder-margin-verify] WARNING: --subdivision-mode {args.subdivision_mode} is an "
             "unmeasured regime — the shadow-neutral premise (feederSubCap == subdivisions) only "
             "holds at 'none', so a FAIL here may reflect subdivision-density drift rather than an "
-            "inadequate margin (#3010 out-of-scope).",
+            "inadequate margin.",
             file=sys.stderr,
         )
 

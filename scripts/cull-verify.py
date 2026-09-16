@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cull-regression harness for Irreden Engine (#1441).
+"""Cull-regression harness for Irreden Engine.
 
 Drives the shape_debug ``--cull-validate`` capture flow, then pairwise-compares
 each live shot against the corresponding frozen shot.  A wide-viewport frozen
@@ -20,7 +20,7 @@ The image assertion is relative by design — live_i vs frozen_i from the same
 capture.  There is no committed cross-run baseline: absolute render drift on
 shape_debug is render-verify's job (see docs/design/cull-validation-harness.md
 "Cross-run contract"), and this harness must never grow a reference set it does
-not read (#2955).
+not read.
 
 A relative image check cannot police the mechanism it exercises.  If the cull
 freeze accepts the call and pins nothing, phase 2 re-walks the pose list with a
@@ -101,11 +101,10 @@ UNFREEZE_LABEL = "cv_unfreeze_000"
 # table is a failure rather than a re-pairing.
 ALL_LABELS = LIVE_LABELS + [FREEZE_REF_LABEL] + FROZEN_LABELS + [UNFREEZE_LABEL]
 
-# Thresholds calibrated to the P1 harness finding (issue #1438):
-# at non-cardinal yaw the frozen and live passes differ in AO/light-volume shading
-# because both computations use the cull viewport — even with sun shadows disabled.
-# Observed in the P1 sweep: ~0.2 % of bytes differ by up to 89–127, always in
-# AO-dependent regions, not in discrete voxel silhouettes.
+# At non-cardinal yaw the frozen and live passes differ in AO/light-volume shading
+# because both computations use the cull viewport, even with sun shadows disabled:
+# ~0.2 % of bytes differ by up to 89–127, always in AO-dependent regions, not in
+# discrete voxel silhouettes.
 # A genuine geometry drop (a visible entity missing from the live frame) would
 # convert a coloured voxel region to background, dropping at least 0.1–0.3 % of
 # bytes — detectable above this baseline with the 99.7 % match_pct threshold.
