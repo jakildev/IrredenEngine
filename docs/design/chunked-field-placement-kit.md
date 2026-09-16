@@ -1,8 +1,8 @@
 # Chunked occupancy-field + placement-query kit
 
-- **Status:** contract locked (this doc), implementation staged — see
-  "Migration status" below. Every decision `D1`–`D10` here is the
-  source-of-truth; code that disagrees with this file is the bug.
+- **Status:** shipped — every child in "Migration status" below has landed.
+  Every decision `D1`–`D10` here is the source-of-truth; code that disagrees
+  with this file is the bug.
 - **Owning subsystem:** `engine/prefabs/irreden/spatial/` (chunk-aware
   composition) + `engine/math/` (layout-agnostic kernels). **Not** engine core,
   **not** an ECS system — see D8.
@@ -459,7 +459,7 @@ Bridson Poisson-disk sampling, all-integer:
   path. `minSpacing >= 1` by D4's domain, so the annulus is never degenerate.
   How many words an attempt consumes, and in what order, is D7's to lock — the
   rejection loop is where an unspecified draw silently forks the stream.
-- Background acceleration grid at `gridWidth(minSpacing)` — the `r/√2` cell that
+- Background acceleration grid at `placementGridWidth(minSpacing)` — the `r/√2` cell that
   makes each grid cell hold at most one sample, computed **in integers**. The
   width is part of the contract, not an implementation detail; see "The
   background-grid width" below.
@@ -506,7 +506,7 @@ such `w`, with no floating point anywhere:
 
 ```cpp
 // largest w with w <= r / sqrt(2), i.e. with 2*w*w <= r*r
-int gridWidth(int r) {                     // r == minSpacing, in [1, kMaxClearanceCells]
+int placementGridWidth(int r) {            // r == minSpacing, in [1, kMaxClearanceCells]
     const std::int64_t w =
         IRMath::isqrt(static_cast<std::int64_t>(r) * r / 2);
     return static_cast<int>(w < 1 ? 1 : w);
@@ -549,7 +549,17 @@ why the clamp is stated as a contract case rather than left as defensive code.
 ### D7 — determinism
 
 The draw takes an explicit `std::uint64_t seed` and uses a kit-local
-`IRMath::Pcg32` (a new ~20-line header in `engine/math/`).
+`IRMath::Pcg32` (`engine/math/include/irreden/math/rng_pcg32.hpp`).
+
+`Pcg32` is **PCG-XSH-RR 64/32 with O'Neill's reference seeding**: the state
+step is `state * 6364136223846793005 + inc` with `inc` odd; the output is
+`xorshifted = uint32(((old >> 18) ^ old) >> 27)` rotated right by
+`old >> 59`. The constructor `Pcg32(seed, stream = 0)` is `pcg32_srandom_r`
+— state `0`, `inc = (stream << 1) | 1`, step, `state += seed`, step — so the
+published `pcg32-demo` output for `(42, 54)` is an external oracle for the
+stream (`a15c02b7 7b47f409 ba1d3330 …`). The draw passes
+`PlacementParams::seed_` alone; the stream parameter exists for that oracle.
+`uniformBelow` lives in the same header.
 
 - **Never `IRMath::threadRng()`** — it is `thread_local`, so results would
   couple to which worker thread ran the query.
@@ -781,8 +791,14 @@ class PlacementField {                       // C5 composes the three layers
   public:
     explicit PlacementField(int maxClearance);   // delegates D4 validation
     int  maxClearance() const { return clearance_.maxClearance(); }
+    void setCell(IRMath::ivec2 cell, std::uint8_t value);
+    void clear();
+    bool hasPendingChanges() const;              // occupancy_.hasDirtyKeys()
     void update();   // one dirty snapshot → clearance, then regions, then
                      // occupancy.update() acknowledges it
+    const ChunkedField2D<std::uint8_t> &occupancy() const;
+    const FieldClearance &clearance() const;
+    const FieldRegions &regions() const;
 };
 
 void queryPlacements(
@@ -820,6 +836,33 @@ void queryPlacements(
   indistinguishable from "no space anywhere". The table covers **every** field
   the caller sets, `k_` included; a default-constructed `PlacementParams` is
   rejected, because `k_ = 0` is out of domain (D4).
+- **Rejection is `std::invalid_argument`**, thrown after `out.clear()` and
+  the stats reset and before any draw state is seeded, so the `void`
+  signature stands and a rejected query leaves an empty `out` beside a
+  `{0, 0, 0}` stats struct. The same throw covers one field precondition:
+  `field.hasPendingChanges()` — occupancy mutated since the last `update()`
+  — is rejected, turning D2's "stale summary, nothing to indicate why" into
+  a caught error. `FieldClearance` already throws this type for an
+  out-of-domain cap, which is what `PlacementField(maxClearance)` delegates
+  to. Rejected: a returned status (a value callers can ignore); `assert`
+  (compiled out of release builds); silently returning empty (the exact
+  ambiguity D4 rejects).
+- **Mutation goes through `PlacementField::setCell` / `clear`, and there is
+  no mutable `occupancy()`.** A caller holding a mutable reference could
+  call `occupancy().update()` directly and acknowledge the dirty set without
+  refreshing the derived layers, which no precondition can then detect.
+- **Chunk-first pruning sits inside the validity predicate**, and D7's
+  skeleton short-circuits `!spacingOk(cand) || !isValid(cand)`, so a
+  spacing-rejected candidate touches no chunk. `PlacementQueryStats` counts
+  **distinct** field chunks per query: `chunksConsidered_` is every chunk
+  whose clearance summary the query consulted (the anchor's and each
+  spacing-accepted candidate's, once each); `chunksPruned_` is the subset
+  that were present with `max_ < clearance²` (int64) and so rejected without
+  a cell read — an absent chunk is considered and rejected but not counted
+  as pruned, since pruning is the summary verdict; `candidatesDrawn_`
+  increments once per annulus attempt (each `drawAnnulusOffset` return,
+  accepted or rejected), not per iteration of the annulus rejection loop,
+  so `k = 1` with a valid anchor reads `0`.
 - **`out` is caller-owned and cleared on entry**, before validation, so a
   rejected query leaves it empty and a successful one holds between zero and
   `k_` hits (D6). Matches `SpatialGrid::queryRadius`/`queryAabb`
@@ -857,7 +900,7 @@ per-candidate foreign-read footgun unreachable from script.
 
 | Lives in | What |
 |---|---|
-| `engine/math/` | field-layout-agnostic kernels: `Pcg32`, `isqrt` (exact integer square root, D6), the 1-D squared-EDT pass over a `std::span`. Header-only, gtest-covered per kernel. |
+| `engine/math/` | field-layout-agnostic kernels: `Pcg32`, `isqrt` (exact integer square root, D6), `floorDiv` (floor division toward −∞, for the D6 background grid whose width is not a power of two), the 1-D squared-EDT pass over a `std::span`. Header-only, gtest-covered per kernel. |
 | `engine/prefabs/irreden/spatial/` | everything chunk-aware: storage, windowed EDT driver, region stitching, the draw, the query. Header-only per prefab convention — no CMake registration. |
 
 The split is the reusability line: a 1-D squared-EDT pass over a span is useful
@@ -928,11 +971,11 @@ edits and carry a value ⇒ this kit.
 
 | Child | Deliverable | Status |
 |---|---|---|
-| **C1** | this doc + the cross-references (`engine/prefabs/irreden/spatial/CLAUDE.md`, `engine/math/CLAUDE.md`, the relationship line in `lua-world-space-neighbour-query.md`) | **landing** |
+| **C1** | this doc + the cross-references (`engine/prefabs/irreden/spatial/CLAUDE.md`, `engine/math/CLAUDE.md`, the relationship line in `lua-world-space-neighbour-query.md`) | **shipped** |
 | **C2** (#3160) | `chunked_field.hpp` — `ChunkedField2D<T>`, summaries, dirty tracking, `FieldChunkKey` (D2, D3) | **shipped** |
 | **C3** (#3161) | `IRMath` 1-D squared-EDT kernel + `field_clearance.hpp` — capped windowed F–H (D4, D10) | **shipped** |
 | **C4** (#3162) | `field_regions.hpp` — per-chunk CCL + seam-stitch union-find (D5) | **shipped** |
-| **C5** (#3163) | `IRMath::Pcg32` + `IRMath::isqrt` + `field_placement.hpp` — draw, `PlacementField`, `queryPlacements` + stats (D6, D7, D8); flips this table to shipped | not started |
+| **C5** (#3163) | `IRMath::Pcg32` + `IRMath::isqrt` + `field_placement.hpp` — draw, `PlacementField`, `queryPlacements` + stats (D6, D7, D8); flips this table to shipped | **shipped** |
 
 Each child is `**Blocked by:**` its predecessor. Tests live in **`test/ecs/`**,
 beside `spatial_grid_test.cpp` — the kit's composing sibling — and every new
@@ -1038,7 +1081,7 @@ default-passes:
   hit **and `candidatesDrawn_ == 0`**, since the early-out has to fire before
   the loop draws its first word (an `out.size() <= k` bound alone passes on an
   implementation that draws the whole frontier and truncates); **the background-grid width
-  is pinned by value** (D6) — `gridWidth(r)` asserted equal to an independent
+  is pinned by value** (D6) — `placementGridWidth(r)` asserted equal to an independent
   `floor(r / sqrt(2))` reference for every `r` in `[1, kMaxClearanceCells]` (the
   reference may use `double` — `test/**` is outside the no-libm rule, the kit is
   not), `r = 1` asserted to clamp to `1`, and `r` in
