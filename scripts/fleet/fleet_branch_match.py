@@ -293,7 +293,7 @@ def _strip_indented_code(body):
     return "\n".join(out)
 
 
-def _strip_code(body):
+def strip_code(body):
     """`body` with code blocks and inline code spans replaced by a sentinel.
 
     Fences first, so a fence's own backtick runs are consumed as a fence rather
@@ -322,13 +322,13 @@ def body_closes_issue(body, issue):
     followed by `#<N>`, case-insensitive and word-bounded so `#25` does not
     match `#255`. Occurrences inside markdown code (fenced blocks, inline
     spans) are not links to GitHub and so are not matched here either — see
-    `_strip_code`. A missing/empty body simply never fires (backward
+    `strip_code`. A missing/empty body simply never fires (backward
     compatible with any caller that hasn't started fetching `body`).
     """
     if not body:
         return False
     pat = _CLOSES_KEYWORD + re.escape(_norm_issue(issue)) + r"\b"
-    return re.search(pat, _strip_code(body), re.IGNORECASE) is not None
+    return re.search(pat, strip_code(body), re.IGNORECASE) is not None
 
 
 def pr_matches_issue(pr, issue, repo):
@@ -342,11 +342,11 @@ def pr_matches_issue(pr, issue, repo):
 def body_closed_issue_numbers(body):
     """All issue numbers a closing keyword references in `body`, as ints.
 
-    Code-stripped on the same terms as `body_closes_issue` — see `_strip_code`.
+    Code-stripped on the same terms as `body_closes_issue` — see `strip_code`.
     """
     if not body:
         return []
-    return [int(m) for m in _CLOSES_ANY_RE.findall(_strip_code(body))]
+    return [int(m) for m in _CLOSES_ANY_RE.findall(strip_code(body))]
 
 
 # A PR carrying any of these is *parked*: a worker hit a design wall and

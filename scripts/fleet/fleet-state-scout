@@ -1935,6 +1935,9 @@ def _pr_all_gated_self_config(repo_key, pr_number):
 # Kept consistent with fleet_blocked_by.blocker_refs; routing differs
 # (key vs slug) so this helper stays separate. (#1522)
 _BLOCKER_REF_RE = re.compile(r"(?:[A-Za-z0-9][\w.-]*/)?([A-Za-z0-9][\w.-]*)?#(\d+)")
+_BLOCKER_PR_URL_RE = re.compile(
+    r"https://github\.com/([A-Za-z0-9][\w.-]*/[A-Za-z0-9][\w.-]*)/pull/(\d+)"
+)
 _REPO_SLUG_MAP = {
     "engine": "jakildev/IrredenEngine",
     "game": "jakildev/irreden",
@@ -1944,23 +1947,31 @@ _REPO_NAME_TO_KEY = {"irredenengine": "engine", "irreden": "game"}
 
 
 def _parse_blocker_refs(raw, default_key, declared_only=False):
-    """(repo_key, number) for every #N in a raw **Blocked by:** value, routing
-    each ref to the repo named by its optional `[owner/]Repo#N` qualifier. A
-    bare ref or an unrecognized qualifier falls back to default_key — the
-    issue's own repo. (#1522)
+    """(repo_key, number) for every ref in a raw **Blocked by:** value.
+
+    Routes `[owner/]Repo#N` qualifiers and full GitHub pull-request URLs to
+    their repository. A bare ref or an unrecognized qualifier falls back to
+    default_key — the issue's own repo. (#1522)
 
     `declared_only` drops refs that live in the value's explanatory prose with
     no blocker verb — the "how many blockers were declared" question stackable
     eligibility asks (#2783). It is deliberately NOT the default: the blocking
     gate counts every ref, matching fleet_blocked_by.blocker_refs and #1281."""
-    refs = []
+    positioned_refs = []
     for m in _BLOCKER_REF_RE.finditer(raw or ""):
         if declared_only and ref_is_decorative(raw, m.start()):
             continue
         name = m.group(1)
         key = _REPO_NAME_TO_KEY.get(name.lower(), default_key) if name else default_key
-        refs.append((key, m.group(2)))
-    return refs
+        positioned_refs.append((m.start(), key, m.group(2)))
+    for m in _BLOCKER_PR_URL_RE.finditer(raw or ""):
+        if declared_only and ref_is_decorative(raw, m.start()):
+            continue
+        slug = m.group(1).lower()
+        key = next((repo_key for repo_key, repo_slug in _REPO_SLUG_MAP.items()
+                    if repo_slug.lower() == slug), default_key)
+        positioned_refs.append((m.start(), key, m.group(2)))
+    return [(key, number) for _, key, number in sorted(positioned_refs)]
 
 
 def _resolve_ref_satisfied(repo_slug, ref_str, cache):
@@ -2033,7 +2044,7 @@ def resolve_blocked_by(state, ref_cache=None):
                 continue
             refs = _parse_blocker_refs(raw, repo_key)
             if not refs:
-                continue  # free-text or PR-URL form — leave unchanged
+                continue  # Free-text blocker — leave unchanged.
             # Which of those were actually *declared*, vs named only in the
             # value's prose (#2783). Normalization discards the prose, so the
             # distinction has to be captured while the raw value still exists —
@@ -2123,9 +2134,9 @@ def resolve_human_approved_blockers(state):
                 continue
             refs = _parse_blocker_refs(raw, repo_key)
             if not refs:
-                # Blocker named only as prose / a PR URL with no resolvable #N
-                # (e.g. "Blocked on the redesign"). Hold the child out of the
-                # trigger set — matches resolve_blocked_by leaving it blocked.
+                # A prose-only blocker has no resolvable reference. Hold the
+                # child out of the trigger set — matches resolve_blocked_by
+                # leaving it blocked.
                 issue["blocked"] = True
                 continue
             for ref_key, ref in refs:
