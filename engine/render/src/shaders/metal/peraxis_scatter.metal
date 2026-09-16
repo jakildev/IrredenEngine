@@ -6,7 +6,7 @@
 #include <metal_stdlib>
 using namespace metal;
 
-#include "ir_iso_common.metal"
+#include "ir_scatter_depth.metal"
 
 struct VertexIn {
     float2 position [[attribute(0)]];  // unit quad corner in [-0.5, 0.5]^2
@@ -101,17 +101,8 @@ struct VertexOut {
     float isoDepth [[flat]];
     int depthColorMode [[flat]];
     float depthColorExtent [[flat]];
-    // Deterministic sub-band tiebreak — mirror of
-    // v_peraxis_scatter.glsl's vCellTieOffset: the fragment stage quantizes
-    // its final depth to kScatterCellTieBand and injects this 4-bit
-    // priority-major code ((rank2 << 2) | cell2, pre-scaled to
-    // kScatterCellTieStep units) into the sub-band bits, so tie-band
-    // fragments resolve by slot rank then cell identity instead of the
-    // compaction's run-variant atomic-append draw order. Cross-axis
-    // flipped-vs-flipped pairs collapse to rank 3 and fall to cell identity
-    // without a distinctness proof — they stay draw-order on collision (a
-    // rare residual). The code layout is defined at kScatterCellTieStep in
-    // ir_iso_common.metal.
+    // Face/cell priority within a depth band. Displaced cells can share
+    // a code; final coverage arbitration only separates margin/exact ties.
     float cellTieOffset [[flat]];
     // Per-edge interior/boundary classification for analytic coverage —
     // .x = u-low, .y = u-high, .z = v-low, .w = v-high (in the face's eu/ev basis);
@@ -440,7 +431,7 @@ vertex VertexOut v_peraxis_scatter(
         out.depth += 2.0f * kScatterCellTieBand;
     }
     out.marginBias = kScatterMarginDepthBiasKey * subScale / depthRange;
-    // cell2 is distinct for every same-plane / parallel-plane neighbor pair:
+    // cell2 separates immediate lattice neighbors; displaced cells can collide:
     // in-plane world steps project to iso-diagonal or (0,+/-2) only.
     const uint rank2 = (flip != 0) ? 3u : uint(slot);
     const uint cell2 = (ij.x & 1u) | (ij.y & 2u);
@@ -541,6 +532,6 @@ fragment FragmentOut f_peraxis_scatter(VertexOut in [[stage_in]]) {
     // (exact power-of-two float ops on both backends).
     const float scatterDepth = in.depth + (inMargin ? yieldBias : 0.0f);
     out.depth =
-        floor(scatterDepth / kScatterCellTieBand) * kScatterCellTieBand + in.cellTieOffset;
+        scatterFinalDepth(scatterDepth, in.cellTieOffset, inMargin);
     return out;
 }
