@@ -1,9 +1,14 @@
 name: Perf Gate
 
-# Runs on push to master (updates the committed baseline) and on PRs (compares
-# PR head against the last committed baseline and fails on >10% regression).
-# Only fires when the changed paths include engine/render, engine/system, or
-# engine/math — tooling, doc, or asset-only PRs skip this entirely.
+# Runs on push to master (updates the committed baseline), on PRs (compares
+# PR head against the last committed baseline and fails on >10% regression),
+# and on manual dispatch (seeds a baseline for a host SKU on demand).
+# Only fires when the changed paths include engine/render, engine/system,
+# engine/math, or the gate's own sources — asset-only PRs skip this entirely.
+#
+# Baselines live on the unprotected `perf-baseline` branch. `master` is
+# protected — "changes must be made through a pull request" — so nothing this
+# workflow runs can commit a baseline there (#2817).
 
 on:
   push:
@@ -13,20 +18,26 @@ on:
       - 'engine/prefabs/irreden/render/**'
       - 'engine/system/**'
       - 'engine/math/**'
+      - '.github/workflows/perf-gate.yml'
+      - 'scripts/perf/**'
   pull_request:
     paths:
       - 'engine/render/**'
       - 'engine/prefabs/irreden/render/**'
       - 'engine/system/**'
       - 'engine/math/**'
+      - '.github/workflows/perf-gate.yml'
+      - 'scripts/perf/**'
+  workflow_dispatch:
 
 permissions:
-  contents: write       # baseline commit on master push
+  contents: write       # baseline commit on the perf-baseline branch
   pull-requests: write  # PR comment
   issues: write         # perf:improved label
 
 env:
   ENGINE_ROOT: ${{ github.workspace }}
+  BASELINE_BRANCH: perf-baseline
 
 jobs:
   perf-gate:
@@ -37,6 +48,15 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      # Cheap and first: an unexecuted spec drifts (#2727), and these are the
+      # only signals that discriminate "the gate compared" from "the gate
+      # silently skipped" without a full build. The writer control drives this
+      # file's own baseline-update step against a local bare repo.
+      - name: Gate controls (baseline layout, exit mapping, writer)
+        run: |
+          python3 scripts/perf/tests/test_baseline_layouts.py
+          scripts/perf/tests/test_baseline_writer.sh
 
       - name: Install system dependencies
         run: |
@@ -94,47 +114,48 @@ jobs:
           if [[ -z "$DIR" ]]; then
             DIR=$(ls -dt save_files/perf/* 2>/dev/null | head -1)
           fi
+          # Fail here rather than downstream: an empty dir resolves to the cwd,
+          # which IS a directory, so it passes every later guard and lands on
+          # "no cells in head" — an infra miss wearing a perf verdict's clothes.
+          if [[ -z "$DIR" || ! -d "$DIR" ]]; then
+            echo "perf-gate: no perf run directory under save_files/perf/ — the matrix produced nothing." >&2
+            exit 1
+          fi
           echo "dir=$DIR" >> "$GITHUB_OUTPUT"
 
       # ── Pull-request path ────────────────────────────────────────────────
 
+      - name: Materialize baseline from the perf-baseline branch (PR)
+        if: github.event_name == 'pull_request'
+        id: baseline
+        run: |
+          ROOT="$RUNNER_TEMP/perf-baseline/docs/perf/baseline_latest"
+          mkdir -p "$ROOT"
+          if git fetch --no-tags origin "$BASELINE_BRANCH"; then
+            if git cat-file -e "FETCH_HEAD:docs/perf/baseline_latest" 2>/dev/null; then
+              # archive, not `checkout --`: no index mutation in the PR checkout.
+              git archive FETCH_HEAD docs/perf/baseline_latest \
+                | tar -x -C "$RUNNER_TEMP/perf-baseline"
+              echo "perf-gate: baseline materialized from $BASELINE_BRANCH."
+              ls -1 "$ROOT"
+            else
+              echo "perf-gate: $BASELINE_BRANCH carries no baseline yet — seed-new path."
+            fi
+          else
+            echo "perf-gate: $BASELINE_BRANCH does not exist yet — seed-new path."
+          fi
+          echo "root=$ROOT" >> "$GITHUB_OUTPUT"
+
       - name: Compare head against baseline (PR)
         if: github.event_name == 'pull_request'
         id: gate
-        run: |
-          BASELINE="docs/perf/baseline_latest"
-          PR_NUMBER="${{ github.event.pull_request.number }}"
-
-          if [[ ! -f "$BASELINE/manifest.json" ]]; then
-            gh pr comment "$PR_NUMBER" \
-              --body "**perf-gate:** no committed baseline yet — skipping comparison. A baseline will be committed the next time a perf-relevant change lands on master."
-            exit 0
-          fi
-
-          STATUS=0
-          python3 scripts/perf/check_regression.py \
-            "$BASELINE" "${{ steps.head.outputs.dir }}" \
-            --regress-pct 10 --improve-pct 5 \
-            > /tmp/perf_comment_body.md 2>/tmp/perf_gate_stderr.txt || STATUS=$?
-
-          # Prepend a header so the comment is self-describing
-          {
-            echo "<!-- perf-gate -->"
-            echo "## Perf gate"
-            echo ""
-            cat /tmp/perf_comment_body.md
-            if [[ $STATUS -eq 1 ]]; then
-              echo ""
-              echo "---"
-              echo ":warning: **Regression detected** — at least one cell regressed >10% on mean frame avg. Fix or justify before merging."
-            fi
-          } > /tmp/perf_comment.md
-
-          gh pr comment "$PR_NUMBER" --body-file /tmp/perf_comment.md
-
-          # empty on early-exit (no-baseline path); downstream steps check == '0'/'1'
-          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+        run: scripts/perf/ci_compare_step.sh
         env:
+          BASELINE_ROOT: ${{ steps.baseline.outputs.root }}
+          HEAD_DIR: ${{ steps.head.outputs.dir }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REGRESS_PCT: '10'
+          IMPROVE_PCT: '5'
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Add perf:improved label when improvements detected (PR)
@@ -154,10 +175,10 @@ jobs:
           cat /tmp/perf_gate_stderr.txt >&2
           exit 1
 
-      # ── Master push path — update committed baseline ──────────────────────
+      # ── Baseline update — master push, or manual dispatch to seed a SKU ───
 
-      - name: Update committed baseline (master push)
-        if: github.event_name == 'push'
+      - name: Update baseline on the perf-baseline branch
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         run: |
           # Per-host-fingerprinted baseline layout — pulls the slug from the
           # head manifest's calibration block written by ir-perf-grid.
@@ -169,18 +190,20 @@ jobs:
           " "$HEAD_DIR/manifest.json")
 
           if [[ -z "$SLUG" ]]; then
-            echo "perf-gate: head manifest missing calibration.host_slug; skipping baseline update." >&2
-            exit 0
+            echo "perf-gate: head manifest has no calibration.host_slug — the run cannot be filed as a baseline." >&2
+            exit 1
           fi
 
-          BASELINE_DIR="docs/perf/baseline_latest/$SLUG"
-          mkdir -p "$BASELINE_DIR"
+          # Stage the baseline outside any checkout so the worktree below can
+          # be replayed onto a new tip without re-running the matrix.
+          STAGING="$RUNNER_TEMP/baseline-staging/$SLUG"
+          rm -rf "$STAGING"; mkdir -p "$STAGING"
           # Copy manifest + cell txt files; skip temp files (.cell_marker, *.log)
           find "$HEAD_DIR" -maxdepth 1 \
             -not -type d \
             -not -name '.cell_marker' \
             -not -name '*.log' \
-            -exec cp {} "$BASELINE_DIR/" \;
+            -exec cp {} "$STAGING/" \;
 
           # host.json sidecar — the ir-host-probe output that produced the slug.
           python3 -c "
@@ -188,17 +211,54 @@ jobs:
           m = json.load(open(sys.argv[1]))
           host = (m.get('calibration') or {}).get('host_fingerprint', {})
           json.dump(host, open(sys.argv[2], 'w'), indent=2, sort_keys=True)
-          " "$HEAD_DIR/manifest.json" "$BASELINE_DIR/host.json"
+          " "$HEAD_DIR/manifest.json" "$STAGING/host.json"
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/perf/baseline_latest/
 
           SHA=$(git rev-parse --short HEAD)
           DATE=$(date -u +%Y-%m-%d)
-          if git diff --cached --quiet; then
-            echo "perf-gate: baseline unchanged, nothing to commit."
-          else
-            git commit -m "perf: update CI baseline ($SLUG) ${DATE}@${SHA} [skip ci]"
-            git push
+          WORKTREE="$RUNNER_TEMP/perf-baseline-wt"
+          PUSHED=""
+
+          for attempt in 1 2; do
+            git worktree remove --force "$WORKTREE" 2>/dev/null || true
+            rm -rf "$WORKTREE"
+
+            if git fetch --no-tags origin "$BASELINE_BRANCH"; then
+              BASE_COMMIT=$(git rev-parse FETCH_HEAD)
+            else
+              echo "perf-gate: $BASELINE_BRANCH does not exist yet — creating its root commit."
+              BASE_COMMIT=$(git commit-tree "$(git hash-object -t tree /dev/null)" \
+                -m "perf: baseline branch root")
+            fi
+
+            git worktree add --detach "$WORKTREE" "$BASE_COMMIT"
+            mkdir -p "$WORKTREE/docs/perf/baseline_latest/$SLUG"
+            cp -R "$STAGING/." "$WORKTREE/docs/perf/baseline_latest/$SLUG/"
+            git -C "$WORKTREE" add docs/perf/baseline_latest
+
+            if git -C "$WORKTREE" diff --cached --quiet; then
+              echo "perf-gate: baseline unchanged for $SLUG, nothing to commit."
+              PUSHED="unchanged"
+              break
+            fi
+
+            git -C "$WORKTREE" commit -q \
+              -m "perf: update CI baseline ($SLUG) ${DATE}@${SHA} [skip ci]"
+
+            # Never --force: this branch is the audit trail. A non-fast-forward
+            # means a concurrent run landed first, so refetch and replay the
+            # staged files onto the new tip rather than overwriting it.
+            if git -C "$WORKTREE" push origin "HEAD:refs/heads/${BASELINE_BRANCH}"; then
+              PUSHED="yes"
+              echo "perf-gate: baseline for $SLUG pushed to $BASELINE_BRANCH."
+              break
+            fi
+            echo "perf-gate: push refused on attempt ${attempt} (concurrent baseline update?); refetching." >&2
+          done
+
+          if [[ -z "$PUSHED" ]]; then
+            echo "perf-gate: baseline push failed after 2 attempts." >&2
+            exit 1
           fi
