@@ -1,0 +1,47 @@
+{
+  "head": "9bb55dc146adfb00ff50635d32fbbf8eb971a89e",
+  "changes": " M scripts/perf/repeat_profile.py\n?? scripts/perf/test_repeat_profile.py\n",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "binary_sha256": "3ae09240436c5fdf9d423222905baf4a7810e81d0a1122ae93bbc6426c1a4e11",
+  "shader_sha256": "e3b71bbf545a6480776e2e22e898a959f3d068d6e02d2af02271edfeb730a527",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "120",
+    "IRPerfGrid",
+    "--mode",
+    "voxel_set",
+    "--grid-size",
+    "64",
+    "--yaw",
+    "0.785398163",
+    "--zoom",
+    "4",
+    "--auto-profile",
+    "1800"
+  ],
+  "runs": [
+    {
+      "index": 1,
+      "exit_code": 0,
+      "cpu_sampling": {
+        "command": [
+          "/usr/bin/sample",
+          "66745",
+          "4",
+          "1",
+          "-mayDie",
+          "-file",
+          "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/save_files/perf/cpu-sampling-live-native/run-1.sample.txt"
+        ],
+        "seconds_after_launch": 5.46595308301039,
+        "exit_code": 0,
+        "trace": "run-1.sample.txt",
+        "complete": true
+      },
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    }
+  ]
+}
