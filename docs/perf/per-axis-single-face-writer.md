@@ -6,10 +6,11 @@ lanes append the same position, depth and color. Canonical sorting
 orders these records; it does not deduplicate them. The scatter therefore draws
 the same face twice and the duplicate consumes overflow capacity.
 
-**The optimization is not shipped.** A fresh stack-integration control found a
-12-pixel lighting change with the overflow-only lane guard enabled. Both shader
-branches retain the parent renderer's two-lane append behavior. The measurements
-below describe rejected candidates, not a speedup present in this stack.
+**Historical rejected experiment; the [validated retry](overflow-face-dedup.md)
+now ships the narrow overflow-only guard.** A fresh stack-integration control found a
+12-pixel lighting change with the overflow-only lane guard enabled. At that checkpoint both shader
+branches retained the parent renderer's two-lane append behavior. The measurements
+below describe rejected candidates, not measurements of the validated retry.
 
 ## Measurement
 
