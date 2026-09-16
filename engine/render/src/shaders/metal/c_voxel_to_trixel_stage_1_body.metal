@@ -555,6 +555,8 @@ kernel void IR_STAGE1_KERNEL_NAME(
         const int3 facePos =
             perAxisStoreFacePos(voxelPosition, faceId, slot, axis, riserFlip, voxelDistance);
         if (frameData.resolveMode == 3) {
+            // Each record reconstructs the whole face, not one of its two trixels.
+            if (any(int2(localId) != faceOffset_2x3(slot, 0))) return;
             overflowAppendTap(
                 perAxisBase, facePos, voxelDistance, voxels[voxelIndex].colorPacked,
                 frameData, distanceScratch, perAxisWinnerIds, canvasSize
