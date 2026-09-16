@@ -112,10 +112,6 @@ fi
 OPUS_CLASS_DEFAULT="${FLEET_OPUS_CLASS_DEFAULT:-opus[1m]}"
 SONNET_CLASS_DEFAULT="${FLEET_SONNET_CLASS_DEFAULT:-sonnet}"
 
-# Minimum seconds between opus-reviewer relaunches (cooldown floor).
-# fleet-babysit reads this via FLEET_MIN_BACKOFF; keep the two in sync.
-OPUS_MIN_BACKOFF=1800
-
 # How long to wait for fleet-state-scout's first tick to write
 # state.json before giving up and launching panes anyway. With the
 # throttled fan-out (FETCH_MAX_WORKERS=2 + 250 ms gap) the first
