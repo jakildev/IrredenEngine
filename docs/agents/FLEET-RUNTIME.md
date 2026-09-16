@@ -148,9 +148,10 @@ $PPID` (the classifier blocks it).
    fleet-claim release-worktree <your-worktree-basename>
    ```
 
-3. Workers and authors run `start-next-task` (in the cwd's repo);
-   reviewers and the merger reset to their scratch branch earlier in the
-   iteration.
+3. Workers and authors run `start-next-task` (in the cwd's repo) —
+   `fleet-start-next-task` is its executable form, the one a Codex
+   runtime runs directly; reviewers and the merger reset to their scratch
+   branch earlier in the iteration.
 
 4. Print the banner and exit:
 

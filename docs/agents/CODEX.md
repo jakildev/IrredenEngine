@@ -32,6 +32,12 @@ mechanical tasks; never Ultra implicitly inside a worker. Record the
 actual model and runtime in authorship and review; never imply a Claude
 session did work Codex did.
 
+Skill names are procedures, not commands: read the named `SKILL.md` and
+execute it with the tools above. The one skill with an executable twin is
+`start-next-task` — run `fleet-start-next-task` wherever a role or runtime
+contract says `start-next-task` (it is on `PATH` beside the other
+`fleet-*` tools).
+
 ## Rendering conversations
 
 Before render work read the render module instructions and the
