@@ -53,6 +53,10 @@ def find_demo_pid(parent_pid: int, binary: Path, process_table: str) -> int | No
     return None
 
 
+def redact_sample_output(sample_log: str, root: Path, trace: Path) -> str:
+    return sample_log.replace(str(trace), trace.name).replace(str(root), "<repo>")
+
+
 def run_profile(command, root, log_path, binary, sample_seconds, sample_delay):
     sampling = None
     with log_path.open("w") as log:
@@ -86,7 +90,7 @@ def run_profile(command, root, log_path, binary, sample_seconds, sample_delay):
                         ]
                         sample_started = time.monotonic()
                         sampling = {
-                            "command": sample_command,
+                            "command": [*sample_command[:-1], trace.name],
                             "seconds_after_launch": sample_started - launched,
                             "trace": trace.name,
                             "complete": False,
@@ -117,8 +121,10 @@ def run_profile(command, root, log_path, binary, sample_seconds, sample_delay):
                             )
                         except (OSError, subprocess.SubprocessError) as error:
                             sample_log = str(error)
-                            sampling["error"] = sample_log
-                        log_path.with_suffix(".sample.log").write_text(sample_log)
+                            sampling["error"] = redact_sample_output(sample_log, root, trace)
+                        log_path.with_suffix(".sample.log").write_text(
+                            redact_sample_output(sample_log, root, trace)
+                        )
                     else:
                         sampling = {"complete": False, "error": "Demo exited before sampling"}
                 except (OSError, subprocess.SubprocessError) as error:

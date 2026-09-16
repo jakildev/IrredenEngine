@@ -32,7 +32,7 @@
           "1",
           "-mayDie",
           "-file",
-          "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/save_files/perf/cpu-sampling-live-native/run-1.sample.txt"
+          "run-1.sample.txt"
         ],
         "seconds_after_launch": 5.46595308301039,
         "exit_code": 0,

@@ -48,7 +48,12 @@ class SamplingFailureTest(unittest.TestCase):
                 if sample_error is not None:
                     raise sample_error
                 Path(command[-1]).write_text("Call graph:\n")
-                return subprocess.CompletedProcess(command, 0, "sampled", "")
+                return subprocess.CompletedProcess(
+                    command,
+                    0,
+                    f"Sample analysis written to {command[-1]} from {root / 'build' / 'demo'}",
+                    "",
+                )
 
             with (
                 patch("repeat_profile.subprocess.Popen", return_value=demo),
@@ -62,30 +67,39 @@ class SamplingFailureTest(unittest.TestCase):
                     ["fleet-run"], root, root / "run-1.log", Path("/repo/IRPerfGrid"), 1, 0
                 )
             self.assertEqual(result, 0)
-            self.assertTrue((root / "run-1.sample.log").exists())
-            return sampling
+            sample_log = (root / "run-1.sample.log").read_text()
+            return sampling, sample_log, root
 
     def test_target_exit_while_wrapper_alive_rejects_partial_sample(self):
-        result = self.run_sample(
+        result, _, _ = self.run_sample(
             process_tables=["10 1 /bin/sh\n12 10 ./IRPerfGrid", "10 1 /bin/sh"]
         )
         self.assertFalse(result["complete"])
         self.assertFalse(result["target_alive_after_sample"])
 
     def test_timeout_and_launch_failure_are_retained(self):
-        for error in (subprocess.TimeoutExpired("sample", 31), OSError("denied")):
+        for error in (
+            subprocess.TimeoutExpired("sample", 31),
+            OSError("denied"),
+        ):
             with self.subTest(error=error):
-                result = self.run_sample(sample_error=error)
+                result, _, _ = self.run_sample(sample_error=error)
                 self.assertFalse(result["complete"])
                 self.assertIn("error", result)
 
     def test_process_table_failure_is_retained(self):
-        result = self.run_sample(process_tables=[OSError("ps denied")])
+        result, _, _ = self.run_sample(process_tables=[OSError("ps denied")])
         self.assertFalse(result["complete"])
         self.assertIn("ps denied", result["error"])
 
     def test_success_requires_trace_and_live_owned_target(self):
-        self.assertTrue(self.run_sample()["complete"])
+        result, sample_log, root = self.run_sample()
+        self.assertTrue(result["complete"])
+        self.assertEqual(result["command"][-1], "run-1.sample.txt")
+        self.assertNotIn(str(root), result["command"])
+        self.assertNotIn(str(root), sample_log)
+        self.assertIn("run-1.sample.txt", sample_log)
+        self.assertIn("<repo>/build/demo", sample_log)
 
 
 if __name__ == "__main__":
