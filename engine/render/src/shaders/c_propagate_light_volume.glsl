@@ -146,14 +146,14 @@ void main() {
             nCell.z < 0 || nCell.z >= gridSize) {
             continue;
         }
+        const vec4 nv = imageLoad(lightVolumeRead, nCell);
+        const float candidateAlpha = nv.a - stepFalloff;
+        if (candidateAlpha <= best.a) {
+            continue;
+        }
         const ivec3 nWorld = worldCell + deltas[n];
         if (voxelOcclusionGetBit(nWorld.x, nWorld.y, nWorld.z) ||
             lightBlockerGetBit(nWorld.x, nWorld.y, nWorld.z)) {
-            continue;
-        }
-        const vec4 nv = imageLoad(lightVolumeRead, nCell);
-        const float candidateAlpha = nv.a - stepFalloff;
-        if (candidateAlpha <= 0.0) {
             continue;
         }
         if (candidateAlpha > best.a) {
