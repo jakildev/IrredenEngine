@@ -174,6 +174,48 @@ sentinels. Reviewer projections skip `fleet:amending-*` PRs
 symmetric excluded-prefix table arbitrates the full POST response so a
 snapshot race leaves one holder. Same-agent lane transitions remain allowed.
 
+For `fleet:amending-*` that liveness marker is the **dispatch**, not the
+pane: `amending-claim` stamps the claiming iteration's `FLEET_DISPATCH_ID`
+into `~/.fleet/amend-snapshots/<pr>.json`, `fleet-dispatch-wrap` records
+each worktree's current dispatch at launch, and a same-host label whose
+owner is no longer that dispatch is the confirmed orphan the 120 s grace
+applies to. With no id on record — the architect pane never runs
+`fleet-dispatch-wrap` — the pane heartbeat still decides, so no claim is
+orphaned merely for lacking a record; a cross-host label stays on pure
+TTL, since neither record is observable from here. The heartbeat cannot
+carry this alone: it is pane-scoped, so any later dispatch of any role
+renews a dead claim indefinitely, leaving the PR at once un-reapable and
+un-claimable.
+
+The pre-claim `fleet-dispatcher` takes for a `feedback` target is acquired
+before the iteration that will own it has an id, so it records the
+`preclaim` sentinel instead. That reads as live for
+`FLEET_CLAIM_PRECLAIM_GRACE_SECS` (300 s) from the snapshot's
+`acquired_epoch` without consulting the heartbeat, and never as superseded;
+the role's step-a re-acquire overwrites it with the minted id and ends the
+window. Deferring to the heartbeat there would reap the dispatcher's own
+fresh claim off a carried-over past-TTL label and admit a second feedback
+worker, because the pane it launches into is idle and that heartbeat still
+belongs to the previous iteration.
+
+Claim and sweep are separate processes, so the verdict alone does not close
+that window: `cleanup --gh` can judge the carried label from the old record,
+the claim can then re-read its label as held and stamp the sentinel, and the
+sweep removes the label off its earlier verdict. Both sides therefore run
+their read-decide-act under a per-PR lock beside the record
+(`~/.fleet/amend-snapshots/<pr>.lock`), bounded (a held lock is waited on,
+then the caller fails closed; a holder older than 10 min is stolen as
+crashed) and owned (a resumed stale holder releases nothing, stamps nothing,
+issues no removal, and fails). A removal already out cannot be recalled, so
+the sweep declares its label in an intent file beside the lock on entry, and
+while that writer is alive every claim on the PR refuses — the label's own
+agent included, since a claimant on another host sees only the GitHub label
+set and could take a second hold nothing local can revoke — and every other
+sweep skips the label. Nothing is ever re-added from local state; a dead
+writer's intent is retired by the next lock holder; it is renamed into place,
+never rewritten, and an unreadable one is a live fence until it is past the
+lock's presumed-dead bound. Rationale: `fleet-claim`'s `_amend_lock_acquire`.
+
 ## Review verdicts (PRs)
 
 - `fleet:approved` / `fleet:has-nits` / `fleet:needs-fix` / `fleet:blocker`
