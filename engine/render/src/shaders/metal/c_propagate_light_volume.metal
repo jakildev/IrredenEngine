@@ -137,14 +137,14 @@ kernel void c_propagate_light_volume(
             nCell.z < 0 || nCell.z >= params.gridSize) {
             continue;
         }
+        const float4 nv = lightVolumeRead.read(uint3(nCell));
+        const float candidateAlpha = nv.a - params.stepFalloff;
+        if (candidateAlpha <= best.a) {
+            continue;
+        }
         const int3 nWorld = worldCell + deltas[n];
         if (voxelOcclusionGetBit(occlusion, nWorld.x, nWorld.y, nWorld.z) ||
             lightBlockerGetBit(occlusion, nWorld.x, nWorld.y, nWorld.z)) {
-            continue;
-        }
-        const float4 nv = lightVolumeRead.read(uint3(nCell));
-        const float candidateAlpha = nv.a - params.stepFalloff;
-        if (candidateAlpha <= 0.0f) {
             continue;
         }
         if (candidateAlpha > best.a) {
