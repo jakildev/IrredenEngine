@@ -116,8 +116,6 @@ def parse_criteria(lines, source):
 
     if items:
         first_item = items[0][0]
-        if any(index < first_item for index, _ in non_list):
-            raise LintInputError(f"{source}: mixed prose and list acceptance criteria")
         for index, line in non_list:
             if (
                 index > first_item
