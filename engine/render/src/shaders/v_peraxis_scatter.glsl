@@ -125,17 +125,8 @@ flat out float vMarginInteriorYieldBias;
 flat out float vIsoDepth;
 flat out int vDepthColorMode;
 flat out float vDepthColorExtent;
-// Deterministic sub-band tiebreak: the fragment stage
-// quantizes its final depth to kScatterCellTieBand and injects this 4-bit
-// priority-major code — (rank2 << 2) | cell2, pre-scaled to
-// kScatterCellTieStep units — into the sub-band bits. UNFLIPPED cross-axis
-// band ties (distinct slots by construction) resolve by slot rank,
-// consistently along the whole plane-crossing strip; same-slot ties — the
-// margin-yield crossover between parallel neighbor faces — fall to cell
-// identity instead of draw order (the compaction's atomic-append
-// instance order is run-variant). Cross-axis flipped-vs-flipped pairs both
-// collapse to rank 3 and are NOT proven distinct — a rare residual of the same
-// class. The code layout is defined at kScatterCellTieStep in ir_iso_common.glsl.
+// Face/cell priority within a depth band. Displaced cells can share
+// a code; final coverage arbitration only separates margin/exact ties.
 flat out float vCellTieOffset;
 // Per-edge interior/boundary classification for analytic coverage —
 // .x = u-low, .y = u-high, .z = v-low, .w = v-high (in the face's eu/ev basis);
@@ -461,7 +452,7 @@ void main() {
         vDepth += 2.0 * kScatterCellTieBand;
     }
     vMarginDepthBias = kScatterMarginDepthBiasKey * subScale / depthRange;
-    // cell2 is distinct for every same-plane / parallel-plane neighbor pair:
+    // cell2 separates immediate lattice neighbors; displaced cells can collide:
     // in-plane world steps project to iso-diagonal or (0,+/-2) only.
     const int rank2 = (flip != 0) ? 3 : slot;
     const int cell2 = (ij.x & 1) | (ij.y & 2);

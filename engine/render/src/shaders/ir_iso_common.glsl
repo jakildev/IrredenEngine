@@ -968,63 +968,19 @@ const float kScatterMarginDepthBiasKey = 0.25;
 //     shows as per-cell Lambert alternation on contiguous moving content (and a
 //     shared-edge checkerboard fringe).
 // So the final fragment depth is quantized to a coarse band and a
-// PRIORITY-MAJOR, CELL-MINOR 4-bit code is injected into the sub-band bits:
-//   depth = floor(depth / band) * band + code * kScatterCellTieStep
-//   code  = (rank2 << 2) | cell2
-//   rank2 = flip ? 3 : slot        (2 bits — unflipped slots 0..2 in cardinal
-//                                   atomicMin low-bit order; ALL flipped
-//                                   emergency faces collapse to rank 3 and
-//                                   fall to cell2. 6 face states don't fit in
-//                                   2 bits, and the band cannot widen to carry
-//                                   a 3rd (the PRECONDITION pins it at 16
-//                                   steps), so the collapse is forced, not a
-//                                   preference.)
-//   cell2 = (ij.x & 1) | (ij.y & 2) (2 bits — distinct for every same-plane /
-//                                   parallel-plane neighbor pair: in-plane
-//                                   steps only project to iso-diagonal
-//                                   (+/-1,+/-1), which flips x&1, or (0,+/-2),
-//                                   which flips y&2; (+/-2,0) cannot occur)
-// What the code separates, by tie class:
-//   * flipped vs unflipped — rank 3 vs 0..2 always separates.
-//   * unflipped cross-axis — distinct slots by construction (slot IS the axis
-//     canvas), so the whole crossing strip resolves by slot rank, consistently,
-//     no parity alternation; mirrors the cardinal encode's (flip<<2)|slot low
-//     bits.
-//   * same-slot ties, incl. the same-axis margin-yield crossover — fall to
-//     cell2, whose in-plane-step enumeration covers exactly this same-plane /
-//     parallel-plane case, so the winner is deterministic.
-//   * flipped vs flipped on DIFFERENT slots — NOT proven distinct. Both
-//     collapse to rank 3 and fall to cell2, but their ij index different axis
-//     canvases, so the in-plane-step enumeration does not cover the pair: the
-//     codes differ only if the ij happen to, and on collision the winner is
-//     run-variant draw order. This is a rare class (co-rotated flipped
-//     risers); revisit the encoding if it stops being rare.
-// kScatterCellTieStep = 2^-23: >= 1 float32-depth ULP for depth < 1 AND 2
-// quanta of a 24-bit fixed depth buffer, so the code survives quantization on
-// both backends. Band = 16 steps = 2^-19 ~= 0.25 key units at the default
-// range.
-// PRECONDITION — two mutually-opposed halves, both asserted CPU-side in
-// ir_render_types.hpp (kScatterCellTieBandSteps); a shader cannot assert:
-//   (a) margin-vs-exact — the margin bias must land a margin fragment at least
-//       one full band behind its same-plane exact owner after floor
-//       quantization:
-//         kScatterMarginDepthBiasKey * subScale / depthRange >= kScatterCellTieBand
-//       i.e. depthRange <= subScale * 2^17 (default 131070 < 131072 — a 2-unit
-//       margin). subScale is floor-clamped to 1.0 by the vertex stage and the
-//       bias is linear in it, so subScale 1 is the worst case. WIDENING the
-//       band TIGHTENS this half.
-//   (b) code-fits-in-band — maxCode <= bandSteps - 1, i.e. 15 <= 15: exact,
-//       zero slack. WIDENING the band RELAXES this half.
-// Together they bracket the band to [16, 16.0002], so 16 is the UNIQUE
-// admissible width — which is what forces rank2's 2-bit collapse. A pass that
-// adds tie levels (a 3-bit rank, fractional-edge tie levels) pushes maxCode
-// to 23, needing a 32-step band, which in turn needs depthRange <= subScale *
-// 2^16 = 65536 while it is 131070: the widening that fixes the code overflow
-// is exactly the one that breaks (a). Such a pass must move the depth range or
-// the encode, not just the band.
-// Slot (1.0 key unit = 4 bands) and plane (>= 8 key units off-knife-edge)
-// separations remain multiple bands, so no genuine occlusion is reordered;
-// only tie-band pixels gain a deterministic, priority-ordered winner.
+// A four-bit priority-major code orders equal-depth face/cell candidates:
+// rank2 = flip ? 3 : slot; cell2 = (ij.x & 1) | (ij.y & 2).
+// Unflipped cross-axis ties have distinct ranks. Immediate lattice neighbors
+// have distinct cell codes, but displaced cells and flipped cross-axis pairs
+// can collide. scatterFinalDepth spends the remaining D24 bit on coverage:
+// an exact footprint wins over a margin with the same rank/cell code.
+// Same-class collisions still follow draw order.
+//
+// The code step is 2^-23; the band is 16 steps (2^-19). The margin bias must
+// clear one whole band, while the code must fit inside it. Both constraints
+// are asserted in ir_render_types.hpp and forbid widening the band. Coverage
+// uses half a code step: the logical offset is at most 15.5 steps before
+// the final D24-to-normalized-depth mapping.
 const float kScatterCellTieStep = 1.0 / 8388608.0;
 // Derived, not retunable alone: 16 is pinned by the tie-step PRECONDITION and
 // asserted CPU-side (kScatterCellTieBandSteps, ir_render_types.hpp). Exact
@@ -1032,6 +988,9 @@ const float kScatterCellTieStep = 1.0 / 8388608.0;
 // The overflow lane's two-band bias derives from this in turn
 // (v_peraxis_scatter.glsl / metal/peraxis_scatter.metal: 2.0 * band).
 const float kScatterCellTieBand = 16.0 * kScatterCellTieStep;
+
+
+
 
 // Flat interior-edge margin yield, in composite-key units. Mirrors
 // kScatterMarginInteriorBiasKey in metal/ir_iso_common.metal. A

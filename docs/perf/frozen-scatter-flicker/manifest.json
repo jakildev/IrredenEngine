@@ -1,0 +1,50 @@
+{
+  "head": "811f47ced9f6ab32fe47ee8f29b0214321f66c52",
+  "changes": " M creations/demos/canvas_stress/main.cpp\n M engine/render/src/shaders/f_peraxis_scatter.glsl\n M engine/render/src/shaders/ir_iso_common.glsl\n M engine/render/src/shaders/metal/ir_iso_common.metal\n M engine/render/src/shaders/metal/peraxis_scatter.metal\n M test/render/gpu_compute_dispatch_test.cpp\n?? docs/pr-screenshots/codex/frozen-scatter-flicker/\n?? engine/render/src/shaders/ir_scatter_depth.glsl\n?? engine/render/src/shaders/metal/ir_scatter_depth.metal\n?? test/render/shaders/c_scatter_depth_probe.glsl\n?? test/render/shaders/metal/c_scatter_depth_probe.metal\n",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "binary_sha256": "32a46e2124595f43d08d0515d5ecbcb1376f84d46114bfe80fc1d2170adb1b28",
+  "shader_sha256": "a4aed1d9910b2e8365463944b2726df64e75cd33281f72d3438b65508b815959",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "120",
+    "IRPerfGrid",
+    "--mode",
+    "voxel_set",
+    "--grid-size",
+    "64",
+    "--wave-freeze",
+    "--yaw",
+    "0.785398163",
+    "--zoom",
+    "4",
+    "--auto-profile",
+    "600"
+  ],
+  "runs": [
+    {
+      "index": 1,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    },
+    {
+      "index": 2,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    },
+    {
+      "index": 3,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    }
+  ]
+}

@@ -11,7 +11,7 @@
 
 #version 450 core
 
-#include "ir_iso_common.glsl"
+#include "ir_scatter_depth.glsl"
 
 flat in vec4 vColor;
 // Per-fragment planar depth + margin-yield classification: vDepth is
@@ -42,11 +42,7 @@ flat in float vMarginInteriorYieldBias;
 flat in float vIsoDepth;
 flat in int vDepthColorMode;
 flat in float vDepthColorExtent;
-// Deterministic sub-band tiebreak: the fragment's final depth is quantized to
-// the tie band and this 4-bit priority-major code ((rank2 << 2) | cell2,
-// pre-scaled to step units) is injected into the sub-band bits, so tie-band
-// fragments resolve by slot rank then cell identity instead of the compaction's
-// run-variant draw order.
+// Face/cell priority within a depth band; equal codes need coverage arbitration.
 flat in float vCellTieOffset;
 // Per-edge interior/boundary classification for the analytic coverage —
 // .x = u-low, .y = u-high, .z = v-low, .w = v-high; 1 = interior, 0 = silhouette.
@@ -120,9 +116,8 @@ void main() {
         (outside.x > 0.0 && interiorU > 0.5) || (outside.y > 0.0 && interiorV > 0.5);
     const float yieldBias = vMarginDepthBias + outside.x * gradU + outside.y * gradV +
         (interiorPen ? vMarginInteriorYieldBias : 0.0);
-    // Exact power-of-two float ops, so same-band fragments from different
-    // cells land on bit-distinct, cell-ordered depths on every backend.
+    // Final ties prefer exact coverage when face/cell priorities coincide.
     const float scatterDepth = vDepth + (inMargin ? yieldBias : 0.0);
     gl_FragDepth =
-        floor(scatterDepth / kScatterCellTieBand) * kScatterCellTieBand + vCellTieOffset;
+        scatterFinalDepth(scatterDepth, vCellTieOffset, inMargin);
 }

@@ -89,3 +89,11 @@ shadow-caster work before tightening rotated culling. Measure overflow sort
 launches versus live work, then light-volume and CPU update/upload costs.
 The rejected candidate demonstrates potential downstream savings, not a shipped
 scatter improvement or rotation parity.
+
+## Subsequent frozen-scene diagnosis
+
+[Coverage arbitration](../design/frozen-scatter-flicker.md) reproduces the same
+12-pixel flicker with overflow drawing disabled and fixes the exact/margin tie
+in the regular cell draw. The earlier rejection remains an honest failed
+control, but its attribution to overflow is unproven. Retry deduplication with
+repeated frozen captures and a stable parent before claiming equivalence.
