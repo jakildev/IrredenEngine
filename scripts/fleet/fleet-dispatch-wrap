@@ -327,6 +327,16 @@ if (( _resume_role )) && [[ -f "$SIDECAR" ]]; then
     fi
 fi
 
+# Per-iteration scratch bodies (gitignored; consumed by the gh call that
+# posts them) carry nothing a later iteration can use, and a stale one breaks
+# a fresh Codex launch: apply_patch has no overwrite, and Delete + Add of one
+# path inside a single call is rejected. A resume keeps them — the prior
+# session may be mid-draft.
+if (( ! RESUMED )); then
+    rm -f "$PWD"/.review-body.md "$PWD"/.review-body-*.md "$PWD"/.pr-body.md \
+        "$PWD"/.merger-body.md "$PWD"/.coding-improvement-body.md
+fi
+
 # A resume reloads the prior session and discards this dispatch's fresh config
 # — including the dispatch target. Release the pre-claim now, under the same
 # worktree basename the dispatcher claimed with, rather than stranding the
