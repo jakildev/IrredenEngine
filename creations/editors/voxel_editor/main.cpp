@@ -26,16 +26,16 @@
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/components/component_camera.hpp>
 
-// Gizmo primitives (T-152, F-0.5 Phase 1)
+// Gizmo primitives
 #include <irreden/render/gizmo.hpp>
 
-// Picking + ray-hit struct (T-219)
+// Picking + ray-hit struct
 #include <irreden/render/picking.hpp>
 
-// Widget framework (T-145 / T-177)
+// Widget framework
 #include <irreden/render/widgets.hpp>
 
-// GUI-test assertions (P3, #1796)
+// GUI-test assertions
 #include <irreden/render/gui_test_assertions.hpp>
 
 // Systems
@@ -84,7 +84,7 @@
 // Registry-driven command help overlay
 #include <irreden/render/help_overlay.hpp>
 
-// Frame-based animation state (T-214, F-1.4)
+// Frame-based animation state
 #include "animation.hpp"
 
 #include "editor_layer_manager.hpp"
@@ -103,10 +103,10 @@
 #include <utility>
 #include <vector>
 
-// Symmetry modes (T-212)
+// Symmetry modes
 #include "symmetry.hpp"
 
-// Authoring sessions (#766 Part 2c) — recipes of editor gestures compiled into
+// Authoring sessions — recipes of editor gestures compiled into
 // scripted input and replayed against the live UI by the GUI-test harness.
 #include "sessions.hpp"
 
@@ -129,13 +129,12 @@ using namespace IRMath;
 
 namespace IRVoxelEditor {
 
-// Scene + palette config (kept as named constants so the editor never
-// inlines a hardcoded dimension — D1 in the T-211 architect direction
-// calls out that the size be configurable per scene).
+// Scene + palette config, kept as named constants so the editor never
+// inlines a hardcoded dimension: the size is configurable per scene.
 //
 // The editable grid dimensions are runtime-configurable via --scene-size W H D
-// (#766 Part 2 — the ant needs 20³, the tree ~26 tall). g_editableSceneSize /
-// g_editableSceneOrigin default to the historical 16³ scene and are overwritten
+// (the ant needs 20³, the tree ~26 tall). g_editableSceneSize /
+// g_editableSceneOrigin default to the 16³ scene and are overwritten
 // in main() after arg parse. deriveSceneOrigin keeps the scene centred in X/Y
 // and pins the seed ground plane (local z == size.z-1) at world z == 3 for any
 // height, so authoring recipes and probe cells stay height-agnostic.
@@ -153,7 +152,7 @@ inline vec3 deriveSceneOrigin(ivec3 size) {
 }
 ivec3 g_editableSceneSize = kDefaultEditableSceneSize;
 vec3 g_editableSceneOrigin = deriveSceneOrigin(kDefaultEditableSceneSize);
-// Per-bone display colors for the bone selector panel (F-2.7 / #1608).
+// Per-bone display colors for the bone selector panel.
 // Index 0 = identity / unrigged (neutral gray). Indices 1..7 cycle through
 // distinct hues so painted bone assignments read clearly against each other.
 constexpr int kBoneSwatchCount = 8;
@@ -168,11 +167,10 @@ constexpr Color kBoneColors[kBoneSwatchCount] = {
     Color{60, 200, 220, 255},
 };
 
-// Per-stroke undo record. One record per click; per-voxel drag-paint
-// is a follow-up — v1 commits one record per single-voxel place/erase
-// event. The "stroke" abstraction is still per-architect (D3) so a
-// follow-up that adds drag-paint can fold many edits into one record
-// without rewiring undo replay.
+// Per-stroke undo record. One record per click — each single-voxel
+// place/erase event commits one record — but the unit is a stroke so
+// drag-paint can fold many edits into one record without rewiring undo
+// replay.
 struct UndoEdit {
     IREntity::EntityId voxelSet_;
     ivec3 localIdx_;
@@ -187,7 +185,7 @@ struct UndoRecord {
     }
 };
 
-// Per-stroke byte budget with whole-stroke eviction (D3b). One mebibyte
+// Per-stroke byte budget with whole-stroke eviction. One mebibyte
 // is enough headroom for a 1024-edit stroke (24 KiB) to live ~40 strokes
 // deep before the oldest evicts. Applied per frame: each animation frame
 // has its own independent undo stack capped at this limit; total in-memory
@@ -195,10 +193,9 @@ struct UndoRecord {
 constexpr std::size_t kUndoByteBudget = 1u << 20;
 
 // Reserve capacity for the per-stroke edits vector at stroke-begin so
-// the per-voxel write hot path doesn't allocate (D3-aligned: the
-// architect's reference shape pre-sizes the vector at mouse-down with
-// the brush AABB). The brush is single-voxel today; the reserve is a
-// high-water-mark for the future drag-paint extension.
+// the per-voxel write hot path doesn't allocate. The brush is
+// single-voxel; the reserve is a high-water-mark sized for a drag-paint
+// stroke.
 constexpr std::size_t kUndoStrokeReserve = 1024;
 
 // Module-level state captured into systems via SystemParams. Holds the
@@ -229,7 +226,7 @@ struct EditorState {
 
 EditorState g_editor;
 
-// Bone-paint mode state (F-2.7 / #1608). N toggles the mode; while active,
+// Bone-paint mode state. N toggles the mode; while active,
 // left-click writes activeBoneIdx_ to C_Voxel.bone_id_ and tints the voxel
 // with kBoneColors[activeBoneIdx_] so the assignment is immediately visible.
 // boneSwatches_ / bonePanel_ are created in initEntities once per session.
@@ -241,7 +238,7 @@ struct BonePaintState {
 };
 BonePaintState g_bonePaint;
 
-// Frame-based animation state (T-214, F-1.4). Each VoxelFrame snapshots
+// Frame-based animation state. Each VoxelFrame snapshots
 // the editable target's voxel pool span; switchToFrame swaps the live
 // voxels in and out. Lives at module scope (not in EditorState) because
 // the playback system reads it from a stateless lambda — keeping it as
@@ -249,7 +246,7 @@ BonePaintState g_bonePaint;
 // reach the same address every frame.
 AnimationState g_anim;
 
-// Authoring session selected by --gui-session (#766 Part 2c). When one is
+// Authoring session selected by --gui-session. When one is
 // active it replaces the standing GUI-test shot table with the recipe's
 // segments, and the scene is built without the demo furniture (see
 // initEntities). Both live at module scope because main() resolves them right
@@ -264,7 +261,7 @@ constexpr float kRotationSensitivity = 0.004f;
 
 SymmetryState g_symmetry;
 
-// Erase-fill mode (#766 Part 2b). When ON, the left-click place / box / line /
+// Erase-fill mode. When ON, the left-click place / box / line /
 // face-fill gestures ERASE instead of place — each fill path passes
 // `place = false` and aims at the hit voxel itself (not the empty cell adjacent
 // to the hit face). Toggled with V; reported in the fill-mode status label.
@@ -321,7 +318,7 @@ constexpr IRVideo::GuiInputEvent kPaletteClickEvents[] = {
      IRInput::kMouseButtonLeft},
 };
 
-// Scripted GUI-assert click (P3, #1796): park the cursor over the LAYERS-panel
+// Scripted GUI-assert click: park the cursor over the LAYERS-panel
 // list, press, release. The cursor stays put through capture so the hover
 // assertion still reads it; the latch catches the one-frame click-fire. The
 // list is a large, child-free hover target so the small screen→GUI-trixel
@@ -340,17 +337,17 @@ constexpr IRVideo::GuiInputEvent kGuiAssertEvents[] = {
      IRInput::kMouseButtonLeft},
 };
 
-// Scripted scene-pick (P3, #1796): move the cursor over the 3D scene (right of
+// Scripted scene-pick: move the cursor over the 3D scene (right of
 // the left-column GUI panels), so PICKS_VOXEL casts a ray onto a scene voxel —
 // the regression net for the screen→world picking alignment.
 constexpr IRVideo::GuiInputEvent kPickVoxelEvents[] = {
     {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(800, 450)},
 };
 
-// --- Phase 0 mechanism probes (#766) --------------------------------------
-// De-risk the auto-authoring premise before building session infrastructure:
-// prove keyboard→command dispatch, world→screen click mapping, and measure the
-// A/D binding overload — all through the live GUI harness on the seed scene.
+// --- Mechanism probes ----------------------------------------------
+// Prove the auto-authoring premise the session infrastructure rests on:
+// keyboard→command dispatch, world→screen click mapping, and the A/D binding
+// overload — all through the live GUI harness on the seed scene.
 // These shots append after the stable framings so existing labels and the
 // screen→world regression baseline (kPickVoxelShotIndex) stay untouched.
 
@@ -531,7 +528,7 @@ inline IRMath::ivec3 probeGroundCell(int i) {
     );
 }
 
-// --- Part 2b (#766) erase-fill mode probe ---------------------------------
+// --- Erase-fill mode probe ---------------------------------
 // Verifies the erase-fill toggle through the live UI, occlusion-free: synthetic
 // V flips g_eraseMode ON, and a capture-frame PREDICATE assertion
 // (evaluateEraseModeLabel) checks the fill-mode status label the place/erase
@@ -560,7 +557,7 @@ constexpr IRVideo::GuiInputEvent kProbeEraseEvents[] = {
 constexpr int kProbeEraseNumEvents =
     static_cast<int>(sizeof(kProbeEraseEvents) / sizeof(kProbeEraseEvents[0]));
 
-// The fill-mode status label's current text, read by the Part 2b (#766) erase
+// The fill-mode status label's current text, read by the erase-fill
 // probe. Returns "" when the label isn't built yet.
 std::string fillModeLabelText();
 
@@ -578,7 +575,7 @@ constexpr IRVideo::GuiTestShot kGuiTestShots[] = {
     // close half restores the hidden state they expect.
     {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_help_overlay_open"}, kHelpOverlayOpenEvents, 2},
     {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_help_overlay_closed"}, kHelpOverlayCloseEvents, 2},
-    // Phase 0 probes (#766), appended after the stable shots so their indices
+    // Mechanism probes, appended after the stable shots so their indices
     // stay fixed. The eight mapping-accuracy shots come first (clean read-only
     // picks), then the Ctrl+S dispatch and A/D-overload shots (both mutate state).
     {{2.0f, IRMath::vec2(0.0f), 0.0f, "editor_probe_map_0"}, &g_probeMapMoves[0], 1},
@@ -589,7 +586,7 @@ constexpr IRVideo::GuiTestShot kGuiTestShots[] = {
     {{2.0f, IRMath::vec2(0.0f), 0.0f, "editor_probe_map_5"}, &g_probeMapMoves[5], 1},
     {{2.0f, IRMath::vec2(0.0f), 0.0f, "editor_probe_map_6"}, &g_probeMapMoves[6], 1},
     {{2.0f, IRMath::vec2(0.0f), 0.0f, "editor_probe_map_7"}, &g_probeMapMoves[7], 1},
-    // Part 2b (#766) erase-fill probe — placed after the read-only map shots
+    // Erase-fill probe — placed after the read-only map shots
     // (which leave the seed scene intact) and before the state-mutating save /
     // A-D probes, so it erases from the still-seeded editable set.
     {{2.0f, IRMath::vec2(0.0f), 0.0f, "editor_probe_erase"},
@@ -612,7 +609,7 @@ constexpr int kPickVoxelShotIndex = 5;
 // input-free idle shot.
 constexpr int kHelpOverlayOpenShotIndex = kPickVoxelShotIndex + 1;
 constexpr int kHelpOverlayClosedShotIndex = kHelpOverlayOpenShotIndex + 1;
-// Phase 0 / Part 2b probe shot indices (#766). Map shots occupy
+// Mechanism / erase-fill probe shot indices. Map shots occupy
 // [start, start+count); the erase probe, then the dispatch and overload shots
 // follow. Derived from the preceding shot index so they track any reordering of
 // the stable shots.
@@ -628,7 +625,7 @@ static_assert(
     "final kGuiTestShots entries"
 );
 
-// GUI-test assertion tables (P3, #1796). Filled in initEntities once the widget
+// GUI-test assertion tables. Filled in initEntities once the widget
 // entities exist — assertions reference runtime EntityIds, so unlike the shot
 // table they can't be constexpr. Index-aligned with kGuiTestShots.
 // g_guiAssertLatch is the caller-owned latch the harness's onAssertFrame_
@@ -636,7 +633,7 @@ static_assert(
 IRPrefab::GuiTest::LatchState g_guiAssertLatch;
 std::vector<IRPrefab::GuiTest::Assertion> g_shotAssertions[kNumGuiTestShots];
 
-// Part 2b (#766) erase-fill probe check: after synthetic V toggled erase mode
+// Erase-fill probe check: after synthetic V toggled erase mode
 // ON, the fill-mode status label the place/erase system repaints each frame
 // must read "ERASE BOX". Exercises the whole control path — synthetic key →
 // command dispatch → g_eraseMode → status label — with no scene click, so it is
@@ -803,13 +800,13 @@ bool evaluatePanThenCtrlBalanced(const void *, std::string &actual) {
     return g_probePanPeakSpeed > 0.001f && stopped;
 }
 
-// Per-frame driver for an authoring session (#766 Part 2c). Resolves this
+// Per-frame driver for an authoring session. Resolves this
 // segment's cursor aims against the shot's live camera — the world→screen
 // mapping reads zoom / iso offset / letterbox, so the pixel cannot be baked at
 // recipe-build time — then evaluates the segment's occupancy assertions. The
 // write is idempotent across the shot's frames and lands before the harness's
 // event phase on the same tick, so the scheduled MOVE injects the fresh pixel
-// (same ordering the Phase 0 probe-map shots rely on).
+// (same ordering the probe-map shots rely on).
 void onSessionAssertFrame(int shotIndex, bool isCaptureFrame) {
     if (shotIndex < 0 || shotIndex >= static_cast<int>(g_session.segments_.size()))
         return;
@@ -845,7 +842,7 @@ void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
     }
     if (shotIndex < 0 || shotIndex >= kNumGuiTestShots)
         return;
-    // Phase 0 probe 2 (#766): fill this probe-map shot's cursor move with the
+    // Fill this probe-map shot's cursor move with the
     // pixel worldPos3DToMouseScreenPx computes for the target cell at the shot's
     // live camera state. This runs before the harness's event phase on the same
     // tick, so the frame-0 MOVE injects the freshly-computed pixel; the write is
@@ -887,12 +884,12 @@ void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
 EditorLayerManager g_layerManager;
 IREntity::EntityId g_sceneVoxelSetEntity = IREntity::kNullEntity;
 
-// Animation scrubber and FPS slider entity IDs (T-214). Initialized in
+// Animation scrubber and FPS slider entity IDs. Initialized in
 // initEntities; accessed by initSystems lambdas and switchToFrame.
 IREntity::EntityId g_scrubberSlider = IREntity::kNullEntity;
 IREntity::EntityId g_fpsSlider = IREntity::kNullEntity;
 
-// Layer panel widget entity IDs (T-213). Initialized in initEntities.
+// Layer panel widget entity IDs. Initialized in initEntities.
 IREntity::EntityId g_layerPanel = IREntity::kNullEntity;
 IREntity::EntityId g_layerList = IREntity::kNullEntity;
 IREntity::EntityId g_layerVisCheckbox = IREntity::kNullEntity;
@@ -904,7 +901,7 @@ IREntity::EntityId g_layerDelBtn = IREntity::kNullEntity;
 // symmetry axes.
 IREntity::EntityId g_fillModeLabel = IREntity::kNullEntity;
 
-// Current text of the fill-mode status label (Part 2b #766 erase probe reads it
+// Current text of the fill-mode status label (the erase probe reads it
 // to verify the erase-mode toggle). Empty when the label isn't built yet.
 std::string fillModeLabelText() {
     if (g_fillModeLabel == IREntity::kNullEntity)
@@ -912,14 +909,14 @@ std::string fillModeLabelText() {
     return IREntity::getComponent<C_WidgetLabel>(g_fillModeLabel).text_;
 }
 
-// Parametric shape bake panel widget entity IDs (T-286).
+// Parametric shape bake panel widget entity IDs.
 IREntity::EntityId g_bakePanel = IREntity::kNullEntity;
 IREntity::EntityId g_bakeShapeList = IREntity::kNullEntity;
 IREntity::EntityId g_bakeParam1Slider = IREntity::kNullEntity;
 IREntity::EntityId g_bakeParam2Slider = IREntity::kNullEntity;
 IREntity::EntityId g_bakeButton = IREntity::kNullEntity;
 
-// Skeleton tree panel widget entity IDs (#1607).
+// Skeleton tree panel widget entity IDs.
 IREntity::EntityId g_skeletonPanel = IREntity::kNullEntity;
 IREntity::EntityId g_skeletonList = IREntity::kNullEntity;
 IREntity::EntityId g_jointRenameInput = IREntity::kNullEntity;
@@ -972,7 +969,7 @@ void applyLayerVisibility(std::uint8_t layerId, bool visible) {
 // Apply a single placement / erasure edit to one cell, appending the prior
 // state to the in-flight stroke buffer. `flat` is the linear pool index so the
 // per-voxel mutation reuses the precomputed offset. `boneId` is 0 (identity) for
-// normal color-paint; the active bone index in bone-paint mode (#1608). Writes
+// normal color-paint; the active bone index in bone-paint mode. Writes
 // the raw `voxels_` span directly — callers always finish a batch of these
 // (single edit, line, AABB, face-fill, or SDF bake) with one `commitStroke()`,
 // which resyncs derived state once for the whole batch. Not called directly:
@@ -1008,8 +1005,7 @@ void applyEditRaw(
 std::vector<ivec3> g_mirrorScratch;
 
 // Apply a placement / erasure at `localIdx`, mirrored across every enabled
-// symmetry plane (#766 F-1.6 — wires the previously call-site-less applyMirrors,
-// the F-1.2 regression). Every mirror copy lands in the one pending stroke, so a
+// symmetry plane. Every mirror copy lands in the one pending stroke, so a
 // single Ctrl+Z restores the whole symmetric edit and the derived-state resync
 // still runs once per stroke in commitStroke. With symmetry off this is a thin
 // pass-through to applyEditRaw. `flat` is localIdx's precomputed pool index.
@@ -1048,7 +1044,7 @@ void commitStroke() {
     g_editor.pendingStroke_.edits_.clear();
     g_editor.pendingStroke_.edits_.reserve(kUndoStrokeReserve);
 
-    // Whole-stroke eviction from the front (D3b). Per-record eviction
+    // Whole-stroke eviction from the front. Per-record eviction
     // would split a stroke; Ctrl-Z partway through a half-evicted
     // stroke would only restore part of it.
     while (g_editor.undoTotalBytes_ > kUndoByteBudget && !g_editor.undoRecords_.empty()) {
@@ -1413,7 +1409,7 @@ void loadFrameToLive(int idx) {
     //
     // The load-bearing half is the pool's active mask. It mirrors
     // `color_.alpha_ != 0`, it is what `c_voxel_visibility_compact` reads
-    // *instead of* alpha (T-287), and it lives in the pool rather than in the
+    // *instead of* alpha, and it lives in the pool rather than in the
     // voxel records — so copying records updates alpha and leaves the mask
     // describing the frame that just left. A step then renders a blend of the
     // two poses: cells the departing frame had inactive stay culled however live
@@ -1480,7 +1476,7 @@ void switchToFrame(int frameIndex) {
     );
 }
 
-// --- F-2.5 (#1604) skeletal joint authoring + FK posing (#1610) -------------
+// --- Skeletal joint authoring + FK posing -------------
 //
 // One rig per editor session: a rig-root entity carrying C_Skeleton, with
 // joint entities parented under it via CHILD_OF. Each joint carries C_Joint
@@ -1489,10 +1485,9 @@ void switchToFrame(int frameIndex) {
 // a rotate gizmo for FK posing — all anchored to the joint itself. The index
 // of a joint in C_Skeleton.joints_ IS its bone_id; bindPose_ is kept parallel.
 // The "active" joint is the parent for the next add (B); R starts a fresh
-// chain off the rig root. Joint selection / reparent-to-any-joint / tree
-// panel land in #1607.
+// chain off the rig root.
 //
-// Placement vs posing (#1610): a TRANSLATE_ARROW drag on a joint is
+// Placement vs posing: a TRANSLATE_ARROW drag on a joint is
 // authoring — bindPose_ recaptures at gesture end so the bind tracks the
 // authored rest. A ROTATE_RING drag is FK posing — GIZMO_DRAG writes the
 // joint's C_LocalTransform.rotation_, PROPAGATE_TRANSFORM composes the
@@ -1568,7 +1563,7 @@ bool isRigJoint(IREntity::EntityId entity) {
     return std::find(joints.begin(), joints.end(), entity) != joints.end();
 }
 
-// "Set current pose as bind" (#1610): capture every joint's live local
+// "Set current pose as bind": capture every joint's live local
 // transform chain into bindPose_. The posed shape becomes the new rest —
 // skin matrices return to identity and the rig's voxels relax in place.
 void setCurrentPoseAsBind() {
@@ -1597,7 +1592,7 @@ IREntity::EntityId addJointAuthored() {
     IREntity::setParent(joint, parentEntity);
     // Orange JOINT_MARKER sphere (hover-highlight + xray silhouette + the
     // screen-space size pass), per-joint translate arrows for placement, and
-    // per-joint rotate rings for FK posing (#1610) — every drag mutates the
+    // per-joint rotate rings for FK posing — every drag mutates the
     // joint's own C_LocalTransform (translation vs rotation by handle kind).
     IRPrefab::Gizmo::createJointMarker(joint);
     IRPrefab::Gizmo::createTranslateGizmoForAnchor(joint);
@@ -1614,7 +1609,7 @@ IREntity::EntityId addJointAuthored() {
 }
 
 // Starts a fresh bone chain: the next B-add parents to the rig root rather
-// than chaining off the last-added joint. (Reparent-to-any-joint is #1607.)
+// than chaining off the last-added joint.
 void resetJointChain() {
     g_jointTool.activeJointIdx_ = -1;
     IR_LOG_INFO("Joint chain reset — next joint parents to the rig root.");
@@ -1623,10 +1618,10 @@ void resetJointChain() {
 // Author a short starter chain so the feature is visible on launch and in
 // auto-screenshots, mirroring the perimeter gizmo references in initEntities.
 //
-// #1610 also rigs the chain with a skinned voxel bar (the FK verification
+// This also rigs the chain with a skinned voxel bar (the FK verification
 // vehicle): a 31×3×3 bar on the rig root, painted one bone per third by
 // nearest joint. UPDATE_JOINT_MATRICES allocates the skeleton's slot block on
-// its first tick and auto-seeds the per-voxel bone→slot indices (#1605), so
+// its first tick and auto-seeds the per-voxel bone→slot indices, so
 // dragging a rotate ring on a mid-chain joint visibly bends the bar live.
 void seedDemoSkeleton() {
     const IREntity::EntityId rigRoot = ensureRigRoot();
@@ -1678,7 +1673,7 @@ void seedDemoSkeleton() {
 namespace Session {
 
 // Reads one recipe occupancy expectation against the live editable set at a
-// segment's capture frame (#766 Part 2c). This is the check that makes a
+// segment's capture frame. This is the check that makes a
 // session positive-fire: a gesture that was swallowed — click intercepted by a
 // widget or a reference shape, aim occluded, drag never committing — leaves the
 // cell in its old state and FAILs here, instead of quietly authoring nothing.
@@ -1704,7 +1699,7 @@ bool evaluateOccupancyCheck(const void *context, std::string &actual) {
     }
     if (check.source_ == Session::CheckSource::POOL_ACTIVE_MASK) {
         // The pool-side mirror of alpha, and what the compact shader actually
-        // reads (T-287). Read through the same slot arithmetic the pool uses.
+        // reads. Read through the same slot arithmetic the pool uses.
         auto poolOpt = IREntity::getComponentOptional<IRComponents::C_VoxelPool>(set.canvasEntity_);
         if (!poolOpt.has_value()) {
             actual = where + " no-pool";
@@ -1773,12 +1768,12 @@ int main(int argc, char **argv) {
     IR_LOG_INFO("  N: toggle bone-paint mode (click swatch in BONE panel to pick bone)");
     IR_LOG_INFO("  Joint arrows place (re-binds at release); rings FK-pose (live deform)");
     IR_LOG_INFO("  T: set current pose as bind (joint mode)");
-    // Editable grid dims (#766 Part 2): the ant needs 20³, the tree ~26 tall.
+    // Editable grid dims: the ant needs 20³, the tree ~26 tall.
     // Register before init (which owns the parse); read back + derive the origin
     // after. Omitted / non-positive dims keep the historical 16³ scene.
     IREngine::args()
         .numbers("--scene-size", "editable voxel grid dims: W H D (default 16 16 16)", 3);
-    // Authoring sessions (#766 Part 2c): replay a recipe of editor gestures
+    // Authoring sessions: replay a recipe of editor gestures
     // through the GUI-test harness instead of the standing shot table. Needs
     // --auto-screenshot as well (that is what wires the harness at all).
     IREngine::args().enumValue(
@@ -1947,7 +1942,7 @@ void initSystems() {
 
     // Hover-help render: draws the most-specific hovered widget's help text into
     // the HELP panel. Registered last among the GUI renders so the text lands
-    // over the HELP panel background; reuses the batched GUI-text path (#1774).
+    // over the HELP panel background; reuses the batched GUI-text path.
     struct HelpRenderParams {
         C_TriangleCanvasTextures *canvas_ = nullptr;
         std::vector<IRRender::GlyphDrawCommand> textCmds_;
@@ -2101,7 +2096,7 @@ void initSystems() {
         }
     );
 
-    // Bone-paint selector (F-2.7 / #1608). Clicking a swatch sets activeBoneIdx_
+    // Bone-paint selector. Clicking a swatch sets activeBoneIdx_
     // and reconciles the selected-bit so the renderer highlights the active bone.
     auto bonePaintUpdateSystem = IRSystem::createSystem<C_GuiElement>(
         "EditorBonePaintUpdate",
@@ -2375,7 +2370,7 @@ void initSystems() {
         }
     );
 
-    // Scrubber + FPS sync (T-214). Runs in INPUT, after WIDGET_APPLY_SLIDER
+    // Scrubber + FPS sync. Runs in INPUT, after WIDGET_APPLY_SLIDER
     // so the drag value is already committed to C_WidgetSlider::currentValue_.
     // When the slider is pressed (user dragging), drives switchToFrame.
     // When not pressed, mirrors g_anim.activeFrame_ back onto the slider so
@@ -2406,7 +2401,7 @@ void initSystems() {
         }
     );
 
-    // Frame-based animation playback (T-214). Runs once per RENDER tick
+    // Frame-based animation playback. Runs once per RENDER tick
     // in beginTick over C_Camera (the singleton camera entity), so
     // the swap lands BEFORE this frame's voxel-to-trixel stages read
     // C_VoxelSetNew::voxels_. Use the camera archetype filter because
@@ -2426,7 +2421,7 @@ void initSystems() {
         }
     );
 
-    // Layer panel sync (T-213). Runs in INPUT after WIDGET_APPLY_LIST and
+    // Layer panel sync. Runs in INPUT after WIDGET_APPLY_LIST and
     // WIDGET_APPLY_CHECKBOX so click state is already committed. Syncs
     // g_layerManager ↔ the LAYERS panel widgets in both directions:
     //   - list click → setActiveLayer; keyboard nav mirrors back to selection
@@ -2529,7 +2524,7 @@ void initSystems() {
         }
     );
 
-    // Shape bake system (T-286): runs in INPUT after WIDGET_APPLY_LIST so the
+    // Shape bake system: runs in INPUT after WIDGET_APPLY_LIST so the
     // list selection is committed, and after WIDGET_APPLY_SLIDER so slider
     // values are committed. Reads the BAKE button and fires applyFillSDF.
     auto bakeSystem = IRSystem::createSystem<C_GuiElement>(
@@ -2597,8 +2592,8 @@ void initSystems() {
         }
     );
 
-    // Joint-authoring bind-pose sync (#1604, placement-vs-posing split in
-    // #1610). A TRANSLATE_ARROW drag on a rig joint is authoring: recapture
+    // Joint-authoring bind-pose sync (placement-vs-posing split). A
+    // TRANSLATE_ARROW drag on a rig joint is authoring: recapture
     // the bind pose once at gesture end so bindPose_ tracks the authored
     // rest. A ROTATE_RING drag is FK posing and must NOT recapture — the
     // pose deforms the skinned voxels away from the bind by design (T
@@ -2620,14 +2615,14 @@ void initSystems() {
             if (!releasedThisFrame)
                 return;
             if (drag->dragKind_ != IRComponents::GizmoKind::TRANSLATE_ARROW)
-                return; // rotate rings are FK posing (#1610), not bind authoring
+                return; // rotate rings are FK posing, not bind authoring
             if (!IRVoxelEditor::isRigJoint(drag->dragAnchor_))
                 return; // showcase / non-rig gizmos don't touch the rig
             IRVoxelEditor::recomputeJointBindPose();
         }
     );
 
-    // Skeleton tree panel sync (#1607). Runs after WIDGET_APPLY_LIST so
+    // Skeleton tree panel sync. Runs after WIDGET_APPLY_LIST so
     // list.selectedIndex_ already reflects any click from this frame.
     // Rebuilds list items from C_Skeleton.joints_ (names from C_JointName or
     // "bone_N" default), mirrors activeJointIdx_ <-> list selection, handles
@@ -2763,9 +2758,9 @@ void initSystems() {
          jointTreeSyncSystem}
     );
 
-    // GPU voxel-position prepass (#1396) + joint skin-matrix upload (#1603) +
-    // per-voxel bone→slot seeding (#1605) — the FK live-deform substrate
-    // (#1610). UPDATE_JOINT_MATRICES must run AFTER PROPAGATE_TRANSFORM
+    // GPU voxel-position prepass + joint skin-matrix upload +
+    // per-voxel bone→slot seeding — the FK live-deform substrate.
+    // UPDATE_JOINT_MATRICES must run AFTER PROPAGATE_TRANSFORM
     // (UPDATE pipeline, earlier this frame) and BEFORE
     // UPDATE_VOXEL_POSITIONS_GPU so binding 18 holds the skin matrices when
     // the prepass dispatches. Both are no-ops until a voxel set opts in via
@@ -2831,7 +2826,7 @@ void initSystems() {
         IRVideo::GuiTestConfig cfg{};
         cfg.warmupFrames_ = IREngine::args().autoScreenshotWarmupFrames();
         cfg.settleFrames_ = 3;
-        // An authoring session (#766 Part 2c) replaces the standing table with
+        // An authoring session replaces the standing table with
         // its own segments; the Recipe owns that storage for the whole run.
         if (IRVoxelEditor::g_sessionId != IRVoxelEditor::Session::Id::NONE) {
             cfg.shots_ = IRVoxelEditor::g_session.shots_.data();
@@ -2841,7 +2836,7 @@ void initSystems() {
             cfg.numShots_ =
                 sizeof(IRVoxelEditor::kGuiTestShots) / sizeof(IRVoxelEditor::kGuiTestShots[0]);
         }
-        // P3 (#1796): evaluate GUI assertions at each shot's capture frame. The
+        // Evaluate GUI assertions at each shot's capture frame. The
         // assertion tables themselves are populated later in initEntities (once
         // the widget entities exist), before the game loop fires this callback.
         cfg.onAssertFrame_ = &IRVoxelEditor::onGuiAssertFrame;
@@ -2911,7 +2906,7 @@ void initCommands() {
     // default offset 0 would map cell v to -v, out of bounds, dropping every
     // mirror. There is no UI for a non-centre plane, so the centre is the only
     // meaningful position; leaving the offset alone on toggle-OFF keeps a
-    // symmetry-disabled scene's saved META (sym_offset_*) untouched (#766 F-1.6).
+    // symmetry-disabled scene's saved META (sym_offset_*) untouched.
     auto logSymmetry = []() {
         IR_LOG_INFO(
             "Symmetry: X={} Y={} Z={}",
@@ -2984,7 +2979,7 @@ void initCommands() {
         "TOGGLE Z-AXIS MIRROR SYMMETRY"
     );
 
-    // V — toggle erase-fill mode (#766 Part 2b): the left-click place / box /
+    // V — toggle erase-fill mode: the left-click place / box /
     // line / face gestures ERASE instead of place while it is on. Right-click
     // single-voxel erase is unaffected.
     IRCommand::createCommand(
@@ -3001,9 +2996,9 @@ void initCommands() {
         "TOGGLE ERASE-FILL MODE"
     );
 
-    // Frame-based animation controls (T-214, F-1.4). Keys not taken by
-    // T-211 (Q/E/Space/Z), T-212 (X/Y/Z symmetry), or T-213 (K/[/]/H —
-    // layer system): Left/Right for frame nav, P play/pause, A add
+    // Frame-based animation controls. Keys not taken by the gizmo
+    // controls (Q/E/Space/Z), symmetry (X/Y/Z), or the layer system
+    // (K/[/]/H): Left/Right for frame nav, P play/pause, A add
     // blank frame, D duplicate, Backspace delete, L loop-mode toggle.
 
     // Left arrow — go to previous frame.
@@ -3334,7 +3329,7 @@ void initCommands() {
         "SELECT NEXT LAYER"
     );
 
-    // J — toggle skeletal joint-authoring mode (#1604). While on, B adds a
+    // J — toggle skeletal joint-authoring mode. While on, B adds a
     // joint and R starts a fresh chain off the rig root.
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
@@ -3384,7 +3379,7 @@ void initCommands() {
         "START A NEW BONE CHAIN"
     );
 
-    // N — toggle bone-paint mode (#1608). While on, left-click writes
+    // N — toggle bone-paint mode. While on, left-click writes
     // bone_id_ to the hit voxel and tints it with the selected bone's
     // display color. The bone selector swatch panel drives activeBoneIdx_.
     IRCommand::createCommand(
@@ -3405,7 +3400,7 @@ void initCommands() {
         "TOGGLE BONE PAINT MODE"
     );
 
-    // T — set current pose as bind (#1610): the posed joint chain becomes
+    // T — set current pose as bind: the posed joint chain becomes
     // the new rest, skin matrices return to identity, and the rig's voxels
     // relax in place. No-op outside joint mode.
     IRCommand::createCommand(
@@ -3689,7 +3684,7 @@ void initEntities() {
     g_editor.perFrameUndoStacks_.resize(IRVoxelEditor::g_anim.frameCount());
     g_editor.perFrameUndoBytes_.resize(IRVoxelEditor::g_anim.frameCount(), 0);
 
-    // An authoring session (#766 Part 2c) needs a stage with nothing on it but
+    // An authoring session needs a stage with nothing on it but
     // the editable set: the picking walk tests SDF shapes before voxel sets and
     // reports no face normal for a shape hit, so any reference shape between the
     // camera and a target cell silently swallows the click (the place/erase
@@ -3740,8 +3735,8 @@ void initEntities() {
         );
     }
 
-    // F-0.5 Phase 1 gizmo primitives — kept around the perimeter as
-    // visual references for the gizmo render pass.
+    // Gizmo primitives around the perimeter: visual references for the
+    // gizmo render pass.
     if (!sessionScene) {
         IREntity::EntityId translateGizmo = IRPrefab::Gizmo::createTranslateGizmo();
         IREntity::getComponent<C_LocalTransform>(translateGizmo).translation_ =
@@ -3768,7 +3763,7 @@ void initEntities() {
             vec3(16.0f, -12.0f, -3.0f);
     }
 
-    // F-2.5 (#1604) joint-authoring starter rig — a short bone chain so the
+    // Joint-authoring starter rig — a short bone chain so the
     // feature is visible on launch and in auto-screenshots (same spirit as the
     // perimeter gizmo references above). Author more with J (toggle mode) + B
     // (add joint); R starts a new chain off the rig root.
@@ -3779,8 +3774,8 @@ void initEntities() {
     // (default color, alpha=255 so cells are active at start) then
     // every voxel is deactivated so the user starts from an empty
     // scene. A single floor row stays activated as a "ground" for the
-    // first click to land on. Architect D1: the size is a named
-    // constant on the editor side, not hardcoded inline.
+    // first click to land on. The size is a named constant on the
+    // editor side, not hardcoded inline.
     g_editor.editableVoxelSet_ = IREntity::createEntity(
         C_LocalTransform{IRVoxelEditor::g_editableSceneOrigin},
         C_VoxelSetNew{IRVoxelEditor::g_editableSceneSize, Color{200, 200, 210, 255}}
@@ -3800,7 +3795,7 @@ void initEntities() {
     }
 
     // Smaller satellite voxel sets — exercise multi-`C_VoxelSetNew`
-    // picking from T-219 and give the user secondary targets to click
+    // picking and give the user secondary targets to click
     // on. Their colors stay fixed so it's obvious which click landed
     // on the editable set versus a satellite.
     if (!sessionScene) {
@@ -3814,7 +3809,6 @@ void initEntities() {
         );
     }
 
-    // Canvas setup (unchanged from the F-0.5 baseline).
     IREntity::EntityId mainCanvas = IRRender::getActiveCanvasEntity();
     const ivec2 canvasSize = IREntity::getComponent<C_TriangleCanvasTextures>(mainCanvas).size_;
     IREntity::setComponent(mainCanvas, C_TrixelCanvasRenderBehavior{});
@@ -3830,9 +3824,9 @@ void initEntities() {
     IRRender::setSunDirection(vec3(0.35f, 0.85f, -0.4f));
 
     // Palette panel — fixed top-left dock at 200×220 trixels. The 16
-    // swatches lay out in a 4×4 grid below the title. Architect D4:
-    // mutable palette + voxels store raw RGBA, so editing a swatch
-    // (future workflow) does not repaint already-placed voxels.
+    // swatches lay out in a 4×4 grid below the title. The palette is
+    // mutable and voxels store raw RGBA, so editing a swatch does not
+    // repaint already-placed voxels.
     // Palette docks to the bottom-left of the GUI canvas so it sits
     // below the iso scene render and never covers the edit target.
     // Sized to fit a 4×4 grid of 22-trixel swatches inside a
@@ -3868,7 +3862,7 @@ void initEntities() {
         );
     }
 
-    // Animation controls panel (T-214, F-1.4) — sits below the palette
+    // Animation controls panel — sits below the palette
     // panel. Frame scrubber: drag to navigate frames smoothly. FPS slider:
     // drag to adjust playback speed (1–30 FPS). Both update in real time;
     // keyboard nav (Left/Right) and playback keep the scrubber thumb in sync.
@@ -3892,7 +3886,7 @@ void initEntities() {
         IRVoxelEditor::g_anim.fps_
     );
 
-    // Layer panel (T-213, F-1.3) — second column alongside the PALETTE panel.
+    // Layer panel — second column alongside the PALETTE panel.
     // The list shows all layers with a "[H]" suffix on hidden ones. The
     // visibility checkbox and add/delete buttons are below the list. Keyboard
     // shortcuts K/[/]/H still work; the panel just makes the state visible.
@@ -3930,7 +3924,7 @@ void initEntities() {
         "-"
     );
 
-    // Parametric shape bake panel (T-286). Sits below the LAYERS panel.
+    // Parametric shape bake panel. Sits below the LAYERS panel.
     // Shape list selects the SDF primitive; P1/P2 sliders set the primary and
     // secondary params; BAKE writes DENSE voxels into the active entity.
     // List itemHeight is one glyph row + 2-trixel gap so the 6 shape rows
@@ -3969,7 +3963,7 @@ void initEntities() {
         "BAKE"
     );
 
-    // Bone selector panel (F-2.7 / #1608). kBoneSwatchCount swatches in a 2×4
+    // Bone selector panel. kBoneSwatchCount swatches in a 2×4
     // grid; index 0 = identity (gray), indices 1..7 cycle through distinct hues.
     // Clicking a swatch sets g_bonePaint.activeBoneIdx_; N enables bone-paint mode.
     // Third column (x=256) atop the SKELETON panel — mirrors the LAYERS/BAKE
@@ -4008,7 +4002,7 @@ void initEntities() {
         );
     }
 
-    // Skeleton tree panel (F-2.6, #1607). Sits below the BONE selector in the
+    // Skeleton tree panel. Sits below the BONE selector in the
     // third column (mirrors LAYERS→BAKE in column two), so the swatch grid and
     // the joint tree coexist without overlapping.
     // Shows the live joint list from C_Skeleton.joints_; clicking a row
@@ -4103,7 +4097,7 @@ void initEntities() {
     // symmetry axes are active so the user can see modifier state at a glance.
     IRVoxelEditor::g_fillModeLabel = IRPrefab::Widget::makeLabel(ivec2(4, 4), "BOX");
 
-    // GUI-test assertions (P3, #1796) — populated here (not at the constexpr
+    // GUI-test assertions — populated here (not at the constexpr
     // shot table) because they reference runtime widget EntityIds. The
     // hover-export singleton (one per world) lets HOVERS read the topmost
     // hovered widget via WIDGET_INPUT::endTick. The scripted GUI-assert shot
@@ -4137,7 +4131,7 @@ void initEntities() {
             IRPrefab::GuiTest::picksVoxel(kScenePickExpected, "scene_pick"),
         };
     }
-    // Phase 0 probe 2 (#766): each probe-map shot asserts the ray landed on the
+    // Each probe-map shot asserts the ray landed on the
     // target cell's iso COLUMN (not the exact voxel) — mapping accuracy is a 2D
     // screen-projection property, and the seed scene's rig geometry can occlude
     // the ground cell along the aimed column. Target = scene origin + local cell
@@ -4149,7 +4143,7 @@ void initEntities() {
             IRPrefab::GuiTest::picksIsoColumn(target, "probe_map"),
         };
     }
-    // Part 2b (#766): the erase-fill toggle's mode + status-label check. A
+    // Erase-fill: the erase-fill toggle's mode + status-label check. A
     // PREDICATE assertion so it shares the harness's single GUI-ASSERT emitter
     // with every other kind.
     IRVoxelEditor::g_shotAssertions[IRVoxelEditor::kProbeEraseShotIndex] = {

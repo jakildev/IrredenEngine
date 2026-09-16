@@ -1,4 +1,4 @@
-// audio_playback demo (engine #1813) — exercises the file-playback substrate
+// audio_playback demo — exercises the file-playback substrate
 // (IRAudio.playSound / playMusic / bus + master volume / fade) end-to-end from
 // Lua. The C++ side registers `bindLuaDrivenEcs()` (which wires the IRAudio Lua
 // table), composes a minimal voxel render pipeline so the run has a frame to

@@ -1,4 +1,4 @@
--- lua_widgets (#1975) config. 1280x720 / gui_scale=1 → 640x720 GUI trixels,
+-- lua_widgets config. 1280x720 / gui_scale=1 → 640x720 GUI trixels,
 -- matching the screen-px click coords the GUI-test harness scripts.
 config = {
     init_window_width = 1280,

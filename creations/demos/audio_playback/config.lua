@@ -1,5 +1,5 @@
 -- Minimal config for the audio_playback demo. The window stays small; the
--- demo exists to exercise the IRAudio file-playback substrate (#1813), not to
+-- demo exists to exercise the IRAudio file-playback substrate, not to
 -- render a particular scene.
 config = {
     init_window_width = 640,
