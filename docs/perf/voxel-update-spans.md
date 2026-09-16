@@ -48,5 +48,5 @@ of this stress workload remains as documented in [CPU sampling](native-cpu-sampl
 The existing saturated upload-queue fallback uploads the entire live pool prefix,
 which can overwrite GPU-transform-owned slots in a mixed pool. Batching reduces
 how often saturation happens; it does not repair that independent fallback.
-Route saturation through the existing static-only upload path and add a mixed-
-ownership regression before claiming that boundary is safe.
+The follow-up [saturation and copy-order repair](static-upload-saturation.md)
+routes saturation through static-only uploads and tests pending GPU writes.
