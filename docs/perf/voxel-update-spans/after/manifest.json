@@ -1,0 +1,50 @@
+{
+  "head": "448aaf44af9f7abbaadfbde9b0cb5d8f37c53329",
+  "changes": " M engine/prefabs/irreden/voxel/systems/system_update_voxel_set_children.hpp\n M test/ecs/chunk_bounds_eviction_test.cpp\n",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "binary_sha256": "a0cac26c0333dfda3f59b875d52ad69b0bac2bc9adb975a29cbe64b63fb19b96",
+  "shader_sha256": "e3b71bbf545a6480776e2e22e898a959f3d068d6e02d2af02271edfeb730a527",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "120",
+    "IRPerfGrid",
+    "--mode",
+    "voxel_set",
+    "--grid-size",
+    "64",
+    "--wave-freeze",
+    "--yaw",
+    "0.785398163",
+    "--zoom",
+    "4",
+    "--auto-profile",
+    "600"
+  ],
+  "runs": [
+    {
+      "index": 1,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    },
+    {
+      "index": 2,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    },
+    {
+      "index": 3,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    }
+  ]
+}

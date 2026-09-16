@@ -93,8 +93,9 @@ The remaining work below still applies.
 5. Inspect the subdivision-dependent light-volume and finite-caster costs; measure
    bounds, density and memory traffic before changing either representation.
 6. [Native CPU sampling](native-cpu-sampling.md) now distinguishes presentation
-   waiting from active update/bounds/upload stacks. Batch contiguous update spans
-   next; preserve fixed-workload controls and per-call versus per-frame counts.
+   waiting from active update/bounds/upload stacks. [Contiguous update spans](voxel-update-spans.md)
+   are now batched. Repair mixed CPU/GPU upload-queue saturation next; preserve
+   fixed-workload controls and per-call versus per-frame counts.
 7. Establish Release and OpenGL controls, repeated run ranges and profiling-off
    overhead. Add full-frame multi-canvas GPU accounting before treating summed
    sampled rows as total render cost. Keep screenshots as correctness gates for
