@@ -47,6 +47,18 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
         bool upload_ = false;
     };
 
+    static void appendPendingRange(std::vector<PendingRange> &pending, PendingRange range) {
+        if (!pending.empty()) {
+            PendingRange &last = pending.back();
+            if (last.pool_ == range.pool_ && last.upload_ == range.upload_ &&
+                last.startIdx_ + last.count_ == range.startIdx_) {
+                last.count_ += range.count_;
+                return;
+            }
+        }
+        pending.push_back(range);
+    }
+
     // Resolved on the main thread in beginTick, read-only in the worker tick.
     // The workers never touch EntityManager's hash map (getComponent is not
     // worker-safe under PARALLEL_FOR — engine/system/CLAUDE.md).
@@ -170,7 +182,8 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
         // concurrent store TSan would flag).
         if (writtenCount > 0) {
             const bool isStatic = voxelSet.gpuTransformSlot_ == IRRender::kVoxelTransformStatic;
-            pendingByWorker_[static_cast<std::size_t>(IRJob::workerId())].push_back(
+            appendPendingRange(
+                pendingByWorker_[static_cast<std::size_t>(IRJob::workerId())],
                 PendingRange{
                     &pool,
                     voxelSet.voxelStartIdx_,
@@ -202,9 +215,10 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
         // store.
         for (std::vector<PendingRange> &worker : pendingByWorker_) {
             for (const PendingRange &range : worker) {
-                range.pool_->markCullBoundsDirty(range.startIdx_, range.count_);
                 if (range.upload_) {
                     range.pool_->queuePositionRange(range.startIdx_, range.count_);
+                } else {
+                    range.pool_->markCullBoundsDirty(range.startIdx_, range.count_);
                 }
             }
         }
