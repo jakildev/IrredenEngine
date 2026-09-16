@@ -160,6 +160,10 @@ template <typename T> class ChunkedField2D {
         sortAndUnique(out);
     }
 
+    bool hasDirtyKeys() const {
+        return !m_dirtyKeys.empty();
+    }
+
   private:
     std::unordered_map<FieldChunkKey, FieldChunk> m_fieldChunks;
     std::vector<FieldChunkKey> m_dirtyKeys;
