@@ -556,6 +556,44 @@ using PositionUploadTest = MetalGpuComputeDispatchTest;
 using PositionUploadTest = GpuComputeDispatchTest;
 #endif
 
+TEST_F(PositionUploadTest, ScatterCoverageCodesSurviveDepthQuantization) {
+    using namespace IRRender;
+    const std::uint32_t bands[] = {0u, 1u, 131071u, 262143u, 262144u, 262145u, 524286u, 524287u};
+    std::vector<float> values(256, -1.0f);
+    Buffer output{
+        values.data(),
+        values.size() * sizeof(float),
+        BUFFER_STORAGE_NONE,
+        BufferTarget::SHADER_STORAGE,
+        0
+    };
+    const std::string path = std::string(IR_TEST_GPU_SHADER_DIR) + "/c_scatter_depth_probe.glsl";
+    ShaderProgram program{std::vector{ShaderStage{path.c_str(), ShaderType::COMPUTE}}};
+    program.use();
+    output.bindBase(BufferTarget::SHADER_STORAGE, 0);
+#if defined(IR_GRAPHICS_METAL)
+    device_->dispatchCompute(256, 1, 1);
+    device_->finish();
+#else
+    ENG_API->glDispatchCompute(256, 1, 1);
+    ENG_API->glMemoryBarrier(GL_ALL_BARRIER_BITS);
+    ENG_API->glFinish();
+#endif
+    output.getSubData(0, values.size() * sizeof(float), values.data());
+    for (std::uint32_t i = 0; i < values.size(); ++i) {
+        const std::uint32_t expected = bands[i >> 5u] * 32u + (i & 31u);
+        ASSERT_GE(values[i], 0.0f);
+        ASSERT_LE(values[i], 1.0f);
+        const auto depth24 = static_cast<std::uint32_t>(double(values[i]) * 16777215.0 + 0.5);
+        EXPECT_EQ(depth24, expected) << "code " << expected;
+        if (i != 0) {
+            EXPECT_GT(values[i], values[i - 1]) << "float depth code " << expected;
+        }
+    }
+    EXPECT_EQ(values.front(), 0.0f);
+    EXPECT_EQ(values.back(), 1.0f);
+}
+
 TEST_F(PositionUploadTest, SaturatedQueuePreservesGpuOwnedPositions) {
     using namespace IRRender;
     using namespace IRComponents;
