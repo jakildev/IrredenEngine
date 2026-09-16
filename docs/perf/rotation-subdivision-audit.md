@@ -91,8 +91,11 @@ The remaining work below still applies.
    and continuous-camera temporal checks as follow-ups. Continue reducing repeated
    per-axis storage/finalization work using measured counters; preserve finite
    geometry, trixel reconstruction and shadow coverage.
-5. Inspect the subdivision-dependent light-volume and finite-caster costs; measure
-   bounds, density and memory traffic before changing either representation.
+5. [Light-volume candidate pruning](light-volume-candidate-pruning.md) skips
+   occlusion reads for neighbors that cannot win, with identical lighting-demo
+   captures. Continue measuring subdivision-dependent light-volume and
+   finite-caster bounds, density and memory traffic before changing either
+   representation.
 6. [Native CPU sampling](native-cpu-sampling.md) now distinguishes presentation
    waiting from active update/bounds/upload stacks. [Contiguous update spans](voxel-update-spans.md)
    are now batched. [Mixed upload saturation and Metal copy ordering](static-upload-saturation.md)

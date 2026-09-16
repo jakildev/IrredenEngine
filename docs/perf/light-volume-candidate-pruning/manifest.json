@@ -1,0 +1,50 @@
+{
+  "head": "28d4416e7533f163e0ebadf2c7f0448619536b9a",
+  "changes": " M engine/render/src/shaders/c_propagate_light_volume.glsl\n M engine/render/src/shaders/metal/c_propagate_light_volume.metal\n",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "binary_sha256": "32a46e2124595f43d08d0515d5ecbcb1376f84d46114bfe80fc1d2170adb1b28",
+  "shader_sha256": "cc62844e495927d4daf1990fda552d516612fa1e1b64fe67f1c25ee769810c6e",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "120",
+    "IRPerfGrid",
+    "--mode",
+    "voxel_set",
+    "--grid-size",
+    "64",
+    "--wave-freeze",
+    "--yaw",
+    "0.785398163",
+    "--zoom",
+    "4",
+    "--auto-profile",
+    "600"
+  ],
+  "runs": [
+    {
+      "index": 1,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    },
+    {
+      "index": 2,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    },
+    {
+      "index": 3,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    }
+  ]
+}
