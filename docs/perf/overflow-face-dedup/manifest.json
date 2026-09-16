@@ -1,0 +1,50 @@
+{
+  "head": "f6ec439d9b71a1a4cbabca949e44b5fa5af208ca",
+  "changes": " M engine/render/src/shaders/c_voxel_to_trixel_stage_1_body.glsl\n M engine/render/src/shaders/metal/c_voxel_to_trixel_stage_1_body.metal\n",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "binary_sha256": "32a46e2124595f43d08d0515d5ecbcb1376f84d46114bfe80fc1d2170adb1b28",
+  "shader_sha256": "950ec5215796b0ab76812b46e371db9e0f9008edd8959daa8b85e4a988e1b3f7",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "120",
+    "IRPerfGrid",
+    "--mode",
+    "voxel_set",
+    "--grid-size",
+    "64",
+    "--wave-freeze",
+    "--yaw",
+    "0.785398163",
+    "--zoom",
+    "4",
+    "--auto-profile",
+    "600"
+  ],
+  "runs": [
+    {
+      "index": 1,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    },
+    {
+      "index": 2,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    },
+    {
+      "index": 3,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    }
+  ]
+}

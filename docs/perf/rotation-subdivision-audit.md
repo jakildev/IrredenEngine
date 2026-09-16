@@ -86,11 +86,11 @@ The remaining work below still applies.
    whose shadows can reach visible receivers. Compare existing culling toggles
    before introducing another culling structure.
 4. [Frozen coverage arbitration](../design/frozen-scatter-flicker.md) resolves the
-   observed exact/margin flicker. Retry the rejected
-   [duplicate face-record optimization](per-axis-single-face-writer.md). against that stable control; retain same-class ties and continuous-camera
-   temporal checks as follow-ups. Continue reducing repeated per-axis
-   storage/overflow/finalization work using the measured counters. Preserve finite geometry, trixel reconstruction and depth ordering;
-   do not trade away shadow coverage or blur artifacts to improve timing.
+   observed exact/margin flicker. [Overflow face deduplication](overflow-face-dedup.md)
+   now passes stable controls and reduces scatter work. Retain same-class ties
+   and continuous-camera temporal checks as follow-ups. Continue reducing repeated
+   per-axis storage/finalization work using measured counters; preserve finite
+   geometry, trixel reconstruction and shadow coverage.
 5. Inspect the subdivision-dependent light-volume and finite-caster costs; measure
    bounds, density and memory traffic before changing either representation.
 6. [Native CPU sampling](native-cpu-sampling.md) now distinguishes presentation
