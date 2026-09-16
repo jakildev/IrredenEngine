@@ -57,6 +57,8 @@ MTL::Device *metalDevice();
 CA::MetalLayer *metalLayer();
 MTL::CommandQueue *metalCommandQueue();
 MTL::CommandBuffer *metalCommandBuffer();
+// Includes the active GPU timing scope; the caller ends the encoder.
+MTL::BlitCommandEncoder *createMetalBlitEncoder();
 CA::MetalDrawable *metalDrawable();
 MTL::DepthStencilState *currentMetalDepthStencilState();
 
@@ -107,16 +109,11 @@ MTL::Texture *metalCurrentDepthTexture();
 MTL::PixelFormat metalCurrentColorPixelFormat();
 MTL::PixelFormat metalCurrentDepthPixelFormat();
 
-// Buffer orphaning: subData() orphans an MTL::Buffer (allocates a fresh
-// one + defers release of the old) only when the buffer has been encoded
-// into a command encoder since the previous wait point. The
-// encoded-since-last-wait set drives that decision — the set is populated
-// at every encoder bind site (see metal_render_impl.cpp's
-// bindRenderResources / bindComputeResources / dispatch + draw paths) and
-// cleared inside releaseDeferredMetalBuffers() after the GPU has finished
-// consuming the prior frame's encoders. Until a buffer enters the set in
-// the current frame, subData() writes in place — no alloc, no full-buffer
-// copy. See metal_runtime.cpp for the lifetime contract.
+// Encoded buffers retain their old snapshot until queued GPU work completes.
+// Aligned partial uploads orphan and copy untouched spans on the GPU; byte-
+// unaligned uploads wait before patching. Unencoded buffers can be patched
+// directly. Encoder bindings and copy destinations enter the encoded set;
+// releaseDeferredMetalBuffers clears it only after GPU completion.
 void deferReleaseMetalBuffer(MTL::Buffer *buffer);
 void releaseDeferredMetalBuffers();
 void replaceMetalBufferInBindings(MTL::Buffer *oldBuffer, MTL::Buffer *newBuffer);
