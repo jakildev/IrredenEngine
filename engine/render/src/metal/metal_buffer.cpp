@@ -32,8 +32,8 @@ class MetalBufferImpl final : public BufferImpl {
 
     ~MetalBufferImpl() override {
         // Drop any sticky bind slot that still references this handle so a
-        // later dispatch's bind pass can't re-bind the freed buffer (#2412 —
-        // the buffer twin of the texture dtor's untrackMetalTexture call).
+        // later dispatch cannot re-bind the freed buffer. This is the buffer
+        // twin of the texture destructor's untrackMetalTexture call.
         untrackMetalBuffer(m_buffer);
         if (m_buffer != nullptr) {
             m_buffer->release();
