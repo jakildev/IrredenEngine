@@ -708,10 +708,10 @@ struct C_VoxelSetNew {
     // ordered, `recordCount()` of them. Three sources in priority order: the
     // staging vector when staged; `rotationSourceVoxels_` when a GRID spin has
     // left the span in a re-voxelized arrangement (its non-emptiness IS that
-    // state — see the member's contract above), so the authored snapshot rather
-    // than the frame's resampled colors is what a save or a re-stage carries;
-    // otherwise the span. The span is the fallback when the two sizes diverge
-    // (a rare span-clamp) rather than risking a short read.
+    // state), so the authored snapshot rather than the frame's resampled
+    // colors is what a save or a re-stage carries; otherwise the span. The
+    // span is the fallback when the two sizes diverge (a rare span-clamp)
+    // rather than risking a short read.
     std::span<const C_Voxel> authoredRecords() const {
         if (!pendingVoxels_.empty()) {
             return std::span<const C_Voxel>{pendingVoxels_.data(), pendingVoxels_.size()};
@@ -735,10 +735,12 @@ struct C_VoxelSetNew {
     //
     // Touches only this set. It does NOT return the span to the pool — that is
     // a reach into the canvas entity, which `engine/prefabs/CLAUDE.md`
-    // §"Component method rules" keeps out of component methods — so the only
-    // caller is `IRPrefab::VoxelPool::restageSet` (`voxel_pool_teardown.hpp`),
-    // which captures the span descriptor first and deallocates after. Never
-    // call this bare: a set detached without the pool release leaks its span.
+    // §"Component method rules" keeps out of component methods. Pair it with
+    // that release, in this order: capture the span descriptor, the priority
+    // count and the canvas id first (the call zeroes all of them), let the
+    // set recover its records while the pool storage they alias is still
+    // live, then drop the priority contribution and deallocate. A set
+    // detached without the pool release leaks its span.
     //
     // State derived from the span is dropped and re-derived by the next
     // `seedIntoPool`: the per-trixel-priority count is recounted from the
@@ -764,8 +766,8 @@ struct C_VoxelSetNew {
         globalPositions_ = {};
         voxels_ = {};
         // With the span gone, "the span is in a re-voxelized arrangement" stops
-        // being a state this set can be in; the authored records it held moved
-        // into `pendingVoxels_` above.
+        // being a state this set can be in; the authored records it held are
+        // already in `pendingVoxels_`.
         rotationSourceVoxels_.clear();
         rotationSourceVoxels_.shrink_to_fit();
         // A staged or empty set still had no span to release, but a saved
@@ -786,7 +788,7 @@ struct C_VoxelSetNew {
     // the set pool-resident (`numVoxels_ > 0`), or empty (`numVoxels_ == 0`) on
     // an allocation mismatch. `size_` must already be set,
     // `src.size() == product(size_)`, and `perTrixelPriorityVoxelCount_` is
-    // zero — every caller starts from a span-less set.
+    // zero (a span-less set contributes no priority count).
     void seedIntoPool(vec3 origin, std::span<const C_Voxel> src, IREntity::EntityId canvas) {
         canvasEntity_ = canvas;
         const ivec3 extent = size_;

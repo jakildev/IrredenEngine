@@ -198,8 +198,8 @@ inline void adjustPerTrixelPriorityVoxelCount(int delta, IREntity::EntityId canv
 
 // Point a resident range at a GPU transform slot, or back at
 // `IRRender::kVoxelTransformStatic`. The pool queues the slice so
-// UPDATE_VOXEL_POSITIONS_GPU re-seeds binding 17. The seed path uses this to
-// carry a set's slot onto a freshly allocated span.
+// UPDATE_VOXEL_POSITIONS_GPU re-seeds binding 17; a freshly allocated span
+// takes its owning set's slot this way.
 inline void setTransformIndexForRange(
     std::size_t startIndex,
     std::size_t count,
