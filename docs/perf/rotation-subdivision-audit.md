@@ -114,8 +114,8 @@ and the separation between render visibility and simulation cadence.
    each optimization PR.
 8. Establish capacity-verified scaling to 100³ simple entities and report tail
    latency as well as means. The [million-entity capacity audit](million-entity-capacity.md)
-   verifies creation in a 128³ pool but exposes dropped rotated overflow faces;
-   correct that capacity limit before treating its timings as complete coverage.
+   verifies creation in a 128³ pool. [Conservative overflow demand sizing](overflow-demand-capacity.md)
+   eliminates observed drops and establishes a more expensive correctness baseline.
    Measure memory and capacity-sized work before choosing growth or paged pools.
    Include continuous camera motion and independent entity motion; keep viewport
    rejection separate from simulation interest.

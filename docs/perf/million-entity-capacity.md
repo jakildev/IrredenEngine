@@ -35,6 +35,10 @@ separate config snapshots are essential provenance. The pool128 config applies
 to every case except `defaultpool64-yaw45`. Source head is `8085ce7bf`; only the
 ignored runtime config was temporarily overridden, then restored.
 
+The [overflow demand follow-up](overflow-demand-capacity.md) corrects the
+capacity limit below and records its memory and timing costs. This audit
+retains the original incomplete-coverage measurements.
+
 ## The next capacity limit is face overflow
 
 Both million/45° runs report **671,737 dropped overflow entries**, with capacity
