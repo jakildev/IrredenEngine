@@ -164,15 +164,20 @@ shot table in that measurement run); the numbers above are q0-residual +
 near-cardinal only, and the NO-GO decision below rests on the design size
 bound rather than a measured far-quadrant peak.
 
-**Yawed-election follow-up: NO-GO (recorded, no follow-up issue filed).**
-The epic's optional follow-up — switching the cardinal store's election
-metric from the un-yawed `x+y+z` to the yawed depth, to shrink overflow near
-the inverted-metric 180° quadrant — is unneeded for correctness now the lane
-exists. The view mask's filter already bounds overflow at ≤ view-visible
-faces ≈ O(screen cells), independent of quadrant; zero drops were observed
-at every measured pose including the inverted-metric far quadrants. The
-metric change remains available as a pure perf refinement if a future
-measurement finds the cap under real pressure.
+**Historical yawed-election follow-up: no-pressure conclusion superseded.**
+
+This historical no-pressure conclusion is limited to the workloads measured
+here. The [million-entity capacity audit](../perf/million-entity-capacity.md)
+records 671,737 dropped entries at capacity 524,288 after duplicate-face
+removal. Overflow sizing and early rejection therefore remain active work;
+screen-cell proportional sizing alone is not a completeness guarantee.
+The original decision deferred switching the cardinal store's election
+metric from un-yawed `x+y+z` to yawed depth, based on the zero-drop samples
+in the table above and an assumed screen-cell bound. Those samples covered
+quadrant 0 and near-cardinal poses, not a far-quadrant capacity proof. The
+metric change remains a candidate for reducing demand, but does not by itself
+prove complete storage for all contributing faces. Capacity handling and
+early rejection require fresh validation against the saturated workload.
 
 **Accepted drift.** Overflow-lit slivers carry no screen-space AO — they own
 no per-axis canvas cell, and AO is a canvas-cell-resident quantity. No other

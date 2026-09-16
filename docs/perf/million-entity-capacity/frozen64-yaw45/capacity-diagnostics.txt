@@ -1,0 +1,9 @@
+run-1.log
+[2026-09-15 23:10:32.929] [EngineLog] [info] voxel_pool_edge from config.lua: 128
+[2026-09-15 23:10:33.779] [ClientLog] [info] Creating perf_grid mode=voxel_set grid_size=64 entity_count=262144 spacing=1 wave_mode=per_cell wave_amplitude=5 wave_period=4
+ir-run: RESULT=CLEAN exe=IRPerfGrid exit=0
+
+run-2.log
+[2026-09-15 23:10:42.133] [EngineLog] [info] voxel_pool_edge from config.lua: 128
+[2026-09-15 23:10:42.405] [ClientLog] [info] Creating perf_grid mode=voxel_set grid_size=64 entity_count=262144 spacing=1 wave_mode=per_cell wave_amplitude=5 wave_period=4
+ir-run: RESULT=CLEAN exe=IRPerfGrid exit=0
