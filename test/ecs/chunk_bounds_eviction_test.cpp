@@ -15,6 +15,7 @@
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/systems/system_rebuild_detached_voxels.hpp>
+#include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 #include <irreden/voxel/voxel_pool_api.hpp>
 
 // Both cull caches depend on allocated length, voxel alpha, and world
@@ -697,3 +698,55 @@ TEST_F(DetachedCullBoundTest, DetachedEditAdmitsOnceThenReturnsToTheOverlapAnswe
 }
 
 } // namespace
+
+TEST(VoxelUpdateSpans, CoalescesOnlyContiguousRangesWithIdenticalOwnership) {
+    using Update = IRSystem::System<IRSystem::UPDATE_VOXEL_SET_CHILDREN>;
+    C_VoxelPool first(ivec3(16, 1, 1));
+    C_VoxelPool second(ivec3(16, 1, 1));
+    std::vector<Update::PendingRange> ranges;
+    Update::appendPendingRange(ranges, {&first, 0, 2, true});
+    Update::appendPendingRange(ranges, {&first, 2, 3, true});
+    Update::appendPendingRange(ranges, {&first, 6, 1, true});
+    Update::appendPendingRange(ranges, {&first, 7, 1, false});
+    Update::appendPendingRange(ranges, {&second, 8, 1, false});
+    Update::appendPendingRange(ranges, {&second, 9, 2, false});
+    ASSERT_EQ(ranges.size(), 4u);
+    EXPECT_EQ(ranges[0].pool_, &first);
+    EXPECT_EQ(ranges[0].startIdx_, 0u);
+    EXPECT_EQ(ranges[0].count_, 5u);
+    EXPECT_TRUE(ranges[0].upload_);
+    EXPECT_EQ(ranges[1].startIdx_, 6u);
+    EXPECT_EQ(ranges[1].count_, 1u);
+    EXPECT_TRUE(ranges[1].upload_);
+    EXPECT_EQ(ranges[2].pool_, &first);
+    EXPECT_EQ(ranges[2].startIdx_, 7u);
+    EXPECT_EQ(ranges[2].count_, 1u);
+    EXPECT_FALSE(ranges[2].upload_);
+    EXPECT_EQ(ranges[3].pool_, &second);
+    EXPECT_EQ(ranges[3].startIdx_, 8u);
+    EXPECT_EQ(ranges[3].count_, 3u);
+    EXPECT_FALSE(ranges[3].upload_);
+}
+
+TEST(VoxelUpdateSpans, EndTickInvalidatesGpuSpansWithoutUploadingThem) {
+    using Update = IRSystem::System<IRSystem::UPDATE_VOXEL_SET_CHILDREN>;
+    C_VoxelPool pool(ivec3(kChunk * 2, 1, 1));
+    pool.allocateVoxels(kChunk * 2);
+    seedSlot(pool, 0, vec3(0), true);
+    seedSlot(pool, kChunk, vec3(10), true);
+    pool.rebuildChunkBounds(CardinalIndex::k0);
+    pool.clearPendingPositionRanges();
+    seedSlot(pool, 0, vec3(30), true);
+    seedSlot(pool, kChunk, vec3(40), true);
+    Update update;
+    update.pendingByWorker_.resize(2);
+    Update::appendPendingRange(update.pendingByWorker_[0], {&pool, 0, 1, true});
+    Update::appendPendingRange(update.pendingByWorker_[1], {&pool, kChunk, 1, false});
+    update.endTick();
+    ASSERT_EQ(pool.getPendingPositionRanges().size(), 1u);
+    EXPECT_EQ(pool.getPendingPositionRanges()[0].first, 0u);
+    EXPECT_EQ(pool.getPendingPositionRanges()[0].second, 1u);
+    pool.rebuildChunkBounds(CardinalIndex::k0);
+    expectBoundsMatchOracle(pool, 0, CardinalIndex::k0);
+    expectBoundsMatchOracle(pool, 1, CardinalIndex::k0);
+}
