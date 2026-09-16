@@ -1,0 +1,6 @@
+Sampling process 65978 for 4 seconds with 1 millisecond of run time between samples
+Attempt to set cursor outside bounds -- stopping DWARF analysis of /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/perf_grid/CMakeFiles/IRPerfGrid.dir/main.cpp.o
+Attempt to set cursor outside bounds -- stopping DWARF analysis of /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/perf_grid/../../../engine/script/libIrredenEngineScripting.a(lua_script.cpp.o)
+Attempt to set cursor outside bounds -- stopping DWARF analysis of /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/perf_grid/../../../engine/world/libIrredenEngineWorld.a(world_default_registry.cpp.o)
+Sampling completed, processing symbols...
+Sample analysis of process 65978 written to file /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/save_files/perf/cpu-sampling-frozen-native/run-1.sample.txt

@@ -1,0 +1,88 @@
+Excerpt: header, main-thread root and collapsed leaf sample counts. Full trace retained locally.
+
+Analysis of sampling IRPerfGrid (pid 66745) every 1 millisecond
+Process:         IRPerfGrid [66745]
+Path:            /Users/USER/*/IRPerfGrid
+Load Address:    0x1049ec000
+Identifier:      IRPerfGrid
+Version:         0
+Code Type:       ARM64
+Platform:        macOS
+Parent Process:  bash [66665]
+Target Type:     live task
+
+Date/Time:       2026-09-15 18:42:00.038 -0700
+Launch Time:     2026-09-15 18:41:54.802 -0700
+OS Version:      macOS 26.5.2 (25F84)
+Report Version:  7
+Analysis Tool:   /usr/bin/sample
+
+Physical footprint:         1.3G
+Physical footprint (peak):  1.3G
+Idle exit:                  untracked
+----
+
+Call graph:
+    3285 Thread_111995064   DispatchQueue_1: com.apple.main-thread  (serial)
+    + 3285 start  (in dyld) + 6992  [0x18d0b7e00]
+    +   3285 main  (in IRPerfGrid) + 4968  [0x1049f4a74]
+    +     2628 IREngine::World::gameLoop()  (in IRPerfGrid) + 616  [0x104b807a4]  world.cpp:288
+    +     ! 2235 IREngine::World::render()  (in IRPerfGrid) + 200  [0x104b80dc4]  world.cpp:377
+    +     ! : 2235 IRRender::RenderManager::presentFrame()  (in IRPerfGrid) + 84  [0x104e5c520]  render_manager.cpp:219
+    +     ! :   2228 IRRender::(anonymous namespace)::MetalRenderDevice::present()  (in IRPerfGrid) + 104  [0x104e98510]  metal_render_impl.cpp:357
+    +     ! :   | 2228 -[_MTLCommandBuffer waitUntilCompleted]  (in Metal) + 76  [0x199b06944]
+    +     ! :   |   2228 _pthread_cond_wait  (in libsystem_pthread.dylib) + 980  [0x18d476128]
+    +     ! :   |     2228 __psynch_cvwait  (in libsystem_kernel.dylib) + 8  [0x18d43550c]
+    +     ! :   5 IRRender::(anonymous namespace)::MetalRenderDevice::present()  (in IRPerfGrid) + 208  [0x104e98578]  metal_render_impl.cpp:370
+    +     ! :   | 4 IRRender::releaseDeferredMetalBuffers()  (in IRPerfGrid) + 100  [0x104e9d19c]  metal_runtime.cpp:368
+
+Sort by top of stack, same collapsed (when >= 5):
+        semaphore_wait_trap  (in libsystem_kernel.dylib)        38710
+        __workq_kernreturn  (in libsystem_kernel.dylib)        9603
+        mach_msg2_trap  (in libsystem_kernel.dylib)        6603
+        __psynch_cvwait  (in libsystem_kernel.dylib)        5513
+        semaphore_wait_signal_trap  (in libsystem_kernel.dylib)        3281
+        IRSystem::System<(IRSystem::SystemName)36>::tick(unsigned long long&, IRComponents::C_VoxelSetNew&, IRComponents::C_WorldTransform const&)  (in IRPerfGrid)        1099
+        std::__function::__func<void IRSystem::SystemManager::insertTickFunction<IRComponents::C_VoxelSetNew, IRComponents::C_WorldTransform, IRSystem::detail::MakeMemberTickFn<IRSystem::System<(IRSystem::SystemName)36>, IRSystem::detail::TypeList<IRComponents::C_VoxelSetNew, IRComponents::C_WorldTransform>>::build(IRSystem::System<(IRSystem::SystemName)36>*)::'lambda'(unsigned long long, IRComponents::C_VoxelSetNew&, IRComponents::C_WorldTransform&)>(IRSystem::detail::MakeMemberTickFn<IRSystem::System<(IRSystem::SystemName)36>, IRSystem::detail::TypeList<IRComponents::C_VoxelSetNew, IRComponents::C_WorldTransform>>::build(IRSystem::System<(IRSystem::SystemName)36>*)::'lambda'(unsigned long long, IRComponents::C_VoxelSetNew&, IRComponents::C_WorldTransform&), IRSystem::RelationParams<>, std::set<unsigned long long>)::'lambda'(IREntity::ArchetypeNode*)::operator()(IREntity::ArchetypeNode*) const::'lambda'(int, int), void (int, int)>::operator()(int&&, int&&)  (in IRPerfGrid)        752
+        IRPrefab::Modifier::detail::composeForFieldVec3(glm::vec<3, float, (glm::qualifier)0>, unsigned short, std::vector<IRComponents::ModifierVec3> const&, std::vector<IRComponents::ModifierVec3> const&)  (in IRPerfGrid)        440
+        IRPrefab::Modifier::upsertBySourceInPlace(IRComponents::C_Modifiers&, unsigned short, IRComponents::TransformKind, glm::vec<3, float, (glm::qualifier)0>, unsigned long long)  (in IRPerfGrid)        409
+        IRSystem::System<(IRSystem::SystemName)59>::tick(IRComponents::C_Modifiers&)  (in IRPerfGrid)        240
+        sinf  (in libsystem_m.dylib)        213
+        IRComponents::C_PeriodicIdle::evaluateStage(float, IRComponents::PeriodStage const&) const  (in IRPerfGrid)        169
+        IRComponents::C_PeriodicIdle::tick()  (in IRPerfGrid)        160
+        (anonymous namespace)::SpinWait(unsigned int)  (in IRPerfGrid)        135
+        std::__invoke_result_impl<void, auto...>::type std::__invoke[abi:nqe210106]<void IRSystem::SystemManager::insertTickFunction<IRComponents::C_PeriodicIdle, IRComponents::C_Modifiers, IRSystem::detail::MakeMemberTickFn<IRSystem::System<(IRSystem::SystemName)15>, IRSystem::detail::TypeList<IRComponents::C_PeriodicIdle, IRComponents::C_Modifiers>>::build(IRSystem::System<(IRSystem::SystemName)15>*)::'lambda'(IRComponents::C_PeriodicIdle&, IRComponents::C_Modifiers&)>(IRSystem::detail::MakeMemberTickFn<IRSystem::System<(IRSystem::SystemName)15>, IRSystem::detail::TypeList<IRComponents::C_PeriodicIdle, IRComponents::C_Modifiers>>::build(IRSystem::System<(IRSystem::SystemName)15>*)::'lambda'(IRComponents::C_PeriodicIdle&, IRComponents::C_Modifiers&), IRSystem::RelationParams<>, std::set<unsigned long long>)::'lambda'(IREntity::ArchetypeNode*)::operator()(IREntity::ArchetypeNode*) const::'lambda'(int, int)::operator()(int, int) const::'lambda'(auto&&...), std::vector<IRComponents::C_PeriodicIdle>&, std::vector<IRComponents::C_Modifiers>&>(auto&&...)  (in IRPerfGrid)        123
+        iokit_user_client_trap  (in IOKit)        120
+        start_wqthread  (in libsystem_pthread.dylib)        112
+        IRSystem::System<(IRSystem::SystemName)36>::endTick()  (in IRPerfGrid)        108
+        _platform_memmove  (in libsystem_platform.dylib)        94
+        IRSystem::System<(IRSystem::SystemName)28>::composeNodeRows(IREntity::ArchetypeNode*, IRComponents::C_WorldTransform const&, int, int, unsigned short, unsigned short, unsigned long long, unsigned long long)  (in IRPerfGrid)        87
+        IRComponents::C_VoxelPool::ensureChunkWorldBounds(int)  (in IRPerfGrid)        86
+        semaphore_timedwait_trap  (in libsystem_kernel.dylib)        85
+        IRComponents::C_VoxelPool::markCullChunkPending(unsigned long)  (in IRPerfGrid)        82
+        IRJob::JobManager::workerId() const  (in IRPerfGrid)        82
+        cosf  (in libsystem_m.dylib)        81
+        pthread_self  (in libsystem_pthread.dylib)        76
+        IRSystem::System<(IRSystem::SystemName)85>::tick(unsigned long long, IRComponents::C_VoxelPool&, IRComponents::C_TrixelCanvasRenderBehavior const&)  (in IRPerfGrid)        63
+        glm::sineEaseInOut<float>(float const&)  (in IRPerfGrid)        53
+        _tlv_get_addr  (in libdyld.dylib)        34
+        DYLD-STUB$$pthread_self  (in IRPerfGrid)        30
+        std::__cxx_atomic_load[abi:nqe210106]<unsigned int>(std::__cxx_atomic_base_impl<unsigned int> const*, std::memory_order)  (in IRPerfGrid)        29
+        std::__function::__func<float (*)(float const&), float (float const&)>::operator()(float const&)  (in IRPerfGrid)        28
+        enki::TaskScheduler::TryRunTask(unsigned int, unsigned int, unsigned int&)  (in IRPerfGrid)        26
+        IRJob::workerId()  (in IRPerfGrid)        21
+        std::__function::__func<void IRSystem::SystemManager::insertTickFunction<IRComponents::C_Modifiers, IRSystem::detail::MakeMemberTickFn<IRSystem::System<(IRSystem::SystemName)59>, IRSystem::detail::TypeList<IRComponents::C_Modifiers>>::build(IRSystem::System<(IRSystem::SystemName)59>*)::'lambda'(IRComponents::C_Modifiers&)>(IRSystem::detail::MakeMemberTickFn<IRSystem::System<(IRSystem::SystemName)59>, IRSystem::detail::TypeList<IRComponents::C_Modifiers>>::build(IRSystem::System<(IRSystem::SystemName)59>*)::'lambda'(IRComponents::C_Modifiers&), IRSystem::RelationParams<>, std::set<unsigned long long>)::'lambda'(IREntity::ArchetypeNode*)::operator()(IREntity::ArchetypeNode*) const::'lambda'(int, int), void (int, int)>::operator()(int&&, int&&)  (in IRPerfGrid)        21
+        std::__function::__func<void IRSystem::SystemManager::insertTickFunction<IRComponents::C_PeriodicIdle, IRComponents::C_Modifiers, IRSystem::detail::MakeMemberTickFn<IRSystem::System<(IRSystem::SystemName)15>, IRSystem::detail::TypeList<IRComponents::C_PeriodicIdle, IRComponents::C_Modifiers>>::build(IRSystem::System<(IRSystem::SystemName)15>*)::'lambda'(IRComponents::C_PeriodicIdle&, IRComponents::C_Modifiers&)>(IRSystem::detail::MakeMemberTickFn<IRSystem::System<(IRSystem::SystemName)15>, IRSystem::detail::TypeList<IRComponents::C_PeriodicIdle, IRComponents::C_Modifiers>>::build(IRSystem::System<(IRSystem::SystemName)15>*)::'lambda'(IRComponents::C_PeriodicIdle&, IRComponents::C_Modifiers&), IRSystem::RelationParams<>, std::set<unsigned long long>)::'lambda'(IREntity::ArchetypeNode*)::operator()(IREntity::ArchetypeNode*) const::'lambda'(int, int), void (int, int)>::operator()(int&&, int&&)  (in IRPerfGrid)        15
+        DYLD-STUB$$cosf  (in IRPerfGrid)        13
+        __bzero  (in libsystem_platform.dylib)        12
+        semaphore_signal_trap  (in libsystem_kernel.dylib)        12
+        _xzm_free  (in libsystem_malloc.dylib)        8
+        std::__atomic_base<unsigned int, false>::load[abi:nqe210106](std::memory_order) const  (in IRPerfGrid)        8
+        _platform_memset  (in libsystem_platform.dylib)        7
+        std::__function::__func<void IRSystem::SystemManager::insertTickFunction<IRComponents::C_PeriodicIdle, IRSystem::detail::MakeMemberTickFn<IRSystem::System<(IRSystem::SystemName)14>, IRSystem::detail::TypeList<IRComponents::C_PeriodicIdle>>::build(IRSystem::System<(IRSystem::SystemName)14>*)::'lambda'(IRComponents::C_PeriodicIdle&)>(IRSystem::detail::MakeMemberTickFn<IRSystem::System<(IRSystem::SystemName)14>, IRSystem::detail::TypeList<IRComponents::C_PeriodicIdle>>::build(IRSystem::System<(IRSystem::SystemName)14>*)::'lambda'(IRComponents::C_PeriodicIdle&), IRSystem::RelationParams<>, std::set<unsigned long long>)::'lambda'(IREntity::ArchetypeNode*)::operator()(IREntity::ArchetypeNode*) const::'lambda'(int, int), void (int, int)>::operator()(int&&, int&&)  (in IRPerfGrid)        7
+        objc_msgSend  (in libobjc.A.dylib)        6
+        enki::LockLessMultiReadPipe<(unsigned char)8, enki::SubTaskSet>::ReaderTryReadBack(enki::SubTaskSet*)  (in IRPerfGrid)        5
+        kevent_id  (in libsystem_kernel.dylib)        5
+        std::__cxx_atomic_fetch_add[abi:nqe210106]<int>(std::__cxx_atomic_base_impl<int>*, int, std::memory_order)  (in IRPerfGrid)        5
+        std::set<unsigned long long>::insert[abi:nqe210106]<std::__tree_const_iterator<unsigned long long, std::__tree_node<unsigned long long, void*>*, long>>(std::__tree_const_iterator<unsigned long long, std::__tree_node<unsigned long long, void*>*, long>, std::__tree_const_iterator<unsigned long long, std::__tree_node<unsigned long long, void*>*, long>)  (in IRPerfGrid)        5
+
