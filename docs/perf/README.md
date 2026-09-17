@@ -286,6 +286,12 @@ the gate is exercised by the gate.
 - `check_regression.py` exit ≥ 2 means it could not compare at all. That
   turns the step **red** and posts no comment: an infra failure must not
   read as a perf verdict.
+- The PR-path reader takes the seed-new (empty root) path only when
+  `git ls-remote --exit-code` confirms `perf-baseline` is absent (exit 2).
+  Any other failure to reach the branch — an unreachable remote, a fetch
+  that dies after the ref was confirmed present — turns the step **red**
+  for the same reason: a baseline that exists but could not be retrieved
+  must not read as "nothing to compare against".
 
 `scripts/perf/tests/test_baseline_layouts.py` is the executed control for
 all of the above (layout resolution across empty / per-slug / legacy-flat

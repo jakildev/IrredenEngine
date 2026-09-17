@@ -180,6 +180,59 @@ check I $? "the host.json sidecar comes along"
 [[ -z "$(git -C "$LAB/work" status --porcelain)" ]]
 check I $? "the PR checkout's index and tree are untouched (archive, not checkout)"
 
+# --- J: seeded branch, remote unreachable -> RED, never seed-new -----------
+# `remote.origin.uploadpack` is the server side of every fetch and ls-remote
+# over this transport; pointing it at a failing program is a transport
+# outage with the branch still fully present on origin.
+cat > "$LAB/uploadpack-down.sh" <<'UP'
+#!/usr/bin/env bash
+echo "test-uploadpack: remote unavailable" >&2
+exit 1
+UP
+chmod +x "$LAB/uploadpack-down.sh"
+git -C "$LAB/work" config remote.origin.uploadpack "$LAB/uploadpack-down.sh"
+run_reader; rc=$?
+[[ $rc -ne 0 ]]
+check J $? "a seeded baseline behind an unreachable remote fails the step (rc=$rc)"
+if grep -q "seed-new path\." "$LAB/reader-out.txt"; then check J 1 "seed-new path NOT taken"; \
+  else check J 0 "seed-new path NOT taken"; fi
+grep -q "refusing to treat an unreachable baseline as seed-new" "$LAB/reader-out.txt"
+check J $? "the outage is named, not swallowed"
+[[ -z "$READER_ROOT" ]]
+check J $? "no baseline root is emitted for the compare step to trust"
+
+# --- K: ref confirmed present, then the transfer itself fails -> RED -------
+# First server invocation (the existence query) is real; the second (the
+# fetch) dies mid-transport — the ref is known to exist, so this can only
+# be an outage.
+cat > "$LAB/uploadpack-flaky.sh" <<UP
+#!/usr/bin/env bash
+STAMP="$LAB/uploadpack-flaky.stamp"
+if [[ -f "\$STAMP" ]]; then
+  echo "test-uploadpack: dropping the transfer after a successful query" >&2
+  exit 1
+fi
+touch "\$STAMP"
+exec git upload-pack "\$@"
+UP
+chmod +x "$LAB/uploadpack-flaky.sh"
+rm -f "$LAB/uploadpack-flaky.stamp"
+git -C "$LAB/work" config remote.origin.uploadpack "$LAB/uploadpack-flaky.sh"
+run_reader; rc=$?
+[[ $rc -ne 0 ]]
+check K $? "a fetch that fails after the ref was confirmed present fails the step (rc=$rc)"
+[[ -f "$LAB/uploadpack-flaky.stamp" ]]
+check K $? "the existence query reached the server before the transfer was dropped"
+if grep -q "seed-new path\." "$LAB/reader-out.txt"; then check K 1 "seed-new path NOT taken"; \
+  else check K 0 "seed-new path NOT taken"; fi
+git -C "$LAB/work" config --unset remote.origin.uploadpack
+
+# --- L: remote healthy again -> the reader recovers (arms J/K left no state)
+run_reader; rc=$?
+check L $rc "materialize exits 0 once the remote is reachable again"
+[[ -f "$READER_ROOT/$SKU_A/manifest.json" ]]
+check L $? "the seeded baseline is materialized again"
+
 # --- C: re-running with identical input commits nothing --------------------
 BEFORE=$(commits_on_branch)
 run_writer "$LAB/head-a"; rc=$?

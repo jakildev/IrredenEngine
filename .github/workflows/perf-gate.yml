@@ -131,7 +131,15 @@ jobs:
         run: |
           ROOT="$RUNNER_TEMP/perf-baseline/docs/perf/baseline_latest"
           mkdir -p "$ROOT"
-          if git fetch --no-tags origin "$BASELINE_BRANCH"; then
+          # Only a CONFIRMED absent ref may take the seed-new path. `ls-remote
+          # --exit-code` exits 2 for "no such ref" and something else for an
+          # unreachable or misbehaving remote; folding the latter into
+          # seed-new would turn a fetch outage into a green comparison.
+          LS_RC=0
+          git ls-remote --exit-code --heads origin "$BASELINE_BRANCH" >/dev/null || LS_RC=$?
+          if [[ "$LS_RC" -eq 0 ]]; then
+            # The ref is known to exist, so a failure here is red (-e).
+            git fetch --no-tags origin "$BASELINE_BRANCH"
             if git cat-file -e "FETCH_HEAD:docs/perf/baseline_latest" 2>/dev/null; then
               # archive, not `checkout --`: no index mutation in the PR checkout.
               git archive FETCH_HEAD docs/perf/baseline_latest \
@@ -141,8 +149,11 @@ jobs:
             else
               echo "perf-gate: $BASELINE_BRANCH carries no baseline yet — seed-new path."
             fi
-          else
+          elif [[ "$LS_RC" -eq 2 ]]; then
             echo "perf-gate: $BASELINE_BRANCH does not exist yet — seed-new path."
+          else
+            echo "perf-gate: could not query origin for $BASELINE_BRANCH (git ls-remote exit $LS_RC); refusing to treat an unreachable baseline as seed-new." >&2
+            exit 1
           fi
           echo "root=$ROOT" >> "$GITHUB_OUTPUT"
 
