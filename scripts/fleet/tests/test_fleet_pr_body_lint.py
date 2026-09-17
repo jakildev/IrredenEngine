@@ -135,6 +135,49 @@ class FleetPrBodyLintTests(unittest.TestCase):
         )
         self.assertEqual(self.run_lint(evidence_body(1), issue=mixed).returncode, 2)
 
+    def test_suffixed_acceptance_heading_is_matched_and_review_heading_is_not(self):
+        suffixed = snapshot(
+            comments=[
+                {
+                    "body": (
+                        "## Plan: fixture\n\n"
+                        "### Acceptance criteria (phase-tagged; every gating criterion "
+                        "implementer-executable)\n"
+                        + "\n".join(
+                            f"{number}. {criterion}"
+                            for number, criterion in enumerate(CRITERIA, 1)
+                        )
+                    )
+                }
+            ]
+        )
+        result = self.run_lint(evidence_body(0), issue=suffixed)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("required=6, present=0", result.stdout)
+
+        review_only = snapshot(
+            comments=[
+                {
+                    "body": (
+                        "## Plan: fixture\n\n### Acceptance criteria review\n"
+                        "1. not a real criterion\n"
+                    )
+                }
+            ]
+        )
+        self.assertIn(
+            "no acceptance criteria", self.run_lint(evidence_body(0), issue=review_only).stdout
+        )
+
+    def test_superseded_plan_without_acceptance_section_keeps_earlier_criteria(self):
+        comments = [
+            {"body": PLAN},
+            {"body": "## Plan: revision 2\n\n### Approach\nRevised approach text."},
+        ]
+        result = self.run_lint(evidence_body(0), issue=snapshot(comments=comments))
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("required=6, present=0", result.stdout)
+
     def test_replan_review_and_corrections_follow_thread_authority(self):
         comments = [
             {"body": "## Plan\n\n### Acceptance criteria\n1. obsolete"},
