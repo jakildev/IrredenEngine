@@ -388,6 +388,7 @@ int World::entityCountOverride() {
 
 void World::enableFrameTiming(bool enabled) {
     m_frameTimingEnabled = enabled;
+    IRRender::device()->setGpuFrameTimingEnabled(enabled);
     m_systemManager.setTimingEnabled(enabled);
     if (enabled) {
         m_frameTimesMs.clear();
@@ -407,6 +408,24 @@ void World::buildAndWriteProfileReport() {
 
     IRProfile::ProfileReport report;
     report.totalFrames_ = static_cast<uint32_t>(m_frameTimesMs.size());
+    const auto &gpuFrame = IRRender::device()->gpuFrameTimingStats();
+    report.gpuFrameTimingSupported_ = gpuFrame.supported_;
+    report.gpuFrameAttempted_ = gpuFrame.attemptedFrames_;
+    report.gpuFrameInvalid_ = gpuFrame.invalidFrames_;
+    report.gpuFrameCommandBuffers_ = gpuFrame.commandBuffers_;
+    if (gpuFrame.validFrames_ > 0) {
+        for (const auto &[name, metric] :
+             {std::pair{"envelope", gpuFrame.envelope_},
+              std::pair{"commandBufferSpans", gpuFrame.commandBufferSpans_}}) {
+            report.gpuFrameTimings_.push_back(
+                {name,
+                 static_cast<float>(metric.totalMs_),
+                 static_cast<float>(metric.minMs_),
+                 static_cast<float>(metric.maxMs_),
+                 static_cast<uint32_t>(gpuFrame.validFrames_)}
+            );
+        }
+    }
     report.frameTimesMs_ = std::move(m_frameTimesMs);
     report.totalUpdateTicks_ = m_frameTotalUpdateTicks;
     report.maxUpdateTicksPerFrame_ = m_frameMaxUpdateTicksPerFrame;

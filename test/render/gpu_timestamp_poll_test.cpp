@@ -133,4 +133,83 @@ TEST_F(GpuTimestampPollTest, ExistingBooleanBackendAdaptsToPolling) {
     EXPECT_EQ(device_.RenderDevice::pollTimestampPairMs(1, ms), TimestampReadStatus::READY);
     EXPECT_FLOAT_EQ(ms, 2.5f);
 }
+
+TEST(GpuFrameTimingTest, SplitSubmissionsKeepEnvelopeSeparateFromSpanSum) {
+    GpuFrameTimingAccumulator timing;
+    timing.reset(true, true);
+    timing.beginFrame();
+    timing.addCompletedBuffer(10.000, 10.002, true);
+    timing.addCompletedBuffer(10.005, 10.008, true);
+    timing.endFrame();
+    const auto &stats = timing.stats();
+    EXPECT_EQ(stats.attemptedFrames_, 1u);
+    EXPECT_EQ(stats.validFrames_, 1u);
+    EXPECT_EQ(stats.commandBuffers_, 2u);
+    EXPECT_NEAR(stats.envelope_.totalMs_, 8.0, 1e-8);
+    EXPECT_NEAR(stats.commandBufferSpans_.totalMs_, 5.0, 1e-8);
+    timing.endFrame();
+    EXPECT_EQ(stats.validFrames_, 1u);
+}
+
+TEST(GpuFrameTimingTest, FailedOrMissingIntervalsNeverPublishPartialFrames) {
+    GpuFrameTimingAccumulator timing;
+    timing.reset(true, true);
+    for (const auto invalidEnd :
+         {0.0,
+          9.0,
+          std::numeric_limits<double>::infinity(),
+          std::numeric_limits<double>::quiet_NaN()}) {
+        timing.beginFrame();
+        timing.addCompletedBuffer(10.0, 10.001, true);
+        timing.addCompletedBuffer(10.0, invalidEnd, true);
+        timing.endFrame();
+    }
+    timing.beginFrame();
+    timing.addCompletedBuffer(10.0, 10.001, false);
+    timing.endFrame();
+    timing.beginFrame();
+    timing.endFrame();
+    EXPECT_EQ(timing.stats().attemptedFrames_, 6u);
+    EXPECT_EQ(timing.stats().invalidFrames_, 6u);
+    EXPECT_EQ(timing.stats().validFrames_, 0u);
+    EXPECT_EQ(timing.stats().commandBuffers_, 0u);
+}
+
+TEST(GpuFrameTimingTest, ResetExcludesOldAndOutOfFrameSubmissions) {
+    GpuFrameTimingAccumulator timing;
+    timing.reset(true, true);
+    timing.beginFrame();
+    timing.addCompletedBuffer(10.0, 10.1, true);
+    timing.reset(true, true);
+    timing.addCompletedBuffer(10.2, 10.3, true);
+    timing.endFrame();
+    EXPECT_EQ(timing.stats().attemptedFrames_, 0u);
+    timing.beginFrame();
+    timing.addCompletedBuffer(20.0, 20.001, true);
+    timing.endFrame();
+    EXPECT_EQ(timing.stats().validFrames_, 1u);
+    EXPECT_NEAR(timing.stats().envelope_.totalMs_, 1.0, 1e-8);
+    timing.reset(false, true);
+    timing.beginFrame();
+    timing.addCompletedBuffer(30.0, 30.1, true);
+    timing.endFrame();
+    EXPECT_EQ(timing.stats().attemptedFrames_, 0u);
+    TimestampDevice unsupported;
+    unsupported.setGpuFrameTimingEnabled(true);
+    EXPECT_FALSE(unsupported.gpuFrameTimingStats().supported_);
+}
+
+TEST(GpuFrameTimingTest, InterruptedFrameIsCountedAsInvalid) {
+    GpuFrameTimingAccumulator timing;
+    timing.reset(true, true);
+    timing.beginFrame();
+    timing.addCompletedBuffer(10.0, 10.001, true);
+    timing.beginFrame();
+    timing.addCompletedBuffer(20.0, 20.002, true);
+    timing.endFrame();
+    EXPECT_EQ(timing.stats().attemptedFrames_, 2u);
+    EXPECT_EQ(timing.stats().invalidFrames_, 1u);
+    EXPECT_EQ(timing.stats().validFrames_, 1u);
+    EXPECT_NEAR(timing.stats().envelope_.totalMs_, 2.0, 1e-8);
+}
 } // namespace

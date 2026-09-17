@@ -1,0 +1,43 @@
+{
+  "head": "740788e426290d99779c8889061236cb58b7a3b1",
+  "changes": " M docs/design/gpu-stage-timing-cost-model.md\n M docs/perf/rotation-subdivision-audit.md\n M engine/profile/include/irreden/profile/profile_report.hpp\n M engine/profile/src/profile_report.cpp\n M engine/render/include/irreden/render/render_device.hpp\n M engine/render/src/metal/metal_render_impl.cpp\n M engine/world/src/world.cpp\n M scripts/perf/compare_perf_runs.py\n M scripts/perf/repeat_profile.py\n M scripts/perf/test_profile_parser.py\n M test/render/gpu_timestamp_poll_test.cpp\n?? docs/perf/gpu-frame-accounting.md\n?? docs/perf/gpu-frame-accounting/\n?? docs/pr-screenshots/codex/gpu-frame-accounting/\n?? engine/render/include/irreden/render/gpu_frame_timing.hpp\n",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "binary_sha256": "eb97bc105780092e19907db4bcfc1a4270b2b9b8bb6926fef5f3b5c878056a33",
+  "shader_sha256": "7d819e2a4b3b391cc18c5cd26e454263045b611101c1e626d605f47a9a4fc657",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "300",
+    "IRPerfGrid",
+    "--mode",
+    "voxel_set",
+    "--grid-size",
+    "64",
+    "--wave-freeze",
+    "--yaw",
+    "0.785398163",
+    "--zoom",
+    "4",
+    "--no-overlay",
+    "--auto-profile",
+    "300"
+  ],
+  "runs": [
+    {
+      "index": 1,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    },
+    {
+      "index": 2,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    }
+  ]
+}

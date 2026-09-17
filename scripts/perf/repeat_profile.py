@@ -203,7 +203,10 @@ def main() -> int:
             destination = output / f"run-{index}.txt"
             shutil.copy2(report, destination)
             row = parse_report(destination, f"run-{index}")
-            run["gpu_measured"] = any(stage.avg_ms > 0 for stage in row.gpu_stages)
+            run["gpu_measured"] = (
+                any(stage.avg_ms > 0 for stage in row.gpu_stages)
+                or (row.gpu_frame.supported is True and row.gpu_frame.valid > 0)
+            )
             rows.append(row)
         (output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
         if (
@@ -223,6 +226,12 @@ def main() -> int:
         )
 
     metrics = {"frame avg": [row.frame.avg for row in rows]}
+    frame_names = sorted({metric.name for row in rows for metric in row.gpu_frame.metrics})
+    for name in frame_names:
+        values = [next((m.avg_ms for m in row.gpu_frame.metrics if m.name == name), None)
+                  for row in rows]
+        if all(value is not None for value in values):
+            metrics[f"GPU frame {name}"] = values
     names = sorted({stage.name for row in rows for stage in row.gpu_stages})
     for name in names:
         stages = [row.gpu_by_name(name) for row in rows]
@@ -233,6 +242,13 @@ def main() -> int:
         lines.append(
             f"| {name} | {statistics.mean(values):.3f} | {min(values):.3f}–{max(values):.3f} |"
         )
+    lines.extend(["",
+                  "| Run | Frame GPU supported | Valid / attempted | Invalid | Command buffers |",
+                  "|---|---|---:|---:|---:|"])
+    for index, row in enumerate(rows, 1):
+        coverage = row.gpu_frame
+        lines.append(f"| {index} | {coverage.supported} | {coverage.valid} / {coverage.attempted} "
+                     f"| {coverage.invalid} | {coverage.command_buffers} |")
     (output / "summary.md").write_text("\n".join(lines) + "\n")
     print(output / "summary.md")
     return 0

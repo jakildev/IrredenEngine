@@ -63,6 +63,30 @@ class GpuReportParserTest(unittest.TestCase):
             path.write_text("--- Voxel cull stats ---\nVisible 6144.0 6144 12\n")
             self.assertIsNone(parse_report(path, "legacy").cull.avg_axis_entries)
 
+    def test_frame_gpu_is_separate_and_preserves_unavailability(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "profile.txt"
+            path.write_text(
+                "--- GPU stage timing ---\ncell 1.0 0.5 2.0 8\n"
+                "--- GPU frame timing ---\n"
+                "Coverage: supported=1 attempted=10 valid=8 invalid=2 commandBuffers=16\n"
+                "envelope 8.000 6.000 10.000 8\ncommandBufferSpans 5.000 4.000 7.000 8\n"
+            )
+            report = parse_report(path, "native")
+            self.assertEqual([m.name for m in report.gpu_stages], ["cell"])
+            self.assertEqual(report.gpu_frame.metrics[0].avg_ms, 8.0)
+            self.assertEqual(report.gpu_frame.metrics[1].avg_ms, 5.0)
+            self.assertEqual((report.gpu_frame.valid, report.gpu_frame.invalid,
+                              report.gpu_frame.command_buffers), (8, 2, 16))
+            path.write_text("--- GPU frame timing ---\n"
+                            "Coverage: supported=0 attempted=0 valid=0 invalid=0 "
+                            "commandBuffers=0\n")
+            unavailable = parse_report(path, "unsupported").gpu_frame
+            self.assertIs(unavailable.supported, False)
+            self.assertEqual(unavailable.metrics, [])
+            path.write_text("--- GPU stage timing ---\n")
+            self.assertIsNone(parse_report(path, "legacy").gpu_frame.supported)
+
     def test_other_sections_cannot_become_gpu_rows(self):
         rows = self.parse(
             "voxelStage1 1.250 0.500 3.750 299\n"
