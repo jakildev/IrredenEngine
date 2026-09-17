@@ -275,7 +275,8 @@ Bash calls until the next fresh launch), add `--repo jakildev/irreden` to `gh` c
 12. **Reset** per FLEET-RUNTIME.md § "Per-iteration shutdown":
     `fleet-iteration-summary <basename> "#<issue>: <title>. PR: #<N>. <snags, under 100 words>"`,
     `fleet-claim release-worktree <basename>`, then `start-next-task` in the current
-    cwd's repo; print `[worker] Iteration complete. Will re-fire on next dispatcher trigger.` and exit.
+    cwd's repo (Codex runtime: `fleet-start-next-task`); print
+    `[worker] Iteration complete. Will re-fire on next dispatcher trigger.` and exit.
 
 ## Mode behavior
 

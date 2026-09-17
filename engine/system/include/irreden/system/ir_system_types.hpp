@@ -11,7 +11,7 @@ namespace IRSystem {
 
 using SystemId = EntityId;
 
-/// The "no such system" sentinel (#2540). Deliberately NOT
+/// The "no such system" sentinel. Deliberately NOT
 /// `IREntity::kNullEntity`: ids are handed out from `SystemManager`'s
 /// `m_nextSystemId` counting up from 0, so `0` is the id of the *first*
 /// system registered in the process — a real id that `kNullEntity` cannot
@@ -32,8 +32,7 @@ constexpr SystemId kNullSystemId = std::numeric_limits<SystemId>::max();
 
 enum SystemTickModifiers { SYSTEM_MODIFIER_NONE = 0, SYSTEM_MODIFIER_WITH_ENTITY = 1 };
 
-/// Per-system dispatch policy. T-222 Phase 2 of the multithreading epic
-/// (#226). Default `SERIAL` keeps every existing system unchanged.
+/// Per-system dispatch policy. `SERIAL` is the default.
 ///
 /// - `SERIAL`        — run the tick on the main thread, one archetype
 ///                     node at a time (legacy behavior).
@@ -53,8 +52,7 @@ enum class Concurrency {
     MAIN_THREAD,
 };
 
-/// Default chunk size for `Concurrency::PARALLEL_FOR`. Workload-dependent
-/// in the general case; documented as a constant for now per #1069. A
+/// Default chunk size for `Concurrency::PARALLEL_FOR`. A
 /// per-system override is accepted via the trailing `int grainSize`
 /// parameter to `createSystem` or the optional `static constexpr int
 /// kGrainSize` member on a `System<N>` specialization.
@@ -118,7 +116,7 @@ enum SystemName {
     UPDATE_VOXEL_SET_CHILDREN,
     REBUILD_GRID_VOXELS,
     // Twin query arm of REBUILD_GRID_VOXELS for entities WITHOUT
-    // C_RotationMode (#2376). The component's own header documents absence
+    // C_RotationMode. The component's own header documents absence
     // as implicitly GRID; this arm makes that true for the re-rasterize
     // path too. Register it wherever REBUILD_GRID_VOXELS registers — the
     // two archetypes are disjoint, so neither covers the other's entities.
@@ -181,12 +179,12 @@ enum SystemName {
     DEBUG_OVERLAY,
     RENDERING_VELOCITY_2D_ISO,
     TEXTURE_SCROLL,
-    // Per-frame skeletal joint skin-matrix upload (#605 Phase 2.2 / #1603).
+    // Per-frame skeletal joint skin-matrix upload.
     // Writes each C_Skeleton joint's skinMatrix into the binding-18
     // EntityTransformBuffer (a contiguous block per skeleton, from the shared
-    // #1396 budget). MUST run after PROPAGATE_TRANSFORM (joint world transforms
+    // budget). MUST run after PROPAGATE_TRANSFORM (joint world transforms
     // current) and BEFORE UPDATE_VOXEL_POSITIONS_GPU (so binding 18 is filled
-    // when the prepass skins per-voxel bone slots in #605 Phase 2.3).
+    // when the prepass skins per-voxel bone slots).
     UPDATE_JOINT_MATRICES,
     UPDATE_VOXEL_POSITIONS_GPU,
     UPDATE_GPU_PARTICLES,
@@ -195,10 +193,10 @@ enum SystemName {
     SHAPES_TO_TRIXEL,
     BUILD_LIGHT_OCCLUSION_GRID,
     COMPUTE_VOXEL_AO,
-    // Hi-Z (max-depth) distance mip-chain build for voxel occlusion culling
-    // (#1294 child 1/3). Runs after the geometry + AO passes (distances final)
-    // and produces C_TriangleCanvasTextures::hiZMips_ for next frame's
-    // chunk-occlusion pre-pass; produces only — no consumer this PR.
+    // Hi-Z (max-depth) distance mip-chain build for voxel occlusion culling.
+    // Runs after the geometry + AO passes, when distances are final, and
+    // produces C_TriangleCanvasTextures::hiZMips_ for the next frame's
+    // chunk-occlusion pre-pass.
     COMPUTE_DISTANCE_HIZ,
     RESOLVE_PER_AXIS_SCREEN_DEPTH,
     BAKE_SUN_SHADOW_MAP,
@@ -216,13 +214,13 @@ enum SystemName {
     VOXEL_PICKING,
     DEBUG_CULLING_MINIMAP,
     PERF_STATS_OVERLAY,
-    // Registry-driven command help overlay (#2550). Renders the registered
+    // Registry-driven command help overlay. Renders the registered
     // PRESSED bindings + their descriptions onto the GUI canvas when the
     // C_HelpOverlayState singleton is visible. Register AFTER TEXT_TO_TRIXEL
     // (which clears the GUI canvas and owns the shared text GPU resources)
     // and BEFORE TRIXEL_TO_FRAMEBUFFER.
     HELP_OVERLAY,
-    // Settings menu (#2551): spawns one widget row per `C_SettingsRegistry`
+    // Settings menu: spawns one widget row per `C_SettingsRegistry`
     // entry while the `C_SettingsMenuState` singleton is open, polls the
     // widgets, and pushes edits back through each setting's setter. Register
     // in INPUT, after the WIDGET_APPLY_* chain that produces the state it
@@ -269,7 +267,7 @@ enum SystemName {
     TEST_REGISTER_SYSTEM_A,
     TEST_REGISTER_SYSTEM_B,
 
-    // Reserved for tests of the #2404 kCadence / kCadenceOffset
+    // Reserved for tests of the kCadence / kCadenceOffset
     // spec-member detection path. Do not use from a creation or prefab
     // system.
     TEST_CADENCE_SPEC_MEMBER, // declares kCadence / kCadenceOffset

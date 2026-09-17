@@ -149,6 +149,7 @@
 #include <irreden/voxel/components/component_skeleton.hpp>
 #include <irreden/voxel/components/component_voxel.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
+#include <irreden/voxel/components/component_voxel_pool_teardown_hook.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/components/component_voxel_squash_stretch.hpp>
 #include <irreden/wip/components/component_alarm.hpp>
@@ -171,6 +172,10 @@ IR_SAVE_OPT_OUT(IRComponents::C_Sprite)
 
 // Class B — derived / rebuildable
 IR_SAVE_OPT_OUT(IRComponents::C_VoxelPool)
+// C_VoxelPoolTeardownHook: OPT-OUT — a PreDestroyHookId into THIS process's
+// EntityManager hook vector. A loaded world re-arms the hook from its own
+// canvas-pool attach sites, so a persisted id would name nothing.
+IR_SAVE_OPT_OUT(IRComponents::C_VoxelPoolTeardownHook)
 IR_SAVE_OPT_OUT(IRComponents::C_SpatialIndex)
 IR_SAVE_OPT_OUT(IRComponents::C_RenderCache)
 IR_SAVE_OPT_OUT(IRComponents::C_ActiveLodLevel)
@@ -227,8 +232,9 @@ IR_SAVE_OPT_OUT(IRComponents::C_LerpEntity)
 
 // Class E — C_VoxelSetNew: OPT-IN, flagged provisional (custom serializer is P2/W-3+; flip to
 // OPT-OUT is one line if the slice can't absorb it)
-// v2 (#2563) appended the `anchor_` byte — a non-CORNER set's local origin is
-// half-integer and the record's ivec3 boundsMin cannot carry it. v1 reads via
+// The current format includes an `anchor_` byte because a non-CORNER set's
+// local origin is half-integer and the record's ivec3 boundsMin cannot carry
+// it. Version 1 reads via
 // SaveMigration<C_VoxelSetNew> in voxel/voxel_set_serialize.hpp (anchor CORNER).
 IR_SAVE_OPT_IN(IRComponents::C_VoxelSetNew, 2)
 
@@ -409,6 +415,7 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_SpriteSheet,
     IRComponents::C_Sprite,
     IRComponents::C_VoxelPool,
+    IRComponents::C_VoxelPoolTeardownHook,
     IRComponents::C_SpatialIndex,
     IRComponents::C_RenderCache,
     IRComponents::C_ActiveLodLevel,

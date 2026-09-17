@@ -18,7 +18,7 @@
 #include <string>
 #include <vector>
 
-// Persist P3 (#2214): the RELN relation chunk. One trivially-copyable
+// RELN relation-chunk coverage. One trivially-copyable
 // stand-in component drives the round-trip; the plumbing under test is the
 // CHILD_OF edge serializer, not the component bytes (P2 covers those).
 namespace RelSnap {

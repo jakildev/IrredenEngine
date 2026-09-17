@@ -208,7 +208,7 @@ TEST(SystemAccessTest, DeriveAccessFromSignatureIsConstexpr) {
 }
 
 // ----------------------------------------------------------------------
-// FilterTags_t no-op proof (#1803 blocker 1a)
+// FilterTags_t no-op proof
 //
 // `createSystem` / `registerSystem` now feed the archetype matcher + the
 // dispatch/member-tick binder a `detail::FilterTags_t<Pack...>` list in
@@ -250,7 +250,7 @@ static_assert(
 );
 // Divergence is intentional and ONLY for a tagged pack: FilterTags drops the
 // tag where PartitionExcludes::Included would leak it into the archetype —
-// the exact bug blocker 1a fixes.
+// the defect this test guards against.
 static_assert(
     !std::is_same_v<
         Filtered<C_AccessA, ParallelSafe, C_AccessB>,

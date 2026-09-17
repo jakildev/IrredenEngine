@@ -8,10 +8,10 @@
 /// the thread that constructed the active `IRJob::JobManager`. Used to
 /// guard manager-entry APIs that mutate non-thread-safe singletons
 /// (`g_entityManager`, `g_systemManager`, render/audio managers, sol2
-/// bindings) when called from inside a `PARALLEL_FOR` system body.
+/// bindings) inside a `PARALLEL_FOR` system body.
 ///
-/// T-222 Phase 2 of the multithreading epic (#226). The assertion catches
-/// the "lambda body escapes into globals" case the `SystemAccess` trait
+/// The assertion catches the "lambda body escapes into globals" case the
+/// `SystemAccess` trait
 /// cannot see from the tick signature alone — a body that closes over
 /// `g_entityManager` looks pure to the compile-time validator but blows
 /// up at runtime when a worker calls in.

@@ -40,10 +40,10 @@ class World {
     WorldConfig m_worldConfig;
     IRWindow::IRGLFWWindow m_IRGLFWWindow;
     // m_lua must lead the manager block: EntityManager's archetype columns
-    // can hold sol::object refs (Lua-typed components, see T-100). Members
+    // can hold sol::object refs. Members
     // destruct in reverse declaration order, so sol::state has to outlive
     // EntityManager or those refs UAF on shutdown. A second consumer rides
-    // the same ordering (#2446): EntityManager's staged structural-change
+    // the same ordering: EntityManager's staged structural-change
     // queue holds lambdas capturing `LuaScript *` (IREntity.deferredCreate's
     // attach op), which a reorder would leave dangling. That queue is
     // normally empty at teardown, so no test would catch the regression —
@@ -51,9 +51,8 @@ class World {
     IRScript::LuaScript m_lua;
     IREntity::EntityManager m_entityManager;
     IRSystem::SystemManager m_systemManager;
-    // T-221: worker pool. Lives between World construction and
-    // destruction; sets g_jobManager. No engine system schedules on
-    // it yet (T-222 is the first consumer).
+    // The worker pool lives between World construction and destruction and
+    // owns g_jobManager for that interval.
     IRJob::JobManager m_jobManager;
     IRInput::InputManager m_inputManager;
     IRCommand::CommandManager m_commandManager;

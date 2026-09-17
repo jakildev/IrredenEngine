@@ -8,7 +8,7 @@
 
 namespace {
 
-// #2880: SETTINGS_MENU caches its built widgets' ids (`panel_`,
+// SETTINGS_MENU caches its built widgets' ids (`panel_`,
 // `controlsLabel_`, `quitButton_`, plus each Row's `control_`/`label_`) in
 // System<N> members. None of those entities is C_Persistent, so
 // IREntity::resetGameplay() taken with the menu open destroys them while

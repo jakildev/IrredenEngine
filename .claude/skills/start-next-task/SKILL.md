@@ -34,6 +34,10 @@ stack `claude/1234-occupancy-grid`.
 
 ## Engine notes
 
+- `fleet-start-next-task` is the executable form of the fleet-stack and
+  standard modes (no cursor-stack cue, no handoff note): the
+  per-iteration shutdown step in fleet roles, and what a Codex runtime
+  runs in place of this skill. `--dry-run` prints the plan.
 - `fleet-issue view <issue#>` is the cache-aware title lookup for step 5's
   fleet-stack branch name; it falls back to `gh issue view`.
 - The macOS Cursor sandbox is the shared flow's "sandbox note" case — run

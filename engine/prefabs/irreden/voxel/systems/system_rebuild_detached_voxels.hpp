@@ -49,13 +49,13 @@ template <> struct System<REBUILD_DETACHED_VOXELS> {
         // origin-centered sphere [-|h|, |h|]^3 (a box of half-extents h reaches
         // its farthest point at |h|), so the bound contains the solid under ANY
         // rotation.
-        // Both the bound below and the GPU inverse-resample rotate about the
+        // Both the static bound and the GPU inverse-resample rotate about the
         // POOL ORIGIN and assume it is the body's center. A GROUND- or
         // CORNER-anchored C_VoxelSetNew bakes an asymmetric offset into its
         // composed locals, so it orbits its anchor instead of spinning in
         // place — and the per-voxel halfCellAnchor uniformity assert in
         // seedResidentLocals stays silent, because anchor uniformity is not
-        // what breaks (#2911). Checked once per pool lifetime, before the
+        // what breaks. Checked once per pool lifetime, before the
         // seed, so a failing pool is never given a bound.
         const auto composedAt = [&](int i) { return localPositions[i].pos_ + localOffsets[i]; };
         IR_ASSERT(

@@ -1,5 +1,5 @@
-// Vehicle A (#1771, epic #1766): the engine's first *headless GPU* unit-test
-// category. Unlike the rest of test/render/* (pure CPU math / layout), this
+// Headless GPU dispatch coverage. Unlike the pure CPU math and layout tests,
+// this
 // stands up a hidden OpenGL 4.5 core context, compiles a real engine compute
 // shader, dispatches it, reads the output SSBO back to the CPU, and asserts a
 // shader-level invariant directly — no full-frame screenshot, no pixel diff.
@@ -12,10 +12,6 @@
 // jitter and backend-agnostic in intent. Seeding the buffer with zeros first
 // means a dispatch that never runs fails the assertion, so the test proves the
 // GPU actually wrote.
-//
-// Future children of #1766 assert heavier pipeline kernels (resolve footprint
-// density, sun-bake non-emptiness) through this same dispatch + readback harness
-// — the reusable piece is the hidden-context fixture, not this one shader.
 //
 // The fixture GTEST_SKIPs when a GL 4.5 context cannot be created (headless CI
 // with no display / no GPU), so the always-run CPU suite stays green there.
@@ -139,13 +135,13 @@ TEST_F(GpuComputeDispatchTest, ClearSunShadowKernelFillsBufferWithLitSentinel) {
 
 #elif defined(IR_GRAPHICS_METAL)
 
-// The Metal half of vehicle A (#1640). The OpenGL twin above has no analogous
+// The Metal fixture covers a backend-specific path. OpenGL has no analogous
 // bug — GL writes real image atomics straight to the texture — so this fixture
 // exists to reproduce the *Metal-only* gap headlessly: a non-main canvas's R32I
 // distance texture, written by one in-tick compute dispatch, reads back as the
 // clear value from a SECOND in-tick dispatch (engine/render/CLAUDE.md
 // "Foreign-canvas R32I image reads in a second in-tick compute dispatch return
-// empty on Metal (#1640)"). Metal has no windowless RenderDevice bring-up in the
+// empty on Metal"). Metal has no windowless RenderDevice bring-up in the
 // normal engine boot (the CAMetalLayer is window-bound), so the fixture uses
 // bootstrapHeadlessRenderDevice() — device + command queue, no swapchain — then
 // drives the real ShaderProgram / Texture2D / dispatchCompute path.
@@ -204,8 +200,8 @@ class MetalGpuComputeDispatchTest : public ::testing::Test {
 
 // Positive control / oracle validation: with NO write dispatch, a read of the
 // cleared texture must report exactly the clear sentinel. This proves the
-// harness can distinguish a missed write from a correct one — i.e. a real
-// second-dispatch read gap (#1640) would surface here as a failed EXPECT — and
+// harness can distinguish a missed write from a correct one: a real
+// second-dispatch read gap would fail the expectation, while
 // that clearTexImage lands on the command buffer before the read encoder.
 TEST_F(MetalGpuComputeDispatchTest, ClearedTextureReadsBackAsClearSentinel) {
     using namespace IRRender;
@@ -253,7 +249,7 @@ TEST_F(MetalGpuComputeDispatchTest, SecondDispatchSeesFirstDispatchDistanceWrite
     Texture2D distances{TextureKind::TEXTURE_2D, kTexDim, kTexDim, TextureFormat::R32I};
 
     // Clear to the empty sentinel first, so a read that misses the write reports
-    // exactly 65535 (the documented #1640 symptom) rather than undefined memory.
+    // exactly 65535 (the documented symptom) rather than undefined memory.
     const std::int32_t clearValue = kEmptyDistanceEncoded;
     device_->clearTexImage(&distances, 0, &clearValue);
 
@@ -291,7 +287,7 @@ TEST_F(MetalGpuComputeDispatchTest, SecondDispatchSeesFirstDispatchDistanceWrite
     std::vector<std::int32_t> readback(kTexelCount, -2);
     output.getSubData(0, readback.size() * sizeof(std::int32_t), readback.data());
 
-    std::size_t emptyReads = 0; // read back the clear sentinel — the #1640 gap.
+    std::size_t emptyReads = 0; // read back the clear sentinel — the gap.
     std::size_t wrongReads = 0; // neither the written index nor the sentinel.
     for (int i = 0; i < kTexelCount; ++i) {
         if (readback[i] == kEmptyDistanceEncoded) {
@@ -309,7 +305,7 @@ TEST_F(MetalGpuComputeDispatchTest, SecondDispatchSeesFirstDispatchDistanceWrite
                                  "nor the clear sentinel.";
 }
 
-// #2488: RenderDevice::resolveImageAtomicScratch materializes the R32I
+// RenderDevice::resolveImageAtomicScratch materializes the R32I
 // image-atomic scratch buffer into the texture it mirrors, so a later
 // sampler / access::read pass sees depth the atomic passes wrote. In the
 // pipeline that is what carries the shadow-feeder ring into trixelDistances

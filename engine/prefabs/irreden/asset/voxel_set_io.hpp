@@ -1,15 +1,8 @@
 #ifndef IR_PREFAB_ASSET_VOXEL_SET_IO_H
 #define IR_PREFAB_ASSET_VOXEL_SET_IO_H
 
-/// `C_ShapeDescriptor`-aware adapter over the low-level
-/// `engine/asset/include/irreden/asset/voxel_set_format.hpp` API.
-///
-/// Lives in `engine/prefabs/` rather than `engine/asset/` because
-/// `engine/asset/` does not (and should not) depend on the prefab
-/// components — the layer map keeps engine/asset below render and
-/// entity. Callers that need the descriptor-shaped save/load surface
-/// include this header; callers working with raw `ShapeRecord` arrays
-/// can use the lower-level API directly.
+/// `engine/asset/` must not depend on the prefab components this adapter
+/// bridges to `voxel_set_format.hpp`; new adapters belong here, not there.
 
 #include <irreden/asset/voxel_set_format.hpp>
 #include <irreden/ir_profile.hpp>
@@ -22,19 +15,15 @@
 
 namespace IRAsset {
 
-/// Persist a shape-group `.vxs` from a span of `C_ShapeDescriptor` plus
-/// parallel arrays for the runtime-only metadata the descriptor does
-/// not carry (offset / rotation / CSG op / bone-id binding). The
-/// underlying `saveShapeGroup` also emits a `.vxs.json` sidecar
-/// (Rule #6) on a successful binary write.
+/// Also emits a `.vxs.json` sidecar (Rule #6) on a successful binary write.
 ///
 /// Empty parallel spans take the per-record default (identity
 /// transform, `CsgOp::NONE`, `boneId = 0`). Non-empty spans should
 /// match `descriptors.size()` — mismatched lengths log a warning and
 /// degrade gracefully by stopping at the shorter span, not UB.
 ///
-/// @deprecated SHAPES write path retired per Epic D D2 (#960). New `.vxs`
-/// assets must use `saveDenseVoxelSet`. See `docs/design/sdf-migration-plan.md`.
+/// @deprecated SHAPES write path; new `.vxs` assets use `saveDenseVoxelSet`.
+/// See `docs/design/sdf-migration-plan.md`.
 inline BinaryStatus saveVoxelSet(
     const std::string &path,
     std::span<const IRComponents::C_ShapeDescriptor> descriptors,

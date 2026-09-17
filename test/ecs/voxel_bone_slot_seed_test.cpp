@@ -14,8 +14,7 @@
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 
-// #1605 — per-voxel skinning via bone→slot in the binding-17 seed path
-// (#605 Phase 2.3).
+// Per-voxel skinning via bone→slot in the binding-17 seed path.
 //
 // Covers the CPU seam between UPDATE_JOINT_MATRICES' skeleton slot blocks and
 // the voxel pool's per-voxel transform indices: bone ids resolve to
@@ -145,7 +144,7 @@ TEST_F(VoxelBoneSlotSeedTest, UnwiredEntitySlotAllocatorLeavesSetCpuDirect) {
 
 TEST_F(VoxelBoneSlotSeedTest, SlotBaseQueryMatchesTheSkeletonBlock) {
     // IRPrefab::JointTransform::slotBase is the mechanism downstream phases
-    // (#1606 binding-21 retirement, #1610 FK editing) use to reach the block —
+    // (binding-21 retirement, FK editing) use to reach the block —
     // unwired it reports the static sentinel, wired it must agree with the
     // system's own map. Wiring needs a SystemManager, so the unwired half is
     // what's assertable headlessly.

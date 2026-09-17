@@ -113,8 +113,8 @@ TEST_F(ChunkMembershipMigrationTest, EntityCrosses10ChunkBoundariesWithIdPreserv
     }
 }
 
-// Acceptance criterion (3): "Rotated entities (Epic C C6 #957) migrate
-// without artifact." Rotation acts on local space; chunk membership is
+// Rotated entities migrate without artifacts. Rotation acts on local space;
+// chunk membership is
 // decided by world-space root translation. The migration system must
 // not be perturbed by a non-identity quaternion in C_WorldTransform.
 TEST_F(ChunkMembershipMigrationTest, RotatedEntityMigratesByRootTranslationOnly) {

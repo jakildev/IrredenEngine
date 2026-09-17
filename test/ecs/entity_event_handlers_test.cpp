@@ -13,10 +13,9 @@ namespace {
 
 using IRComponents::C_EntityEventHandlers;
 
-// Covers the #2582 migration of the Lua entity-event registry from a
+// Covers the migration of the Lua entity-event registry from a
 // process-lifetime Meyers singleton to the singleton component
-// C_EntityEventHandlers, and the lifetime contract that replaced #2572's
-// manual engine-tail clear(): the sol::protected_function refs now live in an
+// C_EntityEventHandlers. The sol::protected_function refs now live in an
 // archetype column that dies at destroyAllEntities(), which the World runs
 // (via World::end()) while the Lua VM is still open.
 //
@@ -107,8 +106,8 @@ TEST_F(EntityEventHandlersTest, RegisteredHandlerObservablyFires) {
 }
 
 // destroyAllEntities() takes the registry row with it — the refs-die-while-the-
-// VM-is-open lock that replaced #2572's static-destructor hazard. The fixture
-// tearing down clean afterwards is the other half of the assertion.
+// VM-is-open lock: the fixture tearing down clean afterwards proves the
+// references die before the Lua VM.
 TEST_F(EntityEventHandlersTest, DestroyAllEntitiesDropsTheRegistry) {
     ASSERT_TRUE(
         m_lua.lua().safe_script("noopHandler = function() end", sol::script_pass_on_error).valid()
