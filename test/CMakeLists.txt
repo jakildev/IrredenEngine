@@ -100,8 +100,8 @@ add_executable(IrredenEngineTest
   script/lua_command_test.cpp
   script/lua_input_bindings_test.cpp
   script/lua_component_codegen_test.cpp
-  # #3091: a second includer of the same generated header as the line above.
-  # Its existence IS the regression lock — pre-#3091 this pairing did not link.
+  # A second includer proves generated-header definitions are safe across
+  # translation units.
   script/lua_component_codegen_second_tu.cpp
   script/lua_debug_overlay_bindings_test.cpp
   script/lua_component_register_test.cpp
@@ -199,7 +199,7 @@ target_compile_definitions(IrredenEngineTest PRIVATE
     IR_LUA_CODEGEN_BINARY="$<TARGET_FILE:ir_lua_codegen>"
     IR_LUA_CODEGEN_OVERFLOW_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/script/lua_component_codegen_overflow_fixture.lua"
     IR_LUA_CODEGEN_ENUM_ERROR_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/script/lua_enum_codegen_error_fixture.lua"
-    # #3091: the component fixture again, this time as a path the test can hand
+    # Pass the component fixture as a path the test can hand
     # to a direct subprocess run — that is how the header/companion-.cpp
     # emission split is asserted on the tool's own output rather than inferred
     # from the build having linked.

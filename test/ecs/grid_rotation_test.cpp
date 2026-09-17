@@ -79,7 +79,7 @@ TEST(GridRotationTest, NinetyDegreeZRotationMapsXToY) {
 TEST(GridRotationTest, FortyFiveDegreeZRotationSnapsToGrid) {
     // 45° around Z sends (1,0,0) to (cos45, sin45, 0) ≈ (0.707, 0.707, 0).
     // After grid snapping, both axes round to 1. This is the canonical
-    // aliasing case T-294 documents — multiple authored voxels can collapse
+    // aliasing case documents — multiple authored voxels can collapse
     // into the same world cell after rotation; rendering accepts the
     // collision.
     C_WorldTransform wt;
@@ -241,8 +241,8 @@ TEST(GridRotationTest, SourceCellForWorldCell_RoundTrip_ScaleAndTranslation) {
 }
 
 TEST(GridRotationTest, SourceCellForWorldCell_RoundHalfUpConventionPin) {
-    // Pins the roundHalfUp(-0.5) = 0 convention (CPU twin of the GPU kernel's
-    // `roundHalfUp` helper in c_revoxelize_detached.glsl/.metal, #1619/#1720).
+    // Pins the roundHalfUp(-0.5) = 0 convention shared with the GPU kernel's
+    // `roundHalfUp` helper in c_revoxelize_detached.glsl/.metal.
     // With 90° Z rotation and x-translation of -0.5 the inverse-mapped source
     // has exactly y = -0.5; roundHalfUp correctly returns 0, while
     // glm::round / std::round (half-away-from-zero) would return -1, breaking

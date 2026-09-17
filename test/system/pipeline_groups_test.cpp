@@ -8,7 +8,7 @@
 
 #include <stdexcept>
 
-// T-224 Phase 3 — multithreading epic (#226). Two surfaces under test:
+// Two pipeline-group surfaces are under test:
 //
 //   1. The pure cross-system conflict-detection function
 //      `findPipelineGroupConflict` over hand-built `SystemAccess`
@@ -98,7 +98,8 @@ TEST(PipelineGroupsValidator, MainThreadInGroupRejected) {
 }
 
 TEST(PipelineGroupsValidator, TwoSpawnersInGroupAcceptedAfterT225) {
-    // T-225 lifted the two-`mutatesArchetypeGraph_`-in-a-group rule.
+    // Two archetype-graph mutators may share a group because their mutations
+    // are staged per worker.
     // Per-worker deferred-mutation buffers route every structural
     // change into a worker-private slot, and the main thread drains
     // them serially at flush, so two spawners can coexist in the
@@ -116,8 +117,8 @@ TEST(PipelineGroupsValidator, TwoSpawnersInGroupAcceptedAfterT225) {
 }
 
 TEST(PipelineGroupsValidator, SingleMutatorWithSiblingAcceptedAfterT225) {
-    // T-225: a single mutator + non-mutator sibling is also accepted now.
-    // MUTATOR_IN_PARALLEL_GROUP is lifted alongside TWO_SPAWNERS.
+    // A single mutator and a non-mutator sibling are also safe because
+    // mutations are staged per worker.
     SystemAccess accesses[2]{};
     accesses[0].writes_[0] = typeKey<C_VelA>;
     accesses[0].writeCount_ = 1;
@@ -254,7 +255,7 @@ TEST_F(PipelineGroupsValidatorTest, RegisterPipelineProducesSingletonGroups) {
 }
 
 // ----------------------------------------------------------------------
-// #1540 — appendToPipeline / insertIntoPipeline (compose onto a live
+// appendToPipeline / insertIntoPipeline (compose onto a live
 // pipeline without replacing it)
 // ----------------------------------------------------------------------
 
@@ -282,8 +283,8 @@ TEST_F(PipelineGroupsValidatorTest, AppendToEmptyEventCreatesFirstGroup) {
 }
 
 TEST_F(PipelineGroupsValidatorTest, AppendedSystemRunsAlongsidePreBuiltPipeline) {
-    // The #1540 acceptance case: a "pre-built" pipeline (the analog of a
-    // C++ initSystems()) plus a system appended afterward — both must
+    // A pipeline built during C++ initialization plus a system appended
+    // afterward must both
     // tick. Proves append does NOT wipe the existing systems the way
     // registerPipeline would.
     auto preBuilt = IRSystem::createSystem<C_VelA>("Pre", [](C_VelA &v) { v.n_ += 1; });

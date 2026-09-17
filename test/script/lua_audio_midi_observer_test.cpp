@@ -10,7 +10,7 @@
 
 #include <vector>
 
-// Lua-observable outbound MIDI hook (engine #1869). The observer is registered
+// Lua-observable outbound MIDI hook. The observer is registered
 // at the C++ `IRAudio::sendMidiMessage` choke point, so a Lua handler sees ALL
 // outbound traffic — including messages the C++ ECS audio path emits, not just
 // what Lua sent. These cases drive sends through the C++ free function (the

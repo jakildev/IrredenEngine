@@ -10,7 +10,7 @@
 #include <irreden/voxel/rig_bridge.hpp>
 #include <irreden/voxel/skeleton.hpp>
 
-// #1602 — bind-pose on C_Skeleton + skin-matrix helper.
+// Bind-pose on C_Skeleton + skin-matrix helper.
 //
 // Geometry shared by the cases below: a straight 3-bone chain along +X. joint0
 // is the root at the origin; joint1 sits 2 units out; joint2 sits 3 units past

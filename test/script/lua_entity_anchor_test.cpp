@@ -1,4 +1,4 @@
-// Lua surface for EntityAnchor (#2563): `IRComponent.EntityAnchor.{CORNER,
+// Lua surface for EntityAnchor: `IRComponent.EntityAnchor.{CORNER,
 // CENTER,GROUND}`, minted in LuaScript::bindLuaDrivenEcs alongside
 // IRComponent.RotationMode per `.claude/rules/cpp-lua-enums.md` (integers, no
 // string names).
@@ -11,8 +11,8 @@
 // below compares against `static_cast<lua_Integer>(EntityAnchor::X)` rather
 // than a literal: the test tracks the enum instead of freezing a number.
 //
-// The second half of this file drives the other Lua-side surface the anchor
-// added: the `C_VoxelSetNew.new(size, color, anchor, targetCanvas)` ctor. The
+// The constructor cases drive the other Lua-side anchor surface:
+// `C_VoxelSetNew.new(size, color, anchor, targetCanvas)`. The
 // 2- and 3-arg forms allocate from the ACTIVE canvas via the asserting
 // `IRPrefab::VoxelPool::activeCanvasEntity()` and so need a live
 // RenderManager, but the 4-arg form takes the canvas explicitly, which is what
@@ -61,7 +61,7 @@ class LuaEntityAnchorTest : public testing::Test {
 
     // The math usertypes are registered by each creation's own binding pass
     // (`creations/demos/default/lua_bindings.cpp`), not by `bindLuaDrivenEcs`,
-    // so the ctor arms below need them minted here in the same shape.
+    // so the constructor cases need them minted in the same shape.
     void registerVoxelSetSurface() {
         m_lua.registerType<Color, Color(int, int, int, int)>("Color");
         m_lua.registerType<ivec3, ivec3(int, int, int)>("ivec3");
