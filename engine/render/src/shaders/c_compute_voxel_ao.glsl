@@ -1,25 +1,7 @@
 #version 450 core
 
-// Per-pixel ambient-occlusion compute. For each pixel on a rasterized
-// surface — voxel OR shape, since both write encoded face+depth via
-// `encodeDepthWithFace` — samples four face-tangent neighbour pixels in
-// `trixelDistances` and counts each one as occluding when its decoded
-// surface position sits in front of the receiver's face plane by ~1
-// voxel along the face-outward normal AND belongs to a DIFFERENT visible
-// face. The different-face gate is what keeps a rotated voxel surface from
-// self-darkening: a real crease / contact is always two distinct faces
-// meeting, whereas a same-face neighbour ~1 voxel in front is just the
-// round-to-cell stair-step of a tilted-flat surface (the alternating-band
-// speckle that reads as "missing sections" on rotating solids). Flat
-// cardinal faces are coplanar (d ~ 0) so the gate never changes them.
-//
-// A re-voxelize / REBUILD_GRID rotating solid is real voxels, so its
-// tilted-flat surface is a true voxel staircase whose tread (+Z) and riser
-// (±X/±Y) ARE different faces — the different-face gate alone would count
-// every 1-cell step as a crease. The tilt-aware resample looks one cell
-// beyond a different-face step: a monotone staircase returns to the
-// receiver's own face there (suppress), whereas a genuine concave crease
-// (the L-prism notch) meets a perpendicular wall (keep).
+// Four face-tangent depth samples approximate local ambient visibility.
+// Contributions require mutually facing surfaces and decay with separation.
 
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
@@ -30,22 +12,7 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 // distances >= 65535 mean the clear value was never overwritten.
 const int kEmptyDistanceEncoded = 65535;
 
-// Crease-band along the face-outward normal. A neighbour pixel is treated
-// as occluding when its decoded `pos3D'` is between `kAOMinHeight` and
-// `kAOMaxHeight` voxels in front of the receiver's face plane.
-//   Lower bound rejects coplanar continuations (flat surface, d ≈ 0).
-//   Upper bound rejects deep voids (cliffs, d ≫ 1) so they don't darken.
-// The canonical edge-occluder voxel sits at d = `kAOOccluderHeight`; the
-// band is centred there with a ±`kAOBandHalfWidth` voxel tolerance, extended
-// below by `kAOSubVoxelTolerance` so SDF surfaces whose decoded depth lands
-// between the receiver and the canonical voxel still register.
-// Must stay in lockstep with the matching constants in
-// c_compute_voxel_ao.metal.
-const float kAOOccluderHeight = 1.0;
-const float kAOBandHalfWidth = 0.5;
-const float kAOSubVoxelTolerance = 0.375;
-const float kAOMinHeight = kAOOccluderHeight - kAOBandHalfWidth - kAOSubVoxelTolerance;
-const float kAOMaxHeight = kAOOccluderHeight + kAOBandHalfWidth;
+const float kAORadiusSquared = 4.0;
 
 layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform vec2 frameCanvasOffset;
@@ -163,16 +130,9 @@ void main() {
     // A per-axis canvas stores the world frame face-locally (perAxisRoute != 0),
     // so recover world-pos via isoPixelToPos3D; the single canvas stores the
     // cardinal-snapped iso pixel, recovered via trixelCanvasPixelToWorld3D.
-    // Lattice recovery (not perAxisCellToWorld3DSubCell) is deliberate here:
-    // AO consumes pos3D only through `dot(neighbourPos3D - pos3D,
-    // worldOutward)`, and a per-axis canvas holds a single face axis, so the
-    // encoding's in-plane frac offsets are perpendicular to worldOutward on
-    // both operands and cancel exactly — the sub-cell decode would be pure
-    // cost on this hot pass. Absolute-position consumers (light volume,
-    // sun-shadow receive, overflow relight) must use the sub-cell variant.
     bool perAxis = perAxisRoute != 0;
     vec3 pos3D = perAxis
-        ? perAxisCellToWorld3D(pixel, rawDepth, faceId, size, frameCanvasOffset, voxelRenderOptions)
+        ? perAxisCellToWorld3DSubCell(pixel, encoded, faceId, size, frameCanvasOffset, voxelRenderOptions)
         : trixelCanvasPixelToWorld3D(
               pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, cardinalIndex
           );
@@ -213,7 +173,7 @@ void main() {
         deltaT2 = pos3DtoPos2DIso(t2View) * scale;
     }
 
-    int occl = 0;
+    float occlusion = 0.0;
     for (int dir = 0; dir < 4; ++dir) {
         ivec2 delta;
         if (dir == 0) delta = deltaT1;
@@ -227,13 +187,15 @@ void main() {
         int neighbourEncoded = imageLoad(trixelDistances, samplePixel).x;
         if (neighbourEncoded >= kEmpty) continue;
 
+        int neighbourFaceId = visibleFaceIds[decodeSlot(neighbourEncoded)] ^
+            decodeFlipRoute(neighbourEncoded, perAxisRoute);
+        if (neighbourFaceId == faceId) continue;
+
         int neighbourRawDepth = decodeDepthRoute(neighbourEncoded, perAxisRoute);
         vec3 neighbourPos3D;
         if (perAxis) {
-            int neighbourFaceId =
-                visibleFaceIds[decodeSlot(neighbourEncoded)] ^ decodeFlipPerAxis(neighbourEncoded);
-            neighbourPos3D = perAxisCellToWorld3D(
-                samplePixel, neighbourRawDepth, neighbourFaceId, size,
+            neighbourPos3D = perAxisCellToWorld3DSubCell(
+                samplePixel, neighbourEncoded, neighbourFaceId, size,
                 frameCanvasOffset, voxelRenderOptions
             );
         } else {
@@ -243,57 +205,19 @@ void main() {
             );
         }
 
-        // A DIFFERENT visible face ~1 voxel in front is the classic crease /
-        // contact occluder; a SAME-face neighbour at d ~ 1 is the round-to-cell
-        // stair-step of a rotated (tilted-flat) surface (the "missing sections"
-        // speckle) and is excluded by the slot test. Flat cardinal faces are
-        // coplanar (d ~ 0, below kAOMinHeight) so they never reach this gate.
-        float d = dot(neighbourPos3D - pos3D, worldOutward);
-        // Same-surface exclusion compares (slot, flip) — a flipped neighbour is
-        // the opposite-polarity face, a genuinely different surface, so it stays
-        // eligible as a crease occluder.
-        bool sameSurface = decodeSlot(neighbourEncoded) == slot &&
-            decodeFlipRoute(neighbourEncoded, perAxisRoute) == flip;
-        if (sameSurface || d <= kAOMinHeight || d >= kAOMaxHeight) continue;
+        vec3 separation = neighbourPos3D - pos3D;
+        float distanceSquared = dot(separation, separation);
+        if (distanceSquared <= 1.0e-6 || distanceSquared >= kAORadiusSquared) continue;
 
-        // Tilt-aware same-face resample. A re-voxelized / REBUILD_GRID
-        // rotating solid turns a tilted-flat surface into a true voxel staircase
-        // whose tread (+Z) and riser (±X/±Y) ARE different faces, so every 1-cell
-        // step reads as a different-face crease at d ~ 1 — the venetian banding.
-        // The riser of a quantized flat and a genuine concave crease (the L-prism
-        // notch) are locally identical here — same face normals, same relative
-        // position — so the only screen-space signal is whether the surface
-        // RETURNS to the receiver's own face one cell beyond the step: a monotone
-        // staircase continues as the next tread (same slot, still in front),
-        // whereas a real crease meets a multi-cell perpendicular wall that does
-        // not. Single-canvas path only — a per-axis canvas holds a single face so
-        // its stair-step AO already drops out, and the GRID solids this targets
-        // raster cardinal (perAxisRoute == 0).
-        if (!perAxis) {
-            ivec2 beyondPixel = pixel + 2 * delta;
-            if (beyondPixel.x >= 0 && beyondPixel.x < size.x &&
-                beyondPixel.y >= 0 && beyondPixel.y < size.y) {
-                int beyondEncoded = imageLoad(trixelDistances, beyondPixel).x;
-                // "Returns to the receiver's own face" compares (slot, flip) —
-                // a flipped cell one step beyond is not the receiver's surface.
-                if (beyondEncoded < kEmpty && decodeSlot(beyondEncoded) == slot &&
-                    decodeFlipSingle(beyondEncoded) == flip) {
-                    vec3 beyondPos3D = trixelCanvasPixelToWorld3D(
-                        beyondPixel, decodeDepthSingle(beyondEncoded), trixelCanvasOffsetZ1,
-                        frameCanvasOffset, voxelRenderOptions, cardinalIndex
-                    );
-                    // The next tread steps ~1 voxel further out along the
-                    // receiver normal; a coplanar same-face blip (d ~ 0) is not a
-                    // staircase and must keep its AO.
-                    if (dot(beyondPos3D - pos3D, worldOutward) > kAOMinHeight) continue;
-                }
-            }
-        }
-        occl++;
+        float receiverFacing = max(dot(separation, worldOutward), 0.0);
+        float occluderFacing = max(
+            dot(-separation, vec3(faceOutwardNormal6I(neighbourFaceId))), 0.0
+        );
+        float rangeWeight = 1.0 - distanceSquared / kAORadiusSquared;
+        occlusion += receiverFacing * occluderFacing / distanceSquared *
+            rangeWeight * rangeWeight;
     }
 
-    // Each occluding edge-neighbour darkens by 10%; all four caps at 60%
-    // brightness keeps crease darkening visually subtle.
-    float ao = 1.0 - float(occl) * 0.10;
+    float ao = 1.0 - occlusion * 0.25;
     imageStore(canvasAO, pixel, vec4(ao, 0.0, 0.0, 0.0));
 }

@@ -163,6 +163,9 @@ Use the validation index's jitter probe and the camera contracts below.
   voxel pools retain the carved lattice silhouette; this difference is
   intentional.
 
+Representation choice, shared geometry expectations and profiling workloads are
+documented in [voxel and SDF rendering](../../docs/design/voxel-and-sdf-rendering.md).
+
 ## Lighting contracts
 
 ### Lighting culling invariants

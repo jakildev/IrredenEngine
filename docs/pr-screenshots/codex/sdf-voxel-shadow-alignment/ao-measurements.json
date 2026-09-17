@@ -1,0 +1,38 @@
+{
+  "before": {
+    "convex": {
+      "foreground": 10850,
+      "occluded": 0,
+      "max_occlusion_red": 0
+    },
+    "corner": {
+      "foreground": 20992,
+      "occluded": 4160,
+      "max_occlusion_red": 51
+    }
+  },
+  "after": {
+    "convex": {
+      "foreground": 10850,
+      "occluded": 0,
+      "max_occlusion_red": 0
+    },
+    "corner": {
+      "foreground": 20992,
+      "occluded": 4096,
+      "max_occlusion_red": 30
+    }
+  },
+  "ao_disabled": {
+    "convex": {
+      "foreground": 10850,
+      "occluded": 0,
+      "max_occlusion_red": 0
+    },
+    "corner": {
+      "foreground": 20992,
+      "occluded": 0,
+      "max_occlusion_red": 0
+    }
+  }
+}
