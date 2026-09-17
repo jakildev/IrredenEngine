@@ -2,6 +2,7 @@
 #define RENDER_DEVICE_H
 
 #include <irreden/render/ir_render_enums.hpp>
+#include <irreden/render/gpu_frame_timing.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -28,6 +29,13 @@ enum class TimestampReadStatus {
 class RenderDevice {
   public:
     virtual ~RenderDevice() = default;
+
+    virtual void setGpuFrameTimingEnabled(bool enabled) {
+        m_gpuFrameTiming.reset(enabled, false);
+    }
+    const GpuFrameTimingStats &gpuFrameTimingStats() const {
+        return m_gpuFrameTiming.stats();
+    }
 
     virtual void beginFrame() = 0;
     virtual void present() = 0;
@@ -123,6 +131,9 @@ class RenderDevice {
         return readTimestampPairMs(handle, outMs) ? TimestampReadStatus::READY
                                                   : TimestampReadStatus::PENDING;
     }
+
+  protected:
+    GpuFrameTimingAccumulator m_gpuFrameTiming;
 };
 
 RenderDevice *device();

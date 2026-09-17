@@ -59,6 +59,10 @@ changes (occupied-only lists, indirect dispatch, subdivision caps).
   Cascade clearing is at the first producer’s begin hook, outside the voxel
   per-canvas scopes.
 
+Full-frame Metal measurements use completed command-buffer timestamps independently
+of stage attachment slots; see [GPU frame accounting](../perf/gpu-frame-accounting.md).
+Envelope and summed buffer spans include stalls, and are not GPU busy time.
+
 ### Reading rules
 
 1. A **0.000 row** may be unwired, have no completed valid GPU samples, or

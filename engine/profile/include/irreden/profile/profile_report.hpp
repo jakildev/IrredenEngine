@@ -61,6 +61,11 @@ struct ProfileReport {
     uint32_t archetypeCount_ = 0;
     std::vector<SystemTimingEntry> systemTimings_;
     std::vector<GpuStageEntry> gpuStages_;
+    std::vector<GpuStageEntry> gpuFrameTimings_;
+    bool gpuFrameTimingSupported_ = false;
+    uint64_t gpuFrameAttempted_ = 0;
+    uint64_t gpuFrameInvalid_ = 0;
+    uint64_t gpuFrameCommandBuffers_ = 0;
     std::vector<CpuPhaseEntry> cpuPhases_;
     VoxelCullStatsSummary voxelCullStats_;
 };

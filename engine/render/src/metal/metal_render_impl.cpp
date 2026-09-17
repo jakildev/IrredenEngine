@@ -334,7 +334,20 @@ class MetalRenderDevice final : public RenderDevice {
         m_clearSourceBuffers.erase(it);
     }
 
+    void setGpuFrameTimingEnabled(bool enabled) override {
+        m_gpuFrameTiming.reset(enabled, true);
+    }
+
+    void recordCompletedFrameBuffer(MTL::CommandBuffer *commandBuffer) {
+        m_gpuFrameTiming.addCompletedBuffer(
+            commandBuffer->GPUStartTime(),
+            commandBuffer->GPUEndTime(),
+            commandBuffer->status() == MTL::CommandBufferStatusCompleted
+        );
+    }
+
     void beginFrame() override {
+        m_gpuFrameTiming.beginFrame();
         auto *drawable = metalLayer()->nextDrawable();
         if (drawable == nullptr) {
             setMetalDrawable(nullptr);
@@ -348,6 +361,7 @@ class MetalRenderDevice final : public RenderDevice {
     void present() override {
         auto *commandBuffer = metalCommandBuffer();
         if (commandBuffer == nullptr) {
+            m_gpuFrameTiming.endFrame();
             return;
         }
         if (auto *drawable = metalDrawable(); drawable != nullptr) {
@@ -355,6 +369,7 @@ class MetalRenderDevice final : public RenderDevice {
         }
         commandBuffer->commit();
         commandBuffer->waitUntilCompleted();
+        recordCompletedFrameBuffer(commandBuffer);
         for (auto &pair : m_timestamps) {
             if (pair.completionBuffer_ != nullptr) {
                 const auto status = pair.completionBuffer_->status();
@@ -368,6 +383,7 @@ class MetalRenderDevice final : public RenderDevice {
         // Now that the GPU has finished consuming any encoders that
         // captured orphaned buffers, it is safe to release them.
         releaseDeferredMetalBuffers();
+        m_gpuFrameTiming.endFrame();
         setMetalDrawable(nullptr);
         setMetalCommandBuffer(nullptr);
     }
@@ -412,6 +428,7 @@ class MetalRenderDevice final : public RenderDevice {
         if (auto *commandBuffer = metalCommandBuffer(); commandBuffer != nullptr) {
             commandBuffer->commit();
             commandBuffer->waitUntilCompleted();
+            recordCompletedFrameBuffer(commandBuffer);
             releaseDeferredMetalBuffers();
             setMetalCommandBuffer(metalCommandQueue()->commandBuffer());
         }
@@ -933,6 +950,7 @@ metalCurrentDepthPixelFormat(),
         }
         commandBuffer->commit();
         commandBuffer->waitUntilCompleted();
+        recordCompletedFrameBuffer(commandBuffer);
         releaseDeferredMetalBuffers();
         setMetalCommandBuffer(metalCommandQueue()->commandBuffer());
     }

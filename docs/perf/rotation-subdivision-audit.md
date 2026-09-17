@@ -111,9 +111,10 @@ and the separation between render visibility and simulation cadence.
    preserve GPU-owned positions. Measure fragmented copy overhead next; preserve
    fixed-workload controls and per-call versus per-frame counts.
 7. Establish Release and OpenGL controls, repeated run ranges and profiling-off
-   overhead. Add full-frame multi-canvas GPU accounting before treating summed
-   sampled rows as total render cost. Keep screenshots as correctness gates for
-   each optimization PR.
+   overhead. [Metal full-frame GPU accounting](gpu-frame-accounting.md) now covers
+   all submissions, including screenshot splits, independently of sampled stages.
+   Add an independent OpenGL frame-query ring; do not sum sampled stage rows.
+   Keep screenshots as correctness gates for each optimization PR.
 8. Establish capacity-verified scaling to 100³ simple entities and report tail
    latency as well as means. The [million-entity capacity audit](million-entity-capacity.md)
    verifies creation in a 128³ pool. [Conservative overflow demand sizing](overflow-demand-capacity.md)
@@ -125,7 +126,8 @@ and the separation between render visibility and simulation cadence.
    existing retired-frame read is a memcpy on Metal but may synchronize on GL.
    Include continuous camera motion and independent entity motion; keep viewport
    rejection separate from simulation interest.
-9. Profile reduced/staggered simulation cadence, accumulated-time correctness,
+9. The completed-frame million control averages about three updates per rendered
+   frame. Profile reduced/staggered simulation cadence, accumulated-time correctness,
    attachment transforms, interpolation and bounded catch-up/promotion costs.
    Audit large-coordinate/depth representation limits independently of the
    unbounded-depth viewport policy.

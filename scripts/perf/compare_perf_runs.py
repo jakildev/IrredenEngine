@@ -49,6 +49,11 @@ SYSTEM_RE = re.compile(
 )
 GPU_SAMPLED_RE = re.compile(r"^(\S+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+(\d+)\s*$")
 GPU_RE = re.compile(r"^(\S+)\s+([\d.]+)\s+([\d.]+)\s*$")
+GPU_FRAME_COVERAGE_RE = re.compile(
+    r"^Coverage: supported=(0|1) attempted=(\d+) valid=(\d+) "
+    r"invalid=(\d+) commandBuffers=(\d+)$"
+)
+
 
 
 @dataclass
@@ -83,6 +88,16 @@ class GpuStage:
 
 
 @dataclass
+class GpuFrameTiming:
+    supported: Optional[bool] = None
+    attempted: int = 0
+    valid: int = 0
+    invalid: int = 0
+    command_buffers: int = 0
+    metrics: List[GpuStage] = field(default_factory=list)
+
+
+@dataclass
 class CullStats:
     avg_axis_entries: Optional[float] = None
     max_axis_entries: Optional[int] = None
@@ -108,6 +123,7 @@ class CellReport:
     archetype_count: int = 0
     systems: List[SystemTiming] = field(default_factory=list)
     gpu_stages: List[GpuStage] = field(default_factory=list)
+    gpu_frame: GpuFrameTiming = field(default_factory=GpuFrameTiming)
     cull: CullStats = field(default_factory=CullStats)
     raw: str = ""
 
@@ -156,6 +172,9 @@ def parse_report(path: Path, cell_id: str) -> CellReport:
         if s.startswith("--- Per-system timing"):
             section = "systems"
             continue
+        if s.startswith("--- GPU frame timing"):
+            section = "gpu_frame"
+            continue
         if s.startswith("--- GPU stage timing"):
             section = "gpu"
             continue
@@ -183,6 +202,21 @@ def parse_report(path: Path, cell_id: str) -> CellReport:
                     max_ms=float(m.group(6)),
                     calls=int(m.group(7)),
                     entities=int(m.group(8)),
+                ))
+        elif section == "gpu_frame":
+            coverage = GPU_FRAME_COVERAGE_RE.match(s)
+            if coverage:
+                report.gpu_frame.supported = coverage.group(1) == "1"
+                (report.gpu_frame.attempted, report.gpu_frame.valid,
+                 report.gpu_frame.invalid, report.gpu_frame.command_buffers) = (
+                    int(coverage.group(i)) for i in range(2, 6)
+                )
+            metric = GPU_SAMPLED_RE.match(s)
+            if metric:
+                report.gpu_frame.metrics.append(GpuStage(
+                    name=metric.group(1), avg_ms=float(metric.group(2)),
+                    min_ms=float(metric.group(3)), max_ms=float(metric.group(4)),
+                    samples=int(metric.group(5)),
                 ))
         elif section == "gpu":
             sampled = GPU_SAMPLED_RE.match(s)
@@ -434,10 +468,32 @@ def render_markdown(
             )
         out.append("")
 
+    if not cpu_only and any(c.gpu_frame.supported is not None
+                            for c in list(base.values()) + list(head.values())):
+        out.extend(["## GPU frame timing (ms; separate from stage samples)", "",
+                    "| cell | envelope (base→head) | buffer spans (base→head) "
+                    "| coverage (base→head) |",
+                    "|---|---|---|---|"])
+        for cell_id in matched:
+            frames = [base[cell_id].gpu_frame, head[cell_id].gpu_frame]
+            values = []
+            for name in ("envelope", "commandBufferSpans"):
+                pair = []
+                for frame in frames:
+                    metric = next((m for m in frame.metrics if m.name == name), None)
+                    pair.append(f"{metric.avg_ms:.3f}" if metric else "unavailable")
+                values.append(" → ".join(pair))
+            coverage = " → ".join(
+                f"{frame.valid}/{frame.attempted} valid, {frame.invalid} invalid"
+                if frame.supported else "unavailable" for frame in frames
+            )
+            out.append(f"| `{cell_id}` | {values[0]} | {values[1]} | {coverage} |")
+        out.append("")
+
     if not cpu_only:
         gpu_names = collect_gpu_names(list(base.values()) + list(head.values()))
         if gpu_names:
-            out.append("## GPU stage timing (avg ms per frame)")
+            out.append("## GPU stage timing (avg ms per sampled invocation)")
             out.append("")
             header = "| cell | " + " | ".join(gpu_names) + " |"
             sep = "|------|" + "|".join(["----"] * len(gpu_names)) + "|"

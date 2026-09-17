@@ -153,6 +153,39 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
         std::fprintf(f, "\n");
     }
 
+    std::fprintf(f, "--- GPU frame timing ---\n");
+    std::fprintf(
+        f,
+        "Envelope includes inter-submission gaps; buffer spans include GPU stalls.\n"
+        "Neither is GPU busy time. commandBuffers counts valid frames only.\n"
+    );
+    const auto validGpuFrames =
+        report.gpuFrameTimings_.empty() ? 0u : report.gpuFrameTimings_.front().sampleCount_;
+    std::fprintf(
+        f,
+        "Coverage: supported=%u attempted=%llu valid=%u invalid=%llu commandBuffers=%llu\n",
+        report.gpuFrameTimingSupported_ ? 1u : 0u,
+        static_cast<unsigned long long>(report.gpuFrameAttempted_),
+        validGpuFrames,
+        static_cast<unsigned long long>(report.gpuFrameInvalid_),
+        static_cast<unsigned long long>(report.gpuFrameCommandBuffers_)
+    );
+    std::fprintf(f, "Metric Avg(ms) Min(ms) Max(ms) Samples\n");
+    for (const auto &metric : report.gpuFrameTimings_) {
+        if (metric.sampleCount_ == 0)
+            continue;
+        std::fprintf(
+            f,
+            "%s %.3f %.3f %.3f %u\n",
+            metric.name_.c_str(),
+            metric.totalMs_ / metric.sampleCount_,
+            metric.minMs_,
+            metric.maxMs_,
+            metric.sampleCount_
+        );
+    }
+    std::fprintf(f, "\n");
+
     // --- GPU stage timing ---
     if (!report.gpuStages_.empty()) {
         std::fprintf(f, "--- GPU stage timing ---\n");
