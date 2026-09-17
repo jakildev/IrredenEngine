@@ -2,10 +2,10 @@
   "target": "IRPerfGrid",
   "matrix": "quick",
   "frames": 300,
-  "git_sha": "3dd63d7b",
+  "git_sha": "7b85afc6",
   "git_dirty": false,
-  "run_name": "3dd63d7b-ci",
-  "started_at": "2026-09-17T20:14:28Z",
+  "run_name": "7b85afc6-ci",
+  "started_at": "2026-09-17T22:14:42Z",
   "cells": [
     {
       "id": "target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1",
@@ -28,15 +28,15 @@
       "report": "target=IRPerfGrid,zoom=4,sub_mode=full,sub_base=1.txt"
     }
   ],
-  "finished_at": "2026-09-17T20:14:36Z",
+  "finished_at": "2026-09-17T22:14:50Z",
   "calibration": {
-    "ref_ms": 103.486,
+    "ref_ms": 104.718,
     "ref_target_ms": 50,
     "host_slug": "linux-x86_64-epyc-7763-64-unknown",
     "host_fingerprint": {
       "cpu": {
         "cores": 2,
-        "mhz": 3247,
+        "mhz": 3243,
         "model": "AMD EPYC 7763 64-Core Processor",
         "threads": 4
       },
