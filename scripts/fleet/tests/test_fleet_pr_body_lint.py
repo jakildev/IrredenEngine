@@ -169,6 +169,38 @@ class FleetPrBodyLintTests(unittest.TestCase):
             "no acceptance criteria", self.run_lint(evidence_body(0), issue=review_only).stdout
         )
 
+    def test_body_heading_acceptance_criteria_is_matched_and_review_heading_is_not(self):
+        heading_body = snapshot(
+            body=(
+                "## Context\n\nFixture context.\n\n## Acceptance criteria\n"
+                + "\n".join(f"- {criterion}" for criterion in CRITERIA)
+            ),
+            comments=[],
+        )
+        result = self.run_lint(evidence_body(0), issue=heading_body)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("required=6, present=0", result.stdout)
+
+        review_only = snapshot(
+            body="## Acceptance criteria review\n- not a real criterion\n",
+            comments=[],
+        )
+        self.assertIn(
+            "no acceptance criteria", self.run_lint(evidence_body(0), issue=review_only).stdout
+        )
+
+        both_forms = snapshot(
+            body=(
+                "**Acceptance criteria**:\n- bold form only\n\n"
+                "## Acceptance criteria\n- heading form, should be ignored\n"
+            ),
+            comments=[],
+        )
+        result = self.run_lint(evidence_body(0), issue=both_forms)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("required=1, present=0", result.stdout)
+        self.assertIn("bold form only", result.stdout)
+
     def test_superseded_plan_without_acceptance_section_keeps_earlier_criteria(self):
         comments = [
             {"body": PLAN},
