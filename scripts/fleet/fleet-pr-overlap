@@ -270,17 +270,14 @@ def widened_paths(row, default_tip, base_tip, branch_tips):
             branch_tips[row_base] = None
     row_base_tip = branch_tips[row_base]
 
-    if row_base_tip is not None and is_ancestor(row_base_tip, base_tip):
-        merge_point = git("merge-base", row_base_tip, row["headRefOid"])
-        paths = set(git("diff", "--name-only", f"{merge_point}..{row['headRefOid']}").splitlines())
-    else:
-        merge_point = git("merge-base", default_tip, row["headRefOid"])
-        paths = set(git("diff", "--name-only", f"{merge_point}..{row['headRefOid']}").splitlines())
-        if base_tip != default_tip:
-            paths = {
-                path for path in paths
-                if blob_oid_at(row["headRefOid"], path) != blob_oid_at(base_tip, path)
-            }
+    scoped = row_base_tip is not None and is_ancestor(row_base_tip, base_tip)
+    merge_point = git("merge-base", row_base_tip if scoped else default_tip, row["headRefOid"])
+    paths = set(git("diff", "--name-only", f"{merge_point}..{row['headRefOid']}").splitlines())
+    if not scoped and base_tip != default_tip:
+        paths = {
+            path for path in paths
+            if blob_oid_at(row["headRefOid"], path) != blob_oid_at(base_tip, path)
+        }
 
     note(
         f"#{row['number']} path set widened from git ({len(paths)} paths; "

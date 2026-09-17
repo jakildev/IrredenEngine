@@ -26,7 +26,9 @@
 #   9  snapshot coherence: head moved, population moved, identical proceeds
 #   10 a stacked sibling's own delta excludes paths inherited from its base;
 #      the sibling's own edit to the same block-tree path still blocks
-#   14 the missing-subject guard skips with exit 3 and no tally
+#   11 a competitor whose base is gone or unrelated drops a path whose blob
+#      already matches the caller's base tip, and keeps one that differs
+#   12 the missing-subject guard skips with exit 3 and no tally
 
 set -uo pipefail
 
@@ -583,15 +585,46 @@ assert_rc 3 "T10b the sibling's own edit to the block tree still blocks"
 assert_contains "$OUT" "#301 docs/agents/x.md" "T10b the block-tree row prints"
 assert_eq "$(verdict_line)" "VERDICT: block" "T10b verdict block"
 
-echo "=== 14: the missing-subject guard ==="
+echo "=== 11: a competitor off the ancestor arm drops a path already at the caller's base tip ==="
+# pr-302 carries stack-base's docs/agents/x.md blob but names a base origin
+# never had; pr-303 names other-base, which is not upstream of stack-base.
+branch_from pr-302 stack-base
+edit_line src/y.txt 28 "y line 28 gone-base child"
+commit_all gone-base-child
+publish_pr 302 pr-302
+branch_from other-base master
+edit_line src/z.txt 25 "z line 25 other-base"
+commit_all other-base-edit
+g push -q origin refs/heads/other-base:refs/heads/other-base
+branch_from pr-303 stack-base
+edit_line src/y.txt 29 "y line 29 other-base child"
+commit_all other-base-child
+publish_pr 303 pr-303
+g checkout -q self-10
+pr_json "$TMP/prs-11a.json" "$(pr_row 302 pr-302 gone-base false - src/y.txt)"
+run_tool --pr-json "$TMP/prs-11a.json" --base stack-base
+assert_rc 1 "T11a a competitor on a base origin lacks is graded from the default tip"
+assert_contains "$OUT" "#302 src/y.txt clean" "T11a the path whose blob differs from the base tip is kept"
+assert_absent "$OUT" "#302 docs/agents/x.md" "T11a the path whose blob matches the base tip is dropped"
+assert_contains "$ERR" "#302 path set widened from git (1 paths; GitHub files 1 of 1, base gone-base)" "T11a the widened set counts the drop"
+assert_eq "$(verdict_line)" "VERDICT: overlap" "T11a verdict overlap, not block"
+pr_json "$TMP/prs-11b.json" "$(pr_row 303 pr-303 other-base false - src/y.txt)"
+run_tool --pr-json "$TMP/prs-11b.json" --base stack-base
+assert_rc 1 "T11b a competitor on an unrelated base is graded from the default tip"
+assert_contains "$OUT" "#303 src/y.txt clean" "T11b the path whose blob differs from the base tip is kept"
+assert_absent "$OUT" "#303 docs/agents/x.md" "T11b the path whose blob matches the base tip is dropped"
+assert_contains "$ERR" "#303 path set widened from git (1 paths; GitHub files 1 of 1, base other-base)" "T11b the widened set counts the drop"
+assert_eq "$(verdict_line)" "VERDICT: overlap" "T11b verdict overlap, not block"
+
+echo "=== 12: the missing-subject guard ==="
 STAGE="$TMP/stage/tests"
 mkdir -p "$STAGE"
 cp "$0" "$STAGE/$(basename "$0")"
 cp "$(dirname "$0")/lib_assert.sh" "$(dirname "$0")/lib_preflight.sh" "$STAGE/"
 guard_out=$(bash "$STAGE/$(basename "$0")" 2> "$TMP/guard-err.txt"); guard_rc=$?
 guard_err=$(cat "$TMP/guard-err.txt")
-assert_eq "$guard_rc" "3" "T14 a stage with no subject exits 3"
-assert_contains "$guard_err" "SKIP: subject under test missing at $TMP/stage/fleet-pr-overlap" "T14 the SKIP line names the staged path"
-assert_absent "$guard_out" "passed:" "T14 no tally is printed"
+assert_eq "$guard_rc" "3" "T12 a stage with no subject exits 3"
+assert_contains "$guard_err" "SKIP: subject under test missing at $TMP/stage/fleet-pr-overlap" "T12 the SKIP line names the staged path"
+assert_absent "$guard_out" "passed:" "T12 no tally is printed"
 
 summarize
