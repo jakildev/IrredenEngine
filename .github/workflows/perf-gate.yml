@@ -105,7 +105,11 @@ jobs:
           echo "$GITHUB_WORKSPACE/engine/tools/bin" >> "$GITHUB_PATH"
 
       - name: Run quick perf matrix (head)
-        run: ir-perf-grid --quick --label ci
+        # llvmpipe on the two-core hosted runner cannot finish the default
+        # 300-frame window before the matrix's 90-second cell deadline. Sixty
+        # frames still leaves 45 post-warmup samples while keeping both quick
+        # cells inside a deliberately larger watchdog.
+        run: ir-perf-grid --quick --frames 60 --timeout 120 --label ci
 
       - name: Locate head run directory
         id: head
@@ -122,6 +126,15 @@ jobs:
             exit 1
           fi
           echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Upload perf run diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-run-${{ github.run_id }}
+          path: save_files/perf/
+          if-no-files-found: warn
+          retention-days: 7
 
       # ── Pull-request path ────────────────────────────────────────────────
 

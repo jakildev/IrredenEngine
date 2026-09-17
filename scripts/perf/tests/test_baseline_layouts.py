@@ -14,6 +14,7 @@ a gate that silently passes produce the same check mark — so they get arms:
                                       (control that D's "no comment" can fail)
     F  head dir missing            -> exit 2, no comment
     G  the retired skip comment is absent from the shipped gate
+    H  head cell has no report     -> exit 2, no comment
 
 Stdlib only, no network, no build. Wired into the perf-gate job so it
 executes rather than drifting.
@@ -241,6 +242,48 @@ def arm_g_retired_literal() -> None:
     check("G", not hits, f"retired skip comment absent from the gate (hits: {hits})")
 
 
+def arm_h_reportless_head(tmp: Path) -> None:
+    work = tmp / "h"
+    root = work / "baseline_latest"
+    write_run(root / HEAD_SLUG, slug=HEAD_SLUG, avg_ms=10.0)
+    head = work / "head"
+    head.mkdir(parents=True)
+    (head / "manifest.json").write_text(json.dumps({
+        "cells": [{
+            "id": CELL_ID,
+            "status": "no_report",
+            "exit_status": 124,
+            "report": f"{CELL_ID}.txt",
+        }],
+        "calibration": {
+            "host_slug": HEAD_SLUG,
+            "ref_ms": 1.0,
+            "ref_target_ms": 1.0,
+        },
+    }))
+
+    r = run_checker(root, head)
+    check("H", r.returncode == 2,
+          f"report-less head fails loudly (got {r.returncode})")
+    check("H", "unmeasured cells in head" in r.stderr,
+          "checker identifies the unmeasured head cell")
+
+    env, _, gh_log = _stub_env(tmp, "h-step", checker_exit=0)
+    env.update({
+        "BASELINE_ROOT": str(root),
+        "HEAD_DIR": str(head),
+        "CHECK_REGRESSION": str(CHECK_REGRESSION),
+    })
+    r = subprocess.run(["bash", str(COMPARE_STEP)], env=env,
+                       capture_output=True, text=True)
+    check("H", r.returncode == 2,
+          f"ci_compare_step propagates the measurement error (got {r.returncode})")
+    check("H", not gh_log.exists(),
+          "no PR comment attempted for a report-less run")
+    check("H", "unmeasured cells in head" in r.stderr,
+          "measurement error reaches the job log")
+
+
 def main() -> int:
     print("perf-gate baseline layout + exit-mapping control")
     with tempfile.TemporaryDirectory(prefix="perfgate.") as td:
@@ -251,6 +294,7 @@ def main() -> int:
         arm_d_exit2_propagates(tmp)
         arm_e_exit1_comments(tmp)
         arm_f_missing_head(tmp)
+        arm_h_reportless_head(tmp)
     arm_g_retired_literal()
 
     if _failures:

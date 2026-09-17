@@ -274,6 +274,12 @@ def load_run(run_dir: Path) -> Dict[str, CellReport]:
     return cells
 
 
+def unmeasured_cell_ids(cells: Dict[str, CellReport]) -> List[str]:
+    """Return manifest cells that have no parsed frame measurement."""
+    return [cell_id for cell_id, report in cells.items()
+            if report.frame.avg <= 0.0]
+
+
 def load_manifest(run_dir: Path) -> Dict:
     manifest = run_dir / "manifest.json"
     if not manifest.exists():
