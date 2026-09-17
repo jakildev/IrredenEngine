@@ -10,8 +10,8 @@ shutdown) but shares the cache read and the feedback file.
 
 ## The dispatch target — one item per launch
 
-A dispatched target-bound role (worker, both reviewers, smoke-worker)
-carries one pre-claimed item:
+A dispatched target-bound role (worker, both reviewers, smoke-worker,
+merger) carries one pre-claimed item:
 
 | variable | value |
 |---|---|
@@ -49,10 +49,12 @@ as abandoned ([`FLEET.md § How a launch ends`](FLEET.md)).
 | `conflict` | `resolving-claim <N> <basename>` | `resolving-release <N> <basename>` |
 | `plan` | `planning-claim <N> <basename>` | `planning-release <N> <basename>` |
 | `review`, `smoke`, `planreview` | `review-claim <N> <basename>` (on the issue for `planreview`) | `review-release <N> <basename>` |
+| `merge` | nothing — claimless; the PR is one tier-0 (`fleet-rebase`) classified as needing the LLM merger pass | nothing; the merger's own mark on the PR (a `— fleet merger` comment, `fleet:merger-cooldown` or a durable handoff label) is the completion record |
 
 Add `--repo game` before the subcommand when `FLEET_DISPATCH_REPO` is
 `game`. The definition is `FLEET_TARGET_CLAIM` / `FLEET_TARGET_RELEASE` in
-`scripts/fleet/fleet-common.sh`; keep this table in step.
+`scripts/fleet/fleet-common.sh`; keep this table in step. `decline` works
+for the claimless kind too — the comment is the whole record.
 
 **Target unset** — a manual `/role-<role>`, a `dry-run` / `review-only`
 boot, or a reserved worktree resuming its own task — run the role's

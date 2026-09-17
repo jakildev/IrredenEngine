@@ -10,11 +10,17 @@ Observed live 2026-05-09: ~$0.30/iteration × 12/hour idle-fleet burn.
 
 This harness locks in the behavior:
   - Same durable state -> same hash, regardless of cooldown labels.
-  - Action-relevant transitions (approved becomes mergeable, conflict
-    arises) DO change the hash.
+  - The one action-relevant transition (a conflict arising on an
+    approved PR, or such a PR appearing) DOES change the hash.
+  - Merge-ready churn does not: an approved MERGEABLE PR appearing, or
+    leaving the list when the human merges it, is not merger work and
+    must never arm the lane (39 no-op iterations in one day, measured
+    2026-09-17, came from exactly that).
   - Skip-labels (wip, blocker, needs-linux-smoke, etc.) drop a PR
     from the projection entirely so the merger isn't woken to find
     nothing to do.
+  - The slice's `merger_candidates` names every PR tier-0 could hand to
+    the LLM pass as a `merge:<repo>:<N>` target.
 """
 import importlib.machinery
 import importlib.util
@@ -30,6 +36,12 @@ project_merger = _mod.project_merger
 project_worker = _mod.project_worker
 slice_merger = _mod.slice_merger
 stable_hash = _mod.stable_hash
+_merger_action_signal = _mod._merger_action_signal
+
+
+def _signal(pr):
+    return _merger_action_signal(set(pr["labels"]), pr.get("mergeable"),
+                                 pr.get("baseRefName", "master"))
 
 
 def _state(prs):
@@ -59,15 +71,18 @@ def _hash(state):
 
 
 class StableAcrossSelfToggledLabels(unittest.TestCase):
-    """The core invariant: merger-toggled labels must NOT change the hash."""
+    """The core invariant: merger-toggled labels must NOT change the hash.
+    Every pair below is a live projection row (a needs-resolve PR) on both
+    sides, so the equality is about the label, not an empty projection."""
 
     def test_cooldown_label_does_not_flip_hash(self):
-        before = _state([_pr(101, labels=["fleet:approved"])])
+        before = _state([_pr(101, labels=["fleet:approved"], mergeable="CONFLICTING")])
         after = _state([_pr(101, labels=[
             "fleet:approved", "fleet:merger-cooldown",
-        ])])
+        ], mergeable="CONFLICTING")])
         self.assertEqual(_hash(before), _hash(after),
                          "cooldown toggle must not re-trigger merger")
+        self.assertEqual(len(project_merger(after)), 1)
 
     def test_awaiting_base_label_does_not_flip_hash(self):
         before = _state([_pr(101, labels=["fleet:approved"], base="claude/parent")])
@@ -77,12 +92,13 @@ class StableAcrossSelfToggledLabels(unittest.TestCase):
         self.assertEqual(_hash(before), _hash(after))
 
     def test_stacked_rebase_label_does_not_flip_hash(self):
-        before = _state([_pr(101, labels=["fleet:approved"])])
+        before = _state([_pr(101, labels=["fleet:approved"], mergeable="CONFLICTING")])
         after = _state([_pr(101, labels=[
             "fleet:approved", "fleet:stacked-rebase",
             "fleet:changes-made",
-        ])])
+        ], mergeable="CONFLICTING")])
         self.assertEqual(_hash(before), _hash(after))
+        self.assertEqual(len(project_merger(after)), 1)
 
     def test_semantic_conflict_label_does_not_flip_hash(self):
         before = _state([_pr(101, labels=["fleet:approved"],
@@ -94,11 +110,12 @@ class StableAcrossSelfToggledLabels(unittest.TestCase):
 
 
 class ActionableTransitionsFlipHash(unittest.TestCase):
-    """Real state changes must still trigger the merger."""
+    """The one real merger transition — a conflict on an approved PR — must
+    still trigger the merger (the positive fire)."""
 
-    def test_approval_appears_flips_hash(self):
-        before = _state([_pr(101, labels=[])])
-        after = _state([_pr(101, labels=["fleet:approved"])])
+    def test_approval_appears_on_conflicting_pr_flips_hash(self):
+        before = _state([_pr(101, labels=[], mergeable="CONFLICTING")])
+        after = _state([_pr(101, labels=["fleet:approved"], mergeable="CONFLICTING")])
         self.assertNotEqual(_hash(before), _hash(after))
 
     def test_mergeable_to_conflicting_flips_hash(self):
@@ -106,57 +123,75 @@ class ActionableTransitionsFlipHash(unittest.TestCase):
         after = _state([_pr(101, labels=["fleet:approved"], mergeable="CONFLICTING")])
         self.assertNotEqual(_hash(before), _hash(after))
 
-    def test_new_approved_pr_flips_hash(self):
+    def test_new_needs_resolve_pr_flips_hash(self):
+        before = _state([])
+        after = _state([_pr(101, labels=["fleet:approved"], mergeable="CONFLICTING")])
+        self.assertNotEqual(_hash(before), _hash(after))
+        self.assertEqual(project_merger(after)[0]["signal"], "needs-resolve")
+
+
+class MergeReadyChurnDoesNotArm(unittest.TestCase):
+    """An approved MERGEABLE PR is on the human's merge click, not merger
+    work: its appearance and its departure leave the hash alone, so a
+    human merge never launches a merger iteration that finds nothing."""
+
+    def test_merge_ready_pr_appearing_does_not_flip_hash(self):
         before = _state([])
         after = _state([_pr(101, labels=["fleet:approved"])])
-        self.assertNotEqual(_hash(before), _hash(after))
+        self.assertEqual(_hash(before), _hash(after))
+        self.assertEqual(project_merger(after), [])
+
+    def test_merge_ready_pr_merging_does_not_flip_hash(self):
+        # The human merges the merge-ready PR while the other stays needs-resolve: the
+        # projection is the same one-row set before and after.
+        before = _state([_pr(101, labels=["fleet:approved"]),
+                         _pr(102, labels=["fleet:approved"], mergeable="CONFLICTING")])
+        after = _state([_pr(102, labels=["fleet:approved"], mergeable="CONFLICTING")])
+        self.assertEqual(_hash(before), _hash(after))
+
+    def test_approval_appearing_on_mergeable_pr_does_not_flip_hash(self):
+        before = _state([_pr(101, labels=[])])
+        after = _state([_pr(101, labels=["fleet:approved"])])
+        self.assertEqual(_hash(before), _hash(after))
+
+    def test_merge_ready_stays_in_the_slice(self):
+        # The role still reads it (its cooldown sweep, step 1); only the
+        # trigger hash excludes it.
+        out = slice_merger(_state([_pr(101, labels=["fleet:approved"])]))
+        self.assertEqual([pr["number"] for pr in out["prs"]], [101])
+        self.assertEqual(out["merger_candidates"], [])
 
 
 class SkipLabelsRemovedFromProjection(unittest.TestCase):
     """Skip labels exclude a PR entirely so the merger isn't woken
-    to find nothing to do."""
+    to find nothing to do. Each PR is CONFLICTING — a row the projection
+    would carry without the label — so the label is what drops it."""
+
+    def _dropped(self, label):
+        empty = _state([])
+        flagged = _state([_pr(101, labels=["fleet:approved", label],
+                              mergeable="CONFLICTING")])
+        self.assertEqual(_hash(empty), _hash(flagged),
+                         f"{label} PRs should be invisible to merger")
+        self.assertEqual(project_merger(flagged), [])
 
     def test_needs_linux_smoke_dropped(self):
         # PR with fleet:approved + fleet:needs-linux-smoke is a smoke-runner's
         # job, not the merger's. Should NOT appear in the projection.
-        empty = _state([])
-        with_smoke = _state([_pr(101, labels=[
-            "fleet:approved", "fleet:needs-linux-smoke",
-        ])])
-        self.assertEqual(_hash(empty), _hash(with_smoke),
-                         "needs-linux-smoke PRs should be invisible to merger")
+        self._dropped("fleet:needs-linux-smoke")
 
     def test_needs_macos_smoke_dropped(self):
-        empty = _state([])
-        with_smoke = _state([_pr(101, labels=[
-            "fleet:approved", "fleet:needs-macos-smoke",
-        ])])
-        self.assertEqual(_hash(empty), _hash(with_smoke))
+        self._dropped("fleet:needs-macos-smoke")
 
     def test_needs_windows_smoke_dropped(self):
-        # #2888: fleet:needs-windows-smoke was the orphaned third smoke
-        # label — must behave identically to linux/macos, not leak through
-        # as a merge-ready wake.
-        empty = _state([])
-        with_smoke = _state([_pr(101, labels=[
-            "fleet:approved", "fleet:needs-windows-smoke",
-        ])])
-        self.assertEqual(_hash(empty), _hash(with_smoke),
-                         "needs-windows-smoke PRs should be invisible to merger")
+        # The third smoke label must behave identically to linux/macos.
+        self._dropped("fleet:needs-windows-smoke")
 
     def test_wip_dropped(self):
-        empty = _state([])
-        with_wip = _state([_pr(101, labels=[
-            "fleet:approved", "fleet:wip",
-        ])])
-        self.assertEqual(_hash(empty), _hash(with_wip))
+        self._dropped("fleet:wip")
 
     def test_blocker_dropped(self):
-        empty = _state([])
-        with_blocker = _state([_pr(101, labels=[
-            "fleet:approved", "fleet:blocker",
-        ])])
-        self.assertEqual(_hash(empty), _hash(with_blocker))
+        self._dropped("fleet:blocker")
 
 
 class HumanOwesFixLabelsDropped(unittest.TestCase):
@@ -167,7 +202,7 @@ class HumanOwesFixLabelsDropped(unittest.TestCase):
     observed live on game #144: fleet:approved + human:needs-fix projected
     merge-ready forever)."""
 
-    def _dropped(self, *extra_labels, mergeable="MERGEABLE"):
+    def _dropped(self, *extra_labels, mergeable="CONFLICTING"):
         empty = _state([])
         flagged = _state([_pr(101, labels=[
             "fleet:approved", *extra_labels,
@@ -211,7 +246,7 @@ class HumanOwesFixLabelsDropped(unittest.TestCase):
             engine_prs=[],
             game_prs=[_pr(144, labels=[
                 "fleet:approved", "human:needs-fix",
-            ])],
+            ], mergeable="CONFLICTING")],
         )
         self.assertEqual(_hash(empty), _hash(flagged))
         self.assertEqual(project_merger(flagged), [])
@@ -221,9 +256,10 @@ class SignalSemantics(unittest.TestCase):
     """Verify the action signal categorization matches the role doc."""
 
     def test_approved_mergeable_master_is_merge_ready(self):
-        items = project_merger(_state([_pr(101, labels=["fleet:approved"])]))
-        self.assertEqual(len(items), 1)
-        self.assertEqual(items[0]["signal"], "merge-ready")
+        pr = _pr(101, labels=["fleet:approved"])
+        self.assertEqual(_signal(pr), "merge-ready")
+        # …and merge-ready is not a projection row.
+        self.assertEqual(project_merger(_state([pr])), [])
 
     def test_approved_needs_fix_not_merge_ready(self):
         # Acceptance criterion #1533: fleet:approved + human:needs-fix must
@@ -267,10 +303,10 @@ class SignalSemantics(unittest.TestCase):
     def test_human_deferred_mergeable_is_merge_ready(self):
         # A MERGEABLE deferred PR is just an approved PR awaiting the
         # human's merge/re-flag decision — treated like any approved PR.
-        items = project_merger(_state([_pr(101, labels=[
-            "fleet:approved", "fleet:human-deferred",
-        ], mergeable="MERGEABLE")]))
-        self.assertEqual(items[0]["signal"], "merge-ready")
+        pr = _pr(101, labels=["fleet:approved", "fleet:human-deferred"],
+                 mergeable="MERGEABLE")
+        self.assertEqual(_signal(pr), "merge-ready")
+        self.assertEqual(project_merger(_state([pr])), [])
 
     def test_gated_is_the_inverse_of_human_deferred(self):
         # The whole point of fleet:gated: where a CONFLICTING human-deferred PR
@@ -307,16 +343,15 @@ class FailThenSucceedStackedRebase(unittest.TestCase):
         # fail-then-succeed: PR has fleet:stacked-rebase (set by the successful
         # second pass) but also stale fleet:semantic-conflict (set by the failed
         # first pass, not yet cleared). The merger must still classify it as
-        # merge-ready — NOT as needs-resolve.
+        # merge-ready — NOT as needs-resolve — so it is not a projection row.
         pr = _pr(101, labels=[
             "fleet:approved", "fleet:semantic-conflict",
             "fleet:stacked-rebase", "fleet:merger-cooldown",
         ], mergeable="MERGEABLE", base="master")
-        items = project_merger(_state([pr]))
-        self.assertEqual(len(items), 1)
-        self.assertEqual(items[0]["signal"], "merge-ready",
+        self.assertEqual(_signal(pr), "merge-ready",
                          "stale fleet:semantic-conflict must not push a MERGEABLE "
                          "PR from merge-ready to needs-resolve")
+        self.assertEqual(project_merger(_state([pr])), [])
 
     def test_removing_stale_semantic_conflict_does_not_flip_hash(self):
         # Once the merger's success path removes the stale label (per #1654
@@ -381,6 +416,65 @@ class MergerCoversBothRepos(unittest.TestCase):
             game_prs=[_pr(99, labels=[], mergeable="MERGEABLE")],
         ))
         self.assertEqual(out["prs"], [])
+        self.assertEqual(out["merger_candidates"], [])
+
+
+class MergerCandidates(unittest.TestCase):
+    """`merger_candidates` is the record table a `merge:<repo>:<N>` target
+    resolves against: every PR tier-0 could hand to the LLM pass, tagged
+    with why, and nothing another lane owns."""
+
+    def _candidates(self, *prs, game=()):
+        out = slice_merger(_state_eng_game(engine_prs=list(prs), game_prs=list(game)))
+        return {(c["repo"], c["number"]): c["signal"] for c in out["merger_candidates"]}
+
+    def test_needs_resolve_row_is_a_candidate(self):
+        self.assertEqual(
+            self._candidates(_pr(101, labels=["fleet:approved"], mergeable="CONFLICTING")),
+            {("engine", 101): "needs-resolve"})
+
+    def test_unapproved_conflict_is_an_llm_candidate(self):
+        # role-merger.md step 3 admits it, so tier-0 can name it.
+        self.assertEqual(self._candidates(_pr(101, labels=[], mergeable="CONFLICTING")),
+                         {("engine", 101): "llm"})
+
+    def test_unknown_row_is_an_llm_candidate(self):
+        # The slice is one tick old: tier-0 may confirm it CONFLICTING and
+        # name it before the scout sees the settled value.
+        self.assertEqual(self._candidates(_pr(101, labels=[], mergeable="UNKNOWN")),
+                         {("engine", 101): "llm"})
+
+    def test_approved_stacked_child_is_a_candidate(self):
+        self.assertEqual(
+            self._candidates(_pr(101, labels=["fleet:approved"], base="claude/parent")),
+            {("engine", 101): "stacked"})
+
+    def test_merge_ready_and_unapproved_clean_are_not_candidates(self):
+        self.assertEqual(self._candidates(_pr(101, labels=["fleet:approved"]),
+                                          _pr(102, labels=[])), {})
+
+    def test_other_lanes_prs_are_not_candidates(self):
+        # Worker-owned (semantic conflict, amending), human-owned, parked.
+        for labels in (["fleet:approved", "fleet:semantic-conflict"],
+                       ["fleet:approved", "fleet:amending-mac-pool-2"],
+                       ["fleet:approved", "human:needs-fix"],
+                       ["fleet:approved", "fleet:gated"],
+                       ["fleet:approved", "fleet:wip"]):
+            with self.subTest(labels=labels):
+                self.assertEqual(
+                    self._candidates(_pr(101, labels=labels, mergeable="CONFLICTING")), {})
+
+    def test_candidates_carry_repo_and_the_routing_labels(self):
+        out = slice_merger(_state_eng_game(
+            engine_prs=[],
+            game_prs=[_pr(99, labels=["fleet:approved", "fleet:author-codex"],
+                          mergeable="CONFLICTING")]))
+        (record,) = out["merger_candidates"]
+        self.assertEqual((record["repo"], record["number"]), ("game", 99))
+        self.assertIn("fleet:author-codex", record["labels"])
+        # An unrecognised state the slice would otherwise drop still rides
+        # `prs` when it is a candidate.
+        self.assertEqual([pr["number"] for pr in out["prs"]], [99])
 
 
 if __name__ == "__main__":

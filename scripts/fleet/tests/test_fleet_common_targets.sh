@@ -47,6 +47,7 @@ assert_eq "$(parse task:engine:1969)" "task|engine|1969|" "task target"
 assert_eq "$(parse stack:game:344:397)" "stack|game|344|397" "stack target carries its base PR as extra"
 assert_eq "$(parse review:engine:3074)" "review|engine|3074|" "review target"
 assert_eq "$(parse planreview:game:605)" "planreview|game|605|" "planreview target"
+assert_eq "$(parse merge:engine:3455)" "merge|engine|3455|" "merge target (the claimless kind)"
 
 echo "T2: every kind in the claim table parses, and the two tables agree"
 for kind in "${!FLEET_TARGET_CLAIM[@]}"; do
@@ -76,9 +77,18 @@ claim_arm_prefix() {  # $1 = claim subcommand -> the `fleet:<x>-` its arm writes
 for kind in "${!FLEET_TARGET_CLAIM[@]}"; do
     [[ -n "${FLEET_TARGET_LABEL[$kind]+x}" ]] \
         && ok "kind '$kind' has a label prefix" || bad "kind '$kind' has no label prefix"
+    if [[ -z "${FLEET_TARGET_CLAIM[$kind]}" ]]; then
+        # A claimless kind takes no lock and writes no label: all three arms empty.
+        [[ -z "${FLEET_TARGET_RELEASE[$kind]}" && -z "${FLEET_TARGET_LABEL[$kind]}" ]] \
+            && ok "claimless kind '$kind' has empty release and label arms" \
+            || bad "claimless kind '$kind' must have empty release and label arms"
+        continue
+    fi
     assert_eq "${FLEET_TARGET_LABEL[$kind]:-}" "$(claim_arm_prefix "${FLEET_TARGET_CLAIM[$kind]}")" \
         "kind '$kind': label prefix matches fleet-claim's ${FLEET_TARGET_CLAIM[$kind]} arm"
 done
+assert_eq "${FLEET_TARGET_CLAIM[merge]+set}" "set" "merge is a kind"
+assert_eq "${FLEET_TARGET_CLAIM[merge]-absent}" "" "merge is claimless"
 
 echo "T2c: fleet_target_key and fleet_pane_worktrees"
 assert_eq "$(fleet_target_key task:engine:1969)" "task-engine-1969" "target key"
@@ -122,6 +132,7 @@ assert_eq "$(release plan:game:7)" "--repo game planning-release 7 pool-3" "plan
 assert_eq "$(release review:engine:3074)" "review-release 3074 pool-3" "review -> review-release"
 assert_eq "$(release planreview:engine:605)" "review-release 605 pool-3" "planreview -> review-release"
 assert_eq "$(release smoke:engine:3087)" "review-release 3087 pool-3" "smoke -> review-release"
+assert_eq "$(release merge:engine:3455)" "" "merge -> nothing to release (claimless)"
 assert_eq "$(release bogus:engine:1)" "" "a malformed target releases nothing"
 
 summarize "fleet-common dispatch-target tests"

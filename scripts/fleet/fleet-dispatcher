@@ -576,7 +576,10 @@ fi
 # the deliberate exception: it does not consult or take fleet-claim locks at
 # all (`role-merger.md` — `--force-with-lease` is its concurrency control), so
 # under the marker it would stamp nothing on a *successful* merge run and
-# stand its own lane down after EMPTY_STREAK_CAP productive dispatches.
+# stand its own lane down after EMPTY_STREAK_CAP productive dispatches. A
+# target-bound merger launch is graded by the completion contract instead
+# (fleet_completion.py assess_merge); duration is only the fallback for a
+# launch with no target.
 #
 # Duration stays sound for exactly these roles, for the mirror of the reason it
 # broke elsewhere: it failed for the worker because that role doc mandates a
@@ -1403,6 +1406,14 @@ assess_target_completion() {
     if [[ "${FLEET_TARGET_RELEASE[$FLEET_TARGET_KIND]:-}" == release ]]; then
         assess_prs_file "$slug"
         [[ -n "$ASSESS_PRS_PATH" ]] && prs_arg=(--prs-json "$ASSESS_PRS_PATH")
+    elif [[ "$FLEET_TARGET_KIND" == merge ]]; then
+        # The claimless kind: its verdict reads the pull object (merged,
+        # state, live mergeability) beside the issue view's labels.
+        if gh api "repos/$slug/pulls/$FLEET_TARGET_NUM" > "$ASSESS_TMP/$key.pull.json" 2>/dev/null; then
+            prs_arg=(--kind merge --pr-json "$ASSESS_TMP/$key.pull.json")
+        else
+            prs_arg=(--kind merge)
+        fi
     fi
     out=$(python3 "$FLEET_LIB_DIR/fleet_completion.py" assess \
         --claim-label "${FLEET_TARGET_LABEL[$FLEET_TARGET_KIND]:-fleet:claim-}$(host_key)-$agent" \
@@ -2075,7 +2086,8 @@ resolve_worker_class() {
 #
 # Assignment IS the claim. Every live dispatch of a target-bound role
 # (ROLE_TARGET_BOUND) is sent after ONE item: the dispatcher walks the lane's
-# ordered candidates (`fleet_task_class.py --pick` / `--pick-role`), takes each
+# ordered candidates (`fleet_task_class.py --pick` / `--pick-role`; the
+# merger's trigger lines), takes each
 # item's lane claim itself — under the target pane's worktree basename — until
 # one is granted, and hands that item into the iteration as `target=…`
 # (FLEET_DISPATCH_TARGET). A dispatch therefore only exists behind a held
@@ -2089,13 +2101,33 @@ resolve_worker_class() {
 # empty (the function's exit status says why).
 ASSIGNMENT=""
 
-# Roles the dispatcher binds to a target before launch. The merger runs a
-# batch pass (fleet-rebase first, one LLM pass over every conflicted PR) and
-# the epic steward budgets several epics per iteration under its own claim
-# etiquette; both keep the legacy discover-in-iteration flow.
+# Roles the dispatcher binds to a target before launch. The merger's targets
+# are the `merge:<repo>:<N>` lines tier-0 (fleet-rebase) writes into its
+# trigger — one PR it classified as needing judgment per line — rather than
+# a projection pick; the lane is claimless (fleet-common.sh FLEET_TARGET_CLAIM),
+# so the in-flight dispatch records and the per-target dispatch cap are its
+# whole dedup. The epic steward budgets several epics per iteration under
+# its own claim etiquette and keeps the legacy discover-in-iteration flow.
 declare -A ROLE_TARGET_BOUND=(
-    [worker]=1 [sonnet-reviewer]=1 [opus-reviewer]=1 [smoke-worker]=1
+    [worker]=1 [sonnet-reviewer]=1 [opus-reviewer]=1 [smoke-worker]=1 [merger]=1
 )
+
+# The merger trigger's target lines, in tier-0's order. Empty when the
+# trigger is absent, a bare scout touch, or carries no `merge:` line.
+merger_trigger_targets() {
+    grep -E '^merge:(engine|game):[1-9][0-9]*$' "$TRIGGERS_DIR/merger" 2>/dev/null || true
+}
+
+# Drop one target line from the merger trigger (a launch consumed it, or it
+# can no longer be routed). The file is left in place, possibly empty: the
+# end-of-tick consume/retain logic in dispatch_role owns its removal.
+merger_trigger_pop() {  # $1 = target line
+    local trigger="$TRIGGERS_DIR/merger" tmp
+    [[ -f "$trigger" ]] || return 0
+    tmp=$(mktemp "$TRIGGERS_DIR/.merger.XXXXXX") || return 0
+    grep -vxF -- "$1" "$trigger" > "$tmp" 2>/dev/null || true
+    mv "$tmp" "$trigger"
+}
 
 # Candidate cache for one dispatch_role call: the ordered picks for a
 # (role, class) are identical for every pane launched that tick, so the
@@ -2293,6 +2325,13 @@ claim_target() {
             FLEET_ROLE_MODEL="$DISPATCH_CLASS" fleet-claim ${FLEET_NS[@]+"${FLEET_NS[@]}"} \
                 claim "$FLEET_TARGET_NUM" "$agent" ${stack_args[@]+"${stack_args[@]}"} >/dev/null 2>&1 || rc=$?
             ;;
+        merge)
+            # Claimless: tier-0 named the PR and the in-flight records already
+            # excluded a running iteration on it. Granting pops the line so a
+            # later tick never re-launches this emission; tier-0 re-emits the
+            # PR if it still needs judgment after the iteration.
+            merger_trigger_pop "$target"
+            ;;
         plan)
             # exit 0 = sole holder (assigned); 1 = a cross-host dispatcher or
             # the architect holds it (next line); 3 = a `## Plan` comment
@@ -2356,7 +2395,9 @@ assign_for_pane() {
     if [[ "$PICKS_CACHE_KEY" != "$key" ]]; then
         PICKS_CACHE_KEY="$key"
         PICKS_CACHE=""
-        if [[ "$role" == "worker" ]]; then
+        if [[ "$role" == "merger" ]]; then
+            PICKS_CACHE=$(merger_trigger_targets)
+        elif [[ "$role" == "worker" ]]; then
             [[ -n "$DISPATCH_CLASS" ]] || return 1
             PICKS_CACHE=$(FLEET_STATE_DIR="$STATE_DIR" \
                 python3 "$FLEET_LIB_DIR/fleet_task_class.py" --pick "$slice" \
@@ -2399,6 +2440,14 @@ assign_for_pane() {
             route=$(python3 "$FLEET_LIB_DIR/fleet_runtime.py" route "$slice" "$line" \
                 "$role" "$DISPATCH_CLASS" "${DISPATCH_MODEL:-${ROLE_MODEL[$role]}}" \
                 "${DISPATCH_EFFORT:-${ROLE_EFFORT[$role]}}") || {
+                    if [[ "$role" == "merger" ]]; then
+                        # The PR left the merger's candidate set since tier-0
+                        # named it (a skip label, a merge); a line that cannot
+                        # route is dropped, never a standing block on the lane.
+                        merger_trigger_pop "$line"
+                        log "merger: dropped $line — no longer routable"
+                        continue
+                    fi
                     ASSIGN_BLOCK_REASON="route-failed"; runtime_blocked=1; continue;
                 }
             route="${route//$'\r'/}"
@@ -2574,24 +2623,28 @@ dispatch_role() {
     fi
 
     # Tier-0 merger: try the zero-token mechanical pass before any LLM.
-    # The trigger file's content is the tier protocol — empty (a plain
-    # scout touch) means "not yet attempted": consume the trigger and
+    # The trigger file's content is the tier protocol — no `merge:` line (a
+    # plain scout touch) means "not yet attempted": consume the trigger and
     # spawn fleet-rebase, which clears clean rebases itself and re-arms
-    # this trigger with content "llm" when conflicted PRs remain.
-    # Content "llm" falls through to the normal (sonnet) merger dispatch.
-    # No fleet-rebase on PATH -> straight to the LLM pass as before.
+    # this trigger with one `merge:<repo>:<N>` line per PR that needs the
+    # LLM pass. Target lines fall through to the target-bound (sonnet)
+    # merger dispatch below, one line per launch. No fleet-rebase on PATH
+    # -> the lane has no classifier and no targets: stand down.
     #
     # Skipped in dry-run: fleet-rebase force-pushes resolved rebases (a
     # destructive action dry-run must not take). Falling through runs the
-    # merger's dry-run LLM standby instead, which mutates nothing (#2022).
-    if [[ "$role" == "merger" ]] && [[ "$DISPATCH_MODE" != "dry-run" ]] \
-        && command -v fleet-rebase >/dev/null 2>&1; then
-        if [[ "$(cat "$trigger_file" 2>/dev/null)" != "llm" ]]; then
+    # merger's dry-run LLM standby instead, which mutates nothing.
+    if [[ "$role" == "merger" ]] && [[ "$DISPATCH_MODE" != "dry-run" ]]; then
+        if [[ -z "$(merger_trigger_targets)" ]]; then
             rm -f "$trigger_file"
+            if ! command -v fleet-rebase >/dev/null 2>&1; then
+                log "merger: no fleet-rebase on PATH and no target line; standing down"
+                return
+            fi
             mkdir -p "$HOME/.fleet/logs"
             nohup fleet-rebase --auto --rearm-trigger \
                 >>"$HOME/.fleet/logs/fleet-rebase.log" 2>&1 &
-            log "merger: spawned tier-0 fleet-rebase (LLM pass only if it re-arms)"
+            log "merger: spawned tier-0 fleet-rebase (LLM pass only for the targets it emits)"
             return
         fi
     fi
@@ -2683,8 +2736,9 @@ dispatch_role() {
     # lane claim the dispatcher already holds under that pane's basename
     # (assign_for_pane), so no two panes are ever sent after the same
     # item and a pane is never launched when nothing is claimable — the
-    # fan-out stops at the first pane that cannot be assigned. The merger
-    # and epic steward still coordinate iteration-side via fleet-claim.
+    # fan-out stops at the first pane that cannot be assigned (the merger's
+    # "claim" is the in-flight record alone). The epic steward still
+    # coordinates iteration-side via fleet-claim.
     if [[ -z "$idle_panes" ]]; then
         # No idle pane right now (every pane for this role is running
         # claude or otherwise busy). Leave the trigger in place —
@@ -2991,6 +3045,18 @@ dispatch_role() {
         return
     fi
     unset "CAP_DEFER_LOGGED[$role-unassignable]"
+
+    # Merger: tier-0 named more PRs than this tick launched (the cap, or the
+    # idle panes, ran out first). Each launch popped its own line, so what
+    # remains is exactly the unlaunched set — keep it for the next tick.
+    if [[ "$role" == "merger" ]] && [[ -n "$(merger_trigger_targets)" ]]; then
+        if [[ -z "${CAP_DEFER_LOGGED[$role-targets-left]+x}" ]]; then
+            log "merger: dispatched $dispatched; target line(s) remain — trigger kept"
+            CAP_DEFER_LOGGED["$role-targets-left"]=1
+        fi
+        return
+    fi
+    unset "CAP_DEFER_LOGGED[$role-targets-left]"
 
     # Empty-exit backoff. If this role's recent dispatches kept returning to a
     # shell within EMPTY_EXIT_SECONDS (no task claimed) EMPTY_STREAK_CAP times

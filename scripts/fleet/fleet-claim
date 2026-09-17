@@ -2851,11 +2851,12 @@ cmd_decline() {
             *) echo "fleet-claim decline: unknown flag '$1'" >&2; return 2 ;;
         esac
     done
-    local sub="${FLEET_TARGET_RELEASE[$kind]:-}"
-    if [[ -z "$kind" || -z "$sub" ]]; then
+    if [[ -z "$kind" || -z "${FLEET_TARGET_RELEASE[$kind]+x}" ]]; then
         echo "fleet-claim decline: unknown target kind '${kind}' (known: ${!FLEET_TARGET_RELEASE[*]})" >&2
         return 2
     fi
+    # Empty for a claimless kind (`merge`): the comment is the whole record.
+    local sub="${FLEET_TARGET_RELEASE[$kind]}"
     if [[ ! "$num" =~ ^[0-9]+$ ]]; then
         echo "usage: fleet-claim [--repo <ns>] decline <kind> <number> [<agent>] --reason \"<why>\"" >&2
         return 2
@@ -2875,7 +2876,9 @@ cmd_decline() {
     fi
     # cmd_release reads only the number; the label arms take the agent too
     # (same branch fleet_release_assignment uses in fleet-common.sh).
-    if [[ "$sub" == release ]]; then
+    if [[ -z "$sub" ]]; then
+        :
+    elif [[ "$sub" == release ]]; then
         cmd_release "$num"
     else
         "cmd_${sub//-/_}" "$num" "$agent"

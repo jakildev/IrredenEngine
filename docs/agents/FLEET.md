@@ -58,15 +58,15 @@ collide unless one forces `FLEET_TEST_HOST`.
 ### Who takes the claim
 
 The **dispatcher**, before launch. For the target-bound roles (worker, both
-reviewers, smoke-worker) it walks the lane's candidates
-(`fleet_task_class.py --pick` / `--pick-role`), takes the item's claim
-under the target pane's worktree basename (`claim` / `amending-claim` /
-`resolving-claim` / `planning-claim` / `review-claim` by kind), and
-launches only once one is granted, with
+reviewers, smoke-worker, merger) it walks the lane's candidates
+(`fleet_task_class.py --pick` / `--pick-role`; the merger's are the
+`merge:<repo>:<N>` lines tier-0 `fleet-rebase` wrote into its trigger),
+takes the item's claim under the target pane's worktree basename by kind
+(`merge` is claimless: the in-flight record and per-target dispatch cap are
+its dedup), and launches only once one is granted, with
 `FLEET_DISPATCH_TARGET=<kind>:<repo>:<N>` set
 ([`FLEET-RUNTIME.md § The dispatch target`](FLEET-RUNTIME.md)). A reserved
-worktree resumes its own task instead; the merger and epic steward still
-claim iteration-side.
+worktree resumes its own task; the epic steward still claims iteration-side.
 
 ### How a launch ends
 

@@ -11,12 +11,20 @@ reused list that still carries UNKNOWN re-asks GraphQL, stops once the list
 settles, is capped, resets on a real change, and never lets a failed
 re-query degrade a valid cache.
 
+The reuse path also has two staleness holes with the same fix shape: a
+merged-or-closed PR whose row the 304 fast path keeps serving (its cached
+`mergeable`, UNKNOWN or otherwise, outliving the PR — the detector's REST
+body is the post-change open set, so the row is dropped against it), and a
+200 whose GraphQL fetch then failed (the ETag advanced, so the next 304
+would reuse the pre-change list — the reuse is bypassed once instead).
+
 Hermetic: both network seams (conditional_get, _fetch_prs_graphql) are
 patched on the module; a miss would raise, never reach gh/urllib.
 Import the script via importlib because it has no .py extension.
 """
 import importlib.machinery
 import importlib.util
+import json
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -46,9 +54,15 @@ def _changed(*_a, **_k):
     return (True, None)
 
 
+def _not_changed_open(*numbers):
+    body = json.dumps([{"number": n} for n in numbers])
+    return lambda *_a, **_k: (False, body)
+
+
 class MergeableUnknownRequery(unittest.TestCase):
     def setUp(self):
         _mod._mergeable_requery_ticks.clear()
+        getattr(_mod, "_prs_refetch_pending", set()).clear()
         self.calls = 0
 
     def _graphql(self, result):
@@ -137,6 +151,78 @@ class MergeableUnknownRequery(unittest.TestCase):
             _mod.fetch_prs("jakildev/irreden", prev=prev)
         self.assertEqual(self.calls, cap + 1,
                          "exhausting one repo's budget leaves the other's intact")
+
+
+class StaleRowsOnReuse(unittest.TestCase):
+    def setUp(self):
+        _mod._mergeable_requery_ticks.clear()
+        getattr(_mod, "_prs_refetch_pending", set()).clear()
+        self.calls = 0
+
+    def _graphql(self, result):
+        def fake(repo):
+            self.calls += 1
+            return result
+        return fake
+
+    def test_merged_while_unknown_row_is_dropped_on_the_304_path(self):
+        prev = [_pr(3455, "UNKNOWN"), _pr(3457, "MERGEABLE")]
+        with patch.object(_mod, "conditional_get", _not_changed_open(3457)), \
+             patch.object(_mod, "_fetch_prs_graphql", self._graphql([])):
+            out = _mod.fetch_prs(_REPO, prev=prev)
+        self.assertEqual([p["number"] for p in out], [3457],
+                         "a row the open set no longer carries must not outlive the tick")
+        self.assertEqual(self.calls, 0, "no UNKNOWN left ⇒ no GraphQL re-query either")
+
+    def test_dropped_before_the_unknown_requery_decides(self):
+        # The merged row was the only UNKNOWN: dropping it settles the list.
+        prev = [_pr(3455, "UNKNOWN"), _pr(3457, "CONFLICTING")]
+        with patch.object(_mod, "conditional_get", _not_changed_open(3457)), \
+             patch.object(_mod, "_fetch_prs_graphql", self._graphql(None)):
+            out = _mod.fetch_prs(_REPO, prev=prev)
+        self.assertEqual([p["number"] for p in out], [3457])
+        self.assertEqual(self.calls, 0)
+
+    def test_unchanged_open_set_reuses_prev_unmodified(self):
+        prev = [_pr(1, "CONFLICTING"), _pr(2, "MERGEABLE")]
+        with patch.object(_mod, "conditional_get", _not_changed_open(1, 2)), \
+             patch.object(_mod, "_fetch_prs_graphql", self._graphql([])):
+            out = _mod.fetch_prs(_REPO, prev=prev)
+        self.assertIs(out, prev)
+
+    def test_unparseable_body_keeps_prev(self):
+        prev = [_pr(1, "MERGEABLE")]
+        with patch.object(_mod, "conditional_get", lambda *a, **k: (False, "not json")), \
+             patch.object(_mod, "_fetch_prs_graphql", self._graphql([])):
+            out = _mod.fetch_prs(_REPO, prev=prev)
+        self.assertIs(out, prev)
+
+    def test_failed_fetch_after_a_change_bypasses_the_next_reuse(self):
+        prev = [_pr(1, "MERGEABLE")]
+        with patch.object(_mod, "conditional_get", _changed), \
+             patch.object(_mod, "_fetch_prs_graphql", self._graphql(None)):
+            self.assertIsNone(_mod.fetch_prs(_REPO, prev=prev))
+        fresh = [_pr(1, "MERGEABLE"), _pr(2, "CONFLICTING")]
+        with patch.object(_mod, "conditional_get", _not_changed_open(1, 2)), \
+             patch.object(_mod, "_fetch_prs_graphql", self._graphql(fresh)):
+            out = _mod.fetch_prs(_REPO, prev=prev)
+        self.assertEqual(self.calls, 2, "the 304 after a failed 200 fetch must re-ask GraphQL")
+        self.assertEqual([p["number"] for p in out], [1, 2])
+        # …and the bypass is one-shot.
+        with patch.object(_mod, "conditional_get", _not_changed_open(1, 2)), \
+             patch.object(_mod, "_fetch_prs_graphql", self._graphql(fresh)):
+            self.assertIs(_mod.fetch_prs(_REPO, prev=fresh), fresh)
+        self.assertEqual(self.calls, 2)
+
+    def test_bypass_is_per_repo(self):
+        with patch.object(_mod, "conditional_get", _changed), \
+             patch.object(_mod, "_fetch_prs_graphql", self._graphql(None)):
+            _mod.fetch_prs(_REPO, prev=[])
+        prev = [_pr(9, "MERGEABLE")]
+        with patch.object(_mod, "conditional_get", _not_changed_open(9)), \
+             patch.object(_mod, "_fetch_prs_graphql", self._graphql(prev)):
+            self.assertIs(_mod.fetch_prs("jakildev/irreden", prev=prev), prev)
+        self.assertEqual(self.calls, 1)
 
 
 if __name__ == "__main__":

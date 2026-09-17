@@ -108,6 +108,22 @@ class Routing(unittest.TestCase):
             runtime.choose_runtime("review", record,
                                    "review:engine:99", self.env)
 
+    def test_merge_target_resolves_against_merger_candidates(self):
+        data = {"merger_candidates": [
+            {"number": 77, "repo": "engine", "labels": ["fleet:author-codex"],
+             "signal": "llm"},
+            {"number": 77, "repo": "game", "labels": ["fleet:author-claude"],
+             "signal": "needs-resolve"},
+        ]}
+        # The author's provider serves its own conflict, like `conflict`.
+        self.assertEqual(runtime.route(data, "merge:engine:77", "merger", "sonnet",
+                                       "sonnet", "high", self.env)[0], "codex")
+        self.assertEqual(runtime.route(data, "merge:game:77", "merger", "sonnet",
+                                       "sonnet", "high", self.env)[0], "claude")
+        with self.assertRaisesRegex(ValueError, "missing"):
+            runtime.route({"prs": data["merger_candidates"]}, "merge:engine:77", "merger",
+                          "sonnet", "sonnet", "high", self.env)
+
     def test_namespace_collision(self):
         data = {"candidate_prs": [{"number": 8, "repo": "engine"},
                                  {"number": 8, "repo": "game", "labels": ["fleet:author-codex"]}]}

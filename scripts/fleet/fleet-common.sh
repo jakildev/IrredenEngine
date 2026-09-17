@@ -188,15 +188,24 @@ fleet_install_refresh() {
 # target (FLEET_DISPATCH_*), fleet_task_class.py produces the lines, and the
 # role docs' kind tables (FLEET-RUNTIME.md § The dispatch target) mirror this
 # table. Rationale: docs/agents/FLEET.md § "Who takes the claim".
+#
+# `merge` is the one CLAIMLESS kind: the merger takes no fleet-claim lock or
+# label (role-merger.md — `--force-with-lease` is its concurrency control and
+# `fleet:merger-cooldown` its per-PR marker), so its claim, release, and label
+# arms are empty strings. The dispatcher's in-flight dispatch records are the
+# dedup; the completion contract reads the merger's own durable marks
+# (fleet_completion.py assess_merge).
 declare -A FLEET_TARGET_CLAIM=(
     [task]=claim [stack]=claim
     [feedback]=amending-claim [conflict]=resolving-claim [plan]=planning-claim
     [review]=review-claim [planreview]=review-claim [smoke]=review-claim
+    [merge]=""
 )
 declare -A FLEET_TARGET_RELEASE=(
     [task]=release [stack]=release
     [feedback]=amending-release [conflict]=resolving-release [plan]=planning-release
     [review]=review-release [planreview]=review-release [smoke]=review-release
+    [merge]=""
 )
 # The lane claim LABEL prefix each kind's claim writes (`<prefix><host>-<agent>`)
 # — what fleet-claim's claim arms compose (task/stack: cmd_claim's
@@ -208,6 +217,7 @@ declare -A FLEET_TARGET_LABEL=(
     [task]="fleet:claim-" [stack]="fleet:claim-" [feedback]="fleet:amending-"
     [conflict]="fleet:resolving-" [plan]="fleet:planning-"
     [review]="fleet:reviewing-" [planreview]="fleet:reviewing-" [smoke]="fleet:reviewing-"
+    [merge]=""
 )
 
 # Claim-label namespaces that arbitrate as one mutex. The table is symmetric:
@@ -283,6 +293,8 @@ fleet_release_assignment() {
     fleet_parse_target "$target" || return 0
     fleet_repo_ns "$FLEET_TARGET_REPO"
     local sub="${FLEET_TARGET_RELEASE[$FLEET_TARGET_KIND]}"
+    # A claimless kind (`merge`) took nothing, so there is nothing to hand back.
+    [[ -n "$sub" ]] || return 0
     if [[ "$sub" == release ]]; then
         # A task release takes no agent; it drops the FS lock, the claim
         # label, and the worktree reservation `claim` auto-wrote.

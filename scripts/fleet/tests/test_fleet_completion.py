@@ -112,11 +112,55 @@ class Verdicts(unittest.TestCase):
         self.assertEqual(fc.label_names([{"name": "a"}, "b", {"x": 1}]), ["a", "b", ""])
 
 
+class MergeVerdicts(unittest.TestCase):
+    """The claimless kind: no label to read released, so `finished` is the
+    merger's own mark on the PR since dispatch."""
+
+    def _assess(self, labels=(), comments=(), updated_at="2026-09-06T16:00:00Z", **pull):
+        return fc.assess_merge(list(labels), list(comments), HOST_AGENT, DISPATCHED,
+                               updated_at=updated_at, **pull)[0]
+
+    def test_no_mark_on_a_conflicting_pr_is_abandoned(self):
+        self.assertEqual(self._assess(mergeable=False), "abandoned")
+
+    def test_outcome_label_counts_only_with_updated_at_since_dispatch(self):
+        for label in sorted(fc.MERGE_OUTCOME_LABELS):
+            with self.subTest(label=label):
+                self.assertEqual(self._assess([label], updated_at="2026-09-06T17:30:00Z",
+                                              mergeable=False), "finished")
+                self.assertEqual(self._assess([label], updated_at="2026-09-06T16:59:59Z",
+                                              mergeable=False), "abandoned")
+
+    def test_merger_signoff_comment_since_dispatch_is_finished(self):
+        body = "Merger: whitespace-only conflicts auto-resolved. " + fc.MERGER_SIGNOFF
+        self.assertEqual(self._assess(comments=[comment(body)], mergeable=False), "finished")
+        self.assertEqual(self._assess(comments=[comment(body, "2026-09-06T16:00:00Z")],
+                                      mergeable=False), "abandoned")
+        self.assertEqual(self._assess(comments=[comment("Reviewer: looks fine")],
+                                      mergeable=False), "abandoned")
+
+    def test_mergeable_closed_or_merged_is_finished(self):
+        self.assertEqual(self._assess(mergeable=True), "finished")
+        self.assertEqual(self._assess(state="closed"), "finished")
+        self.assertEqual(self._assess(merged=True), "finished")
+        # Still computing is not a verdict.
+        self.assertEqual(self._assess(mergeable=None), "abandoned")
+
+    def test_decline_wins(self):
+        self.assertEqual(
+            self._assess(["fleet:merger-cooldown"],
+                         [comment("declined: merger/sonnet @mac-pool-3 gone")],
+                         updated_at="2026-09-06T18:00:00Z", mergeable=True),
+            "declined")
+
+
 class Cli(unittest.TestCase):
     def _run(self, issue, comments, prs=None, **extra):
         with tempfile.TemporaryDirectory() as tmp:
             paths = {}
-            for name, data in (("issue", issue), ("comments", comments), ("prs", prs)):
+            pull = extra.pop("pull", None)
+            for name, data in (("issue", issue), ("comments", comments), ("prs", prs),
+                               ("pull", pull)):
                 if data is None:
                     continue
                 paths[name] = os.path.join(tmp, name + ".json")
@@ -129,6 +173,8 @@ class Cli(unittest.TestCase):
                     "--comments-json", paths["comments"]]
             if "prs" in paths:
                 argv += ["--prs-json", paths["prs"]]
+            if "pull" in paths:
+                argv += ["--pr-json", paths["pull"]]
             for key, value in extra.items():
                 argv += [f"--{key}", str(value)]
             out = subprocess.run(argv, capture_output=True, text=True, check=True).stdout
@@ -148,6 +194,20 @@ class Cli(unittest.TestCase):
 
     def test_a_bare_label_array_is_accepted(self):
         self.assertEqual(self._run(["fleet:queued"], []), ["finished", "", f"{LABEL} released"])
+
+    def test_kind_merge_selects_the_claimless_contract(self):
+        issue = {"labels": [], "updated_at": "2026-09-06T16:00:00Z"}
+        self.assertEqual(self._run(issue, [], kind="merge",
+                                   pull={"state": "open", "merged": False, "mergeable": False})[0],
+                         "abandoned")
+        self.assertEqual(self._run(issue, [], kind="merge",
+                                   pull={"state": "open", "merged": False, "mergeable": True}),
+                         ["finished", "2026-09-06T16:00:00Z",
+                          "PR is MERGEABLE; nothing left to resolve"])
+        # Without the pull object the labels and comments still decide.
+        self.assertEqual(self._run({"labels": ["fleet:merger-cooldown"],
+                                    "updated_at": "2026-09-06T17:30:00Z"}, [], kind="merge")[0],
+                         "finished")
 
 
 if __name__ == "__main__":

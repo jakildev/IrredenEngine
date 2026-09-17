@@ -53,6 +53,7 @@ printf '%s\n' "$*" >> "$GH_LOG"
 case "$*" in
     *"/comments -f since="*) cat "$FIX/comments.json" ;;
     "api repos/"*"/issues/"*) cat "$FIX/issue.json" ;;
+    "api repos/"*"/pulls/"*)  [[ -f "$FIX/pull.json" ]] || exit 1; cat "$FIX/pull.json" ;;
     "pr list "*)              cat "$FIX/prs.json" ;;
 esac
 exit 0
@@ -77,9 +78,10 @@ printf '#!/usr/bin/env bash\nexit 1\n' > "$STUB_BIN/pgrep"
 chmod +x "$STUB_BIN"/*
 export PATH="$STUB_BIN:$PATH"
 
-issue()    { printf '{"labels":[%s],"updated_at":"2026-09-06T18:30:00Z"}\n' "$1" > "$FIX/issue.json"; }
+issue()    { printf '{"labels":[%s],"updated_at":"%s"}\n' "$1" "${2:-2026-09-06T18:30:00Z}" > "$FIX/issue.json"; }
 comments() { printf '%s\n' "$1" > "$FIX/comments.json"; }
 prs()      { printf '%s\n' "$1" > "$FIX/prs.json"; }
+pull()     { printf '%s\n' "$1" > "$FIX/pull.json"; }
 issue ''; comments '[]'; prs '[]'
 DISPATCHED=$(python3 -c 'import calendar,time;print(calendar.timegm(time.strptime("2026-09-06T17:00:00Z","%Y-%m-%dT%H:%M:%SZ")))')
 DECLINE_BODY='declined: worker/opus @mac-pool-3 needs a mac host'
@@ -120,6 +122,31 @@ assert_eq "$(assess review:game:12 pool-3 "$DISPATCHED")" "abandoned" "review la
 assert_contains "$(cat "$GH_LOG")" "repos/jakildev/irreden/issues/12" "game target read off the game repo"
 issue '{"name":"fleet:planning-mac-pool-3"}'
 assert_eq "$(assess plan:engine:99 pool-3 "$DISPATCHED")" "abandoned" "planning label standing -> abandoned"
+issue ''
+
+echo "T2b: the claimless merge kind is graded off the merger's own marks"
+pull '{"state":"open","merged":false,"mergeable":false}'
+issue '' "2026-09-06T16:00:00Z"
+assert_eq "$(assess merge:engine:77 pool-3 "$DISPATCHED")" "abandoned" "no mark since dispatch on a still-conflicting PR -> abandoned"
+assert_contains "$(cat "$GH_LOG")" "api repos/jakildev/IrredenEngine/pulls/77" "the pull object is read for a merge target"
+assert_absent "$(cat "$GH_LOG")" "pr list" "no PR list fetched for a merge target"
+issue '{"name":"fleet:merger-cooldown"}' "2026-09-06T17:30:00Z"
+assert_eq "$(assess merge:engine:77 pool-3 "$DISPATCHED")" "finished" "fleet:merger-cooldown with updated_at after dispatch -> finished"
+issue '{"name":"fleet:merger-cooldown"}' "2026-09-06T16:00:00Z"
+assert_eq "$(assess merge:engine:77 pool-3 "$DISPATCHED")" "abandoned" "a cooldown older than the dispatch is not this iteration's"
+comments '[{"created_at":"2026-09-06T17:20:00Z","body":"Merger: rebased onto current master without conflicts. — fleet merger"}]'
+assert_eq "$(assess merge:engine:77 pool-3 "$DISPATCHED")" "finished" "a merger comment since dispatch -> finished"
+comments '[]'
+pull '{"state":"open","merged":false,"mergeable":true}'
+assert_eq "$(assess merge:engine:77 pool-3 "$DISPATCHED")" "finished" "PR now MERGEABLE -> finished"
+pull '{"state":"closed","merged":true,"mergeable":null}'
+assert_eq "$(assess merge:engine:77 pool-3 "$DISPATCHED")" "finished" "PR merged -> finished"
+pull '{"state":"open","merged":false,"mergeable":false}'
+comments "[{\"created_at\":\"2026-09-06T17:26:19Z\",\"body\":\"declined: merger/sonnet @mac-pool-3 base branch gone\"}]"
+assert_eq "$(assess merge:engine:77 pool-3 "$DISPATCHED")" "declined" "a declined: comment -> declined"
+comments '[]'
+rm -f "$FIX/pull.json"
+assert_eq "$(assess merge:engine:77 pool-3 "$DISPATCHED")" "abandoned" "an unreadable pull object falls back to labels and comments"
 issue ''
 
 echo "T3: unknown when gh cannot answer or the target is malformed"
