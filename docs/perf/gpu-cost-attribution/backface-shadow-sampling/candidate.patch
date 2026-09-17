@@ -15,14 +15,14 @@ index 190b57167..73157890c 100644
 -    const float lambert = max(0.0, dot(worldNormal, sunDirection.xyz));
      const float faceFactor =
          (sunAmbient + (1.0 - sunAmbient) * lambert * shadow) * sunIntensity;
- 
+
 diff --git a/engine/render/src/shaders/c_lighting_to_trixel.glsl b/engine/render/src/shaders/c_lighting_to_trixel.glsl
 index 8b3c84ea7..da65e93ea 100644
 --- a/engine/render/src/shaders/c_lighting_to_trixel.glsl
 +++ b/engine/render/src/shaders/c_lighting_to_trixel.glsl
 @@ -221,10 +221,12 @@ void main() {
      }
- 
+
      float ao           = imageLoad(canvasAO, pixel).r;
 +    const float lambert = max(0.0, dot(worldNormal, sunDirection.xyz));
      float shadow;
@@ -37,7 +37,7 @@ index 8b3c84ea7..da65e93ea 100644
 @@ -263,8 +265,6 @@ void main() {
          shadow = 1.0;
      }
- 
+
 -    // Sun direction and worldNormal are both world-frame.
 -    const float lambert = max(0.0, dot(worldNormal, sunDirection.xyz));
      // The sun-shadow darkens only the DIRECTIONAL (Lambert) term — ambient is
@@ -49,7 +49,7 @@ index 27ad7e607..a090f8f02 100644
 +++ b/engine/render/src/shaders/metal/c_light_overflow_faces.metal
 @@ -75,10 +75,11 @@ kernel void c_light_overflow_faces(
      );
- 
+
      const float ao = 1.0f;
 -    const float shadow = sunFrameData.shadowsEnabled != 0
 +    const float lambert = max(0.0f, dot(worldNormal, sunFrameData.sunDirection.xyz));
@@ -67,7 +67,7 @@ index b3ec2a35e..129c052a9 100644
 +++ b/engine/render/src/shaders/metal/c_lighting_to_trixel.metal
 @@ -151,10 +151,12 @@ kernel void c_lighting_to_trixel(
      }
- 
+
      float        ao     = canvasAO.read(uint2(pixel)).r;
 +    const float lambert = max(0.0f, dot(worldNormal, sunFrameData.sunDirection.xyz));
      float shadow;
@@ -82,7 +82,7 @@ index b3ec2a35e..129c052a9 100644
 @@ -190,8 +192,6 @@ kernel void c_lighting_to_trixel(
          shadow = 1.0f;
      }
- 
+
 -    // Sun direction and worldNormal are both world-frame.
 -    const float lambert = max(0.0f, dot(worldNormal, sunFrameData.sunDirection.xyz));
      // Sun-shadow darkens only the directional term; ambient is indirect fill and

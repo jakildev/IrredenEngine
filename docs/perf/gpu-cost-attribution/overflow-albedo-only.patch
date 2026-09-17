@@ -6,6 +6,6 @@
      }
 +
 +    return;
- 
+
      const uint entryBase = uint(layout.z) + gid * 3u;
      const uint packedCell = overflowScratch[entryBase + 0u];

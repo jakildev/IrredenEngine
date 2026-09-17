@@ -3,7 +3,7 @@
 @@ -130,7 +130,7 @@
          int3(0, 0, 1), int3(0, 0, -1)
      };
- 
+
 -    for (int n = 0; n < 6; ++n) {
 +    for (int n = 0; n < 0; ++n) {
          const int3 nCell = cell + deltas[n];

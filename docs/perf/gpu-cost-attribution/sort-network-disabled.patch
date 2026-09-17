@@ -3,7 +3,7 @@
 @@ -122,6 +122,8 @@
          return;
      }
- 
+
 +    return;
 +
      const uint t = localId.x;
