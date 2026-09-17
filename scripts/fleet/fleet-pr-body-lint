@@ -92,7 +92,7 @@ def section_after_heading(text, wanted, exact_level=None):
 
 def body_acceptance_section(text):
     lines = clean_markdown(text).splitlines()
-    marker = re.compile(r"^\s*\*\*Acceptance criteria\*\*\s*:?(.*)$", re.I)
+    marker = re.compile(r"^\s*\*\*Acceptance criteria\*\*\s*:(.*)$", re.I)
     next_field = re.compile(r"^\s*\*\*[^*]+\*\*\s*:?")
     for index, line in enumerate(lines):
         match = marker.match(line)

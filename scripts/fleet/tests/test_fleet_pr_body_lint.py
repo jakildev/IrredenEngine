@@ -201,6 +201,35 @@ class FleetPrBodyLintTests(unittest.TestCase):
         self.assertIn("required=1, present=0", result.stdout)
         self.assertIn("bold form only", result.stdout)
 
+    def test_bold_phrase_without_colon_is_prose_not_a_marker(self):
+        # A hard-wrapped sentence can place "**Acceptance criteria**" at the
+        # start of a physical line with no colon following — prose, not the
+        # `**Acceptance criteria**:` field marker.
+        wrapped_prose = snapshot(
+            body=(
+                "## Context\n\nThe field is named\n"
+                "**Acceptance criteria** without specifying bold-vs-heading in "
+                "the template.\n"
+            ),
+            comments=[],
+        )
+        self.assertIn(
+            "no acceptance criteria",
+            self.run_lint(evidence_body(0), issue=wrapped_prose).stdout,
+        )
+
+        prose_then_heading = snapshot(
+            body=(
+                "## Context\n\nThe field is named\n"
+                "**Acceptance criteria** without specifying bold-vs-heading.\n\n"
+                "## Acceptance criteria\n" + "\n".join(f"- {c}" for c in CRITERIA)
+            ),
+            comments=[],
+        )
+        result = self.run_lint(evidence_body(0), issue=prose_then_heading)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("required=6, present=0", result.stdout)
+
     def test_superseded_plan_without_acceptance_section_keeps_earlier_criteria(self):
         comments = [
             {"body": PLAN},
