@@ -2,7 +2,7 @@
 #define IR_SAVE_SERIALIZERS_COMMON_H
 
 /// `SaveSerialize<C>` specializations for the string-bearing components in
-/// `engine/prefabs/irreden/common/` (#2242). Each of these opts IN to the
+/// `engine/prefabs/irreden/common/`. Each of these opts IN to the
 /// world snapshot but owns a `std::string`, so the trivially-copyable arm of
 /// `SaveSerialize` does not apply — a raw byte image would persist a dangling
 /// pointer.

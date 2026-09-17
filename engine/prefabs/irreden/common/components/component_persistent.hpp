@@ -4,7 +4,7 @@
 namespace IRComponents {
 
 // Tag marking a non-singleton entity to survive `IREntity::resetGameplay()`
-// (the scene-transition teardown primitive, #1814). Singleton entities are
+// (the scene-transition teardown primitive). Singleton entities are
 // preserved automatically — the EntityManager's singleton cache IS the
 // preserve registry — so this tag is only needed for the rare engine- or
 // creation-created entity that is NOT a singleton yet must outlive a scene

@@ -37,7 +37,7 @@ namespace IRPrefab::RotationMode {
 /// than spelling their own mode list, so a new mode cannot be wired into
 /// one site and missed by the other. Adding a mode means classifying it
 /// here; `test/ecs/rotation_mode_set_test.cpp` static-asserts the enum's
-/// size so that stays mandatory rather than remembered. See #2908.
+/// size so that stays mandatory rather than remembered.
 inline constexpr bool ownsEntityCanvas(IRComponents::RotationMode mode) {
     return mode == IRComponents::RotationMode::DETACHED ||
            mode == IRComponents::RotationMode::DETACHED_REVOXELIZE;
@@ -59,8 +59,8 @@ inline constexpr bool ownsEntityCanvas(IRComponents::RotationMode mode) {
 ///
 /// The mismatch case is load-bearing, not defensive. `spawnPrefab`
 /// deliberately tags an entity into a canvas-owning mode *without*
-/// allocating when it runs with no `RenderManager` (headless tooling,
-/// unit tests) and documents this call as the recovery once one exists.
+/// allocating when it runs with no `RenderManager` and documents this
+/// call as the recovery once one exists.
 /// Gating the early return on the mode alone would make that recovery a
 /// no-op and strand the entity canvas-less.
 ///

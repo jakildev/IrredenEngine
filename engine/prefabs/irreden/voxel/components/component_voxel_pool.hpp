@@ -30,7 +30,7 @@ struct ChunkBounds {
     vec2 isoMax_ = vec2(std::numeric_limits<float>::lowest());
     // Nearest raw iso depth (x+y+z = pos3DtoDistance) of the chunk's live
     // voxels, in the same projection as isoMin_/isoMax_. Consumed by the
-    // chunk-occlusion pre-pass (#1294 child 2/3) as the chunk's front-most
+    // chunk-occlusion pre-pass as the chunk's front-most
     // depth for the Hi-Z compare. Only the cardinal `rebuildChunkBounds` path
     // fills it (the only path the cull is enabled on); other paths leave the
     // sentinel and their chunks are flagged not cull-eligible.
@@ -52,7 +52,7 @@ struct ChunkBounds {
 // Cached once per allocation/position change so the continuous-yaw cull can
 // recover a chunk's iso bounds by projecting 8 corners under the live yaw
 // (`IRMath::isoAABBOfWorldAABBUnderYaw`) — O(chunks)/frame — instead of
-// re-projecting every voxel every frame (#1439).
+// re-projecting every voxel every frame.
 struct ChunkWorldBounds {
     vec3 worldMin_ = vec3(std::numeric_limits<float>::max());
     vec3 worldMax_ = vec3(std::numeric_limits<float>::lowest());
@@ -70,7 +70,7 @@ struct ChunkWorldBounds {
 
 struct C_VoxelPool {
   public:
-    // Cardinal store tie-possibility signal (#2346). TRUE when the single-
+    // Cardinal store tie-possibility signal. TRUE when the single-
     // canvas store's (iso pixel, encoded depth) key may stop being a bijection
     // of this pool's live voxels — any live voxel off the integer lattice
     // (|pos − round(pos)| > the snapNearIntegerVoxelPosition epsilon), any two
@@ -81,7 +81,7 @@ struct C_VoxelPool {
     // scenes scan once at seed. When set, the winner-election dispatch + the
     // winner-guarded stage 2 replace the default cardinal stage 2 so the
     // colour/entity-id planes stay deterministic among equal-key faces;
-    // lattice pools keep exactly today's programs and dispatch count.
+    // lattice pools keep the default programs and dispatch count.
     bool storeTiesPossible_ = false;
 
     C_VoxelPool(ivec3 numVoxels)
@@ -134,8 +134,6 @@ struct C_VoxelPool {
     }
 
     C_VoxelPool() {}
-
-    // EntityId addVoxel
 
     IRRender::VoxelPoolAllocation allocateVoxels(unsigned int size) {
         auto freeSpan = findFreeSpan(size);
@@ -264,7 +262,7 @@ struct C_VoxelPool {
         return m_voxelPoolSize3D;
     }
 
-    // Per-trixel-priority aggregate (#2155). Maintained push-at-mutation by the
+    // Per-trixel-priority aggregate. Maintained push-at-mutation by the
     // C_VoxelSetNew priority mutators (changeVoxelPriority / changeVoxelPriorityAll
     // adjust by their delta; onDestroy releases the set's contribution) — never a
     // per-voxel scan. Read once per frame by VOXEL_TO_TRIXEL_STAGE_1 to stamp the
@@ -287,7 +285,7 @@ struct C_VoxelPool {
             count,
             m_voxelEntities.size()
         );
-        // The per-trixel priority carrier (#1960) steals the top 2 bits of the
+        // The per-trixel priority carrier steals the top 2 bits of the
         // stored 64-bit id (IRRender::kEntityIdPriorityShift). A live id that sets
         // them would be decoded as a non-zero priority AND a corrupted picked id —
         // guard the invariant once per set (entity ids are allocation counters that
@@ -335,30 +333,30 @@ struct C_VoxelPool {
         return m_chunkBounds;
     }
 
-    // @p useContinuousYaw (smooth camera Z-yaw, T3 / #1310): while the per-axis
+    // @p useContinuousYaw (smooth camera Z-yaw): while the per-axis
     // canvases are active the framebuffer scatter rasterizes voxels at their
     // CONTINUOUS yawed iso position, so the chunk-visibility gate must project
     // the same way — the cardinal-snapped chunk bounds otherwise drop off-center
-    // chunks (the "missing objects / ground during rotation" symptom). The
-    // continuous-yaw bounds change every frame, so they bypass the cardinal-
-    // index cache and force a fresh recompute on the next cardinal-path call.
+    // chunks mid-rotation. The continuous-yaw bounds change every frame, so
+    // they bypass the cardinal-index cache and force a fresh recompute on the
+    // next cardinal-path call.
     void rebuildChunkBounds(
         CardinalIndex cardinalIndex = CardinalIndex::k0,
         bool useContinuousYaw = false,
         float visualYaw = 0.0f
     ) {
-        // Detached re-voxelize pool (#1556): the GPU scatter compute owns
-        // binding 5, so the CPU global mirror no longer follows the per-frame
+        // Detached re-voxelize pool: the GPU scatter compute owns
+        // binding 5, so the CPU global mirror does not track the per-frame
         // rotation. Drive the chunk-visibility gate from the conservative
         // origin-centered world-AABB seeded once at allocation (a sphere that
-        // bounds the solid under EVERY rotation) instead of the now-stale mirror.
+        // bounds the solid under EVERY rotation) instead of the stale mirror.
         // The pool is small and re-rasterized whole, so every chunk gets the same
         // projected iso bound — a per-chunk bound would buy nothing. Bypasses the
         // cardinal cache: the bound is rotation-independent, so it never drifts.
         if (m_staticReVoxelizeBound.has_value()) {
             const int chunkCount = getChunkCount();
             m_chunkBounds.assign(chunkCount, ChunkBounds{});
-            // Cell-anchor shift (#2545): the raster projects cell positions
+            // Cell-anchor shift: the raster projects cell positions
             // half a cell toward the origin under yaw, so the gate's bound
             // translates the same way to keep covering the rendered mass.
             const IsoBounds2D iso = IRMath::isoAABBOfWorldAABBUnderYaw(
@@ -381,7 +379,7 @@ struct C_VoxelPool {
 
         if (useContinuousYaw) {
             m_chunkBounds.assign(static_cast<std::size_t>(chunkCount), ChunkBounds{});
-            // Closed-form O(chunks) cull region (#1439): project each chunk's
+            // Closed-form O(chunks) cull region: project each chunk's
             // cached static world-AABB under the live yaw instead of
             // re-projecting every voxel. The 8-corner projection is a
             // conservative superset of the per-voxel iso bounds
@@ -396,7 +394,7 @@ struct C_VoxelPool {
                 const ChunkWorldBounds &wb = m_chunkWorldBounds[c];
                 if (wb.empty())
                     continue; // leave the inverted sentinel → chunk never visible
-                // Cell-anchor shift (#2545) — matches the compact cull's
+                // Cell-anchor shift — matches the compact cull's
                 // anchored per-voxel projection, keeping this gate a
                 // conservative superset of the per-voxel iso bounds.
                 const IsoBounds2D iso = IRMath::isoAABBOfWorldAABBUnderYaw(
@@ -501,15 +499,14 @@ struct C_VoxelPool {
     }
 
     // Seed the conservative origin-centered world-AABB used by the detached
-    // re-voxelize cull path (#1556). @p halfExtents are the authored solid's
+    // re-voxelize cull path. @p halfExtents are the authored solid's
     // per-axis half-extents about the pool origin; the bound is the cube
     // [-r, r]^3 with r = |halfExtents| (the farthest corner's distance from the
     // origin), which contains the solid under any rotation. Seeded ONCE at pool
     // allocation by SYSTEM_REBUILD_DETACHED_VOXELS — it never changes per frame,
     // so the GPU compute that rewrites binding 5 doesn't need a CPU mirror for
-    // the cull. Setting this switches rebuildChunkBounds onto the static-bound
-    // branch above; leaving it unset (every non-re-voxelize pool) is
-    // byte-identical.
+    // the cull. Setting this switches rebuildChunkBounds onto its static-bound
+    // branch; leaving it unset (every non-re-voxelize pool) is byte-identical.
     void setStaticReVoxelizeBound(vec3 halfExtents) {
         const float r = IRMath::length(halfExtents);
         m_staticReVoxelizeBound = ChunkWorldBounds{vec3(-r), vec3(r)};
@@ -563,7 +560,7 @@ struct C_VoxelPool {
 
     // Active-slot mask: 1 bit per pool slot, mirroring `m_voxelColors[i].color_.alpha_ != 0`.
     // The GPU compact shader at `c_voxel_visibility_compact.{glsl,metal}` reads this in place
-    // of the per-voxel alpha test (T-287 / #950). CPU storage is `std::vector<uint32_t>`; the
+    // of the per-voxel alpha test. CPU storage is `std::vector<uint32_t>`; the
     // shader binds it as `uint activeMask[]` at `kBufferIndex_VoxelActiveMask`.
     const std::vector<std::uint32_t> &getActiveMask() const {
         return m_activeMask;
@@ -572,7 +569,7 @@ struct C_VoxelPool {
         return m_activeMask.size() * sizeof(std::uint32_t);
     }
 
-    // #2346 — read-and-clear the per-frame active-mask-mutation signal. Consumed
+    // Read-and-clear the per-frame active-mask-mutation signal. Consumed
     // once per tick by VOXEL_TO_TRIXEL_STAGE_1 to fold an activation-only edit
     // (activate/deactivate/carve/fillPlane/reshape — none of which queue a
     // position range) into the `storeTiesPossible_` recompute trigger, so a
@@ -593,8 +590,8 @@ struct C_VoxelPool {
         );
         m_activeMask[idx / kVoxelActiveMaskBits] |=
             (std::uint32_t{1} << (idx % kVoxelActiveMaskBits));
-        m_activeMaskChangedThisFrame = true; // #2346 — see the member decl.
-        markCullBoundsDirty(idx, 1);         // Alpha is a bounds input.
+        m_activeMaskChangedThisFrame = true;
+        markCullBoundsDirty(idx, 1); // Alpha is a bounds input.
     }
 
     void clearActiveBit(std::size_t idx) {
@@ -606,14 +603,13 @@ struct C_VoxelPool {
         );
         m_activeMask[idx / kVoxelActiveMaskBits] &=
             ~(std::uint32_t{1} << (idx % kVoxelActiveMaskBits));
-        m_activeMaskChangedThisFrame = true; // #2346 — see the member decl.
-        markCullBoundsDirty(idx, 1);         // Alpha is a bounds input.
+        m_activeMaskChangedThisFrame = true;
+        markCullBoundsDirty(idx, 1); // Alpha is a bounds input.
     }
 
-    // Bulk variants for span-shaped mutations on `C_VoxelSetNew`. The single-bit
-    // setters above use one OR/AND per word touched; the range variants below
-    // handle the partial-word prefix and suffix once and mass-write the middle
-    // words to all-ones / zeros.
+    // Bulk variants for span-shaped mutations on `C_VoxelSetNew`: the partial-word
+    // prefix and suffix are handled once and the middle words are mass-written
+    // to all-ones / zeros, instead of one OR/AND per bit.
     void setActiveMaskRange(std::size_t start, std::size_t count) {
         setMaskRange(start, count, true);
     }
@@ -697,8 +693,8 @@ struct C_VoxelPool {
     // (packed into the `.w` lane of the local-position buffer,
     // kBufferIndex_LocalVoxelPositions = 17). Defaults to `kVoxelTransformStatic`
     // for every voxel, so an untouched pool leaves the GPU prepass a no-op and
-    // binding 5 fully CPU-owned (byte-identical to the pre-prepass path). A voxel
-    // set marks its range GPU-dynamic by pointing it at an EntityTransformBuffer slot.
+    // binding 5 fully CPU-owned. A voxel set marks its range GPU-dynamic by
+    // pointing it at an EntityTransformBuffer slot.
     const std::vector<std::uint32_t> &getTransformIndices() const {
         return m_voxelTransformIndices;
     }
@@ -736,7 +732,7 @@ struct C_VoxelPool {
     }
 
     // Per-voxel variant of `setTransformIndexForRange` for skeletal bone→slot
-    // seeding (#605 Phase 2.3 / #1605): voxel `startIdx + i` points at
+    // seeding: voxel `startIdx + i` points at
     // `indices[i]`, so each voxel of one set can follow a different joint slot.
     // Queues the same pending-range flush.
     void setTransformIndicesForRange(size_t startIdx, std::span<const std::uint32_t> indices) {
@@ -751,7 +747,7 @@ struct C_VoxelPool {
             m_voxelTransformIndices.size()
         );
         // Caller guarantees every index satisfies kVoxelTransformStatic || <
-        // kMaxGpuVoxelTransforms. The loop assert below enforces the same invariant as
+        // kMaxGpuVoxelTransforms. The per-index assert enforces the same invariant as
         // setTransformIndexForRange in debug builds.
         for (std::size_t i = 0; i < indices.size(); ++i) {
             IR_ASSERT(
@@ -783,16 +779,13 @@ struct C_VoxelPool {
     }
 
   private:
-    // Zero-initialized so the default ctor leaves a consistently-EMPTY pool.
-    // Left uninitialized it fed garbage to every bounds assert that reads it
-    // (`markCullBoundsDirty`), the same class of defect as m_voxelPoolSize3D
-    // below (#2043). The ivec3 ctor's init list overrides this.
+    // Zero-initialized so the default ctor leaves a consistently-EMPTY pool;
+    // every bounds assert (`markCullBoundsDirty`) reads it. The ivec3 ctor's
+    // init list overrides this.
     int m_voxelPoolSize = 0;
     // 3D pool dimensions, kept alongside the scalar count. Read by the detached
-    // re-voxelize footprint cap (subdivisionCap, #1570 D2). Must be initialized —
+    // re-voxelize footprint cap (subdivisionCap), so it must be initialized —
     // either via the ivec3 numVoxels ctor or the {0,0,0} default initializer.
-    // Left uninitialized it fed garbage to subdivisionCap, non-deterministically
-    // pinning the cap (the #2043 root cause).
     ivec3 m_voxelPoolSize3D{0, 0, 0};
     bool m_entityIdsDirty = true;
     bool m_chunkBoundsDirty = true;
@@ -804,7 +797,7 @@ struct C_VoxelPool {
     std::vector<IRRender::VoxelGpuPosition> m_voxelPositionsGlobal;
     std::vector<C_Voxel> m_voxelColors;
     std::vector<std::uint32_t> m_activeMask;
-    // #2346 — set by any active-mask mutation (setActiveBit / clearActiveBit /
+    // Set by any active-mask mutation (setActiveBit / clearActiveBit /
     // setActiveMaskRange / clearActiveMaskRange, hence resyncActiveMaskFromColors),
     // consumed+cleared once per frame by VOXEL_TO_TRIXEL_STAGE_1 via
     // consumeActiveMaskChanged(). This is NOT a GPU-sync dirty flag (the active
@@ -819,7 +812,7 @@ struct C_VoxelPool {
     std::map<size_t, std::set<std::pair<size_t, size_t>>> m_freeSpanLookup;
     std::vector<ChunkBounds> m_chunkBounds;
     // Cached static (camera-independent) world-AABB per chunk, projected under
-    // the live yaw by the continuous-yaw cull (#1439). Rebuilt only when voxel
+    // the live yaw by the continuous-yaw cull. Rebuilt only when voxel
     // positions change, so a static world under a rotating camera skips the
     // per-voxel re-projection entirely.
     std::vector<ChunkWorldBounds> m_chunkWorldBounds;
@@ -838,8 +831,8 @@ struct C_VoxelPool {
     std::vector<std::size_t> m_pendingCardinalChunks;
     std::vector<std::size_t> m_pendingWorldChunks;
     CullRebuildCounters m_cullRebuildCounters{};
-    // Conservative origin-centered world-AABB for a detached re-voxelize pool
-    // (#1556). Set once by setStaticReVoxelizeBound; when present, rebuildChunkBounds
+    // Conservative origin-centered world-AABB for a detached re-voxelize pool.
+    // Set once by setStaticReVoxelizeBound; when present, rebuildChunkBounds
     // ignores the (GPU-owned, CPU-stale) per-voxel globals and projects this
     // instead. nullopt for every other pool → byte-identical cull.
     std::optional<ChunkWorldBounds> m_staticReVoxelizeBound;
@@ -857,7 +850,7 @@ struct C_VoxelPool {
 
     int m_voxelPoolIndex = 0;
 
-    // Count of voxels in this pool carrying a non-zero per-trixel priority (#2155).
+    // Count of voxels in this pool carrying a non-zero per-trixel priority.
     // Maintained push-at-mutation via adjustPerTrixelPriorityVoxelCount (called by
     // the C_VoxelSetNew priority mutators + set teardown). hasPerTrixelPriority()
     // reads it once per frame in VOXEL_TO_TRIXEL_STAGE_1 to stamp the canvas.
@@ -886,9 +879,8 @@ struct C_VoxelPool {
         }
     }
 
-    // Backing for the two deprecated no-argument evictors: notify the whole
-    // allocated prefix, which is the strongest eviction the old signature can
-    // express.
+    // Backing for the two deprecated no-argument evictors: with no range to
+    // narrow to, the whole allocated prefix is the only correct notification.
     void markAllocatedPrefixCullBoundsDirty() {
         markCullBoundsDirty(0, static_cast<std::size_t>(m_voxelPoolIndex));
     }
@@ -923,13 +915,13 @@ struct C_VoxelPool {
                 continue;
             vec3 pos = m_voxelPositionsGlobal[i].pos_;
             if (cardinalIndex != CardinalIndex::k0) {
-                // Plain cardinal rotation — no lower-corner shift (#2545);
+                // Plain cardinal rotation — no lower-corner shift;
                 // mirrors the stage-1/2 store cell and the compact cull.
                 pos = IRMath::rotateCardinalZ(pos, cardinalIndex);
             }
             bounds.expand(IRMath::pos3DtoPos2DIso(pos));
             // Track the chunk's front-most raw iso depth in the same projection,
-            // for the occlusion pre-pass's Hi-Z compare (#1294 child 2/3).
+            // for the occlusion pre-pass's Hi-Z compare.
             bounds.minDepth_ =
                 IRMath::min(bounds.minDepth_, static_cast<float>(IRMath::pos3DtoDistance(pos)));
         }
@@ -983,11 +975,11 @@ struct C_VoxelPool {
         if (count == 0) {
             return;
         }
-        // #2346 — flag here too: the whole-word middle path below writes
-        // `m_activeMask` directly, bypassing the per-bit setters that flag.
+        // The whole-word middle path writes `m_activeMask` directly, bypassing
+        // the per-bit setters that flag the change and notify bounds; flag and
+        // notify once for the whole range here (which also coalesces the
+        // prefix/suffix invalidation).
         m_activeMaskChangedThisFrame = true;
-        // The whole-word middle path bypasses per-bit setters, so notify its
-        // bounds here. This also coalesces prefix/suffix invalidation.
         markCullBoundsDirty(start, count);
         IR_ASSERT(
             start + count <= static_cast<std::size_t>(m_voxelPoolSize),
