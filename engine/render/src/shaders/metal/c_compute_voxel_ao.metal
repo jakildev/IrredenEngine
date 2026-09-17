@@ -6,6 +6,9 @@
 constant int kEmptyDistanceEncoded = 65535;
 
 constant float kAORadiusSquared = 4.0;
+// Must stay in lockstep with c_compute_voxel_ao.glsl.
+constant float kAOMinDistanceSquared = 1.0e-6;
+constant float kAOStaircaseStepHeight = 0.5;
 
 constant uint kDispatchArgsBaseUint = 8u;      // kPerAxisCellDispatchArgsOffsetBytes / 4
 constant uint kPerAxisCellComputeTile = 256u;  // kPerAxisCellComputeTile (16×16 threads)
@@ -178,15 +181,40 @@ kernel void c_compute_voxel_ao(
 
         float3 separation = neighbourPos3D - pos3D;
         float distanceSquared = dot(separation, separation);
-        if (distanceSquared <= 1.0e-6 || distanceSquared >= kAORadiusSquared) continue;
+        if (distanceSquared <= kAOMinDistanceSquared || distanceSquared >= kAORadiusSquared) continue;
 
         float receiverFacing = max(dot(separation, worldOutward), 0.0);
         float occluderFacing = max(
             dot(-separation, float3(faceOutwardNormal6I(neighbourFaceId))), 0.0
         );
+        float facing = receiverFacing * occluderFacing;
+        if (facing <= 0.0) continue;
+
+        // Tilt-aware same-face resample (rationale in the GLSL mirror): a
+        // monotone staircase returns to the receiver's own face one cell
+        // beyond the step; a genuine crease does not. Single-canvas path only.
+        if (!perAxis) {
+            int2 beyondPixel = pixel + 2 * delta;
+            if (beyondPixel.x >= 0 && beyondPixel.x < size.x &&
+                beyondPixel.y >= 0 && beyondPixel.y < size.y) {
+                int beyondEncoded = trixelDistances.read(uint2(beyondPixel)).x;
+                if (beyondEncoded < kEmpty && decodeSlot(beyondEncoded) == slot &&
+                    decodeFlipSingle(beyondEncoded) == flip) {
+                    float3 beyondPos3D = trixelCanvasPixelToWorld3D(
+                        beyondPixel,
+                        decodeDepthSingle(beyondEncoded),
+                        frameData.trixelCanvasOffsetZ1,
+                        frameData.frameCanvasOffset,
+                        frameData.voxelRenderOptions,
+                        cardinalIndex
+                    );
+                    if (dot(beyondPos3D - pos3D, worldOutward) > kAOStaircaseStepHeight) continue;
+                }
+            }
+        }
+
         float rangeWeight = 1.0 - distanceSquared / kAORadiusSquared;
-        occlusion += receiverFacing * occluderFacing / distanceSquared *
-            rangeWeight * rangeWeight;
+        occlusion += facing / distanceSquared * rangeWeight * rangeWeight;
     }
 
     float ao = 1.0 - occlusion * 0.25;

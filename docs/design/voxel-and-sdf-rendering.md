@@ -43,8 +43,13 @@ coverage, while general SDF caster coverage remains a separate validation target
 Ambient occlusion is local ambient visibility, separate from sun visibility and
 Lambert shading. A rotated voxel staircase has actual exposed faces and can have
 actual concave contacts. Do not erase those normals or darken every face solely
-because it is an X/Y/Z face. Screen-space AO cannot see hidden or off-screen
-occluders and should not be described as complete geometric visibility.
+because it is an X/Y/Z face. The quantized step of a tilted-flat surface is the
+exception: locally identical to a crease, it is told apart only by the surface
+returning to the receiver's own face one cell beyond the step, and that
+resample is what keeps a rotated solid from reading as venetian-blind banding
+(`scripts/render-ao-staircase-metric.py` measures it). Screen-space AO cannot
+see hidden or off-screen occluders and should not be described as complete
+geometric visibility.
 
 ## Comparable performance targets
 

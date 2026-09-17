@@ -2,6 +2,10 @@
 
 // Four face-tangent depth samples approximate local ambient visibility.
 // Contributions require mutually facing surfaces and decay with separation.
+// A rotated GRID / REBUILD_GRID solid is real voxels, so its tilted-flat
+// surface is a true staircase whose tread and riser meet in a concave
+// corner that is locally indistinguishable from a genuine crease; the
+// tilt-aware resample on the single-canvas path suppresses it.
 
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
@@ -13,6 +17,13 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 const int kEmptyDistanceEncoded = 65535;
 
 const float kAORadiusSquared = 4.0;
+// Rejects a neighbour decoded onto the receiver's own position (zero
+// separation has no direction to weight and would divide by zero).
+const float kAOMinDistanceSquared = 1.0e-6;
+// A monotone staircase returns to the receiver's own face one cell beyond
+// a different-face step, ~1 voxel further out along the receiver normal; a
+// coplanar same-face blip (d ~ 0) is not a staircase and keeps its AO.
+const float kAOStaircaseStepHeight = 0.5;
 
 layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform vec2 frameCanvasOffset;
@@ -207,15 +218,48 @@ void main() {
 
         vec3 separation = neighbourPos3D - pos3D;
         float distanceSquared = dot(separation, separation);
-        if (distanceSquared <= 1.0e-6 || distanceSquared >= kAORadiusSquared) continue;
+        if (distanceSquared <= kAOMinDistanceSquared || distanceSquared >= kAORadiusSquared) continue;
 
+        // Both faces must look into the shared cavity: a convex edge (tread
+        // top meeting its own riser) has one facing term <= 0 and drops out.
         float receiverFacing = max(dot(separation, worldOutward), 0.0);
         float occluderFacing = max(
             dot(-separation, vec3(faceOutwardNormal6I(neighbourFaceId))), 0.0
         );
+        float facing = receiverFacing * occluderFacing;
+        if (facing <= 0.0) continue;
+
+        // Tilt-aware same-face resample. The concave corner where a
+        // staircase tread meets the next riser and a genuine crease (the
+        // L-prism notch) are locally identical — same normals, same relative
+        // position — so the only screen-space signal is whether the surface
+        // RETURNS to the receiver's own face one cell beyond the step: a
+        // monotone staircase continues as the next tread (same slot, still in
+        // front), whereas a real crease meets a multi-cell perpendicular wall
+        // that does not. Single-canvas path only — a per-axis canvas holds a
+        // single face, so its stair-step neighbours already fail the
+        // different-face test, and the GRID solids this targets raster
+        // cardinal (perAxisRoute == 0).
+        if (!perAxis) {
+            ivec2 beyondPixel = pixel + 2 * delta;
+            if (beyondPixel.x >= 0 && beyondPixel.x < size.x &&
+                beyondPixel.y >= 0 && beyondPixel.y < size.y) {
+                int beyondEncoded = imageLoad(trixelDistances, beyondPixel).x;
+                // "Returns to the receiver's own face" compares (slot, flip) —
+                // a flipped cell one step beyond is not the receiver's surface.
+                if (beyondEncoded < kEmpty && decodeSlot(beyondEncoded) == slot &&
+                    decodeFlipSingle(beyondEncoded) == flip) {
+                    vec3 beyondPos3D = trixelCanvasPixelToWorld3D(
+                        beyondPixel, decodeDepthSingle(beyondEncoded), trixelCanvasOffsetZ1,
+                        frameCanvasOffset, voxelRenderOptions, cardinalIndex
+                    );
+                    if (dot(beyondPos3D - pos3D, worldOutward) > kAOStaircaseStepHeight) continue;
+                }
+            }
+        }
+
         float rangeWeight = 1.0 - distanceSquared / kAORadiusSquared;
-        occlusion += receiverFacing * occluderFacing / distanceSquared *
-            rangeWeight * rangeWeight;
+        occlusion += facing / distanceSquared * rangeWeight * rangeWeight;
     }
 
     float ao = 1.0 - occlusion * 0.25;
