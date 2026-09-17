@@ -340,6 +340,13 @@ class BlockerRefs(unittest.TestCase):
             ),
             [("jakildev/IrredenEngine", "3159")],
         )
+        self.assertEqual(
+            fbb.blocker_ref_records(
+                "**Blocked by:** https://github.com/jakildev/IrredenEngine/pull/3159\n",
+                "example/other",
+            ),
+            [("jakildev/IrredenEngine", "3159", True)],
+        )
 
 
 class DecorativeProseRefs(unittest.TestCase):

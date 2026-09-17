@@ -44,6 +44,8 @@ PROJ="$HOME/.fleet/state/projections/queue-manager-ingest.json"
 # Plain form (#1749): #737 = engine task whose ONLY dep is a degraded plain
 # mid-line `Blocked by: #719` (the #174-children form) → blocked. Before the
 # shared parser, the bold-only ingest copy missed it and it queued unmarked.
+# PR URL: task 738 is blocked by a pull request closed without merge, so it stays
+# blocked until that pull request reaches MERGED.
 # Remove path: #733 = queued+fleet:blocked, blocker #717 now CLOSED (unblock);
 #              #734 = queued+fleet:blocked, blocker #719 still OPEN (stay).
 cat > "$PROJ" <<'JSON'
@@ -53,7 +55,8 @@ cat > "$PROJ" <<'JSON'
   {"number":732,"repo":"engine"},
   {"number":735,"repo":"engine"},
   {"number":736,"repo":"engine"},
-  {"number":737,"repo":"engine"}
+  {"number":737,"repo":"engine"},
+  {"number":738,"repo":"engine"}
 ],"unblock_issues":[
   {"number":733,"repo":"engine"},
   {"number":734,"repo":"engine"}
@@ -83,6 +86,7 @@ case "$1" in
                         717) echo "CLOSED" ;;   # #733's predecessor — satisfied
                         718) echo "CLOSED" ;;   # #732's predecessor — satisfied
                         719) echo "OPEN" ;;     # #731/#734's predecessor — open
+                        202) echo "CLOSED" ;;   # closed pull request, not merged
                         777)
                             # #1522: CLOSED only when routed to game (the
                             # referenced repo); OPEN if mis-routed to engine.
@@ -104,6 +108,7 @@ case "$1" in
                     735) echo '{"body":"**Model:** opus\n**Blocked by:** jakildev/irreden#777","labels":[{"name":"human:approved"}],"comments":[{"body":"## Plan: stub\n\nstep one"}]}' ;;
                     736) echo '{"body":"**Model:** opus\n**Blocked by:** jakildev/irreden#778","labels":[{"name":"human:approved"}],"comments":[{"body":"## Plan: stub\n\nstep one"}]}' ;;
                     737) echo '{"body":"**Model:** opus\nPart of epic #174 (Phase D). [opus] Blocked by: #719.","labels":[{"name":"human:approved"}],"comments":[{"body":"## Plan: stub\n\nstep one"}]}' ;;
+                    738) echo '{"body":"**Model:** opus\n**Blocked by:** https://github.com/jakildev/IrredenEngine/pull/202","labels":[{"name":"human:approved"}],"comments":[{"body":"## Plan: stub\n\nstep one"}]}' ;;
                     *)   echo '{"body":"","labels":[]}' ;;
                 esac
                 exit 0 ;;
@@ -116,6 +121,7 @@ case "$1" in
     pr)
         case "$2" in
             list) echo '[]'; exit 0 ;;   # scope-shipped: no merged coverage
+            view) echo 'CLOSED'; exit 0 ;;
             *) exit 0 ;;
         esac ;;
     *) exit 0 ;;
@@ -184,6 +190,14 @@ if [[ -n "$l737" && "$l737" == *"fleet:queued"* && "$l737" == *"fleet:blocked"* 
     ok "#737 plain 'Blocked by: #719' (epic #174 prose) → fleet:queued + fleet:blocked"
 else
     bad "#737 plain-form blocker not marked: '$l737'"
+fi
+
+# An explicit PR URL requires MERGED; CLOSED without merge remains blocked.
+l738=$(edit_line 738)
+if [[ -n "$l738" && "$l738" == *"fleet:queued"* && "$l738" == *"fleet:blocked"* ]]; then
+    ok "#738 closed-unmerged PR URL stays fleet:blocked"
+else
+    bad "#738 PR-URL blocker was treated as satisfied without merge: '$l738'"
 fi
 
 # --- Remove path ----------------------------------------------------------

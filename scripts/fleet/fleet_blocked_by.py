@@ -360,6 +360,17 @@ def blocked_by_is_plain_only(body):
     return has_plain and not has_bold
 
 
+def blocker_ref_records(body, default_repo):
+    """(slug, number, requires_merge) for every declared blocker ref."""
+    value = parse_blocked_by(body)
+    refs = [(m.start(), _ref_slug(m.group(1), default_repo), m.group(2), False)
+            for m in _REF_RE.finditer(value)]
+    refs.extend((m.start(), m.group(1), m.group(2), True)
+                for m in _PR_URL_RE.finditer(value))
+    return [(slug, number, requires_merge)
+            for _, slug, number, requires_merge in sorted(refs)]
+
+
 def blocker_refs(body, default_repo):
     """(slug, number) for every blocker ref declared in `body`, routing each
     cross-repo `[owner/]Repo#N` qualifier to its GitHub slug (#1522) and
@@ -373,9 +384,5 @@ def blocker_refs(body, default_repo):
     is MERGED. Callers that need the narrower "how many blockers were actually
     declared" question (stackable eligibility) filter with `ref_is_decorative`
     instead; they must not widen this one (#2783)."""
-    value = parse_blocked_by(body)
-    refs = [(m.start(), _ref_slug(m.group(1), default_repo), m.group(2))
-            for m in _REF_RE.finditer(value)]
-    refs.extend((m.start(), m.group(1), m.group(2))
-                for m in _PR_URL_RE.finditer(value))
-    return [(slug, number) for _, slug, number in sorted(refs)]
+    return [(slug, number) for slug, number, _ in
+            blocker_ref_records(body, default_repo)]

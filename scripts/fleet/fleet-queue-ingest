@@ -231,7 +231,7 @@ import json, os, re, subprocess, sys
 # bold-only copies skipped. realpath resolves the ~/bin symlink back to the
 # scripts/fleet dir the module ships in (same pattern as the SCOPE_PY block).
 sys.path.insert(0, os.path.dirname(os.path.realpath(os.environ['INGEST_SELF'])))
-from fleet_blocked_by import blocker_refs, has_blocked_by_field
+from fleet_blocked_by import blocker_ref_records, has_blocked_by_field
 from fleet_model_field import declared_class
 
 REPO_SLUGS = {"engine": "jakildev/IrredenEngine", "game": "jakildev/irreden"}
@@ -260,21 +260,22 @@ NO_PLAN_RE = re.compile(r'\[no-plan\]', re.IGNORECASE)
 PLAN_COMMENT_RE = re.compile(r'^\s{0,3}#{2,}\s+Plan\b', re.MULTILINE)
 
 
-def _blocker_open(repo, ref, cache):
-    """True when predecessor #ref is still open (state not CLOSED/MERGED).
+def _blocker_open(repo, ref, cache, requires_merge=False):
+    """True until an issue closes or an explicit pull-request URL merges.
     Per-run cache dedupes repeated refs across the batch. An unreadable state
     is treated as still-open — defer queuing rather than risk queuing a child
     whose blocker we could not confirm closed."""
-    key = (repo, ref)
+    key = (repo, ref, requires_merge)
     if key in cache:
         return cache[key]
     r = subprocess.run(
-        ['gh', 'issue', 'view', ref, '--repo', repo,
+        ['gh', 'pr' if requires_merge else 'issue', 'view', ref, '--repo', repo,
          '--json', 'state', '--jq', '.state'],
         capture_output=True, text=True, timeout=15,
     )
     state = r.stdout.strip() if r.returncode == 0 else ''
-    is_open = state not in ('CLOSED', 'MERGED')
+    satisfied_states = ('MERGED',) if requires_merge else ('CLOSED', 'MERGED')
+    is_open = state not in satisfied_states
     cache[key] = is_open
     return is_open
 
@@ -500,8 +501,9 @@ for issue in pending:
     # yet" signal that the unblock pass below removes once the last blocker
     # closes. The live re-check is authoritative — it's the only blocker gate
     # when ingest runs against a hand-built projection (tests, manual run).
-    open_blockers = [(slug, ref) for slug, ref in blocker_refs(body, repo)
-                     if _blocker_open(slug, ref, blocker_cache)]
+    open_blockers = [(slug, ref) for slug, ref, requires_merge in
+                     blocker_ref_records(body, repo)
+                     if _blocker_open(slug, ref, blocker_cache, requires_merge)]
 
     # Parse model from body. Classes are literal — fable | opus | sonnet —
     # and each maps to its own label. fable is opt-in for the genuinely
@@ -568,9 +570,11 @@ for issue in data.get('unblock_issues', []):
     if 'fleet:blocked' not in labels:
         continue
     body = view.get('body', '') or ''
-    open_blockers = [(slug, ref) for slug, ref in blocker_refs(body, repo)
-                     if _blocker_open(slug, ref, blocker_cache)]
-    if open_blockers:
+    has_open_blocker = any(
+        _blocker_open(slug, ref, blocker_cache, requires_merge)
+        for slug, ref, requires_merge in blocker_ref_records(body, repo)
+    )
+    if has_open_blocker:
         unblock_still += 1
         continue  # still genuinely blocked — leave the marker
     er = subprocess.run(
