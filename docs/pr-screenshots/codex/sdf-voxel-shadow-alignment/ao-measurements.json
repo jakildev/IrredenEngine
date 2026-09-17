@@ -1,0 +1,77 @@
+{
+  "before": {
+    "convex": {
+      "foreground": 10850,
+      "occluded": 0,
+      "max_occlusion_red": 0
+    },
+    "corner": {
+      "foreground": 20992,
+      "occluded": 4160,
+      "max_occlusion_red": 51
+    }
+  },
+  "after": {
+    "convex": {
+      "foreground": 10850,
+      "occluded": 0,
+      "max_occlusion_red": 0
+    },
+    "corner": {
+      "foreground": 20992,
+      "occluded": 4096,
+      "max_occlusion_red": 30
+    }
+  },
+  "ao_disabled": {
+    "convex": {
+      "foreground": 10850,
+      "occluded": 0,
+      "max_occlusion_red": 0
+    },
+    "corner": {
+      "foreground": 20992,
+      "occluded": 0,
+      "max_occlusion_red": 0
+    }
+  },
+  "staircase": {
+    "metric": "scripts/render-ao-staircase-metric.py",
+    "grid_yaw0": {
+      "solid_px": 379672,
+      "before": {
+        "occluded": 61704,
+        "occluded_frac": 0.1625,
+        "max_darkening": 0.302
+      },
+      "unguarded": {
+        "occluded": 105720,
+        "occluded_frac": 0.2785,
+        "max_darkening": 0.0588
+      },
+      "after": {
+        "occluded": 46552,
+        "occluded_frac": 0.1226,
+        "max_darkening": 0.0588
+      }
+    },
+    "revox_yaw45": {
+      "solid_px": 201600,
+      "before": {
+        "occluded": 104736,
+        "occluded_frac": 0.5195,
+        "max_darkening": 0.2
+      },
+      "unguarded": {
+        "occluded": 95232,
+        "occluded_frac": 0.4724,
+        "max_darkening": 0.0902
+      },
+      "after": {
+        "occluded": 52656,
+        "occluded_frac": 0.2612,
+        "max_darkening": 0.0588
+      }
+    }
+  }
+}

@@ -892,6 +892,9 @@ void registerCliArgs() {
         "Run N frames (default 300) with frame timing, then exit",
         300
     );
+    args.flag("--ao-contact-probe", "Isolate a voxel inside corner and convex cube for AO");
+    args.flag("--no-ao", "Disable ambient occlusion for lighting isolation");
+    args.flag("--no-shadows", "Disable sun shadows for lighting isolation");
     args.flag("--depth-color", "Tint each voxel by local iso-depth (front=red, back=blue)");
     args.flag("--checkerboard", "Tint alternating voxels darker (flickers; off by default)");
     args.flag(
@@ -3040,9 +3043,26 @@ void setupCanvasLighting() {
     // Default sun direction: high and slightly off-axis so every demo
     // shape casts a visible shadow without any further setup.
     IRRender::setSunDirection(vec3(0.35f, 0.85f, -0.4f));
+    IRRender::setAOEnabled(!IREngine::args().getFlag("--no-ao"));
+    IRRender::setSunShadowsEnabled(!IREngine::args().getFlag("--no-shadows"));
 }
 
 void initEntities() {
+    if (IREngine::args().getFlag("--ao-contact-probe")) {
+        const EntityId corner = IREntity::createEntity(
+            C_LocalTransform{vec3(0.0f)},
+            C_VoxelSetNew{ivec3(9, 9, 5), Color{180, 180, 180, 255}, true}
+        );
+        IREntity::getComponent<C_VoxelSetNew>(corner).carve([](vec3 position) {
+            return position.x < 0.0f && position.y < 0.0f && position.z < 1.0f;
+        });
+        IREntity::createEntity(
+            C_LocalTransform{vec3(12.0f, 0.0f, 0.0f)},
+            C_VoxelSetNew{ivec3(5), Color{180, 180, 180, 255}, true}
+        );
+        setupCanvasLighting();
+        return;
+    }
     if (g_cullEvictTest) {
         IR_LOG_INFO("--- #2830 cull-invalidation fixture scene ---");
         initCullEvictScene();

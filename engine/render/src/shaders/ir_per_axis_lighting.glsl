@@ -68,8 +68,8 @@ vec3 perAxisSubCellFrac(int encoded) {
 // the light volume / sun map INSIDE the solid on every camera-facing surface.
 // Integer-positioned content encodes frac 8/8 → zero offset, so it is
 // bit-identical to the lattice recovery. Consumers whose output provably
-// cancels the in-plane offset (AO's outward-normal height dot) may keep the
-// cheaper lattice form; absolute-position consumers (light volume, sun-shadow
+// cancels the in-plane offset may keep the cheaper lattice form. AO distance
+// weighting and absolute-position consumers (light volume, sun-shadow
 // receive, overflow relight, and the sun-shadow CAST bridge) must recover
 // with the frac applied.
 vec3 perAxisCellToWorld3DSubCell(
