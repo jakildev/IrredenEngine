@@ -138,6 +138,7 @@ add_executable(IrredenEngineTest
   job/ir_job_test.cpp
   utility/ir_utility_test.cpp
   video/auto_screenshot_helpers_test.cpp
+  video/recording_state_test.cpp
   world/chunk_coord_test.cpp
   world/chunk_membership_migration_test.cpp
   world/chunk_persistence_test.cpp

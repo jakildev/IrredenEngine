@@ -2,6 +2,7 @@
 #define VIDEO_MANAGER_H
 
 #include <irreden/video/auto_screenshot.hpp>
+#include <irreden/video/ir_video_types.hpp>
 #include <irreden/video/video_recorder.hpp>
 
 #include <cstdint>
@@ -55,6 +56,7 @@ class VideoManager {
     bool recordFrame(const std::uint8_t *rgbaData, int strideBytes);
 
     [[nodiscard]] bool isRecording() const;
+    [[nodiscard]] RecordingState recordingState() const;
     [[nodiscard]] std::uint64_t getFrameCount() const;
     [[nodiscard]] const std::string &getLastError() const;
 

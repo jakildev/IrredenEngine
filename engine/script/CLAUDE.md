@@ -45,6 +45,12 @@ declares a component with native per-field columns in the C++ `ComponentId` spac
   `IRModifier`; others get `kInvalidFieldId`.
 - In a system tick use `IREntity.deferredCreate({ { C_Hp, overrides } })`
   (returns a reserved `EntityId`) and `IREntity.deferredDestroy(id)`.
+  Structural work `deferredCreate` cannot express — a creation's
+  `createEntityBatch*` prefab builders, a teardown-then-rebuild — goes in
+  `IREntity.deferredCall(fn)`: `fn` runs at the next
+  `flushStructuralChanges` (the group boundary after the calling system, main
+  thread, outside every archetype iteration), where the immediate APIs are
+  legal. A callback error is logged, not raised.
 
 ### Packed vec3 / ivec3 / vec4 fields
 

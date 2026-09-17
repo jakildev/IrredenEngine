@@ -1,6 +1,7 @@
 #ifndef IR_VIDEO_VIDEO_RECORDER_H
 #define IR_VIDEO_VIDEO_RECORDER_H
 
+#include <atomic>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -110,7 +111,9 @@ class VideoRecorder {
     /// @}
 
   private:
-    bool m_isRecording = false;
+    // Atomic because `stop()` clears it from VideoManager's async finalize
+    // thread while the main thread polls `isRecording()` between frames.
+    std::atomic<bool> m_isRecording = false;
     std::uint64_t m_videoFrameCount = 0;
     std::string m_lastError;
 
