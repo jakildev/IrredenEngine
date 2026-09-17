@@ -93,6 +93,8 @@ kernel void c_per_axis_overflow_sort(
     span = min(span, capEntries);
 
     if (mode == 3u) {
+        // Layout mirrors C_PerAxisTrixelCanvases: command count, block bits - 1,
+        // argument base and command stride are 21, 10, 8 and 4 respectively.
         // Commands 0/1 cover fill/local; 2..20 cover stages 12..30.
         // Zero-sized grids suppress empty lists and stages outside the live span.
         const uint command = localId.x;

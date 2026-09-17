@@ -573,8 +573,31 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
     const std::string path =
         std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_per_axis_overflow_sort.glsl";
     ShaderProgram program{std::vector{ShaderStage{path.c_str(), ShaderType::COMPUTE}}};
-    for (const std::uint32_t count : {0u, 4097u, 1u, 0u, 262145u}) {
-        SCOPED_TRACE(count);
+    const auto recordLess = [](const Record &a, const Record &b) {
+        if (a[0] != b[0])
+            return a[0] < b[0];
+        if (a[2] != b[2])
+            return a[2] < b[2];
+        return a[1] < b[1];
+    };
+    struct SortCase {
+        std::uint32_t count;
+        std::uint32_t laggedCount;
+        bool fullySorted;
+    };
+    for (const SortCase sortCase : {
+             SortCase{0u, 0u, true},
+             SortCase{2048u, 0u, true},
+             SortCase{4097u, 0u, false},
+             SortCase{4097u, 4097u, true},
+             SortCase{1u, 4097u, true},
+             SortCase{0u, 1u, true},
+             SortCase{262145u, 262145u, true},
+         }) {
+        const std::uint32_t count = sortCase.count;
+        SCOPED_TRACE(
+            ::testing::Message() << "count=" << count << " lagged=" << sortCase.laggedCount
+        );
         words[ctrl + 1] = count;
         std::vector<Record> expected;
         expected.reserve(count);
@@ -584,13 +607,7 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
             for (int word = 0; word < 3; ++word)
                 words[entries + i * 3 + word] = record[word];
         }
-        std::sort(expected.begin(), expected.end(), [](const Record &a, const Record &b) {
-            if (a[0] != b[0])
-                return a[0] < b[0];
-            if (a[2] != b[2])
-                return a[2] < b[2];
-            return a[1] < b[1];
-        });
+        std::sort(expected.begin(), expected.end(), recordLess);
         scratch.subData(0, words.size() * sizeof(std::uint32_t), words.data());
         scratch.bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_PerAxisResolveScratch);
         uniform.bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas);
@@ -627,13 +644,19 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
         step(3, 0, 0, 0, 0);
         step(0, 0, 0, 0, 0);
         step(1, 0, 0, 0, 1);
-        constexpr auto blockBits = Axes::kOverflowSortBlockBits;
-        for (std::uint32_t bits = blockBits + 1; (1u << bits) <= cap; ++bits) {
-            for (std::uint32_t remaining = bits; remaining > 0;) {
-                const auto width = IRMath::min(remaining, blockBits);
-                step(2, 1u << bits, remaining - width, remaining - 1, bits - blockBits + 1);
-                remaining -= width;
+        const auto dispatchSpan =
+            IRSystem::detail::overflowSortDispatchSpan(sortCase.laggedCount, cap);
+        std::uint32_t mergeDispatches = 0;
+        IRSystem::detail::forEachOverflowSortMergeStep(
+            dispatchSpan,
+            [&](std::uint32_t k, std::uint32_t pLo, std::uint32_t pHi, std::uint32_t commandIndex) {
+                step(2, k, pLo, pHi, commandIndex);
+                ++mergeDispatches;
             }
+        );
+        if (sortCase.laggedCount == 0u) {
+            EXPECT_EQ(dispatchSpan, 1u << Axes::kOverflowSortBlockBits);
+            EXPECT_EQ(mergeDispatches, 0u);
         }
 #if defined(IR_GRAPHICS_METAL)
         device_->finish();
@@ -642,13 +665,22 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
 #endif
         std::vector<std::uint32_t> actual(words.size());
         scratch.getSubData(0, actual.size() * sizeof(std::uint32_t), actual.data());
+        std::vector<Record> observed;
+        observed.reserve(count);
         for (std::uint32_t i = 0; i < count; ++i) {
-            const Record record{
-                actual[entries + i * 3],
-                actual[entries + i * 3 + 1],
-                actual[entries + i * 3 + 2]
-            };
-            ASSERT_EQ(record, expected[i]) << "entry " << i;
+            observed.push_back(
+                Record{
+                    actual[entries + i * 3],
+                    actual[entries + i * 3 + 1],
+                    actual[entries + i * 3 + 2]
+                }
+            );
+        }
+        if (sortCase.fullySorted)
+            EXPECT_EQ(observed, expected);
+        else {
+            std::sort(observed.begin(), observed.end(), recordLess);
+            EXPECT_EQ(observed, expected);
         }
         for (std::uint32_t i = 0; i < 8; ++i)
             EXPECT_EQ(actual[ctrl + i], words[ctrl + i]);

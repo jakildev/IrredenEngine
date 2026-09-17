@@ -50,6 +50,35 @@ using namespace IRRender;
 
 namespace IRSystem {
 
+namespace detail {
+
+constexpr std::uint32_t kOverflowSortHeadroom = 2;
+
+inline std::uint32_t overflowSortDispatchSpan(std::uint32_t laggedCount, std::uint32_t capacity) {
+    constexpr std::uint32_t kBlock = 1u << C_PerAxisTrixelCanvases::kOverflowSortBlockBits;
+    const std::uint32_t laggedSpan = IRMath::nextPowerOfTwo(laggedCount);
+    const std::uint32_t headroomSpan = laggedSpan > capacity / kOverflowSortHeadroom
+                                           ? capacity
+                                           : laggedSpan * kOverflowSortHeadroom;
+    return IRMath::min(capacity, IRMath::max(kBlock, headroomSpan));
+}
+
+template <typename Callback>
+inline void forEachOverflowSortMergeStep(std::uint32_t dispatchSpan, Callback &&callback) {
+    constexpr std::uint32_t kBlockBits = C_PerAxisTrixelCanvases::kOverflowSortBlockBits;
+    constexpr std::uint32_t kBlock = 1u << kBlockBits;
+    std::uint32_t stageBits = kBlockBits + 1;
+    for (std::uint32_t k = kBlock * 2; k <= dispatchSpan; k <<= 1, ++stageBits) {
+        for (std::uint32_t remaining = stageBits; remaining > 0;) {
+            const std::uint32_t width = IRMath::min(remaining, kBlockBits);
+            callback(k, remaining - width, remaining - 1, stageBits - kBlockBits + 1);
+            remaining -= width;
+        }
+    }
+}
+
+} // namespace detail
+
 inline const std::vector<std::uint32_t> &buildChunkVisibilityMask(
     C_VoxelPool &pool,
     IsoBounds2D viewport,
@@ -630,7 +659,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // readback in tick(); Metal's present() waits each frame to completion, so
     // the read can never observe an in-flight append, and GL's getSubData
     // implicit-syncs any pending write) — and one-shot-warn when entries were
-    // dropped. Rendering never consumes this completed-frame diagnostic count.
+    // dropped. The count also bounds next frame's encoded sort stages; current
+    // GPU counts still author the indirect grids for every encoded stage.
     void warnOverflowDropsIfAny(C_PerAxisTrixelCanvases &axes) {
         std::array<std::uint32_t, 8> ctrl{};
         axes.winnerIds_.second->getSubData(
@@ -872,9 +902,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                     indirectOffsetBytes
                 );
             }
-            // Sort displaced-cell ties on their first nonempty frame. GPU-authored
-            // commands suppress empty lists and stages beyond the current span.
+            // GPU-authored commands size work from the current list. The completed
+            // prior-frame count only bounds how many merge-stage encoders the CPU
+            // opens; headroom absorbs ordinary growth without a readback stall.
             std::uint32_t sortDispatches = 0;
+            std::uint32_t dispatchSpan = 0;
             if (sortOverflowEntries) {
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
                 overflowSortProgram_->use();
@@ -882,6 +914,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                     C_PerAxisTrixelCanvases::kOverflowSortBlockBits;
                 constexpr std::uint32_t kBlock = 1u << kBlockBits;
                 const std::uint32_t cap = static_cast<std::uint32_t>(axes.overflowCap_);
+                dispatchSpan = detail::overflowSortDispatchSpan(axes.laggedOverflowCount_, cap);
                 auto sortStep = [&](int mode,
                                     std::uint32_t k,
                                     std::uint32_t pLo,
@@ -921,32 +954,23 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 sortStep(3, 0, 0, 0, 0);
                 sortStep(0, 0, 0, 0, 0);
                 sortStep(1, 0, 0, 0, 1);
-                // Stage k = 2^stageBits has its compare-exchange strides at bit
-                // positions stageBits-1 .. 0; take them top-down in runs of at
-                // most kBlockBits, which is what one slab can hold.
-                std::uint32_t stageBits = kBlockBits + 1;
-                for (std::uint32_t k = kBlock * 2; k <= cap; k <<= 1, ++stageBits) {
-                    for (std::uint32_t remaining = stageBits; remaining > 0;) {
-                        const std::uint32_t width = IRMath::min(remaining, kBlockBits);
-                        sortStep(
-                            2,
-                            k,
-                            remaining - width,
-                            remaining - 1,
-                            stageBits - kBlockBits + 1
-                        );
-                        remaining -= width;
-                    }
-                }
+                detail::forEachOverflowSortMergeStep(
+                    dispatchSpan,
+                    [&](std::uint32_t k,
+                        std::uint32_t pLo,
+                        std::uint32_t pHi,
+                        std::uint32_t commandIndex) { sortStep(2, k, pLo, pHi, commandIndex); }
+                );
             }
             if (overflowCountLogEnabled_ &&
                 sortDispatches != lastOverflowSortDispatchesLogged_) {
                 IRE_LOG_INFO(
                     "[overflow-sort] canonical-sort dispatches this rotating frame: "
-                    "{} (storeTiesPossible={}, laggedOverflowCount={}, cap {}).",
+                    "{} (storeTiesPossible={}, laggedOverflowCount={}, dispatchSpan={}, cap {}).",
                     sortDispatches,
                     sortOverflowEntries,
                     axes.laggedOverflowCount_,
+                    dispatchSpan,
                     axes.overflowCap_
                 );
                 lastOverflowSortDispatchesLogged_ = sortDispatches;

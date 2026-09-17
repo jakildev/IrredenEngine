@@ -125,13 +125,13 @@ struct C_PerAxisTrixelCanvases {
     static constexpr std::uint32_t kOverflowSortCommandUints = 4;
     static constexpr std::uint32_t kOverflowSortCommandCount =
         2 + kOverflowSortMaxStageBits - kOverflowSortBlockBits;
-    static constexpr int kOverflowControlUints = 128;
+    static constexpr std::uint32_t kOverflowControlUints = 128;
     static_assert(
         kOverflowSortArgsBaseUints + kOverflowSortCommandCount * kOverflowSortCommandUints <=
             kOverflowControlUints,
         "overflow sort commands must fit the aligned control region"
     );
-    // Completed-frame count for diagnostics only; rendering uses the current GPU count.
+    // Completed-frame count used for warnings and as a merge-stage encoding hint.
     std::uint32_t laggedOverflowCount_ = 0;
 
     // Allocation state is the texture handles themselves — no separate bool to
@@ -218,7 +218,7 @@ struct C_PerAxisTrixelCanvases {
         const int alignedCells = IRMath::divCeil(axisCells, kScratchAlignUints) * kScratchAlignUints;
         viewMaskBaseUints_ = alignedCells;
         ctrlBaseUints_ = viewMaskBaseUints_ + alignedCells;
-        entriesBaseUints_ = ctrlBaseUints_ + kOverflowControlUints;
+        entriesBaseUints_ = ctrlBaseUints_ + static_cast<int>(kOverflowControlUints);
         // Mode 3 emits at most one record per voxel per axis: its canonical
         // trixel lane returns before dual-face emission, with only micro-slice
         // zero active. Capacity covers the whole main pool, including the first

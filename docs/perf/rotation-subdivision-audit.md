@@ -96,8 +96,8 @@ and the separation between render visibility and simulation cadence.
    observed exact/margin flicker. [Overflow face deduplication](overflow-face-dedup.md)
    now passes stable controls and reduces scatter work. Retain same-class ties
    and continuous-camera temporal checks as follow-ups. [Current-frame sort dispatch](current-frame-overflow-sort.md)
-   removes the unsorted empty-to-nonempty transition and bounds GPU work to the live
-   span. Continue reducing
+   bounds GPU work to the live span and CPU stage encoding to a prior-count hint
+   with headroom. Continue reducing
    repeated per-axis storage/finalization work using measured counters; preserve finite
    geometry, trixel reconstruction and shadow coverage.
 5. [Light-volume candidate pruning](light-volume-candidate-pruning.md) skips

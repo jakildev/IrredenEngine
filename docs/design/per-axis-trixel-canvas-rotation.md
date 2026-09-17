@@ -209,10 +209,13 @@ record-equality coincide and equal records need no ordering at all.
 **The sort is eligible when `storeTiesPossible_` is set.** Current-frame
 GPU counts generate indirect grids for fill, local sort and each remaining
 stage. Empty lists and stages wider than the active power-of-two span have
-zero-sized grids. The first nonempty frame is sorted; no previous-frame count
-controls correctness. Unflagged pools skip the sort entirely. Flagged empty
-pools still pay command encoding/uniform updates and the small argument-preparation
-pass, even though the network performs no GPU work.
+zero-sized grids. The completed prior-frame count bounds CPU command encoding
+to twice its power-of-two span, floored at one 2,048-entry local block. Current
+GPU counts size the indirect grids within that encoded prefix. A first population
+through 2,048 entries and growth within the two-times headroom are fully sorted.
+A larger jump remains a valid permutation and becomes fully sorted on the next
+frame. Unflagged pools skip the sort entirely. Flagged empty pools pay only the argument-preparation,
+fill and local-sort encoders; their GPU-authored grids are empty.
 
 The expanded aligned control region owns the arguments separately from draw
 counts. Storage/command barriers publish them before consumption. A production
