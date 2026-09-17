@@ -116,6 +116,7 @@ sudo apt install -y \
     libasound2-dev libpulse-dev libjack-jackd2-dev \
     libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
     libavdevice-dev libavfilter-dev \
+    ffmpeg \
     clang-format clang-tidy \
     python3 python3-venv
 ```
@@ -134,6 +135,9 @@ Notes on what these give you:
   uses ALSA / Pulse / JACK; the audio CMakeLists checks for these.
 - `libav*-dev` — FFmpeg development headers for the video subsystem
   (see `engine/video/CLAUDE.md`). Found via `pkg-config`.
+- `ffmpeg` — the CLI binary, separate from the `-dev` headers above;
+  `scripts/fleet/fleet-clip` (the `attach-screenshots` skill's clip step)
+  shells out to it.
 - `clang-format clang-tidy` — match the Windows toolchain so the
   `format` / `format-check` / `lint` targets produce identical output
   across platforms.
@@ -220,7 +224,9 @@ Notes on what these give you:
   ships CMake ≥ 3.28, which is what the preset needs.
 - `ffmpeg` — provides the development headers + dylibs used by
   `engine/video/`. On macOS the video subsystem finds FFmpeg via
-  `pkg-config`, same as on Linux.
+  `pkg-config`, same as on Linux. This same package also installs the
+  `ffmpeg` CLI binary `scripts/fleet/fleet-clip` (the `attach-screenshots`
+  skill's clip step) shells out to — nothing extra to install.
 - `clang-format clang-tidy` — match the Linux/Windows toolchain so
   the `format` / `format-check` / `lint` targets produce the same
   output across all three hosts.
@@ -294,7 +300,9 @@ pacman -S --needed tmux \
     mingw-w64-x86_64-toolchain \  # gcc/g++ >= 13 — the windows-debug compiler
     mingw-w64-x86_64-gh \         # GitHub CLI
     mingw-w64-x86_64-python \     # fleet python helpers (scout, reconcile)
-    mingw-w64-x86_64-jq           # JSON — must be the mingw build (see note below)
+    mingw-w64-x86_64-jq \         # JSON — must be the mingw build (see note below)
+    mingw-w64-x86_64-ffmpeg       # DLLs at C:\msys64\mingw64\bin (BUILD.md) + the
+                                   # ffmpeg CLI scripts/fleet/fleet-clip shells out to
 ```
 
 Install separately on the **Windows** side: **Git for Windows** (the

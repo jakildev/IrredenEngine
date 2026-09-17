@@ -28,6 +28,8 @@ that needs a repo-specific value names its **delta key** in bold.
 | **sha-pin token** | The literal placeholder emitted in step 8's URLs in place of a deletable branch ref; a downstream consumer (the **PR-create flow**'s step 8, or a feedback-AMEND body edit) substitutes it with the real commit SHA once one exists. | `@COMMIT_SHA@` |
 | **build tool** | The build wrapper. | `fleet-build --target <demo-name>` |
 | **run tool** | The run wrapper. | `fleet-run <demo-name> --auto-screenshot 10` |
+| **clip preset** | `--config-preset` path for the clip capture pass. | `scripts/fleet/clip-preset.lua` |
+| **clip frames** | Default `--auto-record` frame count for the clip pass. | `180` |
 
 ---
 
@@ -73,6 +75,14 @@ Grep the demo's entry point under `creations/demos/<demo-dir>/`. No match →
 report `attach-screenshots: <demo-name> does not implement
 --auto-screenshot` and exit; never capture manually.
 
+### 3b. Verify the clip gate
+
+Grep the same entry point for the auto-record wire-up (`appendAutoRecordIfRequested`
+or `createAutoRecordSystem`, same check as step 3) and check `ffmpeg` is on
+`PATH`. Either missing sets `CLIP_ENABLED=0` and prints
+`attach-screenshots: clip skipped (<reason>)` — never a hard failure, the PNG
+flow (steps 4–9) runs regardless. Otherwise `CLIP_ENABLED=1`.
+
 ### 4. Output directory
 
 `<screenshot output root>/<BRANCH>/`. Do not `mkdir` it yet — `git stash
@@ -115,6 +125,17 @@ timeout would mask hangs:
 <run tool>
 ```
 
+When `CLIP_ENABLED=1`, also capture a clip (raw captures are never
+committed — only the composed clip step 7 produces is staged):
+
+```bash
+<run tool> --auto-record <clip frames> --config-preset <clip preset>
+mv <demo save path>/../../capture.mp4 <demo save path>/../../<demo-name>-before.mp4
+```
+
+(`capture.mp4` lands beside the exe — two directories up from **demo save
+path**, which nests `save_files/screenshots` under the exe dir.)
+
 Restore is the same on failure and on success:
 
 ```bash
@@ -136,16 +157,30 @@ With the stash restored on `<BRANCH>`, build and run again (the before
 pass already moved its PNGs out, so the counter resets). `mkdir -p` the
 output directory, move the PNGs in with `-after` suffixes paired by label.
 Before ≠ after counts → the shot list changed between refs or a run
-crashed; report and exit without staging.
+crashed; report and exit without staging. When `CLIP_ENABLED=1`, repeat the
+clip capture the same way as step 5, moving `capture.mp4` to
+`<demo-name>-after.mp4`.
 
-### 7. Stage — do not commit
+### 7. Compose the clip, then stage — do not commit
+
+When `CLIP_ENABLED=1`:
+
+```bash
+fleet-clip <demo-name>-before.mp4 <demo-name>-after.mp4 \
+    <screenshot output root>/<BRANCH>/<demo-name>-clip
+```
+
+`fleet-clip` exits 3 (ffmpeg missing) or 1 (a compose failure) without
+writing partial output — either way, log
+`attach-screenshots: clip skipped (<reason>)` and continue with the PNG
+flow; the raw `-before.mp4` / `-after.mp4` captures are never committed.
 
 ```bash
 git add <screenshot output root>/<BRANCH>/
 ```
 
-The screenshots ship in the feature commit the **PR-create flow** makes
-next.
+The screenshots (and, when composed, the clip pair) ship in the feature
+commit the **PR-create flow** makes next.
 
 ### 8. Emit the markdown snippet
 
@@ -161,7 +196,11 @@ next.
 
 </details>
 
-... (one `<details>` block per shot label)
+Clip: ![](<raw URL base>/@COMMIT_SHA@/<screenshot output root>/<BRANCH>/<demo-name>-clip.gif)
+[full clip (mp4)](<raw URL base>/@COMMIT_SHA@/<screenshot output root>/<BRANCH>/<demo-name>-clip.mp4)
+
+... (one `<details>` block per shot label, each followed by the same Clip
+line when `CLIP_ENABLED=1`; omit the Clip line entirely when it is 0)
 ```
 
 The ref segment of every URL is the literal **sha-pin token**, never
@@ -176,6 +215,7 @@ uses the branch name — it is a committed path, resolvable at any ref.
 attach-screenshots: <demo-name> (<N> shots)
   before: <screenshot output root>/<BRANCH>/<label>-before.png × N
   after:  <screenshot output root>/<BRANCH>/<label>-after.png × N
+  clip:   <screenshot output root>/<BRANCH>/<demo-name>-clip.{mp4,gif} (or "skipped (<reason>)")
   staged: <path>/ (<2N+> files)
   markdown snippet printed above — paste into PR body
 ```
@@ -198,7 +238,8 @@ never write under `HEAD/`); step 5 is `git checkout --detach
 checkout --detach "$RETURN"`; no stash apply/drop; the PNGs fold into the
 amend commit; the AMEND path's own `gh pr edit --body` substitutes the
 **sha-pin token** against the **post-amend** pushed HEAD, not `$AFTER`.
-Identical before/after refs → stop.
+Identical before/after refs → stop. The clip gate (step 3b) and capture
+(steps 5–7) run unchanged against `<before-ref>` / `$AFTER`.
 
 ### Camera-yaw fixes need a non-cardinal shot
 
@@ -220,6 +261,8 @@ No partial commits, no orphan PNGs, no leftover stash:
 | Headless host | Run tool exits non-zero with an empty save path; report and recommend a host with a display. |
 | Shot count mismatch | Report both counts; stage nothing. |
 | Stash apply conflicts | Never force; the entry survives (`apply`, then `drop` only on a clean apply) — recover by SHA from `git stash list`. |
+| Demo lacks auto-record wiring, or `ffmpeg` absent | `CLIP_ENABLED=0`; log and skip the clip only — the PNG flow is unaffected, never a hard failure. |
+| `fleet-clip` exits non-zero | Log `attach-screenshots: clip skipped (<reason>)`; stage the PNGs, omit the clip pair and its snippet lines. |
 
 ## Recovery
 

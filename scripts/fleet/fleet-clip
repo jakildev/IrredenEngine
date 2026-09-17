@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+"""Compose a before/after clip pair into a side-by-side MP4 and a GIF.
+
+Usage: fleet-clip <before.mp4> <after.mp4> <out-basename>
+
+Writes <out-basename>.mp4 (H.264, width = 2x one input's width, "before" /
+"after" labels burned in via the committed clip-label-{before,after}.png
+overlays — no drawtext/freetype dependency, since not every ffmpeg build
+carries libfreetype) and <out-basename>.gif (<= 640px wide, <= 15fps,
+<= 128 colors, two-pass palettegen/paletteuse). Never fails on an oversize
+output — a GIF over 3 MB or an MP4 over 1 MB prints a one-line warning; the
+caller shortens --auto-record or shrinks the capture preset.
+
+Exit 3 (one-line message, no traceback): ffmpeg or ffprobe is not on PATH.
+"""
+import argparse
+import json
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+LABEL_BEFORE = SCRIPT_DIR / "clip-label-before.png"
+LABEL_AFTER = SCRIPT_DIR / "clip-label-after.png"
+
+GIF_MAX_WIDTH = 640
+GIF_FPS = 12
+GIF_MAX_COLORS = 128
+MP4_CRF = 28
+MP4_WARN_BYTES = 1_000_000
+GIF_WARN_BYTES = 3_000_000
+LABEL_MARGIN = 10
+
+
+def ffprobe_width(path):
+    out = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0",
+         "-show_entries", "stream=width", "-of", "json", str(path)],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    return int(json.loads(out)["streams"][0]["width"])
+
+
+def run_ffmpeg(args, step):
+    result = subprocess.run(
+        ["ffmpeg", "-y", "-loglevel", "error", *args],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        print(f"fleet-clip: {step} failed:\n{result.stderr}", file=sys.stderr)
+        return False
+    return True
+
+
+def compose_mp4(before, after, out_mp4):
+    filter_complex = (
+        "[0:v][1:v]hstack=inputs=2[stacked];"
+        "[stacked][2:v]overlay=x=10:y=10:shortest=1[s1];"
+        "[s1][3:v]overlay=x='(main_w/2)+10':y=10:shortest=1[v]"
+    )
+    return run_ffmpeg(
+        ["-i", str(before), "-i", str(after),
+         "-loop", "1", "-i", str(LABEL_BEFORE),
+         "-loop", "1", "-i", str(LABEL_AFTER),
+         "-filter_complex", filter_complex, "-map", "[v]",
+         "-c:v", "libx264", "-crf", str(MP4_CRF),
+         "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(out_mp4)],
+        "compose",
+    )
+
+
+def compose_gif(source_mp4, out_gif):
+    vf = (
+        f"fps={GIF_FPS},scale={GIF_MAX_WIDTH}:-1:flags=neighbor,split[s0][s1];"
+        f"[s0]palettegen=max_colors={GIF_MAX_COLORS}[p];"
+        "[s1][p]paletteuse=dither=none"
+    )
+    return run_ffmpeg(["-i", str(source_mp4), "-vf", vf, str(out_gif)], "gif")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("before")
+    parser.add_argument("after")
+    parser.add_argument("out_basename")
+    args = parser.parse_args()
+
+    if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
+        print("fleet-clip: ffmpeg (and ffprobe) not found on PATH", file=sys.stderr)
+        return 3
+
+    before, after = Path(args.before), Path(args.after)
+    missing = [p for p in (before, after) if not p.is_file()]
+    if missing:
+        print(f"fleet-clip: input not found: {missing[0]}", file=sys.stderr)
+        return 1
+
+    out_mp4 = Path(f"{args.out_basename}.mp4")
+    out_gif = Path(f"{args.out_basename}.gif")
+
+    ffprobe_width(before)  # fail fast on an unreadable input before composing
+
+    if not compose_mp4(before, after, out_mp4):
+        return 1
+    if not compose_gif(out_mp4, out_gif):
+        return 1
+
+    mp4_bytes = out_mp4.stat().st_size
+    gif_bytes = out_gif.stat().st_size
+    if mp4_bytes > MP4_WARN_BYTES:
+        print(f"fleet-clip: warning: {out_mp4} is {mp4_bytes} bytes (budget {MP4_WARN_BYTES})",
+              file=sys.stderr)
+    if gif_bytes > GIF_WARN_BYTES:
+        print(f"fleet-clip: warning: {out_gif} is {gif_bytes} bytes (budget {GIF_WARN_BYTES})",
+              file=sys.stderr)
+
+    print(f"fleet-clip: wrote {out_mp4} ({mp4_bytes} bytes), {out_gif} ({gif_bytes} bytes)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
