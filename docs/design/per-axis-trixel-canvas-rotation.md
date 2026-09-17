@@ -206,30 +206,22 @@ indirect draw it canonically orders the appended entries by full record value
 of the appended **set**. The key spans all three words, so key-equality and
 record-equality coincide and equal records need no ordering at all.
 
-**The sort is gated on `storeTiesPossible_ && laggedOverflowCount > 0`** — the
-#2346 displaced-collision flag the cardinal winner election gates on, AND a
-nonempty overflow list, both evaluated CPU-side per pool per frame so the sort
-semantics never fork by backend. An unflagged pool runs master's exact dispatch
-sequence: zero fill, zero network. A flagged pool whose list is empty —
-`IRPerfGrid --mode voxel_set` at wave amplitude 0 is the canonical case — also
-dispatches nothing (measured: 0 dispatches under the two-term predicate, where
-the flag-only gate paid 18 dispatches for 0 entries).
+**The sort is eligible when `storeTiesPossible_` is set.** Current-frame
+GPU counts generate indirect grids for fill, local sort and each remaining
+stage. Empty lists and stages wider than the active power-of-two span have
+zero-sized grids. The completed prior-frame count bounds CPU command encoding
+to twice its power-of-two span, floored at one 2,048-entry local block. Current
+GPU counts size the indirect grids within that encoded prefix. A first population
+through 2,048 entries and growth within the two-times headroom are fully sorted.
+A larger jump remains a valid permutation and becomes fully sorted on the next
+frame. Unflagged pools skip the sort entirely. Flagged empty pools pay only the argument-preparation,
+fill and local-sort encoders; their GPU-authored grids are empty.
 
-**The count term is a frame-lagged read, and the determinism guarantee is
-scoped to steady-state frames.** The CPU cannot read the live `ctrl[1]` without
-a render-path sync stall, so the predicate reads the count written by the last
-COMPLETED rotating frame — the same retired-frame ctrl readback the #2333
-cap-drop warn has always performed (Metal completes every frame at present via
-`waitUntilCompleted`, so the read can never observe an in-flight append; GL's
-`getSubData` implicit-syncs any pending write; allocation seeds the ctrl block
-to zeros, so a fresh allocation reads 0, not garbage). Consequence: a pool
-whose overflow list transitions empty→nonempty draws that first frame
-unsorted — order-nondeterministic for exactly one frame, self-healing on the
-next. This is not a regression (master is nondeterministic on **every** such
-frame), and no automated gate covers the transition frame itself: the
-guarantee is **byte-identity on steady-state frames** (settled overflow
-population), which is what every capture-bearing acceptance criterion
-measures.
+The expanded aligned control region owns the arguments separately from draw
+counts. Storage/command barriers publish them before consumption. A production
+GPU test compares full record ordering to a CPU reference across population
+transitions and a 2-D fill dispatch. See
+[current-frame overflow sort](../perf/current-frame-overflow-sort.md).
 
 **Residual class, deliberately accepted.** An unflagged pool keeps
 order-resolved **cross-cell 4-bit band-code ties**. This is acceptable because:

@@ -21,7 +21,8 @@
 // Pass structure (overflowSortStep, driven by system_voxel_to_trixel.hpp;
 // the entry cap is a power of two by construction in
 // component_per_axis_trixel_canvases.hpp):
-//   0 — sentinel-fill every slot in [liveCount, cap) with 0xFFFFFFFF^3. The
+//   3 — write current-frame indirect grids into the aligned control region.
+//   0 — sentinel-fill every slot in [liveCount, span) with 0xFFFFFFFF^3. The
 //       region above the live range holds stale prior-frame entries, NOT
 //       zeros — the fill is mandatory, every rotating frame, before any
 //       network step. A real entry cannot tie the sentinel: word 0 packs
@@ -46,7 +47,7 @@
 // every OTHER bit of the global entry index, so
 //     i = ((c >> pLo) << (pHi + 1)) | (activeBits << pLo) | (c & ((1 << pLo) - 1))
 // reinserts the active window. A workgroup owns kBlock >> n consecutive
-// slabs, hence kBlock elements and cap/kBlock workgroups for EVERY stride
+// slabs, hence kBlock elements and span/kBlock workgroups for each active stride
 // group regardless of its width. pLo == 0 degenerates to a contiguous block,
 // which is why this one mode also covers the local tail of each stage.
 //
@@ -55,11 +56,11 @@
 // valid. The only shortcut is the workgroup-uniform whole-block-is-sentinel
 // early-out, taken only where the slab is contiguous (mode 1, and mode 2 at
 // pLo == 0) so a sorted-constant block is provably a no-op. The sort never
-// touches the ctrl block (draw args / counters) — it reorders entries,
-// nothing else.
+// changes the draw args or counters. Only mode 3 writes the reserved sort
+// command region after those fields.
 //
-// The whole pass is gated CPU-side on the pool's storeTiesPossible_ flag, so
-// an unflagged pool dispatches NONE of these modes.
+// The whole pass is gated CPU-side on the pool's storeTiesPossible_ flag.
+// Empty lists and inactive stages have zero-sized indirect grids.
 
 layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
@@ -184,10 +185,32 @@ void main() {
 
     const uint span = sortSpan();
 
+    if (mode == 3u) {
+        // Layout mirrors C_PerAxisTrixelCanvases: command count, block bits - 1,
+        // argument base and command stride are 21, 10, 8 and 4 respectively.
+        // Commands 0/1 cover fill/local; 2..20 cover stages 12..30.
+        // Zero-sized grids suppress empty lists and stages outside the live span.
+        const uint command = gl_LocalInvocationID.x;
+        if (command >= 21u) return;
+        uint groups = 0u;
+        if (liveEntryCount() != 0u) {
+            if (command == 0u) groups = span / kThreads;
+            else if (command == 1u || (1u << (command + 10u)) <= span)
+                groups = span / kBlock;
+        }
+        const uint groupsX = max(min(groups, 1024u), 1u);
+        const uint base = uint(overflowScratchLayout.y) + 8u + command * 4u;
+        scratch[base] = groupsX;
+        scratch[base + 1u] = (groups + groupsX - 1u) / groupsX;
+        scratch[base + 2u] = 1u;
+        scratch[base + 3u] = 0u;
+        return;
+    }
+
     if (mode == 0u) {
         // Sentinel fill of [liveCount, span). Slots at or above the span are
         // virtual sentinels, so materializing them would be pure waste.
-        const uint i = gl_GlobalInvocationID.x;
+        const uint i = (gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x) * kThreads + gl_LocalInvocationID.x;
         if (i >= span || i < liveEntryCount()) return;
         const uint b = entriesBase() + i * 3u;
         scratch[b] = kSentinelWord;
@@ -197,7 +220,7 @@ void main() {
     }
 
     const uint t = gl_LocalInvocationID.x;
-    const uint g = gl_WorkGroupID.x;
+    const uint g = gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x;
     const uint pairsPerBlock = kBlock >> 1u;
 
     if (mode == 1u) {

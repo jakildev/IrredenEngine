@@ -1,6 +1,6 @@
 // Metal twin of c_per_axis_overflow_sort.glsl; keep the two in lockstep.
 // Shared contract:
-// pass modes (0 sentinel-fill / 1 fused local sort / 2 fused strided slab),
+// pass modes (0 fill / 1 local sort / 2 strided slab / 3 indirect grids),
 // the (cell, distance, color) = words (0, 2, 1) key, the mandatory
 // pre-network fill (the region above the live range holds stale prior-frame
 // entries), sentinel substitution (never thread-skip one side of a
@@ -66,7 +66,7 @@ inline void overflowCompareExchange(
 kernel void c_per_axis_overflow_sort(
     constant FrameDataVoxelToTrixel &frameData [[buffer(7)]],
     device uint *scratch [[buffer(28)]],
-    uint3 globalId [[thread_position_in_grid]],
+    uint3 gridGroups [[threadgroups_per_grid]],
     uint3 groupId [[threadgroup_position_in_grid]],
     uint3 localId [[thread_position_in_threadgroup]]
 ) {
@@ -92,8 +92,30 @@ kernel void c_per_axis_overflow_sort(
     while (span < liveCount) span <<= 1u;
     span = min(span, capEntries);
 
+    if (mode == 3u) {
+        // Layout mirrors C_PerAxisTrixelCanvases: command count, block bits - 1,
+        // argument base and command stride are 21, 10, 8 and 4 respectively.
+        // Commands 0/1 cover fill/local; 2..20 cover stages 12..30.
+        // Zero-sized grids suppress empty lists and stages outside the live span.
+        const uint command = localId.x;
+        if (command >= 21u) return;
+        uint groups = 0u;
+        if (liveCount != 0u) {
+            if (command == 0u) groups = span / kSortThreads;
+            else if (command == 1u || (1u << (command + 10u)) <= span)
+                groups = span / kSortBlock;
+        }
+        const uint groupsX = max(min(groups, 1024u), 1u);
+        const uint base = uint(frameData.overflowScratchLayout.y) + 8u + command * 4u;
+        scratch[base] = groupsX;
+        scratch[base + 1u] = (groups + groupsX - 1u) / groupsX;
+        scratch[base + 2u] = 1u;
+        scratch[base + 3u] = 0u;
+        return;
+    }
+
     if (mode == 0u) {
-        const uint i = globalId.x;
+        const uint i = (groupId.x + groupId.y * gridGroups.x) * kSortThreads + localId.x;
         if (i >= span || i < liveCount) return;
         const uint b = entriesBase + i * 3u;
         scratch[b] = kSortSentinelWord;
@@ -103,7 +125,7 @@ kernel void c_per_axis_overflow_sort(
     }
 
     const uint t = localId.x;
-    const uint g = groupId.x;
+    const uint g = groupId.x + groupId.y * gridGroups.x;
     const uint pairsPerBlock = kSortBlock >> 1u;
 
     if (mode == 1u) {

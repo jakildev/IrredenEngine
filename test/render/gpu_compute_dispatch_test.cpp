@@ -544,6 +544,8 @@ TEST(GpuComputeDispatchTest, SkippedOnUnsupportedBackend) {
 
 #if defined(IR_GRAPHICS_OPENGL) || defined(IR_GRAPHICS_METAL)
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
+#include <algorithm>
+#include <array>
 
 namespace {
 #if defined(IR_GRAPHICS_METAL)
@@ -551,6 +553,144 @@ using PositionUploadTest = MetalGpuComputeDispatchTest;
 #else
 using PositionUploadTest = GpuComputeDispatchTest;
 #endif
+
+TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions) {
+    using namespace IRRender;
+    using Axes = IRComponents::C_PerAxisTrixelCanvases;
+    constexpr std::uint32_t cap = 1u << 19;
+    constexpr std::uint32_t ctrl = 64;
+    constexpr std::uint32_t entries = ctrl + Axes::kOverflowControlUints;
+    using Record = std::array<std::uint32_t, 3>;
+    std::vector<std::uint32_t> words(entries + cap * 3, 0xA5A5A5A5u);
+    Buffer scratch(words.data(), words.size() * sizeof(std::uint32_t), BUFFER_STORAGE_DYNAMIC);
+    FrameDataVoxelToCanvas frame{};
+    frame.overflowScratchLayout_ = IRMath::ivec4(0, ctrl, entries, cap);
+    Buffer uniform(&frame, sizeof(frame), BUFFER_STORAGE_DYNAMIC);
+    const std::string path =
+        std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_per_axis_overflow_sort.glsl";
+    ShaderProgram program{std::vector{ShaderStage{path.c_str(), ShaderType::COMPUTE}}};
+    const auto recordLess = [](const Record &a, const Record &b) {
+        if (a[0] != b[0])
+            return a[0] < b[0];
+        if (a[2] != b[2])
+            return a[2] < b[2];
+        return a[1] < b[1];
+    };
+    struct SortCase {
+        std::uint32_t count;
+        std::uint32_t laggedCount;
+        bool fullySorted;
+    };
+    for (const SortCase sortCase : {
+             SortCase{0u, 0u, true},
+             SortCase{2048u, 0u, true},
+             SortCase{4097u, 0u, false},
+             SortCase{4097u, 4097u, true},
+             SortCase{1u, 4097u, true},
+             SortCase{0u, 1u, true},
+             SortCase{262145u, 262145u, true},
+         }) {
+        const std::uint32_t count = sortCase.count;
+        SCOPED_TRACE(
+            ::testing::Message() << "count=" << count << " lagged=" << sortCase.laggedCount
+        );
+        words[ctrl + 1] = count;
+        std::vector<Record> expected;
+        expected.reserve(count);
+        for (std::uint32_t i = 0; i < count; ++i) {
+            Record record{(count - i) % 37u, (i * 97u) % 65521u, (i * 31u) % 101u};
+            expected.push_back(record);
+            for (int word = 0; word < 3; ++word)
+                words[entries + i * 3 + word] = record[word];
+        }
+        std::sort(expected.begin(), expected.end(), recordLess);
+        scratch.subData(0, words.size() * sizeof(std::uint32_t), words.data());
+        scratch.bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_PerAxisResolveScratch);
+        uniform.bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas);
+        program.use();
+        auto step = [&](int mode,
+                        std::uint32_t k,
+                        std::uint32_t lo,
+                        std::uint32_t hi,
+                        std::uint32_t command) {
+            frame.overflowSortStep_ = IRMath::ivec4(mode, k, lo, hi);
+            uniform.subData(0, sizeof(frame), &frame);
+            const auto offset = static_cast<std::ptrdiff_t>(
+                                    ctrl + Axes::kOverflowSortArgsBaseUints +
+                                    command * Axes::kOverflowSortCommandUints
+                                ) *
+                                sizeof(std::uint32_t);
+#if defined(IR_GRAPHICS_METAL)
+            if (mode == 3)
+                device_->dispatchCompute(1, 1, 1);
+            else
+                device_->dispatchComputeIndirect(&scratch, offset);
+            device_->memoryBarrier(BarrierType::SHADER_STORAGE);
+            device_->memoryBarrier(BarrierType::COMMAND);
+#else
+            if (mode == 3)
+                ENG_API->glDispatchCompute(1, 1, 1);
+            else {
+                ENG_API->glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, scratch.getHandle());
+                ENG_API->glDispatchComputeIndirect(offset);
+            }
+            ENG_API->glMemoryBarrier(GL_ALL_BARRIER_BITS);
+#endif
+        };
+        step(3, 0, 0, 0, 0);
+        step(0, 0, 0, 0, 0);
+        step(1, 0, 0, 0, 1);
+        const auto dispatchSpan =
+            IRSystem::detail::overflowSortDispatchSpan(sortCase.laggedCount, cap);
+        std::uint32_t mergeDispatches = 0;
+        IRSystem::detail::forEachOverflowSortMergeStep(
+            dispatchSpan,
+            [&](std::uint32_t k, std::uint32_t pLo, std::uint32_t pHi, std::uint32_t commandIndex) {
+                step(2, k, pLo, pHi, commandIndex);
+                ++mergeDispatches;
+            }
+        );
+        if (sortCase.laggedCount == 0u) {
+            EXPECT_EQ(dispatchSpan, 1u << Axes::kOverflowSortBlockBits);
+            EXPECT_EQ(mergeDispatches, 0u);
+        }
+#if defined(IR_GRAPHICS_METAL)
+        device_->finish();
+#else
+        ENG_API->glFinish();
+#endif
+        std::vector<std::uint32_t> actual(words.size());
+        scratch.getSubData(0, actual.size() * sizeof(std::uint32_t), actual.data());
+        std::vector<Record> observed;
+        observed.reserve(count);
+        for (std::uint32_t i = 0; i < count; ++i) {
+            observed.push_back(
+                Record{
+                    actual[entries + i * 3],
+                    actual[entries + i * 3 + 1],
+                    actual[entries + i * 3 + 2]
+                }
+            );
+        }
+        if (sortCase.fullySorted)
+            EXPECT_EQ(observed, expected);
+        else {
+            std::sort(observed.begin(), observed.end(), recordLess);
+            EXPECT_EQ(observed, expected);
+        }
+        for (std::uint32_t i = 0; i < 8; ++i)
+            EXPECT_EQ(actual[ctrl + i], words[ctrl + i]);
+        const auto args = ctrl + Axes::kOverflowSortArgsBaseUints;
+        EXPECT_LE(actual[args], 1024u);
+        EXPECT_EQ(actual[args + 1] == 0, count == 0);
+        if (count == 262145u)
+            EXPECT_EQ(actual[args + 1], 2u);
+        if (count == 0) {
+            for (std::uint32_t command = 0; command < Axes::kOverflowSortCommandCount; ++command)
+                EXPECT_EQ(actual[args + command * Axes::kOverflowSortCommandUints + 1], 0u);
+        }
+    }
+}
 
 TEST_F(PositionUploadTest, OverflowLightingDispatchUsesCurrentCountAndPreservesDrawArguments) {
     using namespace IRRender;
