@@ -1,7 +1,7 @@
 {
   "cpu": {
     "cores": 2,
-    "mhz": 3242,
+    "mhz": 3241,
     "model": "AMD EPYC 7763 64-Core Processor",
     "threads": 4
   },
@@ -9,8 +9,8 @@
     "model": "unknown"
   },
   "os": {
-    "distro": "Ubuntu 24.04.4 LTS",
-    "kernel": "Linux 6.17.0-1020-azure"
+    "distro": "Ubuntu 24.04.5 LTS",
+    "kernel": "Linux 6.17.0-1022-azure"
   },
   "ram": {
     "gb": 15
