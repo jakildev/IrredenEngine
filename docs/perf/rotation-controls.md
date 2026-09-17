@@ -74,6 +74,7 @@ canonical overflow sort uses a capacity-derived CPU dispatch grid and stage
 schedule; its kernels prune work to the live-count span. Measure both launch
 cost and useful work in frozen displaced scenes.
 
-Runtime configuration is retained, but automatic fingerprints currently cover
-binary and shaders only. Extend provenance to runtime scripts/configuration
-before comparing independently modified demo assets.
+These historical runs fingerprinted binary and shaders only. `repeat_profile.py`
+also fingerprints the runtime scripts directory at startup for new runs, including
+configuration and presets. Retain configuration snapshots when interpreting the
+fingerprint; it identifies content, not the resolved runtime settings.

@@ -1,0 +1,90 @@
+diff --git a/engine/render/src/shaders/c_light_overflow_faces.glsl b/engine/render/src/shaders/c_light_overflow_faces.glsl
+index 190b57167..73157890c 100644
+--- a/engine/render/src/shaders/c_light_overflow_faces.glsl
++++ b/engine/render/src/shaders/c_light_overflow_faces.glsl
+@@ -150,10 +150,11 @@ void main() {
+     // canvasSunShadow texel), Lambert on the world normal. The sun-shadow darkens
+     // only the directional term so a self-shadowed sliver keeps its ambient floor.
+     const float ao = 1.0;
+-    const float shadow = shadowsEnabled != 0
++    const float lambert = max(0.0, dot(worldNormal, sunDirection.xyz));
++    // A back-facing surface has no directional term for the shadow to attenuate.
++    const float shadow = shadowsEnabled != 0 && lambert > 0.0
+         ? worldSunShadowFactor(pos3D, worldNormal, float(rawDepth))
+         : 1.0;
+-    const float lambert = max(0.0, dot(worldNormal, sunDirection.xyz));
+     const float faceFactor =
+         (sunAmbient + (1.0 - sunAmbient) * lambert * shadow) * sunIntensity;
+
+diff --git a/engine/render/src/shaders/c_lighting_to_trixel.glsl b/engine/render/src/shaders/c_lighting_to_trixel.glsl
+index 8b3c84ea7..da65e93ea 100644
+--- a/engine/render/src/shaders/c_lighting_to_trixel.glsl
++++ b/engine/render/src/shaders/c_lighting_to_trixel.glsl
+@@ -221,10 +221,12 @@ void main() {
+     }
+
+     float ao           = imageLoad(canvasAO, pixel).r;
++    const float lambert = max(0.0, dot(worldNormal, sunDirection.xyz));
+     float shadow;
+     if (worldReceive) {
+         shadow = 1.0;
+-        if (shadowsEnabled != 0) {
++        // Shadow diagnostics inspect occlusion independently of the direct-light term.
++        if (shadowsEnabled != 0 && (lambert > 0.0 || debugOverlayMode != 0)) {
+             shadow = visibleFaceIds.w == 2
+                 ? worldSurfaceSunShadowFactor(worldReceivePos, worldNormal, pos3DtoDistance(worldReceivePos))
+                 : worldSunShadowFactor(worldReceivePos, worldNormal, pos3DtoDistance(worldReceivePos));
+@@ -263,8 +265,6 @@ void main() {
+         shadow = 1.0;
+     }
+
+-    // Sun direction and worldNormal are both world-frame.
+-    const float lambert = max(0.0, dot(worldNormal, sunDirection.xyz));
+     // The sun-shadow darkens only the DIRECTIONAL (Lambert) term — ambient is
+     // indirect fill light and is never blocked by the sun-shadow map. Folding
+     // `shadow` into the whole `faceFactor` collapses a fully self-shadowed face
+diff --git a/engine/render/src/shaders/metal/c_light_overflow_faces.metal b/engine/render/src/shaders/metal/c_light_overflow_faces.metal
+index 27ad7e607..a090f8f02 100644
+--- a/engine/render/src/shaders/metal/c_light_overflow_faces.metal
++++ b/engine/render/src/shaders/metal/c_light_overflow_faces.metal
+@@ -75,10 +75,11 @@ kernel void c_light_overflow_faces(
+     );
+
+     const float ao = 1.0f;
+-    const float shadow = sunFrameData.shadowsEnabled != 0
++    const float lambert = max(0.0f, dot(worldNormal, sunFrameData.sunDirection.xyz));
++    // A back-facing surface has no directional term for the shadow to attenuate.
++    const float shadow = sunFrameData.shadowsEnabled != 0 && lambert > 0.0f
+         ? worldSunShadowFactor(pos3D, worldNormal, float(rawDepth), sunFrameData, sunDepthBuf)
+         : 1.0f;
+-    const float lambert = max(0.0f, dot(worldNormal, sunFrameData.sunDirection.xyz));
+     const float faceFactor =
+         (sunFrameData.sunAmbient + (1.0f - sunFrameData.sunAmbient) * lambert * shadow) *
+         sunFrameData.sunIntensity;
+diff --git a/engine/render/src/shaders/metal/c_lighting_to_trixel.metal b/engine/render/src/shaders/metal/c_lighting_to_trixel.metal
+index b3ec2a35e..129c052a9 100644
+--- a/engine/render/src/shaders/metal/c_lighting_to_trixel.metal
++++ b/engine/render/src/shaders/metal/c_lighting_to_trixel.metal
+@@ -151,10 +151,12 @@ kernel void c_lighting_to_trixel(
+     }
+
+     float        ao     = canvasAO.read(uint2(pixel)).r;
++    const float lambert = max(0.0f, dot(worldNormal, sunFrameData.sunDirection.xyz));
+     float shadow;
+     if (worldReceive) {
+         shadow = 1.0;
+-        if (sunFrameData.shadowsEnabled != 0) {
++        // Shadow diagnostics inspect occlusion independently of the direct-light term.
++        if (sunFrameData.shadowsEnabled != 0 && (lambert > 0.0f || frameData.debugOverlayMode != 0)) {
+             shadow = voxelFrameData.visibleFaceIds.w == 2
+                 ? worldSurfaceSunShadowFactor(worldReceivePos, worldNormal, pos3DtoDistance(worldReceivePos), sunFrameData, sunDepthBuf)
+                 : worldSunShadowFactor(worldReceivePos, worldNormal, pos3DtoDistance(worldReceivePos), sunFrameData, sunDepthBuf);
+@@ -190,8 +192,6 @@ kernel void c_lighting_to_trixel(
+         shadow = 1.0f;
+     }
+
+-    // Sun direction and worldNormal are both world-frame.
+-    const float lambert = max(0.0f, dot(worldNormal, sunFrameData.sunDirection.xyz));
+     // Sun-shadow darkens only the directional term; ambient is indirect fill and
+     // is never blocked, so a fully self-shadowed face keeps its ambient floor
+     // instead of collapsing to pure black.

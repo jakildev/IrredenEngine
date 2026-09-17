@@ -77,6 +77,20 @@ The [world-scale visibility plan](world-scale-visibility.md) defines the million
 simple-entity target, unbounded orthographic viewport depth, spatial grouping,
 and the separation between render visibility and simulation cadence.
 
+0. **Visual priority before further optimization:** investigate the remaining
+   CanvasStress orbit artifacts reported in the green solids and purple frame:
+   striped faces, checkerboard coverage and rectangular/toothed edges that may
+   indicate stored trixels bypassing or mismatching half-voxel-face reconstruction.
+   The purple frame is orbit index7, `RotationMode::DETACHED` (forward scatter),
+   not the revoxelized path. Identify the green entities independently. Capture
+   isolated close-ups at multiple zooms/yaws, compare normal output with raw-trixel
+   diagnostics and equivalent GRID/revoxelized shapes, and trace producer layout
+   through compositor gather/fragment coverage. Add fixture controls if the orbit
+   overview cannot discriminate the cause. Validate world-placed and screen-locked
+   variants. Preserve actual face geometry; do not hide gaps with blur. Existing
+   byte-identical captures establish non-regression only, not visual correctness.
+   Status: reported and partially localized; diagnosis and fix remain pending.
+
 1. [Unique retained candidates and axis entries](voxel-cull-work-units.md) now
    have separate counters and producer-matched readback. Add generated subdivision
    samples, occupied cells, overflow entries and scratch bytes. Separate useful
@@ -96,9 +110,12 @@ and the separation between render visibility and simulation cadence.
    observed exact/margin flicker. [Overflow face deduplication](overflow-face-dedup.md)
    now passes stable controls and reduces scatter work. Retain same-class ties
    and continuous-camera temporal checks as follow-ups. [Current-frame sort dispatch](current-frame-overflow-sort.md)
-   bounds GPU work to the live span and CPU stage encoding to a prior-count hint
-   with headroom. Continue reducing
-   repeated per-axis storage/finalization work using measured counters; preserve finite
+   removes the unsorted empty-to-nonempty transition, bounds GPU work to the live
+   span, and bounds CPU stage encoding to a prior-count hint with headroom.
+   Continue reducing repeated per-axis storage/finalization work using measured
+   counters; [GPU body controls](gpu-cost-attribution.md) isolate sorting and
+   propagation as useful targets; the tested shadow/AO arithmetic changes showed
+   no gain; preserve finite
    geometry, trixel reconstruction and shadow coverage.
 5. [Light-volume candidate pruning](light-volume-candidate-pruning.md) skips
    occlusion reads for neighbors that cannot win, with identical lighting-demo

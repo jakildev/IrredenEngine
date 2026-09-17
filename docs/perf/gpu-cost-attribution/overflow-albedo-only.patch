@@ -1,0 +1,11 @@
+--- a/engine/render/src/shaders/metal/c_light_overflow_faces.metal
++++ b/engine/render/src/shaders/metal/c_light_overflow_faces.metal
+@@ -44,6 +44,8 @@
+     if (frameData.lightingEnabled == 0 || (frameData.debugOverlayMode != 0 && frameData.debugOverlayMode != 8)) {
+         return;
+     }
++
++    return;
+
+     const uint entryBase = uint(layout.z) + gid * 3u;
+     const uint packedCell = overflowScratch[entryBase + 0u];

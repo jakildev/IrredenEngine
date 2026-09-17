@@ -1,0 +1,11 @@
+--- a/engine/render/src/shaders/metal/c_propagate_light_volume.metal
++++ b/engine/render/src/shaders/metal/c_propagate_light_volume.metal
+@@ -130,7 +130,7 @@
+         int3(0, 0, 1), int3(0, 0, -1)
+     };
+
+-    for (int n = 0; n < 6; ++n) {
++    for (int n = 0; n < 0; ++n) {
+         const int3 nCell = cell + deltas[n];
+         if (nCell.x < 0 || nCell.x >= params.gridSize ||
+             nCell.y < 0 || nCell.y >= params.gridSize ||

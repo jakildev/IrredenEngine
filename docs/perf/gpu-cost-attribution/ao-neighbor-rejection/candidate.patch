@@ -1,0 +1,66 @@
+diff --git a/engine/render/src/shaders/c_compute_voxel_ao.glsl b/engine/render/src/shaders/c_compute_voxel_ao.glsl
+index a71c0cbea..89a93441c 100644
+--- a/engine/render/src/shaders/c_compute_voxel_ao.glsl
++++ b/engine/render/src/shaders/c_compute_voxel_ao.glsl
+@@ -227,6 +227,13 @@ void main() {
+         int neighbourEncoded = imageLoad(trixelDistances, samplePixel).x;
+         if (neighbourEncoded >= kEmpty) continue;
+
++        // Same-surface exclusion compares (slot, flip) — a flipped neighbour is
++        // the opposite-polarity face, a genuinely different surface, so it stays
++        // eligible as a crease occluder.
++        bool sameSurface = decodeSlot(neighbourEncoded) == slot &&
++            decodeFlipRoute(neighbourEncoded, perAxisRoute) == flip;
++        if (sameSurface) continue;
++
+         int neighbourRawDepth = decodeDepthRoute(neighbourEncoded, perAxisRoute);
+         vec3 neighbourPos3D;
+         if (perAxis) {
+@@ -249,12 +256,8 @@ void main() {
+         // speckle) and is excluded by the slot test. Flat cardinal faces are
+         // coplanar (d ~ 0, below kAOMinHeight) so they never reach this gate.
+         float d = dot(neighbourPos3D - pos3D, worldOutward);
+-        // Same-surface exclusion compares (slot, flip) — a flipped neighbour is
+-        // the opposite-polarity face, a genuinely different surface, so it stays
+-        // eligible as a crease occluder.
+-        bool sameSurface = decodeSlot(neighbourEncoded) == slot &&
+-            decodeFlipRoute(neighbourEncoded, perAxisRoute) == flip;
+-        if (sameSurface || d <= kAOMinHeight || d >= kAOMaxHeight) continue;
++        if (d <= kAOMinHeight || d >= kAOMaxHeight) continue;
++
+
+         // Tilt-aware same-face resample. A re-voxelized / REBUILD_GRID
+         // rotating solid turns a tilted-flat surface into a true voxel staircase
+diff --git a/engine/render/src/shaders/metal/c_compute_voxel_ao.metal b/engine/render/src/shaders/metal/c_compute_voxel_ao.metal
+index 0e538c150..5824af46a 100644
+--- a/engine/render/src/shaders/metal/c_compute_voxel_ao.metal
++++ b/engine/render/src/shaders/metal/c_compute_voxel_ao.metal
+@@ -169,6 +169,13 @@ kernel void c_compute_voxel_ao(
+         int neighbourEncoded = trixelDistances.read(uint2(samplePixel)).x;
+         if (neighbourEncoded >= kEmpty) continue;
+
++        // Same-surface exclusion compares (slot, flip) — a flipped neighbour is
++        // the opposite-polarity face, a genuinely different surface, so it stays
++        // eligible as a crease occluder.
++        bool sameSurface = decodeSlot(neighbourEncoded) == slot &&
++            decodeFlipRoute(neighbourEncoded, frameData.perAxisRoute) == flip;
++        if (sameSurface) continue;
++
+         int neighbourRawDepth = decodeDepthRoute(neighbourEncoded, frameData.perAxisRoute);
+         float3 neighbourPos3D;
+         if (perAxis) {
+@@ -194,12 +201,8 @@ kernel void c_compute_voxel_ao(
+         // stair-step of a rotated voxel surface and is excluded by the slot test.
+         // Flat cardinal faces (d ~ 0, below kAOMinHeight) never reach this gate.
+         float d = dot(neighbourPos3D - pos3D, worldOutward);
+-        // Same-surface exclusion compares (slot, flip) — a flipped neighbour is
+-        // the opposite-polarity face, a genuinely different surface, so it stays
+-        // eligible as a crease occluder.
+-        bool sameSurface = decodeSlot(neighbourEncoded) == slot &&
+-            decodeFlipRoute(neighbourEncoded, frameData.perAxisRoute) == flip;
+-        if (sameSurface || d <= kAOMinHeight || d >= kAOMaxHeight) continue;
++        if (d <= kAOMinHeight || d >= kAOMaxHeight) continue;
++
+
+         // Tilt-aware same-face resample. A re-voxelized / REBUILD_GRID
+         // rotating solid turns a tilted-flat surface into a true voxel staircase
