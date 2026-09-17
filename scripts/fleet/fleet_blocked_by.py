@@ -26,6 +26,8 @@ the #174 hole. The `Blocked on …` header form (#1326) and the cross-repo
 """
 import re
 
+from fleet_branch_match import strip_code
+
 # --- recognized declaration forms -----------------------------------------
 # Precedence: the three field forms (canonical, inline-bold, plain) are
 # unioned — a body may carry several and a child blocked by multiple refs must
@@ -72,6 +74,9 @@ _BLOCKED_ON_RE = re.compile(
 # Cross-repo `[owner/]Repo#N` qualifier (#1522): group(1) is the repo name
 # (None/empty for a bare same-repo `#N`), group(2) is the number.
 _REF_RE = re.compile(r'(?:[A-Za-z0-9][\w.-]*/)?([A-Za-z0-9][\w.-]*)?#(\d+)')
+_PR_URL_RE = re.compile(
+    r'https://github\.com/([A-Za-z0-9][\w.-]*/[A-Za-z0-9][\w.-]*)/pull/(\d+)'
+)
 # Repo-name qualifier (case-insensitive, owner stripped) → GitHub slug.
 _REF_NAME_TO_SLUG = {'irredenengine': 'jakildev/IrredenEngine',
                      'irreden': 'jakildev/irreden'}
@@ -246,12 +251,38 @@ def is_no_blocker_value(value):
     return _leads_with_none_sentinel(value)
 
 
+def _dequoted_body(body):
+    """Remove Markdown quotations and code that can contain decoy fields."""
+    lines = []
+    protected = {}
+    for line in (body or "").splitlines():
+        if re.match(r"^\s{0,3}>", line):
+            lines.append("")
+            continue
+        without_spans = strip_code(line)
+        has_live_field = (
+            _CANONICAL_RE.search(without_spans)
+            or _INLINE_RE.search(without_spans)
+            or _PLAIN_RE.search(without_spans)
+        )
+        if not has_live_field:
+            lines.append(line)
+            continue
+        token = f"\x01BLOCKED_BY_FIELD_{len(protected)}\x02"
+        protected[token] = line
+        lines.append(token)
+    cleaned = strip_code("\n".join(lines))
+    for token, line in protected.items():
+        cleaned = cleaned.replace(token, line)
+    return cleaned
+
+
 def _field_values(body):
     """Every value declared by a field form (canonical, inline, plain), in no
     particular order. The three forms are mutually non-overlapping by
     construction (the plain form's `(?<!\\*)` lookbehind excludes both bold
     forms), so a single line contributes at most one value."""
-    body = body or ""
+    body = _dequoted_body(body)
     return (_CANONICAL_RE.findall(body)
             + _INLINE_RE.findall(body)
             + _PLAIN_RE.findall(body))
@@ -259,7 +290,7 @@ def _field_values(body):
 
 def _has_header_blocker(body):
     """True when a `Blocked on …` header names a real #N / PR reference."""
-    for m in _BLOCKED_ON_RE.finditer(body or ""):
+    for m in _BLOCKED_ON_RE.finditer(_dequoted_body(body)):
         cand = m.group(1).strip().strip("*").strip()
         if cand and ("#" in cand or re.search(r"\bPR\b", cand, re.IGNORECASE)):
             return True
@@ -273,7 +304,7 @@ def has_blocked_by_field(body):
     presence check is sourced from this module's regexes and can't drift from
     the parser. A degraded plain `Blocked by: #N` now counts as present, so the
     WARN no longer false-fires on the #174-style children."""
-    body = body or ""
+    body = _dequoted_body(body)
     if (_CANONICAL_RE.search(body)
             or _INLINE_RE.search(body)
             or _PLAIN_RE.search(body)):
@@ -289,9 +320,10 @@ def parse_blocked_by(body):
     every field form present is a no-blocker sentinel the task is unblocked
     (an explicit `(none)` field wins over a stray header). Only when NO field
     form appears at all does it fall back to a `Blocked on` header naming a
-    #N/PR. Downstream callers extract `#N` refs from the returned value.
+    #N/PR. Downstream callers extract issue refs and pull-request URLs from
+    the returned value.
     """
-    body = body or ""
+    body = _dequoted_body(body)
     all_vals = _field_values(body)
     real = [v.strip() for v in all_vals if not is_no_blocker_value(v)]
     if real:
@@ -322,17 +354,29 @@ def blocked_by_is_plain_only(body):
     A sentinel `Blocked by: (none)` body has `has_plain` False (the
     `#\\d+` anchor filters sentinels), so that also returns False.
     """
-    body = body or ""
+    body = _dequoted_body(body)
     has_plain = bool(_PLAIN_RE.search(body))
     has_bold = bool(_CANONICAL_RE.search(body) or _INLINE_RE.search(body))
     return has_plain and not has_bold
 
 
+def blocker_ref_records(body, default_repo):
+    """(slug, number, requires_merge) for every declared blocker ref."""
+    value = parse_blocked_by(body)
+    refs = [(m.start(), _ref_slug(m.group(1), default_repo), m.group(2), False)
+            for m in _REF_RE.finditer(value)]
+    refs.extend((m.start(), m.group(1), m.group(2), True)
+                for m in _PR_URL_RE.finditer(value))
+    return [(slug, number, requires_merge)
+            for _, slug, number, requires_merge in sorted(refs)]
+
+
 def blocker_refs(body, default_repo):
-    """(slug, number) for every blocker `#N` declared in `body`, routing each
+    """(slug, number) for every blocker ref declared in `body`, routing each
     cross-repo `[owner/]Repo#N` qualifier to its GitHub slug (#1522) and
-    defaulting bare refs to `default_repo` (the issue's own repo). A
-    sentinel-only or unblocked body contributes nothing.
+    defaulting bare refs to `default_repo` (the issue's own repo). Full GitHub
+    pull-request URLs use their embedded slug and PR number. A sentinel-only
+    or unblocked body contributes nothing.
 
     Every ref counts here, prose included: this is the *blocking gate*, and a
     parenthetical `(PR #200 must merge — …)` is load-bearing for it — #1281
@@ -340,6 +384,5 @@ def blocker_refs(body, default_repo):
     is MERGED. Callers that need the narrower "how many blockers were actually
     declared" question (stackable eligibility) filter with `ref_is_decorative`
     instead; they must not widen this one (#2783)."""
-    value = parse_blocked_by(body)
-    return [(_ref_slug(m.group(1), default_repo), m.group(2))
-            for m in _REF_RE.finditer(value)]
+    return [(slug, number) for slug, number, _ in
+            blocker_ref_records(body, default_repo)]

@@ -171,6 +171,23 @@ class ParseBlockedBy(unittest.TestCase):
         return ("**Model:** opus\n**Part of epic:** #137\n"
                 f"**Blocked by:** {line}\n\n## Scope\nstuff\n")
 
+    def test_dequoted_body_preserves_fields_outside_quoted_text(self):
+        body = "**Blocked by:** #5\n`Blocked by: #6`\n> Blocked by: #7\n"
+        cleaned = fbb._dequoted_body(body)
+        self.assertIn("**Blocked by:** #5", cleaned)
+        self.assertNotIn("Blocked by: #6", cleaned)
+        self.assertNotIn("Blocked by: #7", cleaned)
+
+    def test_inline_code_in_live_field_value_is_preserved(self):
+        body = "**Blocked by:** `#100`\n**Blocked by:** #101, `#102`\n"
+        self.assertEqual(fbb.parse_blocked_by(body), "`#100`, #101, `#102`")
+        self.assertEqual(
+            fbb.blocker_refs(body, "jakildev/IrredenEngine"),
+            [("jakildev/IrredenEngine", "100"),
+             ("jakildev/IrredenEngine", "101"),
+             ("jakildev/IrredenEngine", "102")],
+        )
+
     # --- canonical standalone form ---
     def test_canonical_single(self):
         self.assertEqual(fbb.parse_blocked_by(self._body("#138")), "#138")
@@ -260,6 +277,24 @@ class ParseBlockedBy(unittest.TestCase):
         self.assertEqual(fbb.parse_blocked_by(""), "")
         self.assertEqual(fbb.parse_blocked_by(None), "")
 
+    def test_quoted_and_code_mentions_do_not_contaminate_field(self):
+        body = """**Blocked by:** #3163
+
+The literal `Blocked by: #4000` is documentation, not a field.
+> `Blocked by: #4001` is quoted from an earlier draft.
+> **Blocked by:** #4002
+
+```markdown
+**Blocked by:** #4003
+Blocked by: #4004
+```
+"""
+        self.assertEqual(fbb.parse_blocked_by(body), "#3163")
+        self.assertEqual(
+            fbb.blocker_refs(body, "jakildev/IrredenEngine"),
+            [("jakildev/IrredenEngine", "3163")],
+        )
+
 
 class BlockerRefs(unittest.TestCase):
     def test_bare_ref_defaults_to_repo(self):
@@ -296,6 +331,22 @@ class BlockerRefs(unittest.TestCase):
 
     def test_sentinel_no_refs(self):
         self.assertEqual(fbb.blocker_refs("**Blocked by:** (none)\n", "jakildev/IrredenEngine"), [])
+
+    def test_pr_url_routes_to_embedded_repo(self):
+        self.assertEqual(
+            fbb.blocker_refs(
+                "**Blocked by:** https://github.com/jakildev/IrredenEngine/pull/3159\n",
+                "example/other",
+            ),
+            [("jakildev/IrredenEngine", "3159")],
+        )
+        self.assertEqual(
+            fbb.blocker_ref_records(
+                "**Blocked by:** https://github.com/jakildev/IrredenEngine/pull/3159\n",
+                "example/other",
+            ),
+            [("jakildev/IrredenEngine", "3159", True)],
+        )
 
 
 class DecorativeProseRefs(unittest.TestCase):
@@ -461,6 +512,9 @@ class BlockedByIsPlainOnly(unittest.TestCase):
     def test_empty_body_returns_false(self):
         self.assertFalse(fbb.blocked_by_is_plain_only(""))
         self.assertFalse(fbb.blocked_by_is_plain_only(None))
+
+    def test_quoted_plain_form_returns_false(self):
+        self.assertFalse(fbb.blocked_by_is_plain_only("> `Blocked by: #5`\n"))
 
 
 if __name__ == "__main__":

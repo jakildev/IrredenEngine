@@ -1935,6 +1935,9 @@ def _pr_all_gated_self_config(repo_key, pr_number):
 # Kept consistent with fleet_blocked_by.blocker_refs; routing differs
 # (key vs slug) so this helper stays separate. (#1522)
 _BLOCKER_REF_RE = re.compile(r"(?:[A-Za-z0-9][\w.-]*/)?([A-Za-z0-9][\w.-]*)?#(\d+)")
+_BLOCKER_PR_URL_RE = re.compile(
+    r"https://github\.com/([A-Za-z0-9][\w.-]*/[A-Za-z0-9][\w.-]*)/pull/(\d+)"
+)
 _REPO_SLUG_MAP = {
     "engine": "jakildev/IrredenEngine",
     "game": "jakildev/irreden",
@@ -1943,41 +1946,53 @@ _REPO_SLUG_MAP = {
 _REPO_NAME_TO_KEY = {"irredenengine": "engine", "irreden": "game"}
 
 
-def _parse_blocker_refs(raw, default_key, declared_only=False):
-    """(repo_key, number) for every #N in a raw **Blocked by:** value, routing
-    each ref to the repo named by its optional `[owner/]Repo#N` qualifier. A
-    bare ref or an unrecognized qualifier falls back to default_key — the
-    issue's own repo. (#1522)
+def _parse_blocker_refs(raw, default_key, declared_only=False, with_kind=False):
+    """(repo_key, number) for every ref in a raw **Blocked by:** value.
+
+    Routes `[owner/]Repo#N` qualifiers and full GitHub pull-request URLs to
+    their repository. A bare ref or an unrecognized qualifier falls back to
+    default_key — the issue's own repo. (#1522)
 
     `declared_only` drops refs that live in the value's explanatory prose with
     no blocker verb — the "how many blockers were declared" question stackable
     eligibility asks (#2783). It is deliberately NOT the default: the blocking
     gate counts every ref, matching fleet_blocked_by.blocker_refs and #1281."""
-    refs = []
+    positioned_refs = []
     for m in _BLOCKER_REF_RE.finditer(raw or ""):
         if declared_only and ref_is_decorative(raw, m.start()):
             continue
         name = m.group(1)
         key = _REPO_NAME_TO_KEY.get(name.lower(), default_key) if name else default_key
-        refs.append((key, m.group(2)))
-    return refs
+        positioned_refs.append((m.start(), key, m.group(2), False))
+    for m in _BLOCKER_PR_URL_RE.finditer(raw or ""):
+        if declared_only and ref_is_decorative(raw, m.start()):
+            continue
+        slug = m.group(1).lower()
+        key = next((repo_key for repo_key, repo_slug in _REPO_SLUG_MAP.items()
+                    if repo_slug.lower() == slug), default_key)
+        positioned_refs.append((m.start(), key, m.group(2), True))
+    ordered = sorted(positioned_refs)
+    if with_kind:
+        return [(key, number, requires_merge)
+                for _, key, number, requires_merge in ordered]
+    return [(key, number) for _, key, number, _ in ordered]
 
 
-def _resolve_ref_satisfied(repo_slug, ref_str, cache):
-    """Return True if #ref_str is satisfied: issue CLOSED/MERGED, or a
-    claude/<ref>-* PR is MERGED. Uses per-tick cache to avoid redundant calls.
-    """
-    key = (repo_slug, ref_str)
+def _resolve_ref_satisfied(repo_slug, ref_str, cache, requires_merge=False):
+    """Return whether a ref reached its required terminal state."""
+    key = (repo_slug, ref_str, requires_merge)
     if key in cache:
         return cache[key]
     result = False
     try:
         r = subprocess.run(
-            ["gh", "issue", "view", ref_str, "--repo", repo_slug,
+            ["gh", "pr" if requires_merge else "issue", "view", ref_str,
+             "--repo", repo_slug,
              "--json", "state", "--jq", ".state"],
             capture_output=True, text=True, timeout=10,
         )
-        result = r.stdout.strip() in ("CLOSED", "MERGED")
+        satisfied_states = ("MERGED",) if requires_merge else ("CLOSED", "MERGED")
+        result = r.stdout.strip() in satisfied_states
     except (subprocess.SubprocessError, OSError):
         pass
     cache[key] = result
@@ -2025,15 +2040,19 @@ def resolve_blocked_by(state, ref_cache=None):
             pr.get("headRefName", "") or ""
             for pr in repo_state.get("recent_merged_prs", [])
         ]
+        merged_numbers = {
+            str(pr.get("number", ""))
+            for pr in repo_state.get("recent_merged_prs", [])
+        }
 
         tasks = repo_state.get("tasks", {})
         for task in tasks.get("open", []) + tasks.get("in_progress", []):
             raw = (task.get("blocked_by") or "").strip()
             if not raw or raw.lower().startswith("(none"):
                 continue
-            refs = _parse_blocker_refs(raw, repo_key)
+            refs = _parse_blocker_refs(raw, repo_key, with_kind=True)
             if not refs:
-                continue  # free-text or PR-URL form — leave unchanged
+                continue  # Free-text blocker — leave unchanged.
             # Which of those were actually *declared*, vs named only in the
             # value's prose (#2783). Normalization discards the prose, so the
             # distinction has to be captured while the raw value still exists —
@@ -2043,18 +2062,25 @@ def resolve_blocked_by(state, ref_cache=None):
                         _parse_blocker_refs(raw, repo_key, declared_only=True)}
 
             unresolved = []
-            for ref_key, ref in refs:
+            for ref_key, ref, requires_merge in refs:
                 if ref_key != repo_key:
                     # Cross-repo blocker — the scout's window only covers this
                     # repo, so it can't resolve the ref here. Don't surface it
                     # as blocked; fleet-claim's check_blockers (routed to the
                     # referenced repo) is the authoritative pickup gate. (#1522)
                     continue
-                if ref in closed_nums:
+                if not requires_merge and ref in closed_nums:
                     continue
-                if any(branch_matches_issue(h, ref, repo_key) for h in merged_heads):
+                if requires_merge and ref in merged_numbers:
                     continue
-                if _resolve_ref_satisfied(repo_slug, ref, per_tick_cache):
+                if not requires_merge and any(
+                        branch_matches_issue(h, ref, repo_key) for h in merged_heads):
+                    continue
+                if (requires_merge and _resolve_ref_satisfied(
+                        repo_slug, ref, per_tick_cache, True)):
+                    continue
+                if (not requires_merge and _resolve_ref_satisfied(
+                        repo_slug, ref, per_tick_cache)):
                     continue
                 unresolved.append(ref)
 
@@ -2111,6 +2137,10 @@ def resolve_human_approved_blockers(state):
             pr.get("headRefName", "") or ""
             for pr in repo_state.get("recent_merged_prs", [])
         ]
+        merged_numbers = {
+            str(pr.get("number", ""))
+            for pr in repo_state.get("recent_merged_prs", [])
+        }
 
         for issue in repo_state.get("human_approved", []):
             body = issue.pop("body", "") or ""
@@ -2121,22 +2151,25 @@ def resolve_human_approved_blockers(state):
             raw = _parse_blocked_by(body)
             if not raw:
                 continue
-            refs = _parse_blocker_refs(raw, repo_key)
+            refs = _parse_blocker_refs(raw, repo_key, with_kind=True)
             if not refs:
-                # Blocker named only as prose / a PR URL with no resolvable #N
-                # (e.g. "Blocked on the redesign"). Hold the child out of the
-                # trigger set — matches resolve_blocked_by leaving it blocked.
+                # A prose-only blocker has no resolvable reference. Hold the
+                # child out of the trigger set — matches resolve_blocked_by
+                # leaving it blocked.
                 issue["blocked"] = True
                 continue
-            for ref_key, ref in refs:
+            for ref_key, ref, requires_merge in refs:
                 if ref_key != repo_key:
                     # Cross-repo blocker: unresolvable from this repo's window.
                     # Defer to fleet-queue-ingest's live cross-repo check rather
                     # than blocking forever (this froze game #125 out — #1522).
                     continue
-                if ref in closed_nums:
+                if not requires_merge and ref in closed_nums:
                     continue
-                if any(branch_matches_issue(h, ref, repo_key) for h in merged_heads):
+                if requires_merge and ref in merged_numbers:
+                    continue
+                if not requires_merge and any(
+                        branch_matches_issue(h, ref, repo_key) for h in merged_heads):
                     continue
                 issue["blocked"] = True
                 break
@@ -2175,6 +2208,10 @@ def resolve_needs_plan_blocked_by(state, ref_cache=None):
             pr.get("headRefName", "") or ""
             for pr in repo_state.get("recent_merged_prs", [])
         ]
+        merged_numbers = {
+            str(pr.get("number", ""))
+            for pr in repo_state.get("recent_merged_prs", [])
+        }
 
         for issue in repo_state.get("needs_plan", []):
             body = issue.pop("body", "") or ""
@@ -2182,21 +2219,24 @@ def resolve_needs_plan_blocked_by(state, ref_cache=None):
             raw = _parse_blocked_by(body)
             if not raw:
                 continue
-            refs = _parse_blocker_refs(raw, repo_key)
+            refs = _parse_blocker_refs(raw, repo_key, with_kind=True)
             if not refs:
                 # Blocker named only as prose with no resolvable #N — hold
                 # the issue out of the plannable set, matching
                 # resolve_human_approved_blockers.
                 issue["blocked"] = True
                 continue
-            for ref_key, ref in refs:
+            for ref_key, ref, requires_merge in refs:
                 if ref_key != repo_key:
                     # Cross-repo blocker — unresolvable from this repo's
                     # window; don't hold the issue back on it.
                     continue
-                if ref in closed_nums:
+                if not requires_merge and ref in closed_nums:
                     continue
-                if any(branch_matches_issue(h, ref, repo_key) for h in merged_heads):
+                if requires_merge and ref in merged_numbers:
+                    continue
+                if not requires_merge and any(
+                        branch_matches_issue(h, ref, repo_key) for h in merged_heads):
                     continue
                 # Live fallback for the residual (#2986). Reached only by refs
                 # both in-memory sources missed, so it costs a call per *novel*
@@ -2204,8 +2244,11 @@ def resolve_needs_plan_blocked_by(state, ref_cache=None):
                 # cache. _resolve_ref_satisfied fails closed (False on any gh
                 # error/timeout), so a flaky call leaves the issue blocked —
                 # the same conservative direction as before this fallback.
-                if repo_slug and _resolve_ref_satisfied(
-                        repo_slug, ref, per_tick_cache):
+                if (repo_slug and requires_merge and _resolve_ref_satisfied(
+                        repo_slug, ref, per_tick_cache, True)):
+                    continue
+                if (repo_slug and not requires_merge and _resolve_ref_satisfied(
+                        repo_slug, ref, per_tick_cache)):
                     continue
                 issue["blocked"] = True
                 break

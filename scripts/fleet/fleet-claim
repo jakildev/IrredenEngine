@@ -1212,14 +1212,14 @@ check_blockers() {
 
     BODY_B64="$body_b64" SKIP_IDS="$skip_ids" REPO=$(repo_from_ns) ISSUE_NUM="$issue_num" \
     python3 <<'PYEOF'
-import os, re, subprocess, sys, base64
+import os, subprocess, sys, base64
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
 # Shared blocker parser (#1749) — one routine for scout/ingest/claim so the
 # three can't disagree, and it catches the plain `Blocked by: #N` form the
 # bold-only copies skipped. parse_blocked_by handles canonical / inline-bold
 # (#1423) / plain / `Blocked on` header (#1326) + the rich no-blocker sentinel;
-# blocker_refs routes cross-repo `[owner/]Repo#N` qualifiers (#1522).
-from fleet_blocked_by import parse_blocked_by, blocker_refs
+# blocker_ref_records routes cross-repo `[owner/]Repo#N` qualifiers (#1522).
+from fleet_blocked_by import parse_blocked_by, blocker_ref_records
 
 issue_num = os.environ.get("ISSUE_NUM", "")
 body = base64.b64decode(os.environ["BODY_B64"]).decode("utf-8", errors="replace")
@@ -1231,23 +1231,23 @@ field_value = parse_blocked_by(body)
 if not field_value:
     sys.exit(0)
 
-# Referenced issue numbers (qualifier-routed to the referenced repo) + PR URLs.
-issue_refs = blocker_refs(body, repo)
-pr_urls = re.findall(r"https://github\.com/[^\s,)]+/pull/\d+", field_value)
+# Referenced issue numbers and PR URLs, routed to the referenced repository.
+issue_refs = blocker_ref_records(body, repo)
 
 failed = []
 
-for ref_repo_slug, ref in issue_refs:
+for ref_repo_slug, ref, requires_merge in issue_refs:
     # skip_ids are intra-stack issue numbers in *this* repo — only satisfy a
     # same-repo ref, never a cross-repo number collision.
-    if ref_repo_slug == repo and ref in skip_ids:
+    if not requires_merge and ref_repo_slug == repo and ref in skip_ids:
         continue
     if not ref_repo_slug:
         continue
     disp = f"#{ref}" if ref_repo_slug == repo else f"{ref_repo_slug}#{ref}"
     try:
         r = subprocess.run(
-            ["gh", "issue", "view", ref, "--repo", ref_repo_slug,
+            ["gh", "pr" if requires_merge else "issue", "view", ref,
+             "--repo", ref_repo_slug,
              "--json", "state", "--jq", ".state"],
             capture_output=True, text=True, timeout=10,
         )
@@ -1255,21 +1255,10 @@ for ref_repo_slug, ref in issue_refs:
         failed.append(f"{disp} (check failed: {e})")
         continue
     state = (r.stdout or "").strip()
-    if state not in ("CLOSED", "MERGED"):
-        failed.append(f"{disp} (state: {state or 'unknown'}, need: CLOSED or MERGED)")
-
-for url in pr_urls:
-    try:
-        r = subprocess.run(
-            ["gh", "pr", "view", url, "--json", "state", "--jq", ".state"],
-            capture_output=True, text=True, timeout=10,
-        )
-    except (subprocess.SubprocessError, OSError) as e:
-        failed.append(f"{url} (check failed: {e})")
-        continue
-    state = (r.stdout or "").strip()
-    if state != "MERGED":
-        failed.append(f"{url} (state: {state or 'unknown'}, need: MERGED)")
+    satisfied_states = ("MERGED",) if requires_merge else ("CLOSED", "MERGED")
+    if state not in satisfied_states:
+        need = "MERGED" if requires_merge else "CLOSED or MERGED"
+        failed.append(f"{disp} (state: {state or 'unknown'}, need: {need})")
 
 if failed:
     print(f"fleet-claim: #{issue_num} is blocked:", file=sys.stderr)

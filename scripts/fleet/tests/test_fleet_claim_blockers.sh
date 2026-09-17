@@ -85,7 +85,7 @@ cat >"$STUB_DIR/gh" <<'GHSTUB'
 # Recognised invocations:
 #   gh issue view <N> --repo R --json state,labels,body         → full info
 #   gh issue view <N> --repo R --json state --jq .state         → state only
-#   gh pr view <URL> --json state --jq .state                   → state only
+#   gh pr view <N> --repo R --json state --jq .state            → state only
 #   gh pr list --repo R --state open --json ... --jq ...        → []
 #   gh api repos/.../issues/N/labels --method POST -f labels[]= → echo back
 #   gh issue edit ... / gh label ...                            → no-op
@@ -158,6 +158,10 @@ case "$1 $2" in
             2005)
                 # PR-URL form, OPEN.
                 printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** https://github.com/jakildev/IrredenEngine/pull/201\n"}'
+                ;;
+            2022)
+                # PR-URL form, CLOSED without merge.
+                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** https://github.com/jakildev/IrredenEngine/pull/202\n"}'
                 ;;
             2006)
                 # Bare `#N` issue ref, still open.
@@ -240,10 +244,10 @@ case "$1 $2" in
         exit 0
         ;;
     "pr view")
-        case "$pr_url" in
-            *pull/200) echo "MERGED" ;;
-            *pull/201) echo "OPEN" ;;
-            *pull/202) echo "CLOSED" ;;
+        case "${pr_url:-$issue_num}" in
+            200|*pull/200) echo "MERGED" ;;
+            201|*pull/201) echo "OPEN" ;;
+            202|*pull/202) echo "CLOSED" ;;
             *)         echo "OPEN" ;;
         esac
         exit 0
@@ -316,6 +320,11 @@ release_quiet 2004
 echo "T5: PR-URL form, OPEN → claim fails"
 actual=0; "$FLEET_CLAIM" claim 2005 test-agent 2>/dev/null || actual=$?
 assert_exit "$actual" 1 "PR-URL OPEN → exit 1"
+
+# --- T5b: PR URL form, CLOSED without merge → fail -------------------------
+echo "T5b: PR-URL form, CLOSED without merge → claim fails"
+actual=0; "$FLEET_CLAIM" claim 2022 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 1 "PR-URL CLOSED without merge → exit 1"
 
 # --- T6: bare `#N` issue OPEN → fail ----------------------------------------
 echo "T6: bare '#N' issue OPEN → claim fails"

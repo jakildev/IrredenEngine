@@ -63,11 +63,11 @@ def _merged_pr(head_ref):
 
 
 def _gh_state_stub(state_map):
-    """Return a callable that stubs subprocess.run for gh issue view --jq .state."""
+    """Return a callable that stubs subprocess.run for gh state probes."""
     import subprocess
 
     def fake_run(cmd, **kwargs):
-        if cmd[0] == "gh" and cmd[1] == "issue" and cmd[2] == "view":
+        if cmd[0] == "gh" and cmd[1] in ("issue", "pr") and cmd[2] == "view":
             ref = cmd[3]
             state = state_map.get(ref, "OPEN")
             result = subprocess.CompletedProcess(cmd, 0, stdout=state + "\n", stderr="")
@@ -205,6 +205,24 @@ class TestResolveBlockedBy(unittest.TestCase):
             state = _state(engine_tasks=tasks)
             resolve_blocked_by(state)
         self.assertEqual(tasks[0]["blocked_by"], "(none)")
+
+    def test_pr_url_blocks_until_the_pull_request_merges(self):
+        url = "https://github.com/jakildev/IrredenEngine/pull/3159"
+
+        open_tasks = [_task("#3165", url)]
+        with patch.object(_mod.subprocess, "run", _gh_state_stub({"3159": "OPEN"})):
+            resolve_blocked_by(_state(engine_tasks=open_tasks))
+        self.assertEqual(open_tasks[0]["blocked_by"], "#3159")
+
+        merged_tasks = [_task("#3165", url)]
+        with patch.object(_mod.subprocess, "run", _gh_state_stub({"3159": "MERGED"})):
+            resolve_blocked_by(_state(engine_tasks=merged_tasks))
+        self.assertEqual(merged_tasks[0]["blocked_by"], "(none)")
+
+        abandoned_tasks = [_task("#3165", url)]
+        with patch.object(_mod.subprocess, "run", _gh_state_stub({"3159": "CLOSED"})):
+            resolve_blocked_by(_state(engine_tasks=abandoned_tasks))
+        self.assertEqual(abandoned_tasks[0]["blocked_by"], "#3159")
 
 
 # ---------------------------------------------------------------------------
