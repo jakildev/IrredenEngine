@@ -16,7 +16,7 @@ a gate that silently passes produce the same check mark — so they get arms:
     G  the retired skip comment is absent from the shipped gate
 
 Stdlib only, no network, no build. Wired into the perf-gate job so it
-executes rather than drifting (#2727, #2817).
+executes rather than drifting.
 
 Usage: python3 scripts/perf/tests/test_baseline_layouts.py
 Exit 0 = all arms pass; 1 = at least one failed.

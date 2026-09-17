@@ -5,7 +5,7 @@
 # Baseline resolution belongs entirely to compare_perf_runs.py's
 # resolve_baseline(): this script hands over the baseline ROOT and never
 # inspects its layout. A bash-side layout test here would be a second,
-# silently-drifting copy of that logic (#2817).
+# silently-drifting copy of that logic.
 #
 # Exit codes mirror check_regression.py:
 #     0  no regression (comment posted)
@@ -47,9 +47,9 @@ if [[ ! -d "$HEAD_DIR" ]]; then
   exit 2
 fi
 
-# Echo the head slug on the PR path. The push path has always read it; the PR
-# path never did, which is why cross-SKU coverage on the hosted runner pool was
-# unmeasurable from a PR run's log (#2817 review finding 1).
+# Echo the head slug on the PR path, read the same way the push path reads it:
+# the hosted runner pool spans several CPU SKUs and a run whose SKU has no
+# baseline is informational, so the log must say which SKU this run landed on.
 HEAD_SLUG=$(python3 -c "
 import json, sys
 try:

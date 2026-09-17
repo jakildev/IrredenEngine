@@ -1,18 +1,20 @@
 #!/usr/bin/env bash
-# Executed control for perf-gate.yml's baseline-writer step.
+# Executed control for perf-gate.yml's two perf-baseline-branch steps: the
+# writer (push / dispatch) and the PR-path reader that materializes the
+# branch's baselines into a temp root.
 #
-# Runs the SHIPPED step body — extracted from the workflow, not retyped —
-# against a local bare repo standing in for origin. The writer is the half of
-# the gate that had never once succeeded, and its failure mode is silence: a
-# baseline that is not persisted looks exactly like a baseline that matched
-# (#2817). These arms pin the behaviours that distinguish the two.
+# Runs the SHIPPED step bodies — extracted from the workflow, not retyped —
+# against a local bare repo standing in for origin. The writer's failure mode
+# is silence: a baseline that is not persisted looks exactly like a baseline
+# that matched. These arms pin the behaviours that distinguish the two.
 #
 # Requires git and python3 only; no network, no build.
 # Usage: scripts/perf/tests/test_baseline_writer.sh
 
 set -u
 
-WORKFLOW_STEP="Update baseline on the perf-baseline branch"
+WRITER_STEP="Update baseline on the perf-baseline branch"
+READER_STEP="Materialize baseline from the perf-baseline branch (PR)"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/../../.." && pwd)"
 WORKFLOW="$REPO_ROOT/.github/workflows/perf-gate.yml"
@@ -30,10 +32,10 @@ check () { # $1=arm  $2=condition-result(0/1)  $3=detail
   fi
 }
 
-# --- Extract the step body from the workflow (stdlib python, no pyyaml) ----
+# --- Extract a step body from the workflow (stdlib python, no pyyaml) ------
 
-BODY="$LAB/writer-body.sh"
-python3 - "$WORKFLOW" "$WORKFLOW_STEP" "$BODY" <<'PY'
+extract_step () { # $1=step name  $2=output file
+python3 - "$WORKFLOW" "$1" "$2" <<'PY'
 import sys
 
 workflow, step_name, out = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -68,13 +70,21 @@ if not body:
 open(out, "w").write("\n".join(body) + "\n")
 print(f"extracted {len(body)} lines of '{step_name}'")
 PY
-[[ -s "$BODY" ]] || { echo "FATAL: could not extract the writer step body" >&2; exit 1; }
+  [[ -s "$2" ]] || { echo "FATAL: could not extract the step body: $1" >&2; exit 1; }
+}
 
+BODY="$LAB/writer-body.sh"
+extract_step "$WRITER_STEP" "$BODY"
 # The extracted body is the real thing only if it still carries the workflow
 # expression we substitute below; a silently-truncated extraction would make
-# every arm below vacuous.
+# every writer arm vacuous.
 grep -q 'steps.head.outputs.dir' "$BODY" \
   || { echo "FATAL: extracted body does not reference steps.head.outputs.dir" >&2; exit 1; }
+
+READER_BODY="$LAB/reader-body.sh"
+extract_step "$READER_STEP" "$READER_BODY"
+grep -q 'git archive FETCH_HEAD' "$READER_BODY" \
+  || { echo "FATAL: extracted reader body does not archive FETCH_HEAD" >&2; exit 1; }
 
 # --- Fixtures -------------------------------------------------------------
 
@@ -120,10 +130,27 @@ run_writer () { # $1=head dir -> exit code of the shipped step body
   ( cd "$LAB/work" && bash -e "$LAB/step.sh" ) > "$LAB/out.txt" 2>&1
 }
 
+run_reader () { # -> exit code; sets READER_ROOT from the step's GITHUB_OUTPUT
+  rm -rf "$RUNNER_TEMP/perf-baseline"
+  export GITHUB_OUTPUT="$LAB/reader-output.txt"; : > "$GITHUB_OUTPUT"
+  ( cd "$LAB/work" && bash -e "$READER_BODY" ) > "$LAB/reader-out.txt" 2>&1
+  local rc=$?
+  READER_ROOT="$(sed -n 's/^root=//p' "$GITHUB_OUTPUT")"
+  return $rc
+}
+
 on_branch () { git -C "$LAB/origin.git" ls-tree -r --name-only "$BASELINE_BRANCH" 2>/dev/null; }
 commits_on_branch () { git -C "$LAB/origin.git" rev-list --count "$BASELINE_BRANCH" 2>/dev/null || echo 0; }
 
-echo "perf-gate baseline writer control"
+echo "perf-gate baseline branch control (writer + PR-path reader)"
+
+# --- H: reader with no branch yet -> empty root, seed-new path -------------
+run_reader; rc=$?
+check H $rc "unborn branch exits 0 (seed-new, not red)"
+[[ -n "$READER_ROOT" && -d "$READER_ROOT" ]]
+check H $? "an empty baseline root is still emitted (root=$READER_ROOT)"
+[[ -z "$(ls -A "$READER_ROOT" 2>/dev/null)" ]]
+check H $? "the root is empty, so resolve_baseline returns None"
 
 # --- A: unborn branch -----------------------------------------------------
 run_writer "$LAB/head-a"; rc=$?
@@ -142,6 +169,16 @@ on_branch | grep -q "docs/perf/baseline_latest/$SKU_B/manifest.json"
 check B $? "second SKU filed"
 on_branch | grep -q "docs/perf/baseline_latest/$SKU_A/manifest.json"
 check B $? "first SKU SURVIVES (append, not replace)"
+
+# --- I: reader after two SKUs landed -> both materialized, index untouched -
+run_reader; rc=$?
+check I $rc "materialize exits 0 with the branch present"
+[[ -f "$READER_ROOT/$SKU_A/manifest.json" && -f "$READER_ROOT/$SKU_B/manifest.json" ]]
+check I $? "both SKU baselines land under the emitted root"
+[[ -f "$READER_ROOT/$SKU_A/host.json" ]]
+check I $? "the host.json sidecar comes along"
+[[ -z "$(git -C "$LAB/work" status --porcelain)" ]]
+check I $? "the PR checkout's index and tree are untouched (archive, not checkout)"
 
 # --- C: re-running with identical input commits nothing --------------------
 BEFORE=$(commits_on_branch)

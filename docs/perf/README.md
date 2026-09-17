@@ -19,7 +19,8 @@ profiler, no per-cell stopwatch.
 | `scripts/perf/perf_summary.py`        | One-screen markdown summary of a single run                                        |
 | `scripts/perf/compare_perf_runs.py`   | Diff two runs as a markdown table for the PR body. Fingerprint-aware: `resolve_baseline` picks `<baseline-root>/<slug>/` for the head's SKU, falling back to a legacy flat root. The root is an argument — in CI it comes from the `perf-baseline` branch, locally it is any directory you pass. |
 | `scripts/perf/ci_compare_step.sh`      | The perf gate's PR-path step, extracted from the workflow so it is testable outside Actions. |
-| `scripts/perf/tests/test_baseline_layouts.py` | Executed control for baseline resolution + the gate's exit mapping. Runs as the perf-gate job's first step. |
+| `scripts/perf/tests/test_baseline_layouts.py` | Executed control for baseline resolution + the gate's exit mapping. Runs as the perf-gate job's first step after checkout. |
+| `scripts/perf/tests/test_baseline_writer.sh` | Executed control for the `perf-baseline` branch writer and the PR-path reader, driving the shipped workflow step bodies against a local bare origin. Same CI step. |
 | `scripts/perf/check_regression.py`    | CI gate — fingerprint-aware regression check. Same fingerprint → gates; different fingerprint or no baseline → informational. |
 | `scripts/perf/lua_cpp_parity.py`      | Lua-vs-C++ overhead table from a `--target both` run                               |
 
@@ -288,8 +289,10 @@ the gate is exercised by the gate.
 
 `scripts/perf/tests/test_baseline_layouts.py` is the executed control for
 all of the above (layout resolution across empty / per-slug / legacy-flat
-roots, plus the exit mapping). It runs as the perf-gate job's first step,
-before the build.
+roots, plus the exit mapping), and
+`scripts/perf/tests/test_baseline_writer.sh` drives the branch writer and
+the PR-path reader against a local bare origin. Both run as the perf-gate
+job's first step after checkout, before the build.
 
 **Gate script (also usable locally):**
 
