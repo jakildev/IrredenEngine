@@ -1,4 +1,4 @@
--- collision_overlap_demo (#1817): prove the Lua-facing overlap callback.
+-- collision_overlap_demo: prove the Lua-facing overlap callback.
 --
 -- Two collision-layer pairs, isolated by their collidesWith masks:
 --   * pickup overlaps player    -> onOverlapEnter(PICKUP, PLAYER)
@@ -36,7 +36,7 @@ spawn(20.0, 0.0, 0.0, ENEMY, PROJECTILE, 0.0, 0.0, 0.0)
 spawn(20.0, 0.0, 0.0, PROJECTILE, ENEMY, 8.0, 0.0, 0.0)
 
 -- Overlap handlers. The entity on the FIRST layer arg is the callback's first
--- arg (D4), so a creation never re-checks layers in Lua.
+-- arg, so a creation never re-checks layers in Lua.
 IRCollision.onOverlapEnter(PICKUP, PLAYER, function(pickup, player)
     print("OVERLAP_DEMO PICKUP pickup=" .. pickup .. " player=" .. player)
 end)

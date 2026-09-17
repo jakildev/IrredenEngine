@@ -7,7 +7,7 @@
 
 namespace {
 
-// #2681: CAMERA_MOUSE_ROTATE caches the cursor-pivot marker's id in a
+// CAMERA_MOUSE_ROTATE caches the cursor-pivot marker's id in a
 // System<N> member (`pivotIndicator_`). The entity is not C_Persistent, so
 // IREntity::resetGameplay() destroys it; without the pre-destroy hook the
 // cached id would dangle and the next drag's lazy-respawn check

@@ -7,7 +7,7 @@
 #include <irreden/asset/binary_io.hpp>
 #include <irreden/ir_entity.hpp>
 
-// The heap-owning half of this file (#2242) registers real engine components,
+// Heap-owning round-trip cases register real engine components,
 // so it needs their SaveSerialize<C> specializations in scope — the same
 // include contract world_default_registry.cpp follows. The inventory include
 // is load-bearing, not incidental: registerComponent<C> is `if constexpr`-gated
@@ -30,13 +30,12 @@
 #include <string>
 #include <vector>
 
-// Persist P4 (#2215): the epic's acceptance harness for the whole-world
-// snapshot path — round-trip parity (W-7) and deterministic serialization
-// (W-8) over a non-trivial, multi-archetype, CHILD_OF-structured world with
+// The whole-world snapshot path requires round-trip parity and deterministic
+// serialization over a non-trivial, multi-archetype, CHILD_OF-structured world with
 // a singleton. In-TU stand-in components; the plumbing under test is
-// IRWorld::saveWorld/loadWorld itself (P1-P3), not any one component's
+// IRWorld::saveWorld/loadWorld itself, not any one component's
 // bytes. Fixtures build CHILD_OF structure only — setRelation asserts on
-// PARENT_TO/SIBLING_OF everywhere in the engine today (#2214), so those
+// PARENT_TO/SIBLING_OF everywhere in the engine today, so those
 // types are out of scope here.
 //
 // One EntityManager per test (mirrors world_snapshot_test.cpp /
@@ -347,8 +346,8 @@ TEST_F(PersistDeterminism, SaveLoadSaveDigestStable) {
     EXPECT_EQ(bytesB, bytesC);
 }
 
-// #2242: W-7 and W-8 over *heap-owning* engine components. Every test above
-// uses in-TU trivially-copyable stand-ins, so they exercise the walker but
+// Round-trip coverage over *heap-owning* engine components complements the
+// in-TU trivially-copyable stand-ins, which exercise the walker but
 // never a real SaveSerialize<C> specialization. This one drives the direct
 // C++ saveWorld(registry, path) surface (the Lua binding's coverage lives in
 // test/script/lua_world_snapshot_test.cpp) with a world whose components own

@@ -19,7 +19,7 @@ target_compile_options(
 
 # fmt (dependency of spdlog). Pinned to 11.2.0: fmt <=10.2.1 uses a consteval
 # FMT_STRING form that Apple clang 21 (clang-2100.x) rejects at C++23, breaking
-# every fresh macOS build in the fmt lib itself (#2449). 11.2.0 compiles clean
+# every fresh macOS build in the fmt lib itself. 11.2.0 compiles clean
 # under Apple clang 21 and stays fine on gcc-13 / mingw. Paired with spdlog
 # v1.15.3 below — spdlog 1.12 cannot compile against external fmt 11.
 FetchContent_Declare(fmt
@@ -36,7 +36,7 @@ IR_copyDLL(
 
 # spdlog. Bumped to v1.15.3 as a required pair with fmt 11.2.0 above: spdlog
 # 1.12 expects the fmt-10-era basic_format_string and fails to compile against
-# external fmt 11 (#2449). 1.15.3 compiles clean with SPDLOG_FMT_EXTERNAL + fmt
+# external fmt 11. 1.15.3 compiles clean with SPDLOG_FMT_EXTERNAL + fmt
 # 11.2.0; the SPDLOG_FMT_EXTERNAL wiring and the libspdlogd artifact name are
 # unchanged from 1.12.
 FetchContent_Declare(

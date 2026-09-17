@@ -126,8 +126,8 @@ RenderManager::RenderManager(
     m_renderImpl->init();
     IREntity::setName(m_camera, "camera");
 
-    // #1814: the renderer's camera + framebuffer/canvas entities are normal
-    // (non-singleton) ECS entities. Tag them C_Persistent so a scene-transition
+    // The renderer's camera and framebuffer/canvas entities are normal,
+    // non-singleton ECS entities. Tag them C_Persistent so a scene-transition
     // IREntity::resetGameplay() spares them — without the tag they'd be torn
     // down on the first reset and the render context would break.
     IREntity::setComponent(m_camera, C_Persistent{});
@@ -178,13 +178,13 @@ RenderManager::RenderManager(
     m_activeCanvas = m_mainCanvas;
 
     // The main world canvas's per-axis trixel canvases (smooth camera Z-yaw,
-    // #1308; docs/design/per-axis-trixel-canvas-rotation.md) are bundled on
+    // documented in docs/design/per-axis-trixel-canvas-rotation.md) are bundled on
     // every voxel-pool canvas by Prefab<kVoxelPoolCanvas>. Their GPU textures
     // stay allocated lazily — the main canvas's only while the camera sits at a
     // non-cardinal residual yaw (syncAllocationToCameraYaw) — so a static /
     // cardinal scene pays nothing (the byte-identical fast path). Detached
     // entities no longer use the per-axis machinery: detached SO(3) renders
-    // through the re-voxelize path (#1555–#1560), not per-axis forward-scatter.
+    // through the re-voxelize path, not per-axis forward scatter.
 
     initRenderingResources();
     initRenderingSystems();
@@ -302,8 +302,8 @@ vec3 RenderManager::getDefaultRotationPivotFocus() const {
     // yaw moves content in the wrong direction and pops back on mouse-stop.
     // Depth 0 — before the first derive, whenever the center pixel reads
     // background, and for a creation whose frame never reaches beginFrame — is
-    // the pre-#2547 point exactly, so the fallback is the same expression
-    // rather than a structurally different branch.
+    // the exact fallback point, so this uses the same expression rather than a
+    // structurally different branch.
     return IRMath::isoPixelToPos3D(getViewCenterIso(), m_defaultRotationPivotIsoDepth);
 }
 
@@ -344,7 +344,7 @@ void RenderManager::updateDefaultRotationPivotFocus() {
         return;
     }
 
-    // Latch policy (#2547), deterministic and gesture-free:
+    // Deterministic, gesture-free latch policy:
     //  - Re-derive ONLY while visualYaw is NOT changing between frames. While
     //    yaw moves, hold the latch — that is what pins the pre-rotation center
     //    content through the whole rotation, identically for a mouse drag, a
@@ -377,8 +377,8 @@ void RenderManager::updateDefaultRotationPivotFocus() {
         const IRRender::DecodedCompositeDepth decoded =
             IRRender::decodeCompositeDepth(sample.rawDist_);
         // Background (depth clear at the far plane) and any foreground-tier
-        // fragment fall back to iso depth 0 — the pre-#2547 point. A
-        // foreground-tier hit is a screen-locked / priority overlay whose
+        // fragment fall back to iso depth 0. A foreground-tier hit is a
+        // screen-locked / priority overlay whose
         // encoded depth is a reserved band code, NOT a world iso depth, so
         // consuming it would pin the pivot to a meaningless world point.
         if (sample.valid_ && sample.normDepth_ < IRRender::kBackgroundNormDepthThreshold &&

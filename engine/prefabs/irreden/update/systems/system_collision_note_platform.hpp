@@ -105,10 +105,10 @@ template <> struct System<COLLISION_NOTE_PLATFORM> {
                std::vector<C_ContactEvent> &events) {
                 IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_UPDATE);
 
-                // #1817: opt-in batched overlap-pair emission. The singleton
+                // Opt-in batched overlap-pair emission. The singleton
                 // exists only when a creation registered
                 // DISPATCH_LUA_OVERLAP, so existing C_ContactEvent-only
-                // users keep the fast first-contact break path below (nullptr).
+                // users keep the fast first-contact break path (nullptr).
                 auto *overlapBatch = IREntity::singletonOrNull<C_OverlapContactBatch>();
                 const bool emitPairs = overlapBatch != nullptr;
 
@@ -200,7 +200,7 @@ template <> struct System<COLLISION_NOTE_PLATFORM> {
                             if (emitPairs) {
                                 // Emit each pair once (canonical self < other);
                                 // both layers are stamped so the dispatcher never
-                                // reaches the foreign entity. Keep scanning — D3
+                                // reaches the foreign entity. Keep scanning —
                                 // pair-level enter/exit needs ALL overlaps, not
                                 // just the first. The vector is cleared (not
                                 // freed) by the dispatcher each frame, so after

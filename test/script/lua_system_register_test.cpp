@@ -220,13 +220,10 @@ TEST_F(LuaSystemRegisterTest, UnboundComponentNameFailsAtRegisterTime) {
     EXPECT_NE(msg.find("lua_component_pack"), std::string::npos);
 }
 
-// `entry.is<sol::table>()` reads TRUE for userdata, so a table-first guard
-// in `resolveComponentEntry` admits a `components` list entry that is a
-// TestPos userdata instead of a string name or an `IRComponent.register`
-// handle table. The pre-fix path casts it to `sol::table` and indexes
-// `componentId` off it — not a TestPos member, so the resolver's own
-// "missing componentId" message fires instead of the generic
-// wrong-shape message a non-table, non-string entry should get. See #3178.
+// `entry.is<sol::table>()` reads TRUE for userdata, so
+// `resolveComponentEntry` must reject userdata before handling a table.
+// Otherwise, indexing `componentId` on TestPos produces the resolver's
+// "missing componentId" message instead of the generic wrong-shape message.
 TEST_F(LuaSystemRegisterTest, UserdataComponentEntryFailsWithGenericMessage) {
     auto &lua = m_lua.lua();
     auto result = lua.safe_script(

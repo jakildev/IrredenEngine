@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+# fleet-start-next-task — reset this worktree to a fresh branch for the next
+# task. The executable form of the start-next-task flow
+# (docs/agents/skills/start-next-task.md) for runtimes that cannot invoke a
+# skill by name, and for unattended per-iteration shutdown.
+#
+# Usage
+# -----
+#   fleet-start-next-task [--branch <name>] [--worktree <basename>] [--dry-run]
+#
+#   --branch <name>      standard-mode branch name (claude/ is prepended when
+#                        missing); default claude/<worktree-basename>-scratch
+#   --worktree <name>    also assert the cwd IS this worktree
+#   --dry-run            print the plan, change nothing
+#
+# Modes, first match wins:
+#   fleet stack   `fleet-claim molecule resume <basename>` prints an issue id:
+#                 the new branch bases on the CURRENT branch (the just-opened
+#                 PR's head) and is named claude/<id>-<slug-of-issue-title>.
+#   standard      the new branch bases on origin/master.
+# The cursor-stack mode of the skill is a conversation cue and stays with the
+# skill; this tool never records a cursor-stack-base.
+#
+# Preconditions, each refused with exit 1:
+#   - cwd is a fleet worktree (fleet-assert-worktree; a human may override
+#     with FLEET_ALLOW_MAIN_CLONE=1)
+#   - no tracked modifications, staged or unstaged (untracked files such as a
+#     stale scratch body do not block)
+#   - HEAD is reachable from some origin/* ref, so nothing is stranded; this
+#     is the check that protects work, so an old branch whose PR is already
+#     closed is only reported, never refused
+#   - fleet stack: the resumed id differs from the current branch's issue
+#     prefix (equal means the molecule was not advanced after commit-and-push)
+#
+# Exit: 0 reset done or plan printed; 1 a precondition refused; 2 usage error
+# or a failing git/fleet-claim call.
+
+set -euo pipefail
+
+usage() {
+    sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'
+}
+
+BRANCH=""
+WORKTREE=""
+DRY_RUN=0
+while (( $# )); do
+    case "$1" in
+        -h|--help) usage; exit 0 ;;
+        --dry-run) DRY_RUN=1 ;;
+        --branch) [[ $# -ge 2 && -n "$2" ]] || { echo "fleet-start-next-task: --branch needs a value" >&2; exit 2; }; BRANCH="$2"; shift ;;
+        --branch=*) BRANCH="${1#--branch=}"; [[ -n "$BRANCH" ]] || { echo "fleet-start-next-task: --branch needs a value" >&2; exit 2; } ;;
+        --worktree) [[ $# -ge 2 && -n "$2" ]] || { echo "fleet-start-next-task: --worktree needs a value" >&2; exit 2; }; WORKTREE="$2"; shift ;;
+        --worktree=*) WORKTREE="${1#--worktree=}"; [[ -n "$WORKTREE" ]] || { echo "fleet-start-next-task: --worktree needs a value" >&2; exit 2; } ;;
+        *) echo "fleet-start-next-task: unknown argument '$1'" >&2; usage >&2; exit 2 ;;
+    esac
+    shift
+done
+
+# Sibling tools resolve beside the real file, not the ~/bin symlink.
+_self="${BASH_SOURCE[0]}"
+while [[ -L "$_self" ]]; do
+    _dir="$(cd "$(dirname "$_self")" && pwd)"
+    _self="$(readlink "$_self")"
+    [[ "$_self" = /* ]] || _self="$_dir/$_self"
+done
+SELF_DIR="$(cd "$(dirname "$_self")" && pwd)"
+ASSERT="$SELF_DIR/fleet-assert-worktree"
+[[ -x "$ASSERT" ]] || ASSERT="fleet-assert-worktree"
+
+refuse() { echo "fleet-start-next-task: REFUSING — $1" >&2; exit 1; }
+fault()  { echo "fleet-start-next-task: $1" >&2; exit 2; }
+
+if [[ -n "$WORKTREE" ]]; then
+    "$ASSERT" "$WORKTREE" || exit 1
+else
+    "$ASSERT" || exit 1
+fi
+
+toplevel=$(git rev-parse --show-toplevel 2>/dev/null) || fault "not inside a git working tree"
+basename_wt=$(basename "$toplevel")
+old_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || fault "cannot read HEAD"
+head_sha=$(git rev-parse HEAD)
+
+tracked_dirty=$(git status --porcelain 2>/dev/null | grep -v '^??' || true)
+[[ -z "$tracked_dirty" ]] || refuse "tracked modifications present; commit them to the previous PR or discard them:
+$tracked_dirty"
+
+git fetch --quiet origin master || fault "git fetch origin master failed"
+
+if [[ -z "$(git branch -r --contains "$head_sha" 2>/dev/null)" ]]; then
+    refuse "HEAD ($head_sha) is on no origin/* ref — push it (commit-and-push) before resetting, or it is stranded"
+fi
+
+# Informational only: the pushed-HEAD check above is what protects work.
+pr_note=""
+if [[ "$old_branch" != "HEAD" && "$old_branch" != "claude/$basename_wt-scratch" ]]; then
+    if command -v gh >/dev/null 2>&1; then
+        pr_note=$(gh pr list --head "$old_branch" --state open --json number,url \
+            --jq '.[] | "PR #\(.number) \(.url)"' 2>/dev/null || true)
+        [[ -n "$pr_note" ]] || pr_note="no open PR for $old_branch (its commits are on origin, nothing stranded)"
+    else
+        pr_note="gh unavailable; open-PR lookup skipped"
+    fi
+fi
+
+mode="standard"
+base="origin/master"
+new_branch=""
+molecule_id=""
+if command -v fleet-claim >/dev/null 2>&1; then
+    molecule_id=$(fleet-claim molecule resume "$basename_wt") \
+        || fault "fleet-claim molecule resume $basename_wt failed (exit $?)"
+    molecule_id=$(printf '%s' "$molecule_id" | tr -d '\r' | head -n1)
+fi
+
+slugify() {
+    printf '%s' "$1" | tr '[:upper:]' '[:lower:]' \
+        | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//' | cut -c1-40 | sed -E 's/-+$//'
+}
+
+if [[ "$molecule_id" =~ ^[0-9]+$ ]]; then
+    if [[ "$old_branch" =~ ^claude/([0-9]+)- && "${BASH_REMATCH[1]}" == "$molecule_id" ]]; then
+        refuse "molecule still names #$molecule_id, the issue of the current branch — advance it first: fleet-claim molecule advance $basename_wt $molecule_id done pr=<URL> commit=<SHA>"
+    fi
+    mode="fleet-stack"
+    base="$old_branch"
+    [[ "$base" != "HEAD" ]] || base="$head_sha"
+    slug=""
+    if command -v gh >/dev/null 2>&1; then
+        slug=$(slugify "$(gh issue view "$molecule_id" --json title --jq .title 2>/dev/null || true)")
+    fi
+    new_branch="claude/$molecule_id-${slug:-next}"
+else
+    if [[ -n "$BRANCH" ]]; then
+        [[ "$BRANCH" == claude/* ]] || BRANCH="claude/$BRANCH"
+        git check-ref-format "refs/heads/$BRANCH" || fault "invalid branch name '$BRANCH'"
+        new_branch="$BRANCH"
+    else
+        new_branch="claude/$basename_wt-scratch"
+    fi
+fi
+
+base_sha=$(git rev-parse --verify --quiet "$base^{commit}") || fault "base '$base' does not resolve"
+
+echo "mode:       $mode"
+echo "old branch: $old_branch ($head_sha)${pr_note:+ — $pr_note}"
+echo "new branch: $new_branch"
+echo "base:       $base ($base_sha)"
+if (( DRY_RUN )); then
+    echo "dry run: nothing changed"
+    exit 0
+fi
+
+git checkout --quiet -B "$new_branch" "$base" || fault "git checkout -B $new_branch $base failed"
+
+[[ "$(git rev-parse HEAD)" == "$base_sha" ]] || fault "sanity: HEAD is not at $base after checkout"
+[[ -z "$(git status --porcelain | grep -v '^??' || true)" ]] || fault "sanity: tree not clean after checkout"
+echo "Ready for the next task on $new_branch."

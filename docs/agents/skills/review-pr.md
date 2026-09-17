@@ -159,9 +159,10 @@ when there is no grader, no `Closes #N`, or no planned criteria.
 
 Post and label as one indivisible action: the review comment, then the
 verdict label as the very next bash call. Write the body to
-`.review-body.md` in the worktree root (gitignored; not `/tmp/`),
-overwriting any previous one — never `rm -f` it first; a Codex sandbox
-refuses `rm -f` — then:
+`.review-body.md` in the worktree root (gitignored; not `/tmp/`). A
+dispatched iteration starts without one — `fleet-dispatch-wrap` removes
+stale scratch bodies before a fresh launch; in an interactive session
+overwrite any previous one rather than `rm -f`-ing it first. Then:
 
 ```bash
 gh pr review <N> --comment --body-file .review-body.md

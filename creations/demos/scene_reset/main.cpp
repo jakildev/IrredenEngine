@@ -1,6 +1,6 @@
-// scene_reset — render-stack idempotency proof for IREntity::resetGameplay (#1857).
+// scene_reset — render-stack idempotency proof for IREntity::resetGameplay.
 //
-// The render-stack half of #1814's acceptance that the headless unit test
+// The render-stack half of the acceptance that the headless unit test
 // (no RenderManager / no C_VoxelPool) cannot exercise. It drives the
 // scene-transition primitive over a LIVE RenderManager + real voxel pool:
 // build scene -> register UPDATE pipeline -> reset, looped N>=10 cycles, and
@@ -119,7 +119,7 @@ int main(int argc, char **argv) {
 
     // The reset/rebuild idempotency cycles run BEFORE gameLoop() against the
     // live RenderManager + real voxel pool (the chunk_streaming_smoke
-    // precedent) — exactly the real-pool allocate/free bookkeeping the #1814
+    // precedent) — exactly the real-pool allocate/free bookkeeping a
     // headless unit test could not construct.
     captureBaselines();
     runResetCycles();

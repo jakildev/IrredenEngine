@@ -2,8 +2,7 @@
 // null on a miss, `getNamedResource` asserts and can never return null, and
 // neither registers the name it failed to find. The asserting half is what
 // makes a null check on its result dead code, so a caller whose contract is
-// "no-op when the resource is absent" has to take the probing half (see
-// #2627).
+// "no-op when the resource is absent" has to take the probing half.
 //
 // GL-free by construction: `RenderingResourceManager`'s constructor only fills
 // the id pool and registers the resource types, and a name miss returns before

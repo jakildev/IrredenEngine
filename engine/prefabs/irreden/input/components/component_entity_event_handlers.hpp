@@ -15,20 +15,17 @@ namespace IRComponents {
 // rather than a process static — the sanctioned pattern for world-scoped
 // state per `.claude/rules/cpp-globals.md`.
 //
-// Lifetime is the reason this is a component (#2582). The vectors hold
-// `sol::protected_function` refs into the World's Lua VM, so they must be
-// destroyed while that VM is still open. `World` declares `m_lua` before the
-// manager block (T-100 / #2446) precisely so archetype-column sol refs unref
-// against a live `lua_State`, and `World::end()` runs `destroyAllEntities()`
-// during `gameLoop()` while the VM is provably alive. Both orderings are
-// structural, so nothing has to remember a teardown call — which is what
-// retired #2572's manual `IREngine::gameLoop()` tail `clear()`. As a
-// process-lifetime static this same state unref'd after `lua_close` at
-// `__cxa_finalize` and segfaulted any creation that registered a handler.
+// The vectors hold `sol::protected_function` refs into the World's Lua VM,
+// so they must be destroyed while that VM is still open — that dependency
+// is why this state is a component, not a process static. `World` declares
+// `m_lua` before the manager block precisely so archetype-column sol refs
+// unref against a live `lua_State`, and `World::end()` runs
+// `destroyAllEntities()` during `gameLoop()` while the VM is provably
+// alive. Both orderings are structural, so nothing has to remember a
+// teardown call.
 //
 // Singleton semantics: survives `resetGameplay()` (singleton entities are
 // preserved and the cache is not cleared), dies at `destroyAllEntities()`.
-// That matches the old static's scene-transition behaviour exactly.
 struct C_EntityEventHandlers {
     struct HandlerEntry {
         int id_;
@@ -89,11 +86,11 @@ struct C_EntityEventHandlers {
     }
 
     // Drops every registered handler, destroying the sol::protected_functions
-    // they hold. No longer load-bearing for shutdown — World teardown ordering
-    // owns that now — but kept as the explicit "unsubscribe everything" verb
-    // for creations swapping scripts mid-session, and as the tests' known-empty
-    // baseline. nextId_ is intentionally left as-is: ids never recycle within a
-    // world, so there is no id-reuse hazard to guard.
+    // they hold. Shutdown does not depend on it (World teardown ordering owns
+    // that); it is the explicit "unsubscribe everything" verb for creations
+    // swapping scripts mid-session.
+    // nextId_ is left as-is: ids never recycle within a world, so there is no
+    // id-reuse hazard to guard.
     void clear() {
         forEachHandlerVector([](std::vector<HandlerEntry> &vec) { vec.clear(); });
     }
@@ -115,12 +112,8 @@ struct C_EntityEventHandlers {
     }
 
   private:
-    // The single dispatch body behind all four fire* verbs — same
-    // consolidation `forEachHandlerVector` applies to clear()/removeHandler(),
-    // for the same reason: a fifth event category is one call site here, not a
-    // fourth hand-copied for/valid()/log block to keep in sync. `handlerName`
-    // is the Lua-facing spelling, so an error message names the callback the
-    // creation registered rather than this component's method.
+    // `handlerName` is the Lua-facing spelling, so an error message names the
+    // callback the creation registered rather than this component's method.
     //
     // `args` is passed to each handler as an lvalue, NOT std::forward'd: the
     // pack is reused once per registered handler, so forwarding would move

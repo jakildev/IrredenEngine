@@ -83,8 +83,8 @@ TEST_F(DefaultBindingManifestTest, CaptureSuiteZeroArgMatchesPreManifestRegistra
     // Pinning the exact rendered sequence, same as the camera suite above.
     // SCREENSHOT_CANVAS used to render as "UNKNOWN" here — it had no
     // `commandNameToString` case, and this test asserted that deliberately
-    // rather than papering over it. #2550 replaced that hand-listed switch
-    // with the `kCommandInfo` catalog, which gives every enum value a real
+    // rather than papering over it. The `kCommandInfo` catalog gives every
+    // enum value a real
     // label by static_assert, so the label is now the fixed one.
     EXPECT_EQ(
         pressedRegistrations(),

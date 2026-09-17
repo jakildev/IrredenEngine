@@ -7,8 +7,8 @@
 // canvas-frame iso pixel a cursor aimed at a world point actually casts from.
 // It is what anything predicting a scripted click must go through, so its
 // lossiness is contractual and pinned here. Root cause + the measured table
-// these cases reproduce: `docs/design/editor-authoring-friction.md` §M-2
-// (#2575). The voxel editor's session shadow model is the consumer.
+// these cases reproduce: `docs/design/editor-authoring-friction.md` §M-2.
+// The voxel editor's session shadow model is the consumer.
 
 namespace {
 

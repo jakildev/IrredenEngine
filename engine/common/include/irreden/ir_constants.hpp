@@ -49,7 +49,7 @@ constexpr Distance kTrixelDistanceMinDistance = -65535;
 /// this value before each frame; shaders write strictly smaller values via
 /// imageAtomicMin.  Acts as the "nothing here" background depth.
 constexpr Distance kTrixelDistanceMaxDistance = 65535;
-/// Per-axis canvas distance clear value (#1458).  The per-axis store uses a
+/// Per-axis canvas distance clear value. The per-axis store uses a
 /// fractional-offset encoding (depth << 10 | uFrac4 << 6 | vFrac4 << 2 | slot)
 /// whose valid values exceed kTrixelDistanceMaxDistance, so a separate INT_MAX
 /// sentinel is required.  All per-axis-canvas reading shaders compare against
