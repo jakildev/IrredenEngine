@@ -1,0 +1,42 @@
+{
+  "head": "33cdb7b3c2c0ef0b82ec8b7606bc90b88428c7b1",
+  "changes": " M engine/prefabs/irreden/render/components/component_per_axis_trixel_canvases.hpp\n M test/ecs/chunk_bounds_eviction_test.cpp\n",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "binary_sha256": "4b371230f3be5cc6d67fd390ac1aa1f09a3de3a9ccb8ac505b45e329553dc2dc",
+  "shader_sha256": "cc62844e495927d4daf1990fda552d516612fa1e1b64fe67f1c25ee769810c6e",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "120",
+    "IRPerfGrid",
+    "--mode",
+    "voxel_set",
+    "--grid-size",
+    "64",
+    "--wave-freeze",
+    "--yaw",
+    "0.785398163",
+    "--zoom",
+    "4",
+    "--auto-profile",
+    "300"
+  ],
+  "runs": [
+    {
+      "index": 1,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    },
+    {
+      "index": 2,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    }
+  ]
+}

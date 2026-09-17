@@ -137,6 +137,19 @@ struct C_PerAxisTrixelCanvases {
         return axes_[0].colors_.second != nullptr;
     }
 
+    static int overflowCapacityFor(int axisCells, int voxelCapacity) {
+        IR_ASSERT(axisCells >= 0 && voxelCapacity >= 0, "negative per-axis capacity input");
+        const std::uint64_t faceDemand = static_cast<std::uint64_t>(voxelCapacity) * kAxisCount;
+        const std::uint64_t canvasReserve =
+            IRMath::max(static_cast<std::uint64_t>(axisCells) / 4u, std::uint64_t{65536});
+        const std::uint64_t demand = IRMath::max(faceDemand, canvasReserve);
+        IR_ASSERT(
+            demand <= (std::uint64_t{1} << 30),
+            "per-axis capacity exceeds signed shader field"
+        );
+        return static_cast<int>(IRMath::nextPowerOfTwo(static_cast<std::uint32_t>(demand)));
+    }
+
     // Allocate the three axis texture sets at @p size (worst-case per-axis) plus
     // the screen-space resolve texture at @p mainSize. No-op if already
     // allocated. Called at rotation start by the lifecycle.
@@ -203,18 +216,13 @@ struct C_PerAxisTrixelCanvases {
         viewMaskBaseUints_ = alignedCells;
         ctrlBaseUints_ = viewMaskBaseUints_ + alignedCells;
         entriesBaseUints_ = ctrlBaseUints_ + kScratchAlignUints;
-        // Bounded by view-visible faces ≈ O(screen cells); /4 is generous for the
-        // missing subset, floored so small canvases keep synthetic-test headroom.
-        // Rounded up to a power of two so the canonical sort's bitonic
-        // network, the append clamp, the layout `.w`, and the allocation stay
-        // ONE value (never introduce a separate sort length that can drift).
-        // The 65,536 floor is already a power of two, so default-size canvases
-        // are byte-unchanged; a larger canvas grows the entries region <= 2x.
-        // Side effect on non-p2 large canvases: the rounding also raises the
-        // append clamp, so fewer entries drop on a drop-saturated scene.
-        overflowCap_ = static_cast<int>(
-            IRMath::nextPowerOfTwo(static_cast<std::uint32_t>(IRMath::max(axisCells / 4, 65536)))
-        );
+        // Mode 3 emits at most one record per voxel per axis: its canonical
+        // trixel lane returns before dual-face emission, with only micro-slice
+        // zero active. Capacity covers the whole main pool, including the first
+        // frame after a camera jump or spawn. The sort, append clamp and layout
+        // share this power-of-two count. This bound depends on the mode-3 lane
+        // guard in both stage-1 shader bodies and unique axis compact lists.
+        overflowCap_ = overflowCapacityFor(axisCells, IRRender::VoxelPoolConfig::getTotalSize());
         winnerIds_ = IRRender::createResource<Buffer>(
             nullptr,
             (static_cast<std::size_t>(entriesBaseUints_) +

@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <stdexcept>
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
@@ -683,6 +684,27 @@ TEST(VoxelUpdateSpans, CoalescesOnlyContiguousRangesWithIdenticalOwnership) {
     EXPECT_EQ(ranges[3].count_, 3u);
     EXPECT_FALSE(ranges[3].upload_);
 }
+
+TEST(PerAxisOverflowCapacity, CoversEveryVoxelFaceBeforeVisibilityIsKnown) {
+    using Axes = IRComponents::C_PerAxisTrixelCanvases;
+    for (int voxels : {0, 1, 64 * 64 * 64, 1000000, 128 * 128 * 128}) {
+        const int capacity = Axes::overflowCapacityFor(1024 * 2048, voxels);
+        EXPECT_GE(static_cast<std::uint64_t>(capacity), std::uint64_t{3} * voxels);
+        EXPECT_GE(capacity, 524288);
+        EXPECT_EQ(capacity & (capacity - 1), 0);
+    }
+    EXPECT_EQ(Axes::overflowCapacityFor(1024 * 2048, 128 * 128 * 128), 8388608);
+    EXPECT_EQ(Axes::overflowCapacityFor(1, 0), 65536);
+}
+
+#ifndef IR_RELEASE
+TEST(PerAxisOverflowCapacity, RejectsInvalidOrUnrepresentableDemand) {
+    using Axes = IRComponents::C_PerAxisTrixelCanvases;
+    EXPECT_THROW(Axes::overflowCapacityFor(-1, 1), std::runtime_error);
+    EXPECT_THROW(Axes::overflowCapacityFor(1, -1), std::runtime_error);
+    EXPECT_THROW(Axes::overflowCapacityFor(1, 1 << 30), std::runtime_error);
+}
+#endif
 
 TEST(VoxelUpdateSpans, EndTickInvalidatesGpuSpansWithoutUploadingThem) {
     using Update = IRSystem::System<IRSystem::UPDATE_VOXEL_SET_CHILDREN>;
