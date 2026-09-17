@@ -1,19 +1,18 @@
 #!/usr/bin/env bash
-# shape-rotate-jitter-sweep — temporal-jitter validation harness (#1922, epic #1881).
+# shape-rotate-jitter-sweep — temporal-jitter validation harness.
 #
-# Sibling to scripts/dev/perf-grid-rotate-sweep (#1882). That harness scores the
+# Sibling to scripts/dev/perf-grid-rotate-sweep. That harness scores the
 # *solidity* of a single rotated cube per frame; this one scores *temporal
 # stability* of a shape across a fine continuous yaw sweep — does the rendered
 # surface shimmer as the camera turns?
 #
-# It targets the epic #1881 crawl family: under camera Z-yaw the rendered
+# It targets a family of render crawl: under camera Z-yaw the rendered
 # surface shimmers frame-to-frame instead of moving smoothly. Two distinct
 # artifacts show up (see docs/design/jitter-validation-harness.md for the
 # measured master baseline):
 #   * per-axis trixel-scatter SEAM crawl on hard edges + flat faces at grazing
-#     iso angles — box + wedge (this INVERTS the original plan's guess that box
-#     would be the stable control — box FAILs).
-#   * a concentric depth-band crawl on curved SDF surfaces (child #1920) — the
+#     iso angles — box + wedge (box is NOT a stable control — it FAILs).
+#   * a concentric depth-band crawl on curved SDF surfaces — the
 #     STRONGER mode on master; curved_panel crawls hardest, ellipsoid next, while
 #     the smooth analytic surfaces (sphere/cylinder/cone/torus) stay clean.
 # The crux the metric solves is separating either crawl from the expected smooth
@@ -33,19 +32,18 @@
 # depth-band shapes (curved_panel worst, ellipsoid) FAIL the gate while the
 # smooth analytic surfaces (sphere, cylinder, cone, torus) pass — the curved
 # family landing on both sides is what proves the metric flags real crawl and
-# not shape class. The fix children (#1920 round-to-cell, #1883 per-axis seams)
-# should pull every shape under the gate.
+# not shape class.
 #
 # Usage:  bash scripts/dev/shape-rotate-jitter-sweep [build_dir] [shapes] [zoom] [steps]
 #   build_dir   CMake build dir                       (default: build)
 #   shapes      space-separated subset                (default: all 8)
 #               box sphere cylinder ellipsoid cone torus wedge curved_panel
-#   zoom        sweep zoom (4/8/16 per #1920)         (default: 8)
+#   zoom        sweep zoom (4/8/16)                   (default: 8)
 #   steps       shots across one 360° rotation        (default: 360 → 1°/step)
 #               A FINE sweep is mandatory: at coarse steps even a smoothly-
 #               shaded surface aliases into a high second-difference (sphere
 #               reads ~1.2 at 1°/step but ~2.6 at 2°/step), drowning the real
-#               crawl signal. 1°/step is the issue-#1922 spec and the regime
+#               crawl signal. 1°/step is the specified resolution and the regime
 #               where smooth shapes settle to near-zero flicker.
 # Env overrides: SPIN_RATE (deg/sec, default 30), MAX_JITTER (gate, default 4.0),
 #   RENDER (sdf|voxel|both, default sdf).

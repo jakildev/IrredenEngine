@@ -87,7 +87,7 @@ else
          "--user ruff') to enable 'ruff check scripts/fleet/' before commit."
 fi
 
-# stdlib-only, ruff-independent: the state.json st_mtime-freshness ratchet (#2267).
+# stdlib-only, ruff-independent: the state.json st_mtime-freshness ratchet.
 echo "[note] Author-side: 'python scripts/fleet/lint_state_mtime.py scripts/fleet/'" \
      "flags st_mtime freshness reads on the scout cache."
 

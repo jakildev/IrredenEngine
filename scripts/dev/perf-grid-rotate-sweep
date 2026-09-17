@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# perf-grid-rotate-sweep — rotated-voxel solidity validation harness (#1882).
+# perf-grid-rotate-sweep — rotated-voxel solidity validation harness.
 #
-# Builds IRPerfGrid and drives its `--yaw-ramp` shot table, which is no longer a
-# uniform 36-step circle but a TIERED, render-path-aware set (see
+# Builds IRPerfGrid and drives its `--yaw-ramp` shot table — not a uniform
+# 36-step circle but a TIERED, render-path-aware set (see
 # `buildYawRampShots` in creations/demos/perf_grid/main.cpp):
 #
 #   * Cardinal-isolation tier — the four EXACT cardinals (0/90/180/270). At
@@ -10,13 +10,11 @@
 #     single-canvas cardinal path. The demo MEASURES which path actually drew
 #     each pose (single-canvas vs per-axis) at the settled capture frame and
 #     logs it as a `RAMP-POSE` line; this harness joins that label to the
-#     scored frame so a row called "cardinal" is unambiguous (the original
-#     uniform ramp labelled rows by angle and could not distinguish the path,
-#     which is what produced the #1882 misdiagnosis). Cardinal poses are
-#     expected to read clean (coverage >= 0.99) AND report path=single.
+#     scored frame so a row called "cardinal" is unambiguous. Cardinal poses
+#     are expected to read clean (coverage >= 0.99) AND report path=single.
 #   * Near-cardinal residual tier — dense sampling APPROACHING 90/180/270
-#     (±1..10°), where the per-axis face-alignment seams / coverage bands peak
-#     (#1883). These render through the per-axis path by design.
+#     (±1..10°), where the per-axis face-alignment seams / coverage bands peak.
+#     These render through the per-axis path by design.
 #
 # Two passes:
 #   1. coverage  — 64³ cube, whole-cube zoom. Interior-hole / coverage metric
@@ -148,11 +146,11 @@ echo "[3/5] zoom pass — small cube, high zoom + ROI crops (seam signal) ..."
 run_ramp "/tmp/perf-grid-sweep-zoom.log" --grid-size 12 --zoom 4 --yaw-ramp-crops
 score_pass "/tmp/perf-grid-sweep-zoom.log" "zoom"
 
-# --wave-freeze tier (#2332): a live per-cell wave scene is not byte-identical
+# --wave-freeze tier: a live per-cell wave scene is not byte-identical
 # run-to-run (the traveling wave rides wall/frame time), so it can't feed a
 # render-verify regression tier directly. --wave-freeze bakes each cell's
 # phase-0 offset into its spawn position instead of ticking C_PeriodicIdle,
-# giving the same (1,1,1)-coset collisions a live wave produces (#2331) in a
+# giving the same (1,1,1)-coset collisions a live wave produces in a
 # scene that stops moving. Fixed at --mode voxel_set --grid-size 32
 # regardless of $MODE — this tier is specifically about per-cell wave
 # content, not the dense/hollow voxel-set modes the other two passes vary.
@@ -183,7 +181,7 @@ else
     cp "$FIRST_SHOT" /tmp/perf-grid-sweep-wave-det-b.png
     # --threshold 16: --wave-freeze removes the traveling-wave motion, but the
     # frozen per-cell positions are irregular (that's the point — it's what
-    # reproduces #2331's coset collisions), and the un-occluded per-cell
+    # produces the coset collisions), and the un-occluded per-cell
     # voxels' near-tied depths leave the winner-take-all compaction pass
     # (c_voxel_to_trixel_stage_1.glsl) sensitive to GPU dispatch scheduling.
     # Measured drift on this exact tier: ~0.3% of pixels, max per-channel

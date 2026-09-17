@@ -85,7 +85,7 @@ class RunAllRunnerTest(unittest.TestCase):
         self.assertIn("not a directory", r.stderr)
 
     # ------------------------------------------------------------------
-    # The #2825 regression lock: per-process isolation.
+    # The regression lock for per-process isolation.
     # ------------------------------------------------------------------
 
     def _isolation_fixture(self, d: Path) -> None:

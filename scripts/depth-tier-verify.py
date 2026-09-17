@@ -56,7 +56,7 @@ _ASSERT_RE = re.compile(
 _DEFAULT_PIXEL = "639,362"
 _DEFAULT_TIER = 2
 # The canvas_stress --only opt-in scene to drive. Default "interpenetrate" is the
-# #1960 per-trixel carrier (tier 2); "orbitswap" is the #2154 per-ENTITY carrier
+# per-trixel carrier (tier 2); "orbitswap" is the per-ENTITY carrier
 # (tier 1). Both spawn an origin-centered overlapping pair, so _DEFAULT_PIXEL lands
 # on the far priority unit for either — pass --tier to match the scene.
 _DEFAULT_ONLY = "interpenetrate"

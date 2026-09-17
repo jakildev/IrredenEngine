@@ -17,7 +17,7 @@ _SCRIPTS = Path(__file__).resolve().parent.parent
 # Uniform with the other suites here: a subject that bare-imports a sibling
 # module (verify_common, render_metric_util) needs scripts/ on sys.path. This
 # file's subjects import neither today, so the line is latent rather than
-# load-bearing — kept so the convention holds across the directory (#2825).
+# load-bearing — kept so the convention holds across the directory.
 sys.path.insert(0, str(_SCRIPTS))
 
 _loader = importlib.machinery.SourceFileLoader(
@@ -182,7 +182,7 @@ class TestShadowMetric(unittest.TestCase):
         self.assertIn("warning", err)
 
     def test_min_hole_ratio_lit_floor_passes(self):
-        # The #2092 floor self-shadow guard: a fully-lit floor (no self-shadow)
+        # The floor self-shadow guard: a fully-lit floor (no self-shadow)
         # reads hole_ratio == 1.0, so the lower bound passes.
         p = str(self.dir / "lit_floor.png")
         _write(p, 32, 32, lambda x, y: BLACK)

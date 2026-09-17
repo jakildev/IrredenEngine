@@ -1,23 +1,21 @@
 #!/usr/bin/env bash
 # canvas-stress-rotate-jitter-sweep — temporal-jitter validation harness for the
-# MIXED DETACHED + GRID scene (#1954, epic #1881).
+# MIXED DETACHED + GRID scene.
 #
-# Sibling to scripts/dev/shape-rotate-jitter-sweep (#1922), which scores a SINGLE
+# Sibling to scripts/dev/shape-rotate-jitter-sweep, which scores a SINGLE
 # centred SDF / voxel shape on the main canvas. This one scores the canvas_stress
 # demo's MIXED scene — detached re-voxelize SO(3) solids + GRID-spin cubes on the
-# screen-center column — under a fine continuous CAMERA Z-yaw sweep. That is the
-# multi-canvas-type temporal coverage gap #1922 deferred (the stated "Part of:
-# epic #1881").
+# screen-center column — under a fine continuous CAMERA Z-yaw sweep.
 #
 # What it measures: as the CAMERA yaws, does the rendered surface shimmer
 # frame-to-frame instead of moving smoothly? Same second-temporal-difference
 # metric (scripts/render-jitter-metric.py), same curvature-not-speed
 # discriminator — see docs/design/jitter-validation-harness.md. Entities are
-# frozen with --no-spin so camera yaw is the ONLY moving variable (the #1944
-# surface: entities static in world space, camera turning). Without --no-spin the
-# detached + GRID solids keep self-spinning ~24-30 degrees between the 60-settle-
-# frame shots, and that gross self-rotation — not the camera-yaw crawl — would
-# dominate the metric.
+# frozen with --no-spin so camera yaw is the ONLY moving variable (entities
+# static in world space, camera turning). Without --no-spin the detached + GRID
+# solids keep self-spinning ~24-30 degrees between the 60-settle-frame shots,
+# and that gross self-rotation — not the camera-yaw crawl — would dominate the
+# metric.
 #
 # IMPORTANT — this gate brackets temporal CRAWL above a FLOOR, not zero. The mixed
 # scene's central interior reads jitter_score ~= 1.2 on clean master (camera-yaw
@@ -32,16 +30,14 @@
 # that is NOT the speckle floor — it is metric aliasing from the entities self-
 # spinning ~30 degrees between the 60-settle-frame shots (the metric needs a fine
 # <~2 deg/step sweep; 30 deg/step aliases any surface into a high second-difference).
-# Freezing the entities isolates the actual camera-yaw crawl, which is the #1944
-# surface and what #1922's camera-yaw methodology measures. Hence --no-spin and a
-# floor of ~1.2, not ~4.4.
+# Freezing the entities isolates the actual camera-yaw crawl. Hence --no-spin and
+# a floor of ~1.2, not ~4.4.
 #
-# The #1942 world<->detached spatial-registration drift is a DIFFERENT artifact
-# class — a smooth sub-pixel translation at the moving silhouette boundary,
-# invisible to this temporal metric by construction (it keys on the second temporal
-# difference to ignore smooth motion, and AND-masks the moving boundary out of the
-# interior). #1942 is owned by the #1944 render-verify reference gate, not this
-# harness.
+# A world<->detached spatial-registration drift is a DIFFERENT artifact class — a
+# smooth sub-pixel translation at the moving silhouette boundary, invisible to this
+# temporal metric by construction (it keys on the second temporal difference to
+# ignore smooth motion, and AND-masks the moving boundary out of the interior).
+# That drift is owned by the render-verify reference gate, not this harness.
 #
 # Usage:  bash scripts/dev/canvas-stress-rotate-jitter-sweep [build_dir] [from_rad] [to_rad] [steps]
 #   build_dir   CMake build dir                          (default: build)
@@ -71,7 +67,7 @@ STEPS="${4:-36}"
 WARMUP="${WARMUP:-60}"
 # Floor on clean master is jitter_score ~= 1.2 (central-half ROI, 15 deg / 36-step
 # camera-yaw sweep, --no-spin), with run-to-run variation in the hundredths. The
-# gate at 4.0 mirrors the sibling shape-rotate-jitter-sweep (#1922): same metric,
+# gate at 4.0 mirrors the sibling shape-rotate-jitter-sweep: same metric,
 # same ~1.2 clean floor, leaving a >3x margin so speckle variation passes while a
 # real crawl regression (the sibling's failing shapes hit 6-11) fails. See the
 # harness doc's canvas_stress baseline for the measured numbers.

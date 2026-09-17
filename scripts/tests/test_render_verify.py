@@ -36,10 +36,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 _SCRIPTS = Path(__file__).resolve().parent.parent
-# render-verify.py does a bare `import verify_common` (#2461), which resolves
+# render-verify.py does a bare `import verify_common`, which resolves
 # only if scripts/ is on sys.path. Without this the suite dies at import when
 # run on its own, and passes only when an alphabetically-earlier sibling in
-# this directory happens to insert the path first (#2825).
+# this directory happens to insert the path first.
 sys.path.insert(0, str(_SCRIPTS))
 
 
@@ -63,10 +63,10 @@ _crop_capture_path = _rv._crop_capture_path
 _parse_extra_runs = _rv._parse_extra_runs
 _slice_capture = _rv._slice_capture
 # _validate_structural_only is deliberately NOT bound here: a module-scope
-# binding of a symbol the pre-fix tree lacks makes the whole suite
-# unimportable under the "swap in the old render-verify.py" positive control,
-# collapsing a per-test result into one ImportError. Resolved per call site
-# instead, so that control reports which arms actually discriminate.
+# binding of a symbol a render-verify.py without the shared validator lacks
+# makes the whole suite unimportable under a swap-in-that-file positive
+# control, collapsing a per-test result into one ImportError. Resolved per
+# call site instead, so that control reports which arms actually discriminate.
 _declared_targets = _rv._declared_targets
 _resolve_demo_dir = _rv._resolve_demo_dir
 _target_to_demo_name = _rv._target_to_demo_name
@@ -252,13 +252,12 @@ class RenderVerifyHarness(unittest.TestCase):
     def test_structural_roi_at_scales_oversized_reference_roi_into_bounds(self):
         # `roi` was calibrated against a 64x64 reference capture (`roi_at`);
         # this capture is only 32x32 (e.g. a 1x backend vs. the 2x HiDPI
-        # reference #3016 hit). Applied literally, roi=(48,0,16,64) sits
-        # partly outside a 32x32 frame and render-shadow-metric.py raises
-        # (the pre-#3011 crash this scaling fixes) — proportional scaling
-        # to (24,0,8,32) brings it back in bounds. That scaled region falls
-        # entirely in the BLACK (hole) right half, so the gate still fires,
-        # proving the scaled roi is what actually got measured rather than
-        # a silently-clamped or ignored one.
+        # reference). Applied literally, roi=(48,0,16,64) sits partly outside
+        # a 32x32 frame and render-shadow-metric.py would raise without this
+        # scaling; proportional scaling to (24,0,8,32) brings it back in
+        # bounds. That scaled region falls entirely in the BLACK (hole) right
+        # half, so the gate still fires, proving the scaled roi is what
+        # actually got measured rather than a silently-clamped or ignored one.
         self._ref("shotA.png")
         self._ref("shotB.png")
         _write(self.frames[0], 32, 32, lambda x, y: MAGENTA if x < 16 else BLACK)
@@ -459,7 +458,7 @@ class ParseExtraRuns(unittest.TestCase):
     # ── per-pass structural_only guard ─────────────────────────────────
     # Mirrors the top-level 'structural_only' guard: a label with no
     # matching 'structural' entry for the same pass would be captured,
-    # never pixel-diffed, and never structurally gated either. See #2842.
+    # never pixel-diffed, and never structurally gated either.
     def test_structural_only_with_matching_structural_entry_parses(self):
         runs = _parse_extra_runs({"extra_runs": [{
             "name": "compare",
@@ -473,7 +472,7 @@ class ParseExtraRuns(unittest.TestCase):
 
     def test_structural_only_with_no_structural_entry_raises(self):
         # Same shape as the compliant case, minus the 'structural' entry.
-        # Pre-fix this was silent (0 rows, PASS).
+        # A silent parse (0 rows, PASS) is the failure mode this pins.
         with self.assertRaises(SystemExit) as cm:
             _parse_extra_runs({"extra_runs": [{
                 "name": "compare",
@@ -509,9 +508,9 @@ class ParseExtraRuns(unittest.TestCase):
             })
 
     def test_extra_runs_delegates_to_the_shared_validator(self):
-        # #2842's fix is one validator invoked per resolved pass, not one
-        # copy per lane. An inline re-copy in _parse_extra_runs would keep
-        # every behavioural test above green while re-opening the drift, so
+        # Every resolved pass must call the one shared validator, not a
+        # per-lane copy. An inline copy in _parse_extra_runs would keep every
+        # behavioural test above green while letting the two lanes drift, so
         # assert the delegation itself. The manifest below is the *violating*
         # shape: with the stub in place it must parse (proving the raise came
         # from the patched-out helper), and an inline copy would raise here.
@@ -662,7 +661,7 @@ class DemoResolution(unittest.TestCase):
 
     def test_falls_back_to_inference_when_nothing_declares_the_target(self):
         # A demo dir that exists but whose manifest names no target still
-        # resolves the old way, so pre-declaration demos keep working.
+        # resolves by name inference, so an undeclared demo keeps working.
         self._demo("fog_demo", None)
         got = _resolve_demo_dir(self.worktree, "IRFogDemo", None)
         self.assertEqual(got, self.demos / "fog_demo")
@@ -741,8 +740,8 @@ class SweepSummary(unittest.TestCase):
         self.assertEqual(err, "")
 
     def test_a_demo_that_produced_no_checks_reads_as_error(self):
-        # The #2919 failure mode, one level up: a demo contributing zero must
-        # not look like a demo that simply had less to check. It is named on
+        # A demo contributing zero must not look like a demo that simply had
+        # less to check. It is named on
         # stderr AND its row says ERROR, so a smaller total can't pass as a
         # complete sweep.
         out, err = self._summary([

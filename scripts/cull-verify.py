@@ -101,11 +101,10 @@ UNFREEZE_LABEL = "cv_unfreeze_000"
 # table is a failure rather than a re-pairing.
 ALL_LABELS = LIVE_LABELS + [FREEZE_REF_LABEL] + FROZEN_LABELS + [UNFREEZE_LABEL]
 
-# Thresholds calibrated to the P1 harness finding (issue #1438):
-# at non-cardinal yaw the frozen and live passes differ in AO/light-volume shading
-# because both computations use the cull viewport — even with sun shadows disabled.
-# Observed in the P1 sweep: ~0.2 % of bytes differ by up to 89–127, always in
-# AO-dependent regions, not in discrete voxel silhouettes.
+# At non-cardinal yaw the frozen and live passes differ in AO/light-volume shading
+# because both computations use the cull viewport, even with sun shadows disabled:
+# ~0.2 % of bytes differ by up to 89–127, always in AO-dependent regions, not in
+# discrete voxel silhouettes.
 # A genuine geometry drop (a visible entity missing from the live frame) would
 # convert a coloured voxel region to background, dropping at least 0.1–0.3 % of
 # bytes — detectable above this baseline with the 99.7 % match_pct threshold.

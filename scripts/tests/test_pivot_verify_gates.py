@@ -26,10 +26,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 _SCRIPTS = Path(__file__).resolve().parent.parent
-# pivot-verify.py does a bare `import verify_common` (#2461), which resolves
+# pivot-verify.py does a bare `import verify_common`, which resolves
 # only if scripts/ is on sys.path. Without this the suite dies at import when
 # run on its own, and passes only when an alphabetically-earlier sibling in
-# this directory happens to insert the path first (#2825).
+# this directory happens to insert the path first.
 sys.path.insert(0, str(_SCRIPTS))
 
 import verify_common  # noqa: E402
@@ -133,7 +133,7 @@ class SdfTwinGate(unittest.TestCase):
     """The twin is gated, at a bound that spares its measured floor."""
 
     def test_t1_twin_drift_fails_the_run(self):
-        # The issue's FIRING arm: identical inputs exited 0 before #2851.
+        # The FIRING arm: a large SDF-twin drift must fail the run, not exit 0.
         h = _Harness(readings={("focus-ctr", True): 200.0,
                                ("focus-ctr", False): 0.5})
         rc, verdicts = _run(h, ["--blocks", "focus-ctr"])

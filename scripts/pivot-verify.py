@@ -98,7 +98,7 @@ CENTROID_GATED_BLOCKS = {"focus-ctr", "focus-off", "background-center",
                          "center-axis"}
 # The SDF twin's centroid gate, in GAME-RESOLUTION pixels — the same unit and
 # the same runtime `scale * bound` evaluation as CENTROID_BOUND_GAME_PX below,
-# with the zoom coefficient at zero (#2851).
+# with the zoom coefficient at zero.
 #
 # The twin is a continuous-geometry A/B control: its analytic silhouette has no
 # voxel lattice to snap to, so its centroid is quantized only by the
@@ -108,7 +108,7 @@ CENTROID_GATED_BLOCKS = {"focus-ctr", "focus-off", "background-center",
 # on the 2x host, so outputScaleFactor == 2), i.e. the smallest step the screen
 # can represent. A pivot-anchor error is a world-space offset and must scale
 # with zoom; a destination-grid quantization floor cannot, so no pivot fix can
-# move that floor and gating AT it would be a permanent false red (#2645). The
+# move that floor and gating AT it would be a permanent false red. The
 # voxel twin has its own lattice and pins at <= 1.4px across the same sweep.
 #
 # So the bound is that floor (1.0 game px) PLUS the same 1.5px budget every
@@ -117,11 +117,11 @@ CENTROID_GATED_BLOCKS = {"focus-ctr", "focus-off", "background-center",
 # zoom-invariant by construction, which is what the flat reading over z1..16
 # measures; separation from a real regression comes from the same
 # discriminator, since an anchor error of d world units reads d*zoom px and at
-# the default zoom 4 clears this bound severalfold (a pre-#2547-class focus
+# the default zoom 4 clears this bound severalfold (a regression-class focus
 # error is ~75 game px at z4). The floor gets a BOUND rather than an exemption:
-# dropping the twin from the exit code instead — #2648's remedy — makes it a
+# dropping the twin from the exit code instead would make it a
 # pass no incorrect implementation can fail, which is the inverse defect and
-# leaves the SDF path's pivot convention unchecked by anything (#2851).
+# leaves the SDF path's pivot convention unchecked by anything.
 #
 # Stated in game px for the reason CENTROID_BOUND_GAME_PX gives below:
 # outputScaleFactor is a host DISPLAY property, so a framebuffer-px constant
@@ -135,8 +135,8 @@ SDF_BOUND_GAME_PX = 2.5
 # outputScaleFactor read off the captured frame (`_output_scale_factor`).
 #
 # `center-axis` rotates about a point on its probe's own axis, so it is a valid
-# centroid pin — but it consumes the derived focus, which carries the inherent
-# #2641 residual: the composite is a per-face sort key stamped at the face's
+# centroid pin — but it consumes the derived focus, which carries an inherent
+# residual: the composite is a per-face sort key stamped at the face's
 # anchor, so the derive lands up to one iso-depth unit off the metric surface
 # (docs/design/camera-yaw-pivot.md §"Known deviations" 2).
 #
@@ -150,7 +150,7 @@ SDF_BOUND_GAME_PX = 2.5
 #   construction. A deviation carrying both terms cannot be bounded with
 #   uniform margin by any single px/zoom constant — measured, the ratio falls
 #   monotonically from 2.00 to 1.375 px/zoom across zoom 1..16, so a constant
-#   that clears zoom 1 leaves ~45% slack at zoom 16 (see #2641).
+#   that clears zoom 1 leaves ~45% slack at zoom 16.
 # - That floor is one GAME pixel, so every deviation this harness scores is
 #   `outputScaleFactor` framebuffer px per game px. The factor is a host
 #   DISPLAY property, not a backend one, so a bound calibrated in framebuffer
@@ -166,15 +166,12 @@ SDF_BOUND_GAME_PX = 2.5
 # The unit is what licenses one calibration for both hosts: macOS reads exactly
 # 2x each cell on the framebuffer (1280x720 game res in a 2560x1440 HiDPI
 # framebuffer, factor 2) while Windows/OpenGL reads 1:1 (1280x720, factor 1),
-# so only the game-px figures above are comparable. The two rows were identical
-# until #1938's GL analytic-coverage port (`fbad3ac4`) moved GL's silhouette;
-# GL now reads uniformly BELOW Metal, so the bound stays calibrated on the
-# larger Metal row (unchanged by that port — its Metal-side diff is
-# comment-only — but not re-measured since). `1.5 px/zoom + 1.0 px` clears
-# every Metal cell by 14-33% and every GL cell by 25-150%, and still fails any
-# growth in the residual: a regression to the pre-#2547 iso-depth-0 focus is
-# 150 framebuffer px at zoom 4 on the 2x host, i.e. 75 game px, ~10x this
-# bound.
+# so only the game-px figures above are comparable. GL reads uniformly BELOW
+# Metal, so the bound stays calibrated on the larger Metal row. `1.5 px/zoom +
+# 1.0 px` clears every Metal cell by 14-33% and every GL cell by 25-150%, and
+# still fails any growth in the residual: a focus derived at iso depth 0
+# instead of on the probe's axis orbits 150 framebuffer px at zoom 4 on the 2x
+# host, i.e. 75 game px, ~10x this bound.
 CENTROID_BOUND_GAME_PX = {"center-axis": (1.5, 1.0)}
 # PNG IHDR width lives at bytes 16..20, right after the 8-byte signature and the
 # length/type of the first chunk. Deliberately a 24-byte header peek rather than
@@ -303,9 +300,9 @@ def main(argv: list[str] | None = None) -> int:
         if block not in ALL_BLOCKS:
             raise SystemExit(f"unknown block '{block}' (choose from {ALL_BLOCKS})")
         # Every pass has to reach a gate. A block in NEITHER classification set
-        # scores no oracle at all; before #2851 it fell through to an ungated
-        # verdict, so a 200px drift on it exited 0. Fail here, before any
-        # capture runs, rather than at the verdict lookup below (#2851 §4).
+        # scores no oracle at all, so this must fail here, before any capture
+        # runs, rather than let an ungated block silently pass at the verdict
+        # lookup below.
         if block not in CENTROID_GATED_BLOCKS | FOCUS_ASSERT_BLOCKS:
             raise SystemExit(
                 f"block '{block}' is in neither CENTROID_GATED_BLOCKS "
@@ -405,7 +402,7 @@ def main(argv: list[str] | None = None) -> int:
             # Not centroid-gated, so the focus oracle is this pass's only gate.
             # The up-front classification check guarantees `focus` is scored
             # here, so the lookup cannot miss; if it ever does, KeyError is the
-            # right loud failure (#2851 §4).
+            # right loud failure.
             verdict = {"OK": "FOCUS-OK", "BAD": "FOCUS-BAD",
                        "NONE": "NO-ASSERT"}[focus]
         results.append((label, verdict, dev_x, dev_y, len(frames), focus))

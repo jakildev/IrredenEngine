@@ -1,12 +1,4 @@
 {
- "engine/render/include/irreden/render/rendering_rm.hpp": 1,
- "scripts/bootstrap_linux.sh": 1,
- "scripts/cull-verify.py": 1,
- "scripts/depth-tier-verify.py": 1,
- "scripts/dev/canvas-stress-rotate-jitter-sweep": 10,
- "scripts/dev/perf-grid-rotate-sweep": 6,
- "scripts/dev/shape-rotate-jitter-sweep": 7,
- "scripts/feeder-margin-verify.py": 1,
  "scripts/fleet/classify-auto-rereview.sh": 2,
  "scripts/fleet/fleet-assert-worktree": 1,
  "scripts/fleet/fleet-babysit": 3,
@@ -172,15 +164,5 @@
  "scripts/fleet/tests/test_worker_projection.py": 13,
  "scripts/fleet/tests/test_workflow_paths_sync.sh": 4,
  "scripts/fleet/tests/test_worktree_settings_hooks.sh": 2,
- "scripts/fleet/witness": 2,
- "scripts/light-verify.py": 4,
- "scripts/perf/compare_perf_runs.py": 2,
- "scripts/pivot-verify.py": 12,
- "scripts/render-verify.py": 4,
- "scripts/tests/run_all.sh": 2,
- "scripts/tests/test_feeder_margin_verify.py": 1,
- "scripts/tests/test_pivot_verify_gates.py": 3,
- "scripts/tests/test_render_shadow_metric.py": 2,
- "scripts/tests/test_render_verify.py": 7,
- "scripts/tests/test_run_all.py": 1
+ "scripts/fleet/witness": 2
 }

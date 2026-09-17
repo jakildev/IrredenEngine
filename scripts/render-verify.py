@@ -190,7 +190,7 @@ def _load_manifest(demo_dir: Path) -> dict[str, Any]:
 
 # Crop-exclusion (the reason a bare ``screenshot_*.png`` glob is wrong) lives in
 # verify_common.FULL_FRAME_RE / collect_full_frames — one definition for the
-# whole harness family (#2819). Crops are still compared here, but via the
+# whole harness family. Crops are still compared here, but via the
 # manifest-driven ``crops`` gate (see ``evaluate_shots``), which *constructs*
 # each crop filename from its full frame rather than globbing.
 
@@ -299,8 +299,8 @@ def _label_index(shot_labels: list[str]) -> dict[str, int]:
 #     (``max_hole_ratio`` -> ``--max-hole-ratio`` etc.)
 #   * emits a JSON object on stdout; exit 0 = within thresholds, 1 = a
 #     threshold was exceeded, 2 = I/O or format error.
-# render-shadow-metric.py (#1765) is the first implementer; T-3 adds
-# coverage / silhouette / clip metrics behind the same contract.
+# render-shadow-metric.py implements it; coverage / silhouette / clip metrics
+# sit behind the same contract.
 
 def _run_structural_metric(image: Path, entry: dict[str, Any],
                            shot_label: str) -> dict[str, Any]:
@@ -330,9 +330,9 @@ def _run_structural_metric(image: Path, entry: dict[str, Any],
             # `roi` was measured against a capture of size `roi_at` (e.g. a
             # macOS HiDPI 2x framebuffer); scale it proportionally to this
             # capture's actual size so the gate stays backend-agnostic across
-            # DPI scales (#3016 — a 1x windows-debug/linux-debug capture is
-            # half the pixel dimensions of the 2x macos-debug capture the ROI
-            # was originally calibrated against).
+            # DPI scales (a 1x windows-debug/linux-debug capture is half the
+            # pixel dimensions of the 2x macos-debug capture the ROI is
+            # calibrated against).
             actual_w, actual_h = verify_common.png_dimensions(image)
             ref_w, ref_h = roi_at
             rx, ry, rw, rh = roi
@@ -673,9 +673,9 @@ def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
     # Shots gated purely by structural metrics: still captured (for the
     # index→reference alignment) but no full-frame pixel-diff and no committed
     # reference PNG. This is how an analytic-oracle scene gates the zoom regime
-    # that pixel-diff excludes (epic #1766 T-4). Each must be a declared shot
-    # and must carry a structural gate, else it would be captured-but-ungated —
-    # the same two arms `_parse_extra_runs` applies to each extra pass.
+    # that pixel-diff excludes. Each must be a declared shot and must carry a
+    # structural gate, else it would be captured-but-ungated — the same two arms
+    # `_parse_extra_runs` applies to each extra pass.
     structural_only: set[str] = set(manifest.get("structural_only", []))
     _validate_structural_only(structural_only, shot_labels, structural_block)
     # Optional second/third capture passes with their own demo args + gated
@@ -730,9 +730,9 @@ def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
     # `--auto-screenshot` fires `closeWindow()` after the last shot and exits
     # 0; a non-zero return is a real early-exit crash (e.g. a Metal static-
     # destruction segfault landing AFTER the screenshots save, which the per-
-    # shot comparator would otherwise silently "pass" — T-336). `--timeout`
-    # also exits 0 on a clean kill, so a crash is the only non-zero path; we
-    # let it block a PASS verdict even when every shot compares clean.
+    # shot comparator would otherwise silently "pass"). `--timeout` also exits
+    # 0 on a clean kill, so a crash is the only non-zero path; we let it block a
+    # PASS verdict even when every shot compares clean.
     crashes: list[tuple[int, str]] = []
     crash_main = _run_capture(
         worktree=worktree, target=target, shots_dir=shots_dir,

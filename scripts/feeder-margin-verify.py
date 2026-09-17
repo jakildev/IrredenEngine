@@ -284,8 +284,8 @@ def _run_arm(
         "--subdivision-mode", subdivision_mode,
         "--wave-freeze",
         "--wave-amplitude", "5",
-        # Part of #3010's published recipe.  zoom4_pan is byte-identical either
-        # way, so this only keeps the numbers comparable with the issue.
+        # zoom4_pan is byte-identical with or without this flag; it is kept only
+        # to match the published recipe's numbers.
         "--occlusion-cull",
         "--feeder-classify-pad", str(pad),
         "--auto-screenshot", str(warmup),

@@ -37,7 +37,7 @@ ENTITY_RE = re.compile(r"Entity count:\s+(\d+)\s+\((\d+)\s+archetypes\)")
 CULL_AXIS_RE = re.compile(r"^AxisEntries\s+([\d.]+)\s+(\d+)\s+(\d+)")
 CULL_VISIBLE_RE = re.compile(r"^Visible\s+([\d.]+)\s+(\d+)\s+(\d+)")
 CULL_TOTAL_RE = re.compile(r"^Total\s+([\d.]+)\s+(\d+)\s+(\d+)")
-# The struct-1 shadow-feeder count (#2298). The report also prints a free-form
+# The struct-1 shadow-feeder count. The report also prints a free-form
 # "Feeder ratio: cross-run only …" note right after the Ratio: line; like every
 # other cull regex this one is ^-anchored to its own row token, so that note
 # (and the "Ratio:" one) fall through it.
@@ -107,7 +107,7 @@ class CullStats:
     max_total: int = 0
     samples: int = 0
     ratio: float = 0.0
-    # Feeder row (#2298). `has_feeder` distinguishes "row absent" (a report
+    # Feeder row. `has_feeder` distinguishes "row absent" (a report
     # predating the row) from a measured 0 (sun shadows off ⇒ the compact
     # classifies no feeders), so the table can print "—" for the former.
     avg_feeder: float = 0.0
@@ -303,7 +303,6 @@ def resolve_baseline(baseline_root: Path, head_manifest: Dict) -> Optional[Path]
         candidate = baseline_root / slug
         if (candidate / "manifest.json").exists():
             return candidate
-    # Legacy: pre-T-330 flat baseline at the root.
     if (baseline_root / "manifest.json").exists():
         return baseline_root
     return None

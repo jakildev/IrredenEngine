@@ -213,7 +213,7 @@ class TestHarnessConstants(unittest.TestCase):
 
     def test_no_rotated_shot_is_compared(self):
         # perf_grid's two yaw-0.35 shots are run-to-run non-deterministic on
-        # this demo, so an identity claim over them would be noise (#3010).
+        # this demo, so an identity claim over them would be noise.
         for label in ("zoom1_rot", "zoom4_rot", "zoom4_rot_pan"):
             self.assertNotIn(SHOT_LABELS.index(label), COMPARED_INDICES)
 
