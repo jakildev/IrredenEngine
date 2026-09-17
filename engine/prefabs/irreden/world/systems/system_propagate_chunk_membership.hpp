@@ -1,7 +1,7 @@
 #ifndef SYSTEM_PROPAGATE_CHUNK_MEMBERSHIP_H
 #define SYSTEM_PROPAGATE_CHUNK_MEMBERSHIP_H
 
-// PROPAGATE_CHUNK_MEMBERSHIP (T-359, Epic E E5) — UPDATE pipeline.
+// PROPAGATE_CHUNK_MEMBERSHIP — UPDATE pipeline.
 //
 // Detects when an entity's world position has crossed a chunk boundary,
 // updates its C_ChunkMembership, and migrates ownership through the
@@ -19,22 +19,22 @@
 // contract (chunk_residency.hpp `slot()`) requires migrations be
 // batched, not interleaved with per-entity reads.
 //
-// Rotated-entity interaction (Epic C C6 / #957): rotation acts on
+// Rotated-entity interaction: rotation acts on
 // entity-local space; chunk membership is decided by world-space root
 // position. A rotated entity whose AABB straddles two chunks remains a
 // single-chunk citizen for residency purposes — `worldToChunk` is fed
 // the root translation only, so the rotation does not perturb the
-// migration decision. Acceptance criterion (3).
+// migration decision.
 //
 // Wiring contract: a creation that opts into world streaming
 // constructs both an `IRWorld::ChunkResidencyManager` and the
 // `PROPAGATE_CHUNK_MEMBERSHIP` system, then injects the manager
 // pointer with `IRPrefab::Chunk::setMembershipMigrationManager` (or
 // directly via `getSystemParams<System<PROPAGATE_CHUNK_MEMBERSHIP>>`).
-// When the manager pointer is null — single-chunk creations or
-// unit tests — the system is a no-op and the per-entity tick still
-// updates `C_ChunkMembership` locally so consumers reading it stay
-// consistent.
+// When the manager pointer is null (no residency map, as in a
+// single-chunk creation) the migration step is a no-op and the
+// per-entity tick still updates `C_ChunkMembership` locally so
+// consumers reading it stay consistent.
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
@@ -63,7 +63,7 @@ template <> struct System<PROPAGATE_CHUNK_MEMBERSHIP> {
         IRPrefab::Chunk::ChunkKey newKey_;
     };
 
-    /// Creation-supplied; null in unit tests + single-chunk creations.
+    /// Creation-supplied; may be null (no residency map).
     /// The system's tick still rewrites `C_ChunkMembership` when the
     /// manager is null, so consumers reading membership stay consistent
     /// even without a residency map.

@@ -1,5 +1,5 @@
-// Test-local probe kernel for the #2102 per-fragment fog clip
-// (test/render/fog_cross_section_test.cpp, issue #2107).
+// Test-local probe kernel for the per-fragment fog clip
+// (test/render/fog_cross_section_test.cpp).
 //
 // It is a wrapper in exactly the shape of c_voxel_to_trixel_stage_1.glsl — same
 // include chain, same IR_VOXEL_FOG_GRID_BINDING slot — but instead of the stage
@@ -18,7 +18,7 @@
 // the full voxel-pool binding set, and every property tests A–E assert is a
 // property of these curves, not of the raster around them.
 //
-// The #2260 Z twins (fogColumnRevealZ / fogColumnRevealNearestZ) live in the
+// The Z twins (fogColumnRevealZ / fogColumnRevealNearestZ) live in the
 // stage body rather than the shared include, so they are out of reach here.
 // With all-zero visionCircleHeights — the default, and what the host uploads —
 // they are bit-identical to the z-free twins probed below.

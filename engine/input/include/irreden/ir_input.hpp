@@ -39,7 +39,7 @@ bool checkGamepadButton(GamepadButtons button, ButtonStatuses buttonStatus, int 
 /// Asserts if no gamepad was connected at engine startup.
 float getGamepadAxis(GamepadAxes axis, int irGamepadId = 0);
 
-/// @name Synthetic input (headless GUI/mouse verification harness, #1793)
+/// @name Synthetic input (headless GUI/mouse verification harness)
 /// Flip the active `InputManager` to consume injected events instead of GLFW
 /// for the rest of the run, so a headless run can move the cursor and press
 /// buttons. Inject calls assert if @ref beginSyntheticInput() was not called.

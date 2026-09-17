@@ -1,8 +1,8 @@
 // T3 / T4 composite verification vehicle — voxel-set-only Z-yaw demo.
 //
-// Purpose: validates the per-axis trixel→framebuffer depth composite (#1310 / T3)
-// and AO/lighting on the resolved composite (#1311 / T4) in isolation from SDF shapes.
-// See docs/design/per-axis-trixel-canvas-rotation.md and issue #1344 / epic #1307.
+// Purpose: validates the per-axis trixel→framebuffer depth composite
+// and AO/lighting on the resolved composite in isolation from SDF shapes.
+// See docs/design/per-axis-trixel-canvas-rotation.md.
 //
 // The scene wires the full voxel lighting stack (occlusion grid → AO → sun
 // shadow → colored light volume → lighting composite) over a multi-level
@@ -90,7 +90,7 @@ constexpr IRVideo::RoiCrop kCropsStaircaseSeam[] = {
 // Shot table:
 //   - Cardinal shots FIRST: per-axis canvases (allocated at non-cardinal yaw) are
 //     never freed mid-sequence. The non-cardinal→cardinal deallocation path has a
-//     known crash in the current T2/T3 codebase (#1310 nit #2); the full four-
+//     known crash in the current T2/T3 codebase; the full four-
 //     cardinal rebracket check is covered by the --spin-yaw sweep instead.
 //   - --spin-yaw + --auto-screenshot: one full rotation sweep (takes priority).
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
@@ -250,13 +250,13 @@ void initSystems() {
             // propagate chain reads for point/emissive light LOS.
             IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
             IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
-            // Lighting stack on the resolved trixel composite (#1311 / T4):
+            // Lighting stack on the resolved trixel composite:
             // AO from screen-space neighbour occupancy, sun shadow from the
             // baked depth map, point/emissive light volume, then the artistic
             // composite that multiplies canvas color by (AO × shadow) and
             // adds the light-volume contribution.
             IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
-            // Per-axis voxel sun-shadow casting under continuous Z-yaw (#1435):
+            // Per-axis voxel sun-shadow casting under continuous Z-yaw:
             // resolves the three per-axis voxel canvases into a screen-space
             // depth the bake casts through its cardinal path.
             IRSystem::createSystem<IRSystem::RESOLVE_PER_AXIS_SCREEN_DEPTH>(),
@@ -433,7 +433,7 @@ void initEntities() {
     EntityId mainCanvas = IRRender::getActiveCanvasEntity();
     IREntity::setComponent(mainCanvas, C_TrixelCanvasRenderBehavior{});
 
-    // Lighting (#1311 / T4): attach the per-canvas lighting targets so the
+    // Lighting: attach the per-canvas lighting targets so the
     // AO / sun-shadow / light-volume / lighting-to-trixel systems' archetype
     // filters match the main canvas — without these the lighting stack
     // silently skips and the composite renders flat (unlit) color.

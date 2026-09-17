@@ -1,4 +1,4 @@
--- T-106 regression fixture: declares the same shapes the EVAL test
+-- Declares the same shapes the EVAL test
 -- (lua_component_register_test.cpp) exercises via inline `safe_script`
 -- strings, but as a real .lua schema processed by cmake/lua_codegen.
 -- The generated header (lua_component_codegen_fixtures.hpp) is included
@@ -38,7 +38,7 @@ IRComponent.register("CodegenScore", {
     value = 0,
 })
 
--- #1403: a Lua-defined enum consumed at codegen-capture time. CodegenDevice's
+-- A Lua-defined enum consumed at codegen-capture time. CodegenDevice's
 -- `kind` field defaults to CodegenDeviceType.SYNTH (0-based ordinal 1), so the
 -- codegen IREnum shim must build the enum table and resolve the member to its
 -- ordinal during the capture pass — and to the SAME ordinal the runtime
@@ -49,7 +49,7 @@ IRComponent.register("CodegenDevice", {
     kind = CodegenDeviceType.SYNTH,
 })
 
--- #1368: packed vec3 / ivec3 fields (G1a). The codegen tool has no vec3
+-- Packed vec3 / ivec3 fields. The codegen tool has no vec3
 -- usertype to infer from a short-form value, so packed fields use the
 -- explicit-tag form with an { x, y, z } (or positional { 1, 2, 3 }) default.
 -- They emit as real IRMath::vec3 / IRMath::ivec3 struct members. Fields sort

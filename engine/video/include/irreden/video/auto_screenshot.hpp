@@ -47,7 +47,7 @@ enum class CullAction {
 ///
 /// @c yawRadians_ writes the camera's continuous Z-yaw before each shot via
 /// @c IRPrefab::Camera::setYaw, letting a shot list cover rotation-variant
-/// regressions (#1261) without per-demo wiring. Default 0 keeps existing
+/// regressions without per-demo wiring. Default 0 keeps existing
 /// shot tables at the cardinal baseline.
 ///
 /// @c label_ is printed to the log around each capture and — when @c crops_
@@ -60,7 +60,7 @@ enum class CullAction {
 /// outlive the game loop, same lifetime contract as @c shots_.
 ///
 /// @c cullAction_ drives the shared cull-freeze state alongside the camera
-/// params (#1438). @c NONE leaves the freeze flag untouched, so existing shot
+/// params. @c NONE leaves the freeze flag untouched, so existing shot
 /// tables are unaffected. @c FREEZE pins the cull viewport at THIS shot's
 /// camera pose — the cycling system sets the flag while the camera sits here,
 /// and @c IRRender::updateCullViewport snapshots the viewport on the next
@@ -75,12 +75,12 @@ struct AutoScreenshotShot {
     const RoiCrop *crops_ = nullptr;
     int numCrops_ = 0;
     CullAction cullAction_ = CullAction::NONE;
-    // Explicit camera Z-yaw pivot focus (#1921): when @c hasPivotFocus_ is set,
+    // Explicit camera Z-yaw pivot focus: when @c hasPivotFocus_ is set,
     // the shot calls @c IRRender::setRotationPivotFocus(pivotFocusWorld_) before
     // it settles, so the focus world point stays pinned across the shot's yaw —
-    // a regression shot can prove tall / off-center content rotates in place.
+    // allowing tall or off-center content to rotate in place.
     // Default (@c false) clears the focus, keeping every existing shot table
-    // byte-identical to the pre-#1921 screen-center pivot.
+    // on the screen-center pivot.
     vec3 pivotFocusWorld_ = vec3(0.0f);
     bool hasPivotFocus_ = false;
 };
@@ -94,8 +94,8 @@ struct AutoScreenshotShot {
 /// passing the shot index. It lets a creation record render state that only the
 /// settled frame reflects — e.g. perf_grid's rotated-solidity harness samples
 /// which render path (single-canvas cardinal vs per-axis) actually drew the
-/// pose, so a "cardinal" row is unambiguous (#1882). State that engine/video
-/// cannot see is injected as a type-erased callback (same pattern as
+/// pose, so a "cardinal" row is unambiguous. State hidden from engine/video
+/// is injected as a type-erased callback (same pattern as
 /// @c GuiTestConfig::onAssertFrame_). @c nullptr keeps every existing caller
 /// byte-identical.
 struct AutoScreenshotConfig {
@@ -230,7 +230,7 @@ struct GuiTestShot {
 
 /// Declarative config for @c createGuiTestSystem.
 ///
-/// @c onAssertFrame_ is the Phase 3 (#1796) assertion hook. When set, the
+/// When @c onAssertFrame_ is set, the
 /// harness calls it once per frame while a shot is live (from the first frame
 /// after the camera is applied through the capture frame), passing the shot
 /// index and whether this is the capture frame. Assertion evaluation needs

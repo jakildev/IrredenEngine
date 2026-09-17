@@ -4,12 +4,12 @@
 /// `.vxs` v1 voxel-set asset format. Three coexisting persistence modes
 /// share one container:
 ///
-/// - **SHAPES** (T-168 / #665) — composition of SDF primitive instances;
+/// **SHAPES** — composition of SDF primitive instances;
 ///   rendered directly by `SHAPES_TO_TRIXEL` with no voxel pool allocation.
-/// - **DENSE** (T-167 / #664) — bounded 3D voxel grid with per-voxel
+/// **DENSE** — bounded 3D voxel grid with per-voxel
 ///   records, named layer membership bitmasks, per-frame position-offset
 ///   poses, and free-form metadata. Round-trips `C_Voxel`-shaped data.
-/// - **HYBRID** (T-668) — DENSE base plus SHAPES overrides.
+/// **HYBRID** — DENSE base plus SHAPES overrides.
 ///
 /// On-disk container layout (built on `chunk_header.hpp`):
 ///
@@ -42,10 +42,10 @@
 ///       float32 params[4]          // SDF parameter vector
 ///       uint32  packedRGBA         // `Color::toPackedRGBA()` packing
 ///       uint32  flags              // `IRMath::SDF::ShapeFlags` bit field
-///       uint8   boneId             // joint binding (T-146/T-169); 0 = none
+/// uint8 boneId // joint binding; 0 = none
 ///       float32 offset[3]          // local translation
 ///       float32 rotation[4]        // quaternion (x, y, z, w)
-///       uint8   csgOp              // `CsgOp` (see below)
+///       uint8   csgOp              // `CsgOp`
 ///
 /// `IRMath::SDF::ShapeType` values that resolve via name on load become
 /// the current-build numeric id; unknown names/ids surface as
@@ -73,7 +73,7 @@
 ///       uint8   pad0               // reserved (zero on write)
 ///       uint32  reserved           // reserved for future per-voxel fields
 ///
-/// VRLE chunk body — RLE-encoded per-voxel records (T-276 / B3):
+/// VRLE chunk body — RLE-encoded per-voxel records:
 ///
 /// Compresses runs of empty (alpha==0) voxel slots. Writers emit VRLE
 /// alongside VOXR so old loaders silently skip VRLE and use VOXR (Rule
@@ -450,7 +450,7 @@ Result<std::vector<MetaEntry>> readMetaChunk(std::span<const std::uint8_t> body)
 /// binary write skips the sidecar so a stale sidecar never outlives a
 /// missing binary.
 ///
-/// @deprecated SHAPES write path retired per Epic D D2 (#960). New `.vxs`
+/// @deprecated The SHAPES write path is retired. New `.vxs`
 /// assets must use `saveDenseVoxelSet`. `VoxelSetMode::SHAPES` remains
 /// legacy-readable; existing assets load via `loadShapeGroup` /
 /// `loadVoxelSet` without migration. See `docs/design/sdf-migration-plan.md`.
@@ -472,7 +472,7 @@ struct VoxelSetFile {
 ///
 /// Mode-aware: DENSE/HYBRID chunks present in a future save are
 /// surfaced through `mode_` but their record arrays are empty for v1
-/// (loaders for those modes land in T-167/T-668).
+/// Those modes remain readable through @ref loadVoxelSet.
 Result<VoxelSetFile> loadShapeGroup(const std::string &path);
 
 /// Save a DENSE-mode `.vxs` asset to @p path. Writes MODE=DENSE plus
@@ -532,7 +532,7 @@ struct VoxelSetAllFile {
 /// Rule #6 — sidecar regenerated from the binary on every save, never the
 /// source of truth). The sidecar is not emitted when the binary write fails.
 ///
-/// @deprecated HYBRID write path retired per Epic D D2 (#960). New `.vxs`
+/// @deprecated The HYBRID write path is retired. New `.vxs`
 /// assets must use `saveDenseVoxelSet`. `VoxelSetMode::HYBRID` remains
 /// legacy-readable; existing assets load via `loadVoxelSet` without
 /// migration. See `docs/design/sdf-migration-plan.md`.

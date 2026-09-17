@@ -7,17 +7,13 @@
 #include <tuple>
 #include <type_traits>
 
-/// SystemAccess derivation — Phase 1 of the multithreading epic (#226).
+/// Compile-time SystemAccess derivation.
 ///
 /// `deriveAccessFromSignature<TickFn, Components...>()` returns a
-/// constexpr descriptor of a system's component access set. T-222 will
-/// consume the descriptor at registration time to validate that
-/// PARALLEL_FOR systems don't write a component another concurrently-
-/// scheduled system reads; T-224 will compose the same descriptor
-/// across pipeline groups; T-225 will use the spawn/destroy flags to
-/// route the right deferred-mutation path.
-///
-/// **Unused in this phase.** Pure unit-test surface for now.
+/// constexpr descriptor of a system's component access set. Registration
+/// derives this descriptor, validates each system with
+/// `detail::validateConcurrencyForAccess`, and composes descriptors across
+/// pipeline groups with `findPipelineGroupConflict`.
 
 namespace IRSystem {
 
@@ -78,8 +74,7 @@ struct SystemAccess {
     /// covers tagged `AlsoReads<...>`/`AlsoWrites<...>` chains
     /// without growing the struct's static footprint past 256 bytes.
     /// `appendRead`/`appendWrite` silently drop entries beyond this
-    /// limit — intentional for Phase 1 simplicity (unreachable in
-    /// practice with the current 2–4 component cap).
+    /// limit (unreachable in practice with the current 2–4 component cap).
     static constexpr std::size_t kMaxAccess = 16;
 
     const void *reads_[kMaxAccess]{};
@@ -220,9 +215,8 @@ template <typename T> constexpr void applyComponent(SystemAccess &out) {
         applyExtraWrites(out, typename IsAlsoWrites<T>::Types{});
     } else if constexpr (std::is_const_v<T>) {
         // `const C_Foo` in the template pack → caller declares this
-        // component read-only. Until creations land the const opt-in
-        // (T-222 follow-up), most existing systems will land in the
-        // writes set — that's the conservative-correct default.
+        // component read-only. Non-const components land in the writes set,
+        // which is the conservative-correct default.
         appendRead(out, typeKey<std::remove_cv_t<T>>);
     } else {
         appendWrite(out, typeKey<std::remove_cv_t<T>>);
@@ -240,7 +234,7 @@ template <typename T> using StripForConcept = std::remove_cvref_t<T>;
 // parameters; leaving them in front of `InvocableWithEntityId` /
 // `InvocableWithNodeVectors` makes the probe fail on every system that
 // mixes a real signature with tags, so `usesEntityId_` /
-// `isBatchForm_` stay false. T-328 sub-task D.
+// `isBatchForm_` stay false.
 //
 // `IRSystem::detail::TypeList` is already defined in ir_system_types.hpp
 // (used by the Exclude<...> partitioner); we reuse it here.
@@ -321,7 +315,7 @@ constexpr SystemAccess deriveAccessFromSignature() {
 }
 
 // ----------------------------------------------------------------------
-// Cross-system pipeline-group conflict check (T-224)
+// Cross-system pipeline-group conflict check
 // ----------------------------------------------------------------------
 
 /// One conflict surfaced between two systems in the same pipeline
@@ -334,8 +328,8 @@ constexpr SystemAccess deriveAccessFromSignature() {
 /// write/read, and read/write cases (`nullptr` for the kind-only
 /// `MAIN_THREAD_IN_GROUP` case).
 ///
-/// `TWO_SPAWNERS` is retained for ABI/header stability — T-225 lifted
-/// the rule that produced it, so `findPipelineGroupConflict` never
+/// `TWO_SPAWNERS` is retained for ABI/header stability. Deferred mutation
+/// staging makes the combination safe, so `findPipelineGroupConflict` never
 /// returns this kind anymore. Removing the enum value would break
 /// existing exhaustive switches in downstream code; leave it.
 enum class GroupConflictKind {
@@ -345,8 +339,7 @@ enum class GroupConflictKind {
     WRITE_READ, // A writes, B reads
     READ_WRITE, // A reads, B writes
     TWO_SPAWNERS,
-    /// T-225 lifted the single-mutator-with-sibling rule — per-worker
-    /// deferred-mutation buffers make any mutator safe in a parallel
+    /// Per-worker deferred-mutation buffers make any mutator safe in a parallel
     /// group. Retained for exhaustive-switch ABI stability (like
     /// `TWO_SPAWNERS`); `findPipelineGroupConflict` never returns it.
     MUTATOR_IN_PARALLEL_GROUP,
@@ -362,8 +355,7 @@ struct GroupConflict {
 /// Returns the first conflict between distinct accesses in
 /// `accesses[0..n)`. Returns `kind_ == NONE` when the group is clean.
 ///
-/// The validator is the canonical "Phase 3" cross-system check from
-/// the multithreading epic (#226 Layer 4). Scan order:
+/// Scan order:
 ///
 /// 1. `MAIN_THREAD_IN_GROUP` — checked first across all systems so
 ///    the diagnostic surfaces the strongest claim ("MAIN_THREAD never
@@ -374,9 +366,8 @@ struct GroupConflict {
 ///    callers can render the directional message without re-querying
 ///    the accesses.
 ///
-/// T-225 lifted both the pairwise `TWO_SPAWNERS` rule and the
-/// broader `MUTATOR_IN_PARALLEL_GROUP` rule. Per-worker
-/// deferred-mutation buffers route every `setComponentDeferred` /
+/// Per-worker deferred-mutation buffers make both `TWO_SPAWNERS` and
+/// `MUTATOR_IN_PARALLEL_GROUP` safe by routing every `setComponentDeferred` /
 /// `removeComponentDeferred` / `markEntityForDeletion` /
 /// `createEntity` call into a worker-private slot; the main thread
 /// drains every slot serially at the end of each group via
@@ -398,7 +389,7 @@ inline GroupConflict findPipelineGroupConflict(const SystemAccess *accesses, std
         for (std::size_t j = i + 1; j < n; ++j) {
             const SystemAccess &a = accesses[i];
             const SystemAccess &b = accesses[j];
-            // T-225: TWO_SPAWNERS and MUTATOR_IN_PARALLEL_GROUP are
+            // TWO_SPAWNERS and MUTATOR_IN_PARALLEL_GROUP are
             // no longer conflict conditions — per-worker deferred-
             // mutation buffers handle concurrent archetype-graph
             // mutation. Pairwise read/write conflicts below still apply.

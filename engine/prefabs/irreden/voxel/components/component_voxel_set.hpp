@@ -9,11 +9,10 @@
 #include <irreden/voxel/face_occupancy.hpp>
 #include <irreden/voxel/voxel_pool_api.hpp>
 
+#include <span>
 #include <vector>
 
 using namespace IRMath;
-// TODO: add primitives to voxel set, not just setting individual voxels...
-// UPDATE: see component_geometric_shape.hpp
 
 namespace IRComponents {
 
@@ -30,7 +29,7 @@ struct C_VoxelSetNew {
     // the pool mask carries the corresponding per-voxel GPU visibility.
     bool visible_ = true;
 
-    // How this set's geometry attaches to the entity's translation (#2563).
+    // How this set's geometry attaches to the entity's translation.
     // The offset it implies is BAKED into `positions_` at construction, so the
     // rasterize / render / cull / occupancy / picking paths all consume it
     // through those positions and need no anchor branch. It is stored anyway
@@ -42,24 +41,22 @@ struct C_VoxelSetNew {
     EntityAnchor anchor_ = EntityAnchor::CORNER;
 
     IREntity::EntityId canvasEntity_ = IREntity::kNullEntity;
-    // TODO: Evaulate if we should store here or somewhere else.
     IREntity::EntityId ownerEntityId_ = IREntity::kNullEntity;
 
     // Index into the canvas voxel pool's underlying arrays. Captured at
-    // allocation time so consumers never recompute it from a pointer-diff
-    // against a separately-cached @c C_VoxelPool* (a stale cached pool
-    // pointer made the diff resolve to a wild index).
+    // allocation time; a pointer-diff against a separately cached
+    // @c C_VoxelPool* goes wild once the pool storage moves.
     size_t voxelStartIdx_ = 0;
 
     // Number of this set's voxels currently carrying a non-zero per-trixel
-    // priority (#2155). Maintained by changeVoxelPriority / changeVoxelPriorityAll;
+    // priority. Maintained by changeVoxelPriority / changeVoxelPriorityAll;
     // each change also pushes its delta to the owning pool's aggregate
     // (IRPrefab::VoxelPool::adjustPerTrixelPriorityVoxelCount) so the pool can
     // report — once per frame, no per-voxel scan — whether the finalization shader
     // must decode the entity-id carrier. Released back to the pool in onDestroy().
     std::uint32_t perTrixelPriorityVoxelCount_ = 0;
 
-    // GPU transform-indirection slot for this set (#1396). `kVoxelTransformStatic`
+    // GPU transform-indirection slot for this set. `kVoxelTransformStatic`
     // (the default) keeps the set on the CPU-direct world-position path:
     // UPDATE_VOXEL_SET_CHILDREN folds the parent translation in and uploads
     // binding 5 directly. Any other value routes the set through the GPU
@@ -86,10 +83,10 @@ struct C_VoxelSetNew {
     // Headless / pre-canvas staging. Populated by the dense-data ctor
     // when no render canvas is active at construction time (tests,
     // asset-only tooling, prefab spawn before a canvas exists). When
-    // present, `numVoxels_` is 0 and the pool spans above are empty —
+    // present, `numVoxels_` is 0 and the pool spans are empty —
     // the canonical data lives here and `recordCount()` reflects it.
-    // A future canvas-attach pass moves these into the pool span,
-    // then clears the staging vector.
+    // `attachToCanvas` moves these into the pool span and clears the
+    // staging vector.
     std::vector<C_Voxel> pendingVoxels_;
 
     // Origin of `pendingVoxels_` data in voxel-grid space, i.e. the
@@ -99,7 +96,7 @@ struct C_VoxelSetNew {
     // meaningful when `pendingVoxels_` is non-empty.
     ivec3 pendingBoundsMin_ = ivec3(0);
 
-    // Authored-source snapshot for the GRID inverse re-voxelize (#1720) —
+    // Authored-source snapshot for the GRID inverse re-voxelize —
     // the CPU analog of the detached path's `C_DetachedRevoxelizeBuffer::
     // sourceGrid_`. While a GRID-mode set rotates, REBUILD_GRID_VOXELS
     // re-arranges the pool span per frame (slot i becomes "dest cell i", and
@@ -110,7 +107,7 @@ struct C_VoxelSetNew {
     // rotating frame, and cleared again on the next identity frame after the
     // system restores the span — so its non-emptiness IS the "span is in a
     // re-voxelized arrangement" state, with no separate flag to drift.
-    // The color mutators below mirror writes into it while it exists so a
+    // The color mutators mirror writes into it while it exists so a
     // mutation during a spin survives the per-frame re-derivation. Raw
     // `voxels_` span writes (the SDF-carve pattern) bypass the mirror — they
     // are only valid on a set that has not begun GRID rotation (carve at
@@ -119,9 +116,9 @@ struct C_VoxelSetNew {
     std::vector<C_Voxel> rotationSourceVoxels_;
 
     // `targetCanvas` selects which canvas's voxel pool this set allocates
-    // from. `kNullEntity` (the default) keeps the historical behavior —
-    // the currently-active canvas, normally "main". Pass a detached
-    // entity's per-entity canvas to render this set into that canvas.
+    // from. `kNullEntity` (the default) selects the currently-active canvas,
+    // normally "main". Pass a detached entity's per-entity canvas to render
+    // this set into that canvas.
     C_VoxelSetNew(
         ivec3 size,
         Color color,
@@ -164,13 +161,11 @@ struct C_VoxelSetNew {
                 globalPositions_.size(),
                 voxels_.size()
             );
-            // Release whatever the allocator handed back — `numVoxels_` is
-            // the min-span count, which on today's allocator either equals
-            // `requestedVoxels` (no mismatch, branch not taken) or is 0
-            // (out-of-voxels assert fall-through, no slots were reserved
-            // and this is a no-op). The dealloc is kept for symmetry with
-            // a hypothetical future allocator that returns partial spans.
-            // Zeroing `numVoxels_` then keeps `onDestroy()`'s guard correct.
+            // Release whatever the allocator handed back: `numVoxels_` is the
+            // min-span count, so a partial span is returned and an
+            // out-of-voxels fall-through (no slots reserved, `numVoxels_ == 0`)
+            // is a no-op. Zeroing `numVoxels_` keeps `onDestroy()`'s guard
+            // correct.
             IRPrefab::VoxelPool::deallocate(
                 voxelStartIdx_,
                 static_cast<size_t>(numVoxels_),
@@ -204,11 +199,10 @@ struct C_VoxelSetNew {
         IRE_LOG_DEBUG("Allocated {} voxel(s)", numVoxels_);
     }
 
-    // Back-compat sugar for the two legacy anchors. Kept as its own overload
-    // rather than a defaulted `EntityAnchor` parameter so the 78 in-tree
-    // `centerAroundOrigin` call sites keep compiling unchanged, and so
-    // `C_VoxelSetNew(size, color)` stays unambiguous — which is why the enum
-    // overload above deliberately does NOT default its anchor.
+    // `bool` spelling of the CORNER / CENTER anchors. A separate overload
+    // rather than a defaulted `EntityAnchor` parameter so
+    // `C_VoxelSetNew(size, color)` stays unambiguous — which is why the
+    // `EntityAnchor` overload deliberately does NOT default its anchor.
     C_VoxelSetNew(
         ivec3 size,
         Color color = IRColors::kGreen,
@@ -228,8 +222,8 @@ struct C_VoxelSetNew {
     C_VoxelSetNew(int width, int height, int depth, Color color)
         : C_VoxelSetNew(ivec3(width, height, depth), color) {}
 
-    // default constructor — headless-safe, zero pool interaction. Produces an
-    // empty placeholder set (numVoxels_ == 0, no canvas captured). It must NOT
+    // Headless-safe, zero pool interaction. Produces an empty placeholder set
+    // (numVoxels_ == 0, no canvas captured). It must NOT
     // allocate: the world-snapshot loader default-constructs a C_VoxelSetNew
     // inside `Result<C_VoxelSetNew>` while decoding (including the mutation-free
     // validate pass), so a pool-touching default ctor would both break the
@@ -239,15 +233,15 @@ struct C_VoxelSetNew {
         : numVoxels_{0}
         , size_{ivec3(0, 0, 0)} {}
 
-    // Tag selecting the zero-pool staged constructor below.
+    // Tag selecting the zero-pool staged constructor.
     struct StagedInit {};
 
     // Construct directly in staged mode with NO pool interaction. The load
     // path (`SaveSerialize<C_VoxelSetNew>::read`) uses this so deserialization
     // — including the loader's mutation-free validate pass
-    // (`world_snapshot.cpp` phase 2b, which dry-runs `read`) — never allocates
+    // (`world_snapshot.cpp` dry-runs `read`) — never allocates
     // a pool span. `attachToCanvas` moves the staged data into a live span once
-    // a render context exists (#2217, W-10). The GPU transform slot is not
+    // a render context exists. The GPU transform slot is not
     // persisted; a reloaded non-static set re-registers a fresh slot lazily.
     C_VoxelSetNew(
         StagedInit,
@@ -311,9 +305,6 @@ struct C_VoxelSetNew {
                                       : pendingVoxels_.size();
     }
 
-    // TODO: should a similar onCreate method be used for allocating
-    // voxels, just in case the constructor might be called in more than
-    // one place?
     void onDestroy() {
         // `numVoxels_ > 0` iff a pool allocation succeeded and was fully
         // populated. Both ctors' mismatch paths deallocate the reservation
@@ -321,7 +312,7 @@ struct C_VoxelSetNew {
         // never touches the pool — so this guard skips exactly the cases
         // that have nothing to release.
         if (numVoxels_ > 0) {
-            // Release this set's per-trixel-priority contribution (#2155) before
+            // Release this set's per-trixel-priority contribution before
             // the span goes back to the pool, so a canvas whose only priority
             // voxels lived in a destroyed set drops back to the fast path.
             if (perTrixelPriorityVoxelCount_ > 0) {
@@ -356,8 +347,8 @@ struct C_VoxelSetNew {
     }
 
     // Mirror one slot's record into the rotation-source snapshot, if it
-    // exists (see `rotationSourceVoxels_` — keeps mutations made during a
-    // GRID spin from being overwritten by the per-frame re-voxelize).
+    // exists, so a mutation made during a GRID spin survives the per-frame
+    // re-voxelize.
     void mirrorToRotationSource(int idx) {
         if (static_cast<std::size_t>(idx) < rotationSourceVoxels_.size()) {
             rotationSourceVoxels_[idx] = voxels_[idx];
@@ -395,7 +386,7 @@ struct C_VoxelSetNew {
         }
     }
 
-    // Per-trixel render priority (#1960). Sets the low 2 bits of the voxel's
+    // Per-trixel render priority. Sets the low 2 bits of the voxel's
     // `reserved_` carrier — 0 = default world tier, higher = renders in front of
     // lower tiers regardless of depth. Rides the per-frame Voxel-record (binding 6)
     // upload, so no active-mask change is needed; the stage-2 raster packs it into
@@ -479,16 +470,6 @@ struct C_VoxelSetNew {
         IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, sz);
     }
 
-    // take positions of all voxels in voxel object and form a new shape. This could
-    // mean moving the parent positions of the Entity to the new desired location OMG
-
-    // void reform(std::vector<EntityHandle>& voxelSetEntities) {
-    //     for(auto& voxel: voxelSetEntities) {
-
-    //     }
-    // }
-
-    // Be able to bind a function like this to a command!
     void reshape(Shape3D shape3D) {
         if (shape3D == Shape3D::RECTANGULAR_PRISM) {
             for (int x = 0; x < size_.x; x++) {
@@ -537,13 +518,13 @@ struct C_VoxelSetNew {
         IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, size_);
     }
 
-    // ---- Encapsulated raw-edit API (#2165) ------------------------------
-    // Supported entry points for custom carves/edits the bulk mutators above
+    // ---- Encapsulated raw-edit API ------------------------------
+    // Supported entry points for custom carves/edits the bulk mutators
     // don't cover. Each restores every derived invariant this set maintains
     // (rotation-source mirror -> pool active-mask -> face occupancy) once at
     // the end, so callers must NOT hand-roll syncActiveMask() /
     // recomputeFaceOccupancy() — dropping the recompute renders a carved set
-    // black under the lit/rotated path (the #2018/#2117/#2146 footgun).
+    // black under the lit/rotated path.
 
     // Apply `fn(index, voxel, localPos)` to every voxel, then resync once.
     // `localPos` is the voxel's local coordinate (`positions_[i].pos_`), so
@@ -571,9 +552,6 @@ struct C_VoxelSetNew {
         resyncDerivedState();
     }
 
-    // TODO each individual voxel should be treated like this
-    // and a set should only contain local positions...
-    //
     // Reads positions and offsets from the live pool vectors (by index) so
     // that between-frame canvas archetype migrations — which deep-copy
     // C_VoxelPool and free the old storage — cannot produce dangling reads.
@@ -584,9 +562,9 @@ struct C_VoxelSetNew {
     // Returns the number of positions actually written (safeCount), or 0 if
     // the pool-bounds guard fires (numVoxels_ exceeds available pool slots).
     // The caller gates visibility — call only when the set is within the
-    // shadow-feeder cull viewport (see system_update_voxel_set_children.hpp).
-    // Callers use the return value to queue exactly the written range for
-    // GPU upload; avoids queuing stale tail slots on bounds-guard overflow.
+    // shadow-feeder cull viewport — and queues exactly the returned range for
+    // GPU upload, so stale tail slots are never queued on a bounds-guard
+    // overflow.
     int updateAsChild(
         vec3 parentPosition,
         std::vector<IRRender::VoxelGpuPosition> &poolGlobalsOut,
@@ -611,30 +589,22 @@ struct C_VoxelSetNew {
         return safeCount;
     }
 
-    // TODO: get rid of all unneeded voxels
-    void freeInvisableVoxels(bool withAnimation = false) {
-        // Voxel pool will have to resort allocation and free
-        // a whole chunk at a time
-    }
+    void freeInvisableVoxels(bool withAnimation = false) {}
 
     // Re-derive the pool's per-slot active mask from this set's color
     // alphas while the set is visible. Hidden sets retain their authored
     // colors while their mask stays clear until their visibility owner shows
-    // them. Required after any caller mutates voxel alpha through the
-    // raw `voxels_` span (`voxels_[i].activate()`, `voxels_[i].deactivate()`,
-    // or `voxels_[i].color_ = ...` with a different alpha) without going
-    // through one of the mutator methods above. Bypassing the mutators is
-    // the common pattern for SDF-carved voxel shapes that allocate a
-    // dense box then deactivate exterior slots in a loop (see
-    // `creations/demos/shape_debug/main.cpp::createVoxelPoolShape`).
-    // Without this sync, the visibility-compact shader would emit
-    // deactivated slots (mask still set from the ctor) and stage 2
-    // would overwrite surface pixels with the transparent inactive
-    // ones at the same iso depth.
+    // them. Required after any raw `voxels_` alpha write
+    // (`voxels_[i].activate()`, `voxels_[i].deactivate()`, or
+    // `voxels_[i].color_ = ...` with a different alpha) that bypasses the
+    // mutator methods: without it the visibility-compact shader emits the
+    // deactivated slots (mask still set from the ctor) and stage 2 overwrites
+    // surface pixels with the transparent inactive ones at the same iso depth.
     //
-    // Prefer `editVoxels` / `carve` for new custom edits — they run this AND
-    // the face-occupancy recompute for you. This stays public as the
-    // low-level pool primitive (and for the pre-existing raw-loop sites).
+    // Prefer `editVoxels` / `carve` / `resyncAfterRawEdits` for custom edits
+    // — they run this AND the face-occupancy recompute together. This is the
+    // low-level pool primitive underneath them; a direct caller owns the
+    // matching `recomputeFaceOccupancy` call itself.
     void syncActiveMask() {
         if (numVoxels_ <= 0) {
             return;
@@ -651,30 +621,32 @@ struct C_VoxelSetNew {
         );
     }
 
-    // W-10 canvas-attach / post-load seed pass (#2217, epic #667). Moves a
+    // Canvas-attach / post-load seed pass. Moves a
     // *staged* set (headless-constructed, or freshly deserialized by
     // SaveSerialize<C_VoxelSetNew>) into a live pool span so it renders.
     // No-op unless the set is staged (`pendingVoxels_` non-empty and
     // `numVoxels_ == 0`) — that honest state, not a dirty flag, gates the
-    // one-shot: once seeded the set no longer matches, so a per-frame driver
-    // that calls this is self-terminating (see cpp-ecs.md "No dirty flags").
+    // one-shot: a seeded set fails the gate, so a per-frame driver that
+    // calls this is self-terminating.
     // Target canvas resolves in priority order: explicit @p canvas > the set's
     // saved `canvasEntity_` (an id-stable C_Persistent canvas survives
     // `resetGameplay`) > the active canvas. Queues the seeded range for GPU
     // position upload; colors + active-mask ride the unconditional per-frame
     // `subData`, and lighting/AO/shadow/fog textures re-derive from the
-    // re-seeded pool on the next render tick. Stays staged (returns without
-    // seeding) if no live pool can be resolved.
-    void attachToCanvas(IREntity::EntityId canvas = IREntity::kNullEntity) {
+    // re-seeded pool on the next render tick. Stays staged (returns false
+    // without seeding) if no live pool can be resolved; true means the set is
+    // now pool-resident, which is the driver's cue for the per-entity
+    // follow-up (`SEED_STAGED_VOXELS` re-stamps a rigged set's bone slots).
+    bool attachToCanvas(IREntity::EntityId canvas = IREntity::kNullEntity) {
         if (numVoxels_ > 0 || pendingVoxels_.empty()) {
-            return;
+            return false;
         }
         IREntity::EntityId target = canvas != IREntity::kNullEntity ? canvas : canvasEntity_;
         if (!IRPrefab::VoxelPool::hasPool(target)) {
             target = IRPrefab::VoxelPool::activeCanvasEntityOrNull();
         }
         if (!IRPrefab::VoxelPool::hasPool(target)) {
-            return; // no live pool to seed into — leave the set staged
+            return false; // no live pool to seed into — leave the set staged
         }
         // Move the staged records out and seed from the local copy, clearing
         // pendingVoxels_ up front so the "is this set staged" gate stays honest
@@ -692,19 +664,21 @@ struct C_VoxelSetNew {
         std::vector<C_Voxel> staged = std::move(pendingVoxels_);
         pendingVoxels_.clear();
         seedIntoPool(stagedOrigin(), staged, target);
-        if (numVoxels_ > 0) {
-            IRPrefab::VoxelPool::queuePositionRange(
-                voxelStartIdx_,
-                static_cast<std::size_t>(numVoxels_),
-                canvasEntity_
-            );
+        if (numVoxels_ <= 0) {
+            return false;
         }
+        IRPrefab::VoxelPool::queuePositionRange(
+            voxelStartIdx_,
+            static_cast<std::size_t>(numVoxels_),
+            canvasEntity_
+        );
+        return true;
     }
 
     // Local origin a staged set seeds at. CORNER keeps the authored integer
     // `pendingBoundsMin_`; any other anchor derives its origin from the mode,
     // because that origin is half-integer and `pendingBoundsMin_` is an
-    // `ivec3` that cannot carry it (#2563). Deriving is also strictly more
+    // `ivec3` that cannot carry it. Deriving is also strictly more
     // robust than trusting a recovered origin: the anchor fixes the local
     // layout by construction, so it survives a save taken while
     // REBUILD_GRID_VOXELS has the span in a re-voxelized arrangement.
@@ -713,7 +687,95 @@ struct C_VoxelSetNew {
                                                : anchorOffset(anchor_, size_);
     }
 
-    // int addVoxelSceneNode
+    // Local origin of voxel index (0,0,0), in the pool-independent form staged
+    // mode carries. A staged set keeps it verbatim in `pendingBoundsMin_`; a
+    // pool-resident set recovers it from its seeded local position — both
+    // seeding paths write `positions_[0] == origin` for a dense box, and
+    // REBUILD_GRID_VOXELS rewrites only pool *colors* during a spin, so
+    // `positions_[0]` stays the authored origin while rotating. Integer origins
+    // (every dense-authored / size-ctor set) recover exactly; a non-CORNER
+    // set's half-integer origin cannot survive an `ivec3`, which is why
+    // `stagedOrigin()` re-derives that case from `anchor_` instead of reading
+    // this back.
+    ivec3 localOriginMin() const {
+        if (!pendingVoxels_.empty() || numVoxels_ <= 0) {
+            return pendingBoundsMin_;
+        }
+        return IRMath::roundVec3HalfUp(positions_[0].pos_);
+    }
+
+    // The set's authored, pool-independent per-voxel records — dense-box-index
+    // ordered, `recordCount()` of them. Three sources in priority order: the
+    // staging vector when staged; `rotationSourceVoxels_` when a GRID spin has
+    // left the span in a re-voxelized arrangement (its non-emptiness IS that
+    // state), so the authored snapshot rather than the frame's resampled
+    // colors is what a save or a re-stage carries; otherwise the span. The
+    // span is the fallback when the two sizes diverge (a rare span-clamp)
+    // rather than risking a short read.
+    std::span<const C_Voxel> authoredRecords() const {
+        if (!pendingVoxels_.empty()) {
+            return std::span<const C_Voxel>{pendingVoxels_.data(), pendingVoxels_.size()};
+        }
+        const std::size_t count = numVoxels_ > 0 ? static_cast<std::size_t>(numVoxels_) : 0u;
+        if (rotationSourceVoxels_.size() == count) {
+            return std::span<const C_Voxel>{rotationSourceVoxels_.data(), count};
+        }
+        return std::span<const C_Voxel>{voxels_.data(), count};
+    }
+
+    // Self-side half of the canvas-teardown re-stage: fold the
+    // authored records and local origin back into `pendingVoxels_` /
+    // `pendingBoundsMin_` — exactly the staged state `attachToCanvas` seeds
+    // from — and forget the span and the canvas. The canvas that owns a set's
+    // pool destroys that pool with itself, so `canvasEntity_`, `voxelStartIdx_`
+    // and `numVoxels_` all stop meaning anything at once; re-staging rather
+    // than re-targeting is forced, not stylistic, because span indices are
+    // pool-relative and pointing them at a different pool would alias someone
+    // else's voxels.
+    //
+    // Touches only this set. It does NOT return the span to the pool — that is
+    // a reach into the canvas entity, which `engine/prefabs/CLAUDE.md`
+    // §"Component method rules" keeps out of component methods. Pair it with
+    // that release, in this order: capture the span descriptor, the priority
+    // count and the canvas id first (the call zeroes all of them), let the
+    // set recover its records while the pool storage they alias is still
+    // live, then drop the priority contribution and deallocate. A set
+    // detached without the pool release leaks its span.
+    //
+    // State derived from the span is dropped and re-derived by the next
+    // `seedIntoPool`: the per-trixel-priority count is recounted from the
+    // records (their tier bits travel with them), and the per-voxel transform
+    // indices are re-stamped from `gpuTransformSlot_`, which is the set's own
+    // (the slot allocator is world-scoped, not pool-scoped) and so survives.
+    void detachToStaged() {
+        if (numVoxels_ > 0) {
+            // Recover the pool-independent form BEFORE the span views go away.
+            // `numVoxels_ > 0` implies `pendingVoxels_` is empty (`attachToCanvas`
+            // moves the staging vector out before seeding, and both ctors'
+            // mismatch paths zero `numVoxels_`), so `authored` never aliases the
+            // destination.
+            const std::span<const C_Voxel> authored = authoredRecords();
+            pendingBoundsMin_ = localOriginMin();
+            pendingVoxels_.assign(authored.begin(), authored.end());
+        }
+        numVoxels_ = 0;
+        voxelStartIdx_ = 0;
+        perTrixelPriorityVoxelCount_ = 0;
+        positions_ = {};
+        positionOffsets_ = {};
+        globalPositions_ = {};
+        voxels_ = {};
+        // With the span gone, "the span is in a re-voxelized arrangement" stops
+        // being a state this set can be in; the authored records it held are
+        // already in `pendingVoxels_`.
+        rotationSourceVoxels_.clear();
+        rotationSourceVoxels_.shrink_to_fit();
+        // A staged or empty set still had no span to release, but a saved
+        // `canvasEntity_` naming a dying canvas is a dangling id either way.
+        // Dropping it makes `attachToCanvas` resolve against the active canvas
+        // rather than probing a destroyed entity.
+        canvasEntity_ = IREntity::kNullEntity;
+    }
 
   private:
     // Allocate a pool span on @p canvas and seed it from the dense box @p src
@@ -721,13 +783,12 @@ struct C_VoxelSetNew {
     // `origin + index`. @p origin is a `vec3`, not the authored `ivec3`
     // boundsMin, because a non-CORNER anchor's local origin is half-integer
     // (always so for GROUND, and on even axes for CENTER) — an integer origin
-    // cannot express it (#2563). Captures the four pool spans, resyncs the pool
+    // cannot express it. Captures the four pool spans, resyncs the pool
     // active-mask from per-voxel alpha, and recomputes face occupancy — leaving
     // the set pool-resident (`numVoxels_ > 0`), or empty (`numVoxels_ == 0`) on
-    // an allocation mismatch. `size_` must already be set and
-    // `src.size() == product(size_)`. Shared by the dense-data ctor and the
-    // post-load `attachToCanvas` seed pass (#2217, W-10) so the allocate +
-    // seed + resync sequence lives in exactly one place.
+    // an allocation mismatch. `size_` must already be set,
+    // `src.size() == product(size_)`, and `perTrixelPriorityVoxelCount_` is
+    // zero (a span-less set contributes no priority count).
     void seedIntoPool(vec3 origin, std::span<const C_Voxel> src, IREntity::EntityId canvas) {
         canvasEntity_ = canvas;
         const ivec3 extent = size_;
@@ -753,11 +814,11 @@ struct C_VoxelSetNew {
                 positions_.size(),
                 voxels_.size()
             );
-            // Release whatever the allocator handed back — `numVoxels_` is the
-            // min-span count, which on today's allocator either equals
-            // `requestedVoxels` (no mismatch, branch not taken) or is 0
-            // (out-of-voxels assert fall-through, no slots reserved — a no-op).
-            // Zeroing `numVoxels_` keeps `onDestroy()`'s guard correct.
+            // Release whatever the allocator handed back: `numVoxels_` is the
+            // min-span count, so a partial span is returned and an
+            // out-of-voxels fall-through (no slots reserved, `numVoxels_ == 0`)
+            // is a no-op. Zeroing `numVoxels_` keeps `onDestroy()`'s guard
+            // correct.
             IRPrefab::VoxelPool::deallocate(
                 voxelStartIdx_,
                 static_cast<size_t>(numVoxels_),
@@ -769,6 +830,7 @@ struct C_VoxelSetNew {
         }
 
         const vec3 originOffset{origin};
+        std::uint32_t priorityVoxels = 0;
         for (int x = 0; x < extent.x; ++x) {
             for (int y = 0; y < extent.y; ++y) {
                 for (int z = 0; z < extent.z; ++z) {
@@ -776,6 +838,8 @@ struct C_VoxelSetNew {
                     positions_[idx] =
                         IRRender::VoxelGpuPosition{vec3(x, y, z) + originOffset, 0.0f};
                     voxels_[idx] = src[idx];
+                    priorityVoxels +=
+                        (src[idx].reserved_ & VoxelReserved::kPriorityMask) != 0u ? 1u : 0u;
                 }
             }
         }
@@ -786,13 +850,35 @@ struct C_VoxelSetNew {
             IRPrefab::VoxelPool::resyncRangeFromColors(voxelStartIdx_, numVoxels_, canvasEntity_);
         }
         IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, extent);
+        // The records carry their priority tiers, so the per-set count and the
+        // pool aggregate that gates the finalization decode are derived from
+        // them rather than assumed zero — a set seeded from staged records
+        // (post-load, or re-homed after a canvas teardown) keeps the tiers it
+        // was authored with. Counts every slot regardless of alpha, like
+        // `changeVoxelPriorityAll`: an over-count only costs the fast path.
+        perTrixelPriorityVoxelCount_ = priorityVoxels;
+        IRPrefab::VoxelPool::adjustPerTrixelPriorityVoxelCount(
+            static_cast<int>(priorityVoxels),
+            canvasEntity_
+        );
+        // A set routed through the GPU transform prepass keeps its slot across
+        // a re-stage, but the per-voxel indices live in the pool, so the fresh
+        // span must be pointed back at it. A skinned set lands on rigid follow;
+        // its bone stamps come back through
+        // `IRPrefab::JointTransform::seedVoxelBoneSlots`, which the seed pass
+        // runs for every set it lands.
+        if (gpuTransformSlot_ != IRRender::kVoxelTransformStatic) {
+            IRPrefab::VoxelPool::setTransformIndexForRange(
+                voxelStartIdx_,
+                static_cast<std::size_t>(numVoxels_),
+                gpuTransformSlot_,
+                canvasEntity_
+            );
+        }
     }
 
-    // Single home for the resync order the bulk mutators run inline after a
-    // raw `voxels_` edit: per-voxel rotation-source mirror -> pool
-    // active-mask -> face occupancy. All three encapsulated entry points
-    // (`editVoxels`, `carve`, `resyncAfterRawEdits`) route through here so the
-    // invariant ordering lives in exactly one spot.
+    // The resync order after a raw `voxels_` edit: per-voxel rotation-source
+    // mirror -> pool active-mask -> face occupancy.
     void resyncDerivedState() {
         for (int i = 0; i < numVoxels_; ++i) {
             mirrorToRotationSource(i);

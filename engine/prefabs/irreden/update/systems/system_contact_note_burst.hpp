@@ -33,10 +33,9 @@ template <> struct System<CONTACT_NOTE_BURST> {
                     return;
                 }
 
-                // Burst origin is the body's center in WORLD space. The old
-                // `size * 0.5` spelling both hard-coded the CORNER anchor and
-                // sat a half cell past the true center of the occupied cells
-                // (`(size - 1) * 0.5`); `anchorLocalCenter` fixes both (#2563).
+                // Burst origin is the body's center in WORLD space, honoring
+                // the voxel set's anchor via `anchorLocalCenter` rather than
+                // assuming the CORNER anchor.
                 const vec3 blockCenter =
                     worldXform.translation_ + anchorLocalCenter(voxelSet.anchor_, voxelSet.size_);
                 const vec3 halfSize = vec3(voxelSet.size_) * 0.5f;

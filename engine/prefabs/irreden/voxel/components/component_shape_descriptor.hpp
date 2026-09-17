@@ -27,10 +27,10 @@ namespace IRComponents {
 // skip, pre-GPU staging — see lod_utils.hpp::shouldSkipAtLod).
 //
 // The defaults (lodMin_ = LOD_4, lodMax_ = LOD_0) span the whole range, so an
-// unmarked shape is always visible — byte-identical to the pre-band filter.
+// unmarked shape is always visible.
 // Confining a shape to a sub-band makes it a LOD variant: a set of co-located
 // variants with disjoint bands renders exclusively (exactly one per zoom,
-// swapping rather than stacking — the #1467 fix). Keep the coarsest variant at
+// swapping rather than stacking). Keep the coarsest variant at
 // lodMin_ = LOD_4 (persists at min zoom) and the finest at lodMax_ = LOD_0
 // (persists past its threshold). See docs/design/lod-strategy.md.
 struct C_ShapeDescriptor {

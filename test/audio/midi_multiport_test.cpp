@@ -4,7 +4,7 @@
 #include <irreden/audio/ir_audio_types.hpp>
 
 // Routing tests for the per-frame inbound MIDI buffer that backs multi-port
-// input (#1727). MidiInputFrameBuffer carries no RtMidi/hardware dependency,
+// input. MidiInputFrameBuffer carries no RtMidi/hardware dependency,
 // so the merged-vs-per-port routing — the acceptance-critical "two input ports
 // open at once, each delivering with correct port identity" contract — is
 // verified deterministically without a MIDI device.

@@ -2,9 +2,9 @@
 #define IR_ASSET_KEY_VALUE_STORE_H
 
 /// `.irkv` v1 — a flat, named key/value persistence surface for high
-/// scores + settings (issue #1819). Built entirely on the shared
+/// scores + settings. Built entirely on the shared
 /// `BinaryWriter` / `BinaryReader` + chunk-table primitives in this module
-/// — NOT the ECS world snapshot (#199 / epic #667), which walks the
+/// NOT the ECS world snapshot, which walks the
 /// archetype graph and lives in `engine/world/`. A store is a flat map of
 /// string keys to typed scalar / list values; gameplay reaches it from Lua
 /// via the `IRSave` table (`engine/script/.../lua_persistence_bindings.hpp`).

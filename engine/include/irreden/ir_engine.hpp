@@ -56,7 +56,7 @@ void applyPreInitLuaConfig(const char *configFile);
 
 // Warns when --auto-screenshot was provided but no creation registered a
 // capture system, so the run would otherwise render indefinitely with no
-// diagnostic (#2941). Out-of-line in engine.cpp for the same reason as
+// diagnostic. Out-of-line in engine.cpp for the same reason as
 // applyPreInitLuaConfig: the check reads IRVideo::isAutoCaptureActive(),
 // and inlining it would put ir_video.hpp in this header's include graph —
 // widening every includer of ir_engine.hpp to buy one log line.
@@ -115,7 +115,7 @@ inline int entityCountOverride() {
 
 // Destroys the World when the loop exits, so every manager destructor runs
 // while main() is still on the stack and the window/graphics driver are alive.
-// Leaving it to process-exit static destruction is the #2031 hazard: a
+// Leaving it to process-exit static destruction is the hazard: a
 // `glDelete*` from a member or observer dtor reaches an already-unloaded
 // driver. Managers destruct in reverse member-declaration order either way.
 //
@@ -126,8 +126,8 @@ inline int entityCountOverride() {
 // redundant: the registry is a singleton component, so its
 // sol::protected_functions ride an archetype column that World::end()'s
 // destroyAllEntities() drops during gameLoop(), and World declares m_lua
-// before the manager block (T-100 / #2446) so column teardown always unrefs
-// against a live lua_State (#2572, #2582).
+// before the manager block so column teardown always unrefs
+// against a live lua_State.
 inline void gameLoop() {
     detail::warnIfAutoScreenshotNeverArmed();
     getWorld().gameLoop();

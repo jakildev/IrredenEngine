@@ -1,4 +1,4 @@
--- audio_playback demo (engine #1813) — drives the IRAudio file-playback
+-- audio_playback demo — drives the IRAudio file-playback
 -- substrate end-to-end from Lua. File paths resolve from the exe runtime dir
 -- (the engine chdir's there at init), so the demo's data/audio/*.wav assets
 -- live at "data/audio/...".

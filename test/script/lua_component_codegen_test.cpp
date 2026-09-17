@@ -1,4 +1,4 @@
-// T-106 regression coverage: the codegen path mirrors the EVAL path's
+// The codegen path mirrors the EVAL path's
 // shape on the cases that map cleanly between them — defaults, type
 // inference, ECS round-trip, archetype move, removal. Cases that
 // concern features unique to EVAL mode (IComponentDataLuaTyped's
@@ -21,7 +21,7 @@
 // Path is added to the include search list by irreden_lua_codegen().
 #include "lua_component_codegen_fixtures.hpp"
 
-// #3091: the sibling TU that includes the generated header independently of
+// The sibling TU that includes the generated header independently of
 // this one. Declares only plain types, so it does not re-share the include.
 #include "lua_component_codegen_second_tu.hpp"
 
@@ -98,7 +98,7 @@ TEST_F(LuaComponentCodegenTest, ExplicitTypeFormForcesFloatOverIntegerDefault) {
     EXPECT_FLOAT_EQ(f.current_, 100.0f);
 }
 
-// ---- #1368: packed vec3 / ivec3 field kinds --------------------------------
+// ---- Packed vec3 / ivec3 field kinds ----------------------------------
 
 TEST_F(LuaComponentCodegenTest, Vec3AndIvec3FieldsEmitPackedMembers) {
     static_assert(
@@ -211,7 +211,7 @@ TEST_F(LuaComponentCodegenTest, LuaFieldAccessorReturnsValue) {
     EXPECT_EQ(max, 11);
 }
 
-// ---- #2446: Lua attach path for codegen'd components -----------------------
+// ---- Lua attach path for codegen'd components -------------------------
 
 TEST_F(LuaComponentCodegenTest, AddLuaComponentAttachesCodegenComponentWithOverrides) {
     auto &lua = m_lua.lua();
@@ -380,7 +380,7 @@ TEST_F(LuaComponentCodegenTest, RemoveLuaComponentDetachesCodegenComponent) {
 
 // ---- Schema-error coverage (subprocess invocation) -------------------------
 
-// #1403: CodegenDevice.kind defaults to CodegenDeviceType.SYNTH (0-based
+// CodegenDevice.kind defaults to CodegenDeviceType.SYNTH (0-based
 // ordinal 1). Proves the codegen IREnum shim built the enum table and
 // resolved the member during the capture pass, and that codegen and EVAL
 // assign identical ordinals (both go through detail::buildLuaEnumTable).
@@ -390,7 +390,7 @@ TEST_F(LuaComponentCodegenTest, EnumMemberResolvesAsFieldDefaultDuringCodegen) {
     EXPECT_EQ(d.kind_, 1);
 }
 
-// ---- #3091: the generated header is includable from more than one TU -------
+// ---- Generated header is includable from more than one TU -------------
 
 // The link itself is the primary assertion — `lua_component_codegen_second_tu.cpp`
 // includes the same generated header this file does, which only links because
@@ -471,9 +471,7 @@ TEST(LuaComponentCodegenTwoTu, ClaimDefinitionsAreEmittedIntoTheCompanionCpp) {
 // Runs the codegen binary on a fixture that uses the explicit
 // `{ type = 'int32', default = <out-of-range> }` form and verifies the tool
 // errors out with a clear diagnostic instead of silently truncating. The
-// short-form path's matching guard is exercised implicitly by the rest of
-// this suite — the explicit-form path is the regression surface here
-// (PR #596 review).
+// short-form path's matching guard is exercised by the rest of this suite.
 TEST(LuaComponentCodegenSchemaError, ExplicitInt32OverflowRaisesError) {
     const std::filesystem::path outPath =
         std::filesystem::temp_directory_path() / "ir_lua_codegen_overflow.hpp";
@@ -499,7 +497,7 @@ TEST(LuaComponentCodegenSchemaError, ExplicitInt32OverflowRaisesError) {
         << "codegen tool should not write output on schema error";
 }
 
-// #1403: the codegen IREnum shim validates member lists at build time. A
+// The codegen IREnum shim validates member lists at build time. A
 // non-string member must abort the tool with the same diagnostic the EVAL
 // path raises (shared detail::buildLuaEnumTable), and no header is written.
 TEST(LuaEnumCodegenSchemaError, NonStringMemberRaisesError) {

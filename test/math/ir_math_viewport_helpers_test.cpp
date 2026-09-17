@@ -514,7 +514,7 @@ TEST(IsoAABBUnderYawTest, ContainsInteriorPointProjection) {
 // The CAMERA_CENTER rotation-pivot offset: pins a world focus F at a constant
 // on-screen position across the yaw sweep, so the scene rotates in place about
 // F. Invariant: screen(F) = pos3DtoPos2DIsoYawed(F, yaw) + offset is
-// yaw-independent and equals cameraIso + pos3DtoPos2DIso(F). (#1926)
+// yaw-independent and equals cameraIso + pos3DtoPos2DIso(F).
 // ---------------------------------------------------------------------------
 
 TEST(CameraYawPivotOffsetTest, PinsFocusAtConstantScreenPositionAcrossYaw) {

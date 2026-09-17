@@ -1,13 +1,13 @@
-// T-107: DSL parser + C++ emitter for Lua system bodies in CODEGEN mode.
+// DSL parser + C++ emitter for Lua system bodies in CODEGEN mode.
 //
-// The codegen tool runs the creation's `.lua` files via sol2 (T-106). When
+// The codegen tool runs the creation's `.lua` files via sol2. When
 // `IRSystem.registerSystem({...})` is called, the shim captures the
 // system metadata (name, components, excludes) and the source location of
 // the `tick = function(arch) ... end` block via the Lua debug API. This
 // header defines the AST + parser + emitter that turn the body source into
 // a `template <> struct System<NAME>`-shaped C++ specialisation.
 //
-// The DSL subset is intentionally narrow (#587 §"DSL subset"): canonical
+// The DSL subset is intentionally narrow: canonical
 // `for i = 0, arch.length - 1 do` loop, column ops on Lua-defined
 // components, math + comparisons + branches, locals, and a whitelisted
 // intrinsic registry. Anything else is a build-time error pointing at
@@ -39,7 +39,7 @@ struct ComponentField {
 struct ComponentSchema {
     std::string name_;                        // Lua name, e.g. "Hp"
     std::string sourceFile_;
-    std::vector<ComponentField> fields_;      // alphabetically sorted (T-106 invariant)
+    std::vector<ComponentField> fields_;      // alphabetically sorted
 };
 
 // ---- Tokens -----------------------------------------------------------------
@@ -154,8 +154,8 @@ struct Expr {
 
     // COMPONENT_NEW: Comp.new(a, b)
     //   componentName_ = "Comp"
-    //   args_ holds the constructor arguments (in alphabetical order — same
-    //   as T-106's constructor emission)
+    //   args_ holds the constructor arguments (in alphabetical order, matching
+    //   the generated component's constructor field order)
 
     std::string fieldNameLiteral_;
     std::vector<ExprPtr> args_;
@@ -250,7 +250,7 @@ enum class Concurrency { SERIAL = 0, PARALLEL_FOR = 1, MAIN_THREAD = 2 };
 struct SystemRecord {
     std::string name_;                       // e.g. "MoveByVelocity"
     SystemMode mode_ = SystemMode::CODEGEN;  // per-system mode override
-    Concurrency concurrency_ = Concurrency::SERIAL;  // T-223 opt-in
+    Concurrency concurrency_ = Concurrency::SERIAL;  // opt-in, default SERIAL
     std::vector<std::string> components_;    // include archetype, in declared order
     std::vector<std::string> excludes_;      // exclude archetype, in declared order
     std::string sourceFile_;                 // resolved file path
@@ -291,7 +291,7 @@ ParsedBody parseSystemBody(
 // rejects any column-op against a name not in this registry.
 //
 // `outRequiredIncludes` is appended (not cleared) with the engine headers any
-// whitelisted side-effecting binding in this body needs (#1616) — main.cpp
+// whitelisted side-effecting binding in this body needs — main.cpp
 // unions these across all systems and emits them in the generated header's
 // #include block.
 void emitSystem(
@@ -324,7 +324,7 @@ struct Intrinsic {
     const char *cppExpression_;     // "IRMath::sin" (called as cppExpression_(arg0, arg1, ...))
     int arity_;                     // -1 for variadic; v1 uses fixed arities only
 
-    // #1616: side-effecting (void-returning) engine bindings — the IRRender.*
+    // Side-effecting (void-returning) engine bindings — the IRRender.*
     // render-glue setters. Allowed ONLY in statement position (a bare call,
     // e.g. `IRRender.setSunIntensity(x)`) and rejected inside an expression.
     // The value-returning math.* / IRMath.* intrinsics keep isStatement_ ==
@@ -332,7 +332,7 @@ struct Intrinsic {
     // value-returning call is almost always a dropped assignment).
     bool isStatement_ = false;
 
-    // #1616: engine header that declares cppExpression_, so the generated
+    // Engine header that declares cppExpression_, so the generated
     // header can #include it when a body uses this binding. The emitter
     // collects the union of these across a codegen run. nullptr → declared by
     // an always-included core header (ir_math.hpp etc.).
