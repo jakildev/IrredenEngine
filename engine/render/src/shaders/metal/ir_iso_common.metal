@@ -1165,4 +1165,73 @@ inline float fogVisionCircleReveal(float2 worldXY, float4 circle, float aa) {
     return 1.0f - smoothstep(circle.z - a, circle.z + a, dist);
 }
 
+
+constant int kDetachedFaceMissDepth = 2147483647;
+
+struct DetachedFaceFootprint {
+    float2 origin;
+    float2 planeOrigin;
+    float2 uvOrigin;
+    float2 edgeU;
+    float2 edgeV;
+    float3 depth;
+    int2 lo;
+    int2 hi;
+};
+
+inline DetachedFaceFootprint detachedFaceFootprint(
+    float3 position, int faceId, int subdivisions, int microIndex,
+    float2x2 deformX, float2x2 deformY, float3 depthAxis, int2 frameOffset
+) {
+    const float2 basisX = deformY * float2(-1.0, -1.0);
+    const float2 basisY = deformX * float2(1.0, -1.0);
+    const float2 basisZ = deformX * float2(0.0, 2.0);
+    const int axis = faceId >> 1;
+    const int axisU = axis == 0 ? 1 : 0;
+    const int axisV = axis == 2 ? 1 : 2;
+    float3 source = position * float(subdivisions) - float3(0.5 * float(subdivisions));
+    source[axis] += float((faceId & 1) * subdivisions);
+    source[axisU] += float(microIndex / subdivisions);
+    source[axisV] += float(microIndex % subdivisions);
+    DetachedFaceFootprint face;
+    face.origin = float2(frameOffset) + float2(float(subdivisions)) +
+        source.x * basisX + source.y * basisY + source.z * basisZ;
+    face.edgeU = axisU == 0 ? basisX : basisY;
+    face.edgeV = axisV == 1 ? basisY : basisZ;
+    const float2 basisAxis = axis == 0 ? basisX : (axis == 1 ? basisY : basisZ);
+    face.planeOrigin = float2(frameOffset) + float2(float(subdivisions)) + source[axis] * basisAxis;
+    face.uvOrigin = float2(source[axisU], source[axisV]);
+    face.depth = float3(source[axis] * depthAxis[axis],
+                      depthAxis[axisU], depthAxis[axisV]);
+    face.lo = int2(floor(face.origin + min(face.edgeU, float2(0.0)) +
+                        min(face.edgeV, float2(0.0)))) - int2(1);
+    face.hi = int2(ceil(face.origin + max(face.edgeU, float2(0.0)) +
+                        max(face.edgeV, float2(0.0)))) + int2(1);
+    return face;
+}
+
+// Samples are centroids of the local triangles reconstructed by the fragment
+// gather. Half-open face coordinates give adjacent micro-faces one shared edge.
+inline int detachedFaceSampleDepth(DetachedFaceFootprint face, int2 pixel, int parity, int slot) {
+    const float determinant = face.edgeU.x * face.edgeV.y - face.edgeU.y * face.edgeV.x;
+    if (abs(determinant) < 1e-6) return kDetachedFaceMissDepth;
+    const bool odd = ((pixel.x + pixel.y + parity) & 1) != 0;
+    const float2 delta = float2(pixel) + float2(odd ? 1.0 / 3.0 : 2.0 / 3.0, 0.0) - face.planeOrigin;
+    const float2 uv = float2(delta.x * face.edgeV.y - delta.y * face.edgeV.x,
+                         face.edgeU.x * delta.y - face.edgeU.y * delta.x) / determinant;
+    if (any(uv < face.uvOrigin) || any(uv >= face.uvOrigin + float2(1.0)))
+        return kDetachedFaceMissDepth;
+    return encodeDepthWithFace(int(floor(face.depth.x + dot(uv, face.depth.yz) + 0.5)), slot);
+}
+
+
+inline float3 detachedFaceViewNormal(int faceId, float2x2 deformX, float2x2 deformY, float3 depthAxis) {
+    const int axis = faceId >> 1;
+    const float2 projected = axis == 0 ? deformY * float2(-1.0, -1.0) :
+        (axis == 1 ? deformX * float2(1.0, -1.0) : deformX * float2(0.0, 2.0));
+    const float depth = depthAxis[axis];
+    const float x = (2.0 * depth - projected.y - 3.0 * projected.x) / 6.0;
+    const float3 normal = float3(x, x + projected.x, (depth + projected.y) / 3.0);
+    return normalize(normal) * ((faceId & 1) == 0 ? -1.0 : 1.0);
+}
 #endif // IR_ISO_COMMON_METAL_INCLUDED

@@ -1,0 +1,155 @@
+[
+  {
+    "image": "capture-1286.png",
+    "shape": "octahedron",
+    "yaw": 0,
+    "missing": 0,
+    "extra": 0,
+    "expected": 276,
+    "observed": 276,
+    "alignment": [
+      0,
+      0
+    ],
+    "unexpected_normal_pixels": 0,
+    "clipped": false,
+    "footprint_mismatches": 0,
+    "pass": true
+  },
+  {
+    "image": "capture-1287.png",
+    "shape": "octahedron",
+    "yaw": 45,
+    "missing": 0,
+    "extra": 0,
+    "expected": 284,
+    "observed": 284,
+    "alignment": [
+      0,
+      0
+    ],
+    "unexpected_normal_pixels": 0,
+    "clipped": false,
+    "footprint_mismatches": 0,
+    "pass": true
+  },
+  {
+    "image": "capture-1288.png",
+    "shape": "octahedron",
+    "yaw": 90,
+    "missing": 0,
+    "extra": 0,
+    "expected": 276,
+    "observed": 276,
+    "alignment": [
+      0,
+      0
+    ],
+    "unexpected_normal_pixels": 0,
+    "clipped": false,
+    "footprint_mismatches": 0,
+    "pass": true
+  },
+  {
+    "image": "capture-1289.png",
+    "shape": "octahedron",
+    "yaw": 135,
+    "missing": 0,
+    "extra": 0,
+    "expected": 270,
+    "observed": 270,
+    "alignment": [
+      0,
+      0
+    ],
+    "unexpected_normal_pixels": 0,
+    "clipped": false,
+    "footprint_mismatches": 0,
+    "pass": true
+  },
+  {
+    "image": "capture-1290.png",
+    "shape": "octahedron",
+    "yaw": 180,
+    "missing": 0,
+    "extra": 0,
+    "expected": 276,
+    "observed": 276,
+    "alignment": [
+      0,
+      0
+    ],
+    "unexpected_normal_pixels": 0,
+    "clipped": false,
+    "footprint_mismatches": 0,
+    "pass": true
+  },
+  {
+    "image": "capture-1291.png",
+    "shape": "octahedron",
+    "yaw": 225,
+    "missing": 0,
+    "extra": 0,
+    "expected": 288,
+    "observed": 288,
+    "alignment": [
+      0,
+      0
+    ],
+    "unexpected_normal_pixels": 0,
+    "clipped": false,
+    "footprint_mismatches": 0,
+    "pass": true
+  },
+  {
+    "image": "capture-1292.png",
+    "shape": "octahedron",
+    "yaw": 270,
+    "missing": 0,
+    "extra": 0,
+    "expected": 276,
+    "observed": 276,
+    "alignment": [
+      0,
+      0
+    ],
+    "unexpected_normal_pixels": 0,
+    "clipped": false,
+    "footprint_mismatches": 0,
+    "pass": true
+  },
+  {
+    "image": "capture-1293.png",
+    "shape": "octahedron",
+    "yaw": 315,
+    "missing": 0,
+    "extra": 0,
+    "expected": 276,
+    "observed": 276,
+    "alignment": [
+      0,
+      0
+    ],
+    "unexpected_normal_pixels": 0,
+    "clipped": false,
+    "footprint_mismatches": 0,
+    "pass": true
+  },
+  {
+    "image": "capture-1294.png",
+    "shape": "octahedron",
+    "yaw": 360,
+    "missing": 0,
+    "extra": 0,
+    "expected": 276,
+    "observed": 276,
+    "alignment": [
+      0,
+      0
+    ],
+    "unexpected_normal_pixels": 0,
+    "clipped": false,
+    "footprint_mismatches": 0,
+    "pass": true
+  }
+]

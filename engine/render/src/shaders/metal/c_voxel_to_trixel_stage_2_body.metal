@@ -326,6 +326,32 @@ kernel void IR_STAGE2_KERNEL_NAME(
 
     // Per-slot 2x2 deformation matrix packed column-major: `.xy` = column 0,
     // `.zw` = column 1.
+    if (frameData.isDetachedCanvas > 0.5 && !reVoxelize) {
+        if (any(int2(localId) != faceOffset_2x3(slot, 0))) return;
+        const int density = frameData.voxelRenderOptions.x != 0 ? max(frameData.voxelRenderOptions.y, 1) : 1;
+        const DetachedFaceFootprint face = detachedFaceFootprint(
+            voxelPosition.xyz, faceId, density, zIdx,
+            float2x2(frameData.faceDeform[0].xy, frameData.faceDeform[0].zw),
+            float2x2(frameData.faceDeform[1].xy, frameData.faceDeform[1].zw),
+            frameData.voxelDepthAxis.xyz,
+            trixelFrameOffset(frameData.trixelCanvasOffsetZ1, frameData.frameCanvasOffset, frameData.voxelRenderOptions)
+        );
+        const int parity = (frameData.trixelCanvasOffsetZ1.x + frameData.trixelCanvasOffsetZ1.y) & 1;
+        for (int y = max(face.lo.y, 0); y <= min(face.hi.y, frameData.canvasSizePixels.y - 1); ++y) {
+            for (int x = max(face.lo.x, 0); x <= min(face.hi.x, frameData.canvasSizePixels.x - 1); ++x) {
+                const int2 pixel = int2(x, y);
+                const int depth = detachedFaceSampleDepth(face, pixel, parity, slot);
+                if (depth == kDetachedFaceMissDepth) continue;
+#if IR_STORE_WINNER_ELECTION
+                writeColorTapCardinalWinner(pixel, depth, voxelColor, packedEntityId, voxelIndex, canvasSize, distanceScratch, perAxisWinnerIds, triangleCanvasColors, triangleCanvasDistances, triangleCanvasEntityIds);
+#else
+                writeColorTap(pixel, depth, voxelColor, packedEntityId, canvasSize, distanceScratch, triangleCanvasColors, triangleCanvasDistances, triangleCanvasEntityIds);
+#endif
+            }
+        }
+        return;
+    }
+
     const float2x2 D = float2x2(
         frameData.faceDeform[slot].xy,
         frameData.faceDeform[slot].zw

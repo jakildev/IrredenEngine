@@ -106,6 +106,14 @@ kernel void c_lighting_to_trixel(
     const int faceId =
         voxelFrameData.visibleFaceIds[slot] ^ decodeFlipRoute(encoded, voxelFrameData.perAxisRoute);
     float3 worldNormal = faceOutwardNormal6(faceId);
+    if (detachedCanvas && voxelFrameData.visibleFaceIds.w == 0) {
+        worldNormal = rotateByQuat(detachedFaceViewNormal(
+            faceId,
+            float2x2(voxelFrameData.faceDeform[0].xy, voxelFrameData.faceDeform[0].zw),
+            float2x2(voxelFrameData.faceDeform[1].xy, voxelFrameData.faceDeform[1].zw),
+            voxelFrameData.voxelDepthAxis.xyz
+        ), frameData.detachedViewToWorld);
+    }
 
     // The private raster is camera-relative; lighting and cascade selection use world units.
     float3 worldReceivePos = float3(0.0f);

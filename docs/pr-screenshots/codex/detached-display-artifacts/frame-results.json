@@ -1,0 +1,155 @@
+[
+  {
+    "image": "capture-1276.png",
+    "shape": "frame",
+    "yaw": 0,
+    "missing": 0,
+    "extra": 0,
+    "expected": 960,
+    "observed": 960,
+    "alignment": [
+      0,
+      0
+    ],
+    "unexpected_normal_pixels": 0,
+    "clipped": false,
+    "footprint_mismatches": 0,
+    "pass": true
+  },
+  {
+    "image": "capture-1277.png",
+    "shape": "frame",
+    "yaw": 45,
+    "missing": 0,
+    "extra": 0,
+    "expected": 762,
+    "observed": 762,
+    "alignment": [
+      0,
+      0
+    ],
+    "unexpected_normal_pixels": 0,
+    "clipped": false,
+    "footprint_mismatches": 0,
+    "pass": true
+  },
+  {
+    "image": "capture-1278.png",
+    "shape": "frame",
+    "yaw": 90,
+    "missing": 0,
+    "extra": 0,
+    "expected": 612,
+    "observed": 612,
+    "alignment": [
+      0,
+      0
+    ],
+    "unexpected_normal_pixels": 0,
+    "clipped": false,
+    "footprint_mismatches": 0,
+    "pass": true
+  },
+  {
+    "image": "capture-1279.png",
+    "shape": "frame",
+    "yaw": 135,
+    "missing": 0,
+    "extra": 0,
+    "expected": 706,
+    "observed": 706,
+    "alignment": [
+      0,
+      0
+    ],
+    "unexpected_normal_pixels": 0,
+    "clipped": false,
+    "footprint_mismatches": 0,
+    "pass": true
+  },
+  {
+    "image": "capture-1280.png",
+    "shape": "frame",
+    "yaw": 180,
+    "missing": 0,
+    "extra": 0,
+    "expected": 612,
+    "observed": 612,
+    "alignment": [
+      0,
+      0
+    ],
+    "unexpected_normal_pixels": 0,
+    "clipped": false,
+    "footprint_mismatches": 0,
+    "pass": true
+  },
+  {
+    "image": "capture-1281.png",
+    "shape": "frame",
+    "yaw": 225,
+    "missing": 0,
+    "extra": 0,
+    "expected": 908,
+    "observed": 908,
+    "alignment": [
+      0,
+      0
+    ],
+    "unexpected_normal_pixels": 0,
+    "clipped": false,
+    "footprint_mismatches": 0,
+    "pass": true
+  },
+  {
+    "image": "capture-1282.png",
+    "shape": "frame",
+    "yaw": 270,
+    "missing": 0,
+    "extra": 0,
+    "expected": 612,
+    "observed": 612,
+    "alignment": [
+      0,
+      0
+    ],
+    "unexpected_normal_pixels": 0,
+    "clipped": false,
+    "footprint_mismatches": 0,
+    "pass": true
+  },
+  {
+    "image": "capture-1283.png",
+    "shape": "frame",
+    "yaw": 315,
+    "missing": 0,
+    "extra": 0,
+    "expected": 676,
+    "observed": 676,
+    "alignment": [
+      0,
+      0
+    ],
+    "unexpected_normal_pixels": 0,
+    "clipped": false,
+    "footprint_mismatches": 0,
+    "pass": true
+  },
+  {
+    "image": "capture-1284.png",
+    "shape": "frame",
+    "yaw": 360,
+    "missing": 0,
+    "extra": 0,
+    "expected": 960,
+    "observed": 960,
+    "alignment": [
+      0,
+      0
+    ],
+    "unexpected_normal_pixels": 0,
+    "clipped": false,
+    "footprint_mismatches": 0,
+    "pass": true
+  }
+]

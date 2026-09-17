@@ -14,9 +14,9 @@ display teeth are removed; those are separate correctness checks.
 ## Producer and consumer contract
 
 `C_TriangleCanvasTextures::sampleLayout_` defaults to `LOCAL_TRIANGLES`. The
-request is interpreted only by the detached revoxelized voxel producer; main
-world, SDF and text retain their existing storage conventions. A revoxelized
-private canvas must not mix SDF/text writes into its local-triangle storage.
+request is interpreted by both detached voxel producers; main world, SDF and
+text retain their existing storage conventions. A detached voxel canvas must
+not mix SDF/text writes into its local-triangle storage.
 The resampling marker stays nonzero so back-face exclusion remains active,
 but normal display disables face dilation. Rectangular sampling and its legacy
 dilation are a debug override, not an alternate presentation mode.
@@ -124,7 +124,7 @@ checks and nine detached-origin guard tests pass (15 tests total).
 
 Effective layout and density reset before an empty voxel-pool return. The
 diagnostic `--debug-raw-trixels` override is applied once after scene creation
-to all demo canvases; only the revoxelized producer interprets that request.
+to all demo canvases; both detached voxel producers interpret that request.
 Inherited comment/instruction lint failures were corrected without changing
 executable tokens in those cleanup files or raising budgets.
 
@@ -133,3 +133,29 @@ The explicit `--debug-raw-trixels` negative control at 45 degrees is capture
 4.0/2.0/2.0), while default capture 593 passes. Both use the same single-voxel
 scene and normals overlay, without shadows or AO. The debug capture uses
 `--sweep-yaw 0.78539816 0.78539816 1` with the otherwise identical recipe.
+
+## Projected source faces (`DETACHED`)
+
+Plain `DETACHED` retains authored occupancy and exposed-face masks. It projects
+complete micro-face quads using the full model-to-view rotation, samples coverage
+at local triangle centroids, and publishes `LOCAL_TRIANGLES` to the compositor.
+It does not move cells or rebuild occupancy. Source face normals use the same
+rotation; the revoxelized mode continues to shade its resampled staircase faces.
+Raw rectangular presentation remains a diagnostic override.
+
+Stage 1, equal-depth winner election and stage 2 share the projected footprint
+and sample-depth helpers. Coplanar micro-faces evaluate one shared plane origin,
+so independent tile rounding cannot leave a crack between them. Projected depth
+is interpolated before quantization; equal keys elect one source voxel index.
+The single-canvas winner buffer is reused across private canvases. The plain path
+adds an election dispatch, but no per-voxel CPU work or geometry buffers.
+
+A rotation-invariant enclosing-sphere bound caps private density to texture
+capacity, including the triangular footprint margin. The composite compensates
+that density so zoom changes apparent size without clipping the canvas. This
+bound assumes the private pool is centered; it does not resize undersized
+canvases or provide sub-trixel analytic edge coverage. Raster edges remain
+quantized to the triangular display lattice. World sun casting/receiving and
+picking for plain `DETACHED` are still outside this producer/display correction.
+
+[Fixtures, parity controls and retained evidence](detached-projected-face-coverage.md).

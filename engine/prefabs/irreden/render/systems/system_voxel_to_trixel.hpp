@@ -288,20 +288,12 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // the mode-3 append and the overflow indirect draw (rotating frames only).
     ShaderProgram *overflowSortProgram_ = nullptr;
     ShaderProgram *stage2Program_ = nullptr;
-    // cardinal winner election: the IR_STORE_WINNER_ELECTION 1
-    // specializations of the shared stage-1/stage-2 bodies. Dispatched in the
-    // single-canvas block ONLY when the ticking pool's storeTiesPossible_ flag
-    // is set (displaced-voxel scenes); lattice pools keep exactly the default
-    // programs and dispatch count.
+    // Equal-depth elections serve displaced-cell pools and projected source-face
+    // canvases. Integer lattice pools retain the default two raster passes.
     ShaderProgram *stage1WinnerResolveProgram_ = nullptr;
     ShaderProgram *stage2WinnerProgram_ = nullptr;
-    // System-owned, grow-only winner buffer for the cardinal election —
-    // allocated lazily on the first flagged canvas (lattice scenes allocate
-    // nothing), sized canvasW × canvasH × 4 B for the largest flagged canvas
-    // seen, transiently bound at kBufferIndex_PerAxisResolveScratch around the
-    // election + stage-2 dispatches. NOT axes.winnerIds_: that buffer is
-    // tied to the rotation lifecycle, freed at cardinal yaw, and sized
-    // to the per-axis canvas, not this one.
+    // Shared across single-canvas elections; grows to the largest canvas pixel
+    // count. Per-axis winner storage has a separate rotation-dependent lifetime.
     std::pair<ResourceId, Buffer *> cardinalWinner_{0, nullptr};
     std::size_t cardinalWinnerBytes_ = 0;
     // The 4-byte placeholder created at init to keep binding 28 never-unbound;
@@ -1332,27 +1324,25 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             canvasLocalRotation
         );
 
-        // Re-voxelize zoom-clip cap. A re-voxelize detached canvas
-        // rasters its pool in model space into a fixed-size canvas, but effSub
-        // folds in camera zoom, so a zoom-scaled lattice overflows the canvas and
-        // on-screen faces clip to background. Clamp the density to what the canvas
-        // holds (the single-canvas analogue of the per-axis cap). Applied
-        // here — before the UBO upload + compact dispatch below — so the compact
-        // pass sizes the indirect Z count from the capped value too (no skip guard
-        // needed). Gated on re-voxelize so the main world canvas and the
-        // forward-scatter detached canvases stay byte-identical.
-        //
-        // A generously sized canvas can admit cubeSub > 1. The composite must
-        // divide cubeSub out of the quad scale and gather density; see
-        // docs/design/detached-canvas-density-compensation.md); it is NOT a
-        // raster-side zoom-track here (camera zoom is clamped to ≥ 1 by
-        // kTrixelCanvasZoomMin, so a zoom-track at this site can never lower the
-        // density).
-        if (canvasLocalRotation.isDetached() && canvasLocalRotation.reVoxelize_) {
-            const int cap = IRPrefab::DetachedRevoxelize::subdivisionCap(
+        // Canvas density is bounded by its projected pool extent. The composite
+        // compensates using renderedSubdivisions_, so zoom changes display size
+        // without overflowing the fixed texture.
+        if (canvasLocalRotation.isDetached()) {
+            int cap = IRPrefab::DetachedRevoxelize::subdivisionCap(
                 triangleCanvasTextures.size_,
                 voxelPool.getVoxelPoolSize3D()
             );
+            if (!canvasLocalRotation.reVoxelize_) {
+                // The enclosing sphere keeps this cap invariant under rotation.
+                const float diameter = IRMath::length(vec3(voxelPool.getVoxelPoolSize3D()));
+                const vec2 footprint = diameter * vec2(IRMath::sqrt(2.0f), IRMath::sqrt(6.0f));
+                const vec2 densityLimit = (vec2(triangleCanvasTextures.size_) - vec2(4.0f)) /
+                                          IRMath::max(footprint, vec2(1.0f));
+                cap = IRMath::max(
+                    1,
+                    static_cast<int>(IRMath::floor(IRMath::min(densityLimit.x, densityLimit.y)))
+                );
+            }
             frameData_.voxelRenderOptions_.y =
                 IRMath::clamp(frameData_.voxelRenderOptions_.y, 1, cap);
         }
@@ -1365,9 +1355,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // canvas (the main canvas's value is simply never read by the detached
         // composite).
         triangleCanvasTextures.renderedSubdivisions_ = frameData_.voxelRenderOptions_.y;
-        triangleCanvasTextures.renderedSampleLayout_ = frameData_.visibleFaceIds_.w == 2
-                                                           ? TrixelSampleLayout::LOCAL_TRIANGLES
-                                                           : TrixelSampleLayout::RECTANGULAR;
+        triangleCanvasTextures.renderedSampleLayout_ =
+            canvasLocalRotation.isDetached() &&
+                    triangleCanvasTextures.sampleLayout_ == TrixelSampleLayout::LOCAL_TRIANGLES
+                ? TrixelSampleLayout::LOCAL_TRIANGLES
+                : TrixelSampleLayout::RECTANGULAR;
 
         // No-priority perf fast-path. Publish whether any voxel in this
         // canvas's pool carries a non-zero per-trixel priority, maintained
@@ -1960,15 +1952,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 }
             }
 
-            // cardinal winner election — flagged (displaced-voxel) pools
-            // only. Between the settled distance stores and stage 2, re-run
-            // the identical cardinal geometry with every distance tap swapped
-            // for an atomicMin of the face's run-stable voxel pool index, so
-            // the winner-guarded stage 2 below admits exactly one of the
-            // equal-key faces per cell, extending the per-axis election to the
-            // single-canvas store. Unflagged pools skip this entire block, keep
-            // stage2Program_, and add no dispatch cost.
-            const bool cardinalElection = voxelPool.storeTiesPossible_;
+            // Projected source faces and displaced cells can quantize to equal
+            // depth keys. Elect one pool index before any non-atomic color write.
+            const bool cardinalElection =
+                voxelPool.storeTiesPossible_ ||
+                (canvasLocalRotation.isDetached() && !canvasLocalRotation.reVoxelize_);
             if (cardinalElection) {
                 ensureCardinalWinnerCapacity(triangleCanvasTextures.size_);
                 // Reset this canvas's cell span to the 0xFFFFFFFF no-winner

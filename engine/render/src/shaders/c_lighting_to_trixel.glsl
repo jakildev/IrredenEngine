@@ -178,6 +178,14 @@ void main() {
     const int slot = decodeSlot(encoded);
     const int faceId = visibleFaceIds[slot] ^ decodeFlipRoute(encoded, perAxisRoute);
     vec3 worldNormal = faceOutwardNormal6(faceId);
+    if (detachedCanvas && visibleFaceIds.w == 0) {
+        worldNormal = rotateByQuat(detachedFaceViewNormal(
+            faceId,
+            mat2(faceDeform[0].xy, faceDeform[0].zw),
+            mat2(faceDeform[1].xy, faceDeform[1].zw),
+            voxelDepthAxis.xyz
+        ), detachedViewToWorld);
+    }
 
     // The private raster is camera-relative; lighting and cascade selection use world units.
     vec3 worldReceivePos = vec3(0.0);

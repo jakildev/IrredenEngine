@@ -77,19 +77,17 @@ The [world-scale visibility plan](world-scale-visibility.md) defines the million
 simple-entity target, unbounded orthographic viewport depth, spatial grouping,
 and the separation between render visibility and simulation cadence.
 
-0. **Visual priority before further optimization:** investigate the remaining
-   CanvasStress orbit artifacts reported in the green solids and purple frame:
-   striped faces, checkerboard coverage and rectangular/toothed edges that may
-   indicate stored trixels bypassing or mismatching half-voxel-face reconstruction.
-   The purple frame is orbit index7, `RotationMode::DETACHED` (forward scatter),
-   not the revoxelized path. Identify the green entities independently. Capture
-   isolated close-ups at multiple zooms/yaws, compare normal output with raw-trixel
-   diagnostics and equivalent GRID/revoxelized shapes, and trace producer layout
-   through compositor gather/fragment coverage. Add fixture controls if the orbit
-   overview cannot discriminate the cause. Validate world-placed and screen-locked
-   variants. Preserve actual face geometry; do not hide gaps with blur. Existing
-   byte-identical captures establish non-regression only, not visual correctness.
-   Status: reported and partially localized; diagnosis and fix remain pending.
+0. **CanvasStress source-face coverage:** the purple frame (orbit 7) and lime
+   octahedron (orbit 3) use plain `DETACHED`; the green striped cube (canary 1)
+   uses `DETACHED_REVOXELIZE`. The source-face producer now projects complete
+   faces and publishes triangular display, with independent geometry and
+   deliberately flipped-parity controls. See [the investigation and evidence](../design/detached-projected-face-coverage.md).
+   The green cube already reconstructs triangles; its alternating staircase
+   normals remain when AO and shadows are disabled and must not be flattened.
+   Proposed follow-ups: quantify the remaining green self-shadow/AO patches;
+   measure the projected-face path's election and candidate costs; investigate
+   sub-trixel silhouette coverage without blur. Plain detached world shadow
+   casting/receiving remains unsupported. OpenGL visual validation is pending.
 
 1. [Unique retained candidates and axis entries](voxel-cull-work-units.md) now
    have separate counters and producer-matched readback. Add generated subdivision

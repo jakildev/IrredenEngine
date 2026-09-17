@@ -719,7 +719,10 @@ void spawnOrbitShape(
     vec4 initialRotation,
     Color color
 ) {
-    const ivec3 shapeSize{extent, extent, extent};
+    const bool focused = IREngine::args().getInt("--focus-orbit") == index;
+    const int sourceExtent =
+        focused && IREngine::args().getFlag("--focus-single-voxel") ? 1 : extent;
+    const ivec3 shapeSize{sourceExtent, sourceExtent, sourceExtent};
     if (mode == RotationMode::GRID) {
         const EntityId e = IREntity::createEntity(
             C_LocalTransform{worldPos, initialRotation},
@@ -735,7 +738,13 @@ void spawnOrbitShape(
     // rotated AABB (extent x sqrt(3)); the canvas footprint (≈ 12 px/voxel, like
     // the forward-scatter cubes) sets the composite scale.
     const int poolDim = static_cast<int>(IRMath::ceil(static_cast<float>(extent) * 1.85f));
-    const ivec2 canvasSize{extent * 12, extent * 12};
+    const int padding = focused && IREngine::args().getFlag("--focus-alternate-parity") ? 2 : 0;
+    const int requestedScale = focused ? IREngine::args().getInt("--focus-canvas-scale") : 1;
+    const int canvasScale = IRMath::clamp(requestedScale, 1, 4);
+    if (canvasScale != requestedScale) {
+        IR_LOG_WARN("focus-canvas-scale clamped to {} (valid range 1-4)", canvasScale);
+    }
+    const ivec2 canvasSize{extent * 12 * canvasScale + padding, extent * 12 * canvasScale};
     const ivec3 poolSize{poolDim, poolDim, poolDim};
     C_EntityCanvas canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
         "orbit_canvas_" + std::to_string(index),
@@ -1047,6 +1056,16 @@ void applyDepthProbeAssert(const std::string &value) {
 // working.
 void registerArgs() {
     IRArgs::Parser &args = IREngine::args();
+    args.integer("--focus-canary", "Isolate a canary by its original index and center it", -1);
+    args.integer("--focus-orbit", "Isolate an orbit shape by its original index and center it", -1);
+    args.flag("--focus-single-voxel", "Use one voxel in the focused orbit canvas");
+    args.flag("--focus-identity", "Use identity rotation for the focused orbit shape");
+    args.flag("--focus-alternate-parity", "Shift the focused orbit canvas origin by one trixel");
+    args.integer(
+        "--focus-canvas-scale",
+        "Scale the focused private canvas for density probes (1-4)",
+        1
+    );
     args.flag("--pivot-origin", "Fix camera rotation pivot at the world origin");
     args.number("--yaw", "Initial camera yaw, radians", g_settings.cameraYaw_);
     args.integer(
@@ -1987,7 +2006,10 @@ void initEntities() {
     // kept under --screen-lock-detached so the opt-out scene stays
     // byte-identical to the pre-#1624 default.
     const float canaryZ = g_settings.screenLockDetached_ ? 0.0f : -8.0f;
+    const int focusCanary = IREngine::args().getInt("--focus-canary");
     for (int i = 0; i < detached; ++i) {
+        if (focusCanary >= 0 && i != focusCanary)
+            continue;
         const int col = i % cols;
         const int row = i / cols;
         const vec3 worldPos{
@@ -2001,7 +2023,13 @@ void initEntities() {
         // full SO(3) bake matrix.
         const float spinRate =
             g_settings.noSpin_ ? 0.0f : kDetachedSpinBaseRadPerFrame * static_cast<float>(i + 1);
-        spawnDetachedVoxelObject(i, worldPos, kAxes[i % 4], spinRate, kDetachedColors[i % 6]);
+        spawnDetachedVoxelObject(
+            i,
+            focusCanary >= 0 ? vec3(0.0f) : worldPos,
+            kAxes[i % 4],
+            spinRate,
+            kDetachedColors[i % 6]
+        );
     }
 
     // Detached RE-VOXELIZE proof solids (#1555): a MULTI-COLOR asymmetric L-prism
@@ -2175,7 +2203,10 @@ void initEntities() {
         12,
     };
     const int orbitCount = groupEnabled(kGroupOrbit) ? kOrbitCount : 0;
+    const int focusOrbit = IREngine::args().getInt("--focus-orbit");
     for (int i = 0; i < orbitCount; ++i) {
+        if (focusOrbit >= 0 && i != focusOrbit)
+            continue;
         const float angle =
             IRMath::kTwoPi * static_cast<float>(i) / static_cast<float>(kOrbitCount);
         const vec3 worldPos{
@@ -2187,13 +2218,15 @@ void initEntities() {
         // Off-cardinal seed pose so even shot 0 reads as a true-3D solid; the
         // per-entity rate de-syncs neighbours across the capture window.
         const vec4 initialRotation =
-            IRMath::quatAxisAngle(IRMath::normalize(axis), IRMath::kQuarterPi);
+            focusOrbit >= 0 && IREngine::args().getFlag("--focus-identity")
+                ? vec4(0.0f, 0.0f, 0.0f, 1.0f)
+                : IRMath::quatAxisAngle(IRMath::normalize(axis), IRMath::kQuarterPi);
         const float spinRate = g_settings.noSpin_ ? 0.0f
                                                   : kDetachedSpinBaseRadPerFrame *
                                                         (1.0f + 0.25f * static_cast<float>(i % 4));
         spawnOrbitShape(
             i,
-            worldPos,
+            focusOrbit >= 0 ? vec3(0.0f) : worldPos,
             kOrbitShapes[i],
             kOrbitModes[i],
             kOrbitExtents[i],
@@ -2243,7 +2276,7 @@ void initEntities() {
         n,
         n * n,
         gridSpinCount,
-        detached,
-        orbitCount
+        focusCanary >= 0 && detached > 0 ? 1 : detached,
+        focusOrbit >= 0 && orbitCount > 0 ? 1 : orbitCount
     );
 }

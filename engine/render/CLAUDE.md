@@ -88,7 +88,7 @@ Use the validation index's jitter probe and the camera contracts below.
 
 - Normal voxel display reconstructs voxel-face footprints through the fragment
   gather; raw trixel texels are a debugging view, not the presentation default.
-  Private revoxelized canvases use undilated `LOCAL_TRIANGLES` with local parity
+  Private voxel canvases use undilated `LOCAL_TRIANGLES` with local parity
   and row-corrected queries. The compositor follows the effective producer
   layout, never depth scaling or world position. See the
   [local-triangle contract](../../docs/design/detached-local-triangles.md).
