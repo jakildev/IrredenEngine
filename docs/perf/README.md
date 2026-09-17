@@ -287,6 +287,8 @@ the gate is exercised by the gate.
   turns the step **red** and posts no comment: an infra failure must not
   read as a perf verdict. This includes a manifest cell whose report is
   missing or does not contain a positive frame-time measurement.
+- The matrix itself exits nonzero when any cell produces no report, before a
+  push or manual dispatch can replace a measured baseline with an empty one.
 - The PR-path reader takes the seed-new (empty root) path only when
   `git ls-remote --exit-code` confirms `perf-baseline` is absent (exit 2).
   Any other failure to reach the branch — an unreachable remote, a fetch
