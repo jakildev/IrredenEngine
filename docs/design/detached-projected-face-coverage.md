@@ -1,10 +1,12 @@
 # Detached source-face coverage and triangle parity
 
-**Incomplete geometry correction:** the captures below prove lattice consistency,
-not clean projected source faces. Capture 1277 fails the independent source-face
-gate despite passing its centroid and triangle-interior checks. See
-[the stronger acceptance contract](trixel-face-reconstruction-validation.md).
-The spiky boundaries remain a blocker for calling the visual defect fixed.
+The centroid/local-triangle implementation documented below is retained as a
+failed geometry control. Capture 1277 passes lattice consistency but fails the
+independent source-face gate. Normal plain-detached presentation now preserves
+source-face records through a continuous quad draw. See the
+[current contract](trixel-face-reconstruction-validation.md#source-face-presentation)
+and its remaining acceptance work. The earlier passing lattice captures must not
+be cited as proof of correct geometry.
 
 The CanvasStress screenshots identify three fixtures:
 
@@ -21,7 +23,7 @@ orbit fixtures still start at their authored 45-degree rotation. Additional
 focused orbit controls select an identity rotation, single voxel, alternate
 canvas-origin parity, or larger canvas for density probes.
 
-## Correction
+## Centroid reconstruction experiment (superseded for normal presentation)
 
 Plain detached geometry uses the complete projected source-face quad instead
 of deforming individual rectangular sample offsets around unrotated voxel
@@ -137,3 +139,41 @@ the shared parity/centroid/display helpers and is pixel-identical to 1295. The
 extraction changes ownership of the calculations, not the rendered geometry.
 
 [Acceptance contract and pending renderer work](trixel-face-reconstruction-validation.md)
+
+## Continuous source-face presentation evidence
+
+Native Metal on Apple M4 Max, Debug, 2560×1440. Commands and clean-exit results
+are retained in `source-quad-runs.json`; exact counts in
+`source-quad-geometry-results.json`, both beside the PR screenshots.
+
+| Fixture | Captures | Source-geometry result |
+|---|---|---|
+| Single rotated voxel, nine camera yaws | 1326–1334 | All silhouettes pass; six normal-face checks pass. At 90/180/270 degrees one expected face has no testable interior, so normal coverage is insufficient, not accepted. |
+| Two coplanar neighbors, nine yaws | 1335–1343 | All silhouettes pass; no gap between neighboring faces in inspected normal captures. |
+| Hollow frame, nine yaws | 1344–1352 | All silhouettes pass. |
+| Octahedron, nine yaws | 1353–1361 | All silhouettes pass. |
+| Alternate canvas parity, larger canvas, density 3 | 1393 | Frame silhouette passes at zoom 8. |
+| Lit frame and octahedron | 1362–1379 | Source normals and AO visually inspected; continuous connected faces. No claim of an independent lighting oracle. |
+| Coincident differently colored voxels | 1381–1392 | All 12 RGB frames identical; stable first-source ownership. |
+| Final helper/format verification | 1395–1396 | Lit frame and normal voxel pixel-identical to 1363 and 1327. |
+| Identity voxel control | 1404 | Silhouette and all three normal faces pass. |
+| Full scene, three yaws | 1397–1399 | Clean run; revoxelized striping/noise remains visible and is separate follow-up work. |
+| Screen-locked frame | 1400–1402 | Clean three-yaw run; source-face presentation retained. |
+| Mixed private SDF/voxel, cardinal at zoom 1 | 1403 | Amber SDF texture and purple source voxel both present. |
+
+Every applicable silhouette check reports zero missing/extra pixels outside the
+unchanged one-framebuffer-pixel boundary band. All six usable normal checks report
+zero wrong-face pixels. Compare frame 1345 with the retained failing frame 1277,
+and voxel 1396 with failing voxel 1304. No image registration or filtering is used.
+
+The mixed private-canvas probe at zoom 8/yaw 45 (1394) does **not** validate SDF
+placement: the amber marker is absent. The unchanged SDF private-canvas path uses
+global density rather than the private voxel's capped density and recenters
+before applying camera yaw. It also clears its texture without explicitly
+resetting Metal atomic-depth scratch. These require a separate mixed-producer
+coordinate/lifecycle fix; preserving the texture composite is not a claim that
+those existing contracts are correct.
+
+These results establish the plain-detached source-face correction. They do not
+certify all CanvasStress images, green revoxelized normals/lighting, continuous
+motion, attachments, OpenGL execution or plain-detached world shadows.

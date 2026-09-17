@@ -35,8 +35,9 @@ Flipping one global parity bit cannot generally reconstruct the missing boundary
 
 GLSL and Metal mirror these contracts. Sharing arithmetic prevents divergence;
 it does not establish that fixed local triangles are sufficient for a projected
-source-face representation. The detached projected-face path still needs that
-representation corrected. CPU picking and general rectangular canvases keep their
+source-face representation. Plain detached presentation retains source-face records
+and projects their quadrilaterals; its raster remains an occluder approximation
+for screen-space AO. CPU picking and general rectangular canvases keep their
 existing contracts; this refactor does not claim picking parity has been proved.
 
 ## Deterministic gates
@@ -84,19 +85,56 @@ placement versus screen locking. Add attachment transforms and backend execution
 when those paths change. Report untested cases; do not turn a nine-angle sweep
 into a claim about the entire matrix.
 
-A geometry fix is complete when the applicable source-face gate passes and the
-lattice checks remain consistent. Keep the known failing capture as a rejection
+A geometry fix requires the applicable source-face gate to pass. Lattice checks
+apply to paths which reconstruct local triangles; they are not an acceptance
+target for continuous source-face presentation. Keep the known failing capture as a rejection
 control. Do not bless it as a golden image, enlarge the boundary band with zoom,
 blur the output, or classify a visible tooth as harmless solely because samples
 or total face areas agree.
 
-## Remaining renderer work
+## Source-face presentation
 
-The default plain-detached producer still discards projected face boundaries at
-cell-centroid sampling. Preserve source-face ownership and continuous projected
-coverage through presentation, including multiple candidates where one storage
-cell spans different faces. Reuse the engine's face-local projection mechanisms
-where appropriate; do not allocate a screen-sized geometry buffer per entity or
-add per-voxel CPU work. Prove the one-voxel/adjacent-face cases before scaling to
-frame/octahedron, lighting, and performance. The shared parity helpers are a
-maintenance improvement, not a fix for that representation loss.
+Plain `DETACHED` canvases publish `SOURCE_FACES` for normal presentation. Stage 2
+emits at most three exposed face records per compacted source voxel, independent
+of zoom or subdivisions. Each record carries its source center, face identity,
+albedo and owner. The records remain owned by the canvas until composition;
+shared voxel upload buffers may be overwritten by other canvases in between.
+
+The existing GPU overflow sorter orders a compact index list by source voxel and
+face. The draw follows this list so equal-depth fragments have deterministic
+ownership without depth bias or a CPU readback. Hardware triangles join into each
+continuous projected face; the rendered model-to-view snapshot supplies both
+corners and interpolated surface depth. No blur, coverage dilation or expansion
+of a selected centroid into an unrelated screen triangle is involved.
+
+Directional lighting uses the record's source normal and albedo. Screen-space AO
+uses the source face center and transformed tangents as its receiver, probing the
+raster only for neighboring occluders. It does not inherit AO from whichever
+face happened to win a center texel. This remains approximate, face-flat AO;
+hidden/off-screen occluders are not represented. Plain detached world shadow
+casting and receiving remain separate work.
+
+Source voxels do not also paint the texture color layer. SDF/overlay content can
+still occupy that layer, receive its own lighting dispatch, and composite with
+the source faces in the same framebuffer depth domain. Raw rectangular trixel
+presentation remains diagnostic-only. Revoxelized occupancy keeps its own local
+triangle reconstruction and real staircase normals.
+
+Private source-face memory is bounded by three records per live source slot plus
+a power-of-two index-sort allocation. Reuse avoids frame-by-frame allocation;
+there is no CPU voxel geometry generation. Sorting, per-canvas dispatch cost and
+retaining the AO raster are performance costs to measure. This path does not
+establish scalability for a million independently allocated private canvases.
+
+## Remaining acceptance and follow-up
+
+- Extend independent face ownership/depth checks beyond one convex voxel.
+- Exercise fractional/negative translations, attachments, screen locking and
+  continuous motion as separate placement/depth contracts.
+- Validate AO contact behavior and the green revoxelized canary separately;
+  source-face normal captures cannot certify those lighting paths.
+- Repair mixed private SDF/voxel density and recentering mismatch (cardinal
+  density-one preservation passes; rotated/high-zoom marker placement does not).
+- Execute OpenGL validation on a supported host.
+- Profile bounded face sorting, raster/lighting dispatches and memory before
+  broader rotation/subdivision optimization.

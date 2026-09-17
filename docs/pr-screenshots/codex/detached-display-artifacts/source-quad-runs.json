@@ -1,0 +1,210 @@
+{
+  "backend": "Metal",
+  "hardware": "Apple M4 Max",
+  "build": "Debug",
+  "resolution": [
+    2560,
+    1440
+  ],
+  "source": "Implementation committed with these captures; final voxel/frame repeats match preceding sweeps pixel-for-pixel.",
+  "runs": [
+    {
+      "name": "voxel",
+      "command": "fleet-run --timeout 90 IRCanvasStress --only orbit --no-spin --no-auto-rotate --pivot-origin --focus-orbit 7 --focus-single-voxel --zoom 16 --debug-overlay normals --no-ao --no-shadows --sweep-yaw 0 6.283185307 9 --auto-screenshot 6",
+      "exit": 0,
+      "clean": true,
+      "screenshots": [
+        "screenshot_001326.png",
+        "screenshot_001327.png",
+        "screenshot_001328.png",
+        "screenshot_001329.png",
+        "screenshot_001330.png",
+        "screenshot_001331.png",
+        "screenshot_001332.png",
+        "screenshot_001333.png",
+        "screenshot_001334.png"
+      ]
+    },
+    {
+      "name": "adjacent",
+      "command": "fleet-run --timeout 90 IRCanvasStress --only orbit --no-spin --no-auto-rotate --pivot-origin --focus-orbit 7 --focus-adjacent-voxels --zoom 16 --debug-overlay normals --no-ao --no-shadows --sweep-yaw 0 6.283185307 9 --auto-screenshot 6",
+      "exit": 0,
+      "clean": true,
+      "screenshots": [
+        "screenshot_001335.png",
+        "screenshot_001336.png",
+        "screenshot_001337.png",
+        "screenshot_001338.png",
+        "screenshot_001339.png",
+        "screenshot_001340.png",
+        "screenshot_001341.png",
+        "screenshot_001342.png",
+        "screenshot_001343.png"
+      ]
+    },
+    {
+      "name": "frame",
+      "command": "fleet-run --timeout 90 IRCanvasStress --only orbit --no-spin --no-auto-rotate --pivot-origin --focus-orbit 7 --zoom 4 --debug-overlay normals --no-ao --no-shadows --sweep-yaw 0 6.283185307 9 --auto-screenshot 6",
+      "exit": 0,
+      "clean": true,
+      "screenshots": [
+        "screenshot_001344.png",
+        "screenshot_001345.png",
+        "screenshot_001346.png",
+        "screenshot_001347.png",
+        "screenshot_001348.png",
+        "screenshot_001349.png",
+        "screenshot_001350.png",
+        "screenshot_001351.png",
+        "screenshot_001352.png"
+      ]
+    },
+    {
+      "name": "octahedron",
+      "command": "fleet-run --timeout 90 IRCanvasStress --only orbit --no-spin --no-auto-rotate --pivot-origin --focus-orbit 3 --zoom 4 --debug-overlay normals --no-ao --no-shadows --sweep-yaw 0 6.283185307 9 --auto-screenshot 6",
+      "exit": 0,
+      "clean": true,
+      "screenshots": [
+        "screenshot_001353.png",
+        "screenshot_001354.png",
+        "screenshot_001355.png",
+        "screenshot_001356.png",
+        "screenshot_001357.png",
+        "screenshot_001358.png",
+        "screenshot_001359.png",
+        "screenshot_001360.png",
+        "screenshot_001361.png"
+      ]
+    },
+    {
+      "name": "frame-lit",
+      "command": "fleet-run --timeout 90 IRCanvasStress --only orbit --no-spin --no-auto-rotate --pivot-origin --focus-orbit 7 --zoom 4 --sweep-yaw 0 6.283185307 9 --auto-screenshot 6",
+      "exit": 0,
+      "clean": true,
+      "screenshots": [
+        "screenshot_001362.png",
+        "screenshot_001363.png",
+        "screenshot_001364.png",
+        "screenshot_001365.png",
+        "screenshot_001366.png",
+        "screenshot_001367.png",
+        "screenshot_001368.png",
+        "screenshot_001369.png",
+        "screenshot_001370.png"
+      ]
+    },
+    {
+      "name": "octahedron-lit",
+      "command": "fleet-run --timeout 90 IRCanvasStress --only orbit --no-spin --no-auto-rotate --pivot-origin --focus-orbit 3 --zoom 4 --sweep-yaw 0 6.283185307 9 --auto-screenshot 6",
+      "exit": 0,
+      "clean": true,
+      "screenshots": [
+        "screenshot_001371.png",
+        "screenshot_001372.png",
+        "screenshot_001373.png",
+        "screenshot_001374.png",
+        "screenshot_001375.png",
+        "screenshot_001376.png",
+        "screenshot_001377.png",
+        "screenshot_001378.png",
+        "screenshot_001379.png"
+      ]
+    },
+    {
+      "name": "mixed",
+      "command": "fleet-run --timeout 90 IRCanvasStress --only orbit --no-spin --no-auto-rotate --pivot-origin --focus-orbit 7 --focus-single-voxel --focus-mixed-shape --zoom 8 --sweep-yaw 0.785398163 0.785398163 1 --auto-screenshot 6",
+      "exit": 0,
+      "clean": true,
+      "screenshots": [
+        "screenshot_001380.png"
+      ]
+    },
+    {
+      "name": "coincident",
+      "command": "fleet-run --timeout 90 IRCanvasStress --only orbit --no-spin --no-auto-rotate --pivot-origin --focus-orbit 7 --focus-single-voxel --focus-coincident-voxel --zoom 16 --no-ao --no-shadows --sweep-yaw 0.785398163 0.785398163 12 --auto-screenshot 6",
+      "exit": 0,
+      "clean": true,
+      "screenshots": [
+        "screenshot_001381.png",
+        "screenshot_001382.png",
+        "screenshot_001383.png",
+        "screenshot_001384.png",
+        "screenshot_001385.png",
+        "screenshot_001386.png",
+        "screenshot_001387.png",
+        "screenshot_001388.png",
+        "screenshot_001389.png",
+        "screenshot_001390.png",
+        "screenshot_001391.png",
+        "screenshot_001392.png"
+      ]
+    },
+    {
+      "name": "density3",
+      "command": "fleet-run --timeout 90 IRCanvasStress --only orbit --no-spin --no-auto-rotate --pivot-origin --focus-orbit 7 --zoom 8 --focus-alternate-parity --focus-canvas-scale 4 --subdivisions 8 --debug-overlay normals --no-ao --no-shadows --sweep-yaw 0.785398163 0.785398163 1 --auto-screenshot 6",
+      "exit": 0,
+      "clean": true,
+      "screenshots": [
+        "screenshot_001393.png"
+      ]
+    },
+    {
+      "name": "mixed-final",
+      "command": "fleet-run --timeout 90 IRCanvasStress --no-spin --no-auto-rotate --only orbit --focus-orbit 7 --focus-single-voxel --focus-mixed-shape --zoom 8 --pivot-origin --sweep-yaw 0.785398163 0.785398163 1 --auto-screenshot 6",
+      "exit": 0,
+      "clean": true,
+      "screenshots": [
+        "screenshot_001394.png"
+      ]
+    },
+    {
+      "name": "frame-final",
+      "command": "fleet-run --timeout 90 IRCanvasStress --no-spin --no-auto-rotate --only orbit --focus-orbit 7 --zoom 4 --pivot-origin --sweep-yaw 0.785398163 0.785398163 1 --auto-screenshot 6",
+      "exit": 0,
+      "clean": true,
+      "screenshots": [
+        "screenshot_001395.png"
+      ]
+    },
+    {
+      "name": "voxel-final",
+      "command": "fleet-run --timeout 90 IRCanvasStress --no-spin --no-auto-rotate --only orbit --focus-orbit 7 --focus-single-voxel --zoom 16 --debug-overlay normals --no-ao --no-shadows --pivot-origin --sweep-yaw 0.785398163 0.785398163 1 --auto-screenshot 6",
+      "exit": 0,
+      "clean": true,
+      "screenshots": [
+        "screenshot_001396.png"
+      ]
+    },
+    {
+      "name": "scene-final",
+      "command": "fleet-run --timeout 90 IRCanvasStress --no-spin --no-auto-rotate --zoom 1 --sweep-yaw 0 1.570796327 3 --auto-screenshot 6",
+      "exit": 0,
+      "clean": true,
+      "screenshots": [
+        "screenshot_001397.png",
+        "screenshot_001398.png",
+        "screenshot_001399.png"
+      ]
+    },
+    {
+      "name": "screenlock-final",
+      "command": "fleet-run --timeout 90 IRCanvasStress --no-spin --no-auto-rotate --only orbit --focus-orbit 7 --zoom 4 --screen-lock-detached --pivot-origin --sweep-yaw 0 1.570796327 3 --auto-screenshot 6",
+      "exit": 0,
+      "clean": true,
+      "screenshots": [
+        "screenshot_001400.png",
+        "screenshot_001401.png",
+        "screenshot_001402.png"
+      ]
+    },
+    {
+      "name": "mixed-cardinal",
+      "command": "fleet-run --timeout 90 IRCanvasStress --only orbit --focus-orbit 7 --focus-single-voxel --focus-mixed-shape --focus-identity --zoom 1 --no-spin --no-auto-rotate --pivot-origin --sweep-yaw 0 0 1 --auto-screenshot 6",
+      "exit": 0,
+      "clean": true,
+      "screenshots": [
+        "screenshot_001403.png"
+      ]
+    }
+  ]
+}

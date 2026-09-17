@@ -19,7 +19,14 @@
 constant uint kDispatchArgsBaseUint = 8u;
 constant uint kPerAxisCellComputeTile = 256u;
 
+void writeLitTrixel(texture2d<float, access::read_write> canvas,
+    device SourceVoxelFaces& faces, bool sourceMode, uint index, uint2 pixel, float4 color) {
+    if (sourceMode) faces.faces[index].color = color;
+    else canvas.write(color, pixel);
+}
+
 kernel void c_lighting_to_trixel(
+    device SourceVoxelFaces& sourceFaces [[buffer(8)]],
     constant FrameDataLightingToTrixel& frameData [[buffer(27)]],
     constant FrameDataVoxelToTrixel& voxelFrameData [[buffer(7)]],
     constant FrameDataSun& sunFrameData [[buffer(29)]],
@@ -65,7 +72,45 @@ kernel void c_lighting_to_trixel(
         int(trixelColors.get_height())
     );
     int2 pixel;
-    if (voxelFrameData.perAxisRoute != 0) {
+    float sourceAO = 1.0;
+    const bool sourceMode = voxelFrameData.isDetachedCanvas > 1.5f;
+    const uint sourceIndex = globalId.x + globalId.y * uint(size.x);
+    if (sourceMode) {
+        if (globalId.x >= uint(size.x) || sourceIndex >= atomic_load_explicit(&sourceFaces.count, memory_order_relaxed)) return;
+        const SourceVoxelFace source = sourceFaces.faces[sourceIndex];
+        const int density = effectiveTrixelSubdivisionScale(voxelFrameData.voxelRenderOptions);
+        const float2x2 deformX = float2x2(voxelFrameData.faceDeform[0].xy, voxelFrameData.faceDeform[0].zw);
+        const float2x2 deformY = float2x2(voxelFrameData.faceDeform[1].xy, voxelFrameData.faceDeform[1].zw);
+        const int2 frameOffset = trixelFrameOffset(
+            voxelFrameData.trixelCanvasOffsetZ1, voxelFrameData.frameCanvasOffset, voxelFrameData.voxelRenderOptions);
+        const DetachedFaceFootprint face = detachedFaceFootprint(
+            source.centerAndFace.xyz, int(source.centerAndFace.w), density, 0,
+            deformX, deformY, voxelFrameData.voxelDepthAxis.xyz, frameOffset);
+        const float2 center = face.origin + 0.5 * float(density) * (face.edgeU + face.edgeV);
+        pixel = clamp(int2(floor(center)), int2(0), size - 1);
+        if (sunFrameData.aoEnabled != 0) {
+            // The source face owns its receiver; the depth canvas only supplies occluders.
+            const float2 rasterOrigin = float2(frameOffset) + float2(float(density));
+            const float centerDepth = face.depth.x + dot(
+                face.uvOrigin + float2(0.5 * float(density)), face.depth.yz);
+            const float3 receiver = isoPositionToPos3D(center - rasterOrigin, centerDepth) / float(density);
+            const float3 normal = detachedFaceViewNormal(
+                int(source.centerAndFace.w), deformX, deformY, voxelFrameData.voxelDepthAxis.xyz);
+            const int parity = localTrixelOriginParity(voxelFrameData.trixelCanvasOffsetZ1);
+            for (int direction = 0; direction < 4; ++direction) {
+                const float2 tangent = direction < 2 ? face.edgeU : face.edgeV;
+                const float sign = (direction & 1) == 0 ? -1.0 : 1.0;
+                const int2 neighborPixel = int2(floor(center + sign * float(density) * tangent));
+                if (any(neighborPixel < int2(0)) || any(neighborPixel >= size)) continue;
+                const int neighbor = trixelDistances.read(uint2(neighborPixel)).x;
+                if (neighbor >= 65535 || decodeSlot(neighbor) == (int(source.centerAndFace.w) >> 1)) continue;
+                const float2 neighborIso = localTrixelCellCentroid(neighborPixel, parity) - rasterOrigin;
+                const float3 occluder = isoPositionToPos3D(neighborIso, float(decodeDepthSingle(neighbor))) / float(density);
+                const float height = dot(occluder - receiver, normal);
+                if (height > 0.125 && height < 1.5) sourceAO -= 0.10;
+            }
+        }
+    } else if (voxelFrameData.perAxisRoute != 0) {
         // The compacted-cell dispatch is folded into a capped 2-D threadgroup
         // grid by c_per_axis_cell_finalize (groupsX capped, remainder in groupsY).
         const uint groupIndex = groupId.x + groupId.y * numGroups.x;
@@ -82,12 +127,13 @@ kernel void c_lighting_to_trixel(
         }
     }
 
-    const int encoded = trixelDistances.read(uint2(pixel)).x;
+    const int encoded = sourceMode ? encodeDepthWithFace(0, int(sourceFaces.faces[sourceIndex].centerAndFace.w) >> 1) : trixelDistances.read(uint2(pixel)).x;
     // Per-axis canvas uses INT_MAX as empty sentinel; single-canvas keeps 65535.
     if (encoded >= (voxelFrameData.perAxisRoute != 0 ? 0x7FFFFFFF : 65535)) {
         return;
     }
 
+    const float4 sourceColor = sourceMode ? sourceFaces.faces[sourceIndex].color : trixelColors.read(uint2(pixel));
     // A detached re-voxelize canvas is lit by AO + directional sun + sky
     // only by DEFAULT; the opt-in world-placed path
     // (detachedWorldReceive.w != 0) instead has it RECEIVE world sun-shadow + 128³
@@ -104,7 +150,7 @@ kernel void c_lighting_to_trixel(
     // inverted triplet one.
     const int slot = decodeSlot(encoded);
     const int faceId =
-        voxelFrameData.visibleFaceIds[slot] ^ decodeFlipRoute(encoded, voxelFrameData.perAxisRoute);
+        sourceMode ? int(sourceFaces.faces[sourceIndex].centerAndFace.w) : voxelFrameData.visibleFaceIds[slot] ^ decodeFlipRoute(encoded, voxelFrameData.perAxisRoute);
     float3 worldNormal = faceOutwardNormal6(faceId);
     if (detachedCanvas && voxelFrameData.visibleFaceIds.w == 0) {
         worldNormal = rotateByQuat(detachedFaceViewNormal(
@@ -144,21 +190,21 @@ kernel void c_lighting_to_trixel(
 
     // World receiver relative to its canvas raster origin, encoded over [-2, 2].
     if (frameData.debugOverlayMode == 9) {
-        const float4 src = trixelColors.read(uint2(pixel));
+        const float4 src = sourceColor;
         const float3 positionColor = worldReceive
             ? (worldReceivePos - voxelFrameData.detachedWorldReceive.xyz) * 0.25f + 0.5f
             : float3(0.0f);
-        trixelColors.write(float4(positionColor, src.a), uint2(pixel));
+        writeLitTrixel(trixelColors, sourceFaces, sourceMode, sourceIndex, uint2(pixel), float4(positionColor, src.a));
         return;
     }
 
     if (frameData.debugOverlayMode == 8) {
-        const float alpha = trixelColors.read(uint2(pixel)).a;
-        trixelColors.write(float4(worldNormal * 0.5f + 0.5f, alpha), uint2(pixel));
+        const float alpha = sourceColor.a;
+        writeLitTrixel(trixelColors, sourceFaces, sourceMode, sourceIndex, uint2(pixel), float4(worldNormal * 0.5f + 0.5f, alpha));
         return;
     }
 
-    float        ao     = canvasAO.read(uint2(pixel)).r;
+    float ao = sourceMode ? sourceAO : canvasAO.read(uint2(pixel)).r;
     float shadow;
     if (worldReceive) {
         shadow = 1.0;
@@ -170,7 +216,7 @@ kernel void c_lighting_to_trixel(
     } else {
         shadow = detachedCanvas ? 1.0f : canvasSunShadow.read(uint2(pixel)).r;
     }
-    const float4 src    = trixelColors.read(uint2(pixel));
+    const float4 src    = sourceColor;
 
     if (frameData.debugOverlayMode != 0) {
         float3 debugColor = float3(0.0f);
@@ -182,7 +228,7 @@ kernel void c_lighting_to_trixel(
         } else {
             debugColor = shadow >= 0.999f ? float3(0.0f) : float3(1.0f, 0.0f, 1.0f);
         }
-        trixelColors.write(float4(debugColor, src.a), uint2(pixel));
+        writeLitTrixel(trixelColors, sourceFaces, sourceMode, sourceIndex, uint2(pixel), float4(debugColor, src.a));
         return;
     }
 
@@ -193,7 +239,7 @@ kernel void c_lighting_to_trixel(
     // of the stored id; the `perAxisRoute == 0` guard skips the read on the
     // rotation route (id image unbound there).
     if (voxelFrameData.perAxisRoute == 0 &&
-        decodeCutFace(trixelEntityIds.read(uint2(pixel)).xy)) {
+        decodeCutFace(sourceMode ? sourceFaces.faces[sourceIndex].owner.xy : trixelEntityIds.read(uint2(pixel)).xy)) {
         ao = 1.0f;
         shadow = 1.0f;
     }
@@ -293,5 +339,5 @@ kernel void c_lighting_to_trixel(
         baseRgb = clamp(baseRgb, 0.0f, 1.0f);
     }
 
-    trixelColors.write(float4(baseRgb, src.a), uint2(pixel));
+    writeLitTrixel(trixelColors, sourceFaces, sourceMode, sourceIndex, uint2(pixel), float4(baseRgb, src.a));
 }

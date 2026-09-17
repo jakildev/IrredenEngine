@@ -245,6 +245,7 @@ struct Voxel {
 
 kernel void IR_STAGE2_KERNEL_NAME(
     constant FrameDataVoxelToTrixel& frameData [[buffer(7)]],
+    device SourceVoxelFaces& sourceFaces [[buffer(8)]],
     device const float4* positions [[buffer(5)]],
     device const Voxel* voxels [[buffer(6)]],
     device const uint2* entityIds [[buffer(13)]],
@@ -256,7 +257,7 @@ kernel void IR_STAGE2_KERNEL_NAME(
     texture2d<uint, access::write> triangleCanvasEntityIds [[texture(2)]],
     texture2d<float, access::read> canvasFogOfWar [[texture(3)]],
     constant FogObserverData& fogObservers [[buffer(27)]],
-    device const atomic_uint* perAxisWinnerIds [[buffer(28)]],
+    device atomic_uint* perAxisWinnerIds [[buffer(28)]],
     uint3 groupId [[threadgroup_position_in_grid]],
     uint3 localId3 [[thread_position_in_threadgroup]]
 ) {
@@ -328,6 +329,20 @@ kernel void IR_STAGE2_KERNEL_NAME(
     // `.zw` = column 1.
     if (frameData.isDetachedCanvas > 0.5 && !reVoxelize) {
         if (any(int2(localId) != faceOffset_2x3(slot, 0))) return;
+        if (frameData.isDetachedCanvas > 1.5f) {
+            if (zIdx != 0) return;
+            const uint index = atomic_fetch_add_explicit(&sourceFaces.count, 1u, memory_order_relaxed);
+            sourceFaces.faces[index].centerAndFace = float4(voxelPosition.xyz, float(faceId));
+            sourceFaces.faces[index].color = voxelColor;
+            sourceFaces.faces[index].owner = uint4(packedEntityId, 0u, 0u);
+            // Unique source keys make coplanar draw ownership independent of append order.
+            const uint order = 128u + index * 3u;
+            atomic_store_explicit(&perAxisWinnerIds[order], voxelIndex * 3u + uint(slot), memory_order_relaxed);
+            atomic_store_explicit(&perAxisWinnerIds[order + 1u], index, memory_order_relaxed);
+            atomic_store_explicit(&perAxisWinnerIds[order + 2u], 0u, memory_order_relaxed);
+            atomic_fetch_add_explicit(&perAxisWinnerIds[1u], 1u, memory_order_relaxed);
+            return;
+        }
         const int density = frameData.voxelRenderOptions.x != 0 ? max(frameData.voxelRenderOptions.y, 1) : 1;
         const DetachedFaceFootprint face = detachedFaceFootprint(
             voxelPosition.xyz, faceId, density, zIdx,

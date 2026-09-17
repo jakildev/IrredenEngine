@@ -136,26 +136,19 @@ scene and normals overlay, without shadows or AO. The debug capture uses
 
 ## Projected source faces (`DETACHED`)
 
-Plain `DETACHED` retains authored occupancy and exposed-face masks. It projects
-complete micro-face quads using the full model-to-view rotation, samples coverage
-at local triangle centroids, and publishes `LOCAL_TRIANGLES` to the compositor.
-It does not move cells or rebuild occupancy. Source face normals use the same
-rotation; the revoxelized mode continues to shade its resampled staircase faces.
-Raw rectangular presentation remains a diagnostic override.
+Plain `DETACHED` retains authored occupancy and exposed-face masks. Normal
+presentation uses `SOURCE_FACES`: GPU records preserve each exposed voxel face
+through lighting and continuous projected quadrilateral drawing. It does not
+move cells or rebuild occupancy. The producer's full model-to-view snapshot
+supplies face corners and interpolated depth; shading uses the same source face.
+The [source-face contract](trixel-face-reconstruction-validation.md#source-face-presentation)
+owns storage, ordering, mixed texture content, AO limitations and validation.
 
-Stage 1, equal-depth winner election and stage 2 share the projected footprint
-and sample-depth helpers. Coplanar micro-faces evaluate one shared plane origin,
-so independent tile rounding cannot leave a crack between them. Projected depth
-is interpolated before quantization; equal keys elect one source voxel index.
-The single-canvas winner buffer is reused across private canvases. The plain path
-adds an election dispatch, but no per-voxel CPU work or geometry buffers.
-
-A rotation-invariant enclosing-sphere bound caps private density to texture
-capacity, including the triangular footprint margin. The composite compensates
-that density so zoom changes apparent size without clipping the canvas. This
-bound assumes the private pool is centered; it does not resize undersized
-canvases or provide sub-trixel analytic edge coverage. Raster edges remain
-quantized to the triangular display lattice. World sun casting/receiving and
-picking for plain `DETACHED` are still outside this producer/display correction.
+The local centroid raster remains useful for screen-space occluder probes and raw
+trixel diagnostics. A rotation-invariant enclosing-sphere bound caps its density
+to private texture capacity; it no longer determines source-face display edges.
+Revoxelized occupancy continues to use local triangle reconstruction and its real
+staircase normals. World sun casting/receiving and picking for plain `DETACHED`
+remain separate work.
 
 [Fixtures, parity controls and retained evidence](detached-projected-face-coverage.md).

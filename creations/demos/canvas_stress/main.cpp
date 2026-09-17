@@ -722,7 +722,9 @@ void spawnOrbitShape(
     const bool focused = IREngine::args().getInt("--focus-orbit") == index;
     const int sourceExtent =
         focused && IREngine::args().getFlag("--focus-single-voxel") ? 1 : extent;
-    const ivec3 shapeSize{sourceExtent, sourceExtent, sourceExtent};
+    const bool adjacent = focused && IREngine::args().getFlag("--focus-adjacent-voxels");
+    const ivec3 shapeSize = adjacent ? ivec3(2, 1, 1) : ivec3(sourceExtent);
+
     if (mode == RotationMode::GRID) {
         const EntityId e = IREntity::createEntity(
             C_LocalTransform{worldPos, initialRotation},
@@ -756,7 +758,21 @@ void spawnOrbitShape(
         C_LocalTransform{vec3(0.0f)},
         C_VoxelSetNew{shapeSize, color, true, canvas.canvasEntity_}
     );
-    carveOrbitShape(IREntity::getComponent<C_VoxelSetNew>(solid), shape);
+    if (!adjacent) {
+        carveOrbitShape(IREntity::getComponent<C_VoxelSetNew>(solid), shape);
+    }
+    if (focused && IREngine::args().getFlag("--focus-coincident-voxel")) {
+        IREntity::createEntity(
+            C_LocalTransform{vec3(0.0f)},
+            C_VoxelSetNew{ivec3(1), Color{255, 64, 32, 255}, true, canvas.canvasEntity_}
+        );
+    }
+    if (focused && IREngine::args().getFlag("--focus-mixed-shape")) {
+        C_ShapeDescriptor marker{IRRender::ShapeType::BOX, vec4(1.0f), Color{240, 180, 40, 255}};
+        marker.canvasEntity_ = canvas.canvasEntity_;
+        IREntity::createEntity(C_LocalTransform{vec3(3.0f, 0.0f, 0.0f)}, marker);
+        IREntity::createEntity(C_LocalTransform{vec3(6.0f, 0.0f, 0.0f)}, marker);
+    }
     IREntity::createEntity(
         C_LocalTransform{worldPos, initialRotation},
         C_RotationMode{mode},
@@ -1059,6 +1075,18 @@ void registerArgs() {
     args.integer("--focus-canary", "Isolate a canary by its original index and center it", -1);
     args.integer("--focus-orbit", "Isolate an orbit shape by its original index and center it", -1);
     args.flag("--focus-single-voxel", "Use one voxel in the focused orbit canvas");
+    args.flag(
+        "--focus-adjacent-voxels",
+        "Use two coplanar neighboring voxels in the focused canvas"
+    );
+    args.flag(
+        "--focus-coincident-voxel",
+        "Add a differently colored coincident voxel to test depth ties"
+    );
+    args.flag(
+        "--focus-mixed-shape",
+        "Add a texture-rendered SDF marker to the focused voxel canvas"
+    );
     args.flag("--focus-identity", "Use identity rotation for the focused orbit shape");
     args.flag("--focus-alternate-parity", "Shift the focused orbit canvas origin by one trixel");
     args.integer(

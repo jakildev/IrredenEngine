@@ -35,6 +35,13 @@
 // local_size_z MUST equal kStageMicroSlicesPerGroup (ir_constants.glsl). Kept a
 // literal here because a compute-shader layout qualifier needs a literal on
 // every GL driver; the shared constant drives the slice math + guard.
+layout(std430, binding = 8) buffer SourceVoxelFaces {
+    uint sourceIndexCount;
+    uint sourceFaceCount;
+    uint sourcePadding[6];
+    SourceVoxelFace sourceFaces[];
+};
+
 layout(local_size_x = 2, local_size_y = 3, local_size_z = 8) in;
 
 
@@ -125,7 +132,7 @@ layout(rg32ui, binding = 2) writeonly uniform uimage2D triangleCanvasEntityIds;
 // single canvas. The default compile's cardinal / single-canvas / detached
 // paths never touch it. Transiently reuses the resolve-scratch binding
 // (kBufferIndex_PerAxisResolveScratch), free during both windows.
-layout(std430, binding = 28) readonly buffer PerAxisWinnerScratch {
+layout(std430, binding = 28) buffer PerAxisWinnerScratch {
     uint perAxisWinnerIds[];
 };
 
@@ -325,6 +332,20 @@ void main() {
 
     if (isDetachedCanvas > 0.5 && !reVoxelize) {
         if (any(notEqual(ivec2(gl_LocalInvocationID.xy), faceOffset_2x3(slot, 0)))) return;
+        if (isDetachedCanvas > 1.5) {
+            if (zIdx != 0) return;
+            const uint index = atomicAdd(sourceFaceCount, 1u);
+            sourceFaces[index].centerAndFace = vec4(voxelPosition.xyz, float(faceId));
+            sourceFaces[index].color = voxelColor;
+            sourceFaces[index].owner = uvec4(packedEntityId, 0u, 0u);
+            // Unique source keys make coplanar draw ownership independent of append order.
+            const uint order = 128u + index * 3u;
+            perAxisWinnerIds[order] = voxelIndex * 3u + uint(slot);
+            perAxisWinnerIds[order + 1u] = index;
+            perAxisWinnerIds[order + 2u] = 0u;
+            atomicAdd(perAxisWinnerIds[1u], 1u);
+            return;
+        }
         const int density = voxelRenderOptions.x != 0 ? max(voxelRenderOptions.y, 1) : 1;
         const DetachedFaceFootprint face = detachedFaceFootprint(
             voxelPosition.xyz, faceId, density, zIdx,

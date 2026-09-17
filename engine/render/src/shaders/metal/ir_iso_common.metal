@@ -40,11 +40,13 @@ inline int pos3DtoDistance(int3 position) {
 
 // The isometric depth axis (1,1,1) is perpendicular to the screen, so given
 // (isoX, isoY) and depth d = x + y + z, (x, y, z) is uniquely determined.
+inline float3 isoPositionToPos3D(float2 iso, float depth) {
+    const float x = (2.0 * depth - 3.0 * iso.x - iso.y) / 6.0;
+    return float3(x, x + iso.x, (iso.y + 2.0 * x + iso.x) / 2.0);
+}
+
 inline float3 isoPixelToPos3D(int isoX, int isoY, float depth) {
-    float x = (2.0 * depth - 3.0 * float(isoX) - float(isoY)) / 6.0;
-    float y = x + float(isoX);
-    float z = (float(isoY) + 2.0 * x + float(isoX)) / 2.0;
-    return float3(x, y, z);
+    return isoPositionToPos3D(float2(isoX, isoY), depth);
 }
 
 inline float3 isoToLocal3D(int2 isoRel, float depth) {
@@ -1184,6 +1186,18 @@ inline float fogVisionCircleReveal(float2 worldXY, float4 circle, float aa) {
 
 constant int kDetachedFaceMissDepth = 2147483647;
 
+struct SourceVoxelFace {
+    float4 centerAndFace;
+    float4 color;
+    uint4 owner;
+};
+struct SourceVoxelFaces {
+    uint indexCount;
+    atomic_uint count;
+    uint padding[6];
+    SourceVoxelFace faces[1];
+};
+
 struct DetachedFaceFootprint {
     float2 origin;
     float2 planeOrigin;
@@ -1245,8 +1259,6 @@ inline float3 detachedFaceViewNormal(int faceId, float2x2 deformX, float2x2 defo
     const float2 projected = axis == 0 ? deformY * float2(-1.0, -1.0) :
         (axis == 1 ? deformX * float2(1.0, -1.0) : deformX * float2(0.0, 2.0));
     const float depth = depthAxis[axis];
-    const float x = (2.0 * depth - projected.y - 3.0 * projected.x) / 6.0;
-    const float3 normal = float3(x, x + projected.x, (depth + projected.y) / 3.0);
-    return normalize(normal) * ((faceId & 1) == 0 ? -1.0 : 1.0);
+    return normalize(isoPositionToPos3D(projected, depth)) * ((faceId & 1) == 0 ? -1.0 : 1.0);
 }
 #endif // IR_ISO_COMMON_METAL_INCLUDED

@@ -24,14 +24,15 @@ cull still reports approximately 255K candidates out of 262K voxels; the
 rotated counter reports approximately 777K entries across three axis lists.
 That rotated numerator counts repeated face candidates, not unique voxels.
 
-## Current visual blocker
+## Visual acceptance before further optimization
 
-The projected detached path still produces spiky source-face boundaries even
-when lattice-consistency tests pass. Before resuming performance work, preserve
-projected source-face coverage through fragment presentation and pass the
-[independent source-face gate](../design/trixel-face-reconstruction-validation.md).
-Use the rotated single-voxel and coplanar-neighbor cases before complex fixtures.
-Shared parity arithmetic alone does not resolve this information loss.
+Plain detached presentation retains projected source faces through the final
+quad draw. The rotated single-voxel, adjacent-pair, frame and octahedron now have
+independent silhouette checks; usable single-voxel face interiors also check
+normal ownership. The [source-face contract](../design/trixel-face-reconstruction-validation.md)
+records the distinction from lattice consistency. Remaining visual work is
+placement/depth, attachment/motion coverage, and revoxelized self-shadow/AO patches.
+Keep that work ahead of performance changes; no blur-based silhouette correction.
 
 ## Bottleneck evidence
 
@@ -88,14 +89,15 @@ and the separation between render visibility and simulation cadence.
 
 0. **CanvasStress source-face coverage:** the purple frame (orbit 7) and lime
    octahedron (orbit 3) use plain `DETACHED`; the green striped cube (canary 1)
-   uses `DETACHED_REVOXELIZE`. The source-face producer now projects complete
-   faces and publishes triangular display, with independent geometry and
-   deliberately flipped-parity controls. See [the investigation and evidence](../design/detached-projected-face-coverage.md).
+   uses `DETACHED_REVOXELIZE`. The source-face producer retains complete
+   faces through GPU record lighting and continuous quad presentation, with
+   independent geometry gates and retained failing lattice controls. See [the investigation and evidence](../design/detached-projected-face-coverage.md).
    The green cube already reconstructs triangles; its alternating staircase
    normals remain when AO and shadows are disabled and must not be flattened.
    Proposed follow-ups: quantify the remaining green self-shadow/AO patches;
-   measure the projected-face path's election and candidate costs; investigate
-   sub-trixel silhouette coverage without blur. Plain detached world shadow
+   fix private SDF/voxel mixed-canvas density, recentering and scratch lifecycle;
+   extend placement/attachment/motion and multi-face depth oracles;
+   measure the source-face path's sorting, raster and lighting costs. Plain detached world shadow
    casting/receiving remains unsupported. OpenGL visual validation is pending.
 
 1. [Unique retained candidates and axis entries](voxel-cull-work-units.md) now

@@ -3,7 +3,8 @@
 
 CanvasStress: --only orbit --focus-orbit 7 (frame) or 3 (octahedron),
 --no-spin --no-auto-rotate --pivot-origin --no-ao --no-shadows.
-For voxel use --focus-orbit 7 --focus-single-voxel; --identity also requires
+For voxel use --focus-orbit 7 --focus-single-voxel; adjacent uses
+--focus-adjacent-voxels. --identity also requires
 --focus-identity in the demo. Default pixel scale is zoom 4 at 2560x1440.
 Use a fixed --sweep-yaw and matching --yaw in degrees. Black is background.
 No image registration, reference screenshot or trixel parity formula is used.
@@ -38,6 +39,10 @@ def view(point, yaw):
 
 
 def source_centers(shape):
+    if shape == "adjacent":
+        yield (-.5, 0, 0)
+        yield (.5, 0, 0)
+        return
     extent = {"frame": 14, "octahedron": 10, "voxel": 1}[shape]
     for index in itertools.product(range(extent), repeat=3):
         center = tuple(value - (extent - 1) / 2 for value in index)
@@ -143,7 +148,8 @@ def compare(width, height, bpp, pixels, expected, palette, normals=False):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("image", type=Path)
-    parser.add_argument("--shape", choices=("voxel", "frame", "octahedron"), required=True)
+    parser.add_argument(
+        "--shape", choices=("voxel", "adjacent", "frame", "octahedron"), required=True)
     parser.add_argument("--yaw", type=float, required=True)
     parser.add_argument("--identity", action="store_true")
     parser.add_argument("--iso-scale", type=float, nargs=2, default=(16, 8))
