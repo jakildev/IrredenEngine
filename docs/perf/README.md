@@ -285,7 +285,8 @@ the gate is exercised by the gate.
   gate when T-330 moved the writer to per-slug directories (#2817).
 - `check_regression.py` exit ≥ 2 means it could not compare at all. That
   turns the step **red** and posts no comment: an infra failure must not
-  read as a perf verdict.
+  read as a perf verdict. This includes a manifest cell whose report is
+  missing or does not contain a positive frame-time measurement.
 - The PR-path reader takes the seed-new (empty root) path only when
   `git ls-remote --exit-code` confirms `perf-baseline` is absent (exit 2).
   Any other failure to reach the branch — an unreachable remote, a fetch
@@ -300,11 +301,16 @@ roots, plus the exit mapping), and
 the PR-path reader against a local bare origin. Both run as the perf-gate
 job's first step after checkout, before the build.
 
+CI uses 60 frames per quick-matrix cell (45 post-warmup samples) with a
+120-second watchdog. The full run directory, including each cell's `.log`, is
+uploaded for seven days as `perf-run-<workflow-run-id>` so a timeout, crash, or
+display failure can be diagnosed from the check run.
+
 **Gate script (also usable locally):**
 
 ```bash
 scripts/perf/check_regression.py <baseline_dir> <head_dir> [--regress-pct N]
-# Exit 0: pass. Exit 1: regression detected. Exit 2: usage error.
+# Exit 0: pass. Exit 1: regression detected. Exit 2: usage or measurement error.
 ```
 
 `check_regression.py` wraps `compare_perf_runs.py` — same args, same
@@ -317,8 +323,8 @@ produces false positives, lower `--regress-pct` conservatively or
 migrate to a dedicated self-hosted Linux runner for stability.
 
 **No baseline yet?** The gate posts a "no baseline" comment and exits
-clean. A baseline is committed the next time a perf-relevant change
-lands on master.
+clean. A perf-relevant master push or manual dispatch seeds that host on the
+`perf-baseline` branch.
 
 ## GPU timing implementation note
 

@@ -18,7 +18,7 @@ Usage:
 Exit codes:
     0   No regression above threshold (pass — may still show improvements)
     1   One or more cells regressed by more than --regress-pct (fail)
-    2   Usage error
+    2   Usage or measurement error
 """
 
 from __future__ import annotations
@@ -40,6 +40,7 @@ from compare_perf_runs import (  # noqa: E402
     pct_delta,
     render_markdown,
     resolve_baseline,
+    unmeasured_cell_ids,
 )
 
 
@@ -92,6 +93,14 @@ def main() -> int:
     if not head:
         print(f"check_regression: no cells in head {head_dir}", file=sys.stderr)
         return 2
+    unmeasured_head = unmeasured_cell_ids(head)
+    if unmeasured_head:
+        print(
+            "check_regression: unmeasured cells in head: "
+            + ", ".join(unmeasured_head),
+            file=sys.stderr,
+        )
+        return 2
 
     # No-baseline path → informational seed-new, pass.
     base_dir = resolve_baseline(baseline_arg, head_manifest)
@@ -113,6 +122,14 @@ def main() -> int:
     base = load_run(base_dir)
     if not base:
         print(f"check_regression: no cells in baseline {base_dir}", file=sys.stderr)
+        return 2
+    unmeasured_base = unmeasured_cell_ids(base)
+    if unmeasured_base:
+        print(
+            "check_regression: unmeasured cells in baseline: "
+            + ", ".join(unmeasured_base),
+            file=sys.stderr,
+        )
         return 2
 
     base_manifest = load_manifest(base_dir)
