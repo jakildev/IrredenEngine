@@ -1,7 +1,7 @@
 {
   "cpu": {
     "cores": 2,
-    "mhz": 3244,
+    "mhz": 3247,
     "model": "AMD EPYC 7763 64-Core Processor",
     "threads": 4
   },
