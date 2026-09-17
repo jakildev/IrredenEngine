@@ -8,6 +8,12 @@ constant int kEmptyDistanceEncoded = 65535;
 constant float kAORadiusSquared = 4.0;
 // Must stay in lockstep with c_compute_voxel_ao.glsl.
 constant float kAOMinDistanceSquared = 1.0e-6;
+// A monotone staircase returns to the receiver's own face one cell beyond
+// a different-face step, ~1 voxel further out along the receiver normal; a
+// coplanar same-face blip (d ~ 0) is not a staircase and keeps its AO.
+// Chosen empirically against measured staircase captures, not derived from
+// voxel geometry; any value strictly between a coplanar return (d ~ 0) and
+// the next tread (d ~ 1) works.
 constant float kAOStaircaseStepHeight = 0.5;
 
 constant uint kDispatchArgsBaseUint = 8u;      // kPerAxisCellDispatchArgsOffsetBytes / 4
