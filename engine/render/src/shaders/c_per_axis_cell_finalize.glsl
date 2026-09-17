@@ -38,10 +38,26 @@ layout(std430, binding = 26) buffer PerAxisCellIndirect {
     uint drawArgs[];
 };
 
+// Bound to the aligned control region, after overflow append has settled.
+layout(std430, binding = 28) readonly buffer OverflowControl {
+    uint overflowControl[];
+};
+
 void main() {
     const uint axis = gl_GlobalInvocationID.x;
     if (axis >= 3u) {
         return;
+    }
+    if (axis == 0u) {
+        // The overflow lighting kernel uses 64 threads and the same 2-D flattening.
+        // Its arguments occupy bytes 64..79 of axis zero's indirect region.
+        const uint overflowCount = overflowControl[1u];
+        const uint overflowGroups = (overflowCount + 63u) / 64u;
+        const uint overflowGroupsX = max(min(overflowGroups, kMaxDispatchGroupsX), 1u);
+        drawArgs[16u] = overflowGroupsX;
+        drawArgs[17u] = (overflowGroups + overflowGroupsX - 1u) / overflowGroupsX;
+        drawArgs[18u] = 1u;
+        drawArgs[19u] = overflowCount;
     }
     const uint base = axis * kStrideUints;
     const uint count = drawArgs[base + 1u]; // instanceCount

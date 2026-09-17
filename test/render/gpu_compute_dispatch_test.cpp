@@ -552,6 +552,81 @@ using PositionUploadTest = MetalGpuComputeDispatchTest;
 using PositionUploadTest = GpuComputeDispatchTest;
 #endif
 
+TEST_F(PositionUploadTest, OverflowLightingDispatchUsesCurrentCountAndPreservesDrawArguments) {
+    using namespace IRRender;
+    const std::string path =
+        std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_per_axis_cell_finalize.glsl";
+    ShaderProgram program{std::vector{ShaderStage{path.c_str(), ShaderType::COMPUTE}}};
+    struct Case {
+        std::uint32_t count;
+        std::uint32_t groupsX;
+        std::uint32_t groupsY;
+    };
+    // Nonempty-to-empty and X-to-Y spill transitions must overwrite stale args.
+    const Case cases[] = {
+        {8388608, 1024, 128},
+        {0, 1, 0},
+        {1, 1, 1},
+        {64, 1, 1},
+        {65, 2, 1},
+        {65536, 1024, 1},
+        {65537, 1024, 2},
+        {0, 1, 0}
+    };
+    constexpr std::size_t stride = kPerAxisCellIndirectStrideBytes / sizeof(std::uint32_t);
+    std::vector<std::uint32_t> expected(stride * 3, 0xA5A5A5A5u);
+    for (std::size_t axis = 0; axis < 3; ++axis) {
+        expected[axis * stride + 1] = static_cast<std::uint32_t>(axis * 257);
+    }
+    Buffer indirect(
+        expected.data(),
+        expected.size() * sizeof(std::uint32_t),
+        BUFFER_STORAGE_DYNAMIC
+    );
+    std::vector<std::uint32_t> control(stride * 2, 0xDEADBEEFu);
+    Buffer scratch(control.data(), control.size() * sizeof(std::uint32_t), BUFFER_STORAGE_DYNAMIC);
+    for (const auto &entry : cases) {
+        SCOPED_TRACE(entry.count);
+        control[stride + 1] = entry.count;
+        scratch.subData(0, control.size() * sizeof(std::uint32_t), control.data());
+        scratch.bindRange(
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_PerAxisResolveScratch,
+            kPerAxisCellIndirectStrideBytes,
+            kPerAxisCellIndirectStrideBytes
+        );
+        indirect.bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_PerAxisCellIndirect);
+        program.use();
+#if defined(IR_GRAPHICS_METAL)
+        device_->dispatchCompute(3, 1, 1);
+        device_->finish();
+#else
+        ENG_API->glDispatchCompute(3, 1, 1);
+        ENG_API->glMemoryBarrier(GL_ALL_BARRIER_BITS);
+        ENG_API->glFinish();
+#endif
+        for (std::size_t axis = 0; axis < 3; ++axis) {
+            const auto base =
+                axis * stride + kPerAxisCellDispatchArgsOffsetBytes / sizeof(std::uint32_t);
+            expected[base] = axis == 0 ? 1 : static_cast<std::uint32_t>(axis + 1);
+            expected[base + 1] = axis == 0 ? 0 : 1;
+            expected[base + 2] = 1;
+            expected[base + 3] = static_cast<std::uint32_t>(axis * 257);
+        }
+        const auto base = kOverflowLightingDispatchArgsOffsetBytes / sizeof(std::uint32_t);
+        expected[base] = entry.groupsX;
+        expected[base + 1] = entry.groupsY;
+        expected[base + 2] = 1;
+        expected[base + 3] = entry.count;
+        std::vector<std::uint32_t> actual(expected.size());
+        indirect.getSubData(0, actual.size() * sizeof(std::uint32_t), actual.data());
+        EXPECT_EQ(actual, expected);
+        std::vector<std::uint32_t> actualControl(control.size());
+        scratch.getSubData(0, actualControl.size() * sizeof(std::uint32_t), actualControl.data());
+        EXPECT_EQ(actualControl, control);
+    }
+}
+
 TEST_F(PositionUploadTest, ScatterCoverageCodesSurviveDepthQuantization) {
     using namespace IRRender;
     const std::uint32_t bands[] = {0u, 1u, 131071u, 262143u, 262144u, 262145u, 524286u, 524287u};

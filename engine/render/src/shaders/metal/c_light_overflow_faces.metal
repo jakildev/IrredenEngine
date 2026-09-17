@@ -29,13 +29,13 @@ kernel void c_light_overflow_faces(
     uint3 groupCount [[threadgroups_per_grid]],
     uint3 localId [[thread_position_in_threadgroup]]
 ) {
-    // The dispatch is a 2-D group grid (voxelDispatchGridForCount wraps past
+    // The dispatch is a 2-D group grid (the GPU finalizer wraps past
     // 1024 groups), so flatten the group coordinates to the entry index.
     const uint workGroupIndex = groupId.x + groupId.y * groupCount.x;
     const uint gid = workGroupIndex * 64u + localId.x;
     const int4 layout = voxelFrameData.overflowScratchLayout;
     // Live entry count (ctrl instanceCount at ctrlBase + 1); dispatch grid is
-    // sized to the worst-case cap, so threads past the count early-return.
+    // rounded to whole workgroups, so threads past the count early-return.
     const uint entryCount = overflowScratch[uint(layout.y) + 1u];
     if (gid >= entryCount) {
         return;
