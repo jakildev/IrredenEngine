@@ -31,6 +31,8 @@ Read it first, then apply the deltas below.
 | **sha-pin token** | `@COMMIT_SHA@` — `commit-and-push` step 8 substitutes `git rev-parse HEAD`; the feedback-AMEND `gh pr edit --body` step substitutes the post-amend pushed HEAD |
 | **build tool** | `fleet-build --target <demo-name>` |
 | **run tool** | `fleet-run <demo-name> --auto-screenshot 10` — no `--timeout` ([BUILD.md §Timeout choices](../../../docs/agents/BUILD.md#timeout-choices)) |
+| **clip preset** | `scripts/fleet/clip-preset.lua` |
+| **clip frames** | `180` |
 
 ## Engine notes
 
