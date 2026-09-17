@@ -95,7 +95,7 @@ def main() -> None:
         metavar="GROUP",
         help=(
             f"canvas_stress --only opt-in group to isolate (default: {_DEFAULT_ONLY}). "
-            "Use 'orbitswap' for the per-entity tier-1 swap gate (--tier 1)."
+            "Use 'orbitswap' for the #2154 per-entity tier-1 swap gate (--tier 1)."
         ),
     )
     parser.add_argument(
@@ -109,7 +109,7 @@ def main() -> None:
         type=int,
         default=_DEFAULT_TIER,
         metavar="N",
-        help=f"Expected priority tier at the overlap (default: {_DEFAULT_TIER})",
+        help=f"Expected #1960 priority tier at the overlap (default: {_DEFAULT_TIER})",
     )
     parser.add_argument(
         "--warmup-frames",

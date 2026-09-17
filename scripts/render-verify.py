@@ -30,11 +30,11 @@ per-backend like the full-frame path.
 A shot listed in the optional `structural_only` block is still captured but
 skips the full-frame pixel-diff and needs no committed reference PNG — it is
 gated solely by its `structural` entries. This lets an analytic-oracle scene
-(T-4) gate the zoom regime that pixel-diff excludes as
-non-deterministic: the structural metric is compared against a computed
-expectation, not a jittery captured reference, so it is deterministic at zoom
-and shared across backends. A manifest whose shots are *all* structural_only
-commits no reference PNGs at all.
+gate the zoom regime that pixel-diff excludes as non-deterministic: the
+structural metric is compared against a computed expectation, not a jittery
+captured reference, so it is deterministic at zoom and shared across backends.
+A manifest whose shots are *all* structural_only commits no reference PNGs at
+all.
 
 The optional ``extra_runs`` manifest block declares additional capture passes
 of the same target, each with its own demo args and its own gated reference
@@ -298,8 +298,8 @@ def _label_index(shot_labels: list[str]) -> dict[str, int]:
 #     (``max_hole_ratio`` -> ``--max-hole-ratio`` etc.)
 #   * emits a JSON object on stdout; exit 0 = within thresholds, 1 = a
 #     threshold was exceeded, 2 = I/O or format error.
-# render-shadow-metric.py is the first implementer; T-3 adds
-# coverage / silhouette / clip metrics behind the same contract.
+# render-shadow-metric.py implements it; coverage / silhouette / clip metrics
+# sit behind the same contract.
 
 def _run_structural_metric(image: Path, entry: dict[str, Any],
                            shot_label: str) -> dict[str, Any]:
@@ -318,7 +318,7 @@ def _run_structural_metric(image: Path, entry: dict[str, Any],
     if not script.exists():
         raise SystemExit(
             f"structural metric '{metric}' (shot '{shot_label}') is not "
-            f"implemented: no {script.name}. See T-3."
+            f"implemented: no {script.name}. See epic #1766 T-3."
         )
 
     cmd = [sys.executable, str(script), str(image)]
@@ -672,9 +672,9 @@ def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
     # Shots gated purely by structural metrics: still captured (for the
     # index→reference alignment) but no full-frame pixel-diff and no committed
     # reference PNG. This is how an analytic-oracle scene gates the zoom regime
-    # that pixel-diff excludes (T-4). Each must be a declared shot
-    # and must carry a structural gate, else it would be captured-but-ungated —
-    # the same two arms `_parse_extra_runs` applies to each extra pass.
+    # that pixel-diff excludes. Each must be a declared shot and must carry a
+    # structural gate, else it would be captured-but-ungated — the same two arms
+    # `_parse_extra_runs` applies to each extra pass.
     structural_only: set[str] = set(manifest.get("structural_only", []))
     _validate_structural_only(structural_only, shot_labels, structural_block)
     # Optional second/third capture passes with their own demo args + gated
@@ -729,9 +729,9 @@ def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
     # `--auto-screenshot` fires `closeWindow()` after the last shot and exits
     # 0; a non-zero return is a real early-exit crash (e.g. a Metal static-
     # destruction segfault landing AFTER the screenshots save, which the per-
-    # shot comparator would otherwise silently "pass" — T-336). `--timeout`
-    # also exits 0 on a clean kill, so a crash is the only non-zero path; we
-    # let it block a PASS verdict even when every shot compares clean.
+    # shot comparator would otherwise silently "pass"). `--timeout` also exits
+    # 0 on a clean kill, so a crash is the only non-zero path; we let it block a
+    # PASS verdict even when every shot compares clean.
     crashes: list[tuple[int, str]] = []
     crash_main = _run_capture(
         worktree=worktree, target=target, shots_dir=shots_dir,
@@ -959,7 +959,7 @@ def main(argv: list[str] | None = None) -> int:
                          "neutral against the committed references — e.g. "
                          "`--demo-arg --occlusion-cull` checks the voxel "
                          "occlusion cull renders bit-identical to the cull-off "
-                         "baseline.")
+                         "baseline (#1294 child 3/3).")
     args = ap.parse_args(argv)
 
     if args.all and args.demo:

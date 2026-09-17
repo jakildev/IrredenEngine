@@ -279,8 +279,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="Skip the SDF-probe twin passes.")
     parser.add_argument("--cardinals-only", action="store_true",
                         help="Score only the cardinal-yaw frames (0, pi/2, pi, "
-                             "3pi/2) of each sweep; the full-sweep residual is "
-                             "a separate gate.")
+                             "3pi/2) of each sweep — the #2545 (epic #2544 P1) "
+                             "gate; the full-sweep residual is P2's gate.")
     parser.add_argument("--zoom", type=float, action="append", default=None,
                         help="Zoom level(s) to sweep (repeatable; default 4).")
     parser.add_argument("--warmup", type=int, default=12,

@@ -1,7 +1,7 @@
-"""Tests for render-verify.py — the ROI-crop + structural-metric gate (T-2)
-and the manifest-driven demo resolution.
+"""Tests for render-verify.py — the ROI-crop + structural-metric gate and
+the manifest-driven demo resolution.
 
-Proves the T-2 gate wiring without a GL/Metal build:
+Proves the gate wiring without a GL/Metal build:
 
   * full-frame pixel-diff still passes/fails as before (backward compat);
   * a manifest-declared ROI crop is compared against a committed reference

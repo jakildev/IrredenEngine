@@ -212,7 +212,7 @@ def evaluate(
                 "the pad-0 arm reported an EMPTY off-screen shadow-feeder ring "
                 "(ring_non_empty=0 on every shot), so the adequacy arm had zero "
                 "feeders to promote and its 0-changed-pixels result is tautological. "
-                "Check that sun shadows are on in this scene.",
+                "Check that sun shadows are on in this scene (see #3010 plan-review C1).",
             )
         )
 
@@ -227,7 +227,7 @@ def evaluate(
                 "feeder-won on-screen pixels",
                 "widening the classify box changed on-screen pixels, so those pixels "
                 f"were resolving from a depth-only shadow feeder whose colour tap stage 2 "
-                f"skipped — the margin is inadequate against stage 1's emit hull. {detail}",
+                f"skipped — the #1740 margin is inadequate against stage 1's emit hull. {detail}",
             )
         )
 
@@ -314,7 +314,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--subdivision-mode", default="none",
                     help="Passthrough to --subdivision-mode (default: none). The shadow-neutral "
                          "argument rests on feederSubCap == subdivisions, which holds at 'none'; "
-                         "other modes are unmeasured.")
+                         "other modes are unmeasured (#3010 out-of-scope).")
     args = ap.parse_args(argv)
 
     if args.adequacy_pad <= 0:
@@ -327,7 +327,7 @@ def main(argv: list[str] | None = None) -> int:
             f"[feeder-margin-verify] WARNING: --subdivision-mode {args.subdivision_mode} is an "
             "unmeasured regime — the shadow-neutral premise (feederSubCap == subdivisions) only "
             "holds at 'none', so a FAIL here may reflect subdivision-density drift rather than an "
-            "inadequate margin.",
+            "inadequate margin (#3010 out-of-scope).",
             file=sys.stderr,
         )
 

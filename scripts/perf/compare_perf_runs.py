@@ -269,7 +269,6 @@ def resolve_baseline(baseline_root: Path, head_manifest: Dict) -> Optional[Path]
         candidate = baseline_root / slug
         if (candidate / "manifest.json").exists():
             return candidate
-    # Legacy: pre-T-330 flat baseline at the root.
     if (baseline_root / "manifest.json").exists():
         return baseline_root
     return None
