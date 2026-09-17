@@ -95,7 +95,7 @@ ir_worktree_root() {
 # normalizes to POSIX-drive form (/c/...) on MSYS2/Git-Bash, while
 # <worktree-root> — sourced from `git rev-parse --show-toplevel` in every
 # real caller — is spelled in Windows-drive form (C:/...). Comparing the
-# two spellings in the `case` below never matches (#3046). `dirname` is a
+# two spellings in the `case` below never matches. `dirname` is a
 # pure string operation, so walking directly on <worktree-root> keeps the
 # returned engine root in the SAME spelling as the input; the `-f`/`-d`
 # file tests resolve either spelling transparently. Matching spelling
