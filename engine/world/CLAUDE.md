@@ -66,9 +66,10 @@ config = {
   to its consumer, and log the override at INFO; document it here and in the
   consuming module's `CLAUDE.md`. Never a CLI flag for the same purpose
   (`creations/demos/CLAUDE.md` §"Conventions", "No runtime arguments").
-- `WorldConfig` fields are what `World` itself reads at construction; the
-  pre-init pass covers what must precede `WorldConfig`'s consumers. One
-  source of truth per file.
+- `WorldConfig` fields are what `World` itself reads at construction;
+  `--config-preset <file>` overlays that file's `config` table on them (only
+  the keys it carries; a relative path resolves from the exe dir). The
+  pre-init pass reads `config.lua` only. One source of truth per file.
 
 ## Chunk residency
 
@@ -186,8 +187,8 @@ The registry is built fresh per call (never per-frame), so its session-local
 - **`m_waitForFirstUpdateInput` / `m_startRecordingOnFirstInput`** hold the
   sim / video capture until the first key press. If recording is not
   starting, check these first. `m_waitForFirstUpdateInput` is force-disarmed
-  when auto-capture is active (`--auto-screenshot`, the GUI-test path);
-  `m_startRecordingOnFirstInput` stays armed.
+  when auto-capture is active (`--auto-screenshot`, `--auto-record`, the
+  GUI-test path); `m_startRecordingOnFirstInput` stays armed.
 - **The auto-capture block in `gameLoop()` stays above the priming
   `update()`.** `enableFixedStep()` zeroes the UPDATE lag accumulator and
   `endEvent<UPDATE>()` decrements it unconditionally, so a priming tick before

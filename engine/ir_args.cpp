@@ -106,7 +106,16 @@ Parser::Parser(const char *programDescription, Common common)
         "Headless capture: cycle the shot table then exit; optional warmup frame count",
         kDefaultAutoScreenshotWarmup
     );
-    string("--config-preset", "Path to a Lua config preset applied before init", "");
+    optionalInt(
+        "--auto-record",
+        "Headless capture: record an mp4 clip then exit; optional frame count",
+        kDefaultAutoRecordFrames
+    );
+    string(
+        "--config-preset",
+        "Path to a Lua config preset whose `config` table overlays config.lua",
+        ""
+    );
 }
 
 Parser::Entry &Parser::add(const char *name, const char *help, Type type, const char *shortAlias) {
@@ -487,6 +496,10 @@ const std::vector<std::string> &Parser::positionalArgs() const {
 
 int Parser::autoScreenshotWarmupFrames() const {
     return wasProvided("--auto-screenshot") ? getInt("--auto-screenshot") : 0;
+}
+
+int Parser::autoRecordFrames() const {
+    return wasProvided("--auto-record") ? getInt("--auto-record") : 0;
 }
 
 std::string Parser::configPreset() const {

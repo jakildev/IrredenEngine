@@ -64,6 +64,24 @@ void VideoManager::configureCapture(
     }
 }
 
+void VideoManager::configureCaptureOutputResolution(int width, int height) {
+    if (width <= 0 || height <= 0) {
+        if (width > 0 || height > 0) {
+            IRE_LOG_WARN(
+                "Capture output resolution {}x{} needs both dimensions > 0; "
+                "following the render output resolution instead",
+                width,
+                height
+            );
+        }
+        m_outputWidthOverride = 0;
+        m_outputHeightOverride = 0;
+        return;
+    }
+    m_outputWidthOverride = width & ~1;
+    m_outputHeightOverride = height & ~1;
+}
+
 void VideoManager::configureScreenshotOutputDir(const std::string &outputDirPath) {
     m_screenshotOutputDirPath = outputDirPath;
 }
@@ -308,10 +326,29 @@ void VideoManager::toggleCapture() {
     if (outputResolution.x <= 0 || outputResolution.y <= 0) {
         outputResolution = IRRender::getRenderManager().getViewport();
     }
+    // The configured bitrate is the budget at the render output resolution;
+    // an output override scales it by the pixel-area ratio so bits per pixel
+    // stay constant and a smaller capture is proportionally smaller. ABR
+    // would otherwise spend the whole budget on the smaller frame.
+    int videoBitrate = m_videoBitrate;
+    if (m_outputWidthOverride > 0 && m_outputHeightOverride > 0) {
+        const double renderArea =
+            static_cast<double>(outputResolution.x) * static_cast<double>(outputResolution.y);
+        const double overrideArea = static_cast<double>(m_outputWidthOverride) *
+                                    static_cast<double>(m_outputHeightOverride);
+        videoBitrate =
+            static_cast<int>(static_cast<double>(m_videoBitrate) * overrideArea / renderArea);
+        outputResolution = ivec2(m_outputWidthOverride, m_outputHeightOverride);
+    }
 
-    IRE_LOG_INFO("Recording: source={}x{} -> output={}x{}",
-                 sourceResolution.x, sourceResolution.y,
-                 outputResolution.x, outputResolution.y);
+    IRE_LOG_INFO(
+        "Recording: source={}x{} -> output={}x{} @ {} bps",
+        sourceResolution.x,
+        sourceResolution.y,
+        outputResolution.x,
+        outputResolution.y,
+        videoBitrate
+    );
 
     VideoRecorderConfig config;
     config.output_file_path_ = m_outputFilePath;
@@ -320,7 +357,7 @@ void VideoManager::toggleCapture() {
     config.source_width_ = sourceResolution.x;
     config.source_height_ = sourceResolution.y;
     config.target_fps_ = m_targetFps;
-    config.video_bitrate_ = m_videoBitrate;
+    config.video_bitrate_ = videoBitrate;
     config.capture_audio_input_ = m_captureAudioInput;
     config.audio_input_device_name_ = m_audioInputDeviceName;
     config.audio_sample_rate_ = m_audioSampleRate;

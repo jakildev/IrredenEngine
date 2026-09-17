@@ -16,7 +16,7 @@
 //
 // Standalone tools that don't run the engine loop construct the parser in
 // no-common-args mode (so --help doesn't advertise --auto-screenshot /
-// --config-preset) and take positional arguments:
+// --auto-record / --config-preset) and take positional arguments:
 //
 //     IRArgs::Parser args("img_diff — highlight PNG drift.", IRArgs::Common::NONE);
 //     args.integer("--threshold", "Per-channel tolerance", 0);
@@ -30,6 +30,10 @@ namespace IRArgs {
 // The engine-common --auto-screenshot warmup default when the flag is given
 // without a trailing frame count.
 inline constexpr int kDefaultAutoScreenshotWarmup = 10;
+// The engine-common --auto-record capture window (render frames) when the
+// flag is given without a trailing count: 180 frames = 3 s of sim time at
+// IRConstants::kFPS.
+inline constexpr int kDefaultAutoRecordFrames = 180;
 
 // Kind of a registered argument. Drives both the parse rule and the value
 // placeholder shown in --help.
@@ -153,8 +157,11 @@ class Parser {
     // with their canonical semantics so every target drives them identically:
     //   - 0 when --auto-screenshot is absent (the established "not requested"
     //     sentinel), else the warmup frame count.
+    //   - 0 when --auto-record is absent, else the capture window in render
+    //     frames (kDefaultAutoRecordFrames for the bare switch).
     //   - empty string when --config-preset is absent, else the path.
     int autoScreenshotWarmupFrames() const;
+    int autoRecordFrames() const;
     std::string configPreset() const;
 
     // The auto-generated usage text (exactly what --help prints).

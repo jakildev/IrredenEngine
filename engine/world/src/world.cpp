@@ -15,8 +15,8 @@
 
 namespace IREngine {
 
-World::World(const char *configFileName)
-    : m_worldConfig{configFileName}
+World::World(const char *configFileName, const char *configPresetFile)
+    : m_worldConfig{configFileName, configPresetFile}
     , m_IRGLFWWindow{
           ivec2(
               m_worldConfig["init_window_width"].get_integer(),
@@ -81,6 +81,10 @@ World::World(const char *configFileName)
         m_worldConfig["video_capture_audio_wav_enabled"].get_boolean(),
         m_worldConfig["video_capture_audio_sync_offset_ms"].get_number(),
         &IRAudio::getAudioCaptureSource()
+    );
+    m_videoManager.configureCaptureOutputResolution(
+        m_worldConfig["video_capture_output_width"].get_integer(),
+        m_worldConfig["video_capture_output_height"].get_integer()
     );
     m_videoManager.configureScreenshotOutputDir(
         m_worldConfig["screenshot_output_dir"].get_string()

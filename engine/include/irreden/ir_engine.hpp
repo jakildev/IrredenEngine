@@ -54,23 +54,25 @@ namespace detail {
 // `engine/world/CLAUDE.md` "Init-affecting runtime params".
 void applyPreInitLuaConfig(const char *configFile);
 
-// Warns when --auto-screenshot was provided but no creation registered a
-// capture system, so the run would otherwise render indefinitely with no
-// diagnostic. Out-of-line in engine.cpp for the same reason as
+// Warns when --auto-screenshot or --auto-record was provided but no creation
+// registered a capture system. An unarmed --auto-screenshot run would
+// otherwise render indefinitely with no diagnostic; an unarmed --auto-record
+// run additionally closes the window so the process exits clean (with no
+// clip) instead of hanging. Out-of-line in engine.cpp for the same reason as
 // applyPreInitLuaConfig: the check reads IRVideo::isAutoCaptureActive(),
 // and inlining it would put ir_video.hpp in this header's include graph —
 // widening every includer of ir_engine.hpp to buy one log line.
-void warnIfAutoScreenshotNeverArmed();
+void warnIfAutoCaptureNeverArmed();
 
 } // namespace detail
 
 // The process-global engine argument parser, pre-loaded with the engine-common
-// args (--auto-screenshot, --config-preset, --help/-h) by the IRArgs::Parser
-// ctor. A launch target registers its own flags on this parser BEFORE calling
-// init(argc, argv) — init parses it as its first action — then reads results
-// back via args(). See engine/CLAUDE.md "CLI args go through IRArgs" for the
-// no-custom-flags / custom-flags patterns. Inline so the function-local static
-// is one shared instance across every translation unit.
+// args (--auto-screenshot, --auto-record, --config-preset, --help/-h) by the
+// IRArgs::Parser ctor. A launch target registers its own flags on this parser
+// BEFORE calling init(argc, argv) — init parses it as its first action — then
+// reads results back via args(). See engine/CLAUDE.md "CLI args go through
+// IRArgs" for the no-custom-flags / custom-flags patterns. Inline so the
+// function-local static is one shared instance across every translation unit.
 inline IRArgs::Parser &args() {
     static IRArgs::Parser parser;
     return parser;
@@ -79,13 +81,20 @@ inline IRArgs::Parser &args() {
 // Sets cwd to the executable's directory and resolves creation scripts
 // from a sibling scripts/ directory. All relative engine paths
 // (shaders/, data/) resolve from the exe directory.
+//
+// A `--config-preset` path (read back from args(); empty when the target
+// never parsed argv) resolves from the exe directory like every other
+// relative engine path. Its `config` table overlays config.lua's in
+// WorldConfig; the pre-init pass (voxel_pool_edge) reads config.lua only.
 inline void init(const char *argv0, const char *configFileName = "config.lua") {
+    const std::string configPreset = args().configPreset();
     auto exePath = std::filesystem::weakly_canonical(std::filesystem::path(argv0));
     auto exeDir = exePath.parent_path();
     std::filesystem::current_path(exeDir);
     g_scriptsDir = exeDir / "scripts";
     detail::applyPreInitLuaConfig(resolveScriptPath(configFileName).c_str());
-    g_world = std::make_unique<World>(resolveScriptPath(configFileName).c_str());
+    g_world =
+        std::make_unique<World>(resolveScriptPath(configFileName).c_str(), configPreset.c_str());
     g_world->setupLuaBindings(g_luaBindingRegistrations);
 }
 
@@ -94,7 +103,7 @@ inline void init(const char *argv0, const char *configFileName = "config.lua") {
 // cwd change and World (window/GL/Metal) construction — then runs the same
 // exe-dir setup as the argv0 overload. This is the entry point a no-custom-arg
 // target uses: IREngine::init(argc, argv) gives it --help / --auto-screenshot
-// / --config-preset with no parser code.
+// / --auto-record / --config-preset with no parser code.
 inline void init(int argc, char **argv, const char *configFileName = "config.lua") {
     IR_ASSERT(argc > 0, "init(argc, argv) needs argv[0] for exe-dir resolution");
     args().parse(argc, argv);
@@ -129,7 +138,7 @@ inline int entityCountOverride() {
 // before the manager block so column teardown always unrefs
 // against a live lua_State.
 inline void gameLoop() {
-    detail::warnIfAutoScreenshotNeverArmed();
+    detail::warnIfAutoCaptureNeverArmed();
     getWorld().gameLoop();
     g_world.reset();
 }

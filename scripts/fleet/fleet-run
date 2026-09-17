@@ -4,7 +4,7 @@
 # Execs ir-run (engine/tools/bin/ir-run) with the same arguments.
 # The worktree-aware build dir, exe lookup, --timeout watchdog,
 # --targets delegation, and verb-conditional ir-acquire wrapping
-# (--auto-screenshot → gpu, --auto-profile → benchmark) all live
+# (--auto-screenshot / --auto-record → gpu, --auto-profile → benchmark) all live
 # in ir-run.
 #
 # Source of truth: scripts/fleet/fleet-run in the engine repo (shim).

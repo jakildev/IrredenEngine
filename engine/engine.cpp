@@ -3,6 +3,7 @@
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_script.hpp>
 #include <irreden/ir_video.hpp>
+#include <irreden/ir_window.hpp>
 #include <irreden/render/voxel_pool_config.hpp>
 
 namespace IREngine::detail {
@@ -30,14 +31,26 @@ void applyPreInitLuaConfig(const char *configFile) {
     }
 }
 
-void warnIfAutoScreenshotNeverArmed() {
-    if (args().wasProvided("--auto-screenshot") && !IRVideo::isAutoCaptureActive()) {
+void warnIfAutoCaptureNeverArmed() {
+    if (IRVideo::isAutoCaptureActive()) {
+        return;
+    }
+    if (args().wasProvided("--auto-screenshot")) {
         IRE_LOG_WARN(
             "--auto-screenshot was provided but no capture system is registered; "
             "this creation will render indefinitely and never exit. The creation "
             "must call IRVideo::createAutoScreenshotSystem (or createGuiTestSystem "
             "for the GUI-test path) before gameLoop() (see engine/video/CLAUDE.md)."
         );
+    }
+    if (args().wasProvided("--auto-record")) {
+        IRE_LOG_WARN(
+            "--auto-record was provided but no capture system is registered; "
+            "exiting without a clip. The creation must call "
+            "IRVideo::appendAutoRecordIfRequested (or createAutoRecordSystem) "
+            "before gameLoop() (see engine/video/CLAUDE.md)."
+        );
+        IRWindow::closeWindow();
     }
 }
 

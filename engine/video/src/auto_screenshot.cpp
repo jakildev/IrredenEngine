@@ -20,6 +20,7 @@ namespace {
 // when zero entities match — we only care about endTick here.
 struct C_AutoScreenshotAnchor {};
 struct C_GuiTestAnchor {};
+struct C_AutoRecordAnchor {};
 
 // Apply one shot's camera state (zoom / pan / Z-yaw / pivot focus / cull
 // freeze) before the settle window. Shared by the auto-screenshot and GUI-test
@@ -55,9 +56,9 @@ struct CyclingState {
     bool screenshotPending_ = false;
 };
 
-// Set true the first time either capture-system creator
-// (createAutoScreenshotSystem or createGuiTestSystem) runs this process,
-// i.e. a headless --auto-screenshot capture is active. Read by World via
+// Set true the first time any capture-system creator (createAutoScreenshotSystem,
+// createGuiTestSystem, or createAutoRecordSystem) runs this process, i.e. a
+// headless frame-counted capture is active. Read by World via
 // isAutoCaptureActive() to switch the UPDATE loop to a deterministic fixed
 // step. Process-lifetime flag; capture is one-shot per process.
 bool g_autoCaptureActive = false;
@@ -132,6 +133,77 @@ IRSystem::SystemId createAutoScreenshotSystem(const AutoScreenshotConfig &config
             state->settleCounter_ = 0;
             state->screenshotPending_ = false;
             ++state->currentShot_;
+        }
+    );
+}
+
+IRSystem::SystemId createAutoRecordSystem(const AutoRecordConfig &config) {
+    g_autoCaptureActive = true;
+
+    struct RecordState {
+        AutoRecordConfig config_;
+        int warmupRemaining_ = 0;
+        int capturedFrames_ = 0;
+        enum class Phase { WARMUP, STARTING, RECORDING, STOPPING, DONE } phase_ = Phase::WARMUP;
+    };
+    using Phase = RecordState::Phase;
+
+    auto state = std::make_shared<RecordState>();
+    state->config_ = config;
+    state->warmupRemaining_ = config.warmupFrames_;
+
+    // A toggle requested here lands in VideoManager::render() later in the
+    // same frame, after the RENDER pipeline. The frame after the start
+    // request is therefore the first the recorder sees, and the stop request
+    // is processed before that frame's own capture — so counting from the
+    // first recorded frame and stopping on the (frames_ + 1)th endTick
+    // submits exactly frames_ captures.
+    return IRSystem::createSystem<C_AutoRecordAnchor>(
+        "AutoRecord",
+        [](C_AutoRecordAnchor &) {},
+        nullptr,
+        [state]() {
+            switch (state->phase_) {
+            case Phase::WARMUP:
+                if (state->warmupRemaining_ > 0) {
+                    --state->warmupRemaining_;
+                    return;
+                }
+                IR_LOG_INFO(
+                    "AutoRecord: starting capture, {} frame window",
+                    state->config_.frames_
+                );
+                IRVideo::toggleRecording();
+                state->phase_ = Phase::STARTING;
+                return;
+            case Phase::STARTING:
+                if (IRVideo::recordingState() != RecordingState::RECORDING) {
+                    IR_LOG_WARN(
+                        "AutoRecord: recorder did not start ({}); exiting without a clip",
+                        IRVideo::getLastError()
+                    );
+                    IRWindow::closeWindow();
+                    state->phase_ = Phase::DONE;
+                    return;
+                }
+                state->phase_ = Phase::RECORDING;
+                [[fallthrough]];
+            case Phase::RECORDING:
+                if (state->capturedFrames_ < state->config_.frames_) {
+                    ++state->capturedFrames_;
+                    return;
+                }
+                IR_LOG_INFO("AutoRecord: {} frames captured, stopping", state->capturedFrames_);
+                IRVideo::toggleRecording();
+                state->phase_ = Phase::STOPPING;
+                return;
+            case Phase::STOPPING:
+                IRWindow::closeWindow();
+                state->phase_ = Phase::DONE;
+                return;
+            case Phase::DONE:
+                return;
+            }
         }
     );
 }

@@ -151,9 +151,9 @@ template <std::size_t LabelSize = 40> struct IndexedSweepShots {
     }
 };
 
-/// True once either capture-system creator (@c createAutoScreenshotSystem or
-/// @c createGuiTestSystem) has been called this run — i.e. the
-/// process is doing a headless auto-screenshot capture. @c World reads this to
+/// True once any capture-system creator (@c createAutoScreenshotSystem,
+/// @c createGuiTestSystem, or @c createAutoRecordSystem) has been called this
+/// run — i.e. the process is doing a headless frame-counted capture. @c World reads this to
 /// switch the UPDATE loop to a deterministic fixed step (one tick per render
 /// frame) so per-tick animation (AUTO_SPIN, etc.) advances reproducibly during
 /// the frame-counted capture window instead of being starved by the uncapped
@@ -203,6 +203,53 @@ void appendAutoScreenshotIfRequested(
     cfg.settleFrames_ = settleFrames;
     setAutoScreenshotShots(cfg, shots);
     pipeline.push_back(createAutoScreenshotSystem(cfg));
+}
+
+/// Declarative config for @c createAutoRecordSystem: @c warmupFrames_ render
+/// frames before the recorder starts (the same default as
+/// @c AutoScreenshotConfig), then @c frames_ render frames captured — the
+/// `--auto-record` count the caller read back (its bare default lives in
+/// @c IRArgs, which this module cannot include); 0 stops right after the
+/// start.
+///
+/// The recorder's clock is the UPDATE tick, and auto-capture runs one UPDATE
+/// tick per render frame, so @c frames_ is @c frames_ / @c IRConstants::kFPS
+/// seconds of sim time; the encoder emits @c frames_ * @c video_capture_fps
+/// / @c kFPS frames of it (180 → 180 at the default 60 fps, 90 at 30 fps).
+struct AutoRecordConfig {
+    int warmupFrames_ = 10;
+    int frames_ = 0;
+};
+
+/// Create a system that starts the recorder through the toggle path after
+/// @c config.warmupFrames_, counts @c config.frames_ render frames, stops it,
+/// and calls @c IRWindow::closeWindow() on the following frame — exactly one
+/// start and one stop per run, so the toggle is never issued while the async
+/// finalize is in flight. A recorder that fails to start (FFmpeg absent, bad
+/// config) is logged as a warning and the window closes without a clip. The
+/// caller appends the returned @c SystemId to the RENDER pipeline before
+/// @c registerPipeline fires. Marks auto-capture active like
+/// @c createAutoScreenshotSystem, so the sim runs the deterministic fixed
+/// step for the clip's duration. Don't combine with a screenshot cycler in
+/// one run: whichever finishes first closes the window.
+///
+/// Requires @c IREngine::init() has run (so the system manager is live).
+IRSystem::SystemId createAutoRecordSystem(const AutoRecordConfig &config);
+
+/// Registers @c createAutoRecordSystem for a @c frames-long capture window
+/// when @c frames is positive (the built-in `--auto-record [frames]` arg was
+/// passed), appending the returned system to @c pipeline. A no-op — nothing
+/// is pushed — when @c frames <= 0. Same wire-up as
+/// @c appendAutoScreenshotIfRequested: the caller reads the count via
+/// @c IREngine::args().autoRecordFrames() (this module cannot) and calls this
+/// once before @c registerPipeline fires.
+template <typename Pipeline> void appendAutoRecordIfRequested(Pipeline &pipeline, int frames) {
+    if (frames <= 0) {
+        return;
+    }
+    AutoRecordConfig cfg{};
+    cfg.frames_ = frames;
+    pipeline.push_back(createAutoRecordSystem(cfg));
 }
 
 /// One scripted input event within a @c GuiTestShot.

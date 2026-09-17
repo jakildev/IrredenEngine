@@ -37,6 +37,11 @@ class VideoManager {
         double audioSyncOffsetMs = 0.0,
         IRAudio::IAudioCaptureSource *audioCaptureSource = nullptr
     );
+    /// Encoded frame size for the next recording. Both > 0 replaces the
+    /// render output resolution as the encoder's output size; otherwise the
+    /// recorder keeps following the render output (the default). Odd values
+    /// round down to even for yuv420p.
+    void configureCaptureOutputResolution(int width, int height);
     void configureScreenshotOutputDir(const std::string &outputDirPath);
 
     void toggleRecording();
@@ -65,6 +70,8 @@ class VideoManager {
     bool m_toggleRequested = false;
     int m_targetFps = 60;
     int m_videoBitrate = 10'000'000;
+    int m_outputWidthOverride = 0;
+    int m_outputHeightOverride = 0;
     bool m_captureAudioInput = false;
     std::string m_audioInputDeviceName;
     int m_audioSampleRate = 48'000;

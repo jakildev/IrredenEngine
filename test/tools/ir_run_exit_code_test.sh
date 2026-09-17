@@ -76,6 +76,20 @@ check "RESULT=CRASH verdict names the propagated code + decoded signal" \
 check "diagnostic cites the clean-exit policy" \
     "grep -q 'clean-exit policy' /tmp/ir-run-crash.log"
 
+echo "[3] auto-record is a self-terminating verb too: verdict on both paths"
+"$IR_RUN" --build-dir "$BUILD_DIR" IRFakeClean --auto-record 180 > /tmp/ir-run-record-clean.log 2>&1
+rc=$?
+check "auto-record clean exit code 0" "[[ $rc -eq 0 ]]"
+check "auto-record clean reports RESULT=CLEAN" \
+    "grep -q 'RESULT=CLEAN exe=IRFakeClean exit=0' /tmp/ir-run-record-clean.log"
+set +e
+"$IR_RUN" --build-dir "$BUILD_DIR" IRFakeCrash --auto-record 180 > /tmp/ir-run-record-crash.log 2>&1
+rc=$?
+set -e
+check "auto-record crash propagates 139" "[[ $rc -eq 139 ]]"
+check "auto-record crash reports RESULT=CRASH" \
+    "grep -q 'RESULT=CRASH exe=IRFakeCrash exit=139 signal=SIGSEGV' /tmp/ir-run-record-crash.log"
+
 echo
 echo "ir_run_exit_code_test.sh: $pass passed, $fail failed"
 exit "$fail"

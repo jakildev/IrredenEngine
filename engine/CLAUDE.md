@@ -22,14 +22,15 @@ Core engine static libraries. Everything here is shared by every creation.
 `engine/include/irreden/ir_args.hpp` is the declarative argument framework, and
 the engine **owns the parse**: `IREngine::args()` is a process-global
 `IRArgs::Parser` pre-loaded with the engine-common args (`--auto-screenshot`,
-`--config-preset`) plus a free `--help` / `-h`. `IREngine::init(argc, argv)`
+`--auto-record`, `--config-preset`) plus a free `--help` / `-h`. `IREngine::init(argc, argv)`
 calls `args().parse(argc, argv)` as its **first action**, before any window /
 GL / Metal init, so `--help` is instant and headless-safe.
 
 - **No custom flags?** Just call `IREngine::init(argc, argv)` — the target gets
-  working `--help` / `--auto-screenshot` / `--config-preset` with no parser
-  code at all, read back via `IREngine::args().autoScreenshotWarmupFrames()` /
-  `IREngine::args().configPreset()`.
+  working `--help` / `--auto-screenshot` / `--auto-record` / `--config-preset`
+  with no parser code at all, read back via
+  `IREngine::args().autoScreenshotWarmupFrames()` / `.autoRecordFrames()` /
+  `.configPreset()`.
 - **Custom flags?** Register them on `IREngine::args()` (`.flag` / `.integer` /
   `.number` / `.string` / `.optionalInt` / `.numbers` for a fixed-count float
   list like `--sweep-yaw <from> <to> <n>` / `.enumValue` for a value validated

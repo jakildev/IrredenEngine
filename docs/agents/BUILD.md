@@ -100,8 +100,8 @@ is no `--build-dir` flag — `IRREDEN_BUILD_DIR` is the knob. Pick the
 `engine/tools/bin/ir-build` and `ir-run` are canonical (shared by the fleet,
 a solo dev, and CI); `scripts/fleet/fleet-build` and `fleet-run` are
 one-line shims that `exec` them. `ir-build` wraps `cmake --build` in
-`ir-acquire cpu N`; `ir-run` wraps `--auto-screenshot` runs in
-`ir-acquire gpu` and `--auto-profile` in `ir-acquire benchmark`, so parallel
+`ir-acquire cpu N`; `ir-run` wraps `--auto-screenshot` / `--auto-record` runs
+in `ir-acquire gpu` and `--auto-profile` in `ir-acquire benchmark`, so parallel
 workers serialize on the CPU budget or split it (`IR_FLEET_WORKERS=2` → each
 build caps at `budget/2`). Either name works.
 
@@ -262,10 +262,10 @@ fleet-run IrredenEngineTest --gtest_brief=1
 
 Two modes; never mix them:
 
-- **`--auto-screenshot` demos** — omit `--timeout`:
-  `fleet-run <demo> --auto-screenshot 10`. Auto-screenshot calls
-  `closeWindow()` when the shot sequence is done; a `--timeout` would report
-  "alive at deadline" as success and mask a hang.
+- **`--auto-screenshot` / `--auto-record` demos** — omit `--timeout`:
+  `fleet-run <demo> --auto-screenshot 10`. Both call `closeWindow()` when
+  the shot sequence / clip is done; a `--timeout` would report "alive at
+  deadline" as success and mask a hang.
 - **Everything else** (interactive demos, test binaries, profiling runs) —
   `fleet-run --timeout 15 <exe>`; omitting it blocks indefinitely.
 

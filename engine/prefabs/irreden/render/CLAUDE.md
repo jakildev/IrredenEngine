@@ -160,7 +160,7 @@ perf-stats overlay region (top-right by default).
   `sliderValue` / `checkbox` / `picksVoxel` / `picksIsoColumn` / `predicate`,
   one `GUI-ASSERT …` line each plus one `GUI-ASSERT-COVERAGE …` per shot.
   Reference wiring: `creations/editors/voxel_editor/main.cpp`. Lua `onClick`:
-  `engine/script/CLAUDE.md` §"Widget framework bindings".
+  `engine/script/CLAUDE.md` §"Engine service bindings".
 
 ## Rotation modes
 

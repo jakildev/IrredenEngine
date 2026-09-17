@@ -175,6 +175,7 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
 };
 
 int g_autoWarmupFrames = 0; // 0 = --auto-screenshot not requested
+int g_autoRecordFrames = 0; // 0 = --auto-record not requested
 bool g_depthColor = false;
 bool g_checkerboard = false; // opt-in via --checkerboard; flickered, off by default
 // Sim rate in effect before the PAUSE SIMULATION setting was flipped on, so
@@ -974,6 +975,7 @@ void readCliArgs() {
     const IRArgs::Parser &args = IREngine::args();
 
     g_autoWarmupFrames = args.autoScreenshotWarmupFrames();
+    g_autoRecordFrames = args.autoRecordFrames();
 
     // --auto-profile: 0 when absent, else the frame count (300 if bare).
     if (args.wasProvided("--auto-profile")) {
@@ -2076,11 +2078,11 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::SPRITE_TO_SCREEN>(),
         }
     );
-    // Off during --auto-screenshot captures — the minimap is a live debug
-    // aid, not part of the render-verify golden image. Interactive /
-    // --auto-profile runs (g_autoWarmupFrames == 0) default it visible;
+    // Off during --auto-screenshot / --auto-record captures — the minimap is
+    // a live debug aid, not part of the render-verify golden image or a
+    // reviewer clip. Interactive / --auto-profile runs default it visible;
     // F11 (initCommands below) toggles it either way.
-    IRRender::setCullingMinimapEnabled(g_autoWarmupFrames == 0);
+    IRRender::setCullingMinimapEnabled(g_autoWarmupFrames == 0 && g_autoRecordFrames == 0);
 
     if (g_autoProfileFrames > 0) {
         IRSystem::SystemId autoProfileId = IRSystem::createSystem<C_VoxelSetNew>(
@@ -2464,6 +2466,7 @@ void initSystems() {
             renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(cfg));
         }
     }
+    IRVideo::appendAutoRecordIfRequested(renderPipeline, g_autoRecordFrames);
 
     IRSystem::registerPipeline(IRTime::Events::RENDER, renderPipeline);
 }

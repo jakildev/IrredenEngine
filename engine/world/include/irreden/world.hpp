@@ -26,7 +26,9 @@ constexpr const char *kTestLuaConfig = "data/configs/default.irconf";
 class World {
   public:
     using LuaBindingRegistration = std::function<void(IRScript::LuaScript &)>;
-    World(const char *configFileName);
+    /// @p configPresetFile: optional Lua file overlaying config.lua's
+    /// `config` table (empty = none); see @c WorldConfig.
+    World(const char *configFileName, const char *configPresetFile = "");
     virtual ~World();
     void gameLoop();
     void setupLuaBindings(const std::vector<LuaBindingRegistration> &bindings);
