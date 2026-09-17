@@ -3,22 +3,24 @@
 #include <irreden/render/default_pivot_latch.hpp>
 
 // ---------------------------------------------------------------------------
-// The default pivot's latch-UPDATE policy (#2547 + the #2669 amendment).
+// The default pivot's latch-UPDATE policy.
 //
 // `docs/design/camera-yaw-pivot.md` §"The contract" says when the depth-aware
 // default pivot may re-latch: while the camera is settled and pan/zoom moved
-// since the last derive (#2547), AND on the rotation-start edge — the first
-// frame yaw changes, whose previous frame was still and so left a valid depth
-// attachment (#2669).
+// since the last derive, AND on the rotation-start edge — the first frame yaw
+// changes, whose previous frame was still (so it left a valid depth
+// attachment) and rendered at yaw 0 (so the depth it left pins the point under
+// the crosshair). A rotation starting from non-zero yaw holds the latch.
 //
 // Nothing in the tree could see that. Every `scripts/pivot-verify.py` block —
 // including P4's `cursor-latch` — holds the camera pan/zoom FIXED across its
 // shots and sweeps yaw from a single derive, which is the one regime where the
-// old and amended policies agree; the harness even flags a block that moves the
-// view as MISCONFIGURED. So the guard the ruling requires ("verification must
-// move the camera between derives") is this file: `DefaultPivotLatch` is the
-// policy with the GPU readback lifted out, so a frame sequence that pans, then
-// rotates, then rotates again runs headlessly in the normal suite.
+// pan/zoom-only and amended policies agree; the harness even flags a block
+// that moves the view as MISCONFIGURED. So the guard the ruling requires
+// ("verification must move the camera between derives") is this file:
+// `DefaultPivotLatch` is the policy with the GPU readback lifted out, so a
+// frame sequence that pans, then rotates, then rotates again runs headlessly
+// in the normal suite.
 //
 // The one-frame lag is modelled explicitly. `beginFrame` runs ahead of the
 // RENDER pipeline, so a derive at frame N consumes the attachment frame N-1
@@ -35,9 +37,10 @@ using IRRender::DefaultPivotPose;
 
 constexpr vec2 kZoom = vec2(4.0f);
 constexpr vec2 kZoomedIn = vec2(8.0f);
-// Comfortably above kYawSettleDelta (1e-4 rad/frame): one frame of a real
-// rotation, not a residual.
+// Comfortably above kYawSettleDelta: one frame of a real rotation, not a
+// residual.
 constexpr float kYawStep = 0.05f;
+constexpr float kYawSettleDelta = DefaultPivotLatch::kYawSettleDelta;
 
 // Iso depths standing for distinct content under the crosshair. Each is a
 // distinguishable value, so an assertion on the latched depth names WHICH
@@ -98,8 +101,9 @@ DefaultPivotPose pose(float yaw, vec2 cameraIso, vec2 zoom = kZoom) {
 }
 
 // ---------------------------------------------------------------------------
-// The pan/zoom clause (#2547), which the amendment retains: a settled camera
-// derives once per pan/zoom, one frame late, and a still camera pays nothing.
+// The pan/zoom clause, which the rotation-start edge sits beside: a settled
+// camera derives once per pan/zoom, one frame late, and a still camera pays
+// nothing.
 // ---------------------------------------------------------------------------
 
 TEST(DefaultPivotLatch, FirstFrameCannotDeriveAndASettledCameraDerivesExactlyOnce) {
@@ -153,14 +157,15 @@ TEST(DefaultPivotLatch, ZoomIsKeyedExactlyLikePan) {
 }
 
 // ---------------------------------------------------------------------------
-// The #2669 amendment: the rotation-start edge.
+// The rotation-start edge, where it fires: a rotation starting from yaw 0.
 // ---------------------------------------------------------------------------
 
 TEST(DefaultPivotLatch, RotationStartRederivesAfterAPanThatNeverSettled) {
     // The criterion-4 sequence in its sharpest form: pan, then rotate with NO
-    // still frame between them. #2547's clause cannot fire (the pan frame's
-    // attachment is pre-pan, and the rotation frames are not settled), so under
-    // the pre-#2669 policy the entire rotation pivots about the PRE-PAN depth.
+    // still frame between them. The pan/zoom clause cannot fire (the pan
+    // frame's attachment is pre-pan, and the rotation frames are not settled),
+    // so under the pan/zoom-only policy the entire rotation pivots about the
+    // PRE-PAN depth.
     LatchDriver driver;
     const DefaultPivotPose before = pose(0.0f, vec2(0.0f));
     driver.hold(before, kDepthStart, 4);
@@ -169,8 +174,9 @@ TEST(DefaultPivotLatch, RotationStartRederivesAfterAPanThatNeverSettled) {
     const DefaultPivotPose panned = pose(0.0f, vec2(64.0f, -12.0f));
     ASSERT_FALSE(driver.step(panned, kDepthAfterPan).derive_);
 
-    // Yaw starts moving on the very next frame. Its previous frame was still,
-    // so the attachment is the panned view and the derive is sound.
+    // Yaw starts moving on the very next frame. Its previous frame was still
+    // and at yaw 0, so the attachment is the panned view and the derive is
+    // sound.
     const DefaultPivotLatchDecision start =
         driver.step(pose(kYawStep, panned.cameraIso_), kDepthAfterPan);
     EXPECT_TRUE(start.derive_);
@@ -180,10 +186,10 @@ TEST(DefaultPivotLatch, RotationStartRederivesAfterAPanThatNeverSettled) {
 }
 
 TEST(DefaultPivotLatch, RotationStartRederivesAfterAPanThatSettled) {
-    // The criterion as literally worded — pan, settle, rotate. Here #2547's
-    // clause has already refreshed the depth, so the value is unchanged; the
-    // assertion that carries the amendment is that the derive FIRED, and fired
-    // through the rotation-start clause.
+    // The criterion as literally worded — pan, settle, rotate. Here the
+    // pan/zoom clause has already refreshed the depth, so the value is
+    // unchanged; the assertion that carries the rotation-start clause is that
+    // the derive FIRED, and fired through that clause.
     LatchDriver driver;
     driver.hold(pose(0.0f, vec2(0.0f)), kDepthStart, 3);
     const DefaultPivotPose panned = pose(0.0f, vec2(-31.0f, 8.5f));
@@ -198,9 +204,9 @@ TEST(DefaultPivotLatch, RotationStartRederivesAfterAPanThatSettled) {
 }
 
 TEST(DefaultPivotLatch, ContinuousRotationDerivesOnceAtItsStartAndNeverPerFrame) {
-    // Ruling condition 1 — gesture-start only. A per-frame derive would pay a
-    // full GPU flush every frame of every rotation AND chase the pivot across
-    // the content it is pinning.
+    // Gesture-start only. A per-frame derive would pay a full GPU flush every
+    // frame of every rotation AND chase the pivot across the content it is
+    // pinning.
     LatchDriver driver;
     const vec2 cameraIso = vec2(12.0f, 3.0f);
     driver.hold(pose(0.0f, cameraIso), kDepthStart, 3);
@@ -221,12 +227,64 @@ TEST(DefaultPivotLatch, ContinuousRotationDerivesOnceAtItsStartAndNeverPerFrame)
     EXPECT_FLOAT_EQ(driver.isoDepth(), kDepthStart);
 }
 
-TEST(DefaultPivotLatch, SecondRotationPivotsAboutTheContentActuallyUnderTheCrosshair) {
-    // Consequence (b) — post-rotate staleness — is what this locks. A rotation
-    // changes what sits under the crosshair, but changes neither cameraIso nor
-    // zoom, so under the pre-#2669 policy the SECOND rotation and every one
-    // after it pivoted about the pre-FIRST-rotation depth until the user
-    // happened to pan or zoom.
+TEST(DefaultPivotLatch, RotationStartFromYawWithinTheSettleToleranceDerives) {
+    // The yaw-0 gate is a tolerance, not an exact-zero compare: a pre-rotation
+    // yaw the settle predicate itself cannot tell from 0 counts as 0.
+    LatchDriver driver;
+    const vec2 cameraIso = vec2(3.0f, -9.0f);
+    driver.hold(pose(0.0f, cameraIso), kDepthStart, 3);
+    // Drifting to half the tolerance is under the settle delta, so the camera
+    // is still "settled" and this costs nothing.
+    const float nearZero = 0.5f * kYawSettleDelta;
+    driver.hold(pose(nearZero, cameraIso), kDepthAfterPan, 3);
+    const int before = driver.derives();
+    ASSERT_EQ(driver.rotationStartDerives(), 0);
+
+    const DefaultPivotLatchDecision start =
+        driver.step(pose(nearZero + kYawStep, cameraIso), kDepthAfterPan);
+    EXPECT_TRUE(start.derive_);
+    EXPECT_TRUE(start.rotationStart_);
+    EXPECT_EQ(driver.derives(), before + 1);
+    EXPECT_FLOAT_EQ(driver.isoDepth(), kDepthAfterPan);
+}
+
+// ---------------------------------------------------------------------------
+// The rotation-start edge, where it holds: a rotation starting from non-zero
+// yaw. The focus expression has no yaw term, so a depth read off a frame
+// rendered at non-zero yaw would pin a point other than the one under the
+// crosshair and walk the pivot on every gesture; the latch holds instead, and
+// the pre-rotation depth pins the gesture as it did under the pan/zoom-only
+// policy.
+// ---------------------------------------------------------------------------
+
+TEST(DefaultPivotLatch, RotationStartFromYawOutsideTheSettleToleranceHolds) {
+    // The boundary's other side: a pre-rotation yaw just past the tolerance
+    // is non-zero, and the edge does not fire.
+    LatchDriver driver;
+    const vec2 cameraIso = vec2(3.0f, -9.0f);
+    driver.hold(pose(0.0f, cameraIso), kDepthStart, 3);
+    // Jumping past the tolerance in one frame is itself a rotation start from
+    // yaw 0, which re-reads the still yaw-0 attachment — the same depth.
+    const float justOffZero = 2.0f * kYawSettleDelta;
+    driver.hold(pose(justOffZero, cameraIso), kDepthAfterPan, 3);
+    ASSERT_FLOAT_EQ(driver.isoDepth(), kDepthStart);
+    const int before = driver.derives();
+
+    const DefaultPivotLatchDecision start =
+        driver.step(pose(justOffZero + kYawStep, cameraIso), kDepthAfterPan);
+    EXPECT_FALSE(start.derive_);
+    EXPECT_FALSE(start.rotationStart_);
+    EXPECT_EQ(driver.derives(), before);
+    EXPECT_FLOAT_EQ(driver.isoDepth(), kDepthStart);
+}
+
+TEST(DefaultPivotLatch, SecondRotationFromNonZeroYawHoldsTheLatch) {
+    // A rotation changes what sits under the crosshair but changes neither
+    // cameraIso nor zoom, so the SECOND rotation and every one after it pivot
+    // about the depth the first one started from until the user pans or zooms.
+    // That post-rotate staleness is the accepted residual of the yaw-0-scoped
+    // edge (docs/design/camera-yaw-pivot.md §"The contract"): the alternative,
+    // re-deriving here, reads a non-zero-yaw frame and walks the pivot.
     LatchDriver driver;
     const vec2 cameraIso = vec2(-7.0f, 21.0f);
     driver.hold(pose(0.0f, cameraIso), kDepthStart, 3);
@@ -242,20 +300,22 @@ TEST(DefaultPivotLatch, SecondRotationPivotsAboutTheContentActuallyUnderTheCross
 
     // It settles at a new yaw, where DIFFERENT content sits under the crosshair.
     driver.hold(pose(yaw, cameraIso), kDepthAfterFirstRotation, 4);
+    const int before = driver.derives();
 
     const DefaultPivotLatchDecision secondStart =
         driver.step(pose(yaw + kYawStep, cameraIso), kDepthAfterFirstRotation);
-    EXPECT_TRUE(secondStart.rotationStart_);
-    EXPECT_FLOAT_EQ(driver.isoDepth(), kDepthAfterFirstRotation);
+    EXPECT_FALSE(secondStart.derive_);
+    EXPECT_FALSE(secondStart.rotationStart_);
+    EXPECT_EQ(driver.derives(), before);
+    EXPECT_FLOAT_EQ(driver.isoDepth(), kDepthStart);
 }
 
-TEST(DefaultPivotLatch, APausedDragReArmsTheRotationStartEdge) {
-    // Documented and deliberate: the edge is "settled last frame, not settled
-    // now", so a drag that stops for a frame and resumes counts as a new
-    // rotation start. That is the ruling's own definition ("the first frame yaw
-    // changes, whose previous frame was still"), and the paused frame's
-    // attachment IS a still view, so the derive is sound. It is not a per-frame
-    // derive: a rotation with no still frame in it still derives exactly once.
+TEST(DefaultPivotLatch, APausedDragReArmsTheEdgeOnlyWhenItPausesAtYawZero) {
+    // The edge is "settled last frame, not settled now", so a drag that stops
+    // for a frame and resumes is a new rotation start — but the yaw-0 gate
+    // applies to it like any other. Paused at non-zero yaw, resuming holds;
+    // paused back at yaw 0, resuming derives. Neither is a per-frame derive: a
+    // rotation with no still frame in it derives at most once.
     LatchDriver driver;
     const vec2 cameraIso = vec2(0.0f);
     driver.hold(pose(0.0f, cameraIso), kDepthStart, 3);
@@ -267,16 +327,30 @@ TEST(DefaultPivotLatch, APausedDragReArmsTheRotationStartEdge) {
     }
     ASSERT_EQ(driver.rotationStartDerives(), 1);
 
-    // One paused frame: settled, and pan/zoom unchanged since the derive, so
-    // the pause itself costs nothing.
+    // One paused frame at non-zero yaw: settled, and pan/zoom unchanged since
+    // the derive, so the pause itself costs nothing.
     const int beforePause = driver.derives();
     EXPECT_FALSE(driver.step(pose(yaw, cameraIso), kDepthAfterFirstRotation).derive_);
     EXPECT_EQ(driver.derives(), beforePause);
 
-    // Resuming re-arms the edge.
-    EXPECT_TRUE(driver.step(pose(yaw + kYawStep, cameraIso), kDepthAfterFirstRotation).derive_);
+    // Resuming from non-zero yaw holds.
+    EXPECT_FALSE(driver.step(pose(yaw + kYawStep, cameraIso), kDepthAfterFirstRotation).derive_);
+    EXPECT_EQ(driver.rotationStartDerives(), 1);
+    EXPECT_FLOAT_EQ(driver.isoDepth(), kDepthStart);
+
+    // Dragging back to yaw 0 and pausing there re-arms the edge: the paused
+    // frame is a still yaw-0 view, so the derive on resume is sound and reads
+    // the content now under the crosshair.
+    yaw += kYawStep;
+    for (int frame = 0; frame < 5; ++frame) {
+        yaw -= kYawStep;
+        driver.step(pose(yaw, cameraIso), kDepthAfterPan);
+    }
+    ASSERT_LE(IRMath::abs(yaw), kYawSettleDelta);
+    EXPECT_FALSE(driver.step(pose(yaw, cameraIso), kDepthAfterPan).derive_);
+    EXPECT_TRUE(driver.step(pose(yaw + kYawStep, cameraIso), kDepthAfterPan).derive_);
     EXPECT_EQ(driver.rotationStartDerives(), 2);
-    EXPECT_FLOAT_EQ(driver.isoDepth(), kDepthAfterFirstRotation);
+    EXPECT_FLOAT_EQ(driver.isoDepth(), kDepthAfterPan);
 }
 
 TEST(DefaultPivotLatch, AResidualYawWobbleUnderTheSettleDeltaIsNotARotationStart) {
@@ -285,10 +359,10 @@ TEST(DefaultPivotLatch, AResidualYawWobbleUnderTheSettleDeltaIsNotARotationStart
     driver.hold(pose(0.0f, cameraIso), kDepthStart, 3);
     const int before = driver.derives();
 
-    // 1e-5 rad/frame is an order of magnitude under kYawSettleDelta.
+    // An order of magnitude under kYawSettleDelta per frame.
     float yaw = 0.0f;
     for (int frame = 0; frame < 20; ++frame) {
-        yaw += (frame % 2 == 0) ? 1e-5f : -1e-5f;
+        yaw += (frame % 2 == 0) ? 0.1f * kYawSettleDelta : -0.1f * kYawSettleDelta;
         driver.step(pose(yaw, cameraIso), kDepthAfterFirstRotation);
     }
     EXPECT_EQ(driver.derives(), before);

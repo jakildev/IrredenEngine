@@ -19,12 +19,14 @@ struct DefaultPivotPose {
 // requires a settled yaw).
 struct DefaultPivotLatchDecision {
     bool derive_ = false;
-    // The rotation-start edge (#2669): yaw is changing THIS frame and was
-    // settled the previous one, so the depth attachment still on the GPU
-    // belongs to a still view.
+    // The rotation-start edge: yaw is changing THIS frame, was settled the
+    // previous one (so the depth attachment still on the GPU belongs to a
+    // still view), and that previous frame's yaw was 0 within
+    // DefaultPivotLatch::kYawSettleDelta (so the depth it reads pins the point
+    // actually under the crosshair — see observeFrame).
     bool rotationStart_ = false;
-    // Pan or zoom moved since the last derive and the camera has settled again
-    // (#2547).
+    // Pan or zoom moved since the last derive and the camera has settled
+    // again.
     bool viewMoved_ = false;
 };
 
@@ -44,6 +46,20 @@ struct DefaultPivotLatchDecision {
 // the very content it is pinning.
 class DefaultPivotLatch {
   public:
+    // Per-frame delta of ABSOLUTE visualYaw at or below which the camera counts
+    // as not rotating, so the latch holds instead of re-deriving. Deliberately
+    // local rather than IRPrefab::Camera::kResidualYawDeadband: that constant is
+    // the one source for the *residual*-yaw predicate its four consumers share
+    // (per-axis allocation gate, render path-select, the FrameData UBO, the
+    // shadow bake), which is a different question, and borrowing it would
+    // silently couple this settle threshold to a value tuned for those.
+    // 1e-4 rad/frame is ~0.34 deg/s at 60 fps.
+    //
+    // Doubles as the rotation-start edge's yaw-0 tolerance (`|yaw| <= delta`):
+    // the same "indistinguishable from zero" that decides whether yaw moved
+    // decides whether the pre-rotation frame rendered in the world frame.
+    static constexpr float kYawSettleDelta = 1e-4f;
+
     // Stamp `pose` as what this frame is about to render and decide whether the
     // latched depth may be re-derived now.
     //
@@ -68,6 +84,7 @@ class DefaultPivotLatch {
         const bool viewMatchesLastRender =
             pose.cameraIso_ == m_renderedCameraIso && pose.zoom_ == m_renderedZoom;
         const bool wasYawSettled = m_yawSettled;
+        const bool wasYawZero = IRMath::abs(m_lastYaw) <= kYawSettleDelta;
 
         m_lastYaw = pose.visualYaw_;
         m_renderedCameraIso = pose.cameraIso_;
@@ -80,22 +97,30 @@ class DefaultPivotLatch {
 
         DefaultPivotLatchDecision decision;
         if (!yawSettled) {
-            // Rotation-start re-derive (#2669).
-            // Gesture-start ONLY: the edge is "was settled, is not now", so a
-            // continuous rotation derives once at its first yaw-delta frame and
-            // never again while yaw keeps moving. A drag that pauses for a frame
-            // and resumes re-arms the edge, and that is the ruling's own
-            // definition of a rotation start ("the first frame yaw changes,
-            // whose previous frame was still") — the paused frame's attachment
-            // is a still view, so the derive is sound.
-            decision.rotationStart_ = wasYawSettled;
-            decision.derive_ = wasYawSettled;
+            // Rotation-start re-derive, gesture-start ONLY: the edge is "was
+            // settled, is not now", so a continuous rotation derives once at its
+            // first yaw-delta frame and never again while yaw keeps moving. A
+            // drag that pauses for a frame and resumes re-arms the edge — the
+            // paused frame's attachment is a still view.
+            //
+            // Yaw-0 ONLY, on top of that. The focus is
+            // isoPixelToPos3D(viewCenterIso, isoDepth), an expression with no
+            // yaw term, so a depth read from a frame rendered at non-zero yaw
+            // pins a point that is NOT the one under the crosshair: the view
+            // shifts, which changes what the next rotation start reads, and
+            // successive derives walk the pivot into the background. Only the
+            // world frame (yaw 0) is a fixed point of that map, so the edge
+            // fires from there and the latch holds everywhere else — the
+            // non-zero-yaw derive needs a yaw-aware readback-to-focus map, which
+            // this policy does not have.
+            decision.rotationStart_ = wasYawSettled && wasYawZero;
+            decision.derive_ = decision.rotationStart_;
             return decision;
         }
 
-        // Pan/zoom-scoped derive (#2547). A genuinely still camera does ZERO
-        // readbacks, but the cost lands on every motion-stop frame of a real
-        // drag, not once at startup.
+        // Pan/zoom-scoped derive. A genuinely still camera does ZERO readbacks,
+        // but the cost lands on every motion-stop frame of a real drag, not
+        // once at startup.
         decision.viewMoved_ =
             !m_hasIsoDepth || pose.cameraIso_ != m_derivedCameraIso || pose.zoom_ != m_derivedZoom;
         decision.derive_ = decision.viewMoved_;
@@ -114,9 +139,9 @@ class DefaultPivotLatch {
 
     // Latched iso depth of the surface under the crosshair. 0 — before the
     // first derive, whenever the center pixel reads background, and for a
-    // creation whose frame never reaches beginFrame — is the pre-#2547 point
-    // exactly, so the fallback is the same expression rather than a
-    // structurally different branch.
+    // creation whose frame never reaches beginFrame — is the exact fallback
+    // point, so the fallback is the same expression rather than a structurally
+    // different branch.
     float isoDepth() const {
         return m_isoDepth;
     }
@@ -125,16 +150,6 @@ class DefaultPivotLatch {
     }
 
   private:
-    // Per-frame delta of ABSOLUTE visualYaw at or below which the camera counts
-    // as not rotating, so the latch holds instead of re-deriving. Deliberately
-    // local rather than IRPrefab::Camera::kResidualYawDeadband: that constant is
-    // the one source for the *residual*-yaw predicate its four consumers share
-    // (per-axis allocation gate, render path-select, the FrameData UBO, the
-    // shadow bake), which is a different question, and borrowing it would
-    // silently couple this settle threshold to a value tuned for those.
-    // 1e-4 rad/frame is ~0.34 deg/s at 60 fps.
-    static constexpr float kYawSettleDelta = 1e-4f;
-
     float m_isoDepth = 0.0f;
     bool m_hasIsoDepth = false;
 
