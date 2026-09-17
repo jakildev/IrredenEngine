@@ -583,6 +583,32 @@ void main() {
     // under residualYaw and (for detached canvas) per-face SO(3). At cardinal
     // 0 + residualYaw==0 every slot's D is the identity, so the per-slot
     // path collapses to faceOffset_2x3(slot, subPixel).
+    if (isDetachedCanvas > 0.5 && !reVoxelize) {
+        if (any(notEqual(ivec2(gl_LocalInvocationID.xy), faceOffset_2x3(slot, 0)))) return;
+        const int density = voxelRenderOptions.x != 0 ? max(voxelRenderOptions.y, 1) : 1;
+        const DetachedFaceFootprint face = detachedFaceFootprint(
+            voxelPosition.xyz, faceId, density, zIdx,
+            mat2(faceDeform[0].xy, faceDeform[0].zw),
+            mat2(faceDeform[1].xy, faceDeform[1].zw),
+            voxelDepthAxis.xyz,
+            trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions)
+        );
+        const int parity = localTrixelOriginParity(trixelCanvasOffsetZ1);
+        for (int y = max(face.lo.y, 0); y <= min(face.hi.y, canvasSizePixels.y - 1); ++y) {
+            for (int x = max(face.lo.x, 0); x <= min(face.hi.x, canvasSizePixels.x - 1); ++x) {
+                const ivec2 pixel = ivec2(x, y);
+                const int depth = detachedFaceSampleDepth(face, pixel, parity, slot);
+                if (depth == kDetachedFaceMissDepth) continue;
+#if IR_STORE_WINNER_ELECTION
+                resolveWinnerTap(pixel, depth, voxelIndex);
+#else
+                writeDistanceTap(pixel, depth);
+#endif
+            }
+        }
+        return;
+    }
+
     const mat2 D = mat2(faceDeform[slot].xy, faceDeform[slot].zw);
 
     // Smooth camera Z-yaw per-axis routing

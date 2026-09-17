@@ -317,7 +317,8 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         // is the sole gate here.
         fd.anyPerTrixelPriority_ = canvasTextures->anyPerTrixelPriority_;
         fd.mouseHoveredTriangleIndex_ = vec2(-1000000.0f);
-        fd.effectiveSubdivisionsForHover_ = vec2(1.0f, depthScale);
+        fd.effectiveSubdivisionsForHover_ = vec2(cubeSubDensity, depthScale);
+        fd.detachedResidual_ = canvasTextures->sourceFaceRotation_;
         fd.showHoverHighlight_ = 0.0f;
 
         CanvasInstance inst{};
@@ -337,13 +338,14 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         IRRender::getNamedResource<VAO>("QuadVAO")->bind();
         IRRender::device()->setPolygonMode(PolygonMode::FILL);
 
-        // Gather pass: blit each detached canvas via the single-parity
-        // de-tile gather. A rotating detached entity's voxels are
-        // re-voxelized into this single canvas in its own model frame by
-        // VOXEL_TO_TRIXEL_STAGE_1, so
-        // the gather composites the full SO(3) solid plus any SDF / text;
-        // at a cardinal/identity pose it renders byte-identically.
-        IRRender::getNamedResource<ShaderProgram>("CanvasToFramebufferProgram")->use();
+        // Texture content and source faces share the framebuffer depth domain.
+        // Source-face canvases retain the texture layer for SDFs and overlays.
+        auto *canvasProgram =
+            IRRender::getNamedResource<ShaderProgram>("CanvasToFramebufferProgram");
+        auto *sourceProgram = IRRender::getNamedResource<ShaderProgram>("SourceFaceScatterProgram");
+        auto *activeMask = IRRender::getNamedResource<Buffer>("VoxelActiveMaskBuffer");
+        auto *compacted = IRRender::getNamedResource<Buffer>("CompactedVoxelIndices");
+        canvasProgram->use();
         // The composite depth-tests
         // each detached canvas against the world depth the gather wrote (so world
         // geometry occludes a detached solid) and WRITES its winning fragment's
@@ -359,6 +361,29 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         for (auto &inst : instances_) {
             frameDataBuffer->subData(0, sizeof(FrameDataTrixelToFramebuffer), &inst.frameData_);
             inst.textures_->bind(0, 1, 2);
+            if (inst.textures_->renderedSampleLayout_ == TrixelSampleLayout::SOURCE_FACES) {
+                sourceProgram->use();
+                inst.textures_->sourceFaces_.second->bindBase(
+                    BufferTarget::SHADER_STORAGE,
+                    kBufferIndex_SourceVoxelFaces
+                );
+                inst.textures_->sourceFaceOrder_.second->bindBase(
+                    BufferTarget::SHADER_STORAGE,
+                    kBufferIndex_PerAxisCellCompacted
+                );
+                IRRender::device()->drawElementsInstancedIndirect(
+                    DrawMode::TRIANGLES,
+                    IndexType::UNSIGNED_SHORT,
+                    inst.textures_->sourceFaces_.second,
+                    0
+                );
+                activeMask->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_VoxelActiveMask);
+                compacted->bindBase(
+                    BufferTarget::SHADER_STORAGE,
+                    kBufferIndex_CompactedVoxelIndices
+                );
+                canvasProgram->use();
+            }
             IRRender::device()->drawElements(
                 DrawMode::TRIANGLES,
                 IRShapes2D::kQuadIndicesLength,
@@ -375,6 +400,14 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
     }
 
     static SystemId create() {
+        IRRender::createNamedResource<ShaderProgram>(
+            "SourceFaceScatterProgram",
+            std::vector<ShaderStage>{
+                ShaderStage{IRRender::kFileVertSourceFaceScatter, ShaderType::VERTEX},
+                ShaderStage{IRRender::kFileFragSourceFaceScatter, ShaderType::FRAGMENT}
+            }
+        );
+
         SystemId s = registerSystem<ENTITY_CANVAS_TO_FRAMEBUFFER, C_EntityCanvas, C_WorldTransform>(
             "EntityCanvasToFramebuffer"
         );

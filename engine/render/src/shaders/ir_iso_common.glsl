@@ -42,11 +42,13 @@ int pos3DtoDistance(ivec3 position) {
 // The isometric depth axis (1,1,1) is perpendicular to the screen:
 //   pos3DtoPos2DIso(p + d*(1,1,1)) == pos3DtoPos2DIso(p) for any d.
 // Given (isoX, isoY) and depth d = x+y+z, (x,y,z) is uniquely determined.
+vec3 isoPositionToPos3D(vec2 iso, float depth) {
+    const float x = (2.0 * depth - 3.0 * iso.x - iso.y) / 6.0;
+    return vec3(x, x + iso.x, (iso.y + 2.0 * x + iso.x) / 2.0);
+}
+
 vec3 isoPixelToPos3D(int isoX, int isoY, float depth) {
-    float x = (2.0 * depth - 3.0 * float(isoX) - float(isoY)) / 6.0;
-    float y = x + float(isoX);
-    float z = (float(isoY) + 2.0 * x + float(isoX)) / 2.0;
-    return vec3(x, y, z);
+    return isoPositionToPos3D(vec2(isoX, isoY), depth);
 }
 
 vec3 isoToLocal3D(ivec2 isoRel, float depth) {
@@ -546,6 +548,22 @@ vec2 trixelFramebufferSamplePosition(vec2 origin, int originModifier) {
         origin.y -= 1.0;
     }
     return origin;
+}
+
+// Private storage parity excludes the world placement of the canvas quad.
+int localTrixelOriginParity(ivec2 originZ1) {
+    return (originZ1.x + originZ1.y) & 1;
+}
+
+vec2 localTrixelCellCentroid(ivec2 cell, int originParity) {
+    const bool odd = ((cell.x + cell.y + originParity) & 1) != 0;
+    return vec2(cell) + vec2(odd ? 1.0 / 3.0 : 2.0 / 3.0, 0.0);
+}
+
+// A local display triangle is centered one row below its stored index.
+vec2 localTrixelFramebufferSamplePosition(vec2 origin, ivec2 originZ1) {
+    return trixelFramebufferSamplePosition(
+        origin + vec2(0.0, 1.0), localTrixelOriginParity(originZ1));
 }
 
 int effectiveTrixelSubdivisionScale(ivec2 voxelRenderOptions) {
@@ -1203,4 +1221,76 @@ float fogVisionCircleReveal(vec2 worldXY, vec4 circle, float aa) {
     const float dist = length(worldXY - circle.xy);
     const float a = max(circle.w, aa);
     return 1.0 - smoothstep(circle.z - a, circle.z + a, dist);
+}
+
+const int kDetachedFaceMissDepth = 2147483647;
+
+struct SourceVoxelFace {
+    vec4 centerAndFace;
+    vec4 color;
+    uvec4 owner;
+};
+
+struct DetachedFaceFootprint {
+    vec2 origin;
+    vec2 planeOrigin;
+    vec2 uvOrigin;
+    vec2 edgeU;
+    vec2 edgeV;
+    vec3 depth;
+    ivec2 lo;
+    ivec2 hi;
+};
+
+DetachedFaceFootprint detachedFaceFootprint(
+    vec3 position, int faceId, int subdivisions, int microIndex,
+    mat2 deformX, mat2 deformY, vec3 depthAxis, ivec2 frameOffset
+) {
+    const vec2 basisX = deformY * vec2(-1.0, -1.0);
+    const vec2 basisY = deformX * vec2(1.0, -1.0);
+    const vec2 basisZ = deformX * vec2(0.0, 2.0);
+    const int axis = faceId >> 1;
+    const int axisU = axis == 0 ? 1 : 0;
+    const int axisV = axis == 2 ? 1 : 2;
+    vec3 source = position * float(subdivisions) - vec3(0.5 * float(subdivisions));
+    source[axis] += float((faceId & 1) * subdivisions);
+    source[axisU] += float(microIndex / subdivisions);
+    source[axisV] += float(microIndex % subdivisions);
+    DetachedFaceFootprint face;
+    face.origin = vec2(frameOffset) + vec2(float(subdivisions)) +
+        source.x * basisX + source.y * basisY + source.z * basisZ;
+    face.edgeU = axisU == 0 ? basisX : basisY;
+    face.edgeV = axisV == 1 ? basisY : basisZ;
+    const vec2 basisAxis = axis == 0 ? basisX : (axis == 1 ? basisY : basisZ);
+    face.planeOrigin = vec2(frameOffset) + vec2(float(subdivisions)) + source[axis] * basisAxis;
+    face.uvOrigin = vec2(source[axisU], source[axisV]);
+    face.depth = vec3(source[axis] * depthAxis[axis],
+                      depthAxis[axisU], depthAxis[axisV]);
+    face.lo = ivec2(floor(face.origin + min(face.edgeU, vec2(0.0)) +
+                        min(face.edgeV, vec2(0.0)))) - ivec2(1);
+    face.hi = ivec2(ceil(face.origin + max(face.edgeU, vec2(0.0)) +
+                        max(face.edgeV, vec2(0.0)))) + ivec2(1);
+    return face;
+}
+
+// Samples are centroids of the local triangles reconstructed by the fragment
+// gather. Half-open face coordinates give adjacent micro-faces one shared edge.
+int detachedFaceSampleDepth(DetachedFaceFootprint face, ivec2 pixel, int parity, int slot) {
+    const float determinant = face.edgeU.x * face.edgeV.y - face.edgeU.y * face.edgeV.x;
+    if (abs(determinant) < 1e-6) return kDetachedFaceMissDepth;
+    const vec2 delta = localTrixelCellCentroid(pixel, parity) - face.planeOrigin;
+    const vec2 uv = vec2(delta.x * face.edgeV.y - delta.y * face.edgeV.x,
+                         face.edgeU.x * delta.y - face.edgeU.y * delta.x) / determinant;
+    if (any(lessThan(uv, face.uvOrigin)) || any(greaterThanEqual(uv, face.uvOrigin + vec2(1.0))))
+        return kDetachedFaceMissDepth;
+    return encodeDepthWithFace(int(floor(face.depth.x + dot(uv, face.depth.yz) + 0.5)), slot);
+}
+
+
+vec3 detachedFaceViewNormal(int faceId, mat2 deformX, mat2 deformY, vec3 depthAxis) {
+    const int axis = faceId >> 1;
+    const vec2 projected = axis == 0 ? deformY * vec2(-1.0, -1.0) :
+        (axis == 1 ? deformX * vec2(1.0, -1.0) : deformX * vec2(0.0, 2.0));
+    const float depth = depthAxis[axis];
+    return normalize(isoPositionToPos3D(projected, depth)) * ((faceId & 1) == 0 ? -1.0 : 1.0);
 }

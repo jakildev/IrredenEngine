@@ -24,6 +24,16 @@ cull still reports approximately 255K candidates out of 262K voxels; the
 rotated counter reports approximately 777K entries across three axis lists.
 That rotated numerator counts repeated face candidates, not unique voxels.
 
+## Visual acceptance before further optimization
+
+Plain detached presentation retains projected source faces through the final
+quad draw. The rotated single-voxel, adjacent-pair, frame and octahedron now have
+independent silhouette checks; usable single-voxel face interiors also check
+normal ownership. The [source-face contract](../design/trixel-face-reconstruction-validation.md)
+records the distinction from lattice consistency. Remaining visual work is
+placement/depth, attachment/motion coverage, and revoxelized self-shadow/AO patches.
+Keep that work ahead of performance changes; no blur-based silhouette correction.
+
 ## Bottleneck evidence
 
 At 45°, zoom 4, the GPU stage means across three runs are 6.763 ms for per-axis
@@ -77,19 +87,18 @@ The [world-scale visibility plan](world-scale-visibility.md) defines the million
 simple-entity target, unbounded orthographic viewport depth, spatial grouping,
 and the separation between render visibility and simulation cadence.
 
-0. **Visual priority before further optimization:** investigate the remaining
-   CanvasStress orbit artifacts reported in the green solids and purple frame:
-   striped faces, checkerboard coverage and rectangular/toothed edges that may
-   indicate stored trixels bypassing or mismatching half-voxel-face reconstruction.
-   The purple frame is orbit index7, `RotationMode::DETACHED` (forward scatter),
-   not the revoxelized path. Identify the green entities independently. Capture
-   isolated close-ups at multiple zooms/yaws, compare normal output with raw-trixel
-   diagnostics and equivalent GRID/revoxelized shapes, and trace producer layout
-   through compositor gather/fragment coverage. Add fixture controls if the orbit
-   overview cannot discriminate the cause. Validate world-placed and screen-locked
-   variants. Preserve actual face geometry; do not hide gaps with blur. Existing
-   byte-identical captures establish non-regression only, not visual correctness.
-   Status: reported and partially localized; diagnosis and fix remain pending.
+0. **CanvasStress source-face coverage:** the purple frame (orbit 7) and lime
+   octahedron (orbit 3) use plain `DETACHED`; the green striped cube (canary 1)
+   uses `DETACHED_REVOXELIZE`. The source-face producer retains complete
+   faces through GPU record lighting and continuous quad presentation, with
+   independent geometry gates and retained failing lattice controls. See [the investigation and evidence](../design/detached-projected-face-coverage.md).
+   The green cube already reconstructs triangles; its alternating staircase
+   normals remain when AO and shadows are disabled and must not be flattened.
+   Proposed follow-ups: quantify the remaining green self-shadow/AO patches;
+   fix private SDF/voxel mixed-canvas density, recentering and scratch lifecycle;
+   extend placement/attachment/motion and multi-face depth oracles;
+   measure the source-face path's sorting, raster and lighting costs. Plain detached world shadow
+   casting/receiving remains unsupported. OpenGL visual validation is pending.
 
 1. [Unique retained candidates and axis entries](voxel-cull-work-units.md) now
    have separate counters and producer-matched readback. Add generated subdivision

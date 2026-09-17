@@ -95,7 +95,24 @@ struct HoveredEntityIdLayout {
     float _pad_{0.0f};
 };
 
-enum class TrixelSampleLayout : int { RECTANGULAR = 0, LOCAL_TRIANGLES = 1 };
+enum class TrixelSampleLayout : int { RECTANGULAR = 0, LOCAL_TRIANGLES = 1, SOURCE_FACES = 2 };
+
+// Prefix is an indexed indirect draw command followed by reserved words.
+struct SourceVoxelFaceHeader {
+    std::uint32_t indexCount_ = 6;
+    std::uint32_t count_ = 0;
+    std::uint32_t reserved_[6]{};
+};
+static_assert(
+    sizeof(SourceVoxelFaceHeader) == 32, "Source face header matches both shader backends"
+);
+
+struct SourceVoxelFace {
+    vec4 centerAndFace_;
+    vec4 color_;
+    uvec4 owner_;
+};
+static_assert(sizeof(SourceVoxelFace) == 48, "Source face GPU records have three 16-byte fields");
 
 struct FrameDataTrixelToFramebuffer {
     mat4 mpMatrix_;
@@ -133,12 +150,9 @@ struct FrameDataTrixelToFramebuffer {
     /// pad slot at offset 124, so existing offsets are unchanged.
     int scatterDebugMode_ = 0;
     ivec4 visibleFaceIds_{0, 0, 0, 0};
-    /// Reserved std140 slots at offsets 144 / 160. They are never written or
-    /// read, and keep `scatterFbResolution_` at the shared
-    /// std140 offset 176 the CAMERA scatter shader reads. `v_peraxis_scatter.glsl`
-    /// already declares these as `_detachedResidualPad` / `_detachedDepthAxisPad`
-    /// padding, so the camera path is byte-identical. Do NOT reorder or drop
-    /// these without also reflowing the camera scatter shader's UBO block.
+    /// Full source model-to-view quaternion for detached face presentation.
+    /// The adjacent depth-axis slot is reserved; camera scatter ignores both.
+    /// Preserve offsets 144 / 160 so framebuffer resolution remains at 176.
     vec4 detachedResidual_{0.0f, 0.0f, 0.0f, 1.0f};
     vec4 detachedDepthAxis_{1.0f, 1.0f, 1.0f, 0.0f};
     /// Framebuffer resolution (.xy) the scatter renders into; .zw pad. Lets the
@@ -643,11 +657,9 @@ struct FrameDataVoxelToCanvas {
     float visualYaw_ = 0.0f;
     float rasterYaw_ = 0.0f;
     float residualYaw_ = 0.0f;
-    // 1.0 for a detached entity canvas; 0.0 for the world canvas. Used by
-    // the voxel emit shaders to gate super-sampling (emitDeformedFace n > 1)
-    // to the detached path only, preserving the world canvas's performance.
-    // Occupies the std140 padding
-    // slot after residualYaw_ so no struct padding changes.
+    // 0 = world canvas, 1 = detached texture raster, 2 = detached source-face
+    // records. Values above zero retain detached raster geometry; value 2
+    // selects face-record emission and lighting instead of texture color writes.
     float isDetachedCanvas_ = 0.0f;
     // Per-slot residual-yaw (or SO(3) for DETACHED) deformation packed
     // column-major: .xy = col0, .zw = col1 of `IRMath::faceDeformationMatrix(
@@ -1212,6 +1224,8 @@ constexpr std::uint32_t kBufferIndex_LocalVoxelPositions = 17;
 // binding cap; the fill is a standalone dispatch, so nothing else reads slot 9
 // while it runs.
 constexpr std::uint32_t kBufferIndex_RevoxelizeSourceGrid = kBufferIndex_VoxelSetUnlockedColors;
+// Source-face draws borrow the active-mask slot and restore it after use.
+constexpr std::uint32_t kBufferIndex_SourceVoxelFaces = kBufferIndex_VoxelActiveMask;
 constexpr std::uint32_t kBufferIndex_EntityTransforms = 18;
 constexpr std::uint32_t kBufferIndex_UpdateParams = 19;
 constexpr std::uint32_t kBufferIndex_ShapeDescriptors = 20;

@@ -500,6 +500,32 @@ kernel void IR_STAGE1_KERNEL_NAME(
 
     // Per-slot deformation matrix, indexed by visible-triplet slot; identity at
     // cardinal 0 with residualYaw == 0.
+    if (frameData.isDetachedCanvas > 0.5 && !reVoxelize) {
+        if (any(int2(localId) != faceOffset_2x3(slot, 0))) return;
+        const int density = frameData.voxelRenderOptions.x != 0 ? max(frameData.voxelRenderOptions.y, 1) : 1;
+        const DetachedFaceFootprint face = detachedFaceFootprint(
+            voxelPosition.xyz, faceId, density, zIdx,
+            float2x2(frameData.faceDeform[0].xy, frameData.faceDeform[0].zw),
+            float2x2(frameData.faceDeform[1].xy, frameData.faceDeform[1].zw),
+            frameData.voxelDepthAxis.xyz,
+            trixelFrameOffset(frameData.trixelCanvasOffsetZ1, frameData.frameCanvasOffset, frameData.voxelRenderOptions)
+        );
+        const int parity = localTrixelOriginParity(frameData.trixelCanvasOffsetZ1);
+        for (int y = max(face.lo.y, 0); y <= min(face.hi.y, frameData.canvasSizePixels.y - 1); ++y) {
+            for (int x = max(face.lo.x, 0); x <= min(face.hi.x, frameData.canvasSizePixels.x - 1); ++x) {
+                const int2 pixel = int2(x, y);
+                const int depth = detachedFaceSampleDepth(face, pixel, parity, slot);
+                if (depth == kDetachedFaceMissDepth) continue;
+#if IR_STORE_WINNER_ELECTION
+                resolveWinnerTap(pixel, depth, voxelIndex, distanceScratch, perAxisWinnerIds, canvasSize);
+#else
+                writeDistanceTap(pixel, depth, distanceScratch, canvasSize);
+#endif
+            }
+        }
+        return;
+    }
+
     const float2x2 D = float2x2(
         frameData.faceDeform[slot].xy,
         frameData.faceDeform[slot].zw

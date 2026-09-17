@@ -16,6 +16,8 @@ const char *const kFileFragTrixelToFramebuffer = "shaders/f_trixel_to_framebuffe
 // over per-axis canvas cells, scattering each occupied cell as its deformed
 // face quad into the framebuffer depth buffer (Metal mirror in
 // metal/peraxis_scatter.metal).
+const char *const kFileVertSourceFaceScatter = "shaders/v_source_face_scatter.glsl";
+const char *const kFileFragSourceFaceScatter = "shaders/f_source_face_scatter.glsl";
 const char *const kFileVertPerAxisScatter = "shaders/v_peraxis_scatter.glsl";
 const char *const kFileFragPerAxisScatter = "shaders/f_peraxis_scatter.glsl";
 // The per-axis empty-cell compaction pre-pass scans each canvas's

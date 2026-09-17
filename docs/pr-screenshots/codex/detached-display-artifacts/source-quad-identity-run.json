@@ -1,0 +1,8 @@
+{
+  "command": "fleet-run --timeout 90 IRCanvasStress --only orbit --focus-orbit 7 --focus-single-voxel --focus-identity --zoom 16 --no-spin --no-auto-rotate --no-ao --no-shadows --debug-overlay normals --pivot-origin --sweep-yaw 0 0 1 --auto-screenshot 6",
+  "exit": 0,
+  "clean": true,
+  "screenshots": [
+    "screenshot_001404.png"
+  ]
+}

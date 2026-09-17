@@ -105,9 +105,7 @@ fragment FragmentOut f_trixel_to_framebuffer(
 
     float2 displayOrigin = originRaw;
     if (frameData.trixelSampleLayout == 1) {
-        // Center the triangular footprint on the stored voxel origin.
-        displayOrigin = trixelFramebufferSamplePosition(
-            originRaw + float2(0.0f, 1.0f), (z1.x + z1.y) & 1);
+        displayOrigin = localTrixelFramebufferSamplePosition(originRaw, z1);
         if (any(displayOrigin < float2(0.0f)) ||
             any(displayOrigin >= textureSize)) discard_fragment();
     }

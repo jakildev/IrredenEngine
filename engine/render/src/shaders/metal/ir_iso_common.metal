@@ -40,11 +40,13 @@ inline int pos3DtoDistance(int3 position) {
 
 // The isometric depth axis (1,1,1) is perpendicular to the screen, so given
 // (isoX, isoY) and depth d = x + y + z, (x, y, z) is uniquely determined.
+inline float3 isoPositionToPos3D(float2 iso, float depth) {
+    const float x = (2.0 * depth - 3.0 * iso.x - iso.y) / 6.0;
+    return float3(x, x + iso.x, (iso.y + 2.0 * x + iso.x) / 2.0);
+}
+
 inline float3 isoPixelToPos3D(int isoX, int isoY, float depth) {
-    float x = (2.0 * depth - 3.0 * float(isoX) - float(isoY)) / 6.0;
-    float y = x + float(isoX);
-    float z = (float(isoY) + 2.0 * x + float(isoX)) / 2.0;
-    return float3(x, y, z);
+    return isoPositionToPos3D(float2(isoX, isoY), depth);
 }
 
 inline float3 isoToLocal3D(int2 isoRel, float depth) {
@@ -525,6 +527,22 @@ inline float2 trixelFramebufferSamplePosition(float2 origin, int originModifier)
         origin.y -= 1.0f;
     }
     return origin;
+}
+
+// Private storage parity excludes the world placement of the canvas quad.
+inline int localTrixelOriginParity(int2 originZ1) {
+    return (originZ1.x + originZ1.y) & 1;
+}
+
+inline float2 localTrixelCellCentroid(int2 cell, int originParity) {
+    const bool odd = ((cell.x + cell.y + originParity) & 1) != 0;
+    return float2(cell) + float2(odd ? 1.0 / 3.0 : 2.0 / 3.0, 0.0);
+}
+
+// A local display triangle is centered one row below its stored index.
+inline float2 localTrixelFramebufferSamplePosition(float2 origin, int2 originZ1) {
+    return trixelFramebufferSamplePosition(
+        origin + float2(0.0, 1.0), localTrixelOriginParity(originZ1));
 }
 
 inline int effectiveTrixelSubdivisionScale(int2 voxelRenderOptions) {
@@ -1165,4 +1183,82 @@ inline float fogVisionCircleReveal(float2 worldXY, float4 circle, float aa) {
     return 1.0f - smoothstep(circle.z - a, circle.z + a, dist);
 }
 
+
+constant int kDetachedFaceMissDepth = 2147483647;
+
+struct SourceVoxelFace {
+    float4 centerAndFace;
+    float4 color;
+    uint4 owner;
+};
+struct SourceVoxelFaces {
+    uint indexCount;
+    atomic_uint count;
+    uint padding[6];
+    SourceVoxelFace faces[1];
+};
+
+struct DetachedFaceFootprint {
+    float2 origin;
+    float2 planeOrigin;
+    float2 uvOrigin;
+    float2 edgeU;
+    float2 edgeV;
+    float3 depth;
+    int2 lo;
+    int2 hi;
+};
+
+inline DetachedFaceFootprint detachedFaceFootprint(
+    float3 position, int faceId, int subdivisions, int microIndex,
+    float2x2 deformX, float2x2 deformY, float3 depthAxis, int2 frameOffset
+) {
+    const float2 basisX = deformY * float2(-1.0, -1.0);
+    const float2 basisY = deformX * float2(1.0, -1.0);
+    const float2 basisZ = deformX * float2(0.0, 2.0);
+    const int axis = faceId >> 1;
+    const int axisU = axis == 0 ? 1 : 0;
+    const int axisV = axis == 2 ? 1 : 2;
+    float3 source = position * float(subdivisions) - float3(0.5 * float(subdivisions));
+    source[axis] += float((faceId & 1) * subdivisions);
+    source[axisU] += float(microIndex / subdivisions);
+    source[axisV] += float(microIndex % subdivisions);
+    DetachedFaceFootprint face;
+    face.origin = float2(frameOffset) + float2(float(subdivisions)) +
+        source.x * basisX + source.y * basisY + source.z * basisZ;
+    face.edgeU = axisU == 0 ? basisX : basisY;
+    face.edgeV = axisV == 1 ? basisY : basisZ;
+    const float2 basisAxis = axis == 0 ? basisX : (axis == 1 ? basisY : basisZ);
+    face.planeOrigin = float2(frameOffset) + float2(float(subdivisions)) + source[axis] * basisAxis;
+    face.uvOrigin = float2(source[axisU], source[axisV]);
+    face.depth = float3(source[axis] * depthAxis[axis],
+                      depthAxis[axisU], depthAxis[axisV]);
+    face.lo = int2(floor(face.origin + min(face.edgeU, float2(0.0)) +
+                        min(face.edgeV, float2(0.0)))) - int2(1);
+    face.hi = int2(ceil(face.origin + max(face.edgeU, float2(0.0)) +
+                        max(face.edgeV, float2(0.0)))) + int2(1);
+    return face;
+}
+
+// Samples are centroids of the local triangles reconstructed by the fragment
+// gather. Half-open face coordinates give adjacent micro-faces one shared edge.
+inline int detachedFaceSampleDepth(DetachedFaceFootprint face, int2 pixel, int parity, int slot) {
+    const float determinant = face.edgeU.x * face.edgeV.y - face.edgeU.y * face.edgeV.x;
+    if (abs(determinant) < 1e-6) return kDetachedFaceMissDepth;
+    const float2 delta = localTrixelCellCentroid(pixel, parity) - face.planeOrigin;
+    const float2 uv = float2(delta.x * face.edgeV.y - delta.y * face.edgeV.x,
+                         face.edgeU.x * delta.y - face.edgeU.y * delta.x) / determinant;
+    if (any(uv < face.uvOrigin) || any(uv >= face.uvOrigin + float2(1.0)))
+        return kDetachedFaceMissDepth;
+    return encodeDepthWithFace(int(floor(face.depth.x + dot(uv, face.depth.yz) + 0.5)), slot);
+}
+
+
+inline float3 detachedFaceViewNormal(int faceId, float2x2 deformX, float2x2 deformY, float3 depthAxis) {
+    const int axis = faceId >> 1;
+    const float2 projected = axis == 0 ? deformY * float2(-1.0, -1.0) :
+        (axis == 1 ? deformX * float2(1.0, -1.0) : deformX * float2(0.0, 2.0));
+    const float depth = depthAxis[axis];
+    return normalize(isoPositionToPos3D(projected, depth)) * ((faceId & 1) == 0 ? -1.0 : 1.0);
+}
 #endif // IR_ISO_COMMON_METAL_INCLUDED

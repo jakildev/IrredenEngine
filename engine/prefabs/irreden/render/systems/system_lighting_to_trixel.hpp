@@ -170,6 +170,20 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             canvasTextures
         );
 
+        const bool sourceFaces =
+            canvasTextures.renderedSampleLayout_ == TrixelSampleLayout::SOURCE_FACES;
+        if (sourceFaces) {
+            if (voxelActiveMaskBuf_ == nullptr) {
+                voxelActiveMaskBuf_ = IRRender::getNamedResource<Buffer>("VoxelActiveMaskBuffer");
+            }
+            scratchVoxelFrame_.isDetachedCanvas_ = 2.0f;
+            voxelFrameDataBuf_->subData(0, sizeof(scratchVoxelFrame_), &scratchVoxelFrame_);
+            canvasTextures.sourceFaces_.second->bindBase(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_SourceVoxelFaces
+            );
+        }
+
         // Relaxed archetype: sun-shadow + light-volume are optional, so
         // a detached re-voxelize canvas (which has neither) can still be lit.
         // Per-canvas component if present, else the main canvas's as an inert
@@ -282,9 +296,32 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             }
 
             const int groupsX = IRMath::divCeil(canvasTextures.size_.x, kLightingToTrixelGroupSize);
-            const int groupsY = IRMath::divCeil(canvasTextures.size_.y, kLightingToTrixelGroupSize);
+            const int rows = sourceFaces ? IRMath::divCeil(
+                                               static_cast<int>(canvasTextures.sourceFaceCapacity_),
+                                               canvasTextures.size_.x
+                                           )
+                                         : canvasTextures.size_.y;
+            const int groupsY = IRMath::divCeil(rows, kLightingToTrixelGroupSize);
             IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
+            if (sourceFaces) {
+                IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+                scratchVoxelFrame_.isDetachedCanvas_ = 1.0f;
+                voxelFrameDataBuf_->subData(0, sizeof(scratchVoxelFrame_), &scratchVoxelFrame_);
+                IRRender::device()->dispatchCompute(
+                    groupsX,
+                    IRMath::divCeil(canvasTextures.size_.y, kLightingToTrixelGroupSize),
+                    1
+                );
+            }
             IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+        }
+
+        if (sourceFaces) {
+            IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+            voxelActiveMaskBuf_->bindBase(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_VoxelActiveMask
+            );
         }
 
         // Smooth camera Z-yaw: apply lighting to each per-axis voxel

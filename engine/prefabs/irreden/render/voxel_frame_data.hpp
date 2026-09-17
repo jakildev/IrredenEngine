@@ -128,9 +128,8 @@ inline void buildVoxelFrameData(
         // COMPUTE_VOXEL_AO / LIGHTING_TO_TRIXEL recover each voxel's WORLD pos as
         // (model pos + .xyz) and sample the shared world sun-shadow map + light
         // volume there. Off → the default screen-locked overlay (.w == 0) stays
-        // byte-identical. Only the re-voxelize path carries this — the
-        // octahedral-snap / per-face-deform DETACHED branch below recovers pos
-        // differently (residual face skew), so it is not world-receive-capable.
+        // byte-identical. Projected source-face DETACHED canvases do not publish world-receive
+        // metadata; only camera-aligned revoxelized depth supports that consumer.
         frameData.detachedWorldReceive_ = vec4(
             canvasRotation.worldCellOffset_ + IRMath::rotateVectorByQuat(
                                                   canvas.renderedCellOffset_,
@@ -144,16 +143,6 @@ inline void buildVoxelFrameData(
         frameData.visualYaw_ = 0.0f;
         frameData.rasterYaw_ = 0.0f;
         frameData.residualYaw_ = 0.0f;
-        // Snap to the nearest of the 24 cube orientations; the residual is the
-        // continuous leftover the per-face deform (single-canvas) and the
-        // per-axis forward-scatter (off-snap) act on. A cube is invariant under
-        // the snap, so this keeps the per-face skew small enough to stay clean.
-        const vec4 residual = IRMath::octahedralSnapResidual(canvasRotation.rotation_);
-        // Face-selection + occlusion-depth FRAME for the single-canvas detached
-        // emit: keep each voxel at its model iso position and only skew face
-        // SHAPE by the residual (faceDeformationMatrixSO3 below), so the visible
-        // set is the full orientation's front faces. Detached SO(3) renders
-        // through the re-voxelize branch above, not this deform.
         const vec4 selectionRotation = canvasRotation.rotation_;
         // Per-entity SO(3) visible triplet: the three faces the camera actually
         // sees, one per axis in X/Y/Z slot order. At identity, the resolver
@@ -166,20 +155,16 @@ inline void buildVoxelFrameData(
             static_cast<int>(visibleFaces[2]),
             0
         );
-        // Per-voxel occlusion depth projects onto the SAME frame's iso axis
-        // `R⁻¹·(1,1,1)`, so face visibility and occlusion order stay on
-        // one frame. Identity entity → (1,1,1) → byte-identical. Read only by
-        // the single-canvas emit; the off-snap per-axis store keys depth on the
-        // raw x+y+z origin-recovery metric, so this is inert there but kept on
-        // the matching frame for clarity.
+        // Projection, face selection and interpolated depth share the full
+        // model-to-view rotation; no independently snapped face basis is valid.
         frameData.voxelDepthAxis_ = vec4(IRMath::isoDepthAxisModel(selectionRotation), 0.0f);
         // Per-slot deform upload: slot 0 / 1 / 2 carries the X / Y / Z axis face
         // matrix. `visibleTriplet` returns faces in axis order, so each slot's
         // axis is fixed regardless of polarity — the deform is axis-only (X_NEG
         // and X_POS share the X matrix), so it is unchanged.
-        const mat2 fdX = IRMath::faceDeformationMatrixSO3(IRMath::kXFace, residual);
-        const mat2 fdY = IRMath::faceDeformationMatrixSO3(IRMath::kYFace, residual);
-        const mat2 fdZ = IRMath::faceDeformationMatrixSO3(IRMath::kZFace, residual);
+        const mat2 fdX = IRMath::faceDeformationMatrixSO3(IRMath::kXFace, selectionRotation);
+        const mat2 fdY = IRMath::faceDeformationMatrixSO3(IRMath::kYFace, selectionRotation);
+        const mat2 fdZ = IRMath::faceDeformationMatrixSO3(IRMath::kZFace, selectionRotation);
         frameData.faceDeform_[0] = vec4(fdX[0], fdX[1]);
         frameData.faceDeform_[1] = vec4(fdY[0], fdY[1]);
         frameData.faceDeform_[2] = vec4(fdZ[0], fdZ[1]);

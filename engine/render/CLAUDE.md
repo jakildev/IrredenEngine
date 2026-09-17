@@ -86,12 +86,14 @@ Use the validation index's jitter probe and the camera contracts below.
 
 ### Trixel→framebuffer hover parity shift
 
-- Normal voxel display reconstructs voxel-face footprints through the fragment
-  gather; raw trixel texels are a debugging view, not the presentation default.
-  Private revoxelized canvases use undilated `LOCAL_TRIANGLES` with local parity
-  and row-corrected queries. The compositor follows the effective producer
+- Normal voxel display preserves voxel-face footprints; raw trixel texels are
+  a debugging view, not the presentation default. Revoxelized private canvases
+  use undilated `LOCAL_TRIANGLES` with local parity and row-corrected queries;
+  plain detached canvases retain `SOURCE_FACES` through continuous quad drawing. The compositor follows the effective producer
   layout, never depth scaling or world position. See the
   [local-triangle contract](../../docs/design/detached-local-triangles.md).
+  Lattice agreement alone cannot certify connected source faces; use the
+  [source-face gate](../../docs/design/trixel-face-reconstruction-validation.md).
 - General canvas producers retain their rectangular storage contract. Their
   parity shift applies only to hover/picking; read the
   [parity-shift design](../../docs/design/trixel-parity-shift-442-investigation.md)

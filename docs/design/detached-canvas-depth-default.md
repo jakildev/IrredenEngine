@@ -25,8 +25,8 @@ bool screenLocked_ = false;   // default: world-placed
   each other (the P4b-1 GRID-equivalence, `detached_world_depth_test`).
   `DETACHED_REVOXELIZE` solids additionally **receive** (P4b-2) and **cast**
   (P4b-3) world sun-shadow + light-volume at their world cell origin. Plain
-  `DETACHED` (forward-scatter) depth-sorts only: its octahedral-snap face
-  deform has no faithful world-pos recovery for lighting, and the mode is on
+  `DETACHED` (projected source faces) depth-sorts only: its lighting path
+  does not publish world-receive metadata, and the mode is on
   the retirement path (#1589).
 - **Opt-out (`screenLocked_ == true`)** — the composite keeps
   `distanceOffset_ = 0` and skips receive/cast: a fixed-depth 2D overlay at

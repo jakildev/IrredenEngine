@@ -110,6 +110,12 @@ struct C_TriangleCanvasTextures {
     // the canvas did not raster a voxel pool this frame (pure SDF / text
     // overlay) — the composite then keeps the raw offset.
     int renderedSubdivisions_ = 0;
+    std::pair<ResourceId, Buffer *> sourceFaces_{0, nullptr};
+    std::size_t sourceFaceCapacity_ = 0;
+    std::pair<ResourceId, Buffer *> sourceFaceOrder_{0, nullptr};
+    std::uint32_t sourceFaceOrderCapacity_ = 0;
+    vec4 sourceFaceRotation_{0.0f, 0.0f, 0.0f, 1.0f};
+
     // View-local offset from rounded raster centers to resampled cell centers.
     // Placement, depth, lighting and resampled casting consume the same phase.
     vec3 renderedCellOffset_{0.0f};
@@ -143,6 +149,10 @@ struct C_TriangleCanvasTextures {
     C_TriangleCanvasTextures() {}
 
     void onDestroy() {
+        if (sourceFaces_.second != nullptr)
+            IRRender::destroyResource<Buffer>(sourceFaces_.first);
+        if (sourceFaceOrder_.second != nullptr)
+            IRRender::destroyResource<Buffer>(sourceFaceOrder_.first);
         IRRender::destroyResource<Texture2D>(textureTriangleColors_.first);
         IRRender::destroyResource<Texture2D>(textureTriangleDistances_.first);
         IRRender::destroyResource<Texture2D>(textureTriangleEntityIds_.first);

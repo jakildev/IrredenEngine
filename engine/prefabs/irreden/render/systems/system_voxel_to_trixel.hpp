@@ -317,20 +317,12 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // the mode-3 append and the overflow indirect draw (rotating frames only).
     ShaderProgram *overflowSortProgram_ = nullptr;
     ShaderProgram *stage2Program_ = nullptr;
-    // cardinal winner election: the IR_STORE_WINNER_ELECTION 1
-    // specializations of the shared stage-1/stage-2 bodies. Dispatched in the
-    // single-canvas block ONLY when the ticking pool's storeTiesPossible_ flag
-    // is set (displaced-voxel scenes); lattice pools keep exactly the default
-    // programs and dispatch count.
+    // Equal-depth elections serve displaced-cell pools and projected source-face
+    // canvases. Integer lattice pools retain the default two raster passes.
     ShaderProgram *stage1WinnerResolveProgram_ = nullptr;
     ShaderProgram *stage2WinnerProgram_ = nullptr;
-    // System-owned, grow-only winner buffer for the cardinal election —
-    // allocated lazily on the first flagged canvas (lattice scenes allocate
-    // nothing), sized canvasW × canvasH × 4 B for the largest flagged canvas
-    // seen, transiently bound at kBufferIndex_PerAxisResolveScratch around the
-    // election + stage-2 dispatches. NOT axes.winnerIds_: that buffer is
-    // tied to the rotation lifecycle, freed at cardinal yaw, and sized
-    // to the per-axis canvas, not this one.
+    // Shared across single-canvas elections; grows to the largest canvas pixel
+    // count. Per-axis winner storage has a separate rotation-dependent lifetime.
     std::pair<ResourceId, Buffer *> cardinalWinner_{0, nullptr};
     std::size_t cardinalWinnerBytes_ = 0;
     // The 4-byte placeholder created at init to keep binding 28 never-unbound;
@@ -696,6 +688,67 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         }
     }
 
+    // Three-word records sort lexicographically by words (0, 2, 1).
+    // The caller owns capacity and the settled count at layout.y + 1.
+    std::uint32_t sortFaceRecords(Buffer *scratch, ivec4 layout, std::uint32_t dispatchSpan) {
+        const ivec4 previousLayout = frameData_.overflowScratchLayout_;
+        frameData_.overflowScratchLayout_ = layout;
+        frameDataBuf_->subData(
+            offsetof(FrameDataVoxelToCanvas, overflowScratchLayout_),
+            sizeof(layout),
+            &layout
+        );
+        scratch->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_PerAxisResolveScratch);
+        std::uint32_t sortDispatches = 0;
+        IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+        overflowSortProgram_->use();
+        auto sortStep = [&](int mode,
+                            std::uint32_t k,
+                            std::uint32_t pLo,
+                            std::uint32_t pHi,
+                            std::uint32_t commandIndex) {
+            frameData_.overflowSortStep_ =
+                ivec4(mode, static_cast<int>(k), static_cast<int>(pLo), static_cast<int>(pHi));
+            // Partial upload of just the step descriptor — the rest of
+            // the frame data is unchanged across the network steps.
+            frameDataBuf_->subData(
+                static_cast<std::ptrdiff_t>(offsetof(FrameDataVoxelToCanvas, overflowSortStep_)),
+                sizeof(ivec4),
+                &frameData_.overflowSortStep_
+            );
+            if (mode == 3) {
+                IRRender::device()->dispatchCompute(1, 1, 1);
+                IRRender::device()->memoryBarrier(BarrierType::COMMAND);
+            } else {
+                const auto commandUints =
+                    layout.y + C_PerAxisTrixelCanvases::kOverflowSortArgsBaseUints +
+                    commandIndex * C_PerAxisTrixelCanvases::kOverflowSortCommandUints;
+                IRRender::device()->dispatchComputeIndirect(
+                    scratch,
+                    static_cast<std::ptrdiff_t>(commandUints) * sizeof(std::uint32_t)
+                );
+            }
+            IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+            ++sortDispatches;
+        };
+        sortStep(3, 0, 0, 0, 0);
+        sortStep(0, 0, 0, 0, 0);
+        sortStep(1, 0, 0, 0, 1);
+        detail::forEachOverflowSortMergeStep(
+            dispatchSpan,
+            [&](std::uint32_t k, std::uint32_t pLo, std::uint32_t pHi, std::uint32_t commandIndex) {
+                sortStep(2, k, pLo, pHi, commandIndex);
+            }
+        );
+        frameData_.overflowScratchLayout_ = previousLayout;
+        frameDataBuf_->subData(
+            offsetof(FrameDataVoxelToCanvas, overflowScratchLayout_),
+            sizeof(previousLayout),
+            &previousLayout
+        );
+        return sortDispatches;
+    }
+
     // @p sortOverflowEntries is the ticking pool's storeTiesPossible_
     // flag: displaced voxels sharing a rounded cell are what produce the
     // equal-key overflow entries whose draw order the canonical sort
@@ -908,58 +961,17 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             std::uint32_t sortDispatches = 0;
             std::uint32_t dispatchSpan = 0;
             if (sortOverflowEntries) {
-                IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
-                overflowSortProgram_->use();
-                constexpr std::uint32_t kBlockBits =
-                    C_PerAxisTrixelCanvases::kOverflowSortBlockBits;
-                constexpr std::uint32_t kBlock = 1u << kBlockBits;
                 const std::uint32_t cap = static_cast<std::uint32_t>(axes.overflowCap_);
                 dispatchSpan = detail::overflowSortDispatchSpan(axes.laggedOverflowCount_, cap);
-                auto sortStep = [&](int mode,
-                                    std::uint32_t k,
-                                    std::uint32_t pLo,
-                                    std::uint32_t pHi,
-                                    std::uint32_t commandIndex) {
-                    frameData_.overflowSortStep_ = ivec4(
-                        mode,
-                        static_cast<int>(k),
-                        static_cast<int>(pLo),
-                        static_cast<int>(pHi)
-                    );
-                    // Partial upload of just the step descriptor — the rest of
-                    // the frame data is unchanged across the network steps.
-                    frameDataBuf_->subData(
-                        static_cast<std::ptrdiff_t>(
-                            offsetof(FrameDataVoxelToCanvas, overflowSortStep_)
-                        ),
-                        sizeof(ivec4),
-                        &frameData_.overflowSortStep_
-                    );
-                    if (mode == 3) {
-                        IRRender::device()->dispatchCompute(1, 1, 1);
-                        IRRender::device()->memoryBarrier(BarrierType::COMMAND);
-                    } else {
-                        const auto commandUints =
-                            axes.ctrlBaseUints_ +
-                            C_PerAxisTrixelCanvases::kOverflowSortArgsBaseUints +
-                            commandIndex * C_PerAxisTrixelCanvases::kOverflowSortCommandUints;
-                        IRRender::device()->dispatchComputeIndirect(
-                            axes.winnerIds_.second,
-                            static_cast<std::ptrdiff_t>(commandUints) * sizeof(std::uint32_t)
-                        );
-                    }
-                    IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
-                    ++sortDispatches;
-                };
-                sortStep(3, 0, 0, 0, 0);
-                sortStep(0, 0, 0, 0, 0);
-                sortStep(1, 0, 0, 0, 1);
-                detail::forEachOverflowSortMergeStep(
-                    dispatchSpan,
-                    [&](std::uint32_t k,
-                        std::uint32_t pLo,
-                        std::uint32_t pHi,
-                        std::uint32_t commandIndex) { sortStep(2, k, pLo, pHi, commandIndex); }
+                sortDispatches = sortFaceRecords(
+                    axes.winnerIds_.second,
+                    ivec4(
+                        axes.viewMaskBaseUints_,
+                        axes.ctrlBaseUints_,
+                        axes.entriesBaseUints_,
+                        axes.overflowCap_
+                    ),
+                    dispatchSpan
                 );
             }
             if (overflowCountLogEnabled_ &&
@@ -1356,27 +1368,25 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             canvasLocalRotation
         );
 
-        // Re-voxelize zoom-clip cap. A re-voxelize detached canvas
-        // rasters its pool in model space into a fixed-size canvas, but effSub
-        // folds in camera zoom, so a zoom-scaled lattice overflows the canvas and
-        // on-screen faces clip to background. Clamp the density to what the canvas
-        // holds (the single-canvas analogue of the per-axis cap). Applied
-        // here — before the UBO upload + compact dispatch below — so the compact
-        // pass sizes the indirect Z count from the capped value too (no skip guard
-        // needed). Gated on re-voxelize so the main world canvas and the
-        // forward-scatter detached canvases stay byte-identical.
-        //
-        // A generously sized canvas can admit cubeSub > 1. The composite must
-        // divide cubeSub out of the quad scale and gather density; see
-        // docs/design/detached-canvas-density-compensation.md); it is NOT a
-        // raster-side zoom-track here (camera zoom is clamped to ≥ 1 by
-        // kTrixelCanvasZoomMin, so a zoom-track at this site can never lower the
-        // density).
-        if (canvasLocalRotation.isDetached() && canvasLocalRotation.reVoxelize_) {
-            const int cap = IRPrefab::DetachedRevoxelize::subdivisionCap(
+        // Canvas density is bounded by its projected pool extent. The composite
+        // compensates using renderedSubdivisions_, so zoom changes display size
+        // without overflowing the fixed texture.
+        if (canvasLocalRotation.isDetached()) {
+            int cap = IRPrefab::DetachedRevoxelize::subdivisionCap(
                 triangleCanvasTextures.size_,
                 voxelPool.getVoxelPoolSize3D()
             );
+            if (!canvasLocalRotation.reVoxelize_) {
+                // The enclosing sphere keeps this cap invariant under rotation.
+                const float diameter = IRMath::length(vec3(voxelPool.getVoxelPoolSize3D()));
+                const vec2 footprint = diameter * vec2(IRMath::sqrt(2.0f), IRMath::sqrt(6.0f));
+                const vec2 densityLimit = (vec2(triangleCanvasTextures.size_) - vec2(4.0f)) /
+                                          IRMath::max(footprint, vec2(1.0f));
+                cap = IRMath::max(
+                    1,
+                    static_cast<int>(IRMath::floor(IRMath::min(densityLimit.x, densityLimit.y)))
+                );
+            }
             frameData_.voxelRenderOptions_.y =
                 IRMath::clamp(frameData_.voxelRenderOptions_.y, 1, cap);
         }
@@ -1389,9 +1399,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // canvas (the main canvas's value is simply never read by the detached
         // composite).
         triangleCanvasTextures.renderedSubdivisions_ = frameData_.voxelRenderOptions_.y;
-        triangleCanvasTextures.renderedSampleLayout_ = frameData_.visibleFaceIds_.w == 2
-                                                           ? TrixelSampleLayout::LOCAL_TRIANGLES
-                                                           : TrixelSampleLayout::RECTANGULAR;
+        triangleCanvasTextures.renderedSampleLayout_ =
+            canvasLocalRotation.isDetached() &&
+                    triangleCanvasTextures.sampleLayout_ == TrixelSampleLayout::LOCAL_TRIANGLES
+                ? TrixelSampleLayout::LOCAL_TRIANGLES
+                : TrixelSampleLayout::RECTANGULAR;
 
         // No-priority perf fast-path. Publish whether any voxel in this
         // canvas's pool carries a non-zero per-trixel priority, maintained
@@ -1416,6 +1428,54 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                                   canvasLocalRotation.rotation_ != vec4(0.0f, 0.0f, 0.0f, 1.0f);
         const int effectiveVoxelCount = revoxInverse ? revoxBuffer->destCount_ : liveVoxelCount;
         frameData_.voxelCount_ = effectiveVoxelCount;
+        const bool sourceFaceDisplay =
+            canvasLocalRotation.isDetached() && !canvasLocalRotation.reVoxelize_ &&
+            triangleCanvasTextures.sampleLayout_ != TrixelSampleLayout::RECTANGULAR;
+        if (sourceFaceDisplay) {
+            const std::size_t capacity =
+                static_cast<std::size_t>(IRMath::max(effectiveVoxelCount, 1)) * 3;
+            if (capacity > triangleCanvasTextures.sourceFaceCapacity_) {
+                if (triangleCanvasTextures.sourceFaces_.second != nullptr)
+                    IRRender::destroyResource<Buffer>(triangleCanvasTextures.sourceFaces_.first);
+                triangleCanvasTextures.sourceFaces_ = IRRender::createResource<Buffer>(
+                    nullptr,
+                    sizeof(SourceVoxelFaceHeader) + capacity * sizeof(SourceVoxelFace),
+                    BUFFER_STORAGE_DYNAMIC,
+                    BufferTarget::SHADER_STORAGE,
+                    kBufferIndex_SourceVoxelFaces
+                );
+                triangleCanvasTextures.sourceFaceCapacity_ = capacity;
+                if (triangleCanvasTextures.sourceFaceOrder_.second != nullptr)
+                    IRRender::destroyResource<Buffer>(
+                        triangleCanvasTextures.sourceFaceOrder_.first
+                    );
+                IR_ASSERT(
+                    capacity <= (std::size_t{1} << 30),
+                    "source face order exceeds shader capacity"
+                );
+                const auto orderCapacity = IRMath::nextPowerOfTwo(
+                    IRMath::max(static_cast<std::uint32_t>(capacity), std::uint32_t{2048})
+                );
+                triangleCanvasTextures.sourceFaceOrder_ = IRRender::createResource<Buffer>(
+                    nullptr,
+                    (std::size_t{128} + std::size_t{3} * orderCapacity) * sizeof(std::uint32_t),
+                    BUFFER_STORAGE_DYNAMIC,
+                    BufferTarget::SHADER_STORAGE,
+                    kBufferIndex_PerAxisResolveScratch
+                );
+                triangleCanvasTextures.sourceFaceOrderCapacity_ = orderCapacity;
+            }
+            const SourceVoxelFaceHeader drawArgs{};
+            triangleCanvasTextures.sourceFaces_.second->subData(0, sizeof(drawArgs), &drawArgs);
+            triangleCanvasTextures.sourceFaceOrder_.second->subData(0, sizeof(drawArgs), &drawArgs);
+            triangleCanvasTextures.sourceFaceRotation_ = canvasLocalRotation.rotation_;
+            triangleCanvasTextures.renderedSampleLayout_ = TrixelSampleLayout::SOURCE_FACES;
+            frameData_.isDetachedCanvas_ = 2.0f;
+            voxelActiveMaskBuf_->bindBase(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_VoxelActiveMask
+            );
+        }
 
         const int renderMode = frameData_.voxelRenderOptions_.x;
         const int effectiveSub = frameData_.voxelRenderOptions_.y;
@@ -1984,15 +2044,12 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 }
             }
 
-            // cardinal winner election — flagged (displaced-voxel) pools
-            // only. Between the settled distance stores and stage 2, re-run
-            // the identical cardinal geometry with every distance tap swapped
-            // for an atomicMin of the face's run-stable voxel pool index, so
-            // the winner-guarded stage 2 below admits exactly one of the
-            // equal-key faces per cell, extending the per-axis election to the
-            // single-canvas store. Unflagged pools skip this entire block, keep
-            // stage2Program_, and add no dispatch cost.
-            const bool cardinalElection = voxelPool.storeTiesPossible_;
+            // Projected source faces and displaced cells can quantize to equal
+            // depth keys. Elect one pool index before any non-atomic color write.
+            const bool cardinalElection =
+                !sourceFaceDisplay &&
+                (voxelPool.storeTiesPossible_ ||
+                 (canvasLocalRotation.isDetached() && !canvasLocalRotation.reVoxelize_));
             if (cardinalElection) {
                 ensureCardinalWinnerCapacity(triangleCanvasTextures.size_);
                 // Reset this canvas's cell span to the 0xFFFFFFFF no-winner
@@ -2043,6 +2100,16 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             // a flagged pool runs the winner-guarded stage-2 variant in
             // place of the default — same UBO, same dispatch, same taps, plus
             // the per-cell winner guard resolved by the election above.
+            if (sourceFaceDisplay) {
+                triangleCanvasTextures.sourceFaces_.second->bindBase(
+                    BufferTarget::SHADER_STORAGE,
+                    kBufferIndex_SourceVoxelFaces
+                );
+                triangleCanvasTextures.sourceFaceOrder_.second->bindBase(
+                    BufferTarget::SHADER_STORAGE,
+                    kBufferIndex_PerAxisResolveScratch
+                );
+            }
             (cardinalElection ? stage2WinnerProgram_ : stage2Program_)->use();
             triangleCanvasTextures.getTextureColors()
                 ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
@@ -2066,6 +2133,27 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 IRRender::GpuSubStageScope gpuScope("voxelStage2");
                 IRRender::device()->dispatchComputeIndirect(indirectBuf_, 0);
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+            }
+            if (sourceFaceDisplay) {
+                // Source emission does not write texture depths; AO still needs the settled raster.
+                IRRender::device()->resolveImageAtomicScratch(
+                    triangleCanvasTextures.getTextureDistances()
+                );
+                sortFaceRecords(
+                    triangleCanvasTextures.sourceFaceOrder_.second,
+                    ivec4(0, 0, 128, triangleCanvasTextures.sourceFaceOrderCapacity_),
+                    triangleCanvasTextures.sourceFaceOrderCapacity_
+                );
+                IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+                IRRender::device()->memoryBarrier(BarrierType::COMMAND);
+                winnerPlaceholderBuf_->bindBase(
+                    BufferTarget::SHADER_STORAGE,
+                    kBufferIndex_PerAxisResolveScratch
+                );
+                voxelActiveMaskBuf_->bindBase(
+                    BufferTarget::SHADER_STORAGE,
+                    kBufferIndex_VoxelActiveMask
+                );
             }
             if (cardinalElection) {
                 // Restore the never-unbound placeholder on 28 so the next

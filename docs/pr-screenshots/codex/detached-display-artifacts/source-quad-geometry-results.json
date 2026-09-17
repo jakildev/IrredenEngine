@@ -1,0 +1,862 @@
+[
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": 0,
+    "normal_faces_checked": true,
+    "expected_pixels": 12288,
+    "observed_pixels": 12280,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 11762,
+    "face_interior_pixels": [
+      3735,
+      3747,
+      3765
+    ],
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1326.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": 0,
+    "normal_faces_checked": true,
+    "expected_pixels": 9888,
+    "observed_pixels": 9888,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 9376,
+    "face_interior_pixels": [
+      1379,
+      6287,
+      1211
+    ],
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1327.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": 0,
+    "normal_faces_checked": true,
+    "expected_pixels": 9186,
+    "observed_pixels": 9192,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 8750,
+    "face_interior_pixels": [
+      2251,
+      6277,
+      0
+    ],
+    "sufficient_resolution": false,
+    "pass": false,
+    "image": "capture-1328.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": 0,
+    "normal_faces_checked": true,
+    "expected_pixels": 10170,
+    "observed_pixels": 10168,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 9666,
+    "face_interior_pixels": [
+      5556,
+      3550,
+      118
+    ],
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1329.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": 0,
+    "normal_faces_checked": true,
+    "expected_pixels": 9188,
+    "observed_pixels": 9176,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 8656,
+    "face_interior_pixels": [
+      6188,
+      0,
+      2186
+    ],
+    "sufficient_resolution": false,
+    "pass": false,
+    "image": "capture-1330.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": 0,
+    "normal_faces_checked": true,
+    "expected_pixels": 11892,
+    "observed_pixels": 11880,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 11384,
+    "face_interior_pixels": [
+      3851,
+      2282,
+      4755
+    ],
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1331.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": 0,
+    "normal_faces_checked": true,
+    "expected_pixels": 9186,
+    "observed_pixels": 9184,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 8692,
+    "face_interior_pixels": [
+      0,
+      2200,
+      6222
+    ],
+    "sufficient_resolution": false,
+    "pass": false,
+    "image": "capture-1332.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": 0,
+    "normal_faces_checked": true,
+    "expected_pixels": 9882,
+    "observed_pixels": 9896,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 9332,
+    "face_interior_pixels": [
+      3044,
+      38,
+      5791
+    ],
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1333.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": 0,
+    "normal_faces_checked": true,
+    "expected_pixels": 12288,
+    "observed_pixels": 12280,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 11762,
+    "face_interior_pixels": [
+      3735,
+      3747,
+      3765
+    ],
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1334.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": null,
+    "normal_faces_checked": false,
+    "expected_pixels": 20482,
+    "observed_pixels": 20472,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 19792,
+    "face_interior_pixels": null,
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1335.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": null,
+    "normal_faces_checked": false,
+    "expected_pixels": 18114,
+    "observed_pixels": 18120,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 17374,
+    "face_interior_pixels": null,
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1336.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": null,
+    "normal_faces_checked": false,
+    "expected_pixels": 15872,
+    "observed_pixels": 15872,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 15248,
+    "face_interior_pixels": null,
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1337.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": null,
+    "normal_faces_checked": false,
+    "expected_pixels": 14402,
+    "observed_pixels": 14440,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 13772,
+    "face_interior_pixels": null,
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1338.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": null,
+    "normal_faces_checked": false,
+    "expected_pixels": 11732,
+    "observed_pixels": 11736,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 11116,
+    "face_interior_pixels": null,
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1339.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": null,
+    "normal_faces_checked": false,
+    "expected_pixels": 19574,
+    "observed_pixels": 19576,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 18916,
+    "face_interior_pixels": null,
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1340.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": null,
+    "normal_faces_checked": false,
+    "expected_pixels": 18326,
+    "observed_pixels": 18344,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 17604,
+    "face_interior_pixels": null,
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1341.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": null,
+    "normal_faces_checked": false,
+    "expected_pixels": 16398,
+    "observed_pixels": 16400,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 15644,
+    "face_interior_pixels": null,
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1342.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": null,
+    "normal_faces_checked": false,
+    "expected_pixels": 20482,
+    "observed_pixels": 20472,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 19792,
+    "face_interior_pixels": null,
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1343.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": null,
+    "normal_faces_checked": false,
+    "expected_pixels": 122878,
+    "observed_pixels": 122864,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 118608,
+    "face_interior_pixels": null,
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1344.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": null,
+    "normal_faces_checked": false,
+    "expected_pixels": 97866,
+    "observed_pixels": 97872,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 93532,
+    "face_interior_pixels": null,
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1345.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": null,
+    "normal_faces_checked": false,
+    "expected_pixels": 78558,
+    "observed_pixels": 78536,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 75286,
+    "face_interior_pixels": null,
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1346.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": null,
+    "normal_faces_checked": false,
+    "expected_pixels": 89872,
+    "observed_pixels": 89872,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 86174,
+    "face_interior_pixels": null,
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1347.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": null,
+    "normal_faces_checked": false,
+    "expected_pixels": 78568,
+    "observed_pixels": 78548,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 74444,
+    "face_interior_pixels": null,
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1348.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": null,
+    "normal_faces_checked": false,
+    "expected_pixels": 115560,
+    "observed_pixels": 115568,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 111686,
+    "face_interior_pixels": null,
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1349.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": null,
+    "normal_faces_checked": false,
+    "expected_pixels": 78566,
+    "observed_pixels": 78584,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 74712,
+    "face_interior_pixels": null,
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1350.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": null,
+    "normal_faces_checked": false,
+    "expected_pixels": 86676,
+    "observed_pixels": 86680,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 82550,
+    "face_interior_pixels": null,
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1351.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": null,
+    "normal_faces_checked": false,
+    "expected_pixels": 122878,
+    "observed_pixels": 122864,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 118608,
+    "face_interior_pixels": null,
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1352.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": null,
+    "normal_faces_checked": false,
+    "expected_pixels": 36098,
+    "observed_pixels": 36096,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 35170,
+    "face_interior_pixels": null,
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1353.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": null,
+    "normal_faces_checked": false,
+    "expected_pixels": 36626,
+    "observed_pixels": 36640,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 35524,
+    "face_interior_pixels": null,
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1354.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": null,
+    "normal_faces_checked": false,
+    "expected_pixels": 35352,
+    "observed_pixels": 35368,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 34370,
+    "face_interior_pixels": null,
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1355.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": null,
+    "normal_faces_checked": false,
+    "expected_pixels": 34538,
+    "observed_pixels": 34552,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 33482,
+    "face_interior_pixels": null,
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1356.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": null,
+    "normal_faces_checked": false,
+    "expected_pixels": 35358,
+    "observed_pixels": 35344,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 34162,
+    "face_interior_pixels": null,
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1357.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": null,
+    "normal_faces_checked": false,
+    "expected_pixels": 35998,
+    "observed_pixels": 36048,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 35034,
+    "face_interior_pixels": null,
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1358.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": null,
+    "normal_faces_checked": false,
+    "expected_pixels": 35362,
+    "observed_pixels": 35320,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 34248,
+    "face_interior_pixels": null,
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1359.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": null,
+    "normal_faces_checked": false,
+    "expected_pixels": 35052,
+    "observed_pixels": 35040,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 33898,
+    "face_interior_pixels": null,
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1360.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": null,
+    "normal_faces_checked": false,
+    "expected_pixels": 36098,
+    "observed_pixels": 36096,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 35170,
+    "face_interior_pixels": null,
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1361.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": null,
+    "normal_faces_checked": false,
+    "expected_pixels": 9186,
+    "observed_pixels": 9192,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 8750,
+    "face_interior_pixels": null,
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1328.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": null,
+    "normal_faces_checked": false,
+    "expected_pixels": 9188,
+    "observed_pixels": 9176,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 8656,
+    "face_interior_pixels": null,
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1330.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": null,
+    "normal_faces_checked": false,
+    "expected_pixels": 9186,
+    "observed_pixels": 9184,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 8692,
+    "face_interior_pixels": null,
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1332.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": null,
+    "normal_faces_checked": false,
+    "expected_pixels": 391444,
+    "observed_pixels": 391456,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 382780,
+    "face_interior_pixels": null,
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1393.png",
+    "scope": "source_geometry",
+    "clipped": false
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": 0,
+    "normal_faces_checked": true,
+    "expected_pixels": 12288,
+    "observed_pixels": 12288,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 11780,
+    "face_interior_pixels": [
+      3782,
+      3782,
+      3720
+    ],
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "capture-1404.png",
+    "scope": "source_geometry",
+    "clipped": false
+  }
+]

@@ -1,0 +1,183 @@
+#!/usr/bin/env python3
+"""Gate projected source geometry independently of the trixel sampling lattice.
+
+CanvasStress: --only orbit --focus-orbit 7 (frame) or 3 (octahedron),
+--no-spin --no-auto-rotate --pivot-origin --no-ao --no-shadows.
+For voxel use --focus-orbit 7 --focus-single-voxel; adjacent uses
+--focus-adjacent-voxels. --identity also requires
+--focus-identity in the demo. Default pixel scale is zoom 4 at 2560x1440.
+Use a fixed --sweep-yaw and matching --yaw in degrees. Black is background.
+No image registration, reference screenshot or trixel parity formula is used.
+One framebuffer pixel of boundary uncertainty is allowed, independent of zoom.
+This checks silhouette; --normals additionally checks each face of ONE voxel.
+It does not validate multi-voxel internal face boundaries, depth or lighting.
+"""
+
+import argparse
+import itertools
+import json
+import math
+from pathlib import Path
+
+from render_metric_util import read_png, write_png
+
+
+def rotate(point, identity):
+    if identity:
+        return point
+    cosine, sine = math.cos(math.pi / 4), math.sin(math.pi / 4)
+    axis = 1 / math.sqrt(3)
+    cross = (point[2] - point[1], point[0] - point[2], point[1] - point[0])
+    return tuple(cosine * point[i] + (1 - cosine) * sum(point) / 3
+                 + sine * axis * cross[i] for i in range(3))
+
+
+def view(point, yaw):
+    x, y, z = point
+    return (math.cos(yaw) * x + math.sin(yaw) * y,
+            -math.sin(yaw) * x + math.cos(yaw) * y, z)
+
+
+def source_centers(shape):
+    if shape == "adjacent":
+        yield (-.5, 0, 0)
+        yield (.5, 0, 0)
+        return
+    extent = {"frame": 14, "octahedron": 10, "voxel": 1}[shape]
+    for index in itertools.product(range(extent), repeat=3):
+        center = tuple(value - (extent - 1) / 2 for value in index)
+        if shape == "frame" and sum(abs(v) >= extent / 2 - 1.5 for v in center) < 2:
+            continue
+        if shape == "octahedron" and sum(map(abs, center)) > extent / 2 * 1.35:
+            continue
+        yield center
+
+
+def projected_faces(shape, yaw, identity, scale, center):
+    for voxel in source_centers(shape):
+        for axis in range(3):
+            normal = rotate(tuple(1 if i == axis else 0 for i in range(3)), identity)
+            sign = -1 if sum(view(normal, yaw)) >= 0 else 1
+            normal = tuple(sign * value for value in normal)
+            if abs(sum(view(normal, yaw))) < 1e-9:
+                continue
+            points = []
+            for u, v in ((-.5, -.5), (.5, -.5), (.5, .5), (-.5, .5)):
+                offset = [u, v]
+                offset.insert(axis, sign * .5)
+                point = tuple(a + b for a, b in zip(voxel, offset))
+                x, y, z = view(rotate(point, identity), yaw)
+                points.append((center[0] + (-x + y) * scale[0],
+                               center[1] + (-x - y + 2 * z) * scale[1]))
+            yield points, tuple(round((v + 1) * 127.5) for v in normal)
+
+
+def raster_polygon(mask, width, height, polygon, label):
+    """Sample analytic convex polygons at framebuffer pixel centers."""
+    edges = list(zip(polygon, polygon[1:] + polygon[:1]))
+    first = max(0, math.ceil(min(y for _, y in polygon) - .5))
+    last = min(height, math.ceil(max(y for _, y in polygon) - .5))
+    for y in range(first, last):
+        intersections = []
+        for (ax, ay), (bx, by) in edges:
+            if min(ay, by) <= y + .5 < max(ay, by):
+                intersections.append(ax + (y + .5 - ay) * (bx - ax) / (by - ay))
+        if len(intersections) < 2:
+            continue
+        left = max(0, math.ceil(min(intersections) - .5))
+        right = min(width, math.ceil(max(intersections) - .5))
+        if right > left:
+            mask[y * width + left:y * width + right] = bytes([label]) * (right - left)
+
+
+def expected_image(width, height, shape, yaw, identity, scale, center):
+    labels = bytearray(width * height)
+    palette = [(0, 0, 0)]
+    clipped = False
+    for polygon, color in projected_faces(shape, math.radians(yaw), identity, scale, center):
+        clipped |= any(x < 1 or y < 1 or x >= width - 1 or y >= height - 1
+                       for x, y in polygon)
+        if color not in palette:
+            palette.append(color)
+        raster_polygon(labels, width, height, polygon, palette.index(color))
+    return labels, palette, clipped
+
+
+def compare(width, height, bpp, pixels, expected, palette, normals=False):
+    missing = extra = wrong_face = 0
+    errors = bytearray(width * height * 3)
+    observed_area = 0
+    testable_interior = 0
+    face_interiors = [0] * len(palette)
+    for index, label in enumerate(expected):
+        rgb = pixels[index * bpp:index * bpp + 3]
+        occupied = any(rgb)
+        observed_area += occupied
+        silhouette_error = occupied != bool(label)
+        face_error = normals and occupied and label and any(
+            abs(a - b) > 1 for a, b in zip(rgb, palette[label]))
+        if not label and not silhouette_error:
+            continue
+        x, y = index % width, index // width
+        neighbors = [expected[yy * width + xx]
+                     for yy in range(max(0, y - 1), min(height, y + 2))
+                     for xx in range(max(0, x - 1), min(width, x + 2))]
+        if label:
+            testable_interior += all(neighbors)
+            face_interiors[label] += all(n == label for n in neighbors)
+        if silhouette_error and all(bool(n) == bool(label) for n in neighbors):
+            missing += bool(label)
+            extra += not label
+            errors[index * 3:index * 3 + 3] = bytes((0, 255, 255) if label else (255, 0, 0))
+        elif face_error and all(n == label for n in neighbors):
+            wrong_face += 1
+            errors[index * 3:index * 3 + 3] = bytes((255, 0, 255))
+    result = dict(missing_pixels=missing, extra_pixels=extra,
+                  wrong_face_pixels=wrong_face if normals else None, normal_faces_checked=normals,
+                  expected_pixels=sum(bool(v) for v in expected), observed_pixels=observed_area,
+                  boundary_tolerance_pixels=1, registration_pixels=[0, 0])
+    result["testable_interior_pixels"] = testable_interior
+    result["face_interior_pixels"] = face_interiors[1:] if normals else None
+    result["sufficient_resolution"] = testable_interior > 0 and (
+        not normals or all(count > 0 for count in face_interiors[1:]))
+    result["pass"] = (missing == extra == wrong_face == 0 and observed_area > 0
+                      and result["sufficient_resolution"])
+    return result, errors
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("image", type=Path)
+    parser.add_argument(
+        "--shape", choices=("voxel", "adjacent", "frame", "octahedron"), required=True)
+    parser.add_argument("--yaw", type=float, required=True)
+    parser.add_argument("--identity", action="store_true")
+    parser.add_argument("--iso-scale", type=float, nargs=2, default=(16, 8))
+    parser.add_argument("--normals", action="store_true")
+    parser.add_argument("--diagnostic-prefix", type=Path)
+    args = parser.parse_args(argv)
+    if not math.isfinite(args.yaw) or not all(math.isfinite(v) and v > 0 for v in args.iso_scale):
+        parser.error("yaw must be finite and scale must be finite and positive")
+    if args.normals and args.shape != "voxel":
+        parser.error("face-normal oracle is only defined for one convex voxel")
+    try:
+        width, height, bpp, pixels = read_png(str(args.image))
+        expected, palette, clipped = expected_image(
+            width, height, args.shape, args.yaw, args.identity, args.iso_scale,
+            (width / 2, height / 2))
+        result, errors = compare(width, height, bpp, pixels, expected, palette, args.normals)
+        result.update(image=str(args.image), scope="source_geometry", clipped=clipped)
+        result["pass"] &= not clipped
+        if args.diagnostic_prefix:
+            prefix = str(args.diagnostic_prefix)
+            expected_rgb = bytes(channel for label in expected for channel in palette[label])
+            write_png(prefix + "-expected.png", width, height, expected_rgb, 3)
+            write_png(prefix + "-errors.png", width, height, bytes(errors), 3)
+        print(json.dumps(result))
+        return 0 if result["pass"] else 1
+    except (OSError, ValueError) as error:
+        parser.exit(2, f"source-face metric: {error}\n")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
