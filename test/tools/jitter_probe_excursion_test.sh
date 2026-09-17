@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # jitter_probe_excursion_test.sh — pin the semantics of the per-axis
-# --max-excursion-x / --max-excursion-y assertions (#2606).
+# --max-excursion-x / --max-excursion-y assertions.
 #
 # The default smooth-motion verdict models LINEAR motion, so a large but
 # perfectly smooth centroid migration fits the line and scores clean. On a probe

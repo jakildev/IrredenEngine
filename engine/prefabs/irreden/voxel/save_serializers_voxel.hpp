@@ -2,10 +2,9 @@
 #define IR_SAVE_SERIALIZERS_VOXEL_H
 
 /// `SaveSerialize<C>` specializations for the heap-owning rig components in
-/// `engine/prefabs/irreden/voxel/` (#2242). `C_VoxelSetNew`'s serializer is
-/// the separate, older `voxel_set_serialize.hpp` (persist P6) — it stays on
-/// its own because its read path has a pool-interaction contract these do
-/// not.
+/// `engine/prefabs/irreden/voxel/`. `C_VoxelSetNew`'s serializer lives
+/// apart in `voxel_set_serialize.hpp` because its read path has a
+/// pool-interaction contract these do not.
 ///
 /// Opt-in serializer header: include it wherever a registry registers these
 /// components; never pulled by the component headers themselves.
@@ -39,8 +38,8 @@ template <> struct SaveSerialize<IRComponents::C_JointName> {
 /// snapshot restores entity ids **exact** (they never recycle — see
 /// `world_snapshot.hpp`), which is what makes a stored id meaningful across a
 /// save at all. The index of an entry is the bone_id baked into
-/// `C_Voxel.bone_id_`, so slot order is load-bearing and a severance hole
-/// (`kNullEntity`) must survive the round trip rather than being compacted
+/// `C_Voxel.bone_id_`, so slot order is load-bearing and a `kNullEntity`
+/// hole must survive the round trip rather than being compacted
 /// away — writing the vector verbatim is what preserves that.
 ///
 /// `bindPose_` is parallel to `joints_` but is NOT required to be the same
@@ -63,8 +62,8 @@ template <> struct SaveSerialize<IRComponents::C_Skeleton> {
 
 /// `points_` is an `unordered_map`, whose iteration order is not a contract —
 /// writing it in hash order would make two saves of the same world differ
-/// byte-for-byte. `writeSortedStringMap` emits ascending key order so the
-/// double-save byte-identity requirement (world-snapshot criterion 6) holds.
+/// byte-for-byte. `writeSortedStringMap` emits ascending key order so two
+/// saves of the same world are byte-identical.
 template <> struct SaveSerialize<IRComponents::C_BindPoints> {
     static void write(IRAsset::BinaryWriter &w, const IRComponents::C_BindPoints &value) {
         detail::writeSortedStringMap(w, value.points_);

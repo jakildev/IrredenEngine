@@ -24,9 +24,8 @@ void parallelFor(
 
 /// Tunables for the auto-grain / row-range chunk planner
 /// (`parallelForAutoGrain`, `parallelChunks`). Defaults match the
-/// hand-tuned PROPAGATE_TRANSFORM dispatch from #1804 — that system's
-/// inline heuristic is the prototype these helpers generalize, so the
-/// defaults reproduce its behavior exactly.
+/// hand-tuned PROPAGATE_TRANSFORM dispatch, so the defaults reproduce its
+/// behavior exactly.
 struct ParallelTuning {
     /// Fan out once the work-set reaches this many items (rows). Below
     /// it (and, for `parallelChunks`, below `minNodes_`) the work runs
@@ -73,7 +72,7 @@ void parallelForAutoGrain(
 );
 
 /// Row-range chunk planner with serial fallback — the generalized form
-/// of PROPAGATE_TRANSFORM's per-level dispatch (#1804). Splits a list of
+/// of PROPAGATE_TRANSFORM's per-level dispatch. Splits a list of
 /// nodes (node `i` is `nodeLengths[i]` rows long) across the worker
 /// pool: a node longer than the planned chunk size fans out into
 /// several row-range chunks, while a shorter node stays whole, so a
@@ -105,9 +104,9 @@ void run(std::string_view name, const std::function<void()> &fn);
 /// Blocks until the task finishes.
 void pinTo(int workerId, const std::function<void()> &fn);
 
-/// True when called from the thread that constructed the active
-/// `JobManager` (main thread). Used by `IR_ASSERT_MAIN_THREAD` in
-/// T-222 and by any code that must refuse to run on a worker.
+/// True on the thread that constructed the active `JobManager` (main
+/// thread). Used by `IR_ASSERT_MAIN_THREAD` and code that must refuse to
+/// run on a worker.
 bool isMainThread();
 
 /// Returns the calling thread's worker id. The main thread returns

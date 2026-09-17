@@ -10,13 +10,10 @@
 #include <stdexcept>
 #include <vector>
 
-// #2404 — per-system update cadence. Exercises the SystemManager cadence
-// gate end-to-end through IRSystem::createSystem + registerPipeline(Groups),
-// using the g_jobManager == nullptr serial fallback (no worker pool in a
-// unit test) for deterministic dispatch. The five acceptance criteria from
-// the issue map onto the tests below; execution counting rides beginTick
-// (fires once per due execution, even with zero matched entities), and
-// per-entity iteration counting rides the per-entity tick body.
+// These tests exercise the SystemManager cadence gate end-to-end through
+// IRSystem::createSystem + registerPipeline(Groups). A null g_jobManager keeps
+// dispatch deterministic; beginTick counts due executions even with zero
+// matches, while the per-entity tick body counts visited entities.
 
 namespace {
 
@@ -31,7 +28,8 @@ struct C_CadB {
 
 namespace IRSystem {
 
-// #2450 — the second registration path onto the same gate. The suite's other
+// These specs exercise the second registration path through the same gate. The
+// suite's other
 // cases all drive the `createSystem` trailing-parameter spelling; these two
 // specs cover `registerSystem<N>`'s constexpr-member detection
 // (`detail::cadenceOf` / `cadenceOffsetOf`), which no test exercised.
@@ -321,8 +319,7 @@ TEST_F(SystemCadenceTest, RuntimeSettersNormalizeAndCadenceFromRate) {
 // A runtime drop to cadence 1 while `lastRunTick` is still ahead of `now`
 // (from a nonzero offset seed a prior, larger cadence hadn't yet caught up
 // to) must keep waiting for `now` to catch up, not fire immediately — firing
-// early would compute `now - lastRunTick` as an underflowed uint64_t. See
-// #2425.
+// early would compute `now - lastRunTick` as an underflowed uint64_t.
 TEST_F(SystemCadenceTest, CadenceDropToOneDoesNotUnderflow) {
     int exec = 0;
     auto sys = IRSystem::createSystem<C_CadA>(
@@ -358,7 +355,7 @@ TEST_F(SystemCadenceTest, CadenceDropToOneDoesNotUnderflow) {
 // event clock, not another event's counter — events advance at different
 // rates (RENDER is uncapped, UPDATE is fixed-step), so seeding from a
 // foreign clock can put `lastRunTick` far ahead of this system's `now` and
-// silently stall it. See #2425.
+// silently stall it.
 TEST_F(SystemCadenceTest, OffsetRephaseUsesOwnEventClock) {
     int exec = 0;
     auto sys = IRSystem::createSystem<C_CadA>(
@@ -500,7 +497,7 @@ TEST_F(SystemCadenceTest, FirstEverJoinToRenderIsSilentWhenUpdateHostsAnotherSys
     EXPECT_NO_THROW(m_system_manager.appendToPipeline(IRTime::RENDER, sys));
 }
 
-// #2450: a System<N> spec's `kCadence` / `kCadenceOffset` members are both
+// A System<N> spec's `kCadence` / `kCadenceOffset` members are both
 // DETECTED (readable through the public getters) and DRIVE the gate (an
 // observable fire count), with no createSystem trailing-parameter spelling
 // anywhere in the path.
@@ -523,8 +520,8 @@ TEST_F(SystemCadenceTest, SpecMemberCadenceDetectedAndDrivesGate) {
     EXPECT_EQ(m_system_manager.getAccumulatedTicks(sys), 3u);
 }
 
-// #2450: the absent-members default. A spec that declares neither member
-// must register at cadence 1 / offset 0 and fire every tick — the guarantee
+// A spec that declares neither member must register at cadence 1 / offset 0
+// and fire every tick — the guarantee
 // that made the detectors safe to add to every legacy spec.
 TEST_F(SystemCadenceTest, SpecWithoutCadenceMembersDefaultsToEveryTick) {
     auto sys = IRSystem::createSystem<IRSystem::TEST_CADENCE_SPEC_DEFAULT>();

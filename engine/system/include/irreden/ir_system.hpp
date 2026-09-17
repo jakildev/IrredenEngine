@@ -40,11 +40,11 @@ template <typename... Cs> struct ArchetypeFromList<TypeList<Cs...>> {
     }
 };
 
-// T-222 / T-334: validate that a system's compile-time access
+// Validate that a system's compile-time access
 // descriptor is compatible with its requested Concurrency policy. Four
 // rules, ordered most-specific-first so that a variadic catch-all tick
 // (which simultaneously satisfies every probe) emits the most useful
-// diagnostic. Distilled from the multithreading epic (#226 §"Layer 4"):
+// diagnostic:
 //
 //   - PARALLEL_FOR + isRelationForm_ → FATAL. The relation branch in
 //     `rangedFn` calls `getRelatedEntityFromArchetype` +
@@ -115,12 +115,12 @@ validateConcurrencyForAccess(const std::string &name, Concurrency c, SystemAcces
 // against (so tagged entities skip this system without per-entity
 // branching). See ir_system_types.hpp for the Exclude<> declaration.
 //
-// T-222: trailing `concurrency` and `grainSize` opt the system into
+// trailing `concurrency` and `grainSize` opt the system into
 // the worker-pool dispatch path. `Concurrency::SERIAL` (default)
 // matches the legacy behavior; `PARALLEL_FOR` requires the tick body
 // to satisfy the validator (`detail::validateConcurrencyForAccess`).
 //
-// #2404: trailing `cadence` / `offset` opt the system into throttled
+// trailing `cadence` / `offset` opt the system into throttled
 // dispatch — run 1-in-`cadence` phase ticks (1 = every tick), staggered
 // by `offset` (0..cadence-1) against co-registered siblings. Off-cadence
 // ticks skip the whole dispatch; the runtime setters live on
@@ -150,7 +150,7 @@ constexpr SystemId createSystem(
     // Derive access descriptor from the tick signature + component
     // pack. The wrapper passes it through so SystemManager records it
     // alongside the Concurrency for the validator + future cross-system
-    // validation (T-224). `deriveAccessFromSignature` can't see the
+    // validation. `deriveAccessFromSignature` can't see the
     // relation pack — two ambiguous packs in a free-function template,
     // see the TODO at `InvocableWithOptionalRelations` in
     // ir_system_types.hpp — so we fold `isRelationForm_` in here where
@@ -212,7 +212,7 @@ constexpr SystemId createSystem(
 
 // Create a prefab system
 //
-// #2526: this and `registerSystem<N, ...>` are the only registration entry
+// this and `registerSystem<N,...>` are the only registration entry
 // points that have the `SystemName` statically, so both record the resulting
 // id in SystemManager's registry. They nest — `System<type>::create()` often
 // calls `registerSystem<type, ...>` — and re-recording the same id is a
@@ -300,7 +300,7 @@ template <typename T, typename... RelComps> auto makeMemberRelationTickFn(T *p) 
     }
 }
 
-// T-222: detect `static constexpr Concurrency kConcurrency` /
+// Detect `static constexpr Concurrency kConcurrency` /
 // `static constexpr int kGrainSize` members on a System<N>
 // specialization. Used by `registerSystem` to opt a system into
 // PARALLEL_FOR without forcing every legacy spec to grow boilerplate.
@@ -330,7 +330,7 @@ template <typename T> constexpr int grainSizeOf() {
     }
 }
 
-// #2404: detect `static constexpr std::uint32_t kCadence` / `kCadenceOffset`
+// Detect `static constexpr std::uint32_t kCadence` / `kCadenceOffset`
 // members on a System<N> specialization, mirroring kConcurrency / kGrainSize.
 // Absent → cadence 1 (every tick) / offset 0, so every legacy spec is
 // unchanged.
@@ -413,7 +413,7 @@ registerSystem(std::string name, RelationParams<RelationComponents...> relationP
     auto endFn = detail::makeMemberEndTickFn<SystemT>(p);
     auto relationFn = detail::makeMemberRelationTickFn<SystemT, RelationComponents...>(p);
 
-    // T-222: a System<N> spec can opt the system into PARALLEL_FOR by
+    // A System<N> spec can opt the system into PARALLEL_FOR by
     // declaring `static constexpr Concurrency kConcurrency = ...;`
     // (and optionally `static constexpr int kGrainSize = ...;`). The
     // detectors fall back to SERIAL / kDefaultGrainSize when the spec
@@ -422,7 +422,7 @@ registerSystem(std::string name, RelationParams<RelationComponents...> relationP
     constexpr Concurrency concurrency = detail::concurrencyOf<SystemT>();
     constexpr int grainSize = detail::grainSizeOf<SystemT>();
 
-    // #2404: a System<N> spec opts into throttled dispatch by declaring
+    // A System<N> spec opts into throttled dispatch by declaring
     // `static constexpr std::uint32_t kCadence = ...;` (and optionally
     // `kCadenceOffset`). Detectors default to cadence 1 / offset 0, so
     // legacy specs are unchanged.
@@ -446,7 +446,7 @@ registerSystem(std::string name, RelationParams<RelationComponents...> relationP
     return id;
 }
 
-// #2526: resolve a `SystemName` to the id it was registered under, or
+// Resolve a `SystemName` to the id it was registered under, or
 // `kNullSystemId` if no enum-templated registration recorded it.
 // This is the manager-owned replacement for the wire-once
 // `setSystem(id)` / `setAllocatorSystem(id)` handles prefab headers used to
@@ -622,7 +622,7 @@ template <typename Params> Params *getSystemParams(SystemId system) {
 
 void registerPipeline(IRTime::Events systemType, std::list<SystemId> pipeline);
 
-/// T-224: register a pipeline as a sequence of parallel groups. Each
+/// Register a pipeline as a sequence of parallel groups. Each
 /// inner vector is one parallel group — its members run concurrently
 /// on the IRJobs worker pool. Groups themselves run in declaration
 /// order; `flushStructuralChanges` fires between groups. Call
@@ -638,7 +638,7 @@ void registerPipeline(IRTime::Events systemType, std::list<SystemId> pipeline);
 ///     });
 void registerPipelineGroups(IRTime::Events event, std::vector<std::vector<SystemId>> groups);
 
-/// #1540: append a single system to the end of `event`'s already-
+/// Append a single system to the end of `event`'s already-
 /// registered pipeline as its own serial group, without disturbing the
 /// systems already registered for `event`. Unlike `registerPipeline` /
 /// `registerPipelineGroups` (which *replace* the event's whole system
@@ -648,21 +648,21 @@ void registerPipelineGroups(IRTime::Events event, std::vector<std::vector<System
 /// "Appending to a live pipeline".
 void appendToPipeline(IRTime::Events event, SystemId system);
 
-/// #1540: insert a single system as its own serial group immediately
+/// Insert a single system as its own serial group immediately
 /// before / after the group containing `anchor` in `event`'s pipeline.
 /// The position-aware sibling of `appendToPipeline` for when ordering
 /// relative to an existing system matters.
 void insertIntoPipelineBefore(IRTime::Events event, SystemId system, SystemId anchor);
 void insertIntoPipelineAfter(IRTime::Events event, SystemId system, SystemId anchor);
 
-/// T-224: run the cross-system access-conflict validator across every
+/// Run the cross-system access-conflict validator across every
 /// registered pipeline group. FATALs on the first conflict, naming
 /// both systems + the offending component. The engine calls this
 /// from `World::start()`; tests can call it directly to exercise a
 /// hand-built pipeline.
 void validateAllPipelineGroups();
 
-/// #1814: clear `event`'s pipeline (no systems run for it). The
+/// Clear `event`'s pipeline (no systems run for it). The
 /// scene-transition counterpart to `registerPipeline` — a scene machine
 /// clears the previous scene's pipeline before registering the next scene's.
 /// Lua: `IRSystem.clearPipeline(event)`.
@@ -670,7 +670,7 @@ void clearPipeline(IRTime::Events event);
 
 void executePipeline(IRTime::Events event);
 
-// #2404: per-system update cadence. Run a system on 1-in-`cadence` phase
+// Per-system update cadence. Run a system on 1-in-`cadence` phase
 // ticks (1 = every tick, the default); off-cadence ticks skip the entire
 // dispatch. `offset` (0..cadence-1) staggers the initial phase so sibling
 // systems don't spike on the same tick. Both are settable at runtime with
@@ -689,14 +689,14 @@ inline std::uint32_t getSystemCadenceOffset(SystemId system) {
     return getSystemManager().getSystemCadenceOffset(system);
 }
 
-// #2404: phase ticks covered by the system's current / most-recent
+// Phase ticks covered by the system's current / most-recent
 // execution — the multiplier a throttled integrator reads to stay
 // numerically correct at the reduced rate (>= 1 once it has run).
 inline std::uint64_t getAccumulatedTicks(SystemId system) {
     return getSystemManager().getAccumulatedTicks(system);
 }
 
-// #2404: accumulated fixed-step delta since the system's previous
+// Accumulated fixed-step delta since the system's previous
 // execution. UPDATE-phase-only: `IRTime::deltaTime(UPDATE)` is the constant
 // fixed step. A RENDER-phase throttled consumer must use raw
 // `getAccumulatedTicks` — RENDER dt is wall-clock-variable, so a scaled
@@ -708,7 +708,7 @@ inline double accumulatedDeltaTime(SystemId system) {
            IRTime::deltaTime(IRTime::UPDATE);
 }
 
-// #2404: convert a target sub-rate (Hz) to the nearest integer cadence
+// Convert a target sub-rate (Hz) to the nearest integer cadence
 // divisor of the engine's fixed UPDATE rate. `targetHz <= 0` clamps to 1
 // (every tick). Sugar over the integer-divisor primitive — not a second
 // scheduling mode.

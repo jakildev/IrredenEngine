@@ -78,7 +78,7 @@ function(_irreden_drop_gitignored_files file_list_var repo_root)
 endfunction()
 
 # `INCLUDE_RENDER_BACKENDS` keeps the generated / vendored graphics sources that
-# the style tools skip. See the reject chain below for which consumer wants what.
+# the style tools skip.
 #
 # `ROOT <dir>` collects from a tree other than the engine source root — the
 # format-changed target passes the downstream creation worktree a build was
@@ -112,7 +112,7 @@ function(irreden_collect_quality_files out_var)
     # CONFIGURE_DEPENDS re-runs the glob on rebuild, but CMake rejects it
     # outside configure mode. run_header_checks_standalone.cmake calls this same
     # function under `cmake -P` so CI can check headers with no configure, so
-    # the flag has to drop out there (#2794).
+    # the flag has to drop out there.
     set(glob_mode CONFIGURE_DEPENDS)
     if(CMAKE_SCRIPT_MODE_FILE)
         set(glob_mode "")
@@ -153,7 +153,7 @@ function(irreden_collect_quality_files out_var)
         # the STYLE tools skip them: clang-format rewrites generated code and
         # clang-tidy trips on metal-cpp idioms. That exemption is about style,
         # so it must not reach a correctness gate — the header-convention checks
-        # pass INCLUDE_RENDER_BACKENDS to keep them in scope (see #2815).
+        # pass INCLUDE_RENDER_BACKENDS to keep them in scope.
         # metal-cpp above is vendored and stays rejected in both scopes.
         if(NOT arg_INCLUDE_RENDER_BACKENDS)
             if(normalized_path MATCHES "/engine/render/include/irreden/render/gl_wrap/")
@@ -237,7 +237,7 @@ function(irreden_add_quality_targets)
     endforeach()
     file(APPEND "${irreden_quality_file_list}" ")\n")
 
-    # Second, wider list for the header-convention checks only (#2815).
+    # Second, wider list for the header-convention checks only.
     irreden_collect_quality_files(irreden_header_check_files INCLUDE_RENDER_BACKENDS)
     set(irreden_header_check_file_list
         "${PROJECT_BINARY_DIR}/irreden_header_check_files.cmake")
@@ -330,9 +330,7 @@ function(irreden_add_quality_targets)
     endif()
 
     # Standalone so the header conventions stay runnable without clang-tidy
-    # installed — they are pure CMake and have no external tool dependency,
-    # but until now they only ran as the second command of `lint`, which
-    # exists only when find_program below succeeds.
+    # installed — they are pure CMake and have no external tool dependency.
     add_custom_target(header-checks
         COMMAND ${CMAKE_COMMAND}
             -DQUALITY_FILE_LIST="${irreden_header_check_file_list}"

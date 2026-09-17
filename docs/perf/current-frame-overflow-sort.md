@@ -1,11 +1,13 @@
 # Current-frame overflow sort
 
-Sort eligibility still uses the pool's displaced-cell collision flag. Its work
-now derives from the current GPU append count, so an empty-to-nonempty transition
-is sorted on its first frame. A preparation mode writes indirect grids for fill,
-local sorting and stages 12..30. Empty lists and stages beyond the active span
-produce zero-sized grids. CPU encoding and uniform-update overhead remains even
-for those grids; this does not claim zero overhead for flagged empty pools.
+Sort eligibility still uses the pool's displaced-cell collision flag. GPU work
+derives from the current append count. A preparation mode writes indirect grids
+for fill, local sorting and stages 12..30. Empty lists and stages beyond the
+active span produce zero-sized grids. CPU encoding uses the completed prior-frame
+count as a stage-count hint with two-times headroom and a 2,048-entry floor. An
+empty flagged pool therefore opens three encoders rather than the capacity-sized
+chain. A first population through 2,048 entries sorts on that frame; a larger
+jump remains a valid permutation and becomes fully sorted on the next frame.
 
 The scratch control region grows from 256 to 512 bytes. Its first eight words
 retain draw/counter ownership; 21 four-word commands fit afterward. Storage and
@@ -15,10 +17,11 @@ no longer uses the diagnostic readback as a correctness input.
 
 ## Validation
 
-Eight focused capacity/GPU tests passed on Metal. The production sort shader
-matches a CPU lexicographic reference through counts 0, 4097, 1, 0 and 262145;
-it checks draw/counter preservation and a fill dispatch spilling into Y. This
-covers first population, stale argument replacement and partial sort blocks.
+The focused GPU test covers empty input, a first population within the local
+block, an oversize first-frame jump, its steady-state full sort, shrinking counts,
+draw/counter preservation and a fill dispatch spilling into Y. Exact frames match
+a CPU lexicographic reference; the bounded transition frame is checked as a
+record-preserving permutation.
 IRPerfGrid, IRCanvasStress and IrredenEngineTest built; header/Metal registry,
 comment and diff checks passed. Review found no correctness blockers.
 
@@ -46,6 +49,10 @@ order. The runtime Lua files match the earlier capacity audit's
 | million | 52.340 (52.120–52.560) | 9.829 |
 | default | 17.705 (17.700–17.710) | 2.669 |
 | empty | 8.710 (8.640–8.780) | 0.068 |
+
+An interleaved parent/head rerun was attempted during feedback, but the
+unattended macOS session reported no display monitors before creating a frame.
+Those launches produced no profile report and are excluded from this table.
 
 Reports and binary/shader fingerprints are in
 [current-frame-overflow-sort/](current-frame-overflow-sort/). No overflow-drop

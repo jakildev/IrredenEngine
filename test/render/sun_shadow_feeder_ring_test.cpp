@@ -1,9 +1,9 @@
-// Guard-predicate tests for the Metal image-atomic scratch resolve (#2488).
+// Guard-predicate tests for the Metal image-atomic scratch resolve.
 //
 // VOXEL_TO_TRIXEL_STAGE_1 dispatches RenderDevice::resolveImageAtomicScratch on
 // the distance texture only when the shadow-feeder sweep produced a non-empty
-// off-screen ring. The plan-review for #2488 asked for that guard's FALSE branch
-// to be *observed* rather than asserted in prose: a pixel-level A/B with sun
+// off-screen ring. This test observes that guard's false branch directly; a
+// pixel-level A/B with sun
 // shadows off would read zero-diff whether the guard fired or not (with an empty
 // ring the resolve is a value-identical copy), so it cannot distinguish "the
 // guard suppressed the blit" from "the blit ran and changed nothing".
@@ -73,7 +73,7 @@ TEST(SunShadowFeederRing, ProductionSweepProducesARing) {
 }
 
 // A detached canvas takes the other branch of the tick's viewport split, which
-// assigns the full canvas span to BOTH boxes so stage 2's #1740 depth-only skip
+// assigns the full canvas span to BOTH boxes so stage 2's depth-only skip
 // stays inert. Same-box in means ring-empty out, so detached content is
 // structurally resolve-free rather than resolve-free by a separate check.
 TEST(SunShadowFeederRing, IdenticalBoundsAreRingEmpty) {

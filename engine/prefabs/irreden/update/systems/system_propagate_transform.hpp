@@ -22,10 +22,10 @@
 // C_ResolvedFields under the TRANSFORM_TRANSLATION / TRANSFORM_SCALE
 // vec3 fields (see transform_modifier_fields.hpp). Default values when
 // no resolved field exists: translation 0, scale 1 — i.e. no
-// perturbation. The matching ROTATION quat field arrives with T-198;
-// until then, modifier_rotation is identity.
+// perturbation. There is no modifier rotation field; modifier_rotation is
+// identity.
 //
-// Two-pass architecture (T-378):
+// Two-pass architecture:
 //
 //   Pass 1 (serial, beginTick prelude) — topological partition: group
 //   the candidate archetype nodes by parent-chain depth into per-level
@@ -77,12 +77,12 @@ namespace IRSystem {
 
 template <> struct System<PROPAGATE_TRANSFORM> {
     // Per-level dispatch policy — fan out, chunk sizing, and serial
-    // fallback — lives in IRJob::parallelChunks (#1900). Its
-    // ParallelTuning defaults ARE this system's hand-tuned values
-    // (#1804): parallelize at ≥8 nodes OR ≥4096 rows; split a dominant
-    // node into ≥2048-row chunks targeting ~2 tasks/worker; small nodes
-    // stay whole. We pass a default-constructed tuning here, so the
-    // knobs live in one tested place instead of re-derived inline.
+    // fallback — lives in IRJob::parallelChunks. Its ParallelTuning
+    // defaults are this system's values: parallelize at
+    // ≥8 nodes OR ≥4096 rows; split a dominant node into ≥2048-row
+    // chunks targeting ~2 tasks/worker; small nodes stay whole. This
+    // system passes a default-constructed tuning, so the knobs have a
+    // single home.
 
     // Cached level partition: levels_[d] holds archetype nodes whose
     // parent-chain depth is exactly d. parentWorlds_[d][i] is the
@@ -301,9 +301,9 @@ template <> struct System<PROPAGATE_TRANSFORM> {
     }
 
     // Composes C_WorldTransform for rows [rowBegin, rowEnd) of node.
-    // The per-node column fetches and isRootArchetype check below are
-    // cheap relative to the row loop, so re-deriving them per chunk
-    // when a large node is split costs nothing meaningful.
+    // The per-node column fetches and isRootArchetype check are cheap
+    // relative to the row loop, so re-deriving them per chunk when a
+    // large node is split costs nothing meaningful.
     static void composeNodeRows(
         IREntity::ArchetypeNode *node,
         const IRComponents::C_WorldTransform &parentWorld,

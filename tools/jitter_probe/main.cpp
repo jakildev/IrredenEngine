@@ -33,7 +33,7 @@
 // there. The line fit is blind to a perfectly smooth systematic migration — it
 // fits it and calls the residual clean — so on a probe where one axis is
 // supposed to stay PINNED while the other legitimately translates, the shipped
-// criteria cannot express the contract and the migration scores SMOOTH (#2606).
+// criteria cannot express the contract and the migration scores SMOOTH.
 // Because each flag is independently optional, "x stays pinned while y may
 // translate" is exactly `--max-excursion-x <bar>` with y unconstrained, which
 // --stationary (both axes pinned) cannot say.

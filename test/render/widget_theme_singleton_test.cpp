@@ -3,8 +3,8 @@
 
 #include <irreden/render/widget_theme.hpp>
 
-// Widget theme storage lives on the C_WidgetTheme singleton component
-// (see #2527). These tests pin the two invariants of component-backed
+// Widget theme storage lives on the C_WidgetTheme singleton component.
+// These tests pin the two invariants of component-backed
 // storage: the registration-time touch actually creates the row, and a
 // creation-customized theme survives the scene-transition teardown
 // (resetGameplay() preserves singleton rows).

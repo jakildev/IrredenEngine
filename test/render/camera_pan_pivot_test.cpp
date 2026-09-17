@@ -3,7 +3,7 @@
 #include <irreden/ir_math.hpp>
 
 // ---------------------------------------------------------------------------
-// The CAMERA_CENTER pan invariant (#2547).
+// The CAMERA_CENTER pan invariant.
 //
 // `IRMath::cameraMoveRelativeToYaw` pre-compensates a pan so dragging moves
 // content parallel to the drag on screen at every yaw. Its derivation assumes
@@ -166,7 +166,7 @@ TEST(CameraPanPivot, WorldPointLatchBreaksThePanIdentity) {
 // ---------------------------------------------------------------------------
 // Cardinal fast path: at yaw 0 the effective camera is the raw camera iso at
 // every latched depth, so a depth-aware pivot cannot perturb the byte-identical
-// un-yawed path (#2547 acceptance criterion 4).
+// un-yawed path.
 // ---------------------------------------------------------------------------
 
 TEST(CameraPanPivot, YawZeroReturnsRawCameraIsoAtEveryLatchedDepth) {

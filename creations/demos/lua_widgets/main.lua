@@ -1,4 +1,4 @@
--- lua_widgets (#1975): build a panel + label + two buttons ENTIRELY from Lua,
+-- lua_widgets: build a panel + label + two buttons ENTIRELY from Lua,
 -- with a Lua onClick that fires on click (via WIDGET_LUA_DISPATCH) and a
 -- polling button read with IRGui.wasClicked from a Lua system. No per-creation
 -- C++ widget binding — every widget comes from the engine IRGui surface.

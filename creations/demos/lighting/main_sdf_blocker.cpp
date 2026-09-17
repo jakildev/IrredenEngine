@@ -1,10 +1,10 @@
 // Lighting demo — SDF blocker casts a point-light shadow.
 //
-// Acceptance scene for T-117 / #364: a `C_ShapeDescriptor` (BOX) tagged
+// Acceptance scene: a `C_ShapeDescriptor` (BOX) tagged
 // with `C_LightBlocker(blocksLOS_=true)` placed between a POINT light
 // and the canvas floor produces a visible shadow on the surface.
-// Without the fix, the point-light wavefront passes straight through
-// the SDF and the floor lights up symmetrically around the blocker.
+// If SDF blockers are ignored, the point-light wavefront passes straight
+// through the SDF and the floor lights up symmetrically around the blocker.
 //
 // Scene = the standard `IRLightingPoint` setup (default voxel-pool /
 // SDF row + floor + point light at the canonical position) with two

@@ -7,11 +7,10 @@
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 
-// Covers the encapsulating raw-edit API on C_VoxelSetNew (#2165, head of epic
-// #2164): `editVoxels` / `carve` / `resyncAfterRawEdits`. Each routes through
+// `editVoxels`, `carve`, and `resyncAfterRawEdits` each route through
 // the private `resyncDerivedState()` so a single call restores BOTH derived
 // invariants a carve must maintain — the pool's per-slot active-mask AND the
-// per-voxel face-occlusion bits. The recurring footgun (#2018/#2117/#2146) is a
+// per-voxel face-occlusion bits. The recurring footgun is a
 // carve that syncs the active-mask but forgets `recomputeFaceOccupancy`, leaving
 // the carved surface's newly-exposed faces occluded (renders black under the
 // lit/rotated path). These tests assert both halves land correctly for a mixed
@@ -98,7 +97,7 @@ TEST_F(VoxelSetEditApiTest, CarveDeactivatesSliceAndUpdatesMaskAndFaces) {
     EXPECT_EQ(carved & VoxelFlags::kFaceOccludedMask, 0u);
 }
 
-// C_VoxelPool::adjustPerTrixelPriorityVoxelCount (#2155) is maintained
+// C_VoxelPool::adjustPerTrixelPriorityVoxelCount is maintained
 // push-at-mutation by changeVoxelPriority / changeVoxelPriorityAll / onDestroy,
 // never a per-voxel scan. These cover the arithmetic in isolation: repeated
 // same-voxel toggling (must not double-count a same-state no-op write),

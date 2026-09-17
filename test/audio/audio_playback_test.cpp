@@ -2,7 +2,7 @@
 
 #include <irreden/audio/audio_playback.hpp>
 
-// Regression for the AudioPlayback graceful-degradation contract (#1813).
+// Regression for the AudioPlayback graceful-degradation contract.
 // On headless CI (no audio device, ma_engine_init fails) every play* call must
 // return kInvalidSoundHandle and every setter must be a no-op — never a crash.
 // On a dev machine the same no-crash invariant holds for bad file paths and

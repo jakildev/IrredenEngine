@@ -110,11 +110,12 @@ and the separation between render visibility and simulation cadence.
    observed exact/margin flicker. [Overflow face deduplication](overflow-face-dedup.md)
    now passes stable controls and reduces scatter work. Retain same-class ties
    and continuous-camera temporal checks as follow-ups. [Current-frame sort dispatch](current-frame-overflow-sort.md)
-   removes the unsorted empty-to-nonempty transition and bounds GPU work to the live
-   span. Continue reducing
-   repeated per-axis storage/finalization work using measured counters;
-   [GPU body controls](gpu-cost-attribution.md) isolate sorting and propagation
-   as useful targets; the tested shadow/AO arithmetic changes showed no gain; preserve finite
+   removes the unsorted empty-to-nonempty transition, bounds GPU work to the live
+   span, and bounds CPU stage encoding to a prior-count hint with headroom.
+   Continue reducing repeated per-axis storage/finalization work using measured
+   counters; [GPU body controls](gpu-cost-attribution.md) isolate sorting and
+   propagation as useful targets; the tested shadow/AO arithmetic changes showed
+   no gain; preserve finite
    geometry, trixel reconstruction and shadow coverage.
 5. [Light-volume candidate pruning](light-volume-candidate-pruning.md) skips
    occlusion reads for neighbors that cannot win, with identical lighting-demo
