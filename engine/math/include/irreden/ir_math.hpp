@@ -8,6 +8,7 @@
 #include <irreden/math/color.hpp>
 #include <irreden/math/physics.hpp>
 #include <irreden/math/sdf.hpp>
+#include <irreden/math/rng_pcg32.hpp>
 #include <irreden/ir_platform.hpp>
 
 #include <glm/gtc/matrix_transform.hpp>
@@ -17,6 +18,7 @@
 #include <cmath>
 #include <cstdint>
 #include <random>
+#include <stdexcept>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -187,6 +189,45 @@ constexpr ivec3 roundVec3HalfUp(vec3 value) {
 /// floating-point arithmetic.
 constexpr int divCeil(int numerator, int denominator) {
     return (numerator + denominator - 1) / denominator;
+}
+
+/// Floor division toward -infinity: `floorDiv(-1, 3) == -1` where `/`
+/// truncates toward zero and gives `0`. Exact for the whole int64 range of
+/// @p numerator; @p denominator must be positive (throws
+/// std::invalid_argument otherwise).
+constexpr std::int64_t floorDiv(std::int64_t numerator, std::int64_t denominator) {
+    if (denominator <= 0) {
+        throw std::invalid_argument("floorDiv denominator must be positive");
+    }
+    const std::int64_t quotient = numerator / denominator;
+    const std::int64_t remainder = numerator % denominator;
+    return quotient - static_cast<std::int64_t>(remainder < 0);
+}
+
+/// Exact integer square root: the largest `n` with `n * n <= value`, computed
+/// digit-by-digit in integers, so it is exact over the whole non-negative
+/// int64 range where a floating-point sqrt would round. Throws
+/// std::invalid_argument for a negative @p value.
+constexpr std::int64_t isqrt(std::int64_t value) {
+    if (value < 0) {
+        throw std::invalid_argument("isqrt of a negative value");
+    }
+    auto remainder = static_cast<std::uint64_t>(value);
+    std::uint64_t result = 0;
+    std::uint64_t bit = std::uint64_t{1} << 62u;
+    while (bit > remainder) {
+        bit >>= 2u;
+    }
+    while (bit != 0) {
+        if (remainder >= result + bit) {
+            remainder -= result + bit;
+            result = (result >> 1u) + bit;
+        } else {
+            result >>= 1u;
+        }
+        bit >>= 2u;
+    }
+    return static_cast<std::int64_t>(result);
 }
 
 /// Rounds each component of @p value to the nearest integer.
