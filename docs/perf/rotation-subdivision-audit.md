@@ -85,15 +85,16 @@ The remaining work below still applies.
    work early enough to avoid generating it, while retaining off-screen geometry
    whose shadows can reach visible receivers. Compare existing culling toggles
    before introducing another culling structure.
-4. Resolve equal-depth overflow ordering before reviving the rejected
+4. Resolve the overflow seam before reviving the rejected
    [duplicate face-record optimization](per-axis-single-face-writer.md). Its
    fresh integrated sweep changed a 12-pixel lighting seam. Continue reducing repeated per-axis
    storage/overflow/finalization work using the measured counters. Preserve finite geometry, trixel reconstruction and depth ordering;
    do not trade away shadow coverage or blur artifacts to improve timing.
 5. Inspect the subdivision-dependent light-volume and finite-caster costs; measure
    bounds, density and memory traffic before changing either representation.
-6. Measure CPU update/transform/upload costs at fixed simulation workloads. Use a
-   CPU sampling trace to distinguish traversal, allocation, upload and waiting.
+6. [Native CPU sampling](native-cpu-sampling.md) now distinguishes presentation
+   waiting from active update/bounds/upload stacks. Batch contiguous update spans
+   next; preserve fixed-workload controls and per-call versus per-frame counts.
 7. Establish Release and OpenGL controls, repeated run ranges and profiling-off
    overhead. Add full-frame multi-canvas GPU accounting before treating summed
    sampled rows as total render cost. Keep screenshots as correctness gates for
