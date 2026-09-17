@@ -1156,6 +1156,10 @@ MetalRenderDevice &metalRenderDevice() {
 }
 } // namespace
 
+MTL::BlitCommandEncoder *createMetalBlitEncoder() {
+    return createBlitEncoder(metalCommandBuffer());
+}
+
 void removeClearSourceBuffer(MTL::Texture *texture) {
     metalRenderDevice().releaseClearSourceBuffer(texture);
 }

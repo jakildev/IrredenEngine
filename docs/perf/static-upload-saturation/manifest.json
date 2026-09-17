@@ -1,0 +1,50 @@
+{
+  "head": "c0db1d72112bda7984589e5caf4548d5a6dc9d45",
+  "changes": " M engine/prefabs/irreden/render/systems/system_voxel_to_trixel.hpp\n M engine/prefabs/irreden/voxel/components/component_voxel_pool.hpp\n M engine/render/include/irreden/render/metal/metal_runtime.hpp\n M engine/render/src/metal/metal_buffer.cpp\n M engine/render/src/metal/metal_render_impl.cpp\n M test/render/gpu_compute_dispatch_test.cpp\n",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "binary_sha256": "815f19c5d4c6a0baf242a18932436d4f532f79ea80f7c3395c4ffc557f7ff8e5",
+  "shader_sha256": "e3b71bbf545a6480776e2e22e898a959f3d068d6e02d2af02271edfeb730a527",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "120",
+    "IRPerfGrid",
+    "--mode",
+    "voxel_set",
+    "--grid-size",
+    "64",
+    "--wave-freeze",
+    "--yaw",
+    "0.785398163",
+    "--zoom",
+    "4",
+    "--auto-profile",
+    "600"
+  ],
+  "runs": [
+    {
+      "index": 1,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    },
+    {
+      "index": 2,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    },
+    {
+      "index": 3,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    }
+  ]
+}
