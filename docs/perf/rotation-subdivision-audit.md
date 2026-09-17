@@ -95,9 +95,9 @@ and the separation between render visibility and simulation cadence.
 4. [Frozen coverage arbitration](../design/frozen-scatter-flicker.md) resolves the
    observed exact/margin flicker. [Overflow face deduplication](overflow-face-dedup.md)
    now passes stable controls and reduces scatter work. Retain same-class ties
-   and continuous-camera temporal checks as follow-ups. Move sort dispatch sizing
-   to the current GPU count and test empty-to-nonempty transitions: the existing
-   lagged-count gate permits one unsorted transition frame. Continue reducing
+   and continuous-camera temporal checks as follow-ups. [Current-frame sort dispatch](current-frame-overflow-sort.md)
+   removes the unsorted empty-to-nonempty transition and bounds GPU work to the live
+   span. Continue reducing
    repeated per-axis storage/finalization work using measured counters; preserve finite
    geometry, trixel reconstruction and shadow coverage.
 5. [Light-volume candidate pruning](light-volume-candidate-pruning.md) skips
@@ -120,7 +120,9 @@ and the separation between render visibility and simulation cadence.
    eliminates observed drops and establishes a more expensive correctness baseline.
    [Live-count overflow lighting](live-overflow-lighting.md) removes capacity-sized
    lighting dispatch without a demonstrated frame-time gain. Measure memory and
-   remaining capacity-sized sort work before choosing growth or paged pools.
+   remaining command-encoding and sorting costs before choosing growth or paged pools.
+   Keep asynchronous diagnostic snapshots as a separate OpenGL follow-up: the
+   existing retired-frame read is a memcpy on Metal but may synchronize on GL.
    Include continuous camera motion and independent entity motion; keep viewport
    rejection separate from simulation interest.
 9. Profile reduced/staggered simulation cadence, accumulated-time correctness,

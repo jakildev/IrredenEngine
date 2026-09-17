@@ -1,0 +1,44 @@
+{
+  "head": "5b5d9833b1e58818a9dcb5d09da9225090a87259",
+  "changes": " M docs/design/per-axis-trixel-canvas-rotation.md\n M docs/perf/rotation-subdivision-audit.md\n M engine/prefabs/irreden/render/components/component_per_axis_trixel_canvases.hpp\n M engine/prefabs/irreden/render/systems/system_voxel_to_trixel.hpp\n M engine/render/src/shaders/c_per_axis_overflow_sort.glsl\n M engine/render/src/shaders/metal/c_per_axis_overflow_sort.metal\n M test/render/gpu_compute_dispatch_test.cpp\n",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "binary_sha256": "1cbd63ef321bcea3cd43f528d1c402a414db2bb9a41d31e6591619356b1db320",
+  "shader_sha256": "2ba1fbc7e8c547792bddb1c68f22991a22fbcb83e76b2bd506bcaee131aff1c3",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "120",
+    "IRPerfGrid",
+    "--mode",
+    "voxel_set",
+    "--grid-size",
+    "64",
+    "--wave-freeze",
+    "--wave-amplitude",
+    "0",
+    "--yaw",
+    "0.785398163",
+    "--zoom",
+    "4",
+    "--auto-profile",
+    "300"
+  ],
+  "runs": [
+    {
+      "index": 1,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    },
+    {
+      "index": 2,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    }
+  ]
+}

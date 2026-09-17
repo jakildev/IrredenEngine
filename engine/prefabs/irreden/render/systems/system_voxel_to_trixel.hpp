@@ -630,9 +630,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // readback in tick(); Metal's present() waits each frame to completion, so
     // the read can never observe an in-flight append, and GL's getSubData
     // implicit-syncs any pending write) — and one-shot-warn when entries were
-    // dropped. The same read is load-bearing, not diagnostic-only: it stamps
-    // laggedOverflowCount_, the completed-frame
-    // live count the canonical sort's enable predicate reads.
+    // dropped. Rendering never consumes this completed-frame diagnostic count.
     void warnOverflowDropsIfAny(C_PerAxisTrixelCanvases &axes) {
         std::array<std::uint32_t, 8> ctrl{};
         axes.winnerIds_.second->getSubData(
@@ -673,9 +671,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // equal-key overflow entries whose draw order the canonical sort
     // exists to pin. An unflagged pool cannot produce that tie class from the
     // cardinal store, so it skips the sort entirely. The flag
-    // is necessary but not sufficient: the dispatch site additionally
-    // requires a nonempty overflow list, so a flagged pool at a
-    // pose that appends nothing also pays zero sort dispatches.
+    // determines eligibility; current-frame GPU counts determine the sort work.
     void dispatchPerAxisCanvases(
         C_PerAxisTrixelCanvases &axes,
         C_CanvasFogOfWar *fog,
@@ -876,59 +872,21 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                     indirectOffsetBytes
                 );
             }
-            // canonical-order the appended entries so the indirect
-            // draw's entry order — and therefore every equal-key depth-test
-            // winner — is a pure function of the appended SET, not the
-            // run-variant atomicAdd append sequence. Sentinel-fill
-            // [liveCount, cap), then an in-place bitonic network over the
-            // power-of-two cap. Dispatch counts derive from the cap CPU-side
-            // (reading the live ctrl[1] per frame would sync-stall).
-            //
-            // Gated on the pool's displaced-collision flag AND a
-            // nonempty overflow list, with both terms CPU-side on
-            // both backends so the sort SEMANTICS never fork by backend. An
-            // unflagged pool runs no fill or network and adds no dispatches
-            // — and so does a flagged pool whose list was empty last
-            // completed frame (the amp-0 IRPerfGrid voxel_set case). The
-            // count term is the lagged ctrl[1] stamped by
-            // warnOverflowDropsIfAny above — a completed-prior-frame read, so
-            // the common interactive case is free without any sync stall. Its
-            // one-frame lag means an empty→nonempty transition draws exactly
-            // one frame unsorted (self-healing; master is nondeterministic on
-            // EVERY such frame, so the determinism guarantee is scoped to
-            // steady-state frames — settled overflow population).
-            // The residual class the flag gate leaves — cross-cell band-code
-            // ties on unflagged pools — is documented in
-            // docs/design/per-axis-trixel-canvas-rotation.md §overflow lane;
-            // a measured repro there widens the flag recompute, it does NOT
-            // un-gate the sort.
-            //
-            // Pass structure: one fused local phase (stages k <= kBlock), then
-            // per remaining stage the strides fused kBlockBits at a time by
-            // the kernels' strided-slab addressing. That is 18 dispatches at
-            // the 524,288-entry repro cap where the un-fused network needed 67
-            // — and on Metal, where one compute encoder per dispatch costs
-            // ~40 us, the dispatch count WAS the cost. kBlockBits MUST match
-            // the kernels' fused-slab constant.
-            const bool sortThisFrame =
-                sortOverflowEntries && axes.laggedOverflowCount_ > 0;
+            // Sort displaced-cell ties on their first nonempty frame. GPU-authored
+            // commands suppress empty lists and stages beyond the current span.
             std::uint32_t sortDispatches = 0;
-            if (sortThisFrame) {
+            if (sortOverflowEntries) {
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
                 overflowSortProgram_->use();
-                constexpr std::uint32_t kBlockBits = 11;
+                constexpr std::uint32_t kBlockBits =
+                    C_PerAxisTrixelCanvases::kOverflowSortBlockBits;
                 constexpr std::uint32_t kBlock = 1u << kBlockBits;
-                constexpr std::uint32_t kThreads = 256;
                 const std::uint32_t cap = static_cast<std::uint32_t>(axes.overflowCap_);
-                const int fillGroups = static_cast<int>(IRMath::divCeil(cap, kThreads));
-                // Every stride group covers kBlock elements per workgroup,
-                // whatever its width — so one group count serves all of them.
-                const int slabGroups = static_cast<int>(cap / kBlock);
                 auto sortStep = [&](int mode,
                                     std::uint32_t k,
                                     std::uint32_t pLo,
                                     std::uint32_t pHi,
-                                    int groups) {
+                                    std::uint32_t commandIndex) {
                     frameData_.overflowSortStep_ = ivec4(
                         mode,
                         static_cast<int>(k),
@@ -944,12 +902,25 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                         sizeof(ivec4),
                         &frameData_.overflowSortStep_
                     );
-                    IRRender::device()->dispatchCompute(groups, 1, 1);
+                    if (mode == 3) {
+                        IRRender::device()->dispatchCompute(1, 1, 1);
+                        IRRender::device()->memoryBarrier(BarrierType::COMMAND);
+                    } else {
+                        const auto commandUints =
+                            axes.ctrlBaseUints_ +
+                            C_PerAxisTrixelCanvases::kOverflowSortArgsBaseUints +
+                            commandIndex * C_PerAxisTrixelCanvases::kOverflowSortCommandUints;
+                        IRRender::device()->dispatchComputeIndirect(
+                            axes.winnerIds_.second,
+                            static_cast<std::ptrdiff_t>(commandUints) * sizeof(std::uint32_t)
+                        );
+                    }
                     IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
                     ++sortDispatches;
                 };
-                sortStep(0, 0, 0, 0, fillGroups);
-                sortStep(1, 0, 0, 0, slabGroups);
+                sortStep(3, 0, 0, 0, 0);
+                sortStep(0, 0, 0, 0, 0);
+                sortStep(1, 0, 0, 0, 1);
                 // Stage k = 2^stageBits has its compare-exchange strides at bit
                 // positions stageBits-1 .. 0; take them top-down in runs of at
                 // most kBlockBits, which is what one slab can hold.
@@ -957,7 +928,13 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 for (std::uint32_t k = kBlock * 2; k <= cap; k <<= 1, ++stageBits) {
                     for (std::uint32_t remaining = stageBits; remaining > 0;) {
                         const std::uint32_t width = IRMath::min(remaining, kBlockBits);
-                        sortStep(2, k, remaining - width, remaining - 1, slabGroups);
+                        sortStep(
+                            2,
+                            k,
+                            remaining - width,
+                            remaining - 1,
+                            stageBits - kBlockBits + 1
+                        );
                         remaining -= width;
                     }
                 }

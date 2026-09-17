@@ -1,0 +1,47 @@
+[
+  {
+    "before": "screenshot_001223.png",
+    "after": "screenshot_001232.png",
+    "rgb_identical": true
+  },
+  {
+    "before": "screenshot_001224.png",
+    "after": "screenshot_001233.png",
+    "rgb_identical": true
+  },
+  {
+    "before": "screenshot_001225.png",
+    "after": "screenshot_001234.png",
+    "rgb_identical": true
+  },
+  {
+    "before": "screenshot_001226.png",
+    "after": "screenshot_001235.png",
+    "rgb_identical": true
+  },
+  {
+    "before": "screenshot_001227.png",
+    "after": "screenshot_001236.png",
+    "rgb_identical": true
+  },
+  {
+    "before": "screenshot_001228.png",
+    "after": "screenshot_001237.png",
+    "rgb_identical": true
+  },
+  {
+    "before": "screenshot_001229.png",
+    "after": "screenshot_001238.png",
+    "rgb_identical": true
+  },
+  {
+    "before": "screenshot_001230.png",
+    "after": "screenshot_001239.png",
+    "rgb_identical": true
+  },
+  {
+    "before": "screenshot_001231.png",
+    "after": "screenshot_001240.png",
+    "rgb_identical": true
+  }
+]
