@@ -24,7 +24,9 @@
 #      inherited-branch competitor, stale local default ref
 #   8  --repo slug mismatch fails closed
 #   9  snapshot coherence: head moved, population moved, identical proceeds
-#   13 the missing-subject guard skips with exit 3 and no tally
+#   10 a stacked sibling's own delta excludes paths inherited from its base;
+#      the sibling's own edit to the same block-tree path still blocks
+#   14 the missing-subject guard skips with exit 3 and no tally
 
 set -uo pipefail
 
@@ -550,15 +552,46 @@ assert_rc 1 "T9d identical snapshots proceed to a verdict"
 assert_eq "$(verdict_line)" "VERDICT: overlap" "T9d verdict overlap"
 assert_eq "$(cat "$GH_STUB_DIR/calls")" "2" "T9d the run took exactly two pr list snapshots"
 
-echo "=== 13: the missing-subject guard ==="
+echo "=== 10: a stacked sibling's own delta excludes paths inherited from the shared base ==="
+branch_from stack-base master
+edit_line docs/agents/x.md 1 "x line 1 stack-base"
+commit_all stack-base-edit
+g push -q origin refs/heads/stack-base:refs/heads/stack-base
+branch_from self-10 stack-base
+edit_line docs/agents/x.md 15 "x line 15 self"
+edit_line src/y.txt 7 "y line 7 self"
+commit_all self-10-edit
+branch_from sib-10 stack-base
+edit_line src/z.txt 3 "z line 3 sibling"
+commit_all sib-10-edit
+publish_pr 301 sib-10
+g checkout -q self-10
+pr_json "$TMP/prs-10a.json" "$(pr_row 301 sib-10 stack-base false - src/z.txt)"
+run_tool --pr-json "$TMP/prs-10a.json" --base stack-base
+assert_rc 0 "T10a disjoint own deltas on a stacked base exit clean"
+assert_eq "$(row_count)" "0" "T10a no competitor rows"
+assert_eq "$(verdict_line)" "VERDICT: clean" "T10a verdict clean"
+
+g checkout -q sib-10
+edit_line docs/agents/x.md 20 "x line 20 sibling"
+commit_all sib-10-edit-2
+publish_pr 301 sib-10
+g checkout -q self-10
+pr_json "$TMP/prs-10b.json" "$(pr_row 301 sib-10 stack-base false - src/z.txt docs/agents/x.md)"
+run_tool --pr-json "$TMP/prs-10b.json" --base stack-base
+assert_rc 3 "T10b the sibling's own edit to the block tree still blocks"
+assert_contains "$OUT" "#301 docs/agents/x.md" "T10b the block-tree row prints"
+assert_eq "$(verdict_line)" "VERDICT: block" "T10b verdict block"
+
+echo "=== 14: the missing-subject guard ==="
 STAGE="$TMP/stage/tests"
 mkdir -p "$STAGE"
 cp "$0" "$STAGE/$(basename "$0")"
 cp "$(dirname "$0")/lib_assert.sh" "$(dirname "$0")/lib_preflight.sh" "$STAGE/"
 guard_out=$(bash "$STAGE/$(basename "$0")" 2> "$TMP/guard-err.txt"); guard_rc=$?
 guard_err=$(cat "$TMP/guard-err.txt")
-assert_eq "$guard_rc" "3" "T13 a stage with no subject exits 3"
-assert_contains "$guard_err" "SKIP: subject under test missing at $TMP/stage/fleet-pr-overlap" "T13 the SKIP line names the staged path"
-assert_absent "$guard_out" "passed:" "T13 no tally is printed"
+assert_eq "$guard_rc" "3" "T14 a stage with no subject exits 3"
+assert_contains "$guard_err" "SKIP: subject under test missing at $TMP/stage/fleet-pr-overlap" "T14 the SKIP line names the staged path"
+assert_absent "$guard_out" "passed:" "T14 no tally is printed"
 
 summarize
