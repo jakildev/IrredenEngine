@@ -41,7 +41,7 @@ struct VoxelCullStatsSummary {
     uint64_t visibleSum_ = 0;
     uint64_t totalSum_ = 0;
     // Shadow-feeder (struct 1) survivors — the off-screen caster list the
-    // #2298 domain-widened per-voxel cull targets. 0 with shadows off.
+    // domain-widened per-voxel cull targets. 0 with shadows off.
     uint64_t feederSum_ = 0;
     uint64_t axisEntrySum_ = 0;
     uint32_t maxAxisEntries_ = 0;

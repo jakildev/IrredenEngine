@@ -1,4 +1,4 @@
-// collision_overlap_demo (engine #1817) — proves the Lua-facing overlap
+// collision_overlap_demo — proves the Lua-facing overlap
 // callback surface end-to-end. The C++ side only registers the Lua bindings,
 // the prefab systems, and a typed `IREntity.spawnCollidable` helper; `main.lua`
 // spawns the entities, composes the UPDATE/RENDER pipelines, and registers the

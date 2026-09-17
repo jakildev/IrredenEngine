@@ -1,4 +1,4 @@
-# Script-mode entry point for the changed-lines clang-format check (#3187).
+# Script-mode entry point for the changed-lines clang-format check.
 #
 #   cmake -DPROJECT_ROOT=<repo-root> -DCLANG_FORMAT_BIN=<clang-format> \
 #         [-DFORMAT_DIFF_BASE=<commit>] \

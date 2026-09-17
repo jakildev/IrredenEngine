@@ -8,13 +8,12 @@
 
 #include <irreden/ir_math.hpp>
 
-// Hermetic numeric harness for the per-axis sun-shadow CAST/RECEIVE seam
-// (#2816). No GL/Metal context: both recoveries are ported to the host through
+// Hermetic numeric harness for the per-axis sun-shadow CAST/RECEIVE seam.
+// No GL/Metal context: both recoveries are ported to the host through
 // the IRMath CPU mirrors the shaders' own helpers document themselves against,
 // so the disagreement the issue describes is measurable on any host.
 //
-// The seam has two sides, and before #2816 they recovered the same surface at
-// two different positions:
+// The seam has two sides that must recover the same surface position:
 //
 //   RECEIVE  c_compute_sun_shadow.{glsl,metal} -> perAxisCellToWorld3DSubCell
 //            (ir_per_axis_lighting.{glsl,metal}) = lattice origin + the
@@ -22,7 +21,7 @@
 //   CAST     c_resolve_per_axis_screen_depth.{glsl,metal} re-projects the store
 //            cell into the main-canvas cardinal layout; BAKE_SUN_SHADOW_MAP
 //            then recovers a world position from that deposit with
-//            trixelCanvasPixelToWorld3D. Pre-#2816 the resolve recovered
+// trixelCanvasPixelToWorld3D. A lattice-only resolve recovered
 //            LATTICE-ONLY, so the caster landed up to half a world cell off the
 //            surface the receiver samples.
 //
@@ -69,7 +68,7 @@ int effectiveTrixelSubdivisionScale(ivec2 voxelRenderOptions) {
     return voxelRenderOptions.x != 0 ? IRMath::max(voxelRenderOptions.y, 1) : 1;
 }
 
-// Mirror of the #1458 per-axis encode (`encodeDepthWithFaceFrac`,
+// Mirror of the per-axis encode (`encodeDepthWithFaceFrac`,
 // ir_iso_common.glsl): rawDepth[31:15] | wFrac4[14:11] | flip[10] |
 // uFrac4[9:6] | vFrac4[5:2] | slot[1:0].
 int encodeDepthWithFaceFrac(
@@ -162,7 +161,7 @@ vec3 receiveWorld(const Case &c) {
 // CAST — the resolve emit, read back through BAKE's recovery.
 // ---------------------------------------------------------------------------
 
-// Pre-#2816: the resolve rounded to the lattice, rotated, scaled, and emitted.
+// Legacy path: the resolve rounded to the lattice, rotated, scaled, and emitted.
 // BAKE's `/scale` + `rotateCardinalZInv` invert the last two exactly, so the
 // caster lands on the integer lattice cell regardless of effSub.
 vec3 castWorldLatticeOnly(const Case &c) {
@@ -172,7 +171,7 @@ vec3 castWorldLatticeOnly(const Case &c) {
     return IRMath::rotateCardinalZInv(vec3(viewPos) / static_cast<float>(scale), c.cardinal);
 }
 
-// Post-#2816: the frac is quantized to subdivision units in the FACE-LOCAL
+// Current path: the fraction is quantized to subdivision units in the face-local
 // frame, then composed against the already-rotated unit basis. Everything after
 // the quantize is integer.
 vec3 castWorldSubCell(const Case &c) {
@@ -233,8 +232,8 @@ std::vector<Case> poses(const Case &base) {
 // ---------------------------------------------------------------------------
 // Arm 1 — NEGATIVE control. Integer-positioned content encodes frac 8/8/8, so
 // the sub-cell offset is exactly zero and BOTH formulations must agree with
-// RECEIVE exactly. Pre-#2816 code passes this arm; that is the point — an arm
-// only the fix can pass proves nothing on its own.
+// RECEIVE exactly. Both legacy and current calculations pass this negative
+// control, ensuring the fractional arm is meaningful.
 // ---------------------------------------------------------------------------
 
 TEST(PerAxisCastSubCell, IntegerContentAgreesExactlyBeforeAndAfter) {
@@ -257,9 +256,9 @@ TEST(PerAxisCastSubCell, IntegerContentAgreesExactlyBeforeAndAfter) {
 }
 
 // ---------------------------------------------------------------------------
-// Arm 2 — POSITIVE arm. Fractional content at effSub >= 2: the pre-fix delta is
-// non-zero and the post-fix delta is bounded by the layout quantum. The two arms
-// move in opposite directions, which is what makes the harness discriminating.
+// Arm 2 — POSITIVE arm. For fractional content at effSub >= 2, the lattice-only
+// delta is non-zero and the sub-cell delta is bounded by the layout quantum. The
+// two arms move in opposite directions, making the harness discriminating.
 // ---------------------------------------------------------------------------
 
 TEST(PerAxisCastSubCell, FractionalContentDeltaCollapsesToLayoutQuantum) {
@@ -277,8 +276,8 @@ TEST(PerAxisCastSubCell, FractionalContentDeltaCollapsesToLayoutQuantum) {
             const float before = maxAbsDelta(castWorldLatticeOnly(c), receive);
             const float after = maxAbsDelta(castWorldSubCell(c), receive);
 
-            // Pre-fix: the caster sits on the lattice, so the delta is the full
-            // sub-cell offset — independent of effSub.
+            // The lattice-only caster leaves the full sub-cell offset as a
+            // delta, independent of effSub.
             EXPECT_FLOAT_EQ(before, 0.3125f)
                 << "effSub=" << subdivisions << " axis=" << c.axis
                 << " cardinal=" << static_cast<int>(c.cardinal);
@@ -436,8 +435,8 @@ TEST(PerAxisCastSubCell, EncodeDecodeRoundTripsEveryFracField) {
 // the fix's math is right, NOT that the shipped shaders implement it. A revert
 // of either twin would leave all of them green. These two read the shipped
 // source and pin the one thing text can pin: that both backends route through
-// the shared decode. AC 1 of #2816 is explicitly a backend-symmetry criterion
-// ("a one-sided fix creates a parity gap"), and this is its mechanical gate —
+// the shared decode. This is the mechanical backend-symmetry gate: a one-sided
+// fix creates a parity gap.
 // the GL/Metal halves are edited by hand in lockstep with nothing else checking
 // they stayed in step.
 // ---------------------------------------------------------------------------

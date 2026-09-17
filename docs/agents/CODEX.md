@@ -16,6 +16,14 @@ Bash restrictions motivated only by Claude's harness do not apply; their
 underlying rules about quoting, worktree ownership, and explicit
 repository selection do.
 
+One `apply_patch` call names each path at most once: `Write` over an
+existing file is an `*** Update File` hunk, or a `Delete File` call
+followed by a separate `Add File` call — Delete + Add of the same path
+inside one call is rejected. A dispatched iteration starts with no
+`.review-body.md`, `.pr-body.md`, or `.merger-body.md`:
+`fleet-dispatch-wrap` removes stale scratch bodies before every fresh
+launch, so a plain `Add File` is the normal first write.
+
 The queue classes `fable` / `opus` / `sonnet` describe task complexity;
 `FLEET_ROLE_MODEL` carries the class independently of the model. Design
 work uses Astra at `xhigh`; substantial implementation and final review
@@ -23,6 +31,12 @@ Sol; bounded implementation Terra; Luna only when selected explicitly for
 mechanical tasks; never Ultra implicitly inside a worker. Record the
 actual model and runtime in authorship and review; never imply a Claude
 session did work Codex did.
+
+Skill names are procedures, not commands: read the named `SKILL.md` and
+execute it with the tools above. The one skill with an executable twin is
+`start-next-task` — run `fleet-start-next-task` wherever a role or runtime
+contract says `start-next-task` (it is on `PATH` beside the other
+`fleet-*` tools).
 
 ## Rendering conversations
 

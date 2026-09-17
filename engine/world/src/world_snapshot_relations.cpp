@@ -15,7 +15,7 @@
 #include <utility>
 #include <vector>
 
-// Persist P3 (#2214, epic #667): the self-describing `RELN` relation chunk.
+// Self-describing `RELN` relation chunk.
 // It stores logical `CHILD_OF` edges by real endpoint entity id and a name
 // table of the `Relation` enum at the chunk head — Save Format Extensibility
 // Rule #4 (relations as first-class data, so adding `OWNS`/`ATTACHED_TO` is a

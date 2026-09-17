@@ -1,6 +1,6 @@
 # Executed membership check for metal_pipeline.cpp's
-# functionUsesImageAtomicScratch list (#2878). Twin of
-# run_metal_kernel_registry_check.cmake (#2798), which scoped this second
+# functionUsesImageAtomicScratch list. Twin of
+# run_metal_kernel_registry_check.cmake, which scoped this second
 # hand-list out.
 #
 # Why it matters in both directions. bindComputeResources binds the sticky
@@ -11,8 +11,7 @@
 #   * a consumer MISSING from the list never gets the scratch bound -- its
 #     imageAtomicMin writes land nowhere;
 #   * a non-consumer wrongly ON the list gets the scratch bound over whatever
-#     it declared at that slot -- #1619, where c_revoxelize_detached's params
-#     UBO was clobbered and the fill read distance-clear words as its params.
+#     it declared at that slot, clobbering it.
 #
 # So this check compares the two sets both ways rather than only looking for
 # omissions.
@@ -135,7 +134,7 @@ set(slot_attribute_regex "\\[\\[[ \t]*buffer\\([ \t]*${scratch_slot}[ \t]*\\)[ \
 #     attribute on the next) reads as declaring no scratch -- the false clean
 #     this check exists to close, reached by a line break alone;
 #   * a NEIGHBOURING parameter's atomic_int on a shared line reads as this one's
-#     qualifier -- a false positive in the #1619 direction.
+#     qualifier -- the false-positive direction this check also guards against.
 set(slot_declaration_regex "[^,;(){}]*${slot_attribute_regex}")
 
 set(expected_consumers "")
@@ -219,12 +218,12 @@ foreach(line IN LISTS pipeline_lines)
     # didn't also contain a balancing #endif, conditional_depth got stuck
     # above zero for the rest of the function body and every subsequent real,
     # uncommented, non-conditional list entry was silently skipped -- read as
-    # absent, the same way a commented-out entry reads (#2899). Handles line
+    # absent, the same way a commented-out entry reads. Handles line
     # (//) and BOTH block-comment shapes -- same-line /* ... */ and a block
     # that spans multiple lines (disabling a run of consecutive entries is the
     # natural reason to reach for a block comment here, and that spans lines);
     # the sibling run_metal_kernel_registry_check.cmake's identical scan
-    # applies the same strip (#2899).
+    # applies the same strip.
     if(in_block_comment)
         if(line MATCHES "\\*/")
             # Strip through the FIRST "*/" only -- CMake's regex engine has no
@@ -248,7 +247,7 @@ foreach(line IN LISTS pipeline_lines)
     # #if/#ifdef/#ifndef may never reach the compiled binary, and a
     # source-text pass has no preprocessor to evaluate which branch the build
     # takes. Skip conditional lines entirely -- a disabled entry then reads as
-    # absent, the same way a commented-out entry reads (#2899), and falls
+    # absent, the same way a commented-out entry reads, and falls
     # through to the existing "absent from functionUsesImageAtomicScratch"
     # failure below, which already names it.
     if(line MATCHES "^[ \t]*#[ \t]*(if|ifdef|ifndef)([ \t(]|$)")
@@ -326,7 +325,7 @@ if(stale_consumers)
     list(APPEND scratch_failures
         "  is named by functionUsesImageAtomicScratch but declares no "
         "atomic parameter at buffer slot ${scratch_slot}, so the sticky "
-        "scratch bind overwrites whatever it does declare there (#1619): "
+        "scratch bind overwrites whatever it does declare there: "
         "${stale_joined}\n"
     )
 endif()

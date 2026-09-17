@@ -1,5 +1,5 @@
 -- Minimal config for collision_overlap_demo. The demo proves the Lua overlap
--- callback surface (#1817); the window/render path is incidental — the proof
+-- callback surface; the window/render path is incidental — the proof
 -- is the handler `print` lines on stdout, grep-able from a headless run.
 config = {
     init_window_width = 640,

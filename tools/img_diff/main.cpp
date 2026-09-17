@@ -1,6 +1,6 @@
 // img_diff: highlight per-pixel drift between two PNGs.
 //
-// Spec: GitHub issue #435. Standalone tool with no engine dependencies — used
+// Standalone tool with no engine dependencies — used
 // by `render-debug-loop`, the `attach-screenshots` skill, and human reviewers
 // to make pixel-level baseline drift impossible to miss.
 //

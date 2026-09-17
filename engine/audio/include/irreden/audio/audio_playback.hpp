@@ -23,13 +23,8 @@ namespace IRAudio {
 /// thread by @ref tickPlayback (called once per frame from the input drain),
 /// never from miniaudio's audio callback.
 ///
-/// Forward seams (depth is #207/#208, not built here):
-///  - listener + positional source — @ref setListenerPosition / @ref playSoundAt
-///    set the one built-in `ma_engine` listener and a sound's world position;
-///    #207 layers occlusion / biome ambience on top of this existing source.
-///  - world-time scheduling / bus automation — keyed on `IRSim::tick()` /
-///    `IRSim::cycleFraction`; #208 builds generative layering on that seam.
-///    Not stubbed here — see `engine/audio/CLAUDE.md`.
+/// @ref setListenerPosition and @ref playSoundAt share the one built-in
+/// `ma_engine` listener.
 class AudioPlayback {
   public:
     AudioPlayback();
@@ -57,8 +52,8 @@ class AudioPlayback {
     SoundHandle playMusic(const std::string &path, float volume = 1.0f, bool loop = true);
 
     /// Positional variant of @ref playSound: spatialized at world @p position
-    /// against the engine listener (the #207 seam). v1 gives miniaudio's
-    /// default pan/distance attenuation; occlusion/biome depth is #207.
+    /// against the engine listener using miniaudio's default pan and distance
+    /// attenuation. Occlusion and biome depth are not applied.
     SoundHandle playSoundAt(
         const std::string &path,
         AudioBus bus,
@@ -79,10 +74,10 @@ class AudioPlayback {
 
     /// Sets a category bus's linear volume — scales every sound on the bus.
     void setBusVolume(AudioBus bus, float volume);
-    /// Sets the master (engine) linear volume — scales the whole mix.
+    /// Sets the master linear volume — scales the whole mix.
     void setMasterVolume(float volume);
 
-    /// Moves the single engine listener (the #207 positional-audio seam).
+    /// Moves the single engine listener.
     void setListenerPosition(const IRMath::vec3 &position);
 
     /// Reclaims finished non-looping sounds on the main thread. Called once per

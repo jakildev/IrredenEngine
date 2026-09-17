@@ -1,15 +1,12 @@
 #include <gtest/gtest.h>
 #include <irreden/ir_math.hpp>
 
-// Tests for the continuous-yaw + per-face deformation math helpers added
-// in T-292 (`pos3DtoPos2DIsoYawed`, `faceDeformationMatrix`,
+// Continuous-yaw and per-face deformation helpers
+// (`pos3DtoPos2DIsoYawed`, `faceDeformationMatrix`,
 // `deformedTrixelIsoPixel`, `sqtToMat4`, `matrixApplyToVoxelGrid`).
 //
-// Acceptance (1) per #955 — round-trip test computes deformation on CPU
-// and GPU for all 4 cardinals + 8 mid-sector residual yaws; asserts
-// equality. The GLSL/Metal mirrors are required to use line-for-line
-// identical algebra; this test exercises the CPU side against analytical
-// values and pins the invariants the shader side must reproduce.
+// share line-for-line algebra with their GLSL/Metal mirrors. These analytical
+// cases pin the invariants the shader side must reproduce.
 
 namespace {
 
@@ -89,7 +86,7 @@ TEST(FaceDeformationMatrixTest, OutOfRangeFaceReturnsIdentity) {
 }
 
 // ---------------------------------------------------------------------------
-// faceDeformationMatrixSO3 (T-295)
+// faceDeformationMatrixSO3
 // ---------------------------------------------------------------------------
 
 namespace {
@@ -132,7 +129,7 @@ TEST(FaceDeformationMatrixSO3Test, OutOfRangeFaceReturnsIdentity) {
 }
 
 // ---------------------------------------------------------------------------
-// octahedralSnapResidual (T-295)
+// octahedralSnapResidual
 // ---------------------------------------------------------------------------
 
 namespace {
@@ -175,7 +172,7 @@ TEST(OctahedralSnapResidualTest, SmallRotationPassesThrough) {
 }
 
 // A near-180 rotation snaps to the 180 octahedral element, shrinking the
-// residual to the small leftover — the property T-295 relies on to keep the
+// residual to the small leftover, keeping the
 // per-face deformation in its clean range.
 TEST(OctahedralSnapResidualTest, NearOctahedralRotationShrinksResidual) {
     const IRMath::vec4 near180 =
@@ -264,7 +261,7 @@ TEST(DeformedTrixelIsoPixelTest, ZeroResidualMatchesUnyawedOffsets) {
 TEST(DeformedTrixelIsoPixelTest, MatchesDirectMatrixApplication) {
     // Recompute the same value by applying faceDeformationMatrix to the
     // un-yawed offset and round-half-up'ing. The helper is meant to be
-    // exactly this composition; if it ever drifts, the consumer T-293
+    // exactly this composition; if it ever drifts, the consumer
     // shaders will desync.
     for (float phi : kResidualYaws) {
         for (int face = IRMath::kXFace; face <= IRMath::kZFace; ++face) {
@@ -421,7 +418,7 @@ TEST(MatrixApplyToVoxelGridTest, RoundsHalfIntegerUp) {
 }
 
 // ---------------------------------------------------------------------------
-// isoDepthAxisModel / isoDepthAlongAxis (#1462 — detached SO(3) occlusion depth)
+// isoDepthAxisModel / isoDepthAlongAxis — detached SO(3) occlusion depth
 // ---------------------------------------------------------------------------
 
 // Identity entity → the model-frame iso depth axis is exactly (1,1,1) with no
@@ -500,7 +497,7 @@ TEST(IsoDepthAlongAxisTest, RoundsHalfUpLikeShaderMirror) {
 // The fix in one assertion: a 180-deg-Z detached entity orders voxels along
 // (-1,-1,1), the opposite in-plane sense from the fixed (1,1,1). A voxel "in
 // front" under the old metric is "behind" under the rotated one — the occlusion
-// swap the pitch/roll-reveals bug (#1462) was missing.
+// reversal needed to expose pitch-and-roll occlusion errors.
 TEST(IsoDepthAlongAxisTest, Rotation180ZFlipsInPlaneOrder) {
     const IRMath::vec3 axis =
         IRMath::isoDepthAxisModel(IRMath::quatAxisAngle(IRMath::vec3(0, 0, 1), IRMath::kPi));
