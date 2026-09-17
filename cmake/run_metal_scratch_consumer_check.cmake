@@ -325,7 +325,7 @@ if(stale_consumers)
     list(APPEND scratch_failures
         "  is named by functionUsesImageAtomicScratch but declares no "
         "atomic parameter at buffer slot ${scratch_slot}, so the sticky "
-        "scratch bind overwrites whatever it does declare there: "
+        "scratch bind overwrites whatever it does declare there (#1619): "
         "${stale_joined}\n"
     )
 endif()
