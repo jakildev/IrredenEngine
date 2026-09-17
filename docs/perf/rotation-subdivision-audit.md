@@ -77,6 +77,20 @@ The [world-scale visibility plan](world-scale-visibility.md) defines the million
 simple-entity target, unbounded orthographic viewport depth, spatial grouping,
 and the separation between render visibility and simulation cadence.
 
+0. **Visual priority before further optimization:** investigate the remaining
+   CanvasStress orbit artifacts reported in the green solids and purple frame:
+   striped faces, checkerboard coverage and rectangular/toothed edges that may
+   indicate stored trixels bypassing or mismatching half-voxel-face reconstruction.
+   The purple frame is orbit index7, `RotationMode::DETACHED` (forward scatter),
+   not the revoxelized path. Identify the green entities independently. Capture
+   isolated close-ups at multiple zooms/yaws, compare normal output with raw-trixel
+   diagnostics and equivalent GRID/revoxelized shapes, and trace producer layout
+   through compositor gather/fragment coverage. Add fixture controls if the orbit
+   overview cannot discriminate the cause. Validate world-placed and screen-locked
+   variants. Preserve actual face geometry; do not hide gaps with blur. Existing
+   byte-identical captures establish non-regression only, not visual correctness.
+   Status: reported and partially localized; diagnosis and fix remain pending.
+
 1. [Unique retained candidates and axis entries](voxel-cull-work-units.md) now
    have separate counters and producer-matched readback. Add generated subdivision
    samples, occupied cells, overflow entries and scratch bytes. Separate useful
