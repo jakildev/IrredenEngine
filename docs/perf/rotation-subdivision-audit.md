@@ -73,6 +73,10 @@ The remaining work below still applies.
 
 ## Proposed optimization TODO
 
+The [world-scale visibility plan](world-scale-visibility.md) defines the million
+simple-entity target, unbounded orthographic viewport depth, spatial grouping,
+and the separation between render visibility and simulation cadence.
+
 1. [Unique retained candidates and axis entries](voxel-cull-work-units.md) now
    have separate counters and producer-matched readback. Add generated subdivision
    samples, occupied cells, overflow entries and scratch bytes. Separate useful
@@ -84,7 +88,10 @@ The remaining work below still applies.
 3. Profile culling before subdivision expansion. Reject hidden/off-screen face
    work early enough to avoid generating it, while retaining off-screen geometry
    whose shadows can reach visible receivers. Compare existing culling toggles
-   before introducing another culling structure.
+   before introducing another culling structure. Existing yaw-aware chunk
+   projection has no viewport depth cutoff; new mask regressions cover deep
+   viewing rays and full-turn reentry. Measure allocation-group bound inflation
+   before introducing spatial hierarchy or changing pool layout.
 4. [Frozen coverage arbitration](../design/frozen-scatter-flicker.md) resolves the
    observed exact/margin flicker. [Overflow face deduplication](overflow-face-dedup.md)
    now passes stable controls and reduces scatter work. Retain same-class ties
@@ -105,6 +112,13 @@ The remaining work below still applies.
    overhead. Add full-frame multi-canvas GPU accounting before treating summed
    sampled rows as total render cost. Keep screenshots as correctness gates for
    each optimization PR.
+8. Establish capacity-verified scaling to 100³ simple entities and report tail
+   latency as well as means. Include continuous camera motion and independent
+   entity motion; keep viewport rejection separate from simulation interest.
+9. Profile reduced/staggered simulation cadence, accumulated-time correctness,
+   attachment transforms, interpolation and bounded catch-up/promotion costs.
+   Audit large-coordinate/depth representation limits independently of the
+   unbounded-depth viewport policy.
 
 The desired outcome is cost that tracks useful screen coverage under rotation
 and zoom. Near-cardinal parity is a performance target, not a promise supported

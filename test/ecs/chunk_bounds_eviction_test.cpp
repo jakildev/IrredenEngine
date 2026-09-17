@@ -107,6 +107,55 @@ class ChunkBoundsEvictionTest : public ::testing::Test {
     IREntity::EntityManager m_entityManager;
 };
 
+TEST_F(ChunkBoundsEvictionTest, ContinuousYawViewportHasNoDepthCutoff) {
+    C_VoxelPool pool = makeTwoChunkPool();
+    const IsoBounds2D viewport{vec2(-4.0f), vec2(4.0f)};
+    for (int degrees = 0; degrees < 360; degrees += 5) {
+        const float yaw = IRMath::kTwoPi * static_cast<float>(degrees) / 360.0f;
+        const auto viewToWorld = IRMath::rotate(IRMath::mat4(1.0f), yaw, vec3(0, 0, 1));
+        for (float depth : {-10000.0f, -100.0f, 0.0f, 100.0f, 10000.0f}) {
+            SCOPED_TRACE(::testing::Message() << "yaw=" << degrees << " depth=" << depth);
+            const vec3 onRay = vec3(viewToWorld * IRMath::vec4(vec3(depth), 1.0f));
+            const vec3 offRay =
+                vec3(viewToWorld * IRMath::vec4(vec3(depth) + vec3(40, 0, 0), 1.0f));
+            for (int i = 0; i < kChunk; ++i) {
+                // Continuous rasterization uses the cell center minus half a cell.
+                seedSlot(pool, i, onRay + vec3(0.5f), true);
+                seedSlot(pool, kChunk + i, offRay + vec3(0.5f), true);
+            }
+            pool.markCullBoundsDirty(0, 2 * kChunk);
+            const auto &mask =
+                IRSystem::buildChunkVisibilityMask(pool, viewport, CardinalIndex::k0, true, yaw);
+            ASSERT_EQ(mask.size(), 2u);
+            EXPECT_EQ(mask[0], 1u);
+            EXPECT_EQ(mask[1], 0u);
+        }
+    }
+}
+
+TEST_F(ChunkBoundsEvictionTest, StaticChunkReentersViewportAcrossFullYawTurn) {
+    C_VoxelPool pool = makeTwoChunkPool(vec3(80.5f, 0.5f, 0.5f));
+    const vec2 target = IRMath::pos3DtoPos2DIsoYawed(vec3(80, 0, 0), IRMath::kHalfPi);
+    const IsoBounds2D viewport{target - vec2(4), target + vec2(4)};
+    int visibleCount = 0;
+    int hiddenCount = 0;
+    for (int degrees = 0; degrees <= 360; ++degrees) {
+        const float yaw = IRMath::kTwoPi * static_cast<float>(degrees) / 360.0f;
+        const auto &mask =
+            IRSystem::buildChunkVisibilityMask(pool, viewport, CardinalIndex::k0, true, yaw);
+        const vec2 projected = IRMath::pos3DtoPos2DIsoYawed(vec3(80, 0, 0), yaw);
+        const bool expected = viewport.contains(projected);
+        EXPECT_EQ(mask[0], expected ? 1u : 0u) << "yaw=" << degrees;
+        visibleCount += expected ? 1 : 0;
+        hiddenCount += expected ? 0 : 1;
+    }
+    EXPECT_GT(visibleCount, 0);
+    EXPECT_GT(hiddenCount, 0);
+    const auto counters = pool.consumeCullRebuildCounters();
+    EXPECT_EQ(counters.worldChunks_, 2u);
+    EXPECT_EQ(counters.worldSlots_, 2u * kChunk);
+}
+
 TEST_F(ChunkBoundsEvictionTest, CardinalPositionRewrite) {
     const vec3 nearPose(2, 2, 2);
     const vec3 movedPose(140, -60, 7);
