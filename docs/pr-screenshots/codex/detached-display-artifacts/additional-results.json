@@ -14,7 +14,8 @@
     "unexpected_normal_pixels": 0,
     "clipped": false,
     "footprint_mismatches": 264,
-    "pass": false
+    "pass": false,
+    "scope": "lattice_consistency"
   },
   {
     "image": "docs/pr-screenshots/codex/detached-display-artifacts/capture-1301.png",
@@ -31,7 +32,8 @@
     "unexpected_normal_pixels": 0,
     "clipped": false,
     "footprint_mismatches": 0,
-    "pass": true
+    "pass": true,
+    "scope": "lattice_consistency"
   },
   {
     "image": "docs/pr-screenshots/codex/detached-display-artifacts/capture-1302.png",
@@ -48,6 +50,7 @@
     "unexpected_normal_pixels": 0,
     "clipped": false,
     "footprint_mismatches": 0,
-    "pass": true
+    "pass": true,
+    "scope": "lattice_consistency"
   }
 ]

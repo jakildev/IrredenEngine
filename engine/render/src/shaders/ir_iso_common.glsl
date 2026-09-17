@@ -548,6 +548,22 @@ vec2 trixelFramebufferSamplePosition(vec2 origin, int originModifier) {
     return origin;
 }
 
+// Private storage parity excludes the world placement of the canvas quad.
+int localTrixelOriginParity(ivec2 originZ1) {
+    return (originZ1.x + originZ1.y) & 1;
+}
+
+vec2 localTrixelCellCentroid(ivec2 cell, int originParity) {
+    const bool odd = ((cell.x + cell.y + originParity) & 1) != 0;
+    return vec2(cell) + vec2(odd ? 1.0 / 3.0 : 2.0 / 3.0, 0.0);
+}
+
+// A local display triangle is centered one row below its stored index.
+vec2 localTrixelFramebufferSamplePosition(vec2 origin, ivec2 originZ1) {
+    return trixelFramebufferSamplePosition(
+        origin + vec2(0.0, 1.0), localTrixelOriginParity(originZ1));
+}
+
 int effectiveTrixelSubdivisionScale(ivec2 voxelRenderOptions) {
     return voxelRenderOptions.x != 0 ? max(voxelRenderOptions.y, 1) : 1;
 }
@@ -1254,8 +1270,7 @@ DetachedFaceFootprint detachedFaceFootprint(
 int detachedFaceSampleDepth(DetachedFaceFootprint face, ivec2 pixel, int parity, int slot) {
     const float determinant = face.edgeU.x * face.edgeV.y - face.edgeU.y * face.edgeV.x;
     if (abs(determinant) < 1e-6) return kDetachedFaceMissDepth;
-    const bool odd = ((pixel.x + pixel.y + parity) & 1) != 0;
-    const vec2 delta = vec2(pixel) + vec2(odd ? 1.0 / 3.0 : 2.0 / 3.0, 0.0) - face.planeOrigin;
+    const vec2 delta = localTrixelCellCentroid(pixel, parity) - face.planeOrigin;
     const vec2 uv = vec2(delta.x * face.edgeV.y - delta.y * face.edgeV.x,
                          face.edgeU.x * delta.y - face.edgeU.y * delta.x) / determinant;
     if (any(lessThan(uv, face.uvOrigin)) || any(greaterThanEqual(uv, face.uvOrigin + vec2(1.0))))

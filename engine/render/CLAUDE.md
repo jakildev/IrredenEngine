@@ -92,6 +92,8 @@ Use the validation index's jitter probe and the camera contracts below.
   and row-corrected queries. The compositor follows the effective producer
   layout, never depth scaling or world position. See the
   [local-triangle contract](../../docs/design/detached-local-triangles.md).
+  Lattice agreement alone cannot certify connected source faces; use the
+  [source-face gate](../../docs/design/trixel-face-reconstruction-validation.md).
 - General canvas producers retain their rectangular storage contract. Their
   parity shift applies only to hover/picking; read the
   [parity-shift design](../../docs/design/trixel-parity-shift-442-investigation.md)

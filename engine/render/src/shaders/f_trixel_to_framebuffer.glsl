@@ -77,10 +77,7 @@ void main() {
 
     vec2 displayOrigin = originRaw;
     if (trixelSampleLayout == 1) {
-        // The triangular cell footprint is centered one row below its
-        // stored index; offset the query to preserve the voxel origin.
-        displayOrigin = trixelFramebufferSamplePosition(
-            originRaw + vec2(0.0, 1.0), (z1.x + z1.y) & 1);
+        displayOrigin = localTrixelFramebufferSamplePosition(originRaw, z1);
         if (any(lessThan(displayOrigin, vec2(0.0))) ||
             any(greaterThanEqual(displayOrigin, vec2(textureSize)))) discard;
     }

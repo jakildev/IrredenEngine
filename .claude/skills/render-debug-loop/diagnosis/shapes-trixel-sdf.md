@@ -43,9 +43,9 @@ block. Exposure culling and deformation affect which cells are actually written:
 
 Write side (`ir_iso_common.glsl`): `localIDToFace_2x3()` and
 `faceOffset_2x3(face, subPixel)`. Read side (`f_trixel_to_framebuffer.glsl`):
-samples raw rectangular texels for color/depth/priority; diagonal parity currently
-selects hover/picking coordinates only. The attached per-axis scatter reconstructs
-face quads instead. Establish the active path before changing either mapping.
+uses the producer layout: general rectangular canvases read raw texels, while
+private voxel canvases reconstruct local triangles. The attached per-axis scatter
+reconstructs face quads. Establish the active path before changing either mapping.
 
 For a known planar primitive, inspect silhouette continuity and face boundaries.
 Expected shading depends on the configured lights, face normals and render mode.
@@ -65,6 +65,11 @@ controls to distinguish a parity change from incorrect surface coverage. See
 [the detached display investigation](../../../../docs/design/detached-trixel-display.md)
 for the raw-gather and dilation experiments, and the
 [capture criteria](../references/capture-and-evaluation.md) for judging references.
+
+A consistent centroid/triangle lattice can still display spiky source faces.
+For those symptoms, use the independent source-polygon and per-face checks in
+[face reconstruction validation](../../../../docs/design/trixel-face-reconstruction-validation.md).
+A lattice pass or a valid normal palette alone is not geometry acceptance.
 
 ## Other defects
 

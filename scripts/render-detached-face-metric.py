@@ -4,8 +4,9 @@
 Use --only orbit --focus-orbit 3 (octahedron) or 7 (frame), --no-spin,
 --no-auto-rotate, --zoom 4, --no-ao, --no-shadows, and a fixed yaw.
 The default scale matches 2560x1440 captures with effective private density 1.
-This checks source coverage and three interior points in each reconstructed
+This checks lattice consistency and three interior points in each reconstructed
 triangle, not screen placement, depth or sub-trixel silhouette accuracy.
+A pass does not prove source-face fidelity: use render-source-face-metric.py.
 Translation registration is bounded to two trixels; its result is reported.
 A normal overlay optionally checks the palette.
 """
@@ -115,7 +116,8 @@ def measure(path, shape, yaw, scale, normals=False, density=1):
                          if rgb != (0, 0, 0) and not any(
                              all(abs(a - b) <= 1 for a, b in zip(rgb, color))
                              for color in palette))
-    result = dict(image=str(path), shape=shape, yaw=yaw, missing=best[3], extra=best[4],
+    result = dict(scope="lattice_consistency", image=str(path), shape=shape, yaw=yaw,
+                  missing=best[3], extra=best[4],
                   expected=sum(expected), observed=best[5], alignment=list(best[1:3]),
                   unexpected_normal_pixels=unexpected, clipped=best[6],
                   footprint_mismatches=footprint_mismatches)

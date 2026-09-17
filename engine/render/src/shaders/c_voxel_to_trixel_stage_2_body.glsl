@@ -333,7 +333,7 @@ void main() {
             voxelDepthAxis.xyz,
             trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions)
         );
-        const int parity = (trixelCanvasOffsetZ1.x + trixelCanvasOffsetZ1.y) & 1;
+        const int parity = localTrixelOriginParity(trixelCanvasOffsetZ1);
         for (int y = max(face.lo.y, 0); y <= min(face.hi.y, canvasSizePixels.y - 1); ++y) {
             for (int x = max(face.lo.x, 0); x <= min(face.hi.x, canvasSizePixels.x - 1); ++x) {
                 const ivec2 pixel = ivec2(x, y);

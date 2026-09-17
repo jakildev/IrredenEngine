@@ -336,7 +336,7 @@ kernel void IR_STAGE2_KERNEL_NAME(
             frameData.voxelDepthAxis.xyz,
             trixelFrameOffset(frameData.trixelCanvasOffsetZ1, frameData.frameCanvasOffset, frameData.voxelRenderOptions)
         );
-        const int parity = (frameData.trixelCanvasOffsetZ1.x + frameData.trixelCanvasOffsetZ1.y) & 1;
+        const int parity = localTrixelOriginParity(frameData.trixelCanvasOffsetZ1);
         for (int y = max(face.lo.y, 0); y <= min(face.hi.y, frameData.canvasSizePixels.y - 1); ++y) {
             for (int x = max(face.lo.x, 0); x <= min(face.hi.x, frameData.canvasSizePixels.x - 1); ++x) {
                 const int2 pixel = int2(x, y);

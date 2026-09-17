@@ -24,6 +24,15 @@ cull still reports approximately 255K candidates out of 262K voxels; the
 rotated counter reports approximately 777K entries across three axis lists.
 That rotated numerator counts repeated face candidates, not unique voxels.
 
+## Current visual blocker
+
+The projected detached path still produces spiky source-face boundaries even
+when lattice-consistency tests pass. Before resuming performance work, preserve
+projected source-face coverage through fragment presentation and pass the
+[independent source-face gate](../design/trixel-face-reconstruction-validation.md).
+Use the rotated single-voxel and coplanar-neighbor cases before complex fixtures.
+Shared parity arithmetic alone does not resolve this information loss.
+
 ## Bottleneck evidence
 
 At 45°, zoom 4, the GPU stage means across three runs are 6.763 ms for per-axis
