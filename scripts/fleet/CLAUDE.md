@@ -163,7 +163,7 @@ subjects; `ctest` never sees them. Validator index: [`VALIDATION.md`](../../docs
   `fleet-claim` lock by design (`--force-with-lease`, `NO_CLAIM_FABRIC_ROLES`
   in `fleet-dispatcher`). A lane's admission filter lives in one place —
   `project_<role>` and `slice_<role>` share it (`worker_feedback_labels()`).
-  Pin the symmetry and the POST-response arbitration with tests.
+  Pin both with the source-derived `tests/test_claim_namespace_matrix.py`.
 - **A `continue` that withholds a worker-visible affordance `log()`s its
   reason**; a skip that persists is the every-tick case below.
 - **Neither a skip nor a failed action consumes an edge-triggered lane's
