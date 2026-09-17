@@ -1036,6 +1036,59 @@ def fetch_closed_fleet_queued(repo, limit=100):
     return issues
 
 
+# Ticks between repeats of the recent_merged_prs cap-hit warn: the scout ticks
+# every ~30s and a churn burst that buries the window persists until enough new
+# merges displace it, so an unconditional per-tick warn would be the
+# spam-hides-the-outage shape scripts/fleet/CLAUDE.md's escalate-then-quiet
+# rule exists for. Same cadence as the state-size guard.
+RECENT_MERGED_INCOMPLETE_REPEAT_TICKS = 120
+
+# repo -> consecutive incomplete-window ticks. In-process, like
+# _state_size_over_streak: the scout is a loop.
+_recent_merged_incomplete_streak = {}
+
+
+def _recent_merged_alert_path(repo) -> Path:
+    return _alerts_dir() / f"state-scout-recent-merged-{repo.replace('/', '-')}"
+
+
+def _note_recent_merged_window(repo, complete, pages):
+    """Escalate-then-quiet for a recent_merged_prs window that hit the page cap.
+
+    Loud on the tick that crosses and every Nth tick after; the alert file is
+    rewritten every incomplete tick (once stderr is quiet it is the only
+    standing signal) and removed, with one all-clear line, on the first
+    complete window. Best-effort: a read-only $HOME never breaks the fetch.
+    """
+    streak = _recent_merged_incomplete_streak.get(repo, 0)
+    if complete:
+        if streak:
+            log(f"{repo} recent_merged_prs: window complete again")
+            try:
+                _recent_merged_alert_path(repo).unlink()
+            except OSError:
+                pass
+        _recent_merged_incomplete_streak[repo] = 0
+        return
+    streak += 1
+    _recent_merged_incomplete_streak[repo] = streak
+    if streak == 1 or streak % RECENT_MERGED_INCOMPLETE_REPEAT_TICKS == 0:
+        log(f"{repo} recent_merged_prs: window incomplete after {pages} pages "
+            f"[tick {streak}]")
+    try:
+        path = _recent_merged_alert_path(repo)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        write_atomic(
+            path,
+            f"recent_merged_prs window guard\n"
+            f"repo={repo}\n"
+            f"pages={pages}\n"
+            f"consecutive_ticks={streak}\n",
+        )
+    except OSError:
+        pass
+
+
 def fetch_recent_merged_prs(repo, limit=30):
     # Most recent N merged PRs, used by the queue-manager projection so a
     # fresh merge changes the projection hash and fires queue-manager via
@@ -1051,27 +1104,69 @@ def fetch_recent_merged_prs(repo, limit=30):
     # would cause spurious re-fires every poll cycle.
     #
     # baseRefName is included so the queue-manager (and its eventual
-    # renderer) can detect merged-to-non-master PRs (the PR #543 stranded
-    # branch pattern from 2026-05-08), where mergedAt is set but the
-    # commit isn't reachable from origin/master.
+    # renderer) can detect merged-to-non-master PRs — a stranded branch
+    # where mergedAt is set but the commit isn't reachable from
+    # origin/master.
     # headRefName feeds the downstream Done-section renderer's Owner field — the
     # queue-manager projection itself doesn't diff on it, but the slicer passes
     # the full record through to ~/.fleet/state/projections/queue-manager.json.
     #
-    # REST /pulls has no `state=merged` filter (only open/closed/all), so pull
-    # the newest closed PRs (sort=created&direction=desc — gh's default ordering,
-    # PR number being created-monotonic) and keep the merged ones. per_page is
-    # padded above `limit` because closed-unmerged PRs (rare in this fleet, which
-    # forbids direct-to-master) dilute the window; take the `limit` newest merged,
-    # then sort by number. gh's `--state merged --limit N` returns the N
-    # newest-created merged PRs, which are all within this newest-closed window,
-    # so the resulting set matches (verified against the live snapshot).
-    raw = _rest_list(repo, "pulls", {
-        "state": "closed", "sort": "created", "direction": "desc",
-    }, per_page=100)
-    if raw is None:
-        return None
-    merged = [pr for pr in raw if pr.get("merged_at")][:limit]
+    # The window is the `limit` newest merges by merged_at, any PR number —
+    # found on the newest-updated closed page(s) (REST /pulls has no
+    # state=merged filter, so sort=updated&direction=desc over state=closed
+    # is the fetch), complete once the page tail's updated_at is strictly
+    # older than the limit-th newest merged_at seen so far. That stop
+    # condition is sound because updated_at >= merged_at always (GitHub
+    # stamps updated_at at merge and only moves it forward), so no unseen
+    # row on a later page can outrank a window already collected.
+    #
+    # Capped at max_pages (300 closed PRs): a single fleet:needs-<host>-smoke
+    # -> fleet:verified-<host> sweep bumps updated_at on up to ~140 merged
+    # PRs at once (197 merged PRs fleet-wide carry the label), which pushes
+    # the true window past page one but stays under the cap. Hitting the
+    # cap warns (escalate-then-quiet, above) and returns the `limit` newest
+    # merges among the rows seen rather than None — a correct answer over a
+    # smaller population, not a fetch failure (None is the caller's
+    # degraded / last-known-good path).
+    #
+    # seen is keyed by PR number, first sighting wins: sort=updated is not
+    # stable across the separate fetch instants of each page, so a PR
+    # updated in the gap can be served on both. Closed-unmerged rows dilute
+    # a page's count but never enter seen; the completeness check's tail is
+    # the page's last row whatever its merge state. Timestamps are ISO-8601
+    # Z strings and compare lexically.
+    #
+    # The output is keyed on merged_at only, never updated_at, so
+    # label/comment churn that moves a merge between pages changes the
+    # fetch cost but not the projection — the quiescence property above
+    # (no spurious re-fire while no new PR merges) holds.
+    per_page = 100
+    max_pages = 3
+    seen = {}
+    complete = False
+    for page in range(1, max_pages + 1):
+        raw = _rest_list(repo, "pulls", {
+            "state": "closed", "sort": "updated", "direction": "desc",
+            "page": str(page),
+        }, per_page=per_page)
+        if raw is None:
+            return None
+        for pr in raw:
+            if pr.get("merged_at"):
+                seen.setdefault(pr.get("number"), pr)
+        if len(raw) < per_page:
+            complete = True
+            break
+        if len(seen) >= limit:
+            newest_merges = sorted(
+                (pr["merged_at"] for pr in seen.values()), reverse=True)
+            if raw[-1].get("updated_at", "") < newest_merges[limit - 1]:
+                complete = True
+                break
+    _note_recent_merged_window(repo, complete, max_pages)
+
+    merged = sorted(seen.values(), key=lambda pr: pr["merged_at"],
+                    reverse=True)[:limit]
     prs = [
         {
             "number": pr.get("number", 0),

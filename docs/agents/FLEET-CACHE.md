@@ -57,7 +57,7 @@ section grows a field — that is the omission this table exists to close.
 | `plan_review` | `number, title, labels, updatedAt` | `fleet:plan-review` open issues, one REST page (100) |
 | `human_approved` | `number, title, labels, updatedAt, epic, blocked` | `human:approved` + `fleet:agent-approved` open issues, deduped; up to 300 each (600 combined) |
 | `closed_fleet_queued` | `number` | closed `fleet:queued` issues, newest 100 |
-| `recent_merged_prs` | `number, title, headRefName, baseRefName, mergedAt` | newest 30 merged PRs |
+| `recent_merged_prs` | `number, title, headRefName, baseRefName, mergedAt` | newest 30 merges by `mergedAt` (any PR number), from up to 3 newest-updated closed pages; a cap hit writes `${FLEET_ALERTS_DIR:-~/.fleet/alerts}/state-scout-recent-merged-<owner>-<repo>` while it holds |
 | `epics` | `number, title, labels, updatedAt, checklist, managed` | open `fleet:epic` issues, one REST page (100) |
 | `tasks.open` / `tasks.in_progress` | `status, title, summary, id, model, effort, labels, owner, area, blocked_by, blocked, needs_gl_host, needs_host, backend_symmetric, issue, updatedAt, epic` | open `fleet:queued` issues minus `fleet:needs-human`/`fleet:plan-review`/`fleet:gated`, up to 200 (2 REST pages) |
 | `tasks.done` | `id` | one record per `closed_fleet_queued` entry — same 100-item cap, not an independent population |
