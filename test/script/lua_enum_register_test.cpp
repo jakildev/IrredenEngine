@@ -1,4 +1,4 @@
-// #1403 EVAL coverage: the runtime `IREnum.register` surface bound in
+// EVAL coverage: the runtime `IREnum.register` surface bound in
 // LuaScript::bindLuaDrivenEcs — Lua-defined closed enums, the Lua-native
 // counterpart to the C++ registerEnum stopgap. The CODEGEN side (the
 // build-time stub sharing detail::buildLuaEnumTable) is covered in

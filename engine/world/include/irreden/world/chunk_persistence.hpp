@@ -1,8 +1,8 @@
 #ifndef IRREDEN_WORLD_CHUNK_PERSISTENCE_H
 #define IRREDEN_WORLD_CHUNK_PERSISTENCE_H
 
-// Chunk disk persistence (Epic E / E6, design at
-// docs/design/world-streaming.md §"Topic 6 — File layout"). One `.vxs`
+// Chunk disk persistence follows the file layout documented in
+// docs/design/world-streaming.md. One `.vxs`
 // file per chunk under `<saveRoot>/chunks/`. Filename is derived from
 // the chunk's signed-integer coord using a two-level directory split:
 //
@@ -18,7 +18,7 @@
 // Save/load route through `IRAsset::saveDenseVoxelSet` /
 // `loadDenseVoxelSet` so the on-disk format is the same DENSE-mode
 // `.vxs` container every other voxel-set asset uses. Writers emit
-// VRLE alongside VOXR (B3 / #940) so a hollow chunk's payload sits
+// VRLE alongside VOXR so a hollow chunk's payload sits
 // around ~10 % of the worst-case 32³ × 12 B = 384 KB.
 //
 // E1 / this slice is synchronous — the residency manager calls save

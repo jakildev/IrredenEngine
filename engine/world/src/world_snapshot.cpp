@@ -88,7 +88,7 @@ void writeComponentsArray(
     json.endArray();
 }
 
-// Human-readable `.json.txt` debug dump (persist W-11, #2218), gated by
+// Human-readable `.json.txt` debug dump, gated by
 // IR_PERSIST_DUMP. A *second writer over the same walk* — it reads the data
 // already collected for the binary write (archetype groups, component name
 // order, singletons, CHILD_OF edges) rather than re-parsing the binary bytes,
@@ -375,7 +375,7 @@ IRAsset::BinaryStatus saveWorld(const SaveRegistry &registry, const std::string 
     metaW.writeVarUInt(em.entityIdWatermark());
     metaW.writeVarUInt(totalEntities);
 
-    // RELN (persist P3, #2214) — CHILD_OF edges whose both endpoints P2 wrote
+    // RELN stores CHILD_OF edges whose endpoints were both serialized
     // (ARCH gameplay entities + SNGL singletons). The set is the projection/
     // exclusion decision already made above, so the relation walk reuses it
     // rather than re-deriving the exclusions.
@@ -860,9 +860,9 @@ LoadResult loadWorld(const SaveRegistry &registry, const std::string &path) {
 
     // Watermark was advanced after phase-2 validation, before any phase-3
     // mutation — advancing it here (after the singleton loop) would let a
-    // fresh-session singleton lazy-create draw a just-restored id. See #2213.
+    // fresh-session singleton lazy-create draw a just-restored id.
 
-    // Final phase: replay CHILD_OF relation edges (persist P3, #2214) from the
+    // Final phase: replay CHILD_OF relation edges from the
     // buffer decoded in phase 2b. Runs after every entity, column, and
     // singleton is in place and the watermark has advanced (in phase 2b, before
     // any phase-3 write), so setParent's synthetic relation entities mint above

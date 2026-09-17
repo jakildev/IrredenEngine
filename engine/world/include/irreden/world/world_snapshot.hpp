@@ -2,7 +2,7 @@
 #define WORLD_SNAPSHOT_H
 
 /// ECS world snapshot — the `IRWS` container: save/load of the live entity
-/// world to a single binary file (persist P2, #2213, epic #667). This is
+/// world to a single binary file. This is
 /// the *entity-level* save path; it is distinct from
 /// `chunk_persistence.hpp`'s per-chunk `.vxs` voxel-pool save (which
 /// persists a streaming chunk's voxel slice, not entities/components).
@@ -108,8 +108,7 @@ struct LoadResult {
     IRAsset::BinaryStatus status_;
     std::uint64_t entitiesRestored_ = 0;
     std::uint64_t singletonsRestored_ = 0;
-    // CHILD_OF relation edges replayed via setParent in the final load phase
-    // (persist P3, #2214).
+    // CHILD_OF relation edges replayed via setParent in the final load phase.
     std::uint64_t relationsRestored_ = 0;
     // Columns / singletons whose save-name did not resolve in the registry
     // (skipped by byte length, not an error — the file may predate a
@@ -144,7 +143,7 @@ LoadResult loadWorld(const SaveRegistry &registry, const std::string &path);
 /// `IRPersist` Lua binding) forward to.
 ///
 /// Its membership is **derived** from `AllEngineComponents`
-/// (`save_component_inventory.hpp`), not curated (#2242): the implementation
+/// (`save_component_inventory.hpp`), not curated: the implementation
 /// walks the whole tuple and lets `registerComponent<C>`'s
 /// `if constexpr (shouldSave<C>())` gate drop the opt-outs, so every opted-in
 /// component is registered automatically and a newly-serialized one needs no

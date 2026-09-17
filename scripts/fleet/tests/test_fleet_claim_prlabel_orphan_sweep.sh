@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Tests for the confirmed-orphan fast path in `fleet-claim cleanup --gh`'s
-# PR-label sweep, for fleet:reviewing-* / fleet:resolving-* claims.
+# reviewing/resolving label sweep, including plan-review issues.
 #
 # These claims drop a local marker ($CLAIMS_DIR/_prlabel-<tag>-<agent>, content =
-# the PR number) on acquire and remove it on release. fleet-down wipes
+# the claimed target number) on acquire and remove it on release. fleet-down wipes
 # ~/.fleet/claims, so a same-host reviewing/resolving label with NO matching
 # marker is a claim whose owning session died/restarted while the GitHub label
 # survived (the #2137/#2138 stuck-reviewer shape) — swept after a short grace
@@ -33,6 +33,7 @@ export FLEET_ORPHANS_DIR="$TMPROOT/orphans"
 export FLEET_TEST_HOST="mac"
 mkdir -p "$FLEET_CLAIMS_DIR" "$FLEET_STATE_DIR" "$FLEET_ORPHANS_DIR"
 export PRS_JSON="$TMPROOT/prs.json"
+export PLAN_REVIEW_ISSUES_JSON="$TMPROOT/plan-review-issues.json"
 REMOVED_FILE="$TMPROOT/removed.log"; export REMOVED_FILE
 
 STUB_DIR="$TMPROOT/bin"; mkdir -p "$STUB_DIR"
@@ -42,6 +43,21 @@ case "$1" in
     pr) case "$2" in list) cat "$PRS_JSON"; exit 0 ;; *) exit 0 ;; esac ;;
     issue)
         case "$2" in
+            list)
+                shift 2
+                repo=""; state=""; label=""; fields=""; limit=""
+                while [[ $# -gt 0 ]]; do
+                    case "$1" in
+                        --repo) repo="$2"; shift 2 ;;
+                        --state) state="$2"; shift 2 ;;
+                        --label) label="$2"; shift 2 ;;
+                        --json) fields="$2"; shift 2 ;;
+                        --limit) limit="$2"; shift 2 ;;
+                        *) exit 2 ;;
+                    esac
+                done
+                [[ "$repo" == "jakildev/IrredenEngine" && "$state" == "open" && "$label" == "fleet:plan-review" && "$fields" == "number,labels" && "$limit" == "200" ]] || exit 2
+                cat "$PLAN_REVIEW_ISSUES_JSON"; exit 0 ;;
             edit) shift 2; n="$1"; shift
                 while [[ $# -gt 0 ]]; do
                     case "$1" in --remove-label) printf '%s\t%s\n' "$n" "$2" >> "$REMOVED_FILE"; shift 2 ;; *) shift ;; esac
@@ -63,6 +79,7 @@ export PATH="$STUB_DIR:$PATH"
 # opus-reviewer's marker points at 901 (its live review). sonnet-reviewer and
 # merger have NO markers (dead/restarted sessions).
 printf '901\n' > "$FLEET_CLAIMS_DIR/_prlabel-reviewing-opus-reviewer"
+printf '907\n' > "$FLEET_CLAIMS_DIR/_prlabel-reviewing-plan-reviewer"
 cat > "$PRS_JSON" <<'JSON'
 [
   {"number":900,"labels":[{"name":"fleet:reviewing-mac-opus-reviewer"}]},
@@ -72,6 +89,13 @@ cat > "$PRS_JSON" <<'JSON'
   {"number":904,"labels":[{"name":"fleet:reviewing-linux-opus-reviewer"}]}
 ]
 JSON
+cat > "$PLAN_REVIEW_ISSUES_JSON" <<'JSON'
+[
+  {"number":905,"labels":[{"name":"fleet:reviewing-mac-opus-reviewer"}]},
+  {"number":906,"labels":[{"name":"fleet:reviewing-mac-sonnet-reviewer"}]},
+  {"number":907,"labels":[{"name":"fleet:reviewing-mac-plan-reviewer"}]}
+]
+JSON
 echo "=== aged reviewing/resolving sweep (STUB_AGE=600) ==="
 STUB_AGE=600 "$FLEET_CLAIM" cleanup --gh --repo jakildev/IrredenEngine 2>&1 | sed 's/^/    /'
 removed_has $'900\tfleet:reviewing-mac-opus-reviewer'   && ok "same-host marker-mismatch (900 vs marker 901) swept" || bad "900 not swept"
@@ -79,6 +103,9 @@ removed_has $'901\tfleet:reviewing-mac-opus-reviewer'   && bad "901 (marker matc
 removed_has $'902\tfleet:reviewing-mac-sonnet-reviewer' && ok "same-host no-marker orphan (902) swept"          || bad "902 not swept"
 removed_has $'903\tfleet:resolving-mac-merger'          && ok "resolving same-host no-marker orphan (903) swept" || bad "903 not swept"
 removed_has $'904\tfleet:reviewing-linux-opus-reviewer' && bad "cross-host (904) wrongly swept"                || ok "cross-host claim kept (TTL, can't vouch)"
+removed_has $'905\tfleet:reviewing-mac-opus-reviewer'   && ok "plan-review marker-mismatch (905 vs marker 901) swept" || bad "plan-review orphan 905 not swept"
+removed_has $'906\tfleet:reviewing-mac-sonnet-reviewer' && ok "plan-review no-marker orphan (906) swept" || bad "plan-review orphan 906 not swept"
+removed_has $'907\tfleet:reviewing-mac-plan-reviewer' && bad "plan-review matching marker 907 wrongly swept" || ok "plan-review live claim (marker matches 907) kept"
 
 # --- Phase 2: fresh orphan (STUB_AGE=30 < grace 120) -> kept ---------------
 : > "$REMOVED_FILE"
@@ -86,6 +113,7 @@ rm -f "$FLEET_CLAIMS_DIR"/_prlabel-*
 cat > "$PRS_JSON" <<'JSON'
 [ {"number":910,"labels":[{"name":"fleet:reviewing-mac-opus-reviewer"}]} ]
 JSON
+echo '[]' > "$PLAN_REVIEW_ISSUES_JSON"
 echo "=== fresh no-marker reviewing label (STUB_AGE=30) ==="
 STUB_AGE=30 "$FLEET_CLAIM" cleanup --gh --repo jakildev/IrredenEngine 2>&1 | sed 's/^/    /'
 removed_has $'910\tfleet:reviewing-mac-opus-reviewer' && bad "fresh no-marker label swept inside grace" || ok "fresh no-marker label spared by grace (claim/marker race)"

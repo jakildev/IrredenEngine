@@ -1,6 +1,6 @@
-// T-107: tokenizer + recursive-descent parser + C++ emitter for the
+// Tokenizer + recursive-descent parser + C++ emitter for the
 // CODEGEN-mode Lua system body DSL. See system_dsl.hpp for the surface
-// contract and #587 for the DSL spec.
+// contract.
 
 #include "system_dsl.hpp"
 
@@ -36,7 +36,7 @@ const std::vector<Intrinsic> kIntrinsicRegistry = {
     {"math", "max",   "IRMath::max",   2},
     // --- IRMath.* ---
     {"IRMath", "clamp", "IRMath::clamp", 3},
-    // --- IRRender.* render-glue setters (#1616) ----------------------------
+    // --- IRRender.* render-glue setters ----------------------------
     //
     // Whitelisted side-effecting (void) engine bindings: allowed as a bare
     // statement in a CODEGEN tick body (`IRRender.setSunIntensity(x)`), lowered
@@ -554,7 +554,7 @@ struct Parser {
         }
 
         // Anything else: parse the expression. It's accepted only as a bare
-        // call to a whitelisted side-effecting binding (#1616); otherwise
+        // call to a whitelisted side-effecting binding; otherwise
         // reject it. Either:
         //   - `var.field = ...` (unsupported assignment target — point at the
         //     actual supported targets), or
@@ -921,11 +921,11 @@ const char *cppTypeForExprType(ExprType t) {
     }
 }
 
-// ---- #1353: row-alias vs row-copy analysis ---------------------------------
+// ---- Row-alias vs row-copy analysis ---------------------------------
 //
 // The per-row emitter lowers `local a = arch.C:at(i)` to `auto a =
 // _ir_row_C;` — a by-value copy of the whole component row. For read-light
-// kernels that copy is the dominant per-row cost (#1353: ~2.5x hand-C++ at
+// kernels that copy is the dominant per-row cost (~2.5x hand-C++ at
 // 1024 rows). When the binding is only ever READ, an alias (`const auto& a =
 // _ir_row_C;`) is observationally identical and skips the copy.
 //
@@ -1092,7 +1092,7 @@ struct Emitter {
     const std::vector<ComponentSchema> &registry_;
     std::unordered_map<std::string, Symbol> symbols_;
 
-    // #1353: LOCAL_DECL Stmt addresses whose `arch.C:at(i)` binding is safe to
+    // LOCAL_DECL Stmt addresses whose `arch.C:at(i)` binding is safe to
     // emit as a `const auto&` alias of the row instead of a by-value copy.
     // Populated by collectRefSafeColumnAtDecls() before emission.
     std::unordered_set<const Stmt *> refSafeColumnAtDecls_;
@@ -1106,7 +1106,7 @@ struct Emitter {
     // error — per-row form has no column vector to scatter-index into.
     std::string loopVarName_;
 
-    // #1616: engine-binding headers required by whitelisted side-effecting
+    // Engine-binding headers required by whitelisted side-effecting
     // intrinsics emitted in this body (e.g. ir_render.hpp for IRRender.*).
     // Merged into outRequiredIncludes by emitSystem.
     std::set<std::string> requiredIncludes_;
@@ -1116,7 +1116,7 @@ struct Emitter {
 
     void writeIndent() { for (int i = 0; i < indent_; ++i) out_ << "    "; }
 
-    // #1616: resolve an INTRINSIC_CALL against the whitelist + arity. Fails
+    // Resolve an INTRINSIC_CALL against the whitelist + arity. Fails
     // (codegen error) on an unknown name or arity mismatch. Shared by
     // expression-position (emitExpr) and statement-position (EXPR_STMT)
     // lowering so the two paths agree on the diagnostic.
@@ -1136,7 +1136,7 @@ struct Emitter {
         return *intr;
     }
 
-    // #1616: emit `cppExpression_(arg0, arg1, ...)` with no trailing
+    // Emit `cppExpression_(arg0, arg1, ...)` with no trailing
     // punctuation. Shared by both intrinsic-call positions.
     void emitIntrinsicCall(const Expr &e, const Intrinsic &intr) {
         out_ << intr.cppExpression_ << "(";
@@ -1174,7 +1174,7 @@ struct Emitter {
                     return ExprType::INT32;
                 }
                 {
-                    // Match T-106's float-literal rendering: ensure a decimal
+                    // Match the codegen tool's float-literal rendering: ensure a decimal
                     // point is present before the `f` suffix (`0f` is a parse
                     // error; `0.0f` is fine).
                     std::ostringstream tmp;
@@ -1351,7 +1351,7 @@ struct Emitter {
             case ExprKind::INTRINSIC_CALL: {
                 const Intrinsic &intr = resolveIntrinsic(e);
                 if (intr.isStatement_) {
-                    // #1616: a void side-effecting binding has no value to use.
+                    // A void side-effecting binding has no value to use.
                     fail(file_, e.line_,
                          "binding `" + e.intrinsicNamespace_ + "." + e.intrinsicName_ +
                              "` returns void (side-effecting render-glue) and may only be used "
@@ -1495,7 +1495,7 @@ struct Emitter {
                 // headaches); for scalars, declare an explicit type so subsequent uses get
                 // the right inference.
                 if (t == ExprType::COMPONENT) {
-                    // #1353: a read-only `local a = arch.C:at(i)` binding can
+                    // A read-only `local a = arch.C:at(i)` binding can
                     // alias the row (`const auto&`) instead of copying it.
                     // Only COLUMN_AT bindings are aliasable — a COMPONENT_NEW
                     // value is a temporary, so it stays by-value.
@@ -1651,7 +1651,7 @@ struct Emitter {
                 return;
             }
             case StmtKind::EXPR_STMT: {
-                // #1616: the parser only builds EXPR_STMT for a bare
+                // The parser only builds EXPR_STMT for a bare
                 // INTRINSIC_CALL. Statement position is reserved for
                 // whitelisted side-effecting (void) bindings — a bare
                 // value-returning intrinsic is almost always a dropped
@@ -1712,7 +1712,7 @@ ParsedBody parseSystemBody(
     return body;
 }
 
-// T-347: identify the canonical per-row loop body. The shape:
+// Identify the canonical per-row loop body. The shape:
 //   for <loopVar> = 0, arch.length - 1 do <stmts> end
 // at the top level of the tick body, as the ONLY top-level statement.
 // Returns the for-statement pointer when matched, else nullptr. The
@@ -1846,19 +1846,19 @@ void emitSystem(
 
     emitter.loopVarName_ = perRowLoop->forVar_;
     emitter.indent_ = 3;
-    // #1353: decide which `arch.C:at(i)` bindings can alias the row instead of
+    // Decide which `arch.C:at(i)` bindings can alias the row instead of
     // copying it, before emitting the body.
     collectRefSafeColumnAtDecls(perRowLoop->forBody_, emitter.refSafeColumnAtDecls_);
     for (const auto &s : perRowLoop->forBody_) emitter.emitStmt(*s);
 
-    // #1616: surface the engine-binding headers this body's whitelisted
+    // Surface the engine-binding headers this body's whitelisted
     // side-effecting calls need, so main.cpp can #include them.
     outRequiredIncludes.insert(emitter.requiredIncludes_.begin(),
                                emitter.requiredIncludes_.end());
 
     out += emitter.str();
     out += "        }\n";
-    // T-223: thread the per-system concurrency value through to the
+    // Thread the per-system concurrency value through to the
     // engine-side createSystem<>'s trailing Concurrency arg. The
     // trailing-argument shape requires the begin/end/relation tick + the
     // exclude-archetype slots to be filled first; pass the zero-value

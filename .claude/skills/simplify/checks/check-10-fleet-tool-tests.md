@@ -10,7 +10,7 @@ Three arms, all report-only:
   `scripts/fleet/tests/test_<name>.{sh,py}` (hyphens → underscores) or any
   test exercising the tool by name. No hit → "new fleet tool with no
   test_*; add one against a stubbed environment (`scripts/fleet/CLAUDE.md`
-  §Authoring rules for the hermeticity bar)."
+  §"Test conventions" for the hermeticity bar)."
 - **New function in an already-tested module** — a module-level `def` in a
   `scripts/*.py` with a `scripts/tests/test_*.py`, or a function in a
   `scripts/fleet/` executable with a `scripts/fleet/tests/test_*.sh`. The

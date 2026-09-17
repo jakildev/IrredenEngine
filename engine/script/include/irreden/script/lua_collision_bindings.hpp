@@ -1,7 +1,7 @@
 #ifndef LUA_COLLISION_BINDINGS_H
 #define LUA_COLLISION_BINDINGS_H
 
-// IRCollision Lua bindings (engine #1817) — register Lua handlers that fire on
+// IRCollision Lua bindings — register Lua handlers that fire on
 // AABB overlap enter / exit between two collision-layer-tagged entities.
 //
 //   IRCollision.onOverlapEnter(layerA, layerB, function(entA, entB) ... end)

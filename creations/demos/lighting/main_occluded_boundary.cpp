@@ -1,4 +1,4 @@
-// Lighting demo — occluded window-boundary seed (#2330).
+// Lighting demo — occluded window-boundary seed.
 //
 // Positive-fire fixture for the occlusion-aware boundary seed. Scene =
 // the standard `IRLightingEmissive` setup (default voxel-pool / SDF row

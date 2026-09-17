@@ -98,18 +98,18 @@ class FleetPrBodyLintTests(unittest.TestCase):
 
     def test_criteria_list_forms_nested_continuations_and_single_paragraph(self):
         forms = [
-            "1. one\n   - nested\n   continuation\n2. two",
-            "- one\n  continuation\n- two",
-            "- one\n\n  loose continuation\n- two",
-            "- [x] one\n- [ ] two",
-            "one criterion continued on one paragraph",
+            ("nested continuations", "1. one\n   - nested\n   continuation\n2. two", 2),
+            ("indented continuation", "- one\n  continuation\n- two", 2),
+            ("loose continuation", "- one\n\n  loose continuation\n- two", 2),
+            ("task list", "- [x] one\n- [ ] two", 2),
+            ("lead paragraph", "The list below is authoritative.\n\n1. one\n2. two", 2),
+            ("single paragraph", "one criterion continued on one paragraph", 1),
         ]
-        for block in forms:
-            with self.subTest(block=block):
+        for name, block, expected in forms:
+            with self.subTest(name=name):
                 issue = snapshot(
                     comments=[{"body": f"## Plan\n\n### Acceptance criteria\n{block}"}]
                 )
-                expected = 1 if block.startswith("one") else 2
                 result = self.run_lint(evidence_body(rows=expected), issue=issue)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 self.assertIn(f"required={expected}", result.stdout)

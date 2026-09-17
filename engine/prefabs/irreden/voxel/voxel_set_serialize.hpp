@@ -1,8 +1,8 @@
 #ifndef IR_VOXEL_SET_SERIALIZE_H
 #define IR_VOXEL_SET_SERIALIZE_H
 
-// `SaveSerialize<C_VoxelSetNew>` for the ECS world snapshot — persist P6 / W-10
-// (#2217, epic #667). C_VoxelSetNew owns `std::span` views into a process-local
+// `SaveSerialize<C_VoxelSetNew>` for the ECS world snapshot.
+// C_VoxelSetNew owns `std::span` views into a process-local
 // voxel pool plus (in staged mode) a `std::vector<C_Voxel>`, so it is NOT
 // trivially copyable and the primary `SaveSerialize` template (a raw byte
 // image) cannot handle it — a memcpy would persist dangling pool spans.
@@ -15,11 +15,11 @@
 //   - the per-voxel `C_Voxel` records (a fixed 12 B std430 POD — the same
 //     raw-image contract the primary template uses for POD components),
 //   - the owning canvas EntityId, for post-load canvas resolution, and
-//   - `anchor_` (v2, #2563). For a non-CORNER set the anchor — NOT `boundsMin`
+//   - `anchor_`. For a non-CORNER set the anchor — NOT `boundsMin`
 //     — is what reconstructs the local origin on load: that origin is
 //     half-integer (always for GROUND, on even axes for CENTER) and the
 //     `ivec3` boundsMin cannot represent it. v1 records predate the field and
-//     read as CORNER via `SaveMigration<C_VoxelSetNew>` below.
+//     read as CORNER via `SaveMigration<C_VoxelSetNew>`.
 //
 // `read` reconstructs the set in STAGED mode (`numVoxels_ == 0`,
 // `pendingVoxels_` populated) via the zero-pool `C_VoxelSetNew::StagedInit`
@@ -43,6 +43,7 @@
 #include <irreden/asset/binary_io.hpp>
 
 #include <cstdint>
+#include <span>
 #include <utility>
 #include <vector>
 
@@ -55,60 +56,37 @@ template <> struct SaveSerialize<IRComponents::C_VoxelSetNew> {
         w.writeI32(size.y);
         w.writeI32(size.z);
 
-        // boundsMin: the local origin of voxel index (0,0,0). A staged set keeps
-        // it verbatim; a pool-resident set recovers it from its seeded local
-        // position (`positions_[0].pos_ == boundsMin` for a dense box). Integer
-        // origins — every dense-authored / size-ctor set — round-trip exactly.
-        const bool staged = !set.pendingVoxels_.empty();
-        IRMath::ivec3 boundsMin = set.pendingBoundsMin_;
-        if (!staged && set.numVoxels_ > 0) {
-            const IRMath::vec3 origin = set.positions_[0].pos_;
-            boundsMin = IRMath::ivec3(
-                IRMath::roundHalfUp(origin.x),
-                IRMath::roundHalfUp(origin.y),
-                IRMath::roundHalfUp(origin.z)
-            );
-        }
+        // boundsMin: the local origin of voxel index (0,0,0), staged verbatim or
+        // recovered from the resident span's seeded local position. The
+        // component names that recovery (`C_VoxelSetNew::localOriginMin`), so
+        // the save path and the canvas-teardown re-stage cannot drift
+        // apart on what "the origin" means. Integer origins — every
+        // dense-authored / size-ctor set — round-trip exactly.
+        const IRMath::ivec3 boundsMin = set.localOriginMin();
         w.writeI32(boundsMin.x);
         w.writeI32(boundsMin.y);
         w.writeI32(boundsMin.z);
 
         w.writeU64(static_cast<std::uint64_t>(set.canvasEntity_));
 
-        // v2 (#2563): the anchor. It is the ONLY record of a non-CORNER set's
-        // local origin that survives the round trip — the `boundsMin` above is
-        // an ivec3 and GROUND's z origin is half-integer for every size — so
+        // The anchor. It is the ONLY record of a non-CORNER set's
+        // local origin that survives the round trip — `boundsMin` is an ivec3
+        // and GROUND's z origin is half-integer for every size — so
         // `read` reconstructs the origin from this rather than from boundsMin.
         w.writeU8(static_cast<std::uint8_t>(set.anchor_));
 
-        const std::size_t count = set.recordCount();
-        w.writeVarUInt(count);
+        // `authoredRecords()` picks the pool-independent source: the staging
+        // vector, or — for a GRID-mode set saved mid-rotation, whose pool span
+        // REBUILD_GRID_VOXELS has rearranged into dest-cell order with colors
+        // duplicated across covered cells — the authored `rotationSourceVoxels_`
+        // snapshot, else the span. Both are dense-box-index ordered, so `read()`
+        // (which rebuilds geometry from `boundsMin + index`) restores
+        // identically either way. Its size is `recordCount()` by construction.
+        const std::span<const IRComponents::C_Voxel> records = set.authoredRecords();
+        w.writeVarUInt(records.size());
         // C_Voxel is a fixed 12 B std430 POD; write the raw image per record.
-        if (staged) {
-            for (const IRComponents::C_Voxel &voxel : set.pendingVoxels_) {
-                w.writeBytes(&voxel, sizeof(IRComponents::C_Voxel));
-            }
-        } else {
-            // A GRID-mode set saved mid-rotation has a DERIVED pool span:
-            // REBUILD_GRID_VOXELS rearranges `voxels_` into dest-cell order with
-            // colors duplicated wherever one source voxel covers several dest
-            // cells, and stashes the authored per-voxel records in
-            // `rotationSourceVoxels_` (see that system + the component header's
-            // `rotationSourceVoxels_` contract). The authored snapshot — not the
-            // resampled span — is the pool-independent truth, so a `saveWorld()`
-            // that lands while an entity is spinning round-trips the source
-            // arrangement instead of the frame's derived colors. Both are
-            // dense-box-index ordered, so `read()` (which rebuilds geometry from
-            // `boundsMin + index`) restores identically either way. The snapshot
-            // is non-empty only while rotating and holds `numVoxels_` records
-            // then; fall back to the span if the sizes ever diverge (a rare
-            // span-clamp) rather than risk a mixed/short read.
-            const bool rotated = set.rotationSourceVoxels_.size() == count;
-            for (std::size_t i = 0; i < count; ++i) {
-                const IRComponents::C_Voxel &voxel =
-                    rotated ? set.rotationSourceVoxels_[i] : set.voxels_[i];
-                w.writeBytes(&voxel, sizeof(IRComponents::C_Voxel));
-            }
+        for (const IRComponents::C_Voxel &voxel : records) {
+            w.writeBytes(&voxel, sizeof(IRComponents::C_Voxel));
         }
     }
 
@@ -197,11 +175,10 @@ template <> struct SaveSerialize<IRComponents::C_VoxelSetNew> {
     }
 };
 
-// v1 predates the anchor byte (#2563). Every v1 set was authored through the
-// bool ctor, so its origin is exactly the `boundsMin` the record already
-// carries and CORNER is the faithful reading — CENTER sets round-trip through
-// boundsMin as they always did, with the pre-existing even-size lossiness the
-// v1 format had and this migrator deliberately reproduces rather than
+// v1 has no anchor byte. Every v1 set comes from the bool ctor, so its
+// origin is exactly the `boundsMin` the record carries and CORNER is the
+// faithful reading — a CENTER set round-trips through boundsMin with the v1
+// format's even-size lossiness, which this migrator reproduces rather than
 // silently "fixing" on load.
 template <> struct SaveMigration<IRComponents::C_VoxelSetNew> {
     static std::vector<std::pair<std::uint32_t, ColumnMigratorFn<IRComponents::C_VoxelSetNew>>>

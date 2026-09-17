@@ -327,6 +327,16 @@ if (( _resume_role )) && [[ -f "$SIDECAR" ]]; then
     fi
 fi
 
+# Per-iteration scratch bodies (gitignored; consumed by the gh call that
+# posts them) carry nothing a later iteration can use, and a stale one breaks
+# a fresh Codex launch: apply_patch has no overwrite, and Delete + Add of one
+# path inside a single call is rejected. A resume keeps them — the prior
+# session may be mid-draft.
+if (( ! RESUMED )); then
+    rm -f "$PWD"/.review-body.md "$PWD"/.review-body-*.md "$PWD"/.pr-body.md \
+        "$PWD"/.merger-body.md "$PWD"/.coding-improvement-body.md
+fi
+
 # A resume reloads the prior session and discards this dispatch's fresh config
 # — including the dispatch target. Release the pre-claim now, under the same
 # worktree basename the dispatcher claimed with, rather than stranding the
@@ -338,6 +348,38 @@ if (( RESUMED )) && [[ "$FLEET_RUNTIME" == claude && -n "${FLEET_DISPATCH_TARGET
     unset FLEET_DISPATCH_TARGET FLEET_DISPATCH_KIND FLEET_DISPATCH_REPO \
         FLEET_DISPATCH_NUMBER FLEET_DISPATCH_REASON FLEET_PLAN_ISSUE
 fi
+
+# --- Dispatch identity ----------------------------------------------------
+#
+# A per-ITERATION id. fleet-claim needs one to tell a live `fleet:amending-*`
+# claim from one whose owning iteration died; the pane heartbeat cannot, because
+# `fleet-heartbeat <worktree-basename>` is step 0 of five role docs, so any
+# dispatch of any role into the pane refreshes it. Keying a per-iteration claim
+# on it left a dead one both un-reapable and un-claimable for as long as the
+# pane kept drawing dispatches.
+#
+# Minted fresh per launch; a --resume INHERITS the sidecar's id, because a
+# resumed session is the same iteration continuing (a hard kill must not cost
+# it its claim). Deliberately NOT derived from SESSION_ID, which is set to
+# the empty string for codex dispatches, so a session-derived id would be blank
+# for every one of them and route every codex-owned amend claim onto the
+# pane-heartbeat fallback — i.e. back to a pane-keyed signal.
+DISPATCH_ID=""
+if (( RESUMED )); then
+    DISPATCH_ID=$(_read_sidecar dispatch_id)
+fi
+if [[ -z "$DISPATCH_ID" ]]; then
+    DISPATCH_ID=$(python3 -c 'import uuid;print(uuid.uuid4())' | tr -d '\r')
+fi
+export FLEET_DISPATCH_ID="$DISPATCH_ID"
+# The worktree's CURRENT dispatch. Written at every launch and never cleared on
+# exit: the contract is "the most recent dispatch launched into this worktree",
+# which is precisely what makes a DIFFERENT id here proof that a recorded owner
+# has ended — the dispatcher never launches into an occupied pane. Clearing it
+# would turn that proof back into "unknown". Best-effort, like FLEET_CLAIM_FLAG.
+# keep in sync with fleet-claim (_amending_owner_live)
+mkdir -p "$STATE_DIR/dispatch-current" 2>/dev/null || true
+printf '%s\n' "$DISPATCH_ID" > "$STATE_DIR/dispatch-current/$worktree_name" 2>/dev/null || true
 
 # --fallback-model only exists in print mode, which is exactly this path. When
 # the dispatcher hands us a chain (fresh fable dispatch), claude retries on the
@@ -359,8 +401,8 @@ else
     if (( _resume_role )); then
         [[ "$FLEET_RUNTIME" == codex ]] && SESSION_ID=""
         _sidecar_tmp=$(mktemp "$SESSIONS_DIR/.session.XXXXXX")
-        printf '{"session_id":"%s","role":"%s","model":"%s","effort":"%s","runtime":"%s","target":"%s","class":"%s","created_epoch":%s}\n' \
-            "$SESSION_ID" "$ROLE" "$MODEL" "$EFFORT" "$FLEET_RUNTIME" "${FLEET_DISPATCH_TARGET:-}" "$FLEET_ROLE_MODEL" "$(date +%s)" > "$_sidecar_tmp"
+        printf '{"session_id":"%s","role":"%s","model":"%s","effort":"%s","runtime":"%s","target":"%s","class":"%s","dispatch_id":"%s","created_epoch":%s}\n' \
+            "$SESSION_ID" "$ROLE" "$MODEL" "$EFFORT" "$FLEET_RUNTIME" "${FLEET_DISPATCH_TARGET:-}" "$FLEET_ROLE_MODEL" "$DISPATCH_ID" "$(date +%s)" > "$_sidecar_tmp"
         mv -f "$_sidecar_tmp" "$SIDECAR"
     fi
 fi

@@ -1,4 +1,4 @@
-// Two-canvas verification for T-116 / #363: per-canvas C_LightSource
+// Two-canvas verification: per-canvas C_LightSource
 // scope via `IREntity::setParent`.
 //
 // One rendered canvas (the main one) plus a sentinel "canvas B" entity
@@ -15,7 +15,7 @@
 //     contributes to every canvas → green component mixes onto main.
 //
 // Expected output: scene voxels are lit yellow / orange (red + green),
-// not white-ish. If T-116 scoping regresses, light B leaks into the
+// not white-ish. If the scoping regresses, light B leaks into the
 // main canvas and the colors shift toward white.
 
 #include "common/lighting_demo_main.hpp"

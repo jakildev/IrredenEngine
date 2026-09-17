@@ -26,7 +26,7 @@ using IRMath::vec4;
 // back. Neither assertion alone is sufficient: a table-first shape check errors
 // for a metatable-less userdata but silently coerces a registered one through
 // its `__index`, so "it raised" and "it did not raise" each pass against one of
-// the two shapes. See #2673.
+// the two shapes.
 class LuaScriptUtilsTest : public testing::Test {
   protected:
     LuaScriptUtilsTest() {

@@ -330,10 +330,7 @@ TEST(IRArgsUsageTest, ContainsRegisteredArgName) {
 }
 
 // ─────────────────────────────────────────────
-// Multi-value list — coexistence + negative values. Folds in the two
-// numbers()/getFloats() cases unique to PR #2161's suite (its space/inline/
-// zero-fill happy paths are already covered above, so those are dropped to
-// keep this the single IRArgs suite rather than duplicating either side).
+// Multi-value lists coexist with other flags and accept negative values.
 // ─────────────────────────────────────────────
 
 TEST(IRArgsFloatListTest, CoexistsWithOtherFlags) {
@@ -363,8 +360,8 @@ TEST(IRArgsFloatListTest, AcceptsNegativeValues) {
 }
 
 // ─────────────────────────────────────────────
-// enumValue() / getEnum() — validated-enum flag (the ENUM type added by
-// PR #2161; folded here so IRArgs has one unified suite)
+// enumValue() / getEnum() — validated-enum flag coverage in the unified
+// IRArgs suite.
 // ─────────────────────────────────────────────
 
 TEST(IRArgsEnumTest, AcceptsAllowedValue) {

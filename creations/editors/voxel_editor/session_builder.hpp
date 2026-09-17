@@ -16,16 +16,15 @@
 #include <string>
 #include <vector>
 
-// Authoring sessions (#766 Part 2c) — compile a recipe of editor gestures into
+// Authoring sessions — compile a recipe of editor gestures into
 // the scripted-input streams the GUI-test harness replays against the live UI.
 //
-// The point of F-1.6 is that the five entities are authored *by using the
-// editor*: every voxel lands because a scripted cursor clicked a face and the
-// editor's own place/erase path ran. So a recipe never touches voxel storage.
-// It names cells; the builder works out which face of which already-placed
-// voxel to click, aims the cursor with IRRender::worldPos3DToMouseScreenPx
-// (Phase 0's validated world→screen primitive), and emits MOVE / PRESS /
-// RELEASE events.
+// The entities are authored *by using the editor*: every voxel lands because
+// a scripted cursor clicked a face and the editor's own place/erase path ran.
+// So a recipe never touches voxel storage. It names cells; the builder works
+// out which face of which already-placed voxel to click, aims the cursor with
+// IRRender::worldPos3DToMouseScreenPx (the world→screen primitive the
+// probe-map shots validate), and emits MOVE / PRESS / RELEASE events.
 //
 // The shadow occupancy model is what makes that aiming reliable. It mirrors the
 // editable set's occupancy as the recipe grows it and replays
@@ -37,8 +36,8 @@
 //   - The picking ray marches along +(1,1,1), so exactly three faces of a voxel
 //     can ever be clicked: -x, -y, -z. Placing at cell T therefore means
 //     clicking face n of anchor cell T - n for one of those three normals.
-//   - Aim accuracy is zoom-bound. Phase 0 (P0-2) put the floor for hitting the
-//     right iso *column* at zoom >= 2; hitting the right *face* of a voxel
+//   - Aim accuracy is zoom-bound. The floor for hitting the right iso
+//     *column* is zoom >= 2; hitting the right *face* of a voxel
 //     needs zoom >= 3 (see kSessionZoom), because a face-centre aim is offset
 //     half a column-spacing in screen space and rounds across the boundary
 //     below that.
@@ -84,7 +83,7 @@ inline constexpr IRMath::CardinalIndex kSessionCardinalIndex = IRMath::CardinalI
 // editor's drag state machine sees a PRESSED, a HELD, and a RELEASED sample.
 inline constexpr int kFramesPerClickStep = 1;
 
-// Camera zoom sessions author at. Phase 0's zoom >= 2 floor covers picking the
+// Camera zoom sessions author at. The zoom >= 2 floor covers picking the
 // right iso *column*; picking the right *face within* a voxel needs more. A
 // face-centre aim sits half a column-spacing off the voxel centre in screen
 // space, so at zoom 2 (iso step (4,2) px) it rounds onto the neighbouring
@@ -121,7 +120,7 @@ class OccupancyModel {
         m_occupied[flatIndex(local)] = on;
     }
 
-    // Mirror-symmetry-aware writes (#766 F-1.6 PR-2). The editor's applyEdit
+    // Mirror-symmetry-aware writes. The editor's applyEdit
     // reflects every edit across the enabled mirror planes (via applyMirrors);
     // the shadow model must mirror the same way, or aiming a later click at a
     // mirror-created voxel (or asserting its occupancy) would disagree with the
@@ -299,7 +298,7 @@ class OccupancyModel {
 // One cursor MOVE whose pixel is resolved at shot-run time. The world→screen
 // mapping reads the live camera (zoom, iso offset, letterbox), so the pixel
 // cannot be baked at recipe-build time — the editor fills it in the harness's
-// per-frame assert callback, exactly as the Phase 0 probe-map shots do.
+// per-frame assert callback, exactly as the probe-map shots do.
 struct AimFixup {
     int eventIndex_ = 0;
     IRMath::vec3 worldPoint_ = IRMath::vec3(0.0f);
@@ -321,7 +320,7 @@ struct GuiAimFixup {
 // an empty asset.
 // Which copy of "is this cell live" a check reads. The per-voxel alpha is the
 // CPU-side truth; the pool's active mask is the GPU-side mirror the compact
-// shader reads *instead of* alpha (T-287), and it is pool state rather than
+// shader reads *instead of* alpha, and it is pool state rather than
 // voxel-record state — so a raw write to a set's `voxels_` span updates one and
 // not the other. A recipe that steps animation frames asserts BOTH: the two
 // disagreeing is exactly the shape of a missing resyncAfterRawEdits.
@@ -408,11 +407,11 @@ class Builder {
 
     // Close the current segment and open a new one. The camera framing is
     // re-applied per shot, which is also how a session recovers from the A/D
-    // frame keys nudging the camera (Phase 0 probe P0-4).
+    // frame keys nudging the camera.
     //
     // Segments are shot boundaries: a segment's assertions evaluate ONCE, at
     // end of segment, against the state after ALL of that segment's events
-    // have fired — never interleaved with individual ops within it (#2560).
+    // have fired — never interleaved with individual ops within it.
     // A hover()/expectPick() pre-arm check for one target added to the same
     // segment as a later destructive click() on a different target therefore
     // evaluates against the post-click state, even though it reads as firing
@@ -489,7 +488,7 @@ class Builder {
     }
 
     // Tap a key while a modifier is held. The modifier leads the key by two
-    // frames so it is already held when the key press drains (Phase 0 P0-1).
+    // frames so it is already held when the key press drains.
     void chordKey(IRInput::KeyMouseButtons modifier, IRInput::KeyMouseButtons key) {
         emitButton(IRVideo::GuiInputEvent::Type::PRESS, modifier);
         m_frame += kFramesPerClickStep;
@@ -503,7 +502,7 @@ class Builder {
         m_eraseMode = !m_eraseMode;
     }
 
-    // Enable mirror-symmetry axes for subsequent edits (#766 F-1.6 PR-2). Taps
+    // Enable mirror-symmetry axes for subsequent edits. Taps
     // the editor's X/Y/Z toggles so the live editor mirrors each edit, and turns
     // on the shadow model's mirroring against the same scene-centre planes the
     // editor uses (SymmetryState offsets set to (size-1)/2 in main() — the
@@ -575,7 +574,7 @@ class Builder {
     // starts as an exact copy — which is why the shadow model can simply be
     // cloned rather than re-derived.
     //
-    // D is also the camera-right binding (no modifier guard, P0-4), so the
+    // D is also the camera-right binding (no modifier guard), so the
     // caller must open a new segment afterwards to re-apply the camera before
     // aiming anything.
     void duplicateFrame() {

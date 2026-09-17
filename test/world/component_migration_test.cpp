@@ -15,18 +15,16 @@
 #include <utility>
 #include <vector>
 
-// Persist P5 (#2216, epic #667): the `(ComponentId, oldVersion) -> reader`
-// component-migration registry. The `ARCH`/`SNGL` chunks stamp each column
-// with the `kSaveVersion` it was written at (persist P2's migration seam);
-// this suite proves the load-time dispatch on that stamp — current fast path,
+// The component-migration registry maps `(ComponentId, oldVersion)` to a
+// reader. The `ARCH`/`SNGL` chunks stamp each column with the `kSaveVersion`
+// it was written at; load-time dispatch selects the current fast path,
 // a registered v1->v2 migrator, and the two hard-failure diagnostics
 // (`VersionTooNew`, `MigratorMissing`) — over hand-built `IRWS` files, since
 // `saveWorld` can only ever emit the *current* version.
 //
-// A dedicated test-local component (`C_Mig`) carries the worked v1->v2
-// migration rather than mutating a real gameplay component with a
-// permanently-dead field — the committed fallback in the plan's acceptance
-// note, exercised through the identical generic loader path.
+// A dedicated test-local component (`C_Mig`) carries the v1->v2 migration
+// rather than requiring a permanently-dead field on a gameplay component;
+// it still uses the generic loader path.
 namespace MigTest {
 // Current build: C_Mig is at v2 = { kept_, added_ }, evolved from the retired
 // v1 = { kept_ } by appending a defaulted `added_`.

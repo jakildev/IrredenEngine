@@ -1,4 +1,4 @@
-# Executed population check for the engine save-policy inventory (#2834).
+# Executed population check for the engine save-policy inventory.
 #
 # The compile-time gate can only inspect component types already named in
 # AllEngineComponents. This check instead inventories component declarations in

@@ -7,7 +7,7 @@
 
 namespace {
 
-// #2681: PERF_STATS_OVERLAY caches its text entity's id in a System<N>
+// PERF_STATS_OVERLAY caches its text entity's id in a System<N>
 // member (`textEntity_`). The entity is not C_Persistent, so
 // IREntity::resetGameplay() destroys it; without the pre-destroy hook the
 // cached id would dangle and the next endTick's lazy-respawn check
