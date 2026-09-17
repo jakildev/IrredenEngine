@@ -227,8 +227,8 @@ TEST(RigFormat, FileRoundTripAndSidecarEmitted) {
 // ---- Bridge: round-trip preserves C_JointHierarchy::toGPUFormat() --------
 
 TEST(RigFormat, GPUMatrixParityAfterRoundTrip) {
-    // The fundamental acceptance criterion from #666: a save → load
-    // round-trip must produce the same GPU upload payload, byte for byte,
+    // A save → load round-trip must produce the same GPU upload payload,
+    // byte for byte,
     // so the shapes compute shader reads identical joint transforms.
     IRComponents::C_JointHierarchy original;
     for (int i = 0; i < 30; ++i) {

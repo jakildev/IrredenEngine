@@ -1,9 +1,9 @@
-// persist_roundtrip — GPU-resident state regeneration on load (persist P6 /
-// W-10, #2217, epic #667).
+// persist_roundtrip — GPU-resident state regeneration on load.
 //
-// The render-stack half of W-10's acceptance that the headless serializer unit
-// test (`test/world/voxel_set_serialize_test.cpp`, no RenderManager / no pool)
-// cannot exercise. It drives the full save -> reset -> load -> seed round-trip
+// The render-stack half of the persistence acceptance that the headless
+// serializer unit test (`test/world/voxel_set_serialize_test.cpp`, no
+// RenderManager / no pool) cannot exercise. It drives the full
+// save -> reset -> load -> seed round-trip
 // over a LIVE RenderManager + real voxel pool:
 //
 //   1. build a lit voxel scene (multiple C_VoxelSetNew, lighting + AO +
@@ -25,8 +25,7 @@
 //   - post-gameLoop (after the seed system ran) every set is pool-resident
 //     (numVoxels_ > 0, pendingVoxels_ empty) and the waterline is idempotent
 //     versus the original live scene — no pool growth across the round-trip.
-// The --auto-screenshot frame is the visual "renders lit / non-blank" proof;
-// committed-reference pixel-equivalence via render-verify is a follow-up.
+// The --auto-screenshot frame is the visual "renders lit / non-blank" proof.
 
 #include <irreden/ir_engine.hpp>
 #include <irreden/ir_system.hpp>
@@ -41,9 +40,9 @@
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 
-// PERSIST SURFACE (no ir_world umbrella yet; the P7 Lua/convenience surface
-// layers on later — for now a snapshot creation registers components directly,
-// mirroring test/world). save_component_inventory.hpp supplies the engine
+// PERSIST SURFACE (there is no ir_world umbrella; a snapshot creation
+// registers components directly, mirroring test/world).
+// save_component_inventory.hpp supplies the engine
 // components' SaveTrait decisions; voxel_set_serialize.hpp the C_VoxelSetNew
 // SaveSerialize specialization.
 #include <irreden/world/world_snapshot.hpp>

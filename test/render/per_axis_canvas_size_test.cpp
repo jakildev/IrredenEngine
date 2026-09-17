@@ -4,8 +4,7 @@
 
 // Contract tests for IRMath::perAxisTrixelCanvasWorstCaseSize, the bounded
 // worst-case allocation size for the smooth-camera-Z-yaw per-axis trixel
-// canvases (#1308; docs/design/per-axis-trixel-canvas-rotation.md
-// §"Bounded textures + minimum on-screen trixel size").
+// canvases.
 
 namespace {
 

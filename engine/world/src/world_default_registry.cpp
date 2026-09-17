@@ -12,7 +12,7 @@
 // scope wherever a registry registers those components — otherwise
 // registerComponent<C> finds no usable SaveSerialize<C> and the friendly
 // static_assert in save_registry.hpp fires. C_VoxelSetNew keeps its own
-// header (persist P6) because its read path has a pool-interaction contract
+// header because its read path has a pool-interaction contract
 // the rest do not.
 #include <irreden/audio/save_serializers_audio.hpp>
 #include <irreden/common/save_serializers_common.hpp>
@@ -44,8 +44,8 @@ void registerAll(SaveRegistry &registry, std::type_identity<std::tuple<Cs...>>) 
 
 } // namespace
 
-// The process-default SaveRegistry (persist P7 #2218; membership derived from
-// the inventory in #2242) that the no-registry-argument saveWorld(path) /
+// The process-default SaveRegistry derives its membership from the inventory.
+// The no-registry-argument saveWorld(path) /
 // loadWorld(path) overloads — and through them the IRPersist Lua binding —
 // forward to. There is deliberately no per-component register line here; the
 // generic walk is what keeps membership derived and doubles as the

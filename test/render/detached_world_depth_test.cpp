@@ -1,6 +1,5 @@
-// Detached re-voxelize world-depth composite — CPU↔GPU GRID-equivalence
-// (#1576 P4b-1; world placement is the default since #1624). Verifies the
-// architect's Q4 invariant: a voxel placed at a known world cell via the
+// Detached re-voxelize world-depth composite — CPU↔GPU GRID-equivalence.
+// A voxel placed at a known world cell via the
 // WORLD-PLACED detached path (the default) composites to the SAME framebuffer
 // depth as the same world cell rendered through GRID.
 //
@@ -183,9 +182,9 @@ TEST(DetachedWorldDepthTest, OffsetEqualsEntityOriginGridDepth) {
     }
 }
 
-// The screen-locked overlay path (the explicit screenLocked_ opt-OUT since
-// #1624) keeps distanceOffset = 0, so its composite depth is the pool-centered
-// model depth — independent of the entity's world position. This is what makes
+// The screen-locked overlay path keeps distanceOffset = 0, so its composite
+// depth is the pool-centered model depth, independent of the entity's world
+// position. This is what makes
 // the overlay byte-identical across world positions (and is the behavior
 // world placement, the default, replaces).
 TEST(DetachedWorldDepthTest, OverlayDepthIsWorldPositionIndependent) {

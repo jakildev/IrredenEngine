@@ -85,7 +85,7 @@ World::World(const char *configFileName)
     m_videoManager.configureScreenshotOutputDir(
         m_worldConfig["screenshot_output_dir"].get_string()
     );
-    // T-225: size the EntityManager's per-worker deferred-mutation
+    // Size the EntityManager's per-worker deferred-mutation
     // staging vector now that JobManager exists. Slot 0 is main,
     // slots 1..N are IRJob worker threads, so the total is
     // `workerCount() + 1`.
@@ -95,13 +95,10 @@ World::World(const char *configFileName)
     // main-thread `createEntity`, so a *first* registration arriving from a Lua
     // callback inside a system tick would be a structural change mid-iteration
     // — the silent address-invalidation footgun. Seeding here makes every later
-    // accessor call a pure lookup. Pre-loop entity creation is the established
-    // pattern (creation entity builders, the modifier framework's globals
-    // row). See #2582.
-    // Deliberately unnamed: setName would survive destroyAllEntities (which
+    // accessor call a pure lookup.
+    // Keep the singleton unnamed: setName would survive destroyAllEntities (which
     // prunes no names — only destroyAllExceptPreserved does), leaving a stale
-    // name -> dead-id entry that asserts on the next getEntityByName. The
-    // plan listed naming as optional; nothing reads it.
+    // name -> dead-id entry that asserts on the next getEntityByName.
     IREntity::singleton<IRComponents::C_EntityEventHandlers>();
     IR_PROFILE_MAIN_THREAD;
     IRE_LOG_INFO("Initalized game world");
@@ -116,7 +113,7 @@ World::~World() {
     // directly. Releasing device resources from here instead would reach a
     // torn-down driver on any path that does destruct at process exit — MSYS2
     // unloads the GL driver first, so `glDeleteQueries` from the
-    // GpuStageTimingObserver dtor hits dead driver state (#2031). Idempotent,
+    // GpuStageTimingObserver dtor hits dead driver state. Idempotent,
     // so it stays a safety net for a path that never ran the loop.
     m_systemManager.clearTickObservers();
 }
@@ -318,7 +315,7 @@ void World::input() {
 }
 
 void World::start() {
-    // T-224: cross-system pipeline-group validation runs once after
+    // Cross-system pipeline-group validation runs once after
     // every system + pipeline is registered, before the first tick.
     // FATALs on the first conflict, naming both systems + the
     // offending component. Single-system groups (every legacy
@@ -332,9 +329,9 @@ void World::end() {
     buildAndWriteProfileReport();
     // Release the GPU stage-timing observer's GL timestamp queries here, while
     // the render context is guaranteed live. The observer is program-bound;
-    // clearing it from ~World() instead is safe on the IREngine path (which
-    // resets g_world at gameLoop's tail, #2528) but would still reach a
-    // torn-down driver on any path that destructs at process exit (#2031).
+    // clearing it from ~World() instead is safe on the IREngine path, which
+    // resets g_world at gameLoop's tail, but would still reach a
+    // torn-down driver on any path that destructs at process exit.
     // `clearTickObservers()` is idempotent, so the dtor's later call no-ops.
     m_systemManager.clearTickObservers();
     m_videoManager.shutdown();
@@ -343,7 +340,7 @@ void World::end() {
     m_entityManager.destroyAllEntities();
     IRProfile::CPUProfiler::instance().shutdown();
     // Last log before shutdownLogging() flips g_loggingEnabled off — the
-    // observable proof that deterministic teardown ran (#2528). The same line
+    // observable proof that deterministic teardown ran. The same line
     // in ~World() is swallowed, since end() always runs first on both the loop
     // and exception paths and disables logging just below.
     IRE_LOG_INFO("Clean shutdown complete.");
@@ -504,7 +501,7 @@ void World::buildAndWriteProfileReport() {
         // running sum / min / max across every sampled frame — not the old
         // last-frame-snapshot approximation, which reported Avg == Max on every
         // stage because `GpuStageTiming::*Ms_` only retains the latest sample
-        // (#1738). Stages with no resolved samples (no writer, or readback never
+        // Stages with no resolved samples (no writer, or readback never
         // ready) stay at sampleCount_ == 0 and are skipped by the report writer.
         const auto &accumulators = IRRender::gpuStageAccumulators();
         const auto &registry = IRRender::gpuStageRegistry();

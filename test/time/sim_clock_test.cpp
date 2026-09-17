@@ -96,7 +96,7 @@ TEST_F(SimClockTest, NaNScaleClampsToPaused) {
 }
 
 // The scalar-only clock struct survives a raw byte round-trip unchanged — the
-// in-memory stand-in for #199 save/load until that integration lands.
+// in-memory serialization contract.
 TEST_F(SimClockTest, ClockStateByteExactRoundTrip) {
     IRSim::setTimeScale(0.5f);
     advance(137);

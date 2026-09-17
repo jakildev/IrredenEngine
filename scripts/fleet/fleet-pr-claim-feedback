@@ -44,6 +44,12 @@
 #   - `git checkout --detach origin/<head-ref>` (via
 #     fleet-pr-checkout-detached) + writes `.git/fleet-amend-ref`
 #
+# The amend-snapshot at ~/.fleet/amend-snapshots/<pr>.json is NOT written here:
+# `fleet-claim amending-claim` owns it, because it is the enforced mutex and the
+# record now carries the claiming dispatch's id for the sweep's liveness
+# predicate (#2973). A second writer here would overwrite it with an id-less
+# copy and silently restore the pane-keyed behaviour.
+#
 # Exit status:
 #   0  claim won AND checkout succeeded — proceed with feedback handling.
 #   1  claim lost / gh unreachable (touched nothing), OR checkout failed
@@ -159,12 +165,3 @@ if ! fleet-pr-checkout-detached "$pr_number" "${checkout_repo_args[@]}"; then
 fi
 
 echo "fleet-pr-claim-feedback: claimed + checked out PR #$pr_number ($agent). Proceed with feedback handling (Step b onward)."
-
-# Write a local amend-snapshot so the reconcile R7 healer can detect
-# in-flight amend claims whose amending label may have been TTL-swept
-# while the agent is still active (#1650). Cleaned up by amending-release.
-_amend_snap_dir="$HOME/.fleet/amend-snapshots"
-mkdir -p "$_amend_snap_dir"
-printf '{"pr":%s,"agent":"%s","acquired_epoch":%s}\n' \
-    "$pr_number" "$agent" "$(date +%s)" \
-    > "$_amend_snap_dir/${pr_number}.json" 2>/dev/null || true

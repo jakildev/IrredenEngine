@@ -1,4 +1,4 @@
-// T-102 sample creation. Entire `initSystems` lives in `scripts/main.lua`:
+// Sample creation. Entire `initSystems` lives in `scripts/main.lua`:
 // the C++ side only registers the Lua-binding callback and runs the
 // script. The callback registers the prefab systems + the modifier
 // resolver pipeline so Lua can spell them via
@@ -50,7 +50,7 @@ void registerLuaBindings() {
             IRSystem::LIFETIME,
             IRSystem::PROPAGATE_TRANSFORM,
             IRSystem::TRIXEL_TO_FRAMEBUFFER,
-            // Flushes the IRDebug.* draws main.lua issues (engine #2375).
+            // Flushes the IRDebug.* draws main.lua issues.
             IRSystem::DEBUG_OVERLAY,
             IRSystem::FRAMEBUFFER_TO_SCREEN>();
 

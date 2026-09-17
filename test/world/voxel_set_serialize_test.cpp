@@ -1,4 +1,4 @@
-// Unit tests for SaveSerialize<C_VoxelSetNew> — persist P6 / W-10 (#2217).
+// Unit tests for SaveSerialize<C_VoxelSetNew>.
 //
 // The serializer round-trips a C_VoxelSetNew's canonical, pool-independent
 // content ({size_, boundsMin, per-voxel C_Voxel records, owning canvas id})
@@ -230,12 +230,12 @@ TEST(VoxelSetSerialize, TruncatedReadFails) {
 }
 
 // ---------------------------------------------------------------------------
-// EntityAnchor persistence — v2 (#2563)
+// EntityAnchor persistence in the current format
 // ---------------------------------------------------------------------------
 
 namespace {
 
-// A v1 record: the pre-#2563 layout, i.e. everything except the anchor byte.
+// A v1 record omits the anchor byte present in the current layout.
 // Hand-built rather than produced by an old writer, because the v1 writer no
 // longer exists — this IS the on-disk shape the migrator must accept.
 std::vector<std::uint8_t> makeV1Payload(

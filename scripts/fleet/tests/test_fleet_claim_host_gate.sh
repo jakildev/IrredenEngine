@@ -81,6 +81,7 @@ assert_exit() {
 TMPROOT=$(mktemp -d)
 export FLEET_CLAIMS_DIR="$TMPROOT/claims"
 export FLEET_HEARTBEATS_DIR="$TMPROOT/heartbeats"
+export FLEET_AMEND_SNAPSHOTS_DIR="$TMPROOT/amend-snapshots"
 export FLEET_RESERVATIONS_DIR="$TMPROOT/reservations"
 mkdir -p "$FLEET_CLAIMS_DIR" "$FLEET_HEARTBEATS_DIR" "$FLEET_RESERVATIONS_DIR"
 

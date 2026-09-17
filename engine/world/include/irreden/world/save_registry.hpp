@@ -25,7 +25,7 @@
 /// with no serializer only breaks the build if it actually opts in.
 ///
 /// The `SaveSerializable<C>` `static_assert` in that same branch is the
-/// engine-wide completeness gate (#2242): the process-default registry walks
+/// engine-wide completeness gate: the process-default registry walks
 /// all of `AllEngineComponents`, so an opted-in component with no serializer
 /// fails to compile there rather than silently vanishing from every save.
 /// Note the pairing — opting out is what makes a serializer unnecessary, and
@@ -83,8 +83,8 @@ struct SaveComponentEntry {
     // Read hooks for the *current* schema version (`saveVersion_`) — the
     // `SaveSerialize<C>::read` fast path.
     ColumnReadHooks reader_;
-    // Read hooks for each retired on-disk version, keyed by that version
-    // (persist P5, #2216). Populated from `SaveMigration<C>::migrators()`; a
+    // Read hooks for each retired on-disk version, keyed by that version.
+    // Populated from `SaveMigration<C>::migrators()`; a
     // component that never changed its schema leaves this empty. The current
     // version is NOT keyed here — `reader_` owns it.
     std::unordered_map<std::uint32_t, ColumnReadHooks> migratorReaders_;
@@ -182,7 +182,7 @@ class SaveRegistry {
             // Current-version reader: the SaveSerialize<C>::read fast path.
             entry.reader_ =
                 buildReader<C>([](IRAsset::BinaryReader &r) { return SaveSerialize<C>::read(r); });
-            // Retired-version readers (persist P5, #2216) — one erased reader
+            // Retired-version readers — one erased reader
             // per SaveMigration<C> entry. Empty for a component whose schema
             // never changed; SaveMigration<C> is instantiated only inside this
             // shouldSave<C>() branch, so an opted-out C never needs one.

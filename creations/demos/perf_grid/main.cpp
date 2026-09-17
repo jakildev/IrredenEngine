@@ -72,7 +72,7 @@
 // BUILD_LIGHT_OCCLUSION_GRID only walks the voxel pool; sdf mode never allocates
 // pool voxels, so the occupancy bitfield stays empty and AO + GPU light
 // propagation see no occluders. Expect sdf to look brighter / less creased
-// than voxel_set until Phase 3 (#428 AO via trixelDistances, #364 SDF in LOS).
+// than voxel_set until Phase 3 (AO via trixelDistances, SDF in LOS).
 // See docs/perf/metal_perf_grid_baseline.md § "IRPerfGrid mode parity".
 
 using namespace IRComponents;
@@ -84,7 +84,7 @@ namespace {
 enum class PerfGridMode {
     VoxelSet,
     Sdf,
-    // T-287 / B1 verification modes: allocate ONE `C_VoxelSetNew` of
+    // Verification modes: allocate ONE `C_VoxelSetNew` of
     // size `grid_size`³ instead of per-cell entities, then drive the
     // active-slot mask either dense (all on) or hollow (sphere shell only).
     // Use these together to measure the visibility-compaction cost as a
@@ -97,7 +97,7 @@ enum class PerfGridMode {
     // touching / staircase-contact pairs. Nothing stacks, so every face
     // misdraw under yaw is attributable to a single entity or a single
     // two-entity contact — the reduction harness for the per-axis
-    // face-alignment class (#2411).
+    // face-alignment class.
     Gallery,
 };
 
@@ -167,13 +167,13 @@ struct CliOverrides {
     IRRender::SubdivisionMode subdivisionMode_ = IRRender::SubdivisionMode::FULL;
     bool baseSubdivisionsSet_ = false;
     int baseSubdivisions_ = 1;
-    // Accepted and recorded for manifest/cell-ID purposes; ignored until T-221.
+    // Accepted and recorded for manifest/cell-ID purposes; thread wiring is not yet implemented.
     int workerThreads_ = 0;
     std::string configPreset_; // path from --config-preset, empty if absent
-    // `--depth-probe X,Y` (#1910): per-frame composite-depth readback + log at
+    // `--depth-probe X,Y`: per-frame composite-depth readback + log at
     // main-framebuffer texture pixel (X,Y), top-left origin (framebuffer-texture
     // space, not window/screenshot pixels). Off by default → no probe system
-    // registered → flagless run byte-identical. Used to root-cause the #1884
+    // registered → flagless run byte-identical. Used to root-cause the
     // per-axis Y-over-X face-stripe depth crossing this demo exercises.
     bool depthProbeSet_ = false;
     ivec2 depthProbePixel_{0, 0};
@@ -183,7 +183,7 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
     {0.5f, vec2(0, 0), 0.0f, "fit_grid"},
     {1.0f, vec2(0, 0), 0.0f, "zoom1_origin"},
     // Profiler-overlay regression shot — captures the perf_stats overlay
-    // backing T-275 acceptance: future overlay-breaking diffs (font, layout,
+    // backing acceptance: future overlay-breaking diffs (font, layout,
     // CPU/GPU readout) trip the render-verify image compare.
     {0.5f, vec2(0, 0), 0.0f, "profiler_overlay"},
     // Rotated-zoom regression shots: at a non-cardinal residual yaw the
@@ -200,7 +200,7 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
     {4.0f, vec2(16, 8), 0.35f, "zoom4_rot_pan"},
 };
 
-// Gallery-mode shots (#2411 reduction harness): the same scene swept from
+// Gallery-mode shots (reduction harness): the same scene swept from
 // cardinal through mid-quadrant residual yaws, plus a close-up on the contact
 // pairs at screen center. Ordered by increasing yaw so consecutive shots stay
 // a small lighting-convergence step apart (mirrors the yaw-ramp ordering).
@@ -214,12 +214,12 @@ constexpr IRVideo::AutoScreenshotShot kGalleryShots[] = {
     {8.0f, vec2(0, 0), 0.7f, "gal_pairs_zoom8_yaw040"},
 };
 
-// --yaw-ramp harness: the rotated-solidity validation set (#1882 / #1883).
+// --yaw-ramp harness: the rotated-solidity validation set.
 // Run with `--mode dense --yaw-ramp --auto-screenshot` (driven by
 // scripts/dev/perf-grid-rotate-sweep). The original "uniform 36-step ramp"
 // labelled its rows by `i/n*360` and could not tell which render path drew a
 // pose, so a row called "cardinal" might secretly be a per-axis residual frame
-// (the #1882 misdiagnosis). This set fixes that with two tiers plus a measured
+// (a past misdiagnosis). This set fixes that with two tiers plus a measured
 // per-pose render-path label:
 //
 //   * Cardinal-isolation tier — the four EXACT cardinals (0/90/180/270). At
@@ -229,7 +229,7 @@ constexpr IRVideo::AutoScreenshotShot kGalleryShots[] = {
 //     this cardinal?" is answered directly, not assumed.
 //   * Near-cardinal residual tier — dense sampling APPROACHING 90/180/270
 //     (±1..10°), where the per-axis face-alignment seams / coverage bands peak
-//     (#1883). These render through the per-axis path by design; the zoom pass
+//     These render through the per-axis path by design; the zoom pass
 //     (small --grid-size + high --zoom + --yaw-ramp-crops) makes the fine seams
 //     a measurable silhouette signal the whole-cube pass under-resolves.
 //
@@ -260,7 +260,7 @@ void pushCardinalPoses(std::vector<RampPose> &poses) {
     }
 }
 
-// Default --yaw-ramp table (#1882/#1883): the four exact cardinals plus a
+// Default --yaw-ramp table: the four exact cardinals plus a
 // dense near-cardinal residual band (±1..10°), where the per-axis
 // face-alignment seams peak.
 std::vector<RampPose> buildNearCardinalPoses() {
@@ -282,8 +282,8 @@ std::vector<RampPose> buildNearCardinalPoses() {
     return poses;
 }
 
-// --yaw-ramp-wave (#2332): wider-angle pose table for the --wave-freeze
-// coset-collision sweep. #2331's defect (per-cell wave positions colliding
+// --yaw-ramp-wave: wider-angle pose table for the --wave-freeze
+// coset-collision sweep. The defect (per-cell wave positions colliding
 // onto the same cardinal iso cell) isn't confined to the narrow near-cardinal
 // band the default table samples — it shows up across the whole residual
 // range — so this table covers quadrant-0 densely (5/10/20/30/40°) and
@@ -372,7 +372,7 @@ void buildYawRampShots() {
 // the sweep can label every row unambiguously. The main canvas's per-axis
 // textures are allocated only while a residual rotation is being smoothed, so
 // isAllocated() at the settled capture frame is the ground truth (a 'cardinal'
-// row that still reports peraxis is the #1882 failure). Reads live ECS the
+// row that still reports peraxis is the failure mode). Reads live ECS the
 // harness cannot; emits one greppable line the sweep scorer joins by index.
 void logRampPose(int shotIndex) {
     bool perAxisActive = false;
@@ -464,7 +464,7 @@ constexpr std::size_t kAutoProfileCpuScopeCount =
 
 AutoProfileStat g_autoProfileFrameTime;
 AutoProfileStat g_autoProfileCpu[kAutoProfileCpuScopeCount];
-// --occlusion-cull (#1294 child 3/3): force the voxel-pool chunk-occlusion HZB
+// --occlusion-cull: force the voxel-pool chunk-occlusion HZB
 // pre-pass ON (off by default in the engine). This is the measurement + verify
 // toggle for the cull: pair `--mode voxel_set --auto-profile` runs with and
 // without it to read the realized `voxelStage1` reduction (the 0.97 ceiling on
@@ -474,7 +474,7 @@ AutoProfileStat g_autoProfileCpu[kAutoProfileCpuScopeCount];
 // discontinuous camera move the cull self-disables for one frame (stale Hi-Z),
 // which can produce a one-frame silhouette pop — by design, not a regression.
 bool g_occlusionCull = false;
-// --no-overlay (#1294 child 3/3): drop PERF_STATS_OVERLAY from the render
+// --no-overlay: drop PERF_STATS_OVERLAY from the render
 // pipeline. The overlay bakes live CPU/GPU timing text into every frame, which
 // is run-variant and defeats a bit-identical screenshot compare. Off (overlay
 // present) by default; pass it to capture a deterministic frame, e.g. to prove
@@ -482,19 +482,18 @@ bool g_occlusionCull = false;
 // scene. The --auto-profile path enables frame timing explicitly, so timing
 // still works under --no-overlay.
 bool g_noOverlay = false;
-// --no-sun-shadows (#1812): disable sun shadows globally so the render cull
+// --no-sun-shadows: disable sun shadows globally so the render cull
 // collapses from the shadow-feeder-widened extent back to the visible viewport
 // (`IRMath::shadowFeederIsoBounds` only widens when `getSunShadowsEnabled()`;
 // render/CLAUDE.md "Lighting culling invariants"). Pairs with --occlusion-cull
 // --auto-profile to measure the per-voxel cull's capture in the regime where the
 // WHOLE frustum is legally cullable — with shadows on, visibleVoxelCount is
 // dominated by off-screen shadow feeders the cull must not drop, so the ratio
-// understates the mechanism. This is the baseline number the widened-domain
-// feeder-occlusion follow-on needs.
+// understates the mechanism.
 bool g_noSunShadows = false;
 IRRender::DebugOverlayMode g_debugOverlay = IRRender::DebugOverlayMode::NONE;
-// --no-per-voxel-occlusion (#1812): with --occlusion-cull on, disable ONLY the
-// per-voxel Hi-Z refine (keep the #1294 chunk pre-pass). This is the marginal
+// --no-per-voxel-occlusion: with --occlusion-cull on, disable ONLY the
+// per-voxel Hi-Z refine (keep the chunk pre-pass). This is the marginal
 // acceptance-gate isolation: --occlusion-cull A/B measures the UNION of the two
 // culls, and the chunk cull owns the pre-existing `max_delta 96` silhouette
 // holes (its own bug, filed separately), so union-vs-no-cull can never be
@@ -503,9 +502,9 @@ IRRender::DebugOverlayMode g_debugOverlay = IRRender::DebugOverlayMode::NONE;
 // (it drops zero visible voxels; the 2×2 isolation E2==A proved it). No-op
 // without --occlusion-cull.
 bool g_noPerVoxelOcclusion = false;
-// --feeder-classify-pad (#3010): a DIAGNOSTIC iso-texel pad on the shadow-feeder
+// --feeder-classify-pad: a DIAGNOSTIC iso-texel pad on the shadow-feeder
 // classify box (`frameData_.visibleIsoBounds_`) and nothing else. It is the only
-// way to positive-fire stage 2's #1740 depth-only-feeder skip: at the shipped
+// way to positive-fire stage 2's depth-only-feeder skip: at the shipped
 // +4-iso-px margin no on-screen pixel resolves from a feeder, so the skip is
 // invisible in every capture and a "byte-identical" result proves nothing.
 // A POSITIVE pad promotes off-screen feeders in the widened band to visibles
@@ -518,10 +517,10 @@ bool g_noPerVoxelOcclusion = false;
 // path) is byte-identical to master. Driven by scripts/feeder-margin-verify.py.
 int g_feederClassifyPad = 0;
 bool g_feederClassifyPadSet = false;
-// --wave-freeze (#2332): bake each per-cell wave's phase-0 offset into the
+// --wave-freeze: bake each per-cell wave's phase-0 offset into the
 // cell's spawn position instead of attaching C_PeriodicIdle. The wave-scene
 // geometry (WaveMode::PerCell's per-cell (x+y+z) phase gradient) is the only
-// content shape that produces (1,1,1)-coset voxel pairs the #2331 defect
+// content shape that produces (1,1,1)-coset voxel pairs the defect
 // needs; a live C_PeriodicIdle wave is not byte-identical run-to-run, so a
 // render-verify regression tier needs the frozen static twin instead. Off by
 // default -> flagless spawn path is untouched (byte-identical to master).
@@ -686,7 +685,7 @@ void applyCliOverrides() {
 // Register perf_grid's custom flags on the engine-owned parser. --help /
 // --auto-screenshot / --config-preset are pre-registered by the Parser ctor;
 // IREngine::init(argc, argv) parses common + these in one pass, so --help lists
-// every flag and exits before any window/GL/Metal init (epic #2057 P3, #2060).
+// every flag and exits before any window/GL/Metal init.
 void registerCliArgs() {
     IRArgs::Parser &args = IREngine::args();
     args.optionalInt(
@@ -778,7 +777,7 @@ void registerCliArgs() {
 void readCliArgs() {
     const IRArgs::Parser &args = IREngine::args();
 
-    // Engine-common args now own these (P1 #2058 retired the local reads).
+    // Engine-common args now own these.
     g_autoWarmupFrames = args.autoScreenshotWarmupFrames();
     g_cliOverrides.configPreset_ = args.configPreset();
 
@@ -854,15 +853,15 @@ void readCliArgs() {
         }
     }
     if (args.wasProvided("--worker-threads")) {
-        // Accepted for cell-ID purposes by perf_grid_matrix.sh; ignored until
-        // T-221 wires enkiTS thread-pool sizing.
+        // Accepted for cell-ID purposes by perf_grid_matrix.sh; thread-pool
+        // sizing is not yet wired.
         const int wt = args.getInt("--worker-threads");
         if (wt >= 0) {
             g_cliOverrides.workerThreads_ = wt;
         }
     }
     if (args.wasProvided("--depth-probe")) {
-        // `--depth-probe X,Y` (#1910): IRArgs has no pair type, so the comma
+        // `--depth-probe X,Y`: IRArgs has no pair type, so the comma
         // split lives demo-side (shared IRPrefab::DepthProbe::parsePixelArg).
         ivec2 pixel;
         if (IRPrefab::DepthProbe::parsePixelArg(
@@ -952,7 +951,7 @@ C_PeriodicIdle makeWaveIdle(int x, int y, int z) {
     return idle;
 }
 
-// #2332 --wave-freeze: what makeWaveIdle's traveling wave would read at
+// --wave-freeze: what makeWaveIdle's traveling wave would read at
 // phase 0 (t=0), i.e. before PERIODIC_IDLE's first tick(). Delegates to
 // C_PeriodicIdle::valueAtAngle so the wrap + stage-search + easing lives in
 // one place next to tick(), rather than re-deriving the sine-ease math here.
@@ -966,7 +965,7 @@ vec3 positionForCell(int x, int y, int z) {
     return (vec3(x, y, z) - vec3(center)) * g_settings.spacing_;
 }
 
-// Gallery mode (#2411 reduction harness). Static, no wave, no idle. Every
+// Gallery mode (reduction harness). Static, no wave, no idle. Every
 // entity is far enough from its neighbors that silhouettes never overlap on
 // screen at the gallery shot zooms, so a broken cube is readable in isolation.
 void createGalleryEntities() {
@@ -1074,7 +1073,7 @@ void createGridEntities() {
         // so the only thing varying is the active-mask bit pattern. Dense
         // leaves every slot active; hollow drops the interior so the mask
         // covers only the cube's outer shell (~6n² / n³ → ≤10% for n ≥ 60),
-        // exercising the T-287 compaction path on the same voxel buffer.
+        // exercising the compaction path on the same voxel buffer.
         const Color color = colorForCell(n / 2, n / 2, n / 2, n);
         const ivec3 size{n, n, n};
         const vec3 originOffset{-(n - 1) * 0.5f * g_settings.spacing_};
@@ -1105,7 +1104,7 @@ void createGridEntities() {
             for (int x = 0; x < n; ++x) {
                 vec3 pos = positionForCell(x, y, z);
                 const Color color = colorForCell(x, y, z, n);
-                // --wave-freeze (#2332): bake the phase-0 offset into the spawn
+                // --wave-freeze: bake the phase-0 offset into the spawn
                 // position and skip attaching C_PeriodicIdle, so the scene is
                 // fully static. Absent the flag, this branch is untouched and
                 // the idle-driven path below is byte-identical to master.
@@ -1330,7 +1329,7 @@ int main(int argc, char **argv) {
             ->voxelFaceCoverage_ = false;
     }
 
-    // #3010: after initSystems(), so VOXEL_TO_TRIXEL_STAGE_1 exists for the
+    // Called after initSystems(), so VOXEL_TO_TRIXEL_STAGE_1 exists for the
     // setter's IRSystem::findSystem resolution (before that there is nothing to
     // bind to and the call is a silent no-op).
     if (g_feederClassifyPad != 0) {
@@ -1359,19 +1358,16 @@ int main(int argc, char **argv) {
 
 void initSystems() {
     // Every UPDATE system runs in its own singleton group. PERIODIC_IDLE and
-    // MODIFIER_DECAY each carry Concurrency::PARALLEL_FOR (T-379 bulk
-    // migration), so each drives an inner IRJob::parallelFor that fans its
-    // per-entity work across the whole worker pool. A PARALLEL_FOR system
-    // therefore cannot share a multi-system parallel group: its inner
-    // parallelFor would be asked to fan out from a worker thread, which
-    // SystemManager::validateAllPipelineGroups rejects at boot. (T-332 grouped
-    // PERIODIC_IDLE + MODIFIER_DECAY back when both were SERIAL; T-379 tagged
-    // them PARALLEL_FOR without splitting the group, which is what aborted this
-    // demo at startup.) Per-system data-parallelism supersedes that old
-    // task-parallel co-execution. The three trailing systems are SERIAL and
-    // ordered as a producer→consumer chain: PERIODIC_IDLE_POSITION_OFFSET reads
-    // C_PeriodicIdle (after PERIODIC_IDLE), then PROPAGATE_TRANSFORM and
-    // UPDATE_VOXEL_SET_CHILDREN run in sequence on C_WorldTransform.
+    // MODIFIER_DECAY each carry Concurrency::PARALLEL_FOR, so each drives an
+    // inner IRJob::parallelFor that fans its per-entity work across the whole
+    // worker pool. A PARALLEL_FOR system therefore cannot share a
+    // multi-system parallel group: its inner parallelFor would be asked to
+    // fan out from a worker thread, which
+    // SystemManager::validateAllPipelineGroups rejects at boot. Per-system
+    // data-parallelism supersedes task-parallel co-execution. The three trailing systems are SERIAL
+    // and ordered as a producer→consumer chain: PERIODIC_IDLE_POSITION_OFFSET reads C_PeriodicIdle
+    // (after PERIODIC_IDLE), then PROPAGATE_TRANSFORM and UPDATE_VOXEL_SET_CHILDREN run in sequence
+    // on C_WorldTransform.
     IRSystem::registerPipelineGroups(
         IRTime::Events::UPDATE,
         {{IRSystem::createSystem<IRSystem::PERIODIC_IDLE>()},
@@ -1401,14 +1397,14 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
             IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
             IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
-            // Per-axis voxel sun-shadow casting under continuous Z-yaw (#1435):
+            // Per-axis voxel sun-shadow casting under continuous Z-yaw:
             // resolves the three per-axis voxel canvases into a screen-space
             // depth the bake casts through its cardinal path. No-ops at a
             // cardinal — matches ir_voxel_yaw/main.cpp's wiring.
             IRSystem::createSystem<IRSystem::RESOLVE_PER_AXIS_SCREEN_DEPTH>(),
             // Hi-Z max-depth mip chain over the (now final) distance texture,
-            // for next frame's voxel occlusion cull (#1294 child 1/3). Produces
-            // only — renders unchanged this PR.
+            // for next frame's voxel occlusion cull. Produces
+            // only — renders unchanged.
             IRSystem::createSystem<IRSystem::COMPUTE_DISTANCE_HIZ>(),
             IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
             IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
@@ -1436,7 +1432,7 @@ void initSystems() {
         }
     );
 
-    // #1910 composite-depth probe — registered only with --depth-probe so a
+    // Composite-depth probe — registered only with --depth-probe so a
     // flagless run adds no system. Runs after the framebuffer composite and logs
     // the depth-test winner at the requested pixel each frame.
     if (g_cliOverrides.depthProbeSet_) {
@@ -1527,7 +1523,7 @@ void initSystems() {
                             IR_LOG_INFO("Auto-profile CPU-scope — {}: {:.3f}ms", name, ms);
                         }
                     }
-                    // #2280 sub-stage attribution: canvasClear + voxelCompact +
+                    // Sub-stage attribution: canvasClear + voxelCompact +
                     // voxelStage1 (the stage-1 dispatch only now) + voxelStage2
                     // sum to the old bundled voxelStage1 measurement.
                     IR_LOG_INFO(
@@ -1568,7 +1564,7 @@ void initSystems() {
             cfg.settleFrames_ = 12;
         } else {
             IRVideo::setAutoScreenshotShots(cfg, kShots);
-            // #3010: report the classify arm + its non-vacuity witness per shot,
+            // Report the classify arm + its non-vacuity witness per shot,
             // but only for a run that asked for the diagnostic — a flagless run
             // keeps the empty hook it has always had.
             if (g_feederClassifyPadSet) {

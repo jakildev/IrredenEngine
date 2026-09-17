@@ -1,4 +1,4 @@
-// Occlusion-aware light-volume boundary seed (#2330).
+// Occlusion-aware light-volume boundary seed.
 //
 // A light whose rounded origin falls outside the camera-anchored light
 // volume seeds the per-axis-clamped boundary cell. When that clamped cell
@@ -298,7 +298,7 @@ TEST_F(LightVolumeBoundarySeedTest, SearchStopsAtRemainingReach) {
     EXPECT_EQ(result.count_, 0u);
     ASSERT_EQ(result.states_.size(), 1u);
     EXPECT_EQ(result.states_[0].state_, IRSystem::LightGatherState::SKIPPED_OCCLUDED);
-    // A skipped spot must not arm the consumer's winning-light-ID read (#2318).
+    // A skipped spot must not arm the consumer's winning-light-ID read.
     EXPECT_FALSE(result.hasSpot_);
 }
 

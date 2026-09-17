@@ -65,7 +65,6 @@ struct C_PeriodicIdle {
               static_cast<float>(IRConstants::kFPS)
           } {}
 
-    // Default
     C_PeriodicIdle()
         : C_PeriodicIdle{vec3{0.0f, 0.0f, 0.0f}, 0.0f} {}
 
@@ -138,7 +137,7 @@ struct C_PeriodicIdle {
 
     // The offset this idle would produce at an arbitrary raw angle, without
     // disturbing the live animation state -- e.g. to bake a traveling wave's
-    // phase-0 value before PERIODIC_IDLE's first tick() (see #2332). Wraps
+    // phase-0 value before PERIODIC_IDLE's first tick(). Wraps
     // into [0, 2*pi) (a raw phase can span many cycles; the stages cover one)
     // then runs the same stage-search + easing tick() does, so the result
     // matches the running animation exactly.
@@ -155,18 +154,6 @@ struct C_PeriodicIdle {
         IREasingFunctions easingFunction,
         bool isReversed = false
     ) {
-        // Values gets optimized out and assert crashes in debug mode
-        // IRE_LOG_INFO("startAngle: ", startAngle);
-        // IR_ASSERT(
-        //     startAngle >= 0.0f &&
-        //     startAngle <= 2.0f * static_cast<float>(M_PI),
-        //     "Start angle is not in range 0-2PI"
-        // );
-        // IR_ASSERT(
-        //     endAngle >= startAngle &&
-        //     endAngle <= 2.0f * static_cast<float>(M_PI),
-        //     "End angle is not in range startAngle-2PI"
-        // );
         stages_.push_back(
             PeriodStage{startAngle, endAngle, startTValue, endTValue, easingFunction, isReversed}
         );
@@ -233,7 +220,6 @@ struct C_PeriodicIdle {
             "Cannot make reverse loop with end angle greater than PI"
         );
         for (auto &stage : stages_) {
-            // TEMP
             IREasingFunctions easingFunction = stage.easingFunction_;
             if (easingFunction == IREasingFunctions::kBackEaseOut) {
                 easingFunction = IREasingFunctions::kCubicEaseOut;

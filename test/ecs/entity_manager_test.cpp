@@ -6,7 +6,7 @@
 
 #include <type_traits>
 
-// Issue #367: these canvas components must require an explicit size at
+// These canvas components must require an explicit size at
 // construction. Default-construction must be a compile error so a missing
 // size shows up at the call site rather than as a runtime null-texture.
 static_assert(
@@ -178,7 +178,7 @@ TEST_F(IREntityTest, UnregisterPreDestroyHookStopsFiring) {
 // `entityExists` answer `true` for a dead id from then on — arming a delayed
 // crash in innocent code that guards with `entityExists` and then derefs
 // `archetypeNode`. That reads as accumulating store corruption rather than as
-// one bad-id access, which is why it stayed hidden (see #2565).
+// one bad-id access.
 //
 // So every case below asserts `entityExists` is still false AFTER the probes.
 // A suite that checks only the nullopt/false returns passes unchanged against
@@ -311,7 +311,7 @@ TEST_F(IREntityTest, DestroyMarkedEntitiesToleratesDoubleMark) {
     EXPECT_TRUE(IREntity::entityExists(other));
 }
 
-// Singleton-component API (T-162): one entity per component type, lazily
+// Singleton-component API: one entity per component type, lazily
 // created on first access, cached by ComponentId in EntityManager.
 struct TestSingleton {
     int counter_ = 0;
@@ -405,7 +405,7 @@ TEST_F(IREntityTest, SetComponentSupportsNonDefaultConstructibleType) {
     EXPECT_EQ(IREntity::getComponent<TestNonDefaultConstructible>(entity).value_, 42);
 }
 
-// resetGameplay() (#1814): scene-transition teardown. Destroys every gameplay
+// `resetGameplay`: scene-transition teardown. Destroys every gameplay
 // entity but preserves singletons, C_Persistent-tagged entities, and the
 // component-type backing entities. The key contrast with destroyAllEntities is
 // that the singleton cache is NOT cleared and the world remains usable.

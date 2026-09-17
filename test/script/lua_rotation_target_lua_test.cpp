@@ -22,7 +22,7 @@ using IRComponents::C_WorldTransform;
 
 constexpr float kEps = 1e-4f;
 
-// End-to-end coverage for the C_RotationTarget Lua binding (#1541): a
+// End-to-end coverage for the C_RotationTarget Lua binding: a
 // Lua-defined system drives `input_` each tick through the same column view
 // any creation's automation lane would use, and the engine's
 // ROTATION_TARGET_LOCAL_TRANSFORM maps it onto the entity's rotation. Proves

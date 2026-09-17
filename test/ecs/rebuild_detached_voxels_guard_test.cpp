@@ -15,7 +15,7 @@
 
 #include <stdexcept>
 
-// Covers the origin-centered guard on a DETACHED_REVOXELIZE pool (#2911).
+// Covers the origin-centered guard on a DETACHED_REVOXELIZE pool.
 //
 // The defect: `SYSTEM_REBUILD_DETACHED_VOXELS`' conservative cull bound and the
 // GPU inverse-resample (`DetachedRevoxelize::seedResidentLocals`) both rotate

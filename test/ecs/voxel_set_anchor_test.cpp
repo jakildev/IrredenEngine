@@ -7,7 +7,7 @@
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 
-// Covers the EntityAnchor convention and GROUND mode on C_VoxelSetNew (#2563).
+// Covers the EntityAnchor convention and GROUND mode on C_VoxelSetNew.
 //
 // The anchor decides the offset baked into a set's LOCAL voxel positions at
 // construction. That bake is the whole mechanism — the rasterize / render /
@@ -18,7 +18,7 @@
 // Two properties matter and are tested separately:
 //   1. GROUND places the body center-XY / bottom-Z, so the ground-contact face
 //      lands exactly at the entity's translation.
-//   2. CORNER and CENTER are BYTE-IDENTICAL to the pre-#2563 behavior. The
+//   2. CORNER and CENTER remain byte-identical to the legacy behavior. The
 //      legacy `bool centerAroundOrigin` ctor now delegates to the enum one, so
 //      the byte-identity arms recompute the historical expression inline and
 //      compare — a regression there would silently move every existing voxel
@@ -41,9 +41,8 @@ using IRMath::vec3;
 
 constexpr float kEps = 1e-5f;
 
-// The historical offset expression, before #2563 routed it through
-// `anchorOffset`. Kept spelled out so the byte-identity arms below compare
-// against the old code rather than against the new helper (which would make
+// The legacy offset expression is spelled out so the byte-identity comparisons
+// compare against the old code rather than against the new helper (which would make
 // them tautological).
 vec3 legacyOffset(bool centerAroundOrigin, ivec3 size) {
     return centerAroundOrigin

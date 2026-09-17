@@ -18,14 +18,13 @@ namespace IRRender {
 // world position. A bare `IRMath::vec3` (12 bytes) cannot back that
 // contract — the static_assert below enforces the requirement at
 // compile time. `pad_` carries the per-voxel GPU transform-slot index
-// for `UPDATE_VOXEL_POSITIONS_GPU` (#1396), bit-packed via `kVoxelTransformStatic`
-// convention. Defaults to all-ones (`kVoxelTransformStatic`); the prepass skips
+// for `UPDATE_VOXEL_POSITIONS_GPU`, bit-packed via `kVoxelTransformStatic`.
+// Defaults to all-ones; the prepass skips
 // those slots (byte-identical to the pre-prepass path). Voxels never rotate or
 // scale independently
 // of their owning `C_VoxelSetNew`, so a full per-slot SQT would
 // 2.5×-3.3× the largest hot array (~1M slots) and force a strided GPU
-// upload to carry data the shader cannot consume — the architect
-// resolved this as Option B on PR #1044; see issue #1054.
+// upload to carry data the shader cannot consume.
 struct VoxelGpuPosition {
     IRMath::vec3 pos_;
     float pad_;

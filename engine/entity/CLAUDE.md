@@ -66,7 +66,9 @@ destruction of a dead id is a caller error and asserts before hooks run.
 
 `registerPreDestroyHook` callbacks run in registration order while the dying
 entity and its peers remain queryable. Keep each hook at most O(world), and
-put component-local cleanup in `onDestroy()` instead.
+put component-local cleanup in `onDestroy()` instead. In-tree hooks that sweep
+component state: `Modifier::removeBySource` (`C_Modifiers.source_`) and
+`VoxelPool::restageSetsOnCanvas` (`C_VoxelSetNew.canvasEntity_`).
 
 During a callback:
 

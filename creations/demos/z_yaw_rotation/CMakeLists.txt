@@ -29,8 +29,8 @@ endforeach()
 #
 # The Windows DLL copy is NOT part of that shared staging: irreden_bundle_assets
 # attaches it as a POST_BUILD step on the primary executable itself, which
-# IRZYawInteractive never builds. Building it alone left it without its DLLs
-# (#3084, same shape as #3075). So the non-primary demo gets its own
+# IRZYawInteractive never builds. Building it alone left it without its DLLs.
+# So the non-primary demo gets its own
 # irreden_stage_runtime_dlls call — a per-target POST_BUILD copy (`copy -t`,
 # idempotent and cheap) — while the directory copies stay single-owner via the
 # primary's Assets target.
