@@ -63,10 +63,10 @@ _crop_capture_path = _rv._crop_capture_path
 _parse_extra_runs = _rv._parse_extra_runs
 _slice_capture = _rv._slice_capture
 # _validate_structural_only is deliberately NOT bound here: a module-scope
-# binding of a symbol the pre-fix tree lacks makes the whole suite
-# unimportable under the "swap in the old render-verify.py" positive control,
-# collapsing a per-test result into one ImportError. Resolved per call site
-# instead, so that control reports which arms actually discriminate.
+# binding of a symbol a render-verify.py without the shared validator lacks
+# makes the whole suite unimportable under a swap-in-that-file positive
+# control, collapsing a per-test result into one ImportError. Resolved per
+# call site instead, so that control reports which arms actually discriminate.
 _declared_targets = _rv._declared_targets
 _resolve_demo_dir = _rv._resolve_demo_dir
 _target_to_demo_name = _rv._target_to_demo_name
@@ -472,7 +472,7 @@ class ParseExtraRuns(unittest.TestCase):
 
     def test_structural_only_with_no_structural_entry_raises(self):
         # Same shape as the compliant case, minus the 'structural' entry.
-        # Pre-fix this was silent (0 rows, PASS).
+        # A silent parse (0 rows, PASS) is the failure mode this pins.
         with self.assertRaises(SystemExit) as cm:
             _parse_extra_runs({"extra_runs": [{
                 "name": "compare",
@@ -508,9 +508,9 @@ class ParseExtraRuns(unittest.TestCase):
             })
 
     def test_extra_runs_delegates_to_the_shared_validator(self):
-        # The fix is one validator invoked per resolved pass, not one
-        # copy per lane. An inline re-copy in _parse_extra_runs would keep
-        # every behavioural test above green while re-opening the drift, so
+        # Every resolved pass must call the one shared validator, not a
+        # per-lane copy. An inline copy in _parse_extra_runs would keep every
+        # behavioural test above green while letting the two lanes drift, so
         # assert the delegation itself. The manifest below is the *violating*
         # shape: with the stub in place it must parse (proving the raise came
         # from the patched-out helper), and an inline copy would raise here.
@@ -661,7 +661,7 @@ class DemoResolution(unittest.TestCase):
 
     def test_falls_back_to_inference_when_nothing_declares_the_target(self):
         # A demo dir that exists but whose manifest names no target still
-        # resolves the old way, so pre-declaration demos keep working.
+        # resolves by name inference, so an undeclared demo keeps working.
         self._demo("fog_demo", None)
         got = _resolve_demo_dir(self.worktree, "IRFogDemo", None)
         self.assertEqual(got, self.demos / "fog_demo")

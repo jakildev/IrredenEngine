@@ -331,8 +331,8 @@ def _run_structural_metric(image: Path, entry: dict[str, Any],
             # macOS HiDPI 2x framebuffer); scale it proportionally to this
             # capture's actual size so the gate stays backend-agnostic across
             # DPI scales (a 1x windows-debug/linux-debug capture is half the
-            # pixel dimensions of the 2x macos-debug capture the ROI was
-            # originally calibrated against).
+            # pixel dimensions of the 2x macos-debug capture the ROI is
+            # calibrated against).
             actual_w, actual_h = verify_common.png_dimensions(image)
             ref_w, ref_h = roi_at
             rx, ry, rw, rh = roi

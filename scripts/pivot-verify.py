@@ -169,9 +169,9 @@ SDF_BOUND_GAME_PX = 2.5
 # so only the game-px figures above are comparable. GL reads uniformly BELOW
 # Metal, so the bound stays calibrated on the larger Metal row. `1.5 px/zoom +
 # 1.0 px` clears every Metal cell by 14-33% and every GL cell by 25-150%, and
-# still fails any growth in the residual: a regression to the prior
-# iso-depth-0 focus is 150 framebuffer px at zoom 4 on the 2x host, i.e. 75
-# game px, ~10x this bound.
+# still fails any growth in the residual: a focus derived at iso depth 0
+# instead of on the probe's axis orbits 150 framebuffer px at zoom 4 on the 2x
+# host, i.e. 75 game px, ~10x this bound.
 CENTROID_BOUND_GAME_PX = {"center-axis": (1.5, 1.0)}
 # PNG IHDR width lives at bytes 16..20, right after the 8-byte signature and the
 # length/type of the first chunk. Deliberately a 24-byte header peek rather than

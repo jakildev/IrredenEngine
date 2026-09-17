@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # perf-grid-rotate-sweep — rotated-voxel solidity validation harness.
 #
-# Builds IRPerfGrid and drives its `--yaw-ramp` shot table, which is no longer a
-# uniform 36-step circle but a TIERED, render-path-aware set (see
+# Builds IRPerfGrid and drives its `--yaw-ramp` shot table — not a uniform
+# 36-step circle but a TIERED, render-path-aware set (see
 # `buildYawRampShots` in creations/demos/perf_grid/main.cpp):
 #
 #   * Cardinal-isolation tier — the four EXACT cardinals (0/90/180/270). At
