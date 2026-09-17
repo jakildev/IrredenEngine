@@ -111,7 +111,6 @@ OWN_TALLY_BASELINE=(
     test_fleet_transition.sh
     test_fleet_up_conf_bootstrap.sh
     test_install_refresh.sh
-    test_ir_build_dir_resolution.sh
     test_reconcile_amendments.sh
     test_run_targets_path_scope.sh
     test_worktree_settings_hooks.sh
