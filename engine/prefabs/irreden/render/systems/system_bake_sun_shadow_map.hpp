@@ -975,9 +975,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
                                          "AnalyticCasterFrameBuffer",
                                          nullptr,
                                          sizeof(FrameDataVoxelToCanvas),
-                                         BUFFER_STORAGE_DYNAMIC,
-                                         BufferTarget::UNIFORM,
-                                         kBufferIndex_FrameDataVoxelToCanvas
+                                         BUFFER_STORAGE_DYNAMIC
         )
                                          .second;
         p->boxSunProgram_ =
