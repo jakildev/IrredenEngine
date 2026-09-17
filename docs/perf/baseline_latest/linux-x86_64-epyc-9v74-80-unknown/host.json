@@ -1,0 +1,19 @@
+{
+  "cpu": {
+    "cores": 2,
+    "mhz": 2596,
+    "model": "AMD EPYC 9V74 80-Core Processor",
+    "threads": 4
+  },
+  "gpu": {
+    "model": "unknown"
+  },
+  "os": {
+    "distro": "Ubuntu 24.04.5 LTS",
+    "kernel": "Linux 6.17.0-1022-azure"
+  },
+  "ram": {
+    "gb": 15
+  },
+  "slug": "linux-x86_64-epyc-9v74-80-unknown"
+}
