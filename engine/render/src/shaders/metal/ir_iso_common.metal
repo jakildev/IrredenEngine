@@ -859,25 +859,20 @@ constant float kScatterDilateMarginPx = 0.85;
 // planes.
 constant float kScatterMarginDepthBiasKey = 0.25;
 
-// Deterministic sub-band tiebreak — mirror of kScatterCellTieStep /
-// kScatterCellTieBand in ir_iso_common.glsl. Draw order (the cell compaction's
-// atomic-append order) is run-variant, so the final fragment depth is quantized
-// to the 16-step band and the 4-bit priority-major (rank2 << 2) | cell2 code is
-// injected into the sub-band bits: UNFLIPPED cross-axis band ties resolve by
-// slot rank — consistently, no parity alternation — and same-slot ties fall to
-// cell identity, so the winner is deterministic; cross-axis flipped-vs-flipped
-// pairs collapse to rank 3 and are NOT proven distinct. The 16-step band is the
-// unique width satisfying the two mutually-opposed halves of the
-// margin-vs-exact / code-fits-in-band precondition (kScatterMarginDepthBiasKey
-// must land a margin a full band behind its owner; the max code must fit in the
-// band) — do not retune it here; both halves are asserted CPU-side in
-// ir_render_types.hpp (kScatterCellTieBandSteps).
+// Four-bit priority-major face/cell code, matching ir_iso_common.glsl.
+// Displaced cells and flipped cross-axis pairs can share a code; final
+// coverage arbitration prefers an exact footprint over an equal-code margin.
+// Same-class collisions still follow draw order. The 16-step band is bounded
+// by the margin-yield and code-fit assertions in ir_render_types.hpp.
 constant float kScatterCellTieStep = 1.0f / 8388608.0f;
 // Derived, not retunable alone — mirror of ir_iso_common.glsl: 16 is pinned by
 // the two-sided precondition asserted CPU-side (kScatterCellTieBandSteps,
 // ir_render_types.hpp). Exact power-of-two product (bit-identical to the
 // literal); the overflow lane's two-band bias derives from this in turn.
 constant float kScatterCellTieBand = 16.0f * kScatterCellTieStep;
+
+
+
 
 // Flat interior-edge margin yield, in composite-key units. The scatter key
 // folds the cardinal encode's (flip << 2) | slot low bits in at unit scale, so

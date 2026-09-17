@@ -180,6 +180,12 @@ drift from the cell-path lighting model.
 
 ### Draw order is canonical — but only on flagged pools (#2479)
 
+The overflow sorting guarantee below does not cover cell-list compaction order.
+Displaced cells can share the same face/cell depth code, including same-axis
+pairs outside the immediate lattice-neighbor proof. Final coverage arbitration
+now prefers exact footprints over equal-code margins; same-class collisions
+remain. See [the frozen-scene diagnosis](frozen-scatter-flicker.md).
+
 The mode-3 append assigns entry indices with `atomicAdd`, and **entry index IS
 draw order** in the scatter's overflow branch (`v_peraxis_scatter.glsl` indexes
 by `gl_InstanceID * 3u`). Two entries whose `(cardPix, voxelDistance)` key ties

@@ -85,9 +85,10 @@ The remaining work below still applies.
    work early enough to avoid generating it, while retaining off-screen geometry
    whose shadows can reach visible receivers. Compare existing culling toggles
    before introducing another culling structure.
-4. Resolve the overflow seam before reviving the rejected
-   [duplicate face-record optimization](per-axis-single-face-writer.md). Its
-   fresh integrated sweep changed a 12-pixel lighting seam. Continue reducing repeated per-axis
+4. [Frozen coverage arbitration](../design/frozen-scatter-flicker.md) resolves the
+   observed exact/margin flicker. Retry the rejected
+   [duplicate face-record optimization](per-axis-single-face-writer.md). against that stable control; retain same-class ties and continuous-camera
+   temporal checks as follow-ups. Continue reducing repeated per-axis
    storage/overflow/finalization work using the measured counters. Preserve finite geometry, trixel reconstruction and depth ordering;
    do not trade away shadow coverage or blur artifacts to improve timing.
 5. Inspect the subdivision-dependent light-volume and finite-caster costs; measure

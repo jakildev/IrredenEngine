@@ -169,7 +169,7 @@ struct CanvasStressSettings {
     // this demo uniquely exercises (perf_grid has no rotating sets).
     bool autoProfile_ = false;
     // `--debug-overlay <mode>` forces a render debug overlay for the whole run
-    // (none|ao|light_level|shadow|peraxis_id|peraxis_origin|unlit|normals|receiver_position).
+    // (none|ao|light_level|shadow|peraxis_id|peraxis_origin|peraxis_margin|unlit|normals|receiver_position).
     // This captures with `--debug-overlay shadow` so cast shadows read magenta
     // and render-shadow-metric.py can classify the swiss-cheese / dithering
     // signature. The run-global form keeps the shared
@@ -1145,13 +1145,15 @@ void registerArgs() {
     args.enumValue(
         "--debug-overlay",
         "Force a render debug overlay for the run "
-        "(none|ao|light_level|shadow|peraxis_id|peraxis_origin|unlit|normals|receiver_position)",
+        "(none|ao|light_level|shadow|peraxis_id|peraxis_origin|peraxis_margin|unlit|normals|"
+        "receiver_position)",
         {"none",
          "ao",
          "light_level",
          "shadow",
          "peraxis_id",
          "peraxis_origin",
+         "peraxis_margin",
          "unlit",
          "normals",
          "receiver_position"},
