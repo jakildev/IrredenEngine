@@ -1,0 +1,11 @@
+--- a/engine/render/src/shaders/metal/c_compute_voxel_ao.metal
++++ b/engine/render/src/shaders/metal/c_compute_voxel_ao.metal
+@@ -80,7 +80,7 @@
+         canvasAO.write(float4(1.0, 0.0, 0.0, 0.0), uint2(pixel));
+         return;
+     }
+-    if (sunFrameData.aoEnabled == 0) {
++    if (true) {
+         canvasAO.write(float4(1.0, 0.0, 0.0, 0.0), uint2(pixel));
+         return;
+     }

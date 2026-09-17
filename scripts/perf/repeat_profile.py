@@ -22,7 +22,7 @@ from compare_perf_runs import parse_report
 TARGETS = {"IRPerfGrid": "perf_grid", "IRCanvasStress": "canvas_stress"}
 
 
-def shader_digest(directory: Path) -> str:
+def directory_digest(directory: Path) -> str:
     if not directory.is_dir():
         raise FileNotFoundError(directory)
     digest = hashlib.sha256()
@@ -177,7 +177,8 @@ def main() -> int:
         "changes": subprocess.check_output(["git", "status", "--short"], cwd=root, text=True),
         "host": platform.platform(),
         "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
-        "shader_sha256": shader_digest(binary.parent / "shaders"),
+        "shader_sha256": directory_digest(binary.parent / "shaders"),
+        "runtime_scripts_sha256": directory_digest(binary.parent / "scripts"),
         "command": command,
         "runs": [],
     }

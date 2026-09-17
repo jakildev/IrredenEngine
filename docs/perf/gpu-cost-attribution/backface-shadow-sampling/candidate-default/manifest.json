@@ -1,0 +1,43 @@
+{
+  "head": "55e69f63754ef71e399ad6bc335c536f8edae79e",
+  "changes": " M engine/render/src/shaders/c_light_overflow_faces.glsl\n M engine/render/src/shaders/c_lighting_to_trixel.glsl\n M engine/render/src/shaders/metal/c_light_overflow_faces.metal\n M engine/render/src/shaders/metal/c_lighting_to_trixel.metal\n",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "binary_sha256": "93a743cead254a81648ca8de354b2893ca6cd0b7516f334800c0a6ff6c0a04f0",
+  "shader_sha256": "1322a52fdb0152a70d576392bcee050fb773bac8a6b5b79a15cfa7059b1727c1",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "300",
+    "IRPerfGrid",
+    "--mode",
+    "voxel_set",
+    "--grid-size",
+    "64",
+    "--wave-freeze",
+    "--yaw",
+    "0.785398163",
+    "--zoom",
+    "4",
+    "--no-overlay",
+    "--auto-profile",
+    "300"
+  ],
+  "runs": [
+    {
+      "index": 1,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    },
+    {
+      "index": 2,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    }
+  ]
+}

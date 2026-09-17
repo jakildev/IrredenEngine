@@ -1,0 +1,44 @@
+{
+  "head": "55e69f63754ef71e399ad6bc335c536f8edae79e",
+  "changes": " M scripts/perf/repeat_profile.py\n M scripts/perf/test_repeat_profile.py\n?? docs/perf/gpu-cost-attribution/\n",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "binary_sha256": "93a743cead254a81648ca8de354b2893ca6cd0b7516f334800c0a6ff6c0a04f0",
+  "shader_sha256": "7d819e2a4b3b391cc18c5cd26e454263045b611101c1e626d605f47a9a4fc657",
+  "runtime_scripts_sha256": "e4bddc135a3b34b580a6262c95f0562a50b998c356c628a95a6cd1797e3a0be7",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "300",
+    "IRPerfGrid",
+    "--mode",
+    "voxel_set",
+    "--grid-size",
+    "100",
+    "--wave-freeze",
+    "--yaw",
+    "0.785398163",
+    "--zoom",
+    "4",
+    "--no-overlay",
+    "--auto-profile",
+    "300"
+  ],
+  "runs": [
+    {
+      "index": 1,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    },
+    {
+      "index": 2,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    }
+  ]
+}

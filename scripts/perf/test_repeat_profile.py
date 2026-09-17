@@ -6,7 +6,27 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from repeat_profile import find_demo_pid, run_profile
+from repeat_profile import directory_digest, find_demo_pid, run_profile
+
+
+class RuntimeAssetsTest(unittest.TestCase):
+    def test_digest_tracks_content_and_paths_not_creation_order(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            left, right = root / "left", root / "right"
+            left.mkdir()
+            right.mkdir()
+            for directory, names in ((left, ("config.lua", "scene.lua")),
+                                     (right, ("scene.lua", "config.lua"))):
+                for name in names:
+                    (directory / name).write_text(name)
+            original = directory_digest(left)
+            self.assertEqual(original, directory_digest(right))
+            (right / "config.lua").write_text("gpu_stage_timing = false")
+            self.assertNotEqual(original, directory_digest(right))
+            (right / "config.lua").write_text("config.lua")
+            (right / "scene.lua").rename(right / "different.lua")
+            self.assertNotEqual(original, directory_digest(right))
 
 
 class DemoProcessTest(unittest.TestCase):

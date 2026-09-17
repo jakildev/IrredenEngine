@@ -1,0 +1,11 @@
+--- a/engine/render/src/shaders/metal/c_per_axis_overflow_sort.metal
++++ b/engine/render/src/shaders/metal/c_per_axis_overflow_sort.metal
+@@ -122,6 +122,8 @@
+         return;
+     }
+ 
++    return;
++
+     const uint t = localId.x;
+     const uint g = groupId.x + groupId.y * gridGroups.x;
+     const uint pairsPerBlock = kSortBlock >> 1u;
