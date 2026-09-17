@@ -88,7 +88,6 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
     // (entries stay albedo-only) — the A/B kill switch for the lit-vs-albedo
     // screenshot pair and GPU-delta diagnostics.
     bool overflowLightingDisabled_ = false;
-    static constexpr int kOverflowLightingGroupSize = 64; // matches local_size_x
     Buffer *frameDataBuf_ = nullptr;
     // Reuse the voxel pipeline's per-frame UBO so we can recover the
     // world voxel position of each pixel via the same iso math the AO
@@ -415,12 +414,10 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_OverflowLightingScratch
         );
-        // Sized to the worst-case cap; threads past the live entry count
-        // early-return (the count lives in the scratch ctrl block). The cap can
-        // exceed 1024 groups, so wrap into the 2-D group grid the shader flattens.
-        const int groupCount = IRMath::divCeil(axes.overflowCap_, kOverflowLightingGroupSize);
-        const ivec2 grid = voxelDispatchGridForCount(groupCount);
-        IRRender::device()->dispatchCompute(grid.x, grid.y, 1);
+        IRRender::device()->dispatchComputeIndirect(
+            axes.cellIndirect_.second,
+            kOverflowLightingDispatchArgsOffsetBytes
+        );
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
     }
 

@@ -97,12 +97,12 @@ layout(std430, binding = 8) buffer OverflowLightingScratch {
 };
 
 void main() {
-    // The dispatch is a 2-D group grid (voxelDispatchGridForCount wraps past
+    // The dispatch is a 2-D group grid (the GPU finalizer wraps past
     // 1024 groups in X), so flatten the group coordinates to the entry index.
     const uint workGroupIndex = gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x;
     const uint gid = workGroupIndex * gl_WorkGroupSize.x + gl_LocalInvocationID.x;
     // Live entry count (ctrl block instanceCount, ctrlBase + 1). Threads past it
-    // early-return — the dispatch grid is sized to the worst-case cap.
+    // early-return in the padded tail of the 2-D dispatch grid.
     const uint entryCount = overflowScratch[uint(overflowScratchLayout.y) + 1u];
     if (gid >= entryCount) {
         return;

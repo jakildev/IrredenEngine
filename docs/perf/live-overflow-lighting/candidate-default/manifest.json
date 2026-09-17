@@ -1,0 +1,42 @@
+{
+  "head": "0078b734a49b3230e4208a90d25f916ca10bd171",
+  "changes": " M engine/prefabs/irreden/render/systems/system_lighting_to_trixel.hpp\n M engine/prefabs/irreden/render/systems/system_voxel_to_trixel.hpp\n M engine/render/include/irreden/render/ir_render_types.hpp\n M engine/render/src/shaders/c_light_overflow_faces.glsl\n M engine/render/src/shaders/c_per_axis_cell_finalize.glsl\n M engine/render/src/shaders/metal/c_light_overflow_faces.metal\n M engine/render/src/shaders/metal/c_per_axis_cell_finalize.metal\n M test/render/gpu_compute_dispatch_test.cpp\n",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "binary_sha256": "15c50847261d9308348ad463a22b342aaaa5a9e2d72e18872ec86d39ab3fb4c4",
+  "shader_sha256": "97bdd46a827604967039d70b8fc4f8e0b607d2911e86339b0769acfffb98f001",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "120",
+    "IRPerfGrid",
+    "--mode",
+    "voxel_set",
+    "--grid-size",
+    "64",
+    "--wave-freeze",
+    "--yaw",
+    "0.785398163",
+    "--zoom",
+    "4",
+    "--auto-profile",
+    "300"
+  ],
+  "runs": [
+    {
+      "index": 1,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    },
+    {
+      "index": 2,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    }
+  ]
+}

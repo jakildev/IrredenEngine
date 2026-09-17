@@ -1118,6 +1118,14 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // stays barrier-free.
         cellFinalizeProgram_->use();
         cellIndirect->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_PerAxisCellIndirect);
+        // The settled overflow count shares the finalize's storage barrier.
+        axes.winnerIds_.second->bindRange(
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_PerAxisResolveScratch,
+            static_cast<std::ptrdiff_t>(axes.ctrlBaseUints_) * sizeof(std::uint32_t),
+            static_cast<std::size_t>(axes.entriesBaseUints_ - axes.ctrlBaseUints_) *
+                sizeof(std::uint32_t)
+        );
         IRRender::device()->dispatchCompute(C_PerAxisTrixelCanvases::kAxisCount, 1, 1);
 
         // The compacted list + the per-axis compute-indirect params feed subsequent
@@ -1126,6 +1134,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // consumer runs.
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
         IRRender::device()->memoryBarrier(BarrierType::COMMAND);
+
+        axes.winnerIds_.second->bindBase(
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_PerAxisResolveScratch
+        );
 
         // Restore 25/26 to the voxel single-canvas compaction buffers (STAGE_1's
         // next-frame compact relies on those sticky binds). Downstream per-axis

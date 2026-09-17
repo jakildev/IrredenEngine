@@ -1685,6 +1685,17 @@ constexpr std::ptrdiff_t kPerAxisCellIndirectStrideBytes = 256;
 // kernels read `visibleCount` from the same SSBO region for the in-shader bound
 // guard.
 constexpr std::ptrdiff_t kPerAxisCellDispatchArgsOffsetBytes = 32;
+// Axis zero also owns the overflow-lighting dispatch, authored from the settled
+// append count by c_per_axis_cell_finalize and consumed by LIGHTING_TO_TRIXEL.
+constexpr std::ptrdiff_t kOverflowLightingDispatchArgsOffsetBytes = 64;
+static_assert(
+    kOverflowLightingDispatchArgsOffsetBytes >=
+    kPerAxisCellDispatchArgsOffsetBytes + sizeof(VoxelIndirectDispatchParams)
+);
+static_assert(
+    kOverflowLightingDispatchArgsOffsetBytes + sizeof(VoxelIndirectDispatchParams) <=
+    kPerAxisCellIndirectStrideBytes
+);
 // Threads per per-axis compute workgroup. c_per_axis_cell_finalize sets numGroups
 // to a capped 2-D grid of divCeil(occupiedCount, kPerAxisCellComputeTile)
 // workgroups; each consumer kernel recovers its flat list index as

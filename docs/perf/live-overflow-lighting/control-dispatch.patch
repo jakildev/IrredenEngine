@@ -1,0 +1,16 @@
+--- a/engine/prefabs/irreden/render/systems/system_lighting_to_trixel.hpp
++++ b/engine/prefabs/irreden/render/systems/system_lighting_to_trixel.hpp
+@@ -414,10 +414,9 @@
+             BufferTarget::SHADER_STORAGE,
+             kBufferIndex_OverflowLightingScratch
+         );
+-        IRRender::device()->dispatchComputeIndirect(
+-            axes.cellIndirect_.second,
+-            kOverflowLightingDispatchArgsOffsetBytes
+-        );
++        const int groupCount = IRMath::divCeil(axes.overflowCap_, 64);
++        const ivec2 grid = voxelDispatchGridForCount(groupCount);
++        IRRender::device()->dispatchCompute(grid.x, grid.y, 1);
+         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+     }
+ 

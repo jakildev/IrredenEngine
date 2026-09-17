@@ -22,11 +22,23 @@ constant uint kMaxDispatchGroupsX = 1024u;
 
 kernel void c_per_axis_cell_finalize(
     device uint* drawArgs [[buffer(26)]],
+    const device uint* overflowControl [[buffer(28)]],
     uint3 globalId [[thread_position_in_grid]]
 ) {
     const uint axis = globalId.x;
     if (axis >= 3u) {
         return;
+    }
+    if (axis == 0u) {
+        // The overflow lighting kernel uses 64 threads and the same 2-D flattening.
+        // Its arguments occupy bytes 64..79 of axis zero's indirect region.
+        const uint overflowCount = overflowControl[1u];
+        const uint overflowGroups = (overflowCount + 63u) / 64u;
+        const uint overflowGroupsX = max(min(overflowGroups, kMaxDispatchGroupsX), 1u);
+        drawArgs[16u] = overflowGroupsX;
+        drawArgs[17u] = (overflowGroups + overflowGroupsX - 1u) / overflowGroupsX;
+        drawArgs[18u] = 1u;
+        drawArgs[19u] = overflowCount;
     }
     const uint base = axis * kStrideUints;
     const uint count = drawArgs[base + 1u]; // instanceCount

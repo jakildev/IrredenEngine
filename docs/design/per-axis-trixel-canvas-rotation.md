@@ -153,12 +153,12 @@ cross-host smoke as of PR #2388):
 | cylinder (shape_debug), yaw 0→60° | 0 → 638 | 437844 | <1% | 0 |
 | dense_set (convex, no coset collisions) | 0 | — | 0% | 0 |
 
-The relight is one bounded compute dispatch sized to the cap (threads past
-the live entry count early-return — the "empty early-return sweeps are
-effectively free" cost model,
-[`gpu-stage-timing-cost-model.md`](gpu-stage-timing-cost-model.md)); the
-`LIGHTING` GPU-stage row stays sub-ms on the wave scene at zoom 8 — not a
-measured hotspot. Exact q1–q3 (120°–240°) peak counts were not captured
+The relight uses a GPU-authored indirect dispatch from the current frame's
+settled overflow count; unused buffer capacity does not launch lighting
+threads. The finalizer shares the existing cell-compaction pass and its command
+barrier. See [live overflow lighting](../perf/live-overflow-lighting.md) for
+validation and measurements. The historical C2 `LIGHTING` GPU-stage row stayed
+sub-ms on the wave scene at zoom 8; that observation does not bound larger scenes. Exact q1–q3 (120°–240°) peak counts were not captured
 headlessly for C2 (the four-quadrant pose table fell back to the default
 shot table in that measurement run); the numbers above are q0-residual +
 near-cardinal only, and the NO-GO decision below rests on the design size
