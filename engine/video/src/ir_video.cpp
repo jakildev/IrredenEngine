@@ -55,6 +55,10 @@ bool isRecording() {
     return getVideoManager().isRecording();
 }
 
+RecordingState recordingState() {
+    return getVideoManager().recordingState();
+}
+
 std::uint64_t getFrameCount() {
     return getVideoManager().getFrameCount();
 }

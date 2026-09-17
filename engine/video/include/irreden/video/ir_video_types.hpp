@@ -13,6 +13,12 @@ using VideoStrideBytes = int;
 /// @c VideoRecorderConfig.
 constexpr int kDefaultCaptureFps = 60;
 
+/// Lifecycle of the capture recorder as seen from the main thread.
+/// @c FINALIZING is the window between a stop and the async finalize thread
+/// closing the encoder, during which @c VideoManager::toggleCapture drops
+/// every toggle — a caller that restarts a capture waits for @c IDLE first.
+enum class RecordingState { IDLE, RECORDING, FINALIZING };
+
 } // namespace IRVideo
 
 #endif /* IR_VIDEO_TYPES_H */

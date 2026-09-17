@@ -12,12 +12,13 @@
 #include <variant>
 #include <vector>
 
-// EVAL-mode coverage for IREntity.deferredCreate / deferredDestroy —
-// the Lua binding for structural entity changes queued from inside a system
-// tick. The create's archetype insert drains at flushStructuralChanges (a
-// group boundary, exercised here via executePipeline); the destroy drains at
-// destroyMarkedEntities (pipeline end, called manually since these tests do
-// not spin a full World). See docs/design/lua-driven-ecs.md §G4.
+// EVAL-mode coverage for IREntity.deferredCreate / deferredDestroy /
+// deferredCall — the Lua bindings for structural entity changes queued from
+// inside a system tick. The create's archetype insert and a deferredCall
+// callback drain at flushStructuralChanges (a group boundary, exercised here
+// via executePipeline); the destroy drains at destroyMarkedEntities (pipeline
+// end, called manually since these tests do not spin a full World). See
+// docs/design/lua-driven-ecs.md §G4.
 
 namespace {
 
@@ -203,6 +204,108 @@ TEST_F(LuaDeferredEntityTest, CreateAndDestroyMidTickDoNotCorruptIteration) {
     auto spawnedOrigins = readInt32Column(spawnedId, "origin");
     std::sort(spawnedOrigins.begin(), spawnedOrigins.end());
     EXPECT_EQ(spawnedOrigins, origins);
+}
+
+// deferredCall fixture: `spawnNow()` stands in for a creation's immediate C++
+// batch builder (createEntity + attach, no deferral), the call shape
+// deferredCreate cannot express and deferredCall exists to move to a
+// boundary; `spawnedCount()` lets Lua observe when it landed.
+class LuaDeferredCallTest : public LuaDeferredEntityTest {
+  protected:
+    void SetUp() override {
+        auto &lua = m_lua.lua();
+        ASSERT_TRUE(lua.safe_script("Cell = IRComponent.register('Cell', { n = 0 })").valid());
+        ASSERT_TRUE(lua.safe_script("Spawned = IRComponent.register('Spawned', { origin = 0 })")
+                        .valid());
+        m_cellId = m_entity_manager.getComponentTypeByName("Cell");
+        m_spawnedId = m_entity_manager.getComponentTypeByName("Spawned");
+        ASSERT_GT(m_cellId, 0u);
+        ASSERT_GT(m_spawnedId, 0u);
+        lua["spawnNow"] = [this]() {
+            const IREntity::EntityId e = IREntity::createEntity();
+            m_entity_manager.addComponentDynamic(e, m_spawnedId);
+        };
+        lua["spawnedCount"] = [this]() { return countWith(m_spawnedId); };
+    }
+
+    IREntity::ComponentId m_cellId = 0;
+    IREntity::ComponentId m_spawnedId = 0;
+};
+
+// The callback is staged, not run: nothing lands until the next flush.
+TEST_F(LuaDeferredCallTest, CallbackRunsOnFlushNotBefore) {
+    auto &lua = m_lua.lua();
+    ASSERT_TRUE(lua.safe_script("IREntity.deferredCall(function() spawnNow() end)").valid());
+    EXPECT_EQ(countWith(m_spawnedId), 0);
+
+    m_entity_manager.flushStructuralChanges();
+    EXPECT_EQ(countWith(m_spawnedId), 1);
+}
+
+// The core acceptance: a Lua tick that hands an immediate create to
+// deferredCall sees no spawn during its own iteration; the callback runs at
+// the group boundary after the tick, once, and its create is live by the time
+// executePipeline returns.
+TEST_F(LuaDeferredCallTest, CallbackFromTickRunsAfterTheGroupBoundary) {
+    auto &lua = m_lua.lua();
+    const IREntity::EntityId driver = IREntity::createEntity();
+    m_entity_manager.addComponentDynamic(driver, m_cellId);
+
+    lua["trace"] = "";
+    auto reg = lua.safe_script(
+        R"(
+        sysId = IRSystem.registerSystem({
+            name = 'RebuildAtBoundary',
+            components = { 'Cell' },
+            tick = function(arch)
+                IREntity.deferredCall(function()
+                    spawnNow()
+                    trace = trace .. 'call(' .. spawnedCount() .. ');'
+                end)
+                trace = trace .. 'tick(' .. spawnedCount() .. ');'
+            end,
+        })
+        return sysId
+    )",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(reg.valid()) << sol::error{reg}.what();
+    const IRSystem::SystemId sysId = reg.get<lua_Integer>();
+
+    m_system_manager.registerPipeline(IRTime::Events::UPDATE, {sysId});
+    m_system_manager.executePipeline(IRTime::Events::UPDATE);
+
+    EXPECT_EQ(lua["trace"].get<std::string>(), "tick(0);call(1);");
+    EXPECT_EQ(countWith(m_spawnedId), 1);
+}
+
+// A callback that raises is logged and dropped; the ops staged behind it
+// still drain in the same flush, and the flush itself does not throw.
+TEST_F(LuaDeferredCallTest, CallbackErrorDoesNotStrandLaterOps) {
+    auto &lua = m_lua.lua();
+    ASSERT_TRUE(lua.safe_script(R"(
+        IREntity.deferredCall(function() error('boom') end)
+        IREntity.deferredCall(function() spawnNow() end)
+    )")
+                    .valid());
+
+    EXPECT_NO_THROW(m_entity_manager.flushStructuralChanges());
+    EXPECT_EQ(countWith(m_spawnedId), 1);
+}
+
+// A deferredCall staged from inside a callback drains in the same flush —
+// the flush loops until every staging buffer is empty.
+TEST_F(LuaDeferredCallTest, NestedCallbackDrainsInTheSameFlush) {
+    auto &lua = m_lua.lua();
+    ASSERT_TRUE(lua.safe_script(R"(
+        IREntity.deferredCall(function()
+            IREntity.deferredCall(function() spawnNow() end)
+        end)
+    )")
+                    .valid());
+
+    m_entity_manager.flushStructuralChanges();
+    EXPECT_EQ(countWith(m_spawnedId), 1);
 }
 
 } // namespace

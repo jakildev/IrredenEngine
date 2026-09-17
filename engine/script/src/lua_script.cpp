@@ -701,6 +701,30 @@ void LuaScript::bindLuaDrivenEcs() {
         IREntity::getEntityManager().markEntityForDeletion(entity);
     };
 
+    // `deferredCall(fn)` stages `fn` on the same queue `deferredCreate` uses,
+    // so it runs at the next `flushStructuralChanges` — the group boundary
+    // after the calling system, on the main thread, outside every archetype
+    // iteration. Inside `fn` the immediate structural APIs (a creation's
+    // `createEntityBatch*` builders, its `IREntity.destroyEntity`, …) are as
+    // legal as they are at load time. This is the tick-side route to a scene
+    // rebuild that goes through C++ prefab batches, which `deferredCreate`
+    // (Lua-attachable components only) cannot express. A `deferredCall`
+    // issued from inside `fn` drains in the same flush (the flush loops until
+    // every staging buffer is empty). A callback error is logged, never
+    // raised: the flush has no Lua frame to raise into, and one bad callback
+    // must not strand the ops staged behind it. The `sol::protected_function`
+    // ref lives on the EntityManager's queue; see the member-order note on
+    // `deferredCreate` above for why that outlives no Lua state.
+    m_lua["IREntity"]["deferredCall"] = [](sol::protected_function fn) {
+        IREntity::getEntityManager().stageStructuralChange([fn = std::move(fn)]() {
+            sol::protected_function_result result = fn();
+            if (!result.valid()) {
+                sol::error err = result;
+                IRE_LOG_ERROR("IREntity.deferredCall: callback error: {}", err.what());
+            }
+        });
+    };
+
     m_lua["IREntity"]["bindPoint"] = [](IRScript::LuaEntity self,
                                         const std::string &name,
                                         sol::this_state L) -> std::tuple<sol::object, sol::object> {

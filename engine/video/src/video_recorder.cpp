@@ -1030,7 +1030,7 @@ bool VideoRecorder::submitAudioInputSamples(
 }
 
 bool VideoRecorder::isRecording() const {
-    return m_isRecording;
+    return m_isRecording.load();
 }
 
 std::uint64_t VideoRecorder::getVideoFrameCount() const {
