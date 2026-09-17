@@ -9,8 +9,8 @@ Signatures live in `include/irreden/script/lua_*_bindings.hpp`.
 Lua 5.1 plus `bit` and `ffi`. No `goto`, `<const>`/`<close>`, `bit32` (use
 `bit`), `math.type`, or integer subtype: a whole-number float default
 (`x = 0.0`) infers as `int32`, so write `x = { type = "float", default = 0 }`.
-Keep `SOL_EXCEPTIONS_ALWAYS_UNSAFE` defined on `IrredenEngineScripting`;
-without it a C++ exception reaches Lua as a bare `"C++ exception"`.
+Keep `SOL_EXCEPTIONS_ALWAYS_UNSAFE` defined on `IrredenEngineScripting`, or a
+C++ exception reaches Lua as a bare `"C++ exception"`.
 
 ## The binding-trait pattern
 
@@ -21,9 +21,8 @@ defines `bindLuaType<C_Foo>(LuaScript&)` calling
 it wants and lists the types in its `lua_component_pack.hpp`
 (`registerTypesFromTraits<...>()`); an unlisted type is invisible.
 
-- The `registerType` name is the literal class name and the
-  `IRComponent.C_Foo` handle key. Call `bindLuaDrivenEcs()` first, or the
-  handle is never written.
+- The `registerType` name is the literal class name and the `IRComponent.C_Foo`
+  handle key. Call `bindLuaDrivenEcs()` first, or the handle is never written.
 - **C++-component per-field writes from Lua:** bind a scalar as a member
   pointer; bind an `IRMath::vec3`/`vec4`/`Color` field as
   `sol::property(getter, setter)` over `{x, y, z[, w]}` tables via the
@@ -44,13 +43,11 @@ declares a component with native per-field columns in the C++ `ComponentId` spac
 - Scalar `int32`/`float`/`bool` fields expose `C.fields.<f>.bindingId` for
   `IRModifier`; others get `kInvalidFieldId`.
 - In a system tick use `IREntity.deferredCreate({ { C_Hp, overrides } })`
-  (returns a reserved `EntityId`) and `IREntity.deferredDestroy(id)`.
-  Structural work `deferredCreate` cannot express — a creation's
-  `createEntityBatch*` prefab builders, a teardown-then-rebuild — goes in
-  `IREntity.deferredCall(fn)`: `fn` runs at the next
-  `flushStructuralChanges` (the group boundary after the calling system, main
-  thread, outside every archetype iteration), where the immediate APIs are
-  legal. A callback error is logged, not raised.
+  (returns a reserved `EntityId`) and `IREntity.deferredDestroy(id)`; what
+  those cannot express (`createEntityBatch*` builders, a rebuild) goes in
+  `IREntity.deferredCall(fn)` — `fn` runs at the next `flushStructuralChanges`
+  (main thread, outside every archetype iteration), where the immediate APIs
+  are legal. A callback error is logged, not raised.
 
 ### Packed vec3 / ivec3 / vec4 fields
 
@@ -63,8 +60,8 @@ writes `vec3.new(...)`/`ivec3.new(...)`.
 ### Two-tier accessor contract
 
 `addLuaComponent(e, C, overrides)` and `getLuaComponent` build string-keyed
-tables: setup and inspection only. Per tick, resolve `C.fields.f.index` once
-and call `getLuaField(e, C, idx)` / `setLuaField(e, C, idx, v)`.
+tables: setup and inspection only. Per tick, resolve `C.fields.f.index` once and
+call `getLuaField(e, C, idx)` / `setLuaField(e, C, idx, v)`.
 
 ### Which view do I get, and what can I call on it?
 
@@ -74,9 +71,9 @@ and call `getLuaField(e, C, idx)` / `setLuaField(e, C, idx, v)`.
 | Lua-typed (`register` at runtime) | `LuaTypedColumnView`: `:getField`/`:setField(i, "f")`, `:getRow`/`:setRow` | ✓ | ✓ | scalars |
 | Hand-written `*_lua.hpp` | `LuaCppColumnView` | raise | via `registerComponentAttachFactory` | ✗ |
 
-`removeLuaComponent`, `hasLuaComponent`, `IREntity.singleton` work for all
-three. A `:setField` tick body over codegen'd components cannot run under EVAL:
-pin it with `mode = "codegen"`.
+`removeLuaComponent`, `hasLuaComponent`, `IREntity.singleton` work for all three.
+A `:setField` tick body over codegen'd components cannot run under EVAL: pin it
+with `mode = "codegen"`.
 
 ## Lua-defined enums (`IREnum.register`)
 
@@ -166,18 +163,15 @@ C++ declares nameable prefab systems with
 - **`IRGui.draw*`** (0-255 colors) and **`IRDebug.draw*`** (0..1, unchecked)
   are immediate mode: re-issue every frame from a RENDER system, after
   `TEXT_TO_TRIXEL` for `IRGui`, before `DEBUG_OVERLAY` for `IRDebug`.
-
-### Widget framework bindings
-
-A Lua `onClick` raises unless `registerPrefabSystem<IRSystem::WIDGET_LUA_DISPATCH>()`
-is registered and that id sits in INPUT immediately after `WIDGET_INPUT`.
+- **Widgets:** a Lua `onClick` raises unless `registerPrefabSystem<IRSystem::WIDGET_LUA_DISPATCH>()`
+  is registered and that id sits in INPUT immediately after `WIDGET_INPUT`.
 
 ## Commands and input (`IRCommand.*`, `IRInput.*`)
 
 `LuaScript::bindLuaCommands()`; design in
 [`docs/design/lua-input-commands.md`](../../docs/design/lua-input-commands.md).
 Compose modifiers with `bit.bor`. A `createCommand` body appears in the F1
-overlay only with `name`/`description`. `isButtonBound` is modifier-blind. A
+overlay only with `name`/`description`; `isButtonBound` is modifier-blind. A
 new prefab command needs an `IR_BIND_CMD` line in `lua_command_bindings.hpp`
 and a case in `ir_command.cpp`'s `fireByName`/`bindPrefabCommand`.
 
@@ -193,8 +187,8 @@ is a spawn-time query, not per-tick. The registry is process-global: tests call
 
 ## Script resolution
 
-`scriptFile(path)` passes the path to sol2 unchanged; relative paths resolve
-from cwd ([`BUILD.md`](../../docs/agents/BUILD.md) §"Running an executable").
+`scriptFile(path)` passes the path to sol2 unchanged; relative paths resolve from
+cwd ([`BUILD.md`](../../docs/agents/BUILD.md) §"Running an executable").
 
 ## Gotchas
 

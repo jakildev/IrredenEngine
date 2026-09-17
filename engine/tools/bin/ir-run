@@ -10,6 +10,7 @@
 # The run is wrapped with ir-acquire when the program's args indicate
 # exclusive resource use:
 #   --auto-screenshot N  → ir-acquire gpu
+#   --auto-record N      → ir-acquire gpu
 #   --auto-profile N     → ir-acquire benchmark (cpu(budget-1) + gpu + perf)
 #   interactive (none)   → no acquire (human-supervised)
 # Two parallel screenshot-capture runs on macOS serialize automatically,
@@ -136,6 +137,7 @@ Run mode
 
   Verb-conditional ir-acquire wrapping:
     --auto-screenshot N  → wrapped in ir-acquire gpu
+    --auto-record N      → wrapped in ir-acquire gpu
     --auto-profile N     → wrapped in ir-acquire benchmark (cpu+gpu+perf)
     no exclusive verb    → no acquire (interactive / unit-test mode)
 
@@ -230,12 +232,14 @@ fi
 EXE_NAME="$1"
 shift
 
-# Remaining "$@" is the program's args. Detect --auto-screenshot or
-# --auto-profile so we know which ir-acquire verb to wrap with.
+# Remaining "$@" is the program's args. Detect --auto-screenshot,
+# --auto-record, or --auto-profile so we know which ir-acquire verb to
+# wrap with.
 acquire_verb=""
 for arg in "$@"; do
     case "$arg" in
         --auto-screenshot) acquire_verb="gpu" ;;
+        --auto-record)     acquire_verb="gpu" ;;
         --auto-profile)    acquire_verb="benchmark" ;;
     esac
 done
@@ -326,9 +330,9 @@ ir_report_result() {
 }
 
 # --- No timeout: interactive mode, exec replaces this process --------------
-# Exception: `--auto-screenshot` / `--auto-profile` are self-terminating
-# verbs. The program is expected to close its window and exit 0 after its
-# last shot / profile dump — any non-zero return is a crash (teardown
+# Exception: `--auto-screenshot` / `--auto-record` / `--auto-profile` are
+# self-terminating verbs. The program is expected to close its window and
+# exit 0 after its last shot / clip / profile dump — any non-zero return is a crash (teardown
 # crashes included). Swap exec for a run-and-validate path for those verbs
 # so the verdict is surfaced and the exit code propagates. Interactive
 # mode (no verb, no timeout) keeps the exec path so signals and stdin

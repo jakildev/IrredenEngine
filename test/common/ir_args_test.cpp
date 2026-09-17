@@ -261,6 +261,36 @@ TEST(IRArgsOptionalIntTest, AbsentTokenLeavesWarmupFramesZero) {
     EXPECT_EQ(p.autoScreenshotWarmupFrames(), 0);
 }
 
+// --auto-record is the recording twin of --auto-screenshot on the same
+// engine-common parser: bare resolves to kDefaultAutoRecordFrames, a
+// trailing positive int is the capture window, absent reads back as 0.
+TEST(IRArgsAutoRecordTest, BareSwitchResolvesToDefaultFrames) {
+    Parser p(nullptr, Common::ENGINE);
+    Argv a({"prog", "--auto-record"});
+    p.parse(a.argc(), a.argv());
+    EXPECT_TRUE(p.wasProvided("--auto-record"));
+    EXPECT_EQ(p.autoRecordFrames(), kDefaultAutoRecordFrames);
+    EXPECT_EQ(kDefaultAutoRecordFrames, 180);
+}
+
+TEST(IRArgsAutoRecordTest, TrailingIntIsTheCaptureWindow) {
+    Parser p(nullptr, Common::ENGINE);
+    Argv a({"prog", "--auto-record", "360"});
+    p.parse(a.argc(), a.argv());
+    EXPECT_EQ(p.autoRecordFrames(), 360);
+    // The screenshot twin stays untouched by the record switch.
+    EXPECT_EQ(p.autoScreenshotWarmupFrames(), 0);
+}
+
+TEST(IRArgsAutoRecordTest, AbsentReadsBackZero) {
+    Parser p(nullptr, Common::ENGINE);
+    Argv a({"prog", "--auto-screenshot", "25"});
+    p.parse(a.argc(), a.argv());
+    EXPECT_FALSE(p.wasProvided("--auto-record"));
+    EXPECT_EQ(p.autoRecordFrames(), 0);
+    EXPECT_EQ(p.autoScreenshotWarmupFrames(), 25);
+}
+
 // ─────────────────────────────────────────────
 // Positionals / standalone path
 // ─────────────────────────────────────────────

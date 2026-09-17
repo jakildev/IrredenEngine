@@ -370,6 +370,7 @@ static_assert(
 
 CanvasStressSettings g_settings{};
 int g_autoWarmupFrames = 0;
+int g_autoRecordFrames = 0; // 0 = --auto-record not requested
 
 bool groupEnabled(std::uint32_t group) {
     return g_settings.onlyGroups_ == 0u || (g_settings.onlyGroups_ & group) != 0u;
@@ -1319,6 +1320,7 @@ int main(int argc, char **argv) {
     IREngine::init(argc, argv);
     applyArgs();
     g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
+    g_autoRecordFrames = IREngine::args().autoRecordFrames();
     readConfig();
     if (g_settings.autoProfile_) {
         IREngine::enableFrameTiming(true);
@@ -1680,6 +1682,7 @@ void initSystems() {
         cfg.numShots_ = static_cast<int>(g_allShots.size());
         renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(cfg));
     }
+    IRVideo::appendAutoRecordIfRequested(renderPipeline, g_autoRecordFrames);
 
     IRSystem::registerPipeline(IRTime::Events::RENDER, renderPipeline);
 }

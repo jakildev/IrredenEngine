@@ -15,7 +15,11 @@ namespace IREngine {
 // fully compile-time, with each entry typed via a constexpr key list.
 class WorldConfig {
   public:
-    WorldConfig(const char *luaConfigFile)
+    /// @p presetFile (optional) is a second Lua file whose `config` table
+    /// overlays @p luaConfigFile's: only the keys it carries change, so a
+    /// per-run preset (`--config-preset`) can set two capture keys without
+    /// restating the creation's whole config.
+    WorldConfig(const char *luaConfigFile, const char *presetFile = nullptr)
         : m_lua{luaConfigFile}
         , m_config{} {
         m_config.addEntry(
@@ -91,6 +95,15 @@ class WorldConfig {
         m_config.addEntry(
             "video_capture_bitrate",
             std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(10'000'000)
+        );
+        // Encoded frame size; 0 (either) = follow the render output resolution.
+        m_config.addEntry(
+            "video_capture_output_width",
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(0)
+        );
+        m_config.addEntry(
+            "video_capture_output_height",
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(0)
         );
         m_config.addEntry(
             "video_capture_audio_input_enabled",
@@ -172,6 +185,16 @@ class WorldConfig {
         );
         sol::table configTable = m_lua.getTable("config");
         m_config.parse(configTable);
+        // A preset may carry only creation-owned tables (perf_grid's do), so a
+        // missing `config` table is not a fault.
+        if (presetFile != nullptr && presetFile[0] != '\0') {
+            IRScript::LuaScript preset{presetFile};
+            sol::table presetTable = preset.getTable("config");
+            if (presetTable.valid()) {
+                IRE_LOG_INFO("Config preset overlay: {}", presetFile);
+                m_config.overlay(presetTable);
+            }
+        }
     }
 
     IRScript::ILuaValue &operator[](const std::string &key) {

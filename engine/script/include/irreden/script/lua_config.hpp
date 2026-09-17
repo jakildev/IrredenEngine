@@ -21,7 +21,8 @@ struct LuaConfigEntry {
 /// String-keyed collection of typed Lua configuration values.
 /// Populate with `addEntry()`, then call `parse(luaTable)` to populate all
 /// values from a `sol::table`; missing keys fall back to their defaults.
-/// Use `operator[]` to retrieve individual values after parsing.
+/// `overlay(luaTable)` layers a second table on top, touching only the keys
+/// it carries. Use `operator[]` to retrieve individual values after parsing.
 class LuaConfig {
   public:
     std::map<std::string, std::unique_ptr<ILuaValue>> entries;
@@ -34,14 +35,14 @@ class LuaConfig {
     /// Parses all registered entries from @p luaTable, falling back to each
     /// entry's default when a key is absent.
     void parse(sol::table luaTable) {
-        for (auto &entry : entries) {
-            sol::object luaValue = luaTable[entry.first];
-            if (luaValue.valid()) {
-                entry.second->parse(luaValue); // Parse the Lua value
-            } else {
-                entry.second->reset_to_default(); // Use the default value if missing
-            }
-        }
+        apply(luaTable, true);
+    }
+
+    /// Re-parses only the registered entries present in @p luaTable, leaving
+    /// every absent key at its current value — the layering counterpart of
+    /// @c parse.
+    void overlay(sol::table luaTable) {
+        apply(luaTable, false);
     }
 
     /// Returns a reference to the value for @p key.  Throws if the key is absent.
@@ -51,6 +52,18 @@ class LuaConfig {
             return *(it->second);
         } else {
             throw std::runtime_error("Key not found: " + key);
+        }
+    }
+
+  private:
+    void apply(sol::table luaTable, bool resetMissing) {
+        for (auto &entry : entries) {
+            sol::object luaValue = luaTable[entry.first];
+            if (luaValue.valid()) {
+                entry.second->parse(luaValue);
+            } else if (resetMissing) {
+                entry.second->reset_to_default();
+            }
         }
     }
 };
