@@ -31,6 +31,25 @@
     "max_delta": 64,
     "psnr_db": 35.0
   },
+  "extra_runs": [
+    {
+      "name": "pivot_focus_ctr_z4",
+      "demo_args": ["--pivot-verify", "focus-ctr", "--zoom", "4"],
+      "warmup": 12,
+      "shots": [
+        "pivot_focus_ctr_z4_yaw_000",
+        "pivot_focus_ctr_z4_yaw_001",
+        "pivot_focus_ctr_z4_yaw_002",
+        "pivot_focus_ctr_z4_yaw_003",
+        "pivot_focus_ctr_z4_yaw_004",
+        "pivot_focus_ctr_z4_yaw_005",
+        "pivot_focus_ctr_z4_yaw_006",
+        "pivot_focus_ctr_z4_yaw_007",
+        "pivot_focus_ctr_z4_yaw_008"
+      ],
+      "capture_offset": 0
+    }
+  ],
   "structural": {
     "zoom4_origin": [
       { "metric": "coverage", "max_hole_ratio": 0.02 }
