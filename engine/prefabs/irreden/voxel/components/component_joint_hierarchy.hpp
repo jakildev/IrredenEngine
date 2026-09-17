@@ -1,34 +1,22 @@
 #ifndef COMPONENT_JOINT_HIERARCHY_H
 #define COMPONENT_JOINT_HIERARCHY_H
 
-// DEPRECATED — superseded by the entity-based joint model.
-//
-// New rigs should use:
+// DEPRECATED — rigs use the entity-based joint model:
 //   - `C_Skeleton` (rig root, holds an ordered vector of joint EntityIds).
 //     See `component_skeleton.hpp`.
 //   - `C_Joint` tag on each joint entity. See `component_joint.hpp`.
-//   - Per-joint local transform via the engine's canonical local-transform
-//     component (`C_LocalTransform`, since #731 Phase 1 landed — PR #749).
+//   - The engine's canonical local-transform component (`C_LocalTransform`)
+//     for per-joint local transform.
 //   - `CHILD_OF` relations for the parent chain.
 //
-// The original SoA `C_JointHierarchy` packed every joint into one vector on
-// the rig root. The entity-based model unlocks severance, per-joint custom
-// components, dynamic re-parenting, and uniform reuse of the engine's
-// `CHILD_OF` traversal — see `engine/prefabs/irreden/voxel/CLAUDE.md`
-// "Entity-based joints" and the design refinement in `#737`.
+// The `setRotation` / `setTranslation` setters here have no equivalent in
+// the entity-based model: pose authoring writes the per-joint local-
+// transform component directly, then `SYSTEM_PROPAGATE_TRANSFORM` walks the
+// CHILD_OF chain to produce world transforms. See
+// `engine/prefabs/irreden/voxel/CLAUDE.md` "Entity-based joints".
 //
-// MIGRATION (#605 Phase 2 will do the consumer-side work):
-//   - The GPU joint-matrix SSBO uploader reads `C_Skeleton.joints_` on each
-//     rig root and packs per-joint world transforms (from
-//     `C_WorldTransform`) at the matching slot, indexed by `C_Voxel.bone_id_`.
-//   - The `setRotation` / `setTranslation` setters here have no equivalent —
-//     pose authoring writes the per-joint local-transform component
-//     directly, then `SYSTEM_PROPAGATE_TRANSFORM` walks the CHILD_OF chain
-//     to produce world transforms.
-//
-// This header remains for one release as a deprecation shim so existing
-// callers compile while the consumer migration lands. Do not add new code
-// that depends on it.
+// This header is a deprecation shim for its remaining callers. Do not add
+// code that depends on it.
 
 #include <irreden/ir_math.hpp>
 

@@ -12,8 +12,7 @@ namespace IRRender {
 //
 // Split out of ir_render_types.hpp so consumers (component_shape_descriptor,
 // component_active_lod_level) that only need the enum can pick it up
-// without pulling the umbrella render types header. Mirrors the active_canvas
-// split (T-205) — see #739.
+// without pulling the umbrella render types header.
 enum class LodLevel : std::uint32_t {
     LOD_0 = 0,
     LOD_1 = 1,

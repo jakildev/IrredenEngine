@@ -524,7 +524,7 @@ void initCommands() {
     IRPrefab::Camera::registerStandardKeyboardCommands();
     IRCommand::registerCaptureCommands();
     // Backtick keeps its "show the command list" meaning, now backed by the
-    // registry-driven help overlay (#2550). The bespoke H help panel below is
+    // registry-driven help overlay. The bespoke H help panel below is
     // a separate, demo-specific explainer and is unaffected.
     IRPrefab::HelpOverlay::registerToggleCommand(KeyMouseButtons::kKeyButtonGraveAccent);
     IRCommand::createCommand<IRCommand::GUI_ZOOM_IN>(

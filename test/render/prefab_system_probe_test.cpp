@@ -2,8 +2,8 @@
 // and `SettingsMenu::systemOrNull()` — resolve their system through
 // `IRSystem::findSystem` and must read a clean negative when the creation never
 // registered it. `findSystem`'s miss answer is `IRSystem::kNullSystemId`, not
-// `IREntity::kNullEntity`: #2540 moved it off 0 precisely because 0 is a
-// legitimate id (the first system registered in a process gets it).
+// `IREntity::kNullEntity`, because 0 is a legitimate id (the first system
+// registered in a process gets it).
 //
 // Comparing against the wrong sentinel breaks the probe in BOTH directions, so
 // each prefab is covered by a pair of arms:

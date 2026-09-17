@@ -6,7 +6,7 @@
 // times: two GRID world-reference anchors (identity + a 45deg-Z seed), the two
 // detached flavors — DETACHED (forward-scatter) and DETACHED_REVOXELIZE — and
 // a 45deg-Z GRID totem spawned WITHOUT C_RotationMode (the implicit-GRID
-// regression totem, #2376). All five sit on one iso row so every capture
+// regression totem). All five sit on one iso row so every capture
 // frames them side by side. No lighting stack — raw albedo keeps the band
 // classifier exact.
 //
@@ -29,16 +29,16 @@
 //
 //   * band PRESENCE — all four z-bands rasterized into the detached canvas.
 //     A missing WHITE head band means the canvas/lattice clipped the model
-//     (the plain-DETACHED zoom-overflow class: #1570-D2 caps re-voxelize only).
+//     (the plain-DETACHED zoom-overflow class caps re-voxelize only).
 //   * band ORDER — the detached canvas's RED->WHITE order along canvas-y must
 //     match the GRID reference's order on the main canvas. Catches detached
 //     content rendering z-inverted.
 //   * placement PARITY — the band centroid delta between the GRID totem and
 //     each detached totem on the shared framebuffer must match the
 //     iso-projected world delta at the shot's zoom. Catches composite desync
-//     under camera zoom + fractional pan (the #1883 half-texel snap bound is
+//     under camera zoom + fractional pan (the half-texel snap bound is
 //     the current tolerance; tighten when the composite tracks sub-texel).
-//   * implicit-GRID DOMAIN STATE (#2376) — a totem spawned with no
+//   * implicit-GRID DOMAIN STATE — a totem spawned with no
 //     C_RotationMode must render its authored rotation exactly like the
 //     explicit-GRID seeded anchor (MATCH), and both must be measurably
 //     distinguishable from the unrotated identity anchor (DISTINCT, the
@@ -134,7 +134,7 @@ constexpr vec3 kGridPos{-14.0f, 14.0f, kTotemZ};       // identity anchor
 constexpr vec3 kDetachedPos{0.0f, 0.0f, kTotemZ};      // identity, avatar config
 constexpr vec3 kRevoxPos{14.0f, -14.0f, kTotemZ};      // 45deg-Z seed
 constexpr vec3 kGridSeededPos{-28.0f, 28.0f, kTotemZ}; // 45deg-Z anchor
-// 45deg-Z again, but spawned WITHOUT C_RotationMode (#2376). Placed further
+// 45deg-Z again, but spawned WITHOUT C_RotationMode. Placed further
 // down the -iso.x end of the row than the walk corridor reaches, NOT mirrored
 // onto the +iso.x side past the seeded anchor: at zoom 4 the seeded anchor's
 // bucket center already sits at ~1170 of the 1284 px framebuffer under the pan
@@ -187,7 +187,7 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
     {2.0f, vec2(0.5f, 0.25f), 0.0f, "probe_z2_camfrac"},
     {4.0f, vec2(0.5f, 0.25f), 0.0f, "probe_z4_camfrac"},
     // Off-origin pan: detached canvases must survive a panned camera
-    // (the #1555 cull-on-pan class) and stay aligned with the world.
+    // (the cull-on-pan class) and stay aligned with the world.
     {4.0f, vec2(10.4f, -6.7f), 0.0f, "probe_z4_campan"},
 };
 
@@ -278,7 +278,7 @@ void paintTotemBandsRawIdiom(C_VoxelSetNew &voxelSet) {
 // The explicit-C_RotationMode spawn. Both parity anchors use it, so the
 // anchors stay on the archetype REBUILD_GRID_VOXELS itself ticks — the
 // measurement is then a GRID-vs-GRID comparison at a known pose, not a
-// cross-arm one (see #2349 for the mis-measurement that motivates it).
+// cross-arm one.
 IREntity::EntityId spawnGridTotem(vec3 worldPos, vec4 rotation) {
     IREntity::EntityId totem = IREntity::createEntity(
         C_LocalTransform{worldPos, rotation},
@@ -289,7 +289,7 @@ IREntity::EntityId spawnGridTotem(vec3 worldPos, vec4 rotation) {
     return totem;
 }
 
-// The implicit-GRID spawn (#2376): identical, minus C_RotationMode. Absence of
+// The implicit-GRID spawn: identical, minus C_RotationMode. Absence of
 // the component is documented as implicitly GRID
 // (`component_rotation_mode.hpp`), so this totem must rasterize its authored
 // rotation exactly like `spawnGridTotem` does — that equivalence is what
@@ -621,11 +621,11 @@ void assertPlacementParity(
             zoom
         );
 
-        // Tolerances calibrate to the measured post-fix residuals so any
-        // regression toward the fixed bug classes (whole-texel anchor drift,
+        // Tolerances calibrate to the measured residuals so any
+        // regression toward the known bug classes (whole-texel anchor drift,
         // camera-offset leaks — tens of px, and the half-cell rotation-anchor
-        // shift of the revox inverse resample, ~4*zoom px in x — the #2349
-        // fix) trips loudly: both detached flavors now track their GRID twin
+        // shift of the revox inverse resample, ~4*zoom px in x) trips loudly:
+        // both detached flavors track their GRID twin
         // within the band-centroid lattice quantization + sub-texel snap bound
         // (~1.3*zoom px). The revox pair carries one extra DOCUMENTED term on
         // y only: GRID forward-rounds the totem's half-integer z coordinates
@@ -657,7 +657,7 @@ void assertPlacementParity(
     }
 }
 
-// ---- Implicit-GRID domain state (#2376) -------------------------------------
+// ---- Implicit-GRID domain state -------------------------------------
 
 // An entity with NO C_RotationMode is documented as implicitly GRID, so a
 // seeded totem spawned without the component must rasterize its authored
@@ -809,7 +809,7 @@ void runProbeAsserts(int shotIndex) {
     assertPlacementParity(shot.label_, shot.zoom_, fbBuckets);
 
     // 4) Implicit-GRID domain state: a component-less totem renders its
-    //    authored rotation like the explicit-GRID one (#2376).
+    //    authored rotation like the explicit-GRID one.
     assertImplicitGridParity(shot.label_, shot.zoom_, fbBuckets);
 }
 

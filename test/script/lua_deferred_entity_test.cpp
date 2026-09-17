@@ -12,7 +12,7 @@
 #include <variant>
 #include <vector>
 
-// #2286: EVAL-mode coverage for IREntity.deferredCreate / deferredDestroy —
+// EVAL-mode coverage for IREntity.deferredCreate / deferredDestroy —
 // the Lua binding for structural entity changes queued from inside a system
 // tick. The create's archetype insert drains at flushStructuralChanges (a
 // group boundary, exercised here via executePipeline); the destroy drains at

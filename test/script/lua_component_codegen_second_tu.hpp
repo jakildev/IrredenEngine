@@ -1,5 +1,5 @@
-// #3091 regression surface: the declarations `lua_component_codegen_test.cpp`
-// reaches a SECOND translation unit through.
+// Declarations for the second translation unit used by
+// `lua_component_codegen_test.cpp`.
 //
 // Deliberately does NOT include the generated header — the point of the pairing
 // is that `lua_component_codegen_second_tu.cpp` includes it independently of

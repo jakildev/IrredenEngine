@@ -1,5 +1,5 @@
 // skeletal_demo — procedural skeletal voxel entities exercising the
-// rig + skinning path (Phase 2.10 / #1611):
+// rig + skinning path:
 //   1. Snake (30-joint linear chain, bent at midpoint)
 //   2. Desk   (static, no skeleton)
 //   3. Lamp   (4-joint linear chain, bent at top)

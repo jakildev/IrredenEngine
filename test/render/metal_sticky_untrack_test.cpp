@@ -8,7 +8,7 @@
 // destroyed while still referenced leaves a dangling pointer that the next
 // encode retains (setTexture:) and dereferences (viewport sizing). That
 // invariant held by convention alone for two resource types, which is how the
-// render-target pair was missed (#2808).
+// render-target pair was missed.
 //
 // These cases exercise the bookkeeping only: the handles are opaque sentinel
 // pointers that are never dereferenced, and no MTL::Device is required, so the
@@ -47,7 +47,7 @@ TEST(MetalStickyUntrack, ClearsSamplerAndImageBindSlots) {
 
 // A colour attachment surviving untrackMetalTexture is a freed handle that
 // createRenderEncoder retains via setTexture: and dereferences for the
-// viewport, so the scrub has to reach the render-target pair too (#2808).
+// viewport, so the scrub has to reach the render-target pair too.
 TEST(MetalStickyUntrack, ClearsRenderTargetColorAttachment) {
     auto *color = sentinelTexture(0x2001);
     auto *depth = sentinelTexture(0x2002);

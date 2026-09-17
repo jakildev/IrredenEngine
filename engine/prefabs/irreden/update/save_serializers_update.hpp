@@ -1,9 +1,9 @@
 #ifndef IR_SAVE_SERIALIZERS_UPDATE_H
 #define IR_SAVE_SERIALIZERS_UPDATE_H
 
-/// `SaveSerialize<C>` specialization for `engine/prefabs/irreden/update/`
-/// (#2242). Opt-in serializer header: include it wherever a registry
-/// registers `C_PeriodicIdle`; never pulled by the component header.
+/// `SaveSerialize<C>` specialization for `engine/prefabs/irreden/update/`.
+/// Opt-in serializer header: include it wherever a registry registers
+/// `C_PeriodicIdle`; never pulled by the component header.
 ///
 /// `C_PeriodicIdle` is the only component in this domain with an explicit
 /// serializer. `C_GotoEasing3D` and `C_RotationTarget` store their easing as

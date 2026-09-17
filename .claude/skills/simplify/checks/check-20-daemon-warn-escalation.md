@@ -7,8 +7,8 @@ log/warn emission (`echo … >&2`, `log "…"`, `… | tee -a "$LOG"`) to a
 A skip condition in an unattended loop stays true until a human acts, so a
 per-pass warn re-emits identically forever and buries the outage it
 reports. The rule, counter shape, and alert-file contract:
-`scripts/fleet/CLAUDE.md` §"Authoring rules", "An every-tick guard that
-warns must escalate-then-quiet".
+`scripts/fleet/CLAUDE.md` §"Lane and loop contracts", "An every-tick
+guard that warns must escalate-then-quiet".
 
 Three greps over the **changed file**, not the hunk:
 

@@ -3,10 +3,10 @@
 
 // Grid-mode rotation math — used by SYSTEM_REBUILD_GRID_VOXELS to map
 // authored local voxel positions through an entity's SQT world transform
-// to integer world-grid cells, and back (the #1720 inverse resample).
+// to integer world-grid cells, and back (the inverse resample).
 //
-// Lives outside the system header so unit tests can exercise the math
-// without setting up an EntityManager + canvas + voxel pool.
+// Pure math over an SQT and a position: no EntityManager, canvas, or
+// voxel-pool dependency, so it is callable from any context.
 //
 // Semantics:
 // - Identity transform (rotation = (0,0,0,1), scale = (1,1,1)): returns
@@ -22,19 +22,17 @@
 // rotating a lattice forward leaves uncovered dest cells (coverage holes,
 // up to ~29% of a solid 12³ mid-rotation). SYSTEM_REBUILD_GRID_VOXELS
 // therefore renders rotating sets by walking DEST cells and inverse-mapping
-// each through `sourceCellForWorldCell` below (#1720, mirroring the detached
-// re-voxelize fix #1619); the forward map remains the identity-path /
+// each through `sourceCellForWorldCell`, mirroring the detached
+// re-voxelize path; the forward map is the identity-path /
 // creation-facing helper.
 //
 // Rounding uses `IRMath::roundVec3HalfUp` (floor(x + 0.5)), NOT `IRMath::round`
 // (glm round-half-away-from-zero). This is the engine's CPU↔GPU coordinate
 // handshake convention (`ir_math.hpp` roundHalfUp doc): the detached re-voxelize
 // GPU mirror `c_revoxelize_detached.{glsl,metal}` calls the shared `roundHalfUp`
-// helper, so CPU and GPU classify negative half-integers identically (#1556).
-// GRID re-voxelize (`REBUILD_GRID_VOXELS`) shares this helper; the rounding
-// switch only changes cells at exact negative half-integer post-rotation
-// coordinates (float-measure-zero) and aligns it with the same convention the
-// SDF lattice walk already uses.
+// helper, so CPU and GPU classify negative half-integers identically.
+// GRID re-voxelize (`REBUILD_GRID_VOXELS`) and the SDF lattice walk use the
+// same convention.
 
 #include <irreden/ir_math.hpp>
 #include <irreden/common/components/component_world_transform.hpp>
@@ -65,8 +63,7 @@ inline IRMath::vec3 worldCellForGridVoxel(
     const IRMath::vec3 scaled = wt.scale_ * composed;
     const IRMath::vec3 rotated = IRMath::rotateVectorByQuat(scaled, wt.rotation_);
     const IRMath::vec3 world = wt.translation_ + rotated;
-    // roundHalfUp (not glm round) so the GPU mirror agrees byte-for-byte; see
-    // the header note above.
+    // roundHalfUp (not glm round) so the GPU mirror agrees byte-for-byte.
     return IRMath::vec3(IRMath::roundVec3HalfUp(world));
 }
 
@@ -74,8 +71,8 @@ inline IRMath::vec3 worldCellForGridVoxel(
 /// — -0.5 on axes where a center-around-origin solid authors at half-integers
 /// (even-sized axes), 0 on odd. The detached re-voxelize mapping rotates
 /// anchored POINTS (`cell + anchor`), not raw lattice cells; ignoring the
-/// anchor shifted a rotating solid by a constant half cell per even axis
-/// (#2349). This is the ONE home of the derivation — the seed
+/// anchor shifts a rotating solid by a constant half cell per even axis.
+/// This is the ONE home of the derivation — the seed
 /// (`IRPrefab::DetachedRevoxelize::seedResidentLocals`) and the CPU mask twin
 /// (`SYSTEM_REBUILD_DETACHED_VOXELS`) both call it; the GLSL/Metal kernels
 /// receive the value via `RevoxelizeDetachedParams::anchor_`.
@@ -85,9 +82,9 @@ inline IRMath::vec3 halfCellAnchor(IRMath::vec3 composed) {
 
 /// Anchored dest cell of a rotated detached voxel: `roundHalfUp(R·composed - anchor)`
 /// — the CPU twin of `revoxSourceCellForDest`'s forward direction in
-/// `c_revoxelize_detached.{glsl,metal}` (#2349), rotation about the pool
-/// origin (translation 0, scale 1). Kept beside the GRID map above so the
-/// CPU↔GPU roundHalfUp handshake convention stays in one header.
+/// `c_revoxelize_detached.{glsl,metal}`, rotation about the pool
+/// origin (translation 0, scale 1). Shares this header with the GRID map so
+/// the CPU↔GPU roundHalfUp handshake convention has one home.
 inline IRMath::ivec3 anchoredCellForDetachedVoxel(
     IRMath::vec3 composed, IRMath::vec4 rotation, IRMath::vec3 anchor
 ) {
@@ -98,8 +95,8 @@ inline IRMath::ivec3 anchoredCellForDetachedVoxel(
 /// world cell back to the continuous source-frame position (`local + offset`
 /// space). Round the result with `IRMath::roundVec3HalfUp` to land on the
 /// integer source-cell lattice the occupancy grid is keyed by — the same
-/// `roundHalfUp(R⁻¹·c)` convention the detached re-voxelize GPU kernel uses
-/// (#1619), so CPU GRID and GPU detached classify identically.
+/// `roundHalfUp(R⁻¹·c)` convention the detached re-voxelize GPU kernel uses,
+/// so CPU GRID and GPU detached classify identically.
 /// @p inverseRotation is `IRMath::quatInverse(wt.rotation_)`, hoisted by the
 /// caller so a per-dest-cell loop pays one quat rotate, not an inverse too.
 /// Zero scale components are the caller's responsibility to reject (a
@@ -116,8 +113,7 @@ inline IRMath::vec3 sourceCellForWorldCell(
 /// twice the body's center relative to the pool origin. Zero on every axis iff
 /// the pool origin IS the body center: the precondition the detached
 /// re-voxelize resample (`DetachedRevoxelize::seedResidentLocals`) and
-/// `SYSTEM_REBUILD_DETACHED_VOXELS`' origin-centered cull bound both assume
-/// (see #2911).
+/// `SYSTEM_REBUILD_DETACHED_VOXELS`' origin-centered cull bound both assume.
 /// @p composedAt returns `local + offset` for slot i — the operand the GPU
 /// rotates. Taken as a callable rather than a span so this header stays
 /// render-neutral (`IRRender::VoxelGpuPosition` lives in `engine/render/`).

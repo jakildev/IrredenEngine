@@ -86,6 +86,17 @@ The basename is your `pwd` at startup — a pool worktree name (`pool-1` …
 / rebase / push loop. Staleness thresholds: worker 30 min; merger 20 min;
 reviewers the witness default.
 
+**The heartbeat is PANE-scoped, not iteration-scoped.** Every transient role's
+step 0 touches the same `~/.fleet/heartbeats/<worktree-basename>` file, so
+freshness says "some dispatch has recently run in this pane", never "*this*
+iteration is alive". It is therefore not a liveness signal for anything
+per-iteration: a `fleet:amending-*` claim keyed on it stayed alive for 86
+minutes after its owner died, renewed by unrelated reviewer and merger
+dispatches into the same pane (#2973). Per-iteration ownership is keyed on the
+dispatch id instead — `fleet-dispatch-wrap` exports `FLEET_DISPATCH_ID` and
+records the worktree's current dispatch at
+`~/.fleet/state/dispatch-current/<worktree>`; `fleet-claim` compares the two.
+
 ---
 
 ## Reservation check — step 0.5 (workers and authors only)
@@ -137,9 +148,10 @@ $PPID` (the classifier blocks it).
    fleet-claim release-worktree <your-worktree-basename>
    ```
 
-3. Workers and authors run `start-next-task` (in the cwd's repo);
-   reviewers and the merger reset to their scratch branch earlier in the
-   iteration.
+3. Workers and authors run `start-next-task` (in the cwd's repo) —
+   `fleet-start-next-task` is its executable form, the one a Codex
+   runtime runs directly; reviewers and the merger reset to their scratch
+   branch earlier in the iteration.
 
 4. Print the banner and exit:
 
@@ -154,7 +166,9 @@ dirty / unpushed `claude/*` worktrees and seeds a trigger for a surviving
 sidecar, and the boot claim sweep keeps the GitHub claim label on any
 issue a local reservation will resume. A resume that fails on quota keeps
 the sidecar; any other failure gets one more attempt before the next
-dispatch goes fresh.
+dispatch goes fresh. A fresh launch also starts without the gitignored
+scratch bodies (`.review-body.md`, `.pr-body.md`, `.merger-body.md`, …):
+the wrapper removes them, so no iteration inherits a stale one.
 
 ---
 

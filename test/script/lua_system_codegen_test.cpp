@@ -1,8 +1,8 @@
-// T-107 regression coverage: the codegen system path emits typed C++ tick
-// bodies that match the EVAL register surface for the cases that map
+// The codegen system path emits typed C++ tick bodies that match the EVAL
+// register surface for the cases that map
 // cleanly between them — canonical for-loop, math intrinsics, branches,
 // excludes filter, and field-level column ops. Cases that require the
-// runtime field-index API or sol::function bodies (T-103 hot-reload, mixed
+// runtime field-index API or sol::function bodies (hot reload, mixed
 // C++/Lua component archetypes, dynamic field names) stay in
 // lua_system_register_test.cpp; per the architect plan those are EVAL-only
 // and excluded from CODEGEN by design.
@@ -29,8 +29,7 @@
 namespace {
 
 // LuaScript first so its sol::state outlives sol::function-bearing columns
-// held by EntityManager (mirrors lua_component_register_test.cpp + T-106's
-// component codegen test).
+// held by EntityManager.
 class LuaSystemCodegenTest : public testing::Test {
   protected:
     LuaSystemCodegenTest()
@@ -133,7 +132,7 @@ TEST_F(LuaSystemCodegenTest, ExcludesFilterDropsTaggedArchetype) {
     EXPECT_FLOAT_EQ(IREntity::getComponent<C_CodegenSysPos>(eSkip).x_, 0.0f);
 }
 
-// ---- #1368: packed vec3 / ivec3 fields in a tick -------------------------
+// ---- Packed vec3 / ivec3 fields in a tick -----------------------------
 //
 // CodegenVecStep reads each packed field via getField (typed VEC3 / IVEC3),
 // reads its `.x/.y/.z` components, rebuilds the value via vec3.new / ivec3.new,
@@ -226,7 +225,7 @@ TEST_F(LuaSystemCodegenTest, ParallelIncRegistersAndUpdatesEveryRow) {
     }
 }
 
-// ---- #1353: row-alias optimisation preserves copy semantics --------------
+// ---- Row-alias optimisation preserves copy semantics ------------------
 //
 // `CodegenReadAfterWrite` reads `r.x` AFTER writing column x through
 // `setField`. The optimised emitter must keep `local r = arch.C:at(i)` a
@@ -247,7 +246,7 @@ TEST_F(LuaSystemCodegenTest, ReadAfterWriteKeepsCopySemantics) {
     EXPECT_FLOAT_EQ(IREntity::getComponent<C_CodegenSysPos>(e).y_, 3.0f);
 }
 
-// ---- #1353: FOR_NUMERIC back-edge keeps copy semantics for outer binding --
+// ---- FOR_NUMERIC back-edge keeps copy semantics for outer binding -----
 //
 // `CodegenForNumericBackEdge` binds `local a = arch.C:at(i)` before a
 // for_numeric loop that writes field x inside the body. The back-edge
@@ -272,7 +271,7 @@ TEST_F(LuaSystemCodegenTest, ForNumericBackEdgeKeepsCopySemantics) {
     EXPECT_FLOAT_EQ(IREntity::getComponent<C_CodegenSysPos>(e).x_, 2.0f);
 }
 
-// ---- #1616: whitelisted side-effecting engine binding as a bare statement --
+// ---- Whitelisted side-effecting engine binding as a bare statement ----
 //
 // `CodegenRenderGlue`'s tick body calls `IRRender.setSunIntensity(pos.x)` as a
 // bare statement — a void render-glue setter that the DSL now lowers to

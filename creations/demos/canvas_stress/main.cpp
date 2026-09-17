@@ -69,26 +69,25 @@
 // main-canvas GRID grid by ENTITY_CANVAS_TO_FRAMEBUFFER. It is the permanent
 // visual regression canary for detached canvases and inter-trixel rendering.
 // The SO(3) canary cubes ride RotationMode::DETACHED_REVOXELIZE (the sole
-// shipped detached SO(3) renderer, #1581/#1589); the orbit ring still spans
+// shipped detached SO(3) renderer); the orbit ring still spans
 // all three rotation modes for a side-by-side of the techniques.
 //
-// Per #1259 the demo also serves as the rotation-visualization showcase:
+// The demo also serves as the rotation-visualization showcase:
 // camera yaw auto-rotates by default, detached canvases spin continuously
 // at per-entity rates around their assigned axes (full SO(3) bake), a
 // small cluster of GRID-mode cubes re-rasterizes via REBUILD_GRID_VOXELS
 // each frame, and the standard lighting pipeline (AO + sun + shadows)
 // runs so face orientation is visually perceptible.
 //
-// Rotation-mode contract (#1624, supersedes #1582/#1620): every detached
+// Rotation-mode contract: every detached
 // canvas — canary cubes, orbit ring, re-voxelize proof solids — is
 // WORLD-PLACED by default (C_EntityCanvas::screenLocked_ = false): it
 // depth-sorts against the SDF floor and world geometry, and the re-voxelize
-// solids receive (P4b-2/#1617) + cast (P4b-3/#1596) world sun-shadow at their
+// solids receive + cast world sun-shadow at their
 // world pos. Plain-DETACHED orbiters depth-sort only (forward-scatter has no
 // faithful world-pos recovery for lighting). Run with --screen-lock-detached
-// to opt the whole demo back into fixed-depth overlays at the pre-#1624
-// canary layout — byte-identical to the pre-flip default scene, the
-// regression canary for the screenLocked_ opt-out path.
+// to opt the whole demo back into fixed-depth overlays at the screen-locked
+// canary layout, the regression canary for the screenLocked_ opt-out path.
 // See render/CLAUDE.md "Rotation modes".
 
 using namespace IRComponents;
@@ -103,10 +102,10 @@ struct CanvasStressSettings {
     float initialZoom_ = 1.0f;
     // Base voxel-render subdivision factor (m_vrs). 0 = leave the engine default
     // (1) untouched; > 0 forces IRRender::setVoxelRenderSubdivisions at init. The
-    // detached small/low-zoom gap class (#2043) only reproduces at baseSub > 1
+    // detached small/low-zoom gap class only reproduces at baseSub > 1
     // (at baseSub == 1 effSub floors at 1 below zoom 1, so the detached canvas
     // already rasters at sub 1 — nothing to coarsen and no gaps). Set --subdivisions 8
-    // to reproduce the bug + verify the fix on the orbit-ring re-voxelize shapes.
+    // to reproduce the gap class on the orbit-ring re-voxelize shapes.
     int subdivisions_ = 0;
     float cameraYaw_ = 0.0f;
     bool autoRotate_ = true;
@@ -122,31 +121,31 @@ struct CanvasStressSettings {
     bool frozenPose_ = false;
     float frozenPoseRad_ = 0.0f;
     bool noLighting_ = false;
-    // #1619 step-0 isolation harness (architect-mandated). Spawns exactly ONE
+    // Solo isolation harness. Spawns exactly ONE
     // rotated DETACHED_REVOXELIZE solid — the multi-color L-prism at its
     // off-cardinal initialRotation — and nothing else (no floor, no main grid,
     // no GRID spin cubes, no canary cubes, no second proof solid, no orbit
     // ring). Discriminates cross-canvas clobber (renders alone, breaks with
     // neighbours) from a single-canvas mode-1 chain defect (breaks alone too).
     bool soloRevox_ = false;
-    // OFF by default (#1624): every detached canvas in the demo rides the
-    // world-placed engine default and depth-sorts against the #1587 SDF floor.
-    // Pass --screen-lock-detached (legacy alias --screen-lock-revox) to opt
-    // them ALL into C_EntityCanvas::screenLocked_ AND keep the pre-#1624
-    // canary z — reproducing the pre-flip overlay scene byte-for-byte, the
-    // regression canary for the screen-locked opt-out path.
+    // OFF by default: every detached canvas in the demo rides the
+    // world-placed engine default and depth-sorts against the SDF floor.
+    // Pass --screen-lock-detached (alias --screen-lock-revox) to opt
+    // them ALL into C_EntityCanvas::screenLocked_ AND keep the canaries at
+    // z = 0 — the fixed-depth overlay scene, the regression canary for the
+    // screen-locked opt-out path.
     bool screenLockDetached_ = false;
-    // #1721 diagnosis harness. `--only <group>[,<group>...]` spawns only the
+    // Diagnosis harness. `--only <group>[,<group>...]` spawns only the
     // named entity groups (maingrid, gridspin, canary, revox, orbit, floor);
     // 0 means no filter (default run, byte-identical). Several OPT-IN groups never
-    // appear in the default run: "compare" (the #1374 unified-rotation labeled
-    // side-by-side); "interpenetrate" (the #1960 per-trixel-priority depth
+    // appear in the default run: "compare" (the unified-rotation labeled
+    // side-by-side); "interpenetrate" (the per-trixel-priority depth
     // override — `--only interpenetrate` isolates two detached units, the far one
     // ROTATED and tagged a per-trixel tier so it renders in front of the near one,
-    // proving the carrier survives the re-voxelize MODE 1 fill, #2023);
-    // "smallzoom" (the #2043 small/low-zoom gap repro); and "orbitswap" (the #2154
+    // proving the carrier survives the re-voxelize MODE 1 fill);
+    // "smallzoom" (the small/low-zoom gap repro); and "orbitswap" (the
     // per-ENTITY priority-swap companion — the far unit's C_EntityCanvas::
-    // depthPriority_ lifts it in front at tier 1, #2122 item 2).
+    // depthPriority_ lifts it in front at tier 1).
     //
     // The sweep flags replace the base auto-screenshot suite with a focused capture run and force
     // --no-auto-rotate so the swept variable is the only one moving:
@@ -171,41 +170,40 @@ struct CanvasStressSettings {
     bool autoProfile_ = false;
     // `--debug-overlay <mode>` forces a render debug overlay for the whole run
     // (none|ao|light_level|shadow|peraxis_id|peraxis_origin|peraxis_margin|unlit|normals|receiver_position).
-    // T-1
-    // (#1767) captures with `--debug-overlay shadow` so cast shadows read magenta and
-    // render-shadow-metric.py (#1765) can classify the swiss-cheese / dithering
-    // signature (epic #1717). The run-global form keeps the shared
+    // This captures with `--debug-overlay shadow` so cast shadows read magenta
+    // and render-shadow-metric.py can classify the swiss-cheese / dithering
+    // signature. The run-global form keeps the shared
     // AutoScreenshotShot table backend-agnostic — a per-shot overlay field is
-    // deferred to the structural-gate work (T-2/T-3). NONE leaves the live
+    // deferred to future structural-gate work. NONE leaves the live
     // pipeline untouched, so a flagless run is byte-identical.
     IRRender::DebugOverlayMode debugOverlay_ = IRRender::DebugOverlayMode::NONE;
-    // `--depth-probe X,Y` (#1910): each frame, read back and log the real
+    // `--depth-probe X,Y`: each frame, read back and log the real
     // composite depth-test value at main-framebuffer texture pixel (X,Y) —
     // top-left origin, in framebuffer-texture space (the size logged at canvas
     // creation), not window/screenshot pixels. Off by default; when off no probe
     // system is registered, so a flagless run is byte-identical. Used to
-    // root-cause the #1884 detached-vs-floor depth crossing in this demo (the
+    // root-cause a detached-vs-floor depth crossing in this demo (the
     // floating canary cube clips behind the SDF floor at high zoom).
     bool depthProbeSet_ = false;
     ivec2 depthProbePixel_{0, 0};
-    // `--depth-probe-assert X,Y[,tier=N]` (#1957 / #1960): the composite
+    // `--depth-probe-assert X,Y[,tier=N]`: the composite
     // regression guard. Two forms, both emitting a single
     // `[depth-probe-assert] … result=PASS|FAIL` verdict line:
-    //   - `X,Y` (#1957) — DEPTH-WRITE guard: PASS iff the composite stored a
+    //   - `X,Y` — DEPTH-WRITE guard: PASS iff the composite stored a
     //     non-background depth at (X,Y), i.e. the detached-canvas composite WROTE
     //     the depth attachment there. Aim it at a texel inside a world-placed
     //     detached solid (canonical:
     //     `--only canary --no-spin --no-auto-rotate --depth-probe-assert 321,210`,
     //     which the canary covers on both backends). FAILs if a future pass
     //     disables the composite depth-write.
-    //   - `X,Y,tier=N` (#1960) — per-trixel-priority TIER guard: PASS iff the
-    //     composite winner at (X,Y) decodes to the #1960 tier N. This is the
-    //     positive ENABLED-path gate the per-trixel carrier needs (the #2122
+    //   - `X,Y,tier=N` — per-trixel-priority TIER guard: PASS iff the
+    //     composite winner at (X,Y) decodes to tier N. This is the
+    //     positive ENABLED-path gate the per-trixel carrier needs (the
     //     deterministic headless tier gate — byte-identity at default priority 0
     //     cannot prove the carrier works). Canonical:
     //     `--only interpenetrate --no-spin --no-auto-rotate --depth-probe-assert <overlap>,tier=2`,
     //     where the far priority unit holds a fixed non-cardinal pose (MODE 1) so
-    //     the overlap reads a deterministic `tier=2`; without the #2023 carrier it
+    //     the overlap reads a deterministic `tier=2`; without the tier carrier it
     //     decodes `tier=0` and FAILs.
     // `depthProbeAssertTier_` is -1 for the depth-write form, >= 0 for the tier
     // form. Off by default; registers no system when unset, so a flagless run is
@@ -220,7 +218,7 @@ struct CanvasStressSettings {
     bool autoRotateSetByCli_ = false;
 };
 
-// #1721 spawn groups for --only isolation. Group placement stays derived from
+// Spawn groups for --only isolation. Group placement stays derived from
 // the CONFIGURED scene (e.g. the GRID spin row's y comes from the configured
 // main-grid size even when maingrid is filtered out) so isolated captures stay
 // positionally comparable to the default run.
@@ -255,7 +253,7 @@ constexpr float kFullRotatePitchPerFrame = IRMath::kPi / 720.0f;
 constexpr float kFullRotatePitchYPerFrame =
     IRMath::kPi / 900.0f; // Y-axis; Z=yaw, X=pitch in ISO frame
 
-// Per-entity continuous spin for DETACHED canvases (#1259). 0.4° / frame
+// Per-entity continuous spin for DETACHED canvases. 0.4° / frame
 // base rate scales by (i + 1) so adjacent canvases visibly de-sync within
 // the auto-screenshot capture window. The slowest entity completes a full
 // rotation in ~900 frames (~15 s at 60 fps); the fastest is ~5×.
@@ -267,7 +265,7 @@ constexpr float kDetachedSpinBaseRadPerFrame = IRMath::kPi / 450.0f;
 // a strobe. ~0.25° / frame → full revolution in ~1440 frames (~24 s).
 constexpr float kGridSpinRadPerFrame = IRMath::kPi / 720.0f;
 
-// Detached RE-VOXELIZE test solids (#1553 P1 / #1555). Distinct from the
+// Detached RE-VOXELIZE test solids. Distinct from the
 // forward-scatter DETACHED cubes above: these rotate by re-filling their
 // private pool at the full-rotation CELL positions (the rotation lives in the
 // cells, not a 2D deform), so an asymmetric solid reads as a true 3D-rotated
@@ -277,7 +275,7 @@ constexpr float kGridSpinRadPerFrame = IRMath::kPi / 720.0f;
 // Canvas sized like the forward-scatter cubes (so the composite shows them at a
 // comparable scale, not shrunk) but with headroom for the rotated AABB; the pool
 // 3D bounds span that AABB (base extent × √3). A denser base box keeps the
-// round-to-cell surface readable (P1 tolerates aliasing; P3 refines it).
+// round-to-cell surface readable.
 constexpr ivec2 kReVoxCanvasSize{140, 140};
 constexpr ivec3 kReVoxPoolSize{22, 22, 22};
 constexpr ivec3 kReVoxSolidSize{12, 12, 12}; // base box; the L is carved from it
@@ -290,14 +288,13 @@ constexpr vec3 kReVoxGroundedWorld{20.0f, 18.0f, kReVoxProbeHeight};
 // smooth true-3D tumble, not a strobe.
 constexpr float kReVoxSpinPerFrame = IRMath::kPi / 360.0f;
 
-// ── Unified rotation-harness comparison region (#1374) ──────────────────────
+// ── Unified rotation-harness comparison region ──────────────────────
 // One labeled entity per rotation technique in a screen-horizontal row, all
 // driven by the shared camera Z-yaw. OPT-IN (`--only compare`) — every manifest
 // shot renders the whole world pool, so world content added here would break the
-// byte-identical detached-canvas canary (full byte-neutrality rationale in PR
-// #1943 / issue #1374). Geometry: world (D,D,0) projects straight down in iso
+// byte-identical detached-canvas canary. Geometry: world (D,D,0) projects straight down in iso
 // (iso.y = -2D); stepping (-s,+s,0) per cell spreads them horizontally (iso.x =
-// 2s). Camera stays at (0,0) — detached canvases cull on a pan (#1555).
+// 2s). Camera stays at (0,0) — detached canvases cull on a pan.
 constexpr float kCompareDepth = 24.0f;  // iso.y = -48; row sits just below center
 constexpr float kCompareSpread = 30.0f; // iso.x step = +-60 between cell centers
 constexpr vec3 kCompareCenterWorld{kCompareDepth, kCompareDepth, 0.0f};
@@ -339,27 +336,26 @@ constexpr float kSunAmbient = 0.30f;
 // those casters drop visible sun shadows onto a surface. SDF (free at any size)
 // rather than a voxel slab so the plate costs nothing in the world pool.
 //
-// GRID-only focused shadow stage (#1587, architect decision on the PR). The
-// engine sun-shadow mechanism is sound — BAKE_SUN_SHADOW_MAP reads every
+// GRID-only focused shadow stage. BAKE_SUN_SHADOW_MAP reads every
 // rasterized trixel as a caster, so the GRID spin cubes (VOXEL_TO_TRIXEL) and
-// this SDF floor (SHAPES_TO_TRIXEL) both participate, like shape_debug's proven
-// floor. The earlier covers-the-orbit placement (kFloorZ=16, span=560) sat 3x
-// shape_debug's caster->floor gap below the casters, so the shadows never read.
-// This plate mirrors shape_debug instead: a focused floor a few u below the 12^3
-// spin cubes (#1585), whose bottoms sit at z=0 (centered at z=-6), with the span
+// this SDF floor (SHAPES_TO_TRIXEL) both participate, like shape_debug's
+// floor. A floor that covers the orbit (kFloorZ=16, span=560) sits 3x
+// shape_debug's caster->floor gap below the casters, and the shadows never read.
+// This plate mirrors shape_debug: a focused floor a few u below the 12^3
+// spin cubes, whose bottoms sit at z=0 (centered at z=-6), with the span
 // sized to the cluster — NOT out to the orbit radius (200) — so it doesn't
 // intersect the orbit shapes or the z=+-42 re-voxelize column.
 //
 // Screen-locked DETACHED casters (orbit ring, canary cubes) intentionally cast
 // NO world shadow: they composite as overlays at fixed depth and never write
-// world trixelDistances (#1582 resolved Option B). WORLD-PLACED re-voxelize
-// solids DO cast (P4b-3 / #1596): the bake resolves their model-frame depth to
+// world trixelDistances. WORLD-PLACED re-voxelize
+// solids DO cast: the bake resolves their model-frame depth to
 // the world frame, so the grounded proof solid drops a shadow here beside the
 // GRID cubes'.
 constexpr float kFloorZ = 4.0f;      // a few u below the spin-cube bottoms (z=0)
 constexpr float kFloorSpan = 120.0f; // covers the cluster + grid, short of orbit
 constexpr float kFloorThickness = 4.0f;
-// Light neutral gray (like shape_debug's proven floor) so the cast shadows —
+// Light neutral gray (like shape_debug's floor) so the cast shadows —
 // which drop to ambient — read as distinct dark patches. A dark floor washes
 // the shadows out (shadowed floor ≈ unlit floor → no contrast).
 constexpr Color kFloorColor{150, 152, 160, 255};
@@ -379,7 +375,7 @@ bool groupEnabled(std::uint32_t group) {
     return g_settings.onlyGroups_ == 0u || (g_settings.onlyGroups_ & group) != 0u;
 }
 
-// The comparison region (#1374) is OPT-IN, unlike the demo's other spawn groups
+// The comparison region is OPT-IN, unlike the demo's other spawn groups
 // (which are all-on by default). It must NOT appear in the default render-verify
 // run — the so3_* / revoxelize_solids manifest shots render the whole world, so
 // any added world content breaks their byte-identical canary. It spawns only
@@ -389,7 +385,7 @@ bool compareGroupRequested() {
     return (g_settings.onlyGroups_ & kGroupCompare) != 0u;
 }
 
-// The per-trixel-priority interpenetration demo (#1960) is OPT-IN only — like
+// The per-trixel-priority interpenetration demo is OPT-IN only — like
 // `compare`, it never spawns in the default scene, so every existing manifest
 // shot stays byte-identical. `--only interpenetrate` also gates every other
 // group off (groupEnabled() is false for the unselected bits), isolating the
@@ -398,7 +394,7 @@ bool interpenetrateGroupRequested() {
     return (g_settings.onlyGroups_ & kGroupInterpenetrate) != 0u;
 }
 
-// #2043 small/low-zoom repro is opt-in only (like interpenetrate) — it must NOT
+// The small/low-zoom repro is opt-in only (like interpenetrate) — it must NOT
 // spawn in the default scene, or it would change the manifest / render-verify
 // references. Request explicitly with `--only smallzoom` (add `,floor` for the
 // depth-probe-assert variant).
@@ -406,13 +402,13 @@ bool smallZoomGroupRequested() {
     return (g_settings.onlyGroups_ & kGroupSmallZoom) != 0u;
 }
 
-// The per-ENTITY priority-swap orbit demo (#2154, #2122 item 2) is OPT-IN only —
+// The per-ENTITY priority-swap orbit demo is OPT-IN only —
 // like `interpenetrate`, it never spawns in the default scene, so every existing
 // manifest shot stays byte-identical. `--only orbitswap` also gates every other
 // group off (groupEnabled() is false for the unselected bits), isolating the
 // two-unit swap scene. This is the per-ENTITY carrier (C_EntityCanvas::
-// depthPriority_, #1958) companion to `interpenetrate`'s per-trixel carrier
-// (#1960): the priority unit wins the composite depth contest at tier 1 (entity
+// depthPriority_) companion to `interpenetrate`'s per-trixel carrier:
+// the priority unit wins the composite depth contest at tier 1 (entity
 // foreground), interpenetrate's rotated unit at tier 2 (per-trixel override).
 bool orbitSwapGroupRequested() {
     return (g_settings.onlyGroups_ & kGroupOrbitSwap) != 0u;
@@ -471,12 +467,12 @@ std::uint32_t parseSpawnGroups(const char *arg) {
 // game loop, per the AutoScreenshotConfig lifetime contract.
 std::vector<IRVideo::AutoScreenshotShot> g_allShots;
 
-// Generated sweep-shot labels (#1721) need stable storage for the
+// Generated sweep-shot labels need stable storage for the
 // AutoScreenshotShot `const char *label_` lifetime contract. Reserved to its
 // final size before any push so c_str() pointers never move.
 std::vector<std::string> g_sweepShotLabels;
 
-// SO(3) detached-canvas regression suite (#1444).
+// SO(3) detached-canvas regression suite.
 //
 // Five shots at varying camera yaw and zoom cover the five regression checks:
 // smooth-deformation at cardinal yaw, off-snap discriminating at 45°, wide
@@ -501,14 +497,14 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
     {0.65f, vec2(0, 0), IRMath::kPi / 6.0f, "so3_offsnap_wide"},
 };
 
-// One detached SO(3) CANARY cube (#1259 / #1589): a per-entity canvas (textures
+// One detached SO(3) CANARY cube: a per-entity canvas (textures
 // + voxel pool), a voxel cube allocated into that pool, and a world entity
 // carrying C_EntityCanvas + RotationMode::DETACHED_REVOXELIZE that
 // ENTITY_CANVAS_TO_FRAMEBUFFER composites. Rides re-voxelize — the sole shipped
-// detached SO(3) renderer (#1581), where SYSTEM_REBUILD_DETACHED_VOXELS re-fills
+// detached SO(3) renderer, where SYSTEM_REBUILD_DETACHED_VOXELS re-fills
 // the private pool at the full rotation's cell positions each frame — not plain
-// DETACHED's single-canvas faceDeformationMatrixSO3 deform, whose off-snap
-// degradation produced #1584's B/C artifacts. Reads cleanly at every pose.
+// DETACHED's single-canvas faceDeformationMatrixSO3 deform, which degrades
+// off-snap. Re-voxelize reads cleanly at every pose.
 
 void spawnDetachedVoxelObject(
     int index, vec3 worldPos, vec3 spinAxis, float spinRate, Color color
@@ -522,8 +518,8 @@ void spawnDetachedVoxelObject(
     constexpr ivec3 kCubeSize{10, 10, 10};
 
     // World lighting (AO + directional sun + sky, and — when world-placed —
-    // world sun-shadow + light-volume RECEIVE, #2080) is attached by
-    // createWithVoxelPool by default (#2322 D1) whenever the canvas isn't
+    // world sun-shadow + light-volume RECEIVE) is attached by
+    // createWithVoxelPool by default whenever the canvas isn't
     // screen-locked.
     C_EntityCanvas canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
         "detached_canvas_" + std::to_string(index),
@@ -531,7 +527,7 @@ void spawnDetachedVoxelObject(
         kPoolSize,
         g_settings.screenLockDetached_
     );
-    // #1958 Bug-A acceptance: the floating canary cubes carry FOREGROUND depth
+    // Foreground-depth acceptance: the floating canary cubes carry FOREGROUND depth
     // priority so they render fully in front of the SDF floor at every zoom and
     // yaw (the `--only canary,floor` case) instead of clipping behind it as world
     // iso-depth grows. No-op under screenLocked_ (the composite gates priority on
@@ -561,7 +557,7 @@ void spawnDetachedVoxelObject(
 }
 
 // Color a re-voxelize verification voxel by its model position so a stale
-// exposed-mask defect (#1557) reads as a color break (a wrong / buried face) or
+// exposed-mask defect reads as a color break (a wrong / buried face) or
 // a black gap (a hole) instead of being hidden by a uniform fill. Each model
 // axis drives one RGB channel, so every visible face shows a distinct gradient.
 Color reVoxelizeVerifyColor(vec3 modelPos, ivec3 size) {
@@ -573,15 +569,15 @@ Color reVoxelizeVerifyColor(vec3 modelPos, ivec3 size) {
     return Color{chan(modelPos.x, half.x), chan(modelPos.y, half.y), chan(modelPos.z, half.z), 255};
 }
 
-// One detached RE-VOXELIZE proof solid (#1555). Same canvas + private-pool shape
-// as the canary cubes above (also RotationMode::DETACHED_REVOXELIZE since #1589),
+// One detached RE-VOXELIZE proof solid. Same canvas + private-pool shape
+// as the canary cubes above (also RotationMode::DETACHED_REVOXELIZE),
 // but carries the carve / multi-color verification machinery: RotationMode::DETACHED_REVOXELIZE
 // routes it through the GPU scatter (cells re-filled at the full rotation) + the
 // cardinal raster path. When `carveAsymmetric`, an +x/+y quadrant column is
 // carved out of the centered box to make an L-prism — the asymmetric solid whose
 // true-3D rotation a 2D forward-scatter skew cannot represent (the headline
-// #1551 discriminator). When `multiColor`, each voxel is tinted by its model
-// position — the P3 verification vehicle (#1557): a dense uniform solid hides the
+// discriminator). When `multiColor`, each voxel is tinted by its model
+// position — the verification vehicle: a dense uniform solid hides the
 // stale exposed-mask defect (the distance buffer fills gated holes, uniform color
 // masks wrong faces), so the discriminating solid must be multi-color (and the
 // carve makes it sparse/concave so rotation changes which faces are exposed).
@@ -597,10 +593,10 @@ void spawnDetachedReVoxelizeSolid(
     bool multiColor = false,
     bool screenLocked = false
 ) {
-    // World-depth compositing is the engine default (#1624); `screenLocked`
+    // World-depth compositing is the engine default; `screenLocked`
     // (--screen-lock-detached / --solo-revox) reverts this solid to the
     // fixed-depth overlay regression path — createWithVoxelPool skips the
-    // lighting-archetype pair for a screen-locked canvas (#2322 D1).
+    // lighting-archetype pair for a screen-locked canvas.
     C_EntityCanvas canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
         "revox_canvas_" + std::to_string(index),
         kReVoxCanvasSize,
@@ -642,7 +638,7 @@ void spawnDetachedReVoxelizeSolid(
     );
 }
 
-// Orbit ring (#1259 follow-on): a wider second ring of MORE shape variety that
+// Orbit ring: a wider second ring of MORE shape variety that
 // tumbles around the existing center cluster. Each entry carves a distinct
 // silhouette out of a centered voxel box and spins it, cycling the three
 // rotation modes so one ring exercises the main world canvas (GRID) AND both
@@ -781,7 +777,7 @@ void spawnOrbitShape(
     );
 }
 
-// One world-placed DETACHED unit for the #1960 / #2023 interpenetration demo: a
+// One world-placed DETACHED unit for the interpenetration demo: a
 // per-entity canvas + private 10³ voxel cube, NO per-entity depth priority
 // (depthPriority_ = 0) so the demo isolates the per-TRIXEL carrier, optionally
 // tagged with a per-voxel priority tier. World-placed (not screen-locked) so the
@@ -791,14 +787,14 @@ void spawnOrbitShape(
 // survive:
 //   - false — STATIC at identity: the fill runs MODE 0 (forward positions only),
 //     so the CPU per-frame Voxel-record (binding 6) upload carries `reserved`
-//     into the raster. This path always carried priority (#1960).
+//     into the raster. This path always carried priority.
 //   - true  — ROTATED: a FIXED non-cardinal initial pose (so even under
 //     `--no-spin` the fill runs the MODE 1 inverse resample, not the identity
 //     MODE 0 passthrough) plus continuous AutoSpin when spin is enabled. MODE 1
 //     authors the dest Voxel record GPU-side from the per-pool source grid, which
-//     now carries `reserved` (#2023) — the gap this demo proves closed. Under
+//     now carries `reserved` — the gap this demo proves closed. Under
 //     `--no-spin` the pose is deterministic, so `--depth-probe <overlap>` reads a
-//     stable `tier=N` for a headless gate; without the #2023 fix the rotated unit
+//     stable `tier=N` for a headless gate; without that fix the rotated unit
 //     decodes `tier=0` and the nearer unit wins.
 void spawnPerTrixelDetachedUnit(
     int index, vec3 worldPos, Color color, std::uint8_t priority, bool rotate
@@ -842,10 +838,10 @@ void spawnPerTrixelDetachedUnit(
     );
 }
 
-// #2043 small/low-zoom repro (`--only smallzoom`). The orbit + canary detached
-// canvases are sized TIGHT to their pool's iso footprint at base resolution
-// (#1570 D2), so subdivisionCap pins cubeSub == 1 and they never exercise the
-// #2043 gap/oversize class. The real bug needs a canvas sized GENEROUSLY
+// Small/low-zoom repro (`--only smallzoom`). The orbit + canary detached
+// canvases are sized TIGHT to their pool's iso footprint at base resolution,
+// so subdivisionCap pins cubeSub == 1 and they never exercise the
+// gap/oversize class. The real bug needs a canvas sized GENEROUSLY
 // relative to its pool, so the footprint cap leaves room for cubeSub > 1 — then
 // at low zoom the de-tile gather minifies and the NEAREST iso-brick parity
 // reconstruction aliases (see-through gaps) while the cubeSub factor leaks into
@@ -884,7 +880,7 @@ void spawnSmallZoomRepro() {
 
     // GRID twin of the same world extent — the size reference. GRID re-rasterizes
     // into the shared world pool, so its apparent size is always worldExtent ×
-    // zoom (no cubeSub factor); the detached subject must match it after the fix.
+    // zoom (no cubeSub factor); the detached subject must match it.
     IREntity::createEntity(
         C_LocalTransform{kGridPos},
         C_RotationMode{RotationMode::GRID},
@@ -892,7 +888,7 @@ void spawnSmallZoomRepro() {
     );
 }
 
-// #1960 part F — per-trixel priority interpenetration demo (`--only interpenetrate`).
+// Per-trixel priority interpenetration demo (`--only interpenetrate`).
 // Two STATIC world-placed DETACHED units (separate canvases) at the SAME screen
 // position but different world depth: the FAR unit sits +6 along each axis, i.e.
 // ≈6·(1,1,1) — pure iso DEPTH with negligible screen-space shift (the (1,1,1) axis
@@ -907,7 +903,7 @@ void spawnSmallZoomRepro() {
 // (atomicMin), upstream of the per-trixel partition, so the occluded set's
 // priority never reaches finalization.
 //
-// The FAR (priority) unit ROTATES (#2023): a non-identity pose routes its
+// The FAR (priority) unit ROTATES: a non-identity pose routes its
 // re-voxelize fill through the MODE 1 inverse resample, which authors the dest
 // Voxel record GPU-side from the per-pool source grid. That grid now carries
 // `reserved`, so the per-trixel tier survives rotation — a spinning detached
@@ -919,7 +915,7 @@ void spawnPerTrixelInterpenetration() {
     // Near unit — ordinary world-tier voxels (priority 0), static (MODE 0).
     spawnPerTrixelDetachedUnit(0, vec3(0.0f, 0.0f, 0.0f), Color{80, 110, 235, 255}, 0, false);
     // Far unit — +6 along each axis (behind, ~same screen position), top voxel
-    // tier, ROTATED so the carrier rides the MODE 1 fill (the #2023 proof).
+    // tier, ROTATED so the carrier rides the MODE 1 fill.
     spawnPerTrixelDetachedUnit(
         1,
         vec3(6.0f, 6.0f, 6.0f),
@@ -929,10 +925,10 @@ void spawnPerTrixelInterpenetration() {
     );
 }
 
-// One world-placed DETACHED unit for the per-ENTITY priority-swap demo (#2154).
+// One world-placed DETACHED unit for the per-ENTITY priority-swap demo.
 // Mirrors spawnPerTrixelDetachedUnit but exercises the per-ENTITY foreground
-// carrier C_EntityCanvas::depthPriority_ (#1958) instead of the per-trixel
-// carrier (#1960): a non-zero depthPriority_ pins the WHOLE canvas into the
+// carrier C_EntityCanvas::depthPriority_ instead of the per-trixel
+// carrier: a non-zero depthPriority_ pins the WHOLE canvas into the
 // entity-foreground near band (depthPriorityMode_ = 1), so f_trixel_to_framebuffer
 // resolves tier = max(perEntityTier = 1, perTrixelTier = 0) = 1 — the single
 // entity-fg tier. Deliberately does NOT call changeVoxelPriorityAll (that is the
@@ -959,7 +955,7 @@ void spawnPerEntityPriorityUnit(
         kCanvasSize,
         kPoolSize
     ); // world-placed (screenLocked=false default) ⇒ shared depth contest
-    canvas.depthPriority_ = depthPriority; // per-ENTITY foreground carrier (#1958)
+    canvas.depthPriority_ = depthPriority; // per-ENTITY foreground carrier
     IREntity::createEntity(
         C_LocalTransform{vec3(0.0f)},
         C_VoxelSetNew{kCubeSize, color, true, canvas.canvasEntity_}
@@ -985,7 +981,7 @@ void spawnPerEntityPriorityUnit(
     );
 }
 
-// #2154 / #2122 item 2 — per-ENTITY priority-swap orbit demo (`--only orbitswap`).
+// Per-ENTITY priority-swap orbit demo (`--only orbitswap`).
 // Two world-placed DETACHED units (SEPARATE canvases) at the SAME screen position
 // but different world depth: the FAR unit sits +6 along each axis, i.e. ≈6·(1,1,1)
 // — pure iso DEPTH with negligible screen-space shift. By world depth the NEAR unit
@@ -1223,13 +1219,13 @@ void registerArgs() {
     );
 }
 
-// Read the parsed flags back into g_settings after IREngine::init. Replaces the
-// retired hand-rolled parseArgs; the trailing sweep latch (disable auto-yaw)
-// must run before readConfig() so config.lua can't re-enable it.
+// Read the parsed flags back into g_settings after IREngine::init. The
+// trailing sweep latch (disable auto-yaw) must run before readConfig() so
+// config.lua can't re-enable it.
 void applyArgs() {
     IRArgs::Parser &args = IREngine::args();
     g_settings.cameraYaw_ = args.getFloat("--yaw");
-    // #2043 repro: force base subdivisions when requested. 0 leaves the engine
+    // Force base subdivisions when requested. 0 leaves the engine
     // default (1) untouched, so a flagless run stays byte-identical.
     g_settings.subdivisions_ = args.getInt("--subdivisions");
     g_settings.initialZoom_ = args.getFloat("--zoom");
@@ -1254,13 +1250,13 @@ void applyArgs() {
     }
     if (args.getFlag("--solo-revox")) {
         g_settings.soloRevox_ = true;
-        // The solo harness spawns no floor to depth-sort against, and the #1619
-        // step-0 GL evidence (committed crops) was captured on the screen-locked
-        // overlay path — keep the lone L-prism screen-locked rather than
-        // inheriting the world-place default.
+        // The solo harness spawns no floor to depth-sort against, and its
+        // committed reference crops are of the screen-locked overlay path —
+        // keep the lone L-prism screen-locked rather than inheriting the
+        // world-placed default.
         g_settings.screenLockDetached_ = true;
     }
-    // --only accepts the comma-separated group list in one token; the legacy
+    // --only accepts the comma-separated group list in one token; a
     // repeated-flag form collapses to the last value under the single parse.
     if (args.wasProvided("--only")) {
         g_settings.onlyGroups_ |= parseSpawnGroups(args.getString("--only").c_str());
@@ -1345,13 +1341,13 @@ int main(int argc, char **argv) {
         IRRender::setRotationPivotMode(IRRender::RotationPivotMode::ORIGIN);
     }
 
-    // #2043 repro: force base subdivisions when requested (--subdivisions N). 0
+    // Force base subdivisions when requested (--subdivisions N). 0
     // leaves the engine default (1) so a flagless run stays byte-identical.
     if (g_settings.subdivisions_ > 0) {
         IRRender::setVoxelRenderSubdivisions(g_settings.subdivisions_);
     }
 
-    // T-1 (#1767): force the requested debug overlay for the whole run.
+    // Force the requested debug overlay for the whole run.
     // NONE (the default) is a no-op so a flagless run stays byte-identical.
     if (g_settings.debugOverlay_ != IRRender::DebugOverlayMode::NONE) {
         IRRender::setDebugOverlay(g_settings.debugOverlay_);
@@ -1373,7 +1369,7 @@ void initSystems() {
          IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>(),
          IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS_IMPLICIT>(),
          IRSystem::createSystem<IRSystem::PROPAGATE_CANVAS_ROTATION>(),
-         // Detached re-voxelize (#1555): fills each DETACHED_REVOXELIZE canvas's
+         // Detached re-voxelize: fills each DETACHED_REVOXELIZE canvas's
          // private pool at the full-rotation cell positions. Must run AFTER
          // PROPAGATE_CANVAS_ROTATION (needs the camera-composed rotation) and
          // UPDATE_VOXEL_SET_CHILDREN (overwrites its translate-only baseline).
@@ -1449,10 +1445,10 @@ void initSystems() {
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>());
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>());
         // Collapses the per-axis voxel canvases into the cardinal-layout
-        // resolve texture BAKE_SUN_SHADOW_MAP casts (#1435). Without it the
+        // resolve texture BAKE_SUN_SHADOW_MAP casts. Without it the
         // voxel cubes cast NO shadow at any non-cardinal camera yaw — the
         // per-axis canvases gracefully degrade to an empty resolve — which is
-        // most of this demo's runtime under the default --auto-rotate (#1719).
+        // most of this demo's runtime under the default --auto-rotate.
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::RESOLVE_PER_AXIS_SCREEN_DEPTH>());
         const auto bakeSun = IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>();
         IRSystem::getSystemParams<IRSystem::System<IRSystem::BAKE_SUN_SHADOW_MAP>>(bakeSun)
@@ -1465,7 +1461,7 @@ void initSystems() {
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>());
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>());
     }
-    // Per-mode in-scene labels for the comparison region (#1374). The main canvas
+    // Per-mode in-scene labels for the comparison region. The main canvas
     // is cleared + rebuilt every frame, so labels must be redrawn here each frame
     // — AFTER lighting (to keep their authored color) and BEFORE
     // TRIXEL_TO_FRAMEBUFFER. WORLD-ANCHORED (projected through the live camera
@@ -1515,7 +1511,7 @@ void initSystems() {
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::ENTITY_CANVAS_TO_FRAMEBUFFER>());
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>());
 
-    // #1910 composite-depth probe — registered only with --depth-probe so a
+    // Composite-depth probe — registered only with --depth-probe so a
     // flagless run adds no system. Runs last (after the framebuffer composite is
     // complete) and logs the depth-test winner at the requested pixel each frame.
     if (g_settings.depthProbeSet_) {
@@ -1529,11 +1525,11 @@ void initSystems() {
         );
     }
 
-    // #1957 / #1960 composite regression guard — registered only with
+    // Composite regression guard — registered only with
     // --depth-probe-assert. Runs after the framebuffer composite and emits a
-    // PASS/FAIL verdict line. tier < 0 is the #1957 depth-write guard (catches a
+    // PASS/FAIL verdict line. tier < 0 is the depth-write guard (catches a
     // future pass that disables the detached-canvas composite depth-write);
-    // tier >= 0 is the #1960 per-trixel-priority tier guard (catches a future pass
+    // tier >= 0 is the per-trixel-priority tier guard (catches a future pass
     // that drops the carrier so the priority solid loses the depth contest).
     if (g_settings.depthProbeAssertSet_) {
         const ivec2 assertPixel = g_settings.depthProbeAssertPixel_;
@@ -1557,7 +1553,7 @@ void initSystems() {
         int settleFrames = 60;
         if (g_settings.sweepYawCount_ > 0 || g_settings.sweepFramesCount_ > 0 ||
             g_settings.sweepPanCount_ > 0) {
-            // #1721 sweep mode: a focused diagnostic capture REPLACES the base
+            // Sweep mode: a focused diagnostic capture REPLACES the base
             // suite — the swept variable (camera yaw, or entity spin phase via
             // inter-shot settle frames) should be the only thing changing.
             const int totalSweepShots = IRMath::max(g_settings.sweepYawCount_, 0) +
@@ -1616,29 +1612,29 @@ void initSystems() {
             g_allShots.push_back({1.0f, vec2(0.0f), 0.0f, "revoxelize_solids"});
             // Zoomed in on the screen-center column so the re-voxelized cube + L read
             // clearly as true-3D solids (voxel centers reorganized), the headline
-            // #1555 criterion. Round-to-cell speckle is the expected P1 aliasing.
+            // criterion. Round-to-cell speckle is the expected aliasing.
             g_allShots.push_back({2.2f, vec2(0.0f), 0.0f, "revoxelize_solids_zoom"});
             // Wide pull-back framing the full orbit ring (radius 200) around the
             // center cluster, so the added shape variety reads as one tumbling orbit.
             g_allShots.push_back({0.32f, vec2(0.0f), 0.0f, "orbit_overview"});
-            // T-1 (#1767) structural-validation framing shots for epic #1766.
+            // Structural-validation framing shots.
             // Appended AFTER the manifest suite so render-verify (which reads the
             // first N=manifest shots) ignores them — they feed the structural
-            // metrics, not the pixel-diff gate (T-2 #1768 wires the gate). Both
+            // metrics, not the pixel-diff gate. Both
             // stay at camera (0,0) for the detached-canvas cull contract above.
             //
-            // (a) Cast-shadow occupancy: a wide framing of the #1587 SDF floor,
-            //     the GRID spin row, and the grounded re-voxelize cast-proof cube
-            //     (#1596). Capture with `--debug-overlay shadow` so cast shadows
-            //     read magenta and render-shadow-metric.py (#1765) measures
-            //     hole_ratio / components (the swiss-cheese signature, #1717).
+            // (a) Cast-shadow occupancy: a wide framing of the SDF floor,
+            //     the GRID spin row, and the grounded re-voxelize cast-proof cube.
+            //     Capture with `--debug-overlay shadow` so cast shadows
+            //     read magenta and render-shadow-metric.py measures
+            //     hole_ratio / components (the swiss-cheese signature).
             g_allShots.push_back({0.55f, vec2(0.0f), 0.0f, "shadow_overlay_floor"});
             // (b) Re-voxelize surface coverage: the screen-center solid column
             //     zoomed for per-voxel surface readout, captured in normal render
             //     so a coverage metric can count interior background holes inside
-            //     the solid silhouette (the #1619-class missing-face defect).
+            //     the solid silhouette (a missing-face defect class).
             g_allShots.push_back({2.4f, vec2(0.0f), 0.0f, "revox_coverage"});
-            // #2043 repro framing (OPT-IN via `--only smallzoom`). The bug pose is
+            // Small/low-zoom repro framing (OPT-IN via `--only smallzoom`). The bug pose is
             // --subdivisions 8 (forces cubeSub > 1); zoom 0.5 is requested but
             // clamped to 1.0 by kTrixelCanvasZoomMin, so smallzoom_low actually
             // renders at zoom 1.0. The name is a historical artifact. smallzoom_high
@@ -1646,7 +1642,7 @@ void initSystems() {
             // detached-canvas cull keeps the subject on-screen.
             g_allShots.push_back({0.5f, vec2(0.0f), 0.0f, "smallzoom_low"});
             g_allShots.push_back({2.0f, vec2(0.0f), 0.0f, "smallzoom_high"});
-            // Unified-rotation comparison region (#1374), OPT-IN via
+            // Unified-rotation comparison region, OPT-IN via
             // `--only compare`. A tight zoom frames the labeled row (GRID-attached
             // spin / world-Z-yaw GRID / DETACHED SO(3)) at camera (0,0). Two
             // camera yaws exercise the shared-yaw comparison: yaw 0 (cardinal) and
@@ -1697,7 +1693,7 @@ void initEntities() {
     EntityId mainCanvas = IRRender::getActiveCanvasEntity();
     IREntity::setComponent(mainCanvas, C_TrixelCanvasRenderBehavior{});
 
-    // Lighting wiring (#1259). The lighting pipeline writes per-canvas
+    // Lighting wiring. The lighting pipeline writes per-canvas
     // shadow / AO / light-volume textures sized to the main canvas;
     // they're allocated once at startup. Sun direction / intensity /
     // ambient are global render state set below.
@@ -1739,10 +1735,10 @@ void initEntities() {
 
         // Shadow floor (SDF box) just below the center GRID spin cluster.
         // Receives sun shadow + AO. The GRID-mode spin cubes and the grounded
-        // WORLD-PLACED re-voxelize solid cast onto it (P4b-3 / #1596);
+        // WORLD-PLACED re-voxelize solid cast onto it;
         // screen-locked DETACHED entities (orbit ring, canary cubes) do NOT —
         // they composite as overlays after the shadow bake and never write
-        // world depth (#1582 Option B).
+        // world depth.
         if (!g_settings.soloRevox_ && groupEnabled(kGroupFloor)) {
             const float floorSpan =
                 IREngine::args().getFlag("--probe-single-voxel") ? 12.0f : kFloorSpan;
@@ -1893,11 +1889,11 @@ void initEntities() {
         }
     }
 
-    // #1960 / #2023 per-trixel priority interpenetration demo — OPT-IN only
+    // Per-trixel priority interpenetration demo — OPT-IN only
     // (`--only interpenetrate`), so the default scene (and every manifest shot)
     // is untouched. `--only interpenetrate` also gates every other group off, so
     // this is an isolated two-cube scene; the far (priority) cube ROTATES to prove
-    // the carrier survives the re-voxelize MODE 1 fill (#2023). Run it with
+    // the carrier survives the re-voxelize MODE 1 fill. Run it with
     // --no-spin --no-auto-rotate --depth-probe <overlap-px> to ground-truth the
     // resolved tier headlessly (the far cube holds a fixed non-identity pose under
     // --no-spin, so the readback is deterministic and still exercises MODE 1).
@@ -1905,12 +1901,12 @@ void initEntities() {
         spawnPerTrixelInterpenetration();
     }
 
-    // #2043 small/low-zoom gap + size repro (opt-in via `--only smallzoom`).
+    // Small/low-zoom gap + size repro (opt-in via `--only smallzoom`).
     if (smallZoomGroupRequested()) {
         spawnSmallZoomRepro();
     }
 
-    // #2154 / #2122 item 2 per-ENTITY priority-swap orbit demo — OPT-IN only
+    // Per-ENTITY priority-swap orbit demo — OPT-IN only
     // (`--only orbitswap`), so the default scene (and every manifest shot) is
     // untouched. The FAR unit carries C_EntityCanvas::depthPriority_ = 1
     // (entity-foreground) so it wins the composite depth contest against the
@@ -1923,9 +1919,9 @@ void initEntities() {
     }
 
     // Main-canvas GRID grid: a flat lattice of small voxel cubes. Exercises
-    // T-293 inter-trixel deformation on the world canvas under camera yaw.
+    // inter-trixel deformation on the world canvas under camera yaw.
     // nConfigured keeps dependent placement (the GRID spin row's y) stable
-    // when the group is filtered out by --only (#1721).
+    // when the group is filtered out by --only.
     const int nConfigured = IRMath::max(0, g_settings.mainGridSize_);
     const int n = (g_settings.soloRevox_ || !groupEnabled(kGroupMainGrid)) ? 0 : nConfigured;
     constexpr float kGridSpacing = 7.0f;
@@ -1948,7 +1944,7 @@ void initEntities() {
     // place around staggered axes. Each tick AUTO_SPIN_LOCAL_TRANSFORM
     // advances C_LocalTransform.rotation_, PROPAGATE_TRANSFORM composes
     // C_WorldTransform, and REBUILD_GRID_VOXELS re-rasterizes the voxel
-    // cells into the world pool (#1259 §C6 — face-swapping / cell-aliasing
+    // cells into the world pool (face-swapping / cell-aliasing
     // path). Sits above the main grid so the re-rasterized cells are
     // clearly visible against the flat ground.
     constexpr int kGridSpinCount = 4;
@@ -2026,13 +2022,13 @@ void initEntities() {
         {210, 90, 220, 255},
         {70, 210, 210, 255},
     };
-    // World-placed canaries (#1624) must clear the #1587 floor slab
-    // (z ∈ [kFloorZ ± kFloorThickness/2] = [2, 6]): at the legacy z = 0 a
+    // World-placed canaries must clear the floor slab
+    // (z ∈ [kFloorZ ± kFloorThickness/2] = [2, 6]): at z = 0 a
     // spinning 10³ cube (rotated half-diagonal 5√3 ≈ 8.66) sweeps into the
     // band and reads as sunk through the floor. z = -8 keeps the full SO(3)
-    // sweep above the floor top (max extent z ≈ 0.66 < 2). The legacy z is
-    // kept under --screen-lock-detached so the opt-out scene stays
-    // byte-identical to the pre-#1624 default.
+    // sweep above the floor top (max extent z ≈ 0.66 < 2). Screen-locked
+    // canaries never depth-sort against the floor, so --screen-lock-detached
+    // keeps z = 0 and its reference scene stays byte-identical.
     const float canaryZ = g_settings.screenLockDetached_ ? 0.0f : -8.0f;
     const int focusCanary = IREngine::args().getInt("--focus-canary");
     for (int i = 0; i < detached; ++i) {
@@ -2046,7 +2042,7 @@ void initEntities() {
             canaryZ
         };
         // Per-entity spin rate: base * (i + 1) so adjacent canvases visibly
-        // de-sync within the auto-screenshot capture window (#1259). Spin
+        // de-sync within the auto-screenshot capture window. Spin
         // axis cycles independently of rate so axis/rate pairs cover the
         // full SO(3) bake matrix.
         const float spinRate =
@@ -2060,11 +2056,11 @@ void initEntities() {
         );
     }
 
-    // Detached RE-VOXELIZE proof solids (#1555): a MULTI-COLOR asymmetric L-prism
-    // (the headline true-3D discriminator, doubling as the #1557 P3 stale-mask
+    // Detached RE-VOXELIZE proof solids: a MULTI-COLOR asymmetric L-prism
+    // (the headline true-3D discriminator, doubling as the stale-mask
     // verification vehicle — multi-color + carved so a mis-gated face reads as a
-    // color break / hole) and a dense uniform cube (validates the cube case the
-    // epic uses to supersede #1551, and the dense-uniform control the defect
+    // color break / hole) and a dense uniform cube (validates the cube case
+    // and the dense-uniform control the defect
     // hides on). Seeded at a clear off-cardinal tilt so the first shot already
     // reads as a true 3D-rotated solid; a slow auto-spin then sweeps the full
     // SO(3) range to prove smoothness (no pop) and parade every residual pose.
@@ -2108,7 +2104,7 @@ void initEntities() {
         );
     }
 
-    // #1619 step-0 isolation: the L-prism above is the entire scene.
+    // Solo isolation: the L-prism above is the entire scene.
     if (g_settings.soloRevox_) {
         IR_LOG_INFO("canvas_stress: --solo-revox — single rotated DETACHED_REVOXELIZE L-prism");
         return;
@@ -2157,11 +2153,11 @@ void initEntities() {
     constexpr float kOrbitRadius = 200.0f;
     // Shape↔mode pairing is by robustness. Both CELL-REBAKING paths — GRID (main
     // world canvas) and DETACHED_REVOXELIZE (detached) — re-derive the exposed
-    // mask against the rotated cells (#1570) and inverse-resample the dest
-    // lattice (#1619 detached, #1720 GRID), so coverage is hole-free for solids
+    // mask against the rotated cells and inverse-resample the dest
+    // lattice, so coverage is hole-free for solids
     // AND for thin carved shapes (the full-box span has slot slack ≫ covered
     // cells). The CROSS rides the GRID path deliberately as the standing thin-
-    // geometry regression guard (#1720 DoD); the FRAME stays on forward-scatter
+    // geometry regression guard; the FRAME stays on forward-scatter
     // DETACHED, which deforms face SHAPES instead of moving cells (the
     // wireframe also showcases that technique's crisp thin detail). Spheres
     // appear on all three paths for a side-by-side of the techniques.
@@ -2184,7 +2180,7 @@ void initEntities() {
         RotationMode::DETACHED,
         RotationMode::DETACHED_REVOXELIZE,
         RotationMode::DETACHED, // octahedron
-        RotationMode::GRID,     // cross — the standing GRID thin-geometry guard (#1720)
+        RotationMode::GRID,     // cross — the standing GRID thin-geometry guard
         RotationMode::DETACHED_REVOXELIZE,
         RotationMode::GRID,
         RotationMode::DETACHED,
@@ -2265,7 +2261,7 @@ void initEntities() {
         );
     }
 
-    // Comparison region (#1374): one entity per rotation technique in a labeled
+    // Comparison region: one entity per rotation technique in a labeled
     // screen-horizontal row, all driven by the shared camera Z-yaw. No
     // pixel-parity is asserted between them — GRID re-voxelize aliasing and the
     // detached SO(3) bake are intentionally different visuals. OPT-IN via

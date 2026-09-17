@@ -39,10 +39,10 @@
 /// Version history
 /// ---------------
 /// v1 (initial) — joints-only via JNTS chunk.
-/// v1 + BIND chunk (#669) — bind points added as a second chunk;
+/// v1 + BIND chunk — bind points added as a second chunk;
 ///   no version bump (Rule #1 — older readers skip BIND silently).
 /// Reserved chunk tags for forward compatibility (not yet written):
-///   - "ANIM" — animation keyframes (#606)
+/// "ANIM" — animation keyframes
 
 #include <irreden/asset/binary_io.hpp>
 
@@ -80,7 +80,7 @@ struct RigJoint {
 /// A named attachment point on a rig. Records the bone the point is
 /// parented to, a local-space offset (vec3) and orientation (quaternion)
 /// relative to that bone, and an optional designer-facing name. Used by
-/// the editor (#669) to define where props, weapons, or VFX attach.
+/// the editor to define where props, weapons, or VFX attach.
 // IRAsset: serialized
 struct RigBindPoint {
     static constexpr std::uint16_t kSaveVersion = 1;

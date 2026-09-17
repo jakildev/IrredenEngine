@@ -1,5 +1,5 @@
 # Executed membership check for metal_pipeline.cpp's
-# threadgroupSizeForFunctionName registry (#2798). A compute kernel absent
+# threadgroupSizeForFunctionName registry. A compute kernel absent
 # from the registry silently falls through to the MTL::Size(1, 1, 1)
 # fallback -- no assert, no log, no build error -- so this check enumerates
 # every dispatchable compute kernel and fails, naming it, on any kernel the
@@ -7,8 +7,7 @@
 #
 # Membership only, not value parity: confirming the registered MTL::Size
 # equals the GLSL twin's local_size needs to resolve the wrapper -> body
-# include chain, which is a materially bigger checker. See the issue for the
-# scope boundary.
+# include chain, which is a materially bigger checker.
 
 if(NOT DEFINED PROJECT_ROOT OR PROJECT_ROOT STREQUAL "")
     message(FATAL_ERROR "PROJECT_ROOT is required.")
@@ -79,7 +78,7 @@ foreach(line IN LISTS pipeline_lines)
     # multiple lines (the registry's real entries are multi-line `if`
     # conditions, so a block comment disabling one spans lines too); the
     # sibling scratch-consumer checker applies the identical strip for the
-    # identical reason (#2899).
+    # identical reason.
     if(in_block_comment)
         if(line MATCHES "\\*/")
             # Strip through the FIRST "*/" only -- CMake's regex engine has no
@@ -102,8 +101,8 @@ foreach(line IN LISTS pipeline_lines)
     # does: an entry inside #if/#ifdef/#ifndef may never reach the compiled
     # binary, and a source-text pass has no preprocessor to evaluate which
     # branch the build takes. Skip conditional lines entirely -- a disabled
-    # entry then reads as absent, the same way a commented-out entry reads
-    # (#2899), and falls through to the existing "no entry in ..." failure
+    # entry then reads as absent, the same way a commented-out entry reads,
+    # and falls through to the existing "no entry in ..." failure
     # below, which already names it.
     if(line MATCHES "^[ \t]*#[ \t]*(if|ifdef|ifndef)([ \t(]|$)")
         math(EXPR conditional_depth "${conditional_depth} + 1")

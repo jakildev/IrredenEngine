@@ -1,7 +1,7 @@
 #include <metal_stdlib>
 using namespace metal;
 
-// Vehicle A (#1640) repro — populate half. Writes a per-texel distinct value
+// Populate half of the R32I second-dispatch probe. Writes a per-texel value
 // (its linear index) into an R32I distance texture via a plain access::write
 // store, mirroring c_voxel_to_trixel_stage_2's texture write (the step at which
 // a canvas's distance texture becomes canonical). A distinct-per-texel value

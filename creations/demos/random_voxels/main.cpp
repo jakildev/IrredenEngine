@@ -1,7 +1,7 @@
-// random_voxels — interactive voxel-recoloring demo (#17 / PR #2210).
+// random_voxels — interactive voxel-recoloring demo.
 //
 // Builds an isometric field of voxel cubes and binds a family of one-shot
-// recolor commands to keys. Each runs the #2210 query primitive —
+// recolor commands to keys. Each runs the same exclude-filtered query primitive —
 // `IRSystem::executeQuery<C_VoxelSetNew, Exclude<C_Locked>>`, the run-now
 // counterpart to a system tick — and rewrites every active voxel's color:
 //   R  RANDOMIZE VOXELS  (the engine prefab Command<RANDOMIZE_VOXELS>)
@@ -17,7 +17,7 @@
 // changes: a live, self-explaining demonstration of the exclude semantics.
 //
 // The help text in the top-left is the engine's registry-driven help overlay
-// (`IRPrefab::HelpOverlay`, #2550), open from frame 0 and toggled with G. It
+// (`IRPrefab::HelpOverlay`), open from frame 0 and toggled with G. It
 // lists every registered key binding with its description, so the scene is
 // self-documenting with no bespoke HUD code. This is the growth seam: any new
 // scene-mutation command registered in `initCommands()` automatically appears
@@ -117,7 +117,7 @@ IRMath::Color grayscaleColor(IRMath::Color c) {
 // Command<RANDOMIZE_VOXELS>' contract (skip C_Locked sets, skip carved alpha-0
 // voxels, preserve alpha) but parameterized by `transform`. `name` and
 // `description` are what put the binding in the help overlay — the registry
-// records only named PRESSED bindings (#2550).
+// records only named PRESSED bindings.
 void registerVoxelRecolor(
     int button, const char *name, const char *description, ColorFn transform
 ) {
@@ -235,8 +235,8 @@ void initCommands() {
         IRInput::PRESSED,
         IRInput::kKeyButtonR
     );
-    // H / I / M: more one-shot recolors, composed from the same #2210 query
-    // primitive but parameterized by a per-color transform.
+    // H / I / M: more one-shot recolors, composed from the same exclude-filtered
+    // query primitive but parameterized by a per-color transform.
     registerVoxelRecolor(
         IRInput::kKeyButtonH,
         "CYCLE CHANNELS",
@@ -251,7 +251,7 @@ void initCommands() {
         grayscaleColor
     );
 
-    // G opens the F1-standard help overlay (#2550). Kept on G rather than F1
+    // G opens the F1-standard help overlay. Kept on G rather than F1
     // here because the overlay is this demo's whole HUD and G is what the
     // file-doc above advertises; registerToggleCommand takes the key.
     IRPrefab::HelpOverlay::registerToggleCommand(IRInput::kKeyButtonG);

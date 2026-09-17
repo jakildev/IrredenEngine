@@ -1,5 +1,5 @@
-// Vehicle A (#1771, epic #1766): the engine's first *headless GPU* unit-test
-// category. Unlike the rest of test/render/* (pure CPU math / layout), this
+// Headless GPU dispatch coverage. Unlike the pure CPU math and layout tests,
+// this
 // stands up a hidden OpenGL 4.5 core context, compiles a real engine compute
 // shader, dispatches it, reads the output SSBO back to the CPU, and asserts a
 // shader-level invariant directly — no full-frame screenshot, no pixel diff.
@@ -12,10 +12,6 @@
 // jitter and backend-agnostic in intent. Seeding the buffer with zeros first
 // means a dispatch that never runs fails the assertion, so the test proves the
 // GPU actually wrote.
-//
-// Future children of #1766 assert heavier pipeline kernels (resolve footprint
-// density, sun-bake non-emptiness) through this same dispatch + readback harness
-// — the reusable piece is the hidden-context fixture, not this one shader.
 //
 // The fixture GTEST_SKIPs when a GL 4.5 context cannot be created (headless CI
 // with no display / no GPU), so the always-run CPU suite stays green there.
@@ -139,13 +135,13 @@ TEST_F(GpuComputeDispatchTest, ClearSunShadowKernelFillsBufferWithLitSentinel) {
 
 #elif defined(IR_GRAPHICS_METAL)
 
-// The Metal half of vehicle A (#1640). The OpenGL twin above has no analogous
+// The Metal fixture covers a backend-specific path. OpenGL has no analogous
 // bug — GL writes real image atomics straight to the texture — so this fixture
 // exists to reproduce the *Metal-only* gap headlessly: a non-main canvas's R32I
 // distance texture, written by one in-tick compute dispatch, reads back as the
 // clear value from a SECOND in-tick dispatch (engine/render/CLAUDE.md
 // "Foreign-canvas R32I image reads in a second in-tick compute dispatch return
-// empty on Metal (#1640)"). Metal has no windowless RenderDevice bring-up in the
+// empty on Metal"). Metal has no windowless RenderDevice bring-up in the
 // normal engine boot (the CAMetalLayer is window-bound), so the fixture uses
 // bootstrapHeadlessRenderDevice() — device + command queue, no swapchain — then
 // drives the real ShaderProgram / Texture2D / dispatchCompute path.
@@ -204,8 +200,8 @@ class MetalGpuComputeDispatchTest : public ::testing::Test {
 
 // Positive control / oracle validation: with NO write dispatch, a read of the
 // cleared texture must report exactly the clear sentinel. This proves the
-// harness can distinguish a missed write from a correct one — i.e. a real
-// second-dispatch read gap (#1640) would surface here as a failed EXPECT — and
+// harness can distinguish a missed write from a correct one: a real
+// second-dispatch read gap would fail the expectation, while
 // that clearTexImage lands on the command buffer before the read encoder.
 TEST_F(MetalGpuComputeDispatchTest, ClearedTextureReadsBackAsClearSentinel) {
     using namespace IRRender;
@@ -253,7 +249,7 @@ TEST_F(MetalGpuComputeDispatchTest, SecondDispatchSeesFirstDispatchDistanceWrite
     Texture2D distances{TextureKind::TEXTURE_2D, kTexDim, kTexDim, TextureFormat::R32I};
 
     // Clear to the empty sentinel first, so a read that misses the write reports
-    // exactly 65535 (the documented #1640 symptom) rather than undefined memory.
+    // exactly 65535 (the documented symptom) rather than undefined memory.
     const std::int32_t clearValue = kEmptyDistanceEncoded;
     device_->clearTexImage(&distances, 0, &clearValue);
 
@@ -291,7 +287,7 @@ TEST_F(MetalGpuComputeDispatchTest, SecondDispatchSeesFirstDispatchDistanceWrite
     std::vector<std::int32_t> readback(kTexelCount, -2);
     output.getSubData(0, readback.size() * sizeof(std::int32_t), readback.data());
 
-    std::size_t emptyReads = 0; // read back the clear sentinel — the #1640 gap.
+    std::size_t emptyReads = 0; // read back the clear sentinel — the gap.
     std::size_t wrongReads = 0; // neither the written index nor the sentinel.
     for (int i = 0; i < kTexelCount; ++i) {
         if (readback[i] == kEmptyDistanceEncoded) {
@@ -309,7 +305,7 @@ TEST_F(MetalGpuComputeDispatchTest, SecondDispatchSeesFirstDispatchDistanceWrite
                                  "nor the clear sentinel.";
 }
 
-// #2488: RenderDevice::resolveImageAtomicScratch materializes the R32I
+// RenderDevice::resolveImageAtomicScratch materializes the R32I
 // image-atomic scratch buffer into the texture it mirrors, so a later
 // sampler / access::read pass sees depth the atomic passes wrote. In the
 // pipeline that is what carries the shadow-feeder ring into trixelDistances
@@ -573,8 +569,31 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
     const std::string path =
         std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_per_axis_overflow_sort.glsl";
     ShaderProgram program{std::vector{ShaderStage{path.c_str(), ShaderType::COMPUTE}}};
-    for (const std::uint32_t count : {0u, 4097u, 1u, 0u, 262145u}) {
-        SCOPED_TRACE(count);
+    const auto recordLess = [](const Record &a, const Record &b) {
+        if (a[0] != b[0])
+            return a[0] < b[0];
+        if (a[2] != b[2])
+            return a[2] < b[2];
+        return a[1] < b[1];
+    };
+    struct SortCase {
+        std::uint32_t count;
+        std::uint32_t laggedCount;
+        bool fullySorted;
+    };
+    for (const SortCase sortCase : {
+             SortCase{0u, 0u, true},
+             SortCase{2048u, 0u, true},
+             SortCase{4097u, 0u, false},
+             SortCase{4097u, 4097u, true},
+             SortCase{1u, 4097u, true},
+             SortCase{0u, 1u, true},
+             SortCase{262145u, 262145u, true},
+         }) {
+        const std::uint32_t count = sortCase.count;
+        SCOPED_TRACE(
+            ::testing::Message() << "count=" << count << " lagged=" << sortCase.laggedCount
+        );
         words[ctrl + 1] = count;
         std::vector<Record> expected;
         expected.reserve(count);
@@ -584,13 +603,7 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
             for (int word = 0; word < 3; ++word)
                 words[entries + i * 3 + word] = record[word];
         }
-        std::sort(expected.begin(), expected.end(), [](const Record &a, const Record &b) {
-            if (a[0] != b[0])
-                return a[0] < b[0];
-            if (a[2] != b[2])
-                return a[2] < b[2];
-            return a[1] < b[1];
-        });
+        std::sort(expected.begin(), expected.end(), recordLess);
         scratch.subData(0, words.size() * sizeof(std::uint32_t), words.data());
         scratch.bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_PerAxisResolveScratch);
         uniform.bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas);
@@ -627,13 +640,19 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
         step(3, 0, 0, 0, 0);
         step(0, 0, 0, 0, 0);
         step(1, 0, 0, 0, 1);
-        constexpr auto blockBits = Axes::kOverflowSortBlockBits;
-        for (std::uint32_t bits = blockBits + 1; (1u << bits) <= cap; ++bits) {
-            for (std::uint32_t remaining = bits; remaining > 0;) {
-                const auto width = IRMath::min(remaining, blockBits);
-                step(2, 1u << bits, remaining - width, remaining - 1, bits - blockBits + 1);
-                remaining -= width;
+        const auto dispatchSpan =
+            IRSystem::detail::overflowSortDispatchSpan(sortCase.laggedCount, cap);
+        std::uint32_t mergeDispatches = 0;
+        IRSystem::detail::forEachOverflowSortMergeStep(
+            dispatchSpan,
+            [&](std::uint32_t k, std::uint32_t pLo, std::uint32_t pHi, std::uint32_t commandIndex) {
+                step(2, k, pLo, pHi, commandIndex);
+                ++mergeDispatches;
             }
+        );
+        if (sortCase.laggedCount == 0u) {
+            EXPECT_EQ(dispatchSpan, 1u << Axes::kOverflowSortBlockBits);
+            EXPECT_EQ(mergeDispatches, 0u);
         }
 #if defined(IR_GRAPHICS_METAL)
         device_->finish();
@@ -642,13 +661,22 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
 #endif
         std::vector<std::uint32_t> actual(words.size());
         scratch.getSubData(0, actual.size() * sizeof(std::uint32_t), actual.data());
+        std::vector<Record> observed;
+        observed.reserve(count);
         for (std::uint32_t i = 0; i < count; ++i) {
-            const Record record{
-                actual[entries + i * 3],
-                actual[entries + i * 3 + 1],
-                actual[entries + i * 3 + 2]
-            };
-            ASSERT_EQ(record, expected[i]) << "entry " << i;
+            observed.push_back(
+                Record{
+                    actual[entries + i * 3],
+                    actual[entries + i * 3 + 1],
+                    actual[entries + i * 3 + 2]
+                }
+            );
+        }
+        if (sortCase.fullySorted)
+            EXPECT_EQ(observed, expected);
+        else {
+            std::sort(observed.begin(), observed.end(), recordLess);
+            EXPECT_EQ(observed, expected);
         }
         for (std::uint32_t i = 0; i < 8; ++i)
             EXPECT_EQ(actual[ctrl + i], words[ctrl + i]);

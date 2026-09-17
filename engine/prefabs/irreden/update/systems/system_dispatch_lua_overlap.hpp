@@ -1,7 +1,7 @@
 #ifndef SYSTEM_DISPATCH_LUA_OVERLAP_H
 #define SYSTEM_DISPATCH_LUA_OVERLAP_H
 
-// DISPATCH_LUA_OVERLAP (#1817) — turns the batched overlap pairs that
+// DISPATCH_LUA_OVERLAP turns the batched overlap pairs that
 // COLLISION_NOTE_PLATFORM emits into Lua-facing enter/exit callbacks.
 //
 // Handlers are registered by collision-LAYER PAIR (not per-entity): a creation
@@ -17,9 +17,9 @@
 // while the state is still open. Same lifetime contract the CommandManager
 // relies on (`lua_command_bindings.hpp`).
 //
-// Enter/exit is derived at PAIR granularity (D3): an entity touching several
+// Enter/exit is derived at PAIR granularity: an entity touching several
 // others is tracked correctly, unlike the per-entity single-contact
-// `C_ContactEvent` (which is left untouched for its existing consumers).
+// `C_ContactEvent` (which keeps its first-contact-only semantics).
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_profile.hpp>
@@ -83,7 +83,7 @@ template <> struct System<DISPATCH_LUA_OVERLAP> {
     std::unordered_map<std::uint64_t, std::vector<Handler>> enterHandlers_;
     std::unordered_map<std::uint64_t, std::vector<Handler>> exitHandlers_;
 
-    // Pair-level enter/exit state (D3). The value keeps the full ContactPair
+    // Pair-level enter/exit state. The value keeps the full ContactPair
     // so an EXIT — whose pair is absent from the current frame — still has the
     // layers it needs to route to the right exit handler. Both maps reuse
     // their bucket capacity across frames (clear + swap, never reallocate).
@@ -125,8 +125,8 @@ template <> struct System<DISPATCH_LUA_OVERLAP> {
         previousPairs_.swap(currentPairs_);
         // Consume the batch: the producer refills from empty next frame. Owning
         // the clear here (rather than in COLLISION_EVENT_CLEAR) keeps
-        // produce → consume → clear local to the two new systems and leaves the
-        // existing per-entity clear untouched.
+        // produce → consume → clear local to the producer/consumer pair and
+        // leaves the per-entity clear independent of it.
         batch.pairs_.clear();
     }
 
@@ -162,7 +162,7 @@ template <> struct System<DISPATCH_LUA_OVERLAP> {
             return;
         }
         for (const Handler &handler : it->second) {
-            // Pass the entity on the handler's `layer1_` first (D4). When the
+            // Pass the entity on the handler's `layer1_` first. When the
             // pair's `a_` is on `layer1_` the canonical order already matches;
             // otherwise `a_` is on `layer2_`, so swap. Same-layer handlers
             // (layer1_ == layer2_) take the canonical (a_, b_) branch.

@@ -41,8 +41,8 @@ struct PrefabFiles {
 // up. Used to prove `kv.second.is<sol::table>()` (TRUE for userdata) admits
 // wrong-typed userdata into the override reader and lets it silently apply
 // bogus field values, as opposed to a userdata with no matching members
-// (which the reader's per-field `sol::optional` gets skip either way). See
-// #3178, and #2673's `vec4`-into-`vec3FromLua` test for the same shape.
+// (which the reader's per-field `sol::optional` skips either way). A separate
+// `vec4`-into-`vec3FromLua` case covers the same shape.
 struct DecoyBindPointOverride {
     std::uint32_t boneId_ = 42;
     IRMath::vec3 offset_{5.0f, 6.0f, 7.0f};
@@ -232,11 +232,8 @@ TEST_F(PrefabApi, SpawnRejectsNonTableReturn) {
 
 // `root.is<sol::table>()` reads TRUE for userdata, so a table-first guard
 // admits a prefab file that returns a vec3/vec4 userdata instead of a real
-// table — the exact defect class #2673 fixed for the vector helpers. The
-// pre-fix path casts the userdata to `sol::table` unsafely and then indexes
-// `prefab_version` off it, which raises (no such member) rather than
-// producing the guard's controlled error — wrap in ASSERT_NO_THROW so that
-// failure mode surfaces as a test failure, not a crash. See #3178.
+// table. The guard must check the exact Lua type before indexing
+// `prefab_version`; ASSERT_NO_THROW makes type confusion a test failure.
 TEST_F(PrefabApi, SpawnRejectsUserdataReturn) {
     PrefabFiles f = writeFixtureSet("userdata_return", "return vec3.new(1, 2, 3)\n");
     IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
@@ -254,7 +251,7 @@ TEST_F(PrefabApi, SpawnRejectsUserdataReturn) {
 // `vec3FromLua`, which reads x/y/z off the wrong vector through this fixture's
 // registered `__index` and spawns at (1,2,3) reporting no error at all. Assert
 // the message AND that the accepted shapes still spawn — a guard that rejects
-// vec3 too would satisfy the first half alone. See #2673.
+// vec3 too would satisfy the first half alone.
 TEST_F(PrefabApi, LuaSpawnRejectsWrongVectorUserdataPosition) {
     PrefabFiles f = writeFixtureSet("lua_bad_pos", "return { prefab_version = 1 }\n");
     IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
@@ -630,9 +627,8 @@ TEST_F(PrefabApi, BindPointOverridesApplied) {
 // guard admits a `bind_point_overrides` entry that is a `DecoyBindPointOverride`
 // userdata instead of a real `{ offset = ..., rotation = ... }` table. Because
 // the decoy's member names AND types happen to match what the reader looks
-// up (`boneId`/`offset`/`rotation`), the pre-fix path casts it to `sol::table`
-// unsafely and successfully reads bogus values off it — silently applying an
-// override from a value that was never a table. See #3178, and #2673's
+// up (`boneId`/`offset`/`rotation`), an inexact type guard would silently
+// accept an override from a value that was never a table.
 // `vec4`-into-`vec3FromLua` test for the same "wrong type, same field names"
 // shape.
 TEST_F(PrefabApi, BindPointOverridesIgnoresUserdataEntry) {
@@ -671,8 +667,7 @@ TEST_F(PrefabApi, BindPointOverridesIgnoresUserdataEntry) {
     auto &lua = m_lua.lua();
     // The userdata entry is skipped entirely (guard's `continue`), so the
     // bind point keeps its rig-authored offset (0,0,1): world offset =
-    // chain world (5,7,9) + rig offset (0,0,1) = (5,7,10). A pre-fix guard
-    // would instead apply the decoy's (5,6,7) offset, landing at (10,13,16).
+    // chain world (5,7,9) + rig offset (0,0,1) = (5,7,10).
     EXPECT_FLOAT_EQ(lua["g_off_x"].get<float>(), 5.0f);
     EXPECT_FLOAT_EQ(lua["g_off_y"].get<float>(), 7.0f);
     EXPECT_FLOAT_EQ(lua["g_off_z"].get<float>(), 10.0f);
@@ -772,8 +767,8 @@ TEST_F(PrefabApi, SpawnAttachesDenseVoxelSetHeadless) {
     auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
     ASSERT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
 
-    // Record count matches `dense.voxelCount()` per the T-189 acceptance
-    // criterion. The test runs headless (no canvas), so the data lives in
+    // Record count matches `dense.voxelCount`. The test runs headless (no
+    // canvas), so the data lives in
     // `pendingVoxels_` and `numVoxels_` is 0 — `recordCount()` unifies
     // the two paths.
     const auto &voxelSet = IREntity::getComponent<IRComponents::C_VoxelSetNew>(r.entity_);
@@ -815,7 +810,7 @@ TEST_F(PrefabApi, SpawnAttachesHybridShapesAndDenseOnSameEntity) {
     EXPECT_EQ(voxelSet.pendingVoxels_[1].color_.green_, 31);
 }
 
-// ---- declarative components table (#698) ----------------------------------
+// ---- declarative components table ----------------------------------
 
 TEST_F(PrefabApi, ComponentsTableAttachesAndAppliesOverride) {
     // Binding registers the factory as a side effect; mirrors the wiring
@@ -898,10 +893,9 @@ TEST_F(PrefabApi, ComponentsTableNonTableEntryErrors) {
 // `kv.second.is<sol::table>()` reads TRUE for userdata, so a table-first
 // guard admits a `components['C_ZoomLevel']` override that is a vec3
 // userdata instead of a real field-overrides table. Unlike the plain-42
-// case (`ComponentsTableNonTableEntryErrors`, not userdata), the pre-fix
-// path casts the userdata to `sol::table` and hands it to the factory,
-// which indexes `zoom` off it and raises. ASSERT_NO_THROW turns that raise
-// into a test failure instead of a crash. See #3178.
+// case (`ComponentsTableNonTableEntryErrors`, not userdata), an inexact
+// type guard would hand the userdata to a factory that indexes `zoom`.
+// ASSERT_NO_THROW makes that type confusion a test failure.
 TEST_F(PrefabApi, ComponentsTableUserdataEntryErrors) {
     IRScript::bindLuaType<IRComponents::C_ZoomLevel>(m_lua);
 
@@ -956,7 +950,7 @@ TEST_F(PrefabApi, UnknownTopLevelFieldsIgnored) {
     EXPECT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
 }
 
-// ---- rotation_mode + unbounded (Epic C C2) --------------------------------
+// ---- rotation_mode + unbounded ---------------------------------------------
 
 TEST_F(PrefabApi, SpawnDefaultsToGridRotationMode) {
     PrefabFiles f = writeFixtureSet("rot_default", "return { prefab_version = 1 }\n");

@@ -2,7 +2,7 @@
 #define SAVE_MIGRATION_H
 
 /// Per-component schema-migration customization point for the ECS world
-/// snapshot (persist P5, #2216, epic #667). P1 (`save_trait.hpp`) decides
+/// snapshot. `save_trait.hpp` decides
 /// *whether* a component is saved and its current `kSaveVersion`; P2's
 /// `save_serialize.hpp` decides *how* the current version's bytes read; this
 /// header decides how a **retired** on-disk version reads.

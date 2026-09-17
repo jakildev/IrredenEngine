@@ -1,12 +1,11 @@
--- T-107 regression coverage: end-to-end fixture exercised by the codegen
--- tool. Components below are codegen'd as `C_CodegenSys*` structs (T-106
--- path); systems below are codegen'd as `IRScript::CodegenRegistry::
+-- Components are codegen'd as `C_CodegenSys*` structs; systems are
+-- codegen'd as `IRScript::CodegenRegistry::
 -- createSystem_*()` functions whose tick body translates the Lua DSL into
 -- typed C++. The sibling test file `lua_system_codegen_test.cpp` drives
 -- both paths and asserts behavioral parity with the EVAL register surface.
 --
 -- The component names use a `CodegenSys` prefix to keep them distinct from
--- T-106's component-only fixture (`CodegenHp` / `CodegenVel` / ...) so both
+-- the component-only fixture (`CodegenHp` / `CodegenVel` /...) so both
 -- fixtures can coexist in the same test binary without colliding on Lua
 -- name registration.
 
@@ -27,7 +26,7 @@ IRComponent.register('CodegenSysHp', {
 
 IRComponent.register('CodegenSysSkip', { dummy = 0 })
 
--- #1368: packed vec3 / ivec3 fields consumed inside a CODEGEN tick.
+-- Packed vec3 / ivec3 fields consumed inside a CODEGEN tick.
 IRComponent.register('CodegenSysBody', {
     pos = { type = 'vec3', default = { 0, 0, 0 } },
     cell = { type = 'ivec3', default = { 0, 0, 0 } },
@@ -124,7 +123,7 @@ IRSystem.registerSystem({
     end,
 })
 
--- #1353 row-alias safety: bind the row, write field x through the column,
+-- Row-alias safety: bind the row, write field x through the column,
 -- then read x AGAIN (after the write) to set y. The binding must stay a
 -- by-value copy — an alias would observe the just-written x and emit y == 99
 -- instead of the original x. Pins the analysis that blocks aliasing when a
@@ -141,7 +140,7 @@ IRSystem.registerSystem({
     end,
 })
 
--- #1368: packed vec3 / ivec3 fields in a CODEGEN tick. Reads a packed field
+-- Packed vec3 / ivec3 fields in a CODEGEN tick. Reads a packed field
 -- via getField (typed VEC3 / IVEC3), accesses its components (`.x/.y/.z`),
 -- builds a fresh value with the `vec3.new` / `ivec3.new` built-in constructors,
 -- and writes it back via setField — the full DSL round-trip for packed fields.
@@ -158,7 +157,7 @@ IRSystem.registerSystem({
     end,
 })
 
--- #1353 FOR_NUMERIC back-edge: bind the row before a nested for_numeric loop
+-- FOR_NUMERIC back-edge: bind the row before a nested for_numeric loop
 -- that writes the same component. Across the loop back-edge, iteration j+1
 -- reads `a.x` after iteration j already wrote it — the binding must stay a
 -- by-value copy. With initial x=1.0 and 3 iterations (j=0,1,2), copy
@@ -178,7 +177,7 @@ IRSystem.registerSystem({
     end,
 })
 
--- #1616: whitelisted side-effecting engine binding in a CODEGEN tick body.
+-- Whitelisted side-effecting engine binding in a CODEGEN tick body.
 -- `IRRender.setSunIntensity(x)` is a void render-glue setter — allowed as a
 -- bare statement (NOT inside an expression) and lowered to the C++ free
 -- function `IRRender::setSunIntensity(...)`. The generated header compiling +

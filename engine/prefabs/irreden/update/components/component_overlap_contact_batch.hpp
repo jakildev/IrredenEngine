@@ -12,7 +12,7 @@ using IRMath::vec3;
 namespace IRComponents {
 
 // One confirmed AABB overlap, stamped by COLLISION_NOTE_PLATFORM with BOTH
-// colliders' collision layers in hand (#1817). Because the producer already
+// colliders' collision layers in hand. Because the producer already
 // holds both `C_CollisionLayer`s during its broad+narrow scan, it records
 // each entity's layer here — so the DISPATCH_LUA_OVERLAP consumer never
 // reaches back to the foreign entity with `getComponent` (the batched-vector
@@ -41,8 +41,8 @@ struct ContactPair {
 // Its existence is the opt-in switch: the dispatch system creates the
 // singleton in `create()`, so a creation that does NOT register the
 // dispatcher leaves it absent and the producer skips pair emission entirely
-// (`singletonOrNull` returns nullptr) — existing COLLISION_NOTE_PLATFORM users
-// (the music demo) pay nothing.
+// (`singletonOrNull` returns nullptr) — a COLLISION_NOTE_PLATFORM user
+// without the dispatcher pays nothing.
 struct C_OverlapContactBatch {
     std::vector<ContactPair> pairs_;
 };
