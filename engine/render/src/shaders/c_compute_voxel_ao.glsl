@@ -23,6 +23,9 @@ const float kAOMinDistanceSquared = 1.0e-6;
 // A monotone staircase returns to the receiver's own face one cell beyond
 // a different-face step, ~1 voxel further out along the receiver normal; a
 // coplanar same-face blip (d ~ 0) is not a staircase and keeps its AO.
+// Chosen empirically against measured staircase captures, not derived from
+// voxel geometry; any value strictly between a coplanar return (d ~ 0) and
+// the next tread (d ~ 1) works.
 const float kAOStaircaseStepHeight = 0.5;
 
 layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
