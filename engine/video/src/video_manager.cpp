@@ -225,10 +225,7 @@ RecordingState VideoManager::recordingState() const {
     // and cleared by the finalize thread; m_captureEnabled is main-thread
     // owned. Both are atomics, so this never takes m_recorderMutex — which
     // the finalize thread holds for the whole encoder flush.
-    if (m_finalizeInProgress.load()) {
-        return RecordingState::FINALIZING;
-    }
-    return m_captureEnabled.load() ? RecordingState::RECORDING : RecordingState::IDLE;
+    return recordingStateFrom(m_finalizeInProgress.load(), m_captureEnabled.load());
 }
 
 std::uint64_t VideoManager::getFrameCount() const {

@@ -37,6 +37,9 @@ functions:
   `IRVideo::recordingState()` reports `IDLE` / `RECORDING` / `FINALIZING`
   from atomics only (`m_captureEnabled`, `m_finalizeInProgress`) — never
   the recorder mutex, which the finalize thread holds for the whole flush.
+  The flag → state table is the `constexpr` `recordingStateFrom` in
+  `ir_video_types.hpp` (`FINALIZING` wins while both flags are set), so
+  `test/video/recording_state_test.cpp` pins it at compile time.
   `VideoRecorder::m_isRecording` is atomic for the same reason: `stop()`
   clears it on that thread while `isRecording()` polls it on the main one.
 

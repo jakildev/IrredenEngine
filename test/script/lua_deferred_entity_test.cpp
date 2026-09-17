@@ -215,8 +215,9 @@ class LuaDeferredCallTest : public LuaDeferredEntityTest {
     void SetUp() override {
         auto &lua = m_lua.lua();
         ASSERT_TRUE(lua.safe_script("Cell = IRComponent.register('Cell', { n = 0 })").valid());
-        ASSERT_TRUE(lua.safe_script("Spawned = IRComponent.register('Spawned', { origin = 0 })")
-                        .valid());
+        ASSERT_TRUE(
+            lua.safe_script("Spawned = IRComponent.register('Spawned', { origin = 0 })").valid()
+        );
         m_cellId = m_entity_manager.getComponentTypeByName("Cell");
         m_spawnedId = m_entity_manager.getComponentTypeByName("Spawned");
         ASSERT_GT(m_cellId, 0u);
