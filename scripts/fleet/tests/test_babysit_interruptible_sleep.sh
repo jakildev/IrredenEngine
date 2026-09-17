@@ -5,7 +5,7 @@
 # The function takes no wake-suppression floor: a trigger that is present wakes
 # the sleep on the next poll, unconditionally. T4 locks that shape by reading
 # the shipped source, because a suppression window that is absent leaves no
-# behavioural trace for T1-T3 to distinguish (#2831).
+# behavioural trace for T1-T3 to distinguish.
 #
 # Covers:
 #   - a standing trigger wakes the sleep immediately (rc=2)

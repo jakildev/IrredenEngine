@@ -118,9 +118,9 @@ case "$ROLE" in
         ;;
 esac
 
-# Timing. Overridable via env (mirrors FLEET_LONG_BACKOFF / FLEET_MIN_BACKOFF
-# below) so tests can shrink the crash-loop delays instead of waiting on the
-# real defaults; unset, the defaults below apply.
+# Timing. Overridable via env (mirrors FLEET_LONG_BACKOFF below) so tests can
+# shrink the crash-loop delays instead of waiting on the real defaults; unset,
+# the defaults below apply.
 CRASH_DELAY="${FLEET_CRASH_DELAY:-30}"      # seconds to wait after non-zero exit (crash)
 LIMIT_DELAY="${FLEET_LIMIT_DELAY:-900}"     # seconds to wait on suspected usage limit (exit 2)
 CLEAN_DELAY="${FLEET_CLEAN_DELAY:-60}"      # seconds to wait after clean exit (no LOOP_INTERVAL)
