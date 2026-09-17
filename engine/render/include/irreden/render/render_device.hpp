@@ -41,8 +41,8 @@ class RenderDevice {
     // Indirect instanced indexed draw: index/instance counts come from a
     // DrawElementsIndirectCommand (GL) / MTLDrawIndexedPrimitivesIndirectArguments
     // (Metal) at @p indirectOffset in @p indirectBuffer, GPU-written by a compute
-    // pass the same frame (#1961 per-axis cell compaction). Symmetric to
-    // dispatchComputeIndirect; the bound element buffer supplies the indices.
+    // pass earlier in the same frame. The bound element buffer supplies the
+    // indices; the contract is symmetric with dispatchComputeIndirect.
     virtual void drawElementsInstancedIndirect(
         DrawMode drawMode,
         IndexType indexType,
@@ -89,9 +89,8 @@ class RenderDevice {
     // Make @p texture's **level 0** contents reflect its image-atomic state. A
     // no-op on backends whose image atomics write the texture directly (OpenGL's
     // imageAtomicMin), a scratch-buffer -> texture materialization on Metal,
-    // whose atomics land in a sibling buffer instead (#1640,
-    // metal/metal_runtime.hpp). Call it wherever a later pass reads the
-    // texture through a plain sampler / access::read and must see depth an
+    // whose atomics land in a sibling buffer instead. Call it wherever a later
+    // pass reads the texture through a plain sampler / access::read and must see depth an
     // atomic pass wrote — the backends agree on the texture only after this.
     // Idempotent and value-safe: texels the atomics never touched resolve
     // their own clear value back onto themselves.

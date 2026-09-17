@@ -150,7 +150,7 @@ void initCommands() {
         KeyMouseButtons::kKeyButtonF9
     );
     // Backtick keeps its "show the command list" meaning, now backed by the
-    // registry-driven help overlay (#2550).
+    // registry-driven help overlay.
     IRPrefab::HelpOverlay::registerToggleCommand(KeyMouseButtons::kKeyButtonGraveAccent);
     IRCommand::createCommand<IRCommand::GUI_ZOOM_IN>(
         InputTypes::KEY_MOUSE,

@@ -54,9 +54,9 @@ class InputManager {
     bool checkGamepadButton(GamepadButtons button, ButtonStatuses status, int irGamepadId = 0) const;
     float getGamepadAxis(GamepadAxes axis, int irGamepadId = 0) const;
 
-    // Synthetic input (#1794): deterministic injection so a headless run can
+    // Synthetic input: deterministic injection so a headless run can
     // drive the cursor and buttons without GLFW — the missing primitive the
-    // GUI/mouse verification harness (#1793) depends on. `beginSyntheticInput`
+    // GUI/mouse verification harness depends on. `beginSyntheticInput`
     // flips the manager to consume injected events for the rest of the run,
     // mirroring `IRVideo::isAutoCaptureActive()`'s run-scoped fixed-step flip.
     // When inactive the GLFW path stays byte-identical to today.

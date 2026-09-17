@@ -7,7 +7,7 @@
 
 namespace {
 
-// #2880: GIZMO_DRAG caches the dragged handle's id (`dragHandle_`) and its
+// GIZMO_DRAG caches the dragged handle's id (`dragHandle_`) and its
 // anchor's id (`dragAnchor_`) in System<N> members. Neither entity is
 // C_Persistent, so IREntity::resetGameplay() mid-drag destroys both; without
 // the pre-destroy hook the cached ids would dangle and the next tick's

@@ -1,9 +1,8 @@
 #ifndef IR_SAVE_SERIALIZERS_AUDIO_H
 #define IR_SAVE_SERIALIZERS_AUDIO_H
 
-/// `SaveSerialize<C>` specialization for `engine/prefabs/irreden/audio/`
-/// (#2242). Opt-in serializer header: include it wherever a registry
-/// registers `C_MidiSequence`; never pulled by the component header.
+/// Opt-in serializer header: include it wherever a registry registers
+/// `C_MidiSequence`; never pulled by the component header.
 
 #include <irreden/audio/components/component_midi_sequence.hpp>
 #include <irreden/world/save_serialize.hpp>

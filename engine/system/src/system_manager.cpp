@@ -71,9 +71,9 @@ SystemId SystemManager::createSystemDynamic(
     m_relations.emplace_back(C_SystemRelation{Relation::NONE});
     m_systemParams.emplace_back(nullptr);
     m_timingAccum.emplace_back();
-    // T-222: dynamic systems are PARALLEL_FOR-ineligible (the body is
+    // Dynamic systems are PARALLEL_FOR-ineligible (the body is
     // opaque to row-level chunking — `m_ticks[…].prepareRangedTick_` is
-    // never populated). T-223 still accepts SERIAL / MAIN_THREAD so the
+    // never populated). They still accept SERIAL / MAIN_THREAD so the
     // Lua surface can tag EVAL systems as MAIN_THREAD to opt them out of
     // pipeline-group parallelism (the sol2 / LuaJIT GC singletons are
     // not thread-safe). PARALLEL_FOR is normalized to MAIN_THREAD by the
@@ -91,7 +91,7 @@ SystemId SystemManager::createSystemDynamic(
     return newSystemId;
 }
 
-// #2404 — per-system update cadence -------------------------------------
+// Per-system update cadence -------------------------------------
 
 namespace {
 // True if `system` appears in any group of `groups`. Used to reject a
@@ -161,8 +161,7 @@ void SystemManager::stampCadenceJoin(IRTime::Events event, SystemId system) {
         // other than the inert UPDATE placeholder) — only assert if the
         // system is STILL listed in the old event's pipeline, i.e. it would
         // be live in two pipelines at once and thrash m_lastRunTick between
-        // two counters that advance at different rates (the same
-        // clock-mixing bug amendment 2 fixed). A never-joined system isn't
+        // two counters that advance at different rates. A never-joined system isn't
         // listed in any pipeline yet, so isStillLiveInPriorPipeline is false
         // and this never false-fires on a genuine first join.
         IR_ASSERT(
@@ -232,7 +231,7 @@ void SystemManager::replaceSystemBody(SystemId system, std::function<void(Archet
 }
 
 void SystemManager::registerPipeline(IRTime::Events event, std::list<SystemId> pipeline) {
-    // T-224: legacy single-list form becomes a per-system group
+    // Legacy single-list form becomes a per-system group
     // sequence. Each system runs as its own one-element group, which
     // dispatches serially through the same code path as before —
     // bit-for-bit equivalent to the previous behavior for existing
@@ -257,7 +256,7 @@ void SystemManager::registerPipelineGroups(
 ) {
     m_systemPipelineGroups[event] = std::move(groups);
     m_flattenedPipelinesDirty = true;
-    // #2404: seed each listed system's cadence phase from the current event
+    // Seed each listed system's cadence phase from the current event
     // tick (+ its offset), so a mid-run re-registration measures elapsed
     // from here rather than from counter zero.
     for (const auto &group : m_systemPipelineGroups[event]) {
@@ -280,7 +279,7 @@ void SystemManager::appendToPipeline(IRTime::Events event, SystemId system) {
     );
     groups.push_back({system});
     m_flattenedPipelinesDirty = true;
-    stampCadenceJoin(event, system); // #2404: seed phase from the join tick.
+    stampCadenceJoin(event, system); // seed phase from the join tick.
 }
 
 void SystemManager::insertIntoPipelineBefore(
@@ -334,7 +333,7 @@ void SystemManager::insertSingletonGroupRelativeTo(
     const std::size_t pos = after ? anchorGroup + 1 : anchorGroup;
     groups.insert(groups.begin() + static_cast<std::ptrdiff_t>(pos), std::vector<SystemId>{system});
     m_flattenedPipelinesDirty = true;
-    stampCadenceJoin(event, system); // #2404: seed phase from the join tick.
+    stampCadenceJoin(event, system); // seed phase from the join tick.
 }
 
 void SystemManager::refreshFlattenedPipelines() const {
@@ -403,14 +402,12 @@ void SystemManager::validateAllPipelineGroups() const {
                 );
                 break;
             case GroupConflictKind::TWO_SPAWNERS:
-                // T-225: validator no longer produces this kind —
-                // per-worker deferred-mutation buffers cover
-                // concurrent archetype-graph mutation. Kept as an
-                // exhaustive-switch sentinel; unreachable in practice.
+                // Per-worker deferred-mutation buffers make this kind
+                // unreachable. Keep it as an exhaustive-switch sentinel.
                 break;
             case GroupConflictKind::MUTATOR_IN_PARALLEL_GROUP:
-                // T-225 lifted this restriction — per-worker deferred-mutation
-                // buffers make mutators safe in parallel groups.
+                // Per-worker deferred-mutation buffers make mutators safe in
+                // parallel groups.
                 // Kept as exhaustive-switch sentinel; unreachable in practice.
                 break;
             case GroupConflictKind::WRITE_WRITE:
@@ -459,13 +456,13 @@ void SystemManager::executePipeline(IRTime::Events event) {
     if (it == m_systemPipelineGroups.end()) {
         return;
     }
-    // #2404: bump this event's phase-tick counter once, so every cadence
+    // Bump this event's phase-tick counter once, so every cadence
     // gate in this pass compares against the same `now`.
     const std::uint64_t now = ++m_eventTickCounts[event];
     const auto &groups = it->second;
     for (const auto &group : groups) {
         if (group.size() == 1) {
-            // T-224: observer bracket fires on the main thread around
+            // Observer bracket fires on the main thread around
             // each singleton system — the only group shape that
             // preserves per-system timing semantics. The bracket lives
             // here (not in executeSystem) because executeSystem is
@@ -475,7 +472,7 @@ void SystemManager::executePipeline(IRTime::Events event) {
             // writeTimestamp). See registerTickObserver doc + the
             // multi-system note below.
             //
-            // #2404: a throttled system skips its entire dispatch
+            // a throttled system skips its entire dispatch
             // (observers + executeSystem) on off-cadence ticks; the
             // per-group flushStructuralChanges still runs, so deferred
             // changes queued by other systems keep flushing on schedule.
@@ -490,7 +487,7 @@ void SystemManager::executePipeline(IRTime::Events event) {
                 }
             }
         } else if (!group.empty()) {
-            // T-224: parallel group — fan out across the worker pool.
+            // Parallel group — fan out across the worker pool.
             // grainSize=1 makes each task one system; the validator
             // already guarantees no two members conflict.
             //
@@ -504,14 +501,13 @@ void SystemManager::executePipeline(IRTime::Events event) {
             // brackets must put the observed system in its own
             // singleton group.
             //
-            // #1900: deliberately NOT migrated to IRJob's auto-grain
-            // helper. This fans out *systems* at fixed grain=1 (one
-            // system per task) — auto-grain would batch the group onto
+            // Keep this on the fixed-grain IRJob path. It fans out *systems*
+            // at grain=1 (one system per task). Auto-grain would batch the group onto
             // ~tasksPerWorker tasks and collapse a small group onto a
             // single worker, killing the parallelism. It shares only the
             // null-pool serial guard with the helper, not the
             // chunk-planning boilerplate the helper consolidates.
-            // #2404: filter the due members on the main thread before
+            // filter the due members on the main thread before
             // fan-out — a throttled member simply doesn't dispatch on its
             // off-cadence ticks. The gate MUST run here, not inside the
             // worker lambda: pollCadenceDue writes m_accumulatedTicks /
@@ -605,21 +601,21 @@ void SystemManager::executeSystem(SystemId system) {
             // and run each on the pool. enkiTS' WaitforTask pumps the
             // main thread, so this blocks until every chunk finishes.
             //
-            // T-333: the binder resolves all per-component vector refs
+            // the binder resolves all per-component vector refs
             // here on the main thread before any worker is spawned, so
             // `EntityManager::m_pureComponentTypes`-touching code (the
             // `getComponentType<>` hash lookup hidden inside
             // `getComponentData<>`) never runs concurrently from
             // workers. Workers only iterate captured refs.
             //
-            // `isMainThread()` (T-224) guards against nested dispatch:
+            // `isMainThread()` guards against nested dispatch:
             // when executeSystem is reached from a worker (multi-system
             // parallel group), IRJob::parallelFor would FATAL on its
             // own main-thread assert. validateAllPipelineGroups rejects
             // PARALLEL_FOR members in multi-system groups at boot, so
             // this path is unreachable in well-formed programs; the
             // guard is kept as a release-build safety net.
-            // #1900: kept on raw parallelFor with the per-system
+            // kept on raw parallelFor with the per-system
             // grainSize, NOT IRJob's auto-grain helper. grainSize here
             // is the system's *explicit* kGrainSize tuning knob (or
             // kDefaultGrainSize) — an author-chosen value, not the
@@ -628,7 +624,7 @@ void SystemManager::executeSystem(SystemId system) {
             // inline. Switching the grainSize-unset case to auto-grain
             // (so one huge node fans out across ~workers×2 tasks instead
             // of length/grain tasks) is a measurable per-system perf
-            // change, scoped to its own follow-up per the issue.
+            // change and therefore remains an explicit dispatch choice.
             auto rangedTick = tickEvent.prepareRangedTick_(node);
             IRJob::parallelFor(
                 0,
@@ -639,9 +635,9 @@ void SystemManager::executeSystem(SystemId system) {
         } else {
             // SERIAL / MAIN_THREAD path, the small-node / no-pool
             // fallback for PARALLEL_FOR, and the nested-dispatch
-            // fallback when executeSystem is called from a worker.
+            // fallback for worker-side executeSystem calls.
             // Row-iterating forms have prepareRangedTick_ only; batch
-            // and dynamic forms have functionTick_ only (T-348).
+            // and dynamic forms have functionTick_ only.
             if (static_cast<bool>(tickEvent.prepareRangedTick_)) {
                 auto rangedTick = tickEvent.prepareRangedTick_(node);
                 rangedTick(0, node->length_);
@@ -667,7 +663,7 @@ void SystemManager::executeSystem(SystemId system) {
         acc.totalEntityCount_ += entityCount;
     }
 
-    // T-224: observer fires moved to executePipeline (singleton groups
+    // Observer fires moved to executePipeline (singleton groups
     // only) — they need a main-thread context that executeSystem can
     // no longer guarantee. structural-changes flush also runs there,
     // per-group rather than per-system.

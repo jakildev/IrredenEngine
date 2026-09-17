@@ -18,25 +18,22 @@
 #include <irreden/voxel/rig_bridge.hpp>
 #include <irreden/voxel/skeleton.hpp>
 
-// #1612 — CPU simulation of the full skinning pipeline (#605 Phase 2.11).
+// CPU simulation of the full skinning pipeline.
 //
 // The GPU shader (c_update_voxel_positions.glsl) executes:
-//   uint slot = floatBitsToUint(localEntry.w);  // bone_id → slot (Phase 2.3)
+//   uint slot = floatBitsToUint(localEntry.w);  // bone_id → slot
 //   vec3 worldPos = (transforms[slot] * vec4(localEntry.xyz, 1.0)).xyz;
 //
 // This test simulates that chain on the CPU:
-//   1. C_VoxelPool transform indices (Phase 2.3 seeding): bone_id → base + bone_id
-//   2. jointStaging_ (Phase 2.2 staging fill): slot → skinMatrix(jointWorld, bindPose)
+//   1. C_VoxelPool transform indices: bone_id → base + bone_id
+//   2. jointStaging_: slot → skinMatrix(jointWorld, bindPose)
 //   3. worldPos = mat * vec4(localPos, 1.0)
 //
 // The two sub-paths are unit-tested independently in joint_matrix_upload_test.cpp
-// (Phase 2.2) and voxel_bone_slot_seed_test.cpp (Phase 2.3). This file exercises
-// their integration: a bug in the slot-base alignment or localSlot offset would
+// and voxel_bone_slot_seed_test.cpp. Their integration is sensitive to
+// slot-base alignment and localSlot offsets; either mismatch would
 // cause a mismatch without requiring a running GPU device.
 //
-// Render-verify reference screenshots (the second deliverable of #1612) require
-// the rigged demo (#1611) to author its entities; deferred until that PR lands.
-
 namespace {
 
 using JointMatrices = IRSystem::System<IRSystem::UPDATE_JOINT_MATRICES>;

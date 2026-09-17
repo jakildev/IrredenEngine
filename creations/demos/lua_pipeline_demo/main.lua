@@ -1,4 +1,4 @@
--- T-102 sample creation: entire initSystems lives here. No C++ initSystems.
+-- Sample creation: entire initSystems lives here. No C++ initSystems.
 -- Demonstrates IRSystem.registerPipeline + IRSystem.systemId mixing prefab
 -- systems with one Lua-defined system in the UPDATE pipeline. The full
 -- modifier-resolver chain is in the same UPDATE list so any consumer
@@ -7,7 +7,7 @@
 -- value composition against a Lua-defined component; here we just prove
 -- the wiring runs end-to-end through the game loop.
 --
--- Also exercises the shared render-glue bindings (engine #1615): the
+-- Also exercises the shared render-glue bindings: the
 -- IRRender.setSun*/setSky* lighting setters and a RENDER-phase Lua system
 -- that draws a HUD via IRGui.drawDisc / IRGui.drawLine onto the gui canvas.
 
@@ -45,7 +45,7 @@ IRSystem.registerPipeline(IRTime.INPUT, {
     IRSystem.systemId(SystemName.INPUT_KEY_MOUSE),
 })
 
--- Render-glue setters (engine #1615). The render manager exists by the time
+-- Render-glue setters. The render manager exists by the time
 -- main.lua runs, so these drive lighting from Lua without a per-creation
 -- pass-through. There is no lit geometry in this demo, so the effect isn't
 -- visible — the call simply exercises the shared binding at runtime.
@@ -53,7 +53,7 @@ IRRender.setSunDirection(0.4, 0.4, -1.0)
 IRRender.setSunIntensity(1.0)
 IRRender.setSkyColor(0.25, 0.3, 0.45)
 
--- GUI shape draw (engine #1615). The shape-draw primitives are immediate-mode
+-- GUI shape draw. The shape-draw primitives are immediate-mode
 -- onto the engine-default "gui" trixel canvas, so they must run every frame
 -- from a RENDER-phase system. One marker entity (singleton) puts the HUD
 -- system's archetype in scope so its tick fires once per frame.
@@ -68,7 +68,7 @@ local hudDrawSysId = IRSystem.registerSystem({
         IRGui.drawLine(8, 56, 96, 56, { 90, 200, 255 })   -- horizontal line
         IRGui.drawLine(40, 8, 40, 56, { 120, 235, 140 })  -- vertical line
 
-        -- Debug-overlay draws (engine #2375). Same immediate-mode contract as
+        -- Debug-overlay draws. Same immediate-mode contract as
         -- the IRGui draws above: DEBUG_OVERLAY consumes AND clears these
         -- buffers every RENDER tick, so they must be re-issued here each
         -- frame. Colors are 0..1 floats (the C++ IRDebug convention), NOT the

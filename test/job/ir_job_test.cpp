@@ -226,7 +226,7 @@ TEST(IRJobManagerTest, FreeFunctionsAreSafeWithoutManager) {
 }
 
 // ---------------------------------------------------------------------------
-// parallelForAutoGrain (#1900) — flat auto-grain + serial fallback.
+// parallelForAutoGrain — flat auto-grain + serial fallback.
 // ---------------------------------------------------------------------------
 
 TEST_F(IRJobFixture, AutoGrainParallelCoversRangeExactlyOnce) {
@@ -292,7 +292,7 @@ TEST(IRJobAutoGrainNoPool, RunsSerialWithoutManager) {
 }
 
 // ---------------------------------------------------------------------------
-// parallelChunks (#1900) — row-range planner + serial fallback.
+// parallelChunks — row-range planner + serial fallback.
 // ---------------------------------------------------------------------------
 
 TEST_F(IRJobFixture, ChunksSingleLargeNodeSplitsAndCoversExactlyOnce) {

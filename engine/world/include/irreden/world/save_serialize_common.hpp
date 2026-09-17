@@ -1,7 +1,7 @@
 #ifndef SAVE_SERIALIZE_COMMON_H
 #define SAVE_SERIALIZE_COMMON_H
 
-/// Shared building blocks for `SaveSerialize<C>` specializations (#2242).
+/// Shared building blocks for `SaveSerialize<C>` specializations.
 /// `save_serialize.hpp` handles the two ends of the spectrum — a whole
 /// component that is trivially copyable, or one that hand-rolls everything.
 /// Most heap-owning components sit in between: a few scalars plus a

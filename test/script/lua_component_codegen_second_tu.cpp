@@ -1,5 +1,6 @@
 // A second translation unit including the SAME codegen run's generated header
-// as `lua_component_codegen_test.cpp` — the regression lock for #3091.
+// as `lua_component_codegen_test.cpp`; successful linking proves the generated
+// definitions are safe across translation units.
 //
 // This file's job is to LINK. A generated header that defines (rather than
 // declares) its `IRScript::CodegenClaims::C_<Name>_declared_by_…` constants

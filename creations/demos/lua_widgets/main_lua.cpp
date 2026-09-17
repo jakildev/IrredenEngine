@@ -1,4 +1,4 @@
-// lua_widgets (engine #1975) — proves the widget→Lua binding surface end to
+// lua_widgets — proves the widget→Lua binding surface end to
 // end. A panel + label + two buttons are built ENTIRELY from `main.lua` via
 // `IRGui.makePanel/makeLabel/makeButton`; one button carries a Lua `onClick`
 // (dispatched by the new WIDGET_LUA_DISPATCH system), the other is polled with

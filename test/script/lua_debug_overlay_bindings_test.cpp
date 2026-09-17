@@ -325,7 +325,7 @@ TEST_F(LuaDebugOverlayBindingsTest, NonVectorArgumentRaisesInsteadOfDrawingAtOri
 // returns its zero-default and draws silently at the origin. These assert on
 // the MESSAGE rather than merely that something raised: the message is the part
 // the contract promises, and it is what distinguishes this guard firing from an
-// error thrown somewhere downstream. See #2673.
+// error thrown somewhere downstream.
 TEST_F(LuaDebugOverlayBindingsTest, WrongVectorUserdataTypeRaisesNamingTheArgument) {
     auto &lua = m_lua.lua();
     lua["v2"] = IRMath::vec2(1.0f, 2.0f);
@@ -367,7 +367,7 @@ TEST_F(LuaDebugOverlayBindingsTest, WrongVectorUserdataTypeRaisesNamingTheArgume
 // `requireVecShape` above. `is<sol::table>()` is true for userdata, so a
 // table-first check here would let a userdata argument past this binding's own
 // message and die later on the `#` call instead. Assert the message, which is
-// what distinguishes the two. See #2673.
+// what distinguishes the two.
 TEST_F(LuaDebugOverlayBindingsTest, UserdataPathRaisesNamingTheArgument) {
     m_lua.lua()["v3"] = vec3(1.0f, 2.0f, 3.0f);
     EXPECT_TRUE(raisesWith(

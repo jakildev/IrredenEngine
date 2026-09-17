@@ -55,7 +55,7 @@ TEST(PickingFaceNormal, DiagonalEntryTieResolvesToNegativeX) {
     // centre pixel exactly at its near corner, so all three components are
     // equal and negative. The tie-break lands on -x. This is not cosmetic:
     // it is why a -y face click at cardinal yaw resolves to the -x face and
-    // places the wrong neighbour (#2575), which the voxel editor's session
+    // places the wrong neighbour, which the voxel editor's session
     // shadow model reproduces in order to reject such an aim.
     EXPECT_EQ(voxelHitFaceNormal(IRMath::vec3(-0.4f, -0.4f, -0.4f)), IRMath::ivec3(-1, 0, 0));
     // The whole in-cell entry band the march can sample, not just one point:

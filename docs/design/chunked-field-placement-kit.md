@@ -386,20 +386,69 @@ classic two-pass), then **seam stitching**: a union-find over
 `(chunk, local-label)` pairs across each chunk's 4 borders, resolved to global
 region ids. This is the tiled-navmesh model.
 
-Incremental update relabels only dirty chunks locally, then rebuilds the
-union-find and the global remap — `O(#chunks + #seam segments)`, cheap by
-construction, so there is no incremental-stitch subtlety to get wrong.
+Incremental update relabels only the **present dirty** field chunks locally,
+then rebuilds the union-find and every local-to-global remap wholesale. There
+is deliberately **no** incremental seam-stitch algorithm: retained union edges
+cannot represent a split, and a full restitch is cheap by construction. The
+cost, honestly: local work is `O(1024 × dirty chunks)`; the restitch sorts the
+present keys (`O(C log C)`, `C` present chunks) and then runs
+`O((L + B) · α(L))` union-find work over `L` local components and `B` scanned
+seam cell pairs. Fixed 32×32 chunks bound `L ≤ 512·C` and one scan of each
+shared seam bounds `B ≤ 64·C` — structural bounds, not measured timings. A
+chunk with zero free cells contributes zero components and is still present.
 
-**Ids are assigned in a canonical order**: ascending packed `FieldChunkKey`
-(D3), then row-major local index within a chunk. Discovery order over the
-chunk map would do just as well *on one machine* and differ on the next, since
-that map is a `std::unordered_map` — see D7's "No hash-container iteration
-order is ever observable".
+**Ids are assigned in a canonical order**: ascending **unsigned** packed
+`FieldChunkKey` (D3 — so chunk `(1, 0)` sorts before `(-1, 0)`, and every
+`y = 0` row before any `y = 1`), then, within a chunk, local components in
+the order of their first row-major free cell (`y·32 + x`). Consecutive ids
+`1, 2, …` are handed out on the first visit to each global component.
+Discovery order over the chunk map would do just as well *on one machine* and
+differ on the next, since that map is a `std::unordered_map` — see D7's "No
+hash-container iteration order is ever observable".
 
 > **Global region ids are NOT stable across `update()`.** They are epoch-scoped.
 > A consumer that caches a label across an update and compares it to a fresh one
 > is a bug. Compare labels only within one update epoch. Within an epoch the
 > canonical order above makes them the same ids on every platform.
+
+#### The C4 surface — `FieldRegions`
+
+C4 owns `IRPrefab::Spatial::FieldRegions` in `field_regions.hpp`:
+
+| Surface | Contract |
+|---|---|
+| `using FieldRegionId = std::uint64_t` / `constexpr FieldRegionId kInvalidFieldRegion = 0` | Zero is invalid; valid ids start at one. |
+| `FieldRegions()` | Empty layer; every lookup invalid. |
+| `void update(const ChunkedField2D<std::uint8_t> &occupancy, std::span<const FieldChunkKey> dirtyKeys)` | Borrows the complete mutation snapshot; never mutates or acknowledges occupancy. |
+| `void rebuild(const ChunkedField2D<std::uint8_t> &occupancy)` | Relabels every present chunk through the same local-CCL / restitch machinery. |
+| `FieldRegionId labelAt(IRMath::ivec2 cell) const` | Current global id, or zero for an occupied cell or an absent chunk. |
+| `bool sameRegion(IRMath::ivec2 a, IRMath::ivec2 b) const` | True exactly when both ids are nonzero and equal — a free cell compared with itself is true, an invalid cell compared with itself is false. |
+| `std::size_t chunkCount() const` | Field chunks the layer currently labels; equals the occupancy field's `chunkCount()` once every change has been supplied. |
+
+- **Free and invalid are explicit.** Occupancy byte `0` is free; any nonzero
+  byte, and every cell of an absent chunk, is occupied. Only orthogonal free
+  neighbours connect, across seams included. Zero is never a reachable region:
+  `sameRegion` rejects occupied/occupied, absent/absent, mixed-invalid and
+  invalid/free pairs even at identical coordinates. Raw sentinel equality is
+  **not** a reachability predicate; the guard lives in `sameRegion`, and the
+  same rule is why C5 must go through `sameRegion`, never compare `labelAt`
+  results by hand.
+- **Ownership.** The object owns the per-chunk local label arrays, the local
+  component counts, the local-to-global remap, the union-find and its scratch.
+  Lookup is a chunk map find, a dense array index and a remap read — expected
+  O(1). No global per-cell label field is rewritten when ids change, and no
+  reference to an occupancy chunk or span survives a call. Rejected: any part of
+  `PlacementField` in C4, C5 owning stitching state, or exposing union-find
+  node ids as public labels.
+- **Lifecycle** mirrors `FieldClearance`. The first `update()` relabels the
+  whole present set even if occupancy was already acknowledged; afterwards the
+  caller supplies every occupancy change before querying, and switching to
+  another field requires `rebuild`. An empty snapshot does no work. A dirty key
+  whose chunk is now **absent** (D2's `clear()`) triggers a full reset and
+  rebuild of the present set, so clear-then-partial-refill drops stale chunks;
+  clear-then-recreate before acknowledgment relabels the recreated chunks
+  because they are all in the dirty set. Dense caches and scratch are reused
+  across resets (allocation Pattern B).
 
 ### D6 — placement draw
 
@@ -432,10 +481,13 @@ Bridson Poisson-disk sampling, all-integer:
   tests before each of its at-most-one pushes per round. Where the clear sits
   relative to param validation is D7's to lock, for the same reason the word
   order is.
-- Per-candidate validity: the cell is present, `clearanceSq >= c*c`, and
-  (optional flag) its region label equals the anchor's. A candidate that fails
-  is discarded rather than kept as an obstacle — D7 states what that means for
-  the frontier.
+- Per-candidate validity: `FieldClearance::hasClearance(cell, c)` — present,
+  `clearanceSq > 0` (so an occupied cell is never valid, even at `c = 0`), and
+  `c*c <= clearanceSq` — and, when `sameRegionAsAnchor_` is set,
+  `FieldRegions::sameRegion(cell, anchor)`. The anchor-hit test is the same
+  pair of predicates, so an invalid anchor yields no hits under the region
+  restriction. A candidate that fails is discarded rather than kept as an
+  obstacle — D7 states what that means for the frontier.
 - Fewer than K reachable valid candidates ⇒ the query returns what it found. The
   caller reads `out.size()`; there is no failure sentinel.
 
@@ -709,14 +761,28 @@ class FieldClearance {
     bool hasClearance(IRMath::ivec2 cell, int clearance) const;
 };
 
+using FieldRegionId = std::uint64_t;
+constexpr FieldRegionId kInvalidFieldRegion = 0;
+
+class FieldRegions {                         // C4 — see D5's surface table
+  public:
+    FieldRegions();
+    void update(const ChunkedField2D<std::uint8_t> &occupancy,
+                std::span<const FieldChunkKey> dirtyKeys);
+    void rebuild(const ChunkedField2D<std::uint8_t> &occupancy);
+    FieldRegionId labelAt(IRMath::ivec2 cell) const;    // 0 = occupied / absent
+    bool sameRegion(IRMath::ivec2 a, IRMath::ivec2 b) const;
+};
+
 class PlacementField {                       // C5 composes the three layers
     ChunkedField2D<std::uint8_t> occupancy_;
     FieldClearance clearance_;
-    /* region labels */
+    FieldRegions regions_;
   public:
     explicit PlacementField(int maxClearance);   // delegates D4 validation
     int  maxClearance() const { return clearance_.maxClearance(); }
-    void update();   // EDT + relabel over the occupancy dirty set, then clear it
+    void update();   // one dirty snapshot → clearance, then regions, then
+                     // occupancy.update() acknowledges it
 };
 
 void queryPlacements(
@@ -736,10 +802,17 @@ void queryPlacements(
   `rebuild` and incremental updates use the same window driver. Its result has
   exactly the occupancy field's present keys and current summaries before the
   call returns.
+- **C4 owns the region lifecycle the same way.** `FieldRegions::update` takes
+  the same borrowed snapshot; `PlacementField::update()` calls clearance, then
+  regions, with one snapshot and only then `occupancy_.update()`. It never
+  exposes or queries a partially refreshed composition.
 - **A candidate is free before it is clear enough.** `hasClearance` requires a
   present value with `clearanceSq > 0`, then compares the widened
   `clearance*clearance <= clearanceSq`. C5 delegates anchor-hit and candidate
-  validity to that helper, including at `clearance = 0`.
+  validity to that helper, including at `clearance = 0`, and — when
+  `sameRegionAsAnchor_` is set — to `FieldRegions::sameRegion(cell, anchor)`,
+  never to a hand-rolled `labelAt(cell) == labelAt(anchor)` (D5: zero is not a
+  region).
 - **Domain validation is a precondition check, not a silent clamp** —
   `queryPlacements` rejects a `PlacementParams` outside D4's domain table
   rather than clamping into it, for the reason D4 gives: a clamped query
@@ -858,7 +931,7 @@ edits and carry a value ⇒ this kit.
 | **C1** | this doc + the cross-references (`engine/prefabs/irreden/spatial/CLAUDE.md`, `engine/math/CLAUDE.md`, the relationship line in `lua-world-space-neighbour-query.md`) | **landing** |
 | **C2** (#3160) | `chunked_field.hpp` — `ChunkedField2D<T>`, summaries, dirty tracking, `FieldChunkKey` (D2, D3) | **shipped** |
 | **C3** (#3161) | `IRMath` 1-D squared-EDT kernel + `field_clearance.hpp` — capped windowed F–H (D4, D10) | **shipped** |
-| **C4** (#3162) | `field_regions.hpp` — per-chunk CCL + seam-stitch union-find (D5) | not started |
+| **C4** (#3162) | `field_regions.hpp` — per-chunk CCL + seam-stitch union-find (D5) | **shipped** |
 | **C5** (#3163) | `IRMath::Pcg32` + `IRMath::isqrt` + `field_placement.hpp` — draw, `PlacementField`, `queryPlacements` + stats (D6, D7, D8); flips this table to shipped | not started |
 
 Each child is `**Blocked by:**` its predecessor. Tests live in **`test/ecs/`**,
@@ -903,18 +976,43 @@ default-passes:
   rejecting everything), and the 1-D pass runs over 50,001 cells and returns
   `2,500,000,000` at the far end. Its pure size validator accepts `INT32_MAX`
   and rejects `INT32_MAX + 1` without constructing an invalid span.
-- **C4** — an L-shaped free region spanning ≥3 chunks gets one label; a wall
-  splitting it yields two, with the wall's chunks re-stitched correctly;
-  incremental relabel ≡ full relabel over seeded mutations; **the ids
-  themselves are pinned by value** on a fixed multi-chunk fixture, against a
-  literal reference — an equality-only assertion passes under any numbering, so
-  it cannot see a discovery-order labelling that renumbers on the next standard
-  library (D5, D7).
+- **C4** — an L-shaped free region spanning ≥3 chunks gets one label over
+  **every** one of its cells (not two sampled ones); a wall splitting it
+  yields exactly two, with the sizes pinned (`1,024` / `1,984`), opposite
+  sides inside one chunk differing and the same side agreeing across the
+  seam; removing the wall re-joins them; **4-connectivity fires** — a
+  diagonal-only touch inside a chunk, across each seam and across a corner
+  stays two regions while an orthogonal bridge joins them (the L and wall
+  fixtures alone cannot tell 4- from 8-connectivity); **invalid is explicit**
+  — occupied (bytes `1` and `255`) and absent cells read
+  `kInvalidFieldRegion`, and `sameRegion` is false for every invalid pair
+  including a cell against itself, while a free cell against itself and
+  against a connected neighbour is true; an **enclosed** region gets its own
+  label (sizes `903` / `81`), which catches an exterior-only flood or a
+  stitch that drops non-seam components — a correctly seeded full flood fill
+  passes it; incremental relabel ≡ full relabel **as a partition** (bijection
+  between labels, never raw id equality) over seeded additions *and*
+  removals, seam bridges split and re-merged, no-op updates, new all-zero
+  chunks, `clear()` + partial refill and `clear()` + recreate before
+  acknowledgment, each also checked against an independent whole-field
+  4-neighbour BFS oracle; a checkerboard chunk yields 512 components;
+  negative seams, distant islands and both int32 cell limits do not wrap;
+  **the ids themselves are pinned by value** on a fixed multi-chunk fixture
+  spanning signed chunk coordinates, against a literal reference, under
+  forward, reversed and shuffled insertion histories — an equality-only
+  assertion passes under any numbering, so it cannot see a discovery-order
+  labelling that renumbers on the next standard library (D5, D7); and one
+  composition fixture feeds a single dirty snapshot to `FieldClearance` and
+  `FieldRegions` before acknowledging occupancy, with both layers reflecting
+  the edit and the snapshot still observable until `occupancy.update()`.
 - **C5** — the PCG32 stream is locked against reference values; same seed ⇒
   byte-identical hit lists across two independent field rebuilds; all pairwise
   hit distances ≥ `minSpacing` (integer squared check); every hit satisfies
-  `clearanceSq >= c*c`; the anchor-region flag yields zero hits outside the
-  anchor's region on a two-region fixture; a K-shortfall fixture returns exactly
+  `hasClearance(cell, c)` (present, `clearanceSq > 0`, `c*c <= clearanceSq`);
+  the anchor-region flag yields zero hits outside the anchor's region on a
+  two-region fixture, through `sameRegion` so that an occupied or absent
+  anchor yields zero hits rather than matching other invalid cells; a
+  K-shortfall fixture returns exactly
   the valid count; **pruning fires** — `PlacementQueryStats` reports
   `chunksPruned_ > 0` and `chunksConsidered_ <` the resident chunk total on a
   mostly-low-clearance fixture; **out-of-domain params are rejected** at each

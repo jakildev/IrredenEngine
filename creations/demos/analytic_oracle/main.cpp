@@ -1,5 +1,4 @@
-// analytic_oracle — a deterministic render-validation oracle scene (epic #1766
-// T-4, issue #1770).
+// analytic_oracle — a deterministic render-validation oracle scene.
 //
 // The render-regression net (render-verify) pixel-diffs each shot against a
 // committed per-backend reference PNG. That breaks down exactly where the live

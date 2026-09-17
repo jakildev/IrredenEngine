@@ -159,7 +159,7 @@ void registerArgs() {
 // Read the parsed flags into g_autoWarmupFrames + g_autoProfileFrames +
 // g_cliOverrides. Runs inside the lua-bindings callback (which fires during
 // init, after the parse) so g_cliOverrides is populated before
-// applyCliOverrides() consumes it. Replaces the retired hand-rolled parseArgs.
+// applyCliOverrides() consumes it.
 void applyArgs() {
     const IRArgs::Parser &args = IREngine::args();
     // registerLuaBindings() builds the RENDER pipeline — including the
@@ -167,7 +167,7 @@ void applyArgs() {
     // during IREngine::init. So the warmup count must land here, at callback
     // time: assigning it after init returns leaves that guard reading 0, and
     // --auto-screenshot then hangs forever with no capture system to call
-    // closeWindow() and no diagnostic (#2502).
+    // closeWindow() and no diagnostic.
     g_autoWarmupFrames = args.autoScreenshotWarmupFrames();
     if (args.wasProvided("--auto-profile")) {
         g_autoProfileFrames = args.getInt("--auto-profile");
@@ -254,7 +254,7 @@ C_LuaWaveState makeWaveState(int x, int y, int z) {
     const float angleInc = tau / period / static_cast<float>(IRConstants::kFPS);
 
     // Field order on the codegen-emitted struct + LuaWaveState.new(...)
-    // constructor is alphabetical (T-106 invariant).
+    // constructor is alphabetical.
     return C_LuaWaveState{
         /* amp_x            */ 0.0f,
         /* amp_y            */ 0.0f,
@@ -383,7 +383,7 @@ void registerLuaBindings() {
         // lua_pipeline_demo's component-pack pattern.
         script.registerTypeFromTraits<IRComponents::C_LocalTransform>();
 
-        // T-106..T-108: pre-register every Lua-defined component declared
+        // Pre-register every Lua-defined component declared
         // in main.lua as a C++ struct + binding. The runtime `IRComponent.
         // register('LuaWaveState', ...)` call inside main.lua is then
         // idempotent and resolves to the same handle.
@@ -419,9 +419,8 @@ void registerLuaBindings() {
         // C_WorldTransform.translation_. Mirrors PERIODIC_IDLE_POSITION_OFFSET
         // for the C++ perf_grid demo, but reads the Lua-codegen-produced
         // C_LuaWaveState instead of C_PeriodicIdle. Without this bridge the
-        // wave runs but never reaches the rendered position (T-302 / T-300
-        // retired the legacy C_PositionOffset3D path, so a creation-side
-        // writer is the only way to drive per-frame additive translation).
+        // wave runs but never reaches the rendered position: a creation-side
+        // writer is the only way to drive per-frame additive translation.
         const IRSystem::SystemId luaWaveOffsetId =
             IRSystem::createSystem<C_LuaWaveState, C_Modifiers>(
                 "LuaWaveStateToOffset",
