@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Shadow-feeder classify-margin adequacy gate for Irreden Engine.
+"""Shadow-feeder classify-margin adequacy gate for Irreden Engine (#3010).
 
 Stage 2 skips the colour / entity-id taps of any voxel classified as an
-off-screen **shadow feeder** (the depth-only path).  That is only safe if
+off-screen **shadow feeder** (the #1740 depth-only path).  That is only safe if
 no *on-screen* pixel ever resolves from a feeder — which holds because
 ``visibleIsoBounds`` carries a ``+kGpuMargin`` (4 iso-texel) pad that covers
 stage 1's cardinal write set (``base + {0,1}x{0,1,2}``, reach +1 x / +2 y).
@@ -13,7 +13,7 @@ worthless as a gate (``engine/render/CLAUDE.md`` §"Verifying render changes").
 This harness makes it observable by running ``IRPerfGrid`` three times with the
 diagnostic ``--feeder-classify-pad`` knob, which pads
 ``frameData_.visibleIsoBounds_`` and nothing else — the cull box, the Hi-Z
-window and the ring guard keep reading the unpadded values, and at
+window and the #2488 ring guard keep reading the unpadded values, and at
 ``--subdivision-mode none`` (``feederSubCap == subdivisions == 1``) a voxel's
 stage-1 depth is identical on either side of the classification.  So a pixel
 can only change through stage 2's colour tap:
@@ -50,7 +50,7 @@ shot as ``FEEDER-CLASSIFY ... ring_non_empty=<0|1>``.
 
 Only **cardinal** shots are compared.  ``perf_grid``'s two rotated shots
 (``zoom4_rot`` / ``zoom4_rot_pan``) are run-to-run non-deterministic on this
-demo (3 distinct hashes in 3 runs), so an identity claim over them
+demo (3 distinct hashes in 3 runs, per #3010), so an identity claim over them
 would be noise.  The skip itself is structurally inert at ``residualYaw != 0``
 anyway — the predicate's own route terms exclude it — so cardinal is the only
 regime where the question is live.
@@ -275,7 +275,7 @@ def _run_arm(
     shift every positional arm-to-arm pairing.  Its ``collect_full_frames``
     excludes ROI crops for the same reason.  The arm stashes its captures to a
     sibling directory afterwards — never under ``shots_dir``, which the next
-    arm's ``run_pass`` would wipe.
+    arm's ``run_pass`` would wipe (the #2356 hazard its docstring names).
     """
     cmd = [
         "fleet-run", "--timeout", str(timeout), TARGET,

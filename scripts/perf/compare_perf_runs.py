@@ -341,7 +341,7 @@ def format_feeder_cell(base: CullStats, head: CullStats) -> str:
     denominator for it (see the "Feeder ratio:" note it prints) — so this
     comparator, which is where two runs meet, is the place that ratio lives:
     with a pv-off run as baseline and a pv-on run as head, the `(N×)` factor
-    is exactly "pv-on Avg / pv-off Avg", the number the perf acceptance gates
+    is exactly "pv-on Avg / pv-off Avg", the number the #2298 acceptance gates
     read. A side whose report predates the Feeder row shows "—", not 0 — a 0
     is a real measurement (sun shadows off ⇒ no feeders classified).
     """

@@ -30,11 +30,11 @@ per-backend like the full-frame path.
 A shot listed in the optional `structural_only` block is still captured but
 skips the full-frame pixel-diff and needs no committed reference PNG — it is
 gated solely by its `structural` entries. This lets an analytic-oracle scene
-gate the zoom regime that pixel-diff excludes as non-deterministic: the
-structural metric is compared against a computed expectation, not a jittery
-captured reference, so it is deterministic at zoom and shared across backends.
-A manifest whose shots are *all* structural_only commits no reference PNGs at
-all.
+(epic #1766 T-4) gate the zoom regime that pixel-diff excludes as
+non-deterministic: the structural metric is compared against a computed
+expectation, not a jittery captured reference, so it is deterministic at zoom
+and shared across backends. A manifest whose shots are *all* structural_only
+commits no reference PNGs at all.
 
 The optional ``extra_runs`` manifest block declares additional capture passes
 of the same target, each with its own demo args and its own gated reference
@@ -57,7 +57,8 @@ every ``extra_runs`` pass, so a first run on a new host bootstraps all of them.
 with one aggregate tally. That is the first-class spelling of "verify the whole
 reference set": a hand-rolled shell loop over target names reports each demo
 separately, so a demo that drops out of the sweep leaves no hole in any single
-number. The ``--all`` summary lists one row per demo and counts a demo that
+number (#2919 — the `lighting` demo went unverified across two review passes
+that way). The ``--all`` summary lists one row per demo and counts a demo that
 failed to run as ERROR rather than as zero checks.
 
 Assumes this file lives at ``<repo>/scripts/render-verify.py``.
@@ -104,7 +105,7 @@ def _declared_targets(worktree: Path) -> dict[str, str]:
     target *name*, and the tree has a demo where the two disagree
     (``IRLightingSdfBlocker`` lives in ``creations/demos/lighting``). Reading
     the declaration instead of re-deriving it is what keeps that demo reachable
-    without out-of-band knowledge.
+    without out-of-band knowledge (#2919).
 
     Insertion order follows the glob's sort, so ``--all`` sweeps demos in a
     stable, filesystem-independent order.
@@ -481,7 +482,7 @@ def _validate_structural_only(structural_only: set[str], shots: list[str],
     the pass's name. Both lanes must route through here rather than inline
     a copy — a check written into one lane reaches only that lane, which is
     how ``extra_runs`` (where most ``structural_only`` shots live) went
-    unguarded.
+    unguarded (#2842).
     """
     # Message shaping is the only thing the two lanes disagree on: a per-pass
     # failure has to name its pass and scope 'shots' / 'structural' to it.
@@ -898,7 +899,8 @@ def _print_sweep_summary(results: list[dict[str, Any]]) -> None:
 
     The row for a demo that never produced checks says ERROR, not ``0 checks``
     — the whole point of ``--all`` is that a demo dropping out of the sweep is
-    visible in the number, which is what a per-target shell loop cannot do.
+    visible in the number, which is what a per-target shell loop cannot do
+    (#2919).
     """
     print()
     print(f"[render-verify] --all summary over {len(results)} demo(s):")

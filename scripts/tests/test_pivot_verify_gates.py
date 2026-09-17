@@ -1,8 +1,11 @@
-"""Tests for pivot-verify.py's per-pass gating — every pass can fail.
+"""Tests for pivot-verify.py's per-pass gating — every pass can fail (#2851).
 
-These tests lock a floor-aware bound in game px (`SDF_BOUND_GAME_PX`) for the
-`focus-ctr` SDF twin's gate, plus the loud-classification guard that closes
-the same hole for any future unclassified block.
+#2648 removed the `focus-ctr` SDF twin's only gate rather than bounding it to
+the destination-grid floor its evidence measures, leaving the twin the single
+pass in the harness that could not fail: a 200px silhouette drift on it exited
+0. These tests lock the replacement — a floor-aware bound in game px
+(`SDF_BOUND_GAME_PX`) — plus the loud-classification guard that closes the same
+hole for any future unclassified block.
 
 Both boundaries are stubbed so the code under test is the shipped ``main()``,
 not a re-implementation: ``verify_common.run_pass`` stands in for the
@@ -198,7 +201,7 @@ class CensusEveryPassCanFail(unittest.TestCase):
 
 
 class LoudClassification(unittest.TestCase):
-    """A block no oracle covers must fail before any capture runs."""
+    """A block no oracle covers must fail before any capture runs (#2851 §4)."""
 
     def _expect_systemexit_before_capture(self, argv):
         h = _Harness()
@@ -230,7 +233,7 @@ class LoudClassification(unittest.TestCase):
 
 
 class PerBlockBoundSurvives(unittest.TestCase):
-    """The zoom-scaled center-axis bound must not regress to the default."""
+    """#2758's zoom-scaled center-axis bound must not regress to the default."""
 
     def test_t6_center_axis_keeps_its_zoom_scaled_bound(self):
         # 6.0 game px sits above the 1.5px default and below center-axis's own

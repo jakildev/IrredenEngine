@@ -16,11 +16,11 @@ Blocks (see ``g_pivotVerifyBlock`` in ``creations/demos/shape_debug/main.cpp``):
   vertical column at z > 0.
 - ``center-depth`` — default pivot, probe AT the viewport center at z > 0.
 - ``background-center`` — default pivot, center pixel on BACKGROUND, so the
-  derive must take its iso-depth-0 fallback.
+  derive must take its iso-depth-0 fallback (epic #2544 Phase 3 criterion 2).
 - ``center-axis`` — default pivot, probe axis ON the viewport-center ray with
   its near cap at the ray's entry step, so the derived surface point is the
   probe's own axis point.
-- ``cursor-latch`` — CURSOR pivot: center-axis geometry, but the focus
+- ``cursor-latch`` — CURSOR pivot (#2548): center-axis geometry, but the focus
   is latched once from ``IRPrefab::CursorPivot::resolveFocusWorld`` (the real
   ``castVoxelRay`` path) with a synthetic cursor on the viewport-center
   anchor's pixel. Pinned-point oracle only, for the same reason as its
@@ -28,7 +28,7 @@ Blocks (see ``g_pivotVerifyBlock`` in ``creations/demos/shape_debug/main.cpp``):
 
 ``focus-ctr`` additionally runs an SDF-probe twin (``--pivot-verify-sdf``)
 so the voxel-pool and SDF render paths' pivot conventions are compared A/B.
-The twin is gated at its own floor-aware bound (``SDF_BOUND_GAME_PX``),
+The twin is gated at its own floor-aware bound (``SDF_BOUND_GAME_PX``, #2851),
 so the SDF path's pivot convention is machine-checked against the same
 invariance contract; the printed voxel/SDF rows stay the A/B diagnostic.
 
@@ -48,11 +48,12 @@ Two oracles, applied per block:
   silhouette onto itself. Every other block's deviation is measured and
   reported but not gated. ``center-axis`` is gated at its own zoom-scaled
   bound (``CENTROID_BOUND_GAME_PX``) rather than ``--max-deviation``,
-  because it consumes the derived focus and so carries an inherent
+  because it consumes the derived focus and so carries the inherent #2641
   residual — see that constant for the measurement. The SDF twin has no voxel
   lattice to land on, so its centroid rides a destination-grid floor; it is
   gated at ``SDF_BOUND_GAME_PX`` — that floor plus the same budget every gated
-  voxel pass gets — rather than at ``--max-deviation``.
+  voxel pass gets — rather than at ``--max-deviation`` (#2645 measured the
+  floor, #2851 bounded it).
 
 Why a block falls in one bucket or the other — and what the reported-but-not-
 gated deviations mean — is ``docs/design/camera-yaw-pivot.md`` §"Known
@@ -60,7 +61,8 @@ deviations" deviation 2.
 
 The harness asserts the CONTRACT, so it runs red while known pivot defects
 are open — each fix flips its block(s) to PINNED. The live defect list +
-fix chain is ``docs/design/camera-yaw-pivot.md`` §"Known deviations".
+fix chain is ``docs/design/camera-yaw-pivot.md`` §"Known deviations"
+(epic #2544).
 
 Exit: 0 = every requested pass met its own gate; 1 = any failure;
 2 = harness error.

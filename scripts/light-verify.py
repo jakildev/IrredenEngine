@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""light-verify — automated pass/fail harness for light/shadow domain culling (V3).
+"""light-verify — automated pass/fail harness for light/shadow domain culling (#2317, V3).
 
 Drives the lighting demo family's ``--light-domain-matrix`` (zoom x yaw x
-pan-distance), ``--light-boundary-sweep``, and ``--hover-sweep``
+pan-distance), ``--light-boundary-sweep`` (#2310), and ``--hover-sweep``
 auto-screenshot series, parses each shot's DOMAIN-STATE log line (emitted by
-``logDomainState`` in ``lighting_demo_scene.hpp``, V1), and asserts:
+``logDomainState`` in ``lighting_demo_scene.hpp``, #2315 V1), and asserts:
 
   1. Domain-matrix "inwin"/"band" shots never report SKIPPED — a light whose
      influence sphere intersects the viewport must always seed (V1's

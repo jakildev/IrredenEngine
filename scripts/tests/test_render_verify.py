@@ -1,7 +1,7 @@
-"""Tests for render-verify.py — the ROI-crop + structural-metric gate and
-the manifest-driven demo resolution.
+"""Tests for render-verify.py — the ROI-crop + structural-metric gate (T-2)
+and the manifest-driven demo resolution (#2919).
 
-Proves the gate wiring without a GL/Metal build:
+Proves the gate wiring added in epic #1766 T-2 without a GL/Metal build:
 
   * full-frame pixel-diff still passes/fails as before (backward compat);
   * a manifest-declared ROI crop is compared against a committed reference
@@ -12,7 +12,7 @@ Proves the gate wiring without a GL/Metal build:
   * misconfigurations (unknown shot, missing reference, un-captured crop,
     unimplemented metric, threshold-less gate) are surfaced loudly.
 
-Plus the resolution + sweep layer:
+Plus the resolution + sweep layer (#2919):
 
   * a target is resolved from the manifest that *declares* it, so a demo
     whose directory name doesn't match its target stays reachable;
@@ -527,7 +527,7 @@ class ParseExtraRuns(unittest.TestCase):
 
 
 class ValidateStructuralOnly(unittest.TestCase):
-    """The shared two-arm guard, driven on its top-level lane.
+    """The shared two-arm guard, driven on its top-level lane (#2842).
 
     ``main()`` is the other caller, and its lane is otherwise reachable only
     through a full CLI run against a demo dir — these arms cover it directly.
@@ -576,11 +576,11 @@ class ValidateStructuralOnly(unittest.TestCase):
 
 
 class DemoResolution(unittest.TestCase):
-    """Manifest-declared target -> demo dir.
+    """Manifest-declared target -> demo dir (#2919).
 
-    Inferring the directory from the target name is wrong for any demo whose
-    directory doesn't echo its target. These build a synthetic demo tree so
-    the cases are exercised without the real manifests.
+    The pre-fix harness inferred the directory from the target name, which is
+    wrong for any demo whose directory doesn't echo its target. These build a
+    synthetic demo tree so the cases are exercised without the real manifests.
     """
 
     def setUp(self):
@@ -679,10 +679,10 @@ class DemoResolution(unittest.TestCase):
 class CommittedManifestsResolve(unittest.TestCase):
     """Coverage guard against the real tree — no build, no demo run.
 
-    The property that prevents a demo from silently dropping out of a
-    multi-target sweep is that every committed manifest is reachable from its
-    own declared target with no `--demo` override, so this asserts the
-    round-trip over whatever manifests the tree currently ships
+    #2919's damage was a demo silently dropping out of a multi-target sweep.
+    The property that prevents it is that every committed manifest is
+    reachable from its own declared target with no `--demo` override, so this
+    asserts the round-trip over whatever manifests the tree currently ships
     rather than pinning a demo list that would need editing on every addition.
     """
 

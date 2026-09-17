@@ -1,4 +1,4 @@
-"""Tests for feeder-margin-verify.py — the classify-margin adequacy gate.
+"""Tests for feeder-margin-verify.py — the #3010 classify-margin adequacy gate.
 
 Covers the pure half of the harness: the pixel census, the witness parse, the
 SHOT_LABELS drift guard, and all three verdict rules — including the two

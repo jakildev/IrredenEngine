@@ -1,8 +1,8 @@
 """Tests for render-shadow-metric.py — the structural sun-shadow metric.
 
 Proves the metric is deterministic and that it discriminates a clean
-contiguous shadow from the swiss-cheese / cross-hatch failure mode: a solid
-magenta blob reads ~0 holes / 1 component, a
+contiguous shadow from the swiss-cheese / cross-hatch failure mode (epic
+#1717 items 3-4): a solid magenta blob reads ~0 holes / 1 component, a
 checkerboard reads ~50% holes / many components. Synthetic PNGs only — no
 GL/Metal context, no committed reference. Import via importlib (dashed name).
 """
