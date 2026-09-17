@@ -136,7 +136,8 @@ SCOUT_STARTUP_TIMEOUT_SECONDS=30
 # under its own cap, so a role at cap still takes the panes none of them
 # needs (a role under its cap is held to the same reservation, but never
 # below one pane). FLEET_CAP_MODE=strict makes every cap a hard ceiling.
-# The fable cap is hard in both modes.
+# The fable cap, and the merger's and epic steward's caps (single-claim
+# lanes; HARD_CAP_ROLES in fleet-dispatcher), are hard in both modes.
 #
 # Override priority (highest first):
 #   1. Env var: FLEET_CONCURRENCY_<ROLE_UPPERCASE> (e.g. FLEET_CONCURRENCY_WORKER=4)
@@ -2010,7 +2011,7 @@ scheduling (live mode): each transient-role iteration is a fresh \`claude\`
   Caps are elastic by default (FLEET_CAP_MODE=elastic): every launch leaves
   a free pane for each other pending under-cap role, so a role at cap still
   takes the panes none of them needs; strict makes them hard ceilings. The
-  fable cap is hard in both modes.
+  fable, merger and epic-steward caps are hard in both modes.
   opus-architect, game-architect — interactive, persistent session
                                    (--resume across crashes + fleet-down/up)
 

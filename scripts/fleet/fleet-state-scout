@@ -3370,6 +3370,13 @@ def _epic_adopt_candidates(repo_state):
     return out
 
 
+# Umbrella labels that park the steward's per-umbrella flows on the human:
+# fleet:needs-human (the steward's own hand-off) and fleet:steward-proposal
+# (a ruling the human owes, close-out included). Read from
+# repo_state["epics"][*]["labels"], the field _epic_design_prs consults.
+_EPIC_PARKED_LABELS = frozenset({"fleet:needs-human", "fleet:steward-proposal"})
+
+
 def project_epic_steward(state):
     """Hash-input projection for the epic-steward role (#1664).
 
@@ -3392,6 +3399,12 @@ def project_epic_steward(state):
                    dropped fleet:steward-proposal; gone on design-unblock.
     - closeout   — checklist non-empty and every child closed, umbrella
                    open; gone when the umbrella closes.
+
+    An umbrella parked on the human (_EPIC_PARKED_LABELS) emits no rollup
+    or closeout item: the steward has already audited it and recorded the
+    park, so re-arming on it only re-audits. The label's removal is the
+    re-fire edge — the same shape _epic_design_prs gives a design-proposed
+    PR whose proposal is pending. adopt and design keep their own rules.
     """
     items = []
     for repo, repo_state in state["repos"].items():
@@ -3405,6 +3418,8 @@ def project_epic_steward(state):
                 if epic.get("managed"):
                     items.append({"kind": "normalize", "repo": repo,
                                   "epic": number})
+                continue
+            if set(epic.get("labels", [])) & _EPIC_PARKED_LABELS:
                 continue
             for entry in checklist:
                 if entry.get("closed") and not entry.get("checked"):

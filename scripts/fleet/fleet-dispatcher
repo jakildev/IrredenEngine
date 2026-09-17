@@ -314,7 +314,8 @@ unset _env_worker _worker_cap _dep_opus _dep_sonnet \
 # trigger and headroom under its own cap, and a role at its cap may take
 # what that leaves over, so a lone busy lane spreads across an idle pool
 # while contended lanes still get their share. `strict`: the cap is a
-# ceiling. The fable cap and the pool size are hard in both modes.
+# ceiling. The fable cap, the pool size, and the caps of the roles in
+# HARD_CAP_ROLES (below) are hard in both modes.
 CAP_MODE="${_env_cap_mode:-${FLEET_CAP_MODE:-elastic}}"
 if [[ "$CAP_MODE" != "elastic" && "$CAP_MODE" != "strict" ]]; then
     printf '[%s dispatcher] FLEET_CAP_MODE=%q is not elastic|strict; falling back to elastic\n' \
@@ -322,6 +323,18 @@ if [[ "$CAP_MODE" != "elastic" && "$CAP_MODE" != "strict" ]]; then
     CAP_MODE=elastic
 fi
 unset _env_cap_mode
+# Roles whose cap is a ceiling in BOTH modes. Elastic borrowing exists for
+# the fan-out lanes (worker, reviewers), where every launch takes a
+# different item. A single-claim lane gains nothing from it: the epic
+# steward holds one `steward-claim` per umbrella for its whole iteration,
+# so a second steward launched over the cap finds every umbrella held and
+# exits with nothing done; the merger is bound to one target per launch
+# and single-flights the same way. Consulted by dispatch_role in place of
+# CAP_MODE for these roles.
+declare -A HARD_CAP_ROLES=(
+    ["epic-steward"]=1
+    ["merger"]=1
+)
 
 # Tracks per-role "deferred-by-cap" log throttling so the at-cap message
 # doesn't spam every 10s tick while the cap is held. Cleared whenever a
@@ -2663,7 +2676,14 @@ dispatch_role() {
     # reserves nothing. Either way the trigger stays in place so the next
     # tick re-evaluates once an iteration finishes, a reservation releases,
     # or a pane frees. Logged once per cap-held window to avoid spamming.
+    # A hard-capped role (HARD_CAP_ROLES) reads strict here whatever the
+    # configured mode: its cap is a ceiling, never a reservation to borrow
+    # against.
     local cap="${ROLE_CONCURRENCY[$role]:-0}"
+    local role_cap_mode="$CAP_MODE"
+    if [[ -n "${HARD_CAP_ROLES[$role]+x}" ]]; then
+        role_cap_mode=strict
+    fi
     # Remaining cap headroom bounds this tick's fan-out. Pre-pool this was
     # implicit — a role could never out-dispatch its dedicated pane count —
     # but any pool pane can serve any role, so a single trigger meeting a
@@ -2693,7 +2713,7 @@ dispatch_role() {
             # zero instead. role_headroom==1 cannot be clamped below the
             # floor, so the reservation walk — one count_active_for_role per
             # pending role, each a tmux walk — is only paid above that.
-            if [[ "$CAP_MODE" == "elastic" ]] && (( role_headroom > 1 )); then
+            if [[ "$role_cap_mode" == "elastic" ]] && (( role_headroom > 1 )); then
                 local free reserved allowance
                 free=$(count_free_panes "$idle_panes")
                 reserved=$(count_panes_reserved_for_other_roles "$role")
@@ -2705,7 +2725,7 @@ dispatch_role() {
             local free reserved=0
             free=$(count_free_panes "$idle_panes")
             role_headroom=0
-            if [[ "$CAP_MODE" == "elastic" ]] && (( free > 0 )); then
+            if [[ "$role_cap_mode" == "elastic" ]] && (( free > 0 )); then
                 reserved=$(count_panes_reserved_for_other_roles "$role")
                 role_headroom=$(( free - reserved ))
             fi
@@ -2714,6 +2734,8 @@ dispatch_role() {
                     local held=""
                     if (( reserved > 0 )); then
                         held="; $free free pane(s) reserved for other pending roles"
+                    elif [[ "$role_cap_mode" != "$CAP_MODE" ]]; then
+                        held="; hard-capped role, $free free pane(s) not borrowed"
                     fi
                     log "$role at concurrency cap ($active >= $cap)$held; deferring trigger"
                     CAP_DEFER_LOGGED["$role"]=1

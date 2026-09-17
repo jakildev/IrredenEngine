@@ -299,6 +299,99 @@ class CloseoutOp(unittest.TestCase):
         self.assertEqual(kinds, ["closeout", "rollup"])
 
 
+class ParkedUmbrella(unittest.TestCase):
+    """An umbrella parked on the human (fleet:needs-human or
+    fleet:steward-proposal) projects no rollup / closeout item; the label's
+    removal is the re-fire edge."""
+
+    _ALL_CLOSED = [_entry(11, checked=True, closed=True),
+                   _entry(12, checked=True, closed=True)]
+    _ROLLUP_OWED = [_entry(11, closed=True), _entry(12)]
+
+    def test_needs_human_umbrella_emits_no_closeout(self):
+        self.assertEqual(project_epic_steward(_state(epics=[
+            _epic(10, checklist=self._ALL_CLOSED,
+                  labels=["fleet:epic", "fleet:needs-human"])])), [])
+
+    def test_steward_proposal_umbrella_emits_no_closeout(self):
+        self.assertEqual(project_epic_steward(_state(epics=[
+            _epic(10, checklist=self._ALL_CLOSED,
+                  labels=["fleet:epic", "fleet:steward-proposal"])])), [])
+
+    def test_parked_umbrella_emits_no_rollup(self):
+        for label in ("fleet:needs-human", "fleet:steward-proposal"):
+            with self.subTest(label=label):
+                self.assertEqual(project_epic_steward(_state(epics=[
+                    _epic(10, checklist=self._ROLLUP_OWED,
+                          labels=["fleet:epic", label])])), [])
+
+    def test_both_park_labels_emit_nothing(self):
+        # Both park labels at once, all children closed.
+        self.assertEqual(project_epic_steward(_state(epics=[
+            _epic(74, checklist=self._ALL_CLOSED,
+                  labels=["fleet:epic", "fleet:needs-human",
+                          "fleet:steward-proposal"])])), [])
+
+    def test_removing_the_park_label_restores_closeout(self):
+        # Positive fire: the label edge flips the hash and the item is back.
+        parked = _state(epics=[_epic(10, checklist=self._ALL_CLOSED,
+                                     labels=["fleet:epic", "fleet:needs-human"])])
+        released = _state(epics=[_epic(10, checklist=self._ALL_CLOSED)])
+        self.assertNotEqual(_hash(parked), _hash(released))
+        self.assertEqual(project_epic_steward(released),
+                         [{"kind": "closeout", "repo": "engine", "epic": 10}])
+
+    def test_removing_the_park_label_restores_rollup(self):
+        parked = _state(epics=[_epic(10, checklist=self._ROLLUP_OWED,
+                                     labels=["fleet:epic", "fleet:steward-proposal"])])
+        released = _state(epics=[_epic(10, checklist=self._ROLLUP_OWED)])
+        self.assertNotEqual(_hash(parked), _hash(released))
+        self.assertEqual(project_epic_steward(released),
+                         [{"kind": "rollup", "repo": "engine",
+                           "epic": 10, "child": 11}])
+
+    def test_parking_an_umbrella_is_itself_an_edge(self):
+        # Adding the label consumes the item (hash changes once, then quiesces).
+        live = _state(epics=[_epic(10, checklist=self._ALL_CLOSED)])
+        parked = _state(epics=[_epic(10, checklist=self._ALL_CLOSED,
+                                     labels=["fleet:epic", "fleet:needs-human"])])
+        self.assertNotEqual(_hash(live), _hash(parked))
+        self.assertEqual(_hash(parked), _hash(parked))
+
+    def test_parked_umbrella_keeps_adopt_and_design_rules(self):
+        # adopt: a declared child missing from the checklist is still emitted.
+        items = project_epic_steward(_state(
+            epics=[_epic(10, checklist=self._ALL_CLOSED,
+                         labels=["fleet:epic", "fleet:needs-human"])],
+            tasks_open=[_task(13, epic="#10")]))
+        self.assertEqual(items, [{"kind": "adopt", "repo": "engine",
+                                  "epic": 10, "issue": 13}])
+        # design: a design-blocked child PR is still triaged.
+        items = project_epic_steward(_state(
+            epics=[_epic(10, checklist=self._ALL_CLOSED,
+                         labels=["fleet:epic", "fleet:needs-human"])],
+            prs=[_pr(101, labels=["fleet:design-blocked"],
+                     head="claude/11-x")]))
+        self.assertEqual(items, [{"kind": "design", "op": "triage",
+                                  "repo": "engine", "epic": 10, "pr": 101}])
+
+    def test_parked_umbrella_stays_in_the_slice(self):
+        out = slice_epic_steward(_state(epics=[
+            _epic(10, checklist=self._ALL_CLOSED,
+                  labels=["fleet:epic", "fleet:needs-human"])]))
+        self.assertEqual([e["number"] for e in out["epics"]], [10])
+        self.assertEqual(out["triggers"], [])
+
+    def test_other_labels_do_not_park(self):
+        # fleet:gated / human:approved on the umbrella are not park labels
+        # for the steward's flows.
+        items = project_epic_steward(_state(epics=[
+            _epic(10, checklist=self._ALL_CLOSED,
+                  labels=["fleet:epic", "human:approved", "fleet:gated"])]))
+        self.assertEqual(items, [{"kind": "closeout", "repo": "engine",
+                                  "epic": 10}])
+
+
 class ResolveEpicChildren(unittest.TestCase):
     """Closed-state annotation uses the already-fetched open/closed sets;
     the live gh fallback is reserved for unchecked children invisible to

@@ -67,6 +67,8 @@ its dedup), and launches only once one is granted, with
 `FLEET_DISPATCH_TARGET=<kind>:<repo>:<N>` set
 ([`FLEET-RUNTIME.md § The dispatch target`](FLEET-RUNTIME.md)). A reserved
 worktree resumes its own task; the epic steward still claims iteration-side.
+It and the merger are hard-capped (`HARD_CAP_ROLES`): one iteration at a time
+in both cap modes, never borrowed over under elastic.
 
 ### How a launch ends
 
@@ -79,19 +81,17 @@ since dispatch — `fleet-claim decline` writes it and releases), or
 and abandoned exits count as empty for the lane's backoff. The first
 abandonment retries via the session sidecar; the second releases the claim,
 salvages dirty worktrees to `~/.fleet/state/salvage/`, and writes
-`~/.fleet/state/handoff/<kind>-<repo>-<N>.md`. At
-`FLEET_TARGET_DISPATCH_CAP` assignments (default 5, cleared on finished)
-the item is parked `fleet:needs-human` with a comment.
+`~/.fleet/state/handoff/<kind>-<repo>-<N>.md`. At `FLEET_TARGET_DISPATCH_CAP`
+assignments (default 5, cleared on finished) it is parked `fleet:needs-human`.
 
 ### Ingestion
 
 The scout fires `fleet-queue-ingest` (pure label stamping; per-host
 lockfile; live re-check before each edit) when approved issues appear —
 `human:approved` or `fleet:agent-approved`, treated identically. Ingest
-queues every approved, non-skip task up front, marking `fleet:blocked`
-where a predecessor is open
-([`fleet-queue-stacking.md`](../design/fleet-queue-stacking.md)). An issue
-queues only with a `## Plan` comment or an opt-out: filed with a plan by
+queues every approved, non-skip task up front, marking `fleet:blocked` where
+a predecessor is open ([`fleet-queue-stacking.md`](../design/fleet-queue-stacking.md)).
+An issue queues only with a `## Plan` comment or an opt-out: filed with a plan by
 the architect ([`TASK-FILING.md § File with a plan`](TASK-FILING.md)) →
 queues directly; an agent-approved follow-up → `fleet:no-plan` queues
 directly, a filer-authored `## Plan` + `fleet:plan-review` is vetted first
