@@ -123,7 +123,6 @@ inline constexpr CommandInfo kCommandInfo[] = {
     {SPAWN_PARTICLE_MOUSE_POSITION, "SPAWN PARTICLE", "SPAWN A PARTICLE AT THE CURSOR"},
     {SET_TRIXEL_COLOR, "SET TRIXEL", "SET THE TRIXEL UNDER THE CURSOR"},
     {TOGGLE_PERIODIC_IDLE_PAUSE, "TOGGLE PAUSE", "PAUSE OR RESUME PERIODIC IDLE MOTION"},
-    {TOGGLE_GUI, "TOGGLE GUI", "SHOW OR HIDE THE LEGACY GUI FLAG"},
     {GUI_ZOOM_IN, "GUI ZOOM IN", "ENLARGE THE GUI CANVAS SCALE"},
     {GUI_ZOOM_OUT, "GUI ZOOM OUT", "SHRINK THE GUI CANVAS SCALE"},
     {TOGGLE_CULLING_FREEZE, "TOGGLE CULL FREEZE", "FREEZE THE CULL VIEWPORT AT THIS POSE"},
@@ -173,8 +172,8 @@ void registerBindings(
 );
 
 /// Returns a short human-readable label for @p name (e.g. "ZOOM IN").
-/// Used by the help overlay and `buildCommandListText()`. Out-of-range
-/// values (a cast from a bad Lua integer) return "UNKNOWN"; every declared
+/// Used by the help overlay. Out-of-range values (a cast from a bad Lua
+/// integer) return "UNKNOWN"; every declared
 /// enum value has a real label by the static_asserts above.
 inline std::string commandNameToString(CommandNames name) {
     const int index = static_cast<int>(name);
@@ -391,22 +390,6 @@ inline std::string modifierString(IRInput::KeyModifierMask mods) {
     if (mods & IRInput::kModifierAlt)
         result += "ALT+";
     return result;
-}
-
-/// Builds a multi-line human-readable list of all registered `PRESSED` commands
-/// with their modifier + key bindings. Used by the in-game debug help overlay.
-/// Only `PRESSED`-status bindings appear; `HELD`/`RELEASED` bindings are excluded.
-inline std::string buildCommandListText() {
-    const auto &regs = getCommandManager().getCommandRegistrations();
-    std::string text = "COMMANDS\n";
-    for (const auto &reg : regs) {
-        text += modifierString(reg.requiredModifiers);
-        text += keyButtonToString(reg.button);
-        text += ": ";
-        text += reg.name;
-        text += "\n";
-    }
-    return text;
 }
 
 /// Registers an ad-hoc command from a callable (lambda or functor).

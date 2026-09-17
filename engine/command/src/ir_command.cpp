@@ -22,7 +22,6 @@
 // fireByName falls through to the unimplemented-log path for it.
 #include <irreden/render/commands/command_toggle_culling_freeze.hpp>
 #include <irreden/render/commands/command_toggle_culling_minimap.hpp>
-#include <irreden/render/commands/command_toggle_gui.hpp>
 #include <irreden/render/commands/command_zoom_in.hpp>
 #include <irreden/render/commands/command_zoom_out.hpp>
 #include <irreden/update/commands/command_toggle_periodic_idle_pause.hpp>
@@ -228,14 +227,6 @@ CommandId bindPrefabCommand(
             requiredModifiers,
             blockedModifiers
         );
-    case TOGGLE_GUI:
-        return createCommand<TOGGLE_GUI>(
-            inputType,
-            triggerStatus,
-            button,
-            requiredModifiers,
-            blockedModifiers
-        );
     case GUI_ZOOM_IN:
         return createCommand<GUI_ZOOM_IN>(
             inputType,
@@ -368,9 +359,6 @@ void fireByName(CommandNames name) {
         return;
     case TOGGLE_PERIODIC_IDLE_PAUSE:
         Command<TOGGLE_PERIODIC_IDLE_PAUSE>::create()();
-        return;
-    case TOGGLE_GUI:
-        Command<TOGGLE_GUI>::create()();
         return;
     case GUI_ZOOM_IN:
         Command<GUI_ZOOM_IN>::create()();
