@@ -126,8 +126,8 @@ tick.
   code absent, parent design-blocked, direction needs a human: comment,
   add this, **keep** `fleet:needs-plan`, release the planning claim), or
   the **dispatcher** at the per-target dispatch cap. Keeps
-  `human:approved`; ingest, both planning projections, and `fleet-claim
-  planning-claim` skip it until the human clears it.
+  `human:approved`; ingest, both planning projections, `fleet-claim
+  planning-claim`, and (on a PR) the merger's own skip sets skip it too.
 - `fleet:scope-shipped` — **ingest** pre-flight: a merged PR references
   #N, so the scope landed elsewhere. Set with a comment citing the PR;
   ingest skips it; the human closes after verifying coverage.

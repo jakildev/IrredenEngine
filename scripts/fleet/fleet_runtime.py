@@ -19,6 +19,7 @@ TARGET_RECORDS = {
     "plan": ("needs_plan",), "review": ("candidate_prs", "flagged_prs"),
     "planreview": ("plan_review",), "smoke": ("smoke_pending_prs",),
     "feedback": ("feedback_prs",), "conflict": ("semantic_conflict_prs",),
+    "merge": ("merger_candidates",),
 }
 
 
@@ -91,7 +92,7 @@ def choose_runtime(kind, record, target, env):
         policy = env.get("FLEET_WORKER_RUNTIME", "balanced")
         if pins:
             chosen = pins[0]
-        elif kind in ("feedback", "conflict") and authors:
+        elif kind in ("feedback", "conflict", "merge") and authors:
             chosen = authors[0]
         elif policy in RUNTIMES:
             chosen = policy
@@ -155,7 +156,7 @@ def resume_route(path, env):
     if data.get("runtime") != "codex" or "codex" not in available:
         raise ValueError("reserved runtime unavailable")
     target = data.get("target", "")
-    if not re.fullmatch(r"(?:task|plan|feedback|conflict):(?:engine|game):[1-9][0-9]*"
+    if not re.fullmatch(r"(?:task|plan|feedback|conflict|merge):(?:engine|game):[1-9][0-9]*"
                         r"|stack:(?:engine|game):[1-9][0-9]*:[1-9][0-9]*", target):
         raise ValueError("invalid reserved assignment")
     cls, model, effort = (data.get(key, "") for key in ("class", "model", "effort"))

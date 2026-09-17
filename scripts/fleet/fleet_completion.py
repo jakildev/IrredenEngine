@@ -27,6 +27,14 @@ with it. Grammar of the decline line, read past code spans like the claim
 grammar it mirrors:
 
     declined: <role>/<class> @<host>-<agent> <reason>
+
+The one claimless kind, ``merge`` (``assess_merge``), has no label to read
+released, so its ``finished`` is the merger's own durable mark on the PR:
+a ``— fleet merger`` comment since dispatch, one of MERGE_OUTCOME_LABELS
+with the PR's ``updated_at`` at or after the dispatch, the PR closed or
+merged, or GitHub reporting it MERGEABLE (the conflict is gone, whoever
+cleared it). Anything else is ``abandoned`` — the iteration walked away
+from a CONFLICTING PR without recording why.
 """
 import argparse
 import json
@@ -65,6 +73,39 @@ def declined_since(comments, host_agent, since_epoch):
         if match and match.group("agent") == host_agent:
             return match.group("reason").strip() or "no reason given"
     return None
+
+
+# The labels the merger LLM pass leaves on a PR it acted on (role-merger.md
+# step 5): the cooldown after any push or a recurring semantic conflict, the
+# durable handoffs after a semantic / fork / gated outcome.
+MERGE_OUTCOME_LABELS = frozenset({
+    "fleet:merger-cooldown", "fleet:semantic-conflict",
+    "fleet:needs-info", "fleet:gated",
+})
+MERGER_SIGNOFF = "— fleet merger"
+
+
+def assess_merge(labels, comments, host_agent, since_epoch, updated_at="",
+                 state="open", merged=False, mergeable=None):
+    """(verdict, detail) for a claimless `merge` target at exit. `state`,
+    `merged`, `mergeable` are the REST pull object's fields (`mergeable`
+    is true / false / None-while-computing)."""
+    reason = declined_since(comments, host_agent, since_epoch)
+    if reason is not None:
+        return VERDICT_DECLINED, f"declined this iteration: {reason}"
+    if merged or (state or "open") != "open":
+        return VERDICT_FINISHED, "PR closed or merged"
+    for comment in comments or []:
+        created = comment.get("createdAt") or comment.get("created_at") or ""
+        if ((parse_generated_at(created) or 0) >= since_epoch
+                and MERGER_SIGNOFF in (comment.get("body") or "")):
+            return VERDICT_FINISHED, "merger commented this iteration"
+    marks = MERGE_OUTCOME_LABELS & set(labels or [])
+    if marks and (parse_generated_at(updated_at or "") or 0) >= since_epoch:
+        return VERDICT_FINISHED, f"{sorted(marks)[0]} set this iteration"
+    if mergeable is True:
+        return VERDICT_FINISHED, "PR is MERGEABLE; nothing left to resolve"
+    return VERDICT_ABANDONED, "no merger mark on the PR since dispatch"
 
 
 def assess(claim_label, labels, comments, host_agent, since_epoch,
@@ -119,6 +160,11 @@ def main(argv):
                         "for the kinds whose label rides a PR")
     a.add_argument("--number", default=None)
     a.add_argument("--repo", default="engine")
+    a.add_argument("--kind", default=None,
+                   help="`merge` selects the claimless contract (assess_merge)")
+    a.add_argument("--pr-json", default=None,
+                   help="the REST pull object (state, merged, mergeable); "
+                        "`merge` only")
     args = parser.parse_args(argv[1:])
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(newline="\n")
@@ -127,10 +173,18 @@ def main(argv):
         labels, updated = issue.get("labels"), issue.get("updated_at") or ""
     else:
         labels, updated = issue, ""
-    verdict, detail = assess(
-        args.claim_label, label_names(labels), _load(args.comments_json) or [],
-        args.host_agent, args.since, open_prs=_load(args.prs_json),
-        number=args.number, repo=args.repo)
+    if args.kind == "merge":
+        pull = _load(args.pr_json) or {}
+        verdict, detail = assess_merge(
+            label_names(labels), _load(args.comments_json) or [],
+            args.host_agent, args.since, updated_at=updated,
+            state=pull.get("state") or "open", merged=bool(pull.get("merged")),
+            mergeable=pull.get("mergeable"))
+    else:
+        verdict, detail = assess(
+            args.claim_label, label_names(labels), _load(args.comments_json) or [],
+            args.host_agent, args.since, open_prs=_load(args.prs_json),
+            number=args.number, repo=args.repo)
     print(f"{verdict}\t{updated}\t{detail}")
     return 0
 

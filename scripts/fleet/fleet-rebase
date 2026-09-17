@@ -6,19 +6,28 @@
 # eligible PR in a detached scratch worktree. A clean rebase is verified
 # (same changed-file set before and after) and force-with-lease pushed to
 # the PR branch — no claude process anywhere. Anything that conflicts, or
-# any other PR the LLM merger would act on, re-arms the merger trigger
-# with content "llm" so fleet-dispatcher runs the normal (sonnet) merger
-# iteration. The LLM pass is therefore only ever spent on work that
-# actually needs judgment.
+# any other PR the LLM merger would act on, becomes a dispatch TARGET: this
+# script writes one `merge:<repo>:<N>` line per such PR into the merger
+# trigger, and fleet-dispatcher launches the (sonnet) merger iteration bound
+# to one line at a time (FLEET_DISPATCH_TARGET). The LLM pass is therefore
+# only ever spent on a named PR that actually needs judgment; a run that
+# classifies nothing as needing it launches nothing.
 #
-# LLM re-arm rule — the re-arm predicate is role-merger.md step 3's own
-# candidate rule, evaluated here per PR: mergeable CONFLICTING (or UNKNOWN
-# and last updated > 5 min ago), no skip label, and any fleet:merger-cooldown
-# older than FLEET_MERGER_COOLDOWN_SECONDS (600). A PR the LLM pass would
-# skip does NOT re-arm it. In particular an approved + MERGEABLE PR sitting
-# on the human's merge click is human_remaining, never llm_remaining: waking
-# the LLM for it spends a full iteration that walks both repos to report
-# "0 candidates", on every scout tick that touches any PR label.
+# LLM target rule — the predicate is role-merger.md step 3's own candidate
+# rule, evaluated here per PR: mergeable CONFLICTING, no skip label, and any
+# fleet:merger-cooldown older than FLEET_MERGER_COOLDOWN_SECONDS (600). A PR
+# the LLM pass would skip is never a target. In particular an approved +
+# MERGEABLE PR sitting on the human's merge click is human_remaining, never
+# llm_remaining: waking the LLM for it spends a full iteration that walks
+# both repos to report "0 candidates".
+#
+# UNKNOWN is refreshed, then excluded. A cached `mergeable: UNKNOWN` is
+# GitHub still computing (or a stale cache row) and never counts as
+# remaining on its own: this script re-reads at most UNKNOWN_REFRESH_BUDGET
+# such rows per run over REST (`pulls/<N>`, which also kicks the
+# computation) and targets only one that comes back CONFLICTING; a row
+# still UNKNOWN, or over budget, is logged and skipped, with a retry
+# deadline so tier-0 re-reads it once GitHub has had its grace.
 #
 # Eligibility for the rebase pass (deliberately conservative — tier-0 must
 # never fight an agent or human for a branch). The stale-label cleanups
@@ -52,11 +61,13 @@
 # merger pass never merges anything either (role-merger.md Hard rules).
 #
 # Trigger protocol (shared with fleet-dispatcher's merger interception):
-#   empty trigger  -> dispatcher spawns this script and consumes the trigger
-#   content "llm"  -> dispatcher runs the LLM merger pass
-# This script writes "llm" only when llm_remaining > 0.
-# Cooldown and young-UNKNOWN deferrals persist their next eligibility epoch
-# in state/merger-retry-at; the dispatcher wakes tier-0 once at that deadline.
+#   no `merge:` line   -> dispatcher spawns this script and consumes the trigger
+#   `merge:<repo>:<N>` -> one line per LLM target; the dispatcher pops one
+#                         per merger launch and keeps the trigger while any
+#                         remain
+# This script writes target lines only when llm_remaining > 0.
+# Cooldown and UNKNOWN deferrals persist their next eligibility epoch in
+# state/merger-retry-at; the dispatcher wakes tier-0 once at that deadline.
 #
 # Usage:
 #   fleet-rebase --auto [--rearm-trigger] [--dry-run]
@@ -117,12 +128,45 @@ log() {
     printf '[%s fleet-rebase] %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$*" >&2
 }
 
-rearm_llm() {
-    if (( REARM )); then
+# The LLM targets this run classified, one `merge:<repo>:<N>` per line, in
+# slice order (engine first, oldest first) — the dispatcher's launch order.
+LLM_TARGETS=()
+
+add_llm_target() {  # $1 = repo key, $2 = PR number
+    # A malformed slice record triages with number 0 — not a dispatchable target.
+    [[ "$2" =~ ^[1-9][0-9]*$ ]] || return 0
+    local t="merge:$1:$2" existing
+    for existing in "${LLM_TARGETS[@]:-}"; do
+        [[ "$existing" == "$t" ]] && return 0
+    done
+    LLM_TARGETS+=("$t")
+}
+
+# Publish the targets as the trigger's content. Overwrites: a target set is
+# this run's whole verdict, and a line left from an earlier run names a PR
+# this run has already re-classified.
+emit_llm_targets() {
+    if (( REARM )) && (( ${#LLM_TARGETS[@]} > 0 )); then
         mkdir -p "$TRIGGERS_DIR"
-        printf 'llm\n' > "$TRIGGERS_DIR/merger"
-        log "re-armed merger trigger for the LLM pass"
+        printf '%s\n' "${LLM_TARGETS[@]}" > "$TRIGGERS_DIR/merger"
+        log "re-armed merger trigger for the LLM pass: ${LLM_TARGETS[*]}"
     fi
+}
+
+# Wake tier-0 again in $1 seconds unless an earlier deadline is already
+# pending. Used where this run could not evaluate the slice itself.
+defer_tier0() {
+    local at pending="$STATE_DIR/merger-retry-at" existing
+    (( REARM )) || return 0
+    at=$(( $(date +%s) + $1 ))
+    existing=$(cat "$pending" 2>/dev/null || true)
+    if [[ "$existing" =~ ^[0-9]+$ ]] && (( existing <= at )); then
+        return 0
+    fi
+    mkdir -p "$STATE_DIR"
+    _retry_tmp=$(mktemp "$STATE_DIR/.merger-retry.XXXXXX")
+    printf '%s\n' "$at" > "$_retry_tmp"
+    mv "$_retry_tmp" "$pending"
 }
 
 # fleet:merger-cooldown's meaning under the dispatcher: "the LLM pass just
@@ -132,6 +176,14 @@ rearm_llm() {
 MERGER_COOLDOWN_SECONDS="${FLEET_MERGER_COOLDOWN_SECONDS:-600}"
 export FLEET_MERGER_COOLDOWN_SECONDS="$MERGER_COOLDOWN_SECONDS"
 
+# UNKNOWN rows re-read per run (the budget the LLM pass used to spend on
+# them), and the grace GitHub gets before a still-UNKNOWN row is re-read.
+UNKNOWN_REFRESH_BUDGET="${FLEET_REBASE_UNKNOWN_REFRESH_BUDGET:-2}"
+UNKNOWN_GRACE_SECONDS=300
+export FLEET_REBASE_UNKNOWN_GRACE_SECONDS="$UNKNOWN_GRACE_SECONDS"
+# How soon to re-run when a concurrent pass held the lock.
+LOCK_CONTENDED_RETRY_SECONDS="${FLEET_REBASE_LOCK_RETRY_SECONDS:-60}"
+
 # Labels that park a PR away from tier-0 entirely (no rebase, no LLM
 # re-arm on their account — another agent or the human owns the next
 # move). Mirrors role-merger.md step 3's skip set: semantic conflicts /
@@ -140,7 +192,9 @@ export FLEET_MERGER_COOLDOWN_SECONDS="$MERGER_COOLDOWN_SECONDS"
 # family means a review owes a change and a surprise force-push mid-fix
 # is hostile; design-blocked PRs are parked under an architect; a pending
 # smoke verification would be invalidated by a rebase; fork-of-other-pr
-# is coordinated manually.
+# is coordinated manually; the dispatch circuit breaker's fleet:needs-human
+# park means re-entry is the human removing the label, not a rebase that
+# re-arms the same target it just parked.
 #
 # `fleet:human-deferred` is intentionally NOT skipped (re-scoped, #1712).
 # A deferred PR is approved and idle — its *review feedback* is parked in
@@ -152,7 +206,7 @@ export FLEET_MERGER_COOLDOWN_SECONDS="$MERGER_COOLDOWN_SECONDS"
 #
 # Single source: the python triage below reads this via
 # FLEET_REBASE_SKIP_RE and the pre-push re-verify greps it directly.
-SKIP_LABEL_RE='fleet:semantic-conflict|fleet:wip|human:wip|fleet:needs-fix|human:needs-fix|human:blocker|human:re-review|fleet:design-blocked|fleet:amending-|fleet:blocker|fleet:needs-info|fleet:fork-of-other-pr|fleet:needs-linux-smoke|fleet:needs-macos-smoke|fleet:needs-windows-smoke'
+SKIP_LABEL_RE='fleet:semantic-conflict|fleet:wip|human:wip|fleet:needs-fix|human:needs-fix|human:blocker|human:re-review|fleet:design-blocked|fleet:amending-|fleet:blocker|fleet:needs-info|fleet:fork-of-other-pr|fleet:needs-human|fleet:needs-linux-smoke|fleet:needs-macos-smoke|fleet:needs-windows-smoke'
 export FLEET_REBASE_SKIP_RE="$SKIP_LABEL_RE"
 
 # Paths that no longer exist on master by policy — a plan lives on its issue
@@ -301,13 +355,14 @@ hung_lock_all_clear() {
 }
 
 if ! acquire_lock; then
-    # A live concurrent run owns the pass. Hand this trigger's work to
-    # the LLM pass rather than dropping it — the trigger was already
-    # consumed by the dispatcher before we were spawned. Escalate first if the
-    # holder has been wedged past the ceiling.
+    # A live concurrent run owns the pass, and it read the slice before the
+    # change that spawned us. The trigger was already consumed by the
+    # dispatcher, so ask for one more tier-0 pass shortly rather than
+    # dropping the edge — never an LLM launch: no PR has been classified.
+    # Escalate first if the holder has been wedged past the ceiling.
     escalate_if_hung_lock
-    log "another fleet-rebase run holds $LOCK_DIR; deferring to the LLM pass"
-    rearm_llm
+    log "another fleet-rebase run holds $LOCK_DIR; deferring this pass"
+    defer_tier0 "$LOCK_CONTENDED_RETRY_SECONDS"
     exit 0
 fi
 trap 'rm -rf "$LOCK_DIR" 2>/dev/null || true' EXIT
@@ -520,6 +575,29 @@ take_retired_path_deletions() {
     done
 }
 
+# Re-read one UNKNOWN row's mergeability over REST. Prints the resolved
+# state — CONFLICTING, MERGEABLE, UNKNOWN (still computing), or CLOSED
+# (merged or closed: a stale cache row) — and returns 1 when the read
+# itself failed. REST's `mergeable` is true / false / null; the GET also
+# asks GitHub to (re)compute it, which is why a null now is usually a
+# verdict on the next pass.
+refresh_unknown() {
+    local repo_key="$1" pr="$2" tsv state merged mergeable
+    tsv=$(gh api "repos/$(repo_slug_for "$repo_key")/pulls/$pr" \
+        --jq '[.state, (.merged|tostring), (.mergeable|tostring)] | @tsv' 2>/dev/null) || return 1
+    [[ -n "$tsv" ]] || return 1
+    IFS=$'\t' read -r state merged mergeable <<< "$tsv"
+    if [[ "$state" != "open" || "$merged" == "true" ]]; then
+        echo CLOSED
+    elif [[ "$mergeable" == "false" ]]; then
+        echo CONFLICTING
+    elif [[ "$mergeable" == "true" ]]; then
+        echo MERGEABLE
+    else
+        echo UNKNOWN
+    fi
+}
+
 # Attempt one PR. Returns 0 = cleanly rebased+pushed (or nothing to do),
 # 1 = needs the LLM pass, 2 = on the human's click (nothing mechanical is
 # left to do for it, and the LLM pass could do no better).
@@ -654,9 +732,13 @@ fi
 # Triage the slice. One line per PR:
 #   <repo> <number> <head> <base> <verdict>
 # verdict: attempt | stale-conflict | stale-base-park | stale-cooldown
-#          | skip-labels | cooling | llm-other | human
+#          | skip-labels | cooling | unknown | llm-other | human
 # - attempt: approved, no skip labels, and either stacked (base!=master)
 #   or not cleanly MERGEABLE — tier-0 tries the rebase.
+# - unknown: mergeable UNKNOWN, no skip label — re-read over REST within
+#   the per-run budget (refresh_unknown); CONFLICTING becomes an LLM
+#   target, anything else is logged and skipped. Never counted as
+#   remaining on the cached value alone.
 # - stale-conflict: fleet:semantic-conflict on a MERGEABLE PR — label
 #   cleanup only, no branch work (#1654).
 # - stale-base-park: a retired stack-park label on a base==master PR —
@@ -678,8 +760,7 @@ import json, os, re, sys
 
 skip_re = re.compile(os.environ["FLEET_REBASE_SKIP_RE"])
 cooldown_secs = int(os.environ.get("FLEET_MERGER_COOLDOWN_SECONDS", "600"))
-# role-merger.md step 3: UNKNOWN counts only once GitHub has had 5 minutes.
-UNKNOWN_GRACE_SECS = 300
+UNKNOWN_GRACE_SECS = int(os.environ.get("FLEET_REBASE_UNKNOWN_GRACE_SECONDS", "300"))
 now = datetime.datetime.now(datetime.timezone.utc)
 retry_deadlines = []
 
@@ -698,23 +779,20 @@ def age_seconds(pr):
 def llm_verdict(labels, mergeable, pr):
     """role-merger.md step 3's candidate rule, as the LLM pass applies it.
 
-    Returns "llm-other" (re-arm), "cooling" (candidate under cooldown, no
-    re-arm yet), or None (the LLM pass would skip this PR).
+    Returns "llm-other" (an LLM target), "cooling" (candidate under
+    cooldown, not yet), "unknown" (mergeability not computed — the bash
+    side re-reads it), or None (the LLM pass would skip this PR).
     """
     if any(skip_re.search(l) for l in labels):
         return None
     # Exactly the role's two candidate states. UNSTABLE / BEHIND are
     # mergeStateStatus values the scout folds into its needs-resolve signal,
-    # but the LLM pass filters on `mergeable` and skips them — re-arming for
-    # them would be the no-op loop this predicate exists to end.
+    # but the LLM pass filters on `mergeable` and skips them — targeting
+    # them would be the no-op iteration this predicate exists to end.
     age = age_seconds(pr)
-    if mergeable == "CONFLICTING":
-        pass
-    elif mergeable == "UNKNOWN":
-        if age is not None and age < UNKNOWN_GRACE_SECS:
-            retry_deadlines.append(int(now.timestamp() + UNKNOWN_GRACE_SECS - age) + 1)
-            return None
-    else:
+    if mergeable == "UNKNOWN":
+        return "unknown"
+    if mergeable != "CONFLICTING":
         return None
     if "fleet:merger-cooldown" in labels and age is not None and age < cooldown_secs:
         retry_deadlines.append(int(now.timestamp() + cooldown_secs - age) + 1)
@@ -814,13 +892,23 @@ CLEARED=0
 LLM_REMAINING=0
 HUMAN_REMAINING=0
 COOLING=0
+UNKNOWN_SKIPPED=0
 RETRY_AT=0
+UNKNOWN_REFRESHES_LEFT="$UNKNOWN_REFRESH_BUDGET"
+
+# A deadline for tier-0 to look at a deferred row again; the earliest wins.
+note_retry_at() {
+    if (( RETRY_AT == 0 || $1 < RETRY_AT )); then
+        RETRY_AT="$1"
+    fi
+}
+
 for line in "${PR_LINES[@]:-}"; do
     [[ -n "$line" ]] || continue
     read -r repo_key pr head base verdict <<< "$line"
     case "$verdict" in
         retry:*)
-            RETRY_AT="${verdict#retry:}"
+            note_retry_at "${verdict#retry:}"
             ;;
         attempt)
             ATTEMPTED=$((ATTEMPTED + 1))
@@ -828,7 +916,40 @@ for line in "${PR_LINES[@]:-}"; do
             case "$_attempt_rc" in
                 0) CLEARED=$((CLEARED + 1)) ;;
                 2) HUMAN_REMAINING=$((HUMAN_REMAINING + 1)) ;;
-                *) LLM_REMAINING=$((LLM_REMAINING + 1)) ;;
+                *) LLM_REMAINING=$((LLM_REMAINING + 1)); add_llm_target "$repo_key" "$pr" ;;
+            esac
+            ;;
+        unknown)
+            UNKNOWN_SKIPPED=$((UNKNOWN_SKIPPED + 1))
+            if (( UNKNOWN_REFRESHES_LEFT <= 0 )); then
+                log "$repo_key#$pr: mergeable UNKNOWN; refresh budget spent — skipped, not counted"
+                note_retry_at $(( $(date +%s) + UNKNOWN_GRACE_SECONDS ))
+                continue
+            fi
+            UNKNOWN_REFRESHES_LEFT=$((UNKNOWN_REFRESHES_LEFT - 1))
+            if ! _resolved=$(refresh_unknown "$repo_key" "$pr"); then
+                log "$repo_key#$pr: mergeable UNKNOWN; refresh failed — skipped, not counted"
+                continue
+            fi
+            case "$_resolved" in
+                CONFLICTING)
+                    UNKNOWN_SKIPPED=$((UNKNOWN_SKIPPED - 1))
+                    LLM_REMAINING=$((LLM_REMAINING + 1))
+                    add_llm_target "$repo_key" "$pr"
+                    log "$repo_key#$pr: mergeable UNKNOWN refreshed to CONFLICTING — LLM target"
+                    ;;
+                CLOSED)
+                    log "$repo_key#$pr: cached UNKNOWN row is closed or merged — skipped"
+                    ;;
+                UNKNOWN)
+                    log "$repo_key#$pr: mergeable still UNKNOWN after refresh — skipped, not counted"
+                    note_retry_at $(( $(date +%s) + UNKNOWN_GRACE_SECONDS ))
+                    ;;
+                *)
+                    UNKNOWN_SKIPPED=$((UNKNOWN_SKIPPED - 1))
+                    HUMAN_REMAINING=$((HUMAN_REMAINING + 1))
+                    log "$repo_key#$pr: mergeable UNKNOWN refreshed to $_resolved — on the human's click"
+                    ;;
             esac
             ;;
         stale-cooldown)
@@ -859,24 +980,30 @@ for line in "${PR_LINES[@]:-}"; do
             ;;
         llm-other)
             LLM_REMAINING=$((LLM_REMAINING + 1))
+            add_llm_target "$repo_key" "$pr"
             ;;
     esac
 done
 
 # Time passing cannot change the scout's stable projection hash. Persist one
-# deadline so the dispatcher can wake tier-0 once when a deferred PR is eligible.
+# deadline so the dispatcher can wake tier-0 once when a deferred PR is
+# eligible. A pending deadline this run did not set is cancelled only once
+# it has elapsed: a future one was written by a concurrent pass for a slice
+# newer than this run's read (defer_tier0), and one extra zero-token wake is
+# cheaper than the edge it would otherwise lose.
 if (( REARM )); then
     if (( RETRY_AT > 0 )); then
         _retry_tmp=$(mktemp "$STATE_DIR/.merger-retry.XXXXXX")
         printf '%s\n' "$RETRY_AT" > "$_retry_tmp"
         mv "$_retry_tmp" "$STATE_DIR/merger-retry-at"
     else
-        rm -f "$STATE_DIR/merger-retry-at"
+        _pending=$(cat "$STATE_DIR/merger-retry-at" 2>/dev/null || true)
+        if ! [[ "$_pending" =~ ^[0-9]+$ ]] || (( _pending <= $(date +%s) )); then
+            rm -f "$STATE_DIR/merger-retry-at"
+        fi
     fi
 fi
 
-log "done: attempted=$ATTEMPTED cleared=$CLEARED llm_remaining=$LLM_REMAINING human_remaining=$HUMAN_REMAINING cooling=$COOLING"
+log "done: attempted=$ATTEMPTED cleared=$CLEARED llm_remaining=$LLM_REMAINING human_remaining=$HUMAN_REMAINING cooling=$COOLING unknown_skipped=$UNKNOWN_SKIPPED"
 
-if (( LLM_REMAINING > 0 )); then
-    rearm_llm
-fi
+emit_llm_targets

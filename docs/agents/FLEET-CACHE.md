@@ -89,11 +89,11 @@ the mirrored wording. Stays direct: all writes, `gh pr diff --name-only`,
 | sonnet-reviewer | `candidate_prs` (review-skip filter applied) |
 | opus-reviewer | `flagged_prs` (`fleet:needs-opus-recheck`), `plan_review` (both repos) |
 | smoke-worker | `smoke_pending_prs` (host-agnostic; the dispatcher applies the host) |
-| merger | `prs` (engine + game, approved or non-MERGEABLE, tagged with `repo`) |
+| merger | `prs` (engine + game, approved or non-MERGEABLE, tagged with `repo`), `merger_candidates` (the PRs tier-0 can name as `merge:` targets, with `signal`) |
 
 For the target-bound lanes the slice is the dispatcher's input
-([`FLEET.md § Who takes the claim`](FLEET.md)); the merger, epic steward,
-and target-less runs read it directly, falling back to `state.json` only
+([`FLEET.md § Who takes the claim`](FLEET.md)); the epic steward and
+target-less runs read it directly, falling back to `state.json` only
 for cross-role data (a reviewer resolving an upstream PR by
 `headRefName`). Review bodies over 2 KB are stored head + tail with
 `…[truncated]…`; fetch the full body with `fleet-pr comments <N>`, not

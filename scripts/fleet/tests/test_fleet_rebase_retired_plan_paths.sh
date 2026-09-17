@@ -14,7 +14,7 @@
 #       is pushed carrying only the source change; cleared=1, no re-arm.
 #   T2: plan-only PR -> rebases to nothing; not pushed, human_remaining=1,
 #       no LLM re-arm.
-#   T3: plan conflict alongside a real source conflict -> abort, LLM re-arm,
+#   T3: plan conflict alongside a real source conflict -> abort, LLM target,
 #       scratch worktree left with no rebase in progress.
 #   T4: --dry-run on T1's shape -> the drop is logged, nothing is pushed.
 #   T5: the conflicted path still exists on master (a content conflict
@@ -195,7 +195,7 @@ assert_absent "$T3" "took origin/master's deletion" "T3 a mixed conflict set tak
 assert_contains "$T3" "llm_remaining=1" "T3 counted as LLM work"
 assert_eq "$(remote_sha feat-real-conflict)" "$before" "T3 remote branch untouched"
 assert_no_rebase_in_progress "T3 scratch worktree left clean for the next PR"
-if [[ -f "$TRIGGER" && "$(cat "$TRIGGER")" == "llm" ]]; then ok "T3 LLM pass re-armed"; else bad "T3 LLM pass re-armed"; fi
+if [[ -f "$TRIGGER" && "$(cat "$TRIGGER")" == "merge:engine:402" ]]; then ok "T3 LLM pass re-armed on the PR"; else bad "T3 LLM pass re-armed on the PR (trigger: '$(cat "$TRIGGER" 2>/dev/null || echo MISSING)')"; fi
 
 # === T4 ======================================================================
 echo "T4: --dry-run on T1's shape -> drop logged, nothing pushed"

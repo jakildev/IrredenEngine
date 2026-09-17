@@ -8,7 +8,9 @@
 #
 # Matrix:
 #   alive holder + backdated `started`  -> loud HUNG-LOCK + alert file, still defers
-#   alive holder + fresh `started`      -> benign defer only, no alert
+#   alive holder + fresh `started`      -> benign defer only, no alert; with
+#                                          --rearm-trigger a near retry
+#                                          deadline, never a merger target
 #   dead holder                         -> stale-break acquires (no escalation)
 #   alive holder + missing `started`    -> no escalation (skip the age check)
 #
@@ -103,7 +105,7 @@ spawn_live; hp=$HOLDER_PID
 seed_lock "$hp" "$(( now - 4000 ))"   # 4000s > default 1800s ceiling
 out=$(run_rebase)
 echo "$out" | grep -q "HUNG-LOCK" && ok "loud HUNG-LOCK logged" || fail "no HUNG-LOCK: $out"
-echo "$out" | grep -q "deferring to the LLM pass" && ok "still defers (does not break an alive lock)" || fail "did not defer: $out"
+echo "$out" | grep -q "deferring this pass" && ok "still defers (does not break an alive lock)" || fail "did not defer: $out"
 [[ -f "$ALERT" ]] && ok "alert file written" || fail "no alert file at $ALERT"
 grep -q "holder_pid=$hp" "$ALERT" 2>/dev/null && ok "alert names the holder pid" || fail "alert missing holder pid"
 [[ -f "$LOCK/pid" ]] && ok "seeded lock left intact (not broken)" || fail "lock was removed on the defer path"
@@ -113,9 +115,28 @@ echo "T2: alive holder + fresh started -> benign defer, no escalation"
 spawn_live; hp=$HOLDER_PID
 seed_lock "$hp" "$now"
 out=$(run_rebase)
-echo "$out" | grep -q "deferring to the LLM pass" && ok "defers" || fail "did not defer: $out"
+echo "$out" | grep -q "deferring this pass" && ok "defers" || fail "did not defer: $out"
 echo "$out" | grep -q "HUNG-LOCK" && fail "escalated a fresh holder: $out" || ok "no HUNG-LOCK for a fresh holder"
 [[ -f "$ALERT" ]] && fail "wrote an alert for a fresh holder" || ok "no alert file for a fresh holder"
+
+# --- T2b: the defer path asks for another tier-0 pass, never an LLM launch ---
+echo "T2b: contended defer with --rearm-trigger -> retry deadline, no merger target"
+spawn_live; hp=$HOLDER_PID
+seed_lock "$hp" "$now"
+rm -f "$SDIR/merger-retry-at" "$SDIR/triggers/merger"
+out=$(FLEET_STATE_DIR="$SDIR" FLEET_ALERTS_DIR="$ADIR" "$REBASE" --auto --rearm-trigger 2>&1 || true)
+echo "$out" | grep -q "deferring this pass" && ok "defers" || fail "did not defer: $out"
+[[ -e "$SDIR/triggers/merger" ]] && fail "wrote a merger trigger on the defer path: $(cat "$SDIR/triggers/merger")" || ok "no merger trigger (no PR was classified)"
+deadline=$(cat "$SDIR/merger-retry-at" 2>/dev/null || true)
+if [[ "$deadline" =~ ^[0-9]+$ ]] && (( deadline > now && deadline <= now + 120 )); then
+    ok "a near retry deadline is published for tier-0"
+else
+    fail "expected a near retry deadline, got '${deadline:-none}'"
+fi
+echo "$(( now + 30 ))" > "$SDIR/merger-retry-at"
+FLEET_STATE_DIR="$SDIR" FLEET_ALERTS_DIR="$ADIR" "$REBASE" --auto --rearm-trigger >/dev/null 2>&1 || true
+[[ "$(cat "$SDIR/merger-retry-at")" == "$(( now + 30 ))" ]] && ok "an earlier pending deadline is kept" || fail "clobbered an earlier deadline: $(cat "$SDIR/merger-retry-at")"
+rm -f "$SDIR/merger-retry-at"
 
 # --- T3: dead holder -> stale-break acquires, no escalation ------------------
 echo "T3: dead holder -> breaks the stale lock, no escalation"
@@ -133,7 +154,7 @@ echo "T4: alive holder, missing started -> no escalation"
 spawn_live; hp=$HOLDER_PID
 seed_lock "$hp" ""                         # pid but no started file
 out=$(run_rebase)
-echo "$out" | grep -q "deferring to the LLM pass" && ok "defers" || fail "did not defer: $out"
+echo "$out" | grep -q "deferring this pass" && ok "defers" || fail "did not defer: $out"
 echo "$out" | grep -q "HUNG-LOCK" && fail "escalated without a started stamp: $out" || ok "no escalation when started is absent"
 [[ -f "$ALERT" ]] && fail "wrote an alert without a started stamp" || ok "no alert without a started stamp"
 
@@ -156,7 +177,7 @@ echo "$t5a" | grep -q "suppressing further identical lines" && ok "tick 1 announ
 echo "$alert_at_n" | grep -q "count=1" && ok "alert at N records count=1" || fail "wrong count at N: $alert_at_n"
 echo "$t5b" | grep -q "HUNG-LOCK" && fail "tick 2 (> N) still loud: $t5b" || ok "tick 2 (> N) is quiet"
 echo "$t5c" | grep -q "HUNG-LOCK" && fail "tick 3 (> N) still loud: $t5c" || ok "tick 3 (> N) is quiet"
-echo "$t5b" | grep -q "deferring to the LLM pass" && ok "quiet ticks still defer normally" || fail "quiet tick stopped deferring: $t5b"
+echo "$t5b" | grep -q "deferring this pass" && ok "quiet ticks still defer normally" || fail "quiet tick stopped deferring: $t5b"
 [[ -f "$ALERT" ]] && ok "alert re-created past N (cleared inbox re-arms)" || fail "alert stayed gone past N — wedge permanently silent"
 grep -q "count=3" "$ALERT" 2>/dev/null && ok "refreshed alert carries the current count" || fail "stale count past N: $(cat "$ALERT" 2>/dev/null)"
 
