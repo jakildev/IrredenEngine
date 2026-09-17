@@ -14,7 +14,8 @@
 # older than the cooldown; an UNKNOWN row is re-read over REST (at most two
 # per run) and targeted only when it comes back CONFLICTING.
 #
-#   T1: approved + MERGEABLE + fleet:needs-human → human_remaining, no
+#   T1: approved + MERGEABLE + fleet:needs-human → skip-labels (the
+#       dispatch circuit breaker's park, not the human's merge click), no
 #       re-arm, no trigger written.
 #   T2: approved + MERGEABLE with only benign labels → human_remaining, no
 #       re-arm, and no gh call for it (nothing mechanical is left to do).
@@ -30,8 +31,9 @@
 #   T7: MERGEABLE + fleet:merger-cooldown (no other skip label) →
 #       stale-cooldown cleanup, no re-arm.
 #   T8: CONFLICTING + fleet:wip → skip-labels, no re-arm.
-#   T9: the 2026-09-09 slice shape (synthetic numbers) — five human-owned approved PRs plus
-#       one semantic-conflict PR → llm_remaining=0, no re-arm.
+#   T9: the 2026-09-09 slice shape (synthetic numbers) — three human-owned
+#       approved PRs, one semantic-conflict PR, one fleet:needs-human park,
+#       and one fleet:wip/design-proposed PR → llm_remaining=0, no re-arm.
 #   T13: several targets are emitted in slice order; a record with no PR
 #        number never becomes one (a missing head still does — the LLM pass
 #        reads the PR live by number); a stale line is replaced, not
@@ -112,11 +114,11 @@ dispatch_due() {
 }
 
 # === T1 ======================================================================
-echo "T1: approved + MERGEABLE + disqualifying label -> human, no re-arm"
+echo "T1: approved + MERGEABLE + fleet:needs-human -> skip-labels, no re-arm"
 reset_stub
 write_slice "[{\"repo\":\"game\",\"number\":901,\"headRefName\":\"claude/911-op1\",\"baseRefName\":\"master\",\"mergeable\":\"MERGEABLE\",\"updatedAt\":\"$(iso_ago 86400)\",\"labels\":[\"fleet:approved\",\"fleet:needs-human\"]}]"
 T1=$(run_rebase)
-assert_contains "$T1" "llm_remaining=0 human_remaining=1" "T1 counted as human_remaining"
+assert_contains "$T1" "llm_remaining=0 human_remaining=0" "T1 counted as skip-labels, not human_remaining — the breaker's park, not the merge click"
 assert_absent "$T1" "re-armed merger trigger" "T1 no re-arm logged"
 assert_trigger_absent "T1 no trigger written"
 
@@ -256,7 +258,7 @@ write_slice "[
   {\"repo\":\"game\",\"number\":907,\"headRefName\":\"claude/915-x\",\"baseRefName\":\"master\",\"mergeable\":\"MERGEABLE\",\"updatedAt\":\"$old\",\"labels\":[\"fleet:design-proposed\",\"fleet:wip\"]}
 ]"
 T9=$(run_rebase)
-assert_contains "$T9" "llm_remaining=0 human_remaining=4 cooling=0" "T9 four human-owned PRs, zero LLM work"
+assert_contains "$T9" "llm_remaining=0 human_remaining=3 cooling=0" "T9 three human-owned PRs, zero LLM work (901's fleet:needs-human is skip-labels, not human_remaining)"
 assert_absent "$T9" "re-armed merger trigger" "T9 no re-arm logged"
 assert_trigger_absent "T9 no trigger written"
 

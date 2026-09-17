@@ -192,7 +192,9 @@ LOCK_CONTENDED_RETRY_SECONDS="${FLEET_REBASE_LOCK_RETRY_SECONDS:-60}"
 # family means a review owes a change and a surprise force-push mid-fix
 # is hostile; design-blocked PRs are parked under an architect; a pending
 # smoke verification would be invalidated by a rebase; fork-of-other-pr
-# is coordinated manually.
+# is coordinated manually; the dispatch circuit breaker's fleet:needs-human
+# park means re-entry is the human removing the label, not a rebase that
+# re-arms the same target it just parked.
 #
 # `fleet:human-deferred` is intentionally NOT skipped (re-scoped, #1712).
 # A deferred PR is approved and idle — its *review feedback* is parked in
@@ -204,7 +206,7 @@ LOCK_CONTENDED_RETRY_SECONDS="${FLEET_REBASE_LOCK_RETRY_SECONDS:-60}"
 #
 # Single source: the python triage below reads this via
 # FLEET_REBASE_SKIP_RE and the pre-push re-verify greps it directly.
-SKIP_LABEL_RE='fleet:semantic-conflict|fleet:wip|human:wip|fleet:needs-fix|human:needs-fix|human:blocker|human:re-review|fleet:design-blocked|fleet:amending-|fleet:blocker|fleet:needs-info|fleet:fork-of-other-pr|fleet:needs-linux-smoke|fleet:needs-macos-smoke|fleet:needs-windows-smoke'
+SKIP_LABEL_RE='fleet:semantic-conflict|fleet:wip|human:wip|fleet:needs-fix|human:needs-fix|human:blocker|human:re-review|fleet:design-blocked|fleet:amending-|fleet:blocker|fleet:needs-info|fleet:fork-of-other-pr|fleet:needs-human|fleet:needs-linux-smoke|fleet:needs-macos-smoke|fleet:needs-windows-smoke'
 export FLEET_REBASE_SKIP_RE="$SKIP_LABEL_RE"
 
 # Paths that no longer exist on master by policy — a plan lives on its issue

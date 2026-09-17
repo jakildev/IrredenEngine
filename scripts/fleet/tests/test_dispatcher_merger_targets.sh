@@ -19,6 +19,7 @@
 #   T6: under provider routing a line whose record left the merger slice is
 #       dropped rather than blocking the lane; the next line launches
 #   T7: the per-target dispatch cap parks a target that keeps being launched
+#   T7b: the next tick after the park does not re-launch it
 #
 # tmux, pgrep, gh, fleet-claim and fleet-rebase are PATH stubs (hermetic, per
 # scripts/fleet/CLAUDE.md); the fleet-rebase stub only records that it was
@@ -225,5 +226,12 @@ out=$(tick)
 assert_contains "$out" "dispatch circuit breaker: parked merge:engine:77 after 2 dispatches" "parked at the cap"
 assert_contains "$(cat "$STUB_LOG")" "gh api repos/jakildev/IrredenEngine/issues/77/labels --method POST -f labels[]=fleet:needs-human" "fleet:needs-human added"
 assert_absent "$out" "dispatching merger" "no launch past the cap"
+
+echo "T7b: the next tick after the park does not re-launch it"
+[[ -e "$TRIGGER" ]] && bad "the whole trigger is consumed by the park, not just the parked line" \
+    || ok "the whole trigger is consumed by the park, not just the parked line"
+out=$(tick)
+assert_absent "$out" "dispatching merger" "no re-launch on the tick right after the park"
+assert_absent "$out" "dispatch circuit breaker" "nothing left to park a second time"
 
 summarize "fleet-dispatcher merger target binding"

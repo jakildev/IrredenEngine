@@ -2937,6 +2937,10 @@ _MERGER_PROJECTION_SKIP_LABELS = frozenset(_SMOKE_PENDING_LABELS | {
     # IS the merger's cue to skip). Hand-list the four deliberately.
     "human:needs-fix", "human:blocker",
     "fleet:needs-fix", "human:re-review",
+    # The dispatch circuit breaker's park (fleet-dispatcher park_target):
+    # re-entry is the human removing the label, not the merger re-finding
+    # the same target on the next projection.
+    "fleet:needs-human",
 })
 
 
