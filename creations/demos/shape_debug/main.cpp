@@ -1273,12 +1273,135 @@ void fillClickTargets() {
     }
 }
 
+// ---------------------------------------------------------------------------
+// GPU hover entity-id parity fixture (--gui-test)
+// ---------------------------------------------------------------------------
+// The trixel→framebuffer gather resolves which of an iso cell's two
+// diagonal-split trixels a fragment covers by mapping the fragments above the
+// diagonal one canvas row up (`trixelFramebufferSamplePosition`). The hover
+// COMPARE runs in that shifted space to meet the CPU's
+// `mouseTrixelPositionWorld()`; the hover entity-id READ names the texel whose
+// color and depth passed the hover gate — the raw one. Nothing else in the
+// harness can tell the two apart: `picksVoxel` is a CPU ray cast, and the
+// widget assertions route hover over targets many trixels wide.
+//
+// One voxel, alone in an empty region of the fixture scene, framed by itself
+// with render subdivisions off so a canvas texel is a 2·zoom × zoom game-px
+// rectangle and a quarter-texel aim clears the diagonal by several pixels. The
+// cursor rests in the voxel's top-right (Z-face) texel, whose row above is
+// empty canvas:
+//   `_above_diagonal` — texel fract (0.5, 0.25): the shift fires, and the
+//     shifted row is the empty texel. A shifted id read reports nothing; the
+//     raw read reports the voxel.
+//   `_below_diagonal` — texel fract (0.5, 0.75): the shift does not fire and
+//     both reads agree. The control that proves the aim lands on the voxel.
+constexpr vec3 kHoverParityVoxelWorld = vec3(-40.0f, -40.0f, 0.0f);
+constexpr float kHoverParityZoom = 16.0f;
+constexpr Color kHoverParityColor = Color{240, 200, 60, 255};
+// `worldPos3DToMouseScreenPx` aims at canvas iso `iso(P) + 0.5`, and the
+// gather samples that at the centre of raw texel `base + (1, 1)` — the CPU
+// iso frame sits one texel up-left of the raw canvas index, the `+ (1, 1)`
+// in `mouseTrixelPositionWorld()`. Rows are `iso.y = -x - y + 2z`, so a
+// world-z offset dz moves the aim 2·dz rows while the column stays at
+// `base.x + 1`, fract 0.5: -0.625 lands on row 0 at fract 0.25, -0.375 on
+// row 0 at fract 0.75.
+constexpr float kHoverParityAboveDiagonalZ = -0.625f;
+constexpr float kHoverParityBelowDiagonalZ = -0.375f;
+
+// Runtime-filled MOVE (the aim depends on the live camera the shot applies)
+// plus the assertion naming the fixture entity created at init. Offset 1 so
+// the hook has re-aimed under the shot's camera before the event fires.
+struct HoverParityAim {
+    IRVideo::GuiInputEvent events_[1]{
+        {1, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(0)},
+    };
+    IRPrefab::GuiTest::Assertion assertions_[1];
+    float worldZOffset_ = 0.0f;
+};
+
+struct HoverParityFixture {
+    IREntity::EntityId voxelEntity_ = IREntity::kNullEntity;
+    HoverParityAim above_{.worldZOffset_ = kHoverParityAboveDiagonalZ};
+    HoverParityAim below_{.worldZOffset_ = kHoverParityBelowDiagonalZ};
+    IRRender::SubdivisionMode restoreSubdivisionMode_ = IRRender::SubdivisionMode::FULL;
+    int lastShot_ = -1;
+};
+HoverParityFixture g_hoverParity;
+
+constexpr int kNumHoverParityShots = 2;
+
+void initHoverParityFixture() {
+    g_hoverParity.voxelEntity_ = IREntity::createEntity(
+        C_LocalTransform{kHoverParityVoxelWorld},
+        C_VoxelSetNew{ivec3(1), kHoverParityColor, IRComponents::EntityAnchor::CORNER}
+    );
+    g_hoverParity.above_.assertions_[0] = IRPrefab::GuiTest::hoveredEntityId(
+        g_hoverParity.voxelEntity_,
+        "hover_id_above_diagonal_is_raw_texel"
+    );
+    g_hoverParity.below_.assertions_[0] = IRPrefab::GuiTest::hoveredEntityId(
+        g_hoverParity.voxelEntity_,
+        "hover_id_below_diagonal_is_voxel"
+    );
+    IR_LOG_INFO(
+        "--- hover-parity fixture: entity {} at ({},{},{}) ---",
+        g_hoverParity.voxelEntity_,
+        kHoverParityVoxelWorld.x,
+        kHoverParityVoxelWorld.y,
+        kHoverParityVoxelWorld.z
+    );
+}
+
+void aimHoverParity(HoverParityAim &aim) {
+    const IRMath::ivec2 px = IRRender::worldPos3DToMouseScreenPx(
+        kHoverParityVoxelWorld + vec3(0.0f, 0.0f, aim.worldZOffset_)
+    );
+    for (IRVideo::GuiInputEvent &event : aim.events_) {
+        event.screenPx_ = px;
+    }
+}
+
+// Subdivisions off for exactly the fixture shots: under FULL a texel is a 2×1
+// game-px rectangle at every zoom and the diagonal is sub-pixel, so the aim
+// could not resolve which side of it the cursor sits on. Restored on the first
+// frame of the shot after the block so the rest of the run renders as before.
+void onHoverParityAssertFrame(int shotIndex) {
+    if (shotIndex != g_hoverParity.lastShot_) {
+        g_hoverParity.lastShot_ = shotIndex;
+        if (shotIndex == 0) {
+            g_hoverParity.restoreSubdivisionMode_ = IRRender::getSubdivisionMode();
+            IRRender::setSubdivisionMode(IRRender::SubdivisionMode::NONE);
+        } else if (shotIndex == kNumHoverParityShots) {
+            IRRender::setSubdivisionMode(g_hoverParity.restoreSubdivisionMode_);
+        }
+    }
+    if (shotIndex >= kNumHoverParityShots) {
+        return;
+    }
+    aimHoverParity(shotIndex == 0 ? g_hoverParity.above_ : g_hoverParity.below_);
+}
+
 // The pivot trio runs panned off-origin at a non-cardinal yaw: ORIGIN and
 // CAMERA_CENTER only differ once the camera is away from the world origin AND
 // rotating, so at the standard zoom4/pan0/yaw0 framing the two modes render
 // identically and the "visible effect" pair would be vacuous. Same pose as the
 // standing `zoom4_pan16_yaw45_pivot` render-verify shot, for the same reason.
 constexpr IRVideo::GuiTestShot kHelpOverlayGuiShots[] = {
+    // Hover parity block first: no overlay or menu is up, so the fixture voxel
+    // is the only hoverable content under the cursor. Camera centred on the
+    // voxel (`cameraIso` is the negated world iso of the screen centre).
+    {{kHoverParityZoom,
+      -IRMath::pos3DtoPos2DIso(kHoverParityVoxelWorld),
+      0.0f,
+      "hover_parity_above_diagonal"},
+     g_hoverParity.above_.events_,
+     1},
+    {{kHoverParityZoom,
+      -IRMath::pos3DtoPos2DIso(kHoverParityVoxelWorld),
+      0.0f,
+      "hover_parity_below_diagonal"},
+     g_hoverParity.below_.events_,
+     1},
     {{4.0f, vec2(0.0f), 0.0f, "help_overlay_open"}, kHelpOpenEvents, 2},
     {{4.0f, vec2(0.0f), 0.0f, "help_overlay_closed"}, kHelpCloseEvents, 2},
     {{4.0f, vec2(0.0f), 0.0f, "settings_menu_open"}, kMenuOpenEvents, 2},
@@ -1594,6 +1717,8 @@ constexpr ShotAssertions shotAssertions(const IRPrefab::GuiTest::Assertion (&tab
 }
 
 const ShotAssertions kShotAssertions[] = {
+    shotAssertions(g_hoverParity.above_.assertions_),
+    shotAssertions(g_hoverParity.below_.assertions_),
     shotAssertions(kHelpOpenAssertions),
     shotAssertions(kHelpClosedAssertions),
     shotAssertions(kMenuOpenAssertions),
@@ -1623,7 +1748,7 @@ static_assert(
 // silently stop aiming the early menu clicks and leave them at the screen
 // corner. Identified by the events the shot carries — the label is not
 // constexpr-comparable, and kMenuOpenEvents IS what "opens the menu" means here.
-constexpr int kMenuOpenShotIndex = 2;
+constexpr int kMenuOpenShotIndex = kNumHoverParityShots + 2;
 constexpr bool isFirstMenuOpeningShot(int index) {
     for (int i = 0; i < index; ++i) {
         if (kHelpOverlayGuiShots[i].inputs_ == kMenuOpenEvents) {
@@ -1647,7 +1772,7 @@ static_assert(
 // instead, through the same `GuiTest::evaluate` emitter the capture path uses —
 // gui-verify.py parses one format, and a second emitter is one drift away from
 // being unparseable.
-constexpr int kMenuQuitShotIndex = 14;
+constexpr int kMenuQuitShotIndex = kNumHoverParityShots + 14;
 static_assert(
     kMenuQuitShotIndex == kNumHelpOverlayGuiShots - 1,
     "the QUIT shot ends the run — a shot appended after it would never execute"
@@ -1924,6 +2049,7 @@ void initCullEvictScene() {
 }
 
 void onHelpOverlayAssertFrame(int shotIndex, bool isCaptureFrame) {
+    onHoverParityAssertFrame(shotIndex);
     // Every live frame from the first menu shot on: the panel centers itself and
     // a dropdown's item strip exists only while expanded, so the targets have to
     // be resolved continuously rather than once at first open.
@@ -2036,6 +2162,7 @@ void initSystems() {
     // list; calling create() early breaks that ordering.
     IRSystem::SystemId bakeSunShadowMapId = IRSystem::kNullSystemId;
     IRSystem::SystemId computeLightVolumeId = IRSystem::kNullSystemId;
+    IRSystem::SystemId trixelToFramebufferId = IRSystem::kNullSystemId;
     renderPipeline.insert(
         renderPipeline.end(),
         {
@@ -2072,7 +2199,7 @@ void initSystems() {
     renderPipeline.insert(
         renderPipeline.end(),
         {
-            IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
+            (trixelToFramebufferId = IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>()),
             IRSystem::System<IRSystem::DEBUG_CULLING_MINIMAP>::create({
                 .lightVolumeSystemId_ = computeLightVolumeId,
                 .bakeSunShadowSystemId_ = bakeSunShadowMapId,
@@ -2120,7 +2247,15 @@ void initSystems() {
         cfg.shots_ = kHelpOverlayGuiShots;
         cfg.numShots_ = kNumHelpOverlayGuiShots;
         cfg.onAssertFrame_ = &onHelpOverlayAssertFrame;
-        renderPipeline.push_back(IRVideo::createGuiTestSystem(cfg));
+        // Ahead of the composite, not at the tail: TRIXEL_TO_FRAMEBUFFER's
+        // beginTick resets HoveredEntityIdBuffer for the frame it is about to
+        // draw, so a HOVERED_ENTITY_ID read after it sees the reset, never the
+        // completed previous frame. Every widget renderer has already run at
+        // this point, so the click targets the hook resolves are current.
+        renderPipeline.insert(
+            std::find(renderPipeline.begin(), renderPipeline.end(), trixelToFramebufferId),
+            IRVideo::createGuiTestSystem(cfg)
+        );
     } else if (g_autoWarmupFrames > 0) {
         IRVideo::AutoScreenshotConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
@@ -3351,6 +3486,10 @@ void initEntities() {
         Color{150, 150, 160, 255}
     );
     IREntity::setComponent(floorEntity, C_LightBlocker{false, false, 0.0f});
+
+    if (g_guiTest) {
+        initHoverParityFixture();
+    }
 
     setupCanvasLighting();
 

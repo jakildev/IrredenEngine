@@ -8,7 +8,7 @@ Rationale: [`docs/design/prefab-render-surface.md`](../../../../docs/design/pref
 ## Validators
 
 - `python3 scripts/gui-verify.py IRShapeDebug -- --gui-test` — headless GUI
-  assertion table (help overlay, settings menu, picking).
+  assertion table (GPU hover-id parity, help overlay, settings menu, picking).
 - `python3 scripts/pivot-verify.py --blocks cursor-latch` — cursor pivot;
   `IRShapeDebug --pivot-verify cursor-latch --cursor-pivot-indicator` captures the marker.
 - `scripts/depth-tier-verify.py --only orbitswap --tier 1` — foreground depth
@@ -157,10 +157,16 @@ perf-stats overlay region (top-right by default).
   by `WIDGET_INPUT`). `C_WidgetScroll` is track + thumb only — the owner
   positions content from `scrollPos_`.
 - `IRPrefab::GuiTest::` (`gui_test_assertions.hpp`): `hovers` / `clickFires` /
-  `sliderValue` / `checkbox` / `picksVoxel` / `picksIsoColumn` / `predicate`,
-  one `GUI-ASSERT …` line each plus one `GUI-ASSERT-COVERAGE …` per shot.
-  Reference wiring: `creations/editors/voxel_editor/main.cpp`. Lua `onClick`:
-  `engine/script/CLAUDE.md` §"Engine service bindings".
+  `sliderValue` / `checkbox` / `picksVoxel` / `picksIsoColumn` /
+  `hoveredEntityId` / `predicate`, one `GUI-ASSERT …` line each plus one
+  `GUI-ASSERT-COVERAGE …` per shot. `hoveredEntityId` reads the GPU
+  `HoveredEntityIdBuffer` (`IRRender::getEntityIdAtMouseTrixel()`), which
+  `TRIXEL_TO_FRAMEBUFFER::beginTick` resets every frame — register the
+  GUI-test cycler ahead of the composite (`shape_debug` splices it in before
+  `TRIXEL_TO_FRAMEBUFFER`) or the capture-frame read sees the reset, never the
+  completed frame. `picksVoxel` is the CPU ray cast and cannot see that
+  buffer. Reference wiring: `creations/editors/voxel_editor/main.cpp`. Lua
+  `onClick`: `engine/script/CLAUDE.md` §"Engine service bindings".
 
 ## Rotation modes
 

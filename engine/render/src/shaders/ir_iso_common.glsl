@@ -534,9 +534,11 @@ int trixelOriginModifier(ivec2 trixelCanvasOffsetZ1, vec2 frameCanvasOffset) {
 // `pos2DIsoToTriangleIndex` (ir_math.cpp), so GPU and CPU agree on which
 // trixel the mouse is over.
 //
-// RECTANGULAR display uses raw coordinates and reserves this mapping for
-// hover. LOCAL_TRIANGLES supplies canvas-local parity and a row-corrected
-// query; its caller rejects out-of-bounds results before texture reads.
+// RECTANGULAR display uses raw coordinates for every texture read — color,
+// depth, tier and the hover entity id — and reserves this mapping for the
+// hover COMPARE alone. LOCAL_TRIANGLES supplies canvas-local parity and a
+// row-corrected query; its caller rejects out-of-bounds results before
+// texture reads.
 vec2 trixelFramebufferSamplePosition(vec2 origin, int originModifier) {
     vec2 originFlooredComp = floor(origin);
     vec2 fractComp = fract(origin);

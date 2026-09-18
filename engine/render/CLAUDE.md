@@ -95,9 +95,14 @@ Use the validation index's jitter probe and the camera contracts below.
   Lattice agreement alone cannot certify connected source faces; use the
   [source-face gate](../../docs/design/trixel-face-reconstruction-validation.md).
 - General canvas producers retain their rectangular storage contract. Their
-  parity shift applies only to hover/picking; read the
+  parity shift applies only to the hover **compare** (`originShifted` vs the
+  CPU `mouseTrixelPositionWorld()` index); every texture read in the gather —
+  color, depth, tier and the hover entity id — samples the raw texel, so the
+  id a hovered fragment reports is the texel it displays. Read the
   [parity-shift design](../../docs/design/trixel-parity-shift-442-investigation.md)
-  before changing that coordinate path.
+  before changing that coordinate path; the `hover_parity_*` shots of
+  `IRShapeDebug --gui-test` (`GuiTest::hoveredEntityId`) are the executor
+  for the id read.
 - CPU frame-data structs and shader blocks must agree on field order,
   `std140` padding, and binding index. Every hard-coded binding has a matching
   `kBufferIndex_*` constant.

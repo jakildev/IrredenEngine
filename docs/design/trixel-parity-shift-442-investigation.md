@@ -2,7 +2,9 @@
 
 **Issue:** #442 (investigation spike). **Status:** REVISED 2026-08-21 — the
 spike's keep-and-document decision froze a real GL defect; the GL gather now
-matches Metal (raw color/depth reads, shifted hover only). History of both
+matches Metal (raw color/depth reads, shifted hover compare). REVISED again
+2026-09-18 (#3018) — the hover entity-id **read** moved onto the raw texel
+too; only the hover **compare** keeps the shift. History of all three
 conclusions below.
 
 Records what the parity shift (`trixelFramebufferSamplePosition`,
@@ -21,17 +23,25 @@ adjusts `.y`, never `.x`, and is byte-identical to CPU
 
 ## Current contract (both backends)
 
-- **Color / depth / tier-id reads sample the RAW origin.** Both vertex twins
+- **Every texture read — color, depth, tier-id and the hover entity id —
+  samples the RAW origin.** Both vertex twins
   build **identical** V-flipped `TexCoords` (`vec2(aPos.x, -aPos.y) + 0.5 +
   textureOffset/size` — the GL spelling dates to 2023), and Metal's clip-Y
   negate is cancelled by its own negate in the `framebuffer_to_screen` blit,
   so both backends interpolate the same canvas position for the same final
   screen pixel. The raw sample lands on the correct trixel row on both.
-- **The hover/pick coordinate IS shifted, on both backends.** It must match
-  CPU `mouseTrixelPositionWorld()` → `pos2DIsoToTriangleIndex` (computed
-  independently of GPU raster-Y). Both gathers therefore compute `originRaw`
-  (color/depth/tier) and `originShifted` (hover compare + hover entity-id
-  read) separately — the sampleCoord/hoverCoord split.
+- **The hover COMPARE coordinate IS shifted, on both backends.** It must
+  match CPU `mouseTrixelPositionWorld()` → `pos2DIsoToTriangleIndex`
+  (computed independently of GPU raster-Y), so shift-space is where the
+  GPU fragment and the CPU index meet. Both gathers therefore compute
+  `originRaw` (every texture read) and `originShifted` (the compare only)
+  separately. The shift is not a property of the canvas storage: the stage-2
+  writers store color and entity id at the same texel, so once a fragment has
+  passed the raw color/depth hover gate, the id it reports has to come from
+  that same raw texel. Reading it at the shifted coordinate made the reported
+  id come from one row up for every fragment the shift fires on (about half of
+  them, parity bit + `fract` test) — an empty row above a voxel's top face
+  reported no entity at all.
 
 **What applying the shift to the color/depth reads does** (the defect
 signature, for whoever next suspects this code): a 1-pixel sawtooth on every
@@ -62,6 +72,18 @@ differ (silhouettes, face boundaries, checkerboard content).
   clean and the headless GUI test (#2550) passed 30/30, confirming
   hover/pick agreement survives with the hover-only shift.
 
+- **2026-09-18 (#3018)**: the hover entity-id read still used the shifted
+  coordinate on both backends, bundled with the compare as one claim. The
+  `hover_parity_above_diagonal` shot of `IRShapeDebug --gui-test`
+  (`GuiTest::hoveredEntityId`, `HoveredEntityIdBuffer` readback) rests the
+  cursor a quarter texel above the diagonal of an isolated voxel's top-face
+  texel, where the shifted row is empty canvas: on macOS/Metal the shifted
+  read reported `hovered=0` and the raw read reports the voxel; the
+  `_below_diagonal` control (shift does not fire) reports the voxel either
+  way. Both gathers now read the id at the raw texel. The compare is
+  untouched — moving it off shift-space would break the CPU/GPU index match
+  the shot's control relies on.
+
 Why the #442 derivation was wrong: it modeled the raster-Y difference but not
 the **texcoord construction** (identical V-flip on both backends) or the
 downstream blit (Metal's second clip-Y negate cancels the first). Net: the
@@ -87,7 +109,10 @@ must not be treated as clean baselines.
 - `ir_iso_common.glsl` / `metal/ir_iso_common.metal` —
   `trixelFramebufferSamplePosition` definition.
 - `f_trixel_to_framebuffer.glsl` / `metal/trixel_to_framebuffer.metal` — the
-  gathers (raw sampleCoord for color/depth/tier, shifted hoverCoord for
-  picking). One program serves the main, background, GUI, and detached
-  entity-canvas composite paths on each backend.
+  gathers (raw `displayOrigin` / `sampleCoord` for every texture read,
+  `originShifted` for the hover compare only). One program serves the main,
+  background, GUI, and detached entity-canvas composite paths on each backend.
+- `creations/demos/shape_debug/main.cpp` — the `hover_parity_*` fixture
+  (`--gui-test`), the only check that distinguishes the raw id read from the
+  shifted one.
 - `engine/render/CLAUDE.md` §"Trixel→framebuffer hover parity shift".

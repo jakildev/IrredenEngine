@@ -68,9 +68,9 @@ float normalizeDistance(int dist) {
 void main() {
     ivec2 textureSize = textureSize(triangleColors, 0);
     ivec2 z1 = trixelOriginOffsetZ1(textureSize);
-    // Rectangular color/depth/tier reads use the raw interpolated canvas
-    // position. Hover uses the world-lattice mapping; local display triangles
-    // instead select cells in the private canvas basis.
+    // Rectangular color/depth/tier/id reads use the raw interpolated canvas
+    // position. Only the hover compare uses the world-lattice mapping; local
+    // display triangles instead select cells in the private canvas basis.
     vec2 originRaw = TexCoords * vec2(textureSize);
     int originModifier = trixelOriginModifier(z1, canvasOffset);
     vec2 originShifted = trixelFramebufferSamplePosition(originRaw, originModifier);
@@ -141,11 +141,13 @@ void main() {
     if (isMouseHovered) {
         if (color.a >= 0.1 && depth <= hoveredDepth) {
             // Strip the per-trixel priority carrier so a prioritized fragment
-            // reports its true picked id. The hover read uses the shifted
-            // coordinate (kept in lockstep with CPU mouseTrixelPositionWorld),
-            // distinct from the originRaw tier read.
+            // reports its true picked id. Read at the same texel the color and
+            // depth gate above sampled: the parity shift is for the compare
+            // only, and the stage-2 writers store color and id together, so
+            // the shifted row can hold a different entity (or nothing) than
+            // the texel this fragment displays.
             uvec2 entityId = decodeEntityId(
-                textureLod(triangleEntityIds, originShifted / vec2(textureSize), 0).rg);
+                textureLod(triangleEntityIds, displayOrigin / vec2(textureSize), 0).rg);
             if (entityId != uvec2(0u)) {
                 hoveredEntityId = entityId;
                 hoveredDepth = depth;
