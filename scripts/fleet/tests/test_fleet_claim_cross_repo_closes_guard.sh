@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# #3520: cmd_claim's duplicate-open-PR guard honors GitHub's cross-repo
-# closing form. An engine issue remedied by a PR in the OTHER fleet repo whose
-# body carries `Closes jakildev/IrredenEngine#N` is in-flight work for engine
-# #N — a fresh engine worker cannot advance that PR, and every dispatch on the
-# issue ended in a decline until it merged. The guard now runs a second
-# `gh pr list` against the other repo and refuses on the namespaced grammar
-# (`body_closes_issue_in`); the same-repo arm is unchanged in shape but reads
-# the same grammar, so a repo-qualified ref to the claim's own repo counts too.
+# cmd_claim's duplicate-open-PR guard honors GitHub's cross-repo closing
+# form. An engine issue remedied by a PR in the OTHER fleet repo whose body
+# carries `Closes jakildev/IrredenEngine#N` is in-flight work for engine #N —
+# a fresh engine worker cannot advance that PR, so the claim must refuse. The
+# guard runs a second `gh pr list` against the other repo and refuses on the
+# namespaced grammar (`body_closes_issue_in`); the same-repo arm is unchanged
+# in shape but reads the same grammar, so a repo-qualified ref to the claim's
+# own repo counts too.
 #
 # Controls pin the namespace: a bare `Closes #N` or a `claude/<N>-…` branch in
 # the other repo is THAT repo's #N and must not refuse an engine claim; a
