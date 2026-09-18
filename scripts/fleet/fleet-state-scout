@@ -2730,7 +2730,16 @@ WORKER_SKIP_PREFIXES = ("fleet:reviewing-",)
 # signal. The pending opus pass owns the PR; dispatching the author now buys
 # a guaranteed second nit round-trip. Suppression here ROUTES the PR (the
 # opus-reviewer lane still emits it), it does not park it.
-WORKER_SKIP_LABELS = frozenset({"fleet:needs-opus-recheck"})
+#
+# fleet:design-blocked / fleet:design-proposed park a PR on an open design
+# question regardless of which lane stamped the verdict first — a reviewer
+# can post fleet:needs-fix and then park in the same pass. A parked PR's
+# resume signal is fleet:design-unblocked, which the state machine keeps
+# mutually exclusive with both park labels, so suppressing the fleet tiers
+# here never masks real resume work.
+WORKER_SKIP_LABELS = frozenset({
+    "fleet:needs-opus-recheck", "fleet:design-blocked", "fleet:design-proposed",
+})
 # Only the fleet-owned tiers are suppressible. human:needs-fix /
 # human:blocker outrank an in-flight fleet review (FLEET-FEEDBACK-HANDLING.md
 # puts the human tiers first in its priority order) and keep emitting under

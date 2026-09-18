@@ -23,6 +23,9 @@
 #        computed correctly despite \r-terminated jq -r output
 #   T12: escalate-class-sonnet-opus (reconcile R9's named edge, #2939) →
 #        issue-scoped class re-tag applies once, then is a zero-edit no-op
+#   T13: every verdict edge consumes the re-review triggers
+#   T14: design-block clears a live fleet verdict tier (needs-fix/has-nits)
+#        regardless of which lane parked the PR
 
 set -euo pipefail
 
@@ -298,6 +301,22 @@ set_labels pr 112 fleet:changes-made human:re-review fleet:approved
 assert_eq "$(run verdict-blocker 112)" "0" "T13 verdict-blocker exits 0"
 assert_eq "$(get_labels pr 112)" "fleet:blocker" \
     "T13 blocker consumed both triggers with the stale approval"
+
+# === T14: design-block clears a live fleet verdict tier ==================
+# A reviewer can stamp fleet:needs-fix and then park the PR
+# (fleet:design-blocked) in the same pass — the canonical parked state
+# carries no fleet verdict tier regardless of which lane parks it.
+echo "T14: design-block clears fleet:needs-fix, leaves human tiers/wip intact"
+reset_log
+set_labels pr 113 fleet:needs-fix fleet:wip
+assert_eq "$(run design-block 113)" "0" "T14 design-block exits 0"
+assert_eq "$(get_labels pr 113)" "fleet:design-blocked fleet:wip" \
+    "T14 fleet:needs-fix cleared, fleet:wip preserved"
+reset_log
+set_labels pr 114 fleet:has-nits human:needs-fix fleet:design-unblocked
+assert_eq "$(run design-block 114)" "0" "T14 design-block exits 0 (has-nits case)"
+assert_eq "$(get_labels pr 114)" "fleet:design-blocked human:needs-fix" \
+    "T14 fleet:has-nits cleared, human:needs-fix survives (outranks the park)"
 
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"

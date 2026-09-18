@@ -456,12 +456,14 @@
       "owner": "worker",
       "remove": [
         "fleet:design-unblocked",
-        "fleet:design-proposed"
+        "fleet:design-proposed",
+        "fleet:needs-fix",
+        "fleet:has-nits"
       ],
       "add": [
         "fleet:design-blocked"
       ],
-      "note": "Worker escalates for architectural input mid-task. Keeps fleet:wip (qualifier). Also clears a stale steward parking marker on re-escalation. role-worker.md step 8c."
+      "note": "Worker escalates for architectural input mid-task. Keeps fleet:wip (qualifier). Also clears a stale steward parking marker on re-escalation, and any fleet verdict tier a reviewer stamped before parking, so the canonical parked state carries no fleet verdict regardless of which lane parks the PR. role-worker.md step 8c."
     },
     {
       "name": "design-unblock",
