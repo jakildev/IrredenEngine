@@ -148,7 +148,9 @@
 #     role). A role UNDER its cap is bound by the same reservation, but never
 #     below one pane: it is within budget, so it is always entitled to launch.
 #   strict — the cap is a hard ceiling; a role at cap defers its trigger.
-# FLEET_CONCURRENCY_MODEL_FABLE and the pool size are hard in both modes.
+# FLEET_CONCURRENCY_MODEL_FABLE, the pool size, and the merger's and epic
+# steward's caps (single-claim lanes: a second iteration over the cap finds
+# every item held and exits empty) are hard in both modes.
 # FLEET_CAP_MODE=elastic
 
 # FLEET_CONCURRENCY_WORKER=4         # unified worker lane (any model class)

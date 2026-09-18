@@ -20,6 +20,9 @@
 #     cap 1): every pending under-cap role still gets a pane
 #   - the merger/reviewer lanes are served before the worker lane when one
 #     pane is free and both are pending
+#   - a hard-capped role (HARD_CAP_ROLES: epic-steward, merger) never borrows
+#     over its cap in elastic mode: one steward in flight + idle panes ->
+#     zero further steward launches; under cap it still launches
 #   - no tick reaches gh (the per-target dispatch cap is off; a gh call is
 #     a hermeticity failure, not a live write)
 
@@ -395,7 +398,64 @@ assert_absent "$out" "dispatching worker" \
 trigger_kept && ok "the worker trigger is kept for the next tick" \
     || bad "the worker trigger was consumed without a launch"
 
-echo "T15: no tick reached gh"
+echo "T15: a hard-capped role never borrows over its cap in elastic mode"
+# The epic steward takes one steward-claim per umbrella for its whole
+# iteration; a second steward launched over the cap finds every umbrella
+# held and exits with nothing done. Same shape as T1 (at cap, free panes,
+# nothing else pending), which launches the worker over its cap — the
+# steward must defer instead, in the default (elastic) mode.
+reset
+rm -f "$FLEET_STATE_DIR/dispatch"/*.json
+inflight epic-steward opus "" 3
+: > "$FLEET_STATE_DIR/triggers/epic-steward"
+out=$(tick_role epic-steward BUSY_PANES='%3' FLEET_EPIC_STEWARD=1)
+assert_eq "$(count_dispatches "$out")" "0" \
+    "one steward running, two idle pool panes, elastic mode -> no second steward"
+assert_contains "$out" \
+    "epic-steward at concurrency cap (1 >= 1); hard-capped role, 2 free pane(s) not borrowed; deferring trigger" \
+    "the deferral names the hard cap"
+[[ -f "$FLEET_STATE_DIR/triggers/epic-steward" ]] \
+    && ok "steward trigger kept for when the iteration ends" \
+    || bad "steward trigger consumed"
+# Strict mode holds the same line (both modes are a ceiling for this role).
+out=$(tick_role epic-steward BUSY_PANES='%3' FLEET_EPIC_STEWARD=1 FLEET_CAP_MODE=strict)
+assert_eq "$(count_dispatches "$out")" "0" "strict mode: still no second steward"
+# The other fan-out lanes keep borrowing: the same tick shape with the
+# worker at cap still launches over cap (the T1 contract is unchanged).
+write_slice worker "$ONE_TASK"
+inflight worker opus task:engine:10 2
+out=$(tick 1 BUSY_PANES='%2 %3')
+assert_eq "$(count_dispatches "$out")" "1" "the worker lane still borrows over its cap"
+# Under cap the steward launches into an idle pane as before — the ceiling
+# is the cap, not a stand-down.
+rm -f "$FLEET_STATE_DIR/dispatch"/*.json
+: > "$FLEET_STATE_DIR/triggers/epic-steward"
+out=$(tick_role epic-steward BUSY_PANES='' FLEET_EPIC_STEWARD=1)
+assert_eq "$(count_dispatches "$out")" "1" "no steward in flight -> one steward launch"
+assert_absent "$out" "over-cap=" "an under-cap steward launch is not stamped over-cap"
+
+echo "T16: the merger is hard-capped too — a target line waits for the in-flight iteration"
+# The merger is target-bound (one `merge:` line per launch); an over-cap
+# second merger would race the first over the same PR set. Elastic mode
+# with two idle panes: the second line is held, not launched.
+reset
+rm -f "$FLEET_STATE_DIR/dispatch"/*.json
+inflight merger "" merge:engine:77 3
+write_slice merger '{"prs":[],"merger_candidates":[
+  {"number":77,"repo":"engine","labels":["fleet:approved"],"signal":"needs-resolve"},
+  {"number":78,"repo":"engine","labels":["fleet:approved"],"signal":"needs-resolve"}]}'
+printf 'merge:engine:78\n' > "$FLEET_STATE_DIR/triggers/merger"
+out=$(tick_role merger BUSY_PANES='%3')
+assert_eq "$(count_dispatches "$out")" "0" "one merger in flight, idle panes, elastic -> no second merger"
+assert_contains "$out" "merger at concurrency cap (1 >= 1); hard-capped role" "the merger deferral names the hard cap"
+assert_eq "$(cat "$FLEET_STATE_DIR/triggers/merger" 2>/dev/null)" "merge:engine:78" "the held line is untouched"
+# The line is routable: once the iteration ends the next tick launches it.
+rm -f "$FLEET_STATE_DIR/dispatch"/*.json
+out=$(tick_role merger BUSY_PANES='')
+assert_contains "$out" "dispatching merger -> %1 [target=merge:engine:78]" \
+    "the held line launches once the cap frees (the hold was the cap, not an unroutable line)"
+
+echo "T17: no tick reached gh"
 assert_eq "$(wc -l < "$GH_LOG" | tr -d ' ')" "0" \
     "the suite never called gh (every reach is logged by the stub)"
 
