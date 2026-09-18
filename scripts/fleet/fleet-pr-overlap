@@ -248,14 +248,41 @@ def fetch_pr_head(row):
         )
 
 
-def widened_paths(row, default_tip):
-    """The branch delta from git, for a row whose GitHub `files` cannot stand in."""
-    base = git("merge-base", default_tip, row["headRefOid"])
-    paths = set(git("diff", "--name-only", f"{base}..{row['headRefOid']}").splitlines())
+def blob_oid_at(commit, path):
+    rc, out, _ = git_status("rev-parse", "--verify", "--quiet", f"{commit}:{path}")
+    return out.strip() if rc == 0 else None
+
+
+def widened_paths(row, default_tip, base_tip, branch_tips):
+    """The branch delta from git, for a row whose GitHub `files` cannot stand in.
+
+    A path identical to the caller's own base tip is inherited, not the
+    row's own change: when the row's own base is upstream of (or equal to)
+    the caller's base tip, the delta is scoped to the row's own base rather
+    than the default branch; otherwise, a path whose blob already matches
+    the caller's base tip is dropped.
+    """
+    row_base = row["baseRefName"]
+    if row_base not in branch_tips:
+        try:
+            branch_tips[row_base] = fetch_branch_tip(row_base)
+        except OverlapError:
+            branch_tips[row_base] = None
+    row_base_tip = branch_tips[row_base]
+
+    scoped = row_base_tip is not None and is_ancestor(row_base_tip, base_tip)
+    merge_point = git("merge-base", row_base_tip if scoped else default_tip, row["headRefOid"])
+    paths = set(git("diff", "--name-only", f"{merge_point}..{row['headRefOid']}").splitlines())
+    if not scoped and base_tip != default_tip:
+        paths = {
+            path for path in paths
+            if blob_oid_at(row["headRefOid"], path) != blob_oid_at(base_tip, path)
+        }
+
     note(
         f"#{row['number']} path set widened from git ({len(paths)} paths; "
         f"GitHub files {row['files_count']} of {row['changedFiles']}, "
-        f"base {row['baseRefName']})"
+        f"base {row_base})"
     )
     return paths
 
@@ -321,11 +348,12 @@ def grade(args):
     )
     paths_by_number = {}
     fetched = set()
+    branch_tips = {default: default_tip, base: base_tip}
     for row in candidates:
         if row["baseRefName"] != default or row["files_count"] != row["changedFiles"]:
             fetch_pr_head(row)
             fetched.add(row["number"])
-            paths_by_number[row["number"]] = widened_paths(row, default_tip)
+            paths_by_number[row["number"]] = widened_paths(row, default_tip, base_tip, branch_tips)
         else:
             paths_by_number[row["number"]] = row["files"]
 
