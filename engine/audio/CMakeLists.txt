@@ -43,7 +43,7 @@ FetchContent_MakeAvailable(rtaudio)
 # via CFStringGetSystemEncoding() (MacRoman) instead of UTF-8, so a device
 # name with a curly apostrophe encodes as a lone high byte that breaks every
 # downstream UTF-8 consumer of the logged name.
-if(APPLE)
+if(IR_isDarwin)
     target_compile_definitions(rtaudio PRIVATE UNICODE)
 endif()
 target_link_libraries(IrredenEngineAudio PUBLIC rtaudio)
