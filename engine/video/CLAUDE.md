@@ -169,7 +169,7 @@ Clip size: `video_capture_output_width` / `_height` (config keys, default 0
 = follow the render output resolution) set the encoded frame size (odd
 values round down for yuv420p). Both zero follows the render output; setting
 just one derives the other from the render output's aspect at recording
-start (`IRVideo::deriveCaptureOutputResolution`), so a non-16:9 creation
+start (`IRVideo::resolveCaptureOutputResolution`), so a non-16:9 creation
 isn't squished by a preset tuned for a 16:9 one; setting both replaces the
 render output resolution outright. `video_capture_bitrate` is the budget at
 the render output resolution and scales with the resolved output's

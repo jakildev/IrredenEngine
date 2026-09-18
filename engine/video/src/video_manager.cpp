@@ -65,8 +65,8 @@ void VideoManager::configureCapture(
 }
 
 void VideoManager::configureCaptureOutputResolution(int width, int height) {
-    m_outputWidthOverride = (width > 0) ? (width & ~1) : 0;
-    m_outputHeightOverride = (height > 0) ? (height & ~1) : 0;
+    m_outputWidthOverride = (width > 0) ? width : 0;
+    m_outputHeightOverride = (height > 0) ? height : 0;
 }
 
 void VideoManager::configureScreenshotOutputDir(const std::string &outputDirPath) {
@@ -319,7 +319,7 @@ void VideoManager::toggleCapture() {
     // would otherwise spend the whole budget on the smaller frame.
     int videoBitrate = m_videoBitrate;
     if (m_outputWidthOverride > 0 || m_outputHeightOverride > 0) {
-        const CaptureOutputResolution resolved = deriveCaptureOutputResolution(
+        const CaptureOutputResolution resolved = resolveCaptureOutputResolution(
             m_outputWidthOverride,
             m_outputHeightOverride,
             outputResolution.x,

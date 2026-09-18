@@ -38,27 +38,45 @@ struct CaptureOutputResolution {
     int height_ = 0;
 };
 
-/// Derives the encoder output size from the two `configureCaptureOutputResolution`
-/// overrides (0 = "derive from the render output") and the render output's
-/// width/height. Both zero follows the render output; exactly one non-zero
-/// derives the other from the render aspect, rounded down to even for
-/// yuv420p; both non-zero keeps the caller's dimensions as given. Pure on
-/// purpose — no GPU or render-manager access needed to test the derivation.
-constexpr CaptureOutputResolution deriveCaptureOutputResolution(
-    int widthOverride, int heightOverride, int renderWidth, int renderHeight
+namespace detail {
+
+/// Rounds down to even for yuv420p, floored at 2 so a degenerate override
+/// (0 or 1) never hands the encoder a zero-sized dimension.
+constexpr int floorCaptureDimension(int value) {
+    const int even = value & ~1;
+    return even < 2 ? 2 : even;
+}
+
+} // namespace detail
+
+/// Resolves the encoder output size from the two `configureCaptureOutputResolution`
+/// overrides (`<= 0` = unset) and the render output's width/height
+/// (precondition: both `> 0` — the caller's existing viewport fallback is
+/// the guard). Both unset passes the render pair through unrounded, so that
+/// path stays byte-identical to following the render output directly; any
+/// set dimension, and every derived one, rounds down to even and floors at
+/// 2. Pure on purpose — no GPU or render-manager access needed to test the
+/// derivation.
+constexpr CaptureOutputResolution resolveCaptureOutputResolution(
+    int overrideWidth, int overrideHeight, int renderWidth, int renderHeight
 ) {
-    if (widthOverride <= 0 && heightOverride <= 0) {
+    if (overrideWidth <= 0 && overrideHeight <= 0) {
         return CaptureOutputResolution{renderWidth, renderHeight};
     }
-    if (heightOverride <= 0) {
-        const int derivedHeight = (widthOverride * renderHeight / renderWidth) & ~1;
-        return CaptureOutputResolution{widthOverride, derivedHeight};
+    if (overrideHeight <= 0) {
+        const int width = detail::floorCaptureDimension(overrideWidth);
+        const int height = detail::floorCaptureDimension(width * renderHeight / renderWidth);
+        return CaptureOutputResolution{width, height};
     }
-    if (widthOverride <= 0) {
-        const int derivedWidth = (heightOverride * renderWidth / renderHeight) & ~1;
-        return CaptureOutputResolution{derivedWidth, heightOverride};
+    if (overrideWidth <= 0) {
+        const int height = detail::floorCaptureDimension(overrideHeight);
+        const int width = detail::floorCaptureDimension(height * renderWidth / renderHeight);
+        return CaptureOutputResolution{width, height};
     }
-    return CaptureOutputResolution{widthOverride, heightOverride};
+    return CaptureOutputResolution{
+        detail::floorCaptureDimension(overrideWidth),
+        detail::floorCaptureDimension(overrideHeight)
+    };
 }
 
 } // namespace IRVideo

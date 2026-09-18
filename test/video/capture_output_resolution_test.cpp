@@ -2,7 +2,7 @@
 
 #include <irreden/video/ir_video_types.hpp>
 
-// Coverage for `deriveCaptureOutputResolution` — the pure aspect-derivation
+// Coverage for `resolveCaptureOutputResolution` — the pure aspect-derivation
 // step behind `VideoManager::configureCaptureOutputResolution` /
 // `toggleCapture`. Pure by construction (no render manager, no GPU), so the
 // interesting cases are pinned at compile time too.
@@ -10,69 +10,113 @@
 namespace {
 
 using IRVideo::CaptureOutputResolution;
-using IRVideo::deriveCaptureOutputResolution;
+using IRVideo::resolveCaptureOutputResolution;
 
-constexpr CaptureOutputResolution kBothZero = deriveCaptureOutputResolution(0, 0, 1920, 1080);
-static_assert(kBothZero.width_ == 1920 && kBothZero.height_ == 1080);
+constexpr CaptureOutputResolution kBothUnset = resolveCaptureOutputResolution(0, 0, 1280, 720);
+static_assert(kBothUnset.width_ == 1280 && kBothUnset.height_ == 720);
 
-constexpr CaptureOutputResolution kBothNonZero =
-    deriveCaptureOutputResolution(640, 480, 1920, 1080);
-static_assert(kBothNonZero.width_ == 640 && kBothNonZero.height_ == 480);
+constexpr CaptureOutputResolution kBothSet = resolveCaptureOutputResolution(640, 360, 1280, 720);
+static_assert(kBothSet.width_ == 640 && kBothSet.height_ == 360);
+
+// Odd set dimensions round down to even.
+constexpr CaptureOutputResolution kBothSetOdd = resolveCaptureOutputResolution(641, 361, 1280, 720);
+static_assert(kBothSetOdd.width_ == 640 && kBothSetOdd.height_ == 360);
 
 // 16:9 render, width-only override: height derives exactly, already even.
-constexpr CaptureOutputResolution kWidthOnlyDerived =
-    deriveCaptureOutputResolution(640, 0, 1920, 1080);
-static_assert(kWidthOnlyDerived.width_ == 640 && kWidthOnlyDerived.height_ == 360);
+constexpr CaptureOutputResolution kWidthOnly16x9 =
+    resolveCaptureOutputResolution(640, 0, 1280, 720);
+static_assert(kWidthOnly16x9.width_ == 640 && kWidthOnly16x9.height_ == 360);
 
-// Non-16:9 render (4:3), width-only override: height derives from that aspect.
-constexpr CaptureOutputResolution kWidthOnly4x3 = deriveCaptureOutputResolution(640, 0, 800, 600);
+// Non-16:9 render (4:3), width-only and height-only override.
+constexpr CaptureOutputResolution kWidthOnly4x3 = resolveCaptureOutputResolution(640, 0, 800, 600);
 static_assert(kWidthOnly4x3.width_ == 640 && kWidthOnly4x3.height_ == 480);
 
-// Height-only override derives width from the render aspect.
-constexpr CaptureOutputResolution kHeightOnly = deriveCaptureOutputResolution(0, 360, 1920, 1080);
-static_assert(kHeightOnly.width_ == 640 && kHeightOnly.height_ == 360);
+constexpr CaptureOutputResolution kHeightOnly4x3 = resolveCaptureOutputResolution(0, 480, 800, 600);
+static_assert(kHeightOnly4x3.width_ == 640 && kHeightOnly4x3.height_ == 480);
 
-// An odd derived value rounds down to even.
-constexpr CaptureOutputResolution kOddDerivedHeight =
-    deriveCaptureOutputResolution(100, 0, 1000, 333);
-static_assert(kOddDerivedHeight.width_ == 100 && kOddDerivedHeight.height_ == 32);
+// Raw quotient 61 rounds down to even.
+constexpr CaptureOutputResolution kOddQuotient = resolveCaptureOutputResolution(110, 0, 1280, 720);
+static_assert(kOddQuotient.width_ == 110 && kOddQuotient.height_ == 60);
 
-TEST(CaptureOutputResolutionTest, BothZeroFollowsRenderOutput) {
-    const CaptureOutputResolution resolved = deriveCaptureOutputResolution(0, 0, 1920, 1080);
-    EXPECT_EQ(resolved.width_, 1920);
-    EXPECT_EQ(resolved.height_, 1080);
+// A negative override is treated as unset.
+constexpr CaptureOutputResolution kNegativeIsUnset =
+    resolveCaptureOutputResolution(-5, 360, 1280, 720);
+static_assert(kNegativeIsUnset.width_ == 640 && kNegativeIsUnset.height_ == 360);
+
+// Degenerate set dimensions floor at 2 so the encoder never sees a
+// zero-sized dimension, on both the set and the derived axis.
+constexpr CaptureOutputResolution kFloorSetDimension =
+    resolveCaptureOutputResolution(2, 0, 1280, 720);
+static_assert(kFloorSetDimension.width_ == 2 && kFloorSetDimension.height_ == 2);
+
+constexpr CaptureOutputResolution kFloorOddSetDimension =
+    resolveCaptureOutputResolution(1, 0, 1280, 720);
+static_assert(kFloorOddSetDimension.width_ == 2 && kFloorOddSetDimension.height_ == 2);
+
+constexpr CaptureOutputResolution kFloorBothSetDimensions =
+    resolveCaptureOutputResolution(1, 1, 1280, 720);
+static_assert(kFloorBothSetDimensions.width_ == 2 && kFloorBothSetDimensions.height_ == 2);
+
+TEST(CaptureOutputResolutionTest, BothUnsetFollowsRenderOutputUnrounded) {
+    const CaptureOutputResolution resolved = resolveCaptureOutputResolution(0, 0, 1280, 720);
+    EXPECT_EQ(resolved.width_, 1280);
+    EXPECT_EQ(resolved.height_, 720);
 }
 
-TEST(CaptureOutputResolutionTest, BothNonZeroKeepsCallerDimensions) {
-    const CaptureOutputResolution resolved = deriveCaptureOutputResolution(640, 480, 1920, 1080);
+TEST(CaptureOutputResolutionTest, BothSetKeepsCallerDimensionsRoundedEven) {
+    CaptureOutputResolution resolved = resolveCaptureOutputResolution(640, 360, 1280, 720);
     EXPECT_EQ(resolved.width_, 640);
-    EXPECT_EQ(resolved.height_, 480);
+    EXPECT_EQ(resolved.height_, 360);
+
+    resolved = resolveCaptureOutputResolution(641, 361, 1280, 720);
+    EXPECT_EQ(resolved.width_, 640);
+    EXPECT_EQ(resolved.height_, 360);
 }
 
 TEST(CaptureOutputResolutionTest, WidthOnlyDerivesHeightFromRenderAspect) {
     // 16:9 render.
-    CaptureOutputResolution resolved = deriveCaptureOutputResolution(640, 0, 1920, 1080);
+    CaptureOutputResolution resolved = resolveCaptureOutputResolution(640, 0, 1280, 720);
     EXPECT_EQ(resolved.width_, 640);
     EXPECT_EQ(resolved.height_, 360);
 
     // 4:3 render — the clip-preset regression this derivation exists for:
     // a non-16:9 creation must not be squished to the 16:9 preset height.
-    resolved = deriveCaptureOutputResolution(640, 0, 800, 600);
+    resolved = resolveCaptureOutputResolution(640, 0, 800, 600);
     EXPECT_EQ(resolved.width_, 640);
     EXPECT_EQ(resolved.height_, 480);
 }
 
 TEST(CaptureOutputResolutionTest, HeightOnlyDerivesWidthFromRenderAspect) {
-    const CaptureOutputResolution resolved = deriveCaptureOutputResolution(0, 360, 1920, 1080);
+    const CaptureOutputResolution resolved = resolveCaptureOutputResolution(0, 480, 800, 600);
+    EXPECT_EQ(resolved.width_, 640);
+    EXPECT_EQ(resolved.height_, 480);
+}
+
+TEST(CaptureOutputResolutionTest, OddDerivedQuotientRoundsDownToEven) {
+    // 110 * 720 / 1280 == 61.875 -> 61 (odd) before the even mask.
+    const CaptureOutputResolution resolved = resolveCaptureOutputResolution(110, 0, 1280, 720);
+    EXPECT_EQ(resolved.width_, 110);
+    EXPECT_EQ(resolved.height_, 60);
+}
+
+TEST(CaptureOutputResolutionTest, NegativeOverrideIsTreatedAsUnset) {
+    const CaptureOutputResolution resolved = resolveCaptureOutputResolution(-5, 360, 1280, 720);
     EXPECT_EQ(resolved.width_, 640);
     EXPECT_EQ(resolved.height_, 360);
 }
 
-TEST(CaptureOutputResolutionTest, OddDerivedDimensionRoundsDownToEven) {
-    // 100 * 333 / 1000 == 33.3 -> 33 (odd) before the even mask.
-    const CaptureOutputResolution resolved = deriveCaptureOutputResolution(100, 0, 1000, 333);
-    EXPECT_EQ(resolved.width_, 100);
-    EXPECT_EQ(resolved.height_, 32);
+TEST(CaptureOutputResolutionTest, DegenerateSetDimensionFloorsAtTwoOnBothAxes) {
+    CaptureOutputResolution resolved = resolveCaptureOutputResolution(2, 0, 1280, 720);
+    EXPECT_EQ(resolved.width_, 2);
+    EXPECT_EQ(resolved.height_, 2);
+
+    resolved = resolveCaptureOutputResolution(1, 0, 1280, 720);
+    EXPECT_EQ(resolved.width_, 2);
+    EXPECT_EQ(resolved.height_, 2);
+
+    resolved = resolveCaptureOutputResolution(1, 1, 1280, 720);
+    EXPECT_EQ(resolved.width_, 2);
+    EXPECT_EQ(resolved.height_, 2);
 }
 
 } // namespace

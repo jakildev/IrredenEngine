@@ -37,12 +37,13 @@ class VideoManager {
         double audioSyncOffsetMs = 0.0,
         IRAudio::IAudioCaptureSource *audioCaptureSource = nullptr
     );
-    /// Encoded frame size for the next recording. Both zero keeps following
-    /// the render output resolution (the default); exactly one non-zero
-    /// derives the other from the render output's aspect at recording start
-    /// (see `deriveCaptureOutputResolution`); both non-zero replaces the
-    /// render output resolution outright. Odd values round down to even for
-    /// yuv420p.
+    /// Encoded frame size for the next recording. A value `<= 0` is unset.
+    /// Both unset keeps following the render output resolution (the
+    /// default); exactly one set derives the other from the render output's
+    /// aspect at recording start; both set replaces the render output
+    /// resolution outright. Stores what it is given — see
+    /// `resolveCaptureOutputResolution` for the even/floor-of-2 rounding
+    /// applied at recording start.
     void configureCaptureOutputResolution(int width, int height);
     void configureScreenshotOutputDir(const std::string &outputDirPath);
 
