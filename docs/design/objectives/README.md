@@ -95,8 +95,12 @@ are filed unlabeled and wait for `human:approved` like any other filed
 task, and they are explicitly outside the agent-approved follow-up lane
 (that lane is for verified defect-shaped follow-ups, not direction).
 
-A per-objective pre-approved lane — where children filed under a
-signed-off objective queue without per-ticket approval, the way epic
-children already do under a signed umbrella — is the natural next step
-once sweep proposals have earned trust. It is deliberately **not** part
-of this mechanism yet; nothing in the queue gates reads objective files.
+A per-objective pre-approved lane — where work under a signed-off
+objective proceeds without per-ticket approval, the way epic children
+already do under a signed umbrella — exists in one trial form: the
+**campaign** ([`docs/agents/campaign-protocol.md`](../../agents/campaign-protocol.md)).
+One persistent fable session works an objective from a loose plan in
+`docs/design/campaigns/<slug>.md`, stacks PRs, and hands the human a
+reviewed stack at each checkpoint; the objective file names its campaign
+under `## Current state`. Nothing in the queue gates reads objective
+files; approval still happens at merge.

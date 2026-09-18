@@ -425,8 +425,8 @@ See docs/agents/skills/flow-b.md for a related flow.
             self.skipTest("architect-protocol.md not found — not running in engine repo")
         result = validate_roles([(engine_root, "engine")])
         role_protocols = [p for p in result["protocols"] if p.get("lane") == "role"]
-        self.assertEqual(len(role_protocols), 3)
-        self.assertEqual(sum(len(p["keys"]) for p in role_protocols), 29)
+        self.assertEqual(len(role_protocols), 4)
+        self.assertEqual(sum(len(p["keys"]) for p in role_protocols), 40)
         role_errors = sum(
             wr["n_errors"]
             for p in role_protocols

@@ -297,8 +297,7 @@ Per FLEET-RUNTIME.md § "End-of-iteration feedback"; your file is
 ## Hard rules
 
 [CLAUDE-BASELINE.md](../../docs/agents/CLAUDE-BASELINE.md) § "Hard rules for autonomous
-fleet roles", plus: never write plan files (the plan is the `## Plan` comment; nothing
-on disk is a plan or influences pickup — authority for who works on what is the
-`fleet:claim-*` label and `fleet-claim` locks), and never claim outside your class or
-edit a task's class label toward your own (the step 8a re-tag goes up the ladder only,
-with a release).
+fleet roles", plus: never write plan files (the plan is the `## Plan` comment; nothing on
+disk is a plan or influences pickup — authority for who works on what is the `fleet:claim-*`
+label and `fleet-claim` locks), and never claim outside your class or edit a task's class
+label toward your own (the step 8a re-tag goes up the ladder only, with a release).

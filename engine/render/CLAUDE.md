@@ -161,10 +161,8 @@ Use the validation index's jitter probe and the camera contracts below.
 - SDF and voxel-pool silhouettes are bit-identical only when effective
   subdivision is one. At higher subdivision, SDFs are analytically smooth and
   voxel pools retain the carved lattice silhouette; this difference is
-  intentional.
-
-Representation choice, shared geometry expectations and profiling workloads are
-documented in [voxel and SDF rendering](../../docs/design/voxel-and-sdf-rendering.md).
+  intentional. Representation choice, shared geometry expectations and
+  profiling workloads: [voxel and SDF rendering](../../docs/design/voxel-and-sdf-rendering.md).
 
 ## Lighting contracts
 
