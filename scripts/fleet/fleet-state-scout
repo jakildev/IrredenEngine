@@ -59,8 +59,8 @@ from fleet_blocked_by import (
 )
 from fleet_branch_match import (
     PARKED_PR_LABELS,
-    body_closed_issue_numbers,
     branch_matches_issue,
+    split_closed_issue_refs,
 )
 
 # Conditional-REST polling core (#1394 Q1) — see the fetcher section below.
@@ -541,15 +541,29 @@ def _is_pull_request(issue):
     return "pull_request" in issue
 
 
-# Closes/Fixes/Resolves #N refs parsed from a PR body at fetch time — where the
-# body is still live — into pr["closes_issues"], a bounded sorted int list.
-# enrich_stackable_blocker_prs matches its blocker union's body half on this
-# derived field rather than re-parsing pr["body"], which it may never receive:
-# bodies are popped after enrichment and fetch_prs's 304 fast path reuses the
-# body-stripped prior records, so the live parse was dead on every reuse tick
-# (#2442). Deriving once here keeps the offer live; the closing-keyword grammar
-# itself lives in fleet_branch_match.body_closed_issue_numbers so it can't
-# drift from the claim/sweep side that shares it (#2419).
+# Closes/Fixes/Resolves refs parsed from a PR body at fetch time — where the
+# body is still live — into two derived keys: pr["closes_issues"], a bounded
+# sorted int list of refs resolving to the PR's OWN repo (bare `#N`, or
+# `owner/repo#N` naming that repo), and pr["closes_cross_repo"], a sorted list
+# of {"repo": <key>, "number": N} for GitHub-honored cross-repo refs naming
+# the OTHER fleet repo. enrich_stackable_blocker_prs matches its
+# blocker union's body half on the first, enrich_inflight_pr_tasks reads both;
+# neither re-parses pr["body"], which they may never receive: bodies are
+# popped after enrichment and fetch_prs's 304 fast path reuses the
+# body-stripped prior records, so a live parse was dead on every reuse tick
+# (#2442). Deriving once here keeps the signals live; the closing-keyword
+# grammar itself lives in fleet_branch_match.split_closed_issue_refs so it
+# can't drift from the claim/sweep side that shares it (#2419).
+def derive_closes_refs(body, repo):
+    """(closes_issues, closes_cross_repo) for a PR body in `repo`.
+
+    `repo` is any `fleet_branch_match.repo_key` spelling (the scout passes
+    the `owner/repo` slug it fetched with). The grammar does the split; this
+    only shapes the cross-repo half into the `{repo, number}` records the
+    state file carries.
+    """
+    closes_issues, cross = split_closed_issue_refs(body, repo)
+    return closes_issues, [{"repo": key, "number": num} for key, num in cross]
 
 
 # Version of the per-PR record shape _fetch_prs_graphql emits. fetch_prs's 304
@@ -574,7 +588,13 @@ def _is_pull_request(issue):
 # GitHub never did. A changed value with no key change is the case a
 # key-presence test cannot catch, so the marker is the only thing that retires
 # the wider list on tick 1 rather than whenever the ETag next flips.
-PR_RECORD_SCHEMA = 3
+#
+# 3 -> 4: closes_cross_repo added, and closes_issues widened to include a
+# repo-qualified ref naming the PR's own repo (`Closes jakildev/irreden#N`
+# inside a game PR). A schema-3 record lacks the key AND can under-report the
+# existing one; without the bump a quiet repo would serve records that leave
+# a cross-repo-remedied task claimable indefinitely.
+PR_RECORD_SCHEMA = 4
 
 
 def _fetch_prs_graphql(repo):
@@ -631,11 +651,12 @@ def _fetch_prs_graphql(repo):
             }
             for i, rev in enumerate(raw_reviews)
         ]
-        # Derive here, while body is live, so the signal survives both the
+        # Derive here, while body is live, so the signals survive both the
         # post-enrich body-pop and fetch_prs's 304 reuse of body-stripped
-        # records (#2442). Its presence is also fetch_prs's cache-desync marker.
-        pr["closes_issues"] = sorted(
-            set(body_closed_issue_numbers(pr.get("body", "") or ""))
+        # records (#2442). Their presence is also fetch_prs's cache-desync
+        # marker.
+        pr["closes_issues"], pr["closes_cross_repo"] = derive_closes_refs(
+            pr.get("body", "") or "", repo
         )
         # The reuse marker fetch_prs gates the 304 fast path on. Stamped last so
         # a record only claims the current shape once every field above is set.
@@ -2448,7 +2469,7 @@ def enrich_stackable_blocker_prs(state):
     #
     # A PR "matches" the blocker when its head branch is `claude/<NNN>-…`, OR its
     # derived closes_issues (Closes/Fixes/Resolves #NNN, parsed at fetch time —
-    # see body_closed_issue_numbers) contains NNN, OR NNN IS that PR's own number
+    # see derive_closes_refs) contains NNN, OR NNN IS that PR's own number
     # — the same union fleet-claim's find-stackable-blockers uses, so the scout
     # offers every base the live finder would (the Closes-#N form catches blocker
     # PRs on non-standard / human branches). The Closes half reads the derived
@@ -2606,8 +2627,26 @@ def enrich_inflight_pr_tasks(state):
     # — `pr["number"] == issue_num_int` — is deliberately NOT mirrored: that one
     # resolves a `Blocked by: #<PR>` ref with no backing issue, which has no
     # analog for a task's own issue number.
-    for repo_key, repo_state in state["repos"].items():
+    #
+    # A third link crosses repos: a PR in the OTHER fleet repo whose body
+    # carries GitHub's `Closes owner/repo#N` naming this repo (derived into
+    # `closes_cross_repo` at fetch time) is in-flight work for task N here —
+    # a fresh worker on this repo cannot advance a PR that lives in the other
+    # one, so this is a hard no-pick like the own-repo arms, not advisory
+    # (an engine issue was redispatched on every trigger while its game PR
+    # sat approved with a cross-repo `Closes`, #3520). Only the BODY arm
+    # crosses: `claude/<N>-…` in the other repo is that repo's #N
+    # (test_cross_repo_isolation), and a bare `Closes #N` there is likewise
+    # that repo's (test_body_link_does_not_cross_repos). An own-repo match
+    # keeps precedence; `repo` on the tag says which repo the PR lives in.
+    for this_repo, repo_state in state["repos"].items():
         prs = repo_state.get("prs", [])
+        other_prs = [
+            (other_repo, pr)
+            for other_repo, other_state in state["repos"].items()
+            if other_repo != this_repo
+            for pr in other_state.get("prs", [])
+        ]
         for task in repo_state.get("tasks", {}).get("open", []):
             issue_num = (task.get("issue") or "").lstrip("#")
             if not issue_num:
@@ -2621,17 +2660,28 @@ def enrich_inflight_pr_tasks(state):
             # field never has to pick a base, so it need not disambiguate —
             # any matching PR proves the issue is in flight.
             match = next(
-                (pr for pr in prs
-                 if branch_matches_issue(pr.get("headRefName", ""), issue_num, repo_key)
+                ((this_repo, pr) for pr in prs
+                 if branch_matches_issue(pr.get("headRefName", ""), issue_num, this_repo)
                  or issue_num_int in (pr.get("closes_issues") or [])),
                 None,
             )
             if match is None:
+                # `or []` also covers a schema-3 record the 304 path reused
+                # before the key existed: no key, no cross-repo link, no raise.
+                match = next(
+                    ((other_repo, pr) for other_repo, pr in other_prs
+                     if {"repo": this_repo, "number": issue_num_int}
+                     in (pr.get("closes_cross_repo") or [])),
+                    None,
+                )
+            if match is None:
                 continue
+            pr_repo, pr = match
             task["inflight_pr"] = {
-                "number": match.get("number"),
-                "headRefName": match.get("headRefName", ""),
-                "parked": bool(set(match.get("labels", [])) & PARKED_PR_LABELS),
+                "number": pr.get("number"),
+                "headRefName": pr.get("headRefName", ""),
+                "parked": bool(set(pr.get("labels", [])) & PARKED_PR_LABELS),
+                "repo": pr_repo,
             }
 
 
@@ -4425,11 +4475,11 @@ def tick_once():
         enrich_shadow_merged_pr_tasks(state)
         # Drop PR bodies so they don't bloat state.json or the per-role slices
         # — mirrors resolve_human_approved_blockers popping issue bodies. Safe
-        # because the Closes-#N stack-base signal was already derived into
-        # pr["closes_issues"] at fetch time (see body_closed_issue_numbers);
-        # nothing downstream reads pr["body"]. Popping here after deriving
-        # there is what lets the signal survive the 304-reuse of these
-        # stripped records (#2442).
+        # because the Closes stack-base and in-flight signals were already
+        # derived into pr["closes_issues"] / pr["closes_cross_repo"] at fetch
+        # time (see derive_closes_refs); nothing downstream reads pr["body"].
+        # Popping here after deriving there is what lets the signals survive
+        # the 304-reuse of these stripped records (#2442).
         for _repo_state in state["repos"].values():
             for _pr in _repo_state.get("prs", []):
                 _pr.pop("body", None)

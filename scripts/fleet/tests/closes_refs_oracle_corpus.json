@@ -1,0 +1,181 @@
+{
+ "_comment": "Recorded 2026-09-18 for #3520 over every open PR in both fleet repos: GitHub's closingIssuesReferences (the field it auto-closes from) versus fleet_branch_match.body_closed_issue_refs(body, repo). Engine rows carry the full body. Rows from the private repo are reduced to their closing tokens (CLAUDE-BASELINE.md 'Cross-repo information isolation'); the cross-repo row is the one that fires the #3520 gate. Re-record with the snippet in test_branch_matches_issue.py OracleCorpus.",
+ "rows": [
+  {
+   "repo": "engine",
+   "number": 3483,
+   "oracle": [],
+   "body": "## Summary\n- Give the hosted llvmpipe run 120 seconds to collect 60 frames per quick-matrix cell, leaving 45 post-warmup samples.\n- Reject any head or baseline cell without a positive parsed frame measurement as an infrastructure error, and verify that the PR wrapper propagates the error without posting a verdict.\n- Upload the complete perf run, including per-cell logs, for seven days so measurement failures are diagnosable from the workflow run.\n\n## Test plan\n- [x] `python3 scripts/perf/tests/test_baseline_layouts.py` — all arms passed, including the new report-less head arm.\n- [x] `bash scripts/perf/tests/test_baseline_writer.sh` — all 32 writer and reader assertions passed.\n- [x] `bash test/tools/normalization_test.sh` — 16 passed, 0 failed.\n- [x] `ruff check scripts/` — all checks passed.\n- [x] `bash scripts/fleet/tests/test_workflow_paths_sync.sh` — 25 passed, 0 failed.\n- [x] `python3 scripts/lint_comment_refs.py` — none above budget.\n- [x] `fleet-build --target IRPerfGrid` — built target IRPerfGrid.\n- [x] `fleet-pr-overlap --base master --repo engine` — `VERDICT: clean`.\n- [x] Report-less matrix control with a failing `fleet-run` stub — the matrix exited 1 with `2/2 cell(s) produced no profile report`.\n- [x] Perf Gate runs [35252756484](https://github.com/jakildev/IrredenEngine/actions/runs/35252756484) and [35252805264](https://github.com/jakildev/IrredenEngine/actions/runs/35252805264) — diagnostics uploaded; both cells recorded `exit_status: 134`, `status: no_report` after the hosted OpenGL compiler rejected `any(bool)`.\n\n## Acceptance evidence\n| Criterion | Check run | Observed |\n|---|---|---|\n| A report-less head run is an infrastructure error and produces no PR verdict | `python3 scripts/perf/tests/test_baseline_layouts.py` arm H | Checker and wrapper both exited 2; no `gh` comment invocation was recorded; the missing measurement reached stderr. |\n| The hosted runner gets a bounded quick-matrix window and retains diagnostics | Runs 35252756484 and 35252805264 | The two-cell matrix returned in 10–11 seconds and uploaded both cell logs plus the manifest. It did not measure: both cells abort in shader compilation with exit 134. |\n| Existing layout, exit mapping, branch writer, and normalization behavior remains intact | Layout, writer, and normalization controls listed above | All controls passed locally: layout/exit arms, 32 writer assertions, and 16 normalization assertions. |\n| A push or dispatch cannot persist a report-less run | Failing `fleet-run` matrix control | Matrix exited 1 after writing diagnostics; commit `12e8918a7` moves this failure before the baseline writer. |\n\n## Notes for reviewer\nThis is the measurement-layer remainder discovered while PR #2997 completed the reader and writer work. The uploaded logs corrected the earlier timeout diagnosis: Mesa rejects `any(ivec2(...) != ...)` from `c_voxel_to_trixel_stage_1_body.glsl`, so the process aborts before frame 1. Resolving that shader-compilation defect crosses the opus worker's render boundary; issue #2817 is retagged fable and this PR remains WIP with `Refs` until the final red-path proof can run.\n\nRefs #2817\n\nAuthored by Codex (GPT-5 runtime).\n"
+  },
+  {
+   "repo": "engine",
+   "number": 3513,
+   "oracle": [
+    [
+     "engine",
+     3508
+    ]
+   ],
+   "body": "## Summary\n- `fleet-clip` accepts a literal `-` in the `<before>` position and writes a single-pane `<out-basename>.mp4`/`.gif` carrying only the \"after\" label overlay — for a PR with no before capture (a new demo, or the PR that adds `--auto-record` itself). `-` in the `<after>` position is a usage error (exit 2, one stderr line, no output).\n- `fleet-clip` creates the parent directory of `<out-basename>` before composing, so a standalone compose no longer needs a manual `mkdir -p`.\n- The two-arm path (`filter_complex` string, input order, encoder flags, GIF filter) is byte-for-byte unchanged — proven by an exact md5 match against master's script on identical synthetic inputs.\n- `docs/agents/skills/attach-screenshots.md` documents the single-arm form (steps 5, 7) and notes the Clip markdown line is unchanged either way (step 8); `fleet-help`'s usage entry and the script's docstring both updated to match.\n- Registers `scripts/fleet/fleet-clip` in `ruff.toml`'s `extend-include` — the row #3493 omitted, which is what has `fleet-tests.yml` red on master today via `test_lint_python_registry.py`.\n\n## Test plan\n- [x] `bash scripts/fleet/tests/run_all.sh --only fleet_clip` → `PASS test_fleet_clip.sh` (26 assertions: paired-mode regression, single-arm positive-fire label check, mkdir-creates-directory, missing-input/missing-ffmpeg/dash-in-after negative controls).\n- [x] `bash scripts/fleet/tests/run_all.sh` on the PR head → 190 suites, 189 passed, 1 failed (`test_cross_repo_shared_file_parity.sh`, pre-existing on master at the PR's base commit `348d40bd1`, unrelated `classify-auto-rereview.sh` drift against the downstream game repo).\n- [x] Same run on unmodified master at `348d40bd1` → 190 suites, 188 passed, 2 failed (`test_cross_repo_shared_file_parity.sh` and `test_lint_python_registry.py`). The PR's failed set is exactly master's minus `test_lint_python_registry.py`.\n- [x] `python3 scripts/fleet/tests/test_lint_python_registry.py` → 18/18 pass on the PR head (fails on unmodified master, naming `fleet-clip`).\n- [x] `ruff check --config ruff.toml scripts/fleet/fleet-clip` → `All checks passed!`.\n- [x] Two-arm byte-identity A/B: staged master's `fleet-clip` + both label PNGs in a scratch dir, ran it and the PR's script against the same 320x180 `testsrc`/`testsrc2` inputs — both `out.mp4` are 40675 bytes, md5 `01b445993a2d58d7d1068f2353e2197b`.\n- [x] `fleet-validate-roles` → `attach-screenshots.md (12 keys)` PASS for `[engine] SKILL.md` (no new delta key introduced).\n- [x] `./scripts/fleet/fleet-help | grep -A2 fleet-clip` shows the `<before.mp4>|-` usage form.\n\n## Acceptance evidence\n| Criterion | Check run | Observed |\n|---|---|---|\n| 1. Single-arm output (positive-fire) | `bash scripts/fleet/tests/run_all.sh --only fleet_clip` | `PASS test_fleet_clip.sh`; single-arm `out-single.mp4` is 320x180 (the input's own size), `out-single.gif` present; label-crop mean luma 37.47 (fires > 20), control-crop mean luma 0.0 (< 5) |\n| 2. Two-arm regression, exact | md5 A/B against `git show origin/master:scripts/fleet/fleet-clip` on identical `testsrc`/`testsrc2` inputs | both `out.mp4` = 40675 bytes, md5 `01b445993a2d58d7d1068f2353e2197b`; `git diff origin/master -- scripts/fleet/fleet-clip` shows no hunk inside `compose_mp4`'s `filter_complex` or `compose_gif`'s `vf` string |\n| 3. Directory creation | `bash scripts/fleet/tests/run_all.sh --only fleet_clip` | `fleet-clip before.mp4 after.mp4 $WORKDIR/new/deeper/out` exits 0, both outputs exist under the newly created dir; missing-input under a nonexistent dir still exits 1 and creates no directory |\n| 4. `-` in after position | `bash scripts/fleet/tests/run_all.sh --only fleet_clip` | exits 2, exactly one stderr line, no output file written |\n| 5. Docs and help | `grep -c 'fleet-clip - ' docs/agents/skills/attach-screenshots.md`; `fleet-validate-roles`; `./scripts/fleet/fleet-help \\| grep -A2 fleet-clip` | grep = 1 (step 7); `attach-screenshots.md (12 keys)` PASS `[engine] SKILL.md`; help shows `fleet-clip <before.mp4>\\|- <after.mp4> <out-basename>` |\n| 6. Suite parity, registry gate repaired | `python3 scripts/fleet/tests/test_lint_python_registry.py`; `bash scripts/fleet/tests/run_all.sh` on PR head vs. unmodified master@`348d40bd1` | registry test 18/18 on PR head (fails on master); PR head failed set `{test_cross_repo_shared_file_parity.sh}` = master's failed set `{test_cross_repo_shared_file_parity.sh, test_lint_python_registry.py}` minus the registry test |\n\n## Notes for reviewer\n`test_cross_repo_shared_file_parity.sh` fails identically on unmodified master at this PR's base commit (`classify-auto-rereview.sh` drift vs. the downstream game repo) — confirmed by running it directly against the main clone at `348d40bd1`, unrelated to this PR's diff.\n\n`fleet-pr-overlap --base master` reports a non-blocking overlap: `#3507 scripts/fleet/fleet-help clean` — #3507 touches unrelated campaign-seeding entries in the same file, not the `fleet-clip` usage line this PR edits.\n\nCloses #3508\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n"
+  },
+  {
+   "repo": "engine",
+   "number": 3515,
+   "oracle": [
+    [
+     "engine",
+     3514
+    ]
+   ],
+   "body": "## Summary\n- Define `UNICODE` for RtAudio's `rtaudio` target on Apple builds only, so its CoreAudio device-enumeration path takes the UTF-8 branch (`kCFStringEncodingUTF8`) instead of `CFStringGetSystemEncoding()` (MacRoman).\n- Without this, a CoreAudio device name containing a curly apostrophe encodes as a single MacRoman high byte (`0xD5`) in the logged `Device: ` line, which makes the whole run log fail UTF-8 validation and makes the harness's `ugrep -I` (skip-binary) match nothing for every pattern on that file.\n\n## Test plan\n- [x] `cmake --preset macos-debug` + `fleet-build --target IRLuaWidgetsDemo` — clean build, rtaudio recompiles with the new define.\n- [x] `fleet-run IRLuaWidgetsDemo --auto-screenshot 5 > /tmp/run.log 2>&1` then `file /tmp/run.log` — now `Unicode text, UTF-8 text` (was `ISO-8859 text`).\n- [x] `fleet-build --target IRShapeDebug` + `fleet-run IRShapeDebug --auto-screenshot 3` — `RESULT=CLEAN` (re-run after the `IR_isDarwin` amend; `flags.make` still carries `-DUNICODE` ×1).\n- [x] `linux-build` (Engine Tests) green on the amended head — run 35312216680.\n\n## Acceptance evidence\n| Criterion | Check run | Observed |\n|---|---|---|\n| Build artefact carries `-DUNICODE` | `command grep -c -- '-DUNICODE' build/_deps/rtaudio-build/CMakeFiles/rtaudio.dir/flags.make` | `1` |\n| Run log is valid UTF-8 | `iconv -f UTF-8 -t UTF-8 /tmp/run.log > /dev/null; file /tmp/run.log` | `iconv` exit 0; `file` reports `Unicode text, UTF-8 text` (no `ISO-8859`) |\n| Positive-fire: device line still present, now UTF-8-encoded, harness grep matches command grep | `command grep -c 'Device: ' /tmp/run.log` → `3`; `perl -ne 'print if /\\xE2\\x80\\x99/' /tmp/run.log \\| command grep -c 'Device: '` → `1`; `grep -c EngineLog /tmp/run.log` vs `command grep -c EngineLog /tmp/run.log` | both `288` (harness grep and command grep now agree) |\n| Other hosts unaffected | `if(IR_isDarwin)` guards the new `target_compile_definitions` call, so the generated flags for Linux/Windows builds are byte-for-byte unchanged. The only host CI job in this repo is `linux-build` (`.github/workflows/engine-tests.yml`); Windows has no GitHub job and is covered by the fleet's native-host smoke lane (`fleet:needs-windows-smoke`) after merge | structurally a no-op off Apple; `linux-build` green on the amended head `307828916`: https://github.com/jakildev/IrredenEngine/actions/runs/35312216680 (Configure / Build tests / Run tests / Build smoke target all `success`) |\n| macOS smoke still clean | `fleet-run IRShapeDebug --auto-screenshot 3` | `ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0` |\n| Comment names the cause | `engine/audio/CMakeLists.txt` new comment | cites CoreAudio/`CFStringGetSystemEncoding()`/MacRoman without a stray-macro risk |\n\n## Notes for reviewer\nThe one-shot `MB_CUR_MAX`/`AudioDeviceID ids[nDevices]` Clang VLA-extension warnings during the rtaudio rebuild are pre-existing upstream code, unrelated to this change (no `-Werror` on that target).\n\nCloses #3514\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\n"
+  },
+  {
+   "repo": "engine",
+   "number": 3516,
+   "oracle": [
+    [
+     "engine",
+     3511
+    ]
+   ],
+   "body": "## Summary\n- `VideoManager::configureCaptureOutputResolution` accepts exactly one non-zero dimension (previously any single non-zero value reset both overrides to 0, with a warning); the setter now only clamps negatives to 0 and stores the rest as given.\n- At recording start, `toggleCapture` resolves the pair via the new pure `IRVideo::resolveCaptureOutputResolution` (`engine/video/include/irreden/video/ir_video_types.hpp`): both unset follows the render output unrounded (byte-identical to today's OFF path); any set dimension, and any derived one, rounds down to even for yuv420p and floors at 2 so a degenerate override never hands the encoder a zero-sized dimension. The bitrate area-scaling gate widens from \"both set\" to \"either set\" and follows the resolved pair.\n- `scripts/fleet/clip-preset.lua` now sets `video_capture_output_width` only, dropping the hard-coded `video_capture_output_height = 360` that pinned every clip to 16:9.\n- New pure-function unit test `test/video/capture_output_resolution_test.cpp` (`CaptureOutputResolutionTest`, 8 tests + `static_assert`s) covers the full branch table: both-unset, both-set (+odd rounding), width-only, height-only, odd-quotient rounding, negative-as-unset, the floor-of-2 safety net on both the set and derived axis, and an unreported (0×0 or single-zero) render pair.\n- A render pair with a dimension `< 1` — `RenderManager::m_viewport` is 0×0 until the window reports its first size and while minimized, and `toggleCapture`'s viewport fallback does not re-check it — has no aspect: the resolver treats it as square (the derived axis mirrors the set one) instead of dividing by zero, and `toggleCapture` skips the pixel-area bitrate scaling when the render area is zero rather than casting an infinite ratio to `int`.\n\n## Test plan\n- [x] `fleet-run IrredenEngineTest --gtest_brief=1` — full suite green (1823 passed, 1 pre-existing skip).\n- [x] `fleet-run IrredenEngineTest --gtest_filter='CaptureOutputResolutionTest.*'` — 8/8 pass.\n- [x] Zero render pair (scratch build with `outputResolution = ivec2(0)` forced after the viewport fallback in `toggleCapture`, then reverted and rebuilt; `strings` on the shipped binary confirms no residue): `fleet-run IRShapeDebug --auto-record 60 --config-preset <abs path>/scripts/fleet/clip-preset.lua` → log `Recording: source=1280x720 -> output=640x640 @ 1500000 bps`, `ffprobe` `640,640`, `RESULT=CLEAN` — no divide-by-zero, unscaled budget.\n- [x] `fleet-run IRShapeDebug --auto-record 60 --config-preset scripts/fleet/clip-preset.lua` (16:9, 1280x720 source) → log `Recording: source=1280x720 -> output=640x360 @ 375000 bps`; `ffprobe` confirms `capture.mp4` is 640x360.\n- [x] `fleet-run IRShapeDebug --auto-record 60` (no preset, both-zero path) → log `Recording: source=1280x720 -> output=1280x720 @ 10000000 bps` (unscaled default bitrate); `ffprobe` confirms 1280x720.\n- [x] `fleet-run IRShapeDebug --auto-record 60 --config-preset <preset overlaying game_resolution_width=800, game_resolution_height=600, video_capture_output_width=640, video_capture_bitrate=1500000>` (non-16:9, 4:3 render) → log `Recording: source=800x600 -> output=640x480 @ 960000 bps`; `ffprobe` confirms 640x480 (H/640 = 0.75, matching the 800x600 source aspect exactly).\n- [x] `git grep -n 'needs both dimensions' -- engine/video` → 0 hits (the retired warning).\n- [x] `fleet-build --target format-changed` clean.\n\n## Acceptance evidence\n| Criterion | Check run | Observed |\n|---|---|---|\n| Unit (no GPU): `CaptureOutputResolutionTest.*` passes, full binary green | `fleet-run IrredenEngineTest --gtest_filter='CaptureOutputResolutionTest.*'` then full suite | 8/8 pass; full suite 1823 passed / 1 pre-existing skip |\n| Zero render pair does not divide by zero (review needs-fix) | scratch build forcing the render pair to 0×0 in `toggleCapture`, `--auto-record 60` under `clip-preset.lua` + `ffprobe`; plus the 4 `static_assert` rows / runtime test for 0×0, 0×720, 1280×0 | log: `source=1280x720 -> output=640x640 @ 1500000 bps`; ffprobe: `640,640`; `RESULT=CLEAN` |\n| 16:9 non-regression (live) | `fleet-run IRShapeDebug --auto-record 60 --config-preset scripts/fleet/clip-preset.lua` + `ffprobe` | log: `source=1280x720 -> output=640x360 @ 375000 bps`; ffprobe: `640,360` — matches the plan's measured baseline exactly |\n| Non-16:9 (positive-fire, live) | `fleet-run IRShapeDebug --auto-record 60 --config-preset <800x600 game_resolution + width=640>` + `ffprobe` | log: `source=800x600 -> output=640x480 @ 960000 bps`; ffprobe: `640,480` — matches the plan's predicted delta exactly (today's behavior on this preset was `output=800x600 @ 1500000 bps`) |\n| Both-zero unchanged (live) | `fleet-run IRShapeDebug --auto-record 60` (no preset) | log: `source=1280x720 -> output=1280x720 @ 10000000 bps`; ffprobe: `1280,720` — no bitrate scaling on the OFF path |\n| Warning retired | `git grep -n 'needs both dimensions' -- engine/video` | 0 hits |\n| Format | `fleet-build --target format-changed` | `Built target format-changed`, no diffs after |\n\nHost: macOS (Metal), `IRShapeDebug` built at this branch's head.\n\n## Notes for reviewer\n- The first commit on this branch missed the issue's `## Plan` comment (only the issue body was read) and diverged on the resolver's contract — a different function name, and even-rounding done in the setter instead of the resolver, with no floor-of-2 safety net. The second commit reconciles the implementation, tests, and docs with the plan (and its `## Plan corrections` amendment) verbatim; the live evidence above matches the plan's predicted numbers exactly.\n- `fleet-pr-body-lint 3511` reads `ERROR #3511: issue #3511 plan: mixed prose and list acceptance criteria` (exit 2). Root cause: the plan's `### Acceptance criteria` list is followed by a trailing sentence (\"Height-only is proven by the unit rows…\") before the next heading — the same trailing-paragraph shape #3428 explicitly left unfixed (\"The parser's rule is right to refuse a paragraph *after* an item… a `## Plan corrections` comment does not rescue the parse\" — #3428's last comment, precedent on #3162 → PR #3442). Evidence rows above are hand-verified against the plan's own criteria 1–6 instead.\n\nCloses #3511\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\n"
+  },
+  {
+   "repo": "engine",
+   "number": 3517,
+   "oracle": [
+    [
+     "engine",
+     3509
+    ]
+   ],
+   "body": "## Summary\n- `ir-build` now retries once on a build failure when CMake's own `cmake_check_build_system` check regenerated the tree — the case where `--target` names a target added since the build dir's last configure (a branch switch that `add_subdirectory`s a new demo).\n- Mechanism: run the build as today; only on failure, run the check directly (bare, outside the CPU lock); if its combined output contains `Build files have been written to`, print one announce line and retry the build once; otherwise (or if the check itself fails) exit with the original/check status unchanged. Success path is byte-identical to before — zero added latency.\n- Two new `scripts/fleet/tests/` suites: `test_ir_build_stale_target_retry.sh` (hermetic stub-cmake truth table, 7 arms) and `test_ir_build_stale_target_real_cmake.sh` (real cmake+make against a `project(probe NONE)` fixture).\n- One sentence added to `docs/agents/BUILD.md` § \"`ir-build` / `ir-run` (canonical)\" and to `ir-build`'s own header comment.\n\n## Test plan\n- [x] **AC1 — live repro, first try.** Two worktrees: `<hist-wt>` (scratch, `git worktree add /tmp/ir3509-hist a4e0d016e`) built at `a4e0d016e` (`cmake --preset macos-debug -B build` + `cmake --build build --target IRShapeDebug`), then `git checkout 2a7b85e8e` in `<hist-wt>` (adds `creations/demos/reposition_stress/`, target `IRRepositionStress`) with no reconfigure. Control run FIRST from `<hist-wt>`: `~/src/IrredenEngine/engine/tools/bin/ir-build --target IRRepositionStress` (master's script) → `make: *** No rule to make target 'IRRepositionStress'.  Stop.`, rc 2. Then the PR's own script from the same cwd: `<pr-wt>/engine/tools/bin/ir-build --target IRRepositionStress` → rc 0, `ir-build: build tree regenerated for a new target; retrying` printed once, `<hist-wt>/build/creations/demos/reposition_stress/IRRepositionStress` exists (15.7 MB, timestamped at the retry). Scratch worktree removed after.\n- [x] **AC2 — hermetic truth table.** `bash scripts/fleet/tests/run_all.sh --only ir_build_stale_target_retry` → `ir-build stale-target retry tests: 16 passed, 0 failed` (7 arms: stub self-test, stale+unknown → build/check/build rc 0, fresh+unknown → build/check rc 2 no retry, check-fails → build/check rc 1 no retry, success-first-try → build only, stale again under `IRREDEN_BUILD_DIR`, stale again from a creation-worktree layout). `fleet-positive-control scripts/fleet/tests/test_ir_build_stale_target_retry.sh origin/master --include engine/tools` exits 0: `MEANINGFUL: 13 of 16 assertions fail against origin/master (348d40bd1)`.\n- [x] **AC3 — real-cmake positive-fire.** `bash scripts/fleet/tests/run_all.sh --only ir_build_stale_target_real_cmake` → `ir-build stale-target retry tests (real cmake): 8 passed, 0 failed` (configure `alpha`, append `beta` post-configure, `ir-build --target beta` regenerates + builds; negative control `--target gamma` fails with no retry, no stamp). `fleet-positive-control … --include engine/tools` exits 0: `MEANINGFUL: 3 of 8 assertions fail against origin/master (348d40bd1)`.\n- [x] **AC4 — no-op cost unchanged.** From the PR worktree, alternating A (`~/src/IrredenEngine/engine/tools/bin/ir-build`, master's script) / B (`./engine/tools/bin/ir-build`, this PR's script) against the same already-built `IRShapeDebug`:\n\n  | run | A (`real` s) | B (`real` s) |\n  |---|---|---|\n  | 1 | 1.19 | 0.85 |\n  | 2 | 0.81 | 0.85 |\n  | 3 | 0.92 | 0.90 |\n\n  A spread: 0.81–1.19 s. B median: 0.85 s — inside A's spread.\n- [x] **AC5 — suite health.** `bash scripts/fleet/tests/run_all.sh` → `192 suite(s) — 190 passed, 2 failed, 0 skipped`; both failures (`test_cross_repo_shared_file_parity.sh`, `test_lint_python_registry.py`) reproduce identically against a clean `origin/master` checkout (unrelated to this diff — the latter is the known-volatile suite tracked separately). `python3 scripts/fleet/fleet_test_subjects.py` → `0 unregistered subject finding(s)` (`engine/tools/bin/ir-build` was already registered).\n\n## Acceptance evidence\n| Criterion | Check run | Observed |\n|---|---|---|\n| Live repro succeeds first try, no manual cmake call | `ir-build --target IRRepositionStress` from `<hist-wt>` at `2a7b85e8e` (`a4e0d016e`→`2a7b85e8e` pair) | rc 0, one retry announce line, binary exists |\n| No-op rebuild adds no measurable wall time | A/B/A/B/A/B `/usr/bin/time -p` table above | B median (0.85s) inside A's spread (0.81–1.19s) |\n| `IRREDEN_BUILD_DIR` override and creation build dir take the same path | Hermetic T5 (override) / T6 (creation-worktree layout) in `test_ir_build_stale_target_retry.sh` | identical `build,check,build` sequence, rc 0, both suite runs above |\n| A `scripts/fleet/tests/` case exercises detection with a fake build dir + touched CMakeLists.txt | `test_ir_build_stale_target_retry.sh` (stub) + `test_ir_build_stale_target_real_cmake.sh` (real) | 16 + 8 assertions, all passing; positive-control MEANINGFUL against origin/master for both |\n| `bash scripts/fleet/tests/run_all.sh` passes | run above | 190/192 passed; the 2 failures reproduce identically on unmodified origin/master |\n\n## Notes for reviewer\n- `.claude/skills/platform-catchup/SKILL.md:84-87` still says \"Building a named target skips `cmake_check_build_system`… reconfigure first\" — that file is gated self-config (out of scope for this PR); a human can retire that bullet now that `ir-build` self-heals.\n- Windows `cmd.exe` retry branch (Decision 4) shares the same `run_build()` shape as POSIX but is unexercised on this (macOS) host; #3143 is the standing Windows-pane evidence issue for `ir-build`.\n\nCloses #3509\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n"
+  },
+  {
+   "repo": "engine",
+   "number": 3518,
+   "oracle": [],
+   "body": "## Summary\n- `fleet-up` reads `FLEET_CAMPAIGNS` (space- or comma-separated objective slugs) from `~/.fleet/fleet-up.conf`. For each slug it ensures `.claude/worktrees/campaign-<slug>` off `origin/master`, writes the standard worktree settings (edit guard, session-track hook, auto permission mode), and babysits a persistent fable pane in a third tmux window, `campaigns`, launched as `campaign-<slug>`. A malformed slug or one with no `docs/design/campaigns/<slug>.md` on the clone is skipped with a warning, so a typo never opens an empty pane. Campaign worktrees are never reset at boot; the role resumes its own slice branch.\n- `fleet-babysit` maps a `campaign-<slug>` role to `/role-campaign <slug> <mode>` (the shared wrapper takes the slug as its argument), treats it as resume-eligible like the architects (own `~/.fleet/sessions/campaign-<slug>.session-id`, `--resume` with no prompt on relaunch, dead-pointer fallback), and exports the session-track gate as `role=campaign mode=\"<slug> <mode>\"` so a `/clear` re-injects `role-campaign.md` with its arguments.\n- `fleet-down` treats `campaign-*` panes like architects (interactive, reachable for the shutdown summary).\n- Conf sample block, `fleet-help` (index entry and per-tool summary), `scripts/fleet/README.md`, the campaign protocol's **launcher** delta and the engine wrapper now name the config path as the scheduled way to start a campaign; `solo-architect --campaign` stays the by-hand way.\n- No scout, dispatcher or claim changes: a campaign pane carries no `@fleet-role` tag and never receives dispatched work.\n\n## Test plan\n- [x] `scripts/fleet/tests/run_all.sh --only babysit` → 3 suites PASS, including new T8 (campaign first launch fires `/role-campaign million-entity-render live`, persists its own sidecar, exports `role=campaign mode=million-entity-render live`) and T9 (campaign resume is `--resume <id>` with no prompt)\n- [x] `scripts/fleet/tests/run_all.sh --only fleet_up` → 4 suites PASS\n- [x] The `FLEET_CAMPAIGNS` parsing block run standalone: `million-entity-render,Bad_Slug nope` → `Bad_Slug` rejected as not a slug, `nope` rejected for no campaign doc, `slugs=million-entity-render`; unset → empty\n- [x] `bash -n` on fleet-up, fleet-babysit, fleet-down, fleet-help; `python3 scripts/lint_instruction_size.py` ok; `python3 scripts/fleet/fleet_validate_roles.py --repo-root .` exit 0; `python3 scripts/lint_comment_refs.py` ok; `git diff --check` clean\n\n## Notes for reviewer\n`fleet-pr-overlap`: `#3513 scripts/fleet/fleet-help clean` (shared path, trial merge clean).\n\nThe pane topology itself (tmux window creation) has no test seam; it mirrors the ops-window pattern (`new-window -a -t \"$SESSION:ops\"`, then `split-window -v`). The installed `~/bin/fleet-up` symlink points at the main clone's `scripts/fleet/fleet-up`, so this needs to be on `master` and the main clone advanced before the next `fleet-up` picks the knob up.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nhttps://claude.ai/code/session_01MkFA4LFZzBmxqHyEsRZu5b\n"
+  },
+  {
+   "repo": "engine",
+   "number": 3519,
+   "oracle": [],
+   "body": "## Summary\n- Campaign `million-entity-render`, slice D0.0 (in flight, `fleet:wip`): ledger and `## Now` updated for the human's screenshots of the two purple cubes and the cyan cube in `IRCanvasStress`, which move ahead of the private-canvas lifecycle item.\n- Records the first evidence read: at zoom 8 with AO and shadows off, the purple revoxelized cube (index 2) is a clean column staircase; the cyan one (index 1) shows lone single-trixel treads inside a field of one side face. A step cell at (x+1, y, z+1) sits two depth units nearer and its hexagon covers exactly half of the lower cell's top rhombus, so a lone tread trixel beside a riser is the correct iso projection of a diagonal step; `revoxSourceCellForDest` is nearest-cell inverse sampling, so a rotated solid is a staircase by construction. The deciding gate is an oracle derived from the resampled cells, which this slice will add.\n- Records, unfixed: `system_shapes_to_trixel.hpp` `endTick` clears any non-main canvas unconditionally and re-anchors it to the first shape's world position (D0.1).\n\n## Test plan\n- [x] Docs only so far; `git diff --check` clean. The oracle script and its captures land on this branch before it leaves `fleet:wip`.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nhttps://claude.ai/code/session_01MkFA4LFZzBmxqHyEsRZu5b\n"
+  },
+  {
+   "repo": "game",
+   "number": 319,
+   "oracle": [
+    [
+     "game",
+     304
+    ]
+   ],
+   "body": "closes #304\nCloses #304",
+   "reduced_to_closing_tokens": true
+  },
+  {
+   "repo": "game",
+   "number": 401,
+   "oracle": [],
+   "body": "",
+   "reduced_to_closing_tokens": true
+  },
+  {
+   "repo": "game",
+   "number": 415,
+   "oracle": [
+    [
+     "engine",
+     3255
+    ]
+   ],
+   "body": "Closes jakildev/IrredenEngine#3255",
+   "reduced_to_closing_tokens": true
+  },
+  {
+   "repo": "game",
+   "number": 416,
+   "oracle": [
+    [
+     "game",
+     361
+    ]
+   ],
+   "body": "Closes #361",
+   "reduced_to_closing_tokens": true
+  },
+  {
+   "repo": "game",
+   "number": 417,
+   "oracle": [
+    [
+     "game",
+     337
+    ]
+   ],
+   "body": "Closes #337",
+   "reduced_to_closing_tokens": true
+  },
+  {
+   "repo": "game",
+   "number": 420,
+   "oracle": [
+    [
+     "game",
+     287
+    ]
+   ],
+   "body": "Closes #287",
+   "reduced_to_closing_tokens": true
+  },
+  {
+   "repo": "game",
+   "number": 421,
+   "oracle": [
+    [
+     "game",
+     303
+    ]
+   ],
+   "body": "Closes #303",
+   "reduced_to_closing_tokens": true
+  },
+  {
+   "repo": "game",
+   "number": 422,
+   "oracle": [
+    [
+     "game",
+     350
+    ]
+   ],
+   "body": "Closes #350",
+   "reduced_to_closing_tokens": true
+  },
+  {
+   "repo": "game",
+   "number": 425,
+   "oracle": [],
+   "body": "",
+   "reduced_to_closing_tokens": true
+  },
+  {
+   "repo": "game",
+   "number": 428,
+   "oracle": [
+    [
+     "game",
+     426
+    ],
+    [
+     "game",
+     427
+    ]
+   ],
+   "body": "Closes #426\ncloses #426\nCloses #427\nCloses #426",
+   "reduced_to_closing_tokens": true
+  }
+ ]
+}

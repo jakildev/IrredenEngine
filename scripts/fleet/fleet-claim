@@ -317,6 +317,19 @@ repo_from_ns() {
     esac
 }
 
+# other_repo_from_ns
+#   The OTHER fleet repo's owner/repo path for the current REPO_NS — the one a
+#   cross-repo `Closes owner/repo#N` in a PR body can point back from.
+#   Same two-entry map as repo_from_ns, read from the other side; unknown
+#   namespaces print nothing, and the caller skips the cross-repo query.
+other_repo_from_ns() {
+    case "${REPO_NS:-}" in
+        ""|engine) REPO_NS=game   repo_from_ns ;;
+        game)      REPO_NS=engine repo_from_ns ;;
+        *)         echo "" ;;
+    esac
+}
+
 # repo_from_slug <slug>
 #   Map a $CLAIMS_DIR slug to its owning GitHub repo, independent of any
 #   caller-supplied --repo flag. Slug shape mirrors slugify(): bare "<N>" is
@@ -1746,7 +1759,7 @@ sys.stdout.write(unsafe_base_reason(labels, files) or "")
                 | ISSUE_NUM="$issue_num" REPO_NS="$REPO_NS" python3 -c '
 import json, os, sys
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
-from fleet_branch_match import body_closes_issue, branch_matches_issue
+from fleet_branch_match import body_closes_issue_in, branch_matches_issue
 issue = os.environ["ISSUE_NUM"]
 repo = os.environ.get("REPO_NS", "")
 try:
@@ -1755,14 +1768,51 @@ except Exception:
     prs = []
 for pr in prs:
     # Second liveness signal (#2419): an untrackable branch name still
-    # blocks a duplicate claim when its body closes the issue.
+    # blocks a duplicate claim when its body closes the issue. Namespaced,
+    # so a repo-qualified ref to this same repo counts too — the scout
+    # offers such a PR as a stack base from the same grammar, and the guard
+    # must accept what the offer advertises.
     if (branch_matches_issue(pr.get("headRefName") or "", issue, repo)
-            or body_closes_issue(pr.get("body") or "", issue)):
+            or body_closes_issue_in(pr.get("body") or "", issue, repo, repo)):
         print(pr.get("number"))
         break
 ' 2>/dev/null | head -1)
             if [[ -n "$existing_pr" ]]; then
                 echo "fleet-claim claim: #${issue_num} already has open PR #${existing_pr} (branch or Closes #${issue_num}); refusing duplicate claim" >&2
+                return 1
+            fi
+        fi
+        # Cross-repo arm: a PR in the OTHER fleet repo whose body
+        # carries GitHub's `Closes owner/repo#N` naming THIS repo is the same
+        # in-flight work — a fresh worker here cannot advance it, and every
+        # claim on it ended in a decline until the other repo's PR merged.
+        # Body arm only: a `claude/<N>-…` branch over there is that repo's
+        # #N, and a bare `Closes #N` there is likewise that repo's. Fails
+        # open on a gh failure exactly as the same-repo arm does.
+        local other_repo_for_pr_check
+        other_repo_for_pr_check=$(other_repo_from_ns)
+        if [[ -n "$repo_for_pr_check" && -n "$other_repo_for_pr_check" ]]; then
+            local cross_repo_pr
+            cross_repo_pr=$(gh pr list --repo "$other_repo_for_pr_check" --state open \
+                --json number,body --limit 300 2>/dev/null \
+                | ISSUE_NUM="$issue_num" REPO_NS="$REPO_NS" OTHER_REPO="$other_repo_for_pr_check" python3 -c '
+import json, os, sys
+sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
+from fleet_branch_match import body_closes_issue_in
+issue = os.environ["ISSUE_NUM"]
+this_repo = os.environ.get("REPO_NS", "")
+other_repo = os.environ["OTHER_REPO"]
+try:
+    prs = json.load(sys.stdin)
+except Exception:
+    prs = []
+for pr in prs:
+    if body_closes_issue_in(pr.get("body") or "", issue, this_repo, other_repo):
+        print(pr.get("number"))
+        break
+' 2>/dev/null | head -1)
+            if [[ -n "$cross_repo_pr" ]]; then
+                echo "fleet-claim claim: #${issue_num} already has open PR ${other_repo_for_pr_check}#${cross_repo_pr} (Closes ${repo_for_pr_check}#${issue_num}); refusing duplicate claim" >&2
                 return 1
             fi
         fi
@@ -2060,7 +2110,7 @@ PYEOF
     BLOCKER="$blocker" REPO="$repo" python3 <<'PYEOF'
 import json, os, subprocess, sys
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
-from fleet_branch_match import body_closes_issue, branch_matches_issue
+from fleet_branch_match import body_closes_issue_in, branch_matches_issue
 # Same reject-state predicate the scout's offer and the claim gate use (#1751),
 # so the finder doesn't advertise a base the gate would then refuse — a worker
 # would otherwise burn an iteration claiming a WIP/design-unblocked base only to
@@ -2088,9 +2138,12 @@ matches = []
 for pr in prs:
     head = pr.get("headRefName", "") or ""
     body = pr.get("body", "") or ""
+    # The body arm is namespaced — the scout derives closes_issues from the
+    # same grammar, so a `Closes owner/repo#N` naming this repo is offered as
+    # a base and must be found here too (offer/accept parity).
     if (
         branch_matches_issue(head, blocker, repo)
-        or body_closes_issue(body, blocker)
+        or body_closes_issue_in(body, blocker, repo, repo)
         or str(pr.get("number", "")) == blocker
     ):
         matches.append(pr)
@@ -3582,7 +3635,7 @@ for issue in issues:
             has_wip_pr=$(echo "$open_pr_branches_json" | ISSUE_NUM="$issue_num" REPO="$repo" python3 -c '
 import json, os, sys
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
-from fleet_branch_match import body_closes_issue, branch_matches_issue
+from fleet_branch_match import body_closes_issue_in, branch_matches_issue
 try:
     prs = json.load(sys.stdin)
 except Exception:
@@ -3591,9 +3644,10 @@ issue = os.environ["ISSUE_NUM"]
 repo = os.environ.get("REPO", "")
 for pr in prs:
     # #2419 second liveness signal: a Closes #N body keeps the claim even
-    # when the branch name is untrackable by the matcher.
+    # when the branch name is untrackable by the matcher. Namespaced, so a
+    # repo-qualified ref to this same repo keeps it too.
     if (branch_matches_issue(pr.get("headRefName") or "", issue, repo)
-            or body_closes_issue(pr.get("body") or "", issue)):
+            or body_closes_issue_in(pr.get("body") or "", issue, repo, repo)):
         print(1)
         sys.exit(0)
 print(0)
