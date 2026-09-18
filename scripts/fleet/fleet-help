@@ -226,13 +226,16 @@ Parallel-agent fleet (tmux + Claude)
                                  one-time backfill of fleet:opus/fleet:sonnet
                                  labels onto existing fleet:queued issues from
                                  their **Model:** body field
-  fleet-clip <before.mp4> <after.mp4> <out-basename>
+  fleet-clip <before.mp4>|- <after.mp4> <out-basename>
                                  compose a before/after clip pair into a
                                  side-by-side H.264 MP4 (labels burned in via
                                  committed overlay PNGs, no drawtext/freetype
                                  dependency) + a palette-quantized GIF, for the
-                                 attach-screenshots clip step; missing ffmpeg
-                                 exits 3 with a one-line message
+                                 attach-screenshots clip step; `-` before
+                                 writes a single-pane after-only clip for a PR
+                                 with no before capture; creates the output
+                                 directory if missing; missing ffmpeg exits 3
+                                 with a one-line message
   fleet-state-scout              background GitHub/git poll → ~/.fleet/state/
   fleet-debug triggers           read-only per-role dispatch-state dump: pending
                                  trigger + mtime/content, last seen projection

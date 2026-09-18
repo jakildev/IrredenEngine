@@ -1,17 +1,24 @@
 #!/usr/bin/env python3
 """Compose a before/after clip pair into a side-by-side MP4 and a GIF.
 
-Usage: fleet-clip <before.mp4> <after.mp4> <out-basename>
+Usage: fleet-clip <before.mp4>|- <after.mp4> <out-basename>
 
-Writes <out-basename>.mp4 (H.264, width = 2x one input's width, "before" /
-"after" labels burned in via the committed clip-label-{before,after}.png
-overlays — no drawtext/freetype dependency, since not every ffmpeg build
-carries libfreetype) and <out-basename>.gif (<= 640px wide, <= 15fps,
-<= 128 colors, two-pass palettegen/paletteuse). Never fails on an oversize
-output — a GIF over 3 MB or an MP4 over 1 MB prints a one-line warning; the
-caller shortens --auto-record or shrinks the capture preset.
+A literal `-` in the <before> position writes a single-pane <out-basename>.mp4
+carrying only the "after" label, for a PR with no before capture (a new demo,
+or the PR that adds --auto-record itself).
+
+Writes <out-basename>.mp4 (H.264, width = 2x one input's width in the paired
+form, or the input's own width in the single-arm form; "before" / "after"
+labels burned in via the committed clip-label-{before,after}.png overlays —
+no drawtext/freetype dependency, since not every ffmpeg build carries
+libfreetype) and <out-basename>.gif (<= 640px wide, <= 15fps, <= 128 colors,
+two-pass palettegen/paletteuse). Creates the parent directory of
+<out-basename> if it does not exist. Never fails on an oversize output — a
+GIF over 3 MB or an MP4 over 1 MB prints a one-line warning; the caller
+shortens --auto-record or shrinks the capture preset.
 
 Exit 3 (one-line message, no traceback): ffmpeg or ffprobe is not on PATH.
+Exit 2: `-` given in the <after> position.
 """
 import argparse
 import json
@@ -31,6 +38,7 @@ MP4_CRF = 28
 MP4_WARN_BYTES = 1_000_000
 GIF_WARN_BYTES = 3_000_000
 LABEL_MARGIN = 10
+SINGLE_ARM = "-"
 
 
 def ffprobe_width(path):
@@ -70,6 +78,17 @@ def compose_mp4(before, after, out_mp4):
     )
 
 
+def compose_single_mp4(after, out_mp4):
+    filter_complex = "[0:v][1:v]overlay=x=10:y=10:shortest=1[v]"
+    return run_ffmpeg(
+        ["-i", str(after), "-loop", "1", "-i", str(LABEL_AFTER),
+         "-filter_complex", filter_complex, "-map", "[v]",
+         "-c:v", "libx264", "-crf", str(MP4_CRF),
+         "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(out_mp4)],
+        "compose",
+    )
+
+
 def compose_gif(source_mp4, out_gif):
     vf = (
         f"fps={GIF_FPS},scale={GIF_MAX_WIDTH}:-1:flags=neighbor,split[s0][s1];"
@@ -90,18 +109,30 @@ def main():
         print("fleet-clip: ffmpeg (and ffprobe) not found on PATH", file=sys.stderr)
         return 3
 
-    before, after = Path(args.before), Path(args.after)
-    missing = [p for p in (before, after) if not p.is_file()]
+    if args.after == SINGLE_ARM:
+        print("fleet-clip: '-' is accepted only in the <before> position", file=sys.stderr)
+        return 2
+
+    single = args.before == SINGLE_ARM
+    after = Path(args.after)
+    inputs = [after] if single else [Path(args.before), after]
+    missing = [p for p in inputs if not p.is_file()]
     if missing:
         print(f"fleet-clip: input not found: {missing[0]}", file=sys.stderr)
         return 1
 
     out_mp4 = Path(f"{args.out_basename}.mp4")
     out_gif = Path(f"{args.out_basename}.gif")
+    out_mp4.parent.mkdir(parents=True, exist_ok=True)
 
-    ffprobe_width(before)  # fail fast on an unreadable input before composing
-
-    if not compose_mp4(before, after, out_mp4):
+    if single:
+        ffprobe_width(after)  # fail fast on an unreadable input before composing
+        composed = compose_single_mp4(after, out_mp4)
+    else:
+        before = Path(args.before)
+        ffprobe_width(before)  # fail fast on an unreadable input before composing
+        composed = compose_mp4(before, after, out_mp4)
+    if not composed:
         return 1
     if not compose_gif(out_mp4, out_gif):
         return 1
