@@ -32,6 +32,35 @@ constexpr RecordingState recordingStateFrom(bool finalizeInProgress, bool captur
     return captureEnabled ? RecordingState::RECORDING : RecordingState::IDLE;
 }
 
+/// Resolved encoder output size, in pixels.
+struct CaptureOutputResolution {
+    int width_ = 0;
+    int height_ = 0;
+};
+
+/// Derives the encoder output size from the two `configureCaptureOutputResolution`
+/// overrides (0 = "derive from the render output") and the render output's
+/// width/height. Both zero follows the render output; exactly one non-zero
+/// derives the other from the render aspect, rounded down to even for
+/// yuv420p; both non-zero keeps the caller's dimensions as given. Pure on
+/// purpose — no GPU or render-manager access needed to test the derivation.
+constexpr CaptureOutputResolution deriveCaptureOutputResolution(
+    int widthOverride, int heightOverride, int renderWidth, int renderHeight
+) {
+    if (widthOverride <= 0 && heightOverride <= 0) {
+        return CaptureOutputResolution{renderWidth, renderHeight};
+    }
+    if (heightOverride <= 0) {
+        const int derivedHeight = (widthOverride * renderHeight / renderWidth) & ~1;
+        return CaptureOutputResolution{widthOverride, derivedHeight};
+    }
+    if (widthOverride <= 0) {
+        const int derivedWidth = (heightOverride * renderWidth / renderHeight) & ~1;
+        return CaptureOutputResolution{derivedWidth, heightOverride};
+    }
+    return CaptureOutputResolution{widthOverride, heightOverride};
+}
+
 } // namespace IRVideo
 
 #endif /* IR_VIDEO_TYPES_H */

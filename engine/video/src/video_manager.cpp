@@ -65,21 +65,8 @@ void VideoManager::configureCapture(
 }
 
 void VideoManager::configureCaptureOutputResolution(int width, int height) {
-    if (width <= 0 || height <= 0) {
-        if (width > 0 || height > 0) {
-            IRE_LOG_WARN(
-                "Capture output resolution {}x{} needs both dimensions > 0; "
-                "following the render output resolution instead",
-                width,
-                height
-            );
-        }
-        m_outputWidthOverride = 0;
-        m_outputHeightOverride = 0;
-        return;
-    }
-    m_outputWidthOverride = width & ~1;
-    m_outputHeightOverride = height & ~1;
+    m_outputWidthOverride = (width > 0) ? (width & ~1) : 0;
+    m_outputHeightOverride = (height > 0) ? (height & ~1) : 0;
 }
 
 void VideoManager::configureScreenshotOutputDir(const std::string &outputDirPath) {
@@ -331,14 +318,20 @@ void VideoManager::toggleCapture() {
     // stay constant and a smaller capture is proportionally smaller. ABR
     // would otherwise spend the whole budget on the smaller frame.
     int videoBitrate = m_videoBitrate;
-    if (m_outputWidthOverride > 0 && m_outputHeightOverride > 0) {
+    if (m_outputWidthOverride > 0 || m_outputHeightOverride > 0) {
+        const CaptureOutputResolution resolved = deriveCaptureOutputResolution(
+            m_outputWidthOverride,
+            m_outputHeightOverride,
+            outputResolution.x,
+            outputResolution.y
+        );
         const double renderArea =
             static_cast<double>(outputResolution.x) * static_cast<double>(outputResolution.y);
-        const double overrideArea = static_cast<double>(m_outputWidthOverride) *
-                                    static_cast<double>(m_outputHeightOverride);
+        const double overrideArea =
+            static_cast<double>(resolved.width_) * static_cast<double>(resolved.height_);
         videoBitrate =
             static_cast<int>(static_cast<double>(m_videoBitrate) * overrideArea / renderArea);
-        outputResolution = ivec2(m_outputWidthOverride, m_outputHeightOverride);
+        outputResolution = ivec2(resolved.width_, resolved.height_);
     }
 
     IRE_LOG_INFO(

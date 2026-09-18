@@ -167,11 +167,15 @@ treats the arg as a self-terminating GPU verb (`RESULT=CLEAN`).
 
 Clip size: `video_capture_output_width` / `_height` (config keys, default 0
 = follow the render output resolution) set the encoded frame size (odd
-values round down for yuv420p); `video_capture_bitrate` is the budget at the
-render output resolution and scales with the override's pixel-area ratio, so
-a smaller output is proportionally smaller. Pass them per run with
-`--config-preset <file>` (its `config = { … }` overlays `config.lua`, see
-`engine/world/CLAUDE.md`).
+values round down for yuv420p). Both zero follows the render output; setting
+just one derives the other from the render output's aspect at recording
+start (`IRVideo::deriveCaptureOutputResolution`), so a non-16:9 creation
+isn't squished by a preset tuned for a 16:9 one; setting both replaces the
+render output resolution outright. `video_capture_bitrate` is the budget at
+the render output resolution and scales with the resolved output's
+pixel-area ratio, so a smaller output is proportionally smaller. Pass them
+per run with `--config-preset <file>` (its `config = { … }` overlays
+`config.lua`, see `engine/world/CLAUDE.md`).
 
 ## Commands and components (prefabs/irreden/video)
 

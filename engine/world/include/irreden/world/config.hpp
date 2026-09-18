@@ -96,7 +96,8 @@ class WorldConfig {
             "video_capture_bitrate",
             std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(10'000'000)
         );
-        // Encoded frame size; 0 (either) = follow the render output resolution.
+        // Encoded frame size; both 0 = follow the render output resolution;
+        // one non-zero derives the other from the render output's aspect.
         m_config.addEntry(
             "video_capture_output_width",
             std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(0)
