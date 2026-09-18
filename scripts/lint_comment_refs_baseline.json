@@ -30,7 +30,7 @@
  "scripts/fleet/fleet-review-verdict": 3,
  "scripts/fleet/fleet-rules-sweep": 1,
  "scripts/fleet/fleet-run-targets": 1,
- "scripts/fleet/fleet-state-scout": 119,
+ "scripts/fleet/fleet-state-scout": 118,
  "scripts/fleet/fleet-transition": 1,
  "scripts/fleet/fleet-up": 21,
  "scripts/fleet/fleet-worktree-busy-branches": 1,
