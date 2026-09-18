@@ -179,6 +179,14 @@ Per `active` objective:
 Sweep proposals wait for `human:approved` and never take the agent-approved
 lane. If every row verifies, propose `Status: achieved` as a design-doc PR.
 
+**Campaigns.** An objective the human wants driven end to end by one
+persistent session runs as a campaign
+([`campaign-protocol.md`](campaign-protocol.md)): on the cue "run the
+campaign <slug>" follow that protocol in this pane until told to stop, or
+hand it a pane of its own with `solo-architect engine --campaign <slug>`.
+Seeding one is a docs PR: the objective file plus
+`docs/design/campaigns/<slug>.md`.
+
 ## Triage sweep
 
 On the cue "triage sweep", run [`triage-protocol.md`](triage-protocol.md)

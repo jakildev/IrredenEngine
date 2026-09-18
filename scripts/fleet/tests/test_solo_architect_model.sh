@@ -86,4 +86,67 @@ assert_eq "$(resolve_model env -u FLEET_MODEL_FABLE "$SOLO" game --no-scout --fr
     "MODEL=fable[1m]" \
     "unpinned game architect -> same fleet-common.sh alias default"
 
+# --- T5: --campaign creates its worktree, wires settings, launches the role --
+# A second stub that echoes the launch shape (role prompt, session env, cwd)
+# instead of the model, and a real git repo so `worktree add` off
+# origin/master can run.
+echo "T5: --campaign <slug> creates campaign-<slug> off origin/master and launches /role-campaign"
+mkdir -p "$TMPROOT/bin2"
+cat > "$TMPROOT/bin2/claude" <<'EOF'
+#!/usr/bin/env bash
+last=""; resume=""
+while [[ $# -gt 0 ]]; do
+    [[ "$1" == "--resume" ]] && resume="$2"
+    last="$1"; shift
+done
+echo "PROMPT=$last"
+echo "RESUME=$resume"
+echo "ROLE=$FLEET_SESSION_ROLE MODE=$FLEET_SESSION_MODE"
+echo "CWD=$PWD"
+exit 0
+EOF
+chmod +x "$TMPROOT/bin2/claude"
+git init -q "$TMPROOT/engine"
+git -C "$TMPROOT/engine" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+git -C "$TMPROOT/engine" update-ref refs/remotes/origin/master HEAD
+mkdir -p "$TMPROOT/engine/.claude/worktrees/opus-architect/.claude"
+printf '{"permissions":{"allow":["Bash(ls:*)"]},"env":{"FLEET_ASSIGNED_WORKTREE":"/x/opus-architect"},"hooks":{}}' \
+    > "$TMPROOT/engine/.claude/worktrees/opus-architect/.claude/settings.local.json"
+launch_campaign() {
+    env HOME="$TMPROOT/home" FLEET_ENGINE_ROOT="$TMPROOT/engine" \
+        PATH="$TMPROOT/bin2:$PATH" FLEET_MODEL_FABLE='fable[1m]' \
+        "$SOLO" engine --campaign million-entity-render --no-scout "$@" 2>/dev/null
+}
+CAMPAIGN_WT="$TMPROOT/engine/.claude/worktrees/campaign-million-entity-render"
+first="$(launch_campaign)"
+assert_contains "$first" "PROMPT=/role-campaign million-entity-render live" \
+    "first launch fires /role-campaign <slug> live"
+assert_contains "$first" "ROLE=campaign MODE=million-entity-render live" \
+    "session-track env carries role=campaign and '<slug> <mode>' as the arguments"
+assert_contains "$first" "CWD=$CAMPAIGN_WT" \
+    "cwd is the campaign worktree"
+assert_eq "$(git -C "$CAMPAIGN_WT" branch --show-current)" "fleet/campaign-million-entity-render" \
+    "campaign worktree sits on its own persistent branch"
+assert_eq "$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['env']['FLEET_ASSIGNED_WORKTREE'])" \
+    "$CAMPAIGN_WT/.claude/settings.local.json")" "$CAMPAIGN_WT" \
+    "settings.local.json copied with FLEET_ASSIGNED_WORKTREE re-pointed"
+assert_eq "$(test -s "$TMPROOT/home/.fleet/solo/campaign-million-entity-render.session" && echo yes)" "yes" \
+    "campaign has its own session sidecar (never the architect's)"
+
+# --- T6: a second --campaign launch resumes that sidecar ----------------------
+echo "T6: second --campaign launch resumes the saved session"
+sid="$(cat "$TMPROOT/home/.fleet/solo/campaign-million-entity-render.session")"
+second="$(launch_campaign)"
+assert_contains "$second" "RESUME=$sid" "resumes the persisted campaign session id"
+assert_absent "$second" "PROMPT=/role-campaign" "a resume fires no role prompt"
+
+# --- T7: slug validation ------------------------------------------------------
+echo "T7: a slug outside [a-z0-9-] is refused before any git op"
+set +e
+env HOME="$TMPROOT/home" FLEET_ENGINE_ROOT="$TMPROOT/engine" PATH="$TMPROOT/bin2:$PATH" \
+    "$SOLO" engine --campaign 'Bad_Slug' --no-scout >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "$rc" "2" "bad slug exits 2"
+
 summarize "solo-architect model-resolution tests"

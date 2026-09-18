@@ -262,9 +262,9 @@ Protocol: [`FLEET-FEEDBACK-HANDLING.md`](FLEET-FEEDBACK-HANDLING.md).
   time: whoever pushes new commits drops it and the PR re-enters review,
   which honors the linked issue and does not re-raise the deferred concern.
 - `human:wip` — **human** is editing the PR; every agent stands off.
-- `fleet:wip` — **author worker** while a claimed PR is not ready for
-  review; reviewers skip it. Not on Cursor / human-ready PRs; not on
-  issues.
+- `fleet:wip` — **author worker or campaign driver** while a PR is not
+  ready for review; reviewers skip it. Not on Cursor / human-ready PRs;
+  not on issues.
 - `fleet:stalled` — **scout** idle sweep on a `fleet:wip` PR idle 7+ days,
   with a one-shot comment. Removing it re-arms the timer. The human
   resolves; closing the PR is the reap path, after which `cleanup --gh`

@@ -20,10 +20,15 @@
 # bailing.
 #
 # Usage:
-#   solo-architect [engine|game] [--fresh] [--no-scout] [--dry-run] [-- <claude args...>]
+#   solo-architect [engine|game] [--campaign <slug>] [--fresh] [--no-scout] [--dry-run] [-- <claude args...>]
 #
 #     engine (default)  /role-opus-architect   (jakildev/IrredenEngine)
 #     game              /role-game-architect    (jakildev/irreden, under creations/game)
+#     --campaign <slug> /role-campaign <slug>   (docs/agents/campaign-protocol.md) in
+#                       the engine worktree .claude/worktrees/campaign-<slug>,
+#                       created off origin/master on first use; its own
+#                       session sidecar, so campaigns and the architect resume
+#                       independently
 #
 #     --fresh     ignore the saved session and start a new conversation
 #                 (default resumes the last solo conversation for this role)
@@ -63,6 +68,7 @@ WORKTREE="$ENGINE/.claude/worktrees/opus-architect"
 MODE="live"
 FRESH=0
 RUN_SCOUT=1
+CAMPAIGN=""
 PASSTHRU=()
 
 while [[ $# -gt 0 ]]; do
@@ -71,6 +77,12 @@ while [[ $# -gt 0 ]]; do
       ROLE="opus-architect"; WORKTREE="$ENGINE/.claude/worktrees/opus-architect"; shift ;;
     game|game-architect)
       ROLE="game-architect";  WORKTREE="$GAME/.claude/worktrees/game-architect";  shift ;;
+    --campaign)
+      CAMPAIGN="${2:?solo-architect: --campaign needs a slug}"
+      case "$CAMPAIGN" in
+        *[!a-z0-9-]*|'') echo "solo-architect: campaign slug must be [a-z0-9-]: '$CAMPAIGN'" >&2; exit 2 ;;
+      esac
+      ROLE="campaign"; WORKTREE="$ENGINE/.claude/worktrees/campaign-$CAMPAIGN"; shift 2 ;;
     --fresh)    FRESH=1; shift ;;
     --no-scout) RUN_SCOUT=0; shift ;;
     --dry-run)  MODE="dry-run"; shift ;;
@@ -80,8 +92,31 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# A campaign worktree is created on first use: a persistent branch off
+# origin/master under .claude/worktrees/ (fleet-assert-worktree's invariant),
+# with the architect worktree's settings.local.json copied over so the
+# edit guard and the session-track hook are wired the same way fleet-up
+# wires them (FLEET_ASSIGNED_WORKTREE re-pointed at this worktree).
+if [[ -n "$CAMPAIGN" && ! -d "$WORKTREE" ]]; then
+  echo "solo-architect: creating campaign worktree $WORKTREE" >&2
+  git -C "$ENGINE" fetch origin --quiet || true
+  git -C "$ENGINE" worktree add "$WORKTREE" -b "fleet/campaign-$CAMPAIGN" origin/master
+  _arch_settings="$ENGINE/.claude/worktrees/opus-architect/.claude/settings.local.json"
+  if [[ -f "$_arch_settings" ]]; then
+    mkdir -p "$WORKTREE/.claude"
+    python3 - "$_arch_settings" "$WORKTREE/.claude/settings.local.json" "$WORKTREE" <<'PY'
+import json, sys
+src, dst, wt = sys.argv[1:4]
+d = json.load(open(src))
+d.setdefault("env", {})["FLEET_ASSIGNED_WORKTREE"] = wt
+json.dump(d, open(dst, "w"), indent=2)
+PY
+  fi
+  unset _arch_settings
+fi
+
 # cwd must be the role's worktree so its startup sync + the repo-local
-# /role-*-architect slash command and CLAUDE.md set resolve correctly.
+# /role-* slash command and CLAUDE.md set resolve correctly.
 if [[ ! -d "$WORKTREE" ]]; then
   echo "solo-architect: worktree not found: $WORKTREE" >&2
   echo "  (run 'fleet-up' once to create it, or point this at an existing checkout)" >&2
@@ -107,9 +142,19 @@ continue as an interactive design/build partner. You may still spawn sub-agents 
 and do heavy core work directly in this session. Any fleet:task/epic you file \
 will simply wait in the queue until I bring the fleet up."
 
+# A campaign has no standby posture: it works its objective from its
+# campaign doc, so the solo prompt tells it only that the fleet may be down.
+if [[ -n "$CAMPAIGN" ]]; then
+  SOLO_PROMPT="You are running as a campaign driver, possibly outside the fleet — \
+workers, reviewers, merger and scout may not be running. A stale or missing \
+~/.fleet/state/state.json is not an exit condition for this role; continue \
+from the campaign doc and the open PR list per docs/agents/campaign-protocol.md."
+fi
+
 SESSION_DIR="$HOME/.fleet/solo"
 mkdir -p "$SESSION_DIR"
-SESSION_FILE="$SESSION_DIR/$ROLE.session"
+SESSION_FILE="$SESSION_DIR/$ROLE${CAMPAIGN:+-$CAMPAIGN}.session"
+ROLE_ARGS="${CAMPAIGN:+$CAMPAIGN }$MODE"
 
 # Gate vars for the fleet-session-track SessionStart hook (wired into the
 # worktree's settings by fleet-up): it rewrites SESSION_FILE with the live
@@ -120,7 +165,7 @@ SESSION_FILE="$SESSION_DIR/$ROLE.session"
 # fleet resumes never clobber each other's file.
 export FLEET_SESSION_FILE="$SESSION_FILE"
 export FLEET_SESSION_ROLE="$ROLE"
-export FLEET_SESSION_MODE="$MODE"
+export FLEET_SESSION_MODE="$ROLE_ARGS"
 
 if [[ -s "$SESSION_FILE" && "$FRESH" -eq 0 ]]; then
   SID="$(cat "$SESSION_FILE")"
@@ -140,5 +185,5 @@ else
   exec claude --model "$MODEL" --effort "$EFFORT" \
     --append-system-prompt "$SOLO_PROMPT" \
     --session-id "$SID" "${PASSTHRU[@]+"${PASSTHRU[@]}"}" \
-    "/role-$ROLE $MODE"
+    "/role-$ROLE $ROLE_ARGS"
 fi
