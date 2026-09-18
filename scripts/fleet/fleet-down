@@ -454,9 +454,10 @@ if [[ "$WANT_SUMMARY" -eq 1 ]]; then
         # and more stable: bash/sh/zsh (the babysit shell itself) or
         # the literal `sleep` command bash spawned for the interval.
         #
-        # Architects run claude interactively (no --print) — they're
-        # always reachable, so the existing wait-for-idle flow applies.
-        if [[ "$role" != *architect* ]]; then
+        # Architects and campaign panes run claude interactively (no
+        # --print) — they're always reachable, so the existing wait-for-idle
+        # flow applies.
+        if [[ "$role" != *architect* && "$role" != campaign-* ]]; then
             pane_cmd=$(tmux display-message -t "$pane_id" -p '#{pane_current_command}' 2>/dev/null || echo "?")
             case "$pane_cmd" in
                 bash|sh|zsh|sleep|fleet-babysit)

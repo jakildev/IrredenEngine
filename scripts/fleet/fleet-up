@@ -599,6 +599,29 @@ GAME_MIGRATE_NEW=(pool-1   pool-2   pool-3   pool-4   pool-7 pool-9)
 # this session's scout/claim/dispatcher. (#1810)
 restore_main_clone_to_master "$ENGINE"
 
+# Campaign panes (docs/agents/campaign-protocol.md): FLEET_CAMPAIGNS in
+# ~/.fleet/fleet-up.conf lists objective slugs, space- or comma-separated.
+# Each gets a persistent worktree `.claude/worktrees/campaign-<slug>` (never
+# reset at boot — the role resumes its own slice branch), the same
+# settings.local.json as every fleet worktree, and a fable pane babysat as
+# `campaign-<slug>` in a third tmux window, resumable across restarts like
+# the architects. A slug with no campaign doc on this clone is skipped with
+# a warning so a typo never opens an empty pane.
+FLEET_CAMPAIGNS="${FLEET_CAMPAIGNS:-}"
+FLEET_CAMPAIGN_SLUGS=()
+for _slug in ${FLEET_CAMPAIGNS//,/ }; do
+    if [[ ! "$_slug" =~ ^[a-z0-9-]+$ ]]; then
+        echo "fleet-up: FLEET_CAMPAIGNS entry '$_slug' is not a slug ([a-z0-9-]) — skipped" >&2
+        continue
+    fi
+    if [[ ! -f "$ENGINE/docs/design/campaigns/$_slug.md" ]]; then
+        echo "fleet-up: no docs/design/campaigns/$_slug.md on $ENGINE — campaign '$_slug' skipped" >&2
+        continue
+    fi
+    FLEET_CAMPAIGN_SLUGS+=("$_slug")
+done
+unset _slug
+
 ensure_worktree "$ENGINE" .claude/worktrees/opus-architect    fleet/opus-architect
 migrate_legacy_worker_worktrees "$ENGINE" \
     "${ENGINE_MIGRATE_OLD[@]}" "${ENGINE_MIGRATE_NEW[@]}"
@@ -615,6 +638,10 @@ done
 unset _p
 ensure_worktree "$ENGINE" .claude/worktrees/queue-manager        fleet/queue-manager
 ensure_worktree "$ENGINE" .claude/worktrees/queue-manager-ingest fleet/queue-manager-ingest
+for _slug in ${FLEET_CAMPAIGN_SLUGS[@]+"${FLEET_CAMPAIGN_SLUGS[@]}"}; do
+    ensure_worktree "$ENGINE" ".claude/worktrees/campaign-$_slug" "fleet/campaign-$_slug"
+done
+unset _slug
 
 if [[ -d "$GAME/.git" ]]; then
     (cd "$GAME" && git fetch origin --quiet) || {
@@ -1195,6 +1222,10 @@ PYEOF
 for wt in opus-architect pool-1 pool-2 pool-3 pool-4 pool-5 pool-6 pool-7 pool-8 pool-9 queue-manager queue-manager-ingest; do
     write_worktree_settings "$ENGINE/.claude/worktrees/$wt" "$ENGINE"
 done
+for _slug in ${FLEET_CAMPAIGN_SLUGS[@]+"${FLEET_CAMPAIGN_SLUGS[@]}"}; do
+    write_worktree_settings "$ENGINE/.claude/worktrees/campaign-$_slug" "$ENGINE"
+done
+unset _slug
 
 if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
     write_worktree_settings "$GAME/.claude/worktrees/game-architect" "$GAME"
@@ -1712,7 +1743,8 @@ launch_cmd() {
     fi
 }
 
-# Two windows:
+# Two windows (a third, "campaigns", when FLEET_CAMPAIGNS is set — see the
+# campaigns block after the ops window):
 #
 # Window 1 ("fleet") — three equal rows, 8 panes total (with game-arch):
 #   Top    (~33%): pool-1  pool-2  pool-3
@@ -1927,6 +1959,28 @@ label_pane_id "$OPS_P9" "pool-9 [idle]"
 set_fleet_role "$OPS_P9" "pool"
 pane_stagger
 
+# Window 3 ("campaigns") — one pane per FLEET_CAMPAIGNS slug, stacked
+# vertically, each a persistent fable session babysat as campaign-<slug>
+# (fleet-babysit maps that role to `/role-campaign <slug> <mode>` and
+# resumes its own session sidecar). No @fleet-role tag: the dispatcher never
+# assigns work to a campaign pane; it works its objective from the campaign
+# doc. Anchored after ops so base-index settings cannot collide.
+CAMPAIGN_PREV=""
+for _slug in ${FLEET_CAMPAIGN_SLUGS[@]+"${FLEET_CAMPAIGN_SLUGS[@]}"}; do
+    if [[ -z "$CAMPAIGN_PREV" ]]; then
+        CAMPAIGN_PREV=$(tmux new-window -a -t "$SESSION:ops" -n campaigns -P -F "#{pane_id}" \
+            -c "$ENGINE/.claude/worktrees/campaign-$_slug" \
+            "$(launch_cmd "$FLEET_MODEL_FABLE" "campaign-$_slug")")
+    else
+        CAMPAIGN_PREV=$(tmux split-window -v -t "$CAMPAIGN_PREV" -l 50% -P -F "#{pane_id}" \
+            -c "$ENGINE/.claude/worktrees/campaign-$_slug" \
+            "$(launch_cmd "$FLEET_MODEL_FABLE" "campaign-$_slug")")
+    fi
+    label_pane_id "$CAMPAIGN_PREV" "campaign-$_slug [$FABLE_TAG]"
+    pane_stagger
+done
+unset _slug
+
 # Enable pane border labels using @role (immune to program overrides).
 # Apply at session level so it covers both windows.
 tmux set-option -t "$SESSION" pane-border-status top
@@ -1962,6 +2016,8 @@ layout (two windows):
   window 2 "ops":
     top    — queue-mgr/scratch  pool-7 (pool-8, pool-9 below)
     bottom — witness            terminal (\$HOME, free-form shell)
+  window 3 "campaigns" (only when FLEET_CAMPAIGNS is set):
+    one persistent fable pane per slug — campaigns: ${FLEET_CAMPAIGN_SLUGS[*]:-none}
   pool panes run ANY transient role (worker, reviewers, merger, smoke,
   epic-steward) and any model class per dispatch; per-role parallelism
   is bounded by FLEET_CONCURRENCY_<ROLE>, not pane topology. Labels

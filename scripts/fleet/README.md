@@ -42,7 +42,9 @@ fleet workflow.
   `/role-opus-architect`, `solo-architect game` for
   `/role-game-architect`, `solo-architect engine --campaign <slug>` for a
   persistent `/role-campaign <slug>` session per
-  `docs/agents/campaign-protocol.md`) WITHOUT spawning any workers, reviewers,
+  `docs/agents/campaign-protocol.md`; under the fleet the same pane comes
+  from `FLEET_CAMPAIGNS="<slug>"` in `~/.fleet/fleet-up.conf`) WITHOUT
+  spawning any workers, reviewers,
   merger, or scout daemon. Same model / effort / worktree / persisted-
   session resume as the fleet's architect pane, so you get the full
   design-partner + sub-agent-direction role as a one-off conversation.

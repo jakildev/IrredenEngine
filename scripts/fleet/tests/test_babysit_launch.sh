@@ -307,4 +307,37 @@ kill "$BABYSIT_BG_PID" 2>/dev/null || true
 wait "$BABYSIT_BG_PID" 2>/dev/null || true
 BABYSIT_BG_PID=""
 
+# --- T8: campaign-<slug> panes launch like architects, via role-campaign ----
+# fleet-up babysits FLEET_CAMPAIGNS panes as `campaign-<slug>`. The role file
+# is the shared role-campaign.md with "<slug> <mode>" as its arguments, so the
+# first launch must fire `/role-campaign <slug> <mode>` (never
+# `/role-campaign-<slug>`), persist its own sidecar, and export the
+# session-track gate with role=campaign and the slug folded into the mode.
+echo "T8: campaign-<slug> first launch fires /role-campaign <slug> and owns its sidecar"
+H8="$TMPROOT/h8"; mkdir -p "$H8"
+out=$(launch_for "$H8" 'fable[1m]' campaign-million-entity-render)
+assert_contains "$out" "--session-id " "campaign first launch passes --session-id"
+assert_contains "$out" "/role-campaign million-entity-render live" \
+    "campaign first launch fires the shared role-campaign command with the slug"
+assert_absent "$out" "/role-campaign-million" "the pane name is never used as a role file"
+[[ -f "$H8/.fleet/sessions/campaign-million-entity-render.session-id" ]] \
+    && ok "campaign persisted its own session-id sidecar" \
+    || bad "campaign sidecar not written on first launch"
+track=$(cd "$PROJECT_CWD" && env HOME="$H8" PATH="$TMPROOT/bin:$PATH" FLEET_BABYSIT_PRINT_LAUNCH=1 \
+    "$BABYSIT" 'fable[1m]' campaign-million-entity-render live 2>/dev/null \
+    | grep '^session-track: ')
+assert_eq "$track" \
+    "session-track: file=$H8/.fleet/sessions/campaign-million-entity-render.session-id role=campaign mode=million-entity-render live" \
+    "campaign exports role=campaign and '<slug> <mode>' so /clear re-injects role-campaign.md with its arguments"
+
+# --- T9: campaign resume drops the prompt like an architect resume ----------
+echo "T9: campaign resume launches --resume with no prompt"
+H9="$TMPROOT/h9"; mkdir -p "$H9/.fleet/sessions"
+CSID="caaaaaaa-1111-2222-3333-444444444444"
+echo "$CSID" > "$H9/.fleet/sessions/campaign-million-entity-render.session-id"
+make_transcript "$H9" "$CSID"
+out=$(launch_for "$H9" 'fable[1m]' campaign-million-entity-render)
+assert_eq "$out" "claude --model fable[1m] --effort xhigh --resume $CSID" \
+    "campaign resume argv carries --resume <id> and no prompt"
+
 summarize
