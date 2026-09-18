@@ -316,7 +316,9 @@ void VideoManager::toggleCapture() {
     // The configured bitrate is the budget at the render output resolution;
     // an output override scales it by the pixel-area ratio so bits per pixel
     // stay constant and a smaller capture is proportionally smaller. ABR
-    // would otherwise spend the whole budget on the smaller frame.
+    // would otherwise spend the whole budget on the smaller frame. A render
+    // area of zero (no window size reported yet, or minimized) has no ratio;
+    // the budget then applies to the override as-is.
     int videoBitrate = m_videoBitrate;
     if (m_outputWidthOverride > 0 || m_outputHeightOverride > 0) {
         const CaptureOutputResolution resolved = resolveCaptureOutputResolution(
@@ -329,8 +331,10 @@ void VideoManager::toggleCapture() {
             static_cast<double>(outputResolution.x) * static_cast<double>(outputResolution.y);
         const double overrideArea =
             static_cast<double>(resolved.width_) * static_cast<double>(resolved.height_);
-        videoBitrate =
-            static_cast<int>(static_cast<double>(m_videoBitrate) * overrideArea / renderArea);
+        if (renderArea > 0.0) {
+            videoBitrate =
+                static_cast<int>(static_cast<double>(m_videoBitrate) * overrideArea / renderArea);
+        }
         outputResolution = ivec2(resolved.width_, resolved.height_);
     }
 

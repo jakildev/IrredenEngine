@@ -57,6 +57,27 @@ constexpr CaptureOutputResolution kFloorBothSetDimensions =
     resolveCaptureOutputResolution(1, 1, 1280, 720);
 static_assert(kFloorBothSetDimensions.width_ == 2 && kFloorBothSetDimensions.height_ == 2);
 
+// An unreported render size (0x0 before the first frame or while minimized)
+// has no aspect: the derived axis mirrors the set one rather than dividing
+// by zero, and a single zero dimension is just as aspect-less as both.
+constexpr CaptureOutputResolution kWidthOnlyNoRenderSize =
+    resolveCaptureOutputResolution(640, 0, 0, 0);
+static_assert(kWidthOnlyNoRenderSize.width_ == 640 && kWidthOnlyNoRenderSize.height_ == 640);
+
+constexpr CaptureOutputResolution kHeightOnlyNoRenderSize =
+    resolveCaptureOutputResolution(0, 480, 0, 0);
+static_assert(kHeightOnlyNoRenderSize.width_ == 480 && kHeightOnlyNoRenderSize.height_ == 480);
+
+constexpr CaptureOutputResolution kWidthOnlyZeroRenderWidth =
+    resolveCaptureOutputResolution(640, 0, 0, 720);
+static_assert(kWidthOnlyZeroRenderWidth.width_ == 640 && kWidthOnlyZeroRenderWidth.height_ == 640);
+
+constexpr CaptureOutputResolution kHeightOnlyZeroRenderHeight =
+    resolveCaptureOutputResolution(0, 480, 1280, 0);
+static_assert(
+    kHeightOnlyZeroRenderHeight.width_ == 480 && kHeightOnlyZeroRenderHeight.height_ == 480
+);
+
 TEST(CaptureOutputResolutionTest, BothUnsetFollowsRenderOutputUnrounded) {
     const CaptureOutputResolution resolved = resolveCaptureOutputResolution(0, 0, 1280, 720);
     EXPECT_EQ(resolved.width_, 1280);
@@ -117,6 +138,34 @@ TEST(CaptureOutputResolutionTest, DegenerateSetDimensionFloorsAtTwoOnBothAxes) {
     resolved = resolveCaptureOutputResolution(1, 1, 1280, 720);
     EXPECT_EQ(resolved.width_, 2);
     EXPECT_EQ(resolved.height_, 2);
+}
+
+TEST(CaptureOutputResolutionTest, UnreportedRenderSizeDerivesSquareInsteadOfDividingByZero) {
+    // The render manager's viewport is 0x0 until the window reports a size
+    // and while minimized, and toggleCapture's viewport fallback is the same
+    // pair — so a single-dimension override must resolve without a division.
+    CaptureOutputResolution resolved = resolveCaptureOutputResolution(640, 0, 0, 0);
+    EXPECT_EQ(resolved.width_, 640);
+    EXPECT_EQ(resolved.height_, 640);
+
+    resolved = resolveCaptureOutputResolution(0, 480, 0, 0);
+    EXPECT_EQ(resolved.width_, 480);
+    EXPECT_EQ(resolved.height_, 480);
+
+    // One zero dimension is as aspect-less as both: never derive against the
+    // surviving one.
+    resolved = resolveCaptureOutputResolution(640, 0, 0, 720);
+    EXPECT_EQ(resolved.width_, 640);
+    EXPECT_EQ(resolved.height_, 640);
+
+    resolved = resolveCaptureOutputResolution(0, 480, 1280, 0);
+    EXPECT_EQ(resolved.width_, 480);
+    EXPECT_EQ(resolved.height_, 480);
+
+    // Both unset still passes the render pair through untouched.
+    resolved = resolveCaptureOutputResolution(0, 0, 0, 0);
+    EXPECT_EQ(resolved.width_, 0);
+    EXPECT_EQ(resolved.height_, 0);
 }
 
 } // namespace

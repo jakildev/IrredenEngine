@@ -50,27 +50,32 @@ constexpr int floorCaptureDimension(int value) {
 } // namespace detail
 
 /// Resolves the encoder output size from the two `configureCaptureOutputResolution`
-/// overrides (`<= 0` = unset) and the render output's width/height
-/// (precondition: both `> 0` — the caller's existing viewport fallback is
-/// the guard). Both unset passes the render pair through unrounded, so that
-/// path stays byte-identical to following the render output directly; any
-/// set dimension, and every derived one, rounds down to even and floors at
-/// 2. Pure on purpose — no GPU or render-manager access needed to test the
-/// derivation.
+/// overrides (`<= 0` = unset) and the render output's width/height. Both
+/// unset passes the render pair through unrounded, so that path stays
+/// byte-identical to following the render output directly; any set
+/// dimension, and every derived one, rounds down to even and floors at 2.
+/// A render pair with a dimension `< 1` (the viewport is 0×0 before the
+/// window reports its first size, and while minimized) has no aspect to
+/// derive from and counts as square, so the derived axis mirrors the set
+/// one instead of dividing by zero. Pure on purpose — no GPU or
+/// render-manager access needed to test the derivation.
 constexpr CaptureOutputResolution resolveCaptureOutputResolution(
     int overrideWidth, int overrideHeight, int renderWidth, int renderHeight
 ) {
     if (overrideWidth <= 0 && overrideHeight <= 0) {
         return CaptureOutputResolution{renderWidth, renderHeight};
     }
+    const bool hasRenderAspect = renderWidth > 0 && renderHeight > 0;
+    const int aspectWidth = hasRenderAspect ? renderWidth : 1;
+    const int aspectHeight = hasRenderAspect ? renderHeight : 1;
     if (overrideHeight <= 0) {
         const int width = detail::floorCaptureDimension(overrideWidth);
-        const int height = detail::floorCaptureDimension(width * renderHeight / renderWidth);
+        const int height = detail::floorCaptureDimension(width * aspectHeight / aspectWidth);
         return CaptureOutputResolution{width, height};
     }
     if (overrideWidth <= 0) {
         const int height = detail::floorCaptureDimension(overrideHeight);
-        const int width = detail::floorCaptureDimension(height * renderWidth / renderHeight);
+        const int width = detail::floorCaptureDimension(height * aspectWidth / aspectHeight);
         return CaptureOutputResolution{width, height};
     }
     return CaptureOutputResolution{
