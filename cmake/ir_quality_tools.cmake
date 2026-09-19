@@ -219,6 +219,41 @@ function(_irreden_resolve_format_root out_var)
     set(${out_var} "${format_root}" PARENT_SCOPE)
 endfunction()
 
+function(irreden_collect_shader_files out_var)
+    set(search_roots
+        "${PROJECT_SOURCE_DIR}/engine"
+        "${PROJECT_SOURCE_DIR}/creations"
+        "${PROJECT_SOURCE_DIR}/test"
+        "${PROJECT_SOURCE_DIR}/tools"
+    )
+
+    set(glob_mode CONFIGURE_DEPENDS)
+    if(CMAKE_SCRIPT_MODE_FILE)
+        set(glob_mode "")
+    endif()
+
+    set(globbed_files "")
+    foreach(root IN LISTS search_roots)
+        if(EXISTS "${root}")
+            file(GLOB_RECURSE root_files ${glob_mode} "${root}/*.glsl")
+            list(APPEND globbed_files ${root_files})
+        endif()
+    endforeach()
+
+    set(filtered_files "")
+    foreach(file_path IN LISTS globbed_files)
+        file(TO_CMAKE_PATH "${file_path}" normalized_path)
+        if(normalized_path MATCHES "/(build|_deps|third_party)/")
+            continue()
+        endif()
+        list(APPEND filtered_files "${normalized_path}")
+    endforeach()
+
+    list(REMOVE_DUPLICATES filtered_files)
+    _irreden_drop_gitignored_files(filtered_files "${PROJECT_SOURCE_DIR}")
+    set(${out_var} "${filtered_files}" PARENT_SCOPE)
+endfunction()
+
 function(irreden_add_quality_targets)
     if(NOT IRREDEN_ENABLE_QUALITY_TOOLS)
         return()
@@ -344,6 +379,9 @@ function(irreden_add_quality_targets)
         COMMAND ${CMAKE_COMMAND}
             -DPROJECT_ROOT="${PROJECT_SOURCE_DIR}"
             -P "${PROJECT_SOURCE_DIR}/cmake/run_save_inventory_population_check.cmake"
+        COMMAND ${CMAKE_COMMAND}
+            -DPROJECT_ROOT="${PROJECT_SOURCE_DIR}"
+            -P "${PROJECT_SOURCE_DIR}/cmake/run_glsl_reserved_word_check.cmake"
         COMMENT "Running header convention checks"
         VERBATIM
     )
@@ -369,6 +407,9 @@ function(irreden_add_quality_targets)
             COMMAND ${CMAKE_COMMAND}
                 -DPROJECT_ROOT="${PROJECT_SOURCE_DIR}"
                 -P "${PROJECT_SOURCE_DIR}/cmake/run_save_inventory_population_check.cmake"
+            COMMAND ${CMAKE_COMMAND}
+                -DPROJECT_ROOT="${PROJECT_SOURCE_DIR}"
+                -P "${PROJECT_SOURCE_DIR}/cmake/run_glsl_reserved_word_check.cmake"
             COMMENT "Running lint and header convention checks"
             VERBATIM
         )
