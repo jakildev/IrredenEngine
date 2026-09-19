@@ -7,11 +7,10 @@
 # relative path while its cwd has drifted into the shared main clone), the write
 # silently hits the MAIN clone instead of the worktree. `fleet-build` (run in
 # the worktree) then compiles nothing and the agent wrongly concludes its fix
-# "had no effect" (observed on PR #1310 / #1336). The #1332 worktree-identity
-# preflight guards Bash/git, NOT the file tools — this closes that gap by
-# enforcement instead of role-doc discipline.
+# "had no effect". The worktree-identity preflight (fleet-assert-worktree)
+# guards Bash/git, not the file tools; this hook covers the file tools.
 #
-# Two modes (#2402):
+# Two modes:
 #   * ASSIGNMENT mode — `FLEET_ASSIGNED_WORKTREE` is set (fleet-up bakes it into
 #     each generated worktree's settings.local.json `env`). Worktree identity is
 #     the ASSIGNED path, never the session cwd, so the guard holds even when cwd

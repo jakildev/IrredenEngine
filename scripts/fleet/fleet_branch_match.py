@@ -52,9 +52,7 @@ import re
 # cross-repo closing grammar (`body_closed_issue_refs`) must DROP a ref to an
 # unknown `owner/repo`, never fold it into one of ours — a suffix fallback
 # that reads "not game" as engine would attribute `someone/other#5` to the
-# engine repo — the fold that kept the qualified form deliberately unmatched
-# before this grammar existed. Lower-cased keys; GitHub slugs are
-# case-insensitive.
+# engine repo. Lower-cased keys; GitHub slugs are case-insensitive.
 _REPO_KEYS = {
     "": "engine",
     "engine": "engine",
@@ -113,7 +111,7 @@ def _leading_issue(head_ref):
 
 # Word-bounded `issue-<N>` token: starts at a segment boundary (start, '/',
 # or '-') and the digits end at '-' or end-of-string, so `issue-25` does not
-# match #255 and `issue-255` does not match #25. Single-sourced here — every
+# match issue 255 and `issue-255` does not match issue 25. Single-sourced here — every
 # caller (`fleet-claim`, `fleet-reconcile-amendments`, `fleet-state-scout`,
 # `fleet_stack_base.py`) reaches this grammar through the module, and
 # `fleet-claim branch-check` is the shell entry point that shells into it.
@@ -184,7 +182,7 @@ _CLOSES_ANY_RE = re.compile(_CLOSES_KEYWORD + r"#(\d+)\b", re.IGNORECASE)
 # break a match, never bridge one. An owner-less `IrredenEngine#N` is not a
 # GitHub link and does not match; a URL form (`Closes https://github.com/…`)
 # cannot match either (the charset excludes `:`) — both are deliberate misses,
-# the conservative direction (zero corpus uses of either when this landed).
+# the conservative direction.
 _CLOSES_REF_RE = re.compile(
     _CLOSES_KEYWORD + r"(?:([A-Za-z0-9][\w.-]*/[A-Za-z0-9][\w.-]*))?#(\d+)\b",
     re.IGNORECASE,
@@ -469,10 +467,10 @@ def body_closes_issue_in(body, issue, target_repo, pr_repo):
 # released its claim so ANY worker can resume once the architect responds.
 # Such a PR is NOT active work even though it is open and `fleet:wip` — its
 # lingering issue-side `fleet:claim-*` / `fleet:in-progress` labels would
-# otherwise wedge the issue as "in progress" and block re-claim (#1488).
+# otherwise wedge the issue as "in progress" and block re-claim.
 # `fleet:design-proposed` parks the same way: the epic-steward released its
 # claim and the PR waits on a STEWARD PROPOSAL answer on the umbrella issue;
-# re-adoption is gated on the steward's distribution pass (#1663).
+# re-adoption is gated on the steward's distribution pass.
 PARKED_PR_LABELS = frozenset({
     "fleet:design-blocked",
     "fleet:design-unblocked",

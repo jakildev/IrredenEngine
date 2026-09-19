@@ -189,7 +189,7 @@ def main():
               file=sys.stderr)
         return 2
 
-    # The #2739 guard. An empty scope is the exact shape of the false clean, so
+    # An empty scope is the exact shape of the false clean, so
     # it can never share an exit code with a real "no matches" result.
     if not walked:
         scope_str = " ".join(args.scope) if args.scope else "(whole repo)"

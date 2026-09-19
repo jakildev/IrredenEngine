@@ -131,13 +131,13 @@ _CLOSING_VERB = (
 )
 # Only whitespace, a colon, or a single opening bracket may sit between the verb
 # and the ref ("Closes #N", "resolved: #N", "fixes (#N)"). The gap is bounded on
-# purpose: a permissive ".*?" would let "Fixes #1258. Also see downstream #1260"
-# bind the verb across to the unrelated #1260.
+# purpose: a permissive ".*?" would let "Fixes #A. Also see downstream #B"
+# bind the verb across to the unrelated #B.
 _VERB_TO_REF_GAP = r'[\s:]*[(\[]?\s*'
 
 
 # Range dashes (hyphen-minus, en dash, em dash) — the separators an epic-planning
-# PR uses to name a span of filed children in its title: "file children #1602-#1612".
+# PR uses to name a span of filed children in its title: "file children #A-#B".
 _RANGE_DASH = r'[-–—]'
 
 
@@ -169,12 +169,12 @@ def strip_code_spans(s):
 
 
 def _ref_pattern(n):
-    # ``(?<!\w)`` rejects ``abc#1300``; ``(?!\d)`` stops ``#13000`` / ``#21300``
-    # from satisfying ``n=1300``. The two range guards reject a ``#N`` that is an
+    # ``(?<!\w)`` rejects ``abc#N``; ``(?!\d)`` stops ``#N0`` / ``#MN`` from
+    # satisfying ``n=N``. The two range guards reject a ``#N`` that is an
     # endpoint of a ``#A-#B`` range (an epic-planning PR enumerating the children
     # it FILES, not implementing one): the ``(?<!RANGE_DASH)`` lookbehind drops a
-    # range END (``...-#1612``) and the trailing ``(?!\s*RANGE_DASH\s*#?\d)``
-    # lookahead drops a range START (``#1602`` directly before ``-#1612``).
+    # range END (``...-#B``) and the trailing ``(?!\s*RANGE_DASH\s*#?\d)``
+    # lookahead drops a range START (``#A`` directly before ``-#B``).
     # Matches GitHub's own link-detection bounds, minus range endpoints.
     return (
         r'(?<!\w)(?<!' + _RANGE_DASH + r')#' + str(int(n))
@@ -195,7 +195,7 @@ _NONSHIP_MARKER = r'defer(?:s|red|ring)?|prep(?:s|ping|aratory)?'
 # Bounded gap between the ref and the marker word — whitespace plus the light
 # punctuation that brackets a parenthetical marker ("(#N deferred)", "(#N prep)",
 # "#N — deferred"). Kept small (like _VERB_TO_REF_GAP) so a marker word only binds
-# to an *adjacent* ref: "fix #1234 and defer #1235" leaves #1234 shippable.
+# to an *adjacent* ref: "fix #A and defer #B" leaves #A shippable.
 _MARKER_GAP = r'[\s():.,;—–-]{0,3}'
 
 

@@ -6,9 +6,7 @@
 # by worktree at ..." otherwise. Multiple fleet roles need to know
 # "is this PR's branch held elsewhere?" before trying to take it:
 #
-#   - worker feedback PR pickup (PR #336 lifted this
-#     out of an inline awk loop into a role-doc note; agents kept burning
-#     reasoning before hitting the gh pr checkout failure).
+#   - worker feedback PR pickup.
 #   - merger candidate selection (when a worker is mid-resolution
 #     of fleet:semantic-conflict, the merger trying the same branch
 #     always fails).

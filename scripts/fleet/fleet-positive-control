@@ -2,8 +2,6 @@
 # fleet-positive-control — run a test suite against a pre-fix ref to prove the
 # suite actually detects the fix (i.e. that it is not vacuous).
 #
-# Why this exists
-# ---------------
 # scripts/fleet/ has no CI coverage, so a new suite's worth rests on a positive
 # control: stage the old code, run the new suite against it, and confirm the
 # fix-specific assertions fail there. Hand-staging that gets it wrong silently.
@@ -11,14 +9,13 @@
 # The wrappers here dispatch to the fleet_*.py modules beside them, so staging
 # only the script under test makes every invocation abort on its own lib-dir
 # preflight with rc=1 and empty stdout — which the suite records as ordinary
-# assertion failures and reports as a normal-looking tally. A mis-stage read
-# 2 passed / 21 failed where the truth was 14 / 9, inflating the fix's apparent
-# coverage with nothing to signal the number was bogus (#2713).
+# assertion failures and reports as a normal-looking tally, inflating the fix's
+# apparent coverage with nothing to signal the number is bogus.
 #
 # Staging the whole directory with `git archive` puts that failure mode out of
 # reach. `tests/lib_preflight.sh` is the backstop for controls still run by
 # hand: every hazard-bearing suite sources it above its first wrapper
-# reference, and tests/test_positive_control.sh ratchets that adoption (#2845).
+# reference, and tests/test_positive_control.sh ratchets that adoption.
 #
 # Usage
 # -----
@@ -42,7 +39,7 @@
 #
 # The suite is driven by an interpreter, never by its own shebang — the
 # test_*.py suites carry none, and executing one hands a Python file to the
-# shell (#2848). Counts come from the suite's own summary line: for bash one of
+# shell. Counts come from the suite's own summary line: for bash one of
 # the accepted tally forms below, for python unittest's `Ran N tests` + the
 # OK/FAILED trailer.
 #
@@ -61,10 +58,10 @@
 # The legacy four are frozen, not an invitation: a NEW bash suite ends with
 # `summarize` from tests/lib_assert.sh. tests/test_suite_tally_forms.sh is the
 # ratchet that enforces that — its baseline of own-tally suites may shrink as
-# they migrate, never grow (#2917).
+# they migrate, never grow.
 #
 # Output ends with a copy-pasteable line for the PR body's test plan, with the
-# arithmetic already checked — the #2708 nit was a miscounted fail count.
+# arithmetic already checked.
 #
 # Exit status:
 #   0  control is meaningful — at least one assertion failed on the old code
@@ -169,9 +166,9 @@ no_tally() {
     exit 2
 }
 
-# The other half of the split (#2917): the suite ran to completion and printed
-# its counts, in a spelling the grammar does not accept. Sending that reader
-# hunting a staging problem is what made 41 of 92 suites read as un-controllable.
+# The other half of the split: the suite ran to completion and printed its
+# counts, in a spelling the grammar does not accept. That reader must not be
+# sent hunting a staging problem.
 unrecognized_tally() {
     echo ""
     echo "fleet-positive-control: the suite printed a tally this tool does not recognize${RC_NOTE}:" >&2
@@ -197,7 +194,7 @@ parse_bash_tally() {
         [[ -z "$tallyish" ]] || unrecognized_tally "$tallyish"
         # Counts split across two lines. The suite still ran to completion and
         # still reported; routing that to "aborted before summarizing" is the
-        # misdirection this split exists to end (#2917), so name both lines.
+        # misdirection this split exists to end, so name both lines.
         local p f
         p=$(grep -iE "$BASH_PASSISH_RE" "$out" | tail -1 || true)
         f=$(grep -iE "$BASH_FAILISH_RE" "$out" | tail -1 || true)
@@ -240,7 +237,7 @@ REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || die "not inside a git 
 # Native-Windows/MSYS2 spells the same tree two ways (`git` prints `C:/Users/x`,
 # `pwd` prints `/c/Users/x`); normalize both sides to one spelling before the
 # TEST_REL prefix-strip below, or the strip is a no-op for every suite and every
-# test file reads as "outside the repo" (#3047). Inert on macOS/Linux.
+# test file reads as "outside the repo". Inert on macOS/Linux.
 REPO_ROOT=$(canonicalize_path_spelling "$REPO_ROOT")
 git -C "$REPO_ROOT" rev-parse --verify --quiet "$REF^{commit}" >/dev/null \
     || die "not a commit-ish: $REF"
@@ -261,8 +258,8 @@ TEST_REL=${TEST_ABS#"$REPO_ROOT"/}
 
 # Dispatch by extension, exactly as tests/run_all.sh does. The suites carry no
 # shebang, so each is driven by an interpreter rather than executed — handing a
-# Python suite to the shell aborts on the first prose line of its docstring
-# (#2848). Resolved before staging, so an unsupported suite type is never
+# Python suite to the shell aborts on the first prose line of its docstring.
+# Resolved before staging, so an unsupported suite type is never
 # reported as a staging failure.
 case "$TEST_REL" in
     *.sh) INTERP=(bash);    SUMMARY_FORM="$BASH_SUMMARY_FORM" ;;

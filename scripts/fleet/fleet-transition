@@ -13,17 +13,13 @@
 # present, only add labels actually absent) in a single `gh ... edit`
 # call. Re-applying a transition is a clean no-op.
 #
-# Why this exists:
-#   Role docs hand-type `gh pr edit <N> --remove-label A --remove-label B
-#   --add-label C` for verdict / design / smoke swaps. That call is NOT
-#   atomic: gh processes removals left-to-right and exits non-zero on the
-#   first ABSENT label, so REVIEWER-PROTOCOL.md had to split it into a
-#   `... 2>/dev/null || true` remove pass plus an add pass plus a
-#   re-query verify. fleet-transition computes the delta against the live
-#   label set first, so the single edit call only ever references labels
-#   in the state that makes the call succeed — no split, no `|| true`,
-#   and the edge name (not a hand-copied label list) is the stable
-#   contract role docs reference.
+# A hand-typed `gh pr edit <N> --remove-label A --remove-label B
+#   --add-label C` is NOT atomic: gh processes removals left-to-right and
+#   exits non-zero on the first ABSENT label, leaving a half-executed swap.
+#   fleet-transition computes the delta against the live label set first,
+#   so the single edit call only ever references labels in the state that
+#   makes the call succeed, and the edge name (not a hand-copied label
+#   list) is the stable contract role docs reference.
 #
 # Usage:
 #   fleet-transition <transition-name> <number> [--repo <slug>] [--dry-run]
@@ -147,7 +143,7 @@ scope=$(jq -r '.scope' <<<"$edge")
 # trailing \n, leaving an embedded \r on every element. Strip it here, at
 # the source, so every downstream consumer (the unknown-label check,
 # has_label lookups, edit_args, the summary line) sees clean values. No-op
-# on Linux/macOS, where jq -r already emits LF. (#3029)
+# on Linux/macOS, where jq -r already emits LF.
 mapfile -t want_remove < <(jq -r '.remove[]?' <<<"$edge" | tr -d '\r')
 mapfile -t want_add    < <(jq -r '.add[]?'    <<<"$edge" | tr -d '\r')
 

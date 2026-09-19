@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # witness — fleet health monitor for fleet-dispatcher pid liveness.
 #
-# Per-agent heartbeat staleness monitoring is retired because on-demand,
+# There is no per-agent heartbeat staleness monitoring: on-demand,
 # loop-less architects may idle for arbitrary periods, making timestamp age
 # non-diagnostic of their health.
 #
@@ -46,8 +46,8 @@ done
 # until a human acts, so a plain per-pass warn re-emits identically forever:
 # spam that buries the outage instead of reporting it, and grows witness.log
 # without bound. Count consecutive passes per subject; emit the loud line up to
-# the Nth, then go quiet. See scripts/fleet/CLAUDE.md §"An every-tick guard that
-# warns must escalate-then-quiet" (#2363); fleet-clone-freshness.sh's
+# the Nth, then go quiet (scripts/fleet/CLAUDE.md §"An every-tick guard that
+# warns must escalate-then-quiet"); fleet-clone-freshness.sh's
 # _freshness_warn is the reference shape.
 #
 # Counter: $STATE_DIR/.witness-<tag>-skip
@@ -164,15 +164,15 @@ run_one_pass() {
     done
 
     # Interactive architects are on-demand and intentionally loop-less, so a
-    # heartbeat timestamp cannot describe their health. Clear artifacts from
-    # the retired monitor even when its legacy heartbeat file is gone.
+    # heartbeat timestamp cannot describe their health. Clear any stale
+    # staleness-alert artifacts even when the heartbeat file is gone.
     for agent in opus-architect game-architect; do
         _witness_clear_artifacts "stale-$agent" "$ALERT_DIR/$agent.stuck"
     done
     _witness_clear_artifacts "roster" "$ALERT_DIR/witness-roster.stuck"
 
     # fleet-dispatcher liveness check. The dispatcher is the canonical
-    # aliveness signal for non-architect panes (#273 cutover); if it
+    # aliveness signal for non-architect panes; if it
     # crashes, those panes idle silently with no other alert path. The
     # PID file is written by fleet-up at launch and removed by the
     # dispatcher's own EXIT trap on clean shutdown.

@@ -79,7 +79,7 @@ USAGE
 # `fleet-debug triggers` — read-only dump of per-role dispatch state
 # (pending trigger, last seen projection hash, projection slice size, and
 # whether the last hash write was a suppression — an empty projection on the
-# bare-hash path, or no kind gaining an item on the per-kind path, #2181/#2700).
+# bare-hash path, or no kind gaining an item on the per-kind path).
 # A subcommand, not a build target: every build target is IR*-named, so
 # `triggers` can't collide with one. Anything else falls through to the
 # debugger-launcher path below. State dir resolves from $HOME so tests can
@@ -174,7 +174,7 @@ def _seen_col(role):
     except OSError:
         return "unreadable"
     # Two on-disk formats. Legacy: a bare 16-hex whole-projection hash.
-    # fmt-2 (#2700, roles in the scout's PER_KIND_TRIGGER_ROLES): a
+    # fmt-2 (roles in the scout's PER_KIND_TRIGGER_ROLES): a
     # {"fmt":2,"kinds":{<kind>:[<item-hash>,...]}} payload, because suppression
     # for those roles is decided per sub-lane — collapsing it back to one hash
     # would hide which lane actually moved. Show per-kind item counts instead.
@@ -213,7 +213,7 @@ def _projection_col(role):
 
 def _suppressed_col(role):
     # Column reads `suppressed=`, not `empty-suppressed=`: on the per-kind path
-    # (#2700) the marker means "no kind gained an item", so a pure removal from
+    # the marker means "no kind gained an item", so a pure removal from
     # a still-non-empty lane sets it on a lane that is never empty. The on-disk
     # file name keeps the `.empty-suppressed` suffix on purpose, so existing
     # markers and both readers stay valid — fleet-state-scout's marker-invariant

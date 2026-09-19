@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # fleet-dispatch-wrap — run one transient-role claude iteration and record
-# rate-limit exits for fleet-dispatcher's per-pane cooldown (issue #520).
+# rate-limit exits for fleet-dispatcher's per-pane cooldown.
 #
 # Called by fleet-dispatcher via tmux send-keys. Arguments:
 #   $1  pane_key  e.g. "pane-3"
@@ -11,11 +11,10 @@
 #                 heavy-tier dispatches; empty for sonnet roles
 #   $6  mode      role mode — dry-run | live | review-only (default: live).
 #                 Carried through to `/role-<role> <mode>` so a dry-run boot
-#                 runs the standby path, not a live task-pickup iteration
-#                 (#2022). Absent/unrecognized → live (an older dispatcher
-#                 that passes only 5 args keeps today's behavior).
+#                 runs the standby path, not a live task-pickup iteration.
+#                 Absent/unrecognized → live.
 #   $7  plan      optional pre-claimed planning assignment from the
-#                 dispatcher, `plan=<repo>:<N>` (#2197). Exported as
+#                 dispatcher, `plan=<repo>:<N>`. Exported as
 #                 FLEET_PLAN_ISSUE so the role iteration plans exactly that
 #                 issue (already claimed under this pane's worktree basename)
 #                 and releases the claim when done. Absent → unset — the
@@ -60,7 +59,7 @@ DISPATCH_DIR="$STATE_DIR/dispatch"
 RATE_LIMIT_DIR="$STATE_DIR/rate-limit"
 CLAIM_FLAG_DIR="$STATE_DIR/dispatch-claimed"   # keep in sync with fleet-dispatcher
 
-# Install-symlink freshness (#2262): a tool/role-cmd merged WHILE the fleet is
+# Install-symlink freshness: a tool/role-cmd merged WHILE the fleet is
 # running only reaches ~/bin when install.sh re-links — otherwise it's
 # `command not found` on first use. Source the shared helper (symlinked into
 # ~/bin next to this script); the per-pane refresh runs just before the claude
@@ -88,9 +87,8 @@ unset _FLEET_COMMON_SH
 # basename (fleet-dispatcher assign_for_pane). Exported whole as
 # FLEET_DISPATCH_TARGET plus its parts (FLEET_DISPATCH_KIND / _REPO / _NUMBER)
 # and a human-readable FLEET_DISPATCH_REASON; a `plan` target also exports
-# the #2197 spelling, FLEET_PLAN_ISSUE=<repo>:<N>, which the planning steps
-# still read. The legacy `plan=<repo>:<N>` form (an older dispatcher mid
-# rolling upgrade) is accepted as `target=plan:<repo>:<N>`. Anything
+# FLEET_PLAN_ISSUE=<repo>:<N>, which the planning steps read. The legacy
+# `plan=<repo>:<N>` form is accepted as `target=plan:<repo>:<N>`. Anything
 # fleet_parse_target rejects exports NOTHING — an empty or malformed value
 # would slip past downstream `[[ -n ]]` guards (the dual-spelling lesson,
 # scripts/fleet/CLAUDE.md). FLEET_ROLE names the dispatched role for the
@@ -155,7 +153,7 @@ record_wrapper_pid() {
 
 record_wrapper_pid || echo "fleet-dispatch-wrap: could not record wrapper PID for $PANE_KEY" >&2
 
-# GitHub App token (#1394 Q4): guarded per-iteration refresh so every claude
+# GitHub App token: guarded per-iteration refresh so every claude
 # iteration starts with a fresh token (cache makes this a cheap file read
 # most calls). Never export GH_TOKEN="" — that would defeat gh's keychain
 # fallback on the unconfigured path.
@@ -170,9 +168,8 @@ unset _gh_app_token
 # The target MUST be explicit. Without `-t`, tmux resolves `-p` against
 # TMUX_PANE — which does not reliably reach this process — and then
 # falls back to the attached client's ACTIVE pane, i.e. whatever pane
-# the human has focused. Observed live 2026-06-11: every dispatch
-# re-tagged the focused architect pane, cycling it through
-# "sonnet-reviewer"/"merger" labels. PANE_KEY is "pane-<N>" for tmux
+# the human has focused — every dispatch would re-tag the focused
+# architect pane. PANE_KEY is "pane-<N>" for tmux
 # pane id "%<N>" (see pane_id_to_key in fleet-dispatcher), so the exact
 # pane this dispatch landed in is reconstructible.
 _tag="$(fleet_model_tag "$MODEL")"
@@ -198,7 +195,7 @@ rm -f "$FLEET_THROTTLE_FLAG"
 export FLEET_QUOTA_FLAG="$RATE_LIMIT_DIR/$PANE_KEY.quota-seen"
 rm -f "$FLEET_QUOTA_FLAG"
 
-# Dispatch-outcome marker (#2698). fleet-claim touches this whenever the
+# Dispatch-outcome marker. fleet-claim touches this whenever the
 # iteration takes or releases a fleet lock — i.e. whenever it did productive
 # work — and fleet-dispatcher reads it back in cleanup_stale_dispatches to
 # decide claimed-vs-empty for the empty-exit streak.
@@ -221,8 +218,7 @@ rm -f "$FLEET_CLAIM_FLAG"
 # than re-deriving all of it from the claim/reservation (expensive + lossy). The
 # resume is gated by a per-worktree sidecar that is written at launch and cleared
 # on a clean, work-finished exit; a hard kill skips this script's post-claude
-# cleanup, so the sidecar survives and the next dispatch resumes. Verified
-# feasible on CLI 2.1.196 (the #1320 thinking-block 400 no longer reproduces).
+# cleanup, so the sidecar survives and the next dispatch resumes.
 SESSIONS_DIR="${FLEET_SESSIONS_DIR:-$HOME/.fleet/sessions}"
 mkdir -p "$SESSIONS_DIR"
 worktree_name=$(basename "$PWD")
@@ -285,7 +281,7 @@ worktree_in_flight() {
 
 # Sidecar path + key travel via argv (not embedded in the -c source): mingw64
 # python3 on a native-Windows host cannot open an MSYS `/c/...` string, and
-# MSYS only converts paths at the argv boundary (#3030).
+# MSYS only converts paths at the argv boundary.
 _read_sidecar() { python3 -c "import json,sys;print(json.load(open(sys.argv[1])).get(sys.argv[2],''))" "$SIDECAR" "$1" 2>/dev/null || true; }
 
 RESUMED=0
@@ -422,7 +418,7 @@ if [[ -n "${FLEET_DISPATCH_PRINT_LAUNCH:-}" ]]; then
 fi
 
 # Re-link ~/bin if a fleet source merged since the last install pass, so this
-# iteration's claude sees every tool/role-cmd (the mid-run stranding fix, #2262).
+# iteration's claude sees every tool/role-cmd.
 # Runs after the FLEET_DISPATCH_PRINT_LAUNCH test hook so launch-decision tests
 # never trigger a real install.sh. Best-effort: never block the dispatch.
 fleet_install_maybe_refresh || true

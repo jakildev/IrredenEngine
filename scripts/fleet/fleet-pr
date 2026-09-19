@@ -124,8 +124,8 @@ def fetch_live_pr(slug, pr_number):
     # from the one output the checklist contract calls complete.
     #
     # per_page=100 + --paginate, not the REST default of 30: a truncated inline
-    # list is the same silent drop this script exists to prevent (same class as
-    # #2856). `gh --paginate` merges JSON array pages into one array, so
+    # list is the same silent drop this script exists to prevent.
+    # `gh --paginate` merges JSON array pages into one array, so
     # run_gh_json still parses a single document. Keep in sync with the scout's
     # fetch_pr_inline_comments.
     inline = run_gh_json([
