@@ -38,6 +38,7 @@ project_opus_reviewer = _mod.project_opus_reviewer
 project_sonnet_reviewer = _mod.project_sonnet_reviewer
 slice_worker = _mod.slice_worker
 stable_hash = _mod.stable_hash
+worker_feedback_labels = _mod.worker_feedback_labels
 
 
 def _state(prs, tasks=None, needs_plan=None):
@@ -251,6 +252,38 @@ class WorkerSkipLabelsDropPR(unittest.TestCase):
         self.assertEqual(
             project_worker(_state([_pr(101, labels=["fleet:needs-fix", "fleet:gated"])])),
             [],
+        )
+
+
+class WorkerFeedbackLabelsSuppressedWhileDesignParked(unittest.TestCase):
+    """A PR parked with fleet:design-blocked (or fleet:design-proposed) is
+    not worker feedback work even when it still carries a fleet verdict
+    tier — the reviewer path can stamp fleet:needs-fix and park in the same
+    pass, and nothing else clears the tier. human:needs-fix / human:blocker
+    outrank the park and keep dispatching."""
+
+    def test_needs_fix_suppressed_while_design_blocked(self):
+        self.assertEqual(
+            worker_feedback_labels({"fleet:needs-fix", "fleet:design-blocked"}),
+            frozenset(),
+        )
+
+    def test_needs_fix_suppressed_while_design_proposed(self):
+        self.assertEqual(
+            worker_feedback_labels({"fleet:needs-fix", "fleet:design-proposed"}),
+            frozenset(),
+        )
+
+    def test_human_needs_fix_still_dispatches_while_design_blocked(self):
+        self.assertEqual(
+            worker_feedback_labels({"human:needs-fix", "fleet:design-blocked"}),
+            frozenset({"human:needs-fix"}),
+        )
+
+    def test_needs_fix_alone_is_unaffected(self):
+        self.assertEqual(
+            worker_feedback_labels({"fleet:needs-fix"}),
+            frozenset({"fleet:needs-fix"}),
         )
 
 
