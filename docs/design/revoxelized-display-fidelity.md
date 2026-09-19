@@ -58,7 +58,8 @@ Every capture's foreground pixel count equals the expectation exactly. The
 authored cube has 1728 cells; the nearest-cell resample retains 1716 to 1734.
 
 Controls on the cyan yaw-45 capture: the wrong fixture (163,852 wrong-face
-pixels), the wrong yaw (263,458) and the identity model (149,335) all fail;
+pixels), the wrong yaw (a 22.5° model, 263,458) and the identity model
+(149,335) all fail;
 the `--debug-raw-trixels` rectangular display fails with 55,511 extra and
 148,854 wrong-face pixels. The hermetic suite fails a one-pixel face swap, a
 hole, a spike, a blank frame and a wrong pose.

@@ -51,9 +51,11 @@ class RevoxFaceMetricTest(unittest.TestCase):
         self.assertEqual(len(cells), METRIC.SOLID_EXTENT ** 3 * 3 // 4)
         self.assertEqual(anchor, (-0.5, -0.5, -0.5))
 
-    def test_yaw_rotates_the_normal_palette_not_the_lattice(self):
-        _, palette_zero, _ = expected(yaw=0)
+    def test_yaw_rotates_the_normal_palette_and_recomposes_the_resample(self):
+        _, palette_zero, stats_zero = expected(yaw=0)
         _, palette_ninety, _ = expected(yaw=90)
+        _, _, stats_diagonal = expected(yaw=45)
+        self.assertNotEqual(stats_zero["occupied_cells"], stats_diagonal["occupied_cells"])
         self.assertEqual(palette_zero[1:], [(0, 128, 128), (128, 0, 128), (128, 128, 0)])
         for color, expectation in zip(palette_ninety[1:],
                                       [(128, 0, 128), (255, 128, 128), (128, 128, 0)]):
@@ -101,6 +103,17 @@ class RevoxFaceMetricTest(unittest.TestCase):
         result, _ = METRIC.compare(SIZE, SIZE, 3, pixels, other, palette)
         self.assertFalse(result["pass"])
         self.assertGreater(result["missing_pixels"] + result["extra_pixels"], 0)
+
+    def test_clipped_expectation_fails(self):
+        labels, palette, stats = METRIC.expected_image(
+            SIZE, SIZE, METRIC.FIXTURES["cube"], 0.0, True, (40, 20), CENTER)
+        self.assertTrue(stats["clipped"])
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "clipped.png"
+            METRIC.write_png(str(path), SIZE, SIZE, bytes(render(labels, palette)), 3)
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(METRIC.main([str(path), "--fixture", "cube", "--yaw", "0",
+                                              "--upright", "--iso-scale", "40", "20"]), 1)
 
     def test_blank_does_not_pass_vacuously(self):
         labels, palette, _ = expected()
