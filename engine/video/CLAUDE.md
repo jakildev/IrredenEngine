@@ -185,13 +185,8 @@ per run with `--config-preset <file>` (its `config = { … }` overlays
 
 ## Gotchas
 
-- **FFmpeg missing → silent.** `IR_VIDEO_HAS_FFMPEG=0` makes
-  `startRecording()` a no-op. Check build logs if recording "doesn't work".
 - **PBO priming.** First 2+ frames of a recording are dropped to fill the
   PBO ring. Starting/stopping rapidly truncates short clips.
-- **Finalize-thread races.** Don't call `toggleRecording()` while the
-  finalize thread is still joining — locks are there, but you can still
-  deadlock if the main thread is holding the recorder mutex.
 - **Partial files on crash.** Writes are not atomic. A crash during
   encoding leaves a half-written mp4 that most players refuse to open.
 - **macOS mic permission.** `IAudioCaptureSource` asks for microphone
