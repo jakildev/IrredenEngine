@@ -1,22 +1,13 @@
 #!/usr/bin/env bash
-# Tests for fleet-positive-control, lib_preflight.sh's require_fleet_lib_dir
-# guard (#2713), and the tree-wide ratchet on that guard's adoption (#2845).
+# Tests for fleet-positive-control: the require_fleet_lib_dir guard's
+# tree-wide adoption ratchet, and interpreter dispatch (.sh under bash, .py
+# under python3).
 #
 # A positive control stages a pre-fix tree and runs the new suite against it.
-# Staging only the script under test leaves the fleet-* wrappers unable to find
-# the fleet_*.py modules they dispatch to, so every invocation aborts on its own
-# lib-dir preflight — and the suite scored those as ordinary assertion failures
-# and printed a normal-looking tally (2 passed / 21 failed where the truth was
-# 14 / 9). These tests pin both halves of the fix: the guard makes a partial
-# stage abort with no tally, and the wrapper makes correct staging the easy path.
-#
-# The last block covers interpreter dispatch (#2848): the wrapper used to exec
-# the staged suite, which only works for a self-executing script. The 32
-# test_*.py suites carry no shebang — run_all.sh supplies python3 — so the shell
-# interpreted them and the first prose line of the module docstring came back as
-# a syntax error, reported as a *staging* failure, the one thing that had gone
-# right. Dispatch by extension needs a second tally parser, so those tests pin
-# unittest's arithmetic alongside it.
+# Staging only the script under test leaves the fleet-* wrappers unable to
+# find the fleet_*.py modules they dispatch to, so every invocation must
+# abort on its own lib-dir preflight with no tally to copy into a PR body,
+# rather than scoring the abort as an ordinary assertion failure.
 #
 # Purely local: no network, no ~/.fleet, no gh.
 
@@ -75,8 +66,8 @@ mkdir -p "$PARTIAL/tests"
 cp "$SCRIPT_DIR/fleet-claim" "$PARTIAL/fleet-claim"
 cp "$LIB_ASSERT" "$PARTIAL/tests/lib_assert.sh"
 # lib_assert.sh sources lib_preflight.sh from beside itself, so a stage holding
-# only the former is partial in a second, uninteresting way — stage both, and
-# the missing-modules discriminator stays the thing under test (#2845).
+# only the former is partial in a second, uninteresting way — stage both, so
+# the missing-modules discriminator stays the thing under test.
 cp "$LIB_PREFLIGHT" "$PARTIAL/tests/lib_preflight.sh"
 probe_guard "$PARTIAL"
 assert_eq "$RC" "2" "partial stage exits 2 (setup failure, not a result)"
@@ -125,19 +116,17 @@ assert_eq "$RC" "2" "lib_assert without lib_preflight beside it exits 2"
 assert_contains "$OUT" "lib_preflight.sh missing beside lib_assert.sh" "the abort names the missing half"
 assert_absent "$OUT" "REACHED-BODY" "the driver body never runs"
 
-# --- the guard reaches suites that reach it by neither route (#2845) --------
+# --- the guard reaches suites that reach it by neither route -----------------
 # One suite per shape a SCRIPT_DIR-conditional guard inside lib_assert.sh could
-# not see, since those are the shapes a regression would silently restore:
+# not see:
 #
 #   test_fleet_claim_model_gate.sh        never sources lib_assert.sh at all
 #   test_fleet_queue_ingest_plan_race.sh  sources it two lines before assigning
-#                                          SCRIPT_DIR, so such a guard would
-#                                          have had nothing to validate
+#                                          SCRIPT_DIR
 #
-# Measured on the same stage recipe without the preflight: model-gate exits 1
-# printing `PASS: 4  FAIL: 7` where the truth is `PASS: 11  FAIL: 0`. The tally
-# is the defect — a plausible number with nothing marking the run bogus — so the
-# assertions below pin the abort AND the absence of any tally to copy.
+# A partial stage without the preflight prints a plausible-looking tally with
+# nothing marking the run bogus, so the assertions below pin the abort AND the
+# absence of any tally to copy.
 echo "--- a partial stage aborts suites in both formerly-uncovered lanes ---"
 LANE_COMPLETE="$TMPROOT/lanes-complete"
 LANE_PARTIAL="$TMPROOT/lanes-partial"
@@ -170,15 +159,14 @@ assert_contains "$OUT" "9 passed, 0 failed" "plan-race: a complete stage reports
 
 # --- the adoption ratchet ----------------------------------------------------
 # A guard is worth exactly its reach, and an opt-in one reaches whoever
-# remembered it. So the invariant is checked here instead: a suite that resolves
-# a fleet-* wrapper without sourcing the preflight above it fails CI the same
-# way the mis-stage it guards against would have (#2845).
+# remembered it: a suite that resolves a fleet-* wrapper without sourcing the
+# preflight above it fails CI the same way a mis-staged run would.
 #
 # The hazard predicate matches any $VAR-rooted path resolving a fleet-* wrapper
 # or fleet_*.py module, with intervening segments allowed. It is deliberately
-# NOT anchored to "$SCRIPT_DIR/fleet-": the tree already carries
-# $SCRIPT_DIR/../fleet-rules-sweep, and scoping a matcher to the dominant
-# spelling rather than to the hazard is the exact mistake being fixed.
+# NOT anchored to "$SCRIPT_DIR/fleet-": the tree also carries
+# $SCRIPT_DIR/../fleet-rules-sweep, so a matcher anchored to the dominant
+# spelling rather than to the hazard itself would miss it.
 HAZARD_RE='\$\{?[A-Za-z_][A-Za-z0-9_]*\}?[A-Za-z0-9_./-]*/fleet[-_]'
 GUARD_RE='^[[:space:]]*(source|\.)[[:space:]].*lib_(preflight|assert)\.sh'
 
@@ -269,16 +257,14 @@ else
     printf '        %s\n' "${UNADOPTED[@]}"
 fi
 
-# --- containment computation survives mixed Windows path spellings (#3047) --
+# --- containment computation survives mixed Windows path spellings ----------
 # `git rev-parse --show-toplevel` yields REPO_ROOT in the Windows drive form
 # (C:/Users/x) while `cd ... && pwd` yields TEST_ABS in the MSYS2 POSIX drive
 # form (/c/Users/x) on the same native-Windows host. A raw prefix-strip of one
-# off the other is a no-op for every suite, so every test file reads as
-# "outside the repo" (pre-fix, measured). Mirrors the wrapper's own
-# REPO_ROOT/TEST_ABS/TEST_REL derivation (fleet-positive-control) against
-# literal path strings — hermetic, no live git spelling dependence, so this
-# runs red-then-green on every host regardless of which spelling git and pwd
-# happen to agree on there.
+# off the other is a no-op, so every test file would read as "outside the
+# repo". Mirrors the wrapper's own REPO_ROOT/TEST_ABS/TEST_REL derivation
+# (fleet-positive-control) against literal path strings — hermetic, with no
+# live git spelling dependence.
 test_rel() {
     local root_raw="$1" test_dir_raw="$2" test_base="$3"
     local root test_abs test_rel
@@ -329,9 +315,9 @@ run "$WRAPPER" "$SCRIPT_DIR/tests/test_positive_control.sh" HEAD --bogus-flag
 assert_eq "$RC" "2" "an unrecognized option is rejected, not ignored"
 assert_contains "$OUT" "unknown option" "the rejected option names itself"
 
-# Both spellings of --include reject an empty value identically. scripts/fleet's
-# CLAUDE.md makes this a standing rule: a diverging equals arm lets
-# `--include=$UNSET_VAR` slip an empty string past downstream guards (#2193).
+# Both spellings of --include reject an empty value identically — a diverging
+# equals arm would let `--include=$UNSET_VAR` slip an empty string past
+# downstream guards. scripts/fleet's CLAUDE.md makes this a standing rule.
 run "$WRAPPER" "$SCRIPT_DIR/tests/test_positive_control.sh" HEAD --include
 assert_eq "$RC" "2" "--include with no pathspec exits 2"
 assert_contains "$OUT" "needs a pathspec" "the space form names the missing value"
@@ -364,14 +350,8 @@ echo "--- a suite that does distinguish the ref is reported MEANINGFUL ---"
 # The discriminator is an UNTRACKED marker beside the wrapper: `git archive <ref>`
 # only ever emits tracked content, so the stage cannot contain it for any ref,
 # while the working tree can. That models "a file the fix adds" without asking
-# what the ref happens to hold.
-#
-# The obvious shortcut — assert the wrapper's own presence, absent from the
-# pre-fix ref — is what this originally did, and it was self-invalidating: it
-# discriminates only while this change is uncommitted. The moment the commit
-# existed, HEAD carried the wrapper, the fixture scored 2-of-2 passing, and the
-# four assertions below failed VACUOUS on the PR's own branch (and would have on
-# master forever after). Keep the discriminator independent of the ref's content.
+# what the ref happens to hold — keep the discriminator independent of the
+# ref's content, never keyed to the wrapper's own presence.
 MEANMARK="$SCRIPT_DIR/fleet-zz-tmp-added-by-fix-2713"
 STRAYS+=("$MEANMARK")
 : > "$MEANMARK"
@@ -458,11 +438,11 @@ assert_eq "$RC" "2" "no tally exits 2 rather than inventing a result"
 assert_contains "$OUT" "printed no tally" "the no-tally error names the cause"
 rm -f "$NOTALLY"
 
-# --- interpreter dispatch: .sh under bash, .py under python3 (#2848) ---------
+# --- interpreter dispatch: .sh under bash, .py under python3 ---------------
 echo "--- a .py suite runs under python3 and reports a real verdict ---"
-# Same untracked-marker discriminator as the bash MEANINGFUL fixture above, and
-# for the same reason: `git archive <ref>` only emits tracked content, so the
-# stage cannot hold it for any ref while the working tree always can.
+# Same untracked-marker discriminator as the bash MEANINGFUL fixture, for the
+# same reason: `git archive <ref>` only emits tracked content, so the stage
+# cannot hold it for any ref while the working tree always can.
 PYMARK="$SCRIPT_DIR/fleet-zz-tmp-added-by-fix-2848"
 STRAYS+=("$PYMARK")
 : > "$PYMARK"
@@ -624,15 +604,11 @@ assert_contains "$OUT" "unsupported suite type" "the error names the suite type 
 assert_absent "$OUT" "staged scripts/fleet" "the refusal comes before staging, so staging is never implicated"
 rm -f "$WEIRD"
 
-# --- the bash tally grammar (#2917) -----------------------------------------
-# 41 of 92 bash suites keep their own PASS/FAIL counters and print them in a
-# spelling summarize() never emits, so the matcher rejected them and the tool
-# exited 2 as a *setup failure* — no verdict obtainable through the one path
-# scripts/fleet/CLAUDE.md mandates. The grammar below is the closed set that
-# replaced it; `--parse-tally` is its single executor, shared with the
-# population ratchet in test_suite_tally_forms.sh so there is one copy.
+# --- the bash tally grammar --------------------------------------------------
+# `--parse-tally` is the single executor of the accepted tally grammar, shared
+# with the population ratchet in test_suite_tally_forms.sh so there is one copy.
 #
-# This table IS the spec: a sixth bespoke form must fail here rather than
+# This table IS the spec: a bespoke form outside it must fail here rather than
 # silently becoming uncontrollable.
 parse_tally() {
     local body="$1" f="$TMPROOT/tally.txt"
@@ -680,8 +656,8 @@ parse_tally 'PASS: 0  FAIL: 0'
 assert_eq "$OUT" "0 0" "a zero tally parses; rejecting it is the run's job"
 
 echo "--- --parse-tally rejects everything else, and says which kind of wrong ---"
-# The whole point of the #2917 split: a suite that RAN and printed a tally must
-# never be reported as one that aborted before summarizing.
+# A suite that RAN and printed a tally must never be reported as one that
+# aborted before summarizing.
 parse_tally 'Passed=5 Failed=0'
 assert_eq "$RC" "2" "a bespoke spelling exits 2"
 assert_contains "$OUT" "does not recognize" "a bespoke spelling is named as unrecognized"
@@ -754,10 +730,9 @@ assert_contains "$OUT" "takes no" "the mode-mixing error names the cause"
 run "$WRAPPER" --parse-tally "$TMPROOT/tally.txt" --include docs
 assert_eq "$RC" "2" "--parse-tally plus --include is refused (nothing is staged)"
 
-# --- own-tally suites reach a verdict end-to-end (#2917) ---------------------
-# The grammar tables above pin the parser; these pin the whole pipeline for a
-# suite that never calls summarize — the population that could not be
-# controlled at all before this change.
+# --- own-tally suites reach a verdict end-to-end -----------------------------
+# The grammar tables pin the parser; these pin the whole pipeline for a suite
+# that never calls summarize.
 echo "--- an own-tally suite that distinguishes the ref is reported MEANINGFUL ---"
 OWNMARK="$SCRIPT_DIR/fleet-zz-tmp-added-by-fix-2917"
 STRAYS+=("$OWNMARK")

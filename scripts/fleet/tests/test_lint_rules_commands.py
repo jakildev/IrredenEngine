@@ -1,4 +1,4 @@
-"""Unit + integration tests for lint_rules_commands.py (#2823).
+"""Unit + integration tests for lint_rules_commands.py.
 
 The lint scans fenced code blocks in `.claude/rules/*.md` / `docs/agents/*.md`
 for command-position `fleet-*` tokens (first whitespace-delimited token per
@@ -21,8 +21,8 @@ stdlib-only; every fixture is written under a TemporaryDirectory (no network,
 no repo mutation). Tracked-name sets are passed in directly for the unit
 tests below (no live `git ls-files` call) — only the CommittedTree class
 exercises `main()` end-to-end against this repo's real working tree. Host
-PATH is pinned empty for every case (see PathPinnedTest) so resolution is
-decided by the fixtures, never by what happens to be installed.
+PATH is pinned empty for every case, so resolution is decided by the
+fixtures, never by what happens to be installed.
 """
 import io
 import sys
@@ -48,10 +48,9 @@ class PathPinnedTest(unittest.TestCase):
     `resolve()` falls back to a live PATH lookup, so any case whose
     expectation depends on whether a token resolves is otherwise only as
     stable as the host's `~/bin`. The fixtures here cite real fleet tool
-    names, and `install.sh` symlinks those onto every fleet host — so when
-    `fleet-rules-sweep` landed (#2744) it inverted five cases at once: the
-    four "should be flagged" assertions failed, and the marker-suppression
-    case began passing vacuously (#2823 review). Pinning the lookup empty
+    names, and `install.sh` symlinks those onto every fleet host, so an
+    unpinned lookup would decide "should be flagged" cases by what happens
+    to be installed rather than by the fixture. Pinning the lookup empty
     keeps each case deciding on the tracked-name sets it passes in, and
     matches what CI sees: a bare checkout with nothing installed.
 
@@ -178,11 +177,11 @@ class CommittedTree(PathPinnedTest):
         self.assertEqual(_run_main(_FLEET_ROOT), 0)
 
     def test_cpp_math_citation_is_flagged_when_nothing_resolves(self):
-        # Positive control (#2823 AC2): the #2823 offender, cpp-math.md:87,
-        # scanned with no tracked names and no PATH. It must still be
-        # flagged — that proves the green above is resolution finding the
-        # tracked `scripts/fleet/fleet-rules-sweep` (landed in #2744), not
-        # the predicate going blind on this file.
+        # Positive control: cpp-math.md:87 is scanned with no tracked names
+        # and no PATH. It must still be flagged — proving that a clean
+        # result elsewhere comes from resolution actually finding the
+        # tracked `scripts/fleet/fleet-rules-sweep`, not from the predicate
+        # going blind on this file.
         real = (_FLEET_ROOT / ".claude" / "rules" / "cpp-math.md").read_text(encoding="utf-8")
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / ".claude" / "rules" / "cpp-math.md"

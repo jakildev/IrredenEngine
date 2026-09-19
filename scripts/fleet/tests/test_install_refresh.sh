@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for the install-symlink freshness helpers in fleet-common.sh (#2262):
+# Tests for the install-symlink freshness helpers in fleet-common.sh:
 #   fleet_main_clone_root       — worktree -> main-clone resolution
 #   fleet_install_stale         — stamp-vs-source mtime staleness check
 #   fleet_install_refresh       — run install.sh + bump stamp (even on failure)
@@ -18,7 +18,7 @@ HELPER="$SCRIPT_DIR/fleet-common.sh"
 
 if [[ ! -f "$HELPER" ]]; then
     echo "SKIP: helper not found at $HELPER" >&2
-    exit 3  # skip status — run_all.sh must not count this as a pass (#2786)
+    exit 3  # skip status — run_all.sh must not count this as a pass
 fi
 if ! command -v git >/dev/null 2>&1; then
     echo "SKIP: git not available" >&2

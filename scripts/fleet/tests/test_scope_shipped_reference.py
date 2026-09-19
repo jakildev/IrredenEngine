@@ -2,35 +2,32 @@
 
 Covers the false-positive classes:
 
-* #1304 — fleet-queue-ingest's scope-shipped pre-flight used to trust prs[0]
-  from a `gh pr list --search '#N'` query, but GitHub matches the bare token N
-  anywhere (titles, bodies, comments, line numbers, relevance). Incidental
-  hits with no literal #N must be rejected.
-* #1260 / #1269 — a bare word-boundary #N in a PR *body* is also not proof:
-  PRs cite issues they explicitly do NOT fix ("downstream issues (#1260)",
-  "pre-existing #1269", "filed as #1269", "Refs #N"). A body ref counts only
-  when a closing-action verb sits directly before it; a title ref is trusted
+* layer 1 — a `gh pr list --search '#N'` query can return a PR that never
+  literally cites #N: GitHub matches the bare token N anywhere (titles,
+  bodies, comments, line numbers, relevance). Incidental hits with no
+  literal #N must be rejected.
+* layer 2 — a bare word-boundary #N in a PR *body* is also not proof: PRs
+  cite issues they explicitly do NOT fix ("downstream issues (#N)",
+  "pre-existing #N", "filed as #N", "Refs #N"). A body ref counts only when
+  a closing-action verb sits directly before it; a title ref is trusted
   as-is (the `#N: <desc>` PR-naming convention).
-* #1602 / #1612 (layer 3) — range endpoints in an epic-planning title
-  ("file children #1602-#1612") enumerate, they don't ship.
-* #1807 / #1802 / #1354 (layer 4) — a plan/design-doc title ("docs: plan …",
-  "docs/design: …") names the issue it plans/designs, not one it ships, so its
-  title ref is not trusted; only a body closing-verb ships it.
-* #1640 ← #1700 (layer 6) — a doc-and-defer PR marks the issue deferred in a
-  trusted (non-plan) title ("render: doc the invariant (#1640 deferred)"); a
+* layer 3 — range endpoints in an epic-planning title ("file children
+  #N-#M") enumerate, they don't ship.
+* layer 4 — a plan/design-doc title ("docs: plan …", "docs/design: …")
+  names the issue it plans/designs, not one it ships, so its title ref is
+  not trusted; only a body closing-verb ships it.
+* layer 6 — a doc-and-defer PR marks the issue deferred in a trusted
+  (non-plan) title ("render: doc the invariant (#N deferred)"); a
   deferral-marked ref escalates the issue rather than shipping it.
-* #2258 ← #2266 (layer 7) — a narrowed refactor marks the issue prep in a
-  trusted (non-plan) title ("render: extract … helper (#2258 prep)", linked
-  `Part of` not `Closes`); a prep-marked ref prepares the issue rather than
-  shipping it.
-* #2385 ← #2392 (layer 8) — an epic-steward bookkeeping PR ("docs/fleet:
-  epic-steward — #2317 rollup + #2385 adoption (#2314)") names #2385 in a
-  trusted (non-plan) title but its diff is entirely `.fleet/` files; an
-  all-`.fleet/` diff ships no code scope, so it falls through to the body
-  closing-verb check.
-* #2091 ← #3020 (layer 9) — a render-scoped verification PR deliberately leaves
-  the issue open for a later platform phase, but changes only `docs/`; the title
-  ref therefore falls through to the body closing-verb check. The same applies
+* layer 7 — a narrowed refactor marks the issue prep in a trusted (non-plan)
+  title ("render: extract … helper (#N prep)", linked `Part of` not
+  `Closes`); a prep-marked ref prepares the issue rather than shipping it.
+* layer 8 — a bookkeeping PR can name an issue in a trusted (non-plan)
+  title while its diff is entirely `.fleet/` files; an all-`.fleet/` diff
+  ships no code scope, so it falls through to the body closing-verb check.
+* layer 9 — a render-scoped verification PR can deliberately leave the
+  issue open for a later platform phase while changing only `docs/`; the
+  title ref falls through to the body closing-verb check. The same applies
   to a mixed `.fleet/` + `docs/` diff.
 
 The module is a real .py, but it is loaded via importlib (mirroring
@@ -70,22 +67,24 @@ class PrReferencesIssue(unittest.TestCase):
         self.assertTrue(pr_references_issue("#1300: render fix", "", 1300))
 
     def test_bare_number_no_hash_is_not_a_reference(self):
-        # The #1243 -> #1300 shape: "1300" appears as a line number, no '#'.
+        # A number appearing as a line number, with no '#', is not a reference.
         self.assertFalse(
             pr_references_issue("delete orphaned queue scripts",
                                 "touches lines 71, 176, 1300, 3619", 1300))
 
     def test_no_literal_number_at_all(self):
-        # The #1160 -> #1284 shape: relevance-only hit, number absent entirely.
+        # A relevance-only search hit, with the number absent entirely, is
+        # not a reference.
         self.assertFalse(
             pr_references_issue("codegen: emit per-component tick", "body text", 1284))
 
     def test_longer_number_does_not_match_prefix(self):
-        # #13000 must not satisfy n=1300.
+        # A longer number must not satisfy a shorter query by prefix.
         self.assertFalse(pr_references_issue("", "see #13000", 1300))
 
     def test_longer_number_does_not_match_suffix(self):
-        # #1300 query must not be satisfied by a leading-digit token.
+        # A query must not be satisfied by a longer token that merely ends
+        # with it.
         self.assertFalse(pr_references_issue("", "see #21300", 1300))
 
     def test_hash_ref_with_adjacent_punctuation(self):
@@ -95,24 +94,26 @@ class PrReferencesIssue(unittest.TestCase):
         self.assertFalse(pr_references_issue("#0 ref", "#0 ref", 0))
 
     def test_alphanumeric_before_hash_is_not_a_reference(self):
-        # "abc#1300" — '#' immediately preceded by a word char must be rejected.
+        # A '#' immediately preceded by a word character (no boundary) must
+        # be rejected as a reference.
         self.assertFalse(pr_references_issue("", "abc#1300 fix", 1300))
 
     def test_non_numeric_truthy_n_returns_false(self):
         # int(n) raises ValueError for a truthy non-numeric string.
         self.assertFalse(pr_references_issue("", "Closes #1300", "abc"))
 
-    # --- mentioned-but-not-shipped body refs (#1260 / #1269) ---
+    # --- mentioned-but-not-shipped body refs ---
 
     def test_downstream_body_mention_rejected(self):
-        # The #1260 <- #1282 shape: PR names #1260 as explicitly-NOT-fixed work.
+        # A PR can name an issue as explicitly-NOT-fixed work in its body.
         self.assertFalse(pr_references_issue(
             "#1271: demo: IRShapeDebug --spin-yaw",
             "bug-fixing is downstream issues (#1256, #1260, etc). This PR ships "
             "the regression scaffolding.", 1260))
 
     def test_pre_existing_body_mention_rejected(self):
-        # The #1269 <- #1265 shape: PR cites #1269 as a pre-existing failure.
+        # A PR can cite an issue as a pre-existing failure rather than one it
+        # fixes.
         self.assertFalse(pr_references_issue(
             "#1258: render: camera pitch/roll",
             "MatchesStd140Packing fails on origin/master independently of this "
@@ -129,7 +130,8 @@ class PrReferencesIssue(unittest.TestCase):
             "", "Fixes #1258. Also see downstream #1260.", 1260))
 
     def test_title_ref_counts_even_with_unrelated_body_mention(self):
-        # The same PR that mentions #1269 in its body genuinely ships #1258.
+        # A PR that mentions one issue in its body can still genuinely ship
+        # a different issue via its title.
         self.assertTrue(pr_references_issue(
             "#1258: render: camera pitch/roll", "pre-existing #1269 still fails", 1258))
 
@@ -139,25 +141,27 @@ class PrReferencesIssue(unittest.TestCase):
                      "closes #1300", "Fixes #1300"):
             self.assertTrue(pr_references_issue("", body, 1300), body)
 
-    # --- range-endpoint refs (#1602 / #1612 <- #1614 epic-planning PR) ---
+    # --- range-endpoint refs (epic-planning PR) ---
 
     _FILE_CHILDREN_TITLE = (
         "docs: re-plan entity-editor Phase 2 (#605) — file children #1602-#1612")
 
     def test_title_range_start_endpoint_rejected(self):
-        # #1602 is the range START in "#1602-#1612": filed by #1614, not shipped.
+        # The range START endpoint in a title range is filed, not shipped.
         self.assertFalse(pr_references_issue(self._FILE_CHILDREN_TITLE, "", 1602))
 
     def test_title_range_end_endpoint_rejected(self):
-        # #1612 is the range END (the dash sits directly before it).
+        # The range END endpoint is rejected too (the dash sits directly
+        # before it).
         self.assertFalse(pr_references_issue(self._FILE_CHILDREN_TITLE, "", 1612))
 
     def test_title_range_middle_child_never_matched(self):
-        # #1607 is inside the span but not literally written with a '#'.
+        # A child inside the span but not literally written with a '#'
+        # never matches.
         self.assertFalse(pr_references_issue(self._FILE_CHILDREN_TITLE, "", 1607))
 
     def test_title_range_hashless_second_endpoint_still_rejects_start(self):
-        # "#1602-1612" (second endpoint has no '#') still rejects the start.
+        # A range whose second endpoint has no '#' still rejects the start.
         self.assertFalse(pr_references_issue("file children #1602-1612", "", 1602))
 
     def test_title_en_dash_range_rejected(self):
@@ -167,11 +171,10 @@ class PrReferencesIssue(unittest.TestCase):
         self.assertFalse(pr_references_issue("file #1602—#1612", "", 1612))
 
     def test_replan_doc_title_does_not_ship_the_epic(self):
-        # Layer 4 supersedes the old "epic ref outside range still trusted" case:
-        # _FILE_CHILDREN_TITLE is a "docs: re-plan …" plan-doc title, so even the
-        # epic ref (#605) it re-plans is NOT trusted — a re-plan commits the plan,
-        # not the implementation. Flipping is safe: a scope-shipped false negative
-        # just leaves the issue queued.
+        # _FILE_CHILDREN_TITLE is a "docs: re-plan …" plan-doc title, so even
+        # the epic ref it re-plans is NOT trusted — a re-plan commits the
+        # plan, not the implementation. A false negative here just leaves the
+        # issue queued.
         self.assertFalse(pr_references_issue(self._FILE_CHILDREN_TITLE, "", 605))
         # A body closing-verb still ships it even from a plan PR.
         self.assertTrue(pr_references_issue(self._FILE_CHILDREN_TITLE, "Closes #605", 605))
@@ -181,35 +184,36 @@ class PrReferencesIssue(unittest.TestCase):
         self.assertTrue(pr_references_issue("#1602: bind-pose on C_Skeleton", "", 1602))
 
     def test_em_dash_then_word_is_not_a_range(self):
-        # "(#605) — phase 2": a dash followed by a WORD (no digit) is not a range.
+        # A dash followed by a WORD (no digit) is not a range.
         self.assertTrue(pr_references_issue("re-plan (#605) — phase 2", "", 605))
 
     def test_body_range_endpoint_rejected_even_with_verb(self):
-        # Conservative: "Closes #1602-#1612" closes a span, not #1602's individual
-        # scope. Reject — a scope-shipped false negative just leaves it queued.
+        # Conservative: a closing verb over a range closes the span, not an
+        # individual issue's scope within it. Reject — a false negative just
+        # leaves it queued.
         self.assertFalse(pr_references_issue("title", "Closes #1602-#1612", 1602))
 
-    # --- plan/design-doc titles (#1807 / #1802 / #1354 — layer 4) ---
+    # --- plan/design-doc titles (layer 4) ---
 
     def test_plan_doc_title_single_issue_rejected(self):
-        # #1807 ← #1809: a "docs: plan …" PR plans the issue, doesn't ship it.
+        # A "docs: plan …" PR plans the issue, it doesn't ship it.
         self.assertFalse(pr_references_issue(
             "docs: plan rotation-profiling task (#1807)", "", 1807))
 
     def test_plan_doc_title_hash_subject_rejected(self):
-        # "docs: plan #1052 …" names the planned epic in the subject.
+        # A "docs: plan #N …" title names the planned epic in the subject.
         self.assertFalse(pr_references_issue(
             "docs: plan #1052 update-parallelization carve-offs", "", 1052))
 
     def test_plan_doc_title_slash_list_child_rejected(self):
-        # #1802 ← #1805: filed children as a '/'-separated list — a shape the
-        # layer-3 dash guard never covered; layer 4 rejects the whole plan title.
+        # Filed children as a '/'-separated list — a shape the layer-3 dash
+        # guard never covers; layer 4 rejects the whole plan title.
         title = "docs: plan #1052 update-parallelization carve-offs (#1802/#1803/#1804)"
         for child in (1802, 1803, 1804):
             self.assertFalse(pr_references_issue(title, "", child), child)
 
     def test_design_doc_scope_rejected(self):
-        # #1354 ← #1411: "docs/design: …" designs the issue, doesn't ship it.
+        # A "docs/design: …" title designs the issue, it doesn't ship it.
         self.assertFalse(pr_references_issue(
             "docs/design: world-space neighbour/spatial-query surface (#1354)", "", 1354))
 
@@ -228,12 +232,12 @@ class PrReferencesIssue(unittest.TestCase):
         self.assertTrue(pr_references_issue(
             "docs: #1679 cmake preset -S flag", "", 1679))
 
-    # --- closing verb inside a code span (#1824 ← #1854 — layer 5) ---
+    # --- closing verb inside a code span (layer 5) ---
 
     def test_closing_verb_in_inline_code_span_rejected(self):
-        # #1824 ← #1854: a plan PR's body quotes the `Closes #N` its FUTURE impl
-        # PR will write. Layer 4 suppresses the plan-doc title; layer 5 must stop
-        # the backtick-quoted closing verb in the body from shipping it.
+        # A plan PR's body can quote the `Closes #N` its FUTURE impl PR will
+        # write. Layer 4 suppresses the plan-doc title; layer 5 must stop the
+        # backtick-quoted closing verb in the body from shipping it.
         body = ("Adds `.fleet/plans/issue-1824.md`: the structured plan for "
                 "#1824 (planning step output; impl PR will carry the code + "
                 "`Closes #1824`).\n\nPlan doc for #1824 — does not close the "
@@ -254,22 +258,21 @@ class PrReferencesIssue(unittest.TestCase):
             "title", "Closes #1300. Verified via `fleet-run IRShapeDebug`.", 1300))
 
     def test_code_span_strip_collapses_to_space_not_empty(self):
-        # A code span between letters must collapse to a SPACE, never empty, so
-        # it can't fuse into a spurious closing verb: "clo`x`ses #1300" must not
-        # become "closes #1300".
+        # A code span between letters must collapse to a SPACE, never empty,
+        # so it can't fuse into a spurious closing verb where none was written.
         self.assertFalse(pr_references_issue("title", "clo`x`ses #1300", 1300))
 
-    # --- deferral markers (#1640 <- #1700 — layer 6) ---
+    # --- deferral markers (layer 6) ---
 
     _DEFER_TITLE_1700 = (
         "render: doc the Metal foreign-canvas R32I second-dispatch "
         "read-gap invariant (#1640 deferred)")
 
     def test_deferral_marked_title_ref_rejected(self):
-        # #1640 <- #1700: a render:-scoped doc PR marks the issue deferred in its
-        # title ("(#1640 deferred)") and only "Refs #1640" (no closing verb) in
-        # the body. Layer 4 doesn't fire (title is render:, not docs:), so
-        # title-trust would ship it without layer 6.
+        # A render:-scoped doc PR can mark the issue deferred in its title
+        # ("(#N deferred)") and only "Refs #N" (no closing verb) in the body.
+        # Layer 4 doesn't fire (title is render:, not docs:), so title-trust
+        # would ship it without layer 6.
         self.assertFalse(pr_references_issue(
             self._DEFER_TITLE_1700, "Refs #1640.\n\n## Status: design-blocked", 1640))
 
@@ -285,8 +288,8 @@ class PrReferencesIssue(unittest.TestCase):
         self.assertFalse(pr_references_issue("render: doc invariant #1640 — deferred", "", 1640))
 
     def test_deferral_of_other_issue_does_not_suppress_shipped(self):
-        # "fix #1234 and defer #1235": #1234 genuinely ships (title-trust); the
-        # far-away "defer" binds only to the adjacent #1235, not across to #1234.
+        # A far-away deferral word binds only to the adjacent ref, not across
+        # to an earlier ref that genuinely ships (title-trust).
         title = "render: fix #1234 and defer #1235"
         self.assertTrue(pr_references_issue(title, "", 1234))
         self.assertFalse(pr_references_issue(title, "", 1235))
@@ -306,15 +309,15 @@ class PrReferencesIssue(unittest.TestCase):
         # close on "defer" inside "deferential").
         self.assertTrue(pr_references_issue("#1640 deferential render fix", "", 1640))
 
-    # --- prep / partial markers (#2258 <- #2266 — layer 7) ---
+    # --- prep / partial markers (layer 7) ---
 
     _PREP_TITLE_2266 = (
         "render: extract sunBakeFrustumUVBounds shared helper (#2258 prep)")
 
     def test_prep_marked_title_ref_rejected(self):
-        # #2258 <- #2266: a render:-scoped narrowed refactor marks the issue prep
-        # in its title ("(#2258 prep)") and only "Part of #2258" (no closing verb)
-        # in the body. Layer 4 doesn't fire (title is render:, not docs:), so
+        # A render:-scoped narrowed refactor can mark the issue prep in its
+        # title ("(#N prep)") and only "Part of #N" (no closing verb) in the
+        # body. Layer 4 doesn't fire (title is render:, not docs:), so
         # title-trust would ship it without layer 7.
         self.assertFalse(pr_references_issue(
             self._PREP_TITLE_2266, "Part of #2258. Byte-identical extraction.", 2258))
@@ -327,9 +330,9 @@ class PrReferencesIssue(unittest.TestCase):
         self.assertFalse(pr_references_issue("render: preparatory #2258 refactor", "", 2258))
 
     def test_prep_of_other_issue_does_not_suppress_shipped(self):
-        # "land #1234 and prep #1235": #1234 genuinely ships (title-trust); the
-        # "prep" binds only to the adjacent #1235 — the "and" breaks the
-        # bounded-gap adjacency to #1234 (mirrors the layer-6 deferral case).
+        # A "prep" word binds only to the adjacent ref — the "and" breaks the
+        # bounded-gap adjacency to an earlier ref that genuinely ships
+        # (title-trust), mirroring the layer-6 deferral case.
         title = "render: land #1234 and prep #1235"
         self.assertTrue(pr_references_issue(title, "", 1234))
         self.assertFalse(pr_references_issue(title, "", 1235))
@@ -345,7 +348,7 @@ class PrReferencesIssue(unittest.TestCase):
         # "prep" inside "prepend").
         self.assertTrue(pr_references_issue("#2258 prepend the sun-bake header", "", 2258))
 
-    # --- bookkeeping diff — all-.fleet/ PRs (#2385 <- #2392 — layer 8) ---
+    # --- bookkeeping diff — all-.fleet/ PRs (layer 8) ---
 
     _STEWARD_TITLE_2392 = (
         "docs/fleet: epic-steward — #2317 rollup + #2385 adoption (#2314)")
@@ -353,13 +356,13 @@ class PrReferencesIssue(unittest.TestCase):
                     {"path": ".fleet/status/epic-2385.md"}]
 
     def test_bookkeeping_diff_title_ref_rejected(self):
-        # #2385 <- #2392: a steward rollup PR names #2385 in a trusted (non-plan)
-        # title, but its diff is two .fleet/ docs — it maintains fleet state, it
-        # does not ship #2385's render fix. Its subject is "epic-steward" (neither
+        # A steward rollup PR can name an issue in a trusted (non-plan) title
+        # while its diff is only .fleet/ docs — it maintains fleet state, it
+        # does not ship the render fix. Its subject is "epic-steward" (neither
         # plan nor design), so layers 4/6/7 do not fire; the all-.fleet/ diff does.
         self.assertFalse(pr_references_issue(
             self._STEWARD_TITLE_2392, "", 2385, self._FLEET_FILES))
-        # The epic ref (#2314) it rolls up is likewise not shipped.
+        # An epic ref it rolls up is likewise not shipped.
         self.assertFalse(pr_references_issue(
             self._STEWARD_TITLE_2392, "", 2314, self._FLEET_FILES))
 
@@ -383,16 +386,16 @@ class PrReferencesIssue(unittest.TestCase):
         self.assertTrue(pr_references_issue("#2385: render: fog fix", "", 2385, files))
 
     def test_no_files_keeps_pre_layer8_title_trust(self):
-        # files omitted (default None) — layer 8 inert, so the steward title's
-        # bare #2385 ref is still trusted (the pre-fix false positive; layer 8
-        # only fires once the caller supplies the diff).
+        # files omitted (default None) — layer 8 is inert, so the steward
+        # title's bare ref is still trusted; layer 8 only fires once the
+        # caller supplies the diff.
         self.assertTrue(pr_references_issue(self._STEWARD_TITLE_2392, "", 2385))
 
     def test_empty_files_list_keeps_title_trust(self):
         # An empty diff list carries no signal — treat as no-info, keep title-trust.
         self.assertTrue(pr_references_issue(self._STEWARD_TITLE_2392, "", 2385, []))
 
-    # --- documentation diff — all non-shipping paths (#2091 <- #3020 — layer 9) ---
+    # --- documentation diff — all non-shipping paths (layer 9) ---
 
     _VERIFY_TITLE_3020 = (
         "render: GL Phase-0 verification of world-placed detached "
@@ -445,22 +448,24 @@ class SelectShippedPr(unittest.TestCase):
         self.assertIsNone(select_shipped_pr([{"number": 5}], 1300))
 
     def test_real_world_1260_not_shipped_by_1282(self):
-        # #1282 only mentions #1260 as downstream-not-fixed -> no ship.
+        # A PR that only mentions an issue as downstream-not-fixed does not
+        # ship it.
         prs = [_pr(1282, "#1271: demo: IRShapeDebug --spin-yaw",
                    "bug-fixing is downstream issues (#1256, #1260, etc)")]
         self.assertIsNone(select_shipped_pr(prs, 1260))
 
     def test_real_world_1265_ships_1258_not_1269(self):
-        # #1265 closes #1258 but only cites #1269 as a pre-existing failure.
+        # A PR can close one issue while only citing another as a
+        # pre-existing failure — it ships the first, not the second.
         pr = _pr(1265, "#1258: render: camera pitch/roll",
                  "Closes #1258. The one failure is the pre-existing #1269.")
         self.assertEqual(select_shipped_pr([pr], 1258)["number"], 1265)
         self.assertIsNone(select_shipped_pr([pr], 1269))
 
     def test_real_world_1614_files_children_ships_none(self):
-        # #1614 FILES the P2 children as a title range; it ships none of them —
-        # and under layer 4 (a "docs: re-plan …" title) it doesn't ship the epic
-        # #605 it re-plans either.
+        # A PR that FILES children as a title range ships none of them — and
+        # under layer 4 (a "docs: re-plan …" title) it doesn't ship the epic
+        # it re-plans either.
         pr = _pr(1614,
                  "docs: re-plan entity-editor Phase 2 (#605) — file children #1602-#1612",
                  "Files the P2 child tickets #1602-#1612 under epic #605.")
@@ -468,15 +473,15 @@ class SelectShippedPr(unittest.TestCase):
             self.assertIsNone(select_shipped_pr([pr], issue), issue)
 
     def test_real_world_1807_planned_not_shipped_by_1809(self):
-        # #1807 ← #1809: the plan-doc PR is the only #1807 search hit; it plans
-        # the profiling task, it doesn't ship it.
+        # A plan-doc PR can be the only search hit for an issue; it plans
+        # the task, it doesn't ship it.
         pr = _pr(1809, "docs: plan rotation-profiling task (#1807)",
                  "Plan doc committed for #1807.")
         self.assertIsNone(select_shipped_pr([pr], 1807))
 
     def test_real_world_1824_planned_not_shipped_by_1854(self):
-        # #1824 ← #1854: plan-doc title (layer 4) AND a body that quotes the
-        # `Closes #1824` the future impl PR will write (layer 5). Ships nothing.
+        # A plan-doc title (layer 4) combined with a body that quotes the
+        # `Closes #N` a future impl PR will write (layer 5) ships nothing.
         pr = _pr(1854,
                  "docs: plan #1824 — fleet-rebase fork-point inherited-prefix drop",
                  "Adds `.fleet/plans/issue-1824.md`: the structured plan for "
@@ -484,9 +489,9 @@ class SelectShippedPr(unittest.TestCase):
         self.assertIsNone(select_shipped_pr([pr], 1824))
 
     def test_real_world_1640_deferred_by_1700(self):
-        # #1640 <- #1700 (layer 6): a render:-scoped doc-and-defer PR marks the
-        # issue deferred in its title and only "Refs #1640" (no closing verb) in
-        # the body — it ships nothing, so ingest must not re-stamp scope-shipped.
+        # (layer 6): a render:-scoped doc-and-defer PR can mark the issue
+        # deferred in its title and only "Refs #N" (no closing verb) in the
+        # body — it ships nothing, so ingest must not re-stamp scope-shipped.
         pr = _pr(1700,
                  "render: doc the Metal foreign-canvas R32I second-dispatch "
                  "read-gap invariant (#1640 deferred)",
@@ -494,10 +499,11 @@ class SelectShippedPr(unittest.TestCase):
         self.assertIsNone(select_shipped_pr([pr], 1640))
 
     def test_real_world_2258_prepped_by_2266(self):
-        # #2258 <- #2266 (layer 7): a render:-scoped narrowed refactor marks the
-        # issue prep in its title and only "Part of #2258" (no closing verb) in
-        # the body — it ships only a shared helper, not the issue's perf scope, so
-        # ingest must not stamp scope-shipped and clobber the issue's re-queue.
+        # (layer 7): a render:-scoped narrowed refactor can mark the issue
+        # prep in its title and only "Part of #N" (no closing verb) in the
+        # body — it ships only a shared helper, not the issue's perf scope,
+        # so ingest must not stamp scope-shipped and clobber the issue's
+        # re-queue.
         pr = _pr(2266,
                  "render: extract sunBakeFrustumUVBounds shared helper (#2258 prep)",
                  "Part of #2258. Keeps only the independently-correct refactor and "
@@ -506,16 +512,16 @@ class SelectShippedPr(unittest.TestCase):
         self.assertIsNone(select_shipped_pr([pr], 2258))
 
     def test_real_world_2385_bookkept_by_2392(self):
-        # #2385 <- #2392 (layer 8): the epic-steward rollup PR is a #2385 search
-        # hit whose diff is entirely .fleet/plans/ docs — it adopts the plan, it
-        # ships no render fix, so ingest must not stamp scope-shipped and bounce a
-        # queue-ready issue back to needs-plan.
+        # (layer 8): an epic-steward rollup PR can be a search hit for an
+        # issue whose diff is entirely .fleet/plans/ docs — it adopts the
+        # plan, it ships no render fix, so ingest must not stamp
+        # scope-shipped and bounce a queue-ready issue back to needs-plan.
         pr = _pr(2392,
                  "docs/fleet: epic-steward — #2317 rollup + #2385 adoption (#2314)",
                  "Rolls up #2317; adopts the #2385 plan into the ledger.",
                  files=[".fleet/status/epic-2314.md", ".fleet/status/epic-2385.md"])
         self.assertIsNone(select_shipped_pr([pr], 2385))
-        # True-positive retained: a genuine impl PR delivering #2385 still stamps.
+        # True-positive retained: a genuine impl PR delivering the fix still stamps.
         impl = _pr(2500, "#2385: render: fog vision fix", "Closes #2385",
                    files=["engine/render/fog.cpp"])
         self.assertEqual(select_shipped_pr([impl], 2385)["number"], 2500)

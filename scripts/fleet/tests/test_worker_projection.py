@@ -9,17 +9,14 @@ fleet:changes-made on a still-flagged PR, etc.). Without this invariant,
 every label flip on a PR that happens to also have a feedback label
 re-triggers every role; the role iterations spin up, apply their actual
 filters (lane ownership, branch lock, smoke filters), find nothing
-actionable, and exit. Observed live 2026-05-22 on PR #1047: scout fired
-sonnet-author + opus-worker four times in 5 minutes while reviewers and
-the merger flipped labels around the PR, with each iteration exiting clean.
+actionable, and exit.
 
-Mirrors test_merger_projection.py — the merger's projection was already
-hardened against this; the worker/reviewer projections were not.
+Mirrors test_merger_projection.py — the merger's projection is hardened
+against this the same way.
 
-P2: the per-class project_sonnet_author / project_opus_worker pair was
-unified into a single project_worker (every task class + needs_plan +
-feedback/design-resume PRs), so the worker invariants below are tested
-against that one projector.
+project_worker is the single projector for every task class (fable / opus /
+sonnet) plus needs_plan and feedback/design-resume PRs, so the worker
+invariants below are tested against that one projector.
 """
 import importlib.machinery
 import importlib.util
@@ -87,7 +84,7 @@ class WorkerStableAcrossIrrelevantLabels(unittest.TestCase):
                          "merger-cooldown toggle must not re-fire the worker")
 
     def test_stale_semantic_conflict_does_not_flip_hash(self):
-        # A fleet:semantic-conflict label on a MERGEABLE PR is the #1654
+        # A fleet:semantic-conflict label on a MERGEABLE PR is the
         # fail-then-succeed race shape — stale, awaiting fleet-rebase's
         # cleanup sweep. It must not re-fire the worker; only a live
         # CONFLICTING PR is dispatch pressure (the SemanticConflictDispatch
@@ -243,9 +240,9 @@ class WorkerSkipLabelsDropPR(unittest.TestCase):
 
     def test_fleet_gated_drops_pr(self):
         # A gated, human-only PR must never dispatch a worker, even when it
-        # also carries a normally-actionable feedback label (the #1990 case
-        # carried fleet:semantic-conflict; a DEFER park can keep fleet:needs-fix
-        # before the swap). fleet:gated wins unconditionally.
+        # also carries a normally-actionable feedback label (a DEFER park can
+        # keep fleet:needs-fix or fleet:semantic-conflict before the label
+        # swap). fleet:gated wins unconditionally.
         empty = self._hash([])
         gated = self._hash([_pr(101, labels=["fleet:needs-fix", "fleet:gated"])])
         self.assertEqual(empty, gated)
@@ -300,11 +297,10 @@ class SemanticConflictDispatch(unittest.TestCase):
     election counts it as one opus item). Its only consumer, role-worker step
     1c, runs exclusively in opus+-class iterations — without a projection
     item, no opus iteration ever launches when the opus queue is dry or
-    host-locked, and conflicted PRs starve behind sonnet no-ops (engine
-    #2417). Only a live CONFLICTING PR counts: the #1654 stale-label shape
-    (label on a MERGEABLE PR) stays structurally excluded via the cached
-    mergeable field, preserving what the old blanket label exclusion
-    guaranteed."""
+    host-locked, and conflicted PRs starve behind sonnet no-ops. Only a live
+    CONFLICTING PR counts: the stale-label shape (label on a MERGEABLE PR)
+    stays structurally excluded via the cached mergeable field, preserving
+    what a blanket label exclusion would guarantee."""
 
     def _items(self, prs):
         return [i for i in project_worker(_state(prs))
@@ -332,7 +328,7 @@ class SemanticConflictDispatch(unittest.TestCase):
         self.assertNotEqual(without, with_sc)
 
     def test_stale_label_on_mergeable_pr_is_not_pressure(self):
-        # #1654: fail-then-succeed race leaves the label on a MERGEABLE PR.
+        # The fail-then-succeed race leaves the label on a MERGEABLE PR.
         # No projection item, no slice entry — the dispatch side must stay
         # blind to it until fleet-rebase's cleanup sweep clears the label.
         prs = [_sc_pr(2417, mergeable="MERGEABLE")]
@@ -416,12 +412,9 @@ class SemanticConflictDispatch(unittest.TestCase):
 
 
 class ReviewClaimBarsConflictResolutionPickup(unittest.TestCase):
-    """#3001 — the #2801 hazard, one lane over.
-
-    #2801 closed the fleet:reviewing-* -> fleet:amending-* direction
-    (ReviewClaimBarsWorkerFeedbackPickup below). The conflict-resolution lane
-    was left open: fleet:reviewing-* and fleet:resolving-* are DISJOINT claim
-    namespaces, so _semantic_conflict_claimable's own fleet:resolving- test
+    """fleet:reviewing-* and fleet:resolving-* are DISJOINT claim namespaces,
+    so they give the conflict-resolution lane no mutual exclusion with a live
+    review claim: _semantic_conflict_claimable's own fleet:resolving- test
     (and _acquire_label_on's lex-min tie-break, which filters to labels
     startswith its own prefix) is structurally blind to a live review claim.
     role-worker step 1c then rebases and force-pushes, and
@@ -446,9 +439,9 @@ class ReviewClaimBarsConflictResolutionPickup(unittest.TestCase):
         return slice_worker(_state(prs))["semantic_conflict_prs"]
 
     def test_review_claim_suppresses_conflict_pressure_at_both_sites(self):
-        # The two-run delta IS the assertion: pre-fix, LIVE and
-        # minus-fleet:reviewing-* produced byte-identical output, i.e. the
-        # review claim contributed exactly zero suppression.
+        # The two-run delta IS the assertion: comparing held against free
+        # proves the review claim contributes real suppression, not just
+        # that the held case happens to render empty.
         held = [_sc_pr(2417, labels=["fleet:semantic-conflict",
                                      "fleet:reviewing-mac-pool-9"])]
         free = [_sc_pr(2417)]
@@ -533,15 +526,15 @@ class SliceWorkerSkipLabelsDropPR(unittest.TestCase):
     def test_fleet_gated_drops_pr(self):
         # Mirror of WorkerSkipLabelsDropPR.test_fleet_gated_drops_pr for the
         # slice: a gated PR carrying an otherwise-actionable feedback label
-        # (#1990: fleet:gated alongside fleet:needs-fix) must not reach the
-        # woken worker's candidate list. fleet:gated wins unconditionally.
+        # (fleet:gated alongside fleet:needs-fix) must not reach the woken
+        # worker's candidate list. fleet:gated wins unconditionally.
         self.assertEqual(
             self._feedback([_pr(101, labels=["fleet:needs-fix", "fleet:gated"])]),
             [],
         )
 
     def test_plain_feedback_pr_still_surfaces(self):
-        # Regression: a non-gated feedback PR must still reach the worker.
+        # A non-gated feedback PR must still reach the worker.
         result = self._feedback([_pr(101, labels=["fleet:needs-fix"])])
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["number"], 101)
@@ -574,10 +567,10 @@ class SliceWorkerSkipsGatedNeedsPlan(unittest.TestCase):
         )
 
     def test_needs_human_park_dropped_but_siblings_survive(self):
-        # #3034: the planner's park for an issue no later planner can make
-        # progress on. It KEEPS fleet:needs-plan (still true), so only this gate
-        # takes it out of rotation — and the sibling proves the gate is
-        # per-issue, not a whole-repo drop. Pre-fix this returns [94, 222].
+        # The planner's park for an issue no later planner can make progress
+        # on. It KEEPS fleet:needs-plan (still true), so only this gate takes
+        # it out of rotation — and the sibling proves the gate is per-issue,
+        # not a whole-repo drop.
         self.assertEqual(
             self._np([
                 {"number": 94, "labels": ["fleet:needs-plan",
@@ -588,7 +581,7 @@ class SliceWorkerSkipsGatedNeedsPlan(unittest.TestCase):
         )
 
     def test_plain_needs_plan_surfaces(self):
-        # Regression: a genuinely plannable issue must still reach the worker.
+        # A genuinely plannable issue must still reach the worker.
         self.assertEqual(
             self._np([{"number": 222, "labels": ["fleet:needs-plan"]}]),
             [222],
@@ -617,13 +610,14 @@ class SliceWorkerSkipsGatedNeedsPlan(unittest.TestCase):
 class ProjectWorkerSkipsGatedNeedsPlan(unittest.TestCase):
     """project_worker is the hash-input that decides *whether* to wake the
     dispatcher (distinct from slice_worker, the slice a woken worker reads).
-    It must mirror slice_worker's human-gate skip (#2110 criterion 4): a
-    needs-plan issue carrying human:no-plan / owned / wip must NOT flip the
-    projection hash, or the late-opt-out window (human:no-plan added onto a
-    still-needs-plan issue, before ingest strips the stale label) edge-triggers
-    a phantom worker dispatch that slice_worker then filters to a no-op. The
-    #2114 slice fix alone stopped the woken worker from claiming the issue but
-    not the wake itself, since the dispatcher diffs this projection."""
+    It must mirror slice_worker's human-gate skip: a needs-plan issue
+    carrying human:no-plan / owned / wip must NOT flip the projection hash,
+    or the late-opt-out window (human:no-plan added onto a still-needs-plan
+    issue, before ingest strips the stale label) edge-triggers a phantom
+    worker dispatch that slice_worker then filters to a no-op. Filtering the
+    issue out of the SLICE alone stops the woken worker from claiming it but
+    not the wake itself, since the dispatcher diffs this projection, not the
+    slice."""
 
     def _np(self, needs_plan):
         items = project_worker(_state([], needs_plan=needs_plan))
@@ -646,11 +640,10 @@ class ProjectWorkerSkipsGatedNeedsPlan(unittest.TestCase):
         )
 
     def test_needs_human_park_does_not_surface(self):
-        # #3034: the wake half. The slice fix alone would stop a woken worker
+        # The wake half: filtering the SLICE alone would stop a woken worker
         # from *planning* a parked issue, but the dispatcher diffs THIS
-        # projection to decide whether to wake at all — and a park that still
-        # flips the hash re-fires the pane every tick, which is the 13-dispatch
-        # loop the issue was filed from. Pre-fix this returns [94].
+        # projection to decide whether to wake at all — a park that still
+        # flips the hash would re-fire the pane every tick.
         self.assertEqual(
             self._np([{"number": 94, "labels": ["fleet:needs-plan",
                                                 "fleet:needs-human"]}]),
@@ -733,10 +726,10 @@ class OpusReviewerActionableTransitionsFlipHash(unittest.TestCase):
 class AmendingClaimBarsReviewerPickup(unittest.TestCase):
     """A worker amending a fleet:needs-fix PR holds a host-suffixed
     fleet:amending-<host>-<agent> claim for the whole fix. Reviewers must
-    not review a diff mid-amend; the claim is a REVIEW_SKIP_PREFIXES match.
-    Closes the gap observed on PR #1316 (2026-05-28): the worker cleared
-    fleet:needs-fix to start fixing, leaving the PR with no skip label, so
-    a reviewer poll claimed and reviewed it mid-rewrite."""
+    not review a diff mid-amend; the claim is a REVIEW_SKIP_PREFIXES match —
+    without it, the worker clearing fleet:needs-fix to start fixing leaves
+    the PR with no skip label, so a reviewer poll could claim and review it
+    mid-rewrite."""
 
     def _sonnet(self, prs):
         return project_sonnet_reviewer(_state(prs))
@@ -758,16 +751,14 @@ class AmendingClaimBarsReviewerPickup(unittest.TestCase):
 
 
 class ReviewClaimBarsWorkerFeedbackPickup(unittest.TestCase):
-    """The mirror image of AmendingClaimBarsReviewerPickup, which did not
-    exist until #2801: fleet:amending-* and fleet:reviewing-* are DISJOINT
-    claim namespaces, so they provide no mutual exclusion. The reviewer side
-    was guarded (REVIEW_SKIP_PREFIXES); the worker side was not, so whichever
-    lane claimed second won the right to invalidate the other's work.
+    """The mirror image of AmendingClaimBarsReviewerPickup: fleet:amending-*
+    and fleet:reviewing-* are DISJOINT claim namespaces, so they provide no
+    mutual exclusion between the two lanes. The reviewer side is guarded
+    (REVIEW_SKIP_PREFIXES); the worker side must be guarded too, or whichever
+    lane claims second wins the right to invalidate the other's work.
     --force-with-lease protects the branch, not the reviewer's work: the
     reviewer reads head X, the worker force-pushes Y, and the verdict lands
-    on a diff nobody read. Observed on PR #2850 (2026-08-09), where
-    fleet-pr-claim-feedback granted the amend 26 s after the opus recheck
-    started.
+    on a diff nobody read.
 
     fleet:needs-opus-recheck is the second, independent term: has-nits
     stamped ALONGSIDE it is not a verdict (the sonnet reviewer sets none in
@@ -791,9 +782,9 @@ class ReviewClaimBarsWorkerFeedbackPickup(unittest.TestCase):
     # --- 1. live review claim suppresses the fleet verdict tiers ---------
 
     def test_reviewing_claim_drops_has_nits_pr_at_both_sites(self):
-        # The two-run delta IS the assertion: the defect was that LIVE and
-        # minus-fleet:reviewing-* produced byte-identical output, i.e. the
-        # review claim contributed exactly zero suppression.
+        # The two-run delta IS the assertion: comparing held against free
+        # proves the review claim contributes real suppression, not just
+        # that the held case happens to render empty.
         held_proj, held_slice = self._both([
             _pr(101, labels=["fleet:has-nits", "fleet:reviewing-mac-pool-9"])])
         free_proj, free_slice = self._both([
@@ -914,9 +905,9 @@ class ReviewClaimBarsWorkerFeedbackPickup(unittest.TestCase):
         # force-pushes too, so that is the identical hazard one lane over.
         #
         # The suppressor here is fleet:needs-opus-recheck, NOT a
-        # fleet:reviewing-* label. #3001 gave the conflict lane its own
-        # reviewing-prefix exclusion, so a reviewing-labelled fixture now
-        # returns [] via that term whether or not the consolidation happened
+        # fleet:reviewing-* label. The conflict lane has its own
+        # reviewing-prefix exclusion, so a reviewing-labelled fixture would
+        # return [] via that term whether or not the consolidation happened
         # — i.e. it would pass under the wrong turn, proving nothing.
         # needs-opus-recheck is the term worker_feedback_labels() still
         # strips that the conflict lane does not test, so it is the one
@@ -933,10 +924,10 @@ class ReviewClaimBarsWorkerFeedbackPickup(unittest.TestCase):
         self.assertEqual(slice_worker(_state(prs))["semantic_conflict_prs"], [])
 
     def test_review_claim_also_bars_the_conflict_lane(self):
-        # The #3001 direction, asserted from this class too: the case the
-        # test above used to cover is now covered by a second, independent
-        # term. Both must hold — this one is the exclusion, the one above is
-        # the "don't consolidate" pin.
+        # Both must hold: this test pins the exclusion itself, while
+        # test_suppressed_feedback_tier_does_not_open_the_conflict_lane pins
+        # that the term doing it must stay the independent
+        # fleet:needs-opus-recheck one, not a consolidated helper call.
         prs = [_sc_pr(101, labels=[
             "fleet:semantic-conflict", "fleet:reviewing-mac-pool-9",
         ])]
@@ -950,7 +941,7 @@ class ReviewClaimBarsWorkerFeedbackPickup(unittest.TestCase):
 
 class HumanDeferredDropsFromReviewers(unittest.TestCase):
     """fleet:human-deferred and fleet:needs-human PRs must not surface in
-    reviewer projections (#1996 Gap 2).
+    reviewer projections.
 
     Without fleet:human-deferred in REVIEW_SKIP_LABELS, a no-verdict deferred
     PR re-enters the sonnet-reviewer pool, gets re-flagged fleet:needs-fix,
@@ -995,14 +986,14 @@ class HumanDeferredDropsFromReviewers(unittest.TestCase):
         self.assertEqual(result, [])
 
     def test_plain_pr_without_defer_still_reviewed(self):
-        # Regression: PRs without a skip label still surface normally.
+        # PRs without a skip label still surface normally.
         result = self._sonnet([_pr(101, labels=["fleet:changes-made"])])
         self.assertEqual(len(result), 1)
 
 
 class PlanReviewExcludedFromTasksOpen(unittest.TestCase):
     """fetch_task_queue must skip fleet:plan-review issues so they don't
-    appear in tasks.open[] as pickable by autonomous workers (#1996 Gap 1).
+    appear in tasks.open[] as pickable by autonomous workers.
 
     A plan-review task has its plan posted and awaits human/architect
     approval — it must not trigger an autonomous dispatch that immediately
@@ -1012,8 +1003,9 @@ class PlanReviewExcludedFromTasksOpen(unittest.TestCase):
     def _fetch(self, issues_list):
         payload = json.dumps(issues_list)
         # Patch the REST seam (conditional_get), not run_capture: fetch_task_queue
-        # migrated to _rest_list -> conditional_get, and a mock miss must not reach
-        # the live API or the shared ~/.fleet ETag cache the scout uses (#2227).
+        # reaches issues through _rest_list -> conditional_get, and a mock miss
+        # must not reach the live API or the shared ~/.fleet ETag cache the
+        # scout uses.
         with patch.object(_mod, "conditional_get", return_value=(True, payload)):
             return _mod.fetch_task_queue("jakildev/IrredenEngine")
 
@@ -1036,19 +1028,19 @@ class PlanReviewExcludedFromTasksOpen(unittest.TestCase):
         self.assertEqual(result["in_progress"], [])
 
     def test_needs_human_task_still_excluded(self):
-        # Regression: existing fleet:needs-human skip must still work.
+        # The existing fleet:needs-human skip must still work.
         result = self._fetch([self._issue(99, extra_labels=["fleet:needs-human"])])
         self.assertEqual(result["open"], [])
 
     def test_normal_task_still_enters_open(self):
-        # Regression: ordinary sonnet task with no skip labels still projects.
+        # An ordinary sonnet task with no skip labels still projects.
         result = self._fetch([self._issue(55)])
         self.assertEqual(len(result["open"]), 1)
         self.assertEqual(result["open"][0]["id"], "#55")
 
 
 class NeedsGlHostAnnotation(unittest.TestCase):
-    """fetch_task_queue stamps each task with needs_gl_host (#1998) so the
+    """fetch_task_queue stamps each task with needs_gl_host so the
     dispatcher's claimability filter (fleet_task_class.py) can skip GL-only
     tasks on a Metal-only host. The flag flows into the worker slice via
     dict(task) and into state.json tasks.open[]."""
@@ -1056,8 +1048,9 @@ class NeedsGlHostAnnotation(unittest.TestCase):
     def _fetch(self, issues_list):
         payload = json.dumps(issues_list)
         # Patch the REST seam (conditional_get), not run_capture: fetch_task_queue
-        # migrated to _rest_list -> conditional_get, and a mock miss must not reach
-        # the live API or the shared ~/.fleet ETag cache the scout uses (#2227).
+        # reaches issues through _rest_list -> conditional_get, and a mock miss
+        # must not reach the live API or the shared ~/.fleet ETag cache the
+        # scout uses.
         with patch.object(_mod, "conditional_get", return_value=(True, payload)):
             return _mod.fetch_task_queue("jakildev/IrredenEngine")
 
@@ -1084,8 +1077,9 @@ class NeedsGlHostAnnotation(unittest.TestCase):
         self.assertFalse(result["open"][0]["needs_gl_host"])
 
     def test_backend_symmetric_true_when_labeled(self):
-        # #2820: the discriminator rides the same task record, so
-        # `_host_incompatible` can narrow the gate above without a second fetch.
+        # The discriminator rides the same task record, so
+        # `_host_incompatible` can narrow the needs_gl_host gate without a
+        # second fetch.
         result = self._fetch([self._issue(
             2816, extra_labels=["fleet:needs-gl-host",
                                 "fleet:backend-symmetric"])])
@@ -1110,14 +1104,15 @@ class NeedsGlHostAnnotation(unittest.TestCase):
         return iss
 
     def test_needs_gl_host_inferred_from_body_declaration(self):
-        # #1969: body explicitly requires a Linux host but the label was
-        # forgotten — inferred so a Metal pane skips it instead of churning.
+        # A body that explicitly requires a Linux host but carries no label
+        # is inferred, so a Metal pane skips it instead of churning.
         for phrase in (
             "This must run on a Linux host — references are per-backend.",
             "must be run on a Windows host to refresh windows-debug refs.",
             "Only runs on an OpenGL host.",
             "must run on a Linux/Windows host",
-            # #2107: the "<GL|...>-host only" adjective form the verb pattern missed.
+            # The "<GL|...>-host only" adjective form, distinct from
+            # "must run on ..." verb phrasing.
             "It is GL-host only and cannot be authored/validated on a macOS host.",
             "This is GL host only.",
             "OpenGL-host-only GTEST harness.",

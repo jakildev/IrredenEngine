@@ -145,7 +145,7 @@ chmod +x "$BIN/fleet-claim"
 
 export PATH="$BIN:$PATH"
 
-# The #2402 worktree-scope assert (fleet-assert-worktree "$agent") now fronts the
+# The worktree-scope assert (fleet-assert-worktree "$agent") fronts the
 # --agent path. These cases exercise the CLAIM guard, not worktree scoping, and
 # run from an arbitrary cwd — allow the main-clone override so they stay
 # cwd-independent. T12 drops it to prove the worktree assert actually fires.
@@ -178,7 +178,6 @@ run() {  # capture rc without tripping set -e
     echo "$rc"
 }
 
-# === T1: --agent + claim present → delegate, exit 0 =======================
 echo "T1: --agent + reviewing claim present → delegates, exit 0"
 reset_logs
 set_labels 100 fleet:reviewing-mac-worker-2 fleet:wip
@@ -189,7 +188,6 @@ grep -q "verdict-needs-fix 100" "$FT_LOG" && \
     { PASS=$((PASS+1)); echo "  ok: T1 delegated the right edge+number"; } || \
     { FAIL=$((FAIL+1)); echo "  FAIL: T1 delegated the right edge+number"; }
 
-# === T2: --agent + claim ABSENT → guard fires, exit 4, no delegation ======
 echo "T2: --agent + reviewing claim absent → exit 4, no delegation"
 reset_logs
 set_labels 101 fleet:reviewing-mac-worker-9 fleet:wip   # claim is a DIFFERENT agent
@@ -201,7 +199,6 @@ grep -q "does not hold" "$TMPROOT/out" && \
     { PASS=$((PASS+1)); echo "  ok: T2 reports misroute guard"; } || \
     { FAIL=$((FAIL+1)); echo "  FAIL: T2 reports misroute guard"; }
 
-# === T3: --agent omitted (carve-out) → delegate, exit 0, no claim read ====
 echo "T3: --agent omitted → applies (human carve-out), no claim read"
 reset_logs
 set_labels 102 fleet:wip                                # no reviewing claim at all
@@ -211,7 +208,6 @@ assert_eq "$(ft_calls)" "1" "T3 delegated (carve-out)"
 assert_eq "$(grep -c -- '--json labels' "$GH_LOG" 2>/dev/null || true)" "0" \
     "T3 did NOT read claim labels (claim guard skipped when --agent omitted)"
 
-# === T4: non-verdict transition name → exit 2, no delegation ==============
 echo "T4: non-verdict transition name → exit 2"
 reset_logs
 assert_eq "$(run design-block 103 --agent worker-2)" "2" "T4 rejects non-verdict edge"
@@ -220,13 +216,11 @@ grep -q "not a verdict transition" "$TMPROOT/out" && \
     { PASS=$((PASS+1)); echo "  ok: T4 explains the lane"; } || \
     { FAIL=$((FAIL+1)); echo "  FAIL: T4 explains the lane"; }
 
-# === T5: usage errors → exit 2 ===========================================
 echo "T5: usage errors → exit 2"
 assert_eq "$(run verdict-approve)" "2" "T5 missing number exits 2"
 assert_eq "$(run verdict-approve abc)" "2" "T5 non-int number exits 2"
 assert_eq "$(run verdict-approve 100 --agent)" "2" "T5 --agent without value exits 2"
 
-# === T6: --repo + --dry-run threaded through =============================
 echo "T6: --repo + --dry-run threaded through to fleet-transition"
 reset_logs
 set_labels 104 fleet:reviewing-mac-worker-2
@@ -243,7 +237,6 @@ grep -q -- "pr view 104 --repo jakildev/irreden" "$GH_LOG" && \
 assert_eq "$(find "$FLEET_CLAIMS_DIR" -name '_review-verdict-*' -print | wc -l | tr -d ' ')" "0" \
     "T6 dry-run records no release marker"
 
-# === T7: fleet-transition failure propagates (exec) ======================
 echo "T7: fleet-transition non-zero exit propagates"
 reset_logs
 set_labels 105 fleet:reviewing-mac-worker-2
@@ -253,13 +246,11 @@ FT_RC=1 assert_eq "$(FT_RC=1 run verdict-needs-fix 105 --agent worker-2)" "1" \
 assert_eq "$(find "$FLEET_CLAIMS_DIR" -name '_review-verdict-*' -print | wc -l | tr -d ' ')" "0" \
     "T7 failed transition records no release marker"
 
-# === T8: PR not found under --agent → exit 1, no delegation ==============
 echo "T8: PR not found (gh view fails) under --agent → exit 1"
 reset_logs                                              # no store file for 999
 assert_eq "$(run verdict-approve 999 --agent worker-2)" "1" "T8 exits 1 on unreadable PR"
 assert_eq "$(ft_calls)" "0" "T8 did not delegate when labels unreadable"
 
-# === T9: --agent=<name> equals-form + claim present → delegate, exit 0 ====
 echo "T9: --agent=<name> equals-form + reviewing claim present → delegates, exit 0"
 reset_logs
 set_labels 106 fleet:reviewing-mac-worker-2 fleet:wip
@@ -267,7 +258,6 @@ set_review_data 106 head-106 head-106 COMMENTED 2026-01-02T00:00:00Z
 assert_eq "$(run verdict-needs-fix 106 --agent=worker-2)" "0" "T9 equals-form exits 0"
 assert_eq "$(ft_calls)" "1" "T9 delegated to fleet-transition exactly once"
 
-# === T10: --agent=<name> equals-form + claim ABSENT → guard fires, exit 4 ==
 # Proves the equals-form flows through the guard (not just the parser) — an
 # equals-form claim mismatch must reject exactly like the space-form (T2).
 echo "T10: --agent=<name> equals-form + reviewing claim absent → exit 4, no delegation"
@@ -276,10 +266,9 @@ set_labels 107 fleet:reviewing-mac-worker-9 fleet:wip   # claim is a DIFFERENT a
 assert_eq "$(run verdict-needs-fix 107 --agent=worker-2)" "4" "T10 equals-form guard exits 4"
 assert_eq "$(ft_calls)" "0" "T10 did NOT delegate (no verdict applied)"
 
-# === T11: --agent= (empty equals-form) → exit 2, no delegation ============
-# Regression for the guard-bypass fix: an empty --agent= must reject like the
-# space-form's missing value (T5), NOT fall through to agent="" and silently
-# take the interactive-human carve-out (which skips the claim check entirely).
+# An empty --agent= must reject like the space-form's missing value (T5), NOT
+# fall through to agent="" and silently take the interactive-human carve-out
+# (which skips the claim check entirely).
 echo "T11: --agent= (empty equals-form) → exit 2, no delegation (guard-bypass regression)"
 reset_logs
 set_labels 108 fleet:wip                                # no reviewing claim at all
@@ -288,7 +277,6 @@ assert_eq "$(ft_calls)" "0" "T11 did NOT delegate on empty --agent="
 assert_eq "$(grep -c 'pr view' "$GH_LOG" 2>/dev/null || true)" "0" \
     "T11 did NOT read labels (rejected before the guard, not carved out)"
 
-# === T12: #2402 worktree-scope assert fronts the --agent path =============
 # With the override dropped and cwd a non-worktree dir, the worktree assert must
 # block BEFORE the claim read (exit 1, no gh view). The no-agent carve-out is
 # unaffected — still delegates from anywhere.
@@ -305,7 +293,6 @@ set_review_data 110 head-110 head-110 COMMENTED 2026-01-02T00:00:00Z
 rc=$(cd "$TMPROOT" && FLEET_ALLOW_MAIN_CLONE= "$WRAPPER" verdict-approve 110 >/dev/null 2>&1; echo $?)
 assert_eq "$rc" "0" "T12 no-agent carve-out still delegates from a non-worktree cwd"
 
-# === T13: submitted review pins current head → delegate ===================
 echo "T13: submitted review pins current head → delegates"
 reset_logs
 set_labels 111 fleet:reviewing-mac-worker-2
@@ -316,7 +303,6 @@ assert_eq "$(ft_calls)" "1" "T13 delegates after finding the head-pinning review
 assert_eq "$(cat "$FLEET_CLAIMS_DIR/_review-verdict-worker-2")" "111" \
     "T13 records the current-claim verdict for guarded release"
 
-# === T14: stale submitted + current-head PENDING → exit 5 =================
 echo "T14: stale submitted review and current-head PENDING review → exit 5"
 reset_logs
 set_labels 112 fleet:reviewing-mac-worker-2 fleet:wip
@@ -327,7 +313,6 @@ assert_eq "$(ft_calls)" "0" "T14 does not delegate"
 assert_eq "$(get_labels 112)" "fleet:reviewing-mac-worker-2 fleet:wip" "T14 labels unchanged"
 assert_eq "$(grep -c '/pulls/112/reviews' "$GH_LOG")" "2" "T14 retries the reviews read once"
 
-# === T15: zero reviews → exit 5 ===========================================
 echo "T15: zero reviews → exit 5"
 reset_logs
 set_labels 113 fleet:wip
@@ -335,7 +320,6 @@ set_review_data 113 head-113
 assert_eq "$(run verdict-needs-fix 113)" "5" "T15 empty review history exits 5"
 assert_eq "$(ft_calls)" "0" "T15 does not delegate"
 
-# === T16: explicit bypass restores the fenced fixup lane ==================
 echo "T16: --no-review-check bypasses only the review-body guard"
 reset_logs
 set_labels 114 fleet:wip
@@ -344,7 +328,6 @@ assert_eq "$(ft_calls)" "1" "T16 delegates exactly once"
 assert_eq "$(grep -c -- '--json headRefOid' "$GH_LOG" 2>/dev/null || true)" "0" \
     "T16 performs no review-body queries"
 
-# === T17: reviews read failure → exit 1 ===================================
 echo "T17: reviews read failure → exit 1"
 reset_logs
 set_labels 115 fleet:reviewing-mac-worker-2

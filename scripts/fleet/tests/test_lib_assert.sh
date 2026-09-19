@@ -8,20 +8,13 @@
 # status: a present needle reads as a miss in assert_contains, and as ABSENT in
 # assert_absent. The second direction is the one that has to be locked — it
 # turns a negative assertion green while the thing it forbids is present, in
-# the helper every bash suite here sources (#3205).
+# the helper every bash suite here sources.
 #
 # The window opens on haystack size AND match position together, so the arms
 # below put the needle on line 1 and grow the haystack until the piped form
 # demonstrably breaks on THIS host. Growing rather than fixing a size is what
 # keeps the lock from going vacuous on a host whose pipe capacity exceeds any
 # single number this file could name.
-#
-# Covers:
-#   - assert_contains finds a needle past the early-close point
-#   - assert_absent does NOT call a present needle absent (the silent direction)
-#   - control: the piped form really does close early on this haystack, with
-#     the assertion on "status is not grep's" rather than one platform's code
-#   - controls: a genuinely absent needle still reads as absent, both ways
 
 set -euo pipefail
 

@@ -1,14 +1,14 @@
-"""Tests for the scout's `needs_gl_host` body backstop (#1969, #2704).
+"""Tests for the scout's `needs_gl_host` body backstop.
 
 `fetch_task_queue` projects `needs_gl_host` from the `fleet:needs-gl-host`
 label OR, when the filer forgot it, from the body via
-`_body_requires_gl_host`. That backstop shipped untested; these cover both
-of its signals and — more importantly — its precision contract.
+`_body_requires_gl_host`. These cover both of its signals and — more
+importantly — its precision contract.
 
-The contract is asymmetric on purpose: a MISS just reproduces the pre-#1969
-churn (a Metal pane claims, can't build, releases), while a FALSE POSITIVE
-wrongly skips a mac-runnable task and can starve the macOS lane outright.
-So every negative case below is load-bearing, not filler.
+The contract is asymmetric on purpose: a MISS just reproduces churn (a
+Metal pane claims, can't build, releases), while a FALSE POSITIVE wrongly
+skips a mac-runnable task and can starve the macOS lane outright. So every
+negative case below is load-bearing, not filler.
 """
 import importlib.machinery
 import importlib.util
@@ -25,7 +25,7 @@ requires_gl_host = _mod._body_requires_gl_host
 
 
 class TestProseForms(unittest.TestCase):
-    """#1969: an explicit host-requirement declaration."""
+    """An explicit host-requirement declaration."""
 
     def test_verb_form(self):
         for body in (
@@ -60,7 +60,7 @@ class TestProseForms(unittest.TestCase):
 
 
 class TestGlOnlySourcePaths(unittest.TestCase):
-    """#2704: the body names a file CMake excludes from the Darwin target."""
+    """The body names a file CMake excludes from the Darwin target."""
 
     def test_path_form(self):
         for body in (
@@ -80,8 +80,8 @@ class TestGlOnlySourcePaths(unittest.TestCase):
             self.assertTrue(requires_gl_host(body), body)
 
     def test_issue_2514_body_regression(self):
-        # The live miss that motivated #2704: the body cites the GL source file
-        # bare, inside prose, and never declares a host requirement.
+        # The body cites the GL source file bare, inside prose, and never
+        # declares a host requirement.
         body = (
             "The two backends' shader `#include` resolvers disagree: Metal's "
             "runtime preprocessor (`metal_pipeline.cpp::loadAndPreprocessMetal"
@@ -104,10 +104,10 @@ class TestGlOnlySourcePaths(unittest.TestCase):
 
     def test_non_source_files_under_an_opengl_dir_do_not_trip(self):
         # The path form pins the same extension set as the basename form, so
-        # the `.glsl` exclusion above is structural rather than incidental to
+        # the `.glsl` exclusion is structural rather than incidental to
         # today's tree layout (nothing but C/C++ sources happens to sit under
         # an `opengl/` directory right now). A non-source file added there
-        # must not trip the backstop — #2709 review nit.
+        # must not trip the backstop.
         for body in (
             "engine/render/src/opengl/ir_iso_common.glsl is stale.",
             "Update the notes in engine/render/src/opengl/README.md.",
@@ -126,9 +126,9 @@ class TestGlOnlySourcePaths(unittest.TestCase):
             self.assertFalse(requires_gl_host(body), body)
 
     def test_metal_paths_do_not_trip(self):
-        # The inverse (Metal-host) gate is a separate design call. (The OS-
-        # pinning `needs_host` field is that call's narrow form — see
-        # TestRequiredHost — and it reads declarations, never paths.)
+        # The inverse (Metal-host) gate is a separate design call. (The
+        # OS-pinning `needs_host` field is that call's narrow form and reads
+        # declarations, never paths.)
         for body in (
             "Edit engine/render/src/metal/metal_pipeline.cpp.",
             "metal_render_impl.cpp drops the binding.",
@@ -137,8 +137,8 @@ class TestGlOnlySourcePaths(unittest.TestCase):
             self.assertFalse(requires_gl_host(body), body)
 
     def test_opengl_prose_without_a_filename_does_not_trip(self):
-        # Both #2704 forms require a real extension, so the bare word cannot
-        # match however it is spelled.
+        # Both backstop forms require a real extension, so the bare word
+        # cannot match however it is spelled.
         for body in (
             "Port the analytic scatter coverage to OpenGL.",
             "The opengl backend and the metal backend have drifted.",
@@ -161,7 +161,7 @@ _required_host_impl = getattr(_mod, "_body_required_host", None)
 
 def required_host(body):
     """`_body_required_host`, resolved lazily — same reason as
-    `backend_symmetric` below: a pre-change scout must fail these as ordinary
+    `backend_symmetric`: a pre-change scout must fail these as ordinary
     test errors, not kill the suite at import."""
     if _required_host_impl is None:
         raise AssertionError(
@@ -169,9 +169,9 @@ def required_host(body):
     return _required_host_impl(body)
 
 
-# The live #1969 sentence: `needs_gl_host` reads it as "a GL host", which a
-# Windows pane satisfies, so the dispatcher elected the task there every tick
-# and each worker refused it (23 identical no-op iterations on 2026-09-06).
+# `needs_gl_host` reads this sentence as "a GL host", which a Windows pane
+# satisfies, so a naive dispatcher would elect the task there every tick and
+# each worker would refuse it.
 ISSUE_1969_BODY = (
     "This must run on a Linux host — references are per-backend (HiDPI "
     "macos-debug refs captured on a Mac do not compare against linux-debug)."
@@ -232,7 +232,7 @@ class TestRequiredHost(unittest.TestCase):
         self.assertIsNone(required_host(""))
 
 
-# --- #2820: the backend-symmetric discriminator ----------------------------
+# --- the backend-symmetric discriminator ----------------------------------
 
 _backend_symmetric_impl = getattr(_mod, "_body_backend_symmetric", None)
 
@@ -241,12 +241,12 @@ def backend_symmetric(body):
     """`_body_backend_symmetric`, resolved lazily.
 
     A module-level `_mod._body_backend_symmetric` lookup raises AttributeError
-    at IMPORT time against a pre-#2820 scout, so the suite would die before
-    unittest could print its `Ran N tests` line — and `fleet-positive-control`
-    reads exactly that line. The control would then report a setup failure
-    instead of a verdict, which is indistinguishable from a broken stage.
-    Deferring the lookup turns the missing predicate into ordinary test errors
-    that the control can score.
+    at IMPORT time against a scout that predates this predicate, so the suite
+    would die before unittest could print its `Ran N tests` line — and
+    `fleet-positive-control` reads exactly that line. The control would then
+    report a setup failure instead of a verdict, which is indistinguishable
+    from a broken stage. Deferring the lookup turns the missing predicate into
+    ordinary test errors that the control can score.
     """
     if _backend_symmetric_impl is None:
         raise AssertionError(
@@ -255,7 +255,7 @@ def backend_symmetric(body):
 
 # The exact body `test_fleet_claim_host_gate.sh` exports as SYMMETRIC_BODY for
 # its T11 fixture. One predicate with a bash and a python implementation is a
-# #2727-class drift pair, so both layers are pinned against this single string
+# drift-prone pair, so both layers are pinned against this single string
 # rather than two hand-kept copies. If you change it, change it in both files.
 SHARED_SYMMETRIC_BODY = (
     "The CAST bridge drops the sub-cell frac in "
@@ -263,7 +263,7 @@ SHARED_SYMMETRIC_BODY = (
     "c_resolve_per_axis_screen_depth.metal is identical."
 )
 
-# Likewise `GL_ONLY_BODY` — the #2704 shape, which must stay NOT symmetric.
+# Likewise `GL_ONLY_BODY` — the GL-only shape, which must stay NOT symmetric.
 SHARED_GL_ONLY_BODY = (
     "The regression lives in src/opengl/opengl_render_impl.cpp and "
     "reproduces only under the GL backend."
@@ -306,8 +306,8 @@ class TestBackendSymmetric(unittest.TestCase):
 
     def test_gl_only_body_is_not_symmetric(self):
         # AC-2, the opposite-direction lock, executed at the scout layer: the
-        # #2704 shape must still project needs_gl_host=True while staying
-        # backend_symmetric=False, or narrowing the gate reopens #2709's hole.
+        # GL-only shape must still project needs_gl_host=True while staying
+        # backend_symmetric=False, or narrowing the gate reopens that hole.
         self.assertTrue(requires_gl_host(SHARED_GL_ONLY_BODY))
         self.assertFalse(backend_symmetric(SHARED_GL_ONLY_BODY))
 

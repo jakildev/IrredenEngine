@@ -1,5 +1,4 @@
-"""Tests for the issue-based task queue parser in fleet-state-scout
-(T-381, T-392).
+"""Tests for the issue-based task queue parser in fleet-state-scout.
 
 Covers the pure-function helper `_parse_issue_field` and the label/body
 precedence rules inside `fetch_task_queue`'s per-issue loop (model, owner,
@@ -49,7 +48,7 @@ class ParseIssueField(unittest.TestCase):
 
 class ParseBlockedBy(unittest.TestCase):
     """`_parse_blocked_by` prefers the `**Blocked by:**` field but falls back
-    to free-form `Blocked on #N` / `Blocked on PR-x` header prose (#1326).
+    to free-form `Blocked on #N` / `Blocked on PR-x` header prose.
     """
     def test_prefers_canonical_field(self):
         body = "**Blocked by:** #50\n\n## Blocked on #99\n"
@@ -81,7 +80,7 @@ class ParseBlockedBy(unittest.TestCase):
         self.assertEqual(_mod._parse_blocked_by(None), "")
 
     def test_inline_bold_mid_line_extracts_ref(self):
-        # #1423: colon and value inside one bold span, mid-line after · separators.
+        # Colon and value inside one bold span, mid-line after · separators.
         line = "**Part of epic:** #104 · **Phase 3 of 4** · **Blocked by: #106 (Phase 2)**"
         result = _mod._parse_blocked_by(line)
         self.assertIn("#106", result)
@@ -117,10 +116,10 @@ class FetchTaskQueueDispatch(unittest.TestCase):
     Stubs conditional_get so the test doesn't hit the GitHub REST API.
     """
     def _run(self, issues):
-        # fetch_task_queue now reads the queue via _rest_list -> conditional_get
-        # (REST + ETag cache), not run_capture. Patch that seam so the test stays
-        # hermetic: a mock miss must never fall through to the live GitHub API or
-        # mutate the shared ~/.fleet ETag cache the production scout uses (#2227).
+        # fetch_task_queue reads the queue via _rest_list -> conditional_get (REST +
+        # ETag cache). Patch that seam so the test stays hermetic: a mock miss must
+        # never fall through to the live GitHub API or mutate the shared ~/.fleet
+        # ETag cache the production scout uses.
         payload = json.dumps(issues)
         original = _mod.conditional_get
         _mod.conditional_get = lambda *a, **k: (True, payload)
@@ -224,7 +223,7 @@ class FetchTaskQueueDispatch(unittest.TestCase):
         self.assertEqual(out["open"][0]["blocked_by"], "(none)")
 
     def test_blocked_by_recovers_header_prose(self):
-        # #1326: a dependency declared only as a `Blocked on #N` header must
+        # A dependency declared only as a `Blocked on #N` header must
         # surface as blocked, not (none).
         out = self._run([{
             "number": 100, "title": "b",
@@ -234,7 +233,7 @@ class FetchTaskQueueDispatch(unittest.TestCase):
         self.assertEqual(out["open"][0]["blocked_by"], "#1300")
 
     def test_blocked_flag_set_from_label(self):
-        # #1527: the fleet:blocked label surfaces as task["blocked"] so workers
+        # The fleet:blocked label surfaces as task["blocked"] so workers
         # see the state directly and the unblock projection can act on it.
         out = self._run([{
             "number": 100, "title": "b",
@@ -258,9 +257,9 @@ class FetchTaskQueueDispatch(unittest.TestCase):
         self.assertEqual(out["done"], [])
 
     def test_gated_issue_absent_from_all_sections(self):
-        # #2762: fleet:gated parks an issue whose fix surface no class can
-        # push. Without this skip it stays in tasks.open as free-and-pickable
-        # and ingest re-stamps fleet:queued, recycling panes indefinitely.
+        # fleet:gated parks an issue whose fix surface no class can push.
+        # Without this skip it stays in tasks.open as free-and-pickable and
+        # ingest re-stamps fleet:queued, recycling panes indefinitely.
         out = self._run([{
             "number": 100, "title": "gated task",
             "labels": [{"name": "fleet:queued"}, {"name": "fleet:gated"}],
@@ -271,7 +270,7 @@ class FetchTaskQueueDispatch(unittest.TestCase):
 
     def test_gated_issue_positive_control_present_without_label(self):
         # Same issue minus fleet:gated must still surface — proves the skip
-        # above is keyed on the label, not some other property of the fixture.
+        # is keyed on the label, not some other property of the fixture.
         out = self._run([{
             "number": 101, "title": "ungated task",
             "labels": [{"name": "fleet:queued"}],
