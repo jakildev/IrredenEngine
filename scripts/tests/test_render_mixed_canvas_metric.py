@@ -83,8 +83,11 @@ class MixedCanvasMetricTest(unittest.TestCase):
                              ((-8.25, -8.25, -8.0), (-8.5, -8.5, -8.0)),
                              ((-8.75, -8.75, -8.0), (-8.5, -8.5, -8.0)),
                              ((-8.5, -8.5, -8.4), (-8.5, -8.5, -8.0))):
-            self.assertEqual(METRIC.marker_cell(center, 0.0, resample), cell)
-        self.assertEqual(METRIC.marker_cell((3.0, 0.25, 0.0), 0.0, None), (3.0, 0.25, 0.0))
+            self.assertEqual(METRIC.marker_cell(center, 0.0, resample, (0.0, 0.0, 0.0)), cell)
+        self.assertEqual(METRIC.marker_cell((-8.5, -8.5, -8.0), 0.0, resample, (0.25, 0.0, 0.0)),
+                         (-8.25, -8.5, -8.0))
+        self.assertEqual(METRIC.marker_cell((3.0, 0.25, 0.0), 0.0, None, (0.0, 0.0, 0.0)),
+                         (3.0, 0.25, 0.0))
 
     def test_absent_marker_fails_lifecycle(self):
         labels, palette, ambiguous, guards, _ = expected()

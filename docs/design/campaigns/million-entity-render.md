@@ -84,6 +84,7 @@ D1 slices touch only tooling and docs, so they may interleave with D0.
 | 2026-09-18 | D0.2 measured: `render-revox-face-metric.py --shadow-overlay` casts a ray from every sun-facing resampled face toward the sun through the destination lattice and compares with the shadow overlay. Authored-cell casting (the demo default) marks 75k–147k false self-shadow pixels on the cyan cube at every yaw; resampled-cell casting marks 0–9k, with the near-riser tread band (24,696 px at yaw 0) left lit by the shadow path (caster or receiver, traced in D0.3). AO darkens 6.9% of the cube by at most 5.9%. The lit tooth pattern is the caster/receiver geometry mismatch, not the staircase; evidence in `revoxelized-display-fidelity.md` § Direct sun |
 | 2026-09-19 | D0.3 closed: `BAKE_SUN_SHADOW_MAP::bakeVoxelFaces` casts every voxel canvas from the cells it rasterizes; the authored-grid caster mode (`useSource`, the 96-byte frame's source-grid fields, binding 9 in the GLSL and Metal kernels, `sourceFaceCoverage_`) is gone and `--source-face-shadows` / `--voxel-face-shadows` are accepted and ignored (byte-identical captures). The sun oracle casts from each displayed triangle's centroid, the point the lighting pass samples, and classifies false shadow by the ray's closest approach to an occupied cell: with that, the near-riser tread band is the per-face floor (missed shadow 0 at all five yaws), and every remaining false-shadow trixel grazes an occupied cell within a third of a cell while 370 trixels with clearance ≥ 0.35 never flip, the signature of the nearest-texel read at a terminator. Caster and surface receiver traced with no defect. The authored-caster captures fail the same gate (clear-ray false shadow at 0.55–0.67 cells). Floor shadow at zoom 4 is a clean stepped silhouette. `render-verify --target IRCanvasStress` already fails 9 of 11 on the pre-change tree (references from 2026-08-03 predate the September stacks), so the re-bless is filed as #3552 instead of bundled |
 | 2026-09-19 | D0.4 closed: a shape on a revoxelized entity canvas is a lattice occupant. `SHAPES_TO_TRIXEL` drops the canvas's half-cell phase (`renderedCellOffset_`, rotated into the world frame) from each shape's owner offset before the raster's per-axis rounding, so the shape lands on the same integer + phase lattice the voxels display on and the composite's phase places it; a shape centred on a cell is pixel-exact, one between cells shows at the nearest cell. Fixtures: `--focus-revox 3` (12x12x11 mixed-parity box, `--parity-extent` for the one-even-axis variant), `--mixed-shape-at`, `--focus-offset`; the mixed-canvas metric gains `--fixture/--markers/--owner` with the voxel expectation from the new `render_revox_lattice.py` (hoisted from the revox oracle, per-axis extents) and each marker expected at its nearest lattice cell. At the cardinals the parity box passes the strict footprint on-lattice, a quarter cell above a cell, a quarter cell below one (before: rounded a whole cell away, two iso rows, 7,680 wrong-owner px), with a translated owner, and as the one-even-axis box; the zero-phase orbit frame is byte-identical to D0.1. Two mechanisms were measured and rejected: shifting the raster by the phase's iso projection plus a depth bias (exact centroid, but an odd texel row flips the local-triangle parity and every hexagon became a bow tie, 1,696 px at yaw 0), and no phase at all (right for half the off-lattice positions by the round-half-up tie rule, a whole cell off for the other half). Off the cardinals the shape pass rounds the iso projection and paints analytical 2x3 diamonds at both parities (area 1.67), which is D0.5 |
+| 2026-09-19 | D0.5 closed: a density-1 shape on an entity canvas is a lattice occupant at every yaw. The shape frame data's pad word becomes `latticeShapes`; under smooth camera yaw the kernels (GLSL + Metal) take `snapLatticeWalkYawed`, the integer lattice walk with the SDF query rotated by the continuous yaw, anchored on the snapped view cell (the CPU tile builder anchors the same way), with the cardinal-style cell depth and the plain 2x3 emit; the analytical smooth path, which sampled every iso pixel of both parities and painted a 2x3 diamond per hit (area 1.67), is left to the main canvas and to subdivided shapes. Strict footprint on the parity box at 22.5/45/67.5 (asymmetric marker; the symmetric one at exactly 45 is a float32/float64 rounding tie of the fixture), with a translated owner and on the one-even-axis box. The orbit frame's marker drops to one cell (area 1.00) but a source-face canvas composites raw texels, the remaining SDF display item |
 
 ### Decisions taken
 
@@ -97,6 +98,15 @@ D1 slices touch only tooling and docs, so they may interleave with D0.
   casters for a smoother floor shadow (the object on screen is the staircase,
   and the campaign spirit puts receiver, caster and visible face on one
   geometry), and any receiver bias that hides the mismatch.
+- 2026-09-19: under smooth camera yaw a density-1 shape on an entity canvas
+  is voxelized by the lattice walk with a yawed SDF query, not sampled
+  analytically: the canvas's voxels are lattice cells at every yaw, so the
+  shape is the hexagons of the cells it covers. Rejected: keeping the
+  analytical smooth path with a parity filter (its per-pixel surface depth is
+  not a lattice cell's, so the emitted diamonds still straddle cells), and
+  folding the yawed walk into the cardinal one (the cardinal walk's integer
+  rotation keeps it bit-exact; a float rotation there would perturb the
+  main canvas's cardinal fast path).
 - 2026-09-19: a shape on a revoxelized canvas voxelizes onto the canvas
   lattice (integer + phase) and the composite places the cell; the shape
   pass drops the phase from the owner offset so the raster's per-axis
@@ -139,17 +149,11 @@ D1 slices touch only tooling and docs, so they may interleave with D0.
 
 ## Now
 
-- **In flight:** D0.5 — the SDF marker's display in a revoxelized canvas off
-  the cardinals: the shape pass's smooth-yaw path rounds the iso projection
-  instead of the lattice cell and paints its analytical 2x3 diamond at every
-  hit pixel of both parities (area ratio 1.67, centroid up to a texel off at
-  22.5/45/67.5 degrees on the parity box), where a lattice occupant should
-  be the hexagons of the cells the yawed SDF covers. Trace: a yaw-aware
-  lattice walk (`snapLatticeWalk` with the continuous-yaw SDF query) for
-  entity canvases at density 1, GLSL and Metal; gate is the strict footprint
-  at the five yaws. The source-face canvas's raw-texel marker (orbit frame,
-  420 missing / 1,463 wrong at yaw 0) is the separate SOURCE_FACES item.
-- **Next:** D1.1 — the committed `million` preset and `repeat_profile`
-  recipe with Release and profiling-off arms; then Checkpoint 2 once D0.5
-  and D1.1 are open (four to six PRs since Checkpoint 1 counting the
-  fix-forward).
+- **In flight:** D1.1 — the committed `million` preset and the
+  `repeat_profile` recipe with Release and profiling-off arms (measurement
+  only: the frame-time and GPU-stage tables that D2–D5 will move).
+- **Next:** Checkpoint 2 once D1.1 is open (D0.3, D0.4, D0.5, D1.1 and the
+  fix-forward since Checkpoint 1): fresh-context reviewers plus the render
+  and ECS audits on the three engine diffs. After it, the source-face
+  canvas's raw-texel SDF marker (the remaining SDF display item, a
+  `SOURCE_FACES` composite question) or D2 per the ledger.

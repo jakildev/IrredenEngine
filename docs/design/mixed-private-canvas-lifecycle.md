@@ -54,6 +54,16 @@ centroid but moves the shape's texels by an odd row, which flips the parity
 the local-triangle gather reads, and the shape's hexagons come out as bow
 ties.
 
+Off the cardinals the same holds: an entity canvas sets `latticeShapes` in
+the shape frame data, and a density-1 shape under smooth camera yaw takes
+the lattice walk with its SDF query rotated by the continuous yaw
+(`snapLatticeWalkYawed`), anchored on the snapped view cell and emitting the
+plain 2x3 block, instead of the analytical surface the smooth path samples
+at every iso pixel of both parities (which painted a 2x3 diamond per hit and
+dilated a unit marker to 1.67 times its area). The lattice stays the integer
+view lattice the canvas's voxels occupy; only the query point turns. A
+shape with an entity rotation of its own keeps the general rotated search.
+
 `SHAPES_TO_TRIXEL` runs after `VOXEL_TO_TRIXEL_STAGE_1` in a pipeline that
 mixes the two producers on one canvas; the ordering table in
 `engine/prefabs/irreden/render/CLAUDE.md` carries the row. Canvases with no
@@ -157,6 +167,34 @@ shape pass rounds the iso projection instead of the cell and paints its
 analytical 2x3 diamonds at both parities, the dilation below; that is the
 next slice, not placement.
 
+### Continuous-yaw evidence
+
+Same host, settings and lattice-aware expectation; captures under
+`docs/pr-screenshots/claude/million-entity-render-sdf-marker-display/`.
+"Before" is the lattice snap alone (the raster still on the analytical
+smooth path off the cardinals); "after" adds the yawed lattice walk.
+
+| Fixture, marker | Yaw | Before: footprint m/e/w, centroid, area | After: footprint m/e/w, centroid, area | Strict after |
+|---|---:|---|---|---|
+| parity box, (-8.5, -8.5, -8) | 22.5 | 0/0/3,728, (0, 0), 1.67 | 0/0/0, (0, 0), 1.00 | pass |
+| parity box, (-8.5, -8.5, -8) | 45 | 0/0/6,742, (16, -8), 1.67 | 466/1,472/1,845, (16, -8), 1.00 | tie (below) |
+| parity box, (-8.5, -8.5, -8) | 67.5 | 0/5,275/1,410, (16, 0), 1.67 | 0/0/0, (0, 0), 1.00 | pass |
+| parity box, (-8.5, -7.5, -8) | 22.5 / 45 / 67.5 | | 0/0/0, (0, 0), 1.00 at each | pass |
+| parity box, owner (4, 2, -1), (-8.5, -8.5, -8) | 45 | | 0/0/0, (-0.5, -0.25), 1.00 | pass |
+| one-even-axis box, (-8.5, -8, -8) | 45 | | 0/0/0, (0, 0), 1.00 | pass |
+| orbit frame (source-face canvas) | 45 | 421/2,081/2,930, (12, 8), 1.67 | 875/671/1,703, (12, 8), 1.00 | fail (below) |
+
+A unit marker on a revoxelized canvas is now the hexagon of one lattice
+cell at every yaw, for a marker on a cell, between cells, with a translated
+owner and on the one-even-axis box. The symmetric marker (-8.5, -8.5, -8)
+at exactly 45 degrees views to a y of exactly zero, half a cell from both
+neighbours, and the shader's float32 rotation and the oracle's float64 one
+round the tie apart; the asymmetric marker at the same yaw passes, so the
+row is the fixture's tie, not the raster's. The orbit frame's marker is
+now one cell (area 1.00 instead of 1.67), but a source-face canvas
+composites the texture layer as raw rectangular texels, so its footprint
+stays the open item below.
+
 ## Open: the SDF marker's own display
 
 The strict footprint fails at every yaw. In a source-face canvas the texture
@@ -167,9 +205,11 @@ yaw 0). Under continuous yaw the sub-1 analytical SDF path writes a 2x3
 diamond from every hit pixel and the marker dilates to about twice its area
 (ratio 2.1 at yaw 45). Both are the SDF display in private canvases, the
 campaign's SDF extent and ownership item, not the lifecycle; the strict numbers
-are the target that item drives to zero; on the revoxelized parity box the
-cardinal captures already meet it, so what remains is the continuous-yaw
-path (area ratio 1.67 at 22.5, 45 and 67.5 degrees: the analytical solver
-hits every iso pixel and each hit writes a 2x3 diamond) and the source-face
-canvas's raw texels. AO on a marker-free wireframe frame is uniform, so the
-AO overlay is not a raster-survival control for this fixture.
+are the target that item drives to zero; the revoxelized parity box meets it
+at every yaw, so what remains is the source-face (plain `DETACHED`) canvas,
+whose voxels draw as continuous quads from the source-face buffer while its
+texture layer composites as raw rectangular texels: a unit marker there is
+a 2x3 texel rectangle, not the hexagon its cell projects to (420 missing
+and 1,463 wrong-owner pixels at yaw 0). AO on a marker-free wireframe frame
+is uniform, so the AO overlay is not a raster-survival control for this
+fixture.
