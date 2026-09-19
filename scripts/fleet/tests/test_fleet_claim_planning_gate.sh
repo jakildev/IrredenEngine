@@ -82,7 +82,7 @@ case "$1 $2" in
             esac
             shift || true
         done
-        if [[ -n "$label" ]]; then printf '[{"name":"%s"}]\n' "$label"; else echo '[]'; fi
+        if [[ -n "$label" ]]; then printf '[{"name":"%s"}]\n' "$label"; else printf '[[{"name":"%s"}]]\n' "${FLEET_CLAIM_CANDIDATE:-}"; fi
         exit 0 ;;
     "pr list") echo '[]'; exit 0 ;;
 esac

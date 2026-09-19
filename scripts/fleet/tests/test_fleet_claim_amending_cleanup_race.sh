@@ -160,10 +160,11 @@ case "${1:-} ${2:-}" in
             python3 -c "import time;print(time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time()-${STUB_AGE})))"
             exit 0
         fi
-        posted=""
+        posted="" slurp=0
         while [[ $# -gt 0 ]]; do
             case "$1" in
                 labels\[\]=*) posted="${1#labels[]=}" ;;
+                --slurp) slurp=1 ;;
             esac
             shift || true
         done
@@ -177,7 +178,10 @@ case "${1:-} ${2:-}" in
             [[ "$present" -eq 1 ]] || printf '%s\n' "$posted" >> "$CLAIM_STATE"
             printf '%s\n' "$posted" >> "$CLAIM_POST_LOG"
         fi
+        # The paginated --slurp verification GET is one page of the live store.
+        [[ "$slurp" -eq 0 ]] || printf '['
         emit_labels
+        [[ "$slurp" -eq 0 ]] || printf ']'
         printf '\n'
         unlock_state
         ;;

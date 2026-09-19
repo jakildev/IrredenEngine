@@ -20,7 +20,7 @@
 #
 # _claim_decision is table-tested directly (pure, no gh). _acquire_label_on is
 # driven end-to-end through a stateful gh stub for the terminal behaviors
-# (sole-holder win, persistent-holder yield).
+# (two-read sole-holder win, persistent-holder yield).
 
 set -euo pipefail
 
@@ -111,27 +111,31 @@ assert_eq "$(_claim_decision "$THIRD" "$SMALL" "$LARGE" "$THIRD")" "lose" \
 
 echo "== _acquire_label_on (end-to-end via gh stub) =="
 
-# Stateful gh stub. STUB_HOLDERS = labels that are "already present" on the
-# target; the POST response always echoes those plus the just-posted label.
-# remove-label is a no-op success (mirrors gh_release_label's happy path).
+# Stateful gh stub. STUB_HOLDERS = labels already present on the target; live
+# reads return those plus the current candidate. Removal is a no-op success.
 STUB_HOLDERS=""
 gh() {
     case "${1:-}" in
         api)
-            local posted="" a
+            local posted="" slurp=0 a
             for a in "$@"; do
                 case "$a" in
                     labels\[\]=*) posted="${a#labels[]=}" ;;
+                    --slurp) slurp=1 ;;
                 esac
             done
             local out='[' first=1 h
-            for h in $STUB_HOLDERS $posted; do
+            for h in $STUB_HOLDERS ${posted:-$STUB_MINE}; do
                 [[ $first -eq 1 ]] || out+=','
                 out+="{\"name\":\"$h\"}"
                 first=0
             done
             out+=']'
-            printf '%s\n' "$out"
+            if [[ "$slurp" -eq 1 ]]; then
+                printf '[%s]\n' "$out"
+            else
+                printf '%s\n' "$out"
+            fi
             return 0
             ;;
         issue|pr|label)
@@ -150,6 +154,7 @@ export FLEET_CLAIM_ACQUIRE_RETRIES=2
 # T6: no existing holder → sole-holder win (exit 0).
 echo "T6: no existing holder → acquire succeeds"
 STUB_HOLDERS=""
+STUB_MINE="$SMALL"
 rc=0
 _acquire_label_on "owner/repo" 1 "$SMALL" "$P" >/dev/null 2>&1 || rc=$?
 assert_exit "$rc" 0 "sole holder → exit 0 (own the lock)"
@@ -159,6 +164,7 @@ assert_exit "$rc" 0 "sole holder → exit 0 (own the lock)"
 # so after the bounded retries I lose. Critically: I do NOT co-win.
 echo "T7: later lex-smaller claimant vs persistent holder → yield (exit 1)"
 STUB_HOLDERS="$LARGE"
+STUB_MINE="$SMALL"
 rc=0
 _acquire_label_on "owner/repo" 1 "$SMALL" "$P" >/dev/null 2>&1 || rc=$?
 assert_exit "$rc" 1 "persistent holder present → exit 1 (never a co-win)"
@@ -166,6 +172,7 @@ assert_exit "$rc" 1 "persistent holder present → exit 1 (never a co-win)"
 # T8: persistent lex-SMALLER holder, I am lex-larger → immediate yield.
 echo "T8: lex-larger claimant vs lex-smaller holder → yield (exit 1)"
 STUB_HOLDERS="$SMALL"
+STUB_MINE="$LARGE"
 rc=0
 _acquire_label_on "owner/repo" 1 "$LARGE" "$P" >/dev/null 2>&1 || rc=$?
 assert_exit "$rc" 1 "earlier/lex-smaller holder remains → exit 1"
@@ -176,7 +183,7 @@ echo "== _acquire_label_on force-sweep of a dead persistent holder (#2099) =="
 # dead/abandoned (classically cross-host) claimant — a live lex-smaller
 # claimant would lose the tie-break forever. The exhaustion path now force-
 # sweeps any TTL-stale holder once, then re-acquires. Stateful gh stub: POST
-# echoes holders + posted; GET (labels, no --method POST) echoes holders;
+# echoes holders + posted; verification GETs echo holders + the candidate;
 # events → STUB_EVENTS_TS for label_added_epoch; remove-label mutates holders.
 STUB_EVENTS_TS="2020-01-01T00:00:00Z"   # long past any TTL → holder is sweepable
 STUB_PAGE1_HOLDERS=""
@@ -186,12 +193,13 @@ gh() {
     case "${1:-}" in
         api)
             [[ -z "$STUB_CALL_LOG" ]] || printf '%s\n' "$*" >> "$STUB_CALL_LOG"
-            local a posted="" is_events=0 paginate=0
+            local a posted="" is_events=0 paginate=0 slurp=0
             for a in "$@"; do
                 case "$a" in
                     labels\[\]=*) posted="${a#labels[]=}" ;;
                     *events*) is_events=1 ;;
                     --paginate) paginate=1 ;;
+                    --slurp) slurp=1 ;;
                 esac
             done
             if [[ "$is_events" -eq 1 ]]; then
@@ -203,13 +211,17 @@ gh() {
                 visible_holders+=" ${STUB_PAGE2_HOLDERS}"
             fi
             local out='[' first=1 h
-            for h in $visible_holders $posted; do
+            for h in $visible_holders ${posted:-$STUB_MINE}; do
                 [[ $first -eq 1 ]] || out+=','
                 out+="{\"name\":\"$h\"}"
                 first=0
             done
             out+=']'
-            printf '%s\n' "$out"
+            if [[ "$slurp" -eq 1 ]]; then
+                printf '[%s]\n' "$out"
+            else
+                printf '%s\n' "$out"
+            fi
             return 0
             ;;
         issue|pr)
@@ -257,16 +269,25 @@ RP="fleet:reviewing-"
 echo "T9: lex-min claimant vs TTL-stale persistent holder → force-sweep + win"
 STUB_PAGE1_HOLDERS=""
 STUB_PAGE2_HOLDERS="$LARGE"
+STUB_MINE=""
 control=$(gh api "repos/owner/repo/issues/1/labels?per_page=100")
 assert_eq "$control" "[]" "page-2 holder is absent when --paginate is omitted"
+STUB_MINE="$SMALL"
+: > "$STUB_CALL_LOG"
 rc=0
 _acquire_label_on "owner/repo" 1 "$SMALL" "$RP" >/dev/null 2>&1 || rc=$?
 assert_exit "$rc" 0 "TTL-stale reviewing holder force-swept → exit 0 (took the lock)"
+# Every label read — the per-attempt verification GETs and the sweep's own —
+# must page; a single unpaged read would hide the page-2 holder.
 paginate_calls=$(grep -Fc \
     "api repos/owner/repo/issues/1/labels?per_page=100 --paginate" \
     "$STUB_CALL_LOG" || true)
-assert_eq "$paginate_calls" "1" \
+unpaged_reads=$(grep -F "api repos/owner/repo/issues/1/labels" "$STUB_CALL_LOG" \
+    | grep -Fv -- '--method POST' | grep -Fvc -- '--paginate' || true)
+assert_eq "$(( paginate_calls >= 1 ))" "1" \
     "stale-holder sweep requests 100-item pages and pagination"
+assert_eq "$unpaged_reads" "0" \
+    "no label read on the acquire path omits pagination"
 
 # T10: dead cross-host amending holder, basename collides with a live local
 # worker — the exact #2099 geometry. Host-qualified heartbeat check does NOT
@@ -278,6 +299,7 @@ ADEAD="${AP}windows-worker-1"
 touch "$HEARTBEATS_DIR/worker-1"   # live LOCAL worker-1 (spoof bait)
 STUB_PAGE1_HOLDERS="$ADEAD"
 STUB_PAGE2_HOLDERS=""
+STUB_MINE="$AMINE"
 rc=0
 amending_acquire "owner/repo" 1 "$AMINE" "$AP" >/dev/null 2>&1 || rc=$?
 assert_exit "$rc" 0 "cross-host amending holder force-swept despite local same-basename heartbeat → exit 0"
@@ -290,6 +312,7 @@ AMINE2="${AP}mac-worker-1"          # lex-smaller than mac-worker-3
 touch "$HEARTBEATS_DIR/worker-3"   # owner of the held label is alive
 STUB_PAGE1_HOLDERS="$ALIVE"
 STUB_PAGE2_HOLDERS=""
+STUB_MINE="$AMINE2"
 rc=0
 amending_acquire "owner/repo" 1 "$AMINE2" "$AP" >/dev/null 2>&1 || rc=$?
 assert_exit "$rc" 1 "live same-host amending owner kept → exit 1 (yield, no theft)"
@@ -310,6 +333,7 @@ printf '{"pr":1,"agent":"worker-5","acquired_epoch":1,"dispatch_id":"D1"}\n' \
 printf 'D2\n' > "$FLEET_STATE_DIR/dispatch-current/worker-5"
 STUB_PAGE1_HOLDERS="$ADEAD2"
 STUB_PAGE2_HOLDERS=""
+STUB_MINE="$AMINE3"
 rc=0
 amending_acquire "owner/repo" 1 "$AMINE3" "$AP" >/dev/null 2>&1 || rc=$?
 assert_exit "$rc" 0 "superseded-dispatch amending holder force-swept despite a fresh pane heartbeat → exit 0"

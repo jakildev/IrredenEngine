@@ -232,7 +232,7 @@ case "$1 $2" in
             esac
             shift || true
         done
-        [[ -n "$label" ]] && printf '[{"name":"%s"}]\n' "$label" || echo "[]"
+        [[ -n "$label" ]] && printf '[{"name":"%s"}]\n' "$label" || printf '[[{"name":"%s"}]]\n' "${FLEET_CLAIM_CANDIDATE:-}"
         exit 0
         ;;
     "issue edit"|"label "*)
