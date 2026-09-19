@@ -84,7 +84,7 @@ def read_json_retry(path, attempts=3, backoff=0.05):
     # os.replace recovers instead of raising spuriously. Raises the last error
     # after `attempts` tries so callers keep their fallback. Kept local rather
     # than shared — these scripts can't import a sibling module reliably under
-    # the ~/bin symlink resolution hazard (#1578); keep in sync. (#1750)
+    # the ~/bin symlink resolution hazard; keep in sync.
     last = None
     for i in range(attempts):
         try:
@@ -105,7 +105,7 @@ def load_state_cache():
     """
     try:
         p = pathlib.Path(STATE_JSON)
-        # lint: state-mtime-ok generated_at-first; mtime is the fallback (#2267)
+        # lint: state-mtime-ok generated_at-first; mtime is the fallback
         mtime = p.stat().st_mtime
         data = read_json_retry(STATE_JSON)
         gen = (data or {}).get("generated_at")

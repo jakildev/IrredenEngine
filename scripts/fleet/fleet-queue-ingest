@@ -15,7 +15,7 @@
 # (gh issue edit --add-label converges either way, but the re-check
 # avoids burning API budget on already-stamped issues).
 #
-# Queue-all / mark-blocked (#1527, supersedes the #1476 defer-the-stamp gate):
+# Queue-all / mark-blocked:
 # every approved, non-skip task is stamped fleet:queued + model up front; a task
 # whose `**Blocked by:** #N` predecessor is still open additionally gets a
 # fleet:blocked marker (the whole queue is visible immediately, not one child at
@@ -30,19 +30,17 @@
 # `fleet:no-plan` / investigation spike). fleet:plan-review holds ingest until a
 # reviewer vets the posted plan.
 #
-# Retract (#2740): those two gates hold the ADD path only. When one lands on an
+# Retract: those two gates hold the ADD path only. When one lands on an
 # issue that ALREADY carries fleet:queued — the normal ordering for a
-# plan-shape-2 filing, and what a reviewer's plan bounce produces — nothing used
-# to remove the stamp, so the gate held ingest but NOT worker pickup and the
-# issue stayed claimable behind a live gate. The retract pass strips
-# fleet:queued (never the gate label) so the issue leaves the pickable set;
-# clearing the gate re-queues it through the normal add path.
+# plan-shape-2 filing, and what a reviewer's plan bounce produces — the gate
+# alone holds ingest but NOT worker pickup, leaving the issue claimable behind
+# a live gate. The retract pass strips fleet:queued (never the gate label) so
+# the issue leaves the pickable set; clearing the gate re-queues it through
+# the normal add path.
 #
 # Approval sources: the pending set is scout-built from human:approved AND
 # fleet:agent-approved (the agent-filed follow-up lane, TASK-FILING.md §"Agent-
 # approved follow-up lane") — everything below treats the two identically.
-# Carve-offs queued without planning made the worker the first to open the code,
-# and it design-blocked on claim (the #1370 → #1414/#1431/#1435 pattern).
 #
 # Source of truth: scripts/fleet/fleet-queue-ingest in the engine repo.
 # Installed to ~/bin/fleet-queue-ingest by scripts/fleet/install.sh.
@@ -69,7 +67,7 @@ log() {
 # but the seen-hash invalidation below matters: without it, scout writes
 # the seen-hash before the spawn returns, so a lock-bailed spawn silently
 # consumes the projection-change signal and approved issues can strand
-# until the hash is manually deleted (#973).
+# until the hash is manually deleted.
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
     log "another fleet-queue-ingest is running; exiting"
     rm -f "$HOME/.fleet/state/seen-hashes/queue-manager-ingest" || true
@@ -87,8 +85,8 @@ if [[ -f "$PROJECTION_FILE" ]]; then
     # The path goes in via argv, never embedded in the program text: on a
     # native-Windows host python3 is the mingw64 build, and MSYS converts
     # POSIX paths only at the argv/env boundary — a `/c/Users/...` string
-    # inside `-c` source is unopenable there and every ingest exited
-    # "empty projection" (#3030).
+    # inside `-c` source is unopenable there and every ingest exits
+    # "empty projection".
     counts=$(python3 -c "
 import json, sys
 try:
@@ -110,7 +108,7 @@ fi
 # merged PR. Posts a comment on the issue, adds the fleet:scope-shipped
 # label so future triage passes skip it, and removes it from the pending
 # list. Mutating the projection file lets the label-stamping pass below
-# skip scope-shipped issues without re-querying (#1175).
+# skip scope-shipped issues without re-querying.
 if [[ -f "$PROJECTION_FILE" ]] && command -v gh >/dev/null 2>&1; then
     scope_shipped_out=$(FLEET_PROJ_FILE="$PROJECTION_FILE" INGEST_SELF="${BASH_SOURCE[0]}" python3 - << 'SCOPE_PY' 2>>"$LOG_FILE"
 import json, os, subprocess, sys
@@ -202,7 +200,7 @@ SCOPE_PY
         # The early exit is scoped to the STAMPING pass. The unblock and
         # retract passes below read their own projection lists and are
         # unrelated to scope-shipped coverage, so exiting here while either
-        # has work would silently skip it (#2740).
+        # has work would silently skip it.
         if [[ "${kept_count:-0}" == "0" ]] && [[ "${shipped_count:-0}" -gt "0" ]] \
             && [[ "${unblock_count:-0}" == "0" ]] && [[ "${retract_count:-0}" == "0" ]]; then
             log "scope-shipped: all pending issues have merged coverage — nothing to stamp"
@@ -226,9 +224,8 @@ fi
 stamping_out=$(FLEET_PROJ_FILE="$PROJECTION_FILE" INGEST_SELF="${BASH_SOURCE[0]}" python3 - << 'STAMP_PY' 2>>"$LOG_FILE"
 import json, os, re, subprocess, sys
 
-# Shared blocker parser (#1749) — one routine for scout/ingest/claim so the
-# three can't disagree, and it catches the plain `Blocked by: #N` form the
-# bold-only copies skipped. realpath resolves the ~/bin symlink back to the
+# Shared blocker parser — one routine for scout/ingest/claim so the
+# three can't disagree. realpath resolves the ~/bin symlink back to the
 # scripts/fleet dir the module ships in (same pattern as the SCOPE_PY block).
 sys.path.insert(0, os.path.dirname(os.path.realpath(os.environ['INGEST_SELF'])))
 from fleet_blocked_by import blocker_ref_records, has_blocked_by_field
@@ -246,12 +243,12 @@ except Exception:
     print(','.join(['0'] * 11))
     sys.exit(0)
 
-# Planning-gate escape hatch (#1456): an issue whose title or body names an
+# Planning-gate escape hatch: an issue whose title or body names an
 # explicit "investigation spike" is worker-investigates-first by design and
 # queues without a plan (architect-protocol.md §"Carve-offs are unplanned
 # tickets" is where the phrase is defined).
 SPIKE_RE = re.compile(r'investigation\s+spike', re.IGNORECASE)
-# #1932 PR2: the `[no-plan]` opt-out tag — the label-light twin of the
+# The `[no-plan]` opt-out tag — the label-light twin of the
 # human:no-plan label (and its agent-applied twin fleet:no-plan), honored the
 # same way as the investigation-spike phrase.
 NO_PLAN_RE = re.compile(r'\[no-plan\]', re.IGNORECASE)
@@ -395,17 +392,17 @@ for issue in pending:
               f'spike) but still carried fleet:needs-plan — stripped it; queuing directly',
               file=sys.stderr)
 
-    # Raced-planning-gate reconcile (#2701). TASK-FILING.md §"Agent-approved
+    # Raced-planning-gate reconcile. TASK-FILING.md §"Agent-approved
     # follow-up lane" plan-shape 2 files in three non-atomic steps: create with
     # fleet:agent-approved, post the `## Plan` comment, add fleet:plan-review.
-    # The planning gate below keys on the *comment* (#1932), so a tick landing
+    # The planning gate below keys on the *comment*, so a tick landing
     # between steps 1 and 2 sees a plan-less issue and stamps fleet:needs-plan;
     # step 3 then lands fleet:plan-review on top. The pair then persists
     # forever — the skip guard just below returns early on either label, so no
     # later tick re-examines the issue. Left alone, the stale needs-plan makes
     # it a candidate for a planning dispatch that re-plans work which already
     # has a plan awaiting review, and a reviewer clearing plan-review strands
-    # it short of fleet:queued (the #2110 shape, on the plan-present path).
+    # it short of fleet:queued.
     #
     # The predicate is the label PAIR, not plan presence: a reviewer's bounce
     # *swaps* plan-review → needs-plan (PLANNING-PROTOCOL.md), and the
@@ -435,10 +432,10 @@ for issue in pending:
             or 'fleet:needs-human' in labels or 'fleet:needs-plan' in labels
             or 'fleet:plan-review' in labels
             or 'fleet:gated' in labels):
-        # fleet:plan-review (#1932): the plan is posted but a reviewer hasn't
+        # fleet:plan-review: the plan is posted but a reviewer hasn't
         # vetted it yet — ingest holds off until the reviewer clears the label
         # (sound → removed; not sound → swapped to fleet:needs-plan).
-        # fleet:gated (#2762): a worker parked the issue because the fix
+        # fleet:gated: a worker parked the issue because the fix
         # surface is gated self-config no class can push. Keeps
         # human:approved (survives re-ingest) but must never get
         # fleet:queued re-stamped — same shape as fleet:needs-human.
@@ -491,11 +488,10 @@ for issue in pending:
               f'bounced to fleet:needs-plan', file=sys.stderr)
         continue
 
-    # Blocked-by handling (#1527): queue blocked tasks too. A task whose
+    # Blocked-by handling: queue blocked tasks too. A task whose
     # **Blocked by:** predecessors aren't all closed still gets fleet:queued +
     # a model label, plus a fleet:blocked marker — the whole approved queue is
-    # visible up front instead of one child at a time (the old #1476 "defer the
-    # stamp" behavior). Claimability is unchanged: fleet-claim's own Blocked-by
+    # visible up front instead of one child at a time. fleet-claim's own Blocked-by
     # gate still refuses a plain claim on it, and --stackable-on still works;
     # fleet:blocked is the operator-visible "queued but not plainly claimable
     # yet" signal that the unblock pass below removes once the last blocker
@@ -540,7 +536,7 @@ for issue in pending:
     if open_blockers:
         blocked_marked += 1
 
-# Unblock pass (#1527): drop fleet:blocked from queued tasks whose last blocker
+# Unblock pass: drop fleet:blocked from queued tasks whose last blocker
 # has closed. Sourced from unblock_issues (tasks.open-derived in the scout)
 # since a fleet:queued issue has already left the human:approved add set above.
 # Reuses the same blocker parsers + per-run cache as the stamping pass.
@@ -588,11 +584,11 @@ for issue in data.get('unblock_issues', []):
         continue
     unblocked += 1
 
-# Retract pass (#2740): drop fleet:queued from issues on which a planning
+# Retract pass: drop fleet:queued from issues on which a planning
 # queue-block landed AFTER queuing. The add-path skip guard above only prevents
-# STAMPING fleet:queued while a gate is present — nothing retracted an
-# already-stamped label, so the gate held ingest but not worker pickup and the
-# issue stayed claimable behind a live gate (observed on #2734). Sourced from
+# STAMPING fleet:queued while a gate is present; without this pass the gate
+# holds ingest but not worker pickup and the issue stays claimable behind a
+# live gate. Sourced from
 # retract_issues, which the scout builds from the RAW fleet:queued issue list
 # (tasks.plan_gated) rather than tasks.open — that section drops
 # fleet:plan-review rows before a task row exists, so a tasks.open-derived

@@ -150,7 +150,7 @@ fi
 #   3. a matching `if [[ -f "$<NAME>_SRC" ]]; then ln -sf ... fi` install
 #      block under "Step 1: symlink fleet scripts".
 # Forgetting (3) — it lives ~100 lines below the var pair — is the easy
-# miss (PR #1990: FLEET_PLAN_LINT defined + chmod'd but never symlinked).
+# miss (a tool defined + chmod'd but never symlinked).
 # Keep all three in sync when adding or removing a tool.
 # ----------------------------------------------------------------------
 FLEET_UP_SRC="$SCRIPT_DIR/fleet-up"
@@ -218,7 +218,7 @@ FLEET_ISSUE_SRC="$SCRIPT_DIR/fleet-issue"
 FLEET_ISSUE_DEST="$HOME/bin/fleet-issue"
 # The remediation that require_fleet_lib_dir prints names this bare, so it has
 # to resolve on PATH — otherwise the guard sends the reader to a command-not-found
-# and back to the hand-staging #2713 exists to stop.
+# and back to hand-staging.
 FLEET_POSITIVE_CONTROL_SRC="$SCRIPT_DIR/fleet-positive-control"
 FLEET_POSITIVE_CONTROL_DEST="$HOME/bin/fleet-positive-control"
 # fleet-gh-poll is a CLI (symlinked); its fleet_gh_poll.py module is NOT
@@ -333,13 +333,13 @@ fi
 
 # fleet-clone-freshness.sh must be symlinked alongside the other fleet scripts so
 # the by-dir source pattern (fleet-up) and the FLEET_LIB_DIR source (dispatcher /
-# fleet-claim) both resolve it through ~/bin. (#1810)
+# fleet-claim) both resolve it through ~/bin.
 if [[ -f "$FLEET_CLONE_FRESHNESS_SRC" ]]; then
     ln -sf "$FLEET_CLONE_FRESHNESS_SRC" "$FLEET_CLONE_FRESHNESS_DEST"
     echo "symlinked $FLEET_CLONE_FRESHNESS_DEST -> $FLEET_CLONE_FRESHNESS_SRC"
 fi
 
-# fleet-net.sh (the network-timeout guard, #2362) is a sourced lib like
+# fleet-net.sh (the network-timeout guard) is a sourced lib like
 # fleet-common.sh — symlink it into ~/bin so the FLEET_LIB_DIR source pattern in
 # fleet-rebase / fleet-claim / fleet-dispatcher resolves it through ~/bin.
 if [[ -f "$FLEET_NET_SRC" ]]; then
@@ -633,7 +633,7 @@ if [[ -f "$FLEET_CLIP_SRC" ]]; then
     echo "symlinked $FLEET_CLIP_DEST -> $FLEET_CLIP_SRC"
 fi
 
-# Engine-level ir-* tools (T-318 sub-task 1). These live under
+# Engine-level ir-* tools. These live under
 # engine/tools/bin/ — they're not fleet-specific, but they share the
 # install pattern. Symlink whichever ones are present in this checkout
 # so the next sub-tasks (ir-build / ir-run migration, ir-perf-grid) can
@@ -845,11 +845,11 @@ if [[ -f "$FLEET_ZSH_COMP_SRC" ]]; then
 fi
 
 # ----------------------------------------------------------------------
-# Step 5: host protections against GitHub connection black-holes (#2362)
+# Step 5: host protections against GitHub connection black-holes
 # ----------------------------------------------------------------------
-# The fleet host's TCP connections to GitHub intermittently die silently (no
-# RST), hanging any unguarded network call forever — three fleet-wide outages
-# in four days. fleet-net.sh (installed above) bounds every git/gh call inside
+# A fleet host's TCP connection to GitHub can die silently (no RST), hanging
+# any unguarded network call forever. fleet-net.sh (installed above) bounds
+# every git/gh call inside
 # the daemons with a `timeout`; these host-level settings make a black-holed
 # connection self-terminate at the transport layer too, and guarantee a
 # `timeout` binary exists for the guard. All idempotent; safe to re-run.
@@ -892,8 +892,8 @@ fi
 
 # (a2) ssh connection multiplexing for github.com — the fleet's git-over-ssh
 # churn (a fresh TCP dial per operation, thousands/day) leaks a TIME_WAIT
-# socket per dial; on a host whose kernel PCB reaper wedges (2026-07-15
-# incident: macOS, 85-day uptime) the leak exhausts the entire ephemeral port
+# socket per dial; on a host whose kernel PCB reaper wedges (macOS at long
+# uptime) the leak exhausts the entire ephemeral port
 # range and EVERY new outbound connection fails with EADDRNOTAVAIL. One
 # persistent master connection drops that churn to ~zero. Appended as its own
 # marked block: ssh config is first-match-wins PER PARAMETER, so this composes
@@ -957,7 +957,7 @@ fi
 
 # Stamp this successful symlink pass so fleet-up / fleet-dispatch-wrap can skip
 # re-linking until a fleet source (tool / role-cmd / ir-*) is newer than the
-# stamp — see fleet_install_stale in fleet-common.sh (#2262). Overridable for
+# stamp — see fleet_install_stale in fleet-common.sh. Overridable for
 # tests via FLEET_INSTALL_STAMP.
 _install_stamp="${FLEET_INSTALL_STAMP:-$HOME/.fleet/state/.install-stamp}"
 mkdir -p "$(dirname "$_install_stamp")" 2>/dev/null || true

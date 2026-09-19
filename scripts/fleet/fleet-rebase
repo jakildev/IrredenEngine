@@ -32,15 +32,13 @@
 # Eligibility for the rebase pass (deliberately conservative — tier-0 must
 # never fight an agent or human for a branch). The stale-label cleanups
 # below are NOT bound by it: they do no branch work, so there is no branch
-# to fight over (#2840).
+# to fight over.
 #   - PR carries fleet:approved and none of the skip labels below.
 #   - Stacked PRs (base != master): plain rebase onto the updated base
-#     branch only. Retargeting to master and the inherited-prefix drop
-#     were retired with the native-stacked-PRs migration — GitHub
-#     retargets and rebases native-stack children server-side when the
-#     parent merges (blocks preserved at the `pre-native-stacks` tag;
-#     see scripts/fleet/legacy/stacked-prs/README.md). A stacked PR
-#     whose base branch is gone goes to the LLM pass.
+#     branch only — GitHub retargets and rebases native-stack children
+#     server-side when the parent merges, so tier-0 never retargets to
+#     master or drops an inherited prefix. A stacked PR whose base branch
+#     is gone goes to the LLM pass.
 #   - Conflicting PRs on master: attempt the rebase anyway — it's free;
 #     an actual conflict aborts cleanly and goes to the LLM pass. The one
 #     conflict tier-0 resolves itself is a modify/delete on a retired path
@@ -51,8 +49,8 @@
 # Stale-label cleanup — two label shapes that no longer describe the PR they
 # sit on, and that would otherwise park it outside every automated lane
 # forever. Rationale for each lives on its cleanup_* function:
-#   - fleet:semantic-conflict on a MERGEABLE PR (#1654).
-#   - fleet:awaiting-base / fleet:needs-base-update on a base==master PR (#2764).
+#   - fleet:semantic-conflict on a MERGEABLE PR.
+#   - fleet:awaiting-base / fleet:needs-base-update on a base==master PR.
 #   - fleet:merger-cooldown on a MERGEABLE, base==master PR: the LLM pass
 #     strips these at the start of its iterations, but it wakes only for
 #     conflict work, so after a clean push the label would otherwise linger.
@@ -84,12 +82,11 @@ SLICE="$STATE_DIR/projections/merger.json"
 TRIGGERS_DIR="$STATE_DIR/triggers"
 SCRATCH_ROOT="${FLEET_REBASE_SCRATCH:-$HOME/.fleet/rebase-scratch}"
 
-# Network-call timeout guard (#2362). Sourcing fleet-net.sh installs git()/gh()
+# Network-call timeout guard. Sourcing fleet-net.sh installs git()/gh()
 # shadow wrappers that bound every network op with a timeout, so a black-holed
-# GitHub fetch/push can't hang this pass forever while it holds the rebase lock
-# (the 3-day outage that motivated this). FLEET_LIB_DIR is symlink-resolved so
-# the lib resolves through ~/bin the same way the other sourced libs do; a
-# missing lib (main clone not yet advanced past this PR) degrades to unguarded.
+# GitHub fetch/push can't hang this pass forever while it holds the rebase lock.
+# FLEET_LIB_DIR is symlink-resolved so the lib resolves through ~/bin the
+# same way the other sourced libs do; a missing lib degrades to unguarded.
 _fleet_rebase_self="${BASH_SOURCE[0]}"
 while [[ -L "$_fleet_rebase_self" ]]; do
     _fleet_rebase_self="$(readlink "$_fleet_rebase_self")"
@@ -110,9 +107,7 @@ for arg in "$@"; do
         --rearm-trigger) REARM=1 ;;
         --dry-run)       DRY_RUN=1 ;;
         # Header end is derived from content (first non-# line), never a
-        # hardcoded range: the old `sed -n '2,31p'` silently dropped every
-        # section past the stale-label bullets — Usage included — and any
-        # header edit moved the cut (#2433's shape, re-hit in #2840).
+        # hardcoded line range, which a header edit silently moves.
         -h|--help)       awk 'NR==1 {next} /^#/ {print; next} {exit}' "$0"; exit 0 ;;
         *) echo "fleet-rebase: unknown argument '$arg'" >&2; exit 2 ;;
     esac
@@ -170,14 +165,13 @@ defer_tier0() {
 }
 
 # fleet:merger-cooldown's meaning under the dispatcher: "the LLM pass just
-# tried this PR; don't retry until this long has elapsed" (role-merger.md
-# § How the cooldown label works — the old 10-minute loop interval WAS the
-# cooldown). Measured against the PR's updatedAt, which the label add bumps.
+# tried this PR; don't retry until this long has elapsed". Measured against
+# the PR's updatedAt, which the label add bumps.
 MERGER_COOLDOWN_SECONDS="${FLEET_MERGER_COOLDOWN_SECONDS:-600}"
 export FLEET_MERGER_COOLDOWN_SECONDS="$MERGER_COOLDOWN_SECONDS"
 
-# UNKNOWN rows re-read per run (the budget the LLM pass used to spend on
-# them), and the grace GitHub gets before a still-UNKNOWN row is re-read.
+# UNKNOWN rows re-read per run, and the grace GitHub gets before a
+# still-UNKNOWN row is re-read.
 UNKNOWN_REFRESH_BUDGET="${FLEET_REBASE_UNKNOWN_REFRESH_BUDGET:-2}"
 UNKNOWN_GRACE_SECONDS=300
 export FLEET_REBASE_UNKNOWN_GRACE_SECONDS="$UNKNOWN_GRACE_SECONDS"
@@ -196,11 +190,11 @@ LOCK_CONTENDED_RETRY_SECONDS="${FLEET_REBASE_LOCK_RETRY_SECONDS:-60}"
 # park means re-entry is the human removing the label, not a rebase that
 # re-arms the same target it just parked.
 #
-# `fleet:human-deferred` is intentionally NOT skipped (re-scoped, #1712).
+# `fleet:human-deferred` is intentionally NOT skipped.
 # A deferred PR is approved and idle — its *review feedback* is parked in
 # a follow-up issue, but its branch is no one's active edit. A mechanical
 # rebase keeps it mergeable instead of letting it accumulate conflicts as
-# master advances (the exact stranding that motivated this change); a
+# master advances; a
 # CONFLICTING one re-arms the LLM merger pass to resolve, and the
 # worker drops the label on resolution.
 #
@@ -273,16 +267,16 @@ hung_lock_escalate_n() {
     echo "$n"
 }
 
-# Hung-lock escalation (#2362): the benign "deferring to the LLM pass" message
+# Hung-lock escalation: the benign "deferring to the LLM pass" message
 # below reads as ordinary concurrency, so a holder that is alive but wedged on a
-# black-holed network call (the outage that motivated this) went unseen for
-# days. When the current holder has held the lock past a generous ceiling, log
-# loudly and drop an alert file for the human / babysit. We do NOT auto-break an
-# alive holder — a mid-rebase kill corrupts the scratch worktree (see the
-# acquire_lock rationale). With every net op now timeout-bounded this alert
-# should be rare-to-never; it exists to make the next silent wedge visible.
+# black-holed network call would otherwise go unseen for days. When the current
+# holder has held the lock past a generous ceiling, log loudly and drop an
+# alert file for the human / babysit. Never auto-break an alive holder — a
+# mid-rebase kill corrupts the scratch worktree (see the acquire_lock
+# rationale). With every net op timeout-bounded this alert is rare; it exists
+# to make a silent wedge visible.
 #
-# Escalate-then-quiet (#2795), per scripts/fleet/CLAUDE.md: fleet-rebase is a
+# Escalate-then-quiet, per scripts/fleet/CLAUDE.md: fleet-rebase is a
 # one-shot invocation, but the dispatcher re-invokes it, and the wedged holder
 # it reports persists until a human acts — so an unguarded `log` re-emits the
 # same line on every trigger until then. Keyed streak on the holder pid: a
@@ -295,8 +289,7 @@ hung_lock_escalate_n() {
 escalate_if_hung_lock() {
     local started now age holder key n count first prev_key
     started=$(cat "$LOCK_DIR/started" 2>/dev/null || true)
-    # Missing/garbage stamp (a pre-fix holder still running mid-rollout) → skip
-    # the age check rather than guess an age.
+    # Missing/garbage stamp → skip the age check rather than guess an age.
     [[ "$started" =~ ^[0-9]+$ ]] || return 0
     now=$(date +%s)
     age=$(( now - started ))
@@ -336,7 +329,7 @@ escalate_if_hung_lock() {
     # distinguishable from one frozen at the escalation instant; age_secs= and
     # at= already carry the human-readable clock, so `first` ships as a raw
     # epoch rather than pulling in a third copy of clone-freshness's BSD/GNU
-    # date shim (the two counter blocks still have no shared home — see #2795).
+    # date shim.
     mkdir -p "$ALERTS_DIR" 2>/dev/null || true
     printf 'fleet-rebase hung lock: host=%s holder_pid=%s age_secs=%s count=%s escalating_since_epoch=%s at=%s\n' \
         "$(hostname 2>/dev/null || echo '?')" "$holder" "$age" "$count" "$first" \
@@ -473,8 +466,7 @@ cleanup_mergeable_label() {
 }
 
 # A fleet:semantic-conflict (and its fleet:merger-cooldown) left behind when
-# a second concurrent merger pass succeeded after the first one conflicted
-# (#1654).
+# a second concurrent merger pass succeeded after the first one conflicted.
 cleanup_stale_conflict() {
     cleanup_mergeable_label "$1" "$2" "fleet:semantic-conflict" \
         "fail-then-succeed race, #1654" "fleet:merger-cooldown"
@@ -497,12 +489,10 @@ cleanup_stale_cooldown() {
 # is master — and nothing else will ever remove it.
 #
 # This function is the ONLY remover of these labels tree-wide — the loop
-# below is the sole `--remove-label` site for either one. Merger step 2.5
-# used to share the job; it retired with the native-stacked-PRs migration
-# (#2657, `role-merger.md` step 2.5), so there is nothing left to defer to
-# and no lane behind this one. That is why its triage gate is deliberately
-# permissive — no approved / skip-label guards; see has_stale_base_park
-# (#2764, #2840).
+# below is the sole `--remove-label` site for either one, so there is nothing
+# to defer to and no lane behind this one. That is why its triage gate is
+# deliberately permissive — no approved / skip-label guards; see
+# has_stale_base_park.
 #
 # Live-reverified before touching: confirms OPEN, base still master, and the
 # label still present, so a PR retargeted back off master between the scout
@@ -740,9 +730,9 @@ fi
 #   target, anything else is logged and skipped. Never counted as
 #   remaining on the cached value alone.
 # - stale-conflict: fleet:semantic-conflict on a MERGEABLE PR — label
-#   cleanup only, no branch work (#1654).
+#   cleanup only, no branch work.
 # - stale-base-park: a retired stack-park label on a base==master PR —
-#   label cleanup only, no branch work (#2764).
+#   label cleanup only, no branch work.
 # - stale-cooldown: fleet:merger-cooldown on a MERGEABLE base==master PR —
 #   label cleanup only, no branch work (see cleanup_stale_cooldown).
 # - skip-labels: parked with another agent/human; neither tier touches it.
@@ -827,7 +817,7 @@ for pr in data.get("prs", []):
         continue
     seen_heads.add(key)
     approved = "fleet:approved" in labels
-    # Stale fleet:semantic-conflict cleanup (fail-then-succeed race, #1654):
+    # Stale fleet:semantic-conflict cleanup (fail-then-succeed race):
     # a concurrent second merger pass may succeed and push but not remove the
     # failed first pass's label. Detect before the general skip_re check so
     # MERGEABLE PRs with no real conflict bypass the skip-labels verdict and
@@ -835,21 +825,21 @@ for pr in data.get("prs", []):
     # GitHub reports MERGEABLE (conflict is provably resolved). Deliberately
     # NOT guarded on `approved` — the merger strips fleet:approved in the same
     # step it adds fleet:semantic-conflict, so gating on it would make this
-    # verdict unreachable in exactly the state it exists to clear (#2874).
+    # verdict unreachable in exactly the state it exists to clear.
     has_stale_conflict = (
         "fleet:semantic-conflict" in labels
         and mergeable == "MERGEABLE"
         and not any(skip_re.search(l) for l in labels if l != "fleet:semantic-conflict")
     )
-    # Retired stack-park labels (the minter died with #2657, so on a live PR
+    # Retired stack-park labels (nothing mints them, so on a live PR
     # these are pure residue). base == master proves the park is discharged —
     # a PR cannot be waiting on a base branch that is master — so route it to
     # cleanup rather than parking it (why nothing else ever clears it:
-    # cleanup_stale_base_park, #2764).
+    # cleanup_stale_base_park).
     #
     # Deliberately NOT guarded on other skip labels either, unlike the
     # stale-conflict case above (which still requires no other skip label
-    # present) — do not "unify" the two predicates (#2840). The skip-label
+    # present) — do not "unify" the two predicates. The skip-label
     # guard means "don't touch a PR another agent owns", which is correct
     # for every lane that does branch work; this verdict does none. It
     # removes one retired label whose discharge base == master already
@@ -871,8 +861,7 @@ for pr in data.get("prs", []):
         # base != master: a straggler still anchored to a real base,
         # mid-legacy-sequence, so the park still describes the PR. Never
         # tier-0; the LLM pass owns it when it is a candidate. (base ==
-        # master can no longer reach here — it is the whole stale-base-park
-        # gate, #2840.)
+        # master cannot reach here — it is the whole stale-base-park gate.)
         verdict = llm_verdict(labels, mergeable, pr) or "human"
     elif approved and (base != "master" or mergeable not in ("MERGEABLE", "UNKNOWN", "", None)):
         verdict = "attempt"
@@ -964,14 +953,14 @@ for line in "${PR_LINES[@]:-}"; do
             ;;
         stale-conflict)
             # Second concurrent pass succeeded but left the first pass's
-            # fleet:semantic-conflict behind (#1654). Remove it so the PR
+            # fleet:semantic-conflict behind. Remove it so the PR
             # re-enters the normal merge-ready flow without routing a worker
             # step-1c onto an already-clean branch.
             cleanup_stale_conflict "$repo_key" "$pr"
             ;;
         stale-base-park)
             # Clear the discharged park label so the PR re-enters the normal
-            # verdict path on the next tick (#2764).
+            # verdict path on the next tick.
             cleanup_stale_base_park "$repo_key" "$pr"
             ;;
         skip-labels)

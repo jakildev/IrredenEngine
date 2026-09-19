@@ -49,7 +49,7 @@ if sys.platform == "win32" and not os.environ.get("PYTHONUTF8"):
 
 # Shared branch<->issue matcher, also imported by fleet-claim's inline
 # python. Insert this script's own dir so the import resolves whether the
-# scout is run directly or loaded by-path in the unit tests (#1425).
+# scout is run directly or loaded by-path in the unit tests.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import fleet_poll_topology
 from fleet_blocked_by import (
@@ -63,7 +63,7 @@ from fleet_branch_match import (
     split_closed_issue_refs,
 )
 
-# Conditional-REST polling core (#1394 Q1) — see the fetcher section below.
+# Conditional-REST polling core — see the fetcher section below.
 # ETAG_DIR aliases the module's shared etag-cache default so the two never
 # drift; it's mkdir'd in main() and the fetchers rely on that default cache_dir.
 from fleet_gh_poll import DEFAULT_CACHE_DIR as ETAG_DIR
@@ -162,9 +162,9 @@ except ValueError:
     ROLE_TRIGGER_REARM_SECONDS = ROLE_TRIGGER_REARM_DEFAULT_SECONDS
 
 # Cap concurrent gh calls and stagger their submission to avoid GitHub's
-# secondary rate limit on private repos. The first tick used to fire all
-# 8 fetches in parallel against a cold token, which on private-repo
-# accounts is enough to trip the per-IP burst limit. With max_workers=2
+# secondary rate limit on private repos: firing every fetch in parallel
+# against a cold token is enough to trip the per-IP burst limit on a
+# private-repo account. With max_workers=2
 # and a 250 ms inter-submit gap the first tick takes ~2 s longer but
 # starts cleanly; pane startup already waits for state.json so the
 # extra latency is invisible to consumers.
@@ -177,11 +177,11 @@ FETCH_SUBMIT_GAP_SECONDS = 0.25
 # in-flight signal: every role's projection, the feedback and
 # semantic-conflict lanes, and the in-flight/stackable enrichers all read it,
 # and a PR outside the window contributes no projection item at all, so its
-# later label edits produce no dispatch edge (#2743).
+# later label edits produce no dispatch edge.
 #
 # Raising it costs requests: gh pages at 100, so one tick spends
-# ceil(min(limit, open_count) / 100) requests per repo — measured 2026-08-07
-# at limits 30/100/150/200/250 -> 1/1/2/2/3. At 200 that is 1 request while
+# ceil(min(limit, open_count) / 100) requests per repo — at limits
+# 30/100/150/200/250 that is 1/1/2/2/3. At 200 that is 1 request while
 # the open set is under 100 and 2 above it. The guard below tells an operator
 # to raise this constant; that is the price of doing so.
 OPEN_PR_FETCH_LIMIT = 200
@@ -467,7 +467,7 @@ def run_capture(cmd, cwd=None):
 # carrying the phrase, the distance from the phrase line's start to end-of-body
 # was [146, 150, 165, 181, 234, 261, 437, 539] B, so 640 covers the maximum with
 # ~19% headroom. Re-measure before lowering — a tail that clips the phrase
-# silently disables the recheck lane (the PR #1473 regression). See #2752.
+# silently disables the recheck lane.
 REVIEW_BODY_HEAD = 128
 REVIEW_BODY_TAIL = 640
 
@@ -482,7 +482,7 @@ def _truncate_review_body(body):
     return body[:REVIEW_BODY_HEAD] + "\n…[truncated]…\n" + body[-REVIEW_BODY_TAIL:]
 
 
-# --- Conditional-REST list fetching (#1394 Q1) -----------------------------
+# --- Conditional-REST list fetching ----------------------------------------
 #
 # The 7 pure list reads below go through conditional_get: If-None-Match + a
 # per-endpoint ETag cache, so an unchanged endpoint answers 304 for zero
@@ -560,10 +560,10 @@ def _is_pull_request(issue):
 # blocker union's body half on the first, enrich_inflight_pr_tasks reads both;
 # neither re-parses pr["body"], which they may never receive: bodies are
 # popped after enrichment and fetch_prs's 304 fast path reuses the
-# body-stripped prior records, so a live parse was dead on every reuse tick
-# (#2442). Deriving once here keeps the signals live; the closing-keyword
+# body-stripped prior records, so a live parse is dead on every reuse tick.
+# Deriving once here keeps the signals live; the closing-keyword
 # grammar itself lives in fleet_branch_match.split_closed_issue_refs so it
-# can't drift from the claim/sweep side that shares it (#2419).
+# can't drift from the claim/sweep side that shares it.
 def derive_closes_refs(body, repo):
     """(closes_issues, closes_cross_repo) for a PR body in `repo`.
 
@@ -581,11 +581,9 @@ def derive_closes_refs(body, repo):
 # deploy were produced by the PREVIOUS version of this function — so any change
 # to the record shape is invisible to the reuse path until an unrelated
 # list-level change flips the repo's ETag, which on a quiet repo is unbounded.
-# #2442 caught that for one added key by testing for its presence; #3037 caught
-# it again for a change that added no key (the #2752 review-body trim), where a
-# key-presence test cannot help: the stale records carried a 2 KB body on EVERY
-# review, so state.json emitted at 348 KB — past the Read-tool cap the trim
-# exists to stay under — from tick 1 of every deploy+restart.
+# A key-presence test catches an added key but not a changed value shape (a
+# narrower truncation): stale records carrying the wider value are served from
+# tick 1 of every deploy+restart.
 #
 # BUMP THIS whenever the shape of a record below changes (a new/removed/renamed
 # key, or a changed value shape such as a narrower truncation): a mismatch makes
@@ -635,7 +633,7 @@ def _fetch_prs_graphql(repo):
     for pr in prs:
         pr["labels"] = sorted(label["name"] for label in pr.get("labels", []))
         pr["author"] = pr.get("author", {}).get("login", "")
-        # #2752 — retain a body only on the LATEST review per PR. Exactly two
+        # Retain a body only on the LATEST review per PR. Exactly two
         # consumers read this array: the sonnet reviewer tests reviews[].author
         # (has any fleet review landed yet), and the opus reviewer tests the
         # LATEST review's body for "Opus recheck required". No consumer reads an
@@ -663,7 +661,7 @@ def _fetch_prs_graphql(repo):
         ]
         # Derive here, while body is live, so the signals survive both the
         # post-enrich body-pop and fetch_prs's 304 reuse of body-stripped
-        # records (#2442). Their presence is also fetch_prs's cache-desync
+        # records. Their presence is also fetch_prs's cache-desync
         # marker.
         pr["closes_issues"], pr["closes_cross_repo"] = derive_closes_refs(
             pr.get("body", "") or "", repo
@@ -680,10 +678,10 @@ def _fetch_prs_graphql(repo):
 # GraphQL `mergeable` is UNKNOWN while GitHub computes it, and the computation
 # is kicked off lazily by the query itself and invalidated whenever the base
 # advances. On a repo whose master moves constantly, every ETag-flip refetch
-# lands mid-recompute, caches UNKNOWN, and the 304 gate below never re-asks —
-# so engine PRs sat at UNKNOWN for weeks while `gh` reported CONFLICTING, and
-# the merger (which correctly treats UNKNOWN as "not computed") never saw a
-# conflict (#3038). While any reused PR still reads UNKNOWN, re-query GraphQL
+# lands mid-recompute, caches UNKNOWN, and the 304 gate below would never
+# re-ask — PRs sit at UNKNOWN indefinitely while `gh` reports CONFLICTING, and
+# the merger (which correctly treats UNKNOWN as "not computed") never sees a
+# conflict. While any reused PR still reads UNKNOWN, re-query GraphQL
 # past the gate for up to this many consecutive ticks; a real change (200)
 # resets the budget, and a settled list clears it. The cap bounds the cost if
 # GitHub never settles a PR (a pathologically stale head) — after it, the gate
@@ -742,7 +740,7 @@ def fetch_prs(repo, prev=None):
     # Reuse the prior list only when every record was produced by the CURRENT
     # per-record projection — see PR_RECORD_SCHEMA for why a stale prev is a
     # cache desync rather than a valid cache. A mismatch ⇒ fall through to a
-    # fresh fetch. The marker subsumes the key-presence test #2442 used here: a
+    # fresh fetch. The marker subsumes a key-presence test: a
     # record at the current schema carries closes_issues by construction. all()
     # on an empty prev is True (an empty open-PR set needs no refetch).
     if (not changed and prev is not None and repo not in _prs_refetch_pending
@@ -836,7 +834,7 @@ _ALREADY_QUEUED_LABELS = frozenset({
 # fleet:needs-human / fleet:gated included: parked issues must not re-enter the queue
 # even if the two-step add+remove call creates a TOCTOU window where fleet:queued is
 # transiently absent. Both parks keep human:approved, so without this exclusion
-# fetch_human_approved returns them on every tick, forever (#2762).
+# fetch_human_approved returns them on every tick, forever.
 
 # Labels that mark issues the queue-manager role doc explicitly skips at
 # Step 5 — filter these out of the ingest projector/slicer so epics and
@@ -845,7 +843,7 @@ _INGEST_SKIP_LABELS = frozenset({
     "fleet:queued",        # pre-filtered by fetch_human_approved, included for explicitness
     "fleet:epic",
     "fleet:needs-plan",
-    "fleet:plan-review",   # #1932: plan posted, reviewer vetting before queue.
+    "fleet:plan-review",   # plan posted, reviewer vetting before queue.
                            # MUST mirror fleet-queue-ingest's own per-issue skip
                            # (it also skips fleet:plan-review). Without it the issue
                            # counts as "in the set" the whole time plan-review is on,
@@ -857,7 +855,7 @@ _INGEST_SKIP_LABELS = frozenset({
     "fleet:scope-shipped", # scope landed under a different issue; human should close
     "fleet:needs-human",   # parked: fleet can't do it autonomously, human must act;
                            # keeps human:approved but must NOT be re-queued
-    "fleet:gated",         # #2762: parked because the fix surface is gated self-config
+    "fleet:gated",         # parked because the fix surface is gated self-config
                            # no worker class can push. Same shape as fleet:needs-human —
                            # keeps human:approved but must NOT be re-queued, so it must
                            # also drop out of the ingest set or it holds the projection
@@ -873,16 +871,15 @@ _INGEST_SKIP_LABELS = frozenset({
 # ever ADDS one label — fleet-queue-ingest resets it to fleet:needs-plan.
 _INGEST_OVERRIDE_LABELS = frozenset({"human:revise-plan"})
 
-# Planning queue-blocks (#2740). These hold fleet-queue-ingest's *add* path via
+# Planning queue-blocks. These hold fleet-queue-ingest's *add* path via
 # _INGEST_SKIP_LABELS above — but that guard only prevents STAMPING
-# fleet:queued. A gate landing on an issue that is ALREADY queued was never
-# retracted, so the issue stayed in tasks.open / claimable and a worker could
-# implement against a plan a reviewer had bounced. _ingest_retract_candidates
+# fleet:queued. A gate landing on an issue that is ALREADY queued must be
+# retracted, or the issue stays in tasks.open / claimable and a worker can
+# implement against a plan a reviewer bounced. _ingest_retract_candidates
 # below sources the remove-half of that round-trip.
 #
-# Two labels, not three: `human:review-plan` (the human approach-sign-off hold)
-# was retired by PR #3112 and is now deliberately INERT to ingest — see
-# tests/test_fleet_queue_ingest_review_plan_inert.sh. Adding it here would
+# Two labels, not three: `human:review-plan` is deliberately INERT to ingest
+# (tests/test_fleet_queue_ingest_review_plan_inert.sh). Adding it here would
 # re-arm a retired gate.
 _PLAN_GATE_LABELS = frozenset({"fleet:needs-plan", "fleet:plan-review"})
 
@@ -901,7 +898,7 @@ _RETRACT_PARK_LABELS = frozenset({"fleet:needs-human", "fleet:gated"})
 # so the worker slice and the review projections drop it rather than waking a
 # no-op iteration on it.
 #
-# fleet:needs-human is the planner's park (#3034). An issue whose *unplannability*
+# fleet:needs-human is the planner's park. An issue whose *unplannability*
 # no later planner can resolve — premise refuted, target code absent from master,
 # parent design-blocked, direction disagreement — keeps fleet:needs-plan (which is
 # still true) and gains this label, so the human routes it. Without the gate the
@@ -940,7 +937,7 @@ def fetch_issues_by_label(repo, filter_label, exclude_labels=None,
     # per_page * max_pages caps the window (REST /issues defaults to
     # created&desc, matching gh's ordering). The default (100, 1 page) fully
     # captures the small label sets (needs-plan / plan-review / epics);
-    # human_approved (#2856) pages out to 300 because its raw population
+    # human_approved pages out to 300 because its raw population
     # already exceeds a single page and keeps growing — pagination via
     # max_pages, not a larger per_page, since each page carries its own ETag
     # and an unchanged multi-page set still costs zero quota.
@@ -959,24 +956,23 @@ def fetch_issues_by_label(repo, filter_label, exclude_labels=None,
 
 
 def fetch_needs_plan(repo):
-    # with_body=True: resolve_needs_plan_blocked_by (#2287) needs the body to
+    # with_body=True: resolve_needs_plan_blocked_by needs the body to
     # parse a standalone `**Blocked by:**` line; it pops the field after
     # parsing so state.json never carries it.
     return fetch_issues_by_label(repo, "fleet:needs-plan", with_body=True)
 
 
 def fetch_plan_review(repo):
-    # Issues carrying a posted `## Plan` comment awaiting a reviewer verdict
-    # (#1932). The opus-reviewer's plan-review pass clears these (fleet-plan-lint
-    # then design judgment: sound -> remove the label / queue; not-sound -> Option
-    # A bounce to fleet:needs-plan). Projecting + slicing these is what WAKES the
-    # reviewer to do it — without it nothing triggers on issue (vs PR) state, so
-    # plans piled up in fleet:plan-review until a PR happened to wake the reviewer.
+    # Issues carrying a posted `## Plan` comment awaiting a reviewer verdict.
+    # The opus-reviewer's plan-review pass clears these (fleet-plan-lint
+    # then design judgment: sound -> remove the label / queue; not-sound ->
+    # bounce to fleet:needs-plan). Projecting + slicing these is what WAKES the
+    # reviewer to do it — nothing else triggers on issue (vs PR) state.
     return fetch_issues_by_label(repo, "fleet:plan-review")
 
 
 def fetch_epics(repo):
-    # Open fleet:epic umbrellas for the epic-steward role (#1664). The body's
+    # Open fleet:epic umbrellas for the epic-steward role. The body's
     # `## Children` checklist is the steward's membership source of truth —
     # parse it into `checklist` and pop the body before the state write (epic
     # bodies are large; the per-issue detail cache keeps the full body for the
@@ -997,16 +993,12 @@ def fetch_human_approved(repo):
     # `**Blocked by:**` chain and keep blocked children out of the ingest set.
     #
     # per_page=100, max_pages=3 (a 300 cap, matching the `--limit 300` sibling
-    # `gh pr list`/`gh issue list` calls elsewhere in the fleet tooling) —
-    # NOT the per_page=30 this used to carry. That cap mirrored gh's old
-    # default --limit, but human_approved is a shared field with several
-    # consumers beyond the queue-ingest set (epic-adopt candidates; the
-    # review_plan read-out it also fed retired with human:review-plan), and
-    # the live population already exceeds 30 and keeps growing: #2856
-    # measured 67 fleet:agent-approved issues against a 30-item window,
-    # silently dropping the then-live repos.engine.review_plan to 4 of the
-    # true 12. Paginating via max_pages rather than raising per_page further
-    # keeps headroom instead of re-inheriting a new, still-fixed deadline.
+    # `gh pr list`/`gh issue list` calls elsewhere in the fleet tooling).
+    # human_approved is a shared field with several consumers beyond the
+    # queue-ingest set (epic-adopt candidates), and its live population is
+    # well past a single page and growing; a fixed window silently drops the
+    # oldest rows. Paginating via max_pages rather than raising per_page
+    # keeps headroom instead of inheriting a new, still-fixed deadline.
     #
     # fleet:agent-approved is approval-EQUIVALENT: an agent-filed follow-up
     # carrying it enters the same ingest set with no human triage, and the
@@ -1040,9 +1032,8 @@ def fetch_closed_fleet_queued(repo, limit=100):
     # Closed fleet:queued issues; the queue-manager projection consumes this
     # to reap stale fleet:claim-* labels on resolved work. --limit caps API
     # cost; recently-closed issues are returned first. 100 covers the
-    # realistic backlog window (observed 2026-05-19 that the original 20-item
-    # cap missed older strands when ~40 fleet:queued issues closed after one
-    # another in a tight window).
+    # realistic backlog window (a 20-item cap misses older strands when
+    # ~40 fleet:queued issues close after one another in a tight window).
     #
     # sort=created&direction=desc is both the REST /issues default and gh's
     # default ordering (issue number is created-monotonic), so the per_page cap
@@ -1212,7 +1203,7 @@ def fetch_recent_merged_prs(repo, limit=30):
     return prs
 
 
-# --- Issue-based task queue (T-381, T-392) ---------------------------------
+# --- Issue-based task queue ------------------------------------------------
 #
 # The task queue is sourced from GitHub Issues with the fleet:queued label.
 # Model, blocked-by, and area are parsed from issue bodies and labels.
@@ -1236,7 +1227,7 @@ def _parse_issue_field(body, field):
 
 # Umbrella-body `## Children` checklist rows: `- [ ] #N` / `- [x] #N`. The
 # first `#N` on a checkbox line is the child ref, so bold-wrapped forms like
-# `- [x] **#1527 — mechanism**` resolve to 1527 and later refs in the same
+# `- [x] **#N — mechanism**` resolve to N and later refs in the same
 # row's prose are ignored. `[ \t]` (not `\s`) after the box keeps the match on
 # one line — `\s` would let a ref-less checkbox row swallow a `#N` from the
 # next line. Non-checkbox `#N` lines never match.
@@ -1244,13 +1235,12 @@ _EPIC_CHECKLIST_RE = re.compile(
     r'^[ \t]*-[ \t]*\[( |x|X)\][ \t].*?#(\d+)', re.MULTILINE)
 
 
-# #1969: a task whose body explicitly declares it must run on a Linux / Windows
+# A task whose body explicitly declares it must run on a Linux / Windows
 # / OpenGL host, but is missing the fleet:needs-gl-host label, is invisible to
 # the label-based host gate (fetch_task_queue below). On a Metal-only (mac) host
 # the dispatcher then keeps electing it (oldest claimable) and a worker
 # claims -> can't build -> releases, churning the lane and starving other
-# classes (the #1969 incident: a "refresh linux-debug render-verify references"
-# task that can only run on Linux). Infer the gate from the body as a backstop so
+# classes. Infer the gate from the body as a backstop so
 # the projection treats such a task as host-incompatible even when the label was
 # forgotten at filing. Deliberately PRECISION-first — only a strong requirement
 # phrasing ("must run on" / "must be run on" / "only runs/builds on" a
@@ -1264,7 +1254,7 @@ _EPIC_CHECKLIST_RE = re.compile(
 # Two requirement shapes are matched (both deliberate declarations, both
 # precision-safe): a verb form ("must run on a Linux host", "only builds on an
 # OpenGL host") and the very common "<GL|OpenGL|Linux|Windows>-host only" /
-# "GL host only" adjective form (#2107: "It is GL-host only and cannot be
+# "GL host only" adjective form ("It is GL-host only and cannot be
 # authored/validated on a macOS/Metal host" — missed by the verb form alone).
 #
 # One grammar, two instantiations: the backend gate below and the OS-pin
@@ -1288,15 +1278,15 @@ _GL_HOST_REQUIRED_RE = _host_requirement_re(
     "linux|windows|opengl", "gl|opengl|linux|windows")
 
 
-# #2704: `_GL_HOST_REQUIRED_RE` only fires on a *declaration*, so a task that
+# `_GL_HOST_REQUIRED_RE` only fires on a *declaration*, so a task that
 # simply names the file it will edit slips through — and for a GL-only source
-# set that miss is worse than the #1969 churn it was meant to catch.
+# set that miss is worse than the claim churn the declaration form catches.
 # `engine/render/CMakeLists.txt` (and `engine/video/`) select `OPENGL_SRC` vs
 # `METAL_SRC` on `IR_isDarwin`, so `src/opengl/*` is not merely unverifiable on
 # a Metal host — it is absent from the target. `fleet-build` then goes GREEN on
 # a diff the compiler never saw, which reads as a passing verification.
 #
-# Precision-first for the same reason as #1969 (a false positive wrongly skips
+# Precision-first for the same reason as the declaration form (a false positive wrongly skips
 # a mac-runnable task). Both forms require a real filename — one of the
 # `_GL_ONLY_SOURCE_EXT` extensions after the path segment / basename stem — so
 # prose ("the OpenGL backend renders…") can never match:
@@ -1305,7 +1295,7 @@ _GL_HOST_REQUIRED_RE = _host_requirement_re(
 #     backends are BOTH named `video_backend.cpp`, so the directory segment is
 #     the only thing distinguishing them.
 #   - basename form: `opengl_<stem>.<ext>`, for a body that cites the file
-#     bare (#2514 cites `opengl_shader.cpp` with no path). The `opengl_`
+#     bare (`opengl_shader.cpp` with no path). The `opengl_`
 #     prefix is GL-specific by construction across the tree.
 #
 # Deliberately NOT matched, both on the precision-over-recall rule:
@@ -1316,11 +1306,10 @@ _GL_HOST_REQUIRED_RE = _host_requirement_re(
 #     self-gated off the only host that can build it.
 #
 # Both forms pin the SAME extension set, and share one fragment so they cannot
-# drift apart again. The path form previously accepted any extension after the
-# `opengl/` segment, which made the `.glsl` exclusion above incidental to the
-# tree layout (no `.glsl` happens to sit under an `opengl/` directory today)
-# rather than structural — a `.glsl` or a `README.md` added there would have
-# tripped the backstop against this file's stated design (#2709 review nit).
+# drift apart. A path form accepting any extension after the `opengl/` segment
+# would make the `.glsl` exclusion above incidental to the tree layout (no
+# `.glsl` happens to sit under an `opengl/` directory) rather than structural
+# — a `.glsl` or a `README.md` added there would trip the backstop.
 _GL_ONLY_SOURCE_EXT = r"(?:c|cc|cpp|h|hpp)"
 _GL_ONLY_SOURCE_PATH_RE = re.compile(
     rf"(?:/|\b)opengl/[\w.+-]+\.{_GL_ONLY_SOURCE_EXT}\b"
@@ -1340,11 +1329,11 @@ def _body_requires_gl_host(body):
 
 # The OS a task's body pins it to, as a dispatch-host key. `needs_gl_host`
 # above answers "which BACKEND" (GL vs Metal) and treats linux and windows as
-# interchangeable — correct for a GL task, wrong for one that names an OS: the
-# #1969 body says "must run on a Linux host" to bless `linux-debug` reference
-# images, which a Windows pane (GL-capable, so `needs_gl_host` passes) can
-# never do. The dispatcher kept electing it there every tick; each worker read
-# the body, refused, and exited (23 identical no-op iterations on 2026-09-06).
+# interchangeable — correct for a GL task, wrong for one that names an OS: a
+# body saying "must run on a Linux host" to bless `linux-debug` reference
+# images names work a Windows pane (GL-capable, so `needs_gl_host` passes) can
+# never do, so without this the dispatcher elects it there every tick and each
+# worker reads the body, refuses, and exits.
 #
 # Same grammar and precision-first contract as `_GL_HOST_REQUIRED_RE` (one
 # builder, see above): only the strong requirement phrasings match, plus an
@@ -1374,7 +1363,7 @@ def _body_required_host(body):
 
 
 # A backend-symmetric task must be fixed in both a `.glsl` and its `.metal`
-# twin, so its Metal half is natively verifiable on a macOS pane (#2820).
+# twin, so its Metal half is natively verifiable on a macOS pane.
 # Same real-filename discipline as `_GL_ONLY_SOURCE_PATH_RE`: a bare extension
 # or a prose mention of "metal" is not a citation — require a stem.
 #
@@ -1386,7 +1375,7 @@ def _body_required_host(body):
 # inference makes the gate MORE permissive, so a false positive degrades to
 # claimed-then-smoke-caught while a false negative degrades to today's
 # starvation. Still precision-first (both real filenames required), but the
-# stakes are lower than the #1969/#2704 direction.
+# stakes are lower than the GL-host direction.
 _GLSL_FILE_RE = re.compile(r"\b[\w.+-]+\.glsl\b", re.IGNORECASE)
 _METAL_FILE_RE = re.compile(r"\b[\w.+-]+\.metal\b", re.IGNORECASE)
 
@@ -1419,13 +1408,11 @@ def _parse_epic_checklist(body):
 
 
 # Blocker-declaration parsing — canonical `**Blocked by:** #N`, inline-bold
-# `**Blocked by: #N**` (#1423), the plain mid-line `Blocked by: #N` form
-# (#1749), the no-blocker sentinels, and the `Blocked on …` header fallback
-# (#1326) — is shared with fleet-queue-ingest and fleet-claim via
-# fleet_blocked_by.py so the three can't drift (the #1749 reconciliation;
-# the scout previously had the richest sentinel logic but ingest/claim lagged,
-# and all three missed the plain form). These aliases preserve the private
-# names the scout's call sites and unit tests reference.
+# `**Blocked by: #N**`, the plain mid-line `Blocked by: #N` form, the
+# no-blocker sentinels, and the `Blocked on …` header fallback — is shared
+# with fleet-queue-ingest and fleet-claim via fleet_blocked_by.py so the three
+# can't drift. These aliases preserve the private names the scout's call
+# sites and unit tests reference.
 _parse_blocked_by = parse_blocked_by
 _is_no_blocker_value = is_no_blocker_value
 
@@ -1443,7 +1430,7 @@ def fetch_task_queue(repo_slug):
     issues = [i for i in issues if not _is_pull_request(i)]
 
     # `plan_gated` is NOT a task section — it is a flat list of issue numbers
-    # feeding the ingest retract round-trip (#2740). It is captured inside this
+    # feeding the ingest retract round-trip. It is captured inside this
     # loop, above the `continue`s below, on purpose: fetch_task_queue drops
     # fleet:plan-review rows BEFORE the task dict is ever built, so a candidate
     # derived from the post-filter sections would cover only the
@@ -1494,11 +1481,11 @@ def fetch_task_queue(repo_slug):
                 owner = agent or suffix
                 break
 
-        # Retract candidate (#2740): this issue carries fleet:queued (that is
+        # Retract candidate: this issue carries fleet:queued (that is
         # the query above) together with a live planning queue-block. Every
         # issue reaching this point is a candidate regardless of which section
         # it would land in — a gate landing on an issue that was already
-        # CLAIMED is the #2734 shape itself, and a claimed row routes to
+        # CLAIMED is the shape this exists for, and a claimed row routes to
         # tasks.in_progress, not tasks.open. Owner is deliberately not
         # filtered: retracting under a live claim disturbs neither the claim
         # nor the release path (neither reads fleet:queued) and is what stops
@@ -1518,11 +1505,10 @@ def fetch_task_queue(repo_slug):
             continue
 
         # fleet:gated marks issues a worker parked because the fix surface
-        # is gated self-config no class can push (#2066). Skip for the same
+        # is gated self-config no class can push. Skip for the same
         # reason as fleet:needs-human above: without this, ingest re-stamps
         # fleet:queued and every matching dispatch re-claims, re-hits the
-        # ungateable surface, and releases — an unbounded pane-burn loop
-        # (#2762).
+        # ungateable surface, and releases — an unbounded pane-burn loop.
         if "fleet:gated" in labels:
             continue
 
@@ -1550,17 +1536,17 @@ def fetch_task_queue(repo_slug):
             "owner": owner,
             "area": area,
             "blocked_by": blocked_by,
-            # #1527: `fleet:blocked` is the visible "queued but a predecessor is
+            # `fleet:blocked` is the visible "queued but a predecessor is
             # still open" marker stamped by fleet-queue-ingest. Surface it on the
             # task so workers see the blocked state directly and the ingest
             # projection can drive fleet:blocked removal once the blocker closes
             # (see _ingest_unblock_candidates).
             "blocked": "fleet:blocked" in labels,
-            # #1998: `fleet:needs-gl-host` marks a backend-specific task that
+            # `fleet:needs-gl-host` marks a backend-specific task that
             # needs an OpenGL-4.5 host (linux/windows); macOS/Metal panes can't
             # build/run/verify it. Surfaced here so the dispatcher's claimability
             # filter (fleet_task_class.py) skips it on a Metal host instead of
-            # churning claim->refuse->release no-ops. #1969/#2704: also inferred
+            # churning claim->refuse->release no-ops. Also inferred
             # from a host-requirement declaration in the body, or from the body
             # naming a file in a platform-gated GL-only source set, as a backstop
             # for a label the filer forgot (see _body_requires_gl_host).
@@ -1571,7 +1557,7 @@ def fetch_task_queue(repo_slug):
             # GL-capable host alike: a "must run on a Linux host" task is
             # unclaimable on Windows too (see _body_required_host).
             "needs_host": _body_required_host(body),
-            # #2820: the discriminator that narrows the gate above. A task
+            # The discriminator that narrows the gate above. A task
             # fixing both a `.glsl` and its `.metal` twin has a natively
             # Metal-verifiable half, so a mac pane may claim it; the GL runtime
             # residual rides the reviewer-stamped needs-{linux,windows}-smoke
@@ -1585,9 +1571,9 @@ def fetch_task_queue(repo_slug):
             # keys on it: a target declined at one updatedAt is not re-elected
             # until the item changes (fleet_task_class._declined).
             "updatedAt": issue.get("updated_at", "") or "",
-            # `**Part of epic:** #U` back-ref (raw field value, e.g. "#1661").
+            # `**Part of epic:** #U` back-ref (raw field value, e.g. "#U").
             # The epic-steward adoption projection joins this against open
-            # umbrellas' checklists (#1664).
+            # umbrellas' checklists.
             "epic": _parse_issue_field(body, "Part of epic") or None,
         }
 
@@ -1634,10 +1620,9 @@ def _populate_tasks_done(repo_state):
 # (open PRs + their labels, issue lists, task queue from fleet:queued issues).
 # Per-item drill-in
 # (full PR body, comment timeline, inline review comments, raw diff, full
-# issue body+comments) used to be live `gh` calls fired per-role per-iteration
-# — the largest remaining token + API cost on the agent side. Scout now
-# fetches that detail once per state change and caches it on disk so every
-# reader is a Read-tool call instead of a gh subprocess.
+# issue body+comments) is fetched once per state change and cached on disk,
+# so every reader is a Read-tool call instead of a per-role per-iteration
+# gh subprocess.
 #
 # Layout:
 #   ~/.fleet/state/prs/<repo_key>/<N>.json       — full PR detail + inline comments
@@ -1675,8 +1660,8 @@ def fetch_pr_inline_comments(repo_slug, pr_number):
     # Inline review comments live on a different endpoint than `gh pr view`'s
     # `comments`/`reviews` fields. Reviewers walking a flagged PR want both.
     #
-    # per_page=100 + --paginate, not the REST default of 30 (same truncation
-    # class as #2856): past 30 inline comments the cache would hold a silently
+    # per_page=100 + --paginate, not the REST default of 30: past 30 inline
+    # comments the cache would hold a silently
     # short list that fleet-pr then serves as complete. per_page=100 keeps the
     # common PR at one request. Keep in sync with fleet-pr's fetch_live_pr.
     out = run_capture([
@@ -1951,7 +1936,7 @@ REVIEW_SKIP_LABELS = frozenset({
     "fleet:human-amending",
     # Parked in an epic-steward proposal package — the PR's open design
     # question is queued on the umbrella for the human/architect; reviewing
-    # the in-flux diff is wasted work until design-unblock clears it (#1664).
+    # the in-flux diff is wasted work until design-unblock clears it.
     "fleet:design-proposed",
     # A PR whose verdict was deferred to a follow-up issue, or that requires
     # manual human action. Re-reviewing would re-flag needs-fix indefinitely;
@@ -1999,8 +1984,8 @@ def _review_skipped(labels):
 # routing rides the `repo` field every item and slice record carries —
 # each reviewer mirror mints the same labels in its own repo, and a label
 # only a lane in that repo can clear must reach that lane. platform-catchup
-# (#1093) is the manual fallback for when no Windows fleet is online, not
-# the owner of fleet:needs-windows-smoke (#2804).
+# is the manual fallback for when no Windows fleet is online, not
+# the owner of fleet:needs-windows-smoke.
 _SMOKE_PENDING_LABELS = frozenset({
     "fleet:needs-linux-smoke", "fleet:needs-macos-smoke",
     "fleet:needs-windows-smoke",
@@ -2017,8 +2002,8 @@ _SMOKE_REPO_ORDER = {"engine": 0}
 EFFORT_LEVELS = frozenset({"low", "medium", "high", "xhigh", "max"})
 
 # Eligible when blocked_by references exactly one issue. The epic decomposer
-# emits prose suffixes (e.g. "#1308 (T1 must land first)") that the old strict
-# regex rejected, silently killing whole task chains (#1309→#1316, 2026-05-28).
+# emits prose suffixes (e.g. "#N (T1 must land first)"); a strict regex that
+# rejects them silently kills whole task chains.
 # Evaluated AFTER resolve_blocked_by(), so a two-ref task whose first blocker
 # is now CLOSED arrives here as one ref and qualifies.
 def _single_blocker_issue(blocked_by):
@@ -2074,7 +2059,7 @@ def _is_gated_self_config(path):
 
 
 def _pr_all_gated_self_config(repo_key, pr_number):
-    # #1997: a PR whose entire diff is gated self-config cannot be amended by
+    # A PR whose entire diff is gated self-config cannot be amended by
     # any worker class. Returns False on cache miss / empty diff (safe: never
     # wrongly excludes a PR with an unseen file list).
     files = _blocker_pr_files(repo_key, pr_number)
@@ -2095,10 +2080,10 @@ def _pr_all_gated_self_config(repo_key, pr_number):
 # contain references that are still genuinely unresolved.
 
 # A blocker ref may carry an optional `[owner/]Repo#N` qualifier pointing at
-# another repo (game #125 → `jakildev/IrredenEngine#1476`). group(1) is the
+# another repo (a game issue → `jakildev/IrredenEngine#N`). group(1) is the
 # repo name (None / empty for a bare same-repo `#N`); group(2) is the number.
 # Kept consistent with fleet_blocked_by.blocker_refs; routing differs
-# (key vs slug) so this helper stays separate. (#1522)
+# (key vs slug) so this helper stays separate.
 _BLOCKER_REF_RE = re.compile(r"(?:[A-Za-z0-9][\w.-]*/)?([A-Za-z0-9][\w.-]*)?#(\d+)")
 _BLOCKER_PR_URL_RE = re.compile(
     r"https://github\.com/([A-Za-z0-9][\w.-]*/[A-Za-z0-9][\w.-]*)/pull/(\d+)"
@@ -2219,7 +2204,7 @@ def resolve_blocked_by(state, ref_cache=None):
             if not refs:
                 continue  # Free-text blocker — leave unchanged.
             # Which of those were actually *declared*, vs named only in the
-            # value's prose (#2783). Normalization discards the prose, so the
+            # value's prose. Normalization discards the prose, so the
             # distinction has to be captured while the raw value still exists —
             # enrich_stackable_blocker_prs needs the declared count, while
             # `blocked_by` keeps every ref for the blocking gate.
@@ -2232,7 +2217,7 @@ def resolve_blocked_by(state, ref_cache=None):
                     # Cross-repo blocker — the scout's window only covers this
                     # repo, so it can't resolve the ref here. Don't surface it
                     # as blocked; fleet-claim's check_blockers (routed to the
-                    # referenced repo) is the authoritative pickup gate. (#1522)
+                    # referenced repo) is the authoritative pickup gate.
                     continue
                 if not requires_merge and ref in closed_nums:
                     continue
@@ -2258,7 +2243,7 @@ def resolve_blocked_by(state, ref_cache=None):
 
             # Only when the prose inflated the count — a value whose refs were
             # all declared needs no second field, so state.json stays as-is for
-            # the overwhelming majority of tasks (#2783).
+            # the overwhelming majority of tasks.
             declared_unresolved = [r for r in unresolved if r in declared]
             if declared_unresolved != unresolved:
                 task["blocked_by_declared"] = (
@@ -2309,7 +2294,7 @@ def resolve_human_approved_blockers(state):
 
         for issue in repo_state.get("human_approved", []):
             body = issue.pop("body", "") or ""
-            # Same `Part of epic` back-ref the task records carry (#1664) —
+            # Same `Part of epic` back-ref the task records carry —
             # parsed here because this is where the body already flows.
             issue["epic"] = _parse_issue_field(body, "Part of epic") or None
             issue["blocked"] = False
@@ -2327,7 +2312,7 @@ def resolve_human_approved_blockers(state):
                 if ref_key != repo_key:
                     # Cross-repo blocker: unresolvable from this repo's window.
                     # Defer to fleet-queue-ingest's live cross-repo check rather
-                    # than blocking forever (this froze game #125 out — #1522).
+                    # than blocking forever.
                     continue
                 if not requires_merge and ref in closed_nums:
                     continue
@@ -2403,12 +2388,12 @@ def resolve_needs_plan_blocked_by(state, ref_cache=None):
                 if not requires_merge and any(
                         branch_matches_issue(h, ref, repo_key) for h in merged_heads):
                     continue
-                # Live fallback for the residual (#2986). Reached only by refs
+                # Live fallback for the residual. Reached only by refs
                 # both in-memory sources missed, so it costs a call per *novel*
                 # unresolved ref per tick, shared with resolve_blocked_by's
                 # cache. _resolve_ref_satisfied fails closed (False on any gh
                 # error/timeout), so a flaky call leaves the issue blocked —
-                # the same conservative direction as before this fallback.
+                # the conservative direction.
                 if (repo_slug and requires_merge and _resolve_ref_satisfied(
                         repo_slug, ref, per_tick_cache, True)):
                     continue
@@ -2478,10 +2463,10 @@ def resolve_epic_children(state, ref_cache=None):
 
 
 def enrich_stackable_blocker_prs(state):
-    # Per T-110 PR 2: for each task whose blocked_by is exactly one issue
+    # For each task whose blocked_by is exactly one issue
     # number (`#NNN`) with exactly one matching open PR in the same repo,
     # attach a `stackable_blocker_pr` field carrying {number, headRefName,
-    # author}. Workers (T-114) read this to decide whether to fall through to a
+    # author}. Workers read this to decide whether to fall through to a
     # stackable claim when no unblocked tasks are free. A multi-blocker task
     # whose other blockers have all closed is already collapsed to a single
     # `#NNN` by resolve_blocked_by() (runs first), so it reaches here eligible.
@@ -2492,7 +2477,7 @@ def enrich_stackable_blocker_prs(state):
     # — the same union fleet-claim's find-stackable-blockers uses, so the scout
     # offers every base the live finder would (the Closes-#N form catches blocker
     # PRs on non-standard / human branches). The Closes half reads the derived
-    # field, not pr["body"], which is body-stripped on 304 reuse ticks (#2442).
+    # field, not pr["body"], which is body-stripped on 304 reuse ticks.
     #
     # The third arm covers a `Blocked by: #<PR>` ref — a blocker PR with no
     # backing issue, which neither the branch nor the Closes arm can resolve.
@@ -2500,7 +2485,7 @@ def enrich_stackable_blocker_prs(state):
     # pre-merge window, and the normal tier skips it too (`fleet:blocked`), so
     # nothing can pick it up. GitHub issues and PRs share one number namespace,
     # so a ref equal to an open PR's number cannot also name a live issue — the
-    # match is unambiguous (#2523).
+    # match is unambiguous.
     #
     # The field is always omitted when:
     #   - blocked_by doesn't reference exactly one issue (multi-blocker,
@@ -2518,28 +2503,26 @@ def enrich_stackable_blocker_prs(state):
     #     (`inflight_pr`, set by enrich_inflight_pr_tasks — which must run
     #     first) — fleet-claim's duplicate-open-PR guard refuses every
     #     `--stackable-on` claim such an offer would enable, so emitting it is
-    #     a dead affordance the worker pays a round-trip to discover (#2586)
+    #     a dead affordance the worker pays a round-trip to discover
     #
     # Engine and game tasks are both enriched, and worker pickup honors the
     # field for both repos — role-worker.md step 3's stackable-fallback tier
     # covers engine and game identically; native stacks maintain the chain
     # server-side either way.
     #
-    # (The former filter (c) — the #2447 base-ancestry containment walk — was
-    # retired with the native-stacked-PRs migration: a native stack self-heals
+    # There is no base-ancestry containment filter: a native stack self-heals
     # a base missing a merged blocker via `gh stack sync` / the server-side
-    # cascade. Block preserved at the `pre-native-stacks` tag; see
-    # scripts/fleet/legacy/stacked-prs/README.md.)
+    # cascade.
     for repo_key, repo_state in state["repos"].items():
         prs = repo_state.get("prs", [])
         for task in repo_state.get("tasks", {}).get("open", []):
             # Prefer the declared-only view when resolve_blocked_by found the
-            # value's prose inflating the ref count (#2783) — eligibility asks
+            # value's prose inflating the ref count — eligibility asks
             # "how many blockers were declared", not "what gates the claim".
             # The narrowing may only ever ADD an offer, never withdraw one. Once
             # every declared ref resolves while a decorative one has not, the
             # declared view reads "(none)" while the gate still blocks on that
-            # decorative ref (#1281) — honoring it would leave the task with no
+            # decorative ref — honoring it would leave the task with no
             # claim AND no base to stack on. Fall back to the gate's own value.
             declared_view = (task.get("blocked_by_declared") or "").strip()
             if declared_view.lower().startswith("(none"):
@@ -2549,7 +2532,7 @@ def enrich_stackable_blocker_prs(state):
             if not issue_num:
                 continue
             if task.get("inflight_pr"):
-                # #2586: the task's own issue already has an open PR, so
+                # The task's own issue already has an open PR, so
                 # fleet-claim's duplicate-open-PR guard refuses every
                 # `--stackable-on` claim this offer would enable — don't
                 # advertise a claim no worker can complete.
@@ -2566,7 +2549,7 @@ def enrich_stackable_blocker_prs(state):
                 or pr.get("number") == issue_num_int
             ]
             if len(matches) != 1:
-                # A suppressed offer states its reason (#2442) — otherwise the
+                # A suppressed offer states its reason — otherwise the
                 # only way to learn why a queued task is unpickable is to read
                 # this function's source.
                 task_id = task.get("id") or "?"
@@ -2586,7 +2569,7 @@ def enrich_stackable_blocker_prs(state):
             # WIP/amending (head diff in flux), awaiting rebase, a fork, or an
             # empty claim-commit-only skeleton. One shared predicate with the
             # claim gate (fleet_stack_base) so the offer and the accept can never
-            # disagree (#1751). blocker_files is the cached diff when the PR
+            # disagree. blocker_files is the cached diff when the PR
             # detail is cached, else None ("unknown" — don't suppress a
             # not-yet-cached base; the claim gate re-checks live). A known-empty
             # list ([]) is a claim-commit-only skeleton and IS rejected.
@@ -2628,7 +2611,7 @@ def enrich_inflight_pr_tasks(state):
     # owner-free and claimable, while a fresh worker would (correctly) refuse
     # it on sight. That projection/behaviour mismatch let the dispatch resolver
     # keep electing such a task head-of-queue and churn no-op opus dispatches,
-    # starving fable work behind it (#1726 — the #1640 / PR #1700 incident).
+    # starving fable work behind it.
     # Tag the task with `inflight_pr` so fleet_task_class._task_claimable skips
     # it; the projection item carried in the role trigger hash is unchanged
     # (id + blocked_by), so this adds no spurious trigger churn — only the
@@ -2652,8 +2635,8 @@ def enrich_inflight_pr_tasks(state):
     # `closes_cross_repo` at fetch time) is in-flight work for task N here —
     # a fresh worker on this repo cannot advance a PR that lives in the other
     # one, so this is a hard no-pick like the own-repo arms, not advisory
-    # (an engine issue was redispatched on every trigger while its game PR
-    # sat approved with a cross-repo `Closes`, #3520). Only the BODY arm
+    # (otherwise an engine issue is redispatched on every trigger while its
+    # game PR sits approved with a cross-repo `Closes`). Only the BODY arm
     # crosses: `claude/<N>-…` in the other repo is that repo's #N
     # (test_cross_repo_isolation), and a bare `Closes #N` there is likewise
     # that repo's (test_body_link_does_not_cross_repos). An own-repo match
@@ -2764,12 +2747,12 @@ def enrich_shadow_merged_pr_tasks(state):
 # only the labels each role's own decision logic actually keys on.
 # fleet:semantic-conflict is intentionally NOT in this set — a plain label
 # match cannot tell a real conflict from a stale label on a MERGEABLE PR
-# (fail-then-succeed race, #1654), and a stale label must not trigger a
+# (fail-then-succeed race), and a stale label must not trigger a
 # false step-1c resolution pass. Conflicted PRs still generate dispatch
 # pressure, but via _semantic_conflict_claimable, which gates on the
 # cached mergeable == CONFLICTING (the same live-state signal
-# _merger_action_signal keys on), so the #1654 shape stays structurally
-# excluded. fleet-rebase's stale-conflict cleanup sweep (#1654) still
+# _merger_action_signal keys on), so the stale-label shape stays structurally
+# excluded. fleet-rebase's stale-conflict cleanup sweep still
 # clears the stale label itself.
 _WORKER_RELEVANT_LABELS = FEEDBACK_LABELS | DESIGN_RESUME_LABELS
 
@@ -2782,9 +2765,9 @@ _WORKER_RELEVANT_LABELS = FEEDBACK_LABELS | DESIGN_RESUME_LABELS
 # work, so the reviewer reads head X, the worker rewrites to Y, and the
 # verdict lands on a diff nobody read. Same hazard scripts/fleet/CLAUDE.md
 # flags for amending-*/resolving-*, resolved the same way
-# _semantic_conflict_claimable resolves that pair (#2801).
+# _semantic_conflict_claimable resolves that pair.
 #
-# Read by BOTH worker force-push lanes (#3001): worker_feedback_labels() for
+# Read by BOTH worker force-push lanes: worker_feedback_labels() for
 # the feedback/amend lane, and _semantic_conflict_claimable for the
 # conflict-resolution lane. One constant rather than a sibling copy because
 # the predicate is the same one in both — "a live review claim bars a lane
@@ -2873,7 +2856,7 @@ def _semantic_conflict_claimable(pr, labels, head_labels):
     """
     if "fleet:semantic-conflict" not in labels:
         return False
-    # #1654 guard: only a live CONFLICTING PR is real step-1c work. A stale
+    # Only a live CONFLICTING PR is real step-1c work. A stale
     # label on a MERGEABLE PR (fail-then-succeed race) generates no dispatch;
     # UNKNOWN (GitHub still computing) fails closed until the next tick.
     if pr.get("mergeable") != "CONFLICTING":
@@ -2888,7 +2871,7 @@ def _semantic_conflict_claimable(pr, labels, head_labels):
     # opus conflict item in parallel lets a (sonnet) feedback pane and an opus
     # resolver pane force-push the SAME head branch on one tick — a
     # last-writer-wins race that silently drops the conflict resolution or the
-    # feedback fix. Feedback comes first (this PR's own stated priority), so a
+    # feedback fix. Feedback comes first, so a
     # conflicted PR generates no conflict-resolution pressure until the
     # feedback/design-resume label clears. Mirror in role-worker.md step 1c.
     #
@@ -2897,7 +2880,7 @@ def _semantic_conflict_claimable(pr, labels, head_labels):
     # it through the suppression helper would make a reviewer's live claim
     # *open* the conflict lane — and the resolver force-pushes too, so that is
     # the identical hazard one lane over. Making all three call sites
-    # "consistent" is the wrong turn here (#2801).
+    # "consistent" is the wrong turn here.
     if labels & _WORKER_RELEVANT_LABELS:
         return False
     # An active fleet:resolving-<host>-<agent> claim means a worker is
@@ -2905,8 +2888,8 @@ def _semantic_conflict_claimable(pr, labels, head_labels):
     # swept by `fleet-claim cleanup --gh`, so this can't strand a PR.
     if any(label.startswith("fleet:resolving-") for label in labels):
         return False
-    # A live fleet:reviewing-* bars this lane too — the #2801 hazard, one
-    # lane over (#3001). fleet:reviewing-* and fleet:resolving-* are DISJOINT
+    # A live fleet:reviewing-* bars this lane too — the same hazard, one
+    # lane over. fleet:reviewing-* and fleet:resolving-* are DISJOINT
     # claim namespaces, so the self-prefix tie-break just above (and
     # _acquire_label_on's, which filters to labels startswith(its own
     # prefix)) is structurally blind to a review claim. Step 1c then rebases
@@ -2939,10 +2922,9 @@ def _semantic_conflict_claimable(pr, labels, head_labels):
 
 
 def project_worker(state):
-    # Single generic-worker lane (P2): the per-class opus-worker /
-    # sonnet-author split was vestigial once model class became a
-    # property of the task (#1691), so this projector is the union of
-    # the two — every open task regardless of class, every needs-plan
+    # Single generic-worker lane: model class is a property of the task,
+    # so this projector is the union over every class — every open task
+    # regardless of class, every needs-plan
     # issue, every feedback/design-resume PR, and every claimable
     # semantic-conflict PR. The dispatcher picks the concrete model per
     # dispatch from the slice (resolve_worker_class / fleet_task_class.py);
@@ -2954,20 +2936,20 @@ def project_worker(state):
                 items.append({"kind": "task", "repo": repo, "id": task["id"],
                               "blocked_by": task["blocked_by"]})
         for issue in repo_state.get("needs_plan", []):
-            # Mirror slice_worker's human-gate skip (#2114): a needs-plan issue
+            # Mirror slice_worker's human-gate skip: a needs-plan issue
             # carrying human:no-plan / owned / wip is not worker-plannable, so it
             # must not flip the dispatch hash either. Without this, the late-opt-out
             # window — human:no-plan added onto a still-needs-plan issue, before the
             # edge-triggered ingest run strips the stale label — flips this hash and
             # wakes a phantom worker dispatch that slice_worker then filters to a
-            # no-op (#2110 criterion 4). The slice fix alone stopped the woken worker
-            # from *claiming* the issue but not the wake itself, since the dispatcher
+            # no-op. The slice filter alone stops the woken worker from
+            # *claiming* the issue but not the wake itself, since the dispatcher
             # diffs *this* projection to decide whether to fire. A merely fleet:blocked
             # needs-plan issue is still plannable (planning is independent of the
             # blocker), so it is NOT gated on that label.
             if set(issue.get("labels", [])) & _HUMAN_GATE_LABELS:
                 continue
-            # #2287: an issue whose body declares a still-open `**Blocked by:**`
+            # An issue whose body declares a still-open `**Blocked by:**`
             # predecessor (resolve_needs_plan_blocked_by) is explicitly parked —
             # e.g. "do not plan until #N posts" — and must not wake a planner
             # dispatch either, mirroring the human-gate skip just above.
@@ -2989,7 +2971,7 @@ def project_worker(state):
             # re-fans-out a pane that would just re-hit the same wall.
             if "fleet:gated" in labels:
                 continue
-            # #1997: an all-gated-self-config PR already parked human-deferred
+            # An all-gated-self-config PR already parked human-deferred
             # cannot be amended by any worker class. Exclude from dispatch so
             # a re-stamp of fleet:needs-fix doesn't re-fan-out N panes. (The
             # explicit fleet:gated park above is the preferred signal; this
@@ -3063,7 +3045,7 @@ def project_opus_reviewer(state):
                 continue
             items.append({"repo": repo, "pr": pr["number"],
                           "labels": sorted(labels & OPUS_REVIEWER_FLAG_LABELS)})
-        # Plan-review issues (#1932): a posted `## Plan` awaiting a verdict.
+        # Plan-review issues: a posted `## Plan` awaiting a verdict.
         # Nothing else wakes the reviewer on issue (vs PR) state, so project them
         # here. Skip human-held ones. The reviewer's verdict removes
         # fleet:plan-review, so the issue leaves this set — a terminal change,
@@ -3551,7 +3533,7 @@ PROJECTORS = {
 }
 
 # Roles whose wake suppression is evaluated PER SUB-LANE instead of over the
-# whole projection (#2700). The whole-projection `if not projection:` test in
+# whole projection. The whole-projection `if not projection:` test in
 # update_role_trigger is unreachable for a union lane: project_worker unions
 # four kinds and one of them (task) is structurally never empty, so every hash
 # change fires — including the dominant class of change, a pure REMOVAL (a task
@@ -3569,7 +3551,7 @@ PER_KIND_TRIGGER_ROLES = frozenset({"worker"})
 # The dispatcher already owns the worker lane's unchanged-slice safety re-arm,
 # including claimability checks and exponential standdown backoff. A scout-side
 # re-arm would bypass that backoff and permit an unbounded idle dispatch loop.
-# Other roles have no equivalent dispatcher-side liveness path. See #3093.
+# Other roles have no equivalent dispatcher-side liveness path.
 DISPATCHER_REARM_ROLES = frozenset({"worker"})
 
 
@@ -3624,7 +3606,7 @@ def slice_worker(state):
             # is NOT gated here on that label.
             if set(issue.get("labels", [])) & _HUMAN_GATE_LABELS:
                 continue
-            # #2287: mirror project_worker's Blocked-by gate so a woken worker
+            # Mirror project_worker's Blocked-by gate so a woken worker
             # never even surfaces an explicitly-parked needs-plan issue as a
             # planning candidate.
             if issue.get("blocked"):
@@ -3645,7 +3627,7 @@ def slice_worker(state):
             # Same admission test as project_worker's emit site — one helper,
             # both sites. A projection-only guard would leave this payload
             # unfiltered, and FLEET-CACHE.md tells every role to prefer the
-            # slice over state.json (#2801).
+            # slice over state.json.
             if worker_feedback_labels(labels):
                 out["feedback_prs"].append(_slice_pr_with_repo(repo_key, pr))
             if _semantic_conflict_claimable(pr, labels, head_labels):
@@ -3670,7 +3652,7 @@ def slice_opus_reviewer(state):
             if opus_review_admissible(pr, set(pr["labels"])):
                 out["flagged_prs"].append(_slice_pr_with_repo(repo_key, pr))
         # Plan-review issues the reviewer should vet (mirror project_opus_reviewer
-        # so a woken reviewer reads the same set that triggered it). #1932.
+        # so a woken reviewer reads the same set that triggered it).
         for issue in repo_state.get("plan_review", []):
             labels = set(issue.get("labels", []))
             if labels & _HUMAN_GATE_LABELS:
@@ -3841,7 +3823,7 @@ def write_atomic(path: Path, payload: str) -> None:
     # Replace `path` with `payload` so a concurrent reader only ever sees the
     # complete prior file or the complete new one — never a half-written splice.
     #
-    # #1750: a FIXED temp name (the old `path.with_suffix(".tmp")`) is the bug.
+    # A FIXED temp name (`path.with_suffix(".tmp")`) is wrong here:
     # os.replace is atomic, but two overlapping writers (the 30s fleet-up scout
     # tick racing a manual / solo-architect scout run, or an overlong tick) shared
     # one `<name>.tmp`: writer B could os.replace a temp that writer A was still
@@ -3853,7 +3835,7 @@ def write_atomic(path: Path, payload: str) -> None:
     # is the reader-visibility barrier, not the fsync.
     # Binary mode, not "w": a text-mode handle on Windows translates the
     # payload's trailing "\n" to "\r\n", so the on-disk file lands one byte
-    # over whatever a caller computed from payload.encode("utf-8") (#3061).
+    # over whatever a caller computed from payload.encode("utf-8").
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix="." + path.name + ".", suffix=".tmp")
     try:
         with os.fdopen(fd, "wb") as f:
@@ -3873,9 +3855,9 @@ def write_atomic(path: Path, payload: str) -> None:
 #
 # Every fleet role reads state.json at startup through the Read tool, which HARD
 # ERRORS past 256 KB — so the file's size is a standing invariant on this writer,
-# not a statistic. Nothing watched it before, and the only symptom of the drift
-# past the cap was every role failing its own first step. This guard makes the
-# next drift operator-visible while there is still headroom. See #2752.
+# not a statistic; the only symptom of drift past the cap is every role
+# failing its own first step. This guard makes drift operator-visible while
+# there is still headroom.
 STATE_SIZE_READ_CAP_BYTES = 256 * 1024
 # 7/8 of the cap (224 KB), expressed as a fraction so the two can't drift apart.
 # Sized against the MEASURED post-fix file (205.7 KB on a 46-open-PR tree), not a
@@ -3949,7 +3931,7 @@ def check_state_size(size_bytes: int) -> None:
         pass
 
 
-# --- Self-spawned-lane spawn failures (#2972) ------------------------------
+# --- Self-spawned-lane spawn failures --------------------------------------
 #
 # The queue-manager reconcile lane and queue-manager-ingest write their
 # seen-hash only once the spawn actually succeeded. Periodic claim cleanup uses
@@ -4103,7 +4085,7 @@ def read_json_retry(path, attempts=3, backoff=0.05):
     # cache out-of-band via the Read tool and can't call this, but the unique-temp
     # write_atomic above already closes their torn-read window.) A near-twin lives
     # in fleet-epic-status — the two scripts can't share a module without the
-    # ~/bin symlink module-resolution hazard (#1578), so keep them in sync.
+    # ~/bin symlink module-resolution hazard, so keep them in sync.
     last = None
     for i in range(attempts):
         try:
@@ -4191,7 +4173,7 @@ def rearm_stalled_role(role: str, projection, current_text,
 
     rearm_file = SEEN_DIR / f"{role}.stalled-rearm"
     try:
-        # lint: state-mtime-ok this marker is the last safety-rearm clock (#2963)
+        # lint: state-mtime-ok this marker is the last safety-rearm clock
         changed_at = max(changed_at, rearm_file.stat().st_mtime)
     except FileNotFoundError:
         pass
@@ -4214,7 +4196,7 @@ def update_role_trigger(role: str, projection) -> bool:
     seen_file = SEEN_DIR / role
     try:
         old_text = seen_file.read_text().strip()
-        # lint: state-mtime-ok seen-hash mtime is the trigger-change clock (#2963)
+        # lint: state-mtime-ok seen-hash mtime is the trigger-change clock
         changed_at = seen_file.stat().st_mtime
     except FileNotFoundError:
         old_text = ""
@@ -4257,9 +4239,7 @@ def update_role_trigger(role: str, projection) -> bool:
     # nothing-to-do — the item left the set because someone handled it (a
     # verdict label-swap, an amend claim, a merge). Waking the role to
     # discover an empty slice is a guaranteed no-op iteration, and label
-    # churn across several PRs produces trains of them (observed
-    # 2026-07-01: opus-reviewer dispatched 4x in 5 min, every iteration
-    # "no actionable candidates"). Record the hash (so the next
+    # churn across several PRs produces trains of them. Record the hash (so the next
     # empty->non-empty flip still fires) but leave the trigger untouched.
     # An already-pending trigger stays pending: a non-empty->non-empty
     # change armed it and the remaining work may still need serving.
@@ -4450,7 +4430,7 @@ def collect_state():
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "repos": repos,
         # Main-clone freshness for the engine clone (where the fleet-script code
-        # + parsers live). rev-parse only, no fetch. (#1810)
+        # + parsers live). rev-parse only, no fetch.
         "clone_freshness": clone_freshness(ENGINE),
     }
     if _degraded:
@@ -4468,7 +4448,7 @@ def _populate_done_tasks(state):
 
 
 
-# --- Poll topology (#1394 Q2) — leader / follower state acquisition --------
+# --- Poll topology — leader / follower state acquisition -------------------
 #
 # POLL_CFG is resolved once in main() from host.toml. A leader polls GitHub and
 # additionally serves its state bundle (LEADER_SERVER); a follower consumes the
@@ -4554,7 +4534,7 @@ def _fetch_follower_state(cfg):
 
 
 def _refresh_gh_token():
-    # GitHub App token (#1394 Q4): guarded per-tick refresh so this
+    # GitHub App token: guarded per-tick refresh so this
     # long-lived daemon's gh calls stay authenticated past the installation
     # token's 1h expiry. The helper's own cache makes this a cheap read on
     # all but the ~once-per-hour re-mint tick. Never set GH_TOKEN to an
@@ -4588,7 +4568,7 @@ def tick_once():
         _populate_done_tasks(state)
         # One shared _resolve_ref_satisfied cache across every resolver in the
         # tick, so a ref named by more than one of them (a task blocker that is
-        # also an epic child) costs a single live call (#2986).
+        # also an epic child) costs a single live call.
         ref_cache: dict = {}
         resolve_blocked_by(state, ref_cache)
         resolve_human_approved_blockers(state)
@@ -4596,9 +4576,9 @@ def tick_once():
         resolve_epic_children(state, ref_cache)
         # enrich_inflight_pr_tasks must run before enrich_stackable_blocker_prs
         # — the stackable pass reads a task's `inflight_pr` field to suppress
-        # a doomed offer on a task whose own issue already has an open PR
-        # (#2775); neither pass reads pr["body"], so this ordering is safe
-        # relative to the body-pop below.
+        # a doomed offer on a task whose own issue already has an open PR;
+        # neither pass reads pr["body"], so this ordering is safe relative
+        # to the body-pop below.
         enrich_inflight_pr_tasks(state)
         enrich_stackable_blocker_prs(state)
         # After enrich_inflight_pr_tasks: its log line skips rows already tagged
@@ -4610,7 +4590,7 @@ def tick_once():
         # derived into pr["closes_issues"] / pr["closes_cross_repo"] at fetch
         # time (see derive_closes_refs); nothing downstream reads pr["body"].
         # Popping here after deriving there is what lets the signals survive
-        # the 304-reuse of these stripped records (#2442).
+        # the 304-reuse of these stripped records.
         for _repo_state in state["repos"].values():
             for _pr in _repo_state.get("prs", []):
                 _pr.pop("body", None)
@@ -4690,7 +4670,7 @@ def tick_once():
                     sweep_cmds.append(stalled_cmd)
                 if projection_changed:
                     sweep_cmds.append(reconcile_cmd)
-                # Partial-failure rule, stated rather than implied (#2972): this
+                # Partial-failure rule, stated rather than implied: this
                 # lane fires SEVERAL commands, and the seen-hash below is written
                 # only when every one of them spawned. If any fails, the hash
                 # stays unwritten and the next tick re-runs the WHOLE set — safe,
@@ -4746,7 +4726,7 @@ def tick_once():
             # ingest (human:approved → fleet:queued) is a GLOBAL label mutation
             # — authoritative-poller-only, like cleanup above. A follower
             # consuming the leader's bundle skips it entirely so N hosts don't
-            # race the same ingest (#1394 Q2); the leader (or a self-polling
+            # race the same ingest; the leader (or a self-polling
             # follower) owns it.
             if not authoritative:
                 continue
@@ -4765,7 +4745,7 @@ def tick_once():
                     # Seen-hash stays unwritten so the change survives the skip —
                     # same edge-triggered no-rearm contract as the queue-manager
                     # lane above; consuming it here strands the issue unqueued
-                    # for good (#2965).
+                    # for good.
                     log("queue-manager-ingest: skipping fleet-queue-ingest (state degraded)")
                     triggers_fired.append("queue-manager-ingest(skipped-degraded)")
                     continue
@@ -4779,14 +4759,14 @@ def tick_once():
                 except Exception as e:
                     # Seen-hash stays unwritten so the edge survives the failed
                     # spawn and the next tick retries — the same no-rearm
-                    # contract the degraded skip honors (#2972).
+                    # contract the degraded skip honors.
                     _spawn_failed(
                         "queue-manager-ingest", type(e).__name__,
                         f"queue-manager-ingest: failed to spawn fleet-queue-ingest: "
                         f"{e} — seen-hash left unwritten, retrying next tick")
                     triggers_fired.append("queue-manager-ingest(spawn-failed)")
                     continue
-                # Spawn succeeded — only NOW consume the edge (#2972).
+                # Spawn succeeded — only NOW consume the edge.
                 write_atomic(seen_file, new_hash + "\n")
                 _spawn_ok("queue-manager-ingest")
                 log("queue-manager-ingest: spawned fleet-queue-ingest (projection changed)")
@@ -4879,7 +4859,7 @@ def main():
         log(f"engine repo not found at {ENGINE}; aborting")
         sys.exit(1)
 
-    # Resolve leader/follower topology once from host.toml (#1394 Q2). Missing
+    # Resolve leader/follower topology once from host.toml. Missing
     # config → leader, so a single-host box is an unchanged solo poller.
     POLL_CFG = fleet_poll_topology.read_poll_config()
     log(f"poll topology: {POLL_CFG.describe()}")

@@ -8,7 +8,7 @@
 # Same-host atomicity: atomic mkdir(2) under $CLAIMS_DIR. Cross-host
 # atomicity: a `fleet:claim-<host>-<agent>` label on the linked issue
 # with a sole-holder claim (the same primitive used by review-claim,
-# resolving-claim, and amending-claim — see _acquire_label_on / #1384).
+# resolving-claim, and amending-claim — see _acquire_label_on).
 #
 # Slug canonicalization: the issue number itself, optionally prefixed
 # with the global --repo namespace (engine → "<N>", game → "game-<N>").
@@ -75,7 +75,7 @@ FLEET_GITHUB_REPO="${FLEET_GITHUB_REPO:-jakildev/IrredenEngine}"
 #
 # Because the two are deleted together, the claim dir's presence is what
 # lets claim-base tell "normal claim, master is correct" from "the claim
-# is gone, so I cannot know the base" — see cmd_claim_base (#2703).
+# is gone, so I cannot know the base" — see cmd_claim_base.
 
 __remove_claim() {
     # Remove a claim's directory and its --stackable-on sidecar (if any).
@@ -106,8 +106,7 @@ __remove_claim() {
 # contradiction — before it releases or archives anything. Passing --repo to
 # `molecule advance` / `show` / `list` / `stack-pr-state` changes nothing (those
 # key on <agent> alone); advance warns when the flag contradicts the record.
-# Pre-#2857 records carry no namespace and keep the old caller-supplied
-# behavior.
+# A record with no namespace keeps the caller-supplied behavior.
 
 REPO_NS=""
 while [[ $# -gt 0 && "$1" == --* ]]; do
@@ -120,10 +119,10 @@ done
 
 # Directory of this script, so inline `python3` blocks can import the shared
 # branch<->issue matcher (fleet_branch_match.py) regardless of cwd. Exported
-# so it survives the subshells/pipes those blocks run in. See #1425.
+# so it survives the subshells/pipes those blocks run in.
 # Resolve through any symlink chain (e.g. ~/bin/fleet-claim -> <repo>/scripts/fleet/fleet-claim)
 # before computing the dir, using the same pattern as fleet-run and fleet-build. Without this
-# BASH_SOURCE[0] is the symlink's path (~/bin), which doesn't contain fleet_branch_match.py. (#1578)
+# BASH_SOURCE[0] is the symlink's path (~/bin), which doesn't contain fleet_branch_match.py.
 _fleet_claim_self="${BASH_SOURCE[0]}"
 while [[ -L "$_fleet_claim_self" ]]; do _fleet_claim_self="$(readlink "$_fleet_claim_self")"; done
 FLEET_LIB_DIR="$(cd "$(dirname "$_fleet_claim_self")" && pwd)"
@@ -149,7 +148,7 @@ unset _fleet_lib
 # shellcheck source=/dev/null
 source "$FLEET_LIB_DIR/fleet-common.sh"
 
-# Main-clone freshness helper (#1810). fleet-claim imports its blocked_by parser
+# Main-clone freshness helper. fleet-claim imports its blocked_by parser
 # + stack-base resolver from the main clone's working tree via FLEET_LIB_DIR; if
 # that clone's master is stale so is the parser, and a missed blocker becomes a
 # silent false-grant. cmd_claim calls assert_clone_fresh to refuse loudly
@@ -161,19 +160,18 @@ else
     assert_clone_fresh() { :; }  # helper not installed yet — no-op (fail open)
 fi
 
-# Network-call timeout guard (#2362). fleet-claim runs INLINE in the dispatcher
-# main loop (reservation-role, planning-claim) across ~49 gh sites plus two git
-# net ops; one black-holed call there is a fleet-wide outage (the 18 h wedge on
-# 07-12). Sourcing fleet-net.sh shadows git()/gh() to bound every one with a
-# timeout — no per-site edits. Missing lib (main clone not yet advanced past
-# this PR) degrades to today's unguarded behavior.
+# Network-call timeout guard. fleet-claim runs INLINE in the dispatcher
+# main loop (reservation-role, planning-claim) across dozens of gh sites plus
+# two git net ops; one black-holed call there is a fleet-wide outage.
+# Sourcing fleet-net.sh shadows git()/gh() to bound every one with a
+# timeout — no per-site edits. A missing lib degrades to unguarded calls.
 if [[ -f "$FLEET_LIB_DIR/fleet-net.sh" ]]; then
     # shellcheck source=/dev/null
     source "$FLEET_LIB_DIR/fleet-net.sh"
 fi
 
-# GitHub App token (#1394 Q4): guarded export so this invocation's 48 gh
-# call sites draw from the App pool. Never export GH_TOKEN="" — that would
+# GitHub App token: guarded export so this invocation's gh call sites draw
+# from the App pool. Never export GH_TOKEN="" — that would
 # defeat gh's keychain fallback on the unconfigured path.
 _gh_app_token="$(fleet-gh-token 2>/dev/null || true)"
 [[ -n "$_gh_app_token" ]] && export GH_TOKEN="$_gh_app_token"
@@ -211,7 +209,7 @@ EOF
 #   meant elsewhere (most commonly --repo placed after the subcommand instead
 #   of before it, or a stray --role/--agent) lands on the <agent> positional
 #   and gets silently stamped into a claim label, e.g.
-#   fleet:reviewing-mac---role (#2441). cmd_claim / cmd_planning_claim already
+#   fleet:reviewing-mac---role. cmd_claim / cmd_planning_claim already
 #   guard this inline via their own optional-agent shift-parse and don't call
 #   this; every other fixed-arity agent-positional subcommand (review-/
 #   resolving-/amending-/steward- claim and release) does.
@@ -242,7 +240,7 @@ slugify() {
 #   Canonical on-disk spelling of the active namespace: the `--repo` token, or
 #   the literal "engine" for the default (unprefixed) namespace, which slugify
 #   leaves unprefixed. Spelling the default explicitly is what makes a recorded
-#   namespace distinguishable from a pre-#2857 record, which has no such field.
+#   namespace distinguishable from a record that has no such field.
 _ns_token() {
     echo "${REPO_NS:-engine}"
 }
@@ -282,7 +280,7 @@ host_from_uname() {
     # (which keys off this same `uname -s`). So the claim-label host token must
     # also be "linux" for the whole taxonomy to agree on one name per host.
     # Native Windows (MSYS2 / mingw, where `uname -s` is MINGW*/MSYS*/CYGWIN*)
-    # is the only "windows" host. See #1383.
+    # is the only "windows" host.
     case "$1" in
         Darwin)                        echo mac ;;
         Linux)                         echo linux ;;
@@ -332,8 +330,8 @@ other_repo_from_ns() {
 #   caller-supplied --repo flag. Slug shape mirrors slugify(): bare "<N>" is
 #   always engine, "game-<N>" is always game. Routed through repo_from_ns
 #   (temporary REPO_NS override) rather than a fourth hardcoded owner/repo
-#   pair — see #2864, where cmd_cleanup's local walk trusted the caller's
-#   --repo for bare slugs and let the scout's game sweep delete engine locks.
+#   pair. A local walk that trusts the caller's --repo for bare slugs lets a
+#   game sweep delete engine locks.
 repo_from_slug() {
     local slug="$1" ns="engine"
     [[ "$slug" == game-* ]] && ns="game"
@@ -341,7 +339,7 @@ repo_from_slug() {
 }
 
 # _refuse_if_closed <issue-number> <repo-slug> <context>
-#   CLOSED-issue gate (#2201). A stale scout cache can surface a closed issue
+#   CLOSED-issue gate. A stale scout cache can surface a closed issue
 #   in tasks.open[] / needs_plan[]; granting a lock on it strands a
 #   fleet:claim-* label (release also retains it, per feedback_fleet_claim_
 #   closed_issue). Refuse an explicit CLOSED state; return 1 ONLY on a
@@ -416,8 +414,7 @@ gh_release_label() {
 #   1 on the unknown flag *before* issuing the request. Anything that makes
 #   this call fail is swallowed by the `2>/dev/null` below and reported as a
 #   permanent "age unknown", which every caller reads as "skip" — so a
-#   malformed invocation here disables the TTL sweeps fleet-wide in silence
-#   (#2781).
+#   malformed invocation here disables the TTL sweeps fleet-wide in silence.
 label_added_epoch() {
     local repo="$1" target="$2" label="$3"
     command -v gh >/dev/null 2>&1 || { echo 0; return 0; }
@@ -901,7 +898,7 @@ print("%s\t%s\t%s" % (
 #   exhausts against a persistent <prefix>* holder that never yields — a dead
 #   or abandoned claimant, classically a cross-host one whose host can't sweep
 #   it and whose lex-larger name a live lex-smaller claimant keeps losing to
-#   (#2099) — force-remove any holder whose label is past TTL so the live
+#   — force-remove any holder whose label is past TTL so the live
 #   claimant can take over instead of yielding forever. Returns 0 iff it
 #   removed >=1 holder (caller should re-attempt the claim), 1 otherwise.
 #
@@ -973,9 +970,9 @@ _sweep_stale_prefix_holders() {
 #             contenders also drop, so the retry re-acquires uncontested.
 #     lose  — other holders are present and an earlier/lex-smaller one
 #             remains → yield to it.
-#   This replaces the old "win iff I'm the lex-min of the snapshot" rule,
-#   which let a LATER, lex-smaller claimant co-win with an existing holder
-#   that had already passed its own check and never re-validated (#1384).
+#   A plain "win iff I'm the lex-min of the snapshot" rule is wrong here: it
+#   lets a LATER, lex-smaller claimant co-win with an existing holder that
+#   already passed its own check and never re-validates.
 _claim_decision() {
     local mine="$1"; shift
     local has_other=0 lbl
@@ -1174,9 +1171,9 @@ _acquire_label_on() {
     done
 
     # Exhausted the retry budget while always lex-min: an earlier holder
-    # persists and never yielded — the non-simultaneous #1384 case, or a
-    # dead/abandoned (classically cross-host) claimant that will never yield
-    # (#2099). Our label was already removed by the final retry's release.
+    # persists and never yielded — the non-simultaneous case, or a
+    # dead/abandoned (classically cross-host) claimant that will never yield.
+    # Our label was already removed by the final retry's release.
     # Before giving up, try ONCE to force-sweep any TTL-stale holder so a live
     # claimant can take over; if that frees a slot, re-run the acquire loop.
     if [[ "$force_swept" -eq 0 ]] \
@@ -1270,11 +1267,10 @@ check_blockers() {
     python3 <<'PYEOF'
 import os, subprocess, sys, base64
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
-# Shared blocker parser (#1749) — one routine for scout/ingest/claim so the
-# three can't disagree, and it catches the plain `Blocked by: #N` form the
-# bold-only copies skipped. parse_blocked_by handles canonical / inline-bold
-# (#1423) / plain / `Blocked on` header (#1326) + the rich no-blocker sentinel;
-# blocker_ref_records routes cross-repo `[owner/]Repo#N` qualifiers (#1522).
+# Shared blocker parser — one routine for scout/ingest/claim so the
+# three can't disagree. parse_blocked_by handles canonical / inline-bold
+# / plain / `Blocked on` header + the rich no-blocker sentinel;
+# blocker_ref_records routes cross-repo `[owner/]Repo#N` qualifiers.
 from fleet_blocked_by import parse_blocked_by, blocker_ref_records
 
 issue_num = os.environ.get("ISSUE_NUM", "")
@@ -1404,7 +1400,7 @@ check_planning_gates() {
     # comment is one a reviewer has not vetted (or has bounced). Claiming
     # behind one means implementing against a rejected or absent plan.
     #
-    # Belt-and-braces for the scout/ingest retract round-trip (#2740). That
+    # Belt-and-braces for the scout/ingest retract round-trip. That
     # round-trip is the load-bearing fix — it removes `fleet:queued` so the
     # issue leaves the pickable set — but it takes a tick to converge, and a
     # dispatch elected from the previous scout generation would otherwise be
@@ -1421,8 +1417,8 @@ check_planning_gates() {
     # `fleet:needs-plan` issues (that is its whole job) and does not route
     # through here.
     #
-    # `human:review-plan` is NOT in the set: PR #3112 retired that gate and it
-    # is now inert to ingest, so honoring it here would re-arm it.
+    # `human:review-plan` is NOT in the set: it is inert to ingest, so
+    # honoring it here would re-arm a retired gate.
     local issue_num="$1"
     local context="${2:-claim}"
 
@@ -1467,12 +1463,12 @@ check_host_capability() {
     # also covers --stackable-on GL claims. Fail-closed on an unrecognized
     # host (refuse) — a real dispatch host is always mac/linux/windows.
     #
-    # Also runs on amending-claim (#2524): the label is valid on PRs too
+    # Also runs on amending-claim: the label is valid on PRs too
     # (remaining work is GL-host-only — e.g. a design-unblocked resume whose
     # gates only run on GL), and PR numbers share the issues label namespace,
     # so the same fetch works unchanged.
     #
-    # $2 = "issue" opts into the #2820 narrowing, and ONLY `cmd_claim` passes
+    # $2 = "issue" opts into the backend-symmetric narrowing, and ONLY `cmd_claim` passes
     # it. The premise above justifies refusing the GL half; it does not justify
     # refusing a task whose OTHER half is natively Metal-verifiable. A
     # `fleet:backend-symmetric` task must be fixed in both a `.glsl` and its
@@ -1560,7 +1556,7 @@ check_no_foreign_lane_claim() {
     return 0
 }
 
-# Compatibility spelling for the #2801 tests and diagnostics.
+# Compatibility spelling for tests and diagnostics.
 check_no_foreign_review_claim() {
     if [[ -n "${3+x}" ]]; then
         check_no_foreign_lane_claim "$1" "fleet:amending-" "${2:-unknown}" "$3"
@@ -1579,11 +1575,11 @@ backend_symmetric_issue() {
     # FLIPS that: a body-inferred `backend_symmetric` makes *dispatch* more
     # permissive, so without the same backstop here a label-less but
     # symmetric-bodied task would dispatch and then be refused at claim — the
-    # exact claim->refuse->release churn the gate exists to prevent (#1998).
+    # exact claim->refuse->release churn the gate exists to prevent.
     #
     # Keep the two regexes in sync with `_GLSL_FILE_RE` / `_METAL_FILE_RE` in
     # `fleet-state-scout` — a bash/python implementation pair for one predicate
-    # is a #2727-class drift risk, so the suites pin BOTH layers against the
+    # is a drift risk, so the suites pin BOTH layers against the
     # same fixture body text.
     local labels="$1" body_b64="$2"
 
@@ -1647,14 +1643,14 @@ cmd_claim() {
         esac
     done
 
-    # CLOSED-issue gate (#2201): a stale scout cache can list a closed issue
+    # CLOSED-issue gate: a stale scout cache can list a closed issue
     # in tasks.open[]; claiming it strands the fleet:claim-* label. Refuse an
     # explicit CLOSED (soft-degrades on lookup failure — see _refuse_if_closed).
     if ! _refuse_if_closed "$issue_num" "$(repo_from_ns)" "claim"; then
         return 1
     fi
 
-    # Freshness gate (#1810): refuse the claim if the main clone — whose
+    # Freshness gate: refuse the claim if the main clone — whose
     # blocked_by parser + stack-base resolver this script imports — is behind
     # origin/master. A stale parser can miss a blocker and silently false-grant;
     # fail loud instead. rev-parse only (no fetch — fleet-up/dispatcher keep the
@@ -1693,7 +1689,7 @@ cmd_claim() {
                     echo "fleet-claim claim: $stackable_pr returned empty headRefName — refusing claim" >&2
                     return 1
                 fi
-                # Live base-state cross-check (#1751): an OPEN base may still be
+                # Live base-state cross-check: an OPEN base may still be
                 # unsafe to stack on — WIP / design-unblocked / amending (head
                 # diff in flux), awaiting-rebase, a fork, or an empty
                 # claim-commit-only skeleton. Verify against LIVE labels + diff
@@ -1724,12 +1720,9 @@ sys.stdout.write(unsafe_base_reason(labels, files) or "")
                     echo "fleet-claim claim: $stackable_pr is not a stackable base ($stack_reject) — refusing claim" >&2
                     return 1
                 fi
-                # (The #2447 base-ancestry containment gate was retired with
-                # the native-stacked-PRs migration: a native stack self-heals
+                # No base-ancestry containment gate: a native stack self-heals
                 # a base missing a merged blocker via `gh stack sync` / the
-                # server-side cascade. Block preserved at the
-                # `pre-native-stacks` tag; see
-                # scripts/fleet/legacy/stacked-prs/README.md.)
+                # server-side cascade.
                 stackable_branch="$pr_head"
                 ;;
             "")
@@ -1758,7 +1751,7 @@ sys.stdout.write(unsafe_base_reason(labels, files) or "")
         return 1
     fi
 
-    # Planning gate (#2740): refuse a task carrying fleet:needs-plan /
+    # Planning gate: refuse a task carrying fleet:needs-plan /
     # fleet:plan-review. Placed here so it also covers --stackable-on, which
     # shares this sequence.
     if ! check_planning_gates "$issue_num" claim; then
@@ -1767,7 +1760,7 @@ sys.stdout.write(unsafe_base_reason(labels, files) or "")
 
     # Host-capability gate: refuse a fleet:needs-gl-host claim from a
     # Metal-only (macOS) host — it can't run/verify the GL backend. "issue"
-    # opts into the #2820 narrowing: a backend-symmetric task has a natively
+    # opts into the narrowing: a backend-symmetric task has a natively
     # Metal-verifiable half, so a mac pane may claim it here (amending-claim
     # deliberately does not pass the flag — see check_host_capability).
     if ! check_host_capability "$issue_num" issue; then
@@ -1788,7 +1781,7 @@ sys.stdout.write(unsafe_base_reason(labels, files) or "")
     # tie-break (below) covers the active-work window, but the open PR
     # itself is the canonical ownership signal — guarding here catches
     # the case where the claim label was manually cleared while the PR
-    # is still live. Runs on the --stackable-on path too (#2586): the
+    # is still live. Runs on the --stackable-on path too: the
     # matcher below keys on the *claimed* issue number, so the stack
     # base's own PR (named for the blocker, a different issue) can never
     # match here — only a duplicate PR for the claimed issue itself does.
@@ -1810,7 +1803,7 @@ try:
 except Exception:
     prs = []
 for pr in prs:
-    # Second liveness signal (#2419): an untrackable branch name still
+    # Second liveness signal: an untrackable branch name still
     # blocks a duplicate claim when its body closes the issue. Namespaced,
     # so a repo-qualified ref to this same repo counts too — the scout
     # offers such a PR as a stack base from the same grammar, and the guard
@@ -1908,7 +1901,7 @@ for pr in prs:
             echo "claimed: #${issue_num} (slug: $slug, agent: $agent)"
         fi
         # Auto-reserve: bind this worktree to this task so a crashed
-        # iteration resumes on the same pane (#521). Skip if a
+        # iteration resumes on the same pane. Skip if a
         # reservation already exists for this worktree.
         if [[ "$agent" != "unknown" ]]; then
             local existing_resv
@@ -1937,7 +1930,7 @@ cmd_claim_base() {
     # A missing sidecar is ambiguous, and the two readings must not be
     # conflated: answering "master" for a --stackable-on task whose claim was
     # TTL-swept mid-iteration opens the PR against master, so the diff swallows
-    # every commit of the blocker branch (#2703). __remove_claim deletes the
+    # every commit of the blocker branch. __remove_claim deletes the
     # claim dir and its sidecar together, so the claim dir discriminates them:
     #
     #   dir + sidecar   → stackable; print the recorded base
@@ -1995,11 +1988,11 @@ cmd_claim_base() {
 
 cmd_branch_check() {
     # Validate that a branch name encodes its claimed issue number, so the
-    # fleet PR-open flow never mints an untrackable branch. The #2419
-    # incident: `claude/game-worker-3-issue-255` was invisible to the claim
-    # matcher, the liveness sweep judged the claim abandoned, and a duplicate
-    # PR followed. Enforcing at mint time (right beside claim-base, which
-    # already has the issue number in hand) is the durable fix.
+    # fleet PR-open flow never mints an untrackable branch: a branch the claim
+    # matcher cannot tie to its issue reads as abandoned to the liveness sweep
+    # and a duplicate PR follows. Enforcing at mint time (right beside
+    # claim-base, which already has the issue number in hand) is the durable
+    # place.
     #
     # Purely LOCAL — no network — so it can never hang the PR-open path.
     #
@@ -2042,7 +2035,7 @@ sys.exit(1)
 cmd_find_stackable_blockers() {
     # If the task's **Blocked by:** field resolves to exactly one unresolved
     # blocker with exactly one matching open PR (head-branch `claude/<N>-*`,
-    # body `Closes #N`, or the ref being that PR's own number — #2523),
+    # body `Closes #N`, or the ref being that PR's own number),
     # print one tab-separated line:
     #   <pr-url><TAB><headRefName><TAB><author-login><TAB><number>
     # Otherwise print nothing (and exit 0).
@@ -2081,7 +2074,7 @@ cmd_find_stackable_blockers() {
 import base64, json, os, re, subprocess, sys
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
 from fleet_branch_match import branch_matches_issue
-# Shared blocker parser (#1749) — same value the scout / ingest /
+# Shared blocker parser — same value the scout / ingest /
 # check_blockers see, including the plain `Blocked by: #N` form.
 from fleet_blocked_by import parse_blocked_by
 
@@ -2144,17 +2137,17 @@ PYEOF
 
     # Find an open PR whose head-branch starts with claude/<N>-, OR whose
     # body contains "Closes #N" (case-insensitive), OR whose own number IS N
-    # (a `Blocked by: #<PR>` ref naming an issue-less blocker PR — #2523). The
+    # (a `Blocked by: #<PR>` ref naming an issue-less blocker PR). The
     # three arms are the same union the scout's enrich_stackable_blocker_prs
     # offers, so the finder can't advertise a base the offer withholds, or vice
-    # versa (#1751). Exactly one match qualifies; zero or multiple → empty
+    # versa. Exactly one match qualifies; zero or multiple → empty
     # output.
 
     BLOCKER="$blocker" REPO="$repo" python3 <<'PYEOF'
 import json, os, subprocess, sys
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
 from fleet_branch_match import body_closes_issue_in, branch_matches_issue
-# Same reject-state predicate the scout's offer and the claim gate use (#1751),
+# Same reject-state predicate the scout's offer and the claim gate use,
 # so the finder doesn't advertise a base the gate would then refuse — a worker
 # would otherwise burn an iteration claiming a WIP/design-unblocked base only to
 # have --stackable-on bounce it.
@@ -2310,11 +2303,10 @@ _issue_has_unswept_claim() {
 #   seeing it as in-progress and any worker can re-claim. Two such cases, both
 #   of which `issue_pr_state` reports as not-"active":
 #     - "parked" — the matching PR is design-blocked/-unblocked; the worker
-#       released precisely so anyone can resume once the architect answers
-#       (#1488 Fix A).
+#       released precisely so anyone can resume once the architect answers.
 #     - "none"   — no matching PR at all: the decline-after-claim path, where a
 #       worker claims, finds the task unworkable, comments, and releases
-#       without opening a PR (#2732). Retaining the labels there leaves a
+#       without opening a PR. Retaining the labels there leaves a
 #       still-`fleet:queued` task in the scout's in_progress[] bucket,
 #       invisible to every pane's queue walk, until `cleanup --gh`'s
 #       open-issue sweep ages it out at FLEET_CLAIM_STALE_SECS_ISSUES (2h);
@@ -2436,8 +2428,8 @@ cmd_release() {
         # PR's review/merge lifecycle (see AUTHOR-PIPELINE.md "Claim-label
         # lifecycle"): the queue reflects "active work present" until the issue
         # closes. That holds only while a live PR backs the claim — when none
-        # does (design-blocked/-unblocked park, #1488 Fix A; or no PR at all,
-        # the decline-after-claim path, #2732), the lingering labels make the
+        # does (design-blocked/-unblocked park; or no PR at all,
+        # the decline-after-claim path), the lingering labels make the
         # scout treat the issue as in-progress and block re-claim, so we clear
         # both sides here. (cleanup --gh's open-issue sweep, which classifies
         # the same two cases identically, stays the TTL safety net for a claim
@@ -2519,7 +2511,7 @@ _cmd_pr_label_claim() {
     # _write_amend_ownership). Planning is here
     # because it is sole-holder over a fleet:needs-plan issue: without a marker an
     # orphaned label strands that issue for every planner on every host, and the
-    # leak is indistinguishable from a live claim (#2711). stewarding stays out of
+    # leak is indistinguishable from a live claim. stewarding stays out of
     # scope — it runs one pane per host, so the label itself is the cross-host
     # signal and there is no second local claimant to vouch against.
     _stamp_label_claim_liveness "$prefix" "$pr" "$agent" || return 1
@@ -2660,13 +2652,13 @@ cmd_amending_claim() {
     _cross_lane_precheck "fleet:amending-" "amending-claim" "${1:-}" "${2:-unknown}" || cross_lane_rc=$?
     [[ "$cross_lane_rc" -eq 0 || "$cross_lane_rc" -eq 3 ]] || return "$cross_lane_rc"
 
-    # Host-capability backstop (#2524): refuse to amend-claim a PR whose
+    # Host-capability backstop: refuse to amend-claim a PR whose
     # remaining work is GL-host-gated (fleet:needs-gl-host) from a non-GL
     # host — the pane can only burn the claim and release with zero commits.
     # The load-bearing fix is the pickup-side skip in
     # FLEET-FEEDBACK-HANDLING.md; this catches stale-docs / raced claims.
     #
-    # Deliberately flag-less: the #2820 narrowing is issue-claim-only. On a PR
+    # Deliberately flag-less: the backend-symmetric narrowing is issue-claim-only. On a PR
     # `fleet:needs-gl-host` describes the REMAINING work, so "the task also has
     # a Metal half" says nothing about whether what's left is GL-only —
     # narrowing here on a task-axis discriminator would be a category error.
@@ -2771,18 +2763,16 @@ cmd_amending_release() {
 # lock needed (the role runs one pane per host and the label is what the
 # other host sees). NOT fleet:claim-*: that class has issue-lifecycle
 # semantics (retained as audit trail, blocker/model gating in cmd_claim)
-# that mismatch a transient stewardship session (#1663).
+# that mismatch a transient stewardship session.
 cmd_steward_claim()   { _cmd_pr_label_claim   "fleet:stewarding-" "steward-claim"   "${1:-}" "${2:-unknown}" "issue"; }
 cmd_steward_release() { _cmd_pr_label_release "fleet:stewarding-" "steward-release" "${1:-}" "${2:-unknown}" "issue"; }
 
 # Planning claims target a fleet:needs-plan ISSUE before a planner reads the
-# thread (#1932 PR3, re-scope of #1889): a sole-holder lex-min label lock that
-# closes the same-tick double-plan race (#1810 produced three duplicate plan
-# PRs, three add/add conflicts). Same labels endpoint + tie-break as
-# steward-claim; targets the issue, label-only. The cheap already-planned
-# early-out is "a `## Plan` comment already exists" (the redesign's dedup,
-# replacing the old plan-doc-PR cross-check now that plan-doc PRs are gone): if
-# planning already happened on a prior tick, no claim is needed (return 3).
+# thread: a sole-holder lex-min label lock that closes the same-tick
+# double-plan race. Same labels endpoint + tie-break as steward-claim;
+# targets the issue, label-only. The cheap already-planned early-out is "a
+# `## Plan` comment already exists": if planning already happened on a prior
+# tick, no claim is needed (return 3).
 _issue_has_plan_comment() {
     local repo="$1" issue="$2" cnt
     cnt=$(gh issue view "$issue" --repo "$repo" --json comments \
@@ -2815,7 +2805,7 @@ _issue_label_probe() {
 # path gates on this: a worker flips fleet:queued -> fleet:needs-plan before
 # re-claiming, so its presence is the signal that a deliberate re-plan was
 # requested — and its absence stops --replan from grabbing a freshly-planned or
-# never-re-flagged issue nobody asked to re-plan (#1999). Fails CLOSED (unknown
+# never-re-flagged issue nobody asked to re-plan. Fails CLOSED (unknown
 # is not true, so --replan refuses) — a re-plan is an explicit operator request
 # and is safe to make the caller retry.
 _issue_has_needs_plan() {
@@ -2843,7 +2833,7 @@ cmd_planning_claim() {
     local repo
     repo=$(repo_from_ns)
 
-    # CLOSED-issue gate (#2201): a stale needs_plan[] entry can name a closed
+    # CLOSED-issue gate: a stale needs_plan[] entry can name a closed
     # issue; refuse rather than acquire a planning lock on it. CLOSED and
     # fleet:needs-plan are mutually exclusive in practice, so ordering relative
     # to the --replan branch below is not load-bearing.
@@ -2859,7 +2849,7 @@ cmd_planning_claim() {
         gates_live=1
     fi
 
-    # PARK gate (#3034), both branches. fleet:needs-human means a human must act
+    # PARK gate, both branches. fleet:needs-human means a human must act
     # before any planner can proceed; a planner that reached an unplannable
     # verdict parks the issue with it and keeps fleet:needs-plan. Ingest and
     # worker pickup already honor the label, but honoring it there is not enough:
@@ -2878,7 +2868,7 @@ cmd_planning_claim() {
         # A deliberate RE-plan of a stale committed plan. SKIP the
         # `## Plan`-comment dedup early-out — a re-plan EXPECTS a prior plan, so
         # it must ACQUIRE the lock (not be refused) so two opus panes can't both
-        # deep-investigate the same stale-plan refresh (#1999). The lex-min
+        # deep-investigate the same stale-plan refresh. The lex-min
         # label lock then guarantees a sole re-plan holder, exactly like a first
         # plan; the comment-presence early-out would otherwise both leave the
         # re-plan unguarded AND strand it (exit 3 for every planner) until a
@@ -2893,10 +2883,10 @@ cmd_planning_claim() {
             fi
         fi
     else
-        # STALE-CANDIDATE gate (#3034): the first-plan path never checked that
-        # fleet:needs-plan is present at all — only --replan did — so a
-        # dispatcher walking a projection built before the flag was cleared
-        # pre-claims an issue nobody asked to plan, and the worker's own step-2
+        # STALE-CANDIDATE gate: without checking that fleet:needs-plan is
+        # present at all, a dispatcher walking a projection built before the
+        # flag was cleared pre-claims an issue nobody asked to plan, and the
+        # worker's own step-2
         # re-check is the first thing that notices, a whole dispatch later.
         # Refuse before the dedup probe below: the already-planned-but-unflagged
         # shape then exits 1 (fall through to the next pick) instead of exiting 3
@@ -3086,7 +3076,7 @@ cmd_cleanup() {
     # Walk every active claim and check if its linked issue is closed. The
     # repo each claim is checked against comes from repo_from_slug (the slug
     # itself), NOT from the caller's --repo flags above — those only pick
-    # which repos cmd_cleanup_gh's label sweep covers (#2864).
+    # which repos cmd_cleanup_gh's label sweep covers.
     local cleaned=0
     for dir in "$CLAIMS_DIR"/*/; do
         [[ -d "$dir" ]] || continue
@@ -3159,15 +3149,14 @@ _cleanup_sweep_label() {
 
     # Confirmed-orphan fast path for reviewing/resolving claims on PRs and
     # plan-review issues (the
-    # reviewer-side analog of the issue-claim fast path, #2111). These
-    # PR-label claims now drop a local marker ($CLAIMS_DIR/_prlabel-<tag>-
+    # reviewer-side analog of the issue-claim fast path). These
+    # PR-label claims drop a local marker ($CLAIMS_DIR/_prlabel-<tag>-
     # <agent>, content = the claimed target number) on acquire and remove it on
     # release; fleet-down wipes ~/.fleet/claims, so a same-host label with
     # NO matching marker is a claim whose owning session died/restarted
-    # while the GitHub label survived (the #2137/#2138 stuck-reviewer
-    # shape). Sweep it after a short grace instead of the full TTL — the
-    # grace only spares the microsecond race between label-add and the
-    # marker write, and pre-fix claims during the one-time transition.
+    # while the GitHub label survived (a stuck reviewer). Sweep it after a
+    # short grace instead of the full TTL — the grace only spares the
+    # microsecond race between label-add and the marker write.
     # amending is vouched for by its own dispatch-ownership record
     # rather than a _prlabel-* marker, but a CONFIRMED-dead
     # verdict lands in the same orphan lane: the short grace instead
@@ -3350,7 +3339,7 @@ for issue in issues:
     # matching PR that is parked (fleet:design-blocked / -unblocked) does NOT
     # count as active: the worker released its claim to let any worker resume
     # after the architect responds, so its lingering claim is sweepable just
-    # like a no-PR abandon (#1488 Fix B). Only an active (non-parked) matching
+    # like a no-PR abandon. Only an active (non-parked) matching
     # WIP PR (head-branch claude/<N>-*) keeps the claim.
     local claim_issue_stale_secs="${FLEET_CLAIM_STALE_SECS_ISSUES:-7200}"
     # this_host computed once at the top of cmd_cleanup_gh (shared with the
@@ -3376,7 +3365,7 @@ for issue in issues:
 
         [[ -z "$open_claim_plan" ]] && continue
 
-        # `body` feeds the #2419 second liveness signal: issue_pr_state()
+        # `body` feeds the second liveness signal: issue_pr_state()
         # keeps a claim whose PR closes the issue even under a branch name
         # the head-prefix/token matcher can't tie to it.
         open_pr_branches_json=$(gh pr list --repo "$repo" --state open \
@@ -3392,7 +3381,7 @@ for issue in issues:
             # claim the owning host has no record of — the iteration died (swept,
             # crashed, restarted) without releasing the issue-side labels. Such
             # an orphan strands a claimable task as in_progress for the whole
-            # cross-host TTL (the #2102 / #1969 incident: ~2h each). Sweep it now
+            # cross-host TTL. Sweep it now
             # instead of waiting the TTL out. Cross-host claims have no local lock
             # here by definition, so they're left on the TTL + PR-state path —
             # only the owning host can distinguish "dead" from "live elsewhere".
@@ -3423,7 +3412,7 @@ for issue in issues:
 
             # Keep the claim only while a matching PR is *active* work; a
             # parked (design-blocked/-unblocked) or absent matching PR falls
-            # through to the sweep below (#1488 Fix B). Applies to orphans too —
+            # through to the sweep below. Applies to orphans too —
             # if a dead worker left an active open PR, the PR carries the work
             # and re-claiming the issue would race it.
             [[ "$pr_state" == "active" ]] && continue
@@ -3456,7 +3445,7 @@ for issue in issues:
     # Third pass: sweep stale `fleet:stewarding-*` labels off open
     # fleet:epic issues. A stewardship session is one transient
     # epic-steward iteration; the TTL is looser than the PR-label sweep
-    # because an iteration may end by opening a docs PR (#1663). This is
+    # because an iteration may end by opening a docs PR. This is
     # a separate pass — the first pass scans open PRs only and umbrella
     # claims live on issues.
     local steward_stale_secs="${FLEET_CLAIM_STALE_SECS_STEWARD:-3600}"
@@ -3503,7 +3492,7 @@ for issue in issues:
     done
 
     # Fourth pass: sweep stale `fleet:planning-*` labels off open
-    # fleet:needs-plan issues (#1932 PR3). A planning claim is held only while a
+    # fleet:needs-plan issues. A planning claim is held only while a
     # planner reads the thread + posts the `## Plan` comment, then released; a
     # crashed planner would otherwise strand the needs-plan issue (no other
     # planner can claim it). Looser TTL, like the steward pass — a planning
@@ -3540,7 +3529,7 @@ for issue in issues:
             local age=$(( now - added_epoch ))
 
             # Confirmed-orphan fast path, same shape as the reviewing/resolving
-            # sweep above (#2711). planning-claim drops
+            # sweep above. planning-claim drops
             # $CLAIMS_DIR/_prlabel-planning-<agent> (content = the issue number)
             # on acquire and removes it on release, so a SAME-HOST planning label
             # with no matching marker belongs to a session that died before
@@ -3563,7 +3552,7 @@ for issue in issues:
             fi
 
             # The grace spares the microsecond race between the label add and the
-            # marker write, plus pre-fix claims during the one-time transition; a
+            # marker write; a
             # planner mid-thread-read is spared instead by holding a matching
             # marker for the whole claim.
             local _planning_grace="${FLEET_CLAIM_PRLABEL_ORPHAN_GRACE_SECS:-120}"
@@ -3594,7 +3583,7 @@ for issue in issues:
     # with '-', so this shape is unconditionally malformed — no TTL/age/
     # heartbeat check needed, unlike the passes above. `gh label delete`
     # removes the catalog entry AND strips it off every issue/PR carrying
-    # it in one call. See #2441.
+    # it in one call.
     for repo in "${repos[@]}"; do
         local orphan_names
         orphan_names=$(gh label list --repo "$repo" --limit 300 \
@@ -3686,7 +3675,7 @@ except Exception:
 issue = os.environ["ISSUE_NUM"]
 repo = os.environ.get("REPO", "")
 for pr in prs:
-    # #2419 second liveness signal: a Closes #N body keeps the claim even
+    # Second liveness signal: a Closes #N body keeps the claim even
     # when the branch name is untrackable by the matcher. Namespaced, so a
     # repo-qualified ref to this same repo keeps it too.
     if (branch_matches_issue(pr.get("headRefName") or "", issue, repo)
@@ -3700,7 +3689,7 @@ print(0)
 
             # Reservation guard: a live local reservation binds this issue to
             # a worktree whose interrupted session resumes it on the next
-            # dispatch (#521), so its claim label is NOT stale — sweeping it
+            # dispatch, so its claim label is NOT stale — sweeping it
             # here advertises the task as free and another host can re-claim
             # while this host finishes, yielding duplicate PRs. Reservations
             # survive cmd_clear_all, so this guard holds through the boot
@@ -3756,7 +3745,7 @@ replay_orphans() {
 
         local fields
         # Sentinel path via argv, not embedded in the -c source (mingw64
-        # python3 can't open an MSYS path string on native Windows; #3030).
+        # python3 can't open an MSYS path string on native Windows).
         fields=$(python3 -c "
 import json, sys
 try:
@@ -3902,16 +3891,15 @@ cmd_check_stale() {
 # reservations — and reports (or, with --apply, repairs) drift between
 # them. Every pre-existing sweep is single-surface (cmd_cleanup_gh,
 # cmd_check_stale, cmd_reset_sweep_host_claims); this is the pass that
-# catches inconsistencies BETWEEN surfaces. C1 (#1356) landed R1/R3/R4/R5
-# auto-fix + R2 flag. C2 (#1357) adds R6 (fleet:queued+human:owned flag),
-# the periodic scout spawn (see fleet-state-scout), and the deduped
-# fleet:state-drift escalation issue for flag-only drift that persists
-# across N --apply ticks. #1516 adds R7 (heal a stranded WIP's missing
-# design-unblock); #2462 narrows R7 off provably-unactionable PRs and adds
-# R8, the exit half of the fleet:awaiting-infra park it introduces.
-# #2939 adds R9 (class-escalate a fleet:sonnet backing issue while any of its
-# PRs is parked in the design lane, so the opus+-only resume tier has a
-# permitted class to dispatch).
+# catches inconsistencies BETWEEN surfaces. Rules: R1/R3/R4/R5 auto-fix;
+# R2 flag-only, deduped into one fleet:state-drift escalation issue when the
+# drift persists across N --apply ticks; R6 flags fleet:queued+human:owned;
+# R7 heals a stranded WIP's missing design-unblock (narrowed off
+# provably-unactionable PRs); R8 is the exit half of the fleet:awaiting-infra
+# park; R9 class-escalates a fleet:sonnet backing issue while any of its PRs
+# is parked in the design lane, so the opus+-only resume tier has a
+# permitted class to dispatch. The periodic scout spawn lives in
+# fleet-state-scout.
 
 # reconcile_fs_claims_json
 #   Emit the host-local FS claim set as a JSON array, one object per claim
@@ -4081,7 +4069,7 @@ def labelset(obj):
 
 def head_issue(head):
     # claude/<N>-... or claude/game-<N>-... -> N. Routed through the shared
-    # matcher so the game `game-` infix is handled here too (#1425).
+    # matcher so the game `game-` infix is handled here too.
     return issue_from_branch(head or "")
 
 # A PR resolves an issue when its head branch is claude/<N>-* OR its body
@@ -4301,11 +4289,11 @@ for repo in repos:
             # awaiting re-adoption.) fleet:design-proposed parks the same way:
             # the steward released its claim and re-adoption is gated on the
             # umbrella's STEWARD PROPOSAL being answered, not a free pickup
-            # decision (#1663). fleet:awaiting-infra parks the same way: a
+            # decision. fleet:awaiting-infra parks the same way: a
             # worker adjudicated the PR complete-but-unverifiable-on-any-host
             # and released its claim, so claimless IS the correct state and
             # re-adoption waits on the blocker named by the body's
-            # Parked-until: line, not on a pickup decision (#2462).
+            # Parked-until: line, not on a pickup decision.
             if ("fleet:design-blocked" in labs
                     or "fleet:design-proposed" in labs
                     or "fleet:awaiting-infra" in labs):
@@ -4321,7 +4309,7 @@ for repo in repos:
 
 # ---- R7 (auto-heal): half-executed design-unblock — stranded WIP, no label --
 # Symmetric counterpart to R4a (R4a = BOTH design labels present; R7 = NEITHER
-# on a stranded PR). The half-executed-design-unblock state (#1516): an
+# on a stranded PR). The half-executed-design-unblock state: an
 # architect unblock removed fleet:design-blocked but never added
 # fleet:design-unblocked, leaving a fleet:wip PR with no claim and neither
 # design label while its backing issue stays fleet:queued — so the worker
@@ -4335,7 +4323,7 @@ for repo in repos:
 # apply action so reconcile_escalate_drift's flag-only accrual skips it), so a
 # freshly-opened WIP PR still propagating its claim is never touched.
 #
-# Amend-snapshot guard (#1650): amending-claim writes a sidecar at
+# Amend-snapshot guard: amending-claim writes a sidecar at
 # ~/.fleet/amend-snapshots/<pr>.json when an amending claim is acquired; the
 # sidecar is written at claim-acquisition time and deleted when the claim is
 # cleanly released. If a sidecar exists and its mtime is within 2×TTL,
@@ -4350,11 +4338,11 @@ for repo in repos:
         if "fleet:queued" not in issue_labs:
             continue
         # A fleet:blocked backing issue has nothing for the worker resume loop
-        # to act on: under the queue-all model (#1527) a blocked task keeps
+        # to act on: under the queue-all model a blocked task keeps
         # fleet:queued, so healing here re-arms a routing signal toward work
         # that provably cannot proceed — the PR's own blocker is unlanded. Each
         # such re-arm costs one opus dispatch that re-derives "still blocked"
-        # and puts the PR straight back down (#2462: PR #2393 absorbed 7).
+        # and puts the PR straight back down.
         # R2 deliberately still flags this state — it is flag-only and dedupes
         # into one state-drift tracker, so a human keeps the visibility; only
         # the auto-mutating rule is narrowed.
@@ -4369,11 +4357,11 @@ for repo in repos:
             # fleet:design-proposed exempts the PR: it IS a routing signal
             # (steward distribution, not worker resume) — healing it to
             # design-unblocked would un-park every steward proposal within
-            # a few drift ticks (#1663). fleet:awaiting-infra exempts it for
+            # a few drift ticks. fleet:awaiting-infra exempts it for
             # the same reason: it is an explicit worker adjudication that no
             # host can verify the PR until the blocker in its Parked-until:
-            # line lands, and R8 below un-parks it when that issue closes
-            # (#2462). This marker is the ONLY deliberate-removal signal R7
+            # line lands, and R8 below un-parks it when that issue closes.
+            # This marker is the ONLY deliberate-removal signal R7
             # honors — a bare removal of fleet:design-unblocked stays
             # re-heal-able, because R7 cannot distinguish it from a crashed
             # worker whose claim was TTL-swept, and re-arming that IS its job.
@@ -4386,7 +4374,7 @@ for repo in repos:
             # (written within 2×TTL), the PR was recently claimed for amend
             # work whose amending label may have been TTL-swept while the
             # agent was still active. Defer healing until the sidecar expires
-            # or is removed by a clean amending-release (#1650).
+            # or is removed by a clean amending-release.
             snap_path = os.path.join(_amend_snap_dir, "%s.json" % pr["number"])
             if os.path.isfile(snap_path):
                 try:
@@ -4403,7 +4391,7 @@ for repo in repos:
                        "repo": repo, "issue": issue_n})
 
 # ---- R8 (auto-un-park): fleet:awaiting-infra PR whose blocker has closed ----
-# The exit half of the park R7/R2 above exempt (#2462). A worker parks an
+# The exit half of the park R7/R2 above exempt. A worker parks an
 # orphaned WIP PR it has adjudicated complete-but-unverifiable-on-any-host by
 # adding fleet:awaiting-infra and naming the blocker in a `Parked-until: #N`
 # body line. R8 watches for that blocker closing and drops the label, after
@@ -4419,7 +4407,7 @@ for repo in repos:
 # missing/malformed marker yields a FLAG-ONLY finding, so it accrues normally
 # and escalates to a human: an un-parseable park is unrecoverable state, since
 # nothing can ever tell reconcile when it ends.
-# Trailing prose after the number is TOLERATED — "Parked-until: #2449 (the fmt
+# Trailing prose after the number is TOLERATED — "Parked-until: #N (the fmt
 # build wall)" parses — because writing the reason inline is the shape a worker
 # actually produces, and a `$`-anchored matcher would escalate that perfectly
 # good park to a human as malformed.
@@ -4427,8 +4415,8 @@ for repo in repos:
 # What makes the leniency safe is that exactly ONE number is taken per line (the
 # first after the marker), never every #N on it. The sibling `Blocked by:`
 # parser is the cautionary case in the other direction: it collects every ref on
-# the line, so a parenthetical aside read as an extra blocker and stranded the
-# row (#2783). Widen the trailing match, never the capture.
+# the line, so a parenthetical aside reads as an extra blocker and strands the
+# row. Widen the trailing match, never the capture.
 #
 # The line start stays anchored so a mention inside prose is not a marker.
 PARKED_UNTIL_RE = re.compile(r"^[ \t]*Parked-until:[ \t]*#(\d+)\b",
@@ -4461,12 +4449,12 @@ for repo in repos:
 # The design-resume tier is opus+-ONLY (FLEET-FEEDBACK-HANDLING.md tier 4;
 # role-worker.md's step-1 class table), and feedback_pr_class pins a
 # fleet:design-unblocked PR to opus from the PR's labels alone
-# (fleet_task_class.py, the #1885 pin). When the BACKING task is fleet:sonnet
+# (fleet_task_class.py). When the BACKING task is fleet:sonnet
 # those two facts close a loop: the dispatcher only ever launches an opus pane
 # for the PR, and that pane correctly declines because the class gate is a hard
 # rule ("never claim outside your class"). No class is left that can serve the
 # resume, so the work is unreachable by EVERY class — permanently, and silently
-# once the design label is cleared (#2939).
+# once the design label is cleared.
 #
 # R9 holds the invariant the resume tier already assumes: a PR parked in the
 # design lane has an opus+ backing task. It re-tags the backing issue one class
@@ -4603,10 +4591,9 @@ PYEOF
                     echo "  reconcile --apply: R4b removed stale fleet:in-progress on $p_repo #$p_issue"
                     ;;
                 escalate_design_class)
-                    # R9 (#2939). One ATOMIC gh call carrying both flags — a
+                    # R9. One ATOMIC gh call carrying both flags — a
                     # split into two edits re-creates the half-executed-swap
-                    # hazard fleet-transition exists to remove (the incident
-                    # architect-protocol.md step 5 records). gh resolves the delta
+                    # hazard fleet-transition exists to remove. gh resolves the delta
                     # client-side and sends it in one request; the classifier
                     # established `fleet:sonnet` is present one step earlier, so
                     # the --remove-label-of-an-absent-label error cannot fire on
@@ -4655,7 +4642,7 @@ PYEOF
         done < "$findings"
     fi
 
-    # ---- persistence-gated auto-heal of half-executed design-unblock (#1516) --
+    # ---- persistence-gated auto-heal of half-executed design-unblock ---------
     # R7 marks a stranded fleet:wip PR (claimless, neither design label, queued
     # backing issue). reconcile_heal_design_unblock re-adds fleet:design-unblocked
     # only once the state has survived the same tick threshold R2 escalation uses,
@@ -4664,7 +4651,7 @@ PYEOF
         reconcile_heal_design_unblock "$findings" "$state_dir" "${FLEET_RECONCILE_DRIFT_TICKS:-3}"
     fi
 
-    # ---- auto-un-park of infra-parked PRs whose blocker closed (#2462) ----
+    # ---- auto-un-park of infra-parked PRs whose blocker closed ----
     # R8 marks a fleet:awaiting-infra PR whose body names its blocker.
     # reconcile_unpark_infra checks that blocker live and drops the label once
     # it closes, handing the PR back to R7's normal re-surfacing path.
@@ -4911,8 +4898,8 @@ PYEOF
 }
 
 # reconcile_heal_design_unblock <findings-jsonl> <state-dir> <threshold>
-#   Persistence-gated auto-heal for the half-executed-design-unblock state
-#   (#1516). Consumes R7 findings (apply.type == heal_design_unblock): a
+#   Persistence-gated auto-heal for the half-executed-design-unblock state.
+#   Consumes R7 findings (apply.type == heal_design_unblock): a
 #   fleet:wip PR that is claimless and carries NEITHER design label, on a
 #   fleet:queued backing issue — the exact state left when an architect unblock
 #   removed fleet:design-blocked but never added fleet:design-unblocked,
@@ -5023,7 +5010,7 @@ PYEOF
 }
 
 # reconcile_unpark_infra <findings-jsonl>
-#   Apply half of R8 (#2462). Consumes R8 findings carrying an apply action
+#   Apply half of R8. Consumes R8 findings carrying an apply action
 #   (type == unpark_infra): an open PR labelled fleet:awaiting-infra whose body
 #   names its blocker in a `Parked-until: #N` line. Verifies that blocker LIVE
 #   — the reconcile issue surface is fetched filtered to label:"fleet:queued",
@@ -5113,7 +5100,7 @@ cmd_stack() {
         fi
         earlier_in_stack="$earlier_in_stack $issue_num"
 
-        # Planning gate (#2740). `stack` does not route through cmd_claim, so
+        # Planning gate. `stack` does not route through cmd_claim, so
         # it needs its own call. Stack claiming is all-or-nothing, so one
         # gated member refuses the whole chain.
         if ! check_planning_gates "$issue_num" stack; then
@@ -5157,7 +5144,7 @@ cmd_stack() {
     printf '%s\n' "${tasks[@]}" > "$stack_dir/tasks"
     date +%s > "$stack_dir/created"
     # `tasks` holds RAW ids; the namespace lives only in the claim-dir slugs, so
-    # stamp it here too or release-stack has no way to rebuild them (#2857).
+    # stamp it here too or release-stack has no way to rebuild them.
     _ns_token > "$stack_dir/ns"
 
     molecule_write_initial "$agent" "${tasks[@]}"
@@ -5178,7 +5165,7 @@ cmd_release_stack() {
 
     # Resolve the namespace BEFORE the releases and the archive below: those two
     # are the same call, so a wrong namespace here orphans every claim AND
-    # destroys the only record they could be rebuilt from (#2857).
+    # destroys the only record they could be rebuilt from.
     if ! _adopt_recorded_ns release-stack "$agent"; then
         return 2
     fi
@@ -5312,7 +5299,7 @@ molecule_file() {
 #   time); the molecule's `repo:` meta is the fallback for a stack dir already
 #   swept.
 #
-#   Why the namespace has to live in the RECORD (#2857): $MOLECULES_DIR and
+#   Why the namespace has to live in the RECORD: $MOLECULES_DIR and
 #   $CLAIMS_DIR/_stack_<agent>/tasks both key on RAW issue ids, so only
 #   $CLAIMS_DIR's slug carries the namespace. Every game id is also a live
 #   engine id, so a raw id never self-disambiguates — and release-stack's
@@ -5341,7 +5328,7 @@ _adopt_recorded_ns() {
     local cmd_name="$1" agent="$2"
     local rec_ns
     rec_ns=$(_molecule_repo_ns "$agent")
-    # No recorded namespace (pre-#2857 record) — keep legacy behavior exactly.
+    # No recorded namespace — keep the caller-supplied behavior exactly.
     [[ -n "$rec_ns" ]] || return 0
     [[ "$rec_ns" != "$(_ns_token)" ]] || return 0
 
@@ -5475,7 +5462,7 @@ def parse(path):
 def emit(path, meta, tasks, notes):
     out = []
     # `repo` must survive every rewrite — it is the namespace release-stack
-    # resolves the claim slugs from when the caller omits --repo (#2857).
+    # resolves the claim slugs from when the caller omits --repo.
     for k in ('name', 'agent', 'created', 'branch', 'repo'):
         if k in meta:
             out.append(f"{k}: {meta[k]}")
@@ -5568,7 +5555,7 @@ cmd_molecule_list() {
         local agent
         agent=$(basename "$file" .yml)
         # `load` drops meta rows below, so annotate the namespace here — the
-        # task ids it prints are raw and collide across repos (#2857).
+        # task ids it prints are raw and collide across repos.
         local ns
         ns=$(_molecule_repo_ns "$agent")
         echo "molecule: $agent  [${ns:-namespace unrecorded}]  ($file)"
@@ -5626,7 +5613,7 @@ cmd_molecule_resume() {
     # Stdout stays a bare issue id — authoring roles discriminate on it. The
     # namespace goes to stderr, because a resumed cross-repo molecule otherwise
     # hands a fresh context an id with no hint which repo it belongs to and
-    # every game id is also a live engine id (#2857).
+    # every game id is also a live engine id.
     local rec_ns
     rec_ns=$(_molecule_repo_ns "$agent")
     if [[ -n "$rec_ns" ]]; then
@@ -5649,7 +5636,7 @@ cmd_molecule_advance() {
     # advance keys on <agent> alone, so --repo cannot change what it writes.
     # Say so when the caller passes one that contradicts the record, rather than
     # letting them learn "the flag is decorative" and then drop it at
-    # `molecule complete`, where it IS load-bearing (#2857).
+    # `molecule complete`, where it IS load-bearing.
     local rec_ns
     rec_ns=$(_molecule_repo_ns "$agent")
     if [[ -n "$REPO_NS" && -n "$rec_ns" && "$rec_ns" != "$(_ns_token)" ]]; then
@@ -5669,11 +5656,8 @@ cmd_molecule_complete() {
     cmd_release_stack "$agent"
 }
 
-# (cmd_molecule_rebase_downstream and its __rebase_pause_chain helper were
-# retired with the native-stacked-PRs migration: in-molecule downstream
-# cascades are `gh stack sync` / GitHub's server-side rebase now. Block
-# preserved at the `pre-native-stacks` tag; see
-# scripts/fleet/legacy/stacked-prs/README.md.)
+# In-molecule downstream cascades are `gh stack sync` / GitHub's server-side
+# rebase; there is no client-side downstream rebase here.
 
 # --- worktree reservations ------------------------------------------------
 
@@ -5907,8 +5891,8 @@ if model:
     done
 
     case "$model" in
-        # All classes dispatch from the unified worker lane (P2, epic
-        # #1692) — crash-survived reservations of any class count
+        # All classes dispatch from the unified worker lane —
+        # crash-survived reservations of any class count
         # against that lane's concurrency cap.
         fable|opus|sonnet) echo "worker" ;;
         *) ;;
@@ -5925,7 +5909,7 @@ if [[ "${FLEET_CLAIM_LIB:-}" == "1" ]]; then
     return 0 2>/dev/null || exit 0
 fi
 
-# Guard 2 (#2201): `--repo <ns>` is a GLOBAL flag parsed BEFORE the subcommand
+# Guard 2: `--repo <ns>` is a GLOBAL flag parsed BEFORE the subcommand
 # (the REPO_NS loop near the top). Placed AFTER the subcommand it is silently
 # ignored, so `fleet-claim release 45 --repo game` releases the ENGINE #45
 # claim instead of game-45. Hard-error on a trailing --repo token for every
@@ -6561,7 +6545,7 @@ USAGE
         ;;
 esac
 
-# --- Dispatch-outcome marker (#2698) ---------------------------------------
+# --- Dispatch-outcome marker -----------------------------------------------
 #
 # The dispatcher's empty-exit backoff needs to know whether a finished
 # iteration actually did work; wall-clock duration cannot tell it (rationale
@@ -6615,7 +6599,7 @@ _stamp_dispatch_outcome() {
 # reservation-role, molecule list|show) and `reclaim`, a removed stub.
 #
 # planning-claim/-release are included deliberately: the dispatcher takes the
-# pre-claim itself (#2197) with FLEET_CLAIM_FLAG unset, so the stamp is a
+# pre-claim itself with FLEET_CLAIM_FLAG unset, so the stamp is a
 # no-op there, but a planning iteration that posts its plan and releases is
 # productive and should say so on its own rather than resting solely on the
 # dispatch record's plan_issue backstop.

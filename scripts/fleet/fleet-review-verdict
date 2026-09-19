@@ -9,17 +9,13 @@
 # reviewer-verdict lane: refuse to stamp a verdict onto a PR the agent
 # never claimed for review, or whose review body did not land.
 #
-# Why this exists:
-#   The reviewer already takes an atomic fleet:reviewing-<host>-<agent>
-#   claim on the PR it reviews, then applies its verdict with a raw
-#   `fleet-transition verdict-*`. Nothing tied the verdict to the claim, so
-#   an Opus recheck verdict for one PR could (and did — #2141/#2138) land
-#   on a DIFFERENT PR when the reviewer crossed PR numbers mid-iteration.
-#   The result is internally contradictory (approve body + needs-fix label)
-#   and elects the wrong PR into the worker lane, burning a no-op
-#   iteration. Routing the verdict through this wrapper surfaces the
-#   misroute AT THE SOURCE (the wrapper rejects a verdict on an unclaimed
-#   PR) instead of after a wasted dispatch.
+# The reviewer takes an atomic fleet:reviewing-<host>-<agent> claim on the
+#   PR it reviews; a raw `fleet-transition verdict-*` ties nothing to that
+#   claim, so a verdict for one PR can land on a DIFFERENT PR when the
+#   reviewer crosses PR numbers mid-iteration — an internally contradictory
+#   result (approve body + needs-fix label) that elects the wrong PR into the
+#   worker lane. This wrapper rejects a verdict on an unclaimed PR, surfacing
+#   the misroute at the source.
 #
 # Scope: the FIVE reviewer verdict edges only —
 #   verdict-approve, verdict-approve-nits, verdict-needs-fix,
@@ -159,9 +155,9 @@ repo_args=()
 # Omitting --agent is the interactive-human carve-out (no claim to hold).
 # ----------------------------------------------------------------------
 if [[ -n "$agent" ]]; then
-    # Worktree-scope guard (#2402): an --agent verdict must be applied from THAT
-    # agent's own worktree. The #2153/#2326 misroute stamped a verdict / posted a
-    # review body from wrong-tree state; assert cwd is the agent's worktree before
+    # Worktree-scope guard: an --agent verdict must be applied from THAT
+    # agent's own worktree — wrong-tree state stamps a verdict / posts a review
+    # body on the wrong PR. Assert cwd is the agent's worktree before
     # any label write. The no-agent human carve-out never reaches here, so it
     # still runs from anywhere. Fail open if the helper isn't linked yet — the
     # claim check below remains the primary misroute guard.

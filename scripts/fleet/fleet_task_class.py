@@ -124,7 +124,7 @@ FEEDBACK_BLOCKING_LABELS = {"human:needs-fix", "human:blocker", "fleet:needs-fix
 # Hosts that can build/run/verify the OpenGL backend. macOS GL is 4.1 < the
 # shaders' required 4.5, so a Metal-only host genuinely cannot do GL work; a
 # `fleet:needs-gl-host` task (scout field `needs_gl_host`) is unclaimable there
-# and dispatching to it is a guaranteed no-op (#1998).
+# and dispatching to it is a guaranteed no-op.
 GL_CAPABLE_HOSTS = {"linux", "windows"}
 
 # The raw label behind that scout field. PR records carry labels but no derived
@@ -132,7 +132,7 @@ GL_CAPABLE_HOSTS = {"linux", "windows"}
 GL_HOST_LABEL = "fleet:needs-gl-host"
 
 # Hosts that can build/run/verify the Metal backend — the narrowing side of the
-# gate above (#2820). A `fleet:backend-symmetric` task must be fixed in both a
+# gate above. A `fleet:backend-symmetric` task must be fixed in both a
 # `.glsl` and its `.metal` twin, so a Metal host can author both halves,
 # compile-verify both, and natively run + visually verify the Metal one; the GL
 # runtime residual rides the reviewer-stamped `fleet:needs-{linux,windows}-smoke`
@@ -148,12 +148,12 @@ METAL_CAPABLE_HOSTS = {"mac"}
 # smoke projection is host-agnostic on purpose — it is the cross-host record of
 # every repo's outstanding smoke debt — so the host dimension is
 # applied dispatch-side instead, the same layer `_host_incompatible` gates the
-# task (#1998) and feedback-PR (#2695) lanes at. Without it, a standing
-# Windows-pending set kept every non-Windows host dispatching no-op smoke panes
-# on every projection change (#2839).
+# task and feedback-PR lanes at. Without it, a standing Windows-pending set
+# has every non-Windows host dispatching no-op smoke panes on every projection
+# change.
 #
-# Keys are `_current_host()` host keys. #1383 reconciled the host *detectors*,
-# not the spelling, so the `mac` host key maps to a `macos` label; this map is
+# Keys are `_current_host()` host keys. The host detectors agree but the
+# spellings differ: the `mac` host key maps to a `macos` label, and this map is
 # the single place the two vocabularies meet. An unrecognized host key resolves
 # to no label at all — fail-closed, matching `_host_incompatible`'s stance on
 # `unknown`.
@@ -197,7 +197,7 @@ def _current_host():
     # fleet-claim's host_from_uname/derive_host: the FLEET_TEST_HOST seam plus
     # the same uname mapping (MINGW*/MSYS*/CYGWIN*/Windows* all = windows).
     # Inlined rather than imported — module resolution across the scout's ~/bin
-    # symlink vs the dispatcher's FLEET_LIB_DIR is fragile (#1750/#1578), and
+    # symlink vs the dispatcher's FLEET_LIB_DIR is fragile, and
     # fleet-claim's mapping is bash. Fail-closed: an unrecognized host is
     # "unknown" (treated as not GL-capable); real dispatch hosts are always
     # mac/linux/windows.
@@ -217,10 +217,10 @@ def _current_host():
 def _host_incompatible(item, host):
     # An item the body pins to ONE OS (`needs_host`, scout-derived on task
     # records) is unclaimable everywhere else. Finer than the GL gate below,
-    # which treats linux and windows alike: the #1969 shape — "must run on a
-    # Linux host" to bless linux-debug references — passed the GL gate on a
-    # Windows pane, so the dispatcher elected it every tick and each worker
-    # read the body, refused, and exited. Fail-closed on `unknown`, like the
+    # which treats linux and windows alike: a "must run on a Linux host" task
+    # (blessing linux-debug references) passes the GL gate on a Windows pane,
+    # and without this the dispatcher elects it every tick while each worker
+    # reads the body, refuses, and exits. Fail-closed on `unknown`, like the
     # GL gate.
     required_host = item.get("needs_host")
     if required_host and host != required_host:
@@ -239,13 +239,13 @@ def _host_incompatible(item, host):
         return False
     if host in GL_CAPABLE_HOSTS:
         return False
-    # #2820 narrowing — TASK records only, and deliberately so. The scout
+    # Backend-symmetric narrowing — TASK records only, and deliberately so. The scout
     # stamps `backend_symmetric` on tasks and never on PRs, so this reads the
     # field alone and NOT `item["labels"]`: symmetry is an axis of the *task*,
     # while `fleet:needs-gl-host` on a PR is a claim about the *residual*
     # ("what's left needs GL"), stamped by whoever knows what remains. Honoring
-    # the discriminator on a PR would be a category error and would re-inflate
-    # the feedback-election phantom counts #2696 fixed. Pinned by a test that
+    # the discriminator on a PR would be a category error and would inflate
+    # the feedback-election counts with phantom items. Pinned by a test that
     # asserts a PR carrying BOTH labels is still refused on mac.
     return not (host in METAL_CAPABLE_HOSTS and bool(item.get("backend_symmetric")))
 
@@ -255,9 +255,8 @@ def _task_claimable(task, host):
     # issue — parked on a design question or otherwise in flight — so a fresh
     # worker can't start it off the queue. Skipping it here stops the dispatcher
     # churning no-op iterations on a head-of-queue task every candidate refuses,
-    # which was starving lower-class work queued behind it (#1726, the #1640 /
-    # design-blocked PR #1700 incident). The `needs_gl_host` clause does the
-    # same for backend-specific tasks a Metal-only host can't run (#1998).
+    # which starves lower-class work queued behind it. The `needs_gl_host`
+    # clause does the same for backend-specific tasks a Metal-only host can't run.
     #
     # A `blocked` task is claimable ONLY as a stack on its blocker's PR. The
     # scout sets `stackable_blocker_pr` exactly when that blocker has a single
@@ -338,15 +337,15 @@ def feedback_pr_class(labels):
     # clause the scout surfaces a design-unblocked PR as the top feedback item,
     # this resolver routes it to sonnet, and the dispatched sonnet worker
     # refuses tier 4 — a no-op every tick, with opus needs_plan starved behind
-    # it (engine #1885).
+    # it.
     #
     # Reading the PR's labels alone is CORRECT here, not a shortcut: the
     # backing task's class is a task-axis fact that does not belong on a PR
-    # record (#2820's commitment), and the invariant this pin assumes — a PR
+    # record, and the invariant this pin assumes — a PR
     # parked in the design lane has an opus+ backing task — is held on the
     # issue side by `fleet-claim reconcile` R9, which re-tags a fleet:sonnet
     # backing issue one class up while any of its PRs carries a design-lane
-    # label (#2939). Without R9 a fleet:sonnet-backed design resume was
+    # label. Without R9 a fleet:sonnet-backed design resume is
     # unreachable by EVERY class: this pin dispatches only opus, and the opus
     # pane correctly declines on the class gate.
     if "fleet:design-unblocked" in label_set:
@@ -430,15 +429,15 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False):
         if not _declined("conflict", pr, "worker"):
             yield "opus", CLASS_DEFAULT_EFFORT["opus"], "work", _target("conflict", pr)
     for pr in slice_data.get("feedback_prs", []) or []:
-        # Same #1998 host gate tasks get via `_task_claimable`: a
+        # Same host gate tasks get via `_task_claimable`: a
         # `fleet:needs-gl-host` feedback PR has GL-only work left, so
         # role-worker step 1 skips it on a Metal-only host and
-        # `amending-claim` refuses the claim outright (#2524). Counting it
+        # `amending-claim` refuses the claim outright. Counting it
         # would inflate the elected class's claimable count on exactly the
         # hosts that can't serve it — and since `feedback_pr_class` routes
         # `fleet:design-unblocked` to opus, one phantom item is enough to win
         # the class election every tick and starve the other lanes behind the
-        # concurrency cap (#2696).
+        # concurrency cap.
         if _host_incompatible(pr, host):
             continue
         if _declined("feedback", pr, "worker"):
@@ -483,7 +482,7 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False):
 # stamp is not offered again on this host until the item CHANGES — a new
 # comment, a label, a push — or the file ages past the TTL; without this the
 # claim-time gate cannot see a refusal the iteration only discovers by reading
-# the body (the #1969 shape, once assignment made every launch a claim).
+# the body.
 DECLINE_TTL_SECONDS = 7 * 24 * 3600
 
 
@@ -675,7 +674,7 @@ def resolve(slice_data, lane_default, fable_blocked, exclude=()):
     # (`inflight_pr`), GL-only items on a Metal-only host, or host-locked
     # feedback PRs — a lane-default dispatch is a guaranteed no-op, since a
     # fresh worker refuses every one on sight, so the lane goes quiet instead
-    # of churning that no-op every tick (#1726). Any other shape (a claimable
+    # of churning that no-op every tick. Any other shape (a claimable
     # task would have been chosen above; a plain `blocked` host-compatible task
     # may still be stackable; an owned task, an empty/missing slice) returns ''
     # so the dispatcher's lane-default fallthrough keeps covering the stackable
@@ -697,7 +696,7 @@ def main(argv):
     # Every CLI mode prints line-oriented output that bash consumers parse
     # (`mapfile`, `while read`, `=~ ^[0-9]+$` gates). A native-Windows
     # python3 translates "\n" to "\r\n" on a text stdout by default, which
-    # fails those gates on every line but the last (#3022). Pin LF.
+    # fails those gates on every line but the last. Pin LF.
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(newline="\n")
     if argv[1:2] == ["--pick"]:

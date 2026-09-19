@@ -3,20 +3,13 @@
 # handling. Composes the two primitives that MUST run first, in the one
 # correct order, as a single command an agent cannot skip or mis-order.
 #
-# Why this exists
-# ---------------
 # Feedback handling (addressing human:needs-fix / human:blocker /
 # fleet:needs-fix / fleet:has-nits / fleet:design-unblocked on an open
 # PR) is gated by an atomic `fleet:amending-<host>-<agent>` claim that
 # must be acquired FIRST — before reading feedback, checking out, or
-# touching any label. #1349 made that protocol-discipline (the agent is
-# *told* to run `fleet-claim amending-claim` then `fleet-pr-checkout-detached`
-# in order), but nothing stopped an agent from skipping it, mis-ordering
-# it, or forgetting the release-on-failure handling. Every per-path
-# bolt-on race in the history (#1316 verdict-less window, #1310 dual-
-# worker force-push, #1336 two workers both starting the same AMEND)
-# came from a human or agent hand-sequencing claim → checkout and getting
-# the order or the coverage wrong.
+# touching any label. Hand-sequencing claim → checkout gets the order or
+# the release-on-failure coverage wrong (a verdict-less window, a
+# dual-worker force-push, two workers starting the same AMEND).
 #
 # This wrapper makes claim-first the only callable path: win the lex-min
 # claim, then check out detached — so reaching the work is proof the
@@ -46,8 +39,8 @@
 #
 # The amend-snapshot at ~/.fleet/amend-snapshots/<pr>.json is NOT written here:
 # `fleet-claim amending-claim` owns it, because it is the enforced mutex and the
-# record now carries the claiming dispatch's id for the sweep's liveness
-# predicate (#2973). A second writer here would overwrite it with an id-less
+# record carries the claiming dispatch's id for the sweep's liveness
+# predicate. A second writer here would overwrite it with an id-less
 # copy and silently restore the pane-keyed behaviour.
 #
 # Exit status:
