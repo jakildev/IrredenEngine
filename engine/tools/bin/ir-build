@@ -23,6 +23,11 @@
 # against the enclosing engine with -DIRREDEN_USER_PROJECTS=<worktree>.
 # IRREDEN_BUILD_DIR still overrides the build dir in every case.
 #
+# On a build failure, ir-build runs CMake's own cmake_check_build_system
+# check and retries the build once if that regenerated the tree — the case
+# where --target names a target added since the build dir's last configure
+# (e.g. a branch switch that add_subdirectory's a new demo).
+#
 # Usage:
 #   ir-build --target IRShapeDebug
 #   ir-build --target IRCreationDefault
@@ -181,18 +186,47 @@ fi
 
 # Hand off to ir-acquire so the lock is held for exactly the cmake --build
 # call and released by ir-acquire's trap on exit (acquire-late, release-
-# early). exec replaces this process with ir-acquire, which then exec's
-# cmake (or cmd.exe on Windows) — final exit status is cmake's.
-if (( IR_IS_WINDOWS )); then
-    # The cc1plus PATH fix must wrap the actual compile, so the whole
-    # `cmake --build` runs inside cmd.exe. ir-acquire still holds the CPU
-    # slots for the duration. Target names and the build dir contain no
-    # spaces, so $BUILD_DIR is passed unquoted: embedding \"...\" inside the
-    # cmd.exe //c string leaks the literal quote characters into cmake's
-    # --build argument (cmake then treats the quoted path as relative and
-    # prepends the CWD). Unquoted is both correct and space-free here.
-    exec "$IR_ACQUIRE" cpu "$JOBS" -- cmd.exe //c \
-        "set PATH=$IR_MSYS2_MINGW;%PATH% && cmake --build $BUILD_DIR -j$JOBS ${forward_args[*]}"
-else
-    exec "$IR_ACQUIRE" cpu "$JOBS" -- cmake --build "$BUILD_DIR" -j"$JOBS" "${forward_args[@]}"
+# early). run_build's own exit status is cmake's (or cmd.exe's on Windows).
+run_build() {
+    if (( IR_IS_WINDOWS )); then
+        # The cc1plus PATH fix must wrap the actual compile, so the whole
+        # `cmake --build` runs inside cmd.exe. ir-acquire still holds the CPU
+        # slots for the duration. Target names and the build dir contain no
+        # spaces, so $BUILD_DIR is passed unquoted: embedding \"...\" inside
+        # the cmd.exe //c string leaks the literal quote characters into
+        # cmake's --build argument (cmake then treats the quoted path as
+        # relative and prepends the CWD). Unquoted is both correct and
+        # space-free here.
+        "$IR_ACQUIRE" cpu "$JOBS" -- cmd.exe //c \
+            "set PATH=$IR_MSYS2_MINGW;%PATH% && cmake --build $BUILD_DIR -j$JOBS ${forward_args[*]}"
+    else
+        "$IR_ACQUIRE" cpu "$JOBS" -- cmake --build "$BUILD_DIR" -j"$JOBS" "${forward_args[@]}"
+    fi
+}
+
+rc=0
+run_build || rc=$?
+(( rc == 0 )) && exit 0
+
+# The build failed. A target that entered the CMake tree after the build
+# dir's last generate (a branch switch that add_subdirectory's a new demo)
+# fails here with make's "No rule to make target" before make ever reaches
+# CMake's own regenerate check — every already-known target carries that
+# check as a prerequisite, so this path is reached only by the unknown-
+# target case. Run the check directly (bare, outside the CPU lock — it is
+# single-threaded and a no-op run is ~0.07s) rather than re-running the
+# full build speculatively.
+check_rc=0
+check_out="$(ir_cmake --build "$BUILD_DIR" --target cmake_check_build_system 2>&1)" || check_rc=$?
+if (( check_rc != 0 )); then
+    # A real CMakeLists.txt error, not a stale-target miss — that message is
+    # the actionable one.
+    printf '%s\n' "$check_out" >&2
+    exit "$check_rc"
 fi
+if [[ "$check_out" == *"Build files have been written to"* ]]; then
+    echo "ir-build: build tree regenerated for a new target; retrying" >&2
+    run_build
+    exit $?
+fi
+exit "$rc"

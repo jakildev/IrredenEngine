@@ -103,7 +103,11 @@ one-line shims that `exec` them. `ir-build` wraps `cmake --build` in
 `ir-acquire cpu N`; `ir-run` wraps `--auto-screenshot` / `--auto-record` runs
 in `ir-acquire gpu` and `--auto-profile` in `ir-acquire benchmark`, so parallel
 workers serialize on the CPU budget or split it (`IR_FLEET_WORKERS=2` → each
-build caps at `budget/2`). Either name works.
+build caps at `budget/2`). Either name works. On a build failure `ir-build`
+runs CMake's own `cmake_check_build_system` check and retries once if it
+regenerated the tree — the case where `--target` names a target added since
+the last configure — so a target-added branch switch never needs a manual
+`cmake -S`/`-B` reconfigure.
 
 ## Linux / WSL build (fleet environment)
 
