@@ -30,26 +30,57 @@ tie back to the issue, so the liveness sweep judged the live claim abandoned
 and a duplicate PR followed. The token boundaries are explicit
 (`(?:^|[-/])issue-(\\d+)(?=-|$)`) — documented here since `_TOKEN_ISSUE_RE`
 below is the single source every caller imports.
+
+The closing-keyword grammar lives here for the same reason. It comes in a
+bare form (`Closes #N`, `body_closes_issue` / `body_closed_issue_numbers`)
+and a repo-namespaced form (`body_closed_issue_refs` /
+`body_closes_issue_in`) that also honors GitHub's cross-repo
+`Closes OWNER/REPOSITORY#N`. The namespaced form is what the fleet runs:
+an engine issue remedied by a game PR carrying
+`Closes jakildev/IrredenEngine#N` was invisible to both the scout's
+`inflight_pr` gate and `fleet-claim`'s duplicate guard, so the dispatcher
+re-elected the issue and burned a walk-away iteration per trigger until the
+game PR merged (#3520). Every miss in this grammar errs toward INVENTING a
+link, so an unknown `owner/repo` is dropped rather than folded to a bare
+number — see `body_closed_issue_refs`.
 """
 
 import re
 
+# Every spelling of the two fleet repos the call sites carry, folded to the
+# scout's repo key. An explicit allowlist rather than a suffix test: the
+# cross-repo closing grammar (`body_closed_issue_refs`) must DROP a ref to an
+# unknown `owner/repo`, never fold it into one of ours — a suffix fallback
+# that reads "not game" as engine would attribute `someone/other#5` to the
+# engine repo — the fold that kept the qualified form deliberately unmatched
+# before this grammar existed. Lower-cased keys; GitHub slugs are
+# case-insensitive.
+_REPO_KEYS = {
+    "": "engine",
+    "engine": "engine",
+    "irredenengine": "engine",
+    "jakildev/irredenengine": "engine",
+    "game": "game",
+    "irreden": "game",
+    "jakildev/irreden": "game",
+}
+
+
+def repo_key(repo):
+    """Scout repo key ("engine" / "game") for any repo identifier, else None.
+
+    Accepts every identifier the call sites carry: a `--repo` namespace token
+    ("" / "engine" / "game"), the scout's repo key itself, or a GitHub
+    `owner/repo` slug ("jakildev/irreden" vs "jakildev/IrredenEngine"),
+    case-insensitive. An identifier naming neither fleet repo returns None so
+    a caller can refuse it; nothing here guesses.
+    """
+    return _REPO_KEYS.get((repo or "").strip().lower())
+
 
 def _is_game(repo):
-    """True when `repo` names the game repo.
-
-    Accepts any identifier the call sites carry: a `--repo` namespace token
-    ("" / "engine" / "game"), the scout's repo key ("engine" / "game"), or a
-    GitHub `owner/repo` path ("jakildev/irreden" vs "jakildev/IrredenEngine").
-    """
-    r = (repo or "").strip().lower()
-    if not r or r in ("engine", "jakildev/irredenengine"):
-        return False
-    if r in ("game", "irreden", "jakildev/irreden"):
-        return True
-    # owner/repo fallback: the game path ends in "/irreden"; the engine path
-    # ends in "/irredenengine", so the suffix test does not catch it.
-    return r.endswith("/irreden")
+    """True when `repo` names the game repo (see `repo_key`)."""
+    return repo_key(repo) == "game"
 
 
 def _norm_issue(issue):
@@ -137,12 +168,27 @@ def branch_matches_issue(head_ref, issue, repo):
     return False
 
 
-# GitHub closing-keyword prefix, shared by the single-issue and all-refs
-# forms below (case-insensitive `close/closes/closed`, `fix/fixes/fixed`,
-# `resolve/resolves/resolved` + `#`). Kept as one string so the two regex
-# shapes can't drift — the same centralization argument as the branch matcher.
-_CLOSES_KEYWORD = r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#"
-_CLOSES_ANY_RE = re.compile(_CLOSES_KEYWORD + r"(\d+)\b", re.IGNORECASE)
+# GitHub closing-keyword prefix, shared by the single-issue, all-refs and
+# repo-qualified forms below (case-insensitive `close/closes/closed`,
+# `fix/fixes/fixed`, `resolve/resolves/resolved` + whitespace). Kept as one
+# string so the regex shapes can't drift — the same centralization argument
+# as the branch matcher. The `#` is NOT part of the prefix: GitHub also honors
+# `Closes OWNER/REPOSITORY#N` (a cross-repo close), and the optional qualifier
+# sits between the keyword and the `#`.
+_CLOSES_KEYWORD = r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+"
+_CLOSES_ANY_RE = re.compile(_CLOSES_KEYWORD + r"#(\d+)\b", re.IGNORECASE)
+# The qualifier is GitHub's documented `OWNER/REPOSITORY#N` form only, with the
+# slug charset the scout's `_BLOCKER_REF_RE` already uses. It is matched as one
+# token run: `\s+` separates keyword from qualifier, nothing separates the
+# qualifier from `#`, so the `\x00` code placeholder (see strip_code) can only
+# break a match, never bridge one. An owner-less `IrredenEngine#N` is not a
+# GitHub link and does not match; a URL form (`Closes https://github.com/…`)
+# cannot match either (the charset excludes `:`) — both are deliberate misses,
+# the conservative direction (zero corpus uses of either when this landed).
+_CLOSES_REF_RE = re.compile(
+    _CLOSES_KEYWORD + r"(?:([A-Za-z0-9][\w.-]*/[A-Za-z0-9][\w.-]*))?#(\d+)\b",
+    re.IGNORECASE,
+)
 
 # GitHub does not honor a closing keyword inside markdown code — the reference
 # renders as code and never reaches the timeline — so neither may we. Both
@@ -314,7 +360,7 @@ def strip_code(body):
 
 
 def body_closes_issue(body, issue):
-    """True when `body` declares it closes `issue` via a GitHub closing keyword.
+    """True when `body` declares it closes `issue` via a bare `#N` closing ref.
 
     The second liveness signal: an open PR referencing the issue in its body
     counts as live work even when its branch name doesn't match. Matches
@@ -324,10 +370,17 @@ def body_closes_issue(body, issue):
     spans) are not links to GitHub and so are not matched here either — see
     `strip_code`. A missing/empty body simply never fires (backward
     compatible with any caller that hasn't started fetching `body`).
+
+    BARE-ONLY contract: a repo-qualified `Closes owner/repo#N` never matches,
+    even when the qualifier names the PR's own repo. The fleet's live readers
+    (`fleet-claim`'s guards and sweep, the scout's `closes_issues` derivation)
+    go through the namespaced `body_closes_issue_in` / `body_closed_issue_refs`
+    instead (#3520); this form is kept for the same-repo callers and tests
+    that pin the bare grammar.
     """
     if not body:
         return False
-    pat = _CLOSES_KEYWORD + re.escape(_norm_issue(issue)) + r"\b"
+    pat = _CLOSES_KEYWORD + "#" + re.escape(_norm_issue(issue)) + r"\b"
     return re.search(pat, strip_code(body), re.IGNORECASE) is not None
 
 
@@ -340,13 +393,76 @@ def pr_matches_issue(pr, issue, repo):
 
 
 def body_closed_issue_numbers(body):
-    """All issue numbers a closing keyword references in `body`, as ints.
+    """All issue numbers a bare `#N` closing keyword references in `body`.
 
-    Code-stripped on the same terms as `body_closes_issue` — see `strip_code`.
+    Ints, in body order, duplicates kept. Code-stripped on the same terms as
+    `body_closes_issue` — see `strip_code` — and bare-only on the same terms:
+    a repo-qualified ref is not returned. `body_closed_issue_refs` is the
+    namespaced form.
     """
     if not body:
         return []
     return [int(m) for m in _CLOSES_ANY_RE.findall(strip_code(body))]
+
+
+def body_closed_issue_refs(body, pr_repo):
+    """Repo-qualified closing refs in `body`: sorted, deduped `(key, N)` tuples.
+
+    `pr_repo` is the repo the PR lives in (any `repo_key` spelling). A bare
+    `Closes #N` resolves to that repo; `Closes owner/repo#N` resolves through
+    `repo_key`, so a qualified ref to the PR's own repo lands on the same key
+    as a bare one and a ref to the other fleet repo carries that repo's key.
+    A ref to an `owner/repo` that is neither fleet repo is DROPPED — never
+    folded to a bare number, which would suppress the same-numbered task in
+    whichever repo the caller happened to be scanning (the #3316 hazard).
+
+    The scout splits the result into `closes_issues` (own repo, bare ints)
+    and `closes_cross_repo` (other repo) at fetch time; `fleet-claim`'s
+    guards read it through `body_closes_issue_in`. Code-stripped exactly as
+    the bare forms are.
+    """
+    if not body:
+        return []
+    own = repo_key(pr_repo)
+    refs = set()
+    for slug, num in _CLOSES_REF_RE.findall(strip_code(body)):
+        key = repo_key(slug) if slug else own
+        if key is None:
+            continue
+        refs.add((key, int(num)))
+    return sorted(refs)
+
+
+def split_closed_issue_refs(body, pr_repo):
+    """`body_closed_issue_refs` split into (own-repo numbers, other-repo refs).
+
+    The first is a sorted int list of refs resolving to `pr_repo` — the shape
+    the scout stores as `closes_issues`; the second keeps the `(key, N)`
+    tuples that resolve elsewhere. A cross-repo ref is never folded into the
+    first list (see `body_closed_issue_refs`).
+    """
+    own = repo_key(pr_repo)
+    refs = body_closed_issue_refs(body, pr_repo)
+    return ([n for key, n in refs if key == own],
+            [(key, n) for key, n in refs if key != own])
+
+
+def body_closes_issue_in(body, issue, target_repo, pr_repo):
+    """True when a PR in `pr_repo` declares in `body` it closes `issue` in `target_repo`.
+
+    The namespaced form of `body_closes_issue`: `Closes #N` counts only when
+    `target_repo` is the PR's own repo; `Closes owner/repo#N` counts when the
+    slug resolves to `target_repo`. Either repo argument takes any `repo_key`
+    spelling; an unknown one never matches.
+    """
+    target = repo_key(target_repo)
+    if target is None:
+        return False
+    try:
+        n = int(_norm_issue(issue))
+    except ValueError:
+        return False
+    return (target, n) in body_closed_issue_refs(body, pr_repo)
 
 
 # A PR carrying any of these is *parked*: a worker hit a design wall and

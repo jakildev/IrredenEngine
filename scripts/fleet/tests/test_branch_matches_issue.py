@@ -9,7 +9,12 @@ Pins the contract both fleet-claim and fleet-state-scout rely on:
     resolves to the issue so a live PR is not swept into a duplicate claim
   - the token is a *fallback*: a leading-number form suppresses it, so a
     branch naming `issue-<M>` in its topic never dual-attributes to #M
+  - (#3520) the namespaced closing grammar honors GitHub's cross-repo
+    `Closes owner/repo#N`, resolves it to a fleet repo key, and drops an
+    unknown slug rather than folding it to a bare number; the bare forms
+    keep their bare-only contract
 """
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -18,12 +23,16 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from fleet_branch_match import (
     _is_game,
     body_closed_issue_numbers,
+    body_closed_issue_refs,
     body_closes_issue,
+    body_closes_issue_in,
     branch_matches_issue,
     issue_branch_prefixes,
     issue_from_branch,
     issue_pr_state,
     pr_matches_issue,
+    repo_key,
+    split_closed_issue_refs,
 )
 
 
@@ -69,6 +78,18 @@ class BranchMatchesIssue(unittest.TestCase):
             self.assertTrue(_is_game(game), game)
         for engine in ("", "engine", "jakildev/IrredenEngine", "jakildev/irredenengine", None):
             self.assertFalse(_is_game(engine), engine)
+
+    def test_repo_key(self):
+        for game in ("game", "irreden", "jakildev/irreden", "JAKILDEV/IRREDEN", " game "):
+            self.assertEqual(repo_key(game), "game", game)
+        for engine in ("", "engine", "jakildev/IrredenEngine", "jakildev/irredenengine", None):
+            self.assertEqual(repo_key(engine), "engine", engine)
+        # An explicit allowlist, not a suffix test: a slug naming neither fleet
+        # repo is None so the closing grammar can DROP it rather than fold it
+        # into engine.
+        for unknown in ("someone/other", "other/irreden", "jakildev/other",
+                        "IrredenEngine#3255", "jakildev"):
+            self.assertIsNone(repo_key(unknown), unknown)
 
     # --- issue arg accepts int or str (with or without '#') --------------
     def test_issue_arg_int_str_hash(self):
@@ -290,6 +311,169 @@ class BodyClosesIssue(unittest.TestCase):
         self.assertEqual(sorted(body_closed_issue_numbers(body)), [10, 20, 255])
         self.assertEqual(body_closed_issue_numbers(""), [])
         self.assertEqual(body_closed_issue_numbers(None), [])
+
+
+class CrossRepoClosingRefs(unittest.TestCase):
+    """#3520: the namespaced closing grammar and its bare-only counterparts.
+
+    A game PR remedying an engine issue carries GitHub's cross-repo form,
+    `Closes jakildev/IrredenEngine#N`; the bare grammar dropped it at the
+    keyword's trailing `#`, so neither the scout's `inflight_pr` gate nor
+    fleet-claim's duplicate guard saw the PR and the issue was redispatched
+    on every trigger. The namespaced form resolves the qualifier through
+    `repo_key`; a bare `#N` is the PR's own repo.
+    """
+
+    CROSS = "Closes jakildev/IrredenEngine#3255"
+    OWN_QUALIFIED = "Closes jakildev/irreden#3255"
+    # A table row quoting the form: a qualified ref inside a code span is
+    # not a link (GitHub's oracle for that PR lists only its bare close).
+    IN_CODE_SPAN = "| form | `Closes jakildev/IrredenEngine#3255` | unmatched |"
+
+    def test_cross_repo_ref_resolves_to_the_named_repo(self):
+        self.assertEqual(body_closed_issue_refs(self.CROSS, "game"),
+                         [("engine", 3255)])
+        # Every spelling of the PR's own repo the call sites carry.
+        for pr_repo in ("game", "jakildev/irreden", "irreden"):
+            self.assertEqual(body_closed_issue_refs(self.CROSS, pr_repo),
+                             [("engine", 3255)], pr_repo)
+
+    def test_qualified_own_repo_ref_is_a_same_repo_close(self):
+        self.assertEqual(body_closed_issue_refs(self.OWN_QUALIFIED, "game"),
+                         [("game", 3255)])
+        self.assertFalse(body_closes_issue_in(self.OWN_QUALIFIED, 3255, "engine", "game"))
+        self.assertTrue(body_closes_issue_in(self.OWN_QUALIFIED, 3255, "game", "game"))
+
+    def test_bare_ref_is_the_prs_own_repo(self):
+        self.assertEqual(body_closed_issue_refs("Closes #7", "game"), [("game", 7)])
+        self.assertEqual(body_closed_issue_refs("Closes #7", "engine"), [("engine", 7)])
+        self.assertEqual(body_closed_issue_refs("Closes #7", ""), [("engine", 7)])
+        self.assertTrue(body_closes_issue_in("Closes #7", 7, "game", "game"))
+        self.assertFalse(body_closes_issue_in("Closes #7", 7, "engine", "game"))
+
+    def test_slug_is_case_insensitive(self):
+        self.assertEqual(body_closed_issue_refs("closes JAKILDEV/irredenengine#3255", "game"),
+                         [("engine", 3255)])
+
+    def test_unknown_slug_is_dropped_not_folded(self):
+        # Never a bare 5: that would suppress #5 in whichever repo scans it.
+        self.assertEqual(body_closed_issue_refs("Closes someone/other#5", "game"), [])
+        self.assertEqual(body_closed_issue_refs("Closes someone/other#5", "engine"), [])
+        self.assertFalse(body_closes_issue_in("Closes someone/other#5", 5, "engine", "game"))
+        self.assertFalse(body_closes_issue_in("Closes someone/other#5", 5, "game", "game"))
+
+    def test_owner_less_qualifier_is_not_a_link(self):
+        self.assertEqual(body_closed_issue_refs("Closes IrredenEngine#3255", "game"), [])
+        # ...and does not degrade into a bare match either.
+        self.assertEqual(body_closed_issue_numbers("Closes IrredenEngine#3255"), [])
+
+    def test_url_form_is_not_matched(self):
+        body = "Closes https://github.com/jakildev/IrredenEngine/issues/3255"
+        self.assertEqual(body_closed_issue_refs(body, "game"), [])
+
+    def test_qualified_ref_inside_code_is_not_a_link(self):
+        self.assertEqual(body_closed_issue_refs(self.IN_CODE_SPAN, "game"), [])
+        self.assertEqual(body_closed_issue_refs("```\n" + self.CROSS + "\n```", "game"), [])
+
+    def test_a_code_placeholder_cannot_bridge_keyword_and_qualifier(self):
+        # A code span between keyword and qualifier is not a link on GitHub.
+        for body in ("Closes `x` jakildev/IrredenEngine#3255",
+                     "Closes jakildev/IrredenEngine`x`#3255",
+                     "Closes jakildev/`x`IrredenEngine#3255"):
+            self.assertEqual(body_closed_issue_refs(body, "game"), [], body)
+
+    def test_mixed_body_is_sorted_and_deduped(self):
+        body = ("Fixes #20, closes jakildev/IrredenEngine#10, resolves #20, "
+                "fixes jakildev/irreden#3 and closes nobody/else#99")
+        self.assertEqual(body_closed_issue_refs(body, "game"),
+                         [("engine", 10), ("game", 3), ("game", 20)])
+
+    def test_number_is_word_bounded(self):
+        self.assertEqual(body_closed_issue_refs("Closes jakildev/IrredenEngine#3255", "game"),
+                         [("engine", 3255)])
+        self.assertFalse(body_closes_issue_in(self.CROSS, 325, "engine", "game"))
+        self.assertFalse(body_closes_issue_in(self.CROSS, 32550, "engine", "game"))
+
+    def test_issue_arg_forms_and_empty(self):
+        for issue in (3255, "3255", "#3255"):
+            self.assertTrue(body_closes_issue_in(self.CROSS, issue, "engine", "game"), issue)
+        self.assertFalse(body_closes_issue_in(self.CROSS, "abc", "engine", "game"))
+        self.assertFalse(body_closes_issue_in("", 3255, "engine", "game"))
+        self.assertFalse(body_closes_issue_in(None, 3255, "engine", "game"))
+        self.assertEqual(body_closed_issue_refs("", "game"), [])
+        self.assertEqual(body_closed_issue_refs(None, "game"), [])
+
+    def test_unknown_target_or_pr_repo_never_matches(self):
+        self.assertFalse(body_closes_issue_in(self.CROSS, 3255, "someone/other", "game"))
+        # An unknown PR repo cannot own a bare ref; a qualified ref still resolves.
+        self.assertEqual(body_closed_issue_refs("Closes #7", "someone/other"), [])
+        self.assertEqual(body_closed_issue_refs(self.CROSS, "someone/other"),
+                         [("engine", 3255)])
+
+    def test_split_keeps_cross_repo_refs_out_of_the_own_list(self):
+        body = "Closes #20, fixes jakildev/IrredenEngine#10, resolves jakildev/irreden#3"
+        self.assertEqual(split_closed_issue_refs(body, "game"),
+                         ([3, 20], [("engine", 10)]))
+        self.assertEqual(split_closed_issue_refs(body, "engine"),
+                         ([10, 20], [("game", 3)]))
+        self.assertEqual(split_closed_issue_refs("", "game"), ([], []))
+
+    def test_bare_forms_keep_their_bare_only_contract(self):
+        # `body_closed_issue_numbers` / `body_closes_issue` return exactly what
+        # they returned before the namespaced form existed: the qualified forms
+        # are invisible to them (they are not dropped to a bare number either).
+        cases = {
+            self.CROSS: [],
+            self.OWN_QUALIFIED: [],
+            "Closes #7": [7],
+            "closes JAKILDEV/irredenengine#3255": [],
+            "Closes someone/other#5": [],
+            "Closes IrredenEngine#3255": [],
+            self.IN_CODE_SPAN: [],
+            "Fixes #20, closes jakildev/IrredenEngine#10, resolves #20": [20, 20],
+        }
+        for body, expected in cases.items():
+            with self.subTest(body=body[:40]):
+                self.assertEqual(body_closed_issue_numbers(body), expected)
+                self.assertEqual(body_closes_issue(body, 3255), 3255 in expected)
+                self.assertEqual(body_closes_issue(body, 7), 7 in expected)
+
+
+class OracleCorpus(unittest.TestCase):
+    """The recorded open-PR corpus agrees with GitHub's `closingIssuesReferences`.
+
+    `closes_refs_oracle_corpus.json` is a snapshot of every open PR in both
+    fleet repos at the time #3520 landed, paired with the field GitHub itself
+    auto-closes from. It pins the grammar against the ground truth rather
+    than against reasoning about markdown. Re-record it with:
+
+        gh pr list --repo <slug> --state open --limit 300 \
+            --json number,body,closingIssuesReferences
+
+    one call per repo, mapping `repository.name` to the scout key; rows from
+    the private repo keep only their closing tokens.
+    """
+
+    CORPUS = Path(__file__).parent / "closes_refs_oracle_corpus.json"
+
+    def test_grammar_agrees_with_github_on_every_recorded_row(self):
+        rows = json.loads(self.CORPUS.read_text())["rows"]
+        self.assertGreater(len(rows), 0)
+        for row in rows:
+            with self.subTest(repo=row["repo"], number=row["number"]):
+                expected = sorted((k, n) for k, n in row["oracle"])
+                self.assertEqual(body_closed_issue_refs(row["body"], row["repo"]),
+                                 expected)
+
+    def test_corpus_carries_a_live_cross_repo_positive(self):
+        # The pin has teeth only if at least one row fires the cross-repo arm.
+        rows = json.loads(self.CORPUS.read_text())["rows"]
+        cross = [row for row in rows
+                 if any(k != row["repo"] for k, _ in row["oracle"])]
+        self.assertTrue(cross, "no cross-repo row in the corpus")
+        for row in cross:
+            self.assertIn(("engine", 3255),
+                          body_closed_issue_refs(row["body"], row["repo"]))
 
 
 class ClosingKeywordInsideCode(unittest.TestCase):

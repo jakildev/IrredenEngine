@@ -12,6 +12,12 @@ TestBodyClosesLink covers the body arm; the classes above it cover the branch
 arm and must keep passing unmodified, which is what proves the widening
 preserved the original behaviour.
 
+A third link crosses repos (#3520): a PR in the OTHER fleet repo whose body
+carries GitHub's `Closes owner/repo#N` naming this repo. TestCrossRepoCloses
+covers it; `test_cross_repo_isolation` and `test_body_link_does_not_cross_repos`
+stay byte-unchanged as the tripwires that the branch arm and the bare body
+arm still do NOT cross.
+
 Import the function via importlib because the script has no .py extension.
 """
 import importlib.machinery
@@ -27,12 +33,13 @@ _mod = importlib.util.module_from_spec(_spec)
 _loader.exec_module(_mod)
 enrich_inflight_pr_tasks = _mod.enrich_inflight_pr_tasks
 
-# The scout derives pr["closes_issues"] at fetch time with this exact call
-# (fleet-state-scout:369). Fixtures below go through it rather than hardcoding
-# an int list, so the arms actually exercise the closing-keyword grammar —
-# `Fixes`/`Resolves`/lowercase spellings and the int element type included. A
-# hardcoded [2578] would pass even if the parser only ever recognised "Closes".
-body_closed_issue_numbers = _mod.body_closed_issue_numbers
+# The scout derives pr["closes_issues"] and pr["closes_cross_repo"] at fetch
+# time with this exact call (_fetch_prs_graphql). Fixtures below go through it
+# rather than hardcoding an int list, so the arms actually exercise the
+# closing-keyword grammar — `Fixes`/`Resolves`/lowercase spellings and the int
+# element type included. A hardcoded [2578] would pass even if the parser only
+# ever recognised "Closes".
+derive_closes_refs = _mod.derive_closes_refs
 
 
 def _state(engine_tasks=None, engine_prs=None, game_tasks=None, game_prs=None):
@@ -63,10 +70,14 @@ def _pr(number, head_ref, labels=None):
     return {"number": number, "headRefName": head_ref, "labels": labels or []}
 
 
-def _pr_body(number, head_ref, body, labels=None):
-    """A PR record with `closes_issues` derived from `body` as the scout does."""
+def _pr_body(number, head_ref, body, labels=None, repo="engine"):
+    """A PR record with both closes keys derived from `body` as the scout does.
+
+    `repo` is the repo the PR lives in; a trailing keyword with a default so
+    the pre-#3520 call sites (and the byte-unchanged tripwires) still read.
+    """
     pr = _pr(number, head_ref, labels)
-    pr["closes_issues"] = sorted(set(body_closed_issue_numbers(body)))
+    pr["closes_issues"], pr["closes_cross_repo"] = derive_closes_refs(body, repo)
     return pr
 
 
@@ -442,6 +453,113 @@ class TestBodyClosesLink(unittest.TestCase):
         out = state["repos"]["game"]["tasks"]["open"][0]
         self.assertIn("inflight_pr", out)
         self.assertEqual(out["inflight_pr"]["number"], 5)
+
+
+class TestCrossRepoCloses(unittest.TestCase):
+    """#3520: a game PR's `Closes jakildev/IrredenEngine#N` is in-flight for engine #N."""
+
+    CROSS = "Closes jakildev/IrredenEngine#3255"
+
+    def test_game_pr_cross_repo_closes_tags_engine_task(self):
+        # The fired incident: an engine task whose game PR is approved and open.
+        tasks = [_task("#3255")]
+        game_prs = [_pr_body(415, "claude/game-3255-classifier-parity",
+                             self.CROSS, labels=["fleet:approved"], repo="game")]
+        state = _state(engine_tasks=tasks, engine_prs=[], game_prs=game_prs)
+        enrich_inflight_pr_tasks(state)
+        out = state["repos"]["engine"]["tasks"]["open"][0]
+        self.assertEqual(out["inflight_pr"], {
+            "number": 415,
+            "headRefName": "claude/game-3255-classifier-parity",
+            "parked": False,
+            "repo": "game",
+        })
+
+    def test_same_numbered_game_task_is_not_tagged(self):
+        # The qualified ref names the ENGINE repo, so a same-numbered game task is a
+        # different issue and must stay claimable — the branch arm would have
+        # matched `claude/game-3255-…` for the game task, so use a branch that
+        # carries no issue number to isolate the body arm.
+        game_tasks = [_task("#3255")]
+        game_prs = [_pr_body(415, "claude/hand-named", self.CROSS,
+                             labels=["fleet:approved"], repo="game")]
+        state = _state(engine_tasks=[_task("#3255")], engine_prs=[],
+                       game_tasks=game_tasks, game_prs=game_prs)
+        enrich_inflight_pr_tasks(state)
+        self.assertNotIn("inflight_pr",
+                         state["repos"]["game"]["tasks"]["open"][0])
+        self.assertIn("inflight_pr",
+                      state["repos"]["engine"]["tasks"]["open"][0])
+
+    def test_own_repo_match_beats_cross_repo_match(self):
+        tasks = [_task("#3255")]
+        engine_prs = [_pr_body(3300, "claude/3255-own", "", labels=["fleet:wip"])]
+        game_prs = [_pr_body(415, "claude/hand-named", self.CROSS, repo="game")]
+        state = _state(engine_tasks=tasks, engine_prs=engine_prs,
+                       game_prs=game_prs)
+        enrich_inflight_pr_tasks(state)
+        out = state["repos"]["engine"]["tasks"]["open"][0]
+        self.assertEqual(out["inflight_pr"]["number"], 3300)
+        self.assertEqual(out["inflight_pr"]["repo"], "engine")
+
+    def test_schema_3_record_without_key_is_not_a_cross_repo_match(self):
+        # A 304-reused record predating the key: no link, no exception.
+        tasks = [_task("#3255")]
+        game_prs = [_pr(415, "claude/hand-named", labels=["fleet:wip"])]
+        self.assertNotIn("closes_cross_repo", game_prs[0])
+        state = _state(engine_tasks=tasks, engine_prs=[], game_prs=game_prs)
+        enrich_inflight_pr_tasks(state)
+        self.assertNotIn("inflight_pr",
+                         state["repos"]["engine"]["tasks"]["open"][0])
+        game_prs[0]["closes_cross_repo"] = None
+        enrich_inflight_pr_tasks(state)
+        self.assertNotIn("inflight_pr",
+                         state["repos"]["engine"]["tasks"]["open"][0])
+
+    def test_parked_cross_repo_pr_is_tagged_parked(self):
+        tasks = [_task("#3255")]
+        game_prs = [_pr_body(415, "claude/hand-named", self.CROSS,
+                             labels=["fleet:wip", "fleet:design-blocked"],
+                             repo="game")]
+        state = _state(engine_tasks=tasks, engine_prs=[], game_prs=game_prs)
+        enrich_inflight_pr_tasks(state)
+        out = state["repos"]["engine"]["tasks"]["open"][0]
+        self.assertTrue(out["inflight_pr"]["parked"])
+        self.assertEqual(out["inflight_pr"]["repo"], "game")
+
+    def test_same_repo_match_carries_own_repo_key(self):
+        tasks = [_task("#1640")]
+        prs = [_pr(1700, "claude/1640-metal", labels=["fleet:wip"])]
+        state = _state(engine_tasks=tasks, engine_prs=prs)
+        enrich_inflight_pr_tasks(state)
+        self.assertEqual(
+            state["repos"]["engine"]["tasks"]["open"][0]["inflight_pr"]["repo"],
+            "engine")
+
+    def test_mirror_engine_pr_closes_game_issue(self):
+        # Symmetric: an engine PR closing `jakildev/irreden#N` tags game #N.
+        tasks = [_task("#42")]
+        engine_prs = [_pr_body(3600, "claude/hand-named",
+                               "Fixes jakildev/irreden#42", repo="engine")]
+        state = _state(engine_prs=engine_prs, game_tasks=tasks, game_prs=[])
+        enrich_inflight_pr_tasks(state)
+        out = state["repos"]["game"]["tasks"]["open"][0]
+        self.assertEqual(out["inflight_pr"]["number"], 3600)
+        self.assertEqual(out["inflight_pr"]["repo"], "engine")
+
+    def test_qualified_own_repo_ref_lands_in_closes_issues(self):
+        # `Closes jakildev/irreden#N` inside a game PR is a same-repo close;
+        # the derivation folds it into closes_issues, never closes_cross_repo.
+        pr = _pr_body(5, "claude/hand-named", "Closes jakildev/irreden#101",
+                      repo="game")
+        self.assertEqual(pr["closes_issues"], [101])
+        self.assertEqual(pr["closes_cross_repo"], [])
+        state = _state(engine_tasks=[_task("#101")], engine_prs=[],
+                       game_tasks=[_task("#101")], game_prs=[pr])
+        enrich_inflight_pr_tasks(state)
+        self.assertIn("inflight_pr", state["repos"]["game"]["tasks"]["open"][0])
+        self.assertNotIn("inflight_pr",
+                         state["repos"]["engine"]["tasks"]["open"][0])
 
 
 if __name__ == "__main__":
