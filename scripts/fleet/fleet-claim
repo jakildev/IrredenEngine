@@ -614,7 +614,7 @@ _amend_record_fingerprint() {
     snap=$(_amend_snapshot_path "$1")
     [[ -f "$snap" ]] || { echo absent; return 0; }
     python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' \
-        "$snap" 2>/dev/null || echo absent
+        "$snap" 2>/dev/null | tr -d '\r' || echo absent
 }
 
 # _amending_label_owner <label> → "<host>\t<agent>" on stdout; exit 1 when the
@@ -1069,7 +1069,7 @@ except Exception:
 
 for name in sorted(set(names)):
     print(name)
-'; then
+' | tr -d '\r'; then
         echo "fleet-claim: fresh label GET returned invalid JSON on $repo#$target" >&2
         return 1
     fi
@@ -1230,7 +1230,7 @@ body = d.get("body", "") or ""
 print("state\t" + state)
 print("labels\t" + " ".join(labels))
 print("body\t" + base64.b64encode(body.encode("utf-8")).decode("ascii"))
-'
+' | tr -d '\r'
 }
 
 # --- dependency checking --------------------------------------------------
@@ -1679,8 +1679,8 @@ cmd_claim() {
             echo "fleet-claim claim: failed to fetch PR state for $stackable_pr" >&2
             return 1
         fi
-        pr_state=$(printf '%s' "$pr_json" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("state",""))')
-        pr_head=$(printf '%s' "$pr_json" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("headRefName",""))')
+        pr_state=$(printf '%s' "$pr_json" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("state",""))' | tr -d '\r')
+        pr_head=$(printf '%s' "$pr_json" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("headRefName",""))' | tr -d '\r')
         case "$pr_state" in
             MERGED)
                 # Blocker landed in the gap — drop --stackable-on and let
@@ -1819,7 +1819,7 @@ for pr in prs:
             or body_closes_issue_in(pr.get("body") or "", issue, repo, repo)):
         print(pr.get("number"))
         break
-' 2>/dev/null | head -1)
+' 2>/dev/null | tr -d '\r' | head -1)
             if [[ -n "$existing_pr" ]]; then
                 echo "fleet-claim claim: #${issue_num} already has open PR #${existing_pr} (branch or Closes #${issue_num}); refusing duplicate claim" >&2
                 return 1
@@ -1853,7 +1853,7 @@ for pr in prs:
     if body_closes_issue_in(pr.get("body") or "", issue, this_repo, other_repo):
         print(pr.get("number"))
         break
-' 2>/dev/null | head -1)
+' 2>/dev/null | tr -d '\r' | head -1)
             if [[ -n "$cross_repo_pr" ]]; then
                 echo "fleet-claim claim: #${issue_num} already has open PR ${other_repo_for_pr_check}#${cross_repo_pr} (Closes ${repo_for_pr_check}#${issue_num}); refusing duplicate claim" >&2
                 return 1
@@ -2223,7 +2223,7 @@ try:
 except Exception:
     prs = []
 print(issue_pr_state(prs, os.environ["ISSUE_NUM"], os.environ.get("REPO", "")))
-' 2>/dev/null || echo none
+' 2>/dev/null | tr -d '\r' || echo none
 }
 
 # _issue_wip_pr_numbers_from <prs-json> <issue-num> <repo>
@@ -2250,7 +2250,7 @@ for pr in prs:
         continue
     if pr_matches_issue(pr, os.environ["ISSUE_NUM"], os.environ.get("REPO", "")) and "fleet:wip" in labels and pr.get("number"):
         print(pr["number"])
-' 2>/dev/null
+' 2>/dev/null | tr -d '\r'
 }
 
 # _issue_has_unswept_claim <repo> <issue-num> <self-label> <scope> [stale-secs] [now]
@@ -3766,7 +3766,7 @@ try:
     print(d.get('label',''))
 except Exception:
     pass
-" "$sentinel" 2>/dev/null || echo "")
+" "$sentinel" 2>/dev/null | tr -d '\r' || echo "")
 
         local repo issue label
         repo=$(echo "$fields"  | sed -n '1p')
@@ -4551,7 +4551,7 @@ PYEOF
         local line atype
         while IFS= read -r line; do
             [[ -z "$line" ]] && continue
-            atype=$(printf '%s' "$line" | python3 -c 'import sys,json; a=(json.load(sys.stdin).get("apply") or {}); print(a.get("type",""))')
+            atype=$(printf '%s' "$line" | python3 -c 'import sys,json; a=(json.load(sys.stdin).get("apply") or {}); print(a.get("type",""))' | tr -d '\r')
             case "$atype" in
                 stale_claim)
                     local s_slug s_issue s_repo s_label s_owner s_reserved
@@ -4724,7 +4724,7 @@ PYEOF
 #   Echo apply.<key> from one finding JSONL line (apply helper for cmd_reconcile).
 reconcile_apply_field() {
     printf '%s' "$1" | KEY="$2" python3 -c \
-        'import sys,os,json; a=(json.load(sys.stdin).get("apply") or {}); print(a.get(os.environ["KEY"],""))'
+        'import sys,os,json; a=(json.load(sys.stdin).get("apply") or {}); print(a.get(os.environ["KEY"],""))' | tr -d '\r'
 }
 
 # reconcile_open_drift_tracker
@@ -5902,7 +5902,7 @@ body = d.get("body", "") or ""
 model = declared_class(body)
 if model:
     print(model)
-')
+' | tr -d '\r')
         [[ -n "$model" ]] && break
     done
 
