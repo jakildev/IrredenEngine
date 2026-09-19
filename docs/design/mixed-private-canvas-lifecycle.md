@@ -35,6 +35,20 @@ A shape targeting that canvas therefore rasters:
   through `IRSystem::clearCanvasAndDistances`, the same sentinel and Metal
   scratch mirror the voxel pass uses.
 
+The contract is exact on canvases whose
+`C_TriangleCanvasTextures::renderedCellOffset_` is zero: plain `DETACHED` and
+shape-only canvases. A revoxelized canvas stores the pool's half-cell phase
+there (-0.5 per even-sized centered axis at density 1), and the composite
+adds that phase to the canvas placement and, scaled into its depth units, to
+the canvas depth; the shape pass consumes neither. On such a canvas a shape
+therefore sits one texel off in-plane when the pool's axes have mixed parity
+and 1.5 world units nearer for an even cube, against the composite and
+against the voxel texels of the same canvas alike. Consuming the phase (the
+canvas offset in-plane and a per-canvas depth bias in the shape frame data,
+with its Metal twin) is the campaign's next mixed-canvas slice; until then
+the storage caveat on `sampleLayout_` stands and the fixtures here keep the
+markers on a plain `DETACHED` canvas or hidden inside a revoxelized one.
+
 `SHAPES_TO_TRIXEL` runs after `VOXEL_TO_TRIXEL_STAGE_1` in a pipeline that
 mixes the two producers on one canvas; the ordering table in
 `engine/prefabs/irreden/render/CLAUDE.md` carries the row. Canvases with no
@@ -107,3 +121,7 @@ diamond from every hit pixel and the marker dilates to about twice its area
 campaign's SDF extent and ownership item, not the lifecycle; the strict numbers
 are the target that item drives to zero. AO on a marker-free wireframe frame is
 uniform, so the AO overlay is not a raster-survival control for this fixture.
+The gate places the focused owner at the world origin, so the owner-relative
+subtraction runs with a zero owner; a translated-owner capture, or a CPU
+identity test against the composite's placement, would pin its sign and is
+owed with the phase item above.

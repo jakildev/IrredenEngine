@@ -109,6 +109,6 @@ Paths relative to `engine/prefabs/irreden/`.
 Each moves to the member-on-`System<N>` form (preferred) or `SystemParams`.
 
 Not deviations (allowed scratch, listed so a sweep doesn't re-flag them):
-`render/systems/system_shapes_to_trixel.hpp:459` and
+`render/systems/system_shapes_to_trixel.hpp` (`buildAndUploadTileDescriptors`) and
 `render/systems/system_voxel_to_trixel.hpp:58` — `static thread_local`
 buffers reset on entry.

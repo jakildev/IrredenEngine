@@ -279,7 +279,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                     clearCanvasAndDistances(canvasId, canvasTextures);
                 }
             } else {
-                canvasTextures.clear();
+                clearCanvasAndDistances(canvasId, canvasTextures);
                 vec3 entityPos = vec3(gpuShapes[0].worldPosition);
                 frameData_.cameraTrixelOffset = -pos3DtoPos2DIso(entityPos);
             }

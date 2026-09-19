@@ -25,6 +25,7 @@
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/camera_controls.hpp>
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
+#include <irreden/render/canvas_clear.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 
 // Commands
