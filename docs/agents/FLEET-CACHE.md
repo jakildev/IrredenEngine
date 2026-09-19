@@ -252,18 +252,6 @@ re-probes. Each boot logs its resolved caps and models on a `config:` line
 beside `started`; `fleet-dispatcher --print-config` prints the same line
 from disk.
 
-`fleet-up` has the one-shot form of the same hazard: it fast-forwards the
-main clone partway through its own run, and `~/bin/fleet-up` resolves into
-that clone, so the rest of the boot would execute the pre-merge script.
-It hashes its own surface (`fleet-up` plus the helpers it sourced, via
-`fleet_surface_hash`) across `restore_main_clone_to_master` and `exec`s
-the merged script once under its launch environment when the hash moved,
-printing `re-running the merged script`. `FLEET_UP_REEXEC=1` marks the
-second pass, which never re-execs again; there is no debounce, probe, or
-cap because the boot runs once and the sentinel bounds it. The rationale
-that binds edits to `fleet-up`'s head is in
-[`docs/design/fleet-tooling-contracts.md`](../design/fleet-tooling-contracts.md).
-
 To check what a daemon is actually running, compare its revision against
 the on-disk source:
 

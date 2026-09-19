@@ -159,10 +159,14 @@ sizing and N is 1).
 the bash executing it, so the advance leaves the rest of the boot running
 the pre-merge script. Snapshotting the script and exec'ing the copy would
 make the boot deterministic but still run the old code; the contract is
-instead that everything past the advance runs from the merged tree
-(`fleet_up_reexec_if_stale`, the one-shot sibling of the daemons' self-reload
-in [`FLEET-CACHE.md`](../agents/FLEET-CACHE.md) §"Daemon source
-staleness"). Two consequences bind edits to `fleet-up`: the head above the
+instead that everything past the advance runs from the merged tree:
+`fleet_up_reexec_if_stale` hashes the script and the helpers it sourced
+(`fleet_surface_hash`) across the advance and `exec`s the merged script once
+when the hash moved, with `FLEET_UP_REEXEC=1` marking a second pass that
+never re-execs again — the one-shot sibling of the daemons' self-reload in
+[`FLEET-CACHE.md`](../agents/FLEET-CACHE.md) §"Daemon source staleness",
+with no debounce, probe, or cap because the boot runs once and the sentinel
+bounds it. Two consequences bind edits to `fleet-up`: the head above the
 advance runs twice on a stale boot, so it must stay idempotent — a second
 pass over the same conf, argument list, and usage cache has to land on the
 same state; and the re-exec runs under the launch environment, not the first
