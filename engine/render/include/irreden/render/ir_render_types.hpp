@@ -1011,16 +1011,9 @@ struct GPUShapesFrameData {
     // owner-relative content the composite places at the continuous yaw)
     // turn it on; other canvases keep their faceDeform path. Occupies the first word of
     // the former 8-byte std140 alignment pad before faceDeform (faceDeform stays
-    // at offset 80); canvasPhaseDepth takes the second word.
+    // at offset 80); the second word remains explicit pad.
     int smoothYawEnabled = 0;
-    // View-local depth (x+y+z, world units) of the canvas's half-cell phase
-    // (C_TriangleCanvasTextures::renderedCellOffset_). The composite adds the
-    // phase to an entity canvas's placement and depth so the voxel texels,
-    // rastered at rounded cells, land on their resampled centres; a shape
-    // rastered into the same canvas carries no phase, so the shapes shader
-    // subtracts this depth (scaled to its subdivided units) and the frame
-    // offset carries the in-plane part. Zero on every other canvas.
-    float canvasPhaseDepth = 0.0f;
+    int _faceDeformPad_ = 0;
     // Per-face residual-yaw deformation packed column-major: .xy = col0,
     // .zw = col1 of IRMath::faceDeformationMatrix(face, residualYaw).
     // Identity (col0=(1,0), col1=(0,1)) when residualYaw == 0. Indexed by

@@ -27,14 +27,10 @@ struct ShapesFrameData {
     // Smooth camera Z-yaw. 1 = continuous-yaw SDF path (full visualYaw query +
     // continuous center reposition + yawedIsoDistance depth); 0 = cardinal
     // rasterYaw + faceDeform path. Set per canvas (main world canvas only).
-    // smoothYawEnabled and canvasPhaseDepth fill the 8 bytes before faceDeform so
+    // smoothYawEnabled and _faceDeformPad fill the 8 bytes before faceDeform so
     // the layout matches the std140 block and the C++ struct.
     int smoothYawEnabled;
-    // Depth (x+y+z, world units) of the canvas's half-cell phase, which the
-    // composite adds to the whole canvas; subtracted here so a shape lands at
-    // its true depth beside the phase-carrying voxel texels. Zero except on a
-    // revoxelized entity canvas.
-    float canvasPhaseDepth;
+    int _faceDeformPad;
     // Per-face deformation matrix packed column-major: .xy = col0, .zw = col1
     // of IRMath::faceDeformationMatrix(face, residualYaw). Identity when
     // residualYaw==0. Mirrors the GLSL `vec4 faceDeform[3]`.
@@ -1006,12 +1002,10 @@ kernel void c_shapes_to_trixel(
         // SUBDIVIDED to keep the sub-pixel depth gradient at high zoom; the
         // per-axis voxel scatter (peraxis_scatter) scales to the same subdivided
         // magnitude so SDF + voxels co-sort at every zoom.
-        baseDepth = roundHalfUp(yawedIsoDistance(worldSurface, frameData.visualYaw)
-                                - frameData.canvasPhaseDepth * float(sub));
+        baseDepth = roundHalfUp(yawedIsoDistance(worldSurface, frameData.visualYaw));
     } else {
         const int originDistance = originScaled.x + originScaled.y + originScaled.z;
-        baseDepth = surfaceD + originDistance
-                    - roundHalfUp(frameData.canvasPhaseDepth * float(sub));
+        baseDepth = surfaceD + originDistance;
     }
     float4 baseColor = unpackColor(shape.color);
 

@@ -12,9 +12,11 @@ voxel producer's faces (the wireframe's authored faces, or the resampled
 cells of a revoxelized solid) and the unit SDF box markers (`--markers`, the
 demo's --mixed-shape-at and three units along +x; default world (3,0,0) and
 (6,0,0)) are projected independently and depth-tested per pixel (view-frame
-x+y+z), so every interior pixel has one expected owner. `--owner` is the
-focused solid's world translation (the demo's --focus-offset); the markers
-stay world entities.
+x+y+z), so every interior pixel has one expected owner. On a revoxelized
+canvas a marker is expected at the lattice cell nearest its viewed centre
+(cells sit at integer + anchor), the cell the shape pass snaps it to and the
+composite places. `--owner` is the focused solid's world translation (the
+demo's --focus-offset); the markers stay world entities.
 
 The lifecycle contract (the default `pass`): the frame is pixel-exact outside
 a two-texel guard around each marker (the SDF raster writes a 2x3 texel diamond
@@ -45,7 +47,7 @@ from pathlib import Path
 
 from render_fixture_geometry import iso, rotate, source_centers, view
 from render_metric_util import raster_polygon_depth, read_png, write_png
-from render_revox_lattice import FIXTURES, Resample, composed_rotation
+from render_revox_lattice import FIXTURES, Resample, composed_rotation, round_half_up
 
 FRAME_ALBEDO = (150, 90, 235)
 FIXTURE_ALBEDO = {
@@ -81,7 +83,15 @@ def off_frame(polygon, width, height):
     return any(x < 1 or y < 1 or x >= width - 1 or y >= height - 1 for x, y, _ in polygon)
 
 
-def voxel_faces(yaw, identity, fixture, owner):
+def lattice(yaw, identity, fixture):
+    """The revoxelized fixture's destination lattice, or None for the orbit frame."""
+    if fixture is None:
+        return None
+    rotation, _ = composed_rotation(FIXTURES[fixture], yaw, identity)
+    return Resample(FIXTURES[fixture], rotation)
+
+
+def voxel_faces(yaw, identity, resample, owner):
     """Exposed camera-facing faces of the voxel producer as view-frame unit cubes.
 
     Yields (center, orient, yaw, covered): the orbit frame is authored in world
@@ -91,18 +101,28 @@ def voxel_faces(yaw, identity, fixture, owner):
     the centers of the occupied lattice neighbours, whose shared faces are
     hidden.
     """
-    if fixture is None:
+    if resample is None:
         centers = set(source_centers("frame"))
         for center in centers:
             yield center, (lambda p: rotate(p, identity)), yaw, centers
         return
-    rotation, _ = composed_rotation(FIXTURES[fixture], yaw, identity)
-    resample = Resample(FIXTURES[fixture], rotation)
     shift = view(owner, yaw)
     cells = resample.occupied()
     centers = {tuple(cell[i] + resample.anchor[i] + shift[i] for i in range(3)) for cell in cells}
     for center in centers:
         yield center, (lambda p: p), 0.0, centers
+
+
+def marker_cell(center, yaw, resample):
+    """Where a unit SDF marker displays: on a revoxelized canvas it voxelizes onto
+    the canvas lattice (the cell nearest its viewed centre, in the lattice
+    whose cells sit at integer + anchor), and the composite places that cell.
+    On the orbit frame's canvas it stays at its viewed position."""
+    viewed = view(center, yaw)
+    if resample is None:
+        return viewed
+    return tuple(round_half_up(viewed[i] - resample.anchor[i]) + resample.anchor[i]
+                 for i in range(3))
 
 
 def expected_image(width, height, yaw, identity, scale, origin, fixture=None,
@@ -111,7 +131,8 @@ def expected_image(width, height, yaw, identity, scale, origin, fixture=None,
     frame_labels, marker_labels = bytearray(size), bytearray(size)
     frame_depth, marker_depth = [FAR] * size, [FAR] * size
     clipped = False
-    for center, orient, face_yaw, covered in voxel_faces(yaw, identity, fixture, owner):
+    resample = lattice(yaw, identity, fixture)
+    for center, orient, face_yaw, covered in voxel_faces(yaw, identity, resample, owner):
         for axis, sign, polygon in cube_faces(center, orient, face_yaw, scale, origin):
             neighbor = tuple(c + (sign if i == axis else 0) for i, c in enumerate(center))
             if neighbor in covered:
@@ -121,7 +142,8 @@ def expected_image(width, height, yaw, identity, scale, origin, fixture=None,
     guards = []
     for center in markers:
         corners = []
-        for _, _, polygon in cube_faces(center, lambda p: p, yaw, scale, origin):
+        for _, _, polygon in cube_faces(marker_cell(center, yaw, resample), lambda p: p, 0.0,
+                                        scale, origin):
             clipped |= off_frame(polygon, width, height)
             corners.extend((x, y) for x, y, _ in polygon)
             raster_polygon_depth(marker_labels, marker_depth, width, height, polygon,

@@ -265,7 +265,6 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             auto &canvasTextures = *texturesOpt.value();
 
             const bool entityCanvas = entityCanvasOrigins_.contains(canvasId);
-            frameData_.canvasPhaseDepth = 0.0f;
             if (canvasId == mainCanvas) {
                 frameData_.cameraTrixelOffset = IRRender::getEffectiveCameraIso();
             } else if (entityCanvas) {
@@ -275,18 +274,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                 // rastered a pool into it this frame (renderedSubdivisions_ > 0),
                 // so this pass must run after it. A shape-only canvas is reset
                 // here through the same sentinel + Metal scratch mirror.
-                //
-                // The composite places and depth-sorts the whole canvas at the
-                // owner plus the voxel raster's half-cell phase
-                // (renderedCellOffset_, view-local), which the voxel texels
-                // carry implicitly; a shape carries none, so its raster is
-                // shifted by the phase's iso projection and depth the other
-                // way. The shift is whole trixels: a phase whose iso projection
-                // is fractional (one even axis among x and y) leaves the shape
-                // up to half a trixel from the composite's placement.
-                const vec3 phase = canvasTextures.renderedCellOffset_;
-                frameData_.cameraTrixelOffset = -pos3DtoPos2DIso(phase);
-                frameData_.canvasPhaseDepth = phase.x + phase.y + phase.z;
+                frameData_.cameraTrixelOffset = vec2(0.0f);
                 if (canvasTextures.renderedSubdivisions_ == 0) {
                     clearCanvasAndDistances(canvasId, canvasTextures);
                 }
@@ -333,6 +321,32 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             frameData_.faceDeform[IRMath::kXFace] = vec4(fdX[0], fdX[1]);
             frameData_.faceDeform[IRMath::kYFace] = vec4(fdY[0], fdY[1]);
             frameData_.faceDeform[IRMath::kZFace] = vec4(fdZ[0], fdZ[1]);
+
+            if (entityCanvas) {
+                // The voxel raster stores a revoxelized canvas's cells at
+                // rounded lattice positions and the composite places the whole
+                // canvas at the owner plus the half-cell phase
+                // (renderedCellOffset_, view-local), so every displayed cell
+                // sits at integer + phase. A shape rastered into the canvas
+                // snaps to that same lattice: its owner offset loses the phase
+                // (rotated into the world frame the offset is projected in),
+                // the shader's per-axis rounding lands it on a lattice cell,
+                // and the composite's phase puts the cell back where the voxels
+                // are. Shifting the raster by the phase's iso projection
+                // instead keeps the centroid but breaks the trixel parity the
+                // local-triangle gather reads, so the shape's hexagons come out
+                // as bow ties. Zero on a plain DETACHED or shape-only canvas.
+                const vec3 phase = canvasTextures.renderedCellOffset_;
+                const vec4 worldPhase(
+                    yawCosVisual_ * phase.x - yawSinVisual_ * phase.y,
+                    yawSinVisual_ * phase.x + yawCosVisual_ * phase.y,
+                    phase.z,
+                    0.0f
+                );
+                for (GPUShapeDescriptor &shape : gpuShapes) {
+                    shape.worldPosition -= worldPhase;
+                }
+            }
 
             shapeDescBuf_
                 ->subData(0, gpuShapes.size() * sizeof(GPUShapeDescriptor), gpuShapes.data());
