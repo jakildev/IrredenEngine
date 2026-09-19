@@ -84,7 +84,7 @@ Use the validation index's jitter probe and the camera contracts below.
 - Every Metal full-screen or quad vertex stage negates clip-space
   `position.y`; its GLSL twin does not. This is the backend origin adapter.
 
-### Trixel→framebuffer hover parity shift
+### Trixel→framebuffer hover: raw texel, no parity shift
 
 - Normal voxel display preserves voxel-face footprints; raw trixel texels are
   a debugging view, not the presentation default. Revoxelized private canvases
@@ -94,15 +94,20 @@ Use the validation index's jitter probe and the camera contracts below.
   [local-triangle contract](../../docs/design/detached-local-triangles.md).
   Lattice agreement alone cannot certify connected source faces; use the
   [source-face gate](../../docs/design/trixel-face-reconstruction-validation.md).
-- General canvas producers retain their rectangular storage contract. Their
-  parity shift applies only to the hover **compare** (`originShifted` vs the
-  CPU `mouseTrixelPositionWorld()` index); every texture read in the gather —
-  color, depth, tier and the hover entity id — samples the raw texel, so the
-  id a hovered fragment reports is the texel it displays. Read the
+- General canvas producers retain their rectangular storage contract.
+  **Hover identity follows display identity:** the gather hover-gates on
+  `floor(displayOrigin) == ` the CPU's raw cursor texel
+  (`IRRender::mouseCanvasTexelWorld()`) and every texture read — color, depth,
+  tier and the hover entity id — samples that same texel, so every hovered
+  fragment reports the id of what it displays and the non-atomic
+  `HoveredEntityIdBuffer` write is value-identical across writers. The
+  triangle-lattice shift (`trixelFramebufferSamplePosition`,
+  `mouseTrixelPositionWorld()`) is not in the hover path: its cell straddles
+  two raw texel rows. Read the
   [parity-shift design](../../docs/design/trixel-parity-shift-442-investigation.md)
   before changing that coordinate path; the `hover_parity_*` shots of
-  `IRShapeDebug --gui-test` (`GuiTest::hoveredEntityId`) are the executor
-  for the id read.
+  `IRShapeDebug --gui-test` (`GuiTest::hoveredEntityId`, the
+  `_row_above_occupied` shot over three frames) are the executor.
 - CPU frame-data structs and shader blocks must agree on field order,
   `std140` padding, and binding index. Every hard-coded binding has a matching
   `kBufferIndex_*` constant.

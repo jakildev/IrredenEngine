@@ -242,10 +242,10 @@ vec2 getMainCanvasSizeTrixels();
 /// framebuffer pixel maps directly into the trixel-canvas frame. The 2D
 /// variants stay in the **trixel canvas frame**: under non-zero rasterYaw
 /// the canvas iso position = `M · R_z(rasterYaw) · world`, not `M · world`.
-/// The trixel-index lookup path (@ref mouseTrixelPositionWorld → GPU
-/// comparison) requires this frame to match the rasterized canvas; for
-/// true world-frame coordinates use @ref mouseWorldPos3DAtIsoDepth, which
-/// composes the additional `R_z(-rasterYaw)` lift.
+/// The hover lookup path (@ref mouseCanvasTexelWorld → GPU comparison)
+/// requires this frame to match the rasterized canvas; for true world-frame
+/// coordinates use @ref mouseWorldPos3DAtIsoDepth, which composes the
+/// additional `R_z(-rasterYaw)` lift.
 ///
 /// Iso-space picking accuracy at non-cardinal yaws is bounded by the
 /// geometric trixel deformation (a small per-face offset the picking
@@ -258,11 +258,21 @@ vec2 mousePosition2DIsoScreenRender();
 /// Stays in the rasterYaw-rotated trixel canvas frame; not true world iso
 /// under non-zero yaw — see the namespace doc above.
 vec2 mousePosition2DIsoWorldRender();
-/// Integer trixel coordinate of the mouse in the trixel canvas frame.
-/// Matches what the voxel-to-trixel pass wrote, so a CPU-side trixel
-/// index here equals the GPU-side trixel index of the voxel under the
-/// cursor at any visualYaw.
+/// Integer trixel coordinate of the mouse in the trixel canvas frame, on the
+/// triangle lattice: the iso cell's two diagonal-split trixels resolve to
+/// distinct indices (`IRMath::pos2DIsoToTriangleIndex`). Matches what the
+/// voxel-to-trixel pass wrote, so a CPU-side trixel index here equals the
+/// GPU-side trixel index of the voxel under the cursor at any visualYaw.
+/// Not the hover path's index — see @ref mouseCanvasTexelWorld.
 ivec2 mouseTrixelPositionWorld();
+/// Raw canvas texel under the mouse, in the same frame and (effective-
+/// subdivision-scaled) units as @ref mouseTrixelPositionWorld but with no
+/// triangle-lattice shift: `floor` of the raw canvas coordinate. This is
+/// what the trixel→framebuffer gather compares `floor(displayOrigin)`
+/// against, so the hovered fragment set is exactly the fragments that
+/// display this texel and the id they report is its id (hover identity
+/// follows display identity — `docs/design/trixel-parity-shift-442-investigation.md`).
+ivec2 mouseCanvasTexelWorld();
 /// Mouse position lifted to a 3D world point in the **unrotated world frame**
 /// at the given **canvas-frame** iso depth. The picking inverse is
 /// `R_z(-rasterYaw) · isoPixelToPos3D · screen`; no screen-space residual

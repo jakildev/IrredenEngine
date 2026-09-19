@@ -13,6 +13,7 @@
 #include <optional>
 #include <string>
 #include <unordered_set>
+#include <vector>
 
 // Capture-frame assertions over the introspectable widget and picking state,
 // driven by the scripted-shot harness in engine/video. Evaluation lives here (the
@@ -34,7 +35,7 @@ enum class AssertKind {
     CHECKBOX,          // checkboxState(widget_) == expectedBool_
     PICKS_VOXEL,       // castVoxelRay() hits with voxelPos_ == expectedVoxel_
     PICKS_ISO_COLUMN,  // castVoxelRay() hits a voxel on expectedVoxel_'s iso column
-    HOVERED_ENTITY_ID, // IRRender::getEntityIdAtMouseTrixel() == widget_
+    HOVERED_ENTITY_ID, // IRRender::getEntityIdAtMouseTrixel() == widget_ on the last frames_ frames
     PREDICATE,         // creation-supplied predicate over its own state
 };
 
@@ -47,6 +48,7 @@ struct Assertion {
     float tolerance_ = 0.001f;                          // SLIDER_VALUE
     bool expectedBool_ = false;                         // CHECKBOX
     IRMath::ivec3 expectedVoxel_ = IRMath::ivec3(0);    // PICKS_VOXEL
+    int frames_ = 1;                                    // HOVERED_ENTITY_ID: trailing live frames
     const char *label_ = "assert";                      // human-readable tag
     // PREDICATE: creation-owned check + its context. Both the function and
     // whatever `context_` points at must outlive the run, same contract as the
@@ -119,10 +121,15 @@ inline Assertion picksIsoColumn(IRMath::ivec3 targetVoxel, const char *label = "
     return assertion;
 }
 
-// Assert the GPU hover readback names @p expected — the entity whose trixel
+// Assert the GPU hover readback names @p expected — the entity whose texel
 // the cursor rests on, as `f_trixel_to_framebuffer` wrote it into
 // `HoveredEntityIdBuffer` and `IRRender::getEntityIdAtMouseTrixel()` read it
-// back. Distinct from picksVoxel on purpose: that one runs the CPU ray cast
+// back — on each of the shot's last @p frames live frames (the capture frame
+// and the frames before it). @p frames > 1 catches a readback that is right
+// on average but not stable: the hover write is a per-fragment SSBO store, so
+// a hovered fragment set that spans two source texels flips between their
+// ids from frame to frame and a single-frame read can land on either.
+// Distinct from picksVoxel on purpose: that one runs the CPU ray cast
 // (`Picking::castVoxelRay`) and never touches the GPU id texture, so it cannot
 // see a hover read that samples the wrong canvas texel.
 //
@@ -131,12 +138,15 @@ inline Assertion picksIsoColumn(IRMath::ivec3 targetVoxel, const char *label = "
 // evaluates this must run before that composite (INPUT / UPDATE, or a RENDER
 // slot ahead of `TRIXEL_TO_FRAMEBUFFER`) — evaluated at the render tail it
 // reads the reset and reports kNullEntity for every shot. The readback also
-// lags the cursor by a frame, so the shot needs a settle frame after its MOVE.
-inline Assertion
-hoveredEntityId(IREntity::EntityId expected, const char *label = "hovered_entity_id") {
+// lags the cursor by a frame, so the shot needs a settle frame after its MOVE
+// and @p frames must not exceed the settle frames the harness grants it.
+inline Assertion hoveredEntityId(
+    IREntity::EntityId expected, const char *label = "hovered_entity_id", int frames = 1
+) {
     Assertion assertion;
     assertion.kind_ = AssertKind::HOVERED_ENTITY_ID;
     assertion.widget_ = expected;
+    assertion.frames_ = frames;
     assertion.label_ = label;
     return assertion;
 }
@@ -165,11 +175,14 @@ inline Assertion predicate(
 
 // Caller-owned latch. CLICK_FIRES needs it: C_WidgetState::fireAction_ is a
 // single-frame pulse on click-release, gone by the post-settle capture frame,
-// so we accumulate which widgets fired across the shot window. The creation
-// owns one instance and threads it through onFrame — system/harness-owned
-// state must never be a function-local static (.claude/rules/cpp-systems.md).
+// so we accumulate which widgets fired across the shot window; HOVERED_ENTITY_ID
+// needs the per-frame hover readback of every live frame so it can require
+// the last N to agree. The creation owns one instance and threads it through
+// onFrame — system/harness-owned state must never be a function-local static
+// (.claude/rules/cpp-systems.md).
 struct LatchState {
     std::unordered_set<IREntity::EntityId> firedWidgets_;
+    std::vector<IREntity::EntityId> hoveredIds_; // one entry per live frame, oldest first
 };
 
 namespace detail {
@@ -209,6 +222,12 @@ inline void latchFires(LatchState &latch) {
 
 inline bool firedThisShot(const LatchState &latch, IREntity::EntityId widget) {
     return latch.firedWidgets_.count(widget) != 0;
+}
+
+// Record this frame's GPU hover readback (the previous frame's completed
+// write — see hoveredEntityId's phase contract).
+inline void latchHoveredId(LatchState &latch) {
+    latch.hoveredIds_.push_back(IRRender::getEntityIdAtMouseTrixel());
 }
 
 } // namespace detail
@@ -265,9 +284,21 @@ inline bool evaluateOne(const Assertion &assertion, const LatchState &latch, std
         return hitIso == wantIso;
     }
     case AssertKind::HOVERED_ENTITY_ID: {
-        const IREntity::EntityId hovered = IRRender::getEntityIdAtMouseTrixel();
-        actual = "hovered=" + std::to_string(hovered);
-        return hovered == assertion.widget_;
+        // The trailing frames_ readbacks, oldest first; every one must name
+        // the expected entity.
+        const int have = static_cast<int>(latch.hoveredIds_.size());
+        const int want = IRMath::max(assertion.frames_, 1);
+        const int first = IRMath::max(have - want, 0);
+        bool pass = have >= want;
+        actual = "hovered=";
+        for (int i = first; i < have; ++i) {
+            const IREntity::EntityId hovered = latch.hoveredIds_[i];
+            actual += (i == first ? "" : ",") + std::to_string(hovered);
+            pass = pass && hovered == assertion.widget_;
+        }
+        if (have < want)
+            actual += " frames=" + std::to_string(have) + "/" + std::to_string(want);
+        return pass;
     }
     case AssertKind::PREDICATE: {
         if (assertion.predicate_ == nullptr) {
@@ -333,10 +364,12 @@ inline void onFrame(
         return;
     }
     detail::latchFires(latch);
+    detail::latchHoveredId(latch);
     if (!isCaptureFrame)
         return;
     evaluate(latch, shotIndex, shotLabel, assertions, count);
     latch.firedWidgets_.clear();
+    latch.hoveredIds_.clear();
 }
 
 } // namespace IRPrefab::GuiTest

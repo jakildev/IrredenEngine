@@ -68,12 +68,12 @@ float normalizeDistance(int dist) {
 void main() {
     ivec2 textureSize = textureSize(triangleColors, 0);
     ivec2 z1 = trixelOriginOffsetZ1(textureSize);
-    // Rectangular color/depth/tier/id reads use the raw interpolated canvas
-    // position. Only the hover compare uses the world-lattice mapping; local
-    // display triangles instead select cells in the private canvas basis.
+    // Rectangular color/depth/tier/id reads and the hover compare all use the
+    // raw interpolated canvas position; local display triangles instead
+    // select cells in the private canvas basis. Nothing here maps onto the
+    // triangle lattice (trixelFramebufferSamplePosition): hover identity
+    // follows display identity — docs/design/trixel-parity-shift-442-investigation.md.
     vec2 originRaw = TexCoords * vec2(textureSize);
-    int originModifier = trixelOriginModifier(z1, canvasOffset);
-    vec2 originShifted = trixelFramebufferSamplePosition(originRaw, originModifier);
 
     vec2 displayOrigin = originRaw;
     if (trixelSampleLayout == 1) {
@@ -103,7 +103,10 @@ void main() {
         mouseHoveredTriangleIndex * float(subdivisions) +
         vec2(trixelOriginOffsetZ1(textureSize)) +
         canvasOffset;
-    ivec2 originIndex = ivec2(floor(originShifted));
+    // Hovered = the fragments that display the cursor's raw texel (CPU
+    // mouseCanvasTexelWorld). They all read the same texel below, so the
+    // non-atomic SSBO write is value-identical across writers.
+    ivec2 originIndex = ivec2(floor(displayOrigin));
     ivec2 hoveredIndex = ivec2(floor(hoveredPosition));
     bool isMouseHovered = all(equal(hoveredIndex, originIndex));
     // Priority and color/depth must select the same stored cell. Canvases
@@ -142,10 +145,8 @@ void main() {
         if (color.a >= 0.1 && depth <= hoveredDepth) {
             // Strip the per-trixel priority carrier so a prioritized fragment
             // reports its true picked id. Read at the same texel the color and
-            // depth gate above sampled: the parity shift is for the compare
-            // only, and the stage-2 writers store color and id together, so
-            // the shifted row can hold a different entity (or nothing) than
-            // the texel this fragment displays.
+            // depth gate above sampled: the stage-2 writers store color and id
+            // together, so this is the id of what the fragment displays.
             uvec2 entityId = decodeEntityId(
                 textureLod(triangleEntityIds, displayOrigin / vec2(textureSize), 0).rg);
             if (entityId != uvec2(0u)) {

@@ -159,13 +159,15 @@ perf-stats overlay region (top-right by default).
 - `IRPrefab::GuiTest::` (`gui_test_assertions.hpp`): `hovers` / `clickFires` /
   `sliderValue` / `checkbox` / `picksVoxel` / `picksIsoColumn` /
   `hoveredEntityId` / `predicate`, one `GUI-ASSERT …` line each plus one
-  `GUI-ASSERT-COVERAGE …` per shot. `hoveredEntityId` reads the GPU
-  `HoveredEntityIdBuffer` (`IRRender::getEntityIdAtMouseTrixel()`), which
-  `TRIXEL_TO_FRAMEBUFFER::beginTick` resets every frame — register the
-  GUI-test cycler ahead of the composite (`shape_debug` splices it in before
-  `TRIXEL_TO_FRAMEBUFFER`) or the capture-frame read sees the reset, never the
-  completed frame. `picksVoxel` is the CPU ray cast and cannot see that
-  buffer. Reference wiring: `creations/editors/voxel_editor/main.cpp`. Lua
+  `GUI-ASSERT-COVERAGE …` per shot. `hoveredEntityId(expected, label,
+  frames)` reads the GPU `HoveredEntityIdBuffer`
+  (`IRRender::getEntityIdAtMouseTrixel()`) on every live frame and requires
+  the last `frames` to all name `expected` (a hover write that races between
+  two texels passes a one-frame read); the buffer is reset by
+  `TRIXEL_TO_FRAMEBUFFER::beginTick` every frame — register the GUI-test
+  cycler ahead of the composite (`shape_debug` splices it in before
+  `TRIXEL_TO_FRAMEBUFFER`) or every read sees the reset, never the completed
+  frame. `picksVoxel` is the CPU ray cast and cannot see that buffer. Reference wiring: `creations/editors/voxel_editor/main.cpp`. Lua
   `onClick`: `engine/script/CLAUDE.md` §"Engine service bindings".
 
 ## Rotation modes
