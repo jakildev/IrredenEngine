@@ -14,43 +14,12 @@ It does not validate multi-voxel internal face boundaries, depth or lighting.
 """
 
 import argparse
-import itertools
 import json
 import math
 from pathlib import Path
 
+from render_fixture_geometry import rotate, source_centers, view
 from render_metric_util import raster_polygon, read_png, write_png
-
-
-def rotate(point, identity):
-    if identity:
-        return point
-    cosine, sine = math.cos(math.pi / 4), math.sin(math.pi / 4)
-    axis = 1 / math.sqrt(3)
-    cross = (point[2] - point[1], point[0] - point[2], point[1] - point[0])
-    return tuple(cosine * point[i] + (1 - cosine) * sum(point) / 3
-                 + sine * axis * cross[i] for i in range(3))
-
-
-def view(point, yaw):
-    x, y, z = point
-    return (math.cos(yaw) * x + math.sin(yaw) * y,
-            -math.sin(yaw) * x + math.cos(yaw) * y, z)
-
-
-def source_centers(shape):
-    if shape == "adjacent":
-        yield (-.5, 0, 0)
-        yield (.5, 0, 0)
-        return
-    extent = {"frame": 14, "octahedron": 10, "voxel": 1}[shape]
-    for index in itertools.product(range(extent), repeat=3):
-        center = tuple(value - (extent - 1) / 2 for value in index)
-        if shape == "frame" and sum(abs(v) >= extent / 2 - 1.5 for v in center) < 2:
-            continue
-        if shape == "octahedron" and sum(map(abs, center)) > extent / 2 * 1.35:
-            continue
-        yield center
 
 
 def projected_faces(shape, yaw, identity, scale, center):

@@ -86,8 +86,11 @@ These are open correctness gates, not approved visual baselines:
 1. Remove the hard AO contact bands while retaining real concave contact shading
    and checking rotated GRID/revoxelized occupancy. Isolated ShapeDebug runs show
    the lower cube band persists without sun shadows and disappears without AO.
-2. Repair mixed private SDF/voxel canvas density, local placement, owner rotation
-   and atomic-depth lifecycle. Recheck both producers together at high zoom.
+2. Mixed private SDF/voxel canvas density, local placement, owner rotation and
+   atomic-depth lifecycle are gated
+   ([mixed private canvas lifecycle](mixed-private-canvas-lifecycle.md)); the
+   SDF marker's own display in a private canvas (raw texels at the capped
+   density, dilation under continuous yaw) stays open under item 3.
 3. Align SDF BOX display extent, receiver reconstruction and analytic caster
    extent across subdivisions and camera rotation. ShapeDebug currently shows a
    smaller SDF box beside its seven-voxel counterpart. Changing only the extent

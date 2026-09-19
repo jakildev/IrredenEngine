@@ -139,8 +139,9 @@ establish scalability for a million independently allocated private canvases.
   continuous motion as separate placement/depth contracts.
 - Validate AO contact behavior and the green revoxelized canary separately;
   source-face normal captures cannot certify those lighting paths.
-- Repair mixed private SDF/voxel density and recentering mismatch (cardinal
-  density-one preservation passes; rotated/high-zoom marker placement does not).
+- Mixed private SDF/voxel density and recentering are gated by the
+  [lifecycle contract](mixed-private-canvas-lifecycle.md); the SDF marker's raw
+  texel display and continuous-yaw dilation in a private canvas remain open.
 - Execute OpenGL validation on a supported host.
 - Profile bounded face sorting, raster/lighting dispatches and memory before
   broader rotation/subdivision optimization.

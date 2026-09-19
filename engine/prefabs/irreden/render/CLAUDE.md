@@ -47,6 +47,7 @@ Rationale: [`docs/design/prefab-render-surface.md`](../../../../docs/design/pref
 | `VOXEL_PICKING` | RENDER, after the camera systems, before `VOXEL_TO_TRIXEL_STAGE_1` |
 | `GIZMO_HOVER` → `GIZMO_DRAG` | INPUT, after `INPUT_KEY_MOUSE` |
 | `CAMERA_MOUSE_ROTATE` and the other camera controls | RENDER, before `SHAPES_TO_TRIXEL`, in singleton groups (`MainThread`) |
+| `SHAPES_TO_TRIXEL` | RENDER, after `VOXEL_TO_TRIXEL_STAGE_1` when any entity canvas mixes voxels and shapes: the shape pass keeps a voxel-rastered canvas (`renderedSubdivisions_ > 0`) and resets only a shape-only one |
 | `HITBOX_MOUSE_TEST_GUI` → `WIDGET_INPUT` → `WIDGET_APPLY_*` | INPUT; `WIDGET_LUA_DISPATCH` immediately after `WIDGET_INPUT` |
 | `TEXT_TO_TRIXEL` → `LAYOUT_COMPUTE` → `WIDGET_RENDER_*` | RENDER, before `TRIXEL_TO_FRAMEBUFFER`; `WIDGET_RENDER_DROPDOWN` last among the renderers |
 | `HelpOverlay::systems()`, `SettingsMenu::renderSystems()` / `inputSystems()` | RENDER after `TEXT_TO_TRIXEL`, before the composite / INPUT after `INPUT_KEY_MOUSE` |
@@ -67,6 +68,12 @@ perf-stats overlay region (top-right by default).
 - Hitbox / hover systems cache the camera at `beginTick`; a mid-frame camera
   move is seen next frame. Per-canvas behaviour (zoom tracking, hover,
   subdivisions) is a `C_TrixelCanvasRenderBehavior` flag, never a branch.
+- A shape targeting an entity canvas rasters in the owner's model frame:
+  offset from the owner's translation, at the canvas's rendered density, under
+  the continuous camera yaw the composite places the owner with; the
+  authored-world position and the global effective subdivision are the
+  main-canvas convention only
+  ([`docs/design/mixed-private-canvas-lifecycle.md`](../../../../docs/design/mixed-private-canvas-lifecycle.md)).
 - `C_EntityCanvas` owns `screenLocked_` (overlay opt-out) and `depthPriority_`
   (foreground band; meaningful only when `!screenLocked_`), read by
   `ENTITY_CANVAS_TO_FRAMEBUFFER` with no foreign `getComponent`. Per-voxel

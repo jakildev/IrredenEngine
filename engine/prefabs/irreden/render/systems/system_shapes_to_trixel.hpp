@@ -9,6 +9,8 @@
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/render/components/component_active_lod_level.hpp>
+#include <irreden/render/canvas_clear.hpp>
+#include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/render/cull_viewport_state.hpp>
@@ -46,6 +48,11 @@ template <> struct System<SHAPES_TO_TRIXEL> {
     Buffer *shapeTileDescBuf_ = nullptr;
     GPUShapesFrameData frameData_{};
     std::unordered_map<CanvasId, std::vector<GPUShapeDescriptor>> gpuShapesByCanvas_;
+    // Owner translation per entity canvas, snapshotted at beginTick. An entity
+    // canvas rasters in its owner's model frame and the composite places the
+    // whole canvas at the owner's yawed iso position, so a shape targeting one
+    // is positioned by its offset from the owner, never by its world position.
+    std::unordered_map<CanvasId, vec3> entityCanvasOrigins_;
     std::optional<IsoBounds2D> cullBounds_;
     // Camera Z-yaw snapshotted at beginTick so the cull pass and the
     // per-tile dispatch share byte-identical values even if a script
@@ -144,6 +151,9 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         }
         GPUShapeDescriptor desc{};
         desc.worldPosition = vec4(xform.translation_, 1.0f);
+        if (auto origin = entityCanvasOrigins_.find(canvas); origin != entityCanvasOrigins_.end()) {
+            desc.worldPosition = vec4(xform.translation_ - origin->second, 1.0f);
+        }
         desc.params = shape.params_;
         desc.rotation = xform.rotation_;
         desc.shapeType = static_cast<std::uint32_t>(shape.shapeType_);
@@ -162,6 +172,23 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             baker->beginVoxelFaceCoverage();
         }
         gpuShapesByCanvas_.clear();
+
+        // Dense per-archetype-column scan of the canvas owners (a handful of
+        // entities), never a per-shape getComponent.
+        entityCanvasOrigins_.clear();
+        for (IREntity::ArchetypeNode *node : IREntity::queryArchetypeNodesSimple(
+                 IREntity::getArchetype<C_EntityCanvas, C_WorldTransform>()
+             )) {
+            const std::vector<C_EntityCanvas> &canvases =
+                IREntity::getComponentData<C_EntityCanvas>(node);
+            const std::vector<C_WorldTransform> &transforms =
+                IREntity::getComponentData<C_WorldTransform>(node);
+            for (int i = 0; i < node->length_; ++i) {
+                if (canvases[i].canvasEntity_ != IREntity::kNullEntity) {
+                    entityCanvasOrigins_[canvases[i].canvasEntity_] = transforms[i].translation_;
+                }
+            }
+        }
 
         // Snapshot the active LOD tier from the singleton written by
         // LOD_UPDATE in the UPDATE phase. singletonOrNull returns nullptr
@@ -237,8 +264,20 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             }
             auto &canvasTextures = *texturesOpt.value();
 
+            const bool entityCanvas = entityCanvasOrigins_.contains(canvasId);
             if (canvasId == mainCanvas) {
                 frameData_.cameraTrixelOffset = IRRender::getEffectiveCameraIso();
+            } else if (entityCanvas) {
+                // The owner's model frame: no camera term (the composite places
+                // the canvas), and the voxel raster's color, depth and ids are
+                // kept — VOXEL_TO_TRIXEL_STAGE_1 cleared this canvas when it
+                // rastered a pool into it this frame (renderedSubdivisions_ > 0),
+                // so this pass must run after it. A shape-only canvas is reset
+                // here through the same sentinel + Metal scratch mirror.
+                frameData_.cameraTrixelOffset = vec2(0.0f);
+                if (canvasTextures.renderedSubdivisions_ == 0) {
+                    clearCanvasAndDistances(canvasId, canvasTextures);
+                }
             } else {
                 canvasTextures.clear();
                 vec3 entityPos = vec3(gpuShapes[0].worldPosition);
@@ -248,7 +287,13 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             frameData_.canvasSize = canvasTextures.size_;
             frameData_.shapeCount = static_cast<int>(gpuShapes.size());
             const auto renderMode = IRRender::getSubdivisionMode();
-            const int effectiveSub = IRRender::getVoxelRenderEffectiveSubdivisions();
+            // An entity canvas rasters at the density its voxel producer stored
+            // and the composite divides out (renderedSubdivisions_, capped by the
+            // canvas footprint); the global effective subdivision would scale
+            // the shape and its offset by the cap ratio.
+            const int effectiveSub = entityCanvas
+                                         ? IRMath::max(canvasTextures.renderedSubdivisions_, 1)
+                                         : IRRender::getVoxelRenderEffectiveSubdivisions();
             frameData_.voxelRenderOptions = ivec2(static_cast<int>(renderMode), effectiveSub);
             if (cullBounds_.has_value() && canvasId == mainCanvas) {
                 frameData_.cullIsoMin = ivec2(IRMath::floor(cullBounds_->min_));
@@ -260,11 +305,13 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             frameData_.visualYaw = visualYaw;
             frameData_.rasterYaw = rasterYaw;
             frameData_.residualYaw = residualYaw;
-            // Smooth camera Z-yaw: the continuous-yaw SDF path is enabled
-            // only on the rotating MAIN world canvas. Detached per-entity canvases
-            // keep the cardinal rasterYaw + faceDeform path (their camera-rotation
-            // is absorbed by their own SO(3) bake, not the SDF rasterizer).
-            const bool canvasSmoothYaw = smoothYaw_ && (canvasId == mainCanvas);
+            // Smooth camera Z-yaw: the continuous-yaw SDF path runs on the
+            // rotating main world canvas and on entity canvases, whose content
+            // is camera-composed (the composite applies no rotation, so the
+            // owner-relative offset must be projected at the full visual yaw,
+            // like the composite projects the owner). Other canvases keep the
+            // cardinal rasterYaw + faceDeform path.
+            const bool canvasSmoothYaw = smoothYaw_ && (canvasId == mainCanvas || entityCanvas);
             frameData_.smoothYawEnabled = canvasSmoothYaw ? 1 : 0;
             // Residual yaw is folded into faceDeform per-face for the shapes
             // shader. Identity at residualYaw == 0.
