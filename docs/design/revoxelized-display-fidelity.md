@@ -98,8 +98,16 @@ pattern in the lit captures is the authored caster cutting through the
 resampled receiver: whole half-faces across the cube read as self-shadowed
 where the displayed staircase is open to the sun. With resampled casters
 false shadow falls 15 to 150 times, and what remains is the near-riser tread
-band at 0 and 22.5° that the receiver leaves lit (every occluded pixel the
-lattice expects) and a few tread tips at 45°. AO at yaw 45 with the default
+band at 0 and 22.5° that the shadow path leaves lit (every occluded pixel the
+lattice expects; the yaw-22.5 capture holds no magenta pixel at all, so
+whether the bake never writes those cells or the receiver reads them lit is
+the next trace, caster first) and a few tread tips at 45°. The oracle
+classifies each face by one centre ray while the overlay marks per trixel,
+so a sun terminator crossing a face costs one half-face (512 pixels at this
+zoom) of disagreement even from an exact renderer; the resampled-caster
+residuals of 4,051 / 9,022 / 1,379 / 5,456 pixels are 8 / 18 / 3 / 11 such
+half-faces, so a per-trixel gate has to cast from each trixel's centroid or
+state that floor. AO at yaw 45 with the default
 casters darkens 6.9% of the cube by at most 5.9% (`occluded_frac 0.0689`,
 `max_darkening 0.0588`), so it is not the source of the look. Captures under
 `docs/pr-screenshots/claude/million-entity-render-lit-staircase/`.
@@ -118,7 +126,7 @@ look is the nearest-cell resample itself, and under lighting a sun-shadow
 caster that is not the displayed geometry: a revoxelized canvas must cast
 from its resampled cells, as its receiver reads them, and the authored-cell
 caster is retired for that path. The tread band behind each riser that the
-receiver still leaves lit is the remaining receiver-side item.
+shadow path still leaves lit is the remaining item, traced caster-first.
 
 Presentation stays a per-object choice through `RotationMode`: plain
 `DETACHED` projects the authored source faces for a smooth rotated solid;

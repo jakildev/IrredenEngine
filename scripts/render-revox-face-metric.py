@@ -21,6 +21,10 @@ visibility: a face is lit when a ray from its centre toward `--sun` crosses no
 other occupied destination cell. Mismatches are reported as false shadow
 (expected lit) and missed shadow (expected occluded). Faces turned away from
 the sun receive no direct light whatever the overlay says and are excluded.
+The oracle classifies a whole face by one centre ray while the overlay marks
+per trixel, so a terminator crossing a face costs one half-face of
+disagreement even from an exact renderer; `observed_shadow_pixels` counts the
+capture's magenta so an empty frame cannot pass as "all lit".
 """
 
 import argparse
@@ -148,14 +152,15 @@ class Resample:
 
         The ray starts at the face centre and walks the unit lattice cell by
         cell (a 3D DDA) until it leaves the destination window; any occupied
-        cell on the way shadows the face.
+        cell on the way shadows the face. The walk begins in the face's own
+        cell, which is skipped, and its first step is the zero-length crossing
+        into the neighbour beyond the face. A ray that only grazes an edge or
+        corner of an occupied cell counts that cell as occluding.
         """
         if sum(n * s for n, s in zip(normal, sun)) <= 0:
             return BACKFACING_LABEL
         point = [cell[i] + self.anchor[i] + 0.5 * normal[i] for i in range(3)]
         current = [math.floor(point[i] - self.anchor[i] + 0.5) for i in range(3)]
-        if all(-n == (current[i] - cell[i]) or normal[i] == 0 for i, n in enumerate(normal)):
-            current = [cell[i] + normal[i] for i in range(3)]
         step = [1 if s > 0 else -1 for s in sun]
         next_t, delta_t = [], []
         for i in range(3):
@@ -275,10 +280,12 @@ def compare(width, height, bpp, pixels, expected, palette):
 
 def compare_shadow(width, height, bpp, pixels, expected, lit):
     """Interior pixels whose sun visibility disagrees with the shadow overlay."""
-    false_shadow = missed_shadow = 0
+    false_shadow = missed_shadow = observed_shadow = 0
     errors = bytearray(width * height * 3)
     interiors = [0, 0, 0, 0]
     for index, label in enumerate(expected):
+        rgb = tuple(pixels[index * bpp:index * bpp + 3])
+        observed_shadow += all(abs(a - b) <= 1 for a, b in zip(rgb, SHADOW_MAGENTA))
         if not label or lit[index] == BACKFACING_LABEL:
             continue
         x, y = index % width, index // width
@@ -288,7 +295,6 @@ def compare_shadow(width, height, bpp, pixels, expected, lit):
         if any(expected[i] != label or lit[i] != lit[index] for i in window):
             continue
         interiors[lit[index]] += 1
-        rgb = tuple(pixels[index * bpp:index * bpp + 3])
         shadowed = all(abs(a - b) <= 1 for a, b in zip(rgb, SHADOW_MAGENTA))
         if shadowed and lit[index] == LIT_LABEL:
             false_shadow += 1
@@ -297,6 +303,7 @@ def compare_shadow(width, height, bpp, pixels, expected, lit):
             missed_shadow += 1
             errors[index * 3:index * 3 + 3] = bytes((0, 255, 255))
     result = dict(false_shadow_pixels=false_shadow, missed_shadow_pixels=missed_shadow,
+                  observed_shadow_pixels=observed_shadow,
                   lit_interior_pixels=interiors[LIT_LABEL],
                   shadowed_interior_pixels=interiors[SHADOWED_LABEL],
                   backfacing_pixels=sum(1 for v in lit if v == BACKFACING_LABEL),
