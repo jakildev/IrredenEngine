@@ -39,6 +39,13 @@ IrredenEngine_applyPatchOnce(
     ${CMAKE_CURRENT_SOURCE_DIR}/patches/ir_rtaudio.patch
 )
 FetchContent_MakeAvailable(rtaudio)
+# Without UNICODE defined, RtAudio's CoreAudio backend fills DeviceInfo::name
+# via CFStringGetSystemEncoding() (MacRoman) instead of UTF-8, so a device
+# name with a curly apostrophe encodes as a lone high byte that breaks every
+# downstream UTF-8 consumer of the logged name.
+if(IR_isDarwin)
+    target_compile_definitions(rtaudio PRIVATE UNICODE)
+endif()
 target_link_libraries(IrredenEngineAudio PUBLIC rtaudio)
 target_include_directories(IrredenEngineAudio PRIVATE
     ${rtaudio_SOURCE_DIR}
