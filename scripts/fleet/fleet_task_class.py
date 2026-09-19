@@ -92,11 +92,12 @@ smoke lanes from their own slices. The dispatcher walks these taking each
 item's lane claim until one is granted; that item becomes the dispatch's
 target (fleet-dispatcher assign_for_pane).
 
-A third CLI mode, ``--smoke-check <smoke-worker-slice.json>``, prints the PR
-numbers in the slice's ``smoke_pending_prs`` whose pending smoke label names
-THIS host (`HOST_SMOKE_LABELS` / `smoke_pr_for_host`). Empty output means this
-host owes no smoke work, and the dispatcher stands the lane down instead of
-spending a pane on another host's backlog (#2839).
+A third CLI mode, ``--smoke-check <smoke-worker-slice.json>``, prints one
+``<repo>:<number>`` line per PR in the slice's ``smoke_pending_prs`` whose
+pending smoke label names THIS host (`HOST_SMOKE_LABELS` / `smoke_pr_for_host`);
+the slice spans both repos, so the bare number is ambiguous. Empty output
+means this host owes no smoke work, and the dispatcher stands the lane down
+instead of spending a pane on another host's backlog (#2839).
 """
 
 import json
@@ -145,7 +146,7 @@ METAL_CAPABLE_HOSTS = {"mac"}
 # Smoke validation is the one lane whose work is *definitionally* host-specific:
 # only a native-Windows host can clear `fleet:needs-windows-smoke`. The scout's
 # smoke projection is host-agnostic on purpose — it is the cross-host record of
-# outstanding smoke debt that `platform-catchup` reads — so the host dimension is
+# every repo's outstanding smoke debt — so the host dimension is
 # applied dispatch-side instead, the same layer `_host_incompatible` gates the
 # task (#1998) and feedback-PR (#2695) lanes at. Without it, a standing
 # Windows-pending set kept every non-Windows host dispatching no-op smoke panes
@@ -577,7 +578,7 @@ def pick_role(slice_data, role):
     projection slice: reviewers get one `review:<repo>:<N>` per candidate PR
     not already under another agent's review claim (the opus reviewer also
     `planreview:<repo>:<N>` per plan-review issue), the smoke worker one
-    `smoke:engine:<N>` per PR THIS host can validate. Slice order is the role
+    `smoke:<repo>:<N>` per PR THIS host can validate. Slice order is the role
     doc's pickup order (engine first, oldest first)."""
     picks = []
     if role == "sonnet-reviewer":
@@ -728,9 +729,12 @@ def main(argv):
             print(line)
         return 0
     if argv[1:2] == ["--smoke-check"]:
-        # --smoke-check <smoke-worker-slice.json>: print the PR numbers in the
+        # --smoke-check <smoke-worker-slice.json>: print the PRs in the
         # slice's `smoke_pending_prs` that THIS host can actually validate, one
-        # per line. Empty output = nothing servable here, i.e. don't dispatch.
+        # `<repo>:<number>` per line (a record without `repo` — a slice written
+        # by an engine-only scout — prints as `engine:<number>`, mirroring
+        # `_target`).
+        # Empty output = nothing servable here, i.e. don't dispatch.
         # fleet-dispatcher's `smoke_worker_should_fire` shells out to this
         # (see `smoke_pr_for_host` for why it is a CLI seam and not an import).
         if len(argv) != 3:
@@ -743,7 +747,7 @@ def main(argv):
         for pr in smoke_prs_for_host(slice_data.get("smoke_pending_prs"),
                                      _current_host()):
             if pr.get("number") is not None:
-                print(pr["number"])
+                print(f"{pr.get('repo') or 'engine'}:{pr['number']}")
         return 0
     # Optional 4th arg: comma-separated classes to exclude (the dispatcher's
     # cross-class fan-out re-resolve). Absent -> exclude nothing.

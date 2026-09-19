@@ -1979,12 +1979,15 @@ def _review_skipped(labels):
 
 # Smoke-worker label sets. Every host label belongs in the pending set:
 # update_role_trigger keys the smoke-worker wake on this projection's hash, so
-# a host whose label is absent here has no dispatch trigger at all. Host
-# *routing* is the role's job, not the projection's — role-smoke-worker.md
-# step 4 derives the host key from `uname -s` and polls only that host's
-# label, so a dispatch woken by another host's pending PR finds nothing and
-# exits. platform-catchup (#1093) is the manual fallback for when no Windows
-# fleet is online, not the owner of fleet:needs-windows-smoke (#2804).
+# a host whose label is absent here has no dispatch trigger at all. The
+# projection is host-agnostic AND repo-agnostic: it is the cross-host record
+# of every repo's outstanding smoke debt. Host *routing* happens one layer
+# down at dispatch (`fleet_task_class.smoke_pr_for_host`), and repo
+# routing rides the `repo` field every item and slice record carries —
+# each reviewer mirror mints the same labels in its own repo, and a label
+# only a lane in that repo can clear must reach that lane. platform-catchup
+# (#1093) is the manual fallback for when no Windows fleet is online, not
+# the owner of fleet:needs-windows-smoke (#2804).
 _SMOKE_PENDING_LABELS = frozenset({
     "fleet:needs-linux-smoke", "fleet:needs-macos-smoke",
     "fleet:needs-windows-smoke",
@@ -1993,6 +1996,9 @@ _SMOKE_SKIP_LABELS = frozenset({
     "fleet:needs-fix", "fleet:blocker", "human:wip", "fleet:wip",
     "fleet:merger-cooldown", "human:needs-fix",
 })
+# Pickup order across repos: engine first, every other repo after it in key
+# order (the worker lane's engine-priority, role-worker.md step 3).
+_SMOKE_REPO_ORDER = {"engine": 0}
 
 # Valid values for the optional per-task `**Effort:**` field.
 EFFORT_LEVELS = frozenset({"low", "medium", "high", "xhigh", "max"})
@@ -3335,17 +3341,23 @@ def _smoke_pr_eligible(labels_set):
 
 
 def project_smoke_worker(state):
+    # Every repo, like the sibling projectors: the smoke labels are minted by
+    # each repo's reviewer mirror and cost the same everywhere (merge-queue
+    # hold, tier-0 rebase skip, merger skip), so every repo's pending PR is a
+    # trigger. `repo` is load-bearing in the item — engine #N and
+    # game #N are distinct work, and without it a game PR arriving while an
+    # engine PR of the same number stood would not flip the hash.
     items = []
     for repo_key, repo_state in state["repos"].items():
-        if repo_key != "engine":
-            continue
         for pr in repo_state.get("prs", []):
             labels = set(pr["labels"])
             if not _smoke_pr_eligible(labels):
                 continue
             smoke_pending = sorted(labels & _SMOKE_PENDING_LABELS)
-            items.append({"pr": pr["number"], "smoke_labels": smoke_pending})
-    return sorted(items, key=lambda x: x["pr"])
+            items.append({"repo": repo_key, "pr": pr["number"],
+                          "smoke_labels": smoke_pending})
+    return sorted(items, key=lambda x: (_SMOKE_REPO_ORDER.get(x["repo"], 1),
+                                        x["repo"], x["pr"]))
 
 
 def _epic_design_prs(repo_key, repo_state):
@@ -3717,23 +3729,35 @@ def slice_merger(state):
 
 
 def slice_smoke_worker(state):
+    # Smoke covers every repo in state["repos"]: the smoke labels are
+    # minted per repo by that repo's reviewer mirror, and the role threads
+    # each record's `repo` through `gh --repo`, `fleet-claim --repo`, the
+    # worktree, and the smoke target (FLEET-CROSS-HOST-SMOKE.md § Author
+    # side). Order is engine first, then the other repos in key order,
+    # oldest PR within each — the same engine-priority the worker lane uses.
+    # `repo` is added to the four-field record rather than copying the whole
+    # PR via _slice_pr_with_repo so the slice stays small.
+    #
     # No explicit human:wip / fleet:wip ownership check here — _smoke_pr_eligible
     # already rejects both via _SMOKE_SKIP_LABELS. Smoke workers never hold WIP PRs,
     # so the open-WIP-PR ownership filter the other per-role slicers apply is
     # intentionally absent.
     out = {"smoke_pending_prs": []}
-    repo_state = state["repos"].get("engine", {})
-    for pr in repo_state.get("prs", []):
-        labels = set(pr["labels"])
-        if not _smoke_pr_eligible(labels):
-            continue
-        out["smoke_pending_prs"].append({
-            "number": pr["number"],
-            "title": pr.get("title", ""),
-            "labels": pr.get("labels", []),
-            "headRefName": pr.get("headRefName", ""),
-        })
-    out["smoke_pending_prs"].sort(key=lambda p: p["number"])
+    for repo_key, repo_state in state["repos"].items():
+        for pr in repo_state.get("prs", []):
+            labels = set(pr["labels"])
+            if not _smoke_pr_eligible(labels):
+                continue
+            out["smoke_pending_prs"].append({
+                "repo": repo_key,
+                "number": pr["number"],
+                "title": pr.get("title", ""),
+                "labels": pr.get("labels", []),
+                "headRefName": pr.get("headRefName", ""),
+            })
+    out["smoke_pending_prs"].sort(
+        key=lambda p: (_SMOKE_REPO_ORDER.get(p["repo"], 1), p["repo"],
+                       p["number"]))
     return out
 
 

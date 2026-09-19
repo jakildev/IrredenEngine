@@ -4,7 +4,12 @@ OpenGL (Linux/Windows) and Metal (macOS) are independent backends; a
 render PR built on one host can fail to compile, link shaders, or render
 on the other with no local signal, so a fleet agent on the other host
 checks the PR out, builds the smoke target, runs it, and verdicts. This
-doc owns both halves; role files point here. Engine repo only. Labels:
+doc owns both halves; role files point here. **Both repos:** the engine
+reviewer mirror tags engine PRs and the game reviewer mirror (the game
+repo's own copy of `review-pr`) tags game PRs with the same labels, and
+one author-side lane clears both — the scout's smoke projection and slice
+span every repo in `state["repos"]`, each record tagged with its `repo`
+(#2865). Labels:
 [`fleet-labels-reference.md § Cross-host smoke`](fleet-labels-reference.md);
 an outstanding `fleet:needs-<host>-smoke` label is not safe to merge.
 
@@ -23,7 +28,8 @@ blocker / WIP state and the diff touches `engine/render/`,
 `engine/prefabs/irreden/render/`, any `*.glsl` / `*.metal`, anything under
 `engine/render/src/shaders/`, `engine/system/**` (platform-conditional
 blocks), or any `CMakeLists.txt` / `CMakePresets.json`. Skip game-repo
-PRs, non-render engine PRs, and PRs already carrying the label (tagging is
+PRs (the game reviewer mirror tags those from its own path set),
+non-render engine PRs, and PRs already carrying the label (tagging is
 idempotent across the sonnet pass and the opus recheck).
 
 Two tiers: OpenGL `{linux, windows}` (either host satisfies it; `windows`,
@@ -68,10 +74,35 @@ host-agnostic so `state.json` records all outstanding smoke debt.
 `review-claim` has no host term, so this host check is what stops a pane
 reached by another route from smoking another host's PR.
 
-**Pick** from cached `repos.engine.prs[]`: labels contain
+**Pick** from the smoke-worker slice
+(`~/.fleet/state/projections/smoke-worker.json`, `smoke_pending_prs[]`,
+each record carrying `repo`), or equivalently from cached
+`repos.{engine,game}.prs[]` with the same filter: labels contain
 `fleet:needs-<host>-smoke` and `fleet:approved`, none of `fleet:needs-fix`,
 `fleet:blocker`, `human:wip`, `fleet:wip`, `fleet:merger-cooldown`,
-`human:needs-fix`, and no `fleet:reviewing-*`. Oldest first.
+`human:needs-fix`, and no `fleet:reviewing-*`. Engine first, oldest within
+each repo (the slice is already in that order). A dispatched pane gets
+its PR as `FLEET_DISPATCH_TARGET=smoke:<repo>:<N>`.
+
+**Per-repo substitutions.** Every step below is written for an engine PR;
+a game PR (`repo == "game"`) substitutes this table. Each cell is a silent
+engine default otherwise — the same PR number exists in both repos.
+
+| | engine PR | game PR |
+|---|---|---|
+| `gh` repo flag | `--repo jakildev/IrredenEngine` | `--repo jakildev/irreden` |
+| claim / release | `fleet-claim review-claim <N> <agent>` / `review-release` | `fleet-claim --repo game review-claim <N> <agent>` / `--repo game review-release` (`--repo` precedes the subcommand) |
+| cwd | engine pool worktree (`~/src/IrredenEngine/.claude/worktrees/<agent>`) | `cd ~/src/IrredenEngine/creations/game/.claude/worktrees/<agent>` first, as its own Bash call |
+| checkout | `gh pr checkout <N> --repo jakildev/IrredenEngine` | `gh pr checkout <N> --repo jakildev/irreden` |
+| build | `fleet-build --target IRShapeDebug` | `env IRREDEN_BUILD_DIR=<engine-wt>/build-game fleet-build --target IRGame` — one-time configure per [BUILD.md § Dedicated game build dir](BUILD.md#dedicated-game-build-dir-against-a-specific-engine-worktree-build-game), reused across iterations |
+| run | `fleet-run IRShapeDebug --auto-screenshot 10` | `env IRREDEN_BUILD_DIR=<engine-wt>/build-game fleet-run IRGame --auto-screenshot 10` |
+| verdict comment | "… IRShapeDebug --auto-screenshot 10 …" | "… IRGame --auto-screenshot 10 …" |
+| reset | `git -C <engine-wt> checkout -B claude/<agent>-scratch origin/master` | `git -C <game-wt> checkout -B claude/game-<agent>-scratch origin/master` |
+
+`<engine-wt>` is the engine pool worktree's absolute path; the game build
+dir is bound to it, so the game smoke builds against the engine at that
+worktree's `origin/master` checkout (reset it first if it is on a feature
+branch).
 
 **Claim before checkout** (two same-host panes can race); exit 0 → yours,
 exit 1 → another agent's, move on:
@@ -94,6 +125,18 @@ and `IRWindow::closeWindow()` ends the run (10–20 s). No `--timeout`: it
 reports "alive at deadline" as success and would mask a hang. Verdict per
 [`FLEET.md § Clean-exit policy`](FLEET.md).
 
+**Environment failure is not a PR failure.** Classify the run as ENV-FAIL
+— no verdict, no label change — when the failure is outside the PR's
+diff: the dedicated game configure fails; the build fails in code the PR
+did not touch; or the run logs `Discovered 0 display monitors` (GLFW
+found no display session on this pane — `engine/window/src/ir_glfw_window.cpp`)
+and never reaches the auto-screenshot exit while reporting 0 monitors.
+Post the log excerpt and the host, leave the smoke label on, do **not**
+drop `fleet:approved`, release, and exit; a dispatched pane declines
+(`fleet-claim decline`) with that reading so a recurrence becomes a host
+issue, not a PR issue. This is the stance `role-worker.md` step 1c.g
+already takes for game builds; it applies to both repos.
+
 **Verdict** — success (build and run exited zero, no crash) is the
 `smoke-verify-<host>` edge plus a comment:
 
@@ -102,9 +145,9 @@ gh pr edit <N> --repo jakildev/IrredenEngine --remove-label "fleet:needs-<host>-
 gh pr comment <N> --repo jakildev/IrredenEngine --body "Cross-host smoke OK on <host> (fresh checkout build + IRShapeDebug --auto-screenshot 10)."
 ```
 
-Failure (build failed, run crashed or non-zero): leave the smoke label,
-comment the details, and drop the verdict while still holding the claim
-(`fleet-review-verdict` refuses unless you hold
+Failure (build failed in the PR's own diff, run crashed or non-zero):
+leave the smoke label, comment the details, and drop the verdict while
+still holding the claim (`fleet-review-verdict` refuses unless you hold
 `fleet:reviewing-<host>-<basename>` on that PR):
 
 ```
@@ -123,7 +166,8 @@ git -C ~/src/IrredenEngine/.claude/worktrees/<your-worktree-basename> checkout -
 If the assert fails, `cd` into your worktree as its own call first
 ([REVIEWER-PROTOCOL.md § Scratch reset & main-clone cwd discipline](REVIEWER-PROTOCOL.md#scratch-reset--main-clone-cwd-discipline)).
 A forgotten `fleet:reviewing-*` label blocks re-smoke until `cleanup --gh`
-sweeps it (30 min).
+sweeps it (30 min). A game PR resets the game twin worktree too (table
+above); the engine worktree stays on its scratch branch throughout.
 
 ---
 

@@ -204,19 +204,19 @@
       "name": "fleet:needs-linux-smoke",
       "scope": "pr",
       "color": "c5def5",
-      "description": "Engine render PR awaiting Linux/OpenGL cross-host smoke validation"
+      "description": "Render/platform PR (engine or game) awaiting Linux/OpenGL cross-host smoke validation"
     },
     {
       "name": "fleet:needs-macos-smoke",
       "scope": "pr",
       "color": "c5def5",
-      "description": "Engine render PR awaiting macOS/Metal cross-host smoke validation"
+      "description": "Render/platform PR (engine or game) awaiting macOS/Metal cross-host smoke validation"
     },
     {
       "name": "fleet:needs-windows-smoke",
       "scope": "pr",
       "color": "c5def5",
-      "description": "Engine render PR awaiting Windows cross-host smoke validation; cleared by the native-Windows smoke worker, or platform-catchup as fallback"
+      "description": "Render/platform PR (engine or game) awaiting Windows cross-host smoke validation; cleared by the native-Windows smoke worker, or platform-catchup as fallback"
     },
     {
       "name": "fleet:authored-on-linux",

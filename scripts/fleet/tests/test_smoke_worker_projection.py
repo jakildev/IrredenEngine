@@ -36,7 +36,10 @@ This harness pins:
   - linux / macos remain pending labels (no regression).
   - the skip-label and approval gates apply to Windows exactly as to the
     other two hosts.
-  - the projection stays engine-only.
+  - the projection and slice span every repo in state["repos"], each item
+    and record tagged with its `repo`: a game-repo smoke PR wakes
+    the pane, reaches the slice, and reports as `game:<n>` at the seam;
+    same-number engine and game PRs are two items; engine sorts first.
   - the dispatch-side host gate routes each host key to its own label, fails
     closed on an unknown host, and leaves the projection host-agnostic.
   - fleet-up's inlined copy of that map agrees with the canonical one — a
@@ -44,6 +47,7 @@ This harness pins:
 """
 import importlib.machinery
 import importlib.util
+import inspect
 import json
 import os
 import platform
@@ -227,13 +231,91 @@ class GatesApplyToWindows(unittest.TestCase):
         self.assertEqual(_hash(_state([])), _hash(claimed))
 
 
-class EngineOnly(unittest.TestCase):
-    """Game PRs never carry cross-host smoke labels — projection is engine-only."""
+class TwoRepos(unittest.TestCase):
+    """The smoke lane covers every repo in state["repos"].
 
-    def test_game_windows_pr_absent(self):
-        state = _state([], game_prs=[_approved(99, WINDOWS)])
-        self.assertEqual(project_smoke_worker(state), [])
-        self.assertEqual(slice_smoke_worker(state)["smoke_pending_prs"], [])
+    The game reviewer mirror mints the same `fleet:needs-<host>-smoke` labels
+    on game PRs, and every cost lane (merge-queue hold, tier-0 rebase skip,
+    merger skip) is repo-agnostic — so the trigger and the slice must be too,
+    or a game PR pays for a label no lane can ever clear. This class inverts
+    the former `EngineOnly.test_game_windows_pr_absent`, which asserted that a
+    game smoke PR is invisible.
+    """
+
+    def test_game_windows_pr_flips_hash(self):
+        # AC1: the trigger. Red on the engine-only projection.
+        before = _state([])
+        after = _state([], game_prs=[_approved(99, WINDOWS)])
+        self.assertNotEqual(
+            _hash(before), _hash(after),
+            "an approved game-repo smoke PR must wake the smoke-worker pane")
+
+    def test_game_windows_pr_is_in_projection_with_repo(self):
+        items = project_smoke_worker(_state([], game_prs=[_approved(99, WINDOWS)]))
+        self.assertEqual(items, [{"repo": "game", "pr": 99,
+                                  "smoke_labels": [WINDOWS]}])
+
+    def test_game_windows_pr_reaches_slice_with_repo(self):
+        out = slice_smoke_worker(_state([], game_prs=[_approved(99, WINDOWS)]))
+        self.assertEqual([(p["repo"], p["number"])
+                          for p in out["smoke_pending_prs"]], [("game", 99)])
+        # The record shape stays the small four-field one plus `repo` (not a
+        # whole-PR copy): the role reads a ~5 KB slice, not the state.
+        self.assertEqual(set(out["smoke_pending_prs"][0]),
+                         {"repo", "number", "title", "labels", "headRefName"})
+
+    def test_engine_items_carry_repo(self):
+        items = project_smoke_worker(_state([_approved(101, WINDOWS)]))
+        self.assertEqual(items[0]["repo"], "engine")
+        out = slice_smoke_worker(_state([_approved(101, WINDOWS)]))
+        self.assertEqual(out["smoke_pending_prs"][0]["repo"], "engine")
+
+    def test_same_number_in_both_repos_is_two_items(self):
+        # `repo` is load-bearing in the hash item: without it a game PR
+        # arriving while an engine PR of the same number stood would not
+        # flip the hash, and the pane would never be woken for it.
+        engine_only = _state([_approved(101, WINDOWS)])
+        both = _state([_approved(101, WINDOWS)], game_prs=[_approved(101, WINDOWS)])
+        self.assertEqual(len(project_smoke_worker(both)), 2)
+        self.assertNotEqual(_hash(engine_only), _hash(both))
+        self.assertEqual(len(slice_smoke_worker(both)["smoke_pending_prs"]), 2)
+
+    def test_engine_first_then_game_oldest_within_each(self):
+        # Pickup order = the worker lane's engine priority, oldest within a
+        # repo. A younger engine PR still precedes an older game PR.
+        state = _state([_approved(300, WINDOWS), _approved(200, WINDOWS)],
+                       game_prs=[_approved(50, WINDOWS), _approved(10, WINDOWS)])
+        expected = [("engine", 200), ("engine", 300), ("game", 10), ("game", 50)]
+        self.assertEqual([(i["repo"], i["pr"]) for i in project_smoke_worker(state)],
+                         expected)
+        self.assertEqual([(p["repo"], p["number"])
+                          for p in slice_smoke_worker(state)["smoke_pending_prs"]],
+                         expected)
+
+    def test_gates_hide_a_game_pr_exactly_as_an_engine_pr(self):
+        empty = _hash(_state([]))
+        cases = {"unapproved": _pr(99, labels=[WINDOWS]),
+                 "reviewing-claim": _approved(
+                     99, WINDOWS, extra=("fleet:reviewing-mac-pool-1",))}
+        for skip in ("fleet:needs-fix", "fleet:blocker", "human:wip",
+                     "fleet:wip", "fleet:merger-cooldown", "human:needs-fix"):
+            cases[skip] = _approved(99, WINDOWS, extra=(skip,))
+        for name, pr in cases.items():
+            with self.subTest(case=name):
+                state = _state([], game_prs=[pr])
+                self.assertEqual(empty, _hash(state),
+                                 f"{name} must hide a game smoke PR from the pane")
+                self.assertEqual(slice_smoke_worker(state)["smoke_pending_prs"], [])
+
+    def test_no_repo_filter_remains(self):
+        # AC6, grep-verifiable: the only repo-keyed condition left in the
+        # lane is the reporting format — neither function reads "engine".
+        for fn in (project_smoke_worker, slice_smoke_worker):
+            with self.subTest(fn=fn.__name__):
+                code = "\n".join(
+                    ln for ln in inspect.getsource(fn).splitlines()
+                    if not ln.lstrip().startswith("#"))
+                self.assertNotIn('"engine"', code)
 
 
 class HostGateRoutesEachHostKey(unittest.TestCase):
@@ -350,17 +432,36 @@ class SmokeCheckCli(unittest.TestCase):
                 capture_output=True, text=True, env=env, check=False)
 
     def _slice(self):
-        return slice_smoke_worker(_state([
-            _approved(101, WINDOWS), _approved(102, MACOS),
-        ]))
+        return slice_smoke_worker(_state(
+            [_approved(101, WINDOWS), _approved(102, MACOS)],
+            game_prs=[_approved(7, WINDOWS), _approved(8, LINUX)]))
 
-    def test_prints_only_this_hosts_prs(self):
-        for host, expected in (("windows", "101"), ("mac", "102"),
-                               ("linux", ""), ("unknown", "")):
+    def test_prints_only_this_hosts_prs_as_repo_number(self):
+        # One `<repo>:<number>` per line: the slice spans both repos and the
+        # same number exists in each, so a bare number would be ambiguous.
+        for host, expected in (("windows", "engine:101\ngame:7"),
+                               ("mac", "engine:102"), ("linux", "game:8"),
+                               ("unknown", "")):
             with self.subTest(host=host):
                 res = self._run(self._slice(), host)
                 self.assertEqual(res.returncode, 0, res.stderr)
                 self.assertEqual(res.stdout.strip(), expected)
+
+    def test_record_without_repo_prints_as_engine(self):
+        # A slice written by an engine-only scout carries no `repo`; it must
+        # still parse, defaulting to engine like `_target` does.
+        legacy = {"smoke_pending_prs": [
+            {"number": 101, "labels": ["fleet:approved", WINDOWS]}]}
+        res = self._run(legacy, "windows")
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertEqual(res.stdout.strip(), "engine:101")
+
+    def test_output_is_lf_terminated(self):
+        # fleet-dispatcher splits the output on newlines for its log line;
+        # a CRLF from a native-Windows python would leak a `\r` into it.
+        res = self._run(self._slice(), "windows")
+        self.assertNotIn("\r", res.stdout)
+        self.assertTrue(res.stdout.endswith("\n"))
 
     def test_missing_slice_is_quiet_not_an_error(self):
         # The dispatcher runs this every tick a trigger stands; a missing or

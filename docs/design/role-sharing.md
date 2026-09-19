@@ -156,8 +156,8 @@ A PR that adds a canonical role protocol must, **in the same PR**:
    answer. The downstream fleet authors its own wrapper — engine PRs
    don't write into the downstream repo.
 
-A role with no second fleet (e.g. the engine-only smoke-worker) stays a
-full standalone role doc. Factor a role only when more than one fleet runs
+A role with no second fleet (e.g. the smoke-worker, which the engine fleet
+alone runs — against both repos' PRs) stays a full standalone role doc. Factor a role only when more than one fleet runs
 it — same threshold as skills.
 
 ---
