@@ -185,13 +185,13 @@ smooth path off the cardinals); "after" adds the yawed lattice walk.
 | one-even-axis box, (-8.5, -8, -8) | 45 | | 0/0/0, (0, 0), 1.00 | pass |
 | orbit frame (source-face canvas) | 45 | 421/2,081/2,930, (12, 8), 1.67 | 875/671/1,703, (12, 8), 1.00 | fail (below) |
 
-A unit marker on a revoxelized canvas is now the hexagon of one lattice
-cell at every yaw, for a marker on a cell, between cells, with a translated
-owner and on the one-even-axis box. The symmetric marker (-8.5, -8.5, -8)
+The tested unit markers on revoxelized canvases have the area of one lattice
+cell, including off-cell positions, a translated owner and the one-even-axis
+box. Their strict footprint passes except for the symmetric tie below. The symmetric marker (-8.5, -8.5, -8)
 at exactly 45 degrees views to a y of exactly zero, half a cell from both
 neighbours, and the shader's float32 rotation and the oracle's float64 one
-round the tie apart; the asymmetric marker at the same yaw passes, so the
-row is the fixture's tie, not the raster's. The orbit frame's marker is
+round the tie apart. The asymmetric marker at the same yaw passes, which
+isolates the numerical placement disagreement without resolving it. The orbit frame's marker is
 now one cell (area 1.00 instead of 1.67), but a source-face canvas
 composites the texture layer as raw rectangular texels, so its footprint
 stays the open item below.

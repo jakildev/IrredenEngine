@@ -168,9 +168,11 @@ look is the nearest-cell resample itself, and under lighting a sun-shadow
 caster that is not the displayed geometry: a revoxelized canvas casts from
 its resampled cells, as its receiver reads them, and the authored-cell
 caster is retired ([the experiment's record](authored-voxel-shadow-faces.md)).
-With that caster gone the staircase's direct sun is the lattice's own at
-every yaw; the residual is the sun map's nearest-texel read at a terminator,
-within a third of a cell, and no receiver bias is added to hide it.
+With that caster gone, the measured 45/67.5/90-degree poses pass the
+trixel visibility gate. The all-lit 0/22.5-degree poses do not exercise
+occlusion. Residual false shadows in this fixture have ray clearances within
+a third of a cell, consistent with nearest-texel sampling at a terminator;
+no receiver bias is added to hide them.
 
 Presentation stays a per-object choice through `RotationMode`: plain
 `DETACHED` projects the authored source faces for a smooth rotated solid;
