@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for the epic-steward claim class (#1663): steward-claim /
+# Tests for the epic-steward claim class: steward-claim /
 # steward-release on an umbrella ISSUE via the fleet:stewarding-<host>-<agent>
 # label, and the cleanup --gh third pass that sweeps stale stewarding labels
 # off open fleet:epic issues after FLEET_CLAIM_STALE_SECS_STEWARD.

@@ -1,4 +1,4 @@
-"""Tool-level tests for `fleet-debug triggers` (#2185).
+"""Tool-level tests for `fleet-debug triggers`.
 
 Runs the real bash script as a subprocess with HOME pointed at a fabricated
 ~/.fleet/state tree, so the inline python heredoc reads the fixture instead of
@@ -58,7 +58,7 @@ class FleetDebugTriggers(unittest.TestCase):
         # short form matches either spelling and pins nothing. Anchoring on the
         # separator, plus asserting the `empty-` form is absent, is what makes
         # this discriminate — the column must NOT carry the `empty-` prefix,
-        # since for per-kind roles (#2700) a suppression does not imply an
+        # since for per-kind roles a suppression does not imply an
         # empty projection.
         self.assertIn(f"  suppressed={value}", line)
         self.assertNotIn("empty-suppressed=", line)
@@ -136,7 +136,7 @@ class FleetDebugTriggers(unittest.TestCase):
         self._assert_suppressed(lines["worker"], "yes")
 
     def test_fmt2_seen_file_reports_per_kind_counts(self):
-        # #2700: roles in the scout's PER_KIND_TRIGGER_ROLES write a per-kind
+        # Roles in the scout's PER_KIND_TRIGGER_ROLES write a per-kind
         # payload instead of a bare hash. Collapsing it to one hash would hide
         # which sub-lane moved, which is the whole point of the format.
         self._write(self.seen / "worker", json.dumps({

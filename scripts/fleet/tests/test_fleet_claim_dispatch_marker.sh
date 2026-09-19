@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for fleet-claim's dispatch-outcome marker (#2698).
+# Tests for fleet-claim's dispatch-outcome marker.
 #
 # fleet-dispatch-wrap exports FLEET_CLAIM_FLAG (pane-keyed) and clears it at
 # dispatch start; fleet-claim touches it on every arm that takes or releases a
@@ -13,12 +13,11 @@
 #   - RELEASE-EARLY SAFE. The lock discipline is acquire-late/release-early, so
 #     a productive iteration has usually released by the time it exits. Any
 #     signal derived from live claim state reads `empty` for it. The marker is
-#     a separate artifact from $CLAIMS_DIR, so it survives the release — that
-#     is the assertion the prior plan's refuted claim-liveness design failed.
+#     a separate artifact from $CLAIMS_DIR, so it survives the release.
 #   - SUCCESS-ONLY. A pane that tried to claim and lost did no work.
 #   - `cleanup` EXCLUDED. It sweeps other agents' stale locks and is the
 #     sanctioned zero-pick move, so stamping there would make every starved
-#     iteration look productive and inarguably invert the fix.
+#     iteration look productive.
 #   - NO-OP OFF-DISPATCH. Interactive/architect use has no FLEET_CLAIM_FLAG.
 #
 # Hermetic: only GitHub-free arms are driven (reserve / release-worktree /
@@ -45,9 +44,7 @@ TMPROOT=$(mktemp -d)
 # fleet-claim keeps state in THREE dirs, each with its own override. Setting
 # only FLEET_CLAIMS_DIR looks hermetic and is not: `reserve` writes to
 # RESERVATIONS_DIR and `molecule` reads MOLECULES_DIR, so a partial override
-# silently mutates the live fleet — an early draft of this suite left a real
-# `pool-7` reservation behind, which a real pool-7 pane would have resumed at
-# step 0.5. Override all three, and assert it below.
+# silently mutates the live fleet. Override all three, and assert it below.
 HERMETIC_DIRS=(claims molecules reservations)
 FLAG=""
 claim_run() {
@@ -96,9 +93,9 @@ claim_run "$S" reserve 4242 pool-7 >/dev/null 2>&1
 assert_stamped "reserve stamps"
 
 echo "T2: the marker survives the release (acquire-late / release-early)"
-# This is AC 1: an iteration that claims, works, and releases before exiting
-# must still read `claimed`. A claim-liveness probe reads empty here, and
-# wall-clock cannot distinguish it from a no-pick that ran just as long.
+# An iteration that claims, works, and releases before exiting must still
+# read `claimed`. A claim-liveness probe reads empty here, and wall-clock
+# cannot distinguish it from a no-pick that ran just as long.
 claim_run "$S" release-worktree pool-7 >/dev/null 2>&1
 assert_stamped "marker outlives release-worktree"
 assert_eq "$(claim_run "$S" reservation-of pool-7 2>/dev/null)" "" \
@@ -106,12 +103,8 @@ assert_eq "$(claim_run "$S" reservation-of pool-7 2>/dev/null)" "" \
 
 echo "T2b: release-worktree with NO reservation does not stamp"
 # Every role's shutdown ceremony calls `release-worktree` unconditionally
-# (FLEET-RUNTIME.md step 2) — including the diligent no-pick's. On master this
-# arm stamped regardless, so every no-pick read `claimed`, the empty-exit
-# streak reset on each one, and the periodic worker re-arm re-fired the same
-# unclaimable slice every 5 minutes overnight (62 of 151 worker dispatches on
-# 2026-09-06 claimed nothing; the standdown fired twice). A no-op release is
-# not productive work.
+# (FLEET-RUNTIME.md step 2) — including the diligent no-pick's. A no-op
+# release is not productive work.
 S=$(mktemp -d "$TMPROOT/s.XXXXXX")
 rm -f "$FLAG"
 claim_run "$S" release-worktree pool-7 >/dev/null 2>&1
@@ -153,7 +146,7 @@ for arm in "reservation-of pool-7" "list" "list-reservations" "worktree-for-task
 done
 
 echo "T5: cleanup is excluded — the sanctioned zero-pick move stays empty"
-# AC 5. Run against an empty claims dir so the sweep completes locally with
+# Run against an empty claims dir so the sweep completes locally with
 # nothing to do (and no network), which is exactly a starved iteration's call.
 S=$(mktemp -d "$TMPROOT/s.XXXXXX")
 mkdir -p "$S/claims"
@@ -191,11 +184,8 @@ claim_run "$S" molecule resume pool-7 >/dev/null 2>&1
 assert_not_stamped "molecule resume (a query that legitimately returns nothing) does not stamp"
 
 echo "T9: fidelity — every lock arm in the live case block is in the stamping set"
-# The executable form of the plan-review finding: the stamping set was written
-# from memory and omitted review-claim / steward-claim, which would have stood
-# the reviewer and steward lanes down after EMPTY_STREAK_CAP *productive*
-# dispatches. Enumerate from the source instead of trusting a hand list, so a
-# newly added lock arm fails here rather than silently dropping out.
+# Enumerate from the source instead of trusting a hand list, so a newly
+# added lock arm fails here rather than silently dropping out.
 #
 # The dispatch case arms are indented four spaces; the trailing stamp block is
 # everything after the `_stamp_dispatch_outcome()` definition.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Tests for R9 (#2939): reconcile auto-escalation of a fleet:sonnet backing
-# issue whose PR is parked in the design lane.
+# Tests for R9: reconcile auto-escalation of a fleet:sonnet backing issue
+# whose PR is parked in the design lane.
 #
 # The defect R9 closes: the design-resume tier (FLEET-FEEDBACK-HANDLING.md
 # tier 4) is opus+-ONLY, and fleet_task_class.feedback_pr_class pins a
@@ -20,8 +20,7 @@
 #            fleet:wip PR (no design label), and a sonnet-backed design-parked
 #            PR whose issue carries a live claim label — none produce R9.
 #   Phase 1  coexistence: the fleet:blocked row still yields a flag-only R2 and
-#            no R7 (the post-#2926 residual stays human-visible; #2939's
-#            Residual paragraph rests on this).
+#            no R7 (the residual stays human-visible).
 #   Phase 2  --apply performs exactly ONE atomic issue edit carrying BOTH
 #            label flags, plus exactly ONE explanatory comment, per firing
 #            issue — and nothing at all for the negatives.
@@ -30,8 +29,8 @@
 # Like the C1/C2 and R7-heal suites, `gh` is stubbed so the label/PR surfaces
 # are canned JSON. The stub models the `issue comment` shape EXPLICITLY (R9 is
 # reconcile's first gh issue comment caller) and fails closed on un-modelled
-# `issue view` shapes, per scripts/fleet/CLAUDE.md (#2781): a call we do not
-# emulate must FAIL, never fall through to a plausible-looking empty answer.
+# `issue view` shapes, per scripts/fleet/CLAUDE.md: a call we do not emulate
+# must FAIL, never fall through to a plausible-looking empty answer.
 
 set -euo pipefail
 
@@ -64,25 +63,25 @@ REPORT="$FLEET_STATE_DIR/drift-report.json"
 # Issues are 8xx, their PRs 9xx (PR number = issue + 100), so a stray
 # cross-target assertion can never accidentally match.
 #
-#   #800/#900 — sonnet backing issue, PR parked fleet:design-blocked.  R9 fires.
-#   #810/#910 — same, parked fleet:design-unblocked.                   R9 fires.
-#   #820/#920 — same, parked fleet:design-proposed.                    R9 fires.
+#   800/900 — sonnet backing issue, PR parked fleet:design-blocked.  R9 fires.
+#   810/910 — same, parked fleet:design-unblocked.                   R9 fires.
+#   820/920 — same, parked fleet:design-proposed.                    R9 fires.
 #     All three lane labels are asserted because R9 keys on the shared
 #     PARKED_PR_LABELS frozenset; a local re-listing that dropped one would
 #     pass a design-unblocked-only test.
-#   #830/#930 — OPUS backing issue, PR design-blocked. No contradiction to fix.
-#   #840/#940 — sonnet backing issue, PR is plain fleet:wip (NO design label).
+#   830/930 — OPUS backing issue, PR design-blocked. No contradiction to fix.
+#   840/940 — sonnet backing issue, PR is plain fleet:wip (NO design label).
 #     Not in the design lane, so its class is nobody's business. (This row also
 #     satisfies every R7 predicate and will be healed by R7 on later --apply
-#     ticks; that is expected and is why the R9 assertions below grep for the
+#     ticks; that is expected and is why the R9 assertions grep for the
 #     class-swap flags specifically rather than counting edits globally.)
-#   #850/#950 — sonnet backing issue, PR design-blocked, but the ISSUE carries
+#   850/950 — sonnet backing issue, PR design-blocked, but the ISSUE carries
 #     fleet:claim-mac-pool-1: a pane is mid-edit on the task itself, so R9 waits
 #     for the next tick after release.
-#   #1100/#1150 — the fleet:blocked coexistence row copied from the R7-heal
+#   1100/1150 — the fleet:blocked coexistence row copied from the R7-heal
 #     suite: claimless fleet:wip PR on a queued+blocked issue. R2 flags it,
-#     R7 skips it (#2926), and R9 has no opinion (no class label, no design
-#     label) — the residual #2939 records as already-human-visible.
+#     R7 skips it, and R9 has no opinion (no class label, no design label) —
+#     the residual records as already-human-visible.
 export ISSUES_JSON="$TMPROOT/issues.json"
 export PRS_JSON="$TMPROOT/prs.json"
 
@@ -156,7 +155,7 @@ case "$1" in
                 # R9's explanatory comment. Modelled EXPLICITLY rather than
                 # swallowed by a catch-all: a missing comment must fail the
                 # suite, and reconcile has no other gh issue comment caller, so
-                # a catch-all here would certify nothing (#2781).
+                # a catch-all here would certify nothing.
                 _args=$(printf '%s ' "$@")
                 case "$_args" in
                     *"--body "*) ;;
@@ -272,7 +271,7 @@ assert_eq "$(grep -c 'remove-label fleet:sonnet' "$EDIT_LOG" 2>/dev/null || true
     "exactly three class swaps total — no negative row leaked one"
 
 echo "=== Phase 3: idempotency — an already-opus backing issue stops firing ==="
-write_issues fleet:opus            # #800 is now opus; #810/#820 stay sonnet
+write_issues fleet:opus            # issue 800 is now opus; 810/820 stay sonnet
 : > "$EDIT_LOG"; : > "$COMMENT_LOG"
 run_reconcile
 assert_eq "$(r9_targets)" "810 820" "#800 no longer produces an R9 finding once it reads fleet:opus"

@@ -108,8 +108,8 @@ assert_eq "$(disp "$S" --empty-streak-check worker)" "under 0" "30s >= thr(10s) 
 echo "T6: a non-integer / garbage streak file is treated as 0, not a crash"
 S=$(mktemp -d "$TMPROOT/s.XXXXXX")
 mkdir -p "$S/empty-streak"
-# Must be the QUALIFIED name (#2698): the unqualified hook reads `worker__all`,
-# so seeding the bare pre-#2698 `worker` would make this assertion pass by
+# Must be the QUALIFIED name: the unqualified hook reads `worker__all`, so
+# seeding the bare unqualified `worker` would make this assertion pass by
 # reading a missing file rather than by surviving the garbage it means to test.
 printf 'not-a-number\n' > "$S/empty-streak/worker__all"
 assert_eq "$(disp "$S" --empty-streak-check worker)" "under 0" "corrupt streak file reads as 0"
@@ -219,7 +219,7 @@ assert_eq "$(disp "$S" --empty-streak-check triage)" "under 0" \
 
 echo "T11: every role family that can stand down is covered"
 # The reviewer and steward lanes claim via `review-claim` / `steward-claim`, so
-# they belong in the stamping set (#2698). If a productive reviewer dispatch
+# they belong in the stamping set. If a productive reviewer dispatch
 # recorded `empty`, the reviewer lane would stand down after EMPTY_STREAK_CAP
 # *productive* dispatches — a strictly-worse-than-today regression. These assert
 # the fold treats them like any other role once the claim signal says `yes`.
@@ -268,7 +268,7 @@ else
     assert_eq "$(disp "$S" --derive-outcome "$rec" '%9')" "no" \
         "a different pane's marker is not borrowed"
     # A planning assignment is productive even though the pane never stamped:
-    # the dispatcher took the planning-claim pre-launch (#2197).
+    # the dispatcher took the planning-claim pre-launch.
     printf '%s\n' "$PLAN" > "$rec"
     rm -f "$S/dispatch-claimed/pane-9"
     assert_eq "$(disp "$S" --derive-outcome "$rec" '%9')" "yes" \

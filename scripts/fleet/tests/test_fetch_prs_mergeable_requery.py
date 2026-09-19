@@ -1,15 +1,15 @@
-"""Tests for fetch_prs's bounded mergeable=UNKNOWN re-query (#3038).
+"""Tests for fetch_prs's bounded mergeable=UNKNOWN re-query.
 
 GraphQL's `mergeable` reads UNKNOWN while GitHub computes it, and the
 computation is (re)started by the query itself whenever the base advances.
-fetch_prs gates the GraphQL list behind a conditional REST GET, so on a
-repo whose master moves constantly every ETag-flip refetch landed
-mid-recompute and the 304 fast path then served UNKNOWN indefinitely — the
-merger, which (correctly) reads UNKNOWN as "not computed", never saw the
-engine repo's CONFLICTING PRs. These cases pin the re-query: a 304 with a
-reused list that still carries UNKNOWN re-asks GraphQL, stops once the list
-settles, is capped, resets on a real change, and never lets a failed
-re-query degrade a valid cache.
+fetch_prs gates the GraphQL list behind a conditional REST GET, so on a repo
+whose master moves constantly an ETag-flip refetch can land mid-recompute,
+and the 304 fast path then serves UNKNOWN indefinitely — the merger, which
+(correctly) reads UNKNOWN as "not computed", never sees a PR that is
+actually CONFLICTING. These cases pin the re-query: a 304 with a reused list
+that still carries UNKNOWN re-asks GraphQL, stops once the list settles, is
+capped, resets on a real change, and never lets a failed re-query degrade a
+valid cache.
 
 The reuse path also has two staleness holes with the same fix shape: a
 merged-or-closed PR whose row the 304 fast path keeps serving (its cached
@@ -40,8 +40,8 @@ _REPO = "jakildev/IrredenEngine"
 
 def _pr(n, mergeable):
     # schema at the current PR_RECORD_SCHEMA ⇒ the reuse gate's cache-desync
-    # marker is satisfied (#3037; closes_issues rides along, as the shipped
-    # projection emits both together).
+    # marker is satisfied; closes_issues rides along, as the shipped
+    # projection emits both together.
     return {"number": n, "mergeable": mergeable, "closes_issues": [],
             "schema": _mod.PR_RECORD_SCHEMA}
 

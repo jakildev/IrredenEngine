@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Committed negative control for test_cross_repo_shared_file_parity.sh: drives
-# that suite against two throwaway fixture repos through green → drift → green,
-# so its red arm is a repeatable assertion rather than session prose (#2827).
+# Drives test_cross_repo_shared_file_parity.sh against two throwaway fixture
+# repos through green -> drift -> green.
 #
-# The fixtures set refs/remotes/origin/master with update-ref and never talk to
-# a network: the suite under test compares origin/master blobs via `git show`,
-# so a plain commit plus that ref is the whole dependency. Both repo roots come
-# from FLEET_ENGINE_ROOT / FLEET_GAME_ROOT, which exist for exactly this.
+# The fixtures set refs/remotes/origin/master with update-ref and never talk
+# to a network: the suite under test compares origin/master blobs via
+# `git show`, so a plain commit plus that ref is the whole dependency. Both
+# repo roots come from FLEET_ENGINE_ROOT / FLEET_GAME_ROOT, the env vars the
+# subject reads.
 
 set -euo pipefail
 
@@ -17,7 +17,7 @@ source "$SCRIPT_DIR/tests/lib_assert.sh"
 SUBJECT="$SCRIPT_DIR/tests/test_cross_repo_shared_file_parity.sh"
 if [[ ! -f "$SUBJECT" ]]; then
     echo "SKIP: subject not present at $SUBJECT" >&2
-    exit 3  # skip status — a missing subject is never a pass (#2786)
+    exit 3  # skip status — a missing subject is never a pass
 fi
 
 TMPROOT=$(mktemp -d)
@@ -44,8 +44,7 @@ make_fixture_repo() {
     git -C "$root" update-ref refs/remotes/origin/master HEAD
 }
 
-# Commit the fixture's current worktree and re-point origin/master at it —
-# the suite reads only the ref, so an uncommitted edit is invisible to it.
+# The suite reads only the ref, so an uncommitted edit is invisible to it.
 land_fixture_commit() {
     local root="$1" msg="$2"
     git -C "$root" add -A
@@ -80,8 +79,8 @@ else
 fi
 assert_contains "$out" "$DRIFT_PATH: DRIFTED" "red arm: names the drifted file exactly"
 # The un-mutated sibling must still pass — a blanket red would satisfy the
-# exit-code assertion above while telling a reader nothing about which file
-# broke the contract.
+# exit-code assertion while telling a reader nothing about which file broke
+# the contract.
 assert_contains "$out" "$STABLE_PATH: byte-identical" "red arm: un-mutated sibling still passes"
 assert_absent "$out" "$STABLE_PATH: DRIFTED" "red arm: verdict is file-specific, not blanket"
 

@@ -12,12 +12,11 @@
 # harmless (a function redefinition plus a second cheap directory check) and
 # deliberate, since the two sources happen at different points in the file.
 #
-# Firing on source rather than on an explicit call is the point: an opt-in call
-# is one a new suite can forget, and a guard scoped to whichever file it happens
-# to live in reaches only that file's users rather than everything exposed to
-# the hazard. tests/test_positive_control.sh ratchets the adoption — a suite
-# that resolves a fleet-* wrapper with no preflight source line above it fails
-# there — so the reach is enforced rather than remembered (#2845).
+# Firing on source rather than on an explicit call reaches every file that
+# sources it, rather than only the callers of an opt-in function a new suite
+# could forget to call. tests/test_positive_control.sh ratchets the adoption:
+# a suite that resolves a fleet-* wrapper with no preflight source line above
+# it fails there.
 
 # require_fleet_lib_dir <dir> — abort the suite when <dir> is a partially
 # staged scripts/fleet/ tree, instead of letting it score as assertion
@@ -27,10 +26,9 @@
 # stage holding only the script under test plus this file aborts every
 # invocation on its own lib-dir preflight with rc=1 and empty stdout. Absent
 # this guard the suite records those as ordinary expected/actual mismatches and
-# prints a normal-looking tally: a mis-staged control reported 2 passed / 21
-# failed where the truth was 14 / 9, with nothing to signal it was bogus
-# (#2713). An inflated count overstates the fix's coverage, which is the one
-# claim a positive control exists to make trustworthy.
+# prints a normal-looking, inflated tally with nothing to signal it was bogus.
+# An inflated count overstates the fix's coverage, which is the one claim a
+# positive control exists to make trustworthy.
 #
 # The discriminator is ref-agnostic on purpose: a real scripts/fleet/ always
 # carries both halves, so fleet-* wrappers present with zero fleet_*.py

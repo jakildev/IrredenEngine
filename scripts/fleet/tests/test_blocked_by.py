@@ -1,17 +1,17 @@
 """Corpus + unit tests for the shared blocker parser fleet_blocked_by.py.
 
 This module is the single source of truth imported by fleet-state-scout,
-fleet-queue-ingest, and fleet-claim (#1749). Cross-parser agreement is
-structural once all three import it; this corpus documents and locks the
-contract, with one case per declaration form:
+fleet-queue-ingest, and fleet-claim. Cross-parser agreement is structural
+once all three import it; this corpus documents and locks the contract,
+with one case per declaration form:
 
   - canonical standalone `**Blocked by:** #N`
-  - inline-bold `**Blocked by: #N (label)**` (#1423)
-  - PLAIN mid-line `Blocked by: #N` (the #174-children mechanism, #1749)
+  - inline-bold `**Blocked by: #N (label)**`
+  - PLAIN mid-line `Blocked by: #N`
   - multi-line + multi-ref union
-  - `Blocked on #N` header fallback (#1326)
+  - `Blocked on #N` header fallback
   - no-blocker sentinels: `(none)`, bare `none`, `n/a`, `tbd`, lone dash
-  - cross-repo `[owner/]Repo#N` qualifier routing (#1522)
+  - cross-repo `[owner/]Repo#N` qualifier routing
   - false-positive guard: "not blocked by anything" → unblocked
 """
 import sys
@@ -36,15 +36,14 @@ class IsNoBlockerValue(unittest.TestCase):
 
 
 class SeeAlsoParallelIdiom(unittest.TestCase):
-    """#1910: a `#N` introduced by a see-also / parallel qualifier inside a
+    """A `#N` introduced by a see-also / parallel qualifier inside a
     leading-`none` value is a sibling cross-reference, not a blocker — while
     the anti-evasion guard for `none, blocked by #5` stays intact."""
 
-    # --- excused: leading `none` + every ref is a see-also / parallel sibling ---
     def test_parallel_idiom_excused(self):
         for v in (
             "(none) — independent tooling; can start immediately, in parallel with #1883",
-            "_(none — independent tooling; in parallel with #1883)_",  # #1910's italic field form
+            "_(none — independent tooling; in parallel with #1883)_",  # italic field form
             "*none* — in parallel with #1883",                          # bold form
             "(none — runs in parallel with #1883)",
             "none — see also #5",
@@ -56,7 +55,6 @@ class SeeAlsoParallelIdiom(unittest.TestCase):
                             f"{v!r} should be excused as a see-also sibling")
 
     def test_parallel_idiom_parses_unblocked(self):
-        # The live #1910 field shape (the bug this hardening fixes at the source).
         body = ("**Blocked by:** (none) — independent tooling; "
                 "in parallel with #1883\n")
         self.assertEqual(fbb.parse_blocked_by(body), "")
@@ -90,7 +88,6 @@ class SeeAlsoParallelIdiom(unittest.TestCase):
             self.assertTrue(fbb.is_no_blocker_value(value),
                             f"{value!r} should contain a negated blocker verb")
 
-    # --- anti-evasion: a blocker verb (or no qualifier at all) still gates ---
     def test_evasion_blocker_verb_still_gates(self):
         for v in (
             "none, actually blocked by #5",        # the canonical evasion
@@ -159,7 +156,6 @@ class SeeAlsoParallelIdiom(unittest.TestCase):
             self.assertFalse(fbb.is_no_blocker_value(value),
                              f"{value!r} must keep the conservative verdict")
 
-    # --- a #N WITHOUT a leading `none` sentinel is never excused ---
     def test_ref_without_leading_none_gates(self):
         for v in ("#1883", "in parallel with #1883", "see also #5"):
             self.assertFalse(fbb.is_no_blocker_value(v),
@@ -188,7 +184,6 @@ class ParseBlockedBy(unittest.TestCase):
              ("jakildev/IrredenEngine", "102")],
         )
 
-    # --- canonical standalone form ---
     def test_canonical_single(self):
         self.assertEqual(fbb.parse_blocked_by(self._body("#138")), "#138")
 
@@ -201,18 +196,15 @@ class ParseBlockedBy(unittest.TestCase):
     def test_suggested_prefix(self):
         self.assertEqual(fbb.parse_blocked_by("**Suggested Blocked by:** #51\n"), "#51")
 
-    # --- inline-bold form (#1423) ---
     def test_inline_bold(self):
         body = "**Part of epic:** #104 · **Blocked by: #138 (Phase 2)** trailing\n"
         self.assertIn("#138", fbb.parse_blocked_by(body))
 
-    # --- NEW plain form (#1749 / #174 children) ---
     def test_plain_single_midline(self):
         body = "Part of epic #174 (Phase E). [sonnet] Blocked by: #178.\n"
         self.assertEqual(fbb.parse_blocked_by(body), "#178.")
 
     def test_plain_multi_ref_midline(self):
-        # The verified #178 body shape.
         body = "Part of epic #174 (Phase D). [opus] Blocked by: #175, #176, #177.\n"
         self.assertEqual(
             sorted(fbb.blocker_refs(body, "jakildev/IrredenEngine")),
@@ -226,7 +218,6 @@ class ParseBlockedBy(unittest.TestCase):
         # double-counted by the plain form's `(?<!\*)` lookbehind.
         self.assertEqual(fbb.parse_blocked_by("**Blocked by:** #5\n"), "#5")
 
-    # --- multi-line union ---
     def test_multiline_union(self):
         body = "**Blocked by:** #100\n**Blocked by:** #101\n"
         self.assertEqual(
@@ -235,7 +226,6 @@ class ParseBlockedBy(unittest.TestCase):
              ("jakildev/IrredenEngine", "101")],
         )
 
-    # --- header fallback (#1326) ---
     def test_header_fallback(self):
         self.assertEqual(fbb.parse_blocked_by("## Blocked on #1300\n"), "#1300")
 
@@ -251,7 +241,6 @@ class ParseBlockedBy(unittest.TestCase):
     def test_header_refless_not_a_blocker(self):
         self.assertEqual(fbb.parse_blocked_by("## Blocked on the redesign\n"), "")
 
-    # --- sentinels ---
     def test_sentinel_variants_unblocked(self):
         for line in ("none — first unblocked.", "none", "(none)",
                      "(none) — first unblocked.", "n/a", "tbd", "—"):
@@ -265,7 +254,6 @@ class ParseBlockedBy(unittest.TestCase):
         self.assertEqual(fbb.parse_blocked_by(self._body("the auth redesign")),
                          "the auth redesign")
 
-    # --- false-positive guard ---
     def test_false_positive_guard(self):
         for body in ("This task is not blocked by anything yet.\n",
                      "Was blocked by: nothing in particular.\n",
@@ -322,7 +310,6 @@ class BlockerRefs(unittest.TestCase):
         )
 
     def test_plain_form_refs(self):
-        # The #179 replay: plain single ref surfaces.
         self.assertEqual(
             fbb.blocker_refs("Part of epic #174. [sonnet] Blocked by: #178.\n",
                              "jakildev/IrredenEngine"),
@@ -350,16 +337,15 @@ class BlockerRefs(unittest.TestCase):
 
 
 class DecorativeProseRefs(unittest.TestCase):
-    """#2783 — `ref_is_decorative` answers "was this ref *declared*", the
-    narrower question stackable eligibility asks.
+    """`ref_is_decorative` answers "was this ref *declared*", the narrower
+    question stackable eligibility asks.
 
-    The miscount it fixes is not cosmetic: `enrich_stackable_blocker_prs`
+    A phantom declared-ref miscount is not cosmetic: `enrich_stackable_blocker_prs`
     offers a base only for single-blocker tasks, so one phantom ref silently
     drops the task out of the worker's stackable fallback tier for the
     blocker's whole pre-merge window.
 
-    `blocker_refs` — the blocking gate — deliberately does NOT use this; see
-    `BlockerRefsCountsProseForTheGate` below.
+    `blocker_refs` — the blocking gate — deliberately does not use this.
     """
 
     def _nums(self, value):
@@ -371,15 +357,15 @@ class DecorativeProseRefs(unittest.TestCase):
                 if not fbb.ref_is_decorative(v, m.start())]
 
     def test_blockers_own_pr_in_parens_is_not_a_second_blocker(self):
-        # The live #2780 shape: the parenthetical names the very PR a stacker
-        # should stack ON, and counting it withheld that offer.
+        # The parenthetical names the very PR a stacker should stack ON;
+        # counting it as a second blocker would withhold that offer.
         self.assertEqual(
             self._nums("#2770 (PR #2772 — lands the `_roster_warn` shape this generalizes)"),
             ["2770"],
         )
 
     def test_blockers_own_pr_after_dash(self):
-        # Live #1938: a merged-blocker note trailing the ref.
+        # A merged-blocker note trailing the ref is decorative, not a second blocker.
         self.assertEqual(
             self._nums("#1937 — **MERGED** (PR #2013, 2026-06-25); the reference now exists."),
             ["1937"],
@@ -401,8 +387,7 @@ class DecorativeProseRefs(unittest.TestCase):
                          ["324", "2666"])
 
     def test_prose_ref_with_blocker_verb_still_gates(self):
-        # #1910's anti-evasion guard, now reused for enumeration: prose that
-        # restates a real dependency must not be droppable.
+        # Prose that restates a real dependency must not be droppable.
         self.assertEqual(self._nums("#100 — also blocked by #999"), ["100", "999"])
         self.assertEqual(self._nums("#100 (depends on #999 too)"), ["100", "999"])
 
@@ -414,24 +399,23 @@ class DecorativeProseRefs(unittest.TestCase):
         self.assertEqual(self._nums("waiting on #500"), ["500"])
 
     def test_duplicate_mention_collapses(self):
-        # Live irreden#72: the same blocker restated in its own prose used to
-        # read as two, which also cost the stackable offer.
+        # The same blocker restated in its own prose collapses to one mention.
         self.assertEqual(
             self._nums("#83 (game does not build against engine master — see #83)"),
             ["83"],
         )
 
     def test_leading_none_value_keeps_every_ref(self):
-        # A `(none) — …` value is #1910's territory; #2783 stays out of it so
-        # that corpus is byte-identical. Live #1923's shape.
+        # A `(none) — …` value is outside this predicate's scope: every ref
+        # stays, matching the SeeAlsoParallelIdiom corpus byte-for-byte.
         self.assertEqual(
             self._nums("(none) — touches shaders shared with #1883/#1884; per #1881's rule"),
             ["1883", "1884", "1881"],
         )
 
     def test_sentinel_rows_unchanged(self):
-        # Postfix independence is licensed (#2960), so the conservative lock
-        # uses ambiguous caveat prose. #2783's parallel case stays excused.
+        # Postfix independence is licensed, so the conservative lock uses
+        # ambiguous caveat prose, and the parallel-idiom case stays excused.
         self.assertFalse(
             fbb.is_no_blocker_value(
                 "(none — but the mitigation half is delivered by PR #2497's setup check)"))
@@ -440,13 +424,14 @@ class DecorativeProseRefs(unittest.TestCase):
 
 
 class BlockerRefsCountsProseForTheGate(unittest.TestCase):
-    """#2783's counterpart lock: `blocker_refs` must keep counting prose refs.
+    """`blocker_refs` must keep counting prose refs, the counterpart lock to
+    ref_is_decorative's narrower declared-ref question.
 
-    A parenthetical PR ref is load-bearing for the *blocking gate*: #1281
-    resolves it against PR state, so it keeps gating until that PR is MERGED,
+    A parenthetical PR ref is load-bearing for the *blocking gate*: it
+    resolves against PR state, so it keeps gating until that PR is MERGED,
     and the signal lives only in the prose. Narrowing `blocker_refs` to
-    declared refs would let a worker claim a task whose base has not merged, so
-    the two questions stay separate on purpose — `test_fleet_claim_blockers.sh`
+    declared refs would let a worker claim a task whose base has not merged,
+    so the two questions stay separate on purpose — `test_fleet_claim_blockers.sh`
     T2 is the end-to-end lock.
     """
 
@@ -458,7 +443,6 @@ class BlockerRefsCountsProseForTheGate(unittest.TestCase):
         )
 
     def test_blockers_own_pr_still_counted(self):
-        # The very value #2783 fixes for *eligibility* is unchanged here.
         self.assertEqual(
             fbb.blocker_refs("**Blocked by:** #2770 (PR #2772 — lands the shape)\n",
                              "jakildev/IrredenEngine"),
@@ -480,10 +464,8 @@ class HasBlockedByField(unittest.TestCase):
 
 
 class BlockedByIsPlainOnly(unittest.TestCase):
-    """Unit cases for `blocked_by_is_plain_only` (#1786)."""
-
     def test_plain_only_returns_true(self):
-        # The #174-children shape: non-bold mid-line form, no bold field.
+        # A non-bold mid-line form with no bold field.
         body = "Part of epic #174 (Phase D). [opus] Blocked by: #175, #176, #177."
         self.assertTrue(fbb.blocked_by_is_plain_only(body))
 

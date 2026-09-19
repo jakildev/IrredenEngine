@@ -8,18 +8,18 @@
 #   - only cap-blocked fable work -> defer (keep trigger, no dispatch)
 #   - per-task Effort: override threads through to the dispatch
 #   - feedback severity routing (nits-only -> sonnet beats queued tasks)
-#   - semantic-conflict-only slice -> opus dispatch (step-1c pressure, #2417)
+#   - semantic-conflict-only slice -> opus dispatch (step-1c pressure)
 #   - empty slice -> lane-default fallthrough (class empty)
 #   - non-worker role is a no-op (class empty)
-#   - planning pre-claim (#2197): plan=1 election, --assign claim walk
+#   - planning pre-claim: plan=1 election, --assign claim walk
 #     (grant / held-fallthrough / exit-3 --replan / all-held / game --repo
 #     namespacing / dry-run+review-only gating) against a stubbed fleet-claim
 #   - FLEET_MODEL_* unset -> standalone alias-default fallback resolves each
 #     class to its fleet-common.sh default (fable[1m]/opus[1m]/sonnet)
 #   - assignment before launch (T20+): whole --dispatch-role ticks against a
 #     stubbed tmux — a launch carries its pre-claimed target, a refused head
-#     yields to the next class in the same tick (what retired the #2699
-#     fairness floor), all-refused stands the lane down, one launch per
+#     yields to the next class in the same tick (caught at the claim rather
+#     than bounded by a turn count), all-refused stands the lane down, one launch per
 #     claimable item, in-flight dedup, every lane kind's claim arm, the
 #     reviewer lane's one-pane-per-PR fan-out, and dry-run's claim-free path
 #   - usage-wall resume (T31b/c): the real wrap + stream on a stub claude that
@@ -44,8 +44,8 @@ if [[ ! -x "$DISPATCHER" ]]; then
 fi
 
 # PASS/FAIL, ok/bad, assert_eq and `summarize` come from the shared helper:
-# its "passed: N  failed: M" line is what fleet-positive-control scores, and
-# the hand-rolled "PASS: n FAIL: m" tally this replaces read as an aborted run.
+# its "passed: N  failed: M" line is what fleet-positive-control scores; a
+# hand-rolled "PASS: n FAIL: m" tally reads as an aborted run.
 # shellcheck source=scripts/fleet/tests/lib_assert.sh
 source "$(dirname "$0")/lib_assert.sh"
 TMPROOT=""
@@ -59,9 +59,8 @@ TMPROOT=$(mktemp -d)
 export FLEET_STATE_DIR="$TMPROOT/state"
 export FLEET_CONF="$TMPROOT/fleet-up.conf"
 # Sandbox the session sidecars too: T31's reservation-resume path reads
-# <sessions>/<pane>.session.json, and without this it read the LIVE
-# ~/.fleet/sessions — a hermeticity hole that surfaced the first time a real
-# Codex iteration held pool-2 (the suite then failed on production state).
+# <sessions>/<pane>.session.json; without this override it reads the LIVE
+# ~/.fleet/sessions, mutating production state.
 export FLEET_SESSIONS_DIR="$TMPROOT/sessions"
 mkdir -p "$FLEET_SESSIONS_DIR"
 mkdir -p "$FLEET_STATE_DIR/projections" "$FLEET_STATE_DIR/dispatch"
@@ -145,7 +144,7 @@ assert_eq "$("$DISPATCHER" --resolve-class worker opus,sonnet)" \
     "class= model= effort= more=0 defer=1 count= plan=0" \
     "exclude both claimable classes -> defer (not lane-default)"
 
-# --- T9+: planning pre-claim (#2197) ------------------------------------------
+# --- T9+: planning pre-claim ------------------------------------------
 # The dispatcher takes the planning-claim label lock itself (under the target
 # pane's worktree basename) BEFORE dispatching, and hands the assignment to the
 # dispatch. Exercised via the --assign hook, which runs the same
@@ -264,7 +263,7 @@ case "$out" in
 esac
 
 # --- T18: semantic-conflict-only slice dispatches opus -----------------------
-# The #2417 starvation shape end-to-end: no feedback, no claimable tasks, no
+# The starvation shape end-to-end: no feedback, no claimable tasks, no
 # needs-plan — just a conflicted PR the scout surfaced. The lane must elect
 # opus (role-worker step 1c is opus+-only), not defer and not fall through to
 # the lane default (a sonnet iteration skips step 1c by design).
@@ -275,7 +274,7 @@ assert_eq "$(resolve worker)" \
     "conflicted PR alone elects opus with count=1"
 
 # --- T19: FLEET_MODEL_* unset -> fleet-common.sh alias-default fallback -------
-# T1-T18 pin FLEET_MODEL_FABLE/OPUS/SONNET (lines ~60-62), so the
+# T1-T18 pin FLEET_MODEL_FABLE/OPUS/SONNET, so the
 # ${FLEET_MODEL_*:-...} arms in fleet-dispatcher's standalone model resolution
 # always short-circuit and the alias-default fallback never runs. Unset the
 # whole table — plus the pre-class legacy OPUS_MODEL/SONNET_MODEL fallthroughs —
@@ -303,8 +302,8 @@ assert_eq "$(resolve_unpinned sonnet)" \
 # The dispatcher binds each launched pane to ONE pre-claimed item
 # (assign_for_pane): a pane launches only behind a granted lane claim, two
 # panes never share an item, an elected class whose candidates are all refused
-# yields to the next class in the SAME tick (the #2699 monopoly, caught at the
-# claim instead of bounded by a turn count), and a lane with nothing claimable
+# yields to the next class in the SAME tick (caught at the claim instead of
+# bounded by a turn count), and a lane with nothing claimable
 # consumes its trigger instead of fanning out. These run whole ticks via
 # --dispatch-role against a stubbed tmux (five idle pool panes) and the
 # fleet-claim stub above, which grants every lane claim unless STUB_REFUSE
@@ -855,7 +854,7 @@ rm -rf "$COUNTS_DIR"; mkdir -p "$COUNTS_DIR"; : > "$GH_LOG"
 printf '2' > "$COUNTS_DIR/plan-engine-99"
 assert_eq "$(FLEET_TARGET_DISPATCH_CAP=2 STUB_GRANT='engine:120' plan_assign)" "target=plan:engine:120" \
     "plan:engine:99 at cap -> parked, engine:120 assigned"
-# #3034 park semantics: ADD fleet:needs-human only — fleet:needs-plan stays
+# Park semantics: ADD fleet:needs-human only — fleet:needs-plan stays
 # on (re-entry = the human removing the park label).
 grep -q 'api repos/jakildev/IrredenEngine/issues/99/labels --method POST -f labels\[\]=fleet:needs-human' "$GH_LOG" \
     && { PASS=$((PASS+1)); echo "  ok: parked by adding fleet:needs-human"; } \
