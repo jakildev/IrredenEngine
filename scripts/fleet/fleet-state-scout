@@ -1994,7 +1994,7 @@ _SMOKE_PENDING_LABELS = frozenset({
 })
 _SMOKE_SKIP_LABELS = frozenset({
     "fleet:needs-fix", "fleet:blocker", "human:wip", "fleet:wip",
-    "fleet:merger-cooldown", "human:needs-fix",
+    "fleet:merger-cooldown", "human:needs-fix", "fleet:needs-human",
 })
 # Pickup order across repos: engine first, every other repo after it in key
 # order (the worker lane's engine-priority, role-worker.md step 3).
@@ -3735,8 +3735,11 @@ def slice_smoke_worker(state):
     # worktree, and the smoke target (FLEET-CROSS-HOST-SMOKE.md § Author
     # side). Order is engine first, then the other repos in key order,
     # oldest PR within each — the same engine-priority the worker lane uses.
-    # `repo` is added to the four-field record rather than copying the whole
-    # PR via _slice_pr_with_repo so the slice stays small.
+    # `repo` and `updatedAt` are added to the four-field record rather than
+    # copying the whole PR via _slice_pr_with_repo so the slice stays small.
+    # `updatedAt` is load-bearing: fleet_task_class._declined keys its
+    # decline memory on the record's `updatedAt` and `repo`, and a record
+    # without `updatedAt` cannot be compared and is offered (fail open).
     #
     # No explicit human:wip / fleet:wip ownership check here — _smoke_pr_eligible
     # already rejects both via _SMOKE_SKIP_LABELS. Smoke workers never hold WIP PRs,
@@ -3754,6 +3757,7 @@ def slice_smoke_worker(state):
                 "title": pr.get("title", ""),
                 "labels": pr.get("labels", []),
                 "headRefName": pr.get("headRefName", ""),
+                "updatedAt": pr.get("updatedAt", ""),
             })
     out["smoke_pending_prs"].sort(
         key=lambda p: (_SMOKE_REPO_ORDER.get(p["repo"], 1), p["repo"],
