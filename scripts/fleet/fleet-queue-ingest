@@ -97,7 +97,7 @@ try:
           len(data.get('retract_issues', [])))
 except Exception:
     print(0, 0, 0)
-" "$PROJECTION_FILE")
+" "$PROJECTION_FILE" | tr -d '\r')
     read -r pending_count unblock_count retract_count <<< "$counts"
     if [[ "${pending_count:-0}" == "0" && "${unblock_count:-0}" == "0" \
           && "${retract_count:-0}" == "0" ]]; then

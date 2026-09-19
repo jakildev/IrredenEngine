@@ -306,7 +306,7 @@ if [[ "$CHECK" -eq 1 ]]; then
     fi
 
     catalog_names=$(printf '%s\n' "${LABELS[@]}" | sed 's/|.*//' | sort -u)
-    json_names=$(jq -r '.labels[].name' "$STATE_MACHINE" | sort -u)
+    json_names=$(jq -r '.labels[].name' "$STATE_MACHINE" | tr -d '\r' | sort -u)
 
     only_catalog=$(comm -23 <(printf '%s\n' "$catalog_names") <(printf '%s\n' "$json_names"))
     only_json=$(comm -13 <(printf '%s\n' "$catalog_names") <(printf '%s\n' "$json_names"))

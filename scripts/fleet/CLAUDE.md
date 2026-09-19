@@ -15,6 +15,7 @@ Rationale for the contracts below that is not readable from the code:
 | Positive control for a new suite | `fleet-positive-control <test-file> <pre-fix-ref>` |
 | Python lint | `ruff check scripts/` |
 | `state.json` mtime ratchet | `python3 scripts/fleet/lint_state_mtime.py` |
+| CRLF-producer ratchet (native-tool stdout feeding Bash text consumers) | `python3 scripts/fleet/lint_crlf_producers.py` |
 
 Suites are glob-discovered (no registration) and run only by
 `fleet-tests.yml`, path-filtered to `scripts/**` plus its listed out-of-tree
@@ -91,6 +92,8 @@ subjects; `ctest` never sees them. Validator index: [`VALIDATION.md`](../../docs
   site (no-op on Linux/macOS). Guard the fix with a byte-level check, never
   grep or `$(...)` — both strip the CR on the host that has the bug
   (`tests/test_fleet_claim_parked_release.sh` Phase 2d is the shape).
+  `lint_crlf_producers.py` ratchets this tree-wide (exception set frozen
+  empty; the fix is always at the producer, never a suppression).
 - **`--help` and docstrings track the code.** A `--help` that slices its own
   header derives the end from the first non-`#` line or ships a regression
   test; a diff that adds or removes an enumerated pass/subcommand/sweep
