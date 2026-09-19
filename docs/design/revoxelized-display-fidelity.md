@@ -69,13 +69,56 @@ The plain `DETACHED` orbit frame (index 7) passes
 missing or extra silhouette pixels; that gate does not check interior face
 boundaries of a multi-voxel solid.
 
+## Direct sun on the resampled staircase
+
+The same script, with `--shadow-overlay`, reads a `--debug-overlay shadow`
+capture of the same pose (magenta = any direct-sun occlusion) and compares
+every sun-facing interior pixel with the lattice's own visibility: a face is
+lit when a ray from its centre toward the sun (the demo's `kSunDirection`,
+`(-0.42, -0.60, -0.55)`) crosses no other occupied destination cell. Faces
+turned away from the sun get no direct light whatever the overlay says and
+are excluded. AO is measured separately with `render-ao-staircase-metric.py`.
+
+Cyan cube, zoom 8, AO off, both caster modes of `BAKE_SUN_SHADOW_MAP` (the
+demo's default `--source-face-shadows` casts the authored cells rotated
+continuously; `--voxel-face-shadows` casts the resampled cells the display
+shows):
+
+| Yaw | Sun-facing interior px (lit / occluded) | Authored casters: false / missed | Resampled casters: false / missed |
+|---:|---|---|---|
+| 0 | 372,700 / 24,696 | 146,995 / 15,680 | 4,051 / 24,696 |
+| 22.5 | 381,098 / 4,312 | 144,554 / 784 | 0 / 4,312 |
+| 45 | 317,757 / 9,800 | 131,392 / 1,176 | 9,022 / 1,960 |
+| 67.5 | 210,548 / 24,304 | 75,336 / 392 | 1,379 / 0 |
+| 90 | 211,166 / 37,667 | 86,972 / 0 | 5,456 / 0 |
+
+"False" is expected lit but shadowed; "missed" is expected occluded but lit.
+Only the caster geometry differs between the two columns, so the tooth
+pattern in the lit captures is the authored caster cutting through the
+resampled receiver: whole half-faces across the cube read as self-shadowed
+where the displayed staircase is open to the sun. With resampled casters
+false shadow falls 15 to 150 times, and what remains is the near-riser tread
+band at 0 and 22.5° that the receiver leaves lit (every occluded pixel the
+lattice expects) and a few tread tips at 45°. AO at yaw 45 with the default
+casters darkens 6.9% of the cube by at most 5.9% (`occluded_frac 0.0689`,
+`max_darkening 0.0588`), so it is not the source of the look. Captures under
+`docs/pr-screenshots/claude/million-entity-render-lit-staircase/`.
+
+```sh
+fleet-run IRCanvasStress --only revox --focus-revox 1 --no-spin --no-auto-rotate --pivot-origin --no-ao --subdivisions 1 --zoom 8 --debug-overlay shadow --auto-screenshot 10 --sweep-yaw 0 1.57079633 5
+python3 scripts/render-revox-face-metric.py <shadow-capture.png> --fixture cube --yaw 45 --shadow-overlay
+```
+
 ## Decision
 
 The revoxelized display is a faithful projection of the resampled cells: a
 lone tread trixel beside a riser is the correct isometric projection of a
 diagonal step, and no pixel is owned by the wrong face. The objectionable
-look is the nearest-cell resample itself, and under lighting the AO and shadow
-response on every concave step of that staircase.
+look is the nearest-cell resample itself, and under lighting a sun-shadow
+caster that is not the displayed geometry: a revoxelized canvas must cast
+from its resampled cells, as its receiver reads them, and the authored-cell
+caster is retired for that path. The tread band behind each riser that the
+receiver still leaves lit is the remaining receiver-side item.
 
 Presentation stays a per-object choice through `RotationMode`: plain
 `DETACHED` projects the authored source faces for a smooth rotated solid;
@@ -90,4 +133,4 @@ resampling at a finer destination lattice (cell count grows with the cube of
 the density and the result is still a staircase; a zoom-dependent level of
 detail is a D7 decision); averaged normals, blurred AO or dilated coverage on
 the steps (never a fix per the campaign spirit). The remaining revoxelized
-work is the lighting response on real staircase geometry, gated separately.
+work is the caster switch and the near-riser receiver band measured above.

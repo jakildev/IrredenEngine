@@ -13,6 +13,14 @@ Each occupied cell's three camera-facing faces are projected as parallelograms
 in painter order; every interior pixel's expected owner face is compared with
 the normals-overlay colour. One framebuffer pixel of boundary uncertainty is
 allowed. This does not measure fidelity to the rotated authored solid.
+
+`--shadow-overlay` reads a `--debug-overlay shadow` capture of the same pose
+instead (magenta = any direct-sun occlusion, black = lit or background) and
+compares every sun-facing interior pixel with the lattice's own sun
+visibility: a face is lit when a ray from its centre toward `--sun` crosses no
+other occupied destination cell. Mismatches are reported as false shadow
+(expected lit) and missed shadow (expected occluded). Faces turned away from
+the sun receive no direct light whatever the overlay says and are excluded.
 """
 
 import argparse
@@ -31,6 +39,9 @@ FIXTURES = {
     "grounded": dict(axis=(0.5, 1.0, 0.2), angle=math.pi / 4.2, carve=False),
 }
 IDENTITY = (0.0, 0.0, 0.0, 1.0)
+DEFAULT_SUN = (-0.42, -0.60, -0.55)
+SHADOW_MAGENTA = (255, 0, 255)
+LIT_LABEL, SHADOWED_LABEL, BACKFACING_LABEL = 1, 2, 3
 CAMERA_FACING = ((-1, 0, 0), (0, -1, 0), (0, 0, -1))
 TIE_EPSILON = 1e-3
 
@@ -132,6 +143,38 @@ class Resample:
         neighbor = tuple(cell[i] + normal[i] for i in range(3))
         return not self.covered(neighbor)
 
+    def sun_visible(self, cell, normal, sun):
+        """Lattice sun visibility of one face: LIT, SHADOWED or BACKFACING.
+
+        The ray starts at the face centre and walks the unit lattice cell by
+        cell (a 3D DDA) until it leaves the destination window; any occupied
+        cell on the way shadows the face.
+        """
+        if sum(n * s for n, s in zip(normal, sun)) <= 0:
+            return BACKFACING_LABEL
+        point = [cell[i] + self.anchor[i] + 0.5 * normal[i] for i in range(3)]
+        current = [math.floor(point[i] - self.anchor[i] + 0.5) for i in range(3)]
+        if all(-n == (current[i] - cell[i]) or normal[i] == 0 for i, n in enumerate(normal)):
+            current = [cell[i] + normal[i] for i in range(3)]
+        step = [1 if s > 0 else -1 for s in sun]
+        next_t, delta_t = [], []
+        for i in range(3):
+            if sun[i] == 0:
+                next_t.append(math.inf)
+                delta_t.append(math.inf)
+                continue
+            boundary = current[i] + self.anchor[i] + (0.5 if sun[i] > 0 else -0.5)
+            next_t.append((boundary - point[i]) / sun[i])
+            delta_t.append(1.0 / abs(sun[i]))
+        bounds = [(r.start - 1, r.stop) for r in self.window]
+        while all(bounds[i][0] <= current[i] <= bounds[i][1] for i in range(3)):
+            if tuple(current) != tuple(cell) and self.covered(tuple(current)):
+                return SHADOWED_LABEL
+            axis = min(range(3), key=lambda i: next_t[i])
+            current[axis] += step[axis]
+            next_t[axis] += delta_t[axis]
+        return LIT_LABEL
+
 
 def iso(point):
     x, y, z = point
@@ -160,11 +203,19 @@ def normal_palette(camera):
     return palette
 
 
-def expected_image(width, height, fixture, yaw, upright, scale, origin):
+def view_sun(sun, camera):
+    """The world sun direction in the camera-composed frame the cells live in."""
+    length = math.sqrt(sum(s * s for s in sun))
+    return rotate(tuple(s / length for s in sun), quat_inverse(camera))
+
+
+def expected_image(width, height, fixture, yaw, upright, scale, origin, sun=None):
     rotation, camera = composed_rotation(fixture, yaw, upright)
     resample = Resample(fixture, rotation)
     cells = resample.occupied()
     labels = bytearray(width * height)
+    lit = bytearray(width * height) if sun is not None else None
+    sun_direction = view_sun(sun, camera) if sun is not None else None
     clipped = False
     for cell in sorted(cells, key=lambda c: -sum(c)):
         center = tuple(cell[i] + resample.anchor[i] for i in range(3))
@@ -175,7 +226,12 @@ def expected_image(width, height, fixture, yaw, upright, scale, origin):
             clipped |= any(x < 1 or y < 1 or x >= width - 1 or y >= height - 1
                            for x, y in polygon)
             raster_polygon(labels, width, height, polygon, label)
+            if lit is not None:
+                raster_polygon(lit, width, height, polygon,
+                               resample.sun_visible(cell, normal, sun_direction))
     stats = dict(occupied_cells=len(cells), tie_cells=len(resample.ties), clipped=clipped)
+    if lit is not None:
+        stats["lit"] = lit
     return labels, normal_palette(camera), stats
 
 
@@ -217,6 +273,39 @@ def compare(width, height, bpp, pixels, expected, palette):
     return result, errors
 
 
+def compare_shadow(width, height, bpp, pixels, expected, lit):
+    """Interior pixels whose sun visibility disagrees with the shadow overlay."""
+    false_shadow = missed_shadow = 0
+    errors = bytearray(width * height * 3)
+    interiors = [0, 0, 0, 0]
+    for index, label in enumerate(expected):
+        if not label or lit[index] == BACKFACING_LABEL:
+            continue
+        x, y = index % width, index // width
+        window = [yy * width + xx
+                 for yy in range(max(0, y - 1), min(height, y + 2))
+                 for xx in range(max(0, x - 1), min(width, x + 2))]
+        if any(expected[i] != label or lit[i] != lit[index] for i in window):
+            continue
+        interiors[lit[index]] += 1
+        rgb = tuple(pixels[index * bpp:index * bpp + 3])
+        shadowed = all(abs(a - b) <= 1 for a, b in zip(rgb, SHADOW_MAGENTA))
+        if shadowed and lit[index] == LIT_LABEL:
+            false_shadow += 1
+            errors[index * 3:index * 3 + 3] = bytes((255, 0, 0))
+        elif not shadowed and lit[index] == SHADOWED_LABEL:
+            missed_shadow += 1
+            errors[index * 3:index * 3 + 3] = bytes((0, 255, 255))
+    result = dict(false_shadow_pixels=false_shadow, missed_shadow_pixels=missed_shadow,
+                  lit_interior_pixels=interiors[LIT_LABEL],
+                  shadowed_interior_pixels=interiors[SHADOWED_LABEL],
+                  backfacing_pixels=sum(1 for v in lit if v == BACKFACING_LABEL),
+                  boundary_tolerance_pixels=1, registration_pixels=[0, 0])
+    result["sufficient_resolution"] = interiors[LIT_LABEL] > 0
+    result["pass"] = false_shadow == missed_shadow == 0 and result["sufficient_resolution"]
+    return result, errors
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("image", type=Path)
@@ -225,18 +314,33 @@ def main(argv=None):
     parser.add_argument("--upright", action="store_true",
                         help="identity entity rotation (the demo's --probe-upright)")
     parser.add_argument("--iso-scale", type=float, nargs=2, default=(32, 16))
+    parser.add_argument("--shadow-overlay", action="store_true",
+                        help="the image is a --debug-overlay shadow capture; compare sun "
+                             "visibility instead of face ownership")
+    parser.add_argument("--sun", type=float, nargs=3, default=DEFAULT_SUN,
+                        help="world-to-sun direction (the demo's kSunDirection)")
     parser.add_argument("--diagnostic-prefix", type=Path)
     args = parser.parse_args(argv)
     if not math.isfinite(args.yaw) or not all(math.isfinite(v) and v > 0 for v in args.iso_scale):
         parser.error("yaw must be finite and scale must be finite and positive")
+    if not all(math.isfinite(v) for v in args.sun) or not any(args.sun):
+        parser.error("sun must be a finite, non-zero direction")
     try:
         width, height, bpp, pixels = read_png(str(args.image))
         expected, palette, stats = expected_image(
             width, height, FIXTURES[args.fixture], math.radians(args.yaw), args.upright,
-            args.iso_scale, (width / 2, height / 2))
-        result, errors = compare(width, height, bpp, pixels, expected, palette)
+            args.iso_scale, (width / 2, height / 2),
+            tuple(args.sun) if args.shadow_overlay else None)
+        if args.shadow_overlay:
+            lit = stats.pop("lit")
+            result, errors = compare_shadow(width, height, bpp, pixels, expected, lit)
+            palette = [(0, 0, 0), (0, 0, 0), SHADOW_MAGENTA, (64, 64, 64)]
+            expected = lit
+        else:
+            result, errors = compare(width, height, bpp, pixels, expected, palette)
         result.update(stats)
-        result.update(image=str(args.image), scope="resampled_cell_faces",
+        result.update(image=str(args.image),
+                      scope="resampled_cell_sun" if args.shadow_overlay else "resampled_cell_faces",
                       fixture=args.fixture, yaw=args.yaw,
                       palette=[list(color) for color in palette[1:]])
         result["pass"] &= not stats["clipped"]
