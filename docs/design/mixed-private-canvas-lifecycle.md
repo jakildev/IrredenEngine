@@ -35,19 +35,24 @@ A shape targeting that canvas therefore rasters:
   through `IRSystem::clearCanvasAndDistances`, the same sentinel and Metal
   scratch mirror the voxel pass uses.
 
-The contract is exact on canvases whose
-`C_TriangleCanvasTextures::renderedCellOffset_` is zero: plain `DETACHED` and
-shape-only canvases. A revoxelized canvas stores the pool's half-cell phase
-there (-0.5 per even-sized centered axis at density 1), and the composite
-adds that phase to the canvas placement and, scaled into its depth units, to
-the canvas depth; the shape pass consumes neither. On such a canvas a shape
-therefore sits one texel off in-plane when the pool's axes have mixed parity
-and 1.5 world units nearer for an even cube, against the composite and
-against the voxel texels of the same canvas alike. Consuming the phase (the
-canvas offset in-plane and a per-canvas depth bias in the shape frame data,
-with its Metal twin) is the campaign's next mixed-canvas slice; until then
-the storage caveat on `sampleLayout_` stands and the fixtures here keep the
-markers on a plain `DETACHED` canvas or hidden inside a revoxelized one.
+A revoxelized canvas stores the pool's half-cell phase in
+`C_TriangleCanvasTextures::renderedCellOffset_` (-0.5 per even-sized centered
+axis at density 1, view-local): the voxel raster stores cells at rounded
+lattice positions and the composite places the whole canvas at the owner
+plus the phase, so every displayed cell sits at integer + phase. A shape
+rastered into that canvas is a lattice occupant too: the shape pass drops
+the phase from the shape's owner offset (rotated into the world frame the
+offset is projected in), the shader's per-axis rounding lands the shape on
+a lattice cell, and the composite's phase puts that cell where the voxels
+are, in-plane and in depth. A shape centred on a lattice cell displays
+exactly; one between cells displays at the nearest cell, the voxelization
+quantum the voxels themselves have. Without the phase drop the raster
+rounds the raw offset and, for a shape less than half a cell below a cell
+centre, picks the wrong neighbour (a whole cell, two iso rows). Shifting the
+raster by the phase's iso projection instead is rejected: it keeps the
+centroid but moves the shape's texels by an odd row, which flips the parity
+the local-triangle gather reads, and the shape's hexagons come out as bow
+ties.
 
 `SHAPES_TO_TRIXEL` runs after `VOXEL_TO_TRIXEL_STAGE_1` in a pipeline that
 mixes the two producers on one canvas; the ordering table in
@@ -68,9 +73,20 @@ texture layer. `--strict` also requires the marker footprint itself to be
 pixel-exact; that measures the SDF marker's display in a private canvas and is
 open (below).
 
+The lattice fixtures are the revoxelized proof solids with the same markers:
+`--focus-revox 3` is a 12x12x11 box (phase (-0.5, -0.5, 0)) and
+`--parity-extent 12 11 11` makes it the one-even-axis box (phase
+(-0.5, 0, 0)). `--mixed-shape-at` places the markers (world entities) and
+`--focus-offset` translates the owner; the metric's `--fixture`, `--markers`
+and `--owner` mirror them, with the voxel expectation from the lattice
+module the revoxelized-display oracle uses and each marker expected at its
+nearest lattice cell.
+
 ```sh
 fleet-run IRCanvasStress --only orbit --focus-orbit 7 --focus-mixed-shape --no-spin --no-auto-rotate --pivot-origin --no-ao --no-shadows --subdivisions 1 --zoom 8 --debug-overlay unlit --auto-screenshot 10 --sweep-yaw 0 1.57079633 5
 python3 scripts/render-mixed-canvas-metric.py <capture.png> --yaw 45
+fleet-run IRCanvasStress --only revox --focus-revox 3 --focus-mixed-shape --mixed-shape-at -8.5 -8.5 -8 --no-spin --no-auto-rotate --pivot-origin --no-ao --no-shadows --subdivisions 1 --zoom 8 --debug-overlay unlit --auto-screenshot 10 --sweep-yaw 0 1.57079633 5
+python3 scripts/render-mixed-canvas-metric.py <parity-capture.png> --yaw 0 --fixture parity --markers -8.5 -8.5 -8 -5.5 -8.5 -8 --strict
 fleet-run IRCanvasStress --only orbit --focus-orbit 2 --focus-mixed-shape --no-spin --no-auto-rotate --pivot-origin --no-ao --no-shadows --subdivisions 1 --zoom 8 --debug-overlay unlit --auto-screenshot 10 --sweep-yaw 0 0 1
 python3 scripts/render-mixed-canvas-metric.py <sphere-with-markers.png> --yaw 0 --control <sphere-without-markers.png>
 python3 scripts/tests/test_render_mixed_canvas_metric.py
@@ -109,6 +125,38 @@ That control measures survival of the voxel raster only; how an SDF displays
 inside a local-triangle canvas is the storage caveat on
 `C_TriangleCanvasTextures`, not something this fixture claims.
 
+### Lattice evidence
+
+Same host and settings; captures under
+`docs/pr-screenshots/claude/million-entity-render-shape-phase/`. The
+expectation puts each marker at its nearest lattice cell; the frame column
+is the voxel producer outside the marker guards (missing / extra / wrong
+owner), pixel-exact in every capture, so the lattice module's resample is
+the display's. Footprint is the whole frame including the markers; the
+centroid error is in framebuffer pixels (one trixel is 32 x 16).
+
+| Fixture, marker | Yaw | Before: footprint m/e/w, centroid | After: footprint m/e/w, centroid | Strict after |
+|---|---:|---|---|---|
+| parity box, on the lattice (-8.5, -8.5, -8) | 0 | 0/0/0, (0, 0) | 0/0/0, (0, 0) | pass |
+| parity box, on the lattice | 90 | 0/0/0, (0, 0) | 0/0/0, (0, 0) | pass |
+| parity box, quarter cell above a cell (-8.25) | 0 | 0/0/0, (0, 0) | 0/0/0, (0, 0) | pass |
+| parity box, quarter cell below a cell (-8.75) | 0 | 0/0/7,680, (0, 32) | 0/0/0, (0, 0) | pass |
+| parity box, owner (4, 2, -1) | 0 | 0/0/0, (0, 0) | 0/0/0, (0, 0) | pass |
+| one-even-axis box, on the lattice (-8.5, -8, -8) | 0 | 0/0/0, (0, 0) | 0/0/0, (0, 0) | pass |
+| parity box, on the lattice | 22.5 / 45 / 67.5 | (0, 16) / (16, 8) / (16, 16), area 1.67 | (0, 0) / (16, -8) / (16, 0), area 1.67 | fail (below) |
+| orbit frame (zero phase) | 0 / 45 | (-6.2, 6.1) / (12.0, 8.0) | unchanged | fail (below) |
+
+At the cardinals a shape on a revoxelized canvas is now the hexagon of its
+lattice cell, pixel for pixel, whether it sits on a cell, a quarter cell
+above one (which the raw rounding already got right, since round-half-up
+carries -8.25 to -8 and the composite's -0.5 lands it on -8.5) or a quarter
+cell below one (which the raw rounding sent a whole cell away, two iso rows
+and 7,680 wrong-owner pixels). The translated owner behaves like the centred
+one, which pins the owner-relative subtraction's sign. Off the cardinals the
+shape pass rounds the iso projection instead of the cell and paints its
+analytical 2x3 diamonds at both parities, the dilation below; that is the
+next slice, not placement.
+
 ## Open: the SDF marker's own display
 
 The strict footprint fails at every yaw. In a source-face canvas the texture
@@ -119,9 +167,9 @@ yaw 0). Under continuous yaw the sub-1 analytical SDF path writes a 2x3
 diamond from every hit pixel and the marker dilates to about twice its area
 (ratio 2.1 at yaw 45). Both are the SDF display in private canvases, the
 campaign's SDF extent and ownership item, not the lifecycle; the strict numbers
-are the target that item drives to zero. AO on a marker-free wireframe frame is
-uniform, so the AO overlay is not a raster-survival control for this fixture.
-The gate places the focused owner at the world origin, so the owner-relative
-subtraction runs with a zero owner; a translated-owner capture, or a CPU
-identity test against the composite's placement, would pin its sign and is
-owed with the phase item above.
+are the target that item drives to zero; on the revoxelized parity box the
+cardinal captures already meet it, so what remains is the continuous-yaw
+path (area ratio 1.67 at 22.5, 45 and 67.5 degrees: the analytical solver
+hits every iso pixel and each hit writes a 2x3 diamond) and the source-face
+canvas's raw texels. AO on a marker-free wireframe frame is uniform, so the
+AO overlay is not a raster-survival control for this fixture.
