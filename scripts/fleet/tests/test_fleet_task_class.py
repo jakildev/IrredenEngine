@@ -616,8 +616,13 @@ class DispatchTargets(HostSeamCase):
         os.environ["FLEET_TEST_HOST"] = "windows"
         smoke = {"smoke_pending_prs": [
             {"number": 3087, "labels": ["fleet:needs-windows-smoke"]},
-            {"number": 3082, "labels": ["fleet:needs-macos-smoke"]}]}
-        self.assertEqual(pick_role(smoke, "smoke-worker"), ["smoke:engine:3087"])
+            {"number": 3082, "labels": ["fleet:needs-macos-smoke"]},
+            {"number": 41, "repo": "game", "labels": ["fleet:needs-windows-smoke"]},
+            {"number": 42, "repo": "game", "labels": ["fleet:needs-macos-smoke"]}]}
+        # Slice order is kept (engine first); a record without `repo` is an
+        # engine record; a game record targets `smoke:game:<N>`.
+        self.assertEqual(pick_role(smoke, "smoke-worker"),
+                         ["smoke:engine:3087", "smoke:game:41"])
         self.assertEqual(pick_role(smoke, "merger"), [])
 
     def test_record_without_a_number_is_dropped(self):

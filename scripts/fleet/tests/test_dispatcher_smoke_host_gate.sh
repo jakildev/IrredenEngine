@@ -90,6 +90,7 @@ cat > "$STUB_BIN/fleet-claim" <<'CLAIMEOF'
 #!/usr/bin/env bash
 case "$*" in
     "review-claim 101 pool-1") exit 0 ;;
+    "--repo game review-claim 101 pool-1") exit 0 ;;
     *) echo "unexpected test claim: $*" >&2; exit 99 ;;
 esac
 CLAIMEOF
@@ -101,12 +102,19 @@ unset FLEET_RUNTIMES FLEET_CROSS_PROVIDER_REVIEW FLEET_WORKER_RUNTIME
 SLICE="$FLEET_STATE_DIR/projections/smoke-worker.json"
 TRIGGER="$FLEET_STATE_DIR/triggers/smoke-worker"
 
-write_slice() {  # write_slice <label...> — one approved PR per label, #101+
-    local n=101 body="" first=1 label
-    for label in "$@"; do
+write_slice() {  # write_slice <[repo:]label...> — one approved PR per label, #101+
+    # A bare label is an engine record; `game:<label>` tags the record with
+    # repo=game (the slice is two-repo, records carry `repo`, and the gate
+    # reports `<repo>:<number>`).
+    local n=101 body="" first=1 spec repo label
+    for spec in "$@"; do
         [[ $first -eq 1 ]] || body+=","
         first=0
-        body+="{\"number\":$n,\"labels\":[\"fleet:approved\",\"$label\"]}"
+        repo="engine"; label="$spec"
+        if [[ "$spec" == *:fleet:* ]]; then
+            repo="${spec%%:*}"; label="${spec#*:}"
+        fi
+        body+="{\"repo\":\"$repo\",\"number\":$n,\"labels\":[\"fleet:approved\",\"$label\"]}"
         n=$((n + 1))
     done
     printf '{"smoke_pending_prs":[%s]}\n' "$body" > "$SLICE"
@@ -145,7 +153,7 @@ tick() {  # tick <host> — one dispatch_role smoke-worker tick; prints the log
 
 echo "T1: Windows-pending PR on a Windows host -> fire"
 write_slice "$WINDOWS"
-assert_eq "$(check windows)" "fire prs=101" "windows host serves its own smoke label"
+assert_eq "$(check windows)" "fire prs=engine:101" "windows host serves its own smoke label"
 
 echo "T2: the same PR on a macOS host -> quiet (the #2839 defect)"
 assert_eq "$(check mac)" "quiet" "mac host stands down on windows-only smoke work"
@@ -155,14 +163,24 @@ assert_eq "$(check linux)" "quiet" "linux host stands down on windows-only smoke
 
 echo "T4: macOS-pending PR on a macOS host -> fire (mac host key, macos label)"
 write_slice "$MACOS"
-assert_eq "$(check mac)" "fire prs=101" "the mac/macos vocabulary split is reconciled"
+assert_eq "$(check mac)" "fire prs=engine:101" "the mac/macos vocabulary split is reconciled"
 assert_eq "$(check windows)" "quiet" "windows host stands down on macos-only work"
 
 echo "T5: a mixed slice reports only this host's PRs"
 write_slice "$WINDOWS" "$MACOS" "$LINUX"
-assert_eq "$(check windows)" "fire prs=101" "windows sees only #101"
-assert_eq "$(check mac)" "fire prs=102" "mac sees only #102"
-assert_eq "$(check linux)" "fire prs=103" "linux sees only #103"
+assert_eq "$(check windows)" "fire prs=engine:101" "windows sees only #101"
+assert_eq "$(check mac)" "fire prs=engine:102" "mac sees only #102"
+assert_eq "$(check linux)" "fire prs=engine:103" "linux sees only #103"
+
+echo "T5b: a two-repo slice reports each servable PR as <repo>:<number>"
+write_slice "$WINDOWS" "game:$WINDOWS" "game:$MACOS"
+assert_eq "$(check windows)" "fire prs=engine:101,game:102" "engine and game Windows PRs both fire, repo-qualified"
+assert_eq "$(check mac)" "fire prs=game:103" "a game-only macOS PR fires the mac host"
+assert_eq "$(check linux)" "quiet" "linux stands down on a slice with no linux label in either repo"
+
+echo "T5c: a legacy record with no repo field reports as engine"
+printf '{"smoke_pending_prs":[{"number":101,"labels":["fleet:approved","%s"]}]}\n' "$WINDOWS" > "$SLICE"
+assert_eq "$(check windows)" "fire prs=engine:101" "repo defaults to engine"
 
 echo "T6: an unrecognized host key fails closed"
 assert_eq "$(check unknown)" "quiet" "unknown host key matches no label"
@@ -187,5 +205,15 @@ echo "T9: positive control — a tick on the serving host still dispatches"
 out=$(tick windows)
 assert_contains "$out" "dispatching smoke-worker" "windows host still gets its pane"
 assert_absent "$out" "no smoke work pending for this host" "the gate does not fire on real work"
+
+echo "T10: a game-only Windows PR dispatches the Windows host and claims under --repo game"
+write_slice "game:$WINDOWS"
+out=$(tick windows)
+assert_contains "$out" "dispatching smoke-worker" "a game smoke PR wakes the pane"
+# The claim stub accepts only the `--repo game` spelling for this record, so
+# a dispatch here proves the claim was namespaced (an engine-form claim is
+# refused and the lane stands down — the T8 message, asserted absent).
+assert_contains "$out" "smoke:game:101" "the dispatch target is repo-qualified"
+assert_absent "$out" "no candidate could be claimed" "the claim went through fleet-claim --repo game"
 
 summarize "fleet-dispatcher smoke host gate"

@@ -89,8 +89,9 @@ Bash calls until the next fresh launch), add `--repo jakildev/irreden` to `gh` c
    `scout cache stale or missing — run fleet-up` and exit; never poll `gh`/`git` instead.
 4. Cross-check `tasks.open[]` against `prs[]` for work already in flight.
 5. Print one line: needs-plan count (informational) and unblocked unclaimed tasks of your class per repo.
-6. `gh pr list --repo jakildev/IrredenEngine --label "fleet:needs-<host>-smoke" --state merged --json number --jq length`;
-   at ≥ 5, note it in the standing-by message so the human can cue `/platform-catchup`
+6. `gh pr list --repo jakildev/IrredenEngine --label "fleet:needs-<host>-smoke" --state merged --json number --jq length`
+   and the same with `--repo jakildev/irreden` (game absent: engine only); at a summed
+   ≥ 5, note it in the standing-by message so the human can cue `/platform-catchup`
    (never auto-invoke it).
 7. Print `worker standing by` (`worker standing by (dry-run)` in dry-run).
 
@@ -111,10 +112,12 @@ Bash calls until the next fresh launch), add `--repo jakildev/irreden` to `gh` c
    Reserve the worktree (`fleet-claim reserve`) on the `human:needs-fix` /
    `human:blocker` AMEND paths; clear all flagged PRs before other work.
 
-1b. **One cross-host smoke PR (engine only)** per
+1b. **One cross-host smoke PR (engine first, then game)** per
    [FLEET-CROSS-HOST-SMOKE.md](../../docs/agents/FLEET-CROSS-HOST-SMOKE.md) § "Author
-   side": sonnet is the exit-code half (no screenshot inspection; escalate when the log
-   flags compile warnings/errors but exits zero); opus+ is the judgment half.
+   side" (a game PR takes that section's per-repo table — `--repo`, game twin
+   worktree, `IRGame` via the dedicated `build-game` dir): sonnet is the exit-code half
+   (no screenshot inspection; escalate when the log flags compile warnings/errors but
+   exits zero); opus+ is the judgment half.
 
 1c. **[opus+ only] One `fleet:semantic-conflict` PR, engine first, then game.**
    Candidates: cached `prs[]` with the label and none of `fleet:wip`, `human:wip`,

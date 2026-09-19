@@ -332,18 +332,20 @@ Protocol: [`FLEET-FEEDBACK-HANDLING.md`](FLEET-FEEDBACK-HANDLING.md).
   `FLEET_RECONCILE_DRIFT_TICKS` (3) `--apply` ticks. Body refreshed in
   place; auto-closed once every finding clears.
 
-## Cross-host smoke (engine PRs)
+## Cross-host smoke (engine and game PRs)
 
 Protocol: [`FLEET-CROSS-HOST-SMOKE.md`](FLEET-CROSS-HOST-SMOKE.md).
 
 - `fleet:authored-on-{linux,macos,windows}` — **`commit-and-push`** at PR
   creation. A permanent fact, not a state.
 - `fleet:needs-{linux,macos,windows}-smoke` — **reviewer**, after the
-  verdict. OpenGL is one tier (`linux` or `windows`, never both); Metal
-  (`macos`) is another. Cleared by `smoke-verify-<host>` on success
-  (Windows: the native fleet, or `platform-catchup`); on failure the label
-  stays and the verdict drops to `needs-fix`. An outstanding smoke label
-  means not safe to merge.
+  verdict; the engine reviewer mirror mints them on engine PRs and the
+  game reviewer mirror mints the same labels on game PRs, and the one
+  smoke lane (repo-agnostic since #2865) clears both. OpenGL is one tier
+  (`linux` or `windows`, never both); Metal (`macos`) is another. Cleared
+  by `smoke-verify-<host>` on success (Windows: the native fleet, or
+  `platform-catchup`); on failure the label stays and the verdict drops to
+  `needs-fix`. An outstanding smoke label means not safe to merge.
 - `fleet:verified-{linux,macos,windows}` — **smoking agent**; permanent
   audit trail, not read by the merge gate.
 

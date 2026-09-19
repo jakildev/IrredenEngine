@@ -2553,7 +2553,8 @@ worker_rearm_should_fire() {
 
 # Host gate for the smoke lane (#2839). Returns 0 (dispatch) iff at least one PR
 # in the smoke-worker slice carries THIS host's pending smoke label, and sets
-# SMOKE_SERVABLE_PRS to those numbers (newline-separated) for the log line.
+# SMOKE_SERVABLE_PRS to those PRs as `<repo>:<number>` (newline-separated) for
+# the log line — the slice spans every repo.
 #
 # Smoke is the one lane whose work is definitionally host-specific — only a
 # native-Windows host can clear `fleet:needs-windows-smoke` — while the scout's
@@ -3953,8 +3954,9 @@ case "${1:-}" in
         ;;
     --smoke-check)
         # Test/debug: would the smoke lane dispatch on this host against the
-        # current smoke-worker projection? Prints "fire prs=<n1,n2,...>" when at
-        # least one pending PR carries this host's smoke label, else "quiet".
+        # current smoke-worker projection? Prints "fire prs=<repo>:<n1>,..."
+        # when at least one pending PR carries this host's smoke label, else
+        # "quiet".
         # Does NOT touch the trigger. Mirrors the live gate exactly (#2839).
         if smoke_worker_should_fire; then
             echo "fire prs=$(echo "$SMOKE_SERVABLE_PRS" | paste -sd, -)"
