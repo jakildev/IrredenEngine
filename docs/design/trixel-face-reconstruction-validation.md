@@ -59,7 +59,11 @@ not merely whether a color appears in a valid palette. For a frame or octahedron
 the gate checks the silhouette union only; it does not infer the frontmost face
 of intersecting projected cells from draw order. Known fixture shape, pose,
 resolution and scale are required. Do not apply the authored-source oracle to
-revoxelized occupancy: derive the expected faces from that path's actual cells.
+revoxelized occupancy: `render-revox-face-metric.py` derives the expected faces
+from that path's actual cells (the anchored inverse resample of the fixture's
+authored solid under the camera-composed rotation) and checks silhouette and
+per-pixel owner face the same way. Its contract, controls and native evidence:
+[revoxelized display fidelity](revoxelized-display-fidelity.md).
 
 ```sh
 # Positive native control: one identity voxel, zoom 16, output scale 2.
@@ -67,6 +71,8 @@ python3 scripts/render-source-face-metric.py docs/pr-screenshots/codex/detached-
 # Known failure which the lattice-consistency metric accepts.
 python3 scripts/render-source-face-metric.py docs/pr-screenshots/codex/detached-display-artifacts/capture-1277.png --shape frame --yaw 45
 python3 -m unittest discover -s scripts/tests -p test_render_source_face_metric.py -v
+# Revoxelized cube: the display must match its own resampled cells, not the authored cube.
+python3 scripts/render-revox-face-metric.py docs/pr-screenshots/claude/million-entity-render-face-parity/revox1_cyan_normals_yaw45.png --fixture cube --yaw 45
 ```
 
 The hermetic suite is discovered by `render-harness-tests.yml`: independent

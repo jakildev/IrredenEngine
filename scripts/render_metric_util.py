@@ -23,6 +23,7 @@ import argparse
 import importlib.machinery
 import importlib.util
 import json
+import math
 import sys
 from array import array
 from collections import deque
@@ -241,3 +242,28 @@ def emit(result: dict, failed: list[str]) -> int:
         result["reason"] = "; ".join(failed)
     print(json.dumps(result, indent=2))
     return 1 if failed else 0
+
+
+def raster_polygon(mask: bytearray, w: int, h: int,
+                   polygon: list[tuple[float, float]], label: int) -> None:
+    """Fill a convex polygon into a row-major label mask at pixel centres.
+
+    A pixel is inside when its centre ``(x + .5, y + .5)`` lies within the
+    polygon; edges use the half-open scanline rule so two polygons sharing
+    an edge never double-cover a pixel. Shared by the projected-face oracles
+    (``render-source-face-metric.py``, ``render-revox-face-metric.py``).
+    """
+    edges = list(zip(polygon, polygon[1:] + polygon[:1]))
+    first = max(0, math.ceil(min(y for _, y in polygon) - .5))
+    last = min(h, math.ceil(max(y for _, y in polygon) - .5))
+    for y in range(first, last):
+        intersections = []
+        for (ax, ay), (bx, by) in edges:
+            if min(ay, by) <= y + .5 < max(ay, by):
+                intersections.append(ax + (y + .5 - ay) * (bx - ax) / (by - ay))
+        if len(intersections) < 2:
+            continue
+        left = max(0, math.ceil(min(intersections) - .5))
+        right = min(w, math.ceil(max(intersections) - .5))
+        if right > left:
+            mask[y * w + left:y * w + right] = bytes([label]) * (right - left)
