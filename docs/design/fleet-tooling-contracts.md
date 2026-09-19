@@ -155,6 +155,22 @@ in-process for a loop (`fleet-clone-freshness.sh`), on disk for a one-shot
 the dispatcher re-invokes (`fleet-rebase`, where an age ceiling does the
 sizing and N is 1).
 
+`fleet-up` is itself a file in the clone it advances, read incrementally by
+the bash executing it, so the advance leaves the rest of the boot running
+the pre-merge script. Snapshotting the script and exec'ing the copy would
+make the boot deterministic but still run the old code; the contract is
+instead that everything past the advance runs from the merged tree
+(`fleet_up_reexec_if_stale`, the one-shot sibling of the daemons' self-reload
+in [`FLEET-CACHE.md`](../agents/FLEET-CACHE.md) §"Daemon source
+staleness"). Two consequences bind edits to `fleet-up`: the head above the
+advance runs twice on a stale boot, so it must stay idempotent — a second
+pass over the same conf, argument list, and usage cache has to land on the
+same state; and the re-exec runs under the launch environment, not the first
+pass's, for the same reason the dispatcher's reload does — every knob the
+head resolves is exported under its own name, and `fleet_env_override_names`
+would report an inherited copy to the dispatcher as an operator pin that
+shadows a later conf edit.
+
 The scout's `queue-manager` and `queue-manager-ingest` lanes compare their
 own projection hash inline instead of routing through `update_role_trigger`,
 because nothing re-arms them. Recording the hash and then skipping — or
