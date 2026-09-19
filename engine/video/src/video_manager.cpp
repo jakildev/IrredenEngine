@@ -65,21 +65,8 @@ void VideoManager::configureCapture(
 }
 
 void VideoManager::configureCaptureOutputResolution(int width, int height) {
-    if (width <= 0 || height <= 0) {
-        if (width > 0 || height > 0) {
-            IRE_LOG_WARN(
-                "Capture output resolution {}x{} needs both dimensions > 0; "
-                "following the render output resolution instead",
-                width,
-                height
-            );
-        }
-        m_outputWidthOverride = 0;
-        m_outputHeightOverride = 0;
-        return;
-    }
-    m_outputWidthOverride = width & ~1;
-    m_outputHeightOverride = height & ~1;
+    m_outputWidthOverride = (width > 0) ? width : 0;
+    m_outputHeightOverride = (height > 0) ? height : 0;
 }
 
 void VideoManager::configureScreenshotOutputDir(const std::string &outputDirPath) {
@@ -329,16 +316,26 @@ void VideoManager::toggleCapture() {
     // The configured bitrate is the budget at the render output resolution;
     // an output override scales it by the pixel-area ratio so bits per pixel
     // stay constant and a smaller capture is proportionally smaller. ABR
-    // would otherwise spend the whole budget on the smaller frame.
+    // would otherwise spend the whole budget on the smaller frame. A render
+    // area of zero (no window size reported yet, or minimized) has no ratio;
+    // the budget then applies to the override as-is.
     int videoBitrate = m_videoBitrate;
-    if (m_outputWidthOverride > 0 && m_outputHeightOverride > 0) {
+    if (m_outputWidthOverride > 0 || m_outputHeightOverride > 0) {
+        const CaptureOutputResolution resolved = resolveCaptureOutputResolution(
+            m_outputWidthOverride,
+            m_outputHeightOverride,
+            outputResolution.x,
+            outputResolution.y
+        );
         const double renderArea =
             static_cast<double>(outputResolution.x) * static_cast<double>(outputResolution.y);
-        const double overrideArea = static_cast<double>(m_outputWidthOverride) *
-                                    static_cast<double>(m_outputHeightOverride);
-        videoBitrate =
-            static_cast<int>(static_cast<double>(m_videoBitrate) * overrideArea / renderArea);
-        outputResolution = ivec2(m_outputWidthOverride, m_outputHeightOverride);
+        const double overrideArea =
+            static_cast<double>(resolved.width_) * static_cast<double>(resolved.height_);
+        if (renderArea > 0.0) {
+            videoBitrate =
+                static_cast<int>(static_cast<double>(m_videoBitrate) * overrideArea / renderArea);
+        }
+        outputResolution = ivec2(resolved.width_, resolved.height_);
     }
 
     IRE_LOG_INFO(
