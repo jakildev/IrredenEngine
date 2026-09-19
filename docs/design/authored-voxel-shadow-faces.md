@@ -1,9 +1,21 @@
-# Authored voxel faces for detached shadow casting
+# Authored voxel faces for detached shadow casting (retired)
+
+**Retired.** A revoxelized canvas casts from its resampled cells, the geometry
+its receiver reads and its display shows. The authored-grid caster described
+below cut through that lattice and marked whole half-faces of the displayed
+staircase as self-shadowed (75k–147k false shadow pixels per yaw on the cyan
+proof cube against 0–9k from the resampled cells; measurements and decision in
+[revoxelized display fidelity](revoxelized-display-fidelity.md) § Direct sun).
+`BAKE_SUN_SHADOW_MAP::bakeVoxelFaces` and `c_bake_voxel_sun_faces` carry only
+the resampled path; `IRCanvasStress --source-face-shadows` and
+`--voxel-face-shadows` are accepted and ignored, so the capture recipes in
+the older design notes still run. The rest of this page is the record of the
+experiment as it shipped.
 
 An opt-in follow-up to [complete voxel-face coverage](voxel-sun-face-coverage.md).
-`IRCanvasStress --source-face-shadows` enables face coverage and uses the resident
-source occupancy grid for detached revoxelized casters. GRID casting still uses
-its world voxel pool; screen-locked canvases remain excluded. Defaults are unchanged.
+`IRCanvasStress --source-face-shadows` enabled face coverage and used the resident
+source occupancy grid for detached revoxelized casters. GRID casting still used
+its world voxel pool; screen-locked canvases remained excluded.
 
 ## Geometry and cost
 

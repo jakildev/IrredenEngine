@@ -177,8 +177,8 @@ perf-stats overlay region (top-right by default).
   with `rawDist` rescaled by `effSub / renderedSubdivisions_`; on-screen size
   and gather density depend on camera zoom × world extent only
   ([`docs/design/detached-canvas-density-compensation.md`](../../../../docs/design/detached-canvas-density-compensation.md)).
-- The sun-shadow bake reads main-canvas-layout depth sources only; a foreign
-  model-frame canvas texture is never a bake input.
+- The sun-shadow bake reads main-canvas-layout depth sources only (never a
+  foreign model-frame texture); a voxel canvas casts the cells it rasterizes.
 
 ## GPU stage timing
 
