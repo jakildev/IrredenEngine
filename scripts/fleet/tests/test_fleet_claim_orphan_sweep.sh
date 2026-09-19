@@ -6,19 +6,12 @@
 # the local lock dir ($CLAIMS_DIR/<slug>) BEFORE adding the GitHub label, so a
 # label naming THIS host with no local lock is a claim the owning host has no
 # record of — an orphan from an iteration that died without releasing. Such a
-# claim strands a claimable task as in_progress for the whole cross-host TTL
-# (the #2102 / #1969 incident). The fast path sweeps it immediately; cross-host
-# claims and live (lock-present) claims keep the TTL.
+# claim strands a claimable task as in_progress for the whole cross-host TTL.
+# The fast path sweeps it immediately; cross-host claims and live
+# (lock-present) claims keep the TTL.
 #
 # The TTL is set LARGE here and every claim is reported as freshly added, so the
 # age gate alone would sweep nothing — anything swept is the orphan fast path.
-#
-# Covers:
-#   - same-host claim, no local lock, no PR  -> swept now (orphan)
-#   - same-host claim, no local lock, ACTIVE PR -> kept (PR carries the work)
-#   - same-host claim, local lock present     -> kept (live worker, within TTL)
-#   - cross-host claim, no local lock         -> kept (TTL not elapsed; can't
-#                                                vouch for another host's locks)
 
 set -euo pipefail
 
@@ -52,8 +45,9 @@ export FLEET_RESERVATIONS_DIR="$TMPROOT/reservations"
 export FLEET_STATE_DIR="$TMPROOT/state"
 export FLEET_ORPHANS_DIR="$TMPROOT/orphans"
 export FLEET_TEST_HOST="mac"
-# Large TTL: the age gate would sweep nothing on its own (every label is fresh,
-# below). So anything removed proves the confirmed-orphan fast path fired.
+# Large TTL: the age gate would sweep nothing on its own (every claim label
+# reports as freshly added). So anything removed proves the confirmed-orphan
+# fast path fired.
 export FLEET_CLAIM_STALE_SECS_ISSUES=99999
 mkdir -p "$FLEET_CLAIMS_DIR" "$FLEET_RESERVATIONS_DIR" "$FLEET_STATE_DIR" "$FLEET_ORPHANS_DIR"
 
@@ -103,10 +97,10 @@ mk_claim() {  # create a live local lock for <slug>
     date +%s        > "$FLEET_CLAIMS_DIR/$slug/created"
 }
 
-# #900 same-host, NO local lock, no PR        -> orphan -> swept
-# #901 same-host, NO local lock, ACTIVE PR    -> kept (PR carries the work)
-# #902 same-host, local lock present, no PR    -> kept (live worker, within TTL)
-# #903 cross-host (linux), NO local lock, no PR -> kept (TTL not elapsed)
+# issue 900 same-host, NO local lock, no PR         -> orphan -> swept
+# issue 901 same-host, NO local lock, ACTIVE PR      -> kept (PR carries the work)
+# issue 902 same-host, local lock present, no PR     -> kept (live worker, within TTL)
+# issue 903 cross-host (linux), NO local lock, no PR -> kept (TTL not elapsed)
 cat > "$ISSUES_JSON" <<'JSON'
 [
   {"number":900,"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:claim-mac-worker-1"},{"name":"fleet:in-progress"}]},
@@ -120,7 +114,7 @@ cat > "$PRS_JSON" <<'JSON'
   {"number":951,"headRefName":"claude/901-live","labels":[{"name":"fleet:wip"}]}
 ]
 JSON
-mk_claim 902   # only #902 has a live local lock
+mk_claim 902   # only issue 902 has a live local lock
 
 echo "=== cleanup --gh orphan fast path ==="
 OUT=$("$FLEET_CLAIM" cleanup --gh --repo jakildev/IrredenEngine 2>&1 || true)

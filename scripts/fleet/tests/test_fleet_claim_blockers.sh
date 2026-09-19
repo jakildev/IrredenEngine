@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Tests for fleet-claim's check_blockers gate (issue-based).
 #
-# Regression coverage for #1281: the blocker parser extracts every `#N`
-# reference from the **Blocked by:** field, including parenthetical PR
-# references like `#100 (PR #200 must merge — context)`. Before the fix
-# landed in #1280, the gate demanded state == CLOSED, so a parenthetical
-# PR #N (which `gh issue view` reports as state == MERGED) was rejected
-# even though the PR was already in. The fix accepts CLOSED or MERGED.
+# regression: the blocker parser extracts every `#N` reference from the
+# **Blocked by:** field, including a parenthetical PR reference alongside the
+# blocking issue number. A parenthetical PR number (which `gh issue view`
+# reports as state == MERGED) must be accepted as satisfied, not rejected
+# for failing to be an issue in state == CLOSED — the gate accepts CLOSED
+# or MERGED.
 #
 # These tests stub `gh` so check_blockers reads canned JSON instead of
 # hitting GitHub. The stub dispatches on the subcommand + presence of
@@ -30,13 +30,13 @@
 #     fail the gate, the `#N` branch in fleet-claim.check_blockers needs
 #     to differentiate PR-state CLOSED from issue-state CLOSED.)
 #   - cross-repo ref `[owner/]Repo#N`, CLOSED in the referenced repo → pass;
-#     still OPEN in the referenced repo → fail (#1522 — the gate routes the
+#     still OPEN in the referenced repo → fail (the gate routes the
 #     state probe to the referenced repo, not the issue's own).
 
 set -euo pipefail
 
 # This suite exercises cmd_claim against the real (possibly-stale) main clone but
-# does not care about clone freshness — disable the #1810 freshness gate.
+# does not care about clone freshness — disable the freshness gate.
 export FLEET_SKIP_CLONE_FRESHNESS=1
 
 SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
@@ -100,7 +100,7 @@ cat >"$STUB_DIR/gh" <<'GHSTUB'
 has_jq=0
 issue_num=""
 pr_url=""
-repo=""        # captured from `--repo R` so cross-repo refs (#1522) can be
+repo=""        # captured from `--repo R` so cross-repo refs can be
 prev=""        # routed-checked: the same #N resolves differently per repo.
 for arg in "$@"; do
     [[ "$arg" == "--jq" ]] && has_jq=1
@@ -125,7 +125,7 @@ case "$1 $2" in
                 201) echo "OPEN" ;;     # PR, still open
                 202) echo "CLOSED" ;;   # PR, abandoned (closed without merge)
                 125)
-                    # #1522 cross-repo routing probe: CLOSED only when the check
+                    # cross-repo routing probe: CLOSED only when the check
                     # is routed to the *game* repo (the referenced repo); OPEN
                     # if it's mis-routed to the issue's own (engine) repo.
                     case "$repo" in
@@ -140,7 +140,7 @@ case "$1 $2" in
         # fetch_issue_info: full state+labels+body for the target issue.
         case "$issue_num" in
             2001)
-                # The #1281 case: parenthetical PR ref, both resolved.
+                # Parenthetical PR ref, both resolved.
                 printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"## Scope\n\n**Blocked by:** #100 (PR #200 must merge — context)\n"}'
                 ;;
             2002)
@@ -176,7 +176,7 @@ case "$1 $2" in
                 printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** #100 (PR #202 abandoned)\n"}'
                 ;;
             2009)
-                # #1326: dependency declared only as `## Blocked on #N` header
+                # Dependency declared only as `## Blocked on #N` header
                 # prose (no **Blocked by:** field), the referenced issue OPEN.
                 printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"## Scope\n\n## Blocked on #101\n\nWork.\n"}'
                 ;;
@@ -190,50 +190,50 @@ case "$1 $2" in
                 ;;
             2012)
                 # Canonical field wins over header prose: field says (none),
-                # so the `## Blocked on #101` header must be ignored.
+                # so the `## Blocked on` header must be ignored.
                 printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** (none — independent)\n\n## Blocked on #101\n"}'
                 ;;
             2013)
-                # #1296: two separate **Blocked by:** lines — the gate unions
-                # them; #101 is still OPEN so the claim must be blocked.
+                # Two separate **Blocked by:** lines — the gate unions them;
+                # the second issue is still OPEN so the claim must be blocked.
                 printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** #100\n**Blocked by:** #101\n"}'
                 ;;
             2014)
-                # #1423: inline-bold form — **Blocked by: #N (label)** mid-line,
-                # referenced issue #101 still OPEN → claim must be blocked.
+                # Inline-bold form — **Blocked by: #N (label)** mid-line,
+                # the referenced issue still OPEN → claim must be blocked.
                 printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Part of epic:** #104 · **Phase 3 of 4** · **Blocked by: #101 (Phase 2)**\n"}'
                 ;;
             2015)
-                # #1423: inline-bold form, referenced issue #100 CLOSED → pass.
+                # Inline-bold form, referenced issue CLOSED → pass.
                 printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Part of epic:** #104 · **Phase 3 of 4** · **Blocked by: #100 (Phase 2)**\n"}'
                 ;;
             2016)
-                # #1423: inline-bold form with no #N/PR ref — must not gate.
+                # Inline-bold form with no #N/PR ref — must not gate.
                 printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Part of epic:** #104 · **Blocked by: the redesign**\n"}'
                 ;;
             2017)
-                # #1522: cross-repo blocker in another repo (owner-qualified),
+                # Cross-repo blocker in another repo (owner-qualified),
                 # CLOSED there → claim succeeds once routed to the right repo.
                 printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** jakildev/irreden#125\n"}'
                 ;;
             2018)
-                # #1522: cross-repo blocker (bare repo qualifier), still OPEN in
+                # Cross-repo blocker (bare repo qualifier), still OPEN in
                 # the referenced repo → claim fails.
                 printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** irreden#126\n"}'
                 ;;
             2019)
-                # #1749: PLAIN mid-line `Blocked by: #N` (the #174-children form
-                # every bold-only parser skipped), #101 OPEN → claim fails. Also
-                # guards that the epic ref #174 in the prose is NOT mistaken for
-                # a blocker — only the `Blocked by:` ref-list is captured.
+                # Plain mid-line `Blocked by: #N` form, the referenced issue
+                # OPEN → claim fails. Also guards that the epic ref in the
+                # prose is NOT mistaken for a blocker — only the
+                # `Blocked by:` ref-list is captured.
                 printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"Part of epic #174 (Phase D). [opus] Blocked by: #101.\n"}'
                 ;;
             2020)
-                # #1749: plain form, referenced issue #100 CLOSED → pass.
+                # Plain form, referenced issue CLOSED → pass.
                 printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"Part of epic #174. Blocked by: #100.\n"}'
                 ;;
             2021)
-                # #1749 false-positive guard: prose "not blocked by anything"
+                # False-positive guard: prose "not blocked by anything"
                 # has no `#N` after the colon → not a blocker → claim succeeds.
                 printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"## Scope\n\nThis task is not blocked by anything yet.\n"}'
                 ;;
@@ -293,7 +293,7 @@ release_quiet() {
     "$FLEET_CLAIM" release "$1" >/dev/null 2>&1 || true
 }
 
-# --- T1: parenthetical PR ref — #issue CLOSED + #pr MERGED (the #1281 case) -
+# --- T1: parenthetical PR ref — #issue CLOSED + #pr MERGED ------------------
 echo "T1: parenthetical PR ref — #issue CLOSED + #pr MERGED → claim succeeds"
 actual=0; "$FLEET_CLAIM" claim 2001 test-agent 2>/dev/null || actual=$?
 assert_exit "$actual" 0 "#100 CLOSED + #200 MERGED via parenthetical → exit 0"
@@ -350,9 +350,8 @@ assert_exit "$actual" 0 "#100 CLOSED + #202 CLOSED (abandoned) → exit 0"
 release_quiet 2008
 
 # --- T9: header-prose blocker — `## Blocked on #N`, #N OPEN → fail ----------
-# #1326: a dependency declared only in a `Blocked on #N` header (no
-# **Blocked by:** field) used to slip through as claimable. The gate now reads
-# the header-prose form.
+# A dependency declared only in a `Blocked on #N` header (no **Blocked by:**
+# field) is read by the gate too, not just the field form.
 echo "T9: header prose '## Blocked on #101' — #101 OPEN → claim fails"
 actual=0; "$FLEET_CLAIM" claim 2009 test-agent 2>/dev/null || actual=$?
 assert_exit "$actual" 1 "header-prose #101 OPEN → exit 1"
@@ -375,57 +374,56 @@ actual=0; "$FLEET_CLAIM" claim 2012 test-agent 2>/dev/null || actual=$?
 assert_exit "$actual" 0 "field (none) takes precedence over header prose → exit 0"
 release_quiet 2012
 
-# --- T13: multi-line **Blocked by:** — a later ref still OPEN → fail (#1296) -
+# --- T13: multi-line **Blocked by:** — a later ref still OPEN → fail --------
 echo "T13: two **Blocked by:** lines (#100 CLOSED, #101 OPEN) → claim fails"
 actual=0; "$FLEET_CLAIM" claim 2013 test-agent 2>/dev/null || actual=$?
 assert_exit "$actual" 1 "multi-line blocked-by, #101 OPEN → exit 1"
 
-# --- T14: inline-bold form — #101 OPEN → fail (#1423) -----------------------
+# --- T14: inline-bold form — referenced issue OPEN → fail -------------------
 echo "T14: inline-bold '**Blocked by: #101 (Phase 2)**' — #101 OPEN → claim fails"
 actual=0; "$FLEET_CLAIM" claim 2014 test-agent 2>/dev/null || actual=$?
 assert_exit "$actual" 1 "inline-bold #101 OPEN → exit 1"
 
-# --- T15: inline-bold form — #100 CLOSED → pass (#1423) ---------------------
+# --- T15: inline-bold form — referenced issue CLOSED → pass -----------------
 echo "T15: inline-bold '**Blocked by: #100 (Phase 2)**' — #100 CLOSED → claim succeeds"
 actual=0; "$FLEET_CLAIM" claim 2015 test-agent 2>/dev/null || actual=$?
 assert_exit "$actual" 0 "inline-bold #100 CLOSED → exit 0"
 release_quiet 2015
 
-# --- T16: inline-bold with no #N/PR ref — not a gate (#1423) ----------------
+# --- T16: inline-bold with no #N/PR ref — not a gate -------------------------
 echo "T16: inline-bold 'Blocked by: the redesign' (no ref) → claim succeeds"
 actual=0; "$FLEET_CLAIM" claim 2016 test-agent 2>/dev/null || actual=$?
 assert_exit "$actual" 0 "inline-bold no-ref bypasses gate → exit 0"
 release_quiet 2016
 
-# --- T17: cross-repo blocker, CLOSED in the referenced repo → succeeds (#1522)
-# The same #125 reads OPEN in engine but CLOSED in game; the gate must route
-# `jakildev/irreden#125` to game (where it's CLOSED) and let the claim through.
-# Before #1522 it checked engine (OPEN) and froze the task out forever.
+# --- T17: cross-repo blocker, CLOSED in the referenced repo → succeeds ------
+# The same issue number reads OPEN in engine but CLOSED in game; the gate
+# must route the owner-qualified ref to game (where it's CLOSED) and let the
+# claim through.
 echo "T17: cross-repo 'jakildev/irreden#125' CLOSED in game → claim succeeds"
 actual=0; "$FLEET_CLAIM" claim 2017 test-agent 2>/dev/null || actual=$?
 assert_exit "$actual" 0 "cross-repo game#125 CLOSED → exit 0 (routed to game, not engine)"
 release_quiet 2017
 
-# --- T18: cross-repo blocker, still OPEN in the referenced repo → fails (#1522)
+# --- T18: cross-repo blocker, still OPEN in the referenced repo → fails -----
 echo "T18: cross-repo 'irreden#126' OPEN in game → claim fails"
 actual=0; "$FLEET_CLAIM" claim 2018 test-agent 2>/dev/null || actual=$?
 assert_exit "$actual" 1 "cross-repo game#126 OPEN → exit 1"
 
-# --- T19: plain mid-line `Blocked by: #N` — #101 OPEN → fail (#1749) ---------
-# The #174-children mechanism: a non-bold `Blocked by: #N` declaration that
-# every bold-only parser skipped, so the blocked child surfaced as claimable.
-# The shared parser now gates it. The leading epic ref #174 must NOT gate.
+# --- T19: plain mid-line `Blocked by: #N` — referenced issue OPEN → fail ----
+# A non-bold `Blocked by: #N` declaration is gated same as the bold form; the
+# leading epic ref in the prose must NOT be mistaken for it.
 echo "T19: plain 'Blocked by: #101' (epic #174 prose) — #101 OPEN → claim fails"
 actual=0; "$FLEET_CLAIM" claim 2019 test-agent 2>/dev/null || actual=$?
 assert_exit "$actual" 1 "plain-form #101 OPEN → exit 1 (epic #174 not mistaken for blocker)"
 
-# --- T20: plain form — referenced issue CLOSED → pass (#1749) ----------------
+# --- T20: plain form — referenced issue CLOSED → pass ------------------------
 echo "T20: plain 'Blocked by: #100' — #100 CLOSED → claim succeeds"
 actual=0; "$FLEET_CLAIM" claim 2020 test-agent 2>/dev/null || actual=$?
 assert_exit "$actual" 0 "plain-form #100 CLOSED → exit 0"
 release_quiet 2020
 
-# --- T21: false-positive guard — "not blocked by anything" → pass (#1749) ----
+# --- T21: false-positive guard — "not blocked by anything" → pass -----------
 echo "T21: prose 'not blocked by anything yet' (no #N) → claim succeeds"
 actual=0; "$FLEET_CLAIM" claim 2021 test-agent 2>/dev/null || actual=$?
 assert_exit "$actual" 0 "ref-less 'blocked by' prose bypasses gate → exit 0"

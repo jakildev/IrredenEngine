@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for R7 (#1516): reconcile auto-heal of the half-executed-design-unblock
+# Tests for R7: reconcile auto-heal of the half-executed-design-unblock
 # state. The state: a fleet:wip PR with NO claim and NEITHER design label, whose
 # backing issue is still fleet:queued — what's left when an architect unblock
 # removed fleet:design-blocked but never added fleet:design-unblocked. The PR is
@@ -51,21 +51,24 @@ REPORT="$FLEET_STATE_DIR/drift-report.json"
 HEALPERSIST="$FLEET_STATE_DIR/design-unblock-heal-persistence.json"
 
 # --- canned label/PR surfaces ---------------------------------------------
-# #800: fleet:queued, no claim label. PR #850 (claude/800-*) is the stranded
-# wip PR: fleet:wip, no claim, NEITHER design label → the R7 target state.
-# #900/#950: same claimless-wip-on-queued-issue shape, but PR #950 carries
-# fleet:design-proposed — an epic-steward proposal park (#1663). It must be
+# issue 800: fleet:queued, no claim label. Its PR 850 (claude/800-*) is the
+# stranded wip PR: fleet:wip, no claim, NEITHER design label → the R7 target
+# state.
+# issue 900/PR 950: same claimless-wip-on-queued-issue shape, but the PR
+# carries fleet:design-proposed — an epic-steward proposal park. It must be
 # INVISIBLE to both R7 (healing it would un-park the proposal) and R2 (its
 # no-claim state is protocol-correct), across every phase below.
 #
-# #2462 adds two more standing rows, both of which must stay unhealed for the
+# Two more standing rows, both of which must stay unhealed for the
 # whole run (phases 7-10 assert the specifics):
-#   #1000/#1050 — the fleet:awaiting-infra park. PR #1050 is claimless wip on a
-#     queued issue (so it satisfies every legacy R7 predicate) but carries the
-#     park label and a `Parked-until: #7000` body line. Invisible to R7 AND R2;
-#     visible to R8, which un-parks it once #7000 closes.
-#   #1100/#1150 — the fleet:blocked backing issue. PR #1150 is a bare claimless
-#     wip PR with NEITHER design label — the exact legacy R7 target state — but
+#   issue 1000/PR 1050 — the fleet:awaiting-infra park. The PR is claimless
+#     wip on a queued issue (so it satisfies every legacy R7 predicate) but
+#     carries the park label and a `Parked-until:` body line naming a
+#     tracking issue. Invisible to R7 AND R2; visible to R8, which un-parks
+#     it once that tracking issue closes.
+#   issue 1100/PR 1150 — the fleet:blocked backing issue. The PR is a bare
+#     claimless wip PR with NEITHER design label — the exact legacy R7
+#     target state — but
 #     its issue is fleet:blocked, so there is nothing for a resumed worker to
 #     do. R7 must skip it; R2 deliberately still flags it.
 export ISSUES_JSON="$TMPROOT/issues.json"
@@ -79,9 +82,10 @@ cat > "$ISSUES_JSON" <<'JSON'
 ]
 JSON
 
-# The #2462 rows are appended to every PR fixture so they are exercised on
-# every tick, exactly as #950 is. PARKED_PR_JSON is swapped by the later
-# phases to model park/malformed-park/un-parked without disturbing #850.
+# These rows are appended to every PR fixture so they are exercised on every
+# tick, exactly as the design-proposed PR is. PARKED_PR_JSON is swapped by
+# the later phases to model park/malformed-park/un-parked without disturbing
+# the R7-target PR.
 PARKED_PR_JSON='{"number":1050,"headRefName":"claude/1000-parked-infra",
    "body":"Closes #1000\n\nParked-until: #7000",
    "labels":[{"name":"fleet:wip"},{"name":"fleet:awaiting-infra"}]}'
@@ -160,7 +164,7 @@ case "$1" in
                 # Model the real argument shape rather than just the endpoint
                 # (scripts/fleet/CLAUDE.md): a call we do not emulate must FAIL,
                 # never fall through to a plausible-looking empty answer, or the
-                # suite would certify an invocation gh itself rejects (#2781).
+                # suite would certify an invocation gh itself rejects.
                 _args=$(printf '%s ' "$@")
                 case "$_args" in
                     *"--json state "*) ;;
@@ -268,7 +272,7 @@ else
 fi
 
 echo "=== Phase 4: idempotent — once healed (label present), R7 stops firing ==="
-healed_prs   # PR #850 now carries fleet:design-unblocked
+healed_prs   # the R7-target PR now carries fleet:design-unblocked
 run_reconcile --apply
 c=$(heal_count); [[ "$c" == "0" ]] && ok "healed PR → R7 no longer fires; counter resets to 0" || bad "counter not reset (count=$c)"
 c=$(du_adds 850); [[ "$c" == "1" ]] && ok "no further heal once the label is back (still 1 add)" || bad "re-healed an already-healed PR (add count=$c)"
@@ -299,8 +303,8 @@ PY
 )
 [[ "$c" == "0" ]] && ok "no heal-persistence key accrued for PR #950" || bad "heal persistence tracked the design-proposed PR (#950 keys=$c)"
 
-# --- #2462: the fleet:awaiting-infra park (R8) + the fleet:blocked predicate --
-# Quiet #850 first (give it back its design-unblocked label) so it stops
+# --- the fleet:awaiting-infra park (R8) + the fleet:blocked predicate --
+# Quiet the R7-target PR first (give it back its design-unblocked label) so it stops
 # re-heal-cycling every 3 ticks and its lines stop interleaving into the log.
 # Every assertion below is PR-scoped regardless, so this is hygiene, not a
 # dependency.
@@ -328,9 +332,9 @@ r = json.load(open(sys.argv[1]))
 hits = [f for f in r["findings"] if f["target"] == 1050 and f["rule"] in ("R2", "R7")]
 assert not hits, f"parked PR must be exempt from R7+R2, got: {hits}"
 PY
-# The park has been standing since tick 1 (blocker #7000 defaults OPEN), so the
-# whole run so far is the >=threshold-ticks evidence.
-c=$(edits_touching 1050); [[ "$c" == "0" ]] && ok "no apply tick ever edited the parked PR #1050 (blocker still open)" || bad "an apply pass edited the parked PR (edits=$c)"
+# The park has been standing since tick 1 (the blocker issue defaults OPEN),
+# so the whole run so far is the >=threshold-ticks evidence.
+c=$(edits_touching 1050); [[ "$c" == "0" ]] && ok "no apply tick ever edited the parked PR (blocker still open)" || bad "an apply pass edited the parked PR (edits=$c)"
 c=$(python3 - "$HEALPERSIST" <<'PY'
 import sys, json
 try:
@@ -396,8 +400,8 @@ c=$(du_adds 1050); [[ "$c" == "1" ]] && ok "malformed park still suppresses the 
 echo "=== Phase 9b: trailing prose parses, and only the FIRST #N is the blocker ==="
 # Two contracts in one fixture. A worker WILL write the reason inline, so the
 # match must not be $-anchored — but the aside here also mentions a second
-# issue, and picking that up is the exact over-match that stranded a row on the
-# sibling `Blocked by:` field (#2783). Widen the trailing match, not the capture.
+# issue; that must not be picked up as the blocker. Widen the trailing match,
+# not the capture.
 PARKED_PR_JSON='{"number":1050,"headRefName":"claude/1000-parked-infra",
    "body":"Closes #1000\n\nParked-until: #7001 (the build wall; see also #7002)",
    "labels":[{"name":"fleet:wip"},{"name":"fleet:awaiting-infra"}]}'
@@ -412,15 +416,16 @@ a = (r8[0].get("apply") or {})
 assert a.get("type") == "unpark_infra", f"parsed as malformed/flag-only: {r8[0]}"
 assert a.get("blocker") == 7001, f"wrong blocker parsed (over-matched the aside?): {a}"
 PY
-# The capture is one-per-line, so the aside cannot un-park the PR either:
-# #7002 is canned CLOSED, and the park must still stand on #7001 being open.
+# The capture is one-per-line, so the aside cannot un-park the PR either: a
+# second issue mentioned only in the aside is canned CLOSED, and the park
+# must still stand on the real blocker being open.
 set_blocker 7002 CLOSED
 before=$(ai_remove_count)
 run_reconcile --apply
 c=$(ai_remove_count); [[ "$c" == "$before" ]] && ok "a CLOSED issue mentioned only in the aside does not un-park" || bad "the aside's issue drove an un-park (removes=$c, was $before)"
 
 echo "=== Phase 10: fleet:blocked backing issue suppresses R7 (not R2) ==="
-# Non-vacuity: PR #1150 is a bare claimless wip PR with neither design label —
+# Non-vacuity: the PR is a bare claimless wip PR with neither design label —
 # byte-for-byte the legacy R7 target state — so the ONLY thing standing between
 # it and a heal is its issue's fleet:blocked label. R2 flagging it is the proof
 # the row reached the rules at all.
@@ -448,7 +453,7 @@ PY
 # so the quiet above is the fleet:blocked predicate and not a dead fixture.
 PARKED_PR_JSON='{"number":1050,"headRefName":"claude/1000-parked-infra",
    "body":"Closes #1000","labels":[{"name":"fleet:wip"}]}'
-wip_only_prs   # #850 stranded again: the unblocked control
+wip_only_prs   # the R7-target PR is stranded again: the unblocked control
 run_reconcile --apply
 run_reconcile --apply
 run_reconcile --apply

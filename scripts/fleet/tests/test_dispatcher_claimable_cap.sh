@@ -82,8 +82,6 @@ assert_eq "$(recent opus 90)" "1" "age 5s < 90s window -> counts as racing"
 echo "T3: settled dispatch past the window is excluded"
 write_record 1 opus 300
 assert_eq "$(recent opus 90)" "1" "age 300s >= 90s window -> excluded; only the fresh one counts"
-# At the boundary the older one is still out (300 != <90), proven above. Now a
-# wider window should sweep it back in:
 assert_eq "$(recent opus 600)" "2" "widen window to 600s -> both opus records count"
 
 # --- T4: per-class isolation -------------------------------------------------
@@ -102,7 +100,7 @@ printf '{"role":"worker","pane":"%%8","class":"opus","dispatched_at":"x"}\n' \
 assert_eq "$(recent opus 90)" "1" "epoch-less opus record skipped; fresh one still counts"
 
 # --- T6: steady-state trigger retention while headroom is uncovered ----------
-# #2700. `dispatched > 0` does not imply the fan-out covered the claimable
+# `dispatched > 0` does not imply the fan-out covered the claimable
 # headroom — the loop also exits on idle-pane exhaustion. Before per-kind
 # suppression, consuming there was survivable because every claim re-armed the
 # scout trigger; suppression removes those re-arms, so an uncovered tick must

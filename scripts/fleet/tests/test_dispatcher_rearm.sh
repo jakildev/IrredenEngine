@@ -2,13 +2,10 @@
 # Tests for the periodic worker safety re-arm decision (fleet-dispatcher's
 # worker_rearm_should_fire), exercised through the --rearm-check hook.
 #
-# The re-arm now delegates to resolve_worker_class so it can never diverge from
+# The re-arm delegates to resolve_worker_class so it can never diverge from
 # the actual dispatch decision: it fires iff the resolver would dispatch a
-# CONCRETE class (genuinely claimable work under the full claimability gate), and
-# skips on `defer` (nothing claimable) or the '' lane-default fallthrough. The
-# old inline predicate excluded inflight_pr but NOT needs_gl_host, so it re-armed
-# every interval on GL-host tasks a Metal pane can never claim (#1969 churn) —
-# this pins that it no longer does.
+# CONCRETE class (genuinely claimable work under the full claimability gate),
+# and skips on `defer` (nothing claimable) or the '' lane-default fallthrough.
 
 set -uo pipefail
 SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
@@ -16,11 +13,9 @@ source "$(dirname "$0")/lib_preflight.sh"
 DISPATCHER="$SCRIPT_DIR/fleet-dispatcher"
 [[ -x "$DISPATCHER" ]] || { echo "test setup: fleet-dispatcher not found"; exit 1; }
 
-# PASS/FAIL, ok/bad and `summarize` come from the shared helper. Hand-rolling
-# the tally as "PASS: n FAIL: m" made this suite unscoreable by
-# fleet-positive-control, which parses only summarize()'s "passed: N  failed: M"
-# line — a control run reported "the suite printed no tally … treat this as a
-# setup failure" while the real counts printed one line above (#2820).
+# PASS/FAIL, ok/bad and `summarize` come from the shared helper: fleet-
+# positive-control parses only summarize()'s "passed: N  failed: M" line, so
+# a hand-rolled "PASS: n FAIL: m" tally is unscoreable.
 # shellcheck source=scripts/fleet/tests/lib_assert.sh
 source "$(dirname "$0")/lib_assert.sh"
 
@@ -65,25 +60,26 @@ assert_eq "$(rearm mac)" "rearm class=sonnet" "feedback PR -> rearm class=sonnet
 echo "T7: backend-symmetric GL task on a Metal (mac) pane -> rearm (#2820)"
 # The claim gate opening is not enough on its own: the dispatcher re-arms the
 # worker lane by DELEGATING to resolve_worker_class, so this asserts the wake
-# path opened with it. Without this case the narrowing could land with the
-# claim gate open and the re-arm still shut — the same starvation this issue
-# reports, relocated one layer down and invisible.
+# path opened with it. Without this case, the narrowing could land with the
+# claim gate open and the re-arm still shut — the same starvation, relocated
+# one layer down and invisible.
 write_slice worker '{"tasks_open":[{"issue":"#2816","model":"opus","owner":"free","blocked":false,"needs_gl_host":true,"backend_symmetric":true}],"feedback_prs":[],"needs_plan":[]}'
 assert_eq "$(rearm mac)" "rearm class=opus" "backend-symmetric gl task on mac -> rearm class=opus"
 
 echo "T7b: a linux-pinned task (needs_host) skips on windows, re-arms on linux"
-# The live 2026-09-06 loop: #1969 says "must run on a Linux host", which the
-# GL gate reads as "any GL host" — so a Windows pane re-armed on it every
-# interval and each dispatched worker read the body and refused.
+# needs_host further restricts a GL-gated task to one host: the GL gate
+# alone reads needs_gl_host as "any GL host", so a Windows pane would
+# otherwise re-arm on a task that requires Linux specifically.
 write_slice worker '{"tasks_open":[{"issue":"#1969","model":"sonnet","owner":"free","blocked":false,"needs_gl_host":true,"needs_host":"linux"}],"feedback_prs":[],"needs_plan":[]}'
 assert_eq "$(rearm windows)" "skip (defer=1 class=)" "linux-pinned task on windows -> skip (defer)"
 assert_eq "$(rearm linux)" "rearm class=sonnet" "linux-pinned task on linux -> rearm class=sonnet"
 
 echo "T7c: a standdown paces the re-arm on an unchanged slice"
-# The other half of the same loop: even once the empty-exit streak consumes
-# the trigger, the periodic re-arm re-fires the SAME slice every interval
-# while the resolver still elects a class. After a standdown the re-arm waits
-# BASE seconds, doubling per consecutive standdown, until a claim clears it.
+# A standdown paces a re-arm on a slice that keeps electing a class: even
+# once the empty-exit streak consumes the trigger, the periodic re-arm would
+# re-fire the SAME slice every interval while the resolver still elects a
+# class. After a standdown, the re-arm waits BASE seconds, doubling per
+# consecutive standdown, until a claim clears it.
 write_slice worker '{"tasks_open":[{"issue":"#10","model":"opus","owner":"free","blocked":false}],"feedback_prs":[],"needs_plan":[]}'
 # `backoff <s>` within (lo, hi] — the window absorbs the second or so between
 # the note and the check.
@@ -119,15 +115,13 @@ assert_eq "$(FLEET_DISPATCHER_REARM_STANDDOWN_BASE=0 rearm linux)" "rearm class=
 assert_eq "$(standdown_check)" "clear" "a claim clears the standdown backoff"
 assert_eq "$(rearm linux)" "rearm class=opus" "…and the re-arm fires again"
 # The streak reset alone (a standdown's own bookkeeping) must NOT clear the
-# count, or consecutive standdowns could never escalate — on the first cut of
-# this feature the standdown branch reset-then-noted and the count was always 1.
+# count, or consecutive standdowns could never escalate.
 "$DISPATCHER" --note-standdown worker --class=opus
 "$DISPATCHER" --record-outcome worker 300 --class=opus --claimed=no
 "$DISPATCHER" --note-standdown worker --class=opus
 _left=$(standdown_check)
 assert_backoff 190 200 "an empty outcome between standdowns keeps the count accumulating"
 unset FLEET_DISPATCHER_REARM_STANDDOWN_BASE
-# Argument validation.
 if "$DISPATCHER" --note-standdown >/dev/null 2>&1; then
     bad "--note-standdown without a role should exit non-zero"
 else

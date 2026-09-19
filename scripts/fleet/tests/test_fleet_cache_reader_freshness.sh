@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
-# Tests for #2837: the two per-record cache readers must not serve a stale
+# Tests for the two per-record cache readers: they must not serve a stale
 # snapshot as if it were current.
 #
 # `fleet-pr comments` and `fleet-issue view` are both woken BY an event that
 # postdates the scout's snapshot — the verdict review that stamps a feedback
 # label, the `## Plan` comment that stamps fleet:plan-review — so a cache read
 # there structurally drops the one item its consumer was dispatched to read.
-# Both are now live-first, falling back to the cache only when `gh` fails, and
+# Both are live-first, falling back to the cache only when `gh` fails, and
 # saying so loudly when they do.
 #
 # The first assertion in each pair is the positive control: it fails against
 # master by construction, because master never invokes `gh` when the cached
 # record parses.
 #
-# Two review nits from PR #2998 are covered here too: the inline fetch must
-# page past the REST default window (the `gh` shim only serves its second page
-# when `--paginate` is passed), and the inline-degradation warning must not
-# name a "cached snapshot (unknown)" when no cached record exists at all.
+# Also covered here: the inline fetch must page past the REST default window
+# (the `gh` shim only serves its second page when `--paginate` is passed),
+# and the inline-degradation warning must not name a "cached snapshot
+# (unknown)" when no cached record exists at all.
 #
 # Hermetic: HOME is a mktemp dir (both scripts compute
 # `Path.home() / ".fleet" / "state"` at import, and neither honors a
