@@ -34,6 +34,7 @@ line-length = 100
 # executables need listing here, and those all live under scripts/fleet/.)
 extend-include = [
     "scripts/fleet/fleet-claude-stream",
+    "scripts/fleet/fleet-clip",
     "scripts/fleet/fleet-epic-status",
     "scripts/fleet/fleet-feedback",
     "scripts/fleet/fleet-gh-poll",

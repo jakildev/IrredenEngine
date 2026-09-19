@@ -126,7 +126,11 @@ timeout would mask hangs:
 ```
 
 When `CLIP_ENABLED=1`, also capture a clip (raw captures are never
-committed — only the composed clip step 7 produces is staged):
+committed — only the composed clip step 7 produces is staged). Re-run the
+step-3b wiring grep against this detached (before) ref first: a miss means
+the before ref lacks `--auto-record` (the PR that adds the wiring itself, or
+a demo the before ref does not have at all) and skips this capture — no
+`-before.mp4`, not a failure; step 7 takes the single-arm form.
 
 ```bash
 <run tool> --auto-record <clip frames> --config-preset <clip preset>
@@ -170,8 +174,17 @@ fleet-clip <demo-name>-before.mp4 <demo-name>-after.mp4 \
     <screenshot output root>/<BRANCH>/<demo-name>-clip
 ```
 
-`fleet-clip` exits 3 (ffmpeg missing) or 1 (a compose failure) without
-writing partial output — either way, log
+No before arm (new demo, or a capability the before ref lacks per step 5)
+uses the single-arm form instead — a literal `-` in the before position:
+
+```bash
+fleet-clip - <demo-name>-after.mp4 \
+    <screenshot output root>/<BRANCH>/<demo-name>-clip
+```
+
+`fleet-clip` creates `<screenshot output root>/<BRANCH>/` itself, so a
+standalone compose needs no `mkdir -p` first. It exits 3 (ffmpeg missing) or
+1 (a compose failure) without writing partial output — either way, log
 `attach-screenshots: clip skipped (<reason>)` and continue with the PNG
 flow; the raw `-before.mp4` / `-after.mp4` captures are never committed.
 
@@ -202,6 +215,9 @@ Clip: ![](<raw URL base>/@COMMIT_SHA@/<screenshot output root>/<BRANCH>/<demo-na
 ... (one `<details>` block per shot label, each followed by the same Clip
 line when `CLIP_ENABLED=1`; omit the Clip line entirely when it is 0)
 ```
+
+The Clip line is unchanged (same `<demo-name>-clip.{gif,mp4}` names) whether
+step 7 composed a paired or a single-pane clip.
 
 The ref segment of every URL is the literal **sha-pin token**, never
 `<BRANCH>`: no commit containing the screenshots exists yet, a branch ref
