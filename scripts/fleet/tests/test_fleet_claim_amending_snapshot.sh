@@ -43,8 +43,9 @@ SNAP="$HOME/.fleet/amend-snapshots/804.json"
 
 # gh stub. `issue view --json state,labels,body` feeds the two pre-acquire
 # gates (host capability, foreign review claim) — an unlabelled OPEN PR passes
-# both. The labels POST echoes only the posted label, so the claimant is the
-# sole holder and wins. remove-label succeeds.
+# both. The labels POST echoes only the posted label and the paginated
+# --slurp verification GET returns one page holding the exported candidate,
+# so the claimant is the sole holder and wins. remove-label succeeds.
 STUB_DIR="$TMPROOT/bin"; mkdir -p "$STUB_DIR"
 cat > "$STUB_DIR/gh" <<'GHSTUB'
 #!/usr/bin/env bash
@@ -60,7 +61,7 @@ case "$1" in
         for a in "$@"; do
             case "$a" in labels\[\]=*) posted="${a#labels[]=}" ;; esac
         done
-        if [[ -n "$posted" ]]; then printf '[{"name":"%s"}]\n' "$posted"; else echo '[]'; fi
+        if [[ -n "$posted" ]]; then printf '[{"name":"%s"}]\n' "$posted"; else printf '[[{"name":"%s"}]]\n' "${FLEET_CLAIM_CANDIDATE:-}"; fi
         exit 0 ;;
     *) exit 0 ;;
 esac

@@ -77,7 +77,9 @@ case "$1 $2" in
             fi
             shift || true
         done
-        if [[ -n "$label" ]]; then printf '[{"name":"%s"}]\n' "$label"; else echo '[]'; fi
+        # POST echoes the add; the paginated --slurp verification GET returns
+        # one page holding the candidate the acquire exported.
+        if [[ -n "$label" ]]; then printf '[{"name":"%s"}]\n' "$label"; else printf '[[{"name":"%s"}]]\n' "${FLEET_CLAIM_CANDIDATE:-}"; fi
         exit 0
         ;;
     "pr list")
