@@ -395,8 +395,3 @@ design-lane label, so the opus+-only resume tier has a class to dispatch).
 R2 and R6 stay flag-only. Runs at `fleet-up` boot and on every
 queue-manager projection change.
 
-## See also
-
-- [`scripts/fleet/fleet-labels`](../../scripts/fleet/fleet-labels) — the catalog.
-- [`fleet-state-machine.json`](fleet-state-machine.json) — nodes + edges.
-- [`FLEET.md`](FLEET.md) — workflow overview.
