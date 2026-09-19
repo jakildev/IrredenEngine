@@ -1040,6 +1040,8 @@ _acquire_jitter_sleep() {
 #   Print the complete current label-name set, one per line. The labels API is
 #   paginated; --slurp makes every fetched page part of one document so a
 #   failed or malformed later page cannot look like a complete prefix.
+#   FLEET_CLAIM_CANDIDATE is a test seam only: gh ignores it, and the suite's
+#   stateless gh stubs echo it so a GET can show the label just POSTed.
 _fetch_live_labels() {
     local repo="$1" target="$2" candidate="$3" labels_json normalized
     if ! labels_json=$(FLEET_CLAIM_CANDIDATE="$candidate" \

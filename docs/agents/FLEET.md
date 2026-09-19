@@ -42,26 +42,20 @@ the LLM merger pass, which resolves mechanical conflicts, never merges.
 
 `fleet-claim` takes a task in two steps: a per-host FS lock (`mkdir` under
 `~/.fleet/claims/<slug>/`) and the `fleet:claim-<host>-<agent>` sole-holder
-label ([`fleet-labels-reference.md § Claims`](fleet-labels-reference.md));
-a failed `gh issue edit` rolls the claim back — no FS-only fallback. After
-the PR opens the scout derives ownership from its `headRefName`; abandoned
-claims are swept by `fleet-claim cleanup --gh`. Review, feedback, conflict
-and planning claims use the same primitive under disjoint prefixes, so a
-force-pushing lane (feedback, conflict resolution) excludes another agent's
-live `fleet:reviewing-*` (its own passes): scout suppression, claim-time
-gate, then admission. A new candidate is admitted only after two
-independent, complete, paginated label GETs observe its exact label and no
-contender across the excluded-prefix union; the POST response is never
-ownership evidence. The lex-min retry policy still resolves visible
-contention. This bounded settle policy assumes completed competing adds
-become visible to the confirmation reads; it is not a linearizable mutex
-under indefinitely stale or divergent reads. A recurrence in which both
-reads hide a completed competitor requires a new authoritative-arbitration
-design, not a longer sleep. Host keys
-are one canonical set (`derive_host()`: `Linux` → `linux`, `Darwin` →
-`macos`, `MINGW*/MSYS*/CYGWIN*` → `windows`; `fleet-claim host` prints this
-one); WSL2 is `linux`, so a WSL2 and a native-Linux fleet on one account
-collide unless one forces `FLEET_TEST_HOST`.
+label ([`fleet-labels-reference.md § Claims`](fleet-labels-reference.md)); a
+failed `gh issue edit` rolls the claim back — no FS-only fallback. Once the PR
+opens the scout derives ownership from its `headRefName`. Review, feedback,
+conflict and planning claims share the primitive under disjoint prefixes; a
+force-pushing lane excludes another agent's live `fleet:reviewing-*` at scout
+suppression, the claim-time gate, then admission: two independent, complete,
+paginated label GETs must show the exact candidate and no contender across the
+excluded-prefix union — the POST response is never ownership evidence. That
+bounded settle is no linearizable mutex under stale reads; a recurrence where
+both reads hide a completed competitor needs authoritative arbitration, not a
+longer sleep. Host keys are one canonical set (`derive_host()`: `Linux` →
+`linux`, `Darwin` → `macos`, `MINGW*/MSYS*/CYGWIN*` → `windows`); WSL2 is
+`linux`, so two such fleets on one account collide unless one forces
+`FLEET_TEST_HOST`.
 
 ### Who takes the claim
 
