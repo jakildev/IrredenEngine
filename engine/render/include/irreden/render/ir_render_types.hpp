@@ -1011,9 +1011,15 @@ struct GPUShapesFrameData {
     // owner-relative content the composite places at the continuous yaw)
     // turn it on; other canvases keep their faceDeform path. Occupies the first word of
     // the former 8-byte std140 alignment pad before faceDeform (faceDeform stays
-    // at offset 80); the second word remains explicit pad.
+    // at offset 80); latticeShapes takes the second word.
     int smoothYawEnabled = 0;
-    int _faceDeformPad_ = 0;
+    // A value of 1 makes a density-1 shape a lattice occupant under smooth
+    // yaw: the kernel walks the integer lattice with the SDF queried at the
+    // continuous yaw and emits the hexagons of the cells the shape covers,
+    // anchored on the snapped view cell, instead of the analytical surface
+    // that paints a 2x3 diamond at every hit pixel of both parities. Set for
+    // entity canvases, whose voxels are lattice cells at every yaw.
+    int latticeShapes = 0;
     // Per-face residual-yaw deformation packed column-major: .xy = col0,
     // .zw = col1 of IRMath::faceDeformationMatrix(face, residualYaw).
     // Identity (col0=(1,0), col1=(0,1)) when residualYaw == 0. Indexed by

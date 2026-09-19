@@ -313,6 +313,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             // cardinal rasterYaw + faceDeform path.
             const bool canvasSmoothYaw = smoothYaw_ && (canvasId == mainCanvas || entityCanvas);
             frameData_.smoothYawEnabled = canvasSmoothYaw ? 1 : 0;
+            frameData_.latticeShapes = entityCanvas ? 1 : 0;
             // Residual yaw is folded into faceDeform per-face for the shapes
             // shader. Identity at residualYaw == 0.
             const mat2 fdX = IRMath::faceDeformationMatrix(IRMath::kXFace, residualYaw);
@@ -368,6 +369,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                 visualYaw,
                 yawCosVisual_,
                 yawSinVisual_,
+                entityCanvas,
                 gridX
             );
             if (tileCount == 0) {
@@ -569,6 +571,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         float visualYaw,
         float yawCosVisual,
         float yawSinVisual,
+        bool latticeShapes,
         int &gridXOut
     ) {
         static thread_local std::vector<ShapeTileDescriptor> tiles;
@@ -612,13 +615,26 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             if (smoothYaw) {
                 // Continuous-yaw footprint: center on the full-visualYaw iso
                 // projection (matches the shader's originIsoScaled) and grow by
-                // the continuous |c|,|s| (sqrt(2) extent at +/-45deg).
+                // the continuous |c|,|s| (sqrt(2) extent at +/-45deg). A lattice
+                // shape at density 1 anchors on its snapped view cell instead,
+                // the origin the kernel's lattice walk keys its parity on.
                 boundingHalf =
                     IRMath::yawGrownIsoHalfExtent(boundingHalf, yawCosVisual, yawSinVisual);
-                const vec2 originIsoF =
-                    IRMath::pos3DtoPos2DIsoYawed(worldPos * static_cast<float>(sub), visualYaw);
-                const ivec2 originIsoScaled =
-                    ivec2(IRMath::roundHalfUp(originIsoF.x), IRMath::roundHalfUp(originIsoF.y));
+                ivec2 originIsoScaled;
+                if (latticeShapes && sub == 1) {
+                    const vec3 viewPosYawed(
+                        yawCosVisual * worldPos.x + yawSinVisual * worldPos.y,
+                        -yawSinVisual * worldPos.x + yawCosVisual * worldPos.y,
+                        worldPos.z
+                    );
+                    originIsoScaled =
+                        IRMath::pos3DtoPos2DIso(IRMath::roundVec3HalfUp(viewPosYawed));
+                } else {
+                    const vec2 originIsoF =
+                        IRMath::pos3DtoPos2DIsoYawed(worldPos * static_cast<float>(sub), visualYaw);
+                    originIsoScaled =
+                        ivec2(IRMath::roundHalfUp(originIsoF.x), IRMath::roundHalfUp(originIsoF.y));
+                }
                 const ivec2 isoHalfExtent =
                     ivec2(IRMath::shapeIsoHalfExtent(boundingHalf * 2.0f)) * sub;
                 isoMin = originIsoScaled - isoHalfExtent - ivec2(2);
