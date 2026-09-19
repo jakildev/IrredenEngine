@@ -668,6 +668,29 @@ Findings:
   raw span write, the alpha assertions saw neither, and the second one was only
   found because the first fix left the render still wrong.
 
+### 2h — `dragGuiSlider` closes F-2g-6 (LANDED)
+
+`Session::Builder` gains a widget-drag op: `dragGuiSlider(geometry, minValue,
+maxValue, value)` presses at the track's far end from the target, moves once
+across the track to the target's own trixel, holds a frame, then releases —
+the PRESS → held MOVE → RELEASE shape `system_widget_input.hpp`'s per-frame
+drag-value recompute needs, which a click (`selectPaletteSwatch`'s
+move-then-press-release) cannot produce. The FPS slider and frame scrubber's
+geometry moved out of `initEntities` into `anim_panel.hpp` (the `palette.hpp`
+precedent), so the editor's `makeSlider` calls and the drag op's aim derive
+from one description. The bird recipe drags the FPS slider to 20 (off the
+editor's default 12) before saving and asserts the live value back
+(`expectSliderValue`, a PREDICATE check like `expectOccupancy` — the widget
+entity ids don't exist yet when `Session::build` runs). `author-entity.py
+bird` → **29/29 GUI-ASSERT PASS**, both frames byte-identical across two
+runs; the committed `bird_frame_0.vxs` now loads at the chosen rate
+(`IRShapeDebug --load-vxs` logs `... at 19.901787 FPS` — the drag lands
+within one screen pixel of the requested value, well inside the assertion's
+tolerance). The frame scrubber's geometry is shared the same way but has no
+drag recipe yet: its range depends on the live frame count, so only its
+position/size are compile-time constants (`kScrubberSliderMinValue`; the max
+is passed at call time).
+
 ### M-2 — `-y`-face single-click place no-ops at the cardinal (yaw-0) camera (#2575)
 
 *ID note — `M-` tags a **mechanism** limitation: one that lives in the shared

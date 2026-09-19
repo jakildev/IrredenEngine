@@ -641,6 +641,11 @@ inline Recipe buildAnt(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
 inline constexpr int kBirdBodySwatch = 6;  // blue
 inline constexpr int kBirdWingSwatch = 15; // near-white
 
+// Playback rate the bird's FPS slider is dragged to before saving —
+// deliberately off the editor's default (12.0, animation.hpp) so the
+// committed asset carries a rate the session actually chose.
+inline constexpr float kBirdFps = 20.0f;
+
 // The bird — the first two-frame entity. A small X-mirrored body with a wing
 // pair authored twice: frame 0 holds the wings level, frame 1 raises them into
 // a stepped upstroke, so stepping the two frames is a flap. Runs at the default
@@ -827,6 +832,21 @@ inline Recipe buildBird(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
     builder.expectOccupancy(ivec3(lx, wingRows[0], gz - 1), true, "frame1_body_intact");
     builder.expectPoolActive(raisedTip, true, "frame1_pool_mask_holds_raised_wing");
     builder.expectPoolActive(levelTip, false, "frame1_pool_mask_drops_level_wing");
+
+    // --- FPS: drag the ANIM panel slider to a chosen, non-default rate ------
+    // Every earlier entity leaves the editor's default (12) untouched, so the
+    // FPS write path has no session coverage at all. dragGuiSlider is the
+    // first gesture aimed at a slider rather than a click/checkbox widget;
+    // the positive fire is expectSliderValue reading the live widget back —
+    // a drag that missed the track would leave the default in place instead.
+    builder.segment("set_fps");
+    builder.dragGuiSlider(
+        IRVoxelEditor::kFpsSliderGeometry,
+        IRVoxelEditor::kFpsSliderMinValue,
+        IRVoxelEditor::kFpsSliderMaxValue,
+        kBirdFps
+    );
+    builder.expectSliderValue(SliderTarget::FPS, kBirdFps, 0.5f, "fps_dragged_to_target");
 
     // --- Save + reload round-trip -------------------------------------------
     // Ctrl+S writes one .vxs per frame; the reload reads both back, so the
