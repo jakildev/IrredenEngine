@@ -36,11 +36,8 @@ commands. Render changes commonly need `header-checks`, `render-debug-loop`,
 `scripts/*-verify.py` metric. Codex image inspection and evidence requirements
 are in [`CODEX.md` § Rendering conversations](../../docs/agents/CODEX.md#rendering-conversations).
 Pure documentation, tests, mechanical refactors, and build-only changes with
-no visual effect do not require render captures.
-
-### Verifying temporal stability (per-frame jitter)
-
-Use the validation index's jitter probe and the camera contracts below.
+no visual effect do not require render captures. Per-frame jitter: the
+validation index's jitter probe plus the camera contracts below.
 
 ## Pipeline contracts
 
@@ -67,6 +64,10 @@ Use the validation index's jitter probe and the camera contracts below.
 - A shader fragment may self-include only a macro-free prerequisite.
   Macro-parameterized fragments remain in each wrapper's explicit ordered
   include list after the wrapper's `#define`s.
+- `cmake/run_glsl_reserved_word_check.cmake` (header-checks lane; `header-checks`
+  / `lint` targets) fails a `.glsl` declaring a GLSL reserved word as an
+  identifier: Metal accepts these, NVIDIA GL rejects them. Rename the
+  `metal/<stem>.metal` twin too; `.metal` is unscanned (its compiler fails loudly).
 
 ### Metal compute kernel threadgroup registry
 
