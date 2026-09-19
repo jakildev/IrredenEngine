@@ -168,7 +168,18 @@ top-level `"degraded": ["engine.prs", …]`. Treat listed sections as one
 tick stale (rely on `fleet-claim`'s live duplicate-PR backstop for
 pickup; flagged PRs surface next tick) and never read a degraded snapshot
 as "no work". Ingest and `reconcile --apply` are suppressed during
-degraded ticks. **Degrade, never silent-empty:** any fleet script that
+degraded ticks.
+
+A label-filtered list that answers `200 []` while the previous snapshot
+held rows takes the same arm for one tick (GitHub's label-filtered
+`/issues` list is eventually consistent; a one-tick `[]` over a populated
+label set is a known shape of it, #3459): the section is held at
+last-known-good, listed in `degraded`, and also in a top-level
+`"held_empty": ["engine.epics", …]`. The same empty answer on the next
+tick confirms it and is written through as a normal `[]`; a fresh
+non-empty answer clears the hold. Every issue-list section and `tasks`
+take it; `prs` does not (its open set is read through its own
+change-detector and empties routinely on a merge). **Degrade, never silent-empty:** any fleet script that
 fetches GitHub data warns on stderr and writes an explicit error marker
 into what it emits — an all-empty artifact with a fresh timestamp is
 indistinguishable from "no work anywhere".
