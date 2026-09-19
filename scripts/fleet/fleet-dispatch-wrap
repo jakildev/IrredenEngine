@@ -286,7 +286,7 @@ worktree_in_flight() {
 # Sidecar path + key travel via argv (not embedded in the -c source): mingw64
 # python3 on a native-Windows host cannot open an MSYS `/c/...` string, and
 # MSYS only converts paths at the argv boundary (#3030).
-_read_sidecar() { python3 -c "import json,sys;print(json.load(open(sys.argv[1])).get(sys.argv[2],''))" "$SIDECAR" "$1" 2>/dev/null || true; }
+_read_sidecar() { python3 -c "import json,sys;print(json.load(open(sys.argv[1])).get(sys.argv[2],''))" "$SIDECAR" "$1" 2>/dev/null | tr -d '\r' || true; }
 
 RESUMED=0
 RESUME_ID=""

@@ -61,7 +61,7 @@ GIF_FPS_RAW=$(ffprobe -v error -select_streams v:0 -show_entries stream=avg_fram
 GIF_FPS_OK=$(python3 -c "
 n, d = '${GIF_FPS_RAW:-0/1}'.split('/')
 print('yes' if (float(n) / float(d) if float(d) else 0.0) <= 15.0 else 'no')
-" 2>/dev/null)
+" 2>/dev/null | tr -d '\r')
 if [[ "$GIF_FPS_OK" == "yes" ]]; then
     ok "out.gif frame rate ($GIF_FPS_RAW) is <= 15fps"
 else
@@ -105,8 +105,8 @@ assert_eq "${SINGLE_HEIGHT:-}" "180" "single-arm out.mp4 height matches the inpu
 
 LABEL_LUMA=$(mean_luma "$WORKDIR/out-single.mp4" "65:27:10:10")
 CONTROL_LUMA=$(mean_luma "$WORKDIR/out-single.mp4" "65:27:245:143")
-LABEL_LUMA_OK=$(python3 -c "print('yes' if float('${LABEL_LUMA:--1}') > 20 else 'no')" 2>/dev/null)
-CONTROL_LUMA_OK=$(python3 -c "print('yes' if float('${CONTROL_LUMA:--1}') < 5 else 'no')" 2>/dev/null)
+LABEL_LUMA_OK=$(python3 -c "print('yes' if float('${LABEL_LUMA:--1}') > 20 else 'no')" 2>/dev/null | tr -d '\r')
+CONTROL_LUMA_OK=$(python3 -c "print('yes' if float('${CONTROL_LUMA:--1}') < 5 else 'no')" 2>/dev/null | tr -d '\r')
 [[ "$LABEL_LUMA_OK" == "yes" ]] && ok "single-arm label crop mean luma ($LABEL_LUMA) fires above 20" \
     || bad "single-arm label crop mean luma ($LABEL_LUMA) fires above 20"
 [[ "$CONTROL_LUMA_OK" == "yes" ]] && ok "single-arm control crop mean luma ($CONTROL_LUMA) stays below 5" \

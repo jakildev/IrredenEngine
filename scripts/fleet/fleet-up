@@ -736,7 +736,7 @@ reconcile_reservation() {
     [[ -f "$file" ]] || return 0
 
     local wt task_id _combined
-    _combined=$(python3 -c 'import sys,json; d=json.load(open(sys.argv[1])); print(d.get("worktree",""),d.get("task_id",""),sep="\t")' "$file" 2>/dev/null || echo $'\t')
+    _combined=$(python3 -c 'import sys,json; d=json.load(open(sys.argv[1])); print(d.get("worktree",""),d.get("task_id",""),sep="\t")' "$file" 2>/dev/null | tr -d '\r' || echo $'\t')
     wt="${_combined%%$'\t'*}"
     task_id="${_combined##*$'\t'}"
     [[ -z "$wt" || -z "$task_id" ]] && return 0
@@ -1572,7 +1572,7 @@ seed_sidecar_resume_triggers() {
     local sc sc_role
     for sc in "$sessions_dir"/*.session.json; do
         [[ -f "$sc" ]] || continue
-        sc_role=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("role",""))' "$sc" 2>/dev/null || true)
+        sc_role=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("role",""))' "$sc" 2>/dev/null | tr -d '\r' || true)
         case "$sc_role" in
             worker|sonnet-reviewer|opus-reviewer|merger|smoke-worker|epic-steward)
                 mkdir -p "$trig_dir"
