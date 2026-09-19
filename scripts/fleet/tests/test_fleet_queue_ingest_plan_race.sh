@@ -1,19 +1,17 @@
 #!/usr/bin/env bash
-# Test the fleet-queue-ingest raced-planning-gate reconcile (#2701).
+# Test the fleet-queue-ingest raced-planning-gate reconcile.
 #
 # TASK-FILING.md §"Agent-approved follow-up lane" plan-shape 2 files in three
 # non-atomic steps (create → post `## Plan` comment → add fleet:plan-review).
-# The planning gate keys on the comment (#1932), so an ingest tick landing
-# between steps 1 and 2 stamps fleet:needs-plan and step 3 lands
-# fleet:plan-review on top. The pair used to persist forever — the
-# already-labeled skip guard returns early on either label, so no later tick
-# re-examined the issue. Ingest now strips the stale needs-plan and leaves the
-# issue held by the plan-review arm of the guard.
+# The planning gate keys on the comment, so an ingest tick landing between
+# steps 1 and 2 stamps fleet:needs-plan and step 3 lands fleet:plan-review on
+# top. The already-labeled skip guard returns early on either label, so no
+# later tick re-examines the issue on its own — ingest strips the stale
+# needs-plan and leaves the issue held by the plan-review arm of the guard.
 #
 # The discriminator is the label PAIR, not plan presence: fleet:needs-plan
 # alone after a reviewer bounce (plan-review swapped out, a stale ## Plan
-# comment still present) is a LEGITIMATE state and must be left alone —
-# observed live on #2698.
+# comment still present) is a LEGITIMATE state and must be left alone.
 #
 # HOME is redirected to a temp sandbox; gh is stubbed to canned surfaces and
 # every `gh issue edit` is logged for assertions.
@@ -38,10 +36,10 @@ export HOME="$TMPROOT/home"
 mkdir -p "$HOME/.fleet/state/projections" "$HOME/.fleet/logs"
 
 PROJ="$HOME/.fleet/state/projections/queue-manager-ingest.json"
-# #770 = needs-plan + plan-review (the race)     → strip needs-plan, still held
-# #771 = needs-plan after a reviewer bounce      → legitimate, untouched
-# #772 = needs-plan alone                        → left for planning (untouched)
-# #773 = plan-review alone                       → already correct, untouched
+# issue 770 = needs-plan + plan-review (the race)     → strip needs-plan, still held
+# issue 771 = needs-plan after a reviewer bounce      → legitimate, untouched
+# issue 772 = needs-plan alone                        → left for planning (untouched)
+# issue 773 = plan-review alone                       → already correct, untouched
 cat > "$PROJ" <<'JSON'
 {"pending_issues":[
   {"number":770,"repo":"engine"},
@@ -87,7 +85,6 @@ bash "$INGEST" > "$INGEST_LOG" 2>&1 || true
 
 edits_for() { grep -E "(^| )edit $1( |$)" "$EDIT_LOG" | tr '\n' '|'; }
 
-# --- #770: the race → stale needs-plan stripped, plan-review hold preserved ---
 assert_contains "$(edits_for 770)" "--remove-label fleet:needs-plan" \
     "#770 stripped the raced fleet:needs-plan (needs-plan + plan-review)"
 assert_absent "$(edits_for 770)" "fleet:plan-review" \
@@ -95,23 +92,19 @@ assert_absent "$(edits_for 770)" "fleet:plan-review" \
 assert_absent "$(edits_for 770)" "fleet:queued" \
     "#770 not queued — still held by the plan-review guard"
 
-# --- #771: needs-plan after a reviewer bounce is legitimate → untouched -------
 assert_absent "$(edits_for 771)" "--remove-label fleet:needs-plan" \
     "#771 kept fleet:needs-plan (reviewer bounce, plan comment present)"
 assert_absent "$(edits_for 771)" "fleet:queued" \
     "#771 not queued (correctly skipped at the needs-plan guard)"
 
-# --- #772: plain needs-plan → untouched --------------------------------------
 assert_absent "$(edits_for 772)" "--remove-label fleet:needs-plan" \
     "#772 kept fleet:needs-plan (no plan-review present)"
 
-# --- #773: plain plan-review → untouched -------------------------------------
 assert_absent "$(edits_for 773)" "fleet:needs-plan" \
     "#773 untouched (plan-review alone is already the correct state)"
 assert_absent "$(edits_for 773)" "fleet:queued" \
     "#773 not queued — held for plan review"
 
-# --- the reconcile is observable in the run summary --------------------------
 assert_contains "$(cat "$INGEST_LOG")" "raced needs-plan stripped 1" \
     "run summary counts the reconcile (1 issue)"
 

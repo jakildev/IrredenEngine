@@ -1,18 +1,17 @@
 #!/usr/bin/env bash
 # Ratchet: every bash suite under tests/ prints a tally fleet-positive-control
-# can read, and the set of suites allowed to do it the legacy way only shrinks
-# (#2917).
+# can read, and the set of suites allowed to do it the legacy way only shrinks.
 #
 # Why this exists
 # ---------------
-# fleet-positive-control reads a suite's own summary line for the counts. 41 of
-# 92 suites kept private PASS/FAIL counters and printed them in a spelling the
-# matcher never accepted, so the tool exited 2 as a *setup failure* and no
-# positive control was obtainable for any of them — through the one path
-# scripts/fleet/CLAUDE.md mandates ("never by hand"). Widening the grammar fixed
-# the population that existed; this suite is what stops a sixth bespoke form
-# from silently reopening it. The failure is caught at the suite that introduces
-# it, not at the next control that mysteriously cannot run.
+# fleet-positive-control reads a suite's own summary line for the counts. A
+# suite that keeps a private PASS/FAIL counter and prints it in a spelling the
+# matcher doesn't accept makes the tool exit 2 as a *setup failure*, so no
+# positive control is obtainable for it — through the one path
+# scripts/fleet/CLAUDE.md mandates ("never by hand"). This suite stops a new
+# bespoke tally form from opening that hole, catching the failure at the suite
+# that introduces it rather than at the next control that mysteriously cannot
+# run.
 #
 # The rule
 # --------
@@ -33,15 +32,14 @@
 #      printing a bespoke form would bypass both the grammar and check 1
 #
 # Check 2 calls the wrapper rather than re-stating the grammar, so there is one
-# executor and nothing to drift from (`.claude/rules/cpp-globals.md`: a detection
-# spec nothing runs drifts silently).
+# executor and nothing to drift from.
 #
 # The renderer is deliberately narrow
 # -----------------------------------
 # `echo "<form>"` (or '<form>') with $PASS/${PASS} and $FAIL/${FAIL} on ONE line
-# is the entire accepted emission shape — all 47 baseline suites today. A printf,
-# a split echo, or a computed format string is flagged by design: the fix for a
-# flagged suite is `summarize`, not a patch to this renderer.
+# is the entire accepted emission shape. A printf, a split echo, or a computed
+# format string is flagged by design: the fix for a flagged suite is
+# `summarize`, not a patch to this renderer.
 #
 # Purely local: no network, no ~/.fleet, no gh.
 
@@ -57,7 +55,7 @@ source "$(dirname "$0")/lib_assert.sh"
 
 WRAPPER="$SCRIPT_DIR/fleet-positive-control"
 # The subject, not an environment dependency — exit 3 so run_all.sh tallies this
-# as skipped rather than folding a zero-assertion run into "passed" (#2786).
+# as skipped rather than folding a zero-assertion run into "passed".
 if [[ ! -f "$WRAPPER" ]]; then
     echo "SKIP: fleet-positive-control not found at $WRAPPER" >&2
     exit 3
@@ -70,7 +68,7 @@ trap cleanup EXIT
 # --- the baseline -----------------------------------------------------------
 # Re-derive with:
 #   grep -L -E '^[[:space:]]*summarize\b' scripts/fleet/tests/test_*.sh
-# 45 entries at the commit that introduced this suite. Shrink only.
+# Shrink only.
 OWN_TALLY_BASELINE=(
     test_babysit_effort.sh
     test_classify_auto_rereview.sh
@@ -127,8 +125,8 @@ find_tally_echo() {
         | tail -1 || true
 }
 
-# Render an `echo "<form>"` line with PASS=7, FAIL=3. Returns 1 when the line is
-# not the narrow shape above — a flag, not a renderer bug.
+# Render an `echo "<form>"` line with PASS=7, FAIL=3. Returns 1 when the line
+# doesn't match the accepted narrow shape — a flag, not a renderer bug.
 render_tally_echo() {
     local body="$1"
     body="${body#"${body%%[![:space:]]*}"}"          # leading indent
@@ -147,8 +145,8 @@ render_tally_echo() {
 }
 
 # Emits one finding per line on stdout; returns 0 when clean, 1 when not.
-# Takes the tests dir and the baseline so the fixture controls below can drive
-# it against a synthetic population.
+# Takes the tests dir and the baseline as parameters so a synthetic
+# population can drive it under test.
 check_tally_forms() {
     local tests_dir="$1"; shift
     local -a baseline=("$@")
@@ -216,7 +214,7 @@ check_tally_forms() {
 
 # --- fixture controls -------------------------------------------------------
 # The ratchet needs its own positive control, or it is a check that has never
-# been shown to fire (#2876).
+# been shown to fire.
 FIX="$TMPROOT/fixtures"
 mkdir -p "$FIX"
 

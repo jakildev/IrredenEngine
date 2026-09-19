@@ -2,32 +2,14 @@
 # Tests for the ir-build / ir-run build-dir resolution helpers
 # (engine/tools/lib/concurrency_helpers.sh).
 #
-# #1669 made downstream-creation worktree builds first-class: a git repo
-# rooted at creations/<name>/.claude/worktrees/<agent>/ has no CMake
-# presets of its own, so its build routes to the enclosing engine root at
-# build-<creation>-<agent>/ and ir-build auto-configures that dir with
+# A git repo rooted at creations/<name>/.claude/worktrees/<agent>/ has no
+# CMake presets of its own, so its build routes to the enclosing engine root
+# at build-<creation>-<agent>/ and ir-build auto-configures that dir with
 # -DIRREDEN_USER_PROJECTS=<worktree>. These tests pin the pure path
 # resolution (ir_enclosing_engine_root / ir_creation_worktree_engine_root /
 # ir_default_build_dir) against a fake directory layout — no cmake. T4 does
-# a local `git init` (no network) to reproduce the Windows spelling split; every
-# other test is pure filesystem, no git.
-#
-# Covers:
-#   - engine checkout (presets at root) → <root>/build (unchanged)
-#   - engine nested worktree (own presets) → <worktree>/build (unchanged)
-#   - creation worktree under <engine>/creations/<name>/.claude/worktrees/
-#     <agent>/ → <engine>/build-<name>-<agent> (the #1669 behavior)
-#   - repo outside any engine tree → <root>/build (unchanged)
-#   - presets-less dir under the engine but NOT under creations/ →
-#     <root>/build (no false-positive creation detection)
-#   - ir_enclosing_engine_root walk-up and miss cases
-#   - mixed Windows-drive vs POSIX-drive spelling of the same worktree root
-#     does not break detection or build-dir derivation
-#   - the ancestor walk terminates on a root spelling that is neither "." nor
-#     "/" (a bare Windows drive root, where MSYS2's `dirname` is idempotent)
-#   - the ir-build wrapper itself routes a creation worktree to the enclosing
-#     engine and passes -DIRREDEN_USER_PROJECTS,
-#     with cmake stubbed so no configure or compile runs
+# a local `git init` (no network) to reproduce the Windows spelling split;
+# every other test is pure filesystem, no git.
 
 set -euo pipefail
 
@@ -47,9 +29,8 @@ source "$HELPERS"
 # shellcheck source=lib_assert.sh
 source "$(dirname "$0")/lib_assert.sh"
 
-# Test-specific assert, built on the shared assert_eq. lib_assert.sh owns the
-# PASS/FAIL counters, ok/bad, the assert_* family, and the summarize exit
-# idiom (scripts/fleet/CLAUDE.md).
+# lib_assert.sh owns the PASS/FAIL counters, ok/bad, the assert_* family,
+# and the summarize exit idiom (scripts/fleet/CLAUDE.md).
 assert_rc() {
     local rc="$1" expected="$2" msg="$3"
     assert_eq "$rc" "$expected" "$msg"
@@ -87,7 +68,6 @@ mkdir -p "$NON_CREATION"
 OUTSIDE="$FAKE/elsewhere/repo"
 mkdir -p "$OUTSIDE"
 
-# --- T1: ir_enclosing_engine_root --------------------------------------------
 echo "T1: ir_enclosing_engine_root walk-up"
 assert_eq "$(ir_enclosing_engine_root "$CREATION_WT")" "$ENG" \
     "creation worktree walks up to the engine root"
@@ -96,7 +76,6 @@ assert_eq "$(ir_enclosing_engine_root "$ENG")" "$ENG" \
 rc=0; ir_enclosing_engine_root "$OUTSIDE" >/dev/null || rc=$?
 assert_rc "$rc" 1 "dir outside any engine tree returns 1"
 
-# --- T2: ir_creation_worktree_engine_root ------------------------------------
 echo "T2: ir_creation_worktree_engine_root detection"
 assert_eq "$(ir_creation_worktree_engine_root "$CREATION_WT")" "$ENG" \
     "creation worktree detected, echoes enclosing engine root"
@@ -109,7 +88,6 @@ assert_rc "$rc" 1 "presets-less repo under the engine but outside creations/ is 
 rc=0; ir_creation_worktree_engine_root "$OUTSIDE" >/dev/null || rc=$?
 assert_rc "$rc" 1 "repo outside the engine tree is not detected"
 
-# --- T3: ir_default_build_dir ------------------------------------------------
 echo "T3: ir_default_build_dir routing"
 assert_eq "$(ir_default_build_dir "$ENG")" "$ENG/build" \
     "engine checkout builds in-tree"

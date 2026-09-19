@@ -1,17 +1,14 @@
-"""Regression test for #2986: resolve_needs_plan_blocked_by resolved a
-needs-plan issue's `**Blocked by:** #N` against in-memory sources only
-(closed_fleet_queued + recent merged `claude/<N>-*` heads), with none of the
-live `_resolve_ref_satisfied` fallback its sibling resolve_blocked_by uses.
+"""resolve_needs_plan_blocked_by resolves a needs-plan issue's
+`**Blocked by:** #N` against a live `_resolve_ref_satisfied` fallback when
+the blocker is absent from both in-memory sources (closed_fleet_queued and
+recent merged `claude/<N>-*` heads), matching its sibling resolve_blocked_by.
 
-Any blocker that closed outside those two sources therefore pinned the issue
-`blocked: True` forever — a hard gate in project_worker (never wakes a planner
-dispatch) and in the role slice (can never be assigned as FLEET_PLAN_ISSUE), so
-the false positive is permanent and silent.
-
-The live incident: engine #2330, `Blocked by: #2310`, with #2310 CLOSED since
-2026-07-09. #2310 carries no labels, so it is absent from the
-`labels=fleet:queued` closed set at *any* window size — widening the window
-(what #2856 did for fetch_human_approved) does not reach this lane.
+Without that fallback, a blocker that closed outside those two sources pins
+the issue `blocked: True` forever — a hard gate in project_worker (never
+wakes a planner dispatch) and in the role slice (can never be assigned as
+FLEET_PLAN_ISSUE). A blocker carrying no labels is absent from a
+`labels=fleet:queued` closed set at any window size, so widening that window
+does not reach this lane.
 
 The `gh` stub models `gh issue view <N> --repo <slug> --json state --jq .state`
 argument-for-argument and raises on any call shape it does not model, per
@@ -36,13 +33,12 @@ _loader.exec_module(_mod)
 
 resolve_needs_plan_blocked_by = _mod.resolve_needs_plan_blocked_by
 
-# The incident's real numbers, so a reader can line the fixture up with #2986.
 _BLOCKED_ISSUE = 2330
 _BLOCKER = "2310"
 
-# Synthetic game-repo numbers (criterion 4: the resolver is repo-generic, not
-# engine-only) — deliberately far from any real issue so the fixture can't be
-# mistaken for another live incident.
+# Synthetic game-repo numbers, deliberately far from any real issue so the
+# fixture can't be mistaken for a live one; proves the resolver is
+# repo-generic, not engine-only.
 _GAME_BLOCKED_ISSUE = 91
 _GAME_BLOCKER = "77"
 
@@ -61,7 +57,6 @@ class _GhStub:
         self.calls = []
 
     def __call__(self, argv, **kwargs):
-        # Model the real argument vector; anything else is an unmodeled call.
         # gh issue view <ref> --repo <slug> --json state --jq .state  == 10 args
         if len(argv) != 10 or argv[:3] != ["gh", "issue", "view"]:
             raise AssertionError(f"unmodeled gh invocation: {argv!r}")
@@ -94,9 +89,9 @@ def _state(blocked_by="#" + _BLOCKER, closed=(), merged_heads=()):
 
 def _two_repo_state():
     """Both engine and game carry a needs-plan issue whose blocker is CLOSED
-    live only — neither in-memory source covers it. Criterion 4 (#2986): the
-    game repo's lane must resolve exactly like engine's, not stay pinned
-    blocked=True because the fixture never exercised a non-engine repo_key.
+    live only — neither in-memory source covers it. The game repo's lane
+    must resolve exactly like engine's, not stay pinned blocked=True because
+    the fixture never exercised a non-engine repo_key.
     """
     state = _state()
     state["repos"]["game"] = {
@@ -120,11 +115,6 @@ def _run(state, stub):
 class NeedsPlanLiveFallback(unittest.TestCase):
 
     def test_closed_blocker_outside_inmemory_sources_unblocks(self):
-        """THE FIX. Blocker in neither in-memory source, CLOSED live.
-
-        Fails against pre-fix code: with no fallback the ref stays unresolved
-        and the issue projects blocked=True forever.
-        """
         stub = _GhStub({_BLOCKER: "CLOSED"})
         self.assertFalse(_run(_state(), stub))
         self.assertEqual(stub.calls, [("jakildev/IrredenEngine", _BLOCKER)])
@@ -134,10 +124,10 @@ class NeedsPlanLiveFallback(unittest.TestCase):
         self.assertFalse(_run(_state(), _GhStub({_BLOCKER: "MERGED"})))
 
     def test_game_repo_closed_blocker_outside_inmemory_sources_unblocks(self):
-        """Criterion 4 (#2986), with an explicit fixture rather than relying on
-        the resolver being provably repo-generic: the live fallback fires for
-        the game repo too, resolving against its own slug (jakildev/irreden),
-        and engine's resolution in the same tick is unaffected.
+        """With an explicit fixture rather than relying on the resolver being
+        provably repo-generic: the live fallback fires for the game repo
+        too, resolving against its own slug (jakildev/irreden), and engine's
+        resolution in the same tick is unaffected.
         """
         state = _two_repo_state()
         stub = _GhStub({_BLOCKER: "CLOSED", _GAME_BLOCKER: "CLOSED"})
@@ -161,7 +151,7 @@ class NeedsPlanLiveFallback(unittest.TestCase):
 
     def test_gh_failure_fails_closed(self):
         """A flaky/timing-out gh leaves the issue blocked — the conservative
-        direction, matching pre-fix behaviour rather than inverting it."""
+        direction: an unreachable check fails closed rather than unblocking."""
         self.assertTrue(_run(_state(), _GhStub({}, raises=True)))
 
     def test_inmemory_hit_makes_no_live_call(self):

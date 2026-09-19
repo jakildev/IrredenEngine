@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Test that fleet-queue-ingest skips fleet:gated issues (#2762).
+# Test that fleet-queue-ingest skips fleet:gated issues.
 #
 # A worker parks an issue fleet:gated when the fix surface is gated
 # self-config no class can push (.claude/commands/role-*.md, .claude/agents/*,
@@ -56,8 +56,8 @@ case "$1" in
     issue)
         case "$2" in
             view)
-                # #830 carries fleet:gated (parked, gated fix surface);
-                # #831 is a normal approved issue.
+                # issue 830 carries fleet:gated (parked, gated fix surface);
+                # issue 831 is a normal approved issue.
                 case "$3" in
                     830) echo '{"body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"},{"name":"fleet:gated"}],"comments":[{"body":"## Plan\nstep 1"}]}' ;;
                     831) echo '{"body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"}],"comments":[{"body":"## Plan\nstep 1"}]}' ;;
@@ -84,7 +84,7 @@ export PATH="$STUB_DIR:$PATH"
 echo "=== run fleet-queue-ingest over a batch with one fleet:gated issue ==="
 bash "$INGEST" >/dev/null 2>&1 || true
 
-# #831 (normal approved) must be stamped fleet:queued.
+# issue 831 (normal approved) must be stamped fleet:queued.
 if grep -qE '(^| )831( |$)' "$EDIT_LOG"; then
     ok "normal approved #831 was stamped (harness can stamp)"
 else
@@ -96,7 +96,7 @@ else
     bad "#831 stamp missing fleet:queued"
 fi
 
-# #830 (fleet:gated) must NOT be touched at all.
+# issue 830 (fleet:gated) must NOT be touched at all.
 if grep -qE '(^| )830( |$)' "$EDIT_LOG"; then
     bad "fleet:gated #830 was edited (should have been skipped): $(grep 830 "$EDIT_LOG")"
 else

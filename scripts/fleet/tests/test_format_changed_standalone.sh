@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Positive control for cmake/run_clang_format_changed_standalone.cmake (#3187).
+# Positive control for cmake/run_clang_format_changed_standalone.cmake.
 #
 # The shim is what gives the changed-lines formatter a CI path: the executor it
 # wraps hard-requires QUALITY_FILE_LIST, a configure-time artifact, and the
@@ -39,7 +39,7 @@ source "$(dirname "$0")/lib_assert.sh"
 
 if [[ ! -f "$SHIM" ]]; then
     echo "SKIP: shim under test not found at $SHIM" >&2
-    exit 3  # skip status — run_all.sh must not count this as a pass (#2786)
+    exit 3  # skip status — run_all.sh must not count this as a pass
 fi
 # CI pins an exact clang-format and exports CLANG_FORMAT_BIN; locally the
 # agent's own binary is fine — the arms below assert scoping, not a version's

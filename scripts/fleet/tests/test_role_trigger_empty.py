@@ -2,9 +2,7 @@
 
 A projection-hash change whose NEW projection is empty is a transition to
 nothing-to-do (a verdict label-swap, an amend claim, a merge emptied the
-set). Waking the role then is a guaranteed no-op iteration — observed
-2026-07-01 as the opus-reviewer dispatching 4x in 5 minutes, every
-iteration "no actionable candidates". The invariants:
+set). Waking the role then is a guaranteed no-op iteration. The invariants:
 
   - non-empty -> non-empty change: hash recorded, trigger touched;
   - non-empty -> EMPTY change: hash recorded, trigger NOT touched (the
@@ -16,12 +14,12 @@ iteration "no actionable candidates". The invariants:
     hash write, paced by a separate `<role>.stalled-rearm` marker.
 
 An `<role>.empty-suppressed` marker in SEEN_DIR records whether the most
-recent hash write was such a suppression, so `fleet-debug triggers` (#2185)
-can report it — the on-disk state can't otherwise tell "suppressed" from
+recent hash write was such a suppression, so `fleet-debug triggers` can
+report it — the on-disk state can't otherwise tell "suppressed" from
 "dispatched then consumed". The marker invariants are exercised below too.
 
-Four classes, because #2700 split the rule by role and stale projections need
-an independent liveness control:
+Four classes, because the rule splits by role and stale projections need an
+independent liveness control:
 
   - `UpdateRoleTriggerEmpty` — the whole-projection rule above, run under
     role "r". "r" is deliberately NOT in PER_KIND_TRIGGER_ROLES, so this
@@ -284,7 +282,7 @@ def _needs_plan(n):
 
 
 class UpdateRoleTriggerPerKind(unittest.TestCase):
-    """Per-sub-lane suppression for union projections (#2700).
+    """Per-sub-lane suppression for union projections.
 
     The whole-projection `if not projection:` test is unreachable for the
     worker lane: it unions four kinds and `task` is structurally never empty,
@@ -292,8 +290,9 @@ class UpdateRoleTriggerPerKind(unittest.TestCase):
     feedback label cleared, a merge closing an issue), which provably reduce
     available work yet fan out every idle pane.
 
-    Role "worker" is in PER_KIND_TRIGGER_ROLES; role "r" (used by the suite
-    above, unmodified) is not, which makes that suite the legacy-path pin.
+    Role "worker" is in PER_KIND_TRIGGER_ROLES; role "r" (used by
+    UpdateRoleTriggerEmpty, unmodified) is not, which makes that suite the
+    legacy-path pin.
     """
 
     ROLE = "worker"
@@ -486,7 +485,7 @@ class UpdateRoleTriggerPerKind(unittest.TestCase):
 
     def test_corrupt_seen_file_fires_once_never_idles(self):
         # The safe direction: unknown state must not read as "nothing new"
-        # (that is #561's permanently-idle role).
+        # (that reads as a permanently-idle role).
         (_mod.SEEN_DIR / self.ROLE).write_text("{not json\n")
         self.assertTrue(self._fire([_task(1)]))
         self.assertTrue(self._trigger_exists())

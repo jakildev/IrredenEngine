@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Tests for run_all.sh (#2712, #2786) — the runner that executes every
-# fleet test suite in this directory.
+# Tests for run_all.sh — the runner that executes every fleet test suite in
+# this directory.
 #
 # Hermetic: every case copies run_all.sh into a temp dir alongside SYNTHETIC
 # fixture suites and runs it there. The runner discovers suites relative to
@@ -31,8 +31,8 @@ new_sandbox() {  # $1 = sandbox name -> echoes the dir
 
 fixture_pass() { printf '#!/usr/bin/env bash\nexit 0\n' > "$1/test_$2.sh"; }
 fixture_fail() { printf '#!/usr/bin/env bash\necho "boom in %s"\nexit 1\n' "$2" > "$1/test_$2.sh"; }
-# exit 3 is the shared skip status (#2786) — a distinct fixture so it's
-# never confused with fixture_fail's ordinary failure.
+# exit 3 is the shared skip status — a distinct fixture so it's never
+# confused with fixture_fail's ordinary failure.
 fixture_skip() { printf '#!/usr/bin/env bash\necho "SKIP: %s subject missing" >&2\nexit 3\n' "$2" > "$1/test_$2.sh"; }
 
 echo "T1: all-passing suites exit 0 and are counted"
@@ -121,7 +121,7 @@ assert_eq "$rc" "0" "T9 --help exits 0"
 assert_contains "$out" "run_all.sh [--only <substring>]" "T9 --help prints usage"
 assert_contains "$out" "Exit status:" "T9 --help reaches the end of the header"
 # The header is sliced by shape, not a line range, so growing it can't leak
-# code into the help text or truncate the block (#2436).
+# code into the help text or truncate the block.
 assert_absent "$out" "set -uo pipefail" "T9 --help stops before the code"
 assert_absent "$out" "#!/usr/bin/env" "T9 --help omits the shebang"
 
@@ -143,8 +143,8 @@ out=$(bash "$d/run_all.sh" --timeout 0 2>&1); rc=$?
 assert_eq "$rc" "0" "T11 --timeout 0 still runs suites"
 assert_contains "$out" "1 passed" "T11 --timeout 0 reports normally"
 
-# #2786: a suite whose subject under test is missing exits 3 (the shared
-# skip status), not 0 — a vacuous run must never be folded into "passed".
+# A suite whose subject under test is missing exits 3 (the shared skip
+# status), not 0 — a vacuous run must never be folded into "passed".
 echo "T12: a skipping suite (exit 3) is counted separately, not as a pass"
 d=$(new_sandbox t12)
 fixture_pass "$d" alpha

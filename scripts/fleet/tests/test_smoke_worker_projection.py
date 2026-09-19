@@ -4,31 +4,22 @@ The smoke-worker pane is woken purely by the scout writing a trigger when this
 projection's hash flips (update_role_trigger is transition-keyed on
 stable_hash(projection)), and boot-dispatched by fleet-up's
 smoke_worker_actionable, which reads the slice's smoke_pending_prs. Both read
-_smoke_pr_eligible, whose pending-label set is _SMOKE_PENDING_LABELS.
-
-The regression these tests lock in (#2804):
-
-  fleet:needs-windows-smoke was missing from _SMOKE_PENDING_LABELS, on the
-  stale rationale that Windows smoke is "cleared by platform-catchup (#1093),
-  not by fleet agents". role-smoke-worker.md step 4 in fact defines a
-  first-class native-Windows lane (host key `windows` polls that label) and
-  names platform-catchup the *fallback* for when no Windows fleet is online.
-  A projection that can never contain a Windows item never transitions on
-  one, so the smoke-worker role was never woken for Windows-only pending work
-  — on a fleet whose only smoke-pending PRs are Windows, the documented
-  primary path was unreachable.
+_smoke_pr_eligible, whose pending-label set is _SMOKE_PENDING_LABELS, which
+must include every host's needs-<host>-smoke label: role-smoke-worker.md
+step 4 defines a first-class native-Windows lane (host key `windows` polls
+that label), with platform-catchup as the fallback only for when no Windows
+fleet is online. A projection that can never contain a Windows item never
+transitions on one, so the smoke-worker role would never wake for
+Windows-only pending work.
 
 Host *routing* is deliberately not this PROJECTION's job — it stays the
 host-agnostic cross-host record of outstanding smoke debt, which is what
-`platform-catchup` reads. But routing is no longer doc-only either: #2839 added
-the code-level host gate one layer downstream, at dispatch, where
-`_host_incompatible` already gates the task (#1998) and feedback-PR (#2695)
-lanes. `fleet_task_class.HOST_SMOKE_LABELS` / `smoke_pr_for_host` is the
-canonical map; `fleet-up`'s bootstrap heredoc carries an inlined copy (it cannot
-import — see below) and `fleet-dispatcher`'s `smoke_worker_should_fire` reaches
-it through the `--smoke-check` CLI arm. Before that gate, a standing
-Windows-pending set kept every non-Windows host boot-dispatching and re-arming
-smoke panes for work it could never do.
+`platform-catchup` reads. Routing happens one layer downstream, at dispatch,
+where `_host_incompatible` gates the task and feedback-PR lanes the same way.
+`fleet_task_class.HOST_SMOKE_LABELS` / `smoke_pr_for_host` is the canonical
+map; `fleet-up`'s bootstrap heredoc carries an inlined copy (it cannot
+import), and `fleet-dispatcher`'s `smoke_worker_should_fire` reaches it
+through the `--smoke-check` CLI arm.
 
 This harness pins:
   - a Windows-only pending PR appears in the projection and flips the hash.
@@ -102,7 +93,7 @@ def _fleet_up_boot_predicate():
     end = next(i for i, ln in enumerate(src)
                if ln.startswith("for role, predicate in ["))
     ns = {"os": os, "platform": platform}
-    exec("\n".join(src[start:end]), ns)  # noqa: S102 — defs only, sliced above
+    exec("\n".join(src[start:end]), ns)  # noqa: S102 — function defs only, no side effects
     return ns
 
 
@@ -134,7 +125,7 @@ def _hash(state):
 
 
 class WindowsSmokeWakesPane(unittest.TestCase):
-    """The core fix: fleet:needs-windows-smoke must be a trigger signal."""
+    """fleet:needs-windows-smoke must be a trigger signal."""
 
     def test_windows_only_pr_flips_hash(self):
         # The dead-dispatch-trigger case: the fleet's only smoke-pending work
@@ -175,12 +166,11 @@ class BootDispatchSeesWindows(unittest.TestCase):
         self.assertIn(WINDOWS, out["smoke_pending_prs"][0]["labels"])
 
     def test_slice_nonempty_so_boot_dispatch_fires_on_windows(self):
-        # The slice reaching fleet-up's predicate non-empty is necessary but no
-        # longer sufficient: #2839 host-filters it, so the boot dispatch fires
-        # on a Windows host and NOT on the other two. Asserted against the real
-        # predicate rather than a hand-copy of `bool(p["smoke_pending_prs"])` —
-        # the hand-copy this replaces would have gone on passing while encoding
-        # the pre-fix behaviour.
+        # The slice reaching fleet-up's predicate non-empty is necessary but
+        # not sufficient: the boot dispatch host-filters it, firing on a
+        # Windows host and not on the other two. Asserted against the real
+        # predicate rather than a hand-copy of `bool(p["smoke_pending_prs"])`,
+        # which would pass while missing the host filter entirely.
         out = slice_smoke_worker(_state([_approved(101, WINDOWS)]))
         self.assertTrue(bool(out["smoke_pending_prs"]))
         actionable = _fleet_up_boot_predicate()["smoke_worker_actionable"]
@@ -321,13 +311,11 @@ class TwoRepos(unittest.TestCase):
     The game reviewer mirror mints the same `fleet:needs-<host>-smoke` labels
     on game PRs, and every cost lane (merge-queue hold, tier-0 rebase skip,
     merger skip) is repo-agnostic — so the trigger and the slice must be too,
-    or a game PR pays for a label no lane can ever clear. This class inverts
-    the former `EngineOnly.test_game_windows_pr_absent`, which asserted that a
-    game smoke PR is invisible.
+    or a game PR pays for a label no lane can ever clear.
     """
 
     def test_game_windows_pr_flips_hash(self):
-        # AC1: the trigger. Red on the engine-only projection.
+        # Must flip the hash even though the projection has no engine PRs.
         before = _state([])
         after = _state([], game_prs=[_approved(99, WINDOWS)])
         self.assertNotEqual(
@@ -395,8 +383,8 @@ class TwoRepos(unittest.TestCase):
                 self.assertEqual(slice_smoke_worker(state)["smoke_pending_prs"], [])
 
     def test_no_repo_filter_remains(self):
-        # AC6, grep-verifiable: the only repo-keyed condition left in the
-        # lane is the reporting format — neither function reads "engine".
+        # grep-verifiable: the only repo-keyed condition left in the lane is
+        # the reporting format — neither function reads "engine".
         for fn in (project_smoke_worker, slice_smoke_worker):
             with self.subTest(fn=fn.__name__):
                 code = "\n".join(
@@ -409,9 +397,8 @@ class HostGateRoutesEachHostKey(unittest.TestCase):
     """The canonical dispatch-side gate: fleet_task_class.smoke_pr_for_host.
 
     Every host key is pinned explicitly. The `mac` host key vs the `macos`
-    label is the trap (#1383 reconciled the host detectors, not the spelling):
-    a mismatch matches no label, the host is never actionable, and the smoke
-    lane silently dies — the #2804 failure mode from the other direction.
+    label is the trap: a mismatch matches no label, the host is never
+    actionable, and the smoke lane silently dies.
     """
 
     def test_each_host_matches_only_its_own_label(self):
@@ -457,9 +444,9 @@ class HostGateRoutesEachHostKey(unittest.TestCase):
                                "linux": [103], "unknown": []})
 
     def test_projection_itself_stays_host_agnostic(self):
-        # Approach (A)'s load-bearing property: the scout's output is identical
-        # on every host, so state.json stays the cross-host record of smoke debt
-        # that platform-catchup reads. Only the dispatch-side filter differs.
+        # Load-bearing property: the scout's output is identical on every
+        # host, so state.json stays the cross-host record of smoke debt that
+        # platform-catchup reads. Only the dispatch-side filter differs.
         state = _state([_approved(101, WINDOWS), _approved(102, MACOS)])
         per_host = []
         for host in ("windows", "mac", "linux"):

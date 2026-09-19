@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Test that fleet-queue-ingest skips human:owned issues (R6/C2 of #1357).
+# Test that fleet-queue-ingest skips human:owned issues.
 #
 # A human can de-queue an issue by stamping human:owned (and removing
 # fleet:queued). Because it keeps human:approved, it stays in the ingest
@@ -51,7 +51,7 @@ case "$1" in
     issue)
         case "$2" in
             view)
-                # #710 is human-owned (de-queued); #711 is a normal approved issue.
+                # issue 710 is human-owned (de-queued); issue 711 is a normal approved issue.
                 case "$3" in
                     710) echo '{"body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"},{"name":"human:owned"}]}' ;;
                     711) echo '{"body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"}],"comments":[{"body":"## Plan: stub\n\nstep one"}]}' ;;
@@ -78,7 +78,7 @@ export PATH="$STUB_DIR:$PATH"
 echo "=== run fleet-queue-ingest over a batch with one human:owned issue ==="
 bash "$INGEST" >/dev/null 2>&1 || true
 
-# #711 (normal approved) must be stamped fleet:queued.
+# issue 711 (normal approved) must be stamped fleet:queued.
 if grep -qE '(^| )711( |$)' "$EDIT_LOG"; then
     ok "normal approved #711 was stamped (harness can stamp)"
 else
@@ -90,7 +90,7 @@ else
     bad "#711 stamp missing fleet:queued"
 fi
 
-# #710 (human:owned) must NOT be touched at all.
+# issue 710 (human:owned) must NOT be touched at all.
 if grep -qE '(^| )710( |$)' "$EDIT_LOG"; then
     bad "human:owned #710 was edited (should have been skipped): $(grep 710 "$EDIT_LOG")"
 else

@@ -1,13 +1,12 @@
-"""Tests for the stack-validation predicates in fleet_validate_stack (#1312).
+"""Tests for the stack-validation predicates in fleet_validate_stack.
 
 Covers the drift modes the validator must catch at pre-approval time:
-prose-only / missing `**Blocked by:**` (the #1300, #1309-#1311 shape, treated
-as an ambiguous *warning* since it may be a legit root), `**Epic:**` header
-bullets in place of the canonical `**Part of epic:**` line (the #1308-#1311
-shape, which also breaks file-epic's own discovery — a hard *error*),
-malformed `**Blocked by:**` lines that name no `#N`, and a missing
-`**Model:**` line. Multiple blockers — multi-ref `#A, #B` or several
-`**Blocked by:**` lines — are accepted as of #1296 (the gate unions every ref
+prose-only / missing `**Blocked by:**` (treated as an ambiguous *warning*
+since it may be a legit root), `**Epic:**` header bullets in place of the
+canonical `**Part of epic:**` line (which also breaks file-epic's own
+discovery — a hard *error*), malformed `**Blocked by:**` lines that name no
+`#N`, and a missing `**Model:**` line. Multiple blockers — multi-ref `#A, #B`
+or several `**Blocked by:**` lines — are accepted (the gate unions every ref
 and find-stackable-blockers live-resolves them).
 
 The module is loaded via importlib (mirroring test_scope_shipped_reference.py)
@@ -44,7 +43,7 @@ COMPLIANT_CHILD = (
     "**Blocked by:** #1308 (T1 must land first)\n"
     "\n## Scope\nstuff\n"
 )
-# The real #1308 head shape: condensed **Epic:** header bullet, no Part-of-epic.
+# A condensed **Epic:** header bullet, with no Part-of-epic line.
 EPIC_HEADER_HEAD = (
     "**Epic:** #1307 · **Design:** `d.md` (PR #1306) · **PR-1 of 4**\n"
     "**Model:** opus\n\n## Scope\n"
@@ -131,9 +130,9 @@ class ValidateChildNonHead(unittest.TestCase):
         self.assertIn("Blocked by", findings[0]["msg"])
 
     def test_prose_blocked_on_header_is_invisible(self):
-        # The #1309 pre-fix shape: prose "Blocked on T1" in the header bullet,
-        # no standalone Blocked-by line. Flags the **Epic:** drift (error) and
-        # the missing Blocked-by (warning).
+        # Prose "Blocked on T1" in the header bullet, no standalone Blocked-by
+        # line. Flags the **Epic:** drift (error) and the missing Blocked-by
+        # (warning).
         body = (
             "**Epic:** #1307 · **Blocked on T1 + docs PR #1306**\n"
             "**Model:** opus\n## Scope\n"
@@ -145,8 +144,8 @@ class ValidateChildNonHead(unittest.TestCase):
         self.assertEqual(blocked[0]["severity"], _mod.WARN)
 
     def test_multi_ref_blocked_by_line_is_accepted(self):
-        # #1296: multiple refs on one line are supported — the gate unions them
-        # and find-stackable-blockers live-resolves them. No longer an error.
+        # Multiple refs on one line are supported — the gate unions them and
+        # find-stackable-blockers live-resolves them.
         body = (
             "**Model:** opus\n**Part of epic:** #1307\n"
             "**Blocked by:** #1299, #1300\n"
@@ -154,8 +153,8 @@ class ValidateChildNonHead(unittest.TestCase):
         self.assertEqual(validate_child(body, 1307, is_head=False), [])
 
     def test_multiple_separate_blocked_by_lines_are_accepted(self):
-        # #1296: several **Blocked by:** lines are unioned by the gate and
-        # live-resolved by find-stackable-blockers. No longer an error.
+        # Several **Blocked by:** lines are unioned by the gate and
+        # live-resolved by find-stackable-blockers.
         body = (
             "**Model:** opus\n**Part of epic:** #1307\n"
             "**Blocked by:** #1308\n"
@@ -182,8 +181,8 @@ class ValidateChildNonHead(unittest.TestCase):
         self.assertEqual(validate_child(body, 1307, is_head=False), [])
 
     def test_plain_only_blocked_by_warns_with_specific_message(self):
-        # The #174-children degraded form: non-bold inline `Blocked by: #N`.
-        # Must produce exactly one WARN naming the canonical form (#1786).
+        # A degraded form: non-bold inline `Blocked by: #N`. Must produce
+        # exactly one WARN naming the canonical form.
         body = (
             "**Model:** opus\n**Part of epic:** #1307\n"
             "Part of epic #1307 (Phase D). [opus] Blocked by: #1308, #1309.\n"
@@ -264,9 +263,9 @@ class ValidateStack(unittest.TestCase):
         self.assertEqual(result["n_warnings"], 0)
 
     def test_multi_root_epic_missing_blocked_by_warns_but_stays_ok(self):
-        # The #226 shape: an interior root (#1068, a parallel-track head) with
-        # no Blocked-by is a warning, not an error — the stack stays ok unless
-        # there is a genuine error elsewhere.
+        # An interior root (a parallel-track head) with no Blocked-by is a
+        # warning, not an error — the stack stays ok unless there is a
+        # genuine error elsewhere.
         children = [
             self._child(1067, "**Model:** sonnet\n**Part of epic:** #226\n"),
             self._child(1068, "**Model:** opus\n**Part of epic:** #226\n"),
@@ -277,9 +276,9 @@ class ValidateStack(unittest.TestCase):
         self.assertEqual(result["n_warnings"], 1)
 
     def test_real_world_epic_header_stack_fails(self):
-        # The actual #1308-#1311 shapes: **Epic:** bullet, no **Part of epic:**.
-        # Non-head children do carry **Blocked by:**, so the only finding is
-        # the Part-of-epic drift (error) — present on every child.
+        # **Epic:** bullet, no **Part of epic:**. Non-head children do carry
+        # **Blocked by:**, so the only finding is the Part-of-epic drift
+        # (error) — present on every child.
         children = [
             self._child(1308, EPIC_HEADER_HEAD),
             self._child(1309, "**Epic:** #1307 · **PR-2 of 4**\n"
