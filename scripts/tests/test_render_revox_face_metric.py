@@ -132,34 +132,89 @@ class RevoxFaceMetricTest(unittest.TestCase):
         self.assertEqual(sum(v == METRIC.LIT_LABEL for v in averted["lit"]), 0)
         self.assertGreater(sum(v == METRIC.BACKFACING_LABEL for v in averted["lit"]), 0)
         _, _, rotated = METRIC.expected_image(
-            SIZE, SIZE, METRIC.FIXTURES["cube"], 0.0, False, SCALE, CENTER, METRIC.DEFAULT_SUN)
+            SIZE, SIZE, METRIC.FIXTURES["cube"], math.radians(90), False, SCALE, CENTER,
+            METRIC.DEFAULT_SUN)
         self.assertGreater(sum(v == METRIC.SHADOWED_LABEL for v in rotated["lit"]), 0)
+
+    def test_face_halves_are_lit_independently(self):
+        _, _, stats = METRIC.expected_image(
+            SIZE, SIZE, METRIC.FIXTURES["cube"], math.radians(75), False, SCALE, CENTER,
+            METRIC.DEFAULT_SUN)
+        lit, trixels = stats["lit"], stats["trixels"]
+        visibility = {owner: lit[index] for index, owner in enumerate(trixels.owner)
+                      if owner and lit[index]}
+        split = 0
+        for first in range(1, len(trixels.entries) - 1, 2):
+            second = first + 1
+            if trixels.entries[first][0] != trixels.entries[second][0]:
+                continue
+            labels = {visibility.get(first), visibility.get(second)}
+            split += labels == {METRIC.LIT_LABEL, METRIC.SHADOWED_LABEL}
+        self.assertGreater(split, 0)
+
+    def test_ray_box_distance(self):
+        box = ((0.0, 0.0, 0.0), (1.0, 1.0, 1.0))
+        self.assertAlmostEqual(
+            METRIC.ray_box_distance((-2.0, 0.5, 3.0), (1.0, 0.0, 0.0), *box, 10.0), 2.0, places=4)
+        self.assertAlmostEqual(
+            METRIC.ray_box_distance((-2.0, 0.5, 0.5), (1.0, 0.0, 0.0), *box, 10.0), 0.0, places=4)
+        self.assertAlmostEqual(
+            METRIC.ray_box_distance((2.0, 0.5, 0.5), (1.0, 0.0, 0.0), *box, 10.0), 1.0, places=4)
 
     def test_shadow_overlay_false_and_missed(self):
         size, scale = 400, (12, 6)
         labels, _, stats = METRIC.expected_image(
-            size, size, METRIC.FIXTURES["cube"], 0.0, False, scale, (size / 2, size / 2),
-            METRIC.DEFAULT_SUN)
-        lit = stats["lit"]
+            size, size, METRIC.FIXTURES["cube"], math.radians(90), False, scale,
+            (size / 2, size / 2), METRIC.DEFAULT_SUN)
+        lit, trixels = stats["lit"], stats["trixels"]
         overlay = bytearray(size * size * 3)
         for index, value in enumerate(lit):
             if value == METRIC.SHADOWED_LABEL:
                 overlay[index * 3:index * 3 + 3] = bytes(METRIC.SHADOW_MAGENTA)
-        result, _ = METRIC.compare_shadow(size, size, 3, overlay, labels, lit)
+        result, _ = METRIC.compare_shadow(size, size, 3, overlay, labels, lit, trixels)
         self.assertTrue(result["pass"], result)
         self.assertGreater(result["shadowed_interior_pixels"], 0)
         first_lit = next(index for index, value in enumerate(lit)
                          if value == METRIC.LIT_LABEL and all(
-                             lit[index + dx + dy * size] == value
+                             trixels.owner[index + dx + dy * size] == trixels.owner[index]
                              and labels[index + dx + dy * size] == labels[index]
                              for dy in (-1, 0, 1) for dx in (-1, 0, 1)))
         overlay[first_lit * 3:first_lit * 3 + 3] = bytes(METRIC.SHADOW_MAGENTA)
-        result, _ = METRIC.compare_shadow(size, size, 3, overlay, labels, lit)
+        result, _ = METRIC.compare_shadow(size, size, 3, overlay, labels, lit, trixels, 0.0)
         self.assertEqual(result["false_shadow_pixels"], 1)
+        self.assertEqual(result["grazing_false_shadow_pixels"], 0)
         self.assertFalse(result["pass"])
-        result, _ = METRIC.compare_shadow(size, size, 3, bytes(size * size * 3), labels, lit)
+        result, _ = METRIC.compare_shadow(size, size, 3, bytes(size * size * 3), labels, lit,
+                                          trixels)
         self.assertEqual(result["missed_shadow_pixels"], result["shadowed_interior_pixels"])
         self.assertGreater(result["missed_shadow_pixels"], 0)
+
+    def test_grazing_false_shadow_is_tolerated_and_clear_is_not(self):
+        size, scale = 400, (12, 6)
+        labels, _, stats = METRIC.expected_image(
+            size, size, METRIC.FIXTURES["cube"], math.radians(67.5), False, scale,
+            (size / 2, size / 2), METRIC.DEFAULT_SUN)
+        lit, trixels = stats["lit"], stats["trixels"]
+        interior = {}
+        for index, owner in enumerate(trixels.owner):
+            if owner and lit[index] == METRIC.LIT_LABEL and all(
+                    trixels.owner[index + dx + dy * size] == owner
+                    for dy in (-1, 0, 1) for dx in (-1, 0, 1)):
+                interior.setdefault(owner, []).append(index)
+        by_clearance = sorted(interior, key=trixels.clearance)
+        grazing, clear = by_clearance[0], by_clearance[-1]
+        self.assertLessEqual(trixels.clearance(grazing), METRIC.TERMINATOR_TOLERANCE)
+        self.assertGreater(trixels.clearance(clear), METRIC.TERMINATOR_TOLERANCE)
+        for owner, expect_pass in ((grazing, True), (clear, False)):
+            overlay = bytearray(size * size * 3)
+            for index, value in enumerate(lit):
+                if value == METRIC.SHADOWED_LABEL or trixels.owner[index] == owner:
+                    overlay[index * 3:index * 3 + 3] = bytes(METRIC.SHADOW_MAGENTA)
+            result, _ = METRIC.compare_shadow(size, size, 3, overlay, labels, lit, trixels)
+            self.assertEqual(result["false_shadow_pixels"], len(interior[owner]))
+            self.assertEqual(result["grazing_false_shadow_pixels"],
+                             len(interior[owner]) if expect_pass else 0)
+            self.assertEqual(result["pass"], expect_pass, result)
 
     def test_cli_shadow_overlay(self):
         size, scale = 400, (12, 6)
@@ -185,7 +240,10 @@ class RevoxFaceMetricTest(unittest.TestCase):
             with contextlib.redirect_stderr(io.StringIO()):
                 with self.assertRaises(SystemExit) as zero_sun:
                     METRIC.main(args + ["--sun", "0", "0", "0"])
+                with self.assertRaises(SystemExit) as negative_tolerance:
+                    METRIC.main(args + ["--terminator-tolerance", "-1"])
             self.assertEqual(zero_sun.exception.code, 2)
+            self.assertEqual(negative_tolerance.exception.code, 2)
 
     def test_cli_exit_code_and_determinism(self):
         labels, palette, _ = expected(yaw=45)

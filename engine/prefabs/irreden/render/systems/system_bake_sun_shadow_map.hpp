@@ -38,7 +38,6 @@
 #include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/render/voxel_frame_data.hpp>
 #include <irreden/render/voxel_dispatch_grid.hpp>
-#include <irreden/render/components/component_detached_revoxelize_buffer.hpp>
 
 #include <utility>
 
@@ -149,25 +148,20 @@ static_assert(
     offsetof(DetachedShadowFrame, viewToWorld_) == 16, "Quaternion must begin at byte 16"
 );
 
+// Frame of one voxel-face cast: the cells a canvas rasterizes are the cells it
+// casts. A revoxelized canvas casts its resampled lattice, the geometry its
+// receiver reads and its display shows; an authored-grid caster cuts through
+// that lattice and marks whole half-faces of the displayed staircase as
+// self-shadowed (docs/design/revoxelized-display-fidelity.md, "Direct sun").
 struct VoxelSunFaceFrame {
     vec4 worldOrigin_;
     vec4 viewToWorld_;
     ivec4 dispatch_;
-    ivec4 sourceMin_;
-    ivec4 sourceDims_;
-    vec4 sourceAnchor_;
 };
-static_assert(sizeof(VoxelSunFaceFrame) == 96, "Voxel sun-face frame must match the shader UBO");
-static_assert(
-    offsetof(VoxelSunFaceFrame, sourceMin_) == 48 &&
-        offsetof(VoxelSunFaceFrame, sourceDims_) == 64 &&
-        offsetof(VoxelSunFaceFrame, sourceAnchor_) == 80,
-    "Source grid bounds must match GLSL and Metal offsets"
-);
+static_assert(sizeof(VoxelSunFaceFrame) == 48, "Voxel sun-face frame must match the shader UBO");
 
 template <> struct System<BAKE_SUN_SHADOW_MAP> {
     bool voxelFaceCoverage_ = true;
-    bool sourceFaceCoverage_ = true;
     bool coverageFrameOpen_ = false;
     bool frameUsesFiniteCoverage_ = false;
     Buffer *analyticCasterFrameBuf_ = nullptr;
@@ -881,43 +875,25 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         int count,
         int subdivisions,
         const C_CanvasLocalRotation &rotation,
-        const C_DetachedRevoxelizeBuffer *source,
         vec3 rasterCellOffset = vec3(0.0f)
     ) {
         if (frameData_.shadowsEnabled_ == 0 || count == 0 ||
             (rotation.isDetached() && (!rotation.worldPlaced_ || !rotation.reVoxelize_))) {
             return;
         }
-        const bool useSource = sourceFaceCoverage_ && rotation.isDetached() && source != nullptr &&
-                               source->sourceGrid_.second != nullptr;
-        if (useSource) {
-            count =
-                source->sourceGridDims_.x * source->sourceGridDims_.y * source->sourceGridDims_.z;
-            source->sourceGrid_.second->bindBase(
-                BufferTarget::SHADER_STORAGE,
-                kBufferIndex_RevoxelizeSourceGrid
-            );
-        }
         const ivec2 grid = voxelDispatchGridForCount(IRMath::divCeil(count, 64));
-        vec4 orientation = rotation.isDetached() ? IRPrefab::Camera::getRotationQuat()
-                                                 : vec4(0.0f, 0.0f, 0.0f, 1.0f);
-        if (useSource) {
-            orientation = IRMath::quatMul(orientation, rotation.rotation_);
-        }
+        const vec4 orientation = rotation.isDetached() ? IRPrefab::Camera::getRotationQuat()
+                                                       : vec4(0.0f, 0.0f, 0.0f, 1.0f);
         const VoxelSunFaceFrame params{
             vec4(
                 rotation.isDetached()
                     ? rotation.worldCellOffset_ +
-                          (useSource ? vec3(0.0f)
-                                     : IRMath::rotateVectorByQuat(rasterCellOffset, orientation))
+                          IRMath::rotateVectorByQuat(rasterCellOffset, orientation)
                     : vec3(0.0f),
                 0.0f
             ),
             orientation,
-            ivec4(count, grid.x, subdivisions, useSource ? 1 : 0),
-            ivec4(useSource ? source->sourceGridMin_ : ivec3(0), 0),
-            ivec4(useSource ? source->sourceGridDims_ : ivec3(0), 0),
-            vec4(useSource ? source->anchor_ : vec3(0.0f), 0.0f)
+            ivec4(count, grid.x, subdivisions, 0)
         };
         voxelFaceFrameBuf_->subData(0, sizeof(params), &params);
         voxelFaceFrameBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_RevoxelizeDetachedParams);

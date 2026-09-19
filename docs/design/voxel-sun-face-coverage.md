@@ -1,7 +1,13 @@
 # Experimental voxel face sun coverage
 
+Historical: finite face casting became the default in
+[finite shadow defaults](finite-shadow-defaults.md), and the resampled cells
+are the only caster geometry for revoxelized canvases
+([authored-grid casting is retired](authored-voxel-shadow-faces.md));
+`--voxel-face-shadows` is accepted and ignored.
+
 This experiment follows the [lighting audit](trixel-shadow-lighting-audit.md).
-Enable `IRCanvasStress --voxel-face-shadows`. The default remains the existing
+Enable `IRCanvasStress --voxel-face-shadows`. The default remained the existing
 shadow producer. The experiment replaces that producer for the entire frame;
 only voxel casters contribute. SDF, text and particle casting is not covered.
 Screen-locked detached canvases are excluded from world casting.

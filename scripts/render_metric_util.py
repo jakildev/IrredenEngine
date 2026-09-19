@@ -244,15 +244,42 @@ def emit(result: dict, failed: list[str]) -> int:
     return 1 if failed else 0
 
 
-def raster_polygon(mask: bytearray, w: int, h: int,
+def centroid(points: list[tuple[float, float, float]]) -> tuple[float, float, float]:
+    """Geometric centroid of a set of 3D points."""
+    return tuple(sum(p[i] for p in points) / len(points) for i in range(3))
+
+
+def ray_box_distance(origin, direction, low, high, span: float) -> float:
+    """Closest approach of ``origin + t * direction``, 0 <= t <= span, to a box.
+
+    The distance from a point to a box is convex along a line, so a ternary
+    search over t finds the minimum.
+    """
+    def distance(t):
+        gaps = [max(low[i] - origin[i] - t * direction[i], 0.0,
+                    origin[i] + t * direction[i] - high[i]) for i in range(3)]
+        return math.sqrt(sum(g * g for g in gaps))
+    near, far = 0.0, span
+    for _ in range(64):
+        third = (far - near) / 3.0
+        if distance(near + third) < distance(far - third):
+            far -= third
+        else:
+            near += third
+    return distance((near + far) / 2.0)
+
+
+def raster_polygon(mask: bytearray | list, w: int, h: int,
                    polygon: list[tuple[float, float]], label: int) -> None:
     """Fill a convex polygon into a row-major label mask at pixel centres.
 
     A pixel is inside when its centre ``(x + .5, y + .5)`` lies within the
     polygon; edges use the half-open scanline rule so two polygons sharing
-    an edge never double-cover a pixel. Shared by the projected-face oracles
+    an edge never double-cover a pixel. The mask is a byte mask for labels
+    below 256 or a list for wider ids. Shared by the projected-face oracles
     (``render-source-face-metric.py``, ``render-revox-face-metric.py``).
     """
+    fill = bytes([label]) if isinstance(mask, bytearray) else [label]
     edges = list(zip(polygon, polygon[1:] + polygon[:1]))
     first = max(0, math.ceil(min(y for _, y in polygon) - .5))
     last = min(h, math.ceil(max(y for _, y in polygon) - .5))
@@ -266,7 +293,7 @@ def raster_polygon(mask: bytearray, w: int, h: int,
         left = max(0, math.ceil(min(intersections) - .5))
         right = min(w, math.ceil(max(intersections) - .5))
         if right > left:
-            mask[y * w + left:y * w + right] = bytes([label]) * (right - left)
+            mask[y * w + left:y * w + right] = fill * (right - left)
 
 
 def raster_polygon_depth(labels: bytearray, depth: list[float], w: int, h: int,

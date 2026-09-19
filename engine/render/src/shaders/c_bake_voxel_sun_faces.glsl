@@ -1,5 +1,9 @@
 #version 450 core
 
+// Rasterizes the exposed sun-facing faces of the cells a canvas rasterizes
+// (bindings 5/6/8: the same positions, colors and active mask stage 1 reads)
+// into the sun depth map. A revoxelized canvas therefore casts its resampled
+// lattice, the geometry its receiver reads and its display shows.
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 #include "ir_iso_common.glsl"
 #include "ir_sun_projection.glsl"
@@ -9,7 +13,6 @@ struct VoxelSunSample {
     uint materialFlagBone;
     uint reserved;
 };
-layout(std430, binding = 9) readonly buffer SourceGrid { uint sourceGrid[]; };
 layout(std430, binding = 8) readonly buffer VoxelActiveMask { uint activeMask[]; };
 layout(std430, binding = 5) readonly buffer PositionBuffer { vec4 positions[]; };
 layout(std430, binding = 6) readonly buffer ColorBuffer { VoxelSunSample voxels[]; };
@@ -18,9 +21,6 @@ layout(std140, binding = 16) uniform VoxelSunFaceFrame {
     vec4 worldOrigin;
     vec4 viewToWorld;
     ivec4 dispatch;
-    ivec4 sourceMin;
-    ivec4 sourceDims;
-    vec4 sourceAnchor;
 };
 layout(std140, binding = 29) uniform FrameDataSun {
     uniform vec4 sunDirection;
@@ -68,40 +68,18 @@ void main() {
     const uint index = (gl_WorkGroupID.y * uint(dispatch.y) + gl_WorkGroupID.x) * 64u + gl_LocalInvocationID.x;
 
     if (index >= uint(dispatch.x)) return;
-    const bool useSource = dispatch.w != 0;
-    ivec3 sourceCell = ivec3(0);
-    uint flags = 0u;
-    vec3 position;
-    if (useSource) {
-        if ((sourceGrid[index * 3u] >> 24u) == 0u) return;
-        const ivec3 dims = sourceDims.xyz;
-        sourceCell = ivec3(int(index) % dims.x, (int(index) / dims.x) % dims.y,
-                         int(index) / (dims.x * dims.y));
-        position = vec3(sourceCell + sourceMin.xyz) + sourceAnchor.xyz;
-    } else {
-        if ((voxels[index].colorPacked >> 24u) == 0u) return;
-        if ((activeMask[index >> 5u] & (1u << (index & 31u))) == 0u) return;
-        flags = (voxels[index].materialFlagBone >> 8u) & 0xFFu;
-        const float subdivisions = float(dispatch.z);
-        position = vec3(roundHalfUp(snapNearIntegerVoxelPosition(positions[index].xyz) * subdivisions)) / subdivisions;
-    }
+    if ((voxels[index].colorPacked >> 24u) == 0u) return;
+    if ((activeMask[index >> 5u] & (1u << (index & 31u))) == 0u) return;
+    const uint flags = (voxels[index].materialFlagBone >> 8u) & 0xFFu;
+    const float subdivisions = float(dispatch.z);
+    const vec3 position = vec3(roundHalfUp(snapNearIntegerVoxelPosition(positions[index].xyz) * subdivisions)) / subdivisions;
     for (int axis = 0; axis < 3; ++axis) {
         vec3 normal = vec3(0.0);
         normal[axis] = 1.0;
         const vec3 worldAxis = rotateByQuat(normal, viewToWorld);
         const bool positive = dot(worldAxis, sunDirection.xyz) > 0.0;
         const int faceId = axis * 2 + (positive ? 1 : 0);
-        if (useSource) {
-            ivec3 neighbor = sourceCell;
-            neighbor[axis] += positive ? 1 : -1;
-            const ivec3 dims = sourceDims.xyz;
-            if (all(greaterThanEqual(neighbor, ivec3(0))) && all(lessThan(neighbor, dims))) {
-                const int key = neighbor.x + dims.x * (neighbor.y + dims.y * neighbor.z);
-                if ((sourceGrid[key * 3] >> 24u) != 0u) continue;
-            }
-        } else if (!faceIsExposed(flags, faceId)) {
-            continue;
-        }
+        if (!faceIsExposed(flags, faceId)) continue;
         vec3 corner = position - kVoxelRasterCellAnchor;
         corner[axis] += positive ? 1.0 : 0.0;
         vec3 edgeU = vec3(0.0);

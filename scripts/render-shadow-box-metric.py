@@ -4,11 +4,11 @@
 Capture four cardinal views using IRCanvasStress --only shadowbox,floor
 --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 0.4 --auto-screenshot 6
 --sweep-yaw 0 4.71238898 4. Pass full-frame PNGs in yaw order.
-Use --grid when captures also use --probe-grid. Use --source for captures
-with --source-face-shadows (unrounded authored box coordinates), including
---probe-analytic-box. --box-yaw and --box-offset mirror the analytic probe pose.
-The receiver plate supplies
-pixel scale and origin; the expected shadow comes from the authored box and
+Use --grid when captures also use --probe-grid. Use --source for
+--probe-analytic-box captures (unrounded authored box coordinates), and for
+historical captures made with the retired --source-face-shadows caster.
+--box-yaw and --box-offset mirror the analytic probe pose. The receiver plate
+supplies pixel scale and origin; the expected shadow comes from the authored box and
 sun direction, independently of the renderer's shadow samples.
 """
 
@@ -113,7 +113,8 @@ def main() -> None:
     parser.add_argument("images", nargs=4, type=Path, metavar="PNG")
     parser.add_argument("--grid", action="store_true")
     parser.add_argument("--source", action="store_true",
-                        help="Use unrounded authored positions for --source-face-shadows")
+                        help="Use unrounded authored positions (analytic box, "
+                             "or the retired --source-face-shadows caster)")
     parser.add_argument("--overlay-dir", type=Path)
     parser.add_argument("--box-yaw", type=float, default=0.0, help="Authored box yaw in radians")
     parser.add_argument("--box-offset", type=float, nargs=3, default=(0.0, 0.0, 0.0))

@@ -73,16 +73,28 @@ boundaries of a multi-voxel solid.
 
 The same script, with `--shadow-overlay`, reads a `--debug-overlay shadow`
 capture of the same pose (magenta = any direct-sun occlusion) and compares
-every sun-facing interior pixel with the lattice's own visibility: a face is
-lit when a ray from its centre toward the sun (the demo's `kSunDirection`,
-`(-0.42, -0.60, -0.55)`) crosses no other occupied destination cell. Faces
-turned away from the sun get no direct light whatever the overlay says and
-are excluded. AO is measured separately with `render-ao-staircase-metric.py`.
+every sun-facing interior pixel with the lattice's own visibility. The
+display draws each face as two triangles and lights each at its geometric
+centroid, so the oracle casts one ray per triangle from that centroid toward
+the sun (the demo's `kSunDirection`, `(-0.42, -0.60, -0.55)`) through the
+destination cells: the triangle is lit when the ray crosses no other
+occupied cell. Faces turned away from the sun get no direct light whatever
+the overlay says and are excluded. AO is measured separately with
+`render-ao-staircase-metric.py`.
 
-Cyan cube, zoom 8, AO off, both caster modes of `BAKE_SUN_SHADOW_MAP` (the
-demo's default `--source-face-shadows` casts the authored cells rotated
-continuously; `--voxel-face-shadows` casts the resampled cells the display
-shows):
+The receiver reads the sun texel nearest the centroid, so a trixel whose ray
+passes within a fraction of a cell of an occluder can read shadowed at the
+terminator. The oracle reports the closest approach of every false-shadow
+trixel's ray to an occupied cell; false shadow within
+`--terminator-tolerance` (half a cell) is grazing and passes, false shadow
+with a clear ray and any missed shadow fail.
+
+### Authored casters against resampled casters
+
+Cyan cube, zoom 8, AO off, classified per face by one centre ray (the
+measurement that retired the authored-grid caster). The demo's former default
+cast the authored cells rotated continuously; the resampled cells are what
+the display shows and the receiver reads.
 
 | Yaw | Sun-facing interior px (lit / occluded) | Authored casters: false / missed | Resampled casters: false / missed |
 |---:|---|---|---|
@@ -96,21 +108,47 @@ shows):
 Only the caster geometry differs between the two columns, so the tooth
 pattern in the lit captures is the authored caster cutting through the
 resampled receiver: whole half-faces across the cube read as self-shadowed
-where the displayed staircase is open to the sun. With resampled casters
-false shadow falls 15 to 150 times, and what remains is the near-riser tread
-band at 0 and 22.5° that the shadow path leaves lit (every occluded pixel the
-lattice expects; the yaw-22.5 capture holds no magenta pixel at all, so
-whether the bake never writes those cells or the receiver reads them lit is
-the next trace, caster first) and a few tread tips at 45°. The oracle
-classifies each face by one centre ray while the overlay marks per trixel,
-so a sun terminator crossing a face costs one half-face (512 pixels at this
-zoom) of disagreement even from an exact renderer; the resampled-caster
-residuals of 4,051 / 9,022 / 1,379 / 5,456 pixels are 8 / 18 / 3 / 11 such
-half-faces, so a per-trixel gate has to cast from each trixel's centroid or
-state that floor. AO at yaw 45 with the default
-casters darkens 6.9% of the cube by at most 5.9% (`occluded_frac 0.0689`,
-`max_darkening 0.0588`), so it is not the source of the look. Captures under
-`docs/pr-screenshots/claude/million-entity-render-lit-staircase/`.
+where the displayed staircase is open to the sun. The per-face classification
+leaves a "missed" column that is its own floor: a face whose centre ray is
+blocked while both displayed halves are clear counts as missed in full.
+
+### The resampled casters, per trixel
+
+The same five captures with the resampled casters as the only caster, gated
+per trixel. "False / grazing" splits the false-shadow pixels by whether the
+trixel's centroid ray passes within half a cell of an occupied cell; the
+clearance column is the largest closest approach among them.
+
+| Yaw | Interior px (lit / occluded) | Overlay magenta px | False / grazing | Clearance (cells) | Missed | Gate |
+|---:|---|---:|---|---:|---:|---|
+| 0 | 335,552 / 0 | 4,096 | 3,136 / 3,136 | 0.014 | 0 | pass |
+| 22.5 | 321,440 / 0 | 0 | 0 / 0 | 0 | 0 | pass |
+| 45 | 272,832 / 7,840 | 19,968 | 7,448 / 7,448 | 0.333 | 0 | pass |
+| 67.5 | 178,360 / 24,304 | 33,280 | 1,176 / 1,176 | 0.109 | 0 | pass |
+| 90 | 173,264 / 34,496 | 51,200 | 4,704 / 4,704 | 0.125 | 0 | pass |
+| 0, authored control | 335,552 / 0 | 169,984 | 130,144 / 129,752 | 0.546 | 0 | fail |
+| 45, authored control | 272,832 / 7,840 | 156,160 | 111,720 / 108,976 | 0.667 | 0 | fail |
+
+The near-riser tread band was the per-face floor, not the shadow path: cast
+from the trixel centroids, no trixel the lattice expects occluded is lit at
+any yaw, and every trixel the lattice expects lit that reads shadowed has a
+ray passing within a third of a cell of an occupied cell. Across the four
+yaws with any self-shadow, 370 lit trixels have a clearance of 0.35 cells or
+more and none of them reads shadowed, while the flips concentrate below 0.15
+cells (21 trixels within 0.02 at yaw 0, 8 of them flipped). That is the
+signature of the nearest-texel read at a terminator, bounded by the texel's
+half-diagonal, and the caster and the surface receiver were both traced with
+no defect found: the bake rasterizes the exposed sun-facing faces of the same
+cells the display draws, and the receiver compares the receiver plane at the
+nearest texel centre with the stored finite face. The authored-caster
+captures fail the same gate with false shadow on trixels whose rays clear
+every cell by more than half a cell. At zoom 4 the cube's floor shadow is a
+clean stepped silhouette. Captures under
+`docs/pr-screenshots/claude/million-entity-render-lit-staircase/` (per-face
+measurement, both caster modes) and
+`docs/pr-screenshots/claude/million-entity-render-resampled-casters/`
+(the default casters after the retirement, with the authored-caster lit
+captures for comparison).
 
 ```sh
 fleet-run IRCanvasStress --only revox --focus-revox 1 --no-spin --no-auto-rotate --pivot-origin --no-ao --subdivisions 1 --zoom 8 --debug-overlay shadow --auto-screenshot 10 --sweep-yaw 0 1.57079633 5
@@ -123,10 +161,12 @@ The revoxelized display is a faithful projection of the resampled cells: a
 lone tread trixel beside a riser is the correct isometric projection of a
 diagonal step, and no pixel is owned by the wrong face. The objectionable
 look is the nearest-cell resample itself, and under lighting a sun-shadow
-caster that is not the displayed geometry: a revoxelized canvas must cast
-from its resampled cells, as its receiver reads them, and the authored-cell
-caster is retired for that path. The tread band behind each riser that the
-shadow path still leaves lit is the remaining item, traced caster-first.
+caster that is not the displayed geometry: a revoxelized canvas casts from
+its resampled cells, as its receiver reads them, and the authored-cell
+caster is retired ([the experiment's record](authored-voxel-shadow-faces.md)).
+With that caster gone the staircase's direct sun is the lattice's own at
+every yaw; the residual is the sun map's nearest-texel read at a terminator,
+within a third of a cell, and no receiver bias is added to hide it.
 
 Presentation stays a per-object choice through `RotationMode`: plain
 `DETACHED` projects the authored source faces for a smooth rotated solid;
@@ -140,5 +180,5 @@ information is gone at the resample, and the source-face path already exists);
 resampling at a finer destination lattice (cell count grows with the cube of
 the density and the result is still a staircase; a zoom-dependent level of
 detail is a D7 decision); averaged normals, blurred AO or dilated coverage on
-the steps (never a fix per the campaign spirit). The remaining revoxelized
-work is the caster switch and the near-riser receiver band measured above.
+the steps (never a fix per the campaign spirit); a receiver bias or a wider
+oracle tolerance to absorb the terminator residual.

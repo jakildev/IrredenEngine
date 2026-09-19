@@ -1,3 +1,7 @@
+// Rasterizes the exposed sun-facing faces of the cells a canvas rasterizes
+// (buffers 5/6/8: the same positions, colors and active mask stage 1 reads)
+// into the sun depth map. A revoxelized canvas therefore casts its resampled
+// lattice, the geometry its receiver reads and its display shows.
 #include "ir_iso_common.metal"
 #include "ir_sun_projection.metal"
 #include "ir_sun_shadow_sample.metal"
@@ -12,9 +16,6 @@ struct VoxelSunFaceFrame {
     float4 worldOrigin;
     float4 viewToWorld;
     int4 dispatch;
-    int4 sourceMin;
-    int4 sourceDims;
-    float4 sourceAnchor;
 };
 
 inline void rasterSunFace(device atomic_uint* sunDepthBuf, float3 corner, float3 edgeU, float3 edgeV, float2 origin, float2 texelSize, int cascadeOffset) {
@@ -40,7 +41,6 @@ inline void rasterSunFace(device atomic_uint* sunDepthBuf, float3 corner, float3
 }
 
 kernel void c_bake_voxel_sun_faces(
-    device const uint* sourceGrid [[buffer(9)]],
     device const uint* activeMask [[buffer(8)]],
     device const float4* positions [[buffer(5)]],
     device const VoxelSunSample* voxels [[buffer(6)]],
@@ -53,40 +53,18 @@ kernel void c_bake_voxel_sun_faces(
     const uint index = (groupId.y * uint(faceFrame.dispatch.y) + groupId.x) * 64u + localId.x;
 
     if (index >= uint(faceFrame.dispatch.x)) return;
-    const bool useSource = faceFrame.dispatch.w != 0;
-    int3 sourceCell = int3(0);
-    uint flags = 0u;
-    float3 position;
-    if (useSource) {
-        if ((sourceGrid[index * 3u] >> 24u) == 0u) return;
-        const int3 dims = faceFrame.sourceDims.xyz;
-        sourceCell = int3(int(index) % dims.x, (int(index) / dims.x) % dims.y,
-                         int(index) / (dims.x * dims.y));
-        position = float3(sourceCell + faceFrame.sourceMin.xyz) + faceFrame.sourceAnchor.xyz;
-    } else {
-        if ((voxels[index].colorPacked >> 24u) == 0u) return;
-        if ((activeMask[index >> 5u] & (1u << (index & 31u))) == 0u) return;
-        flags = (voxels[index].materialFlagBone >> 8u) & 0xFFu;
-        const float subdivisions = float(faceFrame.dispatch.z);
-        position = float3(roundHalfUp(snapNearIntegerVoxelPosition(positions[index].xyz) * subdivisions)) / subdivisions;
-    }
+    if ((voxels[index].colorPacked >> 24u) == 0u) return;
+    if ((activeMask[index >> 5u] & (1u << (index & 31u))) == 0u) return;
+    const uint flags = (voxels[index].materialFlagBone >> 8u) & 0xFFu;
+    const float subdivisions = float(faceFrame.dispatch.z);
+    const float3 position = float3(roundHalfUp(snapNearIntegerVoxelPosition(positions[index].xyz) * subdivisions)) / subdivisions;
     for (int axis = 0; axis < 3; ++axis) {
         float3 normal = float3(0.0);
         normal[axis] = 1.0;
         const float3 worldAxis = rotateByQuat(normal, faceFrame.viewToWorld);
         const bool positive = dot(worldAxis, sunFrame.sunDirection.xyz) > 0.0;
         const int faceId = axis * 2 + (positive ? 1 : 0);
-        if (useSource) {
-            int3 neighbor = sourceCell;
-            neighbor[axis] += positive ? 1 : -1;
-            const int3 dims = faceFrame.sourceDims.xyz;
-            if (all(neighbor >= int3(0)) && all(neighbor < dims)) {
-                const int key = neighbor.x + dims.x * (neighbor.y + dims.y * neighbor.z);
-                if ((sourceGrid[key * 3] >> 24u) != 0u) continue;
-            }
-        } else if (!faceIsExposed(flags, faceId)) {
-            continue;
-        }
+        if (!faceIsExposed(flags, faceId)) continue;
         float3 corner = position - kVoxelRasterCellAnchor;
         corner[axis] += positive ? 1.0 : 0.0;
         float3 edgeU = float3(0.0);

@@ -23,9 +23,11 @@ is deliberately conservative, including a registered but inactive producer.
 Custom depth-only caster producers must set `voxelFaceCoverage_ = false` until
 they join the finite producer lifecycle.
 
-IRCanvasStress exposes `--legacy-depth-shadows` for comparison and
-`--voxel-face-shadows` for resampled-face diagnostics. `--source-face-shadows`
-selects the default explicitly. Raw trixel display remains debug-only.
+IRCanvasStress exposes `--legacy-depth-shadows` for comparison. Every voxel
+caster, revoxelized or not, casts the cells it rasterizes; the authored-grid
+caster is [retired](authored-voxel-shadow-faces.md), and `--voxel-face-shadows`
+/ `--source-face-shadows` are accepted and ignored. Raw trixel display remains
+debug-only.
 
 ## Evidence
 
