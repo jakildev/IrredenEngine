@@ -145,10 +145,9 @@ MAX_ATTEMPTS="${FLEET_MAX_ATTEMPTS:-200}"   # safety valve — prevents infinite
 # Set via env to override.
 LONG_BACKOFF_SECONDS="${FLEET_LONG_BACKOFF:-1800}"
 
-# Convert a Claude-style interval ("20m", "3m", "1h", "30s") into seconds.
-# This replaces what /loop used to do internally, so that babysit can
-# enforce the between-iteration delay at the *process* level (each
-# iteration is a fresh `claude` invocation with cleared context).
+# Convert a Claude-style interval ("20m", "3m", "1h", "30s") into seconds,
+# so babysit can enforce the between-iteration delay at the *process* level
+# (each iteration is a fresh `claude` invocation with cleared context).
 parse_interval_seconds() {
     local s="$1"
     [[ -z "$s" ]] && { echo 0; return; }
@@ -308,7 +307,7 @@ fi
 # dead pointer exits 1 immediately, which is exit-code-indistinguishable
 # from an ordinary mid-task crash — so an unvalidated pointer sends the
 # retry loop back to the same dead session every CRASH_DELAY until
-# MAX_ATTEMPTS (see #3004).
+# MAX_ATTEMPTS.
 #
 # Two independent signals catch it:
 #   1. Filesystem check (primary — cheap, no attempt burned): before
@@ -382,7 +381,7 @@ record_resume_result() {
 # heartbeat go stale during normal between-iteration sleeps (the
 # 1200s worker LOOP_INTERVAL plus a 33-min iteration easily
 # blows past the 30m staleness threshold even when the fleet is
-# functioning correctly — observed in production 2026-04-22).
+# functioning correctly).
 HEARTBEAT_FILE=""
 if [[ "$ARCHITECT_RESUME" -eq 0 ]]; then
     HEARTBEAT_FILE="$HOME/.fleet/heartbeats/$(basename "$(pwd)")"
@@ -421,8 +420,8 @@ stop_heartbeat_keeper() {
 
 # --- Stream-formatted claude wrapper ---------------------------------------
 #
-# Workers run claude with `--print` so each iteration exits cleanly
-# (PR #257). The downside: `--print` with the default text output
+# Workers run claude with `--print` so each iteration exits cleanly.
+# The downside: `--print` with the default text output
 # buffers EVERYTHING and only emits at the very end — the pane looks
 # dead the whole time the agent is thinking, reading files, calling
 # tools, etc. Humans watching the fleet can't tell "agent is working"
@@ -498,9 +497,8 @@ claude_gate_closed() {
 }
 
 # Hold the relaunch while the Claude gate is closed. A crash exit at the
-# usage wall (claude exits rc=1 there) used to re-enter the CRASH_DELAY loop
-# every 30s — opus-architect crash-looped 22 times on 2026-07-08 — each
-# attempt a cold start against a closed account. Polls every
+# usage wall (claude exits rc=1 there) must not re-enter the CRASH_DELAY
+# loop — every attempt would be a cold start against a closed account. Polls every
 # GATE_POLL_SECONDS with the interruptible sleep so shutdown still wins.
 # Returns 1 when shutdown was signaled mid-wait, 0 otherwise.
 GATE_POLL_SECONDS="${FLEET_GATE_POLL_SECONDS:-60}"
@@ -519,11 +517,9 @@ wait_for_claude_gate() {
 
 stream_claude() {
     # Both callers pass --print themselves (workers must one-shot exit
-    # so babysit can relaunch — see launch_worker_fresh comment block).
-    # If a future caller forgets --print, the formatter branch will
-    # error out (`--include-partial-messages` requires `--print`),
-    # which is the right failure mode — better than silently entering
-    # interactive limbo like the pre-PR-#257 bug.
+    # so babysit can relaunch). A caller that omits --print errors out in
+    # the formatter branch (`--include-partial-messages` requires `--print`)
+    # instead of entering interactive limbo — the right failure mode.
     #
     # `2>&1` merges claude's stderr into the same pipe as stdout so the
     # formatter sees both. Without this, claude's post-result warnings
@@ -698,8 +694,8 @@ resume_mid_task() {
     # resume: `claude --continue` of one fails hard with
     #   API Error: 400 ... thinking blocks in the latest assistant message
     #   cannot be modified
-    # which drops the pane straight back to a shell with no recovery (i.e.
-    # the old --continue path was a silent crash for any thinking role). A
+    # which drops the pane straight back to a shell with no recovery — a
+    # silent crash for any thinking role. A
     # fresh relaunch is safe and idempotent: the role re-discovers its
     # in-flight task from its claim/reservation (worker reservation gate
     # "step 0.5"; reviewers are read-only and just re-review) and carries on.

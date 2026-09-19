@@ -58,7 +58,7 @@ _EFFORT_LINE_RE = re.compile(r"^\*\*Effort:\*\*\s*(\S+)", re.MULTILINE)
 _EFFORT_LEVELS = {"low", "medium", "high", "xhigh", "max"}
 _BLOCKED_BY_LINE_RE = re.compile(r"^\*\*Blocked by:\*\*.*$", re.MULTILINE)
 _HASH_REF_RE = re.compile(r"#(\d+)\b")
-# Multiple blockers are supported as of #1296 (see validate_child): a line may
+# Multiple blockers are supported (see validate_child): a line may
 # carry one or more ``#N`` refs, and a child may carry more than one
 # ``**Blocked by:**`` line. The only malformed shape is a line that names no
 # ``#N`` at all.
@@ -156,7 +156,7 @@ def validate_child(body, umbrella, is_head):
                      "standalone line is canonical); fine if it is a "
                      "genuine independent root")
         else:
-            # Multiple blockers are supported (#1296): check_blockers gates on
+            # Multiple blockers are supported: check_blockers gates on
             # the union of every `#N` across all `**Blocked by:**` lines, and
             # find-stackable-blockers live-resolves them (stacking on the last
             # unresolved ref as the others merge). So neither multi-ref
@@ -262,7 +262,7 @@ def discover_children(slug, umbrella, state="open"):
 
 
 # ---------------------------------------------------------------------------
-# Checklist helpers (--check-checklist extension, #1667)
+# Checklist helpers (--check-checklist)
 # ---------------------------------------------------------------------------
 
 _CHECKLIST_ITEM_RE = re.compile(r"^\s*-\s*\[([ xX])\]\s*#(\d+)", re.MULTILINE)

@@ -5,7 +5,7 @@
 # When the operator configures a GitHub App (FLEET_GH_APP_* in
 # ~/.fleet/fleet-up.conf), this helper mints installation tokens so fleet
 # traffic bills against the App's separate rate-limit pool instead of the
-# personal account's (see #1394 Q4). SSH-based git commits/pushes are
+# personal account's. SSH-based git commits/pushes are
 # unaffected — GH_TOKEN only changes which identity `gh`'s REST/GraphQL
 # calls authenticate as.
 #
@@ -79,7 +79,7 @@ _cached_token() {
     local margin="${1:-$STALE_MARGIN_SECONDS}"
     # Cache path + margin via argv, not embedded in the -c source: mingw64
     # python3 on a native-Windows host can't open an MSYS `/c/...` string,
-    # and MSYS converts paths only at the argv boundary (#3030).
+    # and MSYS converts paths only at the argv boundary.
     python3 -c "
 import json, sys, time
 try:

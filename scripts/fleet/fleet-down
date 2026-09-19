@@ -156,7 +156,7 @@ if [[ -f "$SCOUT_PID_FILE" ]]; then
 fi
 
 # ----------------------------------------------------------------------
-# Stop fleet-dispatcher daemon (started by fleet-up after #273 cutover)
+# Stop fleet-dispatcher daemon (started by fleet-up)
 # ----------------------------------------------------------------------
 #
 # Same pattern as scout: the dispatcher polls the shutdown sentinel
@@ -175,7 +175,7 @@ fi
 
 # Clear the boot-mode sentinel the dispatcher reads (fleet-up rewrites it on the
 # next boot). Removing it on shutdown keeps a stale dry-run sentinel from gating
-# a later live boot whose fleet-up predates the sentinel write (#2022).
+# a later live boot whose fleet-up predates the sentinel write.
 rm -f "$HOME/.fleet/state/dispatch-mode"
 
 # ----------------------------------------------------------------------

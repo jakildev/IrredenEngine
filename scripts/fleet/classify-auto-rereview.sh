@@ -29,18 +29,15 @@
 # stdout, not the exit status — exit is 0 on every decided path; a non-zero
 # exit means the environment was malformed.
 #
-# Why we cannot just diff both tips against BASE_SHA (the game #229 / engine
-# #2290 bug):
-#   A stacked child PR retargeted onto master after its parent *squash-merges*
-#   loses the parent's original commits from history. merge-base(BASE_SHA,
-#   BEFORE) then falls back past the parent's fork point, so diff(mb, BEFORE)
-#   wrongly folds the parent's entire diff into the child's net diff and the
-#   before/after patch-ids differ even though the child's own change is
-#   byte-identical — reproducing exactly the "mechanical rebase strips
-#   fleet:approved" bug the guard exists to prevent.
+# Diffing both tips against BASE_SHA is wrong for a stacked child: once its
+# parent squash-merges, the parent's original commits leave history,
+# merge-base(BASE_SHA, BEFORE) falls back past the parent's fork point, and
+# diff(mb, BEFORE) folds the parent's entire diff into the child's net diff —
+# the before/after patch-ids differ even though the child's own change is
+# byte-identical, and the mechanical rebase strips fleet:approved.
 #
-# We recover the child's pre-retarget base *structurally* instead of persisting
-# cross-event state:
+# The child's pre-retarget base is recovered structurally instead of from
+# persisted cross-event state:
 #   * AFTER is the child replayed directly onto the current base, so the child's
 #     own commit count is N = commits in BASE_SHA..AFTER.
 #   * BEFORE's own base is therefore BEFORE~N — the commit just under BEFORE's

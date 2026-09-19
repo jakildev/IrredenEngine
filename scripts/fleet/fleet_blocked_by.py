@@ -42,7 +42,7 @@ _CANONICAL_RE = re.compile(
     r'^\s*-?\s*\*\*(?:Suggested\s+)?Blocked by:\*\*\s*(.+?)\s*$',
     re.IGNORECASE | re.MULTILINE,
 )
-# 2. inline-bold `**Blocked by: #N (label)**` span (#1423): colon + value
+# 2. inline-bold `**Blocked by: #N (label)**` span: colon + value
 #    inside one bold span (space after the colon, bold stays open past the
 #    value). Mutually exclusive with the canonical form — canonical bold
 #    closes at `:**`, inline bold stays open — so scanning both over the whole
@@ -51,7 +51,7 @@ _INLINE_RE = re.compile(
     r'\*\*(?:Suggested\s+)?Blocked by:\s+(.+?)\*\*',
     re.IGNORECASE,
 )
-# 3. NEW (#1749): plain `Blocked by:` (bold optional, anywhere on a line)
+# 3. plain `Blocked by:` (bold optional, anywhere on a line)
 #    directly followed by a `#N` ref-list. `(?<!\*)` excludes the two bold
 #    forms above (so a canonical/inline line never also matches here); `\b`
 #    excludes "unblocked by:"; the `#\d+` anchor — a full issue number, not a
@@ -63,7 +63,7 @@ _PLAIN_RE = re.compile(
     r'(?<!\*)\bBlocked by:\s*(#\d+[^\n]*)',
     re.IGNORECASE,
 )
-# 4. free-form header prose `## Blocked on #1300` / `Blocked on PR-x` (#1326):
+# 4. free-form header prose `## Blocked on #N` / `Blocked on PR-x`:
 #    lowest-precedence fallback, honored only when it names a #N or PR so an
 #    incidental "Blocked on the redesign" sentence cannot gate a task forever.
 _BLOCKED_ON_RE = re.compile(
@@ -71,7 +71,7 @@ _BLOCKED_ON_RE = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 
-# Cross-repo `[owner/]Repo#N` qualifier (#1522): group(1) is the repo name
+# Cross-repo `[owner/]Repo#N` qualifier: group(1) is the repo name
 # (None/empty for a bare same-repo `#N`), group(2) is the number.
 _REF_RE = re.compile(r'(?:[A-Za-z0-9][\w.-]*/)?([A-Za-z0-9][\w.-]*)?#(\d+)')
 _PR_URL_RE = re.compile(
@@ -81,7 +81,7 @@ _PR_URL_RE = re.compile(
 _REF_NAME_TO_SLUG = {'irredenengine': 'jakildev/IrredenEngine',
                      'irreden': 'jakildev/irreden'}
 
-# See-also / parallel-sibling qualifiers (#1910): a `#N` introduced by one of
+# See-also / parallel-sibling qualifiers: a `#N` introduced by one of
 # these inside a leading-`none` value is a cross-reference, not a blocker — the
 # legitimate "(none — runs in parallel with #N)" idiom. Matched per-ref against
 # its clause so a sibling note can't smuggle a real dependency past the gate
@@ -95,7 +95,7 @@ _SEE_ALSO_RE = re.compile(
     r'no\s+dependency\s+on)\b',
     re.IGNORECASE,
 )
-# Blocker verbs (#1910): a `#N` introduced by one of these is a real dependency
+# Blocker verbs: a `#N` introduced by one of these is a real dependency
 # even inside a leading-`none` value — this is what keeps the anti-evasion guard
 # intact for "none, actually blocked by #5".
 _BLOCKER_VERB_RE = re.compile(
@@ -122,9 +122,9 @@ _CLAUSE_SPLIT_RE = re.compile(
     r'(?<!\bcf)(?<!\be\.g)(?<!\bi\.e)\.(?=\s)|[;,—–(]|\n',
     re.IGNORECASE,
 )
-# List separators between *declared* blockers (#2783). A `Blocked by:` value is
+# List separators between *declared* blockers. A `Blocked by:` value is
 # a list of refs — each optionally carrying its own parenthetical annotation
-# (`#100 (done), #101 (still open)`) — so the first ref of every segment is
+# (`#A (done), #B (still open)`) — so the first ref of every segment is
 # declared and only later refs in the same segment are candidates for prose.
 # `and` is included because hand-written values spell the list both ways.
 _LIST_SPLIT_RE = re.compile(r',|\band\b', re.IGNORECASE)
@@ -136,8 +136,8 @@ def _leads_with_none_sentinel(value):
     precondition for excusing any `#N` as a see-also reference: a value that
     does not lead with `none` (e.g. a bare `#5`) is never excused."""
     # Tolerate leading markdown emphasis / paren wrappers (`_(none …)_`,
-    # `*none*`, `` `(none)` ``) before the sentinel word — #1910's field was
-    # italicized, and the bare token check would otherwise see `_(none`.
+    # `*none*`, `` `(none)` ``) before the sentinel word — an italicized field
+    # would otherwise present `_(none` to the bare token check.
     head = (value or "").strip().lower().lstrip("_*`(").strip()
     if not head or head[0] in "-–—.":
         return True
@@ -203,13 +203,13 @@ def ref_is_decorative(value, ref_start):
     not merged, far worse than the overcount it corrects.
 
     Lives here rather than in the scout so the eligibility rule can't drift
-    from the gate it deliberately differs from — the #1749 reconciliation.
+    from the gate it deliberately differs from.
     """
     value = value or ""
-    # A leading-`none` value is #1910's territory: `is_no_blocker_value` already
-    # rules on it and deliberately keeps every unqualified ref as a blocker
-    # (the anti-evasion guard). Staying out keeps that corpus byte-identical —
-    # this fix is scoped to values that declare a real blocker list.
+    # A leading-`none` value is `is_no_blocker_value`'s territory: it rules
+    # on it and deliberately keeps every unqualified ref as a blocker (the
+    # anti-evasion guard). This eligibility rule is scoped to values that
+    # declare a real blocker list.
     if _leads_with_none_sentinel(value):
         return False
     seg_start = 0

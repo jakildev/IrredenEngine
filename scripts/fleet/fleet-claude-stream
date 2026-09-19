@@ -3,20 +3,13 @@
 # --include-partial-messages --verbose` into readable terminal text for
 # tmux panes.
 #
-# Why this exists:
-#   Workers run with `--print` so each task iteration is a fresh,
-#   one-shot `claude` process that exits when done (PR #257). But
-#   `--print` with the default text output buffers EVERYTHING and
-#   only emits at the very end — the pane looks dead the whole time
-#   the agent is thinking, reading files, calling tools, etc. Humans
-#   watching the fleet can't tell "agent is working" from "agent is
-#   wedged" until the final dump lands several minutes later.
-#
-#   `stream-json` gives us live events but is a wall of JSON lines,
-#   useless for human eyeballs. This formatter sits between them and
-#   renders only what's actually informative: the model's text deltas
-#   inline, tool calls with truncated args, tool results with truncated
-#   previews, and a one-line cost/duration summary at the end.
+# Workers run with `--print` so each task iteration is a fresh, one-shot
+# `claude` process; with the default text output that buffers everything
+# until exit, so the pane cannot distinguish "working" from "wedged".
+# `stream-json` emits live events as a wall of JSON lines. This formatter
+# renders only what is informative: the model's text deltas inline, tool
+# calls with truncated args, tool results with truncated previews, and a
+# one-line cost/duration summary at the end.
 #
 # Usage (in fleet-babysit):
 #   claude --print --output-format stream-json \
@@ -131,7 +124,7 @@ def handle_result(event):
         emit(f"{RED}{event['result']}{RESET}\n")
         # The wall's result event: `{"subtype":"success","is_error":true,
         # "api_error_status":429,"result":"You've hit your limit · resets
-        # 4:40pm"}` (captured 2026-05-12). The rate_limit_event that precedes
+        # 4:40pm"}`. The rate_limit_event that precedes
         # it is the primary signal; this is the independent second one, so a
         # CLI that stops emitting one still flags the other. Not every 429
         # result is the wall — the short-window throttle also ends in 429
@@ -225,12 +218,12 @@ def latch_usage_observation(rl_type, info):
     record = safe_type
     if status == "rejected":
         # The wall itself. A rejected event carries resetsAt and the type but
-        # NO utilization field (captured 2026-05-12: `{"status":"rejected",
+        # NO utilization field (`{"status":"rejected",
         # "resetsAt":1778629200,"rateLimitType":"five_hour"}`), so the
-        # utilization guard below used to drop the one observation that says
-        # "closed" — the gate then stayed open on whatever warning last
-        # latched, and every pane re-launched into the wall each tick (461
-        # dead-on-arrival sessions on 2026-08-19 alone). Latch it as 100%:
+        # utilization guard below would drop the one observation that says
+        # "closed" — the gate would stay open on whatever warning last
+        # latched, and every pane would re-launch into the wall each tick.
+        # Latch it as 100%:
         # resetsAt is authoritative in the dispatcher's gate, so this holds
         # Claude dispatch closed until the window resets plus grace.
         #

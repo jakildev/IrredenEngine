@@ -52,7 +52,7 @@ exactly like `fleet_branch_match.py`.
 # stacked-PR maintenance path. So the frozen-design labels are deliberately
 # NOT rejected here.
 #
-# `fleet:awaiting-base` is NOT rejected either, for the same reason (#2805). It
+# `fleet:awaiting-base` is NOT rejected either, for the same reason. It
 # states that the base's OWN base has not merged yet — a fact about the base's
 # base, not about its head diff, which is typically approved and parked.
 # `role-merger.md` mints it on every stacked PR whose base is still open, i.e.
@@ -77,7 +77,7 @@ NOT_STACKABLE_BASE_LABELS = frozenset({
     # Not the author's own work: the branch carries commits inherited from
     # another open PR, so a stack on it re-parents a foreign prefix the upstream
     # author may rewrite. `role-merger.md` mints this one live too — it stays
-    # rejected on the grounds above, not as legacy safety (#2805).
+    # rejected on the grounds above, not as legacy safety.
     "fleet:fork-of-other-pr",
 })
 

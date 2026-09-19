@@ -73,8 +73,7 @@ _WRAPPER_DELTAS_HDR_RE = re.compile(
 # Matches `| **key name** |` (table first-column bold key). The character
 # class deliberately allows spaces — the skills lane names its keys in prose
 # (`**default branch**`, `**raw URL base**`), and a class that excludes the
-# space makes those rows invisible to both extraction sides (#2893: 53 of 63
-# skill-lane keys were silently unseen before this widened).
+# space makes those rows invisible to both extraction sides.
 _DELTA_KEY_RE = re.compile(
     r"^\|\s*\*\*([^*|]+)\*\*\s*\|",
     re.MULTILINE,
