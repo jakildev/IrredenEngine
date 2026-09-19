@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for .github/workflows/fleet-tests.yml's path filters (#2810).
+# Tests for .github/workflows/fleet-tests.yml's path filters.
 #
 # The workflow path-filters on scripts/** — broadly the LOCATION of its
 # suites, not the SUBJECTS they test. Eleven suites test files that live
@@ -25,9 +25,9 @@
 # T4 covers the other half of the same gap: one subject is not a file but a
 # TREE — lint_python_registry.py derives its population from _SCAN_ROOT
 # (scripts/), so the workflow's own location filter has to be at least that
-# wide or the registry ratchet misses files added outside scripts/fleet/**
-# (#2859). That is a filter-vs-constant check, not a list membership one,
-# so it lives in its own case rather than in OUT_OF_TREE_SUBJECTS.
+# wide or the registry ratchet misses files added outside scripts/fleet/**.
+# That is a filter-vs-constant check, not a list membership one, so it
+# lives in its own case rather than in OUT_OF_TREE_SUBJECTS.
 #
 # What T1-T3 below assert is that every REGISTERED out-of-tree subject is
 # present in BOTH `paths:` blocks of the workflow (push and pull_request —
@@ -59,7 +59,7 @@ source "$(dirname "$0")/lib_assert.sh"
 
 if [[ ! -f "$WORKFLOW" ]]; then
     echo "SKIP: workflow under test not found at $WORKFLOW" >&2
-    exit 3  # skip status — run_all.sh must not count this as a pass (#2786)
+    exit 3  # skip status — run_all.sh must not count this as a pass
 fi
 
 # The out-of-tree subjects each suite actually needs triggered on.
@@ -69,7 +69,7 @@ fi
 # An entry covers a subject exactly, or as a segment-bounded recursive glob —
 # so a subject whose suite covers a whole directory is listed as the glob the
 # workflow actually carries. The two `**` entries are test_lint_rules_commands.py's
-# doc globs (#2823), not single files. `docs/agents/**` subsumes
+# doc globs, not single files. `docs/agents/**` subsumes
 # fleet-state-machine.json (test_fleet_transition.sh),
 # fleet-labels-reference.md (test_fleet_labels_check.sh) and
 # CLAUDE-BASELINE.md (test_lint_rules_registry.py); the narrower entries
@@ -246,7 +246,7 @@ assert_eq "$restored_missing" "" "fleet-tests.yml: unaffected by the mutated cop
 echo "T4: the workflow's location filter covers lint_python_registry.py's _SCAN_ROOT"
 # Fail rather than skip when the module is gone: T1-T3 have already run
 # against a present subject, so exiting 3 here would discard real results,
-# and passing silently would be the vacuous pass #2786 exists to prevent.
+# and passing silently would be the vacuous pass this guard exists to prevent.
 if [[ ! -f "$REGISTRY_LINTER" ]]; then
     bad "registry linter not found at $REGISTRY_LINTER (retire T4 with it)"
 else
@@ -258,8 +258,8 @@ else
         assert_eq "$(missing_scan_root "$WORKFLOW" "$SCAN_ROOT")" "" \
             "fleet-tests.yml: both paths: blocks cover the registry scan root ($SCAN_ROOT)"
 
-        # Positive control — narrowing the filter back to its pre-#2859
-        # value (scripts/fleet/**) must be reported, in both blocks.
+        # Positive control — narrowing the filter back to its earlier,
+        # narrower value (scripts/fleet/**) must be reported, in both blocks.
         NARROWED=$(mktemp -t fleet-tests-workflow-narrowed.XXXXXX.yml)
         sed "s|'${SCAN_ROOT%/}/\*\*'|'${SCAN_ROOT%/}/fleet/**'|" "$WORKFLOW" > "$NARROWED"
         narrowed_missing=$(missing_scan_root "$NARROWED" "$SCAN_ROOT")

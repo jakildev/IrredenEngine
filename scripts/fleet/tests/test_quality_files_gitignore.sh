@@ -1,16 +1,11 @@
 #!/usr/bin/env bash
-# Tests for irreden_collect_quality_files' gitignore filtering (#2791).
+# Tests for irreden_collect_quality_files' gitignore filtering.
 #
 # The function (cmake/ir_quality_tools.cmake) walks its search roots with
-# file(GLOB_RECURSE) — a filesystem walk, not a repository walk. (Four named
-# subtrees for the engine root; a whole-root sweep for the downstream
-# creation root format-changed collects from.) Before this
-# fix nothing dropped content the engine repo's own .gitignore excludes, so
-# a gitignored nested checkout under a search root (a private creation's own
-# repo, or an agent worktree inside one) was swept into QUALITY_FILES: the
-# `header-checks` / `lint` targets reported violations no one could fix from
-# the flagged PR, and `format` rewrote files live in another agent's
-# in-progress worktree.
+# file(GLOB_RECURSE) — a filesystem walk, not a repository walk — so a
+# gitignored nested checkout under a search root (a private creation's own
+# repo, or an agent worktree inside one) is swept into QUALITY_FILES unless
+# explicitly filtered.
 #
 # This suite configures a throwaway CMake project against a fixture git repo
 # (real search-root layout, a .gitignore modeled on the engine's own
@@ -107,10 +102,10 @@ assert_absent "$OUT" "FOUND: $FIXTURE/creations/game/.claude/worktrees/pool-1/ne
 
 # The filter runs inside irreden_collect_quality_files, below the reject
 # chain, so it applies to BOTH lists the function produces — including the
-# wider INCLUDE_RENDER_BACKENDS one that backs header-checks (#2815). That
-# list is a correctness gate, not a style one, so it needs its own lock:
-# without these, the filter could be made conditional on the narrow arm and
-# every assertion above would still pass.
+# wider INCLUDE_RENDER_BACKENDS one that backs header-checks. That list is a
+# correctness gate, not a style one, so it needs its own lock: without these
+# assertions, the filter could be made conditional on the narrow arm alone
+# and still pass this suite.
 assert_absent "$OUT" "FOUND: $FIXTURE/engine/render/include/irreden/render/gl_wrap/GL.h" \
     "generated GL wrapper stays out of the style-tool list"
 assert_contains "$OUT" "WIDE: $FIXTURE/engine/render/include/irreden/render/gl_wrap/GL.h" \

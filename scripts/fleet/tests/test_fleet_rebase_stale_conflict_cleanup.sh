@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
-# Tests for fleet-rebase's stale fleet:semantic-conflict cleanup (issue #1654).
+# Tests for fleet-rebase's stale fleet:semantic-conflict cleanup.
 #
-# Reproduces the fail-then-succeed race: two concurrent LLM merger passes run
+# The fail-then-succeed race: two concurrent LLM merger passes can run
 # against the same stacked PR after its base merges. The first attempt
 # conflicts and labels the PR fleet:semantic-conflict + fleet:merger-cooldown.
-# The second attempt (46 seconds later) succeeds — force-pushes the rebased
-# branch and comments "diff against master is now clean" — but does NOT
-# remove the stale labels the first pass set. The PR then appears conflicted
-# to the opus-worker step-1c scanner, which wastes a full build-verify
-# iteration on a branch that has no real conflict.
+# A later attempt can succeed — force-push the rebased branch and comment
+# "diff against master is now clean" — without removing the stale labels the
+# first pass set. The PR then appears conflicted to the opus-worker step-1c
+# scanner, which wastes a full build-verify iteration on a branch that has no
+# real conflict.
 #
-# The fix: fleet-rebase's triage detects fleet:semantic-conflict on a
-# MERGEABLE PR (no other skip labels) and emits a "stale-conflict" verdict
-# that routes to cleanup_stale_conflict() instead of skip-labels. The
-# predicate is deliberately NOT guarded on fleet:approved — the sole minter
-# of fleet:semantic-conflict strips fleet:approved in the same step it adds
-# the conflict label, so an approved guard would make this verdict unreachable
-# in exactly the state it exists to clear (#2874).
+# fleet-rebase's triage detects fleet:semantic-conflict on a MERGEABLE PR (no
+# other skip labels) and emits a "stale-conflict" verdict that routes to
+# cleanup_stale_conflict() instead of skip-labels. The predicate is
+# deliberately NOT guarded on fleet:approved — the sole minter of
+# fleet:semantic-conflict strips fleet:approved in the same step it adds the
+# conflict label, so an approved guard would make this verdict unreachable in
+# exactly the state it exists to clear.
 #
 #   T1: MERGEABLE + fleet:semantic-conflict + fleet:approved → cleanup fires
 #       (dry-run: logs "would remove").
@@ -27,10 +27,10 @@
 #   T4: fleet:semantic-conflict absent, MERGEABLE → normal llm-other path,
 #       no cleanup triggered.
 #   T5: MERGEABLE + fleet:semantic-conflict + fleet:merger-cooldown, NO
-#       fleet:approved → cleanup fires. This is the real #1654 end-state (the
-#       merger strips fleet:approved in the same step it adds the conflict
-#       label), and the one arm an approved guard routes to skip-labels
-#       instead — the regression lock for #2874.
+#       fleet:approved → cleanup fires. This is the fail-then-succeed
+#       end-state (the merger strips fleet:approved in the same step it adds
+#       the conflict label), and the one arm an approved guard would route to
+#       skip-labels instead.
 #
 # All run --auto --dry-run: the stale-conflict cleanup logs its intent but
 # does not call gh (which is gated behind DRY_RUN=0).
@@ -109,7 +109,6 @@ run_rebase() {
     "$REBASE" --auto --dry-run 2>&1 || true
 }
 
-# === T1: MERGEABLE + fleet:semantic-conflict → cleanup logs "would remove" ===
 echo "T1: MERGEABLE + fleet:semantic-conflict (stale) -> cleanup fires in dry-run"
 write_slice '[{
   "repo":"engine","number":300,
@@ -125,7 +124,6 @@ assert_absent   "$T1" "llm_remaining=1" \
 assert_absent   "$T1" "conflicts; leaving for LLM" \
     "T1 no conflict bail"
 
-# === T2: CONFLICTING + fleet:semantic-conflict → skip-labels (genuine conflict) =
 echo "T2: CONFLICTING + fleet:semantic-conflict -> skip-labels (real conflict, LLM owns it)"
 write_slice '[{
   "repo":"engine","number":301,
@@ -139,7 +137,6 @@ assert_absent "$T2" "would remove" \
 assert_absent "$T2" "llm_remaining=1" \
     "T2 genuine conflict goes to skip-labels (not LLM_REMAINING)"
 
-# === T3: fleet:wip guard takes precedence over stale-conflict cleanup =========
 echo "T3: fleet:wip + fleet:semantic-conflict -> skip-labels (WIP guard wins)"
 write_slice '[{
   "repo":"engine","number":302,
@@ -151,7 +148,6 @@ T3=$(run_rebase)
 assert_absent "$T3" "would remove" \
     "T3 fleet:wip + stale-conflict not cleaned (WIP guard wins)"
 
-# === T4: no fleet:semantic-conflict → normal path, no cleanup =================
 echo "T4: no fleet:semantic-conflict -> normal llm-other path, no cleanup"
 write_slice '[{
   "repo":"engine","number":303,
@@ -163,8 +159,6 @@ T4=$(run_rebase)
 assert_absent "$T4" "would remove" \
     "T4 no stale label -> no cleanup"
 
-# === T5: real #1654 end-state — MERGEABLE + semantic-conflict + =============
-# === merger-cooldown, NO fleet:approved -> cleanup fires (#2874) ============
 echo "T5: MERGEABLE + semantic-conflict + merger-cooldown, no approved -> cleanup fires"
 write_slice '[{
   "repo":"engine","number":304,

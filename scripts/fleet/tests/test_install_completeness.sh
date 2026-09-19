@@ -1,22 +1,21 @@
 #!/usr/bin/env bash
 # scripts/fleet/tests/test_install_completeness.sh — install.sh tool-registry
-# completeness (#2826).
+# completeness.
 #
 # install.sh:144-157 documents a three-step contract per tool (a `_SRC`/`_DEST`
 # var pair, a chmod-loop entry, and an `ln -sf` install block) but presupposes
 # an unstated step 0: the tool has a `_SRC` var at all. A tool with none
 # satisfies steps 1-3 vacuously and is never symlinked into `~/bin` on any
-# host (`review-fleet-feedback` and `fleet-queue-backfill-model-labels` sat
-# in that state for ~70 days). This suite checks all four steps against
-# install.sh as text — it never executes install.sh.
+# host. This suite checks all four steps against install.sh as text — it
+# never executes install.sh.
 #
 # Enumerates tracked files via `git ls-files` rather than a filesystem walk —
-# a pool worktree nests other checkouts and a find-style walk picks them up
-# (#2791). That enumeration needs a git working tree, which `fleet-positive-control`'s
+# a pool worktree nests other checkouts and a find-style walk picks them up.
+# That enumeration needs a git working tree, which `fleet-positive-control`'s
 # git-archive staging deliberately does not provide; falling back to a
 # `find -maxdepth 1` scoped to scripts/fleet/ itself is safe there because the
 # walk never descends into a subdirectory, so it cannot cross into a nested
-# checkout (the thing #2791 actually guards against).
+# checkout.
 
 set -euo pipefail
 
@@ -28,7 +27,7 @@ source "$(dirname "$0")/lib_assert.sh"
 
 if [[ ! -f "$INSTALL_SH" ]]; then
     echo "SKIP: $INSTALL_SH not found" >&2
-    exit 3  # skip status — a missing subject must not score as a pass (#2786)
+    exit 3  # skip status — a missing subject must not score as a pass
 fi
 
 # Allowlist: tracked top-level executables intentionally absent from the

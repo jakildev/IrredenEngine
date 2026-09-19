@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Exercises both model-label minters over the shared parser corpus (#2833).
+# Exercises both model-label minters over the shared parser corpus.
 
 set -euo pipefail
 

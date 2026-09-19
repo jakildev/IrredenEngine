@@ -1,18 +1,12 @@
 #!/usr/bin/env bash
-# Tests for fleet-heartbeat's flag-arg handling (#2784).
-#
-# The role-name validator's regex allowed a leading '-', so any flag-shaped
-# argument (--help, -h, --once, ...) fell through to `touch
-# "$heartbeats_dir/$role"` instead of being rejected — --help in particular
-# silently created a `--help` file instead of printing usage. Fixed by
-# adding an explicit -h|--help case ahead of the validator and tightening
-# the regex to reject a leading dash.
+# Tests fleet-heartbeat's flag-arg handling: a flag-shaped argument (--help,
+# -h, an unrecognized flag) must never be treated as a role name.
 #
 #   T1: --help prints the usage block, exits 0, creates no heartbeat file
 #   T2: -h same as --help
 #   T3: --help's printed usage block does not leak any post-header code
 #       line (guards the hardcoded `sed -n 'N,Mp'` range per
-#       scripts/fleet/CLAUDE.md's --help-drift rule, #2433)
+#       scripts/fleet/CLAUDE.md's --help-drift rule)
 #   T4: --bogus (an unrecognized flag) is rejected with the invalid-role
 #       diagnostic, rc=2, no file created
 #   T5: a normal role name still touches its heartbeat file, rc=0
@@ -44,7 +38,6 @@ trap cleanup EXIT
 TMPROOT=$(mktemp -d)
 export HOME="$TMPROOT"
 
-# --- T1: --help prints usage, exits 0, no file ------------------------------
 echo "T1: --help prints usage block, exits 0, creates no heartbeat file"
 set +e
 out=$(HOME="$TMPROOT" "$HEARTBEAT" --help 2>&1)
@@ -58,7 +51,6 @@ else
     ok "--help creates no heartbeat file"
 fi
 
-# --- T2: -h behaves like --help ---------------------------------------------
 echo "T2: -h prints usage block, exits 0, creates no heartbeat file"
 set +e
 out=$(HOME="$TMPROOT" "$HEARTBEAT" -h 2>&1)
@@ -72,13 +64,11 @@ else
     ok "-h creates no heartbeat file"
 fi
 
-# --- T3: printed usage block does not leak code lines -----------------------
 echo "T3: --help output does not leak post-header code lines (#2433 shape)"
 help_out=$(HOME="$TMPROOT" "$HEARTBEAT" --help 2>&1)
 assert_absent "$help_out" "set -euo pipefail" "--help does not leak the set -e line"
 assert_absent "$help_out" "heartbeats_dir=" "--help does not leak script body"
 
-# --- T4: an unrecognized flag is rejected, not silently accepted -----------
 echo "T4: --bogus is rejected as an invalid role name"
 set +e
 out=$(HOME="$TMPROOT" "$HEARTBEAT" --bogus 2>&1)
@@ -92,7 +82,6 @@ else
     ok "--bogus creates no heartbeat file"
 fi
 
-# --- T5: a normal role name still works (regression pin) -------------------
 echo "T5: a normal role name still touches its heartbeat file"
 set +e
 out=$(HOME="$TMPROOT" "$HEARTBEAT" pool-2 2>&1)
@@ -105,7 +94,6 @@ else
     bad "pool-2 must create its heartbeat file"
 fi
 
-# --- T6: no-arg invocation is unchanged --------------------------------------
 echo "T6: no-arg invocation still prints usage to stderr, exits 2"
 set +e
 out=$(HOME="$TMPROOT" "$HEARTBEAT" 2>&1)

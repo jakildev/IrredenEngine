@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Tests for fleet-run-targets' Windows /c/… vs C:/… path-scope match — issue #2036.
+# Tests for fleet-run-targets' Windows /c/… vs C:/… path-scope match.
 #
 # On native Windows the engine root comes from `git rev-parse --show-toplevel`
 # (drive spelling: C:/Users/x) while the scope is an MSYS2 shell's $PWD (POSIX
 # drive spelling: /c/Users/x). resolve_scope compares them with a bash `case`
-# string match, so the same directory in two spellings failed containment and
-# fell back to a whole-tree scan that found no executables.
+# string match, so the same directory in two spellings fails containment and
+# falls back to a whole-tree scan that finds no executables, unless both are
+# canonicalized first.
 #
 # canonicalize_path_spelling (fleet-common.sh) normalizes both spellings to one
 # canonical form before the compare. These tests pin that helper against literal
@@ -56,21 +57,18 @@ WT_WIN='C:/Users/evinj/src/IrredenEngine/.claude/worktrees/opus-architect'
 WT_MSYS='/c/Users/evinj/src/IrredenEngine/.claude/worktrees/opus-architect'
 CANON='/c/Users/evinj/src/IrredenEngine/.claude/worktrees/opus-architect'
 
-# --- Test 1: the two Windows spellings collapse to one canonical form -------
 echo "T1: MSYS2 /c/… and Windows C:/… of the same dir canonicalize equal"
 assert_eq "$(canonicalize_path_spelling "$WT_WIN")"  "$CANON" "C:/…  -> /c/…"
 assert_eq "$(canonicalize_path_spelling "$WT_MSYS")" "$CANON" "/c/… -> /c/… (unchanged)"
 assert_eq "$(canonicalize_path_spelling "$WT_WIN")" \
           "$(canonicalize_path_spelling "$WT_MSYS")" "both spellings compare equal"
 
-# --- Test 2: spelling variants ----------------------------------------------
 echo "T2: backslashes, drive-letter case, and bare drive"
 assert_eq "$(canonicalize_path_spelling 'c:\Users\x\wt')" "/c/Users/x/wt" "backslash + lowercase drive"
 assert_eq "$(canonicalize_path_spelling 'C:\Users\x')"    "/c/Users/x"    "backslash + uppercase drive"
 assert_eq "$(canonicalize_path_spelling 'C:')"            "/c"           "bare drive C: -> /c"
 assert_eq "$(canonicalize_path_spelling '/C/Users/x')"    "/c/Users/x"   "uppercase POSIX drive -> lowercase"
 
-# --- Test 3: POSIX paths pass through byte-unchanged (macOS/Linux no-op) -----
 echo "T3: real POSIX paths are returned unchanged"
 assert_eq "$(canonicalize_path_spelling '/Users/evinjkill/src/IrredenEngine')" \
           "/Users/evinjkill/src/IrredenEngine" "macOS home path unchanged"
@@ -78,7 +76,6 @@ assert_eq "$(canonicalize_path_spelling '/home/u/wt')" "/home/u/wt" "linux path 
 assert_eq "$(canonicalize_path_spelling '/opt/homebrew/bin')" "/opt/homebrew/bin" "multi-char top dir unchanged"
 assert_eq "$(canonicalize_path_spelling '/e/data')" "/e/data" "lowercase single-letter top dir unchanged (not a drive)"
 
-# --- Test 4: containment survives mixed spellings (the #2036 regression) -----
 echo "T4: resolve_scope containment matches across mixed root/scope spellings"
 ROOT_WIN='C:/Users/evinj/src/IrredenEngine'
 SCOPE_MSYS='/c/Users/evinj/src/IrredenEngine/creations/demos/shape_debug'

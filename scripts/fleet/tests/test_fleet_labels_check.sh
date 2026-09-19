@@ -4,21 +4,21 @@
 # docs/agents/fleet-state-machine.json.
 #
 # The catalog and the node set are two hand-maintained lists whose agreement
-# nothing else enforces, so that agreement needs an executed gate rather than a
-# documented command: a guard no suite runs is not a gate (#3205).
+# nothing else enforces, so that agreement needs an executed gate rather than
+# a documented command.
 #
 # The first arm reads this checkout's own catalog and state machine rather
-# than a fixture, because that is the regression the issue asks for: the next
-# catalog addition that forgets the JSON has to fail a suite, not a manual run.
-# That is still within scripts/fleet/CLAUDE.md's hermeticity bar — no live
-# GitHub, no live ~/.fleet, no network — it just declines to stub the two
-# tracked files whose agreement IS the subject under test. The remaining arms
-# are the controls that keep it from being vacuous: each drives `--check` at a
-# mutated copy of one input and asserts it goes red for the right reason.
+# than a fixture, so the next catalog addition that forgets the JSON has to
+# fail a suite, not a manual run. That is still within scripts/fleet/CLAUDE.md's
+# hermeticity bar — no live GitHub, no live ~/.fleet, no network — it just
+# declines to stub the two tracked files whose agreement IS the subject under
+# test. The remaining arms are the controls that keep it from being vacuous:
+# each drives `--check` at a mutated copy of one input and asserts it goes red
+# for the right reason.
 #
 # Covers:
 #   - the live tree passes, and passes against THIS worktree's state machine
-#   - the four #3205 labels are nodes and are documented
+#   - four specific author-*/runtime-* labels are nodes and are documented
 #   - control: a label in the catalog with no node → exit 1, names the label
 #   - control: a node with no catalog entry → exit 1, names the node
 #   - control: a catalog description over 100 chars → exit 1, names the entry
@@ -67,7 +67,6 @@ run_check() {  # run_check <script> [env assignments via caller]
     CHECK_OUT="$out"
 }
 
-# --- T1: the live tree is green -------------------------------------------
 # The regression arm. It invokes the script BY PATH, never by name: `--check`
 # resolves both of its inputs from the script's own location, so a
 # ~/bin/fleet-labels symlink on PATH measures the main clone rather than this
@@ -79,7 +78,6 @@ assert_contains "$CHECK_OUT" "--check: OK" "the OK line is printed"
 assert_contains "$CHECK_OUT" "$STATE_MACHINE" \
     "the check read THIS worktree's state machine, not another clone's"
 
-# --- T2: the #3205 labels are nodes and are documented ---------------------
 # T1 subsumes the node half, but only as part of a 60-label aggregate; naming
 # the four keeps the failure legible if any of them is dropped.
 echo "T2: the four author-*/runtime-* labels are nodes and documented"
@@ -90,7 +88,6 @@ for label in fleet:author-claude fleet:author-codex fleet:runtime-claude fleet:r
         "$label is documented in fleet-labels-reference.md"
 done
 
-# --- T3: control — a catalog label with no node ----------------------------
 # The shape `--check` exists to catch: the catalog gains a label, the JSON
 # does not. Drop a node rather than adding a catalog entry so the control
 # drives the real script rather than a copy of it.
@@ -103,7 +100,6 @@ assert_contains "$CHECK_OUT" "In fleet-labels but NOT in fleet-state-machine.jso
     "the drift is reported in the catalog-side direction"
 assert_contains "$CHECK_OUT" "fleet:author-claude" "the offending label is named"
 
-# --- T4: control — a node with no catalog entry ----------------------------
 echo "T4: control — node with no catalog entry is caught"
 jq '.labels += [{"name": "fleet:control-only-not-in-catalog", "scope": "pr",
                  "color": "ededed", "description": "control fixture"}]' \
@@ -114,7 +110,6 @@ assert_contains "$CHECK_OUT" "In fleet-state-machine.json but NOT in fleet-label
     "the drift is reported in the node-side direction"
 assert_contains "$CHECK_OUT" "fleet:control-only-not-in-catalog" "the offending node is named"
 
-# --- T5: control — an over-long catalog description ------------------------
 # The other half of what --check gates: GitHub 422s a description over 100
 # chars, so the sync loop truncates it and the catalog text silently diverges
 # from what is on the repo. Mutating a description leaves every label NAME
