@@ -34,10 +34,14 @@ layout(std140, binding = 23) uniform ShapesFrameData {
     // continuous center reposition + yawedIsoDistance depth); 0 = cardinal
     // rasterYaw + faceDeform path. Set per canvas (the main world canvas and
     // entity canvases).
-    // smoothYawEnabled and _faceDeformPad fill the 8 bytes before faceDeform so
+    // smoothYawEnabled and canvasPhaseDepth fill the 8 bytes before faceDeform so
     // the block size matches the C++ sizeof exactly.
     uniform int smoothYawEnabled;
-    uniform int _faceDeformPad;
+    // Depth (x+y+z, world units) of the canvas's half-cell phase, which the
+    // composite adds to the whole canvas; subtracted here so a shape lands at
+    // its true depth beside the phase-carrying voxel texels. Zero except on a
+    // revoxelized entity canvas.
+    uniform float canvasPhaseDepth;
     // Per-face deformation matrix packed column-major into vec4: .xy = col0,
     // .zw = col1 of IRMath::faceDeformationMatrix(face, residualYaw).
     // Identity at residualYaw==0.
@@ -903,10 +907,11 @@ void main() {
         // scatter (v_peraxis_scatter) scales to the same subdivided magnitude, so
         // SDF + voxels co-sort at every zoom — a base-resolution scatter key
         // against this ×sub depth lets the SDF floor out-scale and clip the voxels.
-        baseDepth = roundHalfUp(yawedIsoDistance(worldSurface, visualYaw));
+        baseDepth = roundHalfUp(yawedIsoDistance(worldSurface, visualYaw)
+                                - canvasPhaseDepth * float(sub));
     } else {
         int originDistance = originScaled.x + originScaled.y + originScaled.z;
-        baseDepth = surfaceD + originDistance;
+        baseDepth = surfaceD + originDistance - roundHalfUp(canvasPhaseDepth * float(sub));
     }
     vec4 baseColor = unpackColor(shape.color);
 

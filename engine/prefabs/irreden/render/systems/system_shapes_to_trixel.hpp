@@ -265,6 +265,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             auto &canvasTextures = *texturesOpt.value();
 
             const bool entityCanvas = entityCanvasOrigins_.contains(canvasId);
+            frameData_.canvasPhaseDepth = 0.0f;
             if (canvasId == mainCanvas) {
                 frameData_.cameraTrixelOffset = IRRender::getEffectiveCameraIso();
             } else if (entityCanvas) {
@@ -274,7 +275,18 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                 // rastered a pool into it this frame (renderedSubdivisions_ > 0),
                 // so this pass must run after it. A shape-only canvas is reset
                 // here through the same sentinel + Metal scratch mirror.
-                frameData_.cameraTrixelOffset = vec2(0.0f);
+                //
+                // The composite places and depth-sorts the whole canvas at the
+                // owner plus the voxel raster's half-cell phase
+                // (renderedCellOffset_, view-local), which the voxel texels
+                // carry implicitly; a shape carries none, so its raster is
+                // shifted by the phase's iso projection and depth the other
+                // way. The shift is whole trixels: a phase whose iso projection
+                // is fractional (one even axis among x and y) leaves the shape
+                // up to half a trixel from the composite's placement.
+                const vec3 phase = canvasTextures.renderedCellOffset_;
+                frameData_.cameraTrixelOffset = -pos3DtoPos2DIso(phase);
+                frameData_.canvasPhaseDepth = phase.x + phase.y + phase.z;
                 if (canvasTextures.renderedSubdivisions_ == 0) {
                     clearCanvasAndDistances(canvasId, canvasTextures);
                 }

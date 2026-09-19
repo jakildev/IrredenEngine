@@ -117,10 +117,11 @@ struct C_TriangleCanvasTextures {
     vec4 sourceFaceRotation_{0.0f, 0.0f, 0.0f, 1.0f};
 
     // View-local offset from rounded raster centers to resampled cell centers.
-    // Placement, depth, lighting and resampled casting consume the same phase;
-    // a shape rastered into the canvas does not (the shape pass places and
-    // depth-sorts relative to the owner alone), so mixed producers are exact
-    // only where this offset is zero.
+    // Placement, depth, lighting and resampled casting consume the same phase,
+    // and the shape pass shifts a shape's raster by its iso projection and
+    // depth the other way (whole trixels and integer depth units: a phase
+    // whose iso projection is fractional, one even axis among x and y, leaves
+    // a shape up to half a trixel off, and its depth rounds to the unit).
     vec3 renderedCellOffset_{0.0f};
 
     // Detached voxel display reconstructs undilated local triangle footprints.

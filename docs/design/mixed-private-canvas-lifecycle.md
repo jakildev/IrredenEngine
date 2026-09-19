@@ -35,19 +35,24 @@ A shape targeting that canvas therefore rasters:
   through `IRSystem::clearCanvasAndDistances`, the same sentinel and Metal
   scratch mirror the voxel pass uses.
 
-The contract is exact on canvases whose
-`C_TriangleCanvasTextures::renderedCellOffset_` is zero: plain `DETACHED` and
-shape-only canvases. A revoxelized canvas stores the pool's half-cell phase
-there (-0.5 per even-sized centered axis at density 1), and the composite
-adds that phase to the canvas placement and, scaled into its depth units, to
-the canvas depth; the shape pass consumes neither. On such a canvas a shape
-therefore sits one texel off in-plane when the pool's axes have mixed parity
-and 1.5 world units nearer for an even cube, against the composite and
-against the voxel texels of the same canvas alike. Consuming the phase (the
-canvas offset in-plane and a per-canvas depth bias in the shape frame data,
-with its Metal twin) is the campaign's next mixed-canvas slice; until then
-the storage caveat on `sampleLayout_` stands and the fixtures here keep the
-markers on a plain `DETACHED` canvas or hidden inside a revoxelized one.
+A revoxelized canvas stores the pool's half-cell phase in
+`C_TriangleCanvasTextures::renderedCellOffset_` (-0.5 per even-sized centered
+axis at density 1, view-local), and the composite adds that phase to the
+canvas placement and, scaled into its depth units, to the canvas depth, so
+the voxel texels rastered at rounded cells land on their resampled centres. A
+shape carries no phase, so the shape pass shifts its raster the other way:
+the frame offset is the phase's iso projection negated
+(`cameraTrixelOffset = -pos3DtoPos2DIso(phase)`), and the shaders subtract
+`canvasPhaseDepth` (the phase's x+y+z, scaled to the subdivided depth units)
+from every shape depth. Both are lattice moves: the frame offset is floored to
+whole trixels and the depth bias rounds to the unit, so a phase whose iso
+projection is fractional (exactly one of the x and y extents even) leaves a
+shape up to half a trixel from the composite's placement, and an all-even
+solid's 1.5-unit phase depth leaves it half a depth unit nearer. A phase
+whose iso projection is whole (both or neither of x and y even) places the
+shape exactly. Subtracting the rotated phase from the shape's 3D position
+instead is rejected: the cardinal raster rounds each axis of a half-integer
+position up, which moves the shape by a whole trixel per even axis.
 
 `SHAPES_TO_TRIXEL` runs after `VOXEL_TO_TRIXEL_STAGE_1` in a pipeline that
 mixes the two producers on one canvas; the ordering table in
@@ -68,9 +73,23 @@ texture layer. `--strict` also requires the marker footprint itself to be
 pixel-exact; that measures the SDF marker's display in a private canvas and is
 open (below).
 
+The phase fixtures are the revoxelized proof solids with the same markers:
+`--focus-revox 3` is a 12x12x11 box (phase (-0.5, -0.5, 0), iso projection
+(0, 1), depth -1), `--parity-extent 12 11 11` makes it the one-even-axis box
+(iso (0.5, 0.5), depth -0.5), and the cyan cube (`--focus-revox 1`, phase
+depth -1.5) with a marker straddling its surface measures the depth bias.
+`--mixed-shape-at` places the markers (world entities) and `--focus-offset`
+translates the owner; the metric's `--fixture`, `--markers` and `--owner`
+mirror them, with the voxel expectation from the lattice module the
+revoxelized-display oracle uses.
+
 ```sh
 fleet-run IRCanvasStress --only orbit --focus-orbit 7 --focus-mixed-shape --no-spin --no-auto-rotate --pivot-origin --no-ao --no-shadows --subdivisions 1 --zoom 8 --debug-overlay unlit --auto-screenshot 10 --sweep-yaw 0 1.57079633 5
 python3 scripts/render-mixed-canvas-metric.py <capture.png> --yaw 45
+fleet-run IRCanvasStress --only revox --focus-revox 3 --focus-mixed-shape --mixed-shape-at -8 -8 -8 --no-spin --no-auto-rotate --pivot-origin --no-ao --no-shadows --subdivisions 1 --zoom 8 --debug-overlay unlit --auto-screenshot 10 --sweep-yaw 0 1.57079633 5
+python3 scripts/render-mixed-canvas-metric.py <parity-capture.png> --yaw 0 --fixture parity --markers -8 -8 -8 -5 -8 -8 --strict
+fleet-run IRCanvasStress --only revox --focus-revox 1 --focus-mixed-shape --mixed-shape-at -5 -5 -5 --no-spin --no-auto-rotate --pivot-origin --no-ao --no-shadows --subdivisions 1 --zoom 8 --debug-overlay unlit --auto-screenshot 10 --sweep-yaw 0 0 1
+python3 scripts/render-mixed-canvas-metric.py <cube-capture.png> --yaw 0 --fixture cube --markers -5 -5 -5 -2 -5 -5 --strict
 fleet-run IRCanvasStress --only orbit --focus-orbit 2 --focus-mixed-shape --no-spin --no-auto-rotate --pivot-origin --no-ao --no-shadows --subdivisions 1 --zoom 8 --debug-overlay unlit --auto-screenshot 10 --sweep-yaw 0 0 1
 python3 scripts/render-mixed-canvas-metric.py <sphere-with-markers.png> --yaw 0 --control <sphere-without-markers.png>
 python3 scripts/tests/test_render_mixed_canvas_metric.py
@@ -109,6 +128,39 @@ That control measures survival of the voxel raster only; how an SDF displays
 inside a local-triangle canvas is the storage caveat on
 `C_TriangleCanvasTextures`, not something this fixture claims.
 
+### Phase evidence
+
+Same host and settings; captures under
+`docs/pr-screenshots/claude/million-entity-render-shape-phase/`. The frame
+column is the voxel producer outside the marker guards (missing / extra /
+wrong owner), which is pixel-exact for every revoxelized fixture in every
+capture, so the lattice module's resample is the display's; the centroid
+error is the markers' observed minus expected centroid in framebuffer pixels
+(one trixel is 32 x 16).
+
+| Fixture | Yaw | Before: centroid error px, marker px | After: centroid error px, marker px |
+|---|---:|---|---|
+| parity box | 0 | (0, 16), 6,144 of 6,144 | (0, 0), 6,144 of 6,144 |
+| parity box | 22.5 | (-5.1, 16.5), 10,240 of 5,825 | (-5.1, 0.5), 10,240 of 5,825 |
+| parity box | 45 | (-7.0, 11.0), 10,240 of 4,914 | (-7.0, -5.0), 10,240 of 4,914 |
+| parity box | 67.5 | (5.4, 17.1), 10,240 of 5,855 | (5.4, 1.1), 10,240 of 5,855 |
+| parity box | 90 | (0, 16), 6,144 of 6,144 | (0, 0), 6,144 of 6,144 |
+| parity box, owner (4, 2, -1) | 45 | (3.2, 13.5), 10,240 of 4,914 | (2.8, -2.5), 10,240 of 4,914 |
+| cyan cube, marker in its surface | 0 | (-50.2, -22.9), 6,144 of 2,816 | (-2.2, 1.1), 3,072 of 2,816 |
+| one-even-axis box | 0 | (16, 8), 6,144 of 6,144 | (-16, -8), 6,144 of 6,144 |
+| orbit frame (zero phase) | 0 / 45 | (-6.2, 6.1) / (11.5, 8.0) | unchanged |
+
+At the cardinals the parity box's markers land exactly and the one-texel
+error is gone; off the cardinals the remaining centroid error is the
+continuous-yaw dilation below, the same at every yaw once the 16-pixel phase
+term is removed. The translated owner behaves like the centred one, which
+pins the owner-relative subtraction's sign. The cube's marker, half inside
+the cube, showed in full before (the 1.5-unit phase depth put it in front of
+the cube's cells) and shows 3,072 pixels against 2,816 expected after: the
+integer depth lattice keeps it half a unit nearer. The one-even-axis box
+keeps a half-trixel error with the sign flipped, the floored frame offset.
+The zero-phase orbit frame is byte-for-byte the D0.1 result.
+
 ## Open: the SDF marker's own display
 
 The strict footprint fails at every yaw. In a source-face canvas the texture
@@ -119,9 +171,8 @@ yaw 0). Under continuous yaw the sub-1 analytical SDF path writes a 2x3
 diamond from every hit pixel and the marker dilates to about twice its area
 (ratio 2.1 at yaw 45). Both are the SDF display in private canvases, the
 campaign's SDF extent and ownership item, not the lifecycle; the strict numbers
-are the target that item drives to zero. AO on a marker-free wireframe frame is
-uniform, so the AO overlay is not a raster-survival control for this fixture.
-The gate places the focused owner at the world origin, so the owner-relative
-subtraction runs with a zero owner; a translated-owner capture, or a CPU
-identity test against the composite's placement, would pin its sign and is
-owed with the phase item above.
+are the target that item drives to zero; on the parity box at yaw 0 the whole
+residual is that display (1,696 wrong-owner pixels: the marker draws as two
+raw texel triangles, a bow tie, where its cell projects to a hexagon). AO on a
+marker-free wireframe frame is uniform, so the AO overlay is not a
+raster-survival control for this fixture.

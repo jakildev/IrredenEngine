@@ -3,12 +3,18 @@
 
 CanvasStress: --only orbit --focus-orbit 7 --focus-mixed-shape --no-spin
 --no-auto-rotate --pivot-origin --no-ao --no-shadows --subdivisions 1 --zoom 8
---debug-overlay unlit --sweep-yaw <from> <to> <n>. Default scale is zoom 8 at
-2560x1440 (32 x 16 pixels per iso unit); the unlit overlay shows each
-producer's albedo. Black is background. The wireframe's authored voxel faces
-and the two unit SDF box markers at world (3,0,0) and (6,0,0) are projected
-independently and depth-tested per pixel (view-frame x+y+z), so every interior
-pixel has one expected owner.
+--debug-overlay unlit --sweep-yaw <from> <to> <n>, or --only revox --focus-revox
+<index> with `--fixture` naming the revoxelized proof solid (`parity` is the
+12x12x11 box, index 3, whose lattice carries a half-cell phase in-plane and in
+depth). Default scale is zoom 8 at 2560x1440 (32 x 16 pixels per iso unit);
+the unlit overlay shows each producer's albedo. Black is background. The
+voxel producer's faces (the wireframe's authored faces, or the resampled
+cells of a revoxelized solid) and the unit SDF box markers (`--markers`, the
+demo's --mixed-shape-at and three units along +x; default world (3,0,0) and
+(6,0,0)) are projected independently and depth-tested per pixel (view-frame
+x+y+z), so every interior pixel has one expected owner. `--owner` is the
+focused solid's world translation (the demo's --focus-offset); the markers
+stay world entities.
 
 The lifecycle contract (the default `pass`): the frame is pixel-exact outside
 a two-texel guard around each marker (the SDF raster writes a 2x3 texel diamond
@@ -39,8 +45,13 @@ from pathlib import Path
 
 from render_fixture_geometry import iso, rotate, source_centers, view
 from render_metric_util import raster_polygon_depth, read_png, write_png
+from render_revox_lattice import FIXTURES, Resample, composed_rotation
 
 FRAME_ALBEDO = (150, 90, 235)
+FIXTURE_ALBEDO = {
+    "lprism": (255, 150, 60), "cube": (70, 210, 210), "grounded": (210, 120, 255),
+    "parity": (90, 200, 120), "halftexel": (90, 200, 120),
+}
 MARKER_ALBEDO = (240, 180, 40)
 MARKER_CENTERS = ((3.0, 0.0, 0.0), (6.0, 0.0, 0.0))
 FRAME_LABEL, MARKER_LABEL = 1, 2
@@ -70,22 +81,45 @@ def off_frame(polygon, width, height):
     return any(x < 1 or y < 1 or x >= width - 1 or y >= height - 1 for x, y, _ in polygon)
 
 
-def expected_image(width, height, yaw, identity, scale, origin):
+def voxel_faces(yaw, identity, fixture, owner):
+    """Exposed camera-facing faces of the voxel producer as view-frame unit cubes.
+
+    Yields (center, orient, yaw, covered): the orbit frame is authored in world
+    space and viewed under the camera yaw; a revoxelized fixture's cells
+    already sit in the camera-composed frame at `cell + anchor`, translated by
+    the owner's viewed position, so they project at yaw zero. `covered` holds
+    the centers of the occupied lattice neighbours, whose shared faces are
+    hidden.
+    """
+    if fixture is None:
+        centers = set(source_centers("frame"))
+        for center in centers:
+            yield center, (lambda p: rotate(p, identity)), yaw, centers
+        return
+    rotation, _ = composed_rotation(FIXTURES[fixture], yaw, identity)
+    resample = Resample(FIXTURES[fixture], rotation)
+    shift = view(owner, yaw)
+    cells = resample.occupied()
+    centers = {tuple(cell[i] + resample.anchor[i] + shift[i] for i in range(3)) for cell in cells}
+    for center in centers:
+        yield center, (lambda p: p), 0.0, centers
+
+
+def expected_image(width, height, yaw, identity, scale, origin, fixture=None,
+                   owner=(0.0, 0.0, 0.0), markers=MARKER_CENTERS):
     size = width * height
     frame_labels, marker_labels = bytearray(size), bytearray(size)
     frame_depth, marker_depth = [FAR] * size, [FAR] * size
     clipped = False
-    centers = set(source_centers("frame"))
-    for center in centers:
-        for axis, sign, polygon in cube_faces(
-                center, lambda p: rotate(p, identity), yaw, scale, origin):
+    for center, orient, face_yaw, covered in voxel_faces(yaw, identity, fixture, owner):
+        for axis, sign, polygon in cube_faces(center, orient, face_yaw, scale, origin):
             neighbor = tuple(c + (sign if i == axis else 0) for i, c in enumerate(center))
-            if neighbor in centers:
+            if neighbor in covered:
                 continue
             clipped |= off_frame(polygon, width, height)
             raster_polygon_depth(frame_labels, frame_depth, width, height, polygon, FRAME_LABEL)
     guards = []
-    for center in MARKER_CENTERS:
+    for center in markers:
         corners = []
         for _, _, polygon in cube_faces(center, lambda p: p, yaw, scale, origin):
             clipped |= off_frame(polygon, width, height)
@@ -104,7 +138,7 @@ def expected_image(width, height, yaw, identity, scale, origin):
         if frame != FAR and marker != FAR and abs(frame - marker) < DEPTH_AMBIGUITY:
             ambiguous[index] = 1
         labels[index] = MARKER_LABEL if marker < frame else FRAME_LABEL
-    palette = [(0, 0, 0), FRAME_ALBEDO, MARKER_ALBEDO]
+    palette = [(0, 0, 0), FIXTURE_ALBEDO.get(fixture, FRAME_ALBEDO), MARKER_ALBEDO]
     return labels, palette, ambiguous, guards, clipped
 
 
@@ -207,7 +241,16 @@ def main(argv=None):
     parser.add_argument("image", type=Path)
     parser.add_argument("--yaw", type=float, required=True, help="camera yaw in degrees")
     parser.add_argument("--identity", action="store_true",
-                        help="identity frame rotation (the demo's --focus-identity)")
+                        help="identity frame rotation (the demo's --focus-identity, or "
+                             "--probe-upright for a revoxelized fixture)")
+    parser.add_argument("--fixture", choices=sorted(FIXTURES),
+                        help="the focused revoxelized proof solid instead of the orbit frame")
+    parser.add_argument("--owner", type=float, nargs=3, default=(0.0, 0.0, 0.0),
+                        help="world translation of the focused solid (the demo's "
+                             "--focus-offset)")
+    parser.add_argument("--markers", type=float, nargs="+",
+                        help="world positions of the markers, three floats each (the demo's "
+                             "--mixed-shape-at and three units along +x)")
     parser.add_argument("--iso-scale", type=float, nargs=2, default=(32, 16))
     parser.add_argument("--strict", action="store_true",
                         help="also require the SDF marker footprint to be pixel-exact")
@@ -218,15 +261,21 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if not math.isfinite(args.yaw) or not all(math.isfinite(v) and v > 0 for v in args.iso_scale):
         parser.error("yaw must be finite and scale must be finite and positive")
+    markers = MARKER_CENTERS
+    if args.markers is not None:
+        if len(args.markers) % 3 or not args.markers:
+            parser.error("markers take three floats per marker")
+        markers = tuple(tuple(args.markers[i:i + 3]) for i in range(0, len(args.markers), 3))
     try:
         width, height, bpp, pixels = read_png(str(args.image))
         expected, palette, ambiguous, guards, clipped = expected_image(
             width, height, math.radians(args.yaw), args.identity, args.iso_scale,
-            (width / 2, height / 2))
+            (width / 2, height / 2), args.fixture, tuple(args.owner), markers)
         result, errors = compare(
             width, height, bpp, pixels, expected, palette, ambiguous, guards, args.iso_scale)
         result.update(image=str(args.image), scope="mixed_canvas_lifecycle", yaw=args.yaw,
-                      strict=args.strict, clipped=clipped)
+                      fixture=args.fixture or "frame", owner=list(args.owner),
+                      markers=[list(m) for m in markers], strict=args.strict, clipped=clipped)
         result["pass"] = (result["footprint_pass"] if args.strict
                           else result["lifecycle_pass"]) and not clipped
         if args.control:
