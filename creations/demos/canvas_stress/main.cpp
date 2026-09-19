@@ -1070,6 +1070,12 @@ void applyDepthProbeAssert(const std::string &value) {
 void registerArgs() {
     IRArgs::Parser &args = IREngine::args();
     args.integer("--focus-canary", "Isolate a canary by its original index and center it", -1);
+    args.integer(
+        "--focus-revox",
+        "Isolate a re-voxelize solid by its original index (0 L-prism, 1 cube, 2 grounded cube) "
+        "and center it",
+        -1
+    );
     args.integer("--focus-orbit", "Isolate an orbit shape by its original index and center it", -1);
     args.flag("--focus-single-voxel", "Use one voxel in the focused orbit canvas");
     args.flag(
@@ -2070,10 +2076,15 @@ void initEntities() {
     const float reVoxSpin = (g_settings.noSpin_ || IREngine::args().getFlag("--probe-upright"))
                                 ? 0.0f
                                 : kReVoxSpinPerFrame;
-    if (g_settings.soloRevox_ || groupEnabled(kGroupReVox)) {
+    const int focusRevox = IREngine::args().getInt("--focus-revox");
+    const auto revoxWorld = [focusRevox](vec3 worldPos) {
+        return focusRevox >= 0 ? vec3(0.0f) : worldPos;
+    };
+    if (g_settings.soloRevox_ ||
+        (groupEnabled(kGroupReVox) && (focusRevox < 0 || focusRevox == 0))) {
         spawnDetachedReVoxelizeSolid(
             0,
-            g_settings.soloRevox_ ? vec3(0.0f, 0.0f, 42.0f) : kReVoxAsymWorld,
+            g_settings.soloRevox_ ? vec3(0.0f, 0.0f, 42.0f) : revoxWorld(kReVoxAsymWorld),
             (IREngine::args().getFlag("--probe-upright")
                  ? vec4(0.0f, 0.0f, 0.0f, 1.0f)
                  : IRMath::quatAxisAngle(
@@ -2088,10 +2099,11 @@ void initEntities() {
             /*screenLocked=*/g_settings.screenLockDetached_
         );
     }
-    if (!g_settings.soloRevox_ && groupEnabled(kGroupReVox)) {
+    if (!g_settings.soloRevox_ && groupEnabled(kGroupReVox) &&
+        (focusRevox < 0 || focusRevox == 1)) {
         spawnDetachedReVoxelizeSolid(
             1,
-            kReVoxCubeWorld,
+            revoxWorld(kReVoxCubeWorld),
             (IREngine::args().getFlag("--probe-upright")
                  ? vec4(0.0f, 0.0f, 0.0f, 1.0f)
                  : IRMath::quatAxisAngle(
@@ -2113,10 +2125,10 @@ void initEntities() {
         return;
     }
 
-    if (groupEnabled(kGroupReVox)) {
+    if (groupEnabled(kGroupReVox) && (focusRevox < 0 || focusRevox == 2)) {
         spawnDetachedReVoxelizeSolid(
             2,
-            kReVoxGroundedWorld,
+            revoxWorld(kReVoxGroundedWorld),
             (IREngine::args().getFlag("--probe-upright")
                  ? vec4(0.0f, 0.0f, 0.0f, 1.0f)
                  : IRMath::quatAxisAngle(
