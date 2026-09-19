@@ -1,0 +1,34 @@
+{
+  "demo": "perf_grid",
+  "target": "IRPerfGrid",
+  "screenshot_subdir": "save_files/screenshots",
+  "demo_args": ["--mode", "voxel_set", "--no-overlay",
+                "--wave-amplitude", "0", "--subdivision-mode", "none"],
+  "shots": ["fit_grid", "zoom1_origin", "profiler_overlay",
+            "zoom1_rot", "zoom4_rot", "zoom4_pan", "zoom4_rot_pan"],
+  "thresholds": {
+    "per_pixel_tol": 0,
+    "match_pct": 100.0,
+    "max_delta": 0,
+    "psnr_db": 0.0
+  },
+  "extra_runs": [
+    {
+      "name": "cull_on",
+      "demo_args": ["--mode", "voxel_set", "--no-overlay",
+                    "--wave-amplitude", "0", "--subdivision-mode", "none",
+                    "--occlusion-cull"],
+      "shots": ["fit_grid", "zoom1_origin", "profiler_overlay",
+                "zoom1_rot", "zoom4_rot", "zoom4_pan", "zoom4_rot_pan"]
+    },
+    {
+      "name": "chunk_only",
+      "demo_args": ["--mode", "voxel_set", "--no-overlay",
+                    "--wave-amplitude", "0", "--subdivision-mode", "none",
+                    "--occlusion-cull", "--no-per-voxel-occlusion"],
+      "shots": ["fit_grid", "zoom1_origin", "profiler_overlay",
+                "zoom1_rot", "zoom4_rot", "zoom4_pan", "zoom4_rot_pan"]
+    }
+  ],
+  "notes": "Per-voxel occlusion-cull identity baseline (#2361, the committed successor to the ad-hoc md5/img_diff runs on PR #2278 / #1812). FIXTURE: the top-level demo_args pin the default pass to `--mode voxel_set --no-overlay --wave-amplitude 0 --subdivision-mode none` — the heavily-occluded 64^3 voxel_set scene, static (amplitude 0), at NONE subdivision (the per-voxel Hi-Z refine is gated on residualYaw == 0 AND NONE subdivision, so this is the only regime where it can fire). --no-overlay is mandatory: the perf overlay bakes live timing text into every frame and defeats a byte-exact compare. THREE PASSES, ONE REFERENCE SET: the default pass is cull-off (the engine default path — the unconditional per-frame Hi-Z image bind at unit 1 is what a cull-off regression would surface through); the cull_on extra run adds --occlusion-cull (chunk pre-pass + per-voxel refine); the chunk_only extra run adds --occlusion-cull --no-per-voxel-occlusion. All three gate the SAME seven labels against the same committed PNGs, so cull_on == reference and chunk_only == reference is transitively the marginal identity (chunk+per-voxel vs chunk-only drops zero visible voxels) AND cull-off == committed baseline. capture_offset is 0 for both extra runs because every pass emits the full 7-entry kShots[] table in the same order. THRESHOLDS ARE BYTE-EXACT ON PURPOSE (per_pixel_tol 0 / max_delta 0 / match_pct 100; psnr 0.0 is a no-op floor since identical frames read inf): a non-zero delta here is the cull dropping a visible voxel, not tolerance to widen — fix the cull or file the defect, never loosen these. ONLY 4 OF THE 7 SHOTS ARE CARDINAL (fit_grid, zoom1_origin, profiler_overlay, zoom4_pan at yaw 0); zoom1_rot / zoom4_rot / zoom4_rot_pan sit at yaw 0.35 where the per-voxel cull is gated off by design and are identical for that trivial reason — do not read 21/21 as 21 firing checks. The paired positive-fire gate is scripts/occlusion-fire-verify.py (chunk-only avg visible vs chunk+per-voxel avg visible from --auto-profile, exits non-zero when the marginal reduction vanishes); this manifest's identity gate is only meaningful alongside it. profiler_overlay is a duplicate pose of fit_grid (same zoom/offset/yaw) and its overlay is suppressed by --no-overlay, so it compares identical to fit_grid here; the label is kept because the shot table is the demo's. Likewise fit_grid (zoom 0.5) and zoom1_origin (zoom 1.0) captured byte-identical frames on this backend: the screenshot is the offscreen framebuffer, and on the cardinal path zoom magnifies only the window blit (the rotated per-axis shots do scale with zoom, so zoom1_rot and zoom4_rot differ). So the default pass has 5 distinct frames across its 7 labels; the labels stay because the shot table is the demo's. HARNESS WART: evaluate_shots names diff images by the un-namespaced label, so a shot failing in both cull_on and chunk_only leaves only the last pass's diff PNG under render_verify_diffs/. BACKENDS: macos-debug/ (Metal) is the committed set, blessed on the implementing host; linux-debug/ (OpenGL) is the pending mirror set under this same manifest (#3544) — until it lands, render-verify --all reports perf_grid as ERROR (no references) on GL hosts, exactly as shape_debug / fog_demo / lighting do there. Bless it with `python3 scripts/render-verify.py --target IRPerfGrid --update-references --force` on a Linux/GL host after re-running phase 0 (determinism, three-way identity, positive fire) there."
+}

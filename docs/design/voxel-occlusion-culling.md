@@ -343,6 +343,29 @@ durable lessons:
   where the cull is legally active. This is the cull-shaped instance of the
   "default-off features need a positive enabled-path test" rule in
   [`engine/render/CLAUDE.md`](../../engine/render/CLAUDE.md).
+
+  **Both halves are committed automation (#2361),** replacing the ad-hoc
+  md5 / `img_diff` runs recorded across PR #2278's thread:
+
+  - *Identity:* `python3 scripts/render-verify.py --target IRPerfGrid` — the
+    `perf_grid` manifest pins the fixture (`--mode voxel_set --no-overlay
+    --wave-amplitude 0 --subdivision-mode none`) as its default-pass
+    `demo_args` and runs two `extra_runs` (`cull_on`: `--occlusion-cull`;
+    `chunk_only`: `--occlusion-cull --no-per-voxel-occlusion`) against the
+    **same** seven committed PNGs at byte-exact thresholds. 21 checks: cull-off
+    == baseline (the default path), chunk+per-voxel == baseline and chunk-only
+    == baseline (transitively the marginal identity). Only the four cardinal
+    shots are poses where the refine can fire; the three `yaw 0.35` shots are
+    identical for the trivial reason.
+  - *Fire:* `python3 scripts/occlusion-fire-verify.py` — the same fixture
+    plus `--no-sun-shadows` under `--auto-profile`, chunk-only vs
+    chunk+per-voxel, reading `Visible` avg from each `profile_report.txt`;
+    exits non-zero when the marginal reduction is below `--min-marginal`.
+    Negative control: `--demo-arg=--no-per-voxel-occlusion` collapses both
+    arms and must fail. First reading (macOS / Metal, 60 frames): chunk-only
+    23,816.0 → chunk+per-voxel 12,781.3, marginal 11,034.7 (46.3%).
+
+  The identity gate is meaningful only alongside the fire gate; run both.
 - **(h) Isolate the marginal.** `--occlusion-cull` measures the UNION of the
   chunk pre-pass and the per-voxel refine; a split gate
   (`--no-per-voxel-occlusion`) is required so each mechanism's acceptance is
