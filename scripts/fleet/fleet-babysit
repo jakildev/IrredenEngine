@@ -113,8 +113,23 @@ fi
 # on the issue thread, not in a project-wide file. Glob matches the
 # `*architect*` convention used by ARCHITECT_RESUME below.
 case "$ROLE" in
-    *architect*)
+    *architect*|campaign-*)
         export CLAUDE_CODE_DISABLE_AUTO_MEMORY="${CLAUDE_CODE_DISABLE_AUTO_MEMORY:-1}"
+        ;;
+esac
+
+# Campaign panes (`campaign-<slug>`, fleet-up's FLEET_CAMPAIGNS) are persistent
+# fable sessions like the architects: same session sidecar, same interactive
+# launch, same cross-restart resume. Their role file is the shared
+# role-campaign.md with "<slug> <mode>" as its arguments, so the slash command
+# and the session-track exports name the slug, not the pane
+# (docs/agents/campaign-protocol.md).
+ROLE_CMD="/role-$ROLE $MODE"
+CAMPAIGN_SLUG=""
+case "$ROLE" in
+    campaign-*)
+        CAMPAIGN_SLUG="${ROLE#campaign-}"
+        ROLE_CMD="/role-campaign $CAMPAIGN_SLUG $MODE"
         ;;
 esac
 
@@ -270,13 +285,18 @@ SESSION_FILE="$SESSIONS_DIR/$ROLE.session-id"
 # fresh session each fleet-up.
 ARCHITECT_RESUME=0
 case "$ROLE" in
-    *architect*) ARCHITECT_RESUME=1 ;;
+    *architect*|campaign-*) ARCHITECT_RESUME=1 ;;
 esac
 
 if [[ "$ARCHITECT_RESUME" -eq 1 ]]; then
     export FLEET_SESSION_FILE="$SESSION_FILE"
-    export FLEET_SESSION_ROLE="$ROLE"
-    export FLEET_SESSION_MODE="$MODE"
+    if [[ -n "$CAMPAIGN_SLUG" ]]; then
+        export FLEET_SESSION_ROLE="campaign"
+        export FLEET_SESSION_MODE="$CAMPAIGN_SLUG $MODE"
+    else
+        export FLEET_SESSION_ROLE="$ROLE"
+        export FLEET_SESSION_MODE="$MODE"
+    fi
 fi
 
 # --- Dead-session detection (architects) ------------------------------------
@@ -615,7 +635,7 @@ launch_architect_first() {
         echo "$SESSION_ID" > "$SESSION_FILE"
         log "starting architect session $SESSION_ID (saved to $SESSION_FILE)"
         cmd=(claude --model "$MODEL" --effort "$EFFORT" --session-id "$SESSION_ID" \
-            "/role-$ROLE $MODE")
+            "$ROLE_CMD")
     fi
     if [[ -n "${FLEET_BABYSIT_PRINT_LAUNCH:-}" ]]; then
         # Inspection hook (mirrors FLEET_BABYSIT_PRINT_EFFORT): print the

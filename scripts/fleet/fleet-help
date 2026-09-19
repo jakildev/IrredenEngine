@@ -61,6 +61,8 @@ fleet-up — multi-pane tmux fleet + optional scout daemon.
     dry-run     default; agents start then stand by
     live        full loop; auto-attaches unless --no-attach
     review-only reviewers/mergers/smoke; workers skip new task pickup
+    FLEET_CAMPAIGNS="<slug> …" (conf) adds a "campaigns" window with one
+                persistent fable pane per slug (campaign-protocol.md)
 
 No --help flag. Full narrative: scripts/fleet/fleet-up (header) and docs/AGENT_FLEET_SETUP.md
 EOF
@@ -196,6 +198,9 @@ Engine build / run (everyday dev)
 Parallel-agent fleet (tmux + Claude)
 ----------------------------------------------------------------------
   fleet-up [dry-run | live | review-only] [--no-attach]
+                                 FLEET_CAMPAIGNS="<slug> …" in ~/.fleet/fleet-up.conf
+                                 adds a "campaigns" window: one persistent fable
+                                 pane per slug (docs/agents/campaign-protocol.md)
   fleet-down [--force] [--keep-claims] [--wait] [--summary]
   fleet-babysit …                (normally launched by fleet-up; architects only)
   solo-architect [engine|game] [--campaign <slug>] [--fresh] [--no-scout] [--dry-run]

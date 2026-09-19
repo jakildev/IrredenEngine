@@ -35,7 +35,7 @@ frontmatter, a pointer here, a `## Deltas` table
 | **branch-prefix** | The head-branch prefix (`claude/<slug>-<topic>`). |
 | **campaigns-dir** | Where campaign worklist docs live (`docs/design/campaigns/`). |
 | **objectives-dir** | Where the objective files live. |
-| **launcher** | The command that starts or resumes a campaign pane. |
+| **launcher** | How a campaign pane starts or resumes: the fleet config that schedules it at every fleet start, and the by-hand command. |
 | **feedback-file** | This role's end-of-iteration feedback file under `~/.fleet/feedback/`. |
 
 ## Shared rules
@@ -149,8 +149,10 @@ Campaign PRs carry `fleet:author-claude` from `commit-and-push` and
 projections skip them; no `fleet-claim` locks are involved. The campaign
 runs beside the fleet or alone: **launcher** starts or resumes the pane
 with the same session-sidecar mechanism as the architect panes, so
-`/clear`, a crash or a restart resumes the conversation. Context loss is
-survivable by design: the campaign doc plus the open PR list is the state.
+`/clear`, a crash or a restart resumes the conversation. Listed in the
+fleet config, the pane comes up with every fleet start, in its own tmux
+window, and never receives dispatched work. Context loss is survivable by
+design: the campaign doc plus the open PR list is the state.
 
 ## Modes
 

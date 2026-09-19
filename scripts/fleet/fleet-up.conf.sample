@@ -381,6 +381,21 @@
 # FLEET_CONCURRENCY_EPIC_STEWARD=1
 # FLEET_EFFORT_EPIC_STEWARD=xhigh   # umbrella triage needs heavier reasoning
 
+# --- Campaigns (persistent per-objective fable panes) -----------------------
+#
+# FLEET_CAMPAIGNS lists objective slugs (space- or comma-separated). For each,
+# fleet-up creates .claude/worktrees/campaign-<slug> off origin/master, writes
+# the standard worktree settings, and babysits a persistent fable pane in a
+# third tmux window ("campaigns") running `/role-campaign <slug> live`
+# (docs/agents/campaign-protocol.md). The pane resumes its session across
+# fleet-down/fleet-up like the architects and never takes queue work; it
+# works docs/design/campaigns/<slug>.md, stacking PRs under fleet:wip and
+# handing the human a reviewed stack at each checkpoint. A slug without a
+# campaign doc on the clone is skipped with a warning. Delete
+# ~/.fleet/sessions/campaign-<slug>.session-id to start that campaign's
+# conversation fresh.
+# FLEET_CAMPAIGNS="million-entity-render"
+
 # --- Mixed Claude / Codex workers (opt in after host preflight) --------------
 # These settings are read/exported by fleet-dispatcher. Restart the dispatcher
 # after changing them. Every participating host must set the review policy;
