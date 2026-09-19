@@ -8,6 +8,7 @@
 #include <irreden/render/gui_test_assertions.hpp>
 #include <irreden/render/picking.hpp>
 
+#include "anim_panel.hpp"
 #include "palette.hpp"
 #include "symmetry.hpp"
 
@@ -338,6 +339,21 @@ struct OccupancyCheck {
     std::string name_;
 };
 
+// Which ANIM panel slider a SliderCheck reads. Named rather than carrying the
+// widget's EntityId directly: Session::build runs well before initEntities
+// creates the widgets, so the id isn't known yet at recipe-build time — the
+// check can only name which slider and defer the lookup to evaluateSliderCheck.
+enum class SliderTarget { FPS, SCRUBBER };
+
+// Slider-value expectation evaluated against the live widget at a shot's
+// capture frame.
+struct SliderCheck {
+    SliderTarget target_ = SliderTarget::FPS;
+    float expected_ = 0.0f;
+    float tolerance_ = 0.001f;
+    std::string name_;
+};
+
 // One shot's worth of session: a camera framing, the events that fire under it,
 // their aim fixups, and the assertions evaluated once it settles.
 struct Segment {
@@ -359,6 +375,8 @@ struct Recipe {
     // Stable storage for the assertion predicates' context. std::deque, not
     // vector: assertions hold pointers into it and it grows as ops are added.
     std::deque<OccupancyCheck> checks_;
+    // Same stable-storage contract as checks_, for expectSliderValue.
+    std::deque<SliderCheck> sliderChecks_;
     // Recipe errors (an unreachable cell, an occluded aim). Non-empty means the
     // session is not runnable; the editor logs these and exits rather than
     // replaying a stream that would author the wrong thing.
@@ -392,6 +410,12 @@ inline void resolveShots(Recipe &recipe) {
 // single GUI-ASSERT emitter instead of hand-rolling the log line per check.
 // Defined in main.cpp, where the editable-set entity handle lives.
 bool evaluateOccupancyCheck(const void *context, std::string &actual);
+
+// Reads one SliderCheck against the live widget its target_ names. Same
+// PREDICATE channel as evaluateOccupancyCheck, for the same reason: the
+// widget entity ids don't exist at recipe-build time. Defined in main.cpp,
+// where the ANIM panel's slider entity handles live.
+bool evaluateSliderCheck(const void *context, std::string &actual);
 
 // Builds a Recipe from editor gestures. Every op appends to the current
 // segment; segment(label) closes the current one and starts the next. Ops that
@@ -569,6 +593,28 @@ class Builder {
         emitButton(IRVideo::GuiInputEvent::Type::RELEASE, IRInput::kMouseButtonLeft);
     }
 
+    // Left-drag a GUI slider's track to `value`. PRESS lands at the track's
+    // far end from the target, then a held MOVE slides to the target's own
+    // trixel before RELEASE — the PRESS -> held MOVE -> RELEASE shape
+    // system_widget_input.hpp's per-frame dragValue recompute needs to see a
+    // real drag rather than a stationary click (a single move-then-click, the
+    // way selectPaletteSwatch aims, would only ever land the value under the
+    // cursor at press time). `minValue`/`maxValue` are passed separately from
+    // `geom` because the scrubber's range tracks the live frame count, unlike
+    // the fixed swatch grid selectPaletteSwatch aims from.
+    void dragGuiSlider(
+        const IRVoxelEditor::SliderGeometry &geom, float minValue, float maxValue, float value
+    ) {
+        const float farValue = (value > (minValue + maxValue) * 0.5f) ? minValue : maxValue;
+        emitGuiMove(IRVoxelEditor::sliderValueGuiTrixel(geom, minValue, maxValue, farValue));
+        emitButton(IRVideo::GuiInputEvent::Type::PRESS, IRInput::kMouseButtonLeft);
+        emitGuiMove(IRVoxelEditor::sliderValueGuiTrixel(geom, minValue, maxValue, value));
+        // One idle frame so the editor's HELD branch samples the moved cursor
+        // before the release commits the value (dragBox's release timing).
+        m_frame += kFramesPerClickStep;
+        emitButton(IRVideo::GuiInputEvent::Type::RELEASE, IRInput::kMouseButtonLeft);
+    }
+
     // Duplicate the active animation frame (D) and select the copy. The editor
     // snapshots the live voxels into the source frame first, so the duplicate
     // starts as an exact copy — which is why the shadow model can simply be
@@ -684,6 +730,18 @@ class Builder {
     void expectPick(IRMath::ivec3 local, const char *name) {
         const IRMath::ivec3 worldVoxel = IRMath::roundVec3HalfUp(m_model.worldCenter(local));
         m_current.assertions_.push_back(IRPrefab::GuiTest::picksVoxel(worldVoxel, name));
+    }
+
+    // Assert a slider's live value when this segment settles — the positive
+    // fire for dragGuiSlider: a drag that missed the track and landed on the
+    // panel background never presses the widget, so its value stays wherever
+    // it started and this fails instead of quietly passing.
+    void expectSliderValue(SliderTarget target, float expected, float tolerance, std::string name) {
+        m_recipe.sliderChecks_.push_back(SliderCheck{target, expected, tolerance, std::move(name)});
+        const SliderCheck &check = m_recipe.sliderChecks_.back();
+        m_current.assertions_.push_back(
+            IRPrefab::GuiTest::predicate(&evaluateSliderCheck, &check, check.name_.c_str())
+        );
     }
 
     // Reject the recipe outright. For preconditions the op vocabulary cannot

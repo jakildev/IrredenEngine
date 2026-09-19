@@ -87,6 +87,10 @@
 // Frame-based animation state
 #include "animation.hpp"
 
+// The ANIM panel's slider geometry, shared with the session builder so a
+// scripted drag aims at the live layout.
+#include "anim_panel.hpp"
+
 #include "editor_layer_manager.hpp"
 
 // Paint palette colours + the GUI-canvas geometry of the swatch grid, shared
@@ -1735,6 +1739,23 @@ bool evaluateOccupancyCheck(const void *context, std::string &actual) {
     actual += " color=" + rgb(color) + " wantColor=" + rgb(want);
     return occupied && color.red_ == want.red_ && color.green_ == want.green_ &&
            color.blue_ == want.blue_;
+}
+
+// Reads one SliderCheck against the live ANIM panel widget it names — the
+// positive fire for dragGuiSlider: a drag that missed the track never
+// presses the widget, so its value stays put and this fails instead of
+// quietly passing.
+bool evaluateSliderCheck(const void *context, std::string &actual) {
+    const SliderCheck &check = *static_cast<const SliderCheck *>(context);
+    const IREntity::EntityId widget =
+        check.target_ == SliderTarget::FPS ? g_fpsSlider : g_scrubberSlider;
+    if (widget == IREntity::kNullEntity) {
+        actual = "widget not built";
+        return false;
+    }
+    const float value = IRPrefab::Widget::sliderValue(widget);
+    actual = "value=" + std::to_string(value);
+    return IRMath::abs(value - check.expected_) <= check.tolerance_;
 }
 
 } // namespace Session
@@ -3866,23 +3887,25 @@ void initEntities() {
     // panel. Frame scrubber: drag to navigate frames smoothly. FPS slider:
     // drag to adjust playback speed (1–30 FPS). Both update in real time;
     // keyboard nav (Left/Right) and playback keep the scrubber thumb in sync.
-    constexpr ivec2 kAnimPanelPos{4, 420};
-    constexpr ivec2 kAnimPanelSize{120, 55};
-    IRPrefab::Widget::makePanel(kAnimPanelPos, kAnimPanelSize, "ANIM");
+    IRPrefab::Widget::makePanel(
+        IRVoxelEditor::kAnimPanelPos,
+        IRVoxelEditor::kAnimPanelSize,
+        "ANIM"
+    );
     IRVoxelEditor::g_scrubberSlider = IRPrefab::Widget::makeSlider(
-        ivec2(kAnimPanelPos.x + 4, kAnimPanelPos.y + 22),
-        ivec2(112, 14),
+        IRVoxelEditor::kScrubberSliderGeometry.pos_,
+        IRVoxelEditor::kScrubberSliderGeometry.size_,
         "FRAME",
-        0.0f,
+        IRVoxelEditor::kScrubberSliderMinValue,
         static_cast<float>(IRVoxelEditor::g_anim.frameCount() - 1),
         0.0f
     );
     IRVoxelEditor::g_fpsSlider = IRPrefab::Widget::makeSlider(
-        ivec2(kAnimPanelPos.x + 4, kAnimPanelPos.y + 38),
-        ivec2(112, 14),
+        IRVoxelEditor::kFpsSliderGeometry.pos_,
+        IRVoxelEditor::kFpsSliderGeometry.size_,
         "FPS",
-        1.0f,
-        30.0f,
+        IRVoxelEditor::kFpsSliderMinValue,
+        IRVoxelEditor::kFpsSliderMaxValue,
         IRVoxelEditor::g_anim.fps_
     );
 
