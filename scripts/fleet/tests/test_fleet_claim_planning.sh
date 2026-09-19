@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Tests for the planning claim class (#1932 PR3, re-scope of #1889):
-# planning-claim / planning-release on a fleet:needs-plan ISSUE via the
-# fleet:planning-<host>-<agent> label, the `## Plan`-comment dedup early-out
-# (return 3 when planning already happened), and the cleanup --gh fourth pass
-# that sweeps stale planning labels off open fleet:needs-plan issues after
+# Tests for the planning claim class: planning-claim / planning-release on a
+# fleet:needs-plan ISSUE via the fleet:planning-<host>-<agent> label, the
+# `## Plan`-comment dedup early-out (return 3 when planning already
+# happened), and the cleanup --gh fourth pass that sweeps stale planning
+# labels off open fleet:needs-plan issues after
 # FLEET_CLAIM_STALE_SECS_PLANNING.
 #
 # The claim path reuses _acquire_label_on / _claim_decision (exhaustively
@@ -62,14 +62,13 @@ REMOVE_LOG="$TMPROOT/remove.log"; : > "$REMOVE_LOG"
 # issue-view probes are disambiguated by their --json arg. issue-edit calls are
 # logged for self-removal / release.
 #
-# Three gates now share the `--json labels` call shape (--replan's
+# Three gates share the `--json labels` call shape (--replan's
 # fleet:needs-plan guard, the first-plan stale-candidate guard, and the
-# fleet:needs-human park — #3034), so the old single STUB_NEEDS_PLAN boolean
-# would certify whichever gate it was written for while silently answering the
-# others wrong. Modelling the program instead is the scripts/fleet/CLAUDE.md
+# fleet:needs-human park), so a single boolean stub cannot answer all three
+# correctly. Modelling the program instead is the scripts/fleet/CLAUDE.md
 # rule ("evaluate the program against fixture JSON … fail closed on a program
-# shape you don't model"); STUB_LABELS_FAIL simulates a gh lookup failure so the
-# fail-open policy on `unknown` is exercised rather than assumed.
+# shape you don't model"); STUB_LABELS_FAIL simulates a gh lookup failure so
+# the fail-open policy on `unknown` is exercised rather than assumed.
 STUB_HOLDERS=""
 STUB_PLAN_COMMENTS=0
 STUB_LABELS=""
@@ -184,10 +183,7 @@ if grep -q -- "--remove-label $MINE" "$REMOVE_LOG"; then ok "losing re-plan clai
 echo "== #3034: the fleet:needs-human park and the first-plan stale-candidate gate =="
 
 echo "T11: parked fleet:needs-human → planning-claim refuses (exit 1) and takes no lock"
-# The park is the planner's terminal state for an unplannable issue. Before this
-# gate the label was honored by ingest and worker pickup but not by the claim, so
-# the dispatcher's pre-claim still succeeded and the lane head was re-dispatched
-# every tick (game #94: 13 dispatches, then 2 more after the park was applied).
+# The park is the planner's terminal state for an unplannable issue.
 rm -f "$MARKER"; STUB_HOLDERS=""; STUB_PLAN_COMMENTS=0
 STUB_LABELS="fleet:needs-plan fleet:needs-human"
 rc=0; out=$(cmd_planning_claim 742 worker 2>&1) || rc=$?
@@ -204,11 +200,10 @@ assert_exit "$rc" 1 "--replan on a parked issue → exit 1"
 case "$out" in *"parked fleet:needs-human"*) ok "--replan hits the same park refusal" ;; *) bad "expected the park refusal, got: $out" ;; esac
 
 echo "T13: first-plan with fleet:needs-plan ABSENT → exit 1 (stale candidate), not the exit-3 dedup"
-# The exact game #94 shape: needs-plan cleared, a ## Plan comment present, and
-# the dispatcher's pre-claim granted anyway — only the worker's own step-2
-# re-check caught it, a whole opus dispatch later. Exiting 1 here (rather than
-# falling to the dedup's 3) also saves the --replan retry that 3 provokes, which
-# the --replan guard would refuse anyway.
+# needs-plan cleared with a ## Plan comment present is a stale candidate.
+# Exiting 1 here (rather than falling to the dedup's 3) also saves the
+# --replan retry that 3 provokes, which the --replan guard would refuse
+# anyway.
 rm -f "$MARKER"; STUB_HOLDERS=""; STUB_PLAN_COMMENTS=1; STUB_LABELS=""
 rc=0; out=$(cmd_planning_claim 743 worker 2>&1) || rc=$?
 assert_exit "$rc" 1 "needs-plan absent on the first-plan path → exit 1"
@@ -216,9 +211,10 @@ case "$out" in *"candidate is stale"*) ok "refusal names the stale candidate" ;;
 if [[ -f "$MARKER" ]]; then bad "stale candidate still wrote a liveness marker"; else ok "stale candidate took no lock"; fi
 
 echo "T14: a failed label lookup fails OPEN — both new gates let the claim through"
-# _issue_label_probe returns `unknown` when gh fails, and neither new gate treats
-# that as a refusal: a GitHub outage must not wedge every planning claim on the
-# host. Pinning it so a future "tighten the guard" edit has to argue with a test.
+# _issue_label_probe returns `unknown` when gh fails, and neither gate treats
+# that as a refusal: a GitHub outage must not wedge every planning claim on
+# the host. Pinning it so a future "tighten the guard" edit has to argue with
+# a test.
 rm -f "$MARKER"; STUB_HOLDERS=""; STUB_PLAN_COMMENTS=0; STUB_LABELS=""; STUB_LABELS_FAIL=1
 rc=0; out=$(cmd_planning_claim 744 worker 2>&1) || rc=$?
 assert_exit "$rc" 0 "label lookup failure → claim still acquires"
@@ -263,10 +259,10 @@ if grep -q -- "--remove-label fleet:planning-mac-worker" "$REMOVE_LOG"; then ok 
 if grep -q -- "--remove-label fleet:planning-linux-worker" "$REMOVE_LOG"; then bad "fresh planning label on #81 wrongly swept"; else ok "fresh planning label on #81 kept"; fi
 
 echo "T7: FLEET_CLAIM_STALE_SECS_PLANNING override keeps even the 2h-old VOUCHED label"
-# Post-#2711 the TTL knob governs claims the sweep cannot confirm dead:
-# cross-host labels, and same-host labels with a matching liveness marker. Give
-# #80 its marker so it is a vouched live claim — that is the claim class the
-# override is meant to protect. (A same-host label with NO marker is a confirmed
+# The TTL knob governs claims the sweep cannot confirm dead: cross-host
+# labels, and same-host labels with a matching liveness marker. Give #80 its
+# marker so it is a vouched live claim — that is the claim class the override
+# is meant to protect. (A same-host label with NO marker is a confirmed
 # orphan and deliberately bypasses the TTL; T7b pins that.)
 : > "$REMOVE_LOG"; export FLEET_CLAIM_STALE_SECS_PLANNING=999999
 printf '80\n' > "$FLEET_CLAIMS_DIR/_prlabel-planning-worker"
@@ -288,9 +284,9 @@ unset FLEET_CLAIM_STALE_SECS_PLANNING
 
 echo "T7d: CRLF-emitting python3 stub (regression guard for #3060) — vouched claim still kept"
 # Native python3 on Windows (MSYS2) CRLF-terminates every print() to stdout,
-# same class of bug as native jq (#3029): `while IFS=$'\t' read -r n label`
-# strips only the trailing \n, so the CR rides along on `label`. POSIX python3
-# emits LF, so T7 above is a vacuous pass on Linux/macOS CI whether or not the
+# same class of bug as native jq: `while IFS=$'\t' read -r n label` strips
+# only the trailing \n, so the CR rides along on `label`. POSIX python3 emits
+# LF, so T7 is a vacuous pass on Linux/macOS CI whether or not the
 # `tr -d '\r'` fix is in place — this stub reproduces the Windows byte stream
 # hermetically so the regression is visible on every host. It CRLF-terminates
 # only the planning sweep's JSON-extraction script (matched by the

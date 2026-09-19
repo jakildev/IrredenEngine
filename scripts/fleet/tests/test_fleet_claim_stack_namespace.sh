@@ -1,30 +1,17 @@
 #!/usr/bin/env bash
-# Tests that `fleet-claim`'s stack/molecule record CARRIES its --repo namespace
-# (#2857), so a cross-repo stack can be released without the caller re-supplying
-# the flag from memory on a later invocation.
+# Tests that `fleet-claim`'s stack/molecule record CARRIES its --repo
+# namespace, so a cross-repo stack can be released without the caller
+# re-supplying the flag from memory on a later invocation.
 #
-# The incident this locks: $CLAIMS_DIR/_stack_<agent>/tasks and the molecule both
-# store RAW issue ids, while only the claim-dir slug is namespaced (game-45).
-# `release-stack` re-slugifies via REPO_NS, so a game stack released without
-# `--repo game` released NOTHING, printed "released stack (2 tasks)", exited 0,
-# and deleted both the stack dir and the molecule in the same call — orphaning
-# every claim with no record left to reconstruct them from. Every game id is also
-# a live engine id, so the raw id could never disambiguate on its own.
+# $CLAIMS_DIR/_stack_<agent>/tasks and the molecule both store RAW issue ids,
+# while only the claim-dir slug is namespaced (game-45); release-stack
+# re-slugifies via REPO_NS. Every game id is also a live engine id, so the
+# raw id alone can never disambiguate which repo a stack belongs to.
 #
 # The state is seeded by hand rather than via `fleet-claim stack`, which does
 # live blocker checks. Releases DO reach _release_inactive_issue_labels, so gh is
 # stubbed to a failing no-op: hermetic per scripts/fleet/CLAUDE.md — a stub miss
 # cannot fall through to the real gh, because the stub IS the whole PATH entry.
-#
-# Covers:
-#   - stack stamps the namespace into _stack_<agent>/ns and the molecule
-#   - release-stack with no --repo adopts the recorded namespace (the regression)
-#   - release-stack with the matching --repo still works (positive control)
-#   - engine-lane stack with no --repo still works (negative control)
-#   - a contradicting --repo refuses AND preserves the stack dir + molecule
-#   - a pre-#2857 record (no ns file, no repo: meta) keeps legacy behavior
-#   - molecule resume keeps stdout a bare id and reports the namespace on stderr
-#   - the repo: meta survives a molecule rewrite (advance/resume re-emit)
 
 set -euo pipefail
 
@@ -73,7 +60,7 @@ assert_exit() {
 # seed <case> <ns-token|--legacy> <slug>...
 #   Build the on-disk state `fleet-claim stack` produces: one claim dir per
 #   namespaced slug, a stack dir whose `tasks` holds RAW ids, and a molecule.
-#   `--legacy` omits both namespace fields (the pre-#2857 record shape).
+#   `--legacy` omits both namespace fields (the legacy record shape).
 seed() {
     local case_dir="$TMPROOT/$1" ns="$2"; shift 2
     rm -rf "$case_dir"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for fleet-claim's `reconcile` cross-surface reconciliation pass (#1356).
+# Tests for fleet-claim's `reconcile` cross-surface reconciliation pass.
 #
 # reconcile cross-checks the four claim surfaces — issue/PR labels, open-PR
 # state, host-local FS claims, and reservations — and reports (report-only,
@@ -10,22 +10,22 @@
 # construction is deterministic.
 #
 # Synthetic drift fixture (engine repo):
-#   - FS claim #500 (owner opus-worker-1, created 1h ago, no open PR) → R1
-#     stale host-local claim. Also reserved by opus-worker-1.
-#   - FS claim #501 (owner opus-worker-2, created now, no open PR) → fresh,
-#     must NOT be reaped.
-#   - FS claim #502 (owner opus-worker-3) + reservation opus-worker-9 → #502
+#   - FS claim on issue 500 (owner opus-worker-1, created 1h ago, no open PR)
+#     → R1 stale host-local claim. Also reserved by opus-worker-1.
+#   - FS claim on issue 501 (owner opus-worker-2, created now, no open PR) →
+#     fresh, must NOT be reaped.
+#   - FS claim on issue 502 (owner opus-worker-3) + reservation opus-worker-9
 #     → R3 reservation/claim-owner mismatch (drop the reservation, keep claim).
-#   - issue #503 carries design-blocked + design-unblocked → R4a contradiction
+#   - issue 503 carries design-blocked + design-unblocked → R4a contradiction
 #     (design-unblocked applied later → remove the older design-blocked).
-#   - issue #504 carries queued + in-progress, no claim/PR → R4b stale in-progress.
-#   - PR #600 (head claude/505-orphan, fleet:wip) with no claim → R2 flag only.
-#   - PR #602 (head claude/507-parked, fleet:wip + fleet:design-blocked) with
+#   - issue 504 carries queued + in-progress, no claim/PR → R4b stale in-progress.
+#   - a PR (head claude/505-orphan, fleet:wip) with no claim → R2 flag only.
+#   - a PR (head claude/507-parked, fleet:wip + fleet:design-blocked) with
 #     no claim → R2 must NOT flag: a design-blocked PR is intentionally
 #     claim-less (worker released its claim to park it for the architect per
-#     the design-escalation protocol), not orphaned drift (#1381).
+#     the design-escalation protocol), not orphaned drift.
 #
-# Covers the acceptance criteria of #1356:
+# Covers:
 #   - report-only mutates nothing and writes a well-formed drift-report.json
 #   - --apply clears the stale claim (FS lock + label) and the mismatched
 #     reservation, but leaves the fresh claim alone
@@ -141,7 +141,7 @@ case "$1" in
         # events endpoint; emulate --jq selecting created_at by label name.
         # design-unblocked applied later than design-blocked. The label rides
         # in $FLEET_LABEL_NAME, not argv: `gh api` has no --arg, so
-        # label_added_epoch passes it through the environment (#2781).
+        # label_added_epoch passes it through the environment.
         if printf '%s ' "$@" | grep -q 'events'; then
             case "${FLEET_LABEL_NAME:-}" in
                 *design-unblocked) echo "2026-05-29T02:00:00Z" ;;
@@ -170,15 +170,14 @@ mk_claim() {
 mk_claim 500 opus-worker-1 $((NOW - 3600))   # stale → R1
 mk_claim 501 opus-worker-2 "$NOW"            # fresh → survives
 mk_claim 502 opus-worker-3 "$NOW"            # fresh, but reservation mismatches
-mk_claim 506 opus-worker-4 $((NOW - 3600))   # stale age, BUT PR #601 closes it via body
+mk_claim 506 opus-worker-4 $((NOW - 3600))   # stale age, BUT its PR closes it via body
 mk_claim 508 opus-worker-5 $((NOW - 3600))   # stale age, BUT its owner is live-dispatched on it
 mk_claim 509 opus-worker-6 $((NOW - 3600))   # stale age; a live dispatch exists but by ANOTHER agent
 
 # A dispatch record is the dispatcher's own "this pane is on this item now"
 # (written before launch, consumed at exit). Claim 508's owner is mid-task
-# and has not opened its PR yet; age alone reads that as a wedged claim, and
-# releasing it re-queues the issue under a working pane (a live worker's
-# claim was swept 38 minutes in and offered to the next worker).
+# and has not opened its PR yet; age alone would read that as a wedged claim
+# and release it, re-queuing the issue under a working pane.
 mkdir -p "$FLEET_STATE_DIR/dispatch"
 cat > "$FLEET_STATE_DIR/dispatch/pane-9.json" <<'JSON'
 {"role":"worker","pane":"%9","class":"opus","dispatched_at":"2026-09-14T21:57:05Z","dispatched_epoch":1789423025,"wrapper_pid":1,"claim_marker":1,"runtime":"codex","target":"task:engine:508","agent":"opus-worker-5"}
@@ -190,8 +189,8 @@ cat > "$FLEET_STATE_DIR/dispatch/pane-10.json" <<'JSON'
 {"role":"worker","pane":"%10","class":"opus","dispatched_at":"2026-09-14T21:57:05Z","dispatched_epoch":1789423025,"wrapper_pid":1,"claim_marker":1,"runtime":"codex","target":"task:engine:509","agent":"opus-worker-7"}
 JSON
 
-# Reservations: opus-worker-1 → #500 (consistent, dropped by R1 release),
-#               opus-worker-9 → #502 (owner mismatch vs claim → R3 drop)
+# Reservations: opus-worker-1 → issue 500 (consistent, dropped by R1 release),
+#               opus-worker-9 → issue 502 (owner mismatch vs claim → R3 drop)
 "$FLEET_CLAIM" reserve 500 opus-worker-1 >/dev/null
 "$FLEET_CLAIM" reserve 502 opus-worker-9 >/dev/null
 
@@ -219,11 +218,11 @@ assert r["host"] == "mac"
 rules = {f["rule"] for f in r["findings"]}
 for want in ("R1", "R3", "R4a", "R4b", "R2"):
     assert want in rules, f"missing rule {want}: {rules}"
-# Fresh claim #501 must NOT be an R1 finding.
+# Fresh claim on issue 501 must NOT be an R1 finding.
 r1_targets = {f["target"] for f in r["findings"] if f["rule"] == "R1"}
 assert 500 in r1_targets, "R1 should flag #500"
 assert 501 not in r1_targets, "R1 must NOT flag fresh #501"
-# #506 is stale-aged but its PR closes it via a Closes #506 body ref (non-
+# Issue 506 is stale-aged but its PR closes it via a Closes-body ref (non-
 # standard branch claude/topic-506) — robust PR match must suppress R1.
 assert 506 not in r1_targets, "R1 must NOT flag #506 (PR closes it via body)"
 # Claim 508 is stale-aged with no PR, but its owner is live-dispatched on it: R1
@@ -244,12 +243,12 @@ assert all(f.get("escalate", True) is not False for f in r["findings"] if f["rul
 # Flag-only R2 carries no apply action.
 r2 = [f for f in r["findings"] if f["rule"] == "R2"]
 assert all(f["apply"] is None for f in r2), "R2 must be flag-only"
-# R2 flags the genuinely-orphaned WIP PR #600 ...
+# R2 flags the genuinely-orphaned WIP PR (issue 600) ...
 r2_targets = {f["target"] for f in r2}
 assert 600 in r2_targets, "R2 should flag orphaned WIP PR #600"
-# ... but NOT the design-blocked PR #602: it is intentionally claim-less
-# (parked for the architect), so flagging it as orphaned drift is the #1381
-# false-positive this fix removes.
+# ... but NOT the design-blocked PR (issue 602): it is intentionally claim-less
+# (parked for the architect), so flagging it as orphaned drift would be a
+# false positive.
 assert 602 not in r2_targets, "R2 must NOT flag design-blocked PR #602 (#1381)"
 PY
 
@@ -263,7 +262,7 @@ assert_file_absent "$FLEET_RESERVATIONS_DIR/opus-worker-1.json" "--apply dropped
 assert_removed_contains $'500\tfleet:claim-mac-opus-worker-1' "--apply removed #500 host claim label"
 assert_removed_contains $'500\tfleet:in-progress' "--apply removed #500 fleet:in-progress"
 
-# Fresh claim survives; #506 survives because its PR closes it via body.
+# Fresh claim survives; issue 506 survives because its PR closes it via body.
 assert_dir_present "$FLEET_CLAIMS_DIR/501" "--apply keeps fresh FS claim #501"
 assert_dir_present "$FLEET_CLAIMS_DIR/506" "--apply keeps FS claim #506 (PR closes it via body)"
 assert_dir_present "$FLEET_CLAIMS_DIR/508" "--apply keeps FS claim #508 (owner live-dispatched on it)"

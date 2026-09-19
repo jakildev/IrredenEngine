@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for fleet-dispatcher's GitHub API quota gate (#2221, epic #1394 Q3).
+# Tests for fleet-dispatcher's GitHub API quota gate.
 #
 # Mirrors test_dispatcher_usage_gate.sh's harness against the three
 # github_{core,graphql,search} entries in BUILTIN_PER_TYPE_DEFAULTS.
@@ -53,8 +53,8 @@ export FLEET_STATE_DIR="$TMPROOT/state"
 mkdir -p "$FLEET_STATE_DIR/usage"
 
 # Isolate from the operator's ~/.fleet/fleet-up.conf, same rationale as
-# test_dispatcher_usage_gate.sh T-setup: a host-level per-type override
-# would clobber the baked-default assertions below.
+# test_dispatcher_usage_gate.sh's T-setup: a host-level per-type override
+# would clobber this suite's baked-default assertions.
 export FLEET_CONF=/dev/null
 for _v in $(compgen -A variable | grep '^FLEET_DISPATCHER_USAGE_GATE' || true); do
     unset "$_v"

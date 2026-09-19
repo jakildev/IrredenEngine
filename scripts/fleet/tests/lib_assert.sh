@@ -17,11 +17,11 @@
 # contiguous span — grep -F reads it as a newline-separated pattern LIST, so
 # it reports a match when any one of its lines matches. Pass single-line
 # needles. Tests that need path-existence or exit-code assertions define
-# those locally (see test_fleet_claim_safety_guards.sh).
+# those locally.
 #
 # Sourcing this file also pulls in lib_preflight.sh (the mis-staged-control
 # guard). A suite that resolves a fleet-* wrapper before it gets here sources
-# lib_preflight.sh directly as well — see that file's header.
+# lib_preflight.sh directly as well.
 
 PASS=0
 FAIL=0
@@ -32,8 +32,8 @@ bad() { FAIL=$((FAIL + 1)); echo "  FAIL: $1"; }
 # The mis-staged-control preflight (require_fleet_lib_dir + its auto-fire) lives
 # in lib_preflight.sh, sourced here so every suite that sources this file gets
 # the guard with no edit and with no dependency on whether SCRIPT_DIR was
-# assigned first (#2845). Deriving the directory from BASH_SOURCE rather than
-# $0 is what makes that hold when this file is sourced from a driver script
+# assigned first. Deriving the directory from BASH_SOURCE rather than $0 is
+# what makes that hold when this file is sourced from a driver script
 # elsewhere.
 #
 # A stage carrying lib_assert.sh without lib_preflight.sh beside it is itself
@@ -62,9 +62,6 @@ assert_eq() {
     fi
 }
 
-# Does <haystack> contain <needle> on some single line? Backs both assert_*
-# below.
-#
 # The haystack is handed to grep as a process substitution rather than piped
 # in, and that is load-bearing. `grep -q` stops reading at its first match; with
 # the haystack on the left of a pipe that closes the pipe while printf still has
@@ -77,7 +74,7 @@ assert_eq() {
 # The window is "first match lands before the writer drains", so it opens on
 # haystack size and match position together, not on either alone: a 51 KB
 # haystack whose first match is at byte 19 K is enough, and the same haystack
-# matching near its end is not (#3205).
+# matching near its end is not.
 #
 # The writer still meets a closed pipe when grep stops early — that is now
 # harmless to the verdict, but bash announces it on stderr ("printf: write

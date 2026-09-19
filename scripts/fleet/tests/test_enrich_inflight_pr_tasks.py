@@ -4,17 +4,17 @@ A queued task whose own issue already has an open implementation PR is
 non-actionable off the queue — a parked design-blocked PR releases its
 issue-side claim, so the task drops back into tasks.open looking free while a
 fresh worker would refuse it. The enrichment tags it `inflight_pr` so the
-dispatch resolver skips it (#1726, the #1640 / PR #1700 incident).
+dispatch resolver skips it.
 
 "Its own PR" is a union of two links, each sufficient alone: the
-`claude/<N>-…` branch convention and a `Closes #N` in the PR body (#2672).
+`claude/<N>-…` branch convention and a `Closes #N` in the PR body.
 TestBodyClosesLink covers the body arm; the classes above it cover the branch
 arm and must keep passing unmodified, which is what proves the widening
 preserved the original behaviour.
 
-A third link crosses repos (#3520): a PR in the OTHER fleet repo whose body
-carries GitHub's `Closes owner/repo#N` naming this repo. TestCrossRepoCloses
-covers it; `test_cross_repo_isolation` and `test_body_link_does_not_cross_repos`
+A third link crosses repos: a PR in the OTHER fleet repo whose body carries
+GitHub's `Closes owner/repo#N` naming this repo. TestCrossRepoCloses covers
+it; `test_cross_repo_isolation` and `test_body_link_does_not_cross_repos`
 stay byte-unchanged as the tripwires that the branch arm and the bare body
 arm still do NOT cross.
 
@@ -34,7 +34,7 @@ _loader.exec_module(_mod)
 enrich_inflight_pr_tasks = _mod.enrich_inflight_pr_tasks
 
 # The scout derives pr["closes_issues"] and pr["closes_cross_repo"] at fetch
-# time with this exact call (_fetch_prs_graphql). Fixtures below go through it
+# time with this exact call (_fetch_prs_graphql). Fixtures go through it
 # rather than hardcoding an int list, so the arms actually exercise the
 # closing-keyword grammar — `Fixes`/`Resolves`/lowercase spellings and the int
 # element type included. A hardcoded [2578] would pass even if the parser only
@@ -74,7 +74,7 @@ def _pr_body(number, head_ref, body, labels=None, repo="engine"):
     """A PR record with both closes keys derived from `body` as the scout does.
 
     `repo` is the repo the PR lives in; a trailing keyword with a default so
-    the pre-#3520 call sites (and the byte-unchanged tripwires) still read.
+    the byte-unchanged tripwire call sites still read unchanged.
     """
     pr = _pr(number, head_ref, labels)
     pr["closes_issues"], pr["closes_cross_repo"] = derive_closes_refs(body, repo)
@@ -84,7 +84,6 @@ def _pr_body(number, head_ref, body, labels=None, repo="engine"):
 class TestEnrichInflightPrTasks(unittest.TestCase):
 
     def test_parked_design_blocked_pr_tags_inflight(self):
-        # The #1640 case: open task whose own PR is fleet:wip + design-blocked.
         tasks = [_task("#1640")]
         prs = [_pr(1700, "claude/1640-metal-foreign-canvas-r32i-read",
                    labels=["fleet:wip", "fleet:design-blocked", "fleet:opus"])]
@@ -125,7 +124,7 @@ class TestEnrichInflightPrTasks(unittest.TestCase):
                          state["repos"]["engine"]["tasks"]["open"][0])
 
     def test_prefix_discrimination(self):
-        # #164's task must not match a claude/1640- branch (trailing dash).
+        # Task 164 must not match a claude/1640- branch (trailing dash).
         tasks = [_task("#164")]
         prs = [_pr(1700, "claude/1640-metal", labels=["fleet:wip"])]
         state = _state(engine_tasks=tasks, engine_prs=prs)
@@ -159,7 +158,6 @@ class TestEnrichInflightPrTasks(unittest.TestCase):
         enrich_inflight_pr_tasks(state)
         open_tasks = state["repos"]["engine"]["tasks"]["open"]
         self.assertIn("inflight_pr", open_tasks[0])
-        # #1726 has no matching PR -> stays claimable.
         self.assertNotIn("inflight_pr", open_tasks[1])
 
 
@@ -168,7 +166,7 @@ class TestBodyClosesLink(unittest.TestCase):
 
     Sufficient means the head branch need not also match the `claude/<N>-`
     convention: a PR whose branch names some other issue, or none, still puts
-    its Closes-target in flight. See #2672.
+    its Closes-target in flight.
     """
 
     def test_body_closes_without_branch_match_tags_inflight(self):
@@ -187,7 +185,7 @@ class TestBodyClosesLink(unittest.TestCase):
         self.assertFalse(out["inflight_pr"]["parked"])
 
     def test_fixes_and_resolves_spellings_also_link(self):
-        # The issue names three keywords; assert the two the primary arm above
+        # The issue names three keywords; assert the two the primary arm
         # does not reach, or "Closes-only" would pass every test in this class.
         for keyword in ("Fixes", "Resolves", "resolved"):
             with self.subTest(keyword=keyword):
@@ -234,8 +232,8 @@ class TestBodyClosesLink(unittest.TestCase):
 
     def test_branch_arm_survives_a_body_naming_another_issue(self):
         # The union is `or`, not `and`: a branch-matched PR whose body closes
-        # only some OTHER issue still tags this task. Turning the new clause
-        # into an `and` passes every body-arm test above and fails here.
+        # only some OTHER issue still tags this task. Turning the body-Closes
+        # clause into an `and` passes every other body-arm test and fails here.
         tasks = [_task("#1640")]
         prs = [_pr_body(1700, "claude/1640-metal-foreign-canvas-r32i-read",
                         "Closes #9999", labels=["fleet:design-blocked"])]
@@ -274,7 +272,7 @@ class TestBodyClosesLink(unittest.TestCase):
         # `closes_issues` carries no repo namespace (unlike branch_matches_issue,
         # which takes repo_key), so per-repo isolation rests entirely on the
         # outer loop reading each repo's own prs[]. Flattening that loop would
-        # pass every arm above and fail only here.
+        # pass every other arm and fail only here.
         tasks = [_task("#101")]
         game_prs = [_pr_body(5, "claude/game-hand-named", "Closes #101",
                              labels=["fleet:wip"])]
@@ -323,11 +321,11 @@ class TestBodyClosesLink(unittest.TestCase):
                     state["repos"]["engine"]["tasks"]["open"][0])
 
     def test_a_falsely_closed_fence_leaves_the_task_claimable(self):
-        # Same consequence as the unclosed-fence arm above, reached the other
-        # way: a run CommonMark does NOT accept as a closing fence (mixed
-        # characters, or indented past three spaces) left the block open in
-        # GitHub while this parser ends it, so the code after a false closer
-        # reads as prose and tags a task nobody is implementing.
+        # Same consequence as the unclosed-fence arm, reached the other way: a
+        # run CommonMark does NOT accept as a closing fence (mixed characters,
+        # or indented past three spaces) left the block open in GitHub while
+        # this parser ends it, so the code after a false closer reads as
+        # prose and tags a task nobody is implementing.
         for label, closer in (("mixed backtick/tilde", "```~~~"),
                               ("mixed tilde/backtick", "~~~```"),
                               ("indented four spaces", "    ```"),
@@ -346,10 +344,10 @@ class TestBodyClosesLink(unittest.TestCase):
                     state["repos"]["engine"]["tasks"]["open"][0])
 
     def test_a_legally_closed_fence_still_tags_a_link_after_it(self):
-        # Control against over-shooting the arm above: a real closing fence —
-        # including one legally indented up to three spaces — must still end
-        # its block, or tightening the closer silently drops live links and
-        # every assertion above passes anyway.
+        # Control against over-shooting: a real closing fence — including one
+        # legally indented up to three spaces — must still end its block, or
+        # tightening the closer silently drops live links while every other
+        # assertion still passes.
         for closer in ("```", "   ```"):
             with self.subTest(closer=repr(closer)):
                 tasks = [_task("#2578")]
@@ -364,8 +362,8 @@ class TestBodyClosesLink(unittest.TestCase):
                     ["inflight_pr"]["number"], 2579)
 
     def test_a_real_link_above_an_unclosed_fence_still_tags_inflight(self):
-        # Control for the arm above: the fix must strip what FOLLOWS the
-        # unclosed fence, not silence every body that contains one.
+        # Control: stripping must remove what FOLLOWS the unclosed fence,
+        # not silence every body that contains one.
         tasks = [_task("#2578")]
         prs = [_pr_body(2579, "claude/hand-named-branch",
                         "Closes #2578\n\n```\nCloses #9999\n",
@@ -378,13 +376,13 @@ class TestBodyClosesLink(unittest.TestCase):
             2579)
 
     def test_an_over_indented_opener_still_tags_the_link_below_it(self):
-        # The opposite consequence to the arms above, on the same enricher: a
-        # fence indented four columns is literal text inside an indented code
-        # block, so the reference BELOW the sample is live prose and the task
-        # really is being implemented. Reading the indented line as a fence
-        # opener strips to end-of-body and leaves the task looking unclaimed
-        # while a PR is open on it — duplicate work, the other costly way to
-        # be wrong.
+        # The opposite consequence, on the same enricher: a fence indented
+        # four columns is literal text inside an indented code block, so the
+        # reference BELOW the sample is live prose and the task really is
+        # being implemented. Reading the indented line as a fence opener
+        # strips to end-of-body and leaves the task looking unclaimed while a
+        # PR is open on it — duplicate work, the other costly way to be
+        # wrong.
         for label, opener in (("four spaces", "    ```"),
                               ("a tab", "\t```"),
                               ("six spaces, tilde", "      ~~~")):
@@ -401,10 +399,10 @@ class TestBodyClosesLink(unittest.TestCase):
                     ["inflight_pr"]["number"], 2579)
 
     def test_an_indented_code_block_leaves_the_task_claimable(self):
-        # Control against buying the arm above with an invented link: the run
-        # the opener no longer swallows is still code when it is an indented
-        # block of its own, and a quoted `Closes #N` inside one must not take
-        # a claimable task off the queue.
+        # Control against an invented link: the run the opener no longer
+        # swallows is still code when it is an indented block of its own, and
+        # a quoted `Closes #N` inside one must not take a claimable task off
+        # the queue.
         for label, body in (
                 ("after prose", "What NOT to write:\n\n    Closes #2578\n"),
                 ("at body start", "    Closes #2578\n"),
@@ -456,12 +454,11 @@ class TestBodyClosesLink(unittest.TestCase):
 
 
 class TestCrossRepoCloses(unittest.TestCase):
-    """#3520: a game PR's `Closes jakildev/IrredenEngine#N` is in-flight for engine #N."""
+    """A game PR's `Closes jakildev/IrredenEngine#N` is in-flight for engine #N."""
 
     CROSS = "Closes jakildev/IrredenEngine#3255"
 
     def test_game_pr_cross_repo_closes_tags_engine_task(self):
-        # The fired incident: an engine task whose game PR is approved and open.
         tasks = [_task("#3255")]
         game_prs = [_pr_body(415, "claude/game-3255-classifier-parity",
                              self.CROSS, labels=["fleet:approved"], repo="game")]

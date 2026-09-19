@@ -14,8 +14,7 @@
 #   - conf override beat by env var
 #
 # count-active queries the unified `worker` lane; dispatch records,
-# pane tags, and reservations carry the same `worker` role string
-# (P2-2 renamed the panes; P2-3 removed the legacy-alias shims).
+# pane tags, and reservations carry the same `worker` role string.
 
 set -euo pipefail
 
@@ -94,8 +93,8 @@ chmod +x "$TMPROOT/bin/gh"
 ln -s "$FLEET_CLAIM" "$TMPROOT/bin/fleet-claim"
 export PATH="$TMPROOT/bin:$PATH"
 
-# The dispatch records and pane tags below use the unified `worker`
-# role string with per-pane worker-N worktrees (post-P2-2 layout).
+# The dispatch records and pane tags use the unified `worker` role
+# string with per-pane worker-N worktrees.
 
 # --- Test 1: no records, no reservations -----------------------------------
 echo "T1: empty state — count is 0"
@@ -180,7 +179,7 @@ assert_eq "$n" "2" "worker count dedups same-worktree dispatch+reservation"
 # --- Test 4b: reservation on IDLE pane (resume case) does NOT count --------
 echo "T4b: reservation on idle pane does NOT count (resume case)"
 # Clean slate: drop dispatch records and the prior reservation; reserve
-# #901 for worker-2 again.
+# issue 901 for worker-2 again.
 rm -f "$FLEET_STATE_DIR"/dispatch/*.json
 "$FLEET_CLAIM" release-worktree worker-2 >/dev/null 2>&1 || true
 "$FLEET_CLAIM" reserve 901 worker-2 claude/901-something >/dev/null
@@ -194,10 +193,9 @@ case "$sub" in
     list-panes)
         # Pane reports `zsh` (idle shell). The pgrep stub alongside
         # this tmux stub forces the wrapper-child probe to "not
-        # running" → the new count_active_for_role semantics skip
-        # the reservation as a queued resume signal. "|"-delimited to
-        # match list_pane_state's -F format (the stubs originally
-        # printed tabs and silently parsed as an empty role).
+        # running" → count_active_for_role skips the reservation as a
+        # queued resume signal. "|"-delimited to match list_pane_state's
+        # -F format.
         printf '%%5|worker|zsh\n'
         exit 0
         ;;
@@ -248,9 +246,7 @@ case "$sub" in
     list-panes)
         # pane_current_command=claude → outside the shell allowlist
         # → considered busy without needing the wrapper-child probe.
-        # "|"-delimited to match list_pane_state's -F format — with the
-        # old tab delimiter this line parsed as an empty role and the
-        # busy pane was invisible, so this assertion failed on master.
+        # "|"-delimited to match list_pane_state's -F format.
         printf '%%5|worker|claude\n'
         exit 0
         ;;

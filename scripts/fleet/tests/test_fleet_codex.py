@@ -156,7 +156,7 @@ class Transport(unittest.TestCase):
 
     def test_policy_regenerates_after_upstream_rule_shape_changes(self):
         # A settings.json allow-list change alters rules() output for every
-        # role at once; that must not read as hand-authored (see #3098).
+        # role at once; that must not read as hand-authored.
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp).resolve()
             path = policy.prepare(root, "worker")

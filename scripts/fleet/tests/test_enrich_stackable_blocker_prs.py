@@ -50,9 +50,9 @@ def _task(id_, blocked_by):
 def _pr(number, head_ref, author="bot", labels=None, body=""):
     # Mirror _fetch_prs_graphql: derive closes_issues from the live body at
     # "fetch" time via the scout's own helper (derive_closes_refs, over the
-    # grammar centralized in fleet_branch_match — #2419), so the record matches
+    # grammar centralized in fleet_branch_match), so the record matches
     # the shape enrichment actually consumes. enrich_stackable_blocker_prs
-    # reads closes_issues, not body (#2442) — deriving here (not hardcoding)
+    # reads closes_issues, not body — deriving here (not hardcoding)
     # keeps the test's derivation from drifting off production's. Every
     # fixture here is an engine PR.
     pr = {"number": number, "headRefName": head_ref, "author": author,
@@ -81,7 +81,7 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
 
     def setUp(self):
         # Point PRS_DIR at an empty temp dir so `pr_cache_path.exists()` (the
-        # empty-claim / known-files check, #1751) is deterministic and never
+        # empty-claim / known-files check) is deterministic and never
         # leaks the live ~/.fleet cache. Tests that exercise the diff path write
         # a fixture via _write_pr_cache; the rest leave it absent (files
         # "unknown" → not treated as empty).
@@ -117,8 +117,8 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
         self.assertEqual(task["stackable_blocker_pr"]["author"], "jakildev")
 
     def test_queued_blocked_task_is_enriched(self):
-        """#1527: a queued-blocked task (carries the fleet:blocked-derived
-        `blocked: True` flag) now lives in tasks.open, so enrichment attaches
+        """A queued-blocked task (carries the fleet:blocked-derived
+        `blocked: True` flag) still lives in tasks.open, so enrichment attaches
         the blocker's open PR — the autonomous "feed stacking" half. The
         `blocked` flag must not interfere with enrichment."""
         task = {"id": "#1112", "blocked_by": "#1111", "blocked": True}
@@ -269,9 +269,7 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
 
     def test_single_ref_with_prose_enriched(self):
         """A single #ref followed by explanatory prose still stacks. The epic
-        decomposer emits "#NNN (why)"; the old terse-only gate silently
-        dropped the whole chain (#1309 blocked_by "#1308 (T1 must land
-        first…)" never stacked on #1316, observed 2026-05-28)."""
+        decomposer emits "#NNN (why)"."""
         tasks = [_task("#1309", "#1308 (T1 must land first; stack on its PR)")]
         prs = [_pr(1316, "claude/1308-per-axis-trixel-canvas-infra",
                    author="jakildev")]
@@ -284,12 +282,9 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
                          "claude/1308-per-axis-trixel-canvas-infra")
 
     def test_single_ref_whose_prose_names_the_blockers_own_pr_enriched(self):
-        """#2783 — the prose ref is the blocker's OWN PR, i.e. the very base a
-        stacker should stack on, and counting it as a second blocker withheld
-        that offer for the blocker's whole pre-merge window.
-
-        Live shape at filing: engine #2780 blocked by "#2770 (PR #2772 — …)",
-        where PR #2772's head is claude/2770-witness-roster-empty."""
+        """The prose ref is the blocker's OWN PR, i.e. the very base a
+        stacker should stack on, and counting it as a second blocker would
+        withhold that offer for the blocker's whole pre-merge window."""
         tasks = [_task("#2780", "#2770 (PR #2772 — lands the `_roster_warn` "
                                 "shape this generalizes; rebase on it)")]
         prs = [_pr(2772, "claude/2770-witness-roster-empty", author="jakildev")]
@@ -300,8 +295,9 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
         self.assertEqual(task["stackable_blocker_pr"]["number"], 2772)
 
     def test_prose_ref_restating_a_dependency_still_blocks(self):
-        """#2783 must not become an evasion hole: prose carrying a blocker verb
-        is a real second blocker, so no offer (#1910's guard, reused)."""
+        """Prose carrying a blocker verb is a real second blocker, so no
+        offer — guards against prose becoming an evasion hole for a genuine
+        second blocker."""
         tasks = [_task("#999", "#101 — also blocked by #102")]
         prs = [_pr(1, "claude/101-x"), _pr(2, "claude/102-y")]
         state = _state(engine_tasks=tasks, engine_prs=prs)
@@ -309,7 +305,7 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
         self.assertNotIn("stackable_blocker_pr",
                          state["repos"]["engine"]["tasks"]["open"][0])
 
-    # ---- #1751: non-stackable base-state rejection (offer side) -----------
+    # ---- non-stackable base-state rejection (offer side) -----------
 
     def _assert_no_offer(self, labels=None, cached_files="unset"):
         """A single blocker PR with the given labels / cached diff yields NO
@@ -331,8 +327,7 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
         self._assert_no_offer(labels=["human:wip"])
 
     def test_design_unblocked_base_no_field(self):
-        """A just-design-unblocked skeleton is not offered (#1751 / the
-        2026-06-06 empty-skeleton hazard)."""
+        """A just-design-unblocked skeleton is not offered."""
         self._assert_no_offer(labels=["fleet:design-unblocked"])
 
     def test_frozen_design_base_offered(self):
@@ -358,7 +353,7 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
 
     def test_empty_claim_base_no_field(self):
         """An OPEN base whose cached diff is empty (claim-commit-only skeleton)
-        is not offered — the 2026-06-06 empty-claim replay."""
+        is not offered."""
         self._assert_no_offer(labels=None, cached_files=[])
 
     def test_clean_nonempty_open_base_enriched(self):
@@ -376,7 +371,7 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
     def test_closes_n_body_match_offered(self):
         """A blocker PR on a non-standard branch (no claude/<N>-*) that Closes,
         Fixes, or Resolves the blocker issue in its body is matched and offered —
-        the scout offer now mirrors find-stackable-blockers' branch-OR-Closes
+        the scout offer mirrors find-stackable-blockers' branch-OR-Closes
         union.  One subTest per keyword family."""
         keywords = [
             ("Closes", "Closes #1111"),
@@ -410,19 +405,19 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
         'unknown' is not treated as empty, so a not-yet-cached base isn't
         suppressed. The claim gate re-checks the diff live."""
         tasks = [_task("#1112", "#1111")]
-        prs = [_pr(536, "claude/1111-x")]  # no cache fixture written
+        prs = [_pr(536, "claude/1111-x")]
         state = _state(engine_tasks=tasks, engine_prs=prs)
         enrich_stackable_blocker_prs(state)
         self.assertIn("stackable_blocker_pr",
                       state["repos"]["engine"]["tasks"]["open"][0])
 
-    # ---- #2775: suppress the offer when the task's own issue has a PR -----
+    # ---- suppress the offer when the task's own issue has a PR -----
 
     def test_own_inflight_pr_suppresses_offer(self):
         """A task carrying `inflight_pr` (its own issue already has an open
         PR) must not also get a `stackable_blocker_pr` offer — fleet-claim's
         duplicate-open-PR guard refuses every claim such an offer would
-        enable (#2586), so emitting it advertises a claim no worker can
+        enable, so emitting it advertises a claim no worker can
         complete."""
         task = _task("#2321", "#2385")
         task["inflight_pr"] = {"number": 2393, "headRefName": "claude/2321-x",
@@ -435,8 +430,7 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
 
     def test_no_inflight_pr_still_offered(self):
         """Guard against over-suppression: a task with a stackable blocker
-        and no `inflight_pr` field still gets its offer (the game #287 /
-        #345 shape from #2775)."""
+        and no `inflight_pr` field still gets its offer."""
         task = _task("#287", "#285")
         prs = [_pr(339, "claude/285-x")]
         state = _state(engine_tasks=[task], engine_prs=prs)
@@ -446,7 +440,7 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
         self.assertEqual(out["stackable_blocker_pr"]["number"], 339)
 
     def test_closes_n_offer_survives_304_reuse(self):
-        """#2442: the Closes-#N offer must survive the 304-reuse path. The
+        """The Closes-#N offer must survive the 304-reuse path. The
         prev list fetch_prs serves on a 304 is body-stripped (exactly what
         state.json holds after the post-enrich body pop), retaining only the
         derived closes_issues field. A blocker PR on a non-standard branch that
@@ -466,17 +460,16 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
         self.assertIn("stackable_blocker_pr", task)
         self.assertEqual(task["stackable_blocker_pr"]["number"], 540)
     # -----------------------------------------------------------------
-    # #2523 — `Blocked by: #<PR>`: the blocker ref names an issue-less open
-    # PR by its own number. Neither the branch arm nor the Closes arm can
-    # ever resolve that (the PR has no backing issue), so before the number
-    # arm the task was unpickable for its blocker's whole pre-merge window.
+    # `Blocked by: #<PR>`: the blocker ref names an issue-less open PR by
+    # its own number. Neither the branch arm nor the Closes arm can ever
+    # resolve that (the PR has no backing issue).
     # -----------------------------------------------------------------
 
     def test_pr_number_blocker_ref_offered(self):
         """The blocker ref IS the open PR's own number: non-matching branch,
         no Closes ref, no backing issue → still offered as a stackable base.
-        This is the #2523 specimen shape (#2513 → PR #2508). Fails before the
-        number arm, where both other arms are False and the offer is skipped."""
+        Fails before the number arm, where both other arms are False and the
+        offer is skipped."""
         tasks = [_task("#2513", "#2508")]
         prs = [_pr(2508, "claude/render-stage-select-dedup", author="jakildev")]
         self._write_pr_cache("engine", 2508, ["engine/render/x.cpp"])
@@ -517,7 +510,7 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
 
     def test_pr_number_blocker_ref_survives_304_reuse(self):
         """The number arm reads `number`, never `body`, so a body-stripped
-        304-reuse record (#2442) offers identically. Guards against a future
+        304-reuse record offers identically. Guards against a future
         refactor routing the arm through the body."""
         tasks = [_task("#2513", "#2508")]
         prs = _strip_bodies([_pr(2508, "claude/render-stage-select-dedup")])
@@ -530,8 +523,8 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
             ["stackable_blocker_pr"]["number"], 2508)
 
     def test_pr_number_blocker_ref_offered_game_side(self):
-        """The form is not engine-specific — game #349 → PR #348 is the live
-        specimen. Enrichment covers both repos, so the game arm is exercised."""
+        """The form is not engine-specific. Enrichment covers both repos, so
+        the game arm is exercised."""
         tasks = [_task("#349", "#348")]
         prs = [_pr(348, "claude/game-docs-cast-timeline")]
         state = _state(game_tasks=tasks, game_prs=prs)
@@ -541,11 +534,10 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
             ["stackable_blocker_pr"]["number"], 348)
 
     # -----------------------------------------------------------------
-    # #2523 AC 3 — the non-offer path must not be silent (#2442's lesson).
+    # The non-offer path must not be silent.
     # -----------------------------------------------------------------
 
     def _capture_log(self):
-        """Swap _mod.log for a collector; restored via addCleanup."""
         lines = []
         orig = _mod.log
         _mod.log = lines.append
@@ -554,8 +546,7 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
 
     def test_zero_match_suppression_logs(self):
         """0 open PRs match the blocker → the skip is logged with the task and
-        the blocker ref. This silent `continue` is what made #2523 need a
-        source read to diagnose."""
+        the blocker ref."""
         lines = self._capture_log()
         tasks = [_task("#1112", "#1111")]
         prs = [_pr(999, "claude/2000-unrelated")]
@@ -611,16 +602,15 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
 
 
 class TestFetchPrs304Reuse(unittest.TestCase):
-    """#2442 Phase 3: fetch_prs's 304 fast path must not reuse a prev whose
-    records predate the closes_issues field (the first tick after the deploy
-    that added it) — that would re-strand every Closes-only stack base until an
-    unrelated ETag flip, re-creating the exact defect. A stale record ⇒ cache
-    desync ⇒ fall through to a fresh fetch.
+    """fetch_prs's 304 fast path must not reuse a prev whose records predate
+    the closes_issues field (the first tick after the deploy that added it) —
+    that would re-strand every Closes-only stack base until an unrelated
+    ETag flip. A stale record ⇒ cache desync ⇒ fall through to a fresh fetch.
 
-    The guard is now the pr["schema"] version marker (#3037), which subsumes
-    that key-presence test: a record predating closes_issues also predates the
-    marker, so the #2442 case still refetches. The generalization's own cases
-    (a shape change that adds no key) live in test_state_projection_size.py.
+    The guard is the pr["schema"] version marker, which subsumes the
+    key-presence test: a record predating closes_issues also predates the
+    marker, so that case still refetches. The generalization's own cases (a
+    shape change that adds no key) live in test_state_projection_size.py.
 
     Hermetic: both network seams (conditional_get, _fetch_prs_graphql) are
     stubbed so no live GitHub call fires (scripts/fleet/CLAUDE.md)."""
@@ -652,7 +642,7 @@ class TestFetchPrs304Reuse(unittest.TestCase):
     def test_refetches_when_prev_lacks_closes_issues(self):
         """A prev predating the field (no closes_issues key, and so no schema
         marker either) is cache desync: fetch_prs ignores it and fires the fresh
-        fetch despite the 304. Fails on pre-#2442 master, which returned prev
+        fetch despite the 304. Without this guard, prev would be returned
         unconditionally on a 304."""
         prev = [{"number": 9, "headRefName": "claude/9-x"}]  # pre-field record
         self.assertIs(_mod.fetch_prs("repo", prev=prev), self._sentinel)

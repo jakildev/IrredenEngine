@@ -4,7 +4,7 @@
 # These suites are not CMake tests, so `ctest` never sees them; this runner
 # and the `fleet-tests.yml` workflow that calls it are the only things that
 # execute them. Keep that workflow wired — an unexecuted suite goes red
-# silently and stays that way (see #2712).
+# silently and stays that way.
 #
 # Discovery is by glob, so a new suite is picked up with no registration
 # step. lib_assert.sh is deliberately named outside the test_* pattern and
@@ -27,7 +27,7 @@
 # A suite that cannot find its subject under test should print
 # "SKIP: <reason>" to stderr and exit 3 — that is the shared skip status
 # this runner recognizes. Do not `exit 0` from a guard that never actually
-# exercised the subject; that counts as an unverified PASS (#2786).
+# exercised the subject; that counts as an unverified PASS.
 #
 # Exit status:
 #   0  every selected suite passed or was skipped (or --list / --help)
@@ -60,7 +60,7 @@ while [[ $# -gt 0 ]]; do
         # Print the header block by *shape* (every comment line after the
         # shebang, stopping at the first line of code) rather than a fixed
         # line range — a range silently slices the wrong text the moment the
-        # header grows or shrinks (#2436).
+        # header grows or shrinks.
         -h|--help)  awk 'NR>1 && !/^#/{exit} NR>1{sub(/^# ?/, ""); print}' "$0"; exit 0 ;;
         *)          die_usage "unknown argument '$1'" ;;
     esac
@@ -68,9 +68,6 @@ done
 
 [[ "$per_timeout" =~ ^[0-9]+$ ]] || die_usage "--timeout takes a non-negative integer"
 
-# ----------------------------------------------------------------------
-# Discover: test_*.sh run under bash, test_*.py under python3.
-# ----------------------------------------------------------------------
 suites=()
 for f in "$TESTS_DIR"/test_*.sh "$TESTS_DIR"/test_*.py; do
     [[ -f "$f" ]] || continue                       # unmatched glob
@@ -99,9 +96,6 @@ if [[ "$per_timeout" -gt 0 ]]; then
     fi
 fi
 
-# ----------------------------------------------------------------------
-# Run: one process per suite, cwd = tests dir (how they run by hand).
-# ----------------------------------------------------------------------
 cd "$TESTS_DIR" || exit 1
 
 passed=0
@@ -109,7 +103,7 @@ failed_names=()
 skipped_names=()
 
 # Skip status: a suite whose subject under test is missing exits with this
-# code instead of 0, so a vacuous run is never folded into "passed" (#2786).
+# code instead of 0, so a vacuous run is never folded into "passed".
 SKIP_STATUS=3
 
 for f in "${suites[@]}"; do
