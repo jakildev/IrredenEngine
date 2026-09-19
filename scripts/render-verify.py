@@ -36,6 +36,15 @@ expectation, not a jittery captured reference, so it is deterministic at zoom
 and shared across backends. A manifest whose shots are *all* structural_only
 commits no reference PNGs at all.
 
+The optional top-level ``demo_args`` manifest key is the list of arguments the
+*default* pass appends after ``--auto-screenshot N``, so a manifest can pin the
+scene its references were blessed under (perf_grid's ``--mode voxel_set
+--no-overlay …`` fixture) rather than relying on the CLI to supply it — a flag
+that lives only on the command line gates nothing under ``--all``. CLI
+``--demo-arg`` values append after the manifest's, and a manifest without the
+key runs the demo bare, exactly as before. The per-pass ``demo_args`` inside
+``extra_runs`` does not inherit it: a pass that wants the fixture restates it.
+
 The optional ``extra_runs`` manifest block declares additional capture passes
 of the same target, each with its own demo args and its own gated reference
 subset. This gates shots the default scene *suppresses* — e.g. canvas_stress's
@@ -507,6 +516,24 @@ def _validate_structural_only(structural_only: set[str], shots: list[str],
             )
 
 
+def _parse_demo_args(manifest: dict[str, Any]) -> list[str]:
+    """Validate the optional top-level ``demo_args`` key (default pass).
+
+    A list of strings appended to the default pass's run command after
+    ``--auto-screenshot N``; CLI ``--demo-arg`` values follow it. Absent (or
+    empty) means the default pass runs the demo bare. Unlike an ``extra_runs``
+    entry's ``demo_args`` this may be empty — the key is optional, so an empty
+    list and a missing key mean the same thing.
+    """
+    raw = manifest.get("demo_args", [])
+    if not isinstance(raw, list) or not all(isinstance(a, str) for a in raw):
+        raise SystemExit(
+            "manifest 'demo_args' must be a list of strings (the args the "
+            "default pass appends after --auto-screenshot)"
+        )
+    return raw
+
+
 def _parse_extra_runs(manifest: dict[str, Any]) -> list[dict[str, Any]]:
     """Validate + normalize the optional ``extra_runs`` manifest block.
 
@@ -678,6 +705,9 @@ def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
     # `_parse_extra_runs` applies to each extra pass.
     structural_only: set[str] = set(manifest.get("structural_only", []))
     _validate_structural_only(structural_only, shot_labels, structural_block)
+    # The default pass's scene-selecting args, if the manifest pins any; CLI
+    # --demo-arg values append after them.
+    default_demo_args = _parse_demo_args(manifest) + args.demo_arg
     # Optional second/third capture passes with their own demo args + gated
     # reference subset (e.g. canvas_stress `--only compare`). Empty for a
     # single-pass manifest, so the default path is untouched.
@@ -696,6 +726,9 @@ def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
         f"backend={backend} warmup={warmup}"
     )
     print(f"[render-verify] {len(shot_labels)} shots: {', '.join(shot_labels)}")
+    if default_demo_args:
+        print(f"[render-verify] default pass demo args: "
+              f"{' '.join(default_demo_args)}")
 
     if extra_runs:
         print(f"[render-verify] {len(extra_runs)} extra run(s): "
@@ -736,7 +769,7 @@ def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
     crashes: list[tuple[int, str]] = []
     crash_main = _run_capture(
         worktree=worktree, target=target, shots_dir=shots_dir,
-        warmup=warmup, timeout=args.timeout, demo_args=args.demo_arg,
+        warmup=warmup, timeout=args.timeout, demo_args=default_demo_args,
         pass_label="default")
     if crash_main is not None:
         crashes.append(crash_main)
@@ -955,7 +988,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="Skip `fleet-build`; assume the target is already built.")
     ap.add_argument("--demo-arg", action="append", default=[], metavar="ARG",
                     help="Extra argument passed through to the DEFAULT pass's "
-                         "demo run after --auto-screenshot (repeatable; "
+                         "demo run after --auto-screenshot and after any "
+                         "manifest top-level 'demo_args' (repeatable; "
                          "manifest 'extra_runs' passes use their own declared "
                          "demo_args). Use to prove a feature flag is output-"
                          "neutral against the committed references — e.g. "
