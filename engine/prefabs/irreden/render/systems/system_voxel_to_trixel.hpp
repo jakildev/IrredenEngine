@@ -17,6 +17,7 @@
 #include <irreden/render/components/component_canvas_local_rotation.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_triangle_canvas_background.hpp>
+#include <irreden/render/canvas_clear.hpp>
 #include <irreden/render/cull_viewport_state.hpp>
 #include <irreden/render/sun_shadow_constants.hpp>
 #include <irreden/render/camera.hpp>
@@ -104,26 +105,6 @@ inline const std::vector<std::uint32_t> &buildChunkVisibilityMask(
 // `buildVoxelFrameData` now lives in `<irreden/render/voxel_frame_data.hpp>`
 // (shared with COMPUTE_VOXEL_AO + LIGHTING_TO_TRIXEL, which re-author the
 // iterating canvas's frame data per dispatch for re-voxelized canvases).
-
-inline void
-clearCanvasAndDistances(IREntity::EntityId canvasEntity, C_TriangleCanvasTextures &canvas) {
-    auto background = IREntity::getComponentOptional<C_TriangleCanvasBackground>(canvasEntity);
-    if (background.has_value()) {
-        (*background.value()).clearCanvasWithBackground(canvas);
-    } else {
-        canvas.clear();
-    }
-    // Distance buffer must be reset every frame regardless of whether the
-    // background updated the color canvas. clearCanvasWithBackground may
-    // skip on throttled frames (kPulsePattern) or no-op (kGradient), but
-    // the voxel-to-trixel pass writes per-pixel distances each frame.
-    // Use device-level clearTexImage rather than Texture2D::clear —
-    // on Metal the Texture2D::clear path fails to clear R32I textures
-    // reliably, leaving stale distances that cull visible voxels.
-    static constexpr std::int32_t kDistanceClear =
-        static_cast<std::int32_t>(IRConstants::kTrixelDistanceMaxDistance);
-    IRRender::device()->clearTexImage(canvas.getTextureDistances(), 0, &kDistanceClear);
-}
 
 inline void syncEntityIds(C_VoxelPool &pool, int liveCount, Buffer *entityIdBuf) {
     if (!pool.isEntityIdsDirty()) {

@@ -267,3 +267,40 @@ def raster_polygon(mask: bytearray, w: int, h: int,
         right = min(w, math.ceil(max(intersections) - .5))
         if right > left:
             mask[y * w + left:y * w + right] = bytes([label]) * (right - left)
+
+
+def raster_polygon_depth(labels: bytearray, depth: list[float], w: int, h: int,
+                         polygon: list[tuple[float, float, float]], label: int) -> None:
+    """Fill a convex planar polygon into a label mask with a per-pixel depth test.
+
+    Each vertex is ``(x, y, d)``: framebuffer position plus the depth the
+    engine sorts on (view-frame x+y+z). Depth is affine over the screen for an
+    orthographic projection of a plane, so it is interpolated from three
+    vertices and compared at each pixel centre; the nearer (smaller) depth
+    owns the pixel. A polygon that projects to a line is skipped.
+    """
+    (x0, y0, d0), (x1, y1, d1), (x2, y2, d2) = polygon[0], polygon[1], polygon[-1]
+    det = (x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0)
+    if abs(det) < 1e-12:
+        return
+    slope_x = ((d1 - d0) * (y2 - y0) - (d2 - d0) * (y1 - y0)) / det
+    slope_y = ((d2 - d0) * (x1 - x0) - (d1 - d0) * (x2 - x0)) / det
+    flat = [(x, y) for x, y, _ in polygon]
+    edges = list(zip(flat, flat[1:] + flat[:1]))
+    first = max(0, math.ceil(min(y for _, y in flat) - .5))
+    last = min(h, math.ceil(max(y for _, y in flat) - .5))
+    for y in range(first, last):
+        intersections = []
+        for (ax, ay), (bx, by) in edges:
+            if min(ay, by) <= y + .5 < max(ay, by):
+                intersections.append(ax + (y + .5 - ay) * (bx - ax) / (by - ay))
+        if len(intersections) < 2:
+            continue
+        left = max(0, math.ceil(min(intersections) - .5))
+        right = min(w, math.ceil(max(intersections) - .5))
+        row = y * w
+        for x in range(left, right):
+            d = d0 + (x + .5 - x0) * slope_x + (y + .5 - y0) * slope_y
+            if d < depth[row + x]:
+                depth[row + x] = d
+                labels[row + x] = label

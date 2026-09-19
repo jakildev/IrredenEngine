@@ -32,7 +32,8 @@ layout(std140, binding = 23) uniform ShapesFrameData {
     uniform int tileGridX;
     // Smooth camera Z-yaw. 1 = continuous-yaw SDF path (full visualYaw query +
     // continuous center reposition + yawedIsoDistance depth); 0 = cardinal
-    // rasterYaw + faceDeform path. Set per canvas (main world canvas only).
+    // rasterYaw + faceDeform path. Set per canvas (the main world canvas and
+    // entity canvases).
     // smoothYawEnabled and _faceDeformPad fill the 8 bytes before faceDeform so
     // the block size matches the C++ sizeof exactly.
     uniform int smoothYawEnabled;
@@ -745,8 +746,8 @@ void main() {
     // The shape center repositions continuously (pos3DtoPos2DIsoYawed) and the
     // surface query rotates by the continuous yaw, so shapes glide between
     // cardinals alongside the per-axis voxel canvases. Gated per canvas by
-    // smoothYawEnabled (main world canvas only; detached per-entity canvases
-    // keep the faceDeform path).
+    // smoothYawEnabled (the main world canvas and entity canvases; other
+    // canvases keep the faceDeform path).
     bool smoothYaw = (smoothYawEnabled != 0);
     float yawC = smoothYaw ? cos(visualYaw) : cardinalCosSin.x;
     float yawS = smoothYaw ? sin(visualYaw) : cardinalCosSin.y;
