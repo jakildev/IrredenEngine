@@ -43,8 +43,8 @@ with that density, or the gather aliases.
   - `densityZoom = cameraZoom / cubeSub`, used as the **quad model scale**
     (`fbRes × densityZoom × entityScale`) so apparent size becomes
     `worldExtent × zoom` — the GRID twin's size.
-  - `cameraTrixelOffset_ = -entityIso × cubeSub` so the gather's
-    `trixelOriginModifier` parity bit is computed in canvas-texel units.
+  - `cameraTrixelOffset_ = -entityIso × cubeSub` so the gather's canvas
+    offset (its hovered-texel position term) is in canvas-texel units.
   - `canvasZoomLevel_ = densityZoom` (the single value that plays both roles on
     the main canvas).
   - The #1883 texel-snap granularity divides by `cubeSub` too — the snap target

@@ -97,11 +97,11 @@ fragment FragmentOut f_trixel_to_framebuffer(
     const float2 textureSize = float2(triangleColors.get_width(), triangleColors.get_height());
     const int2 z1 = trixelOriginOffsetZ1(int2(textureSize));
 
-    // Hover uses world parity; local display triangles use canvas parity.
+    // Every texture read and the hover compare are raw; local display
+    // triangles use canvas parity. Nothing here maps onto the triangle
+    // lattice (trixelFramebufferSamplePosition): hover identity follows
+    // display identity — docs/design/trixel-parity-shift-442-investigation.md.
     const float2 originRaw = in.texCoords * textureSize;
-    const int originModifier = trixelOriginModifier(z1, frameData.canvasOffset);
-    const float2 originShifted =
-        trixelFramebufferSamplePosition(originRaw, originModifier);
 
     float2 displayOrigin = originRaw;
     if (frameData.trixelSampleLayout == 1) {
@@ -110,7 +110,6 @@ fragment FragmentOut f_trixel_to_framebuffer(
             any(displayOrigin >= textureSize)) discard_fragment();
     }
     const uint2 sampleCoord = trixelCanvasReadCoord(displayOrigin, textureSize);
-    const uint2 hoverCoord = trixelCanvasReadCoord(originShifted, textureSize);
 
     float4 color = triangleColors.read(sampleCoord);
     const int rawDist = triangleDistances.read(sampleCoord).r;
@@ -153,16 +152,19 @@ fragment FragmentOut f_trixel_to_framebuffer(
         frameData.mouseHoveredTriangleIndex * float(subdivisions) +
         float2(z1) +
         frameData.canvasOffset;
-    const int2 originIndex = int2(floor(originShifted));
+    // Hovered = the fragments that display the cursor's raw texel (CPU
+    // mouseCanvasTexelWorld). They all read the same texel below, so the
+    // non-atomic buffer write is value-identical across writers.
+    const int2 originIndex = int2(floor(displayOrigin));
     const int2 hoveredIndex = int2(floor(hoveredPosition));
     const bool isMouseHovered = all(hoveredIndex == originIndex);
     if (isMouseHovered) {
         if (color.a >= 0.1f && depth <= hovered.hoveredDepth) {
             // Strip the per-trixel priority carrier so picking reports the true
-            // id. The hover read uses the shifted hoverCoord (kept in lockstep
-            // with CPU mouseTrixelPositionWorld), distinct from the sampleCoord
-            // tier read.
-            const uint2 entityId = decodeEntityId(triangleEntityIds.read(hoverCoord).rg);
+            // id. Read at sampleCoord, the texel the color and depth gate above
+            // sampled: stage 2 stores color and id together, so this is the id
+            // of what the fragment displays.
+            const uint2 entityId = decodeEntityId(triangleEntityIds.read(sampleCoord).rg);
             if (any(entityId != uint2(0u))) {
                 hovered.hoveredEntityId = entityId;
                 hovered.hoveredDepth = depth;

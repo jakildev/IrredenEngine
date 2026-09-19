@@ -506,11 +506,15 @@ inline uint2 trixelCanvasReadCoord(float2 origin, float2 textureSize) {
 
 // Mirror of `trixelFramebufferSamplePosition` in `ir_iso_common.glsl` — the
 // parity bit + fract sub-pixel test pick which of the iso cell's two trixels
-// this fragment maps to, byte-identical to GLSL/CPU `pos2DIsoToTriangleIndex`.
+// a canvas position maps to, byte-identical to GLSL/CPU `pos2DIsoToTriangleIndex`.
 //
-// RECTANGULAR display uses raw coordinates and reserves this mapping for
-// hover. LOCAL_TRIANGLES supplies canvas-local parity and a row-corrected
-// query; its caller rejects out-of-bounds results before texture reads.
+// The trixel->framebuffer gather does not use it in RECTANGULAR display:
+// every texture read — color, depth, tier and the hover entity id — and the
+// hover compare sample the raw texel (the cell it selects straddles two raw
+// texel rows, so it cannot name one stored texel). LOCAL_TRIANGLES supplies
+// canvas-local parity and a row-corrected query through
+// localTrixelFramebufferSamplePosition; its caller rejects out-of-bounds
+// results before texture reads.
 // Shifting the RECTANGULAR color/depth reads produces a 1px sawtooth on every
 // iso-diagonal and vertical silhouette plus a garbage top-canvas-row line
 // (`origin.y - 1` underflow at row 0). Derivation:

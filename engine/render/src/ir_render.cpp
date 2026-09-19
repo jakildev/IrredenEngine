@@ -249,18 +249,32 @@ ivec2 worldPos3DToMouseScreenPx(vec3 worldPos) {
     return IRMath::roundVec(outputView + offset - bufferCorrection);
 }
 
+namespace {
+
+// Cursor in subdivision-scaled canvas iso units. The CPU iso frame sits one
+// texel up-left of the raw canvas index, hence the `+ (1, 1)` both
+// mouse-index accessors apply after their own mapping.
+vec2 mouseCanvasIsoScaled() {
+    const int subdivisions = getVoxelRenderEffectiveSubdivisions();
+    return IRRender::mousePosition2DIsoWorldRender() * static_cast<float>(subdivisions);
+}
+
+} // namespace
+
 ivec2 mouseTrixelPositionWorld() {
     const ivec2 canvasSize = getRenderManager().getMainCanvasSizeTriangles();
     const ivec2 z1 = IRMath::trixelOriginOffsetZ1(canvasSize);
     const int shaderMod = (z1.x + z1.y) & 1;
 
-    const int subdivisions = getVoxelRenderEffectiveSubdivisions();
-    const vec2 scaledMousePos =
-        IRRender::mousePosition2DIsoWorldRender() * static_cast<float>(subdivisions);
-
-    const vec2 triIndex = IRMath::pos2DIsoToTriangleIndex(scaledMousePos, shaderMod);
+    const vec2 triIndex = IRMath::pos2DIsoToTriangleIndex(mouseCanvasIsoScaled(), shaderMod);
     // Use floor() not truncation: truncation gives 0 for -0.5..0, breaking negative x coords
     return ivec2(IRMath::floor(triIndex + vec2(1, 1)));
+}
+
+ivec2 mouseCanvasTexelWorld() {
+    // Same frame alignment as mouseTrixelPositionWorld, minus its lattice
+    // shift: the raw texel, which is what the gather's display reads index.
+    return ivec2(IRMath::floor(mouseCanvasIsoScaled() + vec2(1, 1)));
 }
 
 IREntity::EntityId getEntityIdAtMouseTrixel() {

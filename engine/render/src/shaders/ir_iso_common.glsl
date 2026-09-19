@@ -525,18 +525,19 @@ int trixelOriginModifier(ivec2 trixelCanvasOffsetZ1, vec2 frameCanvasOffset) {
             int(canvasOffsetFloored.x) + int(canvasOffsetFloored.y)) & 1;
 }
 
-// Trixel-cell diagonal split. The trixel->framebuffer gather
-// (f_trixel_to_framebuffer) samples the canvas at
-// `origin = TexCoords * textureSize`. Each iso texel-cell holds two triangles
-// split along a diagonal; this resolves which half a fragment covers by
+// Trixel-cell diagonal split. Each iso texel-cell holds two triangles split
+// along a diagonal; this resolves which half a canvas position covers by
 // conditionally decrementing `origin.y` one row (parity bit + a sub-pixel
 // `fract` test). It only ever adjusts `.y`, and is byte-identical to CPU
-// `pos2DIsoToTriangleIndex` (ir_math.cpp), so GPU and CPU agree on which
-// trixel the mouse is over.
+// `pos2DIsoToTriangleIndex` (ir_math.cpp).
 //
-// RECTANGULAR display uses raw coordinates and reserves this mapping for
-// hover. LOCAL_TRIANGLES supplies canvas-local parity and a row-corrected
-// query; its caller rejects out-of-bounds results before texture reads.
+// The trixel->framebuffer gather does not use it in RECTANGULAR display:
+// every texture read — color, depth, tier and the hover entity id — and the
+// hover compare sample the raw texel (the cell it selects straddles two raw
+// texel rows, so it cannot name one stored texel). LOCAL_TRIANGLES supplies
+// canvas-local parity and a row-corrected query through
+// localTrixelFramebufferSamplePosition; its caller rejects out-of-bounds
+// results before texture reads.
 vec2 trixelFramebufferSamplePosition(vec2 origin, int originModifier) {
     vec2 originFlooredComp = floor(origin);
     vec2 fractComp = fract(origin);

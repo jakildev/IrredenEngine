@@ -133,7 +133,10 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             frameData.frameData_.effectiveSubdivisionsForHover_ = vec2(1.0f);
             frameData.frameData_.showHoverHighlight_ = 0.0f;
         } else {
-            const ivec2 hoverSubdiv = IRRender::mouseTrixelPositionWorld();
+            // The raw canvas texel, not the triangle-lattice index: the gather
+            // gates hover on `floor(displayOrigin)`, so every fragment that
+            // displays this texel — and only those — reports its id.
+            const ivec2 hoverSubdiv = IRRender::mouseCanvasTexelWorld();
             const float subdiv = static_cast<float>(effectiveSubdivisions);
             frameData.frameData_.mouseHoveredTriangleIndex_ = vec2(hoverSubdiv) / vec2(subdiv);
             frameData.frameData_.effectiveSubdivisionsForHover_ = vec2(subdiv, 0.0f);
