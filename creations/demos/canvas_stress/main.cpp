@@ -582,8 +582,8 @@ Color reVoxelizeVerifyColor(vec3 modelPos, ivec3 size) {
 // stale exposed-mask defect (the distance buffer fills gated holes, uniform color
 // masks wrong faces), so the discriminating solid must be multi-color (and the
 // carve makes it sparse/concave so rotation changes which faces are exposed).
-// Two unit SDF box markers on a focused voxel canvas (--focus-mixed-shape):
-// world entities at --mixed-shape-at and three units along +x from it, so the
+// Two SDF box markers on a focused voxel canvas (--focus-mixed-shape):
+// world entities separated along +x with a two-cell gap, so the
 // shape pass's owner-relative placement is measured against the world
 // positions the composite puts the canvas at.
 void spawnMixedShapeMarkers(EntityId canvasEntity) {
@@ -593,10 +593,17 @@ void spawnMixedShapeMarkers(EntityId canvasEntity) {
         const std::vector<float> &at = args.getFloats("--mixed-shape-at");
         first = vec3(at[0], at[1], at[2]);
     }
-    C_ShapeDescriptor marker{IRRender::ShapeType::BOX, vec4(1.0f), Color{240, 180, 40, 255}};
+    const float size = static_cast<float>(IRMath::max(args.getInt("--mixed-shape-size"), 1));
+    C_ShapeDescriptor marker{IRRender::ShapeType::BOX, vec4(size), Color{240, 180, 40, 255}};
+    if (args.getFlag("--mixed-shape-hollow")) {
+        marker.flags_ |= IRMath::SDF::SHAPE_FLAG_HOLLOW;
+    }
+    if (args.getFlag("--mixed-shape-depth-color")) {
+        marker.flags_ |= IRMath::SDF::SHAPE_FLAG_DEPTH_COLOR;
+    }
     marker.canvasEntity_ = canvasEntity;
     IREntity::createEntity(C_LocalTransform{first}, marker);
-    IREntity::createEntity(C_LocalTransform{first + vec3(3.0f, 0.0f, 0.0f)}, marker);
+    IREntity::createEntity(C_LocalTransform{first + vec3(size + 2.0f, 0.0f, 0.0f)}, marker);
 }
 
 // `initialRotation` seeds a clear off-cardinal pose so even shot 0 reads as true-3D.
@@ -1122,9 +1129,12 @@ void registerArgs() {
     args.numbers(
         "--mixed-shape-at",
         "World position <x> <y> <z> of the first --focus-mixed-shape marker (default 3 0 0); "
-        "the second sits three units along +x",
+        "the second sits size + 2 units along +x",
         3
     );
+    args.integer("--mixed-shape-size", "Box marker voxel count per axis (minimum 1)", 1);
+    args.flag("--mixed-shape-hollow", "Carve only the box marker SDF shell");
+    args.flag("--mixed-shape-depth-color", "Color marker cells by surface depth");
     args.flag("--focus-identity", "Use identity rotation for the focused orbit shape");
     args.flag("--focus-alternate-parity", "Shift the focused orbit canvas origin by one trixel");
     args.integer(

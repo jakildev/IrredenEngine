@@ -31,7 +31,12 @@ occluder can read shadowed. False shadow on a trixel whose centroid ray
 clears every occupied cell by at most `--terminator-tolerance` cells is
 reported as grazing and does not fail the gate; false shadow with a clear
 ray and any missed shadow do. `observed_shadow_pixels` counts the capture's
-magenta so an empty frame cannot pass as "all lit".
+magenta. A conclusive shadow gate requires both expected lit and expected
+shadowed interiors: an all-lit
+fixture cannot distinguish correct visibility from a blank capture or disabled
+shadows. Such a fixture reports `occlusion_exercised: false` and fails the gate;
+it remains useful as an all-lit diagnostic. Pair shadow captures with the
+normals-overlay gate to validate the displayed geometry independently.
 """
 
 import argparse
@@ -241,8 +246,11 @@ def compare_shadow(width, height, bpp, pixels, expected, lit, trixels=None,
                   backfacing_pixels=sum(1 for v in lit if v == BACKFACING_LABEL),
                   boundary_tolerance_pixels=1, registration_pixels=[0, 0])
     result["sufficient_resolution"] = interiors[LIT_LABEL] > 0
+    result["occlusion_exercised"] = interiors[SHADOWED_LABEL] > 0
     result["pass"] = (false_shadow == grazing and missed_shadow == 0
-                      and result["sufficient_resolution"])
+                      and result["sufficient_resolution"] and result["occlusion_exercised"])
+    if not result["occlusion_exercised"]:
+        result["reason"] = "fixture has no shadowed interior; occlusion is untested"
     return result, errors
 
 
