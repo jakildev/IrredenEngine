@@ -193,3 +193,25 @@ def view_sun(sun, camera):
     """The world sun direction in the camera-composed frame the cells live in."""
     length = math.sqrt(sum(s * s for s in sun))
     return rotate(tuple(s / length for s in sun), quat_inverse(camera))
+
+
+def camera_face_hits(cells, anchor, iso_point):
+    """Intersect an orthographic camera ray with occupied unit boxes, nearest first.
+
+    The ray is p(t) = (-u/2-v/6, u/2-v/6, v/3) + t*(1,1,1).
+    Slab intersections do not depend on triangle parity or polygon draw order.
+    Edge/corner hits report every entering axis instead of choosing a face.
+    """
+    u, v = iso_point
+    origin = (-u / 2 - v / 6, u / 2 - v / 6, v / 3)
+    hits = []
+    for cell in cells:
+        near = [cell[i] + anchor[i] - 0.5 - origin[i] for i in range(3)]
+        far = [cell[i] + anchor[i] + 0.5 - origin[i] for i in range(3)]
+        entry, leave = max(near), min(far)
+        if entry >= leave - 1e-9:
+            continue
+        axes = [i for i in range(3) if abs(near[i] - entry) <= 1e-9]
+        hits.append(dict(cell=cell, axes=axes, depth=3 * entry,
+                         point=tuple(value + entry for value in origin)))
+    return sorted(hits, key=lambda hit: (hit["depth"], hit["cell"]))

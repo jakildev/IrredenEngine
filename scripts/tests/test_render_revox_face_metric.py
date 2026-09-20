@@ -159,6 +159,72 @@ class RevoxFaceMetricTest(unittest.TestCase):
             split += labels == {METRIC.LIT_LABEL, METRIC.SHADOWED_LABEL}
         self.assertGreater(split, 0)
 
+    def test_pixel_explanation_separates_camera_and_sun_visibility(self):
+        args = ((102, 89), (SIZE, SIZE), METRIC.FIXTURES["cube"], 0.0, True, SCALE)
+        explained = METRIC.explain_pixel(*args, METRIC.DEFAULT_SUN)
+        self.assertFalse(explained["boundary_ambiguous"])
+        self.assertEqual(explained["world_normal"], (-1.0, 0.0, 0.0))
+        self.assertEqual(explained["sun_visibility"], METRIC.LIT_LABEL)
+        self.assertIsNone(explained["blocker_cell"])
+        backlit = METRIC.explain_pixel(*args, (1.0, 1.0, 1.0))
+        self.assertEqual(backlit["camera_hits"], explained["camera_hits"])
+        self.assertEqual(backlit["sun_visibility"], METRIC.BACKFACING_LABEL)
+        empty = METRIC.explain_pixel((0, 0), *args[1:], METRIC.DEFAULT_SUN)
+        self.assertEqual(empty["camera_hits"], [])
+
+    def test_pixel_explanation_reports_blocker_and_boundary_ambiguities(self):
+        shadow = METRIC.explain_pixel(
+            (1412, 688), (2560, 1440), METRIC.FIXTURES["grounded"], math.radians(135),
+            False, (32, 16), METRIC.DEFAULT_SUN)
+        self.assertEqual(shadow["sun_visibility"], METRIC.SHADOWED_LABEL)
+        self.assertEqual(shadow["blocker_cell"], (-6, 0, -4))
+        corner = METRIC.explain_pixel(
+            (80, 80), (161, 161), METRIC.FIXTURES["cube"], 0, True, (1, 1), METRIC.DEFAULT_SUN)
+        self.assertTrue(corner["boundary_ambiguous"])
+        self.assertNotIn("world_normal", corner)
+        diagonal = METRIC.explain_pixel(
+            (69, 91), (161, 161), METRIC.FIXTURES["cube"], 0, True, (2, 2), METRIC.DEFAULT_SUN)
+        self.assertFalse(diagonal["boundary_ambiguous"])
+        self.assertTrue(diagonal["shadow_sample_ambiguous"])
+        self.assertEqual(diagonal["world_normal"], (0, -1, 0))
+        self.assertNotIn("shadow_sample", diagonal)
+
+    def test_partial_face_is_explained_by_nearer_voxel(self):
+        # A nearer box covers one half of the farther box's X face.
+        cells = [(0, 0, 0), (-1, -1, 0)]
+        halves = METRIC.face_triangles((0, 0, 0), (-1, 0, 0))
+        owners = []
+        for triangle in halves:
+            center = render_metric_util.centroid(triangle)
+            hits = render_revox_lattice.camera_face_hits(cells, (0, 0, 0), METRIC.iso(center))
+            owners.append(hits[0]["cell"])
+        self.assertEqual(set(owners), set(cells))
+
+    def test_polygon_face_ownership_matches_camera_box_rays(self):
+        size, scale = 160, (4, 2)
+        for yaw in (0, 45, 90, 135, 180, 225, 270, 315):
+            fixture = METRIC.FIXTURES["grounded"]
+            angle = math.radians(yaw)
+            labels, _, _ = METRIC.expected_image(
+                size, size, fixture, angle, False, scale, (size / 2, size / 2))
+            rotation, _ = render_revox_lattice.composed_rotation(fixture, angle, False)
+            lattice = render_revox_lattice.Resample(fixture, rotation)
+            cells = lattice.occupied()
+            checked = 0
+            for y in range(2, size - 2, 3):
+                for x in range(2, size - 2, 3):
+                    label = labels[y * size + x]
+                    if not label or any(labels[(y + dy) * size + x + dx] != label
+                                        for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1))):
+                        continue
+                    point = ((x + 0.5 - size / 2) / scale[0],
+                             (y + 0.5 - size / 2) / scale[1])
+                    hits = render_revox_lattice.camera_face_hits(cells, lattice.anchor, point)
+                    self.assertTrue(hits, (yaw, point))
+                    self.assertIn(label - 1, hits[0]["axes"], (yaw, point, hits[0]))
+                    checked += 1
+            self.assertGreater(checked, 10)
+
     def test_ray_box_distance(self):
         box = ((0.0, 0.0, 0.0), (1.0, 1.0, 1.0))
         distance = render_metric_util.ray_box_distance
