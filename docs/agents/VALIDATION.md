@@ -17,6 +17,7 @@ prove is not done until one exists.
 | Python lint | ruff rules over `scripts/` | `ruff check scripts/` | python-lint.yml |
 | Comment refs | no issue/PR numbers gained in code comments | `python3 scripts/lint_comment_refs.py` | comment-refs.yml on every push and PR |
 | Instruction size | no agent-facing instruction file grew past its budget | `python3 scripts/lint_instruction_size.py` | instruction-size.yml on every push and PR |
+| Whitespace | no trailing whitespace, space-before-tab, blank line at EOF or conflict marker on the lines a branch adds, in any file class | `git diff --check origin/master...HEAD` | whitespace.yml on every PR |
 | Format | clang-format on the branch's changed lines | `fleet-build --target format-changed`; no-configure path `cmake -DPROJECT_ROOT=$PWD -DCLANG_FORMAT_BIN=<bin> [-DFORMAT_DIFF_BASE=<commit>] -P cmake/run_clang_format_changed_standalone.cmake` | format-check.yml (changed lines only, clang-format pinned) |
 | Render regression | a demo's shots match committed references | `render-verify` skill; `python3 scripts/render-verify.py --target <Demo>` | render-harness-tests.yml tests the harness itself |
 | GUI behaviour | GUI-ASSERT shots pass for a creation | `gui-verify` skill; `python3 scripts/gui-verify.py <Creation>` | none |

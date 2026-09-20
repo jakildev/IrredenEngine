@@ -168,6 +168,59 @@ class IterDocsAndMain(TmpTreeTest):
         self.assertEqual(_run_main(self.root), 0)
 
 
+class ForbiddenCommands(TmpTreeTest):
+    def slugs(self, body, rel=".claude/commands/role-x.md"):
+        return lint.find_forbidden(self.write(rel, body))
+
+    def test_fenced_command_is_flagged(self):
+        self.assertEqual(self.slugs("```\nfleet-heartbeat x\ngh pr checkout 12 --repo o/r\n```\n"),
+                         [(3, "gh-pr-checkout")])
+
+    def test_prompt_prefixed_fenced_command_is_flagged(self):
+        self.assertEqual(self.slugs("```\n$ gh pr checkout 12\n```\n"), [(2, "gh-pr-checkout")])
+
+    def test_inline_span_with_an_argument_is_flagged(self):
+        self.assertEqual(self.slugs("2. `fleet-heartbeat x`; `gh pr checkout <N> --repo o/r`\n"),
+                         [(1, "gh-pr-checkout")])
+
+    def test_table_cell_spans_are_flagged_once_per_line(self):
+        row = "| checkout | `gh pr checkout <N>` | `gh pr checkout <N> --repo g` |\n"
+        self.assertEqual(self.slugs(row), [(1, "gh-pr-checkout")])
+
+    def test_bare_span_is_a_mention_not_a_prescription(self):
+        self.assertEqual(self.slugs("Never `gh pr checkout`: it takes the branch ref.\n"), [])
+
+    def test_other_gh_pr_verbs_are_clean(self):
+        body = "```\ngh pr view 12 --json mergeable\n```\n`gh pr edit <N>`\n"
+        self.assertEqual(self.slugs(body), [])
+
+    def test_marker_above_a_fence_suppresses(self):
+        body = ("<!-- lint: rules-cmd-ok gh-pr-checkout -- quoting the old flow -->\n"
+                "```\ngh pr checkout 12\n```\n")
+        self.assertEqual(self.slugs(body), [])
+
+    def test_marker_on_the_line_before_an_inline_span_suppresses_only_that_line(self):
+        self.assertEqual(self.slugs("<!-- lint: rules-cmd-ok gh-pr-checkout -- history -->\n"
+                                    "was `gh pr checkout <N>`\n"
+                                    "now `gh pr checkout <N>`\n"), [(3, "gh-pr-checkout")])
+
+    def test_every_instruction_surface_is_in_scope(self):
+        bad = "`gh pr checkout <N>`\n"
+        for rel in (".claude/commands/role-x.md", ".claude/agents/a.md", ".claude/rules/r.md",
+                    ".claude/skills/s/SKILL.md", ".claude/skills/s/procedures/p.md",
+                    "docs/agents/FLEET.md", "docs/agents/skills/flow.md"):
+            with self.subTest(rel=rel):
+                root = Path(tempfile.mkdtemp(dir=self.root))
+                path = root / rel
+                path.parent.mkdir(parents=True)
+                path.write_text(bad, encoding="utf-8")
+                self.assertEqual(_run_main(root), 1)
+
+    def test_design_docs_are_out_of_scope(self):
+        self.write("docs/design/history.md", "`gh pr checkout <N>`\n")
+        self.assertEqual(_run_main(self.root), 0)
+
+
 class CommittedTree(PathPinnedTest):
     def test_committed_rules_and_agent_docs_are_green(self):
         # Acceptance: every fleet-* citation in the committed rules/protocol
