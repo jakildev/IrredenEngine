@@ -170,10 +170,10 @@ reviewing / amending / resolving, `FLEET_CLAIM_STALE_SECS_PLANNING` for
 planning; a same-host label with a missing or mismatched liveness marker
 after `FLEET_CLAIM_PRLABEL_ORPHAN_GRACE_SECS`, 120 s) and replays orphan
 sentinels. Reviewer projections skip `fleet:amending-*` PRs
-(`REVIEW_SKIP_PREFIXES`) and the worker feedback/conflict tiers skip
-`fleet:reviewing-*` PRs. The live pre-acquire gate is the fast path; both
-confirmation reads arbitrate the symmetric excluded-prefix union, so the
-POST-snapshot race leaves one holder (consistency limit:
+(`REVIEW_SKIP_PREFIXES`); the worker feedback/conflict tiers skip
+`fleet:reviewing-*` PRs and each other's claim. The live pre-acquire gate is
+the fast path; both confirmation reads arbitrate the symmetric excluded-prefix
+union, so the POST-snapshot race leaves one holder (consistency limit:
 [`FLEET.md § Claims`](FLEET.md#claims)). Same-agent lane transitions remain allowed.
 
 For `fleet:amending-*` that liveness marker is the **dispatch**, not the
@@ -313,9 +313,9 @@ Protocol: [`FLEET-FEEDBACK-HANDLING.md`](FLEET-FEEDBACK-HANDLING.md).
   + `--repo jakildev/irreden`) or escalates to `human:needs-fix`. Claimable
   only while live `mergeable == CONFLICTING`, no exclusion label, no
   feedback or design-resume tier owing (that lane goes first), no
-  `fleet:resolving-*`, and no live `fleet:reviewing-*` (the lane
-  force-pushes and the review namespace is disjoint, so it is excluded
-  explicitly); stacked children defer to their base. Counts as one opus
+  `fleet:resolving-*`, no design park, no live `fleet:reviewing-*` or
+  `fleet:amending-*` (the lane force-pushes; both namespaces are disjoint,
+  so each is excluded explicitly); stacked children defer to their base. Counts as one opus
   item in the class election, ranked ahead of feedback and task pickup.
 - `fleet:needs-gl-host` — issue and PR. **Human/architect** triage signal
   with a precision-first scout body backstop (an explicit Linux / Windows /

@@ -32,23 +32,26 @@ Skip `human:wip`; `fleet:semantic-conflict` at sonnet class (the opus+
 lane, `role-worker.md` step 1c; its escalation to `human:needs-fix`
 re-enters tier 1); a `fleet:amending-*` label (another worker's claim; the
 Step a claim is the real mutex); `fleet:needs-gl-host` unless this host is
-GL-capable (`{linux, windows}`); a `fleet:reviewing-*` label held by
-another agent (a review is mid-flight and your force-push would land its
-verdict on a diff nobody read); `fleet:needs-opus-recheck` (`fleet:has-nits`
+GL-capable (`{linux, windows}`); a `fleet:reviewing-*` or `fleet:resolving-*`
+label held by another agent (a review is mid-flight and your force-push
+would land its verdict on a diff nobody read; a conflict resolution
+force-pushes the same head); `fleet:needs-opus-recheck` (`fleet:has-nits`
 beside it is not a verdict — the pending opus pass owns the PR); a live
 `fleet:design-blocked` / `fleet:design-proposed` park still carrying
 `fleet:needs-fix` or `fleet:has-nits` (whichever lane parked it, the fleet
 tier is stale until `fleet:design-unblocked` re-arms it).
-`amending-claim` refuses the reviewing/amending/opus-recheck cases as a
-backstop; its independent two-read confirmation with `review-claim` closes
-the observed snapshot race. The scout's `worker_feedback_labels()` enforces
-the reviewing / opus-recheck / design-park skips in both the worker trigger
-and `projections/worker.json`; `human:needs-fix` / `human:blocker` outrank
-all of them and keep dispatching. The reviewing skip also bars the
-conflict-resolution lane (`role-worker.md` step 1c), which force-pushes
-too: `_semantic_conflict_claimable` suppresses the item and
-`resolving-claim` refuses the claim and participates in the same confirmation;
-a pane that reviewed the PR itself passes both gates.
+`amending-claim` refuses the reviewing/resolving/amending/opus-recheck cases
+as a backstop; its independent two-read confirmation with `review-claim` and
+`resolving-claim` closes the observed snapshot race. The scout's
+`worker_feedback_labels()` enforces the reviewing / resolving / opus-recheck
+/ design-park skips in both the worker trigger and `projections/worker.json`;
+`human:needs-fix` / `human:blocker` outrank all of them and keep dispatching.
+The reviewing skip, a live foreign `fleet:amending-*` claim, and a
+`fleet:design-blocked` / `fleet:design-proposed` park also bar the
+conflict-resolution lane (`role-worker.md` step 1c), which force-pushes too:
+`_semantic_conflict_claimable` suppresses the item and `resolving-claim`
+refuses the claim through the same confirmation. A pane already holding the
+other claim passes the claim-side gate.
 
 ## Step a — claim the PR atomically (before anything else)
 

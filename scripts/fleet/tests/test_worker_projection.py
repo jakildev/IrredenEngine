@@ -366,6 +366,17 @@ class SemanticConflictDispatch(unittest.TestCase):
             self.assertEqual(self._items(prs), [], label)
             self.assertEqual(self._slice(prs), [], label)
 
+    def test_design_park_suppresses_conflict_pressure(self):
+        # A design park: the human/architect owns
+        # the PR until fleet:design-unblocked re-arms it. Without this arm a
+        # merger re-flag on a parked CONFLICTING PR elects a fresh opus
+        # resolver every tick, which re-verifies the park and strips the
+        # label again — no terminal state until the NEEDS-DESIGN is answered.
+        for label in ("fleet:design-blocked", "fleet:design-proposed"):
+            prs = [_sc_pr(2417, labels=["fleet:semantic-conflict", label])]
+            self.assertEqual(self._items(prs), [], label)
+            self.assertEqual(self._slice(prs), [], label)
+
     def test_gated_pr_stays_human_only(self):
         # fleet:gated wins unconditionally (loop-level exclusion shared with
         # the feedback path): the conflict sits in a file no agent can push.
@@ -415,8 +426,8 @@ class SemanticConflictDispatch(unittest.TestCase):
             self.assertEqual([p["number"] for p in feedback], [2417], label)
 
 
-class ReviewClaimBarsConflictResolutionPickup(unittest.TestCase):
-    """#3001 — the #2801 hazard, one lane over.
+class ActiveClaimBarsConflictResolutionPickup(unittest.TestCase):
+    """Live review or amend claims suppress conflict-resolution pickup.
 
     #2801 closed the fleet:reviewing-* -> fleet:amending-* direction
     (ReviewClaimBarsWorkerFeedbackPickup below). The conflict-resolution lane
@@ -445,18 +456,18 @@ class ReviewClaimBarsConflictResolutionPickup(unittest.TestCase):
     def _slice(self, prs):
         return slice_worker(_state(prs))["semantic_conflict_prs"]
 
-    def test_review_claim_suppresses_conflict_pressure_at_both_sites(self):
-        # The two-run delta IS the assertion: pre-fix, LIVE and
-        # minus-fleet:reviewing-* produced byte-identical output, i.e. the
-        # review claim contributed exactly zero suppression.
-        held = [_sc_pr(2417, labels=["fleet:semantic-conflict",
-                                     "fleet:reviewing-mac-pool-9"])]
+    def test_active_claim_suppresses_conflict_pressure_at_both_sites(self):
+        # The held/free delta proves each claim prefix contributes the
+        # suppression rather than relying on another exclusion.
         free = [_sc_pr(2417)]
 
-        self.assertEqual(self._items(held), [],
-                         "review claim must suppress the projection item")
-        self.assertEqual(self._slice(held), [],
-                         "review claim must suppress the slice payload")
+        for claim_label in ("fleet:reviewing-mac-pool-9",
+                            "fleet:amending-mac-pool-9"):
+            with self.subTest(claim_label=claim_label):
+                held = [_sc_pr(2417, labels=["fleet:semantic-conflict",
+                                             claim_label])]
+                self.assertEqual(self._items(held), [])
+                self.assertEqual(self._slice(held), [])
         self.assertEqual(len(self._items(free)), 1)
         self.assertEqual(len(self._slice(free)), 1)
 
@@ -818,6 +829,26 @@ class ReviewClaimBarsWorkerFeedbackPickup(unittest.TestCase):
             _pr(101, labels=["fleet:design-unblocked", "fleet:reviewing-mac-pool-5"])])
         self.assertEqual(held_proj, [])
         self.assertEqual(held_slice, [])
+
+    def test_resolving_claim_drops_fleet_tiers_and_keeps_human_tier(self):
+        # Mirror of the reviewing skip: a live conflict resolution
+        # force-pushes the head too, so the fleet tiers wait for the
+        # resolver's release the same way they wait for a reviewer; the human
+        # tiers still outrank it (amending-claim refuses claim-side until the
+        # resolver releases).
+        for tier in ("fleet:has-nits", "fleet:needs-fix",
+                     "fleet:design-unblocked"):
+            with self.subTest(tier=tier):
+                held_proj, held_slice = self._both([
+                    _pr(101, labels=[tier, "fleet:resolving-mac-pool-3"])])
+                self.assertEqual(held_proj, [])
+                self.assertEqual(held_slice, [])
+        proj, sliced = self._both([_pr(101, labels=[
+            "human:needs-fix", "fleet:has-nits", "fleet:resolving-mac-pool-3",
+        ])])
+        self.assertEqual(len(proj), 1)
+        self.assertEqual(proj[0]["labels"], ["human:needs-fix"])
+        self.assertEqual(len(sliced), 1)
 
     # --- 2. needs-opus-recheck is not a verdict --------------------------
 
