@@ -426,7 +426,10 @@ See docs/agents/skills/flow-b.md for a related flow.
         result = validate_roles([(engine_root, "engine")])
         role_protocols = [p for p in result["protocols"] if p.get("lane") == "role"]
         self.assertEqual(len(role_protocols), 4)
-        self.assertEqual(sum(len(p["keys"]) for p in role_protocols), 40)
+        # Pins the live tree's key population so a widened parser regex cannot
+        # quietly pull extra rows in. A role protocol that gains or loses a
+        # delta key moves this number in the same change.
+        self.assertEqual(sum(len(p["keys"]) for p in role_protocols), 41)
         role_errors = sum(
             wr["n_errors"]
             for p in role_protocols

@@ -33,6 +33,7 @@ line-length = 100
 # directory scan discovers them automatically — only extension-less Python
 # executables need listing here, and those all live under scripts/fleet/.)
 extend-include = [
+    "scripts/fleet/fleet-campaign-status",
     "scripts/fleet/fleet-claude-stream",
     "scripts/fleet/fleet-clip",
     "scripts/fleet/fleet-epic-status",

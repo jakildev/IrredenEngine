@@ -366,6 +366,14 @@ Parallel-agent fleet (tmux + Claude)
                                  matching .claude/commands/role-*.md wrapper
                                  in each fleet-enabled repo root, with all
                                  declared delta keys answered
+  fleet-campaign-status <slug> [--repo engine|game] [--json] [--apply]
+                                 campaign re-entry oracle: branch verdict
+                                 (clean/behind/live/superseded/stranded/unknown),
+                                 open and merged campaign PRs, other lanes'
+                                 changes to the campaign's own files, and ## Now;
+                                 --apply fast-forwards a behind branch and parks
+                                 a superseded one back on master, carrying the
+                                 in-flight slice across
   fleet-epic-status <N> [--repo engine|game] [--json] [--state open|closed|all]
                                  epic health dashboard: umbrella state, per-child
                                  queue/PR/plan state, checklist-vs-discovered

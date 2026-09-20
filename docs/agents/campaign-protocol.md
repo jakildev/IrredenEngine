@@ -35,6 +35,7 @@ frontmatter, a pointer here, a `## Deltas` table
 | **branch-prefix** | The head-branch prefix (`claude/<slug>-<topic>`). |
 | **campaigns-dir** | Where campaign worklist docs live (`docs/design/campaigns/`). |
 | **objectives-dir** | Where the objective files live. |
+| **resync-command** | The re-entry oracle a startup runs before anything else: branch verdict, open and merged campaign PRs, other lanes' changes to this campaign's files. |
 | **launcher** | How a campaign pane starts or resumes: the fleet config that schedules it at every fleet start, and the by-hand command. |
 | **feedback-file** | This role's end-of-iteration feedback file under `~/.fleet/feedback/`. |
 
@@ -66,21 +67,50 @@ frontmatter, a pointer here, a `## Deltas` table
 - Never rewrite the history of a PR that carries `fleet:approved`; a later
   change is a new commit on that PR's own branch.
 
-## Startup (fresh or resumed)
+## Startup
+
+Every campaign session begins here, and this is the only place the campaign
+learns what the world did while it was gone — so none of it is skippable on
+the grounds that the conversation "already knows".
 
 0. Print the **role-banner**; `pwd` must be the **worktree-path**.
-1. `git -C <repo-root> fetch origin --quiet`; `git fetch origin --quiet`.
-   A `claude/<slug>-*` branch with an open PR → continue it. Otherwise
-   `start-next-task` fresh off `origin/master`. A dirty tree is never
-   discarded: commit it to the current slice branch first.
-2. Read the objective and the campaign doc, `## Now` last. List the open
-   campaign PRs:
-   `gh pr list --repo <repo-slug> --state open --search "head:<branch-prefix>"`.
+1. Run the **resync-command** and act on its verdict before anything else:
+   - `clean` — the branch is level with the default branch; start the next
+     slice here.
+   - `behind` — no commits of its own, but the default branch has moved.
+     `--apply` fast-forwards it; a slice started here builds on a stale base.
+   - `live` — an open PR on this head; continue it.
+   - `superseded` — the stack merged and the branch holds nothing the default
+     branch lacks. Re-run with `--apply`, which parks the branch back on the
+     default branch and carries the uncommitted slice across. Never rebase
+     instead: squash merges give every commit a fresh patch-id, so a rebase
+     replays work that already landed.
+   - `stranded` — merging the branch into the default branch would change it,
+     so it carries content that never landed. Stop and ask the human; nothing
+     is reset. `unknown` (the merge could not be evaluated) is the same stop.
+2. Read the objective and the campaign doc, `## Now` last. Where the resync
+   named another lane on this campaign's files, read that change before
+   planning a slice that touches them — an oracle, fixture or shader the
+   campaign authored may have moved under it.
 3. Print `campaign <slug>: resuming <direction> / <slice>` and, in `live`
    mode, begin the loop. `dry-run` stops here and reports the next slice.
 
 The fleet state cache is optional for this role: a stale or missing
 `~/.fleet/state/state.json` is not an exit condition.
+
+### Re-entry
+
+A campaign pane resumes **within** a fleet session and never **across** one. A
+crash or usage-limit exit mid-slice resumes the conversation with the slice
+intact; a `fleet-down` → `fleet-up` starts a fresh session that re-runs the
+startup above, retiring the previous sidecar to
+`<role>.session-id.prev-<stamp>` so its transcript stays readable by uuid. A
+babysit restarted by hand mid-fleet reads the same way and also starts fresh.
+
+The split is the point. A resume carries no prompt, so a resumed campaign
+re-reads nothing; across a restart it would work from a picture of the world
+that predates the merge batch, the superseded branch, and whatever other lanes
+landed on its files. Only the fresh path runs the startup that corrects it.
 
 ## Loop
 
@@ -121,8 +151,9 @@ The fleet state cache is optional for this role: a stale or missing
       queue.
    e. Keep working. The next slice stacks on the top approved PR when it
       depends on it; GitHub retargets the stack as the human merges.
-6. **Resume after merges.** `git fetch`; if the whole stack merged,
-   `start-next-task` fresh; otherwise continue on the top open PR.
+6. **Resume after merges.** Re-run the **resync-command** and follow its
+   verdict as in startup step 1; `start-next-task` refuses on tracked
+   modifications, which is exactly the state a merged stack leaves behind.
 
 ## Follow-ups, decisions, escalation
 
@@ -149,7 +180,8 @@ Campaign PRs carry `fleet:author-claude` from `commit-and-push` and
 projections skip them; no `fleet-claim` locks are involved. The campaign
 runs beside the fleet or alone: **launcher** starts or resumes the pane
 with the same session-sidecar mechanism as the architect panes, so
-`/clear`, a crash or a restart resumes the conversation. Listed in the
+`/clear` or a crash resumes the conversation and a fleet restart starts
+fresh (§Re-entry). Listed in the
 fleet config, the pane comes up with every fleet start, in its own tmux
 window, and never receives dispatched work. Context loss is survivable by
 design: the campaign doc plus the open PR list is the state.

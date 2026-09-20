@@ -1,0 +1,912 @@
+#!/usr/bin/env python3
+"""fleet-campaign-status — campaign re-entry oracle.
+
+What a campaign session reads at startup instead of trusting its own context
+(docs/agents/campaign-protocol.md §Startup): where the worktree branch stands
+against the default branch, which campaign PRs are open and which merged, what
+other lanes changed on the campaign's own files, and the campaign doc's
+`## Now`.
+
+The branch verdict is decided by the merge, not by comparing file names and not
+by `git cherry` — see branch_verdict() and branch_contributes() for why either
+of those mistakes a branch carrying unlanded work for one already upstream.
+
+Verdicts: `clean` and `live` are ready to work; `behind` and `superseded` are
+repairable by `--apply`; `stranded` and `unknown` are for a human.
+
+Exit codes:
+  0  ready — `clean` or `live`
+  1  attention — `behind`, `superseded`, `stranded` or `unknown`; the verdict
+     field says which, and only the first two are repairable
+  2  usage / environment error, or an `--apply` that refused or failed
+
+  fleet-campaign-status million-entity-render            human-readable report
+  fleet-campaign-status million-entity-render --json     machine-readable
+  fleet-campaign-status million-entity-render --apply    fast-forward `behind`,
+                                                         reset `superseded`
+
+Source: scripts/fleet/fleet-campaign-status
+Installed to ~/bin/fleet-campaign-status by scripts/fleet/install.sh.
+"""
+import argparse
+import json
+import os
+import pathlib
+import re
+import subprocess
+import sys
+import time
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+from fleet_poll_topology import state_age_seconds  # noqa: E402
+
+STATE_DIR = os.path.join(os.path.expanduser("~"), ".fleet", "state")
+STATE_JSON = os.path.join(STATE_DIR, "state.json")
+REPOS_CACHE = os.path.join(STATE_DIR, "repos.json")
+DEFAULT_SLUGS = {"engine": "jakildev/IrredenEngine", "game": "jakildev/irreden"}
+DEFAULT_ROOTS = {
+    "engine": os.path.join(os.path.expanduser("~"), "src", "IrredenEngine"),
+    "game": os.path.join(os.path.expanduser("~"), "src", "IrredenEngine", "creations", "game"),
+}
+CACHE_MAX_AGE_S = 300
+
+# How many merged campaign PRs feed the surface (below). The surface only needs
+# to cover what the campaign might still be reasoning about; an unbounded walk
+# would fetch every PR head the campaign ever opened.
+SURFACE_PR_LIMIT = 20
+
+LEDGER_ROW_RE = re.compile(r"^\|\s*(\d{4}-\d{2}-\d{2})\s*\|\s*(.+?)\s*\|\s*$")
+
+
+def warn(msg):
+    print("fleet-campaign-status: %s" % msg, file=sys.stderr)
+
+
+# Every subprocess is timeout-guarded: this runs on the campaign's startup
+# path, one `git fetch refs/pull/N/head` per open PR, and an unattended lane
+# that blocks on a hung fetch never re-enters at all.
+SUBPROCESS_TIMEOUT_S = 120
+
+
+def git(root, *args):
+    """stdout of a git command, stripped. Empty string on failure or timeout."""
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(root), *args], capture_output=True, text=True,
+            timeout=SUBPROCESS_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired:
+        warn("git %s timed out after %ds" % (" ".join(args[:2]), SUBPROCESS_TIMEOUT_S))
+        return ""
+    if proc.returncode != 0:
+        return ""
+    return proc.stdout.strip()
+
+
+def git_status(root, *args):
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(root), *args], capture_output=True, text=True,
+            timeout=SUBPROCESS_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired:
+        return 124, "", "timed out after %ds" % SUBPROCESS_TIMEOUT_S
+    return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
+
+
+def git_lines(root, *args):
+    out = git(root, *args)
+    return [ln for ln in out.split("\n") if ln.strip()]
+
+
+def porcelain_paths(root):
+    """Paths from `git status --porcelain`, XY status bytes removed.
+
+    Read without the whole-output strip git() applies: a modified-unstaged row
+    begins with a space (" M path"), so stripping the output would shift the
+    first row's path one byte left and silently truncate its name.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(root), "status", "--porcelain"],
+            capture_output=True, text=True, timeout=SUBPROCESS_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired:
+        warn("git status timed out after %ds" % SUBPROCESS_TIMEOUT_S)
+        return []
+    if proc.returncode != 0:
+        return []
+    paths = []
+    for line in proc.stdout.split("\n"):
+        if len(line) < 4:
+            continue
+        path = line[3:]
+        # A rename row is "R  old -> new"; the new name is the live one.
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1]
+        paths.append(path.strip('"'))
+    return paths
+
+
+def read_json_retry(path, attempts=3, backoff=0.05):
+    # Twin of fleet-epic-status's helper: a reader that loses the race against
+    # the scout's atomic os.replace retries instead of raising spuriously.
+    # Kept local — a script reached through its ~/bin symlink cannot import a
+    # sibling reliably, so the fleet's Python executables each carry a copy.
+    last = None
+    for i in range(attempts):
+        try:
+            return json.loads(pathlib.Path(path).read_text())
+        except (json.JSONDecodeError, FileNotFoundError) as exc:
+            last = exc
+            time.sleep(backoff * (i + 1))
+    raise last
+
+
+def load_state_cache():
+    """(data, is_fresh). is_fresh=True when the scout cache is younger than
+    CACHE_MAX_AGE_S — fresh enough to read open PRs from instead of calling gh."""
+    try:
+        data = read_json_retry(STATE_JSON)
+    except (json.JSONDecodeError, FileNotFoundError, OSError):
+        return None, False
+    # Age is the in-file `generated_at`, never the file mtime: a follower
+    # rewrites state.json every tick while preserving the leader's
+    # generated_at, so mtime stays fresh over a frozen snapshot. A stale
+    # snapshot here would hide an open campaign PR and drop the branch out of
+    # the `live` arm into classification.
+    try:
+        mtime = os.path.getmtime(STATE_JSON)  # lint: state-mtime-ok fallback for state_age_seconds
+    except OSError:
+        mtime = 0
+    return data, state_age_seconds(data.get("generated_at"), mtime) < CACHE_MAX_AGE_S
+
+
+def repo_slug(repo_key):
+    try:
+        repos = json.loads(pathlib.Path(REPOS_CACHE).read_text())
+    except (json.JSONDecodeError, FileNotFoundError, OSError):
+        repos = {}
+    return repos.get(repo_key) or DEFAULT_SLUGS.get(repo_key)
+
+
+def repo_root(repo_key, state):
+    if state:
+        path = ((state.get("repos") or {}).get(repo_key) or {}).get("path")
+        if path and os.path.isdir(path):
+            return path
+    env = os.environ.get("FLEET_ENGINE_ROOT") if repo_key == "engine" else None
+    if env and os.path.isdir(env):
+        return env
+    return DEFAULT_ROOTS.get(repo_key)
+
+
+def gh_json(args):
+    try:
+        proc = subprocess.run(args, capture_output=True, text=True,
+                              timeout=SUBPROCESS_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        warn("gh timed out after %ds" % SUBPROCESS_TIMEOUT_S)
+        return None
+    if proc.returncode != 0:
+        warn("gh failed: %s" % (proc.stderr or "").strip())
+        return None
+    try:
+        return json.loads(proc.stdout)
+    except json.JSONDecodeError as exc:
+        warn("could not parse gh output: %s" % exc)
+        return None
+
+
+# --- PR reads ---------------------------------------------------------------
+#
+# Open PRs come from the scout cache when it is fresh (no API call at all, and
+# no GraphQL dependency — `gh pr list --json` is GraphQL, and a GraphQL rate
+# limit has taken this fleet's PR reads down while REST stayed up). The merged
+# campaign PRs have no cache row, so they are the one live read; a failure there
+# degrades the surface rather than the whole report.
+
+
+def open_prs(slug, repo_key, pr_json):
+    """(rows, readable). `readable` is False when the PR list could not be read
+    at all, which is not the same as "there are no open PRs": an unread list
+    hides the `live` verdict, and a branch whose PR is open must never be
+    classified as abandoned work."""
+    if pr_json is not None:
+        # A null `open` models the read failing, which the live path signals by
+        # returning None; an empty list models "no open PRs". The seam has to
+        # carry both or the unreadable arm is untestable.
+        rows = pr_json.get("open")
+        return (rows or []), rows is not None
+    state, fresh = load_state_cache()
+    if fresh and state:
+        rows = ((state.get("repos") or {}).get(repo_key) or {}).get("prs")
+        if rows is not None:
+            return rows, True
+    rows = gh_json([
+        "gh", "pr", "list", "--repo", slug, "--state", "open", "--limit", "60",
+        "--json", "number,title,headRefName,headRefOid,labels,isDraft,baseRefName",
+    ])
+    return (rows or []), rows is not None
+
+
+def merged_campaign_prs(slug, prefix, pr_json):
+    if pr_json is not None:
+        return pr_json.get("merged") or []
+    rows = gh_json([
+        "gh", "pr", "list", "--repo", slug, "--state", "merged",
+        "--search", "head:%s" % prefix, "--limit", str(SURFACE_PR_LIMIT),
+        "--json", "number,title,headRefName,mergedAt,mergeCommit",
+    ])
+    return rows or []
+
+
+def label_names(row):
+    labels = row.get("labels") or []
+    out = []
+    for label in labels:
+        out.append(label.get("name") if isinstance(label, dict) else str(label))
+    return [name for name in out if name]
+
+
+# --- Branch verdict ---------------------------------------------------------
+
+
+def branch_verdict(wt, default_ref, branch, prs_open, prs_readable=True):
+    """Classify the campaign worktree's branch against the default branch.
+
+    clean       level with the default branch — nothing to decide.
+    behind      no commits of its own, but the default branch has moved. A
+                fast-forward, which `--apply` performs; starting a slice here
+                builds it on a stale base.
+    live        commits, and an open PR whose head is this branch.
+    superseded  commits, no open PR, and merging the branch into the default
+                branch would change nothing — every line it carries is already
+                upstream. Repairable by reset (`--apply`).
+    stranded    commits, no open PR, and the merge WOULD change something, or
+                conflicts. Content that never landed. `--apply` refuses.
+    unknown     the merge could not be evaluated. Never repaired automatically.
+
+    The oracle is the merge, not a file-name comparison and not `git cherry`.
+    Squash merges give each landed PR one commit with a fresh patch-id, so
+    `git cherry` reports a fully merged stack as absent upstream; the count is
+    still reported because the gap between it and the verdict is the trap that
+    makes `git rebase` replay landed work.
+
+    Comparing which FILES differ cannot stand in for it either: another lane
+    editing the same path for its own reasons makes the branch's own unlanded
+    change to that path disappear from a set difference, and `--apply` would
+    then delete it. Only the merge distinguishes "the branch's content is
+    already upstream" from "another lane happens to have touched this file".
+    """
+    # Resolved FIRST. ahead/behind read through git(), which returns "" on
+    # failure, so an unresolvable ref would otherwise present as 0 ahead /
+    # 0 behind and return `clean` — "start the next slice here" — before the
+    # oracle's own ref guard is ever reached.
+    if not git(wt, "rev-parse", "--verify", "--quiet", "%s^{commit}" % default_ref):
+        return {
+            "branch": branch, "fork_point": "", "ahead": 0, "behind": 0,
+            "head": git(wt, "rev-parse", "HEAD"), "unique_files": [],
+            "cherry_unmatched": 0, "verdict": "unknown",
+            "merge_detail": "cannot resolve %s" % default_ref,
+        }
+
+    fork = git(wt, "merge-base", "HEAD", default_ref)
+    ahead = git_lines(wt, "rev-list", "%s..HEAD" % default_ref)
+    behind = git_lines(wt, "rev-list", "HEAD..%s" % default_ref)
+    report = {
+        "branch": branch,
+        "fork_point": fork,
+        "ahead": len(ahead),
+        "behind": len(behind),
+        "head": git(wt, "rev-parse", "HEAD"),
+        "unique_files": [],
+        "cherry_unmatched": 0,
+    }
+    if not ahead:
+        report["verdict"] = "behind" if behind else "clean"
+        return report
+
+    live = [row for row in prs_open if row.get("headRefName") == branch]
+    if live:
+        report["verdict"] = "live"
+        report["open_pr"] = live[0].get("number")
+        return report
+
+    if not prs_readable:
+        report["verdict"] = "unknown"
+        report["merge_detail"] = (
+            "the open PR list could not be read, so an open PR on this branch "
+            "cannot be ruled out")
+        return report
+
+    # `-` prefixed rows are the commits git can still match upstream by
+    # patch-id; everything else is what a naive rebase would try to replay.
+    cherry = git_lines(wt, "cherry", default_ref, "HEAD")
+    report["cherry_unmatched"] = len([ln for ln in cherry if ln.startswith("+")])
+
+    contributes, carried, detail = branch_contributes(wt, default_ref)
+    report["unique_files"] = carried
+    report["merge_detail"] = detail
+    if contributes is None:
+        report["verdict"] = "unknown"
+    else:
+        report["verdict"] = "stranded" if contributes else "superseded"
+    return report
+
+
+# `check-attr merge` values that mean "git's own text merge". Anything else is
+# a driver whose behaviour the oracle cannot predict.
+BUILTIN_MERGE_ATTRS = frozenset(["unspecified", "set", "unset", "text", "binary", "union"])
+
+
+def custom_merge_drivers(wt, paths):
+    """Paths whose `merge` attribute names a custom driver.
+
+    `merge-tree` honours the attributes of the CHECKOUT, from sources a diff
+    review never sees (`.git/info/attributes`, an untracked `.gitattributes`, a
+    global `core.attributesFile`). A driver that discards one side makes a
+    branch carrying unlanded content merge to a no-op and read `superseded`, so
+    the oracle declines to answer instead.
+    """
+    if not paths:
+        return []
+    out = git(wt, "check-attr", "merge", "--", *paths)
+    flagged = []
+    for line in out.split("\n"):
+        # "<path>: merge: <value>" — the path may itself contain ": ".
+        marker = ": merge: "
+        if marker not in line:
+            continue
+        path, value = line.rsplit(marker, 1)
+        if value.strip() not in BUILTIN_MERGE_ATTRS:
+            flagged.append(path)
+    return sorted(set(flagged))
+
+
+def branch_contributes(wt, default_ref):
+    """(contributes, carried_files, detail) — would merging HEAD into the
+    default branch change it?
+
+    False means every line the branch holds is already upstream, which is what
+    makes a reset safe. True means the merge would add something, or cannot be
+    taken at all (a conflict is content the default branch does not have).
+    None means the question could not be answered, and nothing may be reset.
+
+    `git merge-tree --write-tree` exits non-zero for an unresolvable ref exactly
+    as it does for a conflict, so both refs are resolved first and a later
+    non-zero is read as a genuine conflict.
+    """
+    for ref in (default_ref, "HEAD"):
+        if not git(wt, "rev-parse", "--verify", "--quiet", "%s^{commit}" % ref):
+            return None, [], "cannot resolve %s" % ref
+
+    # #6: asked of git directly. Sniffing the error text mistakes a conflict on
+    # a path containing "usage:" for an old git, and misses the real pre-2.38
+    # message, which says neither "usage:" nor "unknown option".
+    version = git(wt, "version").split()
+    numbers = version[2].split(".") if len(version) > 2 else []
+    try:
+        too_old = (int(numbers[0]), int(numbers[1])) < (2, 38)
+    except (IndexError, ValueError):
+        too_old = False
+    if too_old:
+        return None, [], "git %s is older than 2.38 (`merge-tree --write-tree`)" % (
+            version[2] if len(version) > 2 else "?")
+
+    rc, out, err = git_status(wt, "merge-tree", "--write-tree", default_ref, "HEAD")
+
+    # Line 1 is the merged tree on both the clean and the conflicted exit, so
+    # the at-risk inventory is available either way.
+    merged_tree = out.split("\n")[0].strip()
+    base_tree = git(wt, "rev-parse", "%s^{tree}" % default_ref)
+    if not merged_tree or not base_tree:
+        return None, [], "could not read the merged tree"
+    carried = sorted(git_lines(wt, "diff", "--name-only", base_tree, merged_tree))
+    if rc != 0:
+        return True, carried, "merging into %s conflicts" % default_ref
+    if merged_tree == base_tree:
+        diverging = git_lines(wt, "diff", "--name-only", "%s..HEAD" % default_ref)
+        driven = custom_merge_drivers(wt, diverging)
+        if driven:
+            return None, driven, (
+                "a custom merge driver governs %s, so a no-op merge does not prove "
+                "the content is upstream" % ", ".join(driven[:3]))
+        return False, [], "merging into %s is a no-op" % default_ref
+    # What the merge would add is the complete at-risk inventory — every path,
+    # not only the ones the default branch left alone.
+    return True, carried, "merging into %s would change %d file(s)" % (
+        default_ref, len(carried))
+
+
+# --- Surface and foreign activity -------------------------------------------
+
+
+def campaign_surface(wt, merged, branch_files):
+    """Files this campaign owns: everything its merged PRs landed, plus whatever
+    the in-flight branch touches. This is what "someone else edited my work"
+    is measured against."""
+    surface = set(branch_files)
+    for row in merged[:SURFACE_PR_LIMIT]:
+        commit = row.get("mergeCommit") or {}
+        oid = commit.get("oid") if isinstance(commit, dict) else None
+        if not oid:
+            continue
+        surface.update(git_lines(wt, "show", "--name-only", "--format=", oid))
+    return {path for path in surface if path.strip()}
+
+
+def since_anchor(wt, merged, fork, default_ref):
+    """Where "while the campaign was away" starts: the merge commit of its most
+    recently landed slice, falling back to the branch's fork point.
+
+    Not the fork point alone. Re-entry resets a superseded branch onto the
+    default branch, which drags the fork point up to its tip and empties the
+    window — the reader would be told nothing happened precisely when the
+    campaign most needs to know what did.
+    """
+    # Ordered by distance to the default branch's tip, not by the row order:
+    # `gh pr list` sorts by creation, and a stack's PRs do not necessarily merge
+    # in the order they were opened. Fewest commits between it and the tip is
+    # the one that landed last.
+    best = None
+    best_distance = None
+    for row in merged:
+        commit = row.get("mergeCommit") or {}
+        oid = commit.get("oid") if isinstance(commit, dict) else None
+        if not oid or not git(wt, "rev-parse", "--quiet", "--verify", "%s^{commit}" % oid):
+            continue
+        count = git(wt, "rev-list", "--count", "%s..%s" % (oid, default_ref))
+        if not count.isdigit():
+            continue
+        distance = int(count)
+        if best_distance is None or distance < best_distance:
+            best, best_distance = oid, distance
+    return best or fork
+
+
+def foreign_master_commits(wt, since, default_ref, surface, campaign_numbers):
+    """Commits that landed on the default branch since `since`, touch the
+    campaign's surface, and are not the campaign's own merges."""
+    if not surface or not since:
+        return []
+    out = []
+    # Parsed line by line, not by blank-line block: `--format` with
+    # `--name-only` puts the format line and the file list in *separate*
+    # blank-line-separated blocks, so a block split never yields a commit
+    # together with its files and every commit reads as touching nothing.
+    # \x1f cannot occur in a path, so a line carrying one is a header.
+    raw = git(wt, "log", "--format=%H%x1f%s", "--name-only",
+              "%s..%s" % (since, default_ref))
+    sha = subject = None
+    files = []
+
+    def flush():
+        if sha is None or not files:
+            return
+        touched = surface.intersection(files)
+        if not touched:
+            return
+        match = re.search(r"\(#(\d+)\)\s*$", subject)
+        if match and int(match.group(1)) in campaign_numbers:
+            return
+        out.append({
+            "sha": sha[:9],
+            "subject": subject,
+            "pr": int(match.group(1)) if match else None,
+            "files": sorted(touched),
+        })
+
+    for line in raw.split("\n"):
+        if "\x1f" in line:
+            flush()
+            sha, subject = line.split("\x1f", 1)
+            files = []
+        elif line.strip():
+            files.append(line)
+    flush()
+    return out
+
+
+def foreign_open_prs(wt, prs_open, prefix, surface, default_ref):
+    """Open PRs from other lanes whose diff intersects the campaign's surface.
+
+    File sets come from the PR head ref over git, not from the API: it costs no
+    API quota and survives the GraphQL outages that take `gh pr view --json`
+    down. A head that will not fetch is reported as unknown rather than silently
+    dropped — an unreadable PR is not an absent one.
+    """
+    findings = []
+    if not surface:
+        return findings
+    for row in prs_open:
+        head = row.get("headRefName") or ""
+        if head.startswith(prefix):
+            continue
+        number = row.get("number")
+        if number is None:
+            continue
+        rc, _, _ = git_status(wt, "fetch", "--quiet", "origin",
+                              "refs/pull/%d/head" % number)
+        if rc != 0:
+            findings.append({"number": number, "head": head, "files": None,
+                             "title": row.get("title", ""),
+                             "labels": label_names(row)})
+            continue
+        tip = git(wt, "rev-parse", "FETCH_HEAD")
+        # The PR's own change set: its merge base with the default branch, not
+        # the campaign's fork point. Diffing from the campaign's fork would
+        # charge every PR with whatever else landed in between.
+        base = git(wt, "merge-base", tip, default_ref) or default_ref
+        touched = surface.intersection(
+            git_lines(wt, "diff", "--name-only", "%s..%s" % (base, tip))
+        )
+        if touched:
+            findings.append({"number": number, "head": head,
+                             "files": sorted(touched),
+                             "title": row.get("title", ""),
+                             "labels": label_names(row)})
+    return findings
+
+
+# --- Campaign doc -----------------------------------------------------------
+
+
+def doc_sections(path):
+    out = {"now": "", "last_ledger": "", "exists": False}
+    try:
+        text = pathlib.Path(path).read_text()
+    except (FileNotFoundError, OSError):
+        return out
+    out["exists"] = True
+    now = re.search(r"^## Now\s*\n(.*?)(?=\n## |\Z)", text, re.S | re.M)
+    if now:
+        out["now"] = now.group(1).strip()
+    rows = [LEDGER_ROW_RE.match(ln) for ln in text.split("\n")]
+    dated = [m for m in rows if m and not m.group(2).startswith("---")]
+    if dated:
+        last = dated[-1]
+        out["last_ledger"] = "%s — %s" % (last.group(1), last.group(2))
+    return out
+
+
+# --- Re-entry repair --------------------------------------------------------
+
+
+def unversioned_paths_the_default_tracks(wt, default_ref):
+    """On-disk files this branch does not track that the default branch does.
+
+    Ignored or merely untracked, the checkout resolves the collision against
+    the working copy and the backup ref does not cover it — that ref holds
+    commits, not the tree. These are the only paths a reset can destroy with no
+    recovery at all, so the repair refuses rather than gambling.
+    """
+    tracked_there = set(git_lines(wt, "ls-tree", "-r", "--name-only", default_ref))
+    if not tracked_there:
+        return []
+    tracked_here = set(git_lines(wt, "ls-files"))
+    # Asked as a path question rather than read out of `git status`: a
+    # directory-level ignore rule collapses the status listing to the directory
+    # ("!! local/"), so the file inside it never appears by name.
+    at_risk = []
+    for name in sorted(tracked_there - tracked_here):
+        if os.path.exists(os.path.join(wt, name)):
+            at_risk.append(name)
+    return at_risk
+
+
+def apply_reentry(wt, report, default_ref, slug, stamp):
+    """The repair a verdict can prescribe mechanically: park the branch back on
+    the default branch, carrying the in-flight slice across.
+
+    Nothing is discarded. The pre-reset head goes to a permanent ref under
+    refs/campaign-reentry/ (reflog expiry cannot reach it) and the working tree
+    goes through the stash, so a wrong call on the commits costs a
+    `git reset --hard <ref>` — which does not restore the in-flight slice, so
+    the slice is restored here before any error path returns.
+    """
+    branch = report["branch"]
+    steps = []
+    if branch == "HEAD":
+        return False, steps, (
+            "the worktree is on a detached HEAD, so there is no branch to reset; "
+            "`git checkout <branch>` first"
+        )
+    clobber = unversioned_paths_the_default_tracks(wt, default_ref)
+    if clobber:
+        return False, steps, (
+            "%d on-disk file(s) this branch does not track are tracked at the "
+            "same path on %s (ignored or untracked here), and the checkout would "
+            "resolve the collision with no backup covering them: %s — move them "
+            "aside first" % (len(clobber), default_ref, ", ".join(clobber[:5]))
+        )
+
+    old_head = report["head"]
+    backup = "refs/campaign-reentry/%s/%s" % (slug, stamp)
+    rc, _, err = git_status(wt, "update-ref", backup, old_head)
+    if rc != 0:
+        return False, steps, "could not write the backup ref %s: %s" % (backup, err)
+    steps.append("backup ref %s -> %s" % (backup, old_head[:9]))
+
+    # Measured, not assumed: `git status --porcelain` can be non-empty over a
+    # tree `git stash push` saves nothing from (a submodule holding only
+    # untracked content is the reproducible case). Claiming a stash that was
+    # never taken makes the pop below fail with "No stash entries found" and
+    # report a conflict over a repair that actually succeeded.
+    stashed = False
+    if report["dirty"]:
+        before = len(git_lines(wt, "stash", "list"))
+        rc, _, err = git_status(wt, "stash", "push", "--include-untracked",
+                                "-m", "campaign %s re-entry %s" % (slug, stamp))
+        if rc != 0:
+            return False, steps, "git stash push failed: %s" % err
+        stashed = len(git_lines(wt, "stash", "list")) > before
+        if stashed:
+            steps.append("stashed %d in-flight file(s)" % len(report["dirty"]))
+        else:
+            steps.append("nothing for the stash to take (tree needs no carry)")
+
+    rc, _, err = git_status(wt, "checkout", "-B", branch, default_ref)
+    if rc != 0:
+        # The slice is off disk and in the stash; say so, because the error
+        # otherwise reads as "nothing happened" while files are missing.
+        recovery = " — the in-flight slice is in `git stash` as the entry named " \
+                   "`campaign %s re-entry %s`; `git stash pop` restores it" % (slug, stamp) \
+                   if stashed else ""
+        return False, steps, "git checkout -B %s %s failed: %s%s" % (
+            branch, default_ref, err, recovery)
+    steps.append("reset %s onto %s" % (branch, default_ref))
+
+    if stashed:
+        rc, out, err = git_status(wt, "stash", "pop")
+        if rc != 0:
+            # git reports pop conflicts on stdout, so the stderr-only read is
+            # empty exactly when there is something to say. A conflicted pop has
+            # ALREADY written the merge into the tree and kept the stash entry:
+            # re-running it can only fail, so the remedy is resolve-add-drop.
+            lines = [ln for ln in (out or err or "").strip().split("\n") if ln.strip()]
+            conflicts = [ln for ln in lines if ln.startswith("CONFLICT")]
+            detail = conflicts or lines
+            return False, steps, (
+                "git stash pop left a conflict (%s) — the merge is already in the "
+                "tree and the stash entry is still there; resolve the markers, "
+                "`git add` them, then `git stash drop` (a second `git stash pop` "
+                "cannot succeed)" % (detail[0] if detail and detail[0] else "no detail")
+            )
+        steps.append("restored the in-flight slice")
+
+    stale_base = git(wt, "config", "--get", "branch.%s.cursor-stack-base" % branch)
+    if stale_base:
+        git_status(wt, "config", "--unset", "branch.%s.cursor-stack-base" % branch)
+        steps.append("unset cursor-stack-base (was %s — merged)" % stale_base)
+
+    return True, steps, None
+
+
+# --- Rendering --------------------------------------------------------------
+
+VERDICT_LINE = {
+    "clean": "branch is level with the default branch — start the next slice here",
+    "behind": "branch has no commits of its own but the default branch has moved "
+              "— fast-forward first (`--apply`), or the next slice builds on a "
+              "stale base",
+    "live": "branch has an open PR — continue it",
+    "superseded": "merging this branch into the default branch would change "
+                  "nothing — RESET, do not rebase (`--apply`)",
+    "stranded": "the merge WOULD change the default branch — this branch carries "
+                "content that never landed; a human decides before any reset",
+    "unknown": "the merge could not be evaluated — nothing is reset until a human "
+               "looks",
+}
+
+# Verdicts --apply can repair, and what it does for each.
+APPLY_VERDICTS = ("superseded", "behind")
+
+
+def render_text(report):
+    lines = []
+    out = lines.append
+    out("campaign %s — %s" % (report["slug"], report["repo"]))
+    out("")
+    branch = report["branch"]
+    out("  worktree   %s" % report["worktree"])
+    out("  branch     %s (%d ahead / %d behind %s)"
+        % (branch["branch"], branch["ahead"], branch["behind"], report["default_ref"]))
+    out("  verdict    %s — %s" % (branch["verdict"].upper(),
+                                  VERDICT_LINE.get(branch["verdict"], "")))
+    if branch["verdict"] in ("superseded", "stranded", "unknown"):
+        out("             (%d of %d commits unmatched by `git cherry` — squash "
+            "merges; patch-id is not the oracle here)"
+            % (branch["cherry_unmatched"], branch["ahead"]))
+        if branch.get("merge_detail"):
+            out("             %s" % branch["merge_detail"])
+    for path in branch["unique_files"]:
+        out("             never landed: %s" % path)
+    if report["dirty"]:
+        out("  in flight  %d uncommitted file(s):" % len(report["dirty"]))
+        for path in report["dirty"]:
+            out("               %s" % path)
+    else:
+        out("  in flight  clean tree")
+    out("")
+
+    if report["prs_open"]:
+        out("  open campaign PRs")
+        for row in report["prs_open"]:
+            out("    #%-5s %s [%s]" % (row["number"], row["head"],
+                                       ",".join(row["labels"]) or "-"))
+    else:
+        out("  open campaign PRs   none")
+    if report["prs_merged_recent"]:
+        out("  merged campaign PRs (most recent first)")
+        for row in report["prs_merged_recent"][:8]:
+            out("    #%-5s %s  %s" % (row["number"], row.get("mergedAt", "")[:10],
+                                      row["title"][:58]))
+    out("")
+
+    foreign_c = report["foreign_commits"]
+    foreign_p = report["foreign_open_prs"]
+    if foreign_c or foreign_p:
+        out("  OTHER LANES TOUCHED THIS CAMPAIGN'S FILES")
+        for row in foreign_c:
+            label = "#%s" % row["pr"] if row["pr"] else row["sha"]
+            out("    merged %-6s %s" % (label, row["subject"][:64]))
+            for path in row["files"][:6]:
+                out("                  %s" % path)
+            if len(row["files"]) > 6:
+                out("                  … %d more" % (len(row["files"]) - 6))
+        for row in foreign_p:
+            if row["files"] is None:
+                out("    open   #%-5s %s — head unreadable, files unknown"
+                    % (row["number"], row["head"]))
+                continue
+            out("    open   #%-5s %s" % (row["number"], row["title"][:64]))
+            for path in row["files"][:6]:
+                out("                  %s" % path)
+            if len(row["files"]) > 6:
+                out("                  … %d more" % (len(row["files"]) - 6))
+        out("")
+    else:
+        out("  other lanes         no overlap on this campaign's files")
+        out("")
+
+    doc = report["doc"]
+    if not doc["exists"]:
+        out("  campaign doc MISSING at %s" % report["doc_path"])
+    else:
+        if doc["last_ledger"]:
+            out("  last ledger  %s" % doc["last_ledger"][:120])
+        if doc["now"]:
+            out("  ## Now")
+            for ln in doc["now"].split("\n"):
+                out("    %s" % ln)
+    if report.get("applied"):
+        out("")
+        out("  --apply")
+        for step in report["applied"]:
+            out("    ✓ %s" % step)
+    if report.get("apply_error"):
+        out("")
+        out("  --apply FAILED: %s" % report["apply_error"])
+    return "\n".join(lines)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog="fleet-campaign-status",
+        description="Campaign re-entry oracle (docs/agents/campaign-protocol.md).",
+    )
+    parser.add_argument("slug", help="campaign slug, e.g. million-entity-render")
+    parser.add_argument("--repo", default="engine", choices=["engine", "game"])
+    parser.add_argument("--json", action="store_true", help="machine-readable output")
+    parser.add_argument("--apply", action="store_true",
+                        help="repair the branch: fast-forward a `behind` one, reset a "
+                             "`superseded` one. Refuses every other verdict.")
+    parser.add_argument("--default-ref", default="origin/master",
+                        help="default-branch ref to measure against")
+    parser.add_argument("--worktree", help="override the campaign worktree path")
+    parser.add_argument("--pr-json",
+                        help="read PR rows from a file ({\"open\":[],\"merged\":[]}) "
+                             "instead of calling gh — the hermetic test seam")
+    parser.add_argument("--no-fetch", action="store_true",
+                        help="skip the opening fetch (offline / tests)")
+    args = parser.parse_args()
+
+    slug = args.slug
+    if args.worktree:
+        wt = args.worktree
+    else:
+        state, _ = load_state_cache()
+        root = repo_root(args.repo, state)
+        wt = root and os.path.join(root, ".claude", "worktrees", "campaign-%s" % slug)
+    # A worktree's `.git` is a file (a gitdir pointer), the main clone's is a
+    # directory — accept either so the tool also runs against a plain clone.
+    marker = wt and os.path.join(wt, ".git")
+    if not marker or not os.path.exists(marker):
+        warn("no campaign worktree at %s" % wt)
+        return 2
+
+    pr_json = None
+    if args.pr_json:
+        try:
+            pr_json = json.loads(pathlib.Path(args.pr_json).read_text())
+        except (json.JSONDecodeError, FileNotFoundError, OSError) as exc:
+            warn("could not read --pr-json: %s" % exc)
+            return 2
+
+    if not args.no_fetch and pr_json is None:
+        git_status(wt, "fetch", "origin", "--quiet")
+
+    prefix = "claude/%s-" % slug
+    slug_repo = repo_slug(args.repo)
+    branch = git(wt, "rev-parse", "--abbrev-ref", "HEAD")
+    rows_open, prs_readable = open_prs(slug_repo, args.repo, pr_json)
+    verdict = branch_verdict(wt, args.default_ref, branch, rows_open, prs_readable)
+
+    dirty = porcelain_paths(wt)
+    verdict["dirty"] = dirty
+
+    merged = merged_campaign_prs(slug_repo, prefix, pr_json)
+    branch_files = git_lines(wt, "diff", "--name-only", args.default_ref)
+    surface = campaign_surface(wt, merged, branch_files + dirty)
+    campaign_numbers = {row.get("number") for row in merged if row.get("number")}
+    since = since_anchor(wt, merged, verdict["fork_point"], args.default_ref)
+
+    report = {
+        "slug": slug,
+        "repo": slug_repo or args.repo,
+        "worktree": wt,
+        "default_ref": args.default_ref,
+        "branch": verdict,
+        "dirty": dirty,
+        "prs_open": [
+            {"number": row.get("number"), "head": row.get("headRefName"),
+             "labels": label_names(row)}
+            for row in rows_open if (row.get("headRefName") or "").startswith(prefix)
+        ],
+        "prs_merged_recent": [
+            {"number": row.get("number"), "title": row.get("title", ""),
+             "mergedAt": row.get("mergedAt") or ""}
+            for row in merged
+        ],
+        "surface_size": len(surface),
+        "since": since,
+        "foreign_commits": foreign_master_commits(
+            wt, since, args.default_ref, surface, campaign_numbers),
+        "foreign_open_prs": foreign_open_prs(
+            wt, rows_open, prefix, surface, args.default_ref),
+        "doc_path": os.path.join(wt, "docs", "design", "campaigns", "%s.md" % slug),
+    }
+    report["doc"] = doc_sections(report["doc_path"])
+
+    if args.apply:
+        if verdict["verdict"] not in APPLY_VERDICTS:
+            warn("--apply repairs %s; this branch is `%s`"
+                 % (" or ".join("`%s`" % v for v in APPLY_VERDICTS), verdict["verdict"]))
+            return 2
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        ok, steps, err = apply_reentry(wt, verdict, args.default_ref, slug, stamp)
+        report["applied"] = steps
+        if not ok:
+            report["apply_error"] = err
+        else:
+            # Re-measured, not patched: ahead/behind/head/fork all moved, and a
+            # report that contradicts itself is worse than no report.
+            verdict = branch_verdict(wt, args.default_ref, branch, rows_open,
+                                     prs_readable)
+            verdict["dirty"] = porcelain_paths(wt)
+            report["branch"] = verdict
+            report["dirty"] = verdict["dirty"]
+
+    if args.json:
+        print(json.dumps(report, indent=2))
+    else:
+        print(render_text(report))
+
+    if report.get("apply_error"):
+        return 2
+    return 0 if verdict["verdict"] in ("clean", "live") else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

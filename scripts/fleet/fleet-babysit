@@ -288,6 +288,52 @@ case "$ROLE" in
     *architect*|campaign-*) ARCHITECT_RESUME=1 ;;
 esac
 
+# Campaign panes resume within a fleet session but never across one.
+#
+# An architect's conversation IS its state and a human re-orients it on sight,
+# so resuming yesterday's costs nothing. A campaign works unattended off a
+# persistent context, and resume carries no prompt (launch_architect_first),
+# so nothing makes a resumed campaign re-read the tree: it continues against
+# whatever it believed when the fleet went down — a stack since merged, a
+# branch since superseded, other lanes' commits on the files it owns. Its
+# durable state is the campaign doc plus the PR list, both of which its
+# startup re-reads, and only the fresh path runs that startup.
+#
+# Within one fleet session the opposite holds: a crash or a usage-limit exit
+# mid-slice should come back with its slice intact, and nothing about the
+# world has moved underneath it.
+#
+# The boundary is this babysit process. fleet-up spawns one per pane, so a
+# sidecar older than this process was written before this babysit started —
+# a previous fleet in the normal case, and a hand-restarted babysit in the
+# other; the session-track SessionStart hook rewrites it at every session
+# start, so one newer belongs to this process's own fleet. Retiring (not
+# deleting) keeps the transcript reachable by uuid for a human reading back,
+# and the retired copies are pruned to the most recent few.
+BABYSIT_STARTED_AT="${FLEET_BABYSIT_STARTED_AT:-$(date +%s)}"
+
+retire_cross_fleet_campaign_session() {
+    [[ -n "$CAMPAIGN_SLUG" ]] || return 0
+    [[ -f "$SESSION_FILE" ]] || return 0
+    # python3, not stat: `stat -f %m` is BSD and `stat -c %Y` is GNU, and the
+    # BSD spelling does not fail on GNU — there `-f` selects the FILE SYSTEM and
+    # `%m` prints its mount point, so a BSD-first probe returns "/" with status 0
+    # and the arithmetic comparison below aborts the script. babysit already
+    # requires python3 for the session uuid. An unreadable mtime reads as 0,
+    # which retires: starting fresh re-reads the tree and is the safe direction.
+    local sidecar_mtime
+    sidecar_mtime=$(python3 -c 'import os, sys; print(int(os.path.getmtime(sys.argv[1])))' \
+        "$SESSION_FILE" 2>/dev/null || echo 0)
+    [[ "$sidecar_mtime" -lt "$BABYSIT_STARTED_AT" ]] || return 0
+    local retired="$SESSION_FILE.prev-$(date +%Y%m%d-%H%M%S)"
+    mv "$SESSION_FILE" "$retired"
+    # One retired copy per fleet-up would otherwise accumulate forever.
+    ls -1t "$SESSION_FILE".prev-* 2>/dev/null | tail -n +6 | while read -r old; do
+        rm -f "$old"
+    done
+    log "campaign session $(cat "$retired" 2>/dev/null) predates this fleet — retired to $(basename "$retired"); starting fresh so startup re-reads the tree"
+}
+
 if [[ "$ARCHITECT_RESUME" -eq 1 ]]; then
     export FLEET_SESSION_FILE="$SESSION_FILE"
     if [[ -n "$CAMPAIGN_SLUG" ]]; then
@@ -749,6 +795,10 @@ resume_mid_task() {
 
 last_exit=0
 if [[ "$ARCHITECT_RESUME" -eq 1 ]]; then
+    # Before the first launch only: every relaunch below is within this fleet
+    # session, and the sidecar the first launch writes is newer than
+    # BABYSIT_STARTED_AT, so a later call would be a no-op anyway.
+    retire_cross_fleet_campaign_session
     run_with_heartbeat launch_architect_first || last_exit=$?
 else
     consume_trigger_if_present
