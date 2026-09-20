@@ -202,6 +202,11 @@ the preset's `perf_grid` table, `--worker-threads` under its `config` table:
   `IRJob` dispatch on the calling thread), `N` an N-worker pool. The axis
   `--threading-baseline` sweeps; `0` is the serial floor, since a one-worker
   pool still has two executors (enkiTS pumps tasks on the waiting thread).
+- `--yaw <radians>` (IRPerfGrid only) — initial camera Z-yaw. The run logs
+  the pose it took (`Initial camera yaw: … yaw_deg=…`) and
+  `repeat_profile.py` fails a run whose logged pose disagrees. Tables
+  committed before the unit fix labelled a 0.785° pose as 45°:
+  [perf-grid-yaw-unit.md](perf-grid-yaw-unit.md).
 
 ## Voxel cull stats — the "is culling working?" diagnostic
 

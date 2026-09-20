@@ -6,7 +6,26 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from repeat_profile import directory_digest, find_demo_pid, run_profile
+from repeat_profile import directory_digest, find_demo_pid, run_profile, yaw_pose_mismatch
+
+
+class YawPoseTest(unittest.TestCase):
+    LOG = "[info] Initial camera yaw: requested_rad={} yaw_deg={} residual_deg=0.0000\n"
+
+    def test_radians_flag_must_match_the_logged_degrees(self):
+        self.assertIsNone(
+            yaw_pose_mismatch(["--yaw", "0.785398163"], self.LOG.format("0.785398", "45.000"))
+        )
+        self.assertIsNone(yaw_pose_mismatch(["--yaw=90"], self.LOG.format("90", "116.620")))
+        self.assertIsNone(yaw_pose_mismatch(["--yaw", "-0.1"], self.LOG.format("-0.1", "-5.730")))
+
+    def test_a_degrees_reading_of_the_flag_fails(self):
+        reason = yaw_pose_mismatch(["--yaw", "0.785398163"], self.LOG.format("0.785398", "0.785"))
+        self.assertIn("45.000 deg", reason)
+
+    def test_missing_pose_line_fails_only_when_yaw_was_requested(self):
+        self.assertIn("no 'Initial camera yaw'", yaw_pose_mismatch(["--yaw", "1"], "RESULT=CLEAN"))
+        self.assertIsNone(yaw_pose_mismatch(["--zoom", "4"], "RESULT=CLEAN"))
 
 
 class RuntimeAssetsTest(unittest.TestCase):

@@ -65,6 +65,12 @@ D1 slices touch only tooling and docs, so they may interleave with D0.
   accounting, and the direction it advances named in the body.
 - Checkpoint every four to six open PRs; approve only after a fresh-context
   reviewer pass with findings addressed.
+- A gate that can pass on a blank capture, an unlit frame or a reworded log
+  line is not a gate: every new metric or counter ships with a positive
+  control that fails when the thing it measures is absent.
+- Before picking a slice, read `fleet-campaign-status`'s other-lanes section
+  and stay out of files an open stack owns; the split in force is recorded
+  under Decisions taken.
 - Follow-ups outside the current direction are filed with
   `**Objective:** million-entity-render` and listed below.
 
@@ -85,9 +91,35 @@ D1 slices touch only tooling and docs, so they may interleave with D0.
 | 2026-09-19 | D0.3 closed: `BAKE_SUN_SHADOW_MAP::bakeVoxelFaces` casts every voxel canvas from the cells it rasterizes; the authored-grid caster mode (`useSource`, the 96-byte frame's source-grid fields, binding 9 in the GLSL and Metal kernels, `sourceFaceCoverage_`) is gone and `--source-face-shadows` / `--voxel-face-shadows` are accepted and ignored (byte-identical captures). The sun oracle casts from each displayed triangle's centroid, the point the lighting pass samples, and classifies false shadow by the ray's closest approach to an occupied cell: with that, the near-riser tread band is the per-face floor (missed shadow 0 at all five yaws), and every remaining false-shadow trixel grazes an occupied cell within a third of a cell while 370 trixels with clearance ≥ 0.35 never flip, the signature of the nearest-texel read at a terminator. Caster and surface receiver traced with no defect. The authored-caster captures fail the same gate (clear-ray false shadow at 0.55–0.67 cells). Floor shadow at zoom 4 is a clean stepped silhouette. `render-verify --target IRCanvasStress` already fails 9 of 11 on the pre-change tree (references from 2026-08-03 predate the September stacks), so the re-bless is filed as #3552 instead of bundled |
 | 2026-09-19 | D0.4 closed: a shape on a revoxelized entity canvas is a lattice occupant. `SHAPES_TO_TRIXEL` drops the canvas's half-cell phase (`renderedCellOffset_`, rotated into the world frame) from each shape's owner offset before the raster's per-axis rounding, so the shape lands on the same integer + phase lattice the voxels display on and the composite's phase places it; a shape centred on a cell is pixel-exact, one between cells shows at the nearest cell. Fixtures: `--focus-revox 3` (12x12x11 mixed-parity box, `--parity-extent` for the one-even-axis variant), `--mixed-shape-at`, `--focus-offset`; the mixed-canvas metric gains `--fixture/--markers/--owner` with the voxel expectation from the new `render_revox_lattice.py` (hoisted from the revox oracle, per-axis extents) and each marker expected at its nearest lattice cell. At the cardinals the parity box passes the strict footprint on-lattice, a quarter cell above a cell, a quarter cell below one (before: rounded a whole cell away, two iso rows, 7,680 wrong-owner px), with a translated owner, and as the one-even-axis box; the zero-phase orbit frame is byte-identical to D0.1. Two mechanisms were measured and rejected: shifting the raster by the phase's iso projection plus a depth bias (exact centroid, but an odd texel row flips the local-triangle parity and every hexagon became a bow tie, 1,696 px at yaw 0), and no phase at all (right for half the off-lattice positions by the round-half-up tie rule, a whole cell off for the other half). Off the cardinals the shape pass rounds the iso projection and paints analytical 2x3 diamonds at both parities (area 1.67), which is D0.5 |
 | 2026-09-19 | D0.5 closed: a density-1 shape on an entity canvas is a lattice occupant at every yaw. The shape frame data's pad word becomes `latticeShapes`; under smooth camera yaw the kernels (GLSL + Metal) take `snapLatticeWalkYawed`, the integer lattice walk with the SDF query rotated by the continuous yaw, anchored on the snapped view cell (the CPU tile builder anchors the same way), with the cardinal-style cell depth and the plain 2x3 emit; the analytical smooth path, which sampled every iso pixel of both parities and painted a 2x3 diamond per hit (area 1.67), is left to the main canvas and to subdivided shapes. Strict footprint on the parity box at 22.5/45/67.5 (asymmetric marker; the symmetric one at exactly 45 is a float32/float64 rounding tie of the fixture), with a translated owner and on the one-even-axis box. The orbit frame's marker drops to one cell (area 1.00) but a source-face canvas composites raw texels, the remaining SDF display item |
+| 2026-09-20 | Stack merged: D0.0–D0.5 (#3519, #3530, #3542, #3554, #3556, #3559) reached master with the other lane's sanity review stacked on top (#3560, [`render-stack-sanity-review.md`](../render-stack-sanity-review.md)). That review corrected three things in this campaign's work, and the rows above are read with them: the D0.5 yawed lattice walk discarded `SHAPE_FLAG_HOLLOW` (fixed in both kernels by #3560; a five-cell hollow box is byte-identical before and after, so the fixtures here could not have shown it); the D0.2/D0.3 sun oracle accepted a blank capture at yaw 22.5 because no interior was expected in shadow, so that pose's "missed shadow 0" was vacuous until #3560 required an occluded interior as a positive control; and the mixed-canvas docs claimed unit-marker and all-yaw coverage beyond the measured unit box. Its five visual follow-ups (plain detached SDF face reconstruction, symmetric half-cell ties, hollow coverage on the cardinal walk, a terminator tolerance derived from the sun-map footprint, reference refresh after geometry checks) are D0's open list |
+| 2026-09-20 | Other lane in flight: #3561–#3568 (partial-face ray explanation, shadow plane-sample agreement, floor shadow edge metric, caster/receiver mode matrix, rigid source-face rotation, casting and reception). It owns `creations/demos/canvas_stress/main.cpp`, the sun-shadow kernels and baker, `c_lighting_to_trixel`, the `render-*-metric.py` oracles and the audit worklist docs while open. Checked against this campaign's landed decisions: #3567 casts source faces only for plain rigid `DETACHED` objects and keeps resampled occupancy for revoxelized casters (the D0.3 decision), and #3562 narrows the terminator residual the sun oracle tolerates. #3562 and #3568 state population-scale cost as unmeasured; the D1.1 table is the control for it |
+| 2026-09-20 | D1.0 closed: `IRPerfGrid --yaw` is radians, as its help text, every recipe, 70 committed arms in 17 evidence sets and `rotation_controls.py` assume. It had been handed to `IRRender::setCameraVisualYaw`, which takes degrees, so `--yaw 0.785398163` was a 0.785° pose and every IRPerfGrid row labelled 45° under `docs/perf/` (and the objective's 2.06× rotation-parity baseline) was measured there. Control: before the fix `--yaw 90` runs the cardinal gather path and `--yaw 1.5707963` the per-axis scatter path; after it they swap, and the run logs its effective yaw in degrees. Before/after differences inside each document stand, since both arms sat at the same pose; statements about 45° itself do not. At 64³ the two poses happen to read close (20.16 vs 19.45 ms on one binary), but yaw is not free on the scatter path: 58.3° reads 14.90 ms and 116.6° reads 13.11 ms in the same session, so one rotated pose does not characterise rotation cost. `IRCanvasStress`, `IRShapeDebug` and `ir_voxel_yaw` always took radians, so D0's captures are unaffected. Evidence: [`docs/perf/perf-grid-yaw-unit.md`](../../perf/perf-grid-yaw-unit.md). Found while measuring D1.1, whose first, grouped arms also showed host drift larger than the arm differences, a `-O3` Debug tree and a host on battery; those are D1.1's to record with the arms that show them |
 
 ### Decisions taken
 
+- 2026-09-20: `IRPerfGrid --yaw` becomes radians rather than relabelling the
+  flag as degrees: the help text, every committed command line and every
+  other demo already say radians, so the fix makes the recorded commands mean
+  what their tables claim from now on. The old rows are not rewritten; the
+  erratum names the pose they were taken at and the true-45° control beside
+  it. Rejected: editing fifteen documents' labels to 0.785° (the commands
+  stay wrong for the next reader who copies one), and removing
+  `setCameraVisualYaw` (an engine API an out-of-tree creation may call).
+- 2026-09-20: million-control arms are interleaved round-robin with the power
+  source recorded in the manifest, because grouped arms on this host drift by
+  more than the differences they were meant to show. Rejected: cooldown
+  sleeps between grouped arms (they shrink the drift without showing it).
+- 2026-09-20: while #3561–#3568 are open the campaign works D1 and then D2
+  (perf tooling, `perf_grid`, `docs/perf/`, the overflow sort and per-axis
+  storage) and leaves D0's remaining items and D4 alone: both edit files that
+  stack owns. D0 resumes from `render-stack-sanity-review.md`'s follow-up list
+  and a re-read of `rendering-audit-todo.md` once the stack merges, and any
+  item that stack closed is struck rather than redone. The million control is
+  re-run on master after it merges, because its sampler and receiver changes
+  execute inside the fixture. Rejected: stacking campaign slices on the other
+  lane's branches (its history is its own to rewrite), and carrying D0 edits
+  to `canvas_stress/main.cpp` in parallel (#3565, #3566 and #3567 edit it in
+  sequence, so a campaign edit would conflict with each as it lands).
 - 2026-09-18: D0 stays ahead of D2–D5 (visual correctness before
   optimization, as the audit worklist orders it); D1 interleaves because
   it changes no render code.
@@ -162,10 +194,17 @@ D1 slices touch only tooling and docs, so they may interleave with D0.
 ## Now
 
 - **In flight:** D1.1 — the committed `million` preset and the
-  `repeat_profile` recipe with Release and profiling-off arms (measurement
-  only: the frame-time and GPU-stage tables that D2–D5 will move).
-- **Next:** Checkpoint 2 once D1.1 is open (D0.3, D0.4, D0.5, D1.1 and the
-  fix-forward since Checkpoint 1): fresh-context reviewers plus the render
-  and ECS audits on the three engine diffs. After it, the source-face
-  canvas's raw-texel SDF marker (the remaining SDF display item, a
-  `SOURCE_FACES` composite question) or D2 per the ledger.
+  `repeat_profile` recipe, stacked on D1.0 and re-measured at a true 45°:
+  Debug and Release, stage profiling on and off, arms interleaved, power
+  source in the manifest. The work is on
+  `claude/million-entity-render-million-preset`.
+- **Next:** D1.2 — continuous yaw as a profiled fixture (the objective's
+  criterion is a sweep; D1.1 is two fixed poses), then a matched-projected-
+  extent arm and the `--yaw` perf-matrix axis (#3130); all inside
+  `creations/demos/perf_grid/`, `scripts/perf/` and `docs/perf/`. D2 follows.
+  A docs PR proposes the objective's rotation-parity baseline at a true 45°
+  once D1.1 has the number. A fix-forward off master trims
+  `engine/render/CLAUDE.md` (209) and `engine/prefabs/irreden/render/CLAUDE.md`
+  (208) back under their 200-line budgets, which #3554 and #3556 helped push
+  them over. Checkpoint 2 is called when four campaign PRs are open or D1
+  completes. D0's open list and D4 wait on #3561–#3568 (Decisions taken).
