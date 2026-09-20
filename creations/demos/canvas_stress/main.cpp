@@ -582,6 +582,23 @@ Color reVoxelizeVerifyColor(vec3 modelPos, ivec3 size) {
 // stale exposed-mask defect (the distance buffer fills gated holes, uniform color
 // masks wrong faces), so the discriminating solid must be multi-color (and the
 // carve makes it sparse/concave so rotation changes which faces are exposed).
+// Two unit SDF box markers on a focused voxel canvas (--focus-mixed-shape):
+// world entities at --mixed-shape-at and three units along +x from it, so the
+// shape pass's owner-relative placement is measured against the world
+// positions the composite puts the canvas at.
+void spawnMixedShapeMarkers(EntityId canvasEntity) {
+    const IRArgs::Parser &args = IREngine::args();
+    vec3 first{3.0f, 0.0f, 0.0f};
+    if (args.wasProvided("--mixed-shape-at")) {
+        const std::vector<float> &at = args.getFloats("--mixed-shape-at");
+        first = vec3(at[0], at[1], at[2]);
+    }
+    C_ShapeDescriptor marker{IRRender::ShapeType::BOX, vec4(1.0f), Color{240, 180, 40, 255}};
+    marker.canvasEntity_ = canvasEntity;
+    IREntity::createEntity(C_LocalTransform{first}, marker);
+    IREntity::createEntity(C_LocalTransform{first + vec3(3.0f, 0.0f, 0.0f)}, marker);
+}
+
 // `initialRotation` seeds a clear off-cardinal pose so even shot 0 reads as true-3D.
 void spawnDetachedReVoxelizeSolid(
     int index,
@@ -592,7 +609,8 @@ void spawnDetachedReVoxelizeSolid(
     Color color,
     bool carveAsymmetric,
     bool multiColor = false,
-    bool screenLocked = false
+    bool screenLocked = false,
+    ivec3 solidSize = kReVoxSolidSize
 ) {
     // World-depth compositing is the engine default; `screenLocked`
     // (--screen-lock-detached / --solo-revox) reverts this solid to the
@@ -610,8 +628,12 @@ void spawnDetachedReVoxelizeSolid(
     // on its canvas as it tumbles.
     EntityId solid = IREntity::createEntity(
         C_LocalTransform{vec3(0.0f)},
-        C_VoxelSetNew{kReVoxSolidSize, color, true, canvas.canvasEntity_}
+        C_VoxelSetNew{solidSize, color, true, canvas.canvasEntity_}
     );
+    if (IREngine::args().getInt("--focus-revox") == index &&
+        IREngine::args().getFlag("--focus-mixed-shape")) {
+        spawnMixedShapeMarkers(canvas.canvasEntity_);
+    }
 
     if (carveAsymmetric) {
         C_VoxelSetNew &voxelSet = IREntity::getComponent<C_VoxelSetNew>(solid);
@@ -765,10 +787,7 @@ void spawnOrbitShape(
         );
     }
     if (focused && IREngine::args().getFlag("--focus-mixed-shape")) {
-        C_ShapeDescriptor marker{IRRender::ShapeType::BOX, vec4(1.0f), Color{240, 180, 40, 255}};
-        marker.canvasEntity_ = canvas.canvasEntity_;
-        IREntity::createEntity(C_LocalTransform{vec3(3.0f, 0.0f, 0.0f)}, marker);
-        IREntity::createEntity(C_LocalTransform{vec3(6.0f, 0.0f, 0.0f)}, marker);
+        spawnMixedShapeMarkers(canvas.canvasEntity_);
     }
     IREntity::createEntity(
         C_LocalTransform{worldPos, initialRotation},
@@ -1072,9 +1091,19 @@ void registerArgs() {
     args.integer("--focus-canary", "Isolate a canary by its original index and center it", -1);
     args.integer(
         "--focus-revox",
-        "Isolate a re-voxelize solid by its original index (0 L-prism, 1 cube, 2 grounded cube) "
-        "and center it",
+        "Isolate a re-voxelize solid by its original index (0 L-prism, 1 cube, 2 grounded cube, "
+        "3 mixed-parity 12x12x11 box) and center it, or place it at --focus-offset",
         -1
+    );
+    args.numbers(
+        "--focus-offset",
+        "World translation <x> <y> <z> of the focused re-voxelize solid (default the origin)",
+        3
+    );
+    args.numbers(
+        "--parity-extent",
+        "Cell extent <x> <y> <z> of the mixed-parity box (--focus-revox 3; default 12 12 11)",
+        3
     );
     args.integer("--focus-orbit", "Isolate an orbit shape by its original index and center it", -1);
     args.flag("--focus-single-voxel", "Use one voxel in the focused orbit canvas");
@@ -1088,7 +1117,13 @@ void registerArgs() {
     );
     args.flag(
         "--focus-mixed-shape",
-        "Add a texture-rendered SDF marker to the focused voxel canvas"
+        "Add two texture-rendered SDF box markers to the focused voxel canvas"
+    );
+    args.numbers(
+        "--mixed-shape-at",
+        "World position <x> <y> <z> of the first --focus-mixed-shape marker (default 3 0 0); "
+        "the second sits three units along +x",
+        3
     );
     args.flag("--focus-identity", "Use identity rotation for the focused orbit shape");
     args.flag("--focus-alternate-parity", "Shift the focused orbit canvas origin by one trixel");
@@ -2077,8 +2112,10 @@ void initEntities() {
                                 ? 0.0f
                                 : kReVoxSpinPerFrame;
     const int focusRevox = IREngine::args().getInt("--focus-revox");
-    const auto revoxWorld = [focusRevox](vec3 worldPos) {
-        return focusRevox >= 0 ? vec3(0.0f) : worldPos;
+    const std::vector<float> &focusOffset = IREngine::args().getFloats("--focus-offset");
+    const vec3 focusWorld{focusOffset[0], focusOffset[1], focusOffset[2]};
+    const auto revoxWorld = [focusRevox, focusWorld](vec3 worldPos) {
+        return focusRevox >= 0 ? focusWorld : worldPos;
     };
     if (g_settings.soloRevox_ ||
         (groupEnabled(kGroupReVox) && (focusRevox < 0 || focusRevox == 0))) {
@@ -2125,6 +2162,37 @@ void initEntities() {
         return;
     }
 
+    // Mixed-parity proof box, focus-only: two even axes and one odd, so the
+    // resampled lattice carries a half-cell phase in-plane and in depth that a
+    // shape sharing the canvas must consume.
+    if (groupEnabled(kGroupReVox) && focusRevox == 3) {
+        ivec3 parityExtent{12, 12, 11};
+        if (IREngine::args().wasProvided("--parity-extent")) {
+            const std::vector<float> &extent = IREngine::args().getFloats("--parity-extent");
+            parityExtent = ivec3(
+                static_cast<int>(extent[0]),
+                static_cast<int>(extent[1]),
+                static_cast<int>(extent[2])
+            );
+        }
+        spawnDetachedReVoxelizeSolid(
+            3,
+            revoxWorld(kReVoxCubeWorld),
+            (IREngine::args().getFlag("--probe-upright")
+                 ? vec4(0.0f, 0.0f, 0.0f, 1.0f)
+                 : IRMath::quatAxisAngle(
+                       IRMath::normalize(vec3(0.3f, 1.0f, 0.5f)),
+                       IRMath::kPi / 5.0f
+                   )),
+            vec3(0.4f, 1.0f, 0.6f),
+            reVoxSpin,
+            Color{90, 200, 120, 255},
+            /*carveAsymmetric=*/false,
+            /*multiColor=*/false,
+            /*screenLocked=*/g_settings.screenLockDetached_,
+            parityExtent
+        );
+    }
     if (groupEnabled(kGroupReVox) && (focusRevox < 0 || focusRevox == 2)) {
         spawnDetachedReVoxelizeSolid(
             2,

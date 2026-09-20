@@ -16,6 +16,8 @@ SPEC = importlib.util.spec_from_file_location(
     "revox_face_metric", SCRIPTS / "render-revox-face-metric.py")
 METRIC = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(METRIC)
+import render_metric_util  # noqa: E402
+import render_revox_lattice  # noqa: E402
 
 SIZE = 160
 SCALE = (4, 2)
@@ -46,8 +48,13 @@ class RevoxFaceMetricTest(unittest.TestCase):
         self.assertNotEqual(stats["occupied_cells"], METRIC.SOLID_EXTENT ** 3)
         self.assertNotEqual(bytes(rotated), bytes(identity))
 
+    def test_mixed_parity_fixture_anchors_per_axis(self):
+        cells, anchor, _ = render_revox_lattice.source_cells(METRIC.FIXTURES["parity"])
+        self.assertEqual(len(cells), 12 * 12 * 11)
+        self.assertEqual(anchor, (-0.5, -0.5, 0.0))
+
     def test_carved_fixture_drops_the_carved_quadrant(self):
-        cells, anchor, _ = METRIC.source_cells(METRIC.FIXTURES["lprism"])
+        cells, anchor, _ = render_revox_lattice.source_cells(METRIC.FIXTURES["lprism"])
         self.assertEqual(len(cells), METRIC.SOLID_EXTENT ** 3 * 3 // 4)
         self.assertEqual(anchor, (-0.5, -0.5, -0.5))
 
@@ -154,12 +161,13 @@ class RevoxFaceMetricTest(unittest.TestCase):
 
     def test_ray_box_distance(self):
         box = ((0.0, 0.0, 0.0), (1.0, 1.0, 1.0))
+        distance = render_metric_util.ray_box_distance
         self.assertAlmostEqual(
-            METRIC.ray_box_distance((-2.0, 0.5, 3.0), (1.0, 0.0, 0.0), *box, 10.0), 2.0, places=4)
+            distance((-2.0, 0.5, 3.0), (1.0, 0.0, 0.0), *box, 10.0), 2.0, places=4)
         self.assertAlmostEqual(
-            METRIC.ray_box_distance((-2.0, 0.5, 0.5), (1.0, 0.0, 0.0), *box, 10.0), 0.0, places=4)
+            distance((-2.0, 0.5, 0.5), (1.0, 0.0, 0.0), *box, 10.0), 0.0, places=4)
         self.assertAlmostEqual(
-            METRIC.ray_box_distance((2.0, 0.5, 0.5), (1.0, 0.0, 0.0), *box, 10.0), 1.0, places=4)
+            distance((2.0, 0.5, 0.5), (1.0, 0.0, 0.0), *box, 10.0), 1.0, places=4)
 
     def test_shadow_overlay_false_and_missed(self):
         size, scale = 400, (12, 6)
