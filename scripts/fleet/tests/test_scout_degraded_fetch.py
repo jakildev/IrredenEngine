@@ -2,6 +2,8 @@
 
 Covers: failed fetch → last-known-good preserved + degraded marker;
 clean empty fetch → not degraded; no-previous-state first-run fallback;
+a `200 []` over a populated label-filtered slice held for one tick and
+written through only when the next tick repeats it;
 the degraded SKIP in the scout-spawned lanes leaving pending work intact
 (#2965); and periodic claim cleanup independent of queue projection changes.
 """
@@ -184,6 +186,205 @@ class TestScoutDegradedFetch(unittest.TestCase):
                  patch.object(_mod, "GAME", Path(tmp) / "no-game"):
                 state = collect_state()
 
+        self.assertNotIn("degraded", state)
+
+
+_SAMPLE_EPIC = {"number": 7, "title": "umbrella", "labels": ["fleet:epic"],
+                "checklist": [], "managed": True}
+_SAMPLE_ISSUE = {"number": 8, "title": "issue", "labels": []}
+
+# Every fetcher collect_state fans out, with the clean value each test
+# starts from; a test overrides the one slice it drives.
+_CLEAN_FETCHERS = {
+    "fetch_prs": [_SAMPLE_PR],
+    "fetch_needs_plan": [],
+    "fetch_human_approved": [],
+    "fetch_closed_fleet_queued": [],
+    "fetch_recent_merged_prs": [],
+    "fetch_task_queue": _SAMPLE_TASK_QUEUE,
+    "fetch_epics": [],
+}
+
+
+class TestTransientEmptyHold(unittest.TestCase):
+    """A `200 []` over a populated slice is held for one tick.
+
+    `_rest_list` returns None only on a poll failure, so a label-filtered list
+    that answers `200 []` while the last snapshot held rows was written through
+    as a clean empty — purging the umbrellas' detail caches and firing the
+    epic-steward edge on a snapshot that had not changed. The only signal that
+    separates that transient from a genuinely emptied label set is the
+    non-empty → empty transition itself, so collect_state holds last-known-good
+    for that tick and accepts the empty when the next tick repeats it.
+    """
+
+    def setUp(self):
+        patcher = patch.object(_mod, "fetch_plan_review", return_value=[])
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _prev_state(self, tmp, held_empty=None, **fields):
+        repo = {
+            "path": str(Path.home() / "src" / "IrredenEngine"),
+            "prs": [_SAMPLE_PR],
+            "needs_plan": [],
+            "plan_review": [],
+            "human_approved": [],
+            "closed_fleet_queued": [],
+            "recent_merged_prs": [],
+            "tasks": _SAMPLE_TASK_QUEUE,
+            "epics": [],
+        }
+        repo.update(fields)
+        state = {"generated_at": "2026-09-16T14:00:00Z", "repos": {"engine": repo}}
+        if held_empty:
+            state["held_empty"] = list(held_empty)
+        state_file = Path(tmp) / "state.json"
+        state_file.write_text(json.dumps(state))
+        return state_file
+
+    def _collect(self, prev_file, logs=None, **overrides):
+        fetchers = dict(_CLEAN_FETCHERS)
+        fetchers.update(overrides)
+        with ExitStack() as es:
+            es.enter_context(patch.object(_mod, "STATE_FILE", prev_file))
+            es.enter_context(
+                patch.object(_mod, "GAME", prev_file.parent / "no-game"))
+            for name, value in fetchers.items():
+                es.enter_context(patch.object(_mod, name, return_value=value))
+            if logs is not None:
+                es.enter_context(patch.object(
+                    _mod, "log", lambda msg, *a, **kw: logs.append(str(msg))))
+            return collect_state()
+
+    def test_slice_is_empty_shapes(self):
+        empty_tasks = {"open": [], "in_progress": [], "done": [], "plan_gated": []}
+        self.assertTrue(_mod._slice_is_empty("epics", []))
+        self.assertFalse(_mod._slice_is_empty("epics", [_SAMPLE_EPIC]))
+        self.assertTrue(_mod._slice_is_empty("tasks", empty_tasks))
+        # `done` is filled after the fetch, so it never makes the slice non-empty.
+        self.assertTrue(_mod._slice_is_empty(
+            "tasks", dict(empty_tasks, done=[{"id": "#1"}])))
+        self.assertFalse(_mod._slice_is_empty(
+            "tasks", dict(empty_tasks, plan_gated=[99])))
+
+    def test_empty_over_populated_epics_is_held_and_degraded(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            prev = self._prev_state(tmp, epics=[_SAMPLE_EPIC])
+            logs = []
+            state = self._collect(prev, logs=logs, fetch_epics=[])
+
+        self.assertEqual(state["repos"]["engine"]["epics"], [_SAMPLE_EPIC])
+        self.assertEqual(state["degraded"], ["engine.epics"])
+        self.assertEqual(state["held_empty"], ["engine.epics"])
+        self.assertTrue(any(
+            ln.startswith("degraded: preserving last-known-good for engine.epics")
+            for ln in logs), logs)
+
+    def test_repeated_empty_on_next_tick_is_written_through(self):
+        """The genuinely-empty arm: the confirmation tick writes []."""
+        with tempfile.TemporaryDirectory() as tmp:
+            prev = self._prev_state(tmp, epics=[_SAMPLE_EPIC],
+                                    held_empty=["engine.epics"])
+            state = self._collect(prev, fetch_epics=[])
+
+        self.assertEqual(state["repos"]["engine"]["epics"], [])
+        self.assertNotIn("degraded", state)
+        self.assertNotIn("held_empty", state)
+
+    def test_recovered_list_on_next_tick_clears_the_hold(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            prev = self._prev_state(tmp, epics=[_SAMPLE_EPIC],
+                                    held_empty=["engine.epics"])
+            fresh = [dict(_SAMPLE_EPIC, title="renamed")]
+            state = self._collect(prev, fetch_epics=fresh)
+
+        self.assertEqual(state["repos"]["engine"]["epics"], fresh)
+        self.assertNotIn("degraded", state)
+        self.assertNotIn("held_empty", state)
+
+    def test_held_slice_is_byte_identical_to_the_previous_snapshot(self):
+        """No lane edge fires on the held tick: the projected input is the
+        prior slice verbatim, so every stable_hash(projector(state)) repeats."""
+        epics = [_SAMPLE_EPIC, dict(_SAMPLE_EPIC, number=9, title="second")]
+        with tempfile.TemporaryDirectory() as tmp:
+            prev = self._prev_state(tmp, epics=epics)
+            state = self._collect(prev, fetch_epics=[])
+
+        self.assertEqual(_mod.stable_hash(state["repos"]["engine"]["epics"]),
+                         _mod.stable_hash(epics))
+
+    def test_every_label_list_field_takes_the_hold(self):
+        for fetcher, field in (("fetch_needs_plan", "needs_plan"),
+                               ("fetch_human_approved", "human_approved"),
+                               ("fetch_epics", "epics")):
+            with self.subTest(field=field), \
+                 tempfile.TemporaryDirectory() as tmp:
+                prev = self._prev_state(tmp, **{field: [_SAMPLE_ISSUE]})
+                state = self._collect(prev, **{fetcher: []})
+                self.assertEqual(state["repos"]["engine"][field], [_SAMPLE_ISSUE])
+                self.assertEqual(state["degraded"], [f"engine.{field}"])
+
+    def test_tasks_dict_empty_shape_is_held(self):
+        """The tasks slice's empty shape is the four-bucket dict, not []."""
+        empty_tasks = {"open": [], "in_progress": [], "done": [],
+                       "plan_gated": []}
+        with tempfile.TemporaryDirectory() as tmp:
+            prev = self._prev_state(tmp)
+            state = self._collect(prev, fetch_task_queue=empty_tasks)
+
+        self.assertEqual(state["repos"]["engine"]["tasks"]["open"],
+                         _SAMPLE_TASK_QUEUE["open"])
+        self.assertEqual(state["degraded"], ["engine.tasks"])
+        self.assertEqual(state["held_empty"], ["engine.tasks"])
+
+    def test_tasks_with_only_plan_gated_rows_is_not_empty(self):
+        """A queue whose every row is plan-gated still fetched rows."""
+        gated_only = {"open": [], "in_progress": [], "done": [],
+                      "plan_gated": [99]}
+        with tempfile.TemporaryDirectory() as tmp:
+            prev = self._prev_state(tmp)
+            state = self._collect(prev, fetch_task_queue=gated_only)
+
+        self.assertEqual(state["repos"]["engine"]["tasks"], gated_only)
+        self.assertNotIn("degraded", state)
+
+    def test_empty_over_empty_is_not_held(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            prev = self._prev_state(tmp, epics=[])
+            state = self._collect(prev, fetch_epics=[])
+
+        self.assertEqual(state["repos"]["engine"]["epics"], [])
+        self.assertNotIn("degraded", state)
+        self.assertNotIn("held_empty", state)
+
+    def test_first_run_empty_is_written_through(self):
+        missing = Path("/tmp/__fleet_state_missing_3459.json")
+        state = self._collect(missing, fetch_epics=[])
+
+        self.assertEqual(state["repos"]["engine"]["epics"], [])
+        self.assertNotIn("degraded", state)
+
+    def test_errored_fetch_after_a_hold_keeps_the_errored_arm(self):
+        """The errored arm is untouched: None still preserves + degrades, and it
+        does not count as the confirming empty."""
+        with tempfile.TemporaryDirectory() as tmp:
+            prev = self._prev_state(tmp, epics=[_SAMPLE_EPIC],
+                                    held_empty=["engine.epics"])
+            state = self._collect(prev, fetch_epics=None)
+
+        self.assertEqual(state["repos"]["engine"]["epics"], [_SAMPLE_EPIC])
+        self.assertEqual(state["degraded"], ["engine.epics"])
+        self.assertNotIn("held_empty", state)
+
+    def test_prs_keep_the_single_tick_genuine_empty_contract(self):
+        """The open-PR set is read through its own change-detector + GraphQL
+        path and empties routinely; it is deliberately not held."""
+        with tempfile.TemporaryDirectory() as tmp:
+            prev = self._prev_state(tmp)
+            state = self._collect(prev, fetch_prs=[])
+
+        self.assertEqual(state["repos"]["engine"]["prs"], [])
         self.assertNotIn("degraded", state)
 
 

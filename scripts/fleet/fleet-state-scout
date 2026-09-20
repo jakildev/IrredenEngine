@@ -4274,14 +4274,43 @@ def clone_freshness(root):
     }
 
 
+def _slice_is_empty(field, value):
+    """True when a fetched (or previously written) slice carries no rows.
+
+    `tasks` is the four-bucket dict, so its empty shape is every queue bucket
+    empty; `done` is excluded because fetch_task_queue never fills it (it is
+    populated later from closed_fleet_queued).
+    """
+    if field == "tasks":
+        return not any(value.get(k) for k in ("open", "in_progress", "plan_gated"))
+    return not value
+
+
+# Slices that take the transient-empty hold in collect_state: every
+# label-filtered REST list plus the task dict derived from one — GitHub's
+# label-filtered /issues list is eventually consistent, and a one-tick `200 []`
+# over a populated label set is a known shape of that. `prs` stays out: its
+# open set is read through a REST change-detector + GraphQL (a different
+# consistency path) and a genuinely emptied PR queue is the merger's routine
+# edge, so its single-tick genuine-empty contract is kept.
+HOLD_EMPTY_FIELDS = frozenset({
+    "needs_plan", "plan_review", "human_approved", "closed_fleet_queued",
+    "recent_merged_prs", "tasks", "epics",
+})
+
+
 def collect_state():
     # Load previous state so degraded fetches can fall back to last-known-good
     # data instead of writing empty arrays into a fresh-timestamped snapshot.
-    _prev_repos = {}
+    _prev_state = {}
     try:
-        _prev_repos = read_json_retry(STATE_FILE).get("repos", {})
+        _prev_state = read_json_retry(STATE_FILE)
     except (FileNotFoundError, json.JSONDecodeError):
         pass
+    _prev_repos = _prev_state.get("repos", {})
+    # Slices the PREVIOUS tick held as a suspected transient empty; the same
+    # empty answer this tick confirms it and is written through.
+    _prev_held = set(_prev_state.get("held_empty", []))
 
     repos = {"engine": {"path": str(ENGINE)}}
     if (GAME / ".git").exists():
@@ -4322,6 +4351,7 @@ def collect_state():
         ]
 
     _degraded = []
+    _held_empty = []
     with ThreadPoolExecutor(max_workers=FETCH_MAX_WORKERS) as ex:
         futures = {}
         for i, (repo_key, field, fn) in enumerate(fetch_specs):
@@ -4335,10 +4365,11 @@ def collect_state():
             except Exception as e:
                 log(f"fetch {repo_key}/{field} failed: {e}")
                 result = None
+            key = f"{repo_key}.{field}"
+            prev_value = _prev_repos.get(repo_key, {}).get(field)
             if result is None:
-                prev_value = _prev_repos.get(repo_key, {}).get(field)
                 if prev_value is not None:
-                    log(f"degraded: preserving last-known-good for {repo_key}.{field}")
+                    log(f"degraded: preserving last-known-good for {key}")
                     repos[repo_key][field] = prev_value
                 else:
                     repos[repo_key][field] = (
@@ -4346,9 +4377,27 @@ def collect_state():
                          "plan_gated": []}
                         if field == "tasks" else []
                     )
-                _degraded.append(f"{repo_key}.{field}")
-            else:
-                repos[repo_key][field] = result
+                _degraded.append(key)
+                continue
+            # A `200 []` where the last snapshot held rows is not a poll
+            # failure to _rest_list, but the only signal separating a
+            # transient dropout from a genuinely emptied label set is that
+            # transition: hold last-known-good for one tick and accept the
+            # empty only when the next tick repeats it. Holding the
+            # prior slice keeps every projection hash byte-identical, so no
+            # lane edge fires, and gc_issue_caches sees the full set, so no
+            # detail cache is purged and refetched.
+            if (field in HOLD_EMPTY_FIELDS and prev_value is not None
+                    and key not in _prev_held
+                    and _slice_is_empty(field, result)
+                    and not _slice_is_empty(field, prev_value)):
+                log(f"degraded: preserving last-known-good for {key} "
+                    f"(200 [] over a populated slice; confirming next tick)")
+                repos[repo_key][field] = prev_value
+                _degraded.append(key)
+                _held_empty.append(key)
+                continue
+            repos[repo_key][field] = result
 
     state = {
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -4359,6 +4408,8 @@ def collect_state():
     }
     if _degraded:
         state["degraded"] = sorted(_degraded)
+    if _held_empty:
+        state["held_empty"] = sorted(_held_empty)
     return state
 
 
