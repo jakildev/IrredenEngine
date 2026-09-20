@@ -82,6 +82,7 @@ D1 slices touch only tooling and docs, so they may interleave with D0.
 | 2026-09-18 | D0.1 closed: `SHAPES_TO_TRIXEL` rasters a shape on an entity canvas in the owner's model frame (owner-relative offset, no camera term, the canvas's rendered density, continuous yaw off the cardinals) and keeps a voxel-rastered canvas instead of clearing it; `IRSystem::clearCanvasAndDistances` moved to `canvas_clear.hpp` so a shape-only canvas resets through the voxel pass's sentinel + Metal scratch mirror. Gate `scripts/render-mixed-canvas-metric.py` (frame exact outside a two-texel marker guard, marker centroid within one texel, `--control` raster survival, `--strict` footprint): before, the second marker sat eight texels off at yaw 0 and both markers left the framebuffer at yaw 45; after, five yaws pass with centroids within a third of a texel, and the revoxelized-sphere control shows 0 differing pixels against the marker-free scene where the unconditional-clear experiment shows 235,823. The SDF marker's own display (raw 2x3 texel rectangle, dilation to 2.1× area under continuous yaw) is recorded as the open strict footprint for the SDF display item |
 | 2026-09-19 | Checkpoint 1: #3519, #3530, #3542 reviewed by fresh-context reviewers plus the render and ECS invariant audits on the engine diff. Findings applied on each branch: the wrong-yaw control names its yaw and the clipped path is pinned (D0.0); the mixed-canvas contract is scoped to zero-phase canvases, the ownerless branch resets through the shared clear, the smooth-yaw comments name the gate, the modifier demo includes the helper directly (D0.1); the dead DDA nudge is gone, the overlay's magenta count is reported, the near-riser band is attributed to the shadow path rather than the receiver, and the per-face noise floor is stated (D0.2). Stack rebased onto master via `gh stack sync`; master's own instruction-size lint was red (three docs over budget) and the two non-gated ones are trimmed in #3543. Merge order bottom-up: #3519 → #3530 → #3542 |
 | 2026-09-18 | D0.2 measured: `render-revox-face-metric.py --shadow-overlay` casts a ray from every sun-facing resampled face toward the sun through the destination lattice and compares with the shadow overlay. Authored-cell casting (the demo default) marks 75k–147k false self-shadow pixels on the cyan cube at every yaw; resampled-cell casting marks 0–9k, with the near-riser tread band (24,696 px at yaw 0) left lit by the shadow path (caster or receiver, traced in D0.3). AO darkens 6.9% of the cube by at most 5.9%. The lit tooth pattern is the caster/receiver geometry mismatch, not the staircase; evidence in `revoxelized-display-fidelity.md` § Direct sun |
+| 2026-09-19 | D0.3 closed: `BAKE_SUN_SHADOW_MAP::bakeVoxelFaces` casts every voxel canvas from the cells it rasterizes; the authored-grid caster mode (`useSource`, the 96-byte frame's source-grid fields, binding 9 in the GLSL and Metal kernels, `sourceFaceCoverage_`) is gone and `--source-face-shadows` / `--voxel-face-shadows` are accepted and ignored (byte-identical captures). The sun oracle casts from each displayed triangle's centroid, the point the lighting pass samples, and classifies false shadow by the ray's closest approach to an occupied cell: with that, the near-riser tread band is the per-face floor (missed shadow 0 at all five yaws), and every remaining false-shadow trixel grazes an occupied cell within a third of a cell while 370 trixels with clearance ≥ 0.35 never flip, the signature of the nearest-texel read at a terminator. Caster and surface receiver traced with no defect. The authored-caster captures fail the same gate (clear-ray false shadow at 0.55–0.67 cells). Floor shadow at zoom 4 is a clean stepped silhouette. `render-verify --target IRCanvasStress` already fails 9 of 11 on the pre-change tree (references from 2026-08-03 predate the September stacks), so the re-bless is filed as #3552 instead of bundled |
 
 ### Decisions taken
 
@@ -95,6 +96,16 @@ D1 slices touch only tooling and docs, so they may interleave with D0.
   casters for a smoother floor shadow (the object on screen is the staircase,
   and the campaign spirit puts receiver, caster and visible face on one
   geometry), and any receiver bias that hides the mismatch.
+- 2026-09-19: the sun oracle tolerates false shadow on a trixel whose
+  centroid ray passes within half a cell of an occupied cell (the sun map's
+  nearest-texel read at a terminator; the observed maximum is a third of a
+  cell) and fails on any clear-ray false shadow or missed shadow. Rejected:
+  a receiver-side bias to hide the residual, and a tighter tolerance derived
+  from the sun texel size, which the oracle cannot read from a capture.
+- 2026-09-19: the stale canvas_stress reference set is not re-blessed inside
+  a campaign PR: 9 of 11 checks fail before the D0.3 change and the diff is
+  the September stacks' shading, so a bless here would hide the campaign's
+  own effect under a month of drift. Filed as #3552 for a master-based bless.
 - 2026-09-18: a shape on an entity canvas follows the voxel producer's frame
   (owner-relative, canvas density, continuous yaw, no clear over a rastered
   canvas) rather than a shape-owned frame. Rejected: keeping the first-shape
@@ -114,23 +125,18 @@ D1 slices touch only tooling and docs, so they may interleave with D0.
 ### Follow-ups filed
 
 - PR #3543 (fix-forward, off master): trims `engine/video/CLAUDE.md` and `docs/agents/fleet-labels-reference.md` under their instruction-size budgets; `.claude/commands/role-worker.md` (306 of 303) stays a human edit.
+- #3552: `IRCanvasStress` macos-debug render-verify references stale since the September render stacks (9 of 11 checks fail on master); re-bless on master and re-ground the `world_placed_cast` thresholds.
 
 ## Now
 
-- **In flight:** D0.3 — revoxelized canvases cast from their resampled cells
-  (`BAKE_SUN_SHADOW_MAP::bakeVoxelFaces` drops the authored-grid caster for
-  the revoxelize path, its kernel mode and the demo flags become
-  compatibility no-ops), the canvas_stress references that carry the floor
-  shadow are re-blessed, and the near-riser tread band the receiver leaves
-  lit is traced caster-first (`bakeVoxelFaces`, then
-  `worldSurfaceSunShadowFactor`), with the sun oracle casting from trixel
-  centroids so its floor no longer hides a half-face.
-- **Next:** D0.4 — the shape pass consumes a revoxelized canvas's half-cell
-  phase (in-plane offset and a per-canvas depth bias in the shape frame data,
-  Metal twin included) with a mixed-parity fixture whose markers are visible
-  and a translated-owner capture, then the SDF marker's display in a private
-  canvas (the strict footprint of `render-mixed-canvas-metric.py`: raw 2x3
-  texels at the capped density and the sub-1 analytical dilation under
-  continuous yaw), then
-  D1.1 — the committed `million` preset and `repeat_profile` recipe with
-  Release and profiling-off arms.
+- **In flight:** D0.4 — the shape pass consumes a revoxelized canvas's
+  half-cell phase (in-plane offset and a per-canvas depth bias in the shape
+  frame data, Metal twin included) with a mixed-parity fixture whose markers
+  are visible and a translated-owner capture, then the SDF marker's display
+  in a private canvas (the strict footprint of
+  `render-mixed-canvas-metric.py`: raw 2x3 texels at the capped density and
+  the sub-1 analytical dilation under continuous yaw).
+- **Next:** D1.1 — the committed `million` preset and `repeat_profile`
+  recipe with Release and profiling-off arms; then Checkpoint 2 once D0.4
+  and D1.1 are open (four to six PRs since Checkpoint 1 counting the
+  fix-forward).

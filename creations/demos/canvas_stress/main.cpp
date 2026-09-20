@@ -1128,9 +1128,12 @@ void registerArgs() {
     );
     args.flag(
         "--voxel-face-shadows",
-        "Use resampled voxel faces instead of authored source faces for shadows"
+        "Compatibility flag: revoxelized canvases already cast from their resampled cells"
     );
-    args.flag("--source-face-shadows", "Use authored source faces for shadows (default)");
+    args.flag(
+        "--source-face-shadows",
+        "Compatibility flag: the authored-cell caster is retired; accepted and ignored"
+    );
     args.flag("--legacy-depth-shadows", "Debug legacy point-depth shadow casting");
     args.integer("--probe-analytic-canvases", "Shadow-only analytic canvas mask: 1, 2 or 3", 0);
     args.flag("--probe-no-voxel-pass", "Debug shape-only shadow initialization");
@@ -1461,9 +1464,6 @@ void initSystems() {
         const auto bakeSun = IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>();
         IRSystem::getSystemParams<IRSystem::System<IRSystem::BAKE_SUN_SHADOW_MAP>>(bakeSun)
             ->voxelFaceCoverage_ = !IREngine::args().getFlag("--legacy-depth-shadows");
-        IRSystem::getSystemParams<IRSystem::System<IRSystem::BAKE_SUN_SHADOW_MAP>>(bakeSun)
-            ->sourceFaceCoverage_ = !IREngine::args().getFlag("--voxel-face-shadows") ||
-                                    IREngine::args().getFlag("--source-face-shadows");
         renderPipeline.push_back(bakeSun);
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>());
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>());

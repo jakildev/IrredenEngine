@@ -5,8 +5,8 @@ Capture --only shadowocclusion --pivot-origin --no-spin --no-auto-rotate
 --no-ao --subdivisions 1 --zoom 1 --auto-screenshot 6 --sweep-yaw 3.14159265
 3.14159265 1. Pass full 2560x1440 PNGs, with the default sun, albedo and
 ambient. --unblocked checks captures made with --probe-unblocked.
---staircase instead requires --probe-staircase --source-face-shadows at
-zoom 4, with either --probe-grid or detached --local-trixel-display.
+--staircase instead requires --probe-staircase at zoom 4, with either
+--probe-grid or detached --local-trixel-display.
 The default depth caster still has a known false shadow at the outside sample.
 Its blocked sample is near world (4.25,2.5,-1), inside the overhead
 blocker's shadow: the sun ray reaches z=-2.5 at x=3.105,y=0.864.
@@ -67,7 +67,7 @@ def main() -> None:
     parser.add_argument("--unblocked", action="store_true")
     parser.add_argument(
         "--staircase", action="store_true",
-        help="Use --probe-staircase --source-face-shadows at zoom 4, yaw pi",
+        help="Use --probe-staircase at zoom 4, yaw pi",
     )
     args = parser.parse_args()
     results = [measure(path, args.unblocked, args.staircase) for path in args.images]

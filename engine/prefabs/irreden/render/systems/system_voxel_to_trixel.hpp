@@ -1731,10 +1731,6 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 BufferTarget::SHADER_STORAGE,
                 kBufferIndex_VoxelActiveMask
             );
-            voxelColorBuf_->bindBase(
-                BufferTarget::SHADER_STORAGE,
-                kBufferIndex_RevoxelizeSourceGrid
-            );
             {
                 IR_PROFILE_SCOPE("voxelSunFaces");
                 IRRender::GpuSubStageScope gpuScope("voxelSunFaces");
@@ -1742,7 +1738,6 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                     effectiveVoxelCount,
                     renderMode == 0 ? 1 : effectiveSub,
                     canvasLocalRotation,
-                    revoxBuffer,
                     triangleCanvasTextures.renderedCellOffset_
                 );
             }
