@@ -34,10 +34,14 @@ layout(std140, binding = 23) uniform ShapesFrameData {
     // continuous center reposition + yawedIsoDistance depth); 0 = cardinal
     // rasterYaw + faceDeform path. Set per canvas (the main world canvas and
     // entity canvases).
-    // smoothYawEnabled and _faceDeformPad fill the 8 bytes before faceDeform so
+    // smoothYawEnabled and latticeShapes fill the 8 bytes before faceDeform so
     // the block size matches the C++ sizeof exactly.
     uniform int smoothYawEnabled;
-    uniform int _faceDeformPad;
+    // 1 = a density-1 shape under smooth yaw is a lattice occupant: the
+    // lattice walk with the continuous-yaw SDF query, anchored on the snapped
+    // view cell, emitting the hexagons of the cells it covers (entity
+    // canvases, whose voxels are lattice cells at every yaw).
+    uniform int latticeShapes;
     // Per-face deformation matrix packed column-major into vec4: .xy = col0,
     // .zw = col1 of IRMath::faceDeformationMatrix(face, residualYaw).
     // Identity at residualYaw==0.
@@ -686,6 +690,32 @@ int snapLatticeWalk(ivec2 isoPixelRel, uint shapeType, vec4 paramsScaled,
     return kInvalidDepth;
 }
 
+// The lattice walk under a continuous camera yaw: the same even-sublattice
+// walk, with the view-frame lattice voxel rotated by R_z(+yaw) into
+// shape-local coords before the SDF test. The lattice stays the integer view
+// lattice (the shape is voxelized where the canvas's voxels are), only the
+// query point turns; at a cardinal yaw this is snapLatticeWalk.
+int snapLatticeWalkYawed(ivec2 isoPixelRel, uint shapeType, vec4 paramsScaled,
+                         float dExtent, float yawC, float yawS) {
+    if (((isoPixelRel.x + isoPixelRel.y) & 1) != 0) return kInvalidDepth;
+    int isoY = isoPixelRel.y;
+    int dMin = int(floor(-dExtent)) - 3;
+    int dMax = int(ceil(dExtent)) + 3;
+    int rem = ((dMin + isoY) % 3 + 3) % 3;
+    int dStart = dMin + ((3 - rem) % 3);
+    for (int d = dStart; d <= dMax; d += 3) {
+        vec3 p = isoToLocal3D(isoPixelRel, float(d));
+        ivec3 voxelPos = roundHalfUp(p);
+        if (pos3DtoPos2DIso(voxelPos) != isoPixelRel) continue;
+        vec3 v = vec3(voxelPos);
+        vec3 voxelLocal = vec3(yawC * v.x - yawS * v.y, yawS * v.x + yawC * v.y, v.z);
+        if (evaluateSDF(voxelLocal, shapeType, paramsScaled) <= 0.5) {
+            return voxelPos.x + voxelPos.y + voxelPos.z;
+        }
+    }
+    return kInvalidDepth;
+}
+
 // Analytical surface depth dispatcher for smooth mode and smooth yaw.
 // - Sphere: rotation-invariant (|p| under z-yaw unchanged); analytical works
 //   at any yaw without modification.
@@ -773,6 +803,9 @@ void main() {
     // trixel-for-trixel.
     bool smoothMode = (renderMode != 0) && (subdivisions > 1);
     int sub = smoothMode ? subdivisions : 1;
+    // A lattice shape under smooth yaw keeps the cardinal-style cell origin,
+    // depth and emit; only its SDF query turns with the camera.
+    bool latticeWalk = smoothYaw && !smoothMode && (latticeShapes != 0);
 
     // For BOX shapes, params.xyz is the voxel count per axis.  Convert to
     // continuous extent (voxelCount - 1) so the SDF surface lands exactly on
@@ -824,7 +857,7 @@ void main() {
     // iso projection (matches the voxel pool's per-voxel roundHalfUp(
     // pos3DtoPos2DIsoYawed) reposition so SDF and voxels share the same screen
     // placement). Cardinal path keeps the integer cardinal-snap origin.
-    ivec2 originIsoScaled = smoothYaw
+    ivec2 originIsoScaled = (smoothYaw && !latticeWalk)
         ? roundHalfUp(pos3DtoPos2DIsoYawed(worldPos * float(sub), visualYaw))
         : pos3DtoPos2DIso(originScaled);
     ivec2 isoExtentScaled = ivec2(
@@ -861,6 +894,9 @@ void main() {
         surfaceD = generalDepthSearchEntityRot(
             isoPixelRel, shape.shapeType, paramsScaled, hollow, dExtent,
             yawC, yawS, shape.rotation);
+    } else if (latticeWalk) {
+        surfaceD = snapLatticeWalkYawed(isoPixelRel, shape.shapeType, paramsScaled,
+                                        dExtent, yawC, yawS);
     } else if (!smoothMode && !smoothYaw) {
         surfaceD = snapLatticeWalk(isoPixelRel, shape.shapeType, paramsScaled,
                                    dExtent, cardinalIndex);
@@ -881,7 +917,7 @@ void main() {
     // snapped integer origin (surfaceD is the local iso depth). Smooth path:
     // yawedIsoDistance of the subdivided world surface point.
     int baseDepth;
-    if (smoothYaw) {
+    if (smoothYaw && !latticeWalk) {
         vec3 viewOffset = isoToLocal3D(isoPixelRel, float(surfaceD));
         // worldOffset = R_z(+visualYaw) * viewOffset (view -> world).
         vec3 worldOffset = vec3(yawC * viewOffset.x - yawS * viewOffset.y,

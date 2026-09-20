@@ -113,16 +113,18 @@ def voxel_faces(yaw, identity, resample, owner):
         yield center, (lambda p: p), 0.0, centers
 
 
-def marker_cell(center, yaw, resample):
+def marker_cell(center, yaw, resample, owner):
     """Where a unit SDF marker displays: on a revoxelized canvas it voxelizes onto
     the canvas lattice (the cell nearest its viewed centre, in the lattice
-    whose cells sit at integer + anchor), and the composite places that cell.
-    On the orbit frame's canvas it stays at its viewed position."""
+    whose cells sit at the owner's viewed position + integer + anchor), and
+    the composite places that cell. On the orbit frame's canvas it stays at
+    its viewed position."""
     viewed = view(center, yaw)
     if resample is None:
         return viewed
-    return tuple(round_half_up(viewed[i] - resample.anchor[i]) + resample.anchor[i]
-                 for i in range(3))
+    shift = view(owner, yaw)
+    return tuple(shift[i] + round_half_up(viewed[i] - shift[i] - resample.anchor[i])
+                 + resample.anchor[i] for i in range(3))
 
 
 def expected_image(width, height, yaw, identity, scale, origin, fixture=None,
@@ -142,8 +144,8 @@ def expected_image(width, height, yaw, identity, scale, origin, fixture=None,
     guards = []
     for center in markers:
         corners = []
-        for _, _, polygon in cube_faces(marker_cell(center, yaw, resample), lambda p: p, 0.0,
-                                        scale, origin):
+        for _, _, polygon in cube_faces(marker_cell(center, yaw, resample, owner),
+                                        lambda p: p, 0.0, scale, origin):
             clipped |= off_frame(polygon, width, height)
             corners.extend((x, y) for x, y, _ in polygon)
             raster_polygon_depth(marker_labels, marker_depth, width, height, polygon,
