@@ -7,6 +7,14 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
 
 ## Current shadow investigation
 
+- [Caster/receiver matrix](../pr-screenshots/codex/shadow-receiver-mode-matrix/README.md):
+  16 mode pairs at eight yaws captured on Metal. Source-face DETACHED casting and
+  receiving are missing; intermediate GRID receivers show interior shadow gaps.
+  Resolve those separately from silhouette aliasing. Add explicit participation
+  and local-trixel versus continuous-surface sampling choices after their geometric
+  contracts are validated; world placement and screen locking remain separate.
+
+
 - [Caster/receiver plane agreement](surface-shadow-sampling.md) removes false
   shadow bands on the two resampled cubes at 45° and 135°. The strict eight-yaw
   comparison improves four views without increasing errors in the other twelve;
