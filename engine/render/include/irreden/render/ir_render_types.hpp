@@ -119,6 +119,10 @@ struct FrameDataTrixelToFramebuffer {
     vec2 canvasZoomLevel_;
     vec2 cameraTrixelOffset_;
     vec2 textureOffset_;
+    /// Raw canvas texel under the cursor (`IRRender::mouseCanvasTexelWorld()`)
+    /// in base (÷ effective subdivisions) units; the gather hover-gates on
+    /// `floor(displayOrigin) == floor(this × subdivisions + z1 + canvasOffset)`.
+    /// Far off-canvas (-1e6) disables hover for the draw.
     vec2 mouseHoveredTriangleIndex_;
     /// x = effective subdivisions for smooth-mode hover coord conversion.
     /// y = depth rescale (effSub / canvas renderedSub) applied to rawDist in

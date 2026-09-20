@@ -210,13 +210,13 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         fd.trixelSampleLayout_ = static_cast<int>(canvasTextures->renderedSampleLayout_);
         fd.mpMatrix_ = calcProjectionMatrix(fbRes_) * model;
         fd.canvasZoomLevel_ = densityZoom;
-        // The de-tile gather parity anchor scales with the raster density, the
+        // The gather's canvas offset scales with the raster density, the
         // direct mirror of the main canvas's `cameraTrixelOffset_ *= effSub`
         // (system_trixel_to_framebuffer.hpp). `-entityIso` is in base world
         // units; the canvas rasters cubeSub texels per base unit, so the
-        // `trixelOriginModifier` parity bit (computed from `floor(canvasOffset)` in
-        // the gather) must see the offset in canvas-texel units. At cubeSub == 1
-        // this is unchanged (byte-identical).
+        // gather's hovered-texel position term (`… + canvasOffset`) must see
+        // the offset in canvas-texel units. At cubeSub == 1 this is unchanged
+        // (byte-identical).
         fd.cameraTrixelOffset_ = -entityIso * vec2(cubeSubDensity);
         fd.textureOffset_ = vec2(0.0f);
         // Composite depth. By default, add the entity's WORLD iso depth so
