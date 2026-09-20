@@ -177,12 +177,6 @@ pixel-area ratio, so a smaller output is proportionally smaller. Pass them
 per run with `--config-preset <file>` (its `config = { … }` overlays
 `config.lua`, see `engine/world/CLAUDE.md`).
 
-## Commands and components (prefabs/irreden/video)
-
-- `command_take_screenshot` → `requestScreenshot()`.
-- `command_take_screenshot_canvas` → `requestCanvasScreenshot()`.
-- `command_toggle_recording` → `toggleRecording()`.
-
 ## Gotchas
 
 - **FFmpeg missing → silent.** `IR_VIDEO_HAS_FFMPEG=0` makes
