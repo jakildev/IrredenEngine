@@ -282,7 +282,7 @@ void main() {
         shadow = 1.0;
         if (shadowsEnabled != 0) {
             shadow = visibleFaceIds.w == 2
-                ? worldSurfaceSunShadowFactor(worldReceivePos, worldNormal, pos3DtoDistance(worldReceivePos))
+                ? worldSurfaceSunShadowFactor(worldReceivePos, worldNormal, pos3DtoDistance(worldReceivePos), detachedViewToWorld)
                 : worldSunShadowFactor(worldReceivePos, worldNormal, pos3DtoDistance(worldReceivePos));
         }
     } else {

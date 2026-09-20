@@ -12,8 +12,9 @@ world-position buffer or a probe for non-receiving screen-locked canvases.
 Normal `LOCAL_TRIANGLES` receivers use the displayed triangle centroid, with
 the resampling phase carried through raster placement, depth, lighting and
 resampled casting. Finite caster depths carry a distinct provenance tag and
-are compared on the receiver plane at the nearest sun-map sample, without a
-normal displacement or coverage filtering. Legacy point samples retain their
+use the nearest sun-map sample with the plane agreement contract in
+[surface sampling](surface-shadow-sampling.md), without a normal displacement
+or coverage filtering. Legacy point samples retain their
 filtered comparison. Main/GRID and raw-debug receivers retain the legacy
 sampler until their surface reconstruction has a corresponding contract.
 

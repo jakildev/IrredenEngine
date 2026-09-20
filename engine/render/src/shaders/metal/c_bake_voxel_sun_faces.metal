@@ -18,7 +18,7 @@ struct VoxelSunFaceFrame {
     int4 dispatch;
 };
 
-inline void rasterSunFace(device atomic_uint* sunDepthBuf, float3 corner, float3 edgeU, float3 edgeV, float2 origin, float2 texelSize, int cascadeOffset) {
+inline void rasterSunFace(device atomic_uint* sunDepthBuf, float3 corner, float3 edgeU, float3 edgeV, float2 origin, float2 texelSize, int cascadeOffset, uint faceMarker) {
     const float2 a = edgeU.xy;
     const float2 b = edgeV.xy;
     const float determinant = a.x * b.y - a.y * b.x;
@@ -35,7 +35,7 @@ inline void rasterSunFace(device atomic_uint* sunDepthBuf, float3 corner, float3
                                     a.x * delta.y - a.y * delta.x) / determinant;
             if (any(faceUV < float2(-0.00001)) || any(faceUV > float2(1.00001))) continue;
             const float depth = corner.z + faceUV.x * edgeU.z + faceUV.y * edgeV.z;
-            atomic_fetch_min_explicit(&sunDepthBuf[cascadeOffset + y * kSunShadowMapDim + x], packSunSurfaceDepth(depth), memory_order_relaxed);
+            atomic_fetch_min_explicit(&sunDepthBuf[cascadeOffset + y * kSunShadowMapDim + x], (packSunDepth(depth, int2(0)) | faceMarker), memory_order_relaxed);
         }
     }
 }
@@ -77,7 +77,7 @@ kernel void c_bake_voxel_sun_faces(
         const float3 projected = sunSpaceProject(corner, sunFrame.sunBasisU.xyz, sunFrame.sunBasisV.xyz, sunFrame.sunDirection.xyz);
         const float3 projectedU = sunSpaceProject(edgeU, sunFrame.sunBasisU.xyz, sunFrame.sunBasisV.xyz, sunFrame.sunDirection.xyz);
         const float3 projectedV = sunSpaceProject(edgeV, sunFrame.sunBasisU.xyz, sunFrame.sunBasisV.xyz, sunFrame.sunDirection.xyz);
-        rasterSunFace(sunDepthBuf, projected, projectedU, projectedV, sunFrame.cascadeOriginUV_0, sunFrame.cascadeTexelSize_0, 0);
-        rasterSunFace(sunDepthBuf, projected, projectedU, projectedV, sunFrame.cascadeOriginUV_1, sunFrame.cascadeTexelSize_1, kCascadeTexelCount);
+        rasterSunFace(sunDepthBuf, projected, projectedU, projectedV, sunFrame.cascadeOriginUV_0, sunFrame.cascadeTexelSize_0, 0, sunVoxelFaceMarker(faceId, faceFrame.dispatch.w != 0));
+        rasterSunFace(sunDepthBuf, projected, projectedU, projectedV, sunFrame.cascadeOriginUV_1, sunFrame.cascadeTexelSize_1, kCascadeTexelCount, sunVoxelFaceMarker(faceId, faceFrame.dispatch.w != 0));
     }
 }

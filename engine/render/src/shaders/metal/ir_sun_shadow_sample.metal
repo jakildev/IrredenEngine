@@ -46,7 +46,7 @@ struct FrameDataSun {
 inline float sampleCascadeShadow(
     float2 sunUV, float sunZ, float3 normal, float3 sunDir, float3 uHat, float3 vHat,
     float2 origin, float2 texelSz, int bufferOffset,
-    device const uint *sunDepthBuf, float maxShadowThrow, bool surfaceReceiver
+    device const uint *sunDepthBuf, float maxShadowThrow, bool surfaceReceiver, float4 casterViewToWorld
 ) {
     // Finite footprints are rasterized at sun texel centers. Query their cell
     // without blending coverage across its boundary or moving the receiver.
@@ -57,11 +57,23 @@ inline float sampleCascadeShadow(
         if (sunWriteIsSurface(nearest)) {
             float facing = dot(normal, sunDir);
             if (facing <= 0.0) return 0.0;
-            float2 gradient = float2(dot(normal, uHat), dot(normal, vHat)) / facing;
+            float3 planeNormal = normal;
+            const int casterFace = sunVoxelFaceId(nearest);
+            if (casterFace >= 0) {
+                planeNormal = faceOutwardNormal6(casterFace);
+                if (sunVoxelFaceViewAligned(nearest))
+                    planeNormal = rotateByQuat(planeNormal, casterViewToWorld);
+            }
+            float2 gradient = float2(dot(planeNormal, uHat), dot(planeNormal, vHat)) / dot(planeNormal, sunDir);
             float2 tapUV = origin + (float2(nearestPixel) + 0.5) * texelSz;
-            float receiverZ = sunZ + dot(gradient, tapUV - sunUV);
-            float separation = receiverZ - unpackSunDepth(nearest);
-            if (separation > kShadowBiasQuantNoise && separation < maxShadowThrow) return 1.0;
+            float casterZ = unpackSunDepth(nearest) + dot(gradient, sunUV - tapUV);
+            const float2 receiverGradient = float2(dot(normal, uHat), dot(normal, vHat)) / facing;
+            const float receiverSeparation = sunZ + dot(receiverGradient, tapUV - sunUV) - unpackSunDepth(nearest);
+            const float casterSeparation = sunZ - casterZ;
+            // A frontmost tap alone cannot establish coverage at the receiver.
+            // Require front-to-back order on both planes before accepting it.
+            if (min(casterSeparation, receiverSeparation) > kShadowBiasQuantNoise &&
+                max(casterSeparation, receiverSeparation) < maxShadowThrow) return 1.0;
         }
     }
     float slope = max(kShadowBiasSlopeMin, dot(normal, sunDir));
@@ -124,7 +136,7 @@ inline float sampleCascadeShadow(
 // Ambient lighting is composed separately. isoDepth selects/blends cascades.
 inline float worldSunShadowFactorImpl(
     float3 pos3D, float3 normal, float isoDepth,
-    constant FrameDataSun &sun, device const uint *sunDepthBuf, bool surfaceReceiver
+    constant FrameDataSun &sun, device const uint *sunDepthBuf, bool surfaceReceiver, float4 casterViewToWorld
 ) {
     float3 sunDir = sun.sunDirection.xyz;
     float3 uHat = sun.sunBasisU.xyz;
@@ -142,7 +154,7 @@ inline float worldSunShadowFactorImpl(
     if (sun.cascadeCount <= 1) {
         shadowAccum = sampleCascadeShadow(
             sunUV, sunZ, normal, sunDir, uHat, vHat,
-            sun.sunBufferOriginUV, sun.sunBufferTexelSize, 0, sunDepthBuf, sun.sunMaxShadowThrow, surfaceReceiver
+            sun.sunBufferOriginUV, sun.sunBufferTexelSize, 0, sunDepthBuf, sun.sunMaxShadowThrow, surfaceReceiver, casterViewToWorld
         );
     } else {
         float distToSplit = isoDepth - sun.cascadeSplitDepth;
@@ -161,21 +173,21 @@ inline float worldSunShadowFactorImpl(
         if (nearInterior && distToSplit < -kCascadeBlendRange) {
             shadowAccum = sampleCascadeShadow(
                 sunUV, sunZ, normal, sunDir, uHat, vHat,
-                sun.cascadeOriginUV_0, sun.cascadeTexelSize_0, 0, sunDepthBuf, sun.sunMaxShadowThrow, surfaceReceiver
+                sun.cascadeOriginUV_0, sun.cascadeTexelSize_0, 0, sunDepthBuf, sun.sunMaxShadowThrow, surfaceReceiver, casterViewToWorld
             );
         } else if (!nearInterior || distToSplit > kCascadeBlendRange) {
             shadowAccum = sampleCascadeShadow(
                 sunUV, sunZ, normal, sunDir, uHat, vHat,
-                sun.cascadeOriginUV_1, sun.cascadeTexelSize_1, kCascadeTexelCount, sunDepthBuf, sun.sunMaxShadowThrow, surfaceReceiver
+                sun.cascadeOriginUV_1, sun.cascadeTexelSize_1, kCascadeTexelCount, sunDepthBuf, sun.sunMaxShadowThrow, surfaceReceiver, casterViewToWorld
             );
         } else {
             float nearShadow = sampleCascadeShadow(
                 sunUV, sunZ, normal, sunDir, uHat, vHat,
-                sun.cascadeOriginUV_0, sun.cascadeTexelSize_0, 0, sunDepthBuf, sun.sunMaxShadowThrow, surfaceReceiver
+                sun.cascadeOriginUV_0, sun.cascadeTexelSize_0, 0, sunDepthBuf, sun.sunMaxShadowThrow, surfaceReceiver, casterViewToWorld
             );
             float farShadow = sampleCascadeShadow(
                 sunUV, sunZ, normal, sunDir, uHat, vHat,
-                sun.cascadeOriginUV_1, sun.cascadeTexelSize_1, kCascadeTexelCount, sunDepthBuf, sun.sunMaxShadowThrow, surfaceReceiver
+                sun.cascadeOriginUV_1, sun.cascadeTexelSize_1, kCascadeTexelCount, sunDepthBuf, sun.sunMaxShadowThrow, surfaceReceiver, casterViewToWorld
             );
             float t = smoothstep(-kCascadeBlendRange, kCascadeBlendRange, distToSplit);
             shadowAccum = mix(nearShadow, farShadow, t);
@@ -189,14 +201,14 @@ inline float worldSunShadowFactor(
     float3 pos3D, float3 normal, float isoDepth,
     constant FrameDataSun &sunFrameData, device const uint *sunDepthBuf
 ) {
-    return worldSunShadowFactorImpl(pos3D + normal * kNormalBiasVoxels, normal, isoDepth, sunFrameData, sunDepthBuf, false);
+    return worldSunShadowFactorImpl(pos3D + normal * kNormalBiasVoxels, normal, isoDepth, sunFrameData, sunDepthBuf, false, float4(0.0, 0.0, 0.0, 1.0));
 }
 
 inline float worldSurfaceSunShadowFactor(
-    float3 pos3D, float3 normal, float isoDepth,
+    float3 pos3D, float3 normal, float isoDepth, float4 casterViewToWorld,
     constant FrameDataSun &sunFrameData, device const uint *sunDepthBuf
 ) {
-    return worldSunShadowFactorImpl(pos3D, normal, isoDepth, sunFrameData, sunDepthBuf, true);
+    return worldSunShadowFactorImpl(pos3D, normal, isoDepth, sunFrameData, sunDepthBuf, true, casterViewToWorld);
 }
 
 #endif // IR_SUN_SHADOW_SAMPLE_METAL_INCLUDED

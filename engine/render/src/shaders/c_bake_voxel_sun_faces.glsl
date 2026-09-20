@@ -42,7 +42,7 @@ layout(std140, binding = 29) uniform FrameDataSun {
     uniform float sunMaxShadowThrow;  // Unused here (receiver-only)
 };
 
-void rasterSunFace(vec3 corner, vec3 edgeU, vec3 edgeV, vec2 origin, vec2 texelSize, int cascadeOffset) {
+void rasterSunFace(vec3 corner, vec3 edgeU, vec3 edgeV, vec2 origin, vec2 texelSize, int cascadeOffset, uint faceMarker) {
     const vec2 a = edgeU.xy;
     const vec2 b = edgeV.xy;
     const float determinant = a.x * b.y - a.y * b.x;
@@ -59,7 +59,7 @@ void rasterSunFace(vec3 corner, vec3 edgeU, vec3 edgeV, vec2 origin, vec2 texelS
                                     a.x * delta.y - a.y * delta.x) / determinant;
             if (any(lessThan(faceUV, vec2(-0.00001))) || any(greaterThan(faceUV, vec2(1.00001)))) continue;
             const float depth = corner.z + faceUV.x * edgeU.z + faceUV.y * edgeV.z;
-            atomicMin(sunDepthBuf[cascadeOffset + y * kSunShadowMapDim + x], packSunSurfaceDepth(depth));
+            atomicMin(sunDepthBuf[cascadeOffset + y * kSunShadowMapDim + x], (packSunDepth(depth, ivec2(0)) | faceMarker));
         }
     }
 }
@@ -92,7 +92,7 @@ void main() {
         const vec3 projected = sunSpaceProject(corner, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz);
         const vec3 projectedU = sunSpaceProject(edgeU, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz);
         const vec3 projectedV = sunSpaceProject(edgeV, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz);
-        rasterSunFace(projected, projectedU, projectedV, cascadeOriginUV_0, cascadeTexelSize_0, 0);
-        rasterSunFace(projected, projectedU, projectedV, cascadeOriginUV_1, cascadeTexelSize_1, kCascadeTexelCount);
+        rasterSunFace(projected, projectedU, projectedV, cascadeOriginUV_0, cascadeTexelSize_0, 0, sunVoxelFaceMarker(faceId, dispatch.w != 0));
+        rasterSunFace(projected, projectedU, projectedV, cascadeOriginUV_1, cascadeTexelSize_1, kCascadeTexelCount, sunVoxelFaceMarker(faceId, dispatch.w != 0));
     }
 }

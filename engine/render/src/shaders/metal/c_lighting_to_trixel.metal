@@ -210,7 +210,7 @@ kernel void c_lighting_to_trixel(
         shadow = 1.0;
         if (sunFrameData.shadowsEnabled != 0) {
             shadow = voxelFrameData.visibleFaceIds.w == 2
-                ? worldSurfaceSunShadowFactor(worldReceivePos, worldNormal, pos3DtoDistance(worldReceivePos), sunFrameData, sunDepthBuf)
+                ? worldSurfaceSunShadowFactor(worldReceivePos, worldNormal, pos3DtoDistance(worldReceivePos), frameData.detachedViewToWorld, sunFrameData, sunDepthBuf)
                 : worldSunShadowFactor(worldReceivePos, worldNormal, pos3DtoDistance(worldReceivePos), sunFrameData, sunDepthBuf);
         }
     } else {
