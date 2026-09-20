@@ -19,7 +19,7 @@ import json
 import math
 from pathlib import Path
 
-from render_metric_util import read_png, write_png
+from render_metric_util import raster_polygon, read_png, write_png
 
 
 def rotate(point, identity):
@@ -70,24 +70,6 @@ def projected_faces(shape, yaw, identity, scale, center):
                 points.append((center[0] + (-x + y) * scale[0],
                                center[1] + (-x - y + 2 * z) * scale[1]))
             yield points, tuple(round((v + 1) * 127.5) for v in normal)
-
-
-def raster_polygon(mask, width, height, polygon, label):
-    """Sample analytic convex polygons at framebuffer pixel centers."""
-    edges = list(zip(polygon, polygon[1:] + polygon[:1]))
-    first = max(0, math.ceil(min(y for _, y in polygon) - .5))
-    last = min(height, math.ceil(max(y for _, y in polygon) - .5))
-    for y in range(first, last):
-        intersections = []
-        for (ax, ay), (bx, by) in edges:
-            if min(ay, by) <= y + .5 < max(ay, by):
-                intersections.append(ax + (y + .5 - ay) * (bx - ax) / (by - ay))
-        if len(intersections) < 2:
-            continue
-        left = max(0, math.ceil(min(intersections) - .5))
-        right = min(width, math.ceil(max(intersections) - .5))
-        if right > left:
-            mask[y * width + left:y * width + right] = bytes([label]) * (right - left)
 
 
 def expected_image(width, height, shape, yaw, identity, scale, center):
