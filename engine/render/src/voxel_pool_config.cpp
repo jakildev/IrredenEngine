@@ -7,7 +7,7 @@ int g_edge = kDefaultEdge;
 } // namespace
 
 void setSize(int edge) {
-    g_edge = IRMath::max(1, edge);
+    g_edge = IRMath::clamp(edge, 1, kMaxEdge);
 }
 
 int getEdge() {

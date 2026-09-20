@@ -58,7 +58,7 @@ default.
 ```lua
 config = {
     -- ... WorldConfig fields (init_window_width, ...) ...
-    voxel_pool_edge = 128,   -- default 64
+    voxel_pool_edge = 128,   -- default 64, clamped to [1, 710]
 }
 ```
 

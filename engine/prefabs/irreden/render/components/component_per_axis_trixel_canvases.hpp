@@ -6,6 +6,7 @@
 
 #include <irreden/render/texture.hpp>
 #include <irreden/render/buffer.hpp>
+#include <irreden/render/voxel_pool_config.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 
 #include <array>
@@ -139,6 +140,23 @@ struct C_PerAxisTrixelCanvases {
     bool isAllocated() const {
         return axes_[0].colors_.second != nullptr;
     }
+
+    // VoxelPoolConfig::kMaxEdge is sized off this bound: the largest pool's
+    // face demand fits the signed 2^30 field, one edge more does not.
+    static_assert(
+        static_cast<std::uint64_t>(IRRender::VoxelPoolConfig::kMaxEdge) *
+                IRRender::VoxelPoolConfig::kMaxEdge * IRRender::VoxelPoolConfig::kMaxEdge *
+                kAxisCount <=
+            (std::uint64_t{1} << 30),
+        "VoxelPoolConfig::kMaxEdge overflows the per-axis overflow lane"
+    );
+    static_assert(
+        static_cast<std::uint64_t>(IRRender::VoxelPoolConfig::kMaxEdge + 1) *
+                (IRRender::VoxelPoolConfig::kMaxEdge + 1) *
+                (IRRender::VoxelPoolConfig::kMaxEdge + 1) * kAxisCount >
+            (std::uint64_t{1} << 30),
+        "VoxelPoolConfig::kMaxEdge is not the largest edge the overflow lane fits"
+    );
 
     static int overflowCapacityFor(int axisCells, int voxelCapacity) {
         IR_ASSERT(axisCells >= 0 && voxelCapacity >= 0, "negative per-axis capacity input");
