@@ -64,6 +64,31 @@ class SourceFaceMetricTest(unittest.TestCase):
             result, _ = METRIC.compare(128, 128, 3, cube_pixels(), labels, palette, True)
             self.assertTrue(result["pass"], (axis, result))
 
+    def test_receiver_centers_and_camera_invariance(self):
+        for yaw in (0, 90, 180, 270):
+            faces = list(METRIC.projected_faces(
+                "voxel", math.radians(yaw), True, (16, 8), (64, 64),
+                receiver_position=True))
+            colors = {color for _, color in faces}
+            expected = {
+                0: {(96, 128, 128), (128, 96, 128), (128, 128, 96)},
+                90: {(159, 128, 128), (128, 96, 128), (128, 128, 96)},
+                180: {(159, 128, 128), (128, 159, 128), (128, 128, 96)},
+                270: {(96, 128, 128), (128, 159, 128), (128, 128, 96)},
+            }
+            self.assertEqual(colors, expected[yaw])
+
+    def test_receiver_palette_rejects_double_camera_rotation(self):
+        labels, palette, _ = METRIC.expected_image(
+            128, 128, "voxel", 0, True, (16, 8), (64, 64), receiver_position=True)
+        pixels = bytes(channel for label in labels for channel in palette[label])
+        good, _ = METRIC.compare(128, 128, 3, pixels, labels, palette, True)
+        self.assertTrue(good["pass"])
+        swapped = [palette[0], palette[2], palette[1], palette[3]]
+        bad, _ = METRIC.compare(128, 128, 3, pixels, labels, swapped, True)
+        self.assertGreater(bad["wrong_face_pixels"], 0)
+        self.assertFalse(bad["pass"])
+
     def test_invalid_axis_is_rejected(self):
         for pose in ((0, 0, 0, 45), (1, 0, 0, float("nan"))):
             with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as caught:

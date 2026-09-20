@@ -128,8 +128,8 @@ inline void buildVoxelFrameData(
         // COMPUTE_VOXEL_AO / LIGHTING_TO_TRIXEL recover each voxel's WORLD pos as
         // (model pos + .xyz) and sample the shared world sun-shadow map + light
         // volume there. Off → the default screen-locked overlay (.w == 0) stays
-        // byte-identical. Projected source-face DETACHED canvases do not publish world-receive
-        // metadata; only camera-aligned revoxelized depth supports that consumer.
+        // byte-identical. Resampled raster phase belongs to this camera-aligned
+        // receiver; source faces use their own continuous geometry.
         frameData.detachedWorldReceive_ = vec4(
             canvasRotation.worldCellOffset_ + IRMath::rotateVectorByQuat(
                                                   canvas.renderedCellOffset_,
@@ -168,6 +168,10 @@ inline void buildVoxelFrameData(
         frameData.faceDeform_[0] = vec4(fdX[0], fdX[1]);
         frameData.faceDeform_[1] = vec4(fdY[0], fdY[1]);
         frameData.faceDeform_[2] = vec4(fdZ[0], fdZ[1]);
+        if (canvas.renderedSampleLayout_ == TrixelSampleLayout::SOURCE_FACES) {
+            frameData.detachedWorldReceive_ =
+                vec4(canvasRotation.worldCellOffset_, canvasRotation.worldPlaced_ ? 1.0f : 0.0f);
+        }
         return;
     }
 
