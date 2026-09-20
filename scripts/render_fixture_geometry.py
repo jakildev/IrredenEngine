@@ -2,7 +2,7 @@
 projected-face oracles (``render-source-face-metric.py``,
 ``render-mixed-canvas-metric.py``). Pure stdlib.
 
-The focused orbit shape sits at the world origin, rotated a quarter turn about
+The focused orbit shape sits at the world origin, rotated 45 degrees about
 the (1,1,1) diagonal unless the demo runs with ``--focus-identity``; the camera
 Z-yaw rotates the world into the view frame as R_z(-yaw).
 """
@@ -13,15 +13,24 @@ import math
 ORBIT_EXTENTS = {"frame": 14, "octahedron": 10, "voxel": 1}
 
 
-def rotate(point, identity=False):
-    """The focused orbit shape's authored rotation (quarter turn about (1,1,1))."""
+def rotate(point, identity=False, axis_angle=None):
+    """Rigid axis-angle rotation; the orbit fixture defaults to (1,1,1), 45 degrees."""
     if identity:
         return point
-    cosine, sine = math.cos(math.pi / 4), math.sin(math.pi / 4)
-    axis = 1 / math.sqrt(3)
-    cross = (point[2] - point[1], point[0] - point[2], point[1] - point[0])
-    return tuple(cosine * point[i] + (1 - cosine) * sum(point) / 3
-                 + sine * axis * cross[i] for i in range(3))
+    x, y, z, degrees = axis_angle or (1, 1, 1, 45)
+    scale = max(abs(x), abs(y), abs(z))
+    if not scale:
+        raise ValueError("rotation axis must be nonzero")
+    scaled = (x / scale, y / scale, z / scale)
+    length = math.hypot(*scaled)
+    axis = tuple(value / length for value in scaled)
+    cosine, sine = math.cos(math.radians(degrees)), math.sin(math.radians(degrees))
+    cross = (axis[1]*point[2] - axis[2]*point[1],
+             axis[2]*point[0] - axis[0]*point[2],
+             axis[0]*point[1] - axis[1]*point[0])
+    along = sum(a*b for a, b in zip(axis, point))
+    return tuple(cosine*point[i] + (1-cosine)*along*axis[i] + sine*cross[i]
+                 for i in range(3))
 
 
 def view(point, yaw):

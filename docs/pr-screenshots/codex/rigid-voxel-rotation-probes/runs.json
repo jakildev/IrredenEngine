@@ -1,0 +1,60 @@
+[
+  {
+    "pose": 0.47,
+    "cmd": "fleet-run IRCanvasStress --only rigid --focus-rigid 2 --frozen-pose 0.47 --no-auto-rotate --pivot-origin --no-ao --no-shadows --debug-overlay normals --zoom 16 --auto-screenshot 6 --sweep-yaw 0 2.35619449 4",
+    "exit": 0,
+    "screenshots": [
+      "screenshot_001678.png",
+      "screenshot_001679.png",
+      "screenshot_001680.png",
+      "screenshot_001681.png"
+    ]
+  },
+  {
+    "pose": 3.141592653589793,
+    "cmd": "fleet-run IRCanvasStress --only rigid --focus-rigid 2 --frozen-pose 3.141592653589793 --no-auto-rotate --pivot-origin --no-ao --no-shadows --debug-overlay normals --zoom 16 --auto-screenshot 6 --sweep-yaw 0 2.35619449 4",
+    "exit": 0,
+    "screenshots": [
+      "screenshot_001682.png",
+      "screenshot_001683.png",
+      "screenshot_001684.png",
+      "screenshot_001685.png"
+    ]
+  },
+  {
+    "pose": 4.2,
+    "cmd": "fleet-run IRCanvasStress --only rigid --focus-rigid 2 --frozen-pose 4.2 --no-auto-rotate --pivot-origin --no-ao --no-shadows --debug-overlay normals --zoom 16 --auto-screenshot 6 --sweep-yaw 0 2.35619449 4",
+    "exit": 0,
+    "screenshots": [
+      "screenshot_001686.png",
+      "screenshot_001687.png",
+      "screenshot_001688.png",
+      "screenshot_001689.png"
+    ]
+  },
+  {
+    "pose": 4.7,
+    "cmd": "fleet-run IRCanvasStress --only rigid --focus-rigid 2 --frozen-pose 4.7 --no-auto-rotate --pivot-origin --no-ao --no-shadows --debug-overlay normals --zoom 16 --auto-screenshot 6 --sweep-yaw 0 2.35619449 4",
+    "exit": 0,
+    "screenshots": [
+      "screenshot_001690.png",
+      "screenshot_001691.png",
+      "screenshot_001692.png",
+      "screenshot_001693.png"
+    ]
+  },
+  {
+    "cmd": "fleet-run IRCanvasStress --only rigid --no-auto-rotate --pivot-origin --no-ao --no-shadows --zoom 3 --auto-screenshot 6 --sweep-frames 8 120",
+    "exit": 0,
+    "screenshots": [
+      "screenshot_001694.png",
+      "screenshot_001695.png",
+      "screenshot_001696.png",
+      "screenshot_001697.png",
+      "screenshot_001698.png",
+      "screenshot_001699.png",
+      "screenshot_001700.png",
+      "screenshot_001701.png"
+    ]
+  }
+]
