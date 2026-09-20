@@ -64,10 +64,8 @@ validation index's jitter probe plus the camera contracts below.
 - A shader fragment may self-include only a macro-free prerequisite.
   Macro-parameterized fragments remain in each wrapper's explicit ordered
   include list after the wrapper's `#define`s.
-- `cmake/run_glsl_reserved_word_check.cmake` (header-checks lane; `header-checks`
-  / `lint` targets) fails a `.glsl` declaring a GLSL reserved word as an
-  identifier: Metal accepts these, NVIDIA GL rejects them. Rename the
-  `metal/<stem>.metal` twin too; `.metal` is unscanned (its compiler fails loudly).
+- `cmake/run_glsl_reserved_word_check.cmake` rejects GLSL reserved words as
+  `.glsl` identifiers (NVIDIA GL fails, Metal doesn't); rename the `.metal` twin.
 
 ### Metal compute kernel threadgroup registry
 
