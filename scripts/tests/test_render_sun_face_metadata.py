@@ -46,7 +46,7 @@ int main() {
     }
     for (int view = 0; view < 2; ++view) {
         for (int face = 0; face < 6; ++face) {
-            const uint marker = sunVoxelFaceMarker(face, view != 0);
+            const uint marker = sunVoxelFaceMarker(face, view);
             if (marker > 255 || used[marker] || marker == 0x88) return 2;
             used[marker] = true;
             for (uint depth : {0u, 1u, 524288u, 1048576u}) {
@@ -56,6 +56,10 @@ int main() {
                 if (sunVoxelFaceViewAligned(packed) != (view != 0)) return 5;
             }
         }
+    }
+    for (int face = 0; face < 6; ++face) {
+        const uint arbitrary = sunVoxelFaceMarker(face, 2);
+        if (arbitrary != 0x88u || sunVoxelFaceId(arbitrary) != -1) return 8;
     }
     if (!sunWriteIsSurface(0x88) || sunVoxelFaceId(0x88) != -1) return 6;
     if (sunWriteIsSurface(0xFFFFFFFFu) || sunVoxelFaceId(0xFFFFFFFFu) != -1) return 7;

@@ -7,9 +7,9 @@ Capture four cardinal views using IRCanvasStress --only shadowbox,floor
 Use --grid when captures also use --probe-grid.
 Set --effective-subdivisions to the measured caster density: GRID commonly
 scales with zoom, while a private canvas can remain at density 1. Use --source for
---probe-analytic-box captures (unrounded authored box coordinates), and for
-historical captures made with the retired --source-face-shadows caster.
---box-yaw and --box-offset mirror the analytic probe pose. The receiver plate
+--probe-analytic-box or --probe-source-box captures (unrounded authored geometry).
+--box-yaw and --box-offset mirror the analytic probe pose; --box-pose mirrors
+the detached --frozen-pose rotation about (1,1,1). The receiver plate
 supplies pixel scale and origin; the expected shadow comes from the authored box and
 sun direction, independently of the renderer's shadow samples.
 --strict-edges adds a fixed one-pixel 8-neighbor raster boundary gate; overall area
@@ -28,6 +28,7 @@ import math
 from pathlib import Path
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
+from render_fixture_geometry import rotate as rotate_source
 from render_metric_util import raster_polygon
 from render_probe_geometry import (
     BOX_HALF_CENTER_SPAN,
@@ -53,7 +54,7 @@ def rotate(point: tuple[float, float, float], cardinal: int) -> tuple[float, flo
 
 def expected_polygon(image: Image.Image, cardinal: int, grid: bool, source: bool,
                      box_yaw=0.0, box_offset=(0.0, 0.0, 0.0), subdivisions=1,
-                     iso_scale=None, screen_origin=None):
+                     iso_scale=None, screen_origin=None, box_pose=0.0):
     left, top, right, bottom = plate_bounds(image)
     center = ((left + right - 1) / 2, (top + bottom - 1) / 2)
     scale = ((right - left) / (4 * FLOOR_HALF_SPAN),
@@ -72,6 +73,7 @@ def expected_polygon(image: Image.Image, cardinal: int, grid: bool, source: bool
     projected = []
     for corner in itertools.product(*zip(lower, upper)):
         x, y, z = rotate(corner, 0 if grid or source else cardinal)
+        x, y, z = rotate_source((x, y, z), axis_angle=(1, 1, 1, math.degrees(box_pose)))
         cosine, sine = math.cos(box_yaw), math.sin(box_yaw)
         x, y = cosine * x - sine * y, sine * x + cosine * y
         x += box_offset[0]
@@ -135,11 +137,12 @@ def strict_edges(observed, visible, polygon):
 
 def measure(path: Path, cardinal: int, grid: bool, overlay_dir: Path | None, source=False,
             box_yaw=0.0, box_offset=(0.0, 0.0, 0.0), strict=False, subdivisions=1,
-            iso_scale=None, screen_origin=None) -> bool:
+            iso_scale=None, screen_origin=None, box_pose=0.0) -> bool:
     with Image.open(path) as opened_image:
         image = opened_image.convert("RGB")
     polygon, floor_mask = expected_polygon(
-        image, cardinal, grid, source, box_yaw, box_offset, subdivisions, iso_scale, screen_origin)
+        image, cardinal, grid, source, box_yaw, box_offset, subdivisions, iso_scale,
+        screen_origin, box_pose)
     expected = Image.new("L", image.size)
     ImageDraw.Draw(expected).polygon(polygon, fill=255)
     observed, visible = shadow_masks(image, floor_mask)
@@ -188,8 +191,10 @@ def main() -> None:
                              "one-pixel 8-neighbor edge band")
     parser.add_argument("--source", action="store_true",
                         help="Use unrounded authored positions (analytic box, "
-                             "or the retired --source-face-shadows caster)")
+                             "or --probe-source-box)")
     parser.add_argument("--overlay-dir", type=Path)
+    parser.add_argument("--box-pose", type=float, default=0.0,
+                        help="Source box angle around (1,1,1), radians; matches --frozen-pose")
     parser.add_argument("--box-yaw", type=float, default=0.0, help="Authored box yaw in radians")
     parser.add_argument("--box-offset", type=float, nargs=3, default=(0.0, 0.0, 0.0))
     args = parser.parse_args()
@@ -203,16 +208,18 @@ def main() -> None:
         parser.error("screen origin must be finite")
     if args.effective_subdivisions < 1:
         parser.error("effective subdivisions must be positive")
-    if not math.isfinite(args.box_yaw) or any(not math.isfinite(v) for v in args.box_offset):
+    if (not math.isfinite(args.box_pose) or not math.isfinite(args.box_yaw)
+            or any(not math.isfinite(v) for v in args.box_offset)):
         parser.error("box pose must be finite")
-    if (args.box_yaw or any(args.box_offset)) and not args.source:
+    if (args.box_pose or args.box_yaw or any(args.box_offset)) and not args.source:
         parser.error("box pose options require --source")
     results = []
     for cardinal, path in enumerate(args.images):
         try:
             results.append(measure(path, cardinal, args.grid, args.overlay_dir, args.source,
                                    args.box_yaw, args.box_offset, args.strict_edges,
-                                   args.effective_subdivisions, args.iso_scale, args.screen_origin))
+                                   args.effective_subdivisions, args.iso_scale, args.screen_origin,
+                                   args.box_pose))
         except (OSError, ValueError) as error:
             print(f"{path}: FAIL ({error})")
             results.append(False)

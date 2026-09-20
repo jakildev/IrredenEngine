@@ -10,13 +10,17 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
 - [Rigid SO(3) probes](../pr-screenshots/codex/rigid-voxel-rotation-probes/README.md)
   expose the existing continuous source-face path without revoxelizing. Fourteen
   single-voxel pose/camera checks pass; two nearly edge-on cases are inconclusive.
-  Extend to multi-voxel depth/occlusion and dense temporal transitions; add world
-  shadow support without replacing source geometry with resampled occupancy.
+  Extend to multi-voxel depth/occlusion and dense temporal transitions.
+  [Rigid source casting](../pr-screenshots/codex/rigid-source-shadow-casters/README.md)
+  now projects original transformed faces: 12 aggregate hull checks pass, while
+  all 12 strict edge checks still fail. Source-face reception remains missing.
 
 
 - [Caster/receiver matrix](../pr-screenshots/codex/shadow-receiver-mode-matrix/README.md):
-  16 mode pairs at eight yaws captured on Metal. Source-face DETACHED casting and
-  receiving are missing; intermediate GRID receivers show interior shadow gaps.
+  16 mode pairs at eight yaws captured on Metal. The original matrix predates
+  rigid source casting; source receiving remains missing. Intermediate GRID
+  receivers show interior shadow gaps, and source/SDF contact controls retain
+  boundary differences.
   Resolve those separately from silhouette aliasing. Add explicit participation
   and local-trixel versus continuous-surface sampling choices after their geometric
   contracts are validated; world placement and screen locking remain separate.

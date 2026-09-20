@@ -878,22 +878,32 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         vec3 rasterCellOffset = vec3(0.0f)
     ) {
         if (frameData_.shadowsEnabled_ == 0 || count == 0 ||
-            (rotation.isDetached() && (!rotation.worldPlaced_ || !rotation.reVoxelize_))) {
+            (rotation.isDetached() && !rotation.castsWorldShadow_)) {
             return;
         }
         const ivec2 grid = voxelDispatchGridForCount(IRMath::divCeil(count, 64));
-        const vec4 orientation = rotation.isDetached() ? IRPrefab::Camera::getRotationQuat()
-                                                       : vec4(0.0f, 0.0f, 0.0f, 1.0f);
+        const bool rigidSource = rotation.isDetached() && !rotation.reVoxelize_;
+        const vec4 cameraRotation = IRPrefab::Camera::getRotationQuat();
+        const vec4 orientation = rigidSource ? IRMath::quatMul(cameraRotation, rotation.rotation_)
+                                 : rotation.isDetached() ? cameraRotation
+                                                         : vec4(0.0f, 0.0f, 0.0f, 1.0f);
         const VoxelSunFaceFrame params{
             vec4(
                 rotation.isDetached()
                     ? rotation.worldCellOffset_ +
-                          IRMath::rotateVectorByQuat(rasterCellOffset, orientation)
+                          IRMath::rotateVectorByQuat(rasterCellOffset, cameraRotation)
                     : vec3(0.0f),
                 0.0f
             ),
             orientation,
-            ivec4(count, grid.x, subdivisions, rotation.isDetached() ? 1 : 0)
+            ivec4(
+                count,
+                grid.x,
+                subdivisions,
+                rigidSource             ? 2
+                : rotation.isDetached() ? 1
+                                        : 0
+            )
         };
         voxelFaceFrameBuf_->subData(0, sizeof(params), &params);
         voxelFaceFrameBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_RevoxelizeDetachedParams);

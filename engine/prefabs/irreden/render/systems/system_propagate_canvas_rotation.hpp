@@ -91,6 +91,8 @@ template <> struct System<PROPAGATE_CANVAS_ROTATION> {
             // receive stay on one convention. screenLocked_ → byte-identical
             // overlay.
             canvasRotation.value()->worldPlaced_ = !entityCanvas.screenLocked_;
+            canvasRotation.value()->castsWorldShadow_ =
+                !entityCanvas.screenLocked_ && entityCanvas.visible_;
             canvasRotation.value()->worldCellOffset_ =
                 IRMath::vec3(IRMath::roundVec3HalfUp(worldTransform.translation_));
         }
