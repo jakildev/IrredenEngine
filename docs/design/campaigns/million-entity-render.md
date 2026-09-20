@@ -203,8 +203,9 @@ D1 slices touch only tooling and docs, so they may interleave with D0.
   extent arm and the `--yaw` perf-matrix axis (#3130); all inside
   `creations/demos/perf_grid/`, `scripts/perf/` and `docs/perf/`. D2 follows.
   A docs PR proposes the objective's rotation-parity baseline at a true 45°
-  once D1.1 has the number. A fix-forward off master trims
-  `engine/render/CLAUDE.md` (209) and `engine/prefabs/irreden/render/CLAUDE.md`
-  (208) back under their 200-line budgets, which #3554 and #3556 helped push
-  them over. Checkpoint 2 is called when four campaign PRs are open or D1
+  once D1.1 has the number. `instruction-size` is red on master and so on
+  every open PR: `engine/render/CLAUDE.md` is 209 and
+  `engine/prefabs/irreden/render/CLAUDE.md` 208 against budgets of 200, grown
+  mostly by #3522 (this campaign's PRs added one line net, in #3530); a
+  fix-forward off master trims them. Checkpoint 2 is called when four campaign PRs are open or D1
   completes. D0's open list and D4 wait on #3561–#3568 (Decisions taken).
