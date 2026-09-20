@@ -1,9 +1,12 @@
 """Literal projected-edge controls independent of the polygon rasterizer."""
 
+import contextlib
 import importlib.util
+import io
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from PIL import Image
 
@@ -30,6 +33,67 @@ class ShadowBoxEdgesTest(unittest.TestCase):
                        (48 * scale, 48 * scale), (16 * scale, 48 * scale)]
         observed, visible = METRIC.shadow_masks(image, Image.new("L", image.size, 255))
         return METRIC.strict_edges(observed, visible, polygon)[0]
+
+    def test_caster_density_preserves_half_centers_and_odd_density_snap(self):
+        plate = Image.new("RGB", (240, 120), (108, 109, 115))
+        for cardinal in range(4):
+            source, _ = METRIC.expected_polygon(plate, cardinal, True, True)
+            even, _ = METRIC.expected_polygon(plate, cardinal, True, False, subdivisions=2)
+            self.assertEqual(even, source)
+            for density in (1, 3):
+                snapped, _ = METRIC.expected_polygon(
+                    plate, cardinal, True, False, subdivisions=density)
+                offset = .5 / density
+                dx = offset * (1 - METRIC.SUN[0] / METRIC.SUN[2])
+                dy = offset * (1 - METRIC.SUN[1] / METRIC.SUN[2])
+                for _ in range(cardinal):
+                    dx, dy = dy, -dx
+                delta = (-dx + dy, (-dx - dy) * .5)
+                for actual, expected in zip(snapped, source):
+                    self.assertAlmostEqual(actual[0] - expected[0], delta[0])
+                    self.assertAlmostEqual(actual[1] - expected[1], delta[1])
+
+    def test_source_invariance_and_detached_snap_basis(self):
+        plate = Image.new("RGB", (240, 120), (108, 109, 115))
+        for cardinal in range(4):
+            source, _ = METRIC.expected_polygon(plate, cardinal, False, True)
+            for density in (1, 2, 3):
+                unchanged, _ = METRIC.expected_polygon(
+                    plate, cardinal, False, True, subdivisions=density)
+                self.assertEqual(unchanged, source)
+                detached, _ = METRIC.expected_polygon(
+                    plate, cardinal, False, False, subdivisions=density)
+                offset = 0 if density == 2 else .5 / density
+                light_x, light_y = METRIC.SUN[:2]
+                for _ in range(cardinal):
+                    light_x, light_y = light_y, -light_x
+                dx = offset * (1 - light_x / METRIC.SUN[2])
+                dy = offset * (1 - light_y / METRIC.SUN[2])
+                delta = (-dx + dy, (-dx - dy) * .5)
+                for actual, expected in zip(detached, source):
+                    self.assertAlmostEqual(actual[0] - expected[0], delta[0])
+                    self.assertAlmostEqual(actual[1] - expected[1], delta[1])
+
+    def test_known_projection_does_not_depend_on_floor_color_bounds(self):
+        wide = Image.new("RGB", (320, 240), (108, 109, 115))
+        narrow = Image.new("RGB", (320, 240), (0, 0, 0))
+        for y in range(50, 190):
+            for x in range(50, 270):
+                narrow.putpixel((x, y), (108, 109, 115))
+        for cardinal in range(4):
+            first, _ = METRIC.expected_polygon(
+                wide, cardinal, True, False, subdivisions=2,
+                iso_scale=(8, 4), screen_origin=(160, 120))
+            second, _ = METRIC.expected_polygon(
+                narrow, cardinal, True, False, subdivisions=2,
+                iso_scale=(8, 4), screen_origin=(160, 120))
+            self.assertEqual(first, second)
+
+    def test_strict_cli_requires_known_projection(self):
+        with patch.object(sys, "argv", ["metric", "a", "b", "c", "d", "--strict-edges"]):
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
+                METRIC.main()
+            self.assertEqual(error.exception.code, 2)
 
     def test_literal_rectangle_and_one_pixel_uncertainty_pass(self):
         for scale in (1, 2):

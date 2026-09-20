@@ -14,8 +14,11 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
   finite shadow coverage.
 - [Strict floor-edge evidence](../pr-screenshots/codex/floor-shadow-plane-sampling/README.md)
   now catches all four cardinal failures missed by aggregate shadow IoU. The
-  caster-plane PCF experiment was pixel-identical and rejected. Separate finite
-  map coverage, receiver reconstruction and per-trixel presentation next.
+  caster-plane PCF experiment was pixel-identical and rejected. Exact fixture
+  visibility per fragment passes all quadrants; per-trixel visibility retains
+  small edge failures. Fix map/receiver sampling and carry boundary geometry
+  through presentation. The strict oracle now requires measured density and
+  known projection instead of inferring precision from SDF floor bounds.
 - Next: resolve finite sampling misses and small GRID floor-shadow boundaries
   across quadrants against ray/face geometry, preserving legitimate partial faces.
 - Keep six oriented face normals, twelve geometric half-faces, coordinate basis

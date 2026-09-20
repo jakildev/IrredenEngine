@@ -4,7 +4,9 @@
 Capture four cardinal views using IRCanvasStress --only shadowbox,floor
 --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 0.4 --auto-screenshot 6
 --sweep-yaw 0 4.71238898 4. Pass full-frame PNGs in yaw order.
-Use --grid when captures also use --probe-grid. Use --source for
+Use --grid when captures also use --probe-grid.
+Set --effective-subdivisions to the measured caster density: GRID commonly
+scales with zoom, while a private canvas can remain at density 1. Use --source for
 --probe-analytic-box captures (unrounded authored box coordinates), and for
 historical captures made with the retired --source-face-shadows caster.
 --box-yaw and --box-offset mirror the analytic probe pose. The receiver plate
@@ -13,7 +15,10 @@ sun direction, independently of the renderer's shadow samples.
 --strict-edges adds a fixed one-pixel 8-neighbor raster boundary gate; overall area
 agreement alone cannot establish clean projected edges. Cyan error pixels are
 missing shadow, red are excess; caster-colored pixels and their immediate
-neighbors are excluded from this floor-only check.
+neighbors are excluded from this floor-only check. Strict checks require the
+known --iso-scale (screenshot pixels per iso unit) because visible SDF floor bounds
+are only an approximate projection calibration. --screen-origin defaults to image
+center, appropriate to --pivot-origin with an unpanned camera.
 """
 
 import argparse
@@ -47,15 +52,21 @@ def rotate(point: tuple[float, float, float], cardinal: int) -> tuple[float, flo
 
 
 def expected_polygon(image: Image.Image, cardinal: int, grid: bool, source: bool,
-                     box_yaw=0.0, box_offset=(0.0, 0.0, 0.0)):
+                     box_yaw=0.0, box_offset=(0.0, 0.0, 0.0), subdivisions=1,
+                     iso_scale=None, screen_origin=None):
     left, top, right, bottom = plate_bounds(image)
     center = ((left + right - 1) / 2, (top + bottom - 1) / 2)
     scale = ((right - left) / (4 * FLOOR_HALF_SPAN),
              (bottom - top) / (4 * FLOOR_HALF_SPAN))
+    if iso_scale is not None:
+        scale = tuple(iso_scale)
+        origin = screen_origin or (image.width / 2, image.height / 2)
+        center = (origin[0], origin[1] + 2 * FLOOR_TOP * scale[1])
     centers = []
     for point in itertools.product(*[(-h, h) for h in BOX_HALF_CENTER_SPAN]):
         local = rotate(point, 0 if grid or source else -cardinal)
-        centers.append(local if source else tuple(math.floor(value + 0.5) for value in local))
+        centers.append(local if source else tuple(
+            math.floor(value * subdivisions + 0.5) / subdivisions for value in local))
     lower = [min(point[axis] for point in centers) - 0.5 for axis in range(3)]
     upper = [max(point[axis] for point in centers) + 0.5 for axis in range(3)]
     projected = []
@@ -123,10 +134,12 @@ def strict_edges(observed, visible, polygon):
 
 
 def measure(path: Path, cardinal: int, grid: bool, overlay_dir: Path | None, source=False,
-            box_yaw=0.0, box_offset=(0.0, 0.0, 0.0), strict=False) -> bool:
+            box_yaw=0.0, box_offset=(0.0, 0.0, 0.0), strict=False, subdivisions=1,
+            iso_scale=None, screen_origin=None) -> bool:
     with Image.open(path) as opened_image:
         image = opened_image.convert("RGB")
-    polygon, floor_mask = expected_polygon(image, cardinal, grid, source, box_yaw, box_offset)
+    polygon, floor_mask = expected_polygon(
+        image, cardinal, grid, source, box_yaw, box_offset, subdivisions, iso_scale, screen_origin)
     expected = Image.new("L", image.size)
     ImageDraw.Draw(expected).polygon(polygon, fill=255)
     observed, visible = shadow_masks(image, floor_mask)
@@ -144,7 +157,10 @@ def measure(path: Path, cardinal: int, grid: bool, overlay_dir: Path | None, sou
           f"{'PASS' if passed else 'FAIL'}")
     if strict:
         result, errors = strict_edges(observed, visible, polygon)
-        result.update(image=str(path), yaw=cardinal * 90)
+        result.update(image=str(path), yaw=cardinal * 90,
+                      effective_subdivisions=subdivisions, grid=grid, source=source,
+                      iso_scale=iso_scale, screen_origin=screen_origin or
+                      [image.width / 2, image.height / 2])
         print(json.dumps(result))
         passed &= result["passed"]
         if overlay_dir is not None:
@@ -161,6 +177,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("images", nargs=4, type=Path, metavar="PNG")
     parser.add_argument("--grid", action="store_true")
+    parser.add_argument("--iso-scale", type=float, nargs=2,
+                        help="Known screenshot pixels per iso X/Y unit; required for strict edges")
+    parser.add_argument("--screen-origin", type=float, nargs=2,
+                        help="Known world-origin screenshot position; default image center")
+    parser.add_argument("--effective-subdivisions", type=int, default=1,
+                        help="Measured caster density, not requested base subdivisions (default 1)")
     parser.add_argument("--strict-edges", action="store_true",
                         help="Require no missing/excess shadow beyond a fixed "
                              "one-pixel 8-neighbor edge band")
@@ -171,6 +193,16 @@ def main() -> None:
     parser.add_argument("--box-yaw", type=float, default=0.0, help="Authored box yaw in radians")
     parser.add_argument("--box-offset", type=float, nargs=3, default=(0.0, 0.0, 0.0))
     args = parser.parse_args()
+    if args.strict_edges and args.iso_scale is None:
+        parser.error("strict edges require --iso-scale; floor-bound calibration is approximate")
+    if args.screen_origin is not None and args.iso_scale is None:
+        parser.error("screen origin requires --iso-scale")
+    if args.iso_scale is not None and not all(math.isfinite(v) and v > 0 for v in args.iso_scale):
+        parser.error("iso scale must be finite and positive")
+    if args.screen_origin is not None and not all(math.isfinite(v) for v in args.screen_origin):
+        parser.error("screen origin must be finite")
+    if args.effective_subdivisions < 1:
+        parser.error("effective subdivisions must be positive")
     if not math.isfinite(args.box_yaw) or any(not math.isfinite(v) for v in args.box_offset):
         parser.error("box pose must be finite")
     if (args.box_yaw or any(args.box_offset)) and not args.source:
@@ -179,7 +211,8 @@ def main() -> None:
     for cardinal, path in enumerate(args.images):
         try:
             results.append(measure(path, cardinal, args.grid, args.overlay_dir, args.source,
-                                   args.box_yaw, args.box_offset, args.strict_edges))
+                                   args.box_yaw, args.box_offset, args.strict_edges,
+                                   args.effective_subdivisions, args.iso_scale, args.screen_origin))
         except (OSError, ValueError) as error:
             print(f"{path}: FAIL ({error})")
             results.append(False)
