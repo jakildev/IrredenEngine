@@ -71,6 +71,7 @@ _TASK_CLASS = Path(__file__).parent.parent / "fleet_task_class.py"
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from fleet_task_class import (  # noqa: E402
     HOST_SMOKE_LABELS,
+    pick_role,
     smoke_pr_for_host,
     smoke_prs_for_host,
 )
@@ -110,7 +111,7 @@ def _state(prs, game_prs=None):
                       "game": {"prs": game_prs or []}}}
 
 
-def _pr(num, *, labels=None, head="claude/feat"):
+def _pr(num, *, labels=None, head="claude/feat", updated_at="2026-01-01T00:00:00Z"):
     return {
         "number": num,
         "title": f"#{num}: render change",
@@ -119,11 +120,13 @@ def _pr(num, *, labels=None, head="claude/feat"):
         "labels": sorted(labels or []),
         "mergeable": "MERGEABLE",
         "author": "bot",
+        "updatedAt": updated_at,
     }
 
 
-def _approved(num, *smoke_labels, extra=()):
-    return _pr(num, labels=["fleet:approved", *smoke_labels, *extra])
+def _approved(num, *smoke_labels, extra=(), updated_at="2026-01-01T00:00:00Z"):
+    return _pr(num, labels=["fleet:approved", *smoke_labels, *extra],
+               updated_at=updated_at)
 
 
 def _hash(state):
@@ -217,7 +220,8 @@ class GatesApplyToWindows(unittest.TestCase):
 
     def test_skip_labels_drop_windows_pr(self):
         for skip in ("fleet:needs-fix", "fleet:blocker", "human:wip",
-                     "fleet:wip", "fleet:merger-cooldown", "human:needs-fix"):
+                     "fleet:wip", "fleet:merger-cooldown", "human:needs-fix",
+                     "fleet:needs-human"):
             with self.subTest(skip=skip):
                 skipped = _state([_approved(101, WINDOWS, extra=(skip,))])
                 self.assertEqual(
@@ -229,6 +233,86 @@ class GatesApplyToWindows(unittest.TestCase):
             _approved(101, WINDOWS, extra=("fleet:reviewing-mac-pool-1",)),
         ])
         self.assertEqual(_hash(_state([])), _hash(claimed))
+
+
+class NeedsHumanParkSkipsSmokeLane(unittest.TestCase):
+    """#3443: the dispatch circuit breaker's fleet:needs-human park was not
+    honored by the smoke lane — the parked PR stayed dispatchable and the
+    breaker re-fired every ~2 min on the same head.
+
+    Admission for BOTH project_smoke_worker (the wake trigger) and
+    slice_smoke_worker (the payload every downstream consumer reads) flows
+    through the single _smoke_pr_eligible predicate, so pinning both here
+    is the admission-agreement shape rather than two independent checks.
+    """
+
+    def test_parked_pr_absent_from_projection(self):
+        parked = _state([_approved(101, MACOS, extra=("fleet:needs-human",))])
+        self.assertEqual(project_smoke_worker(parked), [])
+
+    def test_parked_pr_absent_from_slice(self):
+        parked = _state([_approved(101, MACOS, extra=("fleet:needs-human",))])
+        self.assertEqual(
+            slice_smoke_worker(parked)["smoke_pending_prs"], [])
+
+
+class SliceRecordsCarryUpdatedAtAndRepo(unittest.TestCase):
+    """#3443: slice_smoke_worker hand-rolled a 4-key record with no
+    `updatedAt`/`repo`, which made fleet_task_class._declined's staleness
+    compare unconditionally fail open (a record with no `updatedAt` "cannot
+    be compared and is offered"). Both fields are now folded into the
+    trimmed record — the slice stays small (TwoRepos pins the key set) and
+    the decline memory has its key.
+    """
+
+    def test_every_record_carries_updated_at_and_repo(self):
+        out = slice_smoke_worker(_state([
+            _approved(101, WINDOWS), _approved(102, MACOS),
+        ]))["smoke_pending_prs"]
+        self.assertTrue(out)
+        for record in out:
+            self.assertEqual(record["repo"], "engine")
+            self.assertTrue(record.get("updatedAt"),
+                             f"record {record['number']} missing updatedAt")
+
+
+class DeclineMemoryIsHonored(unittest.TestCase):
+    """#3443 criterion (c): fleet_task_class.pick_role("smoke-worker", …)
+    must suppress a PR whose decline record is fresh and whose slice
+    updatedAt is not newer than the stored stamp — the mechanism
+    fleet_task_class._declined already implements, but which the missing
+    `updatedAt` (see SliceRecordsCarryUpdatedAtAndRepo) made permanently
+    inert for this lane.
+    """
+
+    def _write_decline(self, state_dir, number, stamp, role="smoke-worker"):
+        declined_dir = Path(state_dir) / "declined"
+        declined_dir.mkdir(parents=True, exist_ok=True)
+        (declined_dir / f"smoke-engine-{number}").write_text(
+            f"{stamp}\n\n{role}\n")
+
+    def test_fresh_decline_suppresses_the_target(self):
+        pr_slice = slice_smoke_worker(_state([
+            _approved(101, MACOS, updated_at="2026-01-01T00:00:00Z"),
+        ]))
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.dict(os.environ, {"FLEET_TEST_HOST": "mac",
+                                             "FLEET_STATE_DIR": tmp}):
+            self._write_decline(tmp, 101, "2026-01-01T00:00:00Z")
+            self.assertEqual(pick_role(pr_slice, "smoke-worker"), [])
+
+    def test_refreshed_pr_bypasses_a_stale_decline(self):
+        # The PR changed (a new label/push bumped updatedAt) after the
+        # decline was recorded — the memory must not suppress the new state.
+        pr_slice = slice_smoke_worker(_state([
+            _approved(101, MACOS, updated_at="2026-02-01T00:00:00Z"),
+        ]))
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.dict(os.environ, {"FLEET_TEST_HOST": "mac",
+                                             "FLEET_STATE_DIR": tmp}):
+            self._write_decline(tmp, 101, "2026-01-01T00:00:00Z")
+            self.assertEqual(pick_role(pr_slice, "smoke-worker"),
+                              ["smoke:engine:101"])
 
 
 class TwoRepos(unittest.TestCase):
@@ -259,10 +343,12 @@ class TwoRepos(unittest.TestCase):
         out = slice_smoke_worker(_state([], game_prs=[_approved(99, WINDOWS)]))
         self.assertEqual([(p["repo"], p["number"])
                           for p in out["smoke_pending_prs"]], [("game", 99)])
-        # The record shape stays the small four-field one plus `repo` (not a
-        # whole-PR copy): the role reads a ~5 KB slice, not the state.
+        # The record shape stays the small four-field one plus `repo` and
+        # `updatedAt` (not a whole-PR copy): the role reads a ~5 KB slice,
+        # not the state. `updatedAt` is the decline-memory key.
         self.assertEqual(set(out["smoke_pending_prs"][0]),
-                         {"repo", "number", "title", "labels", "headRefName"})
+                         {"repo", "number", "title", "labels", "headRefName",
+                          "updatedAt"})
 
     def test_engine_items_carry_repo(self):
         items = project_smoke_worker(_state([_approved(101, WINDOWS)]))
@@ -298,7 +384,8 @@ class TwoRepos(unittest.TestCase):
                  "reviewing-claim": _approved(
                      99, WINDOWS, extra=("fleet:reviewing-mac-pool-1",))}
         for skip in ("fleet:needs-fix", "fleet:blocker", "human:wip",
-                     "fleet:wip", "fleet:merger-cooldown", "human:needs-fix"):
+                     "fleet:wip", "fleet:merger-cooldown", "human:needs-fix",
+                     "fleet:needs-human"):
             cases[skip] = _approved(99, WINDOWS, extra=(skip,))
         for name, pr in cases.items():
             with self.subTest(case=name):
