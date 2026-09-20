@@ -788,7 +788,8 @@ inline int snapLatticeWalkYawed(
     float4 paramsScaled,
     float dExtent,
     float yawC,
-    float yawS
+    float yawS,
+    bool hollow
 ) {
     if (((isoPixelRel.x + isoPixelRel.y) & 1) != 0) {
         return kInvalidDepth;
@@ -807,7 +808,8 @@ inline int snapLatticeWalkYawed(
         }
         const float3 v = float3(voxelPos);
         const float3 voxelLocal = float3(yawC * v.x - yawS * v.y, yawS * v.x + yawC * v.y, v.z);
-        if (evaluateSDF(voxelLocal, shapeType, paramsScaled) <= 0.5) {
+        const float sdf = evaluateSDF(voxelLocal, shapeType, paramsScaled);
+        if (sdf <= 0.5 && (!hollow || sdf >= -0.5 - kSdfBiasEpsilon)) {
             return voxelPos.x + voxelPos.y + voxelPos.z;
         }
     }
@@ -1011,7 +1013,7 @@ kernel void c_shapes_to_trixel(
             yawC, yawS, shape.rotation);
     } else if (latticeWalk) {
         surfaceD = snapLatticeWalkYawed(isoPixelRel, shape.shapeType, paramsScaled,
-                                        dExtent, yawC, yawS);
+                                        dExtent, yawC, yawS, hollow);
     } else if (!smoothMode && !smoothYaw) {
         surfaceD = snapLatticeWalk(isoPixelRel, shape.shapeType, paramsScaled,
                                    dExtent, cardinalIndex);

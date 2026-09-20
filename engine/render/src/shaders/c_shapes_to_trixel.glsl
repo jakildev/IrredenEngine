@@ -696,7 +696,7 @@ int snapLatticeWalk(ivec2 isoPixelRel, uint shapeType, vec4 paramsScaled,
 // lattice (the shape is voxelized where the canvas's voxels are), only the
 // query point turns; at a cardinal yaw this is snapLatticeWalk.
 int snapLatticeWalkYawed(ivec2 isoPixelRel, uint shapeType, vec4 paramsScaled,
-                         float dExtent, float yawC, float yawS) {
+                         float dExtent, float yawC, float yawS, bool hollow) {
     if (((isoPixelRel.x + isoPixelRel.y) & 1) != 0) return kInvalidDepth;
     int isoY = isoPixelRel.y;
     int dMin = int(floor(-dExtent)) - 3;
@@ -709,7 +709,8 @@ int snapLatticeWalkYawed(ivec2 isoPixelRel, uint shapeType, vec4 paramsScaled,
         if (pos3DtoPos2DIso(voxelPos) != isoPixelRel) continue;
         vec3 v = vec3(voxelPos);
         vec3 voxelLocal = vec3(yawC * v.x - yawS * v.y, yawS * v.x + yawC * v.y, v.z);
-        if (evaluateSDF(voxelLocal, shapeType, paramsScaled) <= 0.5) {
+        float sdf = evaluateSDF(voxelLocal, shapeType, paramsScaled);
+        if (sdf <= 0.5 && (!hollow || sdf >= -0.5 - kSdfBiasEpsilon)) {
             return voxelPos.x + voxelPos.y + voxelPos.z;
         }
     }
@@ -896,7 +897,7 @@ void main() {
             yawC, yawS, shape.rotation);
     } else if (latticeWalk) {
         surfaceD = snapLatticeWalkYawed(isoPixelRel, shape.shapeType, paramsScaled,
-                                        dExtent, yawC, yawS);
+                                        dExtent, yawC, yawS, hollow);
     } else if (!smoothMode && !smoothYaw) {
         surfaceD = snapLatticeWalk(isoPixelRel, shape.shapeType, paramsScaled,
                                    dExtent, cardinalIndex);

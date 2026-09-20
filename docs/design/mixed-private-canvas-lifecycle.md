@@ -80,8 +80,9 @@ its centroid within one texel of the expectation. `--control` compares a
 capture against the same scene without markers outside the guards, which is
 the raster-survival check on a revoxelized canvas whose colour lives in the
 texture layer. `--strict` also requires the marker footprint itself to be
-pixel-exact; that measures the SDF marker's display in a private canvas and is
-open (below).
+pixel-exact. Density-1 unit markers pass on the tested revoxelized canvases;
+plain detached texture display and the symmetric 45-degree tie remain open
+(below).
 
 The lattice fixtures are the revoxelized proof solids with the same markers:
 `--focus-revox 3` is a 12x12x11 box (phase (-0.5, -0.5, 0)) and
@@ -184,32 +185,36 @@ smooth path off the cardinals); "after" adds the yawed lattice walk.
 | one-even-axis box, (-8.5, -8, -8) | 45 | | 0/0/0, (0, 0), 1.00 | pass |
 | orbit frame (source-face canvas) | 45 | 421/2,081/2,930, (12, 8), 1.67 | 875/671/1,703, (12, 8), 1.00 | fail (below) |
 
-A unit marker on a revoxelized canvas is now the hexagon of one lattice
-cell at every yaw, for a marker on a cell, between cells, with a translated
-owner and on the one-even-axis box. The symmetric marker (-8.5, -8.5, -8)
+The tested unit markers on revoxelized canvases have the area of one lattice
+cell, including off-cell positions, a translated owner and the one-even-axis
+box. Their strict footprint passes except for the symmetric tie below. The symmetric marker (-8.5, -8.5, -8)
 at exactly 45 degrees views to a y of exactly zero, half a cell from both
 neighbours, and the shader's float32 rotation and the oracle's float64 one
-round the tie apart; the asymmetric marker at the same yaw passes, so the
-row is the fixture's tie, not the raster's. The orbit frame's marker is
+round the tie apart. The asymmetric marker at the same yaw passes, which
+isolates the numerical placement disagreement without resolving it. The orbit frame's marker is
 now one cell (area 1.00 instead of 1.67), but a source-face canvas
 composites the texture layer as raw rectangular texels, so its footprint
 stays the open item below.
 
-## Open: the SDF marker's own display
+## Remaining display coverage
 
-The strict footprint fails at every yaw. In a source-face canvas the texture
-layer composites as raw rectangular texels, so at the capped density a unit
-marker is a 2x3 texel rectangle rather than the hexagon its cell projects to
-(missing top row, wrong corners: 420 missing and 1,463 wrong-owner pixels at
-yaw 0). Under continuous yaw the sub-1 analytical SDF path writes a 2x3
-diamond from every hit pixel and the marker dilates to about twice its area
-(ratio 2.1 at yaw 45). Both are the SDF display in private canvases, the
-campaign's SDF extent and ownership item, not the lifecycle; the strict numbers
-are the target that item drives to zero; the revoxelized parity box meets it
-at every yaw, so what remains is the source-face (plain `DETACHED`) canvas,
-whose voxels draw as continuous quads from the source-face buffer while its
-texture layer composites as raw rectangular texels: a unit marker there is
-a 2x3 texel rectangle, not the hexagon its cell projects to (420 missing
-and 1,463 wrong-owner pixels at yaw 0). AO on a marker-free wireframe frame
-is uniform, so the AO overlay is not a raster-survival control for this
-fixture.
+Plain `DETACHED` source-face canvases still composite the SDF texture layer as
+raw rectangular texels. Their strict marker footprint fails; the voxel
+source-face quads themselves are a separate producer. The yawed lattice walk
+removes marker dilation but does not reconstruct the texture layer's hexagons.
+
+The strict revoxelized evidence covers **unit, unrotated box markers at density
+1**, including asymmetric positions, owner translation and mixed-parity extents.
+It does not establish arbitrary rotated SDFs, higher density, camera pitch/roll,
+or all shape kinds. A shape with its own rotation still bypasses the lattice
+walk. The symmetric 45-degree case remains a numerical placement disagreement;
+the passing asymmetric control isolates it but does not resolve the tie.
+
+The yawed lattice walk must honor `SHAPE_FLAG_HOLLOW`: only samples with SDF
+between -0.5 and 0.5 belong to the shell (the existing negative-bound epsilon
+handles boundary noise). `--mixed-shape-size`, `--mixed-shape-hollow` and
+`--mixed-shape-depth-color` extend the fixture beyond unit markers. A closed
+five-cell box can have identical before/after pixels because nearer shell cells
+cover rejected interior samples; that capture proves regression stability, not
+that every hollow-shape case has been validated. The older cardinal lattice
+walk's hollow behavior remains a separate audit item.

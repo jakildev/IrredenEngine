@@ -87,7 +87,11 @@ passes within a fraction of a cell of an occluder can read shadowed at the
 terminator. The oracle reports the closest approach of every false-shadow
 trixel's ray to an occupied cell; false shadow within
 `--terminator-tolerance` (half a cell) is grazing and passes, false shadow
-with a clear ray and any missed shadow fail.
+with a clear ray and any missed shadow fail. A conclusive gate also requires
+at least one expected shadowed interior as a positive control. All-lit poses
+cannot distinguish correct visibility from disabled shadows or a blank capture;
+they report `occlusion_exercised: false` and fail the gate as untested, even when
+both mismatch counts are zero. Pair the shadow capture with the normals gate.
 
 ### Authored casters against resampled casters
 
@@ -121,8 +125,8 @@ clearance column is the largest closest approach among them.
 
 | Yaw | Interior px (lit / occluded) | Overlay magenta px | False / grazing | Clearance (cells) | Missed | Gate |
 |---:|---|---:|---|---:|---:|---|
-| 0 | 335,552 / 0 | 4,096 | 3,136 / 3,136 | 0.014 | 0 | pass |
-| 22.5 | 321,440 / 0 | 0 | 0 / 0 | 0 | 0 | pass |
+| 0 | 335,552 / 0 | 4,096 | 3,136 / 3,136 | 0.014 | 0 | untested occlusion |
+| 22.5 | 321,440 / 0 | 0 | 0 / 0 | 0 | 0 | untested occlusion |
 | 45 | 272,832 / 7,840 | 19,968 | 7,448 / 7,448 | 0.333 | 0 | pass |
 | 67.5 | 178,360 / 24,304 | 33,280 | 1,176 / 1,176 | 0.109 | 0 | pass |
 | 90 | 173,264 / 34,496 | 51,200 | 4,704 / 4,704 | 0.125 | 0 | pass |
@@ -164,9 +168,11 @@ look is the nearest-cell resample itself, and under lighting a sun-shadow
 caster that is not the displayed geometry: a revoxelized canvas casts from
 its resampled cells, as its receiver reads them, and the authored-cell
 caster is retired ([the experiment's record](authored-voxel-shadow-faces.md)).
-With that caster gone the staircase's direct sun is the lattice's own at
-every yaw; the residual is the sun map's nearest-texel read at a terminator,
-within a third of a cell, and no receiver bias is added to hide it.
+With that caster gone, the measured 45/67.5/90-degree poses pass the
+trixel visibility gate. The all-lit 0/22.5-degree poses do not exercise
+occlusion. Residual false shadows in this fixture have ray clearances within
+a third of a cell, consistent with nearest-texel sampling at a terminator;
+no receiver bias is added to hide them.
 
 Presentation stays a per-object choice through `RotationMode`: plain
 `DETACHED` projects the authored source faces for a smooth rotated solid;

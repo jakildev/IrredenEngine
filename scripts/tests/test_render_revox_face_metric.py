@@ -224,6 +224,20 @@ class RevoxFaceMetricTest(unittest.TestCase):
                              len(interior[owner]) if expect_pass else 0)
             self.assertEqual(result["pass"], expect_pass, result)
 
+    def test_all_lit_shadow_fixture_cannot_certify_occlusion(self):
+        size = 320
+        labels, _, stats = METRIC.expected_image(
+            size, size, METRIC.FIXTURES["cube"], math.radians(22.5), False,
+            (8, 4), (size / 2, size / 2), METRIC.DEFAULT_SUN)
+        result, _ = METRIC.compare_shadow(
+            size, size, 3, bytes(size * size * 3), labels, stats["lit"], stats["trixels"])
+        self.assertGreater(result["lit_interior_pixels"], 0)
+        self.assertEqual(result["shadowed_interior_pixels"], 0)
+        self.assertEqual(result["false_shadow_pixels"], 0)
+        self.assertEqual(result["missed_shadow_pixels"], 0)
+        self.assertFalse(result["occlusion_exercised"])
+        self.assertFalse(result["pass"])
+
     def test_cli_shadow_overlay(self):
         size, scale = 400, (12, 6)
         labels, _, stats = METRIC.expected_image(
