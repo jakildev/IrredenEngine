@@ -36,8 +36,16 @@
 #   - T10: `behind` is distinct from `clean`, and --apply fast-forwards it
 #   - T11: a detached HEAD is refused before anything is written
 #   - T12: a locally-ignored file the default branch tracks is refused
-#   - T13: an open PR from another lane intersecting the surface is
-#          reported; an unfetchable head is reported as unknown, not dropped
+#   - T13: the campaign's own merge is excluded from the other-lanes section
+#          even when it lands INSIDE the reported window
+#   - T14: an open PR from another lane intersecting the surface is reported
+#          against its OWN merge base, and an unfetchable head is reported as
+#          unknown rather than dropped
+#   - T15: the `since` window starts at the campaign's most recently LANDED
+#          merge, chosen by distance to the tip rather than row order
+#   - T16: the surface includes files that only a merged campaign PR touched
+#   - T17: an unresolvable default ref is `unknown`, never `clean`
+#   - T18: an unreadable open-PR list is `unknown`, never a classification
 
 set -euo pipefail
 
@@ -372,19 +380,203 @@ g "$WT13" add -A && g "$WT13" commit --quiet -m "campaign owns owned.txt"
 advance_origin "$WT13" engine/owned.txt campaign "campaign slice (#1)"
 campaign_merge=$(g "$WT13" rev-parse refs/remotes/origin/master)
 advance_origin "$WT13" engine/owned.txt "another lane" "other lane (#99)"
+# A SECOND campaign merge, landing after the window opens. Its row carries no
+# mergeCommit (gh does not always return one), so it cannot be the anchor and
+# falls inside the reported window — only the campaign-number filter keeps it
+# out. Without this the assertion is vacuous: the anchor excludes itself.
+advance_origin "$WT13" engine/owned.txt "campaign again" "campaign slice two (#2)"
 PRJSON_MERGED="$TMPROOT/pr-merged.json"
 cat > "$PRJSON_MERGED" <<JSON
 {"open": [], "merged": [{"number": 1, "title": "campaign slice", "mergedAt": "2026-01-03",
-                         "headRefName": "$BRANCH", "mergeCommit": {"oid": "$campaign_merge"}}]}
+                         "headRefName": "$BRANCH", "mergeCommit": {"oid": "$campaign_merge"}},
+                        {"number": 2, "title": "campaign slice two", "mergedAt": "2026-01-04",
+                         "headRefName": "$BRANCH", "mergeCommit": null}]}
 JSON
 out=$("$TOOL" "$SLUG" --worktree "$WT13" --no-fetch --pr-json "$PRJSON_MERGED" || true)
 assert_contains "$out" "other lane (#99)" "the other lane's merge is reported"
-assert_absent "$out" "campaign slice (#1)" \
-    "the campaign's OWN merge is excluded from the other-lanes section"
+assert_absent "$out" "campaign slice two (#2)" \
+    "a campaign merge INSIDE the window is excluded by number, not by the anchor"
 if echo "$out" | grep -q "merged campaign PRs"; then
     ok "the merged campaign PR is listed in its own section"
 else
     bad "the merged campaign PR row was dropped"
+fi
+
+# --- T14: open PRs from other lanes ------------------------------------------
+# The tool reads each PR's files from `refs/pull/<n>/head` over git. A bare repo
+# standing in for origin lets the fetch succeed offline, so the intersecting arm
+# actually executes rather than falling through the unreadable branch.
+echo "T14: a foreign open PR is scoped to its own merge base; an unfetchable head is not dropped"
+new_fixture t14; WT14="$FIXTURE"
+ORIGIN="$TMPROOT/t14-origin.git"
+git init -q --bare "$ORIGIN"
+g "$WT14" remote add origin "$ORIGIN"
+g "$WT14" checkout --quiet -b "$BRANCH"
+printf 'campaign\n' > "$WT14/engine/owned.txt"
+g "$WT14" add -A && g "$WT14" commit --quiet -m "campaign owns owned.txt"
+advance_origin "$WT14" engine/owned.txt campaign "campaign slice (#1)"
+t14_merge=$(g "$WT14" rev-parse refs/remotes/origin/master)
+# Unrelated lanes land between the campaign's fork point and the PR's base. A
+# window anchored on the fork point would charge the PR with these.
+advance_origin "$WT14" engine/noise-one.txt one "noise one (#50)"
+advance_origin "$WT14" engine/noise-two.txt two "noise two (#51)"
+# PR #7 branches off current master and touches the campaign's file.
+g "$WT14" checkout --quiet -B __pr refs/remotes/origin/master
+printf 'another lane edits the campaign file\n' > "$WT14/engine/owned.txt"
+g "$WT14" add -A && g "$WT14" commit --quiet -m "pr7"
+g "$WT14" push -q "$ORIGIN" HEAD:refs/pull/7/head
+g "$WT14" checkout --quiet "$BRANCH"
+g "$WT14" branch --quiet -D __pr
+PRJSON_FOREIGN="$TMPROOT/pr-foreign.json"
+cat > "$PRJSON_FOREIGN" <<JSON
+{"open": [{"number": 7, "headRefName": "codex/other-lane", "title": "other lane touches owned.txt",
+           "labels": []},
+          {"number": 8, "headRefName": "codex/no-such-head", "title": "head never pushed",
+           "labels": []}],
+ "merged": [{"number": 1, "title": "campaign slice", "mergedAt": "2026-01-03",
+             "headRefName": "$BRANCH", "mergeCommit": {"oid": "$t14_merge"}}]}
+JSON
+out=$("$TOOL" "$SLUG" --worktree "$WT14" --no-fetch --pr-json "$PRJSON_FOREIGN" || true)
+assert_contains "$out" "other lane touches owned.txt" "the intersecting open PR is reported"
+assert_contains "$out" "engine/owned.txt" "the intersected file is named"
+# Scoped to PR #7's own block: the noise commits legitimately appear in the
+# merged section, so an assertion over the whole report would not discriminate.
+pr7_block=$(echo "$out" | awk '/open   #7/{f=1;next} /open   #|merged #/{f=0} f')
+assert_absent "$pr7_block" "engine/noise-one.txt" \
+    "the PR is scoped to its own merge base, not charged with unrelated lanes"
+assert_contains "$out" "head unreadable" "an unfetchable head is reported, not dropped"
+
+# --- T15: the since-window anchor -------------------------------------------
+# Rows are ordered by creation, which is not merge order. The anchor must be the
+# campaign merge nearest the tip, or the window silently swallows foreign work.
+echo "T15: the window anchors on the campaign merge nearest the tip, not the first row"
+new_fixture t15; WT15="$FIXTURE"
+g "$WT15" checkout --quiet -b "$BRANCH"
+printf 'campaign\n' > "$WT15/engine/owned.txt"
+g "$WT15" add -A && g "$WT15" commit --quiet -m "campaign owns owned.txt"
+advance_origin "$WT15" engine/owned.txt one "campaign slice one (#1)"
+first_merge=$(g "$WT15" rev-parse refs/remotes/origin/master)
+# Between the two campaign merges. Anchoring on #1 (row order) pulls this into
+# the window; anchoring on #2 (nearest the tip) leaves it out. The campaign's
+# own merges cannot discriminate — the number filter removes them either way.
+advance_origin "$WT15" engine/owned.txt "earlier lane" "earlier lane (#98)"
+advance_origin "$WT15" engine/owned.txt two "campaign slice two (#2)"
+second_merge=$(g "$WT15" rev-parse refs/remotes/origin/master)
+advance_origin "$WT15" engine/owned.txt "another lane" "other lane (#99)"
+PRJSON_ORDER="$TMPROOT/pr-order.json"
+# Deliberately oldest-first: taking row order would anchor on #1 and pull the
+# campaign's own #2 into the window.
+cat > "$PRJSON_ORDER" <<JSON
+{"open": [], "merged": [{"number": 1, "title": "campaign slice one", "mergedAt": "2026-01-03",
+                         "headRefName": "$BRANCH", "mergeCommit": {"oid": "$first_merge"}},
+                        {"number": 2, "title": "campaign slice two", "mergedAt": "2026-01-04",
+                         "headRefName": "$BRANCH", "mergeCommit": {"oid": "$second_merge"}}]}
+JSON
+out=$("$TOOL" "$SLUG" --worktree "$WT15" --no-fetch --pr-json "$PRJSON_ORDER" || true)
+assert_contains "$out" "other lane (#99)" "work after the newest campaign merge is reported"
+assert_absent "$out" "earlier lane (#98)" \
+    "the window starts at the campaign merge nearest the tip, not the first row"
+assert_absent "$out" "campaign slice one (#1)" "the campaign's own merges stay out"
+
+# --- T16: the surface includes merged-PR files -------------------------------
+# A file the campaign landed and has not touched since is still the campaign's.
+# Only the merged-PR expansion puts it on the surface; the branch diff cannot.
+echo "T16: a file only a merged campaign PR touched is still on the surface"
+new_fixture t16; WT16="$FIXTURE"
+g "$WT16" checkout --quiet -b "$BRANCH"
+advance_origin "$WT16" engine/landed-long-ago.txt campaign "campaign slice (#1)"
+campaign_only=$(g "$WT16" rev-parse refs/remotes/origin/master)
+advance_origin "$WT16" engine/landed-long-ago.txt "another lane" "other lane (#99)"
+PRJSON_SURFACE="$TMPROOT/pr-surface.json"
+cat > "$PRJSON_SURFACE" <<JSON
+{"open": [], "merged": [{"number": 1, "title": "campaign slice", "mergedAt": "2026-01-03",
+                         "headRefName": "$BRANCH", "mergeCommit": {"oid": "$campaign_only"}}]}
+JSON
+out=$("$TOOL" "$SLUG" --worktree "$WT16" --no-fetch --pr-json "$PRJSON_SURFACE" || true)
+assert_contains "$out" "other lane (#99)" \
+    "a foreign edit to a file only a merged campaign PR touched is reported"
+assert_contains "$out" "engine/landed-long-ago.txt" "the merged-PR file is on the surface"
+
+# --- T17: an unresolvable default ref ----------------------------------------
+# ahead/behind read through a helper that returns "" on failure, so a bad ref
+# would otherwise present as level with the default branch.
+echo "T17: an unresolvable default ref is unknown, never clean"
+new_fixture t17; WT17="$FIXTURE"
+g "$WT17" checkout --quiet -b "$BRANCH"
+printf 'unlanded\n' > "$WT17/engine/slice.txt"
+g "$WT17" add -A && g "$WT17" commit --quiet -m "unlanded slice"
+set +e
+out=$("$TOOL" "$SLUG" --worktree "$WT17" --no-fetch --pr-json "$PRJSON_EMPTY" \
+    --default-ref origin/no-such-branch 2>&1); rc17=$?
+set -e
+assert_contains "$out" "verdict    UNKNOWN" "a bad default ref is unknown"
+assert_absent "$out" "start the next slice here" "it never invites a slice on an unknown base"
+assert_eq "$rc17" "1" "it exits non-zero"
+set +e
+"$TOOL" "$SLUG" --worktree "$WT17" --no-fetch --pr-json "$PRJSON_EMPTY" \
+    --default-ref origin/no-such-branch --apply >/dev/null 2>&1; rc17a=$?
+set -e
+assert_eq "$rc17a" "2" "--apply refuses an unknown verdict"
+
+# --- T18: an unreadable open-PR list -----------------------------------------
+# An empty list and an unreadable one are different facts: the second cannot
+# rule out an open PR on this branch, so no classification may follow.
+echo "T18: an unreadable open-PR list is unknown, never a classification"
+new_fixture t18; WT18="$FIXTURE"
+g "$WT18" checkout --quiet -b "$BRANCH"
+printf 'slice\n' > "$WT18/engine/slice.txt"
+g "$WT18" add -A && g "$WT18" commit --quiet -m "slice"
+advance_origin "$WT18" engine/slice.txt slice "slice (#1)"
+PRJSON_UNREADABLE="$TMPROOT/pr-unreadable.json"
+printf '{"open": null, "merged": []}\n' > "$PRJSON_UNREADABLE"
+set +e
+out=$("$TOOL" "$SLUG" --worktree "$WT18" --no-fetch --pr-json "$PRJSON_UNREADABLE" 2>&1); rc18=$?
+set -e
+assert_contains "$out" "verdict    UNKNOWN" \
+    "an unreadable PR list blocks classification even when the content IS upstream"
+assert_eq "$rc18" "1" "it exits non-zero"
+
+# --- T19: a repair that needs no stash is not a failed one -------------------
+# `git status --porcelain` can be non-empty over a tree `git stash push` saves
+# nothing from. Assuming the stash took makes the later pop fail with "No stash
+# entries found", which then reads as a conflict — reporting a repair that
+# fully succeeded as a failure, and leaving the pre-apply verdict printed over
+# an already-reset branch.
+echo "T19: --apply succeeds when the dirty tree yields no stash"
+new_fixture t19; WT19="$FIXTURE"
+SUBSRC="$TMPROOT/t19-sub"
+mkdir -p "$SUBSRC"
+git -C "$SUBSRC" init -q -b master .
+git -C "$SUBSRC" config user.email fixture@example.invalid
+git -C "$SUBSRC" config user.name Fixture
+echo sub > "$SUBSRC/f.txt"
+git -C "$SUBSRC" add -A && git -C "$SUBSRC" commit -q -m sub
+# The submodule belongs to the shared base, so the branch can still diverge and
+# be superseded — the point of the case is the stash, not the submodule.
+if g "$WT19" -c protocol.file.allow=always submodule add -q "$SUBSRC" sub 2>/dev/null; then
+    g "$WT19" commit --quiet -m "add sub"
+    g "$WT19" update-ref refs/remotes/origin/master HEAD
+    g "$WT19" checkout --quiet -b "$BRANCH"
+    printf 'slice\n' > "$WT19/engine/slice.txt"
+    g "$WT19" add -A && g "$WT19" commit --quiet -m "slice"
+    advance_origin "$WT19" engine/slice.txt slice "slice (#1)"
+    # Untracked content inside the submodule: the parent reports " M sub", and a
+    # parent-level stash push saves nothing from it.
+    echo untracked > "$WT19/sub/stray.txt"
+    if [[ "$(g "$WT19" status --porcelain | wc -l | tr -d ' ')" -gt 0 ]]; then
+        out=$(run_tool "$WT19" --apply 2>&1 || true)
+        assert_absent "$out" "FAILED" "a repair needing no stash is not reported as failed"
+        assert_absent "$out" "conflict" "no conflict is invented over an empty stash"
+        assert_contains "$out" "nothing for the stash to take" \
+            "the report says plainly that the stash took nothing"
+        assert_contains "$out" "verdict    CLEAN" \
+            "the post-apply verdict is re-measured, not the pre-apply one"
+        assert_eq "$(cat "$WT19/sub/stray.txt")" "untracked" "the submodule content is untouched"
+    else
+        echo "  skip: this git reports a submodule with untracked content as clean"
+    fi
+else
+    echo "  skip: submodules unavailable in this environment"
 fi
 
 summarize "fleet-campaign-status tests"

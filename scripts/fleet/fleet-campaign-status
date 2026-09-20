@@ -11,16 +11,19 @@ The branch verdict is decided by the merge, not by comparing file names and not
 by `git cherry` — see branch_verdict() and branch_contributes() for why either
 of those mistakes a branch carrying unlanded work for one already upstream.
 
+Verdicts: `clean` and `live` are ready to work; `behind` and `superseded` are
+repairable by `--apply`; `stranded` and `unknown` are for a human.
+
 Exit codes:
-  0  ready — continue the campaign (verdict `clean` or `live`)
-  1  attention — verdict `superseded` (repairable with `--apply`) or `stranded`
-     (a human decides); the verdict field says which
-  2  usage / environment error
+  0  ready — `clean` or `live`
+  1  attention — `behind`, `superseded`, `stranded` or `unknown`; the verdict
+     field says which, and only the first two are repairable
+  2  usage / environment error, or an `--apply` that refused or failed
 
   fleet-campaign-status million-entity-render            human-readable report
   fleet-campaign-status million-entity-render --json     machine-readable
-  fleet-campaign-status million-entity-render --apply    perform the re-entry
-                                                         reset for `superseded`
+  fleet-campaign-status million-entity-render --apply    fast-forward `behind`,
+                                                         reset `superseded`
 
 Source: scripts/fleet/fleet-campaign-status
 Installed to ~/bin/fleet-campaign-status by scripts/fleet/install.sh.
@@ -103,10 +106,14 @@ def porcelain_paths(root):
     begins with a space (" M path"), so stripping the output would shift the
     first row's path one byte left and silently truncate its name.
     """
-    proc = subprocess.run(
-        ["git", "-C", str(root), "status", "--porcelain"],
-        capture_output=True, text=True,
-    )
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(root), "status", "--porcelain"],
+            capture_output=True, text=True, timeout=SUBPROCESS_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired:
+        warn("git status timed out after %ds" % SUBPROCESS_TIMEOUT_S)
+        return []
     if proc.returncode != 0:
         return []
     paths = []
@@ -201,18 +208,26 @@ def gh_json(args):
 
 
 def open_prs(slug, repo_key, pr_json):
+    """(rows, readable). `readable` is False when the PR list could not be read
+    at all, which is not the same as "there are no open PRs": an unread list
+    hides the `live` verdict, and a branch whose PR is open must never be
+    classified as abandoned work."""
     if pr_json is not None:
-        return pr_json.get("open") or []
+        # A null `open` models the read failing, which the live path signals by
+        # returning None; an empty list models "no open PRs". The seam has to
+        # carry both or the unreadable arm is untestable.
+        rows = pr_json.get("open")
+        return (rows or []), rows is not None
     state, fresh = load_state_cache()
     if fresh and state:
         rows = ((state.get("repos") or {}).get(repo_key) or {}).get("prs")
         if rows is not None:
-            return rows
+            return rows, True
     rows = gh_json([
         "gh", "pr", "list", "--repo", slug, "--state", "open", "--limit", "60",
         "--json", "number,title,headRefName,headRefOid,labels,isDraft,baseRefName",
     ])
-    return rows or []
+    return (rows or []), rows is not None
 
 
 def merged_campaign_prs(slug, prefix, pr_json):
@@ -237,7 +252,7 @@ def label_names(row):
 # --- Branch verdict ---------------------------------------------------------
 
 
-def branch_verdict(wt, default_ref, branch, prs_open):
+def branch_verdict(wt, default_ref, branch, prs_open, prs_readable=True):
     """Classify the campaign worktree's branch against the default branch.
 
     clean       level with the default branch — nothing to decide.
@@ -264,6 +279,18 @@ def branch_verdict(wt, default_ref, branch, prs_open):
     then delete it. Only the merge distinguishes "the branch's content is
     already upstream" from "another lane happens to have touched this file".
     """
+    # Resolved FIRST. ahead/behind read through git(), which returns "" on
+    # failure, so an unresolvable ref would otherwise present as 0 ahead /
+    # 0 behind and return `clean` — "start the next slice here" — before the
+    # oracle's own ref guard is ever reached.
+    if not git(wt, "rev-parse", "--verify", "--quiet", "%s^{commit}" % default_ref):
+        return {
+            "branch": branch, "fork_point": "", "ahead": 0, "behind": 0,
+            "head": git(wt, "rev-parse", "HEAD"), "unique_files": [],
+            "cherry_unmatched": 0, "verdict": "unknown",
+            "merge_detail": "cannot resolve %s" % default_ref,
+        }
+
     fork = git(wt, "merge-base", "HEAD", default_ref)
     ahead = git_lines(wt, "rev-list", "%s..HEAD" % default_ref)
     behind = git_lines(wt, "rev-list", "HEAD..%s" % default_ref)
@@ -286,6 +313,13 @@ def branch_verdict(wt, default_ref, branch, prs_open):
         report["open_pr"] = live[0].get("number")
         return report
 
+    if not prs_readable:
+        report["verdict"] = "unknown"
+        report["merge_detail"] = (
+            "the open PR list could not be read, so an open PR on this branch "
+            "cannot be ruled out")
+        return report
+
     # `-` prefixed rows are the commits git can still match upstream by
     # patch-id; everything else is what a naive rebase would try to replay.
     cherry = git_lines(wt, "cherry", default_ref, "HEAD")
@@ -299,6 +333,35 @@ def branch_verdict(wt, default_ref, branch, prs_open):
     else:
         report["verdict"] = "stranded" if contributes else "superseded"
     return report
+
+
+# `check-attr merge` values that mean "git's own text merge". Anything else is
+# a driver whose behaviour the oracle cannot predict.
+BUILTIN_MERGE_ATTRS = frozenset(["unspecified", "set", "unset", "text", "binary", "union"])
+
+
+def custom_merge_drivers(wt, paths):
+    """Paths whose `merge` attribute names a custom driver.
+
+    `merge-tree` honours the attributes of the CHECKOUT, from sources a diff
+    review never sees (`.git/info/attributes`, an untracked `.gitattributes`, a
+    global `core.attributesFile`). A driver that discards one side makes a
+    branch carrying unlanded content merge to a no-op and read `superseded`, so
+    the oracle declines to answer instead.
+    """
+    if not paths:
+        return []
+    out = git(wt, "check-attr", "merge", "--", *paths)
+    flagged = []
+    for line in out.split("\n"):
+        # "<path>: merge: <value>" — the path may itself contain ": ".
+        marker = ": merge: "
+        if marker not in line:
+            continue
+        path, value = line.rsplit(marker, 1)
+        if value.strip() not in BUILTIN_MERGE_ATTRS:
+            flagged.append(path)
+    return sorted(set(flagged))
 
 
 def branch_contributes(wt, default_ref):
@@ -318,10 +381,20 @@ def branch_contributes(wt, default_ref):
         if not git(wt, "rev-parse", "--verify", "--quiet", "%s^{commit}" % ref):
             return None, [], "cannot resolve %s" % ref
 
+    # #6: asked of git directly. Sniffing the error text mistakes a conflict on
+    # a path containing "usage:" for an old git, and misses the real pre-2.38
+    # message, which says neither "usage:" nor "unknown option".
+    version = git(wt, "version").split()
+    numbers = version[2].split(".") if len(version) > 2 else []
+    try:
+        too_old = (int(numbers[0]), int(numbers[1])) < (2, 38)
+    except (IndexError, ValueError):
+        too_old = False
+    if too_old:
+        return None, [], "git %s is older than 2.38 (`merge-tree --write-tree`)" % (
+            version[2] if len(version) > 2 else "?")
+
     rc, out, err = git_status(wt, "merge-tree", "--write-tree", default_ref, "HEAD")
-    blob = "%s %s" % (out, err)
-    if rc != 0 and ("unknown option" in blob or "usage:" in blob):
-        return None, [], "git is too old for `merge-tree --write-tree`"
 
     # Line 1 is the merged tree on both the clean and the conflicted exit, so
     # the at-risk inventory is available either way.
@@ -333,6 +406,12 @@ def branch_contributes(wt, default_ref):
     if rc != 0:
         return True, carried, "merging into %s conflicts" % default_ref
     if merged_tree == base_tree:
+        diverging = git_lines(wt, "diff", "--name-only", "%s..HEAD" % default_ref)
+        driven = custom_merge_drivers(wt, diverging)
+        if driven:
+            return None, driven, (
+                "a custom merge driver governs %s, so a no-op merge does not prove "
+                "the content is upstream" % ", ".join(driven[:3]))
         return False, [], "merging into %s is a no-op" % default_ref
     # What the merge would add is the complete at-risk inventory — every path,
     # not only the ones the default branch left alone.
@@ -494,14 +573,13 @@ def doc_sections(path):
 # --- Re-entry repair --------------------------------------------------------
 
 
-def ignored_paths_the_default_tracks(wt, default_ref):
-    """Locally-ignored files the default branch tracks at the same path.
+def unversioned_paths_the_default_tracks(wt, default_ref):
+    """On-disk files this branch does not track that the default branch does.
 
-    `git status --porcelain` never lists an ignored file, so such a path is
-    absent from the dirty set, takes no stash, and is overwritten by the
-    checkout with no backup covering it — the backup ref holds commits, not the
-    working tree. These are the only paths a reset can destroy irrecoverably,
-    so the repair refuses rather than gambling.
+    Ignored or merely untracked, the checkout resolves the collision against
+    the working copy and the backup ref does not cover it — that ref holds
+    commits, not the tree. These are the only paths a reset can destroy with no
+    recovery at all, so the repair refuses rather than gambling.
     """
     tracked_there = set(git_lines(wt, "ls-tree", "-r", "--name-only", default_ref))
     if not tracked_there:
@@ -534,11 +612,12 @@ def apply_reentry(wt, report, default_ref, slug, stamp):
             "the worktree is on a detached HEAD, so there is no branch to reset; "
             "`git checkout <branch>` first"
         )
-    clobber = ignored_paths_the_default_tracks(wt, default_ref)
+    clobber = unversioned_paths_the_default_tracks(wt, default_ref)
     if clobber:
         return False, steps, (
-            "%d locally-ignored file(s) are tracked at the same path on %s and "
-            "the checkout would overwrite them with no backup: %s — move them "
+            "%d on-disk file(s) this branch does not track are tracked at the "
+            "same path on %s (ignored or untracked here), and the checkout would "
+            "resolve the collision with no backup covering them: %s — move them "
             "aside first" % (len(clobber), default_ref, ", ".join(clobber[:5]))
         )
 
@@ -549,14 +628,23 @@ def apply_reentry(wt, report, default_ref, slug, stamp):
         return False, steps, "could not write the backup ref %s: %s" % (backup, err)
     steps.append("backup ref %s -> %s" % (backup, old_head[:9]))
 
+    # Measured, not assumed: `git status --porcelain` can be non-empty over a
+    # tree `git stash push` saves nothing from (a submodule holding only
+    # untracked content is the reproducible case). Claiming a stash that was
+    # never taken makes the pop below fail with "No stash entries found" and
+    # report a conflict over a repair that actually succeeded.
     stashed = False
     if report["dirty"]:
+        before = len(git_lines(wt, "stash", "list"))
         rc, _, err = git_status(wt, "stash", "push", "--include-untracked",
                                 "-m", "campaign %s re-entry %s" % (slug, stamp))
         if rc != 0:
             return False, steps, "git stash push failed: %s" % err
-        stashed = True
-        steps.append("stashed %d in-flight file(s)" % len(report["dirty"]))
+        stashed = len(git_lines(wt, "stash", "list")) > before
+        if stashed:
+            steps.append("stashed %d in-flight file(s)" % len(report["dirty"]))
+        else:
+            steps.append("nothing for the stash to take (tree needs no carry)")
 
     rc, _, err = git_status(wt, "checkout", "-B", branch, default_ref)
     if rc != 0:
@@ -576,7 +664,9 @@ def apply_reentry(wt, report, default_ref, slug, stamp):
             # empty exactly when there is something to say. A conflicted pop has
             # ALREADY written the merge into the tree and kept the stash entry:
             # re-running it can only fail, so the remedy is resolve-add-drop.
-            detail = (out or err or "").strip().split("\n")
+            lines = [ln for ln in (out or err or "").strip().split("\n") if ln.strip()]
+            conflicts = [ln for ln in lines if ln.startswith("CONFLICT")]
+            detail = conflicts or lines
             return False, steps, (
                 "git stash pop left a conflict (%s) — the merge is already in the "
                 "tree and the stash entry is still there; resolve the markers, "
@@ -710,7 +800,8 @@ def main():
     parser.add_argument("--repo", default="engine", choices=["engine", "game"])
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     parser.add_argument("--apply", action="store_true",
-                        help="perform the re-entry reset for a `superseded` branch")
+                        help="repair the branch: fast-forward a `behind` one, reset a "
+                             "`superseded` one. Refuses every other verdict.")
     parser.add_argument("--default-ref", default="origin/master",
                         help="default-branch ref to measure against")
     parser.add_argument("--worktree", help="override the campaign worktree path")
@@ -749,8 +840,8 @@ def main():
     prefix = "claude/%s-" % slug
     slug_repo = repo_slug(args.repo)
     branch = git(wt, "rev-parse", "--abbrev-ref", "HEAD")
-    rows_open = open_prs(slug_repo, args.repo, pr_json)
-    verdict = branch_verdict(wt, args.default_ref, branch, rows_open)
+    rows_open, prs_readable = open_prs(slug_repo, args.repo, pr_json)
+    verdict = branch_verdict(wt, args.default_ref, branch, rows_open, prs_readable)
 
     dirty = porcelain_paths(wt)
     verdict["dirty"] = dirty
@@ -783,7 +874,7 @@ def main():
         "foreign_commits": foreign_master_commits(
             wt, since, args.default_ref, surface, campaign_numbers),
         "foreign_open_prs": foreign_open_prs(
-            wt, rows_open, prefix, surface, verdict["fork_point"]),
+            wt, rows_open, prefix, surface, args.default_ref),
         "doc_path": os.path.join(wt, "docs", "design", "campaigns", "%s.md" % slug),
     }
     report["doc"] = doc_sections(report["doc_path"])
@@ -801,7 +892,8 @@ def main():
         else:
             # Re-measured, not patched: ahead/behind/head/fork all moved, and a
             # report that contradicts itself is worse than no report.
-            verdict = branch_verdict(wt, args.default_ref, branch, rows_open)
+            verdict = branch_verdict(wt, args.default_ref, branch, rows_open,
+                                     prs_readable)
             verdict["dirty"] = porcelain_paths(wt)
             report["branch"] = verdict
             report["dirty"] = verdict["dirty"]
