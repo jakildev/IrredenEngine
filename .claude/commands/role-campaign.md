@@ -29,6 +29,7 @@ Mode defaults to `live`. Arguments given: $ARGUMENTS
 | **branch-prefix** | `claude/<slug>-` |
 | **campaigns-dir** | `docs/design/campaigns/` |
 | **objectives-dir** | `docs/design/objectives/` |
+| **resync-command** | `fleet-campaign-status <slug>` (`--apply` performs the `superseded` reset; `--json` for a machine read) |
 | **launcher** | `FLEET_CAMPAIGNS="<slug>"` in `~/.fleet/fleet-up.conf` (a `campaigns` tmux window at every `fleet-up`); by hand, `solo-architect engine --campaign <slug>` |
 | **feedback-file** | `~/.fleet/feedback/campaign-<slug>.md` |
 
