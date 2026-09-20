@@ -42,7 +42,7 @@ its objective Done-means rows verify on `origin/master`.
 | # | Direction | Draws from | Exit |
 |---|---|---|---|
 | D0.0 | The CanvasStress revoxelized cubes (index 1 cyan `{70,210,210}`, index 2 purple `{210,120,255}`) and the plain-detached orbit frame (index 7 `{150,90,235}`) show tooth and half-face patterns in lit captures. Decided: `render-revox-face-metric.py` projects each fixture's own inverse-resampled cells and matches every capture pixel-for-pixel at five yaws, so the display owns no wrong face and the look is the nearest-cell resample plus lighting on its concave steps; presentation stays the per-object `RotationMode` choice ([`revoxelized-display-fidelity.md`](../revoxelized-display-fidelity.md)) | `trixel-face-reconstruction-validation.md` § Deterministic gates, `revoxelized-display-fidelity.md`, `c_revoxelize_detached.glsl` | done: the revox gate passes both cubes at five yaws (zero missing, extra or wrong-face pixels) and the frame passes the source-face silhouette gate at five yaws; the lit staircase response moves to D0's revoxelized self-shadow/AO item |
-| D0 | Close the remaining visual gates: mixed private SDF/voxel canvas density, placement, owner rotation and atomic-depth lifecycle (the shape pass clears the voxel pass's data); SDF BOX display extent versus receiver and analytic caster extent across subdivisions and yaw; SDF surface face ownership audit; revoxelized self-shadow/AO patches without flattening real staircase normals; deterministic face-connectivity and triangle-parity tooling; detached cardinal compensation (#3023, #3342) | `voxel-and-sdf-rendering.md` § Current acceptance work 2–5, `rendering-audit-todo.md` | new gates in `render-verify` / `scripts/render-*-metric.py`; nine-yaw CanvasStress and ShapeDebug probes pass |
+| D0 | Close the remaining visual gates: mixed private SDF/voxel canvas density, placement, owner rotation and atomic-depth lifecycle (done: [`mixed-private-canvas-lifecycle.md`](../mixed-private-canvas-lifecycle.md)); SDF BOX display extent, and the SDF marker's raw-texel display and continuous-yaw dilation in a private canvas (the strict footprint of `render-mixed-canvas-metric.py`) versus receiver and analytic caster extent across subdivisions and yaw; SDF surface face ownership audit; revoxelized self-shadow/AO patches without flattening real staircase normals; deterministic face-connectivity and triangle-parity tooling; detached cardinal compensation (#3023, #3342) | `voxel-and-sdf-rendering.md` § Current acceptance work 2–5, `rendering-audit-todo.md` | new gates in `render-verify` / `scripts/render-*-metric.py`; nine-yaw CanvasStress and ShapeDebug probes pass |
 | D1 | Honest million controls: committed `million` preset and `repeat_profile` recipe; Release and profiling-off arms; continuous yaw; independent entity motion; matched projected extent; tail latency and memory; a `--yaw` perf-matrix axis (#3130) | `world-scale-visibility.md` step 1, `rotation-subdivision-audit.md` 2, 7, 8 | one table under `docs/perf/` every later PR diffs against |
 | D2 | Bound intermediate work: overflow sort at scale preserving `(cell, distance, color)` order (#3129, #3467); live-count clears and dispatches; per-axis storage and finalization dedup; scratch-byte and occupied-cell counters; paged versus larger pools decided from measured residency | `rotation-subdivision-audit.md` 1, 4, 8; `gpu-cost-attribution.md` next experiments | GPU frame time at the million control drops with pixel-identical captures |
 | D3 | Hierarchical visibility: visited/admitted chunk counters; bound inflation of allocation-slot groups measured; spatial regrouping or a region index over occupied space; conservative light-directed caster region; unbounded depth and full-turn tests stay green | `world-scale-visibility.md` steps 2–3, `rotation-subdivision-audit.md` 3 | admitted candidates track projected coverage; the depth-cutoff suite passes |
@@ -79,12 +79,21 @@ D1 slices touch only tooling and docs, so they may interleave with D0.
 | 2026-09-18 | Human screenshots of the two purple cubes and the cyan cube added as D0.0 and moved ahead of the private-canvas lifecycle. First read of the zoom-8, AO-off, shadow-off captures at yaw 45°: the purple cube (index 2) is a clean column staircase; the cyan cube (index 1) shows lone single-trixel treads inside a field of one side face. A step cell at (x+1, y, z+1) sits two depth units nearer and its hexagon covers exactly the right half of the lower cell's top rhombus, so a lone tread trixel beside a riser is the correct projection of a diagonal step; the revoxelize kernel is nearest-cell inverse sampling (`revoxSourceCellForDest`), so a rotated solid is a staircase by construction. Hypothesis to prove with the oracle: the display is faithful and the objectionable look is the resampling plus AO/shadow on every concave step |
 | 2026-09-18 | Located, not fixed: `system_shapes_to_trixel.hpp` `endTick` clears a non-main canvas unconditionally and re-anchors it to the first shape's world position before drawing, so a voxel set sharing that private canvas loses its color, depth and ids and the two producers disagree on placement (D0 lifecycle item) |
 | 2026-09-18 | D0.0 closed as faithful display: `scripts/render-revox-face-metric.py` (resampled-cell oracle, float32 quaternion path, painter-ordered parallelograms, one-pixel band) matches the cyan and purple cubes at 0/22.5/45/67.5/90° with expected pixel count equal to observed in every capture (1716–1734 occupied cells of 1728 authored); the upright control passes, and the wrong-fixture, wrong-yaw, identity-model and `--debug-raw-trixels` controls fail with 10⁵-class wrong-face counts. The orbit frame passes `render-source-face-metric.py --shape frame` at the same five yaws. Evidence: `docs/design/revoxelized-display-fidelity.md`, captures under `docs/pr-screenshots/claude/million-entity-render-face-parity/`. `--focus-revox <index>` added to IRCanvasStress to center one proof solid |
+| 2026-09-18 | D0.1 closed: `SHAPES_TO_TRIXEL` rasters a shape on an entity canvas in the owner's model frame (owner-relative offset, no camera term, the canvas's rendered density, continuous yaw off the cardinals) and keeps a voxel-rastered canvas instead of clearing it; `IRSystem::clearCanvasAndDistances` moved to `canvas_clear.hpp` so a shape-only canvas resets through the voxel pass's sentinel + Metal scratch mirror. Gate `scripts/render-mixed-canvas-metric.py` (frame exact outside a two-texel marker guard, marker centroid within one texel, `--control` raster survival, `--strict` footprint): before, the second marker sat eight texels off at yaw 0 and both markers left the framebuffer at yaw 45; after, five yaws pass with centroids within a third of a texel, and the revoxelized-sphere control shows 0 differing pixels against the marker-free scene where the unconditional-clear experiment shows 235,823. The SDF marker's own display (raw 2x3 texel rectangle, dilation to 2.1× area under continuous yaw) is recorded as the open strict footprint for the SDF display item |
 
 ### Decisions taken
 
 - 2026-09-18: D0 stays ahead of D2–D5 (visual correctness before
   optimization, as the audit worklist orders it); D1 interleaves because
   it changes no render code.
+- 2026-09-18: a shape on an entity canvas follows the voxel producer's frame
+  (owner-relative, canvas density, continuous yaw, no clear over a rastered
+  canvas) rather than a shape-owned frame. Rejected: keeping the first-shape
+  anchor with a density divide (still wrong under yaw and for a second
+  shape), a new owner-translation field on `C_CanvasLocalRotation` (a
+  once-per-frame owner scan in the shape pass needs no component change), and
+  moving the clear into the composite (the producer that writes first owns
+  the reset).
 - 2026-09-18: the revoxelized cubes keep their nearest-cell appearance.
   The oracle shows the display is exact, so the tooth look is the resample
   plus AO/shadow on real concave steps; presentation is the per-object
@@ -99,12 +108,11 @@ D1 slices touch only tooling and docs, so they may interleave with D0.
 
 ## Now
 
-- **In flight:** D0.1 — mixed private SDF/voxel canvas lifecycle: the
-  located `endTick` clear in `system_shapes_to_trixel.hpp` (a non-main
-  canvas is cleared unconditionally and re-anchored to the first shape's
-  world position), reproduced with `--focus-mixed-shape` at high zoom, fixed
-  so both producers' color, depth and entity id survive, and gated.
-- **Next:** D0.2 — the lit staircase response on revoxelized steps (AO and
-  shadow on the cyan cube's concave treads, gated without flattening real
-  staircase normals), then D1.1 — the committed `million` preset and
-  `repeat_profile` recipe with Release and profiling-off arms.
+- **In flight:** D0.2 — the lit staircase response on revoxelized steps (AO
+  and shadow on the cyan cube's concave treads, gated without flattening real
+  staircase normals).
+- **Next:** D0.3 — the SDF marker's display in a private canvas (the strict
+  footprint of `render-mixed-canvas-metric.py`: raw 2x3 texels at the capped
+  density and the sub-1 analytical dilation under continuous yaw), then
+  D1.1 — the committed `million` preset and `repeat_profile` recipe with
+  Release and profiling-off arms.

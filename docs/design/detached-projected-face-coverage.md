@@ -167,12 +167,13 @@ zero wrong-face pixels. Compare frame 1345 with the retained failing frame 1277,
 and voxel 1396 with failing voxel 1304. No image registration or filtering is used.
 
 The mixed private-canvas probe at zoom 8/yaw 45 (1394) does **not** validate SDF
-placement: the amber marker is absent. The unchanged SDF private-canvas path uses
-global density rather than the private voxel's capped density and recenters
-before applying camera yaw. It also clears its texture without explicitly
-resetting Metal atomic-depth scratch. These require a separate mixed-producer
-coordinate/lifecycle fix; preserving the texture composite is not a claim that
-those existing contracts are correct.
+placement: the amber marker is absent. The SDF private-canvas path then used
+global density rather than the private voxel's capped density, recentered on the
+first shape before applying a cardinal camera yaw, and cleared the texture
+without resetting the Metal atomic-depth scratch. The
+[mixed private canvas lifecycle](mixed-private-canvas-lifecycle.md) contract
+replaces that path and gates it; preserving the texture composite here is not a
+claim about it.
 
 These results establish the plain-detached source-face correction. They do not
 certify all CanvasStress images, green revoxelized normals/lighting, continuous

@@ -1007,8 +1007,9 @@ struct GPUShapesFrameData {
     // queries, continuous center repositioning, and shared world-space x+y+z
     // depth so the SDF composites with the per-axis voxel canvases. A value of
     // 0 keeps the cardinal-snap rasterYaw + faceDeform path. Set per
-    // canvas — only the rotating MAIN world canvas turns it on, so detached
-    // per-entity canvases keep their faceDeform path. Occupies the first word of
+    // canvas: the rotating main world canvas and entity canvases (whose
+    // owner-relative content the composite places at the continuous yaw)
+    // turn it on; other canvases keep their faceDeform path. Occupies the first word of
     // the former 8-byte std140 alignment pad before faceDeform (faceDeform stays
     // at offset 80); the second word remains explicit pad.
     int smoothYawEnabled = 0;
