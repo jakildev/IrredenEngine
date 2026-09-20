@@ -10,14 +10,20 @@ historical captures made with the retired --source-face-shadows caster.
 --box-yaw and --box-offset mirror the analytic probe pose. The receiver plate
 supplies pixel scale and origin; the expected shadow comes from the authored box and
 sun direction, independently of the renderer's shadow samples.
+--strict-edges adds a fixed one-pixel 8-neighbor raster boundary gate; overall area
+agreement alone cannot establish clean projected edges. Cyan error pixels are
+missing shadow, red are excess; caster-colored pixels and their immediate
+neighbors are excluded from this floor-only check.
 """
 
 import argparse
 import itertools
+import json
 import math
 from pathlib import Path
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageChops, ImageDraw, ImageFilter
+from render_metric_util import raster_polygon
 from render_probe_geometry import (
     BOX_HALF_CENTER_SPAN,
     BOX_Z,
@@ -73,26 +79,61 @@ def expected_polygon(image: Image.Image, cardinal: int, grid: bool, source: bool
     return convex_hull(projected), floor_mask
 
 
+def shadow_masks(image, floor_mask):
+    """Classify the fixture once for both area and edge checks."""
+    observed = Image.new("L", image.size)
+    visible = floor_mask.copy()
+    for y in range(image.height):
+        for x in range(image.width):
+            red, green, blue = image.getpixel((x, y))
+            if blue > red * 1.25:
+                visible.putpixel((x, y), 0)
+            if 40 < red < 95 and abs(green - red) <= 2 and abs(blue - green) <= 8:
+                observed.putpixel((x, y), 255)
+    return observed, visible
+
+
+def strict_edges(observed, visible, polygon):
+    """Check occupancy beyond a one-pixel 8-neighbor raster boundary band."""
+    labels = bytearray(observed.width * observed.height)
+    raster_polygon(labels, observed.width, observed.height, polygon, 255)
+    expected = Image.frombytes("L", observed.size, bytes(labels))
+    visible = visible.filter(ImageFilter.MinFilter(3))
+    inside = ImageChops.multiply(expected.filter(ImageFilter.MinFilter(3)), visible)
+    outside = ImageChops.multiply(
+        ImageChops.invert(expected.filter(ImageFilter.MaxFilter(3))), visible)
+    missing = ImageChops.multiply(inside, ImageChops.invert(observed))
+    extra = ImageChops.multiply(outside, observed)
+    def count(mask):
+        return mask.histogram()[255]
+
+    missing_count, extra_count = count(missing), count(extra)
+    sufficient = count(inside) > 0 and count(outside) > 0
+    clipped = any(x < 1 or y < 1 or x >= observed.width - 1 or y >= observed.height - 1
+                  for x, y in polygon)
+    result = dict(missing_pixels=missing_count, extra_pixels=extra_count,
+                  testable_shadow_pixels=count(inside),
+                  testable_outside_pixels=count(outside),
+                  boundary_tolerance_pixels=1, boundary_distance="chebyshev", clipped=clipped,
+                  sufficient_resolution=sufficient,
+                  scope="projected_box_shadow_edges",
+                  passed=sufficient and not clipped and missing_count == extra_count == 0)
+    errors = Image.merge("RGB", (extra, missing, missing))
+    return result, errors
+
+
 def measure(path: Path, cardinal: int, grid: bool, overlay_dir: Path | None, source=False,
-            box_yaw=0.0, box_offset=(0.0, 0.0, 0.0)) -> bool:
+            box_yaw=0.0, box_offset=(0.0, 0.0, 0.0), strict=False) -> bool:
     with Image.open(path) as opened_image:
         image = opened_image.convert("RGB")
     polygon, floor_mask = expected_polygon(image, cardinal, grid, source, box_yaw, box_offset)
     expected = Image.new("L", image.size)
     ImageDraw.Draw(expected).polygon(polygon, fill=255)
-    expected_area = actual_area = intersection = 0
-    for y in range(image.height):
-        for x in range(image.width):
-            if not floor_mask.getpixel((x, y)):
-                continue
-            red, green, blue = image.getpixel((x, y))
-            if blue > red * 1.25:
-                continue
-            predicted = expected.getpixel((x, y)) != 0
-            observed = 40 < red < 95 and abs(green - red) <= 2 and abs(blue - green) <= 8
-            expected_area += predicted
-            actual_area += observed
-            intersection += predicted and observed
+    observed, visible = shadow_masks(image, floor_mask)
+    expected_area = ImageChops.multiply(expected, visible).histogram()[255]
+    actual_area = ImageChops.multiply(observed, visible).histogram()[255]
+    intersection = ImageChops.multiply(
+        ImageChops.multiply(expected, observed), visible).histogram()[255]
     if expected_area == 0:
         raise ValueError("no visible expected shadow")
     iou = intersection / (expected_area + actual_area - intersection)
@@ -101,6 +142,14 @@ def measure(path: Path, cardinal: int, grid: bool, overlay_dir: Path | None, sou
     print(f"yaw={cardinal * 90} iou={iou:.3f} area_ratio={ratio:.3f} "
           f"expected_pixels={expected_area} observed_pixels={actual_area} "
           f"{'PASS' if passed else 'FAIL'}")
+    if strict:
+        result, errors = strict_edges(observed, visible, polygon)
+        result.update(image=str(path), yaw=cardinal * 90)
+        print(json.dumps(result))
+        passed &= result["passed"]
+        if overlay_dir is not None:
+            overlay_dir.mkdir(parents=True, exist_ok=True)
+            errors.save(overlay_dir / f"yaw{cardinal * 90}-edge-errors.png")
     if overlay_dir is not None:
         overlay_dir.mkdir(parents=True, exist_ok=True)
         ImageDraw.Draw(image).line(polygon + [polygon[0]], fill="red", width=2)
@@ -112,6 +161,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("images", nargs=4, type=Path, metavar="PNG")
     parser.add_argument("--grid", action="store_true")
+    parser.add_argument("--strict-edges", action="store_true",
+                        help="Require no missing/excess shadow beyond a fixed "
+                             "one-pixel 8-neighbor edge band")
     parser.add_argument("--source", action="store_true",
                         help="Use unrounded authored positions (analytic box, "
                              "or the retired --source-face-shadows caster)")
@@ -127,7 +179,7 @@ def main() -> None:
     for cardinal, path in enumerate(args.images):
         try:
             results.append(measure(path, cardinal, args.grid, args.overlay_dir, args.source,
-                                   args.box_yaw, args.box_offset))
+                                   args.box_yaw, args.box_offset, args.strict_edges))
         except (OSError, ValueError) as error:
             print(f"{path}: FAIL ({error})")
             results.append(False)

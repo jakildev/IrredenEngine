@@ -12,6 +12,10 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
   comparison improves four views without increasing errors in the other twelve;
   remaining errors are explicitly retained in its evidence. This is not complete
   finite shadow coverage.
+- [Strict floor-edge evidence](../pr-screenshots/codex/floor-shadow-plane-sampling/README.md)
+  now catches all four cardinal failures missed by aggregate shadow IoU. The
+  caster-plane PCF experiment was pixel-identical and rejected. Separate finite
+  map coverage, receiver reconstruction and per-trixel presentation next.
 - Next: resolve finite sampling misses and small GRID floor-shadow boundaries
   across quadrants against ray/face geometry, preserving legitimate partial faces.
 - Keep six oriented face normals, twelve geometric half-faces, coordinate basis
