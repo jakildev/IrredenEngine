@@ -52,9 +52,8 @@ GH_LOG="$TMPROOT/gh.log"
 : > "$GH_LOG"
 
 # Stub `gh` — logs every call, then handles just enough to let a WELL-FORMED
-# claim/release round-trip succeed (positive control). `api ... labels`
-# echoes the posted label back so _acquire_label_on wins; `issue edit` is a
-# benign no-op (the release path).
+# claim/release round-trip succeed (positive control). The labels GET confirms
+# the candidate twice; `issue edit` is a benign no-op (the release path).
 STUB_DIR="$TMPROOT/bin"
 mkdir -p "$STUB_DIR"
 cat >"$STUB_DIR/gh" <<GHSTUB
@@ -76,7 +75,7 @@ case "\$1 \$2" in
         if [[ -n "\$label" ]]; then
             printf '[{"name":"%s"}]\n' "\$label"
         else
-            echo '[]'
+            printf '[[{"name":"%s"}]]\n' "\${FLEET_CLAIM_CANDIDATE:-}"
         fi
         exit 0
         ;;

@@ -40,14 +40,14 @@ beside it is not a verdict — the pending opus pass owns the PR); a live
 `fleet:needs-fix` or `fleet:has-nits` (whichever lane parked it, the fleet
 tier is stale until `fleet:design-unblocked` re-arms it).
 `amending-claim` refuses the reviewing/amending/opus-recheck cases as a
-backstop; its POST-response arbitration with `review-claim` closes the
-snapshot race. The scout's `worker_feedback_labels()` enforces the
-reviewing / opus-recheck / design-park skips in both the worker trigger and
-`projections/worker.json`; `human:needs-fix` / `human:blocker` outrank all
-of them and keep dispatching. The reviewing skip also bars the
+backstop; its independent two-read confirmation with `review-claim` closes
+the observed snapshot race. The scout's `worker_feedback_labels()` enforces
+the reviewing / opus-recheck / design-park skips in both the worker trigger
+and `projections/worker.json`; `human:needs-fix` / `human:blocker` outrank
+all of them and keep dispatching. The reviewing skip also bars the
 conflict-resolution lane (`role-worker.md` step 1c), which force-pushes
 too: `_semantic_conflict_claimable` suppresses the item and
-`resolving-claim` refuses the claim and participates in the same arbitration;
+`resolving-claim` refuses the claim and participates in the same confirmation;
 a pane that reviewed the PR itself passes both gates.
 
 ## Step a — claim the PR atomically (before anything else)

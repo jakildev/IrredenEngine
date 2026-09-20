@@ -150,11 +150,12 @@ tick.
 ## Claims (dynamic, script-owned)
 
 `fleet-claim` owns every label here; never add one by hand. All share the
-sole-holder claim: apply the label, re-read the label set, and hold only
-if no other `<prefix>*` label is present; the lex-min of a simultaneous
-race drops and retries; a later claimant that finds a holder yields and
-rolls back its local state. The host in the suffix is required because two
-hosts can share a pool basename.
+sole-holder claim: apply a candidate label, then hold only after two fresh,
+complete label reads show the exact candidate and no contender (the POST
+response never grants ownership); the lex-min of visible contention drops
+and retries; a later claimant that finds a holder yields and rolls back its
+local state. The host in the suffix is required because two hosts can share
+a pool basename.
 
 | Label | Surface | Taken by | Released by |
 |---|---|---|---|
@@ -170,9 +171,10 @@ planning; a same-host label with a missing or mismatched liveness marker
 after `FLEET_CLAIM_PRLABEL_ORPHAN_GRACE_SECS`, 120 s) and replays orphan
 sentinels. Reviewer projections skip `fleet:amending-*` PRs
 (`REVIEW_SKIP_PREFIXES`) and the worker feedback/conflict tiers skip
-`fleet:reviewing-*` PRs. The live pre-acquire gate is the fast path; the
-symmetric excluded-prefix table arbitrates the full POST response so a
-snapshot race leaves one holder. Same-agent lane transitions remain allowed.
+`fleet:reviewing-*` PRs. The live pre-acquire gate is the fast path; both
+confirmation reads arbitrate the symmetric excluded-prefix union, so the
+POST-snapshot race leaves one holder (consistency limit:
+[`FLEET.md § Claims`](FLEET.md#claims)). Same-agent lane transitions remain allowed.
 
 For `fleet:amending-*` that liveness marker is the **dispatch**, not the
 pane: `amending-claim` stamps the claiming iteration's `FLEET_DISPATCH_ID`

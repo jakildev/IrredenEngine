@@ -230,7 +230,10 @@ if args and args[0] == "api":
             if field.startswith("labels[]="):
                 posted = field.removeprefix("labels[]=")
     if not posted:
-        print("[]")
+        # The acquire's verification GET is paginated with --slurp: one page
+        # of the live store, so the candidate it just posted is visible.
+        page = [{"name": value} for value in labels()]
+        print(json.dumps([page] if "--slurp" in args else page))
         raise SystemExit(0)
     current = labels()
     if posted not in current:

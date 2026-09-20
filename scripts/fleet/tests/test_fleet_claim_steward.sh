@@ -67,8 +67,8 @@ OTHER="fleet:stewarding-linux-epic-steward"
 echo "== steward-claim / steward-release wrappers (gh stub) =="
 
 # Stateful gh stub for the claim path. STUB_HOLDERS = stewarding labels
-# "already present" on the umbrella; the POST response echoes those plus the
-# just-posted label. remove-label calls are logged so yield-self-removal and
+# already present on the umbrella; live reads echo those plus the candidate.
+# remove-label calls are logged so yield-self-removal and
 # release are observable.
 STUB_HOLDERS=""
 REMOVE_LOG="$TMPROOT/remove.log"; : > "$REMOVE_LOG"
@@ -82,13 +82,13 @@ gh() {
                 esac
             done
             local out='[' first=1 h
-            for h in $STUB_HOLDERS $posted; do
+            for h in $STUB_HOLDERS ${posted:-${FLEET_CLAIM_CANDIDATE:-}}; do
                 [[ $first -eq 1 ]] || out+=','
                 out+="{\"name\":\"$h\"}"
                 first=0
             done
             out+=']'
-            printf '%s\n' "$out"
+            if [[ -n "$posted" ]]; then printf '%s\n' "$out"; else printf '[%s]\n' "$out"; fi
             return 0
             ;;
         issue)

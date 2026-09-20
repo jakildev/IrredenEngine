@@ -157,9 +157,10 @@ subjects; `ctest` never sees them. Validator index: [`VALIDATION.md`](../../docs
   Disjoint claim-label namespaces (`fleet:amending-*`, `fleet:resolving-*`,
   `fleet:reviewing-*`) give no mutual exclusion on their own. Every
   force-pushing claim lane (`cmd_amending_claim`, `cmd_resolving_claim`)
-  routes through the shared exclusion table with arbitration on the POST
-  response over the lane union; the table is symmetric, and a guard added for
-  one lane pair is enumerated against every other pair. The merger takes no
+  routes through the shared exclusion table, admitted only by two independent
+  complete GETs over the lane union (never the POST response; contract in
+  `docs/agents/FLEET.md` § Claims); the table is symmetric, and a guard added
+  for one lane pair is enumerated against every other pair. The merger takes no
   `fleet-claim` lock by design (`--force-with-lease`, `NO_CLAIM_FABRIC_ROLES`
   in `fleet-dispatcher`). A lane's admission filter lives in one place —
   `project_<role>` and `slice_<role>` share it (`worker_feedback_labels()`).
