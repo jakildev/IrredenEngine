@@ -18,6 +18,27 @@
 
 set -euo pipefail
 
+# Self re-exec bookkeeping, taken before the first export below. The main
+# clone is fast-forwarded partway through this script, and ~/bin/fleet-up
+# resolves into that clone: bash reads a script incrementally, so the bytes
+# past the advance point are whatever the OLD file held, and a block merged
+# since the last boot never runs. fleet_up_reexec_if_stale re-runs the merged
+# script once when that happens, under exactly the launch environment
+# (`env -i`, the shape fleet-dispatcher's self-reload uses): every knob this
+# pass resolves is exported under its own name, and an inherited copy would
+# read as an operator pin to fleet_env_override_names. FLEET_UP_REEXEC marks
+# the second pass and is consumed here so it neither re-triggers nor leaks
+# into the panes.
+_FLEET_UP_REEXECED="${FLEET_UP_REEXEC:-}"
+unset FLEET_UP_REEXEC
+_FLEET_UP_LAUNCH_ENV=()
+for _launch_name in $(compgen -e); do
+    if [[ -n "${!_launch_name+x}" ]]; then
+        _FLEET_UP_LAUNCH_ENV+=("$_launch_name=${!_launch_name}")
+    fi
+done
+unset _launch_name
+
 # Native-Windows mingw64 python is a Windows build that defaults to the cp1252
 # code page; reading UTF-8 gh/git output (issue titles, emoji) in text mode then
 # throws UnicodeDecodeError and crashes the daemons this launches
@@ -39,9 +60,15 @@ SESSION="fleet"
 # by-dir so it resolves through the ~/bin symlink (the helper is symlinked into
 # ~/bin alongside fleet-up by install.sh, same as fleet-common.sh).
 _FLEET_CLONE_FRESHNESS_SH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fleet-clone-freshness.sh"
+# Every file this process reads out of the clone before the advance: the
+# script itself plus each sourced helper (a helper is read whole, but its
+# functions are still the pre-advance ones). fleet_up_reexec_if_stale hashes
+# this surface across the advance.
+_FLEET_UP_LOADED=("${BASH_SOURCE[0]}")
 if [[ -f "$_FLEET_CLONE_FRESHNESS_SH" ]]; then
     # shellcheck source=/dev/null
     source "$_FLEET_CLONE_FRESHNESS_SH"
+    _FLEET_UP_LOADED+=("$_FLEET_CLONE_FRESHNESS_SH")
 else
     advance_main_clone() { :; }            # helper not installed yet — no-op
     restore_main_clone_to_master() { :; }  # helper not installed yet — no-op
@@ -56,11 +83,38 @@ _FLEET_COMMON_SH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fleet-common.sh"
 if [[ -f "$_FLEET_COMMON_SH" ]]; then
     # shellcheck source=/dev/null
     source "$_FLEET_COMMON_SH"
+    _FLEET_UP_LOADED+=("$_FLEET_COMMON_SH")
 else
     fleet_install_maybe_refresh() { :; }  # helper not installed yet — no-op
     fleet_model_tag() { printf '%s' "$1"; }  # raw-id label fallback
+    fleet_surface_hash() { return 1; }  # no digest helper — re-exec disabled
 fi
 unset _FLEET_COMMON_SH
+
+# fleet_up_reexec_if_stale <surface-hash-before> <self> [arg...]
+# Re-exec <self> with [arg...] under _FLEET_UP_LAUNCH_ENV when the surface
+# hash over _FLEET_UP_LOADED no longer matches <surface-hash-before>. The
+# ~/bin symlinks in that list follow to the clone's current bytes, so the
+# hash moves exactly when the advance rewrote something this process already
+# loaded; an empty hash (no digest tool) compares equal and disables the
+# path. At most one re-exec per boot — a second pass that still sees a
+# change (an install.sh refresh racing the boot) reports it and continues on
+# what it loaded rather than looping.
+fleet_up_reexec_if_stale() {
+    local before="$1" self="$2"
+    shift 2
+    local after
+    after="$(fleet_surface_hash "${_FLEET_UP_LOADED[@]}")" || after=""
+    [[ "$after" != "$before" ]] || return 0
+    if [[ -n "$_FLEET_UP_REEXECED" ]]; then
+        echo "fleet-up: fleet scripts changed again after the re-exec — continuing with the loaded copy" >&2
+        return 0
+    fi
+    echo "fleet-up: main clone advanced past the running fleet-up — re-running the merged script"
+    exec env -i ${_FLEET_UP_LAUNCH_ENV[@]+"${_FLEET_UP_LAUNCH_ENV[@]}"} \
+        FLEET_UP_REEXEC=1 "$BASH" "$self" "$@"
+}
+_FLEET_UP_SURFACE_HASH="$(fleet_surface_hash "${_FLEET_UP_LOADED[@]}")" || _FLEET_UP_SURFACE_HASH=""
 
 # Model classes. Defaults are CLI tier aliases from fleet-common.sh — a
 # new model release needs no edit here (pin via FLEET_MODEL_* to freeze).
@@ -598,6 +652,9 @@ GAME_MIGRATE_NEW=(pool-1   pool-2   pool-3   pool-4   pool-7 pool-9)
 # every claim), then ff-advances so a just-merged fleet-script fix is live for
 # this session's scout/claim/dispatcher. (#1810)
 restore_main_clone_to_master "$ENGINE"
+# Everything below runs from the merged script, never from the pre-advance
+# bytes of this one.
+fleet_up_reexec_if_stale "$_FLEET_UP_SURFACE_HASH" "${BASH_SOURCE[0]}" "$@"
 
 # Campaign panes (docs/agents/campaign-protocol.md): FLEET_CAMPAIGNS in
 # ~/.fleet/fleet-up.conf lists objective slugs, space- or comma-separated.
