@@ -99,6 +99,21 @@ launch_for() {
         "$BABYSIT" "$model" "$role" live 2>/dev/null | grep '^claude ' )
 }
 
+# Campaign arms only. A campaign sidecar older than the babysit process that
+# finds it belongs to a previous fleet and is retired unread, so a fixture that
+# writes a sidecar and launches in the same second sits on the boundary and
+# decides by whether the clock ticked. Pinning the process start behind the
+# sidecar puts these arms squarely on the in-fleet side, which is the contract
+# they assert; the cross-fleet side is test_babysit_campaign_reentry.sh.
+in_fleet_start() { echo $(( $(date +%s) - 600 )); }
+
+launch_for_in_fleet() {
+    local home="$1" model="$2" role="$3"
+    ( cd "$PROJECT_CWD" && env HOME="$home" PATH="$TMPROOT/bin:$PATH" \
+        FLEET_BABYSIT_STARTED_AT="$(in_fleet_start)" FLEET_BABYSIT_PRINT_LAUNCH=1 \
+        "$BABYSIT" "$model" "$role" live 2>/dev/null | grep '^claude ' )
+}
+
 # --- T1: resume launch has --resume <id> and NO prompt ----------------------
 echo "T1: architect resume launches --resume with no prompt"
 H1="$TMPROOT/h1"; mkdir -p "$H1/.fleet/sessions"
@@ -323,7 +338,8 @@ assert_absent "$out" "/role-campaign-million" "the pane name is never used as a 
 [[ -f "$H8/.fleet/sessions/campaign-million-entity-render.session-id" ]] \
     && ok "campaign persisted its own session-id sidecar" \
     || bad "campaign sidecar not written on first launch"
-track=$(cd "$PROJECT_CWD" && env HOME="$H8" PATH="$TMPROOT/bin:$PATH" FLEET_BABYSIT_PRINT_LAUNCH=1 \
+track=$(cd "$PROJECT_CWD" && env HOME="$H8" PATH="$TMPROOT/bin:$PATH" \
+    FLEET_BABYSIT_STARTED_AT="$(in_fleet_start)" FLEET_BABYSIT_PRINT_LAUNCH=1 \
     "$BABYSIT" 'fable[1m]' campaign-million-entity-render live 2>/dev/null \
     | grep '^session-track: ')
 assert_eq "$track" \
@@ -336,7 +352,7 @@ H9="$TMPROOT/h9"; mkdir -p "$H9/.fleet/sessions"
 CSID="caaaaaaa-1111-2222-3333-444444444444"
 echo "$CSID" > "$H9/.fleet/sessions/campaign-million-entity-render.session-id"
 make_transcript "$H9" "$CSID"
-out=$(launch_for "$H9" 'fable[1m]' campaign-million-entity-render)
+out=$(launch_for_in_fleet "$H9" 'fable[1m]' campaign-million-entity-render)
 assert_eq "$out" "claude --model fable[1m] --effort xhigh --resume $CSID" \
     "campaign resume argv carries --resume <id> and no prompt"
 

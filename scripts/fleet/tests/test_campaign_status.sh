@@ -28,7 +28,16 @@
 #   - T6: --apply refuses a `stranded` branch
 #   - T7: exit codes — 0 ready, 1 attention, 2 no worktree
 #   - T8: a file another lane changed on the default branch is reported as
-#         foreign activity on the campaign's surface
+#         foreign activity on the campaign's surface, and the campaign's own
+#         merge is excluded from that section
+#   - T9: THE destructive case — unlanded work INSIDE a file another lane
+#         also changed. A file-name comparison cancels the path and calls it
+#         superseded; --apply would then delete committed work.
+#   - T10: `behind` is distinct from `clean`, and --apply fast-forwards it
+#   - T11: a detached HEAD is refused before anything is written
+#   - T12: a locally-ignored file the default branch tracks is refused
+#   - T13: an open PR from another lane intersecting the surface is
+#          reported; an unfetchable head is reported as unknown, not dropped
 
 set -euo pipefail
 
@@ -92,11 +101,14 @@ DOC
 
 # Advance the fixture's origin/master by one commit, off the current worktree
 # state, without moving the checked-out branch.
+# force=1 adds a path .gitignore excludes (the T12 fixture needs the default
+# branch to track a path that is ignored locally).
 advance_origin() {
     local wt="$1"
     local file="$2"
     local content="$3"
     local msg="$4"
+    local force="${5:-0}"
     g "$wt" stash push --quiet --include-untracked >/dev/null 2>&1 || true
     local here
     here=$(g "$wt" rev-parse --abbrev-ref HEAD)
@@ -104,6 +116,7 @@ advance_origin() {
     mkdir -p "$(dirname "$wt/$file")"
     printf '%s\n' "$content" > "$wt/$file"
     g "$wt" add -A
+    [[ "$force" == "1" ]] && g "$wt" add -f "$file"
     g "$wt" commit --quiet -m "$msg"
     g "$wt" update-ref refs/remotes/origin/master HEAD
     g "$wt" checkout --quiet "$here"
@@ -224,8 +237,8 @@ run_tool "$WT6" --apply >/dev/null 2>"$TMPROOT/t6.err"
 rc=$?
 set -e
 assert_eq "$rc" "2" "--apply on a stranded branch exits 2"
-assert_contains "$(cat "$TMPROOT/t6.err")" "only repairs a \`superseded\` branch" \
-    "the refusal names the verdict it requires"
+assert_contains "$(cat "$TMPROOT/t6.err")" "this branch is \`stranded\`" \
+    "the refusal names the verdict it found"
 assert_eq "$(g "$WT6" rev-parse HEAD)" "$(g "$WT6" rev-parse "$BRANCH")" \
     "the stranded branch was not moved"
 
@@ -254,5 +267,124 @@ assert_contains "$out" "OTHER LANES TOUCHED THIS CAMPAIGN'S FILES" \
     "foreign activity on the surface is surfaced"
 assert_contains "$out" "other lane rewrite" "the foreign commit is named"
 assert_contains "$out" "engine/owned.txt" "the collided file is named"
+
+# --- T9: unlanded work inside a shared file ---------------------------------
+# The case that makes the verdict load-bearing. The branch's commit changes a
+# file another lane ALSO changed, and the branch's own change never landed. A
+# path-set comparison cancels the file (both sides name it) and reads
+# `superseded`, so --apply deletes committed campaign work. Only the merge
+# distinguishes the two.
+echo "T9: unlanded work inside a file another lane also changed is stranded"
+new_fixture t9; WT9="$FIXTURE"
+g "$WT9" checkout --quiet -b "$BRANCH"
+printf 'one\ntwo\nthree\nfour\nfive\nsix\nseven\nUNLANDED CAMPAIGN WORK\n' \
+    > "$WT9/engine/shared.txt"
+g "$WT9" add -A && g "$WT9" commit --quiet -m "campaign edits the end of shared.txt"
+# Another lane edits the SAME file far from the campaign's hunk, so the merge is
+# CLEAN and still changes master — a conflict would make the case easy.
+advance_origin "$WT9" engine/shared.txt \
+    "$(printf 'ANOTHER LANE\ntwo\nthree\nfour\nfive\nsix\nseven')" "other lane (#99)"
+out=$(run_tool "$WT9" || true)
+assert_contains "$out" "verdict    STRANDED" \
+    "unlanded work inside a shared file is stranded, not superseded"
+assert_contains "$out" "never landed: engine/shared.txt" \
+    "the shared file is named in the at-risk inventory"
+set +e
+run_tool "$WT9" --apply >"$TMPROOT/t9.out" 2>"$TMPROOT/t9.err"; rc9=$?
+set -e
+assert_eq "$rc9" "2" "--apply refuses it"
+assert_contains "$(g "$WT9" show HEAD:engine/shared.txt)" "UNLANDED CAMPAIGN WORK" \
+    "the campaign's committed work is still on the branch"
+
+# --- T10: behind is not clean ------------------------------------------------
+echo "T10: a branch with no commits of its own but a moved master is behind"
+new_fixture t10; WT10="$FIXTURE"
+g "$WT10" checkout --quiet -b "$BRANCH"
+advance_origin "$WT10" engine/other.txt moved "another lane (#5)"
+out=$(run_tool "$WT10" || true)
+assert_contains "$out" "verdict    BEHIND" "0 ahead with a moved master is behind, not clean"
+assert_contains "$out" "stale base" "the line warns that a slice here starts stale"
+printf 'in flight\n' > "$WT10/engine/base.txt"
+out=$(run_tool "$WT10" --apply || true)
+assert_eq "$(g "$WT10" rev-parse HEAD)" "$(g "$WT10" rev-parse refs/remotes/origin/master)" \
+    "--apply fast-forwards a behind branch"
+assert_eq "$(cat "$WT10/engine/base.txt")" "in flight" "the in-flight slice survived the fast-forward"
+assert_contains "$out" "verdict    CLEAN" \
+    "the post-apply report is re-measured, not patched"
+
+# --- T11: detached HEAD ------------------------------------------------------
+echo "T11: a detached HEAD is refused before anything is written"
+new_fixture t11; WT11="$FIXTURE"
+g "$WT11" checkout --quiet -b "$BRANCH"
+printf 'slice\n' > "$WT11/engine/slice.txt"
+g "$WT11" add -A && g "$WT11" commit --quiet -m "slice"
+advance_origin "$WT11" engine/slice.txt slice "slice (#1)"
+g "$WT11" checkout --quiet --detach HEAD
+set +e
+run_tool "$WT11" --apply >"$TMPROOT/t11.out" 2>"$TMPROOT/t11.err"; rc11=$?
+set -e
+assert_contains "$(cat "$TMPROOT/t11.out") $(cat "$TMPROOT/t11.err")" "detached" \
+    "the refusal names the detached HEAD"
+if g "$WT11" for-each-ref --format='%(refname)' 'refs/campaign-reentry/**' | grep -q .; then
+    bad "a backup ref was written before the detached-HEAD refusal"
+else
+    ok "nothing was written before the refusal"
+fi
+if g "$WT11" stash list | grep -q .; then
+    bad "the tree was stashed before the detached-HEAD refusal"
+else
+    ok "nothing was stashed before the refusal"
+fi
+
+# --- T12: an ignored file the default branch tracks --------------------------
+# git status never lists an ignored file, so it takes no stash and the backup
+# ref (commits only) does not cover it — the one path a reset destroys with no
+# recovery at all.
+echo "T12: an ignored file the default branch tracks blocks the reset"
+new_fixture t12; WT12="$FIXTURE"
+printf 'local/\n' > "$WT12/.gitignore"
+g "$WT12" add -A && g "$WT12" commit --quiet -m "ignore local/"
+g "$WT12" update-ref refs/remotes/origin/master HEAD
+g "$WT12" checkout --quiet -b "$BRANCH"
+printf 'slice\n' > "$WT12/engine/slice.txt"
+g "$WT12" add -A && g "$WT12" commit --quiet -m "slice"
+advance_origin "$WT12" engine/slice.txt slice "slice (#1)"
+advance_origin "$WT12" local/state.txt "the default branch version" "track local/state.txt (#6)" 1
+# Written AFTER the advance: checking the campaign branch back out removes a
+# path only the default branch tracks, so a file staged before it would be gone
+# before the tool ever ran.
+mkdir -p "$WT12/local"
+printf 'precious local state\n' > "$WT12/local/state.txt"
+set +e
+run_tool "$WT12" --apply >"$TMPROOT/t12.out" 2>"$TMPROOT/t12.err"; rc12=$?
+set -e
+assert_eq "$rc12" "2" "--apply refuses rather than clobbering an ignored file"
+assert_contains "$(cat "$TMPROOT/t12.out") $(cat "$TMPROOT/t12.err")" "local/state.txt" \
+    "the at-risk file is named"
+assert_eq "$(cat "$WT12/local/state.txt")" "precious local state" "the ignored file is untouched"
+
+# --- T13: foreign open PRs and the campaign's own merge ----------------------
+echo "T13: foreign open PRs intersect the surface; the campaign's own merge does not"
+new_fixture t13; WT13="$FIXTURE"
+g "$WT13" checkout --quiet -b "$BRANCH"
+printf 'campaign\n' > "$WT13/engine/owned.txt"
+g "$WT13" add -A && g "$WT13" commit --quiet -m "campaign owns owned.txt"
+advance_origin "$WT13" engine/owned.txt campaign "campaign slice (#1)"
+campaign_merge=$(g "$WT13" rev-parse refs/remotes/origin/master)
+advance_origin "$WT13" engine/owned.txt "another lane" "other lane (#99)"
+PRJSON_MERGED="$TMPROOT/pr-merged.json"
+cat > "$PRJSON_MERGED" <<JSON
+{"open": [], "merged": [{"number": 1, "title": "campaign slice", "mergedAt": "2026-01-03",
+                         "headRefName": "$BRANCH", "mergeCommit": {"oid": "$campaign_merge"}}]}
+JSON
+out=$("$TOOL" "$SLUG" --worktree "$WT13" --no-fetch --pr-json "$PRJSON_MERGED" || true)
+assert_contains "$out" "other lane (#99)" "the other lane's merge is reported"
+assert_absent "$out" "campaign slice (#1)" \
+    "the campaign's OWN merge is excluded from the other-lanes section"
+if echo "$out" | grep -q "merged campaign PRs"; then
+    ok "the merged campaign PR is listed in its own section"
+else
+    bad "the merged campaign PR row was dropped"
+fi
 
 summarize "fleet-campaign-status tests"

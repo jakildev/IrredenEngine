@@ -1,30 +1,15 @@
 #!/usr/bin/env python3
-"""fleet-campaign-status — the campaign lane's re-entry oracle.
+"""fleet-campaign-status — campaign re-entry oracle.
 
-A campaign pane (docs/agents/campaign-protocol.md) is the one fleet lane that
-works unattended out of a *persistent* context. Every other lane re-reads the
-world each iteration because its conversation is thrown away between tasks; a
-campaign's is not. So where a worker cannot be stale, a campaign can: it comes
-back believing whatever it believed when it stopped, which — after a merge
-batch, a usage wall, or an overnight restart — can be a day out of date.
+What a campaign session reads at startup instead of trusting its own context
+(docs/agents/campaign-protocol.md §Startup): where the worktree branch stands
+against the default branch, which campaign PRs are open and which merged, what
+other lanes changed on the campaign's own files, and the campaign doc's
+`## Now`.
 
-This tool is what a campaign reads *instead of* trusting its own context. It
-answers, from the tree and the PR list alone (the two things the protocol calls
-the campaign's state):
-
-  * where the worktree is        — branch, ahead/behind, the in-flight slice
-  * what the branch now IS       — still work, already merged, or carrying
-                                   content that never landed (the verdict)
-  * which campaign PRs are open, and which merged since the last checkpoint
-  * what other lanes did to the campaign's own files while it was away
-  * the campaign doc's `## Now`
-
-The verdict is the load-bearing part, because the obvious recovery from a
-merged stack is the wrong one. Campaign PRs are squash-merged, so each PR's
-several commits collapse into one commit with a new patch-id: `git rebase`'s
-already-applied detection sees almost nothing and tries to replay work that is
-already on the default branch. Supersession has to be decided on content, not
-on commit identity — see branch_verdict().
+The branch verdict is decided by the merge, not by comparing file names and not
+by `git cherry` — see branch_verdict() and branch_contributes() for why either
+of those mistakes a branch carrying unlanded work for one already upstream.
 
 Exit codes:
   0  ready — continue the campaign (verdict `clean` or `live`)
@@ -49,6 +34,9 @@ import subprocess
 import sys
 import time
 
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+from fleet_poll_topology import state_age_seconds  # noqa: E402
+
 STATE_DIR = os.path.join(os.path.expanduser("~"), ".fleet", "state")
 STATE_JSON = os.path.join(STATE_DIR, "state.json")
 REPOS_CACHE = os.path.join(STATE_DIR, "repos.json")
@@ -71,20 +59,35 @@ def warn(msg):
     print("fleet-campaign-status: %s" % msg, file=sys.stderr)
 
 
+# Every subprocess is timeout-guarded: this runs on the campaign's startup
+# path, one `git fetch refs/pull/N/head` per open PR, and an unattended lane
+# that blocks on a hung fetch never re-enters at all.
+SUBPROCESS_TIMEOUT_S = 120
+
+
 def git(root, *args):
-    """stdout of a git command, stripped. Empty string on failure."""
-    proc = subprocess.run(
-        ["git", "-C", str(root), *args], capture_output=True, text=True
-    )
+    """stdout of a git command, stripped. Empty string on failure or timeout."""
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(root), *args], capture_output=True, text=True,
+            timeout=SUBPROCESS_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired:
+        warn("git %s timed out after %ds" % (" ".join(args[:2]), SUBPROCESS_TIMEOUT_S))
+        return ""
     if proc.returncode != 0:
         return ""
     return proc.stdout.strip()
 
 
 def git_status(root, *args):
-    proc = subprocess.run(
-        ["git", "-C", str(root), *args], capture_output=True, text=True
-    )
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(root), *args], capture_output=True, text=True,
+            timeout=SUBPROCESS_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired:
+        return 124, "", "timed out after %ds" % SUBPROCESS_TIMEOUT_S
     return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
 
 
@@ -140,11 +143,16 @@ def load_state_cache():
         data = read_json_retry(STATE_JSON)
     except (json.JSONDecodeError, FileNotFoundError, OSError):
         return None, False
+    # Age is the in-file `generated_at`, never the file mtime: a follower
+    # rewrites state.json every tick while preserving the leader's
+    # generated_at, so mtime stays fresh over a frozen snapshot. A stale
+    # snapshot here would hide an open campaign PR and drop the branch out of
+    # the `live` arm into classification.
     try:
-        mtime = os.path.getmtime(STATE_JSON)
+        mtime = os.path.getmtime(STATE_JSON)  # lint: state-mtime-ok fallback for state_age_seconds
     except OSError:
-        return data, False
-    return data, (time.time() - mtime) < CACHE_MAX_AGE_S
+        mtime = 0
+    return data, state_age_seconds(data.get("generated_at"), mtime) < CACHE_MAX_AGE_S
 
 
 def repo_slug(repo_key):
@@ -167,7 +175,12 @@ def repo_root(repo_key, state):
 
 
 def gh_json(args):
-    proc = subprocess.run(args, capture_output=True, text=True)
+    try:
+        proc = subprocess.run(args, capture_output=True, text=True,
+                              timeout=SUBPROCESS_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        warn("gh timed out after %ds" % SUBPROCESS_TIMEOUT_S)
+        return None
     if proc.returncode != 0:
         warn("gh failed: %s" % (proc.stderr or "").strip())
         return None
@@ -227,21 +240,29 @@ def label_names(row):
 def branch_verdict(wt, default_ref, branch, prs_open):
     """Classify the campaign worktree's branch against the default branch.
 
-    clean       no commits past the default branch — nothing to decide.
+    clean       level with the default branch — nothing to decide.
+    behind      no commits of its own, but the default branch has moved. A
+                fast-forward, which `--apply` performs; starting a slice here
+                builds it on a stale base.
     live        commits, and an open PR whose head is this branch.
-    superseded  commits, no open PR, and every file the branch still differs on
-                is a file the default branch itself changed after the fork
-                point. Nothing the branch carries is missing upstream; the
-                divergence is the branch holding older lines of files that moved
-                on without it. Repairable by reset (`--apply`).
-    stranded    commits, no open PR, and at least one file diverges that the
-                default branch never touched — content that never landed.
-                A human decides; `--apply` refuses.
+    superseded  commits, no open PR, and merging the branch into the default
+                branch would change nothing — every line it carries is already
+                upstream. Repairable by reset (`--apply`).
+    stranded    commits, no open PR, and the merge WOULD change something, or
+                conflicts. Content that never landed. `--apply` refuses.
+    unknown     the merge could not be evaluated. Never repaired automatically.
 
-    The file-set test, not `git cherry`, is the oracle. Squash merges give each
-    landed PR a single commit with a fresh patch-id, so `git cherry` reports
-    almost every commit of a fully merged stack as absent upstream. The counts
-    are still reported, because the gap between them is exactly the trap.
+    The oracle is the merge, not a file-name comparison and not `git cherry`.
+    Squash merges give each landed PR one commit with a fresh patch-id, so
+    `git cherry` reports a fully merged stack as absent upstream; the count is
+    still reported because the gap between it and the verdict is the trap that
+    makes `git rebase` replay landed work.
+
+    Comparing which FILES differ cannot stand in for it either: another lane
+    editing the same path for its own reasons makes the branch's own unlanded
+    change to that path disappear from a set difference, and `--apply` would
+    then delete it. Only the merge distinguishes "the branch's content is
+    already upstream" from "another lane happens to have touched this file".
     """
     fork = git(wt, "merge-base", "HEAD", default_ref)
     ahead = git_lines(wt, "rev-list", "%s..HEAD" % default_ref)
@@ -256,7 +277,7 @@ def branch_verdict(wt, default_ref, branch, prs_open):
         "cherry_unmatched": 0,
     }
     if not ahead:
-        report["verdict"] = "clean"
+        report["verdict"] = "behind" if behind else "clean"
         return report
 
     live = [row for row in prs_open if row.get("headRefName") == branch]
@@ -270,14 +291,53 @@ def branch_verdict(wt, default_ref, branch, prs_open):
     cherry = git_lines(wt, "cherry", default_ref, "HEAD")
     report["cherry_unmatched"] = len([ln for ln in cherry if ln.startswith("+")])
 
-    diverging = set(git_lines(wt, "diff", "--name-only", "%s..HEAD" % default_ref))
-    moved_upstream = set(
-        git_lines(wt, "log", "--name-only", "--format=", "%s..%s" % (fork, default_ref))
-    )
-    unique = sorted(diverging - moved_upstream)
-    report["unique_files"] = unique
-    report["verdict"] = "stranded" if unique else "superseded"
+    contributes, carried, detail = branch_contributes(wt, default_ref)
+    report["unique_files"] = carried
+    report["merge_detail"] = detail
+    if contributes is None:
+        report["verdict"] = "unknown"
+    else:
+        report["verdict"] = "stranded" if contributes else "superseded"
     return report
+
+
+def branch_contributes(wt, default_ref):
+    """(contributes, carried_files, detail) — would merging HEAD into the
+    default branch change it?
+
+    False means every line the branch holds is already upstream, which is what
+    makes a reset safe. True means the merge would add something, or cannot be
+    taken at all (a conflict is content the default branch does not have).
+    None means the question could not be answered, and nothing may be reset.
+
+    `git merge-tree --write-tree` exits non-zero for an unresolvable ref exactly
+    as it does for a conflict, so both refs are resolved first and a later
+    non-zero is read as a genuine conflict.
+    """
+    for ref in (default_ref, "HEAD"):
+        if not git(wt, "rev-parse", "--verify", "--quiet", "%s^{commit}" % ref):
+            return None, [], "cannot resolve %s" % ref
+
+    rc, out, err = git_status(wt, "merge-tree", "--write-tree", default_ref, "HEAD")
+    blob = "%s %s" % (out, err)
+    if rc != 0 and ("unknown option" in blob or "usage:" in blob):
+        return None, [], "git is too old for `merge-tree --write-tree`"
+
+    # Line 1 is the merged tree on both the clean and the conflicted exit, so
+    # the at-risk inventory is available either way.
+    merged_tree = out.split("\n")[0].strip()
+    base_tree = git(wt, "rev-parse", "%s^{tree}" % default_ref)
+    if not merged_tree or not base_tree:
+        return None, [], "could not read the merged tree"
+    carried = sorted(git_lines(wt, "diff", "--name-only", base_tree, merged_tree))
+    if rc != 0:
+        return True, carried, "merging into %s conflicts" % default_ref
+    if merged_tree == base_tree:
+        return False, [], "merging into %s is a no-op" % default_ref
+    # What the merge would add is the complete at-risk inventory — every path,
+    # not only the ones the default branch left alone.
+    return True, carried, "merging into %s would change %d file(s)" % (
+        default_ref, len(carried))
 
 
 # --- Surface and foreign activity -------------------------------------------
@@ -434,16 +494,54 @@ def doc_sections(path):
 # --- Re-entry repair --------------------------------------------------------
 
 
-def apply_reentry(wt, report, default_ref, slug, stamp):
-    """The one repair a verdict can prescribe mechanically: park a superseded
-    branch back on the default branch, carrying the in-flight slice across.
+def ignored_paths_the_default_tracks(wt, default_ref):
+    """Locally-ignored files the default branch tracks at the same path.
 
-    Nothing is discarded. The pre-reset head is written to a permanent ref under
-    refs/campaign-reentry/ (reflog expiry cannot reach it) and the dirty tree
-    goes through the stash, so a wrong call costs a `git reset --hard <ref>`.
+    `git status --porcelain` never lists an ignored file, so such a path is
+    absent from the dirty set, takes no stash, and is overwritten by the
+    checkout with no backup covering it — the backup ref holds commits, not the
+    working tree. These are the only paths a reset can destroy irrecoverably,
+    so the repair refuses rather than gambling.
+    """
+    tracked_there = set(git_lines(wt, "ls-tree", "-r", "--name-only", default_ref))
+    if not tracked_there:
+        return []
+    tracked_here = set(git_lines(wt, "ls-files"))
+    # Asked as a path question rather than read out of `git status`: a
+    # directory-level ignore rule collapses the status listing to the directory
+    # ("!! local/"), so the file inside it never appears by name.
+    at_risk = []
+    for name in sorted(tracked_there - tracked_here):
+        if os.path.exists(os.path.join(wt, name)):
+            at_risk.append(name)
+    return at_risk
+
+
+def apply_reentry(wt, report, default_ref, slug, stamp):
+    """The repair a verdict can prescribe mechanically: park the branch back on
+    the default branch, carrying the in-flight slice across.
+
+    Nothing is discarded. The pre-reset head goes to a permanent ref under
+    refs/campaign-reentry/ (reflog expiry cannot reach it) and the working tree
+    goes through the stash, so a wrong call on the commits costs a
+    `git reset --hard <ref>` — which does not restore the in-flight slice, so
+    the slice is restored here before any error path returns.
     """
     branch = report["branch"]
     steps = []
+    if branch == "HEAD":
+        return False, steps, (
+            "the worktree is on a detached HEAD, so there is no branch to reset; "
+            "`git checkout <branch>` first"
+        )
+    clobber = ignored_paths_the_default_tracks(wt, default_ref)
+    if clobber:
+        return False, steps, (
+            "%d locally-ignored file(s) are tracked at the same path on %s and "
+            "the checkout would overwrite them with no backup: %s — move them "
+            "aside first" % (len(clobber), default_ref, ", ".join(clobber[:5]))
+        )
+
     old_head = report["head"]
     backup = "refs/campaign-reentry/%s/%s" % (slug, stamp)
     rc, _, err = git_status(wt, "update-ref", backup, old_head)
@@ -462,15 +560,28 @@ def apply_reentry(wt, report, default_ref, slug, stamp):
 
     rc, _, err = git_status(wt, "checkout", "-B", branch, default_ref)
     if rc != 0:
-        return False, steps, "git checkout -B %s %s failed: %s" % (branch, default_ref, err)
+        # The slice is off disk and in the stash; say so, because the error
+        # otherwise reads as "nothing happened" while files are missing.
+        recovery = " — the in-flight slice is in `git stash` as the entry named " \
+                   "`campaign %s re-entry %s`; `git stash pop` restores it" % (slug, stamp) \
+                   if stashed else ""
+        return False, steps, "git checkout -B %s %s failed: %s%s" % (
+            branch, default_ref, err, recovery)
     steps.append("reset %s onto %s" % (branch, default_ref))
 
     if stashed:
-        rc, _, err = git_status(wt, "stash", "pop")
+        rc, out, err = git_status(wt, "stash", "pop")
         if rc != 0:
+            # git reports pop conflicts on stdout, so the stderr-only read is
+            # empty exactly when there is something to say. A conflicted pop has
+            # ALREADY written the merge into the tree and kept the stash entry:
+            # re-running it can only fail, so the remedy is resolve-add-drop.
+            detail = (out or err or "").strip().split("\n")
             return False, steps, (
-                "git stash pop failed (%s) — the slice is still in the stash; "
-                "resolve and `git stash pop` by hand" % err
+                "git stash pop left a conflict (%s) — the merge is already in the "
+                "tree and the stash entry is still there; resolve the markers, "
+                "`git add` them, then `git stash drop` (a second `git stash pop` "
+                "cannot succeed)" % (detail[0] if detail and detail[0] else "no detail")
             )
         steps.append("restored the in-flight slice")
 
@@ -485,13 +596,21 @@ def apply_reentry(wt, report, default_ref, slug, stamp):
 # --- Rendering --------------------------------------------------------------
 
 VERDICT_LINE = {
-    "clean": "branch is on the default branch — start the next slice here",
+    "clean": "branch is level with the default branch — start the next slice here",
+    "behind": "branch has no commits of its own but the default branch has moved "
+              "— fast-forward first (`--apply`), or the next slice builds on a "
+              "stale base",
     "live": "branch has an open PR — continue it",
-    "superseded": "branch is fully superseded by the default branch — RESET, do "
-                  "not rebase (`--apply`)",
-    "stranded": "branch carries content that never landed — a human decides "
-                "before anything is reset",
+    "superseded": "merging this branch into the default branch would change "
+                  "nothing — RESET, do not rebase (`--apply`)",
+    "stranded": "the merge WOULD change the default branch — this branch carries "
+                "content that never landed; a human decides before any reset",
+    "unknown": "the merge could not be evaluated — nothing is reset until a human "
+               "looks",
 }
+
+# Verdicts --apply can repair, and what it does for each.
+APPLY_VERDICTS = ("superseded", "behind")
 
 
 def render_text(report):
@@ -505,10 +624,12 @@ def render_text(report):
         % (branch["branch"], branch["ahead"], branch["behind"], report["default_ref"]))
     out("  verdict    %s — %s" % (branch["verdict"].upper(),
                                   VERDICT_LINE.get(branch["verdict"], "")))
-    if branch["verdict"] in ("superseded", "stranded"):
+    if branch["verdict"] in ("superseded", "stranded", "unknown"):
         out("             (%d of %d commits unmatched by `git cherry` — squash "
             "merges; patch-id is not the oracle here)"
             % (branch["cherry_unmatched"], branch["ahead"]))
+        if branch.get("merge_detail"):
+            out("             %s" % branch["merge_detail"])
     for path in branch["unique_files"]:
         out("             never landed: %s" % path)
     if report["dirty"]:
@@ -668,9 +789,9 @@ def main():
     report["doc"] = doc_sections(report["doc_path"])
 
     if args.apply:
-        if verdict["verdict"] != "superseded":
-            warn("--apply only repairs a `superseded` branch; this one is `%s`"
-                 % verdict["verdict"])
+        if verdict["verdict"] not in APPLY_VERDICTS:
+            warn("--apply repairs %s; this branch is `%s`"
+                 % (" or ".join("`%s`" % v for v in APPLY_VERDICTS), verdict["verdict"]))
             return 2
         stamp = time.strftime("%Y%m%d-%H%M%S")
         ok, steps, err = apply_reentry(wt, verdict, args.default_ref, slug, stamp)
@@ -678,8 +799,12 @@ def main():
         if not ok:
             report["apply_error"] = err
         else:
-            verdict["verdict"] = "clean"
-            verdict["ahead"] = 0
+            # Re-measured, not patched: ahead/behind/head/fork all moved, and a
+            # report that contradicts itself is worse than no report.
+            verdict = branch_verdict(wt, args.default_ref, branch, rows_open)
+            verdict["dirty"] = porcelain_paths(wt)
+            report["branch"] = verdict
+            report["dirty"] = verdict["dirty"]
 
     if args.json:
         print(json.dumps(report, indent=2))

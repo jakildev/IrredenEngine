@@ -27,6 +27,11 @@
 #   - T3: campaign + sidecar newer than this babysit -> --resume, no prompt
 #   - T4: architect + sidecar older than this babysit -> --resume (unchanged)
 #   - T5: campaign with no sidecar at all -> fresh, and nothing is retired
+#   - T7: with FLEET_BABYSIT_STARTED_AT unset the real clock decides, so an
+#         aged sidecar still retires (the pinned cases never reach that arm)
+#   - T6: the gate survives a GNU-coreutils `stat`, whose -f selects the
+#         FILE SYSTEM and whose %m prints a mount point — a BSD-first probe
+#         returns "/" there with status 0 and aborts the script
 
 set -euo pipefail
 
@@ -161,5 +166,52 @@ if ls "$H5/.fleet/sessions/" | grep -q 'session-id.prev-'; then
 else
     ok "nothing retired on a first-ever launch"
 fi
+
+# --- T6: no BSD-only mtime probe ---------------------------------------------
+# `stat -f %m FILE` reads an mtime on BSD/macOS. On GNU it is not an error:
+# -f selects the file system and %m prints its mount point, so the probe
+# succeeds with "/" and the arithmetic comparison that consumes it aborts the
+# script under `set -e`. A `stat` that behaves the GNU way is put ahead of the
+# real one; the gate must be indifferent to it.
+echo "T6: the gate does not read mtimes through a BSD-only stat spelling"
+GNUBIN="$TMPROOT/gnubin"
+mkdir -p "$GNUBIN"
+cat > "$GNUBIN/stat" <<'STUB'
+#!/usr/bin/env bash
+# GNU coreutils semantics for the flags this guard cares about.
+if [[ "${1:-}" == "-f" ]]; then
+    echo "/"          # %m under --file-system is the mount point, not an mtime
+    exit 0
+fi
+exec /usr/bin/stat "$@"
+STUB
+chmod +x "$GNUBIN/stat"
+H6="$TMPROOT/h6"; mkdir -p "$H6/.fleet/sessions"
+SID6="dddddddd-1111-2222-3333-444444444444"
+echo "$SID6" > "$H6/.fleet/sessions/campaign-million-entity-render.session-id"
+make_transcript "$H6" "$SID6"
+out=$( cd "$PROJECT_CWD" && env HOME="$H6" PATH="$GNUBIN:$TMPROOT/bin:$PATH" \
+    FLEET_BABYSIT_STARTED_AT="$newer_than_sidecar" FLEET_BABYSIT_PRINT_LAUNCH=1 \
+    "$BABYSIT" fable campaign-million-entity-render live 2>/dev/null | grep '^claude ' || true )
+assert_contains "$out" "/role-campaign million-entity-render live" \
+    "the cross-fleet verdict still resolves with a GNU-behaving stat on PATH"
+
+# --- T7: the unpinned fallback arm -------------------------------------------
+# Every case above pins FLEET_BABYSIT_STARTED_AT, so none of them exercises the
+# `$(date +%s)` default the real fleet uses. Age the sidecar into the past and
+# let the wall clock decide.
+echo "T7: with the clock unpinned, an aged sidecar still retires"
+H7="$TMPROOT/h7"; mkdir -p "$H7/.fleet/sessions"
+SID7="eeeeeeee-1111-2222-3333-444444444444"
+SIDECAR7="$H7/.fleet/sessions/campaign-million-entity-render.session-id"
+echo "$SID7" > "$SIDECAR7"
+make_transcript "$H7" "$SID7"
+touch -t 202001010000 "$SIDECAR7"
+out=$( cd "$PROJECT_CWD" && env HOME="$H7" PATH="$TMPROOT/bin:$PATH" \
+    FLEET_BABYSIT_PRINT_LAUNCH=1 \
+    "$BABYSIT" fable campaign-million-entity-render live 2>/dev/null | grep '^claude ' )
+assert_contains "$out" "/role-campaign million-entity-render live" \
+    "the unpinned clock retires a sidecar aged into the past"
+assert_absent "$out" "--resume" "the unpinned arm does not resume an aged sidecar"
 
 summarize "fleet-babysit campaign re-entry tests"

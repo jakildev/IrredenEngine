@@ -304,21 +304,33 @@ esac
 # world has moved underneath it.
 #
 # The boundary is this babysit process. fleet-up spawns one per pane, so a
-# sidecar older than this process is a previous fleet's; the session-track
-# SessionStart hook rewrites it at every session start, so one newer belongs
-# to this fleet. Retiring (not deleting) keeps the transcript reachable by
-# uuid for a human who wants to read back.
+# sidecar older than this process was written before this babysit started —
+# a previous fleet in the normal case, and a hand-restarted babysit in the
+# other; the session-track SessionStart hook rewrites it at every session
+# start, so one newer belongs to this process's own fleet. Retiring (not
+# deleting) keeps the transcript reachable by uuid for a human reading back,
+# and the retired copies are pruned to the most recent few.
 BABYSIT_STARTED_AT="${FLEET_BABYSIT_STARTED_AT:-$(date +%s)}"
 
 retire_cross_fleet_campaign_session() {
     [[ -n "$CAMPAIGN_SLUG" ]] || return 0
     [[ -f "$SESSION_FILE" ]] || return 0
+    # python3, not stat: `stat -f %m` is BSD and `stat -c %Y` is GNU, and the
+    # BSD spelling does not fail on GNU — there `-f` selects the FILE SYSTEM and
+    # `%m` prints its mount point, so a BSD-first probe returns "/" with status 0
+    # and the arithmetic comparison below aborts the script. babysit already
+    # requires python3 for the session uuid. An unreadable mtime reads as 0,
+    # which retires: starting fresh re-reads the tree and is the safe direction.
     local sidecar_mtime
-    sidecar_mtime=$(stat -f %m "$SESSION_FILE" 2>/dev/null \
-        || stat -c %Y "$SESSION_FILE" 2>/dev/null || echo 0)
+    sidecar_mtime=$(python3 -c 'import os, sys; print(int(os.path.getmtime(sys.argv[1])))' \
+        "$SESSION_FILE" 2>/dev/null || echo 0)
     [[ "$sidecar_mtime" -lt "$BABYSIT_STARTED_AT" ]] || return 0
     local retired="$SESSION_FILE.prev-$(date +%Y%m%d-%H%M%S)"
     mv "$SESSION_FILE" "$retired"
+    # One retired copy per fleet-up would otherwise accumulate forever.
+    ls -1t "$SESSION_FILE".prev-* 2>/dev/null | tail -n +6 | while read -r old; do
+        rm -f "$old"
+    done
     log "campaign session $(cat "$retired" 2>/dev/null) predates this fleet — retired to $(basename "$retired"); starting fresh so startup re-reads the tree"
 }
 
