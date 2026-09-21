@@ -170,6 +170,21 @@ class RunWitnessParserTest(unittest.TestCase):
         self.assertIsNone(report.witness.overflow_max_dropped)
         self.assertEqual(report.frame_times_ms, [])
 
+    def test_a_pose_line_with_no_samples_reads_absent_never_zero_degrees(self):
+        text = WITNESSED_REPORT.replace(
+            "first=-135.000deg last=-135.000deg travel=0.000deg samples=8",
+            "first=0.000deg last=0.000deg travel=0.000deg samples=0",
+        )
+        witness = self.parse(text).witness
+        self.assertEqual(witness.pose_samples, 0)
+        self.assertIsNone(witness.yaw_first_deg)
+        self.assertIsNone(witness.yaw_travel_deg)
+
+    def test_a_series_shorter_than_the_steady_line_states_pools_nothing(self):
+        report = self.parse(WITNESSED_REPORT.replace("19.000 18.000 18.000\n", "19.000\n"))
+        self.assertEqual((report.recorded_frames, len(report.frame_times_ms)), (8, 6))
+        self.assertEqual(report.steady_frame_times_ms(), [])
+
     def test_a_series_without_a_stated_warm_up_has_no_steady_frames(self):
         report = self.parse(WITNESSED_REPORT.replace(WITNESSED_REPORT.splitlines()[2] + "\n", ""))
         self.assertEqual(len(report.frame_times_ms), 8)

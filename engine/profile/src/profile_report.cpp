@@ -342,16 +342,22 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
     );
     std::fprintf(f, "\n");
 
-    writeSeries(f, "--- Frame times (ms, in order) ---\n", report.frameTimesMs_, 10, [f](float ms) {
-        std::fprintf(f, "%.3f", ms);
-    });
-    writeSeries(
-        f,
-        "--- Update ticks (per frame, in order) ---\n",
-        report.frameUpdateTicks_,
-        30,
-        [f](uint32_t ticks) { std::fprintf(f, "%u", ticks); }
-    );
+    if (report.frameTimesMs_.size() <= kProfileSeriesMaxFrames) {
+        writeSeries(
+            f,
+            "--- Frame times (ms, in order) ---\n",
+            report.frameTimesMs_,
+            10,
+            [f](float ms) { std::fprintf(f, "%.3f", ms); }
+        );
+        writeSeries(
+            f,
+            "--- Update ticks (per frame, in order) ---\n",
+            report.frameUpdateTicks_,
+            30,
+            [f](uint32_t ticks) { std::fprintf(f, "%u", ticks); }
+        );
+    }
 
     std::fprintf(f, "=== END REPORT ===\n");
     std::fclose(f);

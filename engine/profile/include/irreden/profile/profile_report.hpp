@@ -1,6 +1,7 @@
 #ifndef IR_PROFILE_REPORT_H
 #define IR_PROFILE_REPORT_H
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -72,6 +73,11 @@ struct RunWitnessSummary {
 /// pipeline compilation, first-use allocation and the fixed-step catch-up land
 /// there, and a tail percentile over them describes startup.
 inline constexpr uint32_t kProfileWarmupDivisor = 4;
+
+/// Longest run whose per-frame series the report carries. Every creation that
+/// enables frame timing writes a report, an interactive session included, and
+/// the series is for profile windows, not for half an hour of frames.
+inline constexpr size_t kProfileSeriesMaxFrames = 8192;
 
 /// Aggregated data for a profile report, populated by World at shutdown.
 struct ProfileReport {

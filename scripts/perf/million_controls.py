@@ -25,24 +25,25 @@ PRESETS = {
     "on": "configs/perf/million.lua",
     "off": "configs/perf/million-profiling-off.lua",
 }
-# The sweep is a full turn in 300 frames through the cardinals, because a real
-# turn crosses them and the crossing frames are its tail
-# (docs/perf/continuous-yaw-sweep.md).
+# The sweep advances 1.2 degrees a frame from a cardinal, a full turn at the
+# default 300 frames, because a real turn crosses the cardinals and the
+# crossing frames are its tail (docs/perf/continuous-yaw-sweep.md).
 POSES = {
     "0": ["--yaw", "0"],
     "45": ["--yaw", "0.785398163"],
     "sweep": ["--yaw", "0", "--yaw-step", "0.020943951"],
 }
 # --pivot-origin makes the view a function of the yaw alone. With the default
-# pivot a static arm and a swept arm frame different parts of the world at the
-# same yaw, and a sweep's view jumps on the frame that lands on a cardinal.
+# pivot the part of the world a yaw shows depends on how the run began, so a
+# static arm and a swept arm would not frame the same scene.
 COMMON = ["--wave-freeze", "--no-overlay", "--pivot-origin"]
 ROUND_RE = re.compile(r"round-(\d+)")
 MILLION_ENTITIES = 1_000_000
+MILLION_ZOOM = 4.0
 
 
 def cases(builds: list[str]) -> dict[str, list[str]]:
-    """Case name -> demo arguments, named <build>-profiling-<on|off>-yaw<deg>."""
+    """Case name -> demo arguments, named <build>-profiling-<on|off>-yaw<pose>."""
     return {
         f"{build}-profiling-{profiling}-yaw{pose}": ["--config-preset", preset, *pose_args]
         for build in builds
@@ -90,7 +91,7 @@ def conditions(output: Path, selected: dict[str, list[str]]) -> list[str]:
         if run.get("host_load_1m") is not None
     ]
     load_text = (
-        f" Host load at run start {min(loads):.1f} to {max(loads):.1f} "
+        f" Host load as each run ended {min(loads):.1f} to {max(loads):.1f} "
         f"on {manifests[0].get('host_cpus')} CPUs."
         if loads
         else ""
@@ -220,6 +221,8 @@ def verify_cases(output: Path) -> None:
         ):
             if fault is not None:
                 raise ValueError(f"{name}: {fault}")
+        if report.witness.zoom_first != MILLION_ZOOM:
+            raise ValueError(f"{name}: zoom {report.witness.zoom_first}, not {MILLION_ZOOM}")
 
 
 def verify_poses(output: Path) -> None:

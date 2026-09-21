@@ -62,6 +62,8 @@
 #include <irreden/common/command_suite_capture.hpp>
 
 #include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -832,6 +834,12 @@ void readCliArgs() {
         g_cliOverrides.yawStep_ = args.getFloat("--yaw-step");
     }
     g_cliOverrides.pivotOrigin_ = args.getFlag("--pivot-origin");
+    // An auto-screenshot shot table sets the camera yaw of every shot, so with
+    // --yaw-step two writers would fight over it each frame.
+    if (g_cliOverrides.yawStep_ != 0.0f && args.autoScreenshotWarmupFrames() > 0) {
+        std::fprintf(stderr, "IRPerfGrid: --yaw-step cannot be combined with --auto-screenshot\n");
+        std::exit(2);
+    }
     g_cliOverrides.yawRamp_ = args.getFlag("--yaw-ramp");
     g_cliOverrides.yawRampCrops_ = args.getFlag("--yaw-ramp-crops");
     g_cliOverrides.yawRampWave_ = args.getFlag("--yaw-ramp-wave");
