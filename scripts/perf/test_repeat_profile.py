@@ -119,6 +119,26 @@ class YawSweepTest(unittest.TestCase):
         idle = witnessed(yaw=0.0, last=-1.2, travel=358.8, overflow_samples=0)
         self.assertIn("never sampled", overflow_failure("IRPerfGrid", self.FULL_TURN, idle))
 
+    def test_a_first_frame_pose_is_checked_and_its_jump_counts_as_travel(self):
+        held = ["--yaw", "0.816814", "--yaw-first-frame=0"]
+        self.assertIsNone(self.mismatch(held, yaw=0.0, last=46.8, travel=46.8, samples=75))
+        same = ["--yaw", "0.816814", "--yaw-first-frame", "0.816814"]
+        self.assertIsNone(self.mismatch(same, yaw=46.8, last=46.8, travel=0.0, samples=75))
+        ignored = self.mismatch(held, yaw=46.8, last=46.8, travel=0.0, samples=75)
+        self.assertIn("first rendered frame should be at 0.000 deg", ignored)
+        swept = ["--yaw", "0", "--yaw-step", "0.020943951", "--yaw-first-frame=1.5707963"]
+        # 90 degrees, then 1.2, 2.4, 3.6: 88.8 across the jump and 1.2 twice after it.
+        self.assertIsNone(self.mismatch(swept, yaw=90.0, last=3.6, travel=91.2, samples=4))
+        short = self.mismatch(swept, yaw=90.0, last=3.6, travel=3.6, samples=4)
+        self.assertIn("yawed 3.600 deg", short)
+
+    def test_a_held_rotated_pose_must_have_sampled_the_overflow_lane(self):
+        held = ["--yaw", "0.816814", "--yaw-first-frame=0"]
+        idle = witnessed(yaw=0.0, last=46.8, travel=46.8, overflow_samples=0)
+        self.assertIn("never sampled", overflow_failure("IRPerfGrid", held, idle))
+        cardinal = ["--yaw", "0", "--yaw-first-frame=0"]
+        self.assertIsNone(overflow_failure("IRPerfGrid", cardinal, witnessed(overflow_samples=0)))
+
     def test_a_step_the_check_cannot_compare_is_refused(self):
         with self.assertRaises(ValueError):
             requested_yaw_step(["--yaw-step", "nan"])

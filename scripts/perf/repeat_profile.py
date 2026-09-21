@@ -75,6 +75,11 @@ def requested_yaw_step(demo_args: list[str]) -> float:
     return requested_radians(demo_args, "--yaw-step") or 0.0
 
 
+def requested_first_frame_yaw(demo_args: list[str]) -> float | None:
+    """IRPerfGrid's --yaw-first-frame: frame 1's own pose, else None."""
+    return requested_radians(demo_args, "--yaw-first-frame")
+
+
 def degrees_apart(left: float, right: float) -> float:
     apart = abs(left % 360.0 - right % 360.0)
     return min(apart, 360.0 - apart)
@@ -91,7 +96,7 @@ def checked_pose(target: str, demo_args: list[str]) -> str | None:
     """'static', 'sweep', or None where the tool cannot predict IRPerfGrid's poses."""
     if target != "IRPerfGrid" or shot_table_sweeps(demo_args):
         return None
-    if requested_yaw_step(demo_args) != 0.0:
+    if requested_yaw_step(demo_args) != 0.0 or requested_first_frame_yaw(demo_args) is not None:
         return "sweep"
     return "static" if requested_yaw(demo_args) is not None else None
 
@@ -99,7 +104,8 @@ def checked_pose(target: str, demo_args: list[str]) -> str | None:
 def yaw_pose_mismatch(target: str, demo_args: list[str], witness: RunWitness) -> str | None:
     """Why the poses the report witnessed contradict --yaw and --yaw-step, else None.
 
-    Frame N renders at --yaw + (N - 1) * --yaw-step, so the witness's first
+    Frame N renders at --yaw + (N - 1) * --yaw-step, except that
+    --yaw-first-frame gives frame 1 a pose of its own, so the witness's first
     frame, last frame and travelled arc are all determined by its sample count.
     """
     pose = checked_pose(target, demo_args)
@@ -110,7 +116,9 @@ def yaw_pose_mismatch(target: str, demo_args: list[str], witness: RunWitness) ->
     start = requested_yaw(demo_args) or 0.0
     step = requested_yaw_step(demo_args)
     steps = witness.pose_samples - 1
-    expected = (("first", start), ("last", start + steps * step))
+    first_frame = requested_first_frame_yaw(demo_args)
+    first = start if first_frame is None else first_frame
+    expected = (("first", first), ("last", start + steps * step if steps else first))
     for (label, radians), witnessed in zip(
         expected, (witness.yaw_first_deg, witness.yaw_last_deg)
     ):
@@ -122,6 +130,10 @@ def yaw_pose_mismatch(target: str, demo_args: list[str], witness: RunWitness) ->
                 f"it was at {witnessed:.3f} deg"
             )
     expected_travel = math.degrees(abs(step)) * steps
+    if first_frame is not None and steps:
+        second_deg = math.degrees(start + step) % 360.0
+        expected_travel = degrees_apart(math.degrees(first) % 360.0, second_deg)
+        expected_travel += math.degrees(abs(step)) * (steps - 1)
     tolerance = YAW_POSE_TOLERANCE_DEG if pose == "static" else SWEEP_TRAVEL_TOLERANCE_DEG
     if not abs(witness.yaw_travel_deg - expected_travel) <= tolerance:
         return (
@@ -141,9 +153,9 @@ def overflow_failure(target: str, demo_args: list[str], witness: RunWitness) -> 
             f"entries in a frame (cap {witness.overflow_cap})"
         )
     pose = checked_pose(target, demo_args)
-    rotated = pose == "sweep"
-    if pose == "static":
-        off_cardinal = math.degrees(requested_yaw(demo_args)) % 90.0
+    rotated = requested_yaw_step(demo_args) != 0.0
+    if pose is not None and not rotated:
+        off_cardinal = math.degrees(requested_yaw(demo_args) or 0.0) % 90.0
         rotated = min(off_cardinal, 90.0 - off_cardinal) > ROTATED_POSE_MIN_DEG
     if rotated and witness.overflow_samples == 0:
         return "a rotated pose never sampled the per-axis overflow counters"
@@ -356,8 +368,9 @@ def main() -> int:
     try:
         requested_yaw(demo_args)
         requested_yaw_step(demo_args)
+        requested_first_frame_yaw(demo_args)
     except ValueError as error:
-        parser.error(f"--yaw and --yaw-step must be finite numbers of radians: {error}")
+        parser.error(f"--yaw, --yaw-step and --yaw-first-frame must be finite radians: {error}")
     root = Path(__file__).resolve().parents[2]
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)

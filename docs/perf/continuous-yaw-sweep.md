@@ -43,6 +43,23 @@ static `--yaw`; `million_controls.py` passes it on every arm so the static and
 swept poses frame the scene the same way. The view is then a function of the
 yaw alone, and the scene stays centred through the turn.
 
+The control that shows it is one pose reached from two first frames.
+`--yaw-first-frame <radians>` renders frame 1 at a pose of its own and then
+follows `--yaw`, `--capture-frame N` requests a screenshot after frame N, and
+`--default-pivot` keeps the engine's pivot under a driven yaw. Held at 46.8°
+and captured after frame 60
+([continuous-yaw-sweep/pivot-identity/](continuous-yaw-sweep/pivot-identity/)):
+
+| Pivot | Frame 1 | Visible candidates, mean | Median ms | The two captures |
+|---|---|---:|---:|---|
+| Default | 0° | 487,063 | 28.7 | 80.04% of pixels match, maximum delta 134: |
+| Default | 46.8° | 630,050 | 32.0 | the scene is translated about 330 pixels |
+| Pinned | 0° | 907,767 | 39.1 | 100% match, maximum delta 0: |
+| Pinned | 46.8° | 909,433 | 39.3 | byte-identical |
+
+The cheaper arms are cheaper because less of the grid is on screen, which is
+the cost tracking coverage as it should and says nothing about the cull.
+
 What the unpinned sweep measured instead is kept under
 [continuous-yaw-sweep/unpinned/](continuous-yaw-sweep/unpinned/), because it
 looked like three engine findings and was one fixture fault:

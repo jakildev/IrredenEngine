@@ -158,6 +158,10 @@ struct CliOverrides {
     float yaw_ = 0.0f;
     float yawStep_ = 0.0f;
     bool pivotOrigin_ = false;
+    bool defaultPivot_ = false;
+    bool yawFirstFrameSet_ = false;
+    float yawFirstFrame_ = 0.0f;
+    int captureFrame_ = 0;
     bool yawRamp_ = false;
     bool yawRampCrops_ = false;
     bool yawRampWave_ = false;
@@ -745,8 +749,20 @@ void registerCliArgs() {
     args.flag(
         "--pivot-origin",
         "Pin the camera yaw pivot at the grid centre so the view depends on the yaw alone "
-        "(implied by --yaw-step)"
+        "(implied by --yaw-step and --yaw-first-frame)"
     );
+    args.flag(
+        "--default-pivot",
+        "Keep the engine's default yaw pivot under a driven yaw: the control that shows the "
+        "view then depends on which frames settled"
+    );
+    args.number(
+        "--yaw-first-frame",
+        "Render frame 1 at this Z-yaw in radians, then follow --yaw and --yaw-step: one pose "
+        "reached from a different first frame",
+        0.0f
+    );
+    args.integer("--capture-frame", "Request one screenshot after this rendered frame", 0);
     args.flag("--yaw-ramp", "Rotated-solidity validation sweep (#1882/#1883)");
     args.flag(
         "--yaw-ramp-crops",
@@ -832,6 +848,14 @@ void readCliArgs() {
         g_cliOverrides.yawStep_ = args.getFloat("--yaw-step");
     }
     g_cliOverrides.pivotOrigin_ = args.getFlag("--pivot-origin");
+    g_cliOverrides.defaultPivot_ = args.getFlag("--default-pivot");
+    if (args.wasProvided("--yaw-first-frame")) {
+        g_cliOverrides.yawFirstFrame_ = args.getFloat("--yaw-first-frame");
+        g_cliOverrides.yawFirstFrameSet_ = true;
+    }
+    if (args.wasProvided("--capture-frame")) {
+        g_cliOverrides.captureFrame_ = args.getInt("--capture-frame");
+    }
     g_cliOverrides.yawRamp_ = args.getFlag("--yaw-ramp");
     g_cliOverrides.yawRampCrops_ = args.getFlag("--yaw-ramp-crops");
     g_cliOverrides.yawRampWave_ = args.getFlag("--yaw-ramp-wave");
@@ -1358,11 +1382,15 @@ int main(int argc, char **argv) {
     // on which frames settled: the same yaw, a different view and visible count.
     // The grid is centred on the origin, so pinning there keeps the scene
     // centred at every yaw and makes the view a function of the yaw alone. A
-    // driven yaw always pins; a static --yaw pins on request.
-    if (g_cliOverrides.pivotOrigin_ || g_cliOverrides.yawStep_ != 0.0f) {
+    // driven yaw pins unless --default-pivot asks for the fault; a static --yaw
+    // pins on request.
+    const bool drivenYaw = g_cliOverrides.yawStep_ != 0.0f || g_cliOverrides.yawFirstFrameSet_;
+    if (g_cliOverrides.pivotOrigin_ || (drivenYaw && !g_cliOverrides.defaultPivot_)) {
         IRRender::setRotationPivotFocus(vec3(0.0f));
     }
-    IRPrefab::Camera::setYaw(g_settings.initialYaw_);
+    IRPrefab::Camera::setYaw(
+        g_cliOverrides.yawFirstFrameSet_ ? g_cliOverrides.yawFirstFrame_ : g_settings.initialYaw_
+    );
     IR_LOG_INFO(
         "Initial camera zoom: requested={}, actual={}",
         g_settings.initialZoom_,
@@ -1472,18 +1500,25 @@ void initSystems() {
     // Stepped per rendered frame, not per second, so every run of a sweep
     // renders the same poses whatever its frame time, and as an absolute yaw so
     // the pose of frame N carries no accumulated rounding. It runs after the
-    // frame's render systems: the yaw it sets is the next frame's.
-    if (g_cliOverrides.yawStep_ != 0.0f) {
+    // frame's render systems: the yaw it sets is the next frame's, which is also
+    // how --yaw-first-frame gives frame 1 a pose of its own.
+    if (g_cliOverrides.yawStep_ != 0.0f || g_cliOverrides.yawFirstFrameSet_ ||
+        g_cliOverrides.captureFrame_ > 0) {
         renderPipeline.push_back(
             IRSystem::createSystem<C_Camera>(
                 "YawSweep",
                 [](C_Camera &) {},
                 []() {
                     ++g_yawSweepFrames;
-                    IRPrefab::Camera::setYaw(
-                        g_settings.initialYaw_ +
-                        static_cast<float>(g_yawSweepFrames) * g_cliOverrides.yawStep_
-                    );
+                    if (g_yawSweepFrames == g_cliOverrides.captureFrame_) {
+                        IRVideo::requestScreenshot();
+                    }
+                    if (g_cliOverrides.yawStep_ != 0.0f || g_cliOverrides.yawFirstFrameSet_) {
+                        IRPrefab::Camera::setYaw(
+                            g_settings.initialYaw_ +
+                            static_cast<float>(g_yawSweepFrames) * g_cliOverrides.yawStep_
+                        );
+                    }
                 }
             )
         );

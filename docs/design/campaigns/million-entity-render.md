@@ -102,6 +102,7 @@ D1 slices touch only tooling and docs, so they may interleave with D0.
 | 2026-09-21 | Lane split, again: the open stack #3632 → #3635 (tagged for this campaign, another author) and #3629 own the lighting and shadow kernels, `c_shapes_to_trixel`, `ir_iso_common`, the stage-2 body and `rendering-audit-todo.md`, which is every open D0 item's file, so the campaign stays on D1 and takes D0 up again when they merge |
 | 2026-09-21 | D1.2b closed: continuous yaw is a profiled fixture. `IRPerfGrid --yaw-step <radians>` renders frame N at `--yaw + (N − 1) × step`, per rendered frame and as an absolute yaw, so every run renders the same poses; `repeat_profile.py` checks first pose, last pose and travelled arc from the witness (a 300-frame turn reads 0.000 → −1.200, 358.800° travelled, exactly 299 × 1.2°), `million_controls.py` runs it as a third pose, and the report gains a per-frame update-tick series. **A driven yaw pins its pivot at the grid centre** (`--pivot-origin` for a static pose, on every matrix arm): with the default pivot, which latches the surface under the viewport centre on settled frames, the same yaw frames a different part of the world depending on which frames settled, and the first unpinned sweeps read as three engine findings that were one fixture fault (a cheap first quadrant with fewer voxels in view, a 602 to 739 ms frame where the pivot re-latches on the 90° frame and the view jumps, then 65 frames at the 8-update clamp). Pinned, at the million control in Release with stage profiling off (host load 2.7 to 4.5, not reference milliseconds; [`continuous-yaw-sweep.md`](../../perf/continuous-yaw-sweep.md)): **zero overflow drops across all 300 poses of a full turn**, peak 2,208,000 of 8,388,608 entries at exactly 45°, which is the objective's drop row read on Metal; rotation costs the same at every yaw (quadrant medians 39.1 to 41.3 ms); **a cardinal crossing costs one frame of 78 to 92 ms and those three frames are the sweep's tail** (p99 78 to 88 ms against 57 ms half a step off the cardinals); and the fixed updates are worth about 3 ms of a 41 ms frame (37.88 ms at a one-update clamp) |
 | 2026-09-21 | D1.2c closed: the crossing frame is the per-axis re-allocation. `PerAxisCanvas::Allocate` and `::Release` are in the report's CPU phase table (1.3 and 0.7 to 1.1 ms a call, so the cost is not in the calls), and with the release disabled by a local, never committed patch the pinned sweep's first rotated frame after each cardinal drops from **77 to 93 ms to 46 to 49 ms** and its p99 from 77 to 56 to 59 ms, in two runs each. The experiment's own cardinal frame rises to 56 to 60 ms because it runs the per-axis path at zero residual; eight systems read `isAllocated()` as "the per-axis path is live", so the mechanism has to keep the sets resident while reporting them not live on a cardinal. This slice was first drawn through the unpinned fixture, where the same experiment left a 452 ms frame in place and the conclusion was the opposite; that frame was the pivot re-latch (D1.2b), and the first version of #3650 was replaced, not amended. Evidence: [`continuous-yaw-sweep.md`](../../perf/continuous-yaw-sweep.md) § The crossing frame, split |
+| 2026-09-21 | D1.2d closed: the control that found the pivot fault is a fixture. `IRPerfGrid --yaw-first-frame` renders frame 1 at a pose of its own, `--capture-frame` takes one screenshot, `--default-pivot` keeps the engine's pivot under a driven yaw, and `repeat_profile.py` checks the first-frame pose and its jump from the witness. One pose (46.8°, held for 74 frames, captured after frame 60) from two first frames: with the default pivot the captures match on 80.04% of pixels, the scene translated about 330 pixels, 487,063 against 630,050 visible candidates; pinned they are **byte-identical** with 907,767 and 909,433. It was built to decide which of two "visible sets" was right and showed instead that there were two views. The cheaper arms are cheaper because less of the grid is on screen, which is the spirit's coverage rule working and not a cull difference. Evidence: [`continuous-yaw-sweep.md`](../../perf/continuous-yaw-sweep.md) § A driven yaw pins its pivot, `continuous-yaw-sweep/pivot-identity/` |
 
 ### Decisions taken
 
@@ -254,6 +255,7 @@ D1 slices touch only tooling and docs, so they may interleave with D0.
 - #3583: `engine/render/CLAUDE.md` (209) and `engine/prefabs/irreden/render/CLAUDE.md` (208) are over their 200-line instruction-size budgets on master, so the check is red on every open PR. Filed with the per-commit growth (mostly #3522's hover contract) instead of trimmed here: the files state contracts the open shadow stack is changing, and #3526 already edits one of them.
 - #3618 (agent-approved, plan posted): campaigns resume from their own memory and never reconcile with work done outside them; a resync step every Loop iteration and `fleet-campaign-status` verdicts that say what to do. Filed at the human's direction from this session's five incidents.
 - #3619 (closed by #3627): `ir-run --timeout` counted time queued on `ir-acquire`; it now counts from the lock's acquisition.
+- #3652 (unlabeled, a human decision): the default yaw pivot re-latches on a one-frame cardinal landing, so a driven yaw's view depends on which frames settled and jumps at a crossing. The perf fixture pins its pivot; whether the engine should preserve framing on a re-derive is the open question, with the two-first-frames capture as the repro.
 - #3638 (unlabeled, a human decision): the benchmark lock excludes cooperating builds only. A live fleet held this host at a load of 19 during a locked million-control run and the same frozen scene read 36.8 then 45.5 ms with its frame minimum unchanged. Until it is decided, a reference table needs a quiet host, and every manifest carries `host_load_1m`.
 - #3626 (agent-approved): `fleet-tests` red on master since #3575; with #3583, two checks are red on every open PR for reasons no author can fix.
 - #3552 (closed by #3588): `IRCanvasStress` macos-debug render-verify references stale since the September render stacks; re-blessed on master.
@@ -271,10 +273,8 @@ D1 slices touch only tooling and docs, so they may interleave with D0.
 
 ## Now
 
-- **In flight:** D1.2a (#3641), D1.2b (#3645) and D1.2c (#3650), stacked in
-  that order; all `fleet:wip`. D1.2d, the fixture that reaches one pose from
-  two first frames and captures it (the control that found the pivot fault),
-  is next on the stack.
+- **In flight:** D1.2a (#3641), D1.2b (#3645), D1.2c (#3650) and D1.2d (one
+  pose from two first frames), stacked in that order; all `fleet:wip`.
 - **Next:** checkpoint the stack, then the crossing mechanism: keep the
   per-axis canvases resident across a crossing while the camera is turning,
   parked inside `C_PerAxisTrixelCanvases` so `isAllocated()` still means "the
@@ -283,9 +283,8 @@ D1 slices touch only tooling and docs, so they may interleave with D0.
   sweep with no crossing frame above 60 ms (78 to 93 today) and a cardinal
   frame at its fast-path cost, and nine-yaw CanvasStress identity. It touches
   `per_axis_canvas.hpp` and `component_per_axis_trixel_canvases.hpp`, which no
-  open lane owns. Then the question the pin left open: whether the default
-  pivot re-latching on a cardinal landing is a defect for a camera driven at a
-  constant rate (file it with the two-first-frames capture as the repro).
+  open lane owns. The question the pin left open, whether the default pivot
+  re-latching on a cardinal landing is a defect for a driven camera, is #3652.
   Owed and blocked on a **quiet host** (#3638; ask the human for a window at
   the checkpoint, and read `host_load_1m` before believing a table): the
   three-round million reference on master's current shaders with every arm
