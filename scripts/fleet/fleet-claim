@@ -2906,6 +2906,27 @@ cmd_planning_claim() {
             return 3
         fi
     fi
+
+    # RE-STAMP an own label an earlier claim never released. Re-adding a label
+    # the issue already carries creates no `labeled` event, and cleanup --gh's
+    # planning pass ages the claim from the newest one — so without this a
+    # re-dispatch onto a dead predecessor's issue holds a claim the sweep
+    # reads as hours old and strips at the next tick. Removing it first lets
+    # the acquire's POST mint a fresh event. Placed after every refusal gate
+    # so a refused claim touches nothing; the remove→POST gap is arbitrated by
+    # _acquire_label_on's confirmation reads like any other contender.
+    # `unknown` fails OPEN to the plain acquire, like the gates above. A bare
+    # remove, never gh_release_label: a failed remove must not leave an orphan
+    # sentinel, which replay_orphans would apply after the POST succeeded and
+    # so strip the live claim.
+    if [[ "$gates_live" -eq 1 ]]; then
+        local own_label
+        own_label="fleet:planning-$(derive_host)-${agent}"
+        if [[ "$(_issue_label_probe "$repo" "$issue" "$own_label")" == "true" ]]; then
+            gh issue edit "$issue" --repo "$repo" --remove-label "$own_label" \
+                >/dev/null 2>&1 || true
+        fi
+    fi
     _cmd_pr_label_claim "fleet:planning-" "planning-claim" "$issue" "$agent" "issue"
 }
 cmd_planning_release() { _cmd_pr_label_release "fleet:planning-" "planning-release" "${1:-}" "${2:-unknown}" "issue"; }
@@ -3552,9 +3573,10 @@ for issue in issues:
             fi
 
             # The grace spares the microsecond race between the label add and the
-            # marker write; a
-            # planner mid-thread-read is spared instead by holding a matching
-            # marker for the whole claim.
+            # marker write. A matching marker exempts a label from this orphan
+            # fast path only: the TTL below still runs from the newest `labeled`
+            # event, which planning-claim refreshes when it re-acquires its own
+            # leftover label.
             local _planning_grace="${FLEET_CLAIM_PRLABEL_ORPHAN_GRACE_SECS:-120}"
             if (( planning_orphan )); then
                 [[ $age -lt $_planning_grace ]] && continue
@@ -6430,7 +6452,12 @@ commands:
                                 (sole-holder lex-min; early-out exit 3
                                 when a ## Plan comment already exists;
                                 swept by cleanup --gh after
-                                FLEET_CLAIM_STALE_SECS_PLANNING).
+                                FLEET_CLAIM_STALE_SECS_PLANNING, aged
+                                from the newest labeled event). A
+                                claim that finds its own label already
+                                on the issue removes it and re-adds it,
+                                so the sweep ages the live claim, not
+                                a dead predecessor's.
                                 --replan skips the comment-presence
                                 early-out so a deliberate re-plan of a
                                 stale committed plan is race-guarded like
