@@ -382,9 +382,13 @@ Parallel-agent fleet (tmux + Claude)
                                  declared delta keys answered
   fleet-campaign-status <slug> [--repo engine|game] [--json] [--apply]
                                  campaign re-entry oracle: branch verdict
-                                 (clean/behind/live/superseded/stranded/unknown),
-                                 open and merged campaign PRs, other lanes'
-                                 changes to the campaign's own files, and ## Now;
+                                 (clean/behind/live/stacked/superseded/stranded/
+                                 unknown), open and merged campaign PRs, other
+                                 lanes' changes to the campaign's own files,
+                                 ## Now, and the per-iteration resync sections
+                                 (stacked on campaign, lane ownership, stale
+                                 ## Now, issues); exit 0 ready, 1 attention,
+                                 2 usage, 3 ready but resync unreconciled;
                                  --apply fast-forwards a behind branch and parks
                                  a superseded one back on master, carrying the
                                  in-flight slice across
