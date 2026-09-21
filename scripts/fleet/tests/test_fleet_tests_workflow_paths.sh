@@ -115,6 +115,7 @@ OUT_OF_TREE_SUBJECTS=(
     '.github/workflows/format-check.yml'
     '.github/workflows/header-checks.yml'
     '.github/workflows/perf-gate.yml'
+    '.github/workflows/pr-closes-lint.yml'
     '.github/workflows/python-lint.yml'
     '.github/workflows/render-harness-tests.yml'
     'ruff.toml'
