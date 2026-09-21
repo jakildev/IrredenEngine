@@ -159,7 +159,7 @@ a pool basename.
 
 | Label | Surface | Taken by | Released by |
 |---|---|---|---|
-| `fleet:claim-<host>-<agent>` | issue | `fleet-claim claim` (after the per-host `mkdir` lock under `~/.fleet/claims/`) | retained through the PR lifecycle and on the closed issue as the record of who worked it; `release` clears it and `fleet:in-progress` only when no live PR backs the claim and no other host's claim is live |
+| `fleet:claim-<host>-<agent>` | issue | `fleet-claim claim` (after the per-host `mkdir` lock under `~/.fleet/claims/`) | retained through the PR lifecycle and on the closed issue as the record of who worked it; `release` clears it and `fleet:in-progress` only when no live PR backs the claim and no other host's claim is live. Behind a `fleet:wip` PR, reconcile R7/R2 do not count a label naming this host with a known agent that no FS claim, reservation or live dispatch record vouches for (a dead pane's label); foreign-host and `-unknown` labels always count |
 | `fleet:reviewing-<host>-<agent>` | PR (issue for plan review) | `review-claim` — reviewers and smoke runs | `review-release --require-verdict` after a verdict; plain `review-release` for no-verdict exits, smoke, plan review; the orphan sweep covers both PRs and plan-review issues |
 | `fleet:amending-<host>-<agent>` | PR | `amending-claim` — the single mutex for every feedback path | `amending-release` at the terminal step |
 | `fleet:resolving-<host>-<agent>` | PR | `resolving-claim` — semantic-conflict resolution | `resolving-release` |
@@ -389,12 +389,12 @@ treat it as skip/handoff, never re-apply.
 open-PR state, host-local FS claims, worktree reservations). Report-only
 by default; `--apply` performs R1 (stale claim), R3 (reservation
 mismatch), R4 (contradictory / orphaned labels), R7 (re-add
-`fleet:design-unblocked` to a stranded `fleet:wip` PR carrying neither
-design label on a `fleet:queued` issue, after the drift-tick threshold;
-skips `fleet:blocked` issues, `fleet:design-proposed`, and
-`fleet:awaiting-infra`), R8 (un-park), and R9 (class-escalate: re-tag a
-`fleet:sonnet` backing issue to `fleet:opus` while any of its PRs carries a
-design-lane label, so the opus+-only resume tier has a class to dispatch).
-R2 and R6 stay flag-only. Runs at `fleet-up` boot and on every
-queue-manager projection change.
+`fleet:design-unblocked` to a stranded `fleet:wip` PR — neither design
+label, `fleet:queued` issue, no claim or only own-host claim labels no FS
+claim / reservation / dispatch record vouches for — after the drift-tick
+threshold; skips `fleet:blocked`, `fleet:design-proposed`, `fleet:awaiting-infra`),
+R8 (un-park), and R9 (class-escalate: re-tag a `fleet:sonnet` backing issue
+to `fleet:opus` while any of its PRs carries a design-lane label, so the
+opus+-only resume tier has a class to dispatch). R2 (same claim reading on a
+wip PR) and R6 stay flag-only. Runs at `fleet-up` boot and on every queue-manager projection change.
 

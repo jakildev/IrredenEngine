@@ -4257,7 +4257,7 @@ for repo in repos:
 reserved_tasks = set(r["task_id"] for r in reservations)
 
 
-def claimless(repo, issue_n, issue_labs):
+def claimless(repo, issue_n, issue_labs, discount_unvouched=False):
     """True when nothing anywhere says a pane is working on this issue.
 
     The three surfaces are an issue-side `fleet:claim-*` label, a host-local FS
@@ -4266,10 +4266,36 @@ def claimless(repo, issue_n, issue_labs):
     wrong. NOTE the axis: this sees ISSUE claims only. A pane amending a PR
     holds a PR-axis `fleet:amending-*` label and is invisible here — see R9's
     header for why that is safe there.
+
+    discount_unvouched: the label is the one surface that outlives a dead
+    pane — `release` and `cleanup --gh` both keep it while the issue's PR is
+    active — so for a wip PR it can be the only thing hiding the PR from the
+    resume tier. With the flag set, the labels stop counting when EVERY one
+    names this host with a known agent and nothing host-local vouches for
+    it: no FS claim, no reservation, no live task/stack dispatch record.
+    `claim` writes the FS lock before the label, so an unvouched own-host
+    label is never an acquire in flight. A foreign-host label (this host
+    cannot vouch for it) or an `unknown` agent (no identity to check) keeps
+    counting. The pane heartbeat is not a vouching surface: every later
+    iteration in the same pane refreshes it. R7 and R2's WIP kind take the
+    discounted reading; R2's feedback kind and R9 keep the strict one, since
+    a label-only issue behind a PR awaiting review is the designed state.
     """
-    return not (any(l.startswith("fleet:claim-") for l in issue_labs)
-                or (repo, issue_n) in fs_by_task
-                or str(issue_n) in reserved_tasks)
+    if (repo, issue_n) in fs_by_task or str(issue_n) in reserved_tasks:
+        return False
+    claim_labels = [l for l in issue_labs if l.startswith("fleet:claim-")]
+    if not claim_labels:
+        return True
+    if not discount_unvouched:
+        return False
+    ns = "game" if repo == "jakildev/irreden" else "engine"
+    if (ns, issue_n) in dispatched:
+        return False
+    for l in claim_labels:
+        label_host, _, agent = l[len("fleet:claim-"):].partition("-")
+        if label_host != host or agent in ("", "unknown"):
+            return False
+    return True
 
 for repo in repos:
     d = repo_data[repo]
@@ -4299,11 +4325,12 @@ for repo in repos:
                     or "fleet:awaiting-infra" in labs):
                 continue
             issue_labs = d["issue_labels"].get(issue_n, set())
-            if not claimless(repo, issue_n, issue_labs):
+            is_wip = "fleet:wip" in labs
+            if not claimless(repo, issue_n, issue_labs, discount_unvouched=is_wip):
                 continue
-            kind = "WIP" if "fleet:wip" in labs else "feedback"
+            kind = "WIP" if is_wip else "feedback"
             add("R2", repo, pr["number"], "pr", ["pr", "label"],
-                "open %s PR for #%d with no claim/reservation/claim-label "
+                "open %s PR for #%d with no claim/reservation/live claim-label "
                 "(re-adoption is a pickup decision)" % (kind, issue_n),
                 "flag-only (R2)")
 
@@ -4348,7 +4375,7 @@ for repo in repos:
         # the auto-mutating rule is narrowed.
         if "fleet:blocked" in issue_labs:
             continue
-        if not claimless(repo, issue_n, issue_labs):
+        if not claimless(repo, issue_n, issue_labs, discount_unvouched=True):
             continue
         for pr in prlist:
             labs = pr["labels"]
@@ -6469,7 +6496,11 @@ commands:
                                         stale fleet:in-progress;
                                   R7    stranded fleet:wip PR on a queued,
                                         unblocked issue with neither design
-                                        label → re-add fleet:design-unblocked
+                                        label and no claim (an own-host
+                                        claim label no FS claim, reservation
+                                        or dispatch record vouches for does
+                                        not count) → re-add
+                                        fleet:design-unblocked
                                         (persistence-gated over N ticks);
                                   R8    fleet:awaiting-infra PR whose body
                                         names a now-CLOSED Parked-until: #N
@@ -6480,7 +6511,8 @@ commands:
                                         the issue fleet:sonnet → fleet:opus
                                         (the design-resume tier is opus+-
                                         only, so no class could serve it).
-                                R2 (orphaned WIP/feedback PR with no claim;
+                                R2 (orphaned WIP/feedback PR with no claim,
+                                read as R7 reads it for a WIP PR;
                                 fleet:design-blocked / fleet:design-proposed /
                                 fleet:awaiting-infra PRs exempt — their
                                 no-claim state is
