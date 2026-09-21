@@ -22,6 +22,13 @@
 #   - headline decision count = merge queue + decisions
 #   - unreachable repo is skipped with a warning, not fatal
 #   - --repo=engine equals-form works; empty --repo= rejected (dual-spelling)
+#   - CI gate holds per approved PR, keyed on (head sha, workflow path): a
+#     replay of a recorded head whose runs predate one gate (a
+#     no-completed-run hold) and failed another (a failed-on-head hold naming
+#     master's conclusion), path-filtered workflows never held for a missing
+#     run, the latest completed run winning over an older failure, a queued
+#     or cancelled run not counting, an API failure printing an unreadable
+#     hold, and the gate derivation over every `on:` spelling
 
 set -uo pipefail
 
@@ -43,8 +50,10 @@ trap 'rm -rf "$TMP"' EXIT
 cat > "$TMP/engine-prs.json" << 'EOF'
 [
   {"number": 101, "title": "render: clean approved", "url": "u",
+   "headRefOid": "aaaaaaaaa1010000000000000000000000000000",
    "labels": [{"name": "fleet:approved"}]},
   {"number": 102, "title": "engine: approved with nits", "url": "u",
+   "headRefOid": "aaaaaaaaa1020000000000000000000000000000",
    "labels": [{"name": "fleet:approved"}, {"name": "fleet:has-nits"},
               {"name": "fleet:needs-linux-smoke"}]},
   {"number": 103, "title": "fleet: parked gated edit", "url": "u",
@@ -54,6 +63,7 @@ cat > "$TMP/engine-prs.json" << 'EOF'
   {"number": 105, "title": "engine: plain wip", "url": "u",
    "labels": [{"name": "fleet:wip"}]},
   {"number": 106, "title": "engine: approved but title still says [WIP]", "url": "u",
+   "headRefOid": "aaaaaaaaa1060000000000000000000000000000",
    "labels": [{"name": "fleet:approved"}]}
 ]
 EOF
@@ -74,6 +84,79 @@ cat > "$TMP/engine-issues.json" << 'EOF'
 ]
 EOF
 
+# --- REST fixtures for the CI gate reading -----------------------------------
+#
+# Each `gh api <path>` response is a file named after the path with `/`, `?`,
+# `&` and `=` mapped to `_`, under $GH_STUB_API (a missing file is GitHub's
+# 404). `write_api.py <dir> <spec.json>` renders a spec — the default
+# branch's workflow files, the runs per head sha, and master's latest
+# conclusion per workflow — into that layout.
+
+cat > "$TMP/write_api.py" << 'PYEOF'
+import base64
+import json
+import re
+import sys
+from pathlib import Path
+
+out, spec = Path(sys.argv[1]), json.loads(Path(sys.argv[2]).read_text())
+slug = "jakildev/IrredenEngine"
+out.mkdir(parents=True, exist_ok=True)
+
+
+def put(path, payload):
+    (out / re.sub(r"[/?&=]", "_", path)).write_text(json.dumps(payload))
+
+
+put(f"repos/{slug}", {"default_branch": "master"})
+put(f"repos/{slug}/contents/.github/workflows?ref=master", [
+    {"name": name, "path": f".github/workflows/{name}", "type": "file"}
+    for name in spec["workflows"]])
+for name, text in spec["workflows"].items():
+    put(f"repos/{slug}/contents/.github/workflows/{name}?ref=master",
+        {"content": base64.b64encode(text.encode()).decode()})
+for sha, runs in spec["runs"].items():
+    put(f"repos/{slug}/actions/runs?head_sha={sha}&per_page=100",
+        {"total_count": len(runs), "workflow_runs": runs})
+for name, conclusion in spec.get("master", {}).items():
+    put(f"repos/{slug}/actions/workflows/{name}/runs?branch=master&status=completed&per_page=1",
+        {"total_count": 1, "workflow_runs": [{"conclusion": conclusion}]})
+PYEOF
+
+# The default fixture: three gates and two path-filtered workflows; every
+# approved PR's head carries a green completed run of all three gates. PR
+# 102's head also carries an older failed comment-refs run that a later
+# success supersedes.
+python3 - "$TMP/api-default.json" << 'PYEOF'
+import json
+import sys
+
+unfiltered = "on:\n  push:\n    branches: [master]\n  pull_request:\n  workflow_dispatch:\n"
+filtered = "on:\n  pull_request:\n    paths:\n      - 'engine/**'\n"
+gates = ["comment-refs.yml", "instruction-size.yml", "no-plan-files.yml"]
+
+
+def run(i, name, conclusion, created="2026-01-02T00:00:00Z"):
+    return {"id": i, "path": f".github/workflows/{name}", "status": "completed",
+            "conclusion": conclusion, "created_at": created}
+
+
+runs = {sha: [run(i, name, "success") for i, name in enumerate(gates)]
+        for sha in ("aaaaaaaaa1010000000000000000000000000000",
+                    "aaaaaaaaa1060000000000000000000000000000")}
+runs["aaaaaaaaa1020000000000000000000000000000"] = [
+    run(1, "comment-refs.yml", "failure", "2026-01-01T00:00:00Z"),
+    run(2, "comment-refs.yml", "success", "2026-01-02T00:00:00Z"),
+    run(3, "instruction-size.yml", "success"),
+    run(4, "no-plan-files.yml", "success")]
+spec = {"workflows": {**{name: unfiltered for name in gates},
+                      "format-check.yml": filtered, "header-checks.yml": filtered},
+        "runs": runs}
+with open(sys.argv[1], "w", encoding="utf-8") as f:
+    json.dump(spec, f)
+PYEOF
+python3 "$TMP/write_api.py" "$TMP/api-default" "$TMP/api-default.json"
+
 # --- gh stub (fails closed) -------------------------------------------------
 
 mkdir -p "$TMP/bin"
@@ -88,8 +171,27 @@ for arg in "$@"; do
     [[ "$prev" == "--repo" ]] && repo="$arg"
     prev="$arg"
 done
+if [[ "$1" == "api" ]]; then
+    # `gh api <path>`: a GET with no flags. Anything else is a call this stub
+    # does not model, so it fails closed.
+    if [[ $# -ne 2 || "$2" == -* ]]; then
+        echo "gh stub: unexpected api invocation: $*" >&2
+        exit 99
+    fi
+    if [[ -n "${GH_STUB_API_FAIL:-}" ]]; then
+        echo "gh: API rate limit exceeded (HTTP 403)" >&2
+        exit 1
+    fi
+    f="${GH_STUB_API:-$fixtures/api-default}/$(printf '%s' "$2" | tr '/?&=' '____')"
+    if [[ -f "$f" ]]; then
+        cat "$f"
+        exit 0
+    fi
+    echo "gh: Not Found (HTTP 404)" >&2
+    exit 1
+fi
 case "$1 $2 $repo" in
-    "pr list jakildev/IrredenEngine")    cat "$fixtures/engine-prs.json" ;;
+    "pr list jakildev/IrredenEngine")    cat "${GH_STUB_ENGINE_PRS:-$fixtures/engine-prs.json}" ;;
     "issue list jakildev/IrredenEngine") cat "${GH_STUB_ENGINE_ISSUES:-$fixtures/engine-issues.json}" ;;
     "pr list jakildev/irreden")          exit 1 ;;
     "issue list jakildev/irreden")       exit 1 ;;
@@ -147,6 +249,10 @@ assert_absent  "$out" "untriaged (no state labels): 1 awaiting triage — OVERDU
 assert_contains "$out" "merger" "feedback role newer than marker is unread"
 assert_absent  "$out" "role-worker" "feedback role older than marker is not unread"
 assert_contains "$out" "engine: 6 open PR(s) · 1 queued · 1 needs-plan" "status footer"
+assert_absent  "$out" "has no completed run" "every gate ran on every approved head: no coverage hold"
+assert_absent  "$out" "failed on head" \
+    "a failed run superseded by a later success on the same head is no hold"
+assert_absent  "$out" "gate coverage unreadable" "a readable coverage answer prints no unreadable hold"
 
 # --- drain thresholds: both arms of each cue --------------------------------
 
@@ -271,6 +377,128 @@ assert_absent "$out" "Blocks: Total" \
     "GNU stat's filesystem block never leaks into the report"
 
 rm -f "$TMP/bin/stat"
+
+# --- CI gate holds: a recorded head replayed ---------------------------------
+#
+# The runs payload below is recorded from `actions/runs?head_sha=` for a PR
+# that merged on checks completed about 16 hours before the instruction-size
+# gate landed, with a failed comment-refs run among them.
+
+cat > "$TMP/engine-prs-replay.json" << 'EOF'
+[
+  {"number": 3333, "title": "engine: approved on checks that predate a gate", "url": "u",
+   "headRefOid": "2f0ebed838762bc4ff38bb2a27be70ae85d2c1fb",
+   "labels": [{"name": "fleet:approved"}]}
+]
+EOF
+
+python3 - "$TMP/api-default.json" "$TMP/api-replay.json" << 'PYEOF'
+import json
+import sys
+
+HEAD = "2f0ebed838762bc4ff38bb2a27be70ae85d2c1fb"
+with open(sys.argv[1], encoding="utf-8") as f:
+    spec = json.load(f)
+spec["runs"] = {HEAD: [
+    {"conclusion": "success", "created_at": "2026-09-12T02:24:01Z", "event": "pull_request",
+     "head_sha": HEAD, "id": 34667552839, "name": "Format Check",
+     "path": ".github/workflows/format-check.yml", "status": "completed"},
+    {"conclusion": "failure", "created_at": "2026-09-12T02:24:01Z", "event": "pull_request",
+     "head_sha": HEAD, "id": 34667552882, "name": "Comment Refs",
+     "path": ".github/workflows/comment-refs.yml", "status": "completed"},
+    {"conclusion": "success", "created_at": "2026-09-12T02:24:01Z", "event": "pull_request",
+     "head_sha": HEAD, "id": 34667552846, "name": "Header Checks",
+     "path": ".github/workflows/header-checks.yml", "status": "completed"},
+    {"conclusion": "success", "created_at": "2026-09-12T02:24:01Z", "event": "pull_request",
+     "head_sha": HEAD, "id": 34667552864, "name": "No Plan Files",
+     "path": ".github/workflows/no-plan-files.yml", "status": "completed"}]}
+spec["master"] = {"comment-refs.yml": "success"}
+with open(sys.argv[2], "w", encoding="utf-8") as f:
+    json.dump(spec, f)
+PYEOF
+python3 "$TMP/write_api.py" "$TMP/api-replay" "$TMP/api-replay.json"
+
+status=$(GH_STUB_ENGINE_PRS="$TMP/engine-prs-replay.json" GH_STUB_API="$TMP/api-replay" \
+    run_decisions --repo=engine)
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "0" "replay run exits 0"
+assert_contains "$out" \
+    "hold: .github/workflows/instruction-size.yml has no completed run on head 2f0ebed83 — Update branch to trigger it" \
+    "a gate with no run on the head is held"
+assert_contains "$out" \
+    "hold: .github/workflows/comment-refs.yml failed on head 2f0ebed83 (master: success)" \
+    "a failed run on the head is held, naming master's conclusion"
+hold_lines=$(grep -c "      hold: " "$TMP/out.txt")
+assert_eq "$hold_lines" "2" "exactly the two gate holds"
+assert_absent "$out" "format-check.yml" "a path-filtered workflow that passed is never held"
+assert_absent "$out" "header-checks.yml" "a second path-filtered workflow is never held"
+
+status=$(GH_STUB_ENGINE_PRS="$TMP/engine-prs-replay.json" GH_STUB_API_FAIL=1 \
+    run_decisions --repo=engine)
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "0" "an API failure is not fatal to the digest"
+assert_contains "$out" \
+    "hold: gate coverage unreadable (gh api repos/jakildev/IrredenEngine: gh: API rate limit exceeded (HTTP 403))" \
+    "an API failure prints an unreadable hold, never a clean reading"
+
+# --- CI gate derivation over every `on:` spelling ---------------------------
+#
+# The head has no usable run, so every derived gate prints a no-completed-run
+# hold and the hold set is the derived set. One filtered workflow did run and
+# fail on the head, with no run on master: it is held as failed, master none.
+
+python3 - "$TMP/api-spellings.json" << 'PYEOF'
+import json
+import sys
+
+workflows = {
+    "map-filtered.yml": "on:\n  push:\n  pull_request:\n    paths: ['a/**']\n",
+    "map-branches.yml": "on:\n  pull_request:\n    branches:\n      - main\n",
+    "map-bare.yml": "# a comment\n'on':\n  push:\n    branches: [master]\n  pull_request:\n",
+    "scalar.yml": "name: x\non: pull_request\njobs: {}\n",
+    "flow-list.yml": "on: [push, pull_request]\n",
+    "block-list.yml": "on:\n  - push\n  - pull_request\n",
+    "push-only.yml": "on:\n  push:\n    branches: [master]\n",
+    "target-only.yml": "on:\n  pull_request_target:\n",
+    "types-superset.yml": "on:\n  pull_request:\n"
+                          "    types: [opened, reopened, synchronize, edited]\n",
+    "types-block.yml": "on:\n  pull_request:\n    types:\n      - reopened\n"
+                       "      - synchronize\n      - opened\n",
+    "types-narrow.yml": "on:\n  pull_request:\n    types: [synchronize]\n",
+    "notes.txt": "on: pull_request\n",
+}
+runs = {"bbbbbbbbb2000000000000000000000000000000": [
+    {"id": 1, "path": ".github/workflows/map-filtered.yml", "status": "completed",
+     "conclusion": "failure", "created_at": "2026-01-01T00:00:00Z"},
+    {"id": 2, "path": ".github/workflows/scalar.yml", "status": "in_progress",
+     "conclusion": None, "created_at": "2026-01-01T00:00:00Z"},
+    {"id": 3, "path": ".github/workflows/flow-list.yml", "status": "completed",
+     "conclusion": "cancelled", "created_at": "2026-01-01T00:00:00Z"}]}
+with open(sys.argv[1], "w", encoding="utf-8") as f:
+    json.dump({"workflows": workflows, "runs": runs}, f)
+PYEOF
+python3 "$TMP/write_api.py" "$TMP/api-spellings" "$TMP/api-spellings.json"
+
+cat > "$TMP/engine-prs-spellings.json" << 'EOF'
+[
+  {"number": 900, "title": "engine: approved, no run on the head", "url": "u",
+   "headRefOid": "bbbbbbbbb2000000000000000000000000000000",
+   "labels": [{"name": "fleet:approved"}]}
+]
+EOF
+
+status=$(GH_STUB_ENGINE_PRS="$TMP/engine-prs-spellings.json" GH_STUB_API="$TMP/api-spellings" \
+    run_decisions --repo=engine)
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "0" "spellings run exits 0"
+derived=$(sed -n 's|.*hold: \.github/workflows/\([^ ]*\) has no completed run.*|\1|p' "$TMP/out.txt" \
+    | sort | tr '\n' ' ')
+assert_eq "$derived" \
+    "block-list.yml flow-list.yml map-bare.yml scalar.yml types-block.yml types-superset.yml " \
+    "only pull_request triggers that fire on every head push are gates; a queued or cancelled run is no reading"
+assert_contains "$out" \
+    "hold: .github/workflows/map-filtered.yml failed on head bbbbbbbbb (master: none)" \
+    "a failed filtered workflow is held; no master run reads as none"
 
 # --- --repo equals-form + dual-spelling validation --------------------------
 

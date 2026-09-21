@@ -10,6 +10,18 @@
 # (coding-improvement count, untriaged count, feedback-marker age) — the
 # informational cue alone let the coding-improvement backlog reach 54 before
 # its first drain.
+#
+# Each approved PR also gets a CI gate reading, keyed on (head sha, workflow
+# path): a `hold:` line for every gate with no completed run on the head, and
+# for every workflow whose latest run on the head failed. A gate is a workflow
+# on the default branch whose pull_request trigger fires on every head push
+# (no paths / branches filter, and no types list narrower than GitHub's
+# default), derived from the workflow files at read time: a hand list goes
+# stale exactly when a new gate lands, which is when a PR reviewed before it
+# merges on its old checks. Nothing fleet-side can block a merge, so the hold
+# line is the reading the human merges against. An unreadable coverage answer
+# prints its own hold; it is never a clean one.
+#
 # Read-only: changes no labels, writes no state.
 #
 # Usage:
@@ -62,7 +74,7 @@ for repo in "${REPOS[@]}"; do
     prs_f="$workdir/$idx-prs.json"
     issues_f="$workdir/$idx-issues.json"
     if gh pr list --repo "$repo" --state open \
-            --json number,title,labels,url --limit 200 > "$prs_f" 2>/dev/null \
+            --json number,title,labels,url,headRefOid --limit 200 > "$prs_f" 2>/dev/null \
         && gh issue list --repo "$repo" --state open \
             --json number,title,labels,url --limit 200 > "$issues_f" 2>/dev/null; then
         printf '%s\t%s\t%s\n' "$repo" "$prs_f" "$issues_f" >> "$manifest"
@@ -111,8 +123,10 @@ fi
 # PYTHONIOENCODING forces UTF-8 stdout for native-Windows consoles (cp1252
 # default raises on the report's em-dash / middle-dot glyphs).
 PYTHONIOENCODING=utf-8 python3 - "$manifest" "$feedback_f" "$marker_age_days" << 'PYEOF'
+import base64
 import json
 import re
+import subprocess
 import sys
 
 SHORT = {"jakildev/IrredenEngine": "engine", "jakildev/irreden": "game"}
@@ -142,6 +156,177 @@ DECISION_TAGS = {
     "fleet:triage-recommend": "triage verdict to review",
 }
 
+# pull_request filters that keep a workflow off some head pushes. A `types`
+# list is a filter only when it drops one of GitHub's defaults.
+PR_FILTER_KEYS = {"paths", "paths-ignore", "branches", "branches-ignore"}
+DEFAULT_PR_TYPES = {"opened", "synchronize", "reopened"}
+FAILED = {"failure", "timed_out", "startup_failure"}
+WORKFLOW_DIR = ".github/workflows"
+
+
+class Unreadable(Exception):
+    pass
+
+
+def gh_api(path):
+    """The JSON at REST `path`; None on a 404."""
+    try:
+        run = subprocess.run(["gh", "api", path], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise Unreadable(f"gh api {path.split('?')[0]}: {e}") from e
+    if run.returncode != 0:
+        if "HTTP 404" in run.stderr:
+            return None
+        last = run.stderr.strip().splitlines()[-1:] or [f"exit {run.returncode}"]
+        raise Unreadable(f"gh api {path.split('?')[0]}: {last[0]}")
+    try:
+        return json.loads(run.stdout)
+    except ValueError as e:
+        raise Unreadable(f"gh api {path.split('?')[0]}: not JSON") from e
+
+
+def _flow_items(value):
+    """The words of a flow sequence or scalar: `[a, 'b']` or `a`."""
+    return re.findall(r"[A-Za-z_][\w-]*", value)
+
+
+def _block(lines, start):
+    """The lines after `lines[start]` indented deeper than it, and the index
+    past them. Blank lines ride along."""
+    indent = len(lines[start]) - len(lines[start].lstrip())
+    end = start + 1
+    while end < len(lines) and (not lines[end].strip()
+                                or len(lines[end]) - len(lines[end].lstrip()) > indent):
+        end += 1
+    return lines[start + 1:end], end
+
+
+def _mapping(lines):
+    """`{key: (inline value, child lines)}` for the shallowest keys of a block,
+    or None when the block is a sequence."""
+    body = [line for line in lines if line.strip()]
+    if not body:
+        return {}
+    if body[0].lstrip().startswith("- "):
+        return None
+    indent = min(len(line) - len(line.lstrip()) for line in body)
+    keys, i = {}, 0
+    while i < len(lines):
+        line = lines[i]
+        if line.strip() and len(line) - len(line.lstrip()) == indent:
+            key, _, value = line.strip().partition(":")
+            children, i = _block(lines, i)
+            keys[key.strip().strip("'\"")] = (value.strip(), children)
+        else:
+            i += 1
+    return keys
+
+
+def pr_gate(text):
+    """True when the workflow's pull_request trigger fires on every head push.
+    Parsed without a YAML library: `on:` has a scalar, a list, and a mapping
+    form, and the mapping's pull_request entry may carry filter keys."""
+    lines = [re.sub(r"(^|\s)#.*", "", line).rstrip() for line in text.splitlines()]
+    at = next((i for i, line in enumerate(lines)
+               if re.match(r"""^["']?on["']?\s*:""", line)), None)
+    if at is None:
+        return False
+    inline = lines[at].split(":", 1)[1].strip()
+    if inline:
+        return "pull_request" in _flow_items(inline)
+    block, _ = _block(lines, at)
+    events = _mapping(block)
+    if events is None:
+        return "pull_request" in [line.strip()[2:].strip().strip("'\"")
+                                  for line in block if line.strip().startswith("- ")]
+    if "pull_request" not in events:
+        return False
+    value, children = events["pull_request"]
+    if value.startswith("{"):
+        filters = {k.strip(): v for k, _, v in
+                   (part.partition(":") for part in re.split(r",\s*(?![^\[]*\])",
+                                                             value.strip("{}")))}
+    elif value and value not in ("~", "null"):
+        return False
+    else:
+        filters = {k: v if v else " ".join(c.strip() for c in ch)
+                   for k, (v, ch) in (_mapping(children) or {}).items()}
+    if PR_FILTER_KEYS & set(filters):
+        return False
+    return "types" not in filters or DEFAULT_PR_TYPES <= set(_flow_items(filters["types"]))
+
+
+class GateReader:
+    """One repo's gate set and each workflow's latest master conclusion, read
+    once and shared by every approved PR in that repo."""
+
+    def __init__(self, slug):
+        self.slug = slug
+        self.branch = None
+        self.gates = None
+        self.master = {}
+
+    def load(self):
+        if self.gates is not None:
+            return
+        info = gh_api(f"repos/{self.slug}")
+        if info is None:
+            raise Unreadable(f"repos/{self.slug} not found")
+        self.branch = info["default_branch"]
+        listing = gh_api(f"repos/{self.slug}/contents/{WORKFLOW_DIR}?ref={self.branch}") or []
+        gates = []
+        for entry in listing:
+            if entry.get("type") != "file" or not entry["name"].endswith((".yml", ".yaml")):
+                continue
+            blob = gh_api(f"repos/{self.slug}/contents/{entry['path']}?ref={self.branch}")
+            if blob is None:
+                raise Unreadable(f"{entry['path']} vanished mid-read")
+            if pr_gate(base64.b64decode(blob["content"]).decode("utf-8", "replace")):
+                gates.append(entry["path"])
+        self.gates = sorted(gates)
+
+    def master_conclusion(self, path):
+        if path not in self.master:
+            name = path.rsplit("/", 1)[-1]
+            runs = gh_api(f"repos/{self.slug}/actions/workflows/{name}/runs"
+                          f"?branch={self.branch}&status=completed&per_page=1")
+            latest = (runs or {}).get("workflow_runs") or []
+            self.master[path] = latest[0]["conclusion"] if latest else "none"
+        return self.master[path]
+
+    def holds(self, sha):
+        """The gate hold lines for head `sha`. A run is read by head sha, never
+        by branch: a branch with any green run reads green even when its
+        latest push triggered none. A cancelled run is no reading."""
+        self.load()
+        runs = (gh_api(f"repos/{self.slug}/actions/runs?head_sha={sha}&per_page=100")
+                or {}).get("workflow_runs", [])
+        latest = {}
+        for run in runs:
+            if run.get("status") != "completed" or run.get("conclusion") == "cancelled":
+                continue
+            path = run.get("path", "").split("@", 1)[0]
+            if path not in latest or (run["created_at"], run["id"]) > (
+                    latest[path]["created_at"], latest[path]["id"]):
+                latest[path] = run
+        short = sha[:9]
+        out = [f"{path} has no completed run on head {short} — Update branch to trigger it"
+               for path in self.gates if path not in latest]
+        out += [f"{path} failed on head {short} (master: {self.master_conclusion(path)})"
+                for path, run in sorted(latest.items()) if run["conclusion"] in FAILED]
+        return out
+
+
+def gate_holds(reader, pr):
+    sha = pr.get("headRefOid")
+    if not sha:
+        return ["gate coverage unreadable (no head sha)"]
+    try:
+        return reader.holds(sha)
+    except (Unreadable, KeyError, TypeError, ValueError) as e:
+        return [f"gate coverage unreadable ({e})"]
+
+
 repos = []
 with open(sys.argv[1], encoding="utf-8") as manifest_file:
     for line in manifest_file:
@@ -150,7 +335,7 @@ with open(sys.argv[1], encoding="utf-8") as manifest_file:
             prs = json.load(f)
         with open(issues_path, encoding="utf-8") as f:
             issues = json.load(f)
-        repos.append((SHORT.get(slug, slug), prs, issues))
+        repos.append((SHORT.get(slug, slug), prs, issues, GateReader(slug)))
 
 with open(sys.argv[2], encoding="utf-8") as f:
     unread_roles = [line.strip() for line in f if line.strip()]
@@ -162,23 +347,23 @@ def names(item):
     return [label["name"] for label in item.get("labels", [])]
 
 
-merge_queue = []   # (repo, item, has_nits, smoke_holds, wip_title_mismatch)
+merge_queue = []   # (repo, item, has_nits, holds, wip_title_mismatch)
 decisions = []     # (repo, kind, item, tags)
 coding_improvements = 0
 untriaged = []
 status = []        # (repo, open_prs, queued, needs_plan)
 
-for repo, prs, issues in repos:
+for repo, prs, issues, reader in repos:
     queued = needs_plan = 0
     for pr in prs:
         labels = names(pr)
         if "fleet:approved" in labels:
-            smoke = [
-                label for label in labels
+            holds = [
+                f"{label} outstanding" for label in labels
                 if label.startswith("fleet:needs-") and label.endswith("-smoke")
-            ]
+            ] + gate_holds(reader, pr)
             wip_mismatch = bool(WIP_TITLE_RE.search(pr["title"])) and "fleet:wip" not in labels
-            merge_queue.append((repo, pr, "fleet:has-nits" in labels, smoke, wip_mismatch))
+            merge_queue.append((repo, pr, "fleet:has-nits" in labels, holds, wip_mismatch))
         tags = [DECISION_TAGS[label] for label in labels if label in DECISION_TAGS]
         if tags:
             decisions.append((repo, "PR", pr, tags))
@@ -196,16 +381,16 @@ for repo, prs, issues in repos:
     status.append((repo, len(prs), queued, needs_plan))
 
 total = len(merge_queue) + len(decisions)
-scope = "+".join(repo for repo, _, _ in repos)
+scope = "+".join(repo for repo, _, _, _ in repos)
 print(f"fleet-decisions: {total} decision(s) waiting   [{scope}]")
 
 if merge_queue:
     print(f"\n## Merge queue ({len(merge_queue)})")
-    for repo, pr, has_nits, smoke, wip_mismatch in merge_queue:
+    for repo, pr, has_nits, holds, wip_mismatch in merge_queue:
         nits = "+nits" if has_nits else ""
         print(f"  {repo} PR #{pr['number']}  {pr['title']}  [approved{nits}]")
-        for label in smoke:
-            print(f"      hold: {label} outstanding")
+        for hold in holds:
+            print(f"      hold: {hold}")
         if wip_mismatch:
             print(
                 "      warn: title still carries [WIP] with no fleet:wip label — "
