@@ -29,6 +29,7 @@ POSES = {"0": "0", "45": "0.785398163"}
 COMMON = ["--wave-freeze", "--no-overlay"]
 ROUND_RE = re.compile(r"round-(\d+)")
 MILLION_ENTITIES = 1_000_000
+MILLION_ZOOM = 4.0
 
 
 def cases(builds: list[str]) -> dict[str, list[str]]:
@@ -85,7 +86,7 @@ def conditions(output: Path, selected: dict[str, list[str]]) -> list[str]:
         if run.get("host_load_1m") is not None
     ]
     load_text = (
-        f" Host load at run start {min(loads):.1f} to {max(loads):.1f} "
+        f" Host load as each run ended {min(loads):.1f} to {max(loads):.1f} "
         f"on {manifests[0].get('host_cpus')} CPUs."
         if loads
         else ""
@@ -207,6 +208,8 @@ def verify_cases(output: Path) -> None:
         ):
             if fault is not None:
                 raise ValueError(f"{name}: {fault}")
+        if report.witness.zoom_first != MILLION_ZOOM:
+            raise ValueError(f"{name}: zoom {report.witness.zoom_first}, not {MILLION_ZOOM}")
 
 
 def verify_poses(output: Path) -> None:

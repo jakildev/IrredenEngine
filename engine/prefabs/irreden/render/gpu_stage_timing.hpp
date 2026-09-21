@@ -197,7 +197,11 @@ inline VoxelCullAccumulator &voxelCullAccumulator() {
 // frame. Recorded every frame, independent of stage timing. Yaw is radians in
 // [-π, π); travel sums the wrapped per-frame yaw change, so a static pose
 // reads 0 and a sweep reads its arc across the ±π seam. Overflow samples stay
-// 0 at a cardinal pose, where the per-axis canvases are not allocated.
+// 0 at a cardinal pose, where the per-axis canvases are not allocated. The
+// overflow counters are read one frame late: the first sample after an
+// allocation is the zero-seeded block, and the last rotating frame before a
+// release or exit is never read. Unsynchronized: every writer is reached from
+// VOXEL_TO_TRIXEL_STAGE_1, which runs serially on the main thread.
 struct RenderRunWitness {
     float yawFirst_ = 0.0f;
     float yawLast_ = 0.0f;

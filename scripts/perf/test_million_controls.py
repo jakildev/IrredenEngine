@@ -30,7 +30,7 @@ STEADY = (
 WITNESS = (
     "--- Run witness ---\n"
     "Camera yaw: first={yaw:.3f}deg last={yaw:.3f}deg travel=0.000deg samples=4\n"
-    "Camera zoom: first=4.000 last=4.000\n"
+    "Camera zoom: first={zoom:.3f} last={zoom:.3f}\n"
     "Per-axis overflow: maxEntries=500 maxDropped={drops} cap=8388608 samples={lane}\n"
     "--- Frame times (ms, in order) ---\n"
     "90.000 {avg:.3f} {avg:.3f} {tail:.3f}\n"
@@ -52,6 +52,7 @@ def write_round(
     stages=None,
     logged=None,
     yaw=None,
+    zoom=4.0,
     witnessed=True,
     steady=True,
 ):
@@ -60,6 +61,7 @@ def write_round(
     pose = float(name.rsplit("-yaw", 1)[1])
     witness = WITNESS.format(
         yaw=pose if yaw is None else yaw,
+        zoom=zoom,
         drops=drops,
         lane=3 if pose else 0,
         avg=avg,
@@ -126,7 +128,7 @@ class SummaryTest(unittest.TestCase):
             text = (output / "summary.md").read_text()
             self.assertIn(
                 "Power source: AC Power (battery 89% to 80%). "
-                "Host load at run start 1.5 to 15.0 on 14 CPUs. Head: 012345678.",
+                "Host load as each run ended 1.5 to 15.0 on 14 CPUs. Head: 012345678.",
                 text.splitlines()[0],
             )
             row = text.splitlines()[4]
@@ -196,6 +198,7 @@ class FingerprintTest(unittest.TestCase):
             },
             "dropped up to 3 entries": {"name": "release-profiling-off-yaw45", "drops": 3},
             "witnessed no camera yaw": {"name": "release-profiling-off-yaw45", "witnessed": False},
+            "zoom 1.0, not 4.0": {"zoom": 1.0},
         }
         for message, fault in faults.items():
             with self.subTest(message=message), tempfile.TemporaryDirectory() as temporary:

@@ -29,9 +29,10 @@ TARGETS = {"IRPerfGrid": "perf_grid", "IRCanvasStress": "canvas_stress"}
 # run witness, which every build type writes; the log is not a witness, since
 # IR_RELEASE compiles every log macro out.
 YAW_POSE_TOLERANCE_DEG = 0.01
-# Off a cardinal by more than this the camera rotates through the per-axis
-# canvases, so the overflow lane must have been sampled.
-ROTATED_POSE_MIN_DEG = 1.0
+# Camera::kResidualYawDeadband: off a cardinal by more than this the camera
+# rotates through the per-axis canvases, so the overflow lane must have been
+# sampled. A test pins the value to camera.hpp.
+RESIDUAL_YAW_DEADBAND_RAD = 1e-4
 ENGINE_LOG_MARKERS = ("[EngineLog]", "[ClientLog]")
 
 
@@ -69,15 +70,21 @@ def degrees_apart(left: float, right: float) -> float:
     return min(apart, 360.0 - apart)
 
 
-def is_static_pose(target: str, demo_args: list[str]) -> bool:
-    """IRPerfGrid holds the pose its --yaw radians name unless its shot table sweeps.
+def shot_table_drives_camera(demo_args: list[str]) -> bool:
+    """Every --auto-screenshot shot table sets the yaw and zoom of each shot.
 
-    --yaw-ramp is an auto-screenshot shot table and moves nothing without one.
+    --yaw-ramp only selects which table; without --auto-screenshot it moves nothing.
     """
-    sweeping = "--yaw-ramp" in demo_args and any(
-        argument.split("=", 1)[0] == "--auto-screenshot" for argument in demo_args
+    return any(argument.split("=", 1)[0] == "--auto-screenshot" for argument in demo_args)
+
+
+def is_static_pose(target: str, demo_args: list[str]) -> bool:
+    """IRPerfGrid holds the pose its --yaw radians name unless a shot table drives it."""
+    return (
+        target == "IRPerfGrid"
+        and requested_yaw(demo_args) is not None
+        and not shot_table_drives_camera(demo_args)
     )
-    return target == "IRPerfGrid" and requested_yaw(demo_args) is not None and not sweeping
 
 
 def yaw_pose_mismatch(target: str, demo_args: list[str], witness: RunWitness) -> str | None:
@@ -96,6 +103,11 @@ def yaw_pose_mismatch(target: str, demo_args: list[str], witness: RunWitness) ->
             )
     if not witness.yaw_travel_deg <= YAW_POSE_TOLERANCE_DEG:
         return f"the camera yawed {witness.yaw_travel_deg:.3f} deg during a static-pose run"
+    if witness.zoom_first != witness.zoom_last:
+        return (
+            f"the camera zoom went from {witness.zoom_first} to {witness.zoom_last} "
+            "during a static-pose run"
+        )
     return None
 
 
@@ -109,8 +121,8 @@ def overflow_failure(target: str, demo_args: list[str], witness: RunWitness) -> 
             f"entries in a frame (cap {witness.overflow_cap})"
         )
     if is_static_pose(target, demo_args) and witness.overflow_samples == 0:
-        off_cardinal = degrees_apart(math.degrees(requested_yaw(demo_args)) % 90.0, 0.0)
-        if min(off_cardinal, 90.0 - off_cardinal) > ROTATED_POSE_MIN_DEG:
+        off_cardinal = requested_yaw(demo_args) % (math.pi / 2.0)
+        if min(off_cardinal, math.pi / 2.0 - off_cardinal) > RESIDUAL_YAW_DEADBAND_RAD:
             return "a rotated pose never sampled the per-axis overflow counters"
     return None
 
@@ -121,11 +133,19 @@ def witness_checks(target: str, demo_args: list[str], witness: RunWitness) -> di
         "overflow_failure": overflow_failure(target, demo_args, witness),
         "yaw_first_deg": witness.yaw_first_deg,
         "yaw_travel_deg": witness.yaw_travel_deg,
-        "zoom": witness.zoom_first,
+        "zoom_first": witness.zoom_first,
+        "zoom_last": witness.zoom_last,
         "overflow_max_dropped": witness.overflow_max_dropped,
         "overflow_max_entries": witness.overflow_max_entries,
         "overflow_samples": witness.overflow_samples,
     }
+
+
+def pose_text(run: dict) -> str:
+    """'first (travel)' in degrees, or 'unwitnessed' for a report with no pose."""
+    if run.get("yaw_first_deg") is None:
+        return "unwitnessed"
+    return f"{run['yaw_first_deg']:.3f} ({run['yaw_travel_deg']:.3f})"
 
 
 def engine_logged(log_text: str) -> bool:
@@ -165,7 +185,9 @@ def host_load() -> float | None:
     """One-minute load average; None where the platform has none.
 
     The benchmark lock excludes cooperating builds only, so other work on the
-    host is a condition of the measurement and is recorded with it.
+    host is a condition of the measurement and is recorded with it. It is read
+    when the run returns: a run can queue on the lock for minutes before it
+    measures, and the minute before it ends is the minute it ran in.
     """
     try:
         return round(os.getloadavg()[0], 2)
@@ -346,7 +368,6 @@ def main() -> int:
     for index in range(1, args.repeats + 1):
         started = time.time_ns()
         battery_percent = host_battery_percent()
-        load = host_load()
         log_path = output / f"run-{index}.log"
         exit_code, sampling = run_profile(
             command, root, log_path, binary, args.cpu_sample_seconds, args.cpu_sample_delay
@@ -356,9 +377,10 @@ def main() -> int:
         clean = exit_code == 0 and "RESULT=CLEAN" in log_text
         run = {
             "index": index,
-            "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(started / 1e9)),
+            "launched_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(started / 1e9)),
+            "finished_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "host_battery_percent": battery_percent,
-            "host_load_1m": load,
+            "host_load_1m": host_load(),
             "exit_code": exit_code,
             "cpu_sampling": sampling,
             "fresh_report": fresh,
@@ -452,7 +474,7 @@ def main() -> int:
         lines.append(f"| {run['index']} | {coverage.supported} "
                      f"| {coverage.valid} / {coverage.attempted} "
                      f"| {coverage.invalid} | {coverage.command_buffers} "
-                     f"| {run['yaw_first_deg']:.3f} ({run['yaw_travel_deg']:.3f}) "
+                     f"| {pose_text(run)} "
                      f"| {run['overflow_max_entries']} / {run['overflow_max_dropped']} "
                      f"({run['overflow_samples']}) |")
     (output / "summary.md").write_text("\n".join(lines) + "\n")

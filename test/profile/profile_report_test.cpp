@@ -9,9 +9,12 @@
 
 namespace {
 
+// One directory per test: CTest registers each test separately and may run two
+// of them at once.
 std::string writeAndRead(const IRProfile::ProfileReport &report) {
-    const auto path =
-        std::filesystem::temp_directory_path() / "ir_profile_report_test" / "profile_report.txt";
+    const std::string test = testing::UnitTest::GetInstance()->current_test_info()->name();
+    const auto path = std::filesystem::temp_directory_path() / ("ir_profile_report_" + test) /
+                      "profile_report.txt";
     IRProfile::writeProfileReport(report, path.string().c_str());
     std::ifstream file(path);
     std::stringstream text;
@@ -68,6 +71,18 @@ TEST(ProfileReportWitness, WitnessSectionIsWrittenEvenWhenNothingWasSampled) {
     ) << empty;
     EXPECT_EQ(empty.find("Steady frame time"), std::string::npos);
     EXPECT_EQ(empty.find("--- Frame times"), std::string::npos);
+}
+
+TEST(ProfileReportWitness, ALongRunKeepsItsSteadyLineAndDropsItsSeries) {
+    IRProfile::ProfileReport report;
+    report.frameTimesMs_.assign(IRProfile::kProfileSeriesMaxFrames + 1, 16.0f);
+    report.totalFrames_ = static_cast<uint32_t>(report.frameTimesMs_.size());
+    const std::string text = writeAndRead(report);
+    EXPECT_NE(
+        text.find("Steady frame time (first 2048 of 8193 frames excluded)"),
+        std::string::npos
+    );
+    EXPECT_EQ(text.find("--- Frame times"), std::string::npos);
 }
 
 } // namespace

@@ -325,7 +325,7 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
     );
     std::fprintf(f, "\n");
 
-    if (!report.frameTimesMs_.empty()) {
+    if (!report.frameTimesMs_.empty() && report.frameTimesMs_.size() <= kProfileSeriesMaxFrames) {
         constexpr size_t kFramesPerLine = 10;
         std::fprintf(f, "--- Frame times (ms, in order) ---\n");
         for (size_t i = 0; i < report.frameTimesMs_.size(); ++i) {
