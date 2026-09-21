@@ -14,7 +14,9 @@ this module does the ``importlib`` dance once so a metric script can simply
 ``import render_metric_util`` (its own ``scripts/`` dir is ``sys.path[0]``
 when run as ``python3 scripts/render-<metric>-metric.py``).
 
-Pure stdlib — no third-party deps, mirroring the rest of ``scripts/``.
+Pure stdlib — this module is on the gating path (a manifest's structural
+metrics import it), so it must run on a host without Pillow; see the
+"Harness dependency contract" in ``docs/agents/VALIDATION.md``.
 """
 
 from __future__ import annotations

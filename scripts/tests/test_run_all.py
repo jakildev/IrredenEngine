@@ -73,6 +73,37 @@ class RunAllRunnerTest(unittest.TestCase):
             # that aborts on first failure hides the rest of the tally.
             self.assertIn("PASS  test_good.py", r.stdout)
 
+    def test_pass_line_carries_the_test_count(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(Path(d), "test_a.py", _TRIVIAL_CASE)
+            r = _run_runner(Path(d))
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("PASS  test_a.py (1 tests)", r.stdout)
+
+    def test_all_skipped_suite_passes_but_says_skipped(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(Path(d), "test_skips.py",
+                   "import unittest\n\n\n"
+                   "class T(unittest.TestCase):\n"
+                   "    @unittest.skip('fixture')\n"
+                   "    def test_skipped(self):\n"
+                   "        pass\n\n\n"
+                   "if __name__ == '__main__':\n"
+                   "    unittest.main()\n")
+            r = _run_runner(Path(d))
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("PASS  test_skips.py (1 tests, 1 skipped)", r.stdout)
+
+    def test_suite_that_ran_no_tests_fails(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(Path(d), "test_good.py", _TRIVIAL_CASE)
+            _write(Path(d), "test_noop.py", "print('no unittest.main() here')\n")
+            r = _run_runner(Path(d))
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            self.assertIn("FAIL  test_noop.py (no tests ran)", r.stdout)
+            self.assertIn("test_noop.py", r.stderr)
+            self.assertIn("1 passed, 1 failed", r.stdout)
+
     def test_empty_directory_exits_nonzero(self):
         with tempfile.TemporaryDirectory() as d:
             r = _run_runner(Path(d))
