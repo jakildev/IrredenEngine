@@ -470,6 +470,11 @@ if [[ "$FLEET_RUNTIME" == claude ]] && { [[ "$rc" == "2" ]] || (( rc != 0 && QUO
     date +%s > "$RATE_LIMIT_DIR/$PANE_KEY.ts"
     touch "$TRIGGERS_DIR/$ROLE"
     echo "fleet-dispatch-wrap: usage limit on $ROLE ($PANE_KEY, rc=$rc); wrote usage-limit cooldown + re-armed $ROLE" >&2
+elif [[ "$FLEET_RUNTIME" == codex && "$ROLE" =~ ^(merger|epic-steward)$ ]] \
+    && { [[ "$rc" == "2" ]] || ! fleet-runtime ready "$STATE_DIR" >/dev/null 2>&1; }; then
+    mkdir -p "$TRIGGERS_DIR"
+    touch "$TRIGGERS_DIR/$ROLE"
+    echo "fleet-dispatch-wrap: Codex unavailable for $ROLE ($PANE_KEY, rc=$rc); re-armed $ROLE" >&2
 elif [[ "$rc" != "0" && -f "$FLEET_THROTTLE_FLAG" ]]; then
     # Short-window 429 failure: claude exhausted its internal retries against a
     # per-minute load-shed (not a quota wall). Write the short throttle cooldown

@@ -22,6 +22,58 @@ import fleet_codex_policy as policy
 
 
 class Transport(unittest.TestCase):
+    def test_batch_role_prompts_and_target_guards(self):
+        for role in codex.BATCH_ROLES:
+            with self.subTest(role=role):
+                text = codex.prompt(role, "live", "")
+                self.assertIn(f"role-{role}.md", text)
+                self.assertIn("has no dispatch target", text)
+                self.assertNotIn("fleet-runtime stamp", text)
+                self.assertNotIn("Do not discover", text)
+        with self.assertRaisesRegex(ValueError, "empty dispatch target"):
+            codex.prompt("merger", "live", "task:engine:1")
+
+    def test_batch_role_run_accepts_no_target(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp).resolve()
+            worktree = root / ".claude/worktrees/pool-1"
+            args = SimpleNamespace(prepare=False, check=False, doctor=False, role="merger",
+                                   model="gpt-5.6-terra", effort="medium", mode="live",
+                                   resume="", interactive=False, print_launch=False)
+
+            def launch(*_args, **_kwargs):
+                return Mock(stdout=iter(['{"type":"turn.completed"}\n']),
+                            wait=Mock(return_value=0), poll=Mock(return_value=0))
+
+            with patch.object(codex.Path, "cwd", return_value=worktree), \
+                    patch.object(codex, "writable_roots", return_value=[str(worktree)]), \
+                    patch.object(codex, "prepare"), patch.object(codex, "probe"), \
+                    patch.object(codex, "prompt", return_value="batch prompt"), \
+                    patch.object(codex.shutil, "which", return_value="codex"), \
+                    patch.object(codex.subprocess, "Popen", side_effect=launch) as popen, \
+                    patch.dict(codex.os.environ, {"FLEET_STATE_DIR": str(root / "state")},
+                               clear=True):
+                self.assertEqual(codex.run(args), 0)
+                self.assertIn("-C", popen.call_args.args[0])
+            args.role = "worker"
+            with patch.object(codex.Path, "cwd", return_value=worktree), \
+                    patch.dict(codex.os.environ, {"FLEET_STATE_DIR": str(root / "state")},
+                               clear=True):
+                with self.assertRaisesRegex(ValueError, "explicit dispatch target"):
+                    codex.run(args)
+
+    def test_batch_role_policy_allows_only_bare_lease_force_push(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp).resolve()
+            merger = policy.prepare(root, "merger").read_text()
+            self.assertNotIn('["git", "push", "--force-with-lease"]', merger)
+            for token in ('["git", "push", "--force"]', '["git", "push", "-f"]',
+                          '["git", "push", "--delete"]',
+                          '["git", "push", "origin", "HEAD:master"]'):
+                self.assertIn(token, merger)
+            worker = policy.rules(root, "worker")
+            self.assertIn('["git", "push", "--force-with-lease"]', worker)
+
     def test_probe_runs_real_write_rename_cleanup_payload(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
