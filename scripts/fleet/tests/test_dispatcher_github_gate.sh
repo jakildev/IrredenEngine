@@ -6,6 +6,7 @@
 # fleet-state-scout's sample_github_rate_limit() is the writer in
 # production; this test drops the fixture files directly so it exercises
 # only the dispatcher's evaluator, same as the Anthropic-side suite does.
+# test_scout_github_gate.sh drives the real sampler into this evaluator.
 #
 # Covers:
 #   - github_graphql at 92% (>= 90% default) => closed

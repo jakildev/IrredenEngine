@@ -235,8 +235,9 @@
 #   github_search:  1.01  # surface-only — fleet usage is negligible, never gates
 #   (any other type): 0.80
 #
-# GitHub pools are sampled by fleet-state-scout (a free `gh api /rate_limit`
-# read each tick, latched into the same usage dir Anthropic types use) —
+# GitHub pools are sampled by fleet-state-scout (free reads each tick: graphql
+# from GraphQL's own `rateLimit` self-report, core and search from
+# `gh api /rate_limit`; latched into the same usage dir Anthropic types use) —
 # no separate poller or config needed to enable them; see FLEET.md
 # "GitHub API quota" under "Rate-limit handling".
 #
