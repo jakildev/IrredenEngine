@@ -1,0 +1,53 @@
+{
+  "head": "021d41f7f80b5a8a73cee5f2294ff0e9a905666d",
+  "changes": " M CMakePresets.json\nAM creations/demos/perf_grid/configs/perf/million-profiling-off.lua\nAM creations/demos/perf_grid/configs/perf/million.lua\n M docs/agents/BUILD.md\n M docs/design/campaigns/million-entity-render.md\n M docs/perf/README.md\n M engine/engine.cpp\n M engine/include/irreden/ir_engine.hpp\n M engine/world/CLAUDE.md\n M scripts/perf/compare_perf_runs.py\n M scripts/perf/repeat_profile.py\n M scripts/perf/test_profile_parser.py\n M scripts/perf/test_repeat_profile.py\n",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "build_dir": "build-release",
+  "build_type": "Release",
+  "binary_sha256": "098cef47961bed63fbe4628505147243238102e247e5f75c6a22cf02b865a5f6",
+  "shader_sha256": "6c0fed4e4252c22757e064eec84cced2585fcfbe41a655a61bce1509b366df46",
+  "runtime_scripts_sha256": "85a4c4c0e04ff77ce830640f6b8935b4ab8dcad11f1ff0dfccbc3dd918d927f6",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "IRPerfGrid",
+    "--config-preset",
+    "configs/perf/million.lua",
+    "--wave-freeze",
+    "--no-overlay",
+    "--yaw",
+    "0.785398",
+    "--auto-profile",
+    "300"
+  ],
+  "runs": [
+    {
+      "index": 1,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "overflow_drop_warnings": 0,
+      "gpu_measured": true
+    },
+    {
+      "index": 2,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "overflow_drop_warnings": 0,
+      "gpu_measured": true
+    },
+    {
+      "index": 3,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "overflow_drop_warnings": 0,
+      "gpu_measured": true
+    }
+  ]
+}

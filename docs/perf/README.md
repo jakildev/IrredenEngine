@@ -23,6 +23,7 @@ profiler, no per-cell stopwatch.
 | `scripts/perf/tests/test_baseline_writer.sh` | Executed control for the `perf-baseline` branch writer and the PR-path reader, driving the shipped workflow step bodies against a local bare origin. Same CI step. |
 | `scripts/perf/check_regression.py`    | CI gate — fingerprint-aware regression check. Same fingerprint → gates; different fingerprint or no baseline → informational. |
 | `scripts/perf/lua_cpp_parity.py`      | Lua-vs-C++ overhead table from a `--target both` run                               |
+| `scripts/perf/million_controls.py`    | The million control as one interleaved matrix: build tree × stage profiling × pose, through `repeat_profile.py` |
 
 All Python scripts are stdlib-only and run from anywhere in the repo. The
 matrix script writes `save_files/perf/<git-sha>[-<label>]/` so multiple
@@ -128,10 +129,46 @@ Use the same pose, population and flags in both arms. GPU values are encoder
 intervals, not exclusive costs that can always be summed into frame time; see
 [the timing contract](../design/gpu-stage-timing-cost-model.md).
 
+The summary carries frame mean, p95 and p99, the full-frame GPU rows, every
+GPU stage row the runs share, fixed updates per rendered frame and each run's
+overflow-drop warnings (`unverified` for a Release build, which logs nothing). The manifest records the power source
+(`host_power`), the build tree and its `CMAKE_BUILD_TYPE`.
+
+`IRREDEN_BUILD_DIR` selects the tree, as it does for `fleet-build` and
+`fleet-run`. The `*-release` configure presets build into `build-release/`
+beside the Debug tree:
+
+```bash
+cmake --preset macos-release            # or linux-release / windows-release
+IRREDEN_BUILD_DIR="$PWD/build-release" fleet-build --target IRPerfGrid
+```
+
 Parser regression check: `python3 scripts/perf/test_profile_parser.py`.
 Current GPU reports include avg/min/max/sample count; old avg/max reports
 remain readable. A row with no writer or no executed work is not proof of a
 free feature.
+
+## The million controls
+
+`scripts/perf/million_controls.py` is the objective's headline fixture as one
+command: 100³ single-voxel entities in a 128³ pool, zoom 4, FULL subdivision,
+frozen wave, at yaw 0° and 45°, with stage profiling on and off, in every tree
+named with `--tree`. Cases run interleaved (forward on odd rounds, reverse on
+even) because grouped arms on one host drift by more than the differences
+they test; the summary prints per-round means so the drift stays visible, and
+the run stops if a binary, the shaders, the runtime scripts or the power source
+change under it.
+
+```bash
+cmake --preset macos-release      # once; or linux-release / windows-release
+fleet-build --target IRPerfGrid
+IRREDEN_BUILD_DIR="$PWD/build-release" fleet-build --target IRPerfGrid
+python3 scripts/perf/million_controls.py --tree build --tree build-release \
+    --output save_files/perf/million-controls
+```
+
+[million-controls.md](million-controls.md) holds the reference table later
+optimization PRs diff against, with the host conditions it was taken under.
 
 ## Config presets
 
@@ -176,6 +213,12 @@ Relative paths for `--presets` are resolved from the engine root.
 | `zoom4_full_base1.lua` | Moderate — zoom=4, full subdivision, base=1 |
 | `zoom8_full_sub4.lua` | Heavy — zoom=8, full subdivision, base=4 |
 | `zoom16_full_base1.lua` | Extreme zoom / cull-audit at zoom=16 |
+| `million.lua` | The million control: 100³ single-voxel entities, `config.voxel_pool_edge = 128`, zoom=4, full subdivision, base=1, stage profiling on |
+| `million-profiling-off.lua` | The same scene with `profiling_enabled` and `gpu_stage_timing` off — the arm the 60 fps criterion is read from |
+
+A preset may also carry a `config` table. `World` overlays its keys on
+`config.lua`'s, and the engine's pre-init pass reads it too, so
+`voxel_pool_edge` sizes the pool from the preset.
 
 ## CLI flags the scripts depend on
 

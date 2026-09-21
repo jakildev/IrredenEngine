@@ -87,6 +87,15 @@ class GpuReportParserTest(unittest.TestCase):
             path.write_text("--- GPU stage timing ---\n")
             self.assertIsNone(parse_report(path, "legacy").gpu_frame.supported)
 
+    def test_update_ticks_are_read_and_absence_is_not_zero(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "profile.txt"
+            path.write_text("Update ticks: avg=3.1/frame  max=7\n")
+            report = parse_report(path, "fixture")
+            self.assertEqual((report.update_ticks_avg, report.update_ticks_max), (3.1, 7))
+            path.write_text("--- GPU stage timing ---\n")
+            self.assertIsNone(parse_report(path, "legacy").update_ticks_avg)
+
     def test_other_sections_cannot_become_gpu_rows(self):
         rows = self.parse(
             "voxelStage1 1.250 0.500 3.750 299\n"

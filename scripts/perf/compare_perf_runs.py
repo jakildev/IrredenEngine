@@ -33,6 +33,7 @@ FRAME_RE = re.compile(
     r"Frame time:\s+avg=([\d.]+)ms\s+p50=([\d.]+)ms\s+p95=([\d.]+)ms\s+"
     r"p99=([\d.]+)ms\s+min=([\d.]+)ms\s+max=([\d.]+)ms"
 )
+UPDATE_TICKS_RE = re.compile(r"Update ticks:\s+avg=([\d.]+)/frame\s+max=(\d+)")
 ENTITY_RE = re.compile(r"Entity count:\s+(\d+)\s+\((\d+)\s+archetypes\)")
 CULL_AXIS_RE = re.compile(r"^AxisEntries\s+([\d.]+)\s+(\d+)\s+(\d+)")
 CULL_VISIBLE_RE = re.compile(r"^Visible\s+([\d.]+)\s+(\d+)\s+(\d+)")
@@ -119,6 +120,9 @@ class CullStats:
 class CellReport:
     cell_id: str
     frame: FrameTiming = field(default_factory=FrameTiming)
+    # Fixed updates per rendered frame; None for a report without the line.
+    update_ticks_avg: Optional[float] = None
+    update_ticks_max: Optional[int] = None
     entity_count: int = 0
     archetype_count: int = 0
     systems: List[SystemTiming] = field(default_factory=list)
@@ -157,6 +161,11 @@ def parse_report(path: Path, cell_id: str) -> CellReport:
             min_=float(m.group(5)),
             max_=float(m.group(6)),
         )
+
+    m = UPDATE_TICKS_RE.search(text)
+    if m:
+        report.update_ticks_avg = float(m.group(1))
+        report.update_ticks_max = int(m.group(2))
 
     m = ENTITY_RE.search(text)
     if m:
