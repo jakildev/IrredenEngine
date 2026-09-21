@@ -8,6 +8,24 @@ geometry. Staircases explicitly present in resampled occupancy remain geometry;
 extra teeth introduced by the display lattice do not become correct by agreeing
 with a sample-center oracle.
 
+## Oriented face identity versus screen parity
+
+A voxel has six oriented faces (`+X`, `-X`, `+Y`, `-Y`, `+Z`, `-Z`), each split
+into two geometric triangles: twelve half-face identities, but six normals.
+Both halves share their face's outward normal. Triangle identity belongs to the
+face's local vertex ordering; screen left/right parity also depends on projection,
+raster origin and framebuffer convention, so it is not a substitute for face ID.
+Rotation transforms the face normal and vertices together. Camera visibility and
+light visibility are separate ray/occlusion questions, not properties inferred
+from an X/Y/Z label alone.
+
+The sun-map face/basis tags described in [surface sampling](surface-shadow-sampling.md)
+encode six normals in two coordinate frames. Those twelve encodings are **not**
+the twelve half-faces: a caster quad needs one normal for both halves. Source-face
+identity and destination revoxelized-cell identity also remain distinct. This
+contract does not add inverted/pitched shared GRID camera support; that path's
+current camera restriction is documented in [face rasterization](voxel-face-rasterization.md).
+
 ## Two independent contracts
 
 | Contract | Evidence | What a pass cannot establish |

@@ -67,7 +67,25 @@ uint packSunSurfaceDepth(float sunZ) {
 }
 
 bool sunWriteIsSurface(uint packedDepth) {
-    return (packedDepth & 0xFFu) == 0x88u;
+    return (packedDepth & 0xF0u) == 0x80u || (packedDepth & 0x0Fu) == 0x08u;
+}
+
+// A -8 nibble is unavailable to legacy splats. The other nibble stores a
+// six-face ID; which nibble is reserved selects world or camera-aligned axes.
+// 0x88 retains finite geometry whose caster normal is not encoded.
+uint sunVoxelFaceMarker(int faceId, bool viewAligned) {
+    return viewAligned ? (uint(faceId) << 4u) | 0x08u : 0x80u | uint(faceId);
+}
+
+int sunVoxelFaceId(uint packedDepth) {
+    uint marker = packedDepth & 0xFFu;
+    if (marker >= 0x80u && marker <= 0x85u) return int(marker & 0x0Fu);
+    if ((marker & 0x0Fu) == 0x08u && (marker >> 4u) <= 5u) return int(marker >> 4u);
+    return -1;
+}
+
+bool sunVoxelFaceViewAligned(uint packedDepth) {
+    return (packedDepth & 0x0Fu) == 0x08u;
 }
 
 float unpackSunDepth(uint packedDepth) {

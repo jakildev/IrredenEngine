@@ -893,7 +893,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
                 0.0f
             ),
             orientation,
-            ivec4(count, grid.x, subdivisions, 0)
+            ivec4(count, grid.x, subdivisions, rotation.isDetached() ? 1 : 0)
         };
         voxelFaceFrameBuf_->subData(0, sizeof(params), &params);
         voxelFaceFrameBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_RevoxelizeDetachedParams);

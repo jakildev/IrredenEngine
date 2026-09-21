@@ -5,6 +5,20 @@ changed paths and other bottlenecks, consolidating logic and improving robustnes
 against measured costs and the visual controls. Keep the agreed work in this order. A diagnostic experiment is not an implemented
 fix, and a small native scene does not establish fleet-scale rendering throughput.
 
+## Current shadow investigation
+
+- [Caster/receiver plane agreement](surface-shadow-sampling.md) removes false
+  shadow bands on the two resampled cubes at 45° and 135°. The strict eight-yaw
+  comparison improves four views without increasing errors in the other twelve;
+  remaining errors are explicitly retained in its evidence. This is not complete
+  finite shadow coverage.
+- Next: resolve finite sampling misses and small GRID floor-shadow boundaries
+  across quadrants against ray/face geometry, preserving legitimate partial faces.
+- Keep six oriented face normals, twelve geometric half-faces, coordinate basis
+  and screen parity distinct; see the [identity contract](trixel-face-reconstruction-validation.md#oriented-face-identity-versus-screen-parity).
+- Then resume density/rotation GPU profiling and population scaling; native Metal
+  correctness evidence does not establish OpenGL runtime parity or a frame-rate target.
+
 ## Agreed work
 
 | Priority | Work | State / next acceptance |

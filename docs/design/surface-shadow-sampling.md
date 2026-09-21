@@ -6,13 +6,32 @@ the authored anchor, and does not apply this correction twice. Source-position
 fog consumers keep their original origin. Each displayed local triangle receives
 lighting at its geometric centroid.
 
-Finite voxel faces and analytic boxes mark depth samples with low byte `0x88`.
-That encoding reserves the otherwise unused splat offset (-8,-8); the CPU splat
-radius has a compile-time guard below 8. Legacy direct depth samples remain zero.
-An exact detached receiver compares against the finite surface at its nearest
-sun-map cell, extrapolating its plane to that sample center. Only depth
-quantization tolerance remains in that comparison. Finite tags never enter this
-receiver’s filtered legacy taps; those taps still contribute independently.
+Finite voxel faces retain their oriented face ID and coordinate basis in the
+low byte of the existing 32-bit sun depth word. World-aligned faces use
+`0x80 | faceId`; camera-aligned resampled faces use `(faceId << 4) | 0x08`.
+IDs 0–5 follow `faceOutwardNormal6`. Analytic finite geometry retains generic
+`0x88`. A reserved -8 splat nibble distinguishes these tags from all legacy
+splat offsets (-7 through 7); the high 24 depth bits are unchanged. The scalar
+shader contract test executes both backends' helpers over every legacy offset,
+all face/basis tags, generic finite geometry and the empty sentinel.
+
+An exact detached receiver queries the nearest sun-map cell. For voxel casters,
+the stored normal is transformed into world space using its basis flag. Let
+`g(n) = (dot(n,u), dot(n,v)) / dot(n,sunDirection)` and let `delta` be receiver
+UV minus tap-center UV. The caster depth at the receiver is
+`storedDepth + dot(g(casterNormal), delta)`. The receiver depth at the tap is
+`receiverDepth - dot(g(receiverNormal), delta)`. Both comparisons must place the
+caster in front of the receiver, beyond quantization tolerance and within the
+maximum shadow throw. Generic finite geometry uses the receiver normal for
+both comparisons. Finite tags never enter this receiver's filtered legacy taps;
+those taps still contribute independently.
+
+This agreement test rejects false shadows caused by extrapolating only the
+receiver plane onto a neighboring riser. It is conservative, not an exact finite
+footprint intersection: an infinite caster plane does not establish coverage,
+and disagreement can reject real shadow hits near a face boundary. No new bias,
+blur, map allocation or texture lookup is introduced. Remaining false and missed
+shadows are retained in the [eight-angle evidence](../pr-screenshots/codex/sun-receiver-footprint/README.md).
 
 Main/GRID and raw-debug receivers retain their existing outward offset and PCF
 comparison. Their reconstructed raster positions are not yet exact surface
