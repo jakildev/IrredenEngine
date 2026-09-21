@@ -1,6 +1,9 @@
 #ifndef SYSTEM_TRIXEL_TO_FRAMEBUFFER_H
 #define SYSTEM_TRIXEL_TO_FRAMEBUFFER_H
 
+#include <chrono>
+#include <thread>
+
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_constants.hpp>
@@ -418,6 +421,11 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     }
 
     void beginTick() {
+        // SCRATCH ONLY — deliberate per-frame regression for the perf gate's
+        // red-path proof. Never merge. 258 ms is 25% of the slowest seeded
+        // cell's measured llvmpipe frame time (1029.90 ms).
+        std::this_thread::sleep_for(std::chrono::milliseconds(258));
+
         HoveredEntityIdLayout resetData;
         hoveredIdBuf_->subData(0, sizeof(resetData), &resetData);
 
