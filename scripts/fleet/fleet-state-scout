@@ -2267,8 +2267,9 @@ def resolve_human_approved_blockers(state):
     fallback its two siblings use. The distinction is what the flag
     gates: resolve_blocked_by feeds pickup and resolve_needs_plan_blocked_by
     feeds the planner dispatch, so a false positive there strands real work,
-    whereas this flag gates nothing and is read only for state.json visibility. Spending a live call per novel
-    unresolved ref, every tick, on a display-only field is the wrong trade for
+    whereas this flag gates nothing and is read only for state.json
+    visibility. Spending a live call per novel unresolved ref, every tick, on
+    a display-only field is the wrong trade for
     a polling daemon built around conditional GETs. The visible cost is that an
     entry here can read `blocked: true` after its blocker closed outside the
     closed_fleet_queued window; the ingest path rechecks live and is unaffected.
