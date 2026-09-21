@@ -743,7 +743,17 @@ if [[ -d "$GAME_CMDS_DIR" ]]; then
     GAME_ROLES=("$GAME_CMDS_DIR"/role-*.md)
     shopt -u nullglob
     for src in "${GAME_ROLES[@]}"; do
-        dest="$HOME/.claude/commands/$(basename "$src")"
+        base="$(basename "$src")"
+        # Both repos share ~/.claude/commands, and a user-level command shadows
+        # the project one — a game role file with an engine twin would replace
+        # the engine copy in every engine pane on every run. The engine
+        # copy stays; the game copy needs a distinct basename to be reachable.
+        if [[ -e "$REPO_ROOT/.claude/commands/$base" ]]; then
+            echo "note: game role $base collides with an engine role of the same basename;"
+            echo "      keeping the engine link (rename the game copy to link it)."
+            continue
+        fi
+        dest="$HOME/.claude/commands/$base"
         ln -sf "$src" "$dest"
         echo "symlinked $dest -> $src"
     done
