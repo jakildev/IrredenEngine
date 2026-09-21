@@ -1,11 +1,11 @@
 {
   "target": "IRPerfGrid",
   "matrix": "quick",
-  "frames": 300,
-  "git_sha": "6c4f986e",
+  "frames": 40,
+  "git_sha": "3fdcff26",
   "git_dirty": false,
-  "run_name": "6c4f986e-ci",
-  "started_at": "2026-09-17T17:40:21Z",
+  "run_name": "3fdcff26-ci",
+  "started_at": "2026-09-21T00:44:30Z",
   "cells": [
     {
       "id": "target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1",
@@ -13,8 +13,8 @@
       "zoom": 1,
       "sub_mode": "full",
       "sub_base": 1,
-      "exit_status": 134,
-      "status": "no_report",
+      "exit_status": 0,
+      "status": "ok",
       "report": "target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1.txt"
     },
     {
@@ -23,20 +23,20 @@
       "zoom": 4,
       "sub_mode": "full",
       "sub_base": 1,
-      "exit_status": 134,
-      "status": "no_report",
+      "exit_status": 0,
+      "status": "ok",
       "report": "target=IRPerfGrid,zoom=4,sub_mode=full,sub_base=1.txt"
     }
   ],
-  "finished_at": "2026-09-17T17:40:27Z",
+  "finished_at": "2026-09-21T00:45:45Z",
   "calibration": {
-    "ref_ms": 59.162,
+    "ref_ms": 57.189,
     "ref_target_ms": 50,
     "host_slug": "linux-x86_64-epyc-9v45-96-unknown",
     "host_fingerprint": {
       "cpu": {
         "cores": 2,
-        "mhz": 4511,
+        "mhz": 4518,
         "model": "AMD EPYC 9V45 96-Core Processor",
         "threads": 4
       },
@@ -52,6 +52,6 @@
       },
       "slug": "linux-x86_64-epyc-9v45-96-unknown"
     },
-    "math_sha": "d2df7f581050a2ed4ce347428d8aa773d94e854c"
+    "math_sha": "e2b83456a8f3062254804eb2ec579a19987c39f7"
   }
 }
