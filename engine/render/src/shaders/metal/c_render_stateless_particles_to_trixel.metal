@@ -45,6 +45,10 @@ kernel void c_render_stateless_particles_to_trixel(
     const GpuParticleEmitter e = emitters[emitterId];
     if (subIndex >= e.particlesPerEmitter) return;
 
+    // The guard keeps spawnOffset finite for a non-positive spawnRate. Such a
+    // rate leaves only subIndex 0 live (offset 0); every later subIndex gets an
+    // offset >= 1e6 s, so it returns on ageRaw < 0 until currentTime passes
+    // that. It does not disable the emitter; particlesPerEmitter = 0 does.
     const float spawnRateSafe = max(e.spawnRate, 1e-6f);
     const float spawnOffset = float(subIndex) / spawnRateSafe;
     const float ageRaw = frameData.currentTime - spawnOffset;
