@@ -81,6 +81,45 @@ frames and equal-area face-color swaps fail. This gates the validator itself in
 CI. Native screenshots remain author/reviewer-time gates, not an automated GPU
 render job. Passing harness tests does not make a known failing capture acceptable.
 
+## Partial faces and independent ray explanations
+
+A triangular visible region is not intrinsically a parity defect. Descending
+voxel steps can hide one half of a farther quadrilateral. Decide ownership by
+depth before evaluating its lighting. For a camera-space iso coordinate `(u,v)`,
+the orthographic ray is
+
+```
+p(t) = (-u/2-v/6, u/2-v/6, v/3) + t*(1,1,1)
+```
+
+Intersect it with each occupied destination cell's unit box; the smallest entry
+parameter determines the visible cell, and the entering slab determines the
+face. This calculation has no display-parity or polygon-order dependency.
+`camera_face_hits` implements it for offline diagnosis. The harness checks
+polygon face-normal labels against these ray intersections at interior samples
+in eight camera directions, and includes a two-cell control where only half a face remains
+visible. This validates the ownership oracle independently of its polygon fill.
+The image labels identify face axes, not cell IDs; this comparison alone does
+not detect a wrong owner cell with the same face normal. It relies on the fixture's resampled occupancy; it is not a GPU occupancy
+readback or proof of arbitrary scene correctness.
+
+Use repeatable `--explain-pixel X Y` arguments with
+`render-revox-face-metric.py` to report native framebuffer pixel ownership:
+nearest camera intersections, world normal, displayed triangle, its 3D centroid,
+and the first occupied cell blocking that centroid's ray toward the sun. The
+sun ray is separate from the camera ray: a correctly visible face may be shaded,
+and changing the light cannot change which face the camera sees. Edge/corner
+camera intersections are reported as ambiguous rather than assigned a normal.
+Samples exactly on a face diagonal retain their normal but omit a shadow sample:
+which triangle owns that boundary depends on raster edge inclusion.
+
+For investigation, run the shadow overlay with `--terminator-tolerance 0`.
+The default clearance allowance is a compatibility tolerance for sun-map
+sampling, not proof that dark triangles are physically correct. Report false
+shadows, missed shadows, and face-ownership failures separately. A face-ownership
+pass does not excuse a shadow failure, and increasing the clearance allowance
+is not a rendering fix.
+
 ## Render acceptance matrix
 
 Start with one rotated voxel and two adjacent coplanar voxels, then a thin frame.

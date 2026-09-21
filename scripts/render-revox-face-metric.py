@@ -52,6 +52,7 @@ from render_revox_lattice import (
     LIT_LABEL,
     SHADOWED_LABEL,
     Resample,
+    camera_face_hits,
     composed_rotation,
     rotate,
     view_sun,
@@ -116,6 +117,40 @@ def face_triangles(center, normal):
     """
     corners = face_corners(center, normal)
     return [(corners[0], corners[1], corners[2]), (corners[0], corners[2], corners[3])]
+
+
+def explain_pixel(pixel, size, fixture, yaw, upright, scale, sun):
+    """Explain face ownership by box intersections and lighting by a separate sun ray."""
+    rotation, camera = composed_rotation(fixture, yaw, upright)
+    lattice = Resample(fixture, rotation)
+    iso_point = tuple((pixel[i] + 0.5 - size[i] / 2) / scale[i] for i in range(2))
+    hits = camera_face_hits(lattice.occupied(), lattice.anchor, iso_point)
+    result = dict(pixel=pixel, iso_point=iso_point, camera_hits=hits[:4])
+    if not hits or len(hits[0]["axes"]) != 1:
+        result["boundary_ambiguous"] = bool(hits)
+        return result
+    hit = hits[0]
+    axis = hit["axes"][0]
+    normal = CAMERA_FACING[axis]
+    cell = hit["cell"]
+    center = tuple(cell[i] + lattice.anchor[i] for i in range(3))
+    others = [i for i in range(3) if i != axis]
+    fractions = [hit["point"][i] - center[i] + 0.5 for i in others]
+    result.update(boundary_ambiguous=False, world_normal=rotate(normal, camera),
+                  shadow_sample_ambiguous=abs(fractions[0] - fractions[1]) <= 1e-9)
+    if result["shadow_sample_ambiguous"]:
+        return result
+    triangle = face_triangles(center, normal)[0 if fractions[1] < fractions[0] else 1]
+    sample = centroid(triangle)
+    direction = view_sun(sun, camera)
+    visibility = lattice.sun_visible(cell, normal, direction, sample)
+    blocker = None
+    if visibility == SHADOWED_LABEL:
+        blocker = next(visited for visited in lattice.walk(cell, sample, direction)
+                       if visited != cell and lattice.covered(visited))
+    result.update(triangle=triangle, shadow_sample=sample, sun_visibility=visibility,
+                  blocker_cell=blocker)
+    return result
 
 
 def normal_palette(camera):
@@ -271,6 +306,9 @@ def main(argv=None):
                         help="cells a false-shadow trixel's centroid ray may pass from an "
                              "occupied cell and still count as the sun map's texel "
                              "quantisation rather than a defect")
+    parser.add_argument("--explain-pixel", type=int, nargs=2, action="append", default=[],
+                        metavar=("X", "Y"), help="explain a native framebuffer pixel using "
+                        "independent camera/box intersections and a separate sun ray; repeatable")
     parser.add_argument("--diagnostic-prefix", type=Path)
     args = parser.parse_args(argv)
     if not math.isfinite(args.yaw) or not all(math.isfinite(v) and v > 0 for v in args.iso_scale):
@@ -293,6 +331,12 @@ def main(argv=None):
             expected = lit
         else:
             result, errors = compare(width, height, bpp, pixels, expected, palette)
+        if any(not (0 <= x < width and 0 <= y < height) for x, y in args.explain_pixel):
+            raise ValueError("explain pixel must be inside the capture")
+        if args.explain_pixel:
+            result["pixel_explanations"] = [explain_pixel(
+                pixel, (width, height), FIXTURES[args.fixture], math.radians(args.yaw),
+                args.upright, args.iso_scale, tuple(args.sun)) for pixel in args.explain_pixel]
         result.update(stats)
         result.update(image=str(args.image),
                       scope="resampled_cell_sun" if args.shadow_overlay else "resampled_cell_faces",
