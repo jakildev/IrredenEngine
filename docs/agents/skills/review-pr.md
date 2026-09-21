@@ -24,7 +24,7 @@ that needs a repo-specific value names its **delta key** in bold.
 | **stacked-review procedure** | Per-PR scoping for stacked PRs. | the wrapper's `procedures/stacked-pr-review.md` |
 | **fleet doc** | The repo's fleet reference (model split, reviewer loop). | [`docs/agents/FLEET.md`](../FLEET.md) |
 
-The verdict labels (`fleet:approved`, `fleet:needs-fix`, `fleet:blocker`,
+The verdict labels (`fleet:approved`, `fleet:needs-fix`,
 `fleet:has-nits`) and the bail labels are shared fleet machinery; a repo
 that renames them notes the mapping in its wrapper.
 
@@ -176,7 +176,7 @@ merging is the human's call.
 ```markdown
 ## Review — <title>
 
-**Verdict:** <approve | needs-fix | blocker>
+**Verdict:** <approve | needs-fix>   (a Blockers section rides on needs-fix)
 
 ### Blockers
 - <path:line> — <issue> — <suggested fix>
@@ -218,7 +218,7 @@ Immediately after `gh pr review`, apply the named edge with
 pass `--agent <worktree-basename>`; an interactive human omits it. The tool
 verifies the reviewing claim and a review pinned to the current head, then
 delegates the swap to `fleet-transition`. A PR carries exactly one of
-`fleet:approved` / `fleet:needs-fix` / `fleet:blocker`; `fleet:has-nits`
+`fleet:approved` / `fleet:needs-fix`; `fleet:has-nits`
 rides on top of `fleet:approved` and covers only `### Nits` (amend-worthy)
 — `### Nits (follow-up)` sets no label and rides the author's next PR
 (REVIEWER-PROTOCOL.md §"Nits vs needs-fix"). Stale verdict labels are
@@ -250,6 +250,6 @@ Every review body ends with one line:
 - Sonnet, approve → `Escalation: none. Safe for merge.`
 - Sonnet, approve-with-Opus-recheck → `Escalation: please Opus-recheck
   before merge (touches: <module(s)>).`
-- Sonnet, needs-fix/blocker → `Escalation: author-agent to address, then
+- Sonnet, needs-fix → `Escalation: author-agent to address, then
   re-request review.`
 - Opus → no escalation line; the Opus verdict stands.

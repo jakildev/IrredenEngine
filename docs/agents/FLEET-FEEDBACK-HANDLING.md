@@ -302,7 +302,7 @@ gh pr comment <N> --body "Addressed feedback: <bullet list of what changed>"
 
 ### Step f — leave the verdict label to the reviewer
 
-Remove stale `fleet:needs-fix` / `fleet:blocker` if present; never stamp
+Remove a stale `fleet:needs-fix` if present; never stamp
 `fleet:approved`. If clearing would leave no verdict label, add
 `fleet:changes-made` so the PR re-enters review.
 

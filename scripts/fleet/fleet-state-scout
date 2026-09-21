@@ -1919,7 +1919,7 @@ SEMANTIC_CONFLICT_EXCLUDE_LABELS = frozenset({
     "fleet:fork-of-other-pr", "fleet:design-blocked", "fleet:design-proposed",
 })
 REVIEW_VERDICT_LABELS = frozenset({
-    "fleet:approved", "fleet:needs-fix", "fleet:blocker", "fleet:has-nits",
+    "fleet:approved", "fleet:needs-fix", "fleet:has-nits",
 })
 REVIEW_SKIP_LABELS = frozenset({
     "fleet:wip", "human:wip", "fleet:merger-cooldown", "human:needs-fix",
@@ -1985,7 +1985,7 @@ _SMOKE_PENDING_LABELS = frozenset({
     "fleet:needs-windows-smoke",
 })
 _SMOKE_SKIP_LABELS = frozenset({
-    "fleet:needs-fix", "fleet:blocker", "human:wip", "fleet:wip",
+    "fleet:needs-fix", "human:wip", "fleet:wip",
     "fleet:merger-cooldown", "human:needs-fix", "fleet:needs-human",
 })
 # Pickup order across repos: engine first, every other repo after it in key
@@ -3077,7 +3077,7 @@ def project_queue_manager(state):
 # those; a smoke-runner clears them — read straight from the constant so
 # widening the producer set can never orphan this consumer.
 _MERGER_PROJECTION_SKIP_LABELS = frozenset(_SMOKE_PENDING_LABELS | {
-    "fleet:wip", "human:wip", "fleet:blocker",
+    "fleet:wip", "human:wip",
     "fleet:fork-of-other-pr", "fleet:design-blocked",
     # Parked by the epic-steward pending a proposal answer on the
     # umbrella — same not-the-merger's-business semantics as

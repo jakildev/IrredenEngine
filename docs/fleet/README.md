@@ -149,8 +149,8 @@ loop, hard rules. Skills are reusable routines any role can call.
   obvious bugs, style nits, missing null checks, naming slips. Ends
   every verdict with either `Opus recheck not required` or `Opus
   recheck required` so the next stage knows what to do. Sets
-  `fleet:approved` / `fleet:needs-fix` / `fleet:has-nits` /
-  `fleet:blocker` as the verdict label.
+  `fleet:approved` / `fleet:needs-fix` / `fleet:has-nits` as the
+  verdict label.
 - **`/role-opus-reviewer`** (Opus, `opus-reviewer`, polling loop ~30
   min) — final pass on PRs the Sonnet reviewer flagged for Opus
   recheck or that touch core-engine areas (`engine/render/`,
@@ -266,8 +266,8 @@ This is a real foot-gun and the rule lives in
   it, `fleet-queue-ingest` won't stamp `fleet:queued`.
 - `fleet:queued` — set by `fleet-queue-ingest`. Don't add at filing
   time; doing so excludes the issue from ingest triage.
-- `fleet:approved` / `fleet:needs-fix` / `fleet:has-nits` /
-  `fleet:blocker` — reviewer agents'.
+- `fleet:approved` / `fleet:needs-fix` / `fleet:has-nits` — reviewer
+  agents'.
 - `fleet:wip` — fleet author's **in-progress / claim** PRs only; omit on
   Cursor-ready PRs (reviewers skip `fleet:wip`).
 - `fleet:authored-on-linux` / `fleet:authored-on-macos` — set by

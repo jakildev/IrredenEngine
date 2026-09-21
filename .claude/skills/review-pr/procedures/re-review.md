@@ -1,7 +1,7 @@
 # Re-review
 
 Fires on "re-review PR <N>", on `fleet:changes-made` on a PR this loop
-flagged `fleet:needs-fix` / `fleet:blocker`, or when asked to confirm the
+flagged `fleet:needs-fix`, or when asked to confirm the
 nits of a `fleet:has-nits` review were cleaned up. A first review runs the
 standard flow instead.
 
@@ -28,7 +28,7 @@ standard flow instead.
 3. `git log origin/master..HEAD --oneline`, scoped to commits after the
    prior review's `created_at`. Run the checklist on that delta only,
    carrying forward still-open and moved items; never re-raise a confirmed
-   fix, and never re-apply `fleet:needs-fix` / `fleet:blocker` without
+   fix, and never re-apply `fleet:needs-fix` without
    having walked the resolution table — new commits that fix everything
    lift the verdict to approve.
 4. Post with the resolution table first, then new findings; shared-flow

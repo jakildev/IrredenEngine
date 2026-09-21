@@ -89,7 +89,7 @@ class UnchangedSonnetAdmission(unittest.TestCase):
         self.assertEqual(_sonnet_numbers(pr), [3395])
 
     def test_verdicted_pr_without_a_trigger_is_not(self):
-        for verdict in ("fleet:approved", "fleet:needs-fix", "fleet:has-nits", "fleet:blocker"):
+        for verdict in ("fleet:approved", "fleet:needs-fix", "fleet:has-nits"):
             with self.subTest(verdict=verdict):
                 pr = _pr(3362, [verdict])
                 self.assertEqual(_sonnet_numbers(pr), [])

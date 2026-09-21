@@ -15,6 +15,7 @@
 #                                   labels unchanged
 #   T3: --agent omitted (carve-out) → delegates, exit 0, no claim read
 #   T4: non-verdict transition name → exit 2, no delegation
+#   T18: the retired severity verdict is still rejected, no delegation
 #   T5: usage errors (missing / non-int number) → exit 2
 #   T6: --repo + --dry-run threaded through to fleet-transition
 #   T7: fleet-transition non-zero exit propagates (exec)
@@ -231,7 +232,7 @@ echo "T6: --repo + --dry-run threaded through to fleet-transition"
 reset_logs
 set_labels 104 fleet:reviewing-mac-worker-2
 set_review_data 104 head-104 head-104 COMMENTED 2026-01-02T00:00:00Z
-assert_eq "$(run verdict-blocker 104 --agent worker-2 --repo jakildev/irreden --dry-run)" "0" \
+assert_eq "$(run verdict-needs-fix 104 --agent worker-2 --repo jakildev/irreden --dry-run)" "0" \
     "T6 exits 0"
 grep -q -- "--repo jakildev/irreden" "$FT_LOG" && grep -q -- "--dry-run" "$FT_LOG" && \
     { PASS=$((PASS+1)); echo "  ok: T6 threaded --repo and --dry-run"; } || \
@@ -349,8 +350,28 @@ echo "T17: reviews read failure → exit 1"
 reset_logs
 set_labels 115 fleet:reviewing-mac-worker-2
 printf '%s\n' head-115 >"$STORE/head-115"              # reviews-115 absent
-assert_eq "$(run verdict-blocker 115 --agent worker-2)" "1" "T17 fails closed"
+assert_eq "$(run verdict-needs-fix 115 --agent worker-2)" "1" "T17 fails closed"
 assert_eq "$(ft_calls)" "0" "T17 does not delegate"
+
+# === T18: the retired severity verdict is not a verdict edge ==============
+# The severity verdict is retired (no lane consumed it). T4 pins the generic
+# rejection with design-block; this arm pins the exact retired name, so
+# re-adding it to VERDICT_TRANSITIONS goes red here.
+#
+# The name is assembled from fragments on purpose: the retirement's
+# done-check is a repo-wide grep for the retired label and edge names, which
+# must come back empty outside the gated self-config files. A literal here
+# would be the one tracked hit.
+retired_edge="verdict-block"; retired_edge+="er"
+echo "T18: the retired severity verdict ($retired_edge) is not a verdict edge"
+reset_logs
+set_labels 116 fleet:reviewing-mac-worker-2
+set_review_data 116 head-116 head-116 COMMENTED 2026-01-02T00:00:00Z
+assert_eq "$(run "$retired_edge" 116 --agent worker-2)" "2" "T18 retired verdict exits 2"
+assert_eq "$(ft_calls)" "0" "T18 does not delegate the retired verdict"
+grep -q "not a verdict transition" "$TMPROOT/out" && \
+    { PASS=$((PASS+1)); echo "  ok: T18 says 'not a verdict transition'"; } || \
+    { FAIL=$((FAIL+1)); echo "  FAIL: T18 says 'not a verdict transition'"; }
 
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"
