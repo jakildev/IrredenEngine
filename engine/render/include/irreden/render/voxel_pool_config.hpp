@@ -3,15 +3,30 @@
 
 #include <irreden/ir_math.hpp>
 
+#include <cstdint>
+#include <limits>
+
 namespace IRRender::VoxelPoolConfig {
 
 /// Default cube edge length when no Lua override is supplied.
 constexpr int kDefaultEdge = 64;
 
+/// Largest accepted cube edge. The binding bound is the per-axis overflow
+/// lane (`C_PerAxisTrixelCanvases::overflowCapacityFor`, which asserts it
+/// beside `kAxisCount`): `edge³ × 3` face entries must stay within the
+/// shader's signed 2^30 field. 710 is the largest edge that fits; it also
+/// keeps @ref getTotalSize inside `int`. Enforced by @ref setSize's clamp,
+/// which survives `IR_RELEASE`.
+constexpr int kMaxEdge = 710;
+static_assert(
+    static_cast<std::int64_t>(kMaxEdge) * kMaxEdge * kMaxEdge <= std::numeric_limits<int>::max(),
+    "kMaxEdge cube must fit getTotalSize's int"
+);
+
 /// Set the cube edge length applied to both the global voxel pool and the
 /// per-entity allocation cap. Must be called before RenderManager is
-/// constructed (i.e. before IREngine::init returns). Values < 1 are
-/// clamped to 1.
+/// constructed (i.e. before IREngine::init returns). Values are clamped
+/// to [1, @ref kMaxEdge].
 ///
 /// In a normal creation the canonical pre-init pass in
 /// `IREngine::init` reads `config.voxel_pool_edge` from `config.lua` and
