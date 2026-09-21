@@ -6,32 +6,13 @@
 # The invariant under test: an architect resume (a persisted session-id exists,
 # the fleet-down -> fleet-up case) launches `claude --resume <id>` with NO
 # trailing prompt, so the conversation reloads without generating a model turn.
-# The old behaviour fired a "tell me what you were last working on" prompt here,
-# costing one full model turn per architect on every fleet-up and feeding the
-# cold-start request burst. First-ever launch (no session-id yet) still
-# bootstraps via the role slash command.
+# First-ever launch (no session-id yet) still bootstraps via the role slash
+# command.
 #
-# T5/T6 cover the dead-session fallback (#3004): a saved session-id whose
-# transcript no longer resolves (pruned after ~30 days idle, or otherwise
-# unusable) must fall back to a fresh session instead of crash-looping
-# forever on a pointer that can never succeed.
-#
-# Covers:
-#   - resume launch carries --resume <id> and NO prompt argument
-#   - resume launch does NOT carry the old nudge text
-#   - first-ever launch carries --session-id and the /role-<role> command
-#   - first-ever launch persists the session-id file
-#   - architect launches export the fleet-session-track hook gate vars
-#     (FLEET_SESSION_FILE/ROLE/MODE) so /clear repoints the sidecar
-#   - T5: a session-id with no transcript on disk falls back to a fresh
-#     session (no --resume), deletes the stale sidecar, and logs why
-#   - T6: N consecutive immediate exit-1 resumes (transcript present, but
-#     every resume still exits 1) also condemns the pointer, end-to-end
-#     through the real relaunch loop
-#   - T7: a crash exit while the dispatcher's Claude usage gate is closed
-#     (a latched rejected window) holds the relaunch instead of crash-looping
-#     into the wall, never counts toward condemning the pointer, and
-#     relaunches once the window is gone
+# T5/T6 cover the dead-session fallback: a saved session-id whose transcript
+# no longer resolves (pruned after ~30 days idle, or otherwise unusable) must
+# fall back to a fresh session instead of crash-looping forever on a pointer
+# that can never succeed.
 
 set -euo pipefail
 
@@ -150,8 +131,7 @@ assert_eq "$out" "claude --model claude-opus-4-8[1m] --effort xhigh --resume $GS
 # --- T4: architect launch exports the session-track hook gate ----------------
 # The fleet-session-track SessionStart hook only acts in sessions whose env
 # carries FLEET_SESSION_FILE — that's how a /clear repoints the sidecar so
-# the next fleet-up resumes the post-/clear session. Assert the architect
-# launch exports the gate (surfaced via the PRINT_LAUNCH inspection line).
+# the next fleet-up resumes the post-/clear session.
 echo "T4: architect launch exports fleet-session-track gate vars"
 track=$(cd "$PROJECT_CWD" && env HOME="$H1" PATH="$TMPROOT/bin:$PATH" FLEET_BABYSIT_PRINT_LAUNCH=1 \
     "$BABYSIT" 'claude-opus-4-8[1m]' opus-architect live 2>/dev/null \
@@ -199,10 +179,8 @@ make_transcript "$H6" "$SID6"
 T6_BIN="$TMPROOT/t6-bin"; mkdir -p "$T6_BIN"
 T6_CALLS="$TMPROOT/t6-claude-calls.log"
 : > "$T6_CALLS"
-# Records every invocation, then simulates a dead-but-transcript-present
-# pointer: exit 1 whenever --resume is in argv, exit 0 (a "successful" fresh
-# boot) otherwise — so the loop naturally terminates each cycle instead of
-# crash-looping through the whole suite run.
+# Simulates a dead-but-transcript-present pointer, so the loop terminates
+# each cycle instead of crash-looping through the whole suite run.
 cat > "$T6_BIN/claude" <<'STUB'
 #!/usr/bin/env bash
 echo "$@" >> "$CLAUDE_CALLS_LOG"
@@ -256,11 +234,10 @@ resume_calls=$(grep -c -- '--resume' "$T6_CALLS" 2>/dev/null || echo 0)
     || bad "expected exactly 2 --resume attempts, saw $resume_calls (log: $T6_CALLS)"
 
 # --- T7: a crash exit at a closed Claude gate holds, never condemns -----------
-# claude exits rc=1 at the usage wall, the same code as T6's dead pointer, so
-# before the gate check every wall death re-entered the CRASH_DELAY loop
-# (opus-architect, 22 relaunches on 2026-07-08) and two of them condemned
-# the architect's session. The gate is read through
-# `fleet-dispatcher --gate-status claude` off the sandboxed $HOME's usage dir.
+# claude exits rc=1 at the usage wall, the same exit code as a dead session
+# pointer, so the crash-relaunch loop must consult the gate before treating an
+# exit-1 as an ordinary crash. The gate is read through `fleet-dispatcher
+# --gate-status claude` off the sandboxed $HOME's usage dir.
 echo "T7: crash exit with the Claude usage gate closed holds the relaunch"
 H7="$TMPROOT/h7"; mkdir -p "$H7/.fleet/sessions" "$H7/.fleet/state/usage"
 SID7="77777777-7777-7777-7777-777777777777"
@@ -301,7 +278,7 @@ grep -q "not counted against the session pointer" "$H7/.fleet/logs/opus-architec
     && ok "the immediate exit-1 was attributed to the closed gate" \
     || bad "no gate attribution logged"
 
-rm -f "$H7/.fleet/state/usage/five_hour.json"     # the window is gone
+rm -f "$H7/.fleet/state/usage/five_hour.json"
 reopen_line=""
 for _ in $(seq 1 50); do
     reopen_line=$(grep "re-opened" "$H7/.fleet/logs/opus-architect.log" || true)

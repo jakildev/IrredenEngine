@@ -1,30 +1,24 @@
 #!/usr/bin/env bash
 # Tests that `fleet-claim cleanup`'s local walk derives each claim's lookup
-# repo from the SLUG (repo_from_slug), never from the caller's --repo flags
-# (#2864).
+# repo from the SLUG (repo_from_slug), never from the caller's --repo flags.
 #
-# The incident: cmd_cleanup's per-claim loop defaulted a bare engine slug's
-# repo to repos[0] -- whatever --repo the CALLER passed -- with no `else`
-# clause pinning it to the engine repo (only the game-* branch was special-
-# cased). The scout's game sweep
-# (`fleet-claim --repo game cleanup --gh --repo jakildev/irreden`) then
-# resolved every bare engine slug's issue against the GAME repo instead of
-# the engine repo. A bare engine slug whose number happened to collide with
-# a CLOSED game issue got its local lock destroyed by the game sweep -- with
-# no label cross-check on re-acquire (a bare `mkdir`), that lock is
-# immediately re-grantable to a second pane: the exact duplicate-work
-# hazard the lock fabric exists to prevent.
+# A bare engine slug's repo must resolve to the engine repo regardless of
+# which --repo the caller passed: a bare engine slug whose number collides
+# with a same-numbered but CLOSED issue in the wrong repo would otherwise
+# have its local lock destroyed by a foreign-repo sweep, and with no label
+# cross-check on re-acquire (a bare `mkdir`), that lock is immediately
+# re-grantable to a second pane — the exact duplicate-work hazard the lock
+# fabric exists to prevent.
 #
 # Covers:
 #   - T1-T4: repo_from_slug unit behavior (bare -> engine, game-* -> game,
 #     independent of REPO_NS in either direction)
-#   - T5 (ARM1 analog, THE REGRESSION): game sweep -- a bare engine slug
-#     survives when its engine issue is OPEN, and is still correctly reaped
-#     when its engine issue is CLOSED (proves real per-slug resolution, not
-#     just "never touch a bare slug during a foreign sweep")
-#   - T6 (ARM2 analog, control): engine sweep -- unaffected by the bug,
-#     included so a future regression that flips repo_from_slug's default
-#     shows up here too
+#   - T5: game sweep -- a bare engine slug survives when its engine issue is
+#     OPEN, and is still correctly reaped when its engine issue is CLOSED
+#     (proves real per-slug resolution, not just "never touch a bare slug
+#     during a foreign sweep")
+#   - T6 (control): engine sweep -- included so a future regression that
+#     flips repo_from_slug's default shows up here too
 #   - both arms: a game-* slug is reaped by whichever sweep runs, regardless
 #     of the caller's --repo
 #   - T7: hermeticity -- no gh mutation escapes the stub
@@ -49,8 +43,8 @@ TMPROOT=$(mktemp -d)
 
 # --- gh stub ----------------------------------------------------------------
 # Only `gh issue view <N> --repo <repo> --json state --jq .state` is exercised
-# by cmd_cleanup's local walk. Engine issue #500 is OPEN, #600 is CLOSED; game
-# issue #500 is CLOSED (the deliberate collision), #600 is OPEN (irrelevant,
+# by cmd_cleanup's local walk. Engine issue 500 is OPEN, 600 is CLOSED; game
+# issue 500 is CLOSED (the deliberate collision), 600 is OPEN (irrelevant,
 # stubbed so the matrix has no gaps). Anything else logs and fails closed --
 # a stub miss must never fall through to the real gh (scripts/fleet/CLAUDE.md).
 STUB_DIR="$TMPROOT/bin"; mkdir -p "$STUB_DIR"
@@ -83,9 +77,8 @@ chmod +x "$STUB_DIR/gh"
 
 # --- T1-T4: repo_from_slug unit behavior ------------------------------------
 # Routed through the FLEET_CLAIM_LIB sourcing seam (fleet-claim's own
-# convention, see test_fleet_claim_stack_namespace.sh) so each call is
-# hermetic and isolated in its own subshell -- no dispatch runs, and no
-# mutation to this test's own shell state leaks out.
+# convention) so each call is hermetic and isolated in its own subshell --
+# no dispatch runs, and no mutation to this test's own shell state leaks out.
 call_repo_from_slug() {
     local repo_ns="$1" slug="$2"
     (

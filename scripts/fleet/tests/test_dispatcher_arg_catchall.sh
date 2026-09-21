@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
-# Tests for the operator/test entry-point case block's catch-all arm (#2962):
-# an unrecognized first argument (or a one-char typo of a real flag) must exit
-# non-zero WITHOUT falling through into main() and starting the daemon loop.
+# Tests for the operator/test entry-point case block's catch-all arm: an
+# unrecognized first argument (or a one-char typo of a real flag) must exit
+# non-zero without falling through into main() and starting the daemon loop.
 #
 # The daemon loop never returns, so this can't be probed by invoking the real
 # fleet-dispatcher with a bad flag directly — a regression would hang the
 # test. Instead, copy the script and replace the trailing `main "$@"` with a
-# marker (the same technique #2962's repro used), so a fall-through is
-# observable as output instead of a hang.
+# marker, so a fall-through is observable as output instead of a hang.
 
 set -uo pipefail
 SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)

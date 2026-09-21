@@ -2,22 +2,14 @@
 # Tests for fleet-claim's label_added_epoch() — the timestamp lookup every
 # claim-label TTL sweep ages its labels against.
 #
-# Regression coverage for #2781: the lookup passed jq's `--arg lname` to
-# `gh api`, which does not accept it. Real gh exits 1 on the unknown flag
-# BEFORE issuing the request; the call site's `2>/dev/null` swallowed the
-# usage text, so the function fell through to its "unknown age" guard and
-# returned 0 on every call, on every host, always. Each caller reads 0 as
-# "can't tell how old this is" and skips, so all five cleanup --gh sweeps,
-# the acquisition force-sweep, and reconcile R4a were silently inert.
-#
-# Why the sibling claim suites could not catch it: their gh stubs match the
-# substring `events` anywhere in argv and ignore flags entirely (see
-# test_fleet_claim_prlabel_orphan_sweep.sh), so a flag rejection is
-# unrepresentable. The stub here therefore models `gh api`'s FLAG PARSING —
-# it validates against gh api's real accepted flag set and fails the way gh
-# fails — and evaluates the --jq program against real events JSON rather
-# than pretending the filter already ran. T6 is the positive control on that
-# fidelity: it asserts the stub still rejects the flag the bug used, so a
+# Why the sibling claim suites could not catch a `gh api` flag rejection here:
+# their gh stubs match the substring `events` anywhere in argv and ignore
+# flags entirely (see test_fleet_claim_prlabel_orphan_sweep.sh), so a flag
+# rejection is unrepresentable. The stub here therefore models `gh api`'s FLAG
+# PARSING — it validates against gh api's real accepted flag set and fails the
+# way gh fails — and evaluates the --jq program against real events JSON
+# rather than pretending the filter already ran. T6 is the positive control on
+# that fidelity: it asserts the stub still rejects an unknown flag, so a
 # future stub rewrite can't quietly turn this suite into a no-op.
 
 set -uo pipefail
@@ -151,8 +143,8 @@ REPO="jakildev/IrredenEngine"
 
 echo "== label_added_epoch =="
 
-# T1: the regression. A label that IS present must resolve to a real epoch.
-# Pre-fix this is 0, because the stub rejects `--arg` exactly as gh does.
+# T1: a label that IS present must resolve to a real epoch; the stub rejects
+# `--arg` exactly as gh does, so a --arg regression would read as 0.
 echo "T1: present label -> the epoch of its most recent 'labeled' event"
 assert_eq "$(label_added_epoch "$REPO" 2393 "$TARGET_LABEL")" "$(epoch_of "$TS_LAST")" \
     "resolves a non-zero epoch for a label that is actually present"
@@ -163,8 +155,8 @@ echo "T2: a later event for a different label does not leak"
 assert_absent "$(label_added_epoch "$REPO" 2393 "$TARGET_LABEL")" "$(epoch_of "$TS_OTHER")" \
     "does not return another label's (later) timestamp"
 
-# T3: only 'labeled' events count — the unlabeled event at TS_OTHER is skipped
-# above, which T1 already pins; here the second label is queried directly.
+# T3: only 'labeled' events count — the unlabeled event at TS_OTHER is
+# skipped (T1 already pins that); here the second label is queried directly.
 echo "T3: a different present label resolves to its own epoch"
 assert_eq "$(label_added_epoch "$REPO" 2393 "$OTHER_LABEL")" "$(epoch_of "$TS_OTHER")" \
     "each label ages against its own 'labeled' event"

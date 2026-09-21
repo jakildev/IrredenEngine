@@ -1,15 +1,13 @@
 #!/usr/bin/env bash
-# Tests for cmd_cleanup_gh's fifth pass (#2441): reaping flag-token-consumed
-# claim labels. Before require_agent_token existed, a flag passed where
-# <agent> belongs on review-/resolving-/amending-/steward- claim got stamped
-# verbatim into a label, e.g. `fleet:reviewing-mac---role` from
-# `review-claim <pr> --role <agent>`. Nothing swept these — the PR-label sweep
-# (first pass) only looks at labels attached to OPEN PRs, and #226's stray
-# `fleet:reviewing-mac---repo` sat on an ISSUE (steward-claim targets issues)
-# for 8+ days. The fifth pass instead scans the repo's whole label CATALOG for
-# the malformed <host>--- shape and `gh label delete`s it unconditionally —
-# no TTL, no per-issue lookup — which also strips it off wherever it's
-# attached (e.g. #226) in the same call.
+# Tests for cmd_cleanup_gh's fifth pass: reaping flag-token-consumed claim
+# labels. A flag passed where <agent> belongs on review-/resolving-/amending-/
+# steward-claim gets stamped verbatim into a label, e.g.
+# `fleet:reviewing-mac---role` from `review-claim <pr> --role <agent>`. The
+# PR-label sweep (first pass) only looks at labels attached to OPEN PRs, so a
+# malformed label on an ISSUE (steward-claim targets issues) survives it. The
+# fifth pass instead scans the repo's whole label CATALOG for the malformed
+# <host>--- shape and `gh label delete`s it unconditionally — no TTL, no
+# per-issue lookup — which also strips it off wherever it's attached.
 #
 # Hermetic per scripts/fleet/CLAUDE.md: no live GitHub. This test sources
 # fleet-claim as a library (FLEET_CLAIM_LIB=1) and shadows `gh` with an

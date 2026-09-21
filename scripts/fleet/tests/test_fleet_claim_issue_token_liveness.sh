@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# #2419: an improvised `issue-<N>` token branch (or a `Closes #N` body) is
+# An improvised `issue-<N>` token branch (or a `Closes #N` body) is
 # recognized as live work by fleet-claim's two liveness surfaces:
 #   - the cleanup sweep, via _issue_pr_state_from -> issue_pr_state (keeps the
 #     claim while the PR is open, so it is not swept into a duplicate), and
 #   - cmd_claim's open-PR guard (refuses a second claim on the same issue).
-# The #1425 matcher recognized only claude/<N>- / claude/game-<N>- prefixes;
-# the incident branch claude/game-worker-3-issue-255 slipped both surfaces,
-# so the TTL sweep freed the live claim and a duplicate PR followed.
+# A matcher that recognizes only claude/<N>- / claude/game-<N>- prefixes
+# misses a branch like claude/game-worker-3-issue-255 on both surfaces, so the
+# TTL sweep frees a live claim and a duplicate PR follows.
 
 set -euo pipefail
 
@@ -53,8 +53,8 @@ repo_from_ns()                 { echo "jakildev/IrredenEngine"; }
 
 CLAIMS_DIR=$(mktemp -d)/claims
 
-# gh stub: pr list returns an open token-branch PR for #255. The guard only
-# consults pr list; any other call returns empty.
+# gh stub: pr list returns an open token-branch PR. The guard only consults
+# pr list; any other call returns empty.
 gh() {
     if [[ "${1:-}" == "pr" && "${2:-}" == "list" ]]; then
         printf '%s' '[{"number":900,"headRefName":"'"$TOKEN_BRANCH"'","body":""}]'

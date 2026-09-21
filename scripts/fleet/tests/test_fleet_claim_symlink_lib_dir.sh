@@ -1,16 +1,12 @@
 #!/usr/bin/env bash
-# Regression test for #1578: fleet-claim FLEET_LIB_DIR mis-resolves when
-# invoked via a ~/bin symlink, causing silent exit 1 on claim/stack/claim-base.
+# Regression: fleet-claim resolves FLEET_LIB_DIR correctly when invoked via a
+# ~/bin symlink, rather than to the symlink's parent dir (which lacks
+# fleet_branch_match.py).
 #
-# Before the fix, BASH_SOURCE[0] was the symlink path (e.g. ~/bin/fleet-claim),
-# so FLEET_LIB_DIR resolved to the symlink's parent dir (~/bin), which doesn't
-# contain fleet_branch_match.py. The post-fix defensive check at the top of the
-# script fires with a clear error when the lib dir is wrong — even for `list`
-# (which doesn't use fleet_branch_match directly) — so `list` via symlink is a
-# clean regression canary: exit 0 means the symlink was resolved correctly.
-#
-# The fix: resolve the symlink chain with a `while -L / readlink` loop before
-# computing FLEET_LIB_DIR, matching the pattern already used by fleet-run/fleet-build.
+# A defensive check at the top of the script fires with a clear error when
+# the lib dir is wrong — even for `list` (which doesn't use fleet_branch_match
+# directly) — so `list` via symlink is a clean regression canary: exit 0
+# means the symlink was resolved correctly.
 
 set -euo pipefail
 
@@ -20,7 +16,7 @@ FLEET_CLAIM="$SCRIPT_DIR/fleet-claim"
 
 if [[ ! -x "$FLEET_CLAIM" ]]; then
     echo "SKIP: fleet-claim not found at $FLEET_CLAIM" >&2
-    exit 3  # skip status — run_all.sh must not count this as a pass (#2786)
+    exit 3  # skip status — run_all.sh must not count this as a pass
 fi
 
 PASS=0
@@ -46,7 +42,6 @@ assert_exit() {
 }
 
 # --- T1: direct invocation of 'list' succeeds --------------------------------
-# Baseline: ensures fleet-claim list exits 0 from the real path.
 echo "T1: direct invocation -> 'list' exits 0"
 FLEET_CLAIMS_DIR="$TMPROOT/claims1" "$FLEET_CLAIM" list >/dev/null 2>&1
 assert_exit $? 0 "fleet-claim list via real path exits 0"
@@ -64,13 +59,13 @@ FLEET_CLAIMS_DIR="$TMPROOT/claims2" "$SYMLINK_DIR/fleet-claim" list >/dev/null 2
 assert_exit $? 0 "fleet-claim list via symlink exits 0 (lib dir resolved through symlink)"
 
 # --- T3: defensive check fires visibly when lib dir is wrong -----------------
-# Simulates what happens if the symlink fix is absent: the lib dir would point
-# to an empty directory that lacks fleet_branch_match.py.
+# Simulates what happens when FLEET_LIB_DIR is not resolved through the
+# symlink: the lib dir would point to an empty directory that lacks
+# fleet_branch_match.py.
 echo "T3: missing fleet_branch_match.py -> visible error on stderr, not silent exit 1"
 FAKE_LIB="$TMPROOT/fake-lib"
 mkdir -p "$FAKE_LIB"
 FAKE_CLAIM="$FAKE_LIB/fleet-claim"
-# Write a minimal stub that mirrors only the defensive check block:
 cat > "$FAKE_CLAIM" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail

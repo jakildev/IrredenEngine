@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Tests for fleet-dispatcher's boot-mode (dry-run) gate — issue #2022.
-#
 # The dispatcher reads the boot mode fleet-up writes to
 # $FLEET_STATE_DIR/dispatch-mode each tick. In live / review-only it is inert:
 # dispatch proceeds as before and the dispatched role command carries that mode.
@@ -10,9 +8,9 @@
 #   --print-mode                          → the resolved boot mode
 #   --print-dispatch-command <role> <key> → the command sent into a pane
 #
-# The "dispatch once then idle" loop gating is verified by inspection (it needs
-# the live daemon loop + mocked panes); these tests pin the mode-resolution and
-# mode-threading mechanism the gating rides on.
+# The "dispatch once then idle" loop gating needs the live daemon loop plus
+# mocked panes; these tests pin only the mode-resolution and mode-threading
+# mechanism that gating rides on.
 
 set -euo pipefail
 
@@ -76,10 +74,9 @@ else
 fi
 
 # --- Test 4: fleet-dispatch-wrap runs /role-<role> <mode> ------------------
-# Stub `claude` on PATH so the wrap's invocation is observable without a real
-# model call. The stub echoes its final positional arg (the slash command) to a
-# capture file. fleet-claude-stream is also stubbed (pass-through) so the pipe
-# resolves. The wrap validates an unknown mode down to live.
+# `claude` is stubbed on PATH so the wrap's invocation is observable without a
+# real model call; fleet-claude-stream is stubbed pass-through so the pipe
+# resolves.
 echo "T4: fleet-dispatch-wrap invokes the role slash command with the passed mode"
 if [[ -x "$WRAP" ]]; then
     BIN="$TMPROOT/bin"
@@ -87,7 +84,6 @@ if [[ -x "$WRAP" ]]; then
     CAP="$TMPROOT/slash.txt"
     cat >"$BIN/claude" <<EOF
 #!/usr/bin/env bash
-# Last positional arg is the "/role-<role> <mode>" slash command.
 for a in "\$@"; do last="\$a"; done
 printf '%s\n' "\$last" > "$CAP"
 EOF
@@ -97,8 +93,8 @@ cat >/dev/null
 EOF
     chmod +x "$BIN/claude" "$BIN/fleet-claude-stream"
 
-    # Run from a hermetic cwd so the worker auto-retrigger (basename "$PWD" →
-    # fleet-claim reservation-of + trigger touch) can't reach the real fleet.
+    # A hermetic cwd keeps the worker auto-retrigger (basename "$PWD" →
+    # fleet-claim reservation-of + trigger touch) from reaching the real fleet.
     ( cd "$TMPROOT" && PATH="$BIN:$PATH" "$WRAP" pane-9 sonnet high worker "" dry-run ) >/dev/null 2>&1 || true
     assert_eq "$(cat "$CAP" 2>/dev/null)" "/role-worker dry-run" "wrap passes /role-worker dry-run"
 

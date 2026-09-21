@@ -1,25 +1,22 @@
 #!/usr/bin/env bash
-# Tests for the smoke lane's dispatch-side host gate (#2839) — fleet-dispatcher's
-# smoke_worker_should_fire, exercised through the --smoke-check hook and one
+# Tests fleet-dispatcher's smoke_worker_should_fire, the smoke lane's
+# dispatch-side host gate, exercised through the --smoke-check hook and one
 # real dispatch_role tick per arm.
 #
-# Smoke is the only fleet lane whose work is definitionally host-specific: only a
-# native-Windows host can clear fleet:needs-windows-smoke. The scout's projection
-# is deliberately host-agnostic (it is the cross-host record of outstanding smoke
-# debt that platform-catchup reads), so before this gate a standing
-# Windows-pending set kept every non-Windows host dispatching smoke panes for
-# work they could never do — measured at 4 no-op dispatches in 43 minutes on a
-# macOS host, with the empty-exit backoff hitting its cap twice and the scout
-# re-arming after each.
+# Smoke is the only fleet lane whose work is definitionally host-specific: only
+# a native-Windows host can clear fleet:needs-windows-smoke. The scout's
+# projection is deliberately host-agnostic (it is the cross-host record of
+# outstanding smoke debt that platform-catchup reads), so without this gate a
+# standing Windows-pending set keeps every non-Windows host dispatching smoke
+# panes for work they can never do.
 #
 # The positive arm (T9) is the load-bearing one: a fix that simply silences the
 # lane would pass every negative assertion here.
 #
-# Host routing under test is the fleet_task_class.py HOST_SMOKE_LABELS map, whose
-# `mac` host key maps to a `macos` label (#1383 reconciled the host detectors,
-# not the spelling). The python-side per-host pins live in
-# test_smoke_worker_projection.py; this suite covers the bash gate and the
-# trigger lifecycle around it.
+# Host routing under test is the fleet_task_class.py HOST_SMOKE_LABELS map,
+# whose `mac` host key maps to a `macos` label. The python-side per-host pins
+# live in test_smoke_worker_projection.py; this suite covers the bash gate and
+# the trigger lifecycle around it.
 
 set -uo pipefail
 
@@ -102,7 +99,7 @@ unset FLEET_RUNTIMES FLEET_CROSS_PROVIDER_REVIEW FLEET_WORKER_RUNTIME
 SLICE="$FLEET_STATE_DIR/projections/smoke-worker.json"
 TRIGGER="$FLEET_STATE_DIR/triggers/smoke-worker"
 
-write_slice() {  # write_slice <[repo:]label...> — one approved PR per label, #101+
+write_slice() {  # write_slice <[repo:]label...> — one approved PR per label, starting at 101
     # A bare label is an engine record; `game:<label>` tags the record with
     # repo=game (the slice is two-repo, records carry `repo`, and the gate
     # reports `<repo>:<number>`).

@@ -6,9 +6,9 @@
 # the claimed target number) on acquire and remove it on release. fleet-down wipes
 # ~/.fleet/claims, so a same-host reviewing/resolving label with NO matching
 # marker is a claim whose owning session died/restarted while the GitHub label
-# survived (the #2137/#2138 stuck-reviewer shape) — swept after a short grace
-# rather than the 30-min TTL. A marker that matches keeps the claim; cross-host
-# labels can't be vouched for locally and stay on the full TTL.
+# survived — swept after a short grace rather than the 30-min TTL. A marker
+# that matches keeps the claim; cross-host labels can't be vouched for
+# locally and stay on the full TTL.
 #
 # The gh stub reports every label as added STUB_AGE seconds ago, so age alone
 # never trips the 1800s TTL — anything swept is the orphan fast path.

@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# Tests for fleet-claim find-stackable-blockers with live blocker resolution (T-1296).
-#
-# Part (b) of the fix: cmd_find_stackable_blockers now resolves each #N ref
-# live before the single-blocker check. A task whose body says:
-#   **Blocked by:** #100, #101
-# where #100 is CLOSED and #101 has an open PR → returns the #101 PR.
+# cmd_find_stackable_blockers resolves each blocker ref live before the
+# single-blocker check. A task whose body says:
+#   **Blocked by:** #NNN, #MMM
+# where the first issue is CLOSED and the second has an open PR → returns
+# that PR.
 #
 # Stub dispatches:
 #   gh issue view N --json state --jq .state  → canned state
@@ -13,25 +12,25 @@
 #   fetch_issue_info shape: gh issue view N --json state,labels,body
 #
 # Issue stubs (for fetch_issue_info and check_blockers lookup):
-#   3001: **Blocked by:** #100 (done), #101 (still open)  — two refs, one closed
-#   3002: **Blocked by:** #101, #102                      — two open refs
-#   3003: **Blocked by:** #100                            — single ref, closed (all resolved)
-#   3004: **Blocked by:** (none)                          — no blocker
+#   issue 3001: blocked by 100 (done) and 101 (still open) — two refs, one closed
+#   issue 3002: blocked by 101 and 102                     — two open refs
+#   issue 3003: blocked by 100                             — single ref, closed (all resolved)
+#   issue 3004: blocked by nothing                         — no blocker
 #
 # Issue/PR state stubs:
-#   #100: CLOSED
-#   #101: OPEN (with an open PR claude/101-work-branch)
-#   #102: OPEN (no open PR)
+#   issue 100: CLOSED
+#   issue 101: OPEN (with an open PR claude/101-work-branch)
+#   issue 102: OPEN (no open PR)
 
 set -euo pipefail
 
-# This suite exercises cmd_claim against the real (possibly-stale) main clone but
-# does not care about clone freshness — disable the #1810 freshness gate.
+# This suite exercises cmd_claim against the real (possibly-stale) main clone
+# but does not care about clone freshness — disable the freshness gate.
 export FLEET_SKIP_CLONE_FRESHNESS=1
 
 # Every issue fixture below is fleet:sonnet, so an inherited FLEET_ROLE_MODEL
-# from the launching pane would fail T9's claim on the model-tag gate instead of
-# the base check it is grading (#2748 — a suite must not inherit its class).
+# from the launching pane would fail T9's claim on the model-tag gate instead
+# of the base check it is grading — a suite must not inherit its class.
 unset FLEET_ROLE_MODEL
 
 SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
@@ -152,24 +151,24 @@ case "$1 $2" in
                 printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:sonnet"}],"body":"**Blocked by:** (none)\n"}'
                 ;;
             3005)
-                # #1296: two separate **Blocked by:** lines — #100 CLOSED,
-                # #101 OPEN with a PR → stacks on the remaining #101.
+                # Two separate **Blocked by:** lines — issue 100 CLOSED, issue
+                # 101 OPEN with a PR → stacks on the remaining issue.
                 printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:sonnet"}],"body":"**Blocked by:** #100\n**Blocked by:** #101\n"}'
                 ;;
             3006)
-                # #2523: the blocker ref names an issue-less open PR by its OWN
-                # number (#540). Neither the branch arm nor the Closes arm can
-                # resolve it — only the number arm can.
+                # The blocker ref names an issue-less open PR by its OWN
+                # number (PR 540). Neither the branch arm nor the Closes arm
+                # can resolve it — only the number arm can.
                 printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:sonnet"}],"body":"**Blocked by:** #540\n"}'
                 ;;
             3007)
-                # #2523 negative control: a PR-shaped ref with no open PR of
-                # that number → still empty, the arm is not a wildcard.
+                # Negative control: a PR-shaped ref with no open PR of that
+                # number → still empty, the arm is not a wildcard.
                 printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:sonnet"}],"body":"**Blocked by:** #777\n"}'
                 ;;
             3008)
-                # #2523: number-matched base is still subject to filter (b) —
-                # PR #541 carries fleet:wip.
+                # A number-matched base is still subject to filter (b) — PR
+                # 541 carries fleet:wip.
                 printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:sonnet"}],"body":"**Blocked by:** #541\n"}'
                 ;;
             *)
@@ -184,11 +183,11 @@ case "$1 $2" in
             exit 0
         fi
         if [[ "$pr_state" == "open" ]]; then
-            # #536 is issue #101's PR (branch + Closes arms).
-            # #540 / #541 are ISSUE-LESS PRs (#2523): non-claude branch, no
-            # Closes ref — reachable only by the number arm. #541 is fleet:wip
-            # so filter (b) can be exercised on a number-matched base. Neither
-            # matches #101 (number, branch, and body all disagree), so the
+            # PR 536 is issue 101's PR (branch + Closes arms).
+            # PRs 540 / 541 are ISSUE-LESS: non-claude branch, no Closes ref —
+            # reachable only by the number arm. PR 541 is fleet:wip so filter
+            # (b) can be exercised on a number-matched base. Neither matches
+            # issue 101 (number, branch, and body all disagree), so the
             # single-match contract of T1/T5 is unaffected.
             printf '%s\n' '[{"url":"https://github.com/jakildev/IrredenEngine/pull/536","headRefName":"claude/101-work-branch","author":{"login":"bot"},"number":536,"body":"Closes #101"},{"url":"https://github.com/jakildev/IrredenEngine/pull/540","headRefName":"audit/stage-select-dedup","author":{"login":"jakildev"},"number":540,"body":"Audit-driven, no backing issue."},{"url":"https://github.com/jakildev/IrredenEngine/pull/541","headRefName":"audit/wip-thing","author":{"login":"jakildev"},"number":541,"body":"No backing issue.","labels":[{"name":"fleet:wip"}]}]'
             exit 0
@@ -197,14 +196,14 @@ case "$1 $2" in
         exit 0
         ;;
     "pr view")
-        # claim --stackable-on base re-verify (#1751): state + head + labels.
+        # claim --stackable-on base re-verify: state + head + labels.
         # $3 is the PR id passed to --stackable-on.
         case "$3" in
             901) printf '%s' '{"state":"OPEN","headRefName":"claude/901-wip","labels":[{"name":"fleet:wip"}]}' ;;
             902) printf '%s' '{"state":"OPEN","headRefName":"claude/902-empty","labels":[{"name":"fleet:queued"}]}' ;;
             903) printf '%s' '{"state":"OPEN","headRefName":"claude/903-clean","labels":[{"name":"fleet:queued"}]}' ;;
             904) printf '%s' '{"state":"OPEN","headRefName":"claude/904-difffail","labels":[{"name":"fleet:queued"}]}' ;;
-            # #2805: approved base whose ONLY formerly-disqualifying label is
+            # An approved base whose ONLY formerly-disqualifying label is
             # fleet:awaiting-base — the label is deliberately still present, so
             # the accept is graded against a live carrier, not a cleaned-up one.
             905) printf '%s' '{"state":"OPEN","headRefName":"claude/905-awaiting-base","labels":[{"name":"fleet:approved"},{"name":"fleet:awaiting-base"}]}' ;;
@@ -249,7 +248,6 @@ export PATH="$STUB_DIR:$PATH"
 echo "T1: multi-blocker (#100 closed, #101 open with PR) → returns PR for #101"
 result=$("$FLEET_CLAIM" find-stackable-blockers 3001 2>/dev/null || true)
 assert_nonempty "$result" "find-stackable-blockers returns PR line"
-# The returned line should reference #101's branch
 echo "  result: $result"
 if echo "$result" | grep -q "claude/101-work-branch"; then
     PASS=$((PASS + 1))
@@ -274,7 +272,7 @@ echo "T4: (none) blocker → empty output"
 result=$("$FLEET_CLAIM" find-stackable-blockers 3004 2>/dev/null || true)
 assert_output "$result" "" "(none) blocker → empty"
 
-# --- T5: multi-LINE blockers (#100 closed, #101 open) → returns #101 PR ------
+# --- T5: multi-LINE blockers (issue 100 closed, issue 101 open) → returns PR
 echo "T5: two **Blocked by:** lines (#100 closed, #101 open) → returns PR for #101"
 result=$("$FLEET_CLAIM" find-stackable-blockers 3005 2>/dev/null || true)
 assert_nonempty "$result" "multi-line: find-stackable-blockers returns PR line"
@@ -287,11 +285,11 @@ else
     echo "  FAIL: multi-line result does not include claude/101-work-branch"
 fi
 
-# --- #2523: `Blocked by: #<PR>` — the ref names an issue-less open PR --------
+# --- `Blocked by: #<PR>` — the ref names an issue-less open PR -------------
 # The blocker PR has no backing issue, so branch_matches_issue and
 # body_closes_issue are both False for it by construction; only the number arm
-# can resolve the ref. Before that arm the finder printed nothing and the task
-# was unpickable for the blocker's whole pre-merge window.
+# can resolve the ref. Without that arm the finder prints nothing and the task
+# is unpickable for the blocker's whole pre-merge window.
 echo "T9: blocker ref IS an issue-less open PR's own number (#540) → returns PR 540"
 result=$("$FLEET_CLAIM" find-stackable-blockers 3006 2>/dev/null || true)
 assert_nonempty "$result" "PR-number blocker ref returns a PR line"
@@ -312,7 +310,7 @@ echo "T11: number-matched base still honors filter (b) — #541 is fleet:wip →
 result=$("$FLEET_CLAIM" find-stackable-blockers 3008 2>/dev/null || true)
 assert_output "$result" "" "wip number-matched base → empty (offer/accept agree, #1751)"
 
-# --- #1751: claim --stackable-on rejects an OPEN-but-unsafe base -------------
+# --- claim --stackable-on rejects an OPEN-but-unsafe base ------------------
 # The base re-verify runs before any blocker/model/reservation gate, so an
 # unsafe base refuses the claim outright regardless of the rest of the flow.
 assert_refused() {
@@ -342,11 +340,11 @@ assert_refused 902 "not a stackable base (empty claim-commit)" "empty-claim base
 echo "T8: claim --stackable-on a base whose diff fetch fails (#904) → refused"
 assert_refused 904 "refusing to stack on an unverifiable base" "unverifiable base refused"
 
-# --- #2805: an approved base carrying only fleet:awaiting-base IS stackable ---
+# --- an approved base carrying only fleet:awaiting-base IS stackable -------
 # The merger mints fleet:awaiting-base on every stacked PR whose base is still
-# open, so rejecting it made depth-2+ stacking impossible. Claimed against a
-# base that still carries the label (this fix removes it from no PR). Runs last
-# because it is the only case here that leaves a claim behind.
+# open, so rejecting it makes depth-2+ stacking impossible. Claimed against a
+# base that still carries the label. Runs last because it is the only case
+# here that leaves a claim behind.
 echo "T9: claim --stackable-on an approved fleet:awaiting-base base (#905) → accepted"
 t9_err="$TMPROOT/t9.err"
 if "$FLEET_CLAIM" claim 3004 worker-test --stackable-on 905 >/dev/null 2>"$t9_err"; then
@@ -358,7 +356,7 @@ else
     sed 's/^/        /' "$t9_err"
 fi
 # Not vacuous: prove the claim took the STACKABLE path, not a silent fallback
-# to master (claim-base reads the --stackable-on sidecar, #2703).
+# to master (claim-base reads the --stackable-on sidecar).
 t9_base=$("$FLEET_CLAIM" claim-base 3004 2>/dev/null || true)
 assert_output "$t9_base" "claude/905-awaiting-base" "claim recorded the awaiting-base PR as the stack base"
 
