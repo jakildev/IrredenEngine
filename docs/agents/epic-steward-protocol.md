@@ -65,7 +65,9 @@ artifacts — umbrella bodies, comments, labels — and never pushes code.
 3. Read the epic-steward projection: per repo, open `fleet:epic` umbrellas
    with parsed `## Children` checklists and the pending triggers
    (design-blocked children, closed-but-unticked children, adoptable
-   issues, answered proposals, close-out-ready umbrellas).
+   issues, answered proposals, close-out-ready umbrellas). An umbrella
+   carrying `fleet:needs-human` or `fleet:steward-proposal` still projects
+   its closed-but-unticked children, but not its close-out.
 4. Print a one-line summary: per repo, epic count and trigger counts by flow.
 5. Print `epic-steward standing by` (with the mode suffix if not `live`).
 

@@ -301,8 +301,9 @@ class CloseoutOp(unittest.TestCase):
 
 class ParkedUmbrella(unittest.TestCase):
     """An umbrella parked on the human (fleet:needs-human or
-    fleet:steward-proposal) projects no rollup / closeout item; the label's
-    removal is the re-fire edge."""
+    fleet:steward-proposal) projects no closeout item; the label's removal is
+    the re-fire edge. A rollup still projects: it is a child-state edge the
+    steward has not seen."""
 
     _ALL_CLOSED = [_entry(11, checked=True, closed=True),
                    _entry(12, checked=True, closed=True)]
@@ -318,12 +319,26 @@ class ParkedUmbrella(unittest.TestCase):
             _epic(10, checklist=self._ALL_CLOSED,
                   labels=["fleet:epic", "fleet:steward-proposal"])])), [])
 
-    def test_parked_umbrella_emits_no_rollup(self):
+    def test_parked_umbrella_still_emits_rollup(self):
         for label in ("fleet:needs-human", "fleet:steward-proposal"):
             with self.subTest(label=label):
                 self.assertEqual(project_epic_steward(_state(epics=[
                     _epic(10, checklist=self._ROLLUP_OWED,
-                          labels=["fleet:epic", label])])), [])
+                          labels=["fleet:epic", label])])),
+                    [{"kind": "rollup", "repo": "engine",
+                      "epic": 10, "child": 11}])
+
+    def test_parked_umbrella_rollup_with_all_children_closed_omits_closeout(self):
+        for label in ("fleet:needs-human", "fleet:steward-proposal"):
+            with self.subTest(label=label):
+                self.assertEqual(project_epic_steward(_state(epics=[
+                    _epic(10, checklist=[_entry(11, closed=True),
+                                         _entry(12, closed=True)],
+                          labels=["fleet:epic", label])])),
+                    [{"kind": "rollup", "repo": "engine",
+                      "epic": 10, "child": 11},
+                     {"kind": "rollup", "repo": "engine",
+                      "epic": 10, "child": 12}])
 
     def test_both_park_labels_emit_nothing(self):
         # Both park labels at once, all children closed.
@@ -341,14 +356,11 @@ class ParkedUmbrella(unittest.TestCase):
         self.assertEqual(project_epic_steward(released),
                          [{"kind": "closeout", "repo": "engine", "epic": 10}])
 
-    def test_removing_the_park_label_restores_rollup(self):
+    def test_park_label_edge_does_not_move_the_rollup_hash(self):
         parked = _state(epics=[_epic(10, checklist=self._ROLLUP_OWED,
                                      labels=["fleet:epic", "fleet:steward-proposal"])])
         released = _state(epics=[_epic(10, checklist=self._ROLLUP_OWED)])
-        self.assertNotEqual(_hash(parked), _hash(released))
-        self.assertEqual(project_epic_steward(released),
-                         [{"kind": "rollup", "repo": "engine",
-                           "epic": 10, "child": 11}])
+        self.assertEqual(_hash(parked), _hash(released))
 
     def test_parking_an_umbrella_is_itself_an_edge(self):
         # Adding the label consumes the item (hash changes once, then quiesces).

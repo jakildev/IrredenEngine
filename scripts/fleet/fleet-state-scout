@@ -3441,10 +3441,10 @@ def _epic_adopt_candidates(repo_state):
     return out
 
 
-# Umbrella labels that park the steward's per-umbrella flows on the human:
+# Umbrella labels that park the steward's close-out on the human:
 # fleet:needs-human (the steward's own hand-off) and fleet:steward-proposal
-# (a ruling the human owes, close-out included). Read from
-# repo_state["epics"][*]["labels"], the field _epic_design_prs consults.
+# (a ruling the human owes). Read from repo_state["epics"][*]["labels"], the
+# field _epic_design_prs consults.
 _EPIC_PARKED_LABELS = frozenset({"fleet:needs-human", "fleet:steward-proposal"})
 
 
@@ -3471,11 +3471,13 @@ def project_epic_steward(state):
     - closeout   — checklist non-empty and every child closed, umbrella
                    open; gone when the umbrella closes.
 
-    An umbrella parked on the human (_EPIC_PARKED_LABELS) emits no rollup
-    or closeout item: the steward has already audited it and recorded the
-    park, so re-arming on it only re-audits. The label's removal is the
-    re-fire edge — the same shape _epic_design_prs gives a design-proposed
-    PR whose proposal is pending. adopt and design keep their own rules.
+    An umbrella parked on the human (_EPIC_PARKED_LABELS) emits no closeout
+    item: the steward has already audited it and recorded the park, so
+    re-arming on it only re-audits. The label's removal is the re-fire edge —
+    the same shape _epic_design_prs gives a design-proposed PR whose proposal
+    is pending. rollup, adopt and design keep their own rules: a rollup is a
+    child-state edge the steward has not yet seen, and the label stays on
+    while the epic's other children keep merging.
     """
     items = []
     for repo, repo_state in state["repos"].items():
@@ -3490,13 +3492,13 @@ def project_epic_steward(state):
                     items.append({"kind": "normalize", "repo": repo,
                                   "epic": number})
                 continue
-            if set(epic.get("labels", [])) & _EPIC_PARKED_LABELS:
-                continue
             for entry in checklist:
                 if entry.get("closed") and not entry.get("checked"):
                     items.append({"kind": "rollup", "repo": repo,
                                   "epic": number,
                                   "child": entry.get("number")})
+            if set(epic.get("labels", [])) & _EPIC_PARKED_LABELS:
+                continue
             if all(entry.get("closed") for entry in checklist):
                 items.append({"kind": "closeout", "repo": repo,
                               "epic": number})
