@@ -59,7 +59,7 @@ int main() {
     }
     for (int face = 0; face < 6; ++face) {
         const uint arbitrary = sunVoxelFaceMarker(face, 2);
-        if (arbitrary != 0x88u || sunVoxelFaceId(arbitrary) != -1) return 8;
+        if (arbitrary != 0x89u || sunVoxelFaceId(arbitrary) != -1) return 8;
     }
     if (!sunWriteIsSurface(0x88) || sunVoxelFaceId(0x88) != -1) return 6;
     if (sunWriteIsSurface(0xFFFFFFFFu) || sunVoxelFaceId(0xFFFFFFFFu) != -1) return 7;

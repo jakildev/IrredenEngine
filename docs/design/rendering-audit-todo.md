@@ -13,8 +13,10 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
   [Multi-voxel occlusion controls](../pr-screenshots/codex/source-face-occlusion-oracle/README.md)
   pass all eight normal/visible-face checks but fail six of eight baseline shadow
   checks. Exact-ray fixture controls pass all eight; caster normals alone do not
-  improve them. Preserve finite coverage/ownership in map sampling next; dense
-  temporal transitions remain unverified.
+  improve them. [Bounded finite source queries](../pr-screenshots/codex/finite-source-shadow-queries/README.md)
+  now pass all eight shadow checks using actual transformed face footprints.
+  Tile/record overflow retains approximate fallback; dense temporal transitions
+  and a load-bearing mixed-caster boundary regression remain unverified.
   [Rigid source casting](../pr-screenshots/codex/rigid-source-shadow-casters/README.md)
   now projects original transformed faces: 12 aggregate hull checks pass, while
   all 12 strict edge checks still fail. [Source-face reception](../pr-screenshots/codex/surface-shadow-receiver-controls/README.md)

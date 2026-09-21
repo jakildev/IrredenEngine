@@ -30,6 +30,7 @@
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
 #include <irreden/render/sun_shadow_constants.hpp>
+#include <irreden/render/sun_face_query_layout.hpp>
 
 // World sun-shadow cast for opt-in world-placed detached re-voxelize solids.
 // The resolve-then-bake driver reuses the main-frame restore
@@ -60,6 +61,11 @@ constexpr int kSunShadowMapDim = 1024;
 using IRPrefab::SunShadow::kSunShadowMaxDistance;
 constexpr int kBakeSunShadowGroupSize = 16;
 constexpr int kSunShadowCascadeCount = 2;
+static_assert(
+    kSunShadowMapDim == IRPrefab::SunShadow::kSourceFaceMapDimension &&
+        kSunShadowCascadeCount == IRPrefab::SunShadow::kSourceFaceCascadeCount,
+    "Source face query storage must follow the complete sun depth map"
+);
 constexpr float kCascadeSplitRatio = 0.4f;
 // coverage-splat radius (sun texels): c_bake_sun_shadow_map atomicMin's
 // each caster's depth into a (2·r+1)² box, filling the sun texels a grazing /
@@ -943,8 +949,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         IRRender::createNamedResource<Buffer>(
             "SunShadowDepthMap",
             nullptr,
-            static_cast<std::size_t>(kSunShadowMapDim) *
-                static_cast<std::size_t>(kSunShadowMapDim) * kSunShadowCascadeCount *
+            static_cast<std::size_t>(IRPrefab::SunShadow::kSourceFaceBufferWords) *
                 sizeof(std::uint32_t),
             BUFFER_STORAGE_DYNAMIC,
             BufferTarget::SHADER_STORAGE,
