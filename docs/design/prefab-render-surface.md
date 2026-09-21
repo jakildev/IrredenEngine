@@ -173,9 +173,10 @@ a creation asserting it evaluates at the moment the close is observed.
 `resolveFocusWorld` returns the world point under the cursor at its true
 surface depth through `IRPrefab::Picking::castVoxelRay`; CPU picking never
 applied the raster's anchor shift, so it already agrees with the raster at
-every cardinal and a picking-side compensation would be wrong. A background
-click falls back to `IRRender::getDefaultRotationPivotFocus()`, so the mode
-degrades to the default pivot.
+every cardinal and a picking-side compensation would be wrong. On a
+background click `System<CAMERA_MOUSE_ROTATE>` sets no explicit focus, so the
+mode degrades to the default pivot, which acquires the surface under the
+crosshair on the drag's first yaw-delta frame.
 
 The indicator is spawned lazily on the first cursor-pivot drag so a creation
 that never uses the mode keeps its entity-id layout and captures; it is then

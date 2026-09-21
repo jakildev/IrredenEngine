@@ -25,6 +25,11 @@ Blocks (see ``g_pivotVerifyBlock`` in ``creations/demos/shape_debug/main.cpp``):
   ``castVoxelRay`` path) with a synthetic cursor on the viewport-center
   anchor's pixel. Pinned-point oracle only, for the same reason as its
   ``center-axis`` twin.
+- ``acquire-continuity`` — default pivot at a base yaw (``ACQUIRE_BASE_YAWS``,
+  passed as ``--yaw``): settle on background, pan the probe under the
+  crosshair, then two small yaw steps that each acquire it. The three shots
+  straddling the first acquisition must be identical (acquisition never moves
+  the view), and the anchor must move at least ``ACQUIRE_MIN_MOVE_WORLD``.
 
 ``focus-ctr`` additionally runs an SDF-probe twin (``--pivot-verify-sdf``)
 so the voxel-pool and SDF render paths' pivot conventions are compared A/B.
@@ -34,14 +39,20 @@ invariance contract; the printed voxel/SDF rows stay the A/B diagnostic.
 
 Two oracles, applied per block:
 
-- **Pinned-point** — the demo's ``[pivot-focus-assert]`` line, which scores the
-  focus the engine derived from its live composite-depth readback against the
-  analytic ray/surface intersection over the probe's own carve constants. Every
-  default-pivot block carries it, and it must also hold the SAME value across
-  the whole sweep (the derive is latched). That last check requires the block to
-  hold the camera pan/zoom FIXED across its shots — the latch re-derives on any
-  pan/zoom change by design — so the demo reports ``view_held`` per shot and a
-  block that moves the view is flagged as misconfigured, not as a regression.
+- **Per-gesture focus** — the demo's ``[pivot-focus-assert]`` line, one per
+  shot. Each shot is a one-frame pose snap, so a shot whose yaw differs from the
+  previous one is one rotation gesture, and the default pivot acquires at it
+  from the previous shot's settled frame. The demo scores the focus the engine
+  derived against that frame's geometric crosshair target (the first carved
+  cell on the crosshair ray, from the probe's own carve constants), a
+  non-gesture shot against the previous focus carried by the pan (the latch
+  holds), and counts the frames the latch moved — at most one in a gesture
+  shot, none otherwise. The focus may take a new value at every gesture; a sweep
+  in which the frontmost surface never changes still reads one value. The sweep
+  blocks must hold the camera pan/zoom FIXED across their shots, so the demo
+  reports ``view_held`` per shot and a sweep block that moves the view is
+  flagged as misconfigured, not as a regression. ``cursor-latch`` keeps the
+  sweep-wide single-value check: its focus is resolved once and held.
 - **Whole-silhouette temporal invariance** — ``jitter_probe --stationary``,
   gated only for the blocks in ``CENTROID_GATED_BLOCKS``: those rotate their
   probe about a point on the probe's own axis, so a correct pivot maps the
@@ -73,6 +84,7 @@ Assumes this file lives at ``<repo>/scripts/pivot-verify.py``.
 from __future__ import annotations
 
 import argparse
+import math
 import re
 import sys
 from pathlib import Path
@@ -80,12 +92,26 @@ from pathlib import Path
 import verify_common
 
 ALL_BLOCKS = ["focus-ctr", "focus-off", "center-column", "center-depth",
-              "background-center", "center-axis", "cursor-latch"]
+              "background-center", "center-axis", "cursor-latch",
+              "acquire-continuity"]
 SDF_BLOCKS = ["focus-ctr"]
 # Blocks that derive their focus rather than taking an explicit
 # setRotationPivotFocus.
 DEFAULT_PIVOT_BLOCKS = {"center-column", "center-depth", "background-center",
-                        "center-axis"}
+                        "center-axis", "acquire-continuity"}
+# Blocks that pan between shots by design, so `view_held` is not their
+# precondition.
+VIEW_MOVING_BLOCKS = {"acquire-continuity"}
+# acquire-continuity runs once per base yaw: yaw 0, a non-cardinal, and the
+# yaw furthest from 0.
+ACQUIRE_BASE_YAWS = (0.0, 0.39269908, 3.14159265)
+# The shots of an acquire-continuity capture scored for continuity: the probe
+# panned under the crosshair (no gesture yet), then the two acquiring gestures.
+ACQUIRE_CONTINUITY_FRAMES = slice(1, 4)
+# The anchor must jump from the depth-0 point onto the probe's surface at the
+# first acquisition — at least one world unit — or the block measured a view
+# that never re-anchored.
+ACQUIRE_MIN_MOVE_WORLD = 1.0
 # Blocks whose runs emit `[pivot-focus-assert]`: the derived-focus blocks plus
 # cursor-latch, whose focus is resolved at runtime from castVoxelRay and so is
 # equally unknown to the shot table.
@@ -184,43 +210,85 @@ GAME_RES_WIDTH_RE = re.compile(r"game_resolution_width\s*=\s*(\d+)")
 # Frame indices of the cardinal yaws (0, pi/2, pi, 3pi/2) within the demo's
 # 9-yaw sweep table (`yaws[]` in creations/demos/shape_debug/main.cpp).
 CARDINAL_FRAME_INDICES = (0, 3, 5, 7)
-# `[pivot-focus-assert] ... derived=(x,y,z) ... view_held=0|1 result=PASS|FAIL`
+# `[pivot-focus-assert] ... gesture=0|1 latch_moves=N derived=(x,y,z) ...
+# world_delta=D tolerance=T view_held=0|1 result=PASS|FAIL`
 FOCUS_ASSERT_RE = re.compile(
-    r"\[pivot-focus-assert\].*?derived=\(([^)]*)\).*?view_held=([01]).*?"
-    r"result=(PASS|FAIL)")
+    r"\[pivot-focus-assert\].*?gesture=(?P<gesture>[01]) "
+    r"latch_moves=(?P<moves>\d+) derived=\((?P<derived>[^)]*)\).*?"
+    r"world_delta=(?P<delta>\S+) tolerance=(?P<tolerance>\S+) "
+    r"view_held=(?P<held>[01]) result=(?P<result>PASS|FAIL)")
 
 
-def _score_focus_asserts(output: str) -> tuple[str, str]:
+def _parse_point(text: str) -> tuple[float, ...]:
+    return tuple(float(v) for v in text.split(","))
+
+
+def _score_acquire_continuity(matches: list[dict[str, str]]) -> tuple[str, str]:
+    """acquire-continuity's focus half: the latch holds until the first gesture,
+    moves at most once per gesture, and the first acquisition re-anchors by at
+    least ``ACQUIRE_MIN_MOVE_WORLD``.
+
+    Where each gesture lands against its geometric target is reported, not
+    gated here — that accuracy is the sweep blocks' per-gesture oracle, and this
+    block's gate is that acquiring never moves the view.
+    """
+    for i, m in enumerate(matches):
+        if m["gesture"] == "0" and m["result"] == "FAIL":
+            return "BAD", f"shot {i} re-latched or moved without a gesture"
+        if int(m["moves"]) > 1:
+            return "BAD", f"shot {i}: latch moved {m['moves']} times in one gesture"
+    gestures = [i for i, m in enumerate(matches) if m["gesture"] == "1"]
+    first = next((i for i in gestures if i > 0 and matches[i - 1]["gesture"] == "0"),
+                 None)
+    if first is None:
+        return "BAD", "no acquiring gesture after a settled shot"
+    before = _parse_point(matches[first - 1]["derived"])
+    after = _parse_point(matches[first]["derived"])
+    move = sum((a - b) ** 2 for a, b in zip(after, before)) ** 0.5
+    targets = ", ".join(f"shot {i} {float(matches[i]['delta']):.3f}" for i in gestures)
+    if move < ACQUIRE_MIN_MOVE_WORLD:
+        return "BAD", (f"anchor moved {move:.3f} world units at the first "
+                       f"acquisition (< {ACQUIRE_MIN_MOVE_WORLD:g})")
+    return "OK", (f"anchor moved {move:.3f} world units at shot {first}; "
+                  f"gesture target deltas (world): {targets}")
+
+
+def _score_focus_asserts(output: str, block: str) -> tuple[str, str]:
     """Grade a pass's `[pivot-focus-assert]` lines.
 
     Returns ``(verdict, detail)`` where verdict is ``OK`` / ``BAD`` / ``NONE``.
-    The derive is latched for the whole sweep, so a value that MOVES mid-sweep
-    is a failure even when every individual line reports PASS.
+    Each line carries its own per-gesture verdict (see the module docstring);
+    this adds the block-level checks the demo cannot see.
 
-    A block MUST hold the camera pan/zoom fixed across its shots — the latch
-    re-derives on any pan/zoom change by design, so a block that moves the view
-    breaks the moved-value check on correct behavior. ``view_held`` is checked
-    first so that misconfiguration is reported as itself rather than as a pivot
-    regression.
+    A sweep block MUST hold the camera pan/zoom fixed across its shots, so a
+    carried-by-pan expectation never enters its gesture scoring. ``view_held``
+    is checked first so that misconfiguration is reported as itself rather than
+    as a pivot regression.
     """
-    matches = FOCUS_ASSERT_RE.findall(output)
+    matches = [m.groupdict() for m in FOCUS_ASSERT_RE.finditer(output)]
     if not matches:
         return "NONE", "no [pivot-focus-assert] lines in run output"
-    moved_view = [d for d, held, _ in matches if held == "0"]
-    if moved_view:
-        return "BAD", (
-            f"{len(moved_view)}/{len(matches)} shots moved the camera pan/zoom "
-            "mid-sweep — a default-pivot block must hold the view fixed (the "
-            "latch re-derives on pan/zoom by design). Fix the block's shot "
-            "table, not the gate; see logPivotFocusAssert in "
-            "creations/demos/shape_debug/main.cpp")
-    failed = [d for d, _, verdict in matches if verdict == "FAIL"]
+    if block == "acquire-continuity":
+        return _score_acquire_continuity(matches)
+    if block not in VIEW_MOVING_BLOCKS:
+        moved_view = [m for m in matches if m["held"] == "0"]
+        if moved_view:
+            return "BAD", (
+                f"{len(moved_view)}/{len(matches)} shots moved the camera pan/zoom "
+                "mid-sweep — a sweep block must hold the view fixed. Fix the "
+                "block's shot table, not the gate; see logPivotFocusAssert in "
+                "creations/demos/shape_debug/main.cpp")
+    failed = [f"{i} ({float(m['delta']):.3f} > {float(m['tolerance']):g})"
+              for i, m in enumerate(matches) if m["result"] == "FAIL"]
     if failed:
-        return "BAD", f"{len(failed)}/{len(matches)} shots off the analytic focus"
-    derived = {d for d, _, _ in matches}
-    if len(derived) > 1:
-        return "BAD", f"latched focus moved mid-sweep across {len(derived)} values"
-    return "OK", f"{len(matches)} shots at derived=({matches[0][0]})"
+        return "BAD", (f"{len(failed)}/{len(matches)} shots off their gesture "
+                       f"target — shot (world_delta > tolerance): {', '.join(failed)}")
+    derived = [m["derived"] for m in matches]
+    if block == "cursor-latch" and len(set(derived)) > 1:
+        return "BAD", (f"cursor latch moved mid-sweep across "
+                       f"{len(set(derived))} values")
+    return "OK", (f"{len(matches)} shots, {len(set(derived))} distinct "
+                  f"derived value(s)")
 
 
 def _output_scale_factor(frame: Path, config: Path) -> float:
@@ -333,27 +401,37 @@ def main(argv: list[str] | None = None) -> int:
         verify_common.run(["fleet-build", "--target", "jitter_probe"], cwd=worktree)
     probe_exe = verify_common.find_exe(build_dir, "jitter_probe", "jitter_probe")
 
-    passes: list[tuple[str, bool, float]] = []
+    # (block, sdf twin, zoom, base yaw — acquire-continuity only)
+    passes: list[tuple[str, bool, float, float | None]] = []
     for zoom in zooms:
         for block in blocks:
-            passes.append((block, False, zoom))
+            if block == "acquire-continuity":
+                for base_yaw in ACQUIRE_BASE_YAWS:
+                    passes.append((block, False, zoom, base_yaw))
+                continue
+            passes.append((block, False, zoom, None))
             if not args.skip_sdf and block in SDF_BLOCKS:
-                passes.append((block, True, zoom))
+                passes.append((block, True, zoom, None))
 
     results: list[tuple[str, str, float, float, int, str]] = []
-    for block, sdf, zoom in passes:
+    for block, sdf, zoom, base_yaw in passes:
+        yaw_label = "" if base_yaw is None else f"@y{math.degrees(base_yaw):g}"
         label = (f"{block}{'-sdf' if sdf else ''}"
-                 f"{'-card' if args.cardinals_only else ''}@z{zoom:g}")
+                 f"{'-card' if args.cardinals_only else ''}@z{zoom:g}{yaw_label}")
         cmd = ["fleet-run", "--timeout", str(args.timeout), args.target,
                "--auto-screenshot", str(args.warmup),
                "--pivot-verify", block, "--zoom", f"{zoom:g}"]
         if sdf:
             cmd.append("--pivot-verify-sdf")
+        if base_yaw is not None:
+            cmd.extend(["--yaw", f"{base_yaw:.8f}"])
         rc, output, frames = verify_common.run_pass(cmd, cwd=worktree,
                                                     shots_dir=shots_dir,
                                                     timeout=args.timeout + 60)
         frames = [f for f in frames if "_crop_" not in f.name]
-        if args.cardinals_only:
+        if block == "acquire-continuity":
+            frames = frames[ACQUIRE_CONTINUITY_FRAMES]
+        elif args.cardinals_only:
             frames = [frames[i] for i in CARDINAL_FRAME_INDICES if i < len(frames)]
         if rc != 0:
             print(f"[pivot-verify] ({label}) fleet-run exited {rc}", file=sys.stderr)
@@ -372,8 +450,8 @@ def main(argv: list[str] | None = None) -> int:
         # it is scored by silhouette only.
         focus = "-"
         if block in FOCUS_ASSERT_BLOCKS and not sdf:
-            focus, detail = _score_focus_asserts(output)
-            if focus != "OK":
+            focus, detail = _score_focus_asserts(output, block)
+            if focus != "OK" or block == "acquire-continuity":
                 print(f"[pivot-verify] ({label}) focus assert: {detail}",
                       file=sys.stderr)
 
@@ -396,7 +474,7 @@ def main(argv: list[str] | None = None) -> int:
                                     scale * (px_per_zoom * zoom + floor_px))
         centroid, dev_x, dev_y, _ = _score_pass(probe_exe, frames,
                                                 max_deviation)
-        if block in CENTROID_GATED_BLOCKS:
+        if block in CENTROID_GATED_BLOCKS or block == "acquire-continuity":
             verdict = centroid if focus in ("-", "OK") else "FOCUS-BAD"
         else:
             # Not centroid-gated, so the focus oracle is this pass's only gate.

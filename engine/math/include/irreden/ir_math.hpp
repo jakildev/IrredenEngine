@@ -741,6 +741,26 @@ constexpr vec2 pos3DtoPos2DIsoYawed(const vec3 worldPos, float visualYaw) {
     return vec2(-vx + vy, -vx - vy + 2.0f * worldPos.z);
 }
 
+/// Inverse of the continuous-yaw projection pair @ref pos3DtoPos2DIsoYawed /
+/// @ref pos3DtoDistanceYawed: the world point that projects to @p iso at
+/// camera-forward iso depth @p yawedIsoDepth under camera yaw @p visualYaw.
+///
+/// Equivalent to `R_z(+yaw) · isoPixelToPos3D(iso, yawedIsoDepth)` — un-project
+/// in the view frame, then apply the view→world rotation. Identical to
+/// @ref isoPixelToPos3D at `visualYaw == 0`. Use it to recover the world point
+/// behind a pixel of a frame rendered at non-zero yaw from that pixel's
+/// composite depth: the iso coordinate must be taken against the camera offset
+/// the frame was rendered with, and the depth is the yawed depth the composite
+/// sorts by (`pos3DtoDistanceYawed`), not `x + y + z`.
+///
+/// CPU only.
+constexpr vec3 isoPixelToPos3DYawed(const vec2 iso, float yawedIsoDepth, float visualYaw) {
+    const vec3 view = isoPixelToPos3D(iso, yawedIsoDepth);
+    const float c = glm::cos(visualYaw);
+    const float s = glm::sin(visualYaw);
+    return vec3(view.x * c - view.y * s, view.x * s + view.y * c, view.z);
+}
+
 /// Conservative XY growth of an axis-aligned half-extent swept under a Z-yaw of
 /// `(cosYaw, sinYaw)`: each in-plane axis grows to `|c|·hX + |s|·hY` (the
 /// footprint the rotated box covers, up to the √2 extent at ±45°); Z is
@@ -1177,7 +1197,9 @@ cameraYawPivotOffset(const vec2 cameraIso, const vec3 focusWorld, const float vi
 /// `yaw = π/2` a `(10, 0)` drag moves content `(20, 30)` and pops back the
 /// moment the focus is re-derived.  A depth-aware default pivot must therefore
 /// latch the iso DEPTH and derive the point live — see
-/// `RenderManager::getDefaultRotationPivotFocus`. Guarded by
+/// `RenderManager::getDefaultRotationPivotFocus`. A constant iso offset added
+/// to both the camera and the focus expression (the default pivot's view
+/// offset) leaves the derivative unchanged. Guarded by
 /// `test/render/camera_pan_pivot_test.cpp`.
 ///
 /// At `visualYaw == 0` returns @p isoDelta exactly (identity).  At

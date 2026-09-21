@@ -64,9 +64,18 @@ template <> struct System<CAMERA_MOUSE_ROTATE> {
             // true depth — captured once, on mouse-down — so yaw rotates about
             // the feature that was clicked. The other chord clears any focus so
             // yaw rotates about the screen-center default instead.
+            //
+            // A cursor-pivot click on BACKGROUND has no surface to pin, so it
+            // takes the default pivot outright rather than copying it into an
+            // explicit focus: the default latch acquires the surface under the
+            // crosshair on the drag's first yaw-delta frame, which it cannot do
+            // while an explicit focus owns the pivot. The marker stays hidden —
+            // there is no latched point to mark until that edge acquires.
             cursorPivot_ = (shiftHeld != latchByDefault_);
-            if (cursorPivot_) {
-                const vec3 focusWorld = IRPrefab::CursorPivot::resolveFocusWorld(pivotIndicator_);
+            const auto hit =
+                cursorPivot_ ? IRPrefab::Picking::castVoxelRay(pivotIndicator_) : std::nullopt;
+            if (hit.has_value()) {
+                const vec3 focusWorld = hit->worldHitPos_;
                 IRRender::setRotationPivotFocus(focusWorld);
                 if (pivotIndicator_ == IREntity::kNullEntity) {
                     pivotIndicator_ = IRPrefab::CursorPivot::createIndicator();

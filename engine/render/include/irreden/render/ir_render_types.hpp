@@ -853,8 +853,10 @@ enum class SubdivisionMode { NONE = 0, POSITION_ONLY = 1, FULL = 2 };
 ///   selectable for demos that rely on it.
 /// - @c CAMERA_CENTER — yaw rotates content about the world point under screen
 ///   center (the camera focus), so panning then rotating spins the scene in
-///   place. The correction collapses to the identity at `yaw == 0`, so the
-///   cardinal fast path stays byte-identical to @c ORIGIN. Engine default.
+///   place. The correction collapses to the default pivot's view offset at
+///   `yaw == 0` — zero until a rotation gesture acquires at non-zero yaw — so
+///   the cardinal fast path of a session that never does stays byte-identical
+///   to @c ORIGIN. Engine default.
 enum class RotationPivotMode { ORIGIN = 0, CAMERA_CENTER = 1 };
 
 /// Sentinel `entityTransformIndex` marking a voxel as CPU-direct (static):

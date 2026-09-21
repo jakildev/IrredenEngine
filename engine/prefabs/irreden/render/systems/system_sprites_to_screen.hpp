@@ -109,7 +109,7 @@ template <> struct System<SPRITE_TO_SCREEN> {
         // round/mul.
         const ivec2 scaleFactor = IRRender::getOutputScaleFactor();
         const IRMath::CameraSubPixelOffsets sub = IRMath::cameraSubPixelOffsets(
-            IRRender::getCameraPosition2DIso(),
+            IRRender::getEffectiveCameraIso(),
             IRRender::getCameraZoom(),
             scaleFactor
         );
@@ -238,12 +238,13 @@ template <> struct System<SPRITE_TO_SCREEN> {
 
     /// Anchor-point screen position before subtracting `anchor_ * size_`.
     /// Sprites share the same iso → screen transform as the trixel
-    /// composite: iso delta from the camera, scaled by the per-trixel
-    /// step size, with the same X-flip that `pos3DtoPos2DScreen` encodes
-    /// for world-space points.
+    /// composite: iso delta from the EFFECTIVE camera (the one the composite
+    /// places world content with), scaled by the per-trixel step size, with
+    /// the same X-flip that `pos3DtoPos2DScreen` encodes for world-space
+    /// points.
     static vec2 computeScreenAnchor(vec3 worldPos) {
         const vec2 viewport = vec2(IRRender::getViewport());
-        const vec2 cameraIso = IRRender::getCameraPosition2DIso();
+        const vec2 cameraIso = IRRender::getEffectiveCameraIso();
         const vec2 stepSize = IRRender::getTriangleStepSizeScreen();
         const vec2 isoDelta = pos3DtoPos2DIso(worldPos) - cameraIso;
         const vec2 screenSign = vec2(-1.0f, IRPlatform::kGfx.screenYDirection_);

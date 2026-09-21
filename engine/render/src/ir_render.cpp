@@ -47,6 +47,14 @@ vec2 getEffectiveCameraIso() {
     if (getRenderManager().getRotationPivotMode() == RotationPivotMode::ORIGIN) {
         return cameraIso;
     }
+    // Both CAMERA_CENTER branches pivot about a camera that carries the
+    // default pivot's view offset — the residue of re-anchoring the default
+    // focus onto a different point of the crosshair ray at non-zero yaw
+    // (docs/design/camera-yaw-pivot.md §"Latch policy"). Zero until such an
+    // acquisition, so a session that never rotates is byte-identical to ORIGIN
+    // at yaw 0; applying it to the explicit branch too keeps an explicit focus
+    // set/clear at yaw 0 jump-free.
+    const vec2 pivotCameraIso = cameraIso + getRenderManager().getDefaultPivotViewOffsetIso();
     const float visualYaw = IRPrefab::Camera::getYaw();
     if (getRenderManager().hasRotationPivotFocus()) {
         // CAMERA_CENTER with an explicit point of interest pivots Z-yaw about
@@ -54,29 +62,26 @@ vec2 getEffectiveCameraIso() {
         // drift-cancel offset (`IRMath::cameraYawPivotOffset`) keeps the focus at
         // a constant on-screen position across the yaw sweep.
         return IRMath::cameraYawPivotOffset(
-            cameraIso,
+            pivotCameraIso,
             getRenderManager().getRotationPivotFocus(),
             visualYaw
         );
     }
     // CAMERA_CENTER defaults to pivoting Z-yaw about the content under the
-    // viewport center at its rendered depth, held fixed across the yaw sweep so
-    // the scene rotates in place about what the player is looking at. The focus
-    // is the latched depth-aware point (`RenderManager::
-    // updateDefaultRotationPivotFocus`, re-derived once per frame from a
-    // single-pixel composite-depth readback while yaw is settled); before the
-    // first derive, and whenever the center pixel reads background, it falls
-    // back to the iso-depth-0 point under the viewport center. Note "iso depth
-    // 0" is the plane `x + y + z == 0`, NOT `z == 0`:
-    // `isoPixelToPos3D`'s third parameter is an iso depth (ir_math.hpp).
-    // `cameraYawPivotOffset` then drift-cancels so screen(F) is yaw-independent.
-    // At visualYaw == 0 it returns cameraIso, byte-identical to ORIGIN mode (the
-    // cardinal fast path). The DETACHED entity-canvas composite must place
-    // entities with getEffectiveCameraIso() (not the raw camera pos) so detached
-    // and GRID pivot together; the full contract is in
-    // docs/design/camera-yaw-pivot.md.
+    // viewport center, acquired at each rotation start from the surface under
+    // the crosshair and held for the gesture, so the scene rotates in place
+    // about what the player is looking at (`RenderManager::
+    // updateDefaultRotationPivotFocus`). Before the first acquisition the focus
+    // is the iso-depth-0 point under the viewport center. Note "iso depth 0" is
+    // the plane `x + y + z == 0`, NOT `z == 0`: `isoPixelToPos3D`'s third
+    // parameter is an iso depth (ir_math.hpp). `cameraYawPivotOffset` then
+    // drift-cancels so screen(F) is yaw-independent and F sits at the canvas
+    // center. At visualYaw == 0 it returns pivotCameraIso. The DETACHED
+    // entity-canvas composite must place entities with getEffectiveCameraIso()
+    // (not the raw camera pos) so detached and GRID pivot together; the full
+    // contract is in docs/design/camera-yaw-pivot.md.
     const vec3 cameraFocusWorld = getRenderManager().getDefaultRotationPivotFocus();
-    return IRMath::cameraYawPivotOffset(cameraIso, cameraFocusWorld, visualYaw);
+    return IRMath::cameraYawPivotOffset(pivotCameraIso, cameraFocusWorld, visualYaw);
 }
 vec2 getCameraZoom() {
     return getRenderManager().getCameraZoom();

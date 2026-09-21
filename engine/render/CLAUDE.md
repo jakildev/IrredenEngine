@@ -144,8 +144,8 @@ validation index's jitter probe plus the camera contracts below.
   camera Z-yaw only. Pitch and roll invalidate integer raster, picking,
   hitbox, drag, and SDF-cull shortcuts; DETACHED rendering is axis-agnostic.
   See the [consumer map](../../docs/design/iso-depth-axis-invariant.md).
-- World-content placement reads `getEffectiveCameraIso()`. Lighting-grid
-  anchoring, screen-space sprites, and debug overlays intentionally use the
+- World-content placement, world-anchored sprites and debug overlays read
+  `getEffectiveCameraIso()`; lighting-grid anchoring intentionally uses the
   raw camera offset. The default pivot depth is latched once in `beginFrame`,
   while its focus point is derived from the current camera position; see the
   [camera-pivot contract](../../docs/design/camera-yaw-pivot.md).
