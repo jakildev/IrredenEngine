@@ -314,10 +314,12 @@ the PR-path reader against a local bare origin. `test/tools/normalization_test.s
 covers the calibration helpers and the gate's decision tree. All three run as
 the perf-gate job's first step after checkout, before the build.
 
-CI uses 40 frames per quick-matrix cell (30 post-warmup samples) with a
-300-second watchdog. llvmpipe on the two-core hosted runner is far slower than
-any dev GPU, and a cell killed by the watchdog writes no report at all — so the
-budget is sized from the job's headroom, not from a frame-time target. The full
+CI uses 60 frames per quick-matrix cell (45 post-warmup samples) with a
+300-second watchdog. Measured on the hosted pool, llvmpipe renders the quick
+grid at 490 ms (zoom 1) to 1030 ms (zoom 4) per frame, so a cell costs 45-66 s
+and the stock 300-frame window needed five minutes. A cell killed by the
+watchdog writes no report at all, so the watchdog is sized from the job's
+headroom rather than from a frame-time target. The full
 run directory, including each cell's `.log`, is uploaded for seven days as
 `perf-run-<workflow-run-id>` so a timeout, crash, or display failure can be
 diagnosed from the check run.

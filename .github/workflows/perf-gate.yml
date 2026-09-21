@@ -106,13 +106,14 @@ jobs:
           echo "$GITHUB_WORKSPACE/engine/tools/bin" >> "$GITHUB_PATH"
 
       - name: Run quick perf matrix (head)
-        # llvmpipe on the two-core hosted runner cannot finish the default
-        # 300-frame window before the matrix's 90-second cell deadline. Forty
-        # frames still leaves 30 post-warmup samples; the watchdog is sized
-        # from the job's headroom (no timeout-minutes, so 360 minutes) rather
-        # than from a dev-GPU frame budget, because a killed cell writes no
-        # report at all and the gate has nothing to compare.
-        run: ir-perf-grid --quick --frames 40 --timeout 300 --label ci
+        # Measured on the hosted pool: llvmpipe renders this grid at 490 ms
+        # (zoom 1) to 1030 ms (zoom 4) per frame, so the default 300-frame
+        # window needs five minutes a cell and the matrix's 90-second deadline
+        # killed every one of them. Sixty frames leaves 45 post-warmup samples
+        # and costs 45-66 s a cell. The watchdog is sized from the job's
+        # headroom (no timeout-minutes, so 360 minutes), not from a frame
+        # budget: a cell killed by it writes no report and gates nothing.
+        run: ir-perf-grid --quick --frames 60 --timeout 300 --label ci
 
       - name: Locate head run directory
         id: head
