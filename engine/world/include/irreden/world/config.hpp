@@ -185,7 +185,10 @@ class WorldConfig {
             std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(8)
         );
         sol::table configTable = m_lua.getTable("config");
-        m_config.parse(configTable);
+        // A config file with no `config` global yields an invalid table, whose
+        // `operator[]` would index a null `lua_State*`; an empty table takes
+        // the same every-key-missing path and leaves the defaults standing.
+        m_config.parse(configTable.valid() ? configTable : m_lua.lua().create_table());
         // A preset may carry only creation-owned tables (perf_grid's do), so a
         // missing `config` table is not a fault.
         if (presetFile != nullptr && presetFile[0] != '\0') {
