@@ -578,8 +578,16 @@ Findings:
   upstroke. The tree is **additive-then-subtractive**: a canopy wider than the
   trunk holding it up cannot be drawn in mid-air, so the recipe grows a solid
   4×4 column off the root pad and then erases the trunk's shell. Filed as
-  **#3148** (a design call — four options recorded there, including "accept it
-  and document the grain").
+  **#3148**, and **resolved there by an Alt modifier on the place gesture**:
+  Alt inverts the picked face's normal, so the edit lands on the far side of the
+  face — under it, for the `-z` face — with the iso projection unchanged. It
+  applies to every place gesture (single click, box / line drag, Ctrl face-fill);
+  erase ignores it, the hit cell having no far side. The positive fire is the
+  `place_below` session, which builds a cantilever and places the cell directly
+  beneath its tip: that cell's `+x`, `+y` and `+z` neighbours are all empty, so
+  it has no plain-place anchor at all and no un-modified gesture reaches it at
+  any camera yaw. The two committed assets keep the shapes recorded above —
+  re-authoring them is a separate call.
 - **F-2g-2 — a frame swap that writes the raw `voxels_` span leaves the pool's
   active mask on the departing frame.** `loadFrameToLive` copied the arriving
   frame's records over the live span and stopped there. The per-voxel alpha is
