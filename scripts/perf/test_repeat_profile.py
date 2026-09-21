@@ -7,8 +7,12 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from repeat_profile import (
+    OVERFLOW_DROP_WARNING,
+    cmake_build_type,
     directory_digest,
     find_demo_pid,
+    host_power_source,
+    log_checks,
     requested_yaw,
     run_profile,
     yaw_pose_mismatch,
@@ -45,6 +49,70 @@ class YawPoseTest(unittest.TestCase):
     def test_missing_pose_line_fails_only_when_yaw_was_requested(self):
         self.assertIn("no 'Initial camera yaw'", yaw_pose_mismatch(["--yaw", "1"], "RESULT=CLEAN"))
         self.assertIsNone(yaw_pose_mismatch(["--zoom", "4"], "RESULT=CLEAN"))
+
+
+class LogChecksTest(unittest.TestCase):
+    KEYS = ("engine_logged", "yaw_pose_mismatch", "overflow_drop_warnings")
+    POSE = "[ClientLog] [info] Initial camera yaw: requested_rad=0 yaw_deg=0.000 residual_deg=0\n"
+    DROP = "[EngineLog] [warning] Per-axis view-visibility overflow list dropped 9 entries\n"
+
+    def test_a_logging_build_is_checked_for_pose_and_drops(self):
+        checks = log_checks("IRPerfGrid", ["--yaw", "0"], self.POSE + self.DROP)
+        self.assertEqual(
+            tuple(checks[key] for key in self.KEYS),
+            (True, None, 1),
+        )
+        wrong = log_checks("IRPerfGrid", ["--yaw", "0.785398163"], self.POSE)
+        self.assertIn("45.000 deg", wrong["yaw_pose_mismatch"])
+
+    def test_a_build_with_logging_compiled_out_reports_none_never_zero(self):
+        silent = "ir-run: RESULT=CLEAN exe=IRPerfGrid exit=0\n"
+        checks = log_checks("IRPerfGrid", ["--yaw", "0.785398163"], silent)
+        self.assertEqual(
+            tuple(checks[key] for key in self.KEYS),
+            (False, None, None),
+        )
+
+
+class OverflowDropWarningTest(unittest.TestCase):
+    def test_counted_text_is_the_text_the_voxel_pass_logs(self):
+        # A reworded warning would make every manifest report zero drops.
+        source = (
+            Path(__file__).resolve().parents[2]
+            / "engine/prefabs/irreden/render/systems/system_voxel_to_trixel.hpp"
+        )
+        self.assertIn(OVERFLOW_DROP_WARNING, source.read_text())
+
+
+class HostPowerTest(unittest.TestCase):
+    def read(self, system, output=None, error=None):
+        with (
+            patch("repeat_profile.platform.system", return_value=system),
+            patch("repeat_profile.subprocess.check_output", return_value=output, side_effect=error),
+        ):
+            return host_power_source()
+
+    def test_reads_the_source_pmset_names(self):
+        battery = "Now drawing from 'Battery Power'\n -InternalBattery-0\t91%; discharging\n"
+        self.assertEqual(self.read("Darwin", battery), "Battery Power")
+        self.assertEqual(self.read("Darwin", "Now drawing from 'AC Power'\n"), "AC Power")
+
+    def test_unknown_is_none_never_a_guess(self):
+        self.assertIsNone(self.read("Linux", "Now drawing from 'AC Power'\n"))
+        self.assertIsNone(self.read("Darwin", "unexpected"))
+        self.assertIsNone(self.read("Darwin", error=OSError("no pmset")))
+
+
+class BuildTreeTest(unittest.TestCase):
+    def test_build_type_comes_from_the_cache_and_is_none_when_unknown(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            tree = Path(temporary)
+            self.assertIsNone(cmake_build_type(tree))
+            cache = tree / "CMakeCache.txt"
+            cache.write_text("CMAKE_BUILD_TYPE_INIT:STRING=Debug\nCMAKE_BUILD_TYPE:STRING=Release\n")
+            self.assertEqual(cmake_build_type(tree), "Release")
+            cache.write_text("CMAKE_BUILD_TYPE:STRING=\n")
+            self.assertIsNone(cmake_build_type(tree))
 
 
 class RuntimeAssetsTest(unittest.TestCase):

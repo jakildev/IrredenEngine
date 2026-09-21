@@ -46,6 +46,47 @@
         "CMAKE_C_COMPILER": "gcc-13",
         "CMAKE_CXX_COMPILER": "g++-13"
       }
+    },
+    {
+      "name": "windows-release",
+      "displayName": "Windows Release",
+      "description": "Release twin of windows-debug for perf controls (docs/perf); builds into build-release/ beside the debug tree.",
+      "generator": "MinGW Makefiles",
+      "binaryDir": "${sourceDir}/build-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_POLICY_VERSION_MINIMUM": "3.5",
+        "IRREDEN_GRAPHICS_BACKEND": "OPENGL"
+      }
+    },
+    {
+      "name": "linux-release",
+      "displayName": "Linux / WSL Release",
+      "description": "Release twin of linux-debug for perf controls (docs/perf); builds into build-release/ beside the debug tree.",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_POLICY_VERSION_MINIMUM": "3.5",
+        "IRREDEN_GRAPHICS_BACKEND": "OPENGL",
+        "CMAKE_C_COMPILER": "gcc-13",
+        "CMAKE_CXX_COMPILER": "g++-13"
+      }
+    },
+    {
+      "name": "macos-release",
+      "displayName": "macOS Release",
+      "description": "Release twin of macos-debug for perf controls (docs/perf); builds into build-release/ beside the debug tree.",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_POLICY_VERSION_MINIMUM": "3.5",
+        "IRREDEN_GRAPHICS_BACKEND": "METAL"
+      }
     }
   ],
   "buildPresets": [

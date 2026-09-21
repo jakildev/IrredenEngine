@@ -4,12 +4,16 @@
 Pass demo arguments after --, including its auto-profile/exit options.
 Optional macOS CPU sampling retains call stacks; sampled timings include its overhead.
 The fleet runner owns benchmark resource coordination. No build is performed.
+IRREDEN_BUILD_DIR selects the build tree (default build/), the same variable
+fleet-run reads, so a Release tree profiles under its own binary fingerprint;
+the manifest records the tree and its CMAKE_BUILD_TYPE.
 """
 
 import argparse
 import hashlib
 import json
 import math
+import os
 import platform
 import re
 import shutil
@@ -24,6 +28,12 @@ TARGETS = {"IRPerfGrid": "perf_grid", "IRCanvasStress": "canvas_stress"}
 # IRPerfGrid logs the pose its --yaw produced; the flag is radians.
 YAW_POSE_RE = re.compile(r"Initial camera yaw: requested_rad=\S+ yaw_deg=(-?[\d.]+)")
 YAW_POSE_TOLERANCE_DEG = 0.01
+# The voxel pass warns with this text when the per-axis overflow list drops
+# entries; a timing from such a run describes incomplete rotated coverage.
+OVERFLOW_DROP_WARNING = "overflow list dropped"
+# IR_RELEASE compiles every log macro out. A run whose log carries neither
+# logger cannot be checked for its pose or for drops: both read None, never 0.
+ENGINE_LOG_MARKERS = ("[EngineLog]", "[ClientLog]")
 
 
 def directory_digest(directory: Path) -> str:
@@ -70,6 +80,49 @@ def yaw_pose_mismatch(demo_args: list[str], log_text: str) -> str | None:
             f"--yaw {requested} rad is {expected_deg:.3f} deg; "
             f"the demo logged {float(logged.group(1)):.3f} deg"
         )
+    return None
+
+
+def log_checks(target: str, demo_args: list[str], log_text: str) -> dict:
+    """The checks that read the run log; None where the build logged nothing."""
+    engine_logged = any(marker in log_text for marker in ENGINE_LOG_MARKERS)
+    return {
+        "engine_logged": engine_logged,
+        "yaw_pose_mismatch": (
+            yaw_pose_mismatch(demo_args, log_text)
+            if target == "IRPerfGrid" and engine_logged
+            else None
+        ),
+        "overflow_drop_warnings": (
+            log_text.count(OVERFLOW_DROP_WARNING) if engine_logged else None
+        ),
+    }
+
+
+def drop_warnings_text(count: int | None) -> str:
+    return "unverified (no engine log)" if count is None else str(count)
+
+
+def host_power_source() -> str | None:
+    """'AC Power' or 'Battery Power' on macOS; None where it cannot be read."""
+    if platform.system() != "Darwin":
+        return None
+    try:
+        report = subprocess.check_output(["pmset", "-g", "batt"], text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    drawn = re.search(r"Now drawing from '([^']+)'", report)
+    return drawn.group(1) if drawn else None
+
+
+def cmake_build_type(build_dir: Path) -> str | None:
+    """CMAKE_BUILD_TYPE of a configured tree, from its cache."""
+    cache = build_dir / "CMakeCache.txt"
+    if not cache.is_file():
+        return None
+    for line in cache.read_text().splitlines():
+        if line.startswith("CMAKE_BUILD_TYPE:"):
+            return line.split("=", 1)[1] or None
     return None
 
 
@@ -214,18 +267,22 @@ def main() -> int:
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
     command = ["fleet-run", "--timeout", str(args.timeout), args.target, *demo_args]
-    binary = root / "build/creations/demos" / TARGETS[args.target] / args.target
+    build_dir = Path(os.environ.get("IRREDEN_BUILD_DIR", root / "build")).resolve()
+    binary = build_dir / "creations/demos" / TARGETS[args.target] / args.target
     manifest = {
         "head": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip(),
         "changes": subprocess.check_output(["git", "status", "--short"], cwd=root, text=True),
         "host": platform.platform(),
+        "host_power": host_power_source(),
+        "build_dir": os.path.relpath(build_dir, root),
+        "build_type": cmake_build_type(build_dir),
         "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
         "shader_sha256": directory_digest(binary.parent / "shaders"),
         "runtime_scripts_sha256": directory_digest(binary.parent / "scripts"),
         "command": command,
         "runs": [],
     }
-    report = root / "build/creations/demos" / TARGETS[args.target] / "save_files/profile_report.txt"
+    report = build_dir / "creations/demos" / TARGETS[args.target] / "save_files/profile_report.txt"
     rows = []
     for index in range(1, args.repeats + 1):
         started = time.time_ns()
@@ -236,16 +293,15 @@ def main() -> int:
         fresh = report.exists() and report.stat().st_mtime_ns >= started
         log_text = log_path.read_text()
         clean = exit_code == 0 and "RESULT=CLEAN" in log_text
-        yaw_mismatch = (
-            yaw_pose_mismatch(demo_args, log_text) if args.target == "IRPerfGrid" else None
-        )
+        checks = log_checks(args.target, demo_args, log_text)
+        yaw_mismatch = checks["yaw_pose_mismatch"]
         run = {
             "index": index,
             "exit_code": exit_code,
             "cpu_sampling": sampling,
             "fresh_report": fresh,
             "clean": clean,
-            "yaw_pose_mismatch": yaw_mismatch,
+            **checks,
         }
         manifest["runs"].append(run)
         if fresh:
@@ -275,7 +331,11 @@ def main() -> int:
             flush=True,
         )
 
-    metrics = {"frame avg": [row.frame.avg for row in rows]}
+    metrics = {
+        "frame avg": [row.frame.avg for row in rows],
+        "frame p95": [row.frame.p95 for row in rows],
+        "frame p99": [row.frame.p99 for row in rows],
+    }
     frame_names = sorted({metric.name for row in rows for metric in row.gpu_frame.metrics})
     for name in frame_names:
         values = [next((m.avg_ms for m in row.gpu_frame.metrics if m.name == name), None)
@@ -292,13 +352,24 @@ def main() -> int:
         lines.append(
             f"| {name} | {statistics.mean(values):.3f} | {min(values):.3f}–{max(values):.3f} |"
         )
+    ticks = [row.update_ticks_avg for row in rows]
+    if all(value is not None for value in ticks):
+        lines.extend(["",
+                      "| Fixed updates per rendered frame | Mean | Run min–max | Max in a frame |",
+                      "|---|---:|---:|---:|",
+                      f"| update ticks | {statistics.mean(ticks):.2f} "
+                      f"| {min(ticks):.2f}–{max(ticks):.2f} "
+                      f"| {max(row.update_ticks_max for row in rows)} |"])
     lines.extend(["",
-                  "| Run | Frame GPU supported | Valid / attempted | Invalid | Command buffers |",
-                  "|---|---|---:|---:|---:|"])
-    for index, row in enumerate(rows, 1):
+                  "| Run | Frame GPU supported | Valid / attempted | Invalid | Command buffers "
+                  "| Overflow drop warnings |",
+                  "|---|---|---:|---:|---:|---:|"])
+    for run, row in zip(manifest["runs"], rows):
         coverage = row.gpu_frame
-        lines.append(f"| {index} | {coverage.supported} | {coverage.valid} / {coverage.attempted} "
-                     f"| {coverage.invalid} | {coverage.command_buffers} |")
+        lines.append(f"| {run['index']} | {coverage.supported} "
+                     f"| {coverage.valid} / {coverage.attempted} "
+                     f"| {coverage.invalid} | {coverage.command_buffers} "
+                     f"| {drop_warnings_text(run['overflow_drop_warnings'])} |")
     (output / "summary.md").write_text("\n".join(lines) + "\n")
     print(output / "summary.md")
     return 0

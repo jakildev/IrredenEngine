@@ -42,12 +42,13 @@ inline std::string resolveScriptPath(const char *filename) {
 
 namespace detail {
 
-// Pre-init Lua config pass: reads `config = { ... }` fields from the
+// Pre-init Lua config pass: reads `config = { ... }` fields from one
 // resolved config file that must be applied *before* manager construction
-// (today: `voxel_pool_edge` for `IRRender::VoxelPoolConfig::setSize`).
-// No-op for missing file / missing `config` table / missing field — each
-// consumer keeps its built-in default. Defined in engine.cpp because the
-// implementation pulls in sol2 + ir_render headers; keeping it
+// (today: `voxel_pool_edge` for `IRRender::VoxelPoolConfig::setSize`). init
+// runs it on config.lua and then on the --config-preset file, so the preset's
+// fields win. No-op for missing file / missing `config` table / missing
+// field — each consumer keeps its built-in default. Defined in engine.cpp
+// because the implementation pulls in sol2 + ir_render headers; keeping it
 // out-of-line avoids transitively widening every includer of ir_engine.hpp.
 //
 // New init-affecting runtime params follow the same pattern: add a Lua
@@ -86,7 +87,11 @@ inline IRArgs::Parser &args() {
 // A `--config-preset` path (read back from args(); empty when the target
 // never parsed argv) resolves from the exe directory like every other
 // relative engine path. Its `config` table overlays config.lua's in
-// WorldConfig; the pre-init pass (voxel_pool_edge) reads config.lua only.
+// WorldConfig, and the pre-init pass (voxel_pool_edge) reads config.lua and
+// then the preset, so a committed preset can size the pool. Every reader of
+// the preset opens the path as given (cwd is the exe dir by then); resolving
+// it through the scripts dir here would size the pool from a different file
+// than World and the creation read when the path is a bare filename.
 //
 // `--worker-threads` rides the same read-back and lands last, so the worker
 // pool resolves defaults < config.lua < preset < command line. A target that
@@ -103,6 +108,9 @@ inline void init(const char *argv0, const char *configFileName = "config.lua") {
     std::filesystem::current_path(exeDir);
     g_scriptsDir = exeDir / "scripts";
     detail::applyPreInitLuaConfig(resolveScriptPath(configFileName).c_str());
+    if (!configPreset.empty()) {
+        detail::applyPreInitLuaConfig(configPreset.c_str());
+    }
     g_world = std::make_unique<World>(
         resolveScriptPath(configFileName).c_str(),
         configPreset.c_str(),

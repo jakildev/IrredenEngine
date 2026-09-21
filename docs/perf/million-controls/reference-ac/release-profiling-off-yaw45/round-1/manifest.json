@@ -1,0 +1,38 @@
+{
+  "head": "058b495b30b4733b8117dd4cea85274bfccf4953",
+  "changes": "",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "host_power": "AC Power",
+  "build_dir": "build-release",
+  "build_type": "Release",
+  "binary_sha256": "bd3e6f341e363fb33958f3bc007c9058e1b9eb7d7bd8d2e5862da12f34436bef",
+  "shader_sha256": "3dd13f23a9c6f48358bda88146e9e2466f857349ea93b410361ae6e1a7e0a59f",
+  "runtime_scripts_sha256": "85a4c4c0e04ff77ce830640f6b8935b4ab8dcad11f1ff0dfccbc3dd918d927f6",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "900",
+    "IRPerfGrid",
+    "--wave-freeze",
+    "--no-overlay",
+    "--auto-profile",
+    "300",
+    "--config-preset",
+    "configs/perf/million-profiling-off.lua",
+    "--yaw",
+    "0.785398163"
+  ],
+  "runs": [
+    {
+      "index": 1,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "engine_logged": false,
+      "yaw_pose_mismatch": null,
+      "overflow_drop_warnings": null,
+      "gpu_measured": true
+    }
+  ]
+}

@@ -20,7 +20,7 @@ void applyPreInitLuaConfig(const char *configFile) {
         const int parsed = edge.as<int>();
         if (parsed > 0) {
             IRRender::VoxelPoolConfig::setSize(parsed);
-            IRE_LOG_INFO("voxel_pool_edge from config.lua: {}", parsed);
+            IRE_LOG_INFO("voxel_pool_edge from {}: {}", configFile, parsed);
             if (parsed > IRRender::VoxelPoolConfig::kMaxEdge) {
                 IRE_LOG_WARN(
                     "config.voxel_pool_edge {} exceeds the maximum {}; clamped",

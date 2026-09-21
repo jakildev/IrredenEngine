@@ -94,9 +94,20 @@ D1 slices touch only tooling and docs, so they may interleave with D0.
 | 2026-09-20 | Stack merged: D0.0–D0.5 (#3519, #3530, #3542, #3554, #3556, #3559) reached master with the other lane's sanity review stacked on top (#3560, [`render-stack-sanity-review.md`](../render-stack-sanity-review.md)). That review corrected three things in this campaign's work, and the rows above are read with them: the D0.5 yawed lattice walk discarded `SHAPE_FLAG_HOLLOW` (fixed in both kernels by #3560; a five-cell hollow box is byte-identical before and after, so the fixtures here could not have shown it); the D0.2/D0.3 sun oracle accepted a blank capture at yaw 22.5 because no interior was expected in shadow, so that pose's "missed shadow 0" was vacuous until #3560 required an occluded interior as a positive control; and the mixed-canvas docs claimed unit-marker and all-yaw coverage beyond the measured unit box. Its five visual follow-ups (plain detached SDF face reconstruction, symmetric half-cell ties, hollow coverage on the cardinal walk, a terminator tolerance derived from the sun-map footprint, reference refresh after geometry checks) are D0's open list |
 | 2026-09-20 | Other lane in flight: #3561–#3568 (partial-face ray explanation, shadow plane-sample agreement, floor shadow edge metric, caster/receiver mode matrix, rigid source-face rotation, casting and reception). It owns `creations/demos/canvas_stress/main.cpp`, the sun-shadow kernels and baker, `c_lighting_to_trixel`, the `render-*-metric.py` oracles and the audit worklist docs while open. Checked against this campaign's landed decisions: #3567 casts source faces only for plain rigid `DETACHED` objects and keeps resampled occupancy for revoxelized casters (the D0.3 decision), and #3562 narrows the terminator residual the sun oracle tolerates. #3562 and #3568 state population-scale cost as unmeasured; the D1.1 table is the control for it |
 | 2026-09-20 | D1.0 closed: `IRPerfGrid --yaw` is radians, as its help text, every recipe, 70 committed arms in 17 evidence sets and `rotation_controls.py` assume. It had been handed to `IRRender::setCameraVisualYaw`, which takes degrees, so `--yaw 0.785398163` was a 0.785° pose and every IRPerfGrid row labelled 45° under `docs/perf/` (and the objective's 2.06× rotation-parity baseline) was measured there. Control: before the fix `--yaw 90` runs the cardinal gather path and `--yaw 1.5707963` the per-axis scatter path; after it they swap, and the run logs its effective yaw in degrees. Before/after differences inside each document stand, since both arms sat at the same pose; statements about 45° itself do not. At 64³ the two poses happen to read close (20.16 vs 19.45 ms on one binary), but frame time varies with pose (58.3° reads 14.90 ms and 116.6° 13.11 ms in the same session, with different visible counts and no matched-extent arm, so this is not evidence of a yaw-dependent scatter cost), and one rotated pose does not characterise rotation. The objective's 1.33× zoom-parity baseline and three `docs/design/` profiles were taken the same way. `IRCanvasStress`, `IRShapeDebug` and `ir_voxel_yaw` always took radians, so D0's captures are unaffected. Evidence: [`docs/perf/perf-grid-yaw-unit.md`](../../perf/perf-grid-yaw-unit.md). Found while measuring D1.1, whose first, grouped arms also showed host drift larger than the arm differences, a `-O3` Debug tree and a host on battery; those are D1.1's to record with the arms that show them |
+| 2026-09-20 | D1.1 closed: `configs/perf/million.lua` and `million-profiling-off.lua` carry the scene and both profiling keys (`config.voxel_pool_edge = 128` through the pre-init pass, which reads the preset after `config.lua` and opens it by the same path `World` and the creation do); `*-release` configure presets build into `build-release/`; `million_controls.py` runs build tree × stage profiling × pose interleaved, prints per-round means and its own conditions, verifies a round before summarising it, and refuses a moved binary, shader set, script set or power source, a case that is not the million scene on the arm its name says, and builds that cull one pose to different counts; `repeat_profile.py` records the tree, `CMAKE_BUILD_TYPE` and `host_power` and reports p95, p99 and updates per frame. Reference ([`million-controls.md`](../../perf/million-controls.md), AC power, head `058b495b3` on master `35b7defc8`, 24 clean runs): Release with stage profiling off reads **34.30 ms at 0° and 44.60 ms at a true 45°**, GPU frame 22.4 and 30.4 ms, 2.1 and 2.7 fixed updates per rendered frame; rotated to cardinal is 1.30×; Release is 0.7 ms under Debug; round spread is 0.3–3.4 ms. At 45° the largest sampled GPU stages are `computeLightVolume` 22.5, `computeVoxelAoPerAxis` 20.4 and `lightingOverflow` 10.8 ms. Conditions found on the way: grouped arms drift by more than the differences they test; the Debug tree gives `-O3` to first-party translation units only (284 of 568), so Release is not just Debug without asserts; `IR_RELEASE` compiles out every log macro, so a Release run cannot witness its pose or an overflow drop (both now read unverified, never 0); p99 over a 300-frame window is a startup statistic; and on a draining battery the same 0° scene read 33.7 then 52.9 ms, which the AC reference (34.7 ms for that arm) fits and does not prove |
+| 2026-09-20 | Resync at wrap-up, 31 commits after the session's base: the other lane's whole shadow stack merged (#3561, #3562, #3564–#3568, #3572, #3589), so the lane split below is spent and D0 and D4 are open to the campaign again, from `render-stack-sanity-review.md`'s five follow-ups and a fresh read of `rendering-audit-todo.md`. The human's triage (#3570) refined D0, D2, D6 and D7 in this file and parked #3130 and #1923 `human:owned` for the campaign. Closed by others: #3552 (references refreshed in #3588), #3600 (`getTable`, fixed by #3603; #3581 calls that guarded site twice and needed no change), #3475 (#3595), and both CI perf-gate issues the objective names, #2817 and #3471 (#3597), which leaves D6's gate item to verify rather than build. #3584 clamped `voxel_pool_edge` in the function #3581 edits; both changes are kept. #3577 and #3581 were rebased onto `35b7defc8` with the rebase guard (199 and 861 added lines before and after, none dropped), and the million matrix was restarted on that base because the merged sampler changes execute inside the fixture. None of this was surfaced by the protocol: the first reconciliation came from the human mid-turn and #3600 from an accidental search hit, which is #3618 |
+| 2026-09-20 | Checkpoint 2: #3577 and #3581 each reviewed by a fresh-context reviewer (read-only, asked for every guard what input makes it pass that should not); neither diff touches render or ECS code. #3577: needs-fix with no blockers; every should-fix applied (three more affected design docs and the objective's 1.33× baseline named, the flag's history stated correctly, the unsupported yaw-dependent-cost claim withdrawn, README exception, the gate no longer passes NaN or crashes on a malformed value, pose lines committed); approved. #3581: one blocker (the head predated the `getTable` fix, so the new pre-init read aborted on any preset without a `config` table; gone with the rebase and re-verified with a `perf_grid`-only and a missing preset) and eleven should-fix. Applied: the bare-filename path disagreement between the three preset readers, explicit profiling keys, verify-before-summarise, the per-case scene, arm and build assertions, the conditions header, the `run_rounds` test, the recipe's configure line, and every overstated claim in the docs. Left as its worklist, recorded in the PR body: a C++ test for the pre-init pass, the preset directory outside the fingerprints, pose and drop count in the profile report so Release can witness them, the drop count as a maximum instead of a line count, timestamps and battery level in manifests, and the 0.9 GB profiler dump the Debug profiling-on arm writes at exit. Merge order bottom-up: #3577 → #3581 |
 
 ### Decisions taken
 
+- 2026-09-20 (human ruling): a battery run is acceptable for the million
+  reference when it is recorded. The host stays in high-power mode, every
+  manifest carries `host_power`, and the matrix stops if the source changes.
+  This replaces the campaign's first call, which was to commit no table from
+  a battery run after the same 0° scene read 33.7 then 52.9 ms within half an
+  hour. The per-round column stays in the committed summary so a drifting
+  host is visible in the table itself, and an AC run is added beside it when
+  one is available.
 - 2026-09-20: `IRPerfGrid --yaw` becomes radians rather than relabelling the
   flag as degrees: the help text, every committed command line and every
   other demo already say radians, so the fix makes the recorded commands mean
@@ -105,7 +116,12 @@ D1 slices touch only tooling and docs, so they may interleave with D0.
   it. Rejected: editing seventeen evidence sets' labels to 0.785° (the commands
   stay wrong for the next reader who copies one), and removing
   `setCameraVisualYaw` (an engine API an out-of-tree creation may call).
-- 2026-09-20: while #3561–#3568 are open the campaign works D1 and then D2
+- 2026-09-20: million-control arms are interleaved round-robin with the power
+  source recorded in the manifest, because grouped arms on this host drift by
+  more than the differences they were meant to show. Rejected: cooldown
+  sleeps between grouped arms (they shrink the drift without showing it).
+- 2026-09-20 (spent the same day, when the stack merged): while #3561–#3568
+  are open the campaign works D1 and then D2
   (perf tooling, `perf_grid`, `docs/perf/`, the overflow sort and per-axis
   storage) and leaves D0's remaining items and D4 alone: both edit files that
   stack owns. D0 resumes from `render-stack-sanity-review.md`'s follow-up list
@@ -173,7 +189,11 @@ D1 slices touch only tooling and docs, so they may interleave with D0.
 ### Follow-ups filed
 
 - PR #3543 (fix-forward, off master): trims `engine/video/CLAUDE.md` and `docs/agents/fleet-labels-reference.md` under their instruction-size budgets; `.claude/commands/role-worker.md` (306 of 303) stays a human edit.
-- #3552: `IRCanvasStress` macos-debug render-verify references stale since the September render stacks (9 of 11 checks fail on master); re-bless on master and re-ground the `world_placed_cast` thresholds.
+- #3583: `engine/render/CLAUDE.md` (209) and `engine/prefabs/irreden/render/CLAUDE.md` (208) are over their 200-line instruction-size budgets on master, so the check is red on every open PR. Filed with the per-commit growth (mostly #3522's hover contract) instead of trimmed here: the files state contracts the open shadow stack is changing, and #3526 already edits one of them.
+- #3618 (agent-approved, plan posted): campaigns resume from their own memory and never reconcile with work done outside them; a resync step every Loop iteration and `fleet-campaign-status` verdicts that say what to do. Filed at the human's direction from this session's five incidents.
+- #3619 (agent-approved): `ir-run --timeout` counts time queued on `ir-acquire`, so a healthy run behind fleet builds reads `ALIVE-TIMEOUT`; `million_controls.py` passes `--timeout 900` until it lands.
+- #3626 (agent-approved): `fleet-tests` red on master since #3575; with #3583, two checks are red on every open PR for reasons no author can fix.
+- #3552 (closed by #3588): `IRCanvasStress` macos-debug render-verify references stale since the September render stacks; re-blessed on master.
 - #3534 — fog cut-face column view→world compensation for world-placed
   detached casters (D0 residual of #3342; filed 2026-09-19, awaiting
   approval).
@@ -189,19 +209,18 @@ D1 slices touch only tooling and docs, so they may interleave with D0.
 
 ## Now
 
-- **In flight:** D1.1 — the committed `million` preset and the
-  `repeat_profile` recipe, stacked on D1.0 and re-measured at a true 45°:
-  Debug and Release, stage profiling on and off, arms interleaved, power
-  source in the manifest. The work is on
-  `claude/million-entity-render-million-preset`.
-- **Next:** D1.2 — continuous yaw as a profiled fixture (the objective's
-  criterion is a sweep; D1.1 is two fixed poses), then a matched-projected-
-  extent arm and the `--yaw` perf-matrix axis (#3130); all inside
-  `creations/demos/perf_grid/`, `scripts/perf/` and `docs/perf/`. D2 follows.
-  A docs PR proposes the objective's rotation-parity baseline at a true 45°
-  once D1.1 has the number. `instruction-size` is red on master and so on
-  every open PR: `engine/render/CLAUDE.md` is 209 and
-  `engine/prefabs/irreden/render/CLAUDE.md` 208 against budgets of 200, grown
-  mostly by #3522 (this campaign's PRs added one line net, in #3530); a
-  fix-forward off master trims them. Checkpoint 2 is called when four campaign PRs are open or D1
-  completes. D0's open list and D4 wait on #3561–#3568 (Decisions taken).
+- **In flight:** none. #3577 and #3581 are approved and await merge, bottom-up.
+- **Next:** run the resync first (#3618 describes why): master moved 33 commits
+  during the last session. Then #3581's worklist items that make a Release run
+  able to witness its own pose and drops (both belong in the profile report),
+  and warm-up-excluded frame percentiles in the same report, since the
+  objective's p99 row is unreadable without them. Then D1.2, continuous yaw as
+  a profiled fixture, a matched-projected-extent arm and the `--yaw`
+  perf-matrix axis (#3130, parked `human:owned` for this campaign). A docs PR
+  proposes the objective's rotation and zoom parity baselines at a true 45°
+  (1.30× at the million control today) for the human to merge or decline. D0
+  and D4 are open to the campaign again: the shadow stack merged, so re-read
+  `rendering-audit-todo.md` and `render-stack-sanity-review.md` and strike what
+  it closed before picking a D0 slice. D2 has its targets from the reference:
+  at 45° the light volume, per-axis AO and overflow lighting and sort are the
+  largest sampled GPU stages, and the GPU frame alone is 30.4 ms.

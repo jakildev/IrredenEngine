@@ -69,7 +69,7 @@ config = {
 - `WorldConfig` fields are what `World` itself reads at construction;
   `--config-preset <file>` overlays that file's `config` table (keys it carries
   only; relative path from the exe dir), then `--worker-threads` overrides
-  `worker_thread_count`. Pre-init reads `config.lua` only — one source per file.
+  `worker_thread_count`. Pre-init reads `config.lua`, then the preset.
 
 ## Chunk residency
 
