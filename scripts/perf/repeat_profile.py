@@ -22,17 +22,16 @@ import subprocess
 import time
 from pathlib import Path
 
-from compare_perf_runs import parse_report
+from compare_perf_runs import RunWitness, parse_report
 
 TARGETS = {"IRPerfGrid": "perf_grid", "IRCanvasStress": "canvas_stress"}
-# IRPerfGrid logs the pose its --yaw produced; the flag is radians.
-YAW_POSE_RE = re.compile(r"Initial camera yaw: requested_rad=\S+ yaw_deg=(-?[\d.]+)")
+# The pose and the per-axis overflow loss are read from the profile report's
+# run witness, which every build type writes; the log is not a witness, since
+# IR_RELEASE compiles every log macro out.
 YAW_POSE_TOLERANCE_DEG = 0.01
-# The voxel pass warns with this text when the per-axis overflow list drops
-# entries; a timing from such a run describes incomplete rotated coverage.
-OVERFLOW_DROP_WARNING = "overflow list dropped"
-# IR_RELEASE compiles every log macro out. A run whose log carries neither
-# logger cannot be checked for its pose or for drops: both read None, never 0.
+# Off a cardinal by more than this the camera rotates through the per-axis
+# canvases, so the overflow lane must have been sampled.
+ROTATED_POSE_MIN_DEG = 1.0
 ENGINE_LOG_MARKERS = ("[EngineLog]", "[ClientLog]")
 
 
@@ -65,54 +64,113 @@ def requested_yaw(demo_args: list[str]) -> float | None:
     return requested
 
 
-def yaw_pose_mismatch(demo_args: list[str], log_text: str) -> str | None:
-    """Why the pose IRPerfGrid logged contradicts its --yaw radians, else None."""
-    requested = requested_yaw(demo_args)
-    if requested is None:
+def degrees_apart(left: float, right: float) -> float:
+    apart = abs(left % 360.0 - right % 360.0)
+    return min(apart, 360.0 - apart)
+
+
+def is_static_pose(target: str, demo_args: list[str]) -> bool:
+    """IRPerfGrid holds the pose its --yaw radians name unless its shot table sweeps.
+
+    --yaw-ramp is an auto-screenshot shot table and moves nothing without one.
+    """
+    sweeping = "--yaw-ramp" in demo_args and any(
+        argument.split("=", 1)[0] == "--auto-screenshot" for argument in demo_args
+    )
+    return target == "IRPerfGrid" and requested_yaw(demo_args) is not None and not sweeping
+
+
+def yaw_pose_mismatch(target: str, demo_args: list[str], witness: RunWitness) -> str | None:
+    """Why the pose the report witnessed contradicts a static --yaw radians, else None."""
+    if not is_static_pose(target, demo_args):
         return None
-    logged = YAW_POSE_RE.search(log_text)
-    if logged is None:
-        return "the log has no 'Initial camera yaw' line"
+    if witness.yaw_first_deg is None or witness.pose_samples == 0:
+        return "the report witnessed no camera yaw"
+    requested = requested_yaw(demo_args)
     expected_deg = math.degrees(requested) % 360.0
-    apart = abs(expected_deg - float(logged.group(1)) % 360.0)
-    if not min(apart, 360.0 - apart) <= YAW_POSE_TOLERANCE_DEG:
-        return (
-            f"--yaw {requested} rad is {expected_deg:.3f} deg; "
-            f"the demo logged {float(logged.group(1)):.3f} deg"
-        )
+    for label, witnessed in (("first", witness.yaw_first_deg), ("last", witness.yaw_last_deg)):
+        if not degrees_apart(expected_deg, witnessed) <= YAW_POSE_TOLERANCE_DEG:
+            return (
+                f"--yaw {requested} rad is {expected_deg:.3f} deg; "
+                f"the {label} rendered frame was at {witnessed:.3f} deg"
+            )
+    if not witness.yaw_travel_deg <= YAW_POSE_TOLERANCE_DEG:
+        return f"the camera yawed {witness.yaw_travel_deg:.3f} deg during a static-pose run"
     return None
 
 
-def log_checks(target: str, demo_args: list[str], log_text: str) -> dict:
-    """The checks that read the run log; None where the build logged nothing."""
-    engine_logged = any(marker in log_text for marker in ENGINE_LOG_MARKERS)
+def overflow_failure(target: str, demo_args: list[str], witness: RunWitness) -> str | None:
+    """Why the run's rotated coverage is incomplete or unwitnessed, else None."""
+    if witness.overflow_max_dropped is None:
+        return "the report witnessed no per-axis overflow counters"
+    if witness.overflow_max_dropped > 0:
+        return (
+            f"the per-axis overflow list dropped up to {witness.overflow_max_dropped} "
+            f"entries in a frame (cap {witness.overflow_cap})"
+        )
+    if is_static_pose(target, demo_args) and witness.overflow_samples == 0:
+        off_cardinal = degrees_apart(math.degrees(requested_yaw(demo_args)) % 90.0, 0.0)
+        if min(off_cardinal, 90.0 - off_cardinal) > ROTATED_POSE_MIN_DEG:
+            return "a rotated pose never sampled the per-axis overflow counters"
+    return None
+
+
+def witness_checks(target: str, demo_args: list[str], witness: RunWitness) -> dict:
     return {
-        "engine_logged": engine_logged,
-        "yaw_pose_mismatch": (
-            yaw_pose_mismatch(demo_args, log_text)
-            if target == "IRPerfGrid" and engine_logged
-            else None
-        ),
-        "overflow_drop_warnings": (
-            log_text.count(OVERFLOW_DROP_WARNING) if engine_logged else None
-        ),
+        "yaw_pose_mismatch": yaw_pose_mismatch(target, demo_args, witness),
+        "overflow_failure": overflow_failure(target, demo_args, witness),
+        "yaw_first_deg": witness.yaw_first_deg,
+        "yaw_travel_deg": witness.yaw_travel_deg,
+        "zoom": witness.zoom_first,
+        "overflow_max_dropped": witness.overflow_max_dropped,
+        "overflow_max_entries": witness.overflow_max_entries,
+        "overflow_samples": witness.overflow_samples,
     }
 
 
-def drop_warnings_text(count: int | None) -> str:
-    return "unverified (no engine log)" if count is None else str(count)
+def engine_logged(log_text: str) -> bool:
+    """False for an IR_RELEASE build, which compiles every log macro out."""
+    return any(marker in log_text for marker in ENGINE_LOG_MARKERS)
+
+
+def percentile(values: list[float], percent: int) -> float:
+    """The report writer's rule: the sorted value at index n * percent / 100."""
+    ordered = sorted(values)
+    return ordered[min(len(ordered) * percent // 100, len(ordered) - 1)]
+
+
+def host_power_report() -> str | None:
+    """pmset's battery report on macOS; None where it cannot be read."""
+    if platform.system() != "Darwin":
+        return None
+    try:
+        return subprocess.check_output(["pmset", "-g", "batt"], text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
 
 
 def host_power_source() -> str | None:
     """'AC Power' or 'Battery Power' on macOS; None where it cannot be read."""
-    if platform.system() != "Darwin":
-        return None
-    try:
-        report = subprocess.check_output(["pmset", "-g", "batt"], text=True, timeout=10)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    drawn = re.search(r"Now drawing from '([^']+)'", report)
+    drawn = re.search(r"Now drawing from '([^']+)'", host_power_report() or "")
     return drawn.group(1) if drawn else None
+
+
+def host_battery_percent() -> int | None:
+    """Battery charge on macOS; None where it cannot be read or there is no battery."""
+    charge = re.search(r"\t(\d+)%;", host_power_report() or "")
+    return int(charge.group(1)) if charge else None
+
+
+def host_load() -> float | None:
+    """One-minute load average; None where the platform has none.
+
+    The benchmark lock excludes cooperating builds only, so other work on the
+    host is a condition of the measurement and is recorded with it.
+    """
+    try:
+        return round(os.getloadavg()[0], 2)
+    except (AttributeError, OSError):
+        return None
 
 
 def cmake_build_type(build_dir: Path) -> str | None:
@@ -274,6 +332,7 @@ def main() -> int:
         "changes": subprocess.check_output(["git", "status", "--short"], cwd=root, text=True),
         "host": platform.platform(),
         "host_power": host_power_source(),
+        "host_cpus": os.cpu_count(),
         "build_dir": os.path.relpath(build_dir, root),
         "build_type": cmake_build_type(build_dir),
         "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
@@ -286,6 +345,8 @@ def main() -> int:
     rows = []
     for index in range(1, args.repeats + 1):
         started = time.time_ns()
+        battery_percent = host_battery_percent()
+        load = host_load()
         log_path = output / f"run-{index}.log"
         exit_code, sampling = run_profile(
             command, root, log_path, binary, args.cpu_sample_seconds, args.cpu_sample_delay
@@ -293,21 +354,23 @@ def main() -> int:
         fresh = report.exists() and report.stat().st_mtime_ns >= started
         log_text = log_path.read_text()
         clean = exit_code == 0 and "RESULT=CLEAN" in log_text
-        checks = log_checks(args.target, demo_args, log_text)
-        yaw_mismatch = checks["yaw_pose_mismatch"]
         run = {
             "index": index,
+            "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(started / 1e9)),
+            "host_battery_percent": battery_percent,
+            "host_load_1m": load,
             "exit_code": exit_code,
             "cpu_sampling": sampling,
             "fresh_report": fresh,
             "clean": clean,
-            **checks,
+            "engine_logged": engine_logged(log_text),
         }
         manifest["runs"].append(run)
         if fresh:
             destination = output / f"run-{index}.txt"
             shutil.copy2(report, destination)
             row = parse_report(destination, f"run-{index}")
+            run.update(witness_checks(args.target, demo_args, row.witness))
             run["gpu_measured"] = (
                 any(stage.avg_ms > 0 for stage in row.gpu_stages)
                 or (row.gpu_frame.supported is True and row.gpu_frame.valid > 0)
@@ -318,11 +381,14 @@ def main() -> int:
             not clean
             or not fresh
             or not run.get("gpu_measured")
-            or yaw_mismatch is not None
+            or run["yaw_pose_mismatch"] is not None
+            or run["overflow_failure"] is not None
             or (sampling is not None and not sampling["complete"])
         ):
+            reasons = [run.get("yaw_pose_mismatch"), run.get("overflow_failure")]
             print(
-                f"run {index}: failed or missing requested measurements; inspect {log_path}",
+                f"run {index}: failed or missing requested measurements"
+                f"{''.join(f'; {reason}' for reason in reasons if reason)}; inspect {log_path}",
                 flush=True,
             )
             return 1
@@ -336,6 +402,14 @@ def main() -> int:
         "frame p95": [row.frame.p95 for row in rows],
         "frame p99": [row.frame.p99 for row in rows],
     }
+    if all(row.steady_frame is not None for row in rows):
+        metrics.update(
+            {
+                "steady frame avg": [row.steady_frame.avg for row in rows],
+                "steady frame p95": [row.steady_frame.p95 for row in rows],
+                "steady frame p99": [row.steady_frame.p99 for row in rows],
+            }
+        )
     frame_names = sorted({metric.name for row in rows for metric in row.gpu_frame.metrics})
     for name in frame_names:
         values = [next((m.avg_ms for m in row.gpu_frame.metrics if m.name == name), None)
@@ -352,6 +426,15 @@ def main() -> int:
         lines.append(
             f"| {name} | {statistics.mean(values):.3f} | {min(values):.3f}–{max(values):.3f} |"
         )
+    steady = [ms for row in rows for ms in row.steady_frame_times_ms()]
+    if steady:
+        lines.extend(["",
+                      "| Steady frames pooled over runs | Frames | Mean ms | p95 ms | p99 ms "
+                      "| Max ms |",
+                      "|---|---:|---:|---:|---:|---:|",
+                      f"| first {rows[0].warmup_frames} of each run excluded | {len(steady)} "
+                      f"| {statistics.mean(steady):.3f} | {percentile(steady, 95):.3f} "
+                      f"| {percentile(steady, 99):.3f} | {max(steady):.3f} |"])
     ticks = [row.update_ticks_avg for row in rows]
     if all(value is not None for value in ticks):
         lines.extend(["",
@@ -362,14 +445,16 @@ def main() -> int:
                       f"| {max(row.update_ticks_max for row in rows)} |"])
     lines.extend(["",
                   "| Run | Frame GPU supported | Valid / attempted | Invalid | Command buffers "
-                  "| Overflow drop warnings |",
-                  "|---|---|---:|---:|---:|---:|"])
+                  "| Yaw deg (travel) | Overflow max entries / dropped (frames sampled) |",
+                  "|---|---|---:|---:|---:|---:|---:|"])
     for run, row in zip(manifest["runs"], rows):
         coverage = row.gpu_frame
         lines.append(f"| {run['index']} | {coverage.supported} "
                      f"| {coverage.valid} / {coverage.attempted} "
                      f"| {coverage.invalid} | {coverage.command_buffers} "
-                     f"| {drop_warnings_text(run['overflow_drop_warnings'])} |")
+                     f"| {run['yaw_first_deg']:.3f} ({run['yaw_travel_deg']:.3f}) "
+                     f"| {run['overflow_max_entries']} / {run['overflow_max_dropped']} "
+                     f"({run['overflow_samples']}) |")
     (output / "summary.md").write_text("\n".join(lines) + "\n")
     print(output / "summary.md")
     return 0

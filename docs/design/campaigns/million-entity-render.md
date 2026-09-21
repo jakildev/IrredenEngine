@@ -97,9 +97,36 @@ D1 slices touch only tooling and docs, so they may interleave with D0.
 | 2026-09-20 | D1.1 closed: `configs/perf/million.lua` and `million-profiling-off.lua` carry the scene and both profiling keys (`config.voxel_pool_edge = 128` through the pre-init pass, which reads the preset after `config.lua` and opens it by the same path `World` and the creation do); `*-release` configure presets build into `build-release/`; `million_controls.py` runs build tree × stage profiling × pose interleaved, prints per-round means and its own conditions, verifies a round before summarising it, and refuses a moved binary, shader set, script set or power source, a case that is not the million scene on the arm its name says, and builds that cull one pose to different counts; `repeat_profile.py` records the tree, `CMAKE_BUILD_TYPE` and `host_power` and reports p95, p99 and updates per frame. Reference ([`million-controls.md`](../../perf/million-controls.md), AC power, head `058b495b3` on master `35b7defc8`, 24 clean runs): Release with stage profiling off reads **34.30 ms at 0° and 44.60 ms at a true 45°**, GPU frame 22.4 and 30.4 ms, 2.1 and 2.7 fixed updates per rendered frame; rotated to cardinal is 1.30×; Release is 0.7 ms under Debug; round spread is 0.3–3.4 ms. At 45° the largest sampled GPU stages are `computeLightVolume` 22.5, `computeVoxelAoPerAxis` 20.4 and `lightingOverflow` 10.8 ms. Conditions found on the way: grouped arms drift by more than the differences they test; the Debug tree gives `-O3` to first-party translation units only (284 of 568), so Release is not just Debug without asserts; `IR_RELEASE` compiles out every log macro, so a Release run cannot witness its pose or an overflow drop (both now read unverified, never 0); p99 over a 300-frame window is a startup statistic; and on a draining battery the same 0° scene read 33.7 then 52.9 ms, which the AC reference (34.7 ms for that arm) fits and does not prove |
 | 2026-09-20 | Resync at wrap-up, 31 commits after the session's base: the other lane's whole shadow stack merged (#3561, #3562, #3564–#3568, #3572, #3589), so the lane split below is spent and D0 and D4 are open to the campaign again, from `render-stack-sanity-review.md`'s five follow-ups and a fresh read of `rendering-audit-todo.md`. The human's triage (#3570) refined D0, D2, D6 and D7 in this file and parked #3130 and #1923 `human:owned` for the campaign. Closed by others: #3552 (references refreshed in #3588), #3600 (`getTable`, fixed by #3603; #3581 calls that guarded site twice and needed no change), #3475 (#3595), and both CI perf-gate issues the objective names, #2817 and #3471 (#3597), which leaves D6's gate item to verify rather than build. #3584 clamped `voxel_pool_edge` in the function #3581 edits; both changes are kept. #3577 and #3581 were rebased onto `35b7defc8` with the rebase guard (199 and 861 added lines before and after, none dropped), and the million matrix was restarted on that base because the merged sampler changes execute inside the fixture. None of this was surfaced by the protocol: the first reconciliation came from the human mid-turn and #3600 from an accidental search hit, which is #3618 |
 | 2026-09-20 | Checkpoint 2: #3577 and #3581 each reviewed by a fresh-context reviewer (read-only, asked for every guard what input makes it pass that should not); neither diff touches render or ECS code. #3577: needs-fix with no blockers; every should-fix applied (three more affected design docs and the objective's 1.33× baseline named, the flag's history stated correctly, the unsupported yaw-dependent-cost claim withdrawn, README exception, the gate no longer passes NaN or crashes on a malformed value, pose lines committed); approved. #3581: one blocker (the head predated the `getTable` fix, so the new pre-init read aborted on any preset without a `config` table; gone with the rebase and re-verified with a `perf_grid`-only and a missing preset) and eleven should-fix. Applied: the bare-filename path disagreement between the three preset readers, explicit profiling keys, verify-before-summarise, the per-case scene, arm and build assertions, the conditions header, the `run_rounds` test, the recipe's configure line, and every overstated claim in the docs. Left as its worklist, recorded in the PR body: a C++ test for the pre-init pass, the preset directory outside the fingerprints, pose and drop count in the profile report so Release can witness them, the drop count as a maximum instead of a line count, timestamps and battery level in manifests, and the 0.9 GB profiler dump the Debug profiling-on arm writes at exit. Merge order bottom-up: #3577 → #3581 |
+| 2026-09-21 | Resync at startup: `fleet-campaign-status` read `SUPERSEDED` (#3577 and #3581 merged) and `--apply` parked the branch on master. Other lanes since the last base: #3613 moved shaders this fixture runs (`ir_projected_face`, the sun-face query layout, `ir_iso_common`), so the AC reference's shader fingerprint is stale and the three-round table is owed again; #3620 and #3610 are oracle and test changes; #3632 (audit worklist, face-reconstruction validation, the source-shadow oracle) and #3629 (`c_shapes_to_trixel`, `ir_iso_common`, the render `CLAUDE.md`) are open and the campaign stays out of their files. #3619 closed by #3627 |
+| 2026-09-21 | D1.2a closed: the profile report is a run's own witness. `VOXEL_TO_TRIXEL_STAGE_1` records the yaw it renders at and the overflow ctrl block it already reads into `IRRender::renderRunWitness()` every frame, stage profiling on or off, and the report gains a `Run witness` section (yaw first, last and travelled, zoom, overflow max entries, max dropped, cap, frames sampled), a `Steady frame time` line over the frames after the first quarter, and the frame series. `repeat_profile.py` reads the witness and not the log: it refuses a wrong first or last pose, a camera that moved during a static pose, any dropped entry, a rotated pose that never sampled the lane and a report with no witness, and it pools steady frames across runs for the tail; `million_controls.py` re-verifies every arm from its report. Controls, each on a real binary: four static poses witnessed by a Release build; `overflowCap_` forced to 65,536 reads **565,306 dropped** (630,842 − 65,536) and is refused, where the old warning-line count read 2; the shot-table ramp reads 267.000° travelled through the ±180° seam; a 60-frame run reads p99 102.09 ms all-frames and 20.97 ms steady. At the million control all eight arms vouch for themselves, Release stage-profiling-off included: 45.000°, **0 dropped, 2,208,000 peak entries of an 8,388,608 cap (26%, 25 of 96 MiB)**, which is D2's first residency number. The round's milliseconds are not a reference: the fleet held the host at a load of 7 to 19 and the same frozen scene read 36.8 then 45.5 ms with its frame minimum unchanged, so manifests now carry `host_load_1m`, `host_cpus`, start time and battery charge, and the lock's blind spot is #3638. Evidence: [`million-controls.md`](../../perf/million-controls.md) § Witnessed round, § The run witness and its controls |
 
 ### Decisions taken
 
+- 2026-09-21: the profile report is the witness for a run's pose and overflow
+  loss, and the log is not. `VOXEL_TO_TRIXEL_STAGE_1` records the yaw it
+  renders at and the overflow ctrl block it already reads, every frame, and
+  `World` writes them with the report, so a Release, stage-profiling-off run
+  vouches for itself. Rejected: keeping the log check beside it (two
+  witnesses that can disagree, one of which is absent in the build the
+  objective names), having IRPerfGrid write its own pose file (the pose is
+  then what the demo asked for, not what the voxel pass rendered), and a
+  permanent `--overflow-cap` knob for the drop control (a debug flag that
+  makes a shipping run lossy; the control is a recorded local patch).
+- 2026-09-21: the steady frame line excludes the first quarter of the recorded
+  frames, the share IRPerfGrid's auto-profile mean already discards, and the
+  report carries the frame series so a tool can pool steady frames across runs
+  and a reader can check the rule against the transient. Rejected: a warm-up
+  count passed to `enableFrameTiming` (every caller would pick its own and
+  tables would stop comparing), and dropping the all-frames line (every
+  committed report and the CI perf gate read it).
+- 2026-09-21: no million table is committed from a host the fleet is loading.
+  The witnessed round in `million-controls.md` is evidence that every arm
+  vouches for itself and is labelled with its load; the three-round reference
+  on the post-#3613 shaders stays owed until the host is quiet (#3638).
+  Rejected: committing the contaminated rounds as the new reference (a D2
+  delta of a few ms would be read against rounds that moved 9 ms on their
+  own), and holding the benchmark lock for 25 minutes against fleet builds to
+  get them.
 - 2026-09-20 (human ruling): a battery run is acceptable for the million
   reference when it is recorded. The host stays in high-power mode, every
   manifest carries `host_power`, and the matrix stops if the source changes.
@@ -191,7 +218,8 @@ D1 slices touch only tooling and docs, so they may interleave with D0.
 - PR #3543 (fix-forward, off master): trims `engine/video/CLAUDE.md` and `docs/agents/fleet-labels-reference.md` under their instruction-size budgets; `.claude/commands/role-worker.md` (306 of 303) stays a human edit.
 - #3583: `engine/render/CLAUDE.md` (209) and `engine/prefabs/irreden/render/CLAUDE.md` (208) are over their 200-line instruction-size budgets on master, so the check is red on every open PR. Filed with the per-commit growth (mostly #3522's hover contract) instead of trimmed here: the files state contracts the open shadow stack is changing, and #3526 already edits one of them.
 - #3618 (agent-approved, plan posted): campaigns resume from their own memory and never reconcile with work done outside them; a resync step every Loop iteration and `fleet-campaign-status` verdicts that say what to do. Filed at the human's direction from this session's five incidents.
-- #3619 (agent-approved): `ir-run --timeout` counts time queued on `ir-acquire`, so a healthy run behind fleet builds reads `ALIVE-TIMEOUT`; `million_controls.py` passes `--timeout 900` until it lands.
+- #3619 (closed by #3627): `ir-run --timeout` counted time queued on `ir-acquire`; it now counts from the lock's acquisition.
+- #3638 (unlabeled, a human decision): the benchmark lock excludes cooperating builds only. A live fleet held this host at a load of 19 during a locked million-control run and the same frozen scene read 36.8 then 45.5 ms with its frame minimum unchanged. Until it is decided, a reference table needs a quiet host, and every manifest carries `host_load_1m`.
 - #3626 (agent-approved): `fleet-tests` red on master since #3575; with #3583, two checks are red on every open PR for reasons no author can fix.
 - #3552 (closed by #3588): `IRCanvasStress` macos-debug render-verify references stale since the September render stacks; re-blessed on master.
 - #3534 — fog cut-face column view→world compensation for world-placed
@@ -203,24 +231,30 @@ D1 slices touch only tooling and docs, so they may interleave with D0.
   with the slice).
 - #3130 — `--yaw` perf-matrix axis (D1 slice; parked `human:owned` for this
   campaign).
-- #3475 — edge-gradient sun-shadow oracle on the finite caster (a D0 gate;
-  approved sonnet, queue-owned — coordinate before touching
-  `scripts/render-shadow-metric.py`).
+- #3475 (closed by #3595) — edge-gradient sun-shadow oracle on the finite
+  caster (a D0 gate).
 
 ## Now
 
-- **In flight:** none. #3577 and #3581 are approved and await merge, bottom-up.
-- **Next:** run the resync first (#3618 describes why): master moved 33 commits
-  during the last session. Then #3581's worklist items that make a Release run
-  able to witness its own pose and drops (both belong in the profile report),
-  and warm-up-excluded frame percentiles in the same report, since the
-  objective's p99 row is unreadable without them. Then D1.2, continuous yaw as
-  a profiled fixture, a matched-projected-extent arm and the `--yaw`
-  perf-matrix axis (#3130, parked `human:owned` for this campaign). A docs PR
-  proposes the objective's rotation and zoom parity baselines at a true 45°
-  (1.30× at the million control today) for the human to merge or decline. D0
-  and D4 are open to the campaign again: the shadow stack merged, so re-read
-  `rendering-audit-todo.md` and `render-stack-sanity-review.md` and strike what
-  it closed before picking a D0 slice. D2 has its targets from the reference:
-  at 45° the light volume, per-axis AO and overflow lighting and sort are the
-  largest sampled GPU stages, and the GPU frame alone is 30.4 ms.
+- **In flight:** D1.2a, the profile report as a run's own witness (PR open,
+  `fleet:wip`).
+- **Next:** the three-round million reference on master's current shaders,
+  **when the host is quiet** (#3638: the benchmark lock does not exclude the
+  fleet's own load; ask the human for a window at the next checkpoint, and read
+  `host_load_1m` in the summary before believing any table). Then D1.2:
+  continuous yaw as a profiled fixture (the witness's travel column is its
+  pose check; `--yaw-ramp` is a shot table and not a sweep, so this is a new
+  per-frame yaw rate), a matched-projected-extent arm, a longer window for the
+  tail (225 steady frames put two above a p99) and the `--yaw` perf-matrix axis
+  (#3130, parked `human:owned` for this campaign). A docs PR proposes the
+  objective's rotation and zoom parity baselines at a true 45° (1.30× at the
+  million control on the AC reference) for the human to merge or decline.
+  #3581's remaining worklist: a C++ test for the pre-init pass on a preset,
+  the preset directory inside the fingerprints, and the 0.9 GB profiler dump
+  the Debug profiling-on arm writes at exit. D0 and D4 are open to the campaign
+  outside #3632's and #3629's files: re-read `rendering-audit-todo.md` and
+  `render-stack-sanity-review.md` and strike what the shadow stacks closed
+  before picking a D0 slice. D2 has its targets and now a residency number: at
+  45° the light volume, per-axis AO and overflow lighting and sort are the
+  largest sampled GPU stages, the GPU frame alone is 30.4 ms, and the overflow
+  lane peaks at 26% of its 96 MiB.

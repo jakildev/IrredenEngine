@@ -51,9 +51,32 @@ struct VoxelCullStatsSummary {
     uint32_t sampleCount_ = 0;
 };
 
+/// The camera pose the run rendered at and the per-axis overflow lane's worst
+/// frame, so a report vouches for its own scene in a build that logs nothing.
+/// Yaw is degrees in [-180, 180); travel is the summed per-frame yaw change.
+/// Overflow samples are 0 when the lane never ran (a cardinal pose).
+struct RunWitnessSummary {
+    float yawFirstDeg_ = 0.0f;
+    float yawLastDeg_ = 0.0f;
+    float yawTravelDeg_ = 0.0f;
+    float zoomFirst_ = 0.0f;
+    float zoomLast_ = 0.0f;
+    uint32_t poseSamples_ = 0;
+    uint32_t overflowSamples_ = 0;
+    uint32_t maxOverflowEntries_ = 0;
+    uint32_t maxOverflowDropped_ = 0;
+    uint32_t overflowCap_ = 0;
+};
+
+/// Leading share of the recorded frames the steady frame-time line excludes:
+/// pipeline compilation, first-use allocation and the fixed-step catch-up land
+/// there, and a tail percentile over them describes startup.
+inline constexpr uint32_t kProfileWarmupDivisor = 4;
+
 /// Aggregated data for a profile report, populated by World at shutdown.
 struct ProfileReport {
     std::vector<float> frameTimesMs_;
+    RunWitnessSummary witness_;
     uint32_t totalFrames_ = 0;
     uint32_t totalUpdateTicks_ = 0;
     uint32_t maxUpdateTicksPerFrame_ = 0;

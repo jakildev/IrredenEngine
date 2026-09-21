@@ -192,6 +192,53 @@ inline VoxelCullAccumulator &voxelCullAccumulator() {
     return instance;
 }
 
+// What a profile report vouches for in a build that logs nothing: the camera
+// pose the voxel pass rendered at and the per-axis overflow lane's worst
+// frame. Recorded every frame, independent of stage timing. Yaw is radians in
+// [-π, π); travel sums the wrapped per-frame yaw change, so a static pose
+// reads 0 and a sweep reads its arc across the ±π seam. Overflow samples stay
+// 0 at a cardinal pose, where the per-axis canvases are not allocated.
+struct RenderRunWitness {
+    float yawFirst_ = 0.0f;
+    float yawLast_ = 0.0f;
+    float yawTravel_ = 0.0f;
+    float zoomFirst_ = 0.0f;
+    float zoomLast_ = 0.0f;
+    std::uint32_t poseSamples_ = 0;
+    std::uint32_t overflowSamples_ = 0;
+    std::uint32_t maxOverflowEntries_ = 0;
+    std::uint32_t maxOverflowDropped_ = 0;
+    std::uint32_t overflowCap_ = 0;
+
+    void recordPose(float yaw, float zoom) {
+        if (poseSamples_ == 0) {
+            yawFirst_ = yaw;
+            zoomFirst_ = zoom;
+        } else {
+            yawTravel_ += IRMath::abs(IRMath::wrapAnglePi(yaw - yawLast_));
+        }
+        yawLast_ = yaw;
+        zoomLast_ = zoom;
+        ++poseSamples_;
+    }
+
+    void recordOverflow(std::uint32_t entries, std::uint32_t dropped, std::uint32_t cap) {
+        maxOverflowEntries_ = IRMath::max(maxOverflowEntries_, entries);
+        maxOverflowDropped_ = IRMath::max(maxOverflowDropped_, dropped);
+        overflowCap_ = cap;
+        ++overflowSamples_;
+    }
+
+    void reset() {
+        *this = RenderRunWitness{};
+    }
+};
+
+inline RenderRunWitness &renderRunWitness() {
+    static RenderRunWitness instance;
+    return instance;
+}
+
 // Per-stage running GPU-timing accumulator. The `gpu_stage_timing_observer`
 // records one sample per resolved timestamp pair per stage; the world's
 // profile-report builder drains the array (indexed parallel to

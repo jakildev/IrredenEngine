@@ -68,6 +68,7 @@ add_executable(IrredenEngineTest
   math/ir_math_trixel_index_test.cpp
   math/ir_math_yaw_deformation_test.cpp
   math/sdf_test.cpp
+  profile/profile_report_test.cpp
   render/camera_mouse_rotate_reset_test.cpp
   render/camera_pan_pivot_test.cpp
   render/camera_yaw_test.cpp
@@ -90,6 +91,7 @@ add_executable(IrredenEngineTest
   render/picking_aim_iso_pixel_test.cpp
   render/picking_face_normal_test.cpp
   render/prefab_system_probe_test.cpp
+  render/run_witness_test.cpp
   render/settings_menu_reset_test.cpp
   render/sun_direction_test.cpp
   render/sun_lighting_test.cpp

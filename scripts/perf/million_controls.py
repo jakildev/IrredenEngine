@@ -5,8 +5,9 @@ Every case runs once per round, forward then reverse (rotation_controls.py's
 ordering), so host drift lands on every case instead of on the last group; the
 summary prints each case's per-round means so the drift stays visible. Each run
 goes through repeat_profile.py for freshness, fingerprints and the pose and
-overflow-drop checks. No build is performed: build IRPerfGrid in every tree
-named with --tree first.
+overflow-drop checks, which read each report's run witness, so a Release run
+vouches for itself. No build is performed: build IRPerfGrid in every tree named
+with --tree first.
 """
 
 import argparse
@@ -17,7 +18,7 @@ import statistics
 from pathlib import Path
 
 from compare_perf_runs import parse_report
-from repeat_profile import cmake_build_type, drop_warnings_text
+from repeat_profile import cmake_build_type, overflow_failure, percentile, yaw_pose_mismatch
 from rotation_controls import run_rounds, write_cases, write_gpu_summary
 
 PRESETS = {
@@ -70,12 +71,31 @@ def conditions(output: Path, selected: dict[str, list[str]]) -> list[str]:
     if not manifests:
         return []
     power = sorted({manifest["host_power"] or "unknown" for manifest in manifests})
+    charge = [
+        run["host_battery_percent"]
+        for manifest in manifests
+        for run in manifest["runs"]
+        if run.get("host_battery_percent") is not None
+    ]
+    battery = f" (battery {max(charge)}% to {min(charge)}%)" if charge else ""
+    loads = [
+        run["host_load_1m"]
+        for manifest in manifests
+        for run in manifest["runs"]
+        if run.get("host_load_1m") is not None
+    ]
+    load_text = (
+        f" Host load at run start {min(loads):.1f} to {max(loads):.1f} "
+        f"on {manifests[0].get('host_cpus')} CPUs."
+        if loads
+        else ""
+    )
     heads = sorted({manifest["head"][:9] for manifest in manifests})
     binaries = sorted(
         {(manifest["build_type"], manifest["binary_sha256"][:16]) for manifest in manifests}
     )
     return [
-        f"Power source: {', '.join(power)}. Head: {', '.join(heads)}. "
+        f"Power source: {', '.join(power)}{battery}.{load_text} Head: {', '.join(heads)}. "
         f"Shaders `{manifests[0]['shader_sha256'][:16]}`, "
         f"runtime scripts `{manifests[0]['runtime_scripts_sha256'][:16]}`. "
         + " ".join(f"{build} binary `{digest}`." for build, digest in binaries),
@@ -85,9 +105,11 @@ def conditions(output: Path, selected: dict[str, list[str]]) -> list[str]:
 
 def summarize(output: Path, selected: dict[str, list[str]]) -> None:
     lines = conditions(output, selected) + [
-        "| Case | Frame mean ms (round range) | Per-round means ms | p95 ms | p99 ms "
-        "| GPU frame envelope ms | Updates / frame | Overflow drop warnings |",
-        "|---|---:|---|---:|---:|---:|---:|---:|",
+        "| Case | Frame mean ms (round range) | Per-round means ms "
+        "| Steady mean / p95 / p99 ms (frames pooled) | All-frame p99 ms "
+        "| GPU frame envelope ms | Updates / frame | Yaw deg "
+        "| Overflow max entries / dropped |",
+        "|---|---:|---|---:|---:|---:|---:|---:|---:|",
     ]
     for name in selected:
         rounds = load(output, name)
@@ -102,16 +124,29 @@ def summarize(output: Path, selected: dict[str, list[str]]) -> None:
             if metric.name == "envelope"
         ]
         ticks = [report.update_ticks_avg for report in reports]
-        counts = [
-            run["overflow_drop_warnings"] for manifest, _ in rounds for run in manifest["runs"]
-        ]
-        drops = drop_warnings_text(None if None in counts else sum(counts))
+        steady = [ms for r in reports for ms in r.steady_frame_times_ms()]
+        steady_text = (
+            f"{statistics.mean(steady):.2f} / {percentile(steady, 95):.2f} / "
+            f"{percentile(steady, 99):.2f} ({len(steady)})"
+            if steady
+            else "—"
+        )
+        witnesses = [r.witness for r in reports]
+        if any(w.yaw_first_deg is None or w.overflow_max_dropped is None for w in witnesses):
+            yaw_text = overflow_text = "unwitnessed"
+        else:
+            yaw_text = "/".join(sorted({f"{w.yaw_first_deg:.3f}" for w in witnesses}))
+            overflow_text = (
+                f"{max(w.overflow_max_entries for w in witnesses)} / "
+                f"{max(w.overflow_max_dropped for w in witnesses)}"
+            )
         lines.append(
             f"| {name} | {span(frames)} | {' / '.join(f'{value:.2f}' for value in frames)} "
-            f"| {min(r.frame.p95 for r in reports):.2f}–{max(r.frame.p95 for r in reports):.2f} "
+            f"| {steady_text} "
             f"| {min(r.frame.p99 for r in reports):.2f}–{max(r.frame.p99 for r in reports):.2f} "
             f"| {span(envelopes) if len(envelopes) == len(reports) else '—'} "
-            f"| {span(ticks, 1) if all(t is not None for t in ticks) else '—'} | {drops} |"
+            f"| {span(ticks, 1) if all(t is not None for t in ticks) else '—'} "
+            f"| {yaw_text} | {overflow_text} |"
         )
     (output / "summary.md").write_text("\n".join(lines) + "\n")
 
@@ -150,7 +185,8 @@ def verify_cases(output: Path) -> None:
     """Each run is the million scene, on the arm its name says, from the build it says.
 
     A preset that failed to load is non-fatal and leaves the default 64³ scene
-    with profiling on, and a Release build would not log it.
+    with profiling on, and a Release build would not log it. The pose and the
+    overflow loss come from the report's run witness, whatever the build logs.
     """
     for path in output.glob("*/round-*/manifest.json"):
         name = path.parts[-3]
@@ -164,14 +200,20 @@ def verify_cases(output: Path) -> None:
         logged = manifest["runs"][0]["engine_logged"]
         if logged == (manifest["build_type"] == "Release"):
             raise ValueError(f"{name}: a {manifest['build_type']} build logged={logged}")
+        pose = ["--yaw", POSES[name.rsplit("-yaw", 1)[1]]]
+        for fault in (
+            yaw_pose_mismatch("IRPerfGrid", pose, report.witness),
+            overflow_failure("IRPerfGrid", pose, report.witness),
+        ):
+            if fault is not None:
+                raise ValueError(f"{name}: {fault}")
 
 
 def verify_poses(output: Path) -> None:
     """Every build's stage-profiling-on case at one pose must cull to the same counts.
 
     With the wave frozen the visible and per-axis counts are a fingerprint of the
-    pose, and they are in the report, which a Release build still writes. A build
-    that logs its pose vouches for the one that cannot.
+    scene at a pose, so two trees that disagree were not built from one source.
     """
     fingerprints: dict[str, set] = {}
     for report_path in output.glob("*-profiling-on-yaw*/round-*/run-1.txt"):
@@ -199,7 +241,7 @@ def main() -> int:
         "--timeout",
         type=int,
         default=900,
-        help="seconds per run; the watchdog also counts time queued on the benchmark lock",
+        help="seconds per run, counted from the benchmark lock's acquisition",
     )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
