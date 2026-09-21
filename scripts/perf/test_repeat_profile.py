@@ -18,6 +18,7 @@ from repeat_profile import (
     overflow_failure,
     percentile,
     requested_yaw,
+    requested_yaw_step,
     run_profile,
     witness_checks,
     yaw_pose_mismatch,
@@ -51,7 +52,8 @@ class YawPoseTest(unittest.TestCase):
     def test_a_degrees_reading_of_the_flag_fails(self):
         reason = self.mismatch(["--yaw", "0.785398163"], witnessed(0.785))
         self.assertIn("45.000 deg", reason)
-        self.assertIn("first rendered frame was at 0.785 deg", reason)
+        self.assertIn("first rendered frame should be at 45.000 deg", reason)
+        self.assertIn("it was at 0.785 deg", reason)
 
     def test_the_last_yaw_wins_and_a_trailing_flag_is_ignored(self):
         self.assertEqual(requested_yaw(["--yaw", "1", "--yaw=2"]), 2.0)
@@ -85,6 +87,41 @@ class YawPoseTest(unittest.TestCase):
         self.assertIsNone(self.mismatch([*ramp, "--auto-screenshot=4"], swept))
         self.assertIn("last rendered frame", self.mismatch(ramp, swept))
         self.assertIsNone(self.mismatch(["--yaw", "1"], RunWitness(), target="IRCanvasStress"))
+
+
+class YawSweepTest(unittest.TestCase):
+    FULL_TURN = ["--yaw-step", "0.020943951"]
+
+    def mismatch(self, demo_args, **witness):
+        return yaw_pose_mismatch("IRPerfGrid", demo_args, witnessed(**witness))
+
+    def test_frame_n_renders_at_yaw_plus_n_minus_one_steps(self):
+        self.assertEqual(requested_yaw_step(self.FULL_TURN), 0.020943951)
+        self.assertEqual(requested_yaw_step(["--yaw", "1"]), 0.0)
+        self.assertIsNone(self.mismatch(self.FULL_TURN, yaw=0.0, last=-1.2, travel=358.8))
+        self.assertIsNone(self.mismatch(self.FULL_TURN, yaw=0.0, last=358.8, travel=358.8))
+        offset = ["--yaw", "0.010471976", *self.FULL_TURN]
+        self.assertIsNone(self.mismatch(offset, yaw=0.6, last=-0.6, travel=358.8))
+        backwards = ["--yaw-step=-0.020943951"]
+        self.assertIsNone(self.mismatch(backwards, yaw=0.0, last=1.2, travel=358.8))
+
+    def test_a_sweep_that_stalled_or_ran_a_different_window_fails(self):
+        stalled = self.mismatch(self.FULL_TURN, yaw=0.0, last=-1.2, travel=100.0)
+        self.assertIn("yawed 100.000 deg over 300 frames", stalled)
+        self.assertIn("is 358.800 deg", stalled)
+        longer = self.mismatch(self.FULL_TURN, yaw=0.0, last=-1.2, travel=358.8, samples=301)
+        self.assertIn("last rendered frame should be at", longer)
+        self.assertIn("301 frames); it was at -1.200 deg", longer)
+        unmoved = self.mismatch(self.FULL_TURN, yaw=0.0, last=0.0, travel=0.0)
+        self.assertIn("last rendered frame should be at 358.800 deg", unmoved)
+
+    def test_a_sweep_must_have_sampled_the_overflow_lane(self):
+        idle = witnessed(yaw=0.0, last=-1.2, travel=358.8, overflow_samples=0)
+        self.assertIn("never sampled", overflow_failure("IRPerfGrid", self.FULL_TURN, idle))
+
+    def test_a_step_the_check_cannot_compare_is_refused(self):
+        with self.assertRaises(ValueError):
+            requested_yaw_step(["--yaw-step", "nan"])
 
 
 class OverflowWitnessTest(unittest.TestCase):

@@ -336,6 +336,17 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
         std::fprintf(f, "\n");
     }
 
+    if (!report.frameUpdateTicks_.empty()) {
+        constexpr size_t kTicksPerLine = 30;
+        std::fprintf(f, "--- Update ticks (per frame, in order) ---\n");
+        for (size_t i = 0; i < report.frameUpdateTicks_.size(); ++i) {
+            const bool endsLine =
+                (i + 1) % kTicksPerLine == 0 || i + 1 == report.frameUpdateTicks_.size();
+            std::fprintf(f, "%u%c", report.frameUpdateTicks_[i], endsLine ? '\n' : ' ');
+        }
+        std::fprintf(f, "\n");
+    }
+
     std::fprintf(f, "=== END REPORT ===\n");
     std::fclose(f);
 }

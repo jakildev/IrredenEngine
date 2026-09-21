@@ -156,6 +156,7 @@ struct CliOverrides {
     float zoom_ = 0.5f;
     bool yawSet_ = false;
     float yaw_ = 0.0f;
+    float yawStep_ = 0.0f;
     bool yawRamp_ = false;
     bool yawRampCrops_ = false;
     bool yawRampWave_ = false;
@@ -422,6 +423,7 @@ void logFeederClassify(int shotIndex) {
 }
 
 int g_autoProfileFrames = 0;
+int g_yawSweepFrames = 0;
 int g_autoProfileCount = 0;
 int g_autoWarmupFrames = 0;
 
@@ -733,6 +735,12 @@ void registerCliArgs() {
     args.integer("--grid-size", "Grid edge in cells", 64);
     args.number("--zoom", "Initial camera zoom", 0.5f);
     args.number("--yaw", "Initial camera Z-yaw in radians", 0.0f);
+    args.number(
+        "--yaw-step",
+        "Camera Z-yaw advance per rendered frame in radians; frame N renders at "
+        "--yaw + (N - 1) * step",
+        0.0f
+    );
     args.flag("--yaw-ramp", "Rotated-solidity validation sweep (#1882/#1883)");
     args.flag(
         "--yaw-ramp-crops",
@@ -813,6 +821,9 @@ void readCliArgs() {
     if (args.wasProvided("--yaw")) {
         g_cliOverrides.yaw_ = args.getFloat("--yaw");
         g_cliOverrides.yawSet_ = true;
+    }
+    if (args.wasProvided("--yaw-step")) {
+        g_cliOverrides.yawStep_ = args.getFloat("--yaw-step");
     }
     g_cliOverrides.yawRamp_ = args.getFlag("--yaw-ramp");
     g_cliOverrides.yawRampCrops_ = args.getFlag("--yaw-ramp-crops");
@@ -1437,6 +1448,26 @@ void initSystems() {
                 "DepthProbe",
                 [](C_Camera &) {},
                 [probePixel]() { IRPrefab::DepthProbe::logCompositeDepth(probePixel); }
+            )
+        );
+    }
+
+    // Stepped per rendered frame, not per second, so every run of a sweep
+    // renders the same poses whatever its frame time, and as an absolute yaw so
+    // the pose of frame N carries no accumulated rounding. It runs after the
+    // frame's render systems: the yaw it sets is the next frame's.
+    if (g_cliOverrides.yawStep_ != 0.0f) {
+        renderPipeline.push_back(
+            IRSystem::createSystem<C_Camera>(
+                "YawSweep",
+                [](C_Camera &) {},
+                []() {
+                    ++g_yawSweepFrames;
+                    IRPrefab::Camera::setYaw(
+                        g_settings.initialYaw_ +
+                        static_cast<float>(g_yawSweepFrames) * g_cliOverrides.yawStep_
+                    );
+                }
             )
         );
     }

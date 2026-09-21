@@ -29,7 +29,7 @@ STEADY = (
 )
 WITNESS = (
     "--- Run witness ---\n"
-    "Camera yaw: first={yaw:.3f}deg last={yaw:.3f}deg travel=0.000deg samples=4\n"
+    "Camera yaw: first={yaw:.3f}deg last={last:.3f}deg travel={travel:.3f}deg samples=4\n"
     "Camera zoom: first=4.000 last=4.000\n"
     "Per-axis overflow: maxEntries=500 maxDropped={drops} cap=8388608 samples={lane}\n"
     "--- Frame times (ms, in order) ---\n"
@@ -52,14 +52,21 @@ def write_round(
     stages=None,
     logged=None,
     yaw=None,
+    travel=None,
     witnessed=True,
     steady=True,
 ):
     """One completed round; by default a well-formed run of the case the name says."""
     release = name.startswith("release-")
-    pose = float(name.rsplit("-yaw", 1)[1])
+    # Four frames of the matrix's sweep: 0.6 degrees, then 1.2 degrees a frame.
+    sweeping = name.endswith("-yawsweep")
+    pose = 0.6 if sweeping else float(name.rsplit("-yaw", 1)[1])
+    first = pose if yaw is None else yaw
+    swept = 3.6 if sweeping else 0.0
     witness = WITNESS.format(
-        yaw=pose if yaw is None else yaw,
+        yaw=first,
+        last=first + swept,
+        travel=swept if travel is None else travel,
         drops=drops,
         lane=3 if pose else 0,
         avg=avg,
@@ -105,9 +112,13 @@ def write_round(
 
 
 class CasesTest(unittest.TestCase):
-    def test_every_build_gets_both_presets_at_both_poses_in_radians(self):
+    def test_every_build_gets_both_presets_at_every_pose_in_radians(self):
         selected = cases(["debug", "release"])
-        self.assertEqual(len(selected), 8)
+        self.assertEqual(len(selected), 12)
+        self.assertEqual(
+            selected["debug-profiling-on-yawsweep"][2:],
+            ["--yaw", "0.010471976", "--yaw-step", "0.020943951"],
+        )
         self.assertEqual(
             selected["release-profiling-off-yaw45"],
             ["--config-preset", PRESETS["off"], "--yaw", "0.785398163"],
@@ -191,11 +202,14 @@ class FingerprintTest(unittest.TestCase):
             "GPU stage rows missing": {"stages": False},
             "a Debug build logged=False": {"logged": False},
             "a Release build logged=True": {"name": "release-profiling-on-yaw0", "logged": True},
-            "first rendered frame was at 0.785 deg": {
+            "it was at 0.785 deg": {
                 "name": "release-profiling-off-yaw45", "yaw": 0.785,
             },
             "dropped up to 3 entries": {"name": "release-profiling-off-yaw45", "drops": 3},
             "witnessed no camera yaw": {"name": "release-profiling-off-yaw45", "witnessed": False},
+            "yawed 1.200 deg over 4 frames": {
+                "name": "release-profiling-off-yawsweep", "travel": 1.2,
+            },
         }
         for message, fault in faults.items():
             with self.subTest(message=message), tempfile.TemporaryDirectory() as temporary:
@@ -204,6 +218,14 @@ class FingerprintTest(unittest.TestCase):
                 write_round(output, name, 1, 30.0, **fault)
                 with self.assertRaisesRegex(ValueError, message):
                     verify_artifacts(output, ["debug", "release"])
+
+    def test_a_sweep_arm_is_verified_from_its_travelled_arc(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary)
+            write_round(output, "release-profiling-off-yawsweep", 1, 40.0, binary="r")
+            verify_artifacts(output, ["debug", "release"])
+            summarize(output, {"release-profiling-off-yawsweep": []})
+            self.assertIn("| 0.600 +3.6 | 500 / 0 |", (output / "summary.md").read_text())
 
     def test_an_unwitnessed_run_is_never_summarised_as_zero_drops(self):
         with tempfile.TemporaryDirectory() as temporary:

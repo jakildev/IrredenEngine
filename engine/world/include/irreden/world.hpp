@@ -78,6 +78,7 @@ class World {
     // Agent-readable profiling: frame timing accumulation
     bool m_frameTimingEnabled = false;
     std::vector<float> m_frameTimesMs;
+    std::vector<uint32_t> m_frameUpdateTicks;
     uint32_t m_frameTotalUpdateTicks = 0;
     uint32_t m_frameMaxUpdateTicksPerFrame = 0;
     // adding to world for user should just be attaching things to world ecs

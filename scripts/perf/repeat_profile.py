@@ -32,6 +32,8 @@ YAW_POSE_TOLERANCE_DEG = 0.01
 # Off a cardinal by more than this the camera rotates through the per-axis
 # canvases, so the overflow lane must have been sampled.
 ROTATED_POSE_MIN_DEG = 1.0
+# A sweep's travelled arc is a sum of per-frame float32 yaw differences.
+SWEEP_TRAVEL_TOLERANCE_DEG = 0.05
 ENGINE_LOG_MARKERS = ("[EngineLog]", "[ClientLog]")
 
 
@@ -47,21 +49,30 @@ def directory_digest(directory: Path) -> str:
     return digest.hexdigest()
 
 
-def requested_yaw(demo_args: list[str]) -> float | None:
-    """The --yaw radians the demo will use (its last occurrence), else None.
+def requested_radians(demo_args: list[str], flag: str) -> float | None:
+    """The radians the demo will use for a flag (its last occurrence), else None.
 
     Raises ValueError for a value the pose check cannot compare: non-numeric
     or non-finite.
     """
     requested = None
     for index, argument in enumerate(demo_args):
-        if argument == "--yaw" and index + 1 < len(demo_args):
+        if argument == flag and index + 1 < len(demo_args):
             requested = float(demo_args[index + 1])
-        elif argument.startswith("--yaw="):
+        elif argument.startswith(flag + "="):
             requested = float(argument.split("=", 1)[1])
     if requested is not None and not math.isfinite(requested):
-        raise ValueError(f"--yaw {requested} is not finite")
+        raise ValueError(f"{flag} {requested} is not finite")
     return requested
+
+
+def requested_yaw(demo_args: list[str]) -> float | None:
+    return requested_radians(demo_args, "--yaw")
+
+
+def requested_yaw_step(demo_args: list[str]) -> float:
+    """IRPerfGrid's per-rendered-frame yaw advance; 0.0 for a static pose."""
+    return requested_radians(demo_args, "--yaw-step") or 0.0
 
 
 def degrees_apart(left: float, right: float) -> float:
@@ -69,33 +80,54 @@ def degrees_apart(left: float, right: float) -> float:
     return min(apart, 360.0 - apart)
 
 
-def is_static_pose(target: str, demo_args: list[str]) -> bool:
-    """IRPerfGrid holds the pose its --yaw radians name unless its shot table sweeps.
-
-    --yaw-ramp is an auto-screenshot shot table and moves nothing without one.
-    """
-    sweeping = "--yaw-ramp" in demo_args and any(
+def shot_table_sweeps(demo_args: list[str]) -> bool:
+    """--yaw-ramp is an auto-screenshot shot table and moves nothing without one."""
+    return "--yaw-ramp" in demo_args and any(
         argument.split("=", 1)[0] == "--auto-screenshot" for argument in demo_args
     )
-    return target == "IRPerfGrid" and requested_yaw(demo_args) is not None and not sweeping
+
+
+def checked_pose(target: str, demo_args: list[str]) -> str | None:
+    """'static', 'sweep', or None where the tool cannot predict IRPerfGrid's poses."""
+    if target != "IRPerfGrid" or shot_table_sweeps(demo_args):
+        return None
+    if requested_yaw_step(demo_args) != 0.0:
+        return "sweep"
+    return "static" if requested_yaw(demo_args) is not None else None
 
 
 def yaw_pose_mismatch(target: str, demo_args: list[str], witness: RunWitness) -> str | None:
-    """Why the pose the report witnessed contradicts a static --yaw radians, else None."""
-    if not is_static_pose(target, demo_args):
+    """Why the poses the report witnessed contradict --yaw and --yaw-step, else None.
+
+    Frame N renders at --yaw + (N - 1) * --yaw-step, so the witness's first
+    frame, last frame and travelled arc are all determined by its sample count.
+    """
+    pose = checked_pose(target, demo_args)
+    if pose is None:
         return None
     if witness.yaw_first_deg is None or witness.pose_samples == 0:
         return "the report witnessed no camera yaw"
-    requested = requested_yaw(demo_args)
-    expected_deg = math.degrees(requested) % 360.0
-    for label, witnessed in (("first", witness.yaw_first_deg), ("last", witness.yaw_last_deg)):
+    start = requested_yaw(demo_args) or 0.0
+    step = requested_yaw_step(demo_args)
+    steps = witness.pose_samples - 1
+    expected = (("first", start), ("last", start + steps * step))
+    for (label, radians), witnessed in zip(
+        expected, (witness.yaw_first_deg, witness.yaw_last_deg)
+    ):
+        expected_deg = math.degrees(radians) % 360.0
         if not degrees_apart(expected_deg, witnessed) <= YAW_POSE_TOLERANCE_DEG:
             return (
-                f"--yaw {requested} rad is {expected_deg:.3f} deg; "
-                f"the {label} rendered frame was at {witnessed:.3f} deg"
+                f"the {label} rendered frame should be at {expected_deg:.3f} deg "
+                f"(--yaw {start} rad, --yaw-step {step} rad, {witness.pose_samples} frames); "
+                f"it was at {witnessed:.3f} deg"
             )
-    if not witness.yaw_travel_deg <= YAW_POSE_TOLERANCE_DEG:
-        return f"the camera yawed {witness.yaw_travel_deg:.3f} deg during a static-pose run"
+    expected_travel = math.degrees(abs(step)) * steps
+    tolerance = YAW_POSE_TOLERANCE_DEG if pose == "static" else SWEEP_TRAVEL_TOLERANCE_DEG
+    if not abs(witness.yaw_travel_deg - expected_travel) <= tolerance:
+        return (
+            f"the camera yawed {witness.yaw_travel_deg:.3f} deg over {witness.pose_samples} "
+            f"frames; --yaw-step {step} rad is {expected_travel:.3f} deg"
+        )
     return None
 
 
@@ -108,10 +140,13 @@ def overflow_failure(target: str, demo_args: list[str], witness: RunWitness) -> 
             f"the per-axis overflow list dropped up to {witness.overflow_max_dropped} "
             f"entries in a frame (cap {witness.overflow_cap})"
         )
-    if is_static_pose(target, demo_args) and witness.overflow_samples == 0:
-        off_cardinal = degrees_apart(math.degrees(requested_yaw(demo_args)) % 90.0, 0.0)
-        if min(off_cardinal, 90.0 - off_cardinal) > ROTATED_POSE_MIN_DEG:
-            return "a rotated pose never sampled the per-axis overflow counters"
+    pose = checked_pose(target, demo_args)
+    rotated = pose == "sweep"
+    if pose == "static":
+        off_cardinal = math.degrees(requested_yaw(demo_args)) % 90.0
+        rotated = min(off_cardinal, 90.0 - off_cardinal) > ROTATED_POSE_MIN_DEG
+    if rotated and witness.overflow_samples == 0:
+        return "a rotated pose never sampled the per-axis overflow counters"
     return None
 
 
@@ -120,6 +155,7 @@ def witness_checks(target: str, demo_args: list[str], witness: RunWitness) -> di
         "yaw_pose_mismatch": yaw_pose_mismatch(target, demo_args, witness),
         "overflow_failure": overflow_failure(target, demo_args, witness),
         "yaw_first_deg": witness.yaw_first_deg,
+        "yaw_last_deg": witness.yaw_last_deg,
         "yaw_travel_deg": witness.yaw_travel_deg,
         "zoom": witness.zoom_first,
         "overflow_max_dropped": witness.overflow_max_dropped,
@@ -319,8 +355,9 @@ def main() -> int:
         parser.error("demo arguments must include --auto-profile")
     try:
         requested_yaw(demo_args)
+        requested_yaw_step(demo_args)
     except ValueError as error:
-        parser.error(f"--yaw must be a finite number of radians: {error}")
+        parser.error(f"--yaw and --yaw-step must be finite numbers of radians: {error}")
     root = Path(__file__).resolve().parents[2]
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)

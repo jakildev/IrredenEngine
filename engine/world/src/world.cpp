@@ -296,6 +296,7 @@ void World::gameLoop() {
                 auto elapsed = Clock::now() - frameStart;
                 float ms = std::chrono::duration<float, std::milli>(elapsed).count();
                 m_frameTimesMs.push_back(ms);
+                m_frameUpdateTicks.push_back(updateTicksThisFrame);
                 m_frameTotalUpdateTicks += updateTicksThisFrame;
                 if (updateTicksThisFrame > m_frameMaxUpdateTicksPerFrame) {
                     m_frameMaxUpdateTicksPerFrame = updateTicksThisFrame;
@@ -401,6 +402,8 @@ void World::enableFrameTiming(bool enabled) {
     if (enabled) {
         m_frameTimesMs.clear();
         m_frameTimesMs.reserve(1024);
+        m_frameUpdateTicks.clear();
+        m_frameUpdateTicks.reserve(1024);
         m_frameTotalUpdateTicks = 0;
         m_frameMaxUpdateTicksPerFrame = 0;
         m_systemManager.resetTimingStats();
@@ -436,6 +439,7 @@ void World::buildAndWriteProfileReport() {
         }
     }
     report.frameTimesMs_ = std::move(m_frameTimesMs);
+    report.frameUpdateTicks_ = std::move(m_frameUpdateTicks);
     report.totalUpdateTicks_ = m_frameTotalUpdateTicks;
     report.maxUpdateTicksPerFrame_ = m_frameMaxUpdateTicksPerFrame;
     report.entityCount_ = IREntity::getLiveEntityCount();

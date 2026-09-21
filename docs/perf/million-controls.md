@@ -3,8 +3,11 @@
 The objective's headline fixture
 ([`million-entity-render`](../design/objectives/million-entity-render.md)) as a
 committed recipe: 100³ single-voxel entities in a 128³ pool, FULL subdivision at
-base 1, zoom 4, frozen per-cell wave, default lighting and shadows, at yaw 0°
-and a true 45°, with stage profiling on and off, in a Debug and a Release tree.
+base 1, zoom 4, frozen per-cell wave, default lighting and shadows, at yaw 0°,
+a true 45° and a full-turn sweep
+([continuous-yaw-sweep.md](continuous-yaw-sweep.md)), with stage profiling on
+and off, in a Debug and a Release tree. The reference and the witnessed round
+below predate the sweep arm.
 
 ```bash
 cmake --preset macos-release      # once; or linux-release / windows-release
@@ -286,6 +289,8 @@ replace it with.
    fleet, so neither is the table a D2 change diffs against.
 2. This matrix after any host or OS change, and on an OpenGL host.
 3. A longer window for the tail: 225 steady frames put two frames above a p99.
-4. Continuous yaw as a profiled fixture: the objective's criterion is a sweep,
-   and the per-pose costs in `perf-grid-yaw-unit.md` (45° 19.7 ms, 58.3°
-   14.9 ms, 116.6° 13.1 ms at 64³) show one pose does not stand for the turn.
+4. The sweep arm's quiet-host numbers, owed with item 1. Continuous yaw is
+   the matrix's third pose ([continuous-yaw-sweep.md](continuous-yaw-sweep.md))
+   because the objective's criterion is a sweep and one pose does not stand
+   for the turn (45° 19.7 ms, 58.3° 14.9 ms, 116.6° 13.1 ms at 64³ in
+   `perf-grid-yaw-unit.md`).

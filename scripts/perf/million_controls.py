@@ -25,7 +25,15 @@ PRESETS = {
     "on": "configs/perf/million.lua",
     "off": "configs/perf/million-profiling-off.lua",
 }
-POSES = {"0": "0", "45": "0.785398163"}
+# A full turn in 300 frames, started half a step off the cardinal so no frame
+# lands on one: a frame on a cardinal releases the per-axis canvases, and the
+# re-allocation hitch that follows tips the fixed-step loop into its clamp for
+# the next quadrant (docs/perf/continuous-yaw-sweep.md).
+POSES = {
+    "0": ["--yaw", "0"],
+    "45": ["--yaw", "0.785398163"],
+    "sweep": ["--yaw", "0.010471976", "--yaw-step", "0.020943951"],
+}
 COMMON = ["--wave-freeze", "--no-overlay"]
 ROUND_RE = re.compile(r"round-(\d+)")
 MILLION_ENTITIES = 1_000_000
@@ -34,15 +42,10 @@ MILLION_ENTITIES = 1_000_000
 def cases(builds: list[str]) -> dict[str, list[str]]:
     """Case name -> demo arguments, named <build>-profiling-<on|off>-yaw<deg>."""
     return {
-        f"{build}-profiling-{profiling}-yaw{degrees}": [
-            "--config-preset",
-            preset,
-            "--yaw",
-            radians,
-        ]
+        f"{build}-profiling-{profiling}-yaw{pose}": ["--config-preset", preset, *pose_args]
         for build in builds
         for profiling, preset in PRESETS.items()
-        for degrees, radians in POSES.items()
+        for pose, pose_args in POSES.items()
     }
 
 
@@ -135,7 +138,15 @@ def summarize(output: Path, selected: dict[str, list[str]]) -> None:
         if any(w.yaw_first_deg is None or w.overflow_max_dropped is None for w in witnesses):
             yaw_text = overflow_text = "unwitnessed"
         else:
-            yaw_text = "/".join(sorted({f"{w.yaw_first_deg:.3f}" for w in witnesses}))
+            yaw_text = "/".join(
+                sorted(
+                    {
+                        f"{w.yaw_first_deg:.3f}"
+                        + (f" +{w.yaw_travel_deg:.1f}" if w.yaw_travel_deg else "")
+                        for w in witnesses
+                    }
+                )
+            )
             overflow_text = (
                 f"{max(w.overflow_max_entries for w in witnesses)} / "
                 f"{max(w.overflow_max_dropped for w in witnesses)}"
@@ -200,7 +211,7 @@ def verify_cases(output: Path) -> None:
         logged = manifest["runs"][0]["engine_logged"]
         if logged == (manifest["build_type"] == "Release"):
             raise ValueError(f"{name}: a {manifest['build_type']} build logged={logged}")
-        pose = ["--yaw", POSES[name.rsplit("-yaw", 1)[1]]]
+        pose = POSES[name.rsplit("-yaw", 1)[1]]
         for fault in (
             yaw_pose_mismatch("IRPerfGrid", pose, report.witness),
             overflow_failure("IRPerfGrid", pose, report.witness),
