@@ -138,6 +138,16 @@ GH_TIMEOUT_SECONDS = 30
 CLAIM_CLEANUP_INTERVAL_SECONDS = 5 * 60
 CLAIM_CLEANUP_MARKER_NAME = "claim-cleanup.last-run"
 
+# The `fleet:stalled` idle sweep is a global, permanent mutation — one
+# label plus one human-facing comment on a `fleet:wip` PR that has sat for a
+# week. Its clock is a 7-day TTL, so like claim cleanup it is level-triggered
+# off its own deadline rather than a projection edge; hourly is far finer than
+# the threshold it measures and costs one `gh pr list` per repo. The tool is
+# idempotent (a stamped PR drops out of its own candidate set), so a missed
+# hour simply retries.
+STALLED_SWEEP_INTERVAL_SECONDS = 60 * 60
+STALLED_SWEEP_MARKER_NAME = "stalled-sweep.last-run"
+
 # A projection that stays unchanged after its consumer crashes has no edge left
 # to wake that role again. The seen file's mtime is the projection's last-change
 # time, so it supplies the liveness floor without another state file. The
@@ -4041,6 +4051,21 @@ def _claim_cleanup_due(now: int | None = None) -> bool:
     return now - last_run >= CLAIM_CLEANUP_INTERVAL_SECONDS
 
 
+def _stalled_sweep_marker_path() -> Path:
+    return SEEN_DIR / STALLED_SWEEP_MARKER_NAME
+
+
+def _stalled_sweep_due(now: int | None = None) -> bool:
+    """Return whether the authoritative fleet:stalled idle sweep is due."""
+    if now is None:
+        now = int(time.time())
+    try:
+        last_run = int(_stalled_sweep_marker_path().read_text().strip())
+    except (FileNotFoundError, ValueError):
+        return True
+    return now - last_run >= STALLED_SWEEP_INTERVAL_SECONDS
+
+
 def emit_state(state) -> int:
     """Serialize + atomically write `state.json`, returning its on-disk bytes.
 
@@ -4619,22 +4644,25 @@ def tick_once():
                 old_hash = ""
             projection_changed = new_hash != old_hash
             cleanup_due = authoritative and _claim_cleanup_due()
-            if projection_changed or cleanup_due:
+            stalled_due = authoritative and _stalled_sweep_due()
+            if projection_changed or cleanup_due or stalled_due:
                 if state.get("degraded"):
                     # Skip reconcile/cleanup when fetch data is stale — comparing
                     # live claims against a potentially incomplete issue list would
                     # produce false-positive drift reports or unsafe auto-fixes.
                     #
-                    # Leave both the seen-hash and periodic marker unwritten.
+                    # Leave the seen-hash and both periodic markers unwritten.
                     # The next healthy tick must retry whichever work is pending;
-                    # recording either marker here would discard it (#2965).
-                    log("queue-manager: skipping reconcile+cleanup (state degraded)")
+                    # recording any of them here would discard it.
+                    log("queue-manager: skipping reconcile+cleanup+stalled-sweep "
+                        "(state degraded)")
                     triggers_fired.append("queue-manager(skipped-degraded)")
                     continue
-                # cleanup --gh is GLOBAL stale-label reaping — run it only on
-                # the authoritative poller (leader, or a follower currently
-                # self-polling), else every follower re-multiplies the very
-                # mutation calls Q2 exists to collapse (#1394). reconcile
+                # cleanup --gh is GLOBAL stale-label reaping, and
+                # fleet-stalled-sweep posts a GLOBAL human-facing comment — run
+                # both only on the authoritative poller (leader, or a follower
+                # currently self-polling), else every follower re-multiplies the
+                # very mutation calls Q2 exists to collapse. reconcile
                 # --apply is conservative host-local + TTL-gated claim hygiene
                 # and runs on EVERY host (one multi-repo pass — one drift report
                 # + one deduped tracker — with the reachable repos as --repo
@@ -4645,6 +4673,10 @@ def tick_once():
                     sweep_cmds.append(
                         ["fleet-claim", "cleanup", "--gh",
                          "--repo", "jakildev/IrredenEngine"])
+                # One process per sweep, both repos in one argv: fleet-stalled-sweep
+                # takes --repo repeatably and sweeps each independently.
+                stalled_cmd = ["fleet-stalled-sweep",
+                               "--repo", "jakildev/IrredenEngine"]
                 reconcile_cmd = ["fleet-claim", "reconcile", "--apply",
                                  "--repo", "jakildev/IrredenEngine"]
                 if (GAME / ".git").exists():
@@ -4652,17 +4684,22 @@ def tick_once():
                         sweep_cmds.append(
                             ["fleet-claim", "--repo", "game", "cleanup",
                              "--gh", "--repo", "jakildev/irreden"])
+                    stalled_cmd += ["--repo", "jakildev/irreden"]
                     reconcile_cmd += ["--repo", "jakildev/irreden"]
+                if stalled_due:
+                    sweep_cmds.append(stalled_cmd)
                 if projection_changed:
                     sweep_cmds.append(reconcile_cmd)
                 # Partial-failure rule, stated rather than implied (#2972): this
                 # lane fires SEVERAL commands, and the seen-hash below is written
                 # only when every one of them spawned. If any fails, the hash
                 # stays unwritten and the next tick re-runs the WHOLE set — safe,
-                # because `cleanup --gh` and `reconcile --apply` are both
-                # idempotent sweeps. Re-running one that already succeeded costs a
-                # redundant pass; consuming the edge drops a stale-lock sweep with
-                # no retry at all, which is the failure being fixed here.
+                # because `cleanup --gh`, `fleet-stalled-sweep` and `reconcile
+                # --apply` are all idempotent sweeps (a stamped PR drops out of
+                # the stall candidate set on its own label). Re-running one that
+                # already succeeded costs a redundant pass; consuming the edge
+                # drops a stale-lock sweep with no retry at all, which is the
+                # failure being fixed here.
                 # First failure breaks: the common causes (fork refused under
                 # load, argv target missing mid-install) fail the remaining spawns
                 # identically, and the retry re-runs them anyway.
@@ -4692,12 +4729,17 @@ def tick_once():
                 if cleanup_due:
                     write_atomic(_claim_cleanup_marker_path(),
                                  f"{int(time.time())}\n")
+                if stalled_due:
+                    write_atomic(_stalled_sweep_marker_path(),
+                                 f"{int(time.time())}\n")
                 _spawn_ok("queue-manager")
                 _actions = []
                 if cleanup_due:
                     _actions.append("cleanup")
                 if projection_changed:
                     _actions.append("reconcile")
+                if stalled_due:
+                    _actions.append("stalled-sweep")
                 log(f"queue-manager: spawned {' + '.join(_actions)}")
                 triggers_fired.append("queue-manager(claim-cleanup)")
         elif role == "queue-manager-ingest":
