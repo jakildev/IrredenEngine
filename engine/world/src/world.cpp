@@ -15,8 +15,12 @@
 
 namespace IREngine {
 
-World::World(const char *configFileName, const char *configPresetFile)
-    : m_worldConfig{configFileName, configPresetFile}
+World::World(
+    const char *configFileName,
+    const char *configPresetFile,
+    std::optional<int> workerThreadsOverride
+)
+    : m_worldConfig{configFileName, configPresetFile, workerThreadsOverride}
     , m_IRGLFWWindow{
           ivec2(
               m_worldConfig["init_window_width"].get_integer(),

@@ -67,9 +67,9 @@ config = {
   consuming module's `CLAUDE.md`. Never a CLI flag for the same purpose
   (`creations/demos/CLAUDE.md` §"Conventions", "No runtime arguments").
 - `WorldConfig` fields are what `World` itself reads at construction;
-  `--config-preset <file>` overlays that file's `config` table on them (only
-  the keys it carries; a relative path resolves from the exe dir). The
-  pre-init pass reads `config.lua` only. One source of truth per file.
+  `--config-preset <file>` overlays that file's `config` table (keys it carries
+  only; relative path from the exe dir), then `--worker-threads` overrides
+  `worker_thread_count`. Pre-init reads `config.lua` only — one source per file.
 
 ## Chunk residency
 

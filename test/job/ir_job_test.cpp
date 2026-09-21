@@ -400,3 +400,119 @@ TEST(IRJobChunksNoPool, RunsSerialWithoutManager) {
     EXPECT_EQ(calls, 1);
     EXPECT_EQ(seenEnd, 10000);
 }
+
+// ---------------------------------------------------------------------------
+// Inline-serial mode (`worker_thread_count == 0`) — no pool at all, every
+// dispatch on the calling thread. This is the true serial arm a threading
+// benchmark measures against: a one-worker pool still has two executors,
+// because enkiTS pumps tasks on the waiting thread.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+class IRJobInlineSerialFixture : public ::testing::Test {
+  protected:
+    void SetUp() override {
+        m_jobs = std::make_unique<IRJob::JobManager>(IRJob::JobManager::kInlineSerialWorkerCount);
+    }
+
+    void TearDown() override {
+        m_jobs.reset();
+    }
+
+    std::unique_ptr<IRJob::JobManager> m_jobs;
+};
+
+} // namespace
+
+TEST_F(IRJobInlineSerialFixture, ManagerReportsZeroWorkersAndStaysGlobal) {
+    EXPECT_EQ(IRJob::workerCount(), 0);
+    EXPECT_EQ(g_jobManager, m_jobs.get());
+    EXPECT_TRUE(m_jobs->isInlineSerial());
+    EXPECT_TRUE(IRJob::isMainThread());
+    EXPECT_EQ(IRJob::workerId(), 0);
+}
+
+TEST_F(IRJobInlineSerialFixture, ParallelForCoversRangeOnceOnTheCallingThread) {
+    constexpr int kCount = 10000;
+    std::vector<int> hits(kCount, 0);
+    int calls = 0;
+    IRJob::parallelFor(0, kCount, 16, [&](int rangeBegin, int rangeEnd) {
+        ++calls;
+        EXPECT_TRUE(IRJob::isMainThread());
+        EXPECT_EQ(IRJob::workerId(), 0);
+        for (int i = rangeBegin; i < rangeEnd; ++i) {
+            ++hits[i];
+        }
+    });
+    // One chunk, whatever the grain: there is nothing to fan out to.
+    EXPECT_EQ(calls, 1);
+    for (int i = 0; i < kCount; ++i) {
+        EXPECT_EQ(hits[i], 1) << "index " << i << " visited " << hits[i] << " times";
+    }
+}
+
+TEST_F(IRJobInlineSerialFixture, ParallelForEmptyRangeIsNoOp) {
+    int sentinel = 0;
+    IRJob::parallelFor(0, 0, 1, [&](int, int) { ++sentinel; });
+    EXPECT_EQ(sentinel, 0);
+}
+
+TEST_F(IRJobInlineSerialFixture, AutoGrainAboveThresholdStillRunsSerialSingleCall) {
+    // 10000 is well above the default minItemsToParallelize (4096), so the
+    // pooled fixture fans out here; inline-serial must not.
+    constexpr int kCount = 10000;
+    std::vector<int> hits(kCount, 0);
+    int calls = 0;
+    IRJob::parallelForAutoGrain(kCount, [&](int begin, int end) {
+        ++calls;
+        EXPECT_TRUE(IRJob::isMainThread());
+        EXPECT_EQ(IRJob::workerId(), 0);
+        for (int i = begin; i < end; ++i) {
+            ++hits[i];
+        }
+    });
+    EXPECT_EQ(calls, 1);
+    for (int i = 0; i < kCount; ++i) {
+        EXPECT_EQ(hits[i], 1) << "index " << i << " visited " << hits[i] << " times";
+    }
+}
+
+TEST_F(IRJobInlineSerialFixture, ChunksAboveBothThresholdsRunSerialOneCallPerNode) {
+    // 16 nodes (>= minNodes 8) totalling 16000 rows (>= minItemsToParallelize
+    // 4096) — both fan-out triggers armed, and still one whole-node call each.
+    constexpr int kNodes = 16;
+    constexpr int kRowsPerNode = 1000;
+    std::vector<int> nodeLengths(kNodes, kRowsPerNode);
+    std::vector<IRJob::RowChunk> scratch;
+    std::vector<int> callsPerNode(kNodes, 0);
+    IRJob::parallelChunks(nodeLengths, scratch, [&](int nodeIndex, int rowBegin, int rowEnd) {
+        ++callsPerNode[nodeIndex];
+        EXPECT_TRUE(IRJob::isMainThread());
+        EXPECT_EQ(rowBegin, 0);
+        EXPECT_EQ(rowEnd, kRowsPerNode);
+    });
+    for (int i = 0; i < kNodes; ++i) {
+        EXPECT_EQ(callsPerNode[i], 1) << "node " << i;
+    }
+}
+
+TEST_F(IRJobInlineSerialFixture, RunExecutesBodyOnTheCallingThread) {
+    bool ran = false;
+    std::thread::id bodyThread;
+    IRJob::run("inline-serial-run", [&]() {
+        ran = true;
+        bodyThread = std::this_thread::get_id();
+        EXPECT_TRUE(IRJob::isMainThread());
+        EXPECT_EQ(IRJob::workerId(), 0);
+    });
+    EXPECT_TRUE(ran);
+    EXPECT_EQ(bodyThread, std::this_thread::get_id());
+}
+
+TEST(IRJobManagerTest, AutoWorkerCountNeverResolvesToInlineSerial) {
+    // Only an explicit 0 reaches inline-serial; auto keeps its floor of 1.
+    IRJob::JobManager local(IRJob::JobManager::kAutoWorkerCount);
+    EXPECT_FALSE(local.isInlineSerial());
+    EXPECT_GE(local.workerCount(), 1);
+}

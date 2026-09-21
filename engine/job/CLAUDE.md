@@ -36,26 +36,44 @@ generalized form of `PROPAGATE_TRANSFORM`'s per-level dispatch.
   `tasksPerWorker_`); the defaults reproduce the original
   PROPAGATE_TRANSFORM constants, so a default-constructed tuning is
   bit-identical to the hand-rolled dispatch it replaced.
-- Both fall back to a single serial pass when `g_jobManager ==
-  nullptr` or the work-set is below threshold (the same null-pool
-  contract `parallelFor` asserts on — these helpers tolerate it
-  instead, since their whole job is the parallel-vs-serial decision).
+- Both fall back to a single serial pass when there is no worker pool
+  (`g_jobManager == nullptr`, or inline-serial mode) or the work-set is
+  below threshold (the same null-pool contract `parallelFor` asserts on
+  — these helpers tolerate it instead, since their whole job is the
+  parallel-vs-serial decision).
 - Callers own write-disjointness across the dispatched ranges, and
   own the reused `scratch` buffer (`std::vector<IRJob::RowChunk>`) so
   per-frame planning stays allocation-free on the hot path.
 
 ## Worker count resolution
 
-The pool size comes from `WorldConfig::worker_thread_count`. `-1`
-(the default in `data/configs/default.irconf`) means "auto":
-`max(1, hardware_concurrency() - 2)`. On Apple Silicon the auto
-value is then capped to the P-core count via
-`sysctlbyname("hw.perflevel0.physicalcpu", ...)` so enkiTS workers
-don't spin on E-cores. The cap decision is logged at INFO at
-startup so cross-machine reports surface the resolved count.
+The pool size comes from `WorldConfig::worker_thread_count`, which the
+engine-common `--worker-threads` arg overrides per run (precedence:
+defaults < `config.lua` < `--config-preset` < `--worker-threads`).
+
+- `-1` (the default in `data/configs/default.irconf`) means "auto":
+  `max(1, hardware_concurrency() - 2)`. On Apple Silicon the auto
+  value is then capped to the P-core count via
+  `sysctlbyname("hw.perflevel0.physicalcpu", ...)` so enkiTS workers
+  don't spin on E-cores.
+- `0` means **inline-serial**: no enkiTS scheduler is created,
+  `workerCount()` is `0`, `isInlineSerial()` is true, and every
+  dispatch entry point runs its callable on the calling thread. Auto
+  never resolves to it — only an explicit request does.
+- `N >= 1` is an N-worker pool, after the hardware and P-core caps.
+
+`JobManager: started with <n> worker threads` is logged at INFO in
+every mode (inline-serial appends a suffix), so one grep reads the
+resolved count out of a benchmark cell's log. The P-core cap logs its
+own line when it fires.
 
 Override the config field only for benchmarking. The auto-resolved
 value is what production runs against.
+
+**Inline-serial is the real serial floor.** A one-worker pool has
+*two* executors: `WaitforTask` pumps tasks on the calling thread while
+the worker runs them. Benchmarking a speedup against `1` understates
+it; `0` is the arm with a single executor.
 
 ## Why enkiTS
 
@@ -127,3 +145,9 @@ random state. The main thread is seeded from id `0` at
   functions return safe defaults rather than crashing. `parallelFor`
   / `run` / `pinTo` assert because there's nothing meaningful to do
   without a pool.
+- **Inline-serial is NOT a null manager.** `g_jobManager` is set,
+  `isMainThread()` is true and `workerId()` is `0`, so
+  `IR_ASSERT_MAIN_THREAD` and the `workerCount() + 1` per-worker
+  staging sizing behave exactly as with a pool (one slot). Only
+  `scheduler()` is unavailable — it asserts — and `pinTo` has no
+  valid target, so its `[1, workerCount()]` assert always fires.
