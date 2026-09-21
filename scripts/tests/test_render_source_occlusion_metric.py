@@ -15,6 +15,53 @@ SPEC.loader.exec_module(METRIC)
 
 
 class SourceOcclusionTest(unittest.TestCase):
+    @staticmethod
+    def partial_face():
+        return dict(cell=(0, 0, 0), normal=(0, 0, -1), visible_to_sun=True,
+                    screen_corners=[(0, 0, 0), (20, 0, 0), (20, 10, 0), (0, 10, 0)],
+                    local_corners=[(-.5, -.5, -.5), (.5, -.5, -.5),
+                                   (.5, .5, -.5), (-.5, .5, -.5)])
+
+    def test_surface_position_uses_pixel_centers_and_original_plane(self):
+        point = METRIC.surface_position(self.partial_face(), 4, 1)
+        for actual, wanted in zip(point, (-.275, -.35, -.5)):
+            self.assertAlmostEqual(actual, wanted)
+        face = self.partial_face()
+        face["screen_corners"] = [(0, 0, 0)] * 4
+        with self.assertRaises(ValueError):
+            METRIC.surface_position(face, 4, 1)
+
+    def test_partial_face_shadow_requires_continuous_visibility(self):
+        width, height = 20, 10
+        owners, faces = [1] * 200, [None, self.partial_face()]
+        # A vertical ray meets the translated box exactly on the right half.
+        context = ({(0, 0, 0), (.5, 0, -2)}, (0, 0, -1))
+        pixels = bytes(c for y in range(height) for x in range(width)
+                       for c in ((0, 0, 0) if x < 10 else (255, 0, 255)))
+        result, _ = METRIC.compare(width, height, 3, pixels, owners, faces, True, context)
+        self.assertTrue(result["pass"])
+        self.assertEqual(result["lit_interior_pixels"], 90)
+        self.assertEqual(result["shadowed_interior_pixels"], 90)
+        self.assertEqual(result["tested_shadow_pixels"], 180)
+        self.assertEqual(result["shadow_boundary_excluded_pixels"], 20)
+        center, _ = METRIC.compare(width, height, 3, pixels, owners, faces, True)
+        self.assertEqual(center["false_shadow_pixels"], 100)
+        for wrong in (bytes(600), bytes((255, 0, 255)) * 200,
+                      bytes(c for y in range(height) for x in range(width)
+                            for c in ((255, 0, 255) if x < 10 else (0, 0, 0)))):
+            result, _ = METRIC.compare(width, height, 3, wrong, owners, faces, True, context)
+            self.assertFalse(result["pass"])
+            self.assertGreater(result["false_shadow_pixels"] + result["missed_shadow_pixels"], 0)
+
+    def test_continuous_boundary_allowance_cannot_consume_the_entire_test(self):
+        face = self.partial_face()
+        face["screen_corners"] = [(0, 0, 0), (2, 0, 0), (2, 10, 0), (0, 10, 0)]
+        context = ({(0, 0, 0), (.5, 0, -2)}, (0, 0, -1))
+        result, _ = METRIC.compare(2, 10, 3, bytes(60), [1] * 20,
+                                   [None, face], True, context)
+        self.assertEqual(result["tested_shadow_pixels"], 0)
+        self.assertFalse(result["pass"])
+
     def test_slab_hit_miss_and_parallel_edge(self):
         self.assertEqual(METRIC.ray_box_interval((-2, 0, 0), (1, 0, 0), (0, 0, 0)), (1.5, 2.5))
         self.assertIsNone(METRIC.ray_box_interval((-2, 1, 0), (1, 0, 0), (0, 0, 0)))
