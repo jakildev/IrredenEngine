@@ -9,31 +9,19 @@ diff stays isolated. Two surfaces decide which bases are eligible:
   * `fleet-claim claim --stackable-on <pr>` ACCEPTS a base, re-verifying it
     live at claim time.
 
-Both must reject a base that isn't safe to stack on, and they must agree.
-Before #1751 each surface filtered a different (narrow) subset:
-
-  * the scout rejected only design-blocked bases + area-overlap;
-  * the claim gate re-checked only `state` / `headRefName` (MERGED / OPEN /
-    CLOSED), not labels and not the diff.
-
-So a base that was OPEN-but-WIP, OPEN-but-`design-unblocked`, OPEN-but-amending
-(`fleet:amending-<host>-<agent>`), or an OPEN empty claim-commit skeleton sailed
-through both and got stacked on — a half-built or in-flux base that the worker's
-diff then folded in or conflicted against (the 2026-06-06 empty-claim skeleton
-case; cf. the just-design-unblocked skeleton hazard, fleet memory
-`stackable_blocker_empty_skeleton`).
-
-Centralizing the reject-state predicate here means the offer and the accept
-can't drift: both call `unsafe_base_reason()`. The label vocabulary mirrors the
-scout's existing reviewer-skip / design-block sets (a base in any of those
-states is mid-flux for the same reasons a reviewer would skip it) but is kept
+Both must reject a base that isn't safe to stack on, and they must agree: an
+OPEN-but-WIP, OPEN-but-`design-unblocked`, OPEN-but-amending
+(`fleet:amending-<host>-<agent>`), or OPEN empty claim-commit skeleton base
+is half-built or in flux, and a worker stacked on it folds that state into its
+diff or conflicts against it. Both surfaces call `unsafe_base_reason()`, so
+the offer and the accept can't drift. The label vocabulary mirrors the
+scout's reviewer-skip / design-block sets (a base in any of those states is
+mid-flux for the same reasons a reviewer would skip it) but is kept
 purpose-named here so the two concerns can evolve independently.
 
-Ancestry containment (the #2447 `missing_ancestor_reason` walk) was retired
-with the native-stacked-PRs migration: a native stack self-heals a base that
-is missing a merged blocker via `gh stack sync` / the server-side cascade, so
-the offer/accept surfaces no longer gate on it (block preserved at the
-`pre-native-stacks` tag; see `scripts/fleet/legacy/stacked-prs/README.md`).
+Neither surface gates on ancestry containment: a native stack self-heals a
+base that is missing a merged blocker via `gh stack sync` / the server-side
+cascade.
 
 Stdlib only — imported by `fleet-state-scout` (pure Python) and by
 `fleet-claim` (bash, via an inline `python3` block through `FLEET_LIB_DIR`),

@@ -1171,8 +1171,8 @@ _acquire_label_on() {
     done
 
     # Exhausted the retry budget while always lex-min: an earlier holder
-    # persists and never yielded — the non-simultaneous case, or a
-    # dead/abandoned (classically cross-host) claimant that will never yield.
+    # persists — an earlier holder that acquired before us and never yields,
+    # or a dead/abandoned (classically cross-host) claimant that never will.
     # Our label was already removed by the final retry's release.
     # Before giving up, try ONCE to force-sweep any TTL-stale holder so a live
     # claimant can take over; if that frees a slot, re-run the acquire loop.

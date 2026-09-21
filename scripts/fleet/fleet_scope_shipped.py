@@ -1,47 +1,45 @@
 """Genuine-ship predicate for fleet-queue-ingest's scope-shipped pre-flight.
 
 A merged PR is only evidence that an issue's scope "already landed" when the PR
-genuinely *ships* the issue — not when it merely names it. Three layers of
-incidental match have to be rejected:
+genuinely *ships* the issue — not when it merely names it. Every layer below
+rejects one shape of incidental match:
 
-1. No reference at all (#1304). GitHub's PR search (``gh pr list --search
-   '#N'``) strips the ``#`` and matches the bare token ``N`` anywhere it
-   appears — PR comments, source line numbers, even relevance-only hits with no
-   literal ``N``. Trusting ``prs[0]`` mislabels unrelated issues (#1243's #1300
-   line-number hit, #1160's #1284 relevance hit).
+1. No reference at all. GitHub's PR search (``gh pr list --search '#N'``)
+   strips the ``#`` and matches the bare token ``N`` anywhere it appears — PR
+   comments, source line numbers, even relevance-only hits with no literal
+   ``N``. Trusting ``prs[0]`` mislabels unrelated issues through a line-number
+   or relevance hit.
 
 2. Mentioned but not shipped. A bare word-boundary ``#N`` in a PR *body* is
    still not proof: PRs routinely cite issues they explicitly do NOT fix —
-   "bug-fixing is downstream issues (#1260, etc)" (#1260 ← #1282),
-   "pre-existing #1269" / "filed as #1269" (#1269 ← #1265), "Refs #N". These
-   slipped past the layer-1 fix because the literal ``#N`` token is present.
+   "bug-fixing is downstream issues (#N, etc)", "pre-existing #N" /
+   "filed as #N", "Refs #N". The literal ``#N`` token is present in all of
+   them, so a token-presence check alone accepts them.
 
-3. Range endpoint, not implemented (#1602 / #1612 ← #1614). An epic-planning PR
-   names the children it *files* as a range in its title — "docs: re-plan ...
-   — file children #1602-#1612". The title-trust below then matched the two
-   range *endpoints* (#1602 and #1612; the middle children #1603-#1611 were
-   untouched because only the endpoints are literally written with a ``#``). A
-   ``#N`` that is an endpoint of a ``#A-#B`` range is enumerating issues, never
-   shipping one, so range endpoints are rejected in both title and body.
+3. Range endpoint, not implemented. An epic-planning PR names the children it
+   *files* as a range in its title — "docs: re-plan ... — file children
+   #A-#B". Title-trust would match the two range *endpoints* (the middle
+   children are untouched because only the endpoints are literally written
+   with a ``#``). A ``#N`` that is an endpoint of a ``#A-#B`` range is
+   enumerating issues, never shipping one, so range endpoints are rejected in
+   both title and body.
 
-4. Plan/design-doc title (#1807 ← #1809, #1802 ← #1805, #1354 ← #1411). A plan
-   or design PR is titled after the issue it *plans/designs*, not one it ships:
-   "docs: plan rotation-profiling task (#1807)", "docs: plan #1052 …
-   (#1802/#1803/#1804)", "docs/design: … (#1354)". The title-trust below then
-   read the planned issue — or a filed child named with a ``/`` separator,
-   which the layer-3 dash guard doesn't cover — as shipped. A ``docs:
-   (re-)plan`` / ``docs/design:`` title commits the plan, never the
+4. Plan/design-doc title. A plan or design PR is titled after the issue it
+   *plans/designs*, not one it ships: "docs: plan rotation-profiling task
+   (#N)", "docs: plan #N … (#A/#B/#C)", "docs/design: … (#N)". Title-trust
+   would read the planned issue — or a filed child named with a ``/``
+   separator, which the layer-3 dash guard doesn't cover — as shipped. A
+   ``docs: (re-)plan`` / ``docs/design:`` title commits the plan, never the
    implementation, so its title ref is NOT trusted: the issue ships only if a
    body closing-verb says so (a doc PR whose deliverable genuinely IS the doc
    change still ships via ``Closes #N`` in the body).
 
-5. Closing verb inside a code span (#1824 ← #1854). Layer 4 stops a plan-doc
-   *title* from shipping, but a plan PR's *body* routinely quotes the closing
-   verb the future implementation PR will use: "the structured plan for #1824
-   (planning step output; impl PR will carry the code + ``Closes #1824``)" and
-   "Plan doc for #1824 — does not close the issue (the implementation PR
-   will)". That ``Closes #1824`` sits in an inline code span — it is *showing*
-   the literal text the impl PR will write, not performing a close — so the
+5. Closing verb inside a code span. Layer 4 stops a plan-doc *title* from
+   shipping, but a plan PR's *body* routinely quotes the closing verb the
+   future implementation PR will use: "the structured plan for #N (planning
+   step output; impl PR will carry the code + ``Closes #N``)". That
+   ``Closes #N`` sits in an inline code span — it is *showing* the literal text
+   the impl PR will write, not performing a close — so without a strip the
    layer-4 title guard fires while the body closing-verb check still matches.
    Markdown code spans (fenced ```` ``` ```` blocks and inline `` `…` `` spans)
    are therefore stripped from the body before the closing-verb scan: a verb
@@ -49,58 +47,55 @@ incidental match have to be rejected:
    ``Closes #N`` as prose, never in backticks, so the strip costs no true
    positive.
 
-6. Deferral marker (#1640 ← #1700). A PR may name ``#N`` in a trusted (non-plan)
-   title only to mark it *deferred*: "render: doc the ... invariant
-   (#1640 deferred)" is a doc-only, design-blocked PR that documents the gap and
-   escalates the fix — it does NOT land #1640's scope. Because it is titled
-   ``render:`` (not ``docs:``) the layer-4 plan-doc guard does not fire, and the
-   bare ``#1640`` in the title satisfies title-trust, so ingest false-stamped
-   ``fleet:scope-shipped`` on #1640 — and re-stamped it every pass after the
-   architect removed the label, an un-winnable label fight. A ``#N`` carrying an
-   adjacent deferral word ("(#N deferred)", "#N — deferred", "defers #N") is an
-   explicit non-ship signal, so a deferral-marked title ref is NOT trusted (the
-   deferral word must sit directly on one side of the ref, within a bounded gap
-   like the range/verb guards, so "fix #1234 and defer #1235" still ships #1234).
+6. Deferral marker. A PR may name ``#N`` in a trusted (non-plan) title only to
+   mark it *deferred*: "render: doc the ... invariant (#N deferred)" is a
+   doc-only, design-blocked PR that documents the gap and escalates the fix —
+   it does NOT land #N's scope. Because it is titled ``render:`` (not
+   ``docs:``) the layer-4 plan-doc guard does not fire, and the bare ``#N`` in
+   the title satisfies title-trust; ingest would stamp
+   ``fleet:scope-shipped`` on #N and re-stamp it every pass after a human
+   removes the label. A ``#N`` carrying an adjacent deferral word ("(#N
+   deferred)", "#N — deferred", "defers #N") is an explicit non-ship signal, so
+   a deferral-marked title ref is NOT trusted (the deferral word must sit
+   directly on one side of the ref, within a bounded gap like the range/verb
+   guards, so "fix #A and defer #B" still ships #A).
 
-7. Prep / partial marker (#2258 ← #2266). A PR may name ``#N`` in a trusted
-   (non-plan) title only to mark it *preparatory* — a narrowed refactor that
-   lands groundwork for #N without shipping its scope: "render: extract
-   sunBakeFrustumUVBounds shared helper (#2258 prep)" is linked ``Part of``,
-   not ``Closes``, and its body states it "keeps only the independently-correct
-   refactor and drops the dead plumbing". Because it is titled ``render:`` (not
-   ``docs:``) the layer-4 plan-doc guard does not fire, and the bare ``#2258``
-   in the title satisfies title-trust, so ingest false-stamped
-   ``fleet:scope-shipped`` on #2258 — clobbering the issue's re-queue the instant
-   its plan cleared review. A ``#N`` carrying an adjacent prep word ("(#N prep)",
-   "prep for #N", "preparatory #N") is an explicit not-yet-shipped signal, so a
-   prep-marked title ref is NOT trusted — same bounded-gap rule as layer 6's
-   deferral marker (the prep word must sit directly on one side of the ref, so
-   "ship #1234, prep #1235" still ships #1234).
+7. Prep / partial marker. A PR may name ``#N`` in a trusted (non-plan) title
+   only to mark it *preparatory* — a narrowed refactor that lands groundwork
+   for #N without shipping its scope: "render: extract
+   sunBakeFrustumUVBounds shared helper (#N prep)" is linked ``Part of``, not
+   ``Closes``. Because it is titled ``render:`` (not ``docs:``) the layer-4
+   plan-doc guard does not fire, and the bare ``#N`` in the title satisfies
+   title-trust; ingest would stamp ``fleet:scope-shipped`` on #N and clobber
+   the issue's re-queue the instant its plan clears review. A ``#N`` carrying
+   an adjacent prep word ("(#N prep)", "prep for #N", "preparatory #N") is an
+   explicit not-yet-shipped signal, so a prep-marked title ref is NOT trusted
+   — same bounded-gap rule as layer 6's deferral marker (the prep word must
+   sit directly on one side of the ref, so "ship #A, prep #B" still ships #A).
 
-8. Bookkeeping diff — an all-``.fleet/`` PR (#2385 ← #2392). Layers 1-7 read the
-   PR's title/body text; this one reads its *diff*. An epic-steward bookkeeping
-   PR — a ledger rollup, a plan adoption, a projection edit — is titled *about*
-   the issues it accounts for ("docs/fleet: epic-steward — #2317 rollup + #2385
-   adoption (#2314)"), but its diff is entirely ``.fleet/`` files (here two
-   ``.fleet/`` docs). Its subject is neither ``plan`` nor ``design``, so
-   the layer-4 guard does not fire, and the bare ``#2385`` in the title
-   satisfies title-trust — ingest false-stamped ``fleet:scope-shipped`` on #2385
-   (a render fix with no impl PR anywhere) one minute after the human cleared it
-   for the queue, and the reconcile loop then re-bounced it to
-   ``fleet:needs-plan``. A PR whose changed files are *all* under ``.fleet/``
-   maintains fleet state and never ships an issue's code scope, so its title ref
-   is NOT trusted: like layers 4/6/7 it falls through to the body closing-verb
-   check, where a ``.fleet/``-only PR whose deliverable genuinely IS the fleet
-   change still ships via a prose ``Closes #N``. The file list is optional — a caller that does
-   not supply it keeps the pre-layer-8 title-trust behavior.
+8. Bookkeeping diff — an all-``.fleet/`` PR. Layers 1-7 read the PR's
+   title/body text; this one reads its *diff*. An epic-steward bookkeeping PR —
+   a ledger rollup, a plan adoption, a projection edit — is titled *about* the
+   issues it accounts for ("docs/fleet: epic-steward — #A rollup + #B adoption
+   (#C)"), but its diff is entirely ``.fleet/`` files. Its subject is neither
+   ``plan`` nor ``design``, so the layer-4 guard does not fire, and the bare
+   ``#B`` in the title satisfies title-trust; ingest would stamp
+   ``fleet:scope-shipped`` on an issue with no impl PR anywhere, and the
+   reconcile loop would then bounce it to ``fleet:needs-plan``. A PR whose
+   changed files are *all* under ``.fleet/`` maintains fleet state and never
+   ships an issue's code scope, so its title ref is NOT trusted: like layers
+   4/6/7 it falls through to the body closing-verb check, where a
+   ``.fleet/``-only PR whose deliverable genuinely IS the fleet change still
+   ships via a prose ``Closes #N``. The file list is optional — a caller that
+   does not supply it gets title-trust without the diff check.
 
-9. Documentation diff — an all-documentation PR (#2091 ← #3020). A PR can use
-   an implementation scope in its title while only documenting verification or
-   an outstanding phase: "render: GL Phase-0 verification ... (#2091)" changed
-   one file under ``docs/`` and deliberately omitted ``Closes #2091`` because
-   the Metal phase remained. Layer 8 did not fire because ``docs/`` was outside
-   its bookkeeping prefix, so title-trust stranded the issue anyway. A diff
-   made entirely from the union of ``.fleet/`` and ``docs/`` paths ships no
+9. Documentation diff — an all-documentation PR. A PR can use an
+   implementation scope in its title while only documenting verification or
+   an outstanding phase: "render: GL Phase-0 verification ... (#N)" changing
+   one file under ``docs/`` and deliberately omitting ``Closes #N`` because a
+   later phase remains. ``docs/`` sits outside layer 8's bookkeeping prefix,
+   so layer 8 alone would let title-trust strand the issue. A diff made
+   entirely from the union of ``.fleet/`` and ``docs/`` paths ships no
    implementation artifact and therefore withholds title-trust. It still falls
    through to the body closing-verb check, preserving documentation issues that
    genuinely ship via prose ``Closes #N``. Repo-root Markdown is deliberately
@@ -209,8 +204,8 @@ def _ref_is_nonship_marked(text, n):
 
     Trade-off (deliberate — matches layers 3-5's bias toward under-stamping):
     the gap is purely positional, so a marker word aimed at a *different* issue
-    that happens to land adjacent to ``#n`` — "close #1640 (deferred from
-    #1600)" — also reads as marking #1640. That under-stamps (the title ref
+    that happens to land adjacent to ``#n`` — "close #n (deferred from
+    #m)" — also reads as marking #n. That under-stamps (the title ref
     falls through to the body, which still ships on a genuine ``Closes #n``)
     rather than risk a false ship.
     """
@@ -267,7 +262,7 @@ def pr_references_issue(title, body, n, files=None):
     """True iff the PR genuinely ships issue ``n`` (see module docstring).
 
     Title: any word-boundary ``#n`` counts (the ``#N: <desc>`` PR-naming
-    convention) UNLESS it is a range endpoint (``#1602-#1612`` — a planning PR
+    convention) UNLESS it is a range endpoint (``#A-#B`` — a planning PR
     naming filed children), the whole title is a plan/design-doc title
     (``docs: plan …`` / ``docs/design: …`` / ``docs: design …`` — a PR that plans/designs ``n``,
     never ships it), the ref is marked deferred ("(#n deferred)" / "defers #n"

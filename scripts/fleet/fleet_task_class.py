@@ -48,11 +48,11 @@ xhigh.
 The fable concurrency cap is enforced here by *skipping* fable items when
 the cap is reached — the lane then serves its next non-fable item instead
 of idling. When the only work left is non-actionable — cap-blocked fable,
-tasks already covered by an open implementation PR (``inflight_pr``, #1726),
+tasks already covered by an open implementation PR (``inflight_pr``),
 a ``blocked`` task with no valid stackable base (the scout left off
 ``stackable_blocker_pr`` because the blocker has no open PR or only a
 parked/conflicting one), or backend-specific tasks this host can't run
-(``needs_gl_host`` on a Metal-only host, #1998) — the verdict is ``defer``
+(``needs_gl_host`` on a Metal-only host) — the verdict is ``defer``
 (keep the trigger, dispatch nothing) rather than an empty result, so the
 dispatcher doesn't burn an iteration on a lane whose only work a fresh
 worker would refuse.
@@ -71,7 +71,7 @@ Output protocol (one line on stdout, consumed by fleet-dispatcher):
                                   includes the class's needs-plan yield (kept
                                   for the --resolve-class print; the
                                   dispatcher takes every claim through
-                                  ``--pick`` now, #2197 planning included).
+                                  ``--pick``, planning included).
   ``defer``                     — queue isn't empty but nothing is claimable
                                   right now (only cap-blocked fable, tasks with
                                   an open implementation PR, a `blocked` task
@@ -97,7 +97,7 @@ A third CLI mode, ``--smoke-check <smoke-worker-slice.json>``, prints one
 pending smoke label names THIS host (`HOST_SMOKE_LABELS` / `smoke_pr_for_host`);
 the slice spans both repos, so the bare number is ambiguous. Empty output
 means this host owes no smoke work, and the dispatcher stands the lane down
-instead of spending a pane on another host's backlog (#2839).
+instead of spending a pane on another host's backlog.
 """
 
 import json
@@ -178,8 +178,8 @@ def smoke_pr_for_host(labels, host):
     rather than importing it: that heredoc is a standalone `python3 - <<'PY'`
     running under `|| true`, so an ImportError from sys.path plumbing would be
     swallowed and kill the bootstrap trigger for *every* role at once — the
-    same reason `_current_host` above is itself inlined rather than imported
-    (#1578). `fleet-dispatcher` reaches this one through the
+    same reason `_current_host` is itself inlined rather than imported.
+    `fleet-dispatcher` reaches this one through the
     ``--smoke-check`` CLI arm in `main`, the seam it already uses for
     ``--pick``.
     """
@@ -280,7 +280,7 @@ def _task_claimable(task, host):
 def _terminally_unclaimable(task, host):
     """True when no dispatch can ever let a fresh worker claim this task as it
     stands: an open PR already implements it (`inflight_pr`), this host can't
-    build/run/verify it (`needs_gl_host` on a non-GL host, #1998), or it's
+    build/run/verify it (`needs_gl_host` on a non-GL host), or it's
     `blocked` with no valid stackable base (the scout omits
     `stackable_blocker_pr` when the blocker has no open PR or only a
     parked/conflicting one). Each clears only via a merge, a host change, or a
@@ -306,11 +306,11 @@ def _only_unclaimable_work(slice_data, host):
     stackable `blocked` task is NOT terminal (it carries `stackable_blocker_pr`)
     and is elected as a candidate above, so it never reaches this gate.
 
-    Feedback PRs must be folded in, or the `_candidates` host gate (#2696)
-    only relocates the churn it removes: a slice whose one item is a
+    Feedback PRs must be folded in, or the `_candidates` host gate only
+    relocates the churn it removes: a slice whose one item is a
     host-locked feedback PR yields no candidate, and a tasks-only quiet check
     then reports nothing-unclaimable and falls through to a lane-default
-    no-op — the #1726 shape again. Only `tasks_open` and `feedback_prs` are
+    no-op. Only `tasks_open` and `feedback_prs` are
     consulted because reaching this point means every other source (semantic
     conflicts, needs_plan) yielded nothing, and those two yield
     unconditionally when non-empty."""
@@ -393,7 +393,7 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False):
     dispatcher's fan-out cap.
     ``kind`` is "plan" for a needs_plan yield and "work" for everything else —
     `resolve` uses it to flag the elected class's planning candidate so the
-    dispatcher pre-claims a specific issue for the dispatch (#2197).
+    dispatcher pre-claims a specific issue for the dispatch.
 
     needs_plan yields once PER PLANNING CLASS, not once per issue: one planning
     assignment per class per tick is a deliberate serialization — planning is
@@ -605,7 +605,7 @@ def plan_pick(slice_data, cls, fable_blocked):
     these attempting ``fleet-claim planning-claim`` until one is granted; a
     line held by a cross-host dispatcher or the architect just falls through
     to the next, so a lost race assigns the *next* issue instead of burning
-    the dispatch (#2197).
+    the dispatch.
     """
     picks = [_target("plan", issue) for issue in slice_data.get("needs_plan") or []
              if _plan_class(issue, fable_blocked) == cls and not _declined("plan", issue, "worker")]

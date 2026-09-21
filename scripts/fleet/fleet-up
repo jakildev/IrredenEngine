@@ -209,7 +209,7 @@ SCOUT_STARTUP_TIMEOUT_SECONDS=30
 # FLEET_CONCURRENCY_WORKER is unset): FLEET_CONCURRENCY_OPUS_WORKER,
 # FLEET_CONCURRENCY_SONNET_AUTHOR.
 #
-# queue-manager is no longer LLM-dispatched; omit from cap config.
+# queue-manager is not LLM-dispatched; omit from cap config.
 #
 # fleet-up sources the same conf so `fleet-up --help` and the startup
 # banner reflect the active values, and so any future fleet-up logic
@@ -1530,7 +1530,7 @@ trig_dir.mkdir(parents=True, exist_ok=True)
 def merger_actionable(p):
     return bool(p.get("prs"))
 
-# queue-manager is no longer LLM-dispatched; fleet-state-scout invokes
+# queue-manager is not LLM-dispatched; fleet-state-scout invokes
 # fleet-queue-tick directly on projection change. No bootstrap trigger needed.
 
 def worker_actionable(p):

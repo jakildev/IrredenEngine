@@ -9,13 +9,13 @@ Subcommands:
 Repo selection:
   --repo {engine,game}  default: engine
 
-Cache policy (#2837):
+Cache policy:
   `comments` fetches from GitHub at invocation. Its consumer — the feedback
   lane's "one item per output line, none may be dropped" checklist — is woken
   BY the review that postdates the scout's snapshot, so reading the cache there
   is structurally guaranteed to drop the triggering item. On a `gh` failure it
   serves the cached record with a loud stderr warning naming the snapshot time.
-  One live attempt, never a retry loop (#1394).
+  One live attempt, never a retry loop.
 
   `view` and `diff` stay snapshot reads — their callers want the cheap cached
   record — and each prints its snapshot stamp to stderr so a stale read is
