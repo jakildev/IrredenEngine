@@ -38,6 +38,8 @@ _SAMPLE_TASK_QUEUE = {
     "done": [],
 }
 
+_SAMPLE_BACKREF = {"number": 98, "title": "late child", "epics": [7]}
+
 
 class TestScoutDegradedFetch(unittest.TestCase):
 
@@ -50,6 +52,11 @@ class TestScoutDegradedFetch(unittest.TestCase):
         # Stub it to a clean empty result so the degraded assertions below key
         # only on the fetcher each test deliberately fails.
         patcher = patch.object(_mod, "fetch_plan_review", return_value=[])
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        # Same hazard for the label-blind open-issue back-ref scan.
+        patcher = patch.object(_mod, "fetch_epic_backrefs",
+                               return_value=[_SAMPLE_BACKREF])
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -67,6 +74,7 @@ class TestScoutDegradedFetch(unittest.TestCase):
                     "recent_merged_prs": [],
                     "tasks": tasks if tasks is not None else _SAMPLE_TASK_QUEUE,
                     "epics": [],
+                    "epic_backrefs": [_SAMPLE_BACKREF],
                 }
             },
         }
@@ -93,6 +101,26 @@ class TestScoutDegradedFetch(unittest.TestCase):
         self.assertIn("engine.prs", state["degraded"])
         # Data preserved from previous snapshot
         self.assertEqual(state["repos"]["engine"]["prs"], [_SAMPLE_PR])
+
+    def test_failed_epic_backrefs_fetch_preserves_last_known_good(self):
+        """fetch_epic_backrefs returns None → prior back-refs kept, degraded."""
+        with tempfile.TemporaryDirectory() as tmp:
+            prev_file = self._write_prev_state(tmp)
+            with patch.object(_mod, "STATE_FILE", prev_file), \
+                 patch.object(_mod, "fetch_prs", return_value=[_SAMPLE_PR]), \
+                 patch.object(_mod, "fetch_needs_plan", return_value=[]), \
+                 patch.object(_mod, "fetch_human_approved", return_value=[]), \
+                 patch.object(_mod, "fetch_closed_fleet_queued", return_value=[]), \
+                 patch.object(_mod, "fetch_recent_merged_prs", return_value=[]), \
+                 patch.object(_mod, "fetch_task_queue", return_value=_SAMPLE_TASK_QUEUE), \
+                 patch.object(_mod, "fetch_epics", return_value=[]), \
+                 patch.object(_mod, "fetch_epic_backrefs", return_value=None), \
+                 patch.object(_mod, "GAME", Path(tmp) / "no-game"):
+                state = collect_state()
+
+        self.assertEqual(state["degraded"], ["engine.epic_backrefs"])
+        self.assertEqual(state["repos"]["engine"]["epic_backrefs"],
+                         [_SAMPLE_BACKREF])
 
     def test_clean_empty_pr_fetch_not_degraded(self):
         """fetch_prs returns [] (genuine empty) → no degraded marker."""
@@ -203,6 +231,7 @@ _CLEAN_FETCHERS = {
     "fetch_recent_merged_prs": [],
     "fetch_task_queue": _SAMPLE_TASK_QUEUE,
     "fetch_epics": [],
+    "fetch_epic_backrefs": [],
 }
 
 
@@ -234,6 +263,7 @@ class TestTransientEmptyHold(unittest.TestCase):
             "recent_merged_prs": [],
             "tasks": _SAMPLE_TASK_QUEUE,
             "epics": [],
+            "epic_backrefs": [],
         }
         repo.update(fields)
         state = {"generated_at": "2026-09-16T14:00:00Z", "repos": {"engine": repo}}
@@ -317,7 +347,8 @@ class TestTransientEmptyHold(unittest.TestCase):
     def test_every_label_list_field_takes_the_hold(self):
         for fetcher, field in (("fetch_needs_plan", "needs_plan"),
                                ("fetch_human_approved", "human_approved"),
-                               ("fetch_epics", "epics")):
+                               ("fetch_epics", "epics"),
+                               ("fetch_epic_backrefs", "epic_backrefs")):
             with self.subTest(field=field), \
                  tempfile.TemporaryDirectory() as tmp:
                 prev = self._prev_state(tmp, **{field: [_SAMPLE_ISSUE]})

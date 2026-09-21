@@ -357,7 +357,9 @@ def main():
 
     n_children = len(children_detail)
     if n_children == 0:
-        print("No children found (auto-discovery via 'Part of epic: #%d')." % args.umbrella)
+        print("No children found under --state %s: no issue body declares "
+              "membership in #%d (grammar: scripts/fleet/"
+              "fleet_epic_membership.py)." % (args.state, args.umbrella))
         print()
     else:
         print("Children (%d):" % n_children)
