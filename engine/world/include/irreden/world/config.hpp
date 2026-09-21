@@ -4,7 +4,9 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_script.hpp>
 #include <irreden/ir_render.hpp>
+#include <irreden/job/job_manager.hpp>
 
+#include <optional>
 #include <string>
 
 using namespace IRMath;
@@ -19,7 +21,16 @@ class WorldConfig {
     /// overlays @p luaConfigFile's: only the keys it carries change, so a
     /// per-run preset (`--config-preset`) can set two capture keys without
     /// restating the creation's whole config.
-    WorldConfig(const char *luaConfigFile, const char *presetFile = nullptr)
+    ///
+    /// @p workerThreadsOverride is the `--worker-threads` value, applied on
+    /// top of both files so precedence reads defaults < config.lua < preset
+    /// < command line. `std::nullopt` (an absent flag) leaves the configured
+    /// `worker_thread_count` alone.
+    WorldConfig(
+        const char *luaConfigFile,
+        const char *presetFile = nullptr,
+        std::optional<int> workerThreadsOverride = std::nullopt
+    )
         : m_lua{luaConfigFile}
         , m_config{} {
         m_config.addEntry(
@@ -196,6 +207,7 @@ class WorldConfig {
                 m_config.overlay(presetTable);
             }
         }
+        applyWorkerThreadsOverride(workerThreadsOverride);
     }
 
     IRScript::ILuaValue &operator[](const std::string &key) {
@@ -203,6 +215,30 @@ class WorldConfig {
     }
 
   private:
+    /// Replaces the parsed `worker_thread_count` with the command-line
+    /// value. Re-adding the entry is the write path — `ILuaValue` is
+    /// parse-only, and `addEntry` replaces by key.
+    void applyWorkerThreadsOverride(std::optional<int> workerThreadsOverride) {
+        if (!workerThreadsOverride.has_value()) {
+            return;
+        }
+        const int requested = *workerThreadsOverride;
+        if (requested < IRJob::JobManager::kAutoWorkerCount) {
+            IRE_LOG_WARN(
+                "Ignoring --worker-threads {}: below {} (auto); keeping worker_thread_count = {}",
+                requested,
+                IRJob::JobManager::kAutoWorkerCount,
+                m_config["worker_thread_count"].get_integer()
+            );
+            return;
+        }
+        IRE_LOG_INFO("--worker-threads override: worker_thread_count = {}", requested);
+        m_config.addEntry(
+            "worker_thread_count",
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(requested)
+        );
+    }
+
     IRScript::LuaScript m_lua;
     IRScript::LuaConfig m_config;
 };

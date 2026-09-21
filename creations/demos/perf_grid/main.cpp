@@ -167,8 +167,6 @@ struct CliOverrides {
     IRRender::SubdivisionMode subdivisionMode_ = IRRender::SubdivisionMode::FULL;
     bool baseSubdivisionsSet_ = false;
     int baseSubdivisions_ = 1;
-    // Accepted and recorded for manifest/cell-ID purposes; thread wiring is not yet implemented.
-    int workerThreads_ = 0;
     std::string configPreset_; // path from --config-preset, empty if absent
     // `--depth-probe X,Y`: per-frame composite-depth readback + log at
     // main-framebuffer texture pixel (X,Y), top-left origin (framebuffer-texture
@@ -753,7 +751,6 @@ void registerCliArgs() {
     );
     args.string("--subdivision-mode", "Trixel subdivision: none | position_only | full", "full");
     args.integer("--base-subdivisions", "Base trixel subdivision count", 1);
-    args.integer("--worker-threads", "Recorded for manifest/cell-ID; thread wiring is T-221", 0);
     args.string("--depth-probe", "Per-frame composite-depth readback at framebuffer pixel X,Y", "");
     args.enumValue(
         "--debug-overlay",
@@ -850,14 +847,6 @@ void readCliArgs() {
         if (sub > 0) {
             g_cliOverrides.baseSubdivisions_ = sub;
             g_cliOverrides.baseSubdivisionsSet_ = true;
-        }
-    }
-    if (args.wasProvided("--worker-threads")) {
-        // Accepted for cell-ID purposes by perf_grid_matrix.sh; thread-pool
-        // sizing is not yet wired.
-        const int wt = args.getInt("--worker-threads");
-        if (wt >= 0) {
-            g_cliOverrides.workerThreads_ = wt;
         }
     }
     if (args.wasProvided("--depth-probe")) {

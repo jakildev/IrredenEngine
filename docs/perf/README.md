@@ -181,7 +181,8 @@ Relative paths for `--presets` are resolved from the engine root.
 
 `IRPerfGrid` and `IRLuaPerfGrid` accept these flags (used by the matrix
 script). All of these can also be set inside a preset file (except
-`--auto-profile` and `--config-preset` itself):
+`--auto-profile` and `--config-preset` itself) — the demo-owned ones under
+the preset's `perf_grid` table, `--worker-threads` under its `config` table:
 
 - `--auto-profile <N>` — collect N frames of timing then exit; writes
   `save_files/profile_report.txt`.
@@ -196,6 +197,11 @@ script). All of these can also be set inside a preset file (except
 - `--mode <voxel_set|sdf>` (IRPerfGrid only) — voxel-pool vs SDF-only
   geometry.
 - `--grid-size <N>` — overrides the demo's default grid size.
+- `--worker-threads <N>` — engine-common (every target has it); overrides
+  `worker_thread_count`. `-1` auto, `0` inline-serial (no pool — every
+  `IRJob` dispatch on the calling thread), `N` an N-worker pool. The axis
+  `--threading-baseline` sweeps; `0` is the serial floor, since a one-worker
+  pool still has two executors (enkiTS pumps tasks on the waiting thread).
 
 ## Voxel cull stats — the "is culling working?" diagnostic
 

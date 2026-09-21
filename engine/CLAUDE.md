@@ -22,15 +22,19 @@ Core engine static libraries. Everything here is shared by every creation.
 `engine/include/irreden/ir_args.hpp` is the declarative argument framework, and
 the engine **owns the parse**: `IREngine::args()` is a process-global
 `IRArgs::Parser` pre-loaded with the engine-common args (`--auto-screenshot`,
-`--auto-record`, `--config-preset`) plus a free `--help` / `-h`. `IREngine::init(argc, argv)`
+`--auto-record`, `--config-preset`, `--worker-threads`) plus a free `--help` /
+`-h`. `IREngine::init(argc, argv)`
 calls `args().parse(argc, argv)` as its **first action**, before any window /
 GL / Metal init, so `--help` is instant and headless-safe.
 
 - **No custom flags?** Just call `IREngine::init(argc, argv)` — the target gets
-  working `--help` / `--auto-screenshot` / `--auto-record` / `--config-preset`
-  with no parser code at all, read back via
+  working `--help` / `--auto-screenshot` / `--auto-record` / `--config-preset` /
+  `--worker-threads` with no parser code at all, read back via
   `IREngine::args().autoScreenshotWarmupFrames()` / `.autoRecordFrames()` /
-  `.configPreset()`.
+  `.configPreset()` / `.workerThreads()`. `--worker-threads` needs no read-back
+  in the target: `init` applies it to `WorldConfig::worker_thread_count` itself
+  (`-1` auto, `0` inline-serial, `N` workers; absent =
+  `IRArgs::kWorkerThreadsUnset`, config value stands).
 - **Custom flags?** Register them on `IREngine::args()` (`.flag` / `.integer` /
   `.number` / `.string` / `.optionalInt` / `.numbers` for a fixed-count float
   list like `--sweep-yaw <from> <to> <n>` / `.enumValue` for a value validated
@@ -40,7 +44,8 @@ GL / Metal init, so `--help` is instant and headless-safe.
   so `--help` aggregates everything.
 - **Standalone tool (no engine loop)?** Construct your own
   `IRArgs::Parser(desc, IRArgs::Common::NONE)` — that drops the engine-common
-  args (so `--help` advertises only the tool's flags) and lets you declare
+  args (so `--help` advertises only the tool's flags, and `--worker-threads`
+  is an unknown-arg error there) and lets you declare
   ordered positionals with `.positional(name, help)` / `.variadic(name, help,
   minCount)`, read back via `getPositional(...)` / `positionalArgs()`. The
   parser has no engine dependencies, so the tool compiles `engine/ir_args.cpp`

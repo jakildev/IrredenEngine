@@ -15,7 +15,9 @@ namespace IRJob {
 /// `fn(rangeBegin, rangeEnd)` for each chunk on a worker thread.
 /// Blocks until every chunk has finished.
 ///
-/// `grainSize <= 0` is normalized to 1; an empty range is a no-op.
+/// `grainSize <= 0` is normalized to 1; an empty range is a no-op. In
+/// inline-serial mode (`workerCount() == 0`) the whole range runs as one
+/// chunk on the calling thread.
 /// Safe to call from the main thread; calling from a worker would
 /// deadlock under enkiTS and is asserted.
 void parallelFor(
@@ -63,8 +65,9 @@ struct RowChunk {
 /// at least `tuning.minChunk` rows, sized so the pool sees roughly
 /// `tuning.tasksPerWorker × workerCount()` tasks it can load-balance.
 /// Falls back to a single serial `fn(0, totalItems)` when there is no
-/// worker pool or `totalItems < tuning.minItemsToParallelize`. The
-/// caller owns write-disjointness across ranges.
+/// worker pool (no manager, or inline-serial mode) or
+/// `totalItems < tuning.minItemsToParallelize`. The caller owns
+/// write-disjointness across ranges.
 void parallelForAutoGrain(
     int totalItems,
     const std::function<void(int begin, int end)> &fn,
@@ -82,7 +85,8 @@ void parallelForAutoGrain(
 ///
 /// Falls back to a serial pass — `fn(i, 0, nodeLengths[i])` for each
 /// node in order, on the calling thread — when there is no worker pool
-/// or the level is below BOTH `tuning.minNodes` and
+/// (no manager, or inline-serial mode) or the level is below BOTH
+/// `tuning.minNodes` and
 /// `tuning.minItemsToParallelize`. `scratch` is a caller-owned buffer
 /// the planner fills with the chunk list; pass the same vector every
 /// frame so the planning stays allocation-free on the hot path. Ranges
@@ -95,13 +99,16 @@ void parallelChunks(
 );
 
 /// Fires a single named task on a worker and blocks until it finishes.
-/// `name` is used for the easy_profiler block label on the worker.
+/// `name` is used for the easy_profiler block label on the worker. In
+/// inline-serial mode the body runs on the calling thread under the same
+/// label.
 void run(std::string_view name, const std::function<void()> &fn);
 
 /// Pins a single task to a specific worker thread (`workerId` is
 /// 1-based — `1` runs on enkiTS thread 1 (the first worker thread);
 /// `0` is the main thread in enkiTS numbering and is rejected).
-/// Blocks until the task finishes.
+/// Blocks until the task finishes. Inline-serial mode has no valid pin
+/// target, so every id fails the `[1, workerCount()]` assert there.
 void pinTo(int workerId, const std::function<void()> &fn);
 
 /// True on the thread that constructed the active `JobManager` (main
@@ -115,7 +122,9 @@ bool isMainThread();
 int workerId();
 
 /// Total number of worker threads the scheduler manages. Does NOT
-/// include the main thread. Returns `0` if no `JobManager` exists.
+/// include the main thread. Returns `0` if no `JobManager` exists, and
+/// also `0` in inline-serial mode (`--worker-threads 0`), where every
+/// dispatch runs on the calling thread.
 int workerCount();
 
 /// Per-worker thread-local RNG, seeded at thread start from the
