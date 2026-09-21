@@ -11,6 +11,7 @@ import hashlib
 import json
 import math
 import platform
+import re
 import shutil
 import statistics
 import subprocess
@@ -20,6 +21,9 @@ from pathlib import Path
 from compare_perf_runs import parse_report
 
 TARGETS = {"IRPerfGrid": "perf_grid", "IRCanvasStress": "canvas_stress"}
+# IRPerfGrid logs the pose its --yaw produced; the flag is radians.
+YAW_POSE_RE = re.compile(r"Initial camera yaw: requested_rad=\S+ yaw_deg=(-?[\d.]+)")
+YAW_POSE_TOLERANCE_DEG = 0.01
 
 
 def directory_digest(directory: Path) -> str:
@@ -32,6 +36,41 @@ def directory_digest(directory: Path) -> str:
         digest.update(name)
         digest.update(hashlib.sha256(path.read_bytes()).digest())
     return digest.hexdigest()
+
+
+def requested_yaw(demo_args: list[str]) -> float | None:
+    """The --yaw radians the demo will use (its last occurrence), else None.
+
+    Raises ValueError for a value the pose check cannot compare: non-numeric
+    or non-finite.
+    """
+    requested = None
+    for index, argument in enumerate(demo_args):
+        if argument == "--yaw" and index + 1 < len(demo_args):
+            requested = float(demo_args[index + 1])
+        elif argument.startswith("--yaw="):
+            requested = float(argument.split("=", 1)[1])
+    if requested is not None and not math.isfinite(requested):
+        raise ValueError(f"--yaw {requested} is not finite")
+    return requested
+
+
+def yaw_pose_mismatch(demo_args: list[str], log_text: str) -> str | None:
+    """Why the pose IRPerfGrid logged contradicts its --yaw radians, else None."""
+    requested = requested_yaw(demo_args)
+    if requested is None:
+        return None
+    logged = YAW_POSE_RE.search(log_text)
+    if logged is None:
+        return "the log has no 'Initial camera yaw' line"
+    expected_deg = math.degrees(requested) % 360.0
+    apart = abs(expected_deg - float(logged.group(1)) % 360.0)
+    if not min(apart, 360.0 - apart) <= YAW_POSE_TOLERANCE_DEG:
+        return (
+            f"--yaw {requested} rad is {expected_deg:.3f} deg; "
+            f"the demo logged {float(logged.group(1)):.3f} deg"
+        )
+    return None
 
 
 def find_demo_pid(parent_pid: int, binary: Path, process_table: str) -> int | None:
@@ -167,6 +206,10 @@ def main() -> int:
     demo_args = args.demo_args[1:] if args.demo_args[:1] == ["--"] else args.demo_args
     if "--auto-profile" not in demo_args:
         parser.error("demo arguments must include --auto-profile")
+    try:
+        requested_yaw(demo_args)
+    except ValueError as error:
+        parser.error(f"--yaw must be a finite number of radians: {error}")
     root = Path(__file__).resolve().parents[2]
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
@@ -191,13 +234,18 @@ def main() -> int:
             command, root, log_path, binary, args.cpu_sample_seconds, args.cpu_sample_delay
         )
         fresh = report.exists() and report.stat().st_mtime_ns >= started
-        clean = exit_code == 0 and "RESULT=CLEAN" in log_path.read_text()
+        log_text = log_path.read_text()
+        clean = exit_code == 0 and "RESULT=CLEAN" in log_text
+        yaw_mismatch = (
+            yaw_pose_mismatch(demo_args, log_text) if args.target == "IRPerfGrid" else None
+        )
         run = {
             "index": index,
             "exit_code": exit_code,
             "cpu_sampling": sampling,
             "fresh_report": fresh,
             "clean": clean,
+            "yaw_pose_mismatch": yaw_mismatch,
         }
         manifest["runs"].append(run)
         if fresh:
@@ -214,6 +262,7 @@ def main() -> int:
             not clean
             or not fresh
             or not run.get("gpu_measured")
+            or yaw_mismatch is not None
             or (sampling is not None and not sampling["complete"])
         ):
             print(

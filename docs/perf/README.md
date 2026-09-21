@@ -181,8 +181,9 @@ Relative paths for `--presets` are resolved from the engine root.
 
 `IRPerfGrid` and `IRLuaPerfGrid` accept these flags (used by the matrix
 script). All of these can also be set inside a preset file (except
-`--auto-profile` and `--config-preset` itself) — the demo-owned ones under
-the preset's `perf_grid` table, `--worker-threads` under its `config` table:
+`--auto-profile`, `--yaw` and `--config-preset` itself) — the demo-owned ones
+under the preset's `perf_grid` table, `--worker-threads` under its `config`
+table:
 
 - `--auto-profile <N>` — collect N frames of timing then exit; writes
   `save_files/profile_report.txt`.
@@ -202,6 +203,11 @@ the preset's `perf_grid` table, `--worker-threads` under its `config` table:
   `IRJob` dispatch on the calling thread), `N` an N-worker pool. The axis
   `--threading-baseline` sweeps; `0` is the serial floor, since a one-worker
   pool still has two executors (enkiTS pumps tasks on the waiting thread).
+- `--yaw <radians>` (IRPerfGrid only) — initial camera Z-yaw. The run logs
+  the pose it took (`Initial camera yaw: … yaw_deg=…`) and
+  `repeat_profile.py` fails a run whose logged pose disagrees. Tables
+  committed before the unit fix labelled a 0.785° pose as 45°:
+  [perf-grid-yaw-unit.md](perf-grid-yaw-unit.md).
 
 ## Voxel cull stats — the "is culling working?" diagnostic
 

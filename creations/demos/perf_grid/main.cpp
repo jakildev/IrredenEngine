@@ -1334,11 +1334,17 @@ int main(int argc, char **argv) {
 
     IRRender::setCameraPosition2DIso(vec2(0.0f, 0.0f));
     IRRender::setCameraZoom(g_settings.initialZoom_);
-    IRRender::setCameraVisualYaw(g_settings.initialYaw_);
+    IRPrefab::Camera::setYaw(g_settings.initialYaw_);
     IR_LOG_INFO(
         "Initial camera zoom: requested={}, actual={}",
         g_settings.initialZoom_,
         IRRender::getCameraZoom().x
+    );
+    IR_LOG_INFO(
+        "Initial camera yaw: requested_rad={:.6f} yaw_deg={:.3f} residual_deg={:.4f}",
+        g_settings.initialYaw_,
+        IRPrefab::Camera::getYaw() * 180.0f / IRMath::kPi,
+        IRPrefab::Camera::getResidualYaw() * 180.0f / IRMath::kPi
     );
 
     IREngine::gameLoop();
