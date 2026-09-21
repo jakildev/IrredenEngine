@@ -226,7 +226,6 @@ EOF
 # Scenario A: same host, uncontested, head matches baseline → PASS.
 write_run "$WORK/baselines2/a-slug" "a-slug" 10.0 50.0
 write_run "$WORK/head_clean" "a-slug" 10.0 50.0
-mv "$WORK/baselines2/a-slug/smoke.txt" "$WORK/baselines2/a-slug/smoke.txt"
 
 set +e
 python3 "$SCRIPTS_PERF/check_regression.py" \
