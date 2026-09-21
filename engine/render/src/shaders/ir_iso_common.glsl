@@ -1,3 +1,4 @@
+#include "ir_projected_face.glsl"
 // Axis-only face indices (X / Y / Z axis, polarity-blind). The 3-face
 // raster helpers (`faceOffset_2x3`, `faceMicroPositionFixed`,
 // `faceDeformationMatrix`) take these: the deformation matrix depends only on
@@ -1277,11 +1278,10 @@ DetachedFaceFootprint detachedFaceFootprint(
 // Samples are centroids of the local triangles reconstructed by the fragment
 // gather. Half-open face coordinates give adjacent micro-faces one shared edge.
 int detachedFaceSampleDepth(DetachedFaceFootprint face, ivec2 pixel, int parity, int slot) {
-    const float determinant = face.edgeU.x * face.edgeV.y - face.edgeU.y * face.edgeV.x;
+    const float determinant = projectedFaceDeterminant(face.edgeU, face.edgeV);
     if (abs(determinant) < 1e-6) return kDetachedFaceMissDepth;
     const vec2 delta = localTrixelCellCentroid(pixel, parity) - face.planeOrigin;
-    const vec2 uv = vec2(delta.x * face.edgeV.y - delta.y * face.edgeV.x,
-                         face.edgeU.x * delta.y - face.edgeU.y * delta.x) / determinant;
+    const vec2 uv = projectedFaceCoordinates(delta, face.edgeU, face.edgeV, determinant);
     if (any(lessThan(uv, face.uvOrigin)) || any(greaterThanEqual(uv, face.uvOrigin + vec2(1.0))))
         return kDetachedFaceMissDepth;
     return encodeDepthWithFace(int(floor(face.depth.x + dot(uv, face.depth.yz) + 0.5)), slot);

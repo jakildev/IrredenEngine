@@ -21,7 +21,7 @@ struct VoxelSunFaceFrame {
 inline void rasterSunFace(device atomic_uint* sunDepthBuf, float3 corner, float3 edgeU, float3 edgeV, float2 origin, float2 texelSize, int cascadeOffset, uint faceMarker) {
     const float2 a = edgeU.xy;
     const float2 b = edgeV.xy;
-    const float determinant = a.x * b.y - a.y * b.x;
+    const float determinant = projectedFaceDeterminant(a, b);
     if (abs(determinant) < 0.000001) return;
     const float2 uvMin = min(min(corner.xy, corner.xy + a), min(corner.xy + b, corner.xy + a + b));
     const float2 uvMax = max(max(corner.xy, corner.xy + a), max(corner.xy + b, corner.xy + a + b));
@@ -31,8 +31,7 @@ inline void rasterSunFace(device atomic_uint* sunDepthBuf, float3 corner, float3
     for (int y = first.y; y <= last.y; ++y) {
         for (int x = first.x; x <= last.x; ++x) {
             const float2 delta = origin + (float2(x, y) + 0.5) * texelSize - corner.xy;
-            const float2 faceUV = float2(delta.x * b.y - delta.y * b.x,
-                                    a.x * delta.y - a.y * delta.x) / determinant;
+            const float2 faceUV = projectedFaceCoordinates(delta, a, b, determinant);
             if (any(faceUV < float2(-0.00001)) || any(faceUV > float2(1.00001))) continue;
             const float depth = corner.z + faceUV.x * edgeU.z + faceUV.y * edgeV.z;
             atomic_fetch_min_explicit(&sunDepthBuf[cascadeOffset + y * kSunShadowMapDim + x], (packSunDepth(depth, int2(0)) | faceMarker), memory_order_relaxed);
@@ -41,7 +40,7 @@ inline void rasterSunFace(device atomic_uint* sunDepthBuf, float3 corner, float3
 }
 
 inline void indexSourceSunFace(device atomic_uint* sunDepthBuf, float3 corner, float3 edgeU, float3 edgeV, constant FrameDataSun& sunFrame) {
-    const float determinant = edgeU.x * edgeV.y - edgeU.y * edgeV.x;
+    const float determinant = projectedFaceDeterminant(edgeU.xy, edgeV.xy);
     if (abs(determinant) < 0.000001) return;
     const uint faceIndex = atomic_fetch_add_explicit(&sunDepthBuf[kSourceFaceHeaderOffset], 1u, memory_order_relaxed);
     if (faceIndex < kSourceFaceCapacity) {
