@@ -174,6 +174,30 @@ the **procedures** (`fleet-stack.md`, `cursor-stack.md`, `stackable-on.md`,
 No WIP label on a human-ready single PR — fleet reviewers skip WIP. WIP is
 the fleet-worker claim lane's marker only.
 
+**Would-close lint — every PR, before `gh pr create` / `gh pr edit`.** Not
+part of 8a and not skipped by it: a body with no `Closes` line is exactly
+the case this covers.
+
+```bash
+fleet-pr-closes-lint --base "$base" --repo <repo> \
+    --title "<scope>: <title>" --body-file .pr-body.md
+```
+
+`--base` supplies only the commit list; `--title` and `--body-file` supply
+the rest, and all three are required. The tool reports every issue the
+merge would close — from the title, any commit message (raw: backticks do
+not protect a commit message), or the body — that the body does not declare
+on a link line. Exit 1 or 2 stops publication. Remedies, as the tool prints
+them: an intended close gets a link line in the body; an unintended one in
+the title or body is reworded so the verb no longer directly precedes the
+ref ("close issue N"); one in a commit message means the message itself
+changes — amend an unpushed HEAD commit, otherwise
+`git reset --soft "$(git merge-base HEAD origin/<base>)"` and recommit with
+a clean message (use the merge-base, never the base tip). An already-pushed
+branch is rewritten only through `fleet-pr-checkout-detached` +
+`fleet-pr-amend-push`. CI re-runs the same check on every push and every
+title/body edit (`pr-closes-lint.yml`).
+
 #### 8a. Checks keyed on `Closes #N` (before `gh pr create`)
 
 Skip when the body has no `Closes #N`, or for the queue-manager role (its

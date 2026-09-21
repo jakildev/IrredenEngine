@@ -526,3 +526,96 @@ def issue_from_branch(head_ref):
     if lead is not None:
         return lead
     return _token_issue(head_ref)
+
+
+# The would-close grammar: every issue GitHub closes when a PR merges, read
+# off the text that lands on master. Unlike the body forms above, which answer
+# "does this PR declare it remedies #N" for claim and liveness guards, this
+# answers "what will the merge close" for `fleet-pr-closes-lint`, so every
+# choice below errs toward REPORTING a ref: a miss costs a false close on
+# master, a false hit costs one reword.
+#
+# Commit messages and the PR title are scanned RAW. GitHub's commit-message
+# parser does not honor markdown: a keyword+ref sitting only inside inline
+# code spans in a commit message still closes the issue. Only the PR body goes
+# through `strip_code`. An optional colon after the keyword is
+# tolerated on the raw side ("Fixes: #N"); the `\s+` separator already spans
+# a line wrap.
+_CLOSES_RAW_REF_RE = re.compile(
+    _CLOSES_KEYWORD.removesuffix(r"\s+") + r":?\s+"
+    r"(?:([A-Za-z0-9][\w.-]*/[A-Za-z0-9][\w.-]*))?#(\d+)\b",
+    re.IGNORECASE,
+)
+
+# A link line is the declaration of intent: nothing but an optional list
+# marker, one or more closing refs joined by `,` / `and` / `&`, and an
+# optional trailing period. A keyword anywhere else in the body is narrative
+# ("this does not close" a ref) and still closes the issue on merge, so
+# counting it as intent would mask exactly what the lint exists to catch.
+_LINK_REF = (_CLOSES_KEYWORD
+             + r"(?:[A-Za-z0-9][\w.-]*/[A-Za-z0-9][\w.-]*)?#\d+\b")
+_LINK_LINE_RE = re.compile(
+    r"^[ \t]*(?:(?:[-*+]|\d+[.)])[ \t]+)?"
+    + _LINK_REF
+    + r"(?:[ \t]*(?:,|&|\band\b)[ \t]*" + _LINK_REF + r")*"
+    r"[ \t]*\.?[ \t]*$",
+    re.IGNORECASE,
+)
+
+
+def closing_ref_key(slug, num, pr_slug):
+    """`(owner/repo lowercased, N)` for a closing ref; bare refs take `pr_slug`.
+
+    Unlike `body_closed_issue_refs`, an `owner/repo` outside the fleet is
+    KEPT: dropping it there protects a claim guard, dropping it here hides a
+    close.
+    """
+    return ((slug or pr_slug).lower(), int(num))
+
+
+def raw_closing_refs(text, pr_slug):
+    """Closing refs in un-stripped `text`: `[(key, line_no, line)]` in order.
+
+    `line_no` is 1-based and names the keyword's line, which for a ref
+    wrapped onto the next line is the line before the `#N`.
+    """
+    text = text or ""
+    lines = text.split("\n")
+    hits = []
+    for m in _CLOSES_RAW_REF_RE.finditer(text):
+        line_no = text.count("\n", 0, m.start()) + 1
+        hits.append((closing_ref_key(m.group(1), m.group(2), pr_slug),
+                     line_no, lines[line_no - 1].strip()))
+    return hits
+
+
+def body_would_close_refs(body, pr_slug):
+    """Closing refs GitHub reads from a PR body: `[(key, line_no, line)]`.
+
+    Code-stripped via `strip_code`, since GitHub does not link a body ref in
+    code. Stripping collapses a fenced block onto one line, so `line_no` is
+    recovered from the first original line carrying a raw ref with the same
+    key, and is 0 when none does (a keyword wrapped across lines).
+    """
+    stripped = strip_code(body or "")
+    raw_lines = (body or "").split("\n")
+    hits = []
+    for m in _CLOSES_REF_RE.finditer(stripped):
+        key = closing_ref_key(m.group(1), m.group(2), pr_slug)
+        line_no, line = 0, m.group(0)
+        for i, candidate in enumerate(raw_lines, 1):
+            if any(k == key for k, _, _ in raw_closing_refs(candidate, pr_slug)):
+                line_no, line = i, candidate.strip()
+                break
+        hits.append((key, line_no, line))
+    return hits
+
+
+def declared_closing_refs(body, pr_slug):
+    """Keys of the refs a PR body declares on strict link lines (code-stripped)."""
+    declared = set()
+    for line in strip_code(body or "").split("\n"):
+        if _LINK_LINE_RE.match(line):
+            for slug, num in _CLOSES_REF_RE.findall(line):
+                declared.add(closing_ref_key(slug, num, pr_slug))
+    return declared

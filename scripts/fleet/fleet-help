@@ -349,6 +349,14 @@ Parallel-agent fleet (tmux + Claude)
                                  criterion in a drafted PR body; reads stdin or
                                  --body-file; can read or write a complete issue
                                  snapshot with --issue-json/--write-issue-json
+  fleet-pr-closes-lint (--base <branch> | --pr <N> | --messages-file F)
+                       [--title T --body-file F] [--repo engine|game|owner/repo]
+                                 fail when the merge would close an issue the
+                                 body does not declare on a link line: scans
+                                 the title and every commit message raw, the
+                                 body code-stripped; exits 0 clean / 1
+                                 undeclared refs / 2 usage or zero commits.
+                                 CI: pr-closes-lint.yml on every push and edit
   fleet-pr-overlap [--base <branch>] [--repo engine|game|owner/repo]
                                  grade this branch against every open PR before
                                  publication: one `#<PR> <path>
