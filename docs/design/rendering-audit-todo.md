@@ -16,7 +16,9 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
   improve them. [Bounded finite source queries](../pr-screenshots/codex/finite-source-shadow-queries/README.md)
   now pass all eight shadow checks using actual transformed face footprints.
   Tile/record overflow retains approximate fallback; dense temporal transitions
-  and a load-bearing mixed-caster boundary regression remain unverified.
+  remain unverified. The mixed-source sampler regression now executes both
+  backend surface loops with mutation controls; native tile/bake boundary
+  coverage still needs a targeted fixture.
   [Rigid source casting](../pr-screenshots/codex/rigid-source-shadow-casters/README.md)
   now projects original transformed faces: 12 aggregate hull checks pass, while
   all 12 strict edge checks still fail. [Source-face reception](../pr-screenshots/codex/surface-shadow-receiver-controls/README.md)
@@ -250,3 +252,25 @@ coverage at 45 degrees remain visible. Baseline source boxes 141–144 also pass
 the corrected oracle: IoU .710/.938/.918/.887, versus .716/.943/.913/.876
 afterward. These aggregate thresholds are not a precise contact-alignment test;
 the correction follows the independently checked centered-mass convention.
+
+## Mixed-source sampler regression
+
+`python3 -m unittest discover -s scripts/tests -p test_render_mixed_source_shadow.py`
+executes the surface depth-layer loop extracted from each production shader. A
+source quad covers the map tap but misses the receiver ray; an independent plane
+behind it must still occlude. The controls also require an exact miss to suppress
+the source fallback, incomplete queries to retain that fallback, empty/behind/far
+planes to stay lit, and both cascade offsets to preserve layer ownership. Three
+mutants per backend must fail their designated cases: discarding the other layer,
+accepting source fallback after an exact miss, and dropping overflow fallback.
+This closes the scalar sampler-selection gap from the previous native overlap
+experiment, which did not fail its negative control. It does not exercise GPU
+atomics, tile population, final raster coverage or arbitrary rotated normals.
+
+Concurrent work checked before this slice: #3595 owns graded rim diagnostics and
+shared shadow-mask classification; #3588 refreshes screenshot references; #3584
+bounds voxel-pool capacity; #3577/#3581 own million-entity profiling controls;
+#3597 repairs OpenGL shader compilation and hosted performance comparisons.
+Keep their work separate from finite-face correctness. In particular, a lower
+rim-roughness score alone cannot establish correctness because eroding coverage
+also lowers it; retain independent geometry/coverage gates.
