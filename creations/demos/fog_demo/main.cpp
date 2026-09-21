@@ -472,6 +472,7 @@ constexpr float kEntityRevealSpacing = 5.0f;
 constexpr int kEntityRevealBodyHeight = 16;
 constexpr std::uint32_t kEntityRevealShapeFlag = IRRender::SHAPE_FLAG_FOG_WHOLE_BODY_EXEMPT;
 IREntity::EntityId g_entityRevealProbe = IREntity::kNullEntity;
+int g_entityRevealProbeFrame = 0;
 constexpr IRVideo::RoiCrop kCropsEntityReveal[] = {
     {1580, 240, 300, 680, "untagged_pillar"},
     {1260, 240, 300, 680, "governed_pillar"},
@@ -495,8 +496,7 @@ constexpr IRVideo::AutoScreenshotShot kEntityRevealShots[] = {
 // readEntityIdAt. Runs at the render front, so it reads the previous frame's
 // completed ids.
 void probeEntityRevealIds() {
-    static int frame = 0;
-    if (++frame != g_autoWarmupFrames) {
+    if (++g_entityRevealProbeFrame != g_autoWarmupFrames) {
         return;
     }
     const auto &textures =

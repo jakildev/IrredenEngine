@@ -24,19 +24,14 @@ TEST(EntityIdCarrier, CarrierBitsAreDisjointAndOutsideTheMask) {
         0u
     );
     EXPECT_EQ(
-        IRRender::kEntityIdFogWholeBodyMaskInHighWord &
-            IRRender::kEntityIdPriorityMaskInHighWord,
+        IRRender::kEntityIdFogWholeBodyMaskInHighWord & IRRender::kEntityIdPriorityMaskInHighWord,
         0u
     );
-    EXPECT_EQ(
-        IRRender::kEntityIdHighWordMask & IRRender::kEntityIdFogWholeBodyMaskInHighWord,
-        0u
-    );
+    EXPECT_EQ(IRRender::kEntityIdHighWordMask & IRRender::kEntityIdFogWholeBodyMaskInHighWord, 0u);
 }
 
 TEST(EntityIdCarrier, FogWholeBodyBitAloneDecodesToTheBareId) {
-    const IRMath::uvec2 packed =
-        carrierWords(kId, IRRender::kEntityIdFogWholeBodyMaskInHighWord);
+    const IRMath::uvec2 packed = carrierWords(kId, IRRender::kEntityIdFogWholeBodyMaskInHighWord);
     EXPECT_EQ(IRRender::decodeCarrierEntityId(packed), kId);
     EXPECT_EQ(IRRender::decodeCarrierPriority(packed), 0u);
 }
