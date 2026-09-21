@@ -376,9 +376,9 @@ implementation and thresholds: `scripts/fleet/fleet-dispatcher`
   `FLEET_DISPATCHER_RESET_GRACE_SECONDS` (600); only an observation with no
   parsed `resetsAt` ages out (`FLEET_DISPATCHER_USAGE_STALE_SECONDS`, 3600;
   `fleet-up --reset-usage` wipes them after an account switch).
-- **GitHub API quota** — the scout samples `gh api /rate_limit` into
-  `github-{core,graphql,search}.json`; core and graphql gate at 90 %
-  (`FLEET_DISPATCHER_USAGE_GATE_GITHUB_{CORE,GRAPHQL}`), search never.
+- **GitHub API quota** — the scout latches `github-{core,graphql,search}.json`
+  (graphql from GraphQL's own `rateLimit`, a refused sample as `rejected`); core and
+  graphql gate at 90 % (`FLEET_DISPATCHER_USAGE_GATE_GITHUB_{CORE,GRAPHQL}`), search never.
 - **Per-pane cooldown** — a launch that died at the wall (`claude` exit 1
   with a stream-flagged rejection; legacy exit 2) excludes the pane for
   `FLEET_DISPATCHER_LIMIT_DELAY` seconds (900). The exit is a provider

@@ -31,6 +31,7 @@ import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Force UTF-8 Mode when this script is invoked directly on native-Windows
@@ -776,7 +777,7 @@ def fetch_prs(repo, prev=None):
 
 
 def sample_github_rate_limit():
-    """Latch `gh api /rate_limit` pool utilization into USAGE_DIR.
+    """Latch GitHub API pool utilization into USAGE_DIR.
 
     Writes one github-<pool>.json per pool (core, graphql, search). The
     base {rateLimitType, utilization, resetsAt, observed_at} fields match
@@ -787,14 +788,31 @@ def sample_github_rate_limit():
     fleet-gate-status's GitHub display section reads (a bare utilization
     fraction can't reconstruct "remaining=3527/5000"). Called at the top
     of tick_once, before build_state, so quota stays fresh every tick
-    (leader or follower) even on a degraded tick. `/rate_limit` is a free
-    read-only REST GET — it does
-    not consume the primary limit it reports on.
+    (leader or follower) even on a degraded tick.
 
     Best-effort: a failed sample (gh error, bad JSON, unwritable state
     dir) is logged and swallowed, leaving the prior file (if any) in
-    place — a wedged sampler must never crash the scout tick.
+    place — a wedged sampler must never crash the scout tick. The one
+    exception is a graphql sample GitHub refuses on rate-limit grounds,
+    which is itself the reading (see _sample_github_graphql_pool).
     """
+    _sample_github_rest_pools()
+    _sample_github_graphql_pool()
+
+
+def _latch_github_pool(pool, payload):
+    try:
+        USAGE_DIR.mkdir(parents=True, exist_ok=True)
+        write_atomic(USAGE_DIR / f"github-{pool}.json", json.dumps(payload))
+    except OSError as e:
+        log(f"github rate-limit latch failed for {pool}: {e}")
+
+
+def _sample_github_rest_pools():
+    # `/rate_limit` is a free read-only REST GET. Its graphql bucket is not
+    # trusted: it intermittently reports used=0 with a reset rolling forward
+    # with wall-clock for an identity whose real bucket is nearly spent, and
+    # one such sample overwriting a true reading re-opens the gate mid-wall.
     out = run_capture(["gh", "api", "/rate_limit"])
     if out is None:
         return
@@ -804,7 +822,7 @@ def sample_github_rate_limit():
         log(f"gh api /rate_limit: bad JSON: {e}")
         return
     now = int(time.time())
-    for pool in ("core", "graphql", "search"):
+    for pool in ("core", "search"):
         info = resources.get(pool)
         if not info:
             continue
@@ -812,19 +830,91 @@ def sample_github_rate_limit():
         used = info.get("used")
         if not limit:
             continue
-        payload = {
+        _latch_github_pool(pool, {
             "rateLimitType": f"github_{pool}",
             "utilization": used / limit,
             "resetsAt": info.get("reset"),
             "observed_at": now,
             "limit": limit,
             "remaining": info.get("remaining", limit - used),
-        }
+        })
+
+
+GRAPHQL_RATE_LIMIT_QUERY = "query{rateLimit{limit used remaining resetAt}}"
+_RATE_LIMIT_REFUSAL = re.compile(r"rate[ _]limit", re.IGNORECASE)
+
+
+def _sample_github_graphql_pool():
+    # GraphQL's own rateLimit self-report reads the bucket the refusing
+    # limiter enforces, and querying only rateLimit does not advance `used`.
+    # A refusal of the sample itself latches the pool as rejected: the gate
+    # must close while every GraphQL call fails, and the next good sample
+    # overwrites the latch, so recovery needs no TTL.
+    cmd = ["gh", "api", "graphql", "-f", f"query={GRAPHQL_RATE_LIMIT_QUERY}"]
+    try:
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=GH_TIMEOUT_SECONDS,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+        log(f"github graphql rate-limit sample failed: {e}")
+        return
+    path = USAGE_DIR / "github-graphql.json"
+    try:
+        prior = json.loads(path.read_text())
+    except (OSError, ValueError):
+        prior = {}
+    was_rejected = prior.get("status") == "rejected"
+    now = int(time.time())
+
+    info = None
+    if proc.returncode == 0:
         try:
-            USAGE_DIR.mkdir(parents=True, exist_ok=True)
-            write_atomic(USAGE_DIR / f"github-{pool}.json", json.dumps(payload))
-        except OSError as e:
-            log(f"github rate-limit latch failed for {pool}: {e}")
+            info = (json.loads(proc.stdout).get("data") or {}).get("rateLimit")
+        except (json.JSONDecodeError, AttributeError):
+            info = None
+    if info and info.get("limit"):
+        limit = info["limit"]
+        used = info.get("used", 0)
+        try:
+            resets_at = int(datetime.strptime(
+                info["resetAt"], "%Y-%m-%dT%H:%M:%SZ",
+            ).replace(tzinfo=timezone.utc).timestamp())
+        except (KeyError, TypeError, ValueError):
+            resets_at = None
+        if was_rejected:
+            log("github graphql rate-limit refusal cleared")
+        _latch_github_pool("graphql", {
+            "rateLimitType": "github_graphql",
+            "utilization": used / limit,
+            "resetsAt": resets_at,
+            "observed_at": now,
+            "limit": limit,
+            "remaining": info.get("remaining", limit - used),
+        })
+        return
+
+    output = f"{proc.stdout}\n{proc.stderr}".strip()
+    if not _RATE_LIMIT_REFUSAL.search(output):
+        log(f"github graphql rate-limit sample rc={proc.returncode}: {output}")
+        return
+    if not was_rejected:
+        log(f"github graphql rate-limit refusal: {output}")
+    payload = {
+        "rateLimitType": "github_graphql",
+        "status": "rejected",
+        "utilization": 1.0,
+        "observed_at": now,
+        "remaining": 0,
+    }
+    if prior.get("limit"):
+        payload["limit"] = prior["limit"]
+    # A past resetsAt makes the dispatcher skip the file outright, so only
+    # a still-future reset is carried; without one, the observed_at
+    # staleness cutoff bounds the latch and each refused tick refreshes it.
+    prior_reset = prior.get("resetsAt")
+    if isinstance(prior_reset, int) and prior_reset > now:
+        payload["resetsAt"] = prior_reset
+    _latch_github_pool("graphql", payload)
 
 
 _ALREADY_QUEUED_LABELS = frozenset({
@@ -4570,8 +4660,8 @@ def tick_once():
     # Refresh before build_state so the token is current on every gh-calling
     # path: a leader's collect_state poll, or a follower falling back to
     # self-poll when the leader is unreachable (both route through gh). Must
-    # precede the quota sample below — that sample makes its own gh
-    # /rate_limit call, so the token has to be minted first.
+    # precede the quota sample below — that sample makes its own gh calls,
+    # so the token has to be minted first.
     _refresh_gh_token()
     # Runs before build_state so GitHub quota is captured every scout tick —
     # leader or follower, and even when state collection degrades. Best-effort

@@ -226,7 +226,8 @@ if usage_dir.is_dir():
 
         obs = {
             "rateLimitType": rl_type,
-            # "rejected" when fleet-claude-stream latched the wall itself.
+            # "rejected" when the wall itself was latched: fleet-claude-stream
+            # for Anthropic types, the scout's refused graphql sample for GitHub.
             "status": data.get("status"),
             "utilization": round(util_f, 4),
             "threshold": thr,
@@ -353,7 +354,7 @@ print()
 # still flips the shared `gate_state` above to CLOSED — same dispatcher gate,
 # just displayed apart from the Anthropic observations.
 if not github_obs:
-    print("GitHub API quota: no observations yet (scout hasn't sampled /rate_limit)")
+    print("GitHub API quota: no observations yet (scout hasn't sampled GitHub quota)")
 else:
     def fmt_github_obs(o):
         pct = int(round(o["utilization"] * 100))
@@ -361,6 +362,7 @@ else:
         cmp_text = f"(>= {thr_pct}%)" if o["breaching"] else f"(< {thr_pct}%)"
         prefix = "breaching:" if o["breaching"] else "other:"
         pool = o["rateLimitType"].removeprefix("github_")
+        status_part = " REJECTED" if o.get("status") == "rejected" else ""
         remaining, limit = o.get("remaining"), o.get("limit")
         quota_text = f"remaining={remaining}/{limit}" if limit else f"util={pct}%"
         eta = (
@@ -376,7 +378,7 @@ else:
                 r for r, on in (("stale", o["stale"]), (past_label, o["past_reset"])) if on
             )
             stale_part = f" [{reasons}]"
-        return f"  {prefix:<10} {pool:<8} {quota_text} {cmp_text}{resets_part}{eta}{stale_part}"
+        return f"  {prefix:<10} {pool:<8} {quota_text}{status_part} {cmp_text}{resets_part}{eta}{stale_part}"
 
     print("GitHub API quota:")
     for o in sorted(github_obs, key=lambda x: x["rateLimitType"]):
