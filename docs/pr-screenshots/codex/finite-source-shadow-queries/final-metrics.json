@@ -1,0 +1,258 @@
+[
+  {
+    "command": [
+      "python3",
+      "scripts/render-source-occlusion-metric.py",
+      "docs/pr-screenshots/codex/finite-source-shadow-queries/capture-1945.png",
+      "--shape",
+      "octahedron",
+      "--yaw",
+      "0",
+      "--shadow-overlay"
+    ],
+    "exit": 0,
+    "result": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_normal_pixels": 0,
+      "false_shadow_pixels": 0,
+      "missed_shadow_pixels": 0,
+      "invalid_overlay_pixels": 0,
+      "lit_interior_pixels": 20569,
+      "shadowed_interior_pixels": 2735,
+      "tested_interior_pixels": 23304,
+      "mismatched_faces": [],
+      "boundary_tolerance_pixels": 1,
+      "shadow_bias": 0,
+      "occlusion_exercised": true,
+      "pass": true,
+      "image": "docs/pr-screenshots/codex/finite-source-shadow-queries/capture-1945.png",
+      "clipped": false,
+      "scope": "source_face_sun"
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-source-occlusion-metric.py",
+      "docs/pr-screenshots/codex/finite-source-shadow-queries/capture-1946.png",
+      "--shape",
+      "octahedron",
+      "--yaw",
+      "90",
+      "--shadow-overlay"
+    ],
+    "exit": 0,
+    "result": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_normal_pixels": 0,
+      "false_shadow_pixels": 0,
+      "missed_shadow_pixels": 0,
+      "invalid_overlay_pixels": 0,
+      "lit_interior_pixels": 11783,
+      "shadowed_interior_pixels": 9491,
+      "tested_interior_pixels": 26191,
+      "mismatched_faces": [],
+      "boundary_tolerance_pixels": 1,
+      "shadow_bias": 0,
+      "occlusion_exercised": true,
+      "pass": true,
+      "image": "docs/pr-screenshots/codex/finite-source-shadow-queries/capture-1946.png",
+      "clipped": false,
+      "scope": "source_face_sun"
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-source-occlusion-metric.py",
+      "docs/pr-screenshots/codex/finite-source-shadow-queries/capture-1947.png",
+      "--shape",
+      "octahedron",
+      "--yaw",
+      "180",
+      "--shadow-overlay"
+    ],
+    "exit": 0,
+    "result": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_normal_pixels": 0,
+      "false_shadow_pixels": 0,
+      "missed_shadow_pixels": 0,
+      "invalid_overlay_pixels": 0,
+      "lit_interior_pixels": 2586,
+      "shadowed_interior_pixels": 1577,
+      "tested_interior_pixels": 24028,
+      "mismatched_faces": [],
+      "boundary_tolerance_pixels": 1,
+      "shadow_bias": 0,
+      "occlusion_exercised": true,
+      "pass": true,
+      "image": "docs/pr-screenshots/codex/finite-source-shadow-queries/capture-1947.png",
+      "clipped": false,
+      "scope": "source_face_sun"
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-source-occlusion-metric.py",
+      "docs/pr-screenshots/codex/finite-source-shadow-queries/capture-1948.png",
+      "--shape",
+      "octahedron",
+      "--yaw",
+      "270",
+      "--shadow-overlay"
+    ],
+    "exit": 0,
+    "result": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_normal_pixels": 0,
+      "false_shadow_pixels": 0,
+      "missed_shadow_pixels": 0,
+      "invalid_overlay_pixels": 0,
+      "lit_interior_pixels": 11207,
+      "shadowed_interior_pixels": 9115,
+      "tested_interior_pixels": 24677,
+      "mismatched_faces": [],
+      "boundary_tolerance_pixels": 1,
+      "shadow_bias": 0,
+      "occlusion_exercised": true,
+      "pass": true,
+      "image": "docs/pr-screenshots/codex/finite-source-shadow-queries/capture-1948.png",
+      "clipped": false,
+      "scope": "source_face_sun"
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-source-occlusion-metric.py",
+      "docs/pr-screenshots/codex/finite-source-shadow-queries/capture-1949.png",
+      "--shape",
+      "frame",
+      "--yaw",
+      "0",
+      "--shadow-overlay"
+    ],
+    "exit": 0,
+    "result": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_normal_pixels": 0,
+      "false_shadow_pixels": 0,
+      "missed_shadow_pixels": 0,
+      "invalid_overlay_pixels": 0,
+      "lit_interior_pixels": 79546,
+      "shadowed_interior_pixels": 3981,
+      "tested_interior_pixels": 83527,
+      "mismatched_faces": [],
+      "boundary_tolerance_pixels": 1,
+      "shadow_bias": 0,
+      "occlusion_exercised": true,
+      "pass": true,
+      "image": "docs/pr-screenshots/codex/finite-source-shadow-queries/capture-1949.png",
+      "clipped": false,
+      "scope": "source_face_sun"
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-source-occlusion-metric.py",
+      "docs/pr-screenshots/codex/finite-source-shadow-queries/capture-1950.png",
+      "--shape",
+      "frame",
+      "--yaw",
+      "90",
+      "--shadow-overlay"
+    ],
+    "exit": 0,
+    "result": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_normal_pixels": 0,
+      "false_shadow_pixels": 0,
+      "missed_shadow_pixels": 0,
+      "invalid_overlay_pixels": 0,
+      "lit_interior_pixels": 41239,
+      "shadowed_interior_pixels": 3278,
+      "tested_interior_pixels": 57885,
+      "mismatched_faces": [],
+      "boundary_tolerance_pixels": 1,
+      "shadow_bias": 0,
+      "occlusion_exercised": true,
+      "pass": true,
+      "image": "docs/pr-screenshots/codex/finite-source-shadow-queries/capture-1950.png",
+      "clipped": false,
+      "scope": "source_face_sun"
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-source-occlusion-metric.py",
+      "docs/pr-screenshots/codex/finite-source-shadow-queries/capture-1951.png",
+      "--shape",
+      "frame",
+      "--yaw",
+      "180",
+      "--shadow-overlay"
+    ],
+    "exit": 0,
+    "result": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_normal_pixels": 0,
+      "false_shadow_pixels": 0,
+      "missed_shadow_pixels": 0,
+      "invalid_overlay_pixels": 0,
+      "lit_interior_pixels": 10863,
+      "shadowed_interior_pixels": 482,
+      "tested_interior_pixels": 53181,
+      "mismatched_faces": [],
+      "boundary_tolerance_pixels": 1,
+      "shadow_bias": 0,
+      "occlusion_exercised": true,
+      "pass": true,
+      "image": "docs/pr-screenshots/codex/finite-source-shadow-queries/capture-1951.png",
+      "clipped": false,
+      "scope": "source_face_sun"
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-source-occlusion-metric.py",
+      "docs/pr-screenshots/codex/finite-source-shadow-queries/capture-1952.png",
+      "--shape",
+      "frame",
+      "--yaw",
+      "270",
+      "--shadow-overlay"
+    ],
+    "exit": 0,
+    "result": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_normal_pixels": 0,
+      "false_shadow_pixels": 0,
+      "missed_shadow_pixels": 0,
+      "invalid_overlay_pixels": 0,
+      "lit_interior_pixels": 40295,
+      "shadowed_interior_pixels": 2520,
+      "tested_interior_pixels": 54668,
+      "mismatched_faces": [],
+      "boundary_tolerance_pixels": 1,
+      "shadow_bias": 0,
+      "occlusion_exercised": true,
+      "pass": true,
+      "image": "docs/pr-screenshots/codex/finite-source-shadow-queries/capture-1952.png",
+      "clipped": false,
+      "scope": "source_face_sun"
+    }
+  }
+]

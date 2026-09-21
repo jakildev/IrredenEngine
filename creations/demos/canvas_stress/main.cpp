@@ -1213,6 +1213,7 @@ void registerArgs() {
         "--probe-source-box",
         "Use continuous source faces for shadowbox (GRID/analytic selectors take precedence)"
     );
+    args.flag("--probe-overlapping-source", "Add a rigid source caster on the shadowbox sun ray");
     args.flag("--probe-hidden-box", "Hide the detached shadowbox and its cast shadow");
     args.numbers("--probe-box-offset", "Shadowbox translation offset <x> <y> <z>", 3);
     args.flag("--probe-analytic-box", "Use an analytic box for shadowbox");
@@ -1966,6 +1967,26 @@ void initEntities() {
             vec3(0.0f, 0.0f, singleVoxel ? -2.0f : -12.0f) +
             (boxOffset.empty() ? vec3(0.0f) : vec3(boxOffset[0], boxOffset[1], boxOffset[2]));
         const Color color{80, 120, 240, 255};
+        if (IREngine::args().getFlag("--probe-overlapping-source")) {
+            auto overlap = IRPrefab::EntityCanvas::createWithVoxelPool(
+                "overlapping_source_caster",
+                ivec2(64),
+                ivec3(8),
+                false
+            );
+            IREntity::createEntity(
+                C_LocalTransform{vec3(0.0f)},
+                C_VoxelSetNew{ivec3(3), Color{230, 170, 60, 255}, true, overlap.canvasEntity_}
+            );
+            IREntity::createEntity(
+                C_LocalTransform{
+                    position + IRRender::getSunDirection() * 12.0f,
+                    IRMath::quatAxisAngle(IRMath::normalize(vec3(1.0f)), 0.47f)
+                },
+                C_RotationMode{RotationMode::DETACHED},
+                overlap
+            );
+        }
         if (IREngine::args().getFlag("--probe-analytic-sphere")) {
             IREntity::createEntity(
                 C_LocalTransform{position},

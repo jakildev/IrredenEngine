@@ -11,6 +11,7 @@
 // caster bake and this receiver lookup share one source. A wrapper's earlier
 // include of ir_sun_projection.glsl makes this a suppressed duplicate.
 #include "ir_sun_projection.glsl"
+#include "ir_sun_face_query_layout.glsl"
 
 const float kNormalBiasVoxels = 0.5;
 const float kShadowBiasTexelScale = 2.0;
@@ -50,32 +51,60 @@ float sampleCascadeShadow(
     vec2 sunUV, float sunZ, vec3 normal, vec3 sunDir, vec3 uHat, vec3 vHat,
     vec2 origin, vec2 texelSz, int bufferOffset, float maxShadowThrow, bool surfaceReceiver, vec4 casterViewToWorld
 ) {
+    const bool hasSourceFaces = sunDepthBuf[kSourceFaceHeaderOffset] != 0u;
+    bool sourceQueryComplete = !hasSourceFaces;
+    if (surfaceReceiver && hasSourceFaces) {
+        const ivec2 tile = ivec2(floor((sunUV - origin) / (texelSz * float(kSourceFaceTileEdge))));
+        if (all(greaterThanEqual(tile, ivec2(0))) && all(lessThan(tile, ivec2(kSourceFaceTilesPerAxis)))) {
+            const uint tileIndex = uint(bufferOffset / kCascadeTexelCount) * kSourceFaceTilesPerAxis * kSourceFaceTilesPerAxis
+                + uint(tile.y) * kSourceFaceTilesPerAxis + uint(tile.x);
+            const uint tileBase = sourceFaceTileBase(tileIndex);
+            const uint count = sunDepthBuf[tileBase];
+            sourceQueryComplete = sourceFaceQueryComplete(count);
+            if (sourceQueryComplete && dot(normal, sunDir) > 0.0) {
+                for (uint candidate = 0; candidate < count; ++candidate) {
+                    const uint record = kSourceFaceRecordOffset + kSourceFaceRecordWords * sunDepthBuf[tileBase + 1u + candidate];
+                    const vec3 corner = vec3(uintBitsToFloat(sunDepthBuf[record]), uintBitsToFloat(sunDepthBuf[record+1u]), uintBitsToFloat(sunDepthBuf[record+2u]));
+                    const vec3 edgeU = vec3(uintBitsToFloat(sunDepthBuf[record+3u]), uintBitsToFloat(sunDepthBuf[record+4u]), uintBitsToFloat(sunDepthBuf[record+5u]));
+                    const vec3 edgeV = vec3(uintBitsToFloat(sunDepthBuf[record+6u]), uintBitsToFloat(sunDepthBuf[record+7u]), uintBitsToFloat(sunDepthBuf[record+8u]));
+                    const float separation = sourceFaceRaySeparation(sunUV, sunZ, corner, edgeU, edgeV);
+                    if (separation > kShadowBiasQuantNoise && separation < maxShadowThrow) return 1.0;
+                }
+            }
+        }
+    }
     // Finite footprints are rasterized at sun texel centers. Query their cell
     // without blending coverage across its boundary or moving the receiver.
     ivec2 nearestPixel = ivec2(floor((sunUV - origin) / texelSz));
     if (surfaceReceiver && nearestPixel.x >= 0 && nearestPixel.y >= 0 &&
         nearestPixel.x < kSunShadowMapDim && nearestPixel.y < kSunShadowMapDim) {
-        uint nearest = sunDepthBuf[bufferOffset + nearestPixel.y * kSunShadowMapDim + nearestPixel.x];
-        if (sunWriteIsSurface(nearest)) {
-            float facing = dot(normal, sunDir);
-            if (facing <= 0.0) return 0.0;
-            vec3 planeNormal = normal;
-            const int casterFace = sunVoxelFaceId(nearest);
-            if (casterFace >= 0) {
-                planeNormal = faceOutwardNormal6(casterFace);
-                if (sunVoxelFaceViewAligned(nearest))
-                    planeNormal = rotateByQuat(planeNormal, casterViewToWorld);
+        // Source and other casters retain independent depths: rejecting a source
+        // footprint must not discard another caster hidden behind its map sample.
+        for (int layer = 0; layer < 2; ++layer) {
+            if (layer == 1 && sourceQueryComplete) continue;
+            uint nearest = sunDepthBuf[bufferOffset + nearestPixel.y * kSunShadowMapDim + nearestPixel.x
+                + (layer == 1 ? int(kSourceFaceFallbackOffset) : 0)];
+            if (sunWriteIsSurface(nearest)) {
+                float facing = dot(normal, sunDir);
+                if (facing <= 0.0) return 0.0;
+                vec3 planeNormal = normal;
+                const int casterFace = sunVoxelFaceId(nearest);
+                if (casterFace >= 0) {
+                    planeNormal = faceOutwardNormal6(casterFace);
+                    if (sunVoxelFaceViewAligned(nearest))
+                        planeNormal = rotateByQuat(planeNormal, casterViewToWorld);
+                }
+                vec2 gradient = vec2(dot(planeNormal, uHat), dot(planeNormal, vHat)) / dot(planeNormal, sunDir);
+                vec2 tapUV = origin + (vec2(nearestPixel) + 0.5) * texelSz;
+                float casterZ = unpackSunDepth(nearest) + dot(gradient, sunUV - tapUV);
+                const vec2 receiverGradient = vec2(dot(normal, uHat), dot(normal, vHat)) / facing;
+                const float receiverSeparation = sunZ + dot(receiverGradient, tapUV - sunUV) - unpackSunDepth(nearest);
+                const float casterSeparation = sunZ - casterZ;
+                // A frontmost tap alone cannot establish coverage at the receiver.
+                // Require front-to-back order on both planes before accepting it.
+                if (min(casterSeparation, receiverSeparation) > kShadowBiasQuantNoise &&
+                    max(casterSeparation, receiverSeparation) < maxShadowThrow) return 1.0;
             }
-            vec2 gradient = vec2(dot(planeNormal, uHat), dot(planeNormal, vHat)) / dot(planeNormal, sunDir);
-            vec2 tapUV = origin + (vec2(nearestPixel) + 0.5) * texelSz;
-            float casterZ = unpackSunDepth(nearest) + dot(gradient, sunUV - tapUV);
-            const vec2 receiverGradient = vec2(dot(normal, uHat), dot(normal, vHat)) / facing;
-            const float receiverSeparation = sunZ + dot(receiverGradient, tapUV - sunUV) - unpackSunDepth(nearest);
-            const float casterSeparation = sunZ - casterZ;
-            // A frontmost tap alone cannot establish coverage at the receiver.
-            // Require front-to-back order on both planes before accepting it.
-            if (min(casterSeparation, receiverSeparation) > kShadowBiasQuantNoise &&
-                max(casterSeparation, receiverSeparation) < maxShadowThrow) return 1.0;
         }
     }
     float slope = max(kShadowBiasSlopeMin, dot(normal, sunDir));
@@ -106,6 +135,8 @@ float sampleCascadeShadow(
             if (px.x < 0 || px.x >= kSunShadowMapDim ||
                 px.y < 0 || px.y >= kSunShadowMapDim) continue;
             uint stored = sunDepthBuf[bufferOffset + px.y * kSunShadowMapDim + px.x];
+            if (!surfaceReceiver && hasSourceFaces)
+                stored = min(stored, sunDepthBuf[kSourceFaceFallbackOffset + bufferOffset + px.y * kSunShadowMapDim + px.x]);
             if (stored == 0xFFFFFFFFu || (surfaceReceiver && sunWriteIsSurface(stored))) continue;
             float nearestZ = unpackSunDepth(stored);
             float weight = mix(1.0 - frac.x, frac.x, float(dx))

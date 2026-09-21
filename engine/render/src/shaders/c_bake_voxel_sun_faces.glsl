@@ -7,6 +7,7 @@
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 #include "ir_iso_common.glsl"
 #include "ir_sun_projection.glsl"
+#include "ir_sun_face_query_layout.glsl"
 
 struct VoxelSunSample {
     uint colorPacked;
@@ -64,6 +65,38 @@ void rasterSunFace(vec3 corner, vec3 edgeU, vec3 edgeV, vec2 origin, vec2 texelS
     }
 }
 
+void indexSourceSunFace(vec3 corner, vec3 edgeU, vec3 edgeV) {
+    const float determinant = edgeU.x * edgeV.y - edgeU.y * edgeV.x;
+    if (abs(determinant) < 0.000001) return;
+    const uint faceIndex = atomicAdd(sunDepthBuf[kSourceFaceHeaderOffset], 1u);
+    if (faceIndex < kSourceFaceCapacity) {
+        const uint record = kSourceFaceRecordOffset + faceIndex * kSourceFaceRecordWords;
+        for (uint axis = 0; axis < 3u; ++axis) {
+            sunDepthBuf[record + axis] = floatBitsToUint(corner[axis]);
+            sunDepthBuf[record + 3u + axis] = floatBitsToUint(edgeU[axis]);
+            sunDepthBuf[record + 6u + axis] = floatBitsToUint(edgeV[axis]);
+        }
+    }
+    const vec2 low = min(min(corner.xy, corner.xy + edgeU.xy), min(corner.xy + edgeV.xy, corner.xy + edgeU.xy + edgeV.xy));
+    const vec2 high = max(max(corner.xy, corner.xy + edgeU.xy), max(corner.xy + edgeV.xy, corner.xy + edgeU.xy + edgeV.xy));
+    for (uint cascade = 0u; cascade < kSourceFaceCascadeCount; ++cascade) {
+        const vec2 origin = cascade == 0u ? cascadeOriginUV_0 : cascadeOriginUV_1;
+        const vec2 cellSize = (cascade == 0u ? cascadeTexelSize_0 : cascadeTexelSize_1) * float(kSourceFaceTileEdge);
+        const ivec2 first = max(ivec2(floor((low - origin) / cellSize)), ivec2(0));
+        const ivec2 last = min(ivec2(floor((high - origin) / cellSize)), ivec2(kSourceFaceTilesPerAxis - 1u));
+        for (int y = first.y; y <= last.y; ++y) for (int x = first.x; x <= last.x; ++x) {
+            const uint tile = cascade * kSourceFaceTilesPerAxis * kSourceFaceTilesPerAxis + uint(y) * kSourceFaceTilesPerAxis + uint(x);
+            const uint base = sourceFaceTileBase(tile);
+            if (faceIndex >= kSourceFaceCapacity) {
+                atomicMax(sunDepthBuf[base], kSourceFaceTileCapacity + 1u);
+                continue;
+            }
+            const uint slot = atomicAdd(sunDepthBuf[base], 1u);
+            if (slot < kSourceFaceTileCapacity) sunDepthBuf[base + 1u + slot] = faceIndex;
+        }
+    }
+}
+
 void main() {
     const uint index = (gl_WorkGroupID.y * uint(dispatch.y) + gl_WorkGroupID.x) * 64u + gl_LocalInvocationID.x;
 
@@ -98,7 +131,8 @@ void main() {
         const vec3 projected = sunSpaceProject(corner, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz);
         const vec3 projectedU = sunSpaceProject(edgeU, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz);
         const vec3 projectedV = sunSpaceProject(edgeV, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz);
-        rasterSunFace(projected, projectedU, projectedV, cascadeOriginUV_0, cascadeTexelSize_0, 0, faceMarker);
-        rasterSunFace(projected, projectedU, projectedV, cascadeOriginUV_1, cascadeTexelSize_1, kCascadeTexelCount, faceMarker);
+        if (rigidSource) indexSourceSunFace(projected, projectedU, projectedV);
+        rasterSunFace(projected, projectedU, projectedV, cascadeOriginUV_0, cascadeTexelSize_0, sunWriteIsSourceFace(faceMarker) ? int(kSourceFaceFallbackOffset) : 0, faceMarker);
+        rasterSunFace(projected, projectedU, projectedV, cascadeOriginUV_1, cascadeTexelSize_1, kCascadeTexelCount + (sunWriteIsSourceFace(faceMarker) ? int(kSourceFaceFallbackOffset) : 0), faceMarker);
     }
 }
