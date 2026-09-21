@@ -62,6 +62,8 @@
 #include <irreden/common/command_suite_capture.hpp>
 
 #include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -754,7 +756,7 @@ void registerCliArgs() {
     args.flag(
         "--default-pivot",
         "Keep the engine's default yaw pivot under a driven yaw: the control that shows the "
-        "view then depends on which frames settled"
+        "view then depends on how the run began"
     );
     args.number(
         "--yaw-first-frame",
@@ -762,7 +764,11 @@ void registerCliArgs() {
         "reached from a different first frame",
         0.0f
     );
-    args.integer("--capture-frame", "Request one screenshot after this rendered frame", 0);
+    args.integer(
+        "--capture-frame",
+        "Request one screenshot after this rendered frame; its readback lands in that frame's time",
+        0
+    );
     args.flag("--yaw-ramp", "Rotated-solidity validation sweep (#1882/#1883)");
     args.flag(
         "--yaw-ramp-crops",
@@ -855,6 +861,22 @@ void readCliArgs() {
     }
     if (args.wasProvided("--capture-frame")) {
         g_cliOverrides.captureFrame_ = args.getInt("--capture-frame");
+    }
+    const bool drivenYaw = g_cliOverrides.yawStep_ != 0.0f || g_cliOverrides.yawFirstFrameSet_;
+    // An auto-screenshot shot table sets the camera yaw of every shot, so with a
+    // driven yaw two writers would fight over it each frame; and the two pivot
+    // flags name opposite pivots, one of which is only the default's control.
+    const char *conflict = nullptr;
+    if (drivenYaw && args.autoScreenshotWarmupFrames() > 0) {
+        conflict = "--yaw-step and --yaw-first-frame cannot be combined with --auto-screenshot";
+    } else if (g_cliOverrides.pivotOrigin_ && g_cliOverrides.defaultPivot_) {
+        conflict = "--pivot-origin and --default-pivot name opposite pivots";
+    } else if (g_cliOverrides.defaultPivot_ && !drivenYaw) {
+        conflict = "--default-pivot only applies to a driven yaw (--yaw-step, --yaw-first-frame)";
+    }
+    if (conflict != nullptr) {
+        std::fprintf(stderr, "IRPerfGrid: %s\n", conflict);
+        std::exit(2);
     }
     g_cliOverrides.yawRamp_ = args.getFlag("--yaw-ramp");
     g_cliOverrides.yawRampCrops_ = args.getFlag("--yaw-ramp-crops");
@@ -1382,8 +1404,8 @@ int main(int argc, char **argv) {
     // on which frames settled: the same yaw, a different view and visible count.
     // The grid is centred on the origin, so pinning there keeps the scene
     // centred at every yaw and makes the view a function of the yaw alone. A
-    // driven yaw pins unless --default-pivot asks for the fault; a static --yaw
-    // pins on request.
+    // driven yaw pins unless --default-pivot asks for the default's behaviour;
+    // a static --yaw pins on request.
     const bool drivenYaw = g_cliOverrides.yawStep_ != 0.0f || g_cliOverrides.yawFirstFrameSet_;
     if (g_cliOverrides.pivotOrigin_ || (drivenYaw && !g_cliOverrides.defaultPivot_)) {
         IRRender::setRotationPivotFocus(vec3(0.0f));
@@ -1398,7 +1420,7 @@ int main(int argc, char **argv) {
     );
     IR_LOG_INFO(
         "Initial camera yaw: requested_rad={:.6f} yaw_deg={:.3f} residual_deg={:.4f}",
-        g_settings.initialYaw_,
+        g_cliOverrides.yawFirstFrameSet_ ? g_cliOverrides.yawFirstFrame_ : g_settings.initialYaw_,
         IRPrefab::Camera::getYaw() * 180.0f / IRMath::kPi,
         IRPrefab::Camera::getResidualYaw() * 180.0f / IRMath::kPi
     );

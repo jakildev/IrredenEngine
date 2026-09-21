@@ -117,6 +117,7 @@ WITNESSED_REPORT = (
     "--- Run witness ---\n"
     "Camera yaw: first=-135.000deg last=-135.000deg travel=0.000deg samples=8\n"
     "Camera zoom: first=4.000 last=4.000\n"
+    "Camera pivot: explicit focus on 8 of 8 frames\n"
     "Per-axis overflow: maxEntries=630842 maxDropped=7 cap=1048576 samples=8\n"
     "\n"
     "--- Frame times (ms, in order) ---\n"
@@ -154,6 +155,7 @@ class RunWitnessParserTest(unittest.TestCase):
             (630842, 7, 1048576, 8),
         )
         self.assertEqual((report.frame.p99, report.steady_frame.p99), (102.0, 21.0))
+        self.assertEqual(witness.explicit_pivot_samples, 8)
         self.assertEqual(report.warmup_frames, 2)
         self.assertEqual(len(report.frame_times_ms), 8)
         self.assertEqual(report.frame_update_ticks, [8, 8, 2, 1, 1, 1, 1, 0])
@@ -170,6 +172,21 @@ class RunWitnessParserTest(unittest.TestCase):
         self.assertIsNone(report.witness.overflow_max_dropped)
         self.assertEqual(report.frame_times_ms, [])
 
+    def test_a_pose_line_with_no_samples_reads_absent_never_zero_degrees(self):
+        text = WITNESSED_REPORT.replace(
+            "first=-135.000deg last=-135.000deg travel=0.000deg samples=8",
+            "first=0.000deg last=0.000deg travel=0.000deg samples=0",
+        )
+        witness = self.parse(text).witness
+        self.assertEqual(witness.pose_samples, 0)
+        self.assertIsNone(witness.yaw_first_deg)
+        self.assertIsNone(witness.yaw_travel_deg)
+
+    def test_a_series_shorter_than_the_steady_line_states_pools_nothing(self):
+        report = self.parse(WITNESSED_REPORT.replace("19.000 18.000 18.000\n", "19.000\n"))
+        self.assertEqual((report.recorded_frames, len(report.frame_times_ms)), (8, 6))
+        self.assertEqual(report.steady_frame_times_ms(), [])
+
     def test_a_series_without_a_stated_warm_up_has_no_steady_frames(self):
         report = self.parse(WITNESSED_REPORT.replace(WITNESSED_REPORT.splitlines()[2] + "\n", ""))
         self.assertEqual(len(report.frame_times_ms), 8)
@@ -184,6 +201,7 @@ class RunWitnessParserTest(unittest.TestCase):
             '"--- Run witness ---\\n"',
             '"Camera yaw: first=%.3fdeg last=%.3fdeg travel=%.3fdeg samples=%u\\n"',
             '"Camera zoom: first=%.3f last=%.3f\\n"',
+            '"Camera pivot: explicit focus on %u of %u frames\\n"',
             '"Per-axis overflow: maxEntries=%u maxDropped=%u cap=%u samples=%u\\n"',
             '"Steady frame time (first %zu of %zu frames excluded):   avg=%.2fms   p50=%.2fms   "',
             '"--- Frame times (ms, in order) ---\\n"',

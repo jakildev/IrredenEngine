@@ -265,8 +265,15 @@ table:
   frame N renders at `--yaw + (N − 1) × step`, the same poses in every run.
   `repeat_profile.py` checks the first and last pose and the travelled arc
   from the witness, and the flag pins the yaw pivot at the grid centre, because
-  with the default pivot the view depends on which frames settled and jumps
-  when a sweep lands on a cardinal: [continuous-yaw-sweep.md](continuous-yaw-sweep.md).
+  with the default pivot the part of the world a yaw shows depends on how the
+  run began: [continuous-yaw-sweep.md](continuous-yaw-sweep.md). It cannot be
+  combined with `--auto-screenshot`, whose shot table sets the yaw too.
+- `--yaw-first-frame <radians>`, `--capture-frame <N>`, `--default-pivot`
+  (IRPerfGrid only) — the pin's control: frame 1 at a pose of its own, one
+  screenshot after frame N, and the engine's default pivot under a driven
+  yaw. Two first frames give one capture when pinned and two when not. A
+  capture puts its readback in that frame's time, so `repeat_profile.py`
+  refuses it.
 - `--pivot-origin` (IRPerfGrid only) — the same pin for a static `--yaw`, so a
   static pose and a swept one frame the scene alike. `million_controls.py`
   passes it on every arm.

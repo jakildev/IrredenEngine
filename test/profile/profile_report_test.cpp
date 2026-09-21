@@ -9,9 +9,12 @@
 
 namespace {
 
+// One directory per test: CTest registers each test separately and may run two
+// of them at once.
 std::string writeAndRead(const IRProfile::ProfileReport &report) {
-    const auto path =
-        std::filesystem::temp_directory_path() / "ir_profile_report_test" / "profile_report.txt";
+    const std::string test = testing::UnitTest::GetInstance()->current_test_info()->name();
+    const auto path = std::filesystem::temp_directory_path() / ("ir_profile_report_" + test) /
+                      "profile_report.txt";
     IRProfile::writeProfileReport(report, path.string().c_str());
     std::ifstream file(path);
     std::stringstream text;
@@ -47,6 +50,7 @@ TEST(ProfileReportWitness, WitnessSectionIsWrittenEvenWhenNothingWasSampled) {
     report.witness_.zoomFirst_ = 4.0f;
     report.witness_.zoomLast_ = 4.0f;
     report.witness_.poseSamples_ = 8;
+    report.witness_.explicitPivotSamples_ = 8;
     report.witness_.overflowSamples_ = 7;
     report.witness_.maxOverflowEntries_ = 630842;
     report.witness_.maxOverflowDropped_ = 3;
@@ -56,6 +60,8 @@ TEST(ProfileReportWitness, WitnessSectionIsWrittenEvenWhenNothingWasSampled) {
         text.find("Camera yaw: first=-135.000deg last=-135.000deg travel=0.000deg samples=8\n"),
         std::string::npos
     ) << text;
+    EXPECT_NE(text.find("Camera pivot: explicit focus on 8 of 8 frames\n"), std::string::npos)
+        << text;
     EXPECT_NE(
         text.find("Per-axis overflow: maxEntries=630842 maxDropped=3 cap=1048576 samples=7\n"),
         std::string::npos
@@ -78,6 +84,18 @@ TEST(ProfileReportWitness, UpdateTickSeriesIsWrittenInFrameOrder) {
     const std::string text = writeAndRead(report);
     EXPECT_NE(text.find("--- Update ticks (per frame, in order) ---\n2 8 8\n"), std::string::npos)
         << text;
+}
+
+TEST(ProfileReportWitness, ALongRunKeepsItsSteadyLineAndDropsItsSeries) {
+    IRProfile::ProfileReport report;
+    report.frameTimesMs_.assign(IRProfile::kProfileSeriesMaxFrames + 1, 16.0f);
+    report.totalFrames_ = static_cast<uint32_t>(report.frameTimesMs_.size());
+    const std::string text = writeAndRead(report);
+    EXPECT_NE(
+        text.find("Steady frame time (first 2048 of 8193 frames excluded)"),
+        std::string::npos
+    );
+    EXPECT_EQ(text.find("--- Frame times"), std::string::npos);
 }
 
 } // namespace

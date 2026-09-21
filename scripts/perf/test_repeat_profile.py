@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 from compare_perf_runs import RunWitness
 from repeat_profile import (
+    RESIDUAL_YAW_DEADBAND_RAD,
     cmake_build_type,
     directory_digest,
     engine_logged,
@@ -17,6 +18,9 @@ from repeat_profile import (
     host_power_source,
     overflow_failure,
     percentile,
+    pivot_mismatch,
+    pose_text,
+    requested_frames,
     requested_yaw,
     requested_yaw_step,
     run_profile,
@@ -25,14 +29,24 @@ from repeat_profile import (
 )
 
 
-def witnessed(yaw=45.0, last=None, travel=0.0, samples=300, dropped=0, overflow_samples=299):
+def witnessed(
+    yaw=45.0,
+    last=None,
+    travel=0.0,
+    samples=300,
+    dropped=0,
+    overflow_samples=299,
+    zoom_last=4.0,
+    pinned=None,
+):
     return RunWitness(
         yaw_first_deg=yaw,
         yaw_last_deg=yaw if last is None else last,
         yaw_travel_deg=travel,
         pose_samples=samples,
         zoom_first=4.0,
-        zoom_last=4.0,
+        zoom_last=zoom_last,
+        explicit_pivot_samples=pinned,
         overflow_max_entries=630842,
         overflow_max_dropped=dropped,
         overflow_cap=1048576,
@@ -81,12 +95,17 @@ class YawPoseTest(unittest.TestCase):
         for absent in (RunWitness(), witnessed(samples=0)):
             self.assertIn("witnessed no camera yaw", self.mismatch(["--yaw", "1"], absent))
         self.assertIsNone(self.mismatch(["--zoom", "4"], RunWitness()))
-        swept = witnessed(0.0, last=-93.0, travel=267.0)
-        ramp = ["--yaw", "0", "--yaw-ramp"]
-        self.assertIsNone(self.mismatch([*ramp, "--auto-screenshot", "4"], swept))
-        self.assertIsNone(self.mismatch([*ramp, "--auto-screenshot=4"], swept))
-        self.assertIn("last rendered frame", self.mismatch(ramp, swept))
         self.assertIsNone(self.mismatch(["--yaw", "1"], RunWitness(), target="IRCanvasStress"))
+
+    def test_any_shot_table_drives_the_camera_and_a_bare_yaw_ramp_does_not(self):
+        swept = witnessed(0.0, last=-93.0, travel=267.0, zoom_last=1.0)
+        for table in (["--auto-screenshot", "4"], ["--auto-screenshot=4", "--yaw-ramp"]):
+            self.assertIsNone(self.mismatch(["--yaw", "0", *table], swept))
+        self.assertIn("last rendered frame", self.mismatch(["--yaw", "0", "--yaw-ramp"], swept))
+
+    def test_a_zoom_that_moved_during_a_static_pose_fails(self):
+        reason = self.mismatch(["--yaw", "0"], witnessed(0.0, zoom_last=1.0))
+        self.assertIn("zoom went from 4.0 to 1.0", reason)
 
 
 class YawSweepTest(unittest.TestCase):
@@ -119,6 +138,27 @@ class YawSweepTest(unittest.TestCase):
         idle = witnessed(yaw=0.0, last=-1.2, travel=358.8, overflow_samples=0)
         self.assertIn("never sampled", overflow_failure("IRPerfGrid", self.FULL_TURN, idle))
 
+    def test_the_window_is_the_one_auto_profile_asked_for(self):
+        args = ["--auto-profile", "300", *self.FULL_TURN]
+        short = self.mismatch(args, yaw=0.0, last=142.8, travel=142.8, samples=120)
+        self.assertIn("witnessed 120 frames; --auto-profile asked for 300", short)
+        self.assertIsNone(self.mismatch(args, yaw=0.0, last=-1.2, travel=358.8))
+        self.assertEqual(requested_frames(["--auto-profile", "--yaw", "1"]), 300)
+        self.assertEqual(requested_frames(["--auto-profile=75"]), 75)
+        self.assertIsNone(requested_frames(["--zoom", "4"]))
+
+    def test_travel_is_modelled_with_the_witnesss_wrap(self):
+        # 3.3 rad a frame is a 170.92 degree step the short way round.
+        wide = ["--yaw-step", "3.3"]
+        self.assertIsNone(self.mismatch(wide, yaw=0.0, last=264.728, travel=8375.275, samples=50))
+        unwrapped = self.mismatch(wide, yaw=0.0, last=264.728, travel=9264.7, samples=50)
+        self.assertIn("is 8375.27", unwrapped)
+
+    def test_a_sweep_that_only_lands_on_cardinals_need_not_sample_the_lane(self):
+        quarter = ["--yaw-step", "1.5707963267948966"]
+        idle = witnessed(yaw=0.0, last=90.0, travel=810.0, samples=10, overflow_samples=0)
+        self.assertIsNone(overflow_failure("IRPerfGrid", quarter, idle))
+
     def test_a_first_frame_pose_is_checked_and_its_jump_counts_as_travel(self):
         held = ["--yaw", "0.816814", "--yaw-first-frame=0"]
         self.assertIsNone(self.mismatch(held, yaw=0.0, last=46.8, travel=46.8, samples=75))
@@ -126,18 +166,39 @@ class YawSweepTest(unittest.TestCase):
         self.assertIsNone(self.mismatch(same, yaw=46.8, last=46.8, travel=0.0, samples=75))
         ignored = self.mismatch(held, yaw=46.8, last=46.8, travel=0.0, samples=75)
         self.assertIn("first rendered frame should be at 0.000 deg", ignored)
+        self.assertIn("--yaw-first-frame 0.0 rad", ignored)
+        # A held pose gets the static tolerance: 0.04 degrees of drift is refused.
+        drifted = self.mismatch(held, yaw=0.0, last=46.8, travel=46.84, samples=75)
+        self.assertIn("yawed 46.840", drifted)
         swept = ["--yaw", "0", "--yaw-step", "0.020943951", "--yaw-first-frame=1.5707963"]
         # 90 degrees, then 1.2, 2.4, 3.6: 88.8 across the jump and 1.2 twice after it.
         self.assertIsNone(self.mismatch(swept, yaw=90.0, last=3.6, travel=91.2, samples=4))
         short = self.mismatch(swept, yaw=90.0, last=3.6, travel=3.6, samples=4)
         self.assertIn("yawed 3.600 deg", short)
 
-    def test_a_held_rotated_pose_must_have_sampled_the_overflow_lane(self):
+    def test_the_overflow_lane_is_demanded_only_of_a_predictable_rotated_run(self):
         held = ["--yaw", "0.816814", "--yaw-first-frame=0"]
         idle = witnessed(yaw=0.0, last=46.8, travel=46.8, overflow_samples=0)
         self.assertIn("never sampled", overflow_failure("IRPerfGrid", held, idle))
+        rotated_first = ["--yaw", "0", "--yaw-first-frame=0.816814"]
+        self.assertIn("never sampled", overflow_failure("IRPerfGrid", rotated_first, idle))
         cardinal = ["--yaw", "0", "--yaw-first-frame=0"]
         self.assertIsNone(overflow_failure("IRPerfGrid", cardinal, witnessed(overflow_samples=0)))
+        # A run the tool cannot predict is not failed for it.
+        self.assertIsNone(overflow_failure("IRCanvasStress", self.FULL_TURN, idle))
+        table = ["--yaw-ramp", "--auto-screenshot", "4", *self.FULL_TURN]
+        self.assertIsNone(overflow_failure("IRPerfGrid", table, idle))
+
+    def test_the_pivot_the_flags_ask_for_is_the_pivot_that_rendered(self):
+        pinned, default = witnessed(pinned=300), witnessed(pinned=0)
+        for args in (self.FULL_TURN, ["--yaw", "1", "--pivot-origin"], ["--yaw-first-frame=0"]):
+            self.assertIsNone(pivot_mismatch("IRPerfGrid", args, pinned))
+            self.assertIn("the flags ask for 300", pivot_mismatch("IRPerfGrid", args, default))
+        for args in (["--yaw", "1"], [*self.FULL_TURN, "--default-pivot"]):
+            self.assertIsNone(pivot_mismatch("IRPerfGrid", args, default))
+            self.assertIn("the flags ask for 0", pivot_mismatch("IRPerfGrid", args, pinned))
+        self.assertIsNone(pivot_mismatch("IRPerfGrid", self.FULL_TURN, witnessed()))
+        self.assertIsNone(pivot_mismatch("IRCanvasStress", self.FULL_TURN, default))
 
     def test_a_step_the_check_cannot_compare_is_refused(self):
         with self.assertRaises(ValueError):
@@ -160,9 +221,21 @@ class OverflowWitnessTest(unittest.TestCase):
         idle = witnessed(overflow_samples=0)
         self.assertIn("never sampled", overflow_failure("IRPerfGrid", self.ROTATED, idle))
         self.assertIn("never sampled", overflow_failure("IRPerfGrid", ["--yaw", "-0.5"], idle))
+        # 0.785 degrees, the pose a degrees reading of --yaw 0.785398163 renders.
+        self.assertIn("never sampled", overflow_failure("IRPerfGrid", ["--yaw", "0.0137"], idle))
+        self.assertIn("never sampled", overflow_failure("IRPerfGrid", ["--yaw", "1.5710"], idle))
+        self.assertIsNone(overflow_failure("IRPerfGrid", ["--yaw", "0.00005"], idle))
+
         for cardinal in ("0", "1.5707963", "-1.5707963", "3.14159265"):
             self.assertIsNone(overflow_failure("IRPerfGrid", ["--yaw", cardinal], idle))
         self.assertIsNone(overflow_failure("IRPerfGrid", self.ROTATED, witnessed()))
+
+    def test_the_deadband_is_the_engines(self):
+        camera = (
+            Path(__file__).resolve().parents[2] / "engine/prefabs/irreden/render/camera.hpp"
+        ).read_text()
+        literal = f"{RESIDUAL_YAW_DEADBAND_RAD:.0e}".replace("e-0", "e-")
+        self.assertIn(f"kResidualYawDeadband = {literal}f;", camera)
 
     def test_the_manifest_records_what_was_witnessed(self):
         checks = witness_checks("IRPerfGrid", self.ROTATED, witnessed(dropped=9))
@@ -171,6 +244,14 @@ class OverflowWitnessTest(unittest.TestCase):
         self.assertEqual(
             (checks["yaw_first_deg"], checks["overflow_max_dropped"], checks["overflow_samples"]),
             (45.0, 9, 299),
+        )
+        self.assertEqual((checks["zoom_first"], checks["zoom_last"]), (4.0, 4.0))
+
+    def test_an_unwitnessed_pose_prints_as_unwitnessed_not_as_a_crash(self):
+        absent = witness_checks("IRCanvasStress", [], RunWitness())
+        self.assertEqual(pose_text(absent), "unwitnessed")
+        self.assertEqual(
+            pose_text(witness_checks("IRPerfGrid", self.ROTATED, witnessed())), "45.000 (0.000)"
         )
 
 

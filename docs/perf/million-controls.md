@@ -85,8 +85,7 @@ The largest CPU system at both poses is `SingleVoxelToCanvasFirst` (4.55 and
   grid centre so the static and swept poses frame the scene alike
   ([continuous-yaw-sweep.md](continuous-yaw-sweep.md) § A driven yaw pins its
   pivot). The reference and the witnessed round below predate it: their 45°
-  arms used the default pivot, which frames fewer voxels (637,025 visible
-  against about 909,000 pinned), so they are not comparable with a pinned 45°.
+  arms used the default pivot, so they are not comparable with a pinned 45°.
 - `million_controls.py` runs every case once per round, forward on odd rounds
   and reverse on even. Its summary prints each case's per-round means beside
   the mean, so drift is shown, not averaged away, and it stops if a tree's
@@ -99,39 +98,50 @@ The largest CPU system at both poses is `SingleVoxelToCanvasFirst` (4.55 and
   prints a `Steady frame time` line over the frames after the first quarter,
   and the frame series itself.
 - `repeat_profile.py` records the build tree, its `CMAKE_BUILD_TYPE`,
-  `host_power`, `host_cpus`, and each run's start time, battery charge and
-  one-minute load average; the matrix summary opens with the load range,
-  because the benchmark lock excludes cooperating builds and nothing else. It
-  reads the
+  `host_power`, `host_cpus`, and each run's launch and finish time, battery
+  charge and one-minute load average, read as the run returns because a run can
+  queue on the lock for minutes before it measures; the matrix summary opens
+  with the load range, because the benchmark lock excludes cooperating builds
+  and nothing else. It reads the
   witness, not the log: it refuses a run whose first or last rendered frame is
-  not at its `--yaw`, whose camera moved during a static pose, whose overflow
-  list dropped an entry in any frame, whose rotated pose never sampled the
-  overflow lane, or whose report carries no witness at all. Its summary adds
+  not at its `--yaw`, whose camera yawed or zoomed during a static pose, whose
+  overflow list dropped an entry in any frame, whose pose is off a cardinal by
+  more than the engine's residual-yaw deadband and never sampled the overflow
+  lane, or whose report carries no witness at all; `million_controls.py` also
+  requires zoom 4. Its summary adds
   steady-state rows and a tail pooled over every run's steady frames.
 
 ## Witnessed round
 
 Every arm vouches for itself; the milliseconds are not a timing reference.
-Head `a76b630e8` plus the run-witness change, AC power, one interleaved round
-of 300 frames, all eight runs `RESULT=CLEAN`. Shaders `6a13afcaf26f7615`, which
+Head `a76b630e8` plus the run-witness change, AC power, one forward pass of
+the eight arms (a single round has no reverse leg, so drift lands on the later
+arms) of 300 frames, all eight runs `RESULT=CLEAN`. Shaders `6a13afcaf26f7615`, which
 is not the AC reference's set: master moved the shaders this fixture runs in
-between. **The fleet was live: load at run start was 7.0 to 12.8 on 14 CPUs**
-(an earlier attempt the same hour saw 19.4 and the same frozen 0° scene read
-36.8 then 45.5 ms with its frame minimum unchanged at 33 to 34 ms; the
-benchmark lock excludes cooperating builds and nothing else). Read the
-witness columns; do not diff the milliseconds. Reports and manifests:
+between. **The fleet was live: load was 7.0 to 12.8 on 14 CPUs**, as the tool
+then sampled it, at launch, which for an arm that queued on the benchmark lock
+is minutes before it measured (the 9.66 of `debug-profiling-on-yaw45` was read
+about three minutes early; the tool now reads the load as each run returns).
+An earlier attempt the same hour had `uptime` at 19.4, and the same frozen 0°
+scene read 36.81 then 45.45 ms four minutes apart with its frame minimum
+unchanged at 33 to 34 ms (`witness-controls/load-drift-*`; the first on
+battery, the second just after the host went onto AC, so the power source
+moved with the load). The benchmark lock excludes cooperating builds and
+nothing else. Read the witness columns; do not diff the milliseconds. The
+steady p99 column is each report's own line; `summary.md` pools the
+three-decimal series and can differ from it in the last digit. Reports and manifests:
 [million-controls/witnessed-live-fleet/](million-controls/witnessed-live-fleet/).
 
 | Build | Stage profiling | Logs? | Witnessed yaw (travel) | Overflow max entries / dropped / cap (frames sampled) | Steady p99 ms | All-frames p99 ms | Frame mean ms |
 |---|---|---|---:|---:|---:|---:|---:|
 | Release | off | no | 0.000° (0.000) | lane idle (0) | 40.46 | 52.58 | 36.50 |
-| Release | off | no | 45.000° (0.000) | 2,208,000 / **0** / 8,388,608 (300) | 56.81 | 80.85 | 47.66 |
+| Release | off | no | 45.000° (0.000) | 2,208,000 / **0** / 8,388,608 (300) | 56.82 | 80.85 | 47.66 |
 | Release | on | no | 0.000° (0.000) | lane idle (0) | 40.89 | 61.55 | 37.70 |
 | Release | on | no | 45.000° (0.000) | 2,208,000 / **0** / 8,388,608 (300) | 51.21 | 87.04 | 48.59 |
 | Debug | off | yes | 0.000° (0.000) | lane idle (0) | 39.62 | 42.30 | 36.39 |
 | Debug | off | yes | 45.000° (0.000) | 2,208,000 / **0** / 8,388,608 (300) | 51.30 | 65.40 | 48.32 |
 | Debug | on | yes | 0.000° (0.000) | lane idle (0) | 49.84 | 68.77 | 42.76 |
-| Debug | on | yes | 45.000° (0.000) | 2,208,000 / **0** / 8,388,608 (300) | 51.97 | 69.65 | 49.44 |
+| Debug | on | yes | 45.000° (0.000) | 2,208,000 / **0** / 8,388,608 (300) | 51.96 | 69.65 | 49.44 |
 
 What it says:
 
@@ -153,28 +163,43 @@ What it says:
 
 ## The run witness and its controls
 
-Each counter was shown to move when the thing it measures moves, on the
-binaries the witnessed round was taken with (64³ default scene, zoom 4, frozen
-wave).
+Each counter was shown to move when the thing it measures moves (64³ default
+scene, zoom 4, frozen wave). Every row's report and manifest is under
+[million-controls/witness-controls/](million-controls/witness-controls/).
 
-| Control | Build | What the report read | Verdict |
+| Control (directory) | Build | What the report read | Verdict |
 |---|---|---|---|
-| Static poses `--yaw` 0, 0.785398163, 1.0175, −2.5 rad | Release | yaw first = last = 0.000, 45.000, 58.298, −143.239°, travel 0.000 | each pose witnessed by a build that logs nothing |
-| Overflow lane at those poses | Release | 0 samples at 0°; 630,842 / 71,115 / 79,794 max entries, 0 dropped, cap 1,048,576, every frame sampled | the cardinal pose never allocates the lane; the rotated ones sample it each frame |
-| `overflowCap_` forced to 65,536 (local patch, not committed) at 45° | Debug | max entries 65,536, **max dropped 565,306** = 630,842 − 65,536 | `repeat_profile.py` refused the run and named the count and the cap; the log carried 2 warning lines, which is what the old count would have reported |
-| `--yaw-ramp --auto-screenshot 4`, 400 frames | Release | first 0.000°, last −93.000°, **travel 267.000°**, lane sampled on 341 of 400 frames | the arc is summed through the ±180° seam (267° is −93°), and the 59 cardinal-pose frames have no lane |
-| 60 frames at 45° | Debug | all-frames p99 102.09 ms (frame one); steady p99 20.97 ms over the last 45 | the all-frames tail is the startup hitch |
+| Static poses `--yaw` 0, 0.785398163, 1.0175, −2.5 rad (`pose-*`) | Release | yaw first = last = 0.000, 45.000, 58.298, −143.239°, travel 0.000 | each pose witnessed by a build that logs nothing |
+| Overflow lane at those poses | Release | 0 samples at 0°; 630,842 / 71,115 / 79,794 max entries, 0 dropped, cap 1,048,576, 40 of 40 frames sampled | the cardinal pose never allocates the lane; the rotated ones sample it each frame |
+| `overflowCap_` forced to 65,536 at 45°, a local patch that was never committed (`overflow-cap-forced-to-65536`) | Debug | max entries 65,536, **max dropped 565,306** = 630,842 − 65,536 | `repeat_profile.py` refused the run and named the count and the cap; the run's log carried 2 warning lines, which is what the old count would have reported (the log is not committed) |
+| `--yaw-ramp --auto-screenshot 4`, 400 frames (`shot-table-ramp`) | Release | first 0.000°, last −93.000°, **travel 267.000°**, lane sampled on 341 of 400 frames | the arc is summed through the ±180° seam (267° is −93°), and the 59 cardinal-pose frames have no lane |
+| 60 frames at 45° (`tail-60-frames`) | Debug | all-frames p99 80.71 ms (frame one); steady p99 18.38 ms over the last 45 | the all-frames tail is the startup hitch |
 
-`--yaw-ramp` is an auto-screenshot shot table and moves nothing without
-`--auto-screenshot`, so the tool treats a `--yaw` run as a static pose unless
-both are present.
+Every `--auto-screenshot` shot table sets the yaw and zoom of each shot
+(`--yaw-ramp` only selects which table, and moves nothing without one), so the
+tool checks a `--yaw` run as a static pose only when no shot table is driving
+the camera.
+
+What the witness does not see. The overflow counters are read one frame late,
+so the first sample after an allocation is the zero-seeded block and the last
+rotating frame before a release or an exit is never read: "300 of 300 frames
+sampled" is 299 frames and a seed, and a run whose only dropping frame is its
+last would read clean. A run longer than 8,192 frames keeps its steady line
+and drops its series (`kProfileSeriesMaxFrames`), so an interactive session
+does not write megabytes. `World`'s wiring of the witness (the reset in
+`enableFrameTiming`, the radians to degrees copy) and the two call sites in
+the voxel pass have no unit test; the real-binary controls above are what
+cover them.
 
 The unit suites pin the rest: `test/render/run_witness_test.cpp` (travel
 through the seam, a return to the starting pose still travels, the worst
 overflow frame is kept and not the last, reset), `test/profile/` (the steady
-line's exclusion and the written lines), and the `scripts/perf` tests, one of
-which asserts the parser's patterns are the literal format strings in
-`profile_report.cpp`, so a reworded line cannot read as a clean run.
+line's exclusion, the written lines, the series cap), and the `scripts/perf`
+tests, which assert that the parser's patterns are the literal format strings
+in `profile_report.cpp`, that the rotated-pose threshold is
+`Camera::kResidualYawDeadband`, that a pose line with no samples reads absent
+and not 0°, and that a series shorter than its steady line states pools
+nothing.
 
 ## What each arm means on this host
 
@@ -291,7 +316,7 @@ replace it with.
 
 1. The three-round matrix again **on a quiet host**: master has moved the
    shaders this fixture runs (`ir_projected_face`, the sun-face query layout)
-   since the AC reference, and the witnessed round below was taken under a live
+   since the AC reference, and the witnessed round above was taken under a live
    fleet, so neither is the table a D2 change diffs against.
 2. This matrix after any host or OS change, and on an OpenGL host.
 3. A longer window for the tail: 225 steady frames put two frames above a p99.
