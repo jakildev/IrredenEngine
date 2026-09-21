@@ -1,4 +1,4 @@
-"""Structured-field validation for epic-decomposition stacks (#1312).
+"""Structured-field validation for epic-decomposition stacks.
 
 The architect files a multi-issue epic ("stack") via the ``file-epic`` skill:
 an umbrella issue plus one child per phase, each child chaining
@@ -10,13 +10,13 @@ an umbrella issue plus one child per phase, each child chaining
     **Part of epic:** #<umbrella>
     **Blocked by:** #<prior>            # non-root children only
 
-Prose forms — a header bullet like ``**Epic:** #1307 · **Blocked on T1 + docs
-PR #1306**`` — are read by check_blockers / the scout only as a ``Blocked on``
-fallback (#1326); the canonical standalone ``**Blocked by:** #N`` line is what
+Prose forms — a header bullet like ``**Epic:** #N · **Blocked on T1 + docs
+PR #M**`` — are read by check_blockers / the scout only as a ``Blocked on``
+fallback; the canonical standalone ``**Blocked by:** #N`` line is what
 ``file-epic``'s own ``--search "Part of epic: #N"`` discovery and the queue
 rely on, so a prose-only child still warrants a warning. Multiple blockers —
 whether ``#A, #B`` on one line or several ``**Blocked by:**`` lines — are
-supported (#1296): the gate unions every ref and find-stackable-blockers
+supported: the gate unions every ref and find-stackable-blockers
 live-resolves them. This module is the pure predicate half of
 ``fleet-validate-stack``; the executable supplies the ``gh`` I/O.
 
@@ -28,8 +28,8 @@ Severity split — a finding is an ``error`` only when it is an unambiguous
 template violation (no false-positive possible); it is a ``warn`` when the
 body is genuinely ambiguous. The one ambiguous case is a *missing* ``**Blocked
 by:**`` line on a non-lowest-numbered child: that is either drift (forgot the
-line) or a legitimate interior root of a multi-root epic (e.g. #226's T-220
-sibling + later follow-ons), and the body alone cannot distinguish them.
+line) or a legitimate interior root of a multi-root epic (a sibling
+root plus later follow-ons), and the body alone cannot distinguish them.
 ``--strict`` in the CLI promotes that warning to an error for known linear
 chains.
 """
@@ -58,7 +58,7 @@ _EFFORT_LINE_RE = re.compile(r"^\*\*Effort:\*\*\s*(\S+)", re.MULTILINE)
 _EFFORT_LEVELS = {"low", "medium", "high", "xhigh", "max"}
 _BLOCKED_BY_LINE_RE = re.compile(r"^\*\*Blocked by:\*\*.*$", re.MULTILINE)
 _HASH_REF_RE = re.compile(r"#(\d+)\b")
-# Multiple blockers are supported as of #1296 (see validate_child): a line may
+# Multiple blockers are supported (see validate_child): a line may
 # carry one or more ``#N`` refs, and a child may carry more than one
 # ``**Blocked by:**`` line. The only malformed shape is a line that names no
 # ``#N`` at all.
@@ -156,7 +156,7 @@ def validate_child(body, umbrella, is_head):
                      "standalone line is canonical); fine if it is a "
                      "genuine independent root")
         else:
-            # Multiple blockers are supported (#1296): check_blockers gates on
+            # Multiple blockers are supported: check_blockers gates on
             # the union of every `#N` across all `**Blocked by:**` lines, and
             # find-stackable-blockers live-resolves them (stacking on the last
             # unresolved ref as the others merge). So neither multi-ref
@@ -262,7 +262,7 @@ def discover_children(slug, umbrella, state="open"):
 
 
 # ---------------------------------------------------------------------------
-# Checklist helpers (--check-checklist extension, #1667)
+# Checklist helpers (--check-checklist)
 # ---------------------------------------------------------------------------
 
 _CHECKLIST_ITEM_RE = re.compile(r"^\s*-\s*\[([ xX])\]\s*#(\d+)", re.MULTILINE)

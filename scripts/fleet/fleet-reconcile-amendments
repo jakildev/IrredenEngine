@@ -62,12 +62,12 @@ import subprocess
 import sys
 
 # Shared branch<->issue matcher, so game claude/game-<N>-* branches resolve
-# to their issue number here too (engine-only regex used to drop them; #1425).
+# to their issue number here too.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from fleet_branch_match import issue_from_branch
 
 # Branch shapes the reconciler can resolve to a task identifier:
-#   claude/<N>-…       → new convention (post-#1216). issue_from_branch
+#   claude/<N>-…       → current convention. issue_from_branch
 #   claude/game-<N>-…    yields the issue number (it strips the optional
 #                        game- infix); the reconciler passes it straight to
 #                        `fleet-claim reserve`.

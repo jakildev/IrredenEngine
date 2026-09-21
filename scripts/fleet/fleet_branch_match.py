@@ -3,33 +3,24 @@
 Both `fleet-claim` (bash, via inline `python3`) and `fleet-state-scout`
 (pure Python) repeatedly ask "does this `claude/...` PR branch belong to
 issue #N?" or "which issue does this branch belong to?". Engine branches
-are `claude/<N>-<topic>`; game branches were historically minted as
-`claude/game-<N>-<topic>`. Every call site previously hardcoded the engine
-form (`claude/<N>-`), so the `game-` infix made the check silently miss
-live game branches.
+are `claude/<N>-<topic>`; game branches are `claude/<N>-<topic>` or
+`claude/game-<N>-<topic>`. Every caller imports this one matcher, because a
+missed match makes the TTL sweep judge a live claim abandoned, re-free the
+issue, and let a second worker open a duplicate PR.
 
-That miss is the #1425 incident: a game claim with an open
-`claude/game-105-*` PR was not recognized as live, the TTL sweep judged it
-abandoned and re-freed the issue, and a second worker produced a duplicate
-PR. Centralizing the convention here makes the two scripts share one
-matcher so they can't drift, and fixes every inference at once.
-
-The matcher accepts BOTH forms for the game repo, so in-flight
-`claude/game-<N>-*` branches keep resolving while the convention migrates
-to the prefix-less form. Engine accepts only `claude/<N>-`.
+The matcher accepts BOTH forms for the game repo. Engine accepts only
+`claude/<N>-`.
 
 Beyond the prefix forms, the matcher also recognizes a word-bounded
 `issue-<N>` token anywhere in a `claude/...` branch
-(`claude/game-worker-3-issue-255` -> #255) as a *fallback*: it fires only
+(`claude/game-worker-3-issue-<N>` -> #N) as a *fallback*: it fires only
 when the branch carries no leading-number form, so the leading-number form
-stays authoritative and `claude/2419-fix-issue-1425-recurrence` resolves to
-#2419 alone, never also to #1425. That token shape is the #2419 recurrence
-of the same #1425 duplicate-PR incident — workers improvised
-`claude/game-<worktree>-issue-<N>` branches the prefix-only matcher could not
-tie back to the issue, so the liveness sweep judged the live claim abandoned
-and a duplicate PR followed. The token boundaries are explicit
+stays authoritative and `claude/<A>-fix-issue-<B>-recurrence` resolves to
+#A alone, never also to #B. The token shape covers improvised
+`claude/game-<worktree>-issue-<N>` branches, which the prefix forms cannot
+tie back to their issue. The token boundaries are explicit
 (`(?:^|[-/])issue-(\\d+)(?=-|$)`) — documented here since `_TOKEN_ISSUE_RE`
-below is the single source every caller imports.
+is the single source every caller imports.
 
 The closing-keyword grammar lives here for the same reason. It comes in a
 bare form (`Closes #N`, `body_closes_issue` / `body_closed_issue_numbers`)
@@ -37,12 +28,11 @@ and a repo-namespaced form (`body_closed_issue_refs` /
 `body_closes_issue_in`) that also honors GitHub's cross-repo
 `Closes OWNER/REPOSITORY#N`. The namespaced form is what the fleet runs:
 an engine issue remedied by a game PR carrying
-`Closes jakildev/IrredenEngine#N` was invisible to both the scout's
-`inflight_pr` gate and `fleet-claim`'s duplicate guard, so the dispatcher
-re-elected the issue and burned a walk-away iteration per trigger until the
-game PR merged (#3520). Every miss in this grammar errs toward INVENTING a
-link, so an unknown `owner/repo` is dropped rather than folded to a bare
-number — see `body_closed_issue_refs`.
+`Closes jakildev/IrredenEngine#N` must be visible to both the scout's
+`inflight_pr` gate and `fleet-claim`'s duplicate guard, or the dispatcher
+re-elects the issue every trigger until the game PR merges. Every miss in
+this grammar errs toward INVENTING a link, so an unknown `owner/repo` is
+dropped rather than folded to a bare number — see `body_closed_issue_refs`.
 """
 
 import re
@@ -52,9 +42,7 @@ import re
 # cross-repo closing grammar (`body_closed_issue_refs`) must DROP a ref to an
 # unknown `owner/repo`, never fold it into one of ours — a suffix fallback
 # that reads "not game" as engine would attribute `someone/other#5` to the
-# engine repo — the fold that kept the qualified form deliberately unmatched
-# before this grammar existed. Lower-cased keys; GitHub slugs are
-# case-insensitive.
+# engine repo. Lower-cased keys; GitHub slugs are case-insensitive.
 _REPO_KEYS = {
     "": "engine",
     "engine": "engine",
@@ -113,7 +101,7 @@ def _leading_issue(head_ref):
 
 # Word-bounded `issue-<N>` token: starts at a segment boundary (start, '/',
 # or '-') and the digits end at '-' or end-of-string, so `issue-25` does not
-# match #255 and `issue-255` does not match #25. Single-sourced here — every
+# match issue 255 and `issue-255` does not match issue 25. Single-sourced here — every
 # caller (`fleet-claim`, `fleet-reconcile-amendments`, `fleet-state-scout`,
 # `fleet_stack_base.py`) reaches this grammar through the module, and
 # `fleet-claim branch-check` is the shell entry point that shells into it.
@@ -151,11 +139,11 @@ def branch_matches_issue(head_ref, issue, repo):
     """True when `head_ref` is the working branch for `issue` in `repo`.
 
     Two arms, prefix authoritative:
-      1. Prefix `claude/<N>-` (game also `claude/game-<N>-`) — unchanged.
+      1. Prefix `claude/<N>-` (game also `claude/game-<N>-`).
       2. Fallback: a word-bounded `issue-<N>` token, but ONLY when the branch
-         carries no leading-number form. So `claude/2419-fix-issue-1425-*`
-         matches #2419 (prefix) and NOT #1425 (token suppressed), while
-         `claude/game-worker-3-issue-255` matches #255 via the token. The
+         carries no leading-number form. So `claude/<A>-fix-issue-<B>-*`
+         matches #A (prefix) and NOT #B (token suppressed), while
+         `claude/game-worker-3-issue-<N>` matches #N via the token. The
          token arm is repo-agnostic (no prefix shape to namespace).
     """
     head = head_ref or ""
@@ -184,7 +172,7 @@ _CLOSES_ANY_RE = re.compile(_CLOSES_KEYWORD + r"#(\d+)\b", re.IGNORECASE)
 # break a match, never bridge one. An owner-less `IrredenEngine#N` is not a
 # GitHub link and does not match; a URL form (`Closes https://github.com/…`)
 # cannot match either (the charset excludes `:`) — both are deliberate misses,
-# the conservative direction (zero corpus uses of either when this landed).
+# the conservative direction.
 _CLOSES_REF_RE = re.compile(
     _CLOSES_KEYWORD + r"(?:([A-Za-z0-9][\w.-]*/[A-Za-z0-9][\w.-]*))?#(\d+)\b",
     re.IGNORECASE,
@@ -368,15 +356,14 @@ def body_closes_issue(body, issue):
     followed by `#<N>`, case-insensitive and word-bounded so `#25` does not
     match `#255`. Occurrences inside markdown code (fenced blocks, inline
     spans) are not links to GitHub and so are not matched here either — see
-    `strip_code`. A missing/empty body simply never fires (backward
-    compatible with any caller that hasn't started fetching `body`).
+    `strip_code`. A missing/empty body never fires.
 
     BARE-ONLY contract: a repo-qualified `Closes owner/repo#N` never matches,
     even when the qualifier names the PR's own repo. The fleet's live readers
     (`fleet-claim`'s guards and sweep, the scout's `closes_issues` derivation)
     go through the namespaced `body_closes_issue_in` / `body_closed_issue_refs`
-    instead (#3520); this form is kept for the same-repo callers and tests
-    that pin the bare grammar.
+    instead; this form serves the same-repo callers and tests that pin the
+    bare grammar.
     """
     if not body:
         return False
@@ -414,7 +401,7 @@ def body_closed_issue_refs(body, pr_repo):
     as a bare one and a ref to the other fleet repo carries that repo's key.
     A ref to an `owner/repo` that is neither fleet repo is DROPPED — never
     folded to a bare number, which would suppress the same-numbered task in
-    whichever repo the caller happened to be scanning (the #3316 hazard).
+    whichever repo the caller happened to be scanning.
 
     The scout splits the result into `closes_issues` (own repo, bare ints)
     and `closes_cross_repo` (other repo) at fetch time; `fleet-claim`'s
@@ -469,10 +456,10 @@ def body_closes_issue_in(body, issue, target_repo, pr_repo):
 # released its claim so ANY worker can resume once the architect responds.
 # Such a PR is NOT active work even though it is open and `fleet:wip` — its
 # lingering issue-side `fleet:claim-*` / `fleet:in-progress` labels would
-# otherwise wedge the issue as "in progress" and block re-claim (#1488).
+# otherwise wedge the issue as "in progress" and block re-claim.
 # `fleet:design-proposed` parks the same way: the epic-steward released its
 # claim and the PR waits on a STEWARD PROPOSAL answer on the umbrella issue;
-# re-adoption is gated on the steward's distribution pass (#1663).
+# re-adoption is gated on the steward's distribution pass.
 PARKED_PR_LABELS = frozenset({
     "fleet:design-blocked",
     "fleet:design-unblocked",
@@ -488,7 +475,7 @@ def issue_pr_state(prs, issue, repo):
                  issue's claim/in-progress labels should stay.
       "parked" — every matching PR is parked (PARKED_PR_LABELS). The claim is
                  awaiting-resume, not active, so its issue-side labels are
-                 stale and safe to clear/sweep (#1488 Fix A/B).
+                 stale and safe to clear/sweep.
       "none"   — no open PR branch matches the issue.
 
     A PR matches `issue` by EITHER signal: its branch (`branch_matches_issue`)

@@ -1,21 +1,14 @@
 #!/usr/bin/env bash
 # fleet-net.sh — bound every network call an unattended fleet daemon makes, so a
 # black-holed GitHub connection (silent TCP death, no RST) fails fast instead of
-# hanging forever. (#2362)
+# hanging forever: an unguarded `git fetch` / `git push` / `gh …` blocks on a
+# network read that never returns.
 #
-# The problem this solves: the host's connections to GitHub intermittently
-# black-hole. Any unguarded `git fetch` / `git push` / `gh …` then blocks on a
-# network read that never returns — three fleet-wide outages in four days, each
-# a single hung call: fleet-rebase's fetch holding the rebase lock for 3 days;
-# the dispatcher main loop wedged 18 h on an inline `fleet-claim … gh issue
-# view`; a fresh dispatcher hung at startup on its clone-freshness fetch.
-#
-# The fix is a pair of shadow functions — `git()` and `gh()` — that prefix a
-# `timeout` to network operations. A script SOURCES this lib once and every
-# subsequent `git`/`gh` call it makes (including calls inside functions it later
-# sources, since bash resolves function names at call time) is guarded, with no
-# per-call-site edits. fleet-claim alone has ~49 `gh` sites; a shadow guards
-# them all — and every future site — by construction.
+# A pair of shadow functions — `git()` and `gh()` — prefix a `timeout` to
+# network operations. A script SOURCES this lib once and every subsequent
+# `git`/`gh` call it makes (including calls inside functions it later sources,
+# since bash resolves function names at call time) is guarded, with no
+# per-call-site edits.
 #
 # Source of truth: scripts/fleet/fleet-net.sh in the engine repo.
 # Installed to ~/bin/fleet-net.sh (as a symlink) by scripts/fleet/install.sh —

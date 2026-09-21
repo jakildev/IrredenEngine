@@ -120,13 +120,12 @@ SHORT = {"jakildev/IrredenEngine": "engine", "jakildev/irreden": "game"}
 # An approved PR's title still carrying [WIP] with no fleet:wip label is a
 # desync the fleet's own labels never catch: GitHub squash-merge uses the
 # title as the commit subject, so this ships [WIP] into master's permanent
-# history (#2788) unless a human strips it before merging.
+# history unless a human strips it before merging.
 WIP_TITLE_RE = re.compile(r"\[WIP\]")
 
-# Drain thresholds: past these, a backlog cue flips to OVERDUE. Values per
-# the 2026-07-30 triage retrospective — batches past ~a dozen tickets cost
-# a full architect session, and rules sit unabsorbed while their mistakes
-# recur (the acceptance-evidence omission recurred 4x with its fix filed).
+# Drain thresholds: past these, a backlog cue flips to OVERDUE. Batches past
+# ~a dozen tickets cost a full architect session, and rules sit unabsorbed
+# while their mistakes recur.
 CI_DRAIN_THRESHOLD = 12
 UNTRIAGED_DRAIN_THRESHOLD = 12
 FEEDBACK_STALE_DAYS = 14

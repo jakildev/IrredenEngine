@@ -3,26 +3,20 @@
 `fleet-state-scout` (pure Python), `fleet-queue-ingest` (bash + inline
 `python3`), and `fleet-claim` (bash + inline `python3`) all answer the same
 question — "which predecessors does this issue declare as blockers, and is it
-genuinely unblocked?" — but each carried its own private copy of the regexes
-and sentinel logic. Those copies drifted, which is the #1749 incident:
+genuinely unblocked?" — so all three import this module, and the gate a claim
+enforces cannot disagree with the eligibility the scout projects.
 
-  * The scout had a rich no-blocker sentinel test (`is_no_blocker_value`:
-    bare `none`, `n/a`, `tbd`, a lone dash, `#N`-wins), while ingest and
-    claim only matched the parenthesized `(none)` form. A bare
-    `none — first unblocked.` gated in claim/ingest but not in the scout
-    (game #138 → #143 was this class of bug, fixed only in the scout).
+Recognized forms:
 
-  * All three recognized only the **bold** field forms — canonical
-    `**Blocked by:** #N` and inline-bold `**Blocked by: #N**`. A plain,
-    non-bold, mid-line `Blocked by: #N` declaration — the degraded form
-    #174's children self-declared their deps in
-    (`Part of epic #174 (Phase D). [opus] Blocked by: #175, #176, #177.`) —
-    was skipped by every parser, so blocked children surfaced as claimable.
+  * No-blocker sentinels (`is_no_blocker_value`): `(none)`, bare `none`,
+    `n/a`, `tbd`, a lone dash, with a named `#N` winning over the sentinel.
 
-This module is the single source of truth. The three scripts import it so they
-can never disagree again, and it adds the plain-form recognition that closes
-the #174 hole. The `Blocked on …` header form (#1326) and the cross-repo
-`[owner/]Repo#N` qualifier routing (#1522) are folded in here too.
+  * Field forms, unioned: canonical `**Blocked by:** #N`, inline-bold
+    `**Blocked by: #N**`, and the degraded plain, non-bold, mid-line
+    `Blocked by: #N` (`Part of epic #N (Phase D). [opus] Blocked by: #A, #B.`).
+
+  * The `Blocked on …` header form, as a fallback, and cross-repo
+    `[owner/]Repo#N` qualifier routing.
 """
 import re
 
@@ -42,7 +36,7 @@ _CANONICAL_RE = re.compile(
     r'^\s*-?\s*\*\*(?:Suggested\s+)?Blocked by:\*\*\s*(.+?)\s*$',
     re.IGNORECASE | re.MULTILINE,
 )
-# 2. inline-bold `**Blocked by: #N (label)**` span (#1423): colon + value
+# 2. inline-bold `**Blocked by: #N (label)**` span: colon + value
 #    inside one bold span (space after the colon, bold stays open past the
 #    value). Mutually exclusive with the canonical form — canonical bold
 #    closes at `:**`, inline bold stays open — so scanning both over the whole
@@ -51,7 +45,7 @@ _INLINE_RE = re.compile(
     r'\*\*(?:Suggested\s+)?Blocked by:\s+(.+?)\*\*',
     re.IGNORECASE,
 )
-# 3. NEW (#1749): plain `Blocked by:` (bold optional, anywhere on a line)
+# 3. plain `Blocked by:` (bold optional, anywhere on a line)
 #    directly followed by a `#N` ref-list. `(?<!\*)` excludes the two bold
 #    forms above (so a canonical/inline line never also matches here); `\b`
 #    excludes "unblocked by:"; the `#\d+` anchor — a full issue number, not a
@@ -63,7 +57,7 @@ _PLAIN_RE = re.compile(
     r'(?<!\*)\bBlocked by:\s*(#\d+[^\n]*)',
     re.IGNORECASE,
 )
-# 4. free-form header prose `## Blocked on #1300` / `Blocked on PR-x` (#1326):
+# 4. free-form header prose `## Blocked on #N` / `Blocked on PR-x`:
 #    lowest-precedence fallback, honored only when it names a #N or PR so an
 #    incidental "Blocked on the redesign" sentence cannot gate a task forever.
 _BLOCKED_ON_RE = re.compile(
@@ -71,7 +65,7 @@ _BLOCKED_ON_RE = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 
-# Cross-repo `[owner/]Repo#N` qualifier (#1522): group(1) is the repo name
+# Cross-repo `[owner/]Repo#N` qualifier: group(1) is the repo name
 # (None/empty for a bare same-repo `#N`), group(2) is the number.
 _REF_RE = re.compile(r'(?:[A-Za-z0-9][\w.-]*/)?([A-Za-z0-9][\w.-]*)?#(\d+)')
 _PR_URL_RE = re.compile(
@@ -81,7 +75,7 @@ _PR_URL_RE = re.compile(
 _REF_NAME_TO_SLUG = {'irredenengine': 'jakildev/IrredenEngine',
                      'irreden': 'jakildev/irreden'}
 
-# See-also / parallel-sibling qualifiers (#1910): a `#N` introduced by one of
+# See-also / parallel-sibling qualifiers: a `#N` introduced by one of
 # these inside a leading-`none` value is a cross-reference, not a blocker — the
 # legitimate "(none — runs in parallel with #N)" idiom. Matched per-ref against
 # its clause so a sibling note can't smuggle a real dependency past the gate
@@ -95,7 +89,7 @@ _SEE_ALSO_RE = re.compile(
     r'no\s+dependency\s+on)\b',
     re.IGNORECASE,
 )
-# Blocker verbs (#1910): a `#N` introduced by one of these is a real dependency
+# Blocker verbs: a `#N` introduced by one of these is a real dependency
 # even inside a leading-`none` value — this is what keeps the anti-evasion guard
 # intact for "none, actually blocked by #5".
 _BLOCKER_VERB_RE = re.compile(
@@ -122,9 +116,9 @@ _CLAUSE_SPLIT_RE = re.compile(
     r'(?<!\bcf)(?<!\be\.g)(?<!\bi\.e)\.(?=\s)|[;,—–(]|\n',
     re.IGNORECASE,
 )
-# List separators between *declared* blockers (#2783). A `Blocked by:` value is
+# List separators between *declared* blockers. A `Blocked by:` value is
 # a list of refs — each optionally carrying its own parenthetical annotation
-# (`#100 (done), #101 (still open)`) — so the first ref of every segment is
+# (`#A (done), #B (still open)`) — so the first ref of every segment is
 # declared and only later refs in the same segment are candidates for prose.
 # `and` is included because hand-written values spell the list both ways.
 _LIST_SPLIT_RE = re.compile(r',|\band\b', re.IGNORECASE)
@@ -136,8 +130,8 @@ def _leads_with_none_sentinel(value):
     precondition for excusing any `#N` as a see-also reference: a value that
     does not lead with `none` (e.g. a bare `#5`) is never excused."""
     # Tolerate leading markdown emphasis / paren wrappers (`_(none …)_`,
-    # `*none*`, `` `(none)` ``) before the sentinel word — #1910's field was
-    # italicized, and the bare token check would otherwise see `_(none`.
+    # `*none*`, `` `(none)` ``) before the sentinel word — an italicized field
+    # would otherwise present `_(none` to the bare token check.
     head = (value or "").strip().lower().lstrip("_*`(").strip()
     if not head or head[0] in "-–—.":
         return True
@@ -180,14 +174,14 @@ def _ref_is_see_also(value, ref_start, ref_end):
 def ref_is_decorative(value, ref_start):
     """True when the `#N` starting at `ref_start` sits in `value`'s explanatory
     prose and no blocker verb introduces it — a decoration rather than a
-    dependency (#2783).
+    dependency.
 
     Answers "was this ref *declared*", NOT "does it gate" — the two questions
     genuinely differ, so only ask this one where the declared count is what
     matters (stackable eligibility). The blocking gate `blocker_refs` counts
-    every ref on purpose: a parenthetical PR ref is load-bearing there. #1281
-    taught the resolver to accept such a ref once the PR is MERGED — while it
-    is still OPEN the ref gates, which is what stops a claim on work whose
+    every ref on purpose: a parenthetical PR ref is load-bearing there. The
+    resolver accepts such a ref once the PR is MERGED — while it is still
+    OPEN the ref gates, which is what stops a claim on work whose
     implementing PR hasn't landed. The common shape is the blocker's own PR —
     `#2770 (PR #2772 — lands the shape this generalizes)` declares one blocker
     and gates on two.
@@ -195,7 +189,7 @@ def ref_is_decorative(value, ref_start):
     A ref is declared — never decorative — when it is the **first** in its list
     segment, so `#100, #101` and the per-ref-annotated
     `#100 (done), #101 (still open)` both keep every blocker. Only a *second*
-    ref inside one segment can be prose, and #1910's `_BLOCKER_VERB_RE` clause
+    ref inside one segment can be prose, and the `_BLOCKER_VERB_RE` clause
     scan rescues that one when the prose restates a real dependency
     (`#100 — also blocked by #999`), while a negated blocker verb remains
     decorative (`#100 — not blocked by #999`). The bias toward declared is
@@ -203,13 +197,13 @@ def ref_is_decorative(value, ref_start):
     not merged, far worse than the overcount it corrects.
 
     Lives here rather than in the scout so the eligibility rule can't drift
-    from the gate it deliberately differs from — the #1749 reconciliation.
+    from the gate it deliberately differs from.
     """
     value = value or ""
-    # A leading-`none` value is #1910's territory: `is_no_blocker_value` already
-    # rules on it and deliberately keeps every unqualified ref as a blocker
-    # (the anti-evasion guard). Staying out keeps that corpus byte-identical —
-    # this fix is scoped to values that declare a real blocker list.
+    # A leading-`none` value is `is_no_blocker_value`'s territory: it rules
+    # on it and deliberately keeps every unqualified ref as a blocker (the
+    # anti-evasion guard). This eligibility rule is scoped to values that
+    # declare a real blocker list.
     if _leads_with_none_sentinel(value):
         return False
     seg_start = 0
@@ -230,7 +224,7 @@ def is_no_blocker_value(value):
     blocks this". A value that names a `#N` or describes a real blocker in
     prose ("the auth redesign") is NOT a sentinel and must still gate.
 
-    Exception (#1910, #2960): the "(none — … in parallel with #N)" idiom
+    Exception: the "(none — … in parallel with #N)" idiom
     names a *sibling*, not a blocker. Such a `#N` is excused only when (a) the
     value leads with a `none`/`n-a`/`tbd` sentinel AND (b) every ref's whole
     clause carries a see-also / independence qualifier or a negated blocker
@@ -302,8 +296,7 @@ def has_blocked_by_field(body):
     form (canonical / inline / plain, sentinel or not) or a `Blocked on` header
     naming a #N/PR. Drives ingest's "Blocked by field missing" WARN so the
     presence check is sourced from this module's regexes and can't drift from
-    the parser. A degraded plain `Blocked by: #N` now counts as present, so the
-    WARN no longer false-fires on the #174-style children."""
+    the parser. A degraded plain `Blocked by: #N` counts as present."""
     body = _dequoted_body(body)
     if (_CANONICAL_RE.search(body)
             or _INLINE_RE.search(body)
@@ -350,7 +343,7 @@ def blocked_by_is_plain_only(body):
 
     Anchored on `_PLAIN_RE` (not `parse_blocked_by` non-empty) so a
     header-only child (`Blocked on #N`) returns False — that is a separate
-    recognized fallback and should not be misflagged (#1786).
+    recognized fallback and should not be misflagged.
     A sentinel `Blocked by: (none)` body has `has_plain` False (the
     `#\\d+` anchor filters sentinels), so that also returns False.
     """
@@ -373,16 +366,16 @@ def blocker_ref_records(body, default_repo):
 
 def blocker_refs(body, default_repo):
     """(slug, number) for every blocker ref declared in `body`, routing each
-    cross-repo `[owner/]Repo#N` qualifier to its GitHub slug (#1522) and
+    cross-repo `[owner/]Repo#N` qualifier to its GitHub slug and
     defaulting bare refs to `default_repo` (the issue's own repo). Full GitHub
     pull-request URLs use their embedded slug and PR number. A sentinel-only
     or unblocked body contributes nothing.
 
     Every ref counts here, prose included: this is the *blocking gate*, and a
-    parenthetical `(PR #200 must merge — …)` is load-bearing for it — #1281
-    resolves such a ref against PR state, so it stops gating only once that PR
+    parenthetical `(PR #200 must merge — …)` is load-bearing for it — the resolver
+    checks such a ref against PR state, so it stops gating only once that PR
     is MERGED. Callers that need the narrower "how many blockers were actually
     declared" question (stackable eligibility) filter with `ref_is_decorative`
-    instead; they must not widen this one (#2783)."""
+    instead; they must not widen this one."""
     return [(slug, number) for slug, number, _ in
             blocker_ref_records(body, default_repo)]

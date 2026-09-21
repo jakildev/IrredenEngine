@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
-# fleet-dispatcher — central transient-claude dispatcher (issue #273).
+# fleet-dispatcher — central transient-claude dispatcher.
 #
-# The fully-baked version of the trigger-aware back-off shipped in
-# #272. Replaces fleet-babysit's per-pane relaunch loop for
-# worker / reviewer / queue-manager / merger panes with a single
-# polling daemon that decides when to spawn a `claude` invocation
+# A single polling daemon that decides when to spawn a `claude`
+# invocation for worker / reviewer / queue-manager / merger panes,
 # and into which pane.
 #
 # Architects (opus-architect, game-architect) keep fleet-babysit —
@@ -90,8 +88,7 @@ LOCK_DIR="$STATE_DIR/dispatcher.lock.d"
 SHUTDOWN_FLAG="$HOME/.fleet/shutdown-in-progress"
 # Boot-mode sentinel written by fleet-up (dry-run | live | review-only). Read
 # each tick so the dispatcher honors dry-run instead of cycling real (live)
-# iterations every tick (#2022). Absent → live (backward-compatible: a fleet
-# brought up by an older fleet-up that doesn't write it keeps today's behavior).
+# iterations every tick. Absent → live.
 DISPATCH_MODE_FILE="$STATE_DIR/dispatch-mode"
 
 # Directory of this script (symlink-resolved), so the per-task class
@@ -111,7 +108,7 @@ FLEET_LIB_DIR="${FLEET_LIB_DIR:-$(cd "$(dirname "$_fleet_dispatcher_self")" && p
 DAEMON_SELF="$(cd "$(dirname "$_fleet_dispatcher_self")" && pwd)/$(basename "$_fleet_dispatcher_self")"
 unset _fleet_dispatcher_self
 
-# Network-call timeout guard (#2362). Source this BEFORE fleet-clone-freshness.sh
+# Network-call timeout guard. Source this BEFORE fleet-clone-freshness.sh
 # so advance_main_clone's `git fetch` resolves the git() shadow at call time
 # (bash binds function names when the call runs). Installs git()/gh() shadows
 # that bound every network op with a timeout — the dispatcher's own inline net
@@ -125,7 +122,7 @@ if [[ -f "$FLEET_LIB_DIR/fleet-net.sh" ]]; then
     source "$FLEET_LIB_DIR/fleet-net.sh"
 fi
 
-# Engine/game roots + main-clone freshness helper (#1810). The dispatcher
+# Engine/game roots + main-clone freshness helper. The dispatcher
 # periodically advances the shared main clone's master in its main loop, so a
 # fleet-script fix that merges mid-session goes live without a fleet-up restart
 # (fleet-up alone is insufficient — drift recurs across scout cycles in one
@@ -390,7 +387,7 @@ LAST_DISPATCH_EPOCH=0
 # and the dispatched role command carries that mode. In dry-run the dispatcher
 # hands each role ONE standby iteration (`/role-<role> dry-run` — startup +
 # "standing by (dry-run)", no claims/PRs), then idles instead of re-dispatching
-# every tick (#2022). DRY_RUN_DISPATCHED tracks which roles already got their one
+# every tick. DRY_RUN_DISPATCHED tracks which roles already got their one
 # standby this dispatcher lifetime; LAST_ROLE_DISPATCH_COUNT carries dispatch_
 # role's per-call pane count back to the main loop so a role is marked only after
 # it actually dispatched (a capped/deferred tick leaves it unmarked to retry).
@@ -424,7 +421,7 @@ read_dispatch_mode() {
 # transient worker's stream — no separate poller needed. GitHub API
 # pools flow through the same glob-and-evaluate loop: fleet-state-scout's
 # sample_github_rate_limit() latches github-{core,graphql,search}.json
-# into the same $USAGE_DIR every tick (#2221), so a near-exhausted
+# into the same $USAGE_DIR every tick, so a near-exhausted
 # GitHub pool defers dispatch exactly like a near-exhausted Anthropic
 # window — no separate code path.
 #
@@ -509,7 +506,7 @@ declare -A GATE_CLOSED_LOGGED=()
 POLL_INTERVAL_SECONDS="${FLEET_DISPATCHER_INTERVAL:-10}"
 
 # Which `timeout` binary to use when wrapping tmux send-keys. Reuse the net
-# lib's resolution (#2362) so there is a single source of truth, and so the
+# lib's resolution so there is a single source of truth, and so the
 # send-keys guard inherits its coreutils probe — a bare `command -v timeout`
 # would accept Windows System32 `timeout.exe`, an interactive wait rather than a
 # command runner. Empty when neither the lib nor a coreutils timeout is present;
@@ -519,9 +516,8 @@ TIMEOUT_CMD="${FLEET_TIMEOUT_CMD:-}"
 # Periodic safety-net re-arm for merger. The merger's projection IS
 # responsive to PR state changes, so we only re-arm when the natural
 # trigger chain might be lagging (e.g. a scout tick was skipped).
-#
-# queue-manager is no longer in this list: maintenance was previously handled
-# by fleet-queue-tick (removed in #1229); the queue is now issue-based (T-381).
+# queue-manager is not in this list: ingestion fires on its own scout-driven
+# trigger and there is no periodic maintenance to re-arm.
 PERIODIC_REARM_INTERVAL_SECONDS="${FLEET_DISPATCHER_REARM_INTERVAL:-300}"
 
 # Boot fan-out window. During the first N seconds after dispatcher start,
@@ -570,16 +566,16 @@ fi
 # work resets the streak (cleanup_stale_dispatches). Net: at most one wasted
 # probe-fan-out per armed trigger instead of an unbounded loop.
 #
-# "Claimed nothing" is a signal, not an inference (#2698). fleet-claim stamps a
+# "Claimed nothing" is a signal, not an inference. fleet-claim stamps a
 # pane-keyed marker on every acquire/release arm, so the answer is recorded
 # before the iteration exits. Duration cannot separate worked from
 # walked-and-declined: a worker that walks both queues and correctly declines
 # also runs for minutes. Raising the threshold does not help — the two occupy
 # the same band, and the band moves whenever a role doc's mandated walk changes.
 #
-# EMPTY_EXIT_SECONDS survives as the fallback for dispatches whose outcome is
-# unknown (records written before this landed, and the roles below) and as a
-# test knob; the stale-boot-trigger case it was built for is now covered by the
+# EMPTY_EXIT_SECONDS is the fallback for dispatches whose outcome is
+# unknown (records without the marker, and the roles below) and a
+# test knob; the stale-boot-trigger case is covered by the
 # marker, since a pane that never claims stamps nothing however fast it exits.
 #
 # Roles for which duration is STILL the right proxy. The marker assumes a
@@ -603,7 +599,7 @@ EMPTY_EXIT_SECONDS="${FLEET_DISPATCHER_EMPTY_EXIT_SECONDS:-60}"
 EMPTY_STREAK_CAP="${FLEET_DISPATCHER_EMPTY_STREAK_CAP:-3}"
 EMPTY_STREAK_DIR="$STATE_DIR/empty-streak"
 # Where fleet-dispatch-wrap exports FLEET_CLAIM_FLAG and fleet-claim stamps a
-# pane's productive-work marker (#2698). Keep in sync with fleet-dispatch-wrap.
+# pane's productive-work marker. Keep in sync with fleet-dispatch-wrap.
 CLAIM_FLAG_DIR="$STATE_DIR/dispatch-claimed"
 # Validate-and-clamp both overrides the same way BOOT_FANOUT_WINDOW_SECONDS is
 # guarded above — a non-numeric value would emit arithmetic errors every tick
@@ -628,8 +624,7 @@ fi
 # re-fires on the SAME unchanged slice every PERIODIC_REARM_INTERVAL_SECONDS
 # whenever the resolver still elects a class — and an item every worker
 # refuses (a host-pinned task the projection cannot see through, a
-# design-parked issue) keeps electing forever. Measured 2026-09-06: two panes
-# re-dispatched every ~7 minutes all night against the same two refused tasks.
+# design-parked issue) keeps electing forever.
 # So after a standdown the re-arm waits BASE seconds, doubling per consecutive
 # standdown up to MAX; any productive dispatch (a claim) clears it, and a real
 # projection change still fires the scout's own trigger immediately — only the
@@ -668,12 +663,10 @@ if ! [[ "$CLAIM_SETTLE_SECONDS" =~ ^[0-9]+$ ]]; then
     CLAIM_SETTLE_SECONDS=90
 fi
 
-# (The #2699 class-fairness floor — a turn-count yield that bounded how long
-# one class could hold the lane when its head item was one every worker
-# refused — retired with assignment-before-launch. A refused item is now
-# refused at the claim, in the dispatcher, before any pane launches, and the
-# lane re-elects without that class in the same tick; see the
-# "no claimable candidate left; serving next class" branch in dispatch_role.)
+# There is no turn-count class-fairness floor: a refused item is refused at
+# the claim, in the dispatcher, before any pane launches, and the lane
+# re-elects without that class in the same tick (the "no claimable candidate
+# left; serving next class" branch in dispatch_role).
 
 # Roles this dispatcher is responsible for. Architects are excluded
 # (kept on fleet-babysit). Panes are a generic pool, so this list — not
@@ -698,10 +691,9 @@ fi
 if [[ "${FLEET_EPIC_STEWARD:-0}" == "1" ]]; then
     DISPATCHED_ROLES+=("epic-steward")
 fi
-# queue-manager is no longer LLM-dispatched. Maintenance (derived-field
-# rendering via fleet-queue-tick) was eliminated in #1229 — the queue is
-# now issue-based. Ingestion (new issues → queue) fires on its own
-# scout-driven trigger when human:approved-not-yet-queued issues appear.
+# queue-manager is not LLM-dispatched: ingestion (new issues → queue) fires
+# on its own scout-driven trigger when human:approved-not-yet-queued issues
+# appear.
 
 # Model classes. Inherited from fleet-up's exported, boot-resolved
 # FLEET_MODEL_FABLE / FLEET_MODEL_OPUS / FLEET_MODEL_SONNET table (the
@@ -1022,7 +1014,7 @@ find_idle_panes_for_role() {
     fi
 }
 
-# Wraps tmux send-keys in a $TIMEOUT_CMD guard (issue #502). A wedged
+# Wraps tmux send-keys in a $TIMEOUT_CMD guard. A wedged
 # pty can block send-keys indefinitely, freezing the main loop for the
 # duration. 5 s is generous — a healthy send-keys returns in < 1 ms.
 # Falls back to plain send-keys if no timeout binary was found.
@@ -1066,9 +1058,8 @@ pane_is_occupied() {
 # filesystems and would need escaping; sanitizing once at the boundary
 # keeps the rest of the script free of shell-quoting hazards).
 #
-# Backward compat: cleanup_stale_dispatches globs `*.json` so any
-# legacy role-keyed records left over from a pre-refactor session
-# (e.g. `merger.json`) get cleaned up the same way as new ones — the
+# cleanup_stale_dispatches globs `*.json` so any role-keyed record
+# (e.g. `merger.json`) gets cleaned up the same way as pane-keyed ones — the
 # pane_id is parsed from the JSON body, not the filename.
 
 pane_id_to_key() {
@@ -1078,7 +1069,7 @@ pane_id_to_key() {
 
 # Basename of a pane's current working directory — the worktree name
 # (`pool-1` … `pool-9`) fleet panes sit in, which is also the agent
-# name fleet-claim locks are held under. The planning pre-claim (#2197)
+# name fleet-claim locks are held under. The planning pre-claim
 # must claim under EXACTLY this name: the dispatched worker releases
 # with its own worktree basename, so any other claim name would make
 # that release a no-op and leak a 1-hour orphan to the TTL reaper.
@@ -1100,8 +1091,8 @@ write_dispatch_record() {
     # $4 = optional pre-claimed dispatch target ("<kind>:<repo>:<N>[:x]"),
     # stamped as `target` — read back by assign_for_pane's dedup (no two panes
     # after one item) and derive_dispatch_outcome (productive by
-    # assignment). A `plan` target is also stamped as the #2197
-    # `plan_issue` for readers that predate targets.
+    # assignment). A `plan` target is also stamped as `plan_issue` for
+    # readers that predate targets.
     # $5 = the pane's worktree basename the claim was taken under — the
     # completion contract at exit needs it to name the claim label.
     local role="$1" pane_id="$2" class="${3:-}" target="${4:-}" agent="${5:-}"
@@ -1120,8 +1111,7 @@ write_dispatch_record() {
     mkdir -p "$DISPATCH_DIR"
     # claim_marker:1 asserts this dispatch's wrapper exports FLEET_CLAIM_FLAG,
     # so cleanup_stale_dispatches may trust the marker's absence as "claimed
-    # nothing" (#2698). Records without it predate the change and fold on the
-    # old duration heuristic.
+    # nothing". Records without it fold on the duration heuristic.
     printf '{"role":"%s","pane":"%s","class":"%s","dispatched_at":"%s","dispatched_epoch":%s,"wrapper_pid":0,"claim_marker":1%s}\n' \
         "$role" "$pane_id" "$class" "$ts" "$epoch" "$extra" >"$(dispatch_record "$pane_id")"
 }
@@ -1144,8 +1134,7 @@ class_of_model() {
 # Single source of truth on purpose. The write site (write_dispatch_record) and
 # the empty-exit consume site (dispatch_role) must agree with what the fold
 # site reads back out of the record, or the streak is written under one key and
-# read under another — a counter that never reaches the cap, which is #2698's
-# own failure mode reintroduced one level down.
+# read under another — a counter that never reaches the cap.
 dispatch_class_key() {
     printf '%s\n' "${DISPATCH_CLASS:-$(class_of_model "${ROLE_MODEL[$1]:-sonnet}")}"
 }
@@ -1198,20 +1187,19 @@ count_recent_active_for_class() {
 # without claiming work (see the EMPTY_EXIT_SECONDS config block). One small
 # file per counter under $EMPTY_STREAK_DIR holding a non-negative integer.
 #
-# The class qualifier (#2698) keeps one class's real work from clearing
+# The class qualifier keeps one class's real work from clearing
 # another's starvation streak: on a mixed fleet a busy sonnet lane would
 # otherwise reset the counter a structurally-starved opus/macOS lane is
-# accumulating, so the cap was effectively unreachable.
+# accumulating, making the cap unreachable.
 #
 # The counter is already per-HOST by construction — EMPTY_STREAK_DIR hangs off
 # STATE_DIR ($HOME/.fleet/state by default) and each host runs its own
 # dispatcher daemon against its own $HOME — so no host component is needed.
-# (The issue body's "one counter is shared by every host" is not accurate; if
-# state dirs are ever shared, `fleet-claim host` is the canonical host tag.)
+# (If state dirs are ever shared, `fleet-claim host` is the canonical host tag.)
 #
-# Pre-#2698 files use the bare `<role>` name. They are stale artifacts, not
-# something to migrate: the counter is ephemeral by design and a missing file
-# already reads 0.
+# Files under the bare `<role>` name are stale artifacts, not something to
+# migrate: the counter is ephemeral by design and a missing file already
+# reads 0.
 
 empty_streak_file() {
     # $1 = role, $2 = model class. Roles that aren't class-routed (and the
@@ -1291,8 +1279,8 @@ standdown_backoff_remaining() {
 #
 # $4 is the verdict derived from the claim marker fleet-claim stamps
 # (`yes`/`no`); empty means "unknown", which only happens for the legacy
-# positional test hook and for dispatch records written before this change
-# landed, and falls back to the original wall-clock heuristic.
+# positional test hook and for dispatch records without the marker, and
+# falls back to the wall-clock heuristic.
 #
 # Duration is NOT consulted once the verdict is known — see the
 # EMPTY_EXIT_SECONDS config block above for why it cannot be.
@@ -1310,7 +1298,7 @@ record_dispatch_outcome() {
     case "$claimed" in
         yes) empty="" ;;
         no)  empty=1 ;;
-        # Unknown: pre-#2698 record or the legacy two-arg hook.
+        # Unknown: a record without the marker or the legacy two-arg hook.
         *)   if (( duration < EMPTY_EXIT_SECONDS )); then empty=1; fi ;;
     esac
     if [[ -n "$empty" ]]; then
@@ -1341,7 +1329,7 @@ derive_dispatch_outcome() {
     [[ -n "$marker" ]] || return 0
     # A target-bound dispatch is productive by assignment: the dispatcher took
     # the lane claim pre-launch, where the pane's FLEET_CLAIM_FLAG did not yet
-    # exist to be stamped. `plan_issue` is the #2197 spelling of the same
+    # exist to be stamped. `plan_issue` is the older spelling of the same
     # fact on records written before targets.
     plan_issue=$(sed -n 's/.*"target":"\([^"]*\)".*/\1/p;s/.*"plan_issue":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
     claim_flag="$CLAIM_FLAG_DIR/$(pane_id_to_key "$pane")"
@@ -1512,10 +1500,10 @@ handle_abandoned_target() {
 # fleet-dispatch-wrap stamps `$RATE_LIMIT_DIR/<pane>.ts` when the stream
 # flagged a rejected rate_limit_event (or the legacy rc=2), and cleanup reads
 # that marker BEFORE the completion contract: read through the contract, a
-# wall death is `abandoned` (claim standing, no record), so two 1-second
-# launches into the wall released the target, salvaged nothing, and wrote a
-# handoff (2026-09-11), while each grant also spent one of the target's
-# FLEET_TARGET_DISPATCH_CAP assignments.
+# wall death is `abandoned` (claim standing, no record), so a 1-second
+# launch into the wall would release the target, salvage nothing, write a
+# handoff, and spend one of the target's FLEET_TARGET_DISPATCH_CAP
+# assignments.
 #
 # True when the pane's dispatch ended on the usage wall: the marker exists
 # and is no older than the dispatch. $1 = pane id, $2 = dispatched_epoch.
@@ -1716,7 +1704,7 @@ BUILTIN_PER_TYPE_DEFAULTS = {
     "seven_day": 0.95,   # all-models weekly window — pre-empt close to wall
     "five_hour": 0.80,   # short-window — leave 20% headroom for in-flight work
     "github_core": 0.90,     # dispatched agents burn REST calls too — gate before the wall
-    "github_graphql": 0.90,  # same pool the #1394 exhaustion incident hit
+    "github_graphql": 0.90,  # the pool most exposed to exhaustion
     "github_search": 1.01,   # surface-only — fleet usage of /search is negligible, never gate
 }
 # Final fallback for unknown types when the operator hasn't set a
@@ -2095,7 +2083,7 @@ resolve_worker_class() {
     fi
 }
 
-# --- Planning pre-claim (#2197) --------------------------------------------
+# --- Planning pre-claim ----------------------------------------------------
 #
 # Assignment IS the claim. Every live dispatch of a target-bound role
 # (ROLE_TARGET_BOUND) is sent after ONE item: the dispatcher walks the lane's
@@ -2108,7 +2096,7 @@ resolve_worker_class() {
 # nothing claimable, no in-iteration discovery. The target grammar and the
 # kind → claim/release table live in fleet-common.sh (FLEET_TARGET_CLAIM);
 # the rationale and the measurement behind it in docs/agents/FLEET.md § "Who
-# takes the claim". Planning (#2197) was the first lane on this shape.
+# takes the claim".
 
 # Result of the most recent assign_for_pane call: the granted target, else
 # empty (the function's exit status says why).
@@ -2160,7 +2148,7 @@ CLAIM_REFUSE_TTL_SECONDS="${FLEET_DISPATCHER_CLAIM_REFUSE_TTL:-120}"
 # claude-quota-closed, codex-unavailable, codex-cooldown, resume-route-failed,
 # no-projection-slice, or the mundane claim-attempts-exhausted. Set by
 # assign_for_pane and its dispatch_role callers before every assign_budget_hit;
-# consumed by note_gate_block so the log names the real cause (see #3098).
+# consumed by note_gate_block so the log names the real cause.
 ASSIGN_BLOCK_REASON=""
 declare -A DISPATCH_GATE_STREAK=()
 
@@ -2176,7 +2164,7 @@ _dispatch_gate_alert_path() {
 # then goes quiet forever. A changed reason restarts the streak AND re-arms the
 # log: quieting per role rather than per reason would report whichever cause
 # blocked the lane first for as long as the lane stayed blocked — the
-# indistinguishable-cause misreport this helper exists to end (#3098).
+# indistinguishable-cause misreport this helper exists to end.
 note_gate_block() {
     local role="$1" reason="${2:-claim-budget-spent}" count
     local prev="${DISPATCH_GATE_STREAK[$role]:-}"
@@ -2234,7 +2222,7 @@ CLAIM_ATTEMPTS_LEFT=0
 # can apply. Every granted assignment increments a per-target counter under
 # $STATE_DIR/target-dispatch-counts/; a candidate at the cap is PARKED with
 # fleet:needs-human plus a comment and skipped (for a plan target this is the
-# #3034 park — fleet:needs-plan stays on, so the scout's projection gate and
+# planner's park — fleet:needs-plan stays on, so the scout's projection gate and
 # planning-claim's refusal honor it identically; a compliant planner parks an
 # unplannable issue itself, the breaker catches the one that keeps releasing
 # without parking). Re-entry is the human removing fleet:needs-human. The
@@ -2422,7 +2410,7 @@ assign_for_pane() {
                 "$slice" "$role" 2>/dev/null) || PICKS_CACHE=""
         fi
         # Native-Windows python3 emits CRLF on stdout; a trailing \r would
-        # fail every numeric gate but the last line's (#3022). The producer
+        # fail every numeric gate but the last line's. The producer
         # also pins LF; this is the backstop.
         PICKS_CACHE="${PICKS_CACHE//$'\r'/}"
     fi
@@ -2447,7 +2435,7 @@ assign_for_pane() {
         # FLEET_CROSS_PROVIDER_REVIEW's default lives in exactly one place —
         # fleet_runtime.choose_runtime's kind=="review" check (enforced ON,
         # per CODEX.md "All hosts must enable cross-provider review") — never
-        # duplicated here (see #3098).
+        # duplicated here.
         if [[ -n "${FLEET_RUNTIMES:-}" ]]; then
             local route
             route=$(python3 "$FLEET_LIB_DIR/fleet_runtime.py" route "$slice" "$line" \
@@ -2551,7 +2539,7 @@ worker_rearm_should_fire() {
     (( DISPATCH_STANDDOWN_REMAINING == 0 ))
 }
 
-# Host gate for the smoke lane (#2839). Returns 0 (dispatch) iff at least one PR
+# Host gate for the smoke lane. Returns 0 (dispatch) iff at least one PR
 # in the smoke-worker slice carries THIS host's pending smoke label, and sets
 # SMOKE_SERVABLE_PRS to those PRs as `<repo>:<number>` (newline-separated) for
 # the log line — the slice spans every repo.
@@ -2561,7 +2549,7 @@ worker_rearm_should_fire() {
 # projection is deliberately host-agnostic, because it is the cross-host record
 # of outstanding smoke debt that `platform-catchup` reads. So the host dimension
 # is applied here, at dispatch: the same layer `_host_incompatible` gates the
-# task (#1998) and feedback-PR (#2695) lanes at, and the symmetric counterpart of
+# task and feedback-PR lanes at, and the symmetric counterpart of
 # `worker_rearm_should_fire` above, which exists for exactly this reason on the
 # worker lane.
 #
@@ -2622,7 +2610,7 @@ dispatch_role() {
         return
     fi
 
-    # Smoke-lane host gate (#2839). The scout's smoke projection is host-agnostic
+    # Smoke-lane host gate. The scout's smoke projection is host-agnostic
     # by design, so a standing trigger only means "SOME host owes smoke work" —
     # on every other host, dispatching it is a guaranteed no-op iteration. The
     # empty-exit backoff below does fire on that shape, but it only consumes the
@@ -2787,7 +2775,7 @@ dispatch_role() {
         resolve_worker_class "$role" "$_sat_excluded"
         if (( DISPATCH_DEFER )); then
             # Nothing a fresh worker can claim right now: cap-blocked fable only,
-            # the queue's only items already have open PRs (inflight_pr, #1726),
+            # the queue's only items already have open PRs (inflight_pr),
             # or every claimable class is already saturated (excluded above).
             # Dispatching the lane default would burn no-op claims; keep the
             # trigger and wait (a freed slot / resolved PR re-fires the scout).
@@ -2937,7 +2925,7 @@ dispatch_role() {
                 # live) while ANOTHER class is claimable: re-elect without it
                 # and serve that class instead — the claim-time counterpart of
                 # the saturation fan-out above, and what keeps one class's
-                # unclaimable head from holding the lane (the #2699 monopoly,
+                # unclaimable head from holding the lane (a class monopoly,
                 # caught at the claim). The election's exclusion set bounds
                 # this to one pass per class.
                 while (( (assign_rc == 1 || (assign_rc == 3 && CLAIM_ATTEMPTS_LEFT > 0)) && DISPATCH_MORE )) \
@@ -3217,7 +3205,7 @@ should_retain_trigger_for_fanout_race() {
 
 # Decide whether to retain a per-role trigger after a steady-state dispatch
 # tick because this tick's launches did not cover the claimable headroom
-# (#2700). Returns 0 (retain) when the lane is claim-counted and
+# Returns 0 (retain) when the lane is claim-counted and
 # `dispatched < claim_headroom`; 1 (consume) otherwise, which includes every
 # uncapped lane (claim_headroom<0 — non-worker roles and the legacy
 # fallthrough), so only claim-counted lanes change behaviour.
@@ -3225,8 +3213,8 @@ should_retain_trigger_for_fanout_race() {
 # `dispatched > 0` does NOT imply the headroom was covered: the fan-out loop
 # also exits on idle-pane exhaustion, so 1 launch against 8 claimable items
 # reaches the steady-state branch. Consuming there is only safe while something
-# re-arms the trigger as panes free up, and per-kind suppression (#2700) removes
-# that pump — the scout no longer fires on the claim that empties a task slot.
+# re-arms the trigger as panes free up, and per-kind suppression removes
+# that pump — the scout does not fire on the claim that empties a task slot.
 # The remaining rescue, the periodic rearm, requires ZERO active workers, so one
 # long-running task would stall re-dispatch of every freed pane for its whole
 # duration. Retention is what replaces the pump.
@@ -3458,21 +3446,13 @@ rearm_due_merger() {
 
 rearm_periodic_meta_triggers() {
     # Scout-watchdog safety net + periodic worker safety rearm.
-    # Scout-watchdog half: with merger's projection now tightened
-    # (only durable signals, not the merger's own toggled labels),
-    # the scout-driven trigger path is sufficient — the merger only
-    # fires when actionable state actually changes.
-    #
-    # The earlier `maybe_arm("merger", merger_actionable)` periodic
-    # re-arm fired every 5 min whenever any approved/blocked PR
-    # existed in the projection, even when the merger had nothing
-    # to do (e.g. PR has fleet:approved + fleet:needs-linux-smoke
-    # awaiting smoke validation — not the merger's job). Burning
-    # ~$0.30 per iteration × 12/hour was the dominant idle-fleet
-    # token cost. Dropped.
-    #
-    # queue-manager (bookkeeping via fleet-queue-tick) was eliminated
-    # in #1229 — the queue is now issue-based (T-381).
+    # Scout-watchdog half: the merger's projection carries only durable
+    # signals (not the merger's own toggled labels), so the scout-driven
+    # trigger path is sufficient — the merger fires only when actionable
+    # state changes. A periodic merger re-arm would fire whenever any
+    # approved/blocked PR exists, even with nothing for the merger to do
+    # (e.g. fleet:approved + fleet:needs-linux-smoke awaiting smoke), and
+    # that idle token burn dominates an idle fleet's cost.
     # Queue-manager (ingestion) fires on its own scout-driven
     # trigger when human:approved-not-yet-queued issues appear.
     #
@@ -3495,7 +3475,7 @@ SCOUT_STALENESS_SECONDS = 120
 
 def _state_age_seconds():
     # Age from the in-file `generated_at` (the true snapshot time), NOT file
-    # mtime. Under Q2 centralized polling (#1394) a follower re-writes
+    # mtime. Under centralized polling a follower re-writes
     # state.json every tick with the LEADER's `generated_at` preserved — so a
     # dead leader keeps the follower's mtime fresh while `generated_at` freezes,
     # and mtime would report a healthy-but-lying scout. Fall back to mtime only
@@ -3506,7 +3486,7 @@ def _state_age_seconds():
     # fleet_poll_topology.state_age_seconds (the canonical, unit-tested copy).
     # It is NOT imported here because this heredoc is the scout-dead watchdog:
     # it must fire precisely when the fleet is unhealthy, so it stays free of
-    # any dependency on the fleet module tree resolving (the #1578 ~/bin
+    # any dependency on the fleet module tree resolving (the ~/bin
     # symlink hazard) and of pulling the poll-topology HTTP-server module into
     # a hot dispatcher path. Keep the two in sync if the parse logic changes.
     try:
@@ -3519,7 +3499,7 @@ def _state_age_seconds():
             return time.time() - epoch
         except (ValueError, TypeError):
             pass
-    # lint: state-mtime-ok generated_at-first; mtime is the malformed-snapshot fallback (#2267)
+    # lint: state-mtime-ok generated_at-first; mtime is the malformed-snapshot fallback
     return time.time() - STATE_FILE.stat().st_mtime
 
 
@@ -3578,10 +3558,9 @@ PY
         # Re-arm iff the resolver would dispatch a concrete class — genuinely
         # claimable work under the FULL claimability gate. Delegating to
         # resolve_worker_class keeps this safety re-arm in lock-step with the
-        # dispatch decision; the previous inline predicate had drifted (it
-        # excluded inflight_pr but not needs_gl_host, so it re-armed every
-        # interval on GL-host tasks a Metal pane can never claim — the #1969
-        # idle-churn shape).
+        # dispatch decision; a separate inline predicate drifts (excluding
+        # inflight_pr but not needs_gl_host re-arms every interval on GL-host
+        # tasks a Metal pane can never claim).
         if worker_rearm_should_fire "$_role"; then
             unset "CAP_DEFER_LOGGED[$_role-standdown]"
             touch "$TRIGGERS_DIR/$_role"
@@ -3637,7 +3616,7 @@ main() {
             break
         fi
 
-        # GitHub App token (#1394 Q4): guarded per-tick refresh so this
+        # GitHub App token: guarded per-tick refresh so this
         # long-lived daemon's gh calls stay authenticated past the
         # installation token's 1h expiry. Cache makes this a cheap file read
         # on all but the ~once-per-hour re-mint tick. Never export
@@ -3650,7 +3629,7 @@ main() {
 
         # Keep the main clone current so a fleet-script fix that merges
         # mid-session goes live (rate-limited to one fetch/60s in the helper;
-        # guarded to only ff-advance a clean, on-master, fast-forwardable clone). (#1810)
+        # guarded to only ff-advance a clean, on-master, fast-forwardable clone).
         advance_main_clone "$ENGINE"
         if [[ -d "$GAME/.git" ]]; then
             advance_main_clone "$GAME"
@@ -3685,8 +3664,8 @@ main() {
         if [[ "${FLEET_RUNTIMES:-claude}" == *codex* ]]; then
             FLEET_USAGE_RUNTIME=shared
             # The Claude pools are then gated per dispatch (assign_for_pane's
-            # `claude-quota-closed`), which never logs a transition — the
-            # 2026-09-12 seven_day close was only inferable from every launch
+            # `claude-quota-closed`), which never logs a transition — a
+            # closed window would only be inferable from every launch
             # reading runtime=codex. Log it here, once per closed window.
             log_claude_gate_transition
         else
@@ -3859,7 +3838,7 @@ case "${1:-}" in
         # Empty class means the lane-default fallthrough; count is the number of
         # claimable items of the elected class (empty when class is empty);
         # plan=1 means that count includes the class's needs-plan yield (the
-        # dispatch would carry a pre-claimed assignment, #2197).
+        # dispatch would carry a pre-claimed assignment).
         # Optional $3 = comma-separated classes to exclude (the cross-class
         # fan-out re-resolve — serve another class when the elected one is
         # cap-saturated).
@@ -3987,7 +3966,7 @@ case "${1:-}" in
         # current smoke-worker projection? Prints "fire prs=<repo>:<n1>,..."
         # when at least one pending PR carries this host's smoke label, else
         # "quiet".
-        # Does NOT touch the trigger. Mirrors the live gate exactly (#2839).
+        # Does NOT touch the trigger. Mirrors the live gate exactly.
         if smoke_worker_should_fire; then
             echo "fire prs=$(echo "$SMOKE_SERVABLE_PRS" | paste -sd, -)"
         else
@@ -4031,7 +4010,7 @@ case "${1:-}" in
         ;;
     --coverage-retain-check)
         # Test/debug: print `retain` or `consume` for a steady-state tick that
-        # dispatched <n> panes against <claim-headroom> claimable items (#2700).
+        # dispatched <n> panes against <claim-headroom> claimable items.
         # A negative headroom is the uncapped lane and always consumes.
         if [[ -z "${2:-}" || -z "${3:-}" ]]; then
             echo "usage: fleet-dispatcher --coverage-retain-check <dispatched> <claim-headroom>" >&2
@@ -4077,10 +4056,10 @@ case "${1:-}" in
         #
         #   --record-outcome <role> <duration> [--class=<c>] [--claimed=yes|no]
         #
-        # --claimed is the production signal (#2698): yes resets the streak, no
+        # --claimed is the production signal: yes resets the streak, no
         # increments it, and <duration> is not consulted. Omitting it keeps the
-        # original two-arg behavior — under EMPTY_EXIT_SECONDS bumps, at/over
-        # resets — which is what the pre-#2698 fixtures exercise.
+        # two-arg behavior — under EMPTY_EXIT_SECONDS bumps, at/over
+        # resets — which the marker-less fixtures exercise.
         if [[ -z "${2:-}" || -z "${3:-}" ]]; then
             echo "usage: fleet-dispatcher --record-outcome <role> <duration-seconds> [--class=<c>] [--claimed=yes|no]" >&2
             exit 2
