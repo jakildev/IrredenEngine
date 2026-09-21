@@ -10,7 +10,11 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
 - [Rigid SO(3) probes](../pr-screenshots/codex/rigid-voxel-rotation-probes/README.md)
   expose the existing continuous source-face path without revoxelizing. Fourteen
   single-voxel pose/camera checks pass; two nearly edge-on cases are inconclusive.
-  Extend to multi-voxel depth/occlusion and dense temporal transitions.
+  [Multi-voxel occlusion controls](../pr-screenshots/codex/source-face-occlusion-oracle/README.md)
+  pass all eight normal/visible-face checks but fail six of eight baseline shadow
+  checks. Exact-ray fixture controls pass all eight; caster normals alone do not
+  improve them. Preserve finite coverage/ownership in map sampling next; dense
+  temporal transitions remain unverified.
   [Rigid source casting](../pr-screenshots/codex/rigid-source-shadow-casters/README.md)
   now projects original transformed faces: 12 aggregate hull checks pass, while
   all 12 strict edge checks still fail. [Source-face reception](../pr-screenshots/codex/surface-shadow-receiver-controls/README.md)
@@ -50,9 +54,10 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
 - Keep six oriented face normals, twelve geometric half-faces, coordinate basis
   and screen parity distinct; see the [identity contract](trixel-face-reconstruction-validation.md#oriented-face-identity-versus-screen-parity).
 - Default-scene context still contains visible banding/trixel artifacts in both
-  parent and receiver-enabled captures. Extend the independent multi-voxel
-  occlusion oracle to the now-shadowed source frame and curved objects before
-  certifying their self-shadows; preserve legitimate staircase occlusion.
+  parent and receiver-enabled captures. The independent frame and stepped
+  octahedron oracle now isolates map-sampling failures from passing normal
+  ownership and exact-ray controls. Resolve those failures before certifying
+  self-shadows; preserve legitimate staircase occlusion.
 - Then resume density/rotation GPU profiling and population scaling; native Metal
   correctness evidence does not establish OpenGL runtime parity or a frame-rate target.
 

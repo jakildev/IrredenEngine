@@ -202,3 +202,15 @@ establish scalability for a million independently allocated private canvases.
 - Execute OpenGL validation on a supported host.
 - Profile bounded face sorting, raster/lighting dispatches and memory before
   broader rotation/subdivision optimization.
+
+## Multi-voxel ownership and occlusion
+
+`render-source-occlusion-metric.py` extends the frame and stepped-octahedron
+fixtures with per-pixel affine-depth ownership, expected world normals and
+face-center sun rays through original unit boxes. Run paired normal and shadow
+overlays; a shadow-only pass deliberately does not certify background/silhouette.
+Both lit and shadowed interiors are required, and the only excluded band is one
+screenshot pixel at face boundaries. This models per-source-face lighting, not
+continuous shadow boundaries within a face. Normal colors cannot distinguish
+same-normal surfaces at different depths. Retained failing baseline and exact-ray
+controls: [multi-voxel evidence](../pr-screenshots/codex/source-face-occlusion-oracle/README.md).
