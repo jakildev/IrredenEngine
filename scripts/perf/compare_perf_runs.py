@@ -274,6 +274,12 @@ def load_run(run_dir: Path) -> Dict[str, CellReport]:
     return cells
 
 
+def unmeasured_cell_ids(cells: Dict[str, CellReport]) -> List[str]:
+    """Return manifest cells that have no parsed frame measurement."""
+    return [cell_id for cell_id, report in cells.items()
+            if report.frame.avg <= 0.0]
+
+
 def load_manifest(run_dir: Path) -> Dict:
     manifest = run_dir / "manifest.json"
     if not manifest.exists():
@@ -309,8 +315,14 @@ def resolve_baseline(baseline_root: Path, head_manifest: Dict) -> Optional[Path]
 
 
 def normalize_ms(ms: float, ref_ms: float, target_ms: float) -> float:
-    """Scale a measured ms by (target / ref). When ref_ms is missing or zero
-    (legacy run), normalization is a no-op."""
+    """Scale a measured ms by (target / ref). When either reference is missing
+    or zero (legacy run), normalization is a no-op.
+
+    The gate passes the head run's reference as `ref_ms` and the *baseline
+    run's own* reference as `target_ms`, so the scale factor answers "how much
+    slower was this machine while the head was measured, relative to the
+    machine-state the baseline was captured on".
+    """
     if ref_ms <= 0.0 or target_ms <= 0.0:
         return ms
     return ms * (target_ms / ref_ms)
@@ -318,8 +330,15 @@ def normalize_ms(ms: float, ref_ms: float, target_ms: float) -> float:
 
 def load_factor(ref_ms: float, target_ms: float) -> float:
     """Ratio ref_ms / target_ms. >1 means the host was loaded vs the
-    calibration baseline; ==1 means lock was uncontested; <1 means the
-    host is faster than the calibration host (unusual)."""
+    reference reading; ==1 means lock was uncontested; <1 means the host was
+    faster than the reference (unusual).
+
+    Called with (head ref, baseline ref): the two readings come from the same
+    SKU, so the ratio isolates load. Called with (ref, ref_target_ms) it would
+    instead measure how slow the SKU is in absolute terms — a constant of the
+    machine, not of the run (the hosted pool calibrates at 59-116 ms against a
+    50 ms target, which is why that framing could never fire).
+    """
     if target_ms <= 0.0:
         return 1.0
     if ref_ms <= 0.0:
@@ -560,9 +579,10 @@ def build_host_note(base_manifest: Dict, head_manifest: Dict) -> str:
 
     base_slug = base_cal.get("host_slug", "(legacy)")
     head_slug = head_cal.get("host_slug", "(legacy)")
-    ref_ms = float(head_cal.get("ref_ms", 0.0))
+    head_ref_ms = float(head_cal.get("ref_ms", 0.0))
+    base_ref_ms = float(base_cal.get("ref_ms", 0.0))
     target_ms = float(head_cal.get("ref_target_ms", 0.0))
-    lf = load_factor(ref_ms, target_ms)
+    lf = load_factor(head_ref_ms, base_ref_ms)
     same_host = base_slug == head_slug and base_slug not in ("", "(legacy)")
     trust_norm = lf >= LOAD_FACTOR_TRUST_NORMALIZED
 
@@ -574,7 +594,13 @@ def build_host_note(base_manifest: Dict, head_manifest: Dict) -> str:
             f"- host: `{head_slug}` — **host mismatch** "
             f"(baseline `{base_slug}`); gate reports informational only"
         )
-    lines.append(f"- ref_ms: {ref_ms:.2f} (target {target_ms:.2f}, load_factor {lf:.2f}×)")
+    lines.append(
+        f"- ref_ms: head {head_ref_ms:.2f} vs baseline {base_ref_ms:.2f} "
+        f"(load_factor {lf:.2f}×)"
+    )
+    # Informational: the fixed 50 ms target says how fast this SKU is, which
+    # is not what the gate weighs on.
+    lines.append(f"- calibration target: {target_ms:.2f} ms (informational)")
     lines.append(
         "- weighting: normalized over raw "
         f"(load_factor ≥ {LOAD_FACTOR_TRUST_NORMALIZED:.2f}×)"

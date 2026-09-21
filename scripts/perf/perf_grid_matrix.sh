@@ -179,6 +179,7 @@ find_latest_report() {
 # manifest.json header — we append cell entries inside the loop.
 MANIFEST="$OUT_DIR/manifest.json"
 _MATRIX_KEY="$($THREADING_BASELINE && echo "threading_baseline" || echo "$MATRIX")"
+FAILED_CELLS=0
 {
     echo "{"
     echo "  \"target\": \"$TARGET_LABEL\","
@@ -217,6 +218,7 @@ run_cell() {
         CELL_STATUS="ok"
     else
         CELL_STATUS="no_report"
+        FAILED_CELLS=$((FAILED_CELLS + 1))
         echo "  (no profile_report.txt produced; see $CELL_LOG)"
     fi
 
@@ -295,6 +297,11 @@ fi
     echo "  \"finished_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\""
     echo "}"
 } >> "$MANIFEST"
+
+if (( FAILED_CELLS > 0 )); then
+    echo "perf_grid_matrix: $FAILED_CELLS/$CELL_COUNT cell(s) produced no profile report" >&2
+    exit 1
+fi
 
 echo "perf_grid_matrix: done, output in $OUT_DIR"
 echo "  next: scripts/perf/perf_summary.py $OUT_DIR"

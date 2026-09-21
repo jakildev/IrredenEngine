@@ -285,7 +285,20 @@ the gate is exercised by the gate.
   gate when T-330 moved the writer to per-slug directories (#2817).
 - `check_regression.py` exit ≥ 2 means it could not compare at all. That
   turns the step **red** and posts no comment: an infra failure must not
-  read as a perf verdict.
+  read as a perf verdict. This includes a manifest cell whose report is
+  missing or does not contain a positive frame-time measurement.
+- The matrix itself exits nonzero when any cell produces no report, before a
+  push or manual dispatch can replace a measured baseline with an empty one.
+  A slug directory filed report-less before that guard existed is purged by
+  the writer the next time any SKU files a measured baseline — otherwise the
+  exit-2 rule above leaves every PR on that SKU red with no author-side
+  remedy.
+- Normalization weighs the head against the **baseline run's own `ref_ms`**,
+  both readings taken on the same SKU, so the load factor isolates how
+  contended the machine was. `ref_target_ms` (a fixed 50 ms) stays in the
+  manifest and the host note as information only: the hosted pool calibrates
+  at 59–104 ms, so weighing against the target divided every head by
+  0.43–0.85 and no regression below roughly 2× could fire (#3471).
 - The PR-path reader takes the seed-new (empty root) path only when
   `git ls-remote --exit-code` confirms `perf-baseline` is absent (exit 2).
   Any other failure to reach the branch — an unreachable remote, a fetch
@@ -297,14 +310,25 @@ the gate is exercised by the gate.
 all of the above (layout resolution across empty / per-slug / legacy-flat
 roots, plus the exit mapping), and
 `scripts/perf/tests/test_baseline_writer.sh` drives the branch writer and
-the PR-path reader against a local bare origin. Both run as the perf-gate
-job's first step after checkout, before the build.
+the PR-path reader against a local bare origin. `test/tools/normalization_test.sh`
+covers the calibration helpers and the gate's decision tree. All three run as
+the perf-gate job's first step after checkout, before the build.
+
+CI uses 60 frames per quick-matrix cell (45 post-warmup samples) with a
+300-second watchdog. Measured on the hosted pool, llvmpipe renders the quick
+grid at 490 ms (zoom 1) to 1030 ms (zoom 4) per frame, so a cell costs 45-66 s
+and the stock 300-frame window needed five minutes. A cell killed by the
+watchdog writes no report at all, so the watchdog is sized from the job's
+headroom rather than from a frame-time target. The full
+run directory, including each cell's `.log`, is uploaded for seven days as
+`perf-run-<workflow-run-id>` so a timeout, crash, or display failure can be
+diagnosed from the check run.
 
 **Gate script (also usable locally):**
 
 ```bash
 scripts/perf/check_regression.py <baseline_dir> <head_dir> [--regress-pct N]
-# Exit 0: pass. Exit 1: regression detected. Exit 2: usage error.
+# Exit 0: pass. Exit 1: regression detected. Exit 2: usage or measurement error.
 ```
 
 `check_regression.py` wraps `compare_perf_runs.py` — same args, same
@@ -317,8 +341,8 @@ produces false positives, lower `--regress-pct` conservatively or
 migrate to a dedicated self-hosted Linux runner for stability.
 
 **No baseline yet?** The gate posts a "no baseline" comment and exits
-clean. A baseline is committed the next time a perf-relevant change
-lands on master.
+clean. A perf-relevant master push or manual dispatch seeds that host on the
+`perf-baseline` branch.
 
 ## GPU timing implementation note
 

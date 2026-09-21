@@ -116,11 +116,26 @@ json.dump({'cells': [{'id': 'z4-s8', 'report': 'z4-s8.txt'}],
           open(sys.argv[1] + '/manifest.json', 'w'))" "$1" "$2"
 }
 
+mk_head_reportless () { # $1=dir  $2=slug — a run the matrix would now refuse
+  mkdir -p "$1"
+  printf 'noise\n' > "$1/run.log"
+  python3 -c "
+import json, sys
+json.dump({'cells': [{'id': 'z4-s8', 'report': 'z4-s8.txt',
+                      'status': 'no_report', 'exit_status': 134}],
+           'calibration': {'host_slug': sys.argv[2], 'ref_ms': 1.0,
+                           'ref_target_ms': 1.0,
+                           'host_fingerprint': {'slug': sys.argv[2]}}},
+          open(sys.argv[1] + '/manifest.json', 'w'))" "$1" "$2"
+}
+
 SKU_A="linux-x86_64-epyc-7763-64-unknown"
 SKU_B="linux-x86_64-xeon-platinum-8573c-unknown"
+SKU_DEAD="linux-x86_64-epyc-9v74-80-unknown"
 mk_head "$LAB/head-a" "$SKU_A" 9.5
 mk_head "$LAB/head-b" "$SKU_B" 9.5
 mk_head "$LAB/head-noslug" "" 9.5
+mk_head_reportless "$LAB/head-dead" "$SKU_DEAD"
 
 export RUNNER_TEMP="$LAB/runner-temp"; mkdir -p "$RUNNER_TEMP"
 export BASELINE_BRANCH=perf-baseline
@@ -169,6 +184,34 @@ on_branch | grep -q "docs/perf/baseline_latest/$SKU_B/manifest.json"
 check B $? "second SKU filed"
 on_branch | grep -q "docs/perf/baseline_latest/$SKU_A/manifest.json"
 check B $? "first SKU SURVIVES (append, not replace)"
+
+# --- M: a measured run purges report-less sibling SKUs ---------------------
+# Four of the branch's slugs were filed report-less before the matrix learned
+# to refuse them. The PR path exits 2 on such a baseline, so a PR landing on
+# that SKU is red with nothing its author can do — the next measured run for
+# any SKU is the only actor positioned to clear them.
+run_writer "$LAB/head-dead"; rc=$?
+check M $rc "a report-less run can still be filed directly (fixture setup)"
+on_branch | grep -q "docs/perf/baseline_latest/$SKU_DEAD/manifest.json"
+check M $? "the report-less baseline is on the branch before the purge"
+BEFORE_PURGE=$(commits_on_branch)
+
+mk_head "$LAB/head-a" "$SKU_A" 9.4    # new payload for the measured SKU
+run_writer "$LAB/head-a"; rc=$?
+check M $rc "the next measured run exits 0"
+if on_branch | grep -q "docs/perf/baseline_latest/$SKU_DEAD/"; then
+  check M 1 "the report-less sibling is purged"
+else
+  check M 0 "the report-less sibling is purged"
+fi
+grep -q "purging report-less baseline $SKU_DEAD" "$LAB/out.txt"
+check M $? "the purge is reported, not silent"
+on_branch | grep -q "docs/perf/baseline_latest/$SKU_B/manifest.json"
+check M $? "a MEASURED sibling survives the purge"
+on_branch | grep -q "docs/perf/baseline_latest/$SKU_A/manifest.json"
+check M $? "the run's own SKU is filed"
+[[ "$(commits_on_branch)" -gt "$BEFORE_PURGE" ]]
+check M $? "the purge lands as a commit, not a history rewrite"
 
 # --- I: reader after two SKUs landed -> both materialized, index untouched -
 run_reader; rc=$?
