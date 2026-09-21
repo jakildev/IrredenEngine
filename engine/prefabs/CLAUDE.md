@@ -115,13 +115,15 @@ includes the system is the trap (PR #2622 hit and resolved it this way).
 These patterns *look* like (c) but are accepted because the alternatives
 are worse:
 
-- **GPU / IO resource RAII.** A constructor that calls
-  `IRRender::createResource<>` and a destructor that calls
+- **GPU / IO resource ownership.** A constructor that calls
+  `IRRender::createResource<>` with release in `onDestroy()` calling
   `destroyResource<>` is fine — the component IS the resource owner, and
   splitting allocation into a system makes the lifetime contract harder
-  to enforce. Examples: `C_TriangleCanvasTextures`, `C_TrixelFramebuffer`,
-  `C_CanvasFogOfWar`, `C_CanvasSunShadow`, `C_CanvasAOTexture`,
-  `C_CanvasLightVolume`.
+  to enforce. Release runs from `onDestroy()`, which the ECS invokes on
+  destroy, not from a C++ destructor, so a `C_*` never attached to an
+  entity leaks its resource. Examples: `C_TriangleCanvasTextures`,
+  `C_TrixelCanvasFramebuffer`, `C_CanvasFogOfWar`, `C_CanvasSunShadow`,
+  `C_CanvasAOTexture`, `C_CanvasLightVolume`.
 - **`onDestroy()` IO cleanup.** A component that hooks the entity's
   destroy event to flush an external side effect (e.g.,
   `C_MidiNote::onDestroy()` sending NOTE_OFF) is fine when the cleanup

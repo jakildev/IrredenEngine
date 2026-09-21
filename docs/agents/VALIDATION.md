@@ -51,5 +51,17 @@ Rules for citing a validator:
 - A criterion that needs a fixture or scene that does not exist makes
   creating it part of the task.
 
+## Default-off features need a positive enabled-path test
+
+Render features routinely default OFF (priority 0, a mode flag off, an opt-in
+branch) to preserve byte-identity — but byte-identity at default only proves the
+OFF path is a no-op, never that the feature works. Author a test that
+exercises the **ENABLED** path (a `--depth-probe`/`-assert` reading, a demo shot
+with the flag ON) and confirms the effect end-to-end (CPU author → GPU upload →
+shader output). A CPU-authored field uploaded only on a specific path (the
+per-frame binding-6 voxel upload, not a detached-revoxelize bake) can silently
+never reach the shader, and a "compiles + byte-identical at default" merge ships
+a feature that does not function in its actual use case.
+
 Adding a validator: one row here, a `tests/test_<name>` suite beside it if it
 is a fleet tool, and a CI workflow when it must gate merges.

@@ -171,8 +171,7 @@ that model is mis-specified on exactly that axis, in both directions:
   retires the criterion for these probes and leaves `--max-residual` as the live
   assertion — **on the pinned `--yaw-sweep --pivot-origin` probe**, whose
   floors are tabulated in
-  [`engine/render/CLAUDE.md`](../../engine/render/CLAUDE.md) §"Accepted
-  sub-pixel yaw-sweep centroid residual". Scored on the *unpinned* sweep the
+  §"Pinned-probe bars and residual floors" below. Scored on the *unpinned* sweep the
   residual is dominated by the default `CAMERA_CENTER` pivot orbit and is not a
   tree property at all (#2907) — do not gate on it. That eps is not a calibrated
   floor — it sits at the top of the observed per-frame delta range.
@@ -235,12 +234,68 @@ arm than on healthy — so no one-sided bar separates the populations there, and
 the unpinned sweep deliberately carries no excursion bar. ORIGIN does not merely
 bound that term, it removes it, so the pinned bar is valid however #2758 lands.
 
-The measured numbers for the pinned probe live in **one** place —
-[`engine/render/CLAUDE.md`](../../engine/render/CLAUDE.md) — so there is no
-second copy to drift. Read them from there: §"Verifying temporal stability"
-carries the per-zoom `--max-excursion-x` bars (macOS/Metal, 2026-08-08), and
-§"Accepted sub-pixel yaw-sweep centroid residual (voxel content) — #2469,
-re-grounded #2907" carries the pinned residual floors (Windows/OpenGL,
-2026-09-06) plus the unpinned history and why it no longer describes a gate.
-Both state their host and `outputScaleFactor`; see the unit note above for why
-that is load-bearing.
+### Pinned-probe bars and residual floors
+
+The measured numbers for the pinned probe live in **one** place — this section
+— so there is no second copy to drift.
+
+**`--max-excursion-x` bars** (macOS/Metal, `outputScaleFactor` **2**,
+2026-08-08, 24-frame sweeps, one session, arm identity asserted per run from the
+engine log). **These bars are 2x-calibrated**: on a 1x host (Windows/Linux) they
+gate ~2x looser in game px, so a green run there is weaker evidence than the same
+run on macOS. Re-deriving them per host-scale is #3009's job, not something to do
+inline — see the unit note above before quoting any number here.
+
+| zoom | healthy voxel | SDF control | `IR_PERAXIS_OVERFLOW_DISABLE=1` | **bar** | separation |
+|---|---|---|---|---|---|
+| 2 | 0.62px | — | 6.23px | **2.0px** | 10x |
+| 4 | 0.18px | 0.00px | 10.87px | **0.5px** | 60x |
+| 8 | 0.06px | 0.00px | 21.79px | **0.5px** | 363x |
+
+Bar rule: the smallest half-integer >= 2.5x the max healthy x excursion at that
+zoom (voxel and SDF both count as healthy), required to also be <= 0.5x the
+defect excursion — so a published bar always has >=2.5x headroom below and >=2x
+above. A zoom with no value satisfying both is omitted rather than published
+thin. The defect arm fires at every zoom, and *attributably*: re-running it with
+`--max-residual 99` still exits 1, so the failure is the excursion criterion by
+construction. y excursions for the same populations (recorded, not gated):
+healthy 0.21 / 0.11 / 0.06px, defect 2.64 / 5.27 / 10.08px at zoom 2/4/8.
+
+**At a zoom not in the table, re-derive — never interpolate, and never carry a
+neighbouring row across.** z1 is omitted by the clause above: healthy reads
+**0.93px** against **3.53px** for the defect arm (3.8x), so the candidate bar
+(2.5px) sits above its own ceiling (1.765px) and no value satisfies the rule.
+Borrowing the adjacent 0.5px there **false-fires** on a green z1 population.
+Upward is the harmless direction: z16 healthy reads **0.04px**, 12x under 0.5px.
+
+**The bar belongs to the pinned probe only — the unpinned sweep carries no
+excursion bar** (see the `--pivot-origin` note above).
+
+**Accepted sub-pixel yaw-sweep centroid residual (voxel content) — #2469,
+re-grounded #2907.** On the canonical Z-yaw-invariant probe (voxel cylinder) the
+per-axis path leaves a sub-pixel centroid residual. It is **content + sampling,
+not a positioning defect**, and is accepted as intentional drift. These are the
+live floors, measured on the **pinned** (`--yaw-sweep --pivot-origin`) probe the
+canonical gate uses — Windows/OpenGL, `outputScaleFactor` **1**, 2026-09-06,
+24-frame sweeps, one quadrant, arm identity asserted per run from the engine log:
+
+| arm | x residual z2 / z4 / z8 | x excursion z2 / z4 / z8 | y residual z2 / z4 / z8 |
+|---|---|---|---|
+| **voxel cylinder** (the gated arm) | **0.20 / 0.04 / 0.01px** | 0.31 / 0.09 / 0.03px | 0.05 / 0.03 / 0.02px |
+| **SDF cylinder** (continuous-geometry control) | 0.00 / 0.00 / 0.00px | 0.00 / 0.00 / 0.00px | 0.00 / 0.00 / 0.00px |
+| `IR_PERAXIS_OVERFLOW_DISABLE=1` (recorded, **not** a bar source) | 0.29 / 0.26 / 0.49px | 3.11 / 5.44 / 10.90px | 0.17 / 0.39 / 0.74px |
+| **bar** (`--max-residual`, tool default) | 1.50 / 1.50 / 1.50px | *(excursion bars: table above)* | — |
+
+**Bar decision: `--max-residual` stays at the 1.50 fb-px tool default, and no
+per-zoom residual bars are published.** The healthy maximum (0.20px, voxel z2)
+sits 7x under it, but the bar rule's other half ("<= 0.5x the defect excursion")
+has nothing to evaluate: the only live defect arm, the
+`IR_PERAXIS_OVERFLOW_DISABLE=1` kill switch, reads **0.49px** — under the bar,
+and it is the *excursion* criterion that catches it (10.90px against a 0.5px bar
+at z8). The pre-#2427 face-pop that originally grounded 1.50 is fixed on master.
+No criterion here has a firing defect arm supplying a ceiling, so nothing thinner
+than the default is published rather than inventing one.
+
+The *unpinned* sweep is NOT a gate: its residual is dominated by the default
+`CAMERA_CENTER` pivot orbit (#2907, above). Every number above states its host and
+`outputScaleFactor`; see the unit note above for why that is load-bearing.

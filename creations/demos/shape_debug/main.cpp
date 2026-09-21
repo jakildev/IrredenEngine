@@ -697,7 +697,7 @@ vec3 g_cursorLatchFocus = vec3(0.0f);
 bool g_cursorLatchResolved = false;
 // --cursor-pivot-indicator: also spawn the drag marker at the latched point,
 // so the cursor-latch capture doubles as the indicator's ENABLED-path test
-// (engine/render/CLAUDE.md §"Default-off features need a positive enabled-path
+// (docs/agents/VALIDATION.md §"Default-off features need a positive enabled-path
 // test"). A headless run cannot synthesize the Ctrl+Shift+middle-drag chord —
 // GuiInputEvent carries no key modifiers — so this drives the same
 // IRPrefab::CursorPivot calls the drag makes, minus the button state machine.
