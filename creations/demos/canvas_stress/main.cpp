@@ -1190,6 +1190,21 @@ void registerArgs() {
     args.flag("--probe-upright", "Use unrotated revoxelization and attached shadow probes");
     args.integer("--probe-canvas-size", "Shadowocclusion private canvas edge, 256 to 2048", 256);
     args.flag("--probe-staircase", "Use a stair-stepped plate and nearby overhead blocker");
+    args.enumValue(
+        "--probe-floor-mode",
+        "Floor receiver representation (sdf|grid|revoxelized|source)",
+        {"sdf", "grid", "revoxelized", "source"},
+        "sdf"
+    );
+    args.integer(
+        "--probe-floor-span",
+        "Comparison floor width, clamped to 8..40 (0 uses mode default)",
+        0
+    );
+    args.flag(
+        "--probe-source-box",
+        "Use continuous source faces for shadowbox (GRID/analytic selectors take precedence)"
+    );
     args.flag("--probe-analytic-box", "Use an analytic box for shadowbox");
     args.flag("--probe-analytic-sphere", "Use an analytic sphere for shadowbox");
     args.numbers("--analytic-box-offset", "Analytic shadowbox translation offset <x> <y> <z>", 3);
@@ -1794,17 +1809,54 @@ void initEntities() {
         // they composite as overlays after the shadow bake and never write
         // world depth.
         if (!g_settings.soloRevox_ && groupEnabled(kGroupFloor)) {
-            const float floorSpan =
-                IREngine::args().getFlag("--probe-single-voxel") ? 12.0f : kFloorSpan;
-            const EntityId floor = IREntity::createEntity(
-                C_LocalTransform{vec3(0.0f, 0.0f, kFloorZ)},
-                C_ShapeDescriptor{
-                    IRRender::ShapeType::BOX,
-                    vec4(floorSpan, floorSpan, kFloorThickness, 0.0f),
-                    kFloorColor
+            const auto floorMode = IREngine::args().getEnum("--probe-floor-mode");
+            const int requestedSpan = IREngine::args().getInt("--probe-floor-span");
+            const float floorSpan = IREngine::args().getFlag("--probe-single-voxel") ? 12.0f
+                                    : requestedSpan != 0
+                                        ? float(IRMath::clamp(requestedSpan, 8, 40))
+                                    : floorMode == "sdf" ? kFloorSpan
+                                                         : 32.0f;
+            if (floorMode == "sdf") {
+                const EntityId floor = IREntity::createEntity(
+                    C_LocalTransform{vec3(0.0f, 0.0f, kFloorZ)},
+                    C_ShapeDescriptor{
+                        IRRender::ShapeType::BOX,
+                        vec4(floorSpan, floorSpan, kFloorThickness, 0.0f),
+                        kFloorColor
+                    }
+                );
+                IREntity::setComponent(floor, C_LightBlocker{false, false, 0.0f});
+            } else {
+                const bool grid = floorMode == "grid";
+                C_EntityCanvas canvas{};
+                if (!grid) {
+                    canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
+                        "shadow_floor",
+                        ivec2(512),
+                        ivec3(64),
+                        false
+                    );
                 }
-            );
-            IREntity::setComponent(floor, C_LightBlocker{false, false, 0.0f});
+                IREntity::createEntity(
+                    C_LocalTransform{grid ? vec3(0.0f, 0.0f, kFloorZ) : vec3(0.0f)},
+                    C_VoxelSetNew{
+                        ivec3(int(floorSpan), int(floorSpan), int(kFloorThickness)),
+                        kFloorColor,
+                        true,
+                        grid ? mainCanvas : canvas.canvasEntity_
+                    }
+                );
+                if (!grid) {
+                    IREntity::createEntity(
+                        C_LocalTransform{vec3(0.0f, 0.0f, kFloorZ)},
+                        C_RotationMode{
+                            floorMode == "source" ? RotationMode::DETACHED
+                                                  : RotationMode::DETACHED_REVOXELIZE
+                        },
+                        canvas
+                    );
+                }
+            }
         }
     }
 
@@ -1937,7 +1989,11 @@ void initEntities() {
             );
             IREntity::createEntity(
                 C_LocalTransform{position},
-                C_RotationMode{RotationMode::DETACHED_REVOXELIZE},
+                C_RotationMode{
+                    IREngine::args().getFlag("--probe-source-box")
+                        ? RotationMode::DETACHED
+                        : RotationMode::DETACHED_REVOXELIZE
+                },
                 canvas
             );
         }
