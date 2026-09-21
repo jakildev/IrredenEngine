@@ -47,6 +47,23 @@ int pipelineRank(const std::string &pipeline) {
     return 99;
 }
 
+// One value per recorded frame, in frame order, wrapped at perLine values; an
+// empty series writes nothing, header included.
+template <typename T, typename PrintValue>
+void writeSeries(
+    FILE *f, const char *header, const std::vector<T> &values, size_t perLine, PrintValue printValue
+) {
+    if (values.empty())
+        return;
+    std::fputs(header, f);
+    for (size_t i = 0; i < values.size(); ++i) {
+        printValue(values[i]);
+        const bool endsLine = (i + 1) % perLine == 0 || i + 1 == values.size();
+        std::fputc(endsLine ? '\n' : ' ', f);
+    }
+    std::fputc('\n', f);
+}
+
 } // namespace
 
 void writeProfileReport(const ProfileReport &report, const char *outputPath) {
@@ -325,27 +342,16 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
     );
     std::fprintf(f, "\n");
 
-    if (!report.frameTimesMs_.empty()) {
-        constexpr size_t kFramesPerLine = 10;
-        std::fprintf(f, "--- Frame times (ms, in order) ---\n");
-        for (size_t i = 0; i < report.frameTimesMs_.size(); ++i) {
-            const bool endsLine =
-                (i + 1) % kFramesPerLine == 0 || i + 1 == report.frameTimesMs_.size();
-            std::fprintf(f, "%.3f%c", report.frameTimesMs_[i], endsLine ? '\n' : ' ');
-        }
-        std::fprintf(f, "\n");
-    }
-
-    if (!report.frameUpdateTicks_.empty()) {
-        constexpr size_t kTicksPerLine = 30;
-        std::fprintf(f, "--- Update ticks (per frame, in order) ---\n");
-        for (size_t i = 0; i < report.frameUpdateTicks_.size(); ++i) {
-            const bool endsLine =
-                (i + 1) % kTicksPerLine == 0 || i + 1 == report.frameUpdateTicks_.size();
-            std::fprintf(f, "%u%c", report.frameUpdateTicks_[i], endsLine ? '\n' : ' ');
-        }
-        std::fprintf(f, "\n");
-    }
+    writeSeries(f, "--- Frame times (ms, in order) ---\n", report.frameTimesMs_, 10, [f](float ms) {
+        std::fprintf(f, "%.3f", ms);
+    });
+    writeSeries(
+        f,
+        "--- Update ticks (per frame, in order) ---\n",
+        report.frameUpdateTicks_,
+        30,
+        [f](uint32_t ticks) { std::fprintf(f, "%u", ticks); }
+    );
 
     std::fprintf(f, "=== END REPORT ===\n");
     std::fclose(f);
