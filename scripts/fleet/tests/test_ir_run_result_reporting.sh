@@ -9,14 +9,16 @@
 #   RESULT=CRASH exe=<name> exit=<rc> signal=<..> — FAILED, code propagated
 #   RESULT=ALIVE-TIMEOUT exe=<name> ...           — watchdog kill, healthy
 #
-# Hermetic: a fake build dir with tiny scripts stands in for real demos;
-# the --timeout path is exercised so no ir-acquire lock is taken.
+# Hermetic: a fake build dir with tiny scripts stands in for real demos.
+# The plain --timeout cases take no ir-acquire lock; the lock-queue cases
+# use an isolated IR_LOCK_ROOT so they never touch the host's real locks.
 
 set -uo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
 IR_RUN="$REPO_ROOT/engine/tools/bin/ir-run"
+IR_ACQUIRE="$REPO_ROOT/engine/tools/bin/ir-acquire"
 
 # shellcheck source=lib_assert.sh
 source "$SCRIPT_DIR/lib_assert.sh"
@@ -27,7 +29,16 @@ if [[ ! -x "$IR_RUN" ]]; then
 fi
 
 FAKE_BUILD="$(mktemp -d)"
-trap 'rm -rf "$FAKE_BUILD"' EXIT
+HOLDER_PID=""
+release_holder() {
+    if [[ -n "$HOLDER_PID" ]]; then
+        kill "$HOLDER_PID" 2>/dev/null
+        wait "$HOLDER_PID" 2>/dev/null
+        HOLDER_PID=""
+    fi
+}
+trap 'release_holder; rm -rf "$FAKE_BUILD"' EXIT
+export IR_LOCK_ROOT="$FAKE_BUILD/locks"
 
 make_exe() {
     local name="$1" body="$2"
@@ -40,6 +51,9 @@ make_exe plain-fail 'exit 3'
 # Real signal death (not `exit 139`): the reporter decodes 128+N.
 make_exe segfaulter 'kill -SEGV $$'
 make_exe sleeper 'sleep 30'
+# exec so the watchdog's kill lands on the sleep itself, not a parent shell.
+make_exe hang 'exec sleep 30'
+make_exe short-run 'sleep 1; exit 0'
 
 run_ir() {
     # Runs ir-run with the fake build dir; captures combined output and rc.
@@ -69,5 +83,52 @@ echo "watchdog kill of a healthy process:"
 run_ir --timeout 1 sleeper
 assert_eq "$RC" "0" "watchdog kill stays exit 0 (healthy for smoke)"
 assert_contains "$OUT" "RESULT=ALIVE-TIMEOUT exe=sleeper" "ALIVE-TIMEOUT verdict"
+
+hold_gpu_lock() {
+    # Holds the gpu lock from a second process for $1 seconds; returns once
+    # the lock dir exists so the caller is guaranteed to queue behind it.
+    "$IR_ACQUIRE" gpu -- sleep "$1" &
+    HOLDER_PID=$!
+    local i
+    for i in $(seq 1 50); do
+        [[ -s "$IR_LOCK_ROOT/gpu/lock/pid" ]] && return 0
+        sleep 0.1
+    done
+    bad "test setup: gpu lock holder never acquired the lock"
+}
+
+echo "watchdog budget excludes time queued on the lock:"
+hold_gpu_lock 4
+run_ir --timeout 2 short-run --auto-screenshot 1
+release_holder
+assert_eq "$RC" "0" "run queued longer than --timeout still exits 0"
+assert_contains "$OUT" "RESULT=CLEAN exe=short-run exit=0" \
+    "queued run reports CLEAN, not ALIVE-TIMEOUT"
+assert_absent "$OUT" "ALIVE-TIMEOUT exe=short-run" \
+    "no watchdog verdict for a run that fits its budget"
+
+echo "watchdog still fires after the lock is granted:"
+run_ir --timeout 1 hang --auto-screenshot 1
+assert_eq "$RC" "0" "watchdog kill of a wrapped run stays exit 0"
+assert_contains "$OUT" "RESULT=ALIVE-TIMEOUT exe=hang" \
+    "wrapped run that outlives --timeout reports ALIVE-TIMEOUT"
+if [[ -d "$IR_LOCK_ROOT/gpu/lock" ]]; then
+    bad "gpu lock released after the watchdog kill"
+else
+    ok "gpu lock released after the watchdog kill"
+fi
+
+echo "lock wait stays bounded by ir-acquire's own timeout:"
+hold_gpu_lock 8
+OUT="$(IR_QUEUE_TIMEOUT=1 "$IR_RUN" --build-dir "$FAKE_BUILD" --timeout 30 \
+    short-run --auto-screenshot 1 2>&1)"
+RC=$?
+release_holder
+assert_eq "$RC" "1" "lock never granted exits 1"
+assert_contains "$OUT" "timeout waiting for lock lock (gpu, 1s)" \
+    "failure names the lock ir-acquire could not get"
+assert_contains "$OUT" "RESULT=LOCK-FAILED exe=short-run" \
+    "LOCK-FAILED verdict, not a watchdog verdict"
+assert_absent "$OUT" "ALIVE-TIMEOUT" "lock failure is not reported as ALIVE-TIMEOUT"
 
 summarize "ir-run result-reporting tests"
