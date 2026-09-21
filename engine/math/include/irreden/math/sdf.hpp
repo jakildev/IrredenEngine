@@ -37,6 +37,11 @@ enum ShapeFlags : std::uint32_t {
     SHAPE_FLAG_MIRROR_X = 1u << 1,
     SHAPE_FLAG_MIRROR_Y = 1u << 2,
     SHAPE_FLAG_VISIBLE = 1u << 3,
+    /// Whole-body fog exemption: every pixel this shape rasterizes carries the
+    /// entity-id fog whole-body bit, so FOG_TO_TRIXEL drops the height penalty
+    /// and fogs it on XY distance alone (rim fade and cut cap kept). Per-pixel
+    /// only — nothing hides the shape as a whole when its anchor is fogged.
+    SHAPE_FLAG_FOG_WHOLE_BODY_EXEMPT = 1u << 4,
     SHAPE_FLAG_CHECKERBOARD = 1u << 5,
     /// Color each voxel by its LOCAL iso-depth along the camera's forward axis,
     /// normalized to [0, 1] over the shape's own depth extent. Useful for

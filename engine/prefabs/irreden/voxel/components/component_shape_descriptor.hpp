@@ -18,6 +18,8 @@ namespace IRComponents {
 //   SHAPE_FLAG_VISIBLE           - shape is rendered (default on)
 //   SHAPE_FLAG_HOLLOW            - only render the shell of the SDF
 //   SHAPE_FLAG_MIRROR_X/Y        - mirror the shape along an axis
+//   SHAPE_FLAG_FOG_WHOLE_BODY_EXEMPT - fog on XY distance only, no height
+//                                  penalty (per pixel; no whole-shape hide)
 //
 // lodMin_ / lodMax_ bound the inclusive LOD band this shape draws in.
 // lodMin_ is the coarsest tier (largest index) and lodMax_ the finest tier

@@ -226,13 +226,22 @@ const uint kEntityIdPriorityMaskInHighWord = 0x3u << kEntityIdPriorityShiftInHig
 // kEntityIdHighWordMask strips it, so every id READER (picking) ignores it. A
 // non-cut face leaves the stored id unchanged.
 const uint kEntityIdCutFaceMaskInHighWord = 0x1u << 29u;
+// Fog whole-body carrier: bit 28 of the high word flags a pixel of a
+// whole-body fog-governed body (voxel reserved bit 3, or the shape flag
+// SHAPE_FLAG_FOG_WHOLE_BODY_EXEMPT) so FOG_TO_TRIXEL fogs it on XY distance
+// alone, with no height penalty. Same masking chokepoint as the bits above.
+const uint kEntityIdFogWholeBodyMaskInHighWord = 0x1u << 28u;
 const uint kEntityIdHighWordMask =
-    ~(kEntityIdPriorityMaskInHighWord | kEntityIdCutFaceMaskInHighWord);
+    ~(kEntityIdPriorityMaskInHighWord | kEntityIdCutFaceMaskInHighWord |
+      kEntityIdFogWholeBodyMaskInHighWord);
 uint decodePriority(uvec2 rawId) {
     return (rawId.y >> kEntityIdPriorityShiftInHighWord) & 0x3u;
 }
 bool decodeCutFace(uvec2 rawId) {
     return (rawId.y & kEntityIdCutFaceMaskInHighWord) != 0u;
+}
+bool decodeFogWholeBody(uvec2 rawId) {
+    return (rawId.y & kEntityIdFogWholeBodyMaskInHighWord) != 0u;
 }
 uvec2 decodeEntityId(uvec2 rawId) {
     return uvec2(rawId.x, rawId.y & kEntityIdHighWordMask);
@@ -249,6 +258,13 @@ uvec2 encodeEntityIdWithPriority(uvec2 id, uint priority) {
 uvec2 encodeEntityIdCutFace(uvec2 packedId, bool isCutFace) {
     return isCutFace ? uvec2(packedId.x, packedId.y | kEntityIdCutFaceMaskInHighWord)
                      : packedId;
+}
+// Set the fog whole-body flag on an ALREADY priority-encoded id, like
+// encodeEntityIdCutFace.
+uvec2 encodeEntityIdFogWholeBody(uvec2 packedId, bool isFogWholeBody) {
+    return isFogWholeBody
+        ? uvec2(packedId.x, packedId.y | kEntityIdFogWholeBodyMaskInHighWord)
+        : packedId;
 }
 
 // Per-axis fractional encoding:

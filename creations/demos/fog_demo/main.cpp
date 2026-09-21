@@ -458,7 +458,7 @@ constexpr IRVideo::AutoScreenshotShot kEdgeZCostCeilingShots[] = {
 };
 
 // --entity-reveal: whole-body fog reveal under the --edge-zcost-ceiling hard
-// ceiling (#3156). One screen row (x + y = 0) of equal-height bodies rising
+// ceiling. One screen row (x + y = 0) of equal-height bodies rising
 // past the ceiling, each pair side by side so its crops compare like for like:
 // an untagged and a governed voxel pillar, a flagged and an unflagged SDF box,
 // and a governed pillar whose anchor is inside the disc while its outer
@@ -470,7 +470,7 @@ bool g_entityReveal = false; // --entity-reveal
 constexpr float kEntityRevealRadius = 20.0f;
 constexpr float kEntityRevealSpacing = 5.0f;
 constexpr int kEntityRevealBodyHeight = 16;
-constexpr std::uint32_t kEntityRevealShapeFlag = 0u;
+constexpr std::uint32_t kEntityRevealShapeFlag = IRRender::SHAPE_FLAG_FOG_WHOLE_BODY_EXEMPT;
 IREntity::EntityId g_entityRevealProbe = IREntity::kNullEntity;
 constexpr IRVideo::RoiCrop kCropsEntityReveal[] = {
     {1580, 240, 300, 680, "untagged_pillar"},
@@ -487,6 +487,60 @@ constexpr IRVideo::AutoScreenshotShot kEntityRevealShots[] = {
      kCropsEntityReveal,
      sizeof(kCropsEntityReveal) / sizeof(kCropsEntityReveal[0])},
 };
+
+// One-shot picking probe for the fog whole-body carrier bit: after warmup,
+// read the canvas entity-id channel, count the governed pillar's texels (raw
+// low word match) and how many carry the bit and decode back to the bare id,
+// then pick its topmost carrying texel — above the ceiling — through
+// readEntityIdAt. Runs at the render front, so it reads the previous frame's
+// completed ids.
+void probeEntityRevealIds() {
+    static int frame = 0;
+    if (++frame != g_autoWarmupFrames) {
+        return;
+    }
+    const auto &textures =
+        IREntity::getComponent<C_TriangleCanvasTextures>(IRRender::getActiveCanvasEntity());
+    std::vector<IRMath::uvec2> carriers;
+    textures.readEntityIdCarriers(carriers);
+
+    const auto expected = static_cast<std::uint32_t>(g_entityRevealProbe);
+    int texels = 0;
+    int flagged = 0;
+    int mismatched = 0;
+    IRMath::ivec2 top{-1, -1};
+    for (int y = 0; y < textures.size_.y; ++y) {
+        for (int x = 0; x < textures.size_.x; ++x) {
+            const IRMath::uvec2 raw = carriers[static_cast<std::size_t>(y) * textures.size_.x + x];
+            if (raw.x != expected) {
+                continue;
+            }
+            ++texels;
+            if (IRRender::decodeCarrierEntityId(raw) != g_entityRevealProbe) {
+                ++mismatched;
+            }
+            if ((raw.y & IRRender::kEntityIdFogWholeBodyMaskInHighWord) == 0u) {
+                continue;
+            }
+            ++flagged;
+            if (top.y < 0) {
+                top = IRMath::ivec2(x, y);
+            }
+        }
+    }
+    const IREntity::EntityId read =
+        top.y < 0 ? IREntity::kNullEntity : textures.readEntityIdAt(top);
+    IR_LOG_INFO(
+        "FOG-ID-PROBE expected={} read={} texel=({}, {}) texels={} flagged={} mismatched={}",
+        g_entityRevealProbe,
+        read,
+        top.x,
+        top.y,
+        texels,
+        flagged,
+        mismatched
+    );
+}
 
 // --edge-yaw-sweep: the edge-zoom cross-section under CONTINUOUS
 // camera yaw. Reuses the static --edge-zoom scene (same boundary voxel objects +
@@ -572,7 +626,8 @@ int main(int argc, char **argv) {
     );
     IREngine::args().flag(
         "--entity-reveal",
-        "Ground-anchor whole-body fog reveal: tagged rim pillar beside an untagged twin"
+        "Whole-body fog reveal under the --edge-zcost-ceiling hard ceiling: governed "
+        "voxel pillars and a flagged SDF box render whole beside clipped untagged twins"
     );
     IREngine::init(argc, argv);
     g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
@@ -797,6 +852,15 @@ void initSystems() {
             []() { drivePlayerWalk(); }
         );
         renderPipeline.push_front(walkTickId);
+    }
+
+    if (g_entityReveal && g_autoWarmupFrames > 0) {
+        IRSystem::SystemId probeTickId = IRSystem::createSystem<C_Name>(
+            "FogEntityRevealIdProbe",
+            [](C_Name &) {},
+            []() { probeEntityRevealIds(); }
+        );
+        renderPipeline.push_front(probeTickId);
     }
 
     if (g_autoWarmupFrames > 0) {
