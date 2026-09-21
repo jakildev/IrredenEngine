@@ -48,10 +48,6 @@ ISSUE_SCOPE = _exception(
     "issue_scope",
     "Planning/stewarding are issue-only locks, outside the PR-head mutation contract.",
 )
-FEEDBACK_FIRST = _exception(
-    "feedback_first",
-    "Feedback precedes conflict resolution via fleet verdict state, not claim prefixes (#2423).",
-)
 CONFLICT_PHASE = _exception(
     "conflict_phase",
     "Review routing stands down on semantic-conflict until the resolver push "
@@ -66,10 +62,6 @@ HUMAN_PRIORITY = _exception(
 # Exact cells only: adding a family creates uncovered cells rather than
 # silently inheriting a wildcard/default exemption.
 EXCEPTIONS = {
-    ("amending", "resolving", "scout"): FEEDBACK_FIRST,
-    ("amending", "resolving", "claim"): FEEDBACK_FIRST,
-    ("resolving", "amending", "scout"): FEEDBACK_FIRST,
-    ("resolving", "amending", "claim"): FEEDBACK_FIRST,
     ("reviewing", "resolving", "scout"): CONFLICT_PHASE,
     ("amending", "stewarding", "scout"): ISSUE_SCOPE,
     ("amending", "stewarding", "claim"): ISSUE_SCOPE,
@@ -105,6 +97,7 @@ EXCEPTIONS = {
 # priority rule from exempting fleet-owned feedback tiers.
 QUALIFIED_EXCEPTIONS = {
     ("amending", "reviewing", "scout", "human-feedback"): HUMAN_PRIORITY,
+    ("amending", "resolving", "scout", "human-feedback"): HUMAN_PRIORITY,
 }
 
 
@@ -178,12 +171,12 @@ def scout_guarded(module, candidate: str, held: str) -> bool:
             and module._review_skipped({"fleet:changes-made", prefix})
             and not module._review_skipped({"fleet:changes-made"})
         )
-    if (candidate, held) == ("amending", "reviewing"):
+    if candidate == "amending" and held in ("reviewing", "resolving"):
         free = module.worker_feedback_labels({"fleet:has-nits"})
         blocked = module.worker_feedback_labels({"fleet:has-nits", prefix})
         reentered = module.worker_feedback_labels({"fleet:has-nits"})
         return bool(free) and not blocked and bool(reentered)
-    if (candidate, held) == ("resolving", "reviewing"):
+    if candidate == "resolving" and held in ("reviewing", "amending"):
         free = module._semantic_conflict_claimable(_conflict_pr(), {"fleet:semantic-conflict"}, {})
         blocked = module._semantic_conflict_claimable(
             _conflict_pr(), {"fleet:semantic-conflict", prefix}, {}
@@ -348,6 +341,13 @@ GUARDED = {
     ("resolving", "reviewing", "scout"),
     ("resolving", "reviewing", "claim"),
     ("reviewing", "resolving", "claim"),
+    # The amender's own step b strips the verdict label before the
+    # fix, so verdict-state routing alone left the two force-pushing lanes
+    # co-winning for the whole amend. Both directions are claim prefixes now.
+    ("amending", "resolving", "scout"),
+    ("amending", "resolving", "claim"),
+    ("resolving", "amending", "scout"),
+    ("resolving", "amending", "claim"),
 }
 
 
@@ -363,23 +363,13 @@ def support_fixtures(
         "fleet:has-nits",
         "fleet:needs-opus-recheck",
     }
-    amend_under_resolve, _, _ = run_claim(
-        claim_path,
-        families["amending"].command,
-        ["fleet:resolving-mac-probeB"],
-        "probeA",
-    )
-    resolve_under_amend, _, _ = run_claim(
-        claim_path,
-        families["resolving"].command,
-        ["fleet:amending-mac-probeB"],
-        "probeA",
-    )
+    # Not a cell support now that the amending<->resolving cells are guarded;
+    # kept as a standing invariant because the conflict lane's RAW verdict
+    # test is what still keeps it shut under a pending opus recheck, which
+    # no claim prefix represents.
     raw_routes_feedback = (
         not module.worker_feedback_labels(feedback_labels)
         and not module._semantic_conflict_claimable(_conflict_pr(), feedback_labels, {})
-        and amend_under_resolve.returncode == 0
-        and resolve_under_amend.returncode == 0
     )
     conflict_phase = (
         module._review_skipped({"fleet:semantic-conflict"})
@@ -412,9 +402,11 @@ def support_fixtures(
             )
         )
     )
-    human_priority = module.worker_feedback_labels(
-        {"human:needs-fix", "fleet:reviewing-mac-probeB"}
-    ) == frozenset({"human:needs-fix"})
+    human_priority = all(
+        module.worker_feedback_labels({"human:needs-fix", held})
+        == frozenset({"human:needs-fix"})
+        for held in ("fleet:reviewing-mac-probeB", "fleet:resolving-mac-probeB")
+    )
     return {
         "feedback_first": raw_routes_feedback,
         "conflict_phase": conflict_phase,
@@ -468,6 +460,8 @@ def validate_matrix(
         for (candidate, held, surface, qualifier), record in qualified.items()
         if not supports.get(record.support, False)
     ]
+    if not supports["feedback_first"]:
+        failures.append("conflict lane under a pending recheck: support feedback_first failed")
     for key in sorted(population):
         candidate, held, surface = key
         if key in GUARDED:
@@ -545,8 +539,8 @@ class ClaimNamespaceMatrix(unittest.TestCase):
         with _mutated_tree() as fleet_dir:
             scout = fleet_dir / "fleet-state-scout"
             source = scout.read_text().replace(
-                'WORKER_SKIP_PREFIXES = ("fleet:reviewing-",)',
-                "WORKER_SKIP_PREFIXES = ()",
+                'WORKER_SKIP_PREFIXES = ("fleet:reviewing-", "fleet:resolving-")',
+                'WORKER_SKIP_PREFIXES = ("fleet:resolving-",)',
                 1,
             )
             scout.write_text(source)

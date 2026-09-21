@@ -23,6 +23,7 @@ export CLAIM_POST_LOG="$TMPROOT/posts"
 export CLAIM_RUN="$TMPROOT/run"
 export AMEND_LABEL="fleet:amending-mac-poolA"
 export REVIEW_LABEL="fleet:reviewing-mac-poolB"
+export RESOLVE_LABEL="fleet:resolving-mac-poolB"
 mkdir -p "$FLEET_HEARTBEATS_DIR" "$FLEET_CLAIMS_DIR" \
     "$FLEET_RESERVATIONS_DIR" "$TMPROOT/bin"
 
@@ -162,13 +163,19 @@ wait_for_file() {
     return 1
 }
 
+assert_foreign_claim_refused() {
+    local held_label="$1" command="$2" pr="$3" agent="$4" lane="$5" rc=0
+    set_labels "$held_label"
+    "$FLEET_CLAIM" "$command" "$pr" "$agent" >/dev/null 2>&1 || rc=$?
+    assert_exit "$rc" 1 "foreign $lane refuses $command"
+    assert_eq "$(cat "$CLAIM_STATE")" "$held_label" \
+        "$command refusal preserves the exact label set"
+    assert_eq "$(wc -l < "$CLAIM_POST_LOG" | tr -d ' ')" "0" \
+        "$command refusal sends no POST"
+}
+
 echo "T1 fix: review claim refuses a foreign amend without POSTing"
-set_labels "$AMEND_LABEL"
-rc=0
-"$FLEET_CLAIM" review-claim 4101 poolB >/dev/null 2>&1 || rc=$?
-assert_exit "$rc" 1 "foreign amend refuses review claim"
-assert_eq "$(cat "$CLAIM_STATE")" "$AMEND_LABEL" "refusal preserves the exact label set"
-assert_eq "$(wc -l < "$CLAIM_POST_LOG" | tr -d ' ')" "0" "refusal sends no POST"
+assert_foreign_claim_refused "$AMEND_LABEL" review-claim 4101 poolB amend
 
 echo "T2 control: same suffix may hold both lane labels"
 set_labels "$AMEND_LABEL"
@@ -206,6 +213,12 @@ assert_eq "$(wc -l < "$CLAIM_POST_LOG" | tr -d ' ')" "0" "review re-acquire send
 assert_contains "$(cat "$TMPROOT/t4b.out")" "WARN" "review coexistence state is visible"
 assert_eq "$(cat "$FLEET_CLAIMS_DIR/_prlabel-reviewing-poolB")" "4105" "review liveness marker is refreshed"
 
+echo "T4c fix: resolving claim refuses a foreign amend without POSTing"
+assert_foreign_claim_refused "$AMEND_LABEL" resolving-claim 4106 poolB amend
+
+echo "T4d fix: amending claim refuses a foreign resolver without POSTing"
+assert_foreign_claim_refused "$RESOLVE_LABEL" amending-claim 4107 poolA resolver
+
 echo "T5 fix: pure contender filter covers the symmetric lane union"
 set --
 FLEET_CLAIM_LIB=1 source "$FLEET_CLAIM"
@@ -217,23 +230,24 @@ if declare -F _claim_contenders >/dev/null; then
     assert_contains "$contenders" "fleet:amending-mac-poolC" "same-prefix peer participates"
     assert_contains "$contenders" "$REVIEW_LABEL" "foreign-suffix excluded lane participates"
     assert_absent "$contenders" "fleet:reviewing-mac-poolA" "same-suffix excluded lane is carved out"
-    assert_absent "$contenders" "fleet:resolving-mac-poolD" "unrelated lane is excluded"
+    assert_contains "$contenders" "fleet:resolving-mac-poolD" "amender sees foreign resolver as a contender"
 
     resolving_contenders=$(_claim_contenders "fleet:resolving-mac-poolA" \
         "fleet:resolving-" "fleet:resolving-mac-poolA" \
-        "$REVIEW_LABEL" "fleet:reviewing-mac-poolA" "$AMEND_LABEL")
+        "$REVIEW_LABEL" "fleet:reviewing-mac-poolA" \
+        "fleet:amending-mac-poolC")
     assert_contains "$resolving_contenders" "$REVIEW_LABEL" "resolver sees foreign reviewer as a contender"
     assert_absent "$resolving_contenders" "fleet:reviewing-mac-poolA" "resolver carves out its own reviewer suffix"
-    assert_absent "$resolving_contenders" "$AMEND_LABEL" "resolver does not absorb the independent amend lane"
+    assert_contains "$resolving_contenders" "fleet:amending-mac-poolC" "resolver sees foreign amender as a contender"
 else
     bad "own-prefix label participates (contender filter missing)"
     bad "same-prefix peer participates (contender filter missing)"
     bad "foreign-suffix excluded lane participates (contender filter missing)"
     bad "same-suffix excluded lane is carved out (contender filter missing)"
-    bad "unrelated lane is excluded (contender filter missing)"
+    bad "amender sees foreign resolver as a contender (contender filter missing)"
     bad "resolver sees foreign reviewer as a contender (contender filter missing)"
     bad "resolver carves out its own reviewer suffix (contender filter missing)"
-    bad "resolver does not absorb the independent amend lane (contender filter missing)"
+    bad "resolver sees foreign amender as a contender (contender filter missing)"
 fi
 
 echo "T6 fix: exclusion table is symmetric"

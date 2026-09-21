@@ -46,16 +46,16 @@ label ([`fleet-labels-reference.md § Claims`](fleet-labels-reference.md)); a
 failed `gh issue edit` rolls the claim back — no FS-only fallback. Once the PR
 opens the scout derives ownership from its `headRefName`. Review, feedback,
 conflict and planning claims share the primitive under disjoint prefixes; a
-force-pushing lane excludes another agent's live `fleet:reviewing-*` at scout
-suppression, the claim-time gate, then admission: two independent, complete,
-paginated label GETs must show the exact candidate and no contender across the
-excluded-prefix union — the POST response is never ownership evidence. That
-bounded settle is no linearizable mutex under stale reads; a recurrence where
-both reads hide a completed competitor needs authoritative arbitration, not a
-longer sleep. Host keys are one canonical set (`derive_host()`: `Linux` →
-`linux`, `Darwin` → `macos`, `MINGW*/MSYS*/CYGWIN*` → `windows`); WSL2 is
-`linux`, so two such fleets on one account collide unless one forces
-`FLEET_TEST_HOST`.
+force-pushing lane excludes another agent's live `fleet:reviewing-*` and the
+other force-pushing lane's claim at scout suppression, the claim-time gate,
+then admission: two independent, complete, paginated label GETs must show the
+exact candidate and no contender across the excluded-prefix union — the POST
+response is never ownership evidence. That bounded settle is no linearizable
+mutex under stale reads; a recurrence where both reads hide a completed
+competitor needs authoritative arbitration, not a longer sleep. Host keys are
+one canonical set (`derive_host()`: `Linux` → `linux`, `Darwin` → `macos`,
+`MINGW*/MSYS*/CYGWIN*` → `windows`); WSL2 is `linux`, so two such fleets on
+one account collide unless one forces `FLEET_TEST_HOST`.
 
 ### Who takes the claim
 
