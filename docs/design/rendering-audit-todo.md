@@ -274,3 +274,12 @@ bounds voxel-pool capacity; #3577/#3581 own million-entity profiling controls;
 Keep their work separate from finite-face correctness. In particular, a lower
 rim-roughness score alone cannot establish correctness because eroding coverage
 also lowers it; retain independent geometry/coverage gates.
+
+## Shared face-coordinate math
+
+[Projected-face consolidation](../pr-screenshots/codex/projected-face-math/README.md)
+shares the determinant and inverse coordinate solve across display sampling,
+voxel face shadow baking and finite source queries. Quadrants, reflection and
+winding are tested; ten native captures preserve their baseline RGB exactly.
+Keep coverage ownership and authored versus revoxelized geometry explicit. SDF
+ray intersection is not a projected quad and retains its separate implementation.

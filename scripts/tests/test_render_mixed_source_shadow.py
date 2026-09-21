@@ -103,6 +103,9 @@ class MixedSourceShadowTest(unittest.TestCase):
         for suffix, directory in (("glsl", ""), ("metal", "metal/")):
             projection = (SHADERS / directory / f"ir_sun_projection.{suffix}").read_text()
             layout = (SHADERS / directory / f"ir_sun_face_query_layout.{suffix}").read_text()
+            geometry = (SHADERS / directory /
+                        f"ir_projected_face.{suffix}").read_text()
+            layout = layout.replace(f'#include "ir_projected_face.{suffix}"', geometry)
             sampler = (SHADERS / directory / f"ir_sun_shadow_sample.{suffix}").read_text()
             start = sampler.index("for (int layer = 0;")
             end = sampler.index("\n    float slope", start)

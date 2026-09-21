@@ -46,7 +46,7 @@ layout(std140, binding = 29) uniform FrameDataSun {
 void rasterSunFace(vec3 corner, vec3 edgeU, vec3 edgeV, vec2 origin, vec2 texelSize, int cascadeOffset, uint faceMarker) {
     const vec2 a = edgeU.xy;
     const vec2 b = edgeV.xy;
-    const float determinant = a.x * b.y - a.y * b.x;
+    const float determinant = projectedFaceDeterminant(a, b);
     if (abs(determinant) < 0.000001) return;
     const vec2 uvMin = min(min(corner.xy, corner.xy + a), min(corner.xy + b, corner.xy + a + b));
     const vec2 uvMax = max(max(corner.xy, corner.xy + a), max(corner.xy + b, corner.xy + a + b));
@@ -56,8 +56,7 @@ void rasterSunFace(vec3 corner, vec3 edgeU, vec3 edgeV, vec2 origin, vec2 texelS
     for (int y = first.y; y <= last.y; ++y) {
         for (int x = first.x; x <= last.x; ++x) {
             const vec2 delta = origin + (vec2(x, y) + 0.5) * texelSize - corner.xy;
-            const vec2 faceUV = vec2(delta.x * b.y - delta.y * b.x,
-                                    a.x * delta.y - a.y * delta.x) / determinant;
+            const vec2 faceUV = projectedFaceCoordinates(delta, a, b, determinant);
             if (any(lessThan(faceUV, vec2(-0.00001))) || any(greaterThan(faceUV, vec2(1.00001)))) continue;
             const float depth = corner.z + faceUV.x * edgeU.z + faceUV.y * edgeV.z;
             atomicMin(sunDepthBuf[cascadeOffset + y * kSunShadowMapDim + x], (packSunDepth(depth, ivec2(0)) | faceMarker));
@@ -66,7 +65,7 @@ void rasterSunFace(vec3 corner, vec3 edgeU, vec3 edgeV, vec2 origin, vec2 texelS
 }
 
 void indexSourceSunFace(vec3 corner, vec3 edgeU, vec3 edgeV) {
-    const float determinant = edgeU.x * edgeV.y - edgeU.y * edgeV.x;
+    const float determinant = projectedFaceDeterminant(edgeU.xy, edgeV.xy);
     if (abs(determinant) < 0.000001) return;
     const uint faceIndex = atomicAdd(sunDepthBuf[kSourceFaceHeaderOffset], 1u);
     if (faceIndex < kSourceFaceCapacity) {

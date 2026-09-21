@@ -1,3 +1,4 @@
+#include "ir_projected_face.glsl"
 #ifndef IR_SUN_FACE_QUERY_LAYOUT_INCLUDED
 #define IR_SUN_FACE_QUERY_LAYOUT_INCLUDED
 
@@ -31,14 +32,13 @@ bool sunWriteIsSourceFace(uint packedDepth) {
 
 // Positive separation means the receiver ray intersects this finite face in front.
 float sourceFaceRaySeparation(vec2 sunUV, float sunZ, vec3 corner, vec3 edgeU, vec3 edgeV) {
-    const float determinant = edgeU.x * edgeV.y - edgeU.y * edgeV.x;
+    const float determinant = projectedFaceDeterminant(vec2(edgeU.x, edgeU.y), vec2(edgeV.x, edgeV.y));
     if (abs(determinant) < 0.000001) return -1.0;
-    const float deltaU = sunUV.x - corner.x;
-    const float deltaV = sunUV.y - corner.y;
-    const float u = (deltaU * edgeV.y - deltaV * edgeV.x) / determinant;
-    const float v = (edgeU.x * deltaV - edgeU.y * deltaU) / determinant;
-    if (u < 0.0 || v < 0.0 || u > 1.0 || v > 1.0) return -1.0;
-    return sunZ - (corner.z + u * edgeU.z + v * edgeV.z);
+    const vec2 uv = projectedFaceCoordinates(
+        vec2(sunUV.x - corner.x, sunUV.y - corner.y),
+        vec2(edgeU.x, edgeU.y), vec2(edgeV.x, edgeV.y), determinant);
+    if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return -1.0;
+    return sunZ - (corner.z + uv.x * edgeU.z + uv.y * edgeV.z);
 }
 
 #endif
