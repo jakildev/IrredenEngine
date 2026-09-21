@@ -21,9 +21,9 @@
 #   misroute AT THE SOURCE (the wrapper rejects a verdict on an unclaimed
 #   PR) instead of after a wasted dispatch.
 #
-# Scope: the FIVE reviewer verdict edges only —
+# Scope: the FOUR reviewer verdict edges only —
 #   verdict-approve, verdict-approve-nits, verdict-needs-fix,
-#   verdict-blocker, verdict-needs-opus-recheck.
+#   verdict-needs-opus-recheck.
 #   Any other transition name is rejected ("use fleet-transition"): this
 #   wrapper guards the review-verdict lane, not the whole state machine.
 #
@@ -73,7 +73,7 @@ PROG="fleet-review-verdict"
 
 # The reviewer verdict edges this wrapper guards. Anything else belongs to
 # fleet-transition directly.
-VERDICT_TRANSITIONS="verdict-approve verdict-approve-nits verdict-needs-fix verdict-blocker verdict-needs-opus-recheck"
+VERDICT_TRANSITIONS="verdict-approve verdict-approve-nits verdict-needs-fix verdict-needs-opus-recheck"
 
 # ----------------------------------------------------------------------
 # Parse args (same positional order as fleet-transition: <edge> <number>)

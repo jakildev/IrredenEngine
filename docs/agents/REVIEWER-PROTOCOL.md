@@ -103,8 +103,13 @@ Bash call is the edge:
 fleet-review-verdict verdict-approve <N> --agent <your-worktree-name>          # clean approve; also clears has-nits on a re-review
 fleet-review-verdict verdict-approve-nits <N> --agent <your-worktree-name>     # approve with a non-empty ### Nits section
 fleet-review-verdict verdict-needs-fix <N> --agent <your-worktree-name>
-fleet-review-verdict verdict-blocker <N> --agent <your-worktree-name>
 ```
+
+A send-back is always `verdict-needs-fix` — there is no severity-specific
+edge (the severity verdict was retired in #3077: no lane consumed it).
+When the approach itself is wrong, add `fleet:fable` so the fix dispatches
+at fable class; when the call is architectural, escalate with
+`design-block` instead.
 
 `--agent` is the basename you gave `review-claim`: the wrapper refuses
 unless you hold `fleet:reviewing-<host>-<agent>` on that PR, refuses with

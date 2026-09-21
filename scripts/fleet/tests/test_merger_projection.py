@@ -190,9 +190,6 @@ class SkipLabelsRemovedFromProjection(unittest.TestCase):
     def test_wip_dropped(self):
         self._dropped("fleet:wip")
 
-    def test_blocker_dropped(self):
-        self._dropped("fleet:blocker")
-
 
 class HumanOwesFixLabelsDropped(unittest.TestCase):
     """An approved PR that also carries a human-owes-a-fix label must drop

@@ -219,7 +219,7 @@ class GatesApplyToWindows(unittest.TestCase):
                          "smoke pickup requires fleet:approved")
 
     def test_skip_labels_drop_windows_pr(self):
-        for skip in ("fleet:needs-fix", "fleet:blocker", "human:wip",
+        for skip in ("fleet:needs-fix", "human:wip",
                      "fleet:wip", "fleet:merger-cooldown", "human:needs-fix",
                      "fleet:needs-human"):
             with self.subTest(skip=skip):
@@ -383,7 +383,7 @@ class TwoRepos(unittest.TestCase):
         cases = {"unapproved": _pr(99, labels=[WINDOWS]),
                  "reviewing-claim": _approved(
                      99, WINDOWS, extra=("fleet:reviewing-mac-pool-1",))}
-        for skip in ("fleet:needs-fix", "fleet:blocker", "human:wip",
+        for skip in ("fleet:needs-fix", "human:wip",
                      "fleet:wip", "fleet:merger-cooldown", "human:needs-fix",
                      "fleet:needs-human"):
             cases[skip] = _approved(99, WINDOWS, extra=(skip,))

@@ -41,7 +41,7 @@ there, never here.
 |---|---|
 | `verdict-approve` | clean approval; also clears `fleet:has-nits` on a re-review |
 | `verdict-approve-nits` | approval with a non-empty `### Nits` section |
-| `verdict-needs-fix` / `verdict-blocker` | send back |
+| `verdict-needs-fix` | send back (the only send-back edge) |
 | `verdict-needs-opus-recheck` | sonnet-reviewer escalation; sets no verdict |
 | `design-block` / `design-unblock` / `design-propose` | the design-escalation cycle |
 | `plan-propose` / `plan-approve` / `plan-reject` | the planning gate |
@@ -220,7 +220,7 @@ lock's presumed-dead bound. Rationale: `fleet-claim`'s `_amend_lock_acquire`.
 
 ## Review verdicts (PRs)
 
-- `fleet:approved` / `fleet:has-nits` / `fleet:needs-fix` / `fleet:blocker`
+- `fleet:approved` / `fleet:has-nits` / `fleet:needs-fix`
   — **reviewer agents**, via the `verdict-*` edges. `fleet:has-nits` rides
   with `fleet:approved` and means the nits are worth one amend push
   ([`REVIEWER-PROTOCOL.md § Nits vs needs-fix`](REVIEWER-PROTOCOL.md)).

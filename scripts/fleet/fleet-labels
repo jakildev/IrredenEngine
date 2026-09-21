@@ -125,7 +125,6 @@ LABELS=(
     "fleet:approved|0e8a16|Reviewer agent approved; safe for human merge"
     "fleet:has-nits|fbca04|Approved but author should clean up nits before merge"
     "fleet:needs-fix|d73a4a|Reviewer agent flagged correctness/quality issues"
-    "fleet:blocker|800010|Reviewer agent flagged a blocker; do not merge"
     "fleet:needs-opus-recheck|1d76db|Sonnet approved but flagged 'Opus recheck required'; wakes the opus-reviewer, which removes it"
     "fleet:semantic-conflict|d73a4a|Merger hit non-mechanical conflict; opus+-class worker resolves or escalates"
     "fleet:merger-cooldown|bfdadc|Merger touched this PR; skip until next iteration"

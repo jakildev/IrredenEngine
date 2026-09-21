@@ -50,7 +50,7 @@ STEWARD_PREFIX = "fleet:stewarding-"
 DESIGN_LABEL_PREFIXES = ("fleet:design", "fleet:needs-opus", "fleet:needs-plan",
                          "fleet:blocked", "human:")
 FEEDBACK_LABELS = frozenset(["human:needs-fix", "fleet:needs-fix", "fleet:has-nits",
-                              "human:blocker", "fleet:blocker"])
+                              "human:blocker"])
 
 
 def warn(msg):
