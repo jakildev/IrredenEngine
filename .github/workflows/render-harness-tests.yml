@@ -90,9 +90,12 @@ jobs:
       # shared-interpreter discover.
       #
       # The log is captured so the next step can prove the Pillow-dependent
-      # suite ran rather than skipped; pipefail (GitHub's default bash) keeps
-      # the runner's exit status through the tee.
+      # suite ran rather than skipped. `shell: bash` is load-bearing: a bare
+      # `run:` gets `bash -e {0}`, and only a named `shell: bash` adds
+      # `-o pipefail` — without it the step's status is tee's, always 0.
+      # test_run_all.py's WorkflowKeepsRunnerStatusTest pins this.
       - name: Run render harness tests
+        shell: bash
         run: bash scripts/tests/run_all.sh | tee run_all.log
 
       # run_all.sh reports `PASS  <suite> (<N> tests)`, with a `skipped`
