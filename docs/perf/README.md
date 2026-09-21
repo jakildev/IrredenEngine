@@ -264,9 +264,9 @@ table:
 - `--yaw-step <radians>` (IRPerfGrid only) — yaw advance per rendered frame;
   frame N renders at `--yaw + (N − 1) × step`, the same poses in every run.
   `repeat_profile.py` checks the first and last pose and the travelled arc
-  from the witness. A sweep whose frames land exactly on a cardinal measures
-  the cardinal-crossing hitch and the update catch-up that follows it, not
-  steady rotation; start half a step off to measure that:
+  from the witness. A sweep that starts on a cardinal measures a cheaper first
+  quadrant, a 0.6 s frame at its first crossing and the update catch-up that
+  follows, not steady rotation; start half a step off to measure that:
   [continuous-yaw-sweep.md](continuous-yaw-sweep.md).
 
 ## Voxel cull stats — the "is culling working?" diagnostic

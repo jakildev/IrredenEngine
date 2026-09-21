@@ -52,12 +52,15 @@ symmetric pose; the sweep that steps past 45° without landing on it (44.4°,
 45.6°) peaks at 959,592. The objective's row asks for zero drops across a
 15-pose sweep; this is that reading on Metal at twenty times the poses.
 
-### 2. A frame that lands on a cardinal costs the next quadrant
+### 2. A sweep that starts on a cardinal loses a quadrant at its first crossing
 
-The two sweeps differ by 0.6° of starting yaw. The one that lands on 90°, 180°
-and 270° has a **602 ms** frame (739 ms in the replicate) at 91.2°, the first
-rotated frame after the cardinal, and the one that never lands on a cardinal
-has no steady frame above 60 ms. At the 64³ pool (Debug tree) the same pair
+The two sweeps differ by 0.6° of starting yaw. The one that starts on 0° and
+lands on 90°, 180° and 270° has a **602 ms** frame (739 ms in the replicate) at
+91.2°, the first rotated frame after 90°, and the one that never lands on a
+cardinal has no steady frame above 60 ms. The 180° and 270° crossings of the
+same sweep show no comparable frame, so this is not a cost of every cardinal
+landing; what these two runs isolate is the pair (start on a cardinal, then
+cross one). At the 64³ pool (Debug tree) the same pair
 reads 55.6, 49.5 and 57.0 ms at 91.2°, 181.2° and 271.2° against a steady
 maximum of 19.13 ms.
 
@@ -79,12 +82,12 @@ debt to eight a frame, eight updates make the frame long enough to owe eight
 more, and the loop sits at its clamp for 63 of the next 75 frames. It takes two
 more quadrants to drain. One hitch of 0.6 s costs about 9 s of 4× frames.
 
-The trigger is isolated: landing exactly on a cardinal. The work inside that
-frame is not. `PerAxisCanvas::syncAllocationToCameraYaw` releases the three
-per-axis texture sets and the 96 MiB overflow buffer on the cardinal frame and
-allocates them again on the next rotated one, and that is the first candidate;
-the cardinal frame also switches the raster path and rebuilds chunk bounds for
-a new cardinal index. Separating those is the next slice's first measurement.
+What the 602 ms frame does is not shown here. `syncAllocationToCameraYaw`
+releasing and re-allocating the per-axis sets and the 96 MiB overflow buffer
+is the first candidate, beside the raster-path switch and the chunk-bound
+rebuild for a new cardinal index, and finding 4 below says the run that starts
+on a cardinal is in a different state from the start. Separating those is the
+next slice's first measurement.
 
 ### 3. The fixed updates are worth 4 ms of a 42 ms frame
 
@@ -127,10 +130,9 @@ measures the expensive history.
 
 ## Next measurements
 
-1. Split the cardinal frame: release and re-allocation against the path switch
-   and the chunk-bound rebuild, then keep the per-axis canvases resident across
-   a crossing while the camera is turning and re-run the through-the-cardinals
-   sweep.
+1. Split the 91.2° frame: release and re-allocation against the path switch
+   and the chunk-bound rebuild, and cross a cardinal from a rotated start to
+   see whether the crossing or the cardinal start is what costs.
 2. Find what a cardinal-rendered frame leaves behind that a rotated start
    lacks, with per-frame visible and admitted-chunk counts in the report.
 3. The sweep in the three-round quiet-host matrix, and a longer window than

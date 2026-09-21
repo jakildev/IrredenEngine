@@ -26,9 +26,9 @@ PRESETS = {
     "off": "configs/perf/million-profiling-off.lua",
 }
 # A full turn in 300 frames, started half a step off the cardinal so no frame
-# lands on one: a frame on a cardinal releases the per-axis canvases, and the
-# re-allocation hitch that follows tips the fixed-step loop into its clamp for
-# the next quadrant (docs/perf/continuous-yaw-sweep.md).
+# lands on one: a sweep that starts on a cardinal runs a cheaper first quadrant
+# and then a 0.6 s frame at its first crossing that tips the fixed-step loop
+# into its clamp for a quadrant (docs/perf/continuous-yaw-sweep.md).
 POSES = {
     "0": ["--yaw", "0"],
     "45": ["--yaw", "0.785398163"],

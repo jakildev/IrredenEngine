@@ -1,6 +1,6 @@
 <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1120 650' width='1120' height='650' role='img' aria-label='Frame time and fixed updates per frame across a full-turn yaw sweep at one million entities, through the cardinals against half a step off them'>
 <rect width='1120' height='650' fill='#fcfcfb'/>
-<text x='72' y='34' font-family='-apple-system,Segoe UI,Helvetica,Arial,sans-serif' font-size='18' font-weight='600' fill='#0b0b0b'>One frame on a cardinal costs the next quadrant</text>
+<text x='72' y='34' font-family='-apple-system,Segoe UI,Helvetica,Arial,sans-serif' font-size='18' font-weight='600' fill='#0b0b0b'>A sweep that starts on a cardinal loses a quadrant at its first crossing</text>
 <text x='72' y='56' font-family='-apple-system,Segoe UI,Helvetica,Arial,sans-serif' font-size='13' fill='#52514e'>IRPerfGrid, 1,000,000 entities, Release, stage profiling off, 300 frames at 1.2° a frame. Host load 5 to 7: read the shape, not the milliseconds.</text>
 <line x1='72' y1='82' x2='94' y2='82' stroke='#2a78d6' stroke-width='2' stroke-linecap='round'/>
 <text x='100' y='86' font-family='-apple-system,Segoe UI,Helvetica,Arial,sans-serif' font-size='12' fill='#0b0b0b'>Through the cardinals (--yaw 0)</text>
