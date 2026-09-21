@@ -325,8 +325,8 @@ def check_checklist(umbrella_body, child_numbers):
     ``in-checklist-not-discovered``
         The checklist references an issue number that no discovered child body
         claims (its membership line is absent or the issue was
-        deleted / renumbered).  Informational; may be intentional for closed
-        children whose issues are no longer open.
+        deleted / renumbered), or discovery ran under a narrower ``--state``
+        than ``all``.  Informational.
     """
     checklist = parse_checklist(umbrella_body)
     child_set = set(child_numbers)
