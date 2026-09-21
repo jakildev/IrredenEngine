@@ -280,81 +280,88 @@ vec3 RenderManager::getRotationPivotFocus() const {
     return m_rotationPivotFocus;
 }
 
+vec2 RenderManager::getCanvasCenterIso() const {
+    const ivec2 canvasSize = getMainCanvasSizeTriangles();
+    return vec2(canvasSize) * 0.5f - vec2(IRMath::trixelOriginOffsetZ1(canvasSize));
+}
+
 vec2 RenderManager::getViewCenterIso() const {
     // A world point W lands at screen center when `pos3DtoPos2DIso(W) +
     // cameraIso == canvasCenterIso`, so the iso coordinate to invert is
     // `canvasCenterIso - cameraIso`.
-    const ivec2 canvasSize = getMainCanvasSizeTriangles();
-    return vec2(canvasSize) * 0.5f - vec2(IRMath::trixelOriginOffsetZ1(canvasSize)) -
-           getCameraPosition2DIso();
+    return getCanvasCenterIso() - getCameraPosition2DIso();
 }
 
 vec3 RenderManager::getDefaultRotationPivotFocus() const {
-    // The point under the viewport center at the LATCHED iso depth — the POINT
-    // is derived live from the current camera, only the DEPTH is held. That
+    // The anchor under the viewport center — the POINT is derived live from
+    // the current camera, only the DEPTH and the view offset are held. That
     // split is load-bearing, not a style choice: `isoPixelToPos3D`'s depth
-    // parameter shifts along (1,1,1), which projects to (0,0), so
-    // `pos3DtoPos2DIso(F) == canvasCenterIso - cameraIso` at every latched
-    // depth, and `d getEffectiveCameraIso() / d cameraIso` stays exactly the
-    // transform `IRMath::cameraMoveRelativeToYaw` pre-compensates a pan by.
-    // Latching F as a WORLD POINT instead freezes it against cameraIso, that
-    // derivative collapses to the identity, and interactive pan at any non-zero
-    // yaw moves content in the wrong direction and pops back on mouse-stop.
-    // Depth 0 — before the first derive, whenever the center pixel reads
-    // background, and for a creation whose frame never reaches beginFrame — is
-    // the exact fallback point, so this uses the same expression rather than a
-    // structurally different branch.
-    return IRMath::isoPixelToPos3D(getViewCenterIso(), m_defaultPivotLatch.isoDepth());
+    // parameter shifts along (1,1,1), which projects to (0,0), so the focus
+    // tracks `cameraIso` one-for-one at every latched depth, and
+    // `d getEffectiveCameraIso() / d cameraIso` stays exactly the transform
+    // `IRMath::cameraMoveRelativeToYaw` pre-compensates a pan by.
+    // Latching F as a bare WORLD POINT instead freezes it against cameraIso,
+    // that derivative collapses to the identity, and interactive pan at any
+    // non-zero yaw moves content in the wrong direction.
+    return m_defaultPivotLatch.focus(getViewCenterIso());
+}
+
+vec2 RenderManager::getDefaultPivotViewOffsetIso() const {
+    return m_defaultPivotLatch.viewOffsetIso();
+}
+
+void RenderManager::stampDefaultPivotSourceFrame() {
+    const vec2 cameraIso = getCameraPosition2DIso();
+    const DefaultPivotSourceFrame frame{
+        IRPrefab::Camera::getYaw(),
+        cameraIso,
+        IRRender::getEffectiveCameraIso(),
+        getCanvasCenterIso(),
+        getVoxelRenderEffectiveSubdivisions()
+    };
+    m_defaultPivotLatch.stampSourceFrame(frame, defaultPivotOwnsDepth());
+}
+
+bool RenderManager::defaultPivotOwnsDepth() const {
+    // ORIGIN mode ignores the focus entirely and an explicit
+    // setRotationPivotFocus overrides it, so only the DEFAULT CAMERA_CENTER
+    // pivot may pay a readback or source one.
+    return m_rotationPivotMode == RotationPivotMode::CAMERA_CENTER && !m_hasRotationPivotFocus;
 }
 
 void RenderManager::updateDefaultRotationPivotFocus() {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
 
-    // Stamped in EVERY pivot mode, ahead of the mode gate below, because the
-    // pose describes what this frame renders — which is true whatever the pivot
-    // is. Only the DEFAULT CAMERA_CENTER pivot may pay a readback, though:
-    // ORIGIN mode ignores the focus entirely and an explicit
-    // setRotationPivotFocus overrides it. The whole decision — the settle
-    // predicate, the previous frame's depth attachment, the rotation-start edge
-    // and the pan/zoom key — is DefaultPivotLatch's.
-    const DefaultPivotPose pose{
-        IRPrefab::Camera::getYaw(),
-        getCameraPosition2DIso(),
-        getCameraZoom()
-    };
-    const bool pivotOwnsDepth =
-        m_rotationPivotMode == RotationPivotMode::CAMERA_CENTER && !m_hasRotationPivotFocus;
-    if (!m_defaultPivotLatch.observeFrame(pose, pivotOwnsDepth).derive_) {
+    // Observed in EVERY pivot mode, ahead of the mode gate, so the settle state
+    // tracks every frame. The whole decision — the gesture-start edge, and
+    // whether the previous frame left a usable source stamp — is
+    // DefaultPivotLatch's.
+    if (!m_defaultPivotLatch.observeFrame(IRPrefab::Camera::getYaw(), defaultPivotOwnsDepth())) {
         return;
     }
 
     // The framebuffer texel under the viewport center. The framebuffer's
     // resolution-plus-buffer is symmetric about the view, so its center texel is
-    // the center of the view.
+    // the center of the view. The attachment still holds the PREVIOUS frame —
+    // the one the source stamp describes.
     const auto framebufferOpt =
         IREntity::getComponentOptional<C_TrixelCanvasFramebuffer>(m_mainFramebuffer);
-    float isoDepth = 0.0f;
-    if (framebufferOpt.has_value()) {
-        const ivec2 resolution = (*framebufferOpt.value()).getResolutionPlusBuffer();
-        const IRRender::CompositeDepthSample sample =
-            IRRender::readbackCompositeDepth(resolution / 2);
-        const IRRender::DecodedCompositeDepth decoded =
-            IRRender::decodeCompositeDepth(sample.rawDist_);
-        // Background (depth clear at the far plane) and any foreground-tier
-        // fragment fall back to iso depth 0. A foreground-tier hit is a
-        // screen-locked / priority overlay whose
-        // encoded depth is a reserved band code, NOT a world iso depth, so
-        // consuming it would pin the pivot to a meaningless world point.
-        if (sample.valid_ && sample.normDepth_ < IRRender::kBackgroundNormDepthThreshold &&
-            decoded.tier_ == 0) {
-            // decoded.iso_ is in shared framebuffer units (worldIso × effSub);
-            // divide the subdivision factor back out to land in world units.
-            isoDepth = static_cast<float>(decoded.iso_) /
-                       static_cast<float>(IRMath::max(1, getVoxelRenderEffectiveSubdivisions()));
-        }
+    if (!framebufferOpt.has_value()) {
+        return;
     }
-
-    m_defaultPivotLatch.noteDerived(isoDepth);
+    const ivec2 resolution = (*framebufferOpt.value()).getResolutionPlusBuffer();
+    const IRRender::CompositeDepthSample sample = IRRender::readbackCompositeDepth(resolution / 2);
+    const IRRender::DecodedCompositeDepth decoded = IRRender::decodeCompositeDepth(sample.rawDist_);
+    // Background (depth clear at the far plane) and any foreground-tier
+    // fragment hold the previous anchor. A foreground-tier hit is a
+    // screen-locked / priority overlay whose encoded depth is a reserved band
+    // code, NOT a world iso depth, so acquiring it would pin the pivot to a
+    // meaningless world point.
+    if (!sample.valid_ || sample.normDepth_ >= IRRender::kBackgroundNormDepthThreshold ||
+        decoded.tier_ != 0) {
+        return;
+    }
+    m_defaultPivotLatch.acquire(static_cast<float>(decoded.iso_));
 }
 
 void RenderManager::setVoxelRenderSubdivisions(int subdivisions) {
