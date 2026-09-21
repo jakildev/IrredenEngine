@@ -1,0 +1,6 @@
+# Pose line each after-arm run logged (run-1.log, the binary in after/*/manifest.json).
+--yaw 0: Initial camera yaw: requested_rad=0.000000 yaw_deg=0.000 residual_deg=0.0000
+--yaw 1.5707963: Initial camera yaw: requested_rad=1.570796 yaw_deg=90.000 residual_deg=0.0000
+--yaw 90: Initial camera yaw: requested_rad=90.000000 yaw_deg=116.620 residual_deg=26.6201
+--yaw 0.785398163: Initial camera yaw: requested_rad=0.785398 yaw_deg=45.000 residual_deg=-45.0000
+--yaw 45: Initial camera yaw: requested_rad=45.000000 yaw_deg=58.310 residual_deg=-31.6899

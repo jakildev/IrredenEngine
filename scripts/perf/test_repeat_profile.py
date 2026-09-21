@@ -6,7 +6,13 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from repeat_profile import directory_digest, find_demo_pid, run_profile, yaw_pose_mismatch
+from repeat_profile import (
+    directory_digest,
+    find_demo_pid,
+    requested_yaw,
+    run_profile,
+    yaw_pose_mismatch,
+)
 
 
 class YawPoseTest(unittest.TestCase):
@@ -22,6 +28,19 @@ class YawPoseTest(unittest.TestCase):
     def test_a_degrees_reading_of_the_flag_fails(self):
         reason = yaw_pose_mismatch(["--yaw", "0.785398163"], self.LOG.format("0.785398", "0.785"))
         self.assertIn("45.000 deg", reason)
+
+    def test_the_last_yaw_wins_and_a_trailing_flag_is_ignored(self):
+        self.assertEqual(requested_yaw(["--yaw", "1", "--yaw=2"]), 2.0)
+        self.assertIsNone(requested_yaw(["--zoom", "4", "--yaw"]))
+        self.assertIsNone(requested_yaw(["--yaw-ramp"]))
+
+    def test_a_value_the_check_cannot_compare_is_refused_not_passed(self):
+        for value in ("nan", "inf", "45deg", ""):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                requested_yaw([f"--yaw={value}"])
+
+    def test_the_pi_wrap_compares_on_the_circle(self):
+        self.assertIsNone(yaw_pose_mismatch(["--yaw", "-3.14149"], self.LOG.format("x", "180.006")))
 
     def test_missing_pose_line_fails_only_when_yaw_was_requested(self):
         self.assertIn("no 'Initial camera yaw'", yaw_pose_mismatch(["--yaw", "1"], "RESULT=CLEAN"))

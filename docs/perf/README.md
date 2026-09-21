@@ -181,8 +181,9 @@ Relative paths for `--presets` are resolved from the engine root.
 
 `IRPerfGrid` and `IRLuaPerfGrid` accept these flags (used by the matrix
 script). All of these can also be set inside a preset file (except
-`--auto-profile` and `--config-preset` itself) — the demo-owned ones under
-the preset's `perf_grid` table, `--worker-threads` under its `config` table:
+`--auto-profile`, `--yaw` and `--config-preset` itself) — the demo-owned ones
+under the preset's `perf_grid` table, `--worker-threads` under its `config`
+table:
 
 - `--auto-profile <N>` — collect N frames of timing then exit; writes
   `save_files/profile_report.txt`.

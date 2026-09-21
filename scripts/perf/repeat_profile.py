@@ -38,14 +38,26 @@ def directory_digest(directory: Path) -> str:
     return digest.hexdigest()
 
 
-def yaw_pose_mismatch(demo_args: list[str], log_text: str) -> str | None:
-    """Why the pose IRPerfGrid logged contradicts its --yaw radians, else None."""
+def requested_yaw(demo_args: list[str]) -> float | None:
+    """The --yaw radians the demo will use (its last occurrence), else None.
+
+    Raises ValueError for a value the pose check cannot compare: non-numeric
+    or non-finite.
+    """
     requested = None
     for index, argument in enumerate(demo_args):
         if argument == "--yaw" and index + 1 < len(demo_args):
             requested = float(demo_args[index + 1])
         elif argument.startswith("--yaw="):
             requested = float(argument.split("=", 1)[1])
+    if requested is not None and not math.isfinite(requested):
+        raise ValueError(f"--yaw {requested} is not finite")
+    return requested
+
+
+def yaw_pose_mismatch(demo_args: list[str], log_text: str) -> str | None:
+    """Why the pose IRPerfGrid logged contradicts its --yaw radians, else None."""
+    requested = requested_yaw(demo_args)
     if requested is None:
         return None
     logged = YAW_POSE_RE.search(log_text)
@@ -53,9 +65,11 @@ def yaw_pose_mismatch(demo_args: list[str], log_text: str) -> str | None:
         return "the log has no 'Initial camera yaw' line"
     expected_deg = math.degrees(requested) % 360.0
     apart = abs(expected_deg - float(logged.group(1)) % 360.0)
-    if min(apart, 360.0 - apart) > YAW_POSE_TOLERANCE_DEG:
-        return (f"--yaw {requested} rad is {expected_deg:.3f} deg; "
-                f"the demo logged {float(logged.group(1)):.3f} deg")
+    if not min(apart, 360.0 - apart) <= YAW_POSE_TOLERANCE_DEG:
+        return (
+            f"--yaw {requested} rad is {expected_deg:.3f} deg; "
+            f"the demo logged {float(logged.group(1)):.3f} deg"
+        )
     return None
 
 
@@ -192,6 +206,10 @@ def main() -> int:
     demo_args = args.demo_args[1:] if args.demo_args[:1] == ["--"] else args.demo_args
     if "--auto-profile" not in demo_args:
         parser.error("demo arguments must include --auto-profile")
+    try:
+        requested_yaw(demo_args)
+    except ValueError as error:
+        parser.error(f"--yaw must be a finite number of radians: {error}")
     root = Path(__file__).resolve().parents[2]
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)

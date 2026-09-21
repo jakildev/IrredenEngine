@@ -1,9 +1,10 @@
 # `IRPerfGrid --yaw` unit: the rows labelled 45° were taken at 0.785°
 
-`IRPerfGrid --yaw` is documented as radians, and every recipe under
-`docs/perf/` passes `0.785398163` for a 45° pose. The demo handed that value
-to `IRRender::setCameraVisualYaw`, which takes degrees. The camera sat at
-0.785°, a near-cardinal pose on the per-axis scatter path. `IRCanvasStress`,
+`IRPerfGrid --yaw` was introduced taking degrees and has always fed
+`IRRender::setCameraVisualYaw`, which takes degrees. The IRArgs migration
+rewrote its help text to say radians without changing the call, and every
+recipe since follows the help text: `0.785398163` for a 45° pose. The camera
+sat at 0.785°, a near-cardinal pose on the per-axis scatter path. `IRCanvasStress`,
 `IRShapeDebug` and `ir_voxel_yaw` pass their radians to
 `IRPrefab::Camera::setYaw` and were never affected.
 
@@ -54,9 +55,13 @@ baseline (three passes, seven shots, byte-exact thresholds) passes 21 of 21
 on the fixed binary, and a before/after still of `--yaw` cannot be taken
 through the shot table. The logged pose and the cull counts are the evidence.
 
-`scripts/perf/repeat_profile.py` now fails an `IRPerfGrid` run whose logged
-pose is not its `--yaw` in radians (`yaw_pose_mismatch` in the manifest), so
-a profile can no longer be recorded at a pose other than the one it names.
+`scripts/perf/repeat_profile.py` fails an `IRPerfGrid` run whose logged pose
+is not its `--yaw` in radians (`yaw_pose_mismatch` in the manifest), and
+refuses a `--yaw` it cannot compare (non-numeric or non-finite). That covers
+profiles taken through it and the drivers built on it; a by-hand `fleet-run
+IRPerfGrid --yaw …` gets the log line and no gate. The pose lines of the
+after-arm runs are in [`after/poses.txt`](perf-grid-yaw-unit/after/poses.txt);
+these ten manifests predate the gate and carry no `yaw_pose_mismatch` key.
 
 ## What this means for the committed tables
 
@@ -74,16 +79,40 @@ as the 0.785° pose, and `rotation-controls`' near-cardinal arm
 manifests record the command that ran, and within one document both arms of a
 comparison sat at the same pose, so before/after differences stand.
 
+Three design documents hold `IRPerfGrid --yaw` measurements taken the same
+way and are not under `docs/perf/`:
+[`rotation-perf-cliff-1963-profile.md`](../design/rotation-perf-cliff-1963-profile.md)
+(its "0.05 ≈ 2.9°" and "π/8" poses were 0.05° and 0.39°, so its reading that
+the cost is a binary step and not a ramp was drawn from poses a third of a
+degree apart),
+[`per-axis-yaw-gpu-attribution.md`](../design/per-axis-yaw-gpu-attribution.md)
+("`--yaw 0.35` rad ≈ 20°" was 0.35°) and
+[`per-axis-trixel-canvas-rotation.md`](../design/per-axis-trixel-canvas-rotation.md)
+(`--yaw 0.35`).
+
 What does not stand without a re-run is any statement about 45° itself. At 64³
 the two poses happen to read close (20.16 against 19.45 ms on the same binary,
-3.7% apart), but yaw is not a free parameter on the scatter path: 58.3° reads
-14.90 ms and 116.6° reads 13.11 ms in the same session. A single rotated pose
-does not characterise rotation cost; the `--yaw` matrix axis (#3130) and a
-continuous sweep are the controls that do. The objective's rotation-parity
-baseline (2.06×, 30.3 / 14.7 ms) and the million-entity rows in
+3.6% apart), but frame time varies with pose: 58.3° reads 14.90 ms and 116.6°
+13.11 ms in the same session. This control cannot say why. The visible counts
+differ between those poses (255,246, 245,161 and 183,636), there is no
+matched-extent arm, and per thousand visible voxels the spread is much
+smaller (0.077, 0.061 and 0.071 ms), so it is not evidence of a
+yaw-dependent scatter cost. It is evidence that a single rotated pose does
+not characterise rotation; the `--yaw` matrix axis (#3130), a matched-extent
+arm and a continuous sweep are the controls that do. At the rotated poses and
+at the 90° cardinal the visible and axis-entry averages also sit below their
+maxima in a frozen scene (255,245.7 against 260,538 at 45°), a startup
+transient the constant-count poses do not show; the frame means there average
+over it. `0.785398163` lies exactly on the yaw split's rounding boundary (the
+logged residual is −45.0000°), so which raster basis a "45°" run takes can
+differ by host; record the residual with any 45° number.
+
+The objective's rotation-parity baseline (2.06×, 30.3 / 14.7 ms) and its 45°
+zoom-parity baseline (1.33×) both come from `rotation-subdivision-audit` and
+were taken at the 0.785° pose, as were the million-entity rows in
 `million-entity-capacity.md`, `overflow-demand-capacity.md` and
-`gpu-cost-attribution.md` are re-measured at a true 45° by the million
-controls, the campaign slice stacked on this one.
+`gpu-cost-attribution.md`. The million controls, the campaign slice stacked
+on this one, re-measure at a true 45°.
 
 The same commands now mean what their documents say. Re-running an old recipe
 reproduces the scene its table describes, not the pose its numbers came from.
