@@ -3237,6 +3237,45 @@ _cleanup_sweep_label() {
     esac
 }
 
+# open_issue_claim_labels <repo> <label-prefix>
+#   Emit `<issue-number><TAB><label>` for every OPEN issue in <repo> carrying a
+#   label that starts with <label-prefix>. Sole enumerator for both claim-label
+#   sweeps, so their populations cannot diverge.
+#
+#   The listing carries no label qualifier on purpose. Every terminal park
+#   removes `fleet:queued`, so a population selected by `label:"fleet:queued"`
+#   silently loses the claim labels sitting on parked issues — and `release` is
+#   a no-op on a claim with no local lock, so those labels have no sanctioned
+#   route off the issue at all. The prefix filter runs client-side because
+#   GitHub search has no label-prefix operator, and a query per known claim
+#   label would cost one API call per agent name the repo has ever used.
+open_issue_claim_labels() {
+    local repo="$1" prefix="$2"
+    local limit=1000
+    gh issue list --repo "$repo" --state open \
+        --json number,labels --limit "$limit" 2>/dev/null \
+        | LABEL_PREFIX="$prefix" ISSUE_LIMIT="$limit" python3 -c '
+import json, os, sys
+prefix = os.environ.get("LABEL_PREFIX", "")
+limit = int(os.environ.get("ISSUE_LIMIT", "0") or 0)
+try:
+    issues = json.load(sys.stdin)
+except Exception:
+    issues = []
+# A full page is indistinguishable from a truncated one, so say so rather than
+# reporting a sweep that covered an unknown fraction of the open issues.
+if limit and len(issues) >= limit:
+    print(f"fleet-claim: open-issue claim sweep hit the {limit}-issue listing "
+          "limit; claims past it were not enumerated this pass", file=sys.stderr)
+for issue in issues:
+    n = issue.get("number")
+    for l in (issue.get("labels") or []):
+        name = (l or {}).get("name", "") if isinstance(l, dict) else ""
+        if name.startswith(prefix):
+            print(f"{n}\t{name}")
+' | tr -d '\r' || echo ""
+}
+
 # cmd_cleanup_gh <repo> [<repo> ...]
 #   Five-pass GitHub label sweep — see help text for the full contract.
 cmd_cleanup_gh() {
@@ -3346,22 +3385,7 @@ for issue in issues:
     # PR-label orphan fast path).
     for repo in "${repos[@]}"; do
         local open_claim_plan open_pr_branches_json
-        open_claim_plan=$(gh issue list --repo "$repo" --state open \
-            --search "label:\"fleet:queued\"" \
-            --json number,labels --limit 200 2>/dev/null \
-            | python3 -c '
-import json, sys
-try:
-    issues = json.load(sys.stdin)
-except Exception:
-    issues = []
-for issue in issues:
-    n = issue.get("number")
-    for l in (issue.get("labels") or []):
-        name = (l or {}).get("name", "") if isinstance(l, dict) else ""
-        if name.startswith("fleet:claim-"):
-            print(f"{n}\t{name}")
-' 2>/dev/null | tr -d '\r' || echo "")
+        open_claim_plan=$(open_issue_claim_labels "$repo" "fleet:claim-")
 
         [[ -z "$open_claim_plan" ]] && continue
 
@@ -3637,23 +3661,7 @@ cmd_reset_sweep_host_claims() {
 
     for repo in "${repos[@]}"; do
         local open_claim_plan open_pr_branches_json
-        open_claim_plan=$(gh issue list --repo "$repo" --state open \
-            --search "label:\"fleet:queued\"" \
-            --json number,labels --limit 200 2>/dev/null \
-            | HOST_PREFIX="$prefix" python3 -c '
-import json, os, sys
-prefix = os.environ.get("HOST_PREFIX", "")
-try:
-    issues = json.load(sys.stdin)
-except Exception:
-    issues = []
-for issue in issues:
-    n = issue.get("number")
-    for l in (issue.get("labels") or []):
-        name = (l or {}).get("name", "") if isinstance(l, dict) else ""
-        if name.startswith(prefix):
-            print(f"{n}\t{name}")
-' 2>/dev/null | tr -d '\r' || echo "")
+        open_claim_plan=$(open_issue_claim_labels "$repo" "$prefix")
 
         [[ -z "$open_claim_plan" ]] && continue
 

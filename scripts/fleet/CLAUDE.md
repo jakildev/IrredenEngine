@@ -180,8 +180,8 @@ subjects; `ctest` never sees them. Validator index: [`VALIDATION.md`](../../docs
   `_spawn_ok`). A new guard or action goes above the write and into
   `tests/test_scout_degraded_fetch.py` or a suite reusing its harness.
 - **An ingest round-trip captures its candidate set above the section
-  filters.** `fetch_task_queue` drops `fleet:plan-review`, `fleet:needs-human`
-  and `fleet:gated` before building the task dict and splits the rest by
+  filters.** `fetch_task_queue` drops every `_TASK_QUEUE_PARK_LABELS` row and
+  `fleet:plan-review` before building the task dict and splits the rest by
   claim state, so a candidate derived from `tasks.open` is blind to all of
   them; capture into `tasks.plan_gated` inside the loop, above the
   `continue`s, and test the row present in the candidate list **and** absent
