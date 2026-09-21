@@ -142,6 +142,7 @@ OUT_OF_TREE_SUBJECTS=(
     'CMakeLists.txt'
     'CMakePresets.json'
     'README.md'
+    'cmake/run_glsl_reserved_word_check.cmake'
     'cmake/run_header_checks_standalone.cmake'
     'cmake/run_header_convention_checks.cmake'
     'cmake/run_metal_kernel_registry_check.cmake'
