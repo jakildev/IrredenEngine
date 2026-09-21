@@ -1112,13 +1112,15 @@ static_assert(
 );
 
 struct FrameDataSun {
-    // xyz = unit vector pointing from surfaces toward the sun; w unused.
+    // xyz = unit vector pointing from surfaces toward the sun.
+    // The w channels of direction/U/V pack the world-space cascade depth axis.
+    // Its dot product with a world receiver matches the bake prism's depth.
     // Default mirrors RenderManager::m_sunDirection (overhead with small
     // -X / -Y tilt — those match the outward-normal signs of the visible
     // X_FACE / Y_FACE so dot-product shading produces Z > X > Y).
     // Live frame data is uploaded by BAKE_SUN_SHADOW_MAP each tick — this
     // default only matters before the first tick.
-    vec4 sunDirection_ = vec4(-0.3f, -0.2f, -0.93f, 0.0f);
+    vec4 sunDirection_ = vec4(-0.3f, -0.2f, -0.93f, 1.0f);
     float sunIntensity_ = 1.0f;
     float sunAmbient_ = 0.4f;
     int shadowsEnabled_ = 1;
@@ -1129,9 +1131,9 @@ struct FrameDataSun {
     // FrameDataSun.
     int aoEnabled_ = 1;
     // Orthonormal basis perpendicular to sunDirection_, computed CPU-side
-    // each frame in system_bake_sun_shadow_map. .w is std140 padding.
-    vec4 sunBasisU_ = vec4(0.0f);
-    vec4 sunBasisV_ = vec4(0.0f);
+    // each frame in system_bake_sun_shadow_map; w carries cascade-axis y/z.
+    vec4 sunBasisU_ = vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    vec4 sunBasisV_ = vec4(0.0f, 0.0f, 0.0f, 1.0f);
     // sunPx = floor((dot(p, uHat/vHat) - origin) / texelSize).
     // Legacy single-map fields — kept for backward compat; equal to
     // cascade 0 when CSM is active (cascadeCount_ == 2).

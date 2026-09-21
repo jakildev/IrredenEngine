@@ -30,6 +30,11 @@ inline float3 sunSpaceProject(float3 pos3D, float3 uHat, float3 vHat, float3 sun
     return float3(dot(pos3D, uHat), dot(pos3D, vHat), -dot(pos3D, sunDir));
 }
 
+// Depth is in the bake prism's camera frame, independent of raster density.
+float sunCascadeReceiverDepth(float3 worldPosition, float3 worldDepthAxis) {
+    return dot(worldPosition, worldDepthAxis);
+}
+
 // Caster pack / receiver unpack — one co-located inverse pair, so what
 // casters store and what receivers compare cannot drift.
 //

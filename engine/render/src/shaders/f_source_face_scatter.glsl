@@ -50,7 +50,7 @@ void main() {
     FragColor = faceColor;
     if (faceLightingMode != kSourceLightingBaked) {
         const float visibility = worldSurfaceSunShadowFactor(faceWorldPosition, faceWorldNormal,
-            pos3DtoDistance(faceWorldPosition), _detachedDepthAxisPad);
+            _detachedDepthAxisPad);
         FragColor = sourceFaceLitColor(faceColor, faceDirectSunAndExposure, faceAO,
             faceLightingMode, visibility);
     }

@@ -287,8 +287,8 @@ void main() {
         shadow = 1.0;
         if (shadowsEnabled != 0 && !continuousShadow) {
             shadow = (sourceMode || visibleFaceIds.w == 2)
-                ? worldSurfaceSunShadowFactor(worldReceivePos, worldNormal, pos3DtoDistance(worldReceivePos), detachedViewToWorld)
-                : worldSunShadowFactor(worldReceivePos, worldNormal, pos3DtoDistance(worldReceivePos));
+                ? worldSurfaceSunShadowFactor(worldReceivePos, worldNormal, detachedViewToWorld)
+                : worldSunShadowFactor(worldReceivePos, worldNormal);
         }
     } else {
         shadow = detachedCanvas ? 1.0 : imageLoad(canvasSunShadow, pixel).r;

@@ -62,6 +62,13 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
   recovery and sampling together; it is diagnostic, not a shipped SDF fix.
   Preserve exact SDF surface location/normal and geometric coverage through final
   presentation rather than tuning bias to hide the discrepancy.
+- [Cascade receiver coordinates](../pr-screenshots/codex/sun-cascade-receiver-space/README.md)
+  now use one world-to-bake-depth calculation across main, per-axis overflow,
+  detached and source-fragment receivers. Executed CPU/shader controls pass;
+  native floor at 180° changes from 12/266 to 19/356 missing/excess pixels, while the
+  other quadrants and four continuous source controls are unchanged. This is a
+  coordinate correction, not floor-edge acceptance; retain the regression while
+  resolving exact SDF surface sampling and projected coverage.
 - Next: resolve finite sampling misses and small GRID floor-shadow boundaries
   across quadrants against ray/face geometry, preserving legitimate partial faces.
 - Keep six oriented face normals, twelve geometric half-faces, coordinate basis

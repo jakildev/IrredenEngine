@@ -5,26 +5,17 @@ the map tap but misses the receiver ray. It tests sampler layer ownership, not
 GPU atomics, tile construction, cascade selection or final pixel coverage.
 """
 
-import re
 import shutil
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
+from shader_contract_helpers import extract_function
+
 SHADERS = Path(__file__).resolve().parents[2] / "engine/render/src/shaders"
 COMPILER = shutil.which("c++")
 
-
-def function(source, name):
-    match = re.search(r"(?:inline )?(?:float|bool|uint|int) " + name + r"\([^)]*\) \{", source)
-    if match is None:
-        raise ValueError(f"missing shader function {name}")
-    depth, end = 1, match.end()
-    while depth:
-        depth += (source[end] == "{") - (source[end] == "}")
-        end += 1
-    return source[match.start():end]
 
 
 PREAMBLE = r"""
@@ -111,7 +102,7 @@ class MixedSourceShadowTest(unittest.TestCase):
             end = sampler.index("\n    float slope", start)
             # Exclude the enclosing surface-receiver condition's closing brace.
             loop = sampler[start:end].rstrip().rsplit("}", 1)[0]
-            helpers = "\n".join(function(projection, name) for name in (
+            helpers = "\n".join(extract_function(projection, name) for name in (
                 "sunWriteIsSurface", "sunVoxelFaceId", "sunVoxelFaceViewAligned",
                 "unpackSunDepth"))
             variants = {

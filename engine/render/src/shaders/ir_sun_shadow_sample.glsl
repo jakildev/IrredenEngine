@@ -233,10 +233,14 @@ float worldSunShadowFactorImpl(vec3 pos3D, vec3 normal, float isoDepth, bool sur
 }
 
 // Raster-origin receivers retain their outward sampling offset.
-float worldSunShadowFactor(vec3 pos3D, vec3 normal, float isoDepth) {
+float worldSunShadowFactor(vec3 pos3D, vec3 normal) {
+    const float isoDepth = sunCascadeReceiverDepth(pos3D,
+        vec3(sunDirection.w, sunBasisU.w, sunBasisV.w));
     return worldSunShadowFactorImpl(pos3D + normal * kNormalBiasVoxels, normal, isoDepth, false, vec4(0.0, 0.0, 0.0, 1.0));
 }
 
-float worldSurfaceSunShadowFactor(vec3 pos3D, vec3 normal, float isoDepth, vec4 casterViewToWorld) {
+float worldSurfaceSunShadowFactor(vec3 pos3D, vec3 normal, vec4 casterViewToWorld) {
+    const float isoDepth = sunCascadeReceiverDepth(pos3D,
+        vec3(sunDirection.w, sunBasisU.w, sunBasisV.w));
     return worldSunShadowFactorImpl(pos3D, normal, isoDepth, true, casterViewToWorld);
 }

@@ -1,0 +1,18 @@
+[
+  {
+    "yaw": 0,
+    "changed_rgb_pixels": 0
+  },
+  {
+    "yaw": 90,
+    "changed_rgb_pixels": 0
+  },
+  {
+    "yaw": 180,
+    "changed_rgb_pixels": 1488
+  },
+  {
+    "yaw": 270,
+    "changed_rgb_pixels": 0
+  }
+]
