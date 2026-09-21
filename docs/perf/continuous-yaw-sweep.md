@@ -94,13 +94,46 @@ manifests: [continuous-yaw-sweep/](continuous-yaw-sweep/).
    through the cardinals has a p99 of 78 to 88 ms where the sweep half a step
    off them has 57 ms. The frame on the cardinal itself is ordinary (34 to
    39 ms). The per-axis canvases are released on that frame and allocated
-   again on the next, which is the first candidate and is not separated from
-   the raster-path switch here.
+   again on the next, and § The crossing frame, split shows that is the cost.
 4. **The fixed updates are worth about 3 ms of a 41 ms frame.** With the clamp
    at one update a frame the sweep reads 37.88 ms against 41.11 at 2.5, GPU
    frame envelope unchanged. That is D5's first number at this fixture: the
    objective's "≤ 1 update per rendered frame" row is worth about 3 ms here
    and the other 38 ms is rendering, 28 of them on the GPU.
+
+## The crossing frame, split
+
+Same host, build, scene and pinned sweep as above, host load 2.5 to 3.0. The
+per-axis canvases' `allocate` and `release` calls are timed into the report's
+CPU phase table (`PerAxisCanvas::Allocate`, `PerAxisCanvas::Release`), and the
+control removes the variable: a local patch, never committed, that skips the
+release, so the sets allocated on the first rotated frame stay resident for
+the whole turn.
+
+| Through the cardinals, pinned | Frame on the cardinal ms | First rotated frame after ms | Second ms | Steady p99 ms | Allocations / releases |
+|---|---:|---:|---:|---:|---:|
+| Lifecycle as it is | 34.6 / 38.9 / 39.0 | **88.0 / 77.3 / 84.7** | 46.0 / 47.7 / 47.6 | 77.28 | 4 / 3 |
+| Lifecycle as it is, replicate | 37.4 / 40.1 / 38.8 | **77.7 / 92.9 / 78.3** | 46.4 / 51.2 / 47.7 | 77.74 | 4 / 3 |
+| Release disabled | 55.9 / 57.3 / 59.2 | **47.5 / 48.6 / 45.6** | 44.3 / 43.6 / 42.9 | 55.86 | 1 / 0 |
+| Release disabled, replicate | 58.7 / 59.9 / 57.0 | **46.0 / 48.6 / 48.5** | 42.1 / 41.8 / 50.5 | 58.66 | 1 / 0 |
+
+(Three values a cell: the 90°, 180° and 270° crossings.)
+
+- **The crossing frame is the re-allocation.** With the sets left resident the
+  first rotated frame after a cardinal costs 46 to 49 ms, not 77 to 93: about
+  35 to 45 ms a crossing, three times a turn, and it is the sweep's p99.
+- **It is not CPU time in the calls.** `allocate` costs 1.3 ms and `release`
+  0.7 to 1.1 ms. The cost lands on the first frame that uses the fresh three
+  texture sets and the 96 MiB overflow buffer, which is where a driver that
+  defers allocation pays for it.
+- **The experiment's cardinal frame is not the mechanism's.** With nothing
+  released, `isAllocated()` stays true on the cardinal frame, so that frame
+  runs the per-axis path at zero residual and costs 56 to 60 ms where the
+  cardinal fast path costs 35 to 40. Eight render systems read that predicate
+  as "the per-axis path is live", so a real mechanism has to keep the sets
+  resident while reporting them not live on a cardinal frame. Done that way
+  the expected turn is about 37 ms on a cardinal, about 47 after it, and a
+  p99 near 50 ms where it is 78 to 88 today.
 
 ## What this does not say
 
@@ -116,9 +149,10 @@ manifests: [continuous-yaw-sweep/](continuous-yaw-sweep/).
 
 ## Next measurements
 
-1. Separate the crossing frame: per-axis release and re-allocation against the
-   raster-path switch, since those three frames are the objective's p99 under
-   the sweep it names.
+1. Keep the per-axis canvases resident across a crossing while the camera is
+   turning, without changing what `isAllocated()` means to its readers, and
+   re-run the pinned sweep: no crossing frame above 60 ms, and nine-yaw
+   CanvasStress identity.
 2. The sweep in the three-round quiet-host matrix, and a longer window than
    one turn for the tail.
 3. The static 0° and 45° arms again with `--pivot-origin`, so the matrix's

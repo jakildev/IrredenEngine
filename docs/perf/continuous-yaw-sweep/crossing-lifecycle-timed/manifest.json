@@ -1,0 +1,51 @@
+{
+  "head": "4bb97f968fcb93f2aaa55b5f8f3c290dd7e17a34",
+  "changes": "M  engine/prefabs/irreden/render/gpu_stage_timing.hpp\nM  engine/prefabs/irreden/render/per_axis_canvas.hpp\nM  engine/world/src/world.cpp\nM  test/render/run_witness_test.cpp\n",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "host_power": "AC Power",
+  "host_cpus": 14,
+  "build_dir": "build-release",
+  "build_type": "Release",
+  "binary_sha256": "9105950d8e90691c74773fac3458ec9b554d346a9d49abe3ac901b95b32d26a2",
+  "shader_sha256": "6a13afcaf26f7615a140427a3ff67efe4daa47344cf59db38c0af523f4e01661",
+  "runtime_scripts_sha256": "85a4c4c0e04ff77ce830640f6b8935b4ab8dcad11f1ff0dfccbc3dd918d927f6",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "900",
+    "IRPerfGrid",
+    "--wave-freeze",
+    "--no-overlay",
+    "--auto-profile",
+    "300",
+    "--config-preset",
+    "configs/perf/million-profiling-off.lua",
+    "--yaw",
+    "0",
+    "--yaw-step",
+    "0.020943951"
+  ],
+  "runs": [
+    {
+      "index": 1,
+      "started_utc": "2026-09-21T21:35:14Z",
+      "host_battery_percent": 100,
+      "host_load_1m": 2.49,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "engine_logged": false,
+      "yaw_pose_mismatch": null,
+      "overflow_failure": null,
+      "yaw_first_deg": 0.0,
+      "yaw_last_deg": -1.2,
+      "yaw_travel_deg": 358.8,
+      "zoom": 4.0,
+      "overflow_max_dropped": 0,
+      "overflow_max_entries": 971724,
+      "overflow_samples": 296,
+      "gpu_measured": true
+    }
+  ]
+}

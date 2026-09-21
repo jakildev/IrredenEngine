@@ -57,7 +57,11 @@ TEST(RenderRunWitness, ResetForgetsThePreviousRun) {
     witness.recordPose(1.0f, 2.0f);
     witness.recordPose(2.0f, 2.0f);
     witness.recordOverflow(9u, 9u, 9u);
+    witness.perAxisAllocate_.record(1.5);
+    witness.perAxisRelease_.record(1.5);
     witness.reset();
+    EXPECT_EQ(witness.perAxisAllocate_.sampleCount_, 0u);
+    EXPECT_EQ(witness.perAxisRelease_.sampleCount_, 0u);
     EXPECT_EQ(witness.poseSamples_, 0u);
     EXPECT_EQ(witness.overflowSamples_, 0u);
     EXPECT_EQ(witness.maxOverflowDropped_, 0u);

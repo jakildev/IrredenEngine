@@ -101,9 +101,23 @@ D1 slices touch only tooling and docs, so they may interleave with D0.
 | 2026-09-21 | D1.2a closed: the profile report is a run's own witness. `VOXEL_TO_TRIXEL_STAGE_1` records the yaw it renders at and the overflow ctrl block it already reads into `IRRender::renderRunWitness()` every frame, stage profiling on or off, and the report gains a `Run witness` section (yaw first, last and travelled, zoom, overflow max entries, max dropped, cap, frames sampled), a `Steady frame time` line over the frames after the first quarter, and the frame series. `repeat_profile.py` reads the witness and not the log: it refuses a wrong first or last pose, a camera that moved during a static pose, any dropped entry, a rotated pose that never sampled the lane and a report with no witness, and it pools steady frames across runs for the tail; `million_controls.py` re-verifies every arm from its report. Controls, each on a real binary: four static poses witnessed by a Release build; `overflowCap_` forced to 65,536 reads **565,306 dropped** (630,842 − 65,536) and is refused, where the old warning-line count read 2; the shot-table ramp reads 267.000° travelled through the ±180° seam; a 60-frame run reads p99 102.09 ms all-frames and 20.97 ms steady. At the million control all eight arms vouch for themselves, Release stage-profiling-off included: 45.000°, **0 dropped, 2,208,000 peak entries of an 8,388,608 cap (26%, 25 of 96 MiB)**, which is D2's first residency number. The round's milliseconds are not a reference: the fleet held the host at a load of 7 to 19 and the same frozen scene read 36.8 then 45.5 ms with its frame minimum unchanged, so manifests now carry `host_load_1m`, `host_cpus`, start time and battery charge, and the lock's blind spot is #3638. Evidence: [`million-controls.md`](../../perf/million-controls.md) § Witnessed round, § The run witness and its controls |
 | 2026-09-21 | Lane split, again: the open stack #3632 → #3635 (tagged for this campaign, another author) and #3629 own the lighting and shadow kernels, `c_shapes_to_trixel`, `ir_iso_common`, the stage-2 body and `rendering-audit-todo.md`, which is every open D0 item's file, so the campaign stays on D1 and takes D0 up again when they merge |
 | 2026-09-21 | D1.2b closed: continuous yaw is a profiled fixture. `IRPerfGrid --yaw-step <radians>` renders frame N at `--yaw + (N − 1) × step`, per rendered frame and as an absolute yaw, so every run renders the same poses; `repeat_profile.py` checks first pose, last pose and travelled arc from the witness (a 300-frame turn reads 0.000 → −1.200, 358.800° travelled, exactly 299 × 1.2°), `million_controls.py` runs it as a third pose, and the report gains a per-frame update-tick series. **A driven yaw pins its pivot at the grid centre** (`--pivot-origin` for a static pose, on every matrix arm): with the default pivot, which latches the surface under the viewport centre on settled frames, the same yaw frames a different part of the world depending on which frames settled, and the first unpinned sweeps read as three engine findings that were one fixture fault (a cheap first quadrant with fewer voxels in view, a 602 to 739 ms frame where the pivot re-latches on the 90° frame and the view jumps, then 65 frames at the 8-update clamp). Pinned, at the million control in Release with stage profiling off (host load 2.7 to 4.5, not reference milliseconds; [`continuous-yaw-sweep.md`](../../perf/continuous-yaw-sweep.md)): **zero overflow drops across all 300 poses of a full turn**, peak 2,208,000 of 8,388,608 entries at exactly 45°, which is the objective's drop row read on Metal; rotation costs the same at every yaw (quadrant medians 39.1 to 41.3 ms); **a cardinal crossing costs one frame of 78 to 92 ms and those three frames are the sweep's tail** (p99 78 to 88 ms against 57 ms half a step off the cardinals); and the fixed updates are worth about 3 ms of a 41 ms frame (37.88 ms at a one-update clamp) |
+| 2026-09-21 | D1.2c closed: the crossing frame is the per-axis re-allocation. `PerAxisCanvas::Allocate` and `::Release` are in the report's CPU phase table (1.3 and 0.7 to 1.1 ms a call, so the cost is not in the calls), and with the release disabled by a local, never committed patch the pinned sweep's first rotated frame after each cardinal drops from **77 to 93 ms to 46 to 49 ms** and its p99 from 77 to 56 to 59 ms, in two runs each. The experiment's own cardinal frame rises to 56 to 60 ms because it runs the per-axis path at zero residual; eight systems read `isAllocated()` as "the per-axis path is live", so the mechanism has to keep the sets resident while reporting them not live on a cardinal. This slice was first drawn through the unpinned fixture, where the same experiment left a 452 ms frame in place and the conclusion was the opposite; that frame was the pivot re-latch (D1.2b), and the first version of #3650 was replaced, not amended. Evidence: [`continuous-yaw-sweep.md`](../../perf/continuous-yaw-sweep.md) § The crossing frame, split |
 
 ### Decisions taken
 
+- 2026-09-21: the crossing mechanism is its own slice, after a checkpoint. It
+  changes the lifecycle of a render component eight systems read, three of
+  them in files another lane has open, so it keeps `isAllocated()` meaning
+  "the per-axis path is live" and parks the resident sets inside
+  `C_PerAxisTrixelCanvases`. Rejected: shipping it inside the measurement
+  slice (one contract change a PR, and the measurement had just been wrong
+  once), and widening the predicate to `isAllocated() && rotating` across the
+  eight readers (it edits the other lane's files for no gain over parking).
+- 2026-09-21: a conclusion drawn through a fixture is re-derived when the
+  fixture changes, not patched. D1.2c's first version said the crossing was
+  not the re-allocation; the control that said so ran on the unpinned sweep,
+  whose long frame was a camera jump. The branch was rebuilt on the corrected
+  parent and the experiment re-run; the old head is not kept in the tree.
 - 2026-09-21: the sweep steps per rendered frame to an absolute yaw. A
   per-second rate makes a slow run render fewer, wider-spaced poses than a fast
   one, so two arms of one comparison would not render the same frames and the
@@ -257,26 +271,32 @@ D1 slices touch only tooling and docs, so they may interleave with D0.
 
 ## Now
 
-- **In flight:** D1.2a (#3641) and D1.2b, continuous yaw as a profiled fixture
-  (stacked on it); both `fleet:wip`.
-- **Next:** the cardinal crossing, as measurement then mechanism, because its
-  three frames are the objective's tail under the sweep it names: time the
-  per-axis allocate and release into the report, separate release and
-  re-allocation from the raster-path switch with the pivot pinned, and only
-  then decide whether to keep the per-axis canvases resident across a crossing
-  while the camera is turning. Acceptance is the through-the-cardinals sweep
-  in `continuous-yaw-sweep.md` with no crossing frame above 60 ms, and
-  nine-yaw CanvasStress identity. Owed and blocked on a **quiet host** (#3638;
-  ask the human for a window at the next checkpoint, and read `host_load_1m`
-  before believing a table): the three-round million reference on master's
-  current shaders with every arm pinned and the sweep arm, and the docs PR
-  proposing the objective's rotation and zoom parity baselines at a true 45°.
-  Still on the D1 list: a matched-projected-extent arm (the pin is most of
-  it), a longer window for the tail, the `--yaw` perf-matrix axis (#3130,
-  parked `human:owned` for this campaign), and #3581's worklist (a C++ test
-  for the pre-init pass on a preset, the preset directory inside the
-  fingerprints, the 0.9 GB profiler dump). D0 and D4 wait on #3632, #3635 and
-  #3629. D2 has its targets and two residency numbers: at 45° the light
-  volume, per-axis AO and overflow lighting and sort are the largest sampled
-  GPU stages, the GPU frame alone is 28 to 30 ms, and the overflow lane peaks
-  at 26% of its 96 MiB at exactly 45° and 12% at 44.4°.
+- **In flight:** D1.2a (#3641), D1.2b (#3645) and D1.2c (#3650), stacked in
+  that order; all `fleet:wip`. D1.2d, the fixture that reaches one pose from
+  two first frames and captures it (the control that found the pivot fault),
+  is next on the stack.
+- **Next:** checkpoint the stack, then the crossing mechanism: keep the
+  per-axis canvases resident across a crossing while the camera is turning,
+  parked inside `C_PerAxisTrixelCanvases` so `isAllocated()` still means "the
+  per-axis path is live" to its eight readers, released after the camera has
+  sat on a cardinal for a while. Acceptance: the pinned through-the-cardinals
+  sweep with no crossing frame above 60 ms (78 to 93 today) and a cardinal
+  frame at its fast-path cost, and nine-yaw CanvasStress identity. It touches
+  `per_axis_canvas.hpp` and `component_per_axis_trixel_canvases.hpp`, which no
+  open lane owns. Then the question the pin left open: whether the default
+  pivot re-latching on a cardinal landing is a defect for a camera driven at a
+  constant rate (file it with the two-first-frames capture as the repro).
+  Owed and blocked on a **quiet host** (#3638; ask the human for a window at
+  the checkpoint, and read `host_load_1m` before believing a table): the
+  three-round million reference on master's current shaders with every arm
+  pinned and the sweep arm, and the docs PR proposing the objective's rotation
+  and zoom parity baselines at a true 45°. Still on the D1 list: a
+  matched-projected-extent arm (the pin is most of it), a longer window for
+  the tail, the `--yaw` perf-matrix axis (#3130, parked `human:owned` for this
+  campaign), and #3581's worklist (a C++ test for the pre-init pass on a
+  preset, the preset directory inside the fingerprints, the 0.9 GB profiler
+  dump). D0 and D4 wait on #3632, #3635 and #3629. D2 has its targets and two
+  residency numbers: at 45° the light volume, per-axis AO and overflow
+  lighting and sort are the largest sampled GPU stages, the GPU frame alone is
+  28 to 30 ms, and the overflow lane peaks at 26% of its 96 MiB at exactly 45°
+  and 12% at 44.4°.

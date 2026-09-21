@@ -464,6 +464,12 @@ void World::buildAndWriteProfileReport() {
          lightVolumeTiming.upload_.sampleCount_}
     );
 
+    for (const auto &[name, phase] :
+         {std::pair{"PerAxisCanvas::Allocate", IRRender::renderRunWitness().perAxisAllocate_},
+          std::pair{"PerAxisCanvas::Release", IRRender::renderRunWitness().perAxisRelease_}}) {
+        report.cpuPhases_.push_back({name, phase.totalMs_, phase.maxMs_, phase.sampleCount_});
+    }
+
     const auto &cull = IRRender::voxelCullAccumulator();
     report.voxelCullStats_.visibleSum_ = cull.visibleSum_;
     report.voxelCullStats_.totalSum_ = cull.totalSum_;
