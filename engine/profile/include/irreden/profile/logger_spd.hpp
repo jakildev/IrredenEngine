@@ -21,6 +21,10 @@ class LoggerSpd {
     inline spdlog::logger *getGameLogger() {
         return m_clientLogger.get();
     }
+    // Sink for Lua `print`; see engine/script/CLAUDE.md for the contract.
+    inline spdlog::logger *getScriptLogger() {
+        return m_scriptLogger.get();
+    }
 
   private:
     LoggerSpd();
@@ -28,6 +32,7 @@ class LoggerSpd {
     std::shared_ptr<spdlog::logger> m_engineLogger;
     std::shared_ptr<spdlog::logger> m_GLAPILogger;
     std::shared_ptr<spdlog::logger> m_clientLogger;
+    std::shared_ptr<spdlog::logger> m_scriptLogger;
 };
 
 #endif /* LOGGER_SPD_H */
