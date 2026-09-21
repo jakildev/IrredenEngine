@@ -182,7 +182,7 @@ recording it and then failing to spawn — discards the change permanently:
 the next tick compares equal and skips too. The write therefore clears the
 whole fallible region; "put it below the guards" is the special case. A
 multi-command lane needs an explicit partial-failure rule (`queue-manager`
-is all-or-none, safe because both sweeps are idempotent), and because an
+is all-or-none, safe because every sweep it fires is idempotent), and because an
 unwritten hash makes the lane retry every tick, its failure path needs the
 escalate-then-quiet pair or it becomes exactly the per-tick spam the
 previous paragraph forbids.

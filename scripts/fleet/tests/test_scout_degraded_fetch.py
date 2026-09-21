@@ -407,13 +407,16 @@ class _ScoutTickHarness:
             streak.clear()
             self.addCleanup(streak.clear)
 
-    def _tick(self, tmp, projection, degraded, spawns, popen=None, logs=None):
+    def _tick(self, tmp, projection, degraded, spawns, popen=None, logs=None,
+              served=False, game_dir=None):
         """Run one tick_once() against a hermetic state dir.
 
         `spawns` accumulates each subprocess.Popen argv so a caller can count
         real spawns per lane. `popen` overrides the recorder (used to raise).
-        `logs`, when given, accumulates the tick's log lines. Returns nothing —
-        assertions read those lists and the seen-hash files under tmp.
+        `logs`, when given, accumulates the tick's log lines. `served` drives
+        the follower arm (`authoritative = not served`), and `game_dir` stands
+        in for a present game clone. Returns nothing — assertions read those
+        lists and the seen-hash files under tmp.
         """
         state = {"generated_at": "2026-08-08T00:00:00Z", "repos": {}}
         if degraded:
@@ -447,8 +450,8 @@ class _ScoutTickHarness:
             p(patch.object(_mod, "_alerts_dir", lambda: Path(tmp) / "alerts"))
             p(patch.object(_mod, "PROJECTORS", projectors))
             p(patch.object(_mod, "SLICERS", {}))
-            p(patch.object(_mod, "GAME", Path(tmp) / "no-game"))
-            p(patch.object(_mod, "build_state", return_value=(state, False)))
+            p(patch.object(_mod, "GAME", game_dir or Path(tmp) / "no-game"))
+            p(patch.object(_mod, "build_state", return_value=(state, served)))
             p(patch.object(_mod.subprocess, "Popen", popen or _popen))
             p(patch.object(_mod, "log", _log))
             for fn in ("_refresh_gh_token", "sample_github_rate_limit",

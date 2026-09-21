@@ -258,19 +258,20 @@ Protocol: [`FLEET-FEEDBACK-HANDLING.md`](FLEET-FEEDBACK-HANDLING.md).
   `fleet:human-deferred` + `fleet:changes-made` in one call, keep
   `fleet:approved`). Re-adding `human:needs-fix` forces AMEND.
 - `fleet:human-amending` — "hold merge, fixes pending."
-- `fleet:human-deferred` — the concerns are filed as a follow-up and the PR
-  is internally OK. Not a merge gate (every PR is human-merged) and the
-  merger does not skip it. Scoped to the diff at defer
-  time: whoever pushes new commits drops it and the PR re-enters review,
-  which honors the linked issue and does not re-raise the deferred concern.
+- `fleet:human-deferred` — concerns filed as a follow-up, PR internally OK.
+  Not a merge gate (every PR is human-merged) and the merger does not skip
+  it. Scoped to the diff at defer time: whoever pushes new commits drops it
+  and the PR re-enters review, honoring the linked issue without re-raising.
 - `human:wip` — **human** is editing the PR; every agent stands off.
 - `fleet:wip` — **author worker or campaign driver** while a PR is not
   ready for review; reviewers skip it. Not on Cursor / human-ready PRs;
   not on issues.
-- `fleet:stalled` — **scout** idle sweep on a `fleet:wip` PR idle 7+ days,
-  with a one-shot comment. Removing it re-arms the timer. The human
-  resolves; closing the PR is the reap path, after which `cleanup --gh`
-  sweeps the issue's claim labels once the TTL passes.
+- `fleet:stalled` — hourly `fleet-stalled-sweep`, **scout**-spawned on the
+  authoritative poller: a `fleet:wip` PR idle 7+ days by `updatedAt` takes the
+  label plus one comment; `human:wip` / `fleet:awaiting-infra` exempt, design
+  parks not. Removal bumps `updatedAt`, re-arming the timer; the sweep drops
+  the label once `fleet:wip` is off. Closing the PR is the reap path —
+  `cleanup --gh` then sweeps the issue's claim labels once the TTL passes.
 
 ## Escalation and parks
 

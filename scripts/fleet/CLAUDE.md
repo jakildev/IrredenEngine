@@ -172,13 +172,13 @@ subjects; `ctest` never sees them. Validator index: [`VALIDATION.md`](../../docs
   reason**; a skip that persists is the every-tick case below.
 - **Neither a skip nor a failed action consumes an edge-triggered lane's
   edge.** In the scout's hash-self-managing lanes (`queue-manager`,
-  `queue-manager-ingest`, periodic claim cleanup) the seen-hash or
-  last-run write sits after every early-`continue` **and** after the action
-  succeeded, clearing the whole fallible region; a multi-command lane states
-  its partial-failure rule (`queue-manager` is all-or-none), and its retry
-  path carries the escalate-then-quiet pair (`_spawn_failed` / `_spawn_ok`).
-  A new guard or action goes above the write and into
-  `tests/test_scout_degraded_fetch.py`.
+  `queue-manager-ingest`, the periodic claim-cleanup and stalled sweeps) the
+  seen-hash or last-run write sits after every early-`continue` **and** after
+  the action succeeded, clearing the whole fallible region; a multi-command
+  lane states its partial-failure rule (`queue-manager` is all-or-none), and
+  its retry path carries the escalate-then-quiet pair (`_spawn_failed` /
+  `_spawn_ok`). A new guard or action goes above the write and into
+  `tests/test_scout_degraded_fetch.py` or a suite reusing its harness.
 - **An ingest round-trip captures its candidate set above the section
   filters.** `fetch_task_queue` drops `fleet:plan-review`, `fleet:needs-human`
   and `fleet:gated` before building the task dict and splits the rest by

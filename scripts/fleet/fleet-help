@@ -266,6 +266,12 @@ Parallel-agent fleet (tmux + Claude)
   fleet-reconcile-amendments     boot-time reconciler for fleet:human-amending
                                  PRs vs worktree/reservation state; invoked by
                                  fleet-up at start
+  fleet-stalled-sweep --repo OWNER/REPO [--repo …] [--dry-run]
+                                 hourly idle sweep: stamps fleet:stalled +
+                                 one human comment on a fleet:wip PR idle 7+
+                                 days, and drops the label from a PR that is
+                                 no longer wip; spawned by fleet-state-scout
+                                 on the authoritative poller
   fleet-rebase --auto [--dry-run]
                                  tier-0 merger: mechanical rebases of approved
                                  stacked/conflicting PRs for zero tokens;
