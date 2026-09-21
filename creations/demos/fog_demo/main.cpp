@@ -457,13 +457,30 @@ constexpr IRVideo::AutoScreenshotShot kEdgeZCostCeilingShots[] = {
      sizeof(kCropsEdgeZCostCeiling9) / sizeof(kCropsEdgeZCostCeiling9[0])},
 };
 
+// --entity-reveal: whole-body fog reveal under the --edge-zcost-ceiling hard
+// ceiling (#3156). One screen row (x + y = 0) of equal-height bodies rising
+// past the ceiling, each pair side by side so its crops compare like for like:
+// an untagged and a governed voxel pillar, a flagged and an unflagged SDF box,
+// and a governed pillar whose anchor is inside the disc while its outer
+// columns cross the XY rim. A governed pillar outside every circle stays
+// hidden. Row offsets are along (1, -1); kEntityRevealSpacing leaves a
+// 2-unit gap between the 4-wide footprints. Slot 0 lands screen-right, and
+// each crop frames one whole body (base to top) at the 2560x1440 zoom-6 shot.
 bool g_entityReveal = false; // --entity-reveal
+constexpr float kEntityRevealRadius = 20.0f;
+constexpr float kEntityRevealSpacing = 5.0f;
+constexpr int kEntityRevealBodyHeight = 16;
+constexpr std::uint32_t kEntityRevealShapeFlag = 0u;
+IREntity::EntityId g_entityRevealProbe = IREntity::kNullEntity;
 constexpr IRVideo::RoiCrop kCropsEntityReveal[] = {
-    {650, 220, 420, 620, "untagged_column_clip"},
-    {1030, 220, 420, 620, "tagged_stage1_exemption"},
+    {1580, 240, 300, 680, "untagged_pillar"},
+    {1260, 240, 300, 680, "governed_pillar"},
+    {940, 240, 300, 680, "flagged_shape"},
+    {620, 240, 300, 680, "unflagged_shape"},
+    {210, 220, 410, 720, "governed_rim_pillar"},
 };
 constexpr IRVideo::AutoScreenshotShot kEntityRevealShots[] = {
-    {7.0f,
+    {6.0f,
      vec2(0, 0),
      0.0f,
      "fog_entity_reveal",
@@ -992,37 +1009,64 @@ void initEntities() {
     }
 
     if (g_entityReveal) {
-        IRPrefab::Fog::setVisionCircle(0.0f, 0.0f, 10.0f, 1.5f, 4.5f, 0.35f);
+        IRPrefab::Fog::setVisionCircle(
+            0.0f,
+            0.0f,
+            kEntityRevealRadius,
+            kFogVisionEdgeDefault,
+            kEdgeZCostObserverZ,
+            kEdgeZCostCeilingUpCost,
+            IRComponents::kFogVisionZCostMirrorUp,
+            kEdgeZCostCeilingFreeBand
+        );
         createEdgeGroundSlab();
 
-        const IREntity::EntityId governed = IREntity::createEntity(
-            C_LocalTransform{vec3(-7.5f, 0.0f, 4.0f)},
-            C_VoxelSetNew{
-                IRMath::ivec3{4, 4, 24},
-                Color{80, 210, 245, 255},
-                IRComponents::EntityAnchor::GROUND
-            }
-        );
-        IRPrefab::Fog::setEntityRevealGoverned(governed);
+        const auto rowPos = [](int slot, float z) {
+            const float offset = -7.0f + kEntityRevealSpacing * static_cast<float>(slot);
+            return vec3(offset, -offset, z);
+        };
+        const auto createPillar = [](vec3 pos, Color color, int footprint = 4) {
+            return IREntity::createEntity(
+                C_LocalTransform{pos},
+                C_VoxelSetNew{
+                    IRMath::ivec3{footprint, footprint, kEntityRevealBodyHeight},
+                    color,
+                    IRComponents::EntityAnchor::GROUND
+                }
+            );
+        };
+        // The SDF twins span the pillars' z range: box params are full extents,
+        // centred half a body height above the ground surface (+Z is down).
+        const auto createBox = [](vec3 pos, Color color, std::uint32_t extraFlags) {
+            C_ShapeDescriptor shape{
+                IRRender::ShapeType::BOX,
+                vec4(4.0f, 4.0f, static_cast<float>(kEntityRevealBodyHeight), 0.0f),
+                color
+            };
+            shape.flags_ |= extraFlags;
+            IREntity::createEntity(
+                C_LocalTransform{pos - vec3(0.0f, 0.0f, 0.5f * kEntityRevealBodyHeight + 0.5f)},
+                shape
+            );
+        };
 
-        IREntity::createEntity(
-            C_LocalTransform{vec3(7.5f, 0.0f, 4.0f)},
-            C_VoxelSetNew{
-                IRMath::ivec3{4, 4, 24},
-                Color{245, 155, 75, 255},
-                IRComponents::EntityAnchor::GROUND
-            }
+        createPillar(rowPos(0, 4.0f), Color{245, 155, 75, 255});
+        g_entityRevealProbe = createPillar(rowPos(1, 4.0f), Color{80, 210, 245, 255});
+        IRPrefab::Fog::setEntityRevealGoverned(g_entityRevealProbe);
+        createBox(rowPos(2, 4.0f), Color{120, 235, 140, 255}, kEntityRevealShapeFlag);
+        createBox(rowPos(3, 4.0f), Color{235, 225, 110, 255}, 0u);
+        // A 6-wide body with its anchor ~19.1 from the observer and its outer
+        // corner ~23.3: the anchor reveals the body while its outer columns sit
+        // up to ~3 units past the radius-20 rim.
+        IRPrefab::Fog::setEntityRevealGoverned(
+            createPillar(rowPos(4, 4.0f) + vec3(0.5f, -0.5f, 0.0f), Color{190, 140, 245, 255}, 6)
         );
-
-        const IREntity::EntityId hidden = IREntity::createEntity(
-            C_LocalTransform{vec3(-16.0f, 0.0f, 4.0f)},
-            C_VoxelSetNew{
-                IRMath::ivec3{4, 4, 12},
-                Color{235, 80, 170, 255},
-                IRComponents::EntityAnchor::GROUND
-            }
+        // Governed but outside every circle: its anchor never reveals, so the
+        // whole body stays hidden. Voxels appended to a governed set after
+        // setEntityRevealGoverned would not inherit the tag.
+        IRPrefab::Fog::setEntityRevealGoverned(
+            createPillar(vec3(18.0f, 18.0f, 4.0f), Color{235, 80, 170, 255})
         );
-        IRPrefab::Fog::setEntityRevealGoverned(hidden);
         return;
     }
 
