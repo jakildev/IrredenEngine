@@ -81,6 +81,12 @@ The largest CPU system at both poses is `SingleVoxelToCanvasFirst` (4.55 and
   reads the preset after `config.lua`, so no ignored runtime config has to be
   edited by hand and restored. `--wave-freeze` and `--yaw` stay on the command
   line (the first is a CLI-only switch, the second is the axis under test).
+- Every arm passes `--pivot-origin`, which pins the camera's yaw pivot at the
+  grid centre so the static and swept poses frame the scene alike
+  ([continuous-yaw-sweep.md](continuous-yaw-sweep.md) § A driven yaw pins its
+  pivot). The reference and the witnessed round below predate it: their 45°
+  arms used the default pivot, which frames fewer voxels (637,025 visible
+  against about 909,000 pinned), so they are not comparable with a pinned 45°.
 - `million_controls.py` runs every case once per round, forward on odd rounds
   and reverse on even. Its summary prints each case's per-round means beside
   the mean, so drift is shown, not averaged away, and it stops if a tree's

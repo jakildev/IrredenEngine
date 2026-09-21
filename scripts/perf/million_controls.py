@@ -25,16 +25,18 @@ PRESETS = {
     "on": "configs/perf/million.lua",
     "off": "configs/perf/million-profiling-off.lua",
 }
-# A full turn in 300 frames, started half a step off the cardinal so no frame
-# lands on one: a sweep that starts on a cardinal runs a cheaper first quadrant
-# and then a 0.6 s frame at its first crossing that tips the fixed-step loop
-# into its clamp for a quadrant (docs/perf/continuous-yaw-sweep.md).
+# The sweep is a full turn in 300 frames through the cardinals, because a real
+# turn crosses them and the crossing frames are its tail
+# (docs/perf/continuous-yaw-sweep.md).
 POSES = {
     "0": ["--yaw", "0"],
     "45": ["--yaw", "0.785398163"],
-    "sweep": ["--yaw", "0.010471976", "--yaw-step", "0.020943951"],
+    "sweep": ["--yaw", "0", "--yaw-step", "0.020943951"],
 }
-COMMON = ["--wave-freeze", "--no-overlay"]
+# --pivot-origin makes the view a function of the yaw alone. With the default
+# pivot a static arm and a swept arm frame different parts of the world at the
+# same yaw, and a sweep's view jumps on the frame that lands on a cardinal.
+COMMON = ["--wave-freeze", "--no-overlay", "--pivot-origin"]
 ROUND_RE = re.compile(r"round-(\d+)")
 MILLION_ENTITIES = 1_000_000
 

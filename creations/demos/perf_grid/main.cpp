@@ -157,6 +157,7 @@ struct CliOverrides {
     bool yawSet_ = false;
     float yaw_ = 0.0f;
     float yawStep_ = 0.0f;
+    bool pivotOrigin_ = false;
     bool yawRamp_ = false;
     bool yawRampCrops_ = false;
     bool yawRampWave_ = false;
@@ -741,6 +742,11 @@ void registerCliArgs() {
         "--yaw + (N - 1) * step",
         0.0f
     );
+    args.flag(
+        "--pivot-origin",
+        "Pin the camera yaw pivot at the grid centre so the view depends on the yaw alone "
+        "(implied by --yaw-step)"
+    );
     args.flag("--yaw-ramp", "Rotated-solidity validation sweep (#1882/#1883)");
     args.flag(
         "--yaw-ramp-crops",
@@ -825,6 +831,7 @@ void readCliArgs() {
     if (args.wasProvided("--yaw-step")) {
         g_cliOverrides.yawStep_ = args.getFloat("--yaw-step");
     }
+    g_cliOverrides.pivotOrigin_ = args.getFlag("--pivot-origin");
     g_cliOverrides.yawRamp_ = args.getFlag("--yaw-ramp");
     g_cliOverrides.yawRampCrops_ = args.getFlag("--yaw-ramp-crops");
     g_cliOverrides.yawRampWave_ = args.getFlag("--yaw-ramp-wave");
@@ -1345,6 +1352,16 @@ int main(int argc, char **argv) {
 
     IRRender::setCameraPosition2DIso(vec2(0.0f, 0.0f));
     IRRender::setCameraZoom(g_settings.initialZoom_);
+    // The default pivot is latched from the surface under the viewport centre
+    // on settled frames and falls back to the iso-depth-0 point before the first
+    // derive, so an unpinned yaw frames a different part of the world depending
+    // on which frames settled: the same yaw, a different view and visible count.
+    // The grid is centred on the origin, so pinning there keeps the scene
+    // centred at every yaw and makes the view a function of the yaw alone. A
+    // driven yaw always pins; a static --yaw pins on request.
+    if (g_cliOverrides.pivotOrigin_ || g_cliOverrides.yawStep_ != 0.0f) {
+        IRRender::setRotationPivotFocus(vec3(0.0f));
+    }
     IRPrefab::Camera::setYaw(g_settings.initialYaw_);
     IR_LOG_INFO(
         "Initial camera zoom: requested={}, actual={}",

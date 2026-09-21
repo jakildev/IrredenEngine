@@ -264,10 +264,12 @@ table:
 - `--yaw-step <radians>` (IRPerfGrid only) — yaw advance per rendered frame;
   frame N renders at `--yaw + (N − 1) × step`, the same poses in every run.
   `repeat_profile.py` checks the first and last pose and the travelled arc
-  from the witness. A sweep that starts on a cardinal measures a cheaper first
-  quadrant, a 0.6 s frame at its first crossing and the update catch-up that
-  follows, not steady rotation; start half a step off to measure that:
-  [continuous-yaw-sweep.md](continuous-yaw-sweep.md).
+  from the witness, and the flag pins the yaw pivot at the grid centre, because
+  with the default pivot the view depends on which frames settled and jumps
+  when a sweep lands on a cardinal: [continuous-yaw-sweep.md](continuous-yaw-sweep.md).
+- `--pivot-origin` (IRPerfGrid only) — the same pin for a static `--yaw`, so a
+  static pose and a swept one frame the scene alike. `million_controls.py`
+  passes it on every arm.
 
 ## Voxel cull stats — the "is culling working?" diagnostic
 

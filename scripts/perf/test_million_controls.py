@@ -58,9 +58,9 @@ def write_round(
 ):
     """One completed round; by default a well-formed run of the case the name says."""
     release = name.startswith("release-")
-    # Four frames of the matrix's sweep: 0.6 degrees, then 1.2 degrees a frame.
+    # Four frames of the matrix's sweep: 0 degrees, then 1.2 degrees a frame.
     sweeping = name.endswith("-yawsweep")
-    pose = 0.6 if sweeping else float(name.rsplit("-yaw", 1)[1])
+    pose = 0.0 if sweeping else float(name.rsplit("-yaw", 1)[1])
     first = pose if yaw is None else yaw
     swept = 3.6 if sweeping else 0.0
     witness = WITNESS.format(
@@ -68,7 +68,7 @@ def write_round(
         last=first + swept,
         travel=swept if travel is None else travel,
         drops=drops,
-        lane=3 if pose else 0,
+        lane=3 if pose or sweeping else 0,
         avg=avg,
         tail=avg + 2,
     )
@@ -117,7 +117,7 @@ class CasesTest(unittest.TestCase):
         self.assertEqual(len(selected), 12)
         self.assertEqual(
             selected["debug-profiling-on-yawsweep"][2:],
-            ["--yaw", "0.010471976", "--yaw-step", "0.020943951"],
+            ["--yaw", "0", "--yaw-step", "0.020943951"],
         )
         self.assertEqual(
             selected["release-profiling-off-yaw45"],
@@ -225,7 +225,7 @@ class FingerprintTest(unittest.TestCase):
             write_round(output, "release-profiling-off-yawsweep", 1, 40.0, binary="r")
             verify_artifacts(output, ["debug", "release"])
             summarize(output, {"release-profiling-off-yawsweep": []})
-            self.assertIn("| 0.600 +3.6 | 500 / 0 |", (output / "summary.md").read_text())
+            self.assertIn("| 0.000 +3.6 | 500 / 0 |", (output / "summary.md").read_text())
 
     def test_an_unwitnessed_run_is_never_summarised_as_zero_drops(self):
         with tempfile.TemporaryDirectory() as temporary:

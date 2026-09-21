@@ -19,7 +19,7 @@
     "--auto-profile",
     "300",
     "--config-preset",
-    "configs/perf/million-profiling-off.lua",
+    "<docs/perf/continuous-yaw-sweep/million-one-tick.lua>",
     "--yaw",
     "0",
     "--yaw-step",
@@ -28,9 +28,9 @@
   "runs": [
     {
       "index": 1,
-      "started_utc": "2026-09-21T21:29:19Z",
+      "started_utc": "2026-09-21T21:30:11Z",
       "host_battery_percent": 100,
-      "host_load_1m": 2.69,
+      "host_load_1m": 4.51,
       "exit_code": 0,
       "cpu_sampling": null,
       "fresh_report": true,

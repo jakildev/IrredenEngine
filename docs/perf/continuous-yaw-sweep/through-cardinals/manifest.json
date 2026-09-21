@@ -1,12 +1,12 @@
 {
-  "head": "a9d6a374083efdb5e10eaf1aaa7fc15d5fe805c2",
-  "changes": " M creations/demos/perf_grid/main.cpp\n M engine/profile/include/irreden/profile/profile_report.hpp\n M engine/profile/src/profile_report.cpp\n M engine/world/include/irreden/world.hpp\n M engine/world/src/world.cpp\n M scripts/perf/compare_perf_runs.py\n M scripts/perf/repeat_profile.py\n M scripts/perf/test_million_controls.py\n M scripts/perf/test_profile_parser.py\n M scripts/perf/test_repeat_profile.py\n M test/profile/profile_report_test.cpp\n",
+  "head": "1cc64d0ce32be9c98b451d3d2347b14847302c05",
+  "changes": " M creations/demos/perf_grid/main.cpp\n",
   "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
   "host_power": "AC Power",
   "host_cpus": 14,
   "build_dir": "build-release",
   "build_type": "Release",
-  "binary_sha256": "0194f1484ea8a0e674c28b1f8d89b119a9fd8b796aba2fa8928f7d16b462bc2d",
+  "binary_sha256": "2f7fa1cd426cf5a51d9d52e6fd86223b508e563d13b8e1ef45ed553efbb390a8",
   "shader_sha256": "6a13afcaf26f7615a140427a3ff67efe4daa47344cf59db38c0af523f4e01661",
   "runtime_scripts_sha256": "85a4c4c0e04ff77ce830640f6b8935b4ab8dcad11f1ff0dfccbc3dd918d927f6",
   "command": [
@@ -28,9 +28,9 @@
   "runs": [
     {
       "index": 1,
-      "started_utc": "2026-09-21T20:44:47Z",
-      "host_battery_percent": 98,
-      "host_load_1m": 5.21,
+      "started_utc": "2026-09-21T21:28:42Z",
+      "host_battery_percent": 100,
+      "host_load_1m": 3.29,
       "exit_code": 0,
       "cpu_sampling": null,
       "fresh_report": true,
@@ -43,7 +43,7 @@
       "yaw_travel_deg": 358.8,
       "zoom": 4.0,
       "overflow_max_dropped": 0,
-      "overflow_max_entries": 959592,
+      "overflow_max_entries": 971724,
       "overflow_samples": 296,
       "gpu_measured": true
     }
