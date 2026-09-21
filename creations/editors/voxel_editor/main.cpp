@@ -1421,17 +1421,6 @@ void loadFrameToLive(int idx) {
     // which is why the bird session asserts the mask directly: a wingless
     // frame 1 passes every alpha check and fails only the mask check.
     vs.resyncAfterRawEdits();
-    // The pool's cached chunk bounds are the cull inputs, and they are built by
-    // skipping voxels whose alpha is zero — so a swap that changes WHICH cells
-    // are active invalidates them too. resyncAfterRawEdits does not evict them
-    // (the pool's own eviction points are all position changes), so the swap
-    // sites do it by hand; measured on the same bird, a step that skipped this
-    // rendered a genuine mixture of the two poses. Same pair of calls as
-    // shape_debug's --load-vxs playback swap.
-    if (auto pool = IREntity::getComponentOptional<C_VoxelPool>(vs.canvasEntity_)) {
-        pool.value()->markChunkBoundsDirty();
-        pool.value()->markChunkWorldBoundsDirty();
-    }
 }
 
 // Snapshot the live voxels into the active frame, then load frame
