@@ -13,12 +13,14 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
   Extend to multi-voxel depth/occlusion and dense temporal transitions.
   [Rigid source casting](../pr-screenshots/codex/rigid-source-shadow-casters/README.md)
   now projects original transformed faces: 12 aggregate hull checks pass, while
-  all 12 strict edge checks still fail. Source-face reception remains missing.
+  all 12 strict edge checks still fail. [Source-face reception](../pr-screenshots/codex/surface-shadow-receiver-controls/README.md)
+  now samples continuous face centers; eight relative-position and four normal
+  checks pass. Continuous within-face shadow coverage remains missing.
 
 
 - [Caster/receiver matrix](../pr-screenshots/codex/shadow-receiver-mode-matrix/README.md):
   16 mode pairs at eight yaws captured on Metal. The original matrix predates
-  rigid source casting; source receiving remains missing. Intermediate GRID
+  rigid source casting and receiving. Both now participate; intermediate GRID
   receivers show interior shadow gaps, and source/SDF contact controls retain
   boundary differences.
   Resolve those separately from silhouette aliasing. Add explicit participation
@@ -38,10 +40,19 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
   small edge failures. Fix map/receiver sampling and carry boundary geometry
   through presentation. The strict oracle now requires measured density and
   known projection instead of inferring precision from SDF floor bounds.
+- The known-floor receiver control reduces total edge errors in all four views
+  with the existing map but still fails every strict check. It changes receiver
+  recovery and sampling together; it is diagnostic, not a shipped SDF fix.
+  Preserve exact SDF surface location/normal and geometric coverage through final
+  presentation rather than tuning bias to hide the discrepancy.
 - Next: resolve finite sampling misses and small GRID floor-shadow boundaries
   across quadrants against ray/face geometry, preserving legitimate partial faces.
 - Keep six oriented face normals, twelve geometric half-faces, coordinate basis
   and screen parity distinct; see the [identity contract](trixel-face-reconstruction-validation.md#oriented-face-identity-versus-screen-parity).
+- Default-scene context still contains visible banding/trixel artifacts in both
+  parent and receiver-enabled captures. Extend the independent multi-voxel
+  occlusion oracle to the now-shadowed source frame and curved objects before
+  certifying their self-shadows; preserve legitimate staircase occlusion.
 - Then resume density/rotation GPU profiling and population scaling; native Metal
   correctness evidence does not establish OpenGL runtime parity or a frame-rate target.
 

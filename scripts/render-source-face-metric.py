@@ -11,6 +11,8 @@ No image registration, reference screenshot or trixel parity formula is used.
 One screenshot pixel of boundary uncertainty is allowed, independent of zoom.
 For rigid probe 2, --axis-angle 1 1 1 DEGREES matches its --frozen-pose in radians.
 This checks silhouette; --normals additionally checks each face of ONE voxel.
+--receiver-position checks world-oriented face-center offsets relative to the
+canvas origin for ONE voxel; it does not validate the translated world origin.
 It does not validate multi-voxel internal face boundaries, depth or lighting.
 """
 
@@ -23,7 +25,7 @@ from render_fixture_geometry import rotate, source_centers, view
 from render_metric_util import raster_polygon, read_png, write_png
 
 
-def projected_faces(shape, yaw, identity, scale, center, axis_angle=None):
+def projected_faces(shape, yaw, identity, scale, center, axis_angle=None, receiver_position=False):
     for voxel in source_centers(shape):
         for axis in range(3):
             normal = rotate(tuple(1 if i == axis else 0 for i in range(3)), identity, axis_angle)
@@ -39,15 +41,18 @@ def projected_faces(shape, yaw, identity, scale, center, axis_angle=None):
                 x, y, z = view(rotate(point, identity, axis_angle), yaw)
                 points.append((center[0] + (-x + y) * scale[0],
                                center[1] + (-x - y + 2 * z) * scale[1]))
-            yield points, tuple(round((v + 1) * 127.5) for v in normal)
+            color = (tuple(round((v / 8 + .5) * 255) for v in normal) if receiver_position
+                     else tuple(round((v + 1) * 127.5) for v in normal))
+            yield points, color
 
 
-def expected_image(width, height, shape, yaw, identity, scale, center, axis_angle=None):
+def expected_image(width, height, shape, yaw, identity, scale, center, axis_angle=None,
+                   receiver_position=False):
     labels = bytearray(width * height)
     palette = [(0, 0, 0)]
     clipped = False
     for polygon, color in projected_faces(
-            shape, math.radians(yaw), identity, scale, center, axis_angle):
+            shape, math.radians(yaw), identity, scale, center, axis_angle, receiver_position):
         clipped |= any(x < 1 or y < 1 or x >= width - 1 or y >= height - 1
                        for x, y in polygon)
         if color not in palette:
@@ -108,7 +113,9 @@ def main(argv=None):
     pose.add_argument("--identity", action="store_true")
     pose.add_argument("--axis-angle", type=float, nargs=4, metavar=("X", "Y", "Z", "DEGREES"))
     parser.add_argument("--iso-scale", type=float, nargs=2, default=(16, 8))
-    parser.add_argument("--normals", action="store_true")
+    values = parser.add_mutually_exclusive_group()
+    values.add_argument("--normals", action="store_true")
+    values.add_argument("--receiver-position", action="store_true")
     parser.add_argument("--diagnostic-prefix", type=Path)
     args = parser.parse_args(argv)
     if not math.isfinite(args.yaw) or not all(math.isfinite(v) and v > 0 for v in args.iso_scale):
@@ -117,14 +124,19 @@ def main(argv=None):
             not all(math.isfinite(v) for v in args.axis_angle)
             or not any(args.axis_angle[:3])):
         parser.error("axis-angle requires a finite nonzero axis and finite degrees")
-    if args.normals and args.shape != "voxel":
-        parser.error("face-normal oracle is only defined for one convex voxel")
+    if (args.normals or args.receiver_position) and args.shape != "voxel":
+        parser.error("face-value oracle is only defined for one convex voxel")
     try:
         width, height, bpp, pixels = read_png(str(args.image))
         expected, palette, clipped = expected_image(
             width, height, args.shape, args.yaw, args.identity, args.iso_scale,
-            (width / 2, height / 2), args.axis_angle)
-        result, errors = compare(width, height, bpp, pixels, expected, palette, args.normals)
+            (width / 2, height / 2), args.axis_angle, args.receiver_position)
+        result, errors = compare(width, height, bpp, pixels, expected, palette,
+                                 args.normals or args.receiver_position)
+        if args.receiver_position:
+            result["normal_faces_checked"] = False
+            result["receiver_positions_checked"] = True
+            result["wrong_receiver_pixels"] = result.pop("wrong_face_pixels")
         result.update(image=str(args.image), scope="source_geometry", clipped=clipped)
         result["pass"] &= not clipped
         if args.diagnostic_prefix:

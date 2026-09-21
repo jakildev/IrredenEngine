@@ -73,6 +73,7 @@ kernel void c_lighting_to_trixel(
     );
     int2 pixel;
     float sourceAO = 1.0;
+    float3 sourceViewCenter = float3(0.0);
     const bool sourceMode = voxelFrameData.isDetachedCanvas > 1.5f;
     const uint sourceIndex = globalId.x + globalId.y * uint(size.x);
     if (sourceMode) {
@@ -88,12 +89,12 @@ kernel void c_lighting_to_trixel(
             deformX, deformY, voxelFrameData.voxelDepthAxis.xyz, frameOffset);
         const float2 center = face.origin + 0.5 * float(density) * (face.edgeU + face.edgeV);
         pixel = clamp(int2(floor(center)), int2(0), size - 1);
+        const float2 rasterOrigin = float2(frameOffset) + float2(float(density));
+        const float centerDepth = face.depth.x + dot(
+            face.uvOrigin + float2(0.5 * float(density)), face.depth.yz);
+        sourceViewCenter = isoPositionToPos3D(center - rasterOrigin, centerDepth) / float(density);
         if (sunFrameData.aoEnabled != 0) {
             // The source face owns its receiver; the depth canvas only supplies occluders.
-            const float2 rasterOrigin = float2(frameOffset) + float2(float(density));
-            const float centerDepth = face.depth.x + dot(
-                face.uvOrigin + float2(0.5 * float(density)), face.depth.yz);
-            const float3 receiver = isoPositionToPos3D(center - rasterOrigin, centerDepth) / float(density);
             const float3 normal = detachedFaceViewNormal(
                 int(source.centerAndFace.w), deformX, deformY, voxelFrameData.voxelDepthAxis.xyz);
             const int parity = localTrixelOriginParity(voxelFrameData.trixelCanvasOffsetZ1);
@@ -106,7 +107,7 @@ kernel void c_lighting_to_trixel(
                 if (neighbor >= 65535 || decodeSlot(neighbor) == (int(source.centerAndFace.w) >> 1)) continue;
                 const float2 neighborIso = localTrixelCellCentroid(neighborPixel, parity) - rasterOrigin;
                 const float3 occluder = isoPositionToPos3D(neighborIso, float(decodeDepthSingle(neighbor))) / float(density);
-                const float height = dot(occluder - receiver, normal);
+                const float height = dot(occluder - sourceViewCenter, normal);
                 if (height > 0.125 && height < 1.5) sourceAO -= 0.10;
             }
         }
@@ -163,7 +164,10 @@ kernel void c_lighting_to_trixel(
 
     // The private raster is camera-relative; lighting and cascade selection use world units.
     float3 worldReceivePos = float3(0.0f);
-    if (worldReceive) {
+    if (worldReceive && sourceMode) {
+        worldReceivePos = rotateByQuat(sourceViewCenter, frameData.detachedViewToWorld)
+                        + voxelFrameData.detachedWorldReceive.xyz;
+    } else if (worldReceive) {
         worldReceivePos = trixelCanvasPixelToWorld3D(
             pixel, rawDepth, voxelFrameData.trixelCanvasOffsetZ1,
             voxelFrameData.frameCanvasOffset, voxelFrameData.voxelRenderOptions,
@@ -209,7 +213,7 @@ kernel void c_lighting_to_trixel(
     if (worldReceive) {
         shadow = 1.0;
         if (sunFrameData.shadowsEnabled != 0) {
-            shadow = voxelFrameData.visibleFaceIds.w == 2
+            shadow = (sourceMode || voxelFrameData.visibleFaceIds.w == 2)
                 ? worldSurfaceSunShadowFactor(worldReceivePos, worldNormal, pos3DtoDistance(worldReceivePos), frameData.detachedViewToWorld, sunFrameData, sunDepthBuf)
                 : worldSunShadowFactor(worldReceivePos, worldNormal, pos3DtoDistance(worldReceivePos), sunFrameData, sunDepthBuf);
         }

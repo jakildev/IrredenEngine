@@ -149,7 +149,9 @@ trixel diagnostics. A rotation-invariant enclosing-sphere bound caps its density
 to private texture capacity; it no longer determines source-face display edges.
 Revoxelized occupancy continues to use local triangle reconstruction and its real
 staircase normals. [World sun casting](../pr-screenshots/codex/rigid-source-shadow-casters/README.md)
-uses original transformed faces in the finite-face pipeline; world-shadow
-receiving and picking for plain `DETACHED` remain separate work.
+uses original transformed faces in the finite-face pipeline.
+[World reception](../pr-screenshots/codex/surface-shadow-receiver-controls/README.md)
+samples each original face center, preserving its world normal. It shares the
+world light-volume path; continuous within-face shadows and picking remain work.
 
 [Fixtures, parity controls and retained evidence](detached-projected-face-coverage.md).

@@ -1,0 +1,15 @@
+diff --git a/engine/render/src/shaders/metal/c_compute_sun_shadow.metal b/engine/render/src/shaders/metal/c_compute_sun_shadow.metal
+index bbd996fb6..1ae1abb4f 100644
+--- a/engine/render/src/shaders/metal/c_compute_sun_shadow.metal
++++ b/engine/render/src/shaders/metal/c_compute_sun_shadow.metal
+@@ -126,6 +126,9 @@ kernel void c_compute_sun_shadow(
+     // World iso depth picks the cascade; rawDepth IS the world iso depth for the
+     // world canvas this pass runs on. The cascade PCF lookup is shared with the
+     // detached world-receive path (ir_sun_shadow_sample.metal).
+-    float factor = worldSunShadowFactor(pos3D, normal, float(rawDepth), sunFrameData, sunDepthBuf);
++    pos3D += rotateYawZInv(isoPositionToPos3D(float2(-0.5), 0.0) / float(effectiveTrixelSubdivisionScale(frameData.voxelRenderOptions)), frameData.visualYaw);
++    const float3 viewRay = rotateYawZInv(float3(1.0), frameData.visualYaw);
++    pos3D += viewRay * (2.0 - pos3D.z);
++    float factor = worldSurfaceSunShadowFactor(pos3D, float3(0.0, 0.0, -1.0), float(rawDepth), float4(0.0, 0.0, 0.0, 1.0), sunFrameData, sunDepthBuf);
+     canvasSunShadow.write(float4(factor, 0.0, 0.0, 0.0), uint2(pixel));
+ }
