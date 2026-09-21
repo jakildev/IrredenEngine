@@ -289,6 +289,16 @@ the gate is exercised by the gate.
   missing or does not contain a positive frame-time measurement.
 - The matrix itself exits nonzero when any cell produces no report, before a
   push or manual dispatch can replace a measured baseline with an empty one.
+  A slug directory filed report-less before that guard existed is purged by
+  the writer the next time any SKU files a measured baseline — otherwise the
+  exit-2 rule above leaves every PR on that SKU red with no author-side
+  remedy.
+- Normalization weighs the head against the **baseline run's own `ref_ms`**,
+  both readings taken on the same SKU, so the load factor isolates how
+  contended the machine was. `ref_target_ms` (a fixed 50 ms) stays in the
+  manifest and the host note as information only: the hosted pool calibrates
+  at 59–104 ms, so weighing against the target divided every head by
+  0.43–0.85 and no regression below roughly 2× could fire (#3471).
 - The PR-path reader takes the seed-new (empty root) path only when
   `git ls-remote --exit-code` confirms `perf-baseline` is absent (exit 2).
   Any other failure to reach the branch — an unreachable remote, a fetch
@@ -300,13 +310,17 @@ the gate is exercised by the gate.
 all of the above (layout resolution across empty / per-slug / legacy-flat
 roots, plus the exit mapping), and
 `scripts/perf/tests/test_baseline_writer.sh` drives the branch writer and
-the PR-path reader against a local bare origin. Both run as the perf-gate
-job's first step after checkout, before the build.
+the PR-path reader against a local bare origin. `test/tools/normalization_test.sh`
+covers the calibration helpers and the gate's decision tree. All three run as
+the perf-gate job's first step after checkout, before the build.
 
-CI uses 60 frames per quick-matrix cell (45 post-warmup samples) with a
-120-second watchdog. The full run directory, including each cell's `.log`, is
-uploaded for seven days as `perf-run-<workflow-run-id>` so a timeout, crash, or
-display failure can be diagnosed from the check run.
+CI uses 40 frames per quick-matrix cell (30 post-warmup samples) with a
+300-second watchdog. llvmpipe on the two-core hosted runner is far slower than
+any dev GPU, and a cell killed by the watchdog writes no report at all — so the
+budget is sized from the job's headroom, not from a frame-time target. The full
+run directory, including each cell's `.log`, is uploaded for seven days as
+`perf-run-<workflow-run-id>` so a timeout, crash, or display failure can be
+diagnosed from the check run.
 
 **Gate script (also usable locally):**
 

@@ -671,7 +671,7 @@ void main() {
             perAxisStoreFacePos(voxelPosition, faceId, slot, axis, riserFlip, voxelDistance);
         if (resolveMode == 3) {
             // Each record reconstructs the whole face, not one of its two trixels.
-            if (any(ivec2(gl_LocalInvocationID.xy) != faceOffset_2x3(slot, 0))) return;
+            if (any(notEqual(ivec2(gl_LocalInvocationID.xy), faceOffset_2x3(slot, 0)))) return;
             overflowAppendTap(perAxisBase, facePos, voxelDistance, voxels[voxelIndex].colorPacked);
             return;
         }

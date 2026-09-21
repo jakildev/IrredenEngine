@@ -15,6 +15,9 @@ a gate that silently passes produce the same check mark — so they get arms:
     F  head dir missing            -> exit 2, no comment
     G  the retired skip comment is absent from the shipped gate
     H  head cell has no report     -> exit 2, no comment
+    I  normalization reference is the BASELINE's ref_ms, not the global
+       calibration target: a slow SKU at rest gates raw, a genuinely loaded
+       head gates normalized
 
 Stdlib only, no network, no build. Wired into the perf-gate job so it
 executes rather than drifting.
@@ -57,7 +60,8 @@ def check(arm: str, condition: bool, detail: str) -> None:
         _failures.append(f"{arm}: {detail}")
 
 
-def write_run(run_dir: Path, *, slug: str, avg_ms: float) -> Path:
+def write_run(run_dir: Path, *, slug: str, avg_ms: float,
+              ref_ms: float = 1.0, ref_target_ms: float = 1.0) -> Path:
     """Minimal but real perf-run directory: manifest + one parseable cell."""
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / f"{CELL_ID}.txt").write_text(
@@ -71,8 +75,8 @@ def write_run(run_dir: Path, *, slug: str, avg_ms: float) -> Path:
         "cells": [{"id": CELL_ID, "report": f"{CELL_ID}.txt"}],
         "calibration": {
             "host_slug": slug,
-            "ref_ms": 1.0,
-            "ref_target_ms": 1.0,
+            "ref_ms": ref_ms,
+            "ref_target_ms": ref_target_ms,
             "host_fingerprint": {"slug": slug},
         },
     }))
@@ -284,6 +288,46 @@ def arm_h_reportless_head(tmp: Path) -> None:
           "measurement error reaches the job log")
 
 
+def arm_i_baseline_relative_normalization(tmp: Path) -> None:
+    """The hosted pool calibrates at 59-104 ms against a fixed 50 ms target,
+    so weighing the head against that target rescaled every measurement by
+    0.43-0.85 and no regression below ~2x could ever fire. The reference has
+    to be the baseline's own reading from the same SKU."""
+    work = tmp / "i"
+
+    # (1) Slow SKU, both sides at rest: refs equal, so the gate reads raw and
+    # a real +25% fires. Pre-D4 this exited 0 — the positive control.
+    root = work / "rest" / "baseline_latest"
+    write_run(root / HEAD_SLUG, slug=HEAD_SLUG, avg_ms=10.0,
+              ref_ms=100.0, ref_target_ms=50.0)
+    head = write_run(work / "rest" / "head", slug=HEAD_SLUG, avg_ms=12.5,
+                     ref_ms=100.0, ref_target_ms=50.0)
+
+    r = run_checker(root, head)
+    check("I", r.returncode == 1,
+          f"slow SKU at rest: +25% head fails the gate (got {r.returncode})")
+    check("I", CELL_ID in r.stderr, "the failure names the regressed cell")
+    check("I", "on raw mean frame avg" in r.stderr,
+          "equal refs weigh raw, not normalized")
+    check("I", "head 100.00 vs baseline 100.00" in r.stdout,
+          "the host note reports both refs")
+
+    # (2) Same SKU, head measured 1.5x slower at the calibration bench: the
+    # load factor is head-vs-baseline, so the head is scaled back and the
+    # same raw number passes.
+    root2 = work / "loaded" / "baseline_latest"
+    write_run(root2 / HEAD_SLUG, slug=HEAD_SLUG, avg_ms=10.0,
+              ref_ms=100.0, ref_target_ms=50.0)
+    head2 = write_run(work / "loaded" / "head", slug=HEAD_SLUG, avg_ms=12.5,
+                      ref_ms=150.0, ref_target_ms=50.0)
+
+    r = run_checker(root2, head2)
+    check("I", r.returncode == 0,
+          f"genuinely loaded head normalizes back under threshold (got {r.returncode})")
+    check("I", "normalized" in r.stderr,
+          "a 1.50x load factor selects the normalized weighting")
+
+
 def main() -> int:
     print("perf-gate baseline layout + exit-mapping control")
     with tempfile.TemporaryDirectory(prefix="perfgate.") as td:
@@ -295,6 +339,7 @@ def main() -> int:
         arm_e_exit1_comments(tmp)
         arm_f_missing_head(tmp)
         arm_h_reportless_head(tmp)
+        arm_i_baseline_relative_normalization(tmp)
     arm_g_retired_literal()
 
     if _failures:
