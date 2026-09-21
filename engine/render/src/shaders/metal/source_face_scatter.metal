@@ -1,6 +1,8 @@
 #include <metal_stdlib>
 using namespace metal;
 #include "ir_iso_common.metal"
+#include "ir_sun_shadow_sample.metal"
+#include "ir_source_face_lighting.metal"
 struct VertexIn { float2 position [[attribute(0)]]; };
 struct GlobalConstants { int kMinTriangleDistance; int kMaxTriangleDistance; };
 struct FrameDataIsoTriangles {
@@ -31,6 +33,11 @@ struct SourceFaceVertex {
     float4 color [[flat]];
     uint priority [[flat]];
     float depth [[center_no_perspective]];
+    float3 worldPosition [[center_no_perspective]];
+    float3 worldNormal [[flat]];
+    float4 directSunAndExposure [[flat]];
+    float ao [[flat]];
+    uint lightingMode [[flat]];
 };
 struct SourceFaceFragment { float4 color [[color(0)]]; float depth [[depth(any)]]; };
 vertex SourceFaceVertex v_source_face_scatter(
@@ -56,6 +63,14 @@ vertex SourceFaceVertex v_source_face_scatter(
     out.position.y = -out.position.y;
     out.depth = dot(viewCorner, float3(1.0)) * density * float(kDepthEncodeShift) *
         frameData.effectiveSubdivisionsForHover.y;
+    const float3 modelNormal = faceOutwardNormal6(faceId);
+    const float3 localCenter = face.centerAndFace.xyz + modelNormal * 0.5;
+    out.worldPosition = face.worldCenterAndAO.xyz + rotateByQuat(
+        viewCorner - rotateByQuat(localCenter, frameData._detachedResidualPad), frameData._detachedDepthAxisPad);
+    out.worldNormal = rotateByQuat(rotateByQuat(modelNormal, frameData._detachedResidualPad), frameData._detachedDepthAxisPad);
+    out.directSunAndExposure = face.directSunAndExposure;
+    out.ao = face.worldCenterAndAO.w;
+    out.lightingMode = face.owner.z;
     out.color = face.color;
     out.priority = decodePriority(face.owner.xy);
     return out;
@@ -63,7 +78,9 @@ vertex SourceFaceVertex v_source_face_scatter(
 fragment SourceFaceFragment f_source_face_scatter(
     SourceFaceVertex in [[stage_in]],
     constant FrameDataIsoTriangles& frameData [[buffer(3)]],
-    constant GlobalConstants& globals [[buffer(1)]]) {
+    constant GlobalConstants& globals [[buffer(1)]],
+    constant FrameDataSun& sunFrameData [[buffer(29)]],
+    device const uint* sunDepthBuf [[buffer(28)]]) {
     if (in.color.a < 0.1) discard_fragment();
     const int tier = max(frameData.depthPriorityMode, int(in.priority));
     float depth = in.depth + float(frameData.distanceOffset);
@@ -75,5 +92,11 @@ fragment SourceFaceFragment f_source_face_scatter(
     out.depth = (depth - float(globals.kMinTriangleDistance)) /
         float(globals.kMaxTriangleDistance - globals.kMinTriangleDistance);
     out.color = in.color;
+    if (in.lightingMode != kSourceLightingBaked) {
+        const float visibility = worldSurfaceSunShadowFactor(in.worldPosition, in.worldNormal,
+            pos3DtoDistance(in.worldPosition), frameData._detachedDepthAxisPad, sunFrameData, sunDepthBuf);
+        out.color = sourceFaceLitColor(in.color, in.directSunAndExposure, in.ao,
+            in.lightingMode, visibility);
+    }
     return out;
 }

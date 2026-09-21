@@ -1227,10 +1227,19 @@ float fogVisionCircleReveal(vec2 worldXY, vec4 circle, float aa) {
 
 const int kDetachedFaceMissDepth = 2147483647;
 
+const uint kSourceLightingBaked = 0u;
+const uint kSourceLightingLinear = 1u;
+const uint kSourceLightingHDR = 2u;
+const uint kSourceLightingShadow = 3u;
+const uint kSourceLightingAOShadow = 4u;
+
+// owner.z selects color interpretation; owner.xy retain packed entity identity.
 struct SourceVoxelFace {
     vec4 centerAndFace;
     vec4 color;
     uvec4 owner;
+    vec4 directSunAndExposure;
+    vec4 worldCenterAndAO;
 };
 
 struct DetachedFaceFootprint {

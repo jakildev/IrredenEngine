@@ -60,6 +60,7 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
     vec2 effectiveCameraIso_{};
     vec2 cameraZoom_{};
     float visualYaw_ = 0.0f;
+    vec4 viewToWorld_{};
     vec2 cameraFramebufferOffset_{};
     // Global voxel subdivision factor the SHARED framebuffer depth buffer runs
     // at this frame (the main world canvas + SDF floor encode depth as
@@ -83,6 +84,7 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         effectiveCameraIso_ = IRRender::getEffectiveCameraIso();
         cameraZoom_ = IRRender::getCameraZoom();
         visualYaw_ = IRPrefab::Camera::getYaw();
+        viewToWorld_ = IRPrefab::Camera::getRotationQuat();
 
         // Private canvas transforms use Y-up coordinates on both backends.
         // Consume whole framebuffer pixels; the final upscale owns the residual.
@@ -319,6 +321,7 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         fd.mouseHoveredTriangleIndex_ = vec2(-1000000.0f);
         fd.effectiveSubdivisionsForHover_ = vec2(cubeSubDensity, depthScale);
         fd.detachedResidual_ = canvasTextures->sourceFaceRotation_;
+        fd.detachedDepthAxis_ = viewToWorld_;
         fd.showHoverHighlight_ = 0.0f;
 
         CanvasInstance inst{};
@@ -345,6 +348,19 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         auto *sourceProgram = IRRender::getNamedResource<ShaderProgram>("SourceFaceScatterProgram");
         auto *activeMask = IRRender::getNamedResource<Buffer>("VoxelActiveMaskBuffer");
         auto *compacted = IRRender::getNamedResource<Buffer>("CompactedVoxelIndices");
+        auto *sunFrame = IRRender::getNamedResourceOrNull<Buffer>("ComputeSunShadowFrameData");
+        auto *sunDepth = IRRender::getNamedResourceOrNull<Buffer>("SunShadowDepthMap");
+        static_assert(
+            sizeof(FrameDataTrixelToFramebuffer) >= sizeof(FrameDataSun),
+            "Unlit fragment aliases must satisfy the complete sun uniform layout"
+        );
+        // Without lighting systems every emitted face retains baked color. Metal
+        // still requires valid declared bindings; the frame buffer is never read
+        // through these inert aliases on that path.
+        (sunFrame ? sunFrame : frameDataBuffer)
+            ->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
+        (sunDepth ? sunDepth : frameDataBuffer)
+            ->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap);
         canvasProgram->use();
         // The composite depth-tests
         // each detached canvas against the world depth the gather wrote (so world

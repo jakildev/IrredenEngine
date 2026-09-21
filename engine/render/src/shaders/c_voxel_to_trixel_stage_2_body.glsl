@@ -337,6 +337,8 @@ void main() {
             const uint index = atomicAdd(sourceFaceCount, 1u);
             sourceFaces[index].centerAndFace = vec4(voxelPosition.xyz, float(faceId));
             sourceFaces[index].color = voxelColor;
+            sourceFaces[index].directSunAndExposure = vec4(0.0);
+            sourceFaces[index].worldCenterAndAO = vec4(0.0);
             sourceFaces[index].owner = uvec4(packedEntityId, 0u, 0u);
             // Unique source keys make coplanar draw ownership independent of append order.
             const uint order = 128u + index * 3u;
