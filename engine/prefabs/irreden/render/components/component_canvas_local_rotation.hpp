@@ -58,6 +58,8 @@ struct C_CanvasLocalRotation {
     // canvas to reach those passes without a per-voxel foreign getComponent.
     // Inert (false) on the main world canvas (sentinel rotation, never written).
     bool worldPlaced_ = false; // = !screenLocked_, propagated by PROPAGATE_CANVAS_ROTATION
+    // Owner visibility gates casting independently of the canvas's world placement.
+    bool castsWorldShadow_ = false;
     // The owner entity's world cell origin = roundVec3HalfUp(C_WorldTransform::
     // translation_) — the SAME rounding P4b-1's composite depth offset uses
     // (pos3DtoDistance(roundVec3HalfUp(translation))), so the recovered world

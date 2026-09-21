@@ -57,7 +57,11 @@ kernel void c_bake_voxel_sun_faces(
     if ((activeMask[index >> 5u] & (1u << (index & 31u))) == 0u) return;
     const uint flags = (voxels[index].materialFlagBone >> 8u) & 0xFFu;
     const float subdivisions = float(faceFrame.dispatch.z);
-    const float3 position = float3(roundHalfUp(snapNearIntegerVoxelPosition(positions[index].xyz) * subdivisions)) / subdivisions;
+    // Basis 2 preserves authored centers and rotates original faces; basis 1
+    // carries the camera-aligned cells produced by detached revoxelization.
+    const bool rigidSource = faceFrame.dispatch.w == 2;
+    const float3 position = rigidSource ? positions[index].xyz
+        : float3(roundHalfUp(snapNearIntegerVoxelPosition(positions[index].xyz) * subdivisions)) / subdivisions;
     for (int axis = 0; axis < 3; ++axis) {
         float3 normal = float3(0.0);
         normal[axis] = 1.0;
@@ -74,10 +78,12 @@ kernel void c_bake_voxel_sun_faces(
         corner = rotateByQuat(corner, faceFrame.viewToWorld) + faceFrame.worldOrigin.xyz;
         edgeU = rotateByQuat(edgeU, faceFrame.viewToWorld);
         edgeV = rotateByQuat(edgeV, faceFrame.viewToWorld);
+        // Arbitrary source rotations cannot use the shared world/camera face basis.
+        const uint faceMarker = sunVoxelFaceMarker(faceId, faceFrame.dispatch.w);
         const float3 projected = sunSpaceProject(corner, sunFrame.sunBasisU.xyz, sunFrame.sunBasisV.xyz, sunFrame.sunDirection.xyz);
         const float3 projectedU = sunSpaceProject(edgeU, sunFrame.sunBasisU.xyz, sunFrame.sunBasisV.xyz, sunFrame.sunDirection.xyz);
         const float3 projectedV = sunSpaceProject(edgeV, sunFrame.sunBasisU.xyz, sunFrame.sunBasisV.xyz, sunFrame.sunDirection.xyz);
-        rasterSunFace(sunDepthBuf, projected, projectedU, projectedV, sunFrame.cascadeOriginUV_0, sunFrame.cascadeTexelSize_0, 0, sunVoxelFaceMarker(faceId, faceFrame.dispatch.w != 0));
-        rasterSunFace(sunDepthBuf, projected, projectedU, projectedV, sunFrame.cascadeOriginUV_1, sunFrame.cascadeTexelSize_1, kCascadeTexelCount, sunVoxelFaceMarker(faceId, faceFrame.dispatch.w != 0));
+        rasterSunFace(sunDepthBuf, projected, projectedU, projectedV, sunFrame.cascadeOriginUV_0, sunFrame.cascadeTexelSize_0, 0, faceMarker);
+        rasterSunFace(sunDepthBuf, projected, projectedU, projectedV, sunFrame.cascadeOriginUV_1, sunFrame.cascadeTexelSize_1, kCascadeTexelCount, faceMarker);
     }
 }

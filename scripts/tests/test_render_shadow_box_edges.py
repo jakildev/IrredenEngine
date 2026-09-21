@@ -3,6 +3,7 @@
 import contextlib
 import importlib.util
 import io
+import math
 import sys
 import unittest
 from pathlib import Path
@@ -33,6 +34,18 @@ class ShadowBoxEdgesTest(unittest.TestCase):
                        (48 * scale, 48 * scale), (16 * scale, 48 * scale)]
         observed, visible = METRIC.shadow_masks(image, Image.new("L", image.size, 255))
         return METRIC.strict_edges(observed, visible, polygon)[0]
+
+    def test_source_third_turn_permutates_box_axes(self):
+        plate = Image.new("RGB", (240, 120), (108, 109, 115))
+        rotated, _ = METRIC.expected_polygon(
+            plate, 0, False, True, box_pose=2 * math.pi / 3)
+        x, y, z = METRIC.BOX_HALF_CENTER_SPAN
+        with patch.object(METRIC, "BOX_HALF_CENTER_SPAN", (z, x, y)):
+            permuted, _ = METRIC.expected_polygon(plate, 0, False, True)
+        self.assertEqual(len(rotated), len(permuted))
+        for point, expected in zip(rotated, permuted):
+            for actual, value in zip(point, expected):
+                self.assertAlmostEqual(actual, value)
 
     def test_caster_density_preserves_half_centers_and_odd_density_snap(self):
         plate = Image.new("RGB", (240, 120), (108, 109, 115))

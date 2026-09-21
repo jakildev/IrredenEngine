@@ -148,7 +148,8 @@ The local centroid raster remains useful for screen-space occluder probes and ra
 trixel diagnostics. A rotation-invariant enclosing-sphere bound caps its density
 to private texture capacity; it no longer determines source-face display edges.
 Revoxelized occupancy continues to use local triangle reconstruction and its real
-staircase normals. World sun casting/receiving and picking for plain `DETACHED`
-remain separate work.
+staircase normals. [World sun casting](../pr-screenshots/codex/rigid-source-shadow-casters/README.md)
+uses original transformed faces in the finite-face pipeline; world-shadow
+receiving and picking for plain `DETACHED` remain separate work.
 
 [Fixtures, parity controls and retained evidence](detached-projected-face-coverage.md).

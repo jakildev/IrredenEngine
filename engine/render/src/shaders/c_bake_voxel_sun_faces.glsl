@@ -72,7 +72,11 @@ void main() {
     if ((activeMask[index >> 5u] & (1u << (index & 31u))) == 0u) return;
     const uint flags = (voxels[index].materialFlagBone >> 8u) & 0xFFu;
     const float subdivisions = float(dispatch.z);
-    const vec3 position = vec3(roundHalfUp(snapNearIntegerVoxelPosition(positions[index].xyz) * subdivisions)) / subdivisions;
+    // Basis 2 preserves authored centers and rotates original faces; basis 1
+    // carries the camera-aligned cells produced by detached revoxelization.
+    const bool rigidSource = dispatch.w == 2;
+    const vec3 position = rigidSource ? positions[index].xyz
+        : vec3(roundHalfUp(snapNearIntegerVoxelPosition(positions[index].xyz) * subdivisions)) / subdivisions;
     for (int axis = 0; axis < 3; ++axis) {
         vec3 normal = vec3(0.0);
         normal[axis] = 1.0;
@@ -89,10 +93,12 @@ void main() {
         corner = rotateByQuat(corner, viewToWorld) + worldOrigin.xyz;
         edgeU = rotateByQuat(edgeU, viewToWorld);
         edgeV = rotateByQuat(edgeV, viewToWorld);
+        // Arbitrary source rotations cannot use the shared world/camera face basis.
+        const uint faceMarker = sunVoxelFaceMarker(faceId, dispatch.w);
         const vec3 projected = sunSpaceProject(corner, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz);
         const vec3 projectedU = sunSpaceProject(edgeU, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz);
         const vec3 projectedV = sunSpaceProject(edgeV, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz);
-        rasterSunFace(projected, projectedU, projectedV, cascadeOriginUV_0, cascadeTexelSize_0, 0, sunVoxelFaceMarker(faceId, dispatch.w != 0));
-        rasterSunFace(projected, projectedU, projectedV, cascadeOriginUV_1, cascadeTexelSize_1, kCascadeTexelCount, sunVoxelFaceMarker(faceId, dispatch.w != 0));
+        rasterSunFace(projected, projectedU, projectedV, cascadeOriginUV_0, cascadeTexelSize_0, 0, faceMarker);
+        rasterSunFace(projected, projectedU, projectedV, cascadeOriginUV_1, cascadeTexelSize_1, kCascadeTexelCount, faceMarker);
     }
 }

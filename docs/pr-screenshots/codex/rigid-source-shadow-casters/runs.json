@@ -1,0 +1,240 @@
+[
+  {
+    "cmd": "fleet-run IRCanvasStress --only shadowbox,floor --probe-source-box --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 2 --auto-screenshot 6 --sweep-yaw 0 4.71238898 4",
+    "exit": 0,
+    "name": "identity",
+    "screenshots": [
+      "screenshot_001702.png",
+      "screenshot_001703.png",
+      "screenshot_001704.png",
+      "screenshot_001705.png"
+    ]
+  },
+  {
+    "name": "pose047",
+    "extra": "--frozen-pose 0.47",
+    "cmd": "fleet-run IRCanvasStress --only shadowbox,floor --probe-source-box --frozen-pose 0.47 --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 2 --auto-screenshot 6 --sweep-yaw 0 4.71238898 4",
+    "exit": 0,
+    "screenshots": [
+      "screenshot_001706.png",
+      "screenshot_001707.png",
+      "screenshot_001708.png",
+      "screenshot_001709.png"
+    ]
+  },
+  {
+    "name": "pose314",
+    "extra": "--frozen-pose 3.141592653589793",
+    "cmd": "fleet-run IRCanvasStress --only shadowbox,floor --probe-source-box --frozen-pose 3.141592653589793 --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 2 --auto-screenshot 6 --sweep-yaw 0 4.71238898 4",
+    "exit": 0,
+    "screenshots": [
+      "screenshot_001710.png",
+      "screenshot_001711.png",
+      "screenshot_001712.png",
+      "screenshot_001713.png"
+    ]
+  },
+  {
+    "name": "matrix-sdf",
+    "extra": "--probe-floor-mode sdf --probe-floor-span 40",
+    "cmd": "fleet-run IRCanvasStress --only shadowbox,floor --probe-source-box --probe-floor-mode sdf --probe-floor-span 40 --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 2 --auto-screenshot 6 --sweep-yaw 0 4.71238898 4",
+    "exit": 0,
+    "screenshots": [
+      "screenshot_001714.png",
+      "screenshot_001715.png",
+      "screenshot_001716.png",
+      "screenshot_001717.png"
+    ]
+  },
+  {
+    "name": "matrix-grid",
+    "extra": "--probe-floor-mode grid --probe-floor-span 40",
+    "cmd": "fleet-run IRCanvasStress --only shadowbox,floor --probe-source-box --probe-floor-mode grid --probe-floor-span 40 --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 2 --auto-screenshot 6 --sweep-yaw 0 4.71238898 4",
+    "exit": 0,
+    "screenshots": [
+      "screenshot_001718.png",
+      "screenshot_001719.png",
+      "screenshot_001720.png",
+      "screenshot_001721.png"
+    ]
+  },
+  {
+    "name": "matrix-revoxelized",
+    "extra": "--probe-floor-mode revoxelized --probe-floor-span 40",
+    "cmd": "fleet-run IRCanvasStress --only shadowbox,floor --probe-source-box --probe-floor-mode revoxelized --probe-floor-span 40 --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 2 --auto-screenshot 6 --sweep-yaw 0 4.71238898 4",
+    "exit": 0,
+    "screenshots": [
+      "screenshot_001722.png",
+      "screenshot_001723.png",
+      "screenshot_001724.png",
+      "screenshot_001725.png"
+    ]
+  },
+  {
+    "name": "matrix-source",
+    "extra": "--probe-floor-mode source --probe-floor-span 40",
+    "cmd": "fleet-run IRCanvasStress --only shadowbox,floor --probe-source-box --probe-floor-mode source --probe-floor-span 40 --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 2 --auto-screenshot 6 --sweep-yaw 0 4.71238898 4",
+    "exit": 0,
+    "screenshots": [
+      "screenshot_001726.png",
+      "screenshot_001727.png",
+      "screenshot_001728.png",
+      "screenshot_001729.png"
+    ]
+  },
+  {
+    "name": "screen-locked",
+    "extra": "--screen-lock-detached",
+    "cmd": "fleet-run IRCanvasStress --only shadowbox,floor --probe-source-box --screen-lock-detached --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 2 --auto-screenshot 6 --sweep-yaw 0 4.71238898 4",
+    "exit": 0,
+    "screenshots": [
+      "screenshot_001730.png",
+      "screenshot_001731.png",
+      "screenshot_001732.png",
+      "screenshot_001733.png"
+    ]
+  },
+  {
+    "name": "contact-10-source",
+    "groups": "shadowbox,floor",
+    "extra": "--probe-source-box --probe-box-offset 0 0 10 --probe-floor-mode revoxelized --probe-floor-span 40",
+    "cmd": "fleet-run IRCanvasStress --only shadowbox,floor --probe-source-box --probe-box-offset 0 0 10 --probe-floor-mode revoxelized --probe-floor-span 40 --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 2 --auto-screenshot 6 --sweep-yaw 0 4.71238898 4",
+    "exit": 0,
+    "screenshots": [
+      "screenshot_001734.png",
+      "screenshot_001735.png",
+      "screenshot_001736.png",
+      "screenshot_001737.png"
+    ]
+  },
+  {
+    "name": "contact-10-sdf",
+    "groups": "shadowbox,floor",
+    "extra": "--probe-analytic-box --probe-box-offset 0 0 10 --probe-floor-mode revoxelized --probe-floor-span 40",
+    "cmd": "fleet-run IRCanvasStress --only shadowbox,floor --probe-analytic-box --probe-box-offset 0 0 10 --probe-floor-mode revoxelized --probe-floor-span 40 --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 2 --auto-screenshot 6 --sweep-yaw 0 4.71238898 4",
+    "exit": 0,
+    "screenshots": [
+      "screenshot_001738.png",
+      "screenshot_001739.png",
+      "screenshot_001740.png",
+      "screenshot_001741.png"
+    ]
+  },
+  {
+    "name": "contact-12-source",
+    "groups": "shadowbox,floor",
+    "extra": "--probe-source-box --probe-box-offset 0 0 12 --probe-floor-mode revoxelized --probe-floor-span 40",
+    "cmd": "fleet-run IRCanvasStress --only shadowbox,floor --probe-source-box --probe-box-offset 0 0 12 --probe-floor-mode revoxelized --probe-floor-span 40 --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 2 --auto-screenshot 6 --sweep-yaw 0 4.71238898 4",
+    "exit": 0,
+    "screenshots": [
+      "screenshot_001742.png",
+      "screenshot_001743.png",
+      "screenshot_001744.png",
+      "screenshot_001745.png"
+    ]
+  },
+  {
+    "name": "contact-12-sdf",
+    "groups": "shadowbox,floor",
+    "extra": "--probe-analytic-box --probe-box-offset 0 0 12 --probe-floor-mode revoxelized --probe-floor-span 40",
+    "cmd": "fleet-run IRCanvasStress --only shadowbox,floor --probe-analytic-box --probe-box-offset 0 0 12 --probe-floor-mode revoxelized --probe-floor-span 40 --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 2 --auto-screenshot 6 --sweep-yaw 0 4.71238898 4",
+    "exit": 0,
+    "screenshots": [
+      "screenshot_001746.png",
+      "screenshot_001747.png",
+      "screenshot_001748.png",
+      "screenshot_001749.png"
+    ]
+  },
+  {
+    "name": "hidden-source",
+    "groups": "shadowbox,floor",
+    "extra": "--probe-source-box --probe-hidden-box",
+    "cmd": "fleet-run IRCanvasStress --only shadowbox,floor --probe-source-box --probe-hidden-box --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 2 --auto-screenshot 6 --sweep-yaw 0 4.71238898 4",
+    "exit": 0,
+    "screenshots": [
+      "screenshot_001750.png",
+      "screenshot_001751.png",
+      "screenshot_001752.png",
+      "screenshot_001753.png"
+    ]
+  },
+  {
+    "name": "hidden-revox",
+    "groups": "shadowbox,floor",
+    "extra": "--probe-hidden-box",
+    "cmd": "fleet-run IRCanvasStress --only shadowbox,floor --probe-hidden-box --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 2 --auto-screenshot 6 --sweep-yaw 0 4.71238898 4",
+    "exit": 0,
+    "screenshots": [
+      "screenshot_001754.png",
+      "screenshot_001755.png",
+      "screenshot_001756.png",
+      "screenshot_001757.png"
+    ]
+  },
+  {
+    "name": "floor-only",
+    "groups": "floor",
+    "extra": "",
+    "cmd": "fleet-run IRCanvasStress --only floor  --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 2 --auto-screenshot 6 --sweep-yaw 0 4.71238898 4",
+    "exit": 0,
+    "screenshots": [
+      "screenshot_001758.png",
+      "screenshot_001759.png",
+      "screenshot_001760.png",
+      "screenshot_001761.png"
+    ]
+  },
+  {
+    "name": "source-visible-final",
+    "groups": "shadowbox,floor",
+    "extra": "--probe-source-box",
+    "cmd": "fleet-run IRCanvasStress --only shadowbox,floor --probe-source-box --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 2 --auto-screenshot 6 --sweep-yaw 0 4.71238898 4",
+    "exit": 0,
+    "screenshots": [
+      "screenshot_001762.png",
+      "screenshot_001763.png",
+      "screenshot_001764.png",
+      "screenshot_001765.png"
+    ]
+  },
+  {
+    "name": "regression-grid",
+    "flag": "--probe-grid --probe-floor-mode sdf",
+    "sweep": "0 4.71238898",
+    "cmd": "fleet-run IRCanvasStress --only shadowbox,floor --probe-grid --probe-floor-mode sdf --probe-floor-span 40 --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 2 --auto-screenshot 6 --sweep-yaw 0 4.71238898 4",
+    "exit": 0,
+    "screenshots": [
+      "screenshot_001766.png",
+      "screenshot_001767.png",
+      "screenshot_001768.png",
+      "screenshot_001769.png"
+    ]
+  },
+  {
+    "name": "regression-revox",
+    "flag": "--probe-floor-mode revoxelized",
+    "sweep": "0.785398163 5.497787144",
+    "cmd": "fleet-run IRCanvasStress --only shadowbox,floor --probe-floor-mode revoxelized --probe-floor-span 40 --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 2 --auto-screenshot 6 --sweep-yaw 0.785398163 5.497787144 4",
+    "exit": 0,
+    "screenshots": [
+      "screenshot_001770.png",
+      "screenshot_001771.png",
+      "screenshot_001772.png",
+      "screenshot_001773.png"
+    ]
+  },
+  {
+    "name": "source-diagonal",
+    "flag": "--probe-source-box --probe-floor-mode revoxelized",
+    "sweep": "0.785398163 5.497787144",
+    "cmd": "fleet-run IRCanvasStress --only shadowbox,floor --probe-source-box --probe-floor-mode revoxelized --probe-floor-span 40 --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 2 --auto-screenshot 6 --sweep-yaw 0.785398163 5.497787144 4",
+    "exit": 0,
+    "screenshots": [
+      "screenshot_001774.png",
+      "screenshot_001775.png",
+      "screenshot_001776.png",
+      "screenshot_001777.png"
+    ]
+  }
+]

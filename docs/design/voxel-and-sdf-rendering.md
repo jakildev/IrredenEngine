@@ -11,7 +11,7 @@ memory and dispatch costs.
 | Representation | Useful properties | Costs and limitations | Appropriate starting point |
 |---|---|---|---|
 | Shared GRID voxel sets | Arbitrary authored occupancy, edits, pooled geometry, exposed-face selection and chunk visibility | Occupancy storage; rebuilding rotated occupancy; subdivision and non-cardinal face coverage | Large populated worlds and editable voxel content |
-| Plain DETACHED voxel sets | Continuous projected source faces under model/camera rotation | Per-canvas resources, face records and sorting; approximate face-flat AO; world-shadow support is incomplete | Rotating rigid voxel objects when their supported placement/lighting contract fits |
+| Plain DETACHED voxel sets | Continuous projected source faces under model/camera rotation | Per-canvas resources, face records and sorting; approximate face-flat AO; finite-face world casting uses source geometry, but world-shadow reception remains missing | Rotating rigid voxel objects when their supported placement/lighting contract fits |
 | Revoxelized DETACHED sets | Rotated occupancy rebuilt into connected local voxel faces | Revoxelization, private storage and real staircase geometry; approximation differs from continuous source faces | Objects intentionally requiring a voxelized rotated appearance |
 | Analytic SDF shapes | Small descriptors, procedural primitives, analytic intersections for supported shapes, no authored occupancy allocation | Work scales with dispatched screen tiles and overlap; general/rotated solvers can search along depth; casting and display must agree | Tools, debug geometry and measured primitive-heavy scenes |
 

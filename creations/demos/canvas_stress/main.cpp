@@ -1166,7 +1166,8 @@ void registerArgs() {
     args.flag("--no-spin", "Freeze per-entity self-spin at quaternion identity");
     args.number(
         "--frozen-pose",
-        "Freeze GRID spin cubes and rigid probes at this angle (radians) about their own axes, "
+        "Freeze GRID spin cubes, detached shadowbox and rigid probes at this angle (radians) about "
+        "their own axes, "
         "zero self-spin — isolates camera direction for the gap sweep",
         g_settings.frozenPoseRad_
     );
@@ -1212,6 +1213,8 @@ void registerArgs() {
         "--probe-source-box",
         "Use continuous source faces for shadowbox (GRID/analytic selectors take precedence)"
     );
+    args.flag("--probe-hidden-box", "Hide the detached shadowbox and its cast shadow");
+    args.numbers("--probe-box-offset", "Shadowbox translation offset <x> <y> <z>", 3);
     args.flag("--probe-analytic-box", "Use an analytic box for shadowbox");
     args.flag("--probe-analytic-sphere", "Use an analytic sphere for shadowbox");
     args.numbers("--analytic-box-offset", "Analytic shadowbox translation offset <x> <y> <z>", 3);
@@ -1958,7 +1961,10 @@ void initEntities() {
     if ((g_settings.onlyGroups_ & kGroupShadowBox) != 0u) {
         const bool singleVoxel = IREngine::args().getFlag("--probe-single-voxel");
         const ivec3 size = singleVoxel ? ivec3(1) : ivec3(18, 6, 8);
-        const vec3 position{0.0f, 0.0f, singleVoxel ? -2.0f : -12.0f};
+        const auto boxOffset = IREngine::args().getFloats("--probe-box-offset");
+        const vec3 position =
+            vec3(0.0f, 0.0f, singleVoxel ? -2.0f : -12.0f) +
+            (boxOffset.empty() ? vec3(0.0f) : vec3(boxOffset[0], boxOffset[1], boxOffset[2]));
         const Color color{80, 120, 240, 255};
         if (IREngine::args().getFlag("--probe-analytic-sphere")) {
             IREntity::createEntity(
@@ -1984,18 +1990,25 @@ void initEntities() {
                 C_VoxelSetNew{size, color, true, mainCanvas}
             );
         } else {
-            const auto canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
+            auto canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
                 "shadow_box",
                 ivec2(128),
                 ivec3(32),
                 g_settings.screenLockDetached_
             );
+            canvas.visible_ = !IREngine::args().getFlag("--probe-hidden-box");
             IREntity::createEntity(
                 C_LocalTransform{vec3(0.0f)},
                 C_VoxelSetNew{size, color, true, canvas.canvasEntity_}
             );
             IREntity::createEntity(
-                C_LocalTransform{position},
+                C_LocalTransform{
+                    position,
+                    IRMath::quatAxisAngle(
+                        IRMath::normalize(vec3(1.0f)),
+                        g_settings.frozenPose_ ? g_settings.frozenPoseRad_ : 0.0f
+                    )
+                },
                 C_RotationMode{
                     IREngine::args().getFlag("--probe-source-box")
                         ? RotationMode::DETACHED
