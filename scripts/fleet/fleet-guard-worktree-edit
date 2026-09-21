@@ -45,8 +45,8 @@ set -uo pipefail
 input=$(cat 2>/dev/null || true)
 [[ -z "$input" ]] && exit 0
 
-cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null || true)
-file=$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty' 2>/dev/null || true)
+cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null | tr -d '\r' || true)
+file=$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty' 2>/dev/null | tr -d '\r' || true)
 
 # No path → nothing to constrain.
 [[ -z "$file" ]] && exit 0

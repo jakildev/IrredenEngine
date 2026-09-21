@@ -330,7 +330,7 @@ with open(sys.argv[1], encoding="utf-8") as f:
     for entry in json.load(f):
         flags = " ".join("--add-label %s" % label for label in entry["labels"])
         print("%s\t%s\t%s" % (entry["number"], flags, json.dumps(entry["labels"])))
-' "$plan_f")
+' "$plan_f" | tr -d '\r')
 
 if [[ $DRY_RUN -eq 1 ]]; then
     echo "fleet-triage-sweep apply: dry run — $applied issue(s) would be labeled, 0 closed"
