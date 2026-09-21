@@ -7,6 +7,13 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
 
 ## Current shadow investigation
 
+- [Rigid SO(3) probes](../pr-screenshots/codex/rigid-voxel-rotation-probes/README.md)
+  expose the existing continuous source-face path without revoxelizing. Fourteen
+  single-voxel pose/camera checks pass; two nearly edge-on cases are inconclusive.
+  Extend to multi-voxel depth/occlusion and dense temporal transitions; add world
+  shadow support without replacing source geometry with resampled occupancy.
+
+
 - [Caster/receiver matrix](../pr-screenshots/codex/shadow-receiver-mode-matrix/README.md):
   16 mode pairs at eight yaws captured on Metal. Source-face DETACHED casting and
   receiving are missing; intermediate GRID receivers show interior shadow gaps.

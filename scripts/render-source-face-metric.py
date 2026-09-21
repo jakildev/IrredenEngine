@@ -8,7 +8,8 @@ For voxel use --focus-orbit 7 --focus-single-voxel; adjacent uses
 --focus-identity in the demo. Default pixel scale is zoom 4 at 2560x1440.
 Use a fixed --sweep-yaw and matching --yaw in degrees. Black is background.
 No image registration, reference screenshot or trixel parity formula is used.
-One framebuffer pixel of boundary uncertainty is allowed, independent of zoom.
+One screenshot pixel of boundary uncertainty is allowed, independent of zoom.
+For rigid probe 2, --axis-angle 1 1 1 DEGREES matches its --frozen-pose in radians.
 This checks silhouette; --normals additionally checks each face of ONE voxel.
 It does not validate multi-voxel internal face boundaries, depth or lighting.
 """
@@ -22,10 +23,10 @@ from render_fixture_geometry import rotate, source_centers, view
 from render_metric_util import raster_polygon, read_png, write_png
 
 
-def projected_faces(shape, yaw, identity, scale, center):
+def projected_faces(shape, yaw, identity, scale, center, axis_angle=None):
     for voxel in source_centers(shape):
         for axis in range(3):
-            normal = rotate(tuple(1 if i == axis else 0 for i in range(3)), identity)
+            normal = rotate(tuple(1 if i == axis else 0 for i in range(3)), identity, axis_angle)
             sign = -1 if sum(view(normal, yaw)) >= 0 else 1
             normal = tuple(sign * value for value in normal)
             if abs(sum(view(normal, yaw))) < 1e-9:
@@ -35,17 +36,18 @@ def projected_faces(shape, yaw, identity, scale, center):
                 offset = [u, v]
                 offset.insert(axis, sign * .5)
                 point = tuple(a + b for a, b in zip(voxel, offset))
-                x, y, z = view(rotate(point, identity), yaw)
+                x, y, z = view(rotate(point, identity, axis_angle), yaw)
                 points.append((center[0] + (-x + y) * scale[0],
                                center[1] + (-x - y + 2 * z) * scale[1]))
             yield points, tuple(round((v + 1) * 127.5) for v in normal)
 
 
-def expected_image(width, height, shape, yaw, identity, scale, center):
+def expected_image(width, height, shape, yaw, identity, scale, center, axis_angle=None):
     labels = bytearray(width * height)
     palette = [(0, 0, 0)]
     clipped = False
-    for polygon, color in projected_faces(shape, math.radians(yaw), identity, scale, center):
+    for polygon, color in projected_faces(
+            shape, math.radians(yaw), identity, scale, center, axis_angle):
         clipped |= any(x < 1 or y < 1 or x >= width - 1 or y >= height - 1
                        for x, y in polygon)
         if color not in palette:
@@ -102,20 +104,26 @@ def main(argv=None):
     parser.add_argument(
         "--shape", choices=("voxel", "adjacent", "frame", "octahedron"), required=True)
     parser.add_argument("--yaw", type=float, required=True)
-    parser.add_argument("--identity", action="store_true")
+    pose = parser.add_mutually_exclusive_group()
+    pose.add_argument("--identity", action="store_true")
+    pose.add_argument("--axis-angle", type=float, nargs=4, metavar=("X", "Y", "Z", "DEGREES"))
     parser.add_argument("--iso-scale", type=float, nargs=2, default=(16, 8))
     parser.add_argument("--normals", action="store_true")
     parser.add_argument("--diagnostic-prefix", type=Path)
     args = parser.parse_args(argv)
     if not math.isfinite(args.yaw) or not all(math.isfinite(v) and v > 0 for v in args.iso_scale):
         parser.error("yaw must be finite and scale must be finite and positive")
+    if args.axis_angle is not None and (
+            not all(math.isfinite(v) for v in args.axis_angle)
+            or not any(args.axis_angle[:3])):
+        parser.error("axis-angle requires a finite nonzero axis and finite degrees")
     if args.normals and args.shape != "voxel":
         parser.error("face-normal oracle is only defined for one convex voxel")
     try:
         width, height, bpp, pixels = read_png(str(args.image))
         expected, palette, clipped = expected_image(
             width, height, args.shape, args.yaw, args.identity, args.iso_scale,
-            (width / 2, height / 2))
+            (width / 2, height / 2), args.axis_angle)
         result, errors = compare(width, height, bpp, pixels, expected, palette, args.normals)
         result.update(image=str(args.image), scope="source_geometry", clipped=clipped)
         result["pass"] &= not clipped

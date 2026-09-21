@@ -238,6 +238,7 @@ enum SpawnGroup : std::uint32_t {
     kGroupShadowBox = 1u << 12,
     kGroupShadowAttached = 1u << 13,
     kGroupShadowOcclusion = 1u << 14,
+    kGroupRigid = 1u << 15,
 };
 
 // 0.5 degrees per frame → full revolution in ~720 frames (~12 s at 60 fps)
@@ -436,6 +437,7 @@ std::uint32_t parseSpawnGroups(const char *arg) {
         {"shadowbox", kGroupShadowBox},
         {"shadowattached", kGroupShadowAttached},
         {"shadowocclusion", kGroupShadowOcclusion},
+        {"rigid", kGroupRigid},
     };
     std::uint32_t bits = 0u;
     const std::string list{arg};
@@ -1112,6 +1114,11 @@ void registerArgs() {
         "Cell extent <x> <y> <z> of the mixed-parity box (--focus-revox 3; default 12 12 11)",
         3
     );
+    args.integer(
+        "--focus-rigid",
+        "Center one rigid probe (0 solid cube, 1 frame, 2 single voxel)",
+        -1
+    );
     args.integer("--focus-orbit", "Isolate an orbit shape by its original index and center it", -1);
     args.flag("--focus-single-voxel", "Use one voxel in the focused orbit canvas");
     args.flag(
@@ -1159,7 +1166,7 @@ void registerArgs() {
     args.flag("--no-spin", "Freeze per-entity self-spin at quaternion identity");
     args.number(
         "--frozen-pose",
-        "Freeze the GRID spin cubes at this fixed angle (radians) about each cube's own axis, "
+        "Freeze GRID spin cubes and rigid probes at this angle (radians) about their own axes, "
         "zero self-spin — isolates camera direction for the gap sweep",
         g_settings.frozenPoseRad_
     );
@@ -1237,7 +1244,7 @@ void registerArgs() {
         "--only",
         "Spawn only the named entity groups (comma-separated: maingrid,gridspin,canary,revox,"
         "orbit,floor,compare,interpenetrate,smallzoom,orbitswap,shadowreceiver,shadowcaster,"
-        "shadowbox,shadowattached,shadowocclusion)",
+        "shadowbox,shadowattached,shadowocclusion,rigid)",
         ""
     );
     args.numbers(
@@ -2291,6 +2298,32 @@ void initEntities() {
             C_AutoSpin{vec3(0.4f, 1.0f, 0.6f), reVoxSpin},
             C_VoxelSetNew{kReVoxSolidSize, Color{245, 160, 65, 255}, true, mainCanvas}
         );
+    }
+
+    if ((g_settings.onlyGroups_ & kGroupRigid) != 0u) {
+        constexpr vec3 axes[]{{1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f, 1.0f}};
+        constexpr Color colors[]{{70, 190, 225, 255}, {235, 155, 65, 255}, {170, 115, 230, 255}};
+        const int focus = IREngine::args().getInt("--focus-rigid");
+        const float angle = g_settings.frozenPose_ ? g_settings.frozenPoseRad_ : IRMath::kQuarterPi;
+        const float rate =
+            g_settings.noSpin_ || g_settings.frozenPose_ ? 0.0f : kDetachedSpinBaseRadPerFrame;
+        for (int index = 0; index < 3; ++index) {
+            if (focus >= 0 && focus != index)
+                continue;
+            spawnOrbitShape(
+                100 + index,
+                focus >= 0 ? vec3(0.0f) : vec3(float(index - 1) * 24.0f, 0.0f, -12.0f),
+                index == 1 ? OrbitShape::FRAME : OrbitShape::CUBE,
+                RotationMode::DETACHED,
+                index == 2   ? 1
+                : index == 1 ? 14
+                             : 12,
+                axes[index],
+                rate,
+                IRMath::quatAxisAngle(IRMath::normalize(axes[index]), angle),
+                colors[index]
+            );
+        }
     }
 
     // Orbit ring: a wider second ring of varied silhouettes that tumbles around

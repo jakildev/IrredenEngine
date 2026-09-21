@@ -4,6 +4,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import math
 import sys
 import tempfile
 import unittest
@@ -44,6 +45,31 @@ class SourceFaceMetricTest(unittest.TestCase):
     def test_literal_cube_faces_pass_at_two_scales(self):
         for zoom in (1, 2):
             self.assertTrue(self.check_image(cube_pixels(zoom=zoom), zoom=zoom)["pass"])
+
+    def test_literal_quarter_turn_basis_and_axis_scale(self):
+        for magnitude in (1e-200, 1, 1e200, 1e308):
+            for point, expected in (((0, 1, 0), (0, 0, 1)), ((0, 0, 1), (0, -1, 0))):
+                actual = METRIC.rotate(point, axis_angle=(magnitude, 0, 0, 90))
+                for a, b in zip(actual, expected):
+                    self.assertAlmostEqual(a, b)
+        point = (2, -3, 5)
+        result = METRIC.rotate(point, axis_angle=(1e308, 1e308, 1e308, 73))
+        self.assertAlmostEqual(math.hypot(*point), math.hypot(*result))
+
+    def test_half_turns_preserve_literal_cube_world_faces(self):
+        for axis in ((1, 0, 0), (0, 1, 0), (0, 0, 1), (1, 1, 0)):
+            labels, palette, clipped = METRIC.expected_image(
+                128, 128, "voxel", 0, False, (16, 8), (64, 64), (*axis, 180))
+            self.assertFalse(clipped)
+            result, _ = METRIC.compare(128, 128, 3, cube_pixels(), labels, palette, True)
+            self.assertTrue(result["pass"], (axis, result))
+
+    def test_invalid_axis_is_rejected(self):
+        for pose in ((0, 0, 0, 45), (1, 0, 0, float("nan"))):
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as caught:
+                METRIC.main(["unused.png", "--shape", "voxel", "--yaw", "0",
+                             "--axis-angle", *map(str, pose)])
+            self.assertEqual(caught.exception.code, 2)
 
     def test_spike_fails_without_an_interior_hole(self):
         pixels = cube_pixels()
