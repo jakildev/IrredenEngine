@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Provider election for target-less merger and epic-steward dispatches.
+# Provider election for target-less dispatches. The epic steward is the
+# target-less role; the merger is target-bound and routes through `route`.
 
 set -uo pipefail
 
@@ -74,89 +75,79 @@ close_gate() {
 open_gate() { rm -f "$FLEET_STATE_DIR/usage/five_hour.json"; }
 
 tick() {
-    local role="$1"; shift
     rm -f "$FLEET_STATE_DIR/dispatch"/*.json
     : > "$SEND_LOG"
-    if [[ "$role" == merger ]]; then
-        printf 'llm\n' > "$FLEET_STATE_DIR/triggers/$role"
-    else
-        : > "$FLEET_STATE_DIR/triggers/$role"
-    fi
-    env "$@" "$DISPATCHER" --dispatch-role "$role" 1 2>&1 >/dev/null
+    : > "$FLEET_STATE_DIR/triggers/epic-steward"
+    env "$@" "$DISPATCHER" --dispatch-role epic-steward 1 2>&1 >/dev/null
 }
+TRIGGER="$FLEET_STATE_DIR/triggers/epic-steward"
 
-echo "T1: closed Claude gate elects Codex for merger"
+echo "T1: closed Claude gate elects Codex for the epic steward"
 close_gate
-out=$(tick merger)
-assert_contains "$out" "dispatching merger -> %1 runtime=codex" "closed gate launches merger on Codex"
+out=$(tick)
+assert_contains "$out" "dispatching epic-steward -> %1 runtime=codex" \
+  "closed gate launches epic steward on Codex"
 assert_contains "$(<"$SEND_LOG")" \
-  "fleet-dispatch-wrap pane-1 gpt-5.6-terra medium merger '' live target= codex sonnet" \
-  "Codex merger uses the target-less 9-argument launch"
+  "fleet-dispatch-wrap pane-1 gpt-5.6-sol medium epic-steward '' live target= codex opus" \
+  "Codex epic steward uses the target-less 9-argument launch"
 assert_absent "$out" "claude-quota-closed" "successful fallback is not reported as Claude-blocked"
 
 echo "T2: open gate keeps the legacy Claude launch"
 open_gate
-out=$(tick merger)
-assert_contains "$out" "dispatching merger -> %1 runtime=claude" "open gate keeps merger on Claude"
+out=$(tick)
+assert_contains "$out" "dispatching epic-steward -> %1 runtime=claude" \
+  "open gate keeps epic steward on Claude"
 assert_contains "$(<"$SEND_LOG")" \
-  "fleet-dispatch-wrap pane-1 sonnet high merger '' live" \
+  "fleet-dispatch-wrap pane-1 opus xhigh epic-steward '' live" \
   "open gate keeps the legacy six-argument launch"
 assert_absent "$(<"$SEND_LOG")" "target=" "legacy launch carries no target argument"
 
 echo "T3: a Claude pin waits at the closed gate"
 close_gate
-out=$(tick merger FLEET_WORKER_RUNTIME=claude)
+out=$(tick FLEET_WORKER_RUNTIME=claude)
 assert_contains "$out" "claude-quota-closed" "Claude pin reports the closed gate"
-assert_absent "$out" "dispatching merger" "Claude pin does not launch"
-[[ -f "$FLEET_STATE_DIR/triggers/merger" ]] && ok "blocked launch keeps trigger" \
-  || bad "blocked launch consumed trigger"
+assert_absent "$out" "dispatching epic-steward" "Claude pin does not launch"
+[[ -f "$TRIGGER" ]] && ok "blocked launch keeps trigger" || bad "blocked launch consumed trigger"
 
 echo "T4: Codex cooldown keeps the trigger"
 printf '{"until":%s}\n' "$((NOW + 900))" > "$FLEET_STATE_DIR/runtime-cooldown/codex.json"
-out=$(tick merger)
+out=$(tick)
 assert_contains "$out" "codex-cooldown" "live Codex cooldown blocks fallback"
-assert_absent "$out" "dispatching merger" "cooling provider does not launch"
-[[ -f "$FLEET_STATE_DIR/triggers/merger" ]] && ok "cooldown keeps trigger" \
-  || bad "cooldown consumed trigger"
+assert_absent "$out" "dispatching epic-steward" "cooling provider does not launch"
+[[ -f "$TRIGGER" ]] && ok "cooldown keeps trigger" || bad "cooldown consumed trigger"
 rm -f "$FLEET_STATE_DIR/runtime-cooldown/codex.json"
 
 echo "T5: missing Codex binary keeps the trigger"
 NO_CODEX_BIN="$TMPROOT/no-codex-bin"
 mkdir -p "$NO_CODEX_BIN"
 cp "$BIN/tmux" "$BIN/pgrep" "$BIN/fleet-claim" "$BIN/gh" "$NO_CODEX_BIN/"
-out=$(PATH="$NO_CODEX_BIN:/usr/bin:/bin" tick merger)
+out=$(PATH="$NO_CODEX_BIN:/usr/bin:/bin" tick)
 assert_contains "$out" "codex-unavailable" "missing Codex binary blocks fallback"
-assert_absent "$out" "dispatching merger" "missing Codex binary does not launch"
+assert_absent "$out" "dispatching epic-steward" "missing Codex binary does not launch"
+[[ -f "$TRIGGER" ]] && ok "unavailable provider keeps trigger" \
+  || bad "unavailable provider consumed trigger"
 
-echo "T6: epic steward uses the same target-less fallback"
-out=$(tick epic-steward)
-assert_contains "$out" "dispatching epic-steward -> %1 runtime=codex" \
-  "closed gate launches epic steward on Codex"
-assert_contains "$(<"$SEND_LOG")" \
-  "gpt-5.6-sol medium epic-steward '' live target= codex opus" \
-  "epic steward uses its opus-class Codex assignment"
-
-echo "T7: target-less sidecars never enter reserved-target routing"
-printf '{"runtime":"codex","target":"","role":"merger","session_id":"sid"}\n' \
+echo "T6: target-less sidecars never enter reserved-target routing"
+printf '{"runtime":"codex","target":"","role":"epic-steward","session_id":"sid"}\n' \
   > "$FLEET_SESSIONS_DIR/pool-1.session.json"
-out=$(tick merger)
-assert_contains "$out" "dispatching merger -> %1 runtime=codex" \
-  "empty-target sidecar does not prevent batch dispatch"
-assert_absent "$out" "resume-route-failed" "batch role skips reserved-target routing"
+out=$(tick)
+assert_contains "$out" "dispatching epic-steward -> %1 runtime=codex" \
+  "empty-target sidecar does not prevent target-less dispatch"
+assert_absent "$out" "resume-route-failed" "target-less role skips reserved-target routing"
+rm -f "$FLEET_SESSIONS_DIR/pool-1.session.json"
 
-echo "T8: an unset runtime list leaves Claude-only behavior unchanged"
-out=$(tick merger FLEET_RUNTIMES=)
-assert_contains "$out" "dispatching merger -> %1 runtime=claude" \
+echo "T7: an unset runtime list leaves Claude-only behavior unchanged"
+out=$(tick FLEET_RUNTIMES=)
+assert_contains "$out" "dispatching epic-steward -> %1 runtime=claude" \
   "legacy host launches Claude without provider election"
-assert_contains "$(<"$SEND_LOG")" "fleet-dispatch-wrap pane-1 sonnet high merger '' live" \
+assert_contains "$(<"$SEND_LOG")" "fleet-dispatch-wrap pane-1 opus xhigh epic-steward '' live" \
   "legacy host keeps six-argument launch"
 
-echo "T9: an explicit Codex pin overrides an open Claude gate"
+echo "T8: an explicit Codex pin overrides an open Claude gate"
 open_gate
-out=$(tick merger FLEET_WORKER_RUNTIME=codex)
-assert_contains "$out" "dispatching merger -> %1 runtime=codex" \
+out=$(tick FLEET_WORKER_RUNTIME=codex)
+assert_contains "$out" "dispatching epic-steward -> %1 runtime=codex" \
   "Codex pin elects Codex while Claude is open"
-assert_contains "$(<"$SEND_LOG")" "target= codex sonnet" \
-  "Codex pin uses the 9-argument launch"
+assert_contains "$(<"$SEND_LOG")" "target= codex opus" "Codex pin uses the 9-argument launch"
 
 summarize "target-less runtime dispatcher tests"
