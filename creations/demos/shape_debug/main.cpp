@@ -9,6 +9,7 @@
 #include <irreden/ir_constants.hpp>
 #include <irreden/render/camera.hpp>
 #include <irreden/render/cull_viewport_state.hpp>
+#include <irreden/render/default_pivot_latch.hpp>
 
 #include <irreden/asset/voxel_set_format.hpp>
 #include <irreden/voxel/dense_bridge.hpp>
@@ -20,6 +21,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <numbers>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -430,13 +432,22 @@ constexpr vec3 kPivotPillarCenter = vec3(8.0f, -8.0f, 10.0f);
 //                   per-frame hook (the shot cycler clears the pivot focus at
 //                   every shot boundary, and the latched point is only known
 //                   at runtime so it cannot ride the shot table).
+//   acquire-continuity — DEFAULT pivot at a base yaw (--yaw, default 0), the
+//                   center-depth probe placed on that yaw's crosshair ray. The
+//                   view settles with the crosshair on background, pans the
+//                   probe under it, then takes two yaw steps just above the
+//                   latch's settle delta: each is a gesture that acquires the
+//                   probe's surface. The last three shots straddle the first
+//                   acquisition, and a displacement-free acquisition leaves
+//                   them identical; the log shows the anchor jumping from the
+//                   depth-0 point onto the probe.
 //
 // Every DEFAULT-pivot block emits a per-shot `[pivot-focus-assert]` line: the
 // focus the engine derived from its live composite-depth readback against the
-// analytic ray/surface intersection below. Which blocks ALSO carry a
-// whole-silhouette centroid gate, and why the two default blocks above cannot,
-// is `docs/design/camera-yaw-pivot.md` §"Known deviations" deviation 2 —
-// `scripts/pivot-verify.py` owns the routing.
+// geometric target for that shot (see logPivotFocusAssert). Which blocks ALSO
+// carry a whole-silhouette centroid gate, and why the two default blocks above
+// cannot, is `docs/design/camera-yaw-pivot.md` §"Known deviations" deviation 2
+// — `scripts/pivot-verify.py` owns the routing.
 // Requires --auto-screenshot (value = warmup frames per shot); score with
 // scripts/pivot-verify.py. Same stable-storage discipline as the other tables.
 std::string g_pivotVerifyBlock = "off";
@@ -569,14 +580,33 @@ constexpr float kCursorLatchFocusToleranceWorld = 1.0f;
 // passes through the derived surface point.
 constexpr float kPivotVerifyAxisProbeStep = 6.0f;
 
+// acquire-continuity: the yaw of each of its two gesture steps — a few times
+// the default pivot latch's settle delta, so each step is a gesture while the
+// scene barely rotates. Not closer: the camera clamps yaw to (-π + 1e-4, π),
+// which eats one settle delta of a step taken from a base yaw of π.
+constexpr float kPivotVerifyAcquireYawStep = 5.0f * IRRender::DefaultPivotLatch::kYawSettleDelta;
+// acquire-continuity: iso offset of the settle pan away from probe-centered —
+// the viewport-center ray lands ~28 world units clear of the probe.
+constexpr vec2 kPivotVerifyAcquireBackgroundIso = vec2(-40.0f, 0.0f);
+
+// Iso coordinate of the main canvas center with no camera applied: a world
+// point W sits under the crosshair when `P_yaw(W) + effectiveCameraIso` equals
+// it.
+vec2 pivotVerifyCanvasCenterIso() {
+    const ivec2 canvasSize = ivec2(IRRender::getMainCanvasSizeTrixels());
+    return vec2(canvasSize) * 0.5f - vec2(IRMath::trixelOriginOffsetZ1(canvasSize));
+}
+
 // Camera pan that places kPivotVerifyDefaultAnchor under the exact viewport
-// center: inverts `viewCenterIso = canvasSize/2 - trixelOriginOffsetZ1 -
-// cameraIso` (getEffectiveCameraIso's default-focus derivation) at
+// center: inverts `viewCenterIso = canvasCenterIso - cameraIso`
+// (getEffectiveCameraIso's default-focus derivation, before any acquisition) at
 // `viewCenterIso == pos3DtoPos2DIso(anchor)`.
 vec2 pivotVerifyDefaultPan() {
-    const ivec2 canvasSize = ivec2(IRRender::getMainCanvasSizeTrixels());
-    return vec2(canvasSize) * 0.5f - vec2(IRMath::trixelOriginOffsetZ1(canvasSize)) -
-           IRMath::pos3DtoPos2DIso(kPivotVerifyDefaultAnchor);
+    return pivotVerifyCanvasCenterIso() - IRMath::pos3DtoPos2DIso(kPivotVerifyDefaultAnchor);
+}
+
+float pivotVerifyBaseYaw() {
+    return g_initialYawSet ? g_initialYaw : 0.0f;
 }
 
 // World center of the --pivot-verify probe cylinder for the active block.
@@ -589,6 +619,18 @@ vec3 pivotVerifyProbeCenter() {
         // On the viewport-center iso RAY at z = kPivotVerifyProbeZ: same screen
         // position as the anchor, off the pinned column by (z, z) in xy.
         return kPivotVerifyDefaultAnchor + vec3(kPivotVerifyProbeZ);
+    }
+    if (g_pivotVerifyBlock == "acquire-continuity") {
+        // center-depth's probe, on the viewport-center ray of the BASE yaw —
+        // the ray through the anchor along R_z(+yaw)·(1,1,1) — snapped to the
+        // lattice. `isoPixelToPos3DYawed(0, 3z, yaw)` is exactly
+        // z·R_z(+yaw)·(1,1,1).
+        const vec3 alongRay = IRMath::isoPixelToPos3DYawed(
+            vec2(0.0f),
+            3.0f * kPivotVerifyProbeZ,
+            pivotVerifyBaseYaw()
+        );
+        return kPivotVerifyDefaultAnchor + vec3(IRMath::roundVec3HalfUp(alongRay));
     }
     if (g_pivotVerifyBlock == "background-center") {
         // On the pinned column, lifted clear of the viewport-center ray so the
@@ -620,7 +662,8 @@ vec3 pivotVerifyProbeCenter() {
 // pinned-point oracle applies to.
 bool pivotVerifyIsDefaultBlock() {
     return g_pivotVerifyBlock == "center-column" || g_pivotVerifyBlock == "center-depth" ||
-           g_pivotVerifyBlock == "background-center" || g_pivotVerifyBlock == "center-axis";
+           g_pivotVerifyBlock == "background-center" || g_pivotVerifyBlock == "center-axis" ||
+           g_pivotVerifyBlock == "acquire-continuity";
 }
 
 // Analytic focus oracle for the DEFAULT-pivot blocks: the world point the
@@ -641,28 +684,76 @@ bool pivotVerifyIsDefaultBlock() {
 // wide enough to also admit the defect. Returns the anchor when no lattice voxel
 // on the ray is active, which is exactly the iso-depth-0 background fallback the
 // derive is specified to take.
-vec3 pivotVerifyAnalyticFocus() {
-    const vec3 center = pivotVerifyProbeCenter();
+//
+// True when the probe's carve keeps the voxel at lattice offset @p cell from
+// its center — createVoxelPoolShape's own predicate over the same grid.
+bool pivotVerifyProbeCellCarved(ivec3 cell) {
+    const ivec3 gridHalfExtent = pivotVerifyProbeHalfExtent();
+    // Outside the carved grid there is no voxel to win, however the unbounded
+    // SDF reads there.
+    if (IRMath::abs(cell.x) > gridHalfExtent.x || IRMath::abs(cell.y) > gridHalfExtent.y ||
+        IRMath::abs(cell.z) > gridHalfExtent.z) {
+        return false;
+    }
     const auto sdfType = static_cast<IRMath::SDF::ShapeType>(IRRender::ShapeType::CYLINDER);
     const vec4 sdfParams = IRMath::SDF::effectiveParams(sdfType, pivotVerifyProbeParams());
-    const vec3 gridHalfExtent = vec3(pivotVerifyProbeHalfExtent());
+    return IRMath::SDF::evaluate(vec3(cell), sdfType, sdfParams) <= IRMath::SDF::kSurfaceThreshold;
+}
+
+vec3 pivotVerifyAnalyticFocus() {
+    const vec3 center = pivotVerifyProbeCenter();
     // The ray leaves the carved grid for good once its z clears the grid top;
     // z along the ray IS a, so that bound is the walk's end.
-    const int lastStep = static_cast<int>(center.z + gridHalfExtent.z);
+    const int lastStep = static_cast<int>(center.z + pivotVerifyProbeHalfExtent().z);
     for (int step = 0; step <= lastStep; ++step) {
         const vec3 world = kPivotVerifyDefaultAnchor + vec3(static_cast<float>(step));
-        const vec3 local = world - center;
-        // Outside the carved grid there is no voxel to win, however the
-        // unbounded SDF reads there.
-        if (IRMath::abs(local.x) > gridHalfExtent.x || IRMath::abs(local.y) > gridHalfExtent.y ||
-            IRMath::abs(local.z) > gridHalfExtent.z) {
-            continue;
-        }
-        if (IRMath::SDF::evaluate(local, sdfType, sdfParams) <= IRMath::SDF::kSurfaceThreshold) {
+        if (pivotVerifyProbeCellCarved(ivec3(world - center))) {
             return world;
         }
     }
     return kPivotVerifyDefaultAnchor;
+}
+
+// Where the default pivot must land when a rotation gesture acquires from a
+// frame drawn at @p yaw with effective camera @p effectiveCameraIso: the
+// point of that frame's crosshair ray nearest the center of the first carved
+// cell the ray enters, or nothing when the ray meets no voxel (the latch holds).
+//
+// The ray is every world point that projects to the canvas center at that
+// pose, `isoPixelToPos3DYawed(canvasCenter - effectiveCamera, depth, yaw)`,
+// walked from near (small yawed depth) to far in 1/64-depth steps. The
+// composite sorts each fragment by its cell's yawed depth, which is why the
+// target is the ray point level with the cell center rather than the ray's
+// entry point into the cube. At yaw 0 the ray runs through lattice points and
+// this is pivotVerifyAnalyticFocus's walk.
+std::optional<vec3> pivotVerifyCrosshairTarget(float yaw, vec2 effectiveCameraIso) {
+    const vec2 iso = pivotVerifyCanvasCenterIso() - effectiveCameraIso;
+    const vec3 rayOrigin = IRMath::isoPixelToPos3DYawed(iso, 0.0f, yaw);
+    const vec3 rayStep = IRMath::isoPixelToPos3DYawed(iso, 1.0f, yaw) - rayOrigin;
+    const vec3 center = pivotVerifyProbeCenter();
+    // Depth of the probe center along the ray, and a reach that covers the
+    // whole carve grid from it.
+    const float centerDepth =
+        IRMath::dot(center - rayOrigin, rayStep) / IRMath::dot(rayStep, rayStep);
+    const ivec3 half = pivotVerifyProbeHalfExtent();
+    const float reach = 3.0f * static_cast<float>(half.x + half.y + half.z + 2);
+    constexpr float kStep = 1.0f / 64.0f;
+    const int steps = static_cast<int>(2.0f * reach / kStep);
+    for (int i = 0; i <= steps; ++i) {
+        // Half-step offset keeps a sample off the exact cell corners the yaw-0
+        // ray passes through.
+        const float depth = centerDepth - reach + (static_cast<float>(i) + 0.5f) * kStep;
+        const vec3 sample = rayOrigin + rayStep * depth;
+        const ivec3 cell = IRMath::roundVec3HalfUp(sample - center);
+        if (!pivotVerifyProbeCellCarved(cell)) {
+            continue;
+        }
+        const vec3 cellCenter = center + vec3(cell);
+        const float cellDepth =
+            IRMath::dot(cellCenter - rayOrigin, rayStep) / IRMath::dot(rayStep, rayStep);
+        return rayOrigin + rayStep * cellDepth;
+    }
+    return std::nullopt;
 }
 
 // The view (camera pan + zoom) the sweep's FIRST capture frame rendered, latched
@@ -672,22 +763,58 @@ vec2 g_pivotFocusAssertCameraIso = vec2(0.0f);
 vec2 g_pivotFocusAssertZoom = vec2(0.0f);
 bool g_hasPivotFocusAssertView = false;
 
-// Per-shot `[pivot-focus-assert]` line for the DEFAULT-pivot blocks
-// (AutoScreenshotConfig::onCaptureFrame_, fired on the settled capture frame):
-// the sharp half of the re-grounded gate. The derived focus's iso DEPTH is
-// LATCHED — derived once, before the sweep's first yaw, and held across it —
-// and the sweep holds the camera position fixed, so the derived POINT is
-// constant too: every shot must report the SAME value, and that value must be
-// the analytic one. scripts/pivot-verify.py parses these lines and fails the
-// pass on any FAIL or on a value that moves mid-sweep.
-//
-// `view_held` reports that "holds the camera position fixed" PRECONDITION rather
-// than assuming it. RenderManager re-derives the latch on any pan/zoom change by
-// design, so a block whose shot table panned or zoomed mid-sweep would move the
-// focus legitimately — and the moved-value check above would fail on CORRECT
-// behavior. Emitting the precondition lets pivot-verify.py name that as a
-// misconfigured block instead of reporting a pivot regression, which is the
-// reading that would otherwise invite "fixing" it by loosening the gate.
+// Per-gesture oracle state for the DEFAULT-pivot blocks, carried from one
+// capture to the next: what the previous shot's settled frame showed, and where
+// a gesture starting from that frame must acquire.
+struct PivotGestureOracle {
+    bool hasPrevious_ = false;
+    // Camera yaw of the first frame the tracker saw — the pose shot 0 is
+    // compared against.
+    float startYaw_ = 0.0f;
+    float yaw_ = 0.0f;
+    vec2 cameraIso_ = vec2(0.0f);
+    vec3 derived_ = vec3(0.0f);
+    std::optional<vec3> nextTarget_;
+    // Frames since the previous capture on which the default focus moved while
+    // the camera pan and zoom held — i.e. the latch itself changed.
+    int latchMoves_ = 0;
+    bool hasFrame_ = false;
+    vec3 frameFocus_ = vec3(0.0f);
+    vec2 frameCameraIso_ = vec2(0.0f);
+    vec2 frameZoom_ = vec2(0.0f);
+};
+PivotGestureOracle g_pivotGestureOracle;
+
+// Per-frame half of the per-gesture oracle (a RENDER-tail system ahead of the
+// shot cycler, so it reads each frame's settled state before a new shot's pose
+// is applied): counts the frames on which the latch moved. A move whose frame
+// also moved the camera is not counted — a pan carries the focus with it — so
+// the pure-yaw gestures of these blocks each show exactly one move.
+void trackPivotFocusFrame() {
+    if (!pivotVerifyIsDefaultBlock()) {
+        return;
+    }
+    PivotGestureOracle &oracle = g_pivotGestureOracle;
+    const vec3 focus = IRRender::getDefaultRotationPivotFocus();
+    const vec2 cameraIso = IRRender::getCameraPosition2DIso();
+    const vec2 zoom = IRRender::getCameraZoom();
+    if (oracle.hasFrame_ && cameraIso == oracle.frameCameraIso_ && zoom == oracle.frameZoom_ &&
+        focus != oracle.frameFocus_) {
+        ++oracle.latchMoves_;
+    }
+    if (!oracle.hasFrame_) {
+        oracle.startYaw_ = IRPrefab::Camera::getYaw();
+    }
+    oracle.hasFrame_ = true;
+    oracle.frameFocus_ = focus;
+    oracle.frameCameraIso_ = cameraIso;
+    oracle.frameZoom_ = zoom;
+}
+
+// `[pivot-focus-assert]` tolerance for a HOLD — a shot the latch must not
+// re-acquire in, whose focus is the previous one carried by any pan. Exact up
+// to the float error of re-deriving the point from the camera.
+constexpr float kPivotFocusHoldToleranceWorld = 1e-3f;
 
 // --pivot-verify cursor-latch state: the focus the cursor latched, resolved
 // once from the real castVoxelRay path and held for the rest of the sweep (the
@@ -711,14 +838,9 @@ void logPivotFocusAssert(int shotIndex) {
     if (!pivotVerifyIsDefaultBlock() && !cursorLatch) {
         return;
     }
-    const vec3 derived =
-        cursorLatch ? g_cursorLatchFocus : IRRender::getDefaultRotationPivotFocus();
-    const float tolerance =
-        cursorLatch ? kCursorLatchFocusToleranceWorld : kPivotFocusAssertToleranceWorld;
-    const vec3 analytic = pivotVerifyAnalyticFocus();
-    const float worldDelta = IRMath::length(derived - analytic);
-    // Exactly the values RenderManager's latch guard compares, so this tracks the
-    // real re-derive trigger rather than a proxy for it.
+    // `view_held` reports whether the camera pan/zoom still matches the first
+    // capture's — a precondition for the sweep blocks, whose shot tables hold
+    // the view fixed; acquire-continuity pans by design.
     const vec2 cameraIso = IRRender::getCameraPosition2DIso();
     const vec2 zoom = IRRender::getCameraZoom();
     if (!g_hasPivotFocusAssertView) {
@@ -728,22 +850,90 @@ void logPivotFocusAssert(int shotIndex) {
     }
     const bool viewHeld =
         cameraIso == g_pivotFocusAssertCameraIso && zoom == g_pivotFocusAssertZoom;
+    const float yaw = IRPrefab::Camera::getYaw();
+
+    if (cursorLatch) {
+        // The cursor latch is resolved once and held for the sweep, so it is
+        // asserted against the yaw-0 analytic focus on every shot.
+        const vec3 analytic = pivotVerifyAnalyticFocus();
+        const float worldDelta = IRMath::length(g_cursorLatchFocus - analytic);
+        IR_LOG_INFO(
+            "[pivot-focus-assert] block={} shot={} yaw={} gesture=0 latch_moves=0 "
+            "derived=({},{},{}) target=({},{},{}) world_delta={} tolerance={} view_held={} "
+            "result={}",
+            g_pivotVerifyBlock,
+            shotIndex,
+            yaw,
+            g_cursorLatchFocus.x,
+            g_cursorLatchFocus.y,
+            g_cursorLatchFocus.z,
+            analytic.x,
+            analytic.y,
+            analytic.z,
+            worldDelta,
+            kCursorLatchFocusToleranceWorld,
+            viewHeld ? 1 : 0,
+            worldDelta <= kCursorLatchFocusToleranceWorld ? "PASS" : "FAIL"
+        );
+        return;
+    }
+
+    // Each shot is a one-frame pose snap, so a shot whose yaw differs from the
+    // previous capture's is one rotation gesture, acquired from the previous
+    // shot's settled frame. The expected focus is:
+    //   - gesture over a surface — that frame's crosshair target
+    //     (pivotVerifyCrosshairTarget), within the derive's per-face residual;
+    //   - gesture over background, or no gesture — the previous focus carried by
+    //     the pan, exactly (the latch holds);
+    //   - shot 0 — the never-acquired depth-0 point under the viewport center.
+    // And the latch may move at most once in a gesture shot, never otherwise.
+    PivotGestureOracle &oracle = g_pivotGestureOracle;
+    const vec3 derived = IRRender::getDefaultRotationPivotFocus();
+    // The latch's own gesture test: a yaw change above its settle delta.
+    const float previousYaw = oracle.hasPrevious_ ? oracle.yaw_ : oracle.startYaw_;
+    const bool gesture =
+        IRMath::abs(yaw - previousYaw) > IRRender::DefaultPivotLatch::kYawSettleDelta;
+    vec3 target = IRMath::isoPixelToPos3D(pivotVerifyCanvasCenterIso() - cameraIso, 0.0f);
+    float tolerance = kPivotFocusHoldToleranceWorld;
+    const bool targetKnown = oracle.hasPrevious_ || !gesture;
+    if (oracle.hasPrevious_) {
+        if (gesture && oracle.nextTarget_.has_value()) {
+            target = *oracle.nextTarget_;
+            tolerance = kPivotFocusAssertToleranceWorld;
+        } else {
+            target = oracle.derived_ + IRMath::isoPixelToPos3D(oracle.cameraIso_ - cameraIso, 0.0f);
+        }
+    }
+    const float worldDelta = IRMath::length(derived - target);
+    const bool movesOk = oracle.latchMoves_ <= (gesture ? 1 : 0);
+    const bool pass = targetKnown && worldDelta <= tolerance && movesOk;
     IR_LOG_INFO(
-        "[pivot-focus-assert] block={} shot={} derived=({},{},{}) analytic=({},{},{}) "
-        "world_delta={} tolerance={} view_held={} result={}",
+        "[pivot-focus-assert] block={} shot={} yaw={} gesture={} latch_moves={} "
+        "derived=({},{},{}) target=({},{},{}) world_delta={} tolerance={} view_held={} "
+        "result={}",
         g_pivotVerifyBlock,
         shotIndex,
+        yaw,
+        gesture ? 1 : 0,
+        oracle.latchMoves_,
         derived.x,
         derived.y,
         derived.z,
-        analytic.x,
-        analytic.y,
-        analytic.z,
+        target.x,
+        target.y,
+        target.z,
         worldDelta,
         tolerance,
         viewHeld ? 1 : 0,
-        worldDelta <= tolerance ? "PASS" : "FAIL"
+        pass ? "PASS" : "FAIL"
     );
+
+    oracle.hasPrevious_ = true;
+    oracle.yaw_ = yaw;
+    oracle.cameraIso_ = cameraIso;
+    oracle.derived_ = derived;
+    oracle.nextTarget_ = pivotVerifyCrosshairTarget(yaw, IRRender::getEffectiveCameraIso());
+    oracle.latchMoves_ = 0;
 }
 
 // Per-shot `[cull-validate] DOMAIN-STATE` line for the --cull-validate sweep
@@ -904,7 +1094,7 @@ void registerCliArgs() {
         "--pivot-verify",
         "Rotation-pivot invariance sweep block "
         "(off|focus-ctr|focus-off|center-column|center-depth|background-center|center-axis"
-        "|cursor-latch)",
+        "|cursor-latch|acquire-continuity)",
         {"off",
          "focus-ctr",
          "focus-off",
@@ -912,7 +1102,8 @@ void registerCliArgs() {
          "center-depth",
          "background-center",
          "center-axis",
-         "cursor-latch"},
+         "cursor-latch",
+         "acquire-continuity"},
         "off"
     );
     args.flag(
@@ -2502,7 +2693,7 @@ void initSystems() {
             } else {
                 pan = pivotVerifyDefaultPan();
             }
-            const float yaws[] = {
+            const float sweepYaws[] = {
                 0.0f,
                 IRMath::kPi / 6.0f,
                 IRMath::kQuarterPi,
@@ -2513,7 +2704,20 @@ void initSystems() {
                 3.0f * IRMath::kHalfPi,
                 IRMath::kTwoPi - IRMath::kQuarterPi
             };
-            constexpr int n = sizeof(yaws) / sizeof(yaws[0]);
+            // acquire-continuity: settle on background at the base yaw, pan the
+            // probe under the crosshair, then two gesture steps.
+            const float baseYaw = pivotVerifyBaseYaw();
+            const float acquireYaws[] = {
+                baseYaw,
+                baseYaw,
+                baseYaw + kPivotVerifyAcquireYawStep,
+                baseYaw + 2.0f * kPivotVerifyAcquireYawStep
+            };
+            const vec2 acquirePans[] = {pan + kPivotVerifyAcquireBackgroundIso, pan, pan, pan};
+            const bool acquireBlock = g_pivotVerifyBlock == "acquire-continuity";
+            const float *yaws = acquireBlock ? acquireYaws : sweepYaws;
+            const int n = acquireBlock ? static_cast<int>(std::size(acquireYaws))
+                                       : static_cast<int>(std::size(sweepYaws));
             emitSweepShots(
                 g_pivotVerifyShots,
                 g_pivotVerifyShotLabels,
@@ -2530,7 +2734,7 @@ void initSystems() {
                 [&](int i) {
                     IRVideo::AutoScreenshotShot shot{};
                     shot.zoom_ = sweepZoom;
-                    shot.cameraIso_ = pan;
+                    shot.cameraIso_ = acquireBlock ? acquirePans[i] : pan;
                     shot.yawRadians_ = yaws[i];
                     if (explicitFocus) {
                         shot.pivotFocusWorld_ = kPivotPillarCenter;
@@ -2641,6 +2845,18 @@ void initSystems() {
             );
         } else {
             IRVideo::setAutoScreenshotShots(cfg, kShots);
+        }
+        if (pivotVerifyIsDefaultBlock()) {
+            // Ahead of the shot cycler, so each frame is read before a new
+            // shot's pose lands. C_VoxelSetNew is the archetype filter only
+            // because the system needs SOME filter; beginTick runs regardless.
+            renderPipeline.push_back(
+                IRSystem::createSystem<C_VoxelSetNew>(
+                    "ShapeDebugPivotFocusTrack",
+                    [](const C_VoxelSetNew &) {},
+                    []() { trackPivotFocusFrame(); }
+                )
+            );
         }
         if (useGuiTestCycler) {
             IRVideo::GuiTestConfig guiCfg{};

@@ -2,205 +2,213 @@
 
 #include <irreden/render/default_pivot_latch.hpp>
 
+#include <optional>
+
 // ---------------------------------------------------------------------------
-// The default pivot's latch-UPDATE policy.
+// The default pivot's latch policy and acquisition arithmetic.
 //
-// `docs/design/camera-yaw-pivot.md` §"The contract" says when the depth-aware
-// default pivot may re-latch: while the camera is settled and pan/zoom moved
-// since the last derive, AND on the rotation-start edge — the first frame yaw
-// changes, whose previous frame was still (so it left a valid depth
-// attachment) and rendered at yaw 0 (so the depth it left pins the point under
-// the crosshair). A rotation starting from non-zero yaw holds the latch.
+// `docs/design/camera-yaw-pivot.md` §"Latch policy": the depth-aware default
+// pivot acquires ONCE per rotation gesture — the first frame yaw changes, at
+// any yaw — from the surface under the crosshair in the frame before, recovered
+// in the frame that image was drawn in, and holds it for the gesture. A pan or
+// zoom never re-latches; between gestures the anchor rides the camera.
+// Acquisition never moves the view.
 //
-// Nothing in the tree could see that. Every `scripts/pivot-verify.py` block —
-// including P4's `cursor-latch` — holds the camera pan/zoom FIXED across its
-// shots and sweeps yaw from a single derive, which is the one regime where the
-// pan/zoom-only and amended policies agree; the harness even flags a block
-// that moves the view as MISCONFIGURED. So the guard the ruling requires
-// ("verification must move the camera between derives") is this file:
-// `DefaultPivotLatch` is the policy with the GPU readback lifted out, so a
-// frame sequence that pans, then rotates, then rotates again runs headlessly
-// in the normal suite.
+// No `scripts/pivot-verify.py` block can see most of that: each shot there is a
+// one-frame pose snap, so a pan that lands without a rotation, a drag that
+// mutates yaw inside RENDER, and the exact effective camera across an
+// acquisition are all invisible to it. `DefaultPivotLatch` is the policy with
+// the GPU readback lifted out, so this file drives it frame by frame.
 //
 // The one-frame lag is modelled explicitly. `beginFrame` runs ahead of the
 // RENDER pipeline, so a derive at frame N consumes the attachment frame N-1
-// rendered — `LatchDriver::step` hands the derive the PREVIOUS frame's depth,
-// which is what makes post-rotate staleness observable at all.
+// rendered, described by the pose frame N-1's composite stamped —
+// `LatchDriver::step` keeps both.
 // ---------------------------------------------------------------------------
 
 namespace {
 
 using IRMath::vec2;
+using IRMath::vec3;
 using IRRender::DefaultPivotLatch;
-using IRRender::DefaultPivotLatchDecision;
-using IRRender::DefaultPivotPose;
+using IRRender::DefaultPivotSourceFrame;
 
-constexpr vec2 kZoom = vec2(4.0f);
-constexpr vec2 kZoomedIn = vec2(8.0f);
-// Comfortably above kYawSettleDelta: one frame of a real rotation, not a
-// residual.
+// One frame of a real rotation, comfortably above kYawSettleDelta.
 constexpr float kYawStep = 0.05f;
 constexpr float kYawSettleDelta = DefaultPivotLatch::kYawSettleDelta;
+constexpr float kPi = IRMath::kPi;
 
-// Iso depths standing for distinct content under the crosshair. Each is a
-// distinguishable value, so an assertion on the latched depth names WHICH
-// frame's attachment was consumed rather than merely that something changed.
+// An arbitrary non-trivial canvas center; nothing may depend on it.
+constexpr vec2 kCanvasCenterIso = vec2(311.0f, -47.0f);
+
+// Yawed iso depths standing for distinct content under the crosshair. Each is
+// distinguishable, so an assertion on the latched depth names WHICH frame's
+// attachment was consumed rather than merely that something changed.
 constexpr float kDepthStart = 5.0f;
 constexpr float kDepthAfterPan = 17.0f;
 constexpr float kDepthAfterFirstRotation = -3.25f;
 
+// What the crosshair sees in one rendered frame: a surface at a yawed depth
+// (world units), or background.
+using Surface = std::optional<float>;
+constexpr Surface kBackground = std::nullopt;
+
 class LatchDriver {
   public:
-    // Advance one frame. The camera renders `pose`, and the content under the
-    // crosshair AT THAT POSE has iso depth `depthUnderCrosshair`. A derive
-    // admitted this frame consumes the previous frame's attachment.
-    DefaultPivotLatchDecision step(const DefaultPivotPose &pose, float depthUnderCrosshair) {
-        const DefaultPivotLatchDecision decision = m_latch.observeFrame(pose, m_pivotOwnsDepth);
-        if (decision.derive_) {
-            m_latch.noteDerived(m_attachmentDepth);
+    // Advance one frame. beginFrame observes `beginYaw`; a camera system may
+    // then change yaw inside RENDER, so the frame is drawn at `renderYaw`; the
+    // composite stamps that pose and leaves `surface` in the depth attachment.
+    // A derive admitted this frame consumes the PREVIOUS frame's attachment.
+    bool stepWithInFrameYaw(
+        float beginYaw, float renderYaw, vec2 cameraIso, Surface surface, int effSub = 1
+    ) {
+        const bool derive = m_latch.observeFrame(beginYaw, m_pivotOwnsDepth);
+        if (derive) {
             ++m_derives;
-            m_rotationStartDerives += decision.rotationStart_ ? 1 : 0;
+            if (m_attachment.has_value()) {
+                m_latch.acquire(*m_attachment);
+            }
         }
-        m_attachmentDepth = depthUnderCrosshair;
-        return decision;
+        m_latch.stampSourceFrame(
+            DefaultPivotSourceFrame{
+                renderYaw,
+                cameraIso,
+                effectiveCameraIso(renderYaw, cameraIso),
+                kCanvasCenterIso,
+                effSub
+            },
+            m_pivotOwnsDepth
+        );
+        m_attachment = surface.has_value()
+                           ? std::optional<float>(*surface * static_cast<float>(effSub))
+                           : std::nullopt;
+        return derive;
     }
 
-    // Hold the camera still for `frames` frames, rendering the same content.
-    void hold(const DefaultPivotPose &pose, float depthUnderCrosshair, int frames) {
+    bool step(float yaw, vec2 cameraIso, Surface surface) {
+        return stepWithInFrameYaw(yaw, yaw, cameraIso, surface);
+    }
+
+    void hold(float yaw, vec2 cameraIso, Surface surface, int frames) {
         for (int i = 0; i < frames; ++i) {
-            step(pose, depthUnderCrosshair);
+            step(yaw, cameraIso, surface);
         }
+    }
+
+    // `IRRender::getEffectiveCameraIso`'s default CAMERA_CENTER branch over the
+    // latch's current state.
+    vec2 effectiveCameraIso(float yaw, vec2 cameraIso) const {
+        const vec2 pivotCameraIso = cameraIso + m_latch.viewOffsetIso();
+        return IRMath::cameraYawPivotOffset(pivotCameraIso, focus(cameraIso), yaw);
+    }
+    vec3 focus(vec2 cameraIso) const {
+        return m_latch.focus(kCanvasCenterIso - cameraIso);
     }
 
     void setPivotOwnsDepth(bool owns) {
         m_pivotOwnsDepth = owns;
     }
+    const DefaultPivotLatch &latch() const {
+        return m_latch;
+    }
     float isoDepth() const {
         return m_latch.isoDepth();
     }
-    bool hasIsoDepth() const {
-        return m_latch.hasIsoDepth();
+    vec2 viewOffsetIso() const {
+        return m_latch.viewOffsetIso();
     }
     int derives() const {
         return m_derives;
-    }
-    int rotationStartDerives() const {
-        return m_rotationStartDerives;
     }
 
   private:
     DefaultPivotLatch m_latch;
     bool m_pivotOwnsDepth = true;
-    float m_attachmentDepth = 0.0f;
+    std::optional<float> m_attachment;
     int m_derives = 0;
-    int m_rotationStartDerives = 0;
 };
 
-DefaultPivotPose pose(float yaw, vec2 cameraIso, vec2 zoom = kZoom) {
-    return DefaultPivotPose{yaw, cameraIso, zoom};
+// Settle at `yaw` over `surface`, then start a gesture from there that reads
+// `surface`. Returns the effective camera the settled frame was drawn with.
+vec2 settleThenStartGesture(
+    LatchDriver &driver, float yaw, vec2 cameraIso, Surface surface, int settleFrames = 3
+) {
+    driver.hold(yaw, cameraIso, surface, settleFrames);
+    const vec2 before = driver.effectiveCameraIso(yaw, cameraIso);
+    EXPECT_TRUE(driver.step(yaw + kYawStep, cameraIso, surface));
+    return before;
 }
 
 // ---------------------------------------------------------------------------
-// The pan/zoom clause, which the rotation-start edge sits beside: a settled
-// camera derives once per pan/zoom, one frame late, and a still camera pays
-// nothing.
+// When the latch derives: once per rotation gesture, never on a still camera,
+// a pan or a zoom.
 // ---------------------------------------------------------------------------
 
-TEST(DefaultPivotLatch, FirstFrameCannotDeriveAndASettledCameraDerivesExactlyOnce) {
+TEST(DefaultPivotLatch, AStillCameraNeverDerivesAndHoldsTheInitialState) {
     LatchDriver driver;
-    const DefaultPivotPose still = pose(0.0f, vec2(0.0f));
-
-    // Frame 1 has no previous render to read: the zoom sentinel (0,0) makes the
-    // pose check fail by construction.
-    EXPECT_FALSE(driver.step(still, kDepthStart).derive_);
-    EXPECT_FALSE(driver.hasIsoDepth());
-
-    // Frame 2's attachment belongs to frame 1, which rendered this same pose.
-    const DefaultPivotLatchDecision second = driver.step(still, kDepthStart);
-    EXPECT_TRUE(second.derive_);
-    EXPECT_TRUE(second.viewMoved_);
-    EXPECT_FALSE(second.rotationStart_);
-    EXPECT_FLOAT_EQ(driver.isoDepth(), kDepthStart);
-
-    // A genuinely still camera does ZERO further readbacks.
-    driver.hold(still, kDepthStart, 30);
-    EXPECT_EQ(driver.derives(), 1);
+    driver.hold(0.0f, vec2(0.0f), kDepthStart, 30);
+    EXPECT_EQ(driver.derives(), 0);
+    EXPECT_FALSE(driver.latch().hasAcquired());
+    EXPECT_FLOAT_EQ(driver.isoDepth(), 0.0f);
+    EXPECT_EQ(driver.viewOffsetIso(), vec2(0.0f));
 }
 
-TEST(DefaultPivotLatch, PanDefersItsDeriveToTheFirstStillFrameAfterIt) {
+TEST(DefaultPivotLatch, TheFirstObservedFrameIsNotAGestureAtAnyYaw) {
+    // A creation that starts at non-zero yaw has no previous frame to compare
+    // against, and no source to read.
     LatchDriver driver;
-    const DefaultPivotPose before = pose(0.0f, vec2(0.0f));
-    const DefaultPivotPose after = pose(0.0f, vec2(64.0f, -12.0f));
-    driver.hold(before, kDepthStart, 4);
-    ASSERT_EQ(driver.derives(), 1);
-
-    // The frame the pan lands: the attachment is the PRE-pan image, so
-    // deriving here would latch a depth for a view that no longer exists.
-    EXPECT_FALSE(driver.step(after, kDepthAfterPan).derive_);
-    EXPECT_FLOAT_EQ(driver.isoDepth(), kDepthStart);
-
-    // The first still frame after it derives, and reads the panned content.
-    EXPECT_TRUE(driver.step(after, kDepthAfterPan).derive_);
-    EXPECT_FLOAT_EQ(driver.isoDepth(), kDepthAfterPan);
-    EXPECT_EQ(driver.rotationStartDerives(), 0);
+    EXPECT_FALSE(driver.step(0.39f, vec2(0.0f), kDepthStart));
+    driver.hold(0.39f, vec2(0.0f), kDepthStart, 5);
+    EXPECT_EQ(driver.derives(), 0);
 }
 
-TEST(DefaultPivotLatch, ZoomIsKeyedExactlyLikePan) {
+TEST(DefaultPivotLatch, PanNeverDerivesAndCarriesTheAnchorWithTheCamera) {
+    // Nothing re-latches after a pan, so the view never jumps when the camera
+    // stops. The anchor rides the pan instead — the focus moves by exactly the
+    // un-projected camera delta.
     LatchDriver driver;
-    driver.hold(pose(0.0f, vec2(0.0f)), kDepthStart, 4);
-    ASSERT_EQ(driver.derives(), 1);
-
-    const DefaultPivotPose zoomed = pose(0.0f, vec2(0.0f), kZoomedIn);
-    EXPECT_FALSE(driver.step(zoomed, kDepthAfterPan).derive_);
-    EXPECT_TRUE(driver.step(zoomed, kDepthAfterPan).derive_);
-    EXPECT_FLOAT_EQ(driver.isoDepth(), kDepthAfterPan);
-}
-
-// ---------------------------------------------------------------------------
-// The rotation-start edge, where it fires: a rotation starting from yaw 0.
-// ---------------------------------------------------------------------------
-
-TEST(DefaultPivotLatch, RotationStartRederivesAfterAPanThatNeverSettled) {
-    // The criterion-4 sequence in its sharpest form: pan, then rotate with NO
-    // still frame between them. The pan/zoom clause cannot fire (the pan
-    // frame's attachment is pre-pan, and the rotation frames are not settled),
-    // so under the pan/zoom-only policy the entire rotation pivots about the
-    // PRE-PAN depth.
-    LatchDriver driver;
-    const DefaultPivotPose before = pose(0.0f, vec2(0.0f));
-    driver.hold(before, kDepthStart, 4);
+    const vec2 before = vec2(0.0f);
+    const vec3 anchor = [&] {
+        settleThenStartGesture(driver, 0.0f, before, kDepthStart);
+        driver.hold(kYawStep, before, kDepthStart, 3);
+        return driver.focus(before);
+    }();
     ASSERT_FLOAT_EQ(driver.isoDepth(), kDepthStart);
+    const int derivesBeforePan = driver.derives();
 
-    const DefaultPivotPose panned = pose(0.0f, vec2(64.0f, -12.0f));
-    ASSERT_FALSE(driver.step(panned, kDepthAfterPan).derive_);
-
-    // Yaw starts moving on the very next frame. Its previous frame was still
-    // and at yaw 0, so the attachment is the panned view and the derive is
-    // sound.
-    const DefaultPivotLatchDecision start =
-        driver.step(pose(kYawStep, panned.cameraIso_), kDepthAfterPan);
-    EXPECT_TRUE(start.derive_);
-    EXPECT_TRUE(start.rotationStart_);
-    EXPECT_FALSE(start.viewMoved_);
-    EXPECT_FLOAT_EQ(driver.isoDepth(), kDepthAfterPan);
+    const vec2 after = vec2(64.0f, -12.0f);
+    driver.hold(kYawStep, after, kDepthAfterPan, 10);
+    EXPECT_EQ(driver.derives(), derivesBeforePan);
+    EXPECT_FLOAT_EQ(driver.isoDepth(), kDepthStart);
+    const vec3 carried = anchor + IRMath::isoPixelToPos3D(before - after, 0.0f);
+    const vec3 focus = driver.focus(after);
+    EXPECT_NEAR(focus.x, carried.x, 1e-4f);
+    EXPECT_NEAR(focus.y, carried.y, 1e-4f);
+    EXPECT_NEAR(focus.z, carried.z, 1e-4f);
 }
 
-TEST(DefaultPivotLatch, RotationStartRederivesAfterAPanThatSettled) {
-    // The criterion as literally worded — pan, settle, rotate. Here the
-    // pan/zoom clause has already refreshed the depth, so the value is
-    // unchanged; the assertion that carries the rotation-start clause is that
-    // the derive FIRED, and fired through that clause.
+TEST(DefaultPivotLatch, ZoomNeverDerives) {
+    // Zoom reaches the latch only through the source stamp's subdivisions;
+    // a zoom with no rotation is not a gesture.
     LatchDriver driver;
-    driver.hold(pose(0.0f, vec2(0.0f)), kDepthStart, 3);
-    const DefaultPivotPose panned = pose(0.0f, vec2(-31.0f, 8.5f));
-    driver.hold(panned, kDepthAfterPan, 3);
-    ASSERT_FLOAT_EQ(driver.isoDepth(), kDepthAfterPan);
-    const int derivesBeforeRotation = driver.derives();
+    driver.hold(0.0f, vec2(0.0f), kDepthStart, 4);
+    driver.stepWithInFrameYaw(0.0f, 0.0f, vec2(0.0f), kDepthAfterPan, 2);
+    driver.hold(0.0f, vec2(0.0f), kDepthAfterPan, 4);
+    EXPECT_EQ(driver.derives(), 0);
+    EXPECT_FLOAT_EQ(driver.isoDepth(), 0.0f);
+}
 
-    const DefaultPivotLatchDecision start =
-        driver.step(pose(kYawStep, panned.cameraIso_), kDepthAfterPan);
-    EXPECT_TRUE(start.rotationStart_);
-    EXPECT_EQ(driver.derives(), derivesBeforeRotation + 1);
+TEST(DefaultPivotLatch, RotationStartAcquiresTheSurfaceAPanBroughtUnderTheCrosshair) {
+    // Pan, then rotate with NO still frame between them: the gesture reads the
+    // panned frame, whose stamp carries the panned camera.
+    LatchDriver driver;
+    driver.hold(0.0f, vec2(0.0f), kDepthStart, 4);
+    const vec2 panned = vec2(64.0f, -12.0f);
+    ASSERT_FALSE(driver.step(0.0f, panned, kDepthAfterPan));
+
+    EXPECT_TRUE(driver.step(kYawStep, panned, kDepthAfterPan));
+    EXPECT_FLOAT_EQ(driver.isoDepth(), kDepthAfterPan);
+    EXPECT_EQ(driver.viewOffsetIso(), vec2(0.0f));
 }
 
 TEST(DefaultPivotLatch, ContinuousRotationDerivesOnceAtItsStartAndNeverPerFrame) {
@@ -209,201 +217,293 @@ TEST(DefaultPivotLatch, ContinuousRotationDerivesOnceAtItsStartAndNeverPerFrame)
     // pinning.
     LatchDriver driver;
     const vec2 cameraIso = vec2(12.0f, 3.0f);
-    driver.hold(pose(0.0f, cameraIso), kDepthStart, 3);
-    const int before = driver.derives();
+    driver.hold(0.0f, cameraIso, kDepthStart, 3);
 
     float yaw = 0.0f;
     for (int frame = 0; frame < 24; ++frame) {
         yaw += kYawStep;
-        driver.step(pose(yaw, cameraIso), kDepthAfterFirstRotation);
+        driver.step(yaw, cameraIso, kDepthAfterFirstRotation);
     }
-    EXPECT_EQ(driver.derives(), before + 1);
-    EXPECT_EQ(driver.rotationStartDerives(), 1);
+    EXPECT_EQ(driver.derives(), 1);
 
-    // Settling out of the rotation is not a pan or a zoom, so it derives
-    // nothing either — the depth latched at the start pins the whole gesture.
-    driver.hold(pose(yaw, cameraIso), kDepthAfterFirstRotation, 10);
-    EXPECT_EQ(driver.derives(), before + 1);
+    // Settling out of the rotation derives nothing either — the anchor
+    // acquired at the start pins the whole gesture.
+    driver.hold(yaw, cameraIso, kDepthAfterFirstRotation, 10);
+    EXPECT_EQ(driver.derives(), 1);
     EXPECT_FLOAT_EQ(driver.isoDepth(), kDepthStart);
 }
 
-TEST(DefaultPivotLatch, RotationStartFromYawWithinTheSettleToleranceDerives) {
-    // The yaw-0 gate is a tolerance, not an exact-zero compare: a pre-rotation
-    // yaw the settle predicate itself cannot tell from 0 counts as 0.
+TEST(DefaultPivotLatch, RotationStartFromNonZeroYawDerives) {
+    // A gesture starting from any yaw acquires: the recovery carries the
+    // source yaw, so a non-zero-yaw source pins the point under the crosshair.
     LatchDriver driver;
     const vec2 cameraIso = vec2(3.0f, -9.0f);
-    driver.hold(pose(0.0f, cameraIso), kDepthStart, 3);
-    // Drifting to half the tolerance is under the settle delta, so the camera
-    // is still "settled" and this costs nothing.
-    const float nearZero = 0.5f * kYawSettleDelta;
-    driver.hold(pose(nearZero, cameraIso), kDepthAfterPan, 3);
-    const int before = driver.derives();
-    ASSERT_EQ(driver.rotationStartDerives(), 0);
+    const float offZero = 2.0f * kYawSettleDelta;
+    driver.hold(offZero, cameraIso, kDepthAfterPan, 3);
+    ASSERT_EQ(driver.derives(), 0);
 
-    const DefaultPivotLatchDecision start =
-        driver.step(pose(nearZero + kYawStep, cameraIso), kDepthAfterPan);
-    EXPECT_TRUE(start.derive_);
-    EXPECT_TRUE(start.rotationStart_);
-    EXPECT_EQ(driver.derives(), before + 1);
-    EXPECT_FLOAT_EQ(driver.isoDepth(), kDepthAfterPan);
+    EXPECT_TRUE(driver.step(offZero + kYawStep, cameraIso, kDepthAfterPan));
+    EXPECT_EQ(driver.derives(), 1);
+    EXPECT_TRUE(driver.latch().hasAcquired());
 }
 
-// ---------------------------------------------------------------------------
-// The rotation-start edge, where it holds: a rotation starting from non-zero
-// yaw. The focus expression has no yaw term, so a depth read off a frame
-// rendered at non-zero yaw would pin a point other than the one under the
-// crosshair and walk the pivot on every gesture; the latch holds instead, and
-// the pre-rotation depth pins the gesture as it did under the pan/zoom-only
-// policy.
-// ---------------------------------------------------------------------------
-
-TEST(DefaultPivotLatch, RotationStartFromYawOutsideTheSettleToleranceHolds) {
-    // The boundary's other side: a pre-rotation yaw just past the tolerance
-    // is non-zero, and the edge does not fire.
-    LatchDriver driver;
-    const vec2 cameraIso = vec2(3.0f, -9.0f);
-    driver.hold(pose(0.0f, cameraIso), kDepthStart, 3);
-    // Jumping past the tolerance in one frame is itself a rotation start from
-    // yaw 0, which re-reads the still yaw-0 attachment — the same depth.
-    const float justOffZero = 2.0f * kYawSettleDelta;
-    driver.hold(pose(justOffZero, cameraIso), kDepthAfterPan, 3);
-    ASSERT_FLOAT_EQ(driver.isoDepth(), kDepthStart);
-    const int before = driver.derives();
-
-    const DefaultPivotLatchDecision start =
-        driver.step(pose(justOffZero + kYawStep, cameraIso), kDepthAfterPan);
-    EXPECT_FALSE(start.derive_);
-    EXPECT_FALSE(start.rotationStart_);
-    EXPECT_EQ(driver.derives(), before);
-    EXPECT_FLOAT_EQ(driver.isoDepth(), kDepthStart);
-}
-
-TEST(DefaultPivotLatch, SecondRotationFromNonZeroYawHoldsTheLatch) {
-    // A rotation changes what sits under the crosshair but changes neither
-    // cameraIso nor zoom, so the SECOND rotation and every one after it pivot
-    // about the depth the first one started from until the user pans or zooms.
-    // That post-rotate staleness is the accepted residual of the yaw-0-scoped
-    // edge (docs/design/camera-yaw-pivot.md §"The contract"): the alternative,
-    // re-deriving here, reads a non-zero-yaw frame and walks the pivot.
+TEST(DefaultPivotLatch, SecondRotationFromNonZeroYawReacquires) {
+    // A rotation changes what sits under the crosshair; the next gesture
+    // acquires that surface rather than pivoting about the first one's anchor.
     LatchDriver driver;
     const vec2 cameraIso = vec2(-7.0f, 21.0f);
-    driver.hold(pose(0.0f, cameraIso), kDepthStart, 3);
-    ASSERT_FLOAT_EQ(driver.isoDepth(), kDepthStart);
+    driver.hold(0.0f, cameraIso, kDepthStart, 3);
 
     float yaw = 0.0f;
     for (int frame = 0; frame < 6; ++frame) {
         yaw += kYawStep;
-        driver.step(pose(yaw, cameraIso), kDepthStart);
+        driver.step(yaw, cameraIso, kDepthStart);
     }
-    // The first rotation pinned the pre-rotation content, as it must.
     ASSERT_FLOAT_EQ(driver.isoDepth(), kDepthStart);
+    const vec2 viewBefore = driver.effectiveCameraIso(yaw, cameraIso);
 
-    // It settles at a new yaw, where DIFFERENT content sits under the crosshair.
-    driver.hold(pose(yaw, cameraIso), kDepthAfterFirstRotation, 4);
-    const int before = driver.derives();
-
-    const DefaultPivotLatchDecision secondStart =
-        driver.step(pose(yaw + kYawStep, cameraIso), kDepthAfterFirstRotation);
-    EXPECT_FALSE(secondStart.derive_);
-    EXPECT_FALSE(secondStart.rotationStart_);
-    EXPECT_EQ(driver.derives(), before);
-    EXPECT_FLOAT_EQ(driver.isoDepth(), kDepthStart);
+    // It settles at a new yaw, where DIFFERENT content sits under the
+    // crosshair.
+    driver.hold(yaw, cameraIso, kDepthAfterFirstRotation, 4);
+    EXPECT_TRUE(driver.step(yaw + kYawStep, cameraIso, kDepthAfterFirstRotation));
+    EXPECT_EQ(driver.derives(), 2);
+    EXPECT_NE(driver.isoDepth(), kDepthStart);
+    // ... and re-anchoring did not move the view the settled frame showed.
+    const vec2 viewAfter = driver.effectiveCameraIso(yaw, cameraIso);
+    EXPECT_NEAR(viewAfter.x, viewBefore.x, 1e-4f);
+    EXPECT_NEAR(viewAfter.y, viewBefore.y, 1e-4f);
 }
 
-TEST(DefaultPivotLatch, APausedDragReArmsTheEdgeOnlyWhenItPausesAtYawZero) {
+TEST(DefaultPivotLatch, APausedDragReArmsTheEdgeAtAnyYaw) {
     // The edge is "settled last frame, not settled now", so a drag that stops
-    // for a frame and resumes is a new rotation start — but the yaw-0 gate
-    // applies to it like any other. Paused at non-zero yaw, resuming holds;
-    // paused back at yaw 0, resuming derives. Neither is a per-frame derive: a
-    // rotation with no still frame in it derives at most once.
+    // for a frame and resumes is a new gesture, at whatever yaw it paused.
+    // A rotation with no still frame in it derives at most once.
     LatchDriver driver;
     const vec2 cameraIso = vec2(0.0f);
-    driver.hold(pose(0.0f, cameraIso), kDepthStart, 3);
+    driver.hold(0.0f, cameraIso, kDepthStart, 3);
 
     float yaw = 0.0f;
     for (int frame = 0; frame < 4; ++frame) {
         yaw += kYawStep;
-        driver.step(pose(yaw, cameraIso), kDepthAfterFirstRotation);
+        driver.step(yaw, cameraIso, kDepthAfterFirstRotation);
     }
-    ASSERT_EQ(driver.rotationStartDerives(), 1);
+    ASSERT_EQ(driver.derives(), 1);
 
-    // One paused frame at non-zero yaw: settled, and pan/zoom unchanged since
-    // the derive, so the pause itself costs nothing.
-    const int beforePause = driver.derives();
-    EXPECT_FALSE(driver.step(pose(yaw, cameraIso), kDepthAfterFirstRotation).derive_);
-    EXPECT_EQ(driver.derives(), beforePause);
+    // One paused frame costs nothing by itself.
+    EXPECT_FALSE(driver.step(yaw, cameraIso, kDepthAfterFirstRotation));
+    EXPECT_EQ(driver.derives(), 1);
 
-    // Resuming from non-zero yaw holds.
-    EXPECT_FALSE(driver.step(pose(yaw + kYawStep, cameraIso), kDepthAfterFirstRotation).derive_);
-    EXPECT_EQ(driver.rotationStartDerives(), 1);
-    EXPECT_FLOAT_EQ(driver.isoDepth(), kDepthStart);
-
-    // Dragging back to yaw 0 and pausing there re-arms the edge: the paused
-    // frame is a still yaw-0 view, so the derive on resume is sound and reads
-    // the content now under the crosshair.
-    yaw += kYawStep;
-    for (int frame = 0; frame < 5; ++frame) {
-        yaw -= kYawStep;
-        driver.step(pose(yaw, cameraIso), kDepthAfterPan);
-    }
-    ASSERT_LE(IRMath::abs(yaw), kYawSettleDelta);
-    EXPECT_FALSE(driver.step(pose(yaw, cameraIso), kDepthAfterPan).derive_);
-    EXPECT_TRUE(driver.step(pose(yaw + kYawStep, cameraIso), kDepthAfterPan).derive_);
-    EXPECT_EQ(driver.rotationStartDerives(), 2);
-    EXPECT_FLOAT_EQ(driver.isoDepth(), kDepthAfterPan);
+    // Resuming acquires from the paused frame.
+    EXPECT_TRUE(driver.step(yaw + kYawStep, cameraIso, kDepthAfterFirstRotation));
+    EXPECT_EQ(driver.derives(), 2);
 }
 
 TEST(DefaultPivotLatch, AResidualYawWobbleUnderTheSettleDeltaIsNotARotationStart) {
     LatchDriver driver;
     const vec2 cameraIso = vec2(5.0f, 5.0f);
-    driver.hold(pose(0.0f, cameraIso), kDepthStart, 3);
-    const int before = driver.derives();
+    driver.hold(0.0f, cameraIso, kDepthStart, 3);
 
     // An order of magnitude under kYawSettleDelta per frame.
     float yaw = 0.0f;
     for (int frame = 0; frame < 20; ++frame) {
         yaw += (frame % 2 == 0) ? 0.1f * kYawSettleDelta : -0.1f * kYawSettleDelta;
-        driver.step(pose(yaw, cameraIso), kDepthAfterFirstRotation);
+        driver.step(yaw, cameraIso, kDepthAfterFirstRotation);
     }
-    EXPECT_EQ(driver.derives(), before);
-    EXPECT_EQ(driver.rotationStartDerives(), 0);
+    EXPECT_EQ(driver.derives(), 0);
+}
+
+TEST(DefaultPivotLatch, ADragThatMutatesYawInsideRenderDerivesOnItsFirstYawDeltaFrame) {
+    // The shape of a Ctrl+middle drag with no explicit focus — including a
+    // cursor-pivot click that missed every surface: CAMERA_MOUSE_ROTATE sets
+    // yaw inside RENDER, ahead of geometry, so the frame it first moves in is
+    // drawn at the new yaw while beginFrame still saw the old one.
+    LatchDriver driver;
+    const vec2 cameraIso = vec2(-20.0f, 14.0f);
+    const float startYaw = 0.6f;
+    driver.hold(startYaw, cameraIso, kDepthStart, 3);
+
+    // Frame N: beginFrame sees the settled yaw; the drag moves it mid-frame.
+    EXPECT_FALSE(
+        driver.stepWithInFrameYaw(startYaw, startYaw + kYawStep, cameraIso, kDepthAfterPan)
+    );
+    const vec2 drawnWith = driver.effectiveCameraIso(startYaw + kYawStep, cameraIso);
+
+    // Frame N+1 is the first yaw-delta frame beginFrame observes: it acquires
+    // from frame N, drawn at the new yaw — and so leaves frame N's view where
+    // it was.
+    EXPECT_TRUE(driver.stepWithInFrameYaw(
+        startYaw + kYawStep,
+        startYaw + 2.0f * kYawStep,
+        cameraIso,
+        kDepthAfterPan
+    ));
+    EXPECT_EQ(driver.derives(), 1);
+    const vec2 after = driver.effectiveCameraIso(startYaw + kYawStep, cameraIso);
+    EXPECT_NEAR(after.x, drawnWith.x, 1e-4f);
+    EXPECT_NEAR(after.y, drawnWith.y, 1e-4f);
+}
+
+// ---------------------------------------------------------------------------
+// What an acquisition turns the sample into.
+// ---------------------------------------------------------------------------
+
+// Every yaw the acquisition must be displacement-free at.
+const float kAcquisitionYaws[] = {
+    0.0f, IRMath::kPi / 8.0f, IRMath::kQuarterPi, -IRMath::kQuarterPi, IRMath::kHalfPi, kPi
+};
+
+TEST(DefaultPivotLatch, AcquisitionLeavesTheEffectiveCameraUnchangedAtEveryYaw) {
+    // The ruling's first requirement: acquisition must not move the view. A
+    // gesture re-anchors onto a surface at a depth well away from the current
+    // anchor, and the effective camera of the settled frame — the one on
+    // screen — must survive it.
+    const vec2 cameraIso = vec2(64.0f, -12.0f);
+    for (const float yaw : kAcquisitionYaws) {
+        LatchDriver driver;
+        // First gesture, from yaw 0, anchors on kDepthStart.
+        settleThenStartGesture(driver, 0.0f, cameraIso, kDepthStart);
+        ASSERT_FLOAT_EQ(driver.isoDepth(), kDepthStart);
+        // Settle at `yaw`, where content 12 units nearer sits under the
+        // crosshair, and start a second gesture there.
+        driver.hold(yaw, cameraIso, kDepthStart - 12.0f, 3);
+        const vec2 before = settleThenStartGesture(driver, yaw, cameraIso, kDepthStart - 12.0f);
+        const vec2 after = driver.effectiveCameraIso(yaw, cameraIso);
+        EXPECT_NEAR(after.x, before.x, 1e-4f) << "yaw=" << yaw;
+        EXPECT_NEAR(after.y, before.y, 1e-4f) << "yaw=" << yaw;
+
+        // The acquired anchor sits at the canvas center at that yaw, i.e. it
+        // IS the point under the crosshair.
+        const vec3 anchor = driver.focus(cameraIso);
+        const vec2 onScreen = IRMath::pos3DtoPos2DIsoYawed(anchor, yaw) + after;
+        EXPECT_NEAR(onScreen.x, kCanvasCenterIso.x, 1e-3f) << "yaw=" << yaw;
+        EXPECT_NEAR(onScreen.y, kCanvasCenterIso.y, 1e-3f) << "yaw=" << yaw;
+    }
+}
+
+TEST(DefaultPivotLatch, RecoveringWithoutTheSourceYawWouldMoveTheView) {
+    // Positive-fire control for the arm above: the same acquisition computed
+    // with `isoPixelToPos3D` and no yaw term moves the effective camera by more
+    // than one iso unit at every non-zero yaw, so the arm above can fail.
+    const vec2 cameraIso = vec2(64.0f, -12.0f);
+    for (const float yaw : kAcquisitionYaws) {
+        if (yaw == 0.0f) {
+            continue;
+        }
+        LatchDriver driver;
+        settleThenStartGesture(driver, 0.0f, cameraIso, kDepthStart);
+        driver.hold(yaw, cameraIso, kDepthStart - 12.0f, 3);
+        const vec2 source = driver.effectiveCameraIso(yaw, cameraIso);
+
+        const vec3 unYawed =
+            IRMath::isoPixelToPos3D(kCanvasCenterIso - source, kDepthStart - 12.0f);
+        const float depth = unYawed.x + unYawed.y + unYawed.z;
+        const vec2 offset = kCanvasCenterIso - cameraIso - IRMath::pos3DtoPos2DIso(unYawed);
+        const vec3 focus = IRMath::isoPixelToPos3D(kCanvasCenterIso - cameraIso - offset, depth);
+        const vec2 moved = IRMath::cameraYawPivotOffset(cameraIso + offset, focus, yaw);
+        EXPECT_GT(IRMath::length(moved - source), 1.0f) << "yaw=" << yaw;
+    }
+}
+
+TEST(DefaultPivotLatch, ABackgroundSampleHoldsTheDepthAndTheOffset) {
+    // A crosshair over nothing keeps the previous anchor rather than jumping
+    // to the depth-0 point.
+    LatchDriver driver;
+    const vec2 cameraIso = vec2(9.0f, 2.0f);
+    const float yaw = IRMath::kQuarterPi;
+    settleThenStartGesture(driver, yaw, cameraIso, kDepthStart);
+    ASSERT_TRUE(driver.latch().hasAcquired());
+    const float depth = driver.isoDepth();
+    const vec2 offset = driver.viewOffsetIso();
+    ASSERT_NE(offset, vec2(0.0f));
+
+    driver.hold(yaw + kYawStep, cameraIso, kBackground, 3);
+    const vec2 before = settleThenStartGesture(driver, yaw + kYawStep, cameraIso, kBackground);
+    EXPECT_EQ(driver.isoDepth(), depth);
+    EXPECT_EQ(driver.viewOffsetIso(), offset);
+    EXPECT_EQ(driver.effectiveCameraIso(yaw + kYawStep, cameraIso), before);
+}
+
+TEST(DefaultPivotLatch, YawZeroAcquisitionsLeaveTheViewOffsetBitExact) {
+    // yaw-0 frames depend on the offset alone and are byte-compared by the
+    // reference suites, so an acquisition from a yaw-0 frame must not
+    // round-trip it through the recovery.
+    LatchDriver driver;
+    const vec2 cameraIsos[] = {vec2(0.0f), vec2(64.0f, -12.0f), vec2(-3.3f, 7.1f)};
+    for (const vec2 cameraIso : cameraIsos) {
+        settleThenStartGesture(driver, 0.0f, cameraIso, kDepthAfterPan);
+        driver.hold(0.0f, cameraIso, kDepthAfterPan, 2);
+        EXPECT_EQ(driver.viewOffsetIso(), vec2(0.0f));
+        EXPECT_EQ(driver.isoDepth(), kDepthAfterPan);
+    }
+
+    // With an offset already latched, a yaw-0 acquisition keeps it as-is.
+    settleThenStartGesture(driver, IRMath::kHalfPi, vec2(0.0f), kDepthStart);
+    const vec2 offset = driver.viewOffsetIso();
+    ASSERT_NE(offset, vec2(0.0f));
+    settleThenStartGesture(driver, 0.0f, vec2(0.0f), kDepthAfterFirstRotation);
+    EXPECT_EQ(driver.viewOffsetIso(), offset);
+    EXPECT_EQ(driver.isoDepth(), kDepthAfterFirstRotation);
+}
+
+TEST(DefaultPivotLatch, AStampIsDecodedWithItsOwnSubdivisions) {
+    // The composite stores depth × effective subdivisions, and the divisor is
+    // zoom-dependent. A shot that changes zoom AND yaw in one snap acquires
+    // from a frame at the old zoom while the live divisor is already the new
+    // one; the stamped divisor is the right one.
+    LatchDriver driver;
+    const vec2 cameraIso = vec2(0.0f);
+    driver.hold(0.0f, cameraIso, kDepthStart, 3);
+    driver.stepWithInFrameYaw(0.0f, 0.0f, cameraIso, kDepthAfterPan, 2);
+    EXPECT_TRUE(driver.stepWithInFrameYaw(kYawStep, kYawStep, cameraIso, kDepthAfterPan, 4));
+    EXPECT_FLOAT_EQ(driver.isoDepth(), kDepthAfterPan);
 }
 
 // ---------------------------------------------------------------------------
 // The mode gate: observe every frame, derive only when the default pivot owns
-// the depth.
+// the depth, and never source from a frame it did not own.
 // ---------------------------------------------------------------------------
 
-TEST(DefaultPivotLatch, ANonDefaultPivotPaysNoReadbackButStillObservesThePose) {
-    LatchDriver driver;
-    driver.hold(pose(0.0f, vec2(0.0f)), kDepthStart, 3);
-    ASSERT_EQ(driver.derives(), 1);
-
-    // ORIGIN mode / an explicit focus: the camera roams for a while.
-    driver.setPivotOwnsDepth(false);
-    driver.hold(pose(0.0f, vec2(100.0f, 100.0f)), kDepthAfterPan, 5);
-    EXPECT_EQ(driver.derives(), 1);
-
-    // Back on the default pivot the very frame the camera moves again. The pose
-    // stamps kept running, so this frame's attachment is the PREVIOUS pose's and
-    // the derive is correctly refused — the failure mode of stamping behind the
-    // mode gate was matching a pose several frames stale.
-    driver.setPivotOwnsDepth(true);
-    EXPECT_FALSE(driver.step(pose(0.0f, vec2(140.0f, 90.0f)), kDepthAfterFirstRotation).derive_);
-    EXPECT_TRUE(driver.step(pose(0.0f, vec2(140.0f, 90.0f)), kDepthAfterFirstRotation).derive_);
-    EXPECT_FLOAT_EQ(driver.isoDepth(), kDepthAfterFirstRotation);
-}
-
-TEST(DefaultPivotLatch, ARotationStartUnderANonDefaultPivotDerivesNothing) {
+TEST(DefaultPivotLatch, ANonDefaultPivotPaysNoReadback) {
     LatchDriver driver;
     const vec2 cameraIso = vec2(0.0f);
-    driver.hold(pose(0.0f, cameraIso), kDepthStart, 3);
+    driver.hold(0.0f, cameraIso, kDepthStart, 3);
     driver.setPivotOwnsDepth(false);
-    const int before = driver.derives();
 
-    driver.step(pose(kYawStep, cameraIso), kDepthAfterPan);
-    EXPECT_EQ(driver.derives(), before);
-    EXPECT_EQ(driver.rotationStartDerives(), 0);
+    driver.step(kYawStep, cameraIso, kDepthAfterPan);
+    driver.hold(kYawStep, vec2(100.0f, 100.0f), kDepthAfterPan, 5);
+    driver.step(2.0f * kYawStep, vec2(100.0f, 100.0f), kDepthAfterPan);
+    EXPECT_EQ(driver.derives(), 0);
+    EXPECT_FALSE(driver.latch().hasAcquired());
+}
+
+TEST(DefaultPivotLatch, AFrameRenderedUnderANonDefaultPivotIsNotASource) {
+    // The explicit-focus drag ends and the very next frame starts a default
+    // gesture: the attachment it would read was drawn under the explicit
+    // pivot, so the latch holds rather than acquire from it.
+    LatchDriver driver;
+    const vec2 cameraIso = vec2(0.0f);
+    driver.hold(0.0f, cameraIso, kDepthStart, 3);
+    driver.setPivotOwnsDepth(false);
+    driver.hold(0.0f, cameraIso, kDepthAfterPan, 3);
+
+    driver.setPivotOwnsDepth(true);
+    EXPECT_FALSE(driver.step(kYawStep, cameraIso, kDepthAfterPan));
+    EXPECT_FALSE(driver.latch().hasAcquired());
+
+    // One owned still frame later, the next gesture acquires normally.
+    driver.step(kYawStep, cameraIso, kDepthAfterPan);
+    EXPECT_TRUE(driver.step(2.0f * kYawStep, cameraIso, kDepthAfterPan));
+    EXPECT_TRUE(driver.latch().hasAcquired());
+}
+
+TEST(DefaultPivotLatch, AFrameThatNeverReachedTheCompositeIsNotASource) {
+    // A creation with no TRIXEL_TO_FRAMEBUFFER never stamps: the edge fires
+    // but there is nothing to read.
+    DefaultPivotLatch latch;
+    EXPECT_FALSE(latch.observeFrame(0.0f, true));
+    EXPECT_FALSE(latch.observeFrame(0.0f, true));
+    EXPECT_FALSE(latch.observeFrame(kYawStep, true));
+    EXPECT_FALSE(latch.hasAcquired());
 }
 
 } // namespace

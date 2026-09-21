@@ -46,12 +46,13 @@ constexpr IRMath::Color kIndicatorColor{255, 208, 64, 255};
 // The world point a cursor-pivot drag should rotate about: the surface the
 // cursor is over, at the depth that surface actually renders at.
 //
-// On a background click there is no surface to latch, and the drag falls back
-// to @ref IRRender::getDefaultRotationPivotFocus — i.e. the click behaves
-// exactly like the DEFAULT (no-Shift) pivot, which is itself depth-derived and
-// already gated by `pivot-verify`'s default-pivot blocks. Do not use
-// `mouseWorldPos3DAtIsoDepth(0)` here; it pins an arbitrary depth on the cursor
-// ray.
+// On a background click there is no surface to latch, and this returns
+// @ref IRRender::getDefaultRotationPivotFocus — the DEFAULT pivot's current
+// anchor. `System<CAMERA_MOUSE_ROTATE>` does not copy that into an explicit
+// focus: it detects the miss itself and runs the drag on the default pivot,
+// whose latch acquires the surface under the crosshair when the drag starts
+// rotating. Do not use `mouseWorldPos3DAtIsoDepth(0)` here; it pins an
+// arbitrary depth on the cursor ray.
 //
 // @p excludeEntity is skipped by the ray — pass the indicator from a previous
 // drag so the marker cannot catch its own ray.

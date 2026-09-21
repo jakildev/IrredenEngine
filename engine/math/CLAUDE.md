@@ -50,9 +50,8 @@ Helpers:
   iso reposition: `iso(R_z(−yaw)·world)` (1-DOF, smooth camera Z-yaw, #1308).
   GPU mirror in `ir_iso_common.{glsl,metal}`, kept CPU↔GPU bit-identical. See
   [`docs/design/per-axis-trixel-canvas-rotation.md`](../../docs/design/per-axis-trixel-canvas-rotation.md).
-  (Its SO(3) companion `pos3DtoPos2DIsoRotated` — `iso(R·model)` for a detached
-  entity's octahedral-snap residual, #1463 — was removed in #2194 once #1560
-  retired its sole consumer, the forward-scatter composite.)
+- `IRMath::isoPixelToPos3DYawed(iso, yawedDepth, visualYaw)` — its inverse with
+  `pos3DtoDistanceYawed`: `R_z(+yaw)·isoPixelToPos3D(iso, depth)`. CPU only.
 
 **Never inline these equations in system code.** Always call the helpers
 so there's one place to fix a coordinate-system bug.
@@ -112,8 +111,9 @@ formulas. The convention is world→view = R\_z(−yaw), so view→world = R\_z(
   parameter shifts along `(1,1,1)` and projects to `(0,0)`. Latch the focus as
   a fixed **world point** and that derivative becomes the identity, so pan at
   any non-zero yaw moves content in the wrong direction and pops back when the
-  focus re-derives. A depth-aware pivot latches the iso **depth** and derives
-  the point live (`RenderManager::getDefaultRotationPivotFocus`, #2547);
+  focus re-derives. A depth-aware pivot latches the iso **depth** (plus a
+  constant view offset) and derives the point live
+  (`RenderManager::getDefaultRotationPivotFocus`);
   `test/render/camera_pan_pivot_test.cpp` guards it.
 
 **Split helpers** (live in `engine/prefabs/irreden/render/camera.hpp`):

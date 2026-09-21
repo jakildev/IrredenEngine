@@ -186,8 +186,10 @@ vec2 getCameraPosition2DIso();
 /// Camera iso offset corrected for the active @ref RotationPivotMode. Producers
 /// that position world content relative to the camera should read THIS, not
 /// @ref getCameraPosition2DIso, so Z-yaw pivots about the camera focus rather
-/// than the world origin. In @c ORIGIN mode and at `visualYaw == 0` it returns
-/// exactly @ref getCameraPosition2DIso (the cardinal fast path is byte-identical).
+/// than the world origin. In @c ORIGIN mode it returns exactly
+/// @ref getCameraPosition2DIso; in @c CAMERA_CENTER mode at `visualYaw == 0` it
+/// returns the raw camera plus the default pivot's view offset, which is zero
+/// until a rotation gesture acquires at non-zero yaw.
 vec2 getEffectiveCameraIso();
 /// Current zoom factor as a 2-D scale (x and y may differ for anisotropic zoom).
 vec2 getCameraZoom();
@@ -365,12 +367,13 @@ bool hasRotationPivotFocus();
 /// @ref hasRotationPivotFocus is true.
 vec3 getRotationPivotFocus();
 /// The focus the DEFAULT pivot (CAMERA_CENTER with no explicit override)
-/// rotates about: the SURFACE point under the viewport center, at the depth the
-/// content there actually renders at. It is latched and re-derived once per
-/// frame by @c RenderManager::updateDefaultRotationPivotFocus on the frames its
-/// policy admits, held otherwise; falls back to the iso-depth-0 point under the
-/// viewport center before the first derive and whenever the center pixel reads
-/// background. Meaningful only while @ref hasRotationPivotFocus is false and
+/// rotates about: the SURFACE point that was under the viewport center when
+/// the current (or last) rotation gesture started, at the depth it rendered at.
+/// Acquired once per gesture by @c RenderManager::updateDefaultRotationPivotFocus
+/// and held otherwise; a pan carries it along with the view. Before the first
+/// acquisition it is the iso-depth-0 point under the viewport center, and a
+/// gesture that starts over background keeps the previous anchor.
+/// Meaningful only while @ref hasRotationPivotFocus is false and
 /// the mode is @c CAMERA_CENTER. Exposed so a verification harness can assert
 /// the derived focus against an analytic ray/surface intersection
 /// (`shape_debug --pivot-verify`, `scripts/pivot-verify.py`).
