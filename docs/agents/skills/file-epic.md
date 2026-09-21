@@ -47,8 +47,8 @@ tickets. Never before the user has approved the plan.
 ### 1. Umbrella
 
 `gh issue view <N> --repo <repo> --json number,title,labels,state`. If it
-already carries the **epic label** and `gh issue list --repo <repo>
---search "Part of epic: #<N>"` finds children, stop — don't double-file.
+already carries the **epic label** and `<validate-stack-command> <N>`
+reports a non-zero child count, stop — don't double-file.
 
 ### 2. Draft the steward ledger
 

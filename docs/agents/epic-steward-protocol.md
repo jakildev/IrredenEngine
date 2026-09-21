@@ -77,10 +77,19 @@ per line) is the source of truth for membership; summary comments and
 
 **Heal-on-first-claim.** On first `steward-claim` of an umbrella with no
 checklist (or a stale one), write the union of (a) the body checklist, (b)
-open and closed issues whose body carries `**Part of epic:** #<umbrella>`,
+every issue `fleet-validate-stack <umbrella>` discovers (open and closed),
 and (c) any child table in the umbrella's summary comments back as the
 `## Children` checklist, closed children ticked. Once per umbrella;
 afterwards the checklist changes only through the flows below.
+
+**Membership grammar.** Its single home is
+`scripts/fleet/fleet_epic_membership.py`, shared by the validator,
+`fleet-epic-status` and the scout. Skills emit only the canonical
+`**Part of epic:** #N` line; discovery also accepts the variants the
+population uses — `Part of:` + `epic #N`, `Parent epic: #N`, `Parent: Epic
+#N`, `Epic: #N`, `Epic umbrella: #N` (bulleted or bold) and the colon-less
+`**Part of epic #N**` — reading only the leading `#N` list, so a ref after
+`·` / `—` or inside a parenthetical is not a member.
 
 The baseline rule that agents never edit other issues' bodies stands; the
 steward edits only the `## Children` section of umbrellas it holds a
@@ -185,17 +194,23 @@ Trigger: a checklist child is closed but unticked.
 
 ### Flow c — adoption
 
-Trigger: an open issue carries `**Part of epic:** #<umbrella>` but is absent
-from the checklist.
+Trigger: an open issue's body declares membership in the umbrella but it is
+absent from the checklist — found by the scout's label-blind body back-ref
+scan (`epic_backrefs`), so an unlabeled follow-up is visible. While any
+adopt item is pending for an umbrella, its `closeout` trigger is withheld.
 
-1. `fleet-validate-stack` on the child; fix only the three machine-parsed
-   lines if flagged.
+1. `fleet-validate-stack <umbrella> --children <K>`; fix only the three
+   machine-parsed lines if flagged (a bare child number is read as an
+   umbrella and reports zero children).
 2. Append `- [ ] #K` to `## Children`.
 3. No `## Plan` comment → leave it unplanned; ingest bounces it to
    `fleet:needs-plan`. Never post a placeholder plan.
-4. Re-run `fleet-validate-stack` on the umbrella. Never adopt a stack the
-   validator rejects — post the output on the umbrella and leave the child
-   for the human.
+4. Re-run `fleet-validate-stack <umbrella> --children <the ## Children set>`
+   (its default `--state all` covers open and closed children; never pass
+   `--state open` in a close-out audit), then `fleet-validate-stack
+   <umbrella> --check-checklist` for discovery ↔ checklist drift. Never
+   adopt a stack the validator rejects — post the output on the umbrella and
+   leave the child for the human. A closed child's findings are warnings.
 
 ### Flow d — close-out
 
