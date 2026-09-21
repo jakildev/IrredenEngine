@@ -481,7 +481,14 @@ void LuaScript::scriptFile(const char *filename) {
 }
 
 sol::table LuaScript::getTable(const char *name) {
-    return m_lua[name];
+    // A nil or non-table global yields an invalid table for the caller's
+    // `.valid()` guard; converting it directly would throw under
+    // SOL_ALL_SAFETIES_ON.
+    const sol::object global = m_lua[name];
+    if (global.get_type() != sol::type::table) {
+        return sol::table{};
+    }
+    return global.as<sol::table>();
 }
 
 void LuaScript::bindLuaDrivenEcs() {

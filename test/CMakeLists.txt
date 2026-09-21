@@ -118,6 +118,7 @@ add_executable(IrredenEngineTest
   script/lua_pipeline_register_test.cpp
   script/lua_render_bindings_test.cpp
   script/lua_fog_revealed_test.cpp
+  script/lua_script_get_table_test.cpp
   script/lua_script_utils_test.cpp
   script/lua_local_transform_lua_test.cpp
   script/lua_rotation_target_lua_test.cpp
@@ -152,6 +153,7 @@ add_executable(IrredenEngineTest
   world/persist_round_trip_test.cpp
   world/component_migration_test.cpp
   world/voxel_set_serialize_test.cpp
+  world/world_config_missing_table_test.cpp
   world/save_serializers_test.cpp
 )
 
