@@ -1,11 +1,11 @@
 {
   "target": "IRPerfGrid",
   "matrix": "quick",
-  "frames": 300,
-  "git_sha": "7b3a513cb",
+  "frames": 60,
+  "git_sha": "7f94aee8e",
   "git_dirty": false,
-  "run_name": "7b3a513cb-ci",
-  "started_at": "2026-09-21T04:44:58Z",
+  "run_name": "7f94aee8e-ci",
+  "started_at": "2026-09-21T04:54:09Z",
   "cells": [
     {
       "id": "target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1",
@@ -13,8 +13,8 @@
       "zoom": 1,
       "sub_mode": "full",
       "sub_base": 1,
-      "exit_status": 134,
-      "status": "no_report",
+      "exit_status": 0,
+      "status": "ok",
       "report": "target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1.txt"
     },
     {
@@ -23,14 +23,14 @@
       "zoom": 4,
       "sub_mode": "full",
       "sub_base": 1,
-      "exit_status": 134,
-      "status": "no_report",
+      "exit_status": 0,
+      "status": "ok",
       "report": "target=IRPerfGrid,zoom=4,sub_mode=full,sub_base=1.txt"
     }
   ],
-  "finished_at": "2026-09-21T04:45:06Z",
+  "finished_at": "2026-09-21T04:57:09Z",
   "calibration": {
-    "ref_ms": 102.941,
+    "ref_ms": 104.62,
     "ref_target_ms": 50,
     "host_slug": "linux-x86_64-epyc-7763-64-unknown",
     "host_fingerprint": {
