@@ -65,8 +65,8 @@ the repo = `FLEET_DISPATCH_REPO` (`game` → the per-repo substitutions above).
    ```
    The `-C` path keeps the reset out of the shared main clones; if the assert fails,
    `cd` back into your worktree first ([REVIEWER-PROTOCOL.md](../../docs/agents/REVIEWER-PROTOCOL.md)
-   § "Scratch reset & main-clone cwd discipline"). `gh pr checkout` rewrites this branch
-   each run.
+   § "Scratch reset & main-clone cwd discipline"). Each run checks the PR out detached on
+   top of this branch.
 4. Host key from `uname -s`: `Linux` → `linux`, `Darwin` → `macos`,
    `MINGW*`/`MSYS*`/`CYGWIN*` → `windows`; poll `fleet:needs-<host>-smoke`. On Windows,
    `fleet-build` / `fleet-run` apply the MSYS2 mingw64 `PATH` fix and find the `.exe`
@@ -90,7 +90,7 @@ One smoke run per invocation.
 0. `fleet-heartbeat <basename>`
 1. Claim before checkout: `fleet-claim review-claim <N> <basename>`. Exit 1: print
    `[smoke-worker] PR #<N> already claimed — skipping.` and exit.
-2. `fleet-heartbeat <basename>`; `gh pr checkout <N> --repo jakildev/IrredenEngine`
+2. `fleet-heartbeat <basename>`; `fleet-pr-checkout-detached <N> --repo jakildev/IrredenEngine`
    (game: `cd` into the game twin first, then `--repo jakildev/irreden`).
 3. `fleet-heartbeat <basename>`; `fleet-build --target IRShapeDebug` (game:
    `env IRREDEN_BUILD_DIR=<engine-wt>/build-game fleet-build --target IRGame`; one-time

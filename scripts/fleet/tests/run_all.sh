@@ -15,6 +15,12 @@
 # hung suite cannot wedge CI. Suites are hermetic by the authoring rules
 # (no live GitHub, no live ~/.fleet), so this is safe to run unattended.
 #
+# The pane's own FLEET_* exports are removed from every suite's environment.
+# fleet-dispatch-wrap exports them into each dispatched pane, and a subject
+# that reads one would otherwise verdict on the pane instead of the fixture:
+# green in CI, red only for the agents who run the suites most. The name set
+# is read from the wrapper, so a new export is scrubbed with no edit here.
+#
 # Usage:
 #   run_all.sh [--only <substring>] [--list] [--timeout <seconds>]
 #
@@ -43,6 +49,16 @@ TESTS_DIR=$(cd "$(dirname "$0")" && pwd)
 only=""
 list_only=0
 per_timeout=120
+
+# `env -u` arguments naming every FLEET_* variable the dispatch wrapper assigns.
+scrub_args=()
+dispatch_wrap="$TESTS_DIR/../fleet-dispatch-wrap"
+if [[ -f "$dispatch_wrap" ]]; then
+    while IFS= read -r scrub_name; do
+        [[ -n "$scrub_name" ]] && scrub_args+=(-u "$scrub_name")
+    done < <(grep -oE '(^|[^A-Za-z0-9_])FLEET_[A-Z0-9_]+=' "$dispatch_wrap" \
+                 | sed -E 's/^[^F]*//; s/=$//' | sort -u)
+fi
 
 die_usage() {
     echo "$PROG: $1" >&2
@@ -113,7 +129,7 @@ for f in "${suites[@]}"; do
         *)    interp=(bash) ;;
     esac
 
-    out=$($timeout_cmd "${interp[@]}" "$f" 2>&1)
+    out=$(env ${scrub_args[@]+"${scrub_args[@]}"} $timeout_cmd "${interp[@]}" "$f" 2>&1)
     rc=$?
     if [[ "$rc" -eq 0 ]]; then
         passed=$((passed + 1))

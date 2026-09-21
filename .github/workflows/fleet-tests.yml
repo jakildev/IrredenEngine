@@ -66,6 +66,10 @@ name: Fleet Tests
 # T4 in test_workflow_paths_sync.sh asserts every derived workflow appears in
 # the two blocks below, and fleet_test_subjects.py asserts the same population
 # is registered in OUT_OF_TREE_SUBJECTS; T4 alone covers only the first.
+# `.claude/commands/**`, `.claude/agents/**` and `.claude/skills/**` are the
+# instruction surfaces lint_rules_commands.py's forbidden-command arm reads, so
+# an edit to any role, subagent or skill file runs that ratchet; they subsume
+# the narrower `.claude/` entries the same way.
 # python-lint.yml (#2718) and format-check.yml (#3187) are instances: each
 # declares both blocks, so each is that suite's subject and must appear below.
 # The two `paths:` blocks are duplicated because GitHub Actions has no YAML
@@ -78,6 +82,9 @@ on:
     paths:
       - 'scripts/**'
       - '.claude/rules/**'
+      - '.claude/commands/**'
+      - '.claude/agents/**'
+      - '.claude/skills/**'
       - '.claude/skills/simplify/**'
       - '.claude/skills/commit-and-push/procedures/pr-body.md'
       - '.claude/skills/commit-and-push/procedures/stackable-on.md'
@@ -148,6 +155,9 @@ on:
     paths:
       - 'scripts/**'
       - '.claude/rules/**'
+      - '.claude/commands/**'
+      - '.claude/agents/**'
+      - '.claude/skills/**'
       - '.claude/skills/simplify/**'
       - '.claude/skills/commit-and-push/procedures/pr-body.md'
       - '.claude/skills/commit-and-push/procedures/stackable-on.md'

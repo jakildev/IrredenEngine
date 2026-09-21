@@ -102,6 +102,10 @@ assert_eq "$CHECK_RC" "1" "a missing node exits 1"
 assert_contains "$CHECK_OUT" "In fleet-labels but NOT in fleet-state-machine.json" \
     "the drift is reported in the catalog-side direction"
 assert_contains "$CHECK_OUT" "fleet:author-claude" "the offending label is named"
+assert_contains "$CHECK_OUT" "state machine read: $TMP/missing-node.json" \
+    "the red output names the state-machine file it read"
+assert_contains "$CHECK_OUT" "catalog read:       $FLEET_LABELS" \
+    "the red output names the catalog file it read"
 
 # --- T4: control — a node with no catalog entry ----------------------------
 echo "T4: control — node with no catalog entry is caught"
@@ -113,6 +117,8 @@ assert_eq "$CHECK_RC" "1" "an extra node exits 1"
 assert_contains "$CHECK_OUT" "In fleet-state-machine.json but NOT in fleet-labels" \
     "the drift is reported in the node-side direction"
 assert_contains "$CHECK_OUT" "fleet:control-only-not-in-catalog" "the offending node is named"
+assert_contains "$CHECK_OUT" "state machine read: $TMP/extra-node.json" \
+    "the red output names the state-machine file it read"
 
 # --- T5: control — an over-long catalog description ------------------------
 # The other half of what --check gates: GitHub 422s a description over 100

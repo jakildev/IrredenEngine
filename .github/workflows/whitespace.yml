@@ -1,0 +1,30 @@
+name: Whitespace
+
+# Diff-scoped: only the lines a pull request adds are checked, so there is no
+# baseline and no backlog to carry. Unfiltered on purpose — clang-format covers
+# C++ alone, and scripts, docs, workflows and CMake have no other whitespace
+# gate. Binary files are skipped by git itself.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  whitespace:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: No whitespace errors on added lines
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if ! git diff --check "origin/$BASE_REF...HEAD"; then
+            echo "::error::Added lines carry whitespace errors (trailing whitespace, space before tab, blank line at end of file, or a conflict marker). Fix the lines listed above. A path that needs them by design opts out in .gitattributes, e.g. 'whitespace=-trailing-space'. Local check: git diff --check origin/$BASE_REF...HEAD"
+            exit 1
+          fi

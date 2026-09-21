@@ -100,8 +100,8 @@ When you do pick a task:
    runs `simplify`.
 5. `commit-and-push`, with `Closes #<issue-#>` in the body.
 6. **Immediately** `fleet-claim release <issue-#>` and `start-next-task`,
-   before asking the human "what's next?" — a checked-out PR branch blocks
-   `gh pr checkout` for reviewers.
+   before asking the human "what's next?" — the worktree must not sit on a
+   PR branch the next task would build on by accident.
 7. **Feedback labels.** From `repos.<repo>.prs[]`, pick PRs labeled
    `human:needs-fix`, `fleet:needs-fix`, or `fleet:has-nits` that carry no
    `fleet:amending-*` label, and follow

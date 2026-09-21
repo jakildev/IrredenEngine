@@ -165,4 +165,39 @@ assert_eq "$rc" "1" "T13 exit 1 — a skip must not mask a real failure"
 assert_contains "$out" "0 passed, 1 failed, 1 skipped" "T13 summary counts failures and skips independently"
 assert_contains "$out" "failed: test_broken.sh" "T13 still names the real failure"
 
+# The runner sits one level under the wrapper in the real tree, so these two
+# sandboxes nest it the same way. The wrapper is the REAL one: the scrub set is
+# read from it, including a name assigned on an export continuation line.
+WRAPPER="$SCRIPT_DIR/../fleet-dispatch-wrap"
+new_nested_sandbox() {  # $1 = sandbox name -> echoes the tests dir
+    local d="$TMPROOT/$1/tests"
+    mkdir -p "$d"
+    cp "$RUNNER" "$d/run_all.sh"
+    cp "$WRAPPER" "$TMPROOT/$1/fleet-dispatch-wrap"
+    echo "$d"
+}
+fixture_env_probe() {  # a suite that reports what it inherited, then fails
+    printf '%s\n' '#!/usr/bin/env bash' \
+        'echo "role=${FLEET_ROLE-unset} model=${FLEET_ROLE_MODEL-unset} number=${FLEET_DISPATCH_NUMBER-unset} keep=${UNRELATED_KEEP-unset}"' \
+        'exit 1' > "$1/test_envprobe.sh"
+}
+
+echo "T14: the pane's FLEET_* exports never reach a suite"
+if [[ -f "$WRAPPER" ]]; then
+    d=$(new_nested_sandbox t14)
+    fixture_env_probe "$d"
+    out=$(FLEET_ROLE=worker FLEET_ROLE_MODEL=opus FLEET_DISPATCH_NUMBER=42 UNRELATED_KEEP=yes \
+          bash "$d/run_all.sh" 2>&1); rc=$?
+    assert_contains "$out" "role=unset model=unset number=unset" "T14 wrapper-exported names are scrubbed"
+    assert_contains "$out" "keep=yes" "T14 unrelated environment is left alone"
+else
+    bad "T14 fleet-dispatch-wrap missing at $WRAPPER — the scrub set has no source"
+fi
+
+echo "T15: with no wrapper beside it the runner scrubs nothing (negative control)"
+d=$(new_sandbox t15)
+fixture_env_probe "$d"
+out=$(FLEET_ROLE=worker FLEET_ROLE_MODEL=opus bash "$d/run_all.sh" 2>&1); rc=$?
+assert_contains "$out" "role=worker model=opus" "T15 the scrub comes from the wrapper, not a blanket unset"
+
 summarize "run_all.sh tests"

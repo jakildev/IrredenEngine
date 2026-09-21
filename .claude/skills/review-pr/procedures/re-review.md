@@ -5,7 +5,7 @@ flagged `fleet:needs-fix` / `fleet:blocker`, or when asked to confirm the
 nits of a `fleet:has-nits` review were cleaned up. A first review runs the
 standard flow instead.
 
-1. `gh pr checkout <N>` again.
+1. Check the new head out detached again (`docs/agents/skills/review-pr.md` step 2).
 2. Verify the previously-flagged items **before** the checklist:
    ```bash
    gh pr view <N> --comments

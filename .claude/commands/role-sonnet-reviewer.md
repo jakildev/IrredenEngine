@@ -45,7 +45,7 @@ apply unchanged.
    `git -C ~/src/IrredenEngine/.claude/worktrees/<basename> checkout -B claude/<basename>-scratch origin/master`
    (the `-C` path keeps the reset out of the shared main clones; if the assert fails,
    `cd` back into your worktree first — REVIEWER-PROTOCOL.md § "Scratch reset &
-   main-clone cwd discipline"). `gh pr checkout` rewrites this branch on each review.
+   main-clone cwd discipline"). Each review checks the PR out detached on top of it.
 4. Read `~/.fleet/state/state.json` with the Read tool (`repos.{engine,game}.prs[]` with
    reviews and labels). Missing or `generated_at` older than ~5 minutes: print
    `scout cache stale or missing — run fleet-up` and exit.

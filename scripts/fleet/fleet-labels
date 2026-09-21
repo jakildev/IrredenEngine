@@ -330,6 +330,14 @@ if [[ "$CHECK" -eq 1 ]]; then
     fi
     if [[ -n "$only_catalog" || -n "$only_json" ]]; then
         echo "fleet-labels --check: DRIFT between the catalog and the state-machine node set." >&2
+        echo "  catalog read:       $SCRIPT_PATH" >&2
+        echo "  state machine read: $STATE_MACHINE" >&2
+        # A PATH-symlinked invocation resolves to the main clone, so a branch's
+        # own copy goes unmeasured unless the caller runs the worktree's script.
+        _cwd_top=$(git rev-parse --show-toplevel 2>/dev/null || true)
+        if [[ -n "$_cwd_top" && "$_cwd_top" != "$ENGINE_ROOT" ]]; then
+            echo "  note: these are not the files under $_cwd_top — to check that tree run: bash $_cwd_top/scripts/fleet/fleet-labels --check" >&2
+        fi
         if [[ -n "$only_catalog" ]]; then
             echo "  In fleet-labels but NOT in fleet-state-machine.json:" >&2
             printf '    %s\n' $only_catalog >&2
