@@ -39,7 +39,7 @@ Sites 1–2 are a compile error (`kCommandInfo` static_asserts); a missing
 site 4 logs at firing / registration time and asserts in debug when reached
 through a manifest; a missing site 5 resolves to nil in Lua.
 
-## Default-binding manifests (#2666)
+## Default-binding manifests
 
 The engine's default keys are data: one `constexpr DefaultBinding` table per
 suite (`kCameraSuite`, `kCaptureSuite`) in

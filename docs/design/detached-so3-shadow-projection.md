@@ -129,8 +129,10 @@ Key facts established by reading the code:
   per-axis `resolveDepth_` / world-placed `worldPlacedResolveDepth_`). The
   caster's own model-frame distance texture is bound only as the *scatter*
   read (`c_resolve_world_placed_depth.glsl:57`), never as a bake input. This is
-  the #1640-mandated invariant (`engine/render/CLAUDE.md` §"Foreign-canvas R32I
-  image reads … return empty on Metal").
+  the #1640-mandated invariant (`engine/render/CLAUDE.md` §"GPU resource contracts",
+  the "Metal R32I image atomics land in scratch storage" bullet: a foreign canvas's
+  atomic depth is resolved into a main-canvas-layout texture before a later dispatch
+  reads it).
 
 - **`N` casters ⇒ one extra bake** (not `N` bakes) — one shared scratch, one
   blit, one bake dispatch (`system_bake_sun_shadow_map.hpp:326-424`).

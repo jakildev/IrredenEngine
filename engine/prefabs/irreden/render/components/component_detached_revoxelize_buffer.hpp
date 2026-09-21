@@ -31,7 +31,7 @@ namespace IRComponents {
 //
 // This is a per-canvas render component rather than a C_VoxelPool field because
 // C_VoxelPool is a voxel-domain component kept free of
-// <irreden/ir_render.hpp> (the layering boundary, voxel/CLAUDE.md), so the
+// <irreden/ir_render.hpp> (the layering boundary, voxel_pool_api.hpp), so the
 // GPU-RAII lives on a render-domain sibling on the same canvas entity.
 struct C_DetachedRevoxelizeBuffer {
     // Resident SSBO of composed authored locals (local + per-voxel offset),

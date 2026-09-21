@@ -140,9 +140,11 @@ TEST_F(GpuComputeDispatchTest, ClearSunShadowKernelFillsBufferWithLitSentinel) {
 // exists to reproduce the *Metal-only* gap headlessly: a non-main canvas's R32I
 // distance texture, written by one in-tick compute dispatch, reads back as the
 // clear value from a SECOND in-tick dispatch (engine/render/CLAUDE.md
-// "Foreign-canvas R32I image reads in a second in-tick compute dispatch return
-// empty on Metal"). Metal has no windowless RenderDevice bring-up in the
-// normal engine boot (the CAMetalLayer is window-bound), so the fixture uses
+// §"GPU resource contracts", the "Metal R32I image atomics land in scratch
+// storage" bullet: a foreign canvas's atomic depth must be resolved into a
+// main-canvas-layout texture before a later compute dispatch reads it). Metal
+// has no windowless RenderDevice bring-up in the normal engine boot (the
+// CAMetalLayer is window-bound), so the fixture uses
 // bootstrapHeadlessRenderDevice() — device + command queue, no swapchain — then
 // drives the real ShaderProgram / Texture2D / dispatchCompute path.
 
