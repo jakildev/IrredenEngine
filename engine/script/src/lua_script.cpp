@@ -26,6 +26,7 @@
 #include <irreden/voxel/components/component_joint_hierarchy.hpp>
 #include <irreden/voxel/rig_bridge.hpp>
 
+#include <cstddef>
 #include <deque>
 #include <string>
 #include <vector>
@@ -33,6 +34,21 @@
 namespace IRScript {
 
 namespace {
+
+// Formats one `print` argument the way stock LuaJIT `print` does: through the
+// Lua global `tostring`, so nil, booleans, numbers and `__tostring`
+// metamethods all spell identically. The call is protected because a
+// metamethod that raises, or returns a non-string, would otherwise escape as
+// a C++ exception, which `SOL_EXCEPTIONS_ALWAYS_UNSAFE` flattens to a bare
+// "C++ exception" at the Lua call site.
+std::string
+luaPrintArgumentText(const sol::protected_function &tostring, const sol::object &argument) {
+    const sol::protected_function_result text = tostring(argument);
+    if (!text.valid() || text.get_type() != sol::type::string) {
+        return "<tostring failed>";
+    }
+    return text.get<std::string>();
+}
 
 // Stable storage for field-binding names registered from Lua. The
 // modifier framework's FieldRegistry stores `const char*` and assumes
@@ -255,6 +271,28 @@ LuaScript::LuaScript()
         sol::lib::bit32
     );
     m_lua.safe_script("if bit == nil and bit32 ~= nil then bit = bit32 end");
+
+    // `print` emits through the engine's ScriptLog sink instead of C stdout:
+    // the sink flushes every line, so script output survives a signal death (a
+    // watchdog kill, a crash) with stdout redirected to a file, where stock
+    // LuaJIT `print` would leave its bytes in stdout's block buffer. Arguments
+    // are tab-joined and unquoted exactly as stock `print` joins them, so a
+    // run-log grep for a script's text still matches. Not gated on
+    // `IRProfile::isLoggingEnabled()` the way the `IR_LOG_*` wrappers are: a
+    // creation's output is not engine diagnostics, and `LoggerSpd` outlives
+    // every other static, so a `print` after `shutdownLogging()` still lands.
+    m_lua.set_function("print", [](sol::this_state state, sol::variadic_args args) {
+        const sol::state_view lua{state};
+        const sol::protected_function tostring = lua["tostring"];
+        std::string message;
+        for (std::size_t i = 0; i < args.size(); ++i) {
+            if (i > 0) {
+                message.push_back('\t');
+            }
+            message += luaPrintArgumentText(tostring, args.get<sol::object>(static_cast<int>(i)));
+        }
+        LoggerSpd::instance()->getScriptLogger()->info("{}", message);
+    });
 
     // Engine-provided utility functions that are available to all Lua creations.
     m_lua["IRMath"] = m_lua.create_table();

@@ -112,6 +112,7 @@ add_executable(IrredenEngineTest
   script/lua_entity_anchor_test.cpp
   script/lua_enum_register_test.cpp
   script/lua_persistence_test.cpp
+  script/lua_print_sink_test.cpp
   script/lua_world_snapshot_test.cpp
   script/lua_pipeline_register_test.cpp
   script/lua_render_bindings_test.cpp

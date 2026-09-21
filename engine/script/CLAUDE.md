@@ -185,6 +185,17 @@ need `registerComponentFactoryFor<C>` and run before `setup`. `IREntity.bindPoin
 is a spawn-time query, not per-tick. The registry is process-global: tests call
 `clearPrefabs()`.
 
+## Script output
+
+`LuaScript`'s constructor binds `print` to the engine's `ScriptLog` logger: one
+flushed, timestamped `[ScriptLog] [info]` line per call, arguments `tostring`-ed
+and tab-joined verbatim — unquoted, so a run-log `grep` for a script's own text
+still matches — ordered with `[EngineLog]` / `[ClientLog]`. The per-line flush is
+the contract: with stdout redirected, stock LuaJIT `print` leaves its bytes in
+stdout's block buffer and loses them on a signal death (a `--timeout` watchdog
+kill, a crash). `io.write` and a bare `sol::state` (`ir_lua_codegen`, a
+test-local state) keep stock behaviour and carry no such guarantee.
+
 ## Script resolution
 
 `scriptFile(path)` passes the path to sol2 unchanged; relative paths resolve from

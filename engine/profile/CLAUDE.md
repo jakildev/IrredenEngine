@@ -12,7 +12,7 @@ class to instantiate on the caller side; the underlying `LoggerSpd` and
 
 ## Logging macros
 
-Three independent sinks, one per logger:
+Four loggers over one console sink:
 
 - `IR_LOG_<LEVEL>(fmt, ...)` — **game/client** logger. Use in creation
   code.
@@ -20,6 +20,9 @@ Three independent sinks, one per logger:
   code.
 - `IRE_GL_LOG_<LEVEL>(fmt, ...)` — **GL debug** logger. Driven by GL
   debug callbacks.
+- `ScriptLog` — **Lua `print`** output. No macro: the only writer is the
+  `print` binding in `LuaScript`'s constructor
+  ([`engine/script/CLAUDE.md`](../script/CLAUDE.md) §"Script output").
 
 Levels: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, `FATAL`.
 
