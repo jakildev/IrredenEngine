@@ -31,7 +31,8 @@ Metrics (within the ROI, default = whole image):
   * largest_frac        — largest component / shadow_px (~1 clean, low when
                           fragmented).
 
-Pure stdlib; reuses ``read_png()`` from ``render-compare.py``.
+Pure stdlib; the mask, ROI and flood-fill primitives come from
+``render_metric_util``.
 
 Exit codes: 0 metrics within thresholds (or no thresholds given) · 1 a
 threshold was exceeded · 2 I/O or format error.
@@ -40,41 +41,14 @@ threshold was exceeded · 2 I/O or format error.
 from __future__ import annotations
 
 import argparse
-import importlib.machinery
-import importlib.util
 import json
 import sys
-from array import array
-from collections import deque
-from pathlib import Path
 
-# read_png lives in the sibling render-compare.py (dashed name -> importlib).
-_CMP = Path(__file__).with_name("render-compare.py")
-_loader = importlib.machinery.SourceFileLoader("render_compare", str(_CMP))
-_spec = importlib.util.spec_from_loader("render_compare", _loader)
-_mod = importlib.util.module_from_spec(_spec)
-sys.modules["render_compare"] = _mod
-_loader.exec_module(_mod)
-read_png = _mod.read_png
+import render_metric_util as rmu
 
-# Classification thresholds, loose enough to absorb AA / FP jitter on the
-# debug-overlay's flat fills (magenta = vec3(1,0,1), lit = vec3(0)).
-SHADOW_MIN_RB = 180   # magenta: high red AND blue
-SHADOW_MAX_G = 90     # magenta: low green
-LIT_MAX = 70          # lit: all channels near zero
-
-# Flood fill is O(ROI pixels); a full 1280x720 frame is ~900k px which is fine,
-# but guard a pathological ROI so the tool never hangs silently.
-MAX_FLOOD_PX = 4_000_000
-
-
-def _classify(r: int, g: int, b: int) -> int:
-    """1 = shadowed (magenta), -1 = lit (black), 0 = neither (bg/entity)."""
-    if r >= SHADOW_MIN_RB and b >= SHADOW_MIN_RB and g <= SHADOW_MAX_G:
-        return 1
-    if r <= LIT_MAX and g <= LIT_MAX and b <= LIT_MAX:
-        return -1
-    return 0
+# The magenta/black classification, the ROI math and the flood fill are shared
+# with the other shadow oracles so they all binarize a capture identically.
+MAX_FLOOD_PX = rmu.MAX_FLOOD_PX
 
 
 def shadow_metrics(
@@ -82,31 +56,8 @@ def shadow_metrics(
     roi: tuple[int, int, int, int] | None = None,
     count_components: bool = True,
 ) -> dict:
-    w, h, bpp, pix = read_png(path)
-    px = array("B", pix)
-
-    if roi is None:
-        rx, ry, rw, rh = 0, 0, w, h
-    else:
-        rx, ry, rw, rh = roi
-        if rx < 0 or ry < 0 or rx + rw > w or ry + rh > h or rw <= 0 or rh <= 0:
-            raise ValueError(f"roi {roi} out of bounds for {w}x{h} image")
-
-    # shadow mask over the ROI grid: True where shadowed.
-    mask = bytearray(rw * rh)
-    shadow_px = 0
-    lit_px = 0
-    for j in range(rh):
-        row = (ry + j) * w
-        mbase = j * rw
-        for i in range(rw):
-            o = (row + rx + i) * bpp
-            c = _classify(px[o], px[o + 1], px[o + 2])
-            if c == 1:
-                mask[mbase + i] = 1
-                shadow_px += 1
-            elif c == -1:
-                lit_px += 1
+    mask, rw, rh, shadow_px, lit_px, rect = rmu.shadow_mask(path, roi)
+    rx, ry, _, _ = rect
 
     classified = shadow_px + lit_px
     hole_ratio = (lit_px / classified) if classified else 0.0
@@ -124,60 +75,17 @@ def shadow_metrics(
             result["components"] = None
             result["components_note"] = "roi too large for component count"
         else:
-            comps, largest = _components(mask, rw, rh)
+            comps, largest = rmu.components(mask, rw, rh)
             result["components"] = comps
             result["largest_frac"] = round(largest / shadow_px, 4)
 
     return result
 
 
-def _components(mask: bytearray, w: int, h: int) -> tuple[int, int]:
-    """4-connected component count + largest size over the shadow mask."""
-    seen = bytearray(len(mask))
-    comps = 0
-    largest = 0
-    for start in range(len(mask)):
-        if not mask[start] or seen[start]:
-            continue
-        comps += 1
-        size = 0
-        q = deque((start,))
-        seen[start] = 1
-        while q:
-            idx = q.popleft()
-            size += 1
-            x = idx % w
-            y = idx // w
-            if x > 0 and mask[idx - 1] and not seen[idx - 1]:
-                seen[idx - 1] = 1
-                q.append(idx - 1)
-            if x < w - 1 and mask[idx + 1] and not seen[idx + 1]:
-                seen[idx + 1] = 1
-                q.append(idx + 1)
-            if y > 0 and mask[idx - w] and not seen[idx - w]:
-                seen[idx - w] = 1
-                q.append(idx - w)
-            if y < h - 1 and mask[idx + w] and not seen[idx + w]:
-                seen[idx + w] = 1
-                q.append(idx + w)
-        if size > largest:
-            largest = size
-    return comps, largest
-
-
-def _parse_roi(s: str | None) -> tuple[int, int, int, int] | None:
-    if not s:
-        return None
-    parts = [int(p) for p in s.split(",")]
-    if len(parts) != 4:
-        raise argparse.ArgumentTypeError("roi must be x,y,w,h")
-    return tuple(parts)  # type: ignore[return-value]
-
-
 def _main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("image", help="PNG capture (SHADOW debug-overlay mode).")
-    ap.add_argument("--roi", type=_parse_roi, default=None,
+    ap.add_argument("--roi", type=rmu.parse_roi, default=None,
                     help="x,y,w,h region of interest (default: whole image).")
     ap.add_argument("--max-hole-ratio", type=float, default=None,
                     help="fail if hole_ratio exceeds this.")
