@@ -150,6 +150,7 @@ class CellReport:
     # without the line.
     steady_frame: Optional[FrameTiming] = None
     warmup_frames: int = 0
+    recorded_frames: int = 0
     witness: RunWitness = field(default_factory=RunWitness)
     # Every recorded frame in order, warm-up included.
     frame_times_ms: List[float] = field(default_factory=list)
@@ -167,8 +168,13 @@ class CellReport:
     raw: str = ""
 
     def steady_frame_times_ms(self) -> List[float]:
-        """The recorded frames after the warm-up the report states; empty when it states none."""
-        if self.steady_frame is None:
+        """The recorded frames after the warm-up the report states.
+
+        Empty when the report states no warm-up, or when its series is not the
+        length its steady line states (a truncated report, or a run too long
+        for the writer to carry its series).
+        """
+        if self.steady_frame is None or len(self.frame_times_ms) != self.recorded_frames:
             return []
         return self.frame_times_ms[self.warmup_frames:]
 
@@ -206,6 +212,7 @@ def parse_report(path: Path, cell_id: str) -> CellReport:
     m = STEADY_FRAME_RE.search(text)
     if m:
         report.warmup_frames = int(m.group(1))
+        report.recorded_frames = int(m.group(2))
         report.steady_frame = FrameTiming(*(float(m.group(i)) for i in range(3, 9)))
 
     m = UPDATE_TICKS_RE.search(text)
@@ -323,10 +330,13 @@ def parse_report(path: Path, cell_id: str) -> CellReport:
             witness = report.witness
             m = WITNESS_YAW_RE.match(s)
             if m:
-                witness.yaw_first_deg, witness.yaw_last_deg, witness.yaw_travel_deg = (
-                    float(m.group(i)) for i in range(1, 4)
-                )
                 witness.pose_samples = int(m.group(4))
+                # A run whose voxel pass never ticked writes the line with
+                # zeros; that is an absent pose, not a pose of 0 degrees.
+                if witness.pose_samples:
+                    witness.yaw_first_deg, witness.yaw_last_deg, witness.yaw_travel_deg = (
+                        float(m.group(i)) for i in range(1, 4)
+                    )
                 continue
             m = WITNESS_ZOOM_RE.match(s)
             if m:

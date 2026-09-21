@@ -1,4 +1,6 @@
--- IRPerfGrid preset: million.lua's scene with the CPU scope profiler and the
+-- IRPerfGrid control preset: million-profiling-off.lua with the fixed-step loop
+-- clamped to one update a rendered frame (max_update_ticks_per_frame = 1).
+-- million.lua's scene with the CPU scope profiler and the
 -- GPU stage timers off. --auto-profile still turns on per-system wall timers
 -- and full-frame GPU timestamps. Keep the scene identical to million.lua.
 config = {
