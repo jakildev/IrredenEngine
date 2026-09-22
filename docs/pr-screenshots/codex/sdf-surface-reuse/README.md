@@ -2,7 +2,8 @@
 
 ## Decision
 
-Do not ship this experiment. Production code remains at ownership implementation
+Do not ship this experiment. The measured control was the initial
+[ownership implementation](../sdf-winner-ownership/README.md), commit
 `65709fc555cfe96825386d2be65c507ca1a13708`. The adjacent patch retains the
 experiment and its scalar mutation tests for reproduction, not as active code.
 It passed four scalar test cases before removal; the replay test replaces the
@@ -62,7 +63,8 @@ reconstruction/self-shadowing separately; do not hide it with filtering.
 
 ## Reproduction
 
-Apply `experiment.patch` to the parent above, then build
+Apply `experiment.patch` to that historical control commit, not the current
+compile-specialized shader layout, then build
 `fleet-build --target IRCanvasStress -j 3`. Restore the parent and rebuild for
 the control. The test addition runs with
 `python3 scripts/tests/test_render_sdf_winner.py` while the patch is applied.

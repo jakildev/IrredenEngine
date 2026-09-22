@@ -1,7 +1,7 @@
 // Shared SDF primitive evaluators for the trixel pipeline.  Mirrors
 // shaders/ir_sdf_common.glsl and the CPU-side `IRMath::SDF` namespace
 // (engine/math/include/irreden/math/sdf.hpp).  The shape rasterizer
-// (`c_shapes_to_trixel.metal`) and the sun-shadow shader
+// (`c_shapes_to_trixel_body.metal`) and the sun-shadow shader
 // (`c_compute_sun_shadow.metal`) both #include this header.
 //
 // Anyone touching one branch of `evaluateSDF` must update the GLSL mirror
