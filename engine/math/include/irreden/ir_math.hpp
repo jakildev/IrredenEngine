@@ -448,6 +448,12 @@ constexpr float sqrt(float value) {
     return glm::sqrt(value);
 }
 
+/// Euclidean length of the planar vector (@p x, @p y) in double precision —
+/// `sqrt(x * x + y * y)`, without `std::hypot`'s overflow guard.
+constexpr double planarLength(double x, double y) {
+    return glm::sqrt(x * x + y * y);
+}
+
 /// @p base raised to @p exponent. Wraps std::pow.
 inline float pow(float base, float exponent) noexcept {
     return std::pow(base, exponent);

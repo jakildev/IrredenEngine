@@ -327,6 +327,101 @@ TEST(FogCrossSectionShaderParity, UnexploredColourAnchorIsIdenticalAcrossBackend
         << "the fog pass must anchor state 0 on unexploredColor: " << glslAnchor;
 }
 
+// Test E, part 6: the line-of-sight gate. The pure helpers of the
+// ir_fog_los include pair reduce to the same maths on both backends, their
+// constants agree with each other and with the component they mirror, and both
+// fog kernels carry the gate at the head of their source loop and declare the
+// mask lane — so removing the gate from one backend fails here.
+namespace {
+
+const std::string kGlslFogLosPath = std::string(IR_TEST_RENDER_SHADER_DIR) + "/ir_fog_los.glsl";
+const std::string kMetalFogLosPath =
+    std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/ir_fog_los.metal";
+
+// normalizeShaderMath plus the integer-vector spellings (MSL int2 -> ivec2).
+std::string normalizeLosMath(const std::string &source) {
+    return std::regex_replace(
+        normalizeShaderMath(source),
+        std::regex(R"(\bint([234])\b)"),
+        "ivec$1"
+    );
+}
+
+// The gate call site with the dialect-only differences removed: the Metal
+// observer-struct qualifier and the texture argument.
+std::string normalizeGateCallSite(const std::string &source) {
+    std::string folded = std::regex_replace(source, std::regex(R"(\bfogObservers\.)"), "");
+    folded = std::regex_replace(folded, std::regex(R"(,\s*fogLineOfSight\s*\))"), ")");
+    return std::regex_replace(folded, std::regex(R"(\s+)"), " ");
+}
+
+} // namespace
+
+TEST(FogCrossSectionShaderParity, LosGateIsIdenticalAcrossBackends) {
+    const std::string glsl = readShaderSource(kGlslFogLosPath);
+    const std::string metal = readShaderSource(kMetalFogLosPath);
+    ASSERT_FALSE(glsl.empty()) << "could not read " << kGlslFogLosPath;
+    ASSERT_FALSE(metal.empty()) << "could not read " << kMetalFogLosPath;
+
+    const std::pair<const char *, double> expected[] = {
+        {"kFogLosFieldSize", 256.0},
+        {"kFogLosFieldHalfExtent", static_cast<double>(kFogOfWarHalfExtent)},
+        {"kFogLosSourcesPerTile", 4.0},
+    };
+    for (const auto &[name, mirrored] : expected) {
+        double glslValue = 0.0;
+        double metalValue = 0.0;
+        ASSERT_TRUE(readShaderConstant(glsl, name, glslValue)) << name << " missing from GLSL";
+        ASSERT_TRUE(readShaderConstant(metal, name, metalValue)) << name << " missing from MSL";
+        EXPECT_DOUBLE_EQ(glslValue, metalValue) << name << " diverged between backends";
+        EXPECT_DOUBLE_EQ(glslValue, mirrored) << name << " changed without this test's mirror";
+    }
+
+    for (const char *helper :
+         {"fogLosSourceGated",
+          "fogLosCellInField",
+          "fogLosTexel",
+          "fogLosHorizonChannel",
+          "fogLosSampleVisible"}) {
+        const std::string glslBody = extractFunctionBody(glsl, helper);
+        const std::string metalBody = extractFunctionBody(metal, helper);
+        ASSERT_FALSE(glslBody.empty()) << helper << " not found in ir_fog_los.glsl";
+        ASSERT_FALSE(metalBody.empty()) << helper << " not found in ir_fog_los.metal";
+        EXPECT_EQ(normalizeLosMath(glslBody), normalizeLosMath(metalBody))
+            << helper << " diverged between the GLSL and MSL line-of-sight gates";
+    }
+    // Both loaders round-trip through the shared helpers, so the dialect-only
+    // image read is the one line they may differ on.
+    for (const std::string *source : {&glsl, &metal}) {
+        const std::string body = extractFunctionBody(*source, "fogLosVisible");
+        ASSERT_FALSE(body.empty());
+        EXPECT_NE(body.find("fogLosCellInField(sampleVoxel.xy)"), std::string::npos);
+        EXPECT_NE(body.find("fogLosTexel(sampleVoxel.xy, source)"), std::string::npos);
+        EXPECT_NE(
+            body.find("fogLosSampleVisible(fogLosHorizonChannel(texel, source), sampleVoxel.z)"),
+            std::string::npos
+        );
+    }
+
+    const std::regex gate(
+        R"(if \(fogLosSourceGated\(losSourceMask, i\) && !fogWholeBody && )"
+        R"(!fogLosVisible\(surfaceVoxel, i\)\) \{ continue; \})"
+    );
+    for (const std::string &path : {kGlslFogPassPath, kMetalFogPassPath}) {
+        const std::string kernel = readShaderSource(path);
+        ASSERT_FALSE(kernel.empty()) << "could not read " << path;
+        EXPECT_TRUE(std::regex_search(normalizeGateCallSite(kernel), gate))
+            << path << " lost its line-of-sight gate";
+        EXPECT_TRUE(
+            std::regex_search(
+                kernel,
+                std::regex(R"(int visionCircleCount;\s*(//[^\n]*\s*)*int losSourceMask;)")
+            )
+        ) << path
+          << " no longer reads the mask lane right after the count";
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Tests A-D — headless GPU, OpenGL only.
 // ---------------------------------------------------------------------------
@@ -336,14 +431,18 @@ TEST(FogCrossSectionShaderParity, UnexploredColourAnchorIsIdenticalAcrossBackend
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 
+#include <irreden/math/sdf.hpp>
 #include <irreden/render/buffer.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
+#include <irreden/render/fog_line_of_sight.hpp>
+#include <irreden/render/fog_of_war.hpp>
 #include <irreden/render/ir_gl_api.hpp>
 #include <irreden/render/ir_render_enums.hpp>
 #include <irreden/render/shader.hpp>
 #include <irreden/render/texture.hpp>
 
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <memory>
 #include <vector>
@@ -750,6 +849,207 @@ TEST_F(FogCrossSectionTest, GpuRevealMatchesTheCpuOracle) {
         ) << "GPU keep metric diverged from the CPU oracle at (" << column.x << ", " << column.y
           << ")";
     }
+}
+
+namespace {
+
+// Mirrors the probe kernel's own constants (c_fog_los_probe.glsl).
+constexpr int kLosProbeHalfExtent = 32;
+constexpr int kLosProbeDim = kLosProbeHalfExtent * 2;
+constexpr int kLosProbeLevels = 3;
+constexpr int kLosProbeRecords = kLosProbeLevels * kLosProbeDim * kLosProbeDim;
+constexpr std::uint32_t kBindingLosTexture = 0;  // IR_FOG_LOS_BINDING in the probe
+constexpr std::uint32_t kBindingLosProbeOut = 1; // std430 binding in the probe
+constexpr std::uint32_t kBindingLosProbeIn = 2;  // std430 binding in the probe
+
+// The fixture: flat ground (top voxel 4), the fog_demo ridge (x 0..1,
+// y -7..8, four voxels up) and a free-standing flagged SDF pillar, seen from a
+// soft-edged source at (-6, 0) with its eye 2 above observerZ 4.5.
+constexpr int kLosGround = 4;
+const IRMath::vec4 kLosCircle{-6.0f, 0.0f, 14.0f, 2.0f};
+constexpr float kLosObserverZ = 4.5f;
+constexpr float kLosEyeHeight = 2.0f;
+// The probed sample heights: the column's top voxel, and 2 and 6 above it.
+constexpr int kLosLevelLift[kLosProbeLevels] = {0, 2, 6};
+
+struct FogLosProbeHeader {
+    IRMath::vec4 circle_;
+    std::int32_t losSourceMask_;
+    std::int32_t pad_[3];
+};
+static_assert(sizeof(FogLosProbeHeader) == 32, "must match the probe's std430 header");
+
+struct FogLosProbeRecord {
+    std::int32_t visible_;
+    float reveal_;
+};
+static_assert(sizeof(FogLosProbeRecord) == 8, "must match the probe's std430 struct");
+
+std::vector<std::int32_t> losProbeColumns(bool withOccluders) {
+    std::vector<std::int32_t> columns(IRComponents::kFogLosColumnCount, kLosGround);
+    if (!withOccluders) {
+        return columns;
+    }
+    for (int y = -7; y <= 8; ++y) {
+        for (int x = 0; x <= 1; ++x) {
+            columns[IRComponents::C_CanvasFogOfWar::flatIndex(x, y)] = kLosGround - 4;
+        }
+    }
+    IRMath::SDF::forEachInteriorCell(
+        IRMath::SDF::ShapeType::BOX,
+        IRMath::vec4(3.0f, 3.0f, 10.0f, 0.0f),
+        IRMath::vec3(-8.0f, 4.0f, -1.0f),
+        IRMath::ivec3(-kFogOfWarHalfExtent, -kFogOfWarHalfExtent, -1000),
+        IRMath::ivec3(kFogOfWarHalfExtent - 1, kFogOfWarHalfExtent - 1, 1000),
+        [&](IRMath::ivec3 cell) { IRPrefab::Fog::stampLosColumn(columns, cell); }
+    );
+    return columns;
+}
+
+int losProbeRecord(int level, int x, int y) {
+    return (level * kLosProbeDim + (y + kLosProbeHalfExtent)) * kLosProbeDim +
+           (x + kLosProbeHalfExtent);
+}
+
+} // namespace
+
+// Same rule, both sides: the GPU gate (the real ir_fog_los.glsl) over the
+// production-built horizon texture agrees with the CPU field gate on every
+// probe — tolerance 0, since both compare the same uploaded float with the
+// same integer — and the gated reveal matches the field-aware oracle within
+// the 1e-5 the ungated GpuRevealMatchesTheCpuOracle already allows the shared
+// curve. Non-vacuity: the fixture has occluded and visible in-disc probes;
+// without the ridge and the pillar nothing is occluded.
+TEST_F(FogCrossSectionTest, GpuOcclusionMatchesTheCpuOracle) {
+    using namespace IRRender;
+    using IRComponents::C_CanvasFogOfWar;
+    using IRComponents::FogLineOfSightField;
+
+    const std::string probePath = std::string(IR_TEST_GPU_SHADER_DIR) + "/c_fog_los_probe.glsl";
+    ShaderProgram program{std::vector{ShaderStage{probePath.c_str(), ShaderType::COMPUTE}}};
+    Texture2D losTexture{
+        TextureKind::TEXTURE_2D,
+        IRComponents::kFogLosTextureWidth,
+        IRComponents::kFogLosTextureHeight,
+        TextureFormat::RGBA32F
+    };
+
+    FrameDataFogObservers observers{};
+    IRComponents::FogLosEyeHeights eyes{};
+    eyes.fill(IRComponents::kFogVisionLosOff);
+    const int slot = C_CanvasFogOfWar::addVisionCircle(
+        observers,
+        eyes,
+        kLosCircle.x,
+        kLosCircle.y,
+        kLosCircle.z,
+        kLosCircle.w,
+        kLosObserverZ,
+        0.0f,
+        0.0f,
+        0.0f
+    );
+    ASSERT_EQ(slot, 0);
+    C_CanvasFogOfWar::setVisionCircleLineOfSight(observers, eyes, slot, kLosEyeHeight);
+
+    const auto runOcclusionProbe = [&](bool withOccluders,
+                                       int &occludedInDisc,
+                                       int &visibleInDisc) {
+        const std::vector<std::int32_t> columns = losProbeColumns(withOccluders);
+        std::vector<float> horizons(IRComponents::kFogLosHorizonCount, 0.0f);
+        IRPrefab::Fog::buildLosHorizons(observers, eyes, columns, horizons);
+        losTexture.subImage2D(
+            0,
+            0,
+            IRComponents::kFogLosTextureWidth,
+            IRComponents::kFogLosTextureHeight,
+            PixelDataFormat::RGBA,
+            PixelDataType::FLOAT32,
+            horizons.data()
+        );
+
+        std::vector<std::int32_t> sampleZ(kLosProbeRecords, 0);
+        for (int level = 0; level < kLosProbeLevels; ++level) {
+            for (int y = -kLosProbeHalfExtent; y < kLosProbeHalfExtent; ++y) {
+                for (int x = -kLosProbeHalfExtent; x < kLosProbeHalfExtent; ++x) {
+                    sampleZ[losProbeRecord(level, x, y)] =
+                        columns[C_CanvasFogOfWar::flatIndex(x, y)] - kLosLevelLift[level];
+                }
+            }
+        }
+        const FogLosProbeHeader header{kLosCircle, observers.losSourceMask_, {0, 0, 0}};
+        std::vector<std::uint8_t> input(sizeof(header) + sampleZ.size() * sizeof(std::int32_t));
+        std::memcpy(input.data(), &header, sizeof(header));
+        std::memcpy(
+            input.data() + sizeof(header),
+            sampleZ.data(),
+            sampleZ.size() * sizeof(std::int32_t)
+        );
+        Buffer probeIn{
+            input.data(),
+            input.size(),
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::SHADER_STORAGE,
+            kBindingLosProbeIn
+        };
+        const std::vector<FogLosProbeRecord> seed(kLosProbeRecords, FogLosProbeRecord{-1, -1.0f});
+        Buffer probeOut{
+            seed.data(),
+            seed.size() * sizeof(FogLosProbeRecord),
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::SHADER_STORAGE,
+            kBindingLosProbeOut
+        };
+
+        program.use();
+        losTexture
+            .bindAsImage(kBindingLosTexture, TextureAccess::READ_ONLY, TextureFormat::RGBA32F);
+        probeIn.bindBase(BufferTarget::SHADER_STORAGE, kBindingLosProbeIn);
+        probeOut.bindBase(BufferTarget::SHADER_STORAGE, kBindingLosProbeOut);
+        const int groups = kLosProbeDim / kProbeLocalSize;
+        ENG_API->glDispatchCompute(groups, groups, 1);
+        ENG_API->glMemoryBarrier(GL_ALL_BARRIER_BITS);
+        ENG_API->glFinish();
+
+        std::vector<FogLosProbeRecord> readback(kLosProbeRecords, FogLosProbeRecord{-1, -1.0f});
+        probeOut.getSubData(0, readback.size() * sizeof(FogLosProbeRecord), readback.data());
+
+        const FogLineOfSightField field{horizons.data()};
+        occludedInDisc = 0;
+        visibleInDisc = 0;
+        for (int level = 0; level < kLosProbeLevels; ++level) {
+            for (int y = -kLosProbeHalfExtent; y < kLosProbeHalfExtent; ++y) {
+                for (int x = -kLosProbeHalfExtent; x < kLosProbeHalfExtent; ++x) {
+                    const int record = losProbeRecord(level, x, y);
+                    const IRMath::ivec3 sample(x, y, sampleZ[record]);
+                    const bool cpuVisible = field.visible(0, sample);
+                    ASSERT_EQ(readback[record].visible_, cpuVisible ? 1 : 0)
+                        << "GPU and CPU line-of-sight gates disagree at (" << x << ", " << y << ", "
+                        << sample.z << ")";
+                    const IRMath::vec3 position(sample);
+                    EXPECT_NEAR(
+                        readback[record].reveal_,
+                        IRPrefab::Fog::evalVisionReveal(observers, field, position),
+                        1e-5f
+                    ) << "GPU gated reveal diverged from the oracle at ("
+                      << x << ", " << y << ", " << sample.z << ")";
+                    if (IRPrefab::Fog::evalVisionReveal(observers, position) > 0.0f) {
+                        ++(cpuVisible ? visibleInDisc : occludedInDisc);
+                    }
+                }
+            }
+        }
+    };
+
+    int occluded = 0;
+    int visible = 0;
+    runOcclusionProbe(true, occluded, visible);
+    EXPECT_GT(occluded, 0) << "the ridge and pillar occlude nothing in the disc";
+    EXPECT_GT(visible, 0) << "the fixture reveals nothing";
+
+    runOcclusionProbe(false, occluded, visible);
+    EXPECT_EQ(occluded, 0) << "flat ground occluded itself";
+    EXPECT_GT(visible, 0);
 }
 
 #else // Metal / other backends

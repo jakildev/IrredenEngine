@@ -1,4 +1,5 @@
 #include "ir_iso_common.metal"
+#include "ir_fog_los.metal"
 
 // Mirrors shaders/c_fog_to_trixel.glsl. The grid reveal is a NEAREST read
 // (coarse, voxel-quantized memory); the vision-circle reveal is tested against
@@ -22,8 +23,8 @@ constant int kMaxFogVisionCircles = 8;
 struct FogObserverData {
     float4 visionCircles[kMaxFogVisionCircles];
     int visionCircleCount;
-    // Unread padding lane, kept for the std140/Metal layout.
-    int _fogObserverPad0;
+    // Bit i set = source i is gated by the line-of-sight field (ir_fog_los).
+    int losSourceMask;
     // Per-circle height penalty, appended after the count (float4 re-aligns to
     // 16). heights[i] = (observerZ, zCostUp, zCostDown, freeBand); the reveal
     // folds zCostUp * max(dzUp - freeBand, 0) + zCostDown *
@@ -66,6 +67,9 @@ kernel void c_fog_to_trixel(
     texture2d<float, access::read> canvasFogOfWar [[texture(2)]],
     // Read only for the fog whole-body carrier bit (decodeFogWholeBody).
     texture2d<uint, access::read> triangleCanvasEntityIds [[texture(3)]],
+    // Line-of-sight horizons (ir_fog_los). Slot 4 is lighting's sun-shadow
+    // input too; lighting rebinds it inside its own tick.
+    texture2d<float, access::read> fogLineOfSight [[texture(4)]],
     // buffer(27) ALIASES kBufferIndex_FrameDataLightingToTrixel — the Metal
     // 0-30 buffer table is full, and fog runs right after lighting (done with
     // slot 27 by then). Must match kBufferIndex_FogObservers in
@@ -142,6 +146,13 @@ kernel void c_fog_to_trixel(
         // voxel-object edge there coincide. worldPerPixel floors the rim at ~1
         // canvas px for zoom-stable AA.
         for (int i = 0; i < fogObservers.visionCircleCount; ++i) {
+            // Line-of-sight gate — mirror of the GLSL twin: an occluding source
+            // contributes neither reveal nor rim distance; whole-body pixels
+            // are never gated per pixel.
+            if (fogLosSourceGated(fogObservers.losSourceMask, i) && !fogWholeBody &&
+                !fogLosVisible(surfaceVoxel, i, fogLineOfSight)) {
+                continue;
+            }
             // Height-penalized reveal — mirror of the GLSL twin: fold this
             // pixel's world-Z penalty (zCostUp * max(dzUp - freeBand, 0) +
             // zCostDown * max(dzDown - freeBand, 0)) into the radial distance

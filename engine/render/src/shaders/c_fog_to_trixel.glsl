@@ -25,6 +25,8 @@
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"
+#define IR_FOG_LOS_BINDING 4
+#include "ir_fog_los.glsl"
 
 // Mirrors C_CanvasFogOfWar in
 // engine/prefabs/irreden/render/components/component_canvas_fog_of_war.hpp.
@@ -55,8 +57,8 @@ const int kMaxFogVisionCircles = 8;
 layout(std140, binding = 27) uniform FogObserverData {
     vec4 visionCircles[kMaxFogVisionCircles];
     int visionCircleCount;
-    // Unread padding lane, kept for the std140/Metal layout.
-    int _fogObserverPad0;
+    // Bit i set = source i is gated by the line-of-sight field (ir_fog_los).
+    int losSourceMask;
     // Per-circle height penalty, std140-appended after the count.
     // visionCircleHeights[i] = (observerZ, zCostUp, zCostDown, freeBand). The
     // reveal folds zCostUp * max(dzUp - freeBand, 0) + zCostDown *
@@ -211,6 +213,14 @@ void main() {
         // voxel-object edge there coincide. worldPerPixel floors the rim at ~1
         // canvas px for zoom-stable AA.
         for (int i = 0; i < visionCircleCount; ++i) {
+            // A source that cannot see this pixel's voxel contributes neither
+            // reveal nor rim distance, so occluded matter inside the disc gets
+            // no rim lift and no cut cap. A whole-body pixel's visibility is
+            // its anchor's verdict, so it is never gated per pixel.
+            if (fogLosSourceGated(losSourceMask, i) && !fogWholeBody &&
+                !fogLosVisible(surfaceVoxel, i)) {
+                continue;
+            }
             // Height-penalized reveal: fold this pixel's world-Z penalty
             // (zCostUp * max(dzUp - freeBand, 0) + zCostDown *
             // max(dzDown - freeBand, 0)) into the radial distance so matter far

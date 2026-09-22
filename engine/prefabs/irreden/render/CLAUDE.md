@@ -41,7 +41,7 @@ Rationale: [`docs/design/prefab-render-surface.md`](../../../../docs/design/pref
 | System(s) | Must sit |
 |---|---|
 | `LOD_UPDATE` | UPDATE, before `PROPAGATE_TRANSFORM` |
-| `FOG_REVEAL_EVAL` | after `PROPAGATE_TRANSFORM`, before `UPDATE_VOXEL_SET_CHILDREN` |
+| `FOG_REVEAL_EVAL` / `FOG_LOS_BUILD` | UPDATE after `PROPAGATE_TRANSFORM`, before `UPDATE_VOXEL_SET_CHILDREN` / RENDER before `FOG_TO_TRIXEL`, its own group (line-of-sight gated circles need it) |
 | `UPDATE_JOINT_MATRICES` | after `PROPAGATE_TRANSFORM`, before `UPDATE_VOXEL_POSITIONS_GPU`; a creation with skeletons registers the prepass too |
 | `UPDATE_VOXEL_POSITIONS_GPU` | before `VOXEL_TO_TRIXEL_STAGE_1` |
 | `VOXEL_PICKING` | RENDER, after the camera systems, before `VOXEL_TO_TRIXEL_STAGE_1` |

@@ -86,6 +86,7 @@
 #include <irreden/render/systems/system_compute_voxel_ao.hpp>
 #include <irreden/render/systems/system_fog_to_trixel.hpp>
 #include <irreden/render/systems/system_fog_reveal_eval.hpp>
+#include <irreden/render/systems/system_fog_los_build.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_lod_update.hpp>
@@ -102,6 +103,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <list>
+#include <string>
 #include <vector>
 
 using namespace IRComponents;
@@ -692,6 +694,113 @@ void probeEntityRevealIds() {
     );
 }
 
+// --occlusion=<scene>: line-of-sight fog. Static, marker-free scenes on the
+// shared ground slab (top voxel centre T = 4) with every vision circle gated
+// at eye height kOcclusionEyeHeight above kOcclusionGroundZ (E.z = 3, one unit
+// above the slab top). The ridge is a voxel wall on the slab — cells x 0..1,
+// y -7..8, z 0..3 (top T = 0, four voxels above the ground) — the only
+// occluder in the ground scenes; the grid stays unexplored so only the discs
+// reveal:
+//   ground           observer on the ground at -X: the near ground reveals,
+//                    the ground behind the ridge (+X) stays black
+//   high-ground      the observer stands on the ridge top: the far ground
+//                    reveals (the strip in the ridge's own shadow stays dark)
+//   blocker          the ridge is an SDF box with C_LightBlocker{blocksLOS_}
+//   blocker-inert    the same box with blocksLOS_ = false: nothing occludes
+//   two-sources      a long wall between two gated sources offset in y: each
+//                    reveals only its own side
+//   flat             the slab alone: the gated disc reveals exactly as an
+//                    ungated one would
+//   ground-los-off   the ground scene with LOS off (the img_diff control)
+enum class OcclusionScene {
+    NONE,
+    GROUND,
+    HIGH_GROUND,
+    BLOCKER,
+    BLOCKER_INERT,
+    TWO_SOURCES,
+    FLAT,
+    GROUND_LOS_OFF,
+};
+OcclusionScene g_occlusion = OcclusionScene::NONE;
+constexpr float kOcclusionRadius = 12.0f;
+constexpr float kOcclusionGroundZ = 4.5f;
+constexpr float kOcclusionEyeHeight = 1.5f;
+constexpr vec2 kOcclusionGroundObserver{-6.0f, 0.0f};
+// Standing on the ridge top voxel (centre z 0), mirroring the ground
+// observer's half-cell offset from the slab top.
+constexpr vec3 kOcclusionRidgeObserver{0.0f, 0.0f, 0.5f};
+constexpr vec3 kOcclusionRidgeCenter{0.0f, 0.0f, 1.0f};
+constexpr IRMath::ivec3 kOcclusionRidgeSize{2, 16, 4};
+constexpr vec3 kOcclusionBlockerCenter{0.5f, 0.5f, 1.5f};
+constexpr vec4 kOcclusionBlockerSize{2.0f, 16.0f, 4.0f, 0.0f};
+constexpr IRMath::ivec3 kOcclusionLongWallSize{2, 30, 4};
+constexpr float kOcclusionTwoSourcesRadius = 10.0f;
+constexpr vec2 kOcclusionSourceA{-6.0f, -6.0f};
+constexpr vec2 kOcclusionSourceB{7.0f, 6.0f};
+constexpr Color kOcclusionRidgeColor{200, 170, 120, 255};
+constexpr Color kOcclusionBlockerColor{200, 120, 220, 255};
+
+constexpr IRVideo::AutoScreenshotShot kOcclusionGroundShots[] = {
+    {6.0f, vec2(0, 0), 0.0f, "fog_occlusion_ground"},
+};
+constexpr IRVideo::AutoScreenshotShot kOcclusionHighGroundShots[] = {
+    {6.0f, vec2(0, 0), 0.0f, "fog_occlusion_high_ground"},
+};
+constexpr IRVideo::AutoScreenshotShot kOcclusionBlockerShots[] = {
+    {6.0f, vec2(0, 0), 0.0f, "fog_occlusion_blocker"},
+};
+constexpr IRVideo::AutoScreenshotShot kOcclusionBlockerInertShots[] = {
+    {6.0f, vec2(0, 0), 0.0f, "fog_occlusion_blocker_inert"},
+};
+constexpr IRVideo::AutoScreenshotShot kOcclusionTwoSourcesShots[] = {
+    {5.0f, vec2(0, 0), 0.0f, "fog_occlusion_two_sources"},
+};
+constexpr IRVideo::AutoScreenshotShot kOcclusionFlatShots[] = {
+    {6.0f, vec2(0, 0), 0.0f, "fog_occlusion_flat"},
+};
+constexpr IRVideo::AutoScreenshotShot kOcclusionGroundLosOffShots[] = {
+    {6.0f, vec2(0, 0), 0.0f, "fog_occlusion_ground_los_off"},
+};
+
+// One-shot point-query probe for the --occlusion scenes: after warmup, ask
+// `IRPrefab::Fog::lineOfSight` — which rebuilds its own column view and needs
+// no registered vision circle — whether the ground observer's eye sees the
+// ground in front of the ridge and behind it, and log both verdicts.
+int g_occlusionProbeFrame = 0;
+constexpr IRMath::ivec3 kOcclusionNearProbe{-3, 0, 4};
+constexpr IRMath::ivec3 kOcclusionFarProbe{6, 0, 4};
+
+void probeOcclusionLineOfSight() {
+    if (++g_occlusionProbeFrame != g_autoWarmupFrames) {
+        return;
+    }
+    const vec3 eye(kOcclusionGroundObserver, kOcclusionGroundZ - kOcclusionEyeHeight);
+    IR_LOG_INFO(
+        "FOG-LOS-PROBE near={} far={}",
+        IRPrefab::Fog::lineOfSight(eye, vec3(kOcclusionNearProbe)) ? 1 : 0,
+        IRPrefab::Fog::lineOfSight(eye, vec3(kOcclusionFarProbe)) ? 1 : 0
+    );
+}
+
+OcclusionScene parseOcclusionScene(const std::string &name) {
+    if (name == "ground")
+        return OcclusionScene::GROUND;
+    if (name == "high-ground")
+        return OcclusionScene::HIGH_GROUND;
+    if (name == "blocker")
+        return OcclusionScene::BLOCKER;
+    if (name == "blocker-inert")
+        return OcclusionScene::BLOCKER_INERT;
+    if (name == "two-sources")
+        return OcclusionScene::TWO_SOURCES;
+    if (name == "flat")
+        return OcclusionScene::FLAT;
+    if (name == "ground-los-off")
+        return OcclusionScene::GROUND_LOS_OFF;
+    return OcclusionScene::NONE;
+}
+
 // --edge-yaw-sweep: the edge-zoom cross-section under CONTINUOUS
 // camera yaw. Reuses the static --edge-zoom scene (same boundary voxel objects +
 // origin vision circle) but steps the camera Z-yaw in fine increments inside one
@@ -796,6 +905,21 @@ int main(int argc, char **argv) {
         "Whole-body fog reveal under the --edge-zcost-ceiling hard ceiling: governed "
         "voxel pillars and a flagged SDF box render whole beside clipped untagged twins"
     );
+    IREngine::args().enumValue(
+        "--occlusion",
+        "Line-of-sight fog scene "
+        "(none|ground|high-ground|blocker|blocker-inert|two-sources|flat|ground-los-off); "
+        "overrides every other reveal mode",
+        {"none",
+         "ground",
+         "high-ground",
+         "blocker",
+         "blocker-inert",
+         "two-sources",
+         "flat",
+         "ground-los-off"},
+        "none"
+    );
     IREngine::args().flag(
         "--lua-fog-selftest",
         "Drive the engine-owned IRFog binding and verify its observer UBO upload"
@@ -826,19 +950,14 @@ int main(int argc, char **argv) {
         g_autoProfileFrames = IREngine::args().getInt("--auto-profile");
     }
     g_luaFogSelftest = IREngine::args().getFlag("--lua-fog-selftest");
+    g_occlusion = parseOcclusionScene(IREngine::args().getEnum("--occlusion"));
     if (g_luaFogSelftest) {
-        g_movingObserver = false;
-        g_playerWalk = false;
-        g_edgeZoom = false;
-        g_edgeSdfBlocker = false;
-        g_detachedEdge = false;
-        g_edgeSmooth = false;
-        g_edgeYawSweep = false;
-        g_edgeZCost = false;
-        g_edgeZCostAsym = false;
-        g_edgeZCostCeiling = false;
+        g_occlusion = OcclusionScene::NONE;
+    }
+    if (g_luaFogSelftest || g_occlusion != OcclusionScene::NONE) {
         g_entityReveal = false;
-    } else if (g_entityReveal) {
+    }
+    if (g_luaFogSelftest || g_entityReveal || g_occlusion != OcclusionScene::NONE) {
         g_movingObserver = false;
         g_playerWalk = false;
         g_edgeZoom = false;
@@ -1004,6 +1123,7 @@ void initSystems() {
         {
             IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
             IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
+            IRSystem::createSystem<IRSystem::FOG_LOS_BUILD>(),
             IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
             IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
             IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
@@ -1077,6 +1197,16 @@ void initSystems() {
         renderPipeline.push_front(walkTickId);
     }
 
+    if (g_occlusion != OcclusionScene::NONE && g_autoWarmupFrames > 0) {
+        renderPipeline.push_front(
+            IRSystem::createSystem<C_Name>(
+                "FogOcclusionLineOfSightProbe",
+                [](C_Name &) {},
+                []() { probeOcclusionLineOfSight(); }
+            )
+        );
+    }
+
     if (g_entityReveal && g_autoWarmupFrames > 0) {
         IRSystem::SystemId probeTickId = IRSystem::createSystem<C_Name>(
             "FogEntityRevealIdProbe",
@@ -1106,7 +1236,33 @@ void initSystems() {
         // --edge-smooth zoom on the GRID cross-section clip edge (hard vs smooth
         // disc); --player-walk captures the walking reveal sequence; the
         // default captures the three static fog-boundary shots.
-        if (g_entityReveal) {
+        if (g_occlusion != OcclusionScene::NONE) {
+            switch (g_occlusion) {
+            case OcclusionScene::GROUND:
+                IRVideo::setAutoScreenshotShots(cfg, kOcclusionGroundShots);
+                break;
+            case OcclusionScene::HIGH_GROUND:
+                IRVideo::setAutoScreenshotShots(cfg, kOcclusionHighGroundShots);
+                break;
+            case OcclusionScene::BLOCKER:
+                IRVideo::setAutoScreenshotShots(cfg, kOcclusionBlockerShots);
+                break;
+            case OcclusionScene::BLOCKER_INERT:
+                IRVideo::setAutoScreenshotShots(cfg, kOcclusionBlockerInertShots);
+                break;
+            case OcclusionScene::TWO_SOURCES:
+                IRVideo::setAutoScreenshotShots(cfg, kOcclusionTwoSourcesShots);
+                break;
+            case OcclusionScene::FLAT:
+                IRVideo::setAutoScreenshotShots(cfg, kOcclusionFlatShots);
+                break;
+            case OcclusionScene::GROUND_LOS_OFF:
+                IRVideo::setAutoScreenshotShots(cfg, kOcclusionGroundLosOffShots);
+                break;
+            case OcclusionScene::NONE:
+                break;
+            }
+        } else if (g_entityReveal) {
             IRVideo::setAutoScreenshotShots(cfg, kEntityRevealShots);
         } else if (g_edgeZCostAsym) {
             IRVideo::setAutoScreenshotShots(cfg, kEdgeZCostAsymShots);
@@ -1196,6 +1352,82 @@ void createEdgeGroundSlab() {
     );
 }
 
+// A gated vision circle for the --occlusion scenes: the plain disc (no height
+// cost) so line of sight is the only term that differs between scenes.
+void addOcclusionSource(vec2 center, float observerZ, float radius, bool lineOfSight) {
+    const int slot = IRPrefab::Fog::addVisionCircle(
+        center.x,
+        center.y,
+        radius,
+        kFogVisionEdgeDefault,
+        observerZ
+    );
+    IR_ASSERT(slot >= 0, "occlusion scene vision circle was rejected");
+    if (lineOfSight) {
+        IRPrefab::Fog::setVisionCircleLineOfSight(slot, kOcclusionEyeHeight);
+    }
+}
+
+void createOcclusionWall(IRMath::ivec3 size) {
+    IREntity::createEntity(
+        C_LocalTransform{kOcclusionRidgeCenter},
+        C_VoxelSetNew{size, kOcclusionRidgeColor, true}
+    );
+}
+
+void initOcclusionScene() {
+    createEdgeGroundSlab();
+    IRPrefab::Fog::clearVisionCircles();
+    switch (g_occlusion) {
+    case OcclusionScene::GROUND:
+    case OcclusionScene::GROUND_LOS_OFF:
+        createOcclusionWall(kOcclusionRidgeSize);
+        addOcclusionSource(
+            kOcclusionGroundObserver,
+            kOcclusionGroundZ,
+            kOcclusionRadius,
+            g_occlusion == OcclusionScene::GROUND
+        );
+        break;
+    case OcclusionScene::HIGH_GROUND:
+        createOcclusionWall(kOcclusionRidgeSize);
+        addOcclusionSource(
+            vec2(kOcclusionRidgeObserver),
+            kOcclusionRidgeObserver.z,
+            kOcclusionRadius,
+            true
+        );
+        break;
+    case OcclusionScene::BLOCKER:
+    case OcclusionScene::BLOCKER_INERT: {
+        const IREntity::EntityId blocker = IREntity::createEntity(
+            C_LocalTransform{kOcclusionBlockerCenter},
+            C_ShapeDescriptor{
+                IRRender::ShapeType::BOX,
+                kOcclusionBlockerSize,
+                kOcclusionBlockerColor
+            }
+        );
+        IREntity::setComponent(
+            blocker,
+            C_LightBlocker{g_occlusion == OcclusionScene::BLOCKER, false, 1.0f}
+        );
+        addOcclusionSource(kOcclusionGroundObserver, kOcclusionGroundZ, kOcclusionRadius, true);
+        break;
+    }
+    case OcclusionScene::TWO_SOURCES:
+        createOcclusionWall(kOcclusionLongWallSize);
+        addOcclusionSource(kOcclusionSourceA, kOcclusionGroundZ, kOcclusionTwoSourcesRadius, true);
+        addOcclusionSource(kOcclusionSourceB, kOcclusionGroundZ, kOcclusionTwoSourcesRadius, true);
+        break;
+    case OcclusionScene::FLAT:
+        addOcclusionSource(vec2(0.0f), kOcclusionGroundZ, kOcclusionRadius, true);
+        break;
+    case OcclusionScene::NONE:
+        break;
+    }
+}
+
 void initEntities() {
     // A wide thin floor so the fog mask has a continuous surface that fades
     // visible → explored → unexplored across the screen. Centered on origin.
@@ -1207,8 +1439,9 @@ void initEntities() {
     // cross it (the two-black-bands artifact) instead of capping with the toned
     // cut colour.
     constexpr float kFloorZ = 5.0f;
-    if (!g_entityReveal && !g_edgeZoom && !g_edgeSmooth && !g_edgeSdfBlocker && !g_detachedEdge &&
-        !g_edgeZCost && !g_edgeZCostAsym && !g_edgeZCostCeiling) {
+    const bool occlusionScene = g_occlusion != OcclusionScene::NONE;
+    if (!occlusionScene && !g_entityReveal && !g_edgeZoom && !g_edgeSmooth && !g_edgeSdfBlocker &&
+        !g_detachedEdge && !g_edgeZCost && !g_edgeZCostAsym && !g_edgeZCostCeiling) {
         createShape(
             vec3(0.0f, 0.0f, kFloorZ),
             IRRender::ShapeType::BOX,
@@ -1223,8 +1456,9 @@ void initEntities() {
     // its own content (the gliding disc + marker / the boundary-straddling voxel
     // objects) reads clearly without the tall shapes' iso-projected tops poking
     // through the disc.
-    if (!g_entityReveal && !g_playerWalk && !g_edgeZoom && !g_edgeSmooth && !g_edgeSdfBlocker &&
-        !g_detachedEdge && !g_edgeZCost && !g_edgeZCostAsym && !g_edgeZCostCeiling) {
+    if (!occlusionScene && !g_entityReveal && !g_playerWalk && !g_edgeZoom && !g_edgeSmooth &&
+        !g_edgeSdfBlocker && !g_detachedEdge && !g_edgeZCost && !g_edgeZCostAsym &&
+        !g_edgeZCostCeiling) {
         // A few simple SDF primitives sitting on the floor inside the visible
         // circle, so the bright (visible) region has recognizable content.
         createShape(
@@ -1310,8 +1544,8 @@ void initEntities() {
     // face IS the band under test, so an angled sun's terminator across it would
     // masquerade as a cut defect. Fog x shadow composition stays covered by the
     // default grid scene's refs, which keep the angled sun.
-    if (g_entityReveal || g_edgeZoom || g_edgeSmooth || g_edgeSdfBlocker || g_detachedEdge ||
-        g_edgeZCost || g_edgeZCostAsym || g_edgeZCostCeiling) {
+    if (occlusionScene || g_entityReveal || g_edgeZoom || g_edgeSmooth || g_edgeSdfBlocker ||
+        g_detachedEdge || g_edgeZCost || g_edgeZCostAsym || g_edgeZCostCeiling) {
         IRRender::setSunDirection(vec3(0.0f, 0.0f, -1.0f));
     }
     if (g_fogDebugColor) {
@@ -1319,6 +1553,10 @@ void initEntities() {
     }
 
     if (g_luaFogSelftest) {
+        return;
+    }
+    if (occlusionScene) {
+        initOcclusionScene();
         return;
     }
 

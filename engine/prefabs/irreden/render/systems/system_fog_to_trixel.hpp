@@ -74,6 +74,10 @@ template <> struct System<FOG_TO_TRIXEL> {
         // rebinds it inside its own tick.
         canvasTextures.getTextureEntityIds()
             ->bindAsImage(3, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
+        // Line-of-sight horizons, read only for gated sources. On Metal this
+        // evicts LIGHTING_TO_TRIXEL's sun-shadow input from slot 4; lighting
+        // rebinds it inside its own tick.
+        fog.getLosTexture()->bindAsImage(4, TextureAccess::READ_ONLY, TextureFormat::RGBA32F);
         // FrameDataVoxelToTrixel carries frameCanvasOffset /
         // trixelCanvasOffsetZ1 / voxelRenderOptions for the iso pixel → world
         // pos3D recovery, plus visibleFaceIds for the cross-section cap's

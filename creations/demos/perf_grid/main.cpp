@@ -20,6 +20,7 @@
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
 #include <irreden/render/components/component_fog_revealed.hpp>
+#include <irreden/render/components/component_light_blocker.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
 #include <irreden/render/components/component_light_source.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
@@ -42,6 +43,7 @@
 #include <irreden/render/systems/system_compute_sun_shadow.hpp>
 #include <irreden/render/systems/system_compute_voxel_ao.hpp>
 #include <irreden/render/systems/system_fog_to_trixel.hpp>
+#include <irreden/render/systems/system_fog_los_build.hpp>
 #include <irreden/render/systems/system_fog_reveal_eval.hpp>
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_perf_stats_overlay.hpp>
@@ -534,6 +536,26 @@ bool g_feederClassifyPadSet = false;
 // default -> flagless spawn path is untouched (byte-identical to master).
 bool g_waveFreeze = false;
 bool g_fogReveal = false;
+// --fog-los / --fog-los-disabled: the line-of-sight perf fixture. Both move the
+// eight --fog-reveal circles onto a ring of radius kFogLosRingRadius inside the
+// fog footprint (radius 32, observers standing on a flagged SDF terrain slab
+// under the grid) and add a flagged SDF wall along x = 0, so every source has
+// both visible and occluded ground. --fog-los gates every source at eye height
+// kFogLosEyeHeight; --fog-los-disabled is the identical scene with LOS off —
+// the A/B control. Both imply --fog-reveal; bare --fog-reveal keeps its
+// outside-the-field circles.
+enum class FogLosFixture { NONE, ENABLED, DISABLED };
+FogLosFixture g_fogLos = FogLosFixture::NONE;
+constexpr float kFogLosRingRadius = 24.0f;
+constexpr float kFogLosRadius = 32.0f;
+constexpr float kFogLosEyeHeight = 1.5f;
+// Terrain slab: top interior voxel centre z 33 under the grid's z <= 31.5.
+constexpr vec3 kFogLosTerrainCenter{0.0f, 0.0f, 34.5f};
+constexpr vec4 kFogLosTerrainSize{128.0f, 128.0f, 2.0f, 0.0f};
+constexpr float kFogLosObserverZ = 33.5f;
+constexpr vec3 kFogLosWallCenter{0.5f, 0.5f, 27.5f};
+constexpr vec4 kFogLosWallSize{2.0f, 120.0f, 12.0f, 0.0f};
+int g_fogLosProbeFrame = 0;
 
 PerfGridMode parseMode(const std::string &value) {
     if (value == "voxel_set" || value == "voxel") {
@@ -735,6 +757,16 @@ void registerCliArgs() {
         "--fog-reveal",
         "Tag every voxel-set entity for entity-anchor fog evaluation against 8 outside circles"
     );
+    args.flag(
+        "--fog-los",
+        "Line-of-sight perf fixture: the 8 --fog-reveal circles move into the fog footprint "
+        "(radius 32) over a flagged terrain slab and wall, each gated at eye height 1.5; "
+        "implies --fog-reveal"
+    );
+    args.flag(
+        "--fog-los-disabled",
+        "The --fog-los scene with line of sight off (the A/B control); implies --fog-reveal"
+    );
     args.string(
         "--mode",
         "Scene mode: voxel_set | sdf | dense_set | hollow_set | gallery",
@@ -826,6 +858,14 @@ void readCliArgs() {
     g_noPerVoxelOcclusion = args.getFlag("--no-per-voxel-occlusion");
     g_waveFreeze = args.getFlag("--wave-freeze");
     g_fogReveal = args.getFlag("--fog-reveal");
+    if (args.getFlag("--fog-los")) {
+        g_fogLos = FogLosFixture::ENABLED;
+    } else if (args.getFlag("--fog-los-disabled")) {
+        g_fogLos = FogLosFixture::DISABLED;
+    }
+    if (g_fogLos != FogLosFixture::NONE) {
+        g_fogReveal = true;
+    }
     g_feederClassifyPadSet = args.wasProvided("--feeder-classify-pad");
     g_feederClassifyPad = args.getInt("--feeder-classify-pad");
 
@@ -1253,6 +1293,68 @@ void createGridEntities() {
     }
 }
 
+void configureFogLosFixture() {
+    for (const auto &[center, size] :
+         {std::pair{kFogLosTerrainCenter, kFogLosTerrainSize},
+          std::pair{kFogLosWallCenter, kFogLosWallSize}}) {
+        IREntity::createEntity(
+            C_LocalTransform{center},
+            C_ShapeDescriptor{IRRender::ShapeType::BOX, size, Color{110, 120, 110, 255}},
+            C_LightBlocker{true, false, 1.0f}
+        );
+    }
+    IRPrefab::Fog::clearVisionCircles();
+    for (int i = 0; i < IRComponents::kMaxFogVisionCircles; ++i) {
+        // Half-step offset: no source stands on the wall, and every disc crosses it.
+        const float angle = IRMath::kTwoPi * (static_cast<float>(i) + 0.5f) /
+                            static_cast<float>(IRComponents::kMaxFogVisionCircles);
+        const int slot = IRPrefab::Fog::addVisionCircle(
+            kFogLosRingRadius * IRMath::cos(angle),
+            kFogLosRingRadius * IRMath::sin(angle),
+            kFogLosRadius,
+            1.0f,
+            kFogLosObserverZ,
+            0.5f
+        );
+        if (g_fogLos == FogLosFixture::ENABLED) {
+            IRPrefab::Fog::setVisionCircleLineOfSight(slot, kFogLosEyeHeight);
+        }
+    }
+}
+
+// One-shot witness that the --fog-los fixture occludes: after the first
+// published build, count each gated source's in-disc terrain-top cells the
+// field hides and shows.
+void logFogLosWitness() {
+    if (g_fogLos != FogLosFixture::ENABLED || ++g_fogLosProbeFrame != 30) {
+        return;
+    }
+    auto fog = IREntity::getComponentOptional<IRComponents::C_CanvasFogOfWar>(
+        IRRender::getActiveCanvasEntity()
+    );
+    if (!fog.has_value()) {
+        return;
+    }
+    const IRComponents::C_CanvasFogOfWar &canvasFog = **fog;
+    const IRComponents::FogLineOfSightField field = canvasFog.losField();
+    const int terrainTop =
+        IRMath::roundHalfUp(kFogLosTerrainCenter.z - kFogLosTerrainSize.z * 0.5f + 0.5f);
+    for (int i = 0; i < canvasFog.losPublishedObservers_.visionCircleCount_; ++i) {
+        const vec4 circle = canvasFog.losPublishedObservers_.visionCircles_[i];
+        int hidden = 0;
+        int shown = 0;
+        for (int y = -64; y < 64; ++y) {
+            for (int x = -64; x < 64; ++x) {
+                if (IRMath::length(vec2(x, y) - vec2(circle)) > circle.z) {
+                    continue;
+                }
+                ++(field.visible(i, ivec3(x, y, terrainTop)) ? shown : hidden);
+            }
+        }
+        IR_LOG_INFO("FOG-LOS-WITNESS source={} visible={} occluded={}", i, shown, hidden);
+    }
+}
+
 void configureLightingAndCanvas() {
     EntityId mainCanvas = IRRender::getActiveCanvasEntity();
     const ivec2 canvasSize = IREntity::getComponent<C_TriangleCanvasTextures>(mainCanvas).size_;
@@ -1274,7 +1376,9 @@ void configureLightingAndCanvas() {
     }
     IREntity::setComponent(mainCanvas, C_CanvasLightVolume{});
     IRPrefab::Fog::attachToCanvas(mainCanvas);
-    if (g_fogReveal) {
+    if (g_fogLos != FogLosFixture::NONE) {
+        configureFogLosFixture();
+    } else if (g_fogReveal) {
         IRPrefab::Fog::clearVisionCircles();
         for (int i = 0; i < IRComponents::kMaxFogVisionCircles; ++i) {
             IRPrefab::Fog::addVisionCircle(
@@ -1468,6 +1572,7 @@ void initSystems() {
         {
             IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
             IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
+            IRSystem::createSystem<IRSystem::FOG_LOS_BUILD>(),
             IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
             IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
             IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
@@ -1675,6 +1780,15 @@ void initSystems() {
         renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(cfg));
     }
 
+    if (g_fogLos == FogLosFixture::ENABLED) {
+        renderPipeline.push_front(
+            IRSystem::createSystem<C_Name>(
+                "FogLosWitness",
+                [](C_Name &) {},
+                []() { logFogLosWitness(); }
+            )
+        );
+    }
     IRSystem::registerPipeline(IRTime::Events::RENDER, renderPipeline);
 }
 

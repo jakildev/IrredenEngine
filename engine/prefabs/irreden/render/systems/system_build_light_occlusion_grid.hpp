@@ -160,73 +160,25 @@ struct LightOcclusionGridView {
     }
 };
 
-/// Rasterize one `C_ShapeDescriptor` into the light-blocker bitfield. The
-/// AABB is clipped to the camera-anchored window, then each integer cell
-/// inside the AABB is tested against the SDF. Cells with
-/// `evaluate(...) <= kSurfaceThreshold` are interior surface samples and
-/// get marked as blockers.
-///
-/// Cost is bounded by the shape's AABB volume (`(2h)^3` cells). Typical
-/// blockers are small (a 6-voxel pillar = 216 evals; a 12-voxel wall =
-/// 1728 evals); the per-shape budget stays well inside the BUILD_*
-/// system's existing per-frame allocation.
+/// Rasterize one `C_ShapeDescriptor`'s interior cells
+/// (`IRMath::SDF::forEachInteriorCell`) into the light-blocker bitfield,
+/// clipped to the camera-anchored window. Cost is bounded by the shape's
+/// clipped AABB volume.
 inline void rasterizeShapeBlocker(
     const C_ShapeDescriptor &shape,
     const vec3 &shapeWorldPos,
     std::vector<std::uint32_t> &bitfield,
     const ivec3 &origin
 ) {
-    const IRMath::SDF::ShapeType shapeType = static_cast<IRMath::SDF::ShapeType>(shape.shapeType_);
-    const vec4 effectiveParams = IRMath::SDF::effectiveParams(shapeType, shape.params_);
-    const vec3 boundingHalf = IRMath::SDF::boundingHalf(shapeType, effectiveParams);
-
     constexpr int kHalf = kMaxLightOcclusionGridSideVoxels / 2;
-    const int gridXMin = origin.x - kHalf;
-    const int gridXMax = origin.x + kHalf - 1;
-    const int gridYMin = origin.y - kHalf;
-    const int gridYMax = origin.y + kHalf - 1;
-    const int gridZMin = origin.z - kHalf;
-    const int gridZMax = origin.z + kHalf - 1;
-
-    // World-space AABB of the shape, padded by 1 cell to cover surface
-    // samples that round to a neighbor cell. Clipped to the grid window
-    // so an off-camera shape contributes nothing without iterating
-    // out-of-range cells.
-    const int xMin = IRMath::max(
-        static_cast<int>(IRMath::floor(shapeWorldPos.x - boundingHalf.x)) - 1,
-        gridXMin
+    IRMath::SDF::forEachInteriorCell(
+        static_cast<IRMath::SDF::ShapeType>(shape.shapeType_),
+        shape.params_,
+        shapeWorldPos,
+        origin - ivec3(kHalf),
+        origin + ivec3(kHalf - 1),
+        [&](ivec3 cell) { gridSetBit(bitfield, cell.x, cell.y, cell.z, origin); }
     );
-    const int xMax =
-        IRMath::min(static_cast<int>(IRMath::ceil(shapeWorldPos.x + boundingHalf.x)) + 1, gridXMax);
-    const int yMin = IRMath::max(
-        static_cast<int>(IRMath::floor(shapeWorldPos.y - boundingHalf.y)) - 1,
-        gridYMin
-    );
-    const int yMax =
-        IRMath::min(static_cast<int>(IRMath::ceil(shapeWorldPos.y + boundingHalf.y)) + 1, gridYMax);
-    const int zMin = IRMath::max(
-        static_cast<int>(IRMath::floor(shapeWorldPos.z - boundingHalf.z)) - 1,
-        gridZMin
-    );
-    const int zMax =
-        IRMath::min(static_cast<int>(IRMath::ceil(shapeWorldPos.z + boundingHalf.z)) + 1, gridZMax);
-
-    if (xMin > xMax || yMin > yMax || zMin > zMax)
-        return;
-
-    for (int wz = zMin; wz <= zMax; ++wz) {
-        for (int wy = yMin; wy <= yMax; ++wy) {
-            for (int wx = xMin; wx <= xMax; ++wx) {
-                const vec3 localPos =
-                    vec3(static_cast<float>(wx), static_cast<float>(wy), static_cast<float>(wz)) -
-                    shapeWorldPos;
-                if (IRMath::SDF::evaluate(localPos, shapeType, effectiveParams) <=
-                    IRMath::SDF::kSurfaceThreshold) {
-                    gridSetBit(bitfield, wx, wy, wz, origin);
-                }
-            }
-        }
-    }
 }
 
 /// Iterate every `C_ShapeDescriptor + C_LightBlocker + C_WorldTransform`

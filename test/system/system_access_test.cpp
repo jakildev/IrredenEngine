@@ -145,6 +145,30 @@ TEST(SystemAccessTest, AlsoReadsAddsForeignReadEntry) {
     EXPECT_FALSE(access.writesType<C_ForeignR>());
 }
 
+// A foreign component whose constructor is not constexpr (C_ShapeDescriptor
+// reads the active canvas) must still derive at compile time: the access
+// descriptor is a constexpr variable at registration.
+struct C_ForeignRuntimeCtor {
+    int value_;
+    C_ForeignRuntimeCtor()
+        : value_{runtimeValue()} {}
+    static int runtimeValue() {
+        static int counter = 0;
+        return ++counter;
+    }
+};
+
+TEST(SystemAccessTest, AlsoReadsAndAlsoWritesAcceptNonConstexprConstructibleTypes) {
+    constexpr SystemAccess access = deriveAccessFromSignature<
+        void(C_AccessA &),
+        C_AccessA,
+        AlsoReads<C_ForeignRuntimeCtor>,
+        AlsoWrites<C_ForeignRuntimeCtor>>();
+
+    EXPECT_TRUE(access.readsType<C_ForeignRuntimeCtor>());
+    EXPECT_TRUE(access.writesType<C_ForeignRuntimeCtor>());
+}
+
 TEST(SystemAccessTest, AlsoWritesAddsForeignWriteEntry) {
     auto access = deriveAccessFromSignature<void(C_AccessA &), C_AccessA, AlsoWrites<C_ForeignW>>();
 
