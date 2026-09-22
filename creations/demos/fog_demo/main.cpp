@@ -690,6 +690,12 @@ void probeEntityRevealIds() {
 // (one shot per step) because the auto-screenshot harness applies shot.yawRadians_
 // via Camera::setYaw per shot. jitter_probe the sequence to score temporal
 // stability. Implies --edge-zoom (it owns the scene).
+// --auto-profile [N]: N render frames (default 300) with per-system frame
+// timing and GPU stage timing on, then exit; the World writes
+// save_files/profile_report.txt on shutdown.
+int g_autoProfileFrames = 0;
+int g_autoProfileCount = 0;
+
 bool g_edgeYawSweep = false; // --edge-yaw-sweep
 std::vector<IRVideo::AutoScreenshotShot> g_edgeYawSweepShots;
 std::vector<std::array<char, 40>> g_edgeYawSweepShotLabels;
@@ -761,6 +767,11 @@ int main(int argc, char **argv) {
         "up-cost (#2557): matter within the band reveals fully, then cuts off "
         "within ~1 unit past it — a hard ceiling; skips the static grid reveal"
     );
+    IREngine::args().optionalInt(
+        "--auto-profile",
+        "Run N frames (default 300) with frame + GPU stage timing, then exit",
+        300
+    );
     IREngine::args().flag(
         "--fog-debug-color",
         "Paint fully unexplored matter magenta instead of black; with "
@@ -798,6 +809,9 @@ int main(int argc, char **argv) {
     g_edgeZCostCeiling = IREngine::args().getFlag("--edge-zcost-ceiling");
     g_entityReveal = IREngine::args().getFlag("--entity-reveal");
     g_fogDebugColor = IREngine::args().getFlag("--fog-debug-color");
+    if (IREngine::args().wasProvided("--auto-profile")) {
+        g_autoProfileFrames = IREngine::args().getInt("--auto-profile");
+    }
     g_luaFogSelftest = IREngine::args().getFlag("--lua-fog-selftest");
     if (g_luaFogSelftest) {
         g_movingObserver = false;
@@ -930,6 +944,10 @@ int main(int argc, char **argv) {
     }
 
     IR_LOG_INFO("Starting creation: fog_demo");
+    if (g_autoProfileFrames > 0) {
+        IREngine::enableFrameTiming(true);
+        IRRender::gpuStageTiming().enabled_ = true;
+    }
     initSystems();
     initCommands();
     initEntities();
@@ -1001,6 +1019,20 @@ void initSystems() {
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::ENTITY_CANVAS_TO_FRAMEBUFFER>());
     }
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>());
+
+    if (g_autoProfileFrames > 0) {
+        IRSystem::SystemId autoProfileId = IRSystem::createSystem<C_Name>(
+            "FogAutoProfile",
+            [](C_Name &) {},
+            []() {
+                if (++g_autoProfileCount >= g_autoProfileFrames) {
+                    IR_LOG_INFO("Auto-profile: {} frames collected, exiting", g_autoProfileFrames);
+                    IRWindow::closeWindow();
+                }
+            }
+        );
+        renderPipeline.push_back(autoProfileId);
+    }
 
     // --moving-observer: a once-per-frame beginTick hook (same idiom as the
     // day_cycle sun hook) that re-points the analytic vision circle at the
