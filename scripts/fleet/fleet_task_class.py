@@ -29,13 +29,12 @@ that target regardless of its own in-iteration step order:
   3. open tasks     — the oldest claimable task's class (slices are sorted
                       by issue number; ``model`` comes from the
                       fleet:fable/opus/sonnet labels via the scout).
-  4. needs_plan     — a `fleet:sonnet`-tagged needs-plan issue is a MECHANICAL
-                      task the sonnet lane light-plans and self-queues (see
-                      `_plan_class`); every other needs-plan issue is
-                      architect-tier design work that prefers the fable class
-                      (the same reason the architect panes run fable), falling
-                      back to opus when the fable cap is saturated so planning
-                      never stalls behind a long fable implementation iteration.
+  4. needs_plan     — the plan inherits the TASK's own class (see
+                      `_plan_class`): `fleet:sonnet` light-plans and
+                      self-queues, `fleet:fable` buys an architect-tier plan
+                      (falling back to opus when the fable cap is saturated so
+                      planning never stalls behind a long fable implementation
+                      iteration), and everything else plans at opus.
 
 Effort: the task's ``**Effort:**`` field when present (scout validates it),
 else the class default below. Work dispatches (feedback, conflicts, tasks)
@@ -358,23 +357,32 @@ def feedback_pr_class(labels):
 def _plan_class(issue, fable_blocked):
     """Model class that should author this needs-plan issue's plan.
 
-    A `fleet:sonnet`-tagged needs-plan issue is a MECHANICAL task the
-    human/architect judged bounded enough for a lightweight plan — the sonnet
-    lane authors a thin `## Plan` comment ("basically the issue itself") and
-    self-queues on `fleet-plan-lint` pass (PLANNING-PROTOCOL.md §"Lightweight
-    plan for mechanical (fleet:sonnet) tasks"), skipping BOTH the fable/opus
-    planning pass and the opus plan-review pass. Stakes are a human signal —
-    `fleet:sonnet` on a needs-plan issue IS that signal — so there is nothing
-    to compute here; the label is authoritative.
+    The plan inherits the TASK's declared class, so a plan costs what the work
+    it plans is worth. Ingest already stamps that class from the issue's
+    `**Model:**` field (opus when absent), so the signal is on the issue by
+    the time it reaches needs_plan. Stakes are a human signal — the class
+    label IS that signal — so there is nothing to compute here; the label is
+    authoritative.
 
-    Everything else is architect-tier design planning: fable while the cap has
-    headroom, degrading to opus when it is saturated (`fable_blocked`). The
-    downgrade is pre-resolved here (never yields a cap-blocked `fable`) exactly
-    as the prior single-class needs_plan election did.
+    - `fleet:sonnet` — MECHANICAL. The sonnet lane authors a thin `## Plan`
+      comment ("basically the issue itself") and self-queues on
+      `fleet-plan-lint` pass (PLANNING-PROTOCOL.md §"Lightweight plan for
+      mechanical (fleet:sonnet) tasks"), skipping BOTH the heavy planning pass
+      and the opus plan-review pass.
+    - `fleet:fable` — HIGH-STAKES design planning: fable while the cap has
+      headroom, degrading to opus when it is saturated (`fable_blocked`). The
+      downgrade is pre-resolved here (never yields a cap-blocked `fable`).
+    - everything else — ordinary opus-tier planning at `PLAN_EFFORT` xhigh.
+
+    An opus-authored plan is still vetted: the `planreview:` pass is the
+    safety net over every plan this does not route to sonnet.
     """
-    if "fleet:sonnet" in (issue.get("labels") or []):
+    labels = issue.get("labels") or []
+    if "fleet:sonnet" in labels:
         return "sonnet"
-    return "opus" if fable_blocked else "fable"
+    if "fleet:fable" in labels:
+        return "opus" if fable_blocked else "fable"
+    return "opus"
 
 
 def _candidates(slice_data, lane_default, host, fable_blocked=False):
