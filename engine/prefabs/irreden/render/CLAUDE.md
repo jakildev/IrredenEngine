@@ -25,11 +25,11 @@ Rationale: [`docs/design/prefab-render-surface.md`](../../../../docs/design/pref
   `component_triangle_canvas_textures.hpp`; the format triple has one owner. A
   canvas with no explicit parent renders to the engine's main framebuffer.
 - `C_PerAxisTrixelCanvases` rides every voxel-pool canvas inert;
-  `VOXEL_TO_TRIXEL_STAGE_1::beginTick` allocates it at non-cardinal camera yaw
-  and frees it at the cardinal. Camera-only: detached entities rotate through
-  the re-voxelize path. The store is base-resolution with the sub-cell frac in
-  the distance; every absolute-position reader decodes it via
-  `perAxisSubCellFrac` (the frac obligation in `engine/render/CLAUDE.md`).
+  `VOXEL_TO_TRIXEL_STAGE_1::beginTick` allocates it at non-cardinal camera yaw,
+  parks it (resident, `isAllocated()` false) on a cardinal frame and frees it
+  `kParkedCardinalFrames` later. Camera-only: detached entities re-voxelize.
+  The store is base-resolution with the sub-cell frac in the distance; every
+  absolute-position reader decodes it via `perAxisSubCellFrac` (`engine/render/CLAUDE.md`).
 - Seed a single-byte GPU sentinel with `IRRender::device()->fillBuffer(...)`;
   a multi-byte one (`kTrixelDistanceMaxDistance`) reuses an owned
   self-resetting kernel or a clear dispatch — never a resource-sized CPU
@@ -80,12 +80,12 @@ perf-stats overlay region (top-right by default).
   variants swap, overlapping bands stack. Shapes only.
 - Sprites bypass the trixel pipeline ([`docs/design/sprites.md`](../../../../docs/design/sprites.md));
   `C_Sprite::screenPixelSmooth_` (no game-pixel snap) is for the avatar or a camera-locked entity only.
-- `C_FogRevealed` opts a grid-canvas voxel entity into one reveal verdict at
-  its ground anchor; `C_FogRevealSettings` owns hysteresis and stagger;
-  `FOG_REVEAL_EVAL` is active-canvas-only. The voxel reserved bit exempts a
-  governed body from the compact reject and the stage-1 own-column z drop; its
-  pixels carry entity-id bit 28, so `FOG_TO_TRIXEL` drops their height penalty
-  (single-canvas route; a shape opts in via `SHAPE_FLAG_FOG_WHOLE_BODY_EXEMPT`).
+- `C_FogRevealed` (`setEntityRevealGoverned`) opts a grid-canvas voxel set into
+  one ground-anchor verdict (`FOG_REVEAL_EVAL`, active canvas only; hysteresis
+  and stagger in `C_FogRevealSettings`); reserved bit 3 exempts it from the compact
+  reject and stage-1 z drop and its pixels carry id bit 28 (shapes opt in via
+  `SHAPE_FLAG_FOG_WHOLE_BODY_EXEMPT`). The FIELD / BODY / EXEMPT target and the
+  child that lands each part: [reveal model](../../../../docs/design/fog-of-war-reveal-model.md).
 - GPU transforms: a voxel set opts in with `C_VoxelSetNew::gpuTransformSlot_
   != kVoxelTransformStatic` (the default is CPU-direct, dispatch-free). Joints
   share binding 18 — set slots grow up from 0, joint blocks are carved down from

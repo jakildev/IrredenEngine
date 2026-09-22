@@ -32,6 +32,7 @@
 *.md    text eol=lf
 *.txt   text eol=lf
 *.py    text eol=lf
+docs/**/*.patch whitespace=-trailing-space
 
 # ── CMake ────────────────────────────────────────────────────────────────────
 CMakeLists.txt  text eol=lf
