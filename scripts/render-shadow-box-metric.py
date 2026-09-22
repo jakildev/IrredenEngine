@@ -8,6 +8,8 @@ Use --grid when captures also use --probe-grid.
 Set --effective-subdivisions to the measured caster density: GRID commonly
 scales with zoom, while a private canvas can remain at density 1. Use --source for
 --probe-analytic-box or --probe-source-box captures (unrounded authored geometry).
+The default revoxelized box preserves its anchored lattice at cardinal yaw;
+its display/caster phase cancels the density-dependent center rounding.
 --box-yaw and --box-offset mirror the analytic probe pose; --box-pose mirrors
 the detached --frozen-pose rotation about (1,1,1). The receiver plate
 supplies pixel scale and origin; the expected shadow comes from the authored box and
@@ -66,7 +68,7 @@ def expected_polygon(image: Image.Image, cardinal: int, grid: bool, source: bool
     centers = []
     for point in itertools.product(*[(-h, h) for h in BOX_HALF_CENTER_SPAN]):
         local = rotate(point, 0 if grid or source else -cardinal)
-        centers.append(local if source else tuple(
+        centers.append(local if source or not grid else tuple(
             math.floor(value * subdivisions + 0.5) / subdivisions for value in local))
     lower = [min(point[axis] for point in centers) - 0.5 for axis in range(3)]
     upper = [max(point[axis] for point in centers) + 0.5 for axis in range(3)]
