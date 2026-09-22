@@ -63,9 +63,14 @@ State sources (read-only):
                                         GitHub: fleet-state-scout)
   ~/.fleet/state/rate-limit/*.ts      (written by fleet-dispatch-wrap)
 
+A window that meters one model family (the Fable-only weekly limit,
+seven_day_opus, ...) never closes the fleet-wide gate: it is listed under
+"Model-scoped usage gate" and defers only launches on that family's models.
+
 Tunables (env, shared with fleet-dispatcher):
   FLEET_DISPATCHER_USAGE_GATE_<TYPE>  per-type threshold (e.g. _FIVE_HOUR=0.7)
   FLEET_DISPATCHER_USAGE_GATE         global threshold override
+  FLEET_DISPATCHER_USAGE_SCOPE_<TYPE> fable|opus|sonnet|haiku|account
   FLEET_DISPATCHER_USAGE_STALE_SECONDS  default 3600
   FLEET_DISPATCHER_RESET_GRACE_SECONDS  default 600
   FLEET_DISPATCHER_LIMIT_DELAY        default 900
@@ -92,7 +97,7 @@ export USAGE_DIR RATE_LIMIT_DIR USAGE_STALE_SECONDS RESET_GRACE_SECONDS \
 if [[ -n "${FLEET_DISPATCHER_USAGE_GATE:-}" ]]; then
     export FLEET_DISPATCHER_USAGE_GATE
 fi
-for _gate_var in $(compgen -A variable | grep '^FLEET_DISPATCHER_USAGE_GATE_' || true); do
+for _gate_var in $(compgen -A variable | grep -E '^FLEET_DISPATCHER_USAGE_(GATE|SCOPE)_' || true); do
     export "$_gate_var"
 done
 
@@ -112,8 +117,9 @@ limit_delay = int(os.environ.get("LIMIT_DELAY", "900"))
 poll_s = int(os.environ.get("POLL_INTERVAL_SECONDS", "10"))
 emit_json = os.environ.get("JSON") == "1"
 
-# Mirrors fleet-dispatcher's threshold_for() / BUILTIN_PER_TYPE_DEFAULTS.
-# Keep in sync — same semantics, same defaults.
+# Mirrors fleet-dispatcher's usage_gate_status() tables: threshold_for(),
+# BUILTIN_PER_TYPE_DEFAULTS, BUILTIN_MODEL_SCOPES, scope_of(). Keep in sync —
+# same semantics, same defaults.
 BUILTIN_PER_TYPE_DEFAULTS = {
     "seven_day": 0.95,
     "five_hour": 0.80,
@@ -122,24 +128,56 @@ BUILTIN_PER_TYPE_DEFAULTS = {
     "github_search": 1.01,
 }
 BUILTIN_FALLBACK = 0.80
+MODEL_FAMILIES = ("fable", "opus", "sonnet", "haiku")
+BUILTIN_MODEL_SCOPES = {
+    "seven_day_overage_included": "fable",
+}
 
 
-def threshold_for(rate_limit_type):
-    safe = "".join(c.upper() if c.isalnum() else "_" for c in (rate_limit_type or ""))
+def env_suffix(rate_limit_type):
+    return "".join(c.upper() if c.isalnum() else "_" for c in (rate_limit_type or ""))
+
+
+def scope_of(rate_limit_type):
+    t = rate_limit_type or ""
+    if t.startswith("github"):
+        return "account"
+    override = os.environ.get(f"FLEET_DISPATCHER_USAGE_SCOPE_{env_suffix(t)}", "")
+    override = override.strip().lower()
+    if override == "account" or override in MODEL_FAMILIES:
+        return override
+    if t in BUILTIN_MODEL_SCOPES:
+        return BUILTIN_MODEL_SCOPES[t]
+    suffix = t[len("seven_day_"):] if t.startswith("seven_day_") else ""
+    return suffix if suffix in MODEL_FAMILIES else "account"
+
+
+def threshold_source(rate_limit_type):
+    """(threshold, from_fallback) — see the dispatcher's threshold_for()."""
+    safe = env_suffix(rate_limit_type)
     if safe:
         var = f"FLEET_DISPATCHER_USAGE_GATE_{safe}"
         if var in os.environ and os.environ[var]:
             try:
-                return float(os.environ[var])
+                return float(os.environ[var]), False
             except ValueError:
                 pass
     glob = os.environ.get("FLEET_DISPATCHER_USAGE_GATE", "")
     if glob:
         try:
-            return float(glob)
+            return float(glob), False
         except ValueError:
             pass
-    return BUILTIN_PER_TYPE_DEFAULTS.get(rate_limit_type or "", BUILTIN_FALLBACK)
+    t = rate_limit_type or ""
+    if t in BUILTIN_PER_TYPE_DEFAULTS:
+        return BUILTIN_PER_TYPE_DEFAULTS[t], False
+    if t.startswith("seven_day"):
+        return threshold_source("seven_day")[0], False
+    return BUILTIN_FALLBACK, True
+
+
+def threshold_for(rate_limit_type):
+    return threshold_source(rate_limit_type)[0]
 
 
 def parse_resets(value):
@@ -219,7 +257,7 @@ if usage_dir.is_dir():
         if util_f > 1.5:
             util_f = util_f / 100.0
         rl_type = data.get("rateLimitType", path.stem)
-        thr = threshold_for(rl_type)
+        thr, thr_fallback = threshold_source(rl_type)
 
         active = not is_stale and not is_past
         breaching = active and util_f >= thr
@@ -230,6 +268,11 @@ if usage_dir.is_dir():
             "status": data.get("status"),
             "utilization": round(util_f, 4),
             "threshold": thr,
+            "threshold_fallback": thr_fallback,
+            # "account", or the model family the window meters.
+            "scope": scope_of(rl_type),
+            # The model of the session that latched it (fleet-claude-stream).
+            "model": data.get("model"),
             "resetsAt": resets_at_str,
             "etaSeconds": eta_s,
             "observed_at": observed_at,
@@ -249,6 +292,10 @@ if usage_dir.is_dir():
         if breaching:
             breaches.append(obs)
 
+# A model-scoped breach defers only launches on its family's models, so it
+# never closes the fleet-wide verdict.
+scoped_breaches = [o for o in breaches if o["scope"] != "account"]
+breaches = [o for o in breaches if o["scope"] == "account"]
 gate_state = "closed" if breaches else "open"
 
 # GitHub pools are surfaced in their own section (below) rather than mixed
@@ -284,6 +331,7 @@ if emit_json:
     out = {
         "gate": gate_state,
         "breaching": breaches,
+        "scoped_breaching": scoped_breaches,
         "observations": observations,
         "github": github_obs,
         "cooldowns": cooldowns,
@@ -321,28 +369,44 @@ else:
         )
         resets_part = f" resets={o['resetsAt']}" if o.get("resetsAt") else ""
         status_part = " REJECTED" if o.get("status") == "rejected" else ""
+        scope_part = f" scope={o['scope']}" if o["scope"] != "account" else ""
+        model_part = f" seen-by={o['model']}" if o.get("model") else ""
         return (
             f"  {prefix:<10} {o['rateLimitType']}{status_part} "
-            f"util={pct}% {threshold_text}{suffix}{resets_part}{eta}"
+            f"util={pct}% {threshold_text}{suffix}{scope_part}{model_part}"
+            f"{resets_part}{eta}"
         )
 
-    anthropic_breaches = [o for o in anthropic_obs if o["breaching"]]
-    for o in sorted(anthropic_breaches, key=lambda x: x["utilization"], reverse=True):
+    def thr_text(o, cmp):
         thr_pct = int(round(o["threshold"] * 100))
-        print(fmt_obs(o, "breaching:", f"(>= {thr_pct}%)"))
-    for o in anthropic_obs:
-        if o["breaching"] or o["stale"] or o["past_reset"]:
-            continue
-        thr_pct = int(round(o["threshold"] * 100))
-        print(fmt_obs(o, "other:", f"(< {thr_pct}%)"))
-    for o in anthropic_obs:
-        if not (o["stale"] or o["past_reset"]):
-            continue
-        past_label = "past-reset" if reset_grace_s == 0 else "past-reset+grace"
-        reasons = "/".join(
-            r for r, on in (("stale", o["stale"]), (past_label, o["past_reset"])) if on
-        )
-        print(fmt_obs(o, "pruned:", f"[{reasons}]"))
+        fallback = ", unlisted type, fallback threshold" if o["threshold_fallback"] else ""
+        return f"({cmp} {thr_pct}%{fallback})"
+
+    def print_group(group):
+        for o in sorted((o for o in group if o["breaching"]),
+                        key=lambda x: x["utilization"], reverse=True):
+            print(fmt_obs(o, "breaching:", thr_text(o, ">=")))
+        for o in group:
+            if o["breaching"] or o["stale"] or o["past_reset"]:
+                continue
+            print(fmt_obs(o, "other:", thr_text(o, "<")))
+        for o in group:
+            if not (o["stale"] or o["past_reset"]):
+                continue
+            past_label = "past-reset" if reset_grace_s == 0 else "past-reset+grace"
+            reasons = "/".join(
+                r for r, on in (("stale", o["stale"]), (past_label, o["past_reset"])) if on
+            )
+            print(fmt_obs(o, "pruned:", f"[{reasons}]"))
+
+    print_group([o for o in anthropic_obs if o["scope"] == "account"])
+    scoped_obs = [o for o in anthropic_obs if o["scope"] != "account"]
+    if scoped_obs:
+        walled = sorted({o["scope"] for o in scoped_breaches})
+        state = (f"CLOSED for {', '.join(walled)} (launches on those models deferred; "
+                 "other models unaffected)") if walled else "OPEN"
+        print(f"Model-scoped usage gate: {state}")
+        print_group(scoped_obs)
 
 print()
 

@@ -223,7 +223,8 @@ the window resets (gate thresholds and the per-pane cooldown:
   released (session sidecar cleared) only when the pane did no work, so
   another provider can take the item; a mid-task death keeps claim and
   session for the resume.
-- `fleet-babysit` reads the same gate (`fleet-dispatcher --gate-status
-  claude`) before a crash or limit relaunch of an architect pane and holds
-  while it is closed; an immediate exit-1 with the gate closed never counts
-  toward condemning the session pointer.
+- `fleet-babysit` reads the same gate for its own model (`fleet-dispatcher
+  --gate-status claude <model>`) before a crash or limit relaunch of an
+  architect pane and holds while it is closed, so a Fable pane waits out a
+  Fable-only weekly wall that an Opus pane runs through; an immediate exit-1
+  with the gate closed never counts toward condemning the session pointer.

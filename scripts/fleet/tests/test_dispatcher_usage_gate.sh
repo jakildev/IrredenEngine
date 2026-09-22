@@ -18,6 +18,13 @@
 #   - the wall: a rejected observation closes, is named, binds until its own
 #     resetsAt + grace, and (written by the real fleet-claude-stream) is not
 #     reopened by a later below-threshold warning from another pane
+#   - model-scoped windows: the Fable-only weekly wall (latched by the real
+#     stream with the observing model) closes only `claude <fable model>` and
+#     `scoped`, never `all` or a model-less `claude`; the scope override (read
+#     from the conf) and `seven_day_<family>` types; an unlisted `seven_day*`
+#     type takes the weekly threshold and any other unlisted type names the
+#     fallback; fleet-gate-status reports the scoped wall apart from the
+#     fleet-wide verdict
 
 set -euo pipefail
 
@@ -285,6 +292,148 @@ else
     FAIL=$((FAIL + 1)); echo "  FAIL: no fallback record to age"
 fi
 rm -f "$FLEET_STATE_DIR/usage"/*.json
+
+check_contains() {  # $1 = haystack, $2 = needle, $3 = message
+    if [[ "$1" == *"$2"* ]]; then
+        PASS=$((PASS + 1)); echo "  ok: $3"
+    else
+        FAIL=$((FAIL + 1)); echo "  FAIL: $3"; echo "        missing: $2"; echo "        in:      $1"
+    fi
+}
+
+feed_session() {  # $1 = model, $2 = one rate_limit_info JSON object
+    printf '%s\n' \
+        "{\"type\":\"system\",\"subtype\":\"init\",\"model\":\"$1\",\"cwd\":\"/w\",\"session_id\":\"s\"}" \
+        "{\"type\":\"rate_limit_event\",\"rate_limit_info\":$2}" \
+        | python3 "$STREAM" >/dev/null 2>&1
+}
+
+echo "T21: the Fable-only weekly wall gates only launches on a Fable model"
+feed_session 'claude-fable-5-1[1m]' \
+    "{\"status\":\"rejected\",\"resetsAt\":$RESETS_EPOCH,\"rateLimitType\":\"seven_day_overage_included\"}"
+assert_starts_with "$("$DISPATCHER" --gate-status)" "open" "all: the fleet-wide gate stays open"
+assert_starts_with "$("$DISPATCHER" --gate-status claude)" "open" "claude with no model: open"
+assert_starts_with "$("$DISPATCHER" --gate-status claude 'fable[1m]')" \
+    "closed:seven_day_overage_included rejected util=100% (>= 95%) scope=fable" \
+    "claude fable[1m]: closed, weekly threshold, scope named"
+assert_starts_with "$("$DISPATCHER" --gate-status claude claude-fable-5-1)" \
+    "closed:seven_day_overage_included rejected" "claude on a full Fable model id: closed"
+assert_starts_with "$("$DISPATCHER" --gate-status claude 'opus[1m]')" "open" \
+    "claude opus[1m]: open"
+assert_starts_with "$("$DISPATCHER" --gate-status scoped)" \
+    "closed:seven_day_overage_included rejected" "scoped: closed"
+assert_starts_with "$("$DISPATCHER" --gate-status scoped 'opus[1m]')" "open" \
+    "scoped opus[1m]: open"
+assert_starts_with "$("$DISPATCHER" --gate-status scoped gpt-5.6-sol)" "open" \
+    "a model outside every family matches no scoped window"
+check_contains "$(cat "$FLEET_STATE_DIR/usage/seven_day_overage_included.rejected.json")" \
+    '"model": "claude-fable-5-1[1m]"' "the stream stamps the observing session's model"
+
+echo "T22: a scope override read from the conf makes the wall account-wide"
+SCOPE_CONF="$TMPROOT/scope.conf"
+echo 'FLEET_DISPATCHER_USAGE_SCOPE_SEVEN_DAY_OVERAGE_INCLUDED=account' > "$SCOPE_CONF"
+out=$(FLEET_CONF="$SCOPE_CONF" "$DISPATCHER" --gate-status claude)
+assert_starts_with "$out" "closed:seven_day_overage_included rejected util=100% (>= 95%)" \
+    "claude with no model: closed"
+[[ "$out" != *"scope="* ]] \
+    && { PASS=$((PASS + 1)); echo "  ok: an account-wide line names no scope"; } \
+    || { FAIL=$((FAIL + 1)); echo "  FAIL: account-wide line names a scope: $out"; }
+assert_starts_with "$(FLEET_CONF="$SCOPE_CONF" "$DISPATCHER" --gate-status)" \
+    "closed:seven_day_overage_included rejected" "all: closed"
+rm -f "$FLEET_STATE_DIR/usage"/*.json
+
+echo "T23: seven_day_<family> is scoped to that family without a table row"
+feed_stream "{\"status\":\"rejected\",\"resetsAt\":$RESETS_EPOCH,\"rateLimitType\":\"seven_day_opus\"}"
+assert_starts_with "$("$DISPATCHER" --gate-status claude 'claude-opus-4-8[1m]')" \
+    "closed:seven_day_opus rejected util=100% (>= 95%) scope=opus" "claude on opus: closed"
+assert_starts_with "$("$DISPATCHER" --gate-status claude sonnet)" "open" "claude sonnet: open"
+assert_starts_with "$("$DISPATCHER" --gate-status)" "open" "all: open"
+rm -f "$FLEET_STATE_DIR/usage"/*.json
+
+echo "T24: unlisted types — weekly threshold for seven_day*, a named fallback otherwise"
+printf '{"rateLimitType":"seven_day_foo","utilization":0.89,"resetsAt":"%s","observed_at":%s}\n' "$RESETS" "$NOW" \
+    > "$FLEET_STATE_DIR/usage/seven_day_foo.json"
+assert_starts_with "$("$DISPATCHER" --gate-status claude)" "open:seven_day_foo util=89% (< 95%)" \
+    "an unlisted weekly type at 89% stays open"
+printf '{"rateLimitType":"seven_day_foo","utilization":0.96,"resetsAt":"%s","observed_at":%s}\n' "$RESETS" "$NOW" \
+    > "$FLEET_STATE_DIR/usage/seven_day_foo.json"
+assert_starts_with "$("$DISPATCHER" --gate-status claude)" "closed:seven_day_foo util=96% (>= 95%)" \
+    "an unlisted weekly type at 96% closes"
+rm -f "$FLEET_STATE_DIR/usage"/*.json
+printf '{"rateLimitType":"daily_tokens","utilization":0.85,"resetsAt":"%s","observed_at":%s}\n' "$RESETS" "$NOW" \
+    > "$FLEET_STATE_DIR/usage/daily_tokens.json"
+assert_starts_with "$("$DISPATCHER" --gate-status claude)" \
+    "closed:daily_tokens util=85% (>= 80%, unlisted type, fallback threshold)" \
+    "a closed line resting on the generic fallback says so"
+rm -f "$FLEET_STATE_DIR/usage"/*.json
+
+echo "T25: fleet-gate-status keeps the scoped wall out of the fleet-wide verdict"
+GATE_STATUS_TOOL="$SCRIPT_DIR/fleet-gate-status"
+feed_session 'claude-fable-5-1[1m]' \
+    "{\"status\":\"rejected\",\"resetsAt\":$RESETS_EPOCH,\"rateLimitType\":\"seven_day_overage_included\"}"
+json=$("$GATE_STATUS_TOOL" --json)
+summary=$(printf '%s' "$json" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+s = d.get("scoped_breaching", [])
+print(d["gate"], len(d["breaching"]), [(o["rateLimitType"], o.get("scope"), o.get("model")) for o in s])')
+assert_starts_with "$summary" \
+    "open 0 [('seven_day_overage_included', 'fable', 'claude-fable-5-1[1m]')]" \
+    "--json: gate open, the wall listed under scoped_breaching with scope and model"
+text=$("$GATE_STATUS_TOOL")
+check_contains "$text" "Fleet-wide usage gate: OPEN" "text: fleet-wide gate OPEN"
+check_contains "$text" "Model-scoped usage gate: CLOSED for fable" "text: the scoped gate names fable"
+rm -f "$FLEET_STATE_DIR/usage"/*.json
+
+echo "T26: fleet-gate-status's mirror of the gate tables agrees with the dispatcher's"
+# Both heredocs define the tables and helpers inline (a heredoc cannot import).
+# Load only the literal tables and function defs from each and compare their
+# answers over a type x override matrix.
+if drift=$(python3 - "$DISPATCHER" "$GATE_STATUS_TOOL" <<'PY'
+import ast, os, re, sys
+
+def load(path, marker):
+    src = open(path).read()
+    for body in re.findall(r"python3 - <<'PY'\n(.*?)\nPY\n", src, re.S):
+        if marker in body:
+            tree = ast.parse(body)
+            keep = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.Assign))
+                    and not (isinstance(n, ast.Assign) and not isinstance(
+                        n.value, (ast.Dict, ast.Tuple, ast.Constant)))]
+            ns = {"os": os}
+            exec(compile(ast.Module(keep, []), path, "exec"), ns)
+            return ns
+    sys.exit(f"no heredoc containing {marker} in {path}")
+
+d = load(sys.argv[1], "def scope_of")
+g = load(sys.argv[2], "def scope_of")
+bad = []
+for name in ("BUILTIN_PER_TYPE_DEFAULTS", "BUILTIN_FALLBACK", "MODEL_FAMILIES", "BUILTIN_MODEL_SCOPES"):
+    if d[name] != g[name]:
+        bad.append(f"{name}: {d[name]!r} != {g[name]!r}")
+types = ["five_hour", "seven_day", "seven_day_overage_included", "seven_day_opus",
+         "seven_day_sonnet", "seven_day_foo", "daily_tokens", "github_core", "github_search"]
+envs = [{}, {"FLEET_DISPATCHER_USAGE_SCOPE_SEVEN_DAY_OVERAGE_INCLUDED": "account"},
+        {"FLEET_DISPATCHER_USAGE_SCOPE_DAILY_TOKENS": "opus"},
+        {"FLEET_DISPATCHER_USAGE_GATE_SEVEN_DAY": "0.5"}, {"FLEET_DISPATCHER_USAGE_GATE": "0.7"}]
+for env in envs:
+    saved = dict(os.environ)
+    os.environ.update(env)
+    try:
+        for t in types:
+            if d["scope_of"](t) != g["scope_of"](t):
+                bad.append(f"scope_of({t}) {env}: {d['scope_of'](t)} != {g['scope_of'](t)}")
+            if d["threshold_for"](t) != g["threshold_source"](t):
+                bad.append(f"threshold({t}) {env}: {d['threshold_for'](t)} != {g['threshold_source'](t)}")
+    finally:
+        os.environ.clear(); os.environ.update(saved)
+print("\n".join(bad) if bad else "agree")
+PY
+); then
+    assert_starts_with "$drift" "agree" "tables and helpers agree across the type x override matrix"
+else
+    FAIL=$((FAIL + 1)); echo "  FAIL: drift guard could not load a copy: $drift"
+fi
 
 echo
 echo "PASS: $PASS  FAIL: $FAIL"

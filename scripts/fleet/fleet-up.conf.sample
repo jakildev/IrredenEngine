@@ -233,7 +233,17 @@
 #   github_core:    0.90  # GitHub REST pool — dispatched agents burn this too
 #   github_graphql: 0.90  # same pool the #1394 exhaustion incident hit
 #   github_search:  1.01  # surface-only — fleet usage is negligible, never gates
-#   (any other type): 0.80
+#   (any other seven_day* type): the seven_day threshold
+#   (any other type): 0.80 — its closed line says "fallback threshold"
+#
+# Model-scoped windows: a type that meters one model family rather than the
+# account — seven_day_overage_included (the plan's Fable-only weekly meter)
+# and any seven_day_<family> (seven_day_opus, ...) — never closes the
+# fleet-wide gate. It defers only launches on that family's models, and a
+# walled fable-class model is served like a saturated
+# FLEET_CONCURRENCY_MODEL_FABLE cap (fable tasks wait, fable plans degrade
+# to opus) until the window resets. Scope an unlisted type, or un-scope one:
+# FLEET_DISPATCHER_USAGE_SCOPE_<TYPE_UPPER>=fable|opus|sonnet|haiku|account
 #
 # GitHub pools are sampled by fleet-state-scout (free reads each tick: graphql
 # from GraphQL's own `rateLimit` self-report, core from the X-RateLimit-*
@@ -274,6 +284,7 @@
 # FLEET_DISPATCHER_USAGE_GATE_GITHUB_CORE=0.90
 # FLEET_DISPATCHER_USAGE_GATE_GITHUB_GRAPHQL=0.90
 # FLEET_DISPATCHER_USAGE_GATE_GITHUB_SEARCH=1.01
+# FLEET_DISPATCHER_USAGE_SCOPE_SEVEN_DAY_OVERAGE_INCLUDED=fable
 
 # FLEET_DISPATCHER_USAGE_STALE_SECONDS=3600
 # FLEET_DISPATCHER_RESET_GRACE_SECONDS=600
