@@ -4,12 +4,10 @@ Canonical, repo-neutral meaning, owner, and transitions for every `fleet:*`
 and `human:*` label. Both repos consume it by reference
 ([`docs/design/claude-md-sharing.md`](../design/claude-md-sharing.md)).
 
-Static catalog labels are declared here, in `scripts/fleet/fleet-labels`, and in
-[`fleet-state-machine.json`](fleet-state-machine.json). Dynamic families declare
-semantics here; concrete names are created by their owner. `fleet-labels --check`
-compares the static catalog with the JSON node set; `test_fleet_labels_check.sh`
-runs it in CI. Run `bash scripts/fleet/fleet-labels --check` from the worktree:
-the installed symlink resolves its inputs from the main clone.
+Static catalog labels belong here, in `scripts/fleet/fleet-labels` and
+[`fleet-state-machine.json`](fleet-state-machine.json). Dynamic families declare semantics here; their owner creates concrete names.
+`bash scripts/fleet/fleet-labels --check` compares the catalog and JSON; CI runs it.
+Run from the worktree: the installed symlink uses the main clone.
 
 ---
 
