@@ -55,11 +55,12 @@ section grows a field — that is the omission this table exists to close.
 | `prs` | `number, title, headRefName, headRefOid, baseRefName, author, labels, mergeable, isDraft, reviews[], updatedAt, closes_issues, closes_cross_repo, schema` | open PRs, up to `OPEN_PR_FETCH_LIMIT` (200); `reviews[]` keeps a body only on the latest review per PR; `closes_issues` = closing refs to the PR's own repo (bare ints), `closes_cross_repo` = `{repo, number}` for GitHub's `Closes owner/repo#N` naming the other fleet repo |
 | `needs_plan` | `number, title, labels, updatedAt, blocked` | `fleet:needs-plan` open issues, one REST page (100) |
 | `plan_review` | `number, title, labels, updatedAt` | `fleet:plan-review` open issues, one REST page (100) |
-| `human_approved` | `number, title, labels, updatedAt, epic, blocked` | `human:approved` + `fleet:agent-approved` open issues, deduped; up to 300 each (600 combined) |
+| `human_approved` | `number, title, labels, updatedAt, blocked` | `human:approved` + `fleet:agent-approved` open issues, deduped; up to 300 each (600 combined) |
 | `closed_fleet_queued` | `number` | closed `fleet:queued` issues, newest 100 |
 | `recent_merged_prs` | `number, title, headRefName, baseRefName, mergedAt` | newest 30 merges by `mergedAt` (any PR number), from up to 3 newest-updated closed pages; a cap hit writes `${FLEET_ALERTS_DIR:-~/.fleet/alerts}/state-scout-recent-merged-<owner>-<repo>` while it holds |
 | `epics` | `number, title, labels, updatedAt, checklist, managed` | open `fleet:epic` issues, one REST page (100) |
-| `tasks.open` / `tasks.in_progress` | `status, title, summary, id, model, effort, labels, owner, area, blocked_by, blocked, needs_gl_host, needs_host, backend_symmetric, issue, updatedAt, epic` | open `fleet:queued` issues minus `fleet:needs-human`/`fleet:plan-review`/`fleet:gated`, up to 200 (2 REST pages) |
+| `epic_backrefs` | `number, title, epics` | open issues (any labels) whose body declares epic membership (`fleet_epic_membership.py`), from up to 10 REST pages (1000 issues + PRs); a cap hit writes `${FLEET_ALERTS_DIR:-~/.fleet/alerts}/state-scout-epic-backrefs-<owner>-<repo>` while it holds |
+| `tasks.open` / `tasks.in_progress` | `status, title, summary, id, model, effort, labels, owner, area, blocked_by, blocked, needs_gl_host, needs_host, backend_symmetric, issue, updatedAt` | open `fleet:queued` issues minus `fleet:needs-human`/`fleet:plan-review`/`fleet:gated`, up to 200 (2 REST pages) |
 | `tasks.done` | `id` | one record per `closed_fleet_queued` entry — same 100-item cap, not an independent population |
 | `tasks.plan_gated` | bare issue numbers, not issue-shaped records | same pre-filter population as `tasks.open`/`tasks.in_progress` |
 
