@@ -3,6 +3,7 @@
 import contextlib
 import importlib.util
 import io
+import itertools
 import math
 import sys
 import unittest
@@ -66,26 +67,55 @@ class ShadowBoxEdgesTest(unittest.TestCase):
                     self.assertAlmostEqual(actual[0] - expected[0], delta[0])
                     self.assertAlmostEqual(actual[1] - expected[1], delta[1])
 
-    def test_source_invariance_and_detached_snap_basis(self):
+    def test_source_invariance_and_revoxelized_cardinal_occupancy(self):
         plate = Image.new("RGB", (240, 120), (108, 109, 115))
+        quarter_turns = (
+            lambda p: p,
+            lambda p: (-p[1], p[0], p[2]),
+            lambda p: (-p[0], -p[1], p[2]),
+            lambda p: (p[1], -p[0], p[2]),
+        )
+        source_centers = set(itertools.product(
+            range(-8, 10), range(-2, 4), range(-3, 5)))
+        source_centers = {tuple(c - .5 for c in p) for p in source_centers}
         for cardinal in range(4):
             source, _ = METRIC.expected_polygon(plate, cardinal, False, True)
-            for density in (1, 2, 3):
+            to_world = quarter_turns[cardinal]
+            to_view = quarter_turns[-cardinal % 4]
+            occupied = [tuple(c - .5 for c in cell)
+                        for cell in itertools.product(range(-10, 12), repeat=3)
+                        if to_world(tuple(c - .5 for c in cell)) in source_centers]
+            self.assertEqual(len(occupied), 18 * 6 * 8)
+            for density in (1, 2, 3, 4):
                 unchanged, _ = METRIC.expected_polygon(
                     plate, cardinal, False, True, subdivisions=density)
                 self.assertEqual(unchanged, source)
                 detached, _ = METRIC.expected_polygon(
                     plate, cardinal, False, False, subdivisions=density)
-                offset = 0 if density == 2 else .5 / density
-                light_x, light_y = METRIC.SUN[:2]
-                for _ in range(cardinal):
-                    light_x, light_y = light_y, -light_x
-                dx = offset * (1 - light_x / METRIC.SUN[2])
-                dy = offset * (1 - light_y / METRIC.SUN[2])
-                delta = (-dx + dy, (-dx - dy) * .5)
-                for actual, expected in zip(detached, source):
-                    self.assertAlmostEqual(actual[0] - expected[0], delta[0])
-                    self.assertAlmostEqual(actual[1] - expected[1], delta[1])
+                phase = -.5 - math.floor(-.5 * density + .5) / density
+                points = []
+                for center in occupied:
+                    raster = tuple(math.floor(c * density + .5) / density + phase
+                                   for c in center)
+                    for actual, value in zip(raster, center):
+                        self.assertAlmostEqual(actual, value)
+                    for delta in itertools.product((-.5, .5), repeat=3):
+                        x, y, z = to_world(tuple(c + d for c, d in zip(raster, delta)))
+                        z += METRIC.BOX_Z
+                        distance = (METRIC.FLOOR_TOP - z) / METRIC.SUN[2]
+                        x += distance * METRIC.SUN[0]
+                        y += distance * METRIC.SUN[1]
+                        x, y, _ = to_view((x, y, METRIC.FLOOR_TOP))
+                        points.append((119.5 - x + y, 59.5 - .5 * (x + y)))
+                expected = METRIC.convex_hull(points)
+                for polygon in (detached, expected):
+                    for a, b in zip(polygon, polygon[1:] + polygon[:1]):
+                        normal = (b[1] - a[1], a[0] - b[0])
+                        for sign in (-1, 1):
+                            def support(poly):
+                                return max(sign * (p[0] * normal[0] + p[1] * normal[1])
+                                           for p in poly)
+                            self.assertAlmostEqual(support(detached), support(expected))
 
     def test_known_projection_does_not_depend_on_floor_color_bounds(self):
         wide = Image.new("RGB", (320, 240), (108, 109, 115))

@@ -1197,6 +1197,11 @@ void registerArgs() {
     );
     args.flag("--probe-upright", "Use unrotated revoxelization and attached shadow probes");
     args.integer("--probe-canvas-size", "Shadowocclusion private canvas edge, 256 to 2048", 256);
+    args.integer(
+        "--probe-box-canvas-size",
+        "Shadowbox private canvas edge, 128 to 1024; allows higher raster density",
+        128
+    );
     args.flag("--probe-staircase", "Use a stair-stepped plate and nearby overhead blocker");
     args.enumValue(
         "--probe-floor-mode",
@@ -2025,9 +2030,11 @@ void initEntities() {
                 C_VoxelSetNew{size, color, true, mainCanvas}
             );
         } else {
+            const int canvasSize =
+                IRMath::clamp(IREngine::args().getInt("--probe-box-canvas-size"), 128, 1024);
             auto canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
                 "shadow_box",
-                ivec2(128),
+                ivec2(canvasSize),
                 ivec3(32),
                 g_settings.screenLockDetached_
             );

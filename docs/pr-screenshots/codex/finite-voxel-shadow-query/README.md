@@ -30,7 +30,10 @@ byte in RGB after off-map allocation culling. Metric logs are retained. The
 visible test mask is image-derived; its pixel count can change with shading,
 so counts are per-frame acceptance results rather than a fixed-mask subtraction.
 
-The revoxelized caster onto the same source floor improves but is **not accepted**:
+The following historical revoxelized results used an oracle missing the raster
+phase correction. The [corrected occupancy-based analysis](../revoxelized-shadow-oracle/README.md)
+supersedes this table; it does not change the renderer or the tolerance.
+At the time of this capture, these controls were **not accepted**:
 
 | Yaw | Parent missing / excess | Indexed missing / excess | Parent | Indexed |
 |---|---|---|---|---|

@@ -79,9 +79,10 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
 - [Finite voxel queries](../pr-screenshots/codex/finite-voxel-shadow-query/README.md)
   retain projected GRID and revoxelized faces alongside rigid source faces.
   GRID casting onto a continuous source floor passes all four strict cardinal
-  edge controls with zero errors. Revoxelized casting improves but still fails
-  the 180/270-degree footprint controls; reconcile its actual resampled geometry
-  with the oracle before calling it accepted. SDF/GRID receivers still need
+  edge controls with zero errors. The [revoxelized oracle correction](../pr-screenshots/codex/revoxelized-shadow-oracle/README.md)
+  accounts for its preserved lattice phase: cardinal captures at actual densities 1, 2 and 3
+  pass all twelve strict controls, while pre-query captures still fail all four.
+  Arbitrary revoxelized rotations and dense overflow remain unaccepted. SDF/GRID receivers still need
   continuous winning surface data through fragment presentation. Shared index
   capacity can reduce rigid-source exactness in dense scenes; test temporal
   overflow and larger populations before promoting this as a scalable solution.
