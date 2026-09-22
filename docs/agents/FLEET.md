@@ -57,6 +57,7 @@ competitor needs authoritative arbitration, not a longer sleep. Host keys are
 one canonical set (`derive_host()`: `Linux` → `linux`, `Darwin` → `mac`,
 `MINGW*/MSYS*/CYGWIN*` → `windows`); WSL2 is `linux`, so two such fleets on
 one account collide unless one forces `FLEET_TEST_HOST`.
+
 ### Who takes the claim
 
 The **dispatcher**, before launch. For the target-bound roles (worker, both

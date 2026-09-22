@@ -402,15 +402,17 @@ def support_fixtures(
     # kept as a standing invariant because the conflict lane's RAW verdict
     # test is what still keeps it shut under a pending opus recheck, which
     # no claim prefix represents.
-    raw_routes_feedback = not module.worker_feedback_labels(
-        feedback_labels
-    ) and not module._semantic_conflict_claimable(_conflict_pr(), feedback_labels, {})
-    conflict_phase = module._review_skipped(
-        {"fleet:semantic-conflict"}
-    ) and not module._semantic_conflict_claimable(
-        _conflict_pr(),
-        {"fleet:semantic-conflict", "fleet:resolving-mac-probeA"},
-        {},
+    raw_routes_feedback = (
+        not module.worker_feedback_labels(feedback_labels)
+        and not module._semantic_conflict_claimable(_conflict_pr(), feedback_labels, {})
+    )
+    conflict_phase = (
+        module._review_skipped({"fleet:semantic-conflict"})
+        and not module._semantic_conflict_claimable(
+            _conflict_pr(),
+            {"fleet:semantic-conflict", "fleet:resolving-mac-probeA"},
+            {},
+        )
     )
     issue_scope = (
         all(
@@ -436,7 +438,8 @@ def support_fixtures(
         )
     )
     human_priority = all(
-        module.worker_feedback_labels({"human:needs-fix", held}) == frozenset({"human:needs-fix"})
+        module.worker_feedback_labels({"human:needs-fix", held})
+        == frozenset({"human:needs-fix"})
         for held in ("fleet:reviewing-mac-probeB", "fleet:resolving-mac-probeB")
     )
     ownership_review = (
