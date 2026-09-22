@@ -25,25 +25,30 @@ PRESETS = {
     "on": "configs/perf/million.lua",
     "off": "configs/perf/million-profiling-off.lua",
 }
-POSES = {"0": "0", "45": "0.785398163"}
-COMMON = ["--wave-freeze", "--no-overlay"]
+# The sweep advances 1.2 degrees a frame from a cardinal, a full turn at the
+# default 300 frames, because a real turn crosses the cardinals and the
+# crossing frames are its tail (docs/perf/continuous-yaw-sweep.md).
+POSES = {
+    "0": ["--yaw", "0"],
+    "45": ["--yaw", "0.785398163"],
+    "sweep": ["--yaw", "0", "--yaw-step", "0.020943951"],
+}
+# --pivot-origin makes the view a function of the yaw alone. With the default
+# pivot the part of the world a yaw shows depends on how the run began, so a
+# static arm and a swept arm would not frame the same scene.
+COMMON = ["--wave-freeze", "--no-overlay", "--pivot-origin"]
 ROUND_RE = re.compile(r"round-(\d+)")
 MILLION_ENTITIES = 1_000_000
 MILLION_ZOOM = 4.0
 
 
 def cases(builds: list[str]) -> dict[str, list[str]]:
-    """Case name -> demo arguments, named <build>-profiling-<on|off>-yaw<deg>."""
+    """Case name -> demo arguments, named <build>-profiling-<on|off>-yaw<pose>."""
     return {
-        f"{build}-profiling-{profiling}-yaw{degrees}": [
-            "--config-preset",
-            preset,
-            "--yaw",
-            radians,
-        ]
+        f"{build}-profiling-{profiling}-yaw{pose}": ["--config-preset", preset, *pose_args]
         for build in builds
         for profiling, preset in PRESETS.items()
-        for degrees, radians in POSES.items()
+        for pose, pose_args in POSES.items()
     }
 
 
@@ -136,7 +141,15 @@ def summarize(output: Path, selected: dict[str, list[str]]) -> None:
         if any(w.yaw_first_deg is None or w.overflow_max_dropped is None for w in witnesses):
             yaw_text = overflow_text = "unwitnessed"
         else:
-            yaw_text = "/".join(sorted({f"{w.yaw_first_deg:.3f}" for w in witnesses}))
+            yaw_text = "/".join(
+                sorted(
+                    {
+                        f"{w.yaw_first_deg:.3f}"
+                        + (f" +{w.yaw_travel_deg:.1f}" if w.yaw_travel_deg else "")
+                        for w in witnesses
+                    }
+                )
+            )
             overflow_text = (
                 f"{max(w.overflow_max_entries for w in witnesses)} / "
                 f"{max(w.overflow_max_dropped for w in witnesses)}"
@@ -201,7 +214,7 @@ def verify_cases(output: Path) -> None:
         logged = manifest["runs"][0]["engine_logged"]
         if logged == (manifest["build_type"] == "Release"):
             raise ValueError(f"{name}: a {manifest['build_type']} build logged={logged}")
-        pose = ["--yaw", POSES[name.rsplit("-yaw", 1)[1]]]
+        pose = POSES[name.rsplit("-yaw", 1)[1]]
         for fault in (
             yaw_pose_mismatch("IRPerfGrid", pose, report.witness),
             overflow_failure("IRPerfGrid", pose, report.witness),

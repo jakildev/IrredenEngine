@@ -123,6 +123,10 @@ WITNESSED_REPORT = (
     "102.000 32.000 21.000 20.000 19.000\n"
     "19.000 18.000 18.000\n"
     "\n"
+    "--- Update ticks (per frame, in order) ---\n"
+    "8 8 2 1 1\n"
+    "1 1 0\n"
+    "\n"
     "=== END REPORT ===\n"
 )
 
@@ -152,6 +156,7 @@ class RunWitnessParserTest(unittest.TestCase):
         self.assertEqual((report.frame.p99, report.steady_frame.p99), (102.0, 21.0))
         self.assertEqual(report.warmup_frames, 2)
         self.assertEqual(len(report.frame_times_ms), 8)
+        self.assertEqual(report.frame_update_ticks, [8, 8, 2, 1, 1, 1, 1, 0])
         self.assertEqual(report.steady_frame_times_ms(), [21.0, 20.0, 19.0, 19.0, 18.0, 18.0])
         # The series must not leak into the stage table above it.
         self.assertEqual([stage.name for stage in report.gpu_stages], ["voxelStage1"])
@@ -197,6 +202,7 @@ class RunWitnessParserTest(unittest.TestCase):
             '"Per-axis overflow: maxEntries=%u maxDropped=%u cap=%u samples=%u\\n"',
             '"Steady frame time (first %zu of %zu frames excluded):   avg=%.2fms   p50=%.2fms   "',
             '"--- Frame times (ms, in order) ---\\n"',
+            '"--- Update ticks (per frame, in order) ---\\n"',
         ):
             self.assertIn(written, writer)
 

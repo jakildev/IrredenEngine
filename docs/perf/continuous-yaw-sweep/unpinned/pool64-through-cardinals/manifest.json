@@ -1,0 +1,49 @@
+{
+  "head": "a9d6a374083efdb5e10eaf1aaa7fc15d5fe805c2",
+  "changes": " M creations/demos/perf_grid/main.cpp\n M scripts/perf/repeat_profile.py\n M scripts/perf/test_million_controls.py\n M scripts/perf/test_repeat_profile.py\n",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "host_power": "AC Power",
+  "host_cpus": 14,
+  "build_dir": "build",
+  "build_type": "Debug",
+  "binary_sha256": "9a523b4fb96d20d45d2d56838f7a485585531cf17b7c616c3ec6a0d337bbee86",
+  "shader_sha256": "6a13afcaf26f7615a140427a3ff67efe4daa47344cf59db38c0af523f4e01661",
+  "runtime_scripts_sha256": "85a4c4c0e04ff77ce830640f6b8935b4ab8dcad11f1ff0dfccbc3dd918d927f6",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "300",
+    "IRPerfGrid",
+    "--wave-freeze",
+    "--no-overlay",
+    "--zoom",
+    "4",
+    "--yaw-step",
+    "0.020943951",
+    "--auto-profile",
+    "300"
+  ],
+  "runs": [
+    {
+      "index": 1,
+      "started_utc": "2026-09-21T20:39:54Z",
+      "host_battery_percent": 97,
+      "host_load_1m": 5.16,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "engine_logged": true,
+      "yaw_pose_mismatch": null,
+      "overflow_failure": null,
+      "yaw_first_deg": 0.0,
+      "yaw_last_deg": -1.2,
+      "yaw_travel_deg": 358.8,
+      "zoom": 4.0,
+      "overflow_max_dropped": 0,
+      "overflow_max_entries": 364095,
+      "overflow_samples": 296,
+      "gpu_measured": true
+    }
+  ]
+}

@@ -82,6 +82,8 @@ inline constexpr size_t kProfileSeriesMaxFrames = 8192;
 /// Aggregated data for a profile report, populated by World at shutdown.
 struct ProfileReport {
     std::vector<float> frameTimesMs_;
+    /// Fixed updates run inside each recorded frame, parallel to frameTimesMs_.
+    std::vector<uint32_t> frameUpdateTicks_;
     RunWitnessSummary witness_;
     uint32_t totalFrames_ = 0;
     uint32_t totalUpdateTicks_ = 0;

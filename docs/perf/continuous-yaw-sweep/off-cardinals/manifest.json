@@ -1,0 +1,51 @@
+{
+  "head": "1cc64d0ce32be9c98b451d3d2347b14847302c05",
+  "changes": " M creations/demos/perf_grid/main.cpp\n",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "host_power": "AC Power",
+  "host_cpus": 14,
+  "build_dir": "build-release",
+  "build_type": "Release",
+  "binary_sha256": "2f7fa1cd426cf5a51d9d52e6fd86223b508e563d13b8e1ef45ed553efbb390a8",
+  "shader_sha256": "6a13afcaf26f7615a140427a3ff67efe4daa47344cf59db38c0af523f4e01661",
+  "runtime_scripts_sha256": "85a4c4c0e04ff77ce830640f6b8935b4ab8dcad11f1ff0dfccbc3dd918d927f6",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "900",
+    "IRPerfGrid",
+    "--wave-freeze",
+    "--no-overlay",
+    "--auto-profile",
+    "300",
+    "--config-preset",
+    "configs/perf/million-profiling-off.lua",
+    "--yaw",
+    "0.010471976",
+    "--yaw-step",
+    "0.020943951"
+  ],
+  "runs": [
+    {
+      "index": 1,
+      "started_utc": "2026-09-21T21:29:55Z",
+      "host_battery_percent": 100,
+      "host_load_1m": 4.27,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "engine_logged": false,
+      "yaw_pose_mismatch": null,
+      "overflow_failure": null,
+      "yaw_first_deg": 0.6,
+      "yaw_last_deg": -0.6,
+      "yaw_travel_deg": 358.8,
+      "zoom": 4.0,
+      "overflow_max_dropped": 0,
+      "overflow_max_entries": 2208000,
+      "overflow_samples": 300,
+      "gpu_measured": true
+    }
+  ]
+}

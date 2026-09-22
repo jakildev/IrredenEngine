@@ -154,6 +154,8 @@ class CellReport:
     witness: RunWitness = field(default_factory=RunWitness)
     # Every recorded frame in order, warm-up included.
     frame_times_ms: List[float] = field(default_factory=list)
+    # Fixed updates run inside each of those frames; empty for a report without the series.
+    frame_update_ticks: List[int] = field(default_factory=list)
     # Fixed updates per rendered frame; None for a report without the line.
     update_ticks_avg: Optional[float] = None
     update_ticks_max: Optional[int] = None
@@ -250,6 +252,9 @@ def parse_report(path: Path, cell_id: str) -> CellReport:
         if s.startswith("--- Frame times"):
             section = "frame_times"
             continue
+        if s.startswith("--- Update ticks"):
+            section = "frame_update_ticks"
+            continue
         if s.startswith("=== END REPORT"):
             section = None
             continue
@@ -345,6 +350,8 @@ def parse_report(path: Path, cell_id: str) -> CellReport:
                 )
         elif section == "frame_times":
             report.frame_times_ms.extend(float(value) for value in s.split())
+        elif section == "frame_update_ticks":
+            report.frame_update_ticks.extend(int(value) for value in s.split())
     return report
 
 

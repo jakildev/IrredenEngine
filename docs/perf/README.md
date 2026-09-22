@@ -160,7 +160,8 @@ free feature.
 
 `scripts/perf/million_controls.py` is the objective's headline fixture as one
 command: 100³ single-voxel entities in a 128³ pool, zoom 4, FULL subdivision,
-frozen wave, at yaw 0° and 45°, with stage profiling on and off, in every tree
+frozen wave, at yaw 0°, 45° and a full-turn sweep, with stage profiling on and
+off, in every tree
 named with `--tree`. Cases run interleaved (forward on odd rounds, reverse on
 even) because grouped arms on one host drift by more than the differences
 they test; the summary prints per-round means so the drift stays visible, and
@@ -260,6 +261,16 @@ table:
   whose witness disagrees. Tables
   committed before the unit fix labelled a 0.785° pose as 45°:
   [perf-grid-yaw-unit.md](perf-grid-yaw-unit.md).
+- `--yaw-step <radians>` (IRPerfGrid only) — yaw advance per rendered frame;
+  frame N renders at `--yaw + (N − 1) × step`, the same poses in every run.
+  `repeat_profile.py` checks the first and last pose and the travelled arc
+  from the witness, and the flag pins the yaw pivot at the grid centre, because
+  with the default pivot the part of the world a yaw shows depends on how the
+  run began: [continuous-yaw-sweep.md](continuous-yaw-sweep.md). It cannot be
+  combined with `--auto-screenshot`, whose shot table sets the yaw too.
+- `--pivot-origin` (IRPerfGrid only) — the same pin for a static `--yaw`, so a
+  static pose and a swept one frame the scene alike. `million_controls.py`
+  passes it on every arm.
 
 ## Voxel cull stats — the "is culling working?" diagnostic
 

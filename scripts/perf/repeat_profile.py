@@ -33,6 +33,10 @@ YAW_POSE_TOLERANCE_DEG = 0.01
 # rotates through the per-axis canvases, so the overflow lane must have been
 # sampled. A test pins the value to camera.hpp.
 RESIDUAL_YAW_DEADBAND_RAD = 1e-4
+# A sweep's travelled arc is a sum of per-frame float32 yaw differences.
+SWEEP_TRAVEL_TOLERANCE_DEG = 0.05
+# IRPerfGrid's frame count for a bare --auto-profile.
+DEFAULT_AUTO_PROFILE_FRAMES = 300
 ENGINE_LOG_MARKERS = ("[EngineLog]", "[ClientLog]")
 
 
@@ -48,21 +52,30 @@ def directory_digest(directory: Path) -> str:
     return digest.hexdigest()
 
 
-def requested_yaw(demo_args: list[str]) -> float | None:
-    """The --yaw radians the demo will use (its last occurrence), else None.
+def requested_radians(demo_args: list[str], flag: str) -> float | None:
+    """The radians the demo will use for a flag (its last occurrence), else None.
 
     Raises ValueError for a value the pose check cannot compare: non-numeric
     or non-finite.
     """
     requested = None
     for index, argument in enumerate(demo_args):
-        if argument == "--yaw" and index + 1 < len(demo_args):
+        if argument == flag and index + 1 < len(demo_args):
             requested = float(demo_args[index + 1])
-        elif argument.startswith("--yaw="):
+        elif argument.startswith(flag + "="):
             requested = float(argument.split("=", 1)[1])
     if requested is not None and not math.isfinite(requested):
-        raise ValueError(f"--yaw {requested} is not finite")
+        raise ValueError(f"{flag} {requested} is not finite")
     return requested
+
+
+def requested_yaw(demo_args: list[str]) -> float | None:
+    return requested_radians(demo_args, "--yaw")
+
+
+def requested_yaw_step(demo_args: list[str]) -> float:
+    """IRPerfGrid's per-rendered-frame yaw advance; 0.0 for a static pose."""
+    return requested_radians(demo_args, "--yaw-step") or 0.0
 
 
 def degrees_apart(left: float, right: float) -> float:
@@ -78,35 +91,86 @@ def shot_table_drives_camera(demo_args: list[str]) -> bool:
     return any(argument.split("=", 1)[0] == "--auto-screenshot" for argument in demo_args)
 
 
-def is_static_pose(target: str, demo_args: list[str]) -> bool:
-    """IRPerfGrid holds the pose its --yaw radians name unless a shot table drives it."""
-    return (
-        target == "IRPerfGrid"
-        and requested_yaw(demo_args) is not None
-        and not shot_table_drives_camera(demo_args)
-    )
+def checked_pose(target: str, demo_args: list[str]) -> str | None:
+    """'static', 'sweep', or None where the tool cannot predict IRPerfGrid's poses."""
+    if target != "IRPerfGrid" or shot_table_drives_camera(demo_args):
+        return None
+    if requested_yaw_step(demo_args) != 0.0:
+        return "sweep"
+    return "static" if requested_yaw(demo_args) is not None else None
+
+
+def requested_frames(demo_args: list[str]) -> int | None:
+    """How many frames --auto-profile asks IRPerfGrid to render; None if unreadable."""
+    frames = None
+    for index, argument in enumerate(demo_args):
+        value = None
+        if argument == "--auto-profile":
+            following = demo_args[index + 1] if index + 1 < len(demo_args) else ""
+            value = following if following.isdigit() else str(DEFAULT_AUTO_PROFILE_FRAMES)
+        elif argument.startswith("--auto-profile="):
+            value = argument.split("=", 1)[1]
+        if value is not None:
+            frames = int(value) if value.isdigit() else None
+    return frames
+
+
+def frame_yaw(demo_args: list[str], frame: int) -> float:
+    """Radians IRPerfGrid renders 1-based frame N at: --yaw + (N - 1) * --yaw-step."""
+    return (requested_yaw(demo_args) or 0.0) + (frame - 1) * requested_yaw_step(demo_args)
+
+
+def off_cardinal(radians: float) -> bool:
+    """True where the engine allocates the per-axis canvases for this yaw."""
+    residual = radians % (math.pi / 2.0)
+    return min(residual, math.pi / 2.0 - residual) > RESIDUAL_YAW_DEADBAND_RAD
+
+
+def wrapped_step_deg(step: float) -> float:
+    """The arc the witness adds per frame: it sums |wrapAnglePi(delta)|."""
+    return abs(math.degrees((step + math.pi) % (2.0 * math.pi) - math.pi))
 
 
 def yaw_pose_mismatch(target: str, demo_args: list[str], witness: RunWitness) -> str | None:
-    """Why the pose the report witnessed contradicts a static --yaw radians, else None."""
-    if not is_static_pose(target, demo_args):
+    """Why the poses the report witnessed contradict --yaw and --yaw-step, else None.
+
+    Frame N renders at --yaw + (N - 1) * --yaw-step for the --auto-profile
+    frame count, so the witness's sample count, first frame, last frame and
+    travelled arc are all determined by the command line.
+    """
+    pose = checked_pose(target, demo_args)
+    if pose is None:
         return None
     if witness.yaw_first_deg is None or witness.pose_samples == 0:
         return "the report witnessed no camera yaw"
-    requested = requested_yaw(demo_args)
-    expected_deg = math.degrees(requested) % 360.0
-    for label, witnessed in (("first", witness.yaw_first_deg), ("last", witness.yaw_last_deg)):
+    frames = requested_frames(demo_args)
+    if frames is not None and witness.pose_samples != frames:
+        return (
+            f"the report witnessed {witness.pose_samples} frames; "
+            f"--auto-profile asked for {frames}"
+        )
+    step = requested_yaw_step(demo_args)
+    steps = witness.pose_samples - 1
+    expected = (("first", 1), ("last", witness.pose_samples))
+    for (label, frame), witnessed in zip(expected, (witness.yaw_first_deg, witness.yaw_last_deg)):
+        expected_deg = math.degrees(frame_yaw(demo_args, frame)) % 360.0
         if not degrees_apart(expected_deg, witnessed) <= YAW_POSE_TOLERANCE_DEG:
             return (
-                f"--yaw {requested} rad is {expected_deg:.3f} deg; "
-                f"the {label} rendered frame was at {witnessed:.3f} deg"
+                f"the {label} rendered frame should be at {expected_deg:.3f} deg "
+                f"(--yaw {requested_yaw(demo_args) or 0.0} rad, --yaw-step {step} rad, "
+                f"{witness.pose_samples} frames); it was at {witnessed:.3f} deg"
             )
-    if not witness.yaw_travel_deg <= YAW_POSE_TOLERANCE_DEG:
-        return f"the camera yawed {witness.yaw_travel_deg:.3f} deg during a static-pose run"
+    expected_travel = wrapped_step_deg(step) * steps
+    tolerance = YAW_POSE_TOLERANCE_DEG if pose == "static" else SWEEP_TRAVEL_TOLERANCE_DEG
+    if not abs(witness.yaw_travel_deg - expected_travel) <= tolerance:
+        return (
+            f"the camera yawed {witness.yaw_travel_deg:.3f} deg over {witness.pose_samples} "
+            f"frames; --yaw-step {step} rad is {expected_travel:.3f} deg"
+        )
     if witness.zoom_first != witness.zoom_last:
         return (
             f"the camera zoom went from {witness.zoom_first} to {witness.zoom_last} "
-            "during a static-pose run"
+            "during the run"
         )
     return None
 
@@ -120,9 +184,9 @@ def overflow_failure(target: str, demo_args: list[str], witness: RunWitness) -> 
             f"the per-axis overflow list dropped up to {witness.overflow_max_dropped} "
             f"entries in a frame (cap {witness.overflow_cap})"
         )
-    if is_static_pose(target, demo_args) and witness.overflow_samples == 0:
-        off_cardinal = requested_yaw(demo_args) % (math.pi / 2.0)
-        if min(off_cardinal, math.pi / 2.0 - off_cardinal) > RESIDUAL_YAW_DEADBAND_RAD:
+    if checked_pose(target, demo_args) is not None and witness.overflow_samples == 0:
+        frames = range(1, max(witness.pose_samples, 1) + 1)
+        if any(off_cardinal(frame_yaw(demo_args, frame)) for frame in frames):
             return "a rotated pose never sampled the per-axis overflow counters"
     return None
 
@@ -132,6 +196,7 @@ def witness_checks(target: str, demo_args: list[str], witness: RunWitness) -> di
         "yaw_pose_mismatch": yaw_pose_mismatch(target, demo_args, witness),
         "overflow_failure": overflow_failure(target, demo_args, witness),
         "yaw_first_deg": witness.yaw_first_deg,
+        "yaw_last_deg": witness.yaw_last_deg,
         "yaw_travel_deg": witness.yaw_travel_deg,
         "zoom_first": witness.zoom_first,
         "zoom_last": witness.zoom_last,
@@ -341,8 +406,9 @@ def main() -> int:
         parser.error("demo arguments must include --auto-profile")
     try:
         requested_yaw(demo_args)
+        requested_yaw_step(demo_args)
     except ValueError as error:
-        parser.error(f"--yaw must be a finite number of radians: {error}")
+        parser.error(f"--yaw and --yaw-step must be finite numbers of radians: {error}")
     root = Path(__file__).resolve().parents[2]
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)

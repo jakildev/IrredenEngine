@@ -62,6 +62,8 @@
 #include <irreden/common/command_suite_capture.hpp>
 
 #include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -156,6 +158,8 @@ struct CliOverrides {
     float zoom_ = 0.5f;
     bool yawSet_ = false;
     float yaw_ = 0.0f;
+    float yawStep_ = 0.0f;
+    bool pivotOrigin_ = false;
     bool yawRamp_ = false;
     bool yawRampCrops_ = false;
     bool yawRampWave_ = false;
@@ -422,6 +426,7 @@ void logFeederClassify(int shotIndex) {
 }
 
 int g_autoProfileFrames = 0;
+int g_yawSweepFrames = 0;
 int g_autoProfileCount = 0;
 int g_autoWarmupFrames = 0;
 
@@ -733,6 +738,17 @@ void registerCliArgs() {
     args.integer("--grid-size", "Grid edge in cells", 64);
     args.number("--zoom", "Initial camera zoom", 0.5f);
     args.number("--yaw", "Initial camera Z-yaw in radians", 0.0f);
+    args.number(
+        "--yaw-step",
+        "Camera Z-yaw advance per rendered frame in radians; frame N renders at "
+        "--yaw + (N - 1) * step",
+        0.0f
+    );
+    args.flag(
+        "--pivot-origin",
+        "Pin the camera yaw pivot at the grid centre so the view depends on the yaw alone "
+        "(implied by --yaw-step)"
+    );
     args.flag("--yaw-ramp", "Rotated-solidity validation sweep (#1882/#1883)");
     args.flag(
         "--yaw-ramp-crops",
@@ -813,6 +829,16 @@ void readCliArgs() {
     if (args.wasProvided("--yaw")) {
         g_cliOverrides.yaw_ = args.getFloat("--yaw");
         g_cliOverrides.yawSet_ = true;
+    }
+    if (args.wasProvided("--yaw-step")) {
+        g_cliOverrides.yawStep_ = args.getFloat("--yaw-step");
+    }
+    g_cliOverrides.pivotOrigin_ = args.getFlag("--pivot-origin");
+    // An auto-screenshot shot table sets the camera yaw of every shot, so with
+    // --yaw-step two writers would fight over it each frame.
+    if (g_cliOverrides.yawStep_ != 0.0f && args.autoScreenshotWarmupFrames() > 0) {
+        std::fprintf(stderr, "IRPerfGrid: --yaw-step cannot be combined with --auto-screenshot\n");
+        std::exit(2);
     }
     g_cliOverrides.yawRamp_ = args.getFlag("--yaw-ramp");
     g_cliOverrides.yawRampCrops_ = args.getFlag("--yaw-ramp-crops");
@@ -1334,6 +1360,16 @@ int main(int argc, char **argv) {
 
     IRRender::setCameraPosition2DIso(vec2(0.0f, 0.0f));
     IRRender::setCameraZoom(g_settings.initialZoom_);
+    // The default pivot is latched from the surface under the viewport centre
+    // on settled frames and falls back to the iso-depth-0 point before the first
+    // derive, so an unpinned yaw frames a different part of the world depending
+    // on which frames settled: the same yaw, a different view and visible count.
+    // The grid is centred on the origin, so pinning there keeps the scene
+    // centred at every yaw and makes the view a function of the yaw alone. A
+    // driven yaw always pins; a static --yaw pins on request.
+    if (g_cliOverrides.pivotOrigin_ || g_cliOverrides.yawStep_ != 0.0f) {
+        IRRender::setRotationPivotFocus(vec3(0.0f));
+    }
     IRPrefab::Camera::setYaw(g_settings.initialYaw_);
     IR_LOG_INFO(
         "Initial camera zoom: requested={}, actual={}",
@@ -1437,6 +1473,26 @@ void initSystems() {
                 "DepthProbe",
                 [](C_Camera &) {},
                 [probePixel]() { IRPrefab::DepthProbe::logCompositeDepth(probePixel); }
+            )
+        );
+    }
+
+    // Stepped per rendered frame, not per second, so every run of a sweep
+    // renders the same poses whatever its frame time, and as an absolute yaw so
+    // the pose of frame N carries no accumulated rounding. It runs after the
+    // frame's render systems: the yaw it sets is the next frame's.
+    if (g_cliOverrides.yawStep_ != 0.0f) {
+        renderPipeline.push_back(
+            IRSystem::createSystem<C_Camera>(
+                "YawSweep",
+                [](C_Camera &) {},
+                []() {
+                    ++g_yawSweepFrames;
+                    IRPrefab::Camera::setYaw(
+                        g_settings.initialYaw_ +
+                        static_cast<float>(g_yawSweepFrames) * g_cliOverrides.yawStep_
+                    );
+                }
             )
         );
     }

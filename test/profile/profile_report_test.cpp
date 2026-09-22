@@ -73,6 +73,16 @@ TEST(ProfileReportWitness, WitnessSectionIsWrittenEvenWhenNothingWasSampled) {
     EXPECT_EQ(empty.find("--- Frame times"), std::string::npos);
 }
 
+TEST(ProfileReportWitness, UpdateTickSeriesIsWrittenInFrameOrder) {
+    IRProfile::ProfileReport report;
+    report.frameTimesMs_ = {40.0f, 700.0f, 160.0f};
+    report.frameUpdateTicks_ = {2, 8, 8};
+    report.totalFrames_ = 3;
+    const std::string text = writeAndRead(report);
+    EXPECT_NE(text.find("--- Update ticks (per frame, in order) ---\n2 8 8\n"), std::string::npos)
+        << text;
+}
+
 TEST(ProfileReportWitness, ALongRunKeepsItsSteadyLineAndDropsItsSeries) {
     IRProfile::ProfileReport report;
     report.frameTimesMs_.assign(IRProfile::kProfileSeriesMaxFrames + 1, 16.0f);

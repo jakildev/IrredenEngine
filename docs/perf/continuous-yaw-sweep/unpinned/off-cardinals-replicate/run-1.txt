@@ -1,0 +1,89 @@
+=== PROFILE REPORT (300 frames) ===
+Frame time:   avg=42.11ms   p50=41.36ms   p95=46.78ms   p99=59.72ms   min=37.97ms   max=134.33ms
+Steady frame time (first 75 of 300 frames excluded):   avg=42.02ms   p50=41.77ms   p95=46.44ms   p99=54.53ms   min=37.97ms   max=59.72ms
+Update ticks: avg=2.5/frame  max=8
+Entity count: 1000177 (42 archetypes)
+
+--- Per-system timing (by pipeline, then total descending) ---
+Pipeline System                                Total(ms)   Avg(ms)   Min(ms)   Max(ms)   Calls   Entities
+INPUT    InputKeyMouse                              3.48     0.005     0.002     0.013     755      94375
+UPDATE   UpdateVoxelSetChildren                   943.00     1.249     1.148    18.019     755  755000000
+UPDATE   PropagateTransform                       707.01     0.936     0.682     2.118     755  755098905
+UPDATE   ModifierDecay                            267.33     0.354     0.311     1.077     755  755000000
+UPDATE   FogRevealEval                              2.53     0.003     0.002     0.008     755          0
+UPDATE   PeriodicIdlePositionOffset                 0.77     0.001     0.000     0.004     755          0
+UPDATE   PeriodicIdle                               0.32     0.000     0.000     0.001     755          0
+RENDER   SingleVoxelToCanvasFirst                1400.57     4.669     4.096    51.504     300        300
+RENDER   BuildLightOcclusionGrid                  446.20     1.487     1.368     1.689     300        300
+RENDER   CanvasToFramebuffer                       34.08     0.114     0.078     0.768     300        900
+RENDER   LightingToTrixel                          14.77     0.049     0.042     0.174     300        300
+RENDER   ComputeVoxelAO                            13.56     0.045     0.038     0.153     300        300
+RENDER   ComputeLightVolume                        11.37     0.038     0.032     0.123     300        300
+RENDER   ComputeSunShadow                           7.95     0.026     0.023     0.087     300        300
+RENDER   TextToTrixel                               5.60     0.019     0.006     3.307     300          0
+RENDER   ResolvePerAxisScreenDepth                  5.51     0.018     0.015     0.307     300        600
+RENDER   FramebufferToScreen                        4.57     0.015     0.012     0.108     300        300
+RENDER   BuildDistanceHiZ                           4.40     0.015     0.013     0.078     300        600
+RENDER   FogToTrixel                                2.53     0.008     0.007     0.055     300        300
+RENDER   BakeSunShadowMap                           2.36     0.008     0.006     0.012     300        300
+RENDER   ShapesToTrixel                             1.95     0.006     0.004     0.012     300          0
+RENDER   AutoProfile                                1.10     0.004     0.003     0.005     300       1200
+RENDER   CameraMousePan                             1.05     0.004     0.002     0.005     300        300
+RENDER   Camera                                     0.73     0.002     0.002     0.003     300        300
+RENDER   YawSweep                                   0.60     0.002     0.002     0.004     300        300
+RENDER   CameraMouseRotate                          0.43     0.001     0.001     0.002     300        300
+RENDER   CameraKeyDragPan                           0.40     0.001     0.001     0.002     300        300
+RENDER   CameraKeyDragRotate                        0.28     0.001     0.001     0.002     300        300
+
+--- GPU frame timing ---
+Envelope includes inter-submission gaps; buffer spans include GPU stalls.
+Neither is GPU busy time. commandBuffers counts valid frames only.
+Coverage: supported=1 attempted=300 valid=300 invalid=0 commandBuffers=300
+Metric Avg(ms) Min(ms) Max(ms) Samples
+envelope 28.377 25.876 49.104 300
+commandBufferSpans 28.377 25.876 49.104 300
+
+--- CPU phase timing ---
+Phase                                  Avg(ms)   Max(ms) Samples
+ComputeLightVolume::Clear                0.004     0.044     300
+ComputeLightVolume::Populate             0.018     0.067     300
+ComputeLightVolume::Upload               0.013     0.019     300
+
+--- Run witness ---
+Camera yaw: first=0.600deg last=-0.600deg travel=358.800deg samples=300
+Camera zoom: first=4.000 last=4.000
+Per-axis overflow: maxEntries=2213946 maxDropped=0 cap=8388608 samples=300
+
+--- Frame times (ms, in order) ---
+134.333 61.614 43.952 43.190 41.360 42.786 40.075 42.571 40.195 41.910
+39.034 42.120 38.769 41.911 39.600 39.429 42.117 39.066 41.277 39.179
+41.813 39.367 39.496 42.324 39.101 41.554 38.755 39.030 41.265 39.041
+42.103 38.657 41.983 42.328 42.651 39.793 40.998 57.425 42.783 42.097
+39.084 41.269 38.736 41.894 39.437 38.678 41.337 38.860 41.011 38.603
+38.765 42.043 38.255 41.101 38.662 38.760 40.854 38.562 39.306 41.260
+38.197 41.509 39.052 38.915 41.601 39.369 42.507 39.108 38.537 41.249
+39.299 42.562 40.995 44.719 47.731 49.157 44.471 42.716 40.518 42.438
+39.244 41.911 38.912 41.964 38.925 38.754 41.475 38.381 41.083 38.533
+38.656 40.904 40.049 38.834 41.246 38.158 40.290 38.005 38.014 40.965
+38.234 38.887 40.594 38.129 37.994 40.382 38.413 37.971 42.003 38.254
+38.701 42.108 55.043 46.438 41.112 43.079 39.908 42.221 39.973 42.547
+39.820 43.239 39.764 42.656 39.919 42.826 40.133 42.093 40.395 42.608
+39.963 41.955 40.123 40.310 42.725 40.902 43.520 40.223 42.868 40.573
+45.587 42.950 40.998 43.104 40.445 43.685 41.819 44.230 44.122 51.546
+53.484 46.922 44.565 44.321 44.768 42.751 44.113 40.950 43.479 43.179
+40.430 43.914 42.037 43.507 40.368 43.310 40.463 43.001 40.586 43.696
+40.957 43.567 40.318 43.266 43.402 43.925 43.001 40.171 42.963 40.562
+42.874 40.801 43.843 40.928 43.429 41.659 44.170 59.717 44.553 44.258
+43.618 40.121 42.567 39.925 39.892 42.393 39.997 41.960 39.545 42.407
+39.794 42.926 39.969 42.792 39.768 42.026 39.795 39.798 42.802 40.237
+43.871 39.819 43.336 39.962 42.791 40.800 43.550 45.996 40.513 42.941
+40.979 43.366 41.597 45.661 51.031 51.801 46.779 43.743 41.772 44.021
+40.654 43.510 40.705 42.640 40.646 42.846 40.505 42.672 40.024 43.464
+40.929 42.141 40.272 42.933 39.758 42.779 39.958 41.838 40.823 42.638
+40.739 42.327 39.703 42.542 40.973 42.566 40.725 43.171 40.306 42.587
+40.722 43.550 54.527 43.139 45.221 42.339 39.777 41.900 39.656 41.540
+39.590 39.434 41.894 39.444 42.135 39.697 41.738 40.055 42.369 38.989
+39.372 41.681 39.358 42.857 39.579 42.202 39.093 39.452 41.754 39.933
+42.417 41.424 42.651 39.666 42.837 40.650 43.199 40.358 46.013 48.360
+
+=== END REPORT ===
