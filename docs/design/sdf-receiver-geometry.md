@@ -1,0 +1,92 @@
+# SDF receiver geometry through the trixel pipeline
+
+The smooth SDF receiver cannot recover its exact surface from the existing
+integer depth and display slot alone. The display slot is not an analytical
+surface normal. This matters for shadow comparisons and for geometric shadow
+boundaries within a displayed trixel.
+
+## Executable evidence
+
+Run `python3 scripts/tests/test_render_sdf_surface_contract.py`. It extracts
+`boxSlabIntersectYaw`, `slabFromLinear`, `stableCeilToInt` and
+`encodeDepthWithFace` from the actual GLSL and Metal sources and executes them
+as scalar C++. An independent double-precision world-ray/slab intersection
+checks hit/miss, entry/exit, and whether the entry lies on the finite box.
+
+Each backend covers 240,000 rays: a full turn in 11.25° steps, offsets of
+±0.00001 radians around each pose, positive/negative screen coordinates, and
+densities 1, 2, 4 and 8. Both report 134,388 hits and 105,612 misses, with
+maximum entry/exit depth error about 0.0000116. Both X/Y normal polarities and
+negative Z are observed. Camera yaw alone does not expose positive Z; full
+object rotation, curved surfaces, hollow shapes and GPU execution remain
+outside this scalar test. There is no new image tolerance.
+
+Positive controls reverse yaw polarity, round the continuous entry depth, or
+accept an out-of-bounds parallel slab. Each altered shader fails the oracle.
+The suite is discovered by the render-harness CI runner. Shader-only edits
+trigger that workflow, which requires a C++ compiler and an unskipped SDF
+suite. This validates the intersection helpers, not production shadow or
+presentation correctness.
+
+## Why the stored value is insufficient
+
+For screen coordinates `(i,j)` and view depth `d`, the view ray is
+
+```
+p(d) = (-i/2 - j/6, i/2 - j/6, j/3) + d * (1,1,1)/3
+world(d) = Rz(yaw) * p(d)
+```
+
+The box interval solver retains continuous entry/exit depths. The producer's
+subsequent integer depth loses the fractional entry. In the test, at screen
+origin and yaw zero, two slab boxes have half extents
+
+```
+A = (density + 0.1, 5*density, 6*density)
+B = (5*density, density + 0.2, 6*density)
+```
+
+Their entries are `-3*density - 0.3` and `-3*density - 0.6`, on negative X and
+negative Y respectively. Both quantize to `-3*density`. For any common display
+slot, the production encoder returns the same value. The test checks this at
+all four densities. These extents are inputs to the slab helper; they are not
+a proposal to change the SDF producer's existing half-cell boundary convention.
+
+The alias is already present at the source sample, before the six-slot emission
+spreads a common base depth over neighboring storage locations. A slot-derived
+normal, a constant position offset, or a different shadow filter cannot invert
+this many-to-one mapping. Additional winning-surface information is required
+for exact analytical recovery. The
+[receiver/query factorial](../pr-screenshots/codex/sdf-receiver-factorial/README.md)
+shows why changing receiver or sampler independently is insufficient in the
+rendered floor fixture.
+
+## Implementation sequence and constraints
+
+1. Preserve surface provenance with the selected visible winner. Smooth SDF
+   samples need a continuous surface description; voxelized SDF samples need
+   their selected cell faces. Do not turn legitimate voxel steps into analytical
+   surfaces. A descriptor reference can recover analytical geometry, while a
+   planar surface can use a plane equation; the storage choice is still open.
+2. Resolve equal-depth ownership deterministically before publishing geometry,
+   color and identity together. The current color/ID pass checks the depth key,
+   so equal keys alone do not grant a unique writer. Adding independently raced
+   normal/depth stores would permit geometry from different winners to mix.
+3. Retain receiver data until its last consumer. The current shape upload buffer
+   is reused across canvases; a fragment cannot blindly refer to a previous
+   canvas's descriptor index after that upload is replaced. Prefer storage tied
+   to visible canvas winners over allocation proportional to world population,
+   and never scan every shape per fragment.
+4. Evaluate the receiver at the fragment's actual projected position. Carry
+   finite shadow boundaries through presentation; one visibility value per
+   trixel cannot express an edge that crosses its interior. Keep the selected
+   caster representation and exact receiver geometry consistent.
+5. Validate mixed modes, overlaps and depth ties, transformed canvases, all yaw
+   quadrants, density changes, shadows disabled and resource reuse. Compare
+   exact-ray controls with the unchanged strict image gates on both backends;
+   measure visible-sample memory and GPU time before expanding the path.
+
+Future geometry work must preserve the SDF fog whole-body carrier from
+`SHAPE_FLAG_FOG_WHOLE_BODY_EXEMPT` through `encodeEntityIdFogWholeBody`.
+This is a correctness prerequisite, not a claim that the remaining floor
+regression or finite shadow-map coverage is fixed.

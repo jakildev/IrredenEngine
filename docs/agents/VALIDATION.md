@@ -19,6 +19,7 @@ prove is not done until one exists.
 | Instruction size | no agent-facing instruction file grew past its budget; an introduced excess of up to 10 lines is a `::warning` annotation, more fails; budget raises are printed | `python3 scripts/lint_instruction_size.py [--against <ref>] [--warn-band <lines>]` | instruction-size.yml on every push and PR, measured against the tree it was built on (PR: first parent; push: previous tip) |
 | Format | clang-format on the branch's changed lines | `fleet-build --target format-changed`; no-configure path `cmake -DPROJECT_ROOT=$PWD -DCLANG_FORMAT_BIN=<bin> [-DFORMAT_DIFF_BASE=<commit>] -P cmake/run_clang_format_changed_standalone.cmake` | format-check.yml (changed lines only, clang-format pinned) |
 | Render regression | a demo's shots match committed references | `render-verify` skill; `python3 scripts/render-verify.py --target <Demo>` | render-harness-tests.yml tests the harness itself |
+| SDF surface contract | GLSL and Metal box-interval helpers agree with a double-precision ray oracle across yaw and density; stored-depth and slot aliases remain distinct surfaces | `python3 scripts/tests/test_render_sdf_surface_contract.py` (needs `c++`) | render-harness-tests.yml on `scripts/tests/**` and `engine/render/src/shaders/**` |
 | GUI behaviour | GUI-ASSERT shots pass for a creation | `gui-verify` skill; `python3 scripts/gui-verify.py <Creation>` | none |
 | Cull regression | the live cull drops no on-screen content, and the freeze that check rests on is actually engaged | `python3 scripts/cull-verify.py` (needs a GL/Metal host) | none for the harness; render-harness-tests.yml runs its freeze-guard assertion arms hermetically |
 | Per-voxel occlusion cull | identity: cull-off, chunk+per-voxel and chunk-only render byte-identical to the `perf_grid` reference set; fire: the per-voxel refine still reduces the visible count | `python3 scripts/render-verify.py --target IRPerfGrid` (21 checks) and `python3 scripts/occlusion-fire-verify.py` — both, never one alone (needs a GL/Metal host) | render-harness-tests.yml runs the fire gate's marginal / exit-code arms and the manifest `demo_args` threading hermetically |
@@ -62,8 +63,10 @@ fails there. `render-verify`, the comparator, `verify_common`, every
 `*-verify.py`, and every metric a committed manifest names are never eligible —
 the gating path must run on a bare host. A host without Pillow runs the
 exception tier with `python3 -m pip install pillow`; CI pins the version in
-`render-harness-tests.yml`. `run_all.sh` prints each suite's test count, so a
-suite that skipped or never ran reads differently from one that passed.
+`render-harness-tests.yml`. Shader contract suites also require `c++`: a host
+without it reports the suite as skipped, and the CI workflow rejects that
+result. `run_all.sh` prints each suite's test count, so a suite that skipped or
+never ran reads differently from one that passed.
 
 ## Default-off features need a positive enabled-path test
 
