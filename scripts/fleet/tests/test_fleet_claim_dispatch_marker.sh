@@ -192,10 +192,10 @@ echo "T9: fidelity — every lock arm in the live case block is in the stamping 
 stamp_block=$(sed -n '/^_stamp_dispatch_outcome()/,$p' "$CLAIM")
 lock_arms=$(grep -oE '^    (claim|release|stack|release-stack|reserve|release-worktree|[a-z-]+-(claim|release))\)' "$CLAIM" \
     | tr -d ' )' | sort -u)
-# 8 acquire (claim, stack, reserve, {review,resolving,amending,steward,planning}-claim)
-# + 8 release (release, release-stack, release-worktree, {review,resolving,
+# 9 acquire (claim, stack, reserve, {pr,review,resolving,amending,steward,planning}-claim)
+# + 9 release (release, release-stack, release-worktree, {pr,review,resolving,
 # amending,steward,planning}-release).
-assert_eq "$(printf '%s\n' "$lock_arms" | grep -c .)" "16" \
+assert_eq "$(printf '%s\n' "$lock_arms" | grep -c .)" "18" \
     "enumerated the expected number of lock arms (update this suite when one is added)"
 missing=""
 while read -r arm; do

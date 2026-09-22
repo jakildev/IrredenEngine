@@ -2813,7 +2813,7 @@ void applyCheckerboard(C_VoxelSetNew &voxelSet, Color baseColor) {
 }
 
 // Bounding half-extent mirroring the GPU formula in
-// system_shapes_to_trixel.hpp / c_shapes_to_trixel.glsl, so that CPU depth
+// system_shapes_to_trixel.hpp / c_shapes_to_trixel_body.glsl, so that CPU depth
 // normalization uses the exact same range as the GPU shader.
 // Classic HSV->RGB (h,s,v in [0,1]) matching the shader's hsvToRgb helper.
 vec3 hsvToRgbCpu(vec3 c) {
@@ -2824,7 +2824,7 @@ vec3 hsvToRgbCpu(vec3 c) {
 
 // Color each active voxel by its LOCAL iso-depth (x+y+z), normalized to
 // [0,1] across the shape's bounding dExtent.  Matches the GPU depth-color
-// path in c_shapes_to_trixel.glsl exactly, so the voxel-pool mirror is
+// path in c_shapes_to_trixel_body.glsl exactly, so the voxel-pool mirror is
 // indistinguishable from the SDF render.
 void applyDepthColor(C_VoxelSetNew &voxelSet, IRRender::ShapeType type, vec4 sdfParams) {
     auto sdfType = static_cast<IRMath::SDF::ShapeType>(type);

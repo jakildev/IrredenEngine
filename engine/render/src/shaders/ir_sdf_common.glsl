@@ -5,7 +5,7 @@
 // distances for any given primitive.
 //
 // Anyone touching one branch of `evaluateSDF` must update both
-// `c_shapes_to_trixel.glsl` and `c_compute_sun_shadow.glsl` consumers and the
+// `c_shapes_to_trixel_body.glsl` and `c_compute_sun_shadow.glsl` consumers and the
 // Metal mirror in `metal/ir_sdf_common.metal`. Adding a new shape:
 //   1. add the value in IRMath::SDF::ShapeType
 //   2. add the SDF primitive function here (plus Metal mirror)

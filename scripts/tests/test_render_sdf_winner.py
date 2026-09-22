@@ -53,7 +53,7 @@ class SdfWinnerTest(unittest.TestCase):
     def test_unique_owners_and_publish_mutations(self):
         for suffix, folder in (("glsl", ""), ("metal", "metal/")):
             source = (ROOT / "engine/render/src/shaders" /
-                      f"{folder}c_shapes_to_trixel.{suffix}").read_text()
+                      f"{folder}c_shapes_to_trixel_body.{suffix}").read_text()
             key = re.search(r"const uint sampleOwner = ([^;]+);", source).group(1)
             predicate = re.search(r"if \((depthEncoded == stored &&.*?)\) \{",
                                   source, re.DOTALL).group(1)
@@ -97,23 +97,53 @@ class SdfWinnerTest(unittest.TestCase):
                                        capture_output=True, text=True)
                 self.assertEqual(build.returncode == 0, not mutate, build.stderr)
 
+    def test_publish_work_excluded_from_other_variants(self):
+        for suffix, folder in (("glsl", ""), ("metal", "metal/")):
+            source = (ROOT / "engine/render/src/shaders" /
+                      f"{folder}c_shapes_to_trixel_body.{suffix}").read_text()
+            source = re.sub(r"^#(?:include|version).*", "", source, flags=re.MULTILINE)
+            for mutate in (False, True):
+                body = source
+                if mutate:
+                    body, replacements = re.subn(
+                        r"#if IR_SHAPE_PASS == 1(\n    (?:vec4|float4) baseColor)",
+                        r"#if 1\1", body)
+                    self.assertEqual(replacements, 1)
+                for pass_index in range(4):
+                    with self.subTest(backend=suffix, mutation=mutate, variant=pass_index):
+                        result = subprocess.run(
+                            [COMPILER, "-E", "-P", "-x", "c", "-",
+                             f"-DIR_SHAPE_PASS={pass_index}"],
+                            input=body, capture_output=True, text=True)
+                        self.assertEqual(result.returncode, 0, result.stderr)
+                        for token in ("baseColor", "packedEntityId", "xrayOccluded"):
+                            self.assertEqual(token in result.stdout, mutate or pass_index == 1)
+
     def test_election_and_clear_order(self):
         system = (ROOT / "engine/prefabs/irreden/render/systems" /
                   "system_shapes_to_trixel.hpp").read_text()
         self.assertLess(system.index("memoryBarrier(BarrierType::ALL)"),
                         system.index("fillBuffer(winnerBuffer_, bytes, 0xFF)"))
-        depth = system.index("frameData_.passIndex = 0;")
-        election = system.index("frameData_.passIndex = 3;", depth)
-        publish = system.index("frameData_.passIndex = 1;", election)
+        depth = system.index("shapeDepthProgram_->use()")
+        election = system.index("shapeOwnerProgram_->use()", depth)
+        publish = system.index("shapePublishProgram_->use()", election)
         self.assertIn("BarrierType::SHADER_IMAGE_ACCESS", system[depth:election])
         self.assertIn("BarrierType::SHADER_STORAGE", system[election:publish])
+        self.assertEqual(system.count("shapesFrameDataBuf_->subData"), 1)
         for suffix, folder in (("glsl", ""), ("metal", "metal/")):
             source = (ROOT / "engine/render/src/shaders" /
-                      f"{folder}c_shapes_to_trixel.{suffix}").read_text()
-            start = source.index("passIndex == 3")
-            body = source[start:source.index("else if", start)]
+                      f"{folder}c_shapes_to_trixel_body.{suffix}").read_text()
+            self.assertNotIn("passIndex ==", source)
+            start = source.index("#if IR_SHAPE_PASS == 3")
+            body = source[start:source.index("#elif", start)]
             self.assertIn("depthEncoded ==", body)
             self.assertRegex(body, r"atomic(?:Min|_fetch_min_explicit).*sampleOwners")
+            for name, pass_index in (("depth", 0), ("publish", 1),
+                                     ("caster", 2), ("owner", 3)):
+                wrapper = (ROOT / "engine/render/src/shaders" / folder /
+                           f"c_shapes_to_trixel_{name}.{suffix}").read_text()
+                self.assertIn(f"#define IR_SHAPE_PASS {pass_index}", wrapper)
+                self.assertIn(f'#include "c_shapes_to_trixel_body.{suffix}"', wrapper)
 
 
 if __name__ == "__main__":
