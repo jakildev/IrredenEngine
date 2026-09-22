@@ -4,14 +4,10 @@ Canonical, repo-neutral meaning, owner, and transitions for every `fleet:*`
 and `human:*` label. Both repos consume it by reference
 ([`docs/design/claude-md-sharing.md`](../design/claude-md-sharing.md)).
 
-Adding, removing, or re-owning a label edits three things in one commit:
-this file, `scripts/fleet/fleet-labels` (creates the GitHub labels), and
-[`fleet-state-machine.json`](fleet-state-machine.json) (the node set plus
-the named edges `fleet-transition` applies). `fleet-labels --check` diffs
-the catalog against the JSON node set; `test_fleet_labels_check.sh` runs it
-on every `fleet-tests.yml` run, so drift fails CI. Check a branch with
-`bash scripts/fleet/fleet-labels --check` — the `~/bin` symlink resolves its
-inputs from the main clone.
+Static catalog labels belong here, in `scripts/fleet/fleet-labels` and
+[`fleet-state-machine.json`](fleet-state-machine.json). Dynamic families declare semantics here; their owner creates concrete names.
+`bash scripts/fleet/fleet-labels --check` compares the catalog and JSON; CI runs it.
+Run from the worktree: the installed symlink uses the main clone.
 
 ---
 
@@ -146,6 +142,10 @@ tick.
   never auto-strips either.
 - `fleet:in-progress` — a worker holds the issue's claim; set and retained
   with `fleet:claim-*` (below).
+
+## Campaign membership
+
+`fleet:campaign-<slug>` is contributor-authored membership, not a claim or queue state; it survives merge. See [shared participation](campaign-protocol.md#shared-participation).
 
 ## Claims (dynamic, script-owned)
 

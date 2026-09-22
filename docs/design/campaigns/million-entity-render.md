@@ -74,6 +74,26 @@ D1 slices touch only tooling and docs, so they may interleave with D0.
 - Follow-ups outside the current direction are filed with
   `**Objective:** million-entity-render` and listed below.
 
+## Contributor lanes
+
+The interactive Codex session in `codex-shadow-render` participates via
+`fleet:campaign-million-entity-render`; membership does not transfer ownership.
+Its canonical detail stays in [rendering-audit-todo.md](../rendering-audit-todo.md).
+
+- **Open work:** #3632 (continuous source-face sunlight) and #3635 (cascade
+  receiver coordinates), both claimed. #3632 needs merge-conflict resolution
+  and investigation of the Linux perf run that produced no profile report.
+  #3635 is not approved: the strict floor edge at 180° worsens from 12/266 to
+  19/356 missing/excess pixels. Neither is accepted as a floor-edge fix.
+- **Next owned scope:** exact SDF receiver geometry and finite projected
+  boundaries through presentation. Smoothness or steps must follow the selected
+  caster and receiver geometry, without blur, inflated footprints or compensating
+  bias. Preserve the strict gates and validate mixed render-mode pairs.
+- **Coordination:** the driver is progressing its profiling stack; consult its
+  latest open campaign PR for its current `## Now` before editing shared files.
+  #3644 supplies the every-iteration reconciliation workflow; explicit membership
+  extends that workflow to interactive contributors, rather than replacing it.
+
 ## Ledger
 
 | Date | Entry |
