@@ -213,6 +213,11 @@ struct RenderRunWitness {
     std::uint32_t maxOverflowEntries_ = 0;
     std::uint32_t maxOverflowDropped_ = 0;
     std::uint32_t overflowCap_ = 0;
+    // CPU time inside the per-axis canvas allocate and release calls, recorded
+    // on each allocation-state transition and not every frame; a GPU driver may
+    // defer part of an allocation's cost to first use.
+    CpuPhaseTiming perAxisAllocate_;
+    CpuPhaseTiming perAxisRelease_;
 
     void recordPose(float yaw, float zoom) {
         if (poseSamples_ == 0) {

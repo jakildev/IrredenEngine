@@ -111,14 +111,71 @@ the manifest after the run.
    their neighbours, and those frames are its p99 (57 ms); the sweep through
    the cardinals steps over them (41.0 ms at 44.4°, 42.5 at 45.6°). The
    diagonal is also where the overflow lane more than doubles. The per-axis
-   canvases are released on a cardinal frame and allocated again on the next,
-   which is the first candidate for the crossing frame and is not separated
-   from the raster-path switch here.
+   canvases are released on a cardinal frame and allocated again on the next;
+   § The crossing frame, split shows the long frame goes away when they stay
+   resident and live, and does not yet separate re-allocation from re-entering
+   the per-axis path.
 4. **The fixed updates are worth about 3 ms of a 41 ms frame.** With the clamp
    at one update a frame the sweep reads 37.88 ms against 41.11 at 2.5, GPU
    frame envelope unchanged. That is D5's first number at this fixture: the
    objective's "≤ 1 update per rendered frame" row is worth about 3 ms here
    and the other 38 ms is rendering, 28 of them on the GPU.
+
+## The crossing frame, split
+
+Same host, build, scene and pinned sweep as above, host load 2.5 to 3.0. The
+per-axis canvases' `allocate` and `release` calls are timed into the report's
+CPU phase table (`PerAxisCanvas::Allocate`, `PerAxisCanvas::Release`), on each
+allocation-state transition. The experiment is a local patch, never
+committed, that skips the release, so the sets allocated on the first rotated
+frame stay resident for the whole turn:
+
+```diff
+     } else {
++        return;
+         const IRRender::TimePoint start = IRRender::SteadyClock::now();
+         axes.release();
+```
+
+| Through the cardinals, pinned | Frame on the cardinal ms | First rotated frame after ms | Second ms | Those three frames, mean ms | Steady p99 ms | 300 frames, s | Allocations / releases |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Lifecycle as it is | 34.6 / 38.9 / 39.0 | **88.0 / 77.3 / 84.7** | 46.0 / 47.7 / 47.6 | 167.9 | 77.28 | 12.11 | 4 / 3 |
+| Lifecycle as it is, replicate | 37.4 / 40.1 / 38.8 | **77.7 / 92.9 / 78.3** | 46.4 / 51.2 / 47.7 | 170.2 | 77.74 | 12.35 | 4 / 3 |
+| Release disabled | 55.9 / 57.3 / 59.2 | **47.5 / 48.6 / 45.6** | 44.3 / 43.6 / 42.9 | 148.3 | 55.86 | 12.17 | 1 / 0 |
+| Release disabled, replicate | 58.7 / 59.9 / 57.0 | **46.0 / 48.6 / 48.5** | 42.1 / 41.8 / 50.5 | 151.0 | 58.66 | 12.42 | 1 / 0 |
+
+(Three values a cell: the 90°, 180° and 270° crossings. The arms were
+interleaved within 64 seconds of each other.)
+
+- **With the sets left resident and live, the long frame goes away.** The
+  first rotated frame after a cardinal costs 46 to 49 ms, not 77 to 93, six
+  crossings of six in each arm, and the sweep's p99 falls from 77 to 56 to
+  59 ms. Frame 2, the first allocation in every arm, reads 95.8 / 102.2 /
+  102.0 / 95.7 ms, so the patched binary is otherwise the same.
+- **The experiment removes two things at once.** With the release skipped,
+  `isAllocated()` never turns false, so the cardinal frame keeps running the
+  per-axis path and the frame after it re-enters nothing. It cannot tell
+  release-and-re-allocation from re-entering the per-axis path (any state
+  that path rebuilds on its first live frame). A sets-resident arm that still
+  takes the cardinal fast path, which is the mechanism, is what separates
+  them.
+- **The net saving is about 19 ms a crossing, and nothing over the turn.**
+  About 20 ms reappears on the experiment's own cardinal frame (56 to 60 ms
+  against 35 to 40), where the per-axis path runs at zero residual: the
+  overflow lane's peak is 2,606,838 entries in both release-disabled runs
+  against 971,724 as it is, more than the 2,208,000 of an exact diagonal, and
+  only the cardinal frames can have produced it. Over the three frames of a
+  crossing the arms differ by 167.9 and 170.2 ms against 148.3 and 151.0, and
+  over all 300 frames by nothing outside the replicate spread. What moves is
+  the tail. No arm here has both a fast-path cardinal frame and a cheap frame
+  after it, so "about 37 ms on a cardinal and about 47 after it" is a
+  projection for the mechanism and not a measurement.
+- **Where the time goes is not located.** `allocate` costs 1.3 ms and
+  `release` 0.7 to 1.1 ms of CPU, and the worst GPU frame envelope is 42 to
+  48 ms in all four arms, so the extra 35 ms or more of a 77 to 93 ms frame
+  is inside neither the calls nor the command-buffer span. A driver that
+  defers an allocation's cost to first use would look like this; the report
+  has no per-frame CPU and GPU split to say so.
 
 ## What this does not say
 
@@ -130,15 +187,24 @@ the manifest after the run.
 - What the unpinned sweep's long frame at 91.2° is. It is not a pivot
   re-derive, by the latch's own policy and test. This document establishes
   only that a fixture which drives the yaw must pin the pivot.
+- The release-disabled replicate has one 113.0 ms frame at 159.6°, not a
+  cardinal and larger than any crossing frame in the table, followed by a
+  55 ms one. It is unexplained, and the steady p99 over 225 frames (the third
+  largest value) hides it.
 - The sweep arm of `million_controls.py` has been dry-run and its arguments
   run by hand; it has not run end to end across a Debug and a Release tree.
 
 ## Next measurements
 
-1. Separate the crossing frame: per-axis release and re-allocation against the
-   raster-path switch, since those three frames are the objective's p99 under
-   the sweep it names.
-2. The sweep in the three-round quiet-host matrix, and a longer window than
+1. The mechanism as the separating arm: keep the per-axis canvases resident
+   across a crossing while reporting them not live on the cardinal frame, so
+   `isAllocated()` keeps its meaning for the seven systems that read it, and
+   re-run the pinned sweep. A cheap frame after a fast-path cardinal frame
+   says the cost was the re-allocation; a long one says it is the path
+   re-entry. Acceptance either way includes nine-yaw CanvasStress identity.
+2. The exact diagonals, the sweep's other tail: what doubles the overflow lane
+   at 45° and costs 15 ms.
+3. The sweep in the three-round quiet-host matrix, and a longer window than
    one turn for the tail.
-3. The static 0° and 45° arms again with `--pivot-origin`, so the matrix's
+4. The static 0° and 45° arms again with `--pivot-origin`, so the matrix's
    three poses share one framing.

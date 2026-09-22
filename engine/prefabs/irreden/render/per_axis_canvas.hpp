@@ -15,6 +15,7 @@
 #include <irreden/render/camera.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
+#include <irreden/render/gpu_stage_timing.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -78,9 +79,17 @@ inline void syncAllocationToCameraYaw() {
         if (!cardinal.has_value()) {
             return;
         }
+        const IRRender::TimePoint start = IRRender::SteadyClock::now();
         detail::allocatePerAxisForCanvas(axes, *cardinal.value());
+        IRRender::renderRunWitness().perAxisAllocate_.record(
+            IRRender::elapsedMs(start, IRRender::SteadyClock::now())
+        );
     } else {
+        const IRRender::TimePoint start = IRRender::SteadyClock::now();
         axes.release();
+        IRRender::renderRunWitness().perAxisRelease_.record(
+            IRRender::elapsedMs(start, IRRender::SteadyClock::now())
+        );
     }
 }
 
