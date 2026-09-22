@@ -542,6 +542,16 @@ constexpr IRVideo::AutoScreenshotShot kEdgeZCostCeilingShots[] = {
 // voxels are painted rather than dropped reads a large painted fraction.
 bool g_fogDebugColor = false; // --fog-debug-color
 constexpr Color kFogDebugUnexploredColor{255, 0, 255, 255};
+// Same framing as kEdgeZCostCeilingShots; own labels so both variants gate.
+constexpr IRVideo::AutoScreenshotShot kEdgeZCostCeilingPaintShots[] = {
+    {5.0f, vec2(0, 0), 0.0f, "fog_edge_zcost_ceiling_paint5"},
+    {9.0f,
+     vec2(0, 0),
+     0.0f,
+     "fog_edge_zcost_ceiling_paint9",
+     kCropsEdgeZCostCeiling9,
+     sizeof(kCropsEdgeZCostCeiling9) / sizeof(kCropsEdgeZCostCeiling9[0])},
+};
 constexpr int kFogPaintProbeTolerance = 2;
 IREntity::EntityId g_ceilingPillar = IREntity::kNullEntity;
 int g_fogPaintProbeFrame = 0;
@@ -1055,6 +1065,8 @@ void initSystems() {
             IRVideo::setAutoScreenshotShots(cfg, kEntityRevealShots);
         } else if (g_edgeZCostAsym) {
             IRVideo::setAutoScreenshotShots(cfg, kEdgeZCostAsymShots);
+        } else if (g_edgeZCostCeiling && g_fogDebugColor) {
+            IRVideo::setAutoScreenshotShots(cfg, kEdgeZCostCeilingPaintShots);
         } else if (g_edgeZCostCeiling) {
             IRVideo::setAutoScreenshotShots(cfg, kEdgeZCostCeilingShots);
         } else if (g_edgeZCost) {
