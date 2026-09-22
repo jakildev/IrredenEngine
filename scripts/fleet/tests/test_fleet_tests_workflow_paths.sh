@@ -162,6 +162,7 @@ OUT_OF_TREE_SUBJECTS=(
     'engine/render/src/metal/metal_cocoa_bridge.mm'
     'engine/render/src/metal/metal_pipeline.cpp'
     'engine/render/src/opengl/opengl_shader.cpp'
+    'engine/tools/bin/ir-acquire'
     'engine/tools/bin/ir-build'
     'engine/tools/bin/ir-run'
     'engine/video/src/metal/video_backend.cpp'
