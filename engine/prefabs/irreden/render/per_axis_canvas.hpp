@@ -57,7 +57,7 @@ struct LifecycleState {
 };
 
 // The lifecycle policy with the ECS lookups and GPU calls lifted out, so it
-// runs headlessly; syncAllocationToCameraYaw is its only caller in the engine.
+// runs headlessly.
 constexpr LifecycleStep lifecycleStep(LifecycleState state) {
     if (state.rotating_) {
         if (state.live_) {
@@ -142,14 +142,14 @@ inline void syncAllocationToCameraYaw() {
         timed(witness.perAxisUnpark_, [&] { axes.unpark(); });
         return;
     case LifecycleStep::REPLACE_PARKED:
-        timed(witness.perAxisRelease_, [&] { axes.parked_.release(); });
+        timed(witness.perAxisRelease_, [&] { axes.releaseParked(); });
         timed(witness.perAxisAllocate_, [&] { axes.allocate(size, mainSize); });
         return;
     case LifecycleStep::PARK:
         timed(witness.perAxisPark_, [&] { axes.park(); });
         return;
     case LifecycleStep::RELEASE_PARKED:
-        timed(witness.perAxisRelease_, [&] { axes.parked_.release(); });
+        timed(witness.perAxisRelease_, [&] { axes.releaseParked(); });
         return;
     }
 }

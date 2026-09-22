@@ -379,8 +379,8 @@ void buildYawRampShots() {
 // is live only while a residual rotation is being smoothed (a set parked on a
 // cardinal is not live), so isAllocated() at the settled capture frame is the
 // ground truth (a 'cardinal' row that still reports peraxis is the failure
-// mode). Reads live ECS the
-// harness cannot; emits one greppable line the sweep scorer joins by index.
+// mode). Reads live ECS the harness cannot; emits one greppable line the
+// sweep scorer joins by index.
 void logRampPose(int shotIndex) {
     bool perAxisActive = false;
     const IREntity::EntityId mainCanvas = IRRender::getCanvas("main");

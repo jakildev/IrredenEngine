@@ -53,7 +53,8 @@ struct PerAxisCanvasStore {
 
     ivec2 size_{0, 0}; // worst-case texel size shared by all axes; (0,0) while unallocated
     // The cardinal canvas size the set was allocated for; resolveDepth_ is this
-    // size, and a parked set is reused only under the same one.
+    // size, and a parked set is reused only under the same one. The main
+    // canvas does not resize today, so the guard is for the day it does.
     ivec2 mainSize_{0, 0};
     std::array<AxisTextures, kAxisCount> axes_{};
 
@@ -340,9 +341,16 @@ struct C_PerAxisTrixelCanvases : PerAxisCanvasStore {
         parkedFrames_ = 0;
     }
 
+    // Free the parked set with its wait, whether the window closed or the
+    // canvas changed size under it.
+    void releaseParked() {
+        parked_.release();
+        parkedFrames_ = 0;
+    }
+
     void onDestroy() {
         release();
-        parked_.release();
+        releaseParked();
     }
 };
 
