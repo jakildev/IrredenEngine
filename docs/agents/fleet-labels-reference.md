@@ -4,14 +4,12 @@ Canonical, repo-neutral meaning, owner, and transitions for every `fleet:*`
 and `human:*` label. Both repos consume it by reference
 ([`docs/design/claude-md-sharing.md`](../design/claude-md-sharing.md)).
 
-Adding, removing, or re-owning a label edits three things in one commit:
-this file, `scripts/fleet/fleet-labels` (creates the GitHub labels), and
-[`fleet-state-machine.json`](fleet-state-machine.json) (the node set plus
-the named edges `fleet-transition` applies). `fleet-labels --check` diffs
-the catalog against the JSON node set; `test_fleet_labels_check.sh` runs it
-on every `fleet-tests.yml` run, so drift fails CI. Check a branch with
-`bash scripts/fleet/fleet-labels --check` — the `~/bin` symlink resolves its
-inputs from the main clone.
+Static catalog labels are declared here, in `scripts/fleet/fleet-labels`, and in
+[`fleet-state-machine.json`](fleet-state-machine.json). Dynamic families declare
+semantics here; concrete names are created by their owner. `fleet-labels --check`
+compares the static catalog with the JSON node set; `test_fleet_labels_check.sh`
+runs it in CI. Run `bash scripts/fleet/fleet-labels --check` from the worktree:
+the installed symlink resolves its inputs from the main clone.
 
 ---
 
@@ -343,7 +341,8 @@ Protocol: [`FLEET-FEEDBACK-HANDLING.md`](FLEET-FEEDBACK-HANDLING.md).
 
 Protocol: [`FLEET-CROSS-HOST-SMOKE.md`](FLEET-CROSS-HOST-SMOKE.md).
 
-- `fleet:authored-on-{linux,macos,windows}` — **`commit-and-push`** at PR creation. A permanent fact, not a state.
+- `fleet:authored-on-{linux,macos,windows}` — **`commit-and-push`** at PR
+  creation. A permanent fact, not a state.
 - `fleet:needs-{linux,macos,windows}-smoke` — **reviewer**, after the
   verdict; the engine reviewer mirror mints them on engine PRs and the
   game reviewer mirror mints the same labels on game PRs, and the one
@@ -375,14 +374,16 @@ Protocol: [`FLEET-CROSS-HOST-SMOKE.md`](FLEET-CROSS-HOST-SMOKE.md).
   declaring only `FLEET_RUNTIMES="claude"` waits for a Codex-bound item
   rather than substituting. [`CODEX.md`](CODEX.md).
 
-`fleet:nit-of-pr` (REVIEWER-PROTOCOL.md § Nit-tracking issues) is a reviewer convention the merger's auto-close reads; it is not in the catalog.
+`fleet:nit-of-pr` (REVIEWER-PROTOCOL.md § Nit-tracking issues) is a
+reviewer convention the merger's auto-close reads; it is not in the catalog.
 
 ## Retired
 
-`human:review-plan` and the stacking labels `fleet:stacked`, `fleet:awaiting-base`,
-`fleet:needs-base-update`, `fleet:stacked-rebase`, `fleet:fork-of-other-pr` are retired
-(native stacks own that state; `scripts/fleet/legacy/stacked-prs/README.md`).
-A straggler is inert: treat it as skip/handoff, never re-apply.
+`human:review-plan`, and the stacking labels `fleet:stacked`,
+`fleet:awaiting-base`, `fleet:needs-base-update`, `fleet:stacked-rebase`,
+`fleet:fork-of-other-pr` (native stacks own that state;
+`scripts/fleet/legacy/stacked-prs/README.md`). A straggler is inert:
+treat it as skip/handoff, never re-apply.
 
 ## Reconcile
 
@@ -398,3 +399,4 @@ skips `fleet:blocked` issues, `fleet:design-proposed`, and
 design-lane label, so the opus+-only resume tier has a class to dispatch).
 R2 and R6 stay flag-only. Runs at `fleet-up` boot and on every
 queue-manager projection change.
+
