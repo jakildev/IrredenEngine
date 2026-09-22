@@ -122,7 +122,7 @@ struct FrameDataFogObservers {
     /// Only the first `visionCircleCount_` entries are read, paired 1:1 with
     /// `visionCircles_`.
     IRMath::vec4 visionCircleHeights_[kMaxFogVisionCircles] = {};
-    /// RGBA the fog pass paints fully unexplored matter with — the black
+    /// RGBA the fog pass paints fully unexplored matter with — the state-0
     /// anchor of its two-segment lerp. Appended after `visionCircleHeights_`
     /// so every earlier offset is unchanged; only `c_fog_to_trixel` declares
     /// it. Alpha is unused (the pass preserves the source alpha).
@@ -310,7 +310,8 @@ struct C_CanvasFogOfWar {
         const float resolvedDown = zCostDown < 0.0f ? clampedUp : IRMath::max(zCostDown, 0.0f);
         // The two COST clamps are load-bearing, not defensive hygiene: they
         // are what keeps c_voxel_visibility_compact's z-FREE coarse cull a
-        // superset of stage 1's z-AWARE own-column drop. That holds because
+        // superset of stage 1's z-AWARE detached-canvas drop, and FOG_TO_TRIXEL's
+        // per-pixel reveal never brighter than the z-free one. That holds because
         // both penalty terms are products of clamped->=0 costs with
         // max(.,0) >= 0, so `distEff >= dist_xy` always, the penalized reveal
         // is pointwise <= the z-free one, and the drop can only ever drop

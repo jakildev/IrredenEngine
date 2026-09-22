@@ -116,7 +116,7 @@ std::string normalizeShaderMath(const std::string &source) {
 // `get_width`), so comparing whole bodies there would fail on dialect alone.
 //
 // The anchor is `<name>(`, not the bare name: both files mention
-// `fogColumnRevealNearestZ` (the Z twin, which lives in the stage body)
+// `fogColumnRevealZ` (the detached-canvas Z twin, which lives in the stage body)
 // in a comment ABOVE these definitions, and a bare-name search matches that
 // prefix — landing the span on fogColumnReveal in BOTH files, so the test
 // compares one function to itself and passes no matter how far the twins have
@@ -378,7 +378,8 @@ class FogCrossSectionTest : public ::testing::Test {
 
     // Uploads one vision circle (centerX, centerY, radius, edgeSoftness) with
     // all-zero height penalties — which is what keeps the z-free curves this
-    // probe reads bit-identical to the stage body's Z twins — then dispatches
+    // probe reads bit-identical to the stage body's detached-canvas Z twin —
+    // then dispatches
     // over the whole column domain and reads the records back.
     std::vector<FogColumnProbe> runProbe(IRMath::vec4 circle) {
         using namespace IRRender;

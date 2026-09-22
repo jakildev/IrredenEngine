@@ -174,9 +174,9 @@ layout(std430, binding = 28) buffer PerAxisWinnerScratch {
 };
 
 // The fog grid, the observer block (including visionCircleHeights, which only
-// this body's Z-cost drop reads — a named uniform block admits one declaration),
-// fogColumnReveal/Nearest and the shared face-selection / per-axis store-key
-// math come from ir_voxel_face_select.glsl. The fog grid takes image slot 0 via
+// this body's detached-canvas Z-cost drop reads — a named uniform block admits
+// one declaration), fogColumnReveal/Nearest and the shared face-selection /
+// per-axis store-key math come from ir_voxel_face_select.glsl. The fog grid takes image slot 0 via
 // IR_VOXEL_FOG_GRID_BINDING; the distance image is slot 1.
 
 void writeDistanceTap(const ivec2 canvasPixel, const int voxelDistance) {
@@ -390,25 +390,22 @@ void emitDeformedFace(
     }
 }
 
-// Z-cost twins of fogColumnReveal / fogColumnRevealNearest for the
-// OWN-COLUMN DROP only, where the voxel's own world Z is known. They fold the
-// per-circle height penalty zCostUp * max(dzUp - freeBand, 0) +
-// zCostDown * max(dzDown - freeBand, 0), where dzUp = max(observerZ - voxelZ,
-// 0) and dzDown = max(voxelZ - observerZ, 0), into the effective radial
-// distance so a boundary voxel clips consistently with FOG_TO_TRIXEL's
-// per-pixel z-aware reveal: a pillar top / pit floor far from the observer's
-// height drops even though its XY column sits inside the disc. These live HERE
-// rather than beside their z-free twins in ir_voxel_face_select.glsl because
-// the drop is STAGE-1-ONLY — stage 2 never repeats it — and the shared include
-// holds exactly the definitions both stages must agree on. The reveal math is
-// INLINED rather than a shared ir_iso_common Z helper, as fogColumnReveal is —
-// a new symbol there perturbs the cardinal fast path. The cut-face emission and
-// the nearest-cell KEEP widening call the z-free twins in the shared include (a
-// column spans all z, so those best-case-z tests keep a superset and never drop
-// a voxel a pixel would reveal); only the DROP metric and the nearest-Z
-// DISTANCE carry the penalty — the keep-ring WIDTH (kFogHiddenKeepCells) stays
-// z-free. All-zero heights make both penalty terms exactly 0, so these return
-// exactly the z-free twins' values.
+// Z-cost twin of fogColumnReveal for the DETACHED canvas's own-column drop,
+// where the voxel's own world Z is known. It folds the per-circle height
+// penalty zCostUp * max(dzUp - freeBand, 0) + zCostDown *
+// max(dzDown - freeBand, 0), where dzUp = max(observerZ - voxelZ, 0) and
+// dzDown = max(voxelZ - observerZ, 0), into the effective radial distance. A
+// world-placed detached canvas has no fog pass to paint a height-hidden voxel,
+// so it removes it instead, on the z-aware curve FOG_TO_TRIXEL reveals by. The
+// world and per-axis routes do NOT use it: their drops are z-free
+// so a height-hidden voxel keeps its geometry (top face included) and the fog
+// pass paints it unexplored. It lives HERE rather than beside the z-free twins
+// in ir_voxel_face_select.glsl because the drop is STAGE-1-ONLY — stage 2 never
+// repeats it — and the shared include holds exactly the definitions both stages
+// must agree on. The reveal math is INLINED rather than a shared ir_iso_common
+// Z helper, as fogColumnReveal is — a new symbol there perturbs the cardinal
+// fast path. All-zero heights make both penalty terms exactly 0, so this
+// returns exactly fogColumnReveal's value.
 float fogColumnRevealZ(ivec2 col, float voxelZ) {
     const ivec2 fogSize = imageSize(canvasFogOfWar);
     if (fogSize.x <= 1) {
@@ -429,39 +426,6 @@ float fogColumnRevealZ(ivec2 col, float voxelZ) {
         const float distEff = length(vec2(col) - visionCircles[i].xy) +
             h.y * max(dzUp - h.w, 0.0) + h.z * max(dzDown - h.w, 0.0);
         const float a = max(visionCircles[i].w, 0.0);
-        reveal = max(
-            reveal, 1.0 - smoothstep(visionCircles[i].z - a, visionCircles[i].z + a, distEff)
-        );
-    }
-    return reveal;
-}
-
-float fogColumnRevealNearestZ(ivec2 col, float voxelZ) {
-    const ivec2 fogSize = imageSize(canvasFogOfWar);
-    if (fogSize.x <= 1) {
-        return 1.0;
-    }
-    const ivec2 cell = col + ivec2(kFogOfWarHalfExtent);
-    if (cell.x < 0 || cell.x >= fogSize.x || cell.y < 0 || cell.y >= fogSize.y) {
-        return 1.0;
-    }
-    if (imageLoad(canvasFogOfWar, cell).r >= kFogExploredThreshold) {
-        return 1.0;
-    }
-    float reveal = 0.0;
-    for (int i = 0; i < visionCircleCount; ++i) {
-        const vec2 nearest = clamp(
-            visionCircles[i].xy, vec2(col) - kFogColumnCellHalf, vec2(col) + kFogColumnCellHalf
-        );
-        const vec4 h = visionCircleHeights[i];
-        const float dzUp = max(h.x - voxelZ, 0.0);
-        const float dzDown = max(voxelZ - h.x, 0.0);
-        const float distEff = length(nearest - visionCircles[i].xy) +
-            h.y * max(dzUp - h.w, 0.0) + h.z * max(dzDown - h.w, 0.0);
-        // Keep-ring WIDTH stays z-free (kFogColumnKeepAa + kFogHiddenKeepCells) —
-        // a fixed geometric ring so FOG_TO_TRIXEL's cross-section cut always has
-        // matter to repaint; only the distance carries the z penalty.
-        const float a = max(visionCircles[i].w, kFogColumnKeepAa + kFogHiddenKeepCells);
         reveal = max(
             reveal, 1.0 - smoothstep(visionCircles[i].z - a, visionCircles[i].z + a, distEff)
         );
@@ -560,16 +524,14 @@ void main() {
     // The per-axis rotation routes run the SAME reveal<=0 clip inside the
     // per-axis branch; the explicit perAxisRoute==0 term keeps this a no-op on
     // routes 1/2/3, and non-fog scenes short-circuit on fogActive.
-    // The drop uses this voxel's OWN world Z so a height-penalized voxel
-    // (pillar top / pit floor far from the observer height) clips consistently
-    // with FOG_TO_TRIXEL's per-pixel z reveal. Only the DROP takes the Z twins —
-    // the cut-face test inside selectVoxelFace stays on the z-free
-    // fogColumnReveal (a column spans all z, so that best-case-z test keeps a
-    // superset and never drops a voxel a pixel would reveal). All-zero heights
-    // reduce this to the 2D drop.
+    // The GRID drop is z-FREE: a voxel above the height ceiling but inside the
+    // disc keeps its geometry and FOG_TO_TRIXEL paints it the unexplored colour
+    // per pixel — removing it would expose the ground through a hollow, shorter
+    // body (its neighbours' occluded-face flags suppress the top face). Only the
+    // detached canvas, which has no paint pass, drops on its own world Z.
     bool ownColumnHidden = isDetachedCanvas > 0.5
         ? fogColumnRevealZ(sel.worldColumn, voxelPosition.z) <= 0.0
-        : fogColumnRevealNearestZ(sel.worldColumn, voxelPosition.z) <= 0.0;
+        : fogColumnRevealNearest(sel.worldColumn) <= 0.0;
     if (!fogWholeBodyExempt && sel.fogActive && perAxisRoute == 0 && ownColumnHidden) {
         return;
     }
@@ -625,20 +587,14 @@ void main() {
     // The face SHAPE is reconstructed at scatter time, so the per-slot deform D
     // is not applied here.
     if (perAxisRoute != 0) {
-        // Per-axis own-column fog clip: the same drop as the single-canvas route
-        // (reveal <= 0 — FULLY hidden), applied on EVERY axis route (1/2/3) so a
-        // rotating boundary object clips its hidden half identically (a hidden
-        // column's Z face would otherwise float on route 3). visionCircleCount==0
-        // and the 1×1 placeholder grid short-circuit non-fog rotating scenes.
-        // The two arguments round differently on purpose: the COLUMN is rounded
-        // because it indexes the integer fog grid, while the HEIGHT stays the raw
-        // continuous voxelPosition.z. Rounding the height would quantize the
-        // penalty into whole world-Z steps AND disagree with c_fog_to_trixel's
-        // per-pixel reveal, which penalizes against the unrounded `pos3D.z`.
-        // The single-canvas route splits the same way (sel.worldColumn is
-        // rounded; its z argument is not).
+        // Per-axis own-column fog clip: reveal <= 0 (FULLY hidden), applied on
+        // EVERY axis route (1/2/3) so a rotating boundary object clips its
+        // hidden half identically (a hidden column's Z face would otherwise float
+        // on route 3). z-free like the single-canvas GRID drop — the fog pass
+        // paints height-hidden matter. visionCircleCount==0 and the 1×1
+        // placeholder grid short-circuit non-fog rotating scenes.
         if (!fogWholeBodyExempt && visionCircleCount > 0 &&
-            fogColumnRevealZ(roundHalfUp(voxelPosition.xyz).xy, voxelPosition.z) <= 0.0) {
+            fogColumnReveal(roundHalfUp(voxelPosition.xyz).xy) <= 0.0) {
             return;
         }
         const int axis = perAxisRoute - 1;

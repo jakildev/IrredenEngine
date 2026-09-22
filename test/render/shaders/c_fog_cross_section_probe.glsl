@@ -18,10 +18,10 @@
 // the full voxel-pool binding set, and every property tests A–E assert is a
 // property of these curves, not of the raster around them.
 //
-// The Z twins (fogColumnRevealZ / fogColumnRevealNearestZ) live in the
-// stage body rather than the shared include, so they are out of reach here.
-// With all-zero visionCircleHeights — the default, and what the host uploads —
-// they are bit-identical to the z-free twins probed below.
+// The detached-canvas Z twin (fogColumnRevealZ) lives in the stage body rather
+// than the shared include, so it is out of reach here. With all-zero
+// visionCircleHeights — the default, and what the host uploads — it is
+// bit-identical to the z-free fogColumnReveal probed below.
 
 #version 450 core
 #include "../../../engine/render/src/shaders/ir_iso_common.glsl"
