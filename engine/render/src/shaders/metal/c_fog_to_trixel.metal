@@ -61,6 +61,8 @@ kernel void c_fog_to_trixel(
     texture2d<float, access::read_write> trixelColors [[texture(0)]],
     texture2d<int, access::read> trixelDistances [[texture(1)]],
     texture2d<float, access::read> canvasFogOfWar [[texture(2)]],
+    // Read only for the fog whole-body carrier bit (decodeFogWholeBody).
+    texture2d<uint, access::read> triangleCanvasEntityIds [[texture(3)]],
     // buffer(27) ALIASES kBufferIndex_FrameDataLightingToTrixel — the Metal
     // 0-30 buffer table is full, and fog runs right after lighting (done with
     // slot 27 by then). Must match kBufferIndex_FogObservers in
@@ -128,6 +130,10 @@ kernel void c_fog_to_trixel(
             frameData.rasterYaw
         );
         const float worldPerPixel = length(pos3DNeighborX.xy - pos3D.xy);
+        // A whole-body fog-governed body fogs on XY distance alone — mirror of
+        // the GLSL twin: both height-penalty terms drop for its pixels.
+        const bool fogWholeBody =
+            decodeFogWholeBody(triangleCanvasEntityIds.read(uint2(pixel)).xy);
         // Must trace the same analytic curve as c_voxel_to_trixel_stage_1's
         // per-voxel clip, so the floor's per-pixel reveal here and the
         // voxel-object edge there coincide. worldPerPixel floors the rim at ~1
@@ -138,16 +144,16 @@ kernel void c_fog_to_trixel(
             // zCostDown * max(dzDown - freeBand, 0)) into the radial distance
             // so matter far above/below the observer's height reveals less at
             // the same XY, asymmetrically and with a free band around the
-            // observer's height. The 2D reveal is inlined rather than added to
-            // ir_iso_common as a Z-aware helper — a new symbol there perturbs
-            // the byte-identical cardinal fast path. All-zero heights →
+            // observer's height. All-zero heights (or a whole-body pixel) →
             // distEff == the plain 2D length.
             const float4 heights = fogObservers.visionCircleHeights[i];
+            const float zCostUp = fogWholeBody ? 0.0f : heights.y;
+            const float zCostDown = fogWholeBody ? 0.0f : heights.z;
             const float dzUp = max(heights.x - pos3D.z, 0.0f);
             const float dzDown = max(pos3D.z - heights.x, 0.0f);
             const float distEff = length(pos3D.xy - fogObservers.visionCircles[i].xy) +
-                heights.y * max(dzUp - heights.w, 0.0f) +
-                heights.z * max(dzDown - heights.w, 0.0f);
+                zCostUp * max(dzUp - heights.w, 0.0f) +
+                zCostDown * max(dzDown - heights.w, 0.0f);
             const float aa = max(fogObservers.visionCircles[i].w, worldPerPixel);
             const float reveal = 1.0f - smoothstep(
                 fogObservers.visionCircles[i].z - aa,

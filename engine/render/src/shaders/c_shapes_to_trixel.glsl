@@ -83,6 +83,7 @@ layout(rg32ui, binding = 2) writeonly uniform uimage2D triangleCanvasEntityIds;
 
 const uint FLAG_HOLLOW = 1u;
 const uint FLAG_VISIBLE = 8u;
+const uint FLAG_FOG_WHOLE_BODY_EXEMPT = 16u;
 const uint FLAG_CHECKERBOARD = 32u;
 const uint FLAG_DEPTH_COLOR = 64u;
 const uint FLAG_XRAY_OCCLUDED = 128u;
@@ -1015,6 +1016,10 @@ void main() {
     }
 
     bool xrayOccluded = (shape.flags & FLAG_XRAY_OCCLUDED) != 0u;
+    // Shape ids are 32-bit (high word zero) plus the fog whole-body carrier bit.
+    const uvec2 packedEntityId = encodeEntityIdFogWholeBody(
+        uvec2(shape.entityId, 0u), (shape.flags & FLAG_FOG_WHOLE_BODY_EXEMPT) != 0u
+    );
 
     for (int face = 0; face < 3; face++) {
         int depthEncoded = encodeDepthWithFace(baseDepth, face);
@@ -1043,7 +1048,7 @@ void main() {
                 if (depthEncoded == stored) {
                     imageStore(triangleCanvasColors, canvasPixel, baseColor);
                     imageStore(triangleCanvasEntityIds, canvasPixel,
-                               uvec4(shape.entityId, 0u, 0u, 0u));
+                               uvec4(packedEntityId, 0u, 0u));
                 } else if (xrayOccluded && depthEncoded > stored) {
                     // This shape lost the atomicMin contest — something
                     // closer owns the pixel. Blend its color over the

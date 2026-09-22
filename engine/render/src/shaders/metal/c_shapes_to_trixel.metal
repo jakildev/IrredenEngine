@@ -63,6 +63,7 @@ struct ShapeTileDescriptor {
 
 constant uint FLAG_HOLLOW       = 1u;
 constant uint FLAG_VISIBLE      = 8u;
+constant uint FLAG_FOG_WHOLE_BODY_EXEMPT = 16u;
 constant uint FLAG_CHECKERBOARD = 32u;
 constant uint FLAG_DEPTH_COLOR  = 64u;
 constant uint FLAG_XRAY_OCCLUDED = 128u;
@@ -1108,6 +1109,10 @@ kernel void c_shapes_to_trixel(
     }
 
     const bool xrayOccluded = (shape.flags & FLAG_XRAY_OCCLUDED) != 0u;
+    // Shape ids are 32-bit (high word zero) plus the fog whole-body carrier bit.
+    const uint2 packedEntityId = encodeEntityIdFogWholeBody(
+        uint2(shape.entityId, 0u), (shape.flags & FLAG_FOG_WHOLE_BODY_EXEMPT) != 0u
+    );
 
     for (int face = 0; face < 3; ++face) {
         const int depthEncoded = encodeDepthWithFace(baseDepth, face);
@@ -1153,7 +1158,7 @@ kernel void c_shapes_to_trixel(
                     triangleCanvasDistances.write(
                         int4(depthEncoded, 0, 0, 0), pix);
                     triangleCanvasEntityIds.write(
-                        uint4(shape.entityId, 0u, 0u, 0u), pix);
+                        uint4(packedEntityId, 0u, 0u), pix);
                 } else if (xrayOccluded && depthEncoded > stored) {
                     // This shape lost the atomicMin contest — something
                     // closer owns the pixel. Blend its color over the
