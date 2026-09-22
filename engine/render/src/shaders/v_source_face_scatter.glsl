@@ -20,7 +20,7 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     int scatterDebugMode;
     ivec4 visibleFaceIds;
     vec4 _detachedResidualPad;
-    vec4 _detachedDepthAxisPad;
+    vec4 viewToWorldRotation;
     vec4 scatterFbResolution;
     int depthColorMode;
     float depthColorExtent;
@@ -57,8 +57,8 @@ void main() {
     const vec3 modelNormal = faceOutwardNormal6(faceId);
     const vec3 localCenter = face.centerAndFace.xyz + modelNormal * 0.5;
     faceWorldPosition = face.worldCenterAndAO.xyz + rotateByQuat(
-        viewCorner - rotateByQuat(localCenter, _detachedResidualPad), _detachedDepthAxisPad);
-    faceWorldNormal = rotateByQuat(rotateByQuat(modelNormal, _detachedResidualPad), _detachedDepthAxisPad);
+        viewCorner - rotateByQuat(localCenter, _detachedResidualPad), viewToWorldRotation);
+    faceWorldNormal = rotateByQuat(rotateByQuat(modelNormal, _detachedResidualPad), viewToWorldRotation);
     faceDirectSunAndExposure = face.directSunAndExposure;
     faceAO = face.worldCenterAndAO.w;
     faceLightingMode = face.owner.z;

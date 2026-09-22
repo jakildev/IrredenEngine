@@ -19,7 +19,7 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     int scatterDebugMode;
     ivec4 visibleFaceIds;
     vec4 _detachedResidualPad;
-    vec4 _detachedDepthAxisPad;
+    vec4 viewToWorldRotation;
     vec4 scatterFbResolution;
     int depthColorMode;
     float depthColorExtent;
@@ -50,7 +50,7 @@ void main() {
     FragColor = faceColor;
     if (faceLightingMode != kSourceLightingBaked) {
         const float visibility = worldSurfaceSunShadowFactor(faceWorldPosition, faceWorldNormal,
-            pos3DtoDistance(faceWorldPosition), _detachedDepthAxisPad);
+            pos3DtoDistance(faceWorldPosition), viewToWorldRotation);
         FragColor = sourceFaceLitColor(faceColor, faceDirectSunAndExposure, faceAO,
             faceLightingMode, visibility);
     }
