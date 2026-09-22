@@ -80,11 +80,13 @@ The interactive Codex session in `codex-shadow-render` participates via
 `fleet:campaign-million-entity-render`; membership does not transfer ownership.
 Its canonical detail stays in [rendering-audit-todo.md](../rendering-audit-todo.md).
 
-- **Open work:** #3632 (continuous source-face sunlight) and #3635 (cascade
-  receiver coordinates), both claimed. #3632 needs merge-conflict resolution
-  and investigation of the Linux perf run that produced no profile report.
-  #3635 is not approved: the strict floor edge at 180° worsens from 12/266 to
-  19/356 missing/excess pixels. Neither is accepted as a floor-edge fix.
+- **Open work:** #3632 contains continuous source-face sunlight and the latest
+  master refresh. #3668/#3672 preserve diagnostic evidence and scalar tests on
+  that parent, without the production cascade correction. #3635 is deferred:
+  its refreshed floor control retains the 180° edge regression. The CI repair
+  and SDF fog carrier (#3659/#3629) are merged. Detailed findings and acceptance
+  remain in the rendering audit; this contributor does not own the campaign's
+  main `Now` section or performance plan.
 - **Next owned scope:** exact SDF receiver geometry and finite projected
   boundaries through presentation. Smoothness or steps must follow the selected
   caster and receiver geometry, without blur, inflated footprints or compensating
