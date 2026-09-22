@@ -302,15 +302,15 @@ struct Voxel {
 // through the atomic scratch buffer; Metal passes the texture + observers into
 // the shared functions as arguments.
 
-// Z-cost twin of fogColumnReveal for the DETACHED canvas's own-column drop
-// (the voxel's world Z is known there). It folds the per-circle height penalty
-// zCostUp * max(dzUp - freeBand, 0) + zCostDown * max(dzDown - freeBand, 0),
-// where dzUp = max(observerZ - voxelZ, 0) and dzDown = max(voxelZ - observerZ,
-// 0), into the effective radial distance. A world-placed detached canvas has no
-// fog pass to paint a height-hidden voxel, so it removes it instead, on the
-// z-aware curve FOG_TO_TRIXEL reveals by. The world and per-axis routes do NOT
-// use it: their drops are z-free so a height-hidden voxel keeps its geometry
-// and the fog pass paints it unexplored. Mirror of the GLSL twin. It lives HERE
+// Z-cost twin of fogColumnReveal for the own-column drop on the routes
+// FOG_TO_TRIXEL never paints — the DETACHED canvas and the per-axis rotation
+// textures (the voxel's world Z is known there). It folds the per-circle height
+// penalty zCostUp * max(dzUp - freeBand, 0) + zCostDown * max(dzDown -
+// freeBand, 0), where dzUp = max(observerZ - voxelZ, 0) and dzDown =
+// max(voxelZ - observerZ, 0), into the effective radial distance, so a
+// height-hidden voxel is removed on the z-aware curve FOG_TO_TRIXEL reveals by.
+// The world canvas does NOT use it: its drop is z-free so a height-hidden voxel
+// keeps its geometry and the fog pass paints it unexplored. Mirror of the GLSL twin. It lives HERE
 // rather than beside the z-free twins in ir_voxel_face_select.metal because the
 // drop is STAGE-1-ONLY — stage 2 never repeats it — and the shared include
 // holds exactly the definitions both stages must agree on. The reveal math is
@@ -447,7 +447,7 @@ kernel void IR_STAGE1_KERNEL_NAME(
     // The GRID drop is z-FREE: a voxel above the height ceiling but inside the
     // disc keeps its geometry and FOG_TO_TRIXEL paints it the unexplored colour
     // per pixel — removing it would expose the ground through a hollow, shorter
-    // body. Only the detached canvas, which has no paint pass, drops on its own
+    // body. The detached canvas, which has no paint pass, drops on its own
     // world Z. Mirror of the GLSL twin.
     const bool ownColumnHidden = frameData.isDetachedCanvas > 0.5f
         ? fogColumnRevealZ(canvasFogOfWar, fogObservers, sel.worldColumn, voxelPosition.z) <= 0.0f
@@ -499,12 +499,16 @@ kernel void IR_STAGE1_KERNEL_NAME(
         // Per-axis own-column fog clip: reveal <= 0 (FULLY hidden), applied on
         // EVERY axis route (1/2/3) so a rotating boundary object clips its
         // hidden half identically (a hidden column's Z-face would otherwise float
-        // on route 3). z-free like the single-canvas GRID drop — the fog pass
-        // paints height-hidden matter. visionCircleCount==0 and the 1×1
-        // placeholder grid short-circuit non-fog rotating scenes. Mirror of the
-        // GLSL twin.
+        // on route 3). z-AWARE, unlike the single-canvas GRID drop: FOG_TO_TRIXEL
+        // paints only the main canvas, and the per-axis textures composite
+        // straight into the framebuffer, so a height-hidden voxel kept here
+        // would render lit. visionCircleCount==0 and the 1×1 placeholder grid
+        // short-circuit non-fog rotating scenes. The COLUMN is rounded, the
+        // HEIGHT stays the raw voxelPosition.z. Mirror of the GLSL twin.
         if (!fogWholeBodyExempt && fogObservers.visionCircleCount > 0 &&
-            fogColumnReveal(canvasFogOfWar, fogObservers, roundHalfUp(voxelPosition.xyz).xy) <= 0.0f) {
+            fogColumnRevealZ(
+                canvasFogOfWar, fogObservers, roundHalfUp(voxelPosition.xyz).xy, voxelPosition.z
+            ) <= 0.0f) {
             return;
         }
         const int axis = frameData.perAxisRoute - 1;

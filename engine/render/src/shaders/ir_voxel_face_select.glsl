@@ -38,10 +38,10 @@ layout(std140, binding = 27) uniform FogObserverData {
     // whether or not the block spells out the trailing pad ints).
     // visionCircleHeights[i] = (observerZ, zCostUp, zCostDown, freeBand). The
     // face-selection math here never reads it — only stage 1's detached-canvas
-    // own-column DROP does (fogColumnRevealZ in
+    // and per-axis own-column DROPs do (fogColumnRevealZ in
     // c_voxel_to_trixel_stage_1_body.glsl) — but the field lives on this block
     // because GLSL admits exactly one declaration of a named uniform block and
-    // this is it. All-zero heights (the default) make that drop equal the 2D
+    // this is it. All-zero heights (the default) make those drops equal the 2D
     // column clip.
     vec4 visionCircleHeights[kMaxFogVisionCircles];
 };

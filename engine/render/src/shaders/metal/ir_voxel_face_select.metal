@@ -39,10 +39,10 @@ struct FogObserverData {
     // Per-circle height penalty, appended after
     // the ivec4 tail to match FrameDataFogObservers::visionCircleHeights_
     // (offset 144) and the GLSL block. heights[i] = (observerZ, zCostUp,
-    // zCostDown, freeBand), read only by stage 1's detached-canvas own-column
-    // DROP (fogColumnRevealZ in c_voxel_to_trixel_stage_1_body.metal); the
-    // selection math in this file ignores it. All-zero heights (the default)
-    // make that drop equal the 2D column clip.
+    // zCostDown, freeBand), read only by stage 1's detached-canvas and per-axis
+    // own-column DROPs (fogColumnRevealZ in c_voxel_to_trixel_stage_1_body.metal);
+    // the selection math in this file ignores it. All-zero heights (the default)
+    // make those drops equal the 2D column clip.
     float4 visionCircleHeights[kMaxFogVisionCircles];
 };
 

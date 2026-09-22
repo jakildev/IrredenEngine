@@ -147,7 +147,7 @@ std::string extractSpan(
 // `get_width`), so comparing whole bodies there would fail on dialect alone.
 //
 // The anchor is `<name>(`, not the bare name: both files mention
-// `fogColumnRevealZ` (the detached-canvas Z twin, which lives in the stage body)
+// `fogColumnRevealZ` (the unpainted-route Z twin, which lives in the stage body)
 // in a comment ABOVE these definitions, and a bare-name search matches that
 // prefix — landing the span on fogColumnReveal in BOTH files, so the test
 // compares one function to itself and passes no matter how far the twins have
@@ -183,12 +183,19 @@ std::string extractFunctionBody(const std::string &source, const std::string &fu
 
 // normalizeShaderMath plus the kernel-scope plumbing only MSL spells out: the
 // `frameData.` / `fogObservers.` struct qualifiers and the fog texture +
-// observer arguments Metal passes to the shared reveal functions.
+// observer arguments Metal passes to the shared reveal functions. Padding just
+// inside parentheses is dropped too, so a call the formatter wrapped onto its
+// own lines compares equal to the same call on one line.
 std::string normalizeKernelMath(const std::string &source) {
     const std::string noArgs =
         std::regex_replace(source, std::regex(R"(\bcanvasFogOfWar,\s*fogObservers,\s*)"), "");
-    return normalizeShaderMath(
+    const std::string normalized = normalizeShaderMath(
         std::regex_replace(noArgs, std::regex(R"(\b(frameData|fogObservers)\.)"), "")
+    );
+    return std::regex_replace(
+        std::regex_replace(normalized, std::regex(R"(\(\s+)"), "("),
+        std::regex(R"(\s+\))"),
+        ")"
     );
 }
 
@@ -270,10 +277,11 @@ TEST(FogCrossSectionShaderParity, ColumnRevealAccumulationsAreIdenticalAcrossBac
     }
 }
 
-// Test E, part 4: stage 1's own-column drops. The single-canvas drop keeps the
-// z-aware twin for the detached route only and the per-axis drop is z-free —
-// FIELD matter on a route with a paint pass is painted, never removed. A
-// one-sided swap back to a Z metric would render a hollow box on one backend.
+// Test E, part 4: stage 1's own-column drops. The world canvas drop is z-free —
+// FIELD matter FOG_TO_TRIXEL paints is never removed, and a one-sided swap back
+// to a Z metric would render a hollow box on one backend. The detached and
+// per-axis drops keep the z-aware twin: FOG_TO_TRIXEL never paints those
+// targets, so a z-free drop there would render height-hidden matter lit.
 TEST(FogCrossSectionShaderParity, StageOneDropExpressionsAreIdenticalAcrossBackends) {
     const std::string glsl = readShaderSource(kGlslStage1BodyPath);
     const std::string metal = readShaderSource(kMetalStage1BodyPath);
@@ -299,8 +307,8 @@ TEST(FogCrossSectionShaderParity, StageOneDropExpressionsAreIdenticalAcrossBacke
     ASSERT_FALSE(metalPerAxis.empty()) << "per-axis drop not found in MSL";
     EXPECT_EQ(normalizeKernelMath(glslPerAxis), normalizeKernelMath(metalPerAxis))
         << "the per-axis drop diverged between backends";
-    EXPECT_EQ(glslPerAxis.find("RevealZ"), std::string::npos)
-        << "the per-axis drop must be z-free: " << glslPerAxis;
+    EXPECT_NE(glslPerAxis.find("fogColumnRevealZ("), std::string::npos)
+        << "the per-axis drop must be z-aware (no paint pass covers it): " << glslPerAxis;
 }
 
 // Test E, part 5: the fog pass's state-0 anchor is the per-canvas unexplored
@@ -457,7 +465,7 @@ class FogCrossSectionTest : public ::testing::Test {
 
     // Uploads one vision circle (centerX, centerY, radius, edgeSoftness) with
     // all-zero height penalties — which is what keeps the z-free curves this
-    // probe reads bit-identical to the stage body's detached-canvas Z twin —
+    // probe reads bit-identical to the stage body's unpainted-route Z twin —
     // then dispatches
     // over the whole column domain and reads the records back.
     std::vector<FogColumnProbe> runProbe(IRMath::vec4 circle) {

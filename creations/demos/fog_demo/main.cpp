@@ -543,6 +543,13 @@ constexpr IRVideo::AutoScreenshotShot kEdgeZCostCeilingShots[] = {
 bool g_fogDebugColor = false; // --fog-debug-color
 constexpr Color kFogDebugUnexploredColor{255, 0, 255, 255};
 // Same framing as kEdgeZCostCeilingShots; own labels so both variants gate.
+// The last shot parks a non-cardinal yaw, so the scene renders through the
+// per-axis rotation route, which FOG_TO_TRIXEL never paints: the above-ceiling
+// pillar voxels must be dropped there, neither magenta nor lit.
+constexpr float kEdgeZCostCeilingPaintYaw = 0.35f;
+constexpr IRVideo::RoiCrop kCropsEdgeZCostCeilingPaintYaw9[] = {
+    {1100, 0, 300, 920, "zcost_ceiling_yaw_pillar"},
+};
 constexpr IRVideo::AutoScreenshotShot kEdgeZCostCeilingPaintShots[] = {
     {5.0f, vec2(0, 0), 0.0f, "fog_edge_zcost_ceiling_paint5"},
     {9.0f,
@@ -551,6 +558,12 @@ constexpr IRVideo::AutoScreenshotShot kEdgeZCostCeilingPaintShots[] = {
      "fog_edge_zcost_ceiling_paint9",
      kCropsEdgeZCostCeiling9,
      sizeof(kCropsEdgeZCostCeiling9) / sizeof(kCropsEdgeZCostCeiling9[0])},
+    {9.0f,
+     vec2(0, 0),
+     kEdgeZCostCeilingPaintYaw,
+     "fog_edge_zcost_ceiling_paint_yaw9",
+     kCropsEdgeZCostCeilingPaintYaw9,
+     sizeof(kCropsEdgeZCostCeilingPaintYaw9) / sizeof(kCropsEdgeZCostCeilingPaintYaw9[0])},
 };
 constexpr int kFogPaintProbeTolerance = 2;
 IREntity::EntityId g_ceilingPillar = IREntity::kNullEntity;
