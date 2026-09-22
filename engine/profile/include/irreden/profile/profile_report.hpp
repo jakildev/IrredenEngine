@@ -63,6 +63,8 @@ struct RunWitnessSummary {
     float zoomFirst_ = 0.0f;
     float zoomLast_ = 0.0f;
     uint32_t poseSamples_ = 0;
+    /// Pose samples rendered with an explicit yaw pivot focus.
+    uint32_t explicitPivotSamples_ = 0;
     uint32_t overflowSamples_ = 0;
     uint32_t maxOverflowEntries_ = 0;
     uint32_t maxOverflowDropped_ = 0;

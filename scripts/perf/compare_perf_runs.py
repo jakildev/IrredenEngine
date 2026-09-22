@@ -62,6 +62,7 @@ WITNESS_YAW_RE = re.compile(
     r"^Camera yaw: first=(-?[\d.]+)deg last=(-?[\d.]+)deg travel=([\d.]+)deg samples=(\d+)$"
 )
 WITNESS_ZOOM_RE = re.compile(r"^Camera zoom: first=([\d.]+) last=([\d.]+)$")
+WITNESS_PIVOT_RE = re.compile(r"^Camera pivot: explicit focus on (\d+) of (\d+) frames$")
 WITNESS_OVERFLOW_RE = re.compile(
     r"^Per-axis overflow: maxEntries=(\d+) maxDropped=(\d+) cap=(\d+) samples=(\d+)$"
 )
@@ -135,6 +136,8 @@ class RunWitness:
     pose_samples: int = 0
     zoom_first: Optional[float] = None
     zoom_last: Optional[float] = None
+    # Pose samples rendered with an explicit yaw pivot focus; None without the line.
+    explicit_pivot_samples: Optional[int] = None
     # samples == 0 with the line present: the overflow lane never ran (cardinal pose).
     overflow_max_entries: Optional[int] = None
     overflow_max_dropped: Optional[int] = None
@@ -341,6 +344,10 @@ def parse_report(path: Path, cell_id: str) -> CellReport:
             m = WITNESS_ZOOM_RE.match(s)
             if m:
                 witness.zoom_first, witness.zoom_last = float(m.group(1)), float(m.group(2))
+                continue
+            m = WITNESS_PIVOT_RE.match(s)
+            if m:
+                witness.explicit_pivot_samples = int(m.group(1))
                 continue
             m = WITNESS_OVERFLOW_RE.match(s)
             if m:

@@ -489,6 +489,7 @@ void World::buildAndWriteProfileReport() {
     report.witness_.zoomFirst_ = witness.zoomFirst_;
     report.witness_.zoomLast_ = witness.zoomLast_;
     report.witness_.poseSamples_ = witness.poseSamples_;
+    report.witness_.explicitPivotSamples_ = witness.explicitPivotSamples_;
     report.witness_.overflowSamples_ = witness.overflowSamples_;
     report.witness_.maxOverflowEntries_ = witness.maxOverflowEntries_;
     report.witness_.maxOverflowDropped_ = witness.maxOverflowDropped_;

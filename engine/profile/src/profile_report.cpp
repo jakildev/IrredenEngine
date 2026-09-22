@@ -334,6 +334,12 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
     std::fprintf(f, "Camera zoom: first=%.3f last=%.3f\n", w.zoomFirst_, w.zoomLast_);
     std::fprintf(
         f,
+        "Camera pivot: explicit focus on %u of %u frames\n",
+        w.explicitPivotSamples_,
+        w.poseSamples_
+    );
+    std::fprintf(
+        f,
         "Per-axis overflow: maxEntries=%u maxDropped=%u cap=%u samples=%u\n",
         w.maxOverflowEntries_,
         w.maxOverflowDropped_,

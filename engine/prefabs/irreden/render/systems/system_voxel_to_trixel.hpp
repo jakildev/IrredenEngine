@@ -2155,7 +2155,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     }
 
     void beginTick() {
-        renderRunWitness().recordPose(IRPrefab::Camera::getYaw(), IRRender::getCameraZoom().x);
+        renderRunWitness().recordPose(
+            IRPrefab::Camera::getYaw(),
+            IRRender::getCameraZoom().x,
+            IRRender::hasRotationPivotFocus()
+        );
         voxelFaceBaker_ = nullptr;
         const auto bakeSystem = findSystem(BAKE_SUN_SHADOW_MAP);
         if (bakeSystem != kNullSystemId) {

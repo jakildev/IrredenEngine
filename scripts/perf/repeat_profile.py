@@ -78,6 +78,16 @@ def requested_yaw_step(demo_args: list[str]) -> float:
     return requested_radians(demo_args, "--yaw-step") or 0.0
 
 
+def requested_first_frame_yaw(demo_args: list[str]) -> float | None:
+    """IRPerfGrid's --yaw-first-frame: frame 1's own pose, else None."""
+    return requested_radians(demo_args, "--yaw-first-frame")
+
+
+def yaw_is_driven(demo_args: list[str]) -> bool:
+    """True where IRPerfGrid sets the yaw itself after frame 1."""
+    return requested_yaw_step(demo_args) != 0.0 or requested_first_frame_yaw(demo_args) is not None
+
+
 def degrees_apart(left: float, right: float) -> float:
     apart = abs(left % 360.0 - right % 360.0)
     return min(apart, 360.0 - apart)
@@ -95,7 +105,7 @@ def checked_pose(target: str, demo_args: list[str]) -> str | None:
     """'static', 'sweep', or None where the tool cannot predict IRPerfGrid's poses."""
     if target != "IRPerfGrid" or shot_table_drives_camera(demo_args):
         return None
-    if requested_yaw_step(demo_args) != 0.0:
+    if yaw_is_driven(demo_args):
         return "sweep"
     return "static" if requested_yaw(demo_args) is not None else None
 
@@ -116,7 +126,14 @@ def requested_frames(demo_args: list[str]) -> int | None:
 
 
 def frame_yaw(demo_args: list[str], frame: int) -> float:
-    """Radians IRPerfGrid renders 1-based frame N at: --yaw + (N - 1) * --yaw-step."""
+    """Radians IRPerfGrid renders 1-based frame N at.
+
+    --yaw + (N - 1) * --yaw-step, except that --yaw-first-frame gives frame 1 a
+    pose of its own.
+    """
+    first_frame = requested_first_frame_yaw(demo_args)
+    if frame == 1 and first_frame is not None:
+        return first_frame
     return (requested_yaw(demo_args) or 0.0) + (frame - 1) * requested_yaw_step(demo_args)
 
 
@@ -134,9 +151,11 @@ def wrapped_step_deg(step: float) -> float:
 def yaw_pose_mismatch(target: str, demo_args: list[str], witness: RunWitness) -> str | None:
     """Why the poses the report witnessed contradict --yaw and --yaw-step, else None.
 
-    Frame N renders at --yaw + (N - 1) * --yaw-step for the --auto-profile
-    frame count, so the witness's sample count, first frame, last frame and
-    travelled arc are all determined by the command line.
+    frame_yaw() gives every frame's pose for the --auto-profile frame count,
+    so the witness's sample count, first frame, last frame and travelled arc
+    are all determined by the command line. The witness cannot show that a
+    held pose was held from frame 2: a gradual ramp to it has the same first,
+    last and travel as the jump.
     """
     pose = checked_pose(target, demo_args)
     if pose is None:
@@ -157,20 +176,55 @@ def yaw_pose_mismatch(target: str, demo_args: list[str], witness: RunWitness) ->
         if not degrees_apart(expected_deg, witnessed) <= YAW_POSE_TOLERANCE_DEG:
             return (
                 f"the {label} rendered frame should be at {expected_deg:.3f} deg "
-                f"(--yaw {requested_yaw(demo_args) or 0.0} rad, --yaw-step {step} rad, "
-                f"{witness.pose_samples} frames); it was at {witnessed:.3f} deg"
+                f"({' '.join(pose_arguments(demo_args))}, {witness.pose_samples} frames); "
+                f"it was at {witnessed:.3f} deg"
             )
     expected_travel = wrapped_step_deg(step) * steps
-    tolerance = YAW_POSE_TOLERANCE_DEG if pose == "static" else SWEEP_TRAVEL_TOLERANCE_DEG
+    if requested_first_frame_yaw(demo_args) is not None and steps:
+        jump = wrapped_step_deg(frame_yaw(demo_args, 2) - frame_yaw(demo_args, 1))
+        expected_travel = jump + wrapped_step_deg(step) * (steps - 1)
+    tolerance = SWEEP_TRAVEL_TOLERANCE_DEG if step != 0.0 else YAW_POSE_TOLERANCE_DEG
     if not abs(witness.yaw_travel_deg - expected_travel) <= tolerance:
         return (
             f"the camera yawed {witness.yaw_travel_deg:.3f} deg over {witness.pose_samples} "
-            f"frames; --yaw-step {step} rad is {expected_travel:.3f} deg"
+            f"frames; {' '.join(pose_arguments(demo_args))} is {expected_travel:.3f} deg"
         )
     if witness.zoom_first != witness.zoom_last:
         return (
             f"the camera zoom went from {witness.zoom_first} to {witness.zoom_last} "
             "during the run"
+        )
+    return None
+
+
+def pose_arguments(demo_args: list[str]) -> list[str]:
+    """The pose flags as given, for a message that names what set the expectation."""
+    named = []
+    for flag in ("--yaw", "--yaw-step", "--yaw-first-frame"):
+        value = requested_radians(demo_args, flag)
+        if value is not None:
+            named.append(f"{flag} {value} rad")
+    return named or ["--yaw 0.0 rad"]
+
+
+def pivot_mismatch(target: str, demo_args: list[str], witness: RunWitness) -> str | None:
+    """Why the yaw pivot the report witnessed is not the one the flags ask for, else None.
+
+    IRPerfGrid pins the pivot for --pivot-origin and for a driven yaw, unless
+    --default-pivot asks for the engine's. With the default pivot the part of
+    the world a yaw shows depends on how the run began, so an arm that is
+    labelled pinned and is not would be timing a different view.
+    """
+    if checked_pose(target, demo_args) is None or witness.explicit_pivot_samples is None:
+        return None
+    pinned = "--pivot-origin" in demo_args or (
+        yaw_is_driven(demo_args) and "--default-pivot" not in demo_args
+    )
+    expected = witness.pose_samples if pinned else 0
+    if witness.explicit_pivot_samples != expected:
+        return (
+            f"{witness.explicit_pivot_samples} of {witness.pose_samples} frames had an explicit "
+            f"yaw pivot; the flags ask for {expected}"
         )
     return None
 
@@ -194,6 +248,8 @@ def overflow_failure(target: str, demo_args: list[str], witness: RunWitness) -> 
 def witness_checks(target: str, demo_args: list[str], witness: RunWitness) -> dict:
     return {
         "yaw_pose_mismatch": yaw_pose_mismatch(target, demo_args, witness),
+        "pivot_mismatch": pivot_mismatch(target, demo_args, witness),
+        "explicit_pivot_samples": witness.explicit_pivot_samples,
         "overflow_failure": overflow_failure(target, demo_args, witness),
         "yaw_first_deg": witness.yaw_first_deg,
         "yaw_last_deg": witness.yaw_last_deg,
@@ -407,8 +463,11 @@ def main() -> int:
     try:
         requested_yaw(demo_args)
         requested_yaw_step(demo_args)
+        requested_first_frame_yaw(demo_args)
     except ValueError as error:
-        parser.error(f"--yaw and --yaw-step must be finite numbers of radians: {error}")
+        parser.error(f"--yaw, --yaw-step and --yaw-first-frame must be finite radians: {error}")
+    if any(argument.split("=", 1)[0] == "--capture-frame" for argument in demo_args):
+        parser.error("--capture-frame puts a screenshot readback inside the timed window")
     root = Path(__file__).resolve().parents[2]
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
@@ -470,10 +529,15 @@ def main() -> int:
             or not fresh
             or not run.get("gpu_measured")
             or run["yaw_pose_mismatch"] is not None
+            or run["pivot_mismatch"] is not None
             or run["overflow_failure"] is not None
             or (sampling is not None and not sampling["complete"])
         ):
-            reasons = [run.get("yaw_pose_mismatch"), run.get("overflow_failure")]
+            reasons = [
+                run.get("yaw_pose_mismatch"),
+                run.get("pivot_mismatch"),
+                run.get("overflow_failure"),
+            ]
             print(
                 f"run {index}: failed or missing requested measurements"
                 f"{''.join(f'; {reason}' for reason in reasons if reason)}; inspect {log_path}",

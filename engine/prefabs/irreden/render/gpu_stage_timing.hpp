@@ -209,6 +209,9 @@ struct RenderRunWitness {
     float zoomFirst_ = 0.0f;
     float zoomLast_ = 0.0f;
     std::uint32_t poseSamples_ = 0;
+    // Pose samples rendered with an explicit yaw pivot focus. With the default
+    // pivot the part of the world a yaw shows depends on how the run began.
+    std::uint32_t explicitPivotSamples_ = 0;
     std::uint32_t overflowSamples_ = 0;
     std::uint32_t maxOverflowEntries_ = 0;
     std::uint32_t maxOverflowDropped_ = 0;
@@ -219,7 +222,8 @@ struct RenderRunWitness {
     CpuPhaseTiming perAxisAllocate_;
     CpuPhaseTiming perAxisRelease_;
 
-    void recordPose(float yaw, float zoom) {
+    void recordPose(float yaw, float zoom, bool explicitPivot) {
+        explicitPivotSamples_ += explicitPivot ? 1u : 0u;
         if (poseSamples_ == 0) {
             yawFirst_ = yaw;
             zoomFirst_ = zoom;

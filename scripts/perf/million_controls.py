@@ -18,7 +18,13 @@ import statistics
 from pathlib import Path
 
 from compare_perf_runs import parse_report
-from repeat_profile import cmake_build_type, overflow_failure, percentile, yaw_pose_mismatch
+from repeat_profile import (
+    cmake_build_type,
+    overflow_failure,
+    percentile,
+    pivot_mismatch,
+    yaw_pose_mismatch,
+)
 from rotation_controls import run_rounds, write_cases, write_gpu_summary
 
 PRESETS = {
@@ -217,6 +223,7 @@ def verify_cases(output: Path) -> None:
         pose = POSES[name.rsplit("-yaw", 1)[1]]
         for fault in (
             yaw_pose_mismatch("IRPerfGrid", pose, report.witness),
+            pivot_mismatch("IRPerfGrid", [*COMMON, *pose], report.witness),
             overflow_failure("IRPerfGrid", pose, report.witness),
         ):
             if fault is not None:

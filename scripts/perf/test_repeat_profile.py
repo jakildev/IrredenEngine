@@ -18,6 +18,7 @@ from repeat_profile import (
     host_power_source,
     overflow_failure,
     percentile,
+    pivot_mismatch,
     pose_text,
     requested_frames,
     requested_yaw,
@@ -29,7 +30,14 @@ from repeat_profile import (
 
 
 def witnessed(
-    yaw=45.0, last=None, travel=0.0, samples=300, dropped=0, overflow_samples=299, zoom_last=4.0
+    yaw=45.0,
+    last=None,
+    travel=0.0,
+    samples=300,
+    dropped=0,
+    overflow_samples=299,
+    zoom_last=4.0,
+    pinned=None,
 ):
     return RunWitness(
         yaw_first_deg=yaw,
@@ -38,6 +46,7 @@ def witnessed(
         pose_samples=samples,
         zoom_first=4.0,
         zoom_last=zoom_last,
+        explicit_pivot_samples=pinned,
         overflow_max_entries=630842,
         overflow_max_dropped=dropped,
         overflow_cap=1048576,
@@ -149,6 +158,47 @@ class YawSweepTest(unittest.TestCase):
         quarter = ["--yaw-step", "1.5707963267948966"]
         idle = witnessed(yaw=0.0, last=90.0, travel=810.0, samples=10, overflow_samples=0)
         self.assertIsNone(overflow_failure("IRPerfGrid", quarter, idle))
+
+    def test_a_first_frame_pose_is_checked_and_its_jump_counts_as_travel(self):
+        held = ["--yaw", "0.816814", "--yaw-first-frame=0"]
+        self.assertIsNone(self.mismatch(held, yaw=0.0, last=46.8, travel=46.8, samples=75))
+        same = ["--yaw", "0.816814", "--yaw-first-frame", "0.816814"]
+        self.assertIsNone(self.mismatch(same, yaw=46.8, last=46.8, travel=0.0, samples=75))
+        ignored = self.mismatch(held, yaw=46.8, last=46.8, travel=0.0, samples=75)
+        self.assertIn("first rendered frame should be at 0.000 deg", ignored)
+        self.assertIn("--yaw-first-frame 0.0 rad", ignored)
+        # A held pose gets the static tolerance: 0.04 degrees of drift is refused.
+        drifted = self.mismatch(held, yaw=0.0, last=46.8, travel=46.84, samples=75)
+        self.assertIn("yawed 46.840", drifted)
+        swept = ["--yaw", "0", "--yaw-step", "0.020943951", "--yaw-first-frame=1.5707963"]
+        # 90 degrees, then 1.2, 2.4, 3.6: 88.8 across the jump and 1.2 twice after it.
+        self.assertIsNone(self.mismatch(swept, yaw=90.0, last=3.6, travel=91.2, samples=4))
+        short = self.mismatch(swept, yaw=90.0, last=3.6, travel=3.6, samples=4)
+        self.assertIn("yawed 3.600 deg", short)
+
+    def test_the_overflow_lane_is_demanded_only_of_a_predictable_rotated_run(self):
+        held = ["--yaw", "0.816814", "--yaw-first-frame=0"]
+        idle = witnessed(yaw=0.0, last=46.8, travel=46.8, overflow_samples=0)
+        self.assertIn("never sampled", overflow_failure("IRPerfGrid", held, idle))
+        rotated_first = ["--yaw", "0", "--yaw-first-frame=0.816814"]
+        self.assertIn("never sampled", overflow_failure("IRPerfGrid", rotated_first, idle))
+        cardinal = ["--yaw", "0", "--yaw-first-frame=0"]
+        self.assertIsNone(overflow_failure("IRPerfGrid", cardinal, witnessed(overflow_samples=0)))
+        # A run the tool cannot predict is not failed for it.
+        self.assertIsNone(overflow_failure("IRCanvasStress", self.FULL_TURN, idle))
+        table = ["--yaw-ramp", "--auto-screenshot", "4", *self.FULL_TURN]
+        self.assertIsNone(overflow_failure("IRPerfGrid", table, idle))
+
+    def test_the_pivot_the_flags_ask_for_is_the_pivot_that_rendered(self):
+        pinned, default = witnessed(pinned=300), witnessed(pinned=0)
+        for args in (self.FULL_TURN, ["--yaw", "1", "--pivot-origin"], ["--yaw-first-frame=0"]):
+            self.assertIsNone(pivot_mismatch("IRPerfGrid", args, pinned))
+            self.assertIn("the flags ask for 300", pivot_mismatch("IRPerfGrid", args, default))
+        for args in (["--yaw", "1"], [*self.FULL_TURN, "--default-pivot"]):
+            self.assertIsNone(pivot_mismatch("IRPerfGrid", args, default))
+            self.assertIn("the flags ask for 0", pivot_mismatch("IRPerfGrid", args, pinned))
+        self.assertIsNone(pivot_mismatch("IRPerfGrid", self.FULL_TURN, witnessed()))
+        self.assertIsNone(pivot_mismatch("IRCanvasStress", self.FULL_TURN, default))
 
     def test_a_step_the_check_cannot_compare_is_refused(self):
         with self.assertRaises(ValueError):

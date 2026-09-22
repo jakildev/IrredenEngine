@@ -18,7 +18,8 @@ IRREDEN_BUILD_DIR="$PWD/build-release" python3 scripts/perf/repeat_profile.py \
 
 `repeat_profile.py` checks a sweep from the report's run witness
 ([million-controls.md](million-controls.md) § The run witness and its
-controls): the first frame at `--yaw`, the last at `--yaw + (frames − 1) ×
+controls): the frame count against `--auto-profile`, the first frame at
+`--yaw` (or at `--yaw-first-frame`), the last at `--yaw + (frames − 1) ×
 step`, the travelled arc equal to `(frames − 1) × |step|` within 0.05°, the
 overflow lane sampled, and nothing dropped. A 300-frame full turn reads
 `first=0.000 last=-1.200 travel=358.800`, which is 299 × 1.2° exactly.
@@ -43,6 +44,29 @@ So `--yaw-step` pins the pivot at the origin, which is the grid's centre
 passes it on every arm so the static and swept poses frame the scene the same
 way. The view is then a function of the yaw alone, and the scene stays centred
 through the turn.
+
+The control for the pin is one pose reached from two first frames.
+`--yaw-first-frame <radians>` renders frame 1 at a pose of its own and then
+follows `--yaw`, `--capture-frame N` requests a screenshot after frame N, and
+`--default-pivot` keeps the engine's pivot under a driven yaw. Held at 46.8°
+and captured after frame 60
+([continuous-yaw-sweep/pivot-identity/](continuous-yaw-sweep/pivot-identity/),
+stage profiling on):
+
+| Pivot | Frame 1 | Visible candidates at the held view | Lit pixels | Steady p50 ms | The two captures |
+|---|---|---:|---:|---:|---|
+| Default | 0° | 482,966 | 50.0% | 28.28 | 80.04% of pixels match, maximum delta 134: |
+| Default | 46.8° | 626,223 | 62.9% | 31.95 | the scene is translated about 330 pixels |
+| Pinned | 0° | 909,433 | 89.8% | 39.18 | 100% match, maximum delta 0: |
+| Pinned | 46.8° | 909,433 | 89.8% | 39.32 | byte-identical |
+
+Coverage and candidates move together (0.56 : 0.70 : 1 of the screen lit,
+0.53 : 0.69 : 1 of the candidates), so the cheaper arms are cheaper because
+less of the grid is on screen. The report's `Camera pivot:` line says which
+pivot a run rendered with, and `repeat_profile.py` refuses a run whose pivot
+is not the one its flags ask for. The default-pivot arm that starts at 46.8°
+and never moves still changes view during the run: its first cull samples
+read 909,433, the pinned view, and its held view reads 626,223.
 
 The first sweeps ran unpinned, and they are kept under
 [continuous-yaw-sweep/unpinned/](continuous-yaw-sweep/unpinned/) because they

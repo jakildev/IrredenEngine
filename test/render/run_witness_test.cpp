@@ -12,7 +12,7 @@ constexpr float kDegree = IRMath::kPi / 180.0f;
 TEST(RenderRunWitness, StaticPoseTravelsNothing) {
     RenderRunWitness witness;
     for (int frame = 0; frame < 300; ++frame) {
-        witness.recordPose(45.0f * kDegree, 4.0f);
+        witness.recordPose(45.0f * kDegree, 4.0f, true);
     }
     EXPECT_EQ(witness.poseSamples_, 300u);
     EXPECT_FLOAT_EQ(witness.yawFirst_, 45.0f * kDegree);
@@ -25,7 +25,7 @@ TEST(RenderRunWitness, TravelSumsTheArcAcrossTheSeam) {
     RenderRunWitness witness;
     // 170° to -170° is a 20° step through ±180°, never a 340° one.
     for (float degrees : {150.0f, 170.0f, -170.0f, -150.0f}) {
-        witness.recordPose(degrees * kDegree, 4.0f);
+        witness.recordPose(degrees * kDegree, 4.0f, true);
     }
     EXPECT_NEAR(witness.yawTravel_ / kDegree, 60.0f, 1e-3f);
     EXPECT_NEAR(witness.yawFirst_ / kDegree, 150.0f, 1e-3f);
@@ -35,10 +35,19 @@ TEST(RenderRunWitness, TravelSumsTheArcAcrossTheSeam) {
 TEST(RenderRunWitness, TravelCountsAReturnToTheStartingPose) {
     RenderRunWitness witness;
     for (float degrees : {0.0f, 30.0f, 0.0f}) {
-        witness.recordPose(degrees * kDegree, 4.0f);
+        witness.recordPose(degrees * kDegree, 4.0f, true);
     }
     EXPECT_FLOAT_EQ(witness.yawFirst_, witness.yawLast_);
     EXPECT_NEAR(witness.yawTravel_ / kDegree, 60.0f, 1e-3f);
+}
+
+TEST(RenderRunWitness, CountsTheFramesRenderedWithAnExplicitPivot) {
+    RenderRunWitness witness;
+    witness.recordPose(0.0f, 4.0f, false);
+    witness.recordPose(0.1f, 4.0f, true);
+    witness.recordPose(0.2f, 4.0f, true);
+    EXPECT_EQ(witness.poseSamples_, 3u);
+    EXPECT_EQ(witness.explicitPivotSamples_, 2u);
 }
 
 TEST(RenderRunWitness, OverflowKeepsTheWorstFrameNotTheLast) {
@@ -54,8 +63,8 @@ TEST(RenderRunWitness, OverflowKeepsTheWorstFrameNotTheLast) {
 
 TEST(RenderRunWitness, ResetForgetsThePreviousRun) {
     RenderRunWitness witness;
-    witness.recordPose(1.0f, 2.0f);
-    witness.recordPose(2.0f, 2.0f);
+    witness.recordPose(1.0f, 2.0f, true);
+    witness.recordPose(2.0f, 2.0f, true);
     witness.recordOverflow(9u, 9u, 9u);
     witness.perAxisAllocate_.record(1.5);
     witness.perAxisRelease_.record(1.5);
@@ -65,7 +74,7 @@ TEST(RenderRunWitness, ResetForgetsThePreviousRun) {
     EXPECT_EQ(witness.poseSamples_, 0u);
     EXPECT_EQ(witness.overflowSamples_, 0u);
     EXPECT_EQ(witness.maxOverflowDropped_, 0u);
-    witness.recordPose(0.5f, 1.0f);
+    witness.recordPose(0.5f, 1.0f, true);
     EXPECT_FLOAT_EQ(witness.yawFirst_, 0.5f);
     EXPECT_EQ(witness.yawTravel_, 0.0f);
 }

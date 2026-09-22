@@ -31,6 +31,7 @@ WITNESS = (
     "--- Run witness ---\n"
     "Camera yaw: first={yaw:.3f}deg last={last:.3f}deg travel={travel:.3f}deg samples=4\n"
     "Camera zoom: first={zoom:.3f} last={zoom:.3f}\n"
+    "Camera pivot: explicit focus on {pinned} of 4 frames\n"
     "Per-axis overflow: maxEntries=500 maxDropped={drops} cap=8388608 samples={lane}\n"
     "--- Frame times (ms, in order) ---\n"
     "90.000 {avg:.3f} {avg:.3f} {tail:.3f}\n"
@@ -54,6 +55,7 @@ def write_round(
     yaw=None,
     travel=None,
     zoom=4.0,
+    pinned=4,
     witnessed=True,
     steady=True,
 ):
@@ -69,6 +71,7 @@ def write_round(
         last=first + swept,
         travel=swept if travel is None else travel,
         zoom=zoom,
+        pinned=pinned,
         drops=drops,
         lane=3 if pose or sweeping else 0,
         avg=avg,
@@ -213,6 +216,7 @@ class FingerprintTest(unittest.TestCase):
                 "name": "release-profiling-off-yawsweep", "travel": 1.2,
             },
             "zoom 1.0, not 4.0": {"zoom": 1.0},
+            "0 of 4 frames had an explicit yaw pivot": {"pinned": 0},
         }
         for message, fault in faults.items():
             with self.subTest(message=message), tempfile.TemporaryDirectory() as temporary:
