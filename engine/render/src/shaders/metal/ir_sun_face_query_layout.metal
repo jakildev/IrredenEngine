@@ -25,11 +25,6 @@ inline bool sourceFaceQueryComplete(uint count) {
     return count <= kSourceFaceTileCapacity;
 }
 
-// The marker distinguishes query-backed faces from analytic surface samples.
-inline bool sunWriteIsSourceFace(uint packedDepth) {
-    return (packedDepth & 0xFFu) == 0x89u;
-}
-
 // Positive separation means the receiver ray intersects this finite face in front.
 inline float sourceFaceRaySeparation(float2 sunUV, float sunZ, float3 corner, float3 edgeU, float3 edgeV) {
     const float determinant = projectedFaceDeterminant(float2(edgeU.x, edgeU.y), float2(edgeV.x, edgeV.y));

@@ -47,10 +47,6 @@ int main() {
     }
     const uint end = kSourceFaceRecordOffset + kSourceFaceCapacity * kSourceFaceRecordWords;
     if (end != kSourceFaceBufferWords) return 5;
-    for (uint marker = 0; marker < 256; ++marker) {
-        if (sunWriteIsSourceFace((12345u << 8) | marker) != (marker == 0x89u)) return 6;
-    }
-    if (sunWriteIsSourceFace(0xffffffffu)) return 7;
     const vec2 uv{0.5f, 0.5f};
     const vec3 corner{0, 0, 2}, u{1, 0, .5f}, v{0, 1, -.25f};
     if (sourceFaceRaySeparation(uv, 3, corner, u, v) != .875f) return 8;

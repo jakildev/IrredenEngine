@@ -42,15 +42,7 @@ inline void rasterSunFace(device atomic_uint* sunDepthBuf, float3 corner, float3
 inline void indexSourceSunFace(device atomic_uint* sunDepthBuf, float3 corner, float3 edgeU, float3 edgeV, constant FrameDataSun& sunFrame) {
     const float determinant = projectedFaceDeterminant(edgeU.xy, edgeV.xy);
     if (abs(determinant) < 0.000001) return;
-    const uint faceIndex = atomic_fetch_add_explicit(&sunDepthBuf[kSourceFaceHeaderOffset], 1u, memory_order_relaxed);
-    if (faceIndex < kSourceFaceCapacity) {
-        const uint record = kSourceFaceRecordOffset + faceIndex * kSourceFaceRecordWords;
-        for (uint axis = 0; axis < 3u; ++axis) {
-            atomic_store_explicit(&sunDepthBuf[record + axis], as_type<uint>(corner[axis]), memory_order_relaxed);
-            atomic_store_explicit(&sunDepthBuf[record + 3u + axis], as_type<uint>(edgeU[axis]), memory_order_relaxed);
-            atomic_store_explicit(&sunDepthBuf[record + 6u + axis], as_type<uint>(edgeV[axis]), memory_order_relaxed);
-        }
-    }
+    uint faceIndex = 0xFFFFFFFFu;
     const float2 low = min(min(corner.xy, corner.xy + edgeU.xy), min(corner.xy + edgeV.xy, corner.xy + edgeU.xy + edgeV.xy));
     const float2 high = max(max(corner.xy, corner.xy + edgeU.xy), max(corner.xy + edgeV.xy, corner.xy + edgeU.xy + edgeV.xy));
     for (uint cascade = 0u; cascade < kSourceFaceCascadeCount; ++cascade) {
@@ -58,6 +50,18 @@ inline void indexSourceSunFace(device atomic_uint* sunDepthBuf, float3 corner, f
         const float2 cellSize = (cascade == 0u ? sunFrame.cascadeTexelSize_0 : sunFrame.cascadeTexelSize_1) * float(kSourceFaceTileEdge);
         const int2 first = max(int2(floor((low - origin) / cellSize)), int2(0));
         const int2 last = min(int2(floor((high - origin) / cellSize)), int2(kSourceFaceTilesPerAxis - 1u));
+        if (first.x > last.x || first.y > last.y) continue;
+        if (faceIndex == 0xFFFFFFFFu) {
+            faceIndex = atomic_fetch_add_explicit(&sunDepthBuf[kSourceFaceHeaderOffset], 1u, memory_order_relaxed);
+            if (faceIndex < kSourceFaceCapacity) {
+                const uint record = kSourceFaceRecordOffset + faceIndex * kSourceFaceRecordWords;
+                for (uint axis = 0; axis < 3u; ++axis) {
+                    atomic_store_explicit(&sunDepthBuf[record + axis], as_type<uint>(corner[axis]), memory_order_relaxed);
+                    atomic_store_explicit(&sunDepthBuf[record + 3u + axis], as_type<uint>(edgeU[axis]), memory_order_relaxed);
+                    atomic_store_explicit(&sunDepthBuf[record + 6u + axis], as_type<uint>(edgeV[axis]), memory_order_relaxed);
+                }
+            }
+        }
         for (int y = first.y; y <= last.y; ++y) for (int x = first.x; x <= last.x; ++x) {
             const uint tile = cascade * kSourceFaceTilesPerAxis * kSourceFaceTilesPerAxis + uint(y) * kSourceFaceTilesPerAxis + uint(x);
             const uint base = sourceFaceTileBase(tile);
@@ -114,8 +118,8 @@ kernel void c_bake_voxel_sun_faces(
         const float3 projected = sunSpaceProject(corner, sunFrame.sunBasisU.xyz, sunFrame.sunBasisV.xyz, sunFrame.sunDirection.xyz);
         const float3 projectedU = sunSpaceProject(edgeU, sunFrame.sunBasisU.xyz, sunFrame.sunBasisV.xyz, sunFrame.sunDirection.xyz);
         const float3 projectedV = sunSpaceProject(edgeV, sunFrame.sunBasisU.xyz, sunFrame.sunBasisV.xyz, sunFrame.sunDirection.xyz);
-        if (rigidSource) indexSourceSunFace(sunDepthBuf, projected, projectedU, projectedV, sunFrame);
-        rasterSunFace(sunDepthBuf, projected, projectedU, projectedV, sunFrame.cascadeOriginUV_0, sunFrame.cascadeTexelSize_0, sunWriteIsSourceFace(faceMarker) ? int(kSourceFaceFallbackOffset) : 0, faceMarker);
-        rasterSunFace(sunDepthBuf, projected, projectedU, projectedV, sunFrame.cascadeOriginUV_1, sunFrame.cascadeTexelSize_1, kCascadeTexelCount + (sunWriteIsSourceFace(faceMarker) ? int(kSourceFaceFallbackOffset) : 0), faceMarker);
+        indexSourceSunFace(sunDepthBuf, projected, projectedU, projectedV, sunFrame);
+        rasterSunFace(sunDepthBuf, projected, projectedU, projectedV, sunFrame.cascadeOriginUV_0, sunFrame.cascadeTexelSize_0, int(kSourceFaceFallbackOffset), faceMarker);
+        rasterSunFace(sunDepthBuf, projected, projectedU, projectedV, sunFrame.cascadeOriginUV_1, sunFrame.cascadeTexelSize_1, kCascadeTexelCount + int(kSourceFaceFallbackOffset), faceMarker);
     }
 }

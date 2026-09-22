@@ -85,6 +85,14 @@ int main() {
     const uint source=depth(1,0x89), other=depth(2,0x85), empty=0xffffffffu;
     for(int cascade=0; cascade<2; ++cascade) {
         if(sample(true,other,source,cascade)!=1) return 1;
+        for(uint marker : {0x85u, 0x58u, 0x89u}) {
+            const uint indexed = depth(1, marker);
+            if(sample(true,empty,indexed,cascade)!=0) return 2;
+            if(sample(false,empty,indexed,cascade)!=1) return 3;
+            if(sample(true,other,indexed,cascade)!=1) return 1;
+            if(sample(false,empty,depth(11,marker),cascade)!=0) return 8;
+            if(sample(false,empty,depth(-100,marker),cascade)!=0) return 9;
+        }
         if(sample(true,empty,source,cascade)!=0) return 2;
         if(sample(false,empty,source,cascade)!=1) return 3;
         if(sample(false,other,empty,cascade)!=1) return 4;

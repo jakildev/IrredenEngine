@@ -76,6 +76,15 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
   This scalar gate does not accept the remaining rendered shadow failures.
 - Next: resolve finite sampling misses and small GRID floor-shadow boundaries
   across quadrants against ray/face geometry, preserving legitimate partial faces.
+- [Finite voxel queries](../pr-screenshots/codex/finite-voxel-shadow-query/README.md)
+  retain projected GRID and revoxelized faces alongside rigid source faces.
+  GRID casting onto a continuous source floor passes all four strict cardinal
+  edge controls with zero errors. Revoxelized casting improves but still fails
+  the 180/270-degree footprint controls; reconcile its actual resampled geometry
+  with the oracle before calling it accepted. SDF/GRID receivers still need
+  continuous winning surface data through fragment presentation. Shared index
+  capacity can reduce rigid-source exactness in dense scenes; test temporal
+  overflow and larger populations before promoting this as a scalable solution.
 - Keep six oriented face normals, twelve geometric half-faces, coordinate basis
   and screen parity distinct; see the [identity contract](trixel-face-reconstruction-validation.md#oriented-face-identity-versus-screen-parity).
 - Default-scene context still contains visible banding/trixel artifacts in both

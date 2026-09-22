@@ -61,6 +61,21 @@ shortcut that suppressed mixed legacy blockers.
 
 ## Remaining work
 
+Finite voxel casters of all three bases (world GRID, camera-aligned resampled,
+and rigid source) also retain their actual projected face quads in the bounded
+query index. A complete tile uses ray/quad intersections at the receiver point;
+its voxel map layer is ignored after an exact miss. Analytic/legacy casters stay
+in the independent primary layer. Incomplete tiles use the voxel fallback layer,
+which preserves world/camera face markers for the plane-agreement calculation
+above. Raster-origin receivers retain the minimum of both depth layers.
+
+Only faces overlapping at least one cascade consume records. Capacity remains
+65,536 records and 64 candidates per tile, shared by all voxel bases. Added GRID
+or resampled geometry can force previously exact rigid-source tiles into
+approximate fallback; this is not a guarantee of sharp edges at arbitrary density.
+Native sparse-scene acceptance and outstanding limits are recorded in the
+[finite voxel query evidence](../pr-screenshots/codex/finite-voxel-shadow-query/README.md).
+
 - [Finite defaults](finite-shadow-defaults.md) cover shape-only and non-main
   producer lifecycles; particle pipelines retain legacy casting.
 - Preserve both the four GRID cubes and detached/attached entities in sweeps.

@@ -78,7 +78,7 @@ float sampleCascadeShadow(
     ivec2 nearestPixel = ivec2(floor((sunUV - origin) / texelSz));
     if (surfaceReceiver && nearestPixel.x >= 0 && nearestPixel.y >= 0 &&
         nearestPixel.x < kSunShadowMapDim && nearestPixel.y < kSunShadowMapDim) {
-        // Source and other casters retain independent depths: rejecting a source
+        // Indexed and other casters retain independent depths: rejecting an indexed
         // footprint must not discard another caster hidden behind its map sample.
         for (int layer = 0; layer < 2; ++layer) {
             if (layer == 1 && sourceQueryComplete) continue;
