@@ -21,7 +21,8 @@
 #include <irreden/render/voxel_dispatch_grid.hpp>
 
 #include <irreden/render/gpu_stage_timing.hpp>
-#include <irreden/render/gpu_stage_timing_observer.hpp>
+#include <irreden/render/gpu_substage_timing.hpp>
+#include <irreden/ir_profile.hpp>
 
 #include <cstring>
 #include <limits>
@@ -277,6 +278,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
     }
 
     void endTick() {
+        IR_PROFILE_SCOPE("shapeEncode");
         IREntity::EntityId mainCanvas = IRRender::getActiveCanvasEntity();
         const float visualYaw = visualYaw_;
         const float rasterYaw = rasterYaw_;
@@ -407,7 +409,10 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             const int gridY = IRMath::divCeil(tileCount, gridX);
             frameData_.tileGridX = gridX;
 
-            prepareWinnerBuffer(canvasTextures.size_);
+            {
+                IRRender::GpuSubStageScope timing("shapeOwnerClear");
+                prepareWinnerBuffer(canvasTextures.size_);
+            }
             shapesProgram_->use();
             shapeDescBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_ShapeDescriptors);
             canvasTextures.getTextureDistances()
@@ -429,24 +434,30 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             shapesFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_ShapesFrameData);
 
             // Pass 0: depth via imageAtomicMin
-            frameData_.passIndex = 0;
-            shapesFrameDataBuf_->subData(0, sizeof(GPUShapesFrameData), &frameData_);
+            {
+                IRRender::GpuSubStageScope timing("shapeDepth");
+                frameData_.passIndex = 0;
+                shapesFrameDataBuf_->subData(0, sizeof(GPUShapesFrameData), &frameData_);
 
-            IRRender::device()->dispatchCompute(
-                static_cast<std::uint32_t>(gridX),
-                static_cast<std::uint32_t>(gridY),
-                1
-            );
-            IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+                IRRender::device()->dispatchCompute(
+                    static_cast<std::uint32_t>(gridX),
+                    static_cast<std::uint32_t>(gridY),
+                    1
+                );
+                IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+            }
 
-            frameData_.passIndex = 3;
-            shapesFrameDataBuf_->subData(0, sizeof(GPUShapesFrameData), &frameData_);
-            IRRender::device()->dispatchCompute(
-                static_cast<std::uint32_t>(gridX),
-                static_cast<std::uint32_t>(gridY),
-                1
-            );
-            IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+            {
+                IRRender::GpuSubStageScope timing("shapeOwnerElect");
+                frameData_.passIndex = 3;
+                shapesFrameDataBuf_->subData(0, sizeof(GPUShapesFrameData), &frameData_);
+                IRRender::device()->dispatchCompute(
+                    static_cast<std::uint32_t>(gridX),
+                    static_cast<std::uint32_t>(gridY),
+                    1
+                );
+                IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+            }
 
             // Pass 1: color + entity ID from the elected depth winner. Colors is bound
             // READ_WRITE (not WRITE_ONLY) so the SHAPE_FLAG_GIZMO occluded-
@@ -459,15 +470,18 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             canvasTextures.getTextureEntityIds()
                 ->bindAsImage(2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI);
 
-            frameData_.passIndex = 1;
-            shapesFrameDataBuf_->subData(0, sizeof(GPUShapesFrameData), &frameData_);
+            {
+                IRRender::GpuSubStageScope timing("shapePublish");
+                frameData_.passIndex = 1;
+                shapesFrameDataBuf_->subData(0, sizeof(GPUShapesFrameData), &frameData_);
 
-            IRRender::device()->dispatchCompute(
-                static_cast<std::uint32_t>(gridX),
-                static_cast<std::uint32_t>(gridY),
-                1
-            );
-            IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+                IRRender::device()->dispatchCompute(
+                    static_cast<std::uint32_t>(gridX),
+                    static_cast<std::uint32_t>(gridY),
+                    1
+                );
+                IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+            }
 
             const auto shadow = IREntity::getComponentOptional<C_CanvasSunShadow>(canvasId);
             const auto behavior =
@@ -477,6 +491,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                 const auto bakeSystem = findSystem(BAKE_SUN_SHADOW_MAP);
                 if (bakeSystem != kNullSystemId) {
                     auto *baker = getSystemParams<System<BAKE_SUN_SHADOW_MAP>>(bakeSystem);
+                    IRRender::GpuSubStageScope timing("shapeSunCast");
                     if (auto *casterDepth = baker->prepareAnalyticCasterDepth(frameData_)) {
                         baker->bakeAnalyticBoxes(
                             static_cast<int>(gpuShapes.size()),
@@ -575,9 +590,8 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         p->shapesFrameDataBuf_ = IRRender::getNamedResource<Buffer>("ShapesFrameDataBuffer");
         p->shapeTileDescBuf_ = IRRender::getNamedResource<Buffer>("ShapeTileDescriptorBuffer");
         p->animationParamsBuf_ = IRRender::getNamedResource<Buffer>("AnimationParamsBuffer");
-        // Per-system bracket covers depth, owner election and color/id;
-        // shapePass0 stays at 0.0f for API stability.
-        IRRender::tagGpuStage(systemId, "shapePass1");
+        // Metal has one active timestamp attachment; dispatch scopes cannot nest
+        // inside a per-system GPU timing tag.
         return systemId;
     }
 

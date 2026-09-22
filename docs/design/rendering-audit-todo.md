@@ -346,3 +346,14 @@ while the remaining map path in `sampleCascadeShadow` uses weighted 2×2 PCF.
 must audit both; removing PCF alone neither repairs finite coverage nor proves
 sharp transitions across cascades. Preserve off-screen caster coverage and
 receiver-plane depth handling while unifying the geometry queries.
+
+### SDF dispatch attribution implemented
+
+[Separate non-nested SDF timers](../pr-screenshots/codex/sdf-pass-timing/README.md)
+now measure owner clear, depth, election, publication and casting. Fixed-pose
+Metal captures preserve pixels with timing enabled/disabled. In two shadowed
+sphere runs, casting is the largest row (3.024/2.744 ms), while individual
+raster rows range 0.363–0.790 ms. Next isolate finite box casting, non-box
+depth fallback, resolve and bake within that casting bundle before selecting
+a change. Ownership cost remains a merge consideration; these timing scopes
+are not an optimization and do not fix sphere speckling or sharp-shadow geometry.
