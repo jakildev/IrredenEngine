@@ -517,14 +517,18 @@ assert_contains "$out" \
     "hold: .github/workflows/map-filtered.yml failed on head bbbbbbbbb (master: none)" \
     "a failed filtered workflow is held; no master run reads as none"
 
-# --- own red vs inherited red, by failed-suite set ---------------------------
+# --- own red vs inherited red, by failed-suite identity ----------------------
 #
-# fleet-tests failed on master (suite alpha) and on four heads. Head 700's
-# run annotated {alpha, beta}: beta is its own and is held. Head 701's set is
-# exactly master's: inherited, a note. Head 702 passed fleet-tests before
+# fleet-tests failed on master (alpha with identity 111, and gamma
+# unitemized) and on six heads. Head 700's run annotated alpha@111 and
+# beta@222: beta is its own and is held. Head 701 failed exactly as master
+# does on alpha: inherited, a note. Head 702 passed fleet-tests before
 # master's later run failed: its green predates the break and is held to
 # re-run. Head 703 is BEHIND; head 704 is UNSTABLE with every run green, so
-# the merge-box reading is the only signal and is held as unaccounted.
+# the merge-box reading is the only signal and is held as unaccounted. Head
+# 707 fails alpha with a different identity: a second failure in a suite
+# master already fails is its own. Head 708 fails gamma unitemized, as master
+# does: nothing proves the two failed alike, so it is held.
 
 python3 - "$TMP/api-suites.json" << 'PYEOF'
 import json
@@ -533,6 +537,7 @@ import sys
 unfiltered = "on:\n  push:\n    branches: [master]\n  pull_request:\n  workflow_dispatch:\n"
 filtered = "on:\n  pull_request:\n    paths:\n      - 'scripts/**'\n"
 OWN, SAME, STALE, BEHIND, UNSTABLE = ("c" * 40, "d" * 40, "e" * 40, "f" * 40, "1" * 40)
+OTHER, UNITEMIZED = "4" * 40, "5" * 40
 
 
 def run(i, name, conclusion, created):
@@ -551,6 +556,10 @@ runs = {
              run(42, "fleet-tests.yml", "success", "2026-02-02T00:00:00Z")],
     UNSTABLE: [run(51, "comment-refs.yml", "success", "2026-02-02T00:00:00Z"),
                run(52, "fleet-tests.yml", "success", "2026-02-02T00:00:00Z")],
+    OTHER: [run(81, "comment-refs.yml", "success", "2026-02-01T00:00:00Z"),
+            run(82, "fleet-tests.yml", "failure", "2026-02-01T00:00:00Z")],
+    UNITEMIZED: [run(91, "comment-refs.yml", "success", "2026-02-01T00:00:00Z"),
+                 run(92, "fleet-tests.yml", "failure", "2026-02-01T00:00:00Z")],
 }
 spec = {
     "workflows": {"comment-refs.yml": unfiltered, "fleet-tests.yml": filtered},
@@ -558,12 +567,16 @@ spec = {
     "master": {"comment-refs.yml": "success",
                "fleet-tests.yml": {"conclusion": "failure", "id": 900,
                                    "created_at": "2026-02-01T12:00:00Z"}},
-    "jobs": {"12": [1201], "22": [2201], "900": [9001]},
+    "jobs": {"12": [1201], "22": [2201], "82": [8201], "92": [9201], "900": [9001]},
     "annotations": {
-        "1201": [{"title": "fleet-tests failed suites", "message": "test_alpha.sh test_beta.py"}],
-        "2201": [{"title": "fleet-tests failed suites", "message": "test_alpha.sh"}],
+        "1201": [{"title": "fleet-tests failed suites",
+                  "message": "test_alpha.sh@111 test_beta.py@222"}],
+        "2201": [{"title": "fleet-tests failed suites", "message": "test_alpha.sh@111"}],
+        "8201": [{"title": "fleet-tests failed suites", "message": "test_alpha.sh@333"}],
+        "9201": [{"title": "fleet-tests failed suites", "message": "test_gamma.sh@?"}],
         "9001": [{"title": "unrelated", "message": "x"},
-                 {"title": "fleet-tests failed suites", "message": "test_alpha.sh"}],
+                 {"title": "fleet-tests failed suites",
+                  "message": "test_alpha.sh@111 test_gamma.sh@?"}],
     },
 }
 with open(sys.argv[1], "w", encoding="utf-8") as f:
@@ -587,6 +600,10 @@ prs = [
      "mergeStateStatus": "BEHIND"},
     {"number": 704, "title": "engine: unstable, unaccounted", "headRefOid": "1" * 40,
      "mergeStateStatus": "UNSTABLE"},
+    {"number": 707, "title": "engine: new failure in a red suite", "headRefOid": "4" * 40,
+     "mergeStateStatus": "UNSTABLE"},
+    {"number": 708, "title": "engine: unitemized red", "headRefOid": "5" * 40,
+     "mergeStateStatus": "UNSTABLE"},
 ]
 for pr in prs:
     pr.update({"url": "u", "labels": approved})
@@ -599,13 +616,21 @@ status=$(GH_STUB_ENGINE_PRS="$TMP/engine-prs-suites.json" GH_STUB_API="$TMP/api-
 out=$(cat "$TMP/out.txt")
 assert_eq "$status" "0" "suite-set run exits 0"
 assert_contains "$out" \
-    "hold: .github/workflows/fleet-tests.yml failed on head ccccccccc (master: failure) — 1 suite(s) not failing on master: test_beta.py" \
+    "hold: .github/workflows/fleet-tests.yml failed on head ccccccccc (master: failure) — 1 suite(s) not failing this way on master: test_beta.py" \
     "a suite failing on the head but not on master is the PR's own red and is held by name"
 assert_contains "$out" \
-    "note: .github/workflows/fleet-tests.yml failed on head ddddddddd for the same suite(s) as master — inherited, not this PR's to fix" \
-    "a head failing for exactly master's suites is a note"
+    "note: .github/workflows/fleet-tests.yml failed on head ddddddddd with the same failures as master — inherited, not this PR's to fix" \
+    "a head failing exactly as master does is a note"
 assert_absent "$out" "hold: .github/workflows/fleet-tests.yml failed on head ddddddddd" \
     "an inherited red is never a hold"
+assert_contains "$out" \
+    "hold: .github/workflows/fleet-tests.yml failed on head 444444444 (master: failure) — 1 suite(s) not failing this way on master: test_alpha.sh" \
+    "a different failure in a suite master already fails is the PR's own red"
+assert_absent "$out" "note: .github/workflows/fleet-tests.yml failed on head 444444444" \
+    "a same-suite, different-failure red is never read as inherited"
+assert_contains "$out" \
+    "hold: .github/workflows/fleet-tests.yml failed on head 555555555 (master: failure) — 1 suite(s) not failing this way on master: test_gamma.sh" \
+    "an unitemized failure never matches master's, even when master's is unitemized too"
 assert_contains "$out" \
     "hold: .github/workflows/fleet-tests.yml passed on head eeeeeeeee at 2026-01-15T00:00:00Z, but master's later run (2026-02-01T12:00:00Z) failed — Update branch to re-run before merging" \
     "a green run that predates master's break is held to re-run"
@@ -642,7 +667,7 @@ def run(i, name, conclusion, created="2026-02-01T00:00:00Z"):
             "conclusion": conclusion, "created_at": created}
 
 
-suite = {"title": "fleet-tests failed suites", "message": "test_alpha.sh"}
+suite = {"title": "fleet-tests failed suites", "message": "test_alpha.sh@111"}
 spec = {
     "workflows": {"comment-refs.yml": unfiltered, "fleet-tests.yml": filtered},
     "runs": {
@@ -684,7 +709,7 @@ status=$(GH_STUB_ENGINE_PRS="$TMP/engine-prs-paged.json" GH_STUB_API="$TMP/api-p
 out=$(cat "$TMP/out.txt")
 assert_eq "$status" "0" "paged run exits 0"
 assert_contains "$out" \
-    "note: .github/workflows/fleet-tests.yml failed on head 222222222 for the same suite(s) as master — inherited, not this PR's to fix" \
+    "note: .github/workflows/fleet-tests.yml failed on head 222222222 with the same failures as master — inherited, not this PR's to fix" \
     "a suite annotation on page 2 of a page-2 job of a page-2 run is read"
 assert_absent "$out" "has no completed run on head 222222222" \
     "a head run past the first page of the runs list is read"

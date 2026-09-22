@@ -148,8 +148,8 @@ rules are the delta.
 
 Read the checks before the verdict. A `FAILURE` in `statusCheckRollup` is
 the PR's own when the same workflow is green on the base branch, or red
-there for a different reason (a different offender or suite — the run log
-names it); an own red is needs-fix (REVIEWER-PROTOCOL.md § Nits vs
+there for a different reason (a different offender, suite, or failing
+assertion within a suite — the run log names it); an own red is needs-fix (REVIEWER-PROTOCOL.md § Nits vs
 needs-fix: "a CI validator the PR turns red"). A red the base already
 carries for the same reason is inherited: name it in the review as
 inherited and do not hold it against the PR. A check with no completed run

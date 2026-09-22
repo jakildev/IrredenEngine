@@ -463,8 +463,15 @@ class TestReuseGuardSchemaMarker(unittest.TestCase):
         }
 
     def _fetch_on_304(self, prev):
-        with patch.object(_mod, "conditional_get",
-                          side_effect=lambda *a, **k: (False, None)), \
+        # Every approved fixture PR is merge-ready, so its head's check-runs
+        # are polled too: an unchanged, empty list.
+        def detector(_repo, path, **_k):
+            if path.endswith("/check-runs"):
+                return (False, json.dumps({"total_count": 0, "check_runs": []}))
+            return (False, None)
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.object(_mod, "CHECK_RUNS_ETAG_DIR", Path(tmp)), \
+                patch.object(_mod, "conditional_get", side_effect=detector), \
                 patch.object(_mod, "run_capture", side_effect=self._counting_gh):
             return _mod.fetch_prs(_REPO, prev=prev)
 

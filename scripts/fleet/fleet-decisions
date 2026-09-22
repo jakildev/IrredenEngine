@@ -24,10 +24,13 @@
 #
 # A red that master already carries is told apart from the PR's own. When the
 # head and master both failed a workflow whose jobs annotate their failed
-# suites (run_all.sh's `fleet-tests failed suites` annotation), the two suite
-# sets are compared: suites failing on the head but not on master are the
-# hold, and a head failing for exactly master's suites is a `note:`, not a
-# hold. A head whose run passed before master's later run of the same
+# suites (run_all.sh's `fleet-tests failed suites` annotation, one
+# `<suite>@<identity>` per failed suite), the two sets are compared: a suite
+# failing on the head with no identical failure on master is the hold, and a
+# head failing exactly as master does is a `note:`, not a hold. The identity
+# is a checksum of the suite's failure lines, so a second failure in a suite
+# master already fails is still the PR's own; an unitemized identity (`?`)
+# never matches. A head whose run passed before master's later run of the same
 # workflow failed is held to re-run: its green predates the break, and a
 # merge on it can land a second red behind the first. GitHub's own merge-box
 # state rides along from `gh pr list`: BEHIND is an Update-branch hold, and
@@ -178,8 +181,9 @@ DEFAULT_PR_TYPES = {"opened", "synchronize", "reopened"}
 FAILED = {"failure", "timed_out", "startup_failure"}
 WORKFLOW_DIR = ".github/workflows"
 # The annotation title run_all.sh emits on a failed fleet-test run; its
-# message is the failed suite names, space-separated.
+# message is the failed suites, space-separated, each `<name>@<identity>`.
 SUITES_ANNOTATION_TITLE = "fleet-tests failed suites"
+UNITEMIZED = "?"
 
 
 class Unreadable(Exception):
@@ -336,27 +340,32 @@ class GateReader:
         return run["conclusion"] if run else "none"
 
     def failed_suites(self, run_id):
-        """The suite names a run's jobs annotated as failed, or None when no
-        job left the annotation — an older run, or a workflow that does not
-        emit it. A job's id is its check-run id."""
+        """The `(suite, identity)` pairs a run's jobs annotated as failed, or
+        None when no job left the annotation — an older run, or a workflow
+        that does not emit it. A bare suite name reads as unitemized. A job's
+        id is its check-run id."""
         if run_id in self.suites:
             return self.suites[run_id]
         found = None
         for job in gh_api_list(f"repos/{self.slug}/actions/runs/{run_id}/jobs", key="jobs"):
             for annotation in gh_api_list(f"repos/{self.slug}/check-runs/{job['id']}/annotations"):
                 if annotation.get("title") == SUITES_ANNOTATION_TITLE:
-                    found = (found or set()) | set((annotation.get("message") or "").split())
+                    found = found or set()
+                    for token in (annotation.get("message") or "").split():
+                        suite, _, identity = token.partition("@")
+                        found.add((suite, identity or UNITEMIZED))
         self.suites[run_id] = found
         return found
 
     def own_failures(self, head_run, master_run):
-        """The suites failing on the head run and not on master's, or None
-        when either run carries no suite annotation."""
+        """The suites failing on the head run with no identical failure on
+        master's, or None when either run carries no suite annotation."""
         head = self.failed_suites(head_run["id"])
         master = self.failed_suites(master_run["id"])
         if head is None or master is None:
             return None
-        return head - master
+        return {suite for suite, identity in head
+                if identity == UNITEMIZED or (suite, identity) not in master}
 
     def holds(self, sha):
         """`(holds, notes)` for head `sha`. A run is read by head sha, never
@@ -383,11 +392,11 @@ class GateReader:
                 line = f"{path} failed on head {short} (master: {self.master_conclusion(path)})"
                 own = self.own_failures(run, master) if master_failed else None
                 if own is not None and not own:
-                    notes.append(f"{path} failed on head {short} for the same suite(s) as "
+                    notes.append(f"{path} failed on head {short} with the same failures as "
                                  "master — inherited, not this PR's to fix")
                     continue
                 if own:
-                    line += (f" — {len(own)} suite(s) not failing on master: "
+                    line += (f" — {len(own)} suite(s) not failing this way on master: "
                              f"{' '.join(sorted(own))}")
                 holds.append(line)
             elif master_failed and (master.get("created_at") or "") > (run.get("created_at") or ""):

@@ -116,11 +116,29 @@ cd "$TESTS_DIR" || exit 1
 
 passed=0
 failed_names=()
+failed_ids=()
 skipped_names=()
 
 # Skip status: a suite whose subject under test is missing exits with this
 # code instead of 0, so a vacuous run is never folded into "passed".
 SKIP_STATUS=3
+
+# A failed suite's failure identity: a checksum of its exit status and its
+# distinct failure lines (lib_assert's `FAIL:`, unittest's `FAIL:`/`ERROR:`
+# headers), so two runs of one suite read alike only when they failed the same
+# assertions. `?` when the output names no failure or the suite timed out:
+# nothing then proves two runs failed alike, and fleet-decisions reads `?` as
+# never matching.
+failure_identity() {  # $1 = exit status, $2 = suite output
+    local lines
+    lines=$(printf '%s\n' "$2" | grep -aE '^[[:space:]]*(FAIL|ERROR): ' \
+                | sed -E 's/^[[:space:]]+//' | LC_ALL=C sort -u)
+    if [[ -z "$lines" || "$1" -eq 124 ]]; then
+        echo "?"
+        return
+    fi
+    printf '%s\n%s\n' "$1" "$lines" | cksum | awk '{print $1}'
+}
 
 for f in "${suites[@]}"; do
     name=$(basename "$f")
@@ -140,6 +158,7 @@ for f in "${suites[@]}"; do
         printf '%s\n' "$out" | sed 's/^/      | /'
     else
         failed_names+=("$name")
+        failed_ids+=("$name@$(failure_identity "$rc" "$out")")
         # 124 is coreutils timeout's "killed on deadline" status.
         if [[ "$rc" -eq 124 ]]; then
             printf 'FAIL  %s (timed out after %ss)\n' "$name" "$per_timeout"
@@ -157,9 +176,9 @@ if [[ ${#skipped_names[@]} -gt 0 ]]; then
 fi
 if [[ ${#failed_names[@]} -gt 0 ]]; then
     echo "$PROG: failed: ${failed_names[*]}" >&2
-    # A GitHub Actions annotation: the failed suite set becomes a check-run
-    # annotation that fleet-decisions reads to tell a head's own red from one
-    # master already carries. Inert outside Actions.
-    echo "::error title=fleet-tests failed suites::${failed_names[*]}"
+    # A GitHub Actions annotation: each failed suite as `<name>@<identity>`
+    # becomes a check-run annotation that fleet-decisions reads to tell a
+    # head's own red from one master already carries. Inert outside Actions.
+    echo "::error title=fleet-tests failed suites::${failed_ids[*]}"
     exit 1
 fi

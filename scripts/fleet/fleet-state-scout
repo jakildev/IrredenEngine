@@ -64,7 +64,7 @@ from fleet_epic_membership import epic_refs
 # ETAG_DIR aliases the module's shared etag-cache default so the two never
 # drift; it's mkdir'd in main() and the fetchers rely on that default cache_dir.
 from fleet_gh_poll import DEFAULT_CACHE_DIR as ETAG_DIR
-from fleet_gh_poll import conditional_get, last_rate_limit
+from fleet_gh_poll import cache_entry_path, conditional_get, last_rate_limit
 from fleet_model_field import MODEL_CLASSES, declared_class
 from fleet_stack_base import unsafe_base_reason
 
@@ -603,8 +603,7 @@ def derive_closes_refs(body, repo):
 # 4 -> 5: mergeStateStatus added. The merger signal withholds merge-ready
 # while it reads UNSTABLE (failing checks on the head); a schema-4 record
 # lacks the key and would read as clean for every PR until the next ETag
-# flip. A check turning green does not bump the PR's updatedAt, so the value
-# settles on the next list refetch, not on the check itself.
+# flip.
 PR_RECORD_SCHEMA = 5
 
 
@@ -721,6 +720,61 @@ def _drop_prs_closed_since(repo, prev, rest_body):
     return kept
 
 
+# A check completing on a PR's head bumps neither the PR's updated_at nor the
+# open-list ETag, so the 304 fast path would serve a cached mergeStateStatus
+# until an unrelated list change. The heads whose merger signal reads that
+# state have their check-runs polled by ETag instead; the entries live in their
+# own directory because they are keyed by head sha, and each poll prunes the
+# ones no longer polled.
+CHECK_RUNS_ETAG_DIR = ETAG_DIR / "check-runs"
+CHECK_RUNS_PER_PAGE = 100
+CHECK_RUNS_MAX_PAGES = 3
+
+
+def _check_state_moved(repo, prs):
+    """True when a check on the head of any PR whose merger signal is
+    merge-ready or checks-red may have changed since the last poll. Every such
+    head is polled, so each primes its ETag on the tick it first appears. An
+    unchanged page is a 304 for zero quota; an error, an unparseable page, or
+    a list still full at the page cap reads as moved."""
+    moved = False
+    keep = set()
+    for pr in prs:
+        signal = _merger_action_signal(
+            set(pr.get("labels") or ()), pr.get("mergeable"),
+            pr.get("baseRefName", "master"), pr.get("mergeStateStatus"),
+        )
+        if signal not in ("merge-ready", "checks-red"):
+            continue
+        sha = pr.get("headRefOid")
+        if not sha:
+            moved = True
+            continue
+        path = f"commits/{sha}/check-runs"
+        for page in range(1, CHECK_RUNS_MAX_PAGES + 1):
+            params = {"per_page": str(CHECK_RUNS_PER_PAGE), "page": str(page)}
+            keep.add(cache_entry_path(repo, path, params=params, cache_dir=CHECK_RUNS_ETAG_DIR))
+            changed, body = conditional_get(repo, path, params=params,
+                                            cache_dir=CHECK_RUNS_ETAG_DIR)
+            moved = moved or changed
+            try:
+                full = len(json.loads(body)["check_runs"]) >= CHECK_RUNS_PER_PAGE
+            except (TypeError, ValueError, KeyError):
+                moved = True
+                break
+            if not full:
+                break
+        else:
+            moved = True
+    # Only a pass that polled prunes: a head that stopped being polled keeps
+    # its entry until the next pass that polls any head.
+    if keep:
+        for entry in next(iter(keep)).parent.glob("*.json"):
+            if entry not in keep:
+                entry.unlink(missing_ok=True)
+    return moved
+
+
 def fetch_prs(repo, prev=None):
     # The open-PR list is the one read that STAYS on GraphQL — it needs reviews
     # + mergeable, which the REST list omits. So gate it: a cheap conditional
@@ -732,7 +786,8 @@ def fetch_prs(repo, prev=None):
     # review or a label edit bumps a PR's updated_at (→ new body → new ETag), and
     # a merge/close removes the PR from the open set (→ new ETag). What it does
     # NOT cover is `mergeable` settling from UNKNOWN after such a refetch — that
-    # is the bounded re-query below. On a detector error conditional_get returns
+    # is the bounded re-query below — or a check changing on a head, which
+    # _check_state_moved polls for. On a detector error conditional_get returns
     # (True, None) → changed=True → we fall through to GraphQL, so a failed
     # detector degrades to today's behavior. per_page=100 so the detector's
     # single page covers every open PR (REST defaults to 30); sort=updated keeps
@@ -749,24 +804,34 @@ def fetch_prs(repo, prev=None):
     if (not changed and prev is not None and repo not in _prs_refetch_pending
             and all(p.get("schema") == PR_RECORD_SCHEMA for p in prev)):
         prev = _drop_prs_closed_since(repo, prev, body)
+        checks_moved = _check_state_moved(repo, prev)
         unknown = _unknown_mergeable_count(prev)
         used = _mergeable_requery_ticks.get(repo, 0)
-        if unknown and used < MERGEABLE_UNKNOWN_REQUERY_CAP:
+        requery = unknown and used < MERGEABLE_UNKNOWN_REQUERY_CAP
+        if requery:
             _mergeable_requery_ticks[repo] = used + 1
             if used == 0:
                 log(f"{repo}: {unknown} open PR(s) still report mergeable=UNKNOWN "
                     f"— re-querying GraphQL past the 304 gate (up to "
                     f"{MERGEABLE_UNKNOWN_REQUERY_CAP} ticks, #3038)")
+        if requery or checks_moved:
             fresh = _fetch_prs_graphql(repo)
             if fresh is None:
                 # A failed re-query is not a reason to degrade a valid cache —
                 # keep the reused list; the budget already advanced so this
-                # cannot spin.
+                # cannot spin. A check move's ETag already advanced too, so
+                # the next tick bypasses the reuse rather than trusting it.
+                if checks_moved:
+                    _prs_refetch_pending.add(repo)
                 return prev
             if not _unknown_mergeable_count(fresh):
                 _mergeable_requery_ticks[repo] = 0
             return fresh
         return prev
+    if prev is not None:
+        # Primes the check-run ETags against the list about to be replaced,
+        # so the next 304 tick does not read every unprimed head as moved.
+        _check_state_moved(repo, prev)
     _mergeable_requery_ticks[repo] = 0
     fresh = _fetch_prs_graphql(repo)
     if fresh is None:
