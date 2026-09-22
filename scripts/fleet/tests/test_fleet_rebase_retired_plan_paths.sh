@@ -242,7 +242,7 @@ reset_run
 before=$(remote_sha feat-evil-merge)
 scratch_before=$(git -C "$SCRATCH" rev-parse HEAD)
 slice_for 405 feat-evil-merge
-T6=$("$REBASE" --auto --rearm-trigger --dry-run 2>&1 || true)
+T6=$("$REBASE" --auto --rearm-trigger 2>&1 || true)
 assert_contains "$T6" "engine#405: rebase range contains merge commits; leaving for LLM" \
     "T6 refuses the non-linear range"
 assert_absent "$T6" "clean rebase onto origin/master" "T6 never attempts the rebase"

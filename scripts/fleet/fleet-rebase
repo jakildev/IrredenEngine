@@ -5,8 +5,10 @@
 # written every scout tick) and attempts a plain `git rebase` for each
 # eligible PR in a detached scratch worktree. A clean rebase is verified
 # (same changed-file set before and after) and force-with-lease pushed to
-# the PR branch — no claude process anywhere. Anything that conflicts, or
-# any other PR the LLM merger would act on, becomes a dispatch TARGET: this
+# the PR branch — no claude process anywhere. A rebase range containing a
+# merge commit goes to the LLM pass because a plain rebase drops merge-only
+# content. Anything that conflicts, or any other PR the LLM merger would act
+# on, becomes a dispatch TARGET: this
 # script writes one `merge:<repo>:<N>` line per such PR into the merger
 # trigger, and fleet-dispatcher launches the (sonnet) merger iteration bound
 # to one line at a time (FLEET_DISPATCH_TARGET). The LLM pass is therefore
@@ -45,6 +47,8 @@
 #     (RETIRED_PATH_RE below): master deleted the file and the PR still
 #     edits it, and the deletion is the answer by policy, so the rebase
 #     takes it and continues.
+#   - A rebase range containing a merge commit goes to the LLM pass: a plain
+#     rebase drops merge-only content.
 #
 # Stale-label cleanup — two label shapes that no longer describe the PR they
 # sit on, and that would otherwise park it outside every automated lane
