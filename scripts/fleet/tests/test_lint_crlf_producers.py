@@ -626,7 +626,7 @@ def _fleet_claim_findings(text):
 
 
 class HistoricalSites(unittest.TestCase):
-    """The five work-list producers the prose rule missed, named one per test.
+    """The inline work-list producers and the shared open-claim producer.
 
     A site is (enclosing function, a phrase from its Python program): the
     program text is what stays stable across the tree revisions a control
@@ -638,10 +638,8 @@ class HistoricalSites(unittest.TestCase):
     SITES = (
         ("cmd_cleanup_gh",
          'name.startswith("fleet:reviewing-") or name.startswith("fleet:resolving-")'),
-        ("cmd_cleanup_gh", 'name.startswith("fleet:claim-")'),
         ("cmd_cleanup_gh", 'name.startswith("fleet:stewarding-")'),
         ("cmd_cleanup_gh", 'name.startswith("fleet:planning-")'),
-        ("cmd_reset_sweep_host_claims", "name.startswith(prefix)"),
     )
     STRIP = "| tr -d '\\r'"
 
@@ -669,17 +667,26 @@ class HistoricalSites(unittest.TestCase):
     def test_cleanup_gh_pr_label_sweep_is_stripped(self):
         self._assert_clean(*self.SITES[0])
 
-    def test_cleanup_gh_open_claim_sweep_is_stripped(self):
+    def test_cleanup_gh_steward_sweep_is_stripped(self):
         self._assert_clean(*self.SITES[1])
 
-    def test_cleanup_gh_steward_sweep_is_stripped(self):
+    def test_cleanup_gh_planning_sweep_is_stripped(self):
         self._assert_clean(*self.SITES[2])
 
-    def test_cleanup_gh_planning_sweep_is_stripped(self):
-        self._assert_clean(*self.SITES[3])
-
-    def test_reset_sweep_host_claims_open_claim_sweep_is_stripped(self):
-        self._assert_clean(*self.SITES[4])
+    def test_shared_open_claim_producer_strip_protects_both_consumers(self):
+        head, body, tail = self._split(self.text, "open_issue_claim_labels")
+        self.assertIn("name.startswith(prefix)", body)
+        self.assertEqual(body.count(self.STRIP), 1)
+        consumers = {"cmd_cleanup_gh", "cmd_reset_sweep_host_claims"}
+        for function in consumers:
+            self.assertIn("open_issue_claim_labels", self._split(self.text, function)[1])
+        self.assertEqual(self.findings, [])
+        mutated = head + body.replace(self.STRIP, "", 1) + tail
+        hits = _fleet_claim_findings(mutated)
+        self.assertEqual({hit.function for hit in hits}, consumers)
+        self.assertEqual(len(hits), 2)
+        for hit in hits:
+            self.assertIn("open_issue_claim_labels", hit.command)
 
     def test_each_strip_is_load_bearing(self):
         # Removing one site's strip re-flags exactly that site: the detector

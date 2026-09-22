@@ -124,12 +124,14 @@ gh() {
             mv "$STATE/labels.tmp" "$STATE/labels.$n" ;;
         "issue list")
             case "$args" in
-                *" --label fleet:needs-plan "*)
+                *" --label fleet:needs-plan "*|" issue list --repo $REPO --state open --json number,labels --limit 1000 ")
                     local out='' f n
                     for f in "$STATE"/labels.*; do
                         [[ -e "$f" ]] || continue
                         n="${f##*.}"
-                        grep -qxF "fleet:needs-plan" "$f" || continue
+                        if [[ "$args" == *" --label fleet:needs-plan "* ]]; then
+                            grep -qxF "fleet:needs-plan" "$f" || continue
+                        fi
                         out+="${out:+,}{\"number\":$n,\"labels\":$(_stub_json_labels "$n")}"
                     done
                     printf '[%s]\n' "$out" ;;
