@@ -46,6 +46,17 @@
 #   - T16: the surface includes files that only a merged campaign PR touched
 #   - T17: an unresolvable default ref is `unknown`, never `clean`
 #   - T18: an unreadable open-PR list is `unknown`, never a classification
+#   - T19: --apply succeeds when the dirty tree yields no stash
+#   - T20: a PR stacked above a campaign head (merged with it, retargeted, or
+#          open on a campaign base) is listed and exits 3 until the doc names
+#          it; a foreign PR BELOW the campaign heads is not stacked on it
+#   - T21: other lanes' open PRs group by campaign path, one line per path
+#   - T22: a stale `## Now` is caught by slice ID and by PR number, replaying
+#          the real texts; a closed-unmerged PR stays out of the merged view
+#   - T23: an issue naming an open campaign PR's file by full path is listed;
+#          a basename or an issue-endpoint PR row is not
+#   - T24: exit precedence — attention beats resync, unreadable is not empty
+#   - T25: a branch building on an open campaign PR's head is `stacked`
 
 set -euo pipefail
 
@@ -579,47 +590,326 @@ else
     echo "  skip: submodules unavailable in this environment"
 fi
 
-echo "T20: explicit campaign participants appear without owning the driver lane"
+# --- resync helpers -----------------------------------------------------------
+OUT=""
+RC=0
+run_pr() {
+    local wt="$1" json="$2"; shift 2
+    set +e
+    OUT=$("$TOOL" "$SLUG" --worktree "$wt" --no-fetch --pr-json "$json" "$@" 2>&1)
+    RC=$?
+    set -e
+}
+# Evaluates a Python expression over the tool's --json report, bound as `d`.
+jq_py() {
+    python3 -c 'import json, sys; d = json.load(sys.stdin); print(eval(sys.argv[1]))' "$1"
+}
+section_block() {
+    # The lines of one resync section: from its title to the next section title.
+    echo "$1" | awk -v start="$2" '
+        index($0, "  " start) == 1 { f = 1; print; next }
+        f && /^  [^ ]/ { exit }
+        f'
+}
+acknowledge() {
+    printf '\n- Read %s for this campaign.\n' "$2" >> "$1/docs/design/campaigns/$SLUG.md"
+}
+level_branch() {
+    g "$1" checkout --quiet -B "$BRANCH" refs/remotes/origin/master
+}
+# Pushes a one-commit PR head off origin/master to <origin>'s refs/pull/<n>/head.
+push_pull_ref() {
+    local wt="$1" origin="$2" number="$3" file="$4" content="$5"
+    local here
+    here=$(g "$wt" rev-parse --abbrev-ref HEAD)
+    g "$wt" checkout --quiet -B __pr refs/remotes/origin/master
+    mkdir -p "$(dirname "$wt/$file")"
+    printf '%s\n' "$content" > "$wt/$file"
+    g "$wt" add -A && g "$wt" commit --quiet -m "pr $number"
+    g "$wt" push -q "$origin" "HEAD:refs/pull/$number/head"
+    g "$wt" checkout --quiet "$here"
+    g "$wt" branch --quiet -D __pr
+}
+
+# --- T20: stacked on campaign -------------------------------------------------
+echo "T20: a PR stacked above a campaign head is listed until the doc names it"
 new_fixture t20; WT20="$FIXTURE"
+level_branch "$WT20"
+P="claude/$SLUG"
+PRJSON_STACK="$TMPROOT/pr-stack.json"
+cat > "$PRJSON_STACK" <<JSON
+{"open": [], "merged": [],
+ "stacks": [{"number": 3531, "pull_requests": [
+   {"number": 3519, "state": "closed", "merged_at": "2026-09-20T07:37:20Z", "head": {"ref": "$P-d0-1"}},
+   {"number": 3530, "state": "closed", "merged_at": "2026-09-20T07:37:20Z", "head": {"ref": "$P-d0-2"}},
+   {"number": 3542, "state": "closed", "merged_at": "2026-09-20T07:37:20Z", "head": {"ref": "$P-sdf"}},
+   {"number": 3554, "state": "closed", "merged_at": "2026-09-20T07:37:20Z", "head": {"ref": "$P-d0-3"}},
+   {"number": 3556, "state": "closed", "merged_at": "2026-09-20T07:37:20Z", "head": {"ref": "$P-d0-4"}},
+   {"number": 3559, "state": "closed", "merged_at": "2026-09-20T07:37:20Z", "head": {"ref": "$P-d0-5"}},
+   {"number": 3560, "state": "closed", "merged_at": "2026-09-20T07:37:25Z", "head": {"ref": "codex/render-stack-sanity"}}]}]}
+JSON
+run_pr "$WT20" "$PRJSON_STACK"
+assert_eq "$RC" "3" "a clean branch with an unreconciled stacked PR exits 3"
+assert_contains "$(section_block "$OUT" "stacked on campaign")" "#3560 codex/render-stack-sanity  merged" \
+    "the merged-with-its-parent foreign member is listed"
+assert_absent "$(section_block "$OUT" "stacked on campaign")" "#3559" "campaign heads are not listed"
+assert_contains "$OUT" "UNRECONCILED (stacked_on_campaign)" "the unreconciled section is named"
+run_pr "$WT20" "$PRJSON_STACK" --json
+assert_eq "$(echo "$OUT" | jq_py '[r["number"] for r in d["resync"]["stacked_on_campaign"]["rows"]]')" \
+    "[3560]" "--json carries the same row"
+assert_eq "$(echo "$OUT" | jq_py 'sorted(k for k in ("since", "foreign_commits", "foreign_open_prs") if k in d)')" \
+    "['foreign_commits', 'foreign_open_prs', 'since']" "the pre-existing JSON keys are still there"
+
+PRJSON_RETARGET="$TMPROOT/pr-retarget.json"
+cat > "$PRJSON_RETARGET" <<JSON
+{"open": [{"number": 3700, "headRefName": "codex/child", "baseRefName": "master", "labels": []},
+          {"number": 3701, "headRefName": "codex/on-campaign-base", "baseRefName": "$P-d1-0",
+           "labels": []}],
+ "merged": [],
+ "stacks": [{"number": 3690, "pull_requests": [
+   {"number": 3690, "state": "closed", "merged_at": "2026-09-21T01:00:00Z", "head": {"ref": "$P-d1-0"}},
+   {"number": 3700, "state": "open", "merged_at": null, "head": {"ref": "codex/child"}}]}]}
+JSON
+run_pr "$WT20" "$PRJSON_RETARGET" --json
+assert_eq "$(echo "$OUT" | jq_py '[r["number"] for r in d["resync"]["stacked_on_campaign"]["rows"]]')" \
+    "[3700, 3701]" "a retargeted stack child and an open PR on a campaign base are both listed"
+
+PRJSON_BELOW="$TMPROOT/pr-below.json"
+cat > "$PRJSON_BELOW" <<JSON
+{"open": [], "merged": [],
+ "stacks": [{"number": 3801, "pull_requests": [
+   {"number": 3801, "state": "open", "merged_at": null, "head": {"ref": "codex/foundation"}},
+   {"number": 3802, "state": "open", "merged_at": null, "head": {"ref": "$P-a"}},
+   {"number": 3803, "state": "open", "merged_at": null, "head": {"ref": "$P-b"}}]}]}
+JSON
+run_pr "$WT20" "$PRJSON_BELOW"
+assert_eq "$RC" "0" "a foreign PR the campaign stacked ONTO is not stacked on the campaign"
+assert_contains "$OUT" "stacked on campaign  none" "and the section says none"
+
+acknowledge "$WT20" "#3560 (sanity review)"
+run_pr "$WT20" "$PRJSON_STACK"
+assert_eq "$RC" "0" "naming the PR in the working-tree doc reconciles it"
+assert_contains "$OUT" "1 acknowledged" "the acknowledged row collapses to a count"
+assert_contains "$OUT" "resync     reconciled" "the resync reads reconciled"
+
+# --- T21: lane ownership ------------------------------------------------------
+echo "T21: other lanes' open PRs are grouped by the campaign path they touch"
+new_fixture t21; WT21="$FIXTURE"
+ORIGIN21="$TMPROOT/t21-origin.git"
+git init -q --bare "$ORIGIN21"
+g "$WT21" remote add origin "$ORIGIN21"
+advance_origin "$WT21" creations/demos/fixture_stress/main.cpp campaign "campaign slice (#1)"
+t21_merge=$(g "$WT21" rev-parse refs/remotes/origin/master)
+level_branch "$WT21"
+push_pull_ref "$WT21" "$ORIGIN21" 3565 creations/demos/fixture_stress/main.cpp "lane a"
+push_pull_ref "$WT21" "$ORIGIN21" 3566 creations/demos/fixture_stress/main.cpp "lane b"
+PRJSON_LANES="$TMPROOT/pr-lanes.json"
+cat > "$PRJSON_LANES" <<JSON
+{"open": [{"number": 3565, "headRefName": "codex/lane-a", "title": "lane a", "labels": []},
+          {"number": 3566, "headRefName": "codex/lane-b", "title": "lane b", "labels": []}],
+ "merged": [{"number": 1, "title": "campaign slice", "mergedAt": "2026-01-03",
+             "headRefName": "$BRANCH", "mergeCommit": {"oid": "$t21_merge"}}]}
+JSON
+run_pr "$WT21" "$PRJSON_LANES"
+lanes=$(section_block "$OUT" "lane ownership")
+assert_eq "$(echo "$lanes" | grep -c 'creations/demos/fixture_stress/main.cpp')" "1" \
+    "the shared path prints once"
+assert_contains "$lanes" "main.cpp  #3565 #3566" "with both PR numbers on its line"
+assert_eq "$RC" "3" "unacknowledged lanes exit 3"
+acknowledge "$WT21" "#3565"
+run_pr "$WT21" "$PRJSON_LANES"
+assert_eq "$RC" "3" "acknowledging one of two leaves the section unreconciled"
+acknowledge "$WT21" "#3566"
+run_pr "$WT21" "$PRJSON_LANES"
+assert_eq "$RC" "0" "acknowledging both reconciles it"
+assert_contains "$(section_block "$OUT" "lane ownership")" "#3565 (ack) #3566 (ack)" \
+    "the full ownership view still prints once reconciled"
+
+# --- T22: stale ## Now ----------------------------------------------------------
+echo "T22: a ## Now naming merged campaign work is stale, by slice ID and by number"
+new_fixture t22; WT22="$FIXTURE"
+level_branch "$WT22"
+DOC22="$WT22/docs/design/campaigns/$SLUG.md"
+write_now() {
+    python3 - "$DOC22" "$1" <<'PY'
+import pathlib, re, sys
+path = pathlib.Path(sys.argv[1])
+text = path.read_text()
+path.write_text(re.sub(r"## Now\n.*", "## Now\n\n" + sys.argv[2] + "\n", text, flags=re.S))
+PY
+}
+write_now "- **In flight:** D1.1 — the committed \`million\` preset and the
+  \`repeat_profile\` recipe with Release and profiling-off arms (measurement
+  only: the frame-time and GPU-stage tables that D2–D5 will move).
+- **Next:** Checkpoint 2 once D1.1 is open (D0.3, D0.4, D0.5, D1.1 and the
+  fix-forward since Checkpoint 1): fresh-context reviewers plus the render
+  and ECS audits on the three engine diffs. After it, the source-face
+  canvas's raw-texel SDF marker (the remaining SDF display item, a
+  \`SOURCE_FACES\` composite question) or D2 per the ledger."
+PRJSON_NOW="$TMPROOT/pr-now.json"
+cat > "$PRJSON_NOW" <<JSON
+{"open": [{"number": 3581, "headRefName": "$P-d1-1", "title": "D1.1", "labels": []}],
+ "merged": [{"number": 3554, "title": "d0.3", "mergedAt": "2026-09-20T07:37:20Z", "headRefName": "$P-d0-3",
+             "body": "Campaign \`$SLUG\`, slice D0.3."},
+            {"number": 3556, "title": "d0.4", "mergedAt": "2026-09-20T07:37:20Z", "headRefName": "$P-d0-4",
+             "body": "Campaign \`$SLUG\`, slice D0.4."},
+            {"number": 3559, "title": "d0.5", "mergedAt": "2026-09-20T07:37:20Z", "headRefName": "$P-d0-5",
+             "body": "Campaign \`$SLUG\`, slice **D0.5**."},
+            {"number": 3500, "title": "d1", "mergedAt": "2026-09-19T00:00:00Z", "headRefName": "$P-d1",
+             "body": "Campaign \`$SLUG\`, slice D1."},
+            {"number": 3520, "title": "fix-forward", "mergedAt": "2026-09-19T00:00:00Z",
+             "headRefName": "$P-fix", "body": "No slice line here."},
+            {"number": 3590, "title": "abandoned", "mergedAt": null, "headRefName": "$P-dropped",
+             "body": "Campaign \`$SLUG\`, slice D9.9.", "mergeCommit": null}]}
+JSON
+run_pr "$WT22" "$PRJSON_NOW" --json
+assert_eq "$(echo "$OUT" | jq_py 'sorted(r["token"] for r in d["resync"]["stale_now"]["rows"])')" \
+    "['D0.3', 'D0.4', 'D0.5']" "the real incident text names the three merged slices, not D1.1"
+assert_eq "$(echo "$OUT" | jq_py 'd["resync"]["stale_now"]["unmapped"]')" "[3520]" \
+    "a merged PR with no slice line is listed as unmapped"
+assert_eq "$(echo "$OUT" | jq_py '3590 in [r["number"] for r in d["prs_merged_recent"]]')" "False" \
+    "a closed-unmerged PR stays out of the merged view"
+run_pr "$WT22" "$PRJSON_NOW"
+assert_eq "$RC" "3" "a stale ## Now exits 3"
+now_block=$(section_block "$OUT" "stale")
+assert_contains "$now_block" "D0.5  names #3559, merged" "the bold slice line maps too"
+
+write_now "- **In flight:** none. #3577 and #3581 are approved and await merge, bottom-up.
+- **Next:** not #3590, which was closed."
+PRJSON_NOW2="$TMPROOT/pr-now2.json"
+cat > "$PRJSON_NOW2" <<JSON
+{"open": [],
+ "merged": [{"number": 3577, "title": "d1.0", "mergedAt": "2026-09-21T19:46:00Z", "headRefName": "$P-d1-0",
+             "body": "Campaign \`$SLUG\`, slice **D1.0**."},
+            {"number": 3581, "title": "d1.1", "mergedAt": "2026-09-21T19:46:00Z", "headRefName": "$P-d1-1",
+             "body": "Campaign \`$SLUG\`, slice **D1.1**."},
+            {"number": 3590, "title": "abandoned", "mergedAt": null, "headRefName": "$P-dropped",
+             "body": "", "mergeCommit": null}]}
+JSON
+run_pr "$WT22" "$PRJSON_NOW2" --json
+assert_eq "$(echo "$OUT" | jq_py 'sorted((r["token"], r["state"]) for r in d["resync"]["stale_now"]["rows"])')" \
+    "[('#3577', 'merged'), ('#3581', 'merged'), ('#3590', 'closed')]" \
+    "PR numbers in ## Now are matched against merged and closed campaign PRs"
+
+write_now "- **In flight:** D1.1 in #3581."
+run_pr "$WT22" "$PRJSON_NOW"
+assert_eq "$RC" "0" "a ## Now naming only an open PR and its slice is not stale (and D1 is not D1.1)"
+assert_contains "$OUT" "stale ## Now         none" "the section says none"
+
+# --- T23: issues naming an in-flight file ---------------------------------------
+echo "T23: an open issue naming an open campaign PR's file by full path is listed"
+new_fixture t23; WT23="$FIXTURE"
+ORIGIN23="$TMPROOT/t23-origin.git"
+git init -q --bare "$ORIGIN23"
+g "$WT23" remote add origin "$ORIGIN23"
+level_branch "$WT23"
+push_pull_ref "$WT23" "$ORIGIN23" 3581 engine/fixture/config_read.cpp "second config read"
+PRJSON_ISSUES="$TMPROOT/pr-issues.json"
+cat > "$PRJSON_ISSUES" <<JSON
+{"open": [{"number": 3581, "headRefName": "$P-d1-1", "title": "D1.1", "labels": []}],
+ "merged": [],
+ "issues": [{"number": 3600, "title": "getTable throws on a missing global",
+             "body": "Repro: \`engine/fixture/config_read.cpp\` reads the preset."},
+            {"number": 3601, "title": "basename only", "body": "Something in config_read.cpp."},
+            {"number": 3602, "title": "a PR on the issues endpoint", "body": "engine/fixture/config_read.cpp",
+             "pull_request": {"url": "x"}}]}
+JSON
+run_pr "$WT23" "$PRJSON_ISSUES" --json
+assert_eq "$(echo "$OUT" | jq_py '[r["number"] for r in d["resync"]["issues"]["rows"]]')" "[3600]" \
+    "exactly the full-path issue is listed"
+run_pr "$WT23" "$PRJSON_ISSUES"
+assert_eq "$RC" "3" "an unacknowledged issue exits 3"
+acknowledge "$WT23" "#3600"
+run_pr "$WT23" "$PRJSON_ISSUES"
+assert_eq "$RC" "0" "acknowledging it clears it"
+
+# --- T24: exit precedence and unreadable reads ----------------------------------
+echo "T24: attention outranks resync; an unreadable read is not an empty one"
+run_pr "$WT2" "$PRJSON_STACK"
+assert_eq "$RC" "1" "a superseded branch exits 1 even with an unreconciled row"
+assert_contains "$OUT" "#3560 codex/render-stack-sanity" "and still prints the row"
+PRJSON_NOSTACKS="$TMPROOT/pr-nostacks.json"
+printf '{"open": [], "merged": [], "stacks": null}\n' > "$PRJSON_NOSTACKS"
+run_pr "$WT1" "$PRJSON_NOSTACKS"
+assert_eq "$RC" "3" "an unreadable stacks list exits 3"
+assert_contains "$OUT" "UNREADABLE" "and is named unreadable"
+PRJSON_NOISSUES="$TMPROOT/pr-noissues.json"
+printf '{"open": [], "merged": [], "issues": null}\n' > "$PRJSON_NOISSUES"
+run_pr "$WT1" "$PRJSON_NOISSUES"
+assert_eq "$RC" "3" "an unreadable issues list exits 3"
+run_pr "$WT1" "$PRJSON_EMPTY"
+assert_eq "$RC" "0" "absent stacks and issues keys read as empty lists"
+
+# --- T25: the stacked verdict ---------------------------------------------------
+echo "T25: a branch on an open campaign PR's head is stacked, not stranded"
+new_fixture t25; WT25="$FIXTURE"
+g "$WT25" checkout --quiet -b "$BRANCH"
+printf 'parent slice\n' > "$WT25/engine/parent.txt"
+g "$WT25" add -A && g "$WT25" commit --quiet -m "parent slice"
+parent_oid=$(g "$WT25" rev-parse HEAD)
+stacked_json() {
+    cat > "$TMPROOT/pr-stacked.json" <<JSON
+{"open": [{"number": 3641, "headRefName": "$P-parent", "headRefOid": "$1", "title": "parent",
+           "labels": [{"name": "fleet:wip"}]}], "merged": []}
+JSON
+}
+stacked_json "$parent_oid"
+run_pr "$WT25" "$TMPROOT/pr-stacked.json"
+assert_contains "$OUT" "verdict    STACKED" "HEAD equal to the open PR's head is stacked"
+assert_eq "$RC" "0" "stacked is ready"
+printf 'child slice\n' > "$WT25/engine/child.txt"
+g "$WT25" add -A && g "$WT25" commit --quiet -m "child slice"
+run_pr "$WT25" "$TMPROOT/pr-stacked.json" --json
+assert_eq "$(echo "$OUT" | jq_py '(d["branch"]["verdict"], d["branch"]["open_pr"])')" \
+    "('stacked', 3641)" "a commit past the open PR's head is still stacked on it"
+run_pr "$WT25" "$TMPROOT/pr-stacked.json" --apply
+assert_eq "$RC" "2" "--apply refuses stacked"
+stacked_json "0123456789abcdef0123456789abcdef01234567"
+run_pr "$WT25" "$TMPROOT/pr-stacked.json"
+assert_contains "$OUT" "verdict    STRANDED" "an oid absent locally leaves today's verdict"
+
+echo "T26: explicit campaign participants appear without owning the driver lane"
+new_fixture t26; WT26="$FIXTURE"
+g "$WT26" update-ref refs/pull/8/head HEAD
 PRJSON_SHARED="$TMPROOT/pr-shared.json"
 cat > "$PRJSON_SHARED" <<JSON
 {"open": [{"number": 8, "headRefName": "codex/surface", "labels": ["fleet:campaign-$SLUG"]}], "merged": []}
 JSON
-out=$("$TOOL" "$SLUG" --worktree "$WT20" --no-fetch --pr-json "$PRJSON_SHARED" --json)
+out=$("$TOOL" "$SLUG" --worktree "$WT26" --no-fetch --pr-json "$PRJSON_SHARED" --json)
 assert_contains "$out" '"head": "codex/surface"' "JSON includes interactive participant"
-out=$("$TOOL" "$SLUG" --worktree "$WT20" --no-fetch --pr-json "$PRJSON_SHARED")
+out=$("$TOOL" "$SLUG" --worktree "$WT26" --no-fetch --pr-json "$PRJSON_SHARED")
 assert_contains "$out" "#8     codex/surface" "text includes interactive participant"
 
-echo "T21: unreadable campaign history cannot authorize repair"
+echo "T27: unreadable campaign history cannot authorize repair"
 PRJSON_NOHISTORY="$TMPROOT/pr-nohistory.json"
 printf '{"open": [], "merged": null}\n' > "$PRJSON_NOHISTORY"
 set +e
-out=$("$TOOL" "$SLUG" --worktree "$WT20" --no-fetch --pr-json "$PRJSON_NOHISTORY" 2>&1); rc21=$?
+out=$("$TOOL" "$SLUG" --worktree "$WT26" --no-fetch --pr-json "$PRJSON_NOHISTORY" 2>&1); rc27=$?
 set -e
-assert_eq "$rc21" "1" "incomplete history requires attention even on a clean branch"
+assert_eq "$rc27" "3" "incomplete history requires attention even on a clean branch"
 assert_contains "$out" "HISTORY INCOMPLETE" "incomplete history is visible"
-advance_origin "$WT20" engine/new.txt new "advance fixture"
-head21=$(g "$WT20" rev-parse HEAD)
+advance_origin "$WT26" engine/new.txt new "advance fixture"
+head27=$(g "$WT26" rev-parse HEAD)
 set +e
-out=$("$TOOL" "$SLUG" --worktree "$WT20" --no-fetch --pr-json "$PRJSON_NOHISTORY" --apply 2>&1); rc21=$?
+out=$("$TOOL" "$SLUG" --worktree "$WT26" --no-fetch --pr-json "$PRJSON_NOHISTORY" --apply 2>&1); rc27=$?
 set -e
-assert_eq "$rc21" "2" "incomplete history blocks an otherwise repairable behind branch"
-assert_eq "$(g "$WT20" rev-parse HEAD)" "$head21" "refusal leaves HEAD unchanged"
+assert_eq "$rc27" "2" "incomplete history blocks an otherwise repairable behind branch"
+assert_eq "$(g "$WT26" rev-parse HEAD)" "$head27" "refusal leaves HEAD unchanged"
 
-echo "T22: a contributor merge does not acknowledge intervening work for the driver"
-new_fixture t22; WT22="$FIXTURE"
-advance_origin "$WT22" engine/shared.txt one "driver slice (#1)"
-driver22=$(g "$WT22" rev-parse refs/remotes/origin/master)
-advance_origin "$WT22" engine/shared.txt correction "foreign correction (#9)"
-advance_origin "$WT22" engine/shared.txt two "contributor slice (#2)"
-contributor22=$(g "$WT22" rev-parse refs/remotes/origin/master)
+echo "T28: a contributor merge does not acknowledge intervening work for the driver"
+new_fixture t28; WT28="$FIXTURE"
+advance_origin "$WT28" engine/shared.txt one "driver slice (#1)"
+driver28=$(g "$WT28" rev-parse refs/remotes/origin/master)
+advance_origin "$WT28" engine/shared.txt correction "foreign correction (#9)"
+advance_origin "$WT28" engine/shared.txt two "contributor slice (#2)"
+contributor28=$(g "$WT28" rev-parse refs/remotes/origin/master)
 PRJSON_CURSOR="$TMPROOT/pr-cursor.json"
 cat > "$PRJSON_CURSOR" <<JSON
 {"open": [], "merged": [
- {"number": 2, "headRefName": "codex/surface", "labels": ["fleet:campaign-$SLUG"], "mergeCommit": {"oid": "$contributor22"}},
- {"number": 1, "headRefName": "$BRANCH", "mergeCommit": {"oid": "$driver22"}}]}
+ {"number": 2, "headRefName": "codex/surface", "labels": ["fleet:campaign-$SLUG"], "mergedAt": "2026-01-03", "mergeCommit": {"oid": "$contributor28"}},
+ {"number": 1, "headRefName": "$BRANCH", "mergedAt": "2026-01-02", "mergeCommit": {"oid": "$driver28"}}]}
 JSON
-out=$("$TOOL" "$SLUG" --worktree "$WT22" --no-fetch --pr-json "$PRJSON_CURSOR" || true)
+out=$("$TOOL" "$SLUG" --worktree "$WT28" --no-fetch --pr-json "$PRJSON_CURSOR" || true)
 assert_contains "$out" "foreign correction (#9)" "intervening correction stays visible"
 assert_contains "$out" "contributor slice (#2)" "contributor merge still requires reconciliation"
 

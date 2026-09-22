@@ -74,6 +74,26 @@ D1 slices touch only tooling and docs, so they may interleave with D0.
 - Follow-ups outside the current direction are filed with
   `**Objective:** million-entity-render` and listed below.
 
+## Contributor lanes
+
+The interactive Codex session in `codex-shadow-render` participates via
+`fleet:campaign-million-entity-render`; membership does not transfer ownership.
+Its canonical detail stays in [rendering-audit-todo.md](../rendering-audit-todo.md).
+
+- **Open work:** #3632 (continuous source-face sunlight) and #3635 (cascade
+  receiver coordinates), both claimed. #3632 needs merge-conflict resolution
+  and investigation of the Linux perf run that produced no profile report.
+  #3635 is not approved: the strict floor edge at 180° worsens from 12/266 to
+  19/356 missing/excess pixels. Neither is accepted as a floor-edge fix.
+- **Next owned scope:** exact SDF receiver geometry and finite projected
+  boundaries through presentation. Smoothness or steps must follow the selected
+  caster and receiver geometry, without blur, inflated footprints or compensating
+  bias. Preserve the strict gates and validate mixed render-mode pairs.
+- **Coordination:** the driver is progressing its profiling stack; consult its
+  latest open campaign PR for its current `## Now` before editing shared files.
+  #3644 supplies the every-iteration reconciliation workflow; explicit membership
+  extends that workflow to interactive contributors, rather than replacing it.
+
 ## Ledger
 
 | Date | Entry |
@@ -100,14 +120,6 @@ D1 slices touch only tooling and docs, so they may interleave with D0.
 
 ### Decisions taken
 
-- 2026-09-21: shared campaign membership is explicit on contributor PRs via
-  `fleet:campaign-million-entity-render`; it does not transfer branch ownership
-  or suppress overlap warnings. The interactive Codex lane owns #3632/#3635 and
-  the next exact-receiver/projected-boundary investigation; the campaign's next
-  proposed lane remains D1 profiling. Both use this record and the existing
-  detailed worklists. #3618 still owns the broader reconciliation work: stale
-  slice detection, retargeted stacks and issue discovery. This participation
-  change does not claim those acceptance criteria are complete.
 - 2026-09-20 (human ruling): a battery run is acceptable for the million
   reference when it is recorded. The host stays in high-power mode, every
   manifest carries `host_power`, and the matrix stops if the source changes.
@@ -217,16 +229,7 @@ D1 slices touch only tooling and docs, so they may interleave with D0.
 
 ## Now
 
-- **Interactive contributor (Codex):** #3632 preserves continuous sun visibility
-  within source voxel faces; #3635 unifies cascade receiver coordinates. Both
-  are claimed by the `codex-shadow-render` worktree. The cascade correction is
-  not merge-approved: the strict floor edge at 180° worsens from 12/266 to
-  19/356 missing/excess pixels. Next D0 slice owns exact SDF receiver geometry
-  and finite projected boundaries through presentation. Smoothness or steps
-  must follow the selected caster and receiver geometry, without blur, inflated
-  footprints or compensating bias. Keep the existing strict gates unchanged.
-- **Campaign driver:** #3577 and #3581 have merged; their profiling worklist
-  below remains the next proposed scope. Reconcile live PRs before picking it.
+- **In flight:** none. #3577 and #3581 are approved and await merge, bottom-up.
 - **Next:** run the resync first (#3618 describes why): master moved 33 commits
   during the last session. Then #3581's worklist items that make a Release run
   able to witness its own pose and drops (both belong in the profile report),
@@ -236,7 +239,7 @@ D1 slices touch only tooling and docs, so they may interleave with D0.
   perf-matrix axis (#3130, parked `human:owned` for this campaign). A docs PR
   proposes the objective's rotation and zoom parity baselines at a true 45°
   (1.30× at the million control today) for the human to merge or decline. D0
-  and D4 require coordination with the interactive shadow stack above: re-read
+  and D4 are open to the campaign again: the shadow stack merged, so re-read
   `rendering-audit-todo.md` and `render-stack-sanity-review.md` and strike what
   it closed before picking a D0 slice. D2 has its targets from the reference:
   at 45° the light volume, per-axis AO and overflow lighting and sort are the

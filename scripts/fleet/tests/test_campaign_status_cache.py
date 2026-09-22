@@ -128,31 +128,36 @@ class CampaignParticipation(unittest.TestCase):
         legacy = self.row(1, "claude/fixture-render-one")
         shared = self.row(2, "codex/two", ["fleet:campaign-fixture-render"], "2026-01-02")
         unrelated = self.row(3, "codex/other")
+        closed = self.row(4, "codex/closed", ["fleet:campaign-fixture-render"], None)
+        closed["body"] = "Campaign fixture-render, slice D0.2"
 
         def fetch(args):
             self.assertIn("labels", args[args.index("--json") + 1])
+            self.assertIn("body", args[args.index("--json") + 1])
+            self.assertEqual(args[args.index("--state") + 1], "closed")
             selector = args[args.index("--search") + 1]
             if selector == "head:claude/fixture-render-":
                 return [legacy]
             if selector == "label:fleet:campaign-fixture-render":
-                return [shared, legacy, unrelated]
+                return [shared, legacy, unrelated, closed]
             self.fail("unexpected GitHub query: %r" % args)
 
         with patch.object(mod, "gh_json", side_effect=fetch) as reader:
-            rows, complete = mod.merged_campaign_prs("fixture/repo", self.campaign, None)
+            rows, complete = mod.closed_campaign_prs("fixture/repo", self.campaign, None)
         self.assertEqual(reader.call_count, 2)
         self.assertTrue(complete)
-        self.assertEqual([row["number"] for row in rows], [2, 1])
+        self.assertEqual([row["number"] for row in rows], [2, 1, 4])
+        self.assertEqual(rows[-1]["body"], "Campaign fixture-render, slice D0.2")
 
     def test_failed_query_is_not_an_empty_history(self):
         legacy = self.row(1, "claude/fixture-render-one")
         with patch.object(mod, "gh_json", side_effect=[[legacy], None]):
-            rows, complete = mod.merged_campaign_prs("fixture/repo", self.campaign, None)
+            rows, complete = mod.closed_campaign_prs("fixture/repo", self.campaign, None)
         self.assertEqual(rows, [legacy])
         self.assertFalse(complete)
-        self.assertEqual(mod.merged_campaign_prs("fixture/repo", self.campaign, {"merged": []}),
+        self.assertEqual(mod.closed_campaign_prs("fixture/repo", self.campaign, {"merged": []}),
                          ([], True))
-        self.assertEqual(mod.merged_campaign_prs("fixture/repo", self.campaign, {"merged": None}),
+        self.assertEqual(mod.closed_campaign_prs("fixture/repo", self.campaign, {"merged": None}),
                          ([], False))
 
     def test_membership_does_not_hide_another_contributors_overlap(self):
@@ -177,6 +182,21 @@ class CampaignParticipation(unittest.TestCase):
             surface = mod.campaign_surface("fixture", rows, [])
         self.assertIn("engine/driver.glsl", surface)
         self.assertIn("engine/participant-0.glsl", surface)
+
+    def test_participant_head_is_a_stacking_base(self):
+        shared = self.row(2, "codex/two", ["fleet:campaign-fixture-render"])
+        shared["headRefOid"] = "fixture-oid"
+        with patch.object(mod, "git_status", return_value=(0, "", "")), \
+             patch.object(mod, "git", return_value="0"):
+            result = mod.nearest_stacked_pr("fixture", [shared], "claude/fixture-render-",
+                                           {"codex/two"})
+        self.assertEqual(result, 2)
+        rows = mod.stacked_on_campaign(
+            [{"pull_requests": [{"number": 2, "head": {"ref": "codex/two"}},
+                                {"number": 3, "head": {"ref": "human/above"}}]}],
+            [{"number": 4, "headRefName": "human/child", "baseRefName": "codex/two"}],
+            "claude/fixture-render-", {"codex/two"})
+        self.assertEqual([row["number"] for row in rows], [3, 4])
 
 
 if __name__ == "__main__":
