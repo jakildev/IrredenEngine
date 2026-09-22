@@ -153,6 +153,16 @@ C++ declares nameable prefab systems with
 
 ## Engine service bindings
 
+`LuaScript::bindLuaFog()` opts a creation into the engine-owned **IRFog** table;
+it preserves unrelated keys and is deliberately separate from
+`bindLuaDrivenEcs()`. The surface is `setVision`, `addVision`, `clearVisions`,
+`evalReveal`, `lineOfSight`, `setEntityGoverned`, `getEntityReveal`, `setCell`,
+`getCell`, `revealRadius`, `clear`, and `State` (`UNEXPLORED`, `EXPLORED`,
+`VISIBLE`). Vision arguments after `(cx, cy, radius)` are optional; absent fog
+reveals by default. Governance changes archetypes, so defer it from system
+iteration. `lineOfSight` is a validated always-true compatibility stub until
+the engine occlusion query lands; calls are setup/EVAL APIs, not tick intrinsics.
+
 - **`IRModifier`:** `add*` writes only `C_Modifiers`; resolved values need the
   `registerResolverPipeline()` systems in UPDATE. A wrong-typed push silently
   no-ops. Cache a `FieldBindingId` instead of a name on hot paths.

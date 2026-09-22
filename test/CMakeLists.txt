@@ -122,6 +122,7 @@ add_executable(IrredenEngineTest
   script/lua_pipeline_register_test.cpp
   script/lua_render_bindings_test.cpp
   script/lua_fog_revealed_test.cpp
+  script/lua_fog_bindings_test.cpp
   script/lua_script_get_table_test.cpp
   script/lua_script_utils_test.cpp
   script/lua_local_transform_lua_test.cpp
