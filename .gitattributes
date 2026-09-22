@@ -67,3 +67,8 @@ CMakeLists.txt  text eol=lf
 *.exe       binary
 *.metallib  binary
 *.air       binary
+
+# ── Committed probe patches ──────────────────────────────────────────────────
+# A unified diff's blank context line is a single space by format; the
+# whitespace gate must not read it as trailing whitespace.
+docs/perf/**/*.patch whitespace=-trailing-space
