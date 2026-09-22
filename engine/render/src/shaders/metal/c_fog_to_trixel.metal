@@ -10,7 +10,7 @@ constant int kFogOfWarHalfExtent = 128;
 constant int kEmptyDistanceEncoded = 65535;
 // Normalized stored explored value (128/255, NOT 0.5). The two-segment lerp
 // pivots through this so the three canonical stored states (0 / 128 / 255) land
-// exactly on the black / explored / source anchors.
+// exactly on the unexplored / explored / source anchors.
 constant float kFogExploredValue = 128.0f / 255.0f;
 
 // Live analytic vision circles. Mirrors kMaxFogVisionCircles and
@@ -31,6 +31,9 @@ struct FogObserverData {
     // dzUp = max(observerZ - z, 0) and dzDown = max(z - observerZ, 0). All-zero
     // (the default) → the plain 2D disc.
     float4 visionCircleHeights[kMaxFogVisionCircles];
+    // Colour of fully unexplored matter — the lerp's state-0 anchor. Only this
+    // pass declares it; every other declaration of the struct stops earlier.
+    float4 unexploredColor;
 };
 
 // Cross-section cap tuning — mirrors the GLSL twin. kFogCutTone is a pure
@@ -189,15 +192,15 @@ kernel void c_fog_to_trixel(
     const float3 exploredColor = float3(luminance) * 0.4f;
 
     // Two-segment continuous lerp anchored on the three canonical stored
-    // states: black at 0, exploredColor at 128/255, src at 1.0. Alpha is
-    // preserved so any text/overlay antialiasing still composites cleanly.
+    // states: unexploredColor at 0, exploredColor at 128/255, src at 1.0. Alpha
+    // is preserved so any text/overlay antialiasing still composites cleanly.
     float3 outColor;
     if (state >= kFogExploredValue) {
         const float t = (state - kFogExploredValue) / (1.0f - kFogExploredValue);
         outColor = mix(exploredColor, src.rgb, t);
     } else {
         const float t = state / kFogExploredValue;
-        outColor = mix(float3(0.0f), exploredColor, t);
+        outColor = mix(fogObservers.unexploredColor.rgb, exploredColor, t);
     }
     if (gridState < kFogExploredValue) {
         // The squared ease-out crushes the fade tail to black well before the

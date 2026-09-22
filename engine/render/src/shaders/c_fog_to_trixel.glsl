@@ -15,7 +15,7 @@
 // The combined visibility then drives a continuous modulation:
 //   visible    (1.0)     — pass through
 //   explored   (128/255) — desaturate + darken (fog-of-war "memory")
-//   unexplored (0.0)     — black
+//   unexplored (0.0)     — unexploredColor (default black)
 // with a smooth two-segment lerp between those anchors. With no vision circles
 // (count 0) the pass is grid-only, and the canonical 0/128/255 stored states
 // land exactly on those three anchors.
@@ -38,8 +38,8 @@ const int kEmptyDistanceEncoded = 65535;
 
 // Normalized stored explored value (128/255, NOT 0.5). The two-segment lerp
 // pivots through this so the three canonical stored states (0 / 128 / 255) land
-// exactly on the black / explored / source anchors; only a fractional (analytic
-// vision-circle) value falls between them.
+// exactly on the unexplored / explored / source anchors; only a fractional
+// (analytic vision-circle) value falls between them.
 const float kFogExploredValue = 128.0 / 255.0;
 
 // Live analytic vision circles. Mirrors kMaxFogVisionCircles and
@@ -64,6 +64,9 @@ layout(std140, binding = 27) uniform FogObserverData {
     // dzUp = max(observerZ - z, 0) and dzDown = max(z - observerZ, 0). All-zero
     // (the default) → both terms are 0 and the reveal is the plain 2D disc.
     vec4 visionCircleHeights[kMaxFogVisionCircles];
+    // Colour of fully unexplored matter — the lerp's state-0 anchor. Only this
+    // pass declares it; every other declaration of the block stops earlier.
+    vec4 unexploredColor;
 };
 
 // Cross-section cap tuning. The tone is the factor applied to the hidden
@@ -269,15 +272,15 @@ void main() {
     const vec3 exploredColor = vec3(luminance) * 0.4;
 
     // Two-segment continuous lerp anchored on the three canonical stored
-    // states: black at 0, exploredColor at 128/255, src at 1.0. Alpha is
-    // preserved so any text/overlay antialiasing still composites cleanly.
+    // states: unexploredColor at 0, exploredColor at 128/255, src at 1.0. Alpha
+    // is preserved so any text/overlay antialiasing still composites cleanly.
     vec3 outColor;
     if (state >= kFogExploredValue) {
         const float t = (state - kFogExploredValue) / (1.0 - kFogExploredValue);
         outColor = mix(exploredColor, src.rgb, t);
     } else {
         const float t = state / kFogExploredValue;
-        outColor = mix(vec3(0.0), exploredColor, t);
+        outColor = mix(unexploredColor.rgb, exploredColor, t);
     }
     if (gridState < kFogExploredValue) {
         // The squared ease-out crushes the fade tail to black well before the

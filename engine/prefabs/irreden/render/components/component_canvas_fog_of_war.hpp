@@ -122,10 +122,15 @@ struct FrameDataFogObservers {
     /// Only the first `visionCircleCount_` entries are read, paired 1:1 with
     /// `visionCircles_`.
     IRMath::vec4 visionCircleHeights_[kMaxFogVisionCircles] = {};
+    /// RGBA the fog pass paints fully unexplored matter with — the black
+    /// anchor of its two-segment lerp. Appended after `visionCircleHeights_`
+    /// so every earlier offset is unchanged; only `c_fog_to_trixel` declares
+    /// it. Alpha is unused (the pass preserves the source alpha).
+    IRMath::vec4 unexploredColor_ = IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f);
 };
 static_assert(
-    sizeof(FrameDataFogObservers) == 2 * kMaxFogVisionCircles * 16 + 16,
-    "FrameDataFogObservers must stay std140/Metal-tight (vec4[N] + ivec4 tail + vec4[N])"
+    sizeof(FrameDataFogObservers) == 2 * kMaxFogVisionCircles * 16 + 16 + 16,
+    "FrameDataFogObservers must stay std140/Metal-tight (vec4[N] + ivec4 tail + vec4[N] + vec4)"
 );
 
 struct C_CanvasFogOfWar {

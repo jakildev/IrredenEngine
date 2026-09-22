@@ -167,6 +167,20 @@ inline void clearVisionCircles() {
     }
 }
 
+/// Set the colour FOG_TO_TRIXEL paints fully unexplored matter with (default
+/// opaque black). Explored memory and the rim fade blend from it, so a
+/// non-black value separates painted-hidden matter from an empty background.
+inline void setUnexploredColor(IRMath::Color color) {
+    if (auto *fog = detail::activeFogComponent()) {
+        fog->observers_.unexploredColor_ = IRMath::vec4(
+            IRMath::roundByteToFloat(color.red_),
+            IRMath::roundByteToFloat(color.green_),
+            IRMath::roundByteToFloat(color.blue_),
+            IRMath::roundByteToFloat(color.alpha_)
+        );
+    }
+}
+
 /// Reset every cell to `kFogStateUnexplored`.
 inline void clear() {
     if (auto *fog = detail::activeFogComponent()) {

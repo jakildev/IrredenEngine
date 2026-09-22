@@ -290,6 +290,21 @@ struct C_TriangleCanvasTextures {
         );
     }
 
+    // RGBA8 colour texels, row-major over the whole canvas — the same
+    // full-texture readback contract as readEntityIdCarriers.
+    void readColors(std::vector<Color> &out) const {
+        out.resize(static_cast<std::size_t>(size_.x) * static_cast<std::size_t>(size_.y));
+        textureTriangleColors_.second->getSubImage2D(
+            0,
+            0,
+            size_.x,
+            size_.y,
+            PixelDataFormat::RGBA,
+            PixelDataType::UNSIGNED_BYTE,
+            out.data()
+        );
+    }
+
     void clearDistances() const {
         textureTriangleDistances_.second->clear(
             PixelDataFormat::RED_INTEGER,

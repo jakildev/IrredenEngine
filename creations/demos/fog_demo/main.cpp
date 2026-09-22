@@ -533,6 +533,57 @@ constexpr IRVideo::AutoScreenshotShot kEdgeZCostCeilingShots[] = {
      sizeof(kCropsEdgeZCostCeiling9) / sizeof(kCropsEdgeZCostCeiling9[0])},
 };
 
+// --fog-debug-color: paint fully unexplored matter magenta instead of black, so
+// matter the fog pass paints reads apart from matter the raster removed (the
+// black background shows through both otherwise). Under --edge-zcost-ceiling it
+// also arms the FOG-PAINT-PROBE: one readback after warmup that counts the
+// central pillar's texels (entity-id low word) and how many carry the debug
+// colour within kFogPaintProbeTolerance per channel. A pillar whose above-ceiling
+// voxels are painted rather than dropped reads a large painted fraction.
+bool g_fogDebugColor = false; // --fog-debug-color
+constexpr Color kFogDebugUnexploredColor{255, 0, 255, 255};
+constexpr int kFogPaintProbeTolerance = 2;
+IREntity::EntityId g_ceilingPillar = IREntity::kNullEntity;
+int g_fogPaintProbeFrame = 0;
+
+bool matchesFogDebugColor(Color color) {
+    const auto near = [](std::uint8_t channel, std::uint8_t target) {
+        return IRMath::abs(static_cast<int>(channel) - static_cast<int>(target)) <=
+               kFogPaintProbeTolerance;
+    };
+    return near(color.red_, kFogDebugUnexploredColor.red_) &&
+           near(color.green_, kFogDebugUnexploredColor.green_) &&
+           near(color.blue_, kFogDebugUnexploredColor.blue_);
+}
+
+// Runs at the render front, so it reads the previous frame's completed colour
+// (post-FOG_TO_TRIXEL) and entity-id planes.
+void probeCeilingPillarPaint() {
+    if (++g_fogPaintProbeFrame != g_autoWarmupFrames) {
+        return;
+    }
+    const auto &textures =
+        IREntity::getComponent<C_TriangleCanvasTextures>(IRRender::getActiveCanvasEntity());
+    std::vector<IRMath::uvec2> carriers;
+    std::vector<Color> colors;
+    textures.readEntityIdCarriers(carriers);
+    textures.readColors(colors);
+
+    const auto expected = static_cast<std::uint32_t>(g_ceilingPillar);
+    int texels = 0;
+    int painted = 0;
+    for (std::size_t i = 0; i < carriers.size(); ++i) {
+        if (carriers[i].x != expected) {
+            continue;
+        }
+        ++texels;
+        if (matchesFogDebugColor(colors[i])) {
+            ++painted;
+        }
+    }
+    IR_LOG_INFO("FOG-PAINT-PROBE pillar={} texels={} painted={}", g_ceilingPillar, texels, painted);
+}
+
 // --entity-reveal: whole-body fog reveal under the --edge-zcost-ceiling hard
 // ceiling. One screen row (x + y = 0) of equal-height bodies rising
 // past the ceiling, each pair side by side so its crops compare like for like:
@@ -701,6 +752,12 @@ int main(int argc, char **argv) {
         "within ~1 unit past it — a hard ceiling; skips the static grid reveal"
     );
     IREngine::args().flag(
+        "--fog-debug-color",
+        "Paint fully unexplored matter magenta instead of black; with "
+        "--edge-zcost-ceiling, also log FOG-PAINT-PROBE (the central pillar's "
+        "painted texel count)"
+    );
+    IREngine::args().flag(
         "--entity-reveal",
         "Whole-body fog reveal under the --edge-zcost-ceiling hard ceiling: governed "
         "voxel pillars and a flagged SDF box render whole beside clipped untagged twins"
@@ -730,6 +787,7 @@ int main(int argc, char **argv) {
     g_edgeZCostAsym = IREngine::args().getFlag("--edge-zcost-asym");
     g_edgeZCostCeiling = IREngine::args().getFlag("--edge-zcost-ceiling");
     g_entityReveal = IREngine::args().getFlag("--entity-reveal");
+    g_fogDebugColor = IREngine::args().getFlag("--fog-debug-color");
     g_luaFogSelftest = IREngine::args().getFlag("--lua-fog-selftest");
     if (g_luaFogSelftest) {
         g_movingObserver = false;
@@ -973,6 +1031,15 @@ void initSystems() {
         renderPipeline.push_front(probeTickId);
     }
 
+    if (g_edgeZCostCeiling && g_fogDebugColor && g_autoWarmupFrames > 0) {
+        IRSystem::SystemId probeTickId = IRSystem::createSystem<C_Name>(
+            "FogPaintProbe",
+            [](C_Name &) {},
+            []() { probeCeilingPillarPaint(); }
+        );
+        renderPipeline.push_front(probeTickId);
+    }
+
     if (g_autoWarmupFrames > 0) {
         IRVideo::AutoScreenshotConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
@@ -1189,6 +1256,9 @@ void initEntities() {
     if (g_entityReveal || g_edgeZoom || g_edgeSmooth || g_edgeSdfBlocker || g_detachedEdge ||
         g_edgeZCost || g_edgeZCostAsym || g_edgeZCostCeiling) {
         IRRender::setSunDirection(vec3(0.0f, 0.0f, -1.0f));
+    }
+    if (g_fogDebugColor) {
+        IRPrefab::Fog::setUnexploredColor(kFogDebugUnexploredColor);
     }
 
     if (g_luaFogSelftest) {
@@ -1511,7 +1581,7 @@ void initEntities() {
         // (z from ~4.5 down to ~-3.5) reads fully revealed — the band — then cuts
         // off within ~1 unit past it as kEdgeZCostCeilingUpCost drives the
         // effective distance past the disc radius almost immediately.
-        IREntity::createEntity(
+        g_ceilingPillar = IREntity::createEntity(
             C_LocalTransform{vec3(0.0f, 0.0f, -10.0f)},
             C_VoxelSetNew{IRMath::ivec3{4, 4, 28}, Color{120, 200, 240, 255}, true}
         );
