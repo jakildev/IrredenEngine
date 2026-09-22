@@ -215,9 +215,13 @@ GPU counts generate indirect grids for fill, local sort and each remaining
 stage. Empty lists and stages wider than the active power-of-two span have
 zero-sized grids. The completed prior-frame count bounds CPU command encoding
 to twice its power-of-two span, floored at one 2,048-entry local block. Current
-GPU counts size the indirect grids within that encoded prefix. A first population
-through 2,048 entries and growth within the two-times headroom are fully sorted.
-A larger jump remains a valid permutation and becomes fully sorted on the next
+GPU counts size the indirect grids within that encoded prefix. The first
+rotating frame after an allocation has no completed frame behind it (the ctrl
+block's index-count word is still the zero seed) and encodes every stage to the
+cap, so the first rotated frame on a fresh set draws the settled pose's order;
+an unparked set keeps its pre-park frame's count as the bound. Growth
+within the two-times headroom is fully sorted; a larger jump between two
+rotating frames remains a valid permutation and becomes fully sorted on the next
 frame. Unflagged pools skip the sort entirely. Flagged empty pools pay only the argument-preparation,
 fill and local-sort encoders; their GPU-authored grids are empty.
 
