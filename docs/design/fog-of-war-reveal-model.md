@@ -9,7 +9,8 @@ current render path.
 Fog answers one question for every rendered subject: is this part of the
 world field, one discrete body, or outside fog? The answer determines where
 the reveal verdict is evaluated and whether fog may vary across the rendered
-geometry.
+geometry. Screen-composited sprites bypass the trixel fog pipeline and are
+therefore implicitly EXEMPT.
 
 ## Subject classes
 
@@ -17,7 +18,7 @@ geometry.
 |---|---|---|
 | **FIELD** | Per sample against the reveal field, including height terms. An unrevealed sample is painted with fog color. | Terrain and terrain-scale static geometry: the surface on which fog is drawn. |
 | **BODY** | Once per entity at its ground anchor. Every rendered sample uses the resulting `C_FogRevealed::revealFactor_`. | Every discrete entity: creatures, units, items, props, and placed objects. |
-| **EXEMPT** | Always visible; the fog field is not applied. | Cursors, markers, overlays, and anything else the creation explicitly nominates. |
+| **EXEMPT** | Always visible; the fog field is not applied. | Screen-composited sprites, cursors, markers, overlays, and anything else the creation explicitly nominates. |
 
 BODY is the fallback. An untagged renderable on a fogged world canvas is
 adopted as a BODY; FIELD and EXEMPT are explicit classifications.
@@ -129,6 +130,10 @@ Tag cursors, selection markers, and overlays EXEMPT when they must ignore fog.
 Screen-locked detached canvases remain outside fog adoption; world-placed
 detached canvases follow the BODY default unless explicitly tagged FIELD or
 EXEMPT.
+
+Sprites remain EXEMPT because their screen-composite route bypasses fog. A
+world subject that must follow BODY or FIELD policy needs a fog-capable trixel
+raster path rather than the sprite bypass.
 
 During migration, audit every terrain-tier fixture before relying on the BODY
 default. An omitted FIELD tag intentionally changes behavior: the geometry is
