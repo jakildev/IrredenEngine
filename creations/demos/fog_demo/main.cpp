@@ -141,6 +141,7 @@ bool g_movingObserver = false; // --moving-observer: per-frame analytic vision c
 int g_observerFrame = 0;       // deterministic frame index for the orbit
 bool g_luaFogSelftest = false;
 int g_luaFogProbePhase = 0;
+IREntity::EntityId g_luaFogProbeEntity = IREntity::kNullEntity;
 
 void probeLuaFogUpload() {
     if (g_luaFogProbePhase > 1) {
@@ -689,7 +690,12 @@ int main(int argc, char **argv) {
         "--lua-fog-selftest",
         "Drive the engine-owned IRFog binding and verify its observer UBO upload"
     );
-    IREngine::registerLuaBindings([](IRScript::LuaScript &script) { script.bindLuaFog(); });
+    IREngine::registerLuaBindings([](IRScript::LuaScript &script) {
+        script.bindLuaFog();
+        script.lua()["fogSelftestEntity"] = []() {
+            return static_cast<double>(g_luaFogProbeEntity);
+        };
+    });
     IREngine::init(argc, argv);
     g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
     g_movingObserver = IREngine::args().getFlag("--moving-observer");
@@ -1136,6 +1142,10 @@ void initEntities() {
     IREntity::setComponent(mainCanvas, C_CanvasLightVolume{});
     IRPrefab::Fog::attachToCanvas(mainCanvas);
     if (g_luaFogSelftest) {
+        g_luaFogProbeEntity = IREntity::createEntity(
+            C_LocalTransform{vec3(0.0f, 0.0f, 4.0f)},
+            C_VoxelSetNew{IRMath::ivec3{1, 1, 1}, Color{255, 255, 255, 255}, true}
+        );
         IREngine::getWorld().runScript(
             IREngine::resolveScriptPath("fog_binding_cap_selftest.lua").c_str()
         );
