@@ -6,8 +6,11 @@ for fill, local sorting and stages 12..30. Empty lists and stages beyond the
 active span produce zero-sized grids. CPU encoding uses the completed prior-frame
 count as a stage-count hint with two-times headroom and a 2,048-entry floor. An
 empty flagged pool therefore opens three encoders rather than the capacity-sized
-chain. A first population through 2,048 entries sorts on that frame; a larger
-jump remains a valid permutation and becomes fully sorted on the next frame.
+chain. The first rotating frame after an allocation has no completed frame
+behind it: the ctrl block is still the zero seed, whose index-count word no
+completed frame leaves at zero, so that frame encodes the chain to the cap and
+is fully sorted. After it, a jump beyond the headroom remains a valid
+permutation and becomes fully sorted on the next frame.
 
 The scratch control region grows from 256 to 512 bytes. Its first eight words
 retain draw/counter ownership; 21 four-word commands fit afterward. Storage and
@@ -18,7 +21,8 @@ no longer uses the diagnostic readback as a correctness input.
 ## Validation
 
 The focused GPU test covers empty input, a first population within the local
-block, an oversize first-frame jump, its steady-state full sort, shrinking counts,
+block, an oversize jump from a zero bound, the same population under the
+allocation seed's cap bound, its steady-state full sort, shrinking counts,
 draw/counter preservation and a fill dispatch spilling into Y. Exact frames match
 a CPU lexicographic reference; the bounded transition frame is checked as a
 record-preserving permutation.

@@ -64,6 +64,16 @@ inline std::uint32_t overflowSortDispatchSpan(std::uint32_t laggedCount, std::ui
     return IRMath::min(capacity, IRMath::max(kBlock, headroomSpan));
 }
 
+// Entry-count bound for the next sort's encoded merge stages, read from the
+// ctrl block before the frame's reset. Word 0 (indexCount) is zero only in the
+// allocation seed — `resetOverflowCtrl` writes the quad index count and no GPU
+// pass touches it — so a zero there means no rotating frame completed behind
+// this one, and the full ladder is encoded.
+inline std::uint32_t
+overflowSortLaggedBound(const std::array<std::uint32_t, 8> &ctrl, std::uint32_t capacity) {
+    return ctrl[0] == 0u ? capacity : ctrl[1];
+}
+
 template <typename Callback>
 inline void forEachOverflowSortMergeStep(std::uint32_t dispatchSpan, Callback &&callback) {
     constexpr std::uint32_t kBlockBits = C_PerAxisTrixelCanvases::kOverflowSortBlockBits;
@@ -632,8 +642,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // readback in tick(); Metal's present() waits each frame to completion, so
     // the read can never observe an in-flight append, and GL's getSubData
     // implicit-syncs any pending write) — and one-shot-warn when entries were
-    // dropped. The count also bounds next frame's encoded sort stages; current
-    // GPU counts still author the indirect grids for every encoded stage.
+    // dropped. The count also bounds next frame's encoded sort stages (the cap
+    // when the block is still the allocation seed); current GPU counts still
+    // author the indirect grids for every encoded stage.
     void warnOverflowDropsIfAny(C_PerAxisTrixelCanvases &axes) {
         std::array<std::uint32_t, 8> ctrl{};
         axes.winnerIds_.second->getSubData(
@@ -641,7 +652,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             sizeof(ctrl),
             ctrl.data()
         );
-        axes.laggedOverflowCount_ = ctrl[1];
+        axes.laggedOverflowCount_ =
+            detail::overflowSortLaggedBound(ctrl, static_cast<std::uint32_t>(axes.overflowCap_));
         const std::uint32_t dropped = ctrl[5];
         renderRunWitness()
             .recordOverflow(ctrl[1], dropped, static_cast<std::uint32_t>(axes.overflowCap_));

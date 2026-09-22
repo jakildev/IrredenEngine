@@ -305,10 +305,9 @@ configs/perf/million-profiling-off.lua`.
   is exact. The one input the overflow sort reads that differs between the two
   frames is the completed-frame entry count that bounds its encoded merge
   stages, 0 on a fresh allocation and the pre-park frame's count after an
-  unpark; whether that is the mechanism is not established here, and a
-  rotation that starts from a settled cardinal still allocates fresh, so the
-  first rotated frame of every turn is still that frame (issue 3660 in the
-  tracker).
+  unpark; that is the mechanism (see "The crossing frame's pixels" below),
+  and a rotation that starts from a settled cardinal still allocates fresh, so
+  the first rotated frame of every turn is still that frame.
 - `render-verify --target IRCanvasStress` on the Debug tree passes all 11
   checks at 100% match and maximum delta 0 against master's references; its
   default suite steps 45° → 0° → 0° → 30° with 60-frame settles, so its first
@@ -319,6 +318,39 @@ configs/perf/million-profiling-off.lua`.
   byte-identical at all nine poses between origin/master and this tree; the
   captures and both hash columns are under
   `docs/pr-screenshots/claude/million-entity-render-parked-per-axis-set/`.
+
+## The crossing frame's pixels
+
+Measured on master `79ca9e3c6`, before the set was parked, when every
+crossing re-allocated. macos-debug (Metal, Debug),
+`configs/perf/million-profiling-off.lua`, frame 77 at 91.2°, one frame after
+the sweep's 90° release and re-allocation, against the same pose held from
+frame 1:
+
+```
+IRPerfGrid --wave-freeze --no-overlay --config-preset configs/perf/million-profiling-off.lua --yaw 0 --yaw-step 0.020943951 --auto-profile 80 --capture-frame 77
+IRPerfGrid --wave-freeze --no-overlay --config-preset configs/perf/million-profiling-off.lua --yaw 1.591740276 --pivot-origin --auto-profile 80 --capture-frame 77
+```
+
+| Arm | Sweep frame 77 against static, `render-compare.py --per-pixel-tol 0` |
+|---|---|
+| Sort span from the completed-frame count only | 99.7963%, max 51 (replicate 99.77%, max 49) |
+| Same, overflow draw disabled (`IR_PERAXIS_OVERFLOW_DISABLE=1`) | identical |
+| Same, span forced to the cap (local patch) | identical |
+| Span at the cap while the ctrl block is the allocation seed | **100.0%, max 0** (md5 `c68694d7…`, both arms) |
+
+Every differing pixel went through the overflow scatter draw, and a static
+capture at frame 2 already equals frame 77, so the only input the first live
+frame lacked was the sort's merge ladder. With a zero completed-frame count the
+first frame encoded one 2,048-entry block for 846,673 live entries; equal-key
+entries then drew in append order. `IR_OVERFLOW_COUNT_LOG=1` on the sweep now
+reads `dispatchSpan=8388608` on the first frame after each allocation (the
+completed-frame bound alone read `dispatchSpan=2048` there) and
+`dispatchSpan=2097152` (`laggedOverflowCount=846673`) on the frame after it. The
+witness still reads the live count (`Per-axis overflow: maxEntries=971724`
+over the sweep, `846673` static). The extra cost is the merge stages above the
+live span, which the GPU sizes to empty grids: five encoders at this count,
+once per allocation. The crossing frame's milliseconds were not re-measured.
 
 ## What this does not say
 

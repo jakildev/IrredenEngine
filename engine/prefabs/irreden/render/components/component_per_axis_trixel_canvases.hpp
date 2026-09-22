@@ -125,7 +125,8 @@ struct PerAxisCanvasStore {
             kOverflowControlUints,
         "overflow sort commands must fit the aligned control region"
     );
-    // Completed-frame count used for warnings and as a merge-stage encoding hint.
+    // Completed-frame count bounding the next sort's encoded merge stages; the
+    // cap on the first rotating frame after allocate() (nothing completed yet).
     std::uint32_t laggedOverflowCount_ = 0;
 
     // Allocation state is the texture handles themselves — no separate bool to
@@ -255,6 +256,9 @@ struct PerAxisCanvasStore {
         );
         // Seed the ctrl block so the first rotating frame's pre-reset counter
         // readback (the cap-overflow warn) reads zeros, not uninitialized data.
+        // Word 0 stays zero only until the first rotating frame's reset writes
+        // the quad index count; the sort-span bound reads a zero there as "no
+        // completed frame" and encodes the full merge ladder.
         const std::array<std::uint32_t, 8> ctrlSeed{};
         winnerIds_.second->subData(
             static_cast<std::ptrdiff_t>(ctrlBaseUints_) * sizeof(std::uint32_t),

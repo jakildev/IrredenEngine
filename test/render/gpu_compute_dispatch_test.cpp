@@ -591,6 +591,7 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
              SortCase{1u, 4097u, true},
              SortCase{0u, 1u, true},
              SortCase{262145u, 262145u, true},
+             SortCase{4097u, IRSystem::detail::overflowSortLaggedBound({}, cap), true},
          }) {
         const std::uint32_t count = sortCase.count;
         SCOPED_TRACE(
@@ -691,6 +692,35 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
             for (std::uint32_t command = 0; command < Axes::kOverflowSortCommandCount; ++command)
                 EXPECT_EQ(actual[args + command * Axes::kOverflowSortCommandUints + 1], 0u);
         }
+    }
+}
+
+// The allocation seed has no completed frame behind it, so the first rotating
+// frame encodes the full ladder; a completed block keeps the lagged bound.
+TEST(OverflowSortBoundTest, AllocationSeedEncodesFullLadderCompletedFrameKeepsLaggedBound) {
+    constexpr std::uint32_t cap = 1u << 23;
+    const std::array<std::uint32_t, 8> seed{};
+    EXPECT_EQ(IRSystem::detail::overflowSortLaggedBound(seed, cap), cap);
+    EXPECT_EQ(
+        IRSystem::detail::overflowSortDispatchSpan(
+            IRSystem::detail::overflowSortLaggedBound(seed, cap),
+            cap
+        ),
+        cap
+    );
+    for (const std::uint32_t count : {0u, 1u, 2048u, 4097u, 846673u, cap}) {
+        SCOPED_TRACE(::testing::Message() << "count=" << count);
+        const std::array<std::uint32_t, 8> completed{
+            static_cast<std::uint32_t>(IRShapes2D::kQuadIndicesLength),
+            count,
+            0u,
+            0u,
+            0u,
+            0u,
+            0u,
+            0u
+        };
+        EXPECT_EQ(IRSystem::detail::overflowSortLaggedBound(completed, cap), count);
     }
 }
 
