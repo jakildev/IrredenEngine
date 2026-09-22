@@ -15,17 +15,18 @@ checks hit/miss, entry/exit, and whether the entry lies on the finite box.
 
 Each backend covers 240,000 rays: a full turn in 11.25° steps, offsets of
 ±0.00001 radians around each pose, positive/negative screen coordinates, and
-densities 1, 2, 4 and 8. Both report 134,388 hits and 105,612 misses, with maximum
-entry/exit depth error about 0.0000116. Both X/Y normal polarities and negative
-Z are observed. Camera yaw alone does not expose positive Z; full object
-rotation, curved surfaces, hollow shapes and GPU execution remain outside
-this scalar test. There is no new image tolerance.
+densities 1, 2, 4 and 8. Both report 134,388 hits and 105,612 misses, with
+maximum entry/exit depth error about 0.0000116. Both X/Y normal polarities and
+negative Z are observed. Camera yaw alone does not expose positive Z; full
+object rotation, curved surfaces, hollow shapes and GPU execution remain
+outside this scalar test. There is no new image tolerance.
 
 Positive controls reverse yaw polarity, round the continuous entry depth, or
 accept an out-of-bounds parallel slab. Each altered shader fails the oracle.
 The suite is discovered by the render-harness CI runner. Shader-only edits
-trigger that workflow, which requires a C++ compiler and an unskipped SDF suite. This validates
-the intersection helpers, not production shadow or presentation correctness.
+trigger that workflow, which requires a C++ compiler and an unskipped SDF
+suite. This validates the intersection helpers, not production shadow or
+presentation correctness.
 
 ## Why the stored value is insufficient
 
@@ -55,7 +56,8 @@ The alias is already present at the source sample, before the six-slot emission
 spreads a common base depth over neighboring storage locations. A slot-derived
 normal, a constant position offset, or a different shadow filter cannot invert
 this many-to-one mapping. Additional winning-surface information is required
-for exact analytical recovery. The [receiver/query factorial](../pr-screenshots/codex/sdf-receiver-factorial/README.md)
+for exact analytical recovery. The
+[receiver/query factorial](../pr-screenshots/codex/sdf-receiver-factorial/README.md)
 shows why changing receiver or sampler independently is insufficient in the
 rendered floor fixture.
 
@@ -84,7 +86,7 @@ rendered floor fixture.
    exact-ray controls with the unchanged strict image gates on both backends;
    measure visible-sample memory and GPU time before expanding the path.
 
-The refreshed base includes PR #3629's SDF fog-carrier changes. The scalar gate
-edits no producer or shared GPU structure and can land independently of the
-deferred cascade correction. Future geometry work must preserve that carrier. This is a correctness prerequisite, not a claim
-that the remaining floor regression or finite shadow-map coverage is fixed.
+Future geometry work must preserve the SDF fog whole-body carrier from
+`SHAPE_FLAG_FOG_WHOLE_BODY_EXEMPT` through `encodeEntityIdFogWholeBody`.
+This is a correctness prerequisite, not a claim that the remaining floor
+regression or finite shadow-map coverage is fixed.
