@@ -38,7 +38,8 @@ _merger_action_signal = _mod._merger_action_signal
 
 def _signal(pr):
     return _merger_action_signal(set(pr["labels"]), pr.get("mergeable"),
-                                 pr.get("baseRefName", "master"))
+                                 pr.get("baseRefName", "master"),
+                                 pr.get("mergeStateStatus"))
 
 
 def _state(prs):
@@ -51,8 +52,8 @@ def _state_eng_game(engine_prs, game_prs):
 
 
 def _pr(num, *, labels=None, mergeable="MERGEABLE", base="master",
-        head="claude/feat", author="bot"):
-    return {
+        head="claude/feat", author="bot", merge_state=None):
+    pr = {
         "number": num,
         "title": f"T-{num}: feat",
         "headRefName": head,
@@ -61,6 +62,9 @@ def _pr(num, *, labels=None, mergeable="MERGEABLE", base="master",
         "mergeable": mergeable,
         "author": author,
     }
+    if merge_state is not None:
+        pr["mergeStateStatus"] = merge_state
+    return pr
 
 
 def _hash(state):
@@ -250,6 +254,36 @@ class SignalSemantics(unittest.TestCase):
         self.assertEqual(_signal(pr), "merge-ready")
         # …and merge-ready is not a projection row.
         self.assertEqual(project_merger(_state([pr])), [])
+
+    def test_failing_checks_withhold_merge_ready(self):
+        # GitHub reports a failing check on the head as UNSTABLE; `mergeable`
+        # stays MERGEABLE, so only the merge-box state can carry it.
+        pr = _pr(101, labels=["fleet:approved"], merge_state="UNSTABLE")
+        self.assertEqual(_signal(pr), "checks-red")
+        self.assertEqual(project_merger(_state([pr])), [],
+                         "a red check is the human's reading, not merger work")
+        self.assertEqual(slice_merger(_state([pr]))["merger_candidates"], [])
+
+    def test_clean_checks_are_merge_ready(self):
+        self.assertEqual(_signal(_pr(101, labels=["fleet:approved"], merge_state="CLEAN")),
+                         "merge-ready")
+
+    def test_a_record_without_merge_state_reads_as_before(self):
+        # A schema-4 record has no key; the schema bump refetches it, and
+        # until then the signal is the pre-field one.
+        self.assertEqual(_signal(_pr(101, labels=["fleet:approved"])), "merge-ready")
+
+    def test_behind_is_not_merger_work(self):
+        pr = _pr(101, labels=["fleet:approved"], merge_state="BEHIND")
+        self.assertEqual(_signal(pr), "merge-ready")
+        self.assertEqual(project_merger(_state([pr])), [])
+
+    def test_check_state_flip_does_not_arm_the_merger(self):
+        before = _state([_pr(101, labels=["fleet:approved"], merge_state="UNSTABLE"),
+                         _pr(102, labels=["fleet:approved"], mergeable="CONFLICTING")])
+        after = _state([_pr(101, labels=["fleet:approved"], merge_state="CLEAN"),
+                        _pr(102, labels=["fleet:approved"], mergeable="CONFLICTING")])
+        self.assertEqual(_hash(before), _hash(after))
 
     def test_approved_needs_fix_not_merge_ready(self):
         # fleet:approved + human:needs-fix must yield no signal (not

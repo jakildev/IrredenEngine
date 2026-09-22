@@ -157,5 +157,9 @@ if [[ ${#skipped_names[@]} -gt 0 ]]; then
 fi
 if [[ ${#failed_names[@]} -gt 0 ]]; then
     echo "$PROG: failed: ${failed_names[*]}" >&2
+    # A GitHub Actions annotation: the failed suite set becomes a check-run
+    # annotation that fleet-decisions reads to tell a head's own red from one
+    # master already carries. Inert outside Actions.
+    echo "::error title=fleet-tests failed suites::${failed_names[*]}"
     exit 1
 fi

@@ -599,7 +599,13 @@ def derive_closes_refs(body, repo):
 # inside a game PR). A schema-3 record lacks the key AND can under-report the
 # existing one; without the bump a quiet repo would serve records that leave
 # a cross-repo-remedied task claimable indefinitely.
-PR_RECORD_SCHEMA = 4
+#
+# 4 -> 5: mergeStateStatus added. The merger signal withholds merge-ready
+# while it reads UNSTABLE (failing checks on the head); a schema-4 record
+# lacks the key and would read as clean for every PR until the next ETag
+# flip. A check turning green does not bump the PR's updatedAt, so the value
+# settles on the next list refetch, not on the check itself.
+PR_RECORD_SCHEMA = 5
 
 
 def _fetch_prs_graphql(repo):
@@ -611,7 +617,7 @@ def _fetch_prs_graphql(repo):
         # head oid invalidates the cached detail/diff). It rides the same list
         # poll, so requesting it costs no extra call.
         "number,title,headRefName,headRefOid,baseRefName,author,labels,mergeable,"
-        "isDraft,reviews,updatedAt,body",
+        "mergeStateStatus,isDraft,reviews,updatedAt,body",
     ])
     if out is None:
         return None
@@ -3268,19 +3274,28 @@ _MERGER_PROJECTION_SKIP_LABELS = frozenset(_SMOKE_PENDING_LABELS | {
 })
 
 
-def _merger_action_signal(labels, mergeable, base_ref):
+def _merger_action_signal(labels, mergeable, base_ref, merge_state=None):
     """Canonical signal for the merger's view of a PR.
 
     Returns one of:
-        "merge-ready"      — fleet:approved + MERGEABLE + base==master + no skip
-        "needs-resolve"    — approved but CONFLICTING / UNSTABLE / BEHIND
+        "merge-ready"      — fleet:approved + MERGEABLE + base==master + no skip,
+                             and no failing check on the head
+        "checks-red"       — the same, but GitHub's mergeStateStatus reads
+                             UNSTABLE: a check on the head is failing
+        "needs-resolve"    — approved but CONFLICTING
         None               — merger has no action right now (skip)
 
     Only `needs-resolve` is merger WORK. A merge-ready PR sits on the
     human's merge click (FLEET.md § Who merges): the merger has no action
     on it, so project_merger leaves it out of the trigger hash — its
     appearance, and the merge that removes it, must never arm the lane.
-    The slice still carries it for the role to read.
+    The slice still carries it for the role to read. `checks-red` is the
+    same non-action with the reading the human merges against: a PR whose
+    head has a failing check is never reported ready. `mergeStateStatus`
+    is GitHub's merge-box state (CLEAN / UNSTABLE / BEHIND / DIRTY /
+    BLOCKED); `mergeable` alone never carries check state. BEHIND is left
+    alone here: it only appears under an up-to-date branch rule and is the
+    human's Update-branch click, not a rebase the merger should loop on.
 
     An approved PR with `base != master` is a native-stack child whose
     parent hasn't merged yet — GitHub owns its base management and the
@@ -3326,12 +3341,12 @@ def _merger_action_signal(labels, mergeable, base_ref):
     if labels & _MERGER_PROJECTION_SKIP_LABELS:
         return None
     approved = "fleet:approved" in labels
-    if mergeable in ("CONFLICTING", "UNSTABLE", "BEHIND") and approved:
+    if mergeable == "CONFLICTING" and approved:
         if any(label.startswith("fleet:claim-") for label in labels):
             return None
         return "needs-resolve"
     if approved and mergeable == "MERGEABLE" and base_ref == "master":
-        return "merge-ready"
+        return "checks-red" if merge_state == "UNSTABLE" else "merge-ready"
     return None
 
 
@@ -3346,7 +3361,8 @@ def project_merger(state):
         for pr in repo_state.get("prs", []):
             labels = set(pr["labels"])
             signal = _merger_action_signal(
-                labels, pr.get("mergeable"), pr.get("baseRefName", "master")
+                labels, pr.get("mergeable"), pr.get("baseRefName", "master"),
+                pr.get("mergeStateStatus"),
             )
             if signal != "needs-resolve":
                 continue
@@ -3361,7 +3377,7 @@ _MERGER_LLM_SKIP_LABELS = frozenset({"fleet:semantic-conflict"})
 _MERGER_LLM_SKIP_PREFIXES = ("fleet:amending-", "fleet:claim-")
 
 
-def _merger_candidate_signal(labels, mergeable, base_ref):
+def _merger_candidate_signal(labels, mergeable, base_ref, merge_state=None):
     """The signal under which tier-0 (fleet-rebase) can route a PR to the
     LLM merger pass as a `merge:<repo>:<N>` target, or None.
 
@@ -3374,7 +3390,7 @@ def _merger_candidate_signal(labels, mergeable, base_ref):
     if (labels & (_MERGER_PROJECTION_SKIP_LABELS | _MERGER_LLM_SKIP_LABELS)
             or any(label.startswith(_MERGER_LLM_SKIP_PREFIXES) for label in labels)):
         return None
-    signal = _merger_action_signal(labels, mergeable, base_ref)
+    signal = _merger_action_signal(labels, mergeable, base_ref, merge_state)
     if signal == "needs-resolve":
         return signal
     if mergeable in ("CONFLICTING", "UNKNOWN"):
@@ -3877,7 +3893,8 @@ def slice_merger(state):
             base_ref = pr.get("baseRefName", "master")
             approved = "fleet:approved" in labels
             blocked = mergeable not in (None, "", "MERGEABLE", "UNKNOWN")
-            candidate = _merger_candidate_signal(labels, mergeable, base_ref)
+            candidate = _merger_candidate_signal(labels, mergeable, base_ref,
+                                                 pr.get("mergeStateStatus"))
             if approved or blocked or candidate:
                 out["prs"].append(_slice_pr_with_repo(repo_key, pr))
             if candidate:

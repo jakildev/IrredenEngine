@@ -120,9 +120,15 @@ for name, text in spec["workflows"].items():
 for sha, runs in spec["runs"].items():
     put(f"repos/{slug}/actions/runs?head_sha={sha}&per_page=100",
         {"total_count": len(runs), "workflow_runs": runs})
-for name, conclusion in spec.get("master", {}).items():
+for name, value in spec.get("master", {}).items():
+    run = value if isinstance(value, dict) else {"conclusion": value}
     put(f"repos/{slug}/actions/workflows/{name}/runs?branch=master&status=completed&per_page=1",
-        {"total_count": 1, "workflow_runs": [{"conclusion": conclusion}]})
+        {"total_count": 1, "workflow_runs": [run]})
+for run_id, job_ids in spec.get("jobs", {}).items():
+    put(f"repos/{slug}/actions/runs/{run_id}/jobs?per_page=100",
+        {"total_count": len(job_ids), "jobs": [{"id": j} for j in job_ids]})
+for job_id, annotations in spec.get("annotations", {}).items():
+    put(f"repos/{slug}/check-runs/{job_id}/annotations?per_page=100", annotations)
 PYEOF
 
 # The default fixture: three gates and two path-filtered workflows; every
@@ -503,6 +509,108 @@ assert_eq "$derived" \
 assert_contains "$out" \
     "hold: .github/workflows/map-filtered.yml failed on head bbbbbbbbb (master: none)" \
     "a failed filtered workflow is held; no master run reads as none"
+
+# --- own red vs inherited red, by failed-suite set ---------------------------
+#
+# fleet-tests failed on master (suite alpha) and on four heads. Head 700's
+# run annotated {alpha, beta}: beta is its own and is held. Head 701's set is
+# exactly master's: inherited, a note. Head 702 passed fleet-tests before
+# master's later run failed: its green predates the break and is held to
+# re-run. Head 703 is BEHIND; head 704 is UNSTABLE with every run green, so
+# the merge-box reading is the only signal and is held as unaccounted.
+
+python3 - "$TMP/api-suites.json" << 'PYEOF'
+import json
+import sys
+
+unfiltered = "on:\n  push:\n    branches: [master]\n  pull_request:\n  workflow_dispatch:\n"
+filtered = "on:\n  pull_request:\n    paths:\n      - 'scripts/**'\n"
+OWN, SAME, STALE, BEHIND, UNSTABLE = ("c" * 40, "d" * 40, "e" * 40, "f" * 40, "1" * 40)
+
+
+def run(i, name, conclusion, created):
+    return {"id": i, "path": f".github/workflows/{name}", "status": "completed",
+            "conclusion": conclusion, "created_at": created}
+
+
+runs = {
+    OWN: [run(11, "comment-refs.yml", "success", "2026-02-01T00:00:00Z"),
+          run(12, "fleet-tests.yml", "failure", "2026-02-01T00:00:00Z")],
+    SAME: [run(21, "comment-refs.yml", "success", "2026-02-01T00:00:00Z"),
+           run(22, "fleet-tests.yml", "failure", "2026-02-01T00:00:00Z")],
+    STALE: [run(31, "comment-refs.yml", "success", "2026-01-15T00:00:00Z"),
+            run(32, "fleet-tests.yml", "success", "2026-01-15T00:00:00Z")],
+    BEHIND: [run(41, "comment-refs.yml", "success", "2026-02-02T00:00:00Z"),
+             run(42, "fleet-tests.yml", "success", "2026-02-02T00:00:00Z")],
+    UNSTABLE: [run(51, "comment-refs.yml", "success", "2026-02-02T00:00:00Z"),
+               run(52, "fleet-tests.yml", "success", "2026-02-02T00:00:00Z")],
+}
+spec = {
+    "workflows": {"comment-refs.yml": unfiltered, "fleet-tests.yml": filtered},
+    "runs": runs,
+    "master": {"comment-refs.yml": "success",
+               "fleet-tests.yml": {"conclusion": "failure", "id": 900,
+                                   "created_at": "2026-02-01T12:00:00Z"}},
+    "jobs": {"12": [1201], "22": [2201], "900": [9001]},
+    "annotations": {
+        "1201": [{"title": "fleet-tests failed suites", "message": "test_alpha.sh test_beta.py"}],
+        "2201": [{"title": "fleet-tests failed suites", "message": "test_alpha.sh"}],
+        "9001": [{"title": "unrelated", "message": "x"},
+                 {"title": "fleet-tests failed suites", "message": "test_alpha.sh"}],
+    },
+}
+with open(sys.argv[1], "w", encoding="utf-8") as f:
+    json.dump(spec, f)
+PYEOF
+python3 "$TMP/write_api.py" "$TMP/api-suites" "$TMP/api-suites.json"
+
+python3 - "$TMP/engine-prs-suites.json" << 'PYEOF'
+import json
+import sys
+
+approved = [{"name": "fleet:approved"}]
+prs = [
+    {"number": 700, "title": "engine: own red suite", "headRefOid": "c" * 40,
+     "mergeStateStatus": "UNSTABLE"},
+    {"number": 701, "title": "engine: inherited red", "headRefOid": "d" * 40,
+     "mergeStateStatus": "UNSTABLE"},
+    {"number": 702, "title": "engine: stale green", "headRefOid": "e" * 40,
+     "mergeStateStatus": "CLEAN"},
+    {"number": 703, "title": "engine: behind master", "headRefOid": "f" * 40,
+     "mergeStateStatus": "BEHIND"},
+    {"number": 704, "title": "engine: unstable, unaccounted", "headRefOid": "1" * 40,
+     "mergeStateStatus": "UNSTABLE"},
+]
+for pr in prs:
+    pr.update({"url": "u", "labels": approved})
+with open(sys.argv[1], "w", encoding="utf-8") as f:
+    json.dump(prs, f)
+PYEOF
+
+status=$(GH_STUB_ENGINE_PRS="$TMP/engine-prs-suites.json" GH_STUB_API="$TMP/api-suites" \
+    run_decisions --repo=engine)
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "0" "suite-set run exits 0"
+assert_contains "$out" \
+    "hold: .github/workflows/fleet-tests.yml failed on head ccccccccc (master: failure) — 1 suite(s) not failing on master: test_beta.py" \
+    "a suite failing on the head but not on master is the PR's own red and is held by name"
+assert_contains "$out" \
+    "note: .github/workflows/fleet-tests.yml failed on head ddddddddd for the same suite(s) as master — inherited, not this PR's to fix" \
+    "a head failing for exactly master's suites is a note"
+assert_absent "$out" "hold: .github/workflows/fleet-tests.yml failed on head ddddddddd" \
+    "an inherited red is never a hold"
+assert_contains "$out" \
+    "hold: .github/workflows/fleet-tests.yml passed on head eeeeeeeee at 2026-01-15T00:00:00Z, but master's later run (2026-02-01T12:00:00Z) failed — Update branch to re-run before merging" \
+    "a green run that predates master's break is held to re-run"
+assert_contains "$out" "hold: behind master — Update branch" "BEHIND is an Update-branch hold"
+unstable_lines=$(grep -c "mergeStateStatus UNSTABLE" "$TMP/out.txt")
+assert_eq "$unstable_lines" "1" \
+    "the merge-box UNSTABLE hold prints only where no run or note accounts for it (#704), not on #700/#701"
+assert_contains "$out" \
+    "hold: GitHub reports a failing check on the head (mergeStateStatus UNSTABLE) that no completed run above accounts for" \
+    "UNSTABLE with every run green is held as unread"
+stale_lines=$(grep -c "Update branch to re-run" "$TMP/out.txt")
+assert_eq "$stale_lines" "1" "only the head whose green predates master's failure is held stale"
 
 # --- --repo equals-form + dual-spelling validation --------------------------
 

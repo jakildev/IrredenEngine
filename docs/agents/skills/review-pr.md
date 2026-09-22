@@ -63,11 +63,13 @@ Read author and human comments before the diff — they mark deliberate
 scope and pre-flagged concerns.
 
 ```bash
-gh pr view <N> --json number,title,body,headRefName,baseRefName,author,files,additions,deletions,commits,mergeable,comments,reviews,labels
+gh pr view <N> --json number,title,body,headRefName,baseRefName,author,files,additions,deletions,commits,mergeable,mergeStateStatus,statusCheckRollup,comments,reviews,labels
 gh api repos/<repo>/pulls/<N>/comments
 ```
 
 The second call returns inline comments that `gh pr view --json` omits.
+`statusCheckRollup` is the checks on the head as the human will see them at
+merge; `mergeStateStatus` is `UNSTABLE` while any of them fails.
 "Latest": `gh pr list --state open --limit 5`, confirm if ambiguous.
 
 ### 1b. Bail check, then diff
@@ -143,6 +145,17 @@ Walk the **review checklist** explicitly; confirm or raise each item. If
 the PR touches a subdirectory with its own `CLAUDE.md` or `REVIEW.md`,
 apply that too — the repo checklist is the baseline, the subdirectory's
 rules are the delta.
+
+Read the checks before the verdict. A `FAILURE` in `statusCheckRollup` is
+the PR's own when the same workflow is green on the base branch, or red
+there for a different reason (a different offender or suite — the run log
+names it); an own red is needs-fix (REVIEWER-PROTOCOL.md § Nits vs
+needs-fix: "a CI validator the PR turns red"). A red the base already
+carries for the same reason is inherited: name it in the review as
+inherited and do not hold it against the PR. A check with no completed run
+on the head is unread, not green — say so. A verdict written from the
+diff alone, with a red rollup unmentioned, is the gap that let regressions
+merge under approval.
 
 ### 4b. Grade acceptance against the originating issue
 

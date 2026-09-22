@@ -56,6 +56,8 @@ assert_contains "$out" "FAIL  test_broken.sh (exit 1)" "T2 FAIL line carries the
 assert_contains "$out" "boom in broken" "T2 failing suite's output is echoed for triage"
 assert_contains "$out" "1 passed, 1 failed, 0 skipped" "T2 summary counts the failure"
 assert_contains "$out" "failed: test_broken.sh" "T2 names the failing suite"
+assert_contains "$out" "::error title=fleet-tests failed suites::test_broken.sh" \
+    "T2 the failed suite set is emitted as a check-run annotation"
 
 echo "T3: a failing .py suite is caught too"
 d=$(new_sandbox t3)
@@ -164,6 +166,8 @@ out=$(bash "$d/run_all.sh" 2>&1); rc=$?
 assert_eq "$rc" "1" "T13 exit 1 — a skip must not mask a real failure"
 assert_contains "$out" "0 passed, 1 failed, 1 skipped" "T13 summary counts failures and skips independently"
 assert_contains "$out" "failed: test_broken.sh" "T13 still names the real failure"
+assert_absent "$out" "::error title=fleet-tests failed suites::test_broken.sh test_skippy.sh" \
+    "T13 a skipped suite is never annotated as failed"
 
 # The runner sits one level under the wrapper in the real tree, so these two
 # sandboxes nest it the same way. The wrapper is the REAL one: the scrub set is
