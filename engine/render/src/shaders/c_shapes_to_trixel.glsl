@@ -166,53 +166,13 @@ bool boxSlabIntersect(float isoX, float isoY, vec3 hExt,
     return dEntry <= dExit;
 }
 
-// |a*d + b| <= H solved for d. Degenerate (a == 0) returns either an empty
-// or all-d slab depending on |b| vs H.
-//
-// Threshold 1e-6 catches FP near-degenerate slopes at irrational yaws near
-// pi/4, where (cos-sin)/3 is tiny but nonzero (at exactly pi/4, cos==sin in
-// IEEE-754 so (c-s)/3 == 0). A smaller threshold lets 1/|a| blow up past 1e6
-// across that cluster. The +/-1e18 sentinel is an all-d slab the downstream
-// min/max swallows.
-bool slabFromLinear(float a, float b, float H,
-                    out float dLo, out float dHi) {
-    if (abs(a) < 1e-6) {
-        if (abs(b) <= H) {
-            dLo = -1e18; dHi = 1e18;
-            return true;
-        }
-        return false;
-    }
-    float invA = 1.0 / a;
-    float t1 = (-H - b) * invA;
-    float t2 = ( H - b) * invA;
-    dLo = min(t1, t2);
-    dHi = max(t1, t2);
-    return true;
-}
-
 // Yaw-aware box slab. pLocal_i(d) = a_i*d + b_i in shape-local coords, with
 // pLocal = R_z(+yaw) . pView. z-axis is rotation-invariant under z-yaw.
 bool boxSlabIntersectYaw(ivec2 isoRel, vec3 hExt, float yawC, float yawS,
                          out float dEntry, out float dExit) {
-    float iX = float(isoRel.x);
-    float iY = float(isoRel.y);
-
-    float ax = (yawC - yawS) / 3.0;
-    float bx = -(yawC + yawS) * 0.5 * iX - (yawC - yawS) * iY / 6.0;
-    float ay = (yawC + yawS) / 3.0;
-    float by =  (yawC - yawS) * 0.5 * iX - (yawC + yawS) * iY / 6.0;
-    float az = 1.0 / 3.0;
-    float bz = iY / 3.0;
-
-    float dxLo, dxHi, dyLo, dyHi, dzLo, dzHi;
-    if (!slabFromLinear(ax, bx, hExt.x, dxLo, dxHi)) return false;
-    if (!slabFromLinear(ay, by, hExt.y, dyLo, dyHi)) return false;
-    if (!slabFromLinear(az, bz, hExt.z, dzLo, dzHi)) return false;
-
-    dEntry = max(dxLo, max(dyLo, dzLo));
-    dExit  = min(dxHi, min(dyHi, dzHi));
-    return dEntry <= dExit;
+    vec3 entryNormal;
+    return boxSurfaceIntervalYaw(float(isoRel.x), float(isoRel.y), hExt,
+                                 yawC, yawS, dEntry, dExit, entryNormal);
 }
 
 // Transform pView (view space) to pLocal (shape-local). Camera yaws by

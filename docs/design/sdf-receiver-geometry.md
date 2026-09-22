@@ -8,21 +8,24 @@ boundaries within a displayed trixel.
 ## Executable evidence
 
 Run `python3 scripts/tests/test_render_sdf_surface_contract.py`. It extracts
-`boxSlabIntersectYaw`, `slabFromLinear`, `stableCeilToInt` and
+`boxSurfaceIntervalYaw`, `boxSlabIntersectYaw`, `slabFromLinear`, `stableCeilToInt` and
 `encodeDepthWithFace` from the actual GLSL and Metal sources and executes them
 as scalar C++. An independent double-precision world-ray/slab intersection
-checks hit/miss, entry/exit, and whether the entry lies on the finite box.
+checks hit/miss, entry/exit, signed entry normal, and whether the entry lies on the finite box.
+The shared interval helper accepts continuous iso coordinates; the integer
+producer forwards to it without changing its cell expansion or quantization.
+Explicit corner controls require deterministic X, then Y, then Z tie ownership.
 
-Each backend covers 240,000 rays: a full turn in 11.25° steps, offsets of
-±0.00001 radians around each pose, positive/negative screen coordinates, and
-densities 1, 2, 4 and 8. Both report 134,388 hits and 105,612 misses, with maximum
+Each backend covers 480,000 rays: a full turn in 11.25° steps, offsets of
+±0.00001 radians around each pose, positive/negative integer and fractional screen coordinates, and
+densities 1, 2, 4 and 8. Both report 268,926 hits and 211,074 misses, with maximum
 entry/exit depth error about 0.0000116. Both X/Y normal polarities and negative
 Z are observed. Camera yaw alone does not expose positive Z; full object
 rotation, curved surfaces, hollow shapes and GPU execution remain outside
 this scalar test. There is no new image tolerance.
 
-Positive controls reverse yaw polarity, round the continuous entry depth, or
-accept an out-of-bounds parallel slab. Each altered shader fails the oracle.
+Positive controls reverse yaw polarity or a normal, round the continuous entry
+depth or fragment coordinates, or accept an out-of-bounds parallel slab. Each altered shader fails the oracle.
 The suite is discovered by the render-harness CI runner. Shader-only edits
 trigger that workflow, which requires a C++ compiler and an unskipped SDF suite. This validates
 the intersection helpers, not production shadow or presentation correctness.
@@ -66,10 +69,9 @@ rendered floor fixture.
    their selected cell faces. Do not turn legitimate voxel steps into analytical
    surfaces. A descriptor reference can recover analytical geometry, while a
    planar surface can use a plane equation; the storage choice is still open.
-2. Resolve equal-depth ownership deterministically before publishing geometry,
-   color and identity together. The current color/ID pass checks the depth key,
-   so equal keys alone do not grant a unique writer. Adding independently raced
-   normal/depth stores would permit geometry from different winners to mix.
+2. Publish geometry from the same elected owner as color and identity. Opaque
+   ownership is implemented below; independently raced normal/depth stores would
+   still permit geometry from different winners to mix.
 3. Retain receiver data until its last consumer. The current shape upload buffer
    is reused across canvases; a fragment cannot blindly refer to a previous
    canvas's descriptor index after that upload is replaced. Prefer storage tied
@@ -105,3 +107,26 @@ implementation. The existing occluded X-ray color overlay remains outside the
 opaque ownership guarantee. Its read/modify/write blending is a separate
 ordering problem. Native controls and validation live in the
 [ownership evidence](../pr-screenshots/codex/sdf-winner-ownership/README.md).
+
+## Fragment integration still pending
+
+The continuous interval helper does not by itself provide a fragment receiver.
+A finite descriptor-backed query is required at box corners; extrapolating one
+sample's infinite plane can cross onto the wrong face. Retained per-canvas
+descriptors must reproduce the producer's rounded projected origin, density and
+cell expansion. The general shape upload cannot outlive its next canvas upload.
+Voxelized/lattice SDF receivers retain cell-union geometry rather than one smooth
+analytical box.
+
+Lighting must retain linear ambient/indirect terms and an unlambertized material
+sun coefficient. The fragment derives Lambert and visibility from its actual
+surface before composition and tone mapping; the existing RGBA8 lit color cannot
+be inverted to recover these terms. Normal-dependent sky lighting must follow
+the same normal. Fog, AO and local-light semantics must remain explicit.
+
+Winner metadata needs a lifecycle covering empty-SDF frames, canvas clears,
+unsupported winners and later same-depth overwrites. A failed finite query must
+not silently discard the producer's splatted coverage or change depth. The
+initial integration should preserve that legacy coverage while accepting exact
+receiving only where the finite intersection succeeds. These constraints remain
+unimplemented; the shared helper and scalar checks do not accept floor edges.
