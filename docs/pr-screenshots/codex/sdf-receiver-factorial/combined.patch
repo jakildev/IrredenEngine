@@ -1,0 +1,19 @@
+--- a/engine/render/src/shaders/metal/c_compute_sun_shadow.metal
++++ b/engine/render/src/shaders/metal/c_compute_sun_shadow.metal
+@@ -123,6 +123,15 @@
+         normal = -normal;
+     }
+
+-    float factor = worldSunShadowFactor(pos3D, normal, sunFrameData, sunDepthBuf);
++    if (!perAxis) {
++        pos3D += rotateYawZInv(isoPositionToPos3D(float2(-0.5), 0.0) / float(effectiveTrixelSubdivisionScale(frameData.voxelRenderOptions)), frameData.visualYaw);
++        const float3 viewRay = rotateYawZInv(float3(1.0), frameData.visualYaw);
++        pos3D += viewRay * (2.0 - pos3D.z);
++        normal = float3(0.0, 0.0, -1.0);
++    }
++    const float4 casterViewToWorld = float4(0.0, 0.0, sin(frameData.visualYaw * 0.5), cos(frameData.visualYaw * 0.5));
++    float factor = perAxis
++        ? worldSunShadowFactor(pos3D, normal, sunFrameData, sunDepthBuf)
++        : worldSurfaceSunShadowFactor(pos3D, normal, casterViewToWorld, sunFrameData, sunDepthBuf);
+     canvasSunShadow.write(float4(factor, 0.0, 0.0, 0.0), uint2(pixel));
+ }

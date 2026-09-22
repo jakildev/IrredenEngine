@@ -1,0 +1,10 @@
+ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/canvas_stress/IRCanvasStress --only shadowbox,floor --probe-grid --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 2 --auto-screenshot 6 --sweep-yaw 0 4.71238898 4 (timeout: 45s)
+[2026-09-21 20:08:21.432] [ClientLog] [info] Starting creation: canvas_stress
+[2026-09-21 20:08:21.433] [EngineLog] [info] Lua script loaded successfully: /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/canvas_stress/scripts/config.lua
+[2026-09-21 20:08:21.433] [EngineLog] [info] Lua script loaded successfully: /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/canvas_stress/scripts/config.lua
+[2026-09-21 20:08:21.508] [EngineLog] [info] Discovered 0 display monitors
+ir-run: RESULT=ALIVE-TIMEOUT exe=IRCanvasStress — ran for 45s without crashing, killed by watchdog
+2026-09-21 20:08:21.505 IRCanvasStress[8334:35942017] Connection Invalid error for service com.apple.hiservices-xpcservice.
+2026-09-21 20:08:21.505 IRCanvasStress[8334:35941775] Error received in message reply handler: Connection invalid
+2026-09-21 20:08:21.511 IRCanvasStress[8334:35941775] Failure on line 688 in function id scheduleApplicationNotification(LSNotificationCode, NSWorkspaceNotificationCenter *): noErr == _LSModifyNotification(notificationID, 1, &code, 0, NULL, NULL, NULL)
+Terminated: 15             "$@"

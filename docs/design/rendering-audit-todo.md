@@ -57,11 +57,18 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
   small edge failures. Fix map/receiver sampling and carry boundary geometry
   through presentation. The strict oracle now requires measured density and
   known projection instead of inferring precision from SDF floor bounds.
-- The known-floor receiver control reduces total edge errors in all four views
-  with the existing map but still fails every strict check. It changes receiver
-  recovery and sampling together; it is diagnostic, not a shipped SDF fix.
-  Preserve exact SDF surface location/normal and geometric coverage through final
-  presentation rather than tuning bias to hide the discrepancy.
+- [Receiver/query factorial controls](../pr-screenshots/codex/sdf-receiver-factorial/README.md)
+  separate the known-floor experiment: receiver-only worsens all quadrants;
+  query-only darkens almost the whole floor. Combined reduces total error but
+  still fails all strict checks, with missed pixels at 180° rising from 19 to 48.
+  Preserve winning surface location, normal and coverage together with the
+  matching query contract; these hardcoded fixture patches are not a shipped fix.
+- [Cascade receiver correction](https://github.com/jakildev/IrredenEngine/pull/3635)
+  is deferred outside the merge-ready stack. Its axis derivation is sound, but
+  the refreshed floor control still worsens at 180° from 12/266 to 19/356
+  missing/excess pixels. The factorial captures use that experimental branch;
+  they do not describe the current production baseline.
+
 - Next: resolve finite sampling misses and small GRID floor-shadow boundaries
   across quadrants against ray/face geometry, preserving legitimate partial faces.
 - Keep six oriented face normals, twelve geometric half-faces, coordinate basis
