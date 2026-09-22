@@ -24,6 +24,7 @@
 #include <irreden/render/gpu_substage_timing.hpp>
 #include <irreden/ir_profile.hpp>
 
+#include <algorithm>
 #include <cstring>
 #include <limits>
 #include <optional>
@@ -491,19 +492,27 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                 const auto bakeSystem = findSystem(BAKE_SUN_SHADOW_MAP);
                 if (bakeSystem != kNullSystemId) {
                     auto *baker = getSystemParams<System<BAKE_SUN_SHADOW_MAP>>(bakeSystem);
-                    Texture2D *casterDepth;
                     {
+                        IRRender::GpuSubStageScope timing("shapeCastBoxes");
+                        baker->bakeAnalyticBoxes(
+                            static_cast<int>(gpuShapes.size()),
+                            renderMode == SubdivisionMode::NONE ? 1 : effectiveSub
+                        );
+                    }
+                    const bool hasNonBoxCasters = std::any_of(
+                        gpuShapes.begin(),
+                        gpuShapes.end(),
+                        [](const GPUShapeDescriptor &shape) {
+                            return shape.shapeType !=
+                                   static_cast<std::uint32_t>(IRMath::SDF::ShapeType::BOX);
+                        }
+                    );
+                    Texture2D *casterDepth = nullptr;
+                    if (hasNonBoxCasters) {
                         IRRender::GpuSubStageScope timing("shapeCastClear");
                         casterDepth = baker->prepareAnalyticCasterDepth(frameData_);
                     }
                     if (casterDepth) {
-                        {
-                            IRRender::GpuSubStageScope timing("shapeCastBoxes");
-                            baker->bakeAnalyticBoxes(
-                                static_cast<int>(gpuShapes.size()),
-                                renderMode == SubdivisionMode::NONE ? 1 : effectiveSub
-                            );
-                        }
                         shapeCasterProgram_->use();
                         // Non-box analytic casters retain their separate depth input.
                         casterDepth->bindAsImage(1, TextureAccess::READ_WRITE, TextureFormat::R32I);

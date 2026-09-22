@@ -372,5 +372,14 @@ benefit because the bounded fanout returns to one group per descriptor.
 
 Pending: ownership cost still needs its own decision; Windows validation; general
 SDF receiver geometry and sphere self-shadow artifacts; sharp sampling across
-PCF/fallback/cascade paths. Assess skipping non-box fallback clear/raster/resolve/
-bake when the submission contains only boxes, without dropping valid casters.
+PCF/fallback/cascade paths.
+
+### Box-only fallback eliminated
+
+[Box-only submission gating](../pr-screenshots/codex/box-only-cast/README.md)
+skips non-box clear/raster/resolve/bake for all-box canvas batches. Six full-frame
+Metal comparisons are pixel-identical, including four camera quadrants; the
+mixed sphere/floor control retains all fallback stages. The removed rows total
+0.269 ms in the parent small-box profile. This is workload-specific evidence,
+not an end-to-end performance claim. Windows execution and the visual work above
+remain pending.
