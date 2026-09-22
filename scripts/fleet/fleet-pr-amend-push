@@ -2,8 +2,6 @@
 # fleet-pr-amend-push — push the detached-HEAD amendment back to the
 # PR's head ref. Sibling to fleet-pr-checkout-detached.
 #
-# Why this exists
-# ---------------
 # After `fleet-pr-checkout-detached <N>`, the worker is on detached
 # HEAD pointing at `origin/<head-ref>`. The conventional `git push`
 # (with no refspec) refuses to push a detached HEAD because there's
@@ -27,14 +25,13 @@
 # fails, the wrapper exits non-zero, and the caller's role retries
 # on the next iteration.
 #
-# The second amend (#2734)
-# ------------------------
+# The second amend
+# ----------------
 # A follow-up amend in the same detached checkout — the common case
-# when CI comes back red on the first push — used to hit the
-# "sentinel missing" branch, which named the WRONG remedy: re-running
-# fleet-pr-checkout-detached moves HEAD to the remote tip and silently
-# orphans the commit just made. The consumed marker splits that
-# diagnostic (already-consumed vs never-ran) and `--continue` re-arms
+# when CI comes back red on the first push — must not be routed to
+# re-running fleet-pr-checkout-detached: that moves HEAD to the remote
+# tip and silently orphans the commit just made. The consumed marker
+# splits the diagnostic (already-consumed vs never-ran) and `--continue` re-arms
 # the sentinel for exactly one more push on the strictly-safe path:
 # detached HEAD, HEAD descends origin/<head-ref>, PLAIN push. It is
 # never a force and never a lease, so there is nothing to clobber.
@@ -82,7 +79,7 @@ if [[ -z "$git_dir" ]]; then
     exit 1
 fi
 
-# Worktree-scope guard (#2402): the push below runs from the cwd repo, and a
+# Worktree-scope guard: the push below runs from the cwd repo, and a
 # stale amend-ref sentinel in a shared main clone would route it from the wrong
 # tree. Refuse unless cwd is a fleet worktree. Resolve the sibling helper the
 # same way the other fleet-* tools do; fall back to an inline structural check if
@@ -112,11 +109,11 @@ if [[ ! -f "$sentinel" ]]; then
 fi
 
 # Sentinel is two lines: head ref (line 1) + checkout-time base SHA (line 2;
-# absent on legacy sentinels written before the base-sha lease landed). The
+# absent on a legacy one-line sentinel). The
 # base SHA is what makes the lease safe — see the push below. A third
 # `consumed <iso8601>` line, written by mark_consumed on every success path,
-# means a prior push already spent this sentinel (#2734). The two-line reader
-# ignored it by construction, which is why legacy sentinels need no migration.
+# means a prior push already spent this sentinel. A two-line reader ignores it
+# by construction, so legacy sentinels need no migration.
 { read -r head_ref; read -r base_sha; read -r consumed_line; } < "$sentinel" 2>/dev/null || true
 if [[ -z "$head_ref" ]]; then
     echo "fleet-pr-amend-push: sentinel $sentinel is empty" >&2
@@ -129,10 +126,10 @@ if [[ "${consumed_line:-}" =~ ^consumed([[:space:]]|$) ]]; then
 fi
 
 # mark_consumed — spend the sentinel without deleting it. The routing path
-# treats a consumed sentinel as absent (preserving the stale-routing hazard the
-# old `rm -f` existed for), but the retained head ref lets the branch below name
-# the real cause instead of sending the operator at fleet-pr-checkout-detached,
-# which discards the not-yet-pushed commit (#2734). base_sha may be empty on a
+# treats a consumed sentinel as absent (a stale sentinel must never route a
+# push), but the retained head ref lets the branch below name the real cause
+# instead of sending the operator at fleet-pr-checkout-detached, which
+# discards the not-yet-pushed commit. base_sha may be empty on a
 # legacy sentinel — writing it back blank keeps the legacy-lease path intact.
 mark_consumed() {
     printf '%s\n%s\nconsumed %s\n' \
@@ -224,8 +221,8 @@ fi
 # push — no force, so it is not classifier-gated and there is nothing to
 # clobber. `merge-base --is-ancestor` is robust to the fetch; the non-FF path
 # below leases against the sentinel's base SHA, which the fetch can't refresh.
-# (In the #1310 clobber, HEAD did NOT descend from the other worker's push, so
-# this path is skipped and the lease-and-refuse below correctly fires.)
+# (When another worker pushed in between, HEAD does NOT descend from their
+# push, so this path is skipped and the lease-and-refuse below fires.)
 git fetch origin "$head_ref" >/dev/null 2>&1 || true
 remote_tip=$(git rev-parse "origin/$head_ref" 2>/dev/null || echo "")
 if [[ -n "$remote_tip" ]] && git merge-base --is-ancestor "$remote_tip" HEAD 2>/dev/null; then
@@ -242,8 +239,8 @@ fi
 # to the CHECKOUT-TIME base SHA, not the bare
 # remote-tracking ref. A bare --force-with-lease leases against origin/<head_ref>,
 # which an intervening `git fetch` refreshes to a concurrent agent's push — so
-# the lease passes and clobbers their commit (the #1310 dual-worker clobber,
-# 2026-05-29). Pinning the expected SHA makes the push REFUSE if origin/<head_ref>
+# the lease passes and clobbers their commit.
+# Pinning the expected SHA makes the push REFUSE if origin/<head_ref>
 # moved since checkout, full stop. (Quoting HEAD:$head_ref defensively in case a
 # future fleet adopts head refs with shell-significant chars.)
 if [[ -n "$base_sha" ]]; then

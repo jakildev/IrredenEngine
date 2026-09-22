@@ -1,0 +1,313 @@
+#!/usr/bin/env python3
+"""fleet-stalled-sweep — stamp `fleet:stalled` on idle `fleet:wip` PRs.
+
+`fleet:wip` is a universal skip label: every reviewer role, the merger and the
+smoke lane stand off a PR carrying it, so a PR whose author never returns has
+no automated exit. This tool is that exit — the sole producer of the
+`fleet:stalled` label the catalog, the state machine and the label reference
+all describe.
+
+`fleet-state-scout` spawns it hourly, on the authoritative poller only: the
+comment below is a global, permanent mutation, so N hosts running it would
+post N comments.
+
+Two halves, both derived from one `gh pr list` per repo:
+
+  stamp   open PR, `fleet:wip`, no `fleet:stalled`, idle >= the threshold
+          → add `fleet:stalled`, then post one human-facing comment.
+
+  clear   open PR, `fleet:stalled`, no `fleet:wip`
+          → remove the label, no comment. The label's own definition is false
+            there, and leaving it on would ride into review.
+
+The idle clock is the PR's `updatedAt`, which moves on any activity — a push,
+a comment, a label change. That also makes the sticky re-arm stateless: a
+human removing `fleet:stalled` bumps `updatedAt`, opening a fresh window, and
+a PR still idle at its end is stamped and commented again. Label presence is
+the entire state — no marker file, no comment-history scan. Head-commit time
+would be the more direct clock but is not listable: `gh pr list --json
+…,commits` exceeds GraphQL's node limit.
+
+Exemptions are deliberately narrow — only labels with an exit of their own.
+`human:wip` means the human is actively editing; `fleet:awaiting-infra` is
+auto-un-parked by `fleet-claim reconcile` when its blocker closes. The design
+parks are NOT exempt: seven idle days there means the answer or resume lane
+failed, which is exactly the case worth pinging a human about. `fleet:stalled`
+has no consumer — it is informational — so a stamp interferes with no lane.
+
+Usage:
+  fleet-stalled-sweep --repo <owner/repo> [--repo …] [--dry-run]
+
+Exit status:
+  0  every requested repo swept (possibly with nothing to do)
+  1  a list fetch or a label mutation failed
+  2  usage error
+
+A failed list fetch is reported and exits non-zero rather than sweeping an
+empty list — an empty result must mean an empty fleet.
+
+Env overrides (used by tests):
+  FLEET_WIP_STALL_SECS        idle threshold in seconds (default 604800 = 7d)
+  FLEET_STALLED_SWEEP_NOW     epoch seconds to treat as "now"
+  FLEET_STALLED_SWEEP_GH_BIN  path to gh (default: search PATH)
+
+Source of truth: scripts/fleet/fleet-stalled-sweep in the engine repo.
+Installed to ~/bin/fleet-stalled-sweep by scripts/fleet/install.sh.
+"""
+
+from __future__ import annotations
+
+import argparse
+import calendar
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+
+STALLED_LABEL = "fleet:stalled"
+WIP_LABEL = "fleet:wip"
+
+# Labels whose own exit path is owned by someone: the human (`human:wip`) or
+# reconcile R8 (`fleet:awaiting-infra`). Everything else — design parks
+# included — is fair game; see the module docstring.
+EXEMPT_LABELS = frozenset({"human:wip", "fleet:awaiting-infra"})
+
+DEFAULT_STALL_SECONDS = 7 * 24 * 60 * 60
+
+GH_TIMEOUT_SECONDS = 30
+PR_LIST_LIMIT = 300
+
+COMMENT_TEMPLATE = (
+    "This PR has carried `fleet:wip` with no activity for {days} days. "
+    "`fleet:wip` is a universal skip label — every reviewer role, the merger "
+    "and the smoke lane stand off it — so nothing automated will touch this "
+    "PR until it comes off.\n\n"
+    "Three human moves from here:\n\n"
+    "- **Remove `fleet:wip`** if the work is ready for review.\n"
+    "- **Close the PR** to abandon it; `fleet-claim cleanup --gh` sweeps the "
+    "linked issue's claim labels once its TTL passes.\n"
+    "- **Remove `fleet:stalled`** to wait another window — removal re-arms the "
+    "timer rather than silencing it.\n\n"
+    "— fleet-stalled-sweep"
+)
+
+
+def warn(msg: str) -> None:
+    print(f"fleet-stalled-sweep: WARNING: {msg}", file=sys.stderr)
+
+
+def log(msg: str) -> None:
+    print(f"fleet-stalled-sweep: {msg}")
+
+
+def gh_bin() -> str:
+    return os.environ.get("FLEET_STALLED_SWEEP_GH_BIN") or shutil.which("gh") or "gh"
+
+
+def stall_seconds() -> int:
+    """Idle threshold, from the env override or the 7-day default.
+
+    A malformed or non-positive override falls back to the default rather than
+    sweeping with a zero window, which would stamp every open `fleet:wip` PR.
+    """
+    raw = os.environ.get("FLEET_WIP_STALL_SECS", "")
+    if not raw:
+        return DEFAULT_STALL_SECONDS
+    try:
+        value = int(raw)
+    except ValueError:
+        warn(f"FLEET_WIP_STALL_SECS={raw!r} is not an integer; using the default")
+        return DEFAULT_STALL_SECONDS
+    if value <= 0:
+        warn(f"FLEET_WIP_STALL_SECS={value} is not positive; using the default")
+        return DEFAULT_STALL_SECONDS
+    return value
+
+
+def now_epoch() -> int:
+    raw = os.environ.get("FLEET_STALLED_SWEEP_NOW", "")
+    if raw:
+        try:
+            return int(raw)
+        except ValueError:
+            warn(f"FLEET_STALLED_SWEEP_NOW={raw!r} is not an integer; using the clock")
+    return int(time.time())
+
+
+def parse_gh_timestamp(value: str) -> int | None:
+    """Epoch seconds for a `2026-09-21T00:43:01Z` GraphQL timestamp.
+
+    Hand-parsed rather than `datetime.fromisoformat`, which rejects the `Z`
+    suffix before Python 3.11 — fleet hosts are not all on the same
+    interpreter.
+    """
+    if not isinstance(value, str):
+        return None
+    try:
+        return calendar.timegm(time.strptime(value, "%Y-%m-%dT%H:%M:%SZ"))
+    except ValueError:
+        return None
+
+
+def label_names(pr: dict) -> set[str]:
+    return {
+        label.get("name", "")
+        for label in pr.get("labels") or []
+        if isinstance(label, dict)
+    }
+
+
+def plan_sweep(prs: list[dict], now: int, threshold: int) -> dict:
+    """Split an open-PR list into the two mutation sets plus a census.
+
+    Pure over its arguments so the suite can drive it from fixture JSON —
+    every gh call in this tool is a consequence of what this returns.
+    """
+    stamp: list[dict] = []
+    clear: list[int] = []
+    wip_examined = 0
+    for pr in prs:
+        try:
+            number = int(pr["number"])
+        except (KeyError, TypeError, ValueError):
+            warn(f"skipping malformed PR record {pr!r}")
+            continue
+        labels = label_names(pr)
+        stalled = STALLED_LABEL in labels
+        if WIP_LABEL not in labels:
+            if stalled:
+                clear.append(number)
+            continue
+        wip_examined += 1
+        if stalled or labels & EXEMPT_LABELS:
+            continue
+        updated = parse_gh_timestamp(pr.get("updatedAt", ""))
+        if updated is None:
+            warn(f"#{number}: unparseable updatedAt {pr.get('updatedAt')!r}; skipping")
+            continue
+        idle = now - updated
+        if idle >= threshold:
+            stamp.append({"number": number, "idle_seconds": idle})
+    return {"stamp": stamp, "clear": clear, "wip_examined": wip_examined,
+            "open_examined": len(prs)}
+
+
+def run_gh(argv: list[str], what: str) -> bool:
+    """Run one gh mutation, reporting rather than raising. True on success."""
+    try:
+        subprocess.run(argv, capture_output=True, text=True,
+                       timeout=GH_TIMEOUT_SECONDS, check=True)
+        return True
+    except FileNotFoundError:
+        warn(f"`{argv[0]}` not on PATH; {what} failed")
+    except subprocess.CalledProcessError as e:
+        warn(f"{what} failed: {(e.stderr or '').strip() or e}")
+    except subprocess.TimeoutExpired:
+        warn(f"{what} timed out")
+    return False
+
+
+def list_open_prs(repo: str) -> list[dict] | None:
+    """Open PRs with the three fields both halves need, or None on failure."""
+    argv = [gh_bin(), "pr", "list", "--repo", repo, "--state", "open",
+            "--json", "number,labels,updatedAt", "--limit", str(PR_LIST_LIMIT)]
+    try:
+        out = subprocess.run(argv, capture_output=True, text=True,
+                             timeout=GH_TIMEOUT_SECONDS, check=True)
+    except FileNotFoundError:
+        warn(f"`{argv[0]}` not on PATH; cannot sweep {repo}")
+        return None
+    except subprocess.CalledProcessError as e:
+        warn(f"`gh pr list` failed for {repo}: {(e.stderr or '').strip() or e}")
+        return None
+    except subprocess.TimeoutExpired:
+        warn(f"`gh pr list` timed out for {repo}")
+        return None
+    try:
+        prs = json.loads(out.stdout)
+    except json.JSONDecodeError as e:
+        warn(f"`gh pr list` returned non-JSON for {repo}: {e}")
+        return None
+    if not isinstance(prs, list):
+        warn(f"`gh pr list` returned a {type(prs).__name__} for {repo}, expected a list")
+        return None
+    return prs
+
+
+def stamp_pr(repo: str, number: int, idle_seconds: int, dry_run: bool) -> bool:
+    """Add `fleet:stalled`, then comment. Label first, and only once.
+
+    The reverse order turns a persistently failing label add into one duplicate
+    comment per sweep, forever; this way a failed comment is lost permanently,
+    which is the cheaper of the two. The comment is never retried for the same
+    reason — the label is what makes the PR drop out of the candidate set.
+    """
+    days = idle_seconds // (24 * 60 * 60)
+    if dry_run:
+        log(f"[dry-run] {repo}#{number}: idle {days}d → would add {STALLED_LABEL} + comment")
+        return True
+    if not run_gh([gh_bin(), "pr", "edit", str(number), "--repo", repo,
+                   "--add-label", STALLED_LABEL],
+                  f"{repo}#{number} --add-label {STALLED_LABEL}"):
+        return False
+    log(f"{repo}#{number}: idle {days}d → {STALLED_LABEL}")
+    run_gh([gh_bin(), "pr", "comment", str(number), "--repo", repo,
+            "--body", COMMENT_TEMPLATE.format(days=days)],
+           f"{repo}#{number} stall comment (not retried)")
+    return True
+
+
+def clear_pr(repo: str, number: int, dry_run: bool) -> bool:
+    if dry_run:
+        log(f"[dry-run] {repo}#{number}: no {WIP_LABEL} → would remove {STALLED_LABEL}")
+        return True
+    if not run_gh([gh_bin(), "pr", "edit", str(number), "--repo", repo,
+                   "--remove-label", STALLED_LABEL],
+                  f"{repo}#{number} --remove-label {STALLED_LABEL}"):
+        return False
+    log(f"{repo}#{number}: no longer {WIP_LABEL} → removed {STALLED_LABEL}")
+    return True
+
+
+def sweep_repo(repo: str, now: int, threshold: int, dry_run: bool) -> bool:
+    prs = list_open_prs(repo)
+    if prs is None:
+        return False
+    plan = plan_sweep(prs, now, threshold)
+    ok = True
+    for candidate in plan["stamp"]:
+        ok = stamp_pr(repo, candidate["number"], candidate["idle_seconds"], dry_run) and ok
+    for number in plan["clear"]:
+        ok = clear_pr(repo, number, dry_run) and ok
+    log(
+        f"{repo}: {plan['open_examined']} open PR(s), {plan['wip_examined']} "
+        f"with {WIP_LABEL}, {len(plan['stamp'])} stamped, {len(plan['clear'])} cleared"
+    )
+    return ok
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        prog="fleet-stalled-sweep",
+        description=f"Stamp {STALLED_LABEL} on idle {WIP_LABEL} PRs.",
+    )
+    parser.add_argument("--repo", action="append", metavar="OWNER/REPO",
+                        help="repository to sweep; repeatable")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="report the decisions without mutating anything")
+    args = parser.parse_args()
+    if not args.repo:
+        parser.error("at least one --repo is required")
+
+    threshold = stall_seconds()
+    now = now_epoch()
+    ok = True
+    for repo in args.repo:
+        ok = sweep_repo(repo, now, threshold, args.dry_run) and ok
+    return 0 if ok else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

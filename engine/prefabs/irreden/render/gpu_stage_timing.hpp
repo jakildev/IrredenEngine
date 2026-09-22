@@ -192,6 +192,66 @@ inline VoxelCullAccumulator &voxelCullAccumulator() {
     return instance;
 }
 
+// What a profile report vouches for in a build that logs nothing: the camera
+// pose the voxel pass rendered at and the per-axis overflow lane's worst
+// frame. Recorded every frame, independent of stage timing. Yaw is radians in
+// [-π, π); travel sums the wrapped per-frame yaw change, so a static pose
+// reads 0 and a sweep reads its arc across the ±π seam. Overflow samples stay
+// 0 at a cardinal pose, where the per-axis canvases are not allocated. The
+// overflow counters are read one frame late: the first sample after an
+// allocation is the zero-seeded block, and the last rotating frame before a
+// release or exit is never read. Unsynchronized: every writer is reached from
+// VOXEL_TO_TRIXEL_STAGE_1, which runs serially on the main thread.
+struct RenderRunWitness {
+    float yawFirst_ = 0.0f;
+    float yawLast_ = 0.0f;
+    float yawTravel_ = 0.0f;
+    float zoomFirst_ = 0.0f;
+    float zoomLast_ = 0.0f;
+    std::uint32_t poseSamples_ = 0;
+    // Pose samples rendered with an explicit yaw pivot focus. With the default
+    // pivot the part of the world a yaw shows depends on how the run began.
+    std::uint32_t explicitPivotSamples_ = 0;
+    std::uint32_t overflowSamples_ = 0;
+    std::uint32_t maxOverflowEntries_ = 0;
+    std::uint32_t maxOverflowDropped_ = 0;
+    std::uint32_t overflowCap_ = 0;
+    // CPU time inside the per-axis canvas allocate and release calls, recorded
+    // on each allocation-state transition and not every frame; a GPU driver may
+    // defer part of an allocation's cost to first use.
+    CpuPhaseTiming perAxisAllocate_;
+    CpuPhaseTiming perAxisRelease_;
+
+    void recordPose(float yaw, float zoom, bool explicitPivot) {
+        explicitPivotSamples_ += explicitPivot ? 1u : 0u;
+        if (poseSamples_ == 0) {
+            yawFirst_ = yaw;
+            zoomFirst_ = zoom;
+        } else {
+            yawTravel_ += IRMath::abs(IRMath::wrapAnglePi(yaw - yawLast_));
+        }
+        yawLast_ = yaw;
+        zoomLast_ = zoom;
+        ++poseSamples_;
+    }
+
+    void recordOverflow(std::uint32_t entries, std::uint32_t dropped, std::uint32_t cap) {
+        maxOverflowEntries_ = IRMath::max(maxOverflowEntries_, entries);
+        maxOverflowDropped_ = IRMath::max(maxOverflowDropped_, dropped);
+        overflowCap_ = cap;
+        ++overflowSamples_;
+    }
+
+    void reset() {
+        *this = RenderRunWitness{};
+    }
+};
+
+inline RenderRunWitness &renderRunWitness() {
+    static RenderRunWitness instance;
+    return instance;
+}
+
 // Per-stage running GPU-timing accumulator. The `gpu_stage_timing_observer`
 // records one sample per resolved timestamp pair per stage; the world's
 // profile-report builder drains the array (indexed parallel to

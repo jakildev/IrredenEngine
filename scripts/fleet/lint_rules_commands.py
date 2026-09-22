@@ -29,8 +29,21 @@ opt-out in `lint_state_mtime.py`. Never delete the Detection block itself to
 silence this check; the block is documentation of intent even when its cited
 tool hasn't landed yet.
 
-Exit 0: every fenced `fleet-*` citation resolves (or is suppressed). Exit 1:
-at least one does not, printed as `file:line: <message>`.
+A second arm covers commands an agent-facing doc must not prescribe at all.
+`gh pr checkout` takes the PR's branch ref, so it fails whenever another
+worktree holds that branch, and a lane that prescribes it reports a verdict
+with its suite unrun; `fleet-pr-checkout-detached` is the replacement. This
+arm reads every instruction surface an agent executes from (roles, skills,
+subagents, rules, `docs/agents/**`) and flags the command in command position:
+the leading tokens of a fenced line, or an inline code span that carries an
+argument (`` `gh pr checkout <N>` ``). A bare `` `gh pr checkout` `` span is a
+mention — that is how the ban itself is written — and is never flagged. The
+same `rules-cmd-ok` marker suppresses it, keyed by the slug in
+`FORBIDDEN_COMMANDS`, above a fence or on the line before an inline span.
+
+Exit 0: every fenced `fleet-*` citation resolves (or is suppressed) and no
+forbidden command is prescribed. Exit 1: at least one finding, printed as
+`file:line: <message>`.
 """
 import re
 import shutil
@@ -43,6 +56,21 @@ ALLOW_RE = re.compile(r"^<!--\s*lint:\s*rules-cmd-ok\s+(\S+)")
 FLEET_TOKEN_RE = re.compile(r"^fleet-[a-zA-Z0-9_-]+$")
 
 DEFAULT_DOC_GLOBS = (".claude/rules/*.md", "docs/agents/*.md")
+
+# slug -> (leading tokens, what to run instead). The slug is what a
+# `rules-cmd-ok` marker names.
+FORBIDDEN_COMMANDS = {
+    "gh-pr-checkout": (
+        ("gh", "pr", "checkout"),
+        "use `fleet-pr-checkout-detached <N> [--repo <slug>]` — `gh pr checkout` "
+        "takes the branch ref and fails when another worktree holds it",
+    ),
+}
+FORBIDDEN_DOC_GLOBS = (
+    ".claude/commands/*.md", ".claude/agents/*.md", ".claude/rules/*.md",
+    ".claude/skills/**/*.md", "docs/agents/**/*.md",
+)
+INLINE_SPAN_RE = re.compile(r"`([^`\n]+)`")
 
 _SELF = Path(__file__).resolve()
 
@@ -89,6 +117,61 @@ def find_candidates(path):
         m = ALLOW_RE.match(stripped)
         pending_allow = {m.group(1).rstrip(":,")} if m else set()
     return findings
+
+
+def _forbidden_slug(text):
+    """Slug of the forbidden command `text` starts with, given at least one
+    argument follows it; None otherwise."""
+    tokens = text.strip().split()
+    if tokens and tokens[0] == "$":
+        tokens = tokens[1:]
+    for slug, (leading, _advice) in FORBIDDEN_COMMANDS.items():
+        if tuple(tokens[:len(leading)]) == leading and len(tokens) > len(leading):
+            return slug
+    return None
+
+
+def find_forbidden(path):
+    """Return sorted (lineno, slug) for each unsuppressed forbidden command in
+    command position: a fenced line, or an inline code span with an argument."""
+    lines = Path(path).read_text(encoding="utf-8").splitlines()
+    findings = []
+    in_fence = False
+    pending_allow = set()
+    fence_allow = set()
+    for idx, line in enumerate(lines):
+        if FENCE_RE.match(line):
+            in_fence = not in_fence
+            fence_allow = pending_allow if in_fence else set()
+            pending_allow = set()
+            continue
+        if in_fence:
+            slug = _forbidden_slug(line)
+            if slug and slug not in fence_allow:
+                findings.append((idx + 1, slug))
+            continue
+        stripped = line.strip()
+        m = ALLOW_RE.match(stripped)
+        if m:
+            pending_allow = {m.group(1).rstrip(":,")}
+            continue
+        for span in INLINE_SPAN_RE.findall(line):
+            slug = _forbidden_slug(span)
+            if slug and slug not in pending_allow:
+                findings.append((idx + 1, slug))
+        pending_allow = set()
+    return sorted(set(findings))
+
+
+def iter_forbidden_docs(repo_root):
+    seen = set()
+    for pattern in FORBIDDEN_DOC_GLOBS:
+        for doc in sorted(Path(repo_root).glob(pattern)):
+            # is_file() skips a dangling symlink (an install-time link whose
+            # target is absent on this host).
+            if doc not in seen and doc.is_file():
+                seen.add(doc)
+                yield doc
 
 
 def resolve(token, tracked_basenames, tracked_stems):
@@ -145,10 +228,18 @@ def main(argv):
             print(f"{rel.as_posix()}:{lineno}: unresolved command '{token}' — "
                   f"not a tracked file's basename/stem or on PATH")
             total += 1
+    forbidden = 0
+    for doc in iter_forbidden_docs(repo_root):
+        rel = doc.relative_to(repo_root)
+        for lineno, slug in find_forbidden(doc):
+            print(f"{rel.as_posix()}:{lineno}: forbidden command "
+                  f"'{' '.join(FORBIDDEN_COMMANDS[slug][0])}' — {FORBIDDEN_COMMANDS[slug][1]}")
+            forbidden += 1
     if total:
         print(f"\n{total} unresolved fleet-* citation(s) found.", file=sys.stderr)
-        return 1
-    return 0
+    if forbidden:
+        print(f"\n{forbidden} forbidden command prescription(s) found.", file=sys.stderr)
+    return 1 if total or forbidden else 0
 
 
 if __name__ == "__main__":

@@ -70,6 +70,7 @@ rows are not additive full-frame GPU accounting.
 
 Measure capacity-sized sorting/clearing and live overflow processing separately;
 reduce work before choosing permanent larger allocations or paged storage.
-Preserve the complete-coverage baseline and deterministic order. Pool/config
-range validation and measured peak residency remain prerequisites for raising
-capacity broadly. See the [canonical TODO](rotation-subdivision-audit.md).
+Preserve the complete-coverage baseline and deterministic order. The pool edge
+is clamped to `IRRender::VoxelPoolConfig::kMaxEdge`, the largest edge whose face
+demand fits the overflow lane's 2^30 field; measured peak residency remains a
+prerequisite for raising capacity broadly. See the [canonical TODO](rotation-subdivision-audit.md).

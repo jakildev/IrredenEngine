@@ -5,6 +5,7 @@ import importlib.util
 import io
 import json
 import re
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -17,6 +18,7 @@ if not SUBJECT.is_file():
     print("SKIP: lint_comment_refs.py subject absent", file=sys.stderr)
     sys.exit(3)
 
+sys.path.insert(0, str(SUBJECT.parent))
 _spec = importlib.util.spec_from_file_location("lint_comment_refs", SUBJECT)
 lint = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(lint)
@@ -306,6 +308,116 @@ class Scanning(unittest.TestCase):
         rc, out, _ = self.run_main()
         self.assertEqual(rc, 0)
         self.assertIn("0 reference line(s)", out)
+
+
+class AgainstRef(unittest.TestCase):
+    """`--against`: a real git repo, the base committed first and the head
+    left in the working tree, as CI measures a merge commit against its first
+    parent. The head is checked against the base's baseline (`--baseline`),
+    as the workflow does."""
+
+    NEW_TEST = "scripts/fleet/tests/test_fleet_pr_body_lint.py"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.p = []
+        self.baseline = self.root / "scripts" / lint.BASELINE.name
+        for target, value in (("REPO", self.root), ("BASELINE", self.baseline)):
+            patcher = patch.object(lint, target, value)
+            patcher.start()
+            self.p.append(patcher)
+        self.git("init", "-q")
+        self.git("config", "user.email", "t@example.com")
+        self.git("config", "user.name", "t")
+
+    def tearDown(self):
+        for patcher in self.p:
+            patcher.stop()
+        self.tmp.cleanup()
+
+    def git(self, *args):
+        return subprocess.run(["git", "-C", str(self.root), *args], check=True,
+                              capture_output=True, text=True).stdout.strip()
+
+    def write(self, files, budgets):
+        for rel, text in files.items():
+            path = self.root / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text)
+        self.baseline.parent.mkdir(parents=True, exist_ok=True)
+        self.baseline.write_text(json.dumps(budgets))
+        self.git("add", "-A")
+
+    def commit_base(self, files, budgets):
+        self.write(files, budgets)
+        self.git("commit", "-qm", "base")
+        return self.git("rev-parse", "HEAD")
+
+    def run_main(self, *argv):
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            rc = lint.main(list(argv))
+        return rc, out.getvalue(), err.getvalue()
+
+    @staticmethod
+    def offenders(out, header):
+        """The `-> file` summary paths printed under `header`."""
+        lines = out.splitlines()
+        rest = lines[lines.index(header) + 1:]
+        end = next((i for i, line in enumerate(rest) if line in ("introduced:", "inherited:")),
+                   len(rest))
+        return [line.split("-> ", 1)[1].split(":", 1)[0]
+                for line in rest[:end] if line.startswith("  -> ")]
+
+    def inherited_base(self):
+        """Two files already over budget on the base, one reference each."""
+        files = {"engine/a.cpp": "int a;  // see #1111\n",
+                 "engine/tools/bin/ir-tool": "#!/usr/bin/env bash\ntrue  # #2222\n"}
+        return files, self.commit_base(files, {})
+
+    def test_a_new_file_past_budget_0_is_introduced(self):
+        files, base = self.inherited_base()
+        self.write({**files, self.NEW_TEST: "# #3001\n# #3002\n# #3003\nx = 1\n"}, {})
+        base_baseline = self.root / "base-baseline.json"
+        base_baseline.write_text("{}")
+        rc, out, err = self.run_main("--baseline", str(base_baseline), "--against", base)
+        self.assertEqual(rc, 1)
+        self.assertEqual(self.offenders(out, "introduced:"), [self.NEW_TEST])
+        self.assertIn(f"  -> {self.NEW_TEST}: 3 issue/PR reference(s) in comments, budget 0",
+                      out)
+        self.assertEqual(self.offenders(out, "inherited:"),
+                         ["engine/a.cpp", "engine/tools/bin/ir-tool"])
+        self.assertIn("beyond what", err)
+
+    def test_inherited_offenders_alone_pass(self):
+        files, base = self.inherited_base()
+        self.write(files, {})
+        rc, out, err = self.run_main("--against", base)
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.offenders(out, "introduced:"), [])
+        self.assertEqual(self.offenders(out, "inherited:"),
+                         ["engine/a.cpp", "engine/tools/bin/ir-tool"])
+        self.assertIn("engine/a.cpp:1: int a;  // see #1111", out)
+        self.assertIn("2 inherited offender(s)", err)
+        rc, _, _ = self.run_main()
+        self.assertEqual(rc, 1, "without the flag the same tree is flat red")
+
+    def test_one_more_reference_in_an_inherited_offender_is_introduced(self):
+        files, base = self.inherited_base()
+        self.write({**files, "engine/a.cpp": "int a;  // see #1111\nint b;  // #1112\n"}, {})
+        rc, out, _ = self.run_main("--against", base)
+        self.assertEqual(rc, 1)
+        self.assertEqual(self.offenders(out, "introduced:"), ["engine/a.cpp"])
+
+    def test_the_ref_side_honours_its_own_skips_and_families(self):
+        base = self.commit_base({"engine/render/third_party/v.hpp": "// #1234\n",
+                                 "docs/notes.md": "see #1234\n"}, {})
+        self.assertEqual(lint.scan_ref(base)[0], {})
+
+    def test_the_ref_scan_matches_the_working_tree_scan(self):
+        self.inherited_base()
+        self.assertEqual(lint.scan_ref("HEAD")[:2], lint.scan_tree())
 
 
 class CommandWord(unittest.TestCase):

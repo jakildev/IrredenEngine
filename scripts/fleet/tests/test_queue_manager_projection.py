@@ -1,11 +1,8 @@
 """Tests for project_queue_manager() in fleet-state-scout.
 
-Verifies the projection hash flips when a PR merges, so the scout's
+Pins that the projection hash flips when a PR merges, so the scout's
 trigger machinery (update_role_trigger) fires queue-manager via the
-normal event-driven path. Without this signal, queue-manager's
-projection was insensitive to PR-merge events that don't also close
-a fleet:queued issue, and the dispatcher had to fall back on an
-unconditional 5-minute re-arm to avoid stranding the queue.
+normal event-driven path.
 
 The test imports the function via importlib because the script has
 no .py extension, mirroring test_enrich_stackable_blocker_prs.py.
@@ -176,7 +173,7 @@ class IngestProjectionFiresOnNewApprovedIssue(unittest.TestCase):
     def test_scope_shipped_excluded_from_pending(self):
         # fleet:scope-shipped marks issues whose scope already landed under a
         # different T-NNN; the projector and slicer must exclude them so the
-        # queue-manager never tries to re-ingest them (issue #1175).
+        # queue-manager never tries to re-ingest them.
         shipped = [{"number": 9002, "title": "Feature Y",
                     "labels": ["human:approved", "fleet:scope-shipped"]}]
         h = stable_hash(project_queue_manager_ingest(_state(engine_human_approved=shipped)))
@@ -204,7 +201,7 @@ class IngestProjectionFiresOnNewApprovedIssue(unittest.TestCase):
         # autonomously) while KEEPING human:approved. The ingest must not
         # re-stamp fleet:queued — otherwise the worker would re-claim a task
         # it can never complete. So the issue must be absent from the ingest
-        # set even though human:approved is still on it (#1312).
+        # set even though human:approved is still on it.
         parked = [{"number": 1312, "title": "self-config edit",
                    "labels": ["human:approved", "fleet:needs-human"]}]
         h = stable_hash(project_queue_manager_ingest(_state(engine_human_approved=parked)))
@@ -219,9 +216,9 @@ class IngestProjectionFiresOnNewApprovedIssue(unittest.TestCase):
         # self-config no worker class can push. Like fleet:needs-human it KEEPS
         # human:approved, so without the skip the issue holds the projection hash
         # non-zero forever and costs fleet-queue-ingest one live `gh issue view`
-        # every tick for as long as it stays parked (#2762). fleet-queue-ingest's
-        # own per-issue loop already refuses to stamp fleet:queued, so this is
-        # the projection-side half of that parity.
+        # every tick for as long as it stays parked. fleet-queue-ingest's own
+        # per-issue loop already refuses to stamp fleet:queued, so this is the
+        # projection-side half of that parity.
         parked = [{"number": 2762, "title": "gated self-config edit",
                    "labels": ["human:approved", "fleet:gated"]}]
         h = stable_hash(project_queue_manager_ingest(_state(engine_human_approved=parked)))
@@ -240,6 +237,32 @@ class IngestProjectionFiresOnNewApprovedIssue(unittest.TestCase):
         out = slice_queue_manager_ingest(_state(engine_human_approved=live))
         self.assertEqual([i["number"] for i in out["pending_issues"]], [2762],
                          "issue must reach pending_issues once fleet:gated is gone")
+
+    def test_human_owned_excluded_from_pending(self):
+        # human:owned is the human's hand de-queue and it KEEPS human:approved,
+        # so without the skip the issue holds the projection hash non-zero for
+        # as long as it stays parked and costs one live `gh issue view` every
+        # ingest tick. Worse, the human REMOVING the label — the only re-entry
+        # trigger there is — is then not a membership change either, so no hash
+        # flip and no ingest fire: the issue strands approved-but-unqueued.
+        parked = [{"number": 3130, "title": "human took this one",
+                   "labels": ["human:approved", "human:owned"]}]
+        h = stable_hash(project_queue_manager_ingest(_state(engine_human_approved=parked)))
+        self.assertEqual(h, stable_hash(project_queue_manager_ingest(_state())),
+                         "human:owned issue must not contribute to the ingest hash")
+        out = slice_queue_manager_ingest(_state(engine_human_approved=parked))
+        self.assertEqual(out["pending_issues"], [],
+                         "human:owned issue must be absent from pending_issues slice")
+
+    def test_human_owned_positive_control_present_without_label(self):
+        # Positive control: the same issue without human:owned reaches
+        # pending_issues, so the exclusion is the label's doing and removing it
+        # is a real membership change that fires ingest.
+        live = [{"number": 3130, "title": "human took this one",
+                 "labels": ["human:approved"]}]
+        out = slice_queue_manager_ingest(_state(engine_human_approved=live))
+        self.assertEqual([i["number"] for i in out["pending_issues"]], [3130],
+                         "issue must reach pending_issues once human:owned is gone")
 
     def test_revise_plan_overrides_skip_into_pending(self):
         # human:revise-plan is the human-added "change the posted plan" gate. It
@@ -270,10 +293,10 @@ class IngestProjectionFiresOnNewApprovedIssue(unittest.TestCase):
 
 class IngestHonorsBlockedBy(unittest.TestCase):
     """resolve_human_approved_blockers() flags issues whose `**Blocked by:**`
-    predecessors are still open. Since #1527 that flag is informational only:
-    the ingest projector + slicer no longer exclude blocked issues — they are
-    queued up front (with a fleet:blocked marker). These tests cover both the
-    flag computation (still used for state.json visibility) and the new
+    predecessors are still open. That flag is informational only: the ingest
+    projector and slicer do not exclude blocked issues — they are queued up
+    front, with a fleet:blocked marker. These tests cover both the flag
+    computation (still used for state.json visibility) and the
     include-blocked projection behavior."""
 
     def _resolved(self, *, human_approved, closed=None, merged=None):
@@ -334,9 +357,9 @@ class IngestHonorsBlockedBy(unittest.TestCase):
         self.assertTrue(st["repos"]["engine"]["human_approved"][0]["blocked"])
 
     def test_cross_repo_blocker_does_not_block(self):
-        # #1522: a blocker in a *different* repo is unresolvable from this
-        # repo's window — the scout must defer (treat as non-blocking) rather
-        # than block forever. Mirrors game#125 → IrredenEngine#1476, flipped.
+        # A blocker in a *different* repo is unresolvable from this repo's
+        # window — the scout must defer (treat as non-blocking) rather than
+        # block forever.
         st = self._resolved(human_approved=[
             {"number": 820, "title": "child", "labels": ["human:approved"],
              "body": "**Model:** opus\n**Blocked by:** jakildev/irreden#125"},
@@ -347,8 +370,7 @@ class IngestHonorsBlockedBy(unittest.TestCase):
     def test_same_repo_qualified_blocker_still_blocks(self):
         # `IrredenEngine#N` on an engine child names the issue's *own* repo —
         # the qualifier must resolve via the in-memory same-repo path, so an
-        # open predecessor still blocks (#1522 must not turn self-refs into
-        # defers).
+        # open predecessor still blocks.
         st = self._resolved(human_approved=[
             {"number": 821, "title": "child", "labels": ["human:approved"],
              "body": "**Blocked by:** IrredenEngine#800"},
@@ -366,9 +388,9 @@ class IngestHonorsBlockedBy(unittest.TestCase):
         self.assertFalse(st["repos"]["engine"]["human_approved"][0]["blocked"])
 
     def test_blocked_child_included_in_projection_and_slice(self):
-        # #1527: blocked children are now ingestion targets — they get queued
-        # up front (fleet:queued + model + fleet:blocked), so both head AND
-        # child contribute to the hash and appear in pending_issues.
+        # Blocked children are ingestion targets — they get queued up front
+        # (fleet:queued + model + fleet:blocked), so both head AND child
+        # contribute to the hash and appear in pending_issues.
         st = self._resolved(human_approved=[
             {"number": 810, "title": "head", "labels": ["human:approved"],
              "body": "**Blocked by:** (none)"},
@@ -396,17 +418,17 @@ class IngestHonorsBlockedBy(unittest.TestCase):
 
 
 class IngestUnblockRemovePath(unittest.TestCase):
-    """#1527 remove-half: a queued task carrying fleet:blocked whose last
-    blocker has closed becomes an unblock-candidate sourced from tasks.open
-    AND tasks.in_progress (it has already left human_approved by carrying
+    """A queued task carrying fleet:blocked whose last blocker has closed
+    becomes an unblock-candidate sourced from tasks.open AND
+    tasks.in_progress (it has already left human_approved by carrying
     fleet:queued). The candidate flips the ingest hash so fleet-queue-ingest
     re-fires and strips the marker, then disappears the next tick once the
     label is gone.
 
-    tasks.in_progress coverage is #2534: a task claimed (e.g. via
+    tasks.in_progress coverage matters: a task claimed (e.g. via
     --stackable-on) while still blocked routes to tasks.in_progress, not
-    tasks.open, so a tasks.open-only source structurally excludes it and its
-    stale fleet:blocked never clears."""
+    tasks.open, so a tasks.open-only source would structurally exclude it and
+    its stale fleet:blocked would never clear."""
 
     def _task(self, *, num, blocked, blocked_by):
         return {"id": f"#{num}", "issue": f"#{num}", "title": f"#{num}",
@@ -431,8 +453,8 @@ class IngestUnblockRemovePath(unittest.TestCase):
         self.assertEqual(_ingest_unblock_candidates(st["repos"]["engine"]), [])
 
     def test_in_progress_unblocked_marked_task_is_candidate(self):
-        # #2534: a claimed (owner != free) task carrying fleet:blocked lives
-        # in tasks.in_progress, not tasks.open — must still surface once its
+        # A claimed (owner != free) task carrying fleet:blocked lives in
+        # tasks.in_progress, not tasks.open — must still surface once its
         # last blocker closes.
         task = self._task(num=259, blocked=True, blocked_by="(none)")
         task["owner"] = "pool-1"
@@ -470,18 +492,19 @@ class IngestUnblockRemovePath(unittest.TestCase):
 
 
 class IngestRetractPath(unittest.TestCase):
-    """#2740 retract-half: a planning queue-block (fleet:needs-plan /
-    fleet:plan-review) landing on an issue that ALREADY carries fleet:queued
-    holds ingest but not worker pickup. The candidate flips the ingest hash so
-    fleet-queue-ingest re-fires and strips fleet:queued, then disappears the
-    next tick (the issue no longer matches the fleet:queued query).
+    """A planning queue-block (fleet:needs-plan / fleet:plan-review) landing
+    on an issue that ALREADY carries fleet:queued holds ingest but not worker
+    pickup. The candidate flips the ingest hash so fleet-queue-ingest
+    re-fires and strips fleet:queued, then disappears the next tick (the
+    issue no longer matches the fleet:queued query).
 
-    The candidate list is `tasks.plan_gated`, which fetch_task_queue fills from
-    the RAW issue list — NOT from tasks.open. That distinction is the whole
-    reachability argument: fetch_task_queue `continue`s on fleet:plan-review
-    before a task row exists, and a claimed issue routes to tasks.in_progress,
-    so a tasks.open-derived source would miss both arms. `test_scout_plan_gated_
-    capture` in test_scout_task_queue_plan_gated.py pins the capture itself."""
+    The candidate list is `tasks.plan_gated`, which fetch_task_queue fills
+    from the RAW issue list — NOT from tasks.open. That distinction is the
+    whole reachability argument: fetch_task_queue `continue`s on
+    fleet:plan-review before a task row exists, and a claimed issue routes to
+    tasks.in_progress, so a tasks.open-derived source would miss both arms.
+    `test_scout_plan_gated_capture` in test_scout_task_queue_plan_gated.py
+    pins the capture itself."""
 
     def test_gated_issue_is_candidate(self):
         st = _state(engine_tasks_plan_gated=[2734])

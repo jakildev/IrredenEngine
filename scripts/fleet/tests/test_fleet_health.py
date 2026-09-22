@@ -35,8 +35,8 @@ def _line(ts, source, msg):
 
 # The fixture's dispatcher boot. Every log line below sits on this day, so a
 # window measured from real wall-clock now drifts off the fixture rather than
-# tracking it (see #3132). Tests exercising a relative --since derive their
-# pinned clock from this instant instead of naming a date.
+# tracking it. Tests exercising a relative --since derive their pinned clock
+# from this instant instead of naming a date.
 FIXTURE_BOOT = "2026-09-09T04:40:51Z"
 
 
@@ -338,17 +338,16 @@ class DaemonsAndWindow(Env):
         self.assertEqual(set(rep["roles"]), {"sonnet-reviewer"})
         # A duration is measured from now, so the arm only means anything with
         # now pinned relative to the fixture: seven hours after the boot puts
-        # every logged dispatch inside a 1-day window on any calendar date
-        # (see #3132).
+        # every logged dispatch inside a 1-day window on any calendar date.
         rc, rep = self.run_report_at(fixture_clock(7), "--since", "1d")
         self.assertIn("merger", rep["roles"])
 
     def test_relative_window_drops_the_fixture_once_the_clock_moves_past_it(self):
-        # The standing positive control for the arm above: the same "1d" that
-        # reaches the fixture at boot+7h must stop reaching it at boot+48h.
+        # The standing positive control: the same "1d" that reaches the
+        # fixture at boot+7h must stop reaching it at boot+48h.
         rc, rep = self.run_report_at(fixture_clock(48), "--since", "1d")
         self.assertNotIn("merger", rep["roles"])
-        # The emptiness above is also what a real clock produces, so assert the
+        # The emptiness is also what a real clock produces, so assert the
         # window boundary itself — boot+48h minus a day is a value only the
         # injected clock can yield.
         self.assertEqual(rep["window"]["since"], fixture_clock(24))

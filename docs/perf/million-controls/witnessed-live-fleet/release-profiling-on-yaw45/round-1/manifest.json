@@ -1,0 +1,48 @@
+{
+  "head": "a76b630e8a430ada5abd0f32dd1203eb99d55e5d",
+  "changes": " M .claude/skills/optimize/reference/profiling_recipe.md\n M docs/design/campaigns/million-entity-render.md\n M docs/perf/million-controls.md\n M engine/prefabs/irreden/render/gpu_stage_timing.hpp\n M engine/prefabs/irreden/render/systems/system_voxel_to_trixel.hpp\n M engine/profile/include/irreden/profile/profile_report.hpp\n M engine/profile/src/profile_report.cpp\n M engine/world/src/world.cpp\n M scripts/perf/compare_perf_runs.py\n M scripts/perf/million_controls.py\n M scripts/perf/repeat_profile.py\n M scripts/perf/test_million_controls.py\n M scripts/perf/test_profile_parser.py\n M scripts/perf/test_repeat_profile.py\n M test/CMakeLists.txt\n?? test/profile/\n?? test/render/run_witness_test.cpp\n",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "host_power": "AC Power",
+  "host_cpus": 14,
+  "build_dir": "build-release",
+  "build_type": "Release",
+  "binary_sha256": "7b79726611220b79745757ddd9ebf6f7b7728a9d94aaaf48183ef7c1b2112e9e",
+  "shader_sha256": "6a13afcaf26f7615a140427a3ff67efe4daa47344cf59db38c0af523f4e01661",
+  "runtime_scripts_sha256": "85a4c4c0e04ff77ce830640f6b8935b4ab8dcad11f1ff0dfccbc3dd918d927f6",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "900",
+    "IRPerfGrid",
+    "--wave-freeze",
+    "--no-overlay",
+    "--auto-profile",
+    "300",
+    "--config-preset",
+    "configs/perf/million.lua",
+    "--yaw",
+    "0.785398163"
+  ],
+  "runs": [
+    {
+      "index": 1,
+      "started_utc": "2026-09-21T20:14:18Z",
+      "host_battery_percent": 83,
+      "host_load_1m": 7.26,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "engine_logged": false,
+      "yaw_pose_mismatch": null,
+      "overflow_failure": null,
+      "yaw_first_deg": 45.0,
+      "yaw_travel_deg": 0.0,
+      "zoom": 4.0,
+      "overflow_max_dropped": 0,
+      "overflow_max_entries": 2208000,
+      "overflow_samples": 300,
+      "gpu_measured": true
+    }
+  ]
+}

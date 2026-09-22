@@ -1,0 +1,50 @@
+=== PROFILE REPORT (300 frames) ===
+Frame time:   avg=45.14ms   p50=44.68ms   p95=47.10ms   p99=61.43ms   min=41.08ms   max=173.49ms
+Update ticks: avg=2.7/frame  max=8
+Entity count: 1000177 (42 archetypes)
+
+--- Per-system timing (by pipeline, then total descending) ---
+Pipeline System                                Total(ms)   Avg(ms)   Min(ms)   Max(ms)   Calls   Entities
+INPUT    InputKeyMouse                              5.70     0.007     0.004     0.031     808     101000
+UPDATE   UpdateVoxelSetChildren                  1041.53     1.289     1.151    16.508     808  808000000
+UPDATE   PropagateTransform                       708.68     0.877     0.676     7.157     808  808105848
+UPDATE   ModifierDecay                            290.91     0.360     0.306     0.750     808  808000000
+UPDATE   FogRevealEval                              3.66     0.005     0.002     0.049     808          0
+UPDATE   PeriodicIdlePositionOffset                 0.81     0.001     0.000     0.003     808          0
+UPDATE   PeriodicIdle                               0.47     0.001     0.000     0.002     808          0
+RENDER   SingleVoxelToCanvasFirst                1437.76     4.793     4.288    48.478     300        300
+RENDER   BuildLightOcclusionGrid                  455.40     1.518     1.423     1.758     300        300
+RENDER   CanvasToFramebuffer                       34.17     0.114     0.087     0.679     300        900
+RENDER   LightingToTrixel                          16.17     0.054     0.048     0.175     300        300
+RENDER   ComputeVoxelAO                            15.25     0.051     0.044     0.135     300        300
+RENDER   ComputeLightVolume                        13.88     0.046     0.036     1.495     300        300
+RENDER   ComputeSunShadow                           8.93     0.030     0.026     0.121     300        300
+RENDER   ResolvePerAxisScreenDepth                  6.48     0.022     0.018     0.294     300        600
+RENDER   TextToTrixel                               5.35     0.018     0.006     3.074     300          0
+RENDER   FramebufferToScreen                        5.15     0.017     0.014     0.095     300        300
+RENDER   BuildDistanceHiZ                           5.13     0.017     0.015     0.077     300        600
+RENDER   BakeSunShadowMap                           3.36     0.011     0.010     0.021     300        300
+RENDER   FogToTrixel                                3.28     0.011     0.010     0.039     300        300
+RENDER   ShapesToTrixel                             2.96     0.010     0.006     0.050     300          0
+RENDER   AutoProfile                                1.95     0.006     0.005     0.087     300       1200
+RENDER   CameraMousePan                             1.88     0.006     0.005     0.011     300        300
+RENDER   Camera                                     1.08     0.004     0.003     0.009     300        300
+RENDER   CameraKeyDragPan                           0.70     0.002     0.002     0.003     300        300
+RENDER   CameraMouseRotate                          0.64     0.002     0.002     0.009     300        300
+RENDER   CameraKeyDragRotate                        0.43     0.001     0.001     0.002     300        300
+
+--- GPU frame timing ---
+Envelope includes inter-submission gaps; buffer spans include GPU stalls.
+Neither is GPU busy time. commandBuffers counts valid frames only.
+Coverage: supported=1 attempted=300 valid=300 invalid=0 commandBuffers=300
+Metric Avg(ms) Min(ms) Max(ms) Samples
+envelope 30.756 29.147 71.269 300
+commandBufferSpans 30.756 29.147 71.269 300
+
+--- CPU phase timing ---
+Phase                                  Avg(ms)   Max(ms) Samples
+ComputeLightVolume::Clear                0.004     0.031     300
+ComputeLightVolume::Populate             0.018     0.063     300
+ComputeLightVolume::Upload               0.019     1.460     300
+
+=== END REPORT ===

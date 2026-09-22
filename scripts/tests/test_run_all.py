@@ -13,7 +13,12 @@ the fixture reproduces the masking rather than being trivially broken.
 
 Fixtures are synthesized in a temp directory — nothing here touches the real
 suites.
+
+`WorkflowKeepsRunnerStatusTest` reads render-harness-tests.yml itself: a step
+that pipes the runner (`run_all.sh | tee`) must run with pipefail, or the
+job goes green on any suite failure.
 """
+import re
 import subprocess
 import sys
 import tempfile
@@ -26,6 +31,8 @@ sys.path.insert(0, str(_SCRIPTS))
 import verify_common  # noqa: E402  (needs the sys.path insert above)
 
 _RUN_ALL = Path(__file__).resolve().parent / "run_all.sh"
+_WORKFLOW = (_SCRIPTS.parent / ".github" / "workflows"
+             / "render-harness-tests.yml")
 
 _TRIVIAL_CASE = """
 import unittest
@@ -72,6 +79,37 @@ class RunAllRunnerTest(unittest.TestCase):
             # The passing sibling must still be reported as passing — a runner
             # that aborts on first failure hides the rest of the tally.
             self.assertIn("PASS  test_good.py", r.stdout)
+
+    def test_pass_line_carries_the_test_count(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(Path(d), "test_a.py", _TRIVIAL_CASE)
+            r = _run_runner(Path(d))
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("PASS  test_a.py (1 tests)", r.stdout)
+
+    def test_all_skipped_suite_passes_but_says_skipped(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(Path(d), "test_skips.py",
+                   "import unittest\n\n\n"
+                   "class T(unittest.TestCase):\n"
+                   "    @unittest.skip('fixture')\n"
+                   "    def test_skipped(self):\n"
+                   "        pass\n\n\n"
+                   "if __name__ == '__main__':\n"
+                   "    unittest.main()\n")
+            r = _run_runner(Path(d))
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("PASS  test_skips.py (1 tests, 1 skipped)", r.stdout)
+
+    def test_suite_that_ran_no_tests_fails(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(Path(d), "test_good.py", _TRIVIAL_CASE)
+            _write(Path(d), "test_noop.py", "print('no unittest.main() here')\n")
+            r = _run_runner(Path(d))
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            self.assertIn("FAIL  test_noop.py (no tests ran)", r.stdout)
+            self.assertIn("test_noop.py", r.stderr)
+            self.assertIn("1 passed, 1 failed", r.stdout)
 
     def test_empty_directory_exits_nonzero(self):
         with tempfile.TemporaryDirectory() as d:
@@ -124,6 +162,81 @@ class RunAllRunnerTest(unittest.TestCase):
                 capture_output=True, text=True)
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
             self.assertIn("OK", r.stderr)
+
+
+# ----------------------------------------------------------------------
+# The workflow must keep the runner's exit status.
+# ----------------------------------------------------------------------
+
+_STEP_START = re.compile(r"^(\s*)- ")
+_PIPE = re.compile(r"(?<!\|)\|(?!\|)")
+
+
+def _steps(workflow: str) -> list[str]:
+    """Split a workflow's text into its `- ` list-item blocks (steps)."""
+    blocks: list[list[str]] = []
+    indent = None
+    for line in workflow.splitlines():
+        if line.lstrip().startswith("#"):
+            continue
+        m = _STEP_START.match(line)
+        if m and (indent is None or len(m.group(1)) == indent) \
+                and "name:" in line:
+            indent = len(m.group(1))
+            blocks.append([line])
+        elif blocks:
+            blocks[-1].append(line)
+    return ["\n".join(b) for b in blocks]
+
+
+def masked_runner_steps(workflow: str) -> list[str]:
+    """Steps that pipe run_all.sh's output without pipefail.
+
+    A bare `run:` executes under `bash -e {0}`; GitHub adds `-o pipefail`
+    only when the step names `shell: bash`. Without either, a
+    `run_all.sh | tee` step takes tee's status and every suite failure
+    reads green.
+    """
+    masked = []
+    for step in _steps(workflow):
+        run = step.split("run:", 1)[1] if "run:" in step else ""
+        if "run_all.sh" not in run or not _PIPE.search(run):
+            continue
+        if re.search(r"^\s*shell:\s*bash\s*$", step, re.M) \
+                or "pipefail" in run:
+            continue
+        masked.append(step.splitlines()[0].strip())
+    return masked
+
+
+class WorkflowKeepsRunnerStatusTest(unittest.TestCase):
+
+    def test_workflow_invokes_the_runner(self):
+        # Non-vacuity: the check below passes trivially if no step runs it.
+        self.assertIn("run_all.sh", _WORKFLOW.read_text(encoding="utf-8"))
+
+    def test_piped_runner_step_keeps_its_exit_status(self):
+        self.assertEqual(
+            masked_runner_steps(_WORKFLOW.read_text(encoding="utf-8")), [])
+
+    def test_mutation_dropping_shell_bash_is_caught(self):
+        text = _WORKFLOW.read_text(encoding="utf-8")
+        mutated = re.sub(r"^\s*shell:\s*bash\s*\n", "", text, flags=re.M)
+        self.assertNotEqual(mutated, text, "mutation found nothing to drop")
+        self.assertEqual(len(masked_runner_steps(mutated)), 1)
+
+    def test_logical_or_is_not_a_pipe(self):
+        step = ("    steps:\n"
+                "      - name: Run\n"
+                "        run: bash scripts/tests/run_all.sh || exit 1\n")
+        self.assertEqual(masked_runner_steps(step), [])
+
+    def test_explicit_pipefail_in_run_is_accepted(self):
+        step = ("    steps:\n"
+                "      - name: Run\n"
+                "        run: set -o pipefail; bash scripts/tests/run_all.sh"
+                " | tee x.log\n")
+        self.assertEqual(masked_runner_steps(step), [])
 
 
 if __name__ == "__main__":

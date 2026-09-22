@@ -129,8 +129,10 @@ Key facts established by reading the code:
   per-axis `resolveDepth_` / world-placed `worldPlacedResolveDepth_`). The
   caster's own model-frame distance texture is bound only as the *scatter*
   read (`c_resolve_world_placed_depth.glsl:57`), never as a bake input. This is
-  the #1640-mandated invariant (`engine/render/CLAUDE.md` §"Foreign-canvas R32I
-  image reads … return empty on Metal").
+  the #1640-mandated invariant (`engine/render/CLAUDE.md` §"GPU resource contracts",
+  the "Metal R32I image atomics land in scratch storage" bullet: a foreign canvas's
+  atomic depth is resolved into a main-canvas-layout texture before a later dispatch
+  reads it).
 
 - **`N` casters ⇒ one extra bake** (not `N` bakes) — one shared scratch, one
   blit, one bake dispatch (`system_bake_sun_shadow_map.hpp:326-424`).
@@ -165,6 +167,15 @@ grep-stable token so it re-locates if lines drift.
 | A8 | `c_bake_sun_shadow_map.glsl` `else { pos3D = trixelCanvasPixelToWorld3D(…, rasterYaw); }` (~:117-120) | world-placed resolve baked through the same cardinal-only inverse as GRID | no "this pixel came from a rotated frame" branch |
 
 ### 3-B. Receive (`LIGHTING_TO_TRIXEL` world-receive)
+
+**Status (2026-09-19).** B2 and B3 are compensated on master: PR #3366
+rotates both `worldReceivePos` and `worldNormal` by `detachedViewToWorld`
+(authored from the camera rotation quaternion — full SO(3), so it also
+covers the residual-yaw tier), and `scripts/render-detached-lighting-metric.py`
+is the oracle. The cast-scatter site in `c_resolve_world_placed_depth` was
+compensated in the same PR. The one recovery still on the pre-#3366 shape is
+the fog cut-face column in `ir_voxel_face_select.glsl` (#3534). The rows
+below are the audit as it read before that PR.
 
 | # | Site | What it assumes | Break under SO(3) / camera pose |
 |---|------|-----------------|------------------------------|

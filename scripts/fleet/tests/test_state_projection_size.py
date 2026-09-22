@@ -1,9 +1,9 @@
-"""Tests for state.json's size bound and the review-body retention it rests on (#2752).
+"""Tests for state.json's size bound and the review-body retention it rests on.
 
 Every fleet role's startup step reads `~/.fleet/state/state.json` with the Read
-tool, which HARD ERRORS above 256 KB. The file reached 476.8 KB: `prs[].reviews`
-was ~46% of it (a body retained on every review of every open PR, each capped at
-2 KB but with an unbounded aggregate), and 89.4 KB was `indent=2` whitespace.
+tool, which HARD ERRORS above 256 KB. `prs[].reviews` is the dominant
+contributor: a body retained on every review of every open PR, each capped at
+2 KB but with an unbounded aggregate, plus `indent=2` whitespace.
 
 Two things are being guarded, and they need different kinds of test:
 
@@ -11,33 +11,23 @@ Two things are being guarded, and they need different kinds of test:
   projection (`_fetch_prs_graphql`) and the SHIPPED emit (`emit_state`), never a
   re-implementation of either — a test that re-serialized the fixture itself
   would only be a change-detector on its own arithmetic. TestFixtureFidelity
-  proves the fixture can express the bug: serialized the pre-fix way (every body
-  retained, indent=2) the same input blows the cap, so a green TestSizeBound is
-  the projection's doing and not a too-small fixture.
+  proves the fixture can express the failure mode: serialized with every body
+  retained and indent=2, the same input blows the cap, so a green TestSizeBound
+  is the projection's doing and not a too-small fixture.
 
 - **The two consumer predicates** must keep firing across the trim.
   TestConsumerPredicates models them from the role docs (they are gated files;
-  this plan changes neither) and pins the input that can actually regress: the
+  this suite changes neither) and pins the input that can actually regress: the
   opus predicate's fixture carries NO `fleet:needs-opus-recheck` label, so the
-  label disjunct cannot mask a broken phrase path — the PR #1473 regression the
-  scout's own comment documents. Each predicate arm ships a positive control
-  that flips the input and asserts the predicate stops firing.
+  label disjunct cannot mask a broken phrase path. Each predicate arm ships a
+  positive control that flips the input and asserts the predicate stops firing.
 
 - **The trim must actually be in effect after a deploy.** TestReuseGuardSchemaMarker
-  (#3037) covers `fetch_prs`'s 304 fast path, which reuses records seeded from the
-  on-disk `state.json` — i.e. records the PREVIOUS projection produced. Shipping
-  the trim without a version marker on the record left the pre-trim shape live
-  from tick 1 of every deploy+restart, so the two arms above were green while the
-  emitted file sat at 348 KB.
-
-Against the pre-fix `origin/master` the suite splits three ways, and the split is
-the honest read of its worth: **3 arms FAIL behaviourally** (the two
-latest-review-retention arms, which run against master's own
-`_fetch_prs_graphql`, and the size bound, which falls back to the pre-fix emit
-shape so it reports the real byte count instead of erroring), **8 ERROR** on
-symbols this fix introduces (`emit_state`, `check_state_size`, the size
-constants — the fix's own contract, not a control), and the rest pass as
-non-regression assertions.
+  covers `fetch_prs`'s 304 fast path, which reuses records seeded from the
+  on-disk `state.json` — i.e. records the PREVIOUS projection produced. A trim
+  with no version marker on the record lets the pre-trim shape ride forward from
+  tick 1 of every deploy+restart, since the size-bound and consumer-predicate
+  arms above only exercise a live projection, never a stale cached record.
 
 Import the script via importlib because it has no .py extension.
 """
@@ -63,7 +53,7 @@ _READ_CAP_BYTES = 256 * 1024
 # why only REVIEW_BODY_TAIL is load-bearing.
 _PHRASE = "Opus recheck required"
 
-# The plan's fixture scale: enough PRs and reviews that the pre-fix projection
+# Fixture scale: enough PRs and reviews that the untrimmed serialization
 # clears the cap on its own, close to the live tree (46 open PRs across repos).
 _PR_COUNT = 45
 _REVIEWS_PER_PR = 3
@@ -167,7 +157,7 @@ class TestFixtureFidelity(unittest.TestCase):
     """Without this, a green size bound could just mean the fixture was small."""
 
     def test_fixture_blows_the_cap_under_the_pre_fix_serialization(self):
-        # Pre-fix shape: a truncated body on EVERY review, pretty-printed.
+        # Untrimmed shape: a truncated body on EVERY review, pretty-printed.
         prefix = [
             dict(pr, reviews=[
                 {
@@ -205,11 +195,11 @@ class TestSizeBound(unittest.TestCase):
             with patch.object(_mod, "STATE_FILE", path), \
                     patch.dict("os.environ", {"FLEET_ALERTS_DIR": str(Path(tmp) / "alerts")}), \
                     patch.object(_mod, "log", side_effect=lambda m: None):
-                # emit_state is this fix's own surface. Falling back to the
-                # pre-fix emit shape when it is absent keeps THIS arm — the
-                # acceptance gate — a behavioural control: on the pre-fix tree it
-                # goes red with the real byte count rather than erroring on a
-                # missing attribute, so the number in the failure message is the
+                # emit_state may be absent on an older tree. Falling back to
+                # the untrimmed emit shape in that case keeps THIS arm — the
+                # acceptance gate — a behavioural control: it goes red with
+                # the real byte count rather than erroring on a missing
+                # attribute, so the number in the failure message is the
                 # harm itself.
                 emit = getattr(_mod, "emit_state", None)
                 if emit is None:
@@ -407,9 +397,7 @@ class TestSizeGuard(unittest.TestCase):
 
     def test_warn_threshold_sits_above_the_measured_post_fix_size(self):
         # A threshold under the file's own steady-state size fires on every tick
-        # from day one — a guard that is always on reports nothing. Measured
-        # 2026-08-08 by re-projecting the live cache (46 open PRs) through this
-        # change: 522,206 B -> 210,642 B.
+        # from day one — a guard that is always on reports nothing.
         measured_post_fix_bytes = 210_642
         self.assertGreater(
             _mod.STATE_SIZE_WARN_BYTES, measured_post_fix_bytes,
@@ -418,21 +406,21 @@ class TestSizeGuard(unittest.TestCase):
 
 
 class TestReuseGuardSchemaMarker(unittest.TestCase):
-    """#3037: the 304 fast path must not carry a PRE-TRIM projection forward.
+    """The 304 fast path must not carry a PRE-TRIM projection forward.
 
-    `fetch_prs` seeds `prev` from the ON-DISK state.json, so after a deploy those
-    records were produced by the previous projection. #2442's guard tested for
-    the PRESENCE of `closes_issues`, which the pre-#2752 records already carried
-    — so the trim never ran until an unrelated ETag flip, and state.json emitted
-    at 348 KB (past the Read-tool cap the trim exists to stay under) from tick 1
-    of every deploy+restart. `pr["schema"]` is the durable form: a version, not a
-    key-presence probe, so it also catches a shape change that adds no key.
+    `fetch_prs` seeds `prev` from the ON-DISK state.json, so after a deploy
+    those records were produced by the previous projection. A guard that
+    tests only for the PRESENCE of `closes_issues` is blind to a projection
+    change that adds no key (like the review-body trim), so a stale on-disk
+    record can keep serving a pre-trim shape indefinitely until an unrelated
+    ETag flip forces a refetch. `pr["schema"]` is the durable form: a
+    version, not a key-presence probe, so it catches that case too.
 
     Hermetic: the detector (`conditional_get`) is stubbed to a 304 and the
     GraphQL fetch runs through the fail-closed `_fake_gh` stub — no live call.
     """
 
-    # The pre-#2752 truncation, reproduced so the fixture carries the shape
+    # The pre-trim truncation, reproduced so the fixture carries the shape
     # MEASURED on the live host: HEAD 1024 + the 15-char marker + TAIL 1024.
     _PRE_FIX_HEAD = 1024
     _PRE_FIX_TAIL = 1024
@@ -452,7 +440,7 @@ class TestReuseGuardSchemaMarker(unittest.TestCase):
                 + raw[-self._PRE_FIX_TAIL:])
 
     def _stale_record(self, n):
-        """A record as the PRE-#2752 projection emitted it: a truncated body on
+        """A record as the pre-trim projection emitted it: a truncated body on
         EVERY review, `closes_issues` present, no schema marker."""
         body = self._stale_body()
         return {
@@ -481,8 +469,9 @@ class TestReuseGuardSchemaMarker(unittest.TestCase):
             return _mod.fetch_prs(_REPO, prev=prev)
 
     def test_fixture_matches_the_measured_live_stale_shape(self):
-        # Without this the suite could be modelling a body the pre-fix code
-        # never produced, and the refetch arm below would prove nothing.
+        # Without this the suite could be modelling a body the pre-trim
+        # projection never produced, and the refetch arm below would prove
+        # nothing.
         self.assertEqual(len(self._stale_body()), self._LIVE_STALE_BODY_LEN)
 
     def test_shipped_projection_stamps_the_current_schema(self):
@@ -490,8 +479,8 @@ class TestReuseGuardSchemaMarker(unittest.TestCase):
             self.assertEqual(pr["schema"], _mod.PR_RECORD_SCHEMA)
 
     def test_current_schema_implies_closes_issues(self):
-        # The subsumption claim #2442's guard is retired on: a record at the
-        # current schema carries closes_issues by construction.
+        # A record at the current schema carries closes_issues by
+        # construction — subsuming a presence-only check on that key.
         for pr in _project([_pr(_FIRST_PR)]):
             self.assertEqual(pr["schema"], _mod.PR_RECORD_SCHEMA)
             self.assertIn("closes_issues", pr)
@@ -526,8 +515,8 @@ class TestReuseGuardSchemaMarker(unittest.TestCase):
                          "reuse must spend no GraphQL quota")
 
     def test_an_older_schema_value_refetches_even_with_every_key_present(self):
-        """The generalization over #2442: a projection change that adds no key
-        (the #2752 trim) is invisible to key presence but not to a version."""
+        """A projection change that adds no key (like the review-body trim)
+        is invisible to key presence but not to a version."""
         prev = _project([_pr(_FIRST_PR)])
         for pr in prev:
             pr["schema"] = _mod.PR_RECORD_SCHEMA - 1

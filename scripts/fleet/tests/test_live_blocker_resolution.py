@@ -1,4 +1,4 @@
-"""Tests for resolve_blocked_by() in fleet-state-scout (T-1296).
+"""Tests for resolve_blocked_by() in fleet-state-scout.
 
 Covers:
   (a) one closed ref → (none)
@@ -85,18 +85,17 @@ def _gh_state_stub(state_map):
 class TestResolveBlockedBy(unittest.TestCase):
 
     def test_closed_ref_resolves_to_none(self):
-        """Single ref closed via closed_fleet_queued → (none)."""
         tasks = [_task("#200", "#100")]
         state = _state(engine_tasks=tasks, closed=[_closed_issue(100)])
         resolve_blocked_by(state)
         self.assertEqual(tasks[0]["blocked_by"], "(none)")
 
     def test_in_progress_closed_ref_resolves_to_none(self):
-        """#2534: a claimed task (routed to tasks.in_progress by
-        fetch_task_queue, not tasks.open) must get the same blocked_by
-        reduction — otherwise its raw, unresolved value never reaches
-        `(none)` and a stale fleet:blocked label on an in-flight issue can
-        never clear via _ingest_unblock_candidates."""
+        """A claimed task (routed to tasks.in_progress by fetch_task_queue,
+        not tasks.open) must get the same blocked_by reduction — otherwise
+        its raw, unresolved value never reaches `(none)` and a stale
+        fleet:blocked label on an in-flight issue can never clear via
+        _ingest_unblock_candidates."""
         in_progress_tasks = [_task("#259", "#257")]
         state = _state(engine_tasks_in_progress=in_progress_tasks,
                        closed=[_closed_issue(257)])
@@ -104,7 +103,6 @@ class TestResolveBlockedBy(unittest.TestCase):
         self.assertEqual(in_progress_tasks[0]["blocked_by"], "(none)")
 
     def test_open_ref_unchanged(self):
-        """Single ref that is still open → bare #NNN."""
         tasks = [_task("#200", "#101")]
         with patch.object(_mod.subprocess, "run", _gh_state_stub({"101": "OPEN"})):
             state = _state(engine_tasks=tasks)
@@ -112,7 +110,6 @@ class TestResolveBlockedBy(unittest.TestCase):
         self.assertEqual(tasks[0]["blocked_by"], "#101")
 
     def test_two_refs_one_closed_one_open(self):
-        """Two refs; closed one filtered out → bare #NNN for remaining."""
         tasks = [_task("#200", "#100 (done), #101 (still open)")]
         state = _state(engine_tasks=tasks, closed=[_closed_issue(100)])
         with patch.object(_mod.subprocess, "run", _gh_state_stub({"101": "OPEN"})):
@@ -120,10 +117,10 @@ class TestResolveBlockedBy(unittest.TestCase):
         self.assertEqual(tasks[0]["blocked_by"], "#101")
 
     def test_prose_ref_stashes_declared_only_view(self):
-        """#2783 — normalization throws the prose away, so the declared-only
+        """Normalization throws the prose away, so the declared-only
         view is captured alongside it for stackable eligibility. `blocked_by`
-        itself still carries both refs: the parenthetical PR gates the claim
-        (#1281), it just isn't a second *declared* blocker."""
+        itself still carries both refs: the parenthetical PR gates the claim,
+        it just isn't a second *declared* blocker."""
         tasks = [_task("#2780", "#2770 (PR #2772 — lands the shape this generalizes)")]
         state = _state(engine_tasks=tasks)
         with patch.object(_mod.subprocess, "run",
@@ -142,14 +139,12 @@ class TestResolveBlockedBy(unittest.TestCase):
         self.assertNotIn("blocked_by_declared", tasks[0])
 
     def test_both_refs_closed_resolves_to_none(self):
-        """Both refs closed → (none)."""
         tasks = [_task("#200", "#100, #102")]
         state = _state(engine_tasks=tasks, closed=[_closed_issue(100), _closed_issue(102)])
         resolve_blocked_by(state)
         self.assertEqual(tasks[0]["blocked_by"], "(none)")
 
     def test_merged_pr_variant_satisfies_open_issue(self):
-        """Issue still open but claude/<N>-* PR merged → satisfied."""
         tasks = [_task("#200", "#101")]
         state = _state(
             engine_tasks=tasks,
@@ -170,28 +165,24 @@ class TestResolveBlockedBy(unittest.TestCase):
         self.assertEqual(tasks[0]["blocked_by"], "#101")
 
     def test_free_text_blocked_by_not_touched(self):
-        """Free-text (no #N refs) blocked_by is left unchanged."""
         tasks = [_task("#200", "pending design review")]
         state = _state(engine_tasks=tasks)
         resolve_blocked_by(state)
         self.assertEqual(tasks[0]["blocked_by"], "pending design review")
 
     def test_none_string_not_touched(self):
-        """(none) field is not processed."""
         tasks = [_task("#200", "(none)")]
         state = _state(engine_tasks=tasks)
         resolve_blocked_by(state)
         self.assertEqual(tasks[0]["blocked_by"], "(none)")
 
     def test_none_value_not_touched(self):
-        """None blocked_by is not processed."""
         tasks = [_task("#200", None)]
         state = _state(engine_tasks=tasks)
         resolve_blocked_by(state)
         self.assertIsNone(tasks[0]["blocked_by"])
 
     def test_two_unresolved_refs_stay_multi(self):
-        """Two open refs → comma-joined bare format, still multi-blocker."""
         tasks = [_task("#200", "#101, #102")]
         with patch.object(_mod.subprocess, "run", _gh_state_stub({"101": "OPEN", "102": "OPEN"})):
             state = _state(engine_tasks=tasks)
@@ -232,7 +223,6 @@ class TestResolveBlockedBy(unittest.TestCase):
 class TestResolveAndEnrichIntegration(unittest.TestCase):
 
     def test_multi_blocker_reduces_to_stackable(self):
-        """Two refs, one closed → single unresolved → enrich finds PR → stackable written."""
         tasks = [_task("#300", "#100, #101")]
         open_prs = [_pr(536, "claude/101-work-branch")]
         state = _state(
@@ -249,7 +239,6 @@ class TestResolveAndEnrichIntegration(unittest.TestCase):
         self.assertEqual(task["stackable_blocker_pr"]["number"], 536)
 
     def test_all_resolved_no_stackable_written(self):
-        """All refs resolved → (none) → enrich skips (no #NNN to match)."""
         tasks = [_task("#300", "#100, #102")]
         state = _state(
             engine_tasks=tasks,
@@ -262,7 +251,6 @@ class TestResolveAndEnrichIntegration(unittest.TestCase):
         self.assertNotIn("stackable_blocker_pr", task)
 
     def test_two_unresolved_no_stackable(self):
-        """Two open refs → multi-blocker → enrich does not write stackable_blocker_pr."""
         tasks = [_task("#300", "#101, #102")]
         open_prs = [
             _pr(536, "claude/101-work"),
@@ -275,7 +263,7 @@ class TestResolveAndEnrichIntegration(unittest.TestCase):
         self.assertNotIn("stackable_blocker_pr", state["repos"]["engine"]["tasks"]["open"][0])
 
     def test_declared_view_emptying_out_still_offers_the_gate_ref(self):
-        """#2783 — the declared-only narrowing may only ADD an offer.
+        """The declared-only narrowing may only ADD an offer.
 
         The declared blocker (#100) closes while the decorative ref (#102) is
         still open, so the declared view empties to "(none)" while the claim
@@ -301,15 +289,14 @@ class TestResolveAndEnrichIntegration(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Part (c) — cross-repo blocker refs (#1522)
+# Part (c) — cross-repo blocker refs
 # ---------------------------------------------------------------------------
 
 class TestCrossRepoBlocker(unittest.TestCase):
-    """#1522: a blocker in a *different* repo can't be resolved from this
-    repo's scout window, so resolve_blocked_by() defers it (treats it as
+    """A blocker in a *different* repo can't be resolved from this repo's
+    scout window, so resolve_blocked_by() defers it (treats it as
     non-blocking). fleet-claim's check_blockers, routed to the referenced
-    repo, is the authoritative pickup gate. Mirrors the real game#125 →
-    IrredenEngine#1476 case, repo-flipped to the engine-only test state."""
+    repo, is the authoritative pickup gate."""
 
     def test_cross_repo_owner_qualified_ref_deferred(self):
         # Even though the cross-repo ref reads OPEN, the scout never queries it

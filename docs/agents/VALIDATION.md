@@ -28,11 +28,12 @@ prove is not done until one exists.
 | Resampled-cell face ownership and sun visibility | revoxelized detached display against its own inverse-resampled cells: silhouette and per-pixel owner face on a normals overlay, or per-trixel lattice sun visibility on a shadow overlay (`--shadow-overlay`; false shadow on a trixel whose ray grazes an occluder within `--terminator-tolerance` cells is the sun map's texel floor, not a failure) | `python3 scripts/render-revox-face-metric.py <capture.png> --fixture <cube\|grounded\|lprism> --yaw <degrees>`; [contract and evidence](../design/revoxelized-display-fidelity.md) | render-harness-tests.yml tests the validator; native captures run manually |
 | Mixed private canvas lifecycle | a voxel producer and an SDF producer sharing one entity canvas: frame intact outside a marker guard, markers present and placed; `--control` for raster survival, `--strict` for the SDF footprint; `--fixture <revoxelized solid> --markers … --owner …` for the half-cell phase fixtures | `python3 scripts/render-mixed-canvas-metric.py <capture.png> --yaw <degrees> [--fixture parity --markers x y z …] [--control <marker-free.png>]`; [contract and evidence](../design/mixed-private-canvas-lifecycle.md) | render-harness-tests.yml tests the validator; native captures run manually |
 | Shadow comparison presence | attached orange, detached cyan/purple and rainbow probe visibility | `python3 scripts/render-shadow-probes-metric.py <captures...>`; fixed capture recipe in script help | none |
-| Voxel face shadows | analytic box projection, visible area and overlap at four cardinal yaws | `python3 scripts/render-shadow-box-metric.py <yaw0.png> <yaw90.png> <yaw180.png> <yaw270.png>`; fixed capture recipe in script help | none |
+| Voxel face shadows | analytic box projection, visible area and overlap at four cardinal yaws | `python3 scripts/render-shadow-box-metric.py <yaw0.png> <yaw90.png> <yaw180.png> <yaw270.png>`; fixed capture recipe in script help | render-harness-tests.yml runs `test_render_shadow_box_edges.py` (needs the workflow's pinned Pillow) |
 | Detached lighting | world-sun face colors at four cardinal camera yaws | `python3 scripts/render-detached-lighting-metric.py <yaw0.png> <yaw90.png> <yaw180.png> <yaw270.png>`; capture recipe in script help | none |
-| Perf gate | frame-time cells against the per-SKU baseline on the `perf-baseline` branch; the gate's own resolution / exit-mapping / branch-writer logic | `bash scripts/perf/perf_grid_matrix.sh` then `scripts/perf/compare_perf_runs.py`; `python3 scripts/perf/tests/test_baseline_layouts.py`, `scripts/perf/tests/test_baseline_writer.sh` | perf-gate.yml |
+| Perf gate | measured frame-time cells against the per-SKU baseline on the `perf-baseline` branch, normalized against that baseline's own `ref_ms`; report-less cells fail as infrastructure errors; the gate's own resolution / exit-mapping / branch-writer logic | `bash scripts/perf/perf_grid_matrix.sh` then `scripts/perf/compare_perf_runs.py`; `python3 scripts/perf/tests/test_baseline_layouts.py`, `scripts/perf/tests/test_baseline_writer.sh`, `bash test/tools/normalization_test.sh` | perf-gate.yml |
 | Plan lint | a `## Plan` comment is structurally sound | `fleet-plan-lint <issue> [--repo game]` | none (planner-time) |
 | PR-body acceptance lint | each closing issue's criteria have evidence rows before publication | `fleet-pr-body-lint <issue> --body-file .pr-body.md [--repo game]` | fleet-tests.yml |
+| PR closes lint | every issue the merge would close (title, every commit message raw, body code-stripped) is declared on a body link line | `fleet-pr-closes-lint --base <branch> --title <t> --body-file .pr-body.md [--repo game]`, or `--pr <N>`; 0 clean, 1 undeclared, 2 unreadable / zero commits | pr-closes-lint.yml on every push and title/body edit — not a required check: red is a needs-fix per REVIEWER-PROTOCOL.md, not a disabled merge button |
 | Open-PR overlap | this branch's shared paths with every open PR are trial-merged, upstream PRs told apart by ancestry, and no `docs/agents/**` / `.claude/**` competitor or stale stack base remains before publication | `fleet-pr-overlap --base <branch> [--repo game]` — quote its rows and `VERDICT:` line; 0 clean, 1 overlap, 3 block, 2 could not grade | fleet-tests.yml |
 | Role/skill contract | every skill wrapper answers its shared flow's delta keys | `fleet-validate-roles` | fleet-tests.yml |
 | Label state machine | a label transition is a declared edge | `fleet-transition <edge> <N>` | fleet-tests.yml |
@@ -50,6 +51,31 @@ Rules for citing a validator:
   goes in the PR's `## Acceptance evidence`; a reviewer re-runs it.
 - A criterion that needs a fixture or scene that does not exist makes
   creating it part of the task.
+
+## Harness dependency contract
+
+The render harness under `scripts/` is stdlib-only. The exception tier is the
+files listed in `scripts/tests/test_harness_dependency_contract.py`, which may
+import `PIL` and nothing else third-party; that suite is the list of record and
+derives the real importer set from the source, so an unregistered dependency
+fails there. `render-verify`, the comparator, `verify_common`, every
+`*-verify.py`, and every metric a committed manifest names are never eligible —
+the gating path must run on a bare host. A host without Pillow runs the
+exception tier with `python3 -m pip install pillow`; CI pins the version in
+`render-harness-tests.yml`. `run_all.sh` prints each suite's test count, so a
+suite that skipped or never ran reads differently from one that passed.
+
+## Default-off features need a positive enabled-path test
+
+Render features routinely default OFF (priority 0, a mode flag off, an opt-in
+branch) to preserve byte-identity — but byte-identity at default only proves the
+OFF path is a no-op, never that the feature works. Author a test that
+exercises the **ENABLED** path (a `--depth-probe`/`-assert` reading, a demo shot
+with the flag ON) and confirms the effect end-to-end (CPU author → GPU upload →
+shader output). A CPU-authored field uploaded only on a specific path (the
+per-frame binding-6 voxel upload, not a detached-revoxelize bake) can silently
+never reach the shader, and a "compiles + byte-identical at default" merge ships
+a feature that does not function in its actual use case.
 
 Adding a validator: one row here, a `tests/test_<name>` suite beside it if it
 is a fleet tool, and a CI workflow when it must gate merges.

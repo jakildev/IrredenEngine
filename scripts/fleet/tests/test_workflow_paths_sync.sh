@@ -4,9 +4,8 @@
 # no YAML anchors). A hand-edit that adds a path to one block and forgets
 # the other silently halves that workflow's trigger coverage, and the half
 # that goes missing is normally pull_request — the block that gates the
-# merge. #2810 built this ratchet for fleet-tests.yml only
-# (test_fleet_tests_workflow_paths.sh); this suite generalizes it to every
-# workflow in the tree.
+# merge. test_fleet_tests_workflow_paths.sh covers this for fleet-tests.yml
+# only; this suite generalizes it to every workflow in the tree.
 #
 # This is a different axis than that suite's OUT_OF_TREE_SUBJECTS ratchet.
 # OUT_OF_TREE_SUBJECTS asks "which subjects does fleet-tests.yml list at
@@ -15,12 +14,11 @@
 # workflow, not just fleet-tests.yml. Neither subsumes the other.
 #
 # The workflow population is derived from a .github/workflows/*.yml glob,
-# not a hardcoded list — #2876 records that a hardcoded inclusion list is
-# invisible to both a green run and a positive control (both are computed
-# *from* the list, so a workflow nobody added to it is a workflow the
-# check never looks at). Deriving the population sidesteps that failure
-# mode: a new workflow is covered automatically the moment it declares
-# both blocks.
+# not a hardcoded list: a hardcoded inclusion list is invisible to both a
+# green run and a positive control (both are computed *from* the list, so
+# a workflow nobody added to it is a workflow the check never looks at).
+# Deriving the population sidesteps that failure mode: a new workflow is
+# covered automatically the moment it declares both blocks.
 
 set -uo pipefail
 
@@ -33,7 +31,7 @@ source "$(dirname "$0")/lib_assert.sh"
 
 if [[ ! -d "$WORKFLOWS_DIR" ]]; then
     echo "SKIP: workflows dir not found at $WORKFLOWS_DIR" >&2
-    exit 3  # skip status — run_all.sh must not count this as a pass (#2786)
+    exit 3  # skip status — run_all.sh must not count this as a pass
 fi
 
 # paths_list <file> <section> — the paths: list entries (one per output
@@ -144,7 +142,7 @@ echo "T4: fleet-tests.yml triggers on every workflow this suite covers"
 # workflow absent from that filter is a workflow this suite silently never
 # checks: editing only header-checks.yml triggers no fleet-tests run, and
 # the push/pull_request drift this suite exists to catch ships green. That
-# is #2810's failure mode one level up, and it applies to this suite's own
+# is the same failure mode one level up, and it applies to this suite's own
 # subjects.
 #
 # Asserted from the derived covered set rather than a hardcoded list, so a

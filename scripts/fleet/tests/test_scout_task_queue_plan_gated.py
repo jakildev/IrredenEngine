@@ -15,9 +15,9 @@ pin it there: each case asserts the issue is in `plan_gated` AND states which
 section (if any) it reached, so a future refactor that moves the capture below a
 `continue` fails here rather than going quietly half-blind.
 
-The parked labels (`fleet:needs-human`, `fleet:gated`) are excluded on purpose:
-those issues are already out of `tasks.open` unconditionally, so there is no
-pickup defect to retract and their handling stays literally unchanged.
+`_TASK_QUEUE_PARK_LABELS` rows are excluded on purpose: a terminal park is
+already out of `tasks.open` unconditionally, so there is no pickup defect to
+retract and the remove-half would spend API budget on a no-op edit.
 
 `human:review-plan` was retired by PR #3112 and must NOT re-arm as a gate.
 """
@@ -87,12 +87,25 @@ class PlanGatedCapture(unittest.TestCase):
                          "would re-arm a dead gate")
 
     def test_parked_issues_are_excluded(self):
-        for park in ("fleet:needs-human", "fleet:gated"):
+        for park in _mod._TASK_QUEUE_PARK_LABELS:
             with self.subTest(park=park):
                 s = _run([_issue(705, ["fleet:queued", "fleet:opus",
                                        "fleet:plan-review", park])])
                 self.assertEqual(s["plan_gated"], [],
                                  f"{park} already holds the issue out of tasks.open")
+
+    def test_scope_shipped_row_is_not_pickable(self):
+        s = _run([_issue(706, ["fleet:queued", "fleet:opus", "fleet:scope-shipped"])])
+        self.assertEqual(s["open"], [],
+                         "a queued row whose scope already shipped is a treadmill: "
+                         "every dispatch re-claims work that is already merged")
+        self.assertEqual(s["in_progress"], [])
+
+    def test_human_owned_row_is_not_pickable(self):
+        s = _run([_issue(707, ["fleet:queued", "fleet:opus", "human:owned"])])
+        self.assertEqual(s["open"], [],
+                         "the human took this issue out of fleet rotation by hand")
+        self.assertEqual(s["in_progress"], [])
 
     def test_multiple_candidates_are_sorted(self):
         s = _run([
@@ -123,10 +136,10 @@ class GateSetDriftGuard(unittest.TestCase):
             "retracted and immediately re-stamped — a treadmill")
 
     def test_parks_are_the_labels_fetch_task_queue_skips(self):
-        # _RETRACT_PARK_LABELS is excluded from the candidate set on the
+        # _TASK_QUEUE_PARK_LABELS is excluded from the candidate set on the
         # grounds that fetch_task_queue already drops those rows. If that
         # stops being true the exclusion silently becomes a live gap.
-        for park in _mod._RETRACT_PARK_LABELS:
+        for park in _mod._TASK_QUEUE_PARK_LABELS:
             with self.subTest(park=park):
                 s = _run([_issue(900, ["fleet:queued", "fleet:opus", park])])
                 self.assertEqual(s["open"], [], f"{park} must drop from open")

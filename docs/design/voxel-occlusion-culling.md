@@ -342,7 +342,7 @@ durable lessons:
   a **positive-fire gate**: a measured, non-zero marginal capture at a pose
   where the cull is legally active. This is the cull-shaped instance of the
   "default-off features need a positive enabled-path test" rule in
-  [`engine/render/CLAUDE.md`](../../engine/render/CLAUDE.md).
+  [`docs/agents/VALIDATION.md`](../agents/VALIDATION.md).
 
   **Both halves are committed automation (#2361),** replacing the ad-hoc
   md5 / `img_diff` runs recorded across PR #2278's thread:

@@ -139,7 +139,7 @@ perf-stats overlay region (top-right by default).
   `SettingsMenu::liveRowCount()` / `*ScreenPx(...)`. A QUIT assertion
   evaluates when the close is observed, not on the capture frame.
   `systemOrNull()` reports absent as `IRSystem::kNullSystemId`, never
-  `kNullEntity` (`engine/system/CLAUDE.md` §`findSystem`;
+  `kNullEntity` (`engine/system/CLAUDE.md` §"Hot reload and lookup";
   `test/render/prefab_system_probe_test.cpp`).
 
 ## Widget framework

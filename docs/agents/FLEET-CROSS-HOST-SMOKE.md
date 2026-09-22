@@ -24,7 +24,7 @@ exclusively (`scripts/fleet/fleet-up.conf.sample`).
 
 After setting a verdict on an engine PR, decide from paths alone
 (`gh pr diff <N> --name-only`). Tag when the PR is not in a needs-fix /
-blocker / WIP state and the diff touches `engine/render/`,
+WIP state and the diff touches `engine/render/`,
 `engine/prefabs/irreden/render/`, any `*.glsl` / `*.metal`, anything under
 `engine/render/src/shaders/`, `engine/system/**` (platform-conditional
 blocks), or any `CMakeLists.txt` / `CMakePresets.json`. Skip game-repo
@@ -79,8 +79,8 @@ reached by another route from smoking another host's PR.
 each record carrying `repo`), or equivalently from cached
 `repos.{engine,game}.prs[]` with the same filter: labels contain
 `fleet:needs-<host>-smoke` and `fleet:approved`, none of `fleet:needs-fix`,
-`fleet:blocker`, `human:wip`, `fleet:wip`, `fleet:merger-cooldown`,
-`human:needs-fix`, and no `fleet:reviewing-*`. Engine first, oldest within
+`human:wip`, `fleet:wip`, `fleet:merger-cooldown`, `human:needs-fix`, and
+no `fleet:reviewing-*`. Engine first, oldest within
 each repo (the slice is already in that order). A dispatched pane gets
 its PR as `FLEET_DISPATCH_TARGET=smoke:<repo>:<N>`.
 
@@ -93,7 +93,7 @@ engine default otherwise — the same PR number exists in both repos.
 | `gh` repo flag | `--repo jakildev/IrredenEngine` | `--repo jakildev/irreden` |
 | claim / release | `fleet-claim review-claim <N> <agent>` / `review-release` | `fleet-claim --repo game review-claim <N> <agent>` / `--repo game review-release` (`--repo` precedes the subcommand) |
 | cwd | engine pool worktree (`~/src/IrredenEngine/.claude/worktrees/<agent>`) | `cd ~/src/IrredenEngine/creations/game/.claude/worktrees/<agent>` first, as its own Bash call |
-| checkout | `gh pr checkout <N> --repo jakildev/IrredenEngine` | `gh pr checkout <N> --repo jakildev/irreden` |
+| checkout | `fleet-pr-checkout-detached <N> --repo jakildev/IrredenEngine` | `fleet-pr-checkout-detached <N> --repo jakildev/irreden` |
 | build | `fleet-build --target IRShapeDebug` | `env IRREDEN_BUILD_DIR=<engine-wt>/build-game fleet-build --target IRGame` — one-time configure per [BUILD.md § Dedicated game build dir](BUILD.md#dedicated-game-build-dir-against-a-specific-engine-worktree-build-game), reused across iterations |
 | run | `fleet-run IRShapeDebug --auto-screenshot 10` | `env IRREDEN_BUILD_DIR=<engine-wt>/build-game fleet-run IRGame --auto-screenshot 10` |
 | verdict comment | "… IRShapeDebug --auto-screenshot 10 …" | "… IRGame --auto-screenshot 10 …" |
@@ -115,7 +115,7 @@ fleet-claim review-claim <N> <your-worktree-basename>
 
 ```
 fleet-heartbeat <your-worktree-basename>
-gh pr checkout <N> --repo jakildev/IrredenEngine
+fleet-pr-checkout-detached <N> --repo jakildev/IrredenEngine
 fleet-build --target IRShapeDebug
 fleet-run IRShapeDebug --auto-screenshot 10
 ```

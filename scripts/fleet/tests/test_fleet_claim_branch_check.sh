@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
-# Tests for `fleet-claim branch-check` (#2419) — the mint-time guard that
-# validates a branch encodes its claimed issue number, so the fleet PR-open
-# flow never pushes a branch the claim-liveness matcher can't tie back to the
-# issue (the incident: `claude/game-worker-3-issue-255` was invisible to the
-# sweep, freeing the claim and spawning a duplicate PR).
+# `fleet-claim branch-check` is the mint-time guard that validates a branch
+# encodes its claimed issue number, so the fleet PR-open flow never pushes a
+# branch the claim-liveness matcher can't tie back to the issue.
 #
 # The subcommand is purely LOCAL — no network — so this test needs no gh stub;
 # it only exercises the shared matcher via fleet-claim and, for the default
@@ -76,7 +74,8 @@ assert_exit "$actual" 1 "--repo game branch-check 255 claude/nope → exit 1"
 assert_contains "$err" "claude/game-255-" "game mismatch prints the game prefix form"
 
 echo "T6: leading-number precedence — a trailing token does NOT match"
-# claude/2419-fix-issue-1425-recurrence resolves to #2419 only, never #1425.
+# A leading claude/<N>-... prefix resolves to that issue only; a trailing
+# issue-<M> token in the same branch name is suppressed.
 actual=0; "$FLEET_CLAIM" branch-check 1425 claude/2419-fix-issue-1425-recurrence >/dev/null 2>&1 || actual=$?
 assert_exit "$actual" 1 "branch-check 1425 on a #2419-leading branch → exit 1 (token suppressed)"
 actual=0; "$FLEET_CLAIM" branch-check 2419 claude/2419-fix-issue-1425-recurrence >/dev/null 2>&1 || actual=$?

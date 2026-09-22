@@ -45,7 +45,7 @@ replace_all="${4:-}"
 [[ -f "$old_file" ]] || { echo "fleet-edit: old-file not found: $old_file" >&2; exit 1; }
 [[ -f "$new_file" ]] || { echo "fleet-edit: new-file not found: $new_file" >&2; exit 1; }
 
-# Worktree-scope guard (#2402): fleet-edit is an Edit-tool-equivalent CLI, so it
+# Worktree-scope guard: fleet-edit is an Edit-tool-equivalent CLI, so it
 # bypasses the PreToolUse edit hook. Under an assignment (FLEET_ASSIGNED_WORKTREE
 # set) apply the SAME allowlist the hook enforces so a misrouted CLI edit can't
 # land in a shared main clone. Unset (human / legacy session) → unchanged.

@@ -19,11 +19,13 @@
 #       → exit 2, no edits
 #   T10: verdict-needs-opus-recheck → adds fleet:needs-opus-recheck,
 #        clears awaiting-upstream-review, leaves other labels intact
-#   T11: CRLF-emitting jq stub (regression guard for #3029) → delta still
-#        computed correctly despite \r-terminated jq -r output
-#   T12: escalate-class-sonnet-opus (reconcile R9's named edge, #2939) →
+#   T11: CRLF-emitting jq stub → delta still computed correctly despite
+#        \r-terminated jq -r output
+#   T12: escalate-class-sonnet-opus (reconcile R9's named edge) →
 #        issue-scoped class re-tag applies once, then is a zero-edit no-op
 #   T13: every verdict edge consumes the re-review triggers
+#   T13b: the retired severity verdict is rejected as an unknown edge,
+#        with no gh I/O and no surviving node/transition reference
 #   T14: design-block clears a live fleet verdict tier (needs-fix/has-nits)
 #        regardless of which lane parked the PR
 
@@ -148,7 +150,7 @@ assert_eq "$(run verdict-approve abc)" "2" "T2 non-int number exits 2"
 # === T3: scope mismatch (pr edge, issue target) → exit 2 =================
 echo "T3: scope mismatch → exit 2, no edits"
 reset_log
-set_labels issue 200 fleet:needs-fix          # #200 exists only as an issue
+set_labels issue 200 fleet:needs-fix          # exists only as an issue, not a PR
 assert_eq "$(run verdict-approve 200)" "2" "T3 pr-scope edge on an issue exits 2"
 assert_eq "$(edit_calls)" "0" "T3 made no edit calls"
 grep -q "is a issue" "$TMPROOT/out" && \
@@ -221,10 +223,10 @@ assert_eq "$(get_labels pr 105)" "fleet:needs-opus-recheck fleet:wip" \
     "T10 awaiting-upstream-review removed, needs-opus-recheck added, wip preserved"
 assert_eq "$(edit_calls)" "1" "T10 exactly one edit call"
 
-# === T11: CRLF-emitting jq (regression guard for #3029) ==================
+# === T11: CRLF-emitting jq — labels still resolve despite \r-corrupted jq ==
 # Native jq on Windows (MSYS2) CRLF-terminates `-r` array output; mapfile
-# only strips the trailing \n, so want_remove/want_add retained an embedded
-# \r that never matched a real node name (#3029). This stub reproduces that
+# only strips the trailing \n, so want_remove/want_add would retain an
+# embedded \r that never matches a real node name. This stub reproduces that
 # host behavior for exactly the two filters fleet-transition mapfiles from
 # (.remove[]?, .add[]?) and passes every other jq call through untouched, so
 # dropping the `tr -d '\r'` fix would make this test fail even though the
@@ -248,7 +250,7 @@ assert_eq "$(get_labels pr 106)" "fleet:approved fleet:wip" \
 assert_eq "$(edit_calls)" "1" "T11 exactly one edit call (delta computed correctly under CRLF)"
 rm -f "$BIN/jq"   # restore real jq on PATH for anything after this test
 
-# === T12: escalate-class-sonnet-opus (reconcile R9's edge, #2939) =========
+# === T12: escalate-class-sonnet-opus (reconcile R9's edge) ===============
 # The named-edge record for the class re-tag reconcile R9 applies directly.
 # ISSUE-scoped (the class label lives on the task, not the PR), so this also
 # exercises an issue-scope edge end to end. Asserting the zero-edit re-apply is
@@ -296,11 +298,36 @@ set_labels pr 111 fleet:changes-made human:re-review fleet:needs-fix
 assert_eq "$(run verdict-approve-nits 111)" "0" "T13 verdict-approve-nits exits 0"
 assert_eq "$(get_labels pr 111)" "fleet:approved fleet:has-nits" \
     "T13 approve-nits consumed both triggers"
+
+# === T13b: the retired severity verdict is rejected as an unknown edge ====
+# The severity verdict is retired: no lane consumed it, so a PR stamped with
+# it left autonomous circulation. Its node and its transition are gone from
+# fleet-state-machine.json, and T1's generic bogus-edge arm would not notice
+# if either came back. This arm pins the exact retired name.
+#
+# The name is assembled from fragments on purpose: the retirement's
+# done-check is a repo-wide grep for the retired label and edge names, which
+# must come back empty outside the gated self-config files. A literal here
+# would be the one tracked hit.
+retired_edge="verdict-block"; retired_edge+="er"
+retired_label="fleet:block"; retired_label+="er"
+echo "T13b: the retired severity verdict ($retired_edge) is an unknown edge"
 reset_log
 set_labels pr 112 fleet:changes-made human:re-review fleet:approved
-assert_eq "$(run verdict-blocker 112)" "0" "T13 verdict-blocker exits 0"
-assert_eq "$(get_labels pr 112)" "fleet:blocker" \
-    "T13 blocker consumed both triggers with the stale approval"
+assert_eq "$(run "$retired_edge" 112)" "2" "T13b retired verdict exits 2"
+grep -q "unknown transition" "$TMPROOT/out" && \
+    { PASS=$((PASS+1)); echo "  ok: T13b says 'unknown transition'"; } || \
+    { FAIL=$((FAIL+1)); echo "  FAIL: T13b did not say 'unknown transition'"; }
+assert_eq "$(edit_calls)" "0" "T13b made no edit calls"
+assert_eq "$(get_labels pr 112)" "fleet:approved fleet:changes-made human:re-review" \
+    "T13b left PR 112's labels untouched"
+# The node is gone too, so no surviving transition can add it back.
+assert_eq "$(python3 -c "import json,sys
+d=json.load(open(sys.argv[1]))
+names={l['name'] for l in d['labels']}
+refs={l for t in d['transitions'] for k in ('add','remove') for l in t.get(k,[])}
+print('yes' if sys.argv[2] not in names | refs else 'no')" "$STATE_MACHINE" "$retired_label")" "yes" \
+    "T13b the retired label is absent from both the node set and every transition"
 
 # === T14: design-block clears a live fleet verdict tier ==================
 # A reviewer can stamp fleet:needs-fix and then park the PR

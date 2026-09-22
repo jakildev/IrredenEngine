@@ -15,8 +15,12 @@
 
 namespace IREngine {
 
-World::World(const char *configFileName, const char *configPresetFile)
-    : m_worldConfig{configFileName, configPresetFile}
+World::World(
+    const char *configFileName,
+    const char *configPresetFile,
+    std::optional<int> workerThreadsOverride
+)
+    : m_worldConfig{configFileName, configPresetFile, workerThreadsOverride}
     , m_IRGLFWWindow{
           ivec2(
               m_worldConfig["init_window_width"].get_integer(),
@@ -292,6 +296,7 @@ void World::gameLoop() {
                 auto elapsed = Clock::now() - frameStart;
                 float ms = std::chrono::duration<float, std::milli>(elapsed).count();
                 m_frameTimesMs.push_back(ms);
+                m_frameUpdateTicks.push_back(updateTicksThisFrame);
                 m_frameTotalUpdateTicks += updateTicksThisFrame;
                 if (updateTicksThisFrame > m_frameMaxUpdateTicksPerFrame) {
                     m_frameMaxUpdateTicksPerFrame = updateTicksThisFrame;
@@ -397,11 +402,14 @@ void World::enableFrameTiming(bool enabled) {
     if (enabled) {
         m_frameTimesMs.clear();
         m_frameTimesMs.reserve(1024);
+        m_frameUpdateTicks.clear();
+        m_frameUpdateTicks.reserve(1024);
         m_frameTotalUpdateTicks = 0;
         m_frameMaxUpdateTicksPerFrame = 0;
         m_systemManager.resetTimingStats();
         IRRender::computeLightVolumeTiming().reset();
         IRRender::voxelCullAccumulator().reset();
+        IRRender::renderRunWitness().reset();
         IRRender::resetGpuStageAccumulators();
     }
 }
@@ -431,6 +439,7 @@ void World::buildAndWriteProfileReport() {
         }
     }
     report.frameTimesMs_ = std::move(m_frameTimesMs);
+    report.frameUpdateTicks_ = std::move(m_frameUpdateTicks);
     report.totalUpdateTicks_ = m_frameTotalUpdateTicks;
     report.maxUpdateTicksPerFrame_ = m_frameMaxUpdateTicksPerFrame;
     report.entityCount_ = IREntity::getLiveEntityCount();
@@ -455,6 +464,12 @@ void World::buildAndWriteProfileReport() {
          lightVolumeTiming.upload_.sampleCount_}
     );
 
+    for (const auto &[name, phase] :
+         {std::pair{"PerAxisCanvas::Allocate", IRRender::renderRunWitness().perAxisAllocate_},
+          std::pair{"PerAxisCanvas::Release", IRRender::renderRunWitness().perAxisRelease_}}) {
+        report.cpuPhases_.push_back({name, phase.totalMs_, phase.maxMs_, phase.sampleCount_});
+    }
+
     const auto &cull = IRRender::voxelCullAccumulator();
     report.voxelCullStats_.visibleSum_ = cull.visibleSum_;
     report.voxelCullStats_.totalSum_ = cull.totalSum_;
@@ -465,6 +480,20 @@ void World::buildAndWriteProfileReport() {
     report.voxelCullStats_.maxTotal_ = cull.maxTotal_;
     report.voxelCullStats_.maxFeeder_ = cull.maxFeeder_;
     report.voxelCullStats_.sampleCount_ = cull.sampleCount_;
+
+    const auto &witness = IRRender::renderRunWitness();
+    constexpr float kDegreesPerRadian = 180.0f / IRMath::kPi;
+    report.witness_.yawFirstDeg_ = witness.yawFirst_ * kDegreesPerRadian;
+    report.witness_.yawLastDeg_ = witness.yawLast_ * kDegreesPerRadian;
+    report.witness_.yawTravelDeg_ = witness.yawTravel_ * kDegreesPerRadian;
+    report.witness_.zoomFirst_ = witness.zoomFirst_;
+    report.witness_.zoomLast_ = witness.zoomLast_;
+    report.witness_.poseSamples_ = witness.poseSamples_;
+    report.witness_.explicitPivotSamples_ = witness.explicitPivotSamples_;
+    report.witness_.overflowSamples_ = witness.overflowSamples_;
+    report.witness_.maxOverflowEntries_ = witness.maxOverflowEntries_;
+    report.witness_.maxOverflowDropped_ = witness.maxOverflowDropped_;
+    report.witness_.overflowCap_ = witness.overflowCap_;
 
     // Collect per-system timing, grouped by pipeline
     auto pipelineName = [](IRTime::Events e) -> const char * {

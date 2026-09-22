@@ -1,0 +1,245 @@
+#!/usr/bin/env python3
+"""Fail when a PR's merge would close an issue its body does not declare.
+
+GitHub closes an issue from the PR body AND from every commit message the
+merge carries to master (the squash text is the PR title plus every commit
+message), and its commit-message parser ignores markdown, so a narrative
+mention in any commit of the branch closes the issue it names. This tool
+computes the would-close set from the title, every commit message and the
+body, and diffs it against the refs the body declares on strict link lines.
+
+Input modes share one core. The commit source is `--messages-file` (a JSON
+array of messages, or of `{"sha", "message"}` objects), `--base <branch>`
+(`git log <merge-base>..HEAD`), or `--pr <N>` (REST). `--title` and
+`--body-file` are required with the first two and override the fetched values
+with `--pr`.
+
+Exit 0: every would-close ref is declared. 1: undeclared refs, each printed
+with its source. 2: usage error, unreadable input, or zero commits scanned.
+"""
+
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+from fleet_branch_match import (  # noqa: E402
+    body_would_close_refs,
+    declared_closing_refs,
+    raw_closing_refs,
+)
+
+REPO_SLUGS = {
+    "engine": "jakildev/IrredenEngine",
+    "game": "jakildev/irreden",
+}
+
+REMEDY = """\
+Remedy, per undeclared ref:
+  intended   -> add a link line to the PR body (`Closes #N` alone on its line).
+  title/body -> reword so the verb no longer directly precedes the ref
+                ("close issue N").
+  commit     -> the message itself must change: amend an unpushed HEAD commit;
+                otherwise collapse the branch and recommit with a clean message:
+                  git reset --soft "$(git merge-base HEAD origin/<base>)"
+                  git commit
+                A pushed branch is rewritten only via fleet-pr-checkout-detached
+                + fleet-pr-amend-push. Backticks do not protect a commit message.
+"""
+
+
+class InputError(Exception):
+    """An input cannot be read or interpreted."""
+
+
+def resolve_repo(repo):
+    if repo in REPO_SLUGS:
+        return REPO_SLUGS[repo]
+    if re.fullmatch(r"[^/\s]+/[^/\s]+", repo):
+        return repo
+    raise InputError("--repo must be engine, game, or owner/repo")
+
+
+def read_text(path, what):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return fh.read()
+    except (OSError, UnicodeDecodeError) as exc:
+        raise InputError(f"cannot read {what} {path}: {exc}") from exc
+
+
+def load_messages(path):
+    try:
+        data = json.loads(read_text(path, "messages file"))
+    except json.JSONDecodeError as exc:
+        raise InputError(f"messages file {path} is not JSON: {exc}") from exc
+    if not isinstance(data, list):
+        raise InputError(f"messages file {path} must hold a JSON array")
+    commits = []
+    for item in data:
+        if isinstance(item, str):
+            commits.append(("", item))
+        elif isinstance(item, dict) and isinstance(item.get("message"), str):
+            commits.append((str(item.get("sha") or ""), item["message"]))
+        else:
+            raise InputError("each message must be a string or {sha, message}")
+    return commits
+
+
+def run(cmd):
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    except OSError as exc:
+        raise InputError(f"cannot run {cmd[0]}: {exc}") from exc
+    if result.returncode != 0:
+        raise InputError(f"{' '.join(cmd[:3])} failed: {result.stderr.strip()}")
+    return result.stdout
+
+
+def base_commits(base):
+    git = shutil.which("git") or "git"
+    fork = run([git, "merge-base", "HEAD", f"origin/{base}"]).strip()
+    out = run([git, "log", "--reverse", "--format=%H%x00%B%x1e", f"{fork}..HEAD"])
+    commits = []
+    for record in out.split("\x1e"):
+        record = record.lstrip("\n")
+        if record:
+            sha, _, message = record.partition("\x00")
+            commits.append((sha, message.rstrip("\n")))
+    return commits
+
+
+def gh_json(args):
+    gh = shutil.which("gh") or "gh"
+    out = run([gh, *args])
+    try:
+        return json.loads(out)
+    except json.JSONDecodeError as exc:
+        raise InputError(f"gh {' '.join(args[:2])} returned non-JSON") from exc
+
+
+def pr_inputs(number, slug):
+    pr = gh_json(["api", f"repos/{slug}/pulls/{number}"])
+    pages = gh_json(["api", "--paginate", "--slurp",
+                     f"repos/{slug}/pulls/{number}/commits?per_page=100"])
+    if not isinstance(pr, dict) or not isinstance(pages, list):
+        raise InputError(f"unexpected REST shape for PR {number}")
+    commits = []
+    for page in pages:
+        for c in page if isinstance(page, list) else []:
+            commits.append((c.get("sha") or "", (c.get("commit") or {}).get("message") or ""))
+    return pr.get("title") or "", pr.get("body") or "", commits
+
+
+def pr_oracle(number, slug):
+    """GitHub's closingIssuesReferences as keys; None when the read fails."""
+    try:
+        data = gh_json(["pr", "view", str(number), "--repo", slug,
+                        "--json", "closingIssuesReferences"])
+        refs = set()
+        for ref in data["closingIssuesReferences"]:
+            repo = ref["repository"]
+            refs.add((f"{repo['owner']['login']}/{repo['name']}".lower(), int(ref["number"])))
+        return refs
+    except (InputError, KeyError, TypeError, ValueError) as exc:
+        print(f"note: closingIssuesReferences unread ({exc}); oracle skipped",
+              file=sys.stderr)
+        return None
+
+
+def load_oracle_file(path):
+    try:
+        data = json.loads(read_text(path, "closing-refs file"))
+        return {(f"{r['repository']['owner']['login']}/{r['repository']['name']}".lower(),
+                 int(r["number"])) for r in data}
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+        raise InputError(f"closing-refs file {path}: {exc}") from exc
+
+
+def lint(title, commits, body, pr_slug, oracle=None):
+    """(would-close hits, declared keys, undeclared hits); a hit is (key, source, text)."""
+    hits = [(k, f"title line {n}", t) for k, n, t in raw_closing_refs(title, pr_slug)]
+    for index, (sha, message) in enumerate(commits, 1):
+        label = f"commit {index}/{len(commits)}" + (f" {sha[:9]}" if sha else "")
+        hits += [(k, f"{label} line {n}", t)
+                 for k, n, t in raw_closing_refs(message, pr_slug)]
+    hits += [(k, f"body line {n}" if n else "body", t)
+             for k, n, t in body_would_close_refs(body, pr_slug)]
+    seen = {k for k, _, _ in hits}
+    hits += [(k, "oracle", "closingIssuesReferences")
+             for k in sorted(oracle or ()) if k not in seen]
+    declared = declared_closing_refs(body, pr_slug)
+    return hits, declared, [h for h in hits if h[0] not in declared]
+
+
+def display(key, pr_slug):
+    slug, num = key
+    return f"#{num}" if slug == pr_slug.lower() else f"{slug}#{num}"
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Fail when a PR's merge would close an undeclared issue.")
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--messages-file", help="JSON array of commit messages")
+    source.add_argument("--base", help="scan <merge-base with origin/BASE>..HEAD")
+    source.add_argument("--pr", type=int, help="fetch title, body and commits by REST")
+    parser.add_argument("--repo", default="engine",
+                        help="engine, game, or owner/repo (default engine)")
+    parser.add_argument("--title")
+    parser.add_argument("--body-file")
+    parser.add_argument("--closing-refs-file",
+                        help="closingIssuesReferences JSON (explicit mode oracle)")
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        return 2 if exc.code else 0
+
+    try:
+        pr_slug = resolve_repo(args.repo)
+        if args.pr is None and (args.title is None or args.body_file is None):
+            raise InputError("--title and --body-file are required without --pr")
+        oracle = None
+        if args.pr is not None:
+            title, body, commits = pr_inputs(args.pr, pr_slug)
+            oracle = pr_oracle(args.pr, pr_slug)
+        elif args.base is not None:
+            commits = base_commits(args.base)
+        else:
+            commits = load_messages(args.messages_file)
+        if args.title is not None:
+            title = args.title
+        if args.body_file is not None:
+            body = read_text(args.body_file, "body file")
+        if args.closing_refs_file:
+            oracle = load_oracle_file(args.closing_refs_file)
+    except InputError as exc:
+        print(f"fleet-pr-closes-lint: {exc}", file=sys.stderr)
+        return 2
+
+    print(f"-- scanned title + {len(commits)} commit message(s) + body", file=sys.stderr)
+    if not commits:
+        print("fleet-pr-closes-lint: zero commits scanned; refusing to pass",
+              file=sys.stderr)
+        return 2
+
+    hits, declared, undeclared = lint(title, commits, body, pr_slug, oracle)
+    would = sorted({k for k, _, _ in hits})
+    print("would close: " + (", ".join(display(k, pr_slug) for k in would) or "(none)"))
+    print("declared:    " + (", ".join(display(k, pr_slug) for k in sorted(declared))
+                             or "(none)"))
+    if not undeclared:
+        print("PASS: every issue the merge would close is declared on a link line")
+        return 0
+    for key, where, text in undeclared:
+        print(f"UNDECLARED {display(key, pr_slug)}  [{where}]  {text}")
+    print(REMEDY, end="")
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

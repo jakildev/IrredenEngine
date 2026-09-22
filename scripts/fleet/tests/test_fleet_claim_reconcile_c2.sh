@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for the C2 (#1357) additions to fleet-claim `reconcile`:
+# Tests for the C2 additions to fleet-claim `reconcile`:
 #   - R6: an issue carrying fleet:queued + human:owned is flagged (flag-only).
 #   - Deduped, persistence-gated escalation: flag-only drift that survives
 #     N --apply ticks files EXACTLY ONE fleet:state-drift tracking issue, then
@@ -47,7 +47,7 @@ PERSIST="$FLEET_STATE_DIR/drift-persistence.json"
 # --- canned label/PR surfaces ---------------------------------------------
 export ISSUES_JSON="$TMPROOT/issues.json"
 export PRS_JSON="$TMPROOT/prs.json"
-# #700: fleet:queued + human:owned → R6 (flag-only). No FS claim, no PR.
+# issue 700: fleet:queued + human:owned → R6 (flag-only). No FS claim, no PR.
 cat > "$ISSUES_JSON" <<'JSON'
 [
   {"number":700,"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"human:owned"}]}
@@ -166,7 +166,7 @@ edit_n=$(wc -l < "$EDIT_LOG" | tr -d ' ')
 [[ "$edit_n" -ge "1" ]] && ok "tick 4 refreshed the existing tracker via issue edit" || bad "tick 4 did not edit the tracker"
 
 echo "=== Phase 5: drift clears → counter resets + tracker auto-closed ==="
-echo '[]' > "$ISSUES_JSON"   # #700 no longer queued+human:owned
+echo '[]' > "$ISSUES_JSON"   # issue 700 no longer queued+human:owned
 run_reconcile --apply
 c=$(persist_count); [[ "$c" == "0" ]] && ok "cleared drift resets #700 counter to 0" || bad "counter not reset (count=$c)"
 create_n=$(wc -l < "$CREATE_LOG" | tr -d ' ')

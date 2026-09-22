@@ -6,16 +6,13 @@ fleet:needs-base-update, etc.). Without this invariant, the merger
 self-triggers on every iteration: it toggles its cooldown label, scout
 sees the projection hash flip, scout fires the merger again, repeat.
 
-Observed live 2026-05-09: ~$0.30/iteration × 12/hour idle-fleet burn.
-
 This harness locks in the behavior:
   - Same durable state -> same hash, regardless of cooldown labels.
   - The one action-relevant transition (a conflict arising on an
     approved PR, or such a PR appearing) DOES change the hash.
   - Merge-ready churn does not: an approved MERGEABLE PR appearing, or
     leaving the list when the human merges it, is not merger work and
-    must never arm the lane (39 no-op iterations in one day, measured
-    2026-09-17, came from exactly that).
+    must never arm the lane.
   - Skip-labels (wip, blocker, needs-linux-smoke, etc.) drop a PR
     from the projection entirely so the merger isn't woken to find
     nothing to do.
@@ -190,17 +187,12 @@ class SkipLabelsRemovedFromProjection(unittest.TestCase):
     def test_wip_dropped(self):
         self._dropped("fleet:wip")
 
-    def test_blocker_dropped(self):
-        self._dropped("fleet:blocker")
-
 
 class HumanOwesFixLabelsDropped(unittest.TestCase):
     """An approved PR that also carries a human-owes-a-fix label must drop
     out of the projection so the merger isn't woken every scout tick to
     find nothing to do. These labels mirror role-merger.md step 3's skip
-    list, keeping the projection consistent with the merge gate (#1533;
-    observed live on game #144: fleet:approved + human:needs-fix projected
-    merge-ready forever)."""
+    list, keeping the projection consistent with the merge gate."""
 
     def _dropped(self, *extra_labels, mergeable="CONFLICTING"):
         empty = _state([])
@@ -233,14 +225,12 @@ class HumanOwesFixLabelsDropped(unittest.TestCase):
         self._dropped("fleet:gated")
 
     def test_fleet_gated_conflicting_dropped(self):
-        # Even CONFLICTING (the #1990 case): the conflict is in a gated file
-        # the merger can't push, so it must skip rather than re-flag
-        # semantic-conflict — that was the 11-pass thrash.
+        # Even CONFLICTING: the conflict is in a gated file the merger can't
+        # push, so it must skip rather than re-flag semantic-conflict.
         self._dropped("fleet:gated", mergeable="CONFLICTING")
 
     def test_repo_agnostic_game_human_needs_fix_dropped(self):
-        # The projection loops both repos; the skip must hold for game too
-        # (game #144 was the live offender).
+        # The projection loops both repos; the skip must hold for game too.
         empty = _state_eng_game(engine_prs=[], game_prs=[])
         flagged = _state_eng_game(
             engine_prs=[],
@@ -262,8 +252,8 @@ class SignalSemantics(unittest.TestCase):
         self.assertEqual(project_merger(_state([pr])), [])
 
     def test_approved_needs_fix_not_merge_ready(self):
-        # Acceptance criterion #1533: fleet:approved + human:needs-fix must
-        # yield no signal (not merge-ready) so it drops out of the merger.
+        # fleet:approved + human:needs-fix must yield no signal (not
+        # merge-ready) so it drops out of the merger.
         items = project_merger(_state([_pr(101, labels=[
             "fleet:approved", "human:needs-fix",
         ])]))
@@ -275,10 +265,9 @@ class SignalSemantics(unittest.TestCase):
         self.assertEqual(items[0]["signal"], "needs-resolve")
 
     def test_approved_stacked_projects_nothing(self):
-        # Native-stacked-PRs migration: an approved MERGEABLE PR whose base
-        # is a feature branch is a native-stack child — GitHub owns its base
-        # management and the human merges it from the stack UI, so the
-        # merger has no action (the legacy "stacked-pending" signal retired).
+        # An approved MERGEABLE PR whose base is a feature branch is a
+        # native-stack child — GitHub owns its base management and the
+        # human merges it from the stack UI, so the merger has no action.
         items = project_merger(_state([_pr(101, labels=[
             "fleet:approved",
         ], base="claude/parent")]))
@@ -289,12 +278,10 @@ class SignalSemantics(unittest.TestCase):
         self.assertEqual(items, [])
 
     def test_human_deferred_conflicting_is_needs_resolve(self):
-        # Re-scoped (PR #1712): fleet:human-deferred marks a deferred
-        # *review concern* tracked in a follow-up issue, NOT a conflict
-        # handoff. A conflicting deferred PR is flagged like any approved
-        # PR; the opus-worker resolves it and drops the label (new commits
-        # invalidate the deferral). The old "invisible to merger" behavior
-        # stranded the PR's conflict from resolution.
+        # fleet:human-deferred marks a deferred *review concern* tracked in a
+        # follow-up issue, NOT a conflict handoff. A conflicting deferred PR
+        # is flagged like any approved PR; the opus-worker resolves it and
+        # drops the label (new commits invalidate the deferral).
         items = project_merger(_state([_pr(101, labels=[
             "fleet:approved", "fleet:human-deferred",
         ], mergeable="CONFLICTING")]))
@@ -309,10 +296,10 @@ class SignalSemantics(unittest.TestCase):
         self.assertEqual(project_merger(_state([pr])), [])
 
     def test_gated_is_the_inverse_of_human_deferred(self):
-        # The whole point of fleet:gated: where a CONFLICTING human-deferred PR
-        # projects needs-resolve (merger acts), the same PR labeled fleet:gated
-        # projects NOTHING — the merger can't push the gated conflict, so it
-        # must stay hands-off (breaks the #1990 thrash at the source).
+        # Where a CONFLICTING human-deferred PR projects needs-resolve
+        # (merger acts), the same PR labeled fleet:gated projects NOTHING —
+        # the merger can't push the gated conflict, so it must stay
+        # hands-off.
         deferred = project_merger(_state([_pr(101, labels=[
             "fleet:approved", "fleet:human-deferred",
         ], mergeable="CONFLICTING")]))
@@ -324,11 +311,11 @@ class SignalSemantics(unittest.TestCase):
 
 
 class FailThenSucceedStackedRebase(unittest.TestCase):
-    """After a stacked-rebase retry that succeeds (#1654), the failed first
-    pass's fleet:semantic-conflict label may still be present if the success
-    path hasn't cleaned it up yet.
+    """After a stacked-rebase retry succeeds, the failed first pass's
+    fleet:semantic-conflict label may still be present if the success path
+    hasn't cleaned it up yet.
 
-    Invariants the fix relies on:
+    Invariants:
     1. A stale fleet:semantic-conflict on an otherwise-MERGEABLE PR must still
        project as merge-ready, not needs-resolve — the merger must NOT loop
        back into conflict-resolution mode for an already-clean PR.
@@ -354,9 +341,9 @@ class FailThenSucceedStackedRebase(unittest.TestCase):
         self.assertEqual(project_merger(_state([pr])), [])
 
     def test_removing_stale_semantic_conflict_does_not_flip_hash(self):
-        # Once the merger's success path removes the stale label (per #1654
-        # fix), the merger must NOT re-dispatch — removing fleet:semantic-conflict
-        # from an otherwise-stable PR must not change the projection hash.
+        # Once the merger's success path removes the stale label, the merger
+        # must NOT re-dispatch — removing fleet:semantic-conflict from an
+        # otherwise-stable PR must not change the projection hash.
         with_stale = _state([_pr(101, labels=[
             "fleet:approved", "fleet:stacked-rebase", "fleet:semantic-conflict",
         ])])
@@ -387,9 +374,8 @@ class FailThenSucceedStackedRebase(unittest.TestCase):
 
 
 class MergerCoversBothRepos(unittest.TestCase):
-    """The merger handles engine AND game PRs (the game pass added after the
-    engine-only v1). A CONFLICTING approved game PR must be visible to the
-    merger — the gap that left game #99 rotting with no actor."""
+    """The merger handles engine AND game PRs. A CONFLICTING approved game
+    PR must be visible to the merger."""
 
     def test_game_conflict_in_projection(self):
         items = project_merger(_state_eng_game(

@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
-# Tests for scripts/fleet/fleet-clone-freshness.sh (#1810).
-#
-# Exercises the three entry points against throwaway git repos:
-#   clone_behind_count  — rev-parse-only behind count
+# Exercises three entry points against throwaway git repos:
+#   clone_behind_count  — rev-parse-only behind count (no fetch)
 #   assert_clone_fresh  — fail-loud claim gate
-#   advance_main_clone  — guarded, rate-limited ff-only advance (the safety
-#                         guards are the important part: never clobber an
-#                         off-master / dirty / diverged shared main clone).
+#   advance_main_clone  — guarded, rate-limited ff-only advance; the guards
+#                         are the point — never clobber an off-master / dirty
+#                         / diverged shared main clone.
 
 set -euo pipefail
 
@@ -16,7 +14,7 @@ HELPER="$SCRIPT_DIR/fleet-clone-freshness.sh"
 
 if [[ ! -f "$HELPER" ]]; then
     echo "SKIP: helper not found at $HELPER" >&2
-    exit 3  # skip status — run_all.sh must not count this as a pass (#2786)
+    exit 3  # skip status — run_all.sh must not count this as a pass
 fi
 if ! command -v git >/dev/null 2>&1; then
     echo "SKIP: git not available" >&2
@@ -243,9 +241,9 @@ fi
 
 # --- T14: ALREADY on master, disjoint tracked dirty file -> NOT advanced -------
 # The restore-side mirror of T6: a disjoint dirty tree would ff-advance fine on
-# its own (the incoming commits touch a different file), so only the tracked-WIP
-# guard stops it. Covers the guard firing on-master, not just on a parked
-# branch. See #2378.
+# its own (the incoming commits touch a different file), so only the
+# tracked-WIP guard stops it — this covers the guard firing on-master, not
+# just on a parked branch.
 echo "T14: on master with disjoint tracked WIP -> master NOT advanced"
 git_q "$CLONE2" checkout master
 on_master_head=$(git -C "$CLONE2" rev-parse master)
@@ -258,7 +256,7 @@ out=$(restore_main_clone_to_master "$CLONE2" 2>&1 || true)
 grep -q "disjoint-wip" "$CLONE2/other" && ok "on-master WIP preserved" || fail "WIP lost"
 echo "$out" | grep -q "live WIP wins" && ok "warns loudly on-master too" || fail "no WIP warning: $out"
 
-# --- scratch-namespace self-heal + persistent-skip escalation (#2363) --------
+# --- scratch-namespace self-heal + persistent-skip escalation ---------------
 # Fresh fixture again: CLONE is diverged (T7) and CLONE2 carries the T14 WIP.
 CLONE3="$TMPROOT/clone3"
 git clone -q "$ORIGIN" "$CLONE3"
@@ -268,11 +266,11 @@ COUNTER3="$FLEET_STATE_DIR/.$(basename "$CLONE3")-freshness-skip"
 ALERT3="$FLEET_ALERTS_DIR/clone-freshness-$(basename "$CLONE3")"
 
 # --- T15: live-Cursor-session shape -> NEVER healed --------------------------
-# The regression guard for #2668's review: FLEET.md rule 1 puts Cursor / ad-hoc
-# sessions on claude/<area>-<topic>, and commit-and-push leaves that session
-# clean-and-pushed while the human sits on the PR. That HEAD is "recoverable"
-# (contained by origin/<branch>) yet emphatically live, so recoverability must
-# NOT authorize a heal — only the scratch namespace does.
+# FLEET.md rule 1 puts Cursor / ad-hoc sessions on claude/<area>-<topic>, and
+# commit-and-push leaves that session clean-and-pushed while the human sits on
+# the PR. That HEAD is "recoverable" (contained by origin/<branch>) yet
+# emphatically live, so recoverability must NOT authorize a heal — only the
+# scratch namespace does.
 echo "T15: clean, pushed claude/<area>-<topic> (live Cursor session) -> left alone"
 reset_skip_counter
 git_q "$CLONE3" checkout -b claude/render-glow-pulse
@@ -406,7 +404,7 @@ unset FLEET_FRESHNESS_SKIP_ESCALATE_N
 # checkout-master→delete window or a stale worktree admin entry), or a
 # refs/heads lock survives a killed git process — the fixture here. The heal
 # itself still succeeded, so the line must say the ref was LEFT: an operator
-# reading it mid-outage acts on that claim. See #2668.
+# reading it mid-outage acts on that claim.
 echo "T23: heal with a refused branch -D -> reports the ref as left, not deleted"
 reset_skip_counter
 git_q "$CLONE3" checkout master
@@ -432,7 +430,7 @@ rm -f "$CLONE3/.git/refs/heads/claude/pool-6-scratch.lock"
 # committed yet is clean AND contained, so only the namespace glob can refuse
 # it. That shape is the common one (branch, get pulled away, come back), and
 # healing it switches the human's branch out from under them: recoverable is
-# not idle. See #2668.
+# not idle.
 echo "T24: clean claude/<area>-<topic> at origin/master's tip -> left alone"
 reset_skip_counter
 git_q "$CLONE3" checkout master
@@ -456,9 +454,9 @@ git_q "$CLONE3" checkout master
 # 2 both pass and the tail is reached every time. The clone then stays behind
 # origin/master forever and assert_clone_fresh refuses every claim on the repo,
 # with nothing but one stderr line per minute to show for it — the 30-min
-# silent freeze #2363 exists to eliminate. Counting is right precisely BECAUSE
-# refusals are sometimes transient: reaching N is what discriminates the two.
-# See #2691.
+# silent-freeze failure mode this escalation exists to eliminate. Counting is
+# right precisely BECAUSE refusals are sometimes transient: reaching N is what
+# discriminates the two.
 echo "T25: stale .git/index.lock -> ff-refused escalates, then the removal clears it"
 reset_skip_counter
 git_q "$CLONE3" checkout master
@@ -507,7 +505,7 @@ unset FLEET_FRESHNESS_SKIP_ESCALATE_N
 # one-shot with no loop behind it, so counting there would either double-count
 # against the dispatcher's own streak or spuriously clear it. Pin that the
 # refusal branch honours the same opt-in the diverged branch does: warn, write
-# nothing. See #2691.
+# nothing.
 echo "T26: refused ff on the fleet-up one-shot warns without touching the counter"
 reset_skip_counter
 git_q "$CLONE3" checkout master

@@ -19,7 +19,7 @@ struct FrameDataIsoTriangles {
     int scatterDebugMode;
     int4 visibleFaceIds;
     float4 _detachedResidualPad;
-    float4 _detachedDepthAxisPad;
+    float4 viewToWorldRotation;
     float4 scatterFbResolution;
     int depthColorMode;
     float depthColorExtent;
@@ -66,8 +66,8 @@ vertex SourceFaceVertex v_source_face_scatter(
     const float3 modelNormal = faceOutwardNormal6(faceId);
     const float3 localCenter = face.centerAndFace.xyz + modelNormal * 0.5;
     out.worldPosition = face.worldCenterAndAO.xyz + rotateByQuat(
-        viewCorner - rotateByQuat(localCenter, frameData._detachedResidualPad), frameData._detachedDepthAxisPad);
-    out.worldNormal = rotateByQuat(rotateByQuat(modelNormal, frameData._detachedResidualPad), frameData._detachedDepthAxisPad);
+        viewCorner - rotateByQuat(localCenter, frameData._detachedResidualPad), frameData.viewToWorldRotation);
+    out.worldNormal = rotateByQuat(rotateByQuat(modelNormal, frameData._detachedResidualPad), frameData.viewToWorldRotation);
     out.directSunAndExposure = face.directSunAndExposure;
     out.ao = face.worldCenterAndAO.w;
     out.lightingMode = face.owner.z;
@@ -94,7 +94,7 @@ fragment SourceFaceFragment f_source_face_scatter(
     out.color = in.color;
     if (in.lightingMode != kSourceLightingBaked) {
         const float visibility = worldSurfaceSunShadowFactor(in.worldPosition, in.worldNormal,
-            frameData._detachedDepthAxisPad, sunFrameData, sunDepthBuf);
+            frameData.viewToWorldRotation, sunFrameData, sunDepthBuf);
         out.color = sourceFaceLitColor(in.color, in.directSunAndExposure, in.ao,
             in.lightingMode, visibility);
     }

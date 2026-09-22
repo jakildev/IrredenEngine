@@ -4,14 +4,10 @@ Canonical, repo-neutral meaning, owner, and transitions for every `fleet:*`
 and `human:*` label. Both repos consume it by reference
 ([`docs/design/claude-md-sharing.md`](../design/claude-md-sharing.md)).
 
-Adding, removing, or re-owning a label edits three things in one commit:
-this file, `scripts/fleet/fleet-labels` (creates the GitHub labels), and
-[`fleet-state-machine.json`](fleet-state-machine.json) (the node set plus
-the named edges `fleet-transition` applies). `fleet-labels --check` diffs
-the catalog against the JSON node set; `test_fleet_labels_check.sh` runs it
-on every `fleet-tests.yml` run, so drift fails CI. Check a branch with
-`bash scripts/fleet/fleet-labels --check` — the `~/bin` symlink resolves its
-inputs from the main clone.
+Static catalog labels belong here, in `scripts/fleet/fleet-labels` and
+[`fleet-state-machine.json`](fleet-state-machine.json). Dynamic families declare semantics here; their owner creates concrete names.
+`bash scripts/fleet/fleet-labels --check` compares the catalog and JSON; CI runs it.
+Run from the worktree: the installed symlink uses the main clone.
 
 ---
 
@@ -41,7 +37,7 @@ there, never here.
 |---|---|
 | `verdict-approve` | clean approval; also clears `fleet:has-nits` on a re-review |
 | `verdict-approve-nits` | approval with a non-empty `### Nits` section |
-| `verdict-needs-fix` / `verdict-blocker` | send back |
+| `verdict-needs-fix` | send back (the only send-back edge) |
 | `verdict-needs-opus-recheck` | sonnet-reviewer escalation; sets no verdict |
 | `design-block` / `design-unblock` / `design-propose` | the design-escalation cycle |
 | `plan-propose` / `plan-approve` / `plan-reject` | the planning gate |
@@ -147,6 +143,10 @@ tick.
 - `fleet:in-progress` — a worker holds the issue's claim; set and retained
   with `fleet:claim-*` (below).
 
+## Campaign membership
+
+`fleet:campaign-<slug>` is contributor-authored membership, not a claim or queue state; it survives merge. See [shared participation](campaign-protocol.md#shared-participation).
+
 ## Claims (dynamic, script-owned)
 
 `fleet-claim` owns every label here; never add one by hand. All share the
@@ -159,7 +159,7 @@ a pool basename.
 
 | Label | Surface | Taken by | Released by |
 |---|---|---|---|
-| `fleet:claim-<host>-<agent>` | issue | `fleet-claim claim` (after the per-host `mkdir` lock under `~/.fleet/claims/`) | retained through the PR lifecycle and on the closed issue as the record of who worked it; `release` clears it and `fleet:in-progress` only when no live PR backs the claim and no other host's claim is live |
+| `fleet:claim-<host>-<agent>` | issue | `fleet-claim claim` (after the per-host `mkdir` lock under `~/.fleet/claims/`) | retained through the PR lifecycle and on the closed issue as the record of who worked it; `release` clears it and `fleet:in-progress` only when no live PR backs the claim and no other host's claim is live. Behind a `fleet:wip` PR, reconcile R7/R2 do not count a label naming this host with a known agent that no FS claim, reservation or live dispatch record vouches for (a dead pane's label); foreign-host and `-unknown` labels always count |
 | `fleet:reviewing-<host>-<agent>` | PR (issue for plan review) | `review-claim` — reviewers and smoke runs | `review-release --require-verdict` after a verdict; plain `review-release` for no-verdict exits, smoke, plan review; the orphan sweep covers both PRs and plan-review issues |
 | `fleet:amending-<host>-<agent>` | PR | `amending-claim` — the single mutex for every feedback path | `amending-release` at the terminal step |
 | `fleet:resolving-<host>-<agent>` | PR | `resolving-claim` — semantic-conflict resolution | `resolving-release` |
@@ -170,10 +170,10 @@ reviewing / amending / resolving, `FLEET_CLAIM_STALE_SECS_PLANNING` for
 planning; a same-host label with a missing or mismatched liveness marker
 after `FLEET_CLAIM_PRLABEL_ORPHAN_GRACE_SECS`, 120 s) and replays orphan
 sentinels. Reviewer projections skip `fleet:amending-*` PRs
-(`REVIEW_SKIP_PREFIXES`) and the worker feedback/conflict tiers skip
-`fleet:reviewing-*` PRs. The live pre-acquire gate is the fast path; both
-confirmation reads arbitrate the symmetric excluded-prefix union, so the
-POST-snapshot race leaves one holder (consistency limit:
+(`REVIEW_SKIP_PREFIXES`); the worker feedback/conflict tiers skip
+`fleet:reviewing-*` PRs and each other's claim. The live pre-acquire gate is
+the fast path; both confirmation reads arbitrate the symmetric excluded-prefix
+union, so the POST-snapshot race leaves one holder (consistency limit:
 [`FLEET.md § Claims`](FLEET.md#claims)). Same-agent lane transitions remain allowed.
 
 For `fleet:amending-*` that liveness marker is the **dispatch**, not the
@@ -220,7 +220,7 @@ lock's presumed-dead bound. Rationale: `fleet-claim`'s `_amend_lock_acquire`.
 
 ## Review verdicts (PRs)
 
-- `fleet:approved` / `fleet:has-nits` / `fleet:needs-fix` / `fleet:blocker`
+- `fleet:approved` / `fleet:has-nits` / `fleet:needs-fix`
   — **reviewer agents**, via the `verdict-*` edges. `fleet:has-nits` rides
   with `fleet:approved` and means the nits are worth one amend push
   ([`REVIEWER-PROTOCOL.md § Nits vs needs-fix`](REVIEWER-PROTOCOL.md)).
@@ -258,19 +258,20 @@ Protocol: [`FLEET-FEEDBACK-HANDLING.md`](FLEET-FEEDBACK-HANDLING.md).
   `fleet:human-deferred` + `fleet:changes-made` in one call, keep
   `fleet:approved`). Re-adding `human:needs-fix` forces AMEND.
 - `fleet:human-amending` — "hold merge, fixes pending."
-- `fleet:human-deferred` — the concerns are filed as a follow-up and the PR
-  is internally OK. Not a merge gate (every PR is human-merged) and the
-  merger does not skip it. Scoped to the diff at defer
-  time: whoever pushes new commits drops it and the PR re-enters review,
-  which honors the linked issue and does not re-raise the deferred concern.
+- `fleet:human-deferred` — concerns filed as a follow-up, PR internally OK.
+  Not a merge gate (every PR is human-merged) and the merger does not skip
+  it. Scoped to the diff at defer time: whoever pushes new commits drops it
+  and the PR re-enters review, honoring the linked issue without re-raising.
 - `human:wip` — **human** is editing the PR; every agent stands off.
 - `fleet:wip` — **author worker or campaign driver** while a PR is not
   ready for review; reviewers skip it. Not on Cursor / human-ready PRs;
   not on issues.
-- `fleet:stalled` — **scout** idle sweep on a `fleet:wip` PR idle 7+ days,
-  with a one-shot comment. Removing it re-arms the timer. The human
-  resolves; closing the PR is the reap path, after which `cleanup --gh`
-  sweeps the issue's claim labels once the TTL passes.
+- `fleet:stalled` — hourly `fleet-stalled-sweep`, **scout**-spawned on the
+  authoritative poller: a `fleet:wip` PR idle 7+ days by `updatedAt` takes the
+  label plus one comment; `human:wip` / `fleet:awaiting-infra` exempt, design
+  parks not. Removal bumps `updatedAt`, re-arming the timer; the sweep drops
+  the label once `fleet:wip` is off. Closing the PR is the reap path —
+  `cleanup --gh` then sweeps the issue's claim labels once the TTL passes.
 
 ## Escalation and parks
 
@@ -313,9 +314,9 @@ Protocol: [`FLEET-FEEDBACK-HANDLING.md`](FLEET-FEEDBACK-HANDLING.md).
   + `--repo jakildev/irreden`) or escalates to `human:needs-fix`. Claimable
   only while live `mergeable == CONFLICTING`, no exclusion label, no
   feedback or design-resume tier owing (that lane goes first), no
-  `fleet:resolving-*`, and no live `fleet:reviewing-*` (the lane
-  force-pushes and the review namespace is disjoint, so it is excluded
-  explicitly); stacked children defer to their base. Counts as one opus
+  `fleet:resolving-*`, no design park, no live `fleet:reviewing-*` or
+  `fleet:amending-*` (the lane force-pushes; both namespaces are disjoint,
+  so each is excluded explicitly); stacked children defer to their base. Counts as one opus
   item in the class election, ranked ahead of feedback and task pickup.
 - `fleet:needs-gl-host` — issue and PR. **Human/architect** triage signal
   with a precision-first scout body backstop (an explicit Linux / Windows /
@@ -388,12 +389,12 @@ treat it as skip/handoff, never re-apply.
 open-PR state, host-local FS claims, worktree reservations). Report-only
 by default; `--apply` performs R1 (stale claim), R3 (reservation
 mismatch), R4 (contradictory / orphaned labels), R7 (re-add
-`fleet:design-unblocked` to a stranded `fleet:wip` PR carrying neither
-design label on a `fleet:queued` issue, after the drift-tick threshold;
-skips `fleet:blocked` issues, `fleet:design-proposed`, and
-`fleet:awaiting-infra`), R8 (un-park), and R9 (class-escalate: re-tag a
-`fleet:sonnet` backing issue to `fleet:opus` while any of its PRs carries a
-design-lane label, so the opus+-only resume tier has a class to dispatch).
-R2 and R6 stay flag-only. Runs at `fleet-up` boot and on every
-queue-manager projection change.
+`fleet:design-unblocked` to a stranded `fleet:wip` PR — neither design
+label, `fleet:queued` issue, no claim or only own-host claim labels no FS
+claim / reservation / dispatch record vouches for — after the drift-tick
+threshold; skips `fleet:blocked`, `fleet:design-proposed`, `fleet:awaiting-infra`),
+R8 (un-park), and R9 (class-escalate: re-tag a `fleet:sonnet` backing issue
+to `fleet:opus` while any of its PRs carries a design-lane label, so the
+opus+-only resume tier has a class to dispatch). R2 (same claim reading on a
+wip PR) and R6 stay flag-only. Runs at `fleet-up` boot and on every queue-manager projection change.
 

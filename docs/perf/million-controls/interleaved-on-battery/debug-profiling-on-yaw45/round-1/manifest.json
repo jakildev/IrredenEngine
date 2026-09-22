@@ -1,0 +1,37 @@
+{
+  "head": "dbdfc85ba11e703778ce07429fcc1e1930b60c3f",
+  "changes": " M docs/perf/README.md\n M scripts/perf/repeat_profile.py\n M scripts/perf/rotation_controls.py\n M scripts/perf/test_repeat_profile.py\n?? scripts/perf/million_controls.py\n?? scripts/perf/test_million_controls.py\n",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "host_power": "Battery Power",
+  "build_dir": "build",
+  "build_type": "Debug",
+  "binary_sha256": "1c2cca78ce9a3421ad7ff9a673d98b0536202adcf2de850ad55dfe1e8a9af02c",
+  "shader_sha256": "6c0fed4e4252c22757e064eec84cced2585fcfbe41a655a61bce1509b366df46",
+  "runtime_scripts_sha256": "85a4c4c0e04ff77ce830640f6b8935b4ab8dcad11f1ff0dfccbc3dd918d927f6",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "900",
+    "IRPerfGrid",
+    "--wave-freeze",
+    "--no-overlay",
+    "--auto-profile",
+    "300",
+    "--config-preset",
+    "configs/perf/million.lua",
+    "--yaw",
+    "0.785398163"
+  ],
+  "runs": [
+    {
+      "index": 1,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "yaw_pose_mismatch": null,
+      "overflow_drop_warnings": 0,
+      "gpu_measured": true
+    }
+  ]
+}

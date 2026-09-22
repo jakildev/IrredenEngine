@@ -40,7 +40,7 @@ detect_engine_root() {
 # string containment test. `git rev-parse --show-toplevel` yields a Windows drive
 # path (C:/Users/x) while an MSYS2 shell's $PWD yields the POSIX drive form
 # (/c/Users/x); byte-compared they differ, so a naive prefix check reports the
-# scope as "outside" the engine root even when it is the same tree (#2036).
+# scope as "outside" the engine root even when it is the same tree.
 #
 # Canonical form: /<lowercase-drive>/<rest> with forward slashes, e.g. both
 # `C:/Users/x` and `/c/Users/x` map to `/c/Users/x`. On macOS/Linux every path
@@ -103,12 +103,11 @@ fleet_model_tag() {
     printf '%s' "$t"
 }
 
-# --- install-symlink freshness (#2262) --------------------------------------
+# --- install-symlink freshness ---------------------------------------------
 # New fleet scripts / role slash-commands / ir-* tools merge to master, but a
 # host's ~/bin symlinks are only (re)created by install.sh — so a tool added
-# mid-run is `command not found` on first use (fleet-review-verdict stranded
-# every reviewer on 2026-07-04). The scout keeps the main clone fresh via
-# `git pull`, which bumps a file's mtime ONLY when it changes/adds it, so
+# mid-run is `command not found` on first use. The scout keeps the main clone
+# fresh via `git pull`, which bumps a file's mtime ONLY when it changes/adds it, so
 # "any install source newer than the last install.sh pass" is exactly "a
 # tool ~/bin has not linked yet". fleet-up (bring-up) and fleet-dispatch-wrap
 # (per pane) call fleet_install_maybe_refresh before launching a claude.
@@ -223,8 +222,8 @@ declare -A FLEET_TARGET_LABEL=(
 # Claim-label namespaces that arbitrate as one mutex. The table is symmetric:
 # a one-sided entry lets the unregistered lane co-win after both POSTs race.
 declare -A FLEET_CLAIM_EXCLUDES=(
-    [fleet:amending-]="fleet:reviewing-"
-    [fleet:resolving-]="fleet:reviewing-"
+    [fleet:amending-]="fleet:reviewing- fleet:resolving-"
+    [fleet:resolving-]="fleet:reviewing- fleet:amending-"
     [fleet:reviewing-]="fleet:amending- fleet:resolving-"
 )
 

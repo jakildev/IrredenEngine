@@ -35,9 +35,9 @@ trap 'rm -rf "$TMP"' EXIT
 
 # --- fixtures ---------------------------------------------------------------
 #
-# #301 untriaged, oldest. #302 untriaged, newer, and carries a prior verdict.
-# #303 has a human: label, #304 a fleet: label — both must stay invisible.
-# #305 models the race: the staging file has it as untriaged, but live it now
+# issue 301 untriaged, oldest. issue 302 untriaged, newer, and carries a prior verdict.
+# issue 303 has a human: label, issue 304 a fleet: label — both must stay invisible.
+# issue 305 models the race: the staging file has it as untriaged, but live it now
 # carries human:owned, so `list` correctly omits it and `apply` skips it.
 # Untriaged set is therefore {301, 302}.
 
@@ -98,7 +98,7 @@ assert_contains "$out" "#302" "second label-less issue listed"
 assert_absent  "$out" "#303" "human:-labeled issue never appears"
 assert_absent  "$out" "#304" "fleet:-labeled issue never appears"
 
-# oldest-first: #301 (2026-01-01) must precede #302 (2026-02-01)
+# oldest-first: issue 301 (2026-01-01) must precede issue 302 (2026-02-01)
 order=$(grep -o '#30[0-9]' "$TMP/out.txt" | head -2 | tr '\n' ' ')
 assert_eq "$order" "#301 #302 " "list is oldest-first"
 

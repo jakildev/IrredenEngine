@@ -1,4 +1,4 @@
-"""Tests for fleet_validate_roles (#1667).
+"""Tests for fleet_validate_roles.
 
 Three acceptance-criteria groups:
   1. Passing tree — current engine tree (or a synthetic equivalent) exits 0.
@@ -293,8 +293,8 @@ class TestMissingDeltaKey(unittest.TestCase):
         self.assertEqual(result["n_warnings"], 1)
 
     def test_multi_word_key_detected_as_missing(self):
-        # Pre-#2893, _DELTA_KEY_RE's character class excluded the space, so a
-        # multi-word key row like `**default branch**` was invisible to both
+        # `_DELTA_KEY_RE`'s character class must include the space, or a
+        # multi-word key row like `**default branch**` is invisible to both
         # extraction sides — this is the arm that discriminates the widened
         # regex from a naive glob-only fix (which would leave this silent).
         proto_keys = ["repo-slug", "default branch"]
@@ -315,7 +315,7 @@ class TestMissingDeltaKey(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Group 2b: skill lane — stem pairing, false-pairing guard, baseline (#2893)
+# Group 2b: skill lane — stem pairing, false-pairing guard, baseline
 # ---------------------------------------------------------------------------
 
 class TestSkillLane(unittest.TestCase):
@@ -346,8 +346,7 @@ class TestSkillLane(unittest.TestCase):
     def test_skill_wrapper_citing_sibling_flow_not_misvalidated(self):
         # A wrapper citing a sibling flow's canonical doc in prose, while
         # carrying its own ## Deltas table, must be validated ONLY against
-        # its own stem-paired flow — not the cited one. Reproduces the
-        # false-pairing shape that bounced #2893's first plan revision
+        # its own stem-paired flow — not the cited one
         # (assess-coding-improvement's wrapper cites review-pr.md in prose).
         _make_skill_flow(self.root, "flow-a.md", ["key-a"])
         _make_skill_flow(self.root, "flow-b.md", ["key-b1", "key-b2"])

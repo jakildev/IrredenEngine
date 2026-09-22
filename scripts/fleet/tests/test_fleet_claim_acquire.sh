@@ -2,21 +2,11 @@
 # Tests for fleet-claim's atomic-claim primitive (_acquire_label_on) and its
 # pure decision seam (_claim_decision).
 #
-# Regression coverage for #1384: the old primitive won "iff my label is the
-# lex-min of the POST-response snapshot". That let a LATER, lex-smaller
-# claimant co-win with an existing holder that had already passed its own
-# (smaller) snapshot check and never re-validated. Live incident on PR #1377:
-#
-#   20:27:43  +fleet:reviewing-windows-sonnet-fleet-2   ← holder, passes check
-#   20:31:48  +fleet:reviewing-windows-sonnet-fleet-1   ← later, lex-SMALLER,
-#                                                          also computes itself
-#                                                          as min → both hold.
-#
-# The fix (Option A): a claimant wins only as the SOLE holder of the prefix.
-# If others are present and I'm the lex-min I drop + retry (so a simultaneous
-# race converges to one winner); if an earlier/lex-smaller holder remains I
-# yield. Two same-prefix claims can therefore never coexist regardless of
-# arrival order or lex order.
+# A claimant wins only as the sole holder of the prefix: if others are present
+# and it is the lex-min it drops and retries (so a simultaneous race converges
+# to one winner); if an earlier/lex-smaller holder remains it yields. Two
+# same-prefix claims can therefore never coexist regardless of arrival order
+# or lex order.
 #
 # _claim_decision is table-tested directly (pure, no gh). _acquire_label_on is
 # driven end-to-end through a stateful gh stub for the terminal behaviors
@@ -68,8 +58,7 @@ set --
 FLEET_CLAIM_LIB=1 source "$FLEET_CLAIM"
 
 # Label names used throughout. opus-worker-1 is lex-SMALLER than
-# sonnet-fleet-2 ('o' 0x6f < 's' 0x73), matching the #1377 incident geometry
-# (the later, lex-smaller claimant is the one that wrongly co-won).
+# sonnet-fleet-2 ('o' 0x6f < 's' 0x73).
 P="fleet:reviewing-windows-"
 SMALL="${P}opus-worker-1"
 LARGE="${P}sonnet-fleet-2"
@@ -81,9 +70,9 @@ echo "T1: sole holder of the prefix → win"
 assert_eq "$(_claim_decision "$SMALL" "$SMALL")" "win" \
     "only my label present → win"
 
-# T2: THE #1384 regression — I am the later, lex-smaller claimant; an existing
-# holder is present. Old code returned 'win' (the bug); fix returns 'retry'
-# (drop + re-acquire alone), never an outright co-win.
+# T2: I am the later, lex-smaller claimant; an existing holder is present —
+# this must return 'retry' (drop + re-acquire alone), never an outright
+# co-win.
 echo "T2: later lex-smaller claimant + existing holder → retry (NOT win)"
 assert_eq "$(_claim_decision "$SMALL" "$SMALL" "$LARGE")" "retry" \
     "lex-min among present holders → retry, not a co-win"
@@ -159,9 +148,9 @@ rc=0
 _acquire_label_on "owner/repo" 1 "$SMALL" "$P" >/dev/null 2>&1 || rc=$?
 assert_exit "$rc" 0 "sole holder → exit 0 (own the lock)"
 
-# T7: persistent lex-LARGER holder, I am lex-smaller and arrive later — the
-# exact #1377 geometry. I retry (drop + re-POST) but the holder never yields,
-# so after the bounded retries I lose. Critically: I do NOT co-win.
+# T7: persistent lex-LARGER holder, I am lex-smaller and arrive later. I
+# retry (drop + re-POST) but the holder never yields, so after the bounded
+# retries I lose. Critically: I do NOT co-win.
 echo "T7: later lex-smaller claimant vs persistent holder → yield (exit 1)"
 STUB_HOLDERS="$LARGE"
 STUB_MINE="$SMALL"
@@ -181,8 +170,8 @@ echo "== _acquire_label_on force-sweep of a dead persistent holder (#2099) =="
 
 # When the lex-min retry loop exhausts against a holder that never yields — a
 # dead/abandoned (classically cross-host) claimant — a live lex-smaller
-# claimant would lose the tie-break forever. The exhaustion path now force-
-# sweeps any TTL-stale holder once, then re-acquires. Stateful gh stub: POST
+# claimant would lose the tie-break forever. The exhaustion path force-sweeps
+# any TTL-stale holder once, then re-acquires. Stateful gh stub: POST
 # echoes holders + posted; verification GETs echo holders + the candidate;
 # events → STUB_EVENTS_TS for label_added_epoch; remove-label mutates holders.
 STUB_EVENTS_TS="2020-01-01T00:00:00Z"   # long past any TTL → holder is sweepable
@@ -290,8 +279,8 @@ assert_eq "$unpaged_reads" "0" \
     "no label read on the acquire path omits pagination"
 
 # T10: dead cross-host amending holder, basename collides with a live local
-# worker — the exact #2099 geometry. Host-qualified heartbeat check does NOT
-# vouch for the cross-host owner, so the stale label is force-swept.
+# worker. Host-qualified heartbeat check does NOT vouch for the cross-host
+# owner, so the stale label is force-swept.
 echo "T10: cross-host dead amending holder (basename collision) → force-sweep + win"
 AP="fleet:amending-"
 AMINE="${AP}mac-worker-2"          # lex-smaller than windows-worker-1
@@ -322,8 +311,8 @@ assert_exit "$rc" 1 "live same-host amending owner kept → exit 1 (yield, no th
 # that file under the same worktree basename, so a later reviewer/merger
 # dispatch into the pane would renew a dead claim forever. The ownership record
 # names dispatch D1; the worktree is now on D2, which proves the owner ended.
-# Force-swept, claimant wins. T11 above is the control: identical geometry
-# minus the two records, still yields.
+# Force-swept, claimant wins. T11 is the control: identical geometry minus
+# the two records, still yields.
 echo "T12: same-host amending holder with a superseded dispatch → force-sweep + win"
 ADEAD2="${AP}mac-worker-5"
 AMINE3="${AP}mac-worker-4"          # lex-smaller than mac-worker-5

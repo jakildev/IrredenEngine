@@ -21,6 +21,18 @@ extern thread_local int t_workerId;
 extern thread_local bool t_registered;
 } // namespace detail
 
+namespace {
+
+/// True when a dispatch can actually fan out: a manager exists and it
+/// owns worker threads. The two "no" cases are a null manager (unit
+/// tests, startup-error paths) and inline-serial mode (`--worker-threads
+/// 0`), and every dispatch entry point treats them identically.
+bool hasWorkerPool() {
+    return g_jobManager != nullptr && !g_jobManager->isInlineSerial();
+}
+
+} // namespace
+
 void parallelFor(
     int begin, int end, int grainSize, const std::function<void(int rangeBegin, int rangeEnd)> &fn
 ) {
@@ -31,6 +43,11 @@ void parallelFor(
         "supported in T-221"
     );
     if (begin >= end) {
+        return;
+    }
+    if (g_jobManager->isInlineSerial()) {
+        // No pool: the whole range is one chunk on the calling thread.
+        fn(begin, end);
         return;
     }
     const int range = end - begin;
@@ -61,10 +78,11 @@ void parallelForAutoGrain(
     if (totalItems <= 0) {
         return;
     }
-    // Serial when there's no pool or the work-set is too small to amortize
-    // dispatch overhead. Runs on the calling (main) thread — matches the
-    // contract `parallelChunks` and PROPAGATE_TRANSFORM use.
-    const bool runParallel = g_jobManager != nullptr && totalItems >= tuning.minItemsToParallelize_;
+    // Serial when there's no pool, the pool is inline-serial, or the
+    // work-set is too small to amortize dispatch overhead. Runs on the
+    // calling (main) thread — matches the contract `parallelChunks` and
+    // PROPAGATE_TRANSFORM use.
+    const bool runParallel = hasWorkerPool() && totalItems >= tuning.minItemsToParallelize_;
     if (!runParallel) {
         fn(0, totalItems);
         return;
@@ -100,8 +118,8 @@ void parallelChunks(
     // Parallelize on either threshold: many nodes (the inter-node path)
     // OR enough total rows (the intra-node path — a single large node
     // still fans out). Below both, the level composes serially.
-    const bool runParallel = g_jobManager != nullptr &&
-                             (n >= tuning.minNodes_ || totalRows >= tuning.minItemsToParallelize_);
+    const bool runParallel =
+        hasWorkerPool() && (n >= tuning.minNodes_ || totalRows >= tuning.minItemsToParallelize_);
 
     if (!runParallel) {
         for (int i = 0; i < n; ++i) {
@@ -142,6 +160,14 @@ void parallelChunks(
 void run(std::string_view name, const std::function<void()> &fn) {
     IR_ASSERT(g_jobManager != nullptr, "IRJob::run: no active JobManager");
     IR_ASSERT(g_jobManager->isMainThread(), "IRJob::run: must be called from the main thread");
+    if (g_jobManager->isInlineSerial()) {
+        // Same profiler label as the pooled path, so a profile report is
+        // comparable across the worker-count axis.
+        const std::string label(name);
+        IR_PROFILE_BLOCK(label.c_str(), IR_PROFILER_COLOR_SYSTEMS);
+        fn();
+        return;
+    }
     enki::TaskScheduler &scheduler = g_jobManager->scheduler();
 
     // Capture name by value (small string copy is cheap; the task

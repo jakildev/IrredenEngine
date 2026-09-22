@@ -17,18 +17,18 @@
 #   - unknown host is fail-closed → refused (exit 1)
 #   - issue without the label passes on a mac host (gate is opt-in, exit 0)
 #   - gh failure soft-degrades to pass (exit 0)
-#   - amending-claim (#2524): mac host refuses a fleet:needs-gl-host PR,
+#   - amending-claim: mac host refuses a fleet:needs-gl-host PR,
 #     linux host passes it, an unlabeled PR passes on mac
-#   - amending-claim (#2801): a fleet:reviewing-* claim held by ANOTHER agent
+#   - amending-claim: a fleet:reviewing-* claim held by ANOTHER agent
 #     refuses the amend AND mutates no labels; same-host and cross-host
 #     foreign claims both refuse; the claiming agent's OWN reviewing label is
 #     a pass-through
-#   - resolving-claim (#3001): the same four properties on the
+#   - resolving-claim: the same four properties on the
 #     semantic-conflict lane. fleet:reviewing-* is disjoint from
 #     fleet:resolving-* exactly as it is from fleet:amending-*, and step 1c
 #     force-pushes too, so the gate has to cover both callers
 #
-# The #2801/#3001 arms assert the PR's label set is untouched, not just the
+# These arms assert the PR's label set is untouched, not just the
 # exit code: _acquire_label_on POSTs the fleet:amending-* / fleet:resolving-*
 # label BEFORE it decides the lex-min, so a guard placed inside it would leave
 # that label stranded on a PR the worker then abandons. The gate therefore has
@@ -38,7 +38,7 @@
 set -euo pipefail
 
 # This suite exercises cmd_claim against the real (possibly-stale) main clone but
-# does not care about clone freshness — disable the #1810 freshness gate.
+# does not care about clone freshness — disable the freshness gate.
 export FLEET_SKIP_CLONE_FRESHNESS=1
 
 SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
@@ -47,9 +47,7 @@ FLEET_CLAIM="$SCRIPT_DIR/fleet-claim"
 
 # PASS/FAIL counters, ok/bad, and the summarize exit idiom (scripts/fleet's
 # convention — don't re-copy them). summarize's "passed: N  failed: M" line is
-# also what fleet-positive-control reads to score a control run; the
-# hand-rolled counters this replaces printed a tally the tool could not parse,
-# so the #2801 arms below had no scoreable positive control.
+# also what fleet-positive-control reads to score a control run.
 source "$(dirname "$0")/lib_assert.sh"
 
 if [[ ! -x "$FLEET_CLAIM" ]]; then
@@ -112,8 +110,8 @@ STUB_DIR="$TMPROOT/bin"
 mkdir -p "$STUB_DIR"
 
 # Shared fixture bodies, exported so the quoted stub heredoc reads them from
-# the environment (it cannot interpolate). SYMMETRIC_BODY is the #2727-class
-# drift pin: `test_scout_gl_host_backstop.py` asserts the SAME text against the
+# the environment (it cannot interpolate). SYMMETRIC_BODY is the drift pin:
+# `test_scout_gl_host_backstop.py` asserts the SAME text against the
 # python `_body_backend_symmetric`, so the bash and python halves of one
 # predicate are pinned to one input rather than two hand-kept copies. Keep both
 # ASCII and quote-free — they are spliced into the stub's JSON.
@@ -271,7 +269,7 @@ echo "T9: mac host passes amending-claim on a PR without the label"
 actual=0; FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" amending-claim 3002 test-agent 2>/dev/null || actual=$?
 assert_exit "$actual" 0 "mac + no host label PR → amending-claim exit 0"
 
-# --- #2801: cross-lane review-claim gate on amending-claim ------------------
+# --- cross-lane review-claim gate on amending-claim ------------------------
 #
 # fleet:amending-* and fleet:reviewing-* are disjoint label namespaces, so
 # _acquire_label_on's lex-min tie-break — which filters the label list to
@@ -340,18 +338,17 @@ else
     bad "granted amending-claim left no POST in the log — the GH_POST_LOG wiring is broken, so T11/T13 prove nothing"
 fi
 
-# --- #2820: the backend-symmetric narrowing ---------------------------------
+# --- the backend-symmetric narrowing -----------------------------------------
 # The gate's premise justifies refusing the GL half, not a whole task whose
-# OTHER half is natively Metal-verifiable. These are the plan's T9-T13; they
-# land as T16-T20 because this suite already had T1-T15 before the change.
+# OTHER half is natively Metal-verifiable.
 
-# --- T10: mac claims a backend-symmetric GL task (plan T9) ------------------
+# --- T10: mac claims a backend-symmetric GL task -----------------------------
 echo "T16: mac host claims a backend-symmetric fleet:needs-gl-host task"
 actual=0; FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" claim 2004 test-agent 2>/dev/null || actual=$?
 assert_exit "$actual" 0 "mac + gl-host + backend-symmetric label → exit 0"
 release_quiet 2004
 
-# --- T11: bash body backstop, no discriminator label (plan T10) -------------
+# --- T11: bash body backstop, no discriminator label -------------------------
 # Kills the claim->refuse->release churn: the scout infers backend_symmetric
 # from the body, so dispatch would offer this task; without the same backstop
 # here the claim would refuse it. Shares its body text with the scout suite's
@@ -361,34 +358,35 @@ actual=0; FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" claim 2005 te
 assert_exit "$actual" 0 "mac + gl-host + body cites .glsl and .metal → exit 0"
 release_quiet 2005
 
-# --- T12: opposite-direction lock at the claim layer (plan T11) -------------
-# The #2704/#2709 false-negative direction must not reopen: a body naming a
+# --- T12: opposite-direction lock at the claim layer --------------------------
+# The false-negative direction must not reopen: a body naming a
 # GL-only source path is NOT backend-symmetric, so mac still refuses.
 echo "T18: mac still refuses a GL-only-bodied task (opposite-direction lock)"
 actual=0; FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" claim 2006 test-agent 2>/dev/null || actual=$?
 assert_exit "$actual" 1 "mac + gl-host + GL-only body → exit 1"
 release_quiet 2006
 
-# --- T13: PR path is deliberately NOT narrowed (plan T12) -------------------
+# --- T13: PR path is deliberately NOT narrowed -------------------------------
 # Pins the asymmetry itself. On a PR the gl-host label describes the REMAINING
 # work, so a task-axis discriminator says nothing about it. Without this, the
-# apparent inconsistency invites a future hand-fix that silently reopens #2696.
+# apparent inconsistency invites a future hand-fix that silently reopens it.
 echo "T19: mac still refuses amending-claim on a PR carrying BOTH labels"
 actual=0; FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" amending-claim 2007 test-agent 2>/dev/null || actual=$?
 assert_exit "$actual" 1 "mac + gl-host + backend-symmetric PR → amending-claim exit 1"
 
-# --- T14: fail-closed unknown host survives the narrowing (plan T13) --------
+# --- T14: fail-closed unknown host survives the narrowing --------------------
 # The discriminator opens only the mac door — asserted, not merely commented.
 echo "T20: unknown host still refused despite backend-symmetric"
 actual=0; FLEET_TEST_HOST=freebsd FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" claim 2004 test-agent 2>/dev/null || actual=$?
 assert_exit "$actual" 1 "freebsd + gl-host + backend-symmetric → exit 1"
 release_quiet 2004
 
-# --- #3001: the same cross-lane gate on resolving-claim --------------------
+# --- the same cross-lane gate on resolving-claim ----------------------------
 #
-# The #2801 fix landed on cmd_amending_claim only; cmd_resolving_claim stayed
-# a bare delegation to _cmd_pr_label_claim. fleet:reviewing-* is disjoint from
-# fleet:resolving- just as it is from fleet:amending-, so the lex-min tie-break
+# cmd_resolving_claim is a bare delegation to _cmd_pr_label_claim, so the
+# cross-lane gate on cmd_amending_claim does not automatically cover it.
+# fleet:reviewing-* is disjoint from fleet:resolving-* just as it is from
+# fleet:amending-*, so the lex-min tie-break
 # grants the resolve, role-worker step 1c rebases, and fleet-pr-amend-push
 # force-pushes out from under the in-flight review. These mirror T10-T15
 # one-for-one on the other lane — kept as a parallel block rather than a
@@ -411,8 +409,7 @@ assert_no_label_post "refused resolving-claim POSTed no label"
 # An agent that reviewed and then resolved the conflict itself is not a
 # cross-lane race — it holds both labels legitimately, and it is the only
 # claimant, so there is no unread head. This is the deliberate asymmetry with
-# the projection side, which is agent-blind (see
-# test_projection_is_agent_blind_by_design in test_worker_projection.py).
+# the projection side, which is agent-blind by design.
 echo "T23: own fleet:reviewing-<host>-<agent> does not block the resolve"
 : > "$GH_POST_LOG"
 actual=0; FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" resolving-claim 3104 test-agent 2>/dev/null || actual=$?

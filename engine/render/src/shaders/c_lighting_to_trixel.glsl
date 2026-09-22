@@ -60,11 +60,16 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     // and disables the light-volume term so slots 4/5 (inert placeholders) are
     // never sampled.
     uniform float isDetachedCanvas;
+    // Per-face 2x2 residual-yaw deformation, cols packed .xy / .zw. The
+    // source-face path below reconstructs each detached face's footprint
+    // from it, so these slots are read here, not just reserved for layout.
     uniform vec4 faceDeform[3];
     // Per-slot world FaceId (0..5); must match c_voxel_to_trixel_stage_1.glsl.
     // Lighting maps the decoded depth slot → world FaceId for the
     // six-face outward normal used by Lambert + the HDR sky-term.
     uniform ivec4 visibleFaceIds;
+    // Iso depth axis; (1,1,1) on the world canvas, per-axis on a detached
+    // re-voxelize canvas. Read by the source-face footprint and normal.
     uniform vec4 voxelDepthAxis;
     // World-receive offset. `.xyz` = the opt-in world-placed
     // detached re-voxelize entity's world cell origin; `.w` = 1.0 when the solid

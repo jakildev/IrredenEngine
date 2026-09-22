@@ -17,6 +17,7 @@
 #include <irreden/world/config.hpp>
 #include <sol/sol.hpp>
 #include <functional>
+#include <optional>
 #include <vector>
 
 namespace IREngine {
@@ -28,7 +29,13 @@ class World {
     using LuaBindingRegistration = std::function<void(IRScript::LuaScript &)>;
     /// @p configPresetFile: optional Lua file overlaying config.lua's
     /// `config` table (empty = none); see @c WorldConfig.
-    World(const char *configFileName, const char *configPresetFile = "");
+    /// @p workerThreadsOverride: the `--worker-threads` value, applied on top
+    /// of both config files; `std::nullopt` = flag absent.
+    World(
+        const char *configFileName,
+        const char *configPresetFile = "",
+        std::optional<int> workerThreadsOverride = std::nullopt
+    );
     virtual ~World();
     void gameLoop();
     void setupLuaBindings(const std::vector<LuaBindingRegistration> &bindings);
@@ -71,6 +78,7 @@ class World {
     // Agent-readable profiling: frame timing accumulation
     bool m_frameTimingEnabled = false;
     std::vector<float> m_frameTimesMs;
+    std::vector<uint32_t> m_frameUpdateTicks;
     uint32_t m_frameTotalUpdateTicks = 0;
     uint32_t m_frameMaxUpdateTicksPerFrame = 0;
     // adding to world for user should just be attaching things to world ecs

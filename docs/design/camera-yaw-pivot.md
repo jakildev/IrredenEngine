@@ -573,8 +573,8 @@ sampling floor of rasterizing continuous geometry to a fixed grid: you cannot
 pin a continuously-moving analytic silhouette better than the destination pixel.
 
 This agrees with the independent #2469 measurement in
-[`engine/render/CLAUDE.md`](../../engine/render/CLAUDE.md) §"Accepted sub-pixel
-yaw-sweep centroid residual", which records the same 2.00px x-excursion for the
+[`tools/jitter_probe/README.md`](../../tools/jitter_probe/README.md) §"Pinned-probe
+bars and residual floors", which records the same 2.00px x-excursion for the
 SDF cylinder at zoom 4/8 under the unrelated `--yaw-sweep` harness and already
 treats the SDF twin as the *defect-free control* whose residual is "a floor the
 probe itself carries". Two harnesses, one number.

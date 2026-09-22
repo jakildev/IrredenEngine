@@ -1,15 +1,15 @@
-"""Tests for the shared branch<->issue matcher (fleet_branch_match.py, #1425).
+"""Tests for the shared branch<->issue matcher (fleet_branch_match.py).
 
 Pins the contract both fleet-claim and fleet-state-scout rely on:
   - engine accepts only `claude/<N>-`
   - game accepts both `claude/<N>-` and `claude/game-<N>-`
   - cross-repo and wrong-issue branches do not match
   - issue_from_branch is the repo-agnostic inverse (strips optional game-)
-  - (#2419) an improvised `issue-<N>` token branch, or a `Closes #N` body,
-    resolves to the issue so a live PR is not swept into a duplicate claim
+  - an improvised `issue-<N>` token branch, or a `Closes #N` body, resolves
+    to the issue so a live PR is not swept into a duplicate claim
   - the token is a *fallback*: a leading-number form suppresses it, so a
     branch naming `issue-<M>` in its topic never dual-attributes to #M
-  - (#3520) the namespaced closing grammar honors GitHub's cross-repo
+  - the namespaced closing grammar honors GitHub's cross-repo
     `Closes owner/repo#N`, resolves it to a fleet repo key, and drops an
     unknown slug rather than folding it to a bare number; the bare forms
     keep their bare-only contract
@@ -37,7 +37,7 @@ from fleet_branch_match import (
 
 
 class BranchMatchesIssue(unittest.TestCase):
-    # --- acceptance criteria (#1425) -------------------------------------
+    # --- acceptance criteria -------------------------------------
     def test_game_legacy_prefix_matches_game(self):
         self.assertTrue(branch_matches_issue("claude/game-105-x", 105, "game"))
 
@@ -45,7 +45,6 @@ class BranchMatchesIssue(unittest.TestCase):
         self.assertTrue(branch_matches_issue("claude/105-x", 105, "engine"))
 
     def test_cross_repo_negative(self):
-        # A game-shaped branch is not an engine branch.
         self.assertFalse(branch_matches_issue("claude/game-105-x", 105, "engine"))
 
     def test_wrong_issue_negative(self):
@@ -54,8 +53,6 @@ class BranchMatchesIssue(unittest.TestCase):
 
     # --- game also accepts the new prefix-less form ----------------------
     def test_game_accepts_engine_form(self):
-        # New game branches drop the game- prefix; the matcher must still
-        # recognize them so the convention can migrate.
         self.assertTrue(branch_matches_issue("claude/105-x", 105, "game"))
 
     # --- the trailing '-' guards the issue-number boundary ---------------
@@ -103,9 +100,9 @@ class BranchMatchesIssue(unittest.TestCase):
             ["claude/105-", "claude/game-105-"],
         )
 
-    # --- #2419: the improvised `issue-<N>` token form --------------------
+    # --- the improvised `issue-<N>` token form --------------------
     def test_issue_token_form_matches(self):
-        # The exact branch shapes from the #2419 duplicate-PR incident.
+        # regression: an improvised issue-<N> token branch resolves to the issue.
         self.assertTrue(
             branch_matches_issue("claude/game-worker-3-issue-255", 255, "game"))
         self.assertTrue(
@@ -117,9 +114,9 @@ class BranchMatchesIssue(unittest.TestCase):
             branch_matches_issue("claude/game-worker-3-issue-255", 255, "engine"))
 
     def test_issue_token_word_bounded(self):
-        # `issue-25` must NOT satisfy #255 (word-bounded digit run), and the
-        # right boundary rejects a longer number too — in both directions:
-        # `issue-255` must not satisfy #25 either.
+        # `issue-25` must NOT satisfy issue 255 (word-bounded digit run), and
+        # the right boundary rejects a longer number too — in both
+        # directions: `issue-255` must not satisfy issue 25 either.
         self.assertFalse(branch_matches_issue("claude/w-3-issue-25", 255, "engine"))
         self.assertTrue(branch_matches_issue("claude/w-3-issue-25", 25, "engine"))
         self.assertFalse(branch_matches_issue("claude/w-3-issue-2550", 255, "engine"))
@@ -144,9 +141,7 @@ class BranchMatchesIssue(unittest.TestCase):
     def test_leading_number_is_authoritative_over_token(self):
         # The dual-attribution lock: a branch carrying BOTH a leading number
         # and an `issue-<N>` token resolves to the leading number ONLY — the
-        # token arm is a fallback, not an additional match. Without the gate,
-        # `cmd_claim`'s open-PR guard falsely refuses a fresh claim on #1425
-        # because an unrelated branch names `issue-1425` in its topic.
+        # token arm is a fallback, not an additional match.
         b = "claude/2419-fix-issue-1425-recurrence"
         self.assertTrue(branch_matches_issue(b, 2419, "engine"))
         self.assertFalse(branch_matches_issue(b, 1425, "engine"))
@@ -157,7 +152,6 @@ class IssueFromBranch(unittest.TestCase):
         self.assertEqual(issue_from_branch("claude/105-gear-foo"), 105)
 
     def test_legacy_game_branch(self):
-        # The reconcile head_issue bug: this used to return None.
         self.assertEqual(issue_from_branch("claude/game-105-gear-foo"), 105)
 
     def test_non_claude_branch(self):
@@ -172,7 +166,7 @@ class IssueFromBranch(unittest.TestCase):
         self.assertIsNone(issue_from_branch(""))
         self.assertIsNone(issue_from_branch(None))
 
-    # --- #2419: fall back to an `issue-<N>` token ------------------------
+    # --- fall back to an `issue-<N>` token ------------------------
     def test_issue_token_fallback(self):
         self.assertEqual(
             issue_from_branch("claude/game-worker-3-issue-255"), 255)
@@ -189,9 +183,9 @@ class IssueFromBranch(unittest.TestCase):
 
 
 class IssuePrState(unittest.TestCase):
-    """Classifier behind the #1488 claim-lifecycle fixes: a matching PR that
-    is design-blocked/-unblocked is PARKED (awaiting resume), not active, so
-    its issue-side claim labels are sweepable like a no-PR abandon."""
+    """Classifies a matching PR: design-blocked/-unblocked is PARKED
+    (awaiting resume), not active, so its issue-side claim labels are
+    sweepable like a no-PR abandon."""
 
     def _pr(self, head, *labels):
         return {"headRefName": head, "labels": [{"name": n} for n in labels]}
@@ -229,34 +223,31 @@ class IssuePrState(unittest.TestCase):
         self.assertEqual(issue_pr_state(prs, 1488, "engine"), "active")
 
     def test_game_legacy_branch_parked(self):
-        # The matcher must recognize the legacy game- prefix here too.
         prs = [self._pr("claude/game-45-x", "fleet:design-blocked")]
         self.assertEqual(issue_pr_state(prs, 45, "game"), "parked")
-        # A game-shaped branch is not an engine branch -> no match.
         self.assertEqual(issue_pr_state(prs, 45, "engine"), "none")
 
     def test_malformed_records_are_ignored(self):
-        # Defensive: missing/None labels and non-dict label entries.
         prs = [
             {"headRefName": "claude/1488-x"},                       # no labels key
             {"headRefName": "claude/1488-y", "labels": None},
             {"headRefName": "claude/1488-z", "labels": ["junk", None]},
         ]
-        # None are parked, all match -> first match is active.
         self.assertEqual(issue_pr_state(prs, 1488, "engine"), "active")
 
-    # --- #2419: an `issue-<N>` token branch survives the sweep -----------
+    # --- an `issue-<N>` token branch survives the sweep -----------
     def test_active_via_issue_token_branch(self):
-        # Acceptance (b): the exact incident branch is live work, so the
-        # cleanup sweep (which keeps a claim only on "active") won't free it.
+        # An issue-token-only branch is live work, so the cleanup sweep
+        # (which keeps a claim only on "active") won't free it.
         prs = [{"headRefName": "claude/game-worker-3-issue-255",
                 "labels": [{"name": "fleet:wip"}]}]
         self.assertEqual(issue_pr_state(prs, 255, "game"), "active")
 
-    # --- #2419: body `Closes #N` is a second liveness signal -------------
+    # --- body `Closes #N` is a second liveness signal -------------
     def test_active_via_closes_body_untrackable_branch(self):
-        # Branch name the matcher can't tie to #1488, but the body closes it:
-        # still live work, so the claim must stay (not swept -> no duplicate).
+        # A branch name the matcher can't tie to the issue, but the body
+        # closes it: still live work, so the claim must stay (not swept ->
+        # no duplicate).
         prs = [{"headRefName": "claude/some-weird-branch",
                 "body": "Closes #1488", "labels": []}]
         self.assertEqual(issue_pr_state(prs, 1488, "engine"), "active")
@@ -269,7 +260,7 @@ class IssuePrState(unittest.TestCase):
         self.assertEqual(issue_pr_state(prs, 1488, "engine"), "parked")
 
     def test_closes_body_word_bounded(self):
-        # `Closes #14` must not keep the claim on #1488.
+        # `Closes #14` must not keep the claim on a different issue number.
         prs = [{"headRefName": "claude/weird", "body": "Closes #14", "labels": []}]
         self.assertEqual(issue_pr_state(prs, 1488, "engine"), "none")
 
@@ -314,14 +305,10 @@ class BodyClosesIssue(unittest.TestCase):
 
 
 class CrossRepoClosingRefs(unittest.TestCase):
-    """#3520: the namespaced closing grammar and its bare-only counterparts.
+    """The namespaced closing grammar and its bare-only counterparts.
 
-    A game PR remedying an engine issue carries GitHub's cross-repo form,
-    `Closes jakildev/IrredenEngine#N`; the bare grammar dropped it at the
-    keyword's trailing `#`, so neither the scout's `inflight_pr` gate nor
-    fleet-claim's duplicate guard saw the PR and the issue was redispatched
-    on every trigger. The namespaced form resolves the qualifier through
-    `repo_key`; a bare `#N` is the PR's own repo.
+    The namespaced form (`Closes jakildev/IrredenEngine#N`) resolves the
+    qualifier through `repo_key`; a bare `#N` is the PR's own repo.
     """
 
     CROSS = "Closes jakildev/IrredenEngine#3255"
@@ -443,9 +430,9 @@ class OracleCorpus(unittest.TestCase):
     """The recorded open-PR corpus agrees with GitHub's `closingIssuesReferences`.
 
     `closes_refs_oracle_corpus.json` is a snapshot of every open PR in both
-    fleet repos at the time #3520 landed, paired with the field GitHub itself
-    auto-closes from. It pins the grammar against the ground truth rather
-    than against reasoning about markdown. Re-record it with:
+    fleet repos, paired with the field GitHub itself auto-closes from. It
+    pins the grammar against the ground truth rather than against reasoning
+    about markdown. Re-record it with:
 
         gh pr list --repo <slug> --state open --limit 300 \
             --json number,body,closingIssuesReferences
@@ -483,7 +470,7 @@ class ClosingKeywordInsideCode(unittest.TestCase):
     field it auto-closes from — sampled from two real bodies that bracket the
     rule: one whose only `Closes #N` sits in a code span while arguing AGAINST
     closing (GitHub: closes nothing), and one carrying bare refs (GitHub:
-    closes both). The two must land on opposite sides. See #2672.
+    closes both). The two must land on opposite sides.
     """
 
     # A body arguing against the very reference it quotes.

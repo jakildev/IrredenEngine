@@ -4,7 +4,7 @@
 # These suites are not CMake tests, so `ctest` never sees them; this runner
 # and the `fleet-tests.yml` workflow that calls it are the only things that
 # execute them. Keep that workflow wired — an unexecuted suite goes red
-# silently and stays that way (see #2712).
+# silently and stays that way.
 #
 # Discovery is by glob, so a new suite is picked up with no registration
 # step. lib_assert.sh is deliberately named outside the test_* pattern and
@@ -14,6 +14,12 @@
 # matching how the suites are run by hand — and is timeout-guarded so one
 # hung suite cannot wedge CI. Suites are hermetic by the authoring rules
 # (no live GitHub, no live ~/.fleet), so this is safe to run unattended.
+#
+# The pane's own FLEET_* exports are removed from every suite's environment.
+# fleet-dispatch-wrap exports them into each dispatched pane, and a subject
+# that reads one would otherwise verdict on the pane instead of the fixture:
+# green in CI, red only for the agents who run the suites most. The name set
+# is read from the wrapper, so a new export is scrubbed with no edit here.
 #
 # Usage:
 #   run_all.sh [--only <substring>] [--list] [--timeout <seconds>]
@@ -27,7 +33,7 @@
 # A suite that cannot find its subject under test should print
 # "SKIP: <reason>" to stderr and exit 3 — that is the shared skip status
 # this runner recognizes. Do not `exit 0` from a guard that never actually
-# exercised the subject; that counts as an unverified PASS (#2786).
+# exercised the subject; that counts as an unverified PASS.
 #
 # Exit status:
 #   0  every selected suite passed or was skipped (or --list / --help)
@@ -43,6 +49,16 @@ TESTS_DIR=$(cd "$(dirname "$0")" && pwd)
 only=""
 list_only=0
 per_timeout=120
+
+# `env -u` arguments naming every FLEET_* variable the dispatch wrapper assigns.
+scrub_args=()
+dispatch_wrap="$TESTS_DIR/../fleet-dispatch-wrap"
+if [[ -f "$dispatch_wrap" ]]; then
+    while IFS= read -r scrub_name; do
+        [[ -n "$scrub_name" ]] && scrub_args+=(-u "$scrub_name")
+    done < <(grep -oE '(^|[^A-Za-z0-9_])FLEET_[A-Z0-9_]+=' "$dispatch_wrap" \
+                 | sed -E 's/^[^F]*//; s/=$//' | sort -u)
+fi
 
 die_usage() {
     echo "$PROG: $1" >&2
@@ -60,7 +76,7 @@ while [[ $# -gt 0 ]]; do
         # Print the header block by *shape* (every comment line after the
         # shebang, stopping at the first line of code) rather than a fixed
         # line range — a range silently slices the wrong text the moment the
-        # header grows or shrinks (#2436).
+        # header grows or shrinks.
         -h|--help)  awk 'NR>1 && !/^#/{exit} NR>1{sub(/^# ?/, ""); print}' "$0"; exit 0 ;;
         *)          die_usage "unknown argument '$1'" ;;
     esac
@@ -68,9 +84,6 @@ done
 
 [[ "$per_timeout" =~ ^[0-9]+$ ]] || die_usage "--timeout takes a non-negative integer"
 
-# ----------------------------------------------------------------------
-# Discover: test_*.sh run under bash, test_*.py under python3.
-# ----------------------------------------------------------------------
 suites=()
 for f in "$TESTS_DIR"/test_*.sh "$TESTS_DIR"/test_*.py; do
     [[ -f "$f" ]] || continue                       # unmatched glob
@@ -99,9 +112,6 @@ if [[ "$per_timeout" -gt 0 ]]; then
     fi
 fi
 
-# ----------------------------------------------------------------------
-# Run: one process per suite, cwd = tests dir (how they run by hand).
-# ----------------------------------------------------------------------
 cd "$TESTS_DIR" || exit 1
 
 passed=0
@@ -109,7 +119,7 @@ failed_names=()
 skipped_names=()
 
 # Skip status: a suite whose subject under test is missing exits with this
-# code instead of 0, so a vacuous run is never folded into "passed" (#2786).
+# code instead of 0, so a vacuous run is never folded into "passed".
 SKIP_STATUS=3
 
 for f in "${suites[@]}"; do
@@ -119,7 +129,7 @@ for f in "${suites[@]}"; do
         *)    interp=(bash) ;;
     esac
 
-    out=$($timeout_cmd "${interp[@]}" "$f" 2>&1)
+    out=$(env ${scrub_args[@]+"${scrub_args[@]}"} $timeout_cmd "${interp[@]}" "$f" 2>&1)
     rc=$?
     if [[ "$rc" -eq 0 ]]; then
         passed=$((passed + 1))

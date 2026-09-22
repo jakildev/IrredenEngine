@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Tests for fleet-pr-amend-push.
 #
-# Part 1 — the #2402 worktree-scope assert: the push runs from the cwd repo, so
+# Part 1 — the worktree-scope assert: the push runs from the cwd repo, so
 # a stale amend-ref sentinel in a shared main clone would route it from the
 # wrong tree. The wrapper calls fleet-assert-worktree before touching the
 # sentinel — refuse from a main clone, proceed from a worktree.
 #
-# Part 2 — the #2734 second-amend path: a successful push MARKS the sentinel
+# Part 2 — the second-amend path: a successful push MARKS the sentinel
 # consumed instead of deleting it, so a follow-up amend in the same detached
 # checkout gets a diagnostic naming the real cause (and `--continue`) rather
 # than "sentinel missing", whose named remedy (re-run fleet-pr-checkout-detached)
@@ -78,7 +78,7 @@ assert_contains "$(cat "$TMPROOT/err")" "nothing to continue" \
     "--continue names its own missing-sentinel case"
 
 # ----------------------------------------------------------------------
-# Part 2 — #2734: the second amend in one detached checkout.
+# Part 2 — the second amend in one detached checkout.
 # ----------------------------------------------------------------------
 
 ORIGIN="$TMPROOT/origin.git"

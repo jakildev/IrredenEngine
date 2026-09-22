@@ -1,4 +1,4 @@
-"""Unit + integration tests for lint_python_registry.py (#2859).
+"""Unit + integration tests for lint_python_registry.py.
 
 `extend-include`'s registry is asserted against a **derived** population, not
 just spot-checked: every case here proves one half of the symmetric
@@ -12,7 +12,7 @@ drift in either direction fails loudly instead of being silently absorbed.
   - diff_registry: population-vs-registry set diff, both directions
   - main(): end-to-end over a synthetic tree + ruff.toml (both directions,
     then a clean match)
-  - the committed repo's own registry passes (post-#2859 acceptance)
+  - the committed repo's own registry matches the derived population
 
 stdlib-only; every fixture is written under a TemporaryDirectory (no
 network, no repo mutation). The synthetic-tree tests build a throwaway git
@@ -209,8 +209,8 @@ class MainEndToEnd(unittest.TestCase):
 
 class CommittedTree(unittest.TestCase):
     def test_committed_ruff_toml_registry_matches_population(self):
-        # Acceptance for #2859: the registry and the derived population agree
-        # on the real repo tree.
+        # Acceptance: the registry and the derived population agree on the
+        # real repo tree.
         self.assertEqual(_run_main(_REPO_ROOT), 0)
 
 

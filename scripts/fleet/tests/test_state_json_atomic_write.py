@@ -1,11 +1,12 @@
-"""Tests for the atomic cache write + tolerant reader in fleet-state-scout (#1750).
+"""Tests for the atomic cache write + tolerant reader in fleet-state-scout.
 
-The bug: `write_atomic` used a FIXED temp name (`<name>.tmp`), so two concurrent
+`write_atomic` gives each call a unique temp via
+`tempfile.mkstemp(dir=path.parent)` + fsync + os.replace, so two concurrent
 writers on the same target (the 30s fleet-up scout tick racing a manual /
-solo-architect scout run, or an overlong tick) shared one temp — writer B could
-os.replace a file writer A was still mid-write into, exposing a truncated splice
-to a reader's json.loads. The fix gives each call a unique temp via
-`tempfile.mkstemp(dir=path.parent)` + fsync + os.replace.
+solo-architect scout run, or an overlong tick) never race on a single shared
+temp name — a fixed temp name would let writer B os.replace a file writer A
+is still mid-write into, exposing a truncated splice to a reader's
+json.loads.
 
 Covers:
   - write_atomic round-trips and leaves no temp behind (success + error paths);
@@ -14,11 +15,11 @@ Covers:
   - read_json_retry returns on valid input, recovers when the file becomes valid
     mid-retry, and raises the last error (not a spurious one) when it never does.
 
-The race is cross-process, not cross-thread — Python's GIL serialises enough of a
-write_text that threads rarely interleave the way processes do (see the plan's
-gotcha). So the concurrency case uses subprocess writers, each loading the real
-write_atomic from the scout, with a large payload + many iterations tuned to
-exercise the interleave window the shared-temp bug exposed.
+The race is cross-process, not cross-thread — Python's GIL serialises enough
+of a write_text that threads rarely interleave the way processes do. So the
+concurrency case uses subprocess writers, each loading the real write_atomic
+from the scout, with a large payload + many iterations tuned to exercise the
+interleave window a shared temp name would expose.
 """
 import glob
 import importlib.machinery
@@ -99,15 +100,13 @@ class TestWriteAtomic(unittest.TestCase):
         self.assertEqual(json.loads(target.read_text()), {"new": True, "n": 42})
 
     def test_write_atomic_disables_newline_translation(self):
-        # #3061: a plain text-mode handle ("w") lets Windows translate the
-        # payload's "\n" to "\r\n", so the on-disk file lands one byte over
-        # what a caller computed from payload.encode("utf-8") (emit_state's
-        # `size`). The real CRLF-vs-LF divergence only reproduces on an
-        # actual Windows host, so — to make the regression visible on every
-        # CI host, not just Windows — this checks the open() call shape
-        # (binary mode, or newline="" if text mode is kept) rather than the
-        # emergent OS behavior: it fails against the pre-fix mode="w" call
-        # on Linux/macOS too, exactly the "invisible to CI" gap #3061 named.
+        # A plain text-mode handle ("w") lets Windows translate the payload's
+        # "\n" to "\r\n", so the on-disk file lands one byte over what a
+        # caller computes from payload.encode("utf-8") (emit_state's
+        # `size`). The CRLF-vs-LF divergence only reproduces on an actual
+        # Windows host, so — to make the regression visible on every CI host
+        # — this checks the open() call shape (binary mode, or newline="" if
+        # text mode is kept) rather than the emergent OS behavior.
         target = self.tmp / "state.json"
         payload = "line one\nline two\n"
         captured = {}

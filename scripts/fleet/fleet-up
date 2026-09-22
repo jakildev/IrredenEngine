@@ -55,8 +55,8 @@ ENGINE="${FLEET_ENGINE_ROOT:-$HOME/src/IrredenEngine}"
 GAME="$ENGINE/creations/game"
 SESSION="fleet"
 
-# Main-clone freshness helper (#1810): advances the shared main clone's
-# checked-out master so merged fleet-script fixes stop staying inert. Sourced
+# Main-clone freshness helper: advances the shared main clone's
+# checked-out master so merged fleet-script fixes do not stay inert. Sourced
 # by-dir so it resolves through the ~/bin symlink (the helper is symlinked into
 # ~/bin alongside fleet-up by install.sh, same as fleet-common.sh).
 _FLEET_CLONE_FRESHNESS_SH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fleet-clone-freshness.sh"
@@ -75,7 +75,7 @@ else
 fi
 unset _FLEET_CLONE_FRESHNESS_SH
 
-# Install-symlink freshness helper (#2262): re-links ~/bin when a merged
+# Install-symlink freshness helper: re-links ~/bin when a merged
 # fleet tool / role-cmd / ir-* is newer than the last install.sh pass, so a
 # freshly-added tool is not `command not found` on first use. Sourced by-dir,
 # same as fleet-clone-freshness.sh above (both are symlinked into ~/bin).
@@ -209,7 +209,7 @@ SCOUT_STARTUP_TIMEOUT_SECONDS=30
 # FLEET_CONCURRENCY_WORKER is unset): FLEET_CONCURRENCY_OPUS_WORKER,
 # FLEET_CONCURRENCY_SONNET_AUTHOR.
 #
-# queue-manager is no longer LLM-dispatched; omit from cap config.
+# queue-manager is not LLM-dispatched; omit from cap config.
 #
 # fleet-up sources the same conf so `fleet-up --help` and the startup
 # banner reflect the active values, and so any future fleet-up logic
@@ -355,7 +355,7 @@ RESET_USAGE=0
 # MODE is resolved here (not only in the main arg loop below) because the
 # dispatcher launch in step 3f — which writes the dispatch-mode sentinel — runs
 # before that loop. The main loop re-recognizes the mode tokens as no-ops so the
-# unknown-arg guard still accepts them (#2022).
+# unknown-arg guard still accepts them.
 MODE="dry-run"
 for arg in "$@"; do
     case "$arg" in
@@ -562,7 +562,7 @@ ensure_worktree() {
 
 # migrate_legacy_worker_worktrees — one-time migration of legacy role-named
 # worktrees to the generic pane pool (pool-1..pool-9). Two generations of
-# legacy names are handled in one pass: the pre-P2.2 per-class layout
+# legacy names are handled in one pass: the per-class layout
 # (opus-worker-1/2, sonnet-fleet-1/2) and the role-pinned layout
 # (worker-1..4, sonnet-reviewer, …). Callers pass the repo-specific
 # old→new map as paired name arrays. Safe to run on every fleet-up: skips
@@ -650,7 +650,7 @@ GAME_MIGRATE_NEW=(pool-1   pool-2   pool-3   pool-4   pool-7 pool-9)
 # worktrees: switches back from a parked branch when no tracked WIP is at risk
 # (a parked clone freezes the master ref and the freshness guard then blocks
 # every claim), then ff-advances so a just-merged fleet-script fix is live for
-# this session's scout/claim/dispatcher. (#1810)
+# this session's scout/claim/dispatcher.
 restore_main_clone_to_master "$ENGINE"
 # Everything below runs from the merged script, never from the pre-advance
 # bytes of this one.
@@ -703,7 +703,7 @@ unset _slug
 if [[ -d "$GAME/.git" ]]; then
     (cd "$GAME" && git fetch origin --quiet) || {
         echo "fleet-up: game git fetch failed (continuing without game panes)" >&2; }
-    restore_main_clone_to_master "$GAME"  # game main clone back on current master too (#1810)
+    restore_main_clone_to_master "$GAME"  # game main clone back on current master too
     ensure_worktree "$GAME" .claude/worktrees/game-architect  fleet/game-architect
     # Pool panes cover both engine and game queues; each pool pane gets its
     # own game worktree — SAME basename as its engine twin (claims,
@@ -737,7 +737,7 @@ warn_legacy_worktree "$GAME/.claude/worktrees/game-sonnet"
 # this session launches starts with links for every merged tool / role-cmd /
 # ir-*. One install.sh run covers engine + game role files (install.sh reaches
 # into $GAME for them). Guarded: a no-op sub-ms stat walk when nothing is newer
-# than the last install pass. (#2262)
+# than the last install pass.
 fleet_install_maybe_refresh "$ENGINE" || true
 
 # ----------------------------------------------------------------------
@@ -762,7 +762,7 @@ fleet_install_maybe_refresh "$ENGINE" || true
 # Subsequent panes that fire on a worktree with a kept reservation hit
 # the role-doc step-0.5 resumption check and pick up where the prior
 # iteration left off. Worktrees with cleared reservations fall through
-# to the normal Step 2 reset. (#521)
+# to the normal Step 2 reset.
 
 extract_repo_slug() {
     # Convert a git remote URL to "owner/repo".
@@ -933,7 +933,7 @@ reset_worktree() {
     # If a reservation still exists for this worktree (post-Step-1.5),
     # the prior iteration is mid-flight on a real task — leave the
     # worktree on its branch with whatever dirty state it has, so the
-    # next dispatcher tick fires step-0.5 resumption. (#521)
+    # next dispatcher tick fires step-0.5 resumption.
     # Contract: fleet-claim clear-all (Step 3b, below) wipes task claims
     # (~/.fleet/claims/) but NOT reservations (~/.fleet/reservations/), so
     # this guard remains intact through the boot sequence.
@@ -1032,7 +1032,7 @@ write_worktree_settings() {
     # the edit guard derives worktree identity from the ASSIGNMENT, not the drift-
     # prone session cwd). argv[4] = $ENGINE — the guard hook lives under the engine
     # clone's scripts/fleet, which game-side worktrees (repo_root=$GAME) can't reach
-    # via repo_root; the engine root is the stable source for the hook path (#2402).
+    # via repo_root; the engine root is the stable source for the hook path.
     python3 - "$settings_file" "$repo_root" "$wt" "$ENGINE" <<'PYEOF'
 import json, sys, os
 
@@ -1074,11 +1074,10 @@ baseline = [
     "Bash(fleet-run-targets:*)",
     "Bash(fleet-help:*)",
     "Bash(fleet-heartbeat:*)",
-    # Scout-cache wrappers (PR #458) and post-iteration helpers. Without
+    # Scout-cache wrappers and post-iteration helpers. Without
     # these every iteration that calls fleet-issue / fleet-pr /
     # fleet-iteration-summary stalls at a permission prompt that no human
-    # is around to answer; observed: queue-manager iteration paused for
-    # ~25 minutes on `fleet-issue view 428`. fleet-worktree-busy-branches
+    # is around to answer. fleet-worktree-busy-branches
     # is the fast-path filter workers run on every task-pickup pass.
     # fleet-labels is the GitHub-label sync wrapper invoked by fleet-up
     # itself but also occasionally by roles for
@@ -1125,8 +1124,7 @@ baseline = [
     # GitHub CLI — every role uses gh pr edit/review/comment for label
     # management and review posting. Without this entry, headless
     # claude --print runs (fleet-dispatcher) see a permission prompt they
-    # can't answer, so all label writes silently fail. Confirmed root cause
-    # of the Ubuntu fleet failing to set fleet:approved (issue #778 / T-216).
+    # can't answer, so all label writes silently fail.
     "Bash(gh:*)",
     # Env-var-prefixed git for non-interactive rebase. `Bash(git:*)`
     # in the user-level allowlist matches commands STARTING with `git`,
@@ -1205,12 +1203,12 @@ session_track_cmd = (
     " && fleet-session-track || true"
 )
 
-# PreToolUse edit guard (#2402): reject Edit/Write/MultiEdit whose target
+# PreToolUse edit guard: reject Edit/Write/MultiEdit whose target
 # escapes this pane's worktree, using the assignment (FLEET_ASSIGNED_WORKTREE
 # below) rather than the drift-prone session cwd. The command references the
 # engine clone's copy by ABSOLUTE path baked at generation time — game-side
 # worktrees have no scripts/fleet of their own, and ~/bin symlinks can lag an
-# install (#2262). Wrapped in `[ -x … ] && … || true` so a missing/renamed
+# install. Wrapped in `[ -x … ] && … || true` so a missing/renamed
 # guard fails OPEN (a hook must never wedge the fleet). Engine-launched
 # sessions also carry this guard via the checked-in project settings.json; the
 # double-fire is accepted (two identical verdicts; deny still wins).
@@ -1250,7 +1248,7 @@ for event, groups in existing_hooks.items():
 
 # env: the authoritative worktree-identity signal for the edit guard and every
 # Bash call in sessions launched from this worktree. Hand-added env entries
-# survive regeneration (same contract as allow/hooks, #2284); fleet wins only on
+# survive regeneration (same contract as allow/hooks); fleet wins only on
 # its own key.
 env_out = dict(existing_env)
 env_out["FLEET_ASSIGNED_WORKTREE"] = worktree
@@ -1389,7 +1387,7 @@ else
 fi
 
 # ----------------------------------------------------------------------
-# GitHub App token plumbing (#1394 Q4)
+# GitHub App token plumbing
 # ----------------------------------------------------------------------
 #
 # Mint (or reuse the cached) installation token once, here, so both the
@@ -1423,7 +1421,7 @@ fi
 # read state.json instead of running their own
 # `gh pr list` / `git show` calls — see each role's "Shared fleet
 # state cache" section. The trigger files are emitted and consumed by
-# babysit — trigger-aware back-off is live (T-040 / PR #300).
+# babysit's trigger-aware back-off.
 # Backgrounded with nohup, PID written to scout.pid
 # for fleet-down to terminate cleanly. GH_TOKEN, if minted above, is
 # already exported in this process's env, so the scout inherits it.
@@ -1458,7 +1456,7 @@ else
     disown
     echo "fleet-up: launched fleet-state-scout (pid $!, log $scout_log)"
 
-    # Surface the Q2 cross-device poll topology (#1394): leader polls GitHub +
+    # Surface the cross-device poll topology: leader polls GitHub +
     # serves its state bundle on the LAN; follower consumes a leader's bundle
     # (zero GitHub reads while reachable). The scout logs the authoritative
     # value to $scout_log; this is the operator banner.
@@ -1532,7 +1530,7 @@ trig_dir.mkdir(parents=True, exist_ok=True)
 def merger_actionable(p):
     return bool(p.get("prs"))
 
-# queue-manager is no longer LLM-dispatched; fleet-state-scout invokes
+# queue-manager is not LLM-dispatched; fleet-state-scout invokes
 # fleet-queue-tick directly on projection change. No bootstrap trigger needed.
 
 def worker_actionable(p):
@@ -1552,7 +1550,7 @@ def opus_reviewer_actionable(p):
 # plumbing would be swallowed silently and take the bootstrap trigger down for
 # ALL six roles at once, which is strictly worse than the churn this gate
 # removes. Same reason fleet_task_class's own _current_host is inlined rather
-# than imported (#1578).
+# than imported.
 def _current_host():
     override = os.environ.get("FLEET_TEST_HOST")
     if override:
@@ -1573,7 +1571,7 @@ HOST_SMOKE_LABELS = {
 }
 
 def smoke_worker_actionable(p):
-    # Host-gated (#2839). Smoke work is definitionally host-specific — only a
+    # Host-gated. Smoke work is definitionally host-specific — only a
     # native-Windows host can clear fleet:needs-windows-smoke — while the
     # scout's projection is host-agnostic by design (the cross-host record of
     # outstanding smoke debt). This is the level-triggered half of the lane, so
@@ -1675,7 +1673,7 @@ else
     mkdir -p "$HOME/.fleet/state" "$HOME/.fleet/logs"
     # Record the boot mode for the dispatcher to read each tick. In dry-run it
     # hands each role one standby iteration then idles, instead of cycling real
-    # (live) iterations every ~13s and burning the model window (#2022). Written
+    # (live) iterations every ~13s and burning the model window. Written
     # before the launch so the daemon never sees a missing sentinel, and rewritten
     # on every boot so it can't go stale.
     printf '%s\n' "$MODE" > "$HOME/.fleet/state/dispatch-mode"
@@ -1880,7 +1878,7 @@ tmux set-environment -g IR_FLEET_WORKERS "$IR_FLEET_WORKERS"
 # dispatched runs get the chain as an explicit fleet-dispatch-wrap
 # argument and don't read this.
 tmux set-environment -g FLEET_FABLE_FALLBACK "$FLEET_FABLE_FALLBACK"
-# GitHub App token (#1394 Q4): seed into the persistent tmux SERVER env
+# GitHub App token: seed into the persistent tmux SERVER env
 # (not just this process) so every current and future split-window pane
 # inherits it, same rationale as IR_FLEET_WORKERS above. Keyed off
 # $_gh_app_token (whether THIS run's fleet-gh-token mint produced a

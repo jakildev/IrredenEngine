@@ -42,13 +42,43 @@ REMOVED_FILE="$TMPROOT/removed.log"; : > "$REMOVED_FILE"; export REMOVED_FILE
 STUB_DIR="$TMPROOT/bin"; mkdir -p "$STUB_DIR"
 cat > "$STUB_DIR/gh" <<'GHSTUB'
 #!/usr/bin/env bash
+# `issue list` applies the command's own label qualifiers to the fixture. A
+# stub that returns the whole fixture regardless would pass whatever
+# population the sweep selects, which is the property under test here.
+stub_issue_list() {
+    local -a want=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --label|-l) want+=("$2"); shift 2 ;;
+            --search)
+                local q="$2"; shift 2
+                while [[ -n "${q// /}" ]]; do
+                    if [[ "$q" =~ ^[[:space:]]*label:\"([^\"]+)\"(.*)$ ]]; then
+                        want+=("${BASH_REMATCH[1]}"); q="${BASH_REMATCH[2]}"
+                    else
+                        echo "gh stub: unmodeled --search qualifier '$q'" >&2
+                        exit 2
+                    fi
+                done ;;
+            *) shift ;;
+        esac
+    done
+    WANT_LABELS=$(printf '%s\n' ${want[@]+"${want[@]}"}) python3 -c '
+import json, os, sys
+want = [w for w in os.environ.get("WANT_LABELS", "").split("\n") if w]
+issues = json.load(sys.stdin)
+json.dump([i for i in issues
+           if all(any((l or {}).get("name") == w for l in (i.get("labels") or []))
+                  for w in want)], sys.stdout)
+' < "$ISSUES_JSON"
+}
 case "$1" in
     repo)
         # game repo not reachable -> sweep covers the engine repo only
         exit 1 ;;
     issue)
         case "$2" in
-            list) cat "$ISSUES_JSON"; exit 0 ;;
+            list) shift 2; stub_issue_list "$@"; exit 0 ;;
             edit)
                 shift 2; issue="$1"; shift
                 while [[ $# -gt 0 ]]; do
@@ -69,12 +99,16 @@ GHSTUB
 chmod +x "$STUB_DIR/gh"
 export PATH="$STUB_DIR:$PATH"
 
-# Two queued issues claimed by this host, neither with an open PR. #42 is
-# reserved by pool-1 (interrupted mid-task, will resume); #43 is not.
+# Three issues claimed by this host, none with an open PR. #42 is reserved by
+# pool-1 (interrupted mid-task, will resume); #43 is not. #44 is parked, so it
+# no longer carries fleet:queued — a population selected by that label cannot
+# see its claim label, and `release` is a no-op on a lockless claim, so the
+# label would have no route off the issue at all.
 cat > "$ISSUES_JSON" <<'EOF'
 [
   {"number": 42, "labels": [{"name": "fleet:queued"}, {"name": "fleet:claim-mac-pool-1"}]},
-  {"number": 43, "labels": [{"name": "fleet:queued"}, {"name": "fleet:claim-mac-pool-2"}]}
+  {"number": 43, "labels": [{"name": "fleet:queued"}, {"name": "fleet:claim-mac-pool-2"}]},
+  {"number": 44, "labels": [{"name": "fleet:needs-human"}, {"name": "fleet:claim-mac-pool-3"}]}
 ]
 EOF
 echo "[]" > "$PRS_JSON"
@@ -93,6 +127,23 @@ if grep -qF "fleet:claim-mac-pool-2" "$REMOVED_FILE"; then
     ok "unreserved #43 label swept (guard is issue-scoped, not global)"
 else
     bad "unreserved #43 label was not swept"
+fi
+
+echo "T2: a parked issue's claim label is still in the sweep's population"
+if grep -qF "fleet:claim-mac-pool-3" "$REMOVED_FILE"; then
+    ok "parked #44 label swept (population is not keyed on fleet:queued)"
+else
+    bad "parked #44 label was not swept (claim is unreachable by any sanctioned route)"
+fi
+
+# Stub fidelity: T2 only proves something if the old label:"fleet:queued"
+# population really did drop #44.
+queued_pop=$("$STUB_DIR/gh" issue list --repo jakildev/IrredenEngine --state open \
+    --search 'label:"fleet:queued"' --json number,labels)
+if echo "$queued_pop" | grep -q '44'; then
+    bad "label:\"fleet:queued\" listing still returns the parked row (fixture is inert)"
+else
+    ok "label:\"fleet:queued\" listing drops the parked row"
 fi
 
 summarize "reset-sweep reservation guard"

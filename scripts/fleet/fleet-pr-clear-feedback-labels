@@ -2,15 +2,11 @@
 # fleet-pr-clear-feedback-labels — idempotently strip a known set of
 # feedback labels from a PR.
 #
-# Why this exists:
-#   `gh pr edit <N> --remove-label A --remove-label B ...` is NOT
+# `gh pr edit <N> --remove-label A --remove-label B ...` is NOT
 #   atomic. gh processes removals left-to-right and exits non-zero
 #   on the first absent label, leaving every label removed BEFORE
-#   the missing one already stripped. The role files combine the
-#   canonical AMEND-path label clear into one such call and have
-#   burned multiple worker iterations on PRs with a mixed-presence
-#   feedback label set (observed on PR #637 — opus-worker-2 at
-#   2026-05-11 20:05 and opus-worker-1 at 2026-05-12 03:11).
+#   the missing one already stripped, so one call over a mixed-presence
+#   feedback label set strands the rest.
 #
 # This wrapper queries the live label set first and only fires a
 # remove-label call for labels actually present, one per call so a

@@ -58,6 +58,16 @@ assert load_factor(50.0, 50.0) == 1.0, "lf=1 uncontested"
 assert load_factor(100.0, 50.0) == 2.0, "lf=2 loaded"
 assert load_factor(25.0, 50.0) == 0.5, "lf=0.5 fast"
 
+# The gate's call convention: (head ref, BASELINE ref), both from the same
+# SKU. A slow SKU measured twice at rest reads uncontested however far its
+# ref sits from the global 50 ms target.
+assert load_factor(104.4, 104.4) == 1.0, "slow SKU at rest is uncontested"
+assert normalize_ms(12.0, 104.4, 104.4) == 12.0, "slow SKU at rest is unscaled"
+assert abs(load_factor(208.8, 104.4) - 2.0) < 1e-9, "same SKU, 2x loaded"
+assert abs(normalize_ms(12.0, 208.8, 104.4) - 6.0) < 1e-9, "2x load halves the head"
+# A baseline with no ref_ms (legacy manifest) must fall back to raw deltas.
+assert load_factor(104.4, 0.0) == 1.0, "missing baseline ref -> raw"
+
 # Threshold sanity.
 assert LOAD_FACTOR_TRUST_NORMALIZED >= 1.0
 print("ok")
@@ -135,23 +145,41 @@ from compare_perf_runs import build_host_note
 
 # Same host, lock uncontested.
 note = build_host_note(
-    {"calibration": {"host_slug": "a"}},
+    {"calibration": {"host_slug": "a", "ref_ms": 50.0}},
     {"calibration": {"host_slug": "a", "ref_ms": 50.0, "ref_target_ms": 50.0}},
 )
 assert "matches baseline" in note, note
 assert "raw (lock uncontested)" in note, note
 
-# Same host, loaded.
+# Same host, loaded relative to the BASELINE's reading.
 note = build_host_note(
-    {"calibration": {"host_slug": "a"}},
+    {"calibration": {"host_slug": "a", "ref_ms": 50.0}},
     {"calibration": {"host_slug": "a", "ref_ms": 100.0, "ref_target_ms": 50.0}},
 )
 assert "matches baseline" in note, note
 assert "normalized over raw" in note, note
+assert "head 100.00 vs baseline 50.00" in note, note
+
+# A slow SKU measured twice at rest: both refs far above the 50 ms target,
+# but equal to each other. Weighing against the target would call this
+# "loaded" forever; against the baseline's own ref it reads uncontested.
+note = build_host_note(
+    {"calibration": {"host_slug": "a", "ref_ms": 104.4}},
+    {"calibration": {"host_slug": "a", "ref_ms": 104.4, "ref_target_ms": 50.0}},
+)
+assert "raw (lock uncontested)" in note, note
+assert "informational" in note, note
+
+# A baseline with no ref_ms (legacy manifest) falls back to raw.
+note = build_host_note(
+    {"calibration": {"host_slug": "a"}},
+    {"calibration": {"host_slug": "a", "ref_ms": 100.0, "ref_target_ms": 50.0}},
+)
+assert "raw (lock uncontested)" in note, note
 
 # Different host.
 note = build_host_note(
-    {"calibration": {"host_slug": "a"}},
+    {"calibration": {"host_slug": "a", "ref_ms": 50.0}},
     {"calibration": {"host_slug": "b", "ref_ms": 50.0, "ref_target_ms": 50.0}},
 )
 assert "host mismatch" in note, note
@@ -198,7 +226,6 @@ EOF
 # Scenario A: same host, uncontested, head matches baseline → PASS.
 write_run "$WORK/baselines2/a-slug" "a-slug" 10.0 50.0
 write_run "$WORK/head_clean" "a-slug" 10.0 50.0
-mv "$WORK/baselines2/a-slug/smoke.txt" "$WORK/baselines2/a-slug/smoke.txt"
 
 set +e
 python3 "$SCRIPTS_PERF/check_regression.py" \
@@ -218,16 +245,35 @@ set -e
 check "B: raw regression >10% → exit 1" "[[ $B_STATUS -eq 1 ]]"
 check "B: 'FAIL' on stderr"             'grep -q "FAIL" "$WORK/B.err"'
 
-# Scenario C: same host, head's raw +20% but ref=3× target so the normalized head lands well below the 10% threshold even when raw frame time is elevated.
+# Scenario C: same host, head's raw +15% but the head's ref is 3× the BASELINE's
+# ref, so the normalized head lands well below the 10% threshold.
 write_run "$WORK/head_loaded_no_regress" "a-slug" 11.5 150.0
 set +e
 python3 "$SCRIPTS_PERF/check_regression.py" \
     "$WORK/baselines2" "$WORK/head_loaded_no_regress" >"$WORK/C.out" 2>"$WORK/C.err"
 C_STATUS=$?
 set -e
+# baseline ref 50 (baselines2/a-slug), head ref 150 → load_factor 3.00×;
 # head avg → normalize_ms(11.5, 150.0, 50.0) = 11.5*(50/150) ≈ 3.83ms → -61.7% vs 10ms baseline → gate passes
 check "C: loaded host normalized below threshold → exit 0" "[[ $C_STATUS -eq 0 ]]"
 check "C: stderr cites 'normalized'" 'grep -q "normalized" "$WORK/C.err"'
+
+# Scenario C2 [positive fire]: a SLOW host measured at rest on both sides.
+# Both refs are 100 ms against a 50 ms calibration target, so the pre-D4 gate
+# read load_factor 2.00×, halved the head, and turned a real +20% into -40%.
+# Against the baseline's own ref the load factor is 1.00× and the regression
+# lands raw.
+write_run "$WORK/baselines_slow/a-slug" "a-slug" 10.0 100.0
+write_run "$WORK/head_slow_regress" "a-slug" 12.0 100.0
+set +e
+python3 "$SCRIPTS_PERF/check_regression.py" \
+    "$WORK/baselines_slow" "$WORK/head_slow_regress" >"$WORK/C2.out" 2>"$WORK/C2.err"
+C2_STATUS=$?
+set -e
+check "C2: slow host at rest, +20% head → exit 1" "[[ $C2_STATUS -eq 1 ]]"
+check "C2: stderr names the raw weighting" 'grep -q "on raw mean frame avg" "$WORK/C2.err"'
+check "C2: the host note reports both refs" \
+      'grep -q "head 100.00 vs baseline 100.00" "$WORK/C2.out"'
 
 # Scenario D: different host (no matching subdir, no legacy flat) → seed-new.
 write_run "$WORK/head_other_host" "b-slug" 99.0 50.0

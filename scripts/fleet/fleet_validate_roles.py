@@ -1,4 +1,4 @@
-"""Role-sharing / skill-sharing contract validator (#1667, #2893).
+"""Role-sharing / skill-sharing contract validator.
 
 Enforces the wrapper pattern shared by ``docs/design/role-sharing.md`` and
 ``docs/design/skill-sharing.md`` across two lanes:
@@ -14,8 +14,8 @@ Enforces the wrapper pattern shared by ``docs/design/role-sharing.md`` and
           pairing (not cite-scan) is deliberate here: every conforming
           skill wrapper carries its own ``## Deltas`` table, so a cite-scan
           predicate misidentifies a wrapper that merely mentions a sibling
-          flow in prose as a wrapper *of* that sibling (#2893's first plan
-          revision bounced on exactly this — see the false-pairing test).
+          flow in prose as a wrapper *of* that sibling (the false-pairing
+          test pins this).
 
 Severity split (mirrors fleet_validate_stack):
   error   — unambiguous violation (missing required delta key in a present wrapper)
@@ -73,8 +73,7 @@ _WRAPPER_DELTAS_HDR_RE = re.compile(
 # Matches `| **key name** |` (table first-column bold key). The character
 # class deliberately allows spaces — the skills lane names its keys in prose
 # (`**default branch**`, `**raw URL base**`), and a class that excludes the
-# space makes those rows invisible to both extraction sides (#2893: 53 of 63
-# skill-lane keys were silently unseen before this widened).
+# space makes those rows invisible to both extraction sides.
 _DELTA_KEY_RE = re.compile(
     r"^\|\s*\*\*([^*|]+)\*\*\s*\|",
     re.MULTILINE,

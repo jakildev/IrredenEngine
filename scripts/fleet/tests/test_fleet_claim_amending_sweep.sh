@@ -1,19 +1,14 @@
 #!/usr/bin/env bash
 # Tests for the host-qualified amending-sweep in `fleet-claim cleanup --gh`'s
-# PR-label pass (#2099).
+# PR-label pass.
 #
 # The amending-sweep skips removing a past-TTL fleet:amending-<host>-<agent>
 # label when the owning agent's heartbeat is fresh — an active worker is mid
-# amend and sweeping its claim would trigger a duplicate dispatch (#1650). But
-# heartbeats are HOST-LOCAL: ~/.fleet/heartbeats/<agent> is touched only by the
-# worker on its own host. The old code keyed the freshness check by bare
-# basename, so when the sweep ran on host B (mac) over a host-A (windows)
-# amending label, it read *mac*'s heartbeat for the same basename. With a
-# same-basename mac worker alive, the sweep saw a fresh heartbeat and skipped
-# the stale cross-host label forever — the 32h #2089 deadlock.
-#
-# Fix: host-qualify the freshness skip. Only honor a fresh heartbeat for a
-# SAME-HOST amending label; a cross-host label ages out on pure TTL.
+# amend and sweeping its claim would trigger a duplicate dispatch. Heartbeats
+# are HOST-LOCAL: ~/.fleet/heartbeats/<agent> is touched only by the worker on
+# its own host, so the freshness skip is host-qualified: only a SAME-HOST
+# amending label honors a fresh heartbeat; a cross-host label ages out on pure
+# TTL.
 #
 # Every label here is reported as added long ago (events stub → 2020), so the
 # age gate is always satisfied — the heartbeat host-qualification alone decides
@@ -105,13 +100,13 @@ chmod +x "$STUB_DIR/gh"
 export PATH="$STUB_DIR:$PATH"
 
 # Live same-host workers. worker-1 collides (by basename) with the dead
-# cross-host windows-worker-1 amending label below — the exact spoof geometry.
+# cross-host windows-worker-1 amending label — the exact spoof geometry.
 touch "$HOME/.fleet/heartbeats/worker-1"
 touch "$HOME/.fleet/heartbeats/worker-2"
 # (no heartbeat for worker-3 → its same-host claim is genuinely abandoned)
 
 # 800 cross-host (windows) amending, basename collides with live mac-worker-1
-#       -> swept (cannot observe windows's heartbeat; TTL governs) [the bug]
+#       -> swept (cannot observe windows's heartbeat; TTL governs)
 # 801 same-host (mac) amending, owner worker-2 heartbeat fresh
 #       -> kept (live same-host owner)
 # 802 same-host (mac) amending, owner worker-3 has no heartbeat
@@ -143,7 +138,7 @@ assert_removed_contains $'803\tfleet:reviewing-windows-worker-1' \
 # ===========================================================================
 # Dispatch-keyed amend ownership.
 #
-# The phase-1 predicate above vouches for a same-host amending label on the
+# The phase-1 predicate vouches for a same-host amending label on the
 # PANE heartbeat (~/.fleet/heartbeats/<agent>). Step 0 of FIVE role docs
 # touches that file with the same worktree basename, so any later dispatch of
 # any role into the pane renews the liveness of a claim whose owning ITERATION
@@ -173,7 +168,7 @@ write_snap() {
         "$1" "$2" "${4:-$(date +%s)}" "$3" > "$SNAP_DIR/$1.json"
 }
 
-# Every owner below is a live PANE: a fresh heartbeat under its basename is
+# Every owner here is a live PANE: a fresh heartbeat under its basename is
 # exactly what phase 1's predicate reads, and what a later dispatch renews.
 for _a in pool-2 pool-3 pool-4 pool-5 pool-6 pool-7; do
     touch "$HOME/.fleet/heartbeats/$_a"

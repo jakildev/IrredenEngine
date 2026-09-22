@@ -34,6 +34,11 @@ LoggerSpd::LoggerSpd() {
     m_clientLogger->set_level(spdlog::level::trace);
     m_clientLogger->flush_on(spdlog::level::trace);
     spdlog::register_logger(m_clientLogger);
+    /* Logger for Lua `print`, reached from the script binding, not a macro */
+    m_scriptLogger = std::make_shared<spdlog::logger>("ScriptLog", sinks.begin(), sinks.end());
+    m_scriptLogger->set_level(spdlog::level::trace);
+    m_scriptLogger->flush_on(spdlog::level::trace);
+    spdlog::register_logger(m_scriptLogger);
 }
 
 LoggerSpd *LoggerSpd::instance() {

@@ -1,18 +1,7 @@
 #include "ir_iso_common.metal"
 
-// T-139 Phase 1 — GPU particle → trixel canvas render pass (Metal). Mirrors
-// c_render_gpu_particles_to_trixel.glsl. One thread per particle slot; dead
-// slots early-out. Each live particle emits a 6-trixel voxel-diamond
-// (3 faces × 2 sub-pixels) using faceOffset_2x3 + face-priority depth
-// encoding so LIGHTING_TO_TRIXEL can shade each face with its own outward
-// normal. Phase 1 uses NONE subdivision mode (subdivisions = 1).
-//
-// Same MSL image-atomic workaround as the voxel-to-trixel and stateless-
-// particles stages: distance writes go through a `device atomic_int*` scratch
-// buffer (slot 16), and the color write reads back the post-min value to
-// decide whether this particle won the depth test. Race semantics match the
-// GLSL version — same-pixel collisions can produce a one-frame color smear,
-// invisible for ambient particle fields.
+// MSL image atomics use the slot-16 scratch buffer; color writes use the
+// post-min value, and same-pixel ties may smear color for one frame.
 
 struct FrameDataGpuParticles {
     float _updateDeltaTime;

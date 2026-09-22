@@ -47,6 +47,23 @@ int pipelineRank(const std::string &pipeline) {
     return 99;
 }
 
+// One value per recorded frame, in frame order, wrapped at perLine values; an
+// empty series writes nothing, header included.
+template <typename T, typename PrintValue>
+void writeSeries(
+    FILE *f, const char *header, const std::vector<T> &values, size_t perLine, PrintValue printValue
+) {
+    if (values.empty())
+        return;
+    std::fputs(header, f);
+    for (size_t i = 0; i < values.size(); ++i) {
+        printValue(values[i]);
+        const bool endsLine = (i + 1) % perLine == 0 || i + 1 == values.size();
+        std::fputc(endsLine ? '\n' : ' ', f);
+    }
+    std::fputc('\n', f);
+}
+
 } // namespace
 
 void writeProfileReport(const ProfileReport &report, const char *outputPath) {
@@ -75,6 +92,26 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
             fp.p99_,
             fp.min_,
             fp.max_
+        );
+        const size_t warmupFrames = report.frameTimesMs_.size() / kProfileWarmupDivisor;
+        Percentiles steady = computePercentiles(
+            std::vector<float>(
+                report.frameTimesMs_.begin() + static_cast<std::ptrdiff_t>(warmupFrames),
+                report.frameTimesMs_.end()
+            )
+        );
+        std::fprintf(
+            f,
+            "Steady frame time (first %zu of %zu frames excluded):   avg=%.2fms   p50=%.2fms   "
+            "p95=%.2fms   p99=%.2fms   min=%.2fms   max=%.2fms\n",
+            warmupFrames,
+            report.frameTimesMs_.size(),
+            steady.avg_,
+            steady.p50_,
+            steady.p95_,
+            steady.p99_,
+            steady.min_,
+            steady.max_
         );
     }
 
@@ -279,6 +316,53 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
             );
         }
         std::fprintf(f, "\n");
+    }
+
+    // scripts/perf/compare_perf_runs.py parses this section, the steady frame
+    // line and the frame series by their literal text, and
+    // scripts/perf/test_profile_parser.py pins that text to these format strings.
+    const auto &w = report.witness_;
+    std::fprintf(f, "--- Run witness ---\n");
+    std::fprintf(
+        f,
+        "Camera yaw: first=%.3fdeg last=%.3fdeg travel=%.3fdeg samples=%u\n",
+        w.yawFirstDeg_,
+        w.yawLastDeg_,
+        w.yawTravelDeg_,
+        w.poseSamples_
+    );
+    std::fprintf(f, "Camera zoom: first=%.3f last=%.3f\n", w.zoomFirst_, w.zoomLast_);
+    std::fprintf(
+        f,
+        "Camera pivot: explicit focus on %u of %u frames\n",
+        w.explicitPivotSamples_,
+        w.poseSamples_
+    );
+    std::fprintf(
+        f,
+        "Per-axis overflow: maxEntries=%u maxDropped=%u cap=%u samples=%u\n",
+        w.maxOverflowEntries_,
+        w.maxOverflowDropped_,
+        w.overflowCap_,
+        w.overflowSamples_
+    );
+    std::fprintf(f, "\n");
+
+    if (report.frameTimesMs_.size() <= kProfileSeriesMaxFrames) {
+        writeSeries(
+            f,
+            "--- Frame times (ms, in order) ---\n",
+            report.frameTimesMs_,
+            10,
+            [f](float ms) { std::fprintf(f, "%.3f", ms); }
+        );
+        writeSeries(
+            f,
+            "--- Update ticks (per frame, in order) ---\n",
+            report.frameUpdateTicks_,
+            30,
+            [f](uint32_t ticks) { std::fprintf(f, "%u", ticks); }
+        );
     }
 
     std::fprintf(f, "=== END REPORT ===\n");

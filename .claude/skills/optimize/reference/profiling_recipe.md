@@ -53,4 +53,7 @@ flag `↓` (`--regress-pct N --improve-pct M`).
   the bug visible right now"; the matrix answers "did it get worse with this
   change".
 - `save_files/profile_report.txt` — written at shutdown by every creation that
-  called `IREngine::enableFrameTiming(true)`.
+  called `IREngine::enableFrameTiming(true)`. Read a tail from its `Steady
+  frame time` line (first quarter of the frames excluded; the all-frames p99 is
+  the startup hitch), and the pose and per-axis overflow drops from its `Run
+  witness` section, which a Release build writes though it logs nothing.
