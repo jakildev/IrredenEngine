@@ -22,4 +22,5 @@ local ok = pcall(IRFog.addVision, 0, 0, "bad radius")
 assert(not ok)
 assert(IRFog.evalReveal(-10, 0, 3) == before)
 
+fogSetupSelftestDone()
 print("LUA-FOG-SETUP sources=2 centers=-10,0;10,0 PASS")

@@ -1,8 +1,8 @@
 # engine/script/ — LuaJIT 2.1 via sol2
 
-Rationale for these rules: [`docs/design/script-lua-binding-surface.md`](../../docs/design/script-lua-binding-surface.md);
-ECS design: [`docs/design/lua-driven-ecs.md`](../../docs/design/lua-driven-ecs.md).
-Signatures live in `include/irreden/script/lua_*_bindings.hpp`.
+Rationale: [`script-lua-binding-surface.md`](../../docs/design/script-lua-binding-surface.md)
+and [`lua-driven-ecs.md`](../../docs/design/lua-driven-ecs.md). Signatures live
+in `lua_*_bindings.hpp`.
 
 ## Lua runtime: LuaJIT 2.1
 
@@ -14,20 +14,15 @@ C++ exception reaches Lua as a bare `"C++ exception"`.
 
 ## The binding-trait pattern
 
-A C++ component is Lua-visible only through a sibling
-`component_<name>_lua.hpp` that specializes `kHasLuaBinding<C_Foo> = true` and
-defines `bindLuaType<C_Foo>(LuaScript&)` calling
-`script.registerType<C_Foo, ...>("C_Foo", ...)`. A creation includes the headers
-it wants and lists the types in its `lua_component_pack.hpp`
-(`registerTypesFromTraits<...>()`); an unlisted type is invisible.
+A C++ component is Lua-visible only through a sibling `component_<name>_lua.hpp`
+specializing `kHasLuaBinding<C_Foo>` and defining `bindLuaType<C_Foo>`. A
+creation lists its types in `lua_component_pack.hpp`; unlisted types are hidden.
 
 - The `registerType` name is the literal class name and the `IRComponent.C_Foo`
   handle key. Call `bindLuaDrivenEcs()` first, or the handle is never written.
-- **C++-component per-field writes from Lua:** bind a scalar as a member
-  pointer; bind an `IRMath::vec3`/`vec4`/`Color` field as
-  `sol::property(getter, setter)` over `{x, y, z[, w]}` tables via the
-  `*FromLua` helpers (a bare math member pointer is unusable from Lua).
-  `C_LocalTransform` is the reference; `setAt(i, T.new(...))` writes whole rows.
+- **C++-component field writes:** bind scalars as member pointers and math fields
+  as `sol::property` over `{x,y,z[,w]}` via `*FromLua`. `C_LocalTransform` is the
+  reference; `setAt(i, T.new(...))` writes whole rows.
 
 ## Lua-defined components (`IRComponent.register`)
 
@@ -42,20 +37,15 @@ declares a component with native per-field columns in the C++ `ComponentId` spac
   which case the existing handle returns.
 - Scalar `int32`/`float`/`bool` fields expose `C.fields.<f>.bindingId` for
   `IRModifier`; others get `kInvalidFieldId`.
-- In a system tick use `IREntity.deferredCreate({ { C_Hp, overrides } })`
-  (returns a reserved `EntityId`) and `IREntity.deferredDestroy(id)`; what
-  those cannot express (`createEntityBatch*` builders, a rebuild) goes in
-  `IREntity.deferredCall(fn)` — `fn` runs at the next `flushStructuralChanges`
-  (main thread, outside every archetype iteration), where the immediate APIs
-  are legal. A callback error is logged, not raised.
+- In a system tick use `deferredCreate` / `deferredDestroy`; use
+  `deferredCall(fn)` for builders or rebuilds. It runs at the next structural
+  flush on the main thread; callback errors are logged, not raised.
 
 ### Packed vec3 / ivec3 / vec4 fields
 
-Explicit tag plus a keyed or positional default. Reads return allocating
-`{x, y, z[, w]}` tables (not for per-tick paths); writes take a table or the
-IRMath userdata. The `vec4` default is identity `(0, 0, 0, 1)`. `vec4`/`quat`
-are EVAL-only; `vec2` is unsupported. A CODEGEN tick reads `.x/.y/.z` and
-writes `vec3.new(...)`/`ivec3.new(...)`.
+Reads allocate `{x,y,z[,w]}` tables; writes take a table or IRMath userdata.
+`vec4` defaults to identity and is EVAL-only; `vec2` is unsupported. CODEGEN
+reads `.x/.y/.z` and writes `vec3.new(...)`/`ivec3.new(...)`.
 
 ### Two-tier accessor contract
 
@@ -77,23 +67,20 @@ with `mode = "codegen"`.
 
 ## Lua-defined enums (`IREnum.register`)
 
-`IREnum.register("DeviceType", { "EFFECT", "SYNTH" })` returns a name → 0-based
-ordinal table, also at `IREnum.DeviceType`. Bad, empty, or duplicate members, a
-duplicate enum, and the name `"register"` raise; a typo'd member reads `nil`
-([`cpp-lua-enums.md`](../../.claude/rules/cpp-lua-enums.md)). Ordinals match
-under CODEGEN and EVAL, but a CODEGEN tick body cannot use a member.
+`IREnum.register("DeviceType", { "EFFECT", "SYNTH" })` returns a 0-based table
+at `IREnum.DeviceType`. Invalid/duplicate input raises; a typo reads `nil`
+([`cpp-lua-enums.md`](../../.claude/rules/cpp-lua-enums.md)). CODEGEN ticks
+cannot use members.
 
 ## Build-time codegen of Lua-defined components (CODEGEN mode)
 
-`irreden_lua_codegen(<target> SOURCES a.lua OUTPUT_HPP <hpp> [DEFAULT_MODE m] [REGISTRY_NAMESPACE id])`
-emits an `IRComponents::C_Name` struct and binding per `IRComponent.register`,
-plus `registerCodegenComponents`, `registerCodegenSystems`, and `kDefaultEcsMode`.
+`irreden_lua_codegen(...)` emits each component and its binding, plus
+`registerCodegenComponents`, `registerCodegenSystems`, and `kDefaultEcsMode`.
 
 - **Field types:** `int32`, `float`, `bool`, `string`, `vec3`, `ivec3`; others
   are codegen-time errors. **Field order is alphabetical** (struct and `C.new`).
-- The registry lives in `IRScript::CodegenRegistry::<run id>` (default: the
-  `OUTPUT_HPP` stem), re-exported unqualified. A TU including two runs
-  qualifies with the id; a duplicate or keyword id needs `REGISTRY_NAMESPACE`.
+- The registry is `IRScript::CodegenRegistry::<run id>` (the output stem by
+  default). Qualify when including two runs; override invalid/duplicate ids.
 - A `duplicate symbol` on `C_Foo_declared_by_more_than_one_codegen_run_in_this_binary`
   means two runs declare `C_Foo`. Headers may be included from any number of TUs.
 
@@ -123,45 +110,66 @@ order — `bindLuaDrivenEcs()`, `registerCodegenComponents(lua)`,
 
 ## Lua-defined systems (`IRSystem.registerSystem`)
 
-`registerSystem({ name, components, excludes?, tick = function(arch) end, concurrency?, mode? })`
+`registerSystem({ name, components, excludes?, tick, concurrency?, mode? })`
 returns a `SystemId` for any pipeline.
 
 - Name components by handle (`IRComponent.C_LocalTransform`, or the value
   `IRComponent.register` returned); strings resolve but hide typos.
 - `tick` runs once per matched archetype over `arch.length`, `arch.entityAt(i)`,
   and the column views; structural changes use `IREntity.deferred*`.
-- `concurrency` takes `IRSystem.Concurrency.*`; EVAL runs `PARALLEL_FOR` as `MAIN_THREAD`. No begin/end ticks yet.
+- `concurrency` takes `IRSystem.Concurrency.*`; EVAL runs `PARALLEL_FOR` as
+  `MAIN_THREAD`. No begin/end ticks yet.
 - `IRSystem.replaceSystemBody(id, fn)` swaps an EVAL Lua system's tick; other
   ids raise. The component filter is fixed at registration.
 
 ## Pipeline composition (`IRSystem.registerPipeline`, `IRSystem.SystemName`)
 
-C++ declares nameable prefab systems with
-`script.registerPrefabSystems<IRSystem::LIFETIME, ...>()` or
-`registerPrefabSystemId(name, id)`; Lua spells `IRTime.X` and
-`IRSystem.systemId(IRSystem.SystemName.X)`, which raises for an unregistered name.
+C++ declares nameable prefab systems with `registerPrefabSystems` or
+`registerPrefabSystemId`; Lua spells `IRTime.X` and
+`IRSystem.systemId(IRSystem.SystemName.X)`, which raises for an unknown name.
 
-- `registerPipeline` / `registerPipelineGroups` **replace** the event's list; add to a C++-built one with `appendSystem` / `insertSystemBefore/After` ([system pipeline docs](../system/CLAUDE.md#appending-to-a-live-pipeline)).
-- A throttled system (`setSystemCadence`) integrates with `getAccumulatedTicks` / `accumulatedDeltaTime`.
-- Add/remove names and events with `IR_BIND_SYS` in `lua_pipeline_bindings.hpp` / `IR_BIND_TIME` in `bindIRTimeEvents`.
+- `registerPipeline` / `registerPipelineGroups` **replace** the event's list;
+  extend a C++ list with `appendSystem` / `insertSystemBefore/After`
+  ([pipeline docs](../system/CLAUDE.md#live-pipeline-composition)).
+- Throttled systems use `setSystemCadence`, `getAccumulatedTicks`, and
+  `accumulatedDeltaTime`.
+- Bind names/events with `IR_BIND_SYS` / `IR_BIND_TIME`.
 
 ## Engine service bindings
 
-`LuaScript::bindLuaFog()` opts a creation into the engine-owned **IRFog** table;
-it preserves unrelated keys and is deliberately separate from
-`bindLuaDrivenEcs()`. The surface is `setVision`, `addVision`, `clearVisions`,
-`evalReveal`, `lineOfSight`, `setEntityGoverned`, `getEntityReveal`, `setCell`,
-`getCell`, `revealRadius`, `clear`, and `State` (`UNEXPLORED`, `EXPLORED`,
-`VISIBLE`). Vision arguments after `(cx, cy, radius)` are optional; absent fog
-reveals by default. Governance changes archetypes, so defer it from system
-iteration. `lineOfSight` is a validated always-true compatibility stub until
-the engine occlusion query lands; calls are setup/EVAL APIs, not tick intrinsics.
+### IRFog
 
-- **`IRModifier`:** `add*` writes only `C_Modifiers`; resolved values need `registerResolverPipeline()` in UPDATE. Wrong types no-op; cache `FieldBindingId` on hot paths.
-- **`IRCollision.onOverlap*`** needs `DISPATCH_LUA_OVERLAP` after `COLLISION_NOTE_PLATFORM` in UPDATE.
-- **`IRPersist.saveWorld/loadWorld`:** frame boundary only; call `IRWorld.resetGameplay()` immediately before loading.
-- **`IRGui.draw*`** (0-255) / **`IRDebug.draw*`** (0..1 unchecked) are immediate: re-issue in RENDER, after `TEXT_TO_TRIXEL` / before `DEBUG_OVERLAY` respectively.
-- **Widgets:** Lua `onClick` needs `WIDGET_LUA_DISPATCH` in INPUT immediately after `WIDGET_INPUT`.
+`LuaScript::bindLuaFog()` installs the opt-in engine table, preserves custom
+keys, and stays separate from `bindLuaDrivenEcs()`.
+
+- `setVision` replaces circles; `addVision` appends; `clearVisions` clears only
+  circles. Their optional defaults are `edge = kFogVisionEdgeDefault`,
+  `observerZ = zCostUp = freeBand = 0`, and `zCostDown = -1` (mirror up-cost).
+- `evalReveal(x,y,z)` evaluates circles only, not grid memory or the hysteretic
+  body verdict. Attached fog with no circles returns 0; absent fog returns 1.
+  `lineOfSight(from...,to...)` validates six numbers but currently returns true.
+- `setEntityGoverned(id, governed?)` defaults true and changes archetypes, so
+  defer it during iteration. `getEntityReveal` returns stored body reveal, or 1
+  for an ungoverned entity.
+- `setCell`, `getCell`, and `revealRadius` edit/query the grid; `clear()` clears
+  only that grid. States are `UNEXPLORED`, `EXPLORED`, and `VISIBLE`.
+
+The tested examples are
+[`fog_binding_selftest.lua`](../../creations/demos/fog_demo/scripts/fog_binding_selftest.lua)
+and its [cap/governance companion](../../creations/demos/fog_demo/scripts/fog_binding_cap_selftest.lua).
+These are setup/EVAL APIs, not tick intrinsics. Follow-ups are **IRFog occlusion
+integration** and **IRFog subject-model and channel integration**.
+
+- **`IRModifier`:** `add*` writes `C_Modifiers`; resolved values need
+  `registerResolverPipeline()` in UPDATE. Wrong types no-op; cache ids hot.
+- **`IRCollision.onOverlap*`:** raises unless `DISPATCH_LUA_OVERLAP` follows
+  `COLLISION_NOTE_PLATFORM` in UPDATE.
+- **`IRPersist.saveWorld/loadWorld`:** only at a frame boundary, never in a tick
+  or callback; call `IRWorld.resetGameplay()` immediately before loading.
+- **`IRGui.draw*` / `IRDebug.draw*`:** immediate; re-issue in RENDER after
+  `TEXT_TO_TRIXEL` / before `DEBUG_OVERLAY` respectively.
+- **Widgets:** Lua `onClick` raises unless `WIDGET_LUA_DISPATCH` follows
+  `WIDGET_INPUT` in INPUT.
 
 ## Commands and input (`IRCommand.*`, `IRInput.*`)
 
@@ -174,24 +182,17 @@ and a case in `ir_command.cpp`'s `fireByName`/`bindPrefabCommand`.
 
 ## Prefab format (`Prefab.register`, `Prefab.spawn`)
 
-A prefab returns `{ prefab_version = 1, voxel_ref?, rig_ref?, rotation_mode?, canvas_size?, components?, setup?, ... }`.
-`Prefab.spawn(id, pos)` returns a `LuaEntity` or `nil, err`, leaving no entity.
-`rotation_mode` takes `IRComponent.RotationMode.*`; detached modes need
-`canvas_size`. Declarative components (`components = { C_ZoomLevel = {...} }`)
-need `registerComponentFactoryFor<C>` and run before `setup`. `IREntity.bindPoint`
-is a spawn-time query, not per-tick. The registry is process-global: tests call
-`clearPrefabs()`.
+A prefab has a version plus optional refs, rotation, canvas, components, and
+setup. `spawn(id,pos)` returns a `LuaEntity` or `nil,err`. Detached rotations
+need `canvas_size`; declarative components need `registerComponentFactoryFor`.
+`bindPoint` is spawn-time only. The registry is process-global; tests clear it.
 
 ## Script output
 
-`LuaScript`'s constructor binds `print` to the engine's `ScriptLog` logger: one
-flushed, timestamped `[ScriptLog] [info]` line per call, arguments `tostring`-ed
-and tab-joined verbatim — unquoted, so a run-log `grep` for a script's own text
-still matches — ordered with `[EngineLog]` / `[ClientLog]`. The per-line flush is
-the contract: with stdout redirected, stock LuaJIT `print` leaves its bytes in
-stdout's block buffer and loses them on a signal death (a `--timeout` watchdog
-kill, a crash). `io.write` and a bare `sol::state` (`ir_lua_codegen`, a
-test-local state) keep stock behaviour and carry no such guarantee.
+`LuaScript` binds `print` to `ScriptLog`: one flushed, timestamped line per call,
+arguments tab-joined verbatim and ordered with engine/client logs. Flushing is
+load-bearing under redirected stdout and signal death. `io.write` and a bare
+`sol::state` keep stock buffered behavior.
 
 ## Script resolution
 
@@ -203,5 +204,6 @@ cwd ([`BUILD.md`](../../docs/agents/BUILD.md) §"Running an executable").
 - `registerTypeFromTraits<T>()` without its `_lua.hpp` include is a link error.
 - `IRScript::*FromLua` (`ir_script_utils.hpp`) default instead of raising, so
   check the type first; `sol::object::is<sol::table>()` is true for userdata.
-- Batch-create factories must match the C++ arity ([`cpp-ecs-smells.md`](../../.claude/rules/cpp-ecs-smells.md)).
+- Batch-create factories must match C++ arity
+  ([`cpp-ecs-smells.md`](../../.claude/rules/cpp-ecs-smells.md)).
 - `LuaScript` lifetime is absolute: its destruction invalidates every Lua handle.

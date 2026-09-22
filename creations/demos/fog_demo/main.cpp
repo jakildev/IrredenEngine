@@ -100,6 +100,7 @@
 
 #include <array>
 #include <cstdio>
+#include <cstdlib>
 #include <list>
 #include <vector>
 
@@ -140,8 +141,18 @@ int g_autoWarmupFrames = 0; // 0 = --auto-screenshot not requested
 bool g_movingObserver = false; // --moving-observer: per-frame analytic vision circle
 int g_observerFrame = 0;       // deterministic frame index for the orbit
 bool g_luaFogSelftest = false;
+bool g_luaFogCapSelftestDone = false;
+bool g_luaFogSetupSelftestDone = false;
 int g_luaFogProbePhase = 0;
 IREntity::EntityId g_luaFogProbeEntity = IREntity::kNullEntity;
+
+void requireLuaFogSelftest(bool condition, const char *message) {
+    if (condition) {
+        return;
+    }
+    IR_LOG_ERROR("LUA-FOG-PROBE FAIL: {}", message);
+    std::exit(1);
+}
 
 void probeLuaFogUpload() {
     if (g_luaFogProbePhase > 1) {
@@ -152,11 +163,15 @@ void probeLuaFogUpload() {
     buffer->getSubData(0, sizeof(observers), &observers);
 
     if (g_luaFogProbePhase == 0) {
-        IR_ASSERT(
+        requireLuaFogSelftest(
+            g_luaFogCapSelftestDone,
+            "cap script did not complete all Lua assertions"
+        );
+        requireLuaFogSelftest(
             observers.visionCircleCount_ == kMaxFogVisionCircles,
             "IRFog Lua cap probe must upload exactly eight sources"
         );
-        IR_ASSERT(
+        requireLuaFogSelftest(
             observers.visionCircles_[7].x == 160.0f,
             "IRFog Lua cap probe must retain the eighth source"
         );
@@ -166,16 +181,20 @@ void probeLuaFogUpload() {
         g_luaFogProbePhase = 1;
         return;
     }
-    IR_ASSERT(
+    requireLuaFogSelftest(
+        g_luaFogSetupSelftestDone,
+        "setup script did not complete all Lua assertions"
+    );
+    requireLuaFogSelftest(
         observers.visionCircleCount_ == 2,
         "IRFog Lua two-source probe must upload exactly two sources"
     );
-    IR_ASSERT(
+    requireLuaFogSelftest(
         observers.visionCircles_[0] == vec4(-10.0f, 0.0f, 4.0f, 0.0f) &&
             observers.visionCircles_[1] == vec4(10.0f, 0.0f, 4.0f, 0.0f),
         "IRFog Lua two-source probe uploaded unexpected circle records"
     );
-    IR_ASSERT(
+    requireLuaFogSelftest(
         observers.visionCircleHeights_[0] == vec4(3.0f, 0.5f, 0.5f, 1.0f) &&
             observers.visionCircleHeights_[1] == vec4(3.0f, 0.5f, 0.5f, 1.0f),
         "IRFog Lua two-source probe uploaded unexpected height records"
@@ -695,6 +714,8 @@ int main(int argc, char **argv) {
         script.lua()["fogSelftestEntity"] = []() {
             return static_cast<double>(g_luaFogProbeEntity);
         };
+        script.lua()["fogCapSelftestDone"] = []() { g_luaFogCapSelftestDone = true; };
+        script.lua()["fogSetupSelftestDone"] = []() { g_luaFogSetupSelftestDone = true; };
     });
     IREngine::init(argc, argv);
     g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();

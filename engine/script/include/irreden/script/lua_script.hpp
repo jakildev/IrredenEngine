@@ -60,7 +60,7 @@ class LuaScript {
 
     // Bind the opt-in fog service. Extends an existing IRFog table, replaces
     // engine-owned keys, preserves custom keys, and rejects a non-table
-    // collision. See engine/script/CLAUDE.md "IRFog service".
+    // collision. See engine/script/CLAUDE.md "Engine service bindings".
     void bindLuaFog();
 
     // Bind the synthetic-input surface — IRInput.KeyMouseButtons,

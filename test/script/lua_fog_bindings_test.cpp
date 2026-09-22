@@ -36,6 +36,11 @@ class LuaFogBindingsTest : public testing::Test {
         }
     }
 
+    void expectScriptFailsWith(const char *source, const char *expected) {
+        const std::string error = scriptError(source);
+        EXPECT_NE(error.find(expected), std::string::npos);
+    }
+
     IRScript::LuaScript m_lua;
     IREntity::EntityManager m_entityManager;
 };
@@ -153,6 +158,9 @@ TEST_F(LuaFogBindingsTest, RejectsWrongArityTypesAndNonFiniteNumbers) {
     };
 
     expectScriptsFail(kBadCalls);
+    expectScriptFailsWith("IRFog.setCell(0, 0, 7)", "IRFog.setCell argument 3");
+    expectScriptFailsWith("IRFog.revealRadius(0, 0, '1')", "IRFog.revealRadius argument 3");
+    expectScriptFailsWith("IRFog.evalReveal(0, false, 0)", "IRFog.evalReveal argument 2");
 }
 
 TEST_F(LuaFogBindingsTest, RejectsWrongOptionalTypesWithoutMutatingDefaults) {

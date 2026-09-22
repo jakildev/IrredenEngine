@@ -10,4 +10,5 @@ assert(IRFog.getEntityReveal(entity) == 0)
 IRFog.setEntityGoverned(entity, false)
 assert(IRFog.getEntityReveal(entity) == 1)
 
+fogCapSelftestDone()
 print("LUA-FOG-CAP requested=9 PASS")
