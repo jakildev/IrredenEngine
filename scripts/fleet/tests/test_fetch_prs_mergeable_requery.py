@@ -18,13 +18,14 @@ body is the post-change open set, so the row is dropped against it), and a
 200 whose GraphQL fetch then failed (the ETag advanced, so the next 304
 would reuse the pre-change list — the reuse is bypassed once instead).
 
-A check completing on a head moves neither ETag, so a merge-ready or
-checks-red PR's cached `mergeStateStatus` would outlive the check: its
-head's check-runs are polled by ETag, and a move refetches the list.
+A check completing on a head moves neither ETag, so a PR's cached `checks`
+would outlive the check: for every PR whose merger signal reads it, the
+head's check runs and commit statuses are polled by ETag, and a move on
+either refetches the list.
 
 Hermetic: both network seams (conditional_get, _fetch_prs_graphql) are
 patched on the module; a miss would raise, never reach gh/urllib. The
-check-run ETag directory is a temporary one.
+head-check ETag directory is a temporary one.
 Import the script via importlib because it has no .py extension.
 """
 import importlib.machinery
@@ -231,39 +232,47 @@ class StaleRowsOnReuse(unittest.TestCase):
         self.assertEqual(self.calls, 1)
 
 
-def _approved(n, state, mergeable="MERGEABLE", labels=("fleet:approved",)):
-    return {"number": n, "mergeable": mergeable, "mergeStateStatus": state,
+def _approved(n, checks, mergeable="MERGEABLE", labels=("fleet:approved",)):
+    return {"number": n, "mergeable": mergeable, "checks": checks,
             "labels": list(labels), "baseRefName": "master",
             "headRefOid": f"{n:040d}", "closes_issues": [],
             "schema": _mod.PR_RECORD_SCHEMA}
 
 
 class FakeChecks:
-    """The two REST reads fetch_prs makes, with GitHub's ETag behavior for
-    check-runs: a page is `changed` exactly when its body differs from the
-    last one served for the same request. The open list is always a 304."""
+    """The REST reads fetch_prs makes, with GitHub's ETag behavior for a
+    head's check runs and commit statuses: a page is `changed` exactly when
+    its body differs from the last one served for the same request. The open
+    list is always a 304. Any other path raises."""
 
     def __init__(self, open_numbers):
         self.open_body = json.dumps([{"number": n} for n in open_numbers])
         self.runs = {}      # sha -> check-run list
-        self.served = {}    # (sha, page) -> last body
-        self.polled = []    # (sha, page), in order
+        self.statuses = {}  # sha -> commit-status list
+        self.served = {}    # (sha, surface, page) -> last body
+        self.polled = []    # (sha, page) of the check-runs surface, in order
+        self.surfaces = []  # (sha, surface), in order
         self.fail = set()   # shas whose poll errors
 
     def __call__(self, _repo, path, params=None, **_k):
         if path == "pulls":
             return (False, self.open_body)
-        sha = path.split("/")[1]
+        _commits, sha, surface = path.split("/")
+        lists = {"check-runs": ("check_runs", self.runs),
+                 "status": ("statuses", self.statuses)}
+        key, source = lists[surface]
         page = int((params or {}).get("page", "1"))
-        self.polled.append((sha, page))
+        self.surfaces.append((sha, surface))
+        if surface == "check-runs":
+            self.polled.append((sha, page))
         if sha in self.fail:
             return (True, None)
-        per = _mod.CHECK_RUNS_PER_PAGE
-        runs = self.runs.get(sha, [])
-        body = json.dumps({"total_count": len(runs),
-                           "check_runs": runs[(page - 1) * per:page * per]})
-        changed = self.served.get((sha, page)) != body
-        self.served[(sha, page)] = body
+        per = _mod.HEAD_CHECKS_PER_PAGE
+        items = source.get(sha, [])
+        body = json.dumps({"total_count": len(items),
+                           key: items[(page - 1) * per:page * per]})
+        changed = self.served.get((sha, surface, page)) != body
+        self.served[(sha, surface, page)] = body
         return (changed, body)
 
 
@@ -275,7 +284,7 @@ class CheckStateOnReuse(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.etag_dir = Path(tmp.name)
-        dir_patch = patch.object(_mod, "CHECK_RUNS_ETAG_DIR", self.etag_dir)
+        dir_patch = patch.object(_mod, "HEAD_CHECKS_ETAG_DIR", self.etag_dir)
         dir_patch.start()
         self.addCleanup(dir_patch.stop)
 
@@ -293,58 +302,89 @@ class CheckStateOnReuse(unittest.TestCase):
     @staticmethod
     def _signal(pr):
         return _mod._merger_action_signal(set(pr["labels"]), pr["mergeable"],
-                                          pr["baseRefName"], pr["mergeStateStatus"])
+                                          pr["baseRefName"], pr["checks"])
 
     def test_a_check_turning_red_reaches_the_record_and_slice_in_the_same_tick(self):
         fake = FakeChecks([1])
         sha = f"{1:040d}"
         fake.runs[sha] = [{"id": 1, "status": "in_progress", "conclusion": None}]
-        prev = [_approved(1, "CLEAN")]
+        prev = [_approved(1, "unread")]
         self._tick(fake, prev, prev)   # first sight of the head primes its ETag
         self.assertIs(self._tick(fake, prev, None), prev, "a settled head is reused")
         calls_before = self.calls
         fake.runs[sha] = [{"id": 1, "status": "completed", "conclusion": "failure"}]
-        out = self._tick(fake, prev, [_approved(1, "UNSTABLE")])
+        out = self._tick(fake, prev, [_approved(1, "red")])
         self.assertEqual(self.calls, calls_before + 1,
                          "a check move on a 304 tick must re-ask GraphQL")
-        self.assertEqual(out[0]["mergeStateStatus"], "UNSTABLE")
-        self.assertEqual(self._signal(prev[0]), "merge-ready")
+        self.assertEqual(out[0]["checks"], "red")
+        self.assertEqual(self._signal(prev[0]), "checks-unread",
+                         "a running check is never reported red")
         self.assertEqual(self._signal(out[0]), "checks-red")
         sliced = _mod.slice_merger({"repos": {"engine": {"prs": out}}})
-        self.assertEqual([p["mergeStateStatus"] for p in sliced["prs"]], ["UNSTABLE"])
+        self.assertEqual([p["checks"] for p in sliced["prs"]], ["red"])
 
     def test_a_red_check_recovering_clears_checks_red(self):
         fake = FakeChecks([1])
         sha = f"{1:040d}"
         fake.runs[sha] = [{"id": 1, "status": "completed", "conclusion": "failure"}]
-        prev = [_approved(1, "UNSTABLE")]
+        prev = [_approved(1, "red")]
         self._tick(fake, prev, prev)
         fake.runs[sha] = [{"id": 2, "status": "completed", "conclusion": "success"}]
-        out = self._tick(fake, prev, [_approved(1, "CLEAN")])
+        out = self._tick(fake, prev, [_approved(1, "green")])
         self.assertEqual(self._signal(out[0]), "merge-ready")
 
     def test_unchanged_checks_reuse_prev_with_no_graphql(self):
         fake = FakeChecks([1])
-        prev = [_approved(1, "CLEAN")]
+        prev = [_approved(1, "green")]
         self._tick(fake, prev, prev)   # first sight of the head primes its ETag
         self.calls = 0
         out = self._tick(fake, prev, None)
         self.assertIs(out, prev)
         self.assertEqual(self.calls, 0, "an unchanged check list spends no GraphQL")
 
-    def test_only_merge_ready_and_checks_red_heads_are_polled(self):
-        fake = FakeChecks([1, 2, 3, 4])
-        prev = [_approved(1, "CLEAN"),
-                _approved(2, "UNSTABLE"),
-                _approved(3, "DIRTY", mergeable="CONFLICTING"),
-                _approved(4, "CLEAN", labels=())]
+    def test_a_commit_status_turning_red_refetches_in_the_same_tick(self):
+        # A StatusContext rides statusCheckRollup but never the check-runs
+        # list, so only the commit-status poll can see it move.
+        fake = FakeChecks([1])
+        sha = f"{1:040d}"
+        fake.statuses[sha] = [{"id": 1, "context": "ci/legacy", "state": "pending"}]
+        prev = [_approved(1, "unread")]
         self._tick(fake, prev, prev)
-        self.assertEqual(sorted({sha for sha, _ in fake.polled}),
-                         [f"{1:040d}", f"{2:040d}"])
+        self.assertIs(self._tick(fake, prev, None), prev, "a settled head is reused")
+        self.calls = 0
+        fake.statuses[sha] = [{"id": 2, "context": "ci/legacy", "state": "failure"}]
+        out = self._tick(fake, prev, [_approved(1, "red")])
+        self.assertEqual(self.calls, 1, "a status move on a 304 tick must re-ask GraphQL")
+        self.assertEqual(self._signal(out[0]), "checks-red")
+
+    def test_a_commit_status_recovering_clears_checks_red(self):
+        fake = FakeChecks([1])
+        sha = f"{1:040d}"
+        fake.statuses[sha] = [{"id": 1, "context": "ci/legacy", "state": "error"}]
+        prev = [_approved(1, "red")]
+        self._tick(fake, prev, prev)
+        self.calls = 0
+        fake.statuses[sha] = [{"id": 2, "context": "ci/legacy", "state": "success"}]
+        out = self._tick(fake, prev, [_approved(1, "green")])
+        self.assertEqual(self.calls, 1)
+        self.assertEqual(self._signal(out[0]), "merge-ready")
+
+    def test_every_check_reading_head_is_polled_on_both_surfaces(self):
+        fake = FakeChecks([1, 2, 3, 4, 5])
+        prev = [_approved(1, "green"),
+                _approved(2, "red"),
+                _approved(3, "unread"),
+                _approved(4, "green", mergeable="CONFLICTING"),
+                _approved(5, "green", labels=())]
+        self._tick(fake, prev, prev)
+        polled = [f"{n:040d}" for n in (1, 2, 3)]
+        self.assertEqual(sorted(set(fake.surfaces)),
+                         sorted((sha, surface) for sha in polled
+                                for surface in ("check-runs", "status")))
 
     def test_a_poll_error_reads_as_moved(self):
         fake = FakeChecks([1])
-        prev = [_approved(1, "CLEAN")]
+        prev = [_approved(1, "green")]
         self._tick(fake, prev, prev)
         self.calls = 0
         fake.fail.add(f"{1:040d}")
@@ -354,20 +394,20 @@ class CheckStateOnReuse(unittest.TestCase):
     def test_a_failed_refetch_after_a_move_bypasses_the_next_reuse(self):
         fake = FakeChecks([1])
         sha = f"{1:040d}"
-        prev = [_approved(1, "CLEAN")]
+        prev = [_approved(1, "green")]
         self._tick(fake, prev, prev)
         fake.runs[sha] = [{"id": 1, "status": "completed", "conclusion": "failure"}]
         self.assertIs(self._tick(fake, prev, None), prev)
         # The move's ETag already advanced, so the next poll is a 304: only
-        # the bypass keeps the stale CLEAN from being served again.
+        # the bypass keeps the stale green from being served again.
         self.calls = 0
-        out = self._tick(fake, prev, [_approved(1, "UNSTABLE")])
+        out = self._tick(fake, prev, [_approved(1, "red")])
         self.assertEqual(self.calls, 1)
-        self.assertEqual(out[0]["mergeStateStatus"], "UNSTABLE")
+        self.assertEqual(out[0]["checks"], "red")
 
     def test_the_200_path_primes_so_the_next_304_does_not_refetch(self):
         fake = FakeChecks([1])
-        prev = [_approved(1, "CLEAN")]
+        prev = [_approved(1, "green")]
         def changed_open(repo, path, **k):
             return (True, None) if path == "pulls" else fake(repo, path, **k)
         with patch.object(_mod, "conditional_get", changed_open), \
@@ -378,15 +418,15 @@ class CheckStateOnReuse(unittest.TestCase):
         self.assertEqual(self.calls, 1, "a head primed on the 200 tick is a 304 on the next")
 
     def test_a_full_page_reads_the_next_and_a_list_full_at_the_cap_is_moved(self):
-        per, cap = _mod.CHECK_RUNS_PER_PAGE, _mod.CHECK_RUNS_MAX_PAGES
+        per, cap = _mod.HEAD_CHECKS_PER_PAGE, _mod.HEAD_CHECKS_MAX_PAGES
         fake = FakeChecks([1, 2])
         fake.runs[f"{1:040d}"] = [{"id": i} for i in range(per + 1)]
         fake.runs[f"{2:040d}"] = [{"id": i} for i in range(per * cap)]
-        prev = [_approved(1, "CLEAN"), _approved(2, "CLEAN")]
+        prev = [_approved(1, "green"), _approved(2, "green")]
         self._tick(fake, prev, prev)
         self.assertIn((f"{1:040d}", 2), fake.polled, "a full first page reads page 2")
         self.assertNotIn((f"{1:040d}", 3), fake.polled, "a short page ends the read")
-        prev = [_approved(2, "CLEAN")]
+        prev = [_approved(2, "green")]
         self._tick(fake, prev, prev)
         self.calls = 0
         self._tick(fake, prev, prev)
@@ -394,7 +434,7 @@ class CheckStateOnReuse(unittest.TestCase):
 
     def test_entries_of_heads_no_longer_polled_are_pruned(self):
         path = "commits/{}/check-runs"
-        params = {"per_page": str(_mod.CHECK_RUNS_PER_PAGE), "page": "1"}
+        params = {"per_page": str(_mod.HEAD_CHECKS_PER_PAGE), "page": "1"}
         def entry(n):
             return _mod.cache_entry_path(_REPO, path.format(f"{n:040d}"),
                                          params=params, cache_dir=self.etag_dir)
@@ -402,7 +442,7 @@ class CheckStateOnReuse(unittest.TestCase):
             entry(n).parent.mkdir(parents=True, exist_ok=True)
             entry(n).write_text("{}")
         fake = FakeChecks([1])
-        self._tick(fake, [_approved(1, "CLEAN")], None)
+        self._tick(fake, [_approved(1, "green")], None)
         self.assertTrue(entry(1).exists(), "a polled head keeps its entry")
         self.assertFalse(entry(9).exists(), "a head no longer polled loses its entry")
 

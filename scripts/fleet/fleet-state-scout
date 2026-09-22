@@ -600,11 +600,37 @@ def derive_closes_refs(body, repo):
 # existing one; without the bump a quiet repo would serve records that leave
 # a cross-repo-remedied task claimable indefinitely.
 #
-# 4 -> 5: mergeStateStatus added. The merger signal withholds merge-ready
-# while it reads UNSTABLE (failing checks on the head); a schema-4 record
-# lacks the key and would read as clean for every PR until the next ETag
-# flip.
+# 4 -> 5: checks added. The merger signal withholds merge-ready while the
+# head has a failed or unconcluded check; a schema-4 record lacks the key and
+# would read as clean for every PR until the next ETag flip.
 PR_RECORD_SCHEMA = 5
+
+# statusCheckRollup reduced to the one reading the merger signal needs.
+# mergeStateStatus cannot make this cut: GitHub reports UNSTABLE for a check
+# still running as well as for one that failed. The failed conclusions are
+# fleet-decisions' FAILED set; a cancelled or stale run is no reading.
+_CHECK_RUN_RED = frozenset({"FAILURE", "TIMED_OUT", "STARTUP_FAILURE"})
+_CHECK_RUN_GREEN = frozenset({"SUCCESS", "NEUTRAL", "SKIPPED"})
+_STATUS_CONTEXT_RED = frozenset({"FAILURE", "ERROR"})
+
+
+def _reduce_checks(rollup):
+    """"red" when any check on the head failed, else "unread" when any has
+    not concluded green (queued, running, cancelled, a status still
+    EXPECTED), else "green" — a head with no checks included."""
+    reading = "green"
+    for check in rollup or ():
+        if check.get("__typename") == "StatusContext":
+            state = check.get("state")
+            red, green = state in _STATUS_CONTEXT_RED, state == "SUCCESS"
+        else:
+            conclusion = check.get("conclusion") if check.get("status") == "COMPLETED" else None
+            red, green = conclusion in _CHECK_RUN_RED, conclusion in _CHECK_RUN_GREEN
+        if red:
+            return "red"
+        if not green:
+            reading = "unread"
+    return reading
 
 
 def _fetch_prs_graphql(repo):
@@ -616,7 +642,7 @@ def _fetch_prs_graphql(repo):
         # head oid invalidates the cached detail/diff). It rides the same list
         # poll, so requesting it costs no extra call.
         "number,title,headRefName,headRefOid,baseRefName,author,labels,mergeable,"
-        "mergeStateStatus,isDraft,reviews,updatedAt,body",
+        "statusCheckRollup,isDraft,reviews,updatedAt,body",
     ])
     if out is None:
         return None
@@ -635,6 +661,7 @@ def _fetch_prs_graphql(repo):
     for pr in prs:
         pr["labels"] = sorted(label["name"] for label in pr.get("labels", []))
         pr["author"] = pr.get("author", {}).get("login", "")
+        pr["checks"] = _reduce_checks(pr.pop("statusCheckRollup", None))
         # Retain a body only on the LATEST review per PR. Exactly two
         # consumers read this array: the sonnet reviewer tests reviews[].author
         # (has any fleet review landed yet), and the opus reviewer tests the
@@ -721,20 +748,23 @@ def _drop_prs_closed_since(repo, prev, rest_body):
 
 
 # A check completing on a PR's head bumps neither the PR's updated_at nor the
-# open-list ETag, so the 304 fast path would serve a cached mergeStateStatus
-# until an unrelated list change. The heads whose merger signal reads that
-# state have their check-runs polled by ETag instead; the entries live in their
-# own directory because they are keyed by head sha, and each poll prunes the
-# ones no longer polled.
-CHECK_RUNS_ETAG_DIR = ETAG_DIR / "check-runs"
-CHECK_RUNS_PER_PAGE = 100
-CHECK_RUNS_MAX_PAGES = 3
+# open-list ETag, so the 304 fast path would serve a cached `checks` until an
+# unrelated list change. The heads whose merger signal reads it have both
+# surfaces statusCheckRollup is built from polled by ETag instead — check runs
+# and commit statuses, each list under its key; the entries live in their own
+# directory because they are keyed by head sha, and each poll prunes the ones
+# no longer polled.
+HEAD_CHECKS_ETAG_DIR = ETAG_DIR / "head-checks"
+HEAD_CHECKS_SURFACES = (("check-runs", "check_runs"), ("status", "statuses"))
+HEAD_CHECKS_PER_PAGE = 100
+HEAD_CHECKS_MAX_PAGES = 3
+_CHECK_READ_SIGNALS = frozenset({"merge-ready", "checks-red", "checks-unread"})
 
 
 def _check_state_moved(repo, prs):
-    """True when a check on the head of any PR whose merger signal is
-    merge-ready or checks-red may have changed since the last poll. Every such
-    head is polled, so each primes its ETag on the tick it first appears. An
+    """True when a check or commit status on the head of any PR whose merger
+    signal reads `checks` may have changed since the last poll. Every such
+    head is polled, so each primes its ETags on the tick it first appears. An
     unchanged page is a 304 for zero quota; an error, an unparseable page, or
     a list still full at the page cap reads as moved."""
     moved = False
@@ -742,30 +772,32 @@ def _check_state_moved(repo, prs):
     for pr in prs:
         signal = _merger_action_signal(
             set(pr.get("labels") or ()), pr.get("mergeable"),
-            pr.get("baseRefName", "master"), pr.get("mergeStateStatus"),
+            pr.get("baseRefName", "master"), pr.get("checks"),
         )
-        if signal not in ("merge-ready", "checks-red"):
+        if signal not in _CHECK_READ_SIGNALS:
             continue
         sha = pr.get("headRefOid")
         if not sha:
             moved = True
             continue
-        path = f"commits/{sha}/check-runs"
-        for page in range(1, CHECK_RUNS_MAX_PAGES + 1):
-            params = {"per_page": str(CHECK_RUNS_PER_PAGE), "page": str(page)}
-            keep.add(cache_entry_path(repo, path, params=params, cache_dir=CHECK_RUNS_ETAG_DIR))
-            changed, body = conditional_get(repo, path, params=params,
-                                            cache_dir=CHECK_RUNS_ETAG_DIR)
-            moved = moved or changed
-            try:
-                full = len(json.loads(body)["check_runs"]) >= CHECK_RUNS_PER_PAGE
-            except (TypeError, ValueError, KeyError):
+        for surface, key in HEAD_CHECKS_SURFACES:
+            path = f"commits/{sha}/{surface}"
+            for page in range(1, HEAD_CHECKS_MAX_PAGES + 1):
+                params = {"per_page": str(HEAD_CHECKS_PER_PAGE), "page": str(page)}
+                keep.add(cache_entry_path(repo, path, params=params,
+                                          cache_dir=HEAD_CHECKS_ETAG_DIR))
+                changed, body = conditional_get(repo, path, params=params,
+                                                cache_dir=HEAD_CHECKS_ETAG_DIR)
+                moved = moved or changed
+                try:
+                    full = len(json.loads(body)[key]) >= HEAD_CHECKS_PER_PAGE
+                except (TypeError, ValueError, KeyError):
+                    moved = True
+                    break
+                if not full:
+                    break
+            else:
                 moved = True
-                break
-            if not full:
-                break
-        else:
-            moved = True
     # Only a pass that polled prunes: a head that stopped being polled keeps
     # its entry until the next pass that polls any head.
     if keep:
@@ -829,7 +861,7 @@ def fetch_prs(repo, prev=None):
             return fresh
         return prev
     if prev is not None:
-        # Primes the check-run ETags against the list about to be replaced,
+        # Primes the head-check ETags against the list about to be replaced,
         # so the next 304 tick does not read every unprimed head as moved.
         _check_state_moved(repo, prev)
     _mergeable_requery_ticks[repo] = 0
@@ -3339,14 +3371,15 @@ _MERGER_PROJECTION_SKIP_LABELS = frozenset(_SMOKE_PENDING_LABELS | {
 })
 
 
-def _merger_action_signal(labels, mergeable, base_ref, merge_state=None):
+def _merger_action_signal(labels, mergeable, base_ref, checks=None):
     """Canonical signal for the merger's view of a PR.
 
     Returns one of:
         "merge-ready"      — fleet:approved + MERGEABLE + base==master + no skip,
-                             and no failing check on the head
-        "checks-red"       — the same, but GitHub's mergeStateStatus reads
-                             UNSTABLE: a check on the head is failing
+                             and every check on the head concluded green
+        "checks-red"       — the same, but a check on the head failed
+        "checks-unread"    — the same, but a check on the head has not
+                             concluded (queued, running, cancelled)
         "needs-resolve"    — approved but CONFLICTING
         None               — merger has no action right now (skip)
 
@@ -3354,13 +3387,13 @@ def _merger_action_signal(labels, mergeable, base_ref, merge_state=None):
     human's merge click (FLEET.md § Who merges): the merger has no action
     on it, so project_merger leaves it out of the trigger hash — its
     appearance, and the merge that removes it, must never arm the lane.
-    The slice still carries it for the role to read. `checks-red` is the
-    same non-action with the reading the human merges against: a PR whose
-    head has a failing check is never reported ready. `mergeStateStatus`
-    is GitHub's merge-box state (CLEAN / UNSTABLE / BEHIND / DIRTY /
-    BLOCKED); `mergeable` alone never carries check state. BEHIND is left
-    alone here: it only appears under an up-to-date branch rule and is the
-    human's Update-branch click, not a rebase the merger should loop on.
+    The slice still carries it for the role to read. `checks-red` and
+    `checks-unread` are the same non-action with the reading the human
+    merges against: a PR whose head has a failed or unconcluded check is
+    never reported ready, and a running check is never reported red.
+    `checks` is the record's reduced statusCheckRollup (_reduce_checks);
+    `mergeable` alone never carries check state. A record without it reads
+    merge-ready.
 
     An approved PR with `base != master` is a native-stack child whose
     parent hasn't merged yet — GitHub owns its base management and the
@@ -3411,7 +3444,7 @@ def _merger_action_signal(labels, mergeable, base_ref, merge_state=None):
             return None
         return "needs-resolve"
     if approved and mergeable == "MERGEABLE" and base_ref == "master":
-        return "checks-red" if merge_state == "UNSTABLE" else "merge-ready"
+        return {"red": "checks-red", "unread": "checks-unread"}.get(checks, "merge-ready")
     return None
 
 
@@ -3427,7 +3460,7 @@ def project_merger(state):
             labels = set(pr["labels"])
             signal = _merger_action_signal(
                 labels, pr.get("mergeable"), pr.get("baseRefName", "master"),
-                pr.get("mergeStateStatus"),
+                pr.get("checks"),
             )
             if signal != "needs-resolve":
                 continue
@@ -3442,7 +3475,7 @@ _MERGER_LLM_SKIP_LABELS = frozenset({"fleet:semantic-conflict"})
 _MERGER_LLM_SKIP_PREFIXES = ("fleet:amending-", "fleet:claim-")
 
 
-def _merger_candidate_signal(labels, mergeable, base_ref, merge_state=None):
+def _merger_candidate_signal(labels, mergeable, base_ref, checks=None):
     """The signal under which tier-0 (fleet-rebase) can route a PR to the
     LLM merger pass as a `merge:<repo>:<N>` target, or None.
 
@@ -3455,7 +3488,7 @@ def _merger_candidate_signal(labels, mergeable, base_ref, merge_state=None):
     if (labels & (_MERGER_PROJECTION_SKIP_LABELS | _MERGER_LLM_SKIP_LABELS)
             or any(label.startswith(_MERGER_LLM_SKIP_PREFIXES) for label in labels)):
         return None
-    signal = _merger_action_signal(labels, mergeable, base_ref, merge_state)
+    signal = _merger_action_signal(labels, mergeable, base_ref, checks)
     if signal == "needs-resolve":
         return signal
     if mergeable in ("CONFLICTING", "UNKNOWN"):
@@ -3959,7 +3992,7 @@ def slice_merger(state):
             approved = "fleet:approved" in labels
             blocked = mergeable not in (None, "", "MERGEABLE", "UNKNOWN")
             candidate = _merger_candidate_signal(labels, mergeable, base_ref,
-                                                 pr.get("mergeStateStatus"))
+                                                 pr.get("checks"))
             if approved or blocked or candidate:
                 out["prs"].append(_slice_pr_with_repo(repo_key, pr))
             if candidate:

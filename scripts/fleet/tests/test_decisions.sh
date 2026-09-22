@@ -639,7 +639,7 @@ unstable_lines=$(grep -c "mergeStateStatus UNSTABLE" "$TMP/out.txt")
 assert_eq "$unstable_lines" "1" \
     "the merge-box UNSTABLE hold prints only where no run or note accounts for it (#704), not on #700/#701"
 assert_contains "$out" \
-    "hold: GitHub reports a failing check on the head (mergeStateStatus UNSTABLE) that no completed run above accounts for" \
+    "hold: GitHub reports a check on the head that has not passed (mergeStateStatus UNSTABLE: failed or still running) that no completed run above accounts for" \
     "UNSTABLE with every run green is held as unread"
 stale_lines=$(grep -c "Update branch to re-run" "$TMP/out.txt")
 assert_eq "$stale_lines" "1" "only the head whose green predates master's failure is held stale"

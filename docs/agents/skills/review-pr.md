@@ -69,7 +69,8 @@ gh api repos/<repo>/pulls/<N>/comments
 
 The second call returns inline comments that `gh pr view --json` omits.
 `statusCheckRollup` is the checks on the head as the human will see them at
-merge; `mergeStateStatus` is `UNSTABLE` while any of them fails.
+merge; `mergeStateStatus` is `UNSTABLE` while any of them fails or is
+still running.
 "Latest": `gh pr list --state open --limit 5`, confirm if ambiguous.
 
 ### 1b. Bail check, then diff
