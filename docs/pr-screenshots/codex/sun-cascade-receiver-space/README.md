@@ -99,3 +99,8 @@ tolerance change or presumed root cause is used to approve the regression.
 
 The [forced-cascade controls](selector-control/README.md) reproduce the corrected
 fixture with the far map alone, while neither map passes strict edge checks.
+
+The [fragment and GRID-face controls](fragment-control/README.md) isolate a
+remaining map-side error with exact receiver geometry. Reusing finite face
+queries for the GRID caster matches the exact-ray reference at all four
+cardinal views; general receiver storage and query scalability remain pending.

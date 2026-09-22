@@ -1,0 +1,56 @@
+diff --git a/engine/render/src/shaders/metal/c_bake_voxel_sun_faces.metal b/engine/render/src/shaders/metal/c_bake_voxel_sun_faces.metal
+index 75a3bda3c..8ebec6cb6 100644
+--- a/engine/render/src/shaders/metal/c_bake_voxel_sun_faces.metal
++++ b/engine/render/src/shaders/metal/c_bake_voxel_sun_faces.metal
+@@ -110,11 +110,11 @@ kernel void c_bake_voxel_sun_faces(
+         edgeU = rotateByQuat(edgeU, faceFrame.viewToWorld);
+         edgeV = rotateByQuat(edgeV, faceFrame.viewToWorld);
+         // Arbitrary source rotations cannot use the shared world/camera face basis.
+-        const uint faceMarker = sunVoxelFaceMarker(faceId, faceFrame.dispatch.w);
++        const uint faceMarker = sunVoxelFaceMarker(faceId, 2);
+         const float3 projected = sunSpaceProject(corner, sunFrame.sunBasisU.xyz, sunFrame.sunBasisV.xyz, sunFrame.sunDirection.xyz);
+         const float3 projectedU = sunSpaceProject(edgeU, sunFrame.sunBasisU.xyz, sunFrame.sunBasisV.xyz, sunFrame.sunDirection.xyz);
+         const float3 projectedV = sunSpaceProject(edgeV, sunFrame.sunBasisU.xyz, sunFrame.sunBasisV.xyz, sunFrame.sunDirection.xyz);
+-        if (rigidSource) indexSourceSunFace(sunDepthBuf, projected, projectedU, projectedV, sunFrame);
++        indexSourceSunFace(sunDepthBuf, projected, projectedU, projectedV, sunFrame);
+         rasterSunFace(sunDepthBuf, projected, projectedU, projectedV, sunFrame.cascadeOriginUV_0, sunFrame.cascadeTexelSize_0, sunWriteIsSourceFace(faceMarker) ? int(kSourceFaceFallbackOffset) : 0, faceMarker);
+         rasterSunFace(sunDepthBuf, projected, projectedU, projectedV, sunFrame.cascadeOriginUV_1, sunFrame.cascadeTexelSize_1, kCascadeTexelCount + (sunWriteIsSourceFace(faceMarker) ? int(kSourceFaceFallbackOffset) : 0), faceMarker);
+     }
+diff --git a/engine/render/src/shaders/metal/trixel_to_framebuffer.metal b/engine/render/src/shaders/metal/trixel_to_framebuffer.metal
+index 74ab9094f..5f77c55f0 100644
+--- a/engine/render/src/shaders/metal/trixel_to_framebuffer.metal
++++ b/engine/render/src/shaders/metal/trixel_to_framebuffer.metal
+@@ -2,6 +2,7 @@
+ using namespace metal;
+
+ #include "ir_iso_common.metal"
++#include "ir_sun_shadow_sample.metal"
+
+ struct VertexIn {
+     float2 position [[attribute(0)]];
+@@ -90,6 +91,9 @@ fragment FragmentOut f_trixel_to_framebuffer(
+     texture2d<uint> triangleEntityIds [[texture(2)]],
+     constant GlobalConstants& globals [[buffer(1)]],
+     constant FrameDataIsoTriangles& frameData [[buffer(3)]],
++    constant FrameDataVoxelToTrixel& voxelFrame [[buffer(7)]],
++    constant FrameDataSun& sunFrame [[buffer(29)]],
++    device const uint* sunDepthBuf [[buffer(28)]],
+     device HoveredEntityIdBuffer& hovered [[buffer(14)]]
+ ) {
+     FragmentOut out;
+@@ -180,6 +184,15 @@ fragment FragmentOut f_trixel_to_framebuffer(
+         discard_fragment();
+     }
+
++    if (color.b < color.r * 1.25 && color.r > 0.1) {
++        const float2 iso = (originRaw - textureSize * 0.5) / 2.0;
++        const float3 view = float3(2.0 - (iso.x + iso.y) * 0.5, 2.0 + (iso.x - iso.y) * 0.5, 2.0);
++        const float3 p = rotateYawZInv(view, voxelFrame.visualYaw);
++        const float4 casterViewToWorld = float4(0.0, 0.0, sin(voxelFrame.visualYaw * 0.5), cos(voxelFrame.visualYaw * 0.5));
++        const float visibility = worldSurfaceSunShadowFactor(p, float3(0.0, 0.0, -1.0), casterViewToWorld, sunFrame, sunDepthBuf);
++        if (abs(p.x) < 59.0 && abs(p.y) < 59.0)
++            color.rgb = mix(float3(44.0, 44.0, 46.0), float3(108.0, 109.0, 115.0), visibility) / 255.0;
++    }
+     out.color = color;
+     out.depth = depth;
+     return out;
