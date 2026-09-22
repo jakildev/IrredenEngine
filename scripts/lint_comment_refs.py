@@ -40,6 +40,14 @@ as `env`, `sudo` and `timeout` together with their option operands — so
 Exit 0: no file exceeds its budget. Exit 1: at least one does, printed as
 `file:line: <comment>`; the summary names the baseline command to run after a
 genuine sweep.
+
+`--against <ref>` also scans `ref`'s tree, against the baseline committed at
+`ref`, and splits the offenders into the ones this tree introduced and the
+ones it inherited from `ref` (`ratchet_against.split`: a file is introduced
+when its excess over budget is above `ref`'s). Each offender's lines print
+under an `introduced:` line or an `inherited:` line, and the run exits 1 only
+when something was introduced, so a pull request built on a red base goes red
+on its own regression and on nothing else. Exit 2: `ref` cannot be read.
 """
 import argparse
 import json
@@ -47,6 +55,8 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+
+import ratchet_against
 
 REPO = Path(__file__).resolve().parents[1]
 BASELINE = Path(__file__).resolve().with_name("lint_comment_refs_baseline.json")
@@ -83,12 +93,13 @@ def tracked_files():
     return [p for p in out.split("\0") if p]
 
 
-def comment_family(rel):
+def comment_family(rel, first_line=None):
     """`slash`, `python`, `shell`, `cmake`, `powershell`, or `dash` for a file
     the ratchet covers, else None. Each family is one comment syntax: families
     do not share a tokenizer, because what is not a comment differs between
     them (a shell here-document, a CMake bracket argument, a PowerShell
-    here-string all carry `#` that starts nothing)."""
+    here-string all carry `#` that starts nothing). An extension-less file's
+    `first_line` is read from the working tree unless the caller has it."""
     if rel.startswith(SKIP_PREFIXES):
         return None
     p = Path(rel)
@@ -104,7 +115,9 @@ def comment_family(rel):
         return "cmake"
     if p.suffix in DASH_COMMENT_EXTS:
         return "dash"
-    if p.suffix == "" and not p.name.startswith("."):
+    if _names_its_interpreter(p):
+        if first_line is not None:
+            return _shebang_family(first_line)
         try:
             with open(REPO / rel, errors="replace") as f:
                 first = f.readline()
@@ -112,6 +125,11 @@ def comment_family(rel):
             return None
         return _shebang_family(first)
     return None
+
+
+def _names_its_interpreter(p):
+    """An extension-less file, whose family its shebang line decides."""
+    return p.suffix == "" and not p.name.startswith(".")
 
 
 def _skip_quoted(text, i, quote, escape="\\", multiline=False):
@@ -609,6 +627,30 @@ def scan_tree():
     return counts, details
 
 
+def scan_ref(ref):
+    """`(counts, details, baseline)` for `ref`'s tree, `baseline` being the
+    one committed at `ref`."""
+    files = {rel: oid for rel, oid in ratchet_against.ref_files(REPO, ref).items()
+             if not rel.startswith(SKIP_PREFIXES)}
+    bare = {rel: oid for rel, oid in files.items() if _names_its_interpreter(Path(rel))}
+    firsts = ratchet_against.read_blobs(REPO, bare.values())
+    families = {}
+    for rel, oid in files.items():
+        first = ratchet_against.decode(firsts[oid]).split("\n", 1)[0] if rel in bare else None
+        family = comment_family(rel, first)
+        if family is not None:
+            families[rel] = family
+    blobs = ratchet_against.read_blobs(REPO, (files[rel] for rel in families))
+    counts, details = {}, {}
+    for rel, family in families.items():
+        hits = scan_text(ratchet_against.decode(blobs[files[rel]]), family)
+        if hits:
+            counts[rel] = len(hits)
+            details[rel] = hits
+    text = ratchet_against.ref_text(REPO, ref, BASELINE.relative_to(REPO).as_posix())
+    return counts, details, json.loads(text) if text is not None else {}
+
+
 def load_baseline(path=None):
     path = BASELINE if path is None else Path(path)
     if not path.exists():
@@ -628,7 +670,12 @@ def main(argv):
     ap.add_argument("--baseline", metavar="PATH",
                     help="check against this baseline instead of the committed one "
                          "(CI passes the base branch's copy)")
+    ap.add_argument("--against", metavar="REF",
+                    help="split the offenders into those introduced relative to REF's tree "
+                         "and those inherited from it; exit 1 only on an introduced one")
     args = ap.parse_args(argv)
+    if args.against and args.update_baseline:
+        ap.error("--against does not combine with --update-baseline")
 
     counts, details = scan_tree()
     baseline = load_baseline(args.baseline)
@@ -653,15 +700,18 @@ def main(argv):
               f"across {sum(1 for v in merged.values() if v)} file(s)")
         return 0
 
+    if args.against:
+        rc = report_against(args.against, counts, details, baseline)
+        if rc is not None:
+            return rc
+
     over = []
     for rel, n in counts.items():
         budget = baseline.get(rel, 0)
         if n > budget:
             over.append((rel, budget, n))
     for rel, budget, n in sorted(over):
-        for line_no, text in details[rel][:5]:
-            print(f"{rel}:{line_no}: {text}")
-        print(f"  -> {rel}: {n} issue/PR reference(s) in comments, budget {budget}")
+        print_offender(rel, n, budget, details[rel])
     if over:
         print(f"\n{len(over)} file(s) gained issue/PR references in comments. "
               "Explain the code in the comment or move the history to the PR body; "
@@ -671,6 +721,40 @@ def main(argv):
     total = sum(counts.values())
     print(f"ok: {total} reference line(s) across {len(counts)} file(s), "
           f"none above its budget")
+    return 0
+
+
+def print_offender(rel, n, budget, hits):
+    for line_no, text in hits[:5]:
+        print(f"{rel}:{line_no}: {text}")
+    print(f"  -> {rel}: {n} issue/PR reference(s) in comments, budget {budget}")
+
+
+def report_against(ref, counts, details, baseline):
+    """The `--against` report and its exit code, or None when nothing is over
+    budget and the flat `ok:` line is the whole report."""
+    try:
+        base_counts, _, base_baseline = scan_ref(ref)
+    except ratchet_against.RefError as e:
+        print(f"cannot measure {ref}: {e}", file=sys.stderr)
+        return 2
+    introduced, inherited = ratchet_against.split(
+        {rel: (n, baseline.get(rel, 0)) for rel, n in counts.items()},
+        {rel: (n, base_baseline.get(rel, 0)) for rel, n in base_counts.items()})
+    if not introduced and not inherited:
+        return None
+    for header, rels in (("introduced:", introduced), ("inherited:", inherited)):
+        print(header)
+        for rel in rels:
+            print_offender(rel, counts[rel], baseline.get(rel, 0), details[rel])
+    if introduced:
+        print(f"\n{len(introduced)} file(s) gained issue/PR references in comments beyond "
+              f"what {ref} already carries. Explain the code in the comment or move the "
+              "history to the PR body; after a genuine sweep, run `python3 "
+              "scripts/lint_comment_refs.py --update-baseline`.", file=sys.stderr)
+        return 1
+    print(f"\n{len(inherited)} inherited offender(s): over budget on {ref} already and "
+          "not worsened here, so they are not this change's to fix.", file=sys.stderr)
     return 0
 
 
