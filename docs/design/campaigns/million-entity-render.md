@@ -136,6 +136,7 @@ Its canonical detail stays in [rendering-audit-todo.md](../rendering-audit-todo.
 | 2026-09-21 | Resync before this slice's PR: three more rows. #3671 (a fleet worker's fix for #3660, off master) edits `component_per_axis_trixel_canvases.hpp`, the per-axis design doc and `continuous-yaw-sweep.md`, which #3665 also edits, and `system_voxel_to_trixel.hpp`, which #3665 does not, so a conflict at merge is expected in the first three; the campaign resolves it on #3665 if #3671 lands first (the parked store keeps `laggedOverflowCount_` inside `PerAxisCanvasStore`; #3671's bound reads the ctrl block's word 0, which the store owns) and otherwise leaves it to that lane. #3672 (the Codex lane's SDF surface interval contract test, stacked on #3668), #3659 (fleet-test repair) and #3670 (the settings allowlist and its completeness test) touch no campaign fixture: no effect |
 | 2026-09-22 | Checkpoint 4: #3665, #3666, #3669 and #3673 each reviewed by a fresh-context reviewer (read-only, every guard asked what input makes it pass that should not, every table recomputed from the committed reports), plus the render and ECS invariant audits over #3665's C++. #3665: approve; one nit both audits found (releasing a parked set left its wait counter stale, now `releaseParked()` on both release paths with a headless test), two claims narrowed (the crossing experiment removes the free and the create together; the per-crossing saving is 50 to 57 ms in running order) and the guard for a canvas resize the engine cannot make today now says so. #3666: needs-fix, applied; the review found the mechanism the doc had missed, the sort's encoded span as a power-of-two staircase in the lane count (2,097,152 at 44.4°, 4,194,304 a tenth of a degree off, the full cap on the pose), withdrew the coset-tie reading (it contradicts the design doc it cited) and narrowed five sentences (the envelope carries four fifths of the rise and the fixed-update catch-up the rest; per-axis entries spread by 132; the second round's excess sits on the band at a lower load). #3669: needs-fix, applied; the relight delta's sign was wrong, the exclusion was a per-round choice and not a load cut, one cell tripled and none doubled, and three caveats were owed (arm order confounded with falling load, the sort-off delta net of the relight and scatter rows rising, the earlier −4.07 ms probe not comparable); the sort-off patch is committed beside the reports. #3673: needs-fix, applied; `## Now` named merged #3629 (no campaign label, so the oracle's stale check could not see it), two resync rows misattributed files, the fullspan binary lacked provenance (a README and the patch now), and a repeat of the fresh capture showed the under-sorted frame is nondeterministic, which strengthens the mechanism. Two merges in this pass committed a resolver's output before it was read: one carried conflict markers into this ledger and was repaired by the next commit, one garbled a prose section that was rebuilt. Every PR reads MERGEABLE with green CI. Merge order bottom-up: #3665 → #3666 → #3669 → #3673 |
 | 2026-09-22 | Resync after Checkpoint 4: #3678 (the instruction-size and comment-refs ratchets measured against the previous tip with a warning band; touches `docs/agents/VALIDATION.md`, which #3647 made a campaign file) and #3674 (the fog-of-war reveal model as a docs-first `fleet:task`, naming the render prefab `CLAUDE.md` for its fog bullets) touch no campaign fixture and no file this stack changes beyond that `CLAUDE.md`'s fog bullet, which the stack does not: no effect |
+| 2026-09-22 | Resync on D1.2h's rebase onto master: the three slices below it squash-merged (#3665, #3666, #3669), and so did the Codex lane's #3632, #3668 and #3672, so this PR now carries only D1.2h's own commits. New other-lane PRs on campaign files, read: #3689 (opt-in IRFog Lua service; `fog_demo`, `test/CMakeLists.txt`) and #3690 (the fog reveal subject model; the render prefab `CLAUDE.md`'s fog bullets) are the fog lane's, with no effect. The Codex lane's SDF stack off master (#3691, then #3693, #3694, #3695, #3697, #3698, #3699, and #3700 on top, which moves every voxel shadow caster to projected-face queries) owns the shape, SDF, sun-cast, sun-face and lighting kernels and their tests, and edits this file's contributor-lanes paragraph and one worklist line, not the ledger or `## Now`. Two corrections to note: #3694 splits the SDF pass into five new `gpu_stage_timing.hpp` rows (29 → 34) and leaves `shapePass1` unwritten, so after it lands a campaign report's shape rows cannot be compared with earlier `shapePass1` readings; and #3693 adds `docs/**/*.patch whitespace=-trailing-space` to `.gitattributes`, a superset of this PR's `docs/perf/**/*.patch` line in another hunk, so the two merge mechanically and one becomes redundant. #3671 (#3660's fix, still open, and MERGEABLE against a master that now has the parked store) and #3643 are unchanged from the rows above |
 
 ### Decisions taken
 
@@ -168,6 +169,15 @@ Its canonical detail stays in [rendering-audit-todo.md](../rendering-audit-todo.
   mechanically. The seven readers of `isAllocated()` are untouched, three of
   them in files the other lanes own, which is why the parked set lives inside
   the component.
+- 2026-09-22 (lane split after D1.2h's rebase onto master): the Codex SDF
+  stack (#3691, #3693, #3694, #3695, #3697, #3698, #3699, #3700) owns the
+  shape, SDF, sun-cast, sun-face and lighting kernels (GLSL and Metal), their
+  render tests, `metal_render_impl.cpp` and the SDF rows it adds to
+  `gpu_stage_timing.hpp`. The campaign keeps that file's per-axis and overflow
+  rows. #3689 and #3690 own the fog files. #3635 and #3643 keep the files
+  named above, and #3671 keeps the files its ledger row names. D1.2h changes
+  only `docs/perf/`, its captures, `.gitattributes` (see the ledger row for
+  #3693) and this file's ledger and `## Now`.
 - 2026-09-21: the crossing mechanism is its own slice, after a checkpoint. It
   changes the lifecycle of a render component seven systems read, three of
   them in files another lane has open, so it keeps `isAllocated()` meaning
@@ -337,12 +347,11 @@ Its canonical detail stays in [rendering-audit-todo.md](../rendering-audit-todo.
 
 ## Now
 
-- **In flight:** slice D1.2h, #3660's mechanism (this PR, stacked on #3669,
-  #3666 and #3665; all four `fleet:approved` after Checkpoint 4 and waiting
-  for the human's merge, bottom-up).
+- **In flight:** slice D1.2h, #3660's mechanism (this PR, rebased onto master
+  once the stack below it merged; back in review for the rebased diff).
 - **Next:** run the resync first. #3660's fix is #3671's, another lane's PR
-  off master; the D1.2h captures are a second gate for it, and the campaign
-  resolves its conflict with #3665 on its own side if #3671 lands first. Then
+  off master that reads MERGEABLE with the parked store on master; the D1.2h
+  captures are a second gate for it. Then
   the band's width (44.6°, 44.8°, 45.2°, 45.4°, and the five poses about 135°)
   and the entries-by-depth-delta histogram, both timing-free counts. Owed and
   blocked on a **quiet host** (#3638; ask the human for a window at the
@@ -355,7 +364,8 @@ Its canonical detail stays in [rendering-audit-todo.md](../rendering-audit-todo.
   (#3130, parked `human:owned` for this campaign), and the million-preset
   worklist (a C++ test for the pre-init pass on a preset, the preset
   directory inside the fingerprints, the 0.9 GB profiler dump). D0 and D4
-  wait on #3632, #3635, #3668 and #3672. D2 has its targets: at 45° the
+  wait on the Codex lane: #3635, which that lane has deferred, and its SDF
+  stack from #3691. D2 has its targets: at 45° the
   overflow sort and the overflow scatter are where the diagonal's excess
   reads from one loaded round, the sort's encoded span is a staircase in the
   lane count that reaches the cap on the pose, the light volume and per-axis
