@@ -23,6 +23,7 @@ import time
 import unittest
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
+from unittest.mock import patch
 
 SUBJECT = Path(__file__).resolve().parent.parent / "fleet-campaign-status"
 
@@ -99,6 +100,83 @@ class OpenPrReadability(unittest.TestCase):
         rows, readable = mod.open_prs("owner/repo", "engine", {"open": None, "merged": []})
         self.assertEqual(rows, [])
         self.assertFalse(readable)
+
+
+class CampaignParticipation(unittest.TestCase):
+    campaign = "fixture-render"
+
+    def row(self, number, head, labels=(), merged="2026-01-01"):
+        return {"number": number, "headRefName": head, "labels": list(labels),
+                "mergedAt": merged}
+
+    def test_membership_is_explicit_and_provider_independent(self):
+        label = "fleet:campaign-fixture-render"
+        for labels in ([label], [{"name": label}]):
+            self.assertTrue(mod.campaign_member(
+                self.row(1, "codex/surface", labels), self.campaign))
+            self.assertTrue(mod.campaign_member(
+                self.row(2, "human/surface", labels), self.campaign))
+        self.assertTrue(mod.campaign_member(
+            self.row(3, "claude/fixture-render-surface"), self.campaign))
+        for labels in ([], ["fleet:campaign-fixture-render-other"], ["fleet:author-codex"]):
+            self.assertFalse(mod.campaign_member(
+                self.row(4, "codex/surface", labels), self.campaign))
+        self.assertFalse(mod.campaign_member(
+            self.row(5, "claude/fixture-rendering"), self.campaign))
+
+    def test_both_merge_queries_are_unioned_and_deduplicated(self):
+        legacy = self.row(1, "claude/fixture-render-one")
+        shared = self.row(2, "codex/two", ["fleet:campaign-fixture-render"], "2026-01-02")
+        unrelated = self.row(3, "codex/other")
+
+        def fetch(args):
+            self.assertIn("labels", args[args.index("--json") + 1])
+            selector = args[args.index("--search") + 1]
+            if selector == "head:claude/fixture-render-":
+                return [legacy]
+            if selector == "label:fleet:campaign-fixture-render":
+                return [shared, legacy, unrelated]
+            self.fail("unexpected GitHub query: %r" % args)
+
+        with patch.object(mod, "gh_json", side_effect=fetch) as reader:
+            rows, complete = mod.merged_campaign_prs("fixture/repo", self.campaign, None)
+        self.assertEqual(reader.call_count, 2)
+        self.assertTrue(complete)
+        self.assertEqual([row["number"] for row in rows], [2, 1])
+
+    def test_failed_query_is_not_an_empty_history(self):
+        legacy = self.row(1, "claude/fixture-render-one")
+        with patch.object(mod, "gh_json", side_effect=[[legacy], None]):
+            rows, complete = mod.merged_campaign_prs("fixture/repo", self.campaign, None)
+        self.assertEqual(rows, [legacy])
+        self.assertFalse(complete)
+        self.assertEqual(mod.merged_campaign_prs("fixture/repo", self.campaign, {"merged": []}),
+                         ([], True))
+        self.assertEqual(mod.merged_campaign_prs("fixture/repo", self.campaign, {"merged": None}),
+                         ([], False))
+
+    def test_membership_does_not_hide_another_contributors_overlap(self):
+        shared = self.row(2, "codex/two", ["fleet:campaign-fixture-render"])
+        with patch.object(mod, "git_status", return_value=(0, "", "")), \
+             patch.object(mod, "git", return_value="fixture-sha"), \
+             patch.object(mod, "git_lines", return_value=["engine/surface.glsl"]):
+            overlaps = mod.foreign_open_prs("fixture", [shared], "claude/fixture-render-",
+                                           {"engine/surface.glsl"}, "origin/master")
+        self.assertEqual([row["number"] for row in overlaps], [2])
+
+    def test_contributor_history_cannot_evict_driver_surface(self):
+        rows = [{"mergeCommit": {"oid": "participant-%d" % index}}
+                for index in range(mod.SURFACE_PR_LIMIT)]
+        rows.append({"mergeCommit": {"oid": "driver"}})
+
+        def paths(_wt, *args):
+            self.assertEqual(args[:3], ("show", "--name-only", "--format="))
+            return ["engine/%s.glsl" % args[3]]
+
+        with patch.object(mod, "git_lines", side_effect=paths):
+            surface = mod.campaign_surface("fixture", rows, [])
+        self.assertIn("engine/driver.glsl", surface)
+        self.assertIn("engine/participant-0.glsl", surface)
 
 
 if __name__ == "__main__":

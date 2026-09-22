@@ -579,4 +579,48 @@ else
     echo "  skip: submodules unavailable in this environment"
 fi
 
+echo "T20: explicit campaign participants appear without owning the driver lane"
+new_fixture t20; WT20="$FIXTURE"
+PRJSON_SHARED="$TMPROOT/pr-shared.json"
+cat > "$PRJSON_SHARED" <<JSON
+{"open": [{"number": 8, "headRefName": "codex/surface", "labels": ["fleet:campaign-$SLUG"]}], "merged": []}
+JSON
+out=$("$TOOL" "$SLUG" --worktree "$WT20" --no-fetch --pr-json "$PRJSON_SHARED" --json)
+assert_contains "$out" '"head": "codex/surface"' "JSON includes interactive participant"
+out=$("$TOOL" "$SLUG" --worktree "$WT20" --no-fetch --pr-json "$PRJSON_SHARED")
+assert_contains "$out" "#8     codex/surface" "text includes interactive participant"
+
+echo "T21: unreadable campaign history cannot authorize repair"
+PRJSON_NOHISTORY="$TMPROOT/pr-nohistory.json"
+printf '{"open": [], "merged": null}\n' > "$PRJSON_NOHISTORY"
+set +e
+out=$("$TOOL" "$SLUG" --worktree "$WT20" --no-fetch --pr-json "$PRJSON_NOHISTORY" 2>&1); rc21=$?
+set -e
+assert_eq "$rc21" "1" "incomplete history requires attention even on a clean branch"
+assert_contains "$out" "HISTORY INCOMPLETE" "incomplete history is visible"
+advance_origin "$WT20" engine/new.txt new "advance fixture"
+head21=$(g "$WT20" rev-parse HEAD)
+set +e
+out=$("$TOOL" "$SLUG" --worktree "$WT20" --no-fetch --pr-json "$PRJSON_NOHISTORY" --apply 2>&1); rc21=$?
+set -e
+assert_eq "$rc21" "2" "incomplete history blocks an otherwise repairable behind branch"
+assert_eq "$(g "$WT20" rev-parse HEAD)" "$head21" "refusal leaves HEAD unchanged"
+
+echo "T22: a contributor merge does not acknowledge intervening work for the driver"
+new_fixture t22; WT22="$FIXTURE"
+advance_origin "$WT22" engine/shared.txt one "driver slice (#1)"
+driver22=$(g "$WT22" rev-parse refs/remotes/origin/master)
+advance_origin "$WT22" engine/shared.txt correction "foreign correction (#9)"
+advance_origin "$WT22" engine/shared.txt two "contributor slice (#2)"
+contributor22=$(g "$WT22" rev-parse refs/remotes/origin/master)
+PRJSON_CURSOR="$TMPROOT/pr-cursor.json"
+cat > "$PRJSON_CURSOR" <<JSON
+{"open": [], "merged": [
+ {"number": 2, "headRefName": "codex/surface", "labels": ["fleet:campaign-$SLUG"], "mergeCommit": {"oid": "$contributor22"}},
+ {"number": 1, "headRefName": "$BRANCH", "mergeCommit": {"oid": "$driver22"}}]}
+JSON
+out=$("$TOOL" "$SLUG" --worktree "$WT22" --no-fetch --pr-json "$PRJSON_CURSOR" || true)
+assert_contains "$out" "foreign correction (#9)" "intervening correction stays visible"
+assert_contains "$out" "contributor slice (#2)" "contributor merge still requires reconciliation"
+
 summarize "fleet-campaign-status tests"

@@ -3,7 +3,7 @@
 A **campaign** is the per-objective lane
 [`docs/design/objectives/README.md`](../design/objectives/README.md)
 §"What this tier changes" names as the natural next step: one persistent
-fable-class session works one signed objective end to end, from a loose
+driver session works one signed objective end to end, from a loose
 plan, stacking PRs continuously. Approval authority does not move — every
 PR is still human-merged — but the human approves at merge checkpoints
 instead of per ticket.
@@ -17,7 +17,7 @@ frontmatter, a pointer here, a `## Deltas` table
 | | Epic | Campaign |
 |---|---|---|
 | Plan | fixed child list with per-child `## Plan` comments | goal + spirit + ordered directions; slices are chosen as evidence develops |
-| Who works it | many transient workers, fresh context per iteration | one persistent session that keeps its context and resumes across restarts |
+| Who works it | many transient workers, fresh context per iteration | a persistent driver plus explicitly scoped contributors, interactive or dispatched |
 | Memory | umbrella checklist and steward ledger on GitHub | the campaign doc in the tree, updated in every slice PR |
 | Review | fleet reviewers per PR | the campaign runs reviewer subagents at each checkpoint, then the fleet's smoke lane after merge |
 | Branching | one PR per issue, molecule stacks | cursor stacks, one PR per slice, stacked while the slices depend on each other |
@@ -66,6 +66,31 @@ frontmatter, a pointer here, a `## Deltas` table
   touch `human:*` labels.
 - Never rewrite the history of a PR that carries `fleet:approved`; a later
   change is a new commit on that PR's own branch.
+
+## Shared participation
+
+Interactive and dispatched contributors use the same campaign doc and canonical
+worklists. Add `fleet:campaign-<slug>` to each participating PR; the status tool
+recognizes it independently of provider, branch naming and session type. Legacy
+`claude/<slug>-*` branches remain discoverable without the label. Membership is
+not a claim, permission to amend another participant's branch, or merge approval;
+the existing claim and review protocols still apply.
+
+Before each slice, each contributor runs the **resync-command** with `--worktree`
+pointing at its own dedicated worktree, reads the default branch's campaign doc
+and open participant PRs, and reconciles them with local memory. An incomplete
+history report is not evidence of no competing work. The command returns 1 for
+that condition and refuses `--apply` with 2; retry the failed read first.
+
+Record the participant, owned scope, branch/PR and acceptance gate under
+`## Now`; preserve the other participants' entries. Update its ledger in the
+same slice PR, including corrections and rejected experiments. Shared work is
+not complete until the evidence lands; record proposed work separately from
+validated work. At a shared-file boundary, read the competing diff and choose
+an explicit dependency or a disjoint slice before editing. Campaign membership
+does not suppress another contributor's overlap warning or make its merge an
+acknowledgement by the driver. The status report retains the driver's existing
+reconciliation window for that reason.
 
 ## Startup
 
@@ -175,7 +200,7 @@ landed on its files. Only the fresh path runs the startup that corrects it.
 
 ## Interaction with the fleet
 
-Campaign PRs carry `fleet:author-claude` from `commit-and-push` and
+Campaign PRs carry the actual `fleet:author-*` runtime from `commit-and-push` and
 `fleet:wip` until a checkpoint, so reviewer, feedback, conflict and merger
 projections skip them; no `fleet-claim` locks are involved. The campaign
 runs beside the fleet or alone: **launcher** starts or resumes the pane

@@ -15,9 +15,9 @@ Verdicts: `clean` and `live` are ready to work; `behind` and `superseded` are
 repairable by `--apply`; `stranded` and `unknown` are for a human.
 
 Exit codes:
-  0  ready — `clean` or `live`
-  1  attention — `behind`, `superseded`, `stranded` or `unknown`; the verdict
-     field says which, and only the first two are repairable
+  0  ready — `clean` or `live`, with both bounded merge-history reads available
+  1  attention — branch needs reconciliation or merge history is unreadable;
+     only `behind` and `superseded` with readable history are repairable
   2  usage / environment error, or an `--apply` that refused or failed
 
   fleet-campaign-status million-entity-render            human-readable report
@@ -50,9 +50,8 @@ DEFAULT_ROOTS = {
 }
 CACHE_MAX_AGE_S = 300
 
-# How many merged campaign PRs feed the surface (below). The surface only needs
-# to cover what the campaign might still be reasoning about; an unbounded walk
-# would fetch every PR head the campaign ever opened.
+# Each discovery query is bounded independently so recent contributor merges
+# cannot evict the driver's older paths from the overlap surface.
 SURFACE_PR_LIMIT = 20
 
 LEDGER_ROW_RE = re.compile(r"^\|\s*(\d{4}-\d{2}-\d{2})\s*\|\s*(.+?)\s*\|\s*$")
@@ -203,8 +202,9 @@ def gh_json(args):
 # Open PRs come from the scout cache when it is fresh (no API call at all, and
 # no GraphQL dependency — `gh pr list --json` is GraphQL, and a GraphQL rate
 # limit has taken this fleet's PR reads down while REST stayed up). The merged
-# campaign PRs have no cache row, so they are the one live read; a failure there
-# degrades the surface rather than the whole report.
+# campaign PRs have no cache row: legacy heads and explicit membership each
+# require a bounded live read. Either failure marks history incomplete and
+# prevents automatic branch repair.
 
 
 def open_prs(slug, repo_key, pr_json):
@@ -230,15 +230,31 @@ def open_prs(slug, repo_key, pr_json):
     return (rows or []), rows is not None
 
 
-def merged_campaign_prs(slug, prefix, pr_json):
+def campaign_member(row, campaign):
+    return ((row.get("headRefName") or "").startswith("claude/%s-" % campaign)
+            or "fleet:campaign-%s" % campaign in label_names(row))
+
+
+def merged_campaign_prs(repo, campaign, pr_json):
     if pr_json is not None:
-        return pr_json.get("merged") or []
-    rows = gh_json([
-        "gh", "pr", "list", "--repo", slug, "--state", "merged",
-        "--search", "head:%s" % prefix, "--limit", str(SURFACE_PR_LIMIT),
-        "--json", "number,title,headRefName,mergedAt,mergeCommit",
-    ])
-    return rows or []
+        rows = pr_json.get("merged")
+        return rows or [], rows is not None
+    rows_by_number = {}
+    complete = True
+    for selector in ("head:claude/%s-" % campaign, "label:fleet:campaign-%s" % campaign):
+        rows = gh_json([
+            "gh", "pr", "list", "--repo", repo, "--state", "merged",
+            "--search", selector, "--limit", str(SURFACE_PR_LIMIT),
+            "--json", "number,title,headRefName,mergedAt,mergeCommit,labels",
+        ])
+        if rows is None:
+            complete = False
+            continue
+        for row in rows:
+            if campaign_member(row, campaign):
+                rows_by_number[row["number"]] = row
+    return sorted(rows_by_number.values(),
+                  key=lambda row: row.get("mergedAt") or "", reverse=True), complete
 
 
 def label_names(row):
@@ -427,7 +443,7 @@ def campaign_surface(wt, merged, branch_files):
     the in-flight branch touches. This is what "someone else edited my work"
     is measured against."""
     surface = set(branch_files)
-    for row in merged[:SURFACE_PR_LIMIT]:
+    for row in merged:
         commit = row.get("mergeCommit") or {}
         oid = commit.get("oid") if isinstance(commit, dict) else None
         if not oid:
@@ -730,6 +746,8 @@ def render_text(report):
         out("  in flight  clean tree")
     out("")
 
+    if not report["history_complete"]:
+        out("  HISTORY INCOMPLETE — campaign merge reads failed; reconcile before proceeding")
     if report["prs_open"]:
         out("  open campaign PRs")
         for row in report["prs_open"]:
@@ -846,11 +864,13 @@ def main():
     dirty = porcelain_paths(wt)
     verdict["dirty"] = dirty
 
-    merged = merged_campaign_prs(slug_repo, prefix, pr_json)
+    merged, history_complete = merged_campaign_prs(slug_repo, slug, pr_json)
+    driver_merges = [row for row in merged
+                     if (row.get("headRefName") or "").startswith(prefix)]
     branch_files = git_lines(wt, "diff", "--name-only", args.default_ref)
     surface = campaign_surface(wt, merged, branch_files + dirty)
-    campaign_numbers = {row.get("number") for row in merged if row.get("number")}
-    since = since_anchor(wt, merged, verdict["fork_point"], args.default_ref)
+    campaign_numbers = {row.get("number") for row in driver_merges if row.get("number")}
+    since = since_anchor(wt, driver_merges, verdict["fork_point"], args.default_ref)
 
     report = {
         "slug": slug,
@@ -862,13 +882,14 @@ def main():
         "prs_open": [
             {"number": row.get("number"), "head": row.get("headRefName"),
              "labels": label_names(row)}
-            for row in rows_open if (row.get("headRefName") or "").startswith(prefix)
+            for row in rows_open if campaign_member(row, slug)
         ],
         "prs_merged_recent": [
             {"number": row.get("number"), "title": row.get("title", ""),
              "mergedAt": row.get("mergedAt") or ""}
             for row in merged
         ],
+        "history_complete": history_complete,
         "surface_size": len(surface),
         "since": since,
         "foreign_commits": foreign_master_commits(
@@ -878,6 +899,10 @@ def main():
         "doc_path": os.path.join(wt, "docs", "design", "campaigns", "%s.md" % slug),
     }
     report["doc"] = doc_sections(report["doc_path"])
+
+    if args.apply and not history_complete:
+        warn("--apply refused: campaign history is incomplete")
+        return 2
 
     if args.apply:
         if verdict["verdict"] not in APPLY_VERDICTS:
@@ -905,7 +930,7 @@ def main():
 
     if report.get("apply_error"):
         return 2
-    return 0 if verdict["verdict"] in ("clean", "live") else 1
+    return 0 if history_complete and verdict["verdict"] in ("clean", "live") else 1
 
 
 if __name__ == "__main__":
