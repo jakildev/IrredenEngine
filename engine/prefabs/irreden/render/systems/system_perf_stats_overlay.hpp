@@ -225,6 +225,16 @@ template <> struct System<PERF_STATS_OVERLAY> {
             return "SHP-PASS0";
         if (name == "shapePass1")
             return "SHP-PASS1";
+        if (name == "shapeOwnerClear")
+            return "SHP-CLEAR";
+        if (name == "shapeDepth")
+            return "SHP-DEPTH";
+        if (name == "shapeOwnerElect")
+            return "SHP-ELECT";
+        if (name == "shapePublish")
+            return "SHP-PUBLISH";
+        if (name == "shapeSunCast")
+            return "SHP-SUNCAST";
         if (name == "textToTrixel")
             return "TEXT";
         if (name == "buildLightOcclusionGrid")

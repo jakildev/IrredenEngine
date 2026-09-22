@@ -55,8 +55,8 @@ staircase teeth and finite sun-map quantization are not blurred away.
 
 ## Performance follow-up
 
-`voxelSunFaces` has a dedicated CPU/GPU scope; analytic casting remains in
-the `shapePass1` bundle. See the [timing contract](gpu-stage-timing-cost-model.md)
+`voxelSunFaces` has a dedicated CPU/GPU scope; analytic casting is measured
+by `shapeSunCast`. See the [timing contract](gpu-stage-timing-cost-model.md)
 before summing stage rows. Initial repeated Debug frame measurements at 64³
 voxels were approximately 9 ms cardinal (NONE) and 22 ms at 45 degrees
 (FULL, base density 1), both at zoom 1. These are

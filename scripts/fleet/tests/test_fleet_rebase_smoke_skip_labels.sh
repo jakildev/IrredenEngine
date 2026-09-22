@@ -146,5 +146,14 @@ T4=$(run_rebase)
 assert_contains "$T4" "attempted=1" \
     "T4 an ordinary stacked PR still reaches the attempt path"
 
+write_slice '[{
+  "repo":"engine","number":504,
+  "headRefName":"feat-child","baseRefName":"feat-parent",
+  "mergeable":"MERGEABLE",
+  "labels":["fleet:approved","fleet:claim-mac-interactive"]
+}]'
+owned=$(run_rebase)
+assert_absent "$owned" "attempted=1" "persistent PR ownership blocks mechanical rebase"
+
 # --- Summary ------------------------------------------------------------------
 summarize "fleet-rebase smoke-label skip parity tests"

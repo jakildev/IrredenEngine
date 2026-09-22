@@ -28,6 +28,10 @@ One PR per iteration, oldest within each tier:
    opus+ backing task: `fleet-claim reconcile` R9 re-tags a `fleet:sonnet`
    backing issue to `fleet:opus` while any of its PRs is design-parked.
 
+Skip a PR carrying persistent `fleet:claim-*` ownership unless you are its
+explicitly assigned owner; human feedback does not transfer ownership.
+See [persistent PR ownership](fleet-labels-reference.md#claims-dynamic-script-owned).
+
 Skip `human:wip`; `fleet:semantic-conflict` at sonnet class (the opus+
 lane, `role-worker.md` step 1c; its escalation to `human:needs-fix`
 re-enters tier 1); a `fleet:amending-*` label (another worker's claim; the

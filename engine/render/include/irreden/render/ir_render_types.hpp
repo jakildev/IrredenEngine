@@ -997,7 +997,7 @@ struct GPUShapesFrameData {
     ivec2 trixelCanvasOffsetZ1;
     ivec2 canvasSize;
     int shapeCount;
-    int passIndex;
+    int _padding0;
     ivec2 voxelRenderOptions;
     ivec2 cullIsoMin;
     ivec2 cullIsoMax;
@@ -1248,12 +1248,15 @@ constexpr std::uint32_t kBufferIndex_SourceVoxelFaces = kBufferIndex_VoxelActive
 constexpr std::uint32_t kBufferIndex_EntityTransforms = 18;
 constexpr std::uint32_t kBufferIndex_UpdateParams = 19;
 constexpr std::uint32_t kBufferIndex_ShapeDescriptors = 20;
-// SDF-shapes-path scaffolding for future joint deformation (c_shapes_to_trixel.glsl,
+// SDF-shapes-path scaffolding for future joint deformation (c_shapes_to_trixel_body.glsl,
 // slot 21). Not used by the voxel skinning path — voxels use slot 18
 // (kBufferIndex_EntityTransforms) for skin matrices and slot 17
 // (kBufferIndex_LocalVoxelPositions) for per-voxel bone-slot indices.
 constexpr std::uint32_t kBufferIndex_JointTransforms = 21;
 constexpr std::uint32_t kBufferIndex_AnimationParams = 22;
+// SHAPES_TO_TRIXEL transiently borrows the unused animation slot for its
+// per-pixel deterministic sample-owner buffer and restores it after dispatch.
+constexpr std::uint32_t kBufferIndex_ShapeSampleOwners = kBufferIndex_AnimationParams;
 // Slot 23 was previously unused; reused for the GPU light-volume
 // dilation chain's UBO. Same Metal-cap rationale as
 // `kBufferIndex_LightSourceBuffer` above.

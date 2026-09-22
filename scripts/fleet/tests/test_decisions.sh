@@ -64,7 +64,9 @@ cat > "$TMP/engine-prs.json" << 'EOF'
    "labels": [{"name": "fleet:wip"}]},
   {"number": 106, "title": "engine: approved but title still says [WIP]", "url": "u",
    "headRefOid": "aaaaaaaaa1060000000000000000000000000000",
-   "labels": [{"name": "fleet:approved"}]}
+   "labels": [{"name": "fleet:approved"}]},
+  {"number": 107, "title": "fleet: feedback waits for owner", "url": "u",
+   "labels": [{"name": "fleet:claim-mac-interactive"}, {"name": "human:needs-fix"}]}
 ]
 EOF
 
@@ -222,7 +224,7 @@ err=$(cat "$TMP/err.txt")
 assert_eq "$status" "0" "default run exits 0 despite unreachable game repo"
 assert_contains "$err" "skipping jakildev/irreden" "unreachable repo warned on stderr"
 
-assert_contains "$out" "7 decision(s) waiting" "headline counts merge queue + decisions"
+assert_contains "$out" "8 decision(s) waiting" "headline counts merge queue + decisions"
 assert_contains "$out" "Merge queue (3)" "merge queue counts all three approved PRs"
 assert_contains "$out" "engine PR #101" "clean approved PR listed"
 assert_contains "$out" "#102" "approved-with-nits PR listed"
@@ -232,13 +234,15 @@ assert_contains "$out" "engine PR #106" "approved PR with a stale [WIP] title is
 assert_contains "$out" "warn: title still carries [WIP] with no fleet:wip label" "wip-title/label mismatch is flagged"
 warn_lines=$(grep -c "warn: title still carries \[WIP\]" "$TMP/out.txt")
 assert_eq "$warn_lines" "1" "only the mismatched PR gets the warn line, not #101/#102"
-assert_contains "$out" "Decisions (4)" "decision bucket counts gated + design-blocked + needs-human + triage verdict"
+assert_contains "$out" "Decisions (5)" "decision bucket includes a stranded persistent owner"
 assert_contains "$out" "engine PR #103" "gated PR in decisions"
 assert_contains "$out" "gated self-config edit" "gated tag rendered"
 assert_contains "$out" "engine PR #104" "design-blocked PR in decisions"
 assert_contains "$out" "engine issue #201" "needs-human issue in decisions"
 assert_contains "$out" "engine issue #206" "triage-recommend issue in decisions"
 assert_contains "$out" "triage verdict to review" "triage tag rendered"
+assert_contains "$out" "engine PR #107" "owned PR with feedback appears in decisions"
+assert_contains "$out" "persistent owner fleet:claim-mac-interactive with outstanding human:needs-fix" "owned feedback names the handback surface"
 assert_absent  "$out" "#105" "wip-only PR appears in no bucket"
 assert_contains "$out" "fleet:coding-improvement: 1 open — cue" "coding-improvement cue informational below drain threshold"
 assert_absent  "$out" "fleet:coding-improvement: 1 open — OVERDUE" "1 open never reads as overdue"
@@ -248,7 +252,7 @@ assert_contains "$out" "engine #203" "untriaged cue names the issue"
 assert_absent  "$out" "untriaged (no state labels): 1 awaiting triage — OVERDUE" "1 untriaged never reads as overdue"
 assert_contains "$out" "merger" "feedback role newer than marker is unread"
 assert_absent  "$out" "role-worker" "feedback role older than marker is not unread"
-assert_contains "$out" "engine: 6 open PR(s) · 1 queued · 1 needs-plan" "status footer"
+assert_contains "$out" "engine: 7 open PR(s) · 1 queued · 1 needs-plan" "status footer"
 assert_absent  "$out" "has no completed run" "every gate ran on every approved head: no coverage hold"
 assert_absent  "$out" "failed on head" \
     "a failed run superseded by a later success on the same head is no hold"
