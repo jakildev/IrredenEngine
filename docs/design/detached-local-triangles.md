@@ -151,7 +151,11 @@ Revoxelized occupancy continues to use local triangle reconstruction and its rea
 staircase normals. [World sun casting](../pr-screenshots/codex/rigid-source-shadow-casters/README.md)
 uses original transformed faces in the finite-face pipeline.
 [World reception](../pr-screenshots/codex/surface-shadow-receiver-controls/README.md)
-samples each original face center, preserving its world normal. It shares the
-world light-volume path; continuous within-face shadows and picking remain work.
+preserves original world normals and interpolates points on each source quad.
+Direct sun visibility is evaluated per fragment using the shared bounded caster
+query; ambient, AO, LUT, local-volume and sky terms remain face-centered. Direct
+visibility is combined with those linear terms before tone mapping. See the
+[continuous surface evidence](../pr-screenshots/codex/continuous-source-face-lighting/README.md).
+Picking and continuously varying local-light transport remain separate work.
 
 [Fixtures, parity controls and retained evidence](detached-projected-face-coverage.md).

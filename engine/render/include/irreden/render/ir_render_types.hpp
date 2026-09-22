@@ -111,8 +111,10 @@ struct SourceVoxelFace {
     vec4 centerAndFace_;
     vec4 color_;
     uvec4 owner_;
+    vec4 directSunAndExposure_;
+    vec4 worldCenterAndAO_;
 };
-static_assert(sizeof(SourceVoxelFace) == 48, "Source face GPU records have three 16-byte fields");
+static_assert(sizeof(SourceVoxelFace) == 80, "Source face GPU records have five 16-byte fields");
 
 struct FrameDataTrixelToFramebuffer {
     mat4 mpMatrix_;
@@ -155,7 +157,8 @@ struct FrameDataTrixelToFramebuffer {
     int scatterDebugMode_ = 0;
     ivec4 visibleFaceIds_{0, 0, 0, 0};
     /// Full source model-to-view quaternion for detached face presentation.
-    /// The adjacent depth-axis slot is reserved; camera scatter ignores both.
+    /// For SOURCE_FACES, the adjacent slot holds the camera view-to-world quaternion;
+    /// camera scatter ignores both.
     /// Preserve offsets 144 / 160 so framebuffer resolution remains at 176.
     vec4 detachedResidual_{0.0f, 0.0f, 0.0f, 1.0f};
     vec4 detachedDepthAxis_{1.0f, 1.0f, 1.0f, 0.0f};

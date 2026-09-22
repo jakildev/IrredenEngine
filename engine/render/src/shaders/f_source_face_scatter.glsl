@@ -1,5 +1,7 @@
 #version 450 core
 #include "ir_iso_common.glsl"
+#include "ir_sun_shadow_sample.glsl"
+#include "ir_source_face_lighting.glsl"
 layout(std140, binding = 1) uniform GlobalConstants {
     int kMinTriangleDistance; int kMaxTriangleDistance;
 };
@@ -17,7 +19,7 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     int scatterDebugMode;
     ivec4 visibleFaceIds;
     vec4 _detachedResidualPad;
-    vec4 _detachedDepthAxisPad;
+    vec4 viewToWorldRotation;
     vec4 scatterFbResolution;
     int depthColorMode;
     float depthColorExtent;
@@ -29,6 +31,11 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
 flat in vec4 faceColor;
 flat in uint facePriority;
 in float faceDepth;
+noperspective in vec3 faceWorldPosition;
+flat in vec3 faceWorldNormal;
+flat in vec4 faceDirectSunAndExposure;
+flat in float faceAO;
+flat in uint faceLightingMode;
 layout(location = 0) out vec4 FragColor;
 void main() {
     if (faceColor.a < 0.1) discard;
@@ -41,4 +48,10 @@ void main() {
     gl_FragDepth = (depth - float(kMinTriangleDistance)) /
         float(kMaxTriangleDistance - kMinTriangleDistance);
     FragColor = faceColor;
+    if (faceLightingMode != kSourceLightingBaked) {
+        const float visibility = worldSurfaceSunShadowFactor(faceWorldPosition, faceWorldNormal,
+            pos3DtoDistance(faceWorldPosition), viewToWorldRotation);
+        FragColor = sourceFaceLitColor(faceColor, faceDirectSunAndExposure, faceAO,
+            faceLightingMode, visibility);
+    }
 }

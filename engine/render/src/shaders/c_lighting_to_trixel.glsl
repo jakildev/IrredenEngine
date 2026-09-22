@@ -286,10 +286,11 @@ void main() {
     }
 
     float ao = sourceMode ? sourceAO : imageLoad(canvasAO, pixel).r;
+    bool continuousShadow = sourceMode && worldReceive && shadowsEnabled != 0;
     float shadow;
     if (worldReceive) {
         shadow = 1.0;
-        if (shadowsEnabled != 0) {
+        if (shadowsEnabled != 0 && !continuousShadow) {
             shadow = (sourceMode || visibleFaceIds.w == 2)
                 ? worldSurfaceSunShadowFactor(worldReceivePos, worldNormal, pos3DtoDistance(worldReceivePos), detachedViewToWorld)
                 : worldSunShadowFactor(worldReceivePos, worldNormal, pos3DtoDistance(worldReceivePos));
@@ -302,6 +303,12 @@ void main() {
     // Debug overlay short-circuits artistic shading and paints a false-
     // color representation of the selected lighting buffer.
     if (debugOverlayMode != 0) {
+        if (continuousShadow && debugOverlayMode != 1) {
+            sourceFaces[sourceIndex].worldCenterAndAO = vec4(worldReceivePos, ao);
+            sourceFaces[sourceIndex].owner.z = debugOverlayMode == 2
+                ? kSourceLightingAOShadow : kSourceLightingShadow;
+            return;
+        }
         vec3 debugColor = vec3(0.0);
         if (debugOverlayMode == 1) {
             debugColor = vec3(1.0 - ao, ao, 0.0);
@@ -326,6 +333,7 @@ void main() {
     if (perAxisRoute == 0 && decodeCutFace(sourceMode ? sourceFaces[sourceIndex].owner.xy : imageLoad(trixelEntityIds, pixel).xy)) {
         ao = 1.0;
         shadow = 1.0;
+        continuousShadow = false;
     }
 
     // Sun direction and worldNormal are both world-frame.
@@ -339,8 +347,10 @@ void main() {
         (sunAmbient + (1.0 - sunAmbient) * lambert * shadow) * sunIntensity;
 
     vec3 baseRgb;
+    vec3 materialRgb;
     if (lutEnabled == 0) {
-        baseRgb = src.rgb * ao * faceFactor;
+        materialRgb = src.rgb * ao;
+        baseRgb = materialRgb * faceFactor;
     } else {
         // LUT palette shading: AO drives the X axis (light level) and pixel
         // luminance selects the palette row so highlights and shadows get
@@ -349,7 +359,16 @@ void main() {
         // palette shading and shadows without needing a 3D LUT.
         const float luminance = dot(src.rgb, vec3(0.299, 0.587, 0.114));
         const vec4  lut       = texture(paletteLUT, vec2(ao, luminance));
-        baseRgb = src.rgb * lut.rgb * faceFactor;
+        materialRgb = src.rgb * lut.rgb;
+        baseRgb = materialRgb * faceFactor;
+    }
+
+    if (continuousShadow) {
+        sourceFaces[sourceIndex].worldCenterAndAO = vec4(worldReceivePos, ao);
+        sourceFaces[sourceIndex].directSunAndExposure = vec4(
+            materialRgb * (1.0 - sunAmbient) * lambert * sunIntensity, exposure);
+        sourceFaces[sourceIndex].owner.z = hdrEnabled != 0 ? kSourceLightingHDR : kSourceLightingLinear;
+        baseRgb = materialRgb * sunAmbient * sunIntensity;
     }
 
     // Light-volume bleed: the world canvas (and per-axis camera canvases) sample
@@ -429,8 +448,8 @@ void main() {
         // Exposure + ACES Filmic tonemap. The HDR dynamic range lives
         // in the float baseRgb; the tonemap compresses it to [0, 1]
         // before the RGBA8 imageStore.
-        baseRgb = ACESFilm(baseRgb * exposure);
-    } else {
+        if (!continuousShadow) baseRgb = ACESFilm(baseRgb * exposure);
+    } else if (!continuousShadow) {
         baseRgb = clamp(baseRgb, 0.0, 1.0);
     }
 

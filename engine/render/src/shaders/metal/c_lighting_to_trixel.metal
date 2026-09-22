@@ -209,10 +209,11 @@ kernel void c_lighting_to_trixel(
     }
 
     float ao = sourceMode ? sourceAO : canvasAO.read(uint2(pixel)).r;
+    bool continuousShadow = sourceMode && worldReceive && sunFrameData.shadowsEnabled != 0;
     float shadow;
     if (worldReceive) {
         shadow = 1.0;
-        if (sunFrameData.shadowsEnabled != 0) {
+        if (sunFrameData.shadowsEnabled != 0 && !continuousShadow) {
             shadow = (sourceMode || voxelFrameData.visibleFaceIds.w == 2)
                 ? worldSurfaceSunShadowFactor(worldReceivePos, worldNormal, pos3DtoDistance(worldReceivePos), frameData.detachedViewToWorld, sunFrameData, sunDepthBuf)
                 : worldSunShadowFactor(worldReceivePos, worldNormal, pos3DtoDistance(worldReceivePos), sunFrameData, sunDepthBuf);
@@ -223,6 +224,12 @@ kernel void c_lighting_to_trixel(
     const float4 src    = sourceColor;
 
     if (frameData.debugOverlayMode != 0) {
+        if (continuousShadow && frameData.debugOverlayMode != 1) {
+            sourceFaces.faces[sourceIndex].worldCenterAndAO = float4(worldReceivePos, ao);
+            sourceFaces.faces[sourceIndex].owner.z = frameData.debugOverlayMode == 2
+                ? kSourceLightingAOShadow : kSourceLightingShadow;
+            return;
+        }
         float3 debugColor = float3(0.0f);
         if (frameData.debugOverlayMode == 1) {
             debugColor = float3(1.0f - ao, ao, 0.0f);
@@ -246,6 +253,7 @@ kernel void c_lighting_to_trixel(
         decodeCutFace(sourceMode ? sourceFaces.faces[sourceIndex].owner.xy : trixelEntityIds.read(uint2(pixel)).xy)) {
         ao = 1.0f;
         shadow = 1.0f;
+        continuousShadow = false;
     }
 
     // Sun direction and worldNormal are both world-frame.
@@ -258,13 +266,24 @@ kernel void c_lighting_to_trixel(
         sunFrameData.sunIntensity;
 
     float3 baseRgb;
+    float3 materialRgb;
     if (frameData.lutEnabled == 0) {
-        baseRgb = src.rgb * ao * faceFactor;
+        materialRgb = src.rgb * ao;
+        baseRgb = materialRgb * faceFactor;
     } else {
         constexpr sampler s(filter::nearest, address::clamp_to_edge);
         const float  luminance = dot(src.rgb, float3(0.299f, 0.587f, 0.114f));
         const float4 lut       = paletteLUT.sample(s, float2(ao, luminance));
-        baseRgb = src.rgb * lut.rgb * faceFactor;
+        materialRgb = src.rgb * lut.rgb;
+        baseRgb = materialRgb * faceFactor;
+    }
+
+    if (continuousShadow) {
+        sourceFaces.faces[sourceIndex].worldCenterAndAO = float4(worldReceivePos, ao);
+        sourceFaces.faces[sourceIndex].directSunAndExposure = float4(
+            materialRgb * (1.0 - sunFrameData.sunAmbient) * lambert * sunFrameData.sunIntensity, frameData.exposure);
+        sourceFaces.faces[sourceIndex].owner.z = frameData.hdrEnabled != 0 ? kSourceLightingHDR : kSourceLightingLinear;
+        baseRgb = materialRgb * sunFrameData.sunAmbient * sunFrameData.sunIntensity;
     }
 
     // Light-volume bleed: the world / per-axis camera canvases sample the shared
@@ -338,8 +357,8 @@ kernel void c_lighting_to_trixel(
             float skyFactor = max(0.0f, worldNormal.z);
             baseRgb += frameData.skyColor.rgb * frameData.skyIntensity * skyFactor * ao;
         }
-        baseRgb = ACESFilm(baseRgb * frameData.exposure);
-    } else {
+        if (!continuousShadow) baseRgb = ACESFilm(baseRgb * frameData.exposure);
+    } else if (!continuousShadow) {
         baseRgb = clamp(baseRgb, 0.0f, 1.0f);
     }
 

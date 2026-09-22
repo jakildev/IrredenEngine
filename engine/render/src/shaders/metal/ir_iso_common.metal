@@ -1205,10 +1205,19 @@ inline float fogVisionCircleReveal(float2 worldXY, float4 circle, float aa) {
 
 constant int kDetachedFaceMissDepth = 2147483647;
 
+constant uint kSourceLightingBaked = 0u;
+constant uint kSourceLightingLinear = 1u;
+constant uint kSourceLightingHDR = 2u;
+constant uint kSourceLightingShadow = 3u;
+constant uint kSourceLightingAOShadow = 4u;
+
+// owner.z selects color interpretation; owner.xy retain packed entity identity.
 struct SourceVoxelFace {
     float4 centerAndFace;
     float4 color;
     uint4 owner;
+    float4 directSunAndExposure;
+    float4 worldCenterAndAO;
 };
 struct SourceVoxelFaces {
     uint indexCount;

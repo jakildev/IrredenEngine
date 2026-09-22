@@ -214,3 +214,30 @@ screenshot pixel at face boundaries. This models per-source-face lighting, not
 continuous shadow boundaries within a face. Normal colors cannot distinguish
 same-normal surfaces at different depths. Retained failing baseline and exact-ray
 controls: [multi-voxel evidence](../pr-screenshots/codex/source-face-occlusion-oracle/README.md).
+
+
+## Continuous source lighting
+
+For `SOURCE_FACES`, `--shadow-overlay --continuous-shadow` evaluates original-box
+rays from each screenshot pixel's independently reconstructed world surface point.
+Require both lit and occluded interiors after excluding the one-pixel face and
+predicted shadow-boundary bands. Face-center checks remain useful for historical
+controls but cannot certify shadows cutting through the interior of a face.
+[Native evidence](../pr-screenshots/codex/continuous-source-face-lighting/README.md)
+records zero interior errors for the cardinal frame/octahedron controls.
+
+Source records retain linear indirect color, direct-sun RGB plus exposure, and
+world face center plus AO. `owner.z` selects baked, linear, HDR, shadow-debug or
+AO/shadow-debug composition; geometry resets it every frame so disabled lighting
+and overlays cannot inherit deferred shading. The model-to-view quaternion and
+camera view-to-world quaternion live in per-canvas frame data. The fragment's
+world point is the face center plus the interpolated transformed corner offset.
+It uses the same bounded surface-shadow query as the compute receiver paths.
+Local and sky lighting remain face-centered; only direct visibility varies across
+the face. Source records grow from 48 to 80 bytes; no pass or binding slot is added.
+
+`test_render_source_face_lighting.py` executes both shader composition helpers.
+Mutation controls reject shadowed indirect light, tone mapping before visibility,
+and overwritten alpha. Native `--no-lighting` requires valid inert fragment
+bindings even though baked faces never read the sun inputs. The compositor binds
+those explicitly, rather than depending on an earlier lighting dispatch.

@@ -20,7 +20,7 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     int scatterDebugMode;
     ivec4 visibleFaceIds;
     vec4 _detachedResidualPad;
-    vec4 _detachedDepthAxisPad;
+    vec4 viewToWorldRotation;
     vec4 scatterFbResolution;
     int depthColorMode;
     float depthColorExtent;
@@ -33,6 +33,11 @@ layout(std430, binding = 25) readonly buffer SourceFaceOrder { uint sourceOrder[
 flat out vec4 faceColor;
 flat out uint facePriority;
 out float faceDepth;
+noperspective out vec3 faceWorldPosition;
+flat out vec3 faceWorldNormal;
+flat out vec4 faceDirectSunAndExposure;
+flat out float faceAO;
+flat out uint faceLightingMode;
 void main() {
     const SourceVoxelFace face = sourceFaces[sourceOrder[128u + uint(gl_InstanceID) * 3u + 1u]];
     const int faceId = int(face.centerAndFace.w);
@@ -49,6 +54,14 @@ void main() {
     gl_Position = mpMatrix * vec4(iso.x / extent.x, -iso.y / extent.y, 0.0, 1.0);
     faceDepth = dot(viewCorner, vec3(1.0)) * density * float(kDepthEncodeShift) *
         effectiveSubdivisionsForHover.y;
+    const vec3 modelNormal = faceOutwardNormal6(faceId);
+    const vec3 localCenter = face.centerAndFace.xyz + modelNormal * 0.5;
+    faceWorldPosition = face.worldCenterAndAO.xyz + rotateByQuat(
+        viewCorner - rotateByQuat(localCenter, _detachedResidualPad), viewToWorldRotation);
+    faceWorldNormal = rotateByQuat(rotateByQuat(modelNormal, _detachedResidualPad), viewToWorldRotation);
+    faceDirectSunAndExposure = face.directSunAndExposure;
+    faceAO = face.worldCenterAndAO.w;
+    faceLightingMode = face.owner.z;
     faceColor = face.color;
     facePriority = decodePriority(face.owner.xy);
 }

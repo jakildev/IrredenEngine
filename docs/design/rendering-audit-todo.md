@@ -23,11 +23,16 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
   now projects original transformed faces: 12 aggregate hull checks pass, while
   all 12 strict edge checks still fail. [Source-face reception](../pr-screenshots/codex/surface-shadow-receiver-controls/README.md)
   now samples continuous face centers; eight relative-position and four normal
-  checks pass. Continuous within-face shadow coverage remains missing. The
+  checks pass. The
   [continuous source-surface gate](../pr-screenshots/codex/continuous-source-shadow-oracle/README.md)
-  now fails all eight views that pass face-center visibility, with retained
-  partial-face error images. Carry surface coverage and separate direct sunlight
-  through source-face presentation before nonlinear shading.
+  rejects all eight prior face-center captures. The
+  [fragment receiver implementation](../pr-screenshots/codex/continuous-source-face-lighting/README.md)
+  now passes all eight with zero interior errors at unchanged tolerances. It
+  interpolates original surface positions and combines direct visibility with
+  separate linear lighting terms before tone mapping. Local-volume/sky/AO terms
+  remain face-centered; dense overflow and temporal transitions still need coverage.
+  Profile the 80-byte source records and per-fragment bounded queries before
+  making any population-throughput claim.
 
 
 - [Caster/receiver matrix](../pr-screenshots/codex/shadow-receiver-mode-matrix/README.md):

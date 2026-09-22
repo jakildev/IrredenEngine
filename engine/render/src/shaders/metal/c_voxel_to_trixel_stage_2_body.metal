@@ -339,6 +339,8 @@ kernel void IR_STAGE2_KERNEL_NAME(
             const uint index = atomic_fetch_add_explicit(&sourceFaces.count, 1u, memory_order_relaxed);
             sourceFaces.faces[index].centerAndFace = float4(voxelPosition.xyz, float(faceId));
             sourceFaces.faces[index].color = voxelColor;
+            sourceFaces.faces[index].directSunAndExposure = float4(0.0);
+            sourceFaces.faces[index].worldCenterAndAO = float4(0.0);
             sourceFaces.faces[index].owner = uint4(packedEntityId, 0u, 0u);
             // Unique source keys make coplanar draw ownership independent of append order.
             const uint order = 128u + index * 3u;
