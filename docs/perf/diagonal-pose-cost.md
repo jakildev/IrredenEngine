@@ -143,56 +143,84 @@ The three consumers of the lane switched off one at a time, at 45.0° against
 44.4°, each arm a full frame: the overflow scatter draw off
 (`IR_PERAXIS_OVERFLOW_DISABLE`, the composite's existing kill switch), the
 overflow relight off (`IR_OVERFLOW_LIGHTING_DISABLE`, likewise) and the
-overflow sort off (a local, uncommitted patch that skips `sortFaceRecords`
-and keeps the append, built into the binary `e83ce0cf…`; the other arms
-run the unpatched `18ab1d21…`). Every probe changes the picture and none is
-an optimization. Same preset, pivot and scene as above; two rounds, arms
-interleaved (control, scatter off, relight off, sort off at 45.0°, then at
-44.4°). The fleet loaded the host during the run: `host_load_1m` went from 4
-in the first arms to 9 in the second round and to 19 on one arm, and the
-battery from 52% to 35%. Reports under
+overflow sort off ([sort-off.patch](diagonal-pose-cost/sort-off.patch): the
+overflow `sortFaceRecords` call in `dispatchPerAxisCanvases` is skipped, the
+append and the source-face sort are kept; built into the binary `e83ce0cf…`,
+the other arms run the unpatched `18ab1d21…`). The sort-off manifests report
+a clean tree under `changes` because the patch was applied and reverted
+around the build; the patch file is the record. Every probe changes the
+picture and none is an optimization. Same preset, pivot and scene as above;
+two rounds, the arms in a fixed order (control, scatter off, relight off,
+sort off) at 45.0° and then at 44.4°. The fleet loaded the host during the
+run: the first round ran at `host_load_1m` 4.0 to 5.0 at 45.0° and 7.1 to 19
+at 44.4° (the relight-off arm at 19), the second at 6.0 to 9.7, and the
+battery fell from 52% to 35%. Reports under
 [diagonal-pose-cost/](diagonal-pose-cost/) as `split-<arm>-<pose>-<round>/`.
 
 | Arm | Pose | Steady mean ms, r1 / r2 | GPU envelope ms, r1 / r2 | Overflow entries | `voxelPerAxisOverflow` | `perAxisScatter` | `lightingOverflow` | Load, r1 / r2 |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
 | control | 45.0° | 59.57 / 93.50 | 43.80 / 70.54 | 2,208,000 | 21.57 | 9.40 | 20.50 | 5.0 / 9.1 |
 | scatter off | 45.0° | 53.42 / 80.25 | 37.80 / 51.81 | 2,208,000 | 19.80 | 0.40 | 19.28 | 4.7 / 9.7 |
-| relight off | 45.0° | 59.89 / 68.63 | 44.19 / 52.21 | 2,208,000 | 18.43 | 7.55 | 0.00 | 4.3 / 7.7 |
+| relight off | 45.0° | 59.89 / 68.63 | 44.19 / 52.21 | 2,208,000 | 18.43 | 7.55 | absent | 4.3 / 7.7 |
 | sort off | 45.0° | 51.66 / 51.10 | 36.19 / 36.66 | 2,208,000 | 6.26 | 8.03 | 24.94 | 4.0 / 9.0 |
 | control | 44.4° | 47.41 / 45.77 | 33.21 / 31.96 | 578,826 | 8.20 | 2.11 | 12.95 | 7.9 / 7.8 |
 | scatter off | 44.4° | 71.22 / 43.72 | 45.66 / 30.26 | 578,826 | 10.38 | 0.40 | 15.58 | 7.1 / 6.9 |
-| relight off | 44.4° | 155.64 / 46.00 | 38.93 / 31.97 | 578,826 | 8.58 | 2.16 | 0.00 | 19.3 / 6.7 |
+| relight off | 44.4° | 155.64 / 46.00 | 38.93 / 31.97 | 578,826 | 8.58 | 2.16 | absent | 19.3 / 6.7 |
 | sort off | 44.4° | 65.42 / 42.78 | 45.15 / 29.57 | 578,826 | 7.59 | 2.52 | 30.04 | 9.1 / 6.0 |
 
-(Stage rows are the mean of both rounds, ms per sampled invocation.)
+(Stage rows are the mean of both rounds, ms per sampled invocation, dropped
+cells included; the relight-off reports carry no `lightingOverflow` row at
+all, since the scope never opens.)
 
-- **Every probe fired, and the lane is unchanged by all three.** The scatter
-  row falls from 9.4 to 0.4 ms (the cell-path draw remains), the relight row
-  to 0, the row that holds the sort from 21.6 to 6.3 (the append remains),
-  and the lane's count is 2,208,000 and 578,826 in every arm, so the probes
-  removed consumers and not the population.
-- **What the clean cells read.** The first round at 45.0° ran at loads of 4
-  to 5 and the second round at 44.4° at 6 to 8; the other eight cells ran
-  at 7.7 to 19 and read 52 to 156 ms for frames that read 43 to 60 in the
-  band table, and are not used. In the clean cells the envelope at 45.0°
-  falls by 7.6 ms with the sort off and by 6.0 with the scatter off, and by
-  0.4 with the relight off; at 44.4° by 2.4, 1.7 and 0.0. Against the
-  diagonal's envelope excess of 10.6 to 11.8 ms over 44.4° (43.8 against
-  33.2 and 32.0), the sort's share reads about 5 ms and the scatter's about
-  4, and the relight's nothing the envelope can see even though its row is
-  20 ms on the diagonal, so that row measures a pass that overlaps others.
-- **This is a reading, not a finding.** One clean round per cell, on a host
-  the fleet was loading, with the two poses' clean cells taken from
-  different rounds. It says where to look (the sort's merge network and the
-  scatter's instanced draw over 2.2 million quads) and not by how much; the
-  same sixteen arms on a quiet host (issue 3638 in the tracker) are owed
-  before any number here is quoted as the split.
+- **Every probe fired, and the lane is unchanged by all three.** In the
+  cells read below, the scatter row falls from 6.66 to 0.36 ms (the
+  cell-path draw remains), the relight row is absent, the row that holds the
+  sort falls from 16.34 to 5.99 (the append remains), and the lane's count
+  is 2,208,000 and 578,826 in every arm, so the probes removed consumers and
+  not the population.
+- **Which cells are read.** The lower-load round at each pose: the first
+  round at 45.0° (loads 5.0, 4.7, 4.3, 4.0) and the second at 44.4° (7.8,
+  6.9, 6.7, 6.0). That is a per-round choice, because the four arms of one
+  round share the host's drift, and not a load cut: the dropped cells ran at
+  7.1 to 19, overlapping the kept 44.4° round, and read 0.99 to 1.63 times
+  their kept twin, one of them 3.4 times (relight off at 44.4°, load 19). The
+  kept 44.4° control reads 45.77 ms and 31.96 of envelope against the band
+  table's 43.94 to 44.03 and 30.3 on the same binary an hour earlier at
+  load 4, so this section's 44.4° baseline is about 1.6 ms high and its
+  diagonal excess is 11.8 ms of envelope (43.80 against 31.96) where the
+  band table reads 13 to 19.
+- **What those cells read.** At 45.0° the envelope falls 7.6 ms with the
+  sort off and 6.0 with the scatter off, and rises 0.4 with the relight off;
+  at 44.4° it falls 2.4 and 1.7, and moves 0.0. Net of the off-band deltas,
+  the sort's share of the 11.8 ms excess reads about 5 ms and the scatter's
+  about 4, and the relight's nothing the envelope can see although its row
+  is 16.7 ms on the diagonal, which reads as a pass that overlaps others, or
+  a scope that brackets a queue wait. Three things make these net readings
+  and not shares. The arm order is fixed and the load fell through both
+  rounds read (5.0 → 4.0 and 7.8 → 6.0), so the sort-off arm always ran on
+  the quietest host and the control on the busiest, a bias in the sort's
+  favour. With the sort off the other two consumers slow down
+  (`lightingOverflow` 16.7 → 24.8 at 45.0° and 12.9 → 23.8 at 44.4°,
+  `perAxisScatter` 6.7 → 7.8), so the sort-off delta is net of what unsorted
+  records cost the relight and the scatter. And
+  [gpu-cost-attribution.md](gpu-cost-attribution.md) § Results holds a
+  sort-disabled arm at 45° at −4.07 ms of GPU frame, in Debug, grouped rather
+  than interleaved, with a probe that kept the sort's argument generation and
+  sentinel fill: the two deltas were taken under different builds, probes and
+  host conditions and are not yet comparable.
+- **This is a reading, not a finding.** One round per cell, on a host the
+  fleet was loading, the two poses' cells from different rounds, in an order
+  that favours the last arm. It says where to look (the sort's merge network
+  and the scatter's instanced draw over 2.2 million quads) and not by how
+  much; the same sixteen arms on a quiet host (issue 3638 in the tracker),
+  in reversed or shuffled arm order, are owed before any number here is
+  quoted as the split.
 
 ## Next measurements
 
-1. The separating experiment above on a quiet host: the same sixteen arms,
-   so the sort's and the scatter's shares of the diagonal's envelope excess
-   are numbers and not a reading.
+1. The separating experiment above on a quiet host: the same sixteen arms
+   in reversed or shuffled arm order, so the sort's and the scatter's shares
+   of the diagonal's envelope excess are numbers and not a reading.
 2. The band's width: 44.6°, 44.8°, 45.2° and 45.4° between the poses above,
    and the same five poses about 135°; and the staircase test, two poses whose
    lane counts bracket 2,097,152 entries, which cost the same lane and a
@@ -211,11 +239,9 @@ battery from 52% to 35%. Reports under
   a held pose with it on, two differences at once). The lane counts are
   exact; the milliseconds are one host on one evening, two runs a pose.
 - Which stage owns the extra envelope. The stage rows rise together and sum
-  to three times the envelope.
+  to three times the envelope; the separating experiment's cells point at
+  the sort and the scatter and at nothing the relight does, from one round
+  each on a loaded host, in an arm order that favours the sort.
 - Why the lane grows toward 45° and steps on the pose: the reading above is
   not a measurement. The sort's span staircase is code, and its cost share
   is the separating experiment's to measure.
-  to three times the envelope; the separating experiment's clean cells point
-  at the sort and the scatter and at nothing the relight does, from one
-  round each on a loaded host.
-- Why the lane grows: the admission rule reading above is a hypothesis.
