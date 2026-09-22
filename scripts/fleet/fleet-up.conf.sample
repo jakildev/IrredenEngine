@@ -236,8 +236,10 @@
 #   (any other type): 0.80
 #
 # GitHub pools are sampled by fleet-state-scout (free reads each tick: graphql
-# from GraphQL's own `rateLimit` self-report, core and search from
-# `gh api /rate_limit`; latched into the same usage dir Anthropic types use) —
+# from GraphQL's own `rateLimit` self-report, core from the X-RateLimit-*
+# headers on the scout's own conditional REST reads (a follower host sends
+# none and writes no core file), search from `gh api /rate_limit`; latched
+# into the same usage dir Anthropic types use) —
 # no separate poller or config needed to enable them; see FLEET.md
 # "GitHub API quota" under "Rate-limit handling".
 #
