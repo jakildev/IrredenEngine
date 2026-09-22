@@ -377,7 +377,7 @@ implementation and thresholds: `scripts/fleet/fleet-dispatcher`
   parsed `resetsAt` ages out (`FLEET_DISPATCHER_USAGE_STALE_SECONDS`, 3600;
   `fleet-up --reset-usage` wipes them after an account switch).
 - **GitHub API quota** — `github-{core,graphql,search}.json`: graphql from its
-  own `rateLimit` self-report (a refused sample latches `rejected`), core and search
+  own `rateLimit` self-report (a refused sample latches `rejected`), core from the `X-RateLimit-*` headers on the scout's own conditional REST reads (a follower sends none, so writes no core file), search
   from `/rate_limit`; core and graphql gate at 90 % (`FLEET_DISPATCHER_USAGE_GATE_GITHUB_{CORE,GRAPHQL}`), search never.
 - **Per-pane cooldown** — a launch that died at the wall (`claude` exit 1
   with a stream-flagged rejection; legacy exit 2) excludes the pane for

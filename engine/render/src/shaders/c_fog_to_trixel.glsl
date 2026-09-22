@@ -133,6 +133,8 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
 layout(rgba8, binding = 0) uniform image2D trixelColors;
 layout(r32i, binding = 1) readonly uniform iimage2D trixelDistances;
 layout(rgba8, binding = 2) readonly uniform image2D canvasFogOfWar;
+// Read only for the fog whole-body carrier bit (decodeFogWholeBody).
+layout(rg32ui, binding = 3) readonly uniform uimage2D triangleCanvasEntityIds;
 
 // Out-of-range cells read as visible (1.0): imageLoad has no sampler wrap mode,
 // so this bounds check is load-bearing. Matches the OOB-as-visible contract on
@@ -195,6 +197,11 @@ void main() {
             voxelRenderOptions, rasterYaw
         );
         const float worldPerPixel = length(pos3DNeighborX.xy - pos3D.xy);
+        // A whole-body fog-governed body fogs on XY distance alone: its pixels
+        // drop both height-penalty terms, so the reveal, rim fade, and cut cap
+        // all key on the plain disc while grid memory still max-combines.
+        const bool fogWholeBody =
+            decodeFogWholeBody(imageLoad(triangleCanvasEntityIds, pixel).xy);
         // Must trace the same analytic curve as VOXEL_TO_TRIXEL_STAGE_1's
         // per-voxel clip, so the floor's per-pixel reveal here and the
         // voxel-object edge there coincide. worldPerPixel floors the rim at ~1
@@ -205,17 +212,16 @@ void main() {
             // max(dzDown - freeBand, 0)) into the radial distance so matter far
             // above/below the observer's height reveals less at the same XY,
             // asymmetrically and with a free band around the observer's height.
-            // The 2D reveal (`fogVisionCircleReveal` in ir_iso_common) is
-            // inlined here rather than added there as a Z-aware helper — a new
-            // ir_iso_common symbol perturbs the byte-identical cardinal fast
-            // path of every voxel/SDF shader that includes it. All-zero heights
-            // → distEff == the plain 2D length.
+            // All-zero heights (or a whole-body pixel) → distEff == the plain
+            // 2D length.
             const vec4 heights = visionCircleHeights[i];
+            const float zCostUp = fogWholeBody ? 0.0 : heights.y;
+            const float zCostDown = fogWholeBody ? 0.0 : heights.z;
             const float dzUp = max(heights.x - pos3D.z, 0.0);
             const float dzDown = max(pos3D.z - heights.x, 0.0);
             const float distEff = length(pos3D.xy - visionCircles[i].xy) +
-                heights.y * max(dzUp - heights.w, 0.0) +
-                heights.z * max(dzDown - heights.w, 0.0);
+                zCostUp * max(dzUp - heights.w, 0.0) +
+                zCostDown * max(dzDown - heights.w, 0.0);
             const float aa = max(visionCircles[i].w, worldPerPixel);
             const float reveal =
                 1.0 - smoothstep(visionCircles[i].z - aa, visionCircles[i].z + aa, distEff);
