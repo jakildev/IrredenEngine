@@ -35,7 +35,7 @@ frontmatter, a pointer here, a `## Deltas` table
 | **branch-prefix** | The head-branch prefix (`claude/<slug>-<topic>`). |
 | **campaigns-dir** | Where campaign worklist docs live (`docs/design/campaigns/`). |
 | **objectives-dir** | Where the objective files live. |
-| **resync-command** | The re-entry oracle a startup runs before anything else: branch verdict, open and merged campaign PRs, other lanes' changes to this campaign's files. |
+| **resync-command** | The re-entry oracle run at startup and at the top of every Loop iteration: branch verdict, open and merged campaign PRs, other lanes' changes to this campaign's files, and the resync sections §Loop step 0 reconciles. |
 | **launcher** | How a campaign pane starts or resumes: the fleet config that schedules it at every fleet start, and the by-hand command. |
 | **feedback-file** | This role's end-of-iteration feedback file under `~/.fleet/feedback/`. |
 
@@ -88,10 +88,12 @@ the grounds that the conversation "already knows".
    - `stranded` — merging the branch into the default branch would change it,
      so it carries content that never landed. Stop and ask the human; nothing
      is reset. `unknown` (the merge could not be evaluated) is the same stop.
-2. Read the objective and the campaign doc, `## Now` last. Where the resync
-   named another lane on this campaign's files, read that change before
-   planning a slice that touches them — an oracle, fixture or shader the
-   campaign authored may have moved under it.
+   - `stacked` — HEAD is, or builds on, an open campaign PR's head (what a
+     stacked `start-next-task` leaves); continue the stack.
+   - Exit 3 — the verdict is ready and the resync is not; §Loop step 0
+     reconciles it before any slice.
+2. Read the objective and the campaign doc, `## Now` last. Outside work the
+   resync listed is §Loop step 0's, not a judgement call made here.
 3. Print `campaign <slug>: resuming <direction> / <slice>` and, in `live`
    mode, begin the loop. `dry-run` stops here and reports the next slice.
 
@@ -114,6 +116,22 @@ landed on its files. Only the fresh path runs the startup that corrects it.
 
 ## Loop
 
+0. **Resync, every iteration.** Run the **resync-command** and handle its
+   verdict as in startup step 1. For every row it lists — another lane's
+   PR on a campaign file, a PR stacked on a campaign branch, an issue naming
+   a file in flight — read the change before planning a slice on those
+   files: an oracle, fixture or shader the campaign authored may have moved
+   under it. Write three outputs into the campaign doc; they ride in this
+   iteration's slice PR:
+   - **Corrections** — a `## Ledger` row naming each outside PR or issue
+     read and what it corrects in merged campaign work, or "no effect".
+   - **Lane split** — under `## Decisions taken`, the files each open
+     other-lane PR owns and the ones the campaign keeps, or a one-line
+     confirmation naming those PRs as unchanged.
+   - **`## Now`** naming no merged PR and no merged slice.
+
+   A row clears once the working-tree doc names its `#<N>`; section
+   semantics are in `fleet-campaign-status --help`. Step 1 starts at exit 0.
 1. **Pick the slice.** The first direction with an unfinished item whose
    inputs exist. A slice is one PR: one measurable question answered, one
    contract change, or one visual gate closed. Prefer measurement before
@@ -129,7 +147,10 @@ landed on its files. Only the fresh path runs the startup that corrects it.
    row, any `## Decisions taken` and discovered follow-ups.
 4. **`commit-and-push`.** Cursor-stack mode when the slice depends on an
    open slice (`start-next-task` recorded the base); off `origin/master`
-   when it is independent. The campaign decides; it never asks. After the
+   when it is independent. The campaign decides; it never asks. The PR
+   body names the slice as `slice <ID>`: the resync maps a `## Now` slice
+   ID to its PR through it, so `## Now` is written forward-only and names
+   no merged slice, even as context. After the
    PR opens: `gh pr edit <N> --repo <repo-slug> --add-label fleet:wip`
    (reviewers and the merger stand off until the checkpoint), then
    `start-next-task` with the stacking cue when the next slice depends on
@@ -139,7 +160,9 @@ landed on its files. Only the fresh path runs the startup that corrects it.
    a. Spawn a fresh-context reviewer per PR (`review-pr`, plus the
       `review-invariant-render` / `review-invariant-ecs` subagents for
       render and ECS diffs) and address every finding on that PR's own
-      branch; `gh stack sync` the children after a base moves.
+      branch; `gh stack sync` the children after a base moves. For every
+      gate or counter the PR adds, the reviewer answers: what input makes
+      this pass that should not?
    b. Confirm `gh pr view <N> --json mergeable` for every PR in the stack;
       resolve conflicts bottom-up.
    c. Remove `fleet:wip` and add `fleet:approved` on each PR, and record in
@@ -151,8 +174,7 @@ landed on its files. Only the fresh path runs the startup that corrects it.
       queue.
    e. Keep working. The next slice stacks on the top approved PR when it
       depends on it; GitHub retargets the stack as the human merges.
-6. **Resume after merges.** Re-run the **resync-command** and follow its
-   verdict as in startup step 1; `start-next-task` refuses on tracked
+6. **Resume after merges.** Step 0 again; `start-next-task` refuses on tracked
    modifications, which is exactly the state a merged stack leaves behind.
 
 ## Follow-ups, decisions, escalation
@@ -184,7 +206,8 @@ with the same session-sidecar mechanism as the architect panes, so
 fresh (§Re-entry). Listed in the
 fleet config, the pane comes up with every fleet start, in its own tmux
 window, and never receives dispatched work. Context loss is survivable by
-design: the campaign doc plus the open PR list is the state.
+design: the campaign doc plus the open PR list is the state, reconciled
+with outside work by §Loop step 0.
 
 ## Modes
 

@@ -1,24 +1,45 @@
 #!/usr/bin/env python3
 """fleet-campaign-status — campaign re-entry oracle.
 
-What a campaign session reads at startup instead of trusting its own context
-(docs/agents/campaign-protocol.md §Startup): where the worktree branch stands
-against the default branch, which campaign PRs are open and which merged, what
-other lanes changed on the campaign's own files, and the campaign doc's
-`## Now`.
+What a campaign session reads at startup and at the top of every loop iteration
+instead of trusting its own context (docs/agents/campaign-protocol.md §Startup,
+§Loop step 0): where the worktree branch stands against the default branch,
+which campaign PRs are open and which merged, what other lanes changed on the
+campaign's own files, the campaign doc's `## Now`, and the resync sections
+below.
 
 The branch verdict is decided by the merge, not by comparing file names and not
 by `git cherry` — see branch_verdict() and branch_contributes() for why either
 of those mistakes a branch carrying unlanded work for one already upstream.
 
-Verdicts: `clean` and `live` are ready to work; `behind` and `superseded` are
-repairable by `--apply`; `stranded` and `unknown` are for a human.
+Verdicts: `clean`, `live` and `stacked` are ready to work; `behind` and
+`superseded` are repairable by `--apply`; `stranded` and `unknown` are for a
+human.
 
-Exit codes:
-  0  ready — `clean` or `live`
+Resync sections. A row is reconciled once the working-tree campaign doc names
+its `#<N>`; reconciled rows collapse to a count in the text report.
+  stacked on campaign  PRs from other lanes stacked above a campaign head in a
+                       native stack (any state), or open with a campaign branch
+                       as their base. Limit: a child never linked into a native
+                       stack and retargeted after its parent merged reads as an
+                       ordinary other-lane PR — the two surface sections still
+                       catch it when it touches campaign files.
+  lane ownership       open other-lane PRs grouped by the campaign file they
+                       touch; the full view always prints.
+  stale ## Now         `## Now` names a merged or closed campaign PR as `#<N>`,
+                       or the slice ID of a merged one (the first `slice <ID>`
+                       in its body). Cleared only by rewriting `## Now`.
+  issues               open issues whose body names, as a full repo-relative
+                       path, a file the branch, the tree or an open campaign PR
+                       changes.
+
+Exit codes (precedence 2 > 1 > 3 > 0):
+  0  ready — `clean`, `live` or `stacked`, and every resync row reconciled
   1  attention — `behind`, `superseded`, `stranded` or `unknown`; the verdict
      field says which, and only the first two are repairable
   2  usage / environment error, or an `--apply` that refused or failed
+  3  the branch is ready and the resync is not: an unreconciled row, a stale
+     `## Now`, or a section that could not be read (`resync.unreconciled`)
 
   fleet-campaign-status million-entity-render            human-readable report
   fleet-campaign-status million-entity-render --json     machine-readable
@@ -54,8 +75,16 @@ CACHE_MAX_AGE_S = 300
 # to cover what the campaign might still be reasoning about; an unbounded walk
 # would fetch every PR head the campaign ever opened.
 SURFACE_PR_LIMIT = 20
+# The closed read also returns closed-unmerged PRs, which feed only the stale
+# `## Now` check; the headroom keeps the merged subset at SURFACE_PR_LIMIT.
+CLOSED_PR_LIMIT = 40
+REST_PAGE_SIZE = 100
+REST_MAX_PAGES = 3
 
 LEDGER_ROW_RE = re.compile(r"^\|\s*(\d{4}-\d{2}-\d{2})\s*\|\s*(.+?)\s*\|\s*$")
+# `slice D0.5` and the bold `slice **D1.1**` both occur in campaign PR bodies.
+SLICE_ID_RE = re.compile(r"(?i:slice)\s+\**([A-Z]+\d+(?:\.\d+)*)")
+REF_RE = re.compile(r"#(\d+)")
 
 
 def warn(msg):
@@ -230,15 +259,38 @@ def open_prs(slug, repo_key, pr_json):
     return (rows or []), rows is not None
 
 
-def merged_campaign_prs(slug, prefix, pr_json):
+def closed_campaign_prs(slug, prefix, pr_json):
+    """Closed campaign PRs, merged or not; `mergedAt` is null on the unmerged.
+    Every consumer but the stale `## Now` check takes the merged subset."""
     if pr_json is not None:
         return pr_json.get("merged") or []
     rows = gh_json([
-        "gh", "pr", "list", "--repo", slug, "--state", "merged",
-        "--search", "head:%s" % prefix, "--limit", str(SURFACE_PR_LIMIT),
-        "--json", "number,title,headRefName,mergedAt,mergeCommit",
+        "gh", "pr", "list", "--repo", slug, "--state", "closed",
+        "--search", "head:%s" % prefix, "--limit", str(CLOSED_PR_LIMIT),
+        "--json", "number,title,headRefName,mergedAt,mergeCommit,body",
     ])
     return rows or []
+
+
+def rest_list(pr_json, key, path):
+    """(rows, readable, truncated) for a paged REST list, or the `--pr-json`
+    key standing in for it: an absent key is an empty readable list, a null one
+    an unreadable read. Under `--pr-json` nothing touches the network."""
+    if pr_json is not None:
+        if key not in pr_json:
+            return [], True, False
+        rows = pr_json[key]
+        return (rows or []), rows is not None, False
+    out = []
+    for page in range(1, REST_MAX_PAGES + 1):
+        rows = gh_json(["gh", "api", "%s%sper_page=%d&page=%d" % (
+            path, "&" if "?" in path else "?", REST_PAGE_SIZE, page)])
+        if not isinstance(rows, list):
+            return out, False, False
+        out.extend(rows)
+        if len(rows) < REST_PAGE_SIZE:
+            return out, True, False
+    return out, True, True
 
 
 def label_names(row):
@@ -252,7 +304,30 @@ def label_names(row):
 # --- Branch verdict ---------------------------------------------------------
 
 
-def branch_verdict(wt, default_ref, branch, prs_open, prs_readable=True):
+def nearest_stacked_pr(wt, prs_open, prefix):
+    """The open campaign PR whose head HEAD builds on (equal or ancestor),
+    nearest first — the state a stacked `start-next-task` leaves. A head oid
+    absent from the local object store never matches."""
+    best = None
+    best_distance = None
+    for row in prs_open:
+        oid = row.get("headRefOid")
+        if not prefix or not oid or not (row.get("headRefName") or "").startswith(prefix):
+            continue
+        if not git(wt, "rev-parse", "--quiet", "--verify", "%s^{commit}" % oid):
+            continue
+        rc, _, _ = git_status(wt, "merge-base", "--is-ancestor", oid, "HEAD")
+        if rc != 0:
+            continue
+        count = git(wt, "rev-list", "--count", "%s..HEAD" % oid)
+        if not count.isdigit():
+            continue
+        if best_distance is None or int(count) < best_distance:
+            best, best_distance = row.get("number"), int(count)
+    return best
+
+
+def branch_verdict(wt, default_ref, branch, prs_open, prs_readable=True, prefix=None):
     """Classify the campaign worktree's branch against the default branch.
 
     clean       level with the default branch — nothing to decide.
@@ -260,6 +335,8 @@ def branch_verdict(wt, default_ref, branch, prs_open, prs_readable=True):
                 fast-forward, which `--apply` performs; starting a slice here
                 builds it on a stale base.
     live        commits, and an open PR whose head is this branch.
+    stacked     commits, no open PR on this branch, and HEAD is an open
+                campaign PR's head or builds on it (`live` wins when both hold).
     superseded  commits, no open PR, and merging the branch into the default
                 branch would change nothing — every line it carries is already
                 upstream. Repairable by reset (`--apply`).
@@ -311,6 +388,12 @@ def branch_verdict(wt, default_ref, branch, prs_open, prs_readable=True):
     if live:
         report["verdict"] = "live"
         report["open_pr"] = live[0].get("number")
+        return report
+
+    stacked = nearest_stacked_pr(wt, prs_open, prefix)
+    if stacked is not None:
+        report["verdict"] = "stacked"
+        report["open_pr"] = stacked
         return report
 
     if not prs_readable:
@@ -508,12 +591,28 @@ def foreign_master_commits(wt, since, default_ref, surface, campaign_numbers):
     return out
 
 
+def pr_files(wt, number, default_ref):
+    """Files PR <number> changes, read from `refs/pull/<number>/head` over git;
+    None when the head will not fetch.
+
+    Over git, not from the API: it costs no API quota and survives the GraphQL
+    outages that take `gh pr view --json` down.
+    """
+    rc, _, _ = git_status(wt, "fetch", "--quiet", "origin", "refs/pull/%d/head" % number)
+    if rc != 0:
+        return None
+    tip = git(wt, "rev-parse", "FETCH_HEAD")
+    # The PR's own change set: its merge base with the default branch, not the
+    # campaign's fork point. Diffing from the campaign's fork would charge every
+    # PR with whatever else landed in between.
+    base = git(wt, "merge-base", tip, default_ref) or default_ref
+    return git_lines(wt, "diff", "--name-only", "%s..%s" % (base, tip))
+
+
 def foreign_open_prs(wt, prs_open, prefix, surface, default_ref):
     """Open PRs from other lanes whose diff intersects the campaign's surface.
 
-    File sets come from the PR head ref over git, not from the API: it costs no
-    API quota and survives the GraphQL outages that take `gh pr view --json`
-    down. A head that will not fetch is reported as unknown rather than silently
+    A head that will not fetch is reported as unknown rather than silently
     dropped — an unreadable PR is not an absent one.
     """
     findings = []
@@ -526,27 +625,142 @@ def foreign_open_prs(wt, prs_open, prefix, surface, default_ref):
         number = row.get("number")
         if number is None:
             continue
-        rc, _, _ = git_status(wt, "fetch", "--quiet", "origin",
-                              "refs/pull/%d/head" % number)
-        if rc != 0:
+        files = pr_files(wt, number, default_ref)
+        if files is None:
             findings.append({"number": number, "head": head, "files": None,
                              "title": row.get("title", ""),
                              "labels": label_names(row)})
             continue
-        tip = git(wt, "rev-parse", "FETCH_HEAD")
-        # The PR's own change set: its merge base with the default branch, not
-        # the campaign's fork point. Diffing from the campaign's fork would
-        # charge every PR with whatever else landed in between.
-        base = git(wt, "merge-base", tip, default_ref) or default_ref
-        touched = surface.intersection(
-            git_lines(wt, "diff", "--name-only", "%s..%s" % (base, tip))
-        )
+        touched = surface.intersection(files)
         if touched:
             findings.append({"number": number, "head": head,
                              "files": sorted(touched),
                              "title": row.get("title", ""),
                              "labels": label_names(row)})
     return findings
+
+
+# --- Resync sections --------------------------------------------------------
+#
+# Each section is {"rows": [...], "readable": bool}; a row carrying
+# `acknowledged` is reconciled once the campaign doc names its number.
+
+
+def stacked_on_campaign(stacks, prs_open, prefix):
+    """PRs from other lanes stacked on the campaign: members of a native stack
+    sitting ABOVE its first campaign head, unioned with open PRs whose base is
+    a campaign branch.
+
+    The stack's `pull_requests` run bottom to top, so a foreign member below
+    the campaign heads is a PR the campaign stacked onto, not one stacked on
+    it. Stack membership survives the retarget GitHub performs when a parent
+    merges, which `baseRefName` does not.
+    """
+    found = {}
+    for stack in stacks:
+        above_campaign = False
+        for member in stack.get("pull_requests") or []:
+            head = (member.get("head") or {}).get("ref") or ""
+            if head.startswith(prefix):
+                above_campaign = True
+                continue
+            number = member.get("number")
+            if above_campaign and number is not None:
+                found[number] = {
+                    "number": number, "head": head,
+                    "state": "merged" if member.get("merged_at") else (member.get("state") or ""),
+                    "via": "stack",
+                }
+    for row in prs_open:
+        head = row.get("headRefName") or ""
+        number = row.get("number")
+        if (number is None or number in found or head.startswith(prefix)
+                or not (row.get("baseRefName") or "").startswith(prefix)):
+            continue
+        found[number] = {"number": number, "head": head, "state": "open",
+                         "via": "base %s" % row.get("baseRefName")}
+    return [found[n] for n in sorted(found)]
+
+
+def lane_ownership(foreign_open, acknowledged):
+    """`foreign_open_prs` regrouped path -> PRs, the view a lane split is
+    written from. A PR whose head would not fetch groups under path None."""
+    by_path = {}
+    for row in foreign_open:
+        for path in row["files"] if row["files"] is not None else [None]:
+            by_path.setdefault(path, []).append(row["number"])
+    return [
+        {"path": path,
+         "prs": [{"number": n, "acknowledged": n in acknowledged}
+                 for n in sorted(set(by_path[path]))]}
+        for path in sorted(by_path, key=lambda p: (p is None, p or ""))
+    ]
+
+
+def slice_token_re(slice_id):
+    # Whole token: `D1` must not match inside `D1.1`, while a sentence-final
+    # `D1.` still matches `D1`.
+    return re.compile(r"(?<![\w.])%s(?!\w)(?!\.\d)" % re.escape(slice_id))
+
+
+def stale_now(now_text, closed):
+    """(rows, unmapped). Rows are `## Now` tokens that name finished campaign
+    work: `#<N>` for a merged or closed campaign PR, or the slice ID of a merged
+    one. `unmapped` lists merged campaign PRs whose body carries no slice ID,
+    which this check therefore cannot see."""
+    by_number = {row.get("number"): row for row in closed if row.get("number")}
+    rows = []
+    for number in sorted({int(n) for n in REF_RE.findall(now_text)}):
+        row = by_number.get(number)
+        if row:
+            rows.append({"token": "#%d" % number, "pr": number,
+                         "state": "merged" if row.get("mergedAt") else "closed"})
+    unmapped = []
+    for row in closed:
+        if not row.get("mergedAt"):
+            continue
+        match = SLICE_ID_RE.search(row.get("body") or "")
+        if not match:
+            unmapped.append(row.get("number"))
+            continue
+        if slice_token_re(match.group(1)).search(now_text):
+            rows.append({"token": match.group(1), "pr": row.get("number"),
+                         "state": "merged"})
+    return rows, sorted(n for n in unmapped if n is not None)
+
+
+def issues_naming(issues, paths, acknowledged):
+    """Open issues whose body names one of `paths` as a full repo-relative
+    path. The boundary keeps `engine/engine.cpp` from matching inside
+    `creations/engine/engine.cpp`; a bare basename never matches."""
+    patterns = [(path, re.compile(r"(?<![\w./-])%s(?![\w/-])" % re.escape(path)))
+                for path in sorted(paths)]
+    out = []
+    for row in issues:
+        if "pull_request" in row or row.get("number") is None:
+            continue
+        body = row.get("body") or ""
+        hits = [path for path, pattern in patterns if pattern.search(body)]
+        if hits:
+            out.append({"number": row["number"], "title": row.get("title", ""),
+                        "paths": hits, "acknowledged": row["number"] in acknowledged})
+    return out
+
+
+def unreconciled_sections(resync):
+    names = []
+    for name in ("stacked_on_campaign", "lane_ownership", "stale_now", "issues"):
+        section = resync[name]
+        rows = section["rows"]
+        if name == "lane_ownership":
+            pending = any(not pr["acknowledged"] for row in rows for pr in row["prs"])
+        elif name == "stale_now":
+            pending = bool(rows)
+        else:
+            pending = any(not row["acknowledged"] for row in rows)
+        if pending or not section["readable"]:
+            names.append(name)
+    return names
 
 
 # --- Campaign doc -----------------------------------------------------------
@@ -568,6 +782,17 @@ def doc_sections(path):
         last = dated[-1]
         out["last_ledger"] = "%s — %s" % (last.group(1), last.group(2))
     return out
+
+
+def doc_refs(path):
+    """Every `#<N>` the working-tree campaign doc names, as integers — so an
+    entry clears its row before it is committed, and a number never stands
+    in for a longer one it prefixes."""
+    try:
+        text = pathlib.Path(path).read_text()
+    except (FileNotFoundError, OSError):
+        return set()
+    return {int(n) for n in REF_RE.findall(text)}
 
 
 # --- Re-entry repair --------------------------------------------------------
@@ -691,6 +916,7 @@ VERDICT_LINE = {
               "— fast-forward first (`--apply`), or the next slice builds on a "
               "stale base",
     "live": "branch has an open PR — continue it",
+    "stacked": "branch builds on an open campaign PR — continue the stack",
     "superseded": "merging this branch into the default branch would change "
                   "nothing — RESET, do not rebase (`--apply`)",
     "stranded": "the merge WOULD change the default branch — this branch carries "
@@ -701,6 +927,73 @@ VERDICT_LINE = {
 
 # Verdicts --apply can repair, and what it does for each.
 APPLY_VERDICTS = ("superseded", "behind")
+READY_VERDICTS = ("clean", "live", "stacked")
+
+
+def render_resync(resync, out):
+    out("  RESYNC — a row is reconciled once the campaign doc names its #N")
+
+    def header(title, section):
+        if not section["readable"]:
+            out("  %-20s UNREADABLE — the list could not be read; not the same as empty"
+                % title)
+            return False
+        if section.get("truncated"):
+            out("  %-20s (list truncated at %d pages)" % (title, REST_MAX_PAGES))
+        return True
+
+    def pending_rows(title, section, line):
+        if not header(title, section):
+            return
+        pending = [row for row in section["rows"] if not row["acknowledged"]]
+        done = len(section["rows"]) - len(pending)
+        if not pending and not done:
+            out("  %-20s none" % title)
+            return
+        out("  %s" % title)
+        for row in pending:
+            out("    %s" % line(row))
+        if done:
+            out("    … %d acknowledged" % done)
+
+    pending_rows("stacked on campaign", resync["stacked_on_campaign"],
+                 lambda row: "#%s %s  %s  (%s)" % (row["number"], row["head"],
+                                                     row["state"], row["via"]))
+
+    section = resync["lane_ownership"]
+    if header("lane ownership", section):
+        if not section["rows"]:
+            out("  %-20s none" % "lane ownership")
+        else:
+            out("  lane ownership")
+            for row in section["rows"]:
+                prs = " ".join("#%s%s" % (pr["number"], " (ack)" if pr["acknowledged"] else "")
+                               for pr in row["prs"])
+                out("    %s  %s" % (row["path"] or "(head unreadable)", prs))
+
+    section = resync["stale_now"]
+    if section["rows"]:
+        out("  stale ## Now")
+        for row in section["rows"]:
+            named = "" if row["token"] == "#%s" % row["pr"] else "names #%s, " % row["pr"]
+            out("    %s  %s%s — rewrite ## Now forward-only"
+                % (row["token"], named, row["state"]))
+    else:
+        out("  %-20s none" % "stale ## Now")
+    if section["unmapped"]:
+        out("    merged campaign PRs with no `slice <ID>` in the body (unchecked): %s"
+            % ", ".join("#%s" % n for n in section["unmapped"]))
+
+    pending_rows("issues", resync["issues"],
+                 lambda row: "#%s %s — %s" % (row["number"], row["title"][:56],
+                                                ", ".join(row["paths"][:3])))
+
+    if resync["unreconciled"]:
+        out("  resync     UNRECONCILED (%s) — write each into the campaign doc "
+            "before the next slice" % ", ".join(resync["unreconciled"]))
+    else:
+        out("  resync     reconciled")
+    out("")
 
 
 def render_text(report):
@@ -770,6 +1063,8 @@ def render_text(report):
         out("  other lanes         no overlap on this campaign's files")
         out("")
 
+    render_resync(report["resync"], out)
+
     doc = report["doc"]
     if not doc["exists"]:
         out("  campaign doc MISSING at %s" % report["doc_path"])
@@ -794,7 +1089,8 @@ def render_text(report):
 def main():
     parser = argparse.ArgumentParser(
         prog="fleet-campaign-status",
-        description="Campaign re-entry oracle (docs/agents/campaign-protocol.md).",
+        description=__doc__.split("\nSource:")[0],
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("slug", help="campaign slug, e.g. million-entity-render")
     parser.add_argument("--repo", default="engine", choices=["engine", "game"])
@@ -806,8 +1102,10 @@ def main():
                         help="default-branch ref to measure against")
     parser.add_argument("--worktree", help="override the campaign worktree path")
     parser.add_argument("--pr-json",
-                        help="read PR rows from a file ({\"open\":[],\"merged\":[]}) "
-                             "instead of calling gh — the hermetic test seam")
+                        help="read PR rows from a file ({\"open\":[],\"merged\":[],"
+                             "\"stacks\":[],\"issues\":[]}) instead of calling gh — "
+                             "the hermetic test seam; `merged` rows with a null "
+                             "mergedAt are closed-unmerged")
     parser.add_argument("--no-fetch", action="store_true",
                         help="skip the opening fetch (offline / tests)")
     args = parser.parse_args()
@@ -841,16 +1139,63 @@ def main():
     slug_repo = repo_slug(args.repo)
     branch = git(wt, "rev-parse", "--abbrev-ref", "HEAD")
     rows_open, prs_readable = open_prs(slug_repo, args.repo, pr_json)
-    verdict = branch_verdict(wt, args.default_ref, branch, rows_open, prs_readable)
+    verdict = branch_verdict(wt, args.default_ref, branch, rows_open, prs_readable,
+                             prefix)
 
     dirty = porcelain_paths(wt)
     verdict["dirty"] = dirty
 
-    merged = merged_campaign_prs(slug_repo, prefix, pr_json)
+    closed = closed_campaign_prs(slug_repo, prefix, pr_json)
+    merged = [row for row in closed if row.get("mergedAt")][:SURFACE_PR_LIMIT]
+    campaign_open = [row for row in rows_open
+                     if (row.get("headRefName") or "").startswith(prefix)]
+    # In flight: the branch's own change, the tree, and every open campaign PR
+    # (an independent one is not on this branch).
+    in_flight = set(git_lines(wt, "diff", "--name-only", "%s...HEAD" % args.default_ref))
+    in_flight.update(dirty)
+    unread_heads = []
+    for row in campaign_open:
+        if row.get("number") is None or row.get("headRefName") == branch:
+            continue
+        files = pr_files(wt, row["number"], args.default_ref)
+        if files is None:
+            unread_heads.append(row["number"])
+        else:
+            in_flight.update(files)
     branch_files = git_lines(wt, "diff", "--name-only", args.default_ref)
-    surface = campaign_surface(wt, merged, branch_files + dirty)
+    surface = campaign_surface(wt, merged, branch_files + dirty + sorted(in_flight))
     campaign_numbers = {row.get("number") for row in merged if row.get("number")}
     since = since_anchor(wt, merged, verdict["fork_point"], args.default_ref)
+    doc_path = os.path.join(wt, "docs", "design", "campaigns", "%s.md" % slug)
+    acknowledged = doc_refs(doc_path)
+
+    foreign_commits = foreign_master_commits(
+        wt, since, args.default_ref, surface, campaign_numbers)
+    for row in foreign_commits:
+        row["acknowledged"] = row["pr"] in acknowledged
+    foreign_open = foreign_open_prs(wt, rows_open, prefix, surface, args.default_ref)
+    doc = doc_sections(doc_path)
+
+    stacks, stacks_readable, stacks_truncated = rest_list(
+        pr_json, "stacks", "repos/%s/stacks" % slug_repo)
+    issues, issues_readable, issues_truncated = rest_list(
+        pr_json, "issues", "repos/%s/issues?state=open" % slug_repo)
+    stacked_rows = stacked_on_campaign(stacks, rows_open, prefix)
+    for row in stacked_rows:
+        row["acknowledged"] = row["number"] in acknowledged
+    now_rows, unmapped = stale_now(doc["now"], closed)
+    resync = {
+        "stacked_on_campaign": {"rows": stacked_rows,
+                                "readable": stacks_readable and prs_readable,
+                                "truncated": stacks_truncated},
+        "lane_ownership": {"rows": lane_ownership(foreign_open, acknowledged),
+                           "readable": prs_readable},
+        "stale_now": {"rows": now_rows, "readable": True, "unmapped": unmapped},
+        "issues": {"rows": issues_naming(issues, in_flight, acknowledged),
+                   "readable": issues_readable, "truncated": issues_truncated,
+                   "unread_campaign_heads": unread_heads},
+    }
+    resync["unreconciled"] = unreconciled_sections(resync)
 
     report = {
         "slug": slug,
@@ -871,13 +1216,12 @@ def main():
         ],
         "surface_size": len(surface),
         "since": since,
-        "foreign_commits": foreign_master_commits(
-            wt, since, args.default_ref, surface, campaign_numbers),
-        "foreign_open_prs": foreign_open_prs(
-            wt, rows_open, prefix, surface, args.default_ref),
-        "doc_path": os.path.join(wt, "docs", "design", "campaigns", "%s.md" % slug),
+        "foreign_commits": foreign_commits,
+        "foreign_open_prs": foreign_open,
+        "resync": resync,
+        "doc_path": doc_path,
+        "doc": doc,
     }
-    report["doc"] = doc_sections(report["doc_path"])
 
     if args.apply:
         if verdict["verdict"] not in APPLY_VERDICTS:
@@ -893,7 +1237,7 @@ def main():
             # Re-measured, not patched: ahead/behind/head/fork all moved, and a
             # report that contradicts itself is worse than no report.
             verdict = branch_verdict(wt, args.default_ref, branch, rows_open,
-                                     prs_readable)
+                                     prs_readable, prefix)
             verdict["dirty"] = porcelain_paths(wt)
             report["branch"] = verdict
             report["dirty"] = verdict["dirty"]
@@ -905,7 +1249,9 @@ def main():
 
     if report.get("apply_error"):
         return 2
-    return 0 if verdict["verdict"] in ("clean", "live") else 1
+    if verdict["verdict"] not in READY_VERDICTS:
+        return 1
+    return 3 if resync["unreconciled"] else 0
 
 
 if __name__ == "__main__":
