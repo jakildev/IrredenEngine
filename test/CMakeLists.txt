@@ -74,6 +74,7 @@ add_executable(IrredenEngineTest
   render/camera_yaw_test.cpp
   render/default_pivot_latch_test.cpp
   render/detached_world_depth_test.cpp
+  render/entity_id_carrier_test.cpp
   render/fog_cross_section_test.cpp
   render/fog_reveal_eval_test.cpp
   render/per_axis_canvas_size_test.cpp

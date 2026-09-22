@@ -208,13 +208,21 @@ constant uint kEntityIdPriorityMaskInHighWord = 0x3u << kEntityIdPriorityShiftIn
 // (no self-shadow / crease AO). Rides the same masking chokepoint; a non-cut
 // face leaves the id unchanged.
 constant uint kEntityIdCutFaceMaskInHighWord = 0x1u << 29u;
+// Fog whole-body carrier — GLSL twin's kEntityIdFogWholeBodyMaskInHighWord.
+// Bit 28 flags a whole-body fog-governed pixel so FOG_TO_TRIXEL fogs it on XY
+// distance alone. Rides the same masking chokepoint.
+constant uint kEntityIdFogWholeBodyMaskInHighWord = 0x1u << 28u;
 constant uint kEntityIdHighWordMask =
-    ~(kEntityIdPriorityMaskInHighWord | kEntityIdCutFaceMaskInHighWord);
+    ~(kEntityIdPriorityMaskInHighWord | kEntityIdCutFaceMaskInHighWord |
+      kEntityIdFogWholeBodyMaskInHighWord);
 inline uint decodePriority(uint2 rawId) {
     return (rawId.y >> kEntityIdPriorityShiftInHighWord) & 0x3u;
 }
 inline bool decodeCutFace(uint2 rawId) {
     return (rawId.y & kEntityIdCutFaceMaskInHighWord) != 0u;
+}
+inline bool decodeFogWholeBody(uint2 rawId) {
+    return (rawId.y & kEntityIdFogWholeBodyMaskInHighWord) != 0u;
 }
 inline uint2 decodeEntityId(uint2 rawId) {
     return uint2(rawId.x, rawId.y & kEntityIdHighWordMask);
@@ -229,6 +237,12 @@ inline uint2 encodeEntityIdWithPriority(uint2 id, uint priority) {
 inline uint2 encodeEntityIdCutFace(uint2 packedId, bool isCutFace) {
     return isCutFace ? uint2(packedId.x, packedId.y | kEntityIdCutFaceMaskInHighWord)
                      : packedId;
+}
+// Set the fog whole-body flag on an ALREADY priority-encoded id — GLSL twin.
+inline uint2 encodeEntityIdFogWholeBody(uint2 packedId, bool isFogWholeBody) {
+    return isFogWholeBody
+        ? uint2(packedId.x, packedId.y | kEntityIdFogWholeBodyMaskInHighWord)
+        : packedId;
 }
 
 // Per-axis fractional encoding:

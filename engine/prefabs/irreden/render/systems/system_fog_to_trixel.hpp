@@ -69,6 +69,11 @@ template <> struct System<FOG_TO_TRIXEL> {
         canvasTextures.getTextureDistances()
             ->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
         fog.getTexture()->bindAsImage(2, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+        // The fog whole-body carrier bit rides the entity-id channel. On Metal
+        // this evicts whatever was resident in slot 3; every later unit-3 user
+        // rebinds it inside its own tick.
+        canvasTextures.getTextureEntityIds()
+            ->bindAsImage(3, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
         // FrameDataVoxelToTrixel carries frameCanvasOffset /
         // trixelCanvasOffsetZ1 / voxelRenderOptions for the iso pixel → world
         // pos3D recovery, plus visibleFaceIds for the cross-section cap's

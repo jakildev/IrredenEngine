@@ -209,13 +209,13 @@ graphql_mode error
 sample
 assert_eq "$(cat "$LATCH")" "$before" "HTTP 502 leaves the latch untouched"
 
-echo "T7: /rate_limit still latches core and search, and no longer graphql"
+echo "T7: /rate_limit latches search only — neither core nor graphql"
 rm -f "$USAGE"/*.json
 rest_fixture 4900
 graphql_mode error
 sample
-assert_eq "$(ls "$USAGE" | tr '\n' ' ')" "github-core.json github-search.json " \
-    "REST half writes core and search only"
+assert_eq "$(ls "$USAGE" | tr '\n' ' ')" "github-search.json " \
+    "/rate_limit half writes search only"
 
 echo "T8: every gh invocation was modelled by the stub"
 assert_eq "$(cat "$STUB_DIR/misses")" "" "no unmodelled gh calls"
