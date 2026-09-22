@@ -203,6 +203,22 @@ def gh_api(path):
         raise Unreadable(f"gh api {path.split('?')[0]}: not JSON") from e
 
 
+def gh_api_list(path, key=None, per_page=100, max_pages=3):
+    """Every item of the REST list at `path`, `key` naming the list inside an
+    object response. A 404 is an empty list. A list still full at
+    `max_pages` is Unreadable: its tail was never read."""
+    items = []
+    sep = "&" if "?" in path else "?"
+    for page in range(1, max_pages + 1):
+        query = f"{sep}per_page={per_page}" + (f"&page={page}" if page > 1 else "")
+        body = gh_api(path + query)
+        page_items = ((body or {}).get(key) if key else body) or []
+        items.extend(page_items)
+        if len(page_items) < per_page:
+            return items
+    raise Unreadable(f"gh api {path}: more than {per_page * max_pages} items")
+
+
 def _flow_items(value):
     """The words of a flow sequence or scalar: `[a, 'b']` or `a`."""
     return re.findall(r"[A-Za-z_][\w-]*", value)
@@ -326,12 +342,8 @@ class GateReader:
         if run_id in self.suites:
             return self.suites[run_id]
         found = None
-        jobs = (gh_api(f"repos/{self.slug}/actions/runs/{run_id}/jobs?per_page=100")
-                or {}).get("jobs", [])
-        for job in jobs:
-            annotations = gh_api(
-                f"repos/{self.slug}/check-runs/{job['id']}/annotations?per_page=100") or []
-            for annotation in annotations:
+        for job in gh_api_list(f"repos/{self.slug}/actions/runs/{run_id}/jobs", key="jobs"):
+            for annotation in gh_api_list(f"repos/{self.slug}/check-runs/{job['id']}/annotations"):
                 if annotation.get("title") == SUITES_ANNOTATION_TITLE:
                     found = (found or set()) | set((annotation.get("message") or "").split())
         self.suites[run_id] = found
@@ -351,8 +363,7 @@ class GateReader:
         by branch: a branch with any green run reads green even when its
         latest push triggered none. A cancelled run is no reading."""
         self.load()
-        runs = (gh_api(f"repos/{self.slug}/actions/runs?head_sha={sha}&per_page=100")
-                or {}).get("workflow_runs", [])
+        runs = gh_api_list(f"repos/{self.slug}/actions/runs?head_sha={sha}", key="workflow_runs")
         latest = {}
         for run in runs:
             if run.get("status") != "completed" or run.get("conclusion") == "cancelled":

@@ -92,7 +92,8 @@ EOF
 # `&` and `=` mapped to `_`, under $GH_STUB_API (a missing file is GitHub's
 # 404). `write_api.py <dir> <spec.json>` renders a spec — the default
 # branch's workflow files, the runs per head sha, and master's latest
-# conclusion per workflow — into that layout.
+# conclusion per workflow — into that layout. A list response is paged 100
+# per file, page 1 at the bare path and page N at `&page=N`, as GitHub serves it.
 
 cat > "$TMP/write_api.py" << 'PYEOF'
 import base64
@@ -110,6 +111,13 @@ def put(path, payload):
     (out / re.sub(r"[/?&=]", "_", path)).write_text(json.dumps(payload))
 
 
+def put_list(path, items, key=None):
+    for start in range(0, max(len(items), 1), 100):
+        page = items[start:start + 100]
+        suffix = f"&page={start // 100 + 1}" if start else ""
+        put(path + suffix, {"total_count": len(items), key: page} if key else page)
+
+
 put(f"repos/{slug}", {"default_branch": "master"})
 put(f"repos/{slug}/contents/.github/workflows?ref=master", [
     {"name": name, "path": f".github/workflows/{name}", "type": "file"}
@@ -118,17 +126,16 @@ for name, text in spec["workflows"].items():
     put(f"repos/{slug}/contents/.github/workflows/{name}?ref=master",
         {"content": base64.b64encode(text.encode()).decode()})
 for sha, runs in spec["runs"].items():
-    put(f"repos/{slug}/actions/runs?head_sha={sha}&per_page=100",
-        {"total_count": len(runs), "workflow_runs": runs})
+    put_list(f"repos/{slug}/actions/runs?head_sha={sha}&per_page=100", runs, "workflow_runs")
 for name, value in spec.get("master", {}).items():
     run = value if isinstance(value, dict) else {"conclusion": value}
     put(f"repos/{slug}/actions/workflows/{name}/runs?branch=master&status=completed&per_page=1",
         {"total_count": 1, "workflow_runs": [run]})
 for run_id, job_ids in spec.get("jobs", {}).items():
-    put(f"repos/{slug}/actions/runs/{run_id}/jobs?per_page=100",
-        {"total_count": len(job_ids), "jobs": [{"id": j} for j in job_ids]})
+    put_list(f"repos/{slug}/actions/runs/{run_id}/jobs?per_page=100",
+             [{"id": j} for j in job_ids], "jobs")
 for job_id, annotations in spec.get("annotations", {}).items():
-    put(f"repos/{slug}/check-runs/{job_id}/annotations?per_page=100", annotations)
+    put_list(f"repos/{slug}/check-runs/{job_id}/annotations?per_page=100", annotations)
 PYEOF
 
 # The default fixture: three gates and two path-filtered workflows; every
@@ -611,6 +618,81 @@ assert_contains "$out" \
     "UNSTABLE with every run green is held as unread"
 stale_lines=$(grep -c "Update branch to re-run" "$TMP/out.txt")
 assert_eq "$stale_lines" "1" "only the head whose green predates master's failure is held stale"
+
+# --- every list read pages ---------------------------------------------------
+#
+# Head 705's runs, its failed run's jobs, and that job's annotations each put
+# the item that matters on page 2: 100 cancelled runs precede its two real
+# runs, 100 jobs precede the annotated one, and 100 unrelated annotations
+# precede the suite annotation. Read to the end, its red is master's — a
+# note. Head 706's failed run has 300 jobs, a list still full at the page
+# cap: its tail was never read, so the reading is unreadable, not complete.
+
+python3 - "$TMP/api-paged.json" << 'PYEOF'
+import json
+import sys
+
+unfiltered = "on:\n  push:\n    branches: [master]\n  pull_request:\n  workflow_dispatch:\n"
+filtered = "on:\n  pull_request:\n    paths:\n      - 'scripts/**'\n"
+PAGED, CAPPED = "2" * 40, "3" * 40
+
+
+def run(i, name, conclusion, created="2026-02-01T00:00:00Z"):
+    return {"id": i, "path": f".github/workflows/{name}", "status": "completed",
+            "conclusion": conclusion, "created_at": created}
+
+
+suite = {"title": "fleet-tests failed suites", "message": "test_alpha.sh"}
+spec = {
+    "workflows": {"comment-refs.yml": unfiltered, "fleet-tests.yml": filtered},
+    "runs": {
+        PAGED: [run(1000 + i, "comment-refs.yml", "cancelled") for i in range(100)]
+        + [run(61, "comment-refs.yml", "success"), run(62, "fleet-tests.yml", "failure")],
+        CAPPED: [run(71, "comment-refs.yml", "success"), run(72, "fleet-tests.yml", "failure")],
+    },
+    "master": {"comment-refs.yml": "success",
+               "fleet-tests.yml": {"conclusion": "failure", "id": 900,
+                                   "created_at": "2026-02-01T12:00:00Z"}},
+    "jobs": {"62": list(range(6200, 6301)), "72": list(range(7000, 7300)), "900": [9001]},
+    "annotations": {
+        "6300": [{"title": "unrelated", "message": str(i)} for i in range(100)] + [suite],
+        "9001": [suite],
+    },
+}
+with open(sys.argv[1], "w", encoding="utf-8") as f:
+    json.dump(spec, f)
+PYEOF
+python3 "$TMP/write_api.py" "$TMP/api-paged" "$TMP/api-paged.json"
+
+python3 - "$TMP/engine-prs-paged.json" << 'PYEOF'
+import json
+import sys
+
+prs = [
+    {"number": 705, "title": "engine: red read past page 1", "headRefOid": "2" * 40},
+    {"number": 706, "title": "engine: jobs past the page cap", "headRefOid": "3" * 40},
+]
+for pr in prs:
+    pr.update({"url": "u", "labels": [{"name": "fleet:approved"}],
+               "mergeStateStatus": "UNSTABLE"})
+with open(sys.argv[1], "w", encoding="utf-8") as f:
+    json.dump(prs, f)
+PYEOF
+
+status=$(GH_STUB_ENGINE_PRS="$TMP/engine-prs-paged.json" GH_STUB_API="$TMP/api-paged" \
+    run_decisions --repo=engine)
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "0" "paged run exits 0"
+assert_contains "$out" \
+    "note: .github/workflows/fleet-tests.yml failed on head 222222222 for the same suite(s) as master — inherited, not this PR's to fix" \
+    "a suite annotation on page 2 of a page-2 job of a page-2 run is read"
+assert_absent "$out" "has no completed run on head 222222222" \
+    "a head run past the first page of the runs list is read"
+assert_absent "$out" "hold: .github/workflows/fleet-tests.yml failed on head 222222222" \
+    "an inherited red read past page 1 is never a hold"
+assert_contains "$out" \
+    "hold: gate coverage unreadable (gh api repos/jakildev/IrredenEngine/actions/runs/72/jobs: more than 300 items)" \
+    "a list still full at the page cap is unreadable, never read as complete"
 
 # --- --repo equals-form + dual-spelling validation --------------------------
 
