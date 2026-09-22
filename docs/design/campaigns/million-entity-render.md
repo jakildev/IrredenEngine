@@ -128,6 +128,7 @@ Its canonical detail stays in [rendering-audit-todo.md](../rendering-audit-todo.
 | 2026-09-21 | D1.2e closed: the crossing frame was the re-allocation. `C_PerAxisTrixelCanvases` parks its set on a cardinal frame (`park`: the live fields swap into `parked_`, so `isAllocated()` reads false and all seven readers take the fast path unchanged), swaps it back on the next rotated frame (`unpark`) and frees it after `IRPrefab::PerAxisCanvas::kParkedCardinalFrames` (120) consecutive cardinal frames; the policy is the pure `lifecycleStep` function, pinned by nine headless tests, and the report gains `PerAxisCanvas::Park` / `::Unpark` rows so a run vouches for the lifecycle it took. Interleaved against master's Release binary on the pinned sweep (battery, host load about 3): the first rotated frame after 90°, 180° and 270° reads **42.7 to 48.1 ms against 80.5 to 97.5**, the cardinal frame stays on the fast path (35 to 40 ms; Park 3, Unpark 3, Release 0, Allocate 1), the steady p99 falls from 93.0 and 80.5 to 48.1 and 49.4 ms and no longer moves when the three crossing frames are removed (0.4 and 0.0 ms against 44.9 and 29.8), a crossing's three frames cost 124 to 127 ms against 174 to 184, and the turn's steady mean sits inside the spread (41.35 to 42.90 across the four arms). The path re-entry costs nothing the split experiment could not exclude; what cost 40 to 55 ms was freeing and re-creating the set, of which the timed calls are 2.5 ms. Identity: a cardinal frame with the parked set resident is byte-identical to a never-allocated one and to master's; the first unparked frame (91.2°) is byte-identical to the pose held from frame 1; `render-verify --target IRCanvasStress` passes 11 of 11 at maximum delta 0; the nine-yaw `--sweep-yaw 0 6.2831853 9` set is byte-identical before and after at all nine poses. Found on the way: master's own first rotated frame on a fresh allocation differs from the settled pose (32,300 pixels by 1 to 7, 304 by 32 to 54), which parking removes for a crossing and not for the first frame of a turn; filed as #3660 (agent-approved, defect verified, fix not) with the sort's lagged entry count as the hypothesis. Evidence: [`continuous-yaw-sweep.md`](../../perf/continuous-yaw-sweep.md) § The crossing frame, with the set parked |
 | 2026-09-21 | Resync at the top of the D1.2f iteration, stacked on #3665 (the doc's ledger and `## Now` ride forward on the stack, so a slice off master would conflict with it at merge): verdict `stacked`, no new merges, the lane split above unchanged. Issues naming files this stack changes, read and reconciled: #3661 (one reveal model for fog of war; cites the render prefab `CLAUDE.md` for its fog bullets, which this stack does not touch — no effect, and the campaign stays out of the fog lane), #3580 (master's instruction-size check red on `engine/render/CLAUDE.md` at 209 of 200 lines and `engine/prefabs/irreden/render/CLAUDE.md` at 208; this stack's edit to the latter holds it at 208, neither trimming nor growing the offender — the trim is #3580's), #3463 (epic close-out residuals in the voxel and command `CLAUDE.md`s; no overlap with this stack beyond the render prefab `CLAUDE.md` it cites — no effect), and #3660, this campaign's own follow-up from the D1.2e row. A fleet reviewer claimed #3665 and declined it on `fleet:wip` within minutes of its opening (its comment names the label), which is the stand-off the protocol asks for |
 | 2026-09-21 | D1.2f closed as a measurement: the exact diagonal is a band. Five pinned static poses (44.4°, 44.9°, 45.0°, 45.1°, 45.6°), stage profiling on, two interleaved rounds on the million scene: a tenth of a degree from 45° already costs 9 to 11 ms over 44.4° (52.8 and 52.9 against 43.9 ms in the first round) and the exact diagonal 16.6 to 24.5 ms more (60.6 and 68.5); the two shoulders read alike, the GPU envelope carries the whole rise (30.3 → 43.6 → 30.0 ms) and the CPU moves by tenths. The one counter that moves is the overflow lane, 578,826 entries at 44.4°, 1,751,439 a tenth of a degree off the diagonal and 2,208,000 on it (bit-identical across rounds), while visible candidates and per-axis entries are the same to within 50 at every pose. The three stages that read the lane rise with it (append and sort 7.4 → 17.7, scatter 2.0 → 7.4, relight 12.4 → 17.5 ms per sampled invocation), and so do two that never read it (light volume, per-axis AO), the rows summing to three times the envelope, so the attribution is by the lane and its consumers and not by the rows. The 1.2° sweep steps over the band; how far it extends past ±0.1° is not measured. Hypothesis, flagged: the lane's 8-step depth epsilon admits coset members that tie in yawed depth at 45°. Evidence: [`diagonal-pose-cost.md`](../../perf/diagonal-pose-cost.md) |
+| 2026-09-21 | D1.2g, the diagonal's separating experiment, ran and is recorded as a reading: the scatter draw, the relight and the sort switched off one at a time at 45.0° against 44.4° (the first two by their existing kill switches, the sort by a local patch built into `e83ce0cf…`, never committed), two interleaved rounds. Every probe fired in its stage row (scatter 9.4 → 0.4 ms, relight → 0, the sort's row 21.6 → 6.3) and the lane's count is unchanged in every arm, so the probes removed consumers and not the population. The fleet loaded the host mid-run (`host_load_1m` 4 → 9, one arm at 19, battery 52% → 35%) and eight of sixteen cells doubled or tripled; in the clean cells the envelope at 45.0° falls 7.6 ms with the sort off, 6.0 with the scatter off and 0.4 with the relight off (2.4, 1.7 and 0.0 at 44.4°), so of the diagonal's 11 to 12 ms envelope excess the sort reads about 5 ms and the scatter about 4 and the relight nothing the envelope can see, although its row is 20 ms. One clean round per cell, poses from different rounds: the sixteen arms on a quiet host join the #3638 owed list before any share is quoted. Evidence: [`diagonal-pose-cost.md`](../../perf/diagonal-pose-cost.md) § The separating experiment |
 
 ### Decisions taken
 
@@ -329,27 +330,28 @@ Its canonical detail stays in [rendering-audit-todo.md](../rendering-audit-todo.
 
 ## Now
 
-- **In flight:** slice D1.2f, the exact-diagonal band (this PR, stacked on
-  #3665, the parked per-axis set; both `fleet:wip` until the next checkpoint).
-- **Next:** run the resync first. Then the band's separating experiment: the
-  sort-disabled and overflow-albedo-only probes at 45.0° against 44.4°,
-  interleaved, so the diagonal's 13 to 19 ms of GPU envelope is split between
-  the append and sort, the scatter and the relight by full-frame controls; and
-  the entries-by-depth-delta histogram that says whether the lane's growth on
-  the diagonal is exact ties inside its 8-step epsilon. Then #3660, the first
-  rotated frame of a turn (a local patch forcing the sort's encoded span to
-  the cap decides whether it is the sort). Owed and blocked on a **quiet
-  host** (#3638; ask the human for a window at the checkpoint, and read
-  `host_load_1m` before believing a table): the three-round million reference
-  on master's current shaders with every arm pinned and the sweep arm, and the
-  docs PR proposing the objective's rotation and zoom parity baselines at a
-  true 45°. Still on the D1 list: a matched-projected-extent arm (the pin is
-  most of it), a longer window for the tail, the `--yaw` perf-matrix axis
+- **In flight:** slice D1.2g, the diagonal's separating experiment as a
+  reading (this PR, stacked on #3666 and #3665; all three `fleet:wip` until
+  the next checkpoint).
+- **Next:** run the resync first. Then #3660, the first rotated frame of a
+  turn: a local patch forcing the sort's encoded span to the cap and the
+  frame-77 capture of the sweep against the settled pose decide whether it is
+  the sort; identity, so a loaded host does not spoil it. Then the band's
+  width (44.6°, 44.8°, 45.2°, 45.4°, and the five poses about 135°) and the
+  entries-by-depth-delta histogram, both timing-free counts. Owed and
+  blocked on a **quiet host** (#3638; ask the human for a window at the
+  checkpoint, and read `host_load_1m` before believing a table): the sixteen
+  arms of the separating experiment again, the three-round million reference
+  on master's current shaders with every arm pinned and the sweep arm, and
+  the docs PR proposing the objective's rotation and zoom parity baselines at
+  a true 45°. Still on the D1 list: a matched-projected-extent arm (the pin
+  is most of it), a longer window for the tail, the `--yaw` perf-matrix axis
   (#3130, parked `human:owned` for this campaign), and the million-preset
-  worklist (a C++ test for the pre-init pass on a preset, the preset directory
-  inside the fingerprints, the 0.9 GB profiler dump). D0 and D4 wait on
-  #3632, #3635 and #3629. D2 has its targets and three residency numbers: at
-  45° the light volume, per-axis AO and overflow lighting and sort are the
-  largest sampled GPU stages, the GPU frame alone is 28 to 30 ms, and the
-  overflow lane peaks at 26% of its 96 MiB on an exact diagonal, 21% a tenth
-  of a degree off it and 7% at 44.4°.
+  worklist (a C++ test for the pre-init pass on a preset, the preset
+  directory inside the fingerprints, the 0.9 GB profiler dump). D0 and D4
+  wait on #3632, #3635 and #3629. D2 has its targets: at 45° the overflow
+  sort and the overflow scatter are where the diagonal's excess reads, the
+  light volume and per-axis AO are the largest sampled stages at every pose,
+  the GPU frame alone is 28 to 30 ms off the band, and the overflow lane
+  peaks at 26% of its 96 MiB on an exact diagonal, 21% a tenth of a degree
+  off it and 7% at 44.4°.

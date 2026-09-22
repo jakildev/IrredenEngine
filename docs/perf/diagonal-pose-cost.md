@@ -102,13 +102,62 @@ whether they are drawn behind cell quads that already cover their pixels, is
 what the counters below would say. It is a reading of the lane's admission
 rule, not a measurement.
 
+## The separating experiment
+
+The three consumers of the lane switched off one at a time, at 45.0° against
+44.4°, each arm a full frame: the overflow scatter draw off
+(`IR_PERAXIS_OVERFLOW_DISABLE`, the composite's existing kill switch), the
+overflow relight off (`IR_OVERFLOW_LIGHTING_DISABLE`, likewise) and the
+overflow sort off (a local, uncommitted patch that skips `sortFaceRecords`
+and keeps the append, built into the binary `e83ce0cf…`; the other arms
+run the unpatched `18ab1d21…`). Every probe changes the picture and none is
+an optimization. Same preset, pivot and scene as above; two rounds, arms
+interleaved (control, scatter off, relight off, sort off at 45.0°, then at
+44.4°). The fleet loaded the host during the run: `host_load_1m` went from 4
+in the first arms to 9 in the second round and to 19 on one arm, and the
+battery from 52% to 35%. Reports under
+[diagonal-pose-cost/](diagonal-pose-cost/) as `split-<arm>-<pose>-<round>/`.
+
+| Arm | Pose | Steady mean ms, r1 / r2 | GPU envelope ms, r1 / r2 | Overflow entries | `voxelPerAxisOverflow` | `perAxisScatter` | `lightingOverflow` | Load, r1 / r2 |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| control | 45.0° | 59.57 / 93.50 | 43.80 / 70.54 | 2,208,000 | 21.57 | 9.40 | 20.50 | 5.0 / 9.1 |
+| scatter off | 45.0° | 53.42 / 80.25 | 37.80 / 51.81 | 2,208,000 | 19.80 | 0.40 | 19.28 | 4.7 / 9.7 |
+| relight off | 45.0° | 59.89 / 68.63 | 44.19 / 52.21 | 2,208,000 | 18.43 | 7.55 | 0.00 | 4.3 / 7.7 |
+| sort off | 45.0° | 51.66 / 51.10 | 36.19 / 36.66 | 2,208,000 | 6.26 | 8.03 | 24.94 | 4.0 / 9.0 |
+| control | 44.4° | 47.41 / 45.77 | 33.21 / 31.96 | 578,826 | 8.20 | 2.11 | 12.95 | 7.9 / 7.8 |
+| scatter off | 44.4° | 71.22 / 43.72 | 45.66 / 30.26 | 578,826 | 10.38 | 0.40 | 15.58 | 7.1 / 6.9 |
+| relight off | 44.4° | 155.64 / 46.00 | 38.93 / 31.97 | 578,826 | 8.58 | 2.16 | 0.00 | 19.3 / 6.7 |
+| sort off | 44.4° | 65.42 / 42.78 | 45.15 / 29.57 | 578,826 | 7.59 | 2.52 | 30.04 | 9.1 / 6.0 |
+
+(Stage rows are the mean of both rounds, ms per sampled invocation.)
+
+- **Every probe fired, and the lane is unchanged by all three.** The scatter
+  row falls from 9.4 to 0.4 ms (the cell-path draw remains), the relight row
+  to 0, the row that holds the sort from 21.6 to 6.3 (the append remains),
+  and the lane's count is 2,208,000 and 578,826 in every arm, so the probes
+  removed consumers and not the population.
+- **What the clean cells read.** The first round at 45.0° ran at loads of 4
+  to 5 and the second round at 44.4° at 6 to 8; the other eight cells ran
+  at 7.7 to 19 and read 52 to 156 ms for frames that read 43 to 60 in the
+  band table, and are not used. In the clean cells the envelope at 45.0°
+  falls by 7.6 ms with the sort off and by 6.0 with the scatter off, and by
+  0.4 with the relight off; at 44.4° by 2.4, 1.7 and 0.0. Against the
+  diagonal's envelope excess of 10.6 to 11.8 ms over 44.4° (43.8 against
+  33.2 and 32.0), the sort's share reads about 5 ms and the scatter's about
+  4, and the relight's nothing the envelope can see even though its row is
+  20 ms on the diagonal, so that row measures a pass that overlaps others.
+- **This is a reading, not a finding.** One clean round per cell, on a host
+  the fleet was loading, with the two poses' clean cells taken from
+  different rounds. It says where to look (the sort's merge network and the
+  scatter's instanced draw over 2.2 million quads) and not by how much; the
+  same sixteen arms on a quiet host (issue 3638 in the tracker) are owed
+  before any number here is quoted as the split.
+
 ## Next measurements
 
-1. The separating experiment: the sort-disabled and overflow-albedo-only
-   probes of [gpu-cost-attribution.md](gpu-cost-attribution.md) § Method at
-   45.0° against 44.4°, interleaved, so the 13 to 19 ms of envelope is split
-   between the append and sort, the scatter and the relight by full-frame
-   controls rather than by stage rows.
+1. The separating experiment above on a quiet host: the same sixteen arms,
+   so the sort's and the scatter's shares of the diagonal's envelope excess
+   are numbers and not a reading.
 2. The band's width: 44.6°, 44.8°, 45.2° and 45.4° between the poses above,
    and the same five poses about 135°.
 3. A histogram of the lane's entries by their depth distance from the
@@ -124,5 +173,7 @@ rule, not a measurement.
   against 60.6 and 68.5 here). The lane counts are exact; the milliseconds
   are one host on one evening, two runs a pose.
 - Which stage owns the extra envelope. The stage rows rise together and sum
-  to three times the envelope.
+  to three times the envelope; the separating experiment's clean cells point
+  at the sort and the scatter and at nothing the relight does, from one
+  round each on a loaded host.
 - Why the lane grows: the admission rule reading above is a hypothesis.
