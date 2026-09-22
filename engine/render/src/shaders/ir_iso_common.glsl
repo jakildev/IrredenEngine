@@ -624,7 +624,7 @@ ivec2 trixelCanvasPixelToIsoRel(
 // emit; these helpers ignore it.
 //
 // Sign convention: rotateCardinalZ is world->view = R_z(-rasterYaw) — same as
-// the continuous-yaw matrix in c_shapes_to_trixel.glsl. At visualYaw=+pi/2 the
+// the continuous-yaw matrix in c_shapes_to_trixel_body.glsl. At visualYaw=+pi/2 the
 // camera turns +90 deg around +Z; from the view's POV the world appears to spin
 // -90 deg, so world (+X,0,0) lands at view (0,-Y,0) and projects to iso
 // (-1,+1). Voxels (this helper) and shapes MUST share this convention or they

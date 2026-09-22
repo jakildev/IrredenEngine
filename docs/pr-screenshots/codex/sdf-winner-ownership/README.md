@@ -53,18 +53,28 @@ valid GPU shape-stage samples in each report. Raw reports are adjacent.
 | Parent 2 | 0.084 | 1.040 |
 | Ownership 1 | 0.092 | 1.982 |
 | Ownership 2 | 0.092 | 1.965 |
+| Compile-specialized ownership 1 | 0.840¹ | 1.669 |
+| Compile-specialized ownership 2 | 0.094 | 1.518 |
 
-This is approximately twice the SDF-stage GPU cost in this overlap fixture,
-not a performance-neutral fix. `shapePass1` measures the entire shape-system
-bundle, including encoder-boundary effects, not the election kernel alone.
-The reports include startup/transition outliers and rejected timestamp pairs;
-these are aggregate timings, not a per-pose benchmark or a population scaling
-claim. The runs were sequential on the same host.
+Compile-time depth, owner, publish, and caster variants recover 15–23% of the
+pre-specialization ownership cost by removing the runtime pass branch and
+dead pass-specific work from each kernel. The remaining 46–77% increase over
+the parent is the extra owner-election surface solve itself, so this remains a
+measured tradeoff rather than a performance-neutral fix. `shapePass1` measures
+the entire shape-system bundle, including encoder-boundary effects, not the
+election kernel alone. The reports include startup/transition outliers and
+rejected timestamp pairs; these are aggregate timings, not a per-pose benchmark
+or a population scaling claim. The runs were sequential on the same host.
+
+¹ The first specialized run's CPU average includes one 183.574 ms outlier;
+its minimum was 0.058 ms and the repeat averaged 0.094 ms.
 
 Storage is four bytes per pixel of the largest processed SDF canvas, reused
 across canvases and frames. Only canvases with SDF tiles pay the added clear
-and election dispatch. Reducing repeated SDF evaluation while preserving the
-single-writer guarantee is a follow-up before accepting this cost as a default.
+and election dispatch. The kernels are compile-time specializations of one
+shared body, so depth and owner passes no longer carry publish-only color,
+checker, identity, or X-ray work. Avoiding the remaining repeated SDF
+evaluation would require a separate tie-gated dispatch design.
 
 ## Validation
 
@@ -78,3 +88,25 @@ single-writer guarantee is a follow-up before accepting this cost as a default.
   correctness blockers.
 - Native OpenGL execution remains unverified; scalar shader tests do not
   replace Windows smoke validation.
+
+## Merge-readiness specialization check
+
+After merging current master, the publish-only color/checker/depth-color, fog
+identity and X-ray setup is explicitly guarded by `IR_SHAPE_PASS == 1` in both
+backends. A preprocessing test checks all four variants and deliberately
+removes the guard to prove the excluded work returns. Compiler dead-code
+elimination may already remove this arithmetic; explicit gating does not
+establish a speedup.
+
+The same paired recipe above was rerun on the merged tree, changing only the
+publish guard in runtime shader assets for the control. Gated captures
+2213/2214 and ungated captures 2215/2216 are RGB-identical at yaw 0/45°, with
+the blue owner retained. Both runs exited cleanly after 245 frames. Raw reports:
+[publish gated](publish-gated-profile.txt) and [ungated](publish-ungated-profile.txt).
+The gated GPU `shapePass1` mean is 1.144 ms; the control is 2.327 ms.
+These single pairs include startup/transition outliers and do not isolate
+election cost. They do not supersede the original ownership-versus-no-election
+cost comparison or claim performance neutrality.
+
+The merged root passes all 31 rendering suites (four ownership tests), native
+IRCanvasStress build and header checks. Native OpenGL remains pending.

@@ -1219,7 +1219,7 @@ void registerArgs() {
     args.flag("--probe-analytic-box", "Use an analytic box for shadowbox");
     args.flag(
         "--probe-sdf-depth-tie",
-        "Overlap an orange box with the analytic shadowbox to test equal-depth ownership"
+        "With --probe-analytic-box, overlap an orange box to test equal-depth ownership"
     );
     args.flag("--probe-analytic-sphere", "Use an analytic sphere for shadowbox");
     args.numbers("--analytic-box-offset", "Analytic shadowbox translation offset <x> <y> <z>", 3);

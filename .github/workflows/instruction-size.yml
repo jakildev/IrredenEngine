@@ -9,14 +9,17 @@ name: Instruction Size
 # docs/agents/ trees, so any push can regress it.
 #
 # Measured against the branch's own baseline, not the base branch's: a
-# deliberate raise is a hand edit of the JSON in the same PR, and that diff
-# is what the reviewer weighs.
+# deliberate raise is a hand edit of the JSON in the same PR, and the script
+# prints every raise so the reviewer reads it rather than diffs for it.
 #
-# A pull request is also measured against the tree its merge commit was built
-# on (the first parent, hence fetch-depth 2), and fails only on an offender it
-# introduced; the base's own offenders print as inherited. A red master would
-# otherwise turn every PR red and hide the one that adds a regression. A push
-# to master is measured flat, so a red master stays red.
+# Every run is measured against the tree it was built on — a pull request
+# against its merge commit's first parent, a push against the previous tip —
+# and fails only on an offender it introduced; earlier offenders print as
+# inherited. A red master would otherwise turn every later run red and hide
+# the one that adds a regression. An introduced excess within the script's
+# warning band is a ::warning annotation, not a failure: a few lines on a
+# file at its cap is a signal to trim. The flat tree reading is
+# `workflow_dispatch`, or the script run with no flag.
 
 on:
   push:
@@ -36,7 +39,23 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Instruction size ratchet
+      # A push of several commits reaches back further than fetch-depth 2, so
+      # the previous tip is fetched by sha. A branch's first push has no
+      # previous tip (the zero sha) and is measured flat.
+      - name: Resolve the tree to measure against
         env:
-          AGAINST_ARGS: ${{ github.event_name == 'pull_request' && '--against HEAD^1' || '' }}
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            echo "AGAINST_ARGS=--against HEAD^1" >> "$GITHUB_ENV"
+          elif [ "$EVENT" = push ] && [ -n "$BEFORE" ] && ! echo "$BEFORE" | grep -qE '^0+$'; then
+            if git fetch --no-tags --depth=1 origin "$BEFORE"; then
+              echo "AGAINST_ARGS=--against $BEFORE" >> "$GITHUB_ENV"
+            else
+              echo "previous tip $BEFORE is unreachable; measuring the tree flat"
+            fi
+          fi
+
+      - name: Instruction size ratchet
         run: python3 scripts/lint_instruction_size.py $AGAINST_ARGS

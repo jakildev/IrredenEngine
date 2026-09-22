@@ -169,12 +169,12 @@ LABELS=(
     # amendment claim — held by the author worker so reviewers skip the PR
     # mid-fix). Both created/swept exactly like fleet:reviewing-*.
     #
-    # Sibling: fleet:claim-<host>-<agent> on **issues** (not PRs) — stamped
-    # by `fleet-claim claim` after FS lock + master push succeed. Generic
-    # prefix is the race-detection signal (lex-min wins under contention);
-    # suffix encodes who claimed for issue-tracker visibility. Released by
-    # `fleet-claim release`; stale labels (>24h) swept by the same
-    # cleanup pass.
+    # Sibling: fleet:claim-<host>-<agent> marks issue claims after the FS lock
+    # + master push, and persistent PR ownership through `pr-claim`. The
+    # generic prefix is the race-detection signal (lex-min wins under
+    # contention); the suffix identifies the owner. Issue claims are released
+    # by `fleet-claim release` and swept when stale; PR ownership requires
+    # explicit `pr-release`. See fleet-labels-reference.md § Claims.
 )
 
 # `gh label list` defaults to --limit 30. The engine repo already has

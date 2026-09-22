@@ -4,9 +4,10 @@
 // Driver-side lifecycle for the main world canvas's per-axis trixel canvases
 // (smooth camera Z-yaw; docs/design/per-axis-trixel-canvas-rotation.md).
 // Cross-entity orchestration — look up the main canvas, read the camera yaw,
-// allocate/release the GPU textures — lives here in a prefab-scoped namespace
-// rather than on the component (engine/prefabs/CLAUDE.md Pattern B), so the
-// C_PerAxisTrixelCanvases layout stays trivial and archetype-iteration friendly.
+// allocate, park and release the GPU set — lives here in a prefab-scoped
+// namespace rather than on the component (engine/prefabs/CLAUDE.md Pattern B),
+// so the C_PerAxisTrixelCanvases layout stays trivial and archetype-iteration
+// friendly.
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
@@ -27,29 +28,61 @@ namespace IRPrefab::PerAxisCanvas {
 // configured balance between seam-free coverage and texture size.
 inline constexpr float kMinOnScreenTrixelSizePx = 1.0f;
 
-namespace detail {
-// Allocate a canvas's three per-axis texture sets at the worst-case size for
-// its cardinal trixel canvas, plus the screen-space resolve-depth texture at
-// the cardinal size. Used by the camera-yaw (main canvas) allocation
-// gate to size the per-axis textures. No-op if already allocated
-// (C_PerAxisTrixelCanvases::allocate guards it).
-inline void allocatePerAxisForCanvas(
-    IRComponents::C_PerAxisTrixelCanvases &axes,
-    const IRComponents::C_TriangleCanvasTextures &cardinal
-) {
-    axes.allocate(
-        IRMath::perAxisTrixelCanvasWorstCaseSize(cardinal.size_, kMinOnScreenTrixelSizePx),
-        cardinal.size_
-    );
-}
-} // namespace detail
+// Consecutive cardinal frames a parked per-axis set stays resident before it is
+// freed: about two seconds at 60 fps. A turn that pauses on a cardinal, or a
+// sweep that steps across one, re-enters the per-axis path on the resident set
+// instead of re-allocating it; a camera that settles on a cardinal frees the
+// memory once the window passes. Longer than any capture suite's settle between
+// poses (the canvas_stress suite holds each pose 60 frames, the yaw ramp 16),
+// so a suite that alternates cardinal and rotated poses exercises the unpark.
+inline constexpr int kParkedCardinalFrames = 120;
 
-// Allocate the main canvas's per-axis trixel textures while the camera sits at
-// a non-cardinal residual yaw, and release them at a cardinal. Idempotent —
-// safe to call every frame; it only allocates / frees on the rotation-start /
-// rotation-stop transitions. No-op when the main canvas has no
-// C_PerAxisTrixelCanvases (e.g. before the renderer is wired). Called once per
-// frame from VOXEL_TO_TRIXEL_STAGE_1::beginTick.
+// What syncAllocationToCameraYaw does to the main canvas's per-axis set this
+// frame.
+enum class LifecycleStep : int {
+    KEEP = 0,
+    ALLOCATE,       // rotating, nothing resident
+    UNPARK,         // rotating, the parked set fits the cardinal canvas
+    REPLACE_PARKED, // rotating, the parked set was sized for another canvas
+    PARK,           // cardinal frame with a live set
+    RELEASE_PARKED, // cardinal frame; the parked set has waited out its window
+};
+
+struct LifecycleState {
+    bool rotating_ = false;
+    bool live_ = false;
+    bool parked_ = false;
+    bool parkedFits_ = false;
+    int parkedFrames_ = 0;
+};
+
+// The lifecycle policy with the ECS lookups and GPU calls lifted out, so it
+// runs headlessly.
+constexpr LifecycleStep lifecycleStep(LifecycleState state) {
+    if (state.rotating_) {
+        if (state.live_) {
+            return LifecycleStep::KEEP;
+        }
+        if (!state.parked_) {
+            return LifecycleStep::ALLOCATE;
+        }
+        return state.parkedFits_ ? LifecycleStep::UNPARK : LifecycleStep::REPLACE_PARKED;
+    }
+    if (state.live_) {
+        return LifecycleStep::PARK;
+    }
+    if (state.parked_ && state.parkedFrames_ >= kParkedCardinalFrames) {
+        return LifecycleStep::RELEASE_PARKED;
+    }
+    return LifecycleStep::KEEP;
+}
+
+// Keep the main canvas's per-axis set in step with the camera: live while the
+// camera sits at a non-cardinal residual yaw, parked on a cardinal frame and
+// freed after kParkedCardinalFrames of them. Idempotent — safe to call every
+// frame; it acts only on the transitions lifecycleStep names. No-op when the
+// main canvas has no C_PerAxisTrixelCanvases (e.g. before the renderer is
+// wired). Called once per frame from VOXEL_TO_TRIXEL_STAGE_1::beginTick.
 inline void syncAllocationToCameraYaw() {
     const IREntity::EntityId mainCanvas = IRRender::getCanvas("main");
     if (mainCanvas == IREntity::kNullEntity) {
@@ -70,26 +103,54 @@ inline void syncAllocationToCameraYaw() {
     // should be live.
     const bool rotating = residualYaw != 0.0f;
 
-    if (rotating == axes.isAllocated()) {
-        return; // already in the desired allocation state
-    }
-    if (rotating) {
+    // The sizes decide between binding the parked set and allocating a new one;
+    // a frame that keeps or parks the live set never needs them.
+    IRMath::ivec2 size{0, 0};
+    IRMath::ivec2 mainSize{0, 0};
+    if (rotating && !axes.isAllocated()) {
         auto cardinal =
             IREntity::getComponentOptional<IRComponents::C_TriangleCanvasTextures>(mainCanvas);
         if (!cardinal.has_value()) {
             return;
         }
+        mainSize = (*cardinal.value()).size_;
+        size = IRMath::perAxisTrixelCanvasWorstCaseSize(mainSize, kMinOnScreenTrixelSizePx);
+    }
+    if (!rotating && !axes.isAllocated() && axes.hasParked()) {
+        ++axes.parkedFrames_;
+    }
+
+    IRRender::RenderRunWitness &witness = IRRender::renderRunWitness();
+    const auto timed = [](IRRender::CpuPhaseTiming &phase, auto &&step) {
         const IRRender::TimePoint start = IRRender::SteadyClock::now();
-        detail::allocatePerAxisForCanvas(axes, *cardinal.value());
-        IRRender::renderRunWitness().perAxisAllocate_.record(
-            IRRender::elapsedMs(start, IRRender::SteadyClock::now())
-        );
-    } else {
-        const IRRender::TimePoint start = IRRender::SteadyClock::now();
-        axes.release();
-        IRRender::renderRunWitness().perAxisRelease_.record(
-            IRRender::elapsedMs(start, IRRender::SteadyClock::now())
-        );
+        step();
+        phase.record(IRRender::elapsedMs(start, IRRender::SteadyClock::now()));
+    };
+    switch (lifecycleStep({
+        .rotating_ = rotating,
+        .live_ = axes.isAllocated(),
+        .parked_ = axes.hasParked(),
+        .parkedFits_ = axes.parked_.fits(size, mainSize),
+        .parkedFrames_ = axes.parkedFrames_,
+    })) {
+    case LifecycleStep::KEEP:
+        return;
+    case LifecycleStep::ALLOCATE:
+        timed(witness.perAxisAllocate_, [&] { axes.allocate(size, mainSize); });
+        return;
+    case LifecycleStep::UNPARK:
+        timed(witness.perAxisUnpark_, [&] { axes.unpark(); });
+        return;
+    case LifecycleStep::REPLACE_PARKED:
+        timed(witness.perAxisRelease_, [&] { axes.releaseParked(); });
+        timed(witness.perAxisAllocate_, [&] { axes.allocate(size, mainSize); });
+        return;
+    case LifecycleStep::PARK:
+        timed(witness.perAxisPark_, [&] { axes.park(); });
+        return;
+    case LifecycleStep::RELEASE_PARKED:
+        timed(witness.perAxisRelease_, [&] { axes.releaseParked(); });
+        return;
     }
 }
 

@@ -50,7 +50,7 @@ flat in vec4 vEdgeInterior;
 
 out vec4 FragColor;
 
-// HSV → RGB. Keep identical to hsvToRgb in c_shapes_to_trixel.glsl so
+// HSV → RGB. Keep identical to hsvToRgb in c_shapes_to_trixel_body.glsl so
 // voxel-scatter depth-color is bit-exact with the SDF twin when mode is on.
 vec3 hsvToRgb(vec3 c) {
     vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);

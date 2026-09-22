@@ -108,7 +108,8 @@ int main() {
 class SdfSurfaceContractTest(unittest.TestCase):
     def test_shader_intervals_and_lossy_depth(self):
         for suffix, directory in (("glsl", ""), ("metal", "metal/")):
-            path = ROOT / "engine/render/src/shaders" / directory / f"c_shapes_to_trixel.{suffix}"
+            path = (ROOT / "engine/render/src/shaders" / directory /
+                    f"c_shapes_to_trixel_body.{suffix}")
             source = path.read_text()
             epsilon = re.search(
                 r"(?:const|constant) float kCeilBiasEpsilon = [^;]+;", source)

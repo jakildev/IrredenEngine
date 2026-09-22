@@ -213,7 +213,11 @@ Parallel-agent fleet (tmux + Claude)
                                  a persistent fable session working one
                                  objective from docs/design/campaigns/<slug>.md,
                                  stacking PRs; own worktree + session sidecar
-  fleet-claim …                  task claims under ~/.fleet/claims/
+  fleet-claim …                  task claims and transient PR mutation claims
+  fleet-claim pr-claim <N> <agent>
+                                 persistent PR owner; review remains allowed
+  fleet-claim pr-release <N> <agent>
+                                 explicitly return PR ownership to fleet
   fleet-queue-list [--repo …] [--json]
                                  human-readable task queue from GitHub Issues
   fleet-decisions [--repo …]     everything waiting on the human in one read:
