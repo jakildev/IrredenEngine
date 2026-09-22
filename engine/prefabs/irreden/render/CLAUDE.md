@@ -25,11 +25,11 @@ Rationale: [`docs/design/prefab-render-surface.md`](../../../../docs/design/pref
   `component_triangle_canvas_textures.hpp`; the format triple has one owner. A
   canvas with no explicit parent renders to the engine's main framebuffer.
 - `C_PerAxisTrixelCanvases` rides every voxel-pool canvas inert;
-  `VOXEL_TO_TRIXEL_STAGE_1::beginTick` allocates it at non-cardinal camera yaw
-  and frees it at the cardinal. Camera-only: detached entities rotate through
-  the re-voxelize path. The store is base-resolution with the sub-cell frac in
-  the distance; every absolute-position reader decodes it via
-  `perAxisSubCellFrac` (the frac obligation in `engine/render/CLAUDE.md`).
+  `VOXEL_TO_TRIXEL_STAGE_1::beginTick` allocates it at non-cardinal camera yaw,
+  parks it (resident, `isAllocated()` false) on a cardinal frame and frees it
+  `kParkedCardinalFrames` later. Camera-only: detached entities re-voxelize.
+  The store is base-resolution with the sub-cell frac in the distance; every
+  absolute-position reader decodes it via `perAxisSubCellFrac` (`engine/render/CLAUDE.md`).
 - Seed a single-byte GPU sentinel with `IRRender::device()->fillBuffer(...)`;
   a multi-byte one (`kTrixelDistanceMaxDistance`) reuses an owned
   self-resetting kernel or a clear dispatch — never a resource-sized CPU

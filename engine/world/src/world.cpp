@@ -466,7 +466,9 @@ void World::buildAndWriteProfileReport() {
 
     for (const auto &[name, phase] :
          {std::pair{"PerAxisCanvas::Allocate", IRRender::renderRunWitness().perAxisAllocate_},
-          std::pair{"PerAxisCanvas::Release", IRRender::renderRunWitness().perAxisRelease_}}) {
+          std::pair{"PerAxisCanvas::Release", IRRender::renderRunWitness().perAxisRelease_},
+          std::pair{"PerAxisCanvas::Park", IRRender::renderRunWitness().perAxisPark_},
+          std::pair{"PerAxisCanvas::Unpark", IRRender::renderRunWitness().perAxisUnpark_}}) {
         report.cpuPhases_.push_back({name, phase.totalMs_, phase.maxMs_, phase.sampleCount_});
     }
 

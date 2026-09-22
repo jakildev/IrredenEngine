@@ -17,29 +17,18 @@ using namespace IRRender;
 
 namespace IRComponents {
 
-// Three per-axis trixel canvases (one per face axis: X / Y / Z) that back the
-// smooth camera Z-yaw path
+// The GPU resource set behind the smooth camera Z-yaw path: three per-axis
+// trixel canvases (one per face axis: X / Y / Z), the screen-space resolve
+// texture and the compaction and overflow scratch
 // (docs/design/per-axis-trixel-canvas-rotation.md). Splitting the
 // voxel→trixel raster into one canvas per visible face axis lets each canvas
 // carry a single uniform deformation, so each tiles gap-free even as the camera
 // yaw moves between cardinals; the framebuffer unifies the three by depth.
 //
-// Unlike C_TriangleCanvasTextures (which allocates its GPU
-// textures in its constructor), this component allocates LAZILY — only while the
-// camera sits at a non-cardinal residual yaw. At residualYaw == 0 the textures
-// are released and the renderer falls back to the single main canvas (the
-// byte-identical fast path), so a static / cardinal scene pays zero extra GPU
-// memory. Allocation is driven once per frame by
-// IRPrefab::PerAxisCanvas::syncAllocationToCameraYaw().
-//
-// Stage 1 routes each visible voxel face into its axis canvas using continuous
-// center repositioning and shared world depth.
-//
-// This is the GPU-resource-RAII component pattern (engine/prefabs/CLAUDE.md
-// §"Documented exceptions") — the component owns the textures and frees them in
-// onDestroy(); the only twist is that allocation is deferred to the lifecycle
-// rather than the constructor (the gate needs the per-frame camera yaw).
-struct C_PerAxisTrixelCanvases {
+// C_PerAxisTrixelCanvases is the live set — every per-axis reader addresses
+// these fields on the component directly — and carries a second, parked set
+// that is resident but never bound.
+struct PerAxisCanvasStore {
     static constexpr int kAxisCount = 3; // indexed by face axis: 0=X, 1=Y, 2=Z
 
     // One color / distance / entity-id texture set per face axis. Mirrors the
@@ -63,6 +52,9 @@ struct C_PerAxisTrixelCanvases {
     };
 
     ivec2 size_{0, 0}; // worst-case texel size shared by all axes; (0,0) while unallocated
+    // The cardinal canvas size the set was allocated for; resolveDepth_ is this
+    // size, and a parked set is reused only under the same one.
+    ivec2 mainSize_{0, 0};
     std::array<AxisTextures, kAxisCount> axes_{};
 
     // Screen-space (MAIN-canvas-sized) front-most iso-depth texture produced by
@@ -141,6 +133,12 @@ struct C_PerAxisTrixelCanvases {
         return axes_[0].colors_.second != nullptr;
     }
 
+    // The set was sized for this cardinal canvas, so a rotation resuming under
+    // it can bind the set as it is.
+    bool fits(ivec2 size, ivec2 mainSize) const {
+        return isAllocated() && size_ == size && mainSize_ == mainSize;
+    }
+
     // VoxelPoolConfig::kMaxEdge is sized off this bound: the largest pool's
     // face demand fits the signed 2^30 field, one edge more does not.
     static_assert(
@@ -179,6 +177,7 @@ struct C_PerAxisTrixelCanvases {
             return;
         }
         size_ = size;
+        mainSize_ = mainSize;
         // Reuse the canonical canvas-texture factories so the per-axis textures
         // stay format-identical to the single canvas (detail:: in
         // component_triangle_canvas_textures.hpp).
@@ -264,8 +263,7 @@ struct C_PerAxisTrixelCanvases {
     }
 
     // Release all three axis texture sets + the resolve texture and reset to the
-    // unallocated state. No-op if not allocated. Called at rotation stop by the
-    // lifecycle.
+    // unallocated state. No-op if not allocated.
     void release() {
         if (!isAllocated()) {
             return;
@@ -293,10 +291,58 @@ struct C_PerAxisTrixelCanvases {
         overflowCap_ = 0;
         laggedOverflowCount_ = 0;
         size_ = ivec2{0, 0};
+        mainSize_ = ivec2{0, 0};
+    }
+};
+
+// Unlike C_TriangleCanvasTextures (which allocates its GPU textures in its
+// constructor), this component allocates LAZILY: the live set exists only
+// while the camera sits at a non-cardinal residual yaw. On a cardinal frame the
+// set is parked — swapped into `parked_`, resident but not live, so
+// isAllocated() turns false and the renderer takes the single-canvas fast path
+// (byte-identical) — and a rotation that resumes within
+// IRPrefab::PerAxisCanvas::kParkedCardinalFrames swaps it back instead of
+// re-allocating. A camera that settles on a cardinal frees the set once that
+// window passes, so a static / cardinal scene pays zero extra GPU memory. The
+// lifecycle is driven once per frame by
+// IRPrefab::PerAxisCanvas::syncAllocationToCameraYaw().
+//
+// Stage 1 routes each visible voxel face into its axis canvas using continuous
+// center repositioning and shared world depth.
+//
+// This is the GPU-resource-RAII component pattern (engine/prefabs/CLAUDE.md
+// §"Documented exceptions") — the component owns the textures and frees them in
+// onDestroy(); the only twist is that allocation is deferred to the lifecycle
+// rather than the constructor (the gate needs the per-frame camera yaw).
+struct C_PerAxisTrixelCanvases : PerAxisCanvasStore {
+    // A set kept resident across a cardinal. Never bound: every per-axis
+    // reader gates on isAllocated(), which reads the live set only.
+    PerAxisCanvasStore parked_;
+    // Consecutive cardinal frames the parked set has waited.
+    int parkedFrames_ = 0;
+
+    bool hasParked() const {
+        return parked_.isAllocated();
+    }
+
+    // Move the live set aside so the cardinal frame renders single-canvas with
+    // the resources still resident.
+    void park() {
+        IR_ASSERT(isAllocated() && !hasParked(), "park needs a live set and no parked one");
+        std::swap(static_cast<PerAxisCanvasStore &>(*this), parked_);
+        parkedFrames_ = 0;
+    }
+
+    // Make the parked set live again. The caller has checked it fits the canvas.
+    void unpark() {
+        IR_ASSERT(!isAllocated() && hasParked(), "unpark needs a parked set and no live one");
+        std::swap(static_cast<PerAxisCanvasStore &>(*this), parked_);
+        parkedFrames_ = 0;
     }
 
     void onDestroy() {
         release();
+        parked_.release();
     }
 };
 
