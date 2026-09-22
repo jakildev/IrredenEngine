@@ -149,32 +149,32 @@ tick.
 
 ## Claims (dynamic, script-owned)
 
-`fleet-claim` owns every label here; never add one by hand. All share the
-sole-holder claim: apply a candidate label, then hold only after two fresh,
-complete label reads show the exact candidate and no contender (the POST
-response never grants ownership); the lex-min of visible contention drops
-and retries; a later claimant that finds a holder yields and rolls back its
-local state. The host in the suffix is required because two hosts can share
-a pool basename.
+`fleet-claim` owns these labels; never add them by hand. Acquisition requires
+two complete live label reads with no contender; the POST never grants ownership
+([claim consistency contract](FLEET.md#claims)). Host-qualified names distinguish pools across hosts.
 
 | Label | Surface | Taken by | Released by |
 |---|---|---|---|
+| `fleet:claim-<host>-<agent>` | PR | `fleet-claim pr-claim <pr> <agent>` — persistent ownership across interactive or autonomous sessions | `pr-release <pr> <agent>` explicitly hands it back; no TTL, heartbeat or dispatch expiry |
 | `fleet:claim-<host>-<agent>` | issue | `fleet-claim claim` (after the per-host `mkdir` lock under `~/.fleet/claims/`) | retained through the PR lifecycle and on the closed issue as the record of who worked it; `release` clears it and `fleet:in-progress` only when no live PR backs the claim and no other host's claim is live. Behind a `fleet:wip` PR, reconcile R7/R2 do not count a label naming this host with a known agent that no FS claim, reservation or live dispatch record vouches for (a dead pane's label); foreign-host and `-unknown` labels always count |
 | `fleet:reviewing-<host>-<agent>` | PR (issue for plan review) | `review-claim` — reviewers and smoke runs | `review-release --require-verdict` after a verdict; plain `review-release` for no-verdict exits, smoke, plan review; the orphan sweep covers both PRs and plan-review issues |
 | `fleet:amending-<host>-<agent>` | PR | `amending-claim` — the single mutex for every feedback path | `amending-release` at the terminal step |
 | `fleet:resolving-<host>-<agent>` | PR | `resolving-claim` — semantic-conflict resolution | `resolving-release` |
 | `fleet:planning-<host>-<agent>` | issue | `planning-claim` — the dispatcher before a plan dispatch, or the architect | `planning-release` after `plan-propose`; `fleet-dispatch-wrap` when a resume discards the assignment |
 
-`fleet-claim cleanup --gh` sweeps abandoned claim labels (30-min TTL for
-reviewing / amending / resolving, `FLEET_CLAIM_STALE_SECS_PLANNING` for
-planning; a same-host label with a missing or mismatched liveness marker
-after `FLEET_CLAIM_PRLABEL_ORPHAN_GRACE_SECS`, 120 s) and replays orphan
-sentinels. Reviewer projections skip `fleet:amending-*` PRs
-(`REVIEW_SKIP_PREFIXES`); the worker feedback/conflict tiers skip
-`fleet:reviewing-*` PRs and each other's claim. The live pre-acquire gate is
-the fast path; both confirmation reads arbitrate the symmetric excluded-prefix
-union, so the POST-snapshot race leaves one holder (consistency limit:
-[`FLEET.md § Claims`](FLEET.md#claims)). Same-agent lane transitions remain allowed.
+Persistent PR ownership blocks foreign amendment and conflict pickup, including human feedback,
+while allowing review. The owner still takes a transient mutation claim before editing;
+`fleet:wip` controls review readiness. Resume with the same dedicated agent name.
+Handoff or abandoned ownership needs explicit release; failed removal needs explicit retry,
+never orphan replay that could erase resumed ownership. Issue claims are unchanged.
+
+`cleanup --gh` sweeps transient claims after their TTL (30 min for review/amend/resolve;
+`FLEET_CLAIM_STALE_SECS_PLANNING` for planning), or after a missing/mismatched same-host
+liveness marker exceeds `FLEET_CLAIM_PRLABEL_ORPHAN_GRACE_SECS` (120 s), and replays orphans.
+Reviewer projections skip `fleet:amending-*`; worker feedback/conflict tiers skip
+`fleet:reviewing-*` and each other’s mutation claims. The live precheck and both
+confirmation reads arbitrate the symmetric excluded-prefix union; same-agent
+lane transitions remain allowed.
 
 For `fleet:amending-*` that liveness marker is the **dispatch**, not the
 pane: `amending-claim` stamps the claiming iteration's `FLEET_DISPATCH_ID`
@@ -397,4 +397,3 @@ R8 (un-park), and R9 (class-escalate: re-tag a `fleet:sonnet` backing issue
 to `fleet:opus` while any of its PRs carries a design-lane label, so the
 opus+-only resume tier has a class to dispatch). R2 (same claim reading on a
 wip PR) and R6 stay flag-only. Runs at `fleet-up` boot and on every queue-manager projection change.
-

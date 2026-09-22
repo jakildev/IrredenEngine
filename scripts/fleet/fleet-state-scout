@@ -2941,6 +2941,7 @@ WORKER_SKIP_PREFIXES = ("fleet:reviewing-", "fleet:resolving-")
 # on the other side: fleet:amending-* is that lane's own claim.
 SEMANTIC_CONFLICT_SKIP_PREFIXES = WORKER_SKIP_PREFIXES + (
     "fleet:amending-",
+    "fleet:claim-",
 )
 # fleet:has-nits stamped ALONGSIDE fleet:needs-opus-recheck is not a verdict:
 # REVIEWER-PROTOCOL.md has the sonnet reviewer set NO verdict label in that
@@ -2982,6 +2983,8 @@ def worker_feedback_labels(labels):
     to the reviewer's release/verdict swap and to `fleet-claim cleanup
     --gh`'s orphan sweep, which is what keeps this from stranding a PR.
     """
+    if any(label.startswith("fleet:claim-") for label in labels):
+        return frozenset()
     relevant = _WORKER_RELEVANT_LABELS & labels
     if not relevant:
         return frozenset()
@@ -3324,6 +3327,8 @@ def _merger_action_signal(labels, mergeable, base_ref):
         return None
     approved = "fleet:approved" in labels
     if mergeable in ("CONFLICTING", "UNSTABLE", "BEHIND") and approved:
+        if any(label.startswith("fleet:claim-") for label in labels):
+            return None
         return "needs-resolve"
     if approved and mergeable == "MERGEABLE" and base_ref == "master":
         return "merge-ready"
@@ -3353,7 +3358,7 @@ def project_merger(state):
 # projection's: a PR another lane is rewriting, or one already handed to the
 # worker as a semantic conflict, is never a merge target.
 _MERGER_LLM_SKIP_LABELS = frozenset({"fleet:semantic-conflict"})
-_MERGER_LLM_SKIP_PREFIXES = ("fleet:amending-",)
+_MERGER_LLM_SKIP_PREFIXES = ("fleet:amending-", "fleet:claim-")
 
 
 def _merger_candidate_signal(labels, mergeable, base_ref):

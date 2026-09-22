@@ -200,7 +200,7 @@ LOCK_CONTENDED_RETRY_SECONDS="${FLEET_REBASE_LOCK_RETRY_SECONDS:-60}"
 #
 # Single source: the python triage below reads this via
 # FLEET_REBASE_SKIP_RE and the pre-push re-verify greps it directly.
-SKIP_LABEL_RE='fleet:semantic-conflict|fleet:wip|human:wip|fleet:needs-fix|human:needs-fix|human:blocker|human:re-review|fleet:design-blocked|fleet:amending-|fleet:needs-info|fleet:fork-of-other-pr|fleet:needs-human|fleet:needs-linux-smoke|fleet:needs-macos-smoke|fleet:needs-windows-smoke'
+SKIP_LABEL_RE='fleet:semantic-conflict|fleet:wip|human:wip|fleet:needs-fix|human:needs-fix|human:blocker|human:re-review|fleet:design-blocked|fleet:amending-|fleet:claim-|fleet:needs-info|fleet:fork-of-other-pr|fleet:needs-human|fleet:needs-linux-smoke|fleet:needs-macos-smoke|fleet:needs-windows-smoke'
 export FLEET_REBASE_SKIP_RE="$SKIP_LABEL_RE"
 
 # Paths that no longer exist on master by policy — a plan lives on its issue

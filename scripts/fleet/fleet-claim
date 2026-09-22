@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# fleet-claim — issue-number-based task claiming for the agent fleet.
+# fleet-claim — task claims, persistent PR ownership, and transient mutation claims.
 #
 # Tasks are keyed on their GitHub issue number — the queue's canonical
 # primary key. Blocker, model, and stackable-PR lookups all read
@@ -30,6 +30,8 @@
 #   fleet-claim resolving-release <pr-number> <agent>
 #   fleet-claim amending-claim <pr-number> <agent>
 #   fleet-claim amending-release <pr-number> <agent>
+#   fleet-claim pr-claim <pr-number> <agent>
+#   fleet-claim pr-release <pr-number> <agent>
 #   fleet-claim clear-all
 #   fleet-claim stack "<n1> <n2> ..." <agent>
 #   fleet-claim release-stack <agent>
@@ -388,7 +390,8 @@ EOF
 # gh_release_label <repo> <issue-or-pr> <label>
 #   Retry-once-then-sentinel policy for removing a fleet:reviewing-* label.
 #   Exit 0 on successful removal (or label already absent). Exit 1 only
-#   after both attempts fail and the sentinel is written.
+#   after both attempts fail. Persistent PR ownership never queues a delayed
+#   removal: it could erase ownership reacquired before the orphan replay.
 gh_release_label() {
     local repo="$1" issue="$2" label="$3"
     if gh issue edit "$issue" --repo "$repo" --remove-label "$label" >/dev/null 2>&1; then
@@ -398,7 +401,11 @@ gh_release_label() {
     if gh issue edit "$issue" --repo "$repo" --remove-label "$label" >/dev/null 2>&1; then
         return 0
     fi
-    write_orphan_sentinel "$repo" "$issue" "$label" "remove-label failed after retry"
+    if [[ "${FLEET_PERSISTENT_PR_OWNER:-0}" == 1 ]]; then
+        echo "fleet-claim: could not remove persistent owner [$label]; retry pr-release explicitly" >&2
+    else
+        write_orphan_sentinel "$repo" "$issue" "$label" "remove-label failed after retry"
+    fi
     return 1
 }
 
@@ -2538,6 +2545,13 @@ _cross_lane_precheck() {
 
     local label
     for label in $labels; do
+        if [[ "$label" == fleet:claim-* ]] \
+                && _is_foreign_excluded_claim "$prefix" "$suffix" "$label"; then
+            echo "fleet-claim: refuse PR#${target} — persistent owner [${label}]" >&2
+            return 1
+        fi
+    done
+    for label in $labels; do
         [[ "$label" == "$own_label" ]] || continue
         local other
         for other in $labels; do
@@ -2590,6 +2604,40 @@ _cmd_pr_label_release() {
         return 0
     fi
     gh_release_label "$repo" "$pr" "$label"
+}
+
+cmd_pr_claim() {
+    local pr="${1:-}" agent="${2:-unknown}" repo state rc=0
+    local FLEET_PERSISTENT_PR_OWNER=1
+    [[ "$pr" =~ ^[0-9]+$ ]] || return 2
+    repo=$(repo_from_ns)
+    state=$(gh pr view "$pr" --repo "$repo" --json state --jq .state) || return 1
+    state="${state//$'\r'/}"
+    [[ "$state" == OPEN ]] || {
+        echo "fleet-claim pr-claim: requires an open PR" >&2
+        return 1
+    }
+    _cross_lane_precheck "fleet:claim-" "pr-claim" "$pr" "$agent" || rc=$?
+    if [[ "$rc" -eq 3 ]]; then
+        local label="fleet:claim-$(derive_host)-${agent}" decision
+        decision=$(_read_claim_decision "$repo" "$pr" "$label" "fleet:claim-") || return 1
+        [[ "$decision" == win ]] || return 1
+        _acquire_jitter_sleep
+        decision=$(_read_claim_decision "$repo" "$pr" "$label" "fleet:claim-") || return 1
+        [[ "$decision" == win ]] || return 1
+        echo "pr-claim acquired: $repo PR#$pr ($agent; already held)"
+        return 0
+    fi
+    [[ "$rc" -eq 0 ]] || return "$rc"
+    _cmd_pr_label_claim "fleet:claim-" "pr-claim" "$pr" "$agent"
+}
+cmd_pr_release() {
+    local FLEET_PERSISTENT_PR_OWNER=1
+    local pr="${1:-}" repo
+    [[ "$pr" =~ ^[0-9]+$ ]] || return 2
+    repo=$(repo_from_ns)
+    gh pr view "$pr" --repo "$repo" --json state --jq .state >/dev/null || return 1
+    _cmd_pr_label_release "fleet:claim-" "pr-release" "$@"
 }
 
 cmd_review_claim() {
@@ -6099,6 +6147,14 @@ case "${1:-}" in
         shift
         cmd_reconcile "$@"
         ;;
+    pr-claim)
+        require_agent_token "pr-claim" "${3:-}" || exit 2
+        cmd_pr_claim "${2:-}" "$3"
+        ;;
+    pr-release)
+        require_agent_token "pr-release" "${3:-}" || exit 2
+        cmd_pr_release "${2:-}" "$3"
+        ;;
     review-claim)
         require_agent_token "review-claim" "${3:-}" || {
             echo "usage: fleet-claim [--repo <ns>] review-claim <pr-number> <agent>" >&2
@@ -6471,6 +6527,13 @@ commands:
                                 older than the stale bound.
   amending-release <pr> <agent>
                                 release an amendment claim.
+  pr-claim <pr> <agent>          persistently own an open PR across sessions.
+                                Blocks foreign amendment/conflict claims;
+                                allows review. No TTL or heartbeat expiry.
+                                Still take a transient mutation claim
+                                before editing; ownership alone permits
+                                concurrent independent review.
+  pr-release <pr> <agent>        explicitly hand ownership back to the fleet.
   steward-claim <umbrella-issue> <agent>
                                 atomically claim an epic UMBRELLA ISSUE
                                 for a stewardship session via a
@@ -6672,9 +6735,9 @@ _stamp_dispatch_outcome() {
 # dispatch record's plan_issue backstop.
 case "$_subcmd" in
     claim|stack|reserve|\
-    review-claim|resolving-claim|amending-claim|steward-claim|planning-claim|\
+    pr-claim|review-claim|resolving-claim|amending-claim|steward-claim|planning-claim|\
     release|release-stack|\
-    review-release|resolving-release|amending-release|steward-release|planning-release)
+    pr-release|review-release|resolving-release|amending-release|steward-release|planning-release)
         _stamp_dispatch_outcome
         ;;
     release-worktree)

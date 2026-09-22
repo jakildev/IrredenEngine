@@ -61,7 +61,30 @@ HUMAN_PRIORITY = _exception(
 
 # Exact cells only: adding a family creates uncovered cells rather than
 # silently inheriting a wildcard/default exemption.
+OWNERSHIP_REVIEW = _exception(
+    "ownership_review",
+    "Persistent ownership allows independent review in either order.",
+)
+OWNERSHIP_MANUAL = _exception(
+    "ownership_manual",
+    "Persistent ownership is explicitly acquired, never scout-dispatched.",
+)
+
 EXCEPTIONS = {
+    ("claim", "planning", "scout"): ISSUE_SCOPE,
+    ("claim", "planning", "claim"): ISSUE_SCOPE,
+    ("planning", "claim", "scout"): ISSUE_SCOPE,
+    ("planning", "claim", "claim"): ISSUE_SCOPE,
+    ("claim", "stewarding", "scout"): ISSUE_SCOPE,
+    ("claim", "stewarding", "claim"): ISSUE_SCOPE,
+    ("stewarding", "claim", "scout"): ISSUE_SCOPE,
+    ("stewarding", "claim", "claim"): ISSUE_SCOPE,
+    ("claim", "reviewing", "scout"): OWNERSHIP_REVIEW,
+    ("claim", "reviewing", "claim"): OWNERSHIP_REVIEW,
+    ("reviewing", "claim", "scout"): OWNERSHIP_REVIEW,
+    ("reviewing", "claim", "claim"): OWNERSHIP_REVIEW,
+    ("claim", "amending", "scout"): OWNERSHIP_MANUAL,
+    ("claim", "resolving", "scout"): OWNERSHIP_MANUAL,
     ("reviewing", "resolving", "scout"): CONFLICT_PHASE,
     ("amending", "stewarding", "scout"): ISSUE_SCOPE,
     ("amending", "stewarding", "claim"): ISSUE_SCOPE,
@@ -171,12 +194,12 @@ def scout_guarded(module, candidate: str, held: str) -> bool:
             and module._review_skipped({"fleet:changes-made", prefix})
             and not module._review_skipped({"fleet:changes-made"})
         )
-    if candidate == "amending" and held in ("reviewing", "resolving"):
+    if candidate == "amending" and held in ("reviewing", "resolving", "claim"):
         free = module.worker_feedback_labels({"fleet:has-nits"})
         blocked = module.worker_feedback_labels({"fleet:has-nits", prefix})
         reentered = module.worker_feedback_labels({"fleet:has-nits"})
         return bool(free) and not blocked and bool(reentered)
-    if candidate == "resolving" and held in ("reviewing", "amending"):
+    if candidate == "resolving" and held in ("reviewing", "amending", "claim"):
         free = module._semantic_conflict_claimable(_conflict_pr(), {"fleet:semantic-conflict"}, {})
         blocked = module._semantic_conflict_claimable(
             _conflict_pr(), {"fleet:semantic-conflict", prefix}, {}
@@ -207,6 +230,9 @@ def store(values):
 
 
 args = sys.argv[1:]
+if args[:2] == ["pr", "view"]:
+    print("OPEN")
+    raise SystemExit(0)
 if args[:2] == ["issue", "view"]:
     print(json.dumps({
         "state": "OPEN",
@@ -321,6 +347,9 @@ def claim_guarded(claim_path: Path, family: Family, held: str) -> bool:
     }:
         return passed
 
+    if family.name == "claim" or held == "claim":
+        return passed
+
     incumbent = f"{family.prefix}mac-probeA"
     replay, replay_labels, replay_posts = run_claim(
         claim_path, family.command, [incumbent, foreign], "probeA"
@@ -334,6 +363,12 @@ def claim_guarded(claim_path: Path, family: Family, held: str) -> bool:
 
 
 GUARDED = {
+    ("amending", "claim", "scout"),
+    ("resolving", "claim", "scout"),
+    ("amending", "claim", "claim"),
+    ("resolving", "claim", "claim"),
+    ("claim", "amending", "claim"),
+    ("claim", "resolving", "claim"),
     ("reviewing", "amending", "scout"),
     ("reviewing", "amending", "claim"),
     ("amending", "reviewing", "scout"),
@@ -367,17 +402,15 @@ def support_fixtures(
     # kept as a standing invariant because the conflict lane's RAW verdict
     # test is what still keeps it shut under a pending opus recheck, which
     # no claim prefix represents.
-    raw_routes_feedback = (
-        not module.worker_feedback_labels(feedback_labels)
-        and not module._semantic_conflict_claimable(_conflict_pr(), feedback_labels, {})
-    )
-    conflict_phase = (
-        module._review_skipped({"fleet:semantic-conflict"})
-        and not module._semantic_conflict_claimable(
-            _conflict_pr(),
-            {"fleet:semantic-conflict", "fleet:resolving-mac-probeA"},
-            {},
-        )
+    raw_routes_feedback = not module.worker_feedback_labels(
+        feedback_labels
+    ) and not module._semantic_conflict_claimable(_conflict_pr(), feedback_labels, {})
+    conflict_phase = module._review_skipped(
+        {"fleet:semantic-conflict"}
+    ) and not module._semantic_conflict_claimable(
+        _conflict_pr(),
+        {"fleet:semantic-conflict", "fleet:resolving-mac-probeA"},
+        {},
     )
     issue_scope = (
         all(
@@ -403,11 +436,24 @@ def support_fixtures(
         )
     )
     human_priority = all(
-        module.worker_feedback_labels({"human:needs-fix", held})
-        == frozenset({"human:needs-fix"})
+        module.worker_feedback_labels({"human:needs-fix", held}) == frozenset({"human:needs-fix"})
         for held in ("fleet:reviewing-mac-probeB", "fleet:resolving-mac-probeB")
     )
+    ownership_review = (
+        not module._review_skipped({"fleet:claim-mac-probeB"})
+        and run_claim(claim_path, "review-claim", ["fleet:claim-mac-probeB"], "probeA")[
+            0
+        ].returncode
+        == 0
+        and run_claim(claim_path, "pr-claim", ["fleet:reviewing-mac-probeB"], "probeA")[
+            0
+        ].returncode
+        == 0
+    )
     return {
+        "ownership_review": ownership_review,
+        "ownership_manual": "pr-claim" not in common_source
+        and families["claim"].command == "pr-claim",
         "feedback_first": raw_routes_feedback,
         "conflict_phase": conflict_phase,
         "issue_scope": issue_scope,
