@@ -155,6 +155,10 @@ DECISION_TAGS = {
     "fleet:state-drift": "state drift to reconcile",
     "fleet:triage-recommend": "triage verdict to review",
 }
+OWNER_VERDICT_LABELS = {
+    "human:needs-fix", "human:blocker", "fleet:needs-fix", "fleet:has-nits",
+    "fleet:semantic-conflict",
+}
 
 # pull_request filters that keep a workflow off some head pushes. A `types`
 # list is a filter only when it drops one of GitHub's defaults.
@@ -365,6 +369,13 @@ for repo, prs, issues, reader in repos:
             wip_mismatch = bool(WIP_TITLE_RE.search(pr["title"])) and "fleet:wip" not in labels
             merge_queue.append((repo, pr, "fleet:has-nits" in labels, holds, wip_mismatch))
         tags = [DECISION_TAGS[label] for label in labels if label in DECISION_TAGS]
+        owner_labels = [label for label in labels if label.startswith("fleet:claim-")]
+        owner_verdicts = sorted(OWNER_VERDICT_LABELS & set(labels))
+        if owner_labels and owner_verdicts:
+            tags.append(
+                f"persistent owner {owner_labels[0]} with outstanding "
+                f"{', '.join(owner_verdicts)}"
+            )
         if tags:
             decisions.append((repo, "PR", pr, tags))
     for issue in issues:
