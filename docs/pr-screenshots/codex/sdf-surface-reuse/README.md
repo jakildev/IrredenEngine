@@ -25,7 +25,7 @@ reports retain startup outliers and timestamp rejection context where reported.
 
 | Workload | Parent ownership GPU average ms | Reuse GPU average ms |
 |---|---:|---:|
-| Coincident boxes + floor, earlier parent runs | 1.982 / 1.965 | 2.125 / 1.884 |
+| Coincident boxes + floor, earlier parent runs ([1](../sdf-winner-ownership/after-profile-1.txt), [2](../sdf-winner-ownership/after-profile-2.txt)) | 1.982 / 1.965 | 2.125 / 1.884 |
 | Coincident boxes + floor, parent rerun after experiment | 2.112 | same two runs above |
 | Analytic sphere + floor + two shadow-only canvases | 2.846 | 2.718 |
 

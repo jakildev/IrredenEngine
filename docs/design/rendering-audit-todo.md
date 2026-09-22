@@ -324,10 +324,11 @@ not hide parity, coverage, depth or projection errors. Zero softness alone does
 not repair undersampled shadow geometry.
 
 Before merging deterministic SDF ownership as a default, account for its measured
-GPU cost (roughly 0.95–1.04 ms to 1.97–1.98 ms in the overlap fixture); reduce
-repeated evaluation without weakening ownership, or explicitly accept the
-tradeoff. Also investigate the demo's `--no-lighting` path omitting SDF geometry
-so future geometry-only captures can exercise the same rendering modes.
+GPU cost (roughly 0.95–1.04 ms to 1.97–1.98 ms in the overlap fixture). Follow
+the measurement-first next step in the cost experiment below before selecting
+another optimization, or explicitly accept the tradeoff. Also investigate the
+demo's `--no-lighting` path omitting SDF geometry so future geometry-only
+captures can exercise the same rendering modes.
 
 ### SDF cost experiment and sharp-shadow sampling audit
 
@@ -342,7 +343,9 @@ include it in receiver-geometry/self-shadow validation.
 The current `ir_sun_shadow_sample` GLSL/Metal twins mix distinct contracts:
 source-face ray queries and finite surface footprints use unfiltered coverage,
 while the remaining map path in `sampleCascadeShadow` uses weighted 2×2 PCF.
-`worldSunShadowFactorImpl` also blends cascades. An explicit zero-softness path
-must audit both; removing PCF alone neither repairs finite coverage nor proves
-sharp transitions across cascades. Preserve off-screen caster coverage and
-receiver-plane depth handling while unifying the geometry queries.
+`sunCascadeKernelInterior` derives near- versus far-cascade selection from that
+2×2 kernel footprint, and `worldSunShadowFactorImpl` blends cascades. An explicit
+zero-softness path must re-derive the selection gate and audit the blend as well
+as the taps; removing PCF alone neither repairs finite coverage nor proves sharp
+transitions across cascades. Preserve off-screen caster coverage and receiver-plane
+depth handling while unifying the geometry queries.
