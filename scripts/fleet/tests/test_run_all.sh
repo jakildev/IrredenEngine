@@ -257,4 +257,58 @@ else
     ok "T16 timeout arm skipped — no timeout(1)/gtimeout(1) on this host"
 fi
 
+# Each pair below runs in ONE sandbox, rewriting the fixture between runs, so
+# the suite path a traceback names is identical and only the detail differs.
+assert_ids_differ() {  # $1 = id, $2 = other id, $3 = msg
+    if [[ -n "$1" && "$1" != *@\? && "$1" != "$2" ]]; then ok "$3"; else bad "$3 ($1 vs $2)"; fi
+}
+unittest_fixture() {  # $1 = dir, $2 = the value compared with 1
+    printf '%s\n' 'import unittest' 'class T(unittest.TestCase):' \
+        '    def test_value(self):' "        self.assertEqual(1, $2)" 'unittest.main()' > "$1/test_pyval.py"
+}
+lib_assert_fixture() {  # $1 = dir, $2 = the actual value
+    printf '%s\n' '#!/usr/bin/env bash' 'source "$(dirname "$0")/lib_assert.sh"' \
+        "assert_eq \"$2\" 1 \"value matches\"" 'summarize "val"' > "$1/test_val.sh"
+}
+
+echo "T17: the identity carries the failure detail, not just the header"
+d=$(new_sandbox t17a)
+unittest_fixture "$d" 2
+py_2=$(suite_token "$(bash "$d/run_all.sh" 2>&1)" test_pyval.py)
+py_2b=$(suite_token "$(bash "$d/run_all.sh" 2>&1)" test_pyval.py)
+unittest_fixture "$d" 3
+py_3=$(suite_token "$(bash "$d/run_all.sh" 2>&1)" test_pyval.py)
+assert_eq "$py_2b" "$py_2" "T17 one unittest assertion failing alike twice keeps its identity"
+assert_ids_differ "$py_3" "$py_2" \
+    "T17 the same unittest test failing a different assertEqual changes the identity"
+
+d=$(new_sandbox t17b)
+cp "$SCRIPT_DIR/lib_assert.sh" "$SCRIPT_DIR/lib_preflight.sh" "$d/"
+lib_assert_fixture "$d" 2
+val_2=$(suite_token "$(bash "$d/run_all.sh" 2>&1)" test_val.sh)
+val_2b=$(suite_token "$(bash "$d/run_all.sh" 2>&1)" test_val.sh)
+lib_assert_fixture "$d" 3
+val_3=$(suite_token "$(bash "$d/run_all.sh" 2>&1)" test_val.sh)
+assert_eq "$val_2b" "$val_2" "T17 one lib_assert failure repeated keeps its identity"
+assert_ids_differ "$val_3" "$val_2" \
+    "T17 one lib_assert message with a different actual value changes the identity"
+
+d=$(new_sandbox t17c)
+cat > "$d/test_tmp.sh" <<'EOF'
+#!/usr/bin/env bash
+t=$(mktemp -d); p=$(python3 -c 'import tempfile; print(tempfile.mkdtemp())')
+echo "  FAIL: fixture dir unreadable"
+echo "        in: $t and $p"
+rm -rf "$t" "$p"
+exit 1
+EOF
+tmp_a=$(suite_token "$(bash "$d/run_all.sh" 2>&1)" test_tmp.sh)
+assert_eq "$(suite_token "$(bash "$d/run_all.sh" 2>&1)" test_tmp.sh)" "$tmp_a" \
+    "T17 random mktemp/tempfile names in the detail do not change the identity"
+
+d=$(new_sandbox t17d)
+fixture_fail_lines "$d" item "  FAIL: alpha broke" "" "trailing $d $RANDOM"
+assert_eq "$(suite_token "$(bash "$d/run_all.sh" 2>&1)" test_item.sh)" "$item_a" \
+    "T17 output after the blank line closing a lib_assert block is not detail"
+
 summarize "run_all.sh tests"

@@ -28,8 +28,10 @@
 # `<suite>@<identity>` per failed suite), the two sets are compared: a suite
 # failing on the head with no identical failure on master is the hold, and a
 # head failing exactly as master does is a `note:`, not a hold. The identity
-# is a checksum of the suite's failure lines, so a second failure in a suite
-# master already fails is still the PR's own; an unitemized identity (`?`)
+# is a checksum of the suite's failure blocks — each failure header with its
+# assertion detail — so a second failure, or the same assertion failing on a
+# different value, in a suite master already fails is still the PR's own; an
+# unitemized identity (`?`)
 # never matches. A head whose run passed before master's later run of the same
 # workflow failed is held to re-run: its green predates the break, and a
 # merge on it can land a second red behind the first. GitHub's own merge-box

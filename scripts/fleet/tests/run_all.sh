@@ -124,15 +124,37 @@ skipped_names=()
 SKIP_STATUS=3
 
 # A failed suite's failure identity: a checksum of its exit status and its
-# distinct failure lines (lib_assert's `FAIL:`, unittest's `FAIL:`/`ERROR:`
-# headers), so two runs of one suite read alike only when they failed the same
-# assertions. `?` when the output names no failure or the suite timed out:
-# nothing then proves two runs failed alike, and fleet-decisions reads `?` as
-# never matching.
+# distinct failure blocks, so two runs of one suite read alike only when they
+# failed the same assertions for the same reason. A block is a failure header
+# (lib_assert's `FAIL:`, unittest's `FAIL:`/`ERROR:`) plus the detail under it:
+# a unittest block runs to its closing dash/equals separator and carries the
+# traceback and the AssertionError text; a lib_assert block runs to the next
+# blank or `ok:` line and carries the expected/actual lines the assert_*
+# helpers print. The header alone is not enough — `assertEqual(1, 2)` and
+# `assertEqual(1, 3)` in one test share it. Random mktemp/tempfile names are
+# masked; any other run-to-run noise in a block only makes an inherited red
+# read as the head's own, the closed direction. `?` when the output names no
+# failure or the suite timed out: nothing then proves two runs failed alike,
+# and fleet-decisions reads `?` as never matching.
 failure_identity() {  # $1 = exit status, $2 = suite output
     local lines
-    lines=$(printf '%s\n' "$2" | grep -aE '^[[:space:]]*(FAIL|ERROR): ' \
-                | sed -E 's/^[[:space:]]+//' | LC_ALL=C sort -u)
+    lines=$(printf '%s\n' "$2" | awk '
+        function flush() { if (blk != "") print blk; blk = ""; mode = "" }
+        /^[ \t]*(FAIL|ERROR): / {
+            flush(); sub(/^[ \t]+/, ""); blk = $0; mode = "head"; next
+        }
+        mode == "" { next }
+        (/^-+$/ || /^=+$/) && length($0) >= 20 {
+            if (mode == "head") { mode = "unittest"; next }
+            flush(); next
+        }
+        mode == "head" { mode = "assert" }
+        mode == "assert" && (/^[ \t]*$/ || /^[ \t]*ok: /) { flush(); next }
+        /^[ \t]*$/ { next }
+        { sub(/^[ \t]+/, ""); blk = blk " | " $0 }
+        END { flush() }' \
+        | sed -E 's#/tmp\.[A-Za-z0-9]{10}#/tmp.XXXXXXXXXX#g; s#/tmp[a-z0-9_]{8}#/tmpXXXXXXXX#g' \
+        | LC_ALL=C sort -u)
     if [[ -z "$lines" || "$1" -eq 124 ]]; then
         echo "?"
         return
