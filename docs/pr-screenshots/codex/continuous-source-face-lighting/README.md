@@ -83,3 +83,18 @@ Full-scene images still show other banding/trixel artifacts. GRID/SDF reception,
 strict floor-shadow boundaries, mixed-source tile/bake boundaries, dense overflow
 and temporal transitions are not certified by these isolated controls. Their
 remaining work stays in the [audit TODO](../../../design/rendering-audit-todo.md).
+
+## Master refresh validation
+
+At production merge `44c9390a2d6782b60323ff639beda6ebc8b567c3`, master includes
+the SDF fog carrier and fleet CI repair. The four cardinal frame-overlay
+captures 2039–2042 are RGB-identical to 1967–1970 respectively; the native
+sweep exited CLEAN. IRCanvasStress and header checks pass; all 29 render
+harness suites available on this branch pass. Independent source review found
+no blockers in the refreshed layout, fog-carrier interaction, quaternion use,
+lighting composition or bindings.
+
+The earlier Linux startup/report blocker was followed by successful Linux
+build and perf runs with nonzero head reports (perf run 35678298442). That
+GRID fixture does not establish source-face OpenGL runtime or throughput.
+The refreshed commit will receive its own CI run before acceptance.
