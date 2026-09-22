@@ -2959,10 +2959,10 @@ SEMANTIC_CONFLICT_SKIP_PREFIXES = WORKER_SKIP_PREFIXES + (
 WORKER_SKIP_LABELS = frozenset({
     "fleet:needs-opus-recheck", "fleet:design-blocked", "fleet:design-proposed",
 })
-# Only the fleet-owned tiers are suppressible. human:needs-fix /
-# human:blocker outrank an in-flight fleet review (FLEET-FEEDBACK-HANDLING.md
-# puts the human tiers first in its priority order) and keep emitting under
-# every skip signal above.
+# Only the fleet-owned tiers are suppressible by transient lane state.
+# human:needs-fix / human:blocker outrank that state, but persistent PR
+# ownership (fleet:claim-*) suppresses every feedback tier until its owner
+# explicitly releases the PR.
 _WORKER_SUPPRESSIBLE_LABELS = frozenset({
     "fleet:needs-fix", "fleet:has-nits",
 }) | DESIGN_RESUME_LABELS
@@ -2979,9 +2979,9 @@ def worker_feedback_labels(labels):
     quiet check, and fleet-up's bootstrap trigger reading the unfiltered
     set, and FLEET-CACHE.md points roles at the slice.
 
-    Suppress, never mutate: the fleet:reviewing-* label's lifecycle belongs
-    to the reviewer's release/verdict swap and to `fleet-claim cleanup
-    --gh`'s orphan sweep, which is what keeps this from stranding a PR.
+    Suppress, never mutate: transient claim labels belong to their owning
+    lane's release/verdict swap and orphan sweep. Persistent fleet:claim-*
+    ownership suppresses every feedback tier and requires explicit release.
     """
     if any(label.startswith("fleet:claim-") for label in labels):
         return frozenset()
