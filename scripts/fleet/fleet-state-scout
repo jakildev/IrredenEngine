@@ -752,8 +752,8 @@ def _drop_prs_closed_since(repo, prev, rest_body):
 # unrelated list change. The heads whose merger signal reads it have both
 # surfaces statusCheckRollup is built from polled by ETag instead — check runs
 # and commit statuses, each list under its key; the entries live in their own
-# directory because they are keyed by head sha, and each poll prunes the ones
-# no longer polled.
+# directory because they are keyed by head sha, and each fetch_prs call prunes
+# the ones it did not poll.
 HEAD_CHECKS_ETAG_DIR = ETAG_DIR / "head-checks"
 HEAD_CHECKS_SURFACES = (("check-runs", "check_runs"), ("status", "statuses"))
 HEAD_CHECKS_PER_PAGE = 100
@@ -761,53 +761,107 @@ HEAD_CHECKS_MAX_PAGES = 3
 _CHECK_READ_SIGNALS = frozenset({"merge-ready", "checks-red", "checks-unread"})
 
 
-def _check_state_moved(repo, prs):
-    """True when a check or commit status on the head of any PR whose merger
-    signal reads `checks` may have changed since the last poll. Every such
-    head is polled, so each primes its ETags on the tick it first appears. An
-    unchanged page is a 304 for zero quota; an error, an unparseable page, or
-    a list still full at the page cap reads as moved."""
+def _check_reading_prs(prs):
+    return [pr for pr in prs if _merger_action_signal(
+        set(pr.get("labels") or ()), pr.get("mergeable"),
+        pr.get("baseRefName", "master"), pr.get("checks"),
+    ) in _CHECK_READ_SIGNALS]
+
+
+def _rest_check_as_rollup_node(surface, item):
+    """A REST check run or commit status in the statusCheckRollup node shape
+    _reduce_checks reads (the REST enums are the GraphQL ones, lower-cased)."""
+    if surface == "status":
+        return {"__typename": "StatusContext",
+                "state": str(item.get("state") or "").upper()}
+    return {"__typename": "CheckRun",
+            "status": str(item.get("status") or "").upper(),
+            "conclusion": str(item.get("conclusion") or "").upper()}
+
+
+def _poll_head_checks(repo, sha, keep):
+    """Conditional-GETs both check surfaces of `sha`, adding each page's ETag
+    entry to `keep`. Returns (moved, reading): `reading` is the head's
+    `checks` as _reduce_checks reads the two REST lists, None when a page was
+    unparseable or a list was still full at the page cap — both of which also
+    read as moved, as does a poll error. An unchanged page is a 304 for zero
+    quota."""
     moved = False
-    keep = set()
-    for pr in prs:
-        signal = _merger_action_signal(
-            set(pr.get("labels") or ()), pr.get("mergeable"),
-            pr.get("baseRefName", "master"), pr.get("checks"),
-        )
-        if signal not in _CHECK_READ_SIGNALS:
-            continue
+    nodes = []
+    complete = True
+    for surface, key in HEAD_CHECKS_SURFACES:
+        path = f"commits/{sha}/{surface}"
+        for page in range(1, HEAD_CHECKS_MAX_PAGES + 1):
+            params = {"per_page": str(HEAD_CHECKS_PER_PAGE), "page": str(page)}
+            keep.add(cache_entry_path(repo, path, params=params,
+                                      cache_dir=HEAD_CHECKS_ETAG_DIR))
+            changed, body = conditional_get(repo, path, params=params,
+                                            cache_dir=HEAD_CHECKS_ETAG_DIR)
+            moved = moved or changed
+            try:
+                items = json.loads(body)[key]
+                nodes.extend(_rest_check_as_rollup_node(surface, item) for item in items)
+            except (TypeError, ValueError, KeyError, AttributeError):
+                complete = False
+                break
+            if len(items) < HEAD_CHECKS_PER_PAGE:
+                break
+        else:
+            complete = False
+    if not complete:
+        return True, None
+    return moved, _reduce_checks(nodes)
+
+
+def _check_state_moved(repo, prs, keep):
+    """Polls every head in `prs` whose merger signal reads `checks`. Returns
+    (moved, polled): whether any may have changed since its last poll, and
+    the shas polled. A record with no head sha reads as moved."""
+    moved = False
+    polled = set()
+    for pr in _check_reading_prs(prs):
         sha = pr.get("headRefOid")
         if not sha:
             moved = True
             continue
-        for surface, key in HEAD_CHECKS_SURFACES:
-            path = f"commits/{sha}/{surface}"
-            for page in range(1, HEAD_CHECKS_MAX_PAGES + 1):
-                params = {"per_page": str(HEAD_CHECKS_PER_PAGE), "page": str(page)}
-                keep.add(cache_entry_path(repo, path, params=params,
-                                          cache_dir=HEAD_CHECKS_ETAG_DIR))
-                changed, body = conditional_get(repo, path, params=params,
-                                                cache_dir=HEAD_CHECKS_ETAG_DIR)
-                moved = moved or changed
-                try:
-                    full = len(json.loads(body)[key]) >= HEAD_CHECKS_PER_PAGE
-                except (TypeError, ValueError, KeyError):
-                    moved = True
-                    break
-                if not full:
-                    break
-            else:
-                moved = True
-    # Only a pass that polled prunes: a head that stopped being polled keeps
-    # its entry until the next pass that polls any head.
+        polled.add(sha)
+        moved = _poll_head_checks(repo, sha, keep)[0] or moved
+    return moved, polled
+
+
+def _prime_fetched_heads(repo, fresh, polled, keep):
+    """Primes the head-check ETags of every head in `fresh` that the pre-fetch
+    poll did not cover, so the next 304 tick does not read it as moved. Such
+    a head is read after the GraphQL fetch, and a check that moved between the
+    two reads would leave its ETag ahead of the record; its REST reading must
+    therefore agree with the record's `checks`, and a disagreement bypasses
+    the next reuse, whose pre-fetch poll then covers the head."""
+    for pr in _check_reading_prs(fresh):
+        sha = pr.get("headRefOid")
+        if not sha or sha in polled:
+            continue
+        if _poll_head_checks(repo, sha, keep)[1] != pr.get("checks"):
+            _prs_refetch_pending.add(repo)
+
+
+def _prune_head_checks(keep):
+    # Only a call that polled prunes: a head that stopped being polled keeps
+    # its entry until the next call that polls any head.
     if keep:
         for entry in next(iter(keep)).parent.glob("*.json"):
             if entry not in keep:
                 entry.unlink(missing_ok=True)
-    return moved
 
 
 def fetch_prs(repo, prev=None):
+    keep = set()
+    try:
+        return _fetch_prs_gated(repo, prev, keep)
+    finally:
+        _prune_head_checks(keep)
+
+
+def _fetch_prs_gated(repo, prev, keep):
     # The open-PR list is the one read that STAYS on GraphQL — it needs reviews
     # + mergeable, which the REST list omits. So gate it: a cheap conditional
     # REST GET /pulls?state=open is the change-detector. 304 (unchanged) → reuse
@@ -824,6 +878,11 @@ def fetch_prs(repo, prev=None):
     # detector degrades to today's behavior. per_page=100 so the detector's
     # single page covers every open PR (REST defaults to 30); sort=updated keeps
     # the freshest PRs on page 1 if the set ever nears the cap.
+    #
+    # Every GraphQL fetch is bracketed by head-check polls: the heads of the
+    # list it replaces before it, so a check moving during the fetch still
+    # reads as moved next tick, and the heads only the new list carries after
+    # it (_prime_fetched_heads) — so one list change costs one GraphQL call.
     changed, body = conditional_get(repo, "pulls", params={
         "state": "open", "sort": "updated", "direction": "desc", "per_page": "100",
     })
@@ -836,7 +895,7 @@ def fetch_prs(repo, prev=None):
     if (not changed and prev is not None and repo not in _prs_refetch_pending
             and all(p.get("schema") == PR_RECORD_SCHEMA for p in prev)):
         prev = _drop_prs_closed_since(repo, prev, body)
-        checks_moved = _check_state_moved(repo, prev)
+        checks_moved, polled = _check_state_moved(repo, prev, keep)
         unknown = _unknown_mergeable_count(prev)
         used = _mergeable_requery_ticks.get(repo, 0)
         requery = unknown and used < MERGEABLE_UNKNOWN_REQUERY_CAP
@@ -858,18 +917,17 @@ def fetch_prs(repo, prev=None):
                 return prev
             if not _unknown_mergeable_count(fresh):
                 _mergeable_requery_ticks[repo] = 0
+            _prime_fetched_heads(repo, fresh, polled, keep)
             return fresh
         return prev
-    if prev is not None:
-        # Primes the head-check ETags against the list about to be replaced,
-        # so the next 304 tick does not read every unprimed head as moved.
-        _check_state_moved(repo, prev)
+    polled = _check_state_moved(repo, prev, keep)[1] if prev is not None else set()
     _mergeable_requery_ticks[repo] = 0
     fresh = _fetch_prs_graphql(repo)
     if fresh is None:
         _prs_refetch_pending.add(repo)
     else:
         _prs_refetch_pending.discard(repo)
+        _prime_fetched_heads(repo, fresh, polled, keep)
     return fresh
 
 

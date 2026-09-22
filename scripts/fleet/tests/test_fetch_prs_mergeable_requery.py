@@ -417,6 +417,62 @@ class CheckStateOnReuse(unittest.TestCase):
         self.assertIs(self._tick(fake, prev, None), prev)
         self.assertEqual(self.calls, 1, "a head primed on the 200 tick is a 304 on the next")
 
+    def _changed_open(self, fake):
+        def get(repo, path, **k):
+            return (True, None) if path == "pulls" else fake(repo, path, **k)
+        return get
+
+    def test_a_fresh_scout_primes_the_fetched_heads(self):
+        fake = FakeChecks([1, 2])
+        fake.runs[f"{1:040d}"] = [{"id": 1, "status": "completed", "conclusion": "success"},
+                                  {"id": 2, "status": "completed", "conclusion": "skipped"}]
+        fake.statuses[f"{1:040d}"] = [{"id": 3, "context": "ci/legacy", "state": "success"}]
+        fake.runs[f"{2:040d}"] = [{"id": 4, "status": "in_progress", "conclusion": None}]
+        fresh = [_approved(1, "green"), _approved(2, "unread")]
+        with patch.object(_mod, "conditional_get", self._changed_open(fake)), \
+             patch.object(_mod, "_fetch_prs_graphql", self._graphql(fresh)):
+            self.assertIs(_mod.fetch_prs(_REPO, prev=None), fresh)
+        self.assertEqual(self.calls, 1)
+        self.assertIs(self._tick(fake, fresh, None), fresh)
+        self.assertEqual(self.calls, 1, "a fresh scout's 200 costs one GraphQL call, not two")
+
+    def test_a_head_only_the_new_list_carries_is_primed(self):
+        fake = FakeChecks([1, 2])
+        prev = [_approved(1, "green")]
+        fresh = [_approved(1, "green"), _approved(2, "green")]
+        self._tick(fake, prev, prev)
+        self.calls = 0
+        with patch.object(_mod, "conditional_get", self._changed_open(fake)), \
+             patch.object(_mod, "_fetch_prs_graphql", self._graphql(fresh)):
+            _mod.fetch_prs(_REPO, prev=prev)
+        self.assertIs(self._tick(fake, fresh, None), fresh)
+        self.assertEqual(self.calls, 1, "a PR new to the list is primed by the 200 that fetched it")
+
+    def test_a_requery_primes_a_head_it_makes_check_reading(self):
+        # UNKNOWN is not merge-ready, so the pre-fetch poll skips the head;
+        # the re-query settling it to MERGEABLE makes the signal read checks.
+        fake = FakeChecks([1])
+        prev = [_approved(1, "green", mergeable="UNKNOWN")]
+        settled = [_approved(1, "green")]
+        self.assertEqual(self._tick(fake, prev, settled), settled)
+        self.assertEqual(self.calls, 1)
+        self.assertIs(self._tick(fake, settled, None), settled)
+        self.assertEqual(self.calls, 1, "the re-query's new check-reading head is primed")
+
+    def test_a_check_moving_after_the_fetch_bypasses_the_next_reuse(self):
+        # The record says running; by the post-fetch prime the check failed.
+        # The prime's ETag now covers the failure, so only the disagreement
+        # keeps the stale `unread` from being served.
+        fake = FakeChecks([1])
+        fake.runs[f"{1:040d}"] = [{"id": 1, "status": "completed", "conclusion": "failure"}]
+        stale = [_approved(1, "unread")]
+        with patch.object(_mod, "conditional_get", self._changed_open(fake)), \
+             patch.object(_mod, "_fetch_prs_graphql", self._graphql(stale)):
+            _mod.fetch_prs(_REPO, prev=None)
+        out = self._tick(fake, stale, [_approved(1, "red")])
+        self.assertEqual(self.calls, 2, "a prime that disagrees with the record re-asks GraphQL")
+        self.assertEqual(out[0]["checks"], "red")
+
     def test_a_full_page_reads_the_next_and_a_list_full_at_the_cap_is_moved(self):
         per, cap = _mod.HEAD_CHECKS_PER_PAGE, _mod.HEAD_CHECKS_MAX_PAGES
         fake = FakeChecks([1, 2])
