@@ -1,0 +1,26 @@
+diff --git a/engine/render/src/shaders/ir_sun_shadow_sample.glsl b/engine/render/src/shaders/ir_sun_shadow_sample.glsl
+index 8f41ad3ba..0fbb1ca06 100644
+--- a/engine/render/src/shaders/ir_sun_shadow_sample.glsl
++++ b/engine/render/src/shaders/ir_sun_shadow_sample.glsl
+@@ -206,7 +206,7 @@ float worldSunShadowFactorImpl(vec3 pos3D, vec3 normal, float isoDepth, bool sur
+         // a voxel's faces, so a straddling voxel's faces select consistently.
+         bool nearInterior =
+             sunCascadeKernelInterior(sunUV, cascadeOriginUV_0, cascadeTexelSize_0);
+-        if (nearInterior && distToSplit < -kCascadeBlendRange) {
++        if (true) {
+             shadowAccum = sampleCascadeShadow(
+                 sunUV, sunZ, normal, sunDir, uHat, vHat,
+                 cascadeOriginUV_0, cascadeTexelSize_0, 0, sunMaxShadowThrow, surfaceReceiver, casterViewToWorld
+diff --git a/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal b/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
+index 9f1f925fb..83c02def0 100644
+--- a/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
++++ b/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
+@@ -202,7 +202,7 @@ inline float worldSunShadowFactorImpl(
+         // a voxel's faces, so a straddling voxel's faces select consistently.
+         bool nearInterior =
+             sunCascadeKernelInterior(sunUV, sun.cascadeOriginUV_0, sun.cascadeTexelSize_0);
+-        if (nearInterior && distToSplit < -kCascadeBlendRange) {
++        if (true) {
+             shadowAccum = sampleCascadeShadow(
+                 sunUV, sunZ, normal, sunDir, uHat, vHat,
+                 sun.cascadeOriginUV_0, sun.cascadeTexelSize_0, 0, sunDepthBuf, sun.sunMaxShadowThrow, surfaceReceiver, casterViewToWorld

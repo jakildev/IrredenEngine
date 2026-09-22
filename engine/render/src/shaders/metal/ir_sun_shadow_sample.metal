@@ -230,16 +230,20 @@ inline float worldSunShadowFactorImpl(
 
 // Raster-origin receivers retain their outward sampling offset.
 inline float worldSunShadowFactor(
-    float3 pos3D, float3 normal, float isoDepth,
+    float3 pos3D, float3 normal,
     constant FrameDataSun &sunFrameData, device const uint *sunDepthBuf
 ) {
+    const float isoDepth = sunCascadeReceiverDepth(pos3D,
+        float3(sunFrameData.sunDirection.w, sunFrameData.sunBasisU.w, sunFrameData.sunBasisV.w));
     return worldSunShadowFactorImpl(pos3D + normal * kNormalBiasVoxels, normal, isoDepth, sunFrameData, sunDepthBuf, false, float4(0.0, 0.0, 0.0, 1.0));
 }
 
 inline float worldSurfaceSunShadowFactor(
-    float3 pos3D, float3 normal, float isoDepth, float4 casterViewToWorld,
+    float3 pos3D, float3 normal, float4 casterViewToWorld,
     constant FrameDataSun &sunFrameData, device const uint *sunDepthBuf
 ) {
+    const float isoDepth = sunCascadeReceiverDepth(pos3D,
+        float3(sunFrameData.sunDirection.w, sunFrameData.sunBasisU.w, sunFrameData.sunBasisV.w));
     return worldSunShadowFactorImpl(pos3D, normal, isoDepth, sunFrameData, sunDepthBuf, true, casterViewToWorld);
 }
 

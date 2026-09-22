@@ -1,0 +1,4 @@
+yaw=0 ray_vs_grid_faces_changed_rgb_pixels=0
+yaw=90 ray_vs_grid_faces_changed_rgb_pixels=0
+yaw=180 ray_vs_grid_faces_changed_rgb_pixels=0
+yaw=270 ray_vs_grid_faces_changed_rgb_pixels=0

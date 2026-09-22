@@ -1,0 +1,4 @@
+0: {'parent/near': 1320, 'parent/far': 0, 'child/near': 1320, 'child/far': 0}
+90: {'parent/near': 2104, 'parent/far': 0, 'child/near': 2104, 'child/far': 0}
+180: {'parent/near': 1784, 'parent/far': 1488, 'child/near': 2888, 'child/far': 0}
+270: {'parent/near': 2680, 'parent/far': 0, 'child/near': 2680, 'child/far': 0}

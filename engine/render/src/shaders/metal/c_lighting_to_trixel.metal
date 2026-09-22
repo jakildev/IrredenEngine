@@ -215,8 +215,8 @@ kernel void c_lighting_to_trixel(
         shadow = 1.0;
         if (sunFrameData.shadowsEnabled != 0 && !continuousShadow) {
             shadow = (sourceMode || voxelFrameData.visibleFaceIds.w == 2)
-                ? worldSurfaceSunShadowFactor(worldReceivePos, worldNormal, pos3DtoDistance(worldReceivePos), frameData.detachedViewToWorld, sunFrameData, sunDepthBuf)
-                : worldSunShadowFactor(worldReceivePos, worldNormal, pos3DtoDistance(worldReceivePos), sunFrameData, sunDepthBuf);
+                ? worldSurfaceSunShadowFactor(worldReceivePos, worldNormal, frameData.detachedViewToWorld, sunFrameData, sunDepthBuf)
+                : worldSunShadowFactor(worldReceivePos, worldNormal, sunFrameData, sunDepthBuf);
         }
     } else {
         shadow = detachedCanvas ? 1.0f : canvasSunShadow.read(uint2(pixel)).r;

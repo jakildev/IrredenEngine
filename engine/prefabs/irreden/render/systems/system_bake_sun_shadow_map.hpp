@@ -767,6 +767,10 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         // (rotateCardinalZInv) before the per-cascade AABB sweep, so both sides
         // share the same coordinate frame. No-op at rasterYaw == 0.
         const auto cardinalIndex = IRMath::rasterYawCardinalIndex(IRPrefab::Camera::getRasterYaw());
+        const vec3 cascadeDepthAxis = IRMath::rotateCardinalZInv(vec3(1.0f), cardinalIndex);
+        frameData_.sunDirection_.w = cascadeDepthAxis.x;
+        frameData_.sunBasisU_.w = cascadeDepthAxis.y;
+        frameData_.sunBasisV_.w = cascadeDepthAxis.z;
 
         for (int ci = 0; ci < kSunShadowCascadeCount; ++ci) {
             const IsoBounds2D sunUV = IRPrefab::SunShadow::sunBakeFrustumUVBounds(

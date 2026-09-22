@@ -76,7 +76,7 @@ kernel void c_light_overflow_faces(
 
     const float ao = 1.0f;
     const float shadow = sunFrameData.shadowsEnabled != 0
-        ? worldSunShadowFactor(pos3D, worldNormal, float(rawDepth), sunFrameData, sunDepthBuf)
+        ? worldSunShadowFactor(pos3D, worldNormal, sunFrameData, sunDepthBuf)
         : 1.0f;
     const float lambert = max(0.0f, dot(worldNormal, sunFrameData.sunDirection.xyz));
     const float faceFactor =

@@ -151,7 +151,7 @@ void main() {
     // only the directional term so a self-shadowed sliver keeps its ambient floor.
     const float ao = 1.0;
     const float shadow = shadowsEnabled != 0
-        ? worldSunShadowFactor(pos3D, worldNormal, float(rawDepth))
+        ? worldSunShadowFactor(pos3D, worldNormal)
         : 1.0;
     const float lambert = max(0.0, dot(worldNormal, sunDirection.xyz));
     const float faceFactor =

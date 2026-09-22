@@ -139,9 +139,6 @@ void main() {
         normal = -normal;
     }
 
-    // World iso depth picks the cascade; rawDepth IS the world iso depth for the
-    // world canvas this pass runs on. The cascade PCF lookup is shared with the
-    // detached world-receive path (ir_sun_shadow_sample.glsl).
-    float factor = worldSunShadowFactor(pos3D, normal, float(rawDepth));
+    float factor = worldSunShadowFactor(pos3D, normal);
     imageStore(canvasSunShadow, pixel, vec4(factor, 0.0, 0.0, 0.0));
 }

@@ -123,9 +123,6 @@ kernel void c_compute_sun_shadow(
         normal = -normal;
     }
 
-    // World iso depth picks the cascade; rawDepth IS the world iso depth for the
-    // world canvas this pass runs on. The cascade PCF lookup is shared with the
-    // detached world-receive path (ir_sun_shadow_sample.metal).
-    float factor = worldSunShadowFactor(pos3D, normal, float(rawDepth), sunFrameData, sunDepthBuf);
+    float factor = worldSunShadowFactor(pos3D, normal, sunFrameData, sunDepthBuf);
     canvasSunShadow.write(float4(factor, 0.0, 0.0, 0.0), uint2(pixel));
 }

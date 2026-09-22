@@ -94,7 +94,7 @@ fragment SourceFaceFragment f_source_face_scatter(
     out.color = in.color;
     if (in.lightingMode != kSourceLightingBaked) {
         const float visibility = worldSurfaceSunShadowFactor(in.worldPosition, in.worldNormal,
-            pos3DtoDistance(in.worldPosition), frameData.viewToWorldRotation, sunFrameData, sunDepthBuf);
+            frameData.viewToWorldRotation, sunFrameData, sunDepthBuf);
         out.color = sourceFaceLitColor(in.color, in.directSunAndExposure, in.ao,
             in.lightingMode, visibility);
     }
