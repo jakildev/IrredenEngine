@@ -80,3 +80,19 @@ lighting/presentation, then carry projected boundary coverage to fragments.
 Do not widen bias, blur shadows, or restore the wrong depth convention to hide
 one map phase's errors. Approval of the overall floor-shadow visual work remains
 pending the unchanged strict geometry gate. No throughput improvement is claimed.
+
+## Refreshed merge decision
+
+This production correction is withheld from merge-ready work. The refreshed
+parent `db657f404d65903425ffa4c1f3518a734df66051` and child production merge
+`847a3d75c57309ea94d5b8326803b12363598ba0` both include master through
+`3322a4877`. Their native cardinal floor captures 2043–2046 and 2047–2050
+are respectively RGB-identical to 2003–2006 and 2007–2010. Both builds and
+capture runs succeeded, with CLEAN exits. The 180° regression therefore
+survives the SDF fog-carrier merge unchanged (12/266 to 19/356 missing/excess).
+
+Independent review confirmed the coordinate-axis derivation but found no
+proof explaining the regressed cascade selection/sampling. The scalar test
+stubs the sampler; it does not validate cascade selection or rendered edges.
+The diagnostic/test PRs can proceed without this production change. No
+tolerance change or presumed root cause is used to approve the regression.
