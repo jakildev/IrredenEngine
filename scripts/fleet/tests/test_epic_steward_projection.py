@@ -12,6 +12,7 @@ import importlib.machinery
 import importlib.util
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 _SCRIPT = Path(__file__).parent.parent / "fleet-state-scout"
 _loader = importlib.machinery.SourceFileLoader("fleet_state_scout", str(_SCRIPT))
@@ -59,7 +60,7 @@ def _pr(num, *, labels=None, head="claude/1-feat", mergeable="MERGEABLE",
     }
 
 
-def _task(num, *, epic=None, summary="task", in_progress=False, blocked_by="(none)"):
+def _task(num, *, summary="task", in_progress=False, blocked_by="(none)"):
     return {
         "status": "~" if in_progress else " ",
         "title": f"#{num}",
@@ -71,16 +72,20 @@ def _task(num, *, epic=None, summary="task", in_progress=False, blocked_by="(non
         "blocked_by": blocked_by,
         "blocked": False,
         "issue": f"#{num}",
-        "epic": epic,
     }
+
+
+def _backref(num, *epics, title="task"):
+    return {"number": num, "title": title, "epics": list(epics)}
 
 
 def _state(*, epics=None, prs=None, tasks_open=None, tasks_in_progress=None,
            human_approved=None, needs_plan=None, closed_fleet_queued=None,
-           repo="engine", path=""):
+           epic_backrefs=None, repo="engine", path=""):
     return {"repos": {repo: {
         "path": path,
         "epics": epics or [],
+        "epic_backrefs": epic_backrefs or [],
         "prs": prs or [],
         "tasks": {"open": tasks_open or [],
                   "in_progress": tasks_in_progress or [],
@@ -107,7 +112,7 @@ class Quiescence(unittest.TestCase):
                 _entry(13),
             ])],
             prs=[_pr(101, labels=["fleet:design-blocked"], head="claude/13-x")],
-            tasks_open=[_task(14, epic="#10")],
+            epic_backrefs=[_backref(14, 10)],
         )
 
     def test_same_state_same_hash(self):
@@ -178,34 +183,101 @@ class AdoptOp(unittest.TestCase):
     def test_declared_child_missing_from_checklist_emits_adopt(self):
         items = project_epic_steward(_state(
             epics=[_epic(10, checklist=[_entry(11)])],
-            tasks_open=[_task(14, epic="#10")],
+            epic_backrefs=[_backref(14, 10)],
         ))
         self.assertEqual(items, [{"kind": "adopt", "repo": "engine",
                                   "epic": 10, "issue": 14}])
 
     def test_appending_to_checklist_consumes_adopt(self):
         before = _state(epics=[_epic(10, checklist=[_entry(11)])],
-                        tasks_open=[_task(14, epic="#10")])
+                        epic_backrefs=[_backref(14, 10)])
         after = _state(epics=[_epic(10, checklist=[_entry(11), _entry(14)])],
-                       tasks_open=[_task(14, epic="#10")])
+                       epic_backrefs=[_backref(14, 10)])
         self.assertNotEqual(_hash(before), _hash(after))
         self.assertEqual(project_epic_steward(after), [])
-
-    def test_human_approved_issue_is_adoptable(self):
-        items = project_epic_steward(_state(
-            epics=[_epic(10, checklist=[_entry(11)])],
-            human_approved=[{"number": 15, "title": "new child",
-                             "labels": ["human:approved"], "epic": "#10"}],
-        ))
-        self.assertEqual(items, [{"kind": "adopt", "repo": "engine",
-                                  "epic": 10, "issue": 15}])
 
     def test_ref_to_unknown_umbrella_emits_nothing(self):
         # Closed or non-epic umbrella: no checklist to adopt into.
         self.assertEqual(project_epic_steward(_state(
             epics=[_epic(10, checklist=[_entry(11)])],
-            tasks_open=[_task(14, epic="#99")],
+            epic_backrefs=[_backref(14, 99)],
         )), [])
+
+    def test_two_umbrella_line_adopts_into_each_open_epic(self):
+        items = project_epic_steward(_state(
+            epics=[_epic(10, checklist=[_entry(11)]),
+                   _epic(20, checklist=[_entry(21)])],
+            epic_backrefs=[_backref(14, 10, 20, 99)],
+        ))
+        self.assertEqual(items, [
+            {"kind": "adopt", "repo": "engine", "epic": 10, "issue": 14},
+            {"kind": "adopt", "repo": "engine", "epic": 20, "issue": 14},
+        ])
+
+    def test_labels_play_no_part_in_adoption(self):
+        # A labeled task and a human_approved issue with no body back-ref are
+        # not candidates; only the back-ref scan is.
+        self.assertEqual(project_epic_steward(_state(
+            epics=[_epic(10, checklist=[_entry(11)])],
+            tasks_open=[_task(14)],
+            human_approved=[{"number": 15, "title": "t",
+                             "labels": ["human:approved"]}],
+        )), [])
+
+
+class BackrefScan(unittest.TestCase):
+    """fetch_epic_backrefs reads every open issue regardless of labels and
+    reduces each body to its declared umbrellas."""
+
+    def _fetch(self, raw):
+        with patch.object(_mod, "_rest_list", return_value=raw) as rest, \
+                patch.object(_mod, "_note_page_cap"):
+            out = _mod.fetch_epic_backrefs("jakildev/IrredenEngine")
+        params = rest.call_args[0][2]
+        self.assertEqual(params, {"state": "open"}, "no label filter")
+        return out
+
+    def test_unlabeled_canonical_back_ref_is_scanned(self):
+        out = self._fetch([
+            {"number": 14, "title": "late child", "labels": [],
+             "body": "**Model:** opus\n**Part of epic:** #10\n"},
+            {"number": 15, "title": "unrelated", "labels": [],
+             "body": "No membership line; mentions #10 in prose.\n"},
+        ])
+        self.assertEqual(out, [{"number": 14, "title": "late child",
+                                "epics": [10]}])
+
+    def test_variant_spelling_and_pr_bodies(self):
+        out = self._fetch([
+            {"number": 16, "title": "legacy", "labels": [],
+             "body": "- Parent epic: #10, #20\n"},
+            {"number": 17, "title": "a PR", "pull_request": {},
+             "body": "**Part of epic:** #10\n"},
+        ])
+        self.assertEqual(out, [{"number": 16, "title": "legacy",
+                                "epics": [10, 20]}])
+
+    def test_bodies_never_reach_the_record(self):
+        out = self._fetch([{"number": 14, "title": "t", "labels": ["x"],
+                            "body": "**Part of epic:** #10\n"}])
+        self.assertEqual(set(out[0]), {"number", "title", "epics"})
+
+    def test_hard_failure_is_none(self):
+        with patch.object(_mod, "_rest_list", return_value=None):
+            self.assertIsNone(_mod.fetch_epic_backrefs("jakildev/IrredenEngine"))
+
+    def test_full_final_page_reports_a_capped_window(self):
+        raw = [{"number": n, "title": "t", "body": ""}
+               for n in range(_mod.EPIC_BACKREFS_PER_PAGE
+                              * _mod.EPIC_BACKREFS_MAX_PAGES)]
+        with patch.object(_mod, "_rest_list", return_value=raw), \
+                patch.object(_mod, "_note_page_cap") as note:
+            _mod.fetch_epic_backrefs("jakildev/IrredenEngine")
+        self.assertFalse(note.call_args[0][4], "complete must be False")
+        with patch.object(_mod, "_rest_list", return_value=raw[:-1]), \
+                patch.object(_mod, "_note_page_cap") as note:
+            _mod.fetch_epic_backrefs("jakildev/IrredenEngine")
+        self.assertTrue(note.call_args[0][4])
 
 
 class DesignOp(unittest.TestCase):
@@ -292,6 +364,28 @@ class CloseoutOp(unittest.TestCase):
             _state(epics=[_epic(10, managed=True)])),
             [{"kind": "normalize", "repo": "engine", "epic": 10}])
 
+    def test_open_unadopted_back_ref_suppresses_closeout(self):
+        # Every checklist child closed plus one open issue declaring the
+        # umbrella outside the checklist: the epic is not done.
+        all_closed = [_entry(11, checked=True, closed=True),
+                      _entry(12, checked=True, closed=True)]
+        items = project_epic_steward(_state(
+            epics=[_epic(10, checklist=all_closed)],
+            epic_backrefs=[_backref(14, 10)]))
+        self.assertEqual(items, [{"kind": "adopt", "repo": "engine",
+                                  "epic": 10, "issue": 14}])
+        # Control: the same fixture without the back-ref closes out.
+        self.assertEqual(project_epic_steward(_state(
+            epics=[_epic(10, checklist=all_closed)])),
+            [{"kind": "closeout", "repo": "engine", "epic": 10}])
+
+    def test_adopt_into_another_epic_does_not_suppress_closeout(self):
+        items = project_epic_steward(_state(
+            epics=[_epic(10, checklist=[_entry(11, checked=True, closed=True)]),
+                   _epic(20, checklist=[_entry(21)])],
+            epic_backrefs=[_backref(14, 20)]))
+        self.assertEqual(sorted(i["kind"] for i in items), ["adopt", "closeout"])
+
     def test_closed_but_unchecked_emits_rollup_and_closeout(self):
         # Both pending: the steward ticks (rollup) then closes (closeout).
         kinds = sorted(i["kind"] for i in project_epic_steward(_state(epics=[
@@ -363,7 +457,7 @@ class ParkedUmbrella(unittest.TestCase):
         items = project_epic_steward(_state(
             epics=[_epic(10, checklist=self._ALL_CLOSED,
                          labels=["fleet:epic", "fleet:needs-human"])],
-            tasks_open=[_task(13, epic="#10")]))
+            epic_backrefs=[_backref(13, 10)]))
         self.assertEqual(items, [{"kind": "adopt", "repo": "engine",
                                   "epic": 10, "issue": 13}])
         # design: a design-blocked child PR is still triaged.
@@ -498,7 +592,7 @@ class Slice(unittest.TestCase):
             epics=[_epic(10, checklist=[_entry(11, closed=True), _entry(13)])],
             prs=[_pr(101, labels=["fleet:design-blocked"],
                      head="claude/13-canvas")],
-            tasks_open=[_task(14, epic="#10", summary="late child")],
+            epic_backrefs=[_backref(14, 10, title="late child")],
         )
 
     def test_slice_shape_and_repo_tags(self):

@@ -12,11 +12,10 @@ an umbrella issue plus one child per phase, each child chaining
 
 Prose forms — a header bullet like ``**Epic:** #N · **Blocked on T1 + docs
 PR #M**`` — are read by check_blockers / the scout only as a ``Blocked on``
-fallback; the canonical standalone ``**Blocked by:** #N`` line is what
-``file-epic``'s own ``--search "Part of epic: #N"`` discovery and the queue
-rely on, so a prose-only child still warrants a warning. Multiple blockers —
-whether ``#A, #B`` on one line or several ``**Blocked by:**`` lines — are
-supported: the gate unions every ref and find-stackable-blockers
+fallback; the canonical standalone ``**Blocked by:** #N`` line is what the
+queue relies on, so a prose-only child still warrants a warning. Multiple
+blockers — whether ``#A, #B`` on one line or several ``**Blocked by:**``
+lines — are supported: the gate unions every ref and find-stackable-blockers
 live-resolves them. This module is the pure predicate half of
 ``fleet-validate-stack``; the executable supplies the ``gh`` I/O.
 
@@ -32,6 +31,12 @@ line) or a legitimate interior root of a multi-root epic (a sibling
 root plus later follow-ons), and the body alone cannot distinguish them.
 ``--strict`` in the CLI promotes that warning to an error for known linear
 chains.
+
+Membership is decided by ``fleet_epic_membership``: discovery accepts every
+recognized spelling, validation requires the canonical line and quotes the
+variant it found instead. A closed child's findings are reported at ``warn``
+— nothing reads a closed issue's fields — so an all-closed legacy stack
+passes unless ``--strict`` is given.
 """
 import json
 import re
@@ -39,18 +44,12 @@ import subprocess
 import sys
 
 import fleet_blocked_by
+from fleet_epic_membership import (
+    canonical_epic_refs,
+    epic_refs,
+    membership_lines,
+)
 from fleet_model_field import class_tokens
-
-# A child belongs to umbrella N if a body line *starts* with either the
-# canonical ``**Part of epic:**`` field or the condensed ``**Epic:**`` header
-# bullet and references #N. Discovery accepts both forms so the drift case
-# (``**Epic:**`` instead of the canonical line) is still found — and then
-# flagged by validate_child — rather than silently skipped.
-_EPIC_MEMBERSHIP_TMPL = r"^\*\*(?:Part of epic|Epic):\*\*\s+#{n}(?!\d)"
-
-# Validation requires the canonical standalone ``**Part of epic:** #N`` line.
-_PART_OF_EPIC_TMPL = r"^\*\*Part of epic:\*\*\s+#{n}(?!\d)"
-_EPIC_HEADER_TMPL = r"^\*\*Epic:\*\*\s+#{n}(?!\d)"
 
 # Optional per-task effort override; when the line is present its value
 # must be one the dispatcher understands (scout drops invalid values).
@@ -73,22 +72,25 @@ def _norm(body):
 
 
 def is_epic_child(body, umbrella):
-    """True iff ``body`` carries an epic-membership line for ``#umbrella``.
+    """True iff ``body`` declares membership in ``#umbrella``.
 
-    Matches both the canonical ``**Part of epic:** #N`` and the condensed
-    ``**Epic:** #N`` header bullet, so a coarse ``gh`` search can be narrowed
-    to genuine children of this umbrella regardless of which field form the
-    architect used.
+    Uses the tolerant discovery grammar (``fleet_epic_membership.epic_refs``),
+    so a variant-spelled child is found here and then flagged by
+    ``validate_child`` rather than silently skipped.
     """
     try:
         n = int(umbrella)
     except (TypeError, ValueError):
         return False
-    return bool(re.search(_EPIC_MEMBERSHIP_TMPL.format(n=n), _norm(body),
-                          re.MULTILINE))
+    return n in epic_refs(body)
 
 
-def validate_child(body, umbrella, is_head):
+def is_closed(state):
+    """True for a ``gh`` issue state of ``CLOSED`` in either case."""
+    return (state or "").upper() == "CLOSED"
+
+
+def validate_child(body, umbrella, is_head, state="OPEN"):
     """Return a list of ``{"severity", "msg"}`` findings (empty == clean).
 
     ``is_head`` exempts the chain head (lowest-numbered child — see
@@ -97,6 +99,9 @@ def validate_child(body, umbrella, is_head):
     root), not an ``error``, because the body alone cannot tell drift from a
     real root. Malformed / multi-ref lines and a wrong epic field are
     ``error`` — those are unambiguous.
+
+    A closed child's findings are all ``warn``: no queue consumer reads a
+    closed issue's fields, so they cannot fail a stack, only inform it.
     """
     try:
         n = int(umbrella)
@@ -129,12 +134,13 @@ def validate_child(body, umbrella, is_head):
             "(the scout will ignore it and the class default will apply)"
             % effort_m.group(1))
 
-    if not re.search(_PART_OF_EPIC_TMPL.format(n=n), b, re.MULTILINE):
-        if re.search(_EPIC_HEADER_TMPL.format(n=n), b, re.MULTILINE):
-            err("uses `**Epic:** #%d` header bullet instead of a standalone "
-                "`**Part of epic:** #%d` line (file-epic's `--search \"Part of "
-                "epic: #N\"` discovery and the queue rely on the canonical "
-                "line)" % (n, n))
+    if n not in canonical_epic_refs(b):
+        variant = next((line for line, refs in membership_lines(b)
+                        if n in refs), None)
+        if variant is not None:
+            err("declares membership as `%s` instead of a standalone "
+                "`**Part of epic:** #%d` line (the canonical form the "
+                "file-epic template emits)" % (variant, n))
         else:
             err("missing standalone `**Part of epic:** #%d` line" % n)
 
@@ -172,19 +178,23 @@ def validate_child(body, umbrella, is_head):
                         "more `#N` refs, e.g. `**Blocked by:** #1308` or "
                         "`**Blocked by:** #1308, #1309`): %r" % ln)
 
+    if is_closed(state):
+        for f in findings:
+            f["severity"] = WARN
     return findings
 
 
 def validate_stack(children, umbrella):
     """Validate every child of a stack; return a structured result dict.
 
-    ``children`` is a list of ``{"number": int, "body": str, "title"?: str}``.
+    ``children`` is a list of ``{"number": int, "body": str, "title"?: str,
+    "state"?: str}``; a missing ``state`` reads as open.
     The lowest-numbered child is treated as the chain head (file-epic files
     sequentially, so creation order == ascending issue number). Result shape::
 
         {"ok": bool,            # no errors (warnings do not clear ok)
          "n_errors": int, "n_warnings": int, "empty": bool,
-         "children": [{"number", "title", "is_head",
+         "children": [{"number", "title", "state", "is_head",
                        "findings": [{"severity","msg"}],
                        "n_errors", "n_warnings", "ok"}, ...]}
     """
@@ -198,7 +208,8 @@ def validate_stack(children, umbrella):
     n_errors = n_warnings = 0
     for c in ordered:
         is_head = c["number"] == head_num
-        findings = validate_child(c.get("body", ""), umbrella, is_head)
+        state = "CLOSED" if is_closed(c.get("state")) else "OPEN"
+        findings = validate_child(c.get("body", ""), umbrella, is_head, state)
         e = sum(1 for f in findings if f["severity"] == ERROR)
         w = sum(1 for f in findings if f["severity"] == WARN)
         n_errors += e
@@ -206,6 +217,7 @@ def validate_stack(children, umbrella):
         results.append({
             "number": c["number"],
             "title": c.get("title", ""),
+            "state": state,
             "is_head": is_head,
             "findings": findings,
             "n_errors": e,
@@ -235,7 +247,11 @@ def _run_gh_json(args):
         return None
 
 
-def discover_children(slug, umbrella, state="open"):
+# The coarse candidate net's page size; a result this long may be truncated.
+DISCOVERY_LIMIT = 200
+
+
+def discover_children(slug, umbrella, state="all"):
     """Find children of ``umbrella`` via coarse search + precise membership filter.
 
     Coarse search via ``gh issue list`` with ``--search "in:body #<N>"`` to get
@@ -245,20 +261,27 @@ def discover_children(slug, umbrella, state="open"):
     ``fleet-validate-stack`` and ``fleet-epic-status`` import this function so
     discovery logic cannot diverge between tools.
 
-    ``state`` is passed directly to ``gh issue list --state``; pass ``"all"``
-    to include closed children (needed for full epic-health dashboards).
+    ``state`` is passed directly to ``gh issue list --state``; the default
+    ``"all"`` includes closed children, which a close-out audit needs.
     Returns a list of dicts with ``number``, ``title``, ``body``, ``state``,
-    ``labels`` keys as returned by ``gh issue list --json``.
+    ``labels`` keys as returned by ``gh issue list --json``. The umbrella
+    itself is never its own child.
     """
+    n = int(umbrella)
     candidates = _run_gh_json([
         "gh", "issue", "list", "--repo", slug,
-        "--search", "in:body #%d" % int(umbrella), "--state", state,
-        "--limit", "200",
+        "--search", "in:body #%d" % n, "--state", state,
+        "--limit", str(DISCOVERY_LIMIT),
         "--json", "number,title,body,state,labels",
     ])
     if candidates is None:
         return []
-    return [c for c in candidates if is_epic_child(c.get("body", ""), umbrella)]
+    if len(candidates) >= DISCOVERY_LIMIT:
+        print("fleet_validate_stack: candidate search for #%d filled --limit "
+              "%d; the child list may be truncated" % (n, DISCOVERY_LIMIT),
+              file=sys.stderr)
+    return [c for c in candidates
+            if c.get("number") != n and is_epic_child(c.get("body", ""), n)]
 
 
 # ---------------------------------------------------------------------------
@@ -287,7 +310,7 @@ def check_checklist(umbrella_body, child_numbers):
     """Compare umbrella body checklist against discovered child issue numbers.
 
     ``child_numbers`` is an iterable of ints from the stack discovery pass
-    (children whose bodies carry ``**Part of epic:** #<umbrella>``).
+    (children whose bodies declare membership in ``#<umbrella>``).
 
     Returns a list of drift dicts::
 
@@ -301,9 +324,9 @@ def check_checklist(umbrella_body, child_numbers):
 
     ``in-checklist-not-discovered``
         The checklist references an issue number that no discovered child body
-        claims (``**Part of epic:** #<umbrella>`` absent or the issue was
-        deleted / renumbered).  Informational; may be intentional for closed
-        children whose issues are no longer open.
+        claims (its membership line is absent or the issue was
+        deleted / renumbered), or discovery ran under a narrower ``--state``
+        than ``all``.  Informational.
     """
     checklist = parse_checklist(umbrella_body)
     child_set = set(child_numbers)

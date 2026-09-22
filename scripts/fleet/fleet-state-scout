@@ -57,6 +57,7 @@ from fleet_branch_match import (
     branch_matches_issue,
     split_closed_issue_refs,
 )
+from fleet_epic_membership import epic_refs
 
 # Conditional-REST polling core — see the fetcher section below.
 # ETAG_DIR aliases the module's shared etag-cache default so the two never
@@ -1005,6 +1006,41 @@ def fetch_epics(repo):
     return epics
 
 
+# Page window for the open-issue back-ref scan; a full final page is a
+# truncation, warned escalate-then-quiet.
+EPIC_BACKREFS_PER_PAGE = 100
+EPIC_BACKREFS_MAX_PAGES = 10
+
+
+def fetch_epic_backrefs(repo):
+    # Every open issue that declares epic membership, reduced at fetch time to
+    # {number, title, epics} — bodies never reach state.json. Label-blind on
+    # purpose: a follow-up filed unlabeled (the TASK-FILING.md default) still
+    # declares its umbrella, and a label-filtered read cannot see it. PRs are
+    # dropped before parsing: their bodies carry prose back-refs that are not
+    # membership declarations.
+    raw = _rest_list(repo, "issues", {"state": "open"},
+                     per_page=EPIC_BACKREFS_PER_PAGE,
+                     max_pages=EPIC_BACKREFS_MAX_PAGES)
+    if raw is None:
+        return None
+    _note_page_cap(
+        "epic_backrefs", "epic-backrefs", _epic_backrefs_truncated_streak,
+        repo, len(raw) < EPIC_BACKREFS_PER_PAGE * EPIC_BACKREFS_MAX_PAGES,
+        EPIC_BACKREFS_MAX_PAGES)
+    backrefs = []
+    for issue in raw:
+        if _is_pull_request(issue):
+            continue
+        epics = epic_refs(issue.get("body"))
+        if epics:
+            backrefs.append({"number": issue.get("number", 0),
+                             "title": issue.get("title", "") or "",
+                             "epics": epics})
+    backrefs.sort(key=lambda issue: issue["number"])
+    return backrefs
+
+
 def fetch_human_approved(repo):
     # Exclude already-ingested issues to avoid re-triggering queue-manager.
     # with_body=True so resolve_human_approved_blockers can parse the
@@ -1012,11 +1048,12 @@ def fetch_human_approved(repo):
     #
     # per_page=100, max_pages=3 (a 300 cap, matching the `--limit 300` sibling
     # `gh pr list`/`gh issue list` calls elsewhere in the fleet tooling).
-    # human_approved is a shared field with several consumers beyond the
-    # queue-ingest set (epic-adopt candidates), and its live population is
-    # well past a single page and growing; a fixed window silently drops the
-    # oldest rows. Paginating via max_pages rather than raising per_page
-    # keeps headroom instead of inheriting a new, still-fixed deadline.
+    # human_approved is a shared field with consumers beyond the
+    # queue-ingest set (the per-issue detail refresh and its GC), and its
+    # live population is well past a single page and growing; a fixed window
+    # silently drops the oldest rows. Paginating via max_pages rather than
+    # raising per_page keeps headroom instead of inheriting a new, still-fixed
+    # deadline.
     #
     # fleet:agent-approved is approval-EQUIVALENT: an agent-filed follow-up
     # carrying it enters the same ingest set with no human triage, and the
@@ -1076,51 +1113,52 @@ def fetch_closed_fleet_queued(repo, limit=100):
     return issues
 
 
-# Ticks between repeats of the recent_merged_prs cap-hit warn: the scout ticks
-# every ~30s and a churn burst that buries the window persists until enough new
-# merges displace it, so an unconditional per-tick warn would be the
-# spam-hides-the-outage shape scripts/fleet/CLAUDE.md's escalate-then-quiet
-# rule exists for. Same cadence as the state-size guard.
+# Ticks between repeats of a page-cap warn: the scout ticks every ~30s and a
+# capped window persists until the population shrinks, so an unconditional
+# per-tick warn would be the spam-hides-the-outage shape scripts/fleet/
+# CLAUDE.md's escalate-then-quiet rule exists for. Same cadence as the
+# state-size guard.
 RECENT_MERGED_INCOMPLETE_REPEAT_TICKS = 120
 
-# repo -> consecutive incomplete-window ticks. In-process, like
-# _state_size_over_streak: the scout is a loop.
+# repo -> consecutive capped ticks, one dict per guarded fetch. In-process,
+# like _state_size_over_streak: the scout is a loop.
 _recent_merged_incomplete_streak = {}
+_epic_backrefs_truncated_streak = {}
 
 
-def _recent_merged_alert_path(repo) -> Path:
-    return _alerts_dir() / f"state-scout-recent-merged-{repo.replace('/', '-')}"
+def _page_cap_alert_path(alert_tag, repo) -> Path:
+    return _alerts_dir() / f"state-scout-{alert_tag}-{repo.replace('/', '-')}"
 
 
-def _note_recent_merged_window(repo, complete, pages):
-    """Escalate-then-quiet for a recent_merged_prs window that hit the page cap.
+def _note_page_cap(field, alert_tag, streaks, repo, complete, pages):
+    """Escalate-then-quiet for a paginated fetch that hit its page cap.
 
     Loud on the tick that crosses and every Nth tick after; the alert file is
-    rewritten every incomplete tick (once stderr is quiet it is the only
+    rewritten every capped tick (once stderr is quiet it is the only
     standing signal) and removed, with one all-clear line, on the first
     complete window. Best-effort: a read-only $HOME never breaks the fetch.
     """
-    streak = _recent_merged_incomplete_streak.get(repo, 0)
+    streak = streaks.get(repo, 0)
     if complete:
         if streak:
-            log(f"{repo} recent_merged_prs: window complete again")
+            log(f"{repo} {field}: window complete again")
             try:
-                _recent_merged_alert_path(repo).unlink()
+                _page_cap_alert_path(alert_tag, repo).unlink()
             except OSError:
                 pass
-        _recent_merged_incomplete_streak[repo] = 0
+        streaks[repo] = 0
         return
     streak += 1
-    _recent_merged_incomplete_streak[repo] = streak
+    streaks[repo] = streak
     if streak == 1 or streak % RECENT_MERGED_INCOMPLETE_REPEAT_TICKS == 0:
-        log(f"{repo} recent_merged_prs: window incomplete after {pages} pages "
+        log(f"{repo} {field}: window incomplete after {pages} pages "
             f"[tick {streak}]")
     try:
-        path = _recent_merged_alert_path(repo)
+        path = _page_cap_alert_path(alert_tag, repo)
         path.parent.mkdir(parents=True, exist_ok=True)
         write_atomic(
             path,
-            f"recent_merged_prs window guard\n"
+            f"{field} window guard\n"
             f"repo={repo}\n"
             f"pages={pages}\n"
             f"consecutive_ticks={streak}\n",
@@ -1203,7 +1241,8 @@ def fetch_recent_merged_prs(repo, limit=30):
             if raw[-1].get("updated_at", "") < newest_merges[limit - 1]:
                 complete = True
                 break
-    _note_recent_merged_window(repo, complete, max_pages)
+    _note_page_cap("recent_merged_prs", "recent-merged",
+                   _recent_merged_incomplete_streak, repo, complete, max_pages)
 
     merged = sorted(seen.values(), key=lambda pr: pr["merged_at"],
                     reverse=True)[:limit]
@@ -1579,10 +1618,6 @@ def fetch_task_queue(repo_slug):
             # keys on it: a target declined at one updatedAt is not re-elected
             # until the item changes (fleet_task_class._declined).
             "updatedAt": issue.get("updated_at", "") or "",
-            # `**Part of epic:** #U` back-ref (raw field value, e.g. "#U").
-            # The epic-steward adoption projection joins this against open
-            # umbrellas' checklists.
-            "epic": _parse_issue_field(body, "Part of epic") or None,
         }
 
         # A macOS pin plus a GL-host need is unsatisfiable: the OS pin refuses
@@ -2302,9 +2337,6 @@ def resolve_human_approved_blockers(state):
 
         for issue in repo_state.get("human_approved", []):
             body = issue.pop("body", "") or ""
-            # Same `Part of epic` back-ref the task records carry —
-            # parsed here because this is where the body already flows.
-            issue["epic"] = _parse_issue_field(body, "Part of epic") or None
             issue["blocked"] = False
             raw = _parse_blocked_by(body)
             if not raw:
@@ -3419,10 +3451,11 @@ def _epic_design_prs(repo_key, repo_state):
 
 
 def _epic_adopt_candidates(repo_state):
-    """[{issue, epic, title}] for visible open issues (tasks open/in_progress
-    + human_approved) declaring `**Part of epic:** #U` where U is an open
-    epic whose checklist lacks them. A ref to a closed or non-epic umbrella
-    emits nothing — there is no checklist to adopt into."""
+    """[{issue, epic, title}] for open issues whose body declares membership
+    in an open epic whose checklist lacks them, one per (issue, umbrella)
+    pair. Read from the label-blind `epic_backrefs` scan, so an unlabeled
+    child is visible. A ref to a closed or non-epic umbrella emits nothing —
+    there is no checklist to adopt into."""
     epics = repo_state.get("epics", [])
     if not epics:
         return []
@@ -3430,25 +3463,16 @@ def _epic_adopt_candidates(repo_state):
         e.get("number"): {entry.get("number") for entry in e.get("checklist", [])}
         for e in epics
     }
-    candidates = []
-    tasks = repo_state.get("tasks", {})
-    for task in tasks.get("open", []) + tasks.get("in_progress", []):
-        candidates.append((task.get("epic"),
-                           (task.get("issue") or "").lstrip("#"),
-                           task.get("summary", "")))
-    for issue in repo_state.get("human_approved", []):
-        candidates.append((issue.get("epic"),
-                           str(issue.get("number", "")),
-                           issue.get("title", "")))
     out = []
-    for epic_ref, num_str, title in candidates:
-        m = re.search(r"#(\d+)", epic_ref or "")
-        if not m or not num_str.isdigit():
-            continue
-        umbrella = int(m.group(1))
-        if umbrella not in member_sets or int(num_str) in member_sets[umbrella]:
-            continue
-        out.append({"issue": int(num_str), "epic": umbrella, "title": title})
+    for issue in repo_state.get("epic_backrefs", []):
+        number = issue.get("number")
+        for umbrella in issue.get("epics", []):
+            if umbrella == number or umbrella not in member_sets:
+                continue
+            if number in member_sets[umbrella]:
+                continue
+            out.append({"issue": number, "epic": umbrella,
+                        "title": issue.get("title", "")})
     return out
 
 
@@ -3473,14 +3497,17 @@ def project_epic_steward(state):
                    nothing (no perma-trigger).
     - rollup     — unchecked checklist child that is closed; gone when the
                    steward ticks the box.
-    - adopt      — visible open issue declaring `Part of epic: #U` absent
-                   from that umbrella's checklist; gone when appended.
+    - adopt      — open issue whose body declares membership in #U (the
+                   label-blind `epic_backrefs` scan) absent from that
+                   umbrella's checklist; gone when appended.
     - design     — op=triage: fleet:design-blocked PR branch-matched to a
                    checklist child; gone on design-unblock/design-propose.
                    op=distribute: fleet:design-proposed PR whose umbrella
                    dropped fleet:steward-proposal; gone on design-unblock.
     - closeout   — checklist non-empty and every child closed, umbrella
-                   open; gone when the umbrella closes.
+                   open, and no adopt item for it (an open unadopted
+                   back-ref means the epic is not done); gone when the
+                   umbrella closes.
 
     An umbrella parked on the human (_EPIC_PARKED_LABELS) emits no rollup
     or closeout item: the steward has already audited it and recorded the
@@ -3493,6 +3520,8 @@ def project_epic_steward(state):
         epics = repo_state.get("epics", [])
         if not epics:
             continue
+        adopt = _epic_adopt_candidates(repo_state)
+        adopting = {cand["epic"] for cand in adopt}
         for epic in epics:
             number = epic.get("number")
             checklist = epic.get("checklist", [])
@@ -3508,10 +3537,11 @@ def project_epic_steward(state):
                     items.append({"kind": "rollup", "repo": repo,
                                   "epic": number,
                                   "child": entry.get("number")})
-            if all(entry.get("closed") for entry in checklist):
+            if (all(entry.get("closed") for entry in checklist)
+                    and number not in adopting):
                 items.append({"kind": "closeout", "repo": repo,
                               "epic": number})
-        for cand in _epic_adopt_candidates(repo_state):
+        for cand in adopt:
             items.append({"kind": "adopt", "repo": repo,
                           "epic": cand["epic"], "issue": cand["issue"]})
         for pr, umbrella, _child, op in _epic_design_prs(repo, repo_state):
@@ -3785,8 +3815,8 @@ def slice_epic_steward(state):
     - `design_prs` — design-blocked / design-proposed PRs branch-matched to a
       checklist child, repo-tagged, annotated with `epic`, `child`, and `op`
       (`triage` / `distribute` / null while the proposal is still pending).
-    - `adoptable` — visible open issues declaring a `Part of epic` umbrella
-      whose checklist lacks them.
+    - `adoptable` — open issues whose body declares membership in an open
+      umbrella whose checklist lacks them (the `epic_backrefs` scan).
     - `triggers` — the projector's items verbatim, so the role's startup
       reads pending work by flow without recomputing the hash inputs.
     """
@@ -4323,7 +4353,7 @@ def _slice_is_empty(field, value):
 # edge, so its single-tick genuine-empty contract is kept.
 HOLD_EMPTY_FIELDS = frozenset({
     "needs_plan", "plan_review", "human_approved", "closed_fleet_queued",
-    "recent_merged_prs", "tasks", "epics",
+    "recent_merged_prs", "tasks", "epics", "epic_backrefs",
 })
 
 
@@ -4364,6 +4394,8 @@ def collect_state():
              lambda: fetch_recent_merged_prs("jakildev/IrredenEngine")),
             ("engine", "tasks", lambda: fetch_task_queue("jakildev/IrredenEngine")),
             ("engine", "epics", lambda: fetch_epics("jakildev/IrredenEngine")),
+            ("engine", "epic_backrefs",
+             lambda: fetch_epic_backrefs("jakildev/IrredenEngine")),
         ]
     if "game" in repos:
         fetch_specs += [
@@ -4376,6 +4408,7 @@ def collect_state():
             ("game", "recent_merged_prs", lambda: fetch_recent_merged_prs("jakildev/irreden")),
             ("game", "tasks", lambda: fetch_task_queue("jakildev/irreden")),
             ("game", "epics", lambda: fetch_epics("jakildev/irreden")),
+            ("game", "epic_backrefs", lambda: fetch_epic_backrefs("jakildev/irreden")),
         ]
 
     _degraded = []
