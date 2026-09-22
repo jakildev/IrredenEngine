@@ -58,10 +58,40 @@ REMOVED_FILE="$TMPROOT/removed.log"; : > "$REMOVED_FILE"; export REMOVED_FILE
 STUB_DIR="$TMPROOT/bin"; mkdir -p "$STUB_DIR"
 cat > "$STUB_DIR/gh" <<'GHSTUB'
 #!/usr/bin/env bash
+# `issue list` applies the command's own label qualifiers to the fixture. A
+# stub that returns the whole fixture regardless would pass whatever
+# population the sweep selects, which is the property under test here.
+stub_issue_list() {
+    local -a want=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --label|-l) want+=("$2"); shift 2 ;;
+            --search)
+                local q="$2"; shift 2
+                while [[ -n "${q// /}" ]]; do
+                    if [[ "$q" =~ ^[[:space:]]*label:\"([^\"]+)\"(.*)$ ]]; then
+                        want+=("${BASH_REMATCH[1]}"); q="${BASH_REMATCH[2]}"
+                    else
+                        echo "gh stub: unmodeled --search qualifier '$q'" >&2
+                        exit 2
+                    fi
+                done ;;
+            *) shift ;;
+        esac
+    done
+    WANT_LABELS=$(printf '%s\n' ${want[@]+"${want[@]}"}) python3 -c '
+import json, os, sys
+want = [w for w in os.environ.get("WANT_LABELS", "").split("\n") if w]
+issues = json.load(sys.stdin)
+json.dump([i for i in issues
+           if all(any((l or {}).get("name") == w for l in (i.get("labels") or []))
+                  for w in want)], sys.stdout)
+' < "$ISSUES_JSON"
+}
 case "$1" in
     issue)
         case "$2" in
-            list) cat "$ISSUES_JSON"; exit 0 ;;
+            list) shift 2; stub_issue_list "$@"; exit 0 ;;
             edit)
                 shift 2; issue="$1"; shift
                 while [[ $# -gt 0 ]]; do
@@ -101,12 +131,16 @@ mk_claim() {  # create a live local lock for <slug>
 # issue 901 same-host, NO local lock, ACTIVE PR      -> kept (PR carries the work)
 # issue 902 same-host, local lock present, no PR     -> kept (live worker, within TTL)
 # issue 903 cross-host (linux), NO local lock, no PR -> kept (TTL not elapsed)
+# issue 904 same-host orphan on a PARKED issue (no fleet:queued) -> swept; a
+#     population selected by label:"fleet:queued" cannot see it at all, and
+#     `release` is a no-op on a lockless claim, so the label would be stuck.
 cat > "$ISSUES_JSON" <<'JSON'
 [
   {"number":900,"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:claim-mac-worker-1"},{"name":"fleet:in-progress"}]},
   {"number":901,"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:claim-mac-worker-1"},{"name":"fleet:in-progress"}]},
   {"number":902,"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:claim-mac-worker-1"},{"name":"fleet:in-progress"}]},
-  {"number":903,"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:claim-linux-worker-1"},{"name":"fleet:in-progress"}]}
+  {"number":903,"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:claim-linux-worker-1"},{"name":"fleet:in-progress"}]},
+  {"number":904,"state":"OPEN","labels":[{"name":"fleet:needs-human"},{"name":"fleet:claim-mac-worker-1"}]}
 ]
 JSON
 cat > "$PRS_JSON" <<'JSON'
@@ -125,6 +159,25 @@ assert_removed_contains $'900\tfleet:in-progress'        "orphan #900 fleet:in-p
 assert_removed_absent   $'901\tfleet:claim-mac-worker-1' "same-host orphan with ACTIVE PR kept"
 assert_removed_absent   $'902\tfleet:claim-mac-worker-1' "same-host claim with live local lock kept"
 assert_removed_absent   $'903\tfleet:claim-linux-worker-1' "cross-host claim within TTL kept"
+assert_removed_contains $'904\tfleet:claim-mac-worker-1' "orphan on a PARKED issue (no fleet:queued) swept"
+
+# Stub fidelity: the assertion above only proves something if the old
+# label:"fleet:queued" population really did drop 904.
+echo "=== stub fidelity: the fleet:queued population excludes the parked row ==="
+queued_pop=$("$STUB_DIR/gh" issue list --repo jakildev/IrredenEngine --state open \
+    --search 'label:"fleet:queued"' --json number,labels)
+if echo "$queued_pop" | grep -q '904'; then
+    bad "label:\"fleet:queued\" listing still returns the parked row (fixture is inert)"
+else
+    ok "label:\"fleet:queued\" listing drops the parked row"
+fi
+unqualified_pop=$("$STUB_DIR/gh" issue list --repo jakildev/IrredenEngine --state open \
+    --json number,labels)
+if echo "$unqualified_pop" | grep -q '904'; then
+    ok "unqualified listing returns the parked row"
+else
+    bad "unqualified listing dropped the parked row (stub filter is wrong)"
+fi
 
 echo
 echo "PASS: $PASS  FAIL: $FAIL"

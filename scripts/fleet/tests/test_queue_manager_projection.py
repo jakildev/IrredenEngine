@@ -238,6 +238,32 @@ class IngestProjectionFiresOnNewApprovedIssue(unittest.TestCase):
         self.assertEqual([i["number"] for i in out["pending_issues"]], [2762],
                          "issue must reach pending_issues once fleet:gated is gone")
 
+    def test_human_owned_excluded_from_pending(self):
+        # human:owned is the human's hand de-queue and it KEEPS human:approved,
+        # so without the skip the issue holds the projection hash non-zero for
+        # as long as it stays parked and costs one live `gh issue view` every
+        # ingest tick. Worse, the human REMOVING the label — the only re-entry
+        # trigger there is — is then not a membership change either, so no hash
+        # flip and no ingest fire: the issue strands approved-but-unqueued.
+        parked = [{"number": 3130, "title": "human took this one",
+                   "labels": ["human:approved", "human:owned"]}]
+        h = stable_hash(project_queue_manager_ingest(_state(engine_human_approved=parked)))
+        self.assertEqual(h, stable_hash(project_queue_manager_ingest(_state())),
+                         "human:owned issue must not contribute to the ingest hash")
+        out = slice_queue_manager_ingest(_state(engine_human_approved=parked))
+        self.assertEqual(out["pending_issues"], [],
+                         "human:owned issue must be absent from pending_issues slice")
+
+    def test_human_owned_positive_control_present_without_label(self):
+        # Positive control: the same issue without human:owned reaches
+        # pending_issues, so the exclusion is the label's doing and removing it
+        # is a real membership change that fires ingest.
+        live = [{"number": 3130, "title": "human took this one",
+                 "labels": ["human:approved"]}]
+        out = slice_queue_manager_ingest(_state(engine_human_approved=live))
+        self.assertEqual([i["number"] for i in out["pending_issues"]], [3130],
+                         "issue must reach pending_issues once human:owned is gone")
+
     def test_revise_plan_overrides_skip_into_pending(self):
         # human:revise-plan is the human-added "change the posted plan" gate. It
         # lands on an issue mid-review (fleet:plan-review, a skip label), so it

@@ -855,6 +855,10 @@ _INGEST_SKIP_LABELS = frozenset({
                            # keeps human:approved but must NOT be re-queued, so it must
                            # also drop out of the ingest set or it holds the projection
                            # hash non-zero and costs a live `gh issue view` every tick.
+    "human:owned",         # the human took the issue out of fleet rotation by hand. It
+                           # keeps human:approved, so without this it sits in the ingest
+                           # set forever and the human REMOVING the label — the re-entry
+                           # trigger — is not a membership change either.
 })
 
 # Labels that PULL an issue back into the ingest set even though it also carries
@@ -878,12 +882,31 @@ _INGEST_OVERRIDE_LABELS = frozenset({"human:revise-plan"})
 # re-arm a retired gate.
 _PLAN_GATE_LABELS = frozenset({"fleet:needs-plan", "fleet:plan-review"})
 
-# Parks that already hold an issue out of tasks.open unconditionally
-# (fetch_task_queue `continue`s on both). A parked issue is not pickable
-# whether or not it carries fleet:queued, so there is no defect to retract —
-# excluding them keeps `fleet:needs-human` / `fleet:gated` handling literally
-# unchanged and spends no API budget on a no-op edit.
-_RETRACT_PARK_LABELS = frozenset({"fleet:needs-human", "fleet:gated"})
+# Terminal parks: an issue carrying one of these is out of fleet rotation
+# until a human acts, so fetch_task_queue drops it from every task section
+# whether or not it still carries fleet:queued. A park landing on an ALREADY
+# queued row is the reachable case — without the drop the dispatcher re-claims
+# it every tick, re-hits the reason it was parked, and releases.
+#
+# The same set is the retract exclusion: a parked row is already unpickable, so
+# there is no defect to retract and the remove-half would spend API budget on a
+# no-op edit. fleet:plan-review is deliberately NOT here — it is a gate, whose
+# whole point is that it retracts.
+_TASK_QUEUE_PARK_LABELS = frozenset({
+    "fleet:needs-human",
+    "fleet:gated",
+    "fleet:scope-shipped",
+    "human:owned",
+})
+
+# The ingest holds deliberately left inside fetch_human_approved's result. The
+# plan gates stay because the human:revise-plan override has to find a
+# fleet:plan-review issue there; human:owned stays because human_approved also
+# feeds blocker visibility and epic-adopt candidates, and the exclusion above is
+# about the TOCTOU window of an agent's two-step label swap, which a human
+# de-queue does not have. tests/test_park_label_family.py derives the hold
+# family from fleet-queue-ingest and treats this as the only sanctioned gap.
+_ALREADY_QUEUED_EXEMPT_LABELS = _PLAN_GATE_LABELS | frozenset({"human:owned"})
 
 # Gate labels that take an issue out of fleet *planning/dispatch* rotation:
 # human:owned (de-queued), human:wip (human is on it), human:no-plan and its
@@ -1484,26 +1507,17 @@ def fetch_task_queue(repo_slug):
         # filtered: retracting under a live claim disturbs neither the claim
         # nor the release path (neither reads fleet:queued) and is what stops
         # re-pickup after the claim is released.
-        if (labels & _PLAN_GATE_LABELS) and not (labels & _RETRACT_PARK_LABELS):
+        if (labels & _PLAN_GATE_LABELS) and not (labels & _TASK_QUEUE_PARK_LABELS):
             sections["plan_gated"].append(number)
 
-        # fleet:needs-human marks tasks that require manual human action
-        # before agents can work them. Skip so they don't appear in
-        # tasks.open and trigger infinite autonomous pickup attempts.
-        if "fleet:needs-human" in labels:
+        # A terminal park keeps the issue out of every section, so it can
+        # never be dispatched or claimed while the park stands.
+        if labels & _TASK_QUEUE_PARK_LABELS:
             continue
 
         # fleet:plan-review marks tasks whose plan is posted and awaiting
         # human/architect approval — not yet pickable by autonomous workers.
         if "fleet:plan-review" in labels:
-            continue
-
-        # fleet:gated marks issues a worker parked because the fix surface
-        # is gated self-config no class can push. Skip for the same
-        # reason as fleet:needs-human above: without this, ingest re-stamps
-        # fleet:queued and every matching dispatch re-claims, re-hits the
-        # ungateable surface, and releases — an unbounded pane-burn loop.
-        if "fleet:gated" in labels:
             continue
 
         in_progress = "fleet:in-progress" in labels or owner != "free"
@@ -3288,9 +3302,9 @@ def project_queue_manager_ingest(state):
 
     - **Add path** — every `human:approved` issue not yet stamped
       `fleet:queued` and not in a skip category (epic, needs-plan, plan-review,
-      needs-info, needs-human, scope-shipped). A `**Blocked by:**`-blocked
-      issue is NOT excluded: it enters the set, ingest stamps
-      `fleet:queued` + a model label + `fleet:blocked`, and it drops out
+      needs-info, needs-human, scope-shipped, gated, human-owned). A
+      `**Blocked by:**`-blocked issue is NOT excluded: it enters the set,
+      ingest stamps `fleet:queued` + a model label + `fleet:blocked`, and it drops out
       (now carrying fleet:queued). The whole queue is visible immediately
       rather than one child at a time.
     - **Remove path** — a queued task carrying `fleet:blocked` whose last
