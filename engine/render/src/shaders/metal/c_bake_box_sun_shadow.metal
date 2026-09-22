@@ -47,7 +47,7 @@ kernel void c_bake_box_sun_shadow(
         const int2 last = min(int2(floor((center.xy + extent.xy - origin) / texel - 0.5)), int2(kSunShadowMapDim - 1));
         if (any(first > last)) continue;
         const int2 size = last - first + 1;
-        for (uint sampleIndex = localId.x; sampleIndex < uint(size.x * size.y); sampleIndex += 64u) {
+        for (uint sampleIndex = groupId.z * 64u + localId.x; sampleIndex < uint(size.x * size.y); sampleIndex += 64u * uint(dispatch.w)) {
             const int2 pixel = first + int2(int(sampleIndex) % size.x, int(sampleIndex) / size.x);
             const float2 uv = origin + (float2(pixel) + 0.5) * texel;
             const float3 worldDelta = sunFrame.sunBasisU.xyz * uv.x + sunFrame.sunBasisV.xyz * uv.y - shape.worldPosition.xyz;

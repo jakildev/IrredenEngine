@@ -36,7 +36,7 @@ changes (occupied-only lists, indirect dispatch, subdivision caps).
   accumulators build the shutdown avg/min/max (#1738). A `finish()`-bracket
   legacy path exists for devices without timestamp support
   (`legacyFinishTiming_`).
-- **Reserved rows have no writer:** `shapePass0`, `shapePass1` and
+- **Reserved rows have no writer:** `shapePass0`, `shapePass1`, `shapeSunCast` and
   `shapeCompact`. Their public fields remain for compatibility; zero samples
   mean unwired, not zero-cost. Historical `shapePass1` reports measured the
   complete shape-system bundle.
@@ -55,8 +55,11 @@ changes (occupied-only lists, indirect dispatch, subdivision caps).
 - **SDF rows are non-nested dispatch scopes:** `shapeOwnerClear` covers
   scratch preparation/clear (Metal samples the blit, excluding CPU allocation); `shapeDepth` covers pass zero; `shapeOwnerElect`
   covers equal-depth owner election; `shapePublish` covers color/identity
-  publication; `shapeSunCast` covers finite box casting and the non-box depth
-  fallback plus bake. Dispatch scopes include their trailing barriers; the
+  publication. Casting has separate `shapeCastClear`, `shapeCastBoxes`,
+  `shapeCastFallback`, `shapeCastResolve` and `shapeCastBake` rows for the
+  depth clear, finite-box dispatch, non-box depth raster, atomic scratch
+  resolve and depth-map bake, respectively. `shapeSunCast` is an unwritten
+  compatibility row; historical values bundled those operations. Dispatch scopes include their trailing barriers; the
   owner-clear barrier precedes its blit. OpenGL query intervals can include
   idle gaps during CPU preparation. They exclude canvas
   initialization clears, descriptor upload/CPU tiling, and gaps between scopes.

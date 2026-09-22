@@ -233,13 +233,17 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         if (!frameUsesFiniteCoverage_ || frameData_.shadowsEnabled_ == 0 || count == 0)
             return;
         const ivec2 grid = voxelDispatchGridForCount(count);
-        const ivec4 params(count, grid.x, subdivisions, 0);
+        constexpr int kTargetBoxCastWorkgroups = 256;
+        constexpr int kMaxBoxCastWorkgroupsPerShape = 32;
+        const int workgroupsPerShape =
+            IRMath::clamp(kTargetBoxCastWorkgroups / count, 1, kMaxBoxCastWorkgroupsPerShape);
+        const ivec4 params(count, grid.x, subdivisions, workgroupsPerShape);
         voxelFaceFrameBuf_->subData(0, sizeof(params), &params);
         voxelFaceFrameBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_RevoxelizeDetachedParams);
         sunShadowFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
         sunShadowDepthMap_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap);
         boxSunProgram_->use();
-        IRRender::device()->dispatchCompute(grid.x, grid.y, 1);
+        IRRender::device()->dispatchCompute(grid.x, grid.y, workgroupsPerShape);
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
         revoxelizeParamsBuf_->bindBase(
             BufferTarget::UNIFORM,
