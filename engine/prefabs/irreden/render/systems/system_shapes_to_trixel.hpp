@@ -491,29 +491,46 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                 const auto bakeSystem = findSystem(BAKE_SUN_SHADOW_MAP);
                 if (bakeSystem != kNullSystemId) {
                     auto *baker = getSystemParams<System<BAKE_SUN_SHADOW_MAP>>(bakeSystem);
-                    IRRender::GpuSubStageScope timing("shapeSunCast");
-                    if (auto *casterDepth = baker->prepareAnalyticCasterDepth(frameData_)) {
-                        baker->bakeAnalyticBoxes(
-                            static_cast<int>(gpuShapes.size()),
-                            renderMode == SubdivisionMode::NONE ? 1 : effectiveSub
-                        );
+                    Texture2D *casterDepth;
+                    {
+                        IRRender::GpuSubStageScope timing("shapeCastClear");
+                        casterDepth = baker->prepareAnalyticCasterDepth(frameData_);
+                    }
+                    if (casterDepth) {
+                        {
+                            IRRender::GpuSubStageScope timing("shapeCastBoxes");
+                            baker->bakeAnalyticBoxes(
+                                static_cast<int>(gpuShapes.size()),
+                                renderMode == SubdivisionMode::NONE ? 1 : effectiveSub
+                            );
+                        }
                         shapesProgram_->use();
                         // Non-box analytic casters retain their separate depth input.
                         casterDepth->bindAsImage(1, TextureAccess::READ_WRITE, TextureFormat::R32I);
-                        frameData_.passIndex = 2;
-                        shapesFrameDataBuf_->subData(0, sizeof(GPUShapesFrameData), &frameData_);
-                        shapesFrameDataBuf_->bindBase(
-                            BufferTarget::UNIFORM,
-                            kBufferIndex_ShapesFrameData
-                        );
-                        IRRender::device()->dispatchCompute(
-                            static_cast<std::uint32_t>(gridX),
-                            static_cast<std::uint32_t>(gridY),
-                            1
-                        );
-                        IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
-                        IRRender::device()->resolveImageAtomicScratch(casterDepth);
-                        baker->bakeAnalyticCasterDepth();
+                        {
+                            IRRender::GpuSubStageScope timing("shapeCastFallback");
+                            frameData_.passIndex = 2;
+                            shapesFrameDataBuf_
+                                ->subData(0, sizeof(GPUShapesFrameData), &frameData_);
+                            shapesFrameDataBuf_->bindBase(
+                                BufferTarget::UNIFORM,
+                                kBufferIndex_ShapesFrameData
+                            );
+                            IRRender::device()->dispatchCompute(
+                                static_cast<std::uint32_t>(gridX),
+                                static_cast<std::uint32_t>(gridY),
+                                1
+                            );
+                            IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+                        }
+                        {
+                            IRRender::GpuSubStageScope timing("shapeCastResolve");
+                            IRRender::device()->resolveImageAtomicScratch(casterDepth);
+                        }
+                        {
+                            IRRender::GpuSubStageScope timing("shapeCastBake");
+                            baker->bakeAnalyticCasterDepth();
+                        }
                         canvasTextures.getTextureColors()
                             ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
                         canvasTextures.getTextureDistances()

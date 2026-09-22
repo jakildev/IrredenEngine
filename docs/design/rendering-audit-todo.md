@@ -227,7 +227,7 @@ the remaining geometry defect visible.
 ```sh
 fleet-run --timeout 120 IRCanvasStress --only shadowbox,floor --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 2 --auto-screenshot 6 --sweep-yaw 0 1.57079633 5 --source-face-shadows
 python3 scripts/render-visible-box-metric.py yaw0.png --placement-only
-python3 scripts/render-visible-box-metric.py yaw45.png --yaw 45
+python3 scripts/render-visible-box-metric.py yaw 45.png --yaw 45
 ```
 
 Add `--probe-grid` to capture the attached control. Keep the complete plate in
@@ -357,3 +357,17 @@ raster rows range 0.363–0.790 ms. Next isolate finite box casting, non-box
 depth fallback, resolve and bake within that casting bundle before selecting
 a change. Ownership cost remains a merge consideration; these timing scopes
 are not an optimization and do not fix sphere speckling or sharp-shadow geometry.
+
+### Finite analytic-box casting optimized
+
+[Separated casting scopes and bounded sample partitioning](../pr-screenshots/codex/analytic-cast-dispatch/README.md)
+identify and reduce underutilization on large analytic boxes. Metal box casting
+in the sphere/floor fixture falls from 1.028 ms to 0.046/0.059 ms with exact RGB
+parity; a small-box control also improves. This is a dispatch-only optimization,
+not a geometry or filtering fix. Mixed large descriptor populations may not
+benefit because the bounded fanout returns to one group per descriptor.
+
+Pending: ownership cost still needs its own decision; Windows validation; general
+SDF receiver geometry and sphere self-shadow artifacts; sharp sampling across
+PCF/fallback/cascade paths. Assess skipping non-box fallback clear/raster/resolve/
+bake when the submission contains only boxes, without dropping valid casters.

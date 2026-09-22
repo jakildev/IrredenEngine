@@ -14,7 +14,7 @@ inline constexpr float kFrameTimeBudgetMs = 1000.0f / 60.0f;
 
 // Number of named GPU stages in `gpuStageRegistry()`. Single source of truth
 // for both the registry array and the parallel per-stage accumulator array.
-inline constexpr std::size_t kGpuStageCount = 34;
+inline constexpr std::size_t kGpuStageCount = 39;
 
 struct GpuStageTiming {
     float canvasClearMs_ = 0.0f;
@@ -41,6 +41,11 @@ struct GpuStageTiming {
     float shapeOwnerElectMs_ = 0.0f;
     float shapePublishMs_ = 0.0f;
     float shapeSunCastMs_ = 0.0f;
+    float shapeCastClearMs_ = 0.0f;
+    float shapeCastBoxesMs_ = 0.0f;
+    float shapeCastFallbackMs_ = 0.0f;
+    float shapeCastResolveMs_ = 0.0f;
+    float shapeCastBakeMs_ = 0.0f;
     float textToTrixelMs_ = 0.0f;
     float buildLightOcclusionGridMs_ = 0.0f;
     float computeVoxelAoMs_ = 0.0f;
@@ -358,9 +363,10 @@ inline void commitGpuStageSample(const GpuStageInfo &info, int registryIndex, fl
 // per-axis burst attribution.
 //
 // SDF scopes are non-nested and per canvas: owner clear, depth, owner election,
-// publication and finite analytic casting. CPU encoding between scopes and
+// publication and separate analytic clear/box/fallback/resolve/bake scopes.
+// CPU encoding between scopes and
 // canvas initialization clears are excluded. Multi-canvas samples are not totals.
-// shapePass0, shapePass1 and shapeCompact retain their public fields but have
+// shapePass0, shapePass1, shapeSunCast and shapeCompact retain public fields but have
 // no writer; historical shapePass1 bundle values are not comparable to a sub-row.
 inline const std::array<GpuStageInfo, kGpuStageCount> &gpuStageRegistry() {
     static const std::array<GpuStageInfo, kGpuStageCount> registry{{
@@ -385,6 +391,11 @@ inline const std::array<GpuStageInfo, kGpuStageCount> &gpuStageRegistry() {
         {"shapeOwnerElect", &GpuStageTiming::shapeOwnerElectMs_, 0.0f},
         {"shapePublish", &GpuStageTiming::shapePublishMs_, 0.0f},
         {"shapeSunCast", &GpuStageTiming::shapeSunCastMs_, 0.0f},
+        {"shapeCastClear", &GpuStageTiming::shapeCastClearMs_, 0.0f},
+        {"shapeCastBoxes", &GpuStageTiming::shapeCastBoxesMs_, 0.0f},
+        {"shapeCastFallback", &GpuStageTiming::shapeCastFallbackMs_, 0.0f},
+        {"shapeCastResolve", &GpuStageTiming::shapeCastResolveMs_, 0.0f},
+        {"shapeCastBake", &GpuStageTiming::shapeCastBakeMs_, 0.0f},
         {"textToTrixel", &GpuStageTiming::textToTrixelMs_, 0.05f},
         {"buildLightOcclusionGrid", &GpuStageTiming::buildLightOcclusionGridMs_, 0.10f},
         {"computeVoxelAO", &GpuStageTiming::computeVoxelAoMs_, 0.10f},

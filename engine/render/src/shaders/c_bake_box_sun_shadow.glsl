@@ -64,7 +64,7 @@ void main() {
         const ivec2 last = min(ivec2(floor((center.xy + extent.xy - origin) / texel - 0.5)), ivec2(kSunShadowMapDim - 1));
         if (any(greaterThan(first, last))) continue;
         const ivec2 size = last - first + 1;
-        for (uint sampleIndex = gl_LocalInvocationID.x; sampleIndex < uint(size.x * size.y); sampleIndex += 64u) {
+        for (uint sampleIndex = gl_WorkGroupID.z * 64u + gl_LocalInvocationID.x; sampleIndex < uint(size.x * size.y); sampleIndex += 64u * uint(dispatch.w)) {
             const ivec2 pixel = first + ivec2(int(sampleIndex) % size.x, int(sampleIndex) / size.x);
             const vec2 uv = origin + (vec2(pixel) + 0.5) * texel;
             const vec3 worldDelta = sunBasisU.xyz * uv.x + sunBasisV.xyz * uv.y - shape.worldPosition.xyz;
