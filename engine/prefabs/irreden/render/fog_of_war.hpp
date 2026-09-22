@@ -54,7 +54,7 @@ evalVisionReveal(const IRComponents::FrameDataFogObservers &observers, IRMath::v
 namespace detail {
 
 inline IRComponents::C_CanvasFogOfWar *activeFogComponent() {
-    const IREntity::EntityId canvas = IRRender::getActiveCanvasEntity();
+    const IREntity::EntityId canvas = IRRender::getActiveCanvasEntityOrNull();
     if (canvas == IREntity::kNullEntity)
         return nullptr;
     auto opt = IREntity::getComponentOptional<IRComponents::C_CanvasFogOfWar>(canvas);
@@ -64,6 +64,23 @@ inline IRComponents::C_CanvasFogOfWar *activeFogComponent() {
 }
 
 } // namespace detail
+
+/// Evaluate the active canvas's analytic vision sources at @p worldPosition.
+/// An absent fog attachment leaves gameplay unrestricted; an attached fog
+/// component with no sources reveals nothing.
+inline float evalActiveVisionReveal(IRMath::vec3 worldPosition) {
+    if (auto *fog = detail::activeFogComponent()) {
+        return evalVisionReveal(fog->observers_, worldPosition);
+    }
+    return 1.0f;
+}
+
+/// Read the last reveal verdict stored for @p entity. Entities without the
+/// governance component are unrestricted.
+inline float getEntityReveal(IREntity::EntityId entity) {
+    auto revealed = IREntity::getComponentOptional<IRComponents::C_FogRevealed>(entity);
+    return revealed.has_value() ? (*revealed)->revealFactor_ : 1.0f;
+}
 
 /// Set a single fog cell at world-space voxel column @p (worldX, worldY).
 /// State values: 0 = unexplored, 128 = explored, 255 = visible.
@@ -173,6 +190,18 @@ inline void attachToCanvas(IREntity::EntityId canvas, int revealRadius = 0) {
         if (auto opt = IREntity::getComponentOptional<IRComponents::C_CanvasFogOfWar>(canvas))
             (*opt)->revealRadius(0, 0, revealRadius);
     }
+}
+
+/// Whole-body fog governance is restricted to the active grid canvas.
+inline bool entityRevealGovernanceSupportsActiveCanvas(IREntity::EntityId entity) {
+    auto setOpt = IREntity::getComponentOptional<IRComponents::C_VoxelSetNew>(entity);
+    if (!setOpt.has_value()) {
+        return true;
+    }
+    const IREntity::EntityId activeCanvas = IRRender::getActiveCanvasEntityOrNull();
+    const IREntity::EntityId canvas =
+        (*setOpt)->canvasEntity_ == IREntity::kNullEntity ? activeCanvas : (*setOpt)->canvasEntity_;
+    return canvas == activeCanvas;
 }
 
 /// Opt a grid-canvas voxel entity into whole-body fog reveal. A missing

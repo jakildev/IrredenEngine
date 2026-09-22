@@ -19,6 +19,8 @@
 #   T4: --dry-run on T1's shape -> the drop is logged, nothing is pushed.
 #   T5: the conflicted path still exists on master (a content conflict
 #       under the retired prefix, not a deletion) -> abort, LLM re-arm.
+#   T6: a merge commit in the rebase range -> refuse before checkout, leave
+#       the scratch tree untouched, and re-arm the LLM pass.
 #
 # Real git throughout: a bare remote, an author clone that builds the
 # branches, and the engine clone fleet-rebase carves its scratch worktree
@@ -70,6 +72,7 @@ echo "plan one" > "$AUTH/.fleet/plans/issue-1.md"
 echo "plan two" > "$AUTH/.fleet/plans/issue-2.md"
 echo "plan three" > "$AUTH/.fleet/plans/issue-3.md"
 echo "source" > "$AUTH/readme.txt"
+echo "line1" > "$AUTH/doc.md"
 git -C "$AUTH" add -A
 git -C "$AUTH" commit -q -m "init with plans"
 git -C "$AUTH" push -q origin master
@@ -105,6 +108,19 @@ new_branch feat-content
 echo "plan three edited on the branch" > "$AUTH/.fleet/plans/issue-3.md"
 commit_all "edit a plan master keeps"
 push_branch feat-content
+
+new_branch feat-evil-merge
+echo "code v2" > "$AUTH/code.txt"
+commit_all "feature code"
+new_branch evil-merge-side
+printf 'line1\nline2-from-side\n' > "$AUTH/doc.md"
+commit_all "side documentation"
+git -C "$AUTH" checkout -q feat-evil-merge
+git -C "$AUTH" merge -q evil-merge-side --no-edit
+printf 'line1\nline2-from-side\nline3-merge-only\n' > "$AUTH/doc.md"
+git -C "$AUTH" add -A
+git -C "$AUTH" commit -q --amend --no-edit
+push_branch feat-evil-merge
 
 # master after the retirement: two plans deleted, one kept but rewritten
 # (a content conflict under the retired prefix is NOT a deletion to take),
@@ -219,5 +235,22 @@ assert_absent "$T5" "took origin/master's deletion" "T5 a content conflict is ne
 assert_contains "$T5" "llm_remaining=1" "T5 counted as LLM work"
 assert_eq "$(remote_sha feat-content)" "$before" "T5 remote branch untouched"
 assert_no_rebase_in_progress "T5 scratch worktree left clean"
+
+# === T6 ======================================================================
+echo "T6: merge commit in range -> refuse before checkout and re-arm LLM"
+reset_run
+before=$(remote_sha feat-evil-merge)
+scratch_before=$(git -C "$SCRATCH" rev-parse HEAD)
+slice_for 405 feat-evil-merge
+T6=$("$REBASE" --auto --rearm-trigger 2>&1 || true)
+assert_contains "$T6" "engine#405: rebase range contains merge commits; leaving for LLM" \
+    "T6 refuses the non-linear range"
+assert_absent "$T6" "clean rebase onto origin/master" "T6 never attempts the rebase"
+assert_contains "$T6" "llm_remaining=1" "T6 counted as LLM work"
+assert_eq "$(git -C "$SCRATCH" rev-parse HEAD)" "$scratch_before" \
+    "T6 refuses before checking out the merge-carrying branch"
+assert_eq "$(remote_sha feat-evil-merge)" "$before" "T6 remote branch untouched"
+assert_absent "$(cat "$GH_STUB_LOG")" "pr view 405" "T6 never reaches the push preflight"
+if [[ -f "$TRIGGER" && "$(cat "$TRIGGER")" == "merge:engine:405" ]]; then ok "T6 LLM pass re-armed on the PR"; else bad "T6 LLM pass re-armed on the PR (trigger: '$(cat "$TRIGGER" 2>/dev/null || echo MISSING)')"; fi
 
 summarize "fleet-rebase retired-path conflict tests"

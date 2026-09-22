@@ -318,15 +318,70 @@ class AgainstRef(unittest.TestCase):
     def test_a_new_offender_is_introduced(self):
         base = self.commit_base({self.FLEET: 10})
         self.write({self.FLEET: 10, ".claude/agents/review-new.md": 121})
-        rc, out, _ = self.run_main("--against", base)
+        rc, out, _ = self.run_main("--against", base, "--warn-band", "0")
         self.assertEqual(rc, 1)
         self.assertEqual(self.section(out, "introduced:"),
                          [".claude/agents/review-new.md: 121 lines, budget 120"])
 
+    def test_an_introduced_excess_within_the_band_warns_and_passes(self):
+        base = self.commit_base({self.FLEET: 464})
+        self.write({self.FLEET: 470})
+        rc, out, err = self.run_main("--against", base)
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.section(out, "introduced:"),
+                         [f"{self.FLEET}: 470 lines, budget 464"])
+        self.assertIn(f"::warning file={self.FLEET}::{self.FLEET}: 470 lines, budget 464 "
+                      "(+6, within the 10-line band)", out)
+        self.assertIn("annotated, not failed", err)
+
+    def test_an_introduced_excess_past_the_band_fails(self):
+        base = self.commit_base({self.FLEET: 464})
+        self.write({self.FLEET: 475})
+        rc, out, err = self.run_main("--against", base)
+        self.assertEqual(rc, 1)
+        self.assertIn(f"::error file={self.FLEET}::{self.FLEET}: 475 lines, budget 464 "
+                      "(+11, past the 10-line band)", out)
+        self.assertIn("more than 10 line(s) past its budget", err)
+
+    def test_the_band_is_on_the_head_excess_not_this_change_s_delta(self):
+        # An inherited +8 that grows by 3 crosses the wall at cap + band, so a
+        # series of small additions cannot creep past it.
+        base = self.commit_base({self.FLEET: 472})
+        self.write({self.FLEET: 475})
+        rc, _, _ = self.run_main("--against", base)
+        self.assertEqual(rc, 1)
+        self.write({self.FLEET: 474})
+        rc, out, _ = self.run_main("--against", base)
+        self.assertEqual(rc, 0)
+        self.assertIn("(+10, within the 10-line band)", out)
+
+    def test_warn_band_zero_disables_the_band(self):
+        base = self.commit_base({self.FLEET: 464})
+        self.write({self.FLEET: 465})
+        rc, out, _ = self.run_main("--against", base, "--warn-band", "0")
+        self.assertEqual(rc, 1)
+        self.assertNotIn("::warning", out)
+
+    def test_a_flat_run_has_no_band(self):
+        self.commit_base({self.FLEET: 464})
+        self.write({self.FLEET: 465})
+        rc, out, _ = self.run_main()
+        self.assertEqual(rc, 1)
+        self.assertNotIn("::warning", out)
+
+    def test_a_budget_raise_is_printed_and_is_not_an_offender(self):
+        base = self.commit_base({self.FLEET: 480}, {self.FLEET: 464})
+        self.write({self.FLEET: 480}, {self.FLEET: 480})
+        rc, out, _ = self.run_main("--against", base)
+        self.assertEqual(rc, 0, "a raised budget is a reviewed hand edit, not a regression")
+        self.assertIn(f"::notice file={self.FLEET}::budget raised: {self.FLEET}: 464 -> 480",
+                      out)
+        self.assertNotIn("introduced:", out)
+
     def test_the_base_side_reads_the_budget_committed_at_the_ref(self):
         base = self.commit_base({self.FLEET: 470}, {self.FLEET: 470})
         self.write({self.FLEET: 470}, {self.FLEET: 464})
-        rc, out, _ = self.run_main("--against", base)
+        rc, out, _ = self.run_main("--against", base, "--warn-band", "0")
         self.assertEqual(rc, 1, "a budget cut in the head makes the file a new offender")
         self.assertEqual(self.section(out, "introduced:"),
                          [f"{self.FLEET}: 470 lines, budget 464"])

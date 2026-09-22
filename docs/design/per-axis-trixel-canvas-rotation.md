@@ -135,12 +135,16 @@ lighting** specifically — slot 28 there holds the sun-depth map it samples,
 not the per-axis resolve scratch (which is live during lighting via
 #1435's resolve consumer).
 
-**Gating / cardinal fast path.** Every pass above is gated on per-axis
-canvas allocation (`residualYaw != 0`); at `visualYaw == 0` none of it
-dispatches, so the cardinal path stays byte-identical — confirmed by
-kill-switch A/B (`IR_OVERFLOW_LIGHTING_DISABLE`): 0.92% drift ≈ the ~0.86%
-same-config run-to-run non-determinism baseline (#2255), i.e. the feature
-contributes ~0 at cardinal.
+**Gating / cardinal fast path.** Every pass above is gated on the live
+per-axis set (`isAllocated()`, true exactly when `residualYaw != 0`); at
+`visualYaw == 0` none of it dispatches, so the cardinal path stays
+byte-identical — confirmed by kill-switch A/B (`IR_OVERFLOW_LIGHTING_DISABLE`):
+0.92% drift ≈ the ~0.86% same-config run-to-run non-determinism baseline
+(#2255), i.e. the feature contributes ~0 at cardinal. A cardinal frame inside a
+turn parks the set rather than freeing it (`C_PerAxisTrixelCanvases::park`:
+resident, not live, never bound), so the frame after the crossing re-enters on
+the resident set; the set is freed after
+`IRPrefab::PerAxisCanvas::kParkedCardinalFrames` consecutive cardinal frames.
 
 **Measured cost + cap utilization** (C2, Metal/Apple M4 Max; GL side owes
 cross-host smoke as of PR #2388):
@@ -343,8 +347,9 @@ scatter_:**
    → no single-global-parity assumption → the #1256 stripe class cannot
    occur.**
 4. **Cardinal fast path unchanged:** at `residualYaw == 0` the per-axis
-   canvases release and the existing single-canvas diamond path runs
-   **byte-identical**. Only `residualYaw != 0` takes the scatter path.
+   canvases are parked (freed after `kParkedCardinalFrames` cardinal frames)
+   and the existing single-canvas diamond path runs **byte-identical**. Only
+   `residualYaw != 0` takes the scatter path.
 
 The scatter **mechanism** (instanced quads over the trixel grid vs. a compute
 `imageStore` splat vs. a forward primitive over a full-screen pass) is an

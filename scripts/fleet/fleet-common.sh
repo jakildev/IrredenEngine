@@ -222,9 +222,10 @@ declare -A FLEET_TARGET_LABEL=(
 # Claim-label namespaces that arbitrate as one mutex. The table is symmetric:
 # a one-sided entry lets the unregistered lane co-win after both POSTs race.
 declare -A FLEET_CLAIM_EXCLUDES=(
-    [fleet:amending-]="fleet:reviewing- fleet:resolving-"
-    [fleet:resolving-]="fleet:reviewing- fleet:amending-"
+    [fleet:amending-]="fleet:reviewing- fleet:resolving- fleet:claim-"
+    [fleet:resolving-]="fleet:reviewing- fleet:amending- fleet:claim-"
     [fleet:reviewing-]="fleet:amending- fleet:resolving-"
+    [fleet:claim-]="fleet:amending- fleet:resolving-"
 )
 
 # The dispatch identity a PRE-CLAIM carries. fleet-dispatcher
