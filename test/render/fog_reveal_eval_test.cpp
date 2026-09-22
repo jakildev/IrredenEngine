@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <cstddef>
+
 #include <irreden/render/fog_of_war.hpp>
 #include <irreden/render/systems/system_fog_reveal_eval.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
@@ -114,6 +116,31 @@ TEST(FogRevealEvalTest, MissingPoolDoesNotLatchAnUnappliedTransition) {
     EXPECT_FLOAT_EQ(revealed.revealFactor_, 1.0f);
     EXPECT_FALSE(revealed.shown_);
     EXPECT_TRUE(system.pendingByWorker_[0].empty());
+}
+
+// The fog pass reads unexploredColor as the std140 member after
+// vec4 visionCircles[8] + ivec4 tail + vec4 visionCircleHeights[8]; the default
+// is opaque black, the anchor the pass hard-coded before it became a parameter.
+TEST(FogRevealEvalTest, UnexploredColorDefaultsToBlackAtItsStd140Offset) {
+    EXPECT_EQ(offsetof(FrameDataFogObservers, unexploredColor_), 272u);
+    const FrameDataFogObservers observers{};
+    EXPECT_EQ(observers.unexploredColor_, IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f));
+    EXPECT_EQ(
+        IRPrefab::Fog::unexploredColorPayload(IRMath::IRColors::kBlack),
+        observers.unexploredColor_
+    );
+}
+
+TEST(FogRevealEvalTest, UnexploredColorPayloadNormalizesEachChannel) {
+    EXPECT_EQ(
+        IRPrefab::Fog::unexploredColorPayload(IRMath::Color{255, 0, 255, 255}),
+        IRMath::vec4(1.0f, 0.0f, 1.0f, 1.0f)
+    );
+    const IRMath::vec4 mid = IRPrefab::Fog::unexploredColorPayload(IRMath::Color{51, 102, 0, 0});
+    EXPECT_FLOAT_EQ(mid.r, 0.2f);
+    EXPECT_FLOAT_EQ(mid.g, 0.4f);
+    EXPECT_FLOAT_EQ(mid.b, 0.0f);
+    EXPECT_FLOAT_EQ(mid.a, 0.0f);
 }
 
 TEST(FogRevealEvalTest, ActiveMaskHideAndRestoreAreAlphaPreserving) {

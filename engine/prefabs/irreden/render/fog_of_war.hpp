@@ -167,17 +167,23 @@ inline void clearVisionCircles() {
     }
 }
 
+/// The `FrameDataFogObservers::unexploredColor_` payload for @p color: each
+/// byte channel normalized to [0, 1].
+inline IRMath::vec4 unexploredColorPayload(IRMath::Color color) {
+    return IRMath::vec4(
+        IRMath::roundByteToFloat(color.red_),
+        IRMath::roundByteToFloat(color.green_),
+        IRMath::roundByteToFloat(color.blue_),
+        IRMath::roundByteToFloat(color.alpha_)
+    );
+}
+
 /// Set the colour FOG_TO_TRIXEL paints fully unexplored matter with (default
-/// opaque black). Explored memory and the rim fade blend from it, so a
-/// non-black value separates painted-hidden matter from an empty background.
+/// opaque black). Partially revealed pixels and the rim fade blend from it, so
+/// a non-black value separates painted-hidden matter from an empty background.
 inline void setUnexploredColor(IRMath::Color color) {
     if (auto *fog = detail::activeFogComponent()) {
-        fog->observers_.unexploredColor_ = IRMath::vec4(
-            IRMath::roundByteToFloat(color.red_),
-            IRMath::roundByteToFloat(color.green_),
-            IRMath::roundByteToFloat(color.blue_),
-            IRMath::roundByteToFloat(color.alpha_)
-        );
+        fog->observers_.unexploredColor_ = unexploredColorPayload(color);
     }
 }
 
