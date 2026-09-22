@@ -83,9 +83,12 @@ struct SetModel {
         case LifecycleStep::KEEP:
             break;
         case LifecycleStep::ALLOCATE:
+            live_ = true;
+            break;
         case LifecycleStep::REPLACE_PARKED:
             live_ = true;
             parked_ = false;
+            parkedFrames_ = 0;
             break;
         case LifecycleStep::UNPARK:
             live_ = true;
@@ -165,5 +168,16 @@ TEST(PerAxisCanvasLifecycle, ParkAndUnparkRefuseAnEmptySet) {
     EXPECT_FALSE(axes.hasParked());
 }
 #endif
+
+// Releasing the parked set zeroes its wait with it, so the pair the policy
+// reads together never disagrees; an empty parked set makes it a no-op that
+// still resets the count.
+TEST(PerAxisCanvasLifecycle, ReleasingTheParkedSetResetsItsWait) {
+    IRComponents::C_PerAxisTrixelCanvases axes;
+    axes.parkedFrames_ = kParkedCardinalFrames;
+    axes.releaseParked();
+    EXPECT_EQ(axes.parkedFrames_, 0);
+    EXPECT_FALSE(axes.hasParked());
+}
 
 } // namespace

@@ -231,7 +231,7 @@ under [continuous-yaw-sweep/](continuous-yaw-sweep/).
 226 of the sweep. Rows are in the order the arms ran. The overflow lane peaks
 at 971,724 entries with nothing dropped in all four.)
 
-- **The cost was the re-allocation.** With the set parked, the first rotated
+- **The cost was freeing and re-creating the set.** With the set parked, the first rotated
   frame after a cardinal reads 42.7 to 48.1 ms against 80.5 to 97.5 as it is,
   six crossings of six in each arm, and it is an ordinary rotating frame: the
   steady mean is 41 to 42 ms and the second frame after the cardinal 41.6 to
@@ -241,14 +241,16 @@ at 971,724 entries with nothing dropped in all four.)
   cheap one, and it says the per-axis path rebuilds nothing on its first live
   frame that costs more than any other frame; what cost 40 to 55 ms was
   freeing and re-creating the textures and buffers, of which the timed
-  `allocate` and `release` calls themselves are 2.5 ms.
+  `allocate` and `release` calls themselves are 1.3 and 1.1 to 1.2 ms. The
+  experiment removes the free and the create together and does not say which
+  of them a driver charges to the next frame.
 - **The crossing is no longer the sweep's tail.** Steady p99 falls from 93.0
   and 80.5 to 48.1 and 49.4 ms, and removing the three crossing frames moves
   it by 0.4 and 0.0 ms where it moved it by 44.9 and 29.8 as it is. What is
   left is the ordinary rotating tail. The exact diagonals, which this sweep
   steps over, are the next tail to measure.
-- **A crossing saves 47 to 57 ms over its three frames and the turn saves
-  nothing outside the spread.** 184.3 and 174.4 ms against 127.3 and 124.0
+- **A crossing saves 50 to 57 ms over its three frames in running order and
+  the turn saves nothing outside the spread.** 184.3 and 174.4 ms against 127.3 and 124.0
   over the three frames; the four steady means in running order are 41.56,
   42.15, 42.90 and 41.35, three crossings of about 50 ms in a 12.5 s turn
   being about 1.2%. The release-disabled experiment above saved about 19 ms a
