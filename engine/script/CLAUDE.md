@@ -128,11 +128,9 @@ returns a `SystemId` for any pipeline.
 
 - Name components by handle (`IRComponent.C_LocalTransform`, or the value
   `IRComponent.register` returned); strings resolve but hide typos.
-- `tick` runs once per matched archetype over `arch.length`,
-  `arch.entityAt(i)`, and the column views; structural changes use
-  `IREntity.deferred*`.
-- `concurrency` takes `IRSystem.Concurrency.*`; EVAL runs `PARALLEL_FOR` as
-  `MAIN_THREAD`. No begin/end ticks yet for Lua systems.
+- `tick` runs once per matched archetype over `arch.length`, `arch.entityAt(i)`,
+  and the column views; structural changes use `IREntity.deferred*`.
+- `concurrency` takes `IRSystem.Concurrency.*`; EVAL runs `PARALLEL_FOR` as `MAIN_THREAD`. No begin/end ticks yet.
 - `IRSystem.replaceSystemBody(id, fn)` swaps an EVAL Lua system's tick; other
   ids raise. The component filter is fixed at registration.
 
@@ -143,13 +141,9 @@ C++ declares nameable prefab systems with
 `registerPrefabSystemId(name, id)`; Lua spells `IRTime.X` and
 `IRSystem.systemId(IRSystem.SystemName.X)`, which raises for an unregistered name.
 
-- `registerPipeline` / `registerPipelineGroups` **replace** the event's list;
-  add to a C++-built one with `appendSystem` / `insertSystemBefore/After`
-  ([`engine/system/CLAUDE.md`](../system/CLAUDE.md) §"Appending to a live pipeline").
-- A throttled system (`setSystemCadence`) integrates with
-  `getAccumulatedTicks` / `accumulatedDeltaTime`.
-- Add or remove a `SystemName` / time event with an `IR_BIND_SYS` line in
-  `lua_pipeline_bindings.hpp` / an `IR_BIND_TIME` line in `bindIRTimeEvents`.
+- `registerPipeline` / `registerPipelineGroups` **replace** the event's list; add to a C++-built one with `appendSystem` / `insertSystemBefore/After` ([system pipeline docs](../system/CLAUDE.md#appending-to-a-live-pipeline)).
+- A throttled system (`setSystemCadence`) integrates with `getAccumulatedTicks` / `accumulatedDeltaTime`.
+- Add/remove names and events with `IR_BIND_SYS` in `lua_pipeline_bindings.hpp` / `IR_BIND_TIME` in `bindIRTimeEvents`.
 
 ## Engine service bindings
 
@@ -163,18 +157,11 @@ reveals by default. Governance changes archetypes, so defer it from system
 iteration. `lineOfSight` is a validated always-true compatibility stub until
 the engine occlusion query lands; calls are setup/EVAL APIs, not tick intrinsics.
 
-- **`IRModifier`:** `add*` writes only `C_Modifiers`; resolved values need the
-  `registerResolverPipeline()` systems in UPDATE. A wrong-typed push silently
-  no-ops. Cache a `FieldBindingId` instead of a name on hot paths.
-- **`IRCollision.onOverlap*`** raises unless `DISPATCH_LUA_OVERLAP` is
-  registered and placed after `COLLISION_NOTE_PLATFORM` in UPDATE.
-- **`IRPersist.saveWorld/loadWorld`:** frame boundary only, never inside a tick
-  or callback; call `IRWorld.resetGameplay()` right before `loadWorld`.
-- **`IRGui.draw*`** (0-255 colors) and **`IRDebug.draw*`** (0..1, unchecked)
-  are immediate mode: re-issue every frame from a RENDER system, after
-  `TEXT_TO_TRIXEL` for `IRGui`, before `DEBUG_OVERLAY` for `IRDebug`.
-- **Widgets:** a Lua `onClick` raises unless `registerPrefabSystem<IRSystem::WIDGET_LUA_DISPATCH>()`
-  is registered and that id sits in INPUT immediately after `WIDGET_INPUT`.
+- **`IRModifier`:** `add*` writes only `C_Modifiers`; resolved values need `registerResolverPipeline()` in UPDATE. Wrong types no-op; cache `FieldBindingId` on hot paths.
+- **`IRCollision.onOverlap*`** needs `DISPATCH_LUA_OVERLAP` after `COLLISION_NOTE_PLATFORM` in UPDATE.
+- **`IRPersist.saveWorld/loadWorld`:** frame boundary only; call `IRWorld.resetGameplay()` immediately before loading.
+- **`IRGui.draw*`** (0-255) / **`IRDebug.draw*`** (0..1 unchecked) are immediate: re-issue in RENDER, after `TEXT_TO_TRIXEL` / before `DEBUG_OVERLAY` respectively.
+- **Widgets:** Lua `onClick` needs `WIDGET_LUA_DISPATCH` in INPUT immediately after `WIDGET_INPUT`.
 
 ## Commands and input (`IRCommand.*`, `IRInput.*`)
 
