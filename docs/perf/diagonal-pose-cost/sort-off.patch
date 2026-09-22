@@ -1,0 +1,13 @@
+diff --git a/engine/prefabs/irreden/render/systems/system_voxel_to_trixel.hpp b/engine/prefabs/irreden/render/systems/system_voxel_to_trixel.hpp
+index ff3467d50..dcb2035bf 100644
+--- a/engine/prefabs/irreden/render/systems/system_voxel_to_trixel.hpp
++++ b/engine/prefabs/irreden/render/systems/system_voxel_to_trixel.hpp
+@@ -943,7 +943,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
+             // opens; headroom absorbs ordinary growth without a readback stall.
+             std::uint32_t sortDispatches = 0;
+             std::uint32_t dispatchSpan = 0;
+-            if (sortOverflowEntries) {
++            if (false && sortOverflowEntries) {
+                 const std::uint32_t cap = static_cast<std::uint32_t>(axes.overflowCap_);
+                 dispatchSpan = detail::overflowSortDispatchSpan(axes.laggedOverflowCount_, cap);
+                 sortDispatches = sortFaceRecords(
