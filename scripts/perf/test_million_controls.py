@@ -12,6 +12,7 @@ from rotation_controls import run_rounds
 REPORT = (
     "Frame time:   avg={avg:.2f}ms   p50=1.00ms   p95=2.00ms   p99={p99:.2f}ms   "
     "min=0.50ms   max=9.00ms\n"
+    "{steady}"
     "Update ticks: avg=3.0/frame  max=5\n"
     "Entity count: {entities} (42 archetypes)\n"
     "--- GPU frame timing ---\n"
@@ -20,6 +21,19 @@ REPORT = (
     "{stages}"
     "--- Voxel cull stats ---\n"
     "Visible {visible:.1f} 9 12\nTotal 1000000.0 1000000 12\nAxisEntries 0.0 0 12\n"
+    "{witness}"
+)
+STEADY = (
+    "Steady frame time (first 1 of 4 frames excluded):   avg=1.00ms   p50=1.00ms   "
+    "p95=2.00ms   p99=2.00ms   min=0.50ms   max=2.00ms\n"
+)
+WITNESS = (
+    "--- Run witness ---\n"
+    "Camera yaw: first={yaw:.3f}deg last={yaw:.3f}deg travel=0.000deg samples=4\n"
+    "Camera zoom: first={zoom:.3f} last={zoom:.3f}\n"
+    "Per-axis overflow: maxEntries=500 maxDropped={drops} cap=8388608 samples={lane}\n"
+    "--- Frame times (ms, in order) ---\n"
+    "90.000 {avg:.3f} {avg:.3f} {tail:.3f}\n"
 )
 STAGES = "--- GPU stage timing ---\nvoxelStage1 1.000 0.500 2.000 8\n"
 
@@ -37,9 +51,22 @@ def write_round(
     entities=1000177,
     stages=None,
     logged=None,
+    yaw=None,
+    zoom=4.0,
+    witnessed=True,
+    steady=True,
 ):
     """One completed round; by default a well-formed run of the case the name says."""
     release = name.startswith("release-")
+    pose = float(name.rsplit("-yaw", 1)[1])
+    witness = WITNESS.format(
+        yaw=pose if yaw is None else yaw,
+        zoom=zoom,
+        drops=drops,
+        lane=3 if pose else 0,
+        avg=avg,
+        tail=avg + 2,
+    )
     if stages is None:
         stages = "-profiling-on-" in name
     directory = output / name / f"round-{index}"
@@ -52,6 +79,8 @@ def write_round(
             visible=visible,
             entities=entities,
             stages=STAGES if stages else "",
+            witness=witness if witnessed else "",
+            steady=STEADY if steady else "",
         )
     )
     (directory / "manifest.json").write_text(
@@ -63,10 +92,12 @@ def write_round(
                 "shader_sha256": "s",
                 "runtime_scripts_sha256": "r",
                 "host_power": power,
+                "host_cpus": 14,
                 "runs": [
                     {
                         "index": 1,
-                        "overflow_drop_warnings": drops,
+                        "host_battery_percent": 90 - index,
+                        "host_load_1m": 1.5 * index,
                         "engine_logged": (not release) if logged is None else logged,
                     }
                 ],
@@ -87,20 +118,43 @@ class CasesTest(unittest.TestCase):
 
 
 class SummaryTest(unittest.TestCase):
-    def test_round_means_keep_drift_visible_and_drops_are_summed(self):
+    def test_round_means_keep_drift_visible_and_the_worst_drop_is_reported(self):
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary)
             name = "debug-profiling-on-yaw45"
             for index, avg in ((1, 50.0), (2, 56.0), (10, 62.0)):
-                write_round(output, name, index, avg, drops=int(index == 2))
+                write_round(output, name, index, avg, drops=7 * int(index == 2))
             summarize(output, {name: [], "debug-profiling-on-yaw0": []})
             text = (output / "summary.md").read_text()
-            self.assertIn("Power source: AC Power. Head: 012345678.", text.splitlines()[0])
+            self.assertIn(
+                "Power source: AC Power (battery 89% to 80%). "
+                "Host load as each run ended 1.5 to 15.0 on 14 CPUs. Head: 012345678.",
+                text.splitlines()[0],
+            )
             row = text.splitlines()[4]
             self.assertIn("56.00 (50.00–62.00)", row)
             self.assertIn("50.00 / 56.00 / 62.00", row)
-            self.assertIn("| 3.0 (3.0–3.0) | 1 |", row)
+            self.assertIn("| 3.0 (3.0–3.0) | 45.000 | 500 / 7 |", row)
             self.assertEqual(len(text.splitlines()), 5)
+
+    def test_the_tail_is_pooled_over_steady_frames_not_taken_from_startup(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary)
+            name = "release-profiling-off-yaw0"
+            for index, avg in ((1, 30.0), (2, 40.0)):
+                write_round(output, name, index, avg)
+            summarize(output, {name: []})
+            row = (output / "summary.md").read_text().splitlines()[4]
+            # Six steady frames: 30, 30, 32, 40, 40, 42; the 90 ms first frames are excluded.
+            self.assertIn("| 35.67 / 42.00 / 42.00 (6) | 34.00–44.00 |", row)
+
+    def test_a_report_that_states_no_warm_up_pools_nothing(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary)
+            name = "release-profiling-off-yaw0"
+            write_round(output, name, 1, 30.0, steady=False)
+            summarize(output, {name: []})
+            self.assertIn("| 30.00 | — | 34.00–34.00 |", (output / "summary.md").read_text())
 
 
 class FingerprintTest(unittest.TestCase):
@@ -139,6 +193,12 @@ class FingerprintTest(unittest.TestCase):
             "GPU stage rows missing": {"stages": False},
             "a Debug build logged=False": {"logged": False},
             "a Release build logged=True": {"name": "release-profiling-on-yaw0", "logged": True},
+            "first rendered frame was at 0.785 deg": {
+                "name": "release-profiling-off-yaw45", "yaw": 0.785,
+            },
+            "dropped up to 3 entries": {"name": "release-profiling-off-yaw45", "drops": 3},
+            "witnessed no camera yaw": {"name": "release-profiling-off-yaw45", "witnessed": False},
+            "zoom 1.0, not 4.0": {"zoom": 1.0},
         }
         for message, fault in faults.items():
             with self.subTest(message=message), tempfile.TemporaryDirectory() as temporary:
@@ -148,12 +208,12 @@ class FingerprintTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, message):
                     verify_artifacts(output, ["debug", "release"])
 
-    def test_unverified_drops_are_not_summed_as_zero(self):
+    def test_an_unwitnessed_run_is_never_summarised_as_zero_drops(self):
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary)
-            write_round(output, "release-profiling-on-yaw0", 1, 30.0, drops=None)
+            write_round(output, "release-profiling-on-yaw0", 1, 30.0, witnessed=False)
             summarize(output, {"release-profiling-on-yaw0": []})
-            self.assertIn("unverified (no engine log)", (output / "summary.md").read_text())
+            self.assertIn("| unwitnessed | unwitnessed |", (output / "summary.md").read_text())
 
 
 class RoundOrderTest(unittest.TestCase):

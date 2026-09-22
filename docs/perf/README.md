@@ -129,10 +129,18 @@ Use the same pose, population and flags in both arms. GPU values are encoder
 intervals, not exclusive costs that can always be summed into frame time; see
 [the timing contract](../design/gpu-stage-timing-cost-model.md).
 
-The summary carries frame mean, p95 and p99, the full-frame GPU rows, every
-GPU stage row the runs share, fixed updates per rendered frame and each run's
-overflow-drop warnings (`unverified` for a Release build, which logs nothing). The manifest records the power source
-(`host_power`), the build tree and its `CMAKE_BUILD_TYPE`.
+The summary carries frame mean, p95 and p99 over all frames, the same three
+over the steady frames (the report's `Steady frame time` line, first quarter
+excluded) and a tail pooled over every run's steady frames, the full-frame GPU
+rows, every GPU stage row the runs share, fixed updates per rendered frame, and
+each run's witnessed yaw and per-axis overflow peak and drops. Pose and drops
+come from the report's `Run witness` section, which every build type writes,
+so a Release run is checked like a Debug one; a run that dropped an overflow
+entry, left its `--yaw`, or carries no witness fails. The manifest records the
+power source (`host_power`), `host_cpus`, the build tree and its
+`CMAKE_BUILD_TYPE`, and per run the start time, battery charge and one-minute
+load average: the benchmark lock excludes cooperating builds only, so read the
+load before believing a table.
 
 `IRREDEN_BUILD_DIR` selects the tree, as it does for `fleet-build` and
 `fleet-run`. The `*-release` configure presets build into `build-release/`
@@ -246,9 +254,10 @@ table:
   `IRJob` dispatch on the calling thread), `N` an N-worker pool. The axis
   `--threading-baseline` sweeps; `0` is the serial floor, since a one-worker
   pool still has two executors (enkiTS pumps tasks on the waiting thread).
-- `--yaw <radians>` (IRPerfGrid only) — initial camera Z-yaw. The run logs
-  the pose it took (`Initial camera yaw: … yaw_deg=…`) and
-  `repeat_profile.py` fails a run whose logged pose disagrees. Tables
+- `--yaw <radians>` (IRPerfGrid only) — initial camera Z-yaw. The profile
+  report witnesses the yaw of the first and last rendered frame and the yaw
+  travelled between them, and `repeat_profile.py` fails a static-pose run
+  whose witness disagrees. Tables
   committed before the unit fix labelled a 0.785° pose as 45°:
   [perf-grid-yaw-unit.md](perf-grid-yaw-unit.md).
 

@@ -1,0 +1,64 @@
+{
+  "rounds": 1,
+  "common": [
+    "--wave-freeze",
+    "--no-overlay",
+    "--auto-profile",
+    "300"
+  ],
+  "cases": {
+    "debug-profiling-on-yaw0": [
+      "--config-preset",
+      "configs/perf/million.lua",
+      "--yaw",
+      "0"
+    ],
+    "debug-profiling-on-yaw45": [
+      "--config-preset",
+      "configs/perf/million.lua",
+      "--yaw",
+      "0.785398163"
+    ],
+    "debug-profiling-off-yaw0": [
+      "--config-preset",
+      "configs/perf/million-profiling-off.lua",
+      "--yaw",
+      "0"
+    ],
+    "debug-profiling-off-yaw45": [
+      "--config-preset",
+      "configs/perf/million-profiling-off.lua",
+      "--yaw",
+      "0.785398163"
+    ],
+    "release-profiling-on-yaw0": [
+      "--config-preset",
+      "configs/perf/million.lua",
+      "--yaw",
+      "0"
+    ],
+    "release-profiling-on-yaw45": [
+      "--config-preset",
+      "configs/perf/million.lua",
+      "--yaw",
+      "0.785398163"
+    ],
+    "release-profiling-off-yaw0": [
+      "--config-preset",
+      "configs/perf/million-profiling-off.lua",
+      "--yaw",
+      "0"
+    ],
+    "release-profiling-off-yaw45": [
+      "--config-preset",
+      "configs/perf/million-profiling-off.lua",
+      "--yaw",
+      "0.785398163"
+    ]
+  },
+  "trees": {
+    "debug": "build",
+    "release": "build-release"
+  },
+  "order": "forward on odd rounds; reverse on even rounds"
+}

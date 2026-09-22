@@ -406,6 +406,7 @@ void World::enableFrameTiming(bool enabled) {
         m_systemManager.resetTimingStats();
         IRRender::computeLightVolumeTiming().reset();
         IRRender::voxelCullAccumulator().reset();
+        IRRender::renderRunWitness().reset();
         IRRender::resetGpuStageAccumulators();
     }
 }
@@ -469,6 +470,19 @@ void World::buildAndWriteProfileReport() {
     report.voxelCullStats_.maxTotal_ = cull.maxTotal_;
     report.voxelCullStats_.maxFeeder_ = cull.maxFeeder_;
     report.voxelCullStats_.sampleCount_ = cull.sampleCount_;
+
+    const auto &witness = IRRender::renderRunWitness();
+    constexpr float kDegreesPerRadian = 180.0f / IRMath::kPi;
+    report.witness_.yawFirstDeg_ = witness.yawFirst_ * kDegreesPerRadian;
+    report.witness_.yawLastDeg_ = witness.yawLast_ * kDegreesPerRadian;
+    report.witness_.yawTravelDeg_ = witness.yawTravel_ * kDegreesPerRadian;
+    report.witness_.zoomFirst_ = witness.zoomFirst_;
+    report.witness_.zoomLast_ = witness.zoomLast_;
+    report.witness_.poseSamples_ = witness.poseSamples_;
+    report.witness_.overflowSamples_ = witness.overflowSamples_;
+    report.witness_.maxOverflowEntries_ = witness.maxOverflowEntries_;
+    report.witness_.maxOverflowDropped_ = witness.maxOverflowDropped_;
+    report.witness_.overflowCap_ = witness.overflowCap_;
 
     // Collect per-system timing, grouped by pipeline
     auto pipelineName = [](IRTime::Events e) -> const char * {

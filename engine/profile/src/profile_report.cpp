@@ -76,6 +76,26 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
             fp.min_,
             fp.max_
         );
+        const size_t warmupFrames = report.frameTimesMs_.size() / kProfileWarmupDivisor;
+        Percentiles steady = computePercentiles(
+            std::vector<float>(
+                report.frameTimesMs_.begin() + static_cast<std::ptrdiff_t>(warmupFrames),
+                report.frameTimesMs_.end()
+            )
+        );
+        std::fprintf(
+            f,
+            "Steady frame time (first %zu of %zu frames excluded):   avg=%.2fms   p50=%.2fms   "
+            "p95=%.2fms   p99=%.2fms   min=%.2fms   max=%.2fms\n",
+            warmupFrames,
+            report.frameTimesMs_.size(),
+            steady.avg_,
+            steady.p50_,
+            steady.p95_,
+            steady.p99_,
+            steady.min_,
+            steady.max_
+        );
     }
 
     float avgUpdateTicks = report.totalFrames_ > 0 ? static_cast<float>(report.totalUpdateTicks_) /
@@ -277,6 +297,41 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
                 phase.maxMs_,
                 phase.sampleCount_
             );
+        }
+        std::fprintf(f, "\n");
+    }
+
+    // scripts/perf/compare_perf_runs.py parses this section, the steady frame
+    // line and the frame series by their literal text, and
+    // scripts/perf/test_profile_parser.py pins that text to these format strings.
+    const auto &w = report.witness_;
+    std::fprintf(f, "--- Run witness ---\n");
+    std::fprintf(
+        f,
+        "Camera yaw: first=%.3fdeg last=%.3fdeg travel=%.3fdeg samples=%u\n",
+        w.yawFirstDeg_,
+        w.yawLastDeg_,
+        w.yawTravelDeg_,
+        w.poseSamples_
+    );
+    std::fprintf(f, "Camera zoom: first=%.3f last=%.3f\n", w.zoomFirst_, w.zoomLast_);
+    std::fprintf(
+        f,
+        "Per-axis overflow: maxEntries=%u maxDropped=%u cap=%u samples=%u\n",
+        w.maxOverflowEntries_,
+        w.maxOverflowDropped_,
+        w.overflowCap_,
+        w.overflowSamples_
+    );
+    std::fprintf(f, "\n");
+
+    if (!report.frameTimesMs_.empty() && report.frameTimesMs_.size() <= kProfileSeriesMaxFrames) {
+        constexpr size_t kFramesPerLine = 10;
+        std::fprintf(f, "--- Frame times (ms, in order) ---\n");
+        for (size_t i = 0; i < report.frameTimesMs_.size(); ++i) {
+            const bool endsLine =
+                (i + 1) % kFramesPerLine == 0 || i + 1 == report.frameTimesMs_.size();
+            std::fprintf(f, "%.3f%c", report.frameTimesMs_[i], endsLine ? '\n' : ' ');
         }
         std::fprintf(f, "\n");
     }

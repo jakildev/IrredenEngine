@@ -643,6 +643,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         );
         axes.laggedOverflowCount_ = ctrl[1];
         const std::uint32_t dropped = ctrl[5];
+        renderRunWitness()
+            .recordOverflow(ctrl[1], dropped, static_cast<std::uint32_t>(axes.overflowCap_));
         if (dropped > 0 && dropped != lastOverflowDropWarned_) {
             IRE_LOG_WARN(
                 "Per-axis view-visibility overflow list dropped {} entries last "
@@ -2153,6 +2155,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     }
 
     void beginTick() {
+        renderRunWitness().recordPose(IRPrefab::Camera::getYaw(), IRRender::getCameraZoom().x);
         voxelFaceBaker_ = nullptr;
         const auto bakeSystem = findSystem(BAKE_SUN_SHADOW_MAP);
         if (bakeSystem != kNullSystemId) {

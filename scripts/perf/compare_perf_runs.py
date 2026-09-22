@@ -54,7 +54,17 @@ GPU_FRAME_COVERAGE_RE = re.compile(
     r"^Coverage: supported=(0|1) attempted=(\d+) valid=(\d+) "
     r"invalid=(\d+) commandBuffers=(\d+)$"
 )
-
+STEADY_FRAME_RE = re.compile(
+    r"Steady frame time \(first (\d+) of (\d+) frames excluded\):\s+avg=([\d.]+)ms\s+"
+    r"p50=([\d.]+)ms\s+p95=([\d.]+)ms\s+p99=([\d.]+)ms\s+min=([\d.]+)ms\s+max=([\d.]+)ms"
+)
+WITNESS_YAW_RE = re.compile(
+    r"^Camera yaw: first=(-?[\d.]+)deg last=(-?[\d.]+)deg travel=([\d.]+)deg samples=(\d+)$"
+)
+WITNESS_ZOOM_RE = re.compile(r"^Camera zoom: first=([\d.]+) last=([\d.]+)$")
+WITNESS_OVERFLOW_RE = re.compile(
+    r"^Per-axis overflow: maxEntries=(\d+) maxDropped=(\d+) cap=(\d+) samples=(\d+)$"
+)
 
 
 @dataclass
@@ -117,9 +127,33 @@ class CullStats:
 
 
 @dataclass
+class RunWitness:
+    """What the run vouches for without a log; a field is None where its line is absent."""
+    yaw_first_deg: Optional[float] = None
+    yaw_last_deg: Optional[float] = None
+    yaw_travel_deg: Optional[float] = None
+    pose_samples: int = 0
+    zoom_first: Optional[float] = None
+    zoom_last: Optional[float] = None
+    # samples == 0 with the line present: the overflow lane never ran (cardinal pose).
+    overflow_max_entries: Optional[int] = None
+    overflow_max_dropped: Optional[int] = None
+    overflow_cap: Optional[int] = None
+    overflow_samples: Optional[int] = None
+
+
+@dataclass
 class CellReport:
     cell_id: str
     frame: FrameTiming = field(default_factory=FrameTiming)
+    # Frame timing with the leading warm-up frames excluded; None for a report
+    # without the line.
+    steady_frame: Optional[FrameTiming] = None
+    warmup_frames: int = 0
+    recorded_frames: int = 0
+    witness: RunWitness = field(default_factory=RunWitness)
+    # Every recorded frame in order, warm-up included.
+    frame_times_ms: List[float] = field(default_factory=list)
     # Fixed updates per rendered frame; None for a report without the line.
     update_ticks_avg: Optional[float] = None
     update_ticks_max: Optional[int] = None
@@ -130,6 +164,17 @@ class CellReport:
     gpu_frame: GpuFrameTiming = field(default_factory=GpuFrameTiming)
     cull: CullStats = field(default_factory=CullStats)
     raw: str = ""
+
+    def steady_frame_times_ms(self) -> List[float]:
+        """The recorded frames after the warm-up the report states.
+
+        Empty when the report states no warm-up, or when its series is not the
+        length its steady line states (a truncated report, or a run too long
+        for the writer to carry its series).
+        """
+        if self.steady_frame is None or len(self.frame_times_ms) != self.recorded_frames:
+            return []
+        return self.frame_times_ms[self.warmup_frames:]
 
     def system_by_name(self, name: str) -> Optional[SystemTiming]:
         for s in self.systems:
@@ -162,6 +207,12 @@ def parse_report(path: Path, cell_id: str) -> CellReport:
             max_=float(m.group(6)),
         )
 
+    m = STEADY_FRAME_RE.search(text)
+    if m:
+        report.warmup_frames = int(m.group(1))
+        report.recorded_frames = int(m.group(2))
+        report.steady_frame = FrameTiming(*(float(m.group(i)) for i in range(3, 9)))
+
     m = UPDATE_TICKS_RE.search(text)
     if m:
         report.update_ticks_avg = float(m.group(1))
@@ -192,6 +243,12 @@ def parse_report(path: Path, cell_id: str) -> CellReport:
             continue
         if s.startswith("--- CPU phase timing"):
             section = "cpu_phase"
+            continue
+        if s.startswith("--- Run witness"):
+            section = "witness"
+            continue
+        if s.startswith("--- Frame times"):
+            section = "frame_times"
             continue
         if s.startswith("=== END REPORT"):
             section = None
@@ -264,6 +321,30 @@ def parse_report(path: Path, cell_id: str) -> CellReport:
             m = CULL_RATIO_RE.match(s)
             if m:
                 report.cull.ratio = float(m.group(1))
+        elif section == "witness":
+            witness = report.witness
+            m = WITNESS_YAW_RE.match(s)
+            if m:
+                witness.pose_samples = int(m.group(4))
+                # A run whose voxel pass never ticked writes the line with
+                # zeros; that is an absent pose, not a pose of 0 degrees.
+                if witness.pose_samples:
+                    witness.yaw_first_deg, witness.yaw_last_deg, witness.yaw_travel_deg = (
+                        float(m.group(i)) for i in range(1, 4)
+                    )
+                continue
+            m = WITNESS_ZOOM_RE.match(s)
+            if m:
+                witness.zoom_first, witness.zoom_last = float(m.group(1)), float(m.group(2))
+                continue
+            m = WITNESS_OVERFLOW_RE.match(s)
+            if m:
+                (witness.overflow_max_entries, witness.overflow_max_dropped,
+                 witness.overflow_cap, witness.overflow_samples) = (
+                    int(m.group(i)) for i in range(1, 5)
+                )
+        elif section == "frame_times":
+            report.frame_times_ms.extend(float(value) for value in s.split())
     return report
 
 

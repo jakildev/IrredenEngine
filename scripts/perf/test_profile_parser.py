@@ -104,5 +104,102 @@ class GpuReportParserTest(unittest.TestCase):
         self.assertEqual([row.name for row in rows], ["voxelStage1"])
 
 
+WITNESSED_REPORT = (
+    "=== PROFILE REPORT (8 frames) ===\n"
+    "Frame time:   avg=30.00ms   p50=19.00ms   p95=102.00ms   p99=102.00ms   "
+    "min=18.00ms   max=102.00ms\n"
+    "Steady frame time (first 2 of 8 frames excluded):   avg=19.17ms   p50=19.00ms   "
+    "p95=21.00ms   p99=21.00ms   min=18.00ms   max=21.00ms\n"
+    "Update ticks: avg=1.2/frame  max=6\n"
+    "Entity count: 262321 (42 archetypes)\n"
+    "--- GPU stage timing ---\n"
+    "voxelStage1 1.000 0.500 2.000 8\n"
+    "--- Run witness ---\n"
+    "Camera yaw: first=-135.000deg last=-135.000deg travel=0.000deg samples=8\n"
+    "Camera zoom: first=4.000 last=4.000\n"
+    "Per-axis overflow: maxEntries=630842 maxDropped=7 cap=1048576 samples=8\n"
+    "\n"
+    "--- Frame times (ms, in order) ---\n"
+    "102.000 32.000 21.000 20.000 19.000\n"
+    "19.000 18.000 18.000\n"
+    "\n"
+    "=== END REPORT ===\n"
+)
+
+
+class RunWitnessParserTest(unittest.TestCase):
+    def parse(self, text):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "profile.txt"
+            path.write_text(text)
+            return parse_report(path, "fixture")
+
+    def test_witness_steady_line_and_series_are_read(self):
+        report = self.parse(WITNESSED_REPORT)
+        witness = report.witness
+        self.assertEqual(
+            (witness.yaw_first_deg, witness.yaw_last_deg, witness.yaw_travel_deg),
+            (-135.0, -135.0, 0.0),
+        )
+        self.assertEqual(
+            (witness.pose_samples, witness.zoom_first, witness.zoom_last), (8, 4.0, 4.0)
+        )
+        self.assertEqual(
+            (witness.overflow_max_entries, witness.overflow_max_dropped,
+             witness.overflow_cap, witness.overflow_samples),
+            (630842, 7, 1048576, 8),
+        )
+        self.assertEqual((report.frame.p99, report.steady_frame.p99), (102.0, 21.0))
+        self.assertEqual(report.warmup_frames, 2)
+        self.assertEqual(len(report.frame_times_ms), 8)
+        self.assertEqual(report.steady_frame_times_ms(), [21.0, 20.0, 19.0, 19.0, 18.0, 18.0])
+        # The series must not leak into the stage table above it.
+        self.assertEqual([stage.name for stage in report.gpu_stages], ["voxelStage1"])
+
+    def test_a_report_without_the_sections_reads_absent_never_zero(self):
+        report = self.parse(WITNESSED_REPORT.split("--- Run witness ---")[0].replace(
+            WITNESSED_REPORT.splitlines()[2] + "\n", ""
+        ))
+        self.assertIsNone(report.steady_frame)
+        self.assertIsNone(report.witness.yaw_first_deg)
+        self.assertIsNone(report.witness.overflow_max_dropped)
+        self.assertEqual(report.frame_times_ms, [])
+
+    def test_a_pose_line_with_no_samples_reads_absent_never_zero_degrees(self):
+        text = WITNESSED_REPORT.replace(
+            "first=-135.000deg last=-135.000deg travel=0.000deg samples=8",
+            "first=0.000deg last=0.000deg travel=0.000deg samples=0",
+        )
+        witness = self.parse(text).witness
+        self.assertEqual(witness.pose_samples, 0)
+        self.assertIsNone(witness.yaw_first_deg)
+        self.assertIsNone(witness.yaw_travel_deg)
+
+    def test_a_series_shorter_than_the_steady_line_states_pools_nothing(self):
+        report = self.parse(WITNESSED_REPORT.replace("19.000 18.000 18.000\n", "19.000\n"))
+        self.assertEqual((report.recorded_frames, len(report.frame_times_ms)), (8, 6))
+        self.assertEqual(report.steady_frame_times_ms(), [])
+
+    def test_a_series_without_a_stated_warm_up_has_no_steady_frames(self):
+        report = self.parse(WITNESSED_REPORT.replace(WITNESSED_REPORT.splitlines()[2] + "\n", ""))
+        self.assertEqual(len(report.frame_times_ms), 8)
+        self.assertEqual(report.steady_frame_times_ms(), [])
+
+    def test_the_parsed_lines_are_the_lines_the_engine_writes(self):
+        # A reworded report line would read as an absent witness in every run.
+        writer = (
+            Path(__file__).resolve().parents[2] / "engine/profile/src/profile_report.cpp"
+        ).read_text()
+        for written in (
+            '"--- Run witness ---\\n"',
+            '"Camera yaw: first=%.3fdeg last=%.3fdeg travel=%.3fdeg samples=%u\\n"',
+            '"Camera zoom: first=%.3f last=%.3f\\n"',
+            '"Per-axis overflow: maxEntries=%u maxDropped=%u cap=%u samples=%u\\n"',
+            '"Steady frame time (first %zu of %zu frames excluded):   avg=%.2fms   p50=%.2fms   "',
+            '"--- Frame times (ms, in order) ---\\n"',
+        ):
+            self.assertIn(written, writer)
+
+
 if __name__ == "__main__":
     unittest.main()
