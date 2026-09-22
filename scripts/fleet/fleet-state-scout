@@ -64,7 +64,7 @@ from fleet_epic_membership import epic_refs
 # ETAG_DIR aliases the module's shared etag-cache default so the two never
 # drift; it's mkdir'd in main() and the fetchers rely on that default cache_dir.
 from fleet_gh_poll import DEFAULT_CACHE_DIR as ETAG_DIR
-from fleet_gh_poll import conditional_get
+from fleet_gh_poll import conditional_get, last_rate_limit
 from fleet_model_field import MODEL_CLASSES, declared_class
 from fleet_stack_base import unsafe_base_reason
 
@@ -784,19 +784,25 @@ def sample_github_rate_limit():
     of tick_once, before build_state, so quota stays fresh every tick
     (leader or follower) even on a degraded tick.
 
-    core and search come from `gh api /rate_limit`; graphql comes from
-    GraphQL's own `rateLimit` self-report, because `/rate_limit` can
-    report a phantom empty graphql bucket (used=0, reset rolling with
-    wall-clock) for the same identity whose GraphQL calls are being
-    refused. Both reads are free — neither consumes the limit it reports.
+    `gh api /rate_limit` can report a phantom near-empty bucket for the
+    same identity whose real calls are counting against a different one,
+    so neither core nor graphql reads it. core comes from the
+    `X-RateLimit-*` headers on the conditional REST responses the
+    previous tick's fetchers received (fleet_gh_poll.last_rate_limit);
+    graphql comes from GraphQL's own `rateLimit` self-report; search
+    alone stays on `/rate_limit`. None of the three spends the quota it
+    reports. A host that sent no REST traffic (a follower served by its
+    leader) has no core reading and writes no core file.
 
-    Best-effort: a failed sample (gh error, bad JSON, unwritable state
-    dir) is logged and swallowed, leaving the prior file (if any) in
-    place — a wedged sampler must never crash the scout tick. The one
-    exception is a graphql sample refused by the rate limiter itself,
-    which latches the pool as rejected (see _sample_github_graphql).
+    Best-effort: a failed sample (gh error, bad JSON, no header reading,
+    unwritable state dir) is logged and swallowed, leaving the prior
+    file (if any) in place — a wedged sampler must never crash the
+    scout tick. The one exception is a graphql sample refused by the
+    rate limiter itself, which latches the pool as rejected (see
+    _sample_github_graphql).
     """
-    _sample_github_rest_pools()
+    _sample_github_search()
+    _sample_github_core()
     _sample_github_graphql()
 
 
@@ -808,32 +814,45 @@ def _latch_github_pool(pool, payload):
         log(f"github rate-limit latch failed for {pool}: {e}")
 
 
-def _sample_github_rest_pools():
+def _sample_github_search():
     out = run_capture(["gh", "api", "/rate_limit"])
     if out is None:
         return
     try:
-        resources = json.loads(out).get("resources", {})
-    except json.JSONDecodeError as e:
+        info = json.loads(out).get("resources", {}).get("search")
+    except (json.JSONDecodeError, AttributeError) as e:
         log(f"gh api /rate_limit: bad JSON: {e}")
         return
-    now = int(time.time())
-    for pool in ("core", "search"):
-        info = resources.get(pool)
-        if not info:
-            continue
-        limit = info.get("limit")
-        used = info.get("used")
-        if not limit:
-            continue
-        _latch_github_pool(pool, {
-            "rateLimitType": f"github_{pool}",
-            "utilization": used / limit,
-            "resetsAt": info.get("reset"),
-            "observed_at": now,
-            "limit": limit,
-            "remaining": info.get("remaining", limit - used),
-        })
+    if not info or not info.get("limit"):
+        return
+    limit, used = info["limit"], info.get("used", 0)
+    _latch_github_pool("search", {
+        "rateLimitType": "github_search",
+        "utilization": used / limit,
+        "resetsAt": info.get("reset"),
+        "observed_at": int(time.time()),
+        "limit": limit,
+        "remaining": info.get("remaining", limit - used),
+    })
+
+
+def _sample_github_core():
+    # No /rate_limit fallback: its core bucket is the phantom this reading
+    # replaces, and overwriting a real latch with it re-opens a closed gate.
+    # observed_at is the header's observation time, so re-latching an
+    # unchanged reading is byte-identical and the evaluator's staleness rule
+    # ages it honestly.
+    reading = last_rate_limit("core")
+    if reading is None:
+        return
+    _latch_github_pool("core", {
+        "rateLimitType": "github_core",
+        "utilization": reading["used"] / reading["limit"],
+        "resetsAt": reading["reset"],
+        "observed_at": reading["observed_at"],
+        "limit": reading["limit"],
+        "remaining": reading["remaining"],
+    })
 
 
 _GITHUB_GRAPHQL_RATE_QUERY = "{rateLimit{limit used remaining resetAt}}"

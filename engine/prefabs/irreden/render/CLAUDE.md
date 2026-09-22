@@ -83,9 +83,9 @@ perf-stats overlay region (top-right by default).
 - `C_FogRevealed` opts a grid-canvas voxel entity into one reveal verdict at
   its ground anchor; `C_FogRevealSettings` owns hysteresis and stagger;
   `FOG_REVEAL_EVAL` is active-canvas-only. The voxel reserved bit exempts a
-  governed body from the compact fog reject and the stage-1 own-column z drop,
-  but `FOG_TO_TRIXEL`'s per-pixel height clip has no entity channel and can
-  cut a governed body at a hard ceiling (tracked: #3156).
+  governed body from the compact reject and the stage-1 own-column z drop; its
+  pixels carry entity-id bit 28, so `FOG_TO_TRIXEL` drops their height penalty
+  (single-canvas route; a shape opts in via `SHAPE_FLAG_FOG_WHOLE_BODY_EXEMPT`).
 - GPU transforms: a voxel set opts in with `C_VoxelSetNew::gpuTransformSlot_
   != kVoxelTransformStatic` (the default is CPU-direct, dispatch-free). Joints
   share binding 18 — set slots grow up from 0, joint blocks are carved down from

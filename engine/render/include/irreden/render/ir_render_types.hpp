@@ -453,11 +453,15 @@ constexpr std::uint32_t kEntityIdPriorityMaskInHighWord = ((1u << kEntityIdPrior
 // priority tier also strips this — picking never sees it. Mirror of the
 // .glsl/.metal kEntityIdCutFaceMaskInHighWord.
 constexpr std::uint32_t kEntityIdCutFaceMaskInHighWord = 1u << 29;
+// Fog whole-body carrier: bit 28 of the high word. Set on every pixel of a
+// whole-body-governed voxel set (VoxelReserved::kFogWholeBodyExempt) or of a
+// SHAPE_FLAG_FOG_WHOLE_BODY_EXEMPT shape; FOG_TO_TRIXEL drops the height
+// penalty for it. Stripped by kEntityIdHighWordMask like the bits above.
+// Mirror of the .glsl/.metal kEntityIdFogWholeBodyMaskInHighWord.
+constexpr std::uint32_t kEntityIdFogWholeBodyMaskInHighWord = 1u << 28;
 constexpr std::uint32_t kEntityIdHighWordMask =
-    ~(kEntityIdPriorityMaskInHighWord | kEntityIdCutFaceMaskInHighWord);
-// Full-64-bit shift of the carrier — the invariant a live id must satisfy
-// (`id >> kEntityIdPriorityShift == 0`), guarded at the voxel-pool upload boundary.
-constexpr int kEntityIdPriorityShift = 32 + kEntityIdPriorityShiftInHighWord;
+    ~(kEntityIdPriorityMaskInHighWord | kEntityIdCutFaceMaskInHighWord |
+      kEntityIdFogWholeBodyMaskInHighWord);
 static_assert(
     kDepthForegroundTierCount <= (1 << kEntityIdPriorityBits),
     "tier count must fit in the K stolen entity-id bits"
@@ -949,6 +953,7 @@ using ShapeType = IRMath::SDF::ShapeType;
 using ShapeFlags = IRMath::SDF::ShapeFlags;
 using IRMath::SDF::SHAPE_FLAG_CHECKERBOARD;
 using IRMath::SDF::SHAPE_FLAG_DEPTH_COLOR;
+using IRMath::SDF::SHAPE_FLAG_FOG_WHOLE_BODY_EXEMPT;
 using IRMath::SDF::SHAPE_FLAG_HOLLOW;
 using IRMath::SDF::SHAPE_FLAG_MIRROR_X;
 using IRMath::SDF::SHAPE_FLAG_MIRROR_Y;

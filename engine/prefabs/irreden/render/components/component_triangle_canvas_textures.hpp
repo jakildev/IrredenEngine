@@ -274,6 +274,22 @@ struct C_TriangleCanvasTextures {
         return static_cast<IREntity::EntityId>(IRRender::decodeCarrierEntityId(packed));
     }
 
+    // Raw entity-id carrier words (.x = low word, .y = high word with the
+    // priority / fog carrier bits still set), row-major over the whole canvas.
+    // One full-texture GPU readback: for probes and tests, never per frame.
+    void readEntityIdCarriers(std::vector<uvec2> &out) const {
+        out.resize(static_cast<std::size_t>(size_.x) * static_cast<std::size_t>(size_.y));
+        textureTriangleEntityIds_.second->getSubImage2D(
+            0,
+            0,
+            size_.x,
+            size_.y,
+            PixelDataFormat::RG_INTEGER,
+            PixelDataType::UINT32,
+            out.data()
+        );
+    }
+
     void clearDistances() const {
         textureTriangleDistances_.second->clear(
             PixelDataFormat::RED_INTEGER,

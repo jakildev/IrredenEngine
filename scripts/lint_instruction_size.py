@@ -37,6 +37,16 @@ when its excess over budget is above `ref`'s). The offender lines print under
 an `introduced:` line and an `inherited:` line, and the run exits 1 only when
 something was introduced, so a pull request built on a red base goes red on
 its own regression and on nothing else. Exit 2: `ref` cannot be read.
+
+With `--against`, an introduced offender whose excess over budget is within
+the warning band (`--warn-band`, default 10 lines) is annotated as a GitHub
+`::warning` and does not fail the run: a contract sentence or two on a file
+sitting at its cap is a signal to trim, not a broken build. The band is on
+the head's excess, not on this change's delta, so the cap plus the band is a
+hard wall a series of small additions still hits. A flat run has no band.
+`--against` also prints every budget the head raises above the ref's
+(`budget raised: file: A -> B`), so a hand edit of the JSON is read, not
+merely diffed.
 """
 import argparse
 import io
@@ -59,6 +69,7 @@ CLASS_CAPS = {
     "doc": 400,
 }
 SKIP_PREFIXES = ("docs/agents/.archive/",)
+WARN_BAND = 10
 CLAUDE_DIRS = ("rules", "agents", "commands")
 
 
@@ -149,6 +160,9 @@ def main(argv):
     ap.add_argument("--against", metavar="REF",
                     help="split the offenders into those introduced relative to REF's tree "
                          "and those inherited from it; exit 1 only on an introduced one")
+    ap.add_argument("--warn-band", metavar="LINES", type=int, default=WARN_BAND,
+                    help="with --against, an introduced excess of at most LINES is a "
+                         "warning annotation, not a failure (default %(default)s; 0 disables)")
     args = ap.parse_args(argv)
     if args.against and args.update_baseline:
         ap.error("--against does not combine with --update-baseline")
@@ -178,7 +192,7 @@ def main(argv):
         return 0
 
     if args.against:
-        rc = report_against(args.against, counts, budgets)
+        rc = report_against(args.against, counts, budgets, args.warn_band)
         if rc is not None:
             return rc
 
@@ -198,31 +212,49 @@ def main(argv):
     return 0
 
 
-def report_against(ref, counts, budgets):
+def report_against(ref, counts, budgets, warn_band=WARN_BAND):
     """The `--against` report and its exit code, or None when nothing is over
-    budget and the flat `ok:` line is the whole report."""
+    budget and the flat `ok:` line is the whole report. Annotation lines print
+    before the offender sections so each section stays a plain list."""
     try:
         base_counts, base_budgets = scan_ref(ref)
     except ratchet_against.RefError as e:
         print(f"cannot measure {ref}: {e}", file=sys.stderr)
         return 2
+    for rel in sorted(budgets):
+        if rel in base_budgets and budgets[rel] > base_budgets[rel]:
+            print(f"::notice file={rel}::budget raised: {rel}: "
+                  f"{base_budgets[rel]} -> {budgets[rel]}")
     introduced, inherited = ratchet_against.split(
         {rel: (n, budgets[rel]) for rel, n in counts.items()},
         {rel: (n, base_budgets[rel]) for rel, n in base_counts.items()})
     if not introduced and not inherited:
         return None
+    blocking = [rel for rel in introduced if counts[rel] - budgets[rel] > warn_band]
+    warned = [rel for rel in introduced if rel not in blocking]
+    for rel in warned:
+        print(f"::warning file={rel}::{rel}: {counts[rel]} lines, budget {budgets[rel]} "
+              f"(+{counts[rel] - budgets[rel]}, within the {warn_band}-line band)")
+    for rel in blocking:
+        print(f"::error file={rel}::{rel}: {counts[rel]} lines, budget {budgets[rel]} "
+              f"(+{counts[rel] - budgets[rel]}, past the {warn_band}-line band)")
     for header, rels in (("introduced:", introduced), ("inherited:", inherited)):
         print(header)
         for rel in rels:
             print(f"{rel}: {counts[rel]} lines, budget {budgets[rel]}")
-    if introduced:
-        print(f"\n{len(introduced)} instruction file(s) grew past its budget beyond what "
-              f"{ref} already carries. Trim the file — point, don't dump "
-              "(docs/agents/CLAUDE-BASELINE.md §\"What belongs in agent-facing docs\") — or, "
-              "for a deliberate raise, edit its entry in "
+    if blocking:
+        print(f"\n{len(blocking)} instruction file(s) grew more than {warn_band} line(s) past "
+              f"its budget beyond what {ref} already carries. Trim the file — point, don't "
+              "dump (docs/agents/CLAUDE-BASELINE.md §\"What belongs in agent-facing docs\") "
+              "— or, for a deliberate raise, edit its entry in "
               "scripts/lint_instruction_size_baseline.json by hand so the raise shows in "
               "the PR diff; `--update-baseline` only lowers.", file=sys.stderr)
         return 1
+    if warned:
+        print(f"\n{len(warned)} instruction file(s) grew past its budget by at most "
+              f"{warn_band} line(s): annotated, not failed. Trim it before the next "
+              "addition reaches the wall.", file=sys.stderr)
+        return 0
     print(f"\n{len(inherited)} inherited offender(s): over budget on {ref} already and "
           "not worsened here, so they are not this change's to fix.", file=sys.stderr)
     return 0

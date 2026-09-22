@@ -3,7 +3,8 @@
 Covers the four contract paths: 200 (fresh + cached), 304 (unchanged, cached
 body served + If-None-Match sent), stale-etag-without-body (refetch, no
 conditional header), and network error (True, None so the caller keeps its
-fallback). urllib is fully mocked — no real network.
+fallback), plus the X-RateLimit-* record `last_rate_limit` serves. urllib is
+fully mocked — no real network.
 """
 import importlib.machinery
 import importlib.util
@@ -11,6 +12,7 @@ import json
 import tempfile
 import unittest
 import urllib.error
+from email.message import Message
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -33,6 +35,33 @@ def _resp(body_bytes, etag):
     resp.read.return_value = body_bytes
     resp.headers.get.return_value = etag
     return resp
+
+
+def _headers(etag=None, used=None, resource="core", reset=1900000000):
+    """Case-insensitive response headers, as urllib hands them back."""
+    msg = Message()
+    if etag:
+        msg["ETag"] = etag
+    if used is not None:
+        msg["X-RateLimit-Limit"] = "5000"
+        msg["X-RateLimit-Used"] = str(used)
+        msg["X-RateLimit-Remaining"] = str(5000 - used)
+        msg["X-RateLimit-Reset"] = str(reset)
+        msg["X-RateLimit-Resource"] = resource
+    return msg
+
+
+def _resp_with(headers, body_bytes=b"[]"):
+    resp = MagicMock()
+    resp.__enter__.return_value = resp
+    resp.__exit__.return_value = False
+    resp.read.return_value = body_bytes
+    resp.headers = headers
+    return resp
+
+
+def _http_error(code, headers):
+    return urllib.error.HTTPError("http://x", code, "err", headers, None)
 
 
 class TestConditionalGet(unittest.TestCase):
@@ -129,6 +158,67 @@ class TestConditionalGet(unittest.TestCase):
             changed, body = self._get()
         self.assertTrue(changed)
         self.assertIsNone(body)
+
+
+class TestRateLimitRecord(unittest.TestCase):
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.cache_dir = Path(self._tmp.name)
+        self._token_patch = patch.object(_mod, "auth_token", return_value="tok")
+        self._token_patch.start()
+        _mod._rate_limits.clear()
+
+    def tearDown(self):
+        self._token_patch.stop()
+        self._tmp.cleanup()
+        _mod._rate_limits.clear()
+
+    def _get(self, response=None, error=None):
+        kw = {"side_effect": error} if error else {"return_value": response}
+        with patch("urllib.request.urlopen", **kw):
+            return conditional_get(_SLUG, "pulls", params={"state": "open"},
+                                   cache_dir=self.cache_dir)
+
+    def test_nothing_observed_is_none(self):
+        self.assertIsNone(_mod.last_rate_limit("core"))
+
+    def test_200_then_304_records_the_304(self):
+        self._get(_resp_with(_headers('W/"e1"', used=4599)))
+        self.assertEqual(_mod.last_rate_limit("core")["used"], 4599)
+        changed, _ = self._get(error=_http_error(304, _headers(used=4600, reset=1900000123)))
+        self.assertFalse(changed)
+        reading = _mod.last_rate_limit("core")
+        self.assertEqual(
+            {k: reading[k] for k in ("limit", "used", "remaining", "reset")},
+            {"limit": 5000, "used": 4600, "remaining": 400, "reset": 1900000123})
+        self.assertIsInstance(reading["observed_at"], int)
+
+    def test_headerless_response_leaves_record(self):
+        self._get(_resp_with(_headers('W/"e1"', used=100)))
+        before = _mod.last_rate_limit("core")
+        self._get(_resp_with(_headers('W/"e2"')))
+        self._get(error=_http_error(304, _headers()))
+        self.assertEqual(_mod.last_rate_limit("core"), before)
+
+    def test_403_wall_is_recorded(self):
+        self._get(error=_http_error(403, _headers(used=5000)))
+        self.assertEqual(_mod.last_rate_limit("core")["remaining"], 0)
+
+    def test_401_is_not_recorded(self):
+        # The re-auth retry also 401s; neither answer names our identity.
+        self._get(error=_http_error(401, _headers(used=59)))
+        self.assertIsNone(_mod.last_rate_limit("core"))
+
+    def test_resources_are_kept_apart(self):
+        self._get(_resp_with(_headers('W/"e1"', used=7, resource="search")))
+        self.assertIsNone(_mod.last_rate_limit("core"))
+        self.assertEqual(_mod.last_rate_limit("search")["used"], 7)
+
+    def test_accessor_returns_a_copy(self):
+        self._get(_resp_with(_headers('W/"e1"', used=100)))
+        _mod.last_rate_limit("core")["used"] = -1
+        self.assertEqual(_mod.last_rate_limit("core")["used"], 100)
 
 
 if __name__ == "__main__":
