@@ -59,9 +59,28 @@ jobs:
         uses: actions/checkout@v4
 
       # The suites are hermetic — synthetic PNGs, no engine binary, no GL
-      # context, no committed references — so a plain checkout is the whole
-      # environment. python3 is preinstalled on ubuntu-latest.
-      #
+      # context, no committed references — so the checkout plus one pinned
+      # Pillow is the whole environment. The gating path (render-verify, the
+      # comparator and the metrics its manifests name) is stdlib-only; Pillow
+      # is for the hand-run metrics and the suite over the shadow-box one, per
+      # the "Harness dependency contract" in docs/agents/VALIDATION.md. The pin
+      # is the version those suites are measured green on: a filter or fill
+      # change in a new Pillow would move an oracle with no diff in this repo.
+      # setup-python, not the runner's system interpreter: Ubuntu marks that
+      # one externally managed (PEP 668), and run_all.sh calls `python3`.
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Pillow
+        run: python3 -m pip install pillow==12.2.0
+
+      # A failing install reads as the gate not running; this makes it name
+      # itself, and proves `python3` is the interpreter that got the package.
+      - name: Prove Pillow imports
+        run: python3 -c "import PIL; print(PIL.__version__)"
+
       # No separate "prove the gate still fires" step: run_all.sh's own
       # negative controls ship as test_run_all.py and run as one of the
       # suites below. It asserts the runner reports a failing suite, exits
@@ -69,5 +88,19 @@ jobs:
       # read as green), and — the #2825 lock — that a suite depending on a
       # sibling's sys.path insert FAILS under the runner while passing under a
       # shared-interpreter discover.
+      #
+      # The log is captured so the next step can prove the Pillow-dependent
+      # suite ran rather than skipped. `shell: bash` is load-bearing: a bare
+      # `run:` gets `bash -e {0}`, and only a named `shell: bash` adds
+      # `-o pipefail` — without it the step's status is tee's, always 0.
+      # test_run_all.py's WorkflowKeepsRunnerStatusTest pins this.
       - name: Run render harness tests
-        run: bash scripts/tests/run_all.sh
+        shell: bash
+        run: bash scripts/tests/run_all.sh | tee run_all.log
+
+      # run_all.sh reports `PASS  <suite> (<N> tests)`, with a `skipped`
+      # suffix when any skipped. A suite that exited 0 without running its
+      # tests reads as green everywhere else, so pin this one: it needs
+      # Pillow, and is the suite whose missing dependency turned this job red.
+      - name: Assert the Pillow-dependent suite executed
+        run: grep -a -E '^PASS  test_render_shadow_box_edges\.py \([1-9][0-9]* tests\)$' run_all.log

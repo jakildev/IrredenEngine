@@ -25,9 +25,13 @@
 # directory and prove it still reports failure — a green runner looks identical
 # whether it ran everything or nothing.
 #
+# Output: `PASS  <suite> (<N> tests)`, with `, <K> skipped` when any skipped. A
+# suite that exits 0 but reports no `Ran N tests` line, or N = 0, is a FAIL.
+#
 # Exit status:
 #   0  every suite passed
-#   1  at least one suite failed, or no suite was found
+#   1  at least one suite failed (including one that ran no tests), or no suite
+#      was found
 set -uo pipefail
 
 PROG=$(basename "$0")
@@ -58,8 +62,24 @@ for f in "${suites[@]}"; do
     # left alone: the suites resolve their subjects from __file__, so a run
     # that depends on cwd is itself a defect.
     if out=$(python3 "$f" 2>&1); then
+        # A suite that exits 0 has not necessarily run anything: an all-skipped
+        # suite, or a file that never calls unittest.main(), reads green. Take
+        # the count from unittest's own "Ran N test(s)" line, surface skips in
+        # the PASS line, and fail a suite that ran nothing.
+        ran=$(printf '%s\n' "$out" | sed -n 's/^Ran \([0-9][0-9]*\) tests\{0,1\} in .*/\1/p' | tail -n 1)
+        if [[ -z "$ran" || "$ran" -eq 0 ]]; then
+            failed_names+=("$name")
+            printf 'FAIL  %s (no tests ran)\n' "$name"
+            printf '%s\n' "$out" | sed 's/^/      | /'
+            continue
+        fi
+        skipped=$(printf '%s\n' "$out" | sed -n 's/^OK.*skipped=\([0-9][0-9]*\).*/\1/p' | tail -n 1)
         passed=$((passed + 1))
-        printf 'PASS  %s\n' "$name"
+        if [[ -n "$skipped" && "$skipped" -gt 0 ]]; then
+            printf 'PASS  %s (%s tests, %s skipped)\n' "$name" "$ran" "$skipped"
+        else
+            printf 'PASS  %s (%s tests)\n' "$name" "$ran"
+        fi
     else
         rc=$?
         failed_names+=("$name")
