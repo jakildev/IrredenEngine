@@ -38,6 +38,7 @@ on:
       - 'scripts/perf/compare_perf_runs.py'
       - 'scripts/tests/**'
       - 'engine/render/src/shaders/**'
+      - 'engine/prefabs/irreden/render/systems/system_shapes_to_trixel.hpp'
       - 'creations/demos/*/test/references/manifest.json'
       - '.github/workflows/render-harness-tests.yml'
   pull_request:
@@ -46,6 +47,7 @@ on:
       - 'scripts/perf/compare_perf_runs.py'
       - 'scripts/tests/**'
       - 'engine/render/src/shaders/**'
+      - 'engine/prefabs/irreden/render/systems/system_shapes_to_trixel.hpp'
       - 'creations/demos/*/test/references/manifest.json'
       - '.github/workflows/render-harness-tests.yml'
   workflow_dispatch:
@@ -112,3 +114,6 @@ jobs:
 
       - name: Assert the SDF shader contract executed
         run: grep -a -E '^PASS  test_render_sdf_surface_contract\.py \([1-9][0-9]* tests\)$' run_all.log
+
+      - name: Assert the SDF winner contract executed
+        run: grep -a -E '^PASS  test_render_sdf_winner\.py \([1-9][0-9]* tests\)$' run_all.log

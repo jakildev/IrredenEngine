@@ -88,3 +88,20 @@ The refreshed base includes PR #3629's SDF fog-carrier changes. The scalar gate
 edits no producer or shared GPU structure and can land independently of the
 deferred cascade correction. Future geometry work must preserve that carrier. This is a correctness prerequisite, not a claim
 that the remaining floor regression or finite shadow-map coverage is fixed.
+
+## Opaque sample ownership
+
+The SDF producer resolves depth, then elects the lowest submitted sample key
+among samples at that depth, then publishes color and identity from that one
+sample. Keys include tile, local invocation, face and half-face; changing GPU
+scheduling cannot choose a different writer for an unchanged submission.
+Descriptor reordering may change the chosen tie winner. The reused owner buffer
+is cleared per canvas and has four bytes per pixel of the largest processed
+canvas; it does not grow with the world entity population. Buffer-update and
+shader-storage barriers separate clear, election and publication.
+
+This is the prerequisite for coherent surface metadata, not that metadata's
+implementation. The existing occluded X-ray color overlay remains outside the
+opaque ownership guarantee. Its read/modify/write blending is a separate
+ordering problem. Native controls and validation live in the
+[ownership evidence](../pr-screenshots/codex/sdf-winner-ownership/README.md).

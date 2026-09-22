@@ -15,7 +15,7 @@ layout(std140, binding = 23) uniform ShapesFrameData {
     uniform ivec2 trixelCanvasOffsetZ1;
     uniform ivec2 canvasSize;
     uniform int shapeCount;
-    // 0: all depth, 1: visible color/ID, 2: non-box caster depth.
+    // 0: all depth, 1: visible color/ID, 2: non-box caster depth, 3: owner election.
     uniform int passIndex;
     uniform ivec2 voxelRenderOptions;
     uniform ivec2 cullIsoMin;
@@ -70,8 +70,8 @@ layout(std430, binding = 21) readonly buffer JointBuffer {
     vec4 jointData[];
 };
 
-layout(std430, binding = 22) readonly buffer AnimBuffer {
-    vec4 animData[];
+layout(std430, binding = 22) buffer ShapeOwnerBuffer {
+    uint sampleOwners[];
 };
 
 layout(r32i, binding = 1) uniform iimage2D triangleCanvasDistances;
@@ -1039,13 +1039,18 @@ void main() {
 
             if (!isInsideCanvas(canvasPixel, canvasSize)) continue;
 
-            if (passIndex != 1) {
+            const uint linearIndex = uint(canvasPixel.y) * uint(canvasSize.x) + uint(canvasPixel.x);
+            const uint sampleOwner = ((uint(tileIdx) * 64u + gl_LocalInvocationIndex) * 3u + uint(face)) * 2u + uint(subPixel);
+            if (passIndex == 3) {
+                if (depthEncoded == imageLoad(triangleCanvasDistances, canvasPixel).r)
+                    atomicMin(sampleOwners[linearIndex], sampleOwner);
+            } else if (passIndex != 1) {
                 imageAtomicMin(triangleCanvasDistances, canvasPixel,
                                depthEncoded);
             } else {
                 int stored = imageLoad(triangleCanvasDistances,
                                        canvasPixel).x;
-                if (depthEncoded == stored) {
+                if (depthEncoded == stored && sampleOwner == sampleOwners[linearIndex]) {
                     imageStore(triangleCanvasColors, canvasPixel, baseColor);
                     imageStore(triangleCanvasEntityIds, canvasPixel,
                                uvec4(packedEntityId, 0u, 0u));

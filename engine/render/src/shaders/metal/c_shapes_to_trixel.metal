@@ -9,7 +9,7 @@ struct ShapesFrameData {
     int2 trixelCanvasOffsetZ1;
     int2 canvasSize;
     int shapeCount;
-    // 0: all depth, 1: visible color/ID, 2: non-box caster depth.
+    // 0: all depth, 1: visible color/ID, 2: non-box caster depth, 3: owner election.
     int passIndex;
     int2 voxelRenderOptions;
     int2 cullIsoMin;
@@ -865,6 +865,7 @@ kernel void c_shapes_to_trixel(
     device const ShapeDescriptor* shapes [[buffer(20)]],
     device const ShapeTileDescriptor* tiles [[buffer(30)]],
     device atomic_int* distanceScratch [[buffer(16)]],
+    device atomic_uint* sampleOwners [[buffer(22)]],
     // `triangleCanvasColors` is read+write (not write-only) so the
     // SHAPE_FLAG_XRAY_OCCLUDED branch in pass 1 can load the existing
     // pixel and blend the occluded shape's color on top at reduced alpha.
@@ -1141,7 +1142,11 @@ kernel void c_shapes_to_trixel(
                 uint(canvasPixel.y) * triangleCanvasDistances.get_width() +
                 uint(canvasPixel.x);
 
-            if (frameData.passIndex != 1) {
+            const uint sampleOwner = ((tileIdx * 64u + localId.y * 8u + localId.x) * 3u + uint(face)) * 2u + uint(subPixel);
+            if (frameData.passIndex == 3) {
+                if (depthEncoded == atomic_load_explicit(&distanceScratch[linearIndex], memory_order_relaxed))
+                    atomic_fetch_min_explicit(&sampleOwners[linearIndex], sampleOwner, memory_order_relaxed);
+            } else if (frameData.passIndex != 1) {
                 atomic_fetch_min_explicit(
                     &distanceScratch[linearIndex],
                     depthEncoded,
@@ -1153,7 +1158,8 @@ kernel void c_shapes_to_trixel(
                     memory_order_relaxed
                 );
                 const uint2 pix = uint2(canvasPixel);
-                if (depthEncoded == stored) {
+                if (depthEncoded == stored &&
+                    sampleOwner == atomic_load_explicit(&sampleOwners[linearIndex], memory_order_relaxed)) {
                     triangleCanvasColors.write(baseColor, pix);
                     triangleCanvasDistances.write(
                         int4(depthEncoded, 0, 0, 0), pix);
