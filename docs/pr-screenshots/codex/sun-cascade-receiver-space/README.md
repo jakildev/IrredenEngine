@@ -96,3 +96,6 @@ proof explaining the regressed cascade selection/sampling. The scalar test
 stubs the sampler; it does not validate cascade selection or rendered edges.
 The diagnostic/test PRs can proceed without this production change. No
 tolerance change or presumed root cause is used to approve the regression.
+
+The [forced-cascade controls](selector-control/README.md) reproduce the corrected
+fixture with the far map alone, while neither map passes strict edge checks.
