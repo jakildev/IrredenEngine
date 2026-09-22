@@ -24,7 +24,7 @@ riser-polarity flip at bit 2) — the `*4` factors in the tables below read as
 | Render type | Stored `enc` (the probe's rawDist) | Writes depth attachment? | Source |
 |---|---|---|---|
 | Single-canvas gather (GRID voxels) | `isoDepth*4 + face`, `isoDepth = x+y+z` (smooth-yaw: yawed `R_z(−yaw)` iso) | **yes** | `c_voxel_to_trixel_stage_1.glsl:289,324`; `f_trixel_to_framebuffer.glsl:95` |
-| SDF floor / `SHAPES_TO_TRIXEL` | `baseDepth*4 + face`; cardinal `baseDepth = surfaceD + originDistance`, smooth `baseDepth = round(dvx+dvy+z)` (same yawed iso — "SDF + voxels stay co-sorted") | **yes** (same gather) | `c_shapes_to_trixel.glsl:937-942,1016` |
+| SDF floor / `SHAPES_TO_TRIXEL` | `baseDepth*4 + face`; cardinal `baseDepth = surfaceD + originDistance`, smooth `baseDepth = round(dvx+dvy+z)` (same yawed iso — "SDF + voxels stay co-sorted") | **yes** (same gather) | `c_shapes_to_trixel_body.glsl:937-942,1016` |
 | Per-axis forward scatter | `scatterCompositeDepthKey = yawedSum*4 + slot`, `yawedSum = x(c−s)+y(s+c)+z` | **yes** | `ir_iso_common.glsl:575-580`; `f_peraxis_scatter.glsl:71` |
 | Detached canvas composite (`ENTITY_CANVAS_TO_FRAMEBUFFER`) | computes `round(modelRawDist*depthScale) + worldDepth*effSub*4`; world-placed offset `worldDepth = pos3DtoDistance(roundVec3HalfUp(translation))` | **NO — see Finding 1** | `system_entity_canvas_to_framebuffer.hpp:224-235`; `f_trixel_to_framebuffer.glsl:64-66` |
 

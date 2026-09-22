@@ -1217,6 +1217,10 @@ void registerArgs() {
     args.flag("--probe-hidden-box", "Hide the detached shadowbox and its cast shadow");
     args.numbers("--probe-box-offset", "Shadowbox translation offset <x> <y> <z>", 3);
     args.flag("--probe-analytic-box", "Use an analytic box for shadowbox");
+    args.flag(
+        "--probe-sdf-depth-tie",
+        "With --probe-analytic-box, overlap an orange box to test equal-depth ownership"
+    );
     args.flag("--probe-analytic-sphere", "Use an analytic sphere for shadowbox");
     args.numbers("--analytic-box-offset", "Analytic shadowbox translation offset <x> <y> <z>", 3);
     args.number("--analytic-box-yaw", "Analytic shadowbox entity yaw, radians", 0.0f);
@@ -2005,6 +2009,16 @@ void initEntities() {
                 C_LocalTransform{position + offset, rotation},
                 C_ShapeDescriptor{IRRender::ShapeType::BOX, vec4(vec3(size), 0.0f), color}
             );
+            if (IREngine::args().getFlag("--probe-sdf-depth-tie")) {
+                IREntity::createEntity(
+                    C_LocalTransform{position + offset, rotation},
+                    C_ShapeDescriptor{
+                        IRRender::ShapeType::BOX,
+                        vec4(vec3(size), 0.0f),
+                        Color{240, 120, 60, 255}
+                    }
+                );
+            }
         } else if (IREngine::args().getFlag("--probe-grid")) {
             IREntity::createEntity(
                 C_LocalTransform{position},

@@ -46,7 +46,10 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
     if (functionName == "c_text_to_trixel") {
         return MTL::Size(7, 11, 1);
     }
-    if (functionName == "c_shapes_to_trixel") {
+    if (functionName == "c_shapes_to_trixel_depth" ||
+        functionName == "c_shapes_to_trixel_publish" ||
+        functionName == "c_shapes_to_trixel_caster" ||
+        functionName == "c_shapes_to_trixel_owner") {
         return MTL::Size(8, 8, 1);
     }
     if (functionName == "c_voxel_visibility_compact" ||
@@ -146,7 +149,10 @@ bool functionUsesImageAtomicScratch(const std::string &functionName) {
            functionName == "c_voxel_to_trixel_stage_1_winner_resolve" ||
            functionName == "c_voxel_to_trixel_stage_2" ||
            functionName == "c_voxel_to_trixel_stage_2_winner" ||
-           functionName == "c_shapes_to_trixel" ||
+           functionName == "c_shapes_to_trixel_depth" ||
+           functionName == "c_shapes_to_trixel_publish" ||
+           functionName == "c_shapes_to_trixel_caster" ||
+           functionName == "c_shapes_to_trixel_owner" ||
            functionName == "c_render_gpu_particles_to_trixel" ||
            functionName == "c_render_stateless_particles_to_trixel";
 }

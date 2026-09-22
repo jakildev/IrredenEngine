@@ -47,7 +47,7 @@ Z-axis.
 ## Why GRID entities depend on it
 
 The integer trixel rasterizer (`c_voxel_to_trixel_stage_1.glsl`,
-`c_shapes_to_trixel.glsl`) picks one of four cardinal-snapped basis
+`c_shapes_to_trixel_body.glsl`) picks one of four cardinal-snapped basis
 permutations from `rasterYaw` via
 [`IRMath::rasterYawCardinalIndex`](../../engine/math/include/irreden/ir_math.hpp)
 (see lines 252–267) and rasterizes at integer iso coordinates. The
@@ -75,7 +75,7 @@ expands the XY AABB by `|cosYaw|·halfX + |sinYaw|·halfY` (and the
 symmetric form for Y) — a 2D rotation only. The Z half-extent is
 passed through unchanged because the GPU shapes path assumes the
 depth axis is the world Z axis. The GPU twin at
-[`c_shapes_to_trixel.glsl:195–207`](../../engine/render/src/shaders/c_shapes_to_trixel.glsl)
+[`c_shapes_to_trixel_body.glsl:195–207`](../../engine/render/src/shaders/c_shapes_to_trixel_body.glsl)
 and `:677–690` makes the same assumption for the box-slab solver and
 the sphere/cylinder analytic shortcuts ("Sphere: rotation-invariant
 under z-yaw"; "Cylinder: z-axis aligned"). Pitch or roll invalidates
@@ -165,8 +165,8 @@ introduces the dependency.
 |---|---|---|
 | `engine/render/src/shaders/ir_iso_common.glsl:224–276` + `metal/ir_iso_common.metal` | shader iso primitives | `rasterYawCardinalIndex`, `rotateCardinalZ[Inv][I]`, `isoPixelToWorld3D` — GPU mirrors of the CPU helpers. Same Z-axis-only semantics. CPU + GPU must agree on the cardinal index. |
 | `engine/render/src/shaders/c_voxel_to_trixel_stage_1.glsl:20–42` (UBO struct) | per-frame yaw upload | `visualYaw` is "continuous Z-yaw (radians)" — single float, no axis component. Stages 1 and 2 both read these fields; the Metal twin matches. |
-| `engine/render/src/shaders/c_shapes_to_trixel.glsl:195–207` (`boxSlabIntersectYaw`) | SDF box-slab solver | "z-axis is rotation-invariant under z-yaw" — the box-slab math derives only XY coefficients from `(yawC, yawS)` and treats Z as unrotated. Metal twin (`metal/c_shapes_to_trixel.metal:836–855`) carries the same assumption. |
-| `engine/render/src/shaders/c_shapes_to_trixel.glsl:677–690` (`findSurfaceDepth` dispatcher) | sphere/cylinder shortcuts | "Sphere: rotation-invariant (\|p\| under z-yaw unchanged); analytical works at any yaw without modification. Cylinder: z-axis aligned, \|p.xy\| invariant under z-yaw; same." The shortcuts collapse under non-Z rotation. |
+| `engine/render/src/shaders/c_shapes_to_trixel_body.glsl:195–207` (`boxSlabIntersectYaw`) | SDF box-slab solver | "z-axis is rotation-invariant under z-yaw" — the box-slab math derives only XY coefficients from `(yawC, yawS)` and treats Z as unrotated. Metal twin (`metal/c_shapes_to_trixel_body.metal:836–855`) carries the same assumption. |
+| `engine/render/src/shaders/c_shapes_to_trixel_body.glsl:677–690` (`findSurfaceDepth` dispatcher) | sphere/cylinder shortcuts | "Sphere: rotation-invariant (\|p\| under z-yaw unchanged); analytical works at any yaw without modification. Cylinder: z-axis aligned, \|p.xy\| invariant under z-yaw; same." The shortcuts collapse under non-Z rotation. |
 | `engine/render/src/shaders/c_voxel_to_trixel_stage_1.glsl:30` | UBO comment | "continuous Z-yaw (radians)" — single-axis assumption documented in the upload contract. |
 | `engine/render/src/shaders/c_compute_sun_shadow.glsl`, `c_compute_voxel_ao.glsl`, `c_lighting_to_trixel.glsl`, `c_fog_to_trixel.glsl` (and Metal twins) | surface-position reconstruction | Call `isoPixelToWorld3D(isoX, isoY, depth, cardinalIndex)` to recover world coords; the inverse only works for cardinal Z rotations. See `iso-basis-baked-assumptions.md` §"Sun shadow / lighting" for the per-shader detail. |
 
@@ -180,8 +180,8 @@ introduces the dependency.
 | `picking.hpp` voxel iso-depth bound (sum of half-extents projected onto (1,1,1)) | **Hard.** Replace with a per-orientation AABB projection: compute the rotated AABB's 8 corners, dot each with the current depth-axis direction, take min/max. Cheap per shape but invalidates the "rotation-invariant" optimization. |
 | `system_gizmo_drag.hpp`, `system_hitbox_mouse_test.hpp` cardinal-index calls | **Hard.** Both consume the cardinal-index API. Once that's generalized they need quat-based rotation of the world position before iso projection, which compounds with the iso-inverse rewrite above. |
 | `system_shapes_to_trixel.hpp` SDF cull bounds (XY-only AABB expansion) | **Hard.** Generalize the AABB expansion to 3D for a full rotation; the cull becomes a rotated-OBB iso projection, similar to the picking bound rewrite. |
-| `c_shapes_to_trixel.glsl` box-slab + sphere/cylinder shortcuts | **Hard.** The shortcuts assume Z-axis invariance. Box-slab generalizes to a full 3x3 rotation of the per-axis coefficients (manageable); sphere/cylinder shortcuts collapse to the general SDF path. Performance cost depends on how many on-screen shapes hit the general path. |
-| `c_shapes_to_trixel.glsl` general SDF march | **Easy.** The general SDF path already rotates the query point by `R_z(+rasterYaw)`; replacing with a quat rotation is mechanical. Performance is unchanged. |
+| `c_shapes_to_trixel_body.glsl` box-slab + sphere/cylinder shortcuts | **Hard.** The shortcuts assume Z-axis invariance. Box-slab generalizes to a full 3x3 rotation of the per-axis coefficients (manageable); sphere/cylinder shortcuts collapse to the general SDF path. Performance cost depends on how many on-screen shapes hit the general path. |
+| `c_shapes_to_trixel_body.glsl` general SDF march | **Easy.** The general SDF path already rotates the query point by `R_z(+rasterYaw)`; replacing with a quat rotation is mechanical. Performance is unchanged. |
 | `c_voxel_to_trixel_stage_1.glsl` UBO struct + raster | **Hard.** The shader picks one of four cardinal basis permutations from `cardinalIndex`. Generalizing to SO(3) requires either a per-canvas basis upload or a runtime basis derivation per dispatch; the integer raster invariant has to be re-justified. |
 | `c_compute_sun_shadow.glsl`, `c_compute_voxel_ao.glsl`, lighting/fog reconstruction | **Hard.** All rely on `isoPixelToWorld3D` which assumes the cardinal-Z inverse. The inverse rewrite cascades here. |
 | `IRPrefab::Camera::*` accessors | **Done (T-364).** Camera rotation lives in `C_LocalTransform.rotation_`; Z-yaw extraction for GRID consumers is bit-identical to the former `C_CameraYaw` surface. Full SO(3) is accessible via `setRotationQuat`/`getRotationQuat`. |

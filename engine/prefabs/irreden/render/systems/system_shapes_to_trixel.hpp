@@ -24,6 +24,7 @@
 #include <irreden/render/gpu_stage_timing_observer.hpp>
 
 #include <cstring>
+#include <limits>
 #include <optional>
 #include <unordered_map>
 #include <vector>
@@ -38,15 +39,46 @@ constexpr int kMaxShapeDescriptors = 8192;
 constexpr int kMaxShapeTileDescriptors = 262144;
 constexpr std::uint32_t kBufferIndex_ShapesFrameData = 23;
 constexpr int kShapeTileSize = 8;
+static_assert(
+    std::uint64_t(kMaxShapeTileDescriptors) * kShapeTileSize * kShapeTileSize * 6 <
+        std::numeric_limits<std::uint32_t>::max(),
+    "Shape sample owners must fit below the empty uint32 sentinel"
+);
 
 template <> struct System<SHAPES_TO_TRIXEL> {
     using CanvasId = IREntity::EntityId;
 
-    ShaderProgram *shapesProgram_ = nullptr;
+    ShaderProgram *shapeDepthProgram_ = nullptr;
+    ShaderProgram *shapePublishProgram_ = nullptr;
+    ShaderProgram *shapeCasterProgram_ = nullptr;
+    ShaderProgram *shapeOwnerProgram_ = nullptr;
     Buffer *shapeDescBuf_ = nullptr;
     Buffer *shapesFrameDataBuf_ = nullptr;
     Buffer *shapeTileDescBuf_ = nullptr;
     GPUShapesFrameData frameData_{};
+    ResourceId winnerBufferId_ = 0;
+    Buffer *winnerBuffer_ = nullptr;
+    std::size_t winnerCapacityBytes_ = 0;
+    Buffer *animationParamsBuf_ = nullptr;
+
+    void prepareWinnerBuffer(ivec2 size) {
+        const auto bytes = std::size_t(size.x) * std::size_t(size.y) * sizeof(std::uint32_t);
+        if (bytes > winnerCapacityBytes_) {
+            if (winnerBuffer_)
+                IRRender::destroyResource<Buffer>(winnerBufferId_);
+            const auto resource =
+                IRRender::createResource<Buffer>(nullptr, bytes, BUFFER_STORAGE_DYNAMIC);
+            winnerBufferId_ = resource.first;
+            winnerBuffer_ = resource.second;
+            winnerCapacityBytes_ = bytes;
+        }
+        // Buffer clears must observe the previous canvas/frame's shader writes on OpenGL.
+        IRRender::device()->memoryBarrier(BarrierType::ALL);
+        IRRender::device()->fillBuffer(winnerBuffer_, bytes, 0xFF);
+        // Shapes do not consume animation parameters; restore this borrowed slot after dispatch.
+        winnerBuffer_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_ShapeSampleOwners);
+    }
+
     std::unordered_map<CanvasId, std::vector<GPUShapeDescriptor>> gpuShapesByCanvas_;
     // Owner translation per entity canvas, snapshotted at beginTick. An entity
     // canvas rasters in its owner's model frame and the composite places the
@@ -378,7 +410,8 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             const int gridY = IRMath::divCeil(tileCount, gridX);
             frameData_.tileGridX = gridX;
 
-            shapesProgram_->use();
+            prepareWinnerBuffer(canvasTextures.size_);
+            shapeDepthProgram_->use();
             shapeDescBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_ShapeDescriptors);
             canvasTextures.getTextureDistances()
                 ->bindAsImage(1, TextureAccess::READ_WRITE, TextureFormat::R32I);
@@ -399,7 +432,6 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             shapesFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_ShapesFrameData);
 
             // Pass 0: depth via imageAtomicMin
-            frameData_.passIndex = 0;
             shapesFrameDataBuf_->subData(0, sizeof(GPUShapesFrameData), &frameData_);
 
             IRRender::device()->dispatchCompute(
@@ -409,7 +441,15 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             );
             IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
 
-            // Pass 1: color + entity ID where depth matches. Colors is bound
+            shapeOwnerProgram_->use();
+            IRRender::device()->dispatchCompute(
+                static_cast<std::uint32_t>(gridX),
+                static_cast<std::uint32_t>(gridY),
+                1
+            );
+            IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+
+            // Pass 1: color + entity ID from the elected depth winner. Colors is bound
             // READ_WRITE (not WRITE_ONLY) so the SHAPE_FLAG_GIZMO occluded-
             // blend branch in the shader can imageLoad the existing canvas
             // color and blend the gizmo silhouette on top at reduced alpha.
@@ -420,9 +460,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             canvasTextures.getTextureEntityIds()
                 ->bindAsImage(2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI);
 
-            frameData_.passIndex = 1;
-            shapesFrameDataBuf_->subData(0, sizeof(GPUShapesFrameData), &frameData_);
-
+            shapePublishProgram_->use();
             IRRender::device()->dispatchCompute(
                 static_cast<std::uint32_t>(gridX),
                 static_cast<std::uint32_t>(gridY),
@@ -443,11 +481,9 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                             static_cast<int>(gpuShapes.size()),
                             renderMode == SubdivisionMode::NONE ? 1 : effectiveSub
                         );
-                        shapesProgram_->use();
+                        shapeCasterProgram_->use();
                         // Non-box analytic casters retain their separate depth input.
                         casterDepth->bindAsImage(1, TextureAccess::READ_WRITE, TextureFormat::R32I);
-                        frameData_.passIndex = 2;
-                        shapesFrameDataBuf_->subData(0, sizeof(GPUShapesFrameData), &frameData_);
                         shapesFrameDataBuf_->bindBase(
                             BufferTarget::UNIFORM,
                             kBufferIndex_ShapesFrameData
@@ -468,6 +504,10 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                 }
             }
 
+            animationParamsBuf_->bindBase(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_AnimationParams
+            );
             auto &timing = IRRender::gpuStageTiming();
             timing.visibleShapeCount_ = static_cast<std::uint32_t>(gpuShapes.size());
             timing.shapeGroupsZ_ = 0;
@@ -476,8 +516,20 @@ template <> struct System<SHAPES_TO_TRIXEL> {
 
     static SystemId create() {
         IRRender::createNamedResource<ShaderProgram>(
-            "ShapesToTrixelProgram",
-            std::vector{ShaderStage{IRRender::kFileCompShapesToTrixel, ShaderType::COMPUTE}}
+            "ShapesToTrixelDepthProgram",
+            std::vector{ShaderStage{IRRender::kFileCompShapesToTrixelDepth, ShaderType::COMPUTE}}
+        );
+        IRRender::createNamedResource<ShaderProgram>(
+            "ShapesToTrixelPublishProgram",
+            std::vector{ShaderStage{IRRender::kFileCompShapesToTrixelPublish, ShaderType::COMPUTE}}
+        );
+        IRRender::createNamedResource<ShaderProgram>(
+            "ShapesToTrixelCasterProgram",
+            std::vector{ShaderStage{IRRender::kFileCompShapesToTrixelCaster, ShaderType::COMPUTE}}
+        );
+        IRRender::createNamedResource<ShaderProgram>(
+            "ShapesToTrixelOwnerProgram",
+            std::vector{ShaderStage{IRRender::kFileCompShapesToTrixelOwner, ShaderType::COMPUTE}}
         );
         IRRender::createNamedResource<Buffer>(
             "ShapeDescriptorBuffer",
@@ -495,7 +547,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             BufferTarget::UNIFORM,
             kBufferIndex_ShapesFrameData
         );
-        // Binding 21 mirrors c_shapes_to_trixel.glsl's declared jointData[];
+        // Binding 21 mirrors c_shapes_to_trixel_body.glsl's declared jointData[];
         // shapes currently leave jointIndex at 0. It is not used by the voxel
         // skinning path (which uses EntityTransformBuffer at binding 18 and
         // per-voxel bone-slot indices at binding 17 via seedVoxelBoneSlots).
@@ -527,11 +579,19 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         SystemId systemId =
             registerSystem<SHAPES_TO_TRIXEL, C_ShapeDescriptor, C_WorldTransform>("ShapesToTrixel");
         auto *p = getSystemParams<System<SHAPES_TO_TRIXEL>>(systemId);
-        p->shapesProgram_ = IRRender::getNamedResource<ShaderProgram>("ShapesToTrixelProgram");
+        p->shapeDepthProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("ShapesToTrixelDepthProgram");
+        p->shapePublishProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("ShapesToTrixelPublishProgram");
+        p->shapeCasterProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("ShapesToTrixelCasterProgram");
+        p->shapeOwnerProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("ShapesToTrixelOwnerProgram");
         p->shapeDescBuf_ = IRRender::getNamedResource<Buffer>("ShapeDescriptorBuffer");
         p->shapesFrameDataBuf_ = IRRender::getNamedResource<Buffer>("ShapesFrameDataBuffer");
         p->shapeTileDescBuf_ = IRRender::getNamedResource<Buffer>("ShapeTileDescriptorBuffer");
-        // Per-system bracket covers both pass 0 (depth) and pass 1 (color/id);
+        p->animationParamsBuf_ = IRRender::getNamedResource<Buffer>("AnimationParamsBuffer");
+        // Per-system bracket covers depth, owner election and color/id;
         // shapePass0 stays at 0.0f for API stability.
         IRRender::tagGpuStage(systemId, "shapePass1");
         return systemId;

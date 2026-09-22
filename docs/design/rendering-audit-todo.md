@@ -304,3 +304,27 @@ voxel face shadow baking and finite source queries. Quadrants, reflection and
 winding are tested; ten native captures preserve their baseline RGB exactly.
 Keep coverage ownership and authored versus revoxelized geometry explicit. SDF
 ray intersection is not a projected quad and retains its separate implementation.
+
+## SDF receiver prerequisite: opaque ownership
+
+[Deterministic SDF winner publication](../pr-screenshots/codex/sdf-winner-ownership/README.md)
+selects one submitted sample at the winning depth before color/identity writes.
+This closes the opaque tie race prerequisite. Surface position/normal storage,
+fragment receiver recovery, X-ray overlay ordering, and bounded shared geometric
+caster queries remain pending. Measure and reduce the extra SDF election cost
+without returning to independently raced surface fields.
+
+### Sharp-shadow acceptance and optional softness
+
+The target across every rendering mode is sharp, unblurred, geometrically
+accurate projected shadows. Audit existing PCF/filtering and expose any retained
+artistic softness as an explicit setting with a zero-softness path. Validate
+receiver and caster mode combinations with softness disabled; filtering must
+not hide parity, coverage, depth or projection errors. Zero softness alone does
+not repair undersampled shadow geometry.
+
+Before merging deterministic SDF ownership as a default, account for its measured
+GPU cost (roughly 0.95–1.04 ms to 1.97–1.98 ms in the overlap fixture); reduce
+repeated evaluation without weakening ownership, or explicitly accept the
+tradeoff. Also investigate the demo's `--no-lighting` path omitting SDF geometry
+so future geometry-only captures can exercise the same rendering modes.
