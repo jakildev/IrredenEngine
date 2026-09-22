@@ -69,6 +69,11 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
   missing/excess pixels. The factorial captures use that experimental branch;
   they do not describe the current production baseline.
 
+- [SDF surface contract](sdf-receiver-geometry.md): both shader interval solvers
+  agree with an independent 240,000-ray oracle per backend, but distinct planes
+  alias to the same stored depth/slot. Preserve winning geometry through its
+  last consumer; slot-derived normals cannot recover an analytical surface.
+  This scalar gate does not accept the remaining rendered shadow failures.
 - Next: resolve finite sampling misses and small GRID floor-shadow boundaries
   across quadrants against ray/face geometry, preserving legitimate partial faces.
 - Keep six oriented face normals, twelve geometric half-faces, coordinate basis

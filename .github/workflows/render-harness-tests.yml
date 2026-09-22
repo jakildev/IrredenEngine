@@ -7,8 +7,8 @@ name: Render Harness Tests
 # Standalone for the same reason fleet-tests.yml is: the only other CI surface
 # that would reach these was the umbrella quality.yml's ruff/ctest job, and that
 # workflow is retired (#2718) — it was disabled at the repo level for months
-# first, so a step added there was inert either way. These suites need no
-# compiler, no GL, and no CMake.
+# first, so a step added there was inert either way. Shader contract suites
+# require a C++ compiler but no graphics context or CMake build.
 #
 # Path-filtered to the **subjects** (scripts/*.py — where every dashed harness
 # script and the shared modules they import live) as well as the
@@ -37,6 +37,7 @@ on:
       - 'scripts/*.py'
       - 'scripts/perf/compare_perf_runs.py'
       - 'scripts/tests/**'
+      - 'engine/render/src/shaders/**'
       - 'creations/demos/*/test/references/manifest.json'
       - '.github/workflows/render-harness-tests.yml'
   pull_request:
@@ -44,6 +45,7 @@ on:
       - 'scripts/*.py'
       - 'scripts/perf/compare_perf_runs.py'
       - 'scripts/tests/**'
+      - 'engine/render/src/shaders/**'
       - 'creations/demos/*/test/references/manifest.json'
       - '.github/workflows/render-harness-tests.yml'
   workflow_dispatch:
@@ -58,9 +60,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # The suites are hermetic — synthetic PNGs, no engine binary, no GL
-      # context, no committed references — so the checkout plus one pinned
-      # Pillow is the whole environment. The gating path (render-verify, the
+      # The suites are hermetic — synthetic PNGs and scalar shader helpers,
+      # no engine binary or GL context. They use the runner C++ compiler and
+      # pinned Pillow. The gating path (render-verify, the
       # comparator and the metrics its manifests name) is stdlib-only; Pillow
       # is for the hand-run metrics and the suite over the shadow-box one, per
       # the "Harness dependency contract" in docs/agents/VALIDATION.md. The pin
@@ -72,6 +74,9 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
+      - name: Prove scalar shader compiler is available
+        run: c++ --version
 
       - name: Install Pillow
         run: python3 -m pip install pillow==12.2.0
@@ -104,3 +109,6 @@ jobs:
       # Pillow, and is the suite whose missing dependency turned this job red.
       - name: Assert the Pillow-dependent suite executed
         run: grep -a -E '^PASS  test_render_shadow_box_edges\.py \([1-9][0-9]* tests\)$' run_all.log
+
+      - name: Assert the SDF shader contract executed
+        run: grep -a -E '^PASS  test_render_sdf_surface_contract\.py \([1-9][0-9]* tests\)$' run_all.log
