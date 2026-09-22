@@ -1,5 +1,3 @@
-#version 450 core
-
 // Iso-projected SDF surface finding: iterate 2D iso-space footprint, solve
 // for the front surface analytically along the (1,1,1) depth axis.
 // Each thread handles one trixel pixel and evaluates all three faces.
@@ -15,8 +13,7 @@ layout(std140, binding = 23) uniform ShapesFrameData {
     uniform ivec2 trixelCanvasOffsetZ1;
     uniform ivec2 canvasSize;
     uniform int shapeCount;
-    // 0: all depth, 1: visible color/ID, 2: non-box caster depth, 3: owner election.
-    uniform int passIndex;
+    uniform int _padding0;
     uniform ivec2 voxelRenderOptions;
     uniform ivec2 cullIsoMin;
     uniform ivec2 cullIsoMax;
@@ -761,7 +758,9 @@ void main() {
     if (shapeIndex < 0) return;
     ivec2 isoOrigin = tile.tileIsoOrigin;
     ShapeDescriptor shape = shapes[shapeIndex];
-    if (passIndex == 2 && shape.shapeType == SHAPE_BOX) return;
+#if IR_SHAPE_PASS == 2
+    if (shape.shapeType == SHAPE_BOX) return;
+#endif
 
     // Cardinal-snap Z-yaw. The cardinal path rasterizes at rasterYaw (the
     // multiple of pi/2 nearest visualYaw) so its output lines up
@@ -946,6 +945,7 @@ void main() {
         int originDistance = originScaled.x + originScaled.y + originScaled.z;
         baseDepth = surfaceD + originDistance;
     }
+#if IR_SHAPE_PASS == 1
     vec4 baseColor = unpackColor(shape.color);
 
     if ((shape.flags & FLAG_DEPTH_COLOR) != 0u) {
@@ -1021,6 +1021,8 @@ void main() {
         uvec2(shape.entityId, 0u), (shape.flags & FLAG_FOG_WHOLE_BODY_EXEMPT) != 0u
     );
 
+#endif
+
     for (int face = 0; face < 3; face++) {
         int depthEncoded = encodeDepthWithFace(baseDepth, face);
         // mat2 D = faceDeformationMatrix(face, residualYaw) applied to the
@@ -1041,13 +1043,18 @@ void main() {
 
             const uint linearIndex = uint(canvasPixel.y) * uint(canvasSize.x) + uint(canvasPixel.x);
             const uint sampleOwner = ((uint(tileIdx) * 64u + gl_LocalInvocationIndex) * 3u + uint(face)) * 2u + uint(subPixel);
-            if (passIndex == 3) {
+#if IR_SHAPE_PASS == 3
+            {
                 if (depthEncoded == imageLoad(triangleCanvasDistances, canvasPixel).r)
                     atomicMin(sampleOwners[linearIndex], sampleOwner);
-            } else if (passIndex != 1) {
+            }
+#elif IR_SHAPE_PASS != 1
+            {
                 imageAtomicMin(triangleCanvasDistances, canvasPixel,
                                depthEncoded);
-            } else {
+            }
+#else
+            {
                 int stored = imageLoad(triangleCanvasDistances,
                                        canvasPixel).x;
                 if (depthEncoded == stored && sampleOwner == sampleOwners[linearIndex]) {
@@ -1073,6 +1080,7 @@ void main() {
                     // still resolve to the occluder, not the silhouette.
                 }
             }
+#endif
         }
     }
 }

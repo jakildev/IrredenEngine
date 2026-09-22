@@ -53,6 +53,7 @@
 
 #include <irreden/render/camera.hpp>
 #include <irreden/render/camera_controls.hpp>
+#include <irreden/render/buffer.hpp>
 #include <irreden/render/entity_canvas.hpp>
 
 // Scene components.
@@ -99,6 +100,7 @@
 
 #include <array>
 #include <cstdio>
+#include <cstdlib>
 #include <list>
 #include <vector>
 
@@ -138,6 +140,80 @@ int g_autoWarmupFrames = 0; // 0 = --auto-screenshot not requested
 
 bool g_movingObserver = false; // --moving-observer: per-frame analytic vision circle
 int g_observerFrame = 0;       // deterministic frame index for the orbit
+bool g_luaFogSelftest = false;
+bool g_luaFogCapSelftestDone = false;
+bool g_luaFogSetupSelftestDone = false;
+int g_luaFogProbePhase = 0;
+IREntity::EntityId g_luaFogProbeEntity = IREntity::kNullEntity;
+
+void requireLuaFogSelftest(bool condition, const char *message) {
+    if (condition) {
+        return;
+    }
+    IR_LOG_ERROR("LUA-FOG-PROBE FAIL: {}", message);
+    std::exit(1);
+}
+
+void probeLuaFogUpload() {
+    if (g_luaFogProbePhase > 1) {
+        return;
+    }
+    IRRender::Buffer *buffer = IRRender::getNamedResource<IRRender::Buffer>("FogObserverData");
+    FrameDataFogObservers observers{};
+    buffer->getSubData(0, sizeof(observers), &observers);
+
+    if (g_luaFogProbePhase == 0) {
+        requireLuaFogSelftest(
+            g_luaFogCapSelftestDone,
+            "cap script did not complete all Lua assertions"
+        );
+        requireLuaFogSelftest(
+            observers.visionCircleCount_ == kMaxFogVisionCircles,
+            "IRFog Lua cap probe must upload exactly eight sources"
+        );
+        requireLuaFogSelftest(
+            observers.visionCircles_[7].x == 160.0f,
+            "IRFog Lua cap probe must retain the eighth source"
+        );
+        IREngine::getWorld().runScript(
+            IREngine::resolveScriptPath("fog_binding_selftest.lua").c_str()
+        );
+        g_luaFogProbePhase = 1;
+        return;
+    }
+    requireLuaFogSelftest(
+        g_luaFogSetupSelftestDone,
+        "setup script did not complete all Lua assertions"
+    );
+    requireLuaFogSelftest(
+        observers.visionCircleCount_ == 2,
+        "IRFog Lua two-source probe must upload exactly two sources"
+    );
+    requireLuaFogSelftest(
+        observers.visionCircles_[0] == vec4(-10.0f, 0.0f, 4.0f, 0.0f) &&
+            observers.visionCircles_[1] == vec4(10.0f, 0.0f, 4.0f, 0.0f),
+        "IRFog Lua two-source probe uploaded unexpected circle records"
+    );
+    requireLuaFogSelftest(
+        observers.visionCircleHeights_[0] == vec4(3.0f, 0.5f, 0.5f, 1.0f) &&
+            observers.visionCircleHeights_[1] == vec4(3.0f, 0.5f, 0.5f, 1.0f),
+        "IRFog Lua two-source probe uploaded unexpected height records"
+    );
+    IR_LOG_INFO(
+        "LUA-FOG-PROBE sources={} centers={},{};{},{} observerZ={} zCostUp={} "
+        "zCostDown={} freeBand={} PASS",
+        observers.visionCircleCount_,
+        observers.visionCircles_[0].x,
+        observers.visionCircles_[0].y,
+        observers.visionCircles_[1].x,
+        observers.visionCircles_[1].y,
+        observers.visionCircleHeights_[0].x,
+        observers.visionCircleHeights_[0].y,
+        observers.visionCircleHeights_[0].z,
+        observers.visionCircleHeights_[0].w
+    );
+    g_luaFogProbePhase = 2;
+}
 
 // Per-frame hook for --moving-observer: point the single analytic vision
 // circle at a smoothly-advancing float center. No grid write and no texture
@@ -629,6 +705,18 @@ int main(int argc, char **argv) {
         "Whole-body fog reveal under the --edge-zcost-ceiling hard ceiling: governed "
         "voxel pillars and a flagged SDF box render whole beside clipped untagged twins"
     );
+    IREngine::args().flag(
+        "--lua-fog-selftest",
+        "Drive the engine-owned IRFog binding and verify its observer UBO upload"
+    );
+    IREngine::registerLuaBindings([](IRScript::LuaScript &script) {
+        script.bindLuaFog();
+        script.lua()["fogSelftestEntity"] = []() {
+            return static_cast<double>(g_luaFogProbeEntity);
+        };
+        script.lua()["fogCapSelftestDone"] = []() { g_luaFogCapSelftestDone = true; };
+        script.lua()["fogSetupSelftestDone"] = []() { g_luaFogSetupSelftestDone = true; };
+    });
     IREngine::init(argc, argv);
     g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
     g_movingObserver = IREngine::args().getFlag("--moving-observer");
@@ -642,7 +730,20 @@ int main(int argc, char **argv) {
     g_edgeZCostAsym = IREngine::args().getFlag("--edge-zcost-asym");
     g_edgeZCostCeiling = IREngine::args().getFlag("--edge-zcost-ceiling");
     g_entityReveal = IREngine::args().getFlag("--entity-reveal");
-    if (g_entityReveal) {
+    g_luaFogSelftest = IREngine::args().getFlag("--lua-fog-selftest");
+    if (g_luaFogSelftest) {
+        g_movingObserver = false;
+        g_playerWalk = false;
+        g_edgeZoom = false;
+        g_edgeSdfBlocker = false;
+        g_detachedEdge = false;
+        g_edgeSmooth = false;
+        g_edgeYawSweep = false;
+        g_edgeZCost = false;
+        g_edgeZCostAsym = false;
+        g_edgeZCostCeiling = false;
+        g_entityReveal = false;
+    } else if (g_entityReveal) {
         g_movingObserver = false;
         g_playerWalk = false;
         g_edgeZoom = false;
@@ -812,9 +913,18 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
             IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
             IRSystem::createSystem<IRSystem::FOG_TO_TRIXEL>(),
-            IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
         }
     );
+    if (g_luaFogSelftest) {
+        renderPipeline.push_back(
+            IRSystem::createSystem<C_Name>(
+                "FogLuaBindingProbe",
+                [](C_Name &) {},
+                []() { probeLuaFogUpload(); }
+            )
+        );
+    }
+    renderPipeline.push_back(IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>());
     // --detached-edge composites the world-placed detached canvas (with its
     // cross-sectioned voxels from STAGE_1/2) onto the main framebuffer between
     // TRIXEL_TO_FRAMEBUFFER and FRAMEBUFFER_TO_SCREEN. Added only for that
@@ -1052,6 +1162,15 @@ void initEntities() {
     IREntity::setComponent(mainCanvas, C_CanvasSunShadow{canvasSize});
     IREntity::setComponent(mainCanvas, C_CanvasLightVolume{});
     IRPrefab::Fog::attachToCanvas(mainCanvas);
+    if (g_luaFogSelftest) {
+        g_luaFogProbeEntity = IREntity::createEntity(
+            C_LocalTransform{vec3(0.0f, 0.0f, 4.0f)},
+            C_VoxelSetNew{IRMath::ivec3{1, 1, 1}, Color{255, 255, 255, 255}, true}
+        );
+        IREngine::getWorld().runScript(
+            IREngine::resolveScriptPath("fog_binding_cap_selftest.lua").c_str()
+        );
+    }
 
     // High, slightly off-axis sun so each shape casts a visible shadow.
     IRRender::setSunDirection(vec3(0.35f, 0.85f, -0.4f));
@@ -1070,6 +1189,10 @@ void initEntities() {
     if (g_entityReveal || g_edgeZoom || g_edgeSmooth || g_edgeSdfBlocker || g_detachedEdge ||
         g_edgeZCost || g_edgeZCostAsym || g_edgeZCostCeiling) {
         IRRender::setSunDirection(vec3(0.0f, 0.0f, -1.0f));
+    }
+
+    if (g_luaFogSelftest) {
+        return;
     }
 
     if (g_entityReveal) {

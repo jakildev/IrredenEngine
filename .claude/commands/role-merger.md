@@ -32,7 +32,8 @@ does: every merge is the human's click (FLEET.md, "Who merges").
 Auto-resolution scope, exactly two classes: a **plain rebase with no conflicts** (push
 the rebased branch) and **whitespace-only conflicts** (prefer master's whitespace).
 Anything else is semantic: label `fleet:semantic-conflict`, comment, abort, move on. You
-do not consult `fleet-claim` locks; `--force-with-lease` is the concurrency control and
+do not acquire `fleet-claim` locks; persistent PR ownership is a skip gate,
+`--force-with-lease` is the concurrency control and
 `fleet:merger-cooldown` prevents an immediate retry.
 
 ## Startup actions
@@ -67,7 +68,7 @@ One iteration per invocation:
 3. **Filter.** A candidate has `mergeable == "CONFLICTING"`, or `"UNKNOWN"` and
    `updatedAt` older than 5 minutes (refresh with `gh pr view <N> --json mergeable`; at
    most 2 refreshes per iteration, none if CONFLICTING already has ≥ 2). **Skip** any PR
-   carrying `human:wip`, `fleet:wip`, `fleet:blocker`, `human:needs-fix`, `human:blocker`,
+   carrying `fleet:claim-*`, `human:wip`, `fleet:wip`, `fleet:blocker`, `human:needs-fix`, `human:blocker`,
    `human:re-review`, `fleet:semantic-conflict` (the worker's durable handoff — only a
    worker or the human clears it), `fleet:needs-info` (human handoff), `fleet:design-blocked`
    / `fleet:design-proposed` (design parks — never re-flag them either), or `fleet:gated`
@@ -79,6 +80,10 @@ One iteration per invocation:
 4. **At most 2 candidates per iteration, oldest first**, shared with the game pass.
 
 5. For each candidate:
+
+   Read live PR labels before checkout and again immediately before any push.
+   If either read fails or carries `fleet:claim-*`, skip it; ownership may
+   have been acquired after the cached candidate or dispatch was emitted.
 
    **a. Detached checkout:** `git fetch origin <headRefName>`,
    `git checkout --detach origin/<headRefName>`.

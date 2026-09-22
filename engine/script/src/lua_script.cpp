@@ -12,6 +12,7 @@
 #include <irreden/script/lua_command_bindings.hpp>
 #include <irreden/script/lua_debug_overlay_bindings.hpp>
 #include <irreden/script/lua_input_bindings.hpp>
+#include <irreden/script/lua_fog_bindings.hpp>
 #include <irreden/script/lua_enum_def.hpp>
 #include <irreden/script/lua_modifier_bindings.hpp>
 #include <irreden/script/lua_persistence_bindings.hpp>
@@ -887,6 +888,10 @@ void LuaScript::bindLuaCommands() {
     detail::bindCommandNameEnum(*this);
     detail::bindInputEnums(*this);
     detail::bindCommandFunctions(*this);
+}
+
+void LuaScript::bindLuaFog() {
+    detail::bindFog(*this);
 }
 
 void LuaScript::bindLuaInput() {
