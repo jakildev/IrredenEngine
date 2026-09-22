@@ -1,20 +1,12 @@
-"""Regression test for #2856: fetch_human_approved's per_page=30 (no
-pagination) silently truncated to the newest 30 issues per label, so any
-older issue past that window never reached repos.<repo>.human_approved —
-and derived surfaces (the ingest pending set) inherited the
-drop with no warning.
-
-The fix pages `human:approved` / `fleet:agent-approved` out via `_rest_list`'s
-existing `max_pages` (per_page=100, max_pages=3 — a 300 cap) instead of
-raising per_page alone, since the population already exceeds 100 in practice
-and keeps growing.
+"""Pins that fetch_human_approved pages `human:approved` /
+`fleet:agent-approved` out via `_rest_list`'s `max_pages` (per_page=100,
+max_pages=3 — a 300 cap) rather than requesting a single page, so an issue
+past the first page still reaches repos.<repo>.human_approved and derived
+surfaces (the ingest pending set) do not silently drop it.
 
 The `conditional_get` stub below emulates real REST /issues pagination
-semantics (created&desc — newest first; a full page continues, a short page
-stops) rather than special-casing the fixed call site, so this suite fails
-against the pre-fix code: the old per_page=30, no-pagination fetch requests
-exactly one 30-item page and never sees the older issues this test plants
-past that window.
+semantics: created&desc (newest first), a full page continues, a short page
+stops.
 
 Hermetic per scripts/fleet/CLAUDE.md: no live GitHub, no live ~/.fleet.
 """
@@ -36,11 +28,11 @@ slice_queue_manager_ingest = _mod.slice_queue_manager_ingest
 
 _REPO = "jakildev/IrredenEngine"
 
-# Population sized past a single 100-item page (not just past the old 30-item
-# one) so the test exercises real multi-page pagination, not merely a bigger
-# per_page. Issue #1 is the oldest — REST's created&desc ordering puts it on
-# page 2 — and carries fleet:plan-review (an ingest-skip label that is NOT
-# in _ALREADY_QUEUED_LABELS, so the fetch still returns it) so it also probes
+# Population sized past a single 100-item page so the test exercises real
+# multi-page pagination, not merely a bigger per_page. The oldest fixture
+# issue (number _OLDEST) lands on page 2 under REST's created&desc ordering,
+# and carries fleet:plan-review (an ingest-skip label that is NOT in
+# _ALREADY_QUEUED_LABELS, so the fetch still returns it) so it also probes
 # the ingest-pending derived surface in the same population.
 _POPULATION = 130
 _OLDEST = 1
@@ -98,11 +90,9 @@ class TestHumanApprovedPagination(unittest.TestCase):
         self.assertEqual(len(numbers), _POPULATION)
 
     def test_ingest_pending_set_gains_zero_rows(self):
-        # fleet:plan-review is an _INGEST_SKIP_LABELS entry — the newly
-        # reachable issue must NOT flip into the ingest pending set just
-        # because pagination surfaced it (the fix must be
-        # behaviour-preserving for the ingest lane, per #2856's own
-        # measurement that the ingest set gains 0 rows).
+        # fleet:plan-review is an _INGEST_SKIP_LABELS entry — an issue newly
+        # reachable through pagination must not flip into the ingest
+        # pending set merely because pagination surfaced it.
         state = {"repos": {"engine": {"path": "/tmp",
                                        "human_approved": fetch_human_approved(_REPO)}}}
         sliced = slice_queue_manager_ingest(state)

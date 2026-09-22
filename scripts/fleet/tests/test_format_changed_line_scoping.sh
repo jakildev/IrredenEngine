@@ -1,18 +1,16 @@
 #!/usr/bin/env bash
-# Tests for cmake/run_clang_format_changed.cmake line scoping (#2719).
+# Tests for cmake/run_clang_format_changed.cmake line scoping.
 #
 # The script under test lives in cmake/, not scripts/fleet/ — but it is
 # reached exclusively through `fleet-build --target format-changed`, and
 # this directory holds the only shell-test harness in the repo, so its
 # regression coverage lives here.
 #
-# The defect: the target was diff-scoped at FILE granularity, running
-# `clang-format -i` over each changed file in full. ~20% of the engine's
-# quality files carry pre-existing clang-format drift, so a one-line edit
-# to any of them dragged the whole file's drift into the author's PR
-# (measured on master d6a44197: a 1-line edit to trixel_font.hpp produced
-# a 225-line diff). The fix scopes the rewrite to the changed lines via
-# repeated `--lines=<start>:<end>`.
+# The target scopes clang-format's rewrite to the changed lines via
+# repeated `--lines=<start>:<end>`, rather than running `clang-format -i`
+# over each changed file in full: a file-granularity run drags a file's
+# pre-existing drift into every PR that touches it, since a sizeable share
+# of the engine's quality files carry pre-existing clang-format drift.
 #
 # Each case builds a throwaway git repo with a synthetic origin/master
 # ref, so the merge-base path the real script takes is exercised rather
@@ -26,7 +24,7 @@ STYLE_FILE="$SCRIPT_DIR/.clang-format"
 
 if [[ ! -f "$CMAKE_SCRIPT" ]]; then
     echo "SKIP: script under test not found at $CMAKE_SCRIPT" >&2
-    exit 3  # skip status — run_all.sh must not count this as a pass (#2786)
+    exit 3  # skip status — run_all.sh must not count this as a pass
 fi
 for tool in cmake clang-format git; do
     if ! command -v "$tool" >/dev/null 2>&1; then

@@ -62,14 +62,14 @@ DEFER = GOOD.replace("one approach: edit foo.cpp then bar.cpp",
                      "decide during implementation whether to edit foo or bar")
 SPIKE = GOOD.replace("one approach: edit foo.cpp then bar.cpp",
                      "investigation spike - decide during investigation")
-# #2401: a mechanism-lever premise (cost/path-dominance claim) with no
+# A mechanism-lever premise (cost/path-dominance claim) with no
 # measurement citation should warn; the same plan citing a disarm probe should not.
 LEVER = GOOD.replace("one approach: edit foo.cpp then bar.cpp",
                      "the cost is dominated by the resolve loop; one approach: edit foo.cpp")
 LEVER_CITED = LEVER.replace("dominated by the resolve loop",
                             "dominated by the resolve loop, confirmed by a disarm probe")
-# #2443: synonym-headed plan (the #2442-shaped false-positive regression) — core
-# sections worded naturally instead of leading with the literal token. Must pass.
+# Synonym-headed plan: core sections worded naturally instead of leading
+# with the literal token. Must pass.
 SYNONYM = '''## Plan: synonym headings
 
 - **Model:** sonnet
@@ -85,7 +85,7 @@ builds + tests
 
 ### Gotchas
 none'''
-# #2443 negative control: a real Approach section but no Scope-concept and no
+# Negative control: a real Approach section but no Scope-concept and no
 # Acceptance-concept heading anywhere -- must still hard-fail (missing_core >= 2).
 NO_SCOPE_NO_ACCEPTANCE = '''## Plan: negative control
 
@@ -96,11 +96,10 @@ verified current state via grep; one approach: edit foo.cpp
 
 ### Notes
 none'''
-# #2824: imperative-mood fork — a fork phrased as an instruction to the
+# Imperative-mood fork — a fork phrased as an instruction to the
 # implementer, matching none of the self-describing DEFER phrases. Pinned
-# verbatim from issue #2820's Gotchas section (the live instance that slipped
-# past the pre-#2824 matcher and had to be caught by the Opus plan-review pass
-# instead) — do not re-fetch #2820 live, it has since been replanned.
+# verbatim from a live Gotchas section; do not re-derive this fixture from
+# the source issue live — it may have since been replanned or closed.
 FORK_WHETHER = GOOD.replace(
     "### Gotchas\nnone",
     "### Gotchas\n"
@@ -121,10 +120,9 @@ FORK_WHETHER_SPIKE = FORK_WHETHER.replace(
 EITHER_OR_MODAL = GOOD.replace(
     "one approach: edit foo.cpp then bar.cpp",
     "the fix could either rewrite foo.cpp or patch bar.cpp instead")
-# either/or describing already-settled, declarative branches (no hedging modal)
-# -- corpus-measured false-positive shape (.fleet/plans/issue-2197.md,
-# issue-2540.md both hit a naive either/or check with no modal present) --
-# must NOT fire.
+# either/or describing already-settled, declarative branches (no hedging
+# modal) -- a naive either/or check with no modal present false-fires on
+# this shape in real plan corpora -- must NOT fire.
 EITHER_OR_DECLARATIVE = GOOD.replace(
     "one approach: edit foo.cpp then bar.cpp",
     "one approach: edit foo.cpp then bar.cpp. Either the reader retries or the "
@@ -135,22 +133,21 @@ EITHER_OR_ACCEPTANCE = GOOD.replace(
     "### Acceptance criteria\nbuilds + tests",
     "### Acceptance criteria\ntest could pass either the fast path or the slow path assertion")
 # The imperative-mood fork is scoped to Approach/Gotchas for the same reason,
-# pinned by the two false-positive shapes an unscoped scan hit:
+# pinned by two false-positive shapes an unscoped scan hits:
 #   (1) a QA-style acceptance criterion naming a pass/fail alternative, the
-#       direct mirror of EITHER_OR_ACCEPTANCE above;
+#       direct mirror of EITHER_OR_ACCEPTANCE;
 FORK_WHETHER_ACCEPTANCE = GOOD.replace(
     "### Acceptance criteria\nbuilds + tests",
     "### Acceptance criteria\n"
     "1. Check whether the fix resolves the crash or introduces a new regression.\n"
     "2. Build is green.")
-#   (2) a settled decision tree stated outside Approach/Gotchas, pinned verbatim
-#       from `.fleet/plans/issue-1596.md`'s "Architect decision" section -- the
-#       "or" is a parenthetical sub-clause of the thing being checked and BOTH
-#       branches are already decided, so it is declarative, not a live fork.
-#       This is the corpus regression the pre-scoping matcher drifted PASS->FAIL
-#       on. It is also what makes the scoping an ALLOWLIST (fire only in
-#       Approach/Gotchas) rather than an Acceptance-only exclusion, which would
-#       leave this shape firing.
+#   (2) a settled decision tree stated outside Approach/Gotchas, pinned
+#       verbatim from a real "Architect decision" section -- the "or" is a
+#       parenthetical sub-clause of the thing being checked and BOTH branches
+#       are already decided, so it is declarative, not a live fork. This is
+#       also what makes the scoping an ALLOWLIST (fire only in
+#       Approach/Gotchas) rather than an Acceptance-only exclusion, which
+#       would leave this shape firing.
 FORK_WHETHER_OTHER_SECTION = GOOD.replace(
     "### Gotchas\nnone",
     "### Gotchas\nnone\n\n"
@@ -158,13 +155,14 @@ FORK_WHETHER_OTHER_SECTION = GOOD.replace(
     "FIRST check whether a main-layout texture containing detached caster depth\n"
     "already exists at BAKE time (or can be cheaply made available there). If yes,\n"
     "bake that -- zero new resolve passes. If not, add ONE dedicated resolve.")
-# In-scope positive for the OTHER arm of the scope predicate: the #2820 fixture
-# above sits in Gotchas, so without this one the "approach" keyword arm ships
-# unexercised and a future narrowing of the keyword set goes uncaught.
+# In-scope positive for the OTHER arm of the scope predicate: the
+# FORK_WHETHER fixture sits in Gotchas, so without this one the "approach"
+# keyword arm ships unexercised and a future narrowing of the keyword set
+# goes uncaught.
 FORK_WHETHER_APPROACH = GOOD.replace(
     "one approach: edit foo.cpp then bar.cpp",
     "check whether the predicate should apply to foo.cpp as well or only to bar.cpp")
-# #2443 plan-exclusion guard: the mandatory "## Plan: <title>" heading is the
+# Plan-exclusion guard: the mandatory "## Plan: <title>" heading is the
 # ONLY heading here that could match the Decisions concept -- Scope + Acceptance
 # concepts are present, no Decisions/Approach-shaped heading. "plan" is
 # deliberately NOT a Decisions synonym, so Decisions must report missing (single
@@ -186,30 +184,25 @@ builds + tests
 
 ### Gotchas
 none'''
-# #2707 fixtures: a "## Plan review" verdict comment shares the same
-# startswith("## Plan") prefix as the plan itself but has no core sections,
-# so a naive plans[-1] selection would hard-fail a plan that already PASSed.
+# A "## Plan review" verdict comment shares the same startswith("## Plan")
+# prefix as the plan itself but has no core sections, so a naive plans[-1]
+# selection would hard-fail a plan that already PASSed.
 REVIEW_PASS = "## Plan review — #111 (opus-reviewer)\n\nfleet-plan-lint PASS. Looks sound."
 REVIEW_BOUNCE = "## Plan review — not sound, back to `fleet:needs-plan`\n\nMissing acceptance criteria."
 SKELETAL_REPLAN_SEED = "## Plan: skeletal re-plan seed\n\nwe should do it somehow"
 REVIEW_ONLY = "## Plan review — #113 (opus-reviewer)\n\nfleet-plan-lint PASS. Looks sound."
 
-# #2989: the deferred-approach phrase checks (DEFER list, TBD, "likely
+# The deferred-approach phrase checks (DEFER list, TBD, "likely
 # suspects") and the fork checks must read PROSE, not raw text — a plan that
 # NAMES one of these phrases as data (a test-corpus row, a rejected
 # alternative, a fenced-block literal) is the opposite of a deferred decision.
 #
-# 123 — the live #2833 regression, pinned VERBATIM from its "## Plan"
-# comment's Acceptance section (do not re-fetch #2833 live; its plan may be
-# replanned or closed by the time this suite runs). This exact text is what
-# the fleet-plan-lint 2833 repro hard-FAILs on today (raw TBD scan) and must
-# exit 0 once the phrase checks read code-stripped prose. It also carries the
-# real-world shape of the fix's hardest case: a code span crossing a soft
-# line break ("`either opus or\n  sonnet`") immediately before the single-line
-# span containing the placeholder literal ("`TBD`") -- the soft-line-break
-# desync that a naive per-line stripper fails to resolve (plan-review
-# correction 2: the desync, not a double-backtick span, is what defeats the
-# naive form on this exact text).
+# 123 — pinned VERBATIM from a real "## Plan" comment's Acceptance section (do
+# not re-fetch the source issue live; its plan may be replanned or closed by
+# the time this suite runs). It carries the hardest real-world case: a code
+# span crossing a soft line break ("`either opus or\n  sonnet`") immediately
+# before the single-line span containing the placeholder literal ("`TBD`") --
+# a naive per-line stripper fails to resolve that soft-line-break desync.
 CODE_SPAN_LITERAL = GOOD.replace(
     "### Acceptance criteria\nbuilds + tests",
     "### Acceptance criteria\n"
@@ -251,11 +244,11 @@ UNBALANCED_BACKTICK = GOOD.replace(
     "This uses a single ` stray backtick with no partner on this line.\n\n"
     "We will decide later once results come in. See `foo.cpp` for reference.")
 # 129/130 — the same imperative-mood fork sentence (word-identical to the
-# #122 hard-fail arm) inside a fenced code block, so the fork-check seam must
-# also read code-stripped prose. 130 uses a 4-backtick fence to pin the
-# run-length-aware FENCE_RE (plan-review correction 1): a fence matcher
-# hardcoded to exactly 3 backticks fails to close a 4+ backtick fence and
-# would leave this arm hard-failing.
+# FORK_WHETHER_APPROACH hard-fail arm) inside a fenced code block, so the
+# fork-check seam must also read code-stripped prose. 130 uses a 4-backtick
+# fence to pin the run-length-aware FENCE_RE: a fence matcher hardcoded to
+# exactly 3 backticks fails to close a 4+ backtick fence and would leave
+# this arm hard-failing.
 FORK_IN_FENCE = GOOD.replace(
     "### Approach\nverified current state via grep; one approach: edit foo.cpp then bar.cpp",
     "### Approach\nverified current state via grep; one approach: edit foo.cpp then bar.cpp\n\n"
@@ -290,7 +283,7 @@ perf probe fires with count > 0
 none'''
 # A live fork hiding in the intent template's own Decisions section must still
 # hard-fail — the fork matchers' scope includes the plural "decisions" heading
-# (but NOT the singular: see the issue-1596 "Architect decision" pin at #121).
+# but not the singular.
 FORK_IN_DECISIONS = INTENT_PLAN.replace(
     "public name stays FooBar; bar.cpp rewrite is out of scope (rejected: too broad)",
     "check whether the predicate should apply to foo.cpp as well or only to bar.cpp")
@@ -360,7 +353,7 @@ pass_out=$("$LINT" 100 2>&1 || true)
 case "$pass_out" in *"PASS #100"*) ok "sound plan prints PASS line";; *) bad "sound PASS line missing: [$pass_out]";; esac
 defer_out=$("$LINT" 101 2>&1 || true)
 case "$defer_out" in *deferred-approach*) ok "defer fail names the phrase";; *) bad "defer phrase not named: [$defer_out]";; esac
-# #2401 — mechanism-lever premise without a measurement citation: warn fires, exit still 0.
+# Mechanism-lever premise without a measurement citation: warn fires, exit still 0.
 "$LINT" 106 >/dev/null 2>&1; assert_exit $? 0 "mechanism-lever w/o citation -> exit 0 (warn only)"
 lever_out=$("$LINT" 106 2>&1 || true)
 case "$lever_out" in *"mechanism-lever language"*) ok "mechanism-lever warn fires";; *) bad "mechanism-lever warn missing: [$lever_out]";; esac
@@ -369,20 +362,20 @@ case "$lever_out" in *"mechanism-lever language"*) ok "mechanism-lever warn fire
 cited_out=$("$LINT" 107 2>&1 || true)
 case "$cited_out" in *"mechanism-lever language"*) bad "mechanism-lever warn should be absent when premise cited: [$cited_out]";; *) ok "mechanism-lever warn absent when premise cited";; esac
 "$LINT" --repo bogus 100 >/dev/null 2>&1; assert_exit $? 2 "bad --repo -> usage exit 2"
-# #2443 — concept-based core-section matching: synonym-worded headings pass...
+# Concept-based core-section matching: synonym-worded headings pass...
 "$LINT" 108 >/dev/null 2>&1; assert_exit $? 0 "synonym-headed plan (#2442-shaped) -> exit 0 (no longer a false positive)"
 # ...but a plan genuinely missing two core concepts still hard-fails.
 "$LINT" 109 >/dev/null 2>&1; assert_exit $? 1 "missing scope + acceptance concepts -> hard fail (negative control)"
-# #2443 plan-exclusion guard — the mandatory "## Plan:" heading must NOT
+# Plan-exclusion guard — the mandatory "## Plan:" heading must NOT
 # vacuously satisfy the Decisions concept (that is why "plan" is excluded from
 # its synonym set). Scope + Acceptance present, no Decisions/Approach-shaped
 # heading -> single missing core -> warn (exit 0) that names Decisions. If a
 # future edit re-adds "plan" to the synonyms, that heading would match,
-# missing_core would go empty, and the warn below would vanish -> this test fails.
+# missing_core would go empty, and this test would fail to catch it.
 "$LINT" 110 >/dev/null 2>&1; assert_exit $? 0 "plan-only (no Decisions heading) -> exit 0 (single missing core = warn)"
 plan_excl_out=$("$LINT" 110 2>&1 || true)
 case "$plan_excl_out" in *"core section absent"*"Decisions"*) ok "Decisions reported missing (## Plan: heading does not vacuously satisfy it)";; *) bad "Decisions not reported missing — did 'plan' leak into the synonym set? [$plan_excl_out]";; esac
-# #2707 — a "## Plan review" comment must never shadow the plan it reviews.
+# A "## Plan review" comment must never shadow the plan it reviews.
 "$LINT" 111 >/dev/null 2>&1; assert_exit $? 0 "reviewed plan (plan + review comment) -> exit 0 (review not selected)"
 review_out=$("$LINT" 111 2>&1 || true)
 case "$review_out" in *"missing core sections"*) bad "reviewed plan hard-failed — the review comment shadowed the plan: [$review_out]";; *) ok "reviewed plan does not hard-fail on the review's shape";; esac
@@ -395,9 +388,8 @@ case "$review_out" in *"missing core sections"*) bad "reviewed plan hard-failed 
 review_only_out=$("$LINT" 113 2>&1 || true)
 case "$review_only_out" in *"no \`## Plan\` comment found"*) ok "review-only reports 'no ## Plan comment found', does not lint the review";; *) bad "review-only did not report the expected message: [$review_only_out]";; esac
 
-# #2824 — imperative-mood fork ("check whether X ... or Y" in one sentence),
-# pinned verbatim from the live #2820 instance that slipped past the
-# pre-#2824 matcher (acceptance criteria #1).
+# Imperative-mood fork ("check whether X ... or Y" in one sentence),
+# pinned verbatim from a live regression instance (acceptance criteria #1).
 "$LINT" 114 >/dev/null 2>&1; assert_exit $? 1 "imperative-mood fork (#2820-shaped) -> hard fail"
 fork_out=$("$LINT" 114 2>&1 || true)
 case "$fork_out" in *"imperative-mood fork"*) ok "imperative-mood fork names itself in the failure";; *) bad "imperative-mood fork message missing: [$fork_out]";; esac
@@ -416,8 +408,8 @@ case "$spike_fork_out" in warn*"imperative-mood fork"*"investigation spike"*) ok
 either_out=$("$LINT" 117 2>&1 || true)
 case "$either_out" in *"either/or fork"*) ok "either/or fork names itself in the failure";; *) bad "either/or fork message missing: [$either_out]";; esac
 # either/or describing already-settled, declarative branches (no hedging
-# modal) -- corpus-measured false-positive shape (issue-2197.md, issue-2540.md
-# both hit a naive either/or check with no modal present) -- must not fire.
+# modal) -- a naive either/or check with no modal present false-fires on
+# this shape in real plan corpora -- must not fire.
 "$LINT" 118 >/dev/null 2>&1; assert_exit $? 0 "either/or declarative (no modal) -> exit 0 (corpus false-positive shape)"
 either_decl_out=$("$LINT" 118 2>&1 || true)
 case "$either_decl_out" in *"either/or fork"*) bad "either/or declarative false-fired: [$either_decl_out]";; *) ok "either/or declarative does not fire";; esac
@@ -425,33 +417,33 @@ case "$either_decl_out" in *"either/or fork"*) bad "either/or declarative false-
 "$LINT" 119 >/dev/null 2>&1; assert_exit $? 0 "either/or + modal in Acceptance -> exit 0 (scoped to Approach/Gotchas only)"
 either_acc_out=$("$LINT" 119 2>&1 || true)
 case "$either_acc_out" in *"either/or fork"*) bad "either/or in Acceptance false-fired: [$either_acc_out]";; *) ok "either/or in Acceptance correctly out of scope";; esac
-# The imperative-mood fork carries the same Approach/Gotchas scoping. Both
-# negatives below hard-failed before the scoping (measured), so each is a live
-# regression pin, not a restatement of the check's shape.
+# The imperative-mood fork carries the same Approach/Gotchas scoping. Each of
+# the following two negatives is a live regression pin, not a restatement of
+# the check's shape.
 "$LINT" 120 >/dev/null 2>&1; assert_exit $? 0 "imperative-mood fork in Acceptance -> exit 0 (scoped out; mirror of #119)"
 fork_acc_out=$("$LINT" 120 2>&1 || true)
 case "$fork_acc_out" in *"imperative-mood fork"*) bad "imperative-mood fork in Acceptance false-fired: [$fork_acc_out]";; *) ok "imperative-mood fork in Acceptance correctly out of scope";; esac
-# Corpus regression: the settled decision tree in issue-1596.md's "Architect
-# decision" section is neither Approach/Gotchas nor Acceptance, so only an
-# allowlist scoping clears it.
+# The settled decision tree in a real "Architect decision" section is
+# neither Approach/Gotchas nor Acceptance, so only an allowlist scoping
+# clears it.
 "$LINT" 121 >/dev/null 2>&1; assert_exit $? 0 "imperative-mood fork outside Approach/Gotchas (issue-1596 corpus shape) -> exit 0"
 fork_other_out=$("$LINT" 121 2>&1 || true)
 case "$fork_other_out" in *"imperative-mood fork"*) bad "imperative-mood fork outside Approach/Gotchas false-fired (corpus regression): [$fork_other_out]";; *) ok "imperative-mood fork outside Approach/Gotchas correctly out of scope";; esac
 # ...but the scoping must not go so narrow it stops firing where forks belong:
-# in-scope via the "approach" keyword arm (the #114 fixture covers "gotcha").
+# in-scope via the "approach" keyword arm (FORK_WHETHER covers "gotcha").
 "$LINT" 122 >/dev/null 2>&1; assert_exit $? 1 "imperative-mood fork in Approach -> hard fail (scope predicate's approach arm)"
 fork_appr_out=$("$LINT" 122 2>&1 || true)
 case "$fork_appr_out" in *"imperative-mood fork"*) ok "imperative-mood fork still fires in Approach after scoping";; *) bad "imperative-mood fork stopped firing in Approach — scoping too narrow: [$fork_appr_out]";; esac
 
-# #2989 — phrase-shaped checks (DEFER/TBD/likely-suspects) and the fork
+# Phrase-shaped checks (DEFER/TBD/likely-suspects) and the fork
 # checks must read code-stripped prose, not raw text.
 #
-# Acceptance 1 (positive-fire): the live #2833 regression, pinned verbatim.
+# Acceptance 1 (positive-fire): a live regression, pinned verbatim.
 "$LINT" 123 >/dev/null 2>&1; assert_exit $? 0 "TBD as a corpus-row code-span literal (#2833 regression, verbatim) -> exit 0"
 code_span_out=$("$LINT" 123 2>&1 || true)
 case "$code_span_out" in *"TBD"*) bad "code-span TBD literal false-fired: [$code_span_out]";; *) ok "code-span TBD literal does not fire";; esac
-# Acceptance 3: fixtures 124/125 prove the fix covers the whole DEFER phrase
-# set (not just the TBD literal), in both fenced and inline-backtick markup.
+# Acceptance 3: fixtures 124/125 prove the DEFER phrase set is covered as a
+# whole (not just the TBD literal), in both fenced and inline-backtick markup.
 "$LINT" 124 >/dev/null 2>&1; assert_exit $? 0 "DEFER phrase inside a fenced block -> exit 0"
 "$LINT" 125 >/dev/null 2>&1; assert_exit $? 0 "DEFER phrase inside inline backticks -> exit 0"
 # Acceptance 2: the word-identical twin in running prose (no markup) still
@@ -470,9 +462,8 @@ case "$defer_control_out" in *"deferred-approach phrase"*) ok "DEFER prose contr
 unbalanced_out=$("$LINT" 128 2>&1 || true)
 case "$unbalanced_out" in *"deferred-approach phrase"*) ok "deferred phrase after a stray backtick still fires";; *) bad "stray backtick swallowed the deferred phrase (blank-line bound broken): [$unbalanced_out]";; esac
 # Acceptance 5: the fork-check seam reads the same stripped prose. 129 pins a
-# 3-backtick fence; 130 pins a 4-backtick fence (run-length-aware FENCE_RE,
-# plan-review correction 1) -- both must clear a sentence that hard-fails in
-# raw prose (fixture 122).
+# 3-backtick fence; 130 pins a 4-backtick fence (run-length-aware FENCE_RE) --
+# both must clear a sentence that hard-fails in raw prose (fixture 122).
 "$LINT" 129 >/dev/null 2>&1; assert_exit $? 0 "imperative-mood fork inside a 3-backtick fence -> exit 0"
 "$LINT" 130 >/dev/null 2>&1; assert_exit $? 0 "imperative-mood fork inside a 4-backtick fence -> exit 0 (run-length-aware fence matcher)"
 # Intent-plan shape (Decisions core, no Approach at all) -> pass, no

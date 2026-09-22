@@ -61,7 +61,7 @@ def _hash(state):
 
 
 class RecheckLabelWakesPane(unittest.TestCase):
-    """The core fix: fleet:needs-opus-recheck must be a trigger signal."""
+    """fleet:needs-opus-recheck must be a trigger signal."""
 
     def test_recheck_label_appears_flips_hash(self):
         before = _state([_pr(101, labels=[])])
@@ -71,7 +71,7 @@ class RecheckLabelWakesPane(unittest.TestCase):
 
     def test_recheck_only_pr_is_in_projection(self):
         # The approve+recheck case: no verdict label, no nits — only the
-        # escalation. This is exactly the state PR #1473 was in.
+        # escalation.
         items = project_opus_reviewer(_state([
             _pr(101, labels=["fleet:needs-opus-recheck"]),
         ]))
@@ -126,9 +126,9 @@ class SkipLabelsGateTheEscalation(unittest.TestCase):
     dormant while the PR is not reviewable, then re-activates."""
 
     def test_semantic_conflict_drops_recheck_pr(self):
-        # PR #1473's live state: needs-opus-recheck would be set, but the
-        # merger re-applied fleet:semantic-conflict. The PR must NOT be in
-        # the opus projection until the conflict clears.
+        # needs-opus-recheck can be set while the merger re-applies
+        # fleet:semantic-conflict on the same PR. The PR must NOT be in the
+        # opus projection until the conflict clears.
         empty = _state([])
         conflicted = _state([_pr(101, labels=[
             "fleet:needs-opus-recheck", "fleet:semantic-conflict",
@@ -177,12 +177,7 @@ def _state_pr_plan(prs=None, plan_review=None):
 
 
 class PlanReviewWakesPane(unittest.TestCase):
-    """#1932: a posted ## Plan (fleet:plan-review issue) must wake the reviewer.
-
-    Before this, project_opus_reviewer keyed only on PRs, so nothing triggered
-    the pane on issue state — plans piled up in fleet:plan-review until some
-    unrelated PR coincidentally woke the reviewer.
-    """
+    """A posted ## Plan (fleet:plan-review issue) must wake the reviewer."""
 
     def test_plan_review_issue_flips_hash(self):
         before = _state_pr_plan(plan_review=[])
@@ -198,12 +193,11 @@ class PlanReviewWakesPane(unittest.TestCase):
         self.assertEqual(items[0]["issue"], 50)
 
     def test_human_held_plan_review_skipped(self):
-        # fleet:needs-human joined this set in #3034. The park was added for the
-        # planning lane, but _HUMAN_GATE_LABELS backs plan_review too, so the
-        # reviewer lane moves with it — asserted here deliberately rather than
-        # left as an undocumented side effect. It is the behaviour we want: a
-        # parked plan should not be vetted, because the routing decision the
-        # park is waiting on precedes the question of whether the plan is sound.
+        # _HUMAN_GATE_LABELS backs plan_review too, so the reviewer lane moves
+        # with the planning lane's park — asserted here deliberately rather
+        # than left as an undocumented side effect. A parked plan should not
+        # be vetted, because the routing decision the park is waiting on
+        # precedes the question of whether the plan is sound.
         for held in ("human:owned", "human:wip", "human:no-plan",
                      "fleet:needs-human"):
             empty = _state_pr_plan(plan_review=[])
@@ -214,9 +208,8 @@ class PlanReviewWakesPane(unittest.TestCase):
                 f"{held} plan-review issue must be invisible to the pane")
 
     def test_needs_human_park_dropped_from_slice(self):
-        # The slice half of the gate above: a woken reviewer must not even
-        # surface the parked issue as a candidate to vet. Pre-#3034 the parked
-        # issue is present and this list has length 1.
+        # The slice half of the same gate: a woken reviewer must not even
+        # surface the parked issue as a candidate to vet.
         out = slice_opus_reviewer(_state_pr_plan(plan_review=[
             _issue(50, labels=["fleet:plan-review", "fleet:needs-human"])]))
         self.assertEqual(out["plan_review"], [])

@@ -12,7 +12,7 @@
 # Covers:
 #   - a mutable namespace-scope global in a header  → exit 1, names the file
 #   - `constexpr` / `const` constants               → exit 0 (not state)
-#   - the same global under a render-backend path   → exit 1 (scope, #2889)
+#   - the same global under a render-backend path   → exit 1 (scope)
 #   - a clean fixture tree                          → exit 0, and both Metal
 #     checks ran (1 kernel scanned, _body fragment excluded as an entry point
 #     but still read through the wrapper's include chain)
@@ -26,12 +26,12 @@
 #   - an unregistered Metal compute kernel          → exit 1, names the kernel
 #   - a line- or block-commented registry entry     → exit 1, names the kernel
 #     (a commented-out entry never reaches the compiled binary, so it must
-#     read as absent, not present — both comment forms, #2899)
+#     read as absent, not present — both comment forms)
 #   - a MULTI-LINE block-commented registry entry    → exit 1 (the registry's
 #     real entries are multi-line `if` conditions, so disabling one wraps
 #     several lines, not one — a same-line-only strip false-cleans this shape)
 #   - a registry entry inside a preprocessor #if    → exit 1, names the kernel
-#     (#2983 — a source-text scan can't evaluate which branch the build
+#     (a source-text scan can't evaluate which branch the build
 #     takes, so it must read as absent, not present, same as a comment)
 #   - a registry entry inside #ifdef/#ifndef        → exit 1, same reasoning
 #     (pins the #ifdef/#ifndef spellings the doc comments claim are
@@ -39,26 +39,26 @@
 #   - a registry with no bare "}" terminator line   → exit 1 (EOF guard, not
 #     a silent scan past the function into unrelated string literals)
 #   - a scratch consumer absent from the list       → exit 1, names the kernel
-#   - a non-atomic decl at the scratch slot         → exit 0 (the #1619 params
-#     UBO shape must NOT be flagged — negative control)
+#   - a non-atomic decl at the scratch slot         → exit 0 (a params UBO
+#     shape must NOT be flagged — negative control)
 #   - a line- or block-commented list entry         → exit 1 (the runtime stops
 #     binding for it, so it must read as absent, not present — both comment
-#     forms, #2899)
+#     forms)
 #   - a MULTI-LINE block-commented list entry        → exit 1 (disabling a run
 #     of consecutive entries is the natural reason to reach for a block
 #     comment here, and that spans lines)
 #   - a list entry inside a preprocessor #if        → exit 1, names the kernel
-#     (#2983, same reasoning as the registry-side arm)
+#     (same reasoning as the registry-side arm)
 #   - a #if literal inside a comment, followed by   → exit 0, entry recognized
-#     a real uncommented list entry                   (#2983 follow-up: the
-#     conditional check must run AFTER the comment-strip, or a commented-out
-#     #if starves conditional_depth and every entry after it reads as absent)
+#     a real uncommented list entry                   (the conditional check
+#     must run AFTER the comment-strip, or a commented-out #if starves
+#     conditional_depth and every entry after it reads as absent)
 #   - a hand-wrapped scratch declaration            → exit 1 (the qualifier test
 #     reads the declaration window, not the attribute's line)
 #   - an atomic neighbour on the slot's line        → exit 0 (that qualifier
 #     belongs to the preceding parameter — negative control)
 #   - a listed kernel that declares no scratch      → exit 1 (reverse drift:
-#     the sticky bind would clobber its slot, #1619)
+#     the sticky bind would clobber its slot)
 #   - a scratch list with no bare "}" terminator    → exit 1 (EOF guard)
 #   - an unresolvable `#include "…"`                → exit 1 (a dropped include
 #     would shrink a consumer's scanned source into a false clean)
@@ -66,17 +66,17 @@
 #     the slot is aliased and always has consumers)
 #   - an unreadable scratch-slot constant           → exit 1 (anchor guard)
 #   - a missing PROJECT_ROOT                        → exit 1 (usage guard)
-#   - `inline void *g_x = ...;`                     → exit 1 (#2916: the old
+#   - `inline void *g_x = ...;`                     → exit 1 (the old
 #     undocumented `void` reject exempted this mutable pointer)
 #   - `inline void f() {}`                          → exit 0 (already caught
 #     by the function-declaration guard; the `void` reject was redundant)
-#   - a wrapped declaration terminator              → exit 1 (#2916: the
+#   - a wrapped declaration terminator              → exit 1 (the
 #     formatter-defeat case the repo's own 100-col clang-format produces)
 #   - `inline const T *const p`                     → exit 0 (both ends const
 #     is a program constant, and the arm pins that the header entered the scan
 #     rather than passing by skipping the candidate gate)
 #   - `inline const T *p` / `inline T *const p`     → exit 1 (single-sided
-#     const is still unowned mutable state — #2726's `g_activeShots` shape)
+#     const is still unowned mutable state — the `g_activeShots` shape)
 #   - a wrapped declaration whose head line carries a trailing comment with
 #     a paren in it                                 → exit 1 (the comment's
 #     `(` must not read as a function-declaration guard hit)
@@ -112,13 +112,13 @@ trap 'rm -rf "$TMPROOT"' EXIT
 # parameterized: $2 is the space-separated kernel list for
 # threadgroupSizeForFunctionName, $3 the list for
 # functionUsesImageAtomicScratch. Arms that inject a new kernel must register
-# it in the former — otherwise the registry check (#2798) FATALs first and the
+# it in the former — otherwise the registry check FATALs first and the
 # arm silently tests that checker instead of the one it names.
 #
 # $4 (optional) is a list of scratch entries emitted LINE-COMMENTED OUT (//) —
 # the way a developer disables one, rather than deleting it. bindComputeResources
 # binds off the live list, so those names must read as absent. $5 is the same
-# but BLOCK-COMMENTED (/* ... */) — the sibling comment form #2899 closes. $6
+# but BLOCK-COMMENTED (/* ... */) — the sibling comment form. $6
 # and $7 are the registry-side twins: kernel names whose
 # threadgroupSizeForFunctionName entry is emitted commented out, line-style and
 # block-style respectively.
@@ -261,7 +261,7 @@ assert_absent "$clean_out" "scanned 0 header file(s)" \
 assert_contains "$clean_out" "Metal kernel registry check scanned 1 compute kernel(s)" \
     "metal registry check runs on the CI path and excludes _body fragments"
 
-# Same for the scratch-consumer check (#2878). The "(1 declare" half is the
+# Same for the scratch-consumer check. The "(1 declare" half is the
 # load-bearing one: the fixture's scratch declaration lives ONLY in the _body
 # fragment, so a count of 1 can only come from resolving the wrapper's
 # #include chain. A checker that read entry-point files alone would report 0
@@ -371,7 +371,7 @@ assert_contains "$registry_commented_block_out" "no entry in" \
 # (metal_pipeline.cpp), so disabling one wraps the block comment across
 # several lines -- the shape write_pipeline_cpp's per-name single-line echo
 # can't express, hence the direct fixture write. A same-line-only strip reads
-# every interior line as still live (Opus recheck on #2959).
+# every interior line as still live.
 REGISTRY_COMMENTED_BLOCK_MULTILINE="$TMPROOT/registry-commented-block-multiline"
 make_fixture "$REGISTRY_COMMENTED_BLOCK_MULTILINE"
 echo '// registry-commented-block-multiline fixture kernel' \
@@ -413,7 +413,7 @@ assert_contains "$registry_commented_block_multiline_out" "no entry in" \
 # preprocessor, so it cannot evaluate which #if/#ifdef/#ifndef branch the
 # build takes -- an entry that exists only inside one may never reach the
 # compiled binary. It must fail exactly like an omitted entry, the same
-# "read as absent" contract #2899 established for comments (#2983). Direct
+# "read as absent" contract established for comments. Direct
 # fixture write, not write_pipeline_cpp, since that helper has no conditional
 # shape.
 REGISTRY_CONDITIONAL="$TMPROOT/registry-conditional"
@@ -456,11 +456,10 @@ assert_contains "$registry_conditional_out" "no entry in" \
 
 # --- the same reads as absent under #ifdef/#ifndef, not just #if -----------
 # Both .cmake checkers' doc comments claim symmetry across all three
-# preprocessor-conditional spellings (#if/#ifdef/#ifndef), but until now the
-# suite only ever exercised #if 0 (nit carried across three reviews on
-# #2984). Pin the #ifdef spelling on the registry checker; the underlying
-# regex is `^[ \t]*#[ \t]*(if|ifdef|ifndef)([ \t(]|$)`, shared verbatim by
-# the scratch-consumer checker, so one arm covers both.
+# preprocessor-conditional spellings (#if/#ifdef/#ifndef); this pins the
+# #ifdef spelling on the registry checker. The underlying regex is
+# `^[ \t]*#[ \t]*(if|ifdef|ifndef)([ \t(]|$)`, shared verbatim by the
+# scratch-consumer checker, so one arm covers both.
 REGISTRY_CONDITIONAL_IFDEF="$TMPROOT/registry-conditional-ifdef"
 make_fixture "$REGISTRY_CONDITIONAL_IFDEF"
 echo '// registry-conditional-ifdef fixture kernel' \
@@ -524,8 +523,8 @@ assert_contains "$indent_out" "closing-brace terminator" \
     "EOF-without-terminator failure explains itself"
 
 # --- a scratch consumer missing from the list fails --------------------------
-# Registered in threadgroupSizeForFunctionName so the #2798 check passes and
-# this arm actually reaches the #2878 one.
+# Registered in threadgroupSizeForFunctionName so the registry check passes
+# and this arm actually reaches the scratch-consumer one.
 SCRATCH_MISSING="$TMPROOT/scratch-missing"
 make_fixture "$SCRATCH_MISSING"
 cat > "$SCRATCH_MISSING/engine/render/src/shaders/metal/c_fixture_consumer.metal" <<'EOF'
@@ -546,7 +545,7 @@ assert_contains "$scratch_missing_out" "absent from functionUsesImageAtomicScrat
 
 # --- NEGATIVE CONTROL: a non-atomic declaration at the scratch slot ----------
 # c_revoxelize_detached's real shape — slot 16 as a params UBO, deliberately
-# NOT on the list (#1619). It must not be flagged, and the check must have
+# NOT on the list. It must not be flagged, and the check must have
 # actually seen it: the kernel count rises to 2 while the consumer count stays
 # at 1. Without both halves this arm would also pass against a checker that
 # skipped the file entirely.
@@ -587,8 +586,8 @@ assert_contains "$scratch_commented_out" "absent from functionUsesImageAtomicScr
     "a commented-out entry is reported as absent, not present"
 
 # --- a block-commented (/* */) list entry reads as absent, not present -------
-# The line-comment form above is fixed by #2886; this is the other comment
-# shape a developer reaches for to disable an entry (#2899).
+# The line-comment form above is one shape; this is the other comment shape
+# a developer reaches for to disable an entry.
 SCRATCH_COMMENTED_BLOCK="$TMPROOT/scratch-commented-block"
 make_fixture "$SCRATCH_COMMENTED_BLOCK"
 write_pipeline_cpp "$SCRATCH_COMMENTED_BLOCK" "c_fixture_kernel" "" "" "c_fixture_kernel"
@@ -604,7 +603,7 @@ assert_contains "$scratch_commented_block_out" "absent from functionUsesImageAto
 # Disabling a run of consecutive entries at once is the natural reason to
 # reach for a block comment in this list, and that spans lines -- the shape
 # write_pipeline_cpp's per-name single-line echo can't express, hence the
-# direct fixture write (Opus recheck on #2959).
+# direct fixture write.
 SCRATCH_COMMENTED_BLOCK_MULTILINE="$TMPROOT/scratch-commented-block-multiline"
 make_fixture "$SCRATCH_COMMENTED_BLOCK_MULTILINE"
 cat > "$SCRATCH_COMMENTED_BLOCK_MULTILINE/engine/render/src/shaders/metal/c_scratch_commented_multiline.metal" <<'EOF'
@@ -649,7 +648,7 @@ assert_contains "$scratch_commented_block_multiline_out" "absent from functionUs
     "a multi-line block-commented entry is reported as absent, not present"
 
 # --- a scratch list entry inside a preprocessor conditional reads as absent --
-# Same reasoning as the registry-side arm above (#2983): functionUsesImage-
+# Same reasoning as the registry-side arm above: functionUsesImage-
 # AtomicScratch is scanned as source text with no preprocessor, so an entry
 # that exists only inside #if/#ifdef/#ifndef must fail exactly like an
 # omitted entry. The kernel itself declares the scratch (so it would
@@ -701,17 +700,17 @@ assert_contains "$scratch_conditional_out" "absent from functionUsesImageAtomicS
     "a conditional list entry is reported as absent, not present"
 
 # --- a #if literal inside a comment must not starve a later real entry -------
-# The bug this arm pins (#2983 follow-up): the conditional check originally
-# ran BEFORE the comment-strip, so a #if-shaped line sitting inside a /* */
-# comment was misread as a live preprocessor directive. Since the comment's
-# own "*/" line never reaches the #endif branch either (it gets skipped by
-# the still-elevated conditional_depth before the comment-strip can close
-# in_block_comment), conditional_depth got stuck above zero for the rest of
-# the function body and every subsequent real, uncommented, non-conditional
-# entry was silently dropped. c_scratch_after_comment_conditional is a
-# genuine consumer (declares the atomic scratch, registered unconditionally)
-# whose list entry sits right after such a comment -- it must be recognized,
-# not read as absent.
+# The conditional check must run AFTER the comment-strip: a #if-shaped line
+# sitting inside a /* */ comment must not be misread as a live preprocessor
+# directive, or conditional_depth stays elevated past the comment's own
+# "*/" line — that line never reaches the #endif branch either while
+# conditional_depth is still up, so in_block_comment never closes and
+# conditional_depth stays stuck above zero for the rest of the function
+# body, silently dropping every subsequent real, uncommented,
+# non-conditional entry. c_scratch_after_comment_conditional is a genuine
+# consumer (declares the atomic scratch, registered unconditionally) whose
+# list entry sits right after such a comment -- it must be recognized, not
+# read as absent.
 SCRATCH_AFTER_COMMENT_CONDITIONAL="$TMPROOT/scratch-after-comment-conditional"
 make_fixture "$SCRATCH_AFTER_COMMENT_CONDITIONAL"
 cat > "$SCRATCH_AFTER_COMMENT_CONDITIONAL/engine/render/src/shaders/metal/c_scratch_after_comment_conditional.metal" <<'EOF'
@@ -787,9 +786,9 @@ assert_contains "$scratch_wrapped_out" "(2 declare the image-atomic scratch at b
 # --- NEGATIVE CONTROL: an atomic neighbour sharing the slot line -------------
 # The declaration window's other half. A line-scoped qualifier test sees the
 # atomic_int belonging to the PRECEDING parameter and reads this kernel as a
-# consumer — a false positive in the #1619 direction against a kernel whose
-# slot-16 parameter is a plain params UBO. The counts pin that it was scanned
-# and correctly excluded, not skipped.
+# consumer — a false positive against a kernel whose slot-16 parameter is a
+# plain params UBO. The counts pin that it was scanned and correctly
+# excluded, not skipped.
 SLOT_NEIGHBOUR="$TMPROOT/slot-neighbour"
 make_fixture "$SLOT_NEIGHBOUR"
 cat > "$SLOT_NEIGHBOUR/engine/render/src/shaders/metal/c_fixture_neighbour.metal" <<'EOF'
@@ -810,8 +809,8 @@ assert_contains "$neighbour_out" "(1 declare the image-atomic scratch at buffer 
     "an atomic at a different slot is not counted as a scratch declaration"
 
 # --- reverse drift: a listed kernel that declares no scratch fails -----------
-# The #1619 direction. A name on the list that does not declare the scratch
-# gets the sticky scratch bound over whatever it does declare at that slot.
+# A name on the list that does not declare the scratch gets the sticky
+# scratch bound over whatever it does declare at that slot.
 SCRATCH_STALE="$TMPROOT/scratch-stale"
 make_fixture "$SCRATCH_STALE"
 echo 'kernel void c_fixture_plain(uint3 gid [[thread_position_in_grid]]) {}' \
@@ -1007,18 +1006,18 @@ assert_absent "$anonymous_commented_out" "anonymous_same_line.hpp" \
 assert_absent "$anonymous_commented_out" "anonymous_multiline.hpp" \
     "multi-line block-commented anonymous namespace is ignored"
 
-# --- the same global under a render-backend path fails (#2889) --------------
+# --- the same global under a render-backend path fails -----------------------
 # The style tools reject engine/render/**/gl_wrap/ and
 # engine/render/**/metal/ — clang-format rewrites the generated GL wrapper and
 # clang-tidy trips on metal-cpp idioms. That is a STYLE exemption, so the
 # correctness gate must not inherit it: irreden_collect_quality_files takes
-# INCLUDE_RENDER_BACKENDS to keep those 9 first-party headers in scope (#2815).
+# INCLUDE_RENDER_BACKENDS to keep those 9 first-party headers in scope.
 #
 # This entry point is the only one CI runs, so the file set it collects IS the
 # merge gate. The arms above cannot pin that: they put their violation under
 # engine/include/, which the narrow and wide scopes both already reach. Hence a
 # fixture under each rejected path — these arms go red if the shim ever drops
-# INCLUDE_RENDER_BACKENDS (#2889).
+# INCLUDE_RENDER_BACKENDS.
 BACKEND="$TMPROOT/backend"
 make_fixture "$BACKEND"
 mkdir -p "$BACKEND/engine/render/include/irreden/render/metal" \
@@ -1043,8 +1042,8 @@ assert_contains "$backend_out" "g_metalBackendGlobal" "failure names the metal d
 assert_contains "$backend_out" "gl_probe.h" "failure names the gl_wrap header"
 assert_contains "$backend_out" "g_glWrapBackendGlobal" "failure names the gl_wrap declaration"
 
-# --- a void-pointer global fails (#2916 Defect 2: the old undocumented
-# `void` reject exempted this mutable, unowned pointer) ---------------------
+# --- a void-pointer global fails ----------------------------------
+# The old undocumented `void` reject exempted this mutable, unowned pointer.
 VOIDPTR="$TMPROOT/voidptr"
 make_fixture "$VOIDPTR"
 cat > "$VOIDPTR/engine/include/irreden/voidptr.hpp" <<'EOF'
@@ -1073,9 +1072,9 @@ voidfn_out=$(run_checker "$VOIDFN")
 voidfn_rc=$?
 assert_eq "0" "$voidfn_rc" "void function still passes without the void reject"
 
-# --- a declaration whose terminator wraps onto a continuation line fails
-# (#2916 Defect 1: the formatter-defeat case — the repo's own 100-col
-# clang-format wraps a long `inline` declaration exactly like this) ---------
+# --- a declaration whose terminator wraps onto a continuation line fails ---
+# The formatter-defeat case: the repo's own 100-col clang-format wraps a
+# long `inline` declaration exactly like this.
 WRAPPED="$TMPROOT/wrapped"
 make_fixture "$WRAPPED"
 cat > "$WRAPPED/engine/include/irreden/wrapped.hpp" <<'EOF'
@@ -1118,8 +1117,8 @@ assert_contains "$realconst_out" "scanned 5 header file(s)" \
 # Both halves live in one header so the two failures prove the scan read this
 # file — which is what makes the third assertion (the both-ends form is NOT
 # named) evidence about the reject chain rather than about a skipped file.
-# This is the shape that hid a real `g_activeShots` violation through an entire
-# hand-grep pass (#2726), and .claude/rules/cpp-globals.md calls it out by name.
+# This is a shape a hand-grep-based review can miss, and
+# .claude/rules/cpp-globals.md calls it out by name.
 HALFCONST="$TMPROOT/halfconst"
 make_fixture "$HALFCONST"
 cat > "$HALFCONST/engine/include/irreden/halfconst.hpp" <<'EOF'

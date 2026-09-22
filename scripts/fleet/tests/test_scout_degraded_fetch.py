@@ -4,8 +4,8 @@ Covers: failed fetch → last-known-good preserved + degraded marker;
 clean empty fetch → not degraded; no-previous-state first-run fallback;
 a `200 []` over a populated label-filtered slice held for one tick and
 written through only when the next tick repeats it;
-the degraded SKIP in the scout-spawned lanes leaving pending work intact
-(#2965); and periodic claim cleanup independent of queue projection changes.
+the degraded SKIP in the scout-spawned lanes leaving pending work intact;
+and periodic claim cleanup independent of queue projection changes.
 """
 import importlib.machinery
 import importlib.util
@@ -43,10 +43,10 @@ class TestScoutDegradedFetch(unittest.TestCase):
 
     def setUp(self):
         # collect_state also fetches engine plan_review, which these tests don't
-        # otherwise stub. fetch_plan_review now goes through conditional_get
-        # (REST + ETag cache), so leaving it live would hit the real GitHub API
-        # and write the shared ~/.fleet ETag cache on every run — the same
-        # hermeticity hazard the #2227 review flagged for fetch_task_queue.
+        # otherwise stub. fetch_plan_review goes through conditional_get (REST +
+        # ETag cache), so leaving it live would hit the real GitHub API and
+        # write the shared ~/.fleet ETag cache on every run — the same
+        # hermeticity hazard as fetch_task_queue.
         # Stub it to a clean empty result so the degraded assertions below key
         # only on the fetcher each test deliberately fails.
         patcher = patch.object(_mod, "fetch_plan_review", return_value=[])
@@ -391,17 +391,19 @@ class TestTransientEmptyHold(unittest.TestCase):
 class _ScoutTickHarness:
     """One hermetic `tick_once()` driver shared by both edge-consumption suites.
 
-    Not a TestCase — mixed into the two suites below so the harness exists
-    once. `popen` and `logs` are optional because only the spawn-failure suite
-    needs to make Popen raise and read back the emitted log lines.
+    Not a TestCase — mixed into the two suites that use it so the harness
+    exists once. `popen` and `logs` are optional because only the
+    spawn-failure suite needs to make Popen raise and read back the emitted
+    log lines.
     """
 
     def setUp(self):
         # The spawn-failure streak is a module global (the scout is a loop), so
         # it has to be reset or a streak leaks into the next test. getattr, not
-        # a bare attribute: this mixin also drives the pre-existing #2965 cases,
-        # and those must still pass against a pre-#2972 ref so the positive
-        # control scores THIS change's tests rather than an import-time break.
+        # a bare attribute: this mixin also drives the pre-existing degraded-skip
+        # cases, and those must still pass against a scout tree that predates
+        # this attribute so the positive control scores THIS change's tests
+        # rather than an import-time break.
         streak = getattr(_mod, "_spawn_fail_streak", None)
         if streak is not None:
             streak.clear()
@@ -481,14 +483,13 @@ class _ScoutTickHarness:
 
 
 class TestDegradedSkipPreservesEdge(_ScoutTickHarness, unittest.TestCase):
-    """#2965: the degraded skip must NOT consume the projection edge.
+    """The degraded skip must NOT consume the projection edge.
 
     `queue-manager` reconcile and `queue-manager-ingest` inline their own hash
     compare instead of routing through update_role_trigger. Recording the
-    seen-hash before the degraded check therefore dropped the work permanently:
-    the next tick compared equal and skipped. Periodic cleanup has the same
-    contract for its deadline marker. Observed live as an agent-approved issue
-    left unqueued for 8h14m after a single degraded tick.
+    seen-hash before the degraded check would drop the work permanently: the
+    next tick would compare equal and skip. Periodic cleanup has the same
+    contract for its deadline marker.
     """
 
     def test_degraded_skip_spawns_nothing_and_leaves_hash_unwritten(self):
@@ -540,7 +541,7 @@ class TestDegradedSkipPreservesEdge(_ScoutTickHarness, unittest.TestCase):
 
 
 class TestPeriodicClaimCleanup(_ScoutTickHarness, unittest.TestCase):
-    """#2476: cleanup must not depend on a queue-manager projection edge."""
+    """Cleanup must not depend on a queue-manager projection edge."""
 
     def test_unchanged_projection_reaps_again_after_interval(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -590,15 +591,15 @@ def _partial_popen(attempts, spawns, fail_when):
 
 
 class TestSpawnFailurePreservesEdge(_ScoutTickHarness, unittest.TestCase):
-    """#2972: a FAILED SPAWN must not consume the projection edge either.
+    """A FAILED SPAWN must not consume the projection edge either.
 
-    #2965 moved the seen-hash write below the `degraded` guard. It was still
-    above `subprocess.Popen`, and both lanes swallow a spawn failure with a bare
-    log — so a tick whose spawn raised recorded the hash and dropped the work
-    permanently, exactly as the degraded tick used to. Reachable in production
-    two ways, both observed classes: EAGAIN when fork is refused under many-pane
-    load, and FileNotFoundError during an install/upgrade window where
-    _fleet_script_argv's target is briefly absent.
+    The seen-hash write sits below the `degraded` guard but above
+    `subprocess.Popen`, and both lanes swallow a spawn failure with a bare
+    log — so a tick whose spawn raised must not record the hash and drop the
+    work permanently. Reachable in production two ways: EAGAIN when fork is
+    refused under many-pane load, and FileNotFoundError during an
+    install/upgrade window where _fleet_script_argv's target is briefly
+    absent.
     """
 
     def test_failed_spawn_leaves_hash_unwritten_both_lanes(self):

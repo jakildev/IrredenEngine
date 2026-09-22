@@ -1,25 +1,24 @@
 #!/usr/bin/env bash
-# Tests for fleet-rebase's retired stack-park label cleanup (issue #2764).
+# Tests for fleet-rebase's retired stack-park label cleanup.
 #
-# Reproduces the native-stack strand: the merger labels a stacked child
+# The native-stack strand: the merger labels a stacked child
 # fleet:awaiting-base while its parent is open (role-merger.md step 5a.5 i).
-# The parent merges; GitHub retargets the child to master server-side. That
-# retarget is precisely what drops the child out of merger step 2.5's
-# candidate set (it collects `baseRefName != "master"`), and 2.5 is the only
-# thing that removes the label. Meanwhile fleet-rebase's triage routed any PR
-# carrying the label to llm-other, and merger step 3 skips it on the — now
-# false — inference that the base must still be open. An approved PR is
-# stranded from every automated lane, permanently.
+# When the parent merges, GitHub retargets the child to master server-side.
+# That retarget drops the child out of merger step 2.5's candidate set (it
+# collects `baseRefName != "master"`), and 2.5 is the only thing that removes
+# the label. Meanwhile fleet-rebase's triage routes any PR carrying the label
+# to llm-other, and merger step 3 skips it on the — now false — inference
+# that the base must still be open. An approved PR can be stranded from every
+# automated lane, permanently.
 #
-# The fix: base == master proves the park is discharged (a PR cannot be
-# waiting on a base branch that IS master), so triage emits a
-# "stale-base-park" verdict routing to cleanup_stale_base_park() instead of
-# llm-other. A straggler still anchored to a real base (base != master) keeps
-# the old llm-other routing.
+# base == master proves the park is discharged (a PR cannot be waiting on a
+# base branch that IS master), so triage emits a "stale-base-park" verdict
+# routing to cleanup_stale_base_park() instead of llm-other. A straggler
+# still anchored to a real base (base != master) keeps the llm-other routing.
 #
 # The gate is base == master alone — no fleet:approved requirement and no
-# skip-label exclusion (#2840). Those guards belong to lanes that do branch
-# work; this verdict does none. They also defeat each other here: the merger
+# skip-label exclusion. Those guards belong to lanes that do branch work;
+# this verdict does none. They also defeat each other here: the merger
 # strips fleet:approved at the same moment it adds fleet:semantic-conflict,
 # and that label leads SKIP_LABEL_RE, so a conflicted retargeted child fails
 # both at once and lands on skip-labels, which no lane revisits — while
@@ -31,16 +30,15 @@
 #   T2: fleet:needs-base-update + base=master + approved -> cleanup fires
 #       (the twin retired label takes the same path).
 #   T3: fleet:awaiting-base + base != master -> llm-other, NOT cleaned
-#       (genuine mid-sequence straggler; the LLM pass owns it). UNCHANGED by
-#       #2840 — that park is still real.
-#   T4: fleet:awaiting-base + base=master + fleet:wip -> cleaned (#2840).
-#       The WIP park is not discharged by this; it is preserved on the PR and
+#       (genuine mid-sequence straggler; the LLM pass owns it).
+#   T4: fleet:awaiting-base + base=master + fleet:wip -> cleaned. The WIP
+#       park is not discharged by this; it is preserved on the PR and
 #       re-routes to skip-labels on the next tick — see T8.
-#   T5: fleet:awaiting-base + base=master but NOT approved -> cleaned (#2840).
+#   T5: fleet:awaiting-base + base=master but NOT approved -> cleaned.
 #   T6: CONFLICTING + base=master + no park label -> the normal attempt
 #       path is untouched by this change.
-#   T7: the #2840 live shape — awaiting-base + semantic-conflict + base=master
-#       + NOT approved (both dropped guards failing at once) -> cleaned.
+#   T7: awaiting-base + semantic-conflict + base=master + NOT approved (both
+#       dropped guards failing at once) -> cleaned.
 #   T8: fleet:wip + base=master + no park label -> skip-labels. This is T4's
 #       PR on the tick after cleanup: the real park still parks it, so
 #       removing the residue never unparks anyone.
@@ -122,7 +120,6 @@ run_rebase() {
     "$REBASE" --auto --dry-run 2>&1 || true
 }
 
-# === T1: fleet:awaiting-base + base=master -> cleanup logs "would remove" =====
 echo "T1: fleet:awaiting-base + base=master -> stack-park cleanup fires in dry-run"
 write_slice '[{
   "repo":"engine","number":400,
@@ -138,7 +135,6 @@ assert_absent   "$T1" "llm_remaining=1" \
 assert_absent   "$T1" "clean rebase onto" \
     "T1 cleanup does no branch work"
 
-# === T2: fleet:needs-base-update takes the same path =========================
 echo "T2: fleet:needs-base-update + base=master -> stack-park cleanup fires"
 write_slice '[{
   "repo":"engine","number":401,
@@ -150,7 +146,6 @@ T2=$(run_rebase)
 assert_contains "$T2" "retired stack-park label on a base=master PR — would remove" \
     "T2 the twin retired label takes the same cleanup path"
 
-# === T3: base != master -> genuine straggler, still llm-other ================
 echo "T3: fleet:awaiting-base + base != master -> llm-other (straggler preserved)"
 write_slice '[{
   "repo":"engine","number":402,
@@ -164,7 +159,6 @@ assert_absent   "$T3" "would remove" \
 assert_contains "$T3" "llm_remaining=1" \
     "T3 straggler still routes to the LLM pass"
 
-# === T4: another skip label no longer blocks the cleanup (#2840) =============
 echo "T4: fleet:wip + fleet:awaiting-base + base=master -> cleaned (#2840)"
 write_slice '[{
   "repo":"engine","number":403,
@@ -180,7 +174,6 @@ assert_absent "$T4" "clean rebase onto" \
 assert_absent "$T4" "llm_remaining=1" \
     "T4 cleanup does not count toward LLM_REMAINING"
 
-# === T5: an unapproved PR is cleaned too (#2840) =============================
 echo "T5: fleet:awaiting-base + base=master but not approved -> cleaned (#2840)"
 write_slice '[{
   "repo":"engine","number":404,
@@ -196,7 +189,6 @@ assert_absent   "$T5" "llm_remaining=1" \
 assert_absent   "$T5" "clean rebase onto" \
     "T5 cleanup does no branch work on an unapproved branch"
 
-# === T6: no park label -> the normal attempt path is unchanged ===============
 echo "T6: no park label + CONFLICTING + base=master -> normal attempt path"
 write_slice '[{
   "repo":"engine","number":405,
@@ -210,12 +202,6 @@ assert_absent   "$T6" "would remove" \
 assert_contains "$T6" "attempted=1" \
     "T6 the ordinary rebase path is untouched by this change"
 
-# === T7: the #2840 live shape — both dropped guards failing at once ==========
-# PR #2746's state once its base merged and GitHub retargeted it to master.
-# The merger strips fleet:approved as it adds fleet:semantic-conflict, and
-# that label leads SKIP_LABEL_RE, so this single PR failed BOTH original
-# guards. Pre-#2840 it landed on skip-labels, which no lane revisits, while
-# worker step 1c and the scout projection excluded it on fleet:awaiting-base.
 echo "T7: awaiting-base + semantic-conflict + base=master + not approved -> cleaned"
 write_slice '[{
   "repo":"engine","number":406,
@@ -229,10 +215,9 @@ assert_contains "$T7" "retired stack-park label on a base=master PR — would re
 assert_absent   "$T7" "clean rebase onto" \
     "T7 cleanup does no branch work on a conflicted branch"
 
-# === T8: removing the residue never unparks a genuinely parked PR ============
-# T4's PR on the tick after its cleanup: fleet:awaiting-base is gone, the real
-# park label remains. It must route to skip-labels — the widened gate discharges
-# only the retired residue, never the park a live label still expresses.
+# fleet:awaiting-base is gone, but the real park label remains, so this must
+# still route to skip-labels — the widened gate discharges only the retired
+# residue, never the park a live label still expresses.
 echo "T8: fleet:wip + base=master + no park label -> skip-labels (park survives)"
 write_slice '[{
   "repo":"engine","number":407,

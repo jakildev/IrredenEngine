@@ -14,9 +14,7 @@ that matter:
   - a semantic-conflict PR is one opus claimable item (role-worker step 1c is
     opus+-only; the scout pre-filters the slice's semantic_conflict_prs[]),
     so a conflicted PR generates opus dispatch pressure even when the task
-    queue is empty or host-locked — before this tier the label had no
-    dispatch pressure at all and conflicts starved behind sonnet no-op
-    iterations (engine #2417);
+    queue is empty or host-locked;
   - feedback class derives from review severity labels (fable opt-in via
     fleet:fable on the PR, blocking labels -> opus, nits-only -> sonnet);
   - the fable concurrency cap skips fable items rather than idling the
@@ -30,21 +28,21 @@ that matter:
     lane-default no-op dispatch;
   - a GL-only task (``needs_gl_host``) is unclaimable on a Metal-only host —
     terminal like `inflight_pr`, and the lane defers when it's the only
-    work (#1998, the GL-vs-Metal host-capability gate);
+    work (the GL-vs-Metal host-capability gate);
   - that same host gate covers **feedback PRs** (matched on the raw
     ``fleet:needs-gl-host`` label, since PR records carry no derived field):
     role-worker step 1 skips them on a Metal-only host and `amending-claim`
-    refuses the claim, so counting one inflated the elected class on exactly
-    the hosts that can't serve it — and via the design-unblocked→opus route
-    that phantom item won the election every tick and starved the other lanes
-    behind the concurrency cap. The quiet path widens with it, or the gate
-    only relocates the no-op it removes (#2696);
+    refuses the claim, so counting one would inflate the elected class on
+    exactly the hosts that can't serve it — and via the design-unblocked→opus
+    route that phantom item would win the election every tick and starve the
+    other lanes behind the concurrency cap. The quiet path must widen with it,
+    or the gate only relocates the no-op it removes;
   - per-task **Effort:** overrides beat class defaults; work dispatches
     default to effort ``high`` for every class, while planning yields carry
     ``xhigh`` (``PLAN_EFFORT`` — plans are the fleet's design surface);
   - the output carries ``count`` = claimable items of the elected class,
     which the dispatcher uses to cap its idle-pane fan-out, and ``plan`` = 1
-    when that count includes the class's needs-plan yield (#2197);
+    when that count includes the class's needs-plan yield;
   - ``pick`` / ``pick_role`` list a lane's ordered dispatch targets
     (``<kind>:<repo>:<N>[:<extra>]``) for the dispatcher's claim walk, and
     ``plan_pick`` the class's planning targets in slice order (engine-first,
@@ -122,8 +120,8 @@ class FeedbackClassFromLabels(unittest.TestCase):
 
     def test_design_unblocked_routes_opus(self):
         # Tier-4 resume is opus+-only (FLEET-FEEDBACK-HANDLING); routing it to
-        # sonnet dispatches a worker that then skips the PR -> no-op forever
-        # (engine #1885). design-unblocked alone -> opus.
+        # sonnet dispatches a worker that then skips the PR -> no-op forever.
+        # design-unblocked alone -> opus.
         self.assertEqual(
             feedback_pr_class(["fleet:design-unblocked", "fleet:wip"]), "opus")
 
@@ -173,11 +171,11 @@ class TaskResolution(unittest.TestCase):
         self.assertEqual(out, "opus high 0 1 0")
 
     def test_inflight_pr_task_skipped_fable_behind_dispatches(self):
-        # #1726 / the #1640 incident: a head-of-queue opus task whose own issue
-        # already has an open (parked design-blocked) PR is non-actionable. The
-        # scout tags it `inflight_pr`; the resolver must skip it AND not count
-        # it toward `more`, so the fable task queued behind it dispatches
-        # instead of the lane churning no-op opus iterations on the parked head.
+        # A head-of-queue opus task whose own issue already has an open
+        # (parked design-blocked) PR is non-actionable. The scout tags it
+        # `inflight_pr`; the resolver must skip it AND not count it toward
+        # `more`, so the fable task queued behind it dispatches instead of the
+        # lane churning no-op opus iterations on the parked head.
         out = resolve({"tasks_open": [
             _task("#1640", "opus", inflight_pr={"number": 1700, "parked": True}),
             _task("#1695", "fable"),
@@ -187,7 +185,7 @@ class TaskResolution(unittest.TestCase):
     def test_inflight_pr_only_candidate_defers(self):
         # The parked task is the ONLY queue item: nothing a fresh worker can
         # claim, so the lane goes quiet (defer) rather than churning a
-        # lane-default no-op dispatch every tick (#1726 DoD: "goes quiet").
+        # lane-default no-op dispatch every tick.
         out = resolve({"tasks_open": [
             _task("#1640", "opus", inflight_pr={"number": 1700, "parked": True}),
         ]}, "opus", fable_blocked=False)
@@ -198,8 +196,8 @@ class TaskResolution(unittest.TestCase):
         # stackable base (scout left off `stackable_blocker_pr`). Both are
         # terminally unclaimable for a fresh worker, so the lane defers rather
         # than firing a lane-default worker whose only "work" is re-deriving the
-        # not-stackable verdict the scout already reached (the idle-fleet churn
-        # this fix targets — opus panes dispatched with nothing to claim).
+        # not-stackable verdict the scout already reached (opus panes dispatched
+        # with nothing to claim).
         out = resolve({"tasks_open": [
             _task("#1640", "opus", inflight_pr={"number": 1700, "parked": True}),
             _task("#1641", "opus", blocked=True),
@@ -302,10 +300,9 @@ class TaskResolution(unittest.TestCase):
         self.assertEqual(out, "sonnet high 0 1 1")
 
     def test_design_unblocked_feedback_resolves_opus(self):
-        # The engine #1885 shape: a design-unblocked PR is the top feedback
-        # item, every open task is parked/blocked, and opus needs_plan sits
-        # behind it. The lane must dispatch opus (and clear it for tier 4),
-        # not sonnet — pre-fix this resolved "sonnet ... 1" and starved both.
+        # A design-unblocked PR is the top feedback item, every open task is
+        # parked/blocked, and opus needs_plan sits behind it. The lane must
+        # dispatch opus (and clear it for tier 4), not sonnet.
         # count=1: the feedback fix is the only opus item; the plannable
         # issue now elects fable (planning prefers fable), so it rides the
         # `more` flag — the kept trigger serves the planning dispatch on a
@@ -376,34 +373,30 @@ class HostSeamCase(unittest.TestCase):
 
 
 class GlHostGate(HostSeamCase):
-    """#1998: a `needs_gl_host` task can't be built/run/verified on a
-    Metal-only (macOS) host. The dispatcher's claimability filter skips it
-    there — so a mac slice whose only open work is GL-only defers (goes
-    quiet) instead of churning a lane-default no-op, while a Linux/Windows
-    slice claims it normally."""
+    """A `needs_gl_host` task can't be built/run/verified on a Metal-only
+    (macOS) host. The dispatcher's claimability filter skips it there — so a
+    mac slice whose only open work is GL-only defers (goes quiet) instead of
+    churning a lane-default no-op, while a Linux/Windows slice claims it
+    normally."""
 
     def test_gl_only_task_alone_on_mac_defers(self):
-        # The #1937 churn shape: a GL-backend task is the only open work and
-        # the pane is Metal-only -> defer (go quiet), not a lane-default no-op.
+        # A GL-backend task is the only open work and the pane is Metal-only
+        # -> defer (go quiet), not a lane-default no-op.
         out = self._resolve_on(
             "mac", {"tasks_open": [_task("#1937", "opus", needs_gl_host=True)]})
         self.assertEqual(out, "defer")
 
-    # --- #2820: the backend-symmetric narrowing ---------------------------
+    # --- the backend-symmetric narrowing ---------------------------------
 
     def test_backend_symmetric_task_is_claimable_on_mac(self):
-        # AC-1's claimable direction: the task's Metal half is natively
-        # verifiable here, so the pane dispatches instead of deferring.
+        # The task's Metal half is natively verifiable here, so the pane
+        # dispatches instead of deferring.
         out = self._resolve_on("mac", {"tasks_open": [
             _task("#2816", "opus", needs_gl_host=True, backend_symmetric=True)]})
-        # Work dispatches default to effort `high` for every class (#3055);
-        # this expectation still carried the pre-#3055 `xhigh` and was the
-        # one red assertion in this suite on master.
         self.assertEqual(out, "opus high 0 1 0")
 
     def test_gl_only_task_still_defers_on_mac(self):
-        # AC-1's refusing direction, restated against the narrowed predicate:
-        # without the discriminator nothing changes for a GL-only task.
+        # Without the discriminator, nothing changes for a GL-only task.
         out = self._resolve_on("mac", {"tasks_open": [
             _task("#1938", "opus", needs_gl_host=True, backend_symmetric=False)]})
         self.assertEqual(out, "defer")
@@ -420,7 +413,7 @@ class GlHostGate(HostSeamCase):
         # the scout's task FIELD and never a PR's labels, because on a PR
         # `fleet:needs-gl-host` describes the RESIDUAL, not the task's
         # symmetry. A PR carrying both labels must still be host-incompatible
-        # on mac — narrowing here would re-inflate the #2696 phantom counts.
+        # on mac — narrowing here would re-inflate the phantom counts.
         pr = {"number": 2475,
               "labels": ["fleet:needs-gl-host", "fleet:backend-symmetric",
                          "fleet:needs-fix"]}
@@ -438,9 +431,9 @@ class GlHostGate(HostSeamCase):
         self.assertEqual(out, "opus high 0 1 0")
 
     def test_mixed_mac_slice_dispatches_claimable_no_churn(self):
-        # GL-only #1937-shaped head + a claimable opus task: the mac pane skips
-        # the GL task (not counted toward `more`) and dispatches the claimable
-        # one — no defer, no churn.
+        # A GL-only head + a claimable opus task: the mac pane skips the GL
+        # task (not counted toward `more`) and dispatches the claimable one —
+        # no defer, no churn.
         out = self._resolve_on("mac", {"tasks_open": [
             _task("#1937", "opus", needs_gl_host=True),
             _task("#1998", "opus"),
@@ -486,10 +479,11 @@ class GlHostGate(HostSeamCase):
 
 class RequiredHostGate(HostSeamCase):
     """A task whose body pins it to ONE OS (`needs_host`, scout-derived) is
-    claimable on that host only. The #1969 shape: "must run on a Linux host"
-    sets `needs_gl_host` (linux is GL-capable), so the GL gate passed it on a
-    Windows pane and the dispatcher elected it every tick — 23 identical
-    worker no-ops on 2026-09-06, each re-reading the body and refusing."""
+    claimable on that host only. A task whose body says "must run on a Linux
+    host" in prose sets `needs_gl_host` (linux is GL-capable) but not
+    `needs_host`, so the GL gate alone would pass it on a Windows pane and the
+    dispatcher would elect it every tick, each worker re-reading the body and
+    refusing."""
 
     def test_linux_only_task_defers_on_windows(self):
         out = self._resolve_on("windows", {"tasks_open": [
@@ -521,7 +515,8 @@ class RequiredHostGate(HostSeamCase):
         self.assertEqual(out, "defer")
 
     def test_unpinned_task_is_unaffected(self):
-        # `needs_host` absent (pre-change slices) or None: today's behavior.
+        # `needs_host` absent (slices without the field) or None: today's
+        # behavior.
         task = _task("#3", "opus")
         del task["needs_host"]
         self.assertEqual(self._resolve_on("windows", {"tasks_open": [task]}),
@@ -529,9 +524,9 @@ class RequiredHostGate(HostSeamCase):
         self.assertFalse(_host_incompatible(_task("#4", "opus"), "mac"))
 
     def test_host_pinned_head_does_not_starve_claimable_work(self):
-        # The #1969 slice as the Windows host saw it: two linux-pinned sonnet
-        # tasks at the head. A claimable sibling behind them must still be
-        # elected, and the pinned pair must not inflate its count.
+        # Two linux-pinned sonnet tasks at the head, with a claimable sibling
+        # behind them: the sibling must still be elected, and the pinned pair
+        # must not inflate its count.
         out = self._resolve_on("windows", {"tasks_open": [
             _task("#1969", "sonnet", needs_gl_host=True, needs_host="linux"),
             _task("#2158", "sonnet", needs_gl_host=True, needs_host="linux"),
@@ -633,12 +628,12 @@ class DispatchTargets(HostSeamCase):
         self.assertEqual(self._pick_on("linux", {"tasks_open": [task]}, "opus"), [])
 
     def test_declined_target_is_skipped_until_the_item_changes(self):
-        # The #1969 shape after assignment: the claim is granted, the worker
-        # reads the body, refuses, `fleet-claim decline` posts the record and
-        # the dispatcher's exit fold remembers the item's post-release
-        # updatedAt. A record not newer than the stamp -> not offered (and
-        # not counted) — including one the scout has not refreshed since the
-        # release; a newer stamp -> offered again; no stamp -> offered.
+        # When the claim is granted, the worker reads the body, refuses,
+        # `fleet-claim decline` posts the record and the dispatcher's exit fold
+        # remembers the item's post-release updatedAt. A record not newer than
+        # the stamp -> not offered (and not counted) — including one the scout
+        # has not refreshed since the release; a newer stamp -> offered again;
+        # no stamp -> offered.
         with tempfile.TemporaryDirectory() as state_dir:
             os.environ["FLEET_STATE_DIR"] = state_dir
             try:
@@ -673,10 +668,10 @@ class DispatchTargets(HostSeamCase):
         # The sonnet and opus reviewers share the `review` kind. A sonnet
         # decline ("fresh approval already posted; the escalation is
         # standing") is that lane's judgement, not the opus lane's: the PR
-        # was escalated TO opus, and an unscoped record hid it there for as
-        # long as nothing touched the PR (one sat three days). Line 3 of
-        # the record is the role; a record without one (written before the
-        # role was recorded) keeps its old reach.
+        # was escalated TO opus, and an unscoped record would hide it there
+        # for as long as nothing touched the PR. Line 3 of the record is the
+        # role; a record without one (written before the role was recorded)
+        # keeps its old reach.
         with tempfile.TemporaryDirectory() as state_dir:
             os.environ["FLEET_STATE_DIR"] = state_dir
             try:
@@ -724,14 +719,14 @@ class DispatchTargets(HostSeamCase):
 
 
 class FeedbackPrHostGate(HostSeamCase):
-    """#2696: the #1998 host gate applies to feedback PRs too, not just tasks.
+    """The host gate applies to feedback PRs too, not just tasks.
 
     A `fleet:needs-gl-host` feedback PR has GL-only work left, so role-worker
-    step 1 skips it on a Metal-only host and `amending-claim` refuses the claim
-    (#2524). Counting it anyway inflated the elected class's claimable count on
-    exactly the hosts that can't serve it, and because `feedback_pr_class`
-    routes `fleet:design-unblocked` to opus, that phantom item won the class
-    election every tick and starved the other lanes behind the concurrency cap.
+    step 1 skips it on a Metal-only host and `amending-claim` refuses the
+    claim. Counting it anyway would inflate the elected class's claimable
+    count on hosts that can't serve it, and because `feedback_pr_class` routes
+    `fleet:design-unblocked` to opus, that phantom item would win the class
+    election every tick and starve the other lanes behind the concurrency cap.
     """
 
     @staticmethod
@@ -740,9 +735,9 @@ class FeedbackPrHostGate(HostSeamCase):
 
     # -- the gate itself -------------------------------------------------
     def test_gl_gated_feedback_pr_not_counted_on_mac(self):
-        # The live #2475 shape: design-unblocked (opus-routed) AND GL-gated.
-        # On mac it must contribute nothing; the claimable sonnet task is what
-        # gets elected, so the count reflects only work this host can serve.
+        # design-unblocked (opus-routed) AND GL-gated. On mac it must
+        # contribute nothing; the claimable sonnet task is what gets elected,
+        # so the count reflects only work this host can serve.
         out = self._resolve_on("mac", {
             "feedback_prs": [self._fb(2475, ["fleet:design-unblocked",
                                              "fleet:needs-gl-host"])],
@@ -766,7 +761,7 @@ class FeedbackPrHostGate(HostSeamCase):
 
     def test_ungated_feedback_pr_unaffected_on_mac(self):
         # Only the GL label is gated — an ordinary feedback PR still counts on
-        # every host (#2393 / game #321 shape).
+        # every host.
         out = self._resolve_on("mac", {
             "feedback_prs": [self._fb(2393, ["fleet:design-unblocked",
                                              "fleet:wip"])],
@@ -785,8 +780,8 @@ class FeedbackPrHostGate(HostSeamCase):
         # Gating `_candidates` alone would only relocate the churn: with no
         # candidate yielded, a tasks-only quiet check reports
         # nothing-unclaimable and falls through to '' -> a lane-default no-op
-        # dispatch, the same #1726 shape the gate exists to remove. The slice
-        # holds real work no host-compatible worker can claim -> defer.
+        # dispatch. The slice holds real work no host-compatible worker can
+        # claim -> defer.
         out = self._resolve_on("mac", {
             "feedback_prs": [self._fb(2475, ["fleet:design-unblocked",
                                              "fleet:needs-gl-host"])],
@@ -825,14 +820,13 @@ class FeedbackPrHostGate(HostSeamCase):
 
 class SemanticConflictDispatchPressure(HostSeamCase):
     """Semantic-conflict PRs are opus-class claimable work dispatched ahead of
-    feedback and tasks (role-worker step 1c, opus+-classes-only). This
-    tier is what gives the label dispatch pressure at all: before it, a
-    conflicted PR was only resolved as a ride-along when opus queue work
-    happened to be flowing, and starved when the opus lane was dry or
-    host-locked (engine #2417 sat unclaimed while sonnet iterations
-    no-op'd). The scout pre-filters the slice (CONFLICTING-gated per #1654,
-    step-1c exclusions, resolving-claims, stacked children), so the resolver
-    counts every entry as-is."""
+    feedback and tasks (role-worker step 1c, opus+-classes-only). This tier
+    gives the label dispatch pressure: without it, a conflicted PR is
+    resolved only as a ride-along when opus queue work happens to be flowing,
+    and starves when the opus lane is dry or host-locked. The scout
+    pre-filters the slice (CONFLICTING-gated, step-1c exclusions,
+    resolving-claims, stacked children), so the resolver counts every entry
+    as-is."""
 
     @staticmethod
     def _sc(num):
@@ -845,9 +839,9 @@ class SemanticConflictDispatchPressure(HostSeamCase):
         self.assertEqual(out, "opus high 0 1 0")
 
     def test_conflict_dispatches_when_all_tasks_host_locked(self):
-        # The #2417 starvation shape: every open task is GL-locked on a
-        # Metal-only host, so tasks alone would defer and no opus iteration
-        # ever launches — the conflict must still dispatch opus.
+        # Every open task is GL-locked on a Metal-only host, so tasks alone
+        # would defer and no opus iteration ever launches — the conflict must
+        # still dispatch opus.
         os.environ["FLEET_TEST_HOST"] = "mac"
         out = resolve({
             "tasks_open": [_task("#1938", "opus", needs_gl_host=True)],
@@ -947,7 +941,7 @@ class ExcludeClasses(unittest.TestCase):
 class PlanFlag(unittest.TestCase):
     """The trailing ``plan`` token: 1 iff the ELECTED class's claimable count
     includes its needs-plan yield — the dispatcher then pre-claims a specific
-    issue and hands the assignment to the dispatch (#2197)."""
+    issue and hands the assignment to the dispatch."""
 
     def test_task_plus_same_class_plan_sets_flag_and_counts_both(self):
         # An opus task + an opus-degraded plan (fable capped): opus elected,
@@ -968,7 +962,7 @@ class PlanFlag(unittest.TestCase):
 
 class PlanPick(unittest.TestCase):
     """`plan_pick` — the ordered `plan:<repo>:<N>` targets the dispatcher
-    walks with `fleet-claim planning-claim` until one is granted (#2197)."""
+    walks with `fleet-claim planning-claim` until one is granted."""
 
     SLICE = {"needs_plan": [
         {"number": 90, "repo": "engine", "labels": ["fleet:sonnet"]},
@@ -1043,9 +1037,8 @@ class SemanticConflictFeedbackExclusionIntegration(unittest.TestCase):
 class StackOfferDispatch(unittest.TestCase):
     """Stackable-offer → dispatch integration. A blocked task whose sole
     blocker has a safe open PR gets `stackable_blocker_pr` and the dispatcher
-    dispatches on it. (The former #2447 ancestry A/B retired with the
-    native-stacked-PRs migration — a base missing a merged ancestor self-heals
-    via `gh stack sync`, so the offer is no longer withheld on containment.)
+    dispatches on it. A base missing a merged ancestor self-heals via
+    `gh stack sync`, so the offer is not withheld on containment.
     Hermetic: PRS dir redirects into a TemporaryDirectory
     (scripts/fleet/CLAUDE.md)."""
 

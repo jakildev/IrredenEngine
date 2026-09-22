@@ -19,9 +19,9 @@
 #       → exit 2, no edits
 #   T10: verdict-needs-opus-recheck → adds fleet:needs-opus-recheck,
 #        clears awaiting-upstream-review, leaves other labels intact
-#   T11: CRLF-emitting jq stub (regression guard for #3029) → delta still
-#        computed correctly despite \r-terminated jq -r output
-#   T12: escalate-class-sonnet-opus (reconcile R9's named edge, #2939) →
+#   T11: CRLF-emitting jq stub → delta still computed correctly despite
+#        \r-terminated jq -r output
+#   T12: escalate-class-sonnet-opus (reconcile R9's named edge) →
 #        issue-scoped class re-tag applies once, then is a zero-edit no-op
 #   T13: every verdict edge consumes the re-review triggers
 #   T13b: the retired severity verdict is rejected as an unknown edge,
@@ -150,7 +150,7 @@ assert_eq "$(run verdict-approve abc)" "2" "T2 non-int number exits 2"
 # === T3: scope mismatch (pr edge, issue target) → exit 2 =================
 echo "T3: scope mismatch → exit 2, no edits"
 reset_log
-set_labels issue 200 fleet:needs-fix          # #200 exists only as an issue
+set_labels issue 200 fleet:needs-fix          # exists only as an issue, not a PR
 assert_eq "$(run verdict-approve 200)" "2" "T3 pr-scope edge on an issue exits 2"
 assert_eq "$(edit_calls)" "0" "T3 made no edit calls"
 grep -q "is a issue" "$TMPROOT/out" && \
@@ -223,10 +223,10 @@ assert_eq "$(get_labels pr 105)" "fleet:needs-opus-recheck fleet:wip" \
     "T10 awaiting-upstream-review removed, needs-opus-recheck added, wip preserved"
 assert_eq "$(edit_calls)" "1" "T10 exactly one edit call"
 
-# === T11: CRLF-emitting jq (regression guard for #3029) ==================
+# === T11: CRLF-emitting jq — labels still resolve despite \r-corrupted jq ==
 # Native jq on Windows (MSYS2) CRLF-terminates `-r` array output; mapfile
-# only strips the trailing \n, so want_remove/want_add retained an embedded
-# \r that never matched a real node name (#3029). This stub reproduces that
+# only strips the trailing \n, so want_remove/want_add would retain an
+# embedded \r that never matches a real node name. This stub reproduces that
 # host behavior for exactly the two filters fleet-transition mapfiles from
 # (.remove[]?, .add[]?) and passes every other jq call through untouched, so
 # dropping the `tr -d '\r'` fix would make this test fail even though the
@@ -250,7 +250,7 @@ assert_eq "$(get_labels pr 106)" "fleet:approved fleet:wip" \
 assert_eq "$(edit_calls)" "1" "T11 exactly one edit call (delta computed correctly under CRLF)"
 rm -f "$BIN/jq"   # restore real jq on PATH for anything after this test
 
-# === T12: escalate-class-sonnet-opus (reconcile R9's edge, #2939) =========
+# === T12: escalate-class-sonnet-opus (reconcile R9's edge) ===============
 # The named-edge record for the class re-tag reconcile R9 applies directly.
 # ISSUE-scoped (the class label lives on the task, not the PR), so this also
 # exercises an issue-scope edge end to end. Asserting the zero-edit re-apply is

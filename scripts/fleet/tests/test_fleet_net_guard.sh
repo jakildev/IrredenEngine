@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for scripts/fleet/fleet-net.sh — the network-call timeout guard (#2362).
+# Tests for scripts/fleet/fleet-net.sh — the network-call timeout guard.
 #
 # Hermetic: no live git/gh, no network. A temp bindir holds fake `timeout`,
 # `git`, and `gh` on PATH front. The shadow functions call `command timeout …`
@@ -16,7 +16,7 @@ SHIM="$SCRIPT_DIR/timeout-shim.py"
 
 if [[ ! -f "$LIB" ]]; then
     echo "SKIP: lib not found at $LIB" >&2
-    exit 3  # skip status — run_all.sh must not count this as a pass (#2786)
+    exit 3  # skip status — run_all.sh must not count this as a pass
 fi
 
 PASS=0
@@ -66,35 +66,29 @@ export FLEET_NET_TIMEOUT="7"
 # shellcheck source=/dev/null
 source "$LIB"
 
-# --- T1: network subcommand is guarded ---------------------------------------
 echo "T1: git fetch is wrapped in the timeout guard"
 out=$(git -C /tmp fetch origin master 2>&1 || true)
 echo "$out" | grep -q "TIMEOUT-INVOKED budget=7" && ok "fetch invoked timeout (budget passed)" || fail "fetch not guarded: $out"
 echo "$out" | grep -q "GIT-RAN args=-C /tmp fetch origin master" && ok "fetch reached git with intact args" || fail "fetch args wrong: $out"
 
-# --- T2: local subcommand passes through unguarded ---------------------------
 echo "T2: git rev-parse (local) is NOT wrapped"
 out=$(git -C /tmp rev-parse HEAD 2>&1 || true)
 echo "$out" | grep -q "TIMEOUT-INVOKED" && fail "local op was wrongly guarded: $out" || ok "rev-parse not guarded (no timeout)"
 echo "$out" | grep -q "GIT-RAN args=-C /tmp rev-parse HEAD" && ok "rev-parse reached git" || fail "rev-parse args wrong: $out"
 
-# --- T3: -c global flag is skipped when finding the subcommand ----------------
 echo "T3: git -c k=v push finds 'push' past the -c flag"
 out=$(git -c protocol.version=2 push origin HEAD 2>&1 || true)
 echo "$out" | grep -q "TIMEOUT-INVOKED" && ok "push guarded past -c flag" || fail "push not guarded: $out"
 
-# --- T3b: a local op behind -C is still not guarded --------------------------
 echo "T3b: git -C <path> checkout (local) stays unguarded"
 out=$(git -C /tmp checkout -b x 2>&1 || true)
 echo "$out" | grep -q "TIMEOUT-INVOKED" && fail "checkout wrongly guarded: $out" || ok "checkout not guarded"
 
-# --- T4: every gh call is guarded --------------------------------------------
 echo "T4: gh is always wrapped"
 out=$(gh pr view 5 --json state 2>&1 || true)
 echo "$out" | grep -q "TIMEOUT-INVOKED" && ok "gh guarded" || fail "gh not guarded: $out"
 echo "$out" | grep -q "GH-RAN args=pr view 5 --json state" && ok "gh reached binary with intact args" || fail "gh args wrong: $out"
 
-# --- T5: exit 124 (timeout kill) propagates through the shadow ----------------
 echo "T5: a timed-out network op propagates exit 124"
 export FT_RC=124
 git -C /tmp fetch origin >/dev/null 2>&1 && rc=0 || rc=$?
@@ -105,13 +99,11 @@ gh pr list >/dev/null 2>&1 && rc=0 || rc=$?
 unset FT_RC
 [[ "$rc" == "124" ]] && ok "gh returned 124 on timeout" || fail "expected 124, got $rc"
 
-# --- T6: empty FLEET_TIMEOUT_CMD is a pure passthrough -----------------------
 echo "T6: empty FLEET_TIMEOUT_CMD passes through unguarded"
 out=$(FLEET_TIMEOUT_CMD="" git -C /tmp fetch origin 2>&1 || true)
 echo "$out" | grep -q "TIMEOUT-INVOKED" && fail "guarded despite empty cmd: $out" || ok "no guard when FLEET_TIMEOUT_CMD empty"
 echo "$out" | grep -q "GIT-RAN" && ok "git still ran (passthrough)" || fail "git did not run in passthrough: $out"
 
-# --- T7: the coreutils probe rejects a non-coreutils timeout -----------------
 echo "T7: coreutils probe accepts/rejects by --version"
 cat > "$BIN/faketrue" <<'EOF'
 #!/usr/bin/env bash
@@ -128,7 +120,6 @@ if _fleet_net_is_coreutils_timeout faketrue; then ok "probe accepts a coreutils 
 if _fleet_net_is_coreutils_timeout fakebusybox; then fail "probe accepted a non-coreutils runner"; else ok "probe rejects a non-coreutils runner"; fi
 if _fleet_net_is_coreutils_timeout definitely-not-on-path-xyz; then fail "probe accepted a missing binary"; else ok "probe rejects a missing binary"; fi
 
-# --- T8: the fallback shim advertises coreutils (so the probe accepts it) -----
 echo "T8: timeout-shim.py --version passes the probe"
 if [[ -f "$SHIM" ]] && command -v python3 >/dev/null 2>&1; then
     python3 "$SHIM" --version 2>/dev/null | grep -qi coreutils && ok "shim --version contains 'coreutils'" || fail "shim --version lacks coreutils marker"

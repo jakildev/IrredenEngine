@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Test the fleet-queue-ingest planning gate (#1456).
+# Test the fleet-queue-ingest planning gate.
 #
 # An approved issue with no `## Plan` issue comment must be bounced to
 # fleet:needs-plan (never stamped fleet:queued), with an explanatory comment.
@@ -36,15 +36,15 @@ mkdir -p "$HOME/.fleet/state/projections" "$HOME/.fleet/logs"
 
 
 PROJ="$HOME/.fleet/state/projections/queue-manager-ingest.json"
-# #740 = no plan anywhere, not a spike            → bounce to fleet:needs-plan
-# #743 = no plan, body declares investigation spike → stamp
-# #745 = `## Plan` issue comment, no file (#1932)  → stamp (the canonical path)
-# #746 = `[no-plan]` opt-out tag in title (#1932)  → stamp
-# #747 = human:no-plan opt-out label (#1932)       → stamp
-# #748 = fleet:plan-review (plan not yet vetted)    → early-skip (no stamp/bounce)
-# #749 = fleet:agent-approved + fleet:no-plan (follow-up lane) → stamp
-# #750 = fleet:agent-approved, no plan, no opt-out  → bounce to fleet:needs-plan
-# #751 = fleet:agent-approved + filed plan + fleet:plan-review → early-skip
+# issue 740 = no plan anywhere, not a spike            → bounce to fleet:needs-plan
+# issue 743 = no plan, body declares investigation spike → stamp
+# issue 745 = `## Plan` issue comment, no file           → stamp (the canonical path)
+# issue 746 = `[no-plan]` opt-out tag in title            → stamp
+# issue 747 = human:no-plan opt-out label                 → stamp
+# issue 748 = fleet:plan-review (plan not yet vetted)    → early-skip (no stamp/bounce)
+# issue 749 = fleet:agent-approved + fleet:no-plan (follow-up lane) → stamp
+# issue 750 = fleet:agent-approved, no plan, no opt-out  → bounce to fleet:needs-plan
+# issue 751 = fleet:agent-approved + filed plan + fleet:plan-review → early-skip
 cat > "$PROJ" <<'JSON'
 {"pending_issues":[
   {"number":740,"repo":"engine"},
@@ -110,7 +110,7 @@ echo "=== run fleet-queue-ingest over planned/unplanned approved issues ==="
 bash "$INGEST" >/dev/null 2>&1 || true
 
 # --- Bounce path -----------------------------------------------------------
-# #740 (no plan, not a spike) → fleet:needs-plan added, fleet:queued withheld.
+# issue 740 (no plan, not a spike) → fleet:needs-plan added, fleet:queued withheld.
 l740=$(edit_line 740)
 if [[ -n "$l740" && "$l740" == *"fleet:needs-plan"* && "$l740" != *"fleet:queued"* ]]; then
     ok "unplanned #740 bounced to fleet:needs-plan without fleet:queued"
@@ -130,7 +130,7 @@ else
 fi
 
 # --- Escape hatches --------------------------------------------------------
-# #743 (explicit investigation spike, no plan) → stamped.
+# issue 743 (explicit investigation spike, no plan) → stamped.
 l743=$(edit_line 743)
 if [[ -n "$l743" && "$l743" == *"fleet:queued"* && "$l743" != *"fleet:needs-plan"* ]]; then
     ok "#743 (explicit investigation spike) stamped without a plan"
@@ -139,8 +139,8 @@ else
 fi
 
 
-# --- #1932: comment-based plan + opt-outs -----------------------------------
-# #745 (`## Plan` issue comment) → stamped (the canonical path).
+# --- Comment-based plan + opt-outs -------------------------------------------
+# issue 745 (`## Plan` issue comment) → stamped (the canonical path).
 l745=$(edit_line 745)
 if [[ -n "$l745" && "$l745" == *"fleet:queued"* && "$l745" != *"fleet:needs-plan"* ]]; then
     ok "#745 (## Plan comment) stamped fleet:queued"
@@ -148,7 +148,7 @@ else
     bad "#745 comment-based plan mis-handled: '$l745'"
 fi
 
-# #746 ([no-plan] tag in title) → stamped (opt-out).
+# issue 746 ([no-plan] tag in title) → stamped (opt-out).
 l746=$(edit_line 746)
 if [[ -n "$l746" && "$l746" == *"fleet:queued"* && "$l746" != *"fleet:needs-plan"* ]]; then
     ok "#746 ([no-plan] opt-out tag) stamped without a plan"
@@ -156,7 +156,7 @@ else
     bad "#746 [no-plan] opt-out failed: '$l746'"
 fi
 
-# #747 (human:no-plan label) → stamped (opt-out).
+# issue 747 (human:no-plan label) → stamped (opt-out).
 l747=$(edit_line 747)
 if [[ -n "$l747" && "$l747" == *"fleet:queued"* && "$l747" != *"fleet:needs-plan"* ]]; then
     ok "#747 (human:no-plan opt-out label) stamped without a plan"
@@ -164,7 +164,7 @@ else
     bad "#747 human:no-plan opt-out failed: '$l747'"
 fi
 
-# #748 (fleet:plan-review) → early-skipped: neither queued nor bounced.
+# issue 748 (fleet:plan-review) → early-skipped: neither queued nor bounced.
 l748=$(edit_line 748)
 if [[ -z "$l748" ]]; then
     ok "#748 (fleet:plan-review) early-skipped — no stamp, no bounce"
@@ -173,7 +173,7 @@ else
 fi
 
 # --- Agent-approved follow-up lane -------------------------------------------
-# #749 (fleet:agent-approved + fleet:no-plan, no human:approved) → stamped.
+# issue 749 (fleet:agent-approved + fleet:no-plan, no human:approved) → stamped.
 l749=$(edit_line 749)
 if [[ -n "$l749" && "$l749" == *"fleet:queued"* && "$l749" != *"fleet:needs-plan"* ]]; then
     ok "#749 (agent-approved + fleet:no-plan) stamped without a plan"
@@ -181,7 +181,7 @@ else
     bad "#749 fleet:no-plan opt-out failed: '$l749'"
 fi
 
-# #750 (fleet:agent-approved, no plan, no opt-out) → planning gate applies
+# issue 750 (fleet:agent-approved, no plan, no opt-out) → planning gate applies
 # identically to the agent lane: bounced to fleet:needs-plan, never queued.
 l750=$(edit_line 750)
 if [[ -n "$l750" && "$l750" == *"fleet:needs-plan"* && "$l750" != *"fleet:queued"* ]]; then
@@ -190,8 +190,8 @@ else
     bad "#750 planless agent-approved mis-handled: '$l750'"
 fi
 
-# #751 (agent-approved, filer-authored plan awaiting vetting) → early-skip,
-# same as the planner-swapped #748 — ingest waits for the plan reviewer.
+# issue 751 (agent-approved, filer-authored plan awaiting vetting) → early-skip,
+# same as the planner-swapped issue 748 — ingest waits for the plan reviewer.
 l751=$(edit_line 751)
 if [[ -z "$l751" ]]; then
     ok "#751 (agent-approved + filed plan + plan-review) early-skipped"

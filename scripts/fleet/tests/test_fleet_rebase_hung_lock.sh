@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for fleet-rebase's hung-lock escalation (#2362).
+# Tests for fleet-rebase's hung-lock escalation.
 #
 # Drives the real `fleet-rebase --auto` against a pre-seeded lock directory in a
 # temp FLEET_STATE_DIR. The lock check runs before the merger-slice check, so no
@@ -14,9 +14,9 @@
 #   dead holder                         -> stale-break acquires (no escalation)
 #   alive holder + missing `started`    -> no escalation (skip the age check)
 #
-# Escalate-then-quiet (#2795), T5-T8: the wedged holder persists until a human
-# acts and the dispatcher keeps re-invoking this one-shot script, so the loud
-# line must stop after N while the alert keeps refreshing.
+# Escalate-then-quiet, T5-T8: the wedged holder persists until a human acts and
+# the dispatcher keeps re-invoking this one-shot script, so the loud line must
+# stop after N while the alert keeps refreshing.
 #   N+1 contended invocations           -> loud line once, alert refreshed after
 #   a different wedged holder pid       -> key changed, escalates again
 #   healthy pass (we get the lock)      -> counter + alert cleared
@@ -30,7 +30,7 @@ REBASE="$SCRIPT_DIR/fleet-rebase"
 
 if [[ ! -x "$REBASE" ]]; then
     echo "SKIP: fleet-rebase not found/executable at $REBASE" >&2
-    exit 3  # skip status — run_all.sh must not count this as a pass (#2786)
+    exit 3  # skip status — run_all.sh must not count this as a pass
 fi
 
 PASS=0
@@ -71,13 +71,13 @@ spawn_live() {
     LIVE_PIDS+=("$HOLDER_PID")
 }
 
-run_rebase() {  # runs the real script against the temp dirs; captures combined output
+run_rebase() {
     FLEET_STATE_DIR="$SDIR" \
     FLEET_ALERTS_DIR="$ADIR" \
     "$REBASE" --auto 2>&1 || true
 }
 
-run_rebase_n() {  # as run_rebase, but with an explicit FLEET_REBASE_HUNG_LOCK_ESCALATE_N.
+run_rebase_n() {
     # Kept separate so run_rebase keeps exercising the *unset* defaulting arm —
     # passing an empty override there would shadow it (scripts/fleet/CLAUDE.md
     # "Exercise every arm").
@@ -99,7 +99,6 @@ seed_lock() {   # $1 = pid, $2 = started epoch ("" = omit the started file)
 
 now=$(date +%s)
 
-# --- T1: alive holder held past the ceiling -> escalate ----------------------
 echo "T1: alive holder + backdated started -> HUNG-LOCK + alert, still defers"
 spawn_live; hp=$HOLDER_PID
 seed_lock "$hp" "$(( now - 4000 ))"   # 4000s > default 1800s ceiling
@@ -110,7 +109,6 @@ echo "$out" | grep -q "deferring this pass" && ok "still defers (does not break 
 grep -q "holder_pid=$hp" "$ALERT" 2>/dev/null && ok "alert names the holder pid" || fail "alert missing holder pid"
 [[ -f "$LOCK/pid" ]] && ok "seeded lock left intact (not broken)" || fail "lock was removed on the defer path"
 
-# --- T2: alive holder, fresh -> benign defer only ----------------------------
 echo "T2: alive holder + fresh started -> benign defer, no escalation"
 spawn_live; hp=$HOLDER_PID
 seed_lock "$hp" "$now"
@@ -119,7 +117,6 @@ echo "$out" | grep -q "deferring this pass" && ok "defers" || fail "did not defe
 echo "$out" | grep -q "HUNG-LOCK" && fail "escalated a fresh holder: $out" || ok "no HUNG-LOCK for a fresh holder"
 [[ -f "$ALERT" ]] && fail "wrote an alert for a fresh holder" || ok "no alert file for a fresh holder"
 
-# --- T2b: the defer path asks for another tier-0 pass, never an LLM launch ---
 echo "T2b: contended defer with --rearm-trigger -> retry deadline, no merger target"
 spawn_live; hp=$HOLDER_PID
 seed_lock "$hp" "$now"
@@ -138,7 +135,6 @@ FLEET_STATE_DIR="$SDIR" FLEET_ALERTS_DIR="$ADIR" "$REBASE" --auto --rearm-trigge
 [[ "$(cat "$SDIR/merger-retry-at")" == "$(( now + 30 ))" ]] && ok "an earlier pending deadline is kept" || fail "clobbered an earlier deadline: $(cat "$SDIR/merger-retry-at")"
 rm -f "$SDIR/merger-retry-at"
 
-# --- T3: dead holder -> stale-break acquires, no escalation ------------------
 echo "T3: dead holder -> breaks the stale lock, no escalation"
 # A pid that has already exited and been reaped: the subshell running `echo $$`
 # is collected by the command substitution, so this pid is dead (kill -0 fails)
@@ -149,7 +145,6 @@ out=$(run_rebase)
 echo "$out" | grep -q "breaking stale lock" && ok "breaks a dead holder's lock" || fail "did not break dead lock: $out"
 echo "$out" | grep -q "HUNG-LOCK" && fail "escalated a dead holder: $out" || ok "no escalation for a dead holder"
 
-# --- T4: missing started stamp -> no escalation (skip the age check) ----------
 echo "T4: alive holder, missing started -> no escalation"
 spawn_live; hp=$HOLDER_PID
 seed_lock "$hp" ""                         # pid but no started file
@@ -158,7 +153,6 @@ echo "$out" | grep -q "deferring this pass" && ok "defers" || fail "did not defe
 echo "$out" | grep -q "HUNG-LOCK" && fail "escalated without a started stamp: $out" || ok "no escalation when started is absent"
 [[ -f "$ALERT" ]] && fail "wrote an alert without a started stamp" || ok "no alert without a started stamp"
 
-# --- T5: N+1 contended invocations -> loud once, alert keeps refreshing ------
 # The dispatcher re-invokes this one-shot script while the wedge persists, so an
 # unguarded `log` would repeat identically forever. Past N stderr goes quiet and
 # the alert file becomes the only standing signal — hence the delete-and-reappear
@@ -181,7 +175,6 @@ echo "$t5b" | grep -q "deferring this pass" && ok "quiet ticks still defer norma
 [[ -f "$ALERT" ]] && ok "alert re-created past N (cleared inbox re-arms)" || fail "alert stayed gone past N — wedge permanently silent"
 grep -q "count=3" "$ALERT" 2>/dev/null && ok "refreshed alert carries the current count" || fail "stale count past N: $(cat "$ALERT" 2>/dev/null)"
 
-# --- T6: a different wedged holder is news again -----------------------------
 echo "T6: new holder pid restarts the streak and re-escalates"
 spawn_live; hp2=$HOLDER_PID
 rm -rf "$LOCK"; mkdir -p "$LOCK"                  # new holder, counter deliberately kept
@@ -192,7 +185,6 @@ echo "$out" | grep -q "HUNG-LOCK" && ok "re-escalates for a different holder" ||
 grep -q "holder_pid=$hp2" "$ALERT" 2>/dev/null && ok "alert names the new holder" || fail "alert kept the old holder: $(cat "$ALERT" 2>/dev/null)"
 grep -q "count=1" "$ALERT" 2>/dev/null && ok "streak restarted at 1 on the new key" || fail "count did not restart: $(cat "$ALERT" 2>/dev/null)"
 
-# --- T7: a healthy pass clears the counter and the alert ---------------------
 # Acquiring the lock means no holder is wedged. Without the all-clear the alert
 # outlives the outage it reported and the streak never re-arms the loud line.
 echo "T7: healthy pass (lock acquired) clears counter + alert"
@@ -206,11 +198,10 @@ echo "$out" | grep -q "breaking stale lock" && ok "acquires by breaking the dead
 [[ ! -f "$COUNTER" ]] && ok "counter removed on the healthy pass" || fail "counter survived: $(cat "$COUNTER" 2>/dev/null)"
 [[ ! -f "$ALERT" ]] && ok "alert removed on the healthy pass" || fail "alert survived: $(cat "$ALERT" 2>/dev/null)"
 
-# --- T8: positive control -- without the counter the quiet assertions fail ----
 # Discriminates on a runtime condition, not on whether the fix is present at some
-# ref: wiping the counter between ticks reproduces exactly the pre-#2795 state
-# (no persisted streak), so it can never invert once this change is committed.
-# If T5's "tick 2 is quiet" still passed here, T5 would be proving nothing.
+# ref: wiping the counter between ticks reproduces the pre-fix state (no
+# persisted streak), so it can never invert once this change is committed. If
+# T5's "tick 2 is quiet" still passed here, T5 would be proving nothing.
 echo "T8: positive control -- counter wiped each tick -> loud EVERY tick"
 spawn_live; hp3=$HOLDER_PID
 seed_lock "$hp3" "$(( now - 4000 ))"
@@ -224,7 +215,6 @@ for _ in 1 2 3; do
 done
 (( pc_loud == 3 )) && ok "pre-fix shape is loud on all 3 ticks (control is meaningful)" || fail "control only loud on $pc_loud/3 — T5 may pass vacuously"
 
-# --- T9: the N override arm (default 1 is only one of the two arms) ----------
 echo "T9: FLEET_REBASE_HUNG_LOCK_ESCALATE_N=3 -> warn, warn, escalate, quiet"
 spawn_live; hp4=$HOLDER_PID
 seed_lock "$hp4" "$(( now - 4000 ))"
@@ -235,7 +225,6 @@ echo "$n3" | grep -q "suppressing further" && ok "tick 3 (== N) escalates" || fa
 echo "$n4" | grep -q "HUNG-LOCK" && fail "tick 4 (> N) still loud: $n4" || ok "tick 4 (> N) is quiet"
 grep -q "count=4" "$ALERT" 2>/dev/null && ok "alert still refreshes past a non-default N" || fail "stale count: $(cat "$ALERT" 2>/dev/null)"
 
-# --- T10: a garbage / out-of-range N falls back to 1, never to "never" -------
 # A bad override must not disable the escalation entirely — that would turn a
 # typo into a silent wedge.
 echo "T10: invalid N falls back to 1"
