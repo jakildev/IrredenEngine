@@ -24,6 +24,12 @@ Design invariants:
   * **an error is never "unchanged".** Network/5xx/parse failures return
     `(True, None)` so a caller keeps its own last-known-good fallback rather
     than mistaking a poll failure for a genuine 304.
+  * **every GitHub response feeds the rate-limit record.** The `X-RateLimit-*`
+    headers on a 200, a 304 and any non-401 error status are the enforcement
+    counter for the pool named by `X-RateLimit-Resource`; `last_rate_limit`
+    serves the newest per pool. A 304 carries them and costs nothing, so the
+    reading rides on traffic the caller already sends. `gh api /rate_limit`
+    can report a different, near-empty bucket for the same identity.
 
 Source of truth: scripts/fleet/fleet_gh_poll.py in the engine repo.
 Co-located with fleet-state-scout so the scout's `sys.path.insert(script dir)`
@@ -88,6 +94,47 @@ def auth_token(refresh=False):
             return None
         _token_cache["value"] = proc.stdout.strip() or None
         return _token_cache["value"]
+
+
+# Newest X-RateLimit-* reading per resource, fed by _request. The scout's
+# collect_state fans fetches out across threads, hence the lock; last arrival
+# wins because every reading is equally the live counter.
+_rate_limits = {}
+_rate_limit_lock = threading.Lock()
+
+
+def _record_rate_limit(headers):
+    # A 401 never reaches here: GitHub answers it against the anonymous 60/hr
+    # bucket, which is not the identity being measured. A response without
+    # Resource/Limit (a secondary-limit 403 carries only Retry-After) is skipped.
+    if headers is None:
+        return
+    resource = headers.get("X-RateLimit-Resource")
+    try:
+        reading = {
+            "limit": int(headers.get("X-RateLimit-Limit")),
+            "used": int(headers.get("X-RateLimit-Used")),
+            "remaining": int(headers.get("X-RateLimit-Remaining")),
+            "reset": int(headers.get("X-RateLimit-Reset")),
+        }
+    except (TypeError, ValueError):
+        return
+    if not isinstance(resource, str) or not resource or reading["limit"] <= 0:
+        return
+    reading["observed_at"] = int(time.time())
+    with _rate_limit_lock:
+        _rate_limits[resource] = reading
+
+
+def last_rate_limit(resource):
+    """Newest {limit, used, remaining, reset, observed_at} seen for `resource`.
+
+    `reset` and `observed_at` are integer epochs. None when no GitHub response
+    naming that resource has been processed by this process.
+    """
+    with _rate_limit_lock:
+        reading = _rate_limits.get(resource)
+        return dict(reading) if reading else None
 
 
 def _cache_key(url):
@@ -204,15 +251,20 @@ def _request(url, cache_path, cached_etag, cached_body, accept, token,
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             body = resp.read().decode("utf-8")
+            _record_rate_limit(resp.headers)
             etag = resp.headers.get("ETag")
             if etag:
                 _write_cache(cache_path, etag, body)
             return (True, body)
     except urllib.error.HTTPError as e:
         # HTTPError is itself a response object; close it so the connection
-        # isn't leaked (and no ResourceWarning at gc). We only need the status.
+        # isn't leaked (and no ResourceWarning at gc). We only need the status
+        # and headers.
         code = e.code
+        headers = e.headers
         e.close()
+        if code != 401:
+            _record_rate_limit(headers)
         if code == 304:
             # Unchanged. Serve the cached body; if the cache is somehow
             # unreadable, force the caller onto its fallback rather than
