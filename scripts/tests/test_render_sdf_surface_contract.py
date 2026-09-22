@@ -26,7 +26,8 @@ using std::min;
 using std::max;
 using std::abs;
 struct ivec2 { int x,y; };
-struct vec3 { float x,y,z; };
+struct vec3 { float x,y,z; vec3()=default;
+    vec3(float a,float b,float c): x(a),y(b),z(c) {} };
 """
 
 CASES = r"""
@@ -55,16 +56,20 @@ int main() {
     for(double perturb:{-0.00001,0.0,0.00001}) {
         const double yaw=step*std::acos(-1.0)/16+perturb;
         const double c=std::cos(yaw),s=std::sin(yaw);
+        for(double phase:{0.0,1.0})
         for(int x=-12;x<=12;++x) for(int y=-12;y<=12;++y) {
             // Screen-right and screen-down bases, then inverse camera rotation.
-            const double view[]={-x/2.0-y/6.0,x/2.0-y/6.0,y/3.0};
+            const double sx=x+.375*phase,sy=y-.125*phase;
+            const double view[]={-sx/2.0-sy/6.0,sx/2.0-sy/6.0,sy/3.0};
             const double origin[]={c*view[0]-s*view[1],s*view[0]+c*view[1],view[2]};
             const double direction[]={(c-s)/3.0,(s+c)/3.0,1.0/3.0};
             const vec3 ext{1.37f*density,2.19f*density,0.83f*density};
             const double half[]={ext.x,ext.y,ext.z};
             const Hit expected=intersect(origin,direction,half);
             float entry=0,exit=0;
-            const bool actual=boxSlabIntersectYaw({x,y},ext,float(c),float(s),entry,exit);
+            vec3 normal;
+            const bool actual=boxSurfaceIntervalYaw(float(sx),float(sy),ext,
+                float(c),float(s),entry,exit,normal);
             if(actual!=expected.valid) return 1;
             if(!actual) {++misses;continue;}
             ++hits;normals|=1<<expected.face;
@@ -80,10 +85,33 @@ int main() {
                 boundary|=std::abs(std::abs(position)-half[axis])<2.e-4;
             }
             if(!boundary) return 4;
+            const float components[]={normal.x,normal.y,normal.z};
+            for(int axis=0;axis<3;++axis) {
+                const double wanted=expected.face/2==axis ?
+                    (expected.face%2 ? 1.0 : -1.0) : 0.0;
+                if(components[axis]!=wanted) return 10;
+            }
+            // The integer producer wrapper must preserve the shared interval.
+            float integerEntry,integerExit,sharedEntry,sharedExit;
+            const bool integerHit=boxSlabIntersectYaw({x,y},ext,float(c),float(s),
+                integerEntry,integerExit);
+            const bool sharedHit=boxSurfaceIntervalYaw(float(x),float(y),ext,
+                float(c),float(s),sharedEntry,sharedExit,normal);
+            if(integerHit!=sharedHit || (integerHit &&
+               (integerEntry!=sharedEntry || integerExit!=sharedExit))) return 11;
         }
     }
     // Yaw can expose both X/Y polarities, but never the underside (+Z).
     if(hits==0 || misses==0 || normals!=31) return 5;
+    for(int axis=0;axis<3;++axis) {
+        const vec3 ext=axis==0 ? vec3(1,1,1) :
+            (axis==1 ? vec3(2,1,1) : vec3(2,2,1));
+        float entry,exit;vec3 normal;
+        if(!boxSurfaceIntervalYaw(0,0,ext,1,0,entry,exit,normal)) return 12;
+        const float components[]={normal.x,normal.y,normal.z};
+        for(int component=0;component<3;++component)
+            if(components[component]!=(component==axis ? -1.f : 0.f)) return 12;
+    }
     for(int density:{1,2,4,8}) {
         float a,ae,b,be;
         if(!boxSlabIntersectYaw({0,0},{density+.1f,5.f*density,6.f*density},1,0,a,ae)
@@ -115,14 +143,17 @@ class SdfSurfaceContractTest(unittest.TestCase):
                 r"(?:const|constant) float kCeilBiasEpsilon = [^;]+;", source)
             self.assertIsNotNone(epsilon)
             functions = epsilon.group().replace("constant ", "const ") + "\n"
-            functions += "\n".join(extract_function(source, name) for name in (
-                "stableCeilToInt", "slabFromLinear", "boxSlabIntersectYaw"))
+            functions += extract_function(source, "stableCeilToInt")
+            sdf = (path.parent / f"ir_sdf_common.{suffix}").read_text()
+            functions += "\n" + "\n".join(extract_function(sdf, name) for name in (
+                "slabFromLinear", "boxSurfaceIntervalYaw"))
+            functions += "\n" + extract_function(source, "boxSlabIntersectYaw")
             common = (path.parent / f"ir_iso_common.{suffix}").read_text()
             shift = re.search(r"(?:const|constant) int kDepthEncodeShift = \d+;", common)
             self.assertIsNotNone(shift)
             functions += "\n" + shift.group().replace("constant ", "const ")
             functions += "\n" + extract_function(common, "encodeDepthWithFace")
-            functions = re.sub(r"out float (\w+)", r"float& \1", functions)
+            functions = re.sub(r"out (float|vec3) (\w+)", r"\1& \2", functions)
             functions = functions.replace("thread ", "").replace("float3", "vec3")
             functions = functions.replace("int2", "ivec2")
             variants = {
@@ -132,6 +163,10 @@ class SdfSurfaceContractTest(unittest.TestCase):
                 "rounded_surface": functions.replace(
                     "dEntry = max(dxLo, max(dyLo, dzLo));",
                     "dEntry = ceil(max(dxLo, max(dyLo, dzLo)));"),
+                "reversed_normal": functions.replace("ax > 0.0 ? -1.0 : 1.0",
+                                                     "ax > 0.0 ? 1.0 : -1.0"),
+                "quantized_fragment": functions.replace("float iX, float iY",
+                                                        "int iX, int iY"),
                 "wrong_parallel_slab": functions.replace(
                     "return false;", "dLo=-1e18; dHi=1e18; return true;", 1),
             }
@@ -152,7 +187,7 @@ class SdfSurfaceContractTest(unittest.TestCase):
                         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
                         print(suffix, run.stdout.strip())
                     else:
-                        self.assertIn(run.returncode, (1, 2, 3, 4), name)
+                        self.assertIn(run.returncode, (1, 2, 3, 4, 10, 11, 12), name)
 
 
 if __name__ == "__main__":

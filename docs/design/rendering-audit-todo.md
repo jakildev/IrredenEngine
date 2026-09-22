@@ -70,7 +70,8 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
   they do not describe the current production baseline.
 
 - [SDF surface contract](sdf-receiver-geometry.md): both shader interval solvers
-  agree with an independent 240,000-ray oracle per backend, but distinct planes
+  share continuous box intersection and signed normals, checked by an independent
+  480,000-ray integer/fractional oracle per backend, but distinct planes
   alias to the same stored depth/slot. Preserve winning geometry through its
   last consumer; slot-derived normals cannot recover an analytical surface.
   This scalar gate does not accept the remaining rendered shadow failures.

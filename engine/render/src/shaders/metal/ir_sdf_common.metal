@@ -112,4 +112,73 @@ inline float evaluateSDF(float3 localPos, uint shapeType, float4 params) {
     }
 }
 
+// |a*d + b| <= H solved for d. Degenerate (a == 0) returns either an empty
+// or all-d slab depending on |b| vs H.
+//
+// Threshold 1e-6 catches FP near-degenerate slopes at irrational yaws near
+// pi/4, where (cos-sin)/3 is tiny but nonzero (at exactly pi/4, cos==sin in
+// IEEE-754 so (c-s)/3 == 0). A smaller threshold lets 1/|a| blow up past 1e6
+// across that cluster. The +/-1e18 sentinel is an all-d slab the downstream
+// min/max swallows.
+inline bool slabFromLinear(
+    float a,
+    float b,
+    float H,
+    thread float& dLo,
+    thread float& dHi
+) {
+    if (fabs(a) < 1e-6) {
+        if (fabs(b) <= H) {
+            dLo = -1e18;
+            dHi = 1e18;
+            return true;
+        }
+        return false;
+    }
+    const float invA = 1.0 / a;
+    const float t1 = (-H - b) * invA;
+    const float t2 = ( H - b) * invA;
+    dLo = min(t1, t2);
+    dHi = max(t1, t2);
+    return true;
+}
+
+// Bounds and iso coordinates share the caller's density. No cell expansion,
+// origin rounding, or depth quantization is applied here. The normal is in
+// the unrotated box frame; outputs are valid only on a finite-box hit.
+inline bool boxSurfaceIntervalYaw(
+    float iX, float iY,
+    float3 hExt,
+    float yawC,
+    float yawS,
+    thread float& dEntry,
+    thread float& dExit,
+    thread float3& entryNormal
+) {
+    const float ax = (yawC - yawS) / 3.0;
+    const float bx = -(yawC + yawS) * 0.5 * iX - (yawC - yawS) * iY / 6.0;
+    const float ay = (yawC + yawS) / 3.0;
+    const float by =  (yawC - yawS) * 0.5 * iX - (yawC + yawS) * iY / 6.0;
+    const float az = 1.0 / 3.0;
+    const float bz = iY / 3.0;
+
+    float dxLo, dxHi, dyLo, dyHi, dzLo, dzHi;
+    if (!slabFromLinear(ax, bx, hExt.x, dxLo, dxHi)) return false;
+    if (!slabFromLinear(ay, by, hExt.y, dyLo, dyHi)) return false;
+    if (!slabFromLinear(az, bz, hExt.z, dzLo, dzHi)) return false;
+
+    dEntry = max(dxLo, max(dyLo, dzLo));
+    dExit  = min(dxHi, min(dyHi, dzHi));
+    if (dEntry > dExit) return false;
+    // At a shared edge either plane is valid; ties choose X, then Y, then Z.
+    if (dxLo >= dyLo && dxLo >= dzLo) {
+        entryNormal = float3(ax > 0.0 ? -1.0 : 1.0, 0.0, 0.0);
+    } else if (dyLo >= dzLo) {
+        entryNormal = float3(0.0, ay > 0.0 ? -1.0 : 1.0, 0.0);
+    } else {
+        entryNormal = float3(0.0, 0.0, -1.0);
+    }
+    return true;
+}
+
 #endif // IR_SDF_COMMON_METAL_INCLUDED
