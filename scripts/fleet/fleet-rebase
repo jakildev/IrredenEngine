@@ -651,11 +651,19 @@ attempt_pr() {
     # --force-with-lease=<ref> would then lease against a NEWER author
     # push and silently clobber it. Leasing against this exact SHA means
     # any concurrent push refuses ours instead.
-    local head_sha
+    local head_sha merge_commits
     head_sha=$(git -C "$wt" rev-parse "refs/remotes/origin/$head" 2>/dev/null) || {
         log "$repo_key#$pr: cannot resolve fetched head SHA; leaving for LLM"
         return 1
     }
+    merge_commits=$(git -C "$wt" rev-list --merges --max-count=1 "origin/$target..$head_sha" 2>/dev/null) || {
+        log "$repo_key#$pr: cannot inspect rebase range for merge commits; leaving for LLM"
+        return 1
+    }
+    if [[ -n "$merge_commits" ]]; then
+        log "$repo_key#$pr: rebase range contains merge commits; leaving for LLM"
+        return 1
+    fi
     git -C "$wt" checkout --detach "$head_sha" >/dev/null 2>&1 || {
         log "$repo_key#$pr: checkout failed; leaving for LLM"
         return 1
@@ -663,11 +671,13 @@ attempt_pr() {
 
     # Changed-file-set snapshot: the PR's own files vs its target, before
     # and after. A clean rebase that changes WHICH files the PR touches
-    # is not mechanical — bail to the LLM pass. (Residual risk: a 3-way
-    # auto-merge can still mis-combine hunks WITHIN a file without
-    # conflicting; that class of error is invisible to any mechanical
-    # rebaser — including the LLM merger, which runs the same git rebase —
-    # and is caught by the build/CI gate before the human merges.)
+    # is not mechanical — bail to the LLM pass. Two content-loss classes
+    # are not represented by this comparison: a 3-way auto-merge can
+    # mis-combine hunks within a file, and a plain rebase drops merge-only
+    # content. The first is invisible to any mechanical rebaser, including
+    # the LLM merger when it runs the same rebase; build/CI can catch broken
+    # compiled inputs but cannot protect documentation-only content. The
+    # merge-range precondition excludes the second.
     local pre_files post_files dropped=""
     pre_files=$(git -C "$wt" diff --name-only "origin/$target...$head_sha" | sort)
 
