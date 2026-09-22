@@ -117,6 +117,29 @@ std::string normalizeShaderMath(const std::string &source) {
     return std::regex_replace(trimmedFront, std::regex(R"( $)"), "");
 }
 
+// Extracts the text from the first `startToken` at or after `anchor` up to
+// (not including) the next `endToken`. Empty when any token is missing.
+std::string extractSpan(
+    const std::string &source,
+    const std::string &anchor,
+    const std::string &startToken,
+    const std::string &endToken
+) {
+    const std::size_t anchorAt = source.find(anchor);
+    if (anchorAt == std::string::npos) {
+        return {};
+    }
+    const std::size_t startAt = source.find(startToken, anchorAt);
+    if (startAt == std::string::npos) {
+        return {};
+    }
+    const std::size_t endAt = source.find(endToken, startAt);
+    if (endAt == std::string::npos) {
+        return {};
+    }
+    return source.substr(startAt, endAt - startAt);
+}
+
 // Extracts the `float reveal = 0.0 … return reveal;` accumulation out of a
 // column-reveal function. That span is the portion the two backends express
 // identically — the surrounding grid-memory / out-of-range short-circuits
@@ -131,19 +154,7 @@ std::string normalizeShaderMath(const std::string &source) {
 // drifted. Verified by mutation: with the anchor fixed, a one-sided edit to
 // the GLSL nearest-cell clamp fails this test.
 std::string extractRevealAccumulation(const std::string &source, const std::string &functionName) {
-    const std::size_t functionAt = source.find(functionName + "(");
-    if (functionAt == std::string::npos) {
-        return {};
-    }
-    const std::size_t startAt = source.find("float reveal = 0.0", functionAt);
-    if (startAt == std::string::npos) {
-        return {};
-    }
-    const std::size_t endAt = source.find("return reveal;", startAt);
-    if (endAt == std::string::npos) {
-        return {};
-    }
-    return source.substr(startAt, endAt - startAt);
+    return extractSpan(source, functionName + "(", "float reveal = 0.0", "return reveal;");
 }
 
 // Extracts a function's `{ … }` body by brace matching from its declaration.
@@ -168,29 +179,6 @@ std::string extractFunctionBody(const std::string &source, const std::string &fu
         }
     }
     return {};
-}
-
-// Extracts the text from the first `startToken` at or after `anchor` up to
-// (not including) the next `endToken`. Empty when any token is missing.
-std::string extractSpan(
-    const std::string &source,
-    const std::string &anchor,
-    const std::string &startToken,
-    const std::string &endToken
-) {
-    const std::size_t anchorAt = source.find(anchor);
-    if (anchorAt == std::string::npos) {
-        return {};
-    }
-    const std::size_t startAt = source.find(startToken, anchorAt);
-    if (startAt == std::string::npos) {
-        return {};
-    }
-    const std::size_t endAt = source.find(endToken, startAt);
-    if (endAt == std::string::npos) {
-        return {};
-    }
-    return source.substr(startAt, endAt - startAt);
 }
 
 // normalizeShaderMath plus the kernel-scope plumbing only MSL spells out: the

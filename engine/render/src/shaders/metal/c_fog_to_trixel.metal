@@ -43,8 +43,8 @@ struct FogObserverData {
 constant float kFogCutTone = 0.85f;
 constant float kFogCutMaxRimCells = 2.0f;
 // Rim fade — mirrors the GLSL twin. kFogRimFadeCells MUST equal
-// kFogHiddenKeepCells (ir_voxel_face_select.metal) so the fade reaches black
-// exactly where hidden columns stop rasterizing.
+// kFogHiddenKeepCells (ir_voxel_face_select.metal) so the fade reaches the
+// unexplored colour exactly where hidden columns stop rasterizing.
 constant float kFogRimFadeCells = 8.0f;
 constant float kFogRimFadeLevel = 0.75f;
 
@@ -203,10 +203,11 @@ kernel void c_fog_to_trixel(
         outColor = mix(fogObservers.unexploredColor.rgb, exploredColor, t);
     }
     if (gridState < kFogExploredValue) {
-        // The squared ease-out crushes the fade tail to black well before the
-        // keep-ring drop, so the outermost kept columns' wall faces (whose
-        // constant-depth recovery reads a column slightly INSIDE their true
-        // one) can't catch a visible lift against the void behind them.
+        // The squared ease-out crushes the fade tail to the unexplored colour
+        // well before the keep-ring drop, so the outermost kept columns' wall
+        // faces (whose constant-depth recovery reads a column slightly INSIDE
+        // their true one) can't catch a visible lift against the void behind
+        // them.
         const float u = 1.0f - smoothstep(0.0f, kFogRimFadeCells, hardDistPastRim);
         outColor = mix(outColor, src.rgb, kFogRimFadeLevel * u * u);
         // `state` carries the disc's ~1px AA rim, so the junction with visible

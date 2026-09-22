@@ -93,7 +93,7 @@ const float kFogCutTone = 0.85;
 const float kFogCutMaxRimCells = 2.0;
 
 // Rim fade — the fallback for hidden RASTERIZED matter the cap does not
-// tint. Instead of dropping straight to the unexplored black, an
+// tint. Instead of dropping straight to the unexplored colour, an
 // unexplored pixel's dark tone is lifted toward its lit colour by a factor
 // that starts at kFogRimFadeLevel at the disc rim and decays to zero over
 // kFogRimFadeCells of column distance past the radius. Air pockets at an
@@ -101,10 +101,11 @@ const float kFogCutMaxRimCells = 2.0;
 // this smooth gradient instead of a black band, so the boundary stays
 // artifact-free for ANY content the raster kept.
 // kFogRimFadeCells MUST equal kFogHiddenKeepCells (ir_voxel_face_select.glsl):
-// the fade reaches black exactly where hidden columns stop rasterizing, so the
-// keep-ring's outer drop edge never shows as a visible step. The level sits
-// just under kFogCutTone so the cut band still reads brighter than the fade
-// around it (the cross-section face keeps its identity).
+// the fade reaches the unexplored colour exactly where hidden columns stop
+// rasterizing, so the keep-ring's outer drop edge never shows as a visible
+// step. The level sits just under kFogCutTone so the cut band still reads
+// brighter than the fade around it (the cross-section face keeps its
+// identity).
 // Hard discs only — a soft (Mode B) disc's wide falloff IS its fade.
 const float kFogRimFadeCells = 8.0;
 const float kFogRimFadeLevel = 0.75;
@@ -283,10 +284,11 @@ void main() {
         outColor = mix(unexploredColor.rgb, exploredColor, t);
     }
     if (gridState < kFogExploredValue) {
-        // The squared ease-out crushes the fade tail to black well before the
-        // keep-ring drop, so the outermost kept columns' wall faces (whose
-        // constant-depth recovery reads a column slightly INSIDE their true
-        // one) can't catch a visible lift against the void behind them.
+        // The squared ease-out crushes the fade tail to the unexplored colour
+        // well before the keep-ring drop, so the outermost kept columns' wall
+        // faces (whose constant-depth recovery reads a column slightly INSIDE
+        // their true one) can't catch a visible lift against the void behind
+        // them.
         const float u = 1.0 - smoothstep(0.0, kFogRimFadeCells, hardDistPastRim);
         outColor = mix(outColor, src.rgb, kFogRimFadeLevel * u * u);
         // Axis only — the riser-polarity flip never changes a face's axis, so

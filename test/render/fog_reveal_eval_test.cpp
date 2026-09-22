@@ -125,22 +125,7 @@ TEST(FogRevealEvalTest, UnexploredColorDefaultsToBlackAtItsStd140Offset) {
     EXPECT_EQ(offsetof(FrameDataFogObservers, unexploredColor_), 272u);
     const FrameDataFogObservers observers{};
     EXPECT_EQ(observers.unexploredColor_, IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f));
-    EXPECT_EQ(
-        IRPrefab::Fog::unexploredColorPayload(IRMath::IRColors::kBlack),
-        observers.unexploredColor_
-    );
-}
-
-TEST(FogRevealEvalTest, UnexploredColorPayloadNormalizesEachChannel) {
-    EXPECT_EQ(
-        IRPrefab::Fog::unexploredColorPayload(IRMath::Color{255, 0, 255, 255}),
-        IRMath::vec4(1.0f, 0.0f, 1.0f, 1.0f)
-    );
-    const IRMath::vec4 mid = IRPrefab::Fog::unexploredColorPayload(IRMath::Color{51, 102, 0, 0});
-    EXPECT_FLOAT_EQ(mid.r, 0.2f);
-    EXPECT_FLOAT_EQ(mid.g, 0.4f);
-    EXPECT_FLOAT_EQ(mid.b, 0.0f);
-    EXPECT_FLOAT_EQ(mid.a, 0.0f);
+    EXPECT_EQ(IRMath::colorToVec4(IRMath::IRColors::kBlack), observers.unexploredColor_);
 }
 
 TEST(FogRevealEvalTest, ActiveMaskHideAndRestoreAreAlphaPreserving) {
