@@ -80,12 +80,12 @@ perf-stats overlay region (top-right by default).
   variants swap, overlapping bands stack. Shapes only.
 - Sprites bypass the trixel pipeline ([`docs/design/sprites.md`](../../../../docs/design/sprites.md));
   `C_Sprite::screenPixelSmooth_` (no game-pixel snap) is for the avatar or a camera-locked entity only.
-- Fog subjects are FIELD, BODY, or EXEMPT; BODY is the untagged default and
-  is never sliced, while FIELD samples are painted rather than removed. The
-  marker components, carrier layout, raster routes, creation seams, and the
-  detached-FIELD deviation are defined by the
-  [reveal model](../../../../docs/design/fog-of-war-reveal-model.md); follow
-  that contract whenever adding a fogged renderable or raster path.
+- `C_FogRevealed` (`setEntityRevealGoverned`) opts a grid-canvas voxel set into
+  one ground-anchor verdict (`FOG_REVEAL_EVAL`, active canvas only; hysteresis
+  and stagger in `C_FogRevealSettings`); reserved bit 3 exempts it from the compact
+  reject and stage-1 z drop and its pixels carry id bit 28 (shapes opt in via
+  `SHAPE_FLAG_FOG_WHOLE_BODY_EXEMPT`). The FIELD / BODY / EXEMPT target and the
+  child that lands each part: [reveal model](../../../../docs/design/fog-of-war-reveal-model.md).
 - GPU transforms: a voxel set opts in with `C_VoxelSetNew::gpuTransformSlot_
   != kVoxelTransformStatic` (the default is CPU-direct, dispatch-free). Joints
   share binding 18 — set slots grow up from 0, joint blocks are carved down from
