@@ -918,7 +918,7 @@ metalCurrentDepthPixelFormat(),
             sizeBytes < mtlBuffer->length() ? sizeBytes : mtlBuffer->length();
         auto *commandBuffer = metalCommandBuffer();
         if (commandBuffer != nullptr) {
-            auto *blit = commandBuffer->blitCommandEncoder();
+            auto *blit = createBlitEncoder(commandBuffer);
             blit->fillBuffer(
                 mtlBuffer, NS::Range::Make(0, static_cast<NS::UInteger>(clamped)), byteValue
             );

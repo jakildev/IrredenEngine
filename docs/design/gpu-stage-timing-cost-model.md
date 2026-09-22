@@ -36,9 +36,10 @@ changes (occupied-only lists, indirect dispatch, subdivision caps).
   accumulators build the shutdown avg/min/max (#1738). A `finish()`-bracket
   legacy path exists for devices without timestamp support
   (`legacyFinishTiming_`).
-- **Two registry rows have NO writer and always read 0.000:** `shapePass0`
-  (folded into the `SHAPES_TO_TRIXEL` per-system bundle) and `shapeCompact`
-  (reserved). They stay in the registry for overlay/Lua stability.
+- **Reserved rows have no writer:** `shapePass0`, `shapePass1` and
+  `shapeCompact`. Their public fields remain for compatibility; zero samples
+  mean unwired, not zero-cost. Historical `shapePass1` reports measured the
+  complete shape-system bundle.
 - **`canvasClear` / `voxelCompact` / `voxelStage1` / `voxelStage2` are
   intra-tick sub-rows (#2280).** `VOXEL_TO_TRIXEL_STAGE_1` is no longer tagged
   for the per-system observer; its per-canvas tick brackets each dispatch group
@@ -51,9 +52,18 @@ changes (occupied-only lists, indirect dispatch, subdivision caps).
   with its own CPU scope and non-nested GPU substage scope. It is not included
   in GPU `voxelStage1` or `bakeSunShadowMap`. Samples are per canvas invocation,
   not a sum over all canvases in a frame.
-- **`shapePass1` is still a bundle** — it covers all of `SHAPES_TO_TRIXEL`,
-  including finite analytic boxes and the non-box depth fallback. Do not add
-  nested Metal substage scopes: the timestamp attachment is shared.
+- **SDF rows are non-nested dispatch scopes:** `shapeOwnerClear` covers
+  scratch preparation/clear (Metal samples the blit, excluding CPU allocation); `shapeDepth` covers pass zero; `shapeOwnerElect`
+  covers equal-depth owner election; `shapePublish` covers color/identity
+  publication; `shapeSunCast` covers finite box casting and the non-box depth
+  fallback plus bake. Dispatch scopes include their trailing barriers; the
+  owner-clear barrier precedes its blit. OpenGL query intervals can include
+  idle gaps during CPU preparation. They exclude canvas
+  initialization clears, descriptor upload/CPU tiling, and gaps between scopes.
+  `SHAPES_TO_TRIXEL` has no per-system GPU tag: Metal supports one active
+  attachment and would corrupt nested timing. CPU `shapeEncode` spans its
+  end hook, independently of GPU timing. Legacy finish timing produces no
+  substage samples. Do not compare a single sub-row to the historical bundle.
 - **`bakeSunShadowMap` can be zero with finite casting active.** Finite geometry
   is authored by the producer stages; this row then only publishes frame data.
   Cascade clearing is at the first producer’s begin hook, outside the voxel
@@ -68,7 +78,7 @@ Envelope and summed buffer spans include stalls, and are not GPU busy time.
 1. A **0.000 row** may be unwired, have no completed valid GPU samples, or
    contain durations rounded by the report. Check the sample count and scope
    before interpreting it as free work.
-2. A **bundle row** (`shapePass1`) cannot attribute cost to a sub-dispatch.
+2. A **historical bundle row** (`shapePass1`) cannot attribute cost to a sub-dispatch.
    The voxel path is no longer a bundle: since #2280, `voxelStage1` /
    `voxelCompact` / `canvasClear` / `voxelStage2` are per-dispatch GPU rows,
    so "stage-1's raster is the cost" IS answerable from `voxelStage1` alone
@@ -173,9 +183,10 @@ workload before applying them to a new optimization:
 - Timing-only changes must be render-byte-identical with timing enabled and
   disabled.
 - The timers-off cost stays one bool check per observer fire.
-- After wiring any sub-stage scope: sum of sub-rows ≈ the enclosing
-  per-system row (± measurement overhead) at a static pose, on both
-  backends.
+- After wiring sub-stage scopes, compare with the former bundle at a static
+  pose on both backends. Record excluded commands and inter-encoder gaps:
+  the sum need not equal the old envelope, and the difference is not by
+  itself evidence of an optimization. Use a single canvas for attribution.
 - Any change to which system writes a registry row updates the registry
   comment in `gpu_stage_timing.hpp` AND §1 of this doc — the registry
   comment is what stops the next misreading.

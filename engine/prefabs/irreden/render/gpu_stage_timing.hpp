@@ -14,7 +14,7 @@ inline constexpr float kFrameTimeBudgetMs = 1000.0f / 60.0f;
 
 // Number of named GPU stages in `gpuStageRegistry()`. Single source of truth
 // for both the registry array and the parallel per-stage accumulator array.
-inline constexpr std::size_t kGpuStageCount = 29;
+inline constexpr std::size_t kGpuStageCount = 34;
 
 struct GpuStageTiming {
     float canvasClearMs_ = 0.0f;
@@ -36,6 +36,11 @@ struct GpuStageTiming {
     float shapeCompactMs_ = 0.0f;
     float shapePass0Ms_ = 0.0f;
     float shapePass1Ms_ = 0.0f;
+    float shapeOwnerClearMs_ = 0.0f;
+    float shapeDepthMs_ = 0.0f;
+    float shapeOwnerElectMs_ = 0.0f;
+    float shapePublishMs_ = 0.0f;
+    float shapeSunCastMs_ = 0.0f;
     float textToTrixelMs_ = 0.0f;
     float buildLightOcclusionGridMs_ = 0.0f;
     float computeVoxelAoMs_ = 0.0f;
@@ -317,7 +322,6 @@ inline void commitGpuStageSample(const GpuStageInfo &info, int registryIndex, fl
 // matching `GpuStageTiming::*Ms_` field at end-of-tick.
 //
 // Per-system mapping (one `GpuStageTimingObserver` fire per `SystemId`):
-//   `shapePass1`   ← SHAPES_TO_TRIXEL (covers former shapePass0 + shapePass1)
 //   Most remaining names map 1:1 to single-stage systems.
 //
 // Intra-tick sub-stage rows: VOXEL_TO_TRIXEL_STAGE_1 is NOT tagged for
@@ -357,11 +361,11 @@ inline void commitGpuStageSample(const GpuStageInfo &info, int registryIndex, fl
 // none of those dispatches run), so cardinal-vs-yaw row deltas ARE the
 // per-axis burst attribution.
 //
-// Two rows still have no current writer: `shapePass0` (folded into the
-// SHAPES_TO_TRIXEL per-system measurement) and `shapeCompact` (no system has
-// a writer). They stay in the registry to keep the Lua API and perf overlay
-// stable — the overlay still
-// shows them at 0.0f; the shutdown profile report omits them (sampleCount_ == 0).
+// SDF scopes are non-nested and per canvas: owner clear, depth, owner election,
+// publication and finite analytic casting. CPU encoding between scopes and
+// canvas initialization clears are excluded. Multi-canvas samples are not totals.
+// shapePass0, shapePass1 and shapeCompact retain their public fields but have
+// no writer; historical shapePass1 bundle values are not comparable to a sub-row.
 inline const std::array<GpuStageInfo, kGpuStageCount> &gpuStageRegistry() {
     static const std::array<GpuStageInfo, kGpuStageCount> registry{{
         {"canvasClear", &GpuStageTiming::canvasClearMs_, 0.05f},
@@ -380,6 +384,11 @@ inline const std::array<GpuStageInfo, kGpuStageCount> &gpuStageRegistry() {
         {"shapeCompact", &GpuStageTiming::shapeCompactMs_, 0.05f},
         {"shapePass0", &GpuStageTiming::shapePass0Ms_, 0.10f},
         {"shapePass1", &GpuStageTiming::shapePass1Ms_, 0.10f},
+        {"shapeOwnerClear", &GpuStageTiming::shapeOwnerClearMs_, 0.0f},
+        {"shapeDepth", &GpuStageTiming::shapeDepthMs_, 0.0f},
+        {"shapeOwnerElect", &GpuStageTiming::shapeOwnerElectMs_, 0.0f},
+        {"shapePublish", &GpuStageTiming::shapePublishMs_, 0.0f},
+        {"shapeSunCast", &GpuStageTiming::shapeSunCastMs_, 0.0f},
         {"textToTrixel", &GpuStageTiming::textToTrixelMs_, 0.05f},
         {"buildLightOcclusionGrid", &GpuStageTiming::buildLightOcclusionGridMs_, 0.10f},
         {"computeVoxelAO", &GpuStageTiming::computeVoxelAoMs_, 0.10f},
