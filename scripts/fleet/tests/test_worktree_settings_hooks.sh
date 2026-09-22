@@ -21,9 +21,10 @@
 #   - malformed JSON falls back to a clean baseline write
 #   - the FLEET_ASSIGNED_WORKTREE env key + the PreToolUse edit-guard hook are
 #     emitted, the guard command references the engine clone by absolute path,
-#     and both keys carry #2284 preservation: hand-added env entries + non-fleet
-#     PreToolUse groups survive regeneration, a stale fleet guard-hook variant is
-#     replaced not duplicated, and fleet wins only on its own env key (#2402)
+#     and both keys carry the same preservation contract: hand-added env
+#     entries + non-fleet PreToolUse groups survive regeneration, a stale
+#     fleet guard-hook variant is replaced not duplicated, and fleet wins
+#     only on its own env key
 
 set -euo pipefail
 

@@ -1,26 +1,7 @@
 #include "ir_iso_common.metal"
 
-// T-163 Phase 1 — stateless particle → trixel canvas render pass (Metal).
-// Mirrors c_render_stateless_particles_to_trixel.glsl. Each thread derives
-// its (emitterId, subIndex) from the global thread id, reads the emitter
-// descriptor from the SSBO at [[buffer(4)]], and reconstructs the
-// particle's position from a closed-form gravity-with-jitter trajectory.
-//
-// Each particle emits a subdivision-scaled voxel diamond, mirroring the
-// voxel-pool path: posScaled = round(position * sub) → for (face, u, v,
-// subPixel) walk faceMicroPositionFixed + faceOffset_2x3 → atomicMin on
-// the distance scratch buffer. `voxelRenderOptions` carries the same
-// (renderMode, effectiveSubdivisions) pair the voxel pipeline reads;
-// at sub > 1 (FULL mode, default) each particle expands into sub² × 6
-// trixels just like a voxel does. See the GLSL twin for the full
-// rationale.
-//
-// Same MSL image-atomic workaround as the voxel-to-trixel and T-139 render
-// stages: distance writes go through a `device atomic_int*` scratch buffer
-// (slot 16), and the color write reads back the post-min value to decide
-// whether this particle won the depth test. Race semantics match GLSL —
-// same-pixel collisions can produce a one-frame color smear, invisible for
-// ambient particle fields.
+// MSL image atomics use the slot-16 scratch buffer; color writes use the
+// post-min value, and same-pixel ties may smear color for one frame.
 
 // SYNC: must match kMaxParticlesPerEmitter in ir_render_types.hpp and
 // the GLSL define in c_render_stateless_particles_to_trixel.glsl.
@@ -64,6 +45,10 @@ kernel void c_render_stateless_particles_to_trixel(
     const GpuParticleEmitter e = emitters[emitterId];
     if (subIndex >= e.particlesPerEmitter) return;
 
+    // The guard keeps spawnOffset finite for a non-positive spawnRate. Such a
+    // rate leaves only subIndex 0 live (offset 0); every later subIndex gets an
+    // offset >= 1e6 s, so it returns on ageRaw < 0 until currentTime passes
+    // that. It does not disable the emitter; particlesPerEmitter = 0 does.
     const float spawnRateSafe = max(e.spawnRate, 1e-6f);
     const float spawnOffset = float(subIndex) / spawnRateSafe;
     const float ageRaw = frameData.currentTime - spawnOffset;
@@ -80,9 +65,6 @@ kernel void c_render_stateless_particles_to_trixel(
                           + (float3(e.baseVelocity) + jitterVel) * age
                           + 0.5f * float3(e.gravity) * age * age;
 
-    // Scale the particle position into the same fixed-point grid the voxel
-    // pool uses under FULL subdivision mode (sub > 1 → sub-voxel precision;
-    // sub == 1 collapses to plain integer rounding).
     const int subdivisions = effectiveTrixelSubdivisionScale(frameData.voxelRenderOptions);
     const int3 posScaled = roundHalfUp(position * float(subdivisions));
 
@@ -93,9 +75,6 @@ kernel void c_render_stateless_particles_to_trixel(
     );
     const float4 baseColor = unpackColor(e.baseColor);
 
-    // Walk each face's sub × sub micro grid (matches the voxel-pool dispatch
-    // shape collapsed into an inner loop; see GLSL twin for the rationale on
-    // why the loop fits the particle-count budget at fixed bounds).
     for (int face = 0; face < 3; face++) {
         for (int u = 0; u < subdivisions; u++) {
             for (int v = 0; v < subdivisions; v++) {

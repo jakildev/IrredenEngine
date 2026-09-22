@@ -23,6 +23,7 @@ profiler, no per-cell stopwatch.
 | `scripts/perf/tests/test_baseline_writer.sh` | Executed control for the `perf-baseline` branch writer and the PR-path reader, driving the shipped workflow step bodies against a local bare origin. Same CI step. |
 | `scripts/perf/check_regression.py`    | CI gate — fingerprint-aware regression check. Same fingerprint → gates; different fingerprint or no baseline → informational. |
 | `scripts/perf/lua_cpp_parity.py`      | Lua-vs-C++ overhead table from a `--target both` run                               |
+| `scripts/perf/million_controls.py`    | The million control as one interleaved matrix: build tree × stage profiling × pose, through `repeat_profile.py` |
 
 All Python scripts are stdlib-only and run from anywhere in the repo. The
 matrix script writes `save_files/perf/<git-sha>[-<label>]/` so multiple
@@ -128,10 +129,55 @@ Use the same pose, population and flags in both arms. GPU values are encoder
 intervals, not exclusive costs that can always be summed into frame time; see
 [the timing contract](../design/gpu-stage-timing-cost-model.md).
 
+The summary carries frame mean, p95 and p99 over all frames, the same three
+over the steady frames (the report's `Steady frame time` line, first quarter
+excluded) and a tail pooled over every run's steady frames, the full-frame GPU
+rows, every GPU stage row the runs share, fixed updates per rendered frame, and
+each run's witnessed yaw and per-axis overflow peak and drops. Pose and drops
+come from the report's `Run witness` section, which every build type writes,
+so a Release run is checked like a Debug one; a run that dropped an overflow
+entry, left its `--yaw`, or carries no witness fails. The manifest records the
+power source (`host_power`), `host_cpus`, the build tree and its
+`CMAKE_BUILD_TYPE`, and per run the start time, battery charge and one-minute
+load average: the benchmark lock excludes cooperating builds only, so read the
+load before believing a table.
+
+`IRREDEN_BUILD_DIR` selects the tree, as it does for `fleet-build` and
+`fleet-run`. The `*-release` configure presets build into `build-release/`
+beside the Debug tree:
+
+```bash
+cmake --preset macos-release            # or linux-release / windows-release
+IRREDEN_BUILD_DIR="$PWD/build-release" fleet-build --target IRPerfGrid
+```
+
 Parser regression check: `python3 scripts/perf/test_profile_parser.py`.
 Current GPU reports include avg/min/max/sample count; old avg/max reports
 remain readable. A row with no writer or no executed work is not proof of a
 free feature.
+
+## The million controls
+
+`scripts/perf/million_controls.py` is the objective's headline fixture as one
+command: 100³ single-voxel entities in a 128³ pool, zoom 4, FULL subdivision,
+frozen wave, at yaw 0°, 45° and a full-turn sweep, with stage profiling on and
+off, in every tree
+named with `--tree`. Cases run interleaved (forward on odd rounds, reverse on
+even) because grouped arms on one host drift by more than the differences
+they test; the summary prints per-round means so the drift stays visible, and
+the run stops if a binary, the shaders, the runtime scripts or the power source
+change under it.
+
+```bash
+cmake --preset macos-release      # once; or linux-release / windows-release
+fleet-build --target IRPerfGrid
+IRREDEN_BUILD_DIR="$PWD/build-release" fleet-build --target IRPerfGrid
+python3 scripts/perf/million_controls.py --tree build --tree build-release \
+    --output save_files/perf/million-controls
+```
+
+[million-controls.md](million-controls.md) holds the reference table later
+optimization PRs diff against, with the host conditions it was taken under.
 
 ## Config presets
 
@@ -176,12 +222,20 @@ Relative paths for `--presets` are resolved from the engine root.
 | `zoom4_full_base1.lua` | Moderate — zoom=4, full subdivision, base=1 |
 | `zoom8_full_sub4.lua` | Heavy — zoom=8, full subdivision, base=4 |
 | `zoom16_full_base1.lua` | Extreme zoom / cull-audit at zoom=16 |
+| `million.lua` | The million control: 100³ single-voxel entities, `config.voxel_pool_edge = 128`, zoom=4, full subdivision, base=1, stage profiling on |
+| `million-profiling-off.lua` | The same scene with `profiling_enabled` and `gpu_stage_timing` off — the arm the 60 fps criterion is read from |
+
+A preset may also carry a `config` table. `World` overlays its keys on
+`config.lua`'s, and the engine's pre-init pass reads it too, so
+`voxel_pool_edge` sizes the pool from the preset.
 
 ## CLI flags the scripts depend on
 
 `IRPerfGrid` and `IRLuaPerfGrid` accept these flags (used by the matrix
 script). All of these can also be set inside a preset file (except
-`--auto-profile` and `--config-preset` itself):
+`--auto-profile`, `--yaw` and `--config-preset` itself) — the demo-owned ones
+under the preset's `perf_grid` table, `--worker-threads` under its `config`
+table:
 
 - `--auto-profile <N>` — collect N frames of timing then exit; writes
   `save_files/profile_report.txt`.
@@ -196,6 +250,37 @@ script). All of these can also be set inside a preset file (except
 - `--mode <voxel_set|sdf>` (IRPerfGrid only) — voxel-pool vs SDF-only
   geometry.
 - `--grid-size <N>` — overrides the demo's default grid size.
+- `--worker-threads <N>` — engine-common (every target has it); overrides
+  `worker_thread_count`. `-1` auto, `0` inline-serial (no pool — every
+  `IRJob` dispatch on the calling thread), `N` an N-worker pool. The axis
+  `--threading-baseline` sweeps; `0` is the serial floor, since a one-worker
+  pool still has two executors (enkiTS pumps tasks on the waiting thread).
+- `--yaw <radians>` (IRPerfGrid only) — initial camera Z-yaw. The profile
+  report witnesses the yaw of the first and last rendered frame and the yaw
+  travelled between them, and `repeat_profile.py` fails a static-pose run
+  whose witness disagrees. Tables
+  committed before the unit fix labelled a 0.785° pose as 45°:
+  [perf-grid-yaw-unit.md](perf-grid-yaw-unit.md).
+- `--yaw-step <radians>` (IRPerfGrid only) — yaw advance per rendered frame;
+  frame N renders at `--yaw + (N − 1) × step`, the same poses in every run.
+  `repeat_profile.py` checks the first and last pose and the travelled arc
+  from the witness, and the flag pins the yaw pivot at the grid centre, because
+  with the default pivot the part of the world a yaw shows depends on how the
+  run began: [continuous-yaw-sweep.md](continuous-yaw-sweep.md). It cannot be
+  combined with `--auto-screenshot`, whose shot table sets the yaw too.
+- `--yaw-first-frame <radians>`, `--capture-frame <N>`, `--default-pivot`
+  (IRPerfGrid only) — the pin's control: frame 1 at a pose of its own, one
+  screenshot after frame N, and the engine's default pivot under a driven
+  yaw. Two first frames give one capture when pinned and two when not. A
+  capture puts its readback in that frame's time, so `repeat_profile.py`
+  refuses it.
+- `--pivot-origin` (IRPerfGrid only) — the same pin for a static `--yaw`, so a
+  static pose and a swept one frame the scene alike. `million_controls.py`
+  passes it on every arm.
+- `--yaw-first-frame <radians>`, `--capture-frame <N>`, `--default-pivot`
+  (IRPerfGrid only) — the pin's control: frame 1 at a pose of its own, one
+  screenshot after frame N, and the engine's default pivot under a driven
+  yaw. Two first frames give one capture when pinned and two when not.
 
 ## Voxel cull stats — the "is culling working?" diagnostic
 
@@ -285,7 +370,20 @@ the gate is exercised by the gate.
   gate when T-330 moved the writer to per-slug directories (#2817).
 - `check_regression.py` exit ≥ 2 means it could not compare at all. That
   turns the step **red** and posts no comment: an infra failure must not
-  read as a perf verdict.
+  read as a perf verdict. This includes a manifest cell whose report is
+  missing or does not contain a positive frame-time measurement.
+- The matrix itself exits nonzero when any cell produces no report, before a
+  push or manual dispatch can replace a measured baseline with an empty one.
+  A slug directory filed report-less before that guard existed is purged by
+  the writer the next time any SKU files a measured baseline — otherwise the
+  exit-2 rule above leaves every PR on that SKU red with no author-side
+  remedy.
+- Normalization weighs the head against the **baseline run's own `ref_ms`**,
+  both readings taken on the same SKU, so the load factor isolates how
+  contended the machine was. `ref_target_ms` (a fixed 50 ms) stays in the
+  manifest and the host note as information only: the hosted pool calibrates
+  at 59–104 ms, so weighing against the target divided every head by
+  0.43–0.85 and no regression below roughly 2× could fire (#3471).
 - The PR-path reader takes the seed-new (empty root) path only when
   `git ls-remote --exit-code` confirms `perf-baseline` is absent (exit 2).
   Any other failure to reach the branch — an unreachable remote, a fetch
@@ -297,14 +395,25 @@ the gate is exercised by the gate.
 all of the above (layout resolution across empty / per-slug / legacy-flat
 roots, plus the exit mapping), and
 `scripts/perf/tests/test_baseline_writer.sh` drives the branch writer and
-the PR-path reader against a local bare origin. Both run as the perf-gate
-job's first step after checkout, before the build.
+the PR-path reader against a local bare origin. `test/tools/normalization_test.sh`
+covers the calibration helpers and the gate's decision tree. All three run as
+the perf-gate job's first step after checkout, before the build.
+
+CI uses 60 frames per quick-matrix cell (45 post-warmup samples) with a
+300-second watchdog. Measured on the hosted pool, llvmpipe renders the quick
+grid at 490 ms (zoom 1) to 1030 ms (zoom 4) per frame, so a cell costs 45-66 s
+and the stock 300-frame window needed five minutes. A cell killed by the
+watchdog writes no report at all, so the watchdog is sized from the job's
+headroom rather than from a frame-time target. The full
+run directory, including each cell's `.log`, is uploaded for seven days as
+`perf-run-<workflow-run-id>` so a timeout, crash, or display failure can be
+diagnosed from the check run.
 
 **Gate script (also usable locally):**
 
 ```bash
 scripts/perf/check_regression.py <baseline_dir> <head_dir> [--regress-pct N]
-# Exit 0: pass. Exit 1: regression detected. Exit 2: usage error.
+# Exit 0: pass. Exit 1: regression detected. Exit 2: usage or measurement error.
 ```
 
 `check_regression.py` wraps `compare_perf_runs.py` — same args, same
@@ -317,8 +426,8 @@ produces false positives, lower `--regress-pct` conservatively or
 migrate to a dedicated self-hosted Linux runner for stability.
 
 **No baseline yet?** The gate posts a "no baseline" comment and exits
-clean. A baseline is committed the next time a perf-relevant change
-lands on master.
+clean. A perf-relevant master push or manual dispatch seeds that host on the
+`perf-baseline` branch.
 
 ## GPU timing implementation note
 

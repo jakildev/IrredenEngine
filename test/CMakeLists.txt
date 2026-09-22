@@ -68,6 +68,7 @@ add_executable(IrredenEngineTest
   math/ir_math_trixel_index_test.cpp
   math/ir_math_yaw_deformation_test.cpp
   math/sdf_test.cpp
+  profile/profile_report_test.cpp
   render/camera_mouse_rotate_reset_test.cpp
   render/camera_pan_pivot_test.cpp
   render/camera_yaw_test.cpp
@@ -90,10 +91,12 @@ add_executable(IrredenEngineTest
   render/picking_aim_iso_pixel_test.cpp
   render/picking_face_normal_test.cpp
   render/prefab_system_probe_test.cpp
+  render/run_witness_test.cpp
   render/settings_menu_reset_test.cpp
   render/sun_direction_test.cpp
   render/sun_lighting_test.cpp
   render/sun_shadow_feeder_ring_test.cpp
+  render/voxel_pool_config_test.cpp
   render/sprite_animation_test.cpp
   render/sprite_components_test.cpp
   render/sprite_render_test.cpp
@@ -112,10 +115,12 @@ add_executable(IrredenEngineTest
   script/lua_entity_anchor_test.cpp
   script/lua_enum_register_test.cpp
   script/lua_persistence_test.cpp
+  script/lua_print_sink_test.cpp
   script/lua_world_snapshot_test.cpp
   script/lua_pipeline_register_test.cpp
   script/lua_render_bindings_test.cpp
   script/lua_fog_revealed_test.cpp
+  script/lua_script_get_table_test.cpp
   script/lua_script_utils_test.cpp
   script/lua_local_transform_lua_test.cpp
   script/lua_rotation_target_lua_test.cpp
@@ -150,6 +155,7 @@ add_executable(IrredenEngineTest
   world/persist_round_trip_test.cpp
   world/component_migration_test.cpp
   world/voxel_set_serialize_test.cpp
+  world/world_config_missing_table_test.cpp
   world/save_serializers_test.cpp
 )
 

@@ -230,6 +230,11 @@ IREntity::EntityId g_vxsEntity = IREntity::kNullEntity;
 // Playback rate, read from frame 0's `fps` META entry (the editor writes it
 // from its FPS slider). The editor's own default when the key is absent.
 float g_vxsFps = 12.0f;
+// Accepted range for that entry. tickVxsPlayback casts kFPS / fps to int, so the
+// floor keeps the quotient representable; the ceiling is the tick rate, past
+// which every tick would advance a frame anyway.
+constexpr float kVxsMinFps = 0.01f;
+constexpr float kVxsMaxFps = static_cast<float>(IRConstants::kFPS);
 // Ticks elapsed since the playback system started, so the cadence is counted in
 // engine ticks rather than wall time. File-scope rather than a tick-local
 // static, per .claude/rules/cpp-systems.md.
@@ -303,18 +308,6 @@ void showVxsFrame(int index) {
         return;
     std::copy(frame.begin(), frame.end(), set.voxels_.begin());
     set.resyncAfterRawEdits();
-    // ...and evict the pool's cached chunk bounds. Those are the cull inputs and
-    // they are built by skipping voxels whose alpha is zero, so a swap that
-    // changes WHICH cells are active invalidates them — but nothing in
-    // resyncAfterRawEdits marks them, because the pool's own eviction points are
-    // all position changes (allocate / free / move). Without this the arriving
-    // pose renders culled against the departing pose's bounds and captures as a
-    // genuine mixture of the two (measured on the bird: of the 32880 pixels
-    // where the poses differ, 10680 drew the old pose and 16856 the new).
-    if (auto pool = IREntity::getComponentOptional<IRComponents::C_VoxelPool>(set.canvasEntity_)) {
-        pool.value()->markChunkBoundsDirty();
-        pool.value()->markChunkWorldBoundsDirty();
-    }
 }
 
 void tickVxsPlayback() {
@@ -704,7 +697,7 @@ vec3 g_cursorLatchFocus = vec3(0.0f);
 bool g_cursorLatchResolved = false;
 // --cursor-pivot-indicator: also spawn the drag marker at the latched point,
 // so the cursor-latch capture doubles as the indicator's ENABLED-path test
-// (engine/render/CLAUDE.md §"Default-off features need a positive enabled-path
+// (docs/agents/VALIDATION.md §"Default-off features need a positive enabled-path
 // test"). A headless run cannot synthesize the Ctrl+Shift+middle-drag chord —
 // GuiInputEvent carries no key modifiers — so this drives the same
 // IRPrefab::CursorPivot calls the drag makes, minus the button state machine.
@@ -3619,8 +3612,18 @@ void initEntities() {
                     if (entry.key_ != "fps")
                         continue;
                     const float fps = std::strtof(entry.value_.c_str(), nullptr);
-                    if (fps > 0.0f)
+                    if (fps >= kVxsMinFps && fps <= kVxsMaxFps) {
                         framesFps = fps;
+                    } else {
+                        IR_LOG_WARN(
+                            "--load-vxs: '{}' has fps '{}' outside [{}, {}]; keeping {} FPS",
+                            framePath,
+                            entry.value_,
+                            kVxsMinFps,
+                            kVxsMaxFps,
+                            framesFps
+                        );
+                    }
                 }
             } else {
                 // The one pooled set is built from frame 0's bounds and its

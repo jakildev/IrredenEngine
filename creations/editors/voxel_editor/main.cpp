@@ -289,6 +289,10 @@ struct FillToolState {
     IREntity::EntityId dragStartEntity_ = IREntity::kNullEntity;
     IREntity::EntityId ghostEntity_ = IREntity::kNullEntity;
     ivec3 lastEndWorld_ = {};
+    // Alt (place on the far side of the hit face) latched at PRESS, so letting
+    // the modifier go mid-drag cannot resolve the stroke's start and end cells
+    // in two different frames — see editTargetCell.
+    bool dragInverted_ = false;
 };
 FillToolState g_fillTool;
 
@@ -1117,6 +1121,23 @@ bool worldVoxelToLocal(
     return outFlat < set.voxels_.size();
 }
 
+// Which cell a left-click gesture edits, given the face it picked.
+//
+// Erase acts on the hit voxel itself. Place normally lands in FRONT of the hit
+// face (`voxelPos_ + faceNormal_`); with Alt held the normal inverts, so the
+// voxel lands on the FAR side of the picked face instead. That inversion is the
+// only gesture that reaches a cell *below* standing geometry: the picker exposes
+// a voxel's -x, -y and -z faces only, so every un-inverted placement grows
+// toward smaller x, y or z, and +z is unreachable at any camera yaw
+// (docs/design/editor-authoring-friction.md §2g F-2g-1).
+//
+// `invert` is ignored in erase mode — the hit cell has no far side.
+ivec3 editTargetCell(const IRPrefab::Picking::RayHit &hit, bool erase, bool invert) {
+    if (erase)
+        return hit.voxelPos_;
+    return invert ? hit.voxelPos_ - hit.faceNormal_ : hit.voxelPos_ + hit.faceNormal_;
+}
+
 // Fill all voxels in the AABB [worldA, worldB] (inclusive) inside `set`.
 void applyFillAABB(
     IREntity::EntityId entity,
@@ -1421,17 +1442,6 @@ void loadFrameToLive(int idx) {
     // which is why the bird session asserts the mask directly: a wingless
     // frame 1 passes every alpha check and fails only the mask check.
     vs.resyncAfterRawEdits();
-    // The pool's cached chunk bounds are the cull inputs, and they are built by
-    // skipping voxels whose alpha is zero — so a swap that changes WHICH cells
-    // are active invalidates them too. resyncAfterRawEdits does not evict them
-    // (the pool's own eviction points are all position changes), so the swap
-    // sites do it by hand; measured on the same bird, a step that skipped this
-    // rendered a genuine mixture of the two poses. Same pair of calls as
-    // shape_debug's --load-vxs playback swap.
-    if (auto pool = IREntity::getComponentOptional<C_VoxelPool>(vs.canvasEntity_)) {
-        pool.value()->markChunkBoundsDirty();
-        pool.value()->markChunkWorldBoundsDirty();
-    }
 }
 
 // Snapshot the live voxels into the active frame, then load frame
@@ -1772,6 +1782,8 @@ int main(int argc, char **argv) {
     IR_LOG_INFO("  Shift + left-drag: line-fill along dominant axis");
     IR_LOG_INFO("  Ctrl + left-click: face-fill (flood-fill axis-plane of hit face)");
     IR_LOG_INFO("  Left-click (no drag): place single voxel adjacent to hit face");
+    IR_LOG_INFO("  Alt + any place gesture: place on the FAR side of the hit face");
+    IR_LOG_INFO("    (on a top face that is BELOW it — the only way to grow downward)");
     IR_LOG_INFO("  Right-click: erase hit voxel (drag still rotates camera)");
     IR_LOG_INFO("  V: toggle erase-fill mode (left-click place/box/line/face gestures erase)");
     IR_LOG_INFO("  Escape: cancel active drag without committing");
@@ -1799,9 +1811,9 @@ int main(int argc, char **argv) {
     // --auto-screenshot as well (that is what wires the harness at all).
     IREngine::args().enumValue(
         "--gui-session",
-        "replay an authoring session's scripted gestures: none | drag_probe | rock | mushroom | "
-        "ant | bird | tree",
-        {"none", "drag_probe", "rock", "mushroom", "ant", "bird", "tree"},
+        "replay an authoring session's scripted gestures: none | drag_probe | place_below | rock | "
+        "mushroom | ant | bird | tree",
+        {"none", "drag_probe", "place_below", "rock", "mushroom", "ant", "bird", "tree"},
         "none"
     );
     IREngine::init(argc, argv);
@@ -2135,6 +2147,8 @@ void initSystems() {
     //   Shift + left-drag       → line-fill along the dominant axis
     //   left-drag (no modifier) → AABB box-fill
     //   left-click (no drag)    → single-voxel place (same as original behavior)
+    // Alt modifies any of the place gestures: the hit face's normal inverts, so
+    // the edit lands on the far side of the clicked face (editTargetCell).
     // Right-click PRESSED → single-voxel erase (unchanged).
     auto placeEraseSystem = IRSystem::createSystem<C_GuiElement>(
         "EditorPlaceErase",
@@ -2158,6 +2172,13 @@ void initSystems() {
                     status = "BONE";
                 } else {
                     status = ctrlNow ? "FACE" : (shiftNow ? "LINE" : "BOX");
+                }
+                // Alt inverts the hit-face normal on every place gesture, so the
+                // edit lands on the far side of the clicked face (below it, for
+                // the -z face). Erase has no far side to invert onto.
+                if (!IRVoxelEditor::g_eraseMode &&
+                    IRInput::checkKeyMouseModifiers(IRInput::kModifierAlt, 0u)) {
+                    status += " BELOW";
                 }
                 const auto &sym = IRVoxelEditor::g_symmetry;
                 if (sym.enableX_ || sym.enableY_ || sym.enableZ_) {
@@ -2223,6 +2244,9 @@ void initSystems() {
 
             // Ctrl + left-click: face-fill (immediate, no drag).
             const bool ctrlDown = IRInput::checkKeyMouseModifiers(IRInput::kModifierControl, 0u);
+            // Alt: place on the far side of the hit face (editTargetCell). Read
+            // live here; the drag path latches it at PRESS instead.
+            const bool altDown = IRInput::checkKeyMouseModifiers(IRInput::kModifierAlt, 0u);
             const bool leftPressedNow =
                 IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::PRESSED);
             if (!overWidget && ctrlDown && leftPressedNow) {
@@ -2232,10 +2256,11 @@ void initSystems() {
                     auto &gpos = IREntity::getComponent<C_WorldTransform>(hit->entity_);
                     // Erase mode floods the hit voxel's own face plane (removing
                     // the exposed layer); place mode floods the empty plane in
-                    // front of the hit face.
+                    // front of the hit face, or behind it under Alt. The flood
+                    // axis stays the hit normal's axis either way — only which
+                    // plane along it the flood starts in moves.
                     const bool erase = IRVoxelEditor::g_eraseMode;
-                    const ivec3 faceStart =
-                        erase ? hit->voxelPos_ : hit->voxelPos_ + hit->faceNormal_;
+                    const ivec3 faceStart = IRVoxelEditor::editTargetCell(*hit, erase, altDown);
                     IRVoxelEditor::applyFillFace(
                         hit->entity_,
                         set,
@@ -2260,10 +2285,11 @@ void initSystems() {
                 const auto hit = IRPrefab::Picking::castVoxelRay();
                 if (hit && hit->faceNormal_ != ivec3(0)) {
                     // Erase drags target the hit voxels themselves; place drags
-                    // target the empty cells adjacent to the hit face.
-                    const ivec3 startPos = IRVoxelEditor::g_eraseMode
-                                               ? hit->voxelPos_
-                                               : hit->voxelPos_ + hit->faceNormal_;
+                    // target the cells adjacent to the hit face. Latch Alt here
+                    // so the HELD end cell resolves in the same frame's sense.
+                    IRVoxelEditor::g_fillTool.dragInverted_ = altDown;
+                    const ivec3 startPos =
+                        IRVoxelEditor::editTargetCell(*hit, IRVoxelEditor::g_eraseMode, altDown);
                     IRVoxelEditor::g_fillTool.dragging_ = true;
                     IRVoxelEditor::g_fillTool.dragStartWorld_ = startPos;
                     IRVoxelEditor::g_fillTool.dragStartEntity_ = hit->entity_;
@@ -2276,9 +2302,11 @@ void initSystems() {
                 IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::HELD)) {
                 const auto hit = IRPrefab::Picking::castVoxelRay();
                 if (hit && hit->faceNormal_ != ivec3(0)) {
-                    const ivec3 endPos = IRVoxelEditor::g_eraseMode
-                                             ? hit->voxelPos_
-                                             : hit->voxelPos_ + hit->faceNormal_;
+                    const ivec3 endPos = IRVoxelEditor::editTargetCell(
+                        *hit,
+                        IRVoxelEditor::g_eraseMode,
+                        IRVoxelEditor::g_fillTool.dragInverted_
+                    );
                     IRVoxelEditor::g_fillTool.lastEndWorld_ = endPos;
                     const bool shiftHeld =
                         IRInput::checkKeyMouseModifiers(IRInput::kModifierShift, 0u);

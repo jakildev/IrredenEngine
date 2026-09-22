@@ -14,7 +14,9 @@ this module does the ``importlib`` dance once so a metric script can simply
 ``import render_metric_util`` (its own ``scripts/`` dir is ``sys.path[0]``
 when run as ``python3 scripts/render-<metric>-metric.py``).
 
-Pure stdlib — no third-party deps, mirroring the rest of ``scripts/``.
+Pure stdlib — this module is on the gating path (a manifest's structural
+metrics import it), so it must run on a host without Pillow; see the
+"Harness dependency contract" in ``docs/agents/VALIDATION.md``.
 """
 
 from __future__ import annotations
@@ -54,6 +56,16 @@ DEFAULT_BG_TOL = 16
 # pathological ROI so a tool never hangs silently. Production manifest gates
 # should ROI-scope to the solid to stay fast — full-frame is for calibration.
 MAX_FLOOD_PX = 4_000_000
+
+
+# SHADOW debug-overlay classification (engine render mode ``SHADOW``: magenta
+# = shadowed, black = lit; see ``engine/render/CLAUDE.md``). The bounds are
+# loose enough to absorb AA / FP jitter on the overlay's flat fills. Shared so
+# the shadow oracles all binarize the same capture the same way — two metrics
+# reading different masks off one PNG cannot be compared.
+SHADOW_MIN_RB = 180   # magenta: high red AND blue
+SHADOW_MAX_G = 90     # magenta: low green
+LIT_MAX = 70          # lit: all channels near zero
 
 
 def parse_roi(s: str | None) -> tuple[int, int, int, int] | None:
@@ -115,6 +127,46 @@ def foreground_mask(
                 mask[mbase + i] = 1
                 fg += 1
     return mask, rw, rh, fg, (rx, ry, rw, rh)
+
+
+def classify_shadow(r: int, g: int, b: int) -> int:
+    """1 = shadowed (magenta), -1 = lit (black), 0 = neither (bg/entity)."""
+    if r >= SHADOW_MIN_RB and b >= SHADOW_MIN_RB and g <= SHADOW_MAX_G:
+        return 1
+    if r <= LIT_MAX and g <= LIT_MAX and b <= LIT_MAX:
+        return -1
+    return 0
+
+
+def shadow_mask(
+    path: str,
+    roi: tuple[int, int, int, int] | None = None,
+) -> tuple[bytearray, int, int, int, int, tuple[int, int, int, int]]:
+    """Build a 0/1 shadow mask over the ROI of a SHADOW-overlay capture.
+
+    Returns ``(mask, rw, rh, shadow_px, lit_px, (rx, ry, rw, rh))`` where
+    ``mask`` is row-major over the ROI grid. Pixels that are neither shadowed
+    nor lit (entities, background) are 0 in the mask and counted in neither
+    tally, so ``shadow_px + lit_px`` is the classified population, not the ROI.
+    """
+    w, h, bpp, pix = read_png(path)
+    px = array("B", pix)
+    rx, ry, rw, rh = resolve_roi(roi, w, h)
+    mask = bytearray(rw * rh)
+    shadow_px = 0
+    lit_px = 0
+    for j in range(rh):
+        row = (ry + j) * w
+        mbase = j * rw
+        for i in range(rw):
+            o = (row + rx + i) * bpp
+            c = classify_shadow(px[o], px[o + 1], px[o + 2])
+            if c == 1:
+                mask[mbase + i] = 1
+                shadow_px += 1
+            elif c == -1:
+                lit_px += 1
+    return mask, rw, rh, shadow_px, lit_px, (rx, ry, rw, rh)
 
 
 def components(mask: bytearray, w: int, h: int) -> tuple[int, int]:

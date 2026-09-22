@@ -69,7 +69,8 @@ One iteration per invocation:
    most 2 refreshes per iteration, none if CONFLICTING already has ≥ 2). **Skip** any PR
    carrying `human:wip`, `fleet:wip`, `fleet:blocker`, `human:needs-fix`, `human:blocker`,
    `human:re-review`, `fleet:semantic-conflict` (the worker's durable handoff — only a
-   worker or the human clears it), `fleet:needs-info` (human handoff), or `fleet:gated`
+   worker or the human clears it), `fleet:needs-info` (human handoff), `fleet:design-blocked`
+   / `fleet:design-proposed` (design parks — never re-flag them either), or `fleet:gated`
    (gated self-config conflict parked human-only — never re-flag it
    `fleet:semantic-conflict`; [fleet-labels-reference.md](../../docs/agents/fleet-labels-reference.md)).
 

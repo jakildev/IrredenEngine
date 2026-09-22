@@ -147,12 +147,6 @@
       "description": "Reviewer agent flagged correctness/quality issues"
     },
     {
-      "name": "fleet:blocker",
-      "scope": "pr",
-      "color": "800010",
-      "description": "Reviewer agent flagged a blocker; do not merge"
-    },
-    {
       "name": "fleet:needs-opus-recheck",
       "scope": "pr",
       "color": "1d76db",
@@ -370,7 +364,6 @@
       "owner": "reviewer",
       "remove": [
         "fleet:needs-fix",
-        "fleet:blocker",
         "fleet:has-nits",
         "fleet:needs-opus-recheck",
         "fleet:awaiting-upstream-review",
@@ -388,7 +381,6 @@
       "owner": "reviewer",
       "remove": [
         "fleet:needs-fix",
-        "fleet:blocker",
         "fleet:needs-opus-recheck",
         "fleet:awaiting-upstream-review",
         "fleet:changes-made",
@@ -406,7 +398,6 @@
       "owner": "reviewer",
       "remove": [
         "fleet:approved",
-        "fleet:blocker",
         "fleet:has-nits",
         "fleet:needs-opus-recheck",
         "fleet:awaiting-upstream-review",
@@ -417,24 +408,6 @@
         "fleet:needs-fix"
       ],
       "note": "Reviewer flags correctness/quality issues to address before merge."
-    },
-    {
-      "name": "verdict-blocker",
-      "scope": "pr",
-      "owner": "reviewer",
-      "remove": [
-        "fleet:approved",
-        "fleet:needs-fix",
-        "fleet:has-nits",
-        "fleet:needs-opus-recheck",
-        "fleet:awaiting-upstream-review",
-        "fleet:changes-made",
-        "human:re-review"
-      ],
-      "add": [
-        "fleet:blocker"
-      ],
-      "note": "Reviewer flags a show-stopper; do not merge."
     },
     {
       "name": "verdict-needs-opus-recheck",

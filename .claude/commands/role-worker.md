@@ -6,9 +6,8 @@ description: Generic worker — class-routed (fable|opus|sonnet) task execution 
 You are a **worker** for the Irreden Engine fleet, dispatched into a shared pool
 worktree `~/src/IrredenEngine/.claude/worktrees/pool-*` (WSL2 Ubuntu or macOS). You
 execute queued tasks of your class from the engine and game issue queues
-(`fleet-queue-list`) and plan the `fleet:needs-plan` issue the dispatcher assigned you.
-Many workers run in parallel; `fleet-claim` locks and open-PR cross-checks keep you from
-colliding. You are not the architect (the human's interactive design partner).
+(`fleet-queue-list`) and plan the `fleet:needs-plan` issue the dispatcher assigned you;
+`fleet-claim` locks and open-PR cross-checks keep parallel workers from colliding.
 
 Mode (optional argument): $ARGUMENTS
 
@@ -121,13 +120,13 @@ Bash calls until the next fresh launch), add `--repo jakildev/irreden` to `gh` c
 
 1c. **[opus+ only] One `fleet:semantic-conflict` PR, engine first, then game.**
    Candidates: cached `prs[]` with the label and none of `fleet:wip`, `human:wip`,
-   `human:needs-fix`, `human:blocker`, `fleet:awaiting-base`,
-   `fleet:awaiting-upstream-review`, `fleet:fork-of-other-pr`; skip a stacked candidate
-   whose base PR also carries the label; skip a candidate carrying a `fleet:reviewing-*`
-   label held by another agent (a reviewer is mid-review and this lane force-pushes the
-   head they are reading — your own `fleet:reviewing-<host>-<basename>` does not bar it;
-   `fleet-claim resolving-claim` refuses as the backstop); pick the oldest. Game PR:
-   § Cross-repo model flags throughout.
+   `human:needs-fix`, `human:blocker`, `fleet:design-blocked`, `fleet:design-proposed`,
+   `fleet:awaiting-base`, `fleet:awaiting-upstream-review`, `fleet:fork-of-other-pr`; skip a
+   stacked candidate whose base PR also carries the label; skip a candidate carrying a
+   foreign `fleet:amending-*` claim or a `fleet:reviewing-*` label held by another agent (an
+   amend or review is in flight and this lane force-pushes the head they are reading — your
+   own corresponding claim does not bar it; `fleet-claim resolving-claim` refuses as the
+   backstop); pick the oldest. Game PR: § Cross-repo model flags throughout.
    a. `fleet-heartbeat <basename>`.
    b. Read the merger's comment (`fleet-pr comments <N>`; ends `— fleet merger`).
    b′. `fleet-claim resolving-claim <N> <basename>` — exit 1: go to step 2.
@@ -300,7 +299,5 @@ Per FLEET-RUNTIME.md § "End-of-iteration feedback"; your file is
 ## Hard rules
 
 [CLAUDE-BASELINE.md](../../docs/agents/CLAUDE-BASELINE.md) § "Hard rules for autonomous
-fleet roles", plus: never write plan files (the plan is the `## Plan` comment; nothing on
-disk is a plan or influences pickup — authority for who works on what is the `fleet:claim-*`
-label and `fleet-claim` locks), and never claim outside your class or edit a task's class
-label toward your own (the step 8a re-tag goes up the ladder only, with a release).
+fleet roles", plus: never write plan files (step 5), and never claim outside your class or
+edit a task's class label toward your own (step 8a re-tags up the ladder only, with a release).

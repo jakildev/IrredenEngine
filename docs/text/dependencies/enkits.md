@@ -23,7 +23,8 @@
 -   The wrapper forces `CXX_STANDARD 17` on the enkiTS target to avoid `std::is_pod` removal in C++23.
 
 ### Runtime Notes
--   Worker count comes from `WorldConfig::worker_thread_count` (`-1` = auto: `max(1, hardware_concurrency() - 2)`, capped to P-core count on Apple Silicon).
+-   Worker count comes from `WorldConfig::worker_thread_count`, overridable per run with `--worker-threads` (`-1` = auto: `max(1, hardware_concurrency() - 2)`, capped to P-core count on Apple Silicon).
+-   `worker_thread_count = 0` is inline-serial: no `TaskScheduler` is constructed at all (the library documents `numTaskThreadsToCreate` as "must be > 0"), and every `IRJob` dispatch runs on the calling thread.
 -   Workers register an easy_profiler thread name (`ir-worker-N`) on first task entry.
 
 ### Future Use:

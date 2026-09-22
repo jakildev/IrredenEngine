@@ -2,6 +2,7 @@
 #define IR_ARGS_H
 
 #include <initializer_list>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -16,7 +17,8 @@
 //
 // Standalone tools that don't run the engine loop construct the parser in
 // no-common-args mode (so --help doesn't advertise --auto-screenshot /
-// --auto-record / --config-preset) and take positional arguments:
+// --auto-record / --config-preset / --worker-threads) and take positional
+// arguments:
 //
 //     IRArgs::Parser args("img_diff — highlight PNG drift.", IRArgs::Common::NONE);
 //     args.integer("--threshold", "Per-channel tolerance", 0);
@@ -34,6 +36,14 @@ inline constexpr int kDefaultAutoScreenshotWarmup = 10;
 // flag is given without a trailing count: 180 frames = 3 s of sim time at
 // IRConstants::kFPS.
 inline constexpr int kDefaultAutoRecordFrames = 180;
+
+// What workerThreads() reports when --worker-threads was absent, so the
+// creation's configured `worker_thread_count` stands. Far below any count a
+// command line can mean, so an explicit value never collides with it. The
+// meaningful values are the engine's own (-1 auto, 0 inline-serial, N
+// workers); this header can't name them, since standalone tools compile
+// ir_args.cpp with no engine dependency.
+inline constexpr int kWorkerThreadsUnset = std::numeric_limits<int>::min();
 
 // Kind of a registered argument. Drives both the parse rule and the value
 // placeholder shown in --help.
@@ -160,9 +170,13 @@ class Parser {
     //   - 0 when --auto-record is absent, else the capture window in render
     //     frames (kDefaultAutoRecordFrames for the bare switch).
     //   - empty string when --config-preset is absent, else the path.
+    //   - kWorkerThreadsUnset when --worker-threads is absent, else the
+    //     requested worker count: -1 for auto, 0 for inline-serial, N for an
+    //     N-worker pool.
     int autoScreenshotWarmupFrames() const;
     int autoRecordFrames() const;
     std::string configPreset() const;
+    int workerThreads() const;
 
     // The auto-generated usage text (exactly what --help prints).
     std::string usage() const;

@@ -89,14 +89,22 @@ def summarize(output: Path, selected: dict[str, list[str]]) -> None:
         )
     (output / "summary.md").write_text("\n".join(lines) + "\n")
 
-    lines = [
+    write_gpu_summary(
+        output / "gpu-summary.md",
+        {
+            name: [
+                parse_report(p, name) for p in sorted((output / name).glob("round-*/run-1.txt"))
+            ]
+            for name in selected
+        },
         "Sampled GPU invocation means; rows are not full-frame totals.",
-        "",
-        "| Case | Stage | Mean ms | Run min–max ms |",
-        "|---|---|---:|---:|",
-    ]
-    for name in selected:
-        reports = [parse_report(p, name) for p in sorted((output / name).glob("round-*/run-1.txt"))]
+    )
+
+
+def write_gpu_summary(path: Path, reports_by_case: dict[str, list], note: str) -> None:
+    """One row per case and GPU stage that every one of the case's reports carries."""
+    lines = [note, "", "| Case | Stage | Mean ms | Run min–max ms |", "|---|---|---:|---:|"]
+    for name, reports in reports_by_case.items():
         for stage_name in sorted({stage.name for report in reports for stage in report.gpu_stages}):
             stages = [report.gpu_by_name(stage_name) for report in reports]
             if all(stage is not None for stage in stages):
@@ -105,7 +113,7 @@ def summarize(output: Path, selected: dict[str, list[str]]) -> None:
                     f"| {name} | {stage_name} | {statistics.mean(values):.3f} "
                     f"| {min(values):.3f}–{max(values):.3f} |"
                 )
-    (output / "gpu-summary.md").write_text("\n".join(lines) + "\n")
+    path.write_text("\n".join(lines) + "\n")
 
 
 def verify_artifacts(output: Path) -> None:
@@ -115,6 +123,56 @@ def verify_artifacts(output: Path) -> None:
         identities.add((manifest["binary_sha256"], manifest["shader_sha256"]))
     if len(identities) != 1:
         raise ValueError("Matrix must use one unchanged binary and shader set")
+
+
+def write_cases(output: Path, rounds: int, common, selected, **extra) -> None:
+    """Record what the matrix runs, and in what order, beside its results."""
+    (output / "cases.json").write_text(
+        json.dumps(
+            {
+                "rounds": rounds,
+                "common": common,
+                "cases": selected,
+                **extra,
+                "order": "forward on odd rounds; reverse on even rounds",
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+
+
+def run_rounds(
+    output, selected, common, rounds, after_round, environments=None, runner_options=()
+) -> None:
+    """Run every case once per round: forward on odd rounds, reverse on even.
+
+    environments maps a case name to the environment its run gets; a case
+    without an entry inherits this process's. runner_options are passed to
+    repeat_profile.py ahead of the demo arguments.
+    """
+    runner = Path(__file__).with_name("repeat_profile.py")
+    for round_index in range(1, rounds + 1):
+        order = list(selected) if round_index % 2 else list(reversed(selected))
+        for name in order:
+            print(f"round {round_index}/{rounds}: {name}", flush=True)
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(runner),
+                    "--output",
+                    str(output / name / f"round-{round_index}"),
+                    "--repeats",
+                    "1",
+                    *runner_options,
+                    "--",
+                    *common,
+                    *selected[name],
+                ],
+                check=True,
+                env=(environments or {}).get(name),
+            )
+        after_round()
 
 
 def main() -> int:
@@ -134,39 +192,12 @@ def main() -> int:
         return 0
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
-    (output / "cases.json").write_text(
-        json.dumps(
-            {
-                "rounds": args.rounds,
-                "common": common,
-                "cases": selected,
-                "order": "forward on odd rounds; reverse on even rounds",
-            },
-            indent=2,
-        )
-        + "\n"
-    )
-    runner = Path(__file__).with_name("repeat_profile.py")
-    for round_index in range(1, args.rounds + 1):
-        order = list(selected) if round_index % 2 else list(reversed(selected))
-        for name in order:
-            print(f"round {round_index}/{args.rounds}: {name}", flush=True)
-            subprocess.run(
-                [
-                    sys.executable,
-                    str(runner),
-                    "--output",
-                    str(output / name / f"round-{round_index}"),
-                    "--repeats",
-                    "1",
-                    "--",
-                    *common,
-                    *selected[name],
-                ],
-                check=True,
-            )
+    write_cases(output, args.rounds, common, selected)
+    def after_round():
         summarize(output, selected)
         verify_artifacts(output)
+
+    run_rounds(output, selected, common, args.rounds, after_round)
     return 0
 
 

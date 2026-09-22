@@ -4,16 +4,10 @@
 # `git checkout -B <ref> origin/<ref>`) in fleet worker / merger flows
 # so the same branch can be checked out in multiple worktrees at once.
 #
-# Why this exists
-# ---------------
 # Git refuses to check out the same branch in two worktrees at a time
-# (the local branch ref can only be owned by one worktree). The fleet
-# previously worked around this with a "busy-branch filter" — workers
-# read `git worktree list`, found the PR's head ref already checked
-# out somewhere, and skipped the iteration entirely. That correctly
-# avoided `gh pr checkout` errors, but it ALSO meant the operator
-# inspecting a PR in the main repo clone silently blocked every fleet
-# iteration on that PR until they switched back to master.
+# (the local branch ref can only be owned by one worktree), so a branch
+# checkout would make an operator inspecting a PR in the main clone
+# silently block every fleet iteration on that PR.
 #
 # A detached HEAD doesn't claim the branch ref — any number of
 # worktrees can have the same commit checked out simultaneously.
@@ -29,14 +23,13 @@
 # this sentinel to know where to push the amendment, so the LLM
 # doesn't have to remember or pass the head ref name across steps.
 #
-# The orphan guard (#2734)
-# ------------------------
+# The orphan guard
+# ----------------
 # `git checkout --detach` moves HEAD unconditionally. If the current
 # HEAD carries a commit that no branch and no remote ref reaches — the
 # state a worker is in after committing an amendment it has not pushed
 # yet — the checkout orphans it, and git's own "leaving N commits
-# behind" warning used to be discarded along with stdout, so the loss
-# was silent and exited 0. This wrapper now refuses BEFORE moving HEAD
+# behind" warning goes to stderr only. This wrapper refuses BEFORE moving HEAD
 # whenever `git rev-list HEAD --not --branches --remotes` is non-empty,
 # names the at-risk SHAs, and says for each whether an equivalent patch
 # is already upstream (superseded by a merger rebase / force-push —
@@ -123,7 +116,7 @@ if ! [[ "$pr_number" =~ ^[0-9]+$ ]]; then
     exit 2
 fi
 
-# Worktree-identity guard (engine #1325). The detached checkout below
+# Worktree-identity guard. The detached checkout below
 # rewinds the cwd repo's HEAD; if cwd is the shared main clone (not a
 # fleet worktree) that silently moves the operator's / another agent's
 # checkout and can strand work. Resolve the sibling helper the same way
@@ -167,7 +160,7 @@ if ! git fetch origin "$head_ref" >/dev/null 2>&1; then
     exit 1
 fi
 
-# Orphan guard (#2734). Runs AFTER the fetch above — a commit that was just
+# Orphan guard. Runs AFTER the fetch above — a commit that was just
 # pushed is reachable from the refreshed remote-tracking ref, so pre-fetch this
 # would false-fire immediately after a successful amend push. This is git's own
 # "leaving N commits behind" computation, NOT `origin/$head_ref..HEAD`: the
@@ -280,8 +273,8 @@ if [[ "$orphan_count" -gt 0 && "$discard" -eq 0 ]]; then
 fi
 
 # stdout is discarded but stderr is NOT — git's "Warning: you are leaving N
-# commits behind" is the belt to the guard's braces, and swallowing it is what
-# made the loss silent (#2734).
+# commits behind" is the belt to the guard's braces; swallowing it makes a
+# loss silent.
 if ! git checkout --detach "origin/$head_ref" >/dev/null; then
     echo "fleet-pr-checkout-detached: git checkout --detach origin/$head_ref failed" >&2
     exit 1
@@ -300,7 +293,7 @@ git_dir=$(git rev-parse --git-dir)
 # origin/<head_ref> after this checkout is REJECTED, not clobbered. A bare
 # --force-with-lease leases against the remote-tracking ref, which any
 # intervening `git fetch` silently refreshes to the other agent's commit —
-# defeating the protection (observed dual-worker clobber on #1310, 2026-05-29).
+# defeating the protection.
 base_sha=$(git rev-parse HEAD)
 printf '%s\n%s\n' "$head_ref" "$base_sha" >"$git_dir/fleet-amend-ref"
 

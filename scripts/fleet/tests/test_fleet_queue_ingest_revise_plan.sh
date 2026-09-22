@@ -36,9 +36,9 @@ export HOME="$TMPROOT/home"
 mkdir -p "$HOME/.fleet/state/projections" "$HOME/.fleet/logs"
 
 PROJ="$HOME/.fleet/state/projections/queue-manager-ingest.json"
-# #830 carries human:revise-plan on top of a mid-review plan (the scout's
+# issue 830 carries human:revise-plan on top of a mid-review plan (the scout's
 # _ingest_skipped override is what lands it in pending_issues; here the
-# projection is hand-built, so we list it directly). #831 is a normal approved
+# projection is hand-built, so we list it directly). issue 831 is a normal approved
 # issue (the stamp control).
 cat > "$PROJ" <<'JSON'
 {"pending_issues":[
@@ -83,7 +83,6 @@ export PATH="$STUB_DIR:$PATH"
 echo "=== run fleet-queue-ingest over a batch with one human:revise-plan issue ==="
 bash "$INGEST" >/dev/null 2>&1 || true
 
-# --- control: #831 normal approved must be stamped fleet:queued -----------
 line_831=$(grep -E '(^| )831( |$)' "$EDIT_LOG" || true)
 if [[ -n "$line_831" && "$line_831" == *"fleet:queued"* ]]; then
     ok "control #831 stamped fleet:queued (harness can stamp)"
@@ -91,7 +90,6 @@ else
     bad "control #831 was not stamped fleet:queued — harness broken, test vacuous"
 fi
 
-# --- #830 reconcile assertions -------------------------------------------
 line_830=$(grep -E '(^| )830( |$)' "$EDIT_LOG" || true)
 if [[ -z "$line_830" ]]; then
     bad "human:revise-plan #830 was never edited (reconcile didn't fire)"

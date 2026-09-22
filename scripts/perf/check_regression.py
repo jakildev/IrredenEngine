@@ -7,7 +7,10 @@ provided baseline-root, prints the full compare_perf_runs markdown table
 tree from #1074:
 
     Same fingerprint, lock uncontested → check raw deltas, fail on regression.
-    Same fingerprint, lock contended   → check normalized deltas instead.
+    Same fingerprint, lock contended   → check normalized deltas instead, the
+                                         head rescaled onto the baseline run's
+                                         own ref_ms (same SKU, so the ratio is
+                                         load and nothing else).
     Different fingerprint              → informational only, pass.
     No baseline at all                 → informational only, pass (seed-new).
 
@@ -18,7 +21,7 @@ Usage:
 Exit codes:
     0   No regression above threshold (pass — may still show improvements)
     1   One or more cells regressed by more than --regress-pct (fail)
-    2   Usage error
+    2   Usage or measurement error
 """
 
 from __future__ import annotations
@@ -40,11 +43,13 @@ from compare_perf_runs import (  # noqa: E402
     pct_delta,
     render_markdown,
     resolve_baseline,
+    unmeasured_cell_ids,
 )
 
 
 def _regressed_cells(base, head, regress_pct: float, *,
-                     ref_ms: float, target_ms: float, use_normalized: bool) -> list[str]:
+                     head_ref_ms: float, base_ref_ms: float,
+                     use_normalized: bool) -> list[str]:
     out = []
     for cell_id in sorted(set(base) & set(head)):
         avg_b = base[cell_id].frame.avg
@@ -52,10 +57,12 @@ def _regressed_cells(base, head, regress_pct: float, *,
         if avg_b <= 0.0:
             continue
         # Normalization is one-sided — only the head measurement is rescaled,
-        # since the baseline was captured under its own (assumed clean)
-        # conditions when it was committed.
+        # onto the machine-state the baseline was captured under. The
+        # reference is the baseline's own ref_ms from the same SKU; scaling
+        # against the fixed 50 ms target instead would divide out how slow the
+        # SKU is, which no regression can change.
         if use_normalized:
-            avg_h = normalize_ms(avg_h, ref_ms, target_ms)
+            avg_h = normalize_ms(avg_h, head_ref_ms, base_ref_ms)
         if pct_delta(avg_b, avg_h) >= regress_pct:
             out.append(cell_id)
     return out
@@ -92,6 +99,14 @@ def main() -> int:
     if not head:
         print(f"check_regression: no cells in head {head_dir}", file=sys.stderr)
         return 2
+    unmeasured_head = unmeasured_cell_ids(head)
+    if unmeasured_head:
+        print(
+            "check_regression: unmeasured cells in head: "
+            + ", ".join(unmeasured_head),
+            file=sys.stderr,
+        )
+        return 2
 
     # No-baseline path → informational seed-new, pass.
     base_dir = resolve_baseline(baseline_arg, head_manifest)
@@ -113,6 +128,14 @@ def main() -> int:
     base = load_run(base_dir)
     if not base:
         print(f"check_regression: no cells in baseline {base_dir}", file=sys.stderr)
+        return 2
+    unmeasured_base = unmeasured_cell_ids(base)
+    if unmeasured_base:
+        print(
+            "check_regression: unmeasured cells in baseline: "
+            + ", ".join(unmeasured_base),
+            file=sys.stderr,
+        )
         return 2
 
     base_manifest = load_manifest(base_dir)
@@ -142,15 +165,19 @@ def main() -> int:
         )
         return 0
 
-    cal = head_manifest.get("calibration") or {}
-    ref_ms = float(cal.get("ref_ms", 0.0))
-    target_ms = float(cal.get("ref_target_ms", 0.0))
-    lf = load_factor(ref_ms, target_ms)
+    head_cal = head_manifest.get("calibration") or {}
+    base_cal = base_manifest.get("calibration") or {}
+    head_ref_ms = float(head_cal.get("ref_ms", 0.0))
+    # A baseline with no ref_ms (legacy manifest) leaves load_factor at 1.0,
+    # so the gate reads raw deltas rather than rescaling against a reference
+    # it does not have.
+    base_ref_ms = float(base_cal.get("ref_ms", 0.0))
+    lf = load_factor(head_ref_ms, base_ref_ms)
     use_normalized = lf >= LOAD_FACTOR_TRUST_NORMALIZED
 
     regressed = _regressed_cells(
         base, head, args.regress_pct,
-        ref_ms=ref_ms, target_ms=target_ms,
+        head_ref_ms=head_ref_ms, base_ref_ms=base_ref_ms,
         use_normalized=use_normalized,
     )
     if regressed:

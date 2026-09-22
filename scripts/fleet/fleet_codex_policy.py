@@ -24,6 +24,8 @@ def rules(worktree, role):
         for verb in ("reset", "clean"):
             rule(prefix + [verb], "forbidden")
         for flag in ("--force", "-f", "--force-with-lease", "--delete"):
+            if role == "merger" and flag == "--force-with-lease":
+                continue
             rule(prefix + ["push", flag], "forbidden")
             rule(prefix + ["push", "origin", flag], "forbidden")
         for ref in ("master", "main", "HEAD:master", "HEAD:main", ":master", ":main"):
@@ -78,6 +80,8 @@ def check(path, role):
              (["gh", "pr", "merge", "123"], "forbidden"),
              (["git", "push", "origin", "master"], "forbidden"),
              (["git", "push", "--force", "origin", "HEAD"], "forbidden"),
+             (["git", "push", "--force-with-lease", "origin", "HEAD:x"],
+              "allow" if role == "merger" else "forbidden"),
              (["git", "commit", "-m", "test"],
               "forbidden" if role in REVIEW_ROLES else "allow")]
     for cmd, expected in cases:

@@ -3,7 +3,7 @@
 # run_all.sh invokes suites through an explicit interpreter (`bash "$f"`),
 # so a 100644 one still runs in CI — but it returns exit 126 under the
 # direct `./"$f"` form its shebang implies, and any `[[ -x "$f" ]] || continue`
-# filter a future runner adds would skip it silently. See #2725.
+# filter a future runner adds would skip it silently.
 # lib_assert.sh (sourced, never run) and the test_*.py suites (always run as
 # `python3 "$f"`, 100644 by convention) are excluded by the test_*.sh glob.
 

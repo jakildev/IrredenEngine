@@ -1,12 +1,6 @@
 #include <metal_stdlib>
 using namespace metal;
 
-// T-139 Phase 1 / T-159 Phase 2 batching — GPU particle update pass (Metal).
-// Mirrors c_update_gpu_particles.glsl; see the .glsl counterpart for the
-// pending-list spawn-path design note. One threadgroup-thread per particle
-// slot; dead slots early-out. Per-particle integration: position +=
-// velocity*dt, lifetime -= dt.
-
 struct FrameDataGpuParticles {
     float deltaTime;
     uint particleCount;

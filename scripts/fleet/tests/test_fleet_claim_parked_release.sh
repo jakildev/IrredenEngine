@@ -1,31 +1,31 @@
 #!/usr/bin/env bash
-# Tests for the #1488 claim-lifecycle hardening in fleet-claim:
+# Tests for the claim-lifecycle hardening in fleet-claim:
 #
-#   Fix A — `fleet-claim release` clears this host's `fleet:claim-<host>-*`
-#           + `fleet:in-progress` labels off the issue whenever no LIVE PR
-#           backs the claim: the matching open PR is parked
-#           (fleet:design-blocked/-unblocked), or there is no matching PR at
-#           all (the decline-after-claim path, #2732). A normal PR-open
-#           release (active matching PR) keeps the labels, per
-#           AUTHOR-PIPELINE.md "Claim-label lifecycle". `fleet:in-progress`
-#           survives while ANOTHER host's claim label does (#2732).
+#   `fleet-claim release` clears this host's `fleet:claim-<host>-*`
+#   + `fleet:in-progress` labels off the issue whenever no LIVE PR
+#   backs the claim: the matching open PR is parked
+#   (fleet:design-blocked/-unblocked), or there is no matching PR at
+#   all (the decline-after-claim path). A normal PR-open
+#   release (active matching PR) keeps the labels, per
+#   AUTHOR-PIPELINE.md "Claim-label lifecycle". `fleet:in-progress`
+#   survives while ANOTHER host's claim label does.
 #
-#   Fix B — `fleet-claim cleanup --gh` open-issue claim sweep treats a parked
-#           matching PR like a no-PR abandon: a stale claim whose only matching
-#           PR is design-blocked/-unblocked is swept (claim label +
-#           fleet:in-progress), while an active matching PR keeps the claim.
+#   `fleet-claim cleanup --gh` open-issue claim sweep treats a parked
+#   matching PR like a no-PR abandon: a stale claim whose only matching
+#   PR is design-blocked/-unblocked is swept (claim label +
+#   fleet:in-progress), while an active matching PR keeps the claim.
 #
-#   Fix C — every path that clears `fleet:in-progress` alongside a claim label
-#           (`release`, the `cleanup --gh` TTL sweep, the
-#           `reset-sweep-host-claims` boot sweep) keeps it while a claim the
-#           pass is NOT retiring is still live. Two hosts can claim one issue
-#           and go stale at different times; clearing the label under the
-#           survivor advertises an owned task as free.
+#   Every path that clears `fleet:in-progress` alongside a claim label
+#   (`release`, the `cleanup --gh` TTL sweep, the
+#   `reset-sweep-host-claims` boot sweep) keeps it while a claim the
+#   pass is NOT retiring is still live. Two hosts can claim one issue
+#   and go stale at different times; clearing the label under the
+#   survivor advertises an owned task as free.
 #
-#   #3060  — the `reset-sweep-host-claims` boot sweep CR-strips its
-#           python3-piped work list before the label name is captured, so a
-#           native-Windows producer cannot feed `gh issue edit --remove-label`
-#           a `\r`-suffixed name (Phase 2d, hermetic CRLF stub).
+#   The `reset-sweep-host-claims` boot sweep CR-strips its
+#   python3-piped work list before the label name is captured, so a
+#   native-Windows producer cannot feed `gh issue edit --remove-label`
+#   a `\r`-suffixed name (Phase 2d, hermetic CRLF stub).
 #
 # `gh` is stubbed so the label/PR surfaces are canned JSON. Host is pinned to
 # `mac` via FLEET_TEST_HOST so claim-label construction is deterministic.
@@ -88,7 +88,7 @@ STUB_DIR="$TMPROOT/bin"
 mkdir -p "$STUB_DIR"
 cat > "$STUB_DIR/gh" <<'GHSTUB'
 #!/usr/bin/env bash
-# Stub gh for the #1488 parked-release / parked-sweep tests.
+# Stub gh for the parked-release / parked-sweep tests.
 case "$1" in
     issue)
         case "$2" in
@@ -141,8 +141,7 @@ else:
         # FLEET_CLAIM_STALE_SECS_ISSUES=1: a "now" stamp goes stale the moment
         # the clock ticks past the next second, which would flake.
         # The queried label rides in $FLEET_LABEL_NAME, not argv: `gh api` has
-        # no --arg, so label_added_epoch passes it through the environment
-        # (#2781).
+        # no --arg, so label_added_epoch passes it through the environment.
         if printf '%s ' "$@" | grep -q 'events'; then
             stamp="2020-01-01T00:00:00Z"
             for fresh in ${FRESH_LABELS:-}; do
@@ -169,8 +168,8 @@ mk_claim() {
 # =========================================================================
 echo "=== Phase 1: release clears labels only for a PARKED matching PR (Fix A) ==="
 # =========================================================================
-# #700 parked (design-blocked PR) -> release clears claim + in-progress.
-# #701 active  (plain wip PR)      -> release keeps claim + in-progress
+# issue 700 parked (design-blocked PR) -> release clears claim + in-progress.
+# issue 701 active  (plain wip PR)      -> release keeps claim + in-progress
 #     (--wip-ok: an active wip PR is otherwise refused by the release guard).
 cat > "$ISSUES_JSON" <<'JSON'
 [
@@ -206,8 +205,8 @@ echo "=== Phase 1b: release with NO matching PR clears labels too (#2732) ==="
 # "parked" — otherwise the issue sits in the scout's in_progress[] bucket
 # (invisible to every pane's queue walk) until the 2h cleanup --gh TTL.
 #
-# #702 no PR                     -> release clears claim + in-progress.
-# #703 no PR, foreign-host claim -> our claim label goes, in-progress STAYS.
+# issue 702 no PR                     -> release clears claim + in-progress.
+# issue 703 no PR, foreign-host claim -> our claim label goes, in-progress STAYS.
 cat > "$ISSUES_JSON" <<'JSON'
 [
   {"number":702,"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:claim-mac-opus-worker-1"},{"name":"fleet:in-progress"}]},
@@ -238,9 +237,9 @@ echo "=== Phase 2: cleanup --gh sweeps a PARKED claim like a no-PR abandon (Fix 
 # =========================================================================
 : > "$REMOVED_FILE"
 rm -rf "$FLEET_CLAIMS_DIR"/*   # Pass 2 operates on GH labels, not FS claims.
-# #710 parked  (design-unblocked PR) -> swept.
-# #711 active  (plain wip PR)        -> kept.
-# #712 no PR                          -> swept (pre-existing behavior, unchanged).
+# issue 710 parked  (design-unblocked PR) -> swept.
+# issue 711 active  (plain wip PR)        -> kept.
+# issue 712 no PR                         -> swept (pre-existing behavior, unchanged).
 cat > "$ISSUES_JSON" <<'JSON'
 [
   {"number":710,"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:claim-mac-opus-worker-1"},{"name":"fleet:in-progress"}]},
@@ -272,10 +271,10 @@ echo "=== Phase 2b: cleanup --gh keeps fleet:in-progress while a 2nd claim is li
 # the age gate is evaluated per label row. Only the row retiring the LAST live
 # claim may clear fleet:in-progress — otherwise the sweep advertises a task
 # another host is actively working as free, which is the double-claim race the
-# release-side guard (the #703 case) closes.
+# release-side guard (the issue-703 case) closes.
 #
-# #720 stale mac claim + FRESH linux claim -> mac swept, in-progress STAYS.
-# #721 two stale claims                    -> both swept, in-progress cleared.
+# issue 720 stale mac claim + FRESH linux claim -> mac swept, in-progress STAYS.
+# issue 721 two stale claims                    -> both swept, in-progress cleared.
 cat > "$ISSUES_JSON" <<'JSON'
 [
   {"number":720,"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:claim-mac-opus-worker-1"},{"name":"fleet:claim-linux-pool-2"},{"name":"fleet:in-progress"}]},
@@ -304,8 +303,8 @@ echo "=== Phase 2c: reset-sweep-host-claims keeps fleet:in-progress for a foreig
 # This pass removes only fleet:claim-<this-host>-*, so any other host's claim
 # is live by construction — a local boot says nothing about remote work.
 #
-# #730 mac claim + foreign linux claim -> mac swept, in-progress STAYS.
-# #731 mac claim only                  -> mac swept, in-progress cleared.
+# issue 730 mac claim + foreign linux claim -> mac swept, in-progress STAYS.
+# issue 731 mac claim only                  -> mac swept, in-progress cleared.
 cat > "$ISSUES_JSON" <<'JSON'
 [
   {"number":730,"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:claim-mac-opus-worker-1"},{"name":"fleet:claim-linux-pool-2"},{"name":"fleet:in-progress"}]},
@@ -381,9 +380,9 @@ sys.exit(0 if data == b"1\r\n1\r\n0\r\n1\r\n1\r\n0\r\n" else 1)
 else
     bad "WIP liveness fixture did not deliver exact CRLF bytes: $(python3 -c 'import os; print(repr(open(os.environ["WIP_PRODUCER_BYTES"], "rb").read()))')"
 fi
-# REMOVED_FILE rides in the environment (exported above) rather than argv so
-# a native python3 gets a path it can open (the same reason the gh stub reads
-# ISSUES_JSON from the environment).
+# REMOVED_FILE rides in the environment rather than argv so a native python3
+# gets a path it can open (the same reason the gh stub reads ISSUES_JSON from
+# the environment).
 assert_removed_absent $'732\tfleet:claim-mac-opus-worker-1' "host sweep kept #732 when its CRLF-terminated WIP producer reported live"
 assert_removed_absent $'733\tfleet:claim-mac-opus-worker-1' "host sweep kept #733 when its CRLF-terminated WIP producer reported live"
 assert_removed_contains $'734\tfleet:claim-mac-opus-worker-1' "host sweep still removed #734 own-host claim (third line)"

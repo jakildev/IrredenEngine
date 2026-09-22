@@ -11,6 +11,12 @@ name: Instruction Size
 # Measured against the branch's own baseline, not the base branch's: a
 # deliberate raise is a hand edit of the JSON in the same PR, and that diff
 # is what the reviewer weighs.
+#
+# A pull request is also measured against the tree its merge commit was built
+# on (the first parent, hence fetch-depth 2), and fails only on an offender it
+# introduced; the base's own offenders print as inherited. A red master would
+# otherwise turn every PR red and hide the one that adds a regression. A push
+# to master is measured flat, so a red master stays red.
 
 on:
   push:
@@ -27,6 +33,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - name: Instruction size ratchet
-        run: python3 scripts/lint_instruction_size.py
+        env:
+          AGAINST_ARGS: ${{ github.event_name == 'pull_request' && '--against HEAD^1' || '' }}
+        run: python3 scripts/lint_instruction_size.py $AGAINST_ARGS

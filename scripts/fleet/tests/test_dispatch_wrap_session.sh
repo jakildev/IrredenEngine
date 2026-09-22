@@ -23,9 +23,9 @@
 #   - cleanup: in-flight work (reservation present, branch otherwise clean) keeps the sidecar
 #   - cleanup: in-flight work (claude/* branch, clean but ahead of master) keeps the sidecar
 #   - cleanup: finished/no-op (clean master) clears the sidecar
-#   - planning assignment (#2197): 7th plan= arg -> FLEET_PLAN_ISSUE export;
+#   - planning assignment: 7th plan= arg -> FLEET_PLAN_ISSUE export;
 #     absent/bare arg stays unset; a resume releases the pre-claim instead
-#   - hermeticity (#2836): the suite is immune to an inherited FLEET_PLAN_ISSUE
+#   - hermeticity: the suite is immune to an inherited FLEET_PLAN_ISSUE
 #     (every planning-assigned worker iteration exports it, so any such
 #     iteration that runs this suite — e.g. while build-verifying a
 #     scripts/fleet PR — must not see a spurious 2-assertion red)
@@ -36,32 +36,32 @@ source "$(dirname "$0")/lib_preflight.sh"
 WRAP="$SCRIPT_DIR/fleet-dispatch-wrap"
 [[ -x "$WRAP" ]] || { echo "test setup: $WRAP not found"; exit 1; }
 
-# Hermeticity (#2836): fleet-dispatch-wrap only ever SETS FLEET_PLAN_ISSUE
-# (from its own 7th argv, when present) — it never unsets it when the arg is
-# absent. Every planning-assigned dispatch exports FLEET_PLAN_ISSUE, so this
-# suite's own process inherits it whenever it's run from inside such an
-# iteration, and T9's two absent-arg cases below would then see it leak
-# straight through into the wrap's launch. Scrub it once here, in this
-# process's own environment, before any dispatch call runs — the fix belongs
-# in the test harness, not the wrap, which has no way to distinguish "caller
-# wants no plan" from "caller's shell happens to have one lying around".
-# (Audited siblings: FLEET_ROLE_MODEL is always freshly exported by the wrap
-# itself regardless of argv, so it has no leak path; FLEET_ASSIGNED_WORKTREE
-# is not read by fleet-dispatch-wrap at all.)
+# fleet-dispatch-wrap only ever SETS FLEET_PLAN_ISSUE (from its own 7th argv,
+# when present) — it never unsets it when the arg is absent. Every
+# planning-assigned dispatch exports FLEET_PLAN_ISSUE, so this suite's own
+# process inherits it whenever it's run from inside such an iteration, and
+# an absent-arg case would then see it leak straight through into the wrap's
+# launch. Scrub it once here, in this process's own environment, before any
+# dispatch call runs — the fix belongs in the test harness, not the wrap,
+# which has no way to distinguish "caller wants no plan" from "caller's shell
+# happens to have one lying around". (Audited siblings: FLEET_ROLE_MODEL is
+# always freshly exported by the wrap itself regardless of argv, so it has no
+# leak path; FLEET_ASSIGNED_WORKTREE is not read by fleet-dispatch-wrap at
+# all.)
 unset FLEET_PLAN_ISSUE
 # Same class, same fix, one variable over: FLEET_DISPATCH_TARGET and its parts
 # are exported by EVERY assigned dispatch, and the wrap only ever sets them
-# from its own 7th argv — so T9/T10b's "absent arg exports nothing" cases read
+# from its own 7th argv — so an "absent arg exports nothing" case would read
 # the caller's leftovers instead. Any fleet iteration that runs this suite (a
-# worker build-verifying a scripts/fleet PR is the common one) otherwise sees 8
-# spurious reds. Scrubbed here, in the harness, for the same reason as above:
-# the wrap cannot tell "caller wants no target" from "caller's shell has one".
+# worker build-verifying a scripts/fleet PR is the common one) otherwise sees
+# spurious reds. Scrubbed here, in the harness: the wrap cannot tell "caller
+# wants no target" from "caller's shell has one".
 unset FLEET_DISPATCH_TARGET FLEET_DISPATCH_KIND FLEET_DISPATCH_REPO \
       FLEET_DISPATCH_NUMBER FLEET_DISPATCH_REASON
 
 # PASS/FAIL, ok/bad and `summarize` come from the shared helper: its
-# "passed: N  failed: M" line is what fleet-positive-control scores, and the
-# hand-rolled "PASS: n FAIL: m" tally this replaces read as an aborted run.
+# "passed: N  failed: M" line is what fleet-positive-control scores; a
+# hand-rolled "PASS: n FAIL: m" tally reads as an aborted run.
 # shellcheck source=scripts/fleet/tests/lib_assert.sh
 source "$(dirname "$0")/lib_assert.sh"
 TMPROOT=""; cleanup(){ [[ -n "$TMPROOT" && -d "$TMPROOT" ]] && rm -rf "$TMPROOT"; }
@@ -118,6 +118,16 @@ exit 0
 EOF
 cat > "$BIN/tmux" <<'EOF'
 #!/usr/bin/env bash
+exit 0
+EOF
+cat > "$BIN/fleet-gh-token" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+cat > "$BIN/fleet-runtime" <<'EOF'
+#!/usr/bin/env bash
+[[ "${1:-}" == ready ]] || exit 99
+[[ -n "${STUB_CODEX_COOLDOWN:-}" ]] && exit 1
 exit 0
 EOF
 chmod +x "$BIN"/*
@@ -324,7 +334,7 @@ STUB_BRANCH="master" STUB_DIRTY="" STUB_CLAUDE_RC=0 run_wrap "claude-opus-4-8[1m
 # --- dispatch targets: 7th arg target=<kind>:<repo>:<N>[:x] ------------------
 echo "T8: the legacy plan=<repo>:<N> spelling (#2197) is the plan target"
 # An older dispatcher mid rolling-upgrade may still pass it; it parses as
-# target=plan:<repo>:<N>, so T10b-T10d below cover it through the one grammar.
+# target=plan:<repo>:<N>, so the same target grammar covers it.
 rm -f "$SIDECAR"
 out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 "claude-fable-5[1m]" xhigh worker "" live "plan=engine:2197" 2>/dev/null)
 [[ "$out" == *" target=plan:engine:2197 reason=plan engine#2197 plan=engine:2197 prompt="* ]] \
@@ -356,7 +366,7 @@ rm -f "$SIDECAR"
 # The parts are exported individually too — the role docs key on
 # FLEET_DISPATCH_KIND. The wrap exports into the claude process, so assert
 # through a claude stub that prints its environment, then restore the plain
-# stub for the suites below.
+# stub afterward.
 cat > "$BIN/claude" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$CLAUDE_ARGV_LOG"
@@ -404,19 +414,16 @@ grep -q -- '^review-release 3074 worker-1$' "$FLEET_CLAIM_LOG" \
 unset FLEET_CLAIM_LOG
 rm -f "$SIDECAR"
 
-# --- hermeticity regression lock (#2836) -------------------------------------
-# T9 above only proves its absent-arg cases are clean in THIS process,
-# which is already running after the setup scrub. That alone doesn't lock the
-# scrub against removal — a future edit could delete the `unset
-# FLEET_PLAN_ISSUE` above and every case here would still pass, because none
-# of them re-introduce an ambient value once the process starts. Reproduce the
-# actual bug report's repro command instead: re-invoke this whole suite as a
-# child process with FLEET_PLAN_ISSUE ambiently exported (exactly
-# `FLEET_PLAN_ISSUE=engine:9999 bash test_dispatch_wrap_session.sh`, the
-# acceptance criterion's own repro form) and assert the child still exits 0.
-# The child hits the setup scrub before its own T9 run, so this fails iff
-# that scrub regresses. FLEET_TEST_SELFCHECK guards against a second level of
-# recursion — the child must not spawn a grandchild.
+# --- hermeticity regression lock ---------------------------------------------
+# The absent-arg cases only prove they're clean in THIS process, already
+# running after the setup scrub. That alone doesn't lock the scrub against
+# removal — a future edit could delete the `unset FLEET_PLAN_ISSUE` line and
+# every case here would still pass, because none of them re-introduce an
+# ambient value once the process starts. Re-invoke this whole suite as a
+# child process instead, with FLEET_PLAN_ISSUE ambiently exported, and assert
+# the child still exits 0. The child hits the setup scrub before its own run,
+# so this fails iff that scrub regresses. FLEET_TEST_SELFCHECK guards against
+# a second level of recursion — the child must not spawn a grandchild.
 if [[ -z "${FLEET_TEST_SELFCHECK:-}" ]]; then
     echo "T10b: suite is hermetic against an ambient FLEET_PLAN_ISSUE (#2836 repro, regression lock)"
     if FLEET_TEST_SELFCHECK=1 FLEET_PLAN_ISSUE="engine:9999" bash "$0" >"$TMPROOT/selfcheck.log" 2>&1; then
@@ -437,7 +444,7 @@ if [[ -z "${FLEET_TEST_SELFCHECK:-}" ]]; then
     fi
 fi
 
-# --- in-flight false positives + resume-loop breaker (worker-2, 07-09→07-14) --
+# --- in-flight false positives + resume-loop breaker -------------------------
 echo "T11: scratch branch is never in-flight — sidecar cleared even when dirty"
 rm -f "$SIDECAR"
 STUB_BRANCH="claude/worker-1-scratch" STUB_DIRTY=1 STUB_CLAUDE_RC=0 run_wrap "claude-opus-4-8[1m]" xhigh worker
@@ -493,5 +500,39 @@ run_wrap sonnet high queue-manager >/dev/null
 python3 -c "import json,sys;d=json.load(open(sys.argv[1]));assert d['wrapper_pid'] > 0 and d['sentinel'] == 'kept'" \
   "$FLEET_STATE_DIR/dispatch/pane-3.json" 2>/dev/null \
   && ok "wrapper PID stamped without losing record fields" || bad "wrapper PID missing or record fields changed"
+
+echo "T18: target-less Codex failures re-arm batch roles"
+BATCH_RUNTIME="$TMPROOT/batch-runtime"
+BATCH_WT="$TMPROOT/batch-worktree"
+mkdir -p "$BATCH_RUNTIME" "$BATCH_WT" "$FLEET_STATE_DIR/runtime-cooldown" \
+  "$FLEET_STATE_DIR/triggers"
+cp "$WRAP" "$BATCH_RUNTIME/fleet-dispatch-wrap"
+cat > "$BATCH_RUNTIME/fleet_codex.py" <<'PYEOF'
+import json
+import os
+import sys
+import time
+from pathlib import Path
+
+if os.environ.get("STUB_CODEX_COOLDOWN"):
+    path = Path(os.environ["FLEET_STATE_DIR"]) / "runtime-cooldown/codex.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"until": int(time.time()) + 900}) + "\n")
+sys.exit(int(os.environ.get("STUB_CODEX_RC", "0")))
+PYEOF
+rm -f "$FLEET_STATE_DIR/triggers/merger"
+( cd "$BATCH_WT" && STUB_CODEX_RC=2 STUB_CODEX_COOLDOWN=1 \
+    "$BATCH_RUNTIME/fleet-dispatch-wrap" pane-8 gpt-5.6-terra medium merger "" live \
+    target= codex sonnet >/dev/null 2>>"$TMPROOT/stderr.log" ) || true
+[[ -f "$FLEET_STATE_DIR/triggers/merger" ]] \
+  && ok "Codex preflight/cooldown exit re-armed merger" \
+  || bad "Codex preflight/cooldown exit lost the merger trigger"
+rm -f "$FLEET_STATE_DIR/triggers/merger" "$FLEET_STATE_DIR/runtime-cooldown/codex.json"
+( cd "$BATCH_WT" && STUB_CODEX_RC=0 \
+    "$BATCH_RUNTIME/fleet-dispatch-wrap" pane-8 gpt-5.6-terra medium merger "" live \
+    target= codex sonnet >/dev/null 2>>"$TMPROOT/stderr.log" )
+[[ ! -f "$FLEET_STATE_DIR/triggers/merger" ]] \
+  && ok "clean Codex batch exit does not re-arm" \
+  || bad "clean Codex batch exit wrote a trigger"
 
 summarize "fleet-dispatch-wrap session tests"

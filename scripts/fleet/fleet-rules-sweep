@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """fleet-rules-sweep — run a `.claude/rules/` detector tree-wide without the
-ripgrep-walker false clean (#2739).
+ripgrep-walker false clean.
 
     fleet-rules-sweep --pattern '<regex>' [--glob '<glob>']... [<scope>...]
 
@@ -125,7 +125,7 @@ def resolve_files(root, scopes):
 
     `-c` tracked + `-o --exclude-standard` untracked-but-visible is exactly
     the set `git check-ignore` exits 1 on, which is what makes this immune to
-    the walker behaviour in #2739.
+    the walker's ignore-then-negate pruning.
     """
     cmd = ["git", "-C", root, "ls-files", "-co", "--exclude-standard", "--"]
     cmd.extend(scopes if scopes else ["."])
@@ -189,7 +189,7 @@ def main():
               file=sys.stderr)
         return 2
 
-    # The #2739 guard. An empty scope is the exact shape of the false clean, so
+    # An empty scope is the exact shape of the false clean, so
     # it can never share an exit code with a real "no matches" result.
     if not walked:
         scope_str = " ".join(args.scope) if args.scope else "(whole repo)"

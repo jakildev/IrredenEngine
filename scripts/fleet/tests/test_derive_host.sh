@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
 # Tests for fleet-claim's host taxonomy (derive_host / host_from_uname).
 #
-# #1383 unified the WSL2 host key. derive_host once mapped WSL2 (uname Linux +
-# /proc/version "microsoft") to "windows", disagreeing with the smoke / build /
-# authored-on detectors, which all read raw `uname -s` and call WSL2 "linux".
-# These tests pin the unified mapping through the `fleet-claim host
-# [uname-string]` seam so they pass on any runner OS (no /proc/version or live
-# `uname` dependency).
+# WSL2 and native Linux both map to "linux" — the same convention the smoke /
+# build / authored-on detectors use, which all read raw `uname -s`. These
+# tests pin the unified mapping through the `fleet-claim host [uname-string]`
+# seam so they pass on any runner OS (no /proc/version or live `uname`
+# dependency).
 #
 # Covers:
-#   - Linux (WSL2 and native) → linux   (the #1383 regression pin)
+#   - Linux (WSL2 and native) → linux
 #   - Darwin → mac
 #   - MINGW*/MSYS*/CYGWIN* (native Windows) → windows
 #   - unrecognized uname → unknown

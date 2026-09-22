@@ -33,6 +33,7 @@ FRAME_RE = re.compile(
     r"Frame time:\s+avg=([\d.]+)ms\s+p50=([\d.]+)ms\s+p95=([\d.]+)ms\s+"
     r"p99=([\d.]+)ms\s+min=([\d.]+)ms\s+max=([\d.]+)ms"
 )
+UPDATE_TICKS_RE = re.compile(r"Update ticks:\s+avg=([\d.]+)/frame\s+max=(\d+)")
 ENTITY_RE = re.compile(r"Entity count:\s+(\d+)\s+\((\d+)\s+archetypes\)")
 CULL_AXIS_RE = re.compile(r"^AxisEntries\s+([\d.]+)\s+(\d+)\s+(\d+)")
 CULL_VISIBLE_RE = re.compile(r"^Visible\s+([\d.]+)\s+(\d+)\s+(\d+)")
@@ -53,7 +54,18 @@ GPU_FRAME_COVERAGE_RE = re.compile(
     r"^Coverage: supported=(0|1) attempted=(\d+) valid=(\d+) "
     r"invalid=(\d+) commandBuffers=(\d+)$"
 )
-
+STEADY_FRAME_RE = re.compile(
+    r"Steady frame time \(first (\d+) of (\d+) frames excluded\):\s+avg=([\d.]+)ms\s+"
+    r"p50=([\d.]+)ms\s+p95=([\d.]+)ms\s+p99=([\d.]+)ms\s+min=([\d.]+)ms\s+max=([\d.]+)ms"
+)
+WITNESS_YAW_RE = re.compile(
+    r"^Camera yaw: first=(-?[\d.]+)deg last=(-?[\d.]+)deg travel=([\d.]+)deg samples=(\d+)$"
+)
+WITNESS_ZOOM_RE = re.compile(r"^Camera zoom: first=([\d.]+) last=([\d.]+)$")
+WITNESS_PIVOT_RE = re.compile(r"^Camera pivot: explicit focus on (\d+) of (\d+) frames$")
+WITNESS_OVERFLOW_RE = re.compile(
+    r"^Per-axis overflow: maxEntries=(\d+) maxDropped=(\d+) cap=(\d+) samples=(\d+)$"
+)
 
 
 @dataclass
@@ -116,9 +128,40 @@ class CullStats:
 
 
 @dataclass
+class RunWitness:
+    """What the run vouches for without a log; a field is None where its line is absent."""
+    yaw_first_deg: Optional[float] = None
+    yaw_last_deg: Optional[float] = None
+    yaw_travel_deg: Optional[float] = None
+    pose_samples: int = 0
+    zoom_first: Optional[float] = None
+    zoom_last: Optional[float] = None
+    # Pose samples rendered with an explicit yaw pivot focus; None without the line.
+    explicit_pivot_samples: Optional[int] = None
+    # samples == 0 with the line present: the overflow lane never ran (cardinal pose).
+    overflow_max_entries: Optional[int] = None
+    overflow_max_dropped: Optional[int] = None
+    overflow_cap: Optional[int] = None
+    overflow_samples: Optional[int] = None
+
+
+@dataclass
 class CellReport:
     cell_id: str
     frame: FrameTiming = field(default_factory=FrameTiming)
+    # Frame timing with the leading warm-up frames excluded; None for a report
+    # without the line.
+    steady_frame: Optional[FrameTiming] = None
+    warmup_frames: int = 0
+    recorded_frames: int = 0
+    witness: RunWitness = field(default_factory=RunWitness)
+    # Every recorded frame in order, warm-up included.
+    frame_times_ms: List[float] = field(default_factory=list)
+    # Fixed updates run inside each of those frames; empty for a report without the series.
+    frame_update_ticks: List[int] = field(default_factory=list)
+    # Fixed updates per rendered frame; None for a report without the line.
+    update_ticks_avg: Optional[float] = None
+    update_ticks_max: Optional[int] = None
     entity_count: int = 0
     archetype_count: int = 0
     systems: List[SystemTiming] = field(default_factory=list)
@@ -126,6 +169,17 @@ class CellReport:
     gpu_frame: GpuFrameTiming = field(default_factory=GpuFrameTiming)
     cull: CullStats = field(default_factory=CullStats)
     raw: str = ""
+
+    def steady_frame_times_ms(self) -> List[float]:
+        """The recorded frames after the warm-up the report states.
+
+        Empty when the report states no warm-up, or when its series is not the
+        length its steady line states (a truncated report, or a run too long
+        for the writer to carry its series).
+        """
+        if self.steady_frame is None or len(self.frame_times_ms) != self.recorded_frames:
+            return []
+        return self.frame_times_ms[self.warmup_frames:]
 
     def system_by_name(self, name: str) -> Optional[SystemTiming]:
         for s in self.systems:
@@ -158,6 +212,17 @@ def parse_report(path: Path, cell_id: str) -> CellReport:
             max_=float(m.group(6)),
         )
 
+    m = STEADY_FRAME_RE.search(text)
+    if m:
+        report.warmup_frames = int(m.group(1))
+        report.recorded_frames = int(m.group(2))
+        report.steady_frame = FrameTiming(*(float(m.group(i)) for i in range(3, 9)))
+
+    m = UPDATE_TICKS_RE.search(text)
+    if m:
+        report.update_ticks_avg = float(m.group(1))
+        report.update_ticks_max = int(m.group(2))
+
     m = ENTITY_RE.search(text)
     if m:
         report.entity_count = int(m.group(1))
@@ -183,6 +248,15 @@ def parse_report(path: Path, cell_id: str) -> CellReport:
             continue
         if s.startswith("--- CPU phase timing"):
             section = "cpu_phase"
+            continue
+        if s.startswith("--- Run witness"):
+            section = "witness"
+            continue
+        if s.startswith("--- Frame times"):
+            section = "frame_times"
+            continue
+        if s.startswith("--- Update ticks"):
+            section = "frame_update_ticks"
             continue
         if s.startswith("=== END REPORT"):
             section = None
@@ -255,6 +329,36 @@ def parse_report(path: Path, cell_id: str) -> CellReport:
             m = CULL_RATIO_RE.match(s)
             if m:
                 report.cull.ratio = float(m.group(1))
+        elif section == "witness":
+            witness = report.witness
+            m = WITNESS_YAW_RE.match(s)
+            if m:
+                witness.pose_samples = int(m.group(4))
+                # A run whose voxel pass never ticked writes the line with
+                # zeros; that is an absent pose, not a pose of 0 degrees.
+                if witness.pose_samples:
+                    witness.yaw_first_deg, witness.yaw_last_deg, witness.yaw_travel_deg = (
+                        float(m.group(i)) for i in range(1, 4)
+                    )
+                continue
+            m = WITNESS_ZOOM_RE.match(s)
+            if m:
+                witness.zoom_first, witness.zoom_last = float(m.group(1)), float(m.group(2))
+                continue
+            m = WITNESS_PIVOT_RE.match(s)
+            if m:
+                witness.explicit_pivot_samples = int(m.group(1))
+                continue
+            m = WITNESS_OVERFLOW_RE.match(s)
+            if m:
+                (witness.overflow_max_entries, witness.overflow_max_dropped,
+                 witness.overflow_cap, witness.overflow_samples) = (
+                    int(m.group(i)) for i in range(1, 5)
+                )
+        elif section == "frame_times":
+            report.frame_times_ms.extend(float(value) for value in s.split())
+        elif section == "frame_update_ticks":
+            report.frame_update_ticks.extend(int(value) for value in s.split())
     return report
 
 
@@ -272,6 +376,12 @@ def load_run(run_dir: Path) -> Dict[str, CellReport]:
         report_name = cell.get("report") or f"{cell_id}.txt"
         cells[cell_id] = parse_report(run_dir / report_name, cell_id)
     return cells
+
+
+def unmeasured_cell_ids(cells: Dict[str, CellReport]) -> List[str]:
+    """Return manifest cells that have no parsed frame measurement."""
+    return [cell_id for cell_id, report in cells.items()
+            if report.frame.avg <= 0.0]
 
 
 def load_manifest(run_dir: Path) -> Dict:
@@ -309,8 +419,14 @@ def resolve_baseline(baseline_root: Path, head_manifest: Dict) -> Optional[Path]
 
 
 def normalize_ms(ms: float, ref_ms: float, target_ms: float) -> float:
-    """Scale a measured ms by (target / ref). When ref_ms is missing or zero
-    (legacy run), normalization is a no-op."""
+    """Scale a measured ms by (target / ref). When either reference is missing
+    or zero (legacy run), normalization is a no-op.
+
+    The gate passes the head run's reference as `ref_ms` and the *baseline
+    run's own* reference as `target_ms`, so the scale factor answers "how much
+    slower was this machine while the head was measured, relative to the
+    machine-state the baseline was captured on".
+    """
     if ref_ms <= 0.0 or target_ms <= 0.0:
         return ms
     return ms * (target_ms / ref_ms)
@@ -318,8 +434,15 @@ def normalize_ms(ms: float, ref_ms: float, target_ms: float) -> float:
 
 def load_factor(ref_ms: float, target_ms: float) -> float:
     """Ratio ref_ms / target_ms. >1 means the host was loaded vs the
-    calibration baseline; ==1 means lock was uncontested; <1 means the
-    host is faster than the calibration host (unusual)."""
+    reference reading; ==1 means lock was uncontested; <1 means the host was
+    faster than the reference (unusual).
+
+    Called with (head ref, baseline ref): the two readings come from the same
+    SKU, so the ratio isolates load. Called with (ref, ref_target_ms) it would
+    instead measure how slow the SKU is in absolute terms — a constant of the
+    machine, not of the run (the hosted pool calibrates at 59-116 ms against a
+    50 ms target, which is why that framing could never fire).
+    """
     if target_ms <= 0.0:
         return 1.0
     if ref_ms <= 0.0:
@@ -560,9 +683,10 @@ def build_host_note(base_manifest: Dict, head_manifest: Dict) -> str:
 
     base_slug = base_cal.get("host_slug", "(legacy)")
     head_slug = head_cal.get("host_slug", "(legacy)")
-    ref_ms = float(head_cal.get("ref_ms", 0.0))
+    head_ref_ms = float(head_cal.get("ref_ms", 0.0))
+    base_ref_ms = float(base_cal.get("ref_ms", 0.0))
     target_ms = float(head_cal.get("ref_target_ms", 0.0))
-    lf = load_factor(ref_ms, target_ms)
+    lf = load_factor(head_ref_ms, base_ref_ms)
     same_host = base_slug == head_slug and base_slug not in ("", "(legacy)")
     trust_norm = lf >= LOAD_FACTOR_TRUST_NORMALIZED
 
@@ -574,7 +698,13 @@ def build_host_note(base_manifest: Dict, head_manifest: Dict) -> str:
             f"- host: `{head_slug}` — **host mismatch** "
             f"(baseline `{base_slug}`); gate reports informational only"
         )
-    lines.append(f"- ref_ms: {ref_ms:.2f} (target {target_ms:.2f}, load_factor {lf:.2f}×)")
+    lines.append(
+        f"- ref_ms: head {head_ref_ms:.2f} vs baseline {base_ref_ms:.2f} "
+        f"(load_factor {lf:.2f}×)"
+    )
+    # Informational: the fixed 50 ms target says how fast this SKU is, which
+    # is not what the gate weighs on.
+    lines.append(f"- calibration target: {target_ms:.2f} ms (informational)")
     lines.append(
         "- weighting: normalized over raw "
         f"(load_factor ≥ {LOAD_FACTOR_TRUST_NORMALIZED:.2f}×)"

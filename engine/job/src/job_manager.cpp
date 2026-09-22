@@ -79,6 +79,11 @@ int querySysctlPCoreCount() {
 } // namespace
 
 int JobManager::resolveWorkerCount(int requested) {
+    if (requested == kInlineSerialWorkerCount) {
+        // Explicit inline-serial request — no pool, no caps. Ahead of
+        // every clamp below, which would otherwise floor it to 1.
+        return kInlineSerialWorkerCount;
+    }
     const unsigned int hw = std::thread::hardware_concurrency();
     const int hwCapped = (hw == 0) ? 1 : static_cast<int>(hw);
 
@@ -111,25 +116,39 @@ int JobManager::resolveWorkerCount(int requested) {
 }
 
 JobManager::JobManager(int requestedWorkerCount)
-    : m_scheduler{std::make_unique<enki::TaskScheduler>()}
+    : m_scheduler{nullptr}
     , m_mainThreadId{std::this_thread::get_id()}
     , m_workerCount{resolveWorkerCount(requestedWorkerCount)} {
-    enki::TaskSchedulerConfig config;
-    // numTaskThreadsToCreate is the worker count NOT including the
-    // calling (main) thread. enkiTS' GetNumTaskThreads() returns
-    // numTaskThreadsToCreate + 1 to include main.
-    config.numTaskThreadsToCreate = static_cast<uint32_t>(m_workerCount);
-    m_scheduler->Initialize(config);
+    if (!isInlineSerial()) {
+        // enkiTS documents numTaskThreadsToCreate as "must be > 0", so
+        // inline-serial skips the scheduler entirely rather than asking
+        // for a zero-thread pool.
+        m_scheduler = std::make_unique<enki::TaskScheduler>();
+        enki::TaskSchedulerConfig config;
+        // numTaskThreadsToCreate is the worker count NOT including the
+        // calling (main) thread. enkiTS' GetNumTaskThreads() returns
+        // numTaskThreadsToCreate + 1 to include main.
+        config.numTaskThreadsToCreate = static_cast<uint32_t>(m_workerCount);
+        m_scheduler->Initialize(config);
+    }
 
     // Seed the main thread's RNG explicitly — workers seed themselves
-    // on first task entry via `detail::registerSelf`.
+    // on first task entry via `detail::registerSelf`. Inline-serial runs
+    // the same path so `IRMath::random*` stays deterministic across the
+    // worker-count axis.
     detail::t_workerId = 0;
     IRMath::seedThreadRng(0u);
     detail::t_registered = true;
     std::snprintf(detail::t_workerName, sizeof(detail::t_workerName), "main");
 
     g_jobManager = this;
-    IRE_LOG_INFO("JobManager: started with {} worker threads", m_workerCount);
+    // One log shape for every mode: a single grep over a benchmark cell's
+    // log reads the resolved count.
+    IRE_LOG_INFO(
+        "JobManager: started with {} worker threads{}",
+        m_workerCount,
+        isInlineSerial() ? " (inline-serial: dispatches run on the calling thread)" : ""
+    );
 }
 
 JobManager::~JobManager() {

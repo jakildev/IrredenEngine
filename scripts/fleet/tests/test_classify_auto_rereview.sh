@@ -1,25 +1,9 @@
 #!/usr/bin/env bash
-# Tests for scripts/fleet/classify-auto-rereview.sh (engine #2290 / game #229).
-#
-# Each case builds a throwaway git repo mirroring a real synchronize-event
-# graph, invokes the classify script with the event's BEFORE/AFTER/BASE_SHA,
-# and asserts the emitted rebase_only decision:
-#
-#   T1  stacked child retargeted onto master after the parent SQUASH-merges
-#       -> mechanical (the headline bug: this must NOT strip fleet:approved)
-#   T2  in-place catch-up rebase onto an advanced master, child diff unchanged
-#       -> mechanical (must stay correct — the case the old logic handled)
-#   T3  real content change (amended tip commit) -> re-review, not docs-only
-#   T4  BEFORE commit unavailable (orphaned, unfetchable) -> re-review (safe)
-#   T5  plain force-push, identical tree, new SHA -> mechanical
-#   T6  net delta touches only a non-canon .md -> docs_only=true (keep approval)
-#   T7  net delta touches a canon design doc (docs/design/**) -> docs_only=false
-#   T8  net delta mixes a .md with a code file -> docs_only=false
-#   T9  net delta touches only a .fleet/ markdown note -> docs_only=true, and rebase
-#       noise from an advanced master does not pollute the changed-file set
+# Each case builds a throwaway git repo mirroring a synchronize-event graph
+# and asserts the classify script's emitted rebase_only/docs_only decision.
 #
 # Hermetic: no live GitHub, no origin remote, no ~/.fleet. The script's
-# best-effort `git fetch origin` fails closed to the local objects we build.
+# best-effort `git fetch origin` fails closed to the local objects built here.
 
 set -euo pipefail
 
@@ -28,7 +12,7 @@ SCRIPT="$SCRIPT_DIR/classify-auto-rereview.sh"
 
 if [[ ! -f "$SCRIPT" ]]; then
     echo "SKIP: script not found at $SCRIPT" >&2
-    exit 3  # skip status — run_all.sh must not count this as a pass (#2786)
+    exit 3  # skip status — run_all.sh must not count this as a pass
 fi
 if ! command -v git >/dev/null 2>&1; then
     echo "SKIP: git not available" >&2
@@ -64,8 +48,7 @@ add() {  # $1 = repo  $2 = file  $3 = msg
     ( cd "$1" && echo "$2" > "$2" && git add "$2" && git commit -qm "$3" )
 }
 
-# Run the classifier in $1 with the given event SHAs; echoes the decision line.
-classify() {  # $1 = repo  BEFORE AFTER BASE_SHA
+classify() {  # $1 = repo  BEFORE AFTER BASE_SHA — echoes the decision line
     ( cd "$1" && BEFORE="$2" AFTER="$3" BASE_SHA="$4" bash "$SCRIPT" 2>/dev/null )
 }
 
@@ -83,13 +66,13 @@ PARENT_TIP=$(git -C "$R" rev-parse HEAD)
 git -C "$R" checkout -q -b child
 add "$R" child1.txt c1
 add "$R" child2.txt c2
-BEFORE=$(git -C "$R" rev-parse HEAD)                 # child on the parent branch
+BEFORE=$(git -C "$R" rev-parse HEAD)
 git -C "$R" checkout -q master
-git -C "$R" merge --squash -q parent >/dev/null      # squash parent's changes...
-git -C "$R" commit -qm "squash parent (#PR)"         # ...as one commit; p1/p2 gone
-BASE_SHA=$(git -C "$R" rev-parse HEAD)               # new master tip
+git -C "$R" merge --squash -q parent >/dev/null
+git -C "$R" commit -qm "squash parent"
+BASE_SHA=$(git -C "$R" rev-parse HEAD)
 git -C "$R" rebase -q --onto master "$PARENT_TIP" child >/dev/null
-AFTER=$(git -C "$R" rev-parse child)                 # child replayed onto master
+AFTER=$(git -C "$R" rev-parse child)
 expect "T1" "$(classify "$R" "$BEFORE" "$AFTER" "$BASE_SHA")" "rebase_only=true"
 
 # --- T2: in-place catch-up rebase onto advanced master -----------------------
@@ -100,7 +83,7 @@ add "$R" child1.txt c1
 add "$R" child2.txt c2
 BEFORE=$(git -C "$R" rev-parse HEAD)
 git -C "$R" checkout -q master
-add "$R" master_extra.txt m1                         # master advances (disjoint file)
+add "$R" master_extra.txt m1
 BASE_SHA=$(git -C "$R" rev-parse HEAD)
 git -C "$R" checkout -q feature
 git -C "$R" rebase -q master >/dev/null
@@ -116,7 +99,7 @@ add "$R" child1.txt c1
 add "$R" child2.txt c2
 BEFORE=$(git -C "$R" rev-parse HEAD)
 ( cd "$R" && echo "edited content" > child2.txt && git add child2.txt \
-    && git commit -q --amend -m c2 )                 # genuine edit to the tip
+    && git commit -q --amend -m c2 )
 AFTER=$(git -C "$R" rev-parse HEAD)
 expect "T3" "$(classify "$R" "$BEFORE" "$AFTER" "$BASE_SHA")" \
     "rebase_only=false"$'\n'"docs_only=false"
@@ -128,7 +111,7 @@ BASE_SHA=$(git -C "$R" rev-parse master)
 git -C "$R" checkout -q -b feature
 add "$R" child1.txt c1
 AFTER=$(git -C "$R" rev-parse HEAD)
-BEFORE=0000000000000000000000000000000000000000       # not a real object
+BEFORE=0000000000000000000000000000000000000000
 expect "T4" "$(classify "$R" "$BEFORE" "$AFTER" "$BASE_SHA")" \
     "rebase_only=false"$'\n'"docs_only=false"
 
@@ -140,16 +123,15 @@ git -C "$R" checkout -q -b feature
 add "$R" child1.txt c1
 add "$R" child2.txt c2
 BEFORE=$(git -C "$R" rev-parse HEAD)
-# Re-commit the identical tip content with a later committer date -> new SHA,
-# same tree (mirrors a bare `git push --force` with no edits).
+# Re-committing the identical tree with a later committer date yields a new
+# SHA over the same tree, mirroring a bare `git push --force` with no edits.
 GIT_COMMITTER_DATE="2026-02-02T00:00:00 +0000" \
     git -C "$R" commit -q --amend --no-edit
 AFTER=$(git -C "$R" rev-parse HEAD)
 [[ "$AFTER" != "$BEFORE" ]] || fail "T5 setup: AFTER SHA should differ from BEFORE"
 expect "T5" "$(classify "$R" "$BEFORE" "$AFTER" "$BASE_SHA")" "rebase_only=true"
 
-# add_at: commit content to an arbitrary (possibly nested) path.
-add_at() {  # $1 = repo  $2 = path  $3 = content  $4 = msg
+add_at() {  # $1 = repo  $2 = (possibly nested) path  $3 = content  $4 = msg
     ( cd "$1" && mkdir -p "$(dirname "$2")" && echo "$3" > "$2" \
         && git add "$2" && git commit -qm "$4" )
 }
@@ -193,19 +175,17 @@ AFTER=$(git -C "$R" rev-parse HEAD)
 expect "T8" "$(classify "$R" "$BEFORE" "$AFTER" "$BASE_SHA")" \
     "rebase_only=false"$'\n'"docs_only=false"
 
-# --- T9: docs-only force-push delta + rebase noise -> docs_only=true ---------
-# A catch-up rebase (count-preserving force-push) plus an AMEND to the docs
-# commit: the docs-only decision compares NET diffs per file, so master
-# advancing a code file between the two anchors (rebase noise) must not count
-# as a net-changed code path. This exercises the BEFORE~N recovery arm of the
-# docs decision (T6/T8 exercise the fast-forward arm).
+# The docs-only decision compares NET diffs per file, so master advancing a
+# code file between the two anchors (rebase noise from a catch-up rebase) must
+# not count as a net-changed code path; this exercises the BEFORE~N recovery
+# arm of that decision (T6/T8 exercise the fast-forward arm).
 echo "T9: docs-only amend atop a catch-up rebase -> docs_only=true"
 R=$(new_repo t9)
 git -C "$R" checkout -q -b feature
 add_at "$R" ".fleet/status/notes-42.md" "notes v1" notes
 BEFORE=$(git -C "$R" rev-parse HEAD)
 git -C "$R" checkout -q master
-add "$R" master_code.txt m1                          # master advances (code)
+add "$R" master_code.txt m1
 BASE_SHA=$(git -C "$R" rev-parse master)
 git -C "$R" checkout -q feature
 git -C "$R" rebase -q master >/dev/null

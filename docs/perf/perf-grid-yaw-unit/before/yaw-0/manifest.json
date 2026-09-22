@@ -1,0 +1,44 @@
+{
+  "head": "021d41f7f80b5a8a73cee5f2294ff0e9a905666d",
+  "changes": "M  docs/design/campaigns/million-entity-render.md\n",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "binary_sha256": "b4e41fb40c6cf6665c43d6a11de6e0b9f98518468ad7c7435bd3751616beeaff",
+  "shader_sha256": "6c0fed4e4252c22757e064eec84cced2585fcfbe41a655a61bce1509b366df46",
+  "runtime_scripts_sha256": "85a4c4c0e04ff77ce830640f6b8935b4ab8dcad11f1ff0dfccbc3dd918d927f6",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "120",
+    "IRPerfGrid",
+    "--mode",
+    "voxel_set",
+    "--grid-size",
+    "64",
+    "--wave-freeze",
+    "--zoom",
+    "4",
+    "--no-overlay",
+    "--yaw",
+    "0",
+    "--auto-profile",
+    "200"
+  ],
+  "runs": [
+    {
+      "index": 1,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    },
+    {
+      "index": 2,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "gpu_measured": true
+    }
+  ]
+}

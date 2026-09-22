@@ -421,3 +421,51 @@ TEST(IRArgsEnumTest, InlineEqualsFormAccepted) {
 }
 
 } // namespace
+
+// ─────────────────────────────────────────────
+// --worker-threads — engine-common worker-pool override
+// ─────────────────────────────────────────────
+
+TEST(IRArgsWorkerThreadsTest, SpaceAndInlineFormsReadBack) {
+    Parser p(nullptr, Common::ENGINE);
+    Argv a({"prog", "--worker-threads", "3"});
+    p.parse(a.argc(), a.argv());
+    EXPECT_TRUE(p.wasProvided("--worker-threads"));
+    EXPECT_EQ(p.workerThreads(), 3);
+
+    Parser q(nullptr, Common::ENGINE);
+    Argv b({"prog", "--worker-threads=0"});
+    q.parse(b.argc(), b.argv());
+    EXPECT_TRUE(q.wasProvided("--worker-threads"));
+    EXPECT_EQ(q.workerThreads(), 0);
+}
+
+TEST(IRArgsWorkerThreadsTest, AutoSentinelIsAProvidedValue) {
+    // -1 on the command line is a meaningful request ("force auto"), not
+    // the absent-flag sentinel.
+    Parser p(nullptr, Common::ENGINE);
+    Argv a({"prog", "--worker-threads", "-1"});
+    p.parse(a.argc(), a.argv());
+    EXPECT_EQ(p.workerThreads(), -1);
+    EXPECT_NE(p.workerThreads(), kWorkerThreadsUnset);
+}
+
+TEST(IRArgsWorkerThreadsTest, AbsentReadsBackUnsetSentinel) {
+    Parser p(nullptr, Common::ENGINE);
+    Argv a({"prog", "--auto-screenshot", "5"});
+    p.parse(a.argc(), a.argv());
+    EXPECT_FALSE(p.wasProvided("--worker-threads"));
+    EXPECT_EQ(p.workerThreads(), kWorkerThreadsUnset);
+}
+
+TEST(IRArgsWorkerThreadsDeathTest, StandaloneParserRejectsTheFlag) {
+    // Common::NONE drops the engine-common args, so a standalone tool's
+    // --help never advertises --worker-threads and the flag is unknown.
+    Parser p(nullptr, Common::NONE);
+    Argv a({"prog", "--worker-threads", "2"});
+    EXPECT_EXIT(
+        p.parse(a.argc(), a.argv()),
+        ::testing::ExitedWithCode(2),
+        "Unknown argument: --worker-threads"
+    );
+}

@@ -643,6 +643,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         );
         axes.laggedOverflowCount_ = ctrl[1];
         const std::uint32_t dropped = ctrl[5];
+        renderRunWitness()
+            .recordOverflow(ctrl[1], dropped, static_cast<std::uint32_t>(axes.overflowCap_));
         if (dropped > 0 && dropped != lastOverflowDropWarned_) {
             IRE_LOG_WARN(
                 "Per-axis view-visibility overflow list dropped {} entries last "
@@ -1885,21 +1887,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             fogObserverBuf_->subData(0, sizeof(FrameDataFogObservers), &cutSectionFog->observers_);
         }
         fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
-        // Per-voxel occlusion cull Hi-Z input. Bind the finest Hi-Z level
-        // as a read-only IMAGE at a unit distinct from the fog image at 0. The
-        // image bind (not a sampler bind) is required on Metal: bindComputeResources
-        // flushes the sticky image-binding table AFTER the sampler table at the
-        // same encoder texture index, so a sampler bind of the Hi-Z at unit 1 was
-        // shadowed by the leftover trixelDistances IMAGE bound there by the prior
-        // frame's stage-1/stage-2 — the compact then read the freshly-cleared
-        // distance sentinel (all 65535) instead of the Hi-Z, preventing the
-        // per-voxel test from firing. Binding the Hi-Z as an image overwrites
-        // that stale slot so it wins the flush. The compact reads it only when
-        // frameData_.occlusionCullMipCount_ > 0; a canvas with no Hi-Z chain (≤1px)
-        // binds the R32I distance texture as a never-read sentinel so the argument
-        // table stays satisfied. Bound every frame — the shader gate keeps the
-        // default (cull-off) output byte-identical (stage-1 re-binds distances as
-        // the image at this unit right after, so no downstream state leaks).
+        // Per-voxel occlusion cull Hi-Z input. Bind the finest Hi-Z level as a
+        // read-only IMAGE at a unit distinct from the fog image at 0. The compact
+        // reads it only when frameData_.occlusionCullMipCount_ > 0; a canvas with
+        // no Hi-Z chain (<=1px) binds the R32I distance texture as a never-read
+        // sentinel so the argument table stays satisfied.
         constexpr int kHiZLevel0CompactTextureUnit = 1;
         const Texture2D *hiZLevel0 = (triangleCanvasTextures.hiZMipCount() > 0)
                                          ? triangleCanvasTextures.getHiZMip(0)
@@ -2163,6 +2155,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     }
 
     void beginTick() {
+        renderRunWitness().recordPose(
+            IRPrefab::Camera::getYaw(),
+            IRRender::getCameraZoom().x,
+            IRRender::hasRotationPivotFocus()
+        );
         voxelFaceBaker_ = nullptr;
         const auto bakeSystem = findSystem(BAKE_SUN_SHADOW_MAP);
         if (bakeSystem != kNullSystemId) {

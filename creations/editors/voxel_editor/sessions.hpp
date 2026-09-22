@@ -15,6 +15,11 @@
 // the live editable set's occupancy after each. The entity sessions (rock,
 // mushroom, ant, bird, tree) land on this same spine.
 //
+// `place_below` is the proof for the Alt (far-side) place modifier: it builds a
+// cantilever and places the one cell underneath its tip, which no plain gesture
+// can reach at any camera yaw (docs/design/editor-authoring-friction.md §2g
+// F-2g-1). It is the only session that exercises `clickBelow`.
+//
 // `rock` is the first committed entity: an irregular, no-symmetry,
 // single-layer blob. It clears the seeded ground slab down to a small central
 // footprint (four erase-mode box drags on the flat plane, before any rock voxel
@@ -40,6 +45,7 @@ namespace IRVoxelEditor::Session {
 enum class Id {
     NONE,
     DRAG_PROBE,
+    PLACE_BELOW,
     ROCK,
     MUSHROOM,
     ANT,
@@ -54,6 +60,8 @@ enum class Id {
 inline Id idFromName(const std::string &name) {
     if (name == "drag_probe")
         return Id::DRAG_PROBE;
+    if (name == "place_below")
+        return Id::PLACE_BELOW;
     if (name == "rock")
         return Id::ROCK;
     if (name == "mushroom")
@@ -125,6 +133,88 @@ inline Recipe buildDragProbe(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) 
     builder.segment("save");
     builder.save();
     builder.expectOccupancy(dragStart, true, "save_leaves_scene_intact");
+
+    return builder.finish();
+}
+
+// The Alt (far-side) place modifier, on the one fixture that can only be built
+// with it: a cantilever, and the cell directly under its tip.
+//
+// The fixture is the whole argument. `below`'s three plain-place anchors are its
+// +x, +y and +z neighbours (place lands at hit + normal, and the picker only
+// ever reports a -x / -y / -z normal), and the recipe leaves all three empty —
+// so `aimToPlace(below)` has no anchor at all and no plain gesture reaches the
+// cell at any camera yaw. Only `clickBelow`, which inverts the arm tip's -z
+// normal, reaches it — so this is a session that cannot be written without the
+// modifier at all (docs/design/editor-authoring-friction.md §2g F-2g-1).
+//
+// Sequence: (1) stack a three-tier column off the seeded ground, (2) grow a
+// two-cell arm out of its top in -x, (3) arm the assertion that `below` is
+// still empty and the arm tip still stands, (4) Alt+click `below`.
+inline Recipe buildPlaceBelow(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
+    Builder builder("place_below", sceneSize, sceneOrigin);
+
+    const int gz = sceneSize.z - 1; // seeded ground plane (local z)
+    const int cx = sceneSize.x / 2;
+    const int cy = sceneSize.y / 2;
+
+    // The arm reaches two cells out from the column in -x, the column stands
+    // three tiers above the ground, and the untouched witness sits three cells
+    // out in +y. A scene that clips any of those leaves the Alt click with a
+    // different anchor (or none), which is a different test — so refuse it.
+    if (cx < 3 || cy < 1 || gz < 3 || cy + 3 >= sceneSize.y) {
+        builder.recordError(
+            "place_below needs a scene at least 7 x " + std::to_string(cy + 4) + " x 5; got " +
+            std::to_string(sceneSize.x) + " x " + std::to_string(sceneSize.y) + " x " +
+            std::to_string(sceneSize.z)
+        );
+        return builder.finish();
+    }
+
+    // Each column cell is placed on the -z face of the one below it, marching
+    // toward the camera — the only direction the plain gesture grows in z.
+    const IRMath::ivec3 column[3] = {
+        IRMath::ivec3(cx, cy, gz - 1),
+        IRMath::ivec3(cx, cy, gz - 2),
+        IRMath::ivec3(cx, cy, gz - 3),
+    };
+    // The arm grows sideways off the column's top tier, through -x faces.
+    const IRMath::ivec3 armMid(cx - 1, cy, gz - 3);
+    const IRMath::ivec3 armTip(cx - 2, cy, gz - 3);
+    // Directly under the arm's tip. Its +x (armMid's own tier neighbour at
+    // cx-1), +y and +z neighbours all stay empty, which is what makes it
+    // unreachable without the modifier.
+    const IRMath::ivec3 below(cx - 2, cy, gz - 2);
+    // Never touched by the recipe, and one tier off the seeded slab so it is
+    // empty to begin with — catches a check that would pass on a full scene.
+    const IRMath::ivec3 untouched(cx - 2, cy + 3, gz - 1);
+
+    builder.segment("column");
+    for (const IRMath::ivec3 &cell : column)
+        builder.click(cell);
+    builder.expectOccupancy(column[2], true, "column_top_placed");
+
+    builder.segment("cantilever");
+    builder.click(armMid);
+    builder.click(armTip);
+    builder.expectOccupancy(armTip, true, "arm_tip_placed");
+
+    // Its own segment: a segment's assertions all evaluate at segment end, so a
+    // pre-click "still empty" check sharing the click's segment would read the
+    // post-click state and pass no matter what the modifier did (see segment()).
+    builder.segment("below_arm");
+    builder.expectOccupancy(below, false, "below_starts_empty");
+    builder.expectOccupancy(untouched, false, "untouched_starts_empty");
+
+    // The gesture the issue is about. Without the inversion the same click
+    // places at armTip + (0,0,-1) — one tier *above* the arm — so
+    // voxel_placed_below reads empty and arm_tip_survives still passes: the
+    // failure is specific to the modifier, not to the aim.
+    builder.segment("below");
+    builder.clickBelow(below);
+    builder.expectOccupancy(below, true, "voxel_placed_below");
+    builder.expectOccupancy(armTip, true, "arm_tip_survives");
+    builder.expectOccupancy(untouched, false, "untouched_stays_empty");
 
     return builder.finish();
 }
@@ -1060,6 +1150,8 @@ inline Recipe build(Id id, IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
     switch (id) {
     case Id::DRAG_PROBE:
         return detail::buildDragProbe(sceneSize, sceneOrigin);
+    case Id::PLACE_BELOW:
+        return detail::buildPlaceBelow(sceneSize, sceneOrigin);
     case Id::ROCK:
         return detail::buildRock(sceneSize, sceneOrigin);
     case Id::MUSHROOM:

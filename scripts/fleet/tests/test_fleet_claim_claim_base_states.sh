@@ -1,13 +1,8 @@
 #!/usr/bin/env bash
-# Tests for fleet-claim claim-base's three resolution states (#2703).
-#
-# claim-base used to read only the $CLAIMS_DIR/<slug>.meta sidecar and fall
-# through to a bare `echo master` when it was absent — so a --stackable-on task
-# whose claim was TTL-swept mid-iteration silently reported "master", opening a
-# PR that swallows the whole blocker branch.
-#
-# __remove_claim deletes the claim dir and the sidecar together, so the claim
-# dir discriminates the ambiguous fallthrough:
+# claim-base's three resolution states. __remove_claim deletes the claim dir
+# and the $CLAIMS_DIR/<slug>.meta sidecar together, so the claim dir
+# discriminates a swept --stackable-on claim from a normal one rather than
+# both silently falling through to the same "master" report:
 #
 #   dir + sidecar   → stackable base   (exit 0, no warning)
 #   dir, no sidecar → "master"         (exit 0, no warning — affirmative)
@@ -79,9 +74,9 @@ assert_eq "$RC" "0" "unknown state still exits 0 without --strict"
 assert_contains "$ERR" "UNVERIFIED" "unknown state warns on stderr"
 assert_contains "$ERR" "9999" "warning names the issue"
 
-echo "--- state 3 regression: the swept --stackable-on claim (#2548 incident) ---"
-# Exactly the observed failure: a stackable claim whose dir + sidecar were
-# swept together by __remove_claim while the task was still in flight.
+echo "--- state 3 regression: a --stackable-on claim swept mid-iteration ---"
+# A stackable claim whose dir + sidecar were swept together by __remove_claim
+# while the task was still in flight.
 rm -rf "$FLEET_CLAIMS_DIR/2548" "$FLEET_CLAIMS_DIR/2548.meta"
 run_claim_base 2548
 assert_eq "$OUT" "master" "swept stackable claim falls back to master on stdout"

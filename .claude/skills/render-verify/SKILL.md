@@ -58,6 +58,13 @@ directory from the target name (strip `IR`, snake_case) only when no manifest
 declares it. A manifest without `target` is invisible to `--all` and to the
 lookup.
 
+Optional top-level `"demo_args"` (a list of strings) is passed to the demo on
+the default pass, so a fixture that only exists under flags is gated by `--all`
+with no CLI argument; `--demo-arg` appends after it. An `extra_runs` pass
+restates its own `demo_args` and never inherits this key
+(`creations/demos/perf_grid/test/references/manifest.json` is the worked case:
+one reference set, three passes).
+
 ## Running
 
 ```
@@ -120,7 +127,7 @@ and commit the PNGs.
 
 1. Implement `--auto-screenshot` with a shot table (`shape_debug/main.cpp`).
 2. Add `test/references/manifest.json` with `target`, ordered `shots`, and
-   thresholds.
+   thresholds (plus `demo_args` when the fixture needs flags, as `perf_grid` does).
 3. `python3 scripts/render-verify.py --target IR<Demo> --update-references --force`
 4. Commit `test/references/<preset>/` with the manifest. Each backend's set is
    captured on its own host and committed independently.

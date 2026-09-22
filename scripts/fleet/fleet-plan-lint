@@ -24,7 +24,7 @@
 #     the plan is an explicit investigation spike). Read from PROSE only: fenced
 #     blocks and inline-code spans are stripped first, so a plan that NAMES a
 #     phrase as data (a test-corpus row, a quoted rejected alternative) does
-#     not hard-fail on it (#2989). Note the intent-plan rule
+#     not hard-fail on it. Note the intent-plan rule
 #     (PLANNING-PROTOCOL.md step 2): the plan locks DECISIONS; the
 #     implementation path is the worker's, and an advisory `Approach sketch`
 #     is optional — the lint polices unlocked decisions, never missing steps.
@@ -43,7 +43,7 @@
 #   - no verified-current-state / repro signal
 #   - no `**Model:**` tag
 #   - mechanism-lever language (cost attribution / path dominance / a stage
-#     firing) with no measurement citation or phase-0 probe (#2401)
+#     firing) with no measurement citation or phase-0 probe
 #
 # Source of truth: scripts/fleet/fleet-plan-lint in the engine repo.
 set -euo pipefail
@@ -133,7 +133,7 @@ def sentences(text):
 def is_plan_heading(body):
     # The plan comment's first line is "## Plan" or "## Plan: <title>" —
     # anchored so a "## Plan review — ..." verdict comment (same leading
-    # token, same startswith prefix) never matches (#2707).
+    # token, same startswith prefix) never matches.
     stripped = body.lstrip()
     first_line = stripped.splitlines()[0] if stripped else ""
     return re.match(r"^##\s+Plan\s*(:|$)", first_line) is not None
@@ -156,7 +156,7 @@ is_spike = "investigation spike" in low or "investigation spike" in title.lower(
 # CommonMark fences are 3-OR-MORE backtick/tilde chars, closed by a run of the
 # same character >= that length: a plan embedding a fence-syntax code sample
 # (e.g. a snippet of this very lint) must open with a longer fence than the
-# sample, and a hardcoded exactly-3 matcher misses that case entirely (#2989).
+# sample, and a hardcoded exactly-3 matcher misses that case entirely.
 FENCE_RE = re.compile(r"(?ms)^[ \t]*(?P<f>`{3,}|~{3,}).*?^[ \t]*(?P=f)[`~]*[ \t]*$")
 # CommonMark code-span rule: a run of N backticks closes on the next run of N,
 # so a double-backtick span containing single backticks pairs correctly. Content
@@ -182,7 +182,7 @@ prose_low = prose.lower()
 # Core sections (heading at any depth, case-insensitive), matched by CONCEPT
 # rather than requiring the heading to *begin* with the literal token — a
 # sound plan that words its headings naturally (e.g. "Files / modules" for
-# Scope, "Committed approach" for Decisions) must not hard-fail (#2443).
+# Scope, "Committed approach" for Decisions) must not hard-fail.
 # The middle concept is DECISIONS (the intent-plan shape); the legacy
 # approach/design/implementation headings satisfy it too, so pre-intent-plan
 # plans keep passing. "plan" is deliberately excluded from its synonym set:
@@ -222,7 +222,7 @@ if "likely suspects" in prose_low:
 # Both fork checks below are scoped to Approach/Gotchas prose and require an
 # "or"-named alternative in the SAME sentence as their trigger phrase.
 #
-# Imperative/interrogative-mood fork (#2824): a fork phrased as an
+# Imperative/interrogative-mood fork: a fork phrased as an
 # instruction to the implementer ("check whether the narrowed predicate
 # should apply there as well or only to issue claims") matches none of the
 # self-describing DEFER phrases above and reads as rigor, not deferral —
@@ -241,11 +241,11 @@ FORK_WHETHER_RE = re.compile(r"\b(?:check|decide|determine)\s+whether\b", re.IGN
 # modal ("should"/"could"/...) in the same sentence: an either/or *describing
 # already-settled branches* (a decision tree with a defined follow-up per
 # branch, or a rejected alternative's downside in a "why not X" aside) is
-# declarative, not a live fork — corpus-measured false positives on
-# `.fleet/plans/issue-2197.md` ("this is either already-planned... or the
-# re-plan state") and `issue-2540.md` ("Either every parallel vector needs a
-# phantom slot 0 ..., or every index site needs a -1 shift") had no modal;
-# the genuine #2820 defect reads "...should apply there as well or only to...".
+# declarative, not a live fork — corpus-measured false positives ("this is
+# either already-planned... or the re-plan state"; "Either every parallel
+# vector needs a phantom slot 0 ..., or every index site needs a -1 shift")
+# had no modal; a genuine fork reads "...should apply there as well or only
+# to...".
 EITHER_OR_RE = re.compile(r"\beither\b", re.IGNORECASE)
 MODAL_RE = re.compile(r"\b(?:should|could|would|might|may|ought)\b", re.IGNORECASE)
 OR_RE = re.compile(r"\bor\b", re.IGNORECASE)
@@ -294,7 +294,7 @@ if not any(k in low for k in (
 if "**model:**" not in low and not re.search(r"(?im)^\s*-?\s*\*\*model", plan):
     warn.append("no '**Model:**' tag")
 
-# Mechanism-lever language resting on an unmeasured premise (#2401, fix-014):
+# Mechanism-lever language resting on an unmeasured premise:
 # a plan that leans on a cost / path-dominance / stage-fires claim but cites no
 # measurement and names no phase-0 probe is the recurring "premise disproved in
 # implementation" defect. Conservative substring match on `low`, warn-only.

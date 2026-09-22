@@ -116,6 +116,12 @@ Parser::Parser(const char *programDescription, Common common)
         "Path to a Lua config preset whose `config` table overlays config.lua",
         ""
     );
+    integer(
+        "--worker-threads",
+        "Worker pool size, overriding config `worker_thread_count`: -1 auto, 0 inline-serial, "
+        "N workers",
+        kWorkerThreadsUnset
+    );
 }
 
 Parser::Entry &Parser::add(const char *name, const char *help, Type type, const char *shortAlias) {
@@ -504,6 +510,10 @@ int Parser::autoRecordFrames() const {
 
 std::string Parser::configPreset() const {
     return getString("--config-preset");
+}
+
+int Parser::workerThreads() const {
+    return wasProvided("--worker-threads") ? getInt("--worker-threads") : kWorkerThreadsUnset;
 }
 
 std::string Parser::usage() const {

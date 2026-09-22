@@ -266,6 +266,12 @@ Parallel-agent fleet (tmux + Claude)
   fleet-reconcile-amendments     boot-time reconciler for fleet:human-amending
                                  PRs vs worktree/reservation state; invoked by
                                  fleet-up at start
+  fleet-stalled-sweep --repo OWNER/REPO [--repo …] [--dry-run]
+                                 hourly idle sweep: stamps fleet:stalled +
+                                 one human comment on a fleet:wip PR idle 7+
+                                 days, and drops the label from a PR that is
+                                 no longer wip; spawned by fleet-state-scout
+                                 on the authoritative poller
   fleet-rebase --auto [--dry-run]
                                  tier-0 merger: mechanical rebases of approved
                                  stacked/conflicting PRs for zero tokens;
@@ -343,6 +349,14 @@ Parallel-agent fleet (tmux + Claude)
                                  criterion in a drafted PR body; reads stdin or
                                  --body-file; can read or write a complete issue
                                  snapshot with --issue-json/--write-issue-json
+  fleet-pr-closes-lint (--base <branch> | --pr <N> | --messages-file F)
+                       [--title T --body-file F] [--repo engine|game|owner/repo]
+                                 fail when the merge would close an issue the
+                                 body does not declare on a link line: scans
+                                 the title and every commit message raw, the
+                                 body code-stripped; exits 0 clean / 1
+                                 undeclared refs / 2 usage or zero commits.
+                                 CI: pr-closes-lint.yml on every push and edit
   fleet-pr-overlap [--base <branch>] [--repo engine|game|owner/repo]
                                  grade this branch against every open PR before
                                  publication: one `#<PR> <path>
@@ -368,9 +382,13 @@ Parallel-agent fleet (tmux + Claude)
                                  declared delta keys answered
   fleet-campaign-status <slug> [--repo engine|game] [--json] [--apply]
                                  campaign re-entry oracle: branch verdict
-                                 (clean/behind/live/superseded/stranded/unknown),
-                                 open and merged campaign PRs, other lanes'
-                                 changes to the campaign's own files, and ## Now;
+                                 (clean/behind/live/stacked/superseded/stranded/
+                                 unknown), open and merged campaign PRs, other
+                                 lanes' changes to the campaign's own files,
+                                 ## Now, and the per-iteration resync sections
+                                 (stacked on campaign, lane ownership, stale
+                                 ## Now, issues); exit 0 ready, 1 attention,
+                                 2 usage, 3 ready but resync unreconciled;
                                  --apply fast-forwards a behind branch and parks
                                  a superseded one back on master, carrying the
                                  in-flight slice across

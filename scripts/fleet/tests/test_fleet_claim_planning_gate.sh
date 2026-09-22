@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for fleet-claim's check_planning_gates gate (#2740).
+# Tests for fleet-claim's check_planning_gates gate.
 #
 # The load-bearing fix for "a planning queue-block landing after fleet:queued
 # is never retracted" is the scout/ingest retract round-trip. This gate is the
@@ -11,7 +11,7 @@
 #   - claim on a fleet:needs-plan issue    → exit 1, gate named on stderr
 #   - claim on a fleet:plan-review issue   → exit 1, gate named on stderr
 #   - gate-free issue                      → exit 0 (the negative control)
-#   - retired human:review-plan is INERT   → exit 0 (PR #3112)
+#   - retired human:review-plan is INERT   → exit 0
 #   - gh failure soft-degrades to pass     → exit 0 (house contract)
 #   - a stack containing one gated member  → whole stack refused, no claims left
 #
@@ -20,7 +20,7 @@
 set -euo pipefail
 
 # This suite exercises cmd_claim against the real (possibly-stale) main clone
-# but does not care about clone freshness — disable the #1810 freshness gate.
+# but does not care about clone freshness — disable the freshness gate.
 export FLEET_SKIP_CLONE_FRESHNESS=1
 
 source "$(dirname "$0")/lib_assert.sh"
@@ -52,11 +52,11 @@ export FLEET_CLAIMS_DIR="$TMPROOT/claims"
 export FLEET_RESERVATIONS_DIR="$TMPROOT/reservations"
 mkdir -p "$FLEET_CLAIMS_DIR" "$FLEET_RESERVATIONS_DIR"
 
-# #2001 fleet:needs-plan          → refuse
-# #2002 fleet:plan-review         → refuse
-# #2003 gate-free                 → grant (negative control)
-# #2004 human:review-plan only    → grant (retired label, #3112)
-# #2005 gh fetch fails            → grant (soft-degrade)
+# issue 2001 fleet:needs-plan          → refuse
+# issue 2002 fleet:plan-review         → refuse
+# issue 2003 gate-free                 → grant (negative control)
+# issue 2004 human:review-plan only    → grant (retired label)
+# issue 2005 gh fetch fails            → grant (soft-degrade)
 STUB_DIR="$TMPROOT/bin"; mkdir -p "$STUB_DIR"
 cat > "$STUB_DIR/gh" <<'GHSTUB'
 #!/usr/bin/env bash
@@ -113,7 +113,7 @@ rc=0; FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" claim 2003 test-agent >/dev/null 2>&1
 assert_exit "$rc" 0 "no gate → exit 0 (the gate is not blanket-refusing)"
 release_quiet 2003
 
-# --- T4: retired human:review-plan is inert (#3112) --------------------------
+# --- T4: retired human:review-plan is inert --------------------------------
 echo "T4: retired human:review-plan does not gate"
 rc=0; FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" claim 2004 test-agent >/dev/null 2>&1 || rc=$?
 assert_exit "$rc" 0 "human:review-plan → exit 0 (label retired, must not be re-armed)"

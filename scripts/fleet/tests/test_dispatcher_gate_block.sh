@@ -2,19 +2,14 @@
 # Tests for fleet-dispatcher's dispatch-gate escalate-then-quiet pair
 # (note_gate_block / clear_gate_block), driven through --gate-block-check.
 #
-# The gate exists so a stalled lane names WHY it stalled: before #3098 all of
-# route-failed, claude-quota-closed, codex-unavailable and codex-cooldown
-# folded into one "claim budget spent" line that CAP_DEFER_LOGGED then muted
-# for the daemon's lifetime. These cases pin the cycle
-# scripts/fleet/CLAUDE.md §"An every-tick guard that warns must
-# escalate-then-quiet" prescribes:
+# These cases pin the cycle scripts/fleet/CLAUDE.md §"An every-tick guard
+# that warns must escalate-then-quiet" prescribes:
 #   - the reason reaches the operator-visible log line
 #   - one line per cause, then quiet (no per-tick spam)
 #   - a standing alert file only once the SAME cause holds 3 ticks
 #   - the alert is rewritten every tick past the threshold, so its count=
 #     tracks the live outage instead of freezing at the escalation instant
-#   - a CHANGED cause re-arms the log and drops the now-false alert (the
-#     misreport the whole helper was added to end)
+#   - a CHANGED cause re-arms the log and drops the now-false alert
 #   - a healthy pass clears log marker, streak and alert together
 
 set -euo pipefail

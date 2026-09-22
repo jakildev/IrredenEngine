@@ -12,8 +12,7 @@
 // `engine/script/` consumers (prefab_api.cpp et al.) transitively include
 // this header through component_voxel_set.hpp; keeping
 // `<irreden/ir_render.hpp>` out of the component's public surface concentrates
-// the render dependency in this one shim header — see
-// `engine/script/CLAUDE.md` for the layering contract.
+// the render dependency in this one shim header.
 
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_entity.hpp>

@@ -1,17 +1,15 @@
 #!/usr/bin/env bash
 # fleet-clone-freshness.sh — keep the main clone's checked-out master current so
 # scout / ingest / fleet-claim run the *current* fleet-script code, not a stale
-# working tree. (#1810)
+# working tree.
 #
-# The problem this solves: every fleet script is invoked through a ~/bin symlink
-# that resolves to the main clone's working tree (~/src/IrredenEngine/scripts/
-# fleet/). scout and fleet-claim also import their python parsers from that same
-# tree (FLEET_LIB_DIR). fleet-up fetches + resets the *worktrees* to origin/master
-# but NEVER fast-forwards the main clone's own checked-out master — so once a
-# fleet-script fix merges (e.g. the #1783 blocked_by parser), the merged code
-# stays inert until someone manually pulls. Issue *bodies* are read live via gh,
-# so the data is fresh; only the parser/script CODE is stale. The fix advances
-# the code.
+# Every fleet script is invoked through a ~/bin symlink that resolves to the
+# main clone's working tree (~/src/IrredenEngine/scripts/fleet/), and scout and
+# fleet-claim import their python parsers from that same tree (FLEET_LIB_DIR).
+# fleet-up fetches + resets the *worktrees* to origin/master but never
+# fast-forwards the main clone's own checked-out master, so without this a
+# merged fleet-script fix stays inert until someone pulls by hand. Issue
+# *bodies* are read live via gh; only the parser/script CODE goes stale.
 #
 # Source of truth: scripts/fleet/fleet-clone-freshness.sh in the engine repo.
 # Installed to ~/bin/fleet-clone-freshness.sh (as a symlink) by
@@ -26,7 +24,7 @@
 #
 # The scout is python and deliberately does NOT source this — it computes the
 # same freshness with a tiny inline `git rev-parse` (no new imported module; the
-# scout's module resolution is fragile, #1750/#1578).
+# scout's module resolution is fragile).
 #
 # Entry points:
 #   clone_behind_count <repo_root>  — echo how many commits master is behind
@@ -46,7 +44,7 @@
 #                                     clean, pushed claude/* feature branch,
 #                                     which is exactly what a live Cursor
 #                                     session looks like — is left alone and
-#                                     escalated instead (#2363).
+#                                     escalated instead.
 #   restore_main_clone_to_master <repo_root>
 #                                   — fleet-up-time stronger variant: returns a
 #                                     clone parked off-master (PR branch from a
@@ -64,7 +62,7 @@
 #                                   to ~/.fleet/state).
 #   FLEET_ALERTS_DIR              — where the escalation alert file is dropped
 #                                   (defaults to ~/.fleet/alerts, same
-#                                   convention as fleet-rebase, #2362).
+#                                   convention as fleet-rebase).
 #   FLEET_FRESHNESS_SKIP_ESCALATE_N
 #                                 — consecutive identical skips before the one
 #                                   loud line + alert file (default 15).
@@ -118,13 +116,13 @@ assert_clone_fresh() {
 # skips keeps skipping — and a repeating stderr line is not a signal anyone
 # reads. Count consecutive identical skips; at the Nth emit one loud line and
 # drop a flat alert file (the durable signal), then go quiet until the
-# condition clears. See #2363.
+# condition clears.
 #
 # Counter: ${FLEET_STATE_DIR:-~/.fleet/state}/.<repo_tag>-freshness-skip
 #          one line, "<count> <first_seen_epoch> <reason>|<branch>"
 # Alert:   ${FLEET_ALERTS_DIR:-~/.fleet/alerts}/clone-freshness-<repo_tag>
-#          one printf'd key=value line, the flat shape fleet-rebase's
-#          fleet-rebase-hung-lock established (#2362).
+#          one printf'd key=value line, the same flat shape as fleet-rebase's
+#          fleet-rebase-hung-lock.
 # Every state write is best-effort: a read-only $HOME must never break the
 # advance path, and every helper here returns 0 for `set -e` callers.
 
@@ -203,8 +201,8 @@ _freshness_warn() {
     # let a human triaging the alerts inbox silence a still-live condition
     # forever (warns stay suppressed, so nothing recreates the file). Only the
     # flat one-line alert artifact is shared with fleet-rebase's
-    # `fleet-rebase-hung-lock` (#2362); the counter/quiet cycle around it is
-    # this function's own (see #2795).
+    # `fleet-rebase-hung-lock`; the counter/quiet cycle around it is
+    # this function's own.
     if (( count == n )); then
         echo "$msg" >&2
         echo "fleet-clone-freshness: ESCALATION — $root has skipped its advance $count consecutive times (reason=$reason branch='$branch') since $since. Wrote $alert. Remedy: $remedy. Suppressing further identical warns until the condition clears." >&2
@@ -272,7 +270,7 @@ advance_main_clone() {
     # their next commit to master (violating rule 1) or split the slice across
     # two PRs, with no notice the human ever sees. Proving git loses nothing is
     # a different invariant from proving no session is using the checkout; only
-    # the scratch namespace establishes the latter. See #2363.
+    # the scratch namespace establishes the latter.
     local branch dirty checkout_failed_msg ref_note
     branch="$(git -C "$root" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
     if [[ "$branch" != "master" ]]; then
@@ -362,7 +360,7 @@ _ff_advance_to_origin_master() {
         # reaching N is exactly what discriminates the transient case (which
         # never gets there) from a wedged clone whose every claim
         # assert_clone_fresh is refusing. Never all-clear here: nothing
-        # advanced. See #2691.
+        # advanced.
         local refused_msg="fleet-clone-freshness: ff-only advance of $root refused (overlapping local changes, or a concurrent git op / stale .git/index.lock) — leaving as-is."
         if [[ -n "$count_skips" ]]; then
             _freshness_warn "$root" "ff-refused|master" "$refused_msg"
@@ -378,14 +376,14 @@ _ff_advance_to_origin_master() {
 # master before the fleet starts. A clone parked off-master (a cursor session's
 # PR branch, a stranded reviewer scratch branch, a detached HEAD) freezes the
 # local master ref while origin advances, and assert_clone_fresh then refuses
-# every claim — a silent whole-fleet stall (2026-07-13). advance_main_clone
+# every claim — a silent whole-fleet stall. advance_main_clone
 # deliberately never switches branches (it runs unattended every dispatcher
 # tick); this variant runs at the one moment branch-switching is safe to want,
 # with WIP protection:
 #   - tracked modifications anywhere (staged or not) → never touch, warn loudly.
 #     Untracked files don't block: `git checkout` refuses on its own if one
 #     would be overwritten, and stray junk files (0-byte `=`, .review-body.md)
-#     are exactly what used to wedge the old flow.
+#     are routine in a fleet clone.
 #   - off-master + clean → checkout master.
 #   - then ff-advance master to origin/master (fetch is the caller's job at
 #     fleet-up; a cheap refresh here keeps standalone use correct).

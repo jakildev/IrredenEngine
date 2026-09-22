@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Test that a straggler human:review-plan label is INERT to fleet-queue-ingest.
 #
-# human:review-plan (#2011) was the human approach-sign-off hold on a
-# high-stakes worker-planned issue; it was retired 2026-09 (the plan
-# reviewer's fleet:plan-review verdict is the only pre-queue gate now, and the
-# label is deleted from the repo). An issue that still carries the label — a
-# straggler re-applied by hand, or one that predates the deletion — must queue
-# exactly like any other approved, planned issue: ingest must NOT hold on it.
-# A normal human:approved issue in the same batch is the stamp control.
+# human:review-plan was the human approach-sign-off hold on a high-stakes
+# worker-planned issue; it is now retired (the plan reviewer's
+# fleet:plan-review verdict is the only pre-queue gate, and the label is
+# deleted from the repo). An issue that still carries the label — a straggler
+# re-applied by hand, or one that predates the deletion — must queue exactly
+# like any other approved, planned issue: ingest must NOT hold on it. A normal
+# human:approved issue in the same batch is the stamp control.
 #
 # HOME is redirected to a temp dir so the script's hardcoded projection/log/lock
 # paths land in the sandbox, and `gh` is stubbed to canned issue/PR surfaces.
@@ -51,8 +51,8 @@ case "$1" in
     issue)
         case "$2" in
             view)
-                # #820 carries a straggler human:review-plan (retired label; has a
-                # ## Plan comment already); #821 is a normal approved issue.
+                # issue 820 carries a straggler human:review-plan (retired label; has a
+                # ## Plan comment already); issue 821 is a normal approved issue.
                 case "$3" in
                     820) echo '{"body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"},{"name":"human:review-plan"}],"comments":[{"body":"## Plan\nstep 1"}]}' ;;
                     821) echo '{"body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"}],"comments":[{"body":"## Plan\nstep 1"}]}' ;;
@@ -79,7 +79,7 @@ export PATH="$STUB_DIR:$PATH"
 echo "=== run fleet-queue-ingest over a batch with one straggler human:review-plan issue ==="
 bash "$INGEST" >/dev/null 2>&1 || true
 
-# #821 (normal approved) must be stamped fleet:queued.
+# issue 821 (normal approved) must be stamped fleet:queued.
 if grep -qE '(^| )821( |$)' "$EDIT_LOG"; then
     ok "normal approved #821 was stamped (harness can stamp)"
 else
@@ -91,7 +91,7 @@ else
     bad "#821 stamp missing fleet:queued"
 fi
 
-# #820 (straggler human:review-plan) must be stamped like any planned issue.
+# issue 820 (straggler human:review-plan) must be stamped like any planned issue.
 line_820=$(grep -E '(^| )820( |$)' "$EDIT_LOG" || true)
 if [[ -n "$line_820" && "$line_820" == *"fleet:queued"* ]]; then
     ok "straggler human:review-plan #820 was stamped fleet:queued — the retired label is inert"

@@ -53,10 +53,11 @@ jobs:
       # only signals that discriminate "the gate compared" from "the gate
       # silently skipped" without a full build. The writer control drives this
       # file's own baseline-update step against a local bare repo.
-      - name: Gate controls (baseline layout, exit mapping, writer)
+      - name: Gate controls (baseline layout, exit mapping, writer, normalization)
         run: |
           python3 scripts/perf/tests/test_baseline_layouts.py
           scripts/perf/tests/test_baseline_writer.sh
+          bash test/tools/normalization_test.sh
 
       - name: Install system dependencies
         run: |
@@ -105,7 +106,14 @@ jobs:
           echo "$GITHUB_WORKSPACE/engine/tools/bin" >> "$GITHUB_PATH"
 
       - name: Run quick perf matrix (head)
-        run: ir-perf-grid --quick --label ci
+        # Measured on the hosted pool: llvmpipe renders this grid at 490 ms
+        # (zoom 1) to 1030 ms (zoom 4) per frame, so the default 300-frame
+        # window needs five minutes a cell and the matrix's 90-second deadline
+        # killed every one of them. Sixty frames leaves 45 post-warmup samples
+        # and costs 45-66 s a cell. The watchdog is sized from the job's
+        # headroom (no timeout-minutes, so 360 minutes), not from a frame
+        # budget: a cell killed by it writes no report and gates nothing.
+        run: ir-perf-grid --quick --frames 60 --timeout 300 --label ci
 
       - name: Locate head run directory
         id: head
@@ -122,6 +130,15 @@ jobs:
             exit 1
           fi
           echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Upload perf run diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-run-${{ github.run_id }}
+          path: save_files/perf/
+          if-no-files-found: warn
+          retention-days: 7
 
       # ── Pull-request path ────────────────────────────────────────────────
 
@@ -247,7 +264,35 @@ jobs:
             git worktree add --detach "$WORKTREE" "$BASE_COMMIT"
             mkdir -p "$WORKTREE/docs/perf/baseline_latest/$SLUG"
             cp -R "$STAGING/." "$WORKTREE/docs/perf/baseline_latest/$SLUG/"
-            git -C "$WORKTREE" add docs/perf/baseline_latest
+
+            # A slug dir whose cells are all report-less is an infrastructure
+            # artifact, not a baseline: the PR path exits 2 against it, so
+            # every PR landing on that SKU goes red with no remedy its author
+            # can apply. The matrix refuses to produce one now, so the only
+            # source is history — the first measured run for any SKU sweeps
+            # the dead ones out. Append-only branch: this is a commit, never
+            # a rewrite.
+            python3 -c '
+          import json, shutil, sys
+          from pathlib import Path
+          root, keep = Path(sys.argv[1]), sys.argv[2]
+          for d in sorted(p for p in root.iterdir() if p.is_dir()):
+              if d.name == keep:
+                  continue
+              manifest = d / "manifest.json"
+              if not manifest.exists():
+                  continue
+              try:
+                  cells = json.loads(manifest.read_text()).get("cells") or []
+              except json.JSONDecodeError:
+                  continue
+              if cells and all(c.get("status") == "no_report" for c in cells):
+                  print("perf-gate: purging report-less baseline " + d.name)
+                  shutil.rmtree(d)
+          ' "$WORKTREE/docs/perf/baseline_latest" "$SLUG"
+
+            # -A so the purge's deletions are staged alongside the new files.
+            git -C "$WORKTREE" add -A docs/perf/baseline_latest
 
             if git -C "$WORKTREE" diff --cached --quiet; then
               echo "perf-gate: baseline unchanged for $SLUG, nothing to commit."

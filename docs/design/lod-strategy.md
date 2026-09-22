@@ -122,7 +122,7 @@ the chunk then with full information about the actual access pattern.
 ### 4. The escape hatch is free
 
 `.vxs` follows the Save format extensibility rules in
-`engine/asset/CLAUDE.md` §"Save format extensibility rules":
+`docs/design/entity-editor-epic.md` §"Save format extensibility rules":
 
 - Rule #1 — chunk-table forward compatibility. Adding an `LODG` chunk
   later requires zero version bump.

@@ -24,6 +24,13 @@
 #   ir-run --build-dir /path/to/build IrredenEngineTest
 #   ir-run --targets [--plain|--plan|--built] [--build-dir DIR]
 #
+# --timeout budgets the executable's run time only. When the run is
+# wrapped with ir-acquire, time spent queued on the resource lock does
+# not count: the watchdog starts once the lock is granted. The wait is
+# bounded separately by ir-acquire's own queue timeout
+# (IR_QUEUE_TIMEOUT, default 600 s), and a run that never gets its lock
+# reports RESULT=LOCK-FAILED, not a watchdog verdict.
+#
 # Fleet agents should always use --timeout for interactive (non-
 # auto-screenshot) GUI executables to avoid leaving windows open and
 # stealing focus from the human.
@@ -150,12 +157,17 @@ Run mode
                         with non-zero status. `--timeout 0` is the explicit
                         opt-out (exec the binary, no watchdog). Omit for the
                         FLEET_RUN_DEFAULT_TIMEOUT default if set, else exec.
+                        N covers the executable's run time only: time queued
+                        on an ir-acquire lock is not counted (the lock wait
+                        has its own bound, IR_QUEUE_TIMEOUT, default 600 s).
 
   Env vars:
     FLEET_RUN_DEFAULT_TIMEOUT   Default for --timeout when not passed.
                                 Unset or 0 = no watchdog (historic behavior).
                                 Set in ~/.fleet/fleet-up.conf or shell init
                                 to catch fleet agents that forgot --timeout.
+    IR_QUEUE_TIMEOUT            Seconds a wrapped run may wait for its
+                                ir-acquire lock (default 600).
 
   Result reporting (self-terminating runs — auto verbs and --timeout):
     ir-run: RESULT=CLEAN exe=<name> exit=0
@@ -167,6 +179,9 @@ Run mode
     ir-run: RESULT=ALIVE-TIMEOUT exe=<name> ...
         Watchdog killed a still-healthy process at --timeout. Says
         nothing about shutdown-path health (teardown never ran).
+    ir-run: RESULT=LOCK-FAILED exe=<name> exit=<rc> ...
+        ir-acquire never granted the lock (queue timeout), so the
+        program did not run. Exit code propagated as 1.
 
   Build directory (when not using --build-dir):
     1. $IRREDEN_BUILD_DIR if set
@@ -363,16 +378,40 @@ else
     echo "ir-run: $EXE_PATH $* (timeout: ${TIMEOUT}s)"
 fi
 cd "$EXE_DIR"
-"${acquire_prefix[@]}" "./$EXE_RUN" "$@" &
+
+# The watchdog budget is the executable's run time, not the time queued on
+# the resource lock. A wrapped run launches the exe through a tiny shim
+# that records its own pid to READY_FILE once ir-acquire has granted the
+# lock and exec's the exe (so the recorded pid IS the exe's). The loop
+# below holds the clock until that file appears.
+READY_DIR=""
+READY_FILE=""
+if (( ${#acquire_prefix[@]} > 0 )); then
+    READY_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ir-run-ready.XXXXXX")"
+    READY_FILE="$READY_DIR/exe-pid"
+    trap 'rm -rf "$READY_DIR"' EXIT
+    "${acquire_prefix[@]}" bash -c \
+        'echo "$$" > "$1.tmp" && mv "$1.tmp" "$1"; shift; exec "$@"' \
+        ir-run-ready "$READY_FILE" "./$EXE_RUN" "$@" &
+else
+    "./$EXE_RUN" "$@" &
+fi
 PID=$!
 
 # Wait for either the timeout or the process to exit early (crash).
 elapsed=0
-while [[ $elapsed -lt $TIMEOUT ]]; do
+while true; do
     if ! kill -0 "$PID" 2>/dev/null; then
         # Process exited before timeout — check if it crashed.
         exit_code=0
         wait "$PID" 2>/dev/null || exit_code=$?
+        if [[ -n "$READY_FILE" && ! -s "$READY_FILE" ]]; then
+            # ir-acquire gave up on the lock; the exe never started.
+            echo "ir-run: RESULT=LOCK-FAILED exe=$EXE_NAME exit=$exit_code" \
+                 "— ir-acquire ${acquire_verb} did not grant its lock" \
+                 "(see its message above); the exe never ran" >&2
+            exit 1
+        fi
         if [[ $exit_code -eq 0 ]]; then
             echo "ir-run: $EXE_NAME exited cleanly after ${elapsed}s"
         else
@@ -381,14 +420,23 @@ while [[ $elapsed -lt $TIMEOUT ]]; do
         ir_report_result "$exit_code"
         [[ $exit_code -eq 0 ]] && exit 0 || exit 1
     fi
+    if [[ -n "$READY_FILE" && ! -s "$READY_FILE" ]]; then
+        sleep 0.2   # still queued on the lock: the run clock has not started
+        continue
+    fi
+    (( elapsed >= TIMEOUT )) && break
     sleep 1
     elapsed=$((elapsed + 1))
 done
 
 # Process survived the timeout — it's healthy for smoke purposes. Kill it.
+# Kill the exe itself when wrapped: TERM to ir-acquire alone is deferred by
+# bash until its foreground child exits, which would leave the run going.
 # RESULT=ALIVE-TIMEOUT is deliberately distinct from CLEAN: the run never
 # reached teardown, so it says nothing about shutdown-path health.
-kill "$PID" 2>/dev/null
+KILL_PID="$PID"
+[[ -n "$READY_FILE" ]] && KILL_PID="$(<"$READY_FILE")"
+kill "$KILL_PID" 2>/dev/null
 wait "$PID" 2>/dev/null || true
 echo "ir-run: RESULT=ALIVE-TIMEOUT exe=$EXE_NAME — ran for ${TIMEOUT}s without crashing, killed by watchdog"
 exit 0

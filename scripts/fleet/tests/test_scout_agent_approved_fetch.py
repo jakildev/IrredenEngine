@@ -79,10 +79,10 @@ class TestAgentApprovedFetchUnion(unittest.TestCase):
     def test_parked_labels_excluded_from_both_fetches(self):
         # Both fetches must carry the parked-label exclusions, or a park that
         # KEEPS human:approved (fleet:needs-human, fleet:gated) is re-fetched on
-        # every tick and never leaves repo_state["human_approved"] (#2762).
-        # fleet:needs-human is the positive control: it has been excluded since
-        # #1312, so a run where only it is asserted would pass even if
-        # fleet:gated were missing.
+        # every tick and never leaves repo_state["human_approved"].
+        # fleet:needs-human is the positive control: it has long been excluded,
+        # so a run where only it is asserted would pass even if fleet:gated
+        # were missing.
         seen = {}
 
         def _capture(repo, filter_label, exclude_labels=None, with_body=False,

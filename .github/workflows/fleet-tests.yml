@@ -52,6 +52,9 @@ name: Fleet Tests
 #                                          perf-gate, python-lint,
 #                                          render-harness-tests)
 #   test_lint_python_registry.py        -> ruff.toml
+#   test_fleet_pr_closes_lint.py        -> .github/workflows/pr-closes-lint.yml
+#   test_decisions.sh                   -> the unfiltered gate workflows its
+#                                          CI-hold replay names
 # test_lint_rules_commands.py's subjects are globs rather than single files
 # — it checks every rules/protocol doc's fenced Detection/command blocks, so
 # a PR that edits only a rules or protocol doc must still trigger this
@@ -66,6 +69,10 @@ name: Fleet Tests
 # T4 in test_workflow_paths_sync.sh asserts every derived workflow appears in
 # the two blocks below, and fleet_test_subjects.py asserts the same population
 # is registered in OUT_OF_TREE_SUBJECTS; T4 alone covers only the first.
+# `.claude/commands/**`, `.claude/agents/**` and `.claude/skills/**` are the
+# instruction surfaces lint_rules_commands.py's forbidden-command arm reads, so
+# an edit to any role, subagent or skill file runs that ratchet; they subsume
+# the narrower `.claude/` entries the same way.
 # python-lint.yml (#2718) and format-check.yml (#3187) are instances: each
 # declares both blocks, so each is that suite's subject and must appear below.
 # The two `paths:` blocks are duplicated because GitHub Actions has no YAML
@@ -78,6 +85,9 @@ on:
     paths:
       - 'scripts/**'
       - '.claude/rules/**'
+      - '.claude/commands/**'
+      - '.claude/agents/**'
+      - '.claude/skills/**'
       - '.claude/skills/simplify/**'
       - '.claude/skills/commit-and-push/procedures/pr-body.md'
       - '.claude/skills/commit-and-push/procedures/stackable-on.md'
@@ -87,6 +97,10 @@ on:
       - '.github/workflows/format-check.yml'
       - '.github/workflows/header-checks.yml'
       - '.github/workflows/perf-gate.yml'
+      - '.github/workflows/pr-closes-lint.yml'
+      - '.github/workflows/comment-refs.yml'
+      - '.github/workflows/instruction-size.yml'
+      - '.github/workflows/no-plan-files.yml'
       - '.github/workflows/python-lint.yml'
       - '.github/workflows/render-harness-tests.yml'
       - 'cmake/run_clang_format_changed.cmake'
@@ -139,6 +153,7 @@ on:
       - 'engine/render/src/metal/metal_cocoa_bridge.mm'
       - 'engine/render/src/metal/metal_pipeline.cpp'
       - 'engine/render/src/opengl/opengl_shader.cpp'
+      - 'engine/tools/bin/ir-acquire'
       - 'engine/tools/bin/ir-build'
       - 'engine/tools/bin/ir-run'
       - 'engine/video/src/metal/video_backend.cpp'
@@ -148,6 +163,9 @@ on:
     paths:
       - 'scripts/**'
       - '.claude/rules/**'
+      - '.claude/commands/**'
+      - '.claude/agents/**'
+      - '.claude/skills/**'
       - '.claude/skills/simplify/**'
       - '.claude/skills/commit-and-push/procedures/pr-body.md'
       - '.claude/skills/commit-and-push/procedures/stackable-on.md'
@@ -157,6 +175,10 @@ on:
       - '.github/workflows/format-check.yml'
       - '.github/workflows/header-checks.yml'
       - '.github/workflows/perf-gate.yml'
+      - '.github/workflows/pr-closes-lint.yml'
+      - '.github/workflows/comment-refs.yml'
+      - '.github/workflows/instruction-size.yml'
+      - '.github/workflows/no-plan-files.yml'
       - '.github/workflows/python-lint.yml'
       - '.github/workflows/render-harness-tests.yml'
       - 'cmake/run_clang_format_changed.cmake'
@@ -209,6 +231,7 @@ on:
       - 'engine/render/src/metal/metal_cocoa_bridge.mm'
       - 'engine/render/src/metal/metal_pipeline.cpp'
       - 'engine/render/src/opengl/opengl_shader.cpp'
+      - 'engine/tools/bin/ir-acquire'
       - 'engine/tools/bin/ir-build'
       - 'engine/tools/bin/ir-run'
       - 'engine/video/src/metal/video_backend.cpp'

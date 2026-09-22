@@ -260,33 +260,52 @@ class OccupancyModel {
     }
 
     // Where to aim so a place-mode click lands a voxel at `target`. The editor
-    // places at (hit voxel + hit face normal), so the anchor is target - normal
-    // for one of the camera-facing normals; the anchor must be occupied, the
-    // target empty, and the anchor's face must be the one the picker actually
-    // resolves. Preferring the first normal that satisfies all three is what
-    // routes a target around the -x/-y pixel collapse: a cell with a +x-side or
-    // +z-side anchor is placed through that clean face instead, and only a cell
-    // whose sole anchor sits on the +y side comes back unreachable.
+    // places at (hit voxel + hit face normal), so the anchor is target - normal.
     std::optional<IRMath::vec3> aimToPlace(IRMath::ivec3 target) const {
+        return aimToPlaceThroughAnchor(target, false);
+    }
+
+    // Where to aim so an Alt+click lands a voxel at `target`. The editor places
+    // at (hit voxel - hit face normal) with Alt held, so the anchor is
+    // target + normal: one step TOWARD the camera, i.e. precisely the voxel that
+    // occludes the target. That is what makes these cells unreachable without
+    // the modifier — and why it is the anchor's visibility, never the target's,
+    // that has to be checked.
+    std::optional<IRMath::vec3> aimToPlaceBelow(IRMath::ivec3 target) const {
+        return aimToPlaceThroughAnchor(target, true);
+    }
+
+  private:
+    // Shared body of aimToPlace / aimToPlaceBelow. `inverted` is the editor's own
+    // Alt flag (main.cpp's editTargetCell), and it moves exactly one thing: which
+    // side of `target` the anchor sits on. Everything else is common — the anchor
+    // must be occupied, the target in-bounds and empty, and the anchor's face
+    // must be the one the picker actually resolves.
+    //
+    // The predicted face has to agree as well as the cell: an aim that picks the
+    // right anchor through the wrong face offsets a different normal and so
+    // places a different neighbour, or — when that neighbour is already filled —
+    // nothing at all, which is the silent no-op this model exists to catch.
+    //
+    // Taking the FIRST normal that satisfies all three is what routes a target
+    // around the -x/-y pixel collapse: a cell with a clean-faced anchor is placed
+    // through that face instead, and only a cell whose sole anchor sits on a
+    // collapsed face comes back unreachable.
+    std::optional<IRMath::vec3> aimToPlaceThroughAnchor(IRMath::ivec3 target, bool inverted) const {
         if (!inBounds(target) || occupied(target))
             return std::nullopt;
         for (const IRMath::ivec3 &normal : kCameraFacingNormals) {
-            const IRMath::ivec3 anchor = target - normal;
+            const IRMath::ivec3 anchor = inverted ? target + normal : target - normal;
             if (!occupied(anchor))
                 continue;
             const IRMath::vec3 aim = faceAim(anchor, normal);
             const std::optional<PickPrediction> hit = pick(aim);
-            // The predicted face has to agree as well as the cell: an aim that
-            // picks the right anchor through the wrong face places the wrong
-            // neighbour, or — when that neighbour is already filled — nothing
-            // at all, which is the silent no-op this model exists to catch.
             if (hit && hit->cell_ == anchor && hit->faceNormal_ == normal)
                 return aim;
         }
         return std::nullopt;
     }
 
-  private:
     std::size_t flatIndex(IRMath::ivec3 local) const {
         return static_cast<std::size_t>(IRMath::index3DtoIndex1D(local, m_size));
     }
@@ -464,6 +483,42 @@ class Builder {
         emitButton(IRVideo::GuiInputEvent::Type::PRESS, IRInput::kMouseButtonLeft);
         emitButton(IRVideo::GuiInputEvent::Type::RELEASE, IRInput::kMouseButtonLeft);
         m_model.setMirrored(target, !m_eraseMode, m_symmetry);
+    }
+
+    // Alt + single left click: places a voxel at `target` on the FAR side of the
+    // clicked face. The only op that can reach a cell *below* standing geometry
+    // — the plain gestures all grow toward the camera, because those are the
+    // only faces the picker exposes (docs/design/editor-authoring-friction.md
+    // §2g F-2g-1; the editor side is main.cpp's editTargetCell).
+    //
+    // Alt leads the cursor move and is released after the click, so a later op
+    // in the same segment does not silently run with the modifier still held.
+    void clickBelow(IRMath::ivec3 target) {
+        if (m_eraseMode) {
+            recordError(
+                "clickBelow at local (" + std::to_string(target.x) + "," +
+                std::to_string(target.y) + "," + std::to_string(target.z) +
+                ") in erase mode: Alt inverts a PLACE normal, and erase acts on "
+                "the hit voxel itself, so the editor would carve the anchor "
+                "instead — in segment " +
+                m_current.label_
+            );
+            return;
+        }
+        const std::optional<IRMath::vec3> aim = m_model.aimToPlaceBelow(target);
+        if (!aim) {
+            recordUnreachable("clickBelow", target);
+            return;
+        }
+        emitButton(IRVideo::GuiInputEvent::Type::PRESS, IRInput::kKeyButtonLeftAlt);
+        // One idle frame before the aim, so Alt is already down when the editor
+        // samples it at the button PRESS (chordKey's lead, for the same reason).
+        m_frame += kFramesPerClickStep;
+        emitMove(*aim);
+        emitButton(IRVideo::GuiInputEvent::Type::PRESS, IRInput::kMouseButtonLeft);
+        emitButton(IRVideo::GuiInputEvent::Type::RELEASE, IRInput::kMouseButtonLeft);
+        emitButton(IRVideo::GuiInputEvent::Type::RELEASE, IRInput::kKeyButtonLeftAlt);
+        m_model.setMirrored(target, true, m_symmetry);
     }
 
     // Park the cursor on `target`'s clickable face without pressing. Splits

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for fleet-claim's two #2201 safety guards:
+# Tests for fleet-claim's two safety guards:
 #
 #   Guard 1 — cmd_claim / cmd_planning_claim refuse a CLOSED issue.
 #     A stale scout cache can list a closed issue in tasks.open[] /
@@ -9,9 +9,10 @@
 #
 #   Guard 2 — a trailing `--repo` token (after the subcommand) is a hard
 #     error. `--repo` is a GLOBAL flag parsed before the subcommand; placed
-#     after it, it was silently ignored so the wrong repo's same-numbered
-#     issue was claimed/released. cleanup/reconcile are the sole exemption
-#     (they take their own `--repo <owner/repo>` scoped after their name).
+#     after it, it is silently ignored, which would let the wrong repo's
+#     same-numbered issue be claimed/released. cleanup/reconcile are the sole
+#     exemption (they take their own `--repo <owner/repo>` scoped after their
+#     name).
 #
 # Hermetic per scripts/fleet/CLAUDE.md: no live GitHub, no live ~/.fleet.
 # `gh` is stubbed at a fail-closed seam; claims/reservations/state land in a
@@ -20,8 +21,8 @@
 set -euo pipefail
 
 # cmd_claim runs against the real (possibly-stale) main clone but these guards
-# don't care about clone freshness — disable the #1810 freshness gate so a
-# stale local clone can't mask a guard's exit code.
+# don't care about clone freshness — disable the freshness gate so a stale
+# local clone can't mask a guard's exit code.
 export FLEET_SKIP_CLONE_FRESHNESS=1
 
 SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
@@ -78,7 +79,7 @@ export FLEET_STATE_DIR="$TMPROOT/state"
 mkdir -p "$FLEET_CLAIMS_DIR" "$FLEET_RESERVATIONS_DIR" "$FLEET_STATE_DIR"
 
 # Stub `gh` so the guards + full claim path resolve against canned fixtures
-# instead of GitHub. Fixtures: #5001 CLOSED, everything else OPEN.
+# instead of GitHub. Fixtures: issue 5001 CLOSED, everything else OPEN.
 #   gh issue view <N> ... --jq .state  → bare state string (the _refuse_if_closed
 #                                        seam is the only --jq caller in scope)
 #   gh issue view <N> ... --json ...   → full JSON (the model/host/blocker gates
@@ -104,8 +105,8 @@ case "$1 $2" in
         issue_num="$3"
         # Raw-body lookups (`--json body --jq .body`) are distinct from every
         # other issue-view call in this stub (which asks for state, or the
-        # full state,labels,body tuple). #9001 is the only base used below
-        # and carries no blockers.
+        # full state,labels,body tuple). Issue 9001 is the only base used in
+        # this suite and carries no blockers.
         if [[ "$*" == *"--json body"* ]]; then
             case "$issue_num" in
                 9001) echo "**Blocked by:** (none)" ;;
@@ -146,11 +147,11 @@ case "$1 $2" in
         exit 0
         ;;
     "pr view")
-        # #2586: PR #9001 is a deliberately-valid stack base (OPEN, resolvable
-        # head, no unsafe labels) so a claim can reach the open-PR duplicate
-        # check below under --stackable-on. Every other id keeps the
-        # pre-existing fail-closed behavior — the T8 no-false-positive-on-the
-        # `--repo`-scan case never depends on this resolving.
+        # PR 9001 is a deliberately-valid stack base (OPEN, resolvable head,
+        # no unsafe labels) so a claim can reach the open-PR duplicate check
+        # under --stackable-on. Every other id keeps the pre-existing
+        # fail-closed behavior — the T8 no-false-positive-on-the `--repo`-scan
+        # case never depends on this resolving.
         case "$3" in
             9001) printf '%s' '{"state":"OPEN","headRefName":"claude/9001-base","labels":[]}' ;;
             *)    exit 1 ;;
@@ -158,9 +159,10 @@ case "$1 $2" in
         exit 0
         ;;
     "pr diff")
-        # #2586: non-empty diff for the valid base #9001 — an empty diff reads
-        # as a claim-commit-only skeleton and unsafe_base_reason rejects it.
-        # Every other id keeps the pre-existing default (empty diff, exit 0).
+        # Non-empty diff for the valid base (issue 9001) — an empty diff
+        # reads as a claim-commit-only skeleton and unsafe_base_reason
+        # rejects it. Every other id keeps the pre-existing default (empty
+        # diff, exit 0).
         case "$3" in
             9001) printf '%s\n' "engine/base.cpp" ;;
         esac
@@ -168,10 +170,10 @@ case "$1 $2" in
         ;;
     "pr list"|"issue list")
         if [[ "$*" == *"--state open"* ]]; then
-            # #2586: two open PRs — #8001 duplicates issue #9002 (the
-            # regression case for the fix), #8002 is the stack base's OWN PR
-            # (named for #9001, not the claimed issue), proving the base's PR
-            # is never mistaken for a duplicate of a *different* claimed issue.
+            # Two open PRs — PR 8001 duplicates issue 9002, PR 8002 is the
+            # stack base's OWN PR (named for the base issue, not the claimed
+            # issue), proving the base's PR is never mistaken for a
+            # duplicate of a *different* claimed issue.
             printf '%s\n' '[{"number":8001,"headRefName":"claude/9002-dup","body":""},{"number":8002,"headRefName":"claude/9001-base","body":""}]'
             exit 0
         fi
@@ -268,19 +270,15 @@ assert_contains "$err" "reconcile: unknown arg" "reconcile's own parser saw the 
 assert_absent "$err" "must precede the subcommand" "reconcile's trailing --repo is exempt from Guard 2"
 
 # ============================================================================
-# Guard 3 (#2586) — duplicate-open-PR guard also fires under --stackable-on
+# Guard 3 — duplicate-open-PR guard also fires under --stackable-on
 # ============================================================================
 #
-# Prior behavior: `[[ -z "$stackable_branch" ]] && ...` skipped the open-PR
-# sanity check entirely whenever --stackable-on was passed, so the stackable
-# fallback tier could hand out a task that already has its own open, approved
-# PR (game #284 via PR #323 — caught by hand, not by the tool). The fix drops
-# that short-circuit; the guard's matcher already keys on the *claimed* issue
-# number, so a stack base's own PR (named for the *blocker*, a different
-# issue) can never be mistaken for a duplicate of the claimed issue.
+# The guard's matcher keys on the *claimed* issue number, so a stack base's
+# own PR (named for the *blocker*, a different issue) can never be mistaken
+# for a duplicate of the claimed issue.
 #
-# PR #9001 (branch claude/9001-base) is a deliberately-valid stack base for
-# both cases below: OPEN, no unsafe labels, non-empty diff — see the gh stub.
+# PR 9001 (branch claude/9001-base) is a deliberately-valid stack base for
+# both cases: OPEN, no unsafe labels, non-empty diff.
 
 # --- T11: claimed issue already has its OWN open PR → refused ---------------
 echo "T11: --stackable-on claim refused when the CLAIMED issue already has its own open PR"

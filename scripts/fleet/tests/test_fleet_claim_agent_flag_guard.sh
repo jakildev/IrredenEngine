@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Tests for require_agent_token (#2441): the #2201 flag-token guard
-# (`[[ "${1:-}" != --* ]]` in cmd_claim / cmd_planning_claim) only covered
-# those two subcommands. The other eight agent-positional subcommands
-# (review-/resolving-/amending-/steward- claim and release) took the dispatch
+# Tests for require_agent_token: the flag-token guard `[[ "${1:-}" != --*
+# ]]` used in cmd_claim / cmd_planning_claim covers only those two
+# subcommands. The other eight agent-positional subcommands
+# (review-/resolving-/amending-/steward- claim and release) take the dispatch
 # case block's raw "$3" verbatim as the agent, so a flag passed where <agent>
 # belongs (a caller mistake — most commonly a `--role`/`--agent`/`--repo`
-# meant elsewhere) got silently stamped into a claim label, e.g.
-# `fleet:reviewing-mac---role`. require_agent_token centralizes the guard and
-# is now called at all eight of those dispatch sites, before any `gh` call —
-# a rejected token acquires NO label.
+# meant elsewhere) would otherwise get silently stamped into a claim label,
+# e.g. `fleet:reviewing-mac---role`. require_agent_token centralizes the
+# guard and is called at all eight of those dispatch sites, before any `gh`
+# call — a rejected token acquires NO label.
 #
 # Hermetic per scripts/fleet/CLAUDE.md: no live GitHub. `gh` is stubbed to log
 # every invocation so a rejected call can be asserted to have made none.
@@ -100,11 +100,10 @@ declare -a CLAIM_CMDS=(review-claim resolving-claim amending-claim steward-claim
 declare -a RELEASE_CMDS=(review-release resolving-release amending-release steward-release)
 
 for cmd in "${CLAIM_CMDS[@]}" "${RELEASE_CMDS[@]}"; do
-    # --role / --agent: the genuinely new coverage — require_agent_token is
-    # the only guard that catches these. --repo: already hard-errored by the
-    # pre-existing global Guard 2 (#2201) scan, which fires before dispatch
-    # even reaches require_agent_token — checked here as a no-regression
-    # pin, with its own (different) message.
+    # --role / --agent: require_agent_token is the only guard that catches
+    # these. --repo is caught earlier by Guard 2's scan, which fires before
+    # dispatch reaches require_agent_token — checked here as a
+    # no-regression pin, with its own (different) message.
     for badtok in "--role" "--agent"; do
         : > "$GH_LOG"
         actual=0

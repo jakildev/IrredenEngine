@@ -4,8 +4,8 @@ Covers: failed fetch → last-known-good preserved + degraded marker;
 clean empty fetch → not degraded; no-previous-state first-run fallback;
 a `200 []` over a populated label-filtered slice held for one tick and
 written through only when the next tick repeats it;
-the degraded SKIP in the scout-spawned lanes leaving pending work intact
-(#2965); and periodic claim cleanup independent of queue projection changes.
+the degraded SKIP in the scout-spawned lanes leaving pending work intact;
+and periodic claim cleanup independent of queue projection changes.
 """
 import importlib.machinery
 import importlib.util
@@ -38,18 +38,25 @@ _SAMPLE_TASK_QUEUE = {
     "done": [],
 }
 
+_SAMPLE_BACKREF = {"number": 98, "title": "late child", "epics": [7]}
+
 
 class TestScoutDegradedFetch(unittest.TestCase):
 
     def setUp(self):
         # collect_state also fetches engine plan_review, which these tests don't
-        # otherwise stub. fetch_plan_review now goes through conditional_get
-        # (REST + ETag cache), so leaving it live would hit the real GitHub API
-        # and write the shared ~/.fleet ETag cache on every run — the same
-        # hermeticity hazard the #2227 review flagged for fetch_task_queue.
+        # otherwise stub. fetch_plan_review goes through conditional_get (REST +
+        # ETag cache), so leaving it live would hit the real GitHub API and
+        # write the shared ~/.fleet ETag cache on every run — the same
+        # hermeticity hazard as fetch_task_queue.
         # Stub it to a clean empty result so the degraded assertions below key
         # only on the fetcher each test deliberately fails.
         patcher = patch.object(_mod, "fetch_plan_review", return_value=[])
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        # Same hazard for the label-blind open-issue back-ref scan.
+        patcher = patch.object(_mod, "fetch_epic_backrefs",
+                               return_value=[_SAMPLE_BACKREF])
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -67,6 +74,7 @@ class TestScoutDegradedFetch(unittest.TestCase):
                     "recent_merged_prs": [],
                     "tasks": tasks if tasks is not None else _SAMPLE_TASK_QUEUE,
                     "epics": [],
+                    "epic_backrefs": [_SAMPLE_BACKREF],
                 }
             },
         }
@@ -93,6 +101,26 @@ class TestScoutDegradedFetch(unittest.TestCase):
         self.assertIn("engine.prs", state["degraded"])
         # Data preserved from previous snapshot
         self.assertEqual(state["repos"]["engine"]["prs"], [_SAMPLE_PR])
+
+    def test_failed_epic_backrefs_fetch_preserves_last_known_good(self):
+        """fetch_epic_backrefs returns None → prior back-refs kept, degraded."""
+        with tempfile.TemporaryDirectory() as tmp:
+            prev_file = self._write_prev_state(tmp)
+            with patch.object(_mod, "STATE_FILE", prev_file), \
+                 patch.object(_mod, "fetch_prs", return_value=[_SAMPLE_PR]), \
+                 patch.object(_mod, "fetch_needs_plan", return_value=[]), \
+                 patch.object(_mod, "fetch_human_approved", return_value=[]), \
+                 patch.object(_mod, "fetch_closed_fleet_queued", return_value=[]), \
+                 patch.object(_mod, "fetch_recent_merged_prs", return_value=[]), \
+                 patch.object(_mod, "fetch_task_queue", return_value=_SAMPLE_TASK_QUEUE), \
+                 patch.object(_mod, "fetch_epics", return_value=[]), \
+                 patch.object(_mod, "fetch_epic_backrefs", return_value=None), \
+                 patch.object(_mod, "GAME", Path(tmp) / "no-game"):
+                state = collect_state()
+
+        self.assertEqual(state["degraded"], ["engine.epic_backrefs"])
+        self.assertEqual(state["repos"]["engine"]["epic_backrefs"],
+                         [_SAMPLE_BACKREF])
 
     def test_clean_empty_pr_fetch_not_degraded(self):
         """fetch_prs returns [] (genuine empty) → no degraded marker."""
@@ -203,6 +231,7 @@ _CLEAN_FETCHERS = {
     "fetch_recent_merged_prs": [],
     "fetch_task_queue": _SAMPLE_TASK_QUEUE,
     "fetch_epics": [],
+    "fetch_epic_backrefs": [],
 }
 
 
@@ -234,6 +263,7 @@ class TestTransientEmptyHold(unittest.TestCase):
             "recent_merged_prs": [],
             "tasks": _SAMPLE_TASK_QUEUE,
             "epics": [],
+            "epic_backrefs": [],
         }
         repo.update(fields)
         state = {"generated_at": "2026-09-16T14:00:00Z", "repos": {"engine": repo}}
@@ -317,7 +347,8 @@ class TestTransientEmptyHold(unittest.TestCase):
     def test_every_label_list_field_takes_the_hold(self):
         for fetcher, field in (("fetch_needs_plan", "needs_plan"),
                                ("fetch_human_approved", "human_approved"),
-                               ("fetch_epics", "epics")):
+                               ("fetch_epics", "epics"),
+                               ("fetch_epic_backrefs", "epic_backrefs")):
             with self.subTest(field=field), \
                  tempfile.TemporaryDirectory() as tmp:
                 prev = self._prev_state(tmp, **{field: [_SAMPLE_ISSUE]})
@@ -391,29 +422,34 @@ class TestTransientEmptyHold(unittest.TestCase):
 class _ScoutTickHarness:
     """One hermetic `tick_once()` driver shared by both edge-consumption suites.
 
-    Not a TestCase — mixed into the two suites below so the harness exists
-    once. `popen` and `logs` are optional because only the spawn-failure suite
-    needs to make Popen raise and read back the emitted log lines.
+    Not a TestCase — mixed into the two suites that use it so the harness
+    exists once. `popen` and `logs` are optional because only the
+    spawn-failure suite needs to make Popen raise and read back the emitted
+    log lines.
     """
 
     def setUp(self):
         # The spawn-failure streak is a module global (the scout is a loop), so
         # it has to be reset or a streak leaks into the next test. getattr, not
-        # a bare attribute: this mixin also drives the pre-existing #2965 cases,
-        # and those must still pass against a pre-#2972 ref so the positive
-        # control scores THIS change's tests rather than an import-time break.
+        # a bare attribute: this mixin also drives the pre-existing degraded-skip
+        # cases, and those must still pass against a scout tree that predates
+        # this attribute so the positive control scores THIS change's tests
+        # rather than an import-time break.
         streak = getattr(_mod, "_spawn_fail_streak", None)
         if streak is not None:
             streak.clear()
             self.addCleanup(streak.clear)
 
-    def _tick(self, tmp, projection, degraded, spawns, popen=None, logs=None):
+    def _tick(self, tmp, projection, degraded, spawns, popen=None, logs=None,
+              served=False, game_dir=None):
         """Run one tick_once() against a hermetic state dir.
 
         `spawns` accumulates each subprocess.Popen argv so a caller can count
         real spawns per lane. `popen` overrides the recorder (used to raise).
-        `logs`, when given, accumulates the tick's log lines. Returns nothing —
-        assertions read those lists and the seen-hash files under tmp.
+        `logs`, when given, accumulates the tick's log lines. `served` drives
+        the follower arm (`authoritative = not served`), and `game_dir` stands
+        in for a present game clone. Returns nothing — assertions read those
+        lists and the seen-hash files under tmp.
         """
         state = {"generated_at": "2026-08-08T00:00:00Z", "repos": {}}
         if degraded:
@@ -447,8 +483,8 @@ class _ScoutTickHarness:
             p(patch.object(_mod, "_alerts_dir", lambda: Path(tmp) / "alerts"))
             p(patch.object(_mod, "PROJECTORS", projectors))
             p(patch.object(_mod, "SLICERS", {}))
-            p(patch.object(_mod, "GAME", Path(tmp) / "no-game"))
-            p(patch.object(_mod, "build_state", return_value=(state, False)))
+            p(patch.object(_mod, "GAME", game_dir or Path(tmp) / "no-game"))
+            p(patch.object(_mod, "build_state", return_value=(state, served)))
             p(patch.object(_mod.subprocess, "Popen", popen or _popen))
             p(patch.object(_mod, "log", _log))
             for fn in ("_refresh_gh_token", "sample_github_rate_limit",
@@ -478,14 +514,13 @@ class _ScoutTickHarness:
 
 
 class TestDegradedSkipPreservesEdge(_ScoutTickHarness, unittest.TestCase):
-    """#2965: the degraded skip must NOT consume the projection edge.
+    """The degraded skip must NOT consume the projection edge.
 
     `queue-manager` reconcile and `queue-manager-ingest` inline their own hash
     compare instead of routing through update_role_trigger. Recording the
-    seen-hash before the degraded check therefore dropped the work permanently:
-    the next tick compared equal and skipped. Periodic cleanup has the same
-    contract for its deadline marker. Observed live as an agent-approved issue
-    left unqueued for 8h14m after a single degraded tick.
+    seen-hash before the degraded check would drop the work permanently: the
+    next tick would compare equal and skip. Periodic cleanup has the same
+    contract for its deadline marker.
     """
 
     def test_degraded_skip_spawns_nothing_and_leaves_hash_unwritten(self):
@@ -537,7 +572,7 @@ class TestDegradedSkipPreservesEdge(_ScoutTickHarness, unittest.TestCase):
 
 
 class TestPeriodicClaimCleanup(_ScoutTickHarness, unittest.TestCase):
-    """#2476: cleanup must not depend on a queue-manager projection edge."""
+    """Cleanup must not depend on a queue-manager projection edge."""
 
     def test_unchanged_projection_reaps_again_after_interval(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -587,15 +622,15 @@ def _partial_popen(attempts, spawns, fail_when):
 
 
 class TestSpawnFailurePreservesEdge(_ScoutTickHarness, unittest.TestCase):
-    """#2972: a FAILED SPAWN must not consume the projection edge either.
+    """A FAILED SPAWN must not consume the projection edge either.
 
-    #2965 moved the seen-hash write below the `degraded` guard. It was still
-    above `subprocess.Popen`, and both lanes swallow a spawn failure with a bare
-    log — so a tick whose spawn raised recorded the hash and dropped the work
-    permanently, exactly as the degraded tick used to. Reachable in production
-    two ways, both observed classes: EAGAIN when fork is refused under many-pane
-    load, and FileNotFoundError during an install/upgrade window where
-    _fleet_script_argv's target is briefly absent.
+    The seen-hash write sits below the `degraded` guard but above
+    `subprocess.Popen`, and both lanes swallow a spawn failure with a bare
+    log — so a tick whose spawn raised must not record the hash and drop the
+    work permanently. Reachable in production two ways: EAGAIN when fork is
+    refused under many-pane load, and FileNotFoundError during an
+    install/upgrade window where _fleet_script_argv's target is briefly
+    absent.
     """
 
     def test_failed_spawn_leaves_hash_unwritten_both_lanes(self):

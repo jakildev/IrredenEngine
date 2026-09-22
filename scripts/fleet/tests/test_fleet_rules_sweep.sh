@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Tests for fleet-rules-sweep — the #2739 false-clean guard.
+# Tests for fleet-rules-sweep — the false-clean guard for an ignore-then-negate
+# .gitignore shape.
 #
 # Hermetic: builds a throwaway git repo carrying the same ignore-then-negate
 # .gitignore shape as the engine (`creations/*` + `!creations/demos/`), plants a
@@ -8,10 +9,10 @@
 # The characterization case asserts that a *raw* `rg` rooted at `creations`
 # under-walks that same tree — the false clean this tool exists to replace. It
 # measures the environment rather than this tool, so an absent rg SKIPs it
-# loudly instead of passing: a silently-skipped control is how #2739 survived
-# a "clean" detector run in the first place. Note that on a host where rg is a
-# Claude Code shell-snapshot function rather than a PATH binary, a
-# non-interactive test shell will not see it — that is a real skip, not a
+# loudly instead of passing: a silently-skipped control would let a detector
+# report "clean" while actually walking almost nothing. Note that on a host
+# where rg is a Claude Code shell-snapshot function rather than a PATH binary,
+# a non-interactive test shell will not see it — that is a real skip, not a
 # missing dependency.
 
 set -uo pipefail
@@ -79,9 +80,6 @@ build_fixture
 
 PATTERN='static\s+int\s+g_'
 
-# ----------------------------------------------------------------------
-# 1. Characterization: raw rg rooted at creations reads a false clean
-# ----------------------------------------------------------------------
 echo "1. raw rg at the negated-dir root (the #2739 false clean)"
 truth="$(git -C "$REPO" ls-files -- 'creations/*.cpp' 'creations/**/*.cpp' | grep -c . || true)"
 assert_eq "$truth" "2" "fixture truth: git sees 2 .cpp files under creations/"
@@ -97,9 +95,6 @@ else
     skip "no rg on PATH — walker characterization not measured this run"
 fi
 
-# ----------------------------------------------------------------------
-# 2. The sweep finds what the walker missed
-# ----------------------------------------------------------------------
 echo "2. sweep over the same scope"
 out="$("$SWEEP" --repo-root "$REPO" --pattern "$PATTERN" --glob '*.cpp' --files-only creations 2>/dev/null)"
 rc=$?
@@ -107,15 +102,9 @@ assert_eq "$rc" "0" "exit 0 when matches are found"
 assert_contains "$out" "creations/demos/planted/main.cpp" "finds the planted demo violation"
 assert_contains "$out" "creations/editors/voxel_editor/main.cpp" "finds the negated-subtree violation"
 
-# ----------------------------------------------------------------------
-# 3. Ignored paths stay out (cross-repo isolation)
-# ----------------------------------------------------------------------
 echo "3. genuinely-ignored paths are not swept"
 assert_absent "$out" "creations/private_tool/secret.cpp" "gitignored private tree excluded"
 
-# ----------------------------------------------------------------------
-# 4. The coverage guard — the acceptance-criterion case
-# ----------------------------------------------------------------------
 echo "4. coverage guard"
 guard_out="$("$SWEEP" --repo-root "$REPO" --pattern "$PATTERN" creations/nonexistent 2>&1)"
 guard_rc=$?
@@ -126,18 +115,12 @@ glob_out="$("$SWEEP" --repo-root "$REPO" --pattern "$PATTERN" --glob '*.rs' crea
 glob_rc=$?
 assert_eq "$glob_rc" "2" "a --glob that filters out every file also exits 2"
 
-# ----------------------------------------------------------------------
-# 5. A real clean pass is distinguishable from a false one
-# ----------------------------------------------------------------------
 echo "5. real clean pass"
 clean_out="$("$SWEEP" --repo-root "$REPO" --pattern 'zzz_absent_token_zzz' --glob '*.cpp' creations 2>&1)"
 clean_rc=$?
 assert_eq "$clean_rc" "1" "no matches with real coverage exits 1"
 assert_contains "$clean_out" "swept 2 file(s)" "clean pass reports its coverage"
 
-# ----------------------------------------------------------------------
-# 6. Glob semantics: braces, negation, path-vs-basename
-# ----------------------------------------------------------------------
 echo "6. glob semantics"
 brace_out="$("$SWEEP" --repo-root "$REPO" --pattern '.' --glob '*.{cpp,hpp}' --files-only creations 2>/dev/null)"
 assert_contains "$brace_out" "creations/demos/planted/clean.hpp" "brace alternation expands"
@@ -150,16 +133,10 @@ path_out="$("$SWEEP" --repo-root "$REPO" --pattern '.' --glob 'creations/demos/*
 assert_contains "$path_out" "creations/demos/planted/main.cpp" "slash-bearing glob matches the repo-relative path"
 assert_absent "$path_out" "creations/editors/voxel_editor/main.cpp" "slash-bearing glob excludes outside its prefix"
 
-# ----------------------------------------------------------------------
-# 7. Whole-repo default scope still covers the negated subtree
-# ----------------------------------------------------------------------
 echo "7. default scope"
 all_out="$("$SWEEP" --repo-root "$REPO" --pattern "$PATTERN" --glob '*.cpp' --files-only 2>/dev/null)"
 assert_contains "$all_out" "creations/demos/planted/main.cpp" "no-scope sweep reaches creations"
 
-# ----------------------------------------------------------------------
-# 8. JSON output carries the coverage counts
-# ----------------------------------------------------------------------
 echo "8. json output"
 json_out="$("$SWEEP" --repo-root "$REPO" --pattern "$PATTERN" --glob '*.cpp' --json creations 2>/dev/null)"
 assert_contains "$json_out" '"files_walked"' "json reports files_walked"

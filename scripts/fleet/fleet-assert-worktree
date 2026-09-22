@@ -2,27 +2,17 @@
 # fleet-assert-worktree — assert the current directory is an isolated
 # fleet worktree, NOT the shared main clone, before a mutating flow runs.
 #
-# Why this exists
-# ---------------
 # The main clones (~/src/IrredenEngine and creations/game) are shared:
-# refs/stash, branch refs, and the working tree are all visible to every
-# agent. When an agent runs a *mutating* git operation — commit, branch
-# checkout, detached PR checkout, stash — while its cwd is the main clone
-# instead of its assigned worktree, it silently contaminates that shared
-# checkout: committing on a branch another agent owns, or stranding /
-# clobbering work in the wrong tree. Observed 5x in two days across
-# worker panes (engine #1325).
+# refs/stash, branch refs, and the working tree are visible to every agent,
+# so a mutating git operation (commit, branch checkout, detached PR checkout,
+# stash) run from a main clone contaminates a checkout another agent owns.
 #
-# The structural invariant the fleet relies on: every agent operates
-# inside `<clone>/.claude/worktrees/<name>`. The main-clone toplevels
-# never contain the `/.claude/worktrees/` path segment. So a git
-# toplevel WITHOUT that segment means cwd is a main clone — refuse to let
-# a mutating fleet flow proceed there.
+# Invariant: every agent operates inside `<clone>/.claude/worktrees/<name>`,
+# and a main-clone toplevel never contains the `/.claude/worktrees/` path
+# segment — a toplevel without it is a main clone.
 #
-# Read-only `git -C <main-clone> …` calls (fetch, ls-tree, show) at role
-# startup are fine and intentionally NOT guarded — this only fires at the
-# mutation points that wire it in (commit-and-push, start-next-task,
-# fleet-pr-checkout-detached).
+# Read-only `git -C <main-clone> …` calls (fetch, ls-tree, show) are not
+# guarded; only mutation points wire this in.
 #
 # Usage
 # -----

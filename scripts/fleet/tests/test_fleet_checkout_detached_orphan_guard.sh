@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for fleet-pr-checkout-detached's #2734 orphan guard: the wrapper must
+# Tests for fleet-pr-checkout-detached's orphan guard: the wrapper must
 # refuse, before moving HEAD, when the current HEAD carries commits reachable
 # from no branch and no remote ref — and must NOT refuse on the routine
 # cross-PR re-checkout, which is what the bounced `origin/<ref>..HEAD`
@@ -15,7 +15,7 @@
 # filesystem operations, no network) and `gh` is stubbed on PATH. The stub
 # models `gh pr view <N> [--repo <slug>] --json headRefName -q <expr>` and
 # rejects anything outside that surface the way the real binary does, so the
-# suite cannot certify a call gh would refuse (#2781).
+# suite cannot certify a call gh would refuse.
 
 set -uo pipefail
 
@@ -38,7 +38,7 @@ cat >"$BIN/gh" <<'GHEOF'
 # -q <expr>` and nothing else. Unmodelled commands, flags and field selections
 # exit 1 with a message on stderr, mirroring how the real binary rejects them,
 # so a wrapper edit that starts passing something gh would refuse fails here
-# instead of being silently certified (#2781).
+# instead of being silently certified.
 set -uo pipefail
 [[ "${1:-}" == "pr" && "${2:-}" == "view" ]] || { echo "unknown command: ${*}" >&2; exit 1; }
 shift 2
@@ -136,8 +136,6 @@ rc=$(detach 43 --discard)
 assert_eq "$rc" "0" "--discard proceeds past the guard"
 assert_eq "$(git -C "$WT" rev-parse HEAD)" "$(git -C "$WT" rev-parse origin/feature-b)" \
     "HEAD moved despite the orphan commit"
-# The checkout's stderr redirect used to discard "Warning: you are leaving N
-# commits behind" along with stdout, which is what made the loss silent.
 assert_contains "$(cat "$TMPROOT/err")" "leaving" \
     "git's leaving-commits-behind warning reaches stderr"
 

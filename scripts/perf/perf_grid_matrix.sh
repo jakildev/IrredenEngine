@@ -17,8 +17,8 @@
 #   scripts/perf/perf_grid_matrix.sh --presets <dir>     # sweep *.lua preset files
 #   scripts/perf/perf_grid_matrix.sh --threading-baseline
 #       # 9-cell threading baseline: {4K,32K,262K} entities × {0,1,hw-2} worker_threads.
-#       # Use this before T-221 lands to capture the serial-execution floor so
-#       # the after-threading run shows the real speedup on the UPDATE pipeline.
+#       # 0 is inline-serial (no pool, dispatches on the calling thread) — the
+#       # floor the pooled arms are measured against.
 #
 # Output:
 #   save_files/perf/<git-sha>[-<label>]/<cell-id>.txt    # raw profile_report.txt
@@ -101,9 +101,11 @@ fi
 
 if $THREADING_BASELINE; then
     # 9-cell baseline: 3 grid sizes × 3 worker_thread values.
-    # worker_threads is stored for cell-ID differentiation; the exe stubs it
-    # until T-221 wires enkiTS. Numbers should be near-identical across the
-    # worker_threads axis — that's the serial-execution floor for T-221 to beat.
+    # worker_threads reaches the exe as the engine-common --worker-threads, so
+    # each cell runs at a genuinely different executor count: 0 = inline-serial
+    # (the floor), 1 = a one-worker pool, hw-2 = the auto-like arm. The manifest
+    # records the REQUESTED count; the resolved one (the P-core cap can lower
+    # it) is the "JobManager: started with" line in the cell's .log.
     HW_N=$(hw_concurrency)
     HW_MINUS_2=$(( HW_N > 2 ? HW_N - 2 : 1 ))
     THREADING_GRID_SIZES=(16 32 64)
@@ -179,6 +181,7 @@ find_latest_report() {
 # manifest.json header — we append cell entries inside the loop.
 MANIFEST="$OUT_DIR/manifest.json"
 _MATRIX_KEY="$($THREADING_BASELINE && echo "threading_baseline" || echo "$MATRIX")"
+FAILED_CELLS=0
 {
     echo "{"
     echo "  \"target\": \"$TARGET_LABEL\","
@@ -217,6 +220,7 @@ run_cell() {
         CELL_STATUS="ok"
     else
         CELL_STATUS="no_report"
+        FAILED_CELLS=$((FAILED_CELLS + 1))
         echo "  (no profile_report.txt produced; see $CELL_LOG)"
     fi
 
@@ -295,6 +299,11 @@ fi
     echo "  \"finished_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\""
     echo "}"
 } >> "$MANIFEST"
+
+if (( FAILED_CELLS > 0 )); then
+    echo "perf_grid_matrix: $FAILED_CELLS/$CELL_COUNT cell(s) produced no profile report" >&2
+    exit 1
+fi
 
 echo "perf_grid_matrix: done, output in $OUT_DIR"
 echo "  next: scripts/perf/perf_summary.py $OUT_DIR"

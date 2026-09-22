@@ -6,7 +6,10 @@ body carries the structured fields the queue machinery actually reads — a
 resolvable ``**Model:**`` field, a standalone ``**Part of epic:**
 #<umbrella>`` line, and (for every non-head child) a single-ref standalone
 ``**Blocked by:** #N`` line. Exits non-zero and prints each failure if any
-child is malformed.
+open child is malformed; a closed child's findings are warnings.
+
+Discovery covers open and closed children by default (``--state all``), so a
+close-out audit — every child closed — lists them rather than reading empty.
 
 Run it before stamping ``human:approved`` on a freshly-filed stack:
 
@@ -16,11 +19,10 @@ Run it before stamping ``human:approved`` on a freshly-filed stack:
 
 Why it exists (#1312): the architect's hand-filed stacks repeatedly drift from
 the ``file-epic`` template — prose ``Blocked on ...`` headers the scout can't
-parse, ``**Epic:**`` bullets that ``file-epic``'s own ``--search "Part of
-epic: #N"`` discovery misses, multi-ref ``Blocked by:`` lines that never
-stack-claim. Those defects are invisible until queue time, where they cost
-hours of triage. This is the belt-and-suspenders check that surfaces them up
-front.
+parse, ``**Epic:**`` bullets in place of the canonical membership line,
+multi-ref ``Blocked by:`` lines that never stack-claim. Those defects are
+invisible until queue time, where they cost hours of triage. This is the
+belt-and-suspenders check that surfaces them up front.
 
 Discovery is coarse-search-then-precise-filter (mirrors fleet_scope_shipped):
 GitHub strips ``#`` and matches the bare number anywhere, so the ``gh`` search
@@ -42,6 +44,7 @@ sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 from fleet_validate_stack import (  # noqa: E402
     check_checklist,
     discover_children,
+    is_closed,
     validate_stack,
 )
 
@@ -77,12 +80,12 @@ def _gh_json(args):
 
 
 def fetch_bodies(slug, numbers):
-    """Fetch {number, title, body} for an explicit list of issue numbers."""
+    """Fetch {number, title, body, state} for an explicit list of issues."""
     children = []
     for n in numbers:
         detail = _gh_json([
             "gh", "issue", "view", str(n), "--repo", slug,
-            "--json", "number,title,body",
+            "--json", "number,title,body,state",
         ])
         if detail is None:
             warn("could not fetch issue #%s — skipping" % n)
@@ -102,8 +105,8 @@ def main():
         "--children", type=int, nargs="+", metavar="N",
         help="explicit child issue numbers (bypasses auto-discovery)")
     parser.add_argument(
-        "--state", default="open", choices=["open", "closed", "all"],
-        help="issue state filter for auto-discovery (default: open)")
+        "--state", default="all", choices=["open", "closed", "all"],
+        help="issue state filter for auto-discovery (default: all)")
     parser.add_argument(
         "--strict", action="store_true",
         help="treat a missing `**Blocked by:**` line (a warning by default) as "
@@ -142,16 +145,28 @@ def main():
             warn("could not fetch umbrella #%d body — checklist drift not "
                  "validated" % args.umbrella)
 
-    print("Epic #%d (%s) — %d child issue(s)"
-          % (args.umbrella, slug, len(result["children"])))
+    n_closed = sum(1 for c in result["children"] if is_closed(c["state"]))
+    print("Epic #%d (%s) — %d child issue(s) (%d open, %d closed)"
+          % (args.umbrella, slug, len(result["children"]),
+             len(result["children"]) - n_closed, n_closed))
 
     if result["empty"]:
         print()
-        print("No children found via `Part of epic:` / `Epic:` body reference "
-              "to #%d." % args.umbrella)
+        if args.children:
+            print("None of the --children issues could be fetched.")
+            return 1
+        if args.state != "all":
+            n_all = len(discover_children(slug, args.umbrella, "all"))
+            if n_all:
+                print("0 children under --state %s; %d with --state all — "
+                      "re-run with --state all." % (args.state, n_all))
+                return 0
+        print("No children found under --state %s: no issue body declares "
+              "membership in #%d (grammar: scripts/fleet/"
+              "fleet_epic_membership.py)." % (args.state, args.umbrella))
         print("Either the epic has no children yet, or they omit the "
-              "epic-membership line entirely (file-epic's own discovery would "
-              "miss them too). Pass --children N N N to validate a known set.")
+              "epic-membership line entirely. Pass --children N N N to "
+              "validate a known set.")
         # Empty is not a pass signal for a stack that should have children, but
         # it is not a structural failure we can assert on — surface as exit 0
         # with the explanatory note above.

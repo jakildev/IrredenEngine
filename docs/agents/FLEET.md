@@ -46,16 +46,16 @@ label ([`fleet-labels-reference.md § Claims`](fleet-labels-reference.md)); a
 failed `gh issue edit` rolls the claim back — no FS-only fallback. Once the PR
 opens the scout derives ownership from its `headRefName`. Review, feedback,
 conflict and planning claims share the primitive under disjoint prefixes; a
-force-pushing lane excludes another agent's live `fleet:reviewing-*` at scout
-suppression, the claim-time gate, then admission: two independent, complete,
-paginated label GETs must show the exact candidate and no contender across the
-excluded-prefix union — the POST response is never ownership evidence. That
-bounded settle is no linearizable mutex under stale reads; a recurrence where
-both reads hide a completed competitor needs authoritative arbitration, not a
-longer sleep. Host keys are one canonical set (`derive_host()`: `Linux` →
-`linux`, `Darwin` → `macos`, `MINGW*/MSYS*/CYGWIN*` → `windows`); WSL2 is
-`linux`, so two such fleets on one account collide unless one forces
-`FLEET_TEST_HOST`.
+force-pushing lane excludes another agent's live `fleet:reviewing-*` and the
+other force-pushing lane's claim at scout suppression, the claim-time gate,
+then admission: two independent, complete, paginated label GETs must show the
+exact candidate and no contender across the excluded-prefix union — the POST
+response is never ownership evidence. That bounded settle is no linearizable
+mutex under stale reads; a recurrence where both reads hide a completed
+competitor needs authoritative arbitration, not a longer sleep. Host keys are
+one canonical set (`derive_host()`: `Linux` → `linux`, `Darwin` → `macos`,
+`MINGW*/MSYS*/CYGWIN*` → `windows`); WSL2 is `linux`, so two such fleets on
+one account collide unless one forces `FLEET_TEST_HOST`.
 
 ### Who takes the claim
 
@@ -376,9 +376,9 @@ implementation and thresholds: `scripts/fleet/fleet-dispatcher`
   `FLEET_DISPATCHER_RESET_GRACE_SECONDS` (600); only an observation with no
   parsed `resetsAt` ages out (`FLEET_DISPATCHER_USAGE_STALE_SECONDS`, 3600;
   `fleet-up --reset-usage` wipes them after an account switch).
-- **GitHub API quota** — the scout samples `gh api /rate_limit` into
-  `github-{core,graphql,search}.json`; core and graphql gate at 90 %
-  (`FLEET_DISPATCHER_USAGE_GATE_GITHUB_{CORE,GRAPHQL}`), search never.
+- **GitHub API quota** — `github-{core,graphql,search}.json`: graphql from its
+  own `rateLimit` self-report (a refused sample latches `rejected`), core and search
+  from `/rate_limit`; core and graphql gate at 90 % (`FLEET_DISPATCHER_USAGE_GATE_GITHUB_{CORE,GRAPHQL}`), search never.
 - **Per-pane cooldown** — a launch that died at the wall (`claude` exit 1
   with a stream-flagged rejection; legacy exit 2) excludes the pane for
   `FLEET_DISPATCHER_LIMIT_DELAY` seconds (900). The exit is a provider
