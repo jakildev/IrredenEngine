@@ -124,9 +124,40 @@ Its canonical detail stays in [rendering-audit-todo.md](../rendering-audit-todo.
 | 2026-09-21 | D1.2c closed as a measurement: with the per-axis canvases left resident and live, the pinned sweep's long frame after a cardinal goes away. `PerAxisCanvas::Allocate` and `::Release` are in the report's CPU phase table (1.3 and 0.7 to 1.1 ms a call), and with the release skipped by a local, never committed patch the first rotated frame after each cardinal reads **46 to 49 ms where it read 77 to 93**, six crossings of six in two runs each, and the p99 falls from 77 to 56 to 59 ms. The experiment removes two things at once, the re-allocation and the re-entry into the per-axis path (`isAllocated()` never turns false, so the cardinal frame itself runs per-axis at 56 to 60 ms), so it does not say which of them costs; the net saving is about 19 ms a crossing and nothing over the turn, and the extra time is inside neither the calls nor the GPU command-buffer span (42 to 48 ms in all arms). The mechanism is the arm that separates them. This slice was first drawn through the unpinned fixture and concluded the opposite from a 452 ms frame that belonged to the unpinned sweep; the branch was rebuilt on the corrected parent and the experiment re-run. Evidence: [`continuous-yaw-sweep.md`](../../perf/continuous-yaw-sweep.md) § The crossing frame, split |
 | 2026-09-21 | D1.2d closed: the control for the pivot pin is a fixture. `IRPerfGrid --yaw-first-frame` renders frame 1 at a pose of its own, `--capture-frame` takes one screenshot, `--default-pivot` keeps the engine's pivot under a driven yaw (contradictory pivot flags and a second yaw writer are refused at startup), the report's witness gains `Camera pivot: explicit focus on N of M frames`, and `repeat_profile.py` checks the first-frame pose, its jump and the pivot the flags ask for, and refuses a capture frame inside a timed run. One pose (46.8°, held for 74 frames, captured after frame 60) from two first frames: with the default pivot the captures match on 80.04% of pixels, the scene translated about 330 pixels, 482,966 against 626,223 candidates at the held view and 50.0% against 62.9% of the screen lit; pinned they are **byte-identical** with 909,433 and 89.8%. It was built to decide which of two "visible sets" was right and showed there were two views; coverage and candidates move together, which is the spirit's coverage rule and not a cull difference. Evidence: [`continuous-yaw-sweep.md`](../../perf/continuous-yaw-sweep.md) § A driven yaw pins its pivot, `continuous-yaw-sweep/pivot-identity/` |
 | 2026-09-21 | Checkpoint 3: #3641, #3645, #3650 and #3653 each reviewed by a fresh-context reviewer (read-only, asked for every guard what input makes it pass that should not, and told to recompute every table from the committed reports), plus the render and ECS invariant audits over the stack's C++. No blockers anywhere; the audits found no shader, binding, layout or dispatch change and one shared nit (the witness's main-thread-only contract, now stated). The reviews changed what three of the four PRs claim. #3641: the rotated-pose guard used 1° where the engine goes per-axis above 1e-4 rad, so the 0.785° pose of the old unit bug passed unsampled (now the engine's deadband, pinned by a test); the host load was read before the run queued on the lock, minutes early (now as the run returns); any shot table drives the camera, not only `--yaw-ramp`; a pose line with no samples read 0° and not absent; zoom was witnessed and never guarded; the series was unbounded; none of the controls had an artifact (now committed), and "eleven minutes" was four. #3645: the stated cause of the unpinned sweep's long frame, a pivot re-latch on the cardinal, is contradicted by the latch's policy and its test, and the "catch-up spiral" by the run's own 2.5 ms update ticks; both are withdrawn and the unpinned behaviour is described and not explained (#3652 corrected to match). It also found the sweep's second tail, the exact diagonals at 54 to 57 ms, which is the p99 the doc had used as its clean baseline; the sweep check now verifies the frame count, models travel with the witness's wrap and does not demand overflow samples of a cardinals-only sweep. #3650: the release-disabled experiment removes the re-allocation and the path re-entry together, saves about 19 ms a crossing and nothing over the turn, and the time is inside neither the calls nor the GPU span, so the claim is narrowed to "the long frame goes away when the sets stay resident and live" and the mechanism is named as the separating arm. #3653: `overflow_failure` failed runs the tool calls unpredictable; contradictory pivot flags resolved silently and nothing witnessed the pivot, so a mislabelled arm could not be refused (now a startup refusal, a witness line and a tool check); the capture frame sat inside the timed window; medians and counts were relabelled and the captures committed full-size so their hashes can be checked. Left as worklist in the PR bodies: a unit test for `World`'s witness wiring and the two voxel-pass call sites, and the matrix's sweep arm end to end across two trees. Parent branches were merged into their children, not rebased. Merge order bottom-up: #3641 → #3645 → #3650 → #3653 |
+| 2026-09-21 | Resync at startup (Loop step 0): `fleet-campaign-status` read SUPERSEDED (#3641, #3645, #3650 and #3653 merged) and `--apply` parked the branch on master `79ca9e3c6`. Outside PRs read since the last base, and what each corrects in merged campaign work: #3644 and #3654 (the protocol's every-iteration resync, `fleet:campaign-<slug>` membership, this file's `## Contributor lanes`) change the procedure this session follows and no measurement; #3647 (Pillow pinned in `render-harness-tests`, `render_metric_util.py`'s docstring only) leaves every campaign oracle's behaviour unchanged; #3642, #3648 and #3649 (fleet-claim and the GraphQL gate) and #3651 (fog_demo references) touch no campaign fixture: no effect. #3560, stacked on the D0 stack, was reconciled on 2026-09-20. Open other-lane PRs: #3629 (approved, awaiting merge: the fog carrier bit in `c_shapes_to_trixel`, `ir_iso_common`, the stage-2 body, `component_triangle_canvas_textures.hpp` and the render prefab `CLAUDE.md`), #3632 → #3635 (the Codex lane's source-face lighting and cascade receiver stack; #3635 reads CONFLICTING against its parent) and #3643 (`fleet:wip`, design-proposed: a rotation-scoped default pivot acquired in the source frame, in `default_pivot_latch.hpp`, `system_trixel_to_framebuffer.hpp` and `camera-yaw-pivot.md`, the engine's answer to #3652's question). None edits `per_axis_canvas.hpp` or `component_per_axis_trixel_canvases.hpp`. If #3643 lands, D1.2d's default-pivot rows describe the latch as it was; the pinned rows and every timing table are pivot-pinned and stand |
+| 2026-09-21 | D1.2e closed: the crossing frame was the set being freed and re-created. `C_PerAxisTrixelCanvases` parks its set on a cardinal frame (`park`: the live fields swap into `parked_`, so `isAllocated()` reads false and all seven readers take the fast path unchanged), swaps it back on the next rotated frame (`unpark`) and frees it after `IRPrefab::PerAxisCanvas::kParkedCardinalFrames` (120) consecutive cardinal frames; the policy is the pure `lifecycleStep` function, pinned by ten headless tests (nine in Release), and the report gains `PerAxisCanvas::Park` / `::Unpark` rows so a run vouches for the lifecycle it took. Interleaved against master's Release binary on the pinned sweep (battery, host load about 3): the first rotated frame after 90°, 180° and 270° reads **42.7 to 48.1 ms against 80.5 to 97.5**, the cardinal frame stays on the fast path (35 to 40 ms; Park 3, Unpark 3, Release 0, Allocate 1), the steady p99 falls from 93.0 and 80.5 to 48.1 and 49.4 ms and no longer moves when the three crossing frames are removed (0.4 and 0.0 ms against 44.9 and 29.8), a crossing's three frames cost 124 to 127 ms against 174 to 184, and the turn's steady mean sits inside the spread (41.35 to 42.90 across the four arms). The path re-entry costs nothing the split experiment could not exclude; what cost 40 to 55 ms was freeing and re-creating the set, of which the timed calls are 2.5 ms, and the experiment does not say which of the free and the create a driver charges to the next frame. Identity: a cardinal frame with the parked set resident is byte-identical to a never-allocated one and to master's; the first unparked frame (91.2°) is byte-identical to the pose held from frame 1; `render-verify --target IRCanvasStress` passes 11 of 11 at maximum delta 0; the nine-yaw `--sweep-yaw 0 6.2831853 9` set is byte-identical before and after at all nine poses. Found on the way: master's own first rotated frame on a fresh allocation differs from the settled pose (32,300 pixels by 1 to 7, 304 by 32 to 54), which parking removes for a crossing and not for the first frame of a turn; filed as #3660 (agent-approved, defect verified, fix not) with the sort's lagged entry count as the hypothesis. Evidence: [`continuous-yaw-sweep.md`](../../perf/continuous-yaw-sweep.md) § The crossing frame, with the set parked |
 
 ### Decisions taken
 
+- 2026-09-21: the per-axis set is parked inside the component by swapping the
+  live fields into a second `PerAxisCanvasStore`, so `isAllocated()` stays the
+  handle test its seven readers already make and none of them changes. The
+  parked set is freed after 120 consecutive cardinal frames: a frame count and
+  not a duration, so every run of a sweep takes the same lifecycle, and longer
+  than any capture suite's settle (60 frames), so the suites exercise the
+  unpark. Rejected: a `live_` flag beside the handles (a second state that can
+  drift from them, the shape the no-dirty-flags rule bans); widening the
+  readers' predicate to `isAllocated() && rotating` (edits three files other
+  lanes hold open, for no gain over parking); a wall-clock window (a 40 ms
+  fixture would free in 50 frames and a 16 ms one hold for 120); holding the
+  set until the canvas resizes (the cardinal memory contract says a settled
+  scene pays nothing).
+- 2026-09-21 (lane split in force for this slice): #3629 owns
+  `c_shapes_to_trixel`, `ir_iso_common` and `c_voxel_to_trixel_stage_2_body`
+  (GLSL and Metal), `component_triangle_canvas_textures.hpp` and the fog bullet
+  of `engine/prefabs/irreden/render/CLAUDE.md`; #3632 and #3635 own the
+  lighting, sun-shadow and source-face kernels, `system_bake_sun_shadow_map.hpp`,
+  `system_entity_canvas_to_framebuffer.hpp`, `ir_render_types.hpp` and the audit
+  worklist docs; #3643 owns the default pivot latch,
+  `system_trixel_to_framebuffer.hpp`, `system_camera_mouse_rotate.hpp` and
+  `camera-yaw-pivot.md`. The campaign keeps `per_axis_canvas.hpp`,
+  `component_per_axis_trixel_canvases.hpp`, `gpu_stage_timing.hpp`, the report
+  in `world.cpp`, `perf_grid/main.cpp`, `docs/perf/` and the per-axis design
+  doc. The one shared file is the render prefab `CLAUDE.md`: this slice rewrites
+  its per-axis bullet and #3629 its fog bullet, disjoint hunks that merge
+  mechanically. The seven readers of `isAllocated()` are untouched, three of
+  them in files the other lanes own, which is why the parked set lives inside
+  the component.
 - 2026-09-21: the crossing mechanism is its own slice, after a checkpoint. It
   changes the lifecycle of a render component seven systems read, three of
   them in files another lane has open, so it keeps `isAllocated()` meaning
@@ -296,19 +327,17 @@ Its canonical detail stays in [rendering-audit-todo.md](../rendering-audit-todo.
 
 ## Now
 
-- **In flight:** none. #3641, #3645, #3650 and #3653 are approved and await
-  merge, bottom-up.
-- **Next:** run the resync first. Then the crossing mechanism: keep the
-  per-axis canvases resident across a crossing while the camera is turning,
-  parked inside `C_PerAxisTrixelCanvases` so `isAllocated()` still means "the
-  per-axis path is live" to its seven readers, released after the camera has
-  sat on a cardinal for a while. It is both the fix and the arm that separates
-  re-allocation from path re-entry. Acceptance: the pinned sweep with no
-  crossing frame above 60 ms (77 to 93 today) and a cardinal frame at its
-  fast-path cost, and nine-yaw CanvasStress identity. It touches
-  `per_axis_canvas.hpp` and `component_per_axis_trixel_canvases.hpp`, which no
-  open lane owns. Then the sweep's other tail, the exact diagonals (54 to
-  57 ms against about 41, where the overflow lane more than doubles). Owed and
+- **In flight:** slice D1.2e, the parked per-axis set (this PR, `fleet:wip`
+  until the next checkpoint).
+- **Next:** run the resync first. Then the sweep's remaining tail, the exact
+  diagonals: 53.8 to 57.3 ms against 38.7 to 43.1 for their neighbours in the
+  half-step-off sweep, where the overflow lane more than doubles (2,208,000
+  entries against 971,724), a pose the sweep through the cardinals steps over
+  (41.0 ms at 44.4°). Measurement first: which stages carry the 15 ms at 45°
+  (the per-axis store, the overflow append and sort, or the lighting family),
+  from the stage-profiling-on run held at 45.0° against one at 44.4°, both
+  pinned. Then #3660, the first rotated frame of a turn (a local patch forcing
+  the sort's encoded span to the cap decides whether it is the sort). Owed and
   blocked on a **quiet host** (#3638; ask the human for a window at the
   checkpoint, and read `host_load_1m` before believing a table): the
   three-round million reference on master's current shaders with every arm
