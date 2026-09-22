@@ -383,3 +383,15 @@ mixed sphere/floor control retains all fallback stages. The removed rows total
 0.269 ms in the parent small-box profile. This is workload-specific evidence,
 not an end-to-end performance claim. Windows execution and the visual work above
 remain pending.
+
+### Sphere artifact separated from shadow sampling
+
+[Lighting isolation controls](../pr-screenshots/codex/sdf-lighting-normal-frame/README.md)
+show only 24 of 6,016 sphere pixels changing when shadows are disabled; the
+remaining pattern maps exactly to the three face-slot normal classes. Treat the
+dominant artifact as surface/normal reconstruction work, with the small shadow
+delta still unresolved. Main-canvas smooth-yaw directional normals also use a
+different frame from shadow-query normals. A broad canvas-level rotation was
+rejected because secondary canvases can use different producers. Preserve elected
+surface provenance before unifying the two consumers; retain true lattice faces
+where that is the selected representation. No production fix is claimed yet.
