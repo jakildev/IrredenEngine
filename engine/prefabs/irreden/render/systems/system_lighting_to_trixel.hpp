@@ -48,8 +48,8 @@ constexpr int kLightingToTrixelGroupSize = 16;
 // values short-circuit the artistic path and write false-color into
 // `trixelColors` instead — see ir_render_enums.hpp for the encoding.
 // std140 note: eight scalars pack at offsets 0..28 (32 bytes), then
-// skyColor_ (vec4) lands at offset 32 (already 16-byte aligned) for a
-// 64-byte UBO including the camera quaternion at offset 48.
+// skyColor_ (vec4) lands at offset 32 (already 16-byte aligned), followed by the
+// camera quaternion at offset 48 and canvas normal options at offset 64.
 struct FrameDataLightingToTrixel {
     int lightingEnabled_ = 0;
     int lutEnabled_ = 0;
@@ -61,13 +61,18 @@ struct FrameDataLightingToTrixel {
     float skyIntensity_ = 0.0f;
     vec4 skyColor_ = vec4(0.5f, 0.7f, 1.0f, 0.0f);
     vec4 detachedViewToWorld_ = vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    ivec4 normalOptions_{0};
 };
 
 static_assert(
     offsetof(FrameDataLightingToTrixel, detachedViewToWorld_) == 48,
     "Quaternion must begin at byte 48"
 );
-static_assert(sizeof(FrameDataLightingToTrixel) == 64, "Lighting frame must match the shader UBO");
+static_assert(
+    offsetof(FrameDataLightingToTrixel, normalOptions_) == 64,
+    "Canvas normal options must begin at byte 64"
+);
+static_assert(sizeof(FrameDataLightingToTrixel) == 80, "Lighting frame must match the shader UBO");
 
 // Screen-space lighting application pass. Inserts between the final
 // geometry stage and the compositing stage; reads the canvas distance
@@ -158,6 +163,11 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         }
         // CPU histogram bracket — this system is not observer-tagged.
         IR_PROFILE_SCOPE("lightingToTrixel");
+
+        // Only the main canvas moves its voxel geometry to per-axis storage during yaw.
+        // Its remaining raster slots describe view-aligned SDF/text faces.
+        frameData_.normalOptions_.x = entity == perAxisCanvasEntity_ ? 1 : 0;
+        frameDataBuf_->subData(0, sizeof(FrameDataLightingToTrixel), &frameData_);
 
         // Author THIS canvas's voxel frame data so the Lambert + sky terms read
         // its own visible-triplet world normals and isDetachedCanvas flag, not
@@ -490,7 +500,6 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         const vec3 sc = IRRender::getSkyColor();
         frameData_.skyColor_ = vec4(sc, 0.0f);
         frameData_.detachedViewToWorld_ = IRPrefab::Camera::getRotationQuat();
-        frameDataBuf_->subData(0, sizeof(FrameDataLightingToTrixel), &frameData_);
 
         // Resolve the main canvas + its per-axis voxel canvases, plus
         // its voxel-frame inputs and sun-shadow / light-volume placeholders for

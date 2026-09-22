@@ -395,3 +395,19 @@ different frame from shadow-query normals. A broad canvas-level rotation was
 rejected because secondary canvases can use different producers. Preserve elected
 surface provenance before unifying the two consumers; retain true lattice faces
 where that is the selected representation. No production fix is claimed yet.
+
+### Main-canvas normal frame corrected
+
+[Explicit main-canvas lighting routing](../pr-screenshots/codex/main-canvas-normal-frame/README.md)
+aligns continuous-yaw slot normals with the shadow lookup, while excluding
+secondary, detached and per-axis routes. Native normals match the independent
+inverse-yaw color expectation, cardinal images remain identical, and shader
+mutation controls pass. This is a frame conversion only: synthetic SDF face
+selection and exact surface metadata remain unresolved.
+
+For retained surface metadata, keep election scratch independent of publication.
+A candidate compact depth/normal payload must carry the source half-face anchor,
+retain continuous hit depth before quantization, and define world/model frame and
+density. Invalidate on every geometry reset (including no-SDF frames), unsupported
+winners and later non-SDF overpainting. Assess memory and bandwidth before choosing
+this over retained per-canvas descriptors; neither option is implemented yet.

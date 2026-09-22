@@ -153,6 +153,10 @@ kernel void c_lighting_to_trixel(
     const int faceId =
         sourceMode ? int(sourceFaces.faces[sourceIndex].centerAndFace.w) : voxelFrameData.visibleFaceIds[slot] ^ decodeFlipRoute(encoded, voxelFrameData.perAxisRoute);
     float3 worldNormal = faceOutwardNormal6(faceId);
+    if (frameData.normalOptions.x != 0 && !detachedCanvas && voxelFrameData.perAxisRoute == 0 && voxelFrameData.residualYaw != 0.0f) {
+        worldNormal = rotateYawZInv(faceOutwardNormal(slot), voxelFrameData.visualYaw);
+        if (decodeFlipRoute(encoded, voxelFrameData.perAxisRoute) != 0) worldNormal = -worldNormal;
+    }
     if (detachedCanvas && voxelFrameData.visibleFaceIds.w == 0) {
         worldNormal = rotateByQuat(detachedFaceViewNormal(
             faceId,
