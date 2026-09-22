@@ -53,18 +53,28 @@ valid GPU shape-stage samples in each report. Raw reports are adjacent.
 | Parent 2 | 0.084 | 1.040 |
 | Ownership 1 | 0.092 | 1.982 |
 | Ownership 2 | 0.092 | 1.965 |
+| Compile-specialized ownership 1 | 0.840¹ | 1.669 |
+| Compile-specialized ownership 2 | 0.094 | 1.518 |
 
-This is approximately twice the SDF-stage GPU cost in this overlap fixture,
-not a performance-neutral fix. `shapePass1` measures the entire shape-system
-bundle, including encoder-boundary effects, not the election kernel alone.
-The reports include startup/transition outliers and rejected timestamp pairs;
-these are aggregate timings, not a per-pose benchmark or a population scaling
-claim. The runs were sequential on the same host.
+Compile-time depth, owner, publish, and caster variants recover 15–23% of the
+pre-specialization ownership cost by removing the runtime pass branch and
+dead pass-specific work from each kernel. The remaining 46–77% increase over
+the parent is the extra owner-election surface solve itself, so this remains a
+measured tradeoff rather than a performance-neutral fix. `shapePass1` measures
+the entire shape-system bundle, including encoder-boundary effects, not the
+election kernel alone. The reports include startup/transition outliers and
+rejected timestamp pairs; these are aggregate timings, not a per-pose benchmark
+or a population scaling claim. The runs were sequential on the same host.
+
+¹ The first specialized run's CPU average includes one 183.574 ms outlier;
+its minimum was 0.058 ms and the repeat averaged 0.094 ms.
 
 Storage is four bytes per pixel of the largest processed SDF canvas, reused
 across canvases and frames. Only canvases with SDF tiles pay the added clear
-and election dispatch. Reducing repeated SDF evaluation while preserving the
-single-writer guarantee is a follow-up before accepting this cost as a default.
+and election dispatch. The kernels are compile-time specializations of one
+shared body, so depth and owner passes no longer carry publish-only color,
+checker, identity, or X-ray work. Avoiding the remaining repeated SDF
+evaluation would require a separate tie-gated dispatch design.
 
 ## Validation
 

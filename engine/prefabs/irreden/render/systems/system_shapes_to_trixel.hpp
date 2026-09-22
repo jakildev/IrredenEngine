@@ -48,7 +48,10 @@ static_assert(
 template <> struct System<SHAPES_TO_TRIXEL> {
     using CanvasId = IREntity::EntityId;
 
-    ShaderProgram *shapesProgram_ = nullptr;
+    ShaderProgram *shapeDepthProgram_ = nullptr;
+    ShaderProgram *shapePublishProgram_ = nullptr;
+    ShaderProgram *shapeCasterProgram_ = nullptr;
+    ShaderProgram *shapeOwnerProgram_ = nullptr;
     Buffer *shapeDescBuf_ = nullptr;
     Buffer *shapesFrameDataBuf_ = nullptr;
     Buffer *shapeTileDescBuf_ = nullptr;
@@ -73,7 +76,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         IRRender::device()->memoryBarrier(BarrierType::ALL);
         IRRender::device()->fillBuffer(winnerBuffer_, bytes, 0xFF);
         // Shapes do not consume animation parameters; restore this borrowed slot after dispatch.
-        winnerBuffer_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_AnimationParams);
+        winnerBuffer_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_ShapeSampleOwners);
     }
 
     std::unordered_map<CanvasId, std::vector<GPUShapeDescriptor>> gpuShapesByCanvas_;
@@ -408,7 +411,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             frameData_.tileGridX = gridX;
 
             prepareWinnerBuffer(canvasTextures.size_);
-            shapesProgram_->use();
+            shapeDepthProgram_->use();
             shapeDescBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_ShapeDescriptors);
             canvasTextures.getTextureDistances()
                 ->bindAsImage(1, TextureAccess::READ_WRITE, TextureFormat::R32I);
@@ -429,7 +432,6 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             shapesFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_ShapesFrameData);
 
             // Pass 0: depth via imageAtomicMin
-            frameData_.passIndex = 0;
             shapesFrameDataBuf_->subData(0, sizeof(GPUShapesFrameData), &frameData_);
 
             IRRender::device()->dispatchCompute(
@@ -439,8 +441,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             );
             IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
 
-            frameData_.passIndex = 3;
-            shapesFrameDataBuf_->subData(0, sizeof(GPUShapesFrameData), &frameData_);
+            shapeOwnerProgram_->use();
             IRRender::device()->dispatchCompute(
                 static_cast<std::uint32_t>(gridX),
                 static_cast<std::uint32_t>(gridY),
@@ -459,9 +460,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             canvasTextures.getTextureEntityIds()
                 ->bindAsImage(2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI);
 
-            frameData_.passIndex = 1;
-            shapesFrameDataBuf_->subData(0, sizeof(GPUShapesFrameData), &frameData_);
-
+            shapePublishProgram_->use();
             IRRender::device()->dispatchCompute(
                 static_cast<std::uint32_t>(gridX),
                 static_cast<std::uint32_t>(gridY),
@@ -482,11 +481,9 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                             static_cast<int>(gpuShapes.size()),
                             renderMode == SubdivisionMode::NONE ? 1 : effectiveSub
                         );
-                        shapesProgram_->use();
+                        shapeCasterProgram_->use();
                         // Non-box analytic casters retain their separate depth input.
                         casterDepth->bindAsImage(1, TextureAccess::READ_WRITE, TextureFormat::R32I);
-                        frameData_.passIndex = 2;
-                        shapesFrameDataBuf_->subData(0, sizeof(GPUShapesFrameData), &frameData_);
                         shapesFrameDataBuf_->bindBase(
                             BufferTarget::UNIFORM,
                             kBufferIndex_ShapesFrameData
@@ -519,8 +516,20 @@ template <> struct System<SHAPES_TO_TRIXEL> {
 
     static SystemId create() {
         IRRender::createNamedResource<ShaderProgram>(
-            "ShapesToTrixelProgram",
-            std::vector{ShaderStage{IRRender::kFileCompShapesToTrixel, ShaderType::COMPUTE}}
+            "ShapesToTrixelDepthProgram",
+            std::vector{ShaderStage{IRRender::kFileCompShapesToTrixelDepth, ShaderType::COMPUTE}}
+        );
+        IRRender::createNamedResource<ShaderProgram>(
+            "ShapesToTrixelPublishProgram",
+            std::vector{ShaderStage{IRRender::kFileCompShapesToTrixelPublish, ShaderType::COMPUTE}}
+        );
+        IRRender::createNamedResource<ShaderProgram>(
+            "ShapesToTrixelCasterProgram",
+            std::vector{ShaderStage{IRRender::kFileCompShapesToTrixelCaster, ShaderType::COMPUTE}}
+        );
+        IRRender::createNamedResource<ShaderProgram>(
+            "ShapesToTrixelOwnerProgram",
+            std::vector{ShaderStage{IRRender::kFileCompShapesToTrixelOwner, ShaderType::COMPUTE}}
         );
         IRRender::createNamedResource<Buffer>(
             "ShapeDescriptorBuffer",
@@ -538,7 +547,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             BufferTarget::UNIFORM,
             kBufferIndex_ShapesFrameData
         );
-        // Binding 21 mirrors c_shapes_to_trixel.glsl's declared jointData[];
+        // Binding 21 mirrors c_shapes_to_trixel_body.glsl's declared jointData[];
         // shapes currently leave jointIndex at 0. It is not used by the voxel
         // skinning path (which uses EntityTransformBuffer at binding 18 and
         // per-voxel bone-slot indices at binding 17 via seedVoxelBoneSlots).
@@ -570,7 +579,14 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         SystemId systemId =
             registerSystem<SHAPES_TO_TRIXEL, C_ShapeDescriptor, C_WorldTransform>("ShapesToTrixel");
         auto *p = getSystemParams<System<SHAPES_TO_TRIXEL>>(systemId);
-        p->shapesProgram_ = IRRender::getNamedResource<ShaderProgram>("ShapesToTrixelProgram");
+        p->shapeDepthProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("ShapesToTrixelDepthProgram");
+        p->shapePublishProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("ShapesToTrixelPublishProgram");
+        p->shapeCasterProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("ShapesToTrixelCasterProgram");
+        p->shapeOwnerProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("ShapesToTrixelOwnerProgram");
         p->shapeDescBuf_ = IRRender::getNamedResource<Buffer>("ShapeDescriptorBuffer");
         p->shapesFrameDataBuf_ = IRRender::getNamedResource<Buffer>("ShapesFrameDataBuffer");
         p->shapeTileDescBuf_ = IRRender::getNamedResource<Buffer>("ShapeTileDescriptorBuffer");

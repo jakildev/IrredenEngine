@@ -288,7 +288,7 @@ Its canonical detail stays in [rendering-audit-todo.md](../rendering-audit-todo.
   detached casters (D0 residual of #3342; filed 2026-09-19, awaiting
   approval).
 - #1923 — class-2 float iso-depth and projection sites in
-  `v_peraxis_scatter.glsl`, `c_shapes_to_trixel.glsl` and their Metal twins
+  `v_peraxis_scatter.glsl`, `c_shapes_to_trixel_body.glsl` and their Metal twins
   (D0 housekeeping slice; parked `human:owned` for this campaign, closes
   with the slice).
 - #3130 — `--yaw` perf-matrix axis (D1 slice; parked `human:owned` for this
