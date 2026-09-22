@@ -375,11 +375,12 @@ void buildYawRampShots() {
 }
 
 // onCaptureFrame_ hook: measure which render path actually drew this pose so
-// the sweep can label every row unambiguously. The main canvas's per-axis
-// textures are allocated only while a residual rotation is being smoothed, so
-// isAllocated() at the settled capture frame is the ground truth (a 'cardinal'
-// row that still reports peraxis is the failure mode). Reads live ECS the
-// harness cannot; emits one greppable line the sweep scorer joins by index.
+// the sweep can label every row unambiguously. The main canvas's per-axis set
+// is live only while a residual rotation is being smoothed (a set parked on a
+// cardinal is not live), so isAllocated() at the settled capture frame is the
+// ground truth (a 'cardinal' row that still reports peraxis is the failure
+// mode). Reads live ECS the harness cannot; emits one greppable line the
+// sweep scorer joins by index.
 void logRampPose(int shotIndex) {
     bool perAxisActive = false;
     const IREntity::EntityId mainCanvas = IRRender::getCanvas("main");

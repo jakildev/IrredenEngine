@@ -2,15 +2,14 @@
 #include "ir_constants.metal"
 #include "ir_sdf_common.metal"
 
-// Mirrors shaders/c_shapes_to_trixel.glsl.
+// Mirrors shaders/c_shapes_to_trixel_body.glsl.
 
 struct ShapesFrameData {
     float2 frameCanvasOffset;
     int2 trixelCanvasOffsetZ1;
     int2 canvasSize;
     int shapeCount;
-    // 0: all depth, 1: visible color/ID, 2: non-box caster depth, 3: owner election.
-    int passIndex;
+    int padding0;
     int2 voxelRenderOptions;
     int2 cullIsoMin;
     int2 cullIsoMax;
@@ -676,7 +675,7 @@ inline int generalDepthSearch(
 
 // Yaw-aware general SDF depth search for shape types without an O(1)
 // analytical path (cone, torus, curved_panel). Mirrors the GLSL counterpart
-// in c_shapes_to_trixel.glsl. The iso projection is fixed in view space, but
+// in c_shapes_to_trixel_body.glsl. The iso projection is fixed in view space, but
 // the SDF's local frame is world-aligned. Camera yaw rotates the world by
 // -yaw from the view's POV, so the world-local query point is the view-local
 // point rotated by +yaw around Z.
@@ -860,7 +859,7 @@ inline int findSurfaceDepth(
                                 yawC, yawS);
 }
 
-kernel void c_shapes_to_trixel(
+kernel void IR_SHAPE_KERNEL_NAME(
     constant ShapesFrameData& frameData [[buffer(23)]],
     device const ShapeDescriptor* shapes [[buffer(20)]],
     device const ShapeTileDescriptor* tiles [[buffer(30)]],
@@ -881,9 +880,11 @@ kernel void c_shapes_to_trixel(
     if (shapeIndex < 0) return;
     const int2 isoOrigin = tile.tileIsoOrigin;
     const ShapeDescriptor shape = shapes[shapeIndex];
-    if (frameData.passIndex == 2 && shape.shapeType == SHAPE_BOX) return;
+#if IR_SHAPE_PASS == 2
+    if (shape.shapeType == SHAPE_BOX) return;
+#endif
 
-    // Cardinal-snap Z-yaw. Mirrors the GLSL shader in c_shapes_to_trixel.glsl.
+    // Cardinal-snap Z-yaw. Mirrors the GLSL shader in c_shapes_to_trixel_body.glsl.
     // The cardinal path rasterizes at rasterYaw (the multiple of pi/2 nearest
     // visualYaw) so its output lines up trixel-for-trixel with the voxel pool's
     // cardinal-snap raster; continuous yaw is recovered geometrically via
@@ -1058,6 +1059,7 @@ kernel void c_shapes_to_trixel(
         const int originDistance = originScaled.x + originScaled.y + originScaled.z;
         baseDepth = surfaceD + originDistance;
     }
+#if IR_SHAPE_PASS == 1
     float4 baseColor = unpackColor(shape.color);
 
     if ((shape.flags & FLAG_DEPTH_COLOR) != 0u) {
@@ -1115,6 +1117,8 @@ kernel void c_shapes_to_trixel(
         uint2(shape.entityId, 0u), (shape.flags & FLAG_FOG_WHOLE_BODY_EXEMPT) != 0u
     );
 
+#endif
+
     for (int face = 0; face < 3; ++face) {
         const int depthEncoded = encodeDepthWithFace(baseDepth, face);
         // mat2 D = faceDeformationMatrix(face, residualYaw) applied to the
@@ -1143,16 +1147,21 @@ kernel void c_shapes_to_trixel(
                 uint(canvasPixel.x);
 
             const uint sampleOwner = ((tileIdx * 64u + localId.y * 8u + localId.x) * 3u + uint(face)) * 2u + uint(subPixel);
-            if (frameData.passIndex == 3) {
+#if IR_SHAPE_PASS == 3
+            {
                 if (depthEncoded == atomic_load_explicit(&distanceScratch[linearIndex], memory_order_relaxed))
                     atomic_fetch_min_explicit(&sampleOwners[linearIndex], sampleOwner, memory_order_relaxed);
-            } else if (frameData.passIndex != 1) {
+            }
+#elif IR_SHAPE_PASS != 1
+            {
                 atomic_fetch_min_explicit(
                     &distanceScratch[linearIndex],
                     depthEncoded,
                     memory_order_relaxed
                 );
-            } else {
+            }
+#else
+            {
                 const int stored = atomic_load_explicit(
                     &distanceScratch[linearIndex],
                     memory_order_relaxed
@@ -1183,6 +1192,7 @@ kernel void c_shapes_to_trixel(
                     // still resolve to the occluder, not the silhouette.
                 }
             }
+#endif
         }
     }
 }

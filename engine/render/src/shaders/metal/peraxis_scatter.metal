@@ -458,7 +458,7 @@ vertex VertexOut v_peraxis_scatter(
     return out;
 }
 
-// HSV → RGB. Keep identical to hsvToRgb in c_shapes_to_trixel.metal so
+// HSV → RGB. Keep identical to hsvToRgb in c_shapes_to_trixel_body.metal so
 // voxel-scatter depth-color is bit-exact with the SDF twin when mode is on.
 static inline float3 hsvToRgb(float3 c) {
     const float4 K = float4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
