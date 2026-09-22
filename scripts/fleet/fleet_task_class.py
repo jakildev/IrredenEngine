@@ -29,9 +29,9 @@ that target regardless of its own in-iteration step order:
   3. open tasks     — the oldest claimable task's class (slices are sorted
                       by issue number; ``model`` comes from the
                       fleet:fable/opus/sonnet labels via the scout).
-  4. needs_plan     — the plan inherits the TASK's own class (see
-                      `_plan_class`): `fleet:sonnet` light-plans and
-                      self-queues, `fleet:fable` buys an architect-tier plan
+  4. needs_plan     — the plan inherits the TASK's own class (label, else
+                      ``**Model:**``; see `_plan_class`): sonnet light-plans
+                      and self-queues, fable buys an architect-tier plan
                       (falling back to opus when the fable cap is saturated so
                       planning never stalls behind a long fable implementation
                       iteration), and everything else plans at opus.
@@ -358,18 +358,21 @@ def _plan_class(issue, fable_blocked):
     """Model class that should author this needs-plan issue's plan.
 
     The plan inherits the TASK's declared class, so a plan costs what the work
-    it plans is worth. Ingest already stamps that class from the issue's
-    `**Model:**` field (opus when absent), so the signal is on the issue by
-    the time it reaches needs_plan. Stakes are a human signal — the class
-    label IS that signal — so there is nothing to compute here; the label is
-    authoritative.
+    it plans is worth. The declared class resolves the way the scout resolves
+    a task's: a `fleet:<class>` label first, then the body's `**Model:**`
+    field (`model`, stamped by `resolve_needs_plan_blocked_by` before it pops
+    the body), then opus. The body fallback is load-bearing, not a nicety — a
+    needs-plan issue rarely carries a class label: ingest bounces an unplanned
+    issue to needs-plan BEFORE it stamps one, the `human:revise-plan` reset
+    strips it, and TASK-FILING.md tells filers not to apply it. Stakes are a
+    human signal (`**Model:** fable` or `fleet:fable`); nothing is computed.
 
-    - `fleet:sonnet` — MECHANICAL. The sonnet lane authors a thin `## Plan`
+    - `sonnet` — MECHANICAL. The sonnet lane authors a thin `## Plan`
       comment ("basically the issue itself") and self-queues on
       `fleet-plan-lint` pass (PLANNING-PROTOCOL.md §"Lightweight plan for
       mechanical (fleet:sonnet) tasks"), skipping BOTH the heavy planning pass
       and the opus plan-review pass.
-    - `fleet:fable` — HIGH-STAKES design planning: fable while the cap has
+    - `fable` — HIGH-STAKES design planning: fable while the cap has
       headroom, degrading to opus when it is saturated (`fable_blocked`). The
       downgrade is pre-resolved here (never yields a cap-blocked `fable`).
     - everything else — ordinary opus-tier planning at `PLAN_EFFORT` xhigh.
@@ -379,10 +382,16 @@ def _plan_class(issue, fable_blocked):
     """
     labels = issue.get("labels") or []
     if "fleet:sonnet" in labels:
-        return "sonnet"
-    if "fleet:fable" in labels:
+        cls = "sonnet"
+    elif "fleet:fable" in labels:
+        cls = "fable"
+    elif "fleet:opus" in labels:
+        cls = "opus"
+    else:
+        cls = (issue.get("model") or "opus").lower()
+    if cls == "fable":
         return "opus" if fable_blocked else "fable"
-    return "opus"
+    return "sonnet" if cls == "sonnet" else "opus"
 
 
 def _candidates(slice_data, lane_default, host, fable_blocked=False):
@@ -406,10 +415,11 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False):
     needs_plan yields once PER PLANNING CLASS, not once per issue: one planning
     assignment per class per tick is a deliberate serialization — planning is
     not the throughput bottleneck — while parallelism across classes (a sonnet
-    light-plan alongside a fable/opus heavy plan) is preserved. A
-    `fleet:sonnet`-tagged (mechanical) needs-plan issue is a light plan the
-    sonnet lane authors; everything else is architect-tier design planning
-    (fable, or opus when the fable cap is saturated). The dispatcher turns the
+    light-plan alongside an opus plan alongside a fable design plan) is
+    preserved. Each issue plans at its declared class (`_plan_class`): a
+    sonnet-class issue is a light plan the sonnet lane authors, a fable-class
+    one is architect-tier design planning (opus when the fable cap is
+    saturated), and everything else plans at opus. The dispatcher turns the
     per-class yield into a single pre-claimed assignment (`--pick` +
     `fleet-claim planning-claim` before launch), so same-class planning
     dispatches never contend for one issue. Iteration order is

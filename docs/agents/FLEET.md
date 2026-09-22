@@ -176,8 +176,8 @@ logs the resolved ids — a lagging alias means `claude update` and re-run.
   design, cross-backend algorithm work, open-ended problems, long-horizon
   multi-system work filed with an intent plan, epic decomposition,
   design-blocked resolutions, invariant-heavy refactors, approach-is-wrong
-  feedback fixes (the reviewer adds `fleet:fable`). Default for the
-  architect panes and `fleet:needs-plan` planning (opus at the cap).
+  feedback fixes (the reviewer adds `fleet:fable`), and the architect
+  panes. A plan inherits its issue's class (label, else `**Model:**`).
   Rendering is not automatically fable — implementing against a vetted
   plan is opus or sonnet.
 - **opus** — the default when `Model:` is absent (choose deliberately

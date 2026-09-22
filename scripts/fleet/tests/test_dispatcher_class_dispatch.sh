@@ -211,6 +211,11 @@ assert_eq "$(resolve worker)" \
     "class=fable model=claude-fable-5[1m] effort=xhigh more=0 defer=0 count=1 plan=1" \
     "fleet:fable needs-plan elects fable with plan=1"
 
+write_slice worker '{"tasks_open":[],"feedback_prs":[],"needs_plan":[{"number":99,"repo":"engine","labels":[],"model":"fable"}]}'
+assert_eq "$(resolve worker)" \
+    "class=fable model=claude-fable-5[1m] effort=xhigh more=0 defer=0 count=1 plan=1" \
+    "unlabelled needs-plan declaring Model: fable elects fable with plan=1"
+
 # Restore the three-issue untagged slice T10/T11 walk for their claim candidates.
 write_slice worker '{"tasks_open":[],"feedback_prs":[],"needs_plan":[{"number":99,"repo":"engine","labels":[]},{"number":120,"repo":"engine","labels":[]},{"number":7,"repo":"game","labels":[]}]}'
 

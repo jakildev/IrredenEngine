@@ -45,7 +45,7 @@ def _state(*, needs_plan=None, closed=None, merged=None):
     }
 
 
-class ResolveNeedsPlanBlockedBy(unittest.TestCase):
+class _ResolverCase(unittest.TestCase):
 
     def setUp(self):
         # Close the network seam. Replacing the helper outright means there
@@ -61,6 +61,9 @@ class ResolveNeedsPlanBlockedBy(unittest.TestCase):
         st = _state(needs_plan=needs_plan, closed=closed, merged=merged)
         resolve_needs_plan_blocked_by(st)
         return st
+
+
+class ResolveNeedsPlanBlockedBy(_ResolverCase):
 
     def test_open_blocker_marks_issue_blocked(self):
         st = self._resolved(needs_plan=[
@@ -134,6 +137,44 @@ class ResolveNeedsPlanBlockedBy(unittest.TestCase):
         ])
         self.assertFalse(st["repos"]["engine"]["needs_plan"][0]["blocked"],
                          "cross-repo blocker is unresolvable from this window")
+
+
+class ResolveNeedsPlanModel(_ResolverCase):
+    """The body's `**Model:**` class is stamped as `model` BEFORE the body is
+    popped — `_plan_class`'s fallback for the usual needs-plan issue, which
+    carries no `fleet:<class>` label (ingest bounces it before stamping one)."""
+
+    def test_model_stamped_before_body_popped(self):
+        st = self._resolved(needs_plan=[
+            {"number": 3661, "labels": ["fleet:needs-plan", "fleet:epic"],
+             "body": "**Model:** fable\n**Blocked by:** (none)"},
+        ])
+        issue = st["repos"]["engine"]["needs_plan"][0]
+        self.assertEqual(issue["model"], "fable")
+        self.assertNotIn("body", issue)
+
+    def test_absent_model_field_stamps_none(self):
+        st = self._resolved(needs_plan=[
+            {"number": 2092, "labels": ["fleet:needs-plan"],
+             "body": "**Blocked by:** (none)"},
+        ])
+        self.assertIsNone(st["repos"]["engine"]["needs_plan"][0]["model"])
+
+    def test_carried_bodyless_record_keeps_its_model(self):
+        # A degraded tick carries last-known-good records, already bodyless;
+        # re-resolving them must not erase the class stamped on the live tick.
+        st = self._resolved(needs_plan=[
+            {"number": 3663, "labels": ["fleet:needs-plan"], "model": "fable"},
+        ])
+        self.assertEqual(st["repos"]["engine"]["needs_plan"][0]["model"], "fable")
+
+    def test_model_survives_into_slice_worker(self):
+        st = self._resolved(needs_plan=[
+            {"number": 3661, "labels": ["fleet:needs-plan"],
+             "body": "**Model:** fable"},
+        ])
+        out = slice_worker(st)
+        self.assertEqual([i.get("model") for i in out["needs_plan"]], ["fable"])
 
 
 class ProjectAndSliceWorkerHonorNeedsPlanBlocked(unittest.TestCase):

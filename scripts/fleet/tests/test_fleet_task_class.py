@@ -242,9 +242,9 @@ class TaskResolution(unittest.TestCase):
         self.assertEqual(out, "sonnet high 1 1 0")
 
     def test_needs_plan_untagged_plans_at_opus(self):
-        # An untagged needs-plan issue is ordinary opus work (ingest stamps
-        # fleet:opus from an absent `**Model:**`), so it plans at opus — NOT
-        # fable. Planning inherits the task's class; only fleet:fable buys an
+        # No class label and no `**Model:**` class (`model` unset) resolves to
+        # opus, the same default a task gets — NOT fable. Planning inherits the
+        # task's declared class; only a fable declaration buys an
         # architect-tier plan. PLAN_EFFORT keeps xhigh for the opus lane.
         out = resolve({"needs_plan": [{"number": 99}]},
                       "opus", fable_blocked=False)
@@ -265,6 +265,48 @@ class TaskResolution(unittest.TestCase):
                       "opus", fable_blocked=True)
         self.assertEqual(out, "opus xhigh 0 1 1")
 
+    def test_needs_plan_model_field_fable_routes_fable(self):
+        # The usual fable opt-in: `**Model:** fable` in the body (stamped as
+        # `model` by the scout) with NO class label — ingest bounced the issue
+        # to needs-plan before it could stamp one.
+        out = resolve({"needs_plan": [{"number": 3661, "model": "fable"}]},
+                      "opus", fable_blocked=False)
+        self.assertEqual(out, "fable xhigh 0 1 1")
+
+    def test_needs_plan_model_field_fable_degrades_when_capped(self):
+        out = resolve({"needs_plan": [{"number": 3661, "model": "fable"}]},
+                      "opus", fable_blocked=True)
+        self.assertEqual(out, "opus xhigh 0 1 1")
+
+    def test_needs_plan_model_field_opus_plans_at_opus(self):
+        out = resolve({"needs_plan": [{"number": 99, "model": "opus"}]},
+                      "opus", fable_blocked=False)
+        self.assertEqual(out, "opus xhigh 0 1 1")
+
+    def test_needs_plan_model_field_sonnet_routes_sonnet(self):
+        out = resolve({"needs_plan": [{"number": 99, "model": "sonnet"}]},
+                      "opus", fable_blocked=False)
+        self.assertEqual(out, "sonnet high 0 1 1")
+
+    def test_needs_plan_class_label_beats_model_field(self):
+        # Label first, body second — the order the scout resolves a task's
+        # class in and `fleet-claim` checks it in.
+        out = resolve({"needs_plan": [
+            {"number": 99, "labels": ["fleet:opus"], "model": "fable"}]},
+                      "opus", fable_blocked=False)
+        self.assertEqual(out, "opus xhigh 0 1 1")
+        out = resolve({"needs_plan": [
+            {"number": 99, "labels": ["fleet:fable"], "model": "sonnet"}]},
+                      "opus", fable_blocked=False)
+        self.assertEqual(out, "fable xhigh 0 1 1")
+
+    def test_needs_plan_sonnet_label_beats_fable_label(self):
+        # Both class labels: the mechanical light-plan wins.
+        out = resolve({"needs_plan": [
+            {"number": 99, "labels": ["fleet:fable", "fleet:sonnet"]}]},
+                      "opus", fable_blocked=False)
+        self.assertEqual(out, "sonnet high 0 1 1")
+
     def test_needs_plan_counts_once_regardless_of_backlog(self):
         # The lane plans one issue at a time (planning-claim lock + the
         # comment-presence early-out make same-tick siblings a no-op):
@@ -284,9 +326,8 @@ class TaskResolution(unittest.TestCase):
         self.assertEqual(out, "sonnet high 0 1 1")
 
     def test_needs_plan_untagged_plans_at_opus_not_fable(self):
-        # An untagged needs-plan issue is ordinary opus work (ingest stamps
-        # fleet:opus from an absent `**Model:**`). Planning inherits the task's
-        # class, so this plans at opus; only fleet:fable buys architect-tier.
+        # A non-class label and no `**Model:**` class declare nothing, so this
+        # plans at opus; only a fable declaration buys architect-tier.
         out = resolve({"needs_plan": [{"number": 99, "labels": ["render"]}]},
                       "opus", fable_blocked=False)
         self.assertEqual(out, "opus xhigh 0 1 1")
@@ -311,7 +352,7 @@ class TaskResolution(unittest.TestCase):
 
     def test_design_unblocked_feedback_resolves_opus(self):
         # A design-unblocked PR is the top feedback item, every open task is
-        # parked/blocked, and opus needs_plan sits behind it. The lane must
+        # parked/blocked, and a fable needs_plan sits behind it. The lane must
         # dispatch opus (and clear it for tier 4), not sonnet.
         # count=1: the feedback fix is the only opus item; the plannable issue
         # is fleet:fable-tagged so it elects fable, a different class than the

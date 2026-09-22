@@ -2516,6 +2516,11 @@ def resolve_needs_plan_blocked_by(state, ref_cache=None):
         }
 
         for issue in repo_state.get("needs_plan", []):
+            # `model` is `_plan_class`'s fallback when the issue has no class
+            # label. A carried last-known-good record has no body; keep the
+            # model it was stamped with rather than erasing it to None.
+            if "body" in issue:
+                issue["model"] = declared_class(issue["body"] or "")
             body = issue.pop("body", "") or ""
             issue["blocked"] = False
             raw = _parse_blocked_by(body)
