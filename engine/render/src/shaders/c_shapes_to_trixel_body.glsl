@@ -945,6 +945,7 @@ void main() {
         int originDistance = originScaled.x + originScaled.y + originScaled.z;
         baseDepth = surfaceD + originDistance;
     }
+#if IR_SHAPE_PASS == 1
     vec4 baseColor = unpackColor(shape.color);
 
     if ((shape.flags & FLAG_DEPTH_COLOR) != 0u) {
@@ -1019,6 +1020,8 @@ void main() {
     const uvec2 packedEntityId = encodeEntityIdFogWholeBody(
         uvec2(shape.entityId, 0u), (shape.flags & FLAG_FOG_WHOLE_BODY_EXEMPT) != 0u
     );
+
+#endif
 
     for (int face = 0; face < 3; face++) {
         int depthEncoded = encodeDepthWithFace(baseDepth, face);

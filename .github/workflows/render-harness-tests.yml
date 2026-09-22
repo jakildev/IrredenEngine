@@ -22,6 +22,8 @@ name: Render Harness Tests
 # GitHub Actions does not support YAML anchors — keep them in sync;
 # scripts/fleet/tests/test_workflow_paths_sync.sh (#2929) ratchets that they do,
 # for this workflow as for every other path-filtered one.
+# The shader-contract suites extract and compile the shader helpers, so shader
+# edits are subjects of this workflow too.
 #
 # The demo manifests are a subject too (#2919): test_render_verify.py's
 # CommittedManifestsResolve asserts every committed

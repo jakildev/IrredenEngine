@@ -1059,6 +1059,7 @@ kernel void IR_SHAPE_KERNEL_NAME(
         const int originDistance = originScaled.x + originScaled.y + originScaled.z;
         baseDepth = surfaceD + originDistance;
     }
+#if IR_SHAPE_PASS == 1
     float4 baseColor = unpackColor(shape.color);
 
     if ((shape.flags & FLAG_DEPTH_COLOR) != 0u) {
@@ -1115,6 +1116,8 @@ kernel void IR_SHAPE_KERNEL_NAME(
     const uint2 packedEntityId = encodeEntityIdFogWholeBody(
         uint2(shape.entityId, 0u), (shape.flags & FLAG_FOG_WHOLE_BODY_EXEMPT) != 0u
     );
+
+#endif
 
     for (int face = 0; face < 3; ++face) {
         const int depthEncoded = encodeDepthWithFace(baseDepth, face);

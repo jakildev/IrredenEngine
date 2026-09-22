@@ -88,3 +88,25 @@ evaluation would require a separate tie-gated dispatch design.
   correctness blockers.
 - Native OpenGL execution remains unverified; scalar shader tests do not
   replace Windows smoke validation.
+
+## Merge-readiness specialization check
+
+After merging current master, the publish-only color/checker/depth-color, fog
+identity and X-ray setup is explicitly guarded by `IR_SHAPE_PASS == 1` in both
+backends. A preprocessing test checks all four variants and deliberately
+removes the guard to prove the excluded work returns. Compiler dead-code
+elimination may already remove this arithmetic; explicit gating does not
+establish a speedup.
+
+The same paired recipe above was rerun on the merged tree, changing only the
+publish guard in runtime shader assets for the control. Gated captures
+2213/2214 and ungated captures 2215/2216 are RGB-identical at yaw 0/45°, with
+the blue owner retained. Both runs exited cleanly after 245 frames. Raw reports:
+[publish gated](publish-gated-profile.txt) and [ungated](publish-ungated-profile.txt).
+The gated GPU `shapePass1` mean is 1.144 ms; the control is 2.327 ms.
+These single pairs include startup/transition outliers and do not isolate
+election cost. They do not supersede the original ownership-versus-no-election
+cost comparison or claim performance neutrality.
+
+The merged root passes all 31 rendering suites (four ownership tests), native
+IRCanvasStress build and header checks. Native OpenGL remains pending.

@@ -97,6 +97,28 @@ class SdfWinnerTest(unittest.TestCase):
                                        capture_output=True, text=True)
                 self.assertEqual(build.returncode == 0, not mutate, build.stderr)
 
+    def test_publish_work_excluded_from_other_variants(self):
+        for suffix, folder in (("glsl", ""), ("metal", "metal/")):
+            source = (ROOT / "engine/render/src/shaders" /
+                      f"{folder}c_shapes_to_trixel_body.{suffix}").read_text()
+            source = re.sub(r"^#(?:include|version).*", "", source, flags=re.MULTILINE)
+            for mutate in (False, True):
+                body = source
+                if mutate:
+                    body, replacements = re.subn(
+                        r"#if IR_SHAPE_PASS == 1(\n    (?:vec4|float4) baseColor)",
+                        r"#if 1\1", body)
+                    self.assertEqual(replacements, 1)
+                for pass_index in range(4):
+                    with self.subTest(backend=suffix, mutation=mutate, variant=pass_index):
+                        result = subprocess.run(
+                            [COMPILER, "-E", "-P", "-x", "c", "-",
+                             f"-DIR_SHAPE_PASS={pass_index}"],
+                            input=body, capture_output=True, text=True)
+                        self.assertEqual(result.returncode, 0, result.stderr)
+                        for token in ("baseColor", "packedEntityId", "xrayOccluded"):
+                            self.assertEqual(token in result.stdout, mutate or pass_index == 1)
+
     def test_election_and_clear_order(self):
         system = (ROOT / "engine/prefabs/irreden/render/systems" /
                   "system_shapes_to_trixel.hpp").read_text()
