@@ -328,3 +328,21 @@ GPU cost (roughly 0.95–1.04 ms to 1.97–1.98 ms in the overlap fixture); redu
 repeated evaluation without weakening ownership, or explicitly accept the
 tradeoff. Also investigate the demo's `--no-lighting` path omitting SDF geometry
 so future geometry-only captures can exercise the same rendering modes.
+
+### SDF cost experiment and sharp-shadow sampling audit
+
+Surface-query reuse was [tested and rejected](../pr-screenshots/codex/sdf-surface-reuse/README.md):
+full-frame RGB stayed identical, but timings do not justify up to 64 MiB of
+additional lane scratch. Production ownership is unchanged. Next split GPU
+measurement into depth, owner election and publication without overlapping
+timer scopes; compare warmed cardinal and noncardinal poses before optimizing.
+The analytic-sphere shadow fixture retains surface speckling in both arms;
+include it in receiver-geometry/self-shadow validation.
+
+The current `ir_sun_shadow_sample` GLSL/Metal twins mix distinct contracts:
+source-face ray queries and finite surface footprints use unfiltered coverage,
+while the remaining map path in `sampleCascadeShadow` uses weighted 2×2 PCF.
+`worldSunShadowFactorImpl` also blends cascades. An explicit zero-softness path
+must audit both; removing PCF alone neither repairs finite coverage nor proves
+sharp transitions across cascades. Preserve off-screen caster coverage and
+receiver-plane depth handling while unifying the geometry queries.
