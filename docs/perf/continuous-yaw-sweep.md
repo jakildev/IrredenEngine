@@ -337,9 +337,11 @@ configs/perf/million-profiling-off.lua`.
 
 ## Next measurements
 
-1. The exact diagonals, the sweep's other tail: what doubles the overflow lane
-   at 45° and costs 15 ms. With the crossing frame gone it is the only pose
-   that stands out of a full turn.
+1. The exact diagonals, the sweep's other tail: measured as a band around
+   45° in [diagonal-pose-cost.md](diagonal-pose-cost.md), which names the
+   stages that read the overflow lane and the separating experiment still
+   owed. With the crossing frame gone it is the only pose that stands out of
+   a full turn.
 3. The sweep in the three-round quiet-host matrix, and a longer window than
    one turn for the tail.
 4. The static 0° and 45° arms again with `--pivot-origin`, so the matrix's
