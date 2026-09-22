@@ -36,6 +36,7 @@ layout(std140, binding = 27) uniform FrameDataLightingToTrixel {
     uniform float skyIntensity;
     uniform vec4  skyColor;
     uniform vec4  detachedViewToWorld;
+    uniform ivec4 normalOptions;
 };
 
 layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
@@ -232,6 +233,10 @@ void main() {
     const int slot = decodeSlot(encoded);
     const int faceId = sourceMode ? int(sourceFaces[sourceIndex].centerAndFace.w) : visibleFaceIds[slot] ^ decodeFlipRoute(encoded, perAxisRoute);
     vec3 worldNormal = faceOutwardNormal6(faceId);
+    if (normalOptions.x != 0 && !detachedCanvas && perAxisRoute == 0 && residualYaw != 0.0) {
+        worldNormal = rotateYawZInv(faceOutwardNormal(slot), visualYaw);
+        if (decodeFlipRoute(encoded, perAxisRoute) != 0) worldNormal = -worldNormal;
+    }
     if (detachedCanvas && visibleFaceIds.w == 0) {
         worldNormal = rotateByQuat(detachedFaceViewNormal(
             faceId,
