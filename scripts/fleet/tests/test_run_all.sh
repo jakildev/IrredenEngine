@@ -56,6 +56,8 @@ assert_contains "$out" "FAIL  test_broken.sh (exit 1)" "T2 FAIL line carries the
 assert_contains "$out" "boom in broken" "T2 failing suite's output is echoed for triage"
 assert_contains "$out" "1 passed, 1 failed, 0 skipped" "T2 summary counts the failure"
 assert_contains "$out" "failed: test_broken.sh" "T2 names the failing suite"
+assert_contains "$out" "::error title=fleet-tests failed suites::test_broken.sh@?" \
+    "T2 the failed suite set is emitted as a check-run annotation; no failure line is unitemized"
 
 echo "T3: a failing .py suite is caught too"
 d=$(new_sandbox t3)
@@ -164,6 +166,9 @@ out=$(bash "$d/run_all.sh" 2>&1); rc=$?
 assert_eq "$rc" "1" "T13 exit 1 — a skip must not mask a real failure"
 assert_contains "$out" "0 passed, 1 failed, 1 skipped" "T13 summary counts failures and skips independently"
 assert_contains "$out" "failed: test_broken.sh" "T13 still names the real failure"
+annotation=$(printf '%s\n' "$out" | grep -a '^::error title=fleet-tests failed suites::')
+assert_eq "$annotation" "::error title=fleet-tests failed suites::test_broken.sh@?" \
+    "T13 a skipped suite is never annotated as failed"
 
 # The runner sits one level under the wrapper in the real tree, so these two
 # sandboxes nest it the same way. The wrapper is the REAL one: the scrub set is
@@ -199,5 +204,111 @@ d=$(new_sandbox t15)
 fixture_env_probe "$d"
 out=$(FLEET_ROLE=worker FLEET_ROLE_MODEL=opus bash "$d/run_all.sh" 2>&1); rc=$?
 assert_contains "$out" "role=worker model=opus" "T15 the scrub comes from the wrapper, not a blanket unset"
+
+# The annotation token for suite $2 in run_all output $1.
+suite_token() {
+    printf '%s\n' "$1" | grep -a '^::error title=fleet-tests failed suites::' \
+        | sed 's/^::error title=fleet-tests failed suites:://' | tr ' ' '\n' | grep -a "^$2@"
+}
+fixture_fail_lines() {  # $1 = dir, $2 = name, rest = lines the suite prints
+    local d="$1" name="$2"
+    shift 2
+    { echo '#!/usr/bin/env bash'
+      for line in "$@"; do printf 'echo %q\n' "$line"; done
+      echo 'exit 1'; } > "$d/test_$name.sh"
+}
+
+echo "T16: a failed suite's identity is its failure lines, stable across runs"
+d=$(new_sandbox t16a)
+fixture_fail_lines "$d" item "  ok: fine in $d" "  FAIL: alpha broke"
+printf '%s\n' 'import unittest' 'class T(unittest.TestCase):' \
+    '    def test_x(self):' '        self.fail("x")' 'unittest.main()' > "$d/test_pyitem.py"
+first=$(bash "$d/run_all.sh" 2>&1)
+second=$(bash "$d/run_all.sh" 2>&1)
+item_a=$(suite_token "$first" test_item.sh)
+assert_contains "$item_a" "test_item.sh@" "T16 an itemized bash failure is annotated with an identity"
+assert_absent "$item_a" "test_item.sh@?" "T16 a suite printing lib_assert FAIL lines is itemized"
+py_a=$(suite_token "$first" test_pyitem.py)
+assert_absent "$py_a" "test_pyitem.py@?" "T16 a unittest FAIL header is itemized"
+assert_eq "$(suite_token "$second" test_item.sh) $(suite_token "$second" test_pyitem.py)" \
+    "$item_a $py_a" "T16 the same failures give the same identity on a second run"
+
+d=$(new_sandbox t16b)
+fixture_fail_lines "$d" item "  ok: other output in $d" "  FAIL: alpha broke" "  FAIL: alpha broke"
+assert_eq "$(suite_token "$(bash "$d/run_all.sh" 2>&1)" test_item.sh)" "$item_a" \
+    "T16 only the distinct failure lines count, not the rest of the output"
+
+d=$(new_sandbox t16c)
+fixture_fail_lines "$d" item "  FAIL: alpha broke" "  FAIL: beta broke"
+item_c=$(suite_token "$(bash "$d/run_all.sh" 2>&1)" test_item.sh)
+assert_contains "$item_c" "test_item.sh@" "T16 a second failure is still itemized"
+if [[ -n "$item_c" && "$item_c" != "$item_a" ]]; then
+    ok "T16 a second failure in the same suite changes its identity"
+else
+    bad "T16 a second failure in the same suite changes its identity ($item_c vs $item_a)"
+fi
+
+d=$(new_sandbox t16d)
+printf '#!/usr/bin/env bash\necho "  FAIL: alpha broke"\nsleep 30\n' > "$d/test_hang.sh"
+if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; then
+    assert_eq "$(suite_token "$(bash "$d/run_all.sh" --timeout 1 2>&1)" test_hang.sh)" \
+        "test_hang.sh@?" "T16 a timed-out suite is unitemized even with failure lines"
+else
+    ok "T16 timeout arm skipped — no timeout(1)/gtimeout(1) on this host"
+fi
+
+# Each pair below runs in ONE sandbox, rewriting the fixture between runs, so
+# the suite path a traceback names is identical and only the detail differs.
+assert_ids_differ() {  # $1 = id, $2 = other id, $3 = msg
+    if [[ -n "$1" && "$1" != *@\? && "$1" != "$2" ]]; then ok "$3"; else bad "$3 ($1 vs $2)"; fi
+}
+unittest_fixture() {  # $1 = dir, $2 = the value compared with 1
+    printf '%s\n' 'import unittest' 'class T(unittest.TestCase):' \
+        '    def test_value(self):' "        self.assertEqual(1, $2)" 'unittest.main()' > "$1/test_pyval.py"
+}
+lib_assert_fixture() {  # $1 = dir, $2 = the actual value
+    printf '%s\n' '#!/usr/bin/env bash' 'source "$(dirname "$0")/lib_assert.sh"' \
+        "assert_eq \"$2\" 1 \"value matches\"" 'summarize "val"' > "$1/test_val.sh"
+}
+
+echo "T17: the identity carries the failure detail, not just the header"
+d=$(new_sandbox t17a)
+unittest_fixture "$d" 2
+py_2=$(suite_token "$(bash "$d/run_all.sh" 2>&1)" test_pyval.py)
+py_2b=$(suite_token "$(bash "$d/run_all.sh" 2>&1)" test_pyval.py)
+unittest_fixture "$d" 3
+py_3=$(suite_token "$(bash "$d/run_all.sh" 2>&1)" test_pyval.py)
+assert_eq "$py_2b" "$py_2" "T17 one unittest assertion failing alike twice keeps its identity"
+assert_ids_differ "$py_3" "$py_2" \
+    "T17 the same unittest test failing a different assertEqual changes the identity"
+
+d=$(new_sandbox t17b)
+cp "$SCRIPT_DIR/lib_assert.sh" "$SCRIPT_DIR/lib_preflight.sh" "$d/"
+lib_assert_fixture "$d" 2
+val_2=$(suite_token "$(bash "$d/run_all.sh" 2>&1)" test_val.sh)
+val_2b=$(suite_token "$(bash "$d/run_all.sh" 2>&1)" test_val.sh)
+lib_assert_fixture "$d" 3
+val_3=$(suite_token "$(bash "$d/run_all.sh" 2>&1)" test_val.sh)
+assert_eq "$val_2b" "$val_2" "T17 one lib_assert failure repeated keeps its identity"
+assert_ids_differ "$val_3" "$val_2" \
+    "T17 one lib_assert message with a different actual value changes the identity"
+
+d=$(new_sandbox t17c)
+cat > "$d/test_tmp.sh" <<'EOF'
+#!/usr/bin/env bash
+t=$(mktemp -d); p=$(python3 -c 'import tempfile; print(tempfile.mkdtemp())')
+echo "  FAIL: fixture dir unreadable"
+echo "        in: $t and $p"
+rm -rf "$t" "$p"
+exit 1
+EOF
+tmp_a=$(suite_token "$(bash "$d/run_all.sh" 2>&1)" test_tmp.sh)
+assert_eq "$(suite_token "$(bash "$d/run_all.sh" 2>&1)" test_tmp.sh)" "$tmp_a" \
+    "T17 random mktemp/tempfile names in the detail do not change the identity"
+
+d=$(new_sandbox t17d)
+fixture_fail_lines "$d" item "  FAIL: alpha broke" "" "trailing $d $RANDOM"
+assert_eq "$(suite_token "$(bash "$d/run_all.sh" 2>&1)" test_item.sh)" "$item_a" \
+    "T17 output after the blank line closing a lib_assert block is not detail"
 
 summarize "run_all.sh tests"

@@ -64,7 +64,7 @@ from fleet_epic_membership import epic_refs
 # ETAG_DIR aliases the module's shared etag-cache default so the two never
 # drift; it's mkdir'd in main() and the fetchers rely on that default cache_dir.
 from fleet_gh_poll import DEFAULT_CACHE_DIR as ETAG_DIR
-from fleet_gh_poll import conditional_get, last_rate_limit
+from fleet_gh_poll import cache_entry_path, conditional_get, last_rate_limit
 from fleet_model_field import MODEL_CLASSES, declared_class
 from fleet_stack_base import unsafe_base_reason
 
@@ -599,7 +599,38 @@ def derive_closes_refs(body, repo):
 # inside a game PR). A schema-3 record lacks the key AND can under-report the
 # existing one; without the bump a quiet repo would serve records that leave
 # a cross-repo-remedied task claimable indefinitely.
-PR_RECORD_SCHEMA = 4
+#
+# 4 -> 5: checks added. The merger signal withholds merge-ready while the
+# head has a failed or unconcluded check; a schema-4 record lacks the key and
+# would read as clean for every PR until the next ETag flip.
+PR_RECORD_SCHEMA = 5
+
+# statusCheckRollup reduced to the one reading the merger signal needs.
+# mergeStateStatus cannot make this cut: GitHub reports UNSTABLE for a check
+# still running as well as for one that failed. The failed conclusions are
+# fleet-decisions' FAILED set; a cancelled or stale run is no reading.
+_CHECK_RUN_RED = frozenset({"FAILURE", "TIMED_OUT", "STARTUP_FAILURE"})
+_CHECK_RUN_GREEN = frozenset({"SUCCESS", "NEUTRAL", "SKIPPED"})
+_STATUS_CONTEXT_RED = frozenset({"FAILURE", "ERROR"})
+
+
+def _reduce_checks(rollup):
+    """"red" when any check on the head failed, else "unread" when any has
+    not concluded green (queued, running, cancelled, a status still
+    EXPECTED), else "green" — a head with no checks included."""
+    reading = "green"
+    for check in rollup or ():
+        if check.get("__typename") == "StatusContext":
+            state = check.get("state")
+            red, green = state in _STATUS_CONTEXT_RED, state == "SUCCESS"
+        else:
+            conclusion = check.get("conclusion") if check.get("status") == "COMPLETED" else None
+            red, green = conclusion in _CHECK_RUN_RED, conclusion in _CHECK_RUN_GREEN
+        if red:
+            return "red"
+        if not green:
+            reading = "unread"
+    return reading
 
 
 def _fetch_prs_graphql(repo):
@@ -611,7 +642,7 @@ def _fetch_prs_graphql(repo):
         # head oid invalidates the cached detail/diff). It rides the same list
         # poll, so requesting it costs no extra call.
         "number,title,headRefName,headRefOid,baseRefName,author,labels,mergeable,"
-        "isDraft,reviews,updatedAt,body",
+        "statusCheckRollup,isDraft,reviews,updatedAt,body",
     ])
     if out is None:
         return None
@@ -630,6 +661,7 @@ def _fetch_prs_graphql(repo):
     for pr in prs:
         pr["labels"] = sorted(label["name"] for label in pr.get("labels", []))
         pr["author"] = pr.get("author", {}).get("login", "")
+        pr["checks"] = _reduce_checks(pr.pop("statusCheckRollup", None))
         # Retain a body only on the LATEST review per PR. Exactly two
         # consumers read this array: the sonnet reviewer tests reviews[].author
         # (has any fleet review landed yet), and the opus reviewer tests the
@@ -715,7 +747,121 @@ def _drop_prs_closed_since(repo, prev, rest_body):
     return kept
 
 
+# A check completing on a PR's head bumps neither the PR's updated_at nor the
+# open-list ETag, so the 304 fast path would serve a cached `checks` until an
+# unrelated list change. The heads whose merger signal reads it have both
+# surfaces statusCheckRollup is built from polled by ETag instead — check runs
+# and commit statuses, each list under its key; the entries live in their own
+# directory because they are keyed by head sha, and each fetch_prs call prunes
+# the ones it did not poll.
+HEAD_CHECKS_ETAG_DIR = ETAG_DIR / "head-checks"
+HEAD_CHECKS_SURFACES = (("check-runs", "check_runs"), ("status", "statuses"))
+HEAD_CHECKS_PER_PAGE = 100
+HEAD_CHECKS_MAX_PAGES = 3
+_CHECK_READ_SIGNALS = frozenset({"merge-ready", "checks-red", "checks-unread"})
+
+
+def _check_reading_prs(prs):
+    return [pr for pr in prs if _merger_action_signal(
+        set(pr.get("labels") or ()), pr.get("mergeable"),
+        pr.get("baseRefName", "master"), pr.get("checks"),
+    ) in _CHECK_READ_SIGNALS]
+
+
+def _rest_check_as_rollup_node(surface, item):
+    """A REST check run or commit status in the statusCheckRollup node shape
+    _reduce_checks reads (the REST enums are the GraphQL ones, lower-cased)."""
+    if surface == "status":
+        return {"__typename": "StatusContext",
+                "state": str(item.get("state") or "").upper()}
+    return {"__typename": "CheckRun",
+            "status": str(item.get("status") or "").upper(),
+            "conclusion": str(item.get("conclusion") or "").upper()}
+
+
+def _poll_head_checks(repo, sha, keep):
+    """Conditional-GETs both check surfaces of `sha`, adding each page's ETag
+    entry to `keep`. Returns (moved, reading): `reading` is the head's
+    `checks` as _reduce_checks reads the two REST lists, None when a page was
+    unparseable or a list was still full at the page cap — both of which also
+    read as moved, as does a poll error. An unchanged page is a 304 for zero
+    quota."""
+    moved = False
+    nodes = []
+    complete = True
+    for surface, key in HEAD_CHECKS_SURFACES:
+        path = f"commits/{sha}/{surface}"
+        for page in range(1, HEAD_CHECKS_MAX_PAGES + 1):
+            params = {"per_page": str(HEAD_CHECKS_PER_PAGE), "page": str(page)}
+            keep.add(cache_entry_path(repo, path, params=params,
+                                      cache_dir=HEAD_CHECKS_ETAG_DIR))
+            changed, body = conditional_get(repo, path, params=params,
+                                            cache_dir=HEAD_CHECKS_ETAG_DIR)
+            moved = moved or changed
+            try:
+                items = json.loads(body)[key]
+                nodes.extend(_rest_check_as_rollup_node(surface, item) for item in items)
+            except (TypeError, ValueError, KeyError, AttributeError):
+                complete = False
+                break
+            if len(items) < HEAD_CHECKS_PER_PAGE:
+                break
+        else:
+            complete = False
+    if not complete:
+        return True, None
+    return moved, _reduce_checks(nodes)
+
+
+def _check_state_moved(repo, prs, keep):
+    """Polls every head in `prs` whose merger signal reads `checks`. Returns
+    (moved, polled): whether any may have changed since its last poll, and
+    the shas polled. A record with no head sha reads as moved."""
+    moved = False
+    polled = set()
+    for pr in _check_reading_prs(prs):
+        sha = pr.get("headRefOid")
+        if not sha:
+            moved = True
+            continue
+        polled.add(sha)
+        moved = _poll_head_checks(repo, sha, keep)[0] or moved
+    return moved, polled
+
+
+def _prime_fetched_heads(repo, fresh, polled, keep):
+    """Primes the head-check ETags of every head in `fresh` that the pre-fetch
+    poll did not cover, so the next 304 tick does not read it as moved. Such
+    a head is read after the GraphQL fetch, and a check that moved between the
+    two reads would leave its ETag ahead of the record; its REST reading must
+    therefore agree with the record's `checks`, and a disagreement bypasses
+    the next reuse, whose pre-fetch poll then covers the head."""
+    for pr in _check_reading_prs(fresh):
+        sha = pr.get("headRefOid")
+        if not sha or sha in polled:
+            continue
+        if _poll_head_checks(repo, sha, keep)[1] != pr.get("checks"):
+            _prs_refetch_pending.add(repo)
+
+
+def _prune_head_checks(keep):
+    # Only a call that polled prunes: a head that stopped being polled keeps
+    # its entry until the next call that polls any head.
+    if keep:
+        for entry in next(iter(keep)).parent.glob("*.json"):
+            if entry not in keep:
+                entry.unlink(missing_ok=True)
+
+
 def fetch_prs(repo, prev=None):
+    keep = set()
+    try:
+        return _fetch_prs_gated(repo, prev, keep)
+    finally:
+        _prune_head_checks(keep)
+
+
+def _fetch_prs_gated(repo, prev, keep):
     # The open-PR list is the one read that STAYS on GraphQL — it needs reviews
     # + mergeable, which the REST list omits. So gate it: a cheap conditional
     # REST GET /pulls?state=open is the change-detector. 304 (unchanged) → reuse
@@ -726,11 +872,17 @@ def fetch_prs(repo, prev=None):
     # review or a label edit bumps a PR's updated_at (→ new body → new ETag), and
     # a merge/close removes the PR from the open set (→ new ETag). What it does
     # NOT cover is `mergeable` settling from UNKNOWN after such a refetch — that
-    # is the bounded re-query below. On a detector error conditional_get returns
+    # is the bounded re-query below — or a check changing on a head, which
+    # _check_state_moved polls for. On a detector error conditional_get returns
     # (True, None) → changed=True → we fall through to GraphQL, so a failed
     # detector degrades to today's behavior. per_page=100 so the detector's
     # single page covers every open PR (REST defaults to 30); sort=updated keeps
     # the freshest PRs on page 1 if the set ever nears the cap.
+    #
+    # Every GraphQL fetch is bracketed by head-check polls: the heads of the
+    # list it replaces before it, so a check moving during the fetch still
+    # reads as moved next tick, and the heads only the new list carries after
+    # it (_prime_fetched_heads) — so one list change costs one GraphQL call.
     changed, body = conditional_get(repo, "pulls", params={
         "state": "open", "sort": "updated", "direction": "desc", "per_page": "100",
     })
@@ -743,30 +895,39 @@ def fetch_prs(repo, prev=None):
     if (not changed and prev is not None and repo not in _prs_refetch_pending
             and all(p.get("schema") == PR_RECORD_SCHEMA for p in prev)):
         prev = _drop_prs_closed_since(repo, prev, body)
+        checks_moved, polled = _check_state_moved(repo, prev, keep)
         unknown = _unknown_mergeable_count(prev)
         used = _mergeable_requery_ticks.get(repo, 0)
-        if unknown and used < MERGEABLE_UNKNOWN_REQUERY_CAP:
+        requery = unknown and used < MERGEABLE_UNKNOWN_REQUERY_CAP
+        if requery:
             _mergeable_requery_ticks[repo] = used + 1
             if used == 0:
                 log(f"{repo}: {unknown} open PR(s) still report mergeable=UNKNOWN "
                     f"— re-querying GraphQL past the 304 gate (up to "
                     f"{MERGEABLE_UNKNOWN_REQUERY_CAP} ticks, #3038)")
+        if requery or checks_moved:
             fresh = _fetch_prs_graphql(repo)
             if fresh is None:
                 # A failed re-query is not a reason to degrade a valid cache —
                 # keep the reused list; the budget already advanced so this
-                # cannot spin.
+                # cannot spin. A check move's ETag already advanced too, so
+                # the next tick bypasses the reuse rather than trusting it.
+                if checks_moved:
+                    _prs_refetch_pending.add(repo)
                 return prev
             if not _unknown_mergeable_count(fresh):
                 _mergeable_requery_ticks[repo] = 0
+            _prime_fetched_heads(repo, fresh, polled, keep)
             return fresh
         return prev
+    polled = _check_state_moved(repo, prev, keep)[1] if prev is not None else set()
     _mergeable_requery_ticks[repo] = 0
     fresh = _fetch_prs_graphql(repo)
     if fresh is None:
         _prs_refetch_pending.add(repo)
     else:
         _prs_refetch_pending.discard(repo)
+        _prime_fetched_heads(repo, fresh, polled, keep)
     return fresh
 
 
@@ -3268,19 +3429,29 @@ _MERGER_PROJECTION_SKIP_LABELS = frozenset(_SMOKE_PENDING_LABELS | {
 })
 
 
-def _merger_action_signal(labels, mergeable, base_ref):
+def _merger_action_signal(labels, mergeable, base_ref, checks=None):
     """Canonical signal for the merger's view of a PR.
 
     Returns one of:
-        "merge-ready"      — fleet:approved + MERGEABLE + base==master + no skip
-        "needs-resolve"    — approved but CONFLICTING / UNSTABLE / BEHIND
+        "merge-ready"      — fleet:approved + MERGEABLE + base==master + no skip,
+                             and every check on the head concluded green
+        "checks-red"       — the same, but a check on the head failed
+        "checks-unread"    — the same, but a check on the head has not
+                             concluded (queued, running, cancelled)
+        "needs-resolve"    — approved but CONFLICTING
         None               — merger has no action right now (skip)
 
     Only `needs-resolve` is merger WORK. A merge-ready PR sits on the
     human's merge click (FLEET.md § Who merges): the merger has no action
     on it, so project_merger leaves it out of the trigger hash — its
     appearance, and the merge that removes it, must never arm the lane.
-    The slice still carries it for the role to read.
+    The slice still carries it for the role to read. `checks-red` and
+    `checks-unread` are the same non-action with the reading the human
+    merges against: a PR whose head has a failed or unconcluded check is
+    never reported ready, and a running check is never reported red.
+    `checks` is the record's reduced statusCheckRollup (_reduce_checks);
+    `mergeable` alone never carries check state. A record without it reads
+    merge-ready.
 
     An approved PR with `base != master` is a native-stack child whose
     parent hasn't merged yet — GitHub owns its base management and the
@@ -3326,12 +3497,12 @@ def _merger_action_signal(labels, mergeable, base_ref):
     if labels & _MERGER_PROJECTION_SKIP_LABELS:
         return None
     approved = "fleet:approved" in labels
-    if mergeable in ("CONFLICTING", "UNSTABLE", "BEHIND") and approved:
+    if mergeable == "CONFLICTING" and approved:
         if any(label.startswith("fleet:claim-") for label in labels):
             return None
         return "needs-resolve"
     if approved and mergeable == "MERGEABLE" and base_ref == "master":
-        return "merge-ready"
+        return {"red": "checks-red", "unread": "checks-unread"}.get(checks, "merge-ready")
     return None
 
 
@@ -3346,7 +3517,8 @@ def project_merger(state):
         for pr in repo_state.get("prs", []):
             labels = set(pr["labels"])
             signal = _merger_action_signal(
-                labels, pr.get("mergeable"), pr.get("baseRefName", "master")
+                labels, pr.get("mergeable"), pr.get("baseRefName", "master"),
+                pr.get("checks"),
             )
             if signal != "needs-resolve":
                 continue
@@ -3361,7 +3533,7 @@ _MERGER_LLM_SKIP_LABELS = frozenset({"fleet:semantic-conflict"})
 _MERGER_LLM_SKIP_PREFIXES = ("fleet:amending-", "fleet:claim-")
 
 
-def _merger_candidate_signal(labels, mergeable, base_ref):
+def _merger_candidate_signal(labels, mergeable, base_ref, checks=None):
     """The signal under which tier-0 (fleet-rebase) can route a PR to the
     LLM merger pass as a `merge:<repo>:<N>` target, or None.
 
@@ -3374,7 +3546,7 @@ def _merger_candidate_signal(labels, mergeable, base_ref):
     if (labels & (_MERGER_PROJECTION_SKIP_LABELS | _MERGER_LLM_SKIP_LABELS)
             or any(label.startswith(_MERGER_LLM_SKIP_PREFIXES) for label in labels)):
         return None
-    signal = _merger_action_signal(labels, mergeable, base_ref)
+    signal = _merger_action_signal(labels, mergeable, base_ref, checks)
     if signal == "needs-resolve":
         return signal
     if mergeable in ("CONFLICTING", "UNKNOWN"):
@@ -3877,7 +4049,8 @@ def slice_merger(state):
             base_ref = pr.get("baseRefName", "master")
             approved = "fleet:approved" in labels
             blocked = mergeable not in (None, "", "MERGEABLE", "UNKNOWN")
-            candidate = _merger_candidate_signal(labels, mergeable, base_ref)
+            candidate = _merger_candidate_signal(labels, mergeable, base_ref,
+                                                 pr.get("checks"))
             if approved or blocked or candidate:
                 out["prs"].append(_slice_pr_with_repo(repo_key, pr))
             if candidate:

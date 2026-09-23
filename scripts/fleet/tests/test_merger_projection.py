@@ -38,7 +38,8 @@ _merger_action_signal = _mod._merger_action_signal
 
 def _signal(pr):
     return _merger_action_signal(set(pr["labels"]), pr.get("mergeable"),
-                                 pr.get("baseRefName", "master"))
+                                 pr.get("baseRefName", "master"),
+                                 pr.get("checks"))
 
 
 def _state(prs):
@@ -51,8 +52,8 @@ def _state_eng_game(engine_prs, game_prs):
 
 
 def _pr(num, *, labels=None, mergeable="MERGEABLE", base="master",
-        head="claude/feat", author="bot"):
-    return {
+        head="claude/feat", author="bot", checks=None):
+    pr = {
         "number": num,
         "title": f"T-{num}: feat",
         "headRefName": head,
@@ -61,6 +62,9 @@ def _pr(num, *, labels=None, mergeable="MERGEABLE", base="master",
         "mergeable": mergeable,
         "author": author,
     }
+    if checks is not None:
+        pr["checks"] = checks
+    return pr
 
 
 def _hash(state):
@@ -250,6 +254,35 @@ class SignalSemantics(unittest.TestCase):
         self.assertEqual(_signal(pr), "merge-ready")
         # …and merge-ready is not a projection row.
         self.assertEqual(project_merger(_state([pr])), [])
+
+    def test_failing_checks_withhold_merge_ready(self):
+        # `mergeable` stays MERGEABLE under a failed check; only the reduced
+        # rollup carries it.
+        pr = _pr(101, labels=["fleet:approved"], checks="red")
+        self.assertEqual(_signal(pr), "checks-red")
+        self.assertEqual(project_merger(_state([pr])), [],
+                         "a red check is the human's reading, not merger work")
+        self.assertEqual(slice_merger(_state([pr]))["merger_candidates"], [])
+
+    def test_a_running_check_is_unread_not_red(self):
+        pr = _pr(101, labels=["fleet:approved"], checks="unread")
+        self.assertEqual(_signal(pr), "checks-unread")
+        self.assertEqual(project_merger(_state([pr])), [])
+        self.assertEqual(slice_merger(_state([pr]))["merger_candidates"], [])
+
+    def test_green_checks_are_merge_ready(self):
+        self.assertEqual(_signal(_pr(101, labels=["fleet:approved"], checks="green")),
+                         "merge-ready")
+
+    def test_a_record_without_checks_reads_merge_ready(self):
+        # A schema-4 record has no key; the schema bump refetches it.
+        self.assertEqual(_signal(_pr(101, labels=["fleet:approved"])), "merge-ready")
+
+    def test_check_state_flip_does_not_arm_the_merger(self):
+        conflict = _pr(102, labels=["fleet:approved"], mergeable="CONFLICTING")
+        hashes = {_hash(_state([_pr(101, labels=["fleet:approved"], checks=checks), conflict]))
+                  for checks in ("red", "unread", "green")}
+        self.assertEqual(len(hashes), 1)
 
     def test_approved_needs_fix_not_merge_ready(self):
         # fleet:approved + human:needs-fix must yield no signal (not
@@ -461,6 +494,60 @@ class MergerCandidates(unittest.TestCase):
         # An unrecognised state the slice would otherwise drop still rides
         # `prs` when it is a candidate.
         self.assertEqual([pr["number"] for pr in out["prs"]], [99])
+
+
+class ReduceChecks(unittest.TestCase):
+    """statusCheckRollup, as `gh pr list --json statusCheckRollup` returns it,
+    reduced to the reading the merger signal takes."""
+
+    @staticmethod
+    def _run(status, conclusion=""):
+        return {"__typename": "CheckRun", "name": "c", "status": status,
+                "conclusion": conclusion}
+
+    @staticmethod
+    def _status(state):
+        return {"__typename": "StatusContext", "context": "c", "state": state}
+
+    def test_a_running_check_beside_green_ones_is_unread(self):
+        # The live shape GitHub reports UNSTABLE for while nothing has failed.
+        rollup = [self._run("IN_PROGRESS"),
+                  self._run("COMPLETED", "SKIPPED"),
+                  self._run("COMPLETED", "SUCCESS")]
+        self.assertEqual(_mod._reduce_checks(rollup), "unread")
+
+    def test_a_failure_is_red_even_beside_a_running_check(self):
+        rollup = [self._run("IN_PROGRESS"), self._run("COMPLETED", "FAILURE")]
+        self.assertEqual(_mod._reduce_checks(rollup), "red")
+
+    def test_failed_conclusions_are_red(self):
+        for conclusion in ("FAILURE", "TIMED_OUT", "STARTUP_FAILURE"):
+            with self.subTest(conclusion=conclusion):
+                self.assertEqual(
+                    _mod._reduce_checks([self._run("COMPLETED", conclusion)]), "red")
+
+    def test_unconcluded_runs_are_unread(self):
+        for status, conclusion in (("QUEUED", ""), ("WAITING", ""), ("PENDING", ""),
+                                   ("COMPLETED", "CANCELLED"), ("COMPLETED", "STALE"),
+                                   ("COMPLETED", "ACTION_REQUIRED")):
+            with self.subTest(status=status, conclusion=conclusion):
+                self.assertEqual(
+                    _mod._reduce_checks([self._run(status, conclusion)]), "unread")
+
+    def test_passing_conclusions_are_green(self):
+        rollup = [self._run("COMPLETED", c) for c in ("SUCCESS", "NEUTRAL", "SKIPPED")]
+        self.assertEqual(_mod._reduce_checks(rollup), "green")
+
+    def test_status_contexts(self):
+        for state, reading in (("FAILURE", "red"), ("ERROR", "red"),
+                               ("PENDING", "unread"), ("EXPECTED", "unread"),
+                               ("SUCCESS", "green")):
+            with self.subTest(state=state):
+                self.assertEqual(_mod._reduce_checks([self._status(state)]), reading)
+
+    def test_no_checks_is_green(self):
+        self.assertEqual(_mod._reduce_checks([]), "green")
+        self.assertEqual(_mod._reduce_checks(None), "green")
 
 
 if __name__ == "__main__":

@@ -78,6 +78,17 @@ def _review(day: int, with_phrase: bool = False, author: str = "jakildev") -> di
     }
 
 
+# A live head's rollup carries a dozen checks, each with names, URLs and
+# timestamps; the projection must reduce it, never carry it.
+def _check_run(i: int) -> dict:
+    return {
+        "__typename": "CheckRun", "name": f"check-{i}", "workflowName": f"workflow-{i}",
+        "status": "COMPLETED", "conclusion": "SUCCESS",
+        "startedAt": "2026-08-08T00:00:00Z", "completedAt": "2026-08-08T00:01:00Z",
+        "detailsUrl": f"https://github.com/{_REPO}/actions/runs/{i}/job/{i}",
+    }
+
+
 def _pr(n: int, reviews=None, labels=None) -> dict:
     return {
         "number": n,
@@ -89,6 +100,7 @@ def _pr(n: int, reviews=None, labels=None) -> dict:
         "labels": [{"name": name} for name in (labels if labels is not None
                                                else ["fleet:approved"])],
         "mergeable": "MERGEABLE",
+        "statusCheckRollup": [_check_run(i) for i in range(12)],
         "isDraft": False,
         # Reviews arrive oldest-first from gh; the phrase rides the LATEST one.
         "reviews": reviews if reviews is not None else [
@@ -463,8 +475,17 @@ class TestReuseGuardSchemaMarker(unittest.TestCase):
         }
 
     def _fetch_on_304(self, prev):
-        with patch.object(_mod, "conditional_get",
-                          side_effect=lambda *a, **k: (False, None)), \
+        # Every approved fixture PR is merge-ready, so its head's checks are
+        # polled too: unchanged, empty lists.
+        def detector(_repo, path, **_k):
+            if path.endswith("/check-runs"):
+                return (False, json.dumps({"total_count": 0, "check_runs": []}))
+            if path.endswith("/status"):
+                return (False, json.dumps({"total_count": 0, "statuses": []}))
+            return (False, None)
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.object(_mod, "HEAD_CHECKS_ETAG_DIR", Path(tmp)), \
+                patch.object(_mod, "conditional_get", side_effect=detector), \
                 patch.object(_mod, "run_capture", side_effect=self._counting_gh):
             return _mod.fetch_prs(_REPO, prev=prev)
 
@@ -477,6 +498,11 @@ class TestReuseGuardSchemaMarker(unittest.TestCase):
     def test_shipped_projection_stamps_the_current_schema(self):
         for pr in _project([_pr(_FIRST_PR), _pr(_FIRST_PR + 1)]):
             self.assertEqual(pr["schema"], _mod.PR_RECORD_SCHEMA)
+
+    def test_the_check_rollup_is_reduced_not_carried(self):
+        for pr in _project([_pr(_FIRST_PR)]):
+            self.assertEqual(pr["checks"], "green")
+            self.assertNotIn("statusCheckRollup", pr)
 
     def test_current_schema_implies_closes_issues(self):
         # A record at the current schema carries closes_issues by

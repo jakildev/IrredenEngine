@@ -22,6 +22,22 @@
 # line is the reading the human merges against. An unreadable coverage answer
 # prints its own hold; it is never a clean one.
 #
+# A red that master already carries is told apart from the PR's own. When the
+# head and master both failed a workflow whose jobs annotate their failed
+# suites (run_all.sh's `fleet-tests failed suites` annotation, one
+# `<suite>@<identity>` per failed suite), the two sets are compared: a suite
+# failing on the head with no identical failure on master is the hold, and a
+# head failing exactly as master does is a `note:`, not a hold. The identity
+# is a checksum of the suite's failure blocks — each failure header with its
+# assertion detail — so a second failure, or the same assertion failing on a
+# different value, in a suite master already fails is still the PR's own; an
+# unitemized identity (`?`)
+# never matches. A head whose run passed before master's later run of the same
+# workflow failed is held to re-run: its green predates the break, and a
+# merge on it can land a second red behind the first. GitHub's own merge-box
+# state rides along from `gh pr list`: BEHIND is an Update-branch hold, and
+# UNSTABLE with no failed run above accounts for it is held as unread.
+#
 # Read-only: changes no labels, writes no state.
 #
 # Usage:
@@ -74,7 +90,7 @@ for repo in "${REPOS[@]}"; do
     prs_f="$workdir/$idx-prs.json"
     issues_f="$workdir/$idx-issues.json"
     if gh pr list --repo "$repo" --state open \
-            --json number,title,labels,url,headRefOid --limit 200 > "$prs_f" 2>/dev/null \
+            --json number,title,labels,url,headRefOid,mergeStateStatus --limit 200 > "$prs_f" 2>/dev/null \
         && gh issue list --repo "$repo" --state open \
             --json number,title,labels,url --limit 200 > "$issues_f" 2>/dev/null; then
         printf '%s\t%s\t%s\n' "$repo" "$prs_f" "$issues_f" >> "$manifest"
@@ -166,6 +182,10 @@ PR_FILTER_KEYS = {"paths", "paths-ignore", "branches", "branches-ignore"}
 DEFAULT_PR_TYPES = {"opened", "synchronize", "reopened"}
 FAILED = {"failure", "timed_out", "startup_failure"}
 WORKFLOW_DIR = ".github/workflows"
+# The annotation title run_all.sh emits on a failed fleet-test run; its
+# message is the failed suites, space-separated, each `<name>@<identity>`.
+SUITES_ANNOTATION_TITLE = "fleet-tests failed suites"
+UNITEMIZED = "?"
 
 
 class Unreadable(Exception):
@@ -187,6 +207,22 @@ def gh_api(path):
         return json.loads(run.stdout)
     except ValueError as e:
         raise Unreadable(f"gh api {path.split('?')[0]}: not JSON") from e
+
+
+def gh_api_list(path, key=None, per_page=100, max_pages=3):
+    """Every item of the REST list at `path`, `key` naming the list inside an
+    object response. A 404 is an empty list. A list still full at
+    `max_pages` is Unreadable: its tail was never read."""
+    items = []
+    sep = "&" if "?" in path else "?"
+    for page in range(1, max_pages + 1):
+        query = f"{sep}per_page={per_page}" + (f"&page={page}" if page > 1 else "")
+        body = gh_api(path + query)
+        page_items = ((body or {}).get(key) if key else body) or []
+        items.extend(page_items)
+        if len(page_items) < per_page:
+            return items
+    raise Unreadable(f"gh api {path}: more than {per_page * max_pages} items")
 
 
 def _flow_items(value):
@@ -269,6 +305,7 @@ class GateReader:
         self.branch = None
         self.gates = None
         self.master = {}
+        self.suites = {}
 
     def load(self):
         if self.gates is not None:
@@ -289,22 +326,55 @@ class GateReader:
                 gates.append(entry["path"])
         self.gates = sorted(gates)
 
-    def master_conclusion(self, path):
+    def master_run(self, path):
+        """Master's latest completed run of the workflow at `path`, as GitHub
+        returns it, or None when it never ran."""
         if path not in self.master:
             name = path.rsplit("/", 1)[-1]
             runs = gh_api(f"repos/{self.slug}/actions/workflows/{name}/runs"
                           f"?branch={self.branch}&status=completed&per_page=1")
             latest = (runs or {}).get("workflow_runs") or []
-            self.master[path] = latest[0]["conclusion"] if latest else "none"
+            self.master[path] = latest[0] if latest else None
         return self.master[path]
 
+    def master_conclusion(self, path):
+        run = self.master_run(path)
+        return run["conclusion"] if run else "none"
+
+    def failed_suites(self, run_id):
+        """The `(suite, identity)` pairs a run's jobs annotated as failed, or
+        None when no job left the annotation — an older run, or a workflow
+        that does not emit it. A bare suite name reads as unitemized. A job's
+        id is its check-run id."""
+        if run_id in self.suites:
+            return self.suites[run_id]
+        found = None
+        for job in gh_api_list(f"repos/{self.slug}/actions/runs/{run_id}/jobs", key="jobs"):
+            for annotation in gh_api_list(f"repos/{self.slug}/check-runs/{job['id']}/annotations"):
+                if annotation.get("title") == SUITES_ANNOTATION_TITLE:
+                    found = found or set()
+                    for token in (annotation.get("message") or "").split():
+                        suite, _, identity = token.partition("@")
+                        found.add((suite, identity or UNITEMIZED))
+        self.suites[run_id] = found
+        return found
+
+    def own_failures(self, head_run, master_run):
+        """The suites failing on the head run with no identical failure on
+        master's, or None when either run carries no suite annotation."""
+        head = self.failed_suites(head_run["id"])
+        master = self.failed_suites(master_run["id"])
+        if head is None or master is None:
+            return None
+        return {suite for suite, identity in head
+                if identity == UNITEMIZED or (suite, identity) not in master}
+
     def holds(self, sha):
-        """The gate hold lines for head `sha`. A run is read by head sha, never
+        """`(holds, notes)` for head `sha`. A run is read by head sha, never
         by branch: a branch with any green run reads green even when its
         latest push triggered none. A cancelled run is no reading."""
         self.load()
-        runs = (gh_api(f"repos/{self.slug}/actions/runs?head_sha={sha}&per_page=100")
-                or {}).get("workflow_runs", [])
+        runs = gh_api_list(f"repos/{self.slug}/actions/runs?head_sha={sha}", key="workflow_runs")
         latest = {}
         for run in runs:
             if run.get("status") != "completed" or run.get("conclusion") == "cancelled":
@@ -314,21 +384,52 @@ class GateReader:
                     latest[path]["created_at"], latest[path]["id"]):
                 latest[path] = run
         short = sha[:9]
-        out = [f"{path} has no completed run on head {short} — Update branch to trigger it"
-               for path in self.gates if path not in latest]
-        out += [f"{path} failed on head {short} (master: {self.master_conclusion(path)})"
-                for path, run in sorted(latest.items()) if run["conclusion"] in FAILED]
-        return out
+        holds = [f"{path} has no completed run on head {short} — Update branch to trigger it"
+                 for path in self.gates if path not in latest]
+        notes = []
+        for path, run in sorted(latest.items()):
+            master = self.master_run(path)
+            master_failed = master is not None and master.get("conclusion") in FAILED
+            if run["conclusion"] in FAILED:
+                line = f"{path} failed on head {short} (master: {self.master_conclusion(path)})"
+                own = self.own_failures(run, master) if master_failed else None
+                if own is not None and not own:
+                    notes.append(f"{path} failed on head {short} with the same failures as "
+                                 "master — inherited, not this PR's to fix")
+                    continue
+                if own:
+                    line += (f" — {len(own)} suite(s) not failing this way on master: "
+                             f"{' '.join(sorted(own))}")
+                holds.append(line)
+            elif master_failed and (master.get("created_at") or "") > (run.get("created_at") or ""):
+                holds.append(f"{path} passed on head {short} at {run.get('created_at')}, but "
+                             f"master's later run ({master.get('created_at')}) failed — "
+                             "Update branch to re-run before merging")
+        return holds, notes
 
 
 def gate_holds(reader, pr):
+    """`(holds, notes)` for `pr`; an unreadable answer is a hold of its own."""
     sha = pr.get("headRefOid")
     if not sha:
-        return ["gate coverage unreadable (no head sha)"]
+        return ["gate coverage unreadable (no head sha)"], []
     try:
         return reader.holds(sha)
     except (Unreadable, KeyError, TypeError, ValueError) as e:
-        return [f"gate coverage unreadable ({e})"]
+        return [f"gate coverage unreadable ({e})"], []
+
+
+def merge_box_holds(pr, holds, notes):
+    """Holds from GitHub's own merge-box state that the run reading above did
+    not already account for."""
+    state = pr.get("mergeStateStatus")
+    if state == "BEHIND":
+        return ["behind master — Update branch (the branch rule requires it)"]
+    accounted = notes or any(" failed on head " in h or "unreadable" in h for h in holds)
+    if state == "UNSTABLE" and not accounted:
+        return ["GitHub reports a check on the head that has not passed (mergeStateStatus "
+                "UNSTABLE: failed or still running) that no completed run above accounts for"]
+    return []
 
 
 repos = []
@@ -351,7 +452,7 @@ def names(item):
     return [label["name"] for label in item.get("labels", [])]
 
 
-merge_queue = []   # (repo, item, has_nits, holds, wip_title_mismatch)
+merge_queue = []   # (repo, item, has_nits, holds, notes, wip_title_mismatch)
 decisions = []     # (repo, kind, item, tags)
 coding_improvements = 0
 untriaged = []
@@ -362,12 +463,14 @@ for repo, prs, issues, reader in repos:
     for pr in prs:
         labels = names(pr)
         if "fleet:approved" in labels:
+            gate, notes = gate_holds(reader, pr)
             holds = [
                 f"{label} outstanding" for label in labels
                 if label.startswith("fleet:needs-") and label.endswith("-smoke")
-            ] + gate_holds(reader, pr)
+            ] + gate
+            holds += merge_box_holds(pr, holds, notes)
             wip_mismatch = bool(WIP_TITLE_RE.search(pr["title"])) and "fleet:wip" not in labels
-            merge_queue.append((repo, pr, "fleet:has-nits" in labels, holds, wip_mismatch))
+            merge_queue.append((repo, pr, "fleet:has-nits" in labels, holds, notes, wip_mismatch))
         tags = [DECISION_TAGS[label] for label in labels if label in DECISION_TAGS]
         owner_labels = [label for label in labels if label.startswith("fleet:claim-")]
         owner_verdicts = sorted(OWNER_VERDICT_LABELS & set(labels))
@@ -397,11 +500,13 @@ print(f"fleet-decisions: {total} decision(s) waiting   [{scope}]")
 
 if merge_queue:
     print(f"\n## Merge queue ({len(merge_queue)})")
-    for repo, pr, has_nits, holds, wip_mismatch in merge_queue:
+    for repo, pr, has_nits, holds, notes, wip_mismatch in merge_queue:
         nits = "+nits" if has_nits else ""
         print(f"  {repo} PR #{pr['number']}  {pr['title']}  [approved{nits}]")
         for hold in holds:
             print(f"      hold: {hold}")
+        for note in notes:
+            print(f"      note: {note}")
         if wip_mismatch:
             print(
                 "      warn: title still carries [WIP] with no fleet:wip label — "

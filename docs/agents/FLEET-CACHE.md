@@ -52,7 +52,7 @@ section grows a field — that is the omission this table exists to close.
 
 | Section | Fields | Cap |
 |---|---|---|
-| `prs` | `number, title, headRefName, headRefOid, baseRefName, author, labels, mergeable, isDraft, reviews[], updatedAt, closes_issues, closes_cross_repo, schema` | open PRs, up to `OPEN_PR_FETCH_LIMIT` (200); `reviews[]` keeps a body only on the latest review per PR; `closes_issues` = closing refs to the PR's own repo (bare ints), `closes_cross_repo` = `{repo, number}` for GitHub's `Closes owner/repo#N` naming the other fleet repo |
+| `prs` | `number, title, headRefName, headRefOid, baseRefName, author, labels, mergeable, checks, isDraft, reviews[], updatedAt, closes_issues, closes_cross_repo, schema` | open PRs, up to `OPEN_PR_FETCH_LIMIT` (200); `checks` = the head's `statusCheckRollup` reduced to `red` (a check failed) / `unread` (one has not concluded) / `green`; `reviews[]` keeps a body only on the latest review per PR; `closes_issues` = closing refs to the PR's own repo (bare ints), `closes_cross_repo` = `{repo, number}` for GitHub's `Closes owner/repo#N` naming the other fleet repo |
 | `needs_plan` | `number, title, labels, updatedAt, blocked` | `fleet:needs-plan` open issues, one REST page (100) |
 | `plan_review` | `number, title, labels, updatedAt` | `fleet:plan-review` open issues, one REST page (100) |
 | `human_approved` | `number, title, labels, updatedAt, blocked` | `human:approved` + `fleet:agent-approved` open issues, deduped; up to 300 each (600 combined) |

@@ -92,7 +92,8 @@ EOF
 # `&` and `=` mapped to `_`, under $GH_STUB_API (a missing file is GitHub's
 # 404). `write_api.py <dir> <spec.json>` renders a spec — the default
 # branch's workflow files, the runs per head sha, and master's latest
-# conclusion per workflow — into that layout.
+# conclusion per workflow — into that layout. A list response is paged 100
+# per file, page 1 at the bare path and page N at `&page=N`, as GitHub serves it.
 
 cat > "$TMP/write_api.py" << 'PYEOF'
 import base64
@@ -110,6 +111,13 @@ def put(path, payload):
     (out / re.sub(r"[/?&=]", "_", path)).write_text(json.dumps(payload))
 
 
+def put_list(path, items, key=None):
+    for start in range(0, max(len(items), 1), 100):
+        page = items[start:start + 100]
+        suffix = f"&page={start // 100 + 1}" if start else ""
+        put(path + suffix, {"total_count": len(items), key: page} if key else page)
+
+
 put(f"repos/{slug}", {"default_branch": "master"})
 put(f"repos/{slug}/contents/.github/workflows?ref=master", [
     {"name": name, "path": f".github/workflows/{name}", "type": "file"}
@@ -118,11 +126,16 @@ for name, text in spec["workflows"].items():
     put(f"repos/{slug}/contents/.github/workflows/{name}?ref=master",
         {"content": base64.b64encode(text.encode()).decode()})
 for sha, runs in spec["runs"].items():
-    put(f"repos/{slug}/actions/runs?head_sha={sha}&per_page=100",
-        {"total_count": len(runs), "workflow_runs": runs})
-for name, conclusion in spec.get("master", {}).items():
+    put_list(f"repos/{slug}/actions/runs?head_sha={sha}&per_page=100", runs, "workflow_runs")
+for name, value in spec.get("master", {}).items():
+    run = value if isinstance(value, dict) else {"conclusion": value}
     put(f"repos/{slug}/actions/workflows/{name}/runs?branch=master&status=completed&per_page=1",
-        {"total_count": 1, "workflow_runs": [{"conclusion": conclusion}]})
+        {"total_count": 1, "workflow_runs": [run]})
+for run_id, job_ids in spec.get("jobs", {}).items():
+    put_list(f"repos/{slug}/actions/runs/{run_id}/jobs?per_page=100",
+             [{"id": j} for j in job_ids], "jobs")
+for job_id, annotations in spec.get("annotations", {}).items():
+    put_list(f"repos/{slug}/check-runs/{job_id}/annotations?per_page=100", annotations)
 PYEOF
 
 # The default fixture: three gates and two path-filtered workflows; every
@@ -503,6 +516,208 @@ assert_eq "$derived" \
 assert_contains "$out" \
     "hold: .github/workflows/map-filtered.yml failed on head bbbbbbbbb (master: none)" \
     "a failed filtered workflow is held; no master run reads as none"
+
+# --- own red vs inherited red, by failed-suite identity ----------------------
+#
+# fleet-tests failed on master (alpha with identity 111, and gamma
+# unitemized) and on six heads. Head 700's run annotated alpha@111 and
+# beta@222: beta is its own and is held. Head 701 failed exactly as master
+# does on alpha: inherited, a note. Head 702 passed fleet-tests before
+# master's later run failed: its green predates the break and is held to
+# re-run. Head 703 is BEHIND; head 704 is UNSTABLE with every run green, so
+# the merge-box reading is the only signal and is held as unaccounted. Head
+# 707 fails alpha with a different identity: a second failure in a suite
+# master already fails is its own. Head 708 fails gamma unitemized, as master
+# does: nothing proves the two failed alike, so it is held.
+
+python3 - "$TMP/api-suites.json" << 'PYEOF'
+import json
+import sys
+
+unfiltered = "on:\n  push:\n    branches: [master]\n  pull_request:\n  workflow_dispatch:\n"
+filtered = "on:\n  pull_request:\n    paths:\n      - 'scripts/**'\n"
+OWN, SAME, STALE, BEHIND, UNSTABLE = ("c" * 40, "d" * 40, "e" * 40, "f" * 40, "1" * 40)
+OTHER, UNITEMIZED = "4" * 40, "5" * 40
+
+
+def run(i, name, conclusion, created):
+    return {"id": i, "path": f".github/workflows/{name}", "status": "completed",
+            "conclusion": conclusion, "created_at": created}
+
+
+runs = {
+    OWN: [run(11, "comment-refs.yml", "success", "2026-02-01T00:00:00Z"),
+          run(12, "fleet-tests.yml", "failure", "2026-02-01T00:00:00Z")],
+    SAME: [run(21, "comment-refs.yml", "success", "2026-02-01T00:00:00Z"),
+           run(22, "fleet-tests.yml", "failure", "2026-02-01T00:00:00Z")],
+    STALE: [run(31, "comment-refs.yml", "success", "2026-01-15T00:00:00Z"),
+            run(32, "fleet-tests.yml", "success", "2026-01-15T00:00:00Z")],
+    BEHIND: [run(41, "comment-refs.yml", "success", "2026-02-02T00:00:00Z"),
+             run(42, "fleet-tests.yml", "success", "2026-02-02T00:00:00Z")],
+    UNSTABLE: [run(51, "comment-refs.yml", "success", "2026-02-02T00:00:00Z"),
+               run(52, "fleet-tests.yml", "success", "2026-02-02T00:00:00Z")],
+    OTHER: [run(81, "comment-refs.yml", "success", "2026-02-01T00:00:00Z"),
+            run(82, "fleet-tests.yml", "failure", "2026-02-01T00:00:00Z")],
+    UNITEMIZED: [run(91, "comment-refs.yml", "success", "2026-02-01T00:00:00Z"),
+                 run(92, "fleet-tests.yml", "failure", "2026-02-01T00:00:00Z")],
+}
+spec = {
+    "workflows": {"comment-refs.yml": unfiltered, "fleet-tests.yml": filtered},
+    "runs": runs,
+    "master": {"comment-refs.yml": "success",
+               "fleet-tests.yml": {"conclusion": "failure", "id": 900,
+                                   "created_at": "2026-02-01T12:00:00Z"}},
+    "jobs": {"12": [1201], "22": [2201], "82": [8201], "92": [9201], "900": [9001]},
+    "annotations": {
+        "1201": [{"title": "fleet-tests failed suites",
+                  "message": "test_alpha.sh@111 test_beta.py@222"}],
+        "2201": [{"title": "fleet-tests failed suites", "message": "test_alpha.sh@111"}],
+        "8201": [{"title": "fleet-tests failed suites", "message": "test_alpha.sh@333"}],
+        "9201": [{"title": "fleet-tests failed suites", "message": "test_gamma.sh@?"}],
+        "9001": [{"title": "unrelated", "message": "x"},
+                 {"title": "fleet-tests failed suites",
+                  "message": "test_alpha.sh@111 test_gamma.sh@?"}],
+    },
+}
+with open(sys.argv[1], "w", encoding="utf-8") as f:
+    json.dump(spec, f)
+PYEOF
+python3 "$TMP/write_api.py" "$TMP/api-suites" "$TMP/api-suites.json"
+
+python3 - "$TMP/engine-prs-suites.json" << 'PYEOF'
+import json
+import sys
+
+approved = [{"name": "fleet:approved"}]
+prs = [
+    {"number": 700, "title": "engine: own red suite", "headRefOid": "c" * 40,
+     "mergeStateStatus": "UNSTABLE"},
+    {"number": 701, "title": "engine: inherited red", "headRefOid": "d" * 40,
+     "mergeStateStatus": "UNSTABLE"},
+    {"number": 702, "title": "engine: stale green", "headRefOid": "e" * 40,
+     "mergeStateStatus": "CLEAN"},
+    {"number": 703, "title": "engine: behind master", "headRefOid": "f" * 40,
+     "mergeStateStatus": "BEHIND"},
+    {"number": 704, "title": "engine: unstable, unaccounted", "headRefOid": "1" * 40,
+     "mergeStateStatus": "UNSTABLE"},
+    {"number": 707, "title": "engine: new failure in a red suite", "headRefOid": "4" * 40,
+     "mergeStateStatus": "UNSTABLE"},
+    {"number": 708, "title": "engine: unitemized red", "headRefOid": "5" * 40,
+     "mergeStateStatus": "UNSTABLE"},
+]
+for pr in prs:
+    pr.update({"url": "u", "labels": approved})
+with open(sys.argv[1], "w", encoding="utf-8") as f:
+    json.dump(prs, f)
+PYEOF
+
+status=$(GH_STUB_ENGINE_PRS="$TMP/engine-prs-suites.json" GH_STUB_API="$TMP/api-suites" \
+    run_decisions --repo=engine)
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "0" "suite-set run exits 0"
+assert_contains "$out" \
+    "hold: .github/workflows/fleet-tests.yml failed on head ccccccccc (master: failure) — 1 suite(s) not failing this way on master: test_beta.py" \
+    "a suite failing on the head but not on master is the PR's own red and is held by name"
+assert_contains "$out" \
+    "note: .github/workflows/fleet-tests.yml failed on head ddddddddd with the same failures as master — inherited, not this PR's to fix" \
+    "a head failing exactly as master does is a note"
+assert_absent "$out" "hold: .github/workflows/fleet-tests.yml failed on head ddddddddd" \
+    "an inherited red is never a hold"
+assert_contains "$out" \
+    "hold: .github/workflows/fleet-tests.yml failed on head 444444444 (master: failure) — 1 suite(s) not failing this way on master: test_alpha.sh" \
+    "a different failure in a suite master already fails is the PR's own red"
+assert_absent "$out" "note: .github/workflows/fleet-tests.yml failed on head 444444444" \
+    "a same-suite, different-failure red is never read as inherited"
+assert_contains "$out" \
+    "hold: .github/workflows/fleet-tests.yml failed on head 555555555 (master: failure) — 1 suite(s) not failing this way on master: test_gamma.sh" \
+    "an unitemized failure never matches master's, even when master's is unitemized too"
+assert_contains "$out" \
+    "hold: .github/workflows/fleet-tests.yml passed on head eeeeeeeee at 2026-01-15T00:00:00Z, but master's later run (2026-02-01T12:00:00Z) failed — Update branch to re-run before merging" \
+    "a green run that predates master's break is held to re-run"
+assert_contains "$out" "hold: behind master — Update branch" "BEHIND is an Update-branch hold"
+unstable_lines=$(grep -c "mergeStateStatus UNSTABLE" "$TMP/out.txt")
+assert_eq "$unstable_lines" "1" \
+    "the merge-box UNSTABLE hold prints only where no run or note accounts for it (#704), not on #700/#701"
+assert_contains "$out" \
+    "hold: GitHub reports a check on the head that has not passed (mergeStateStatus UNSTABLE: failed or still running) that no completed run above accounts for" \
+    "UNSTABLE with every run green is held as unread"
+stale_lines=$(grep -c "Update branch to re-run" "$TMP/out.txt")
+assert_eq "$stale_lines" "1" "only the head whose green predates master's failure is held stale"
+
+# --- every list read pages ---------------------------------------------------
+#
+# Head 705's runs, its failed run's jobs, and that job's annotations each put
+# the item that matters on page 2: 100 cancelled runs precede its two real
+# runs, 100 jobs precede the annotated one, and 100 unrelated annotations
+# precede the suite annotation. Read to the end, its red is master's — a
+# note. Head 706's failed run has 300 jobs, a list still full at the page
+# cap: its tail was never read, so the reading is unreadable, not complete.
+
+python3 - "$TMP/api-paged.json" << 'PYEOF'
+import json
+import sys
+
+unfiltered = "on:\n  push:\n    branches: [master]\n  pull_request:\n  workflow_dispatch:\n"
+filtered = "on:\n  pull_request:\n    paths:\n      - 'scripts/**'\n"
+PAGED, CAPPED = "2" * 40, "3" * 40
+
+
+def run(i, name, conclusion, created="2026-02-01T00:00:00Z"):
+    return {"id": i, "path": f".github/workflows/{name}", "status": "completed",
+            "conclusion": conclusion, "created_at": created}
+
+
+suite = {"title": "fleet-tests failed suites", "message": "test_alpha.sh@111"}
+spec = {
+    "workflows": {"comment-refs.yml": unfiltered, "fleet-tests.yml": filtered},
+    "runs": {
+        PAGED: [run(1000 + i, "comment-refs.yml", "cancelled") for i in range(100)]
+        + [run(61, "comment-refs.yml", "success"), run(62, "fleet-tests.yml", "failure")],
+        CAPPED: [run(71, "comment-refs.yml", "success"), run(72, "fleet-tests.yml", "failure")],
+    },
+    "master": {"comment-refs.yml": "success",
+               "fleet-tests.yml": {"conclusion": "failure", "id": 900,
+                                   "created_at": "2026-02-01T12:00:00Z"}},
+    "jobs": {"62": list(range(6200, 6301)), "72": list(range(7000, 7300)), "900": [9001]},
+    "annotations": {
+        "6300": [{"title": "unrelated", "message": str(i)} for i in range(100)] + [suite],
+        "9001": [suite],
+    },
+}
+with open(sys.argv[1], "w", encoding="utf-8") as f:
+    json.dump(spec, f)
+PYEOF
+python3 "$TMP/write_api.py" "$TMP/api-paged" "$TMP/api-paged.json"
+
+python3 - "$TMP/engine-prs-paged.json" << 'PYEOF'
+import json
+import sys
+
+prs = [
+    {"number": 705, "title": "engine: red read past page 1", "headRefOid": "2" * 40},
+    {"number": 706, "title": "engine: jobs past the page cap", "headRefOid": "3" * 40},
+]
+for pr in prs:
+    pr.update({"url": "u", "labels": [{"name": "fleet:approved"}],
+               "mergeStateStatus": "UNSTABLE"})
+with open(sys.argv[1], "w", encoding="utf-8") as f:
+    json.dump(prs, f)
+PYEOF
+
+status=$(GH_STUB_ENGINE_PRS="$TMP/engine-prs-paged.json" GH_STUB_API="$TMP/api-paged" \
+    run_decisions --repo=engine)
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "0" "paged run exits 0"
+assert_contains "$out" \
+    "note: .github/workflows/fleet-tests.yml failed on head 222222222 with the same failures as master — inherited, not this PR's to fix" \
+    "a suite annotation on page 2 of a page-2 job of a page-2 run is read"
+assert_absent "$out" "has no completed run on head 222222222" \
+    "a head run past the first page of the runs list is read"
+assert_absent "$out" "hold: .github/workflows/fleet-tests.yml failed on head 222222222" \
+    "an inherited red read past page 1 is never a hold"
+assert_contains "$out" \
+    "hold: gate coverage unreadable (gh api repos/jakildev/IrredenEngine/actions/runs/72/jobs: more than 300 items)" \
+    "a list still full at the page cap is unreadable, never read as complete"
 
 # --- --repo equals-form + dual-spelling validation --------------------------
 

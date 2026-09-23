@@ -208,6 +208,12 @@ def build_url(repo_slug, path, params=None):
     return base
 
 
+def cache_entry_path(repo_slug, path, *, params=None, cache_dir=None):
+    """The file conditional_get keeps this request's ETag and body in."""
+    url = build_url(repo_slug, path, params)
+    return _cache_path(cache_dir or DEFAULT_CACHE_DIR, repo_slug, url)
+
+
 def conditional_get(repo_slug, path, *, params=None, accept=None,
                     cache_dir=None, token=None, timeout=DEFAULT_TIMEOUT_SECONDS):
     """Conditional GET against the GitHub REST API with per-endpoint ETag cache.
