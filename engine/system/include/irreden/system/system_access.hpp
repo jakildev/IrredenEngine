@@ -185,13 +185,16 @@ constexpr void appendWrite(SystemAccess &out, const void *key) {
     out.writes_[out.writeCount_++] = key;
 }
 
+// The type list travels as a null pointer, never a value: a `std::tuple<Extras...>`
+// value default-constructs every component, which is not a constant expression
+// for a component with a non-constexpr constructor.
 template <typename... Extras>
-constexpr void applyExtraReads(SystemAccess &out, std::type_identity<std::tuple<Extras...>>) {
+constexpr void applyExtraReads(SystemAccess &out, const std::tuple<Extras...> *) {
     (appendRead(out, typeKey<std::remove_cvref_t<Extras>>), ...);
 }
 
 template <typename... Extras>
-constexpr void applyExtraWrites(SystemAccess &out, std::type_identity<std::tuple<Extras...>>) {
+constexpr void applyExtraWrites(SystemAccess &out, const std::tuple<Extras...> *) {
     (appendWrite(out, typeKey<std::remove_cvref_t<Extras>>), ...);
 }
 
@@ -210,9 +213,9 @@ template <typename T> constexpr void applyComponent(SystemAccess &out) {
     } else if constexpr (IsParallelSafeTag<T>::value) {
         out.parallelSafe_ = true;
     } else if constexpr (IsAlsoReads<T>::value) {
-        applyExtraReads(out, std::type_identity<typename IsAlsoReads<T>::Types>{});
+        applyExtraReads(out, static_cast<const typename IsAlsoReads<T>::Types *>(nullptr));
     } else if constexpr (IsAlsoWrites<T>::value) {
-        applyExtraWrites(out, std::type_identity<typename IsAlsoWrites<T>::Types>{});
+        applyExtraWrites(out, static_cast<const typename IsAlsoWrites<T>::Types *>(nullptr));
     } else if constexpr (std::is_const_v<T>) {
         // `const C_Foo` in the template pack → caller declares this
         // component read-only. Non-const components land in the writes set,
