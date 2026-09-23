@@ -122,8 +122,12 @@ class SdfWinnerTest(unittest.TestCase):
     def test_election_and_clear_order(self):
         system = (ROOT / "engine/prefabs/irreden/render/systems" /
                   "system_shapes_to_trixel.hpp").read_text()
-        self.assertLess(system.index("memoryBarrier(BarrierType::ALL)"),
-                        system.index("fillBuffer(winnerBuffer_, bytes, 0xFF)"))
+        geometry = (ROOT / "engine/prefabs/irreden/render/components" /
+                    "canvas_shape_geometry.hpp").read_text()
+        self.assertLess(geometry.index("memoryBarrier(IRRender::BarrierType::ALL)"),
+                        geometry.index("fillBuffer(sampleOwners_.second, bytes, 0xFF)"))
+        self.assertLess(system.index("shapeGeometry_.prepareSampleOwners("),
+                        system.index("shapeDepthProgram_->use()"))
         depth = system.index("shapeDepthProgram_->use()")
         election = system.index("shapeOwnerProgram_->use()", depth)
         publish = system.index("shapePublishProgram_->use()", election)

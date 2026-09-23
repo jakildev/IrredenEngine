@@ -76,8 +76,9 @@ rendered floor fixture.
    still permit geometry from different winners to mix.
 3. Retain receiver data until its last consumer. Shape descriptor uploads now
    belong to their canvas together with the producer's projection snapshot.
-   A descriptor index must still be published with the elected sample; retained
-   descriptors alone do not identify which shape won a texel. Prefer storage tied
+   The retained elected sample key addresses the retained tile lookup, whose
+   shape index identifies its descriptor. Later overpainting still needs an
+   explicit validity rule before a consumer may use that reference. Prefer storage tied
    to visible canvas winners over allocation proportional to world population,
    and never scan every shape per fragment.
 4. Evaluate the receiver at the fragment's actual projected position. Carry
@@ -100,13 +101,16 @@ The SDF producer resolves depth, then elects the lowest submitted sample key
 among samples at that depth, then publishes color and identity from that one
 sample. Keys include tile, local invocation, face and half-face; changing GPU
 scheduling cannot choose a different writer for an unchanged submission.
-Descriptor reordering may change the chosen tie winner. The reused owner buffer
-is cleared per canvas and has four bytes per pixel of the largest processed
-canvas; it does not grow with the world entity population. Buffer-update and
+Descriptor reordering may change the chosen tie winner. Each shape canvas retains its owner buffer and the submitted tile lookup.
+The owner buffer is cleared before that canvas’s election and costs four bytes
+per pixel of its largest submitted size; aggregate storage is the sum over
+shape canvases, not only the largest canvas. It does not grow directly with
+the world entity population. Buffer-update and
 shader-storage barriers separate clear, election and publication.
 
-This is the prerequisite for coherent surface metadata, not that metadata's
-implementation. The existing occluded X-ray color overlay remains outside the
+The elected sample key, tile lookup and descriptor array now survive other
+canvas submissions. This retains the SDF pass winner, not final surface validity
+after another producer overpaints the canvas. The existing occluded X-ray color overlay remains outside the
 opaque ownership guarantee. Its read/modify/write blending is a separate
 ordering problem. Native controls and validation live in the
 [ownership evidence](../pr-screenshots/codex/sdf-winner-ownership/README.md).
@@ -118,7 +122,8 @@ A finite descriptor-backed query is required at box corners; extrapolating one
 sample's infinite plane can cross onto the wrong face. Retained per-canvas
 descriptors must reproduce the producer's rounded projected origin, density and
 cell expansion. Canvas-owned descriptor storage now survives other canvas uploads;
-winning-texel references and consumer bindings remain to be implemented.
+elected sample references survive too, but final-winner validity and consumer
+bindings remain to be implemented.
 Voxelized/lattice SDF receivers retain cell-union geometry rather than one smooth
 analytical box.
 
@@ -163,3 +168,43 @@ These descriptors are producer inputs, not winning surface metadata. Canvas
 clears, later same-depth overpainting, unsupported shapes and X-ray blending
 still need explicit validity handling when winner references are added. No
 fragment consumes this storage yet, and no visual shadow-edge fix is claimed.
+
+
+## Retained elected sample references
+
+For an occupied SDF owner texel, the existing election key encodes
+
+```
+key = ((tileIndex * 64 + localInvocation) * 3 + face) * 2 + halfFace
+halfFace = key % 2
+face = (key / 2) % 3
+localInvocation = (key / 6) % 64
+tileIndex = key / 384
+shapeIndex = tiles[tileIndex].shapeIndex
+```
+
+`0xffffffff` means no elected shape sample. `localInvocation` is row-major
+in the 8×8 tile. Tile iso origin plus that local offset identifies the producer
+query; the displayed face slot is not an analytical surface normal. A padded
+dispatch tile has `shapeIndex == -1` and cannot elect a sample.
+
+`CanvasShapeGeometry` owns descriptors, padded tile descriptors and the owner
+buffer. The same owner buffer feeds election and publication; there is no
+additional copy, shader store, dispatch or readback. Owner extent and tile count
+reset with the frame snapshot even on an empty frame. Reusing an equal-area
+canvas with a different aspect ratio updates the owner stride and clears its
+active bytes. Capacity remains resident until growth or canvas destruction.
+
+The tile allocation is 16 bytes times its power-of-two padded-count capacity,
+replacing the shared fixed 4 MiB tile upload. Owner storage changes from one
+largest-canvas scratch buffer to the sum of per-shape-canvas high-water sizes.
+For example, a 2560×1440 *trixel canvas* retains about 14.1 MiB of owner data;
+framebuffer resolution alone does not determine this cost. Voxel-only canvases
+allocate none. This is a lifetime tradeoff, not a performance improvement.
+
+The retained reference is valid for the SDF submission only. Later canvas clears,
+voxel/text/widget/particle writes, same-depth overwrites and X-ray color mixing
+must be accounted for before a shadow or lighting consumer uses it. An entity-ID
+or quantized-depth equality test alone is insufficient to certify a same-entity,
+same-depth overwrite. Exact finite queries and linear lighting payload remain
+unimplemented; preserving these buffers does not improve shadow edges yet.
