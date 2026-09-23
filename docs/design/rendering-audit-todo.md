@@ -422,3 +422,20 @@ retain continuous hit depth before quantization, and define world/model frame an
 density. Invalidate on every geometry reset (including no-SDF frames), unsupported
 winners and later non-SDF overpainting. Assess memory and bandwidth before choosing
 this over retained per-canvas descriptors; neither option is implemented yet.
+
+### Canvas descriptor lifetime retained
+
+Canvas-owned [descriptor uploads](sdf-receiver-geometry.md#canvas-owned-descriptor-uploads)
+now preserve each producer's shape array and projection snapshot across other
+canvas submissions. Buffers grow with the canvas's submitted descriptor count;
+empty frames invalidate the active count while retaining capacity. This removes
+the shared-upload lifetime obstacle without adding per-trixel geometry storage.
+Next publish an elected descriptor reference and explicit validity, then retain
+linear lighting terms and evaluate the finite receiver at the fragment position.
+The current change does not fix SDF/GRID receiver edges or sphere face selection.
+
+Proposed performance-validation follow-up: compare pinned base/head alternately
+on the same CI host and record runner image, Mesa/LLVM renderer, CPU quota and
+available threads. Recent historical EPYC baseline comparisons showed broad
+voxel-only slowdowns despite a zero SDF stage, with clean retries. Keep failed
+runs and existing thresholds; add an SDF-active workload to measure election cost.

@@ -186,12 +186,12 @@ constexpr void appendWrite(SystemAccess &out, const void *key) {
 }
 
 template <typename... Extras>
-constexpr void applyExtraReads(SystemAccess &out, std::tuple<Extras...>) {
+constexpr void applyExtraReads(SystemAccess &out, std::type_identity<std::tuple<Extras...>>) {
     (appendRead(out, typeKey<std::remove_cvref_t<Extras>>), ...);
 }
 
 template <typename... Extras>
-constexpr void applyExtraWrites(SystemAccess &out, std::tuple<Extras...>) {
+constexpr void applyExtraWrites(SystemAccess &out, std::type_identity<std::tuple<Extras...>>) {
     (appendWrite(out, typeKey<std::remove_cvref_t<Extras>>), ...);
 }
 
@@ -210,9 +210,9 @@ template <typename T> constexpr void applyComponent(SystemAccess &out) {
     } else if constexpr (IsParallelSafeTag<T>::value) {
         out.parallelSafe_ = true;
     } else if constexpr (IsAlsoReads<T>::value) {
-        applyExtraReads(out, typename IsAlsoReads<T>::Types{});
+        applyExtraReads(out, std::type_identity<typename IsAlsoReads<T>::Types>{});
     } else if constexpr (IsAlsoWrites<T>::value) {
-        applyExtraWrites(out, typename IsAlsoWrites<T>::Types{});
+        applyExtraWrites(out, std::type_identity<typename IsAlsoWrites<T>::Types>{});
     } else if constexpr (std::is_const_v<T>) {
         // `const C_Foo` in the template pack → caller declares this
         // component read-only. Non-const components land in the writes set,
