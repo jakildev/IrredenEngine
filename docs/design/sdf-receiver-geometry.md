@@ -268,8 +268,15 @@ splat coverage or changes stored color, depth or entity identity. Invalidated
 canvases also retain the original route. Actual fragment coordinates, true-normal
 Lambert/sky lighting, curved and rotated analytical receivers remain pending.
 
-This adds a 128-byte per-system projection upload and an 80-byte durable dummy
-binding allocation. The existing per-canvas buffers are read directly without
+The CPU selects a compile-time specialized kernel for eligible canvases. The
+ordinary kernel and all per-axis dispatches exclude the receiver query and its
+buffer declarations entirely; they do not pay for a disabled uniform branch.
+Both kernels compile from one shared body. Preprocessing controls prove the
+ordinary GLSL and Metal variants omit receiver code, with inverted wrapper
+macros as positive controls.
+
+This adds a 128-byte per-system projection upload for eligible canvases and an
+80-byte durable dummy binding allocation. The existing per-canvas buffers are read directly without
 copying, a new image, a readback or an additional GPU pass. Borrowed animation and
 shape-frame slots are restored; canvas-owned descriptor/tile bindings are replaced
 with the durable dummy before a canvas can be destroyed. GPU cost has not yet

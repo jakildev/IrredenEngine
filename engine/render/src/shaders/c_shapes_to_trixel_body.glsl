@@ -46,7 +46,6 @@ layout(std140, binding = 23) uniform ShapesFrameData {
     uniform vec4 faceDeform[3];
 };
 
-
 layout(std430, binding = 20) readonly buffer ShapeBuffer {
     ShapeDescriptor shapes[];
 };

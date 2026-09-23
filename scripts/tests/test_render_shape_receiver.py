@@ -117,12 +117,38 @@ int main(){
 
 @unittest.skipUnless(COMPILER, "receiver controls require a C++ compiler")
 class ShapeReceiverTest(unittest.TestCase):
+    def test_plain_kernel_excludes_receiver_code(self):
+        def expand(path):
+            source = path.read_text()
+            source = re.sub(r'^#include "([^"\n]+)"',
+                            lambda m: expand(path.parent / m.group(1)), source, flags=re.M)
+            return re.sub(r"^#(?:include <.*>|version .*).*", "", source, flags=re.M)
+
+        for suffix, folder in (("glsl", ""), ("metal", "metal/")):
+            shaders = ROOT / "engine/render/src/shaders" / folder
+            for variant, enabled in (("", False), ("_shapes", True)):
+                source = expand(shaders / f"c_compute_sun_shadow{variant}.{suffix}")
+                for mutation in (False, True):
+                    candidate = source
+                    if mutation:
+                        candidate = source.replace(f"#define IR_SHAPE_RECEIVER {int(enabled)}",
+                                                   f"#define IR_SHAPE_RECEIVER {int(not enabled)}")
+                        self.assertNotEqual(candidate, source)
+                    result = subprocess.run([COMPILER, "-E", "-P", "-x", "c++", "-"],
+                                            input=candidate, text=True, capture_output=True)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    contains_receiver = enabled != mutation
+                    for token in ("shapeBoxReceiver", "receiverShapes", "receiverOwners",
+                                  "receiverTiles", "receiverFrame"):
+                        self.assertEqual(token in result.stdout, contains_receiver,
+                                         (suffix, variant, mutation, token))
+
     def test_consumer_selects_elected_descriptor(self):
         for suffix, folder in (("glsl", ""), ("metal", "metal/")):
             shaders = ROOT / "engine/render/src/shaders" / folder
-            shader = (shaders / f"c_compute_sun_shadow.{suffix}").read_text()
-            block = shader[shader.index("    if (!perAxis && receiverFrame.shapeCount > 0)"):
-                           shader.index("    // World iso depth picks")]
+            shader = (shaders / f"c_compute_sun_shadow_body.{suffix}").read_text()
+            start = shader.index("    if (!perAxis && receiverFrame.shapeCount > 0)")
+            block = shader[start:shader.index("#endif", start)]
             block = block.replace("float3", "vec3").replace("float2", "vec2")
             data = (shaders / f"ir_shape_data.{suffix}").read_text()
             stride = re.search(r"(?:const|constant) uint kShapeSamplesPerTile = [^;]+;",

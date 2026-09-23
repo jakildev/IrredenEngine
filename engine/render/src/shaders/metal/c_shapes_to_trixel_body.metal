@@ -5,9 +5,6 @@
 
 // Mirrors shaders/c_shapes_to_trixel_body.glsl.
 
-
-
-
 constant uint FLAG_HOLLOW       = 1u;
 constant uint FLAG_VISIBLE      = 8u;
 constant uint FLAG_FOG_WHOLE_BODY_EXEMPT = 16u;
