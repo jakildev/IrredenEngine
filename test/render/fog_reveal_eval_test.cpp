@@ -128,6 +128,30 @@ TEST(FogRevealEvalTest, UnexploredColorDefaultsToBlackAtItsStd140Offset) {
     EXPECT_EQ(IRMath::colorToVec4(IRMath::IRColors::kBlack), observers.unexploredColor_);
 }
 
+// The write the active-canvas setter performs, on a payload: a non-black value
+// lands normalized in unexploredColor_ and touches no other member.
+TEST(FogRevealEvalTest, SetUnexploredColorWritesTheNormalizedAnchor) {
+    FrameDataFogObservers observers = oneCircle(10.0f, 2.0f, 3.0f, 0.5f, 0.25f, 1.0f);
+    const FrameDataFogObservers before = observers;
+
+    IRPrefab::Fog::setUnexploredColor(observers, IRMath::Color{255, 0, 255, 128});
+
+    EXPECT_EQ(observers.unexploredColor_, IRMath::vec4(1.0f, 0.0f, 1.0f, 128.0f / 255.0f));
+    EXPECT_EQ(observers.visionCircleCount_, before.visionCircleCount_);
+    EXPECT_EQ(observers.visionCircles_[0], before.visionCircles_[0]);
+    EXPECT_EQ(observers.visionCircleHeights_[0], before.visionCircleHeights_[0]);
+
+    IRPrefab::Fog::setUnexploredColor(observers, IRMath::IRColors::kBlack);
+    EXPECT_EQ(observers.unexploredColor_, before.unexploredColor_);
+}
+
+// Headless (no RenderManager, so no active canvas) the creation-facing setter
+// is the documented silent no-op rather than an assert.
+TEST(FogRevealEvalTest, SetUnexploredColorWithoutAnActiveCanvasIsANoOp) {
+    IRPrefab::Fog::setUnexploredColor(IRMath::Color{255, 0, 255, 255});
+    EXPECT_EQ(IRPrefab::Fog::evalActiveVisionReveal(IRMath::vec3(0.0f)), 1.0f);
+}
+
 TEST(FogRevealEvalTest, ActiveMaskHideAndRestoreAreAlphaPreserving) {
     C_VoxelPool pool{IRMath::ivec3(4, 1, 1)};
     auto allocation = pool.allocateVoxels(4);
