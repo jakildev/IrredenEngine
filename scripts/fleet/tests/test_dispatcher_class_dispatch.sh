@@ -203,8 +203,21 @@ plan_assign() {
 echo "T9: needs-plan slice resolves plan=1 on the elected class"
 write_slice worker '{"tasks_open":[],"feedback_prs":[],"needs_plan":[{"number":99,"repo":"engine","labels":[]},{"number":120,"repo":"engine","labels":[]},{"number":7,"repo":"game","labels":[]}]}'
 assert_eq "$(resolve worker)" \
+    "class=opus model=claude-opus-4-8[1m] effort=xhigh more=0 defer=0 count=1 plan=1" \
+    "untagged needs-plan elects opus with plan=1"
+
+write_slice worker '{"tasks_open":[],"feedback_prs":[],"needs_plan":[{"number":99,"repo":"engine","labels":["fleet:fable"]}]}'
+assert_eq "$(resolve worker)" \
     "class=fable model=claude-fable-5[1m] effort=xhigh more=0 defer=0 count=1 plan=1" \
-    "untagged needs-plan elects fable with plan=1"
+    "fleet:fable needs-plan elects fable with plan=1"
+
+write_slice worker '{"tasks_open":[],"feedback_prs":[],"needs_plan":[{"number":99,"repo":"engine","labels":[],"model":"fable"}]}'
+assert_eq "$(resolve worker)" \
+    "class=fable model=claude-fable-5[1m] effort=xhigh more=0 defer=0 count=1 plan=1" \
+    "unlabelled needs-plan declaring Model: fable elects fable with plan=1"
+
+# Restore the three-issue untagged slice T10/T11 walk for their claim candidates.
+write_slice worker '{"tasks_open":[],"feedback_prs":[],"needs_plan":[{"number":99,"repo":"engine","labels":[]},{"number":120,"repo":"engine","labels":[]},{"number":7,"repo":"game","labels":[]}]}'
 
 echo "T10: assignment granted on the first candidate, claimed under the agent"
 assert_eq "$(STUB_GRANT='engine:99' plan_assign)" "target=plan:engine:99" \

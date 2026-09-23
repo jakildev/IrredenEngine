@@ -241,21 +241,71 @@ class TaskResolution(unittest.TestCase):
                       "opus", fable_blocked=False)
         self.assertEqual(out, "sonnet high 1 1 0")
 
-    def test_needs_plan_prefers_fable(self):
-        # Planning is architect-tier design work: it elects fable while the
-        # fable cap has headroom (the same reasoning that puts the architect
-        # panes on the fable class).
+    def test_needs_plan_untagged_plans_at_opus(self):
+        # No class label and no `**Model:**` class (`model` unset) resolves to
+        # opus, the same default a task gets — NOT fable. Planning inherits the
+        # task's declared class; only a fable declaration buys an
+        # architect-tier plan. PLAN_EFFORT keeps xhigh for the opus lane.
         out = resolve({"needs_plan": [{"number": 99}]},
+                      "opus", fable_blocked=False)
+        self.assertEqual(out, "opus xhigh 0 1 1")
+
+    def test_needs_plan_fable_tagged_routes_fable(self):
+        # The explicit high-stakes signal: a fleet:fable needs-plan issue is
+        # the one shape that still elects architect-tier planning.
+        out = resolve({"needs_plan": [{"number": 99, "labels": ["fleet:fable"]}]},
                       "opus", fable_blocked=False)
         self.assertEqual(out, "fable xhigh 0 1 1")
 
     def test_needs_plan_falls_back_to_opus_when_fable_capped(self):
-        # A saturated fable cap must DOWNGRADE planning to opus, not defer it —
-        # the downgrade happens at election time so planning never stalls
-        # behind a long fable implementation iteration.
-        out = resolve({"needs_plan": [{"number": 99}]},
+        # A saturated fable cap must DOWNGRADE fable-tagged planning to opus,
+        # not defer it — the downgrade happens at election time so planning
+        # never stalls behind a long fable implementation iteration.
+        out = resolve({"needs_plan": [{"number": 99, "labels": ["fleet:fable"]}]},
                       "opus", fable_blocked=True)
         self.assertEqual(out, "opus xhigh 0 1 1")
+
+    def test_needs_plan_model_field_fable_routes_fable(self):
+        # The usual fable opt-in: `**Model:** fable` in the body (stamped as
+        # `model` by the scout) with NO class label — ingest bounced the issue
+        # to needs-plan before it could stamp one.
+        out = resolve({"needs_plan": [{"number": 3661, "model": "fable"}]},
+                      "opus", fable_blocked=False)
+        self.assertEqual(out, "fable xhigh 0 1 1")
+
+    def test_needs_plan_model_field_fable_degrades_when_capped(self):
+        out = resolve({"needs_plan": [{"number": 3661, "model": "fable"}]},
+                      "opus", fable_blocked=True)
+        self.assertEqual(out, "opus xhigh 0 1 1")
+
+    def test_needs_plan_model_field_opus_plans_at_opus(self):
+        out = resolve({"needs_plan": [{"number": 99, "model": "opus"}]},
+                      "opus", fable_blocked=False)
+        self.assertEqual(out, "opus xhigh 0 1 1")
+
+    def test_needs_plan_model_field_sonnet_routes_sonnet(self):
+        out = resolve({"needs_plan": [{"number": 99, "model": "sonnet"}]},
+                      "opus", fable_blocked=False)
+        self.assertEqual(out, "sonnet high 0 1 1")
+
+    def test_needs_plan_class_label_beats_model_field(self):
+        # Label first, body second — the order the scout resolves a task's
+        # class in and `fleet-claim` checks it in.
+        out = resolve({"needs_plan": [
+            {"number": 99, "labels": ["fleet:opus"], "model": "fable"}]},
+                      "opus", fable_blocked=False)
+        self.assertEqual(out, "opus xhigh 0 1 1")
+        out = resolve({"needs_plan": [
+            {"number": 99, "labels": ["fleet:fable"], "model": "sonnet"}]},
+                      "opus", fable_blocked=False)
+        self.assertEqual(out, "fable xhigh 0 1 1")
+
+    def test_needs_plan_sonnet_label_beats_fable_label(self):
+        # Both class labels: the mechanical light-plan wins.
+        out = resolve({"needs_plan": [
+            {"number": 99, "labels": ["fleet:fable", "fleet:sonnet"]}]},
+                      "opus", fable_blocked=False)
+        self.assertEqual(out, "sonnet high 0 1 1")
 
     def test_needs_plan_counts_once_regardless_of_backlog(self):
         # The lane plans one issue at a time (planning-claim lock + the
@@ -265,7 +315,7 @@ class TaskResolution(unittest.TestCase):
         out = resolve({"needs_plan": [{"number": 99}, {"number": 100},
                                       {"number": 101}]},
                       "opus", fable_blocked=False)
-        self.assertEqual(out, "fable xhigh 0 1 1")
+        self.assertEqual(out, "opus xhigh 0 1 1")
 
     def test_needs_plan_sonnet_tagged_routes_sonnet(self):
         # A `fleet:sonnet`-tagged needs-plan issue is MECHANICAL: the sonnet
@@ -275,17 +325,18 @@ class TaskResolution(unittest.TestCase):
                       "opus", fable_blocked=False)
         self.assertEqual(out, "sonnet high 0 1 1")
 
-    def test_needs_plan_untagged_still_prefers_fable(self):
-        # No fleet:sonnet tag -> architect-tier design planning, unchanged.
+    def test_needs_plan_untagged_plans_at_opus_not_fable(self):
+        # A non-class label and no `**Model:**` class declare nothing, so this
+        # plans at opus; only a fable declaration buys architect-tier.
         out = resolve({"needs_plan": [{"number": 99, "labels": ["render"]}]},
                       "opus", fable_blocked=False)
-        self.assertEqual(out, "fable xhigh 0 1 1")
+        self.assertEqual(out, "opus xhigh 0 1 1")
 
     def test_needs_plan_mixed_classes_elects_oldest_and_flags_more(self):
         # Oldest plannable issue is the sonnet-tagged mechanical one, so the
-        # lane elects sonnet; the untagged (design-tier) issue keeps a fable
+        # lane elects sonnet; the untagged issue keeps an OPUS planning
         # candidate alive -> more=1 so the dispatcher's cross-class fan-out
-        # serves it on the fable/opus lane the same tick.
+        # serves it on the opus lane the same tick.
         out = resolve({"needs_plan": [
             {"number": 99, "labels": ["fleet:sonnet"]},
             {"number": 100, "labels": ["render"]},
@@ -301,17 +352,17 @@ class TaskResolution(unittest.TestCase):
 
     def test_design_unblocked_feedback_resolves_opus(self):
         # A design-unblocked PR is the top feedback item, every open task is
-        # parked/blocked, and opus needs_plan sits behind it. The lane must
+        # parked/blocked, and a fable needs_plan sits behind it. The lane must
         # dispatch opus (and clear it for tier 4), not sonnet.
-        # count=1: the feedback fix is the only opus item; the plannable
-        # issue now elects fable (planning prefers fable), so it rides the
-        # `more` flag — the kept trigger serves the planning dispatch on a
-        # following tick.
+        # count=1: the feedback fix is the only opus item; the plannable issue
+        # is fleet:fable-tagged so it elects fable, a different class than the
+        # elected opus, and rides the `more` flag — the kept trigger serves the
+        # planning dispatch on a following tick.
         out = resolve({
             "feedback_prs": [{"labels": ["fleet:design-unblocked", "fleet:wip"]}],
             "tasks_open": [_task("#1882", "opus",
                                  inflight_pr={"number": 1885, "parked": True})],
-            "needs_plan": [{"number": 1887}],
+            "needs_plan": [{"number": 1887, "labels": ["fleet:fable"]}],
         }, "opus", fable_blocked=False)
         self.assertEqual(out, "opus high 1 1 0")
 
@@ -594,7 +645,8 @@ class DispatchTargets(HostSeamCase):
         self.assertEqual(pick({"tasks_open": [task]}, "sonnet", False, "opus"), [])
 
     def test_capped_fable_plan_routes_to_opus(self):
-        slice_data = {"needs_plan": [{"number": 99, "repo": "engine", "labels": []}]}
+        slice_data = {"needs_plan": [
+            {"number": 99, "repo": "engine", "labels": ["fleet:fable"]}]}
         self.assertEqual(self._pick_on("linux", slice_data, "fable"), ["plan:engine:99"])
         self.assertEqual(self._pick_on("linux", slice_data, "opus"), [])
         self.assertEqual(self._pick_on("linux", slice_data, "opus", fable_blocked=True),
@@ -952,10 +1004,11 @@ class PlanFlag(unittest.TestCase):
         self.assertEqual(out, "opus high 0 2 1")
 
     def test_other_class_plan_does_not_set_flag(self):
-        # The plan candidate routes to fable; the elected class is opus (the
-        # task) -> plan=0, fable plan rides `more` for a later tick.
+        # The plan candidate routes to fable (explicitly tagged); the elected
+        # class is opus (the task) -> plan=0, fable plan rides `more` for a
+        # later tick.
         out = resolve({"tasks_open": [_task("#10", "opus")],
-                       "needs_plan": [{"number": 99}]},
+                       "needs_plan": [{"number": 99, "labels": ["fleet:fable"]}]},
                       "opus", fable_blocked=False)
         self.assertEqual(out, "opus high 1 1 0")
 
@@ -966,9 +1019,11 @@ class PlanPick(unittest.TestCase):
 
     SLICE = {"needs_plan": [
         {"number": 90, "repo": "engine", "labels": ["fleet:sonnet"]},
-        {"number": 99, "repo": "engine", "labels": []},
-        {"number": 120, "repo": "engine", "labels": ["render"]},
-        {"number": 7, "repo": "game", "labels": []},
+        {"number": 99, "repo": "engine", "labels": ["fleet:fable"]},
+        {"number": 120, "repo": "engine", "labels": ["render", "fleet:fable"]},
+        {"number": 7, "repo": "game", "labels": ["fleet:fable"]},
+        # untagged -> ordinary opus planning, never a fable candidate
+        {"number": 130, "repo": "engine", "labels": []},
     ]}
 
     def test_fable_class_picks_design_tier_in_slice_order(self):
@@ -982,15 +1037,21 @@ class PlanPick(unittest.TestCase):
         self.assertEqual(plan_pick(self.SLICE, "sonnet", False), ["plan:engine:90"])
 
     def test_fable_cap_degrades_design_tier_to_opus(self):
-        # fable_blocked routes design-tier planning to opus (same `_plan_class`
-        # degrade `resolve` applies), so the opus pick set is the fable set.
+        # fable_blocked degrades the fable-tagged design tier to opus (same
+        # `_plan_class` degrade `resolve` applies), so opus then owns the fable
+        # set PLUS the untagged row it always owned, in slice order.
         self.assertEqual(plan_pick(self.SLICE, "opus", True),
-                         ["plan:engine:99", "plan:engine:120", "plan:game:7"])
-        self.assertEqual(plan_pick(self.SLICE, "opus", False), [])
+                         ["plan:engine:99", "plan:engine:120", "plan:game:7",
+                          "plan:engine:130"])
+        # With fable free, opus owns only the untagged row.
+        self.assertEqual(plan_pick(self.SLICE, "opus", False), ["plan:engine:130"])
 
     def test_missing_repo_defaults_engine_and_missing_number_skipped(self):
+        # Untagged issues plan at opus, so this reads the opus pick set; the
+        # assertion is about the missing `repo` defaulting to engine and the
+        # entry with no `number` being skipped.
         s = {"needs_plan": [{"number": 5}, {"labels": []}]}
-        self.assertEqual(plan_pick(s, "fable", False), ["plan:engine:5"])
+        self.assertEqual(plan_pick(s, "opus", False), ["plan:engine:5"])
 
     def test_empty_slice_yields_no_picks(self):
         self.assertEqual(plan_pick({}, "fable", False), [])
