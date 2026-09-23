@@ -281,8 +281,15 @@ vec3 RenderManager::getRotationPivotFocus() const {
 }
 
 vec2 RenderManager::getCanvasCenterIso() const {
+    // The iso coordinate the main framebuffer's center texel displays — the
+    // texel the default-pivot readback samples — so a point acquired from it
+    // projects back onto that same texel. The canvas store's
+    // trixelOriginOffsetZ1 origin carries a (-1,-1) lattice alignment that is
+    // not a screen offset (the per-axis scatter anchors on canvasSize/2 for the
+    // same reason); built on it, this lands one iso unit per axis off the
+    // center texel at every zoom.
     const ivec2 canvasSize = getMainCanvasSizeTriangles();
-    return vec2(canvasSize) * 0.5f - vec2(IRMath::trixelOriginOffsetZ1(canvasSize));
+    return vec2(canvasSize) * 0.5f - vec2(IRMath::trixelOriginOffsetX1(canvasSize));
 }
 
 vec2 RenderManager::getViewCenterIso() const {
