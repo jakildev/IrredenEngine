@@ -1,5 +1,8 @@
 #include "ir_iso_common.metal"
 #include "ir_per_axis_lighting.metal"
+#include "ir_sdf_common.metal"
+#include "ir_shape_data.metal"
+#include "ir_shape_receiver.metal"
 // FrameDataSun, the cascade PCF sampler, and the world-space
 // worldSunShadowFactor() lookup — shared with c_lighting_to_trixel's detached
 // world-receive path.
@@ -17,6 +20,10 @@ constant uint kDispatchArgsBaseUint = 8u;      // kPerAxisCellDispatchArgsOffset
 constant uint kPerAxisCellComputeTile = 256u;  // kPerAxisCellComputeTile (16×16 threads)
 
 kernel void c_compute_sun_shadow(
+    constant ShapeProjectionData &receiverFrame [[buffer(23)]],
+    device const ShapeDescriptor *receiverShapes [[buffer(20)]],
+    device const uint *receiverOwners [[buffer(22)]],
+    device const ShapeTileDescriptor *receiverTiles [[buffer(30)]],
     constant FrameDataVoxelToTrixel &frameData [[buffer(7)]],
     constant FrameDataSun &sunFrameData [[buffer(29)]],
     device const uint *sunDepthBuf [[buffer(28)]],
@@ -121,6 +128,19 @@ kernel void c_compute_sun_shadow(
     // three recovery branches; flip == 0 everywhere on non-rotated content.
     if (flip != 0) {
         normal = -normal;
+    }
+
+    if (!perAxis && receiverFrame.shapeCount > 0) {
+        uint key = receiverOwners[uint(pixel.y * size.x + pixel.x)];
+        if (key != 0xffffffffu) {
+            int shapeIndex = receiverTiles[key / kShapeSamplesPerTile].shapeIndex;
+            float3 exactPosition, exactNormal;
+            if (shapeBoxReceiver(receiverShapes[shapeIndex], receiverFrame,
+                                 float2(pixel), exactPosition, exactNormal)) {
+                pos3D = exactPosition;
+                normal = exactNormal;
+            }
+        }
     }
 
     // World iso depth picks the cascade; rawDepth IS the world iso depth for the

@@ -10,6 +10,9 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"
 #include "ir_per_axis_lighting.glsl"
+#include "ir_sdf_common.glsl"
+#include "ir_shape_data.glsl"
+#include "ir_shape_receiver.glsl"
 // Shared caster/receiver sun-space projection.
 #include "ir_sun_projection.glsl"
 // FrameDataSun UBO (29), sun-depth SSBO (28), the cascade PCF sampler, and the
@@ -57,6 +60,13 @@ layout(std430, binding = 26) readonly buffer PerAxisCellIndirect {
 };
 const uint kDispatchArgsBaseUint = 8u;      // kPerAxisCellDispatchArgsOffsetBytes / 4
 const uint kPerAxisCellComputeTile = 256u;  // kPerAxisCellComputeTile (16×16 threads)
+
+layout(std140, binding = 23) uniform ShapeReceiverFrame {
+    ShapeProjectionData receiverFrame;
+};
+layout(std430, binding = 20) readonly buffer ReceiverShapes { ShapeDescriptor receiverShapes[]; };
+layout(std430, binding = 22) readonly buffer ReceiverOwners { uint receiverOwners[]; };
+layout(std430, binding = 30) readonly buffer ReceiverTiles { ShapeTileDescriptor receiverTiles[]; };
 
 void main() {
     const ivec2 size = imageSize(trixelDistances);
@@ -137,6 +147,19 @@ void main() {
     // all three recovery branches; flip == 0 everywhere on non-rotated content.
     if (flip != 0) {
         normal = -normal;
+    }
+
+    if (!perAxis && receiverFrame.shapeCount > 0) {
+        uint key = receiverOwners[uint(pixel.y * size.x + pixel.x)];
+        if (key != 0xffffffffu) {
+            int shapeIndex = receiverTiles[key / kShapeSamplesPerTile].shapeIndex;
+            vec3 exactPosition, exactNormal;
+            if (shapeBoxReceiver(receiverShapes[shapeIndex], receiverFrame,
+                                 vec2(pixel), exactPosition, exactNormal)) {
+                pos3D = exactPosition;
+                normal = exactNormal;
+            }
+        }
     }
 
     // World iso depth picks the cascade; rawDepth IS the world iso depth for the

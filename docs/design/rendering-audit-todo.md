@@ -443,3 +443,18 @@ runs and existing thresholds; add an SDF-active workload to measure election cos
 - Implemented next SDF provenance slice: retain elected sample keys and padded tile lookup per shape canvas, with frame invalidation, owner-stride reset and capacity reuse. This preserves the SDF pass winner without another GPU pass. Final-winner validity after later writes, fragment bindings, linear lighting payload and exact finite receiver evaluation remain pending. Track aggregate per-canvas owner memory alongside GPU timing before widening the consumer.
 
 - Implemented conservative SDF sample validity: completed non-X-ray submissions become eligible; geometry writes and clears invalidate the whole canvas, including equal-depth/equal-ID replacements. Per-texel invalidation, consumer bindings, linear lighting payload and finite fragment receiver evaluation remain pending. Raw custom GPU writers must use the geometry-write accessor or invalidate explicitly.
+
+
+### Finite box compute receivers
+
+- Implemented: retained selected-owner data now feeds finite main-canvas analytical
+  box queries in the compute-shadow pass, with exact signed normals and continuous
+  receiver positions. Both backends use the shared inverse-iso helper. Unsupported
+  shapes, lattice rendering, private canvases and finite misses preserve fallback.
+- Validated: executable geometry/selection/layout controls, native Metal box captures,
+  and pixel-identical shadows-disabled ownership controls. See
+  [evidence](../pr-screenshots/codex/sdf-box-shadow-receiver/README.md).
+- Still pending: linear material/ambient lighting payload and finite queries at
+  actual presentation fragments; analytical Lambert/sky normals; curved/rotated
+  receivers; per-texel validity; native OpenGL smoke; GPU profiling of the added
+  receiver reads. One-value-per-trixel shadow edges remain visibly jagged.

@@ -122,8 +122,9 @@ A finite descriptor-backed query is required at box corners; extrapolating one
 sample's infinite plane can cross onto the wrong face. Retained per-canvas
 descriptors must reproduce the producer's rounded projected origin, density and
 cell expansion. Canvas-owned descriptor storage now survives other canvas uploads;
-elected sample references survive too, but per-texel final-winner validity and consumer
-bindings remain to be implemented.
+elected sample references survive too, but per-texel final-winner validity and fragment consumer
+bindings remain to be implemented. The compute-shadow consumer below uses the
+conservative whole-canvas validity contract.
 Voxelized/lattice SDF receivers retain cell-union geometry rather than one smooth
 analytical box.
 
@@ -138,7 +139,7 @@ unsupported winners and later same-depth overwrites. A failed finite query must
 not silently discard the producer's splatted coverage or change depth. The
 initial integration should preserve that legacy coverage while accepting exact
 receiving only where the finite intersection succeeds. The lifecycle is guarded conservatively by whole-canvas invalidation below;
-finite queries and per-fragment coverage remain unimplemented. The shared
+finite per-fragment queries and coverage remain unimplemented. The shared
 helper and scalar checks do not accept floor edges.
 
 ## Canvas-owned descriptor uploads
@@ -207,8 +208,8 @@ The retained reference is valid for the SDF submission only. Later canvas clears
 voxel/text/widget/particle writes, same-depth overwrites and X-ray color mixing
 must be accounted for before a shadow or lighting consumer uses it. An entity-ID
 or quantized-depth equality test alone is insufficient to certify a same-entity,
-same-depth overwrite. Exact finite queries and linear lighting payload remain
-unimplemented; preserving these buffers does not improve shadow edges yet.
+same-depth overwrite. The compute-shadow consumer below performs a finite box query. Fragment queries
+and linear lighting payload remain unimplemented; retention alone does not improve shadow edges.
 
 
 ## Conservative final-write validity
@@ -241,9 +242,51 @@ one overwritten corner, or an X-ray descriptor that never becomes visible
 still disables the whole canvas’s exact-SDF eligibility. Per-texel invalidation
 is pending. Custom renderers using raw texture handles must invalidate before
 replacing geometry; the public raw resource API cannot enforce this automatically.
-The state is not yet consumed by lighting or presentation, and is not a claim
-that exact receiver queries or linear lighting payload have been implemented.
+The compute-shadow pass consumes this state for eligible main-canvas boxes.
+Presentation does not consume it, and linear lighting payload remains unimplemented.
 
 The resource-owner test executes validity transitions and mutations that accept
 X-ray publication or skip invalidation. Writer coverage is additionally pinned
 in source; it does not execute every producer or prove GPU completion.
+
+
+## Finite box receivers in the compute-shadow pass
+
+`COMPUTE_SUN_SHADOW` binds the main canvas's valid descriptors, elected owners,
+tile lookup and projection snapshot. The elected key selects one tile and one
+descriptor; no shape scan is performed. `shapeBoxReceiver` queries that finite
+box at the current canvas sample coordinate, retaining continuous surface depth
+and its signed world normal for the existing shadow sampler's bias calculation.
+It reproduces producer center rounding, effective density and half-cell expansion.
+Its inverse projection uses `isoPositionToPos3D`, shared with the other render paths.
+
+Eligibility excludes hollow and entity-rotated boxes, other primitive types,
+lattice rasterization, and residual-only face deformation. Private/model-space
+canvases and per-axis voxel canvases keep their existing reconstruction. A miss
+retains the original sampled receiver: finite geometry never discards existing
+splat coverage or changes stored color, depth or entity identity. Invalidated
+canvases also retain the original route. Actual fragment coordinates, true-normal
+Lambert/sky lighting, curved and rotated analytical receivers remain pending.
+
+This adds a 128-byte per-system projection upload and an 80-byte durable dummy
+binding allocation. The existing per-canvas buffers are read directly without
+copying, a new image, a readback or an additional GPU pass. Borrowed animation and
+shape-frame slots are restored; canvas-owned descriptor/tile bindings are replaced
+with the durable dummy before a canvas can be destroyed. GPU cost has not yet
+been profiled; this is a correctness change, not a performance claim.
+
+`test_render_shape_receiver.py` executes the actual query on both backends against
+an independent double-precision ray oracle: 377,920 finite hits and 235,392 misses
+per backend, all yaw quadrants, fractional centers/camera offsets and densities
+1/2/4/8. It also executes the compute shader's selected-owner block with checked
+buffer adapters, testing nonzero tiles/descriptors, no owner, disabled/per-axis
+routes and finite misses. Mutations break density, cell expansion, fractional
+queries, lattice rejection, tile decoding, sentinel and fallback controls.
+Layout checks compare producer and receiver declarations. These scalar adapters
+do not replace native backend execution or certify final displayed shadow edges.
+
+Native evidence and exact shadows-disabled controls are in
+[the finite receiver captures](../pr-screenshots/codex/sdf-box-shadow-receiver/README.md).
+The one-value-per-trixel output still cannot express a shadow boundary within
+one displayed triangle. The captured outlines remain jagged; this is not acceptance
+of the final sharp-shadow objective and no blur was added.
