@@ -85,6 +85,28 @@ inline float evalVisionReveal(
     return reveal;
 }
 
+/// The observers and field a reveal evaluates. With a gated live source: the
+/// last FOG_LOS_BUILD publication — sources and horizons together, one RENDER
+/// frame old — so a slot re-authored since then never pairs with another
+/// source's horizons; before the first publication, the live set with an
+/// unpublished field (gated sources reveal nothing). Without one: the live set,
+/// and the field is never read.
+inline void selectRevealSnapshot(
+    const IRComponents::FrameDataFogObservers &live,
+    const IRComponents::FrameDataFogObservers &published,
+    IRComponents::FogLineOfSightField publishedField,
+    IRComponents::FrameDataFogObservers &observers,
+    IRComponents::FogLineOfSightField &los
+) {
+    if (live.losSourceMask_ != 0 && publishedField.published()) {
+        observers = published;
+        los = publishedField;
+        return;
+    }
+    observers = live;
+    los = {};
+}
+
 namespace detail {
 
 inline IRComponents::C_CanvasFogOfWar *activeFogComponent() {
@@ -101,10 +123,20 @@ inline IRComponents::C_CanvasFogOfWar *activeFogComponent() {
 
 /// Evaluate the active canvas's analytic vision sources at @p worldPosition.
 /// An absent fog attachment leaves gameplay unrestricted; an attached fog
-/// component with no sources reveals nothing.
+/// component with no sources reveals nothing. Gated sources read the snapshot
+/// `FOG_REVEAL_EVAL` reads (`selectRevealSnapshot`).
 inline float evalActiveVisionReveal(IRMath::vec3 worldPosition) {
     if (auto *fog = detail::activeFogComponent()) {
-        return evalVisionReveal(fog->observers_, worldPosition);
+        IRComponents::FrameDataFogObservers observers;
+        IRComponents::FogLineOfSightField los;
+        selectRevealSnapshot(
+            fog->observers_,
+            fog->losPublishedObservers_,
+            fog->losField(),
+            observers,
+            los
+        );
+        return evalVisionReveal(observers, los, worldPosition);
     }
     return 1.0f;
 }

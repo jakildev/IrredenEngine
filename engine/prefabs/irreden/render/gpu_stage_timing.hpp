@@ -153,6 +153,40 @@ inline ComputeLightVolumeTiming &computeLightVolumeTiming() {
     return instance;
 }
 
+// `FOG_LOS_BUILD`'s two halves: the CPU build (columns + horizons) and the
+// LOS texture upload. The system row covers both.
+struct FogLosBuildTiming {
+    CpuPhaseTiming build_;
+    CpuPhaseTiming upload_;
+
+    void reset() {
+        build_.reset();
+        upload_.reset();
+    }
+};
+
+inline FogLosBuildTiming &fogLosBuildTiming() {
+    static FogLosBuildTiming instance;
+    return instance;
+}
+
+class ScopedCpuPhaseTimer {
+  public:
+    explicit ScopedCpuPhaseTimer(CpuPhaseTiming &timing)
+        : m_timing{timing}
+        , m_start{std::chrono::steady_clock::now()} {}
+
+    ~ScopedCpuPhaseTimer() {
+        const auto end = std::chrono::steady_clock::now();
+        const auto elapsed = std::chrono::duration<double, std::milli>(end - m_start);
+        m_timing.record(elapsed.count());
+    }
+
+  private:
+    CpuPhaseTiming &m_timing;
+    std::chrono::steady_clock::time_point m_start;
+};
+
 // Samples are compact dispatches, not frame totals: shared buffers can pass
 // between canvases within a frame. Visible and feeder are disjoint source
 // candidates; axis entries count repeated per-axis list work.

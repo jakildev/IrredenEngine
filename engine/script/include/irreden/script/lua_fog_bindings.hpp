@@ -157,10 +157,14 @@ inline void bindFog(LuaScript &script) {
     };
     fog["lineOfSight"] = [](sol::variadic_args args) {
         requireFogArity("lineOfSight", args.size(), 6, 6);
+        float coordinates[6];
         for (std::size_t index = 0; index < 6; ++index) {
-            requireFogFloat(args[index], "lineOfSight", index);
+            coordinates[index] = requireFogFloat(args[index], "lineOfSight", index);
         }
-        return true;
+        return IRPrefab::Fog::lineOfSight(
+            IRMath::vec3(coordinates[0], coordinates[1], coordinates[2]),
+            IRMath::vec3(coordinates[3], coordinates[4], coordinates[5])
+        );
     };
     fog["setEntityGoverned"] = [](sol::variadic_args args) {
         requireFogArity("setEntityGoverned", args.size(), 1, 2);

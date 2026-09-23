@@ -145,9 +145,9 @@ keys, and stays separate from `bindLuaDrivenEcs()`.
 - `setVision` replaces circles; `addVision` appends; `clearVisions` clears only
   circles. Their optional defaults are `edge = kFogVisionEdgeDefault`,
   `observerZ = zCostUp = freeBand = 0`, and `zCostDown = -1` (mirror up-cost).
-- `evalReveal(x,y,z)` evaluates circles only, not grid memory or the hysteretic
-  body verdict. Attached fog with no circles returns 0; absent fog returns 1.
-  `lineOfSight(from...,to...)` validates six numbers but currently returns true.
+- `evalReveal(x,y,z)` evaluates circles (LOS gates included), not grid memory or the
+  hysteretic body verdict; attached fog with no circles returns 0, absent fog 1.
+  `lineOfSight(from...,to...)` rebuilds the column view per call: not per-unit per-frame.
 - `setEntityGoverned(id, governed?)` defaults true and changes archetypes, so
   defer it during iteration. `getEntityReveal` returns stored body reveal, or 1
   for an ungoverned entity.
@@ -157,8 +157,8 @@ keys, and stays separate from `bindLuaDrivenEcs()`.
 The tested examples are
 [`fog_binding_selftest.lua`](../../creations/demos/fog_demo/scripts/fog_binding_selftest.lua)
 and its [cap/governance companion](../../creations/demos/fog_demo/scripts/fog_binding_cap_selftest.lua).
-These are setup/EVAL APIs, not tick intrinsics. Follow-ups are **IRFog occlusion
-integration** and **IRFog subject-model and channel integration**.
+These are setup/EVAL APIs, not tick intrinsics. Per-source LOS gating has no Lua
+setter yet; the follow-up is **IRFog subject-model and channel integration**.
 
 - **`IRModifier`:** `add*` writes `C_Modifiers`; resolved values need
   `registerResolverPipeline()` in UPDATE. Wrong types no-op; cache ids hot.

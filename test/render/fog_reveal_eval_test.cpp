@@ -144,7 +144,6 @@ TEST(FogRevealEvalTest, UnpublishedFieldRevealsNothingThroughAGatedSource) {
 // The system evaluates the published sources with the published field: a live
 // set re-authored after the build never pairs with the old horizons.
 TEST(FogRevealEvalTest, SnapshotPairsPublishedSourcesWithTheirField) {
-    using System = IRSystem::System<IRSystem::FOG_REVEAL_EVAL>;
     const std::vector<float> horizons = clearHorizons();
     const FogLineOfSightField published{horizons.data()};
     FrameDataFogObservers built = oneCircle(10.0f, 0.0f);
@@ -154,16 +153,16 @@ TEST(FogRevealEvalTest, SnapshotPairsPublishedSourcesWithTheirField) {
 
     FrameDataFogObservers observers{};
     FogLineOfSightField los{};
-    System::selectRevealSnapshot(live, built, published, observers, los);
+    IRPrefab::Fog::selectRevealSnapshot(live, built, published, observers, los);
     EXPECT_EQ(observers.visionCircles_[0], built.visionCircles_[0]);
     EXPECT_EQ(los.horizons_, horizons.data());
 
-    System::selectRevealSnapshot(live, built, FogLineOfSightField{}, observers, los);
+    IRPrefab::Fog::selectRevealSnapshot(live, built, FogLineOfSightField{}, observers, los);
     EXPECT_EQ(observers.visionCircles_[0], live.visionCircles_[0]);
     EXPECT_FALSE(los.published()) << "before the first build, gated sources read closed";
 
     live.losSourceMask_ = 0;
-    System::selectRevealSnapshot(live, built, published, observers, los);
+    IRPrefab::Fog::selectRevealSnapshot(live, built, published, observers, los);
     EXPECT_EQ(observers.visionCircles_[0], live.visionCircles_[0]);
     EXPECT_FALSE(los.published()) << "an ungated live set never reads the field";
 }

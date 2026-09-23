@@ -37,28 +37,6 @@ template <> struct System<FOG_REVEAL_EVAL> {
     bool fogAttached_ = false;
     std::vector<std::vector<PendingTransition>> pendingByWorker_;
 
-    /// The observers and field this UPDATE evaluates. With a gated live
-    /// source: the last FOG_LOS_BUILD publication — sources and horizons
-    /// together, one RENDER frame old — so a slot re-authored since then never
-    /// pairs with another source's horizons; before the first publication, the
-    /// live set with an unpublished field (gated sources reveal nothing).
-    /// Without one: the live set, and the field is never read.
-    static void selectRevealSnapshot(
-        const IRComponents::FrameDataFogObservers &live,
-        const IRComponents::FrameDataFogObservers &published,
-        IRComponents::FogLineOfSightField publishedField,
-        IRComponents::FrameDataFogObservers &observers,
-        IRComponents::FogLineOfSightField &los
-    ) {
-        if (live.losSourceMask_ != 0 && publishedField.published()) {
-            observers = published;
-            los = publishedField;
-            return;
-        }
-        observers = live;
-        los = {};
-    }
-
     void beginTick() {
         activeCanvas_ = IRRender::getActiveCanvasEntityOrNull();
         activePool_ = nullptr;
@@ -74,7 +52,7 @@ template <> struct System<FOG_REVEAL_EVAL> {
             if (auto fog =
                     IREntity::getComponentOptional<IRComponents::C_CanvasFogOfWar>(activeCanvas_)) {
                 const IRComponents::C_CanvasFogOfWar &canvasFog = **fog;
-                selectRevealSnapshot(
+                IRPrefab::Fog::selectRevealSnapshot(
                     canvasFog.observers_,
                     canvasFog.losPublishedObservers_,
                     canvasFog.losField(),

@@ -19,6 +19,7 @@
 #include <irreden/render/components/component_light_blocker.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/fog_line_of_sight.hpp>
+#include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 
@@ -42,11 +43,13 @@ template <> struct System<FOG_LOS_BUILD> {
             fog.observers_.losSourceMask_ == 0) {
             return;
         }
+        IRRender::FogLosBuildTiming &phaseTiming = IRRender::fogLosBuildTiming();
         {
-            IR_PROFILE_BLOCK("FogLosBuild::Columns", IR_PROFILER_COLOR_RENDER);
-            IRPrefab::Fog::rasterizeLosColumns(pool, canvas, fog.losColumnTops_);
-        }
-        {
+            IRRender::ScopedCpuPhaseTimer timer{phaseTiming.build_};
+            {
+                IR_PROFILE_BLOCK("FogLosBuild::Columns", IR_PROFILER_COLOR_RENDER);
+                IRPrefab::Fog::rasterizeLosColumns(pool, canvas, fog.losColumnTops_);
+            }
             IR_PROFILE_BLOCK("FogLosBuild::Horizons", IR_PROFILER_COLOR_RENDER);
             IRPrefab::Fog::buildLosHorizons(
                 fog.observers_,
@@ -58,6 +61,7 @@ template <> struct System<FOG_LOS_BUILD> {
         fog.losPublishedObservers_ = fog.observers_;
         fog.losPublished_ = true;
         {
+            IRRender::ScopedCpuPhaseTimer timer{phaseTiming.upload_};
             IR_PROFILE_BLOCK("FogLosBuild::Upload", IR_PROFILER_COLOR_RENDER);
             fog.getLosTexture()->subImage2D(
                 0,
