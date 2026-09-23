@@ -594,7 +594,7 @@ constexpr vec2 kPivotVerifyAcquireBackgroundIso = vec2(-40.0f, 0.0f);
 // it.
 vec2 pivotVerifyCanvasCenterIso() {
     const ivec2 canvasSize = ivec2(IRRender::getMainCanvasSizeTrixels());
-    return vec2(canvasSize) * 0.5f - vec2(IRMath::trixelOriginOffsetZ1(canvasSize));
+    return vec2(canvasSize) * 0.5f - vec2(IRMath::trixelOriginOffsetX1(canvasSize));
 }
 
 // Camera pan that places kPivotVerifyDefaultAnchor under the exact viewport
