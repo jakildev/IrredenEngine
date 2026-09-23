@@ -94,7 +94,7 @@ template <> struct System<TEXT_TO_TRIXEL> {
 
         glyphCmdBuf_->subData(0, count * sizeof(GlyphDrawCommand), drawCommands_.data());
 
-        canvasTextures_->getTextureColors()
+        canvasTextures_->getTextureColorsForGeometryWrite()
             ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
         canvasTextures_->getTextureDistances()
             ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);
@@ -125,10 +125,13 @@ template <> struct System<TEXT_TO_TRIXEL> {
             kBufferIndex_GlyphDrawCommands
         );
 
-        SystemId systemId =
-            registerSystem<TEXT_TO_TRIXEL, C_TextSegment, C_GuiPosition, C_GuiElement, C_TextStyle>(
-                "TextToTrixel"
-            );
+        SystemId systemId = registerSystem<
+            TEXT_TO_TRIXEL,
+            C_TextSegment,
+            C_GuiPosition,
+            C_GuiElement,
+            C_TextStyle,
+            AlsoWrites<IRComponents::C_TriangleCanvasTextures>>("TextToTrixel");
         auto *p = getSystemParams<System<TEXT_TO_TRIXEL>>(systemId);
         p->textProgram_ = IRRender::getNamedResource<ShaderProgram>("TextToTrixelProgram");
         p->fontDataBuf_ = IRRender::getNamedResource<Buffer>("FontDataBuffer");

@@ -2091,7 +2091,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 );
             }
             (cardinalElection ? stage2WinnerProgram_ : stage2Program_)->use();
-            triangleCanvasTextures.getTextureColors()
+            triangleCanvasTextures.getTextureColorsForGeometryWrite()
                 ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
             triangleCanvasTextures.getTextureDistances()
                 ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);

@@ -85,8 +85,11 @@ inline void drawMaskGridOntoCanvas(
         }
     }
 
-    canvas.textureTriangleColors_.second->subImage2D(
-        origin.x, origin.y, gridW, gridH,
+    canvas.getTextureColorsForGeometryWrite()->subImage2D(
+        origin.x,
+        origin.y,
+        gridW,
+        gridH,
         IRRender::PixelDataFormat::RGBA,
         IRRender::PixelDataType::UNSIGNED_BYTE,
         scratch.colors_.data()

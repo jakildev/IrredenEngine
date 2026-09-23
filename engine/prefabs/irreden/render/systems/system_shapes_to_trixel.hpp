@@ -472,6 +472,15 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
             }
 
+            const bool hasXray = std::any_of(
+                gpuShapes.begin(),
+                gpuShapes.end(),
+                [](const GPUShapeDescriptor &shape) {
+                    return (shape.flags & SHAPE_FLAG_XRAY_OCCLUDED) != 0;
+                }
+            );
+            canvasTextures.shapeGeometry_.publishSamples(!hasXray);
+
             const auto shadow = IREntity::getComponentOptional<C_CanvasSunShadow>(canvasId);
             const auto behavior =
                 IREntity::getComponentOptional<C_TrixelCanvasRenderBehavior>(canvasId);

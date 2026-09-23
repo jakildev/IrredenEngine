@@ -122,7 +122,8 @@ template <> struct System<WIDGET_RENDER_SLIDER> {
             IRComponents::C_Widget,
             IRComponents::C_WidgetSlider,
             IRComponents::C_WidgetState,
-            IRComponents::C_GuiPosition>("WidgetRenderSlider");
+            IRComponents::C_GuiPosition,
+            AlsoWrites<IRComponents::C_TriangleCanvasTextures>>("WidgetRenderSlider");
     }
 };
 

@@ -182,7 +182,8 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
             IRComponents::C_Widget,
             IRComponents::C_WidgetDropdown,
             IRComponents::C_WidgetState,
-            IRComponents::C_GuiPosition>("WidgetRenderDropdown");
+            IRComponents::C_GuiPosition,
+            AlsoWrites<IRComponents::C_TriangleCanvasTextures>>("WidgetRenderDropdown");
     }
 };
 

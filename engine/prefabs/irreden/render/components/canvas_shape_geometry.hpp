@@ -24,7 +24,24 @@ struct CanvasShapeGeometry {
     std::size_t ownerCapacityBytes_ = 0;
     IRMath::ivec2 ownerSize_{};
 
+    bool samplesValid() const {
+        return m_samplesValid;
+    }
+
+    void invalidateSamples() const {
+        m_samplesValid = false;
+    }
+
+    void publishSamples(bool unblended) {
+        IR_ASSERT(
+            frameData_.shapeCount > 0 && tileCount_ > 0 && ownerSize_.x > 0 && ownerSize_.y > 0,
+            "Published shape samples require a complete submission"
+        );
+        m_samplesValid = unblended;
+    }
+
     void reset() {
+        invalidateSamples();
         frameData_ = {};
         tileCount_ = 0;
         ownerSize_ = IRMath::ivec2(0);
@@ -34,6 +51,7 @@ struct CanvasShapeGeometry {
         std::span<const IRRender::GPUShapeDescriptor> shapes,
         const IRRender::GPUShapesFrameData &frameData
     ) {
+        invalidateSamples();
         IR_ASSERT(
             frameData.shapeCount >= 0 &&
                 shapes.size() == static_cast<std::size_t>(frameData.shapeCount),
@@ -58,6 +76,7 @@ struct CanvasShapeGeometry {
     }
 
     void uploadTiles(std::span<const IRRender::ShapeTileDescriptor> tiles) {
+        invalidateSamples();
         if (tiles.size() > tileCapacity_) {
             if (tiles_.second != nullptr)
                 IRRender::destroyResource<IRRender::Buffer>(tiles_.first);
@@ -74,6 +93,7 @@ struct CanvasShapeGeometry {
     }
 
     void prepareSampleOwners(IRMath::ivec2 size) {
+        invalidateSamples();
         IR_ASSERT(size.x > 0 && size.y > 0, "Shape owner dimensions must be positive");
         const auto bytes = std::size_t(size.x) * std::size_t(size.y) * sizeof(std::uint32_t);
         if (bytes > ownerCapacityBytes_) {
@@ -107,6 +127,10 @@ struct CanvasShapeGeometry {
         ownerCapacityBytes_ = 0;
         reset();
     }
+
+  private:
+    // Const canvas clears mutate GPU content and invalidate this derived reference state.
+    mutable bool m_samplesValid = false;
 };
 
 } // namespace IRComponents

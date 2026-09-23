@@ -113,7 +113,8 @@ template <> struct System<WIDGET_RENDER_SCROLL> {
             IRComponents::C_Widget,
             IRComponents::C_WidgetScroll,
             IRComponents::C_WidgetState,
-            IRComponents::C_GuiPosition>("WidgetRenderScroll");
+            IRComponents::C_GuiPosition,
+            AlsoWrites<IRComponents::C_TriangleCanvasTextures>>("WidgetRenderScroll");
     }
 };
 

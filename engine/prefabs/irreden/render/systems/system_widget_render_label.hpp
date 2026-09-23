@@ -57,7 +57,8 @@ template <> struct System<WIDGET_RENDER_LABEL> {
             WIDGET_RENDER_LABEL,
             IRComponents::C_Widget,
             IRComponents::C_WidgetLabel,
-            IRComponents::C_GuiPosition>("WidgetRenderLabel");
+            IRComponents::C_GuiPosition,
+            AlsoWrites<IRComponents::C_TriangleCanvasTextures>>("WidgetRenderLabel");
     }
 };
 

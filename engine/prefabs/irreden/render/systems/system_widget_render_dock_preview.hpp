@@ -74,9 +74,10 @@ template <> struct System<WIDGET_RENDER_DOCK_PREVIEW> {
     }
 
     static SystemId create() {
-        return registerSystem<WIDGET_RENDER_DOCK_PREVIEW, IRComponents::C_LayoutState>(
-            "WidgetRenderDockPreview"
-        );
+        return registerSystem<
+            WIDGET_RENDER_DOCK_PREVIEW,
+            IRComponents::C_LayoutState,
+            AlsoWrites<IRComponents::C_TriangleCanvasTextures>>("WidgetRenderDockPreview");
     }
 };
 

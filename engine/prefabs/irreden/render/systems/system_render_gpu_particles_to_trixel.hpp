@@ -82,7 +82,7 @@ template <> struct System<RENDER_GPU_PARTICLES_TO_TRIXEL> {
                     kBufferIndex_FrameDataGpuParticles
                 );
 
-                canvas.getTextureColors()
+                canvas.getTextureColorsForGeometryWrite()
                     ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
                 canvas.getTextureDistances()
                     ->bindAsImage(1, TextureAccess::READ_WRITE, TextureFormat::R32I);

@@ -115,7 +115,8 @@ template <> struct System<WIDGET_RENDER_TEXT_INPUT> {
             IRComponents::C_Widget,
             IRComponents::C_WidgetTextInput,
             IRComponents::C_WidgetState,
-            IRComponents::C_GuiPosition>("WidgetRenderTextInput");
+            IRComponents::C_GuiPosition,
+            AlsoWrites<IRComponents::C_TriangleCanvasTextures>>("WidgetRenderTextInput");
     }
 };
 
