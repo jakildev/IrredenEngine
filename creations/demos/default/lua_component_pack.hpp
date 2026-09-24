@@ -11,6 +11,8 @@
 #include <irreden/render/components/component_gui_position_lua.hpp>
 #include <irreden/render/components/component_text_style_lua.hpp>
 #include <irreden/render/components/component_entity_canvas_lua.hpp>
+#include <irreden/render/components/component_fog_exempt_lua.hpp>
+#include <irreden/render/components/component_fog_field_lua.hpp>
 #include <irreden/render/components/component_fog_revealed_lua.hpp>
 
 namespace IRDefaultCreation {
@@ -28,7 +30,9 @@ inline void registerLuaComponentPack(IRScript::LuaScript &luaScript) {
         C_GuiPosition,
         C_TextStyle,
         C_EntityCanvas,
-        C_FogRevealed>();
+        C_FogRevealed,
+        C_FogField,
+        C_FogExempt>();
 }
 } // namespace IRDefaultCreation
 

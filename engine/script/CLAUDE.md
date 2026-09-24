@@ -145,12 +145,12 @@ keys, and stays separate from `bindLuaDrivenEcs()`.
 - `setVision` replaces circles; `addVision` appends; `clearVisions` clears only
   circles. Their optional defaults are `edge = kFogVisionEdgeDefault`,
   `observerZ = zCostUp = freeBand = 0`, and `zCostDown = -1` (mirror up-cost).
-- `evalReveal(x,y,z)` evaluates circles only, not grid memory or the hysteretic
-  body verdict. Attached fog with no circles returns 0; absent fog returns 1.
-  `lineOfSight(from...,to...)` validates six numbers but currently returns true.
-- `setEntityGoverned(id, governed?)` defaults true and changes archetypes, so
-  defer it during iteration. `getEntityReveal` returns stored body reveal, or 1
-  for an ungoverned entity.
+- `evalReveal(x,y,z)` is the BODY verdict oracle: a VISIBLE grid cell or the
+  circle term, never the hysteretic body state. Attached fog with nothing
+  revealed returns 0; absent fog returns 1. `lineOfSight` always returns true.
+- `setEntityGoverned(id, governed?)` defaults true (synchronous BODY); `false`
+  tags FIELD, even on a never-adopted entity. It changes archetypes, so defer it
+  during iteration. `getEntityReveal` is stored body reveal, or 1 when untagged.
 - `setCell`, `getCell`, and `revealRadius` edit/query the grid; `clear()` clears
   only that grid. States are `UNEXPLORED`, `EXPLORED`, and `VISIBLE`.
 

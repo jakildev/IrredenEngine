@@ -208,21 +208,32 @@ constant uint kEntityIdPriorityMaskInHighWord = 0x3u << kEntityIdPriorityShiftIn
 // (no self-shadow / crease AO). Rides the same masking chokepoint; a non-cut
 // face leaves the id unchanged.
 constant uint kEntityIdCutFaceMaskInHighWord = 0x1u << 29u;
-// Fog whole-body carrier — GLSL twin's kEntityIdFogWholeBodyMaskInHighWord.
-// Bit 28 flags a whole-body fog-governed pixel so FOG_TO_TRIXEL fogs it on XY
-// distance alone. Rides the same masking chokepoint.
-constant uint kEntityIdFogWholeBodyMaskInHighWord = 0x1u << 28u;
+// Fog BODY carrier — GLSL twin's kEntityIdFogBody* constants. Bit 28 flags a
+// BODY-classed pixel and bits 27:20 carry its 8-bit reveal factor, so
+// FOG_TO_TRIXEL paints the pixel at factor / 255 with no field lookup. Rides
+// the same masking chokepoint.
+constant uint kEntityIdFogBodyMaskInHighWord = 0x1u << 28u;
+constant uint kEntityIdFogWholeBodyMaskInHighWord = kEntityIdFogBodyMaskInHighWord;
+constant uint kEntityIdFogBodyFactorShiftInHighWord = 20u;
+constant uint kEntityIdFogBodyFactorMaskInHighWord = 0xFFu << kEntityIdFogBodyFactorShiftInHighWord;
 constant uint kEntityIdHighWordMask =
     ~(kEntityIdPriorityMaskInHighWord | kEntityIdCutFaceMaskInHighWord |
-      kEntityIdFogWholeBodyMaskInHighWord);
+      kEntityIdFogBodyMaskInHighWord | kEntityIdFogBodyFactorMaskInHighWord);
 inline uint decodePriority(uint2 rawId) {
     return (rawId.y >> kEntityIdPriorityShiftInHighWord) & 0x3u;
 }
 inline bool decodeCutFace(uint2 rawId) {
     return (rawId.y & kEntityIdCutFaceMaskInHighWord) != 0u;
 }
+inline bool decodeFogBody(uint2 rawId) {
+    return (rawId.y & kEntityIdFogBodyMaskInHighWord) != 0u;
+}
 inline bool decodeFogWholeBody(uint2 rawId) {
-    return (rawId.y & kEntityIdFogWholeBodyMaskInHighWord) != 0u;
+    return decodeFogBody(rawId);
+}
+// The BODY reveal factor in 0..255; meaningful only when decodeFogBody.
+inline uint decodeFogBodyFactor(uint2 rawId) {
+    return (rawId.y >> kEntityIdFogBodyFactorShiftInHighWord) & 0xFFu;
 }
 inline uint2 decodeEntityId(uint2 rawId) {
     return uint2(rawId.x, rawId.y & kEntityIdHighWordMask);
@@ -238,11 +249,18 @@ inline uint2 encodeEntityIdCutFace(uint2 packedId, bool isCutFace) {
     return isCutFace ? uint2(packedId.x, packedId.y | kEntityIdCutFaceMaskInHighWord)
                      : packedId;
 }
-// Set the fog whole-body flag on an ALREADY priority-encoded id — GLSL twin.
-inline uint2 encodeEntityIdFogWholeBody(uint2 packedId, bool isFogWholeBody) {
-    return isFogWholeBody
-        ? uint2(packedId.x, packedId.y | kEntityIdFogWholeBodyMaskInHighWord)
+// Fold the fog BODY class bit and its 8-bit reveal factor into an ALREADY
+// priority-encoded id — GLSL twin. A non-BODY leaves the id unchanged.
+inline uint2 encodeEntityIdFogBody(uint2 packedId, bool isFogBody, uint factor) {
+    return isFogBody
+        ? uint2(packedId.x, packedId.y | kEntityIdFogBodyMaskInHighWord |
+                                ((factor & 0xFFu) << kEntityIdFogBodyFactorShiftInHighWord))
         : packedId;
+}
+// A subject whose raster route carries no factor of its own (a flagged SDF
+// shape) renders whole: the class bit with the factor pinned at 255.
+inline uint2 encodeEntityIdFogWholeBody(uint2 packedId, bool isFogWholeBody) {
+    return encodeEntityIdFogBody(packedId, isFogWholeBody, 255u);
 }
 
 // Per-axis fractional encoding:

@@ -329,10 +329,13 @@ void main() {
     // it via kEntityIdHighWordMask) so LIGHTING_TO_TRIXEL force-lights it.
     // Non-cut ⇒ id unchanged.
     packedEntityId = encodeEntityIdCutFace(packedEntityId, sel.isCutFace);
-    // Reserved bit 3 (kFogWholeBodyExempt) marks a whole-body fog-governed
-    // set: flag every pixel (bit 28) so FOG_TO_TRIXEL skips the height penalty.
-    packedEntityId = encodeEntityIdFogWholeBody(
-        packedEntityId, (voxels[voxelIndex].reserved & (1u << 3u)) != 0u
+    // Reserved bit 3 (kFogBody) marks a fog BODY and bits 11:4 carry its
+    // reveal factor: fold both into the id (bit 28, bits 27:20) so
+    // FOG_TO_TRIXEL paints every pixel of the body at that one factor.
+    packedEntityId = encodeEntityIdFogBody(
+        packedEntityId,
+        (voxels[voxelIndex].reserved & (1u << 3u)) != 0u,
+        (voxels[voxelIndex].reserved >> 4u) & 0xFFu
     );
 
     if (isDetachedCanvas > 0.5 && !reVoxelize) {

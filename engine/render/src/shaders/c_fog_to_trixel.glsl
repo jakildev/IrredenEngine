@@ -137,8 +137,24 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
 layout(rgba8, binding = 0) uniform image2D trixelColors;
 layout(r32i, binding = 1) readonly uniform iimage2D trixelDistances;
 layout(rgba8, binding = 2) readonly uniform image2D canvasFogOfWar;
-// Read only for the fog whole-body carrier bit (decodeFogWholeBody).
+// Read only for the fog BODY carrier (decodeFogBody / decodeFogBodyFactor).
 layout(rg32ui, binding = 3) readonly uniform uimage2D triangleCanvasEntityIds;
+
+// The one state → colour curve every fogged pixel takes: a two-segment
+// continuous lerp anchored on the three canonical stored states —
+// unexploredColor at 0, the desaturated "memory" tone at 128/255, the source
+// colour at 1.0. The BODY branch feeds it the body's uniform factor; the
+// FIELD branch the per-pixel field state.
+vec3 fogStateColor(vec3 src, float state, vec3 unexplored) {
+    const float luminance = dot(src, vec3(0.299, 0.587, 0.114));
+    const vec3 exploredColor = vec3(luminance) * 0.4;
+    if (state >= kFogExploredValue) {
+        const float t = (state - kFogExploredValue) / (1.0 - kFogExploredValue);
+        return mix(exploredColor, src, t);
+    }
+    const float t = state / kFogExploredValue;
+    return mix(unexplored, exploredColor, t);
+}
 
 // Out-of-range cells read as visible (1.0): imageLoad has no sampler wrap mode,
 // so this bounds check is load-bearing. Matches the OOB-as-visible contract on
@@ -162,6 +178,24 @@ void main() {
     // color.
     const int encoded = imageLoad(trixelDistances, pixel).x;
     if (encoded >= kEmptyDistanceEncoded) {
+        return;
+    }
+
+    // A BODY pixel takes its body's one verdict: the carrier factor is the
+    // state, with no grid tap, no height term, no rim fade and no cut cap, so
+    // the whole body reads at one tone. A hidden body never reaches this pass
+    // (its pool range is inactive), so a factor here is a shown body's.
+    const uvec2 rawId = imageLoad(triangleCanvasEntityIds, pixel).xy;
+    if (decodeFogBody(rawId)) {
+        const float bodyState = float(decodeFogBodyFactor(rawId)) / 255.0;
+        if (bodyState >= 1.0) {
+            return;
+        }
+        const vec4 bodySrc = imageLoad(trixelColors, pixel);
+        imageStore(
+            trixelColors, pixel,
+            vec4(fogStateColor(bodySrc.rgb, bodyState, unexploredColor.rgb), bodySrc.a)
+        );
         return;
     }
 
@@ -201,11 +235,6 @@ void main() {
             voxelRenderOptions, rasterYaw
         );
         const float worldPerPixel = length(pos3DNeighborX.xy - pos3D.xy);
-        // A whole-body fog-governed body fogs on XY distance alone: its pixels
-        // drop both height-penalty terms, so the reveal, rim fade, and cut cap
-        // all key on the plain disc while grid memory still max-combines.
-        const bool fogWholeBody =
-            decodeFogWholeBody(imageLoad(triangleCanvasEntityIds, pixel).xy);
         // Must trace the same analytic curve as VOXEL_TO_TRIXEL_STAGE_1's
         // per-voxel clip, so the floor's per-pixel reveal here and the
         // voxel-object edge there coincide. worldPerPixel floors the rim at ~1
@@ -216,16 +245,13 @@ void main() {
             // max(dzDown - freeBand, 0)) into the radial distance so matter far
             // above/below the observer's height reveals less at the same XY,
             // asymmetrically and with a free band around the observer's height.
-            // All-zero heights (or a whole-body pixel) → distEff == the plain
-            // 2D length.
+            // All-zero heights → distEff == the plain 2D length.
             const vec4 heights = visionCircleHeights[i];
-            const float zCostUp = fogWholeBody ? 0.0 : heights.y;
-            const float zCostDown = fogWholeBody ? 0.0 : heights.z;
             const float dzUp = max(heights.x - pos3D.z, 0.0);
             const float dzDown = max(pos3D.z - heights.x, 0.0);
             const float distEff = length(pos3D.xy - visionCircles[i].xy) +
-                zCostUp * max(dzUp - heights.w, 0.0) +
-                zCostDown * max(dzDown - heights.w, 0.0);
+                heights.y * max(dzUp - heights.w, 0.0) +
+                heights.z * max(dzDown - heights.w, 0.0);
             const float aa = max(visionCircles[i].w, worldPerPixel);
             const float reveal =
                 1.0 - smoothstep(visionCircles[i].z - aa, visionCircles[i].z + aa, distEff);
@@ -267,22 +293,9 @@ void main() {
     // its no-hard-disc init, zeroing the cap blend. `state` carries the disc's
     // ~1px AA rim, so the junction with visible matter stays antialiased.
 
-    // The explored "memory" tone keeps shape silhouettes visible without being
-    // confused with what is *currently* in view.
-    const float luminance = dot(src.rgb, vec3(0.299, 0.587, 0.114));
-    const vec3 exploredColor = vec3(luminance) * 0.4;
-
-    // Two-segment continuous lerp anchored on the three canonical stored
-    // states: unexploredColor at 0, exploredColor at 128/255, src at 1.0. Alpha
-    // is preserved so any text/overlay antialiasing still composites cleanly.
-    vec3 outColor;
-    if (state >= kFogExploredValue) {
-        const float t = (state - kFogExploredValue) / (1.0 - kFogExploredValue);
-        outColor = mix(exploredColor, src.rgb, t);
-    } else {
-        const float t = state / kFogExploredValue;
-        outColor = mix(unexploredColor.rgb, exploredColor, t);
-    }
+    // Alpha is preserved so any text/overlay antialiasing still composites
+    // cleanly.
+    vec3 outColor = fogStateColor(src.rgb, state, unexploredColor.rgb);
     if (gridState < kFogExploredValue) {
         // The squared ease-out crushes the fade tail to the unexplored colour
         // well before the keep-ring drop, so the outermost kept columns' wall
