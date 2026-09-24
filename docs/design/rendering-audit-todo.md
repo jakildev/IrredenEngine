@@ -561,5 +561,22 @@ runs and existing thresholds; add an SDF-active workload to measure election cos
   queries under crowding and across zoom before widening use.
 - Windows/OpenGL native validation remains pending. The finite fragment path
   uses linear local-light volume sampling, matching merged sampler PR #3740;
-  the parent stack still needs that merge reconciled in its compute consumers.
+  the parent stack now preserves that policy in its compute consumers too.
   This slice does not claim million-entity throughput.
+
+### Fog integration dependencies
+
+- Stack reconciliation preserves the shared light-volume query and merged
+  sampler policy. Four updated-parent spotlight controls remain RGB-identical.
+- Coordinate the next finite-fragment fog implementation with #3719 (shared
+  per-axis paint), #3763 (BODY factor semantics) and #3770 (SDF adoption and
+  hidden-shape exclusion). Do not introduce a competing fog formula while these
+  contracts are being integrated.
+- Required checks: hidden BODY geometry stays absent; soft BODY factors remain
+  uniform across a shape; FIELD fog uses the finite surface position and normal;
+  fog follows display mapping exactly once. Cover all camera quadrants, hard
+  and soft edges, explored memory, and side/top receiver transitions.
+- Lighting and fog currently alias buffer slot 27. Fragment composition needs
+  both resources simultaneously, so binding lifetime and restoration must be
+  solved before removing the conservative fog-pipeline fallback. Shared color
+  math alone is insufficient.

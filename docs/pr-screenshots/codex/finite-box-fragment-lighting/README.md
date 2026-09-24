@@ -69,3 +69,9 @@ still requires profiling, and native Windows/OpenGL remains pending.
 Full IRCanvasStress smoke: `--no-spin --no-auto-rotate --no-ao --subdivisions 3 --zoom 2.5 --auto-screenshot 6 --sweep-yaw 0 0.78539816 2` exited cleanly with [cardinal](scene-2393.png) and [45-degree](scene-2394.png) captures. These cover adjacent render modes but are not a complete visual-correctness certificate.
 
 After sampler PR #3740 merged, the new finite path adopted linear local-light volume sampling. The repeated native spotlight run exited cleanly: [0 degrees](spot-127.png), [30](spot-128.png), [45](spot-129.png), [zoom 7](spot-130.png). These are the final local-light captures; the earlier spot captures document the nearest-sampled version. This sampler does not filter sun visibility. The 3,456-case composition test passed again on both backends.
+
+## Updated parent integration
+
+Reconciled with shared-query parent `4ce7e0d3f904df72778c1b20f565c00f05ad19cd`. All 234 render tests and native CanvasStress/LightingSpot builds plus header checks passed. The eight-angle fixture repeated cleanly as runtime captures 2395–2402; each is RGB-identical to its corresponding included 2377–2384 capture.
+
+The updated compute paths now also use the merged linear local-light sampler. Final spotlight captures [139](spot-139.png), [140](spot-140.png), [141](spot-141.png), [142](spot-142.png) exited cleanly. They differ from 127–130 on sampled fallback receivers due to the compute sampler update; analytical box sun boundaries remain sharp. Unsupported curved/lattice receiver artifacts remain.
