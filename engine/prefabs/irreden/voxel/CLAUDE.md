@@ -1,7 +1,6 @@
 # engine/prefabs/irreden/voxel/
-
-Voxel pools, owned voxel-set spans, SDF shapes, grid rotation, and skeletal
-binding. API contracts live in the headers; this file owns cross-header and pipeline constraints.
+Voxel pools, owned spans, SDF shapes, rotation, and skeletal binding. Headers own
+API contracts; this file owns cross-header and pipeline constraints.
 
 ## Pool and voxel-set contracts
 
@@ -42,32 +41,25 @@ render, culling, occupancy, and picking need no anchor branch:
 | `CENTER` | `-(size-1)*0.5` | Solid is centered on its entity origin. |
 | `GROUND` | centered XY, `-(size.z-0.5)` in Z | Discrete entity position is footprint center at body bottom. |
 
-New discrete-entity prefabs use `GROUND`: at `translation.z == floorSurfaceZ`
-they stand flush for every size, so perception, arrival, fog, spawn, and UI
-consumers use the entity position without a height correction. Existing
-content changes anchor only through a deliberate migration. Code
-reconstructing the body's center must call `anchorLocalCenter(anchor_, size_)`,
-never assume the CORNER formula. The anchor does not implicitly migrate
-collider, SDF-shape, or entity-canvas geometry; each adopts it separately.
+New discrete-entity prefabs use `GROUND`: at `translation.z == floorSurfaceZ` they
+stand flush at every size, so consumers need no height correction. Existing content
+changes anchor only through deliberate migration. Body-center code must call
+`anchorLocalCenter(anchor_, size_)`, never assume CORNER. Anchors do not migrate
+collider, SDF-shape, or entity-canvas geometry; each adopts them separately.
 
-Detached revoxelization rotates about the pool origin and therefore requires
-one centered set per private pool. Its rebuild tick asserts that composed
-locals are symmetric about the origin before seeding the static cull bound;
-the check catches any off-center authoring mode, not merely `GROUND`, and
-half-cell-anchor uniformity does not prove the pivot is centered. The guard
-belongs at the rebuild consumer, the one site holding both set and pool.
+Detached revoxelization rotates about the pool origin, requiring one centered set per
+private pool. Before seeding the static cull bound, its rebuild tick asserts symmetric
+composed locals, catching every off-center mode. Half-cell-anchor uniformity does not
+prove a centered pivot. Keep the guard at the only consumer holding both set and pool.
 
-Lua exposes anchors as integer enum values. The three-argument voxel-set ctor
-takes `(size, color, anchor)`, no legacy boolean arm; the four-argument form
-appends an explicit target canvas (headless construction, detached canvases).
+Lua exposes integer anchor enums. Constructors take `(size, color, anchor[, targetCanvas])`;
+the fourth argument supports headless/detached canvases. There is no boolean arm.
 
 Lua voxel authoring uses `setVoxel`, `clearVoxel`, `fillSdf`, and `carveSdf` on
-`C_VoxelSetNew`. Wrap multi-cell recipes in `set:batch(fn)` so the rotation
-source, active mask, cull bounds, and face occupancy resync once after the
-callback. Coordinates are set-local integer cells and an out-of-range write is
-a Lua error. The SDF implementation shared with the voxel editor lives in
-`sdf_fill.hpp`; new callers use it instead of duplicating an `evaluateGrid`
-loop.
+`C_VoxelSetNew`. Wrap multi-cell recipes in `set:batch(fn)` to resync rotation,
+masks, bounds, and occupancy once. Coordinates are set-local integer cells;
+out-of-range writes are errors. New SDF callers use the voxel editor's shared
+`sdf_fill.hpp` rather than duplicating an `evaluateGrid` loop.
 
 ## Transform and revoxelization pipeline
 
@@ -148,7 +140,8 @@ with `test/ecs/chunk_bounds_eviction_test.cpp` and
   `PROPAGATE_TRANSFORM`; fields with no renderer consumer remain unattached.
 - `C_ShapeDescriptor` renders directly on the GPU and allocates no voxels. It
   snapshots the active canvas with the nullable accessor so headless prefab
-  construction remains valid.
+  construction remains valid. Fog owns `SHAPE_FLAG_FOG_HIDDEN` independently
+  of the author-owned visibility bit and folds `fogBodyFactor_` into GPU flags.
 
 ## C_VoxelSetNew headless / staged mode
 
@@ -203,11 +196,7 @@ an optional editor/animation key; vector order remains authoritative.
 
 ## Deprecated
 
-| Surface | Replacement |
-|---|---|
-| `C_JointHierarchy` | `C_Skeleton` + joint entities |
-| `C_VoxelPool::markChunkWorldBoundsDirty()` | `markCullBoundsDirty(start, count)` |
-| `C_VoxelPool::markChunkBoundsDirty()` | `markCullBoundsDirty(start, count)` |
-
-The compatibility forwarders invalidate both caches over the full allocated
-prefix; out-of-tree callers should migrate to the range form.
+- Replace `C_JointHierarchy` with `C_Skeleton` plus joint entities.
+- Replace `C_VoxelPool::markChunkWorldBoundsDirty()` and `markChunkBoundsDirty()` with
+  `markCullBoundsDirty(start, count)`. Forwarders invalidate both caches over the full
+  allocated prefix; out-of-tree callers should migrate to the range form.
