@@ -13,6 +13,10 @@ namespace IRRender {
 // observation a different pose from the one the attachment was drawn with.
 struct DefaultPivotSourceFrame {
     float visualYaw_ = 0.0f;
+    // `IRPrefab::Camera::computeYawSplit`'s residual for visualYaw_: exactly 0
+    // at a settled cardinal, where the frame took the cardinal store rather
+    // than the per-axis one.
+    float residualYaw_ = 0.0f;
     // The raw camera (`C_Position2DIso`) and the pivot-corrected offset the
     // composite placed content with (`getEffectiveCameraIso`).
     IRMath::vec2 cameraIso_ = IRMath::vec2(0.0f);
@@ -69,6 +73,16 @@ class DefaultPivotLatch {
     // depth directly and leaves the view offset untouched.
     static constexpr float kYawSettleDelta = 1e-4f;
 
+    // How far behind the visible surface the cardinal store keys a fragment,
+    // in yawed iso-depth units. At residual yaw 0 each face is keyed on the
+    // lower-corner lattice `[p, p + 1]` of view space rather than on the
+    // authored cube `[p - 1/2, p + 1/2]`: a (1/2, 1/2, 1/2) shift along the view
+    // axis, invisible on screen, that puts every cardinal key 1.5 units deeper
+    // than the surface the pixel shows. The per-axis (non-cardinal) store keys
+    // without it. Removing it at a cardinal source makes the acquired point the
+    // surface itself, to within one micro-face.
+    static constexpr float kCardinalStoreLatticeDepth = 1.5f;
+
     // Record the pose the main composite is drawing this frame with, or — when
     // the default pivot does not own the depth (ORIGIN mode, or an explicit
     // focus) — that this frame's attachment is unusable as a source. A frame
@@ -119,11 +133,16 @@ class DefaultPivotLatch {
     // The world point is recovered in the frame the source was drawn in —
     // its yaw and its effective camera — so it projects to the pixel it was
     // read from, and the new state leaves the effective camera of the source
-    // pose unchanged: acquisition never moves the view.
+    // pose unchanged: acquisition never moves the view. A cardinal source's
+    // sample is first moved off the store's lattice onto the visible surface
+    // (kCardinalStoreLatticeDepth).
     void acquire(float framebufferIsoDepth) {
         const DefaultPivotSourceFrame &source = m_source;
-        const float yawedIsoDepth =
+        float yawedIsoDepth =
             framebufferIsoDepth / static_cast<float>(IRMath::max(1, source.effectiveSubdivisions_));
+        if (source.residualYaw_ == 0.0f) {
+            yawedIsoDepth -= kCardinalStoreLatticeDepth;
+        }
         m_hasAcquired = true;
         if (IRMath::abs(source.visualYaw_) <= kYawSettleDelta) {
             // At yaw 0 the yawed depth IS the un-yawed depth and the focus

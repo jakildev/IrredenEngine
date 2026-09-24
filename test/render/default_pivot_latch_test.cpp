@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <irreden/render/camera.hpp>
 #include <irreden/render/default_pivot_latch.hpp>
 
 #include <optional>
@@ -23,7 +24,8 @@
 // The one-frame lag is modelled explicitly. `beginFrame` runs ahead of the
 // RENDER pipeline, so a derive at frame N consumes the attachment frame N-1
 // rendered, described by the pose frame N-1's composite stamped —
-// `LatchDriver::step` keeps both.
+// `LatchDriver::step` keeps both. So is the store's key: a frame drawn at a
+// cardinal stores the visible surface kCardinalStoreLatticeDepth deeper.
 // ---------------------------------------------------------------------------
 
 namespace {
@@ -48,8 +50,8 @@ constexpr float kDepthStart = 5.0f;
 constexpr float kDepthAfterPan = 17.0f;
 constexpr float kDepthAfterFirstRotation = -3.25f;
 
-// What the crosshair sees in one rendered frame: a surface at a yawed depth
-// (world units), or background.
+// What the crosshair sees in one rendered frame: a visible surface at a yawed
+// depth (world units), or background.
 using Surface = std::optional<float>;
 constexpr Surface kBackground = std::nullopt;
 
@@ -69,9 +71,11 @@ class LatchDriver {
                 m_latch.acquire(*m_attachment);
             }
         }
+        const float residualYaw = IRPrefab::Camera::computeYawSplit(renderYaw).second;
         m_latch.stampSourceFrame(
             DefaultPivotSourceFrame{
                 renderYaw,
+                residualYaw,
                 cameraIso,
                 effectiveCameraIso(renderYaw, cameraIso),
                 kCanvasCenterIso,
@@ -79,9 +83,14 @@ class LatchDriver {
             },
             m_pivotOwnsDepth
         );
-        m_attachment = surface.has_value()
-                           ? std::optional<float>(*surface * static_cast<float>(effSub))
-                           : std::nullopt;
+        if (!surface.has_value()) {
+            m_attachment = std::nullopt;
+            return derive;
+        }
+        const float storeKey = residualYaw == 0.0f
+                                   ? *surface + DefaultPivotLatch::kCardinalStoreLatticeDepth
+                                   : *surface;
+        m_attachment = storeKey * static_cast<float>(effSub);
         return derive;
     }
 
@@ -443,6 +452,69 @@ TEST(DefaultPivotLatch, YawZeroAcquisitionsLeaveTheViewOffsetBitExact) {
     settleThenStartGesture(driver, 0.0f, vec2(0.0f), kDepthAfterFirstRotation);
     EXPECT_EQ(driver.viewOffsetIso(), offset);
     EXPECT_EQ(driver.isoDepth(), kDepthAfterFirstRotation);
+}
+
+// The anchor a latch holds after acquiring @p framebufferIsoDepth from a
+// source frame drawn at @p yaw with effective camera @p effectiveCameraIso.
+vec3 acquiredAnchor(float yaw, vec2 cameraIso, vec2 effectiveCameraIso, float framebufferIsoDepth) {
+    constexpr int kEffSub = 4;
+    DefaultPivotLatch latch;
+    latch.stampSourceFrame(
+        DefaultPivotSourceFrame{
+            yaw,
+            IRPrefab::Camera::computeYawSplit(yaw).second,
+            cameraIso,
+            effectiveCameraIso,
+            kCanvasCenterIso,
+            kEffSub
+        },
+        true
+    );
+    latch.observeFrame(yaw, true);
+    latch.acquire(framebufferIsoDepth * static_cast<float>(kEffSub));
+    return latch.focus(kCanvasCenterIso - cameraIso);
+}
+
+TEST(DefaultPivotLatch, ACardinalSourceLatchesTheVisibleSurfaceNotTheStoreKey) {
+    // The cardinal store keys a fragment kCardinalStoreLatticeDepth behind the
+    // surface it shows. At every cardinal the latch lands on the surface: the
+    // point on the source frame's crosshair ray at the key minus the lattice.
+    const vec2 cameraIso = vec2(64.0f, -12.0f);
+    const float cardinals[] = {0.0f, IRMath::kHalfPi, kPi, -IRMath::kHalfPi};
+    for (const float yaw : cardinals) {
+        // A never-acquired latch has no view offset, so a yaw-0 frame is drawn
+        // at the raw camera.
+        const vec2 effectiveCameraIso = yaw == 0.0f ? cameraIso : vec2(61.5f, -9.25f);
+        const vec3 anchor = acquiredAnchor(yaw, cameraIso, effectiveCameraIso, kDepthAfterPan);
+        const vec3 surface = IRMath::isoPixelToPos3DYawed(
+            kCanvasCenterIso - effectiveCameraIso,
+            kDepthAfterPan - DefaultPivotLatch::kCardinalStoreLatticeDepth,
+            yaw
+        );
+        EXPECT_NEAR(anchor.x, surface.x, 1e-3f) << "yaw=" << yaw;
+        EXPECT_NEAR(anchor.y, surface.y, 1e-3f) << "yaw=" << yaw;
+        EXPECT_NEAR(anchor.z, surface.z, 1e-3f) << "yaw=" << yaw;
+    }
+}
+
+TEST(DefaultPivotLatch, ANonCardinalSourceKeepsTheStoreKey) {
+    // The per-axis store keys a non-cardinal frame with no lattice shift, so
+    // the latch takes its sample as-is there. Positive fire for the arm above:
+    // a subtraction applied at every yaw would move this anchor by the lattice.
+    const vec2 cameraIso = vec2(64.0f, -12.0f);
+    const vec2 effectiveCameraIso = vec2(61.5f, -9.25f);
+    const float yaws[] = {IRMath::kPi / 8.0f, IRMath::kQuarterPi, 2.0f * kPi / 3.0f};
+    for (const float yaw : yaws) {
+        const vec3 anchor = acquiredAnchor(yaw, cameraIso, effectiveCameraIso, kDepthAfterPan);
+        const vec3 key = IRMath::isoPixelToPos3DYawed(
+            kCanvasCenterIso - effectiveCameraIso,
+            kDepthAfterPan,
+            yaw
+        );
+        EXPECT_NEAR(anchor.x, key.x, 1e-3f) << "yaw=" << yaw;
+        EXPECT_NEAR(anchor.y, key.y, 1e-3f) << "yaw=" << yaw;
+        EXPECT_NEAR(anchor.z, key.z, 1e-3f) << "yaw=" << yaw;
+    }
 }
 
 TEST(DefaultPivotLatch, AStampIsDecodedWithItsOwnSubdivisions) {
