@@ -36,6 +36,9 @@ so the voxel-pool and SDF render paths' pivot conventions are compared A/B.
 The twin is gated at its own floor-aware bound (``SDF_BOUND_GAME_PX``, #2851),
 so the SDF path's pivot convention is machine-checked against the same
 invariance contract; the printed voxel/SDF rows stay the A/B diagnostic.
+``center-column`` runs an SDF twin too, gated by its cardinal gestures' focus
+asserts (``SDF_FOCUS_BLOCKS``): the default pivot's acquisition off an SDF
+surface.
 
 Two oracles, applied per block:
 
@@ -44,7 +47,8 @@ Two oracles, applied per block:
   previous one is one rotation gesture, and the default pivot acquires at it
   from the previous shot's settled frame. The demo scores the focus the engine
   derived against that frame's geometric crosshair target (the first carved
-  cell on the crosshair ray, from the probe's own carve constants), a
+  cell on the crosshair ray — for a per-axis source, on any ray of the pixel's
+  footprint — from the probe's own carve constants), a
   non-gesture shot against the previous focus carried by the pan (the latch
   holds), and counts the frames the latch moved — at most one in a gesture
   shot, none otherwise. The focus may take a new value at every gesture; a sweep
@@ -95,7 +99,14 @@ import verify_common
 ALL_BLOCKS = ["focus-ctr", "focus-off", "center-column", "center-depth",
               "background-center", "center-axis", "cursor-latch",
               "acquire-continuity"]
-SDF_BLOCKS = ["focus-ctr"]
+SDF_BLOCKS = ["focus-ctr", "center-column"]
+# SDF twins graded by the per-gesture focus oracle. The SDF shape store keys a
+# cardinal fragment on the surface where the voxel store keys it on a lattice
+# 1.5 depth units behind, so the latch branches on the winning subject; this
+# twin is the gate that reads the SDF side of that branch. Its per-axis gestures
+# are reported, not graded (`skip=sdf-per-axis`): the per-axis bound is derived
+# from the voxel store's face origins.
+SDF_FOCUS_BLOCKS = {"center-column"}
 # Blocks that derive their focus rather than taking an explicit
 # setRotationPivotFocus.
 DEFAULT_PIVOT_BLOCKS = {"center-column", "center-depth", "background-center",
@@ -214,11 +225,13 @@ GAME_RES_WIDTH_RE = re.compile(r"game_resolution_width\s*=\s*(\d+)")
 # 9-yaw sweep table (`yaws[]` in creations/demos/shape_debug/main.cpp).
 CARDINAL_FRAME_INDICES = (0, 3, 5, 7)
 # `[pivot-focus-assert] ... gesture=0|1 latch_moves=N derived=(x,y,z) ...
-# world_delta=D tolerance=T view_held=0|1 result=PASS|FAIL|SKIP`. SKIP is a
-# gesture whose source ray grazes the probe: reported, not graded.
+# skip=none|grazing|sdf-per-axis world_delta=D tolerance=T view_held=0|1
+# result=PASS|FAIL|SKIP`. SKIP is a gesture reported, not graded, for the
+# reason `skip=` names; cursor-latch lines carry no `skip=`.
 FOCUS_ASSERT_RE = re.compile(
     r"\[pivot-focus-assert\].*?gesture=(?P<gesture>[01]) "
-    r"latch_moves=(?P<moves>\d+) derived=\((?P<derived>[^)]*)\).*?"
+    r"latch_moves=(?P<moves>\d+) derived=\((?P<derived>[^)]*)\)"
+    r"(?:.*? skip=(?P<skip>\S+))?.*?"
     r"world_delta=(?P<delta>\S+) tolerance=(?P<tolerance>\S+) "
     r"view_held=(?P<held>[01]) result=(?P<result>PASS|FAIL|SKIP)")
 
@@ -285,17 +298,23 @@ def _score_focus_asserts(output: str, block: str) -> tuple[str, str]:
     failed = [f"{i} ({float(m['delta']):.3f} > {float(m['tolerance']):g})"
               for i, m in enumerate(matches) if m["result"] == "FAIL"]
     gestures = [m for m in matches if m["gesture"] == "1"]
-    skipped = [i for i, m in enumerate(matches) if m["result"] == "SKIP"]
-    skip_note = (f"grazing skips {len(skipped)}/{len(gestures)} gesture(s)"
-                 + (f" (shot {', '.join(map(str, skipped))})" if skipped else ""))
+    skip_notes = []
+    for reason in ("grazing", "sdf-per-axis"):
+        shots = [i for i, m in enumerate(matches)
+                 if m["result"] == "SKIP" and m["skip"] == reason]
+        if reason == "grazing" or shots:
+            skip_notes.append(
+                f"{reason} skips {len(shots)}/{len(gestures)} gesture(s)"
+                + (f" (shot {', '.join(map(str, shots))})" if shots else ""))
+    skip_note = "; ".join(skip_notes)
     if failed:
         return "BAD", (f"{len(failed)}/{len(matches)} shots off their gesture "
                        f"target — shot (world_delta > tolerance): "
                        f"{', '.join(failed)}; {skip_note}")
     # A skip is reported instead of graded, so a block whose every gesture is
     # skipped would pass without its oracle ever running.
-    if gestures and len(skipped) == len(gestures):
-        return "BAD", f"every gesture skipped as grazing — the block is vacuous; {skip_note}"
+    if gestures and all(m["result"] == "SKIP" for m in gestures):
+        return "BAD", f"every gesture skipped — the block is vacuous; {skip_note}"
     derived = [m["derived"] for m in matches]
     if block == "cursor-latch" and len(set(derived)) > 1:
         return "BAD", (f"cursor latch moved mid-sweep across "
@@ -390,16 +409,16 @@ def main(argv: list[str] | None = None) -> int:
                 f"{sorted(CENTROID_GATED_BLOCKS)} nor FOCUS_ASSERT_BLOCKS "
                 f"{sorted(FOCUS_ASSERT_BLOCKS)} — no oracle would gate it. "
                 "Classify it in one (or both) before adding it to ALL_BLOCKS.")
-    # An SDF twin skips the focus oracle by construction (the `not sdf` guard
-    # below), so the centroid is its ONLY gate. A classified-but-not-
-    # centroid-gated SDF block clears the per-block check above and would then
-    # fall through the verdict lookup — loud, but only after its captures had
-    # already run. Assert the containment up front instead.
-    ungated_sdf = sorted(set(SDF_BLOCKS) - CENTROID_GATED_BLOCKS)
+    # An SDF twin runs the focus oracle only when it is in SDF_FOCUS_BLOCKS,
+    # so every other twin's centroid is its ONLY gate. A twin in neither set
+    # clears the per-block check above and would then fall through the verdict
+    # lookup — loud, but only after its captures had already run. Assert the
+    # containment up front instead.
+    ungated_sdf = sorted(set(SDF_BLOCKS) - CENTROID_GATED_BLOCKS - SDF_FOCUS_BLOCKS)
     if ungated_sdf:
         raise SystemExit(
-            f"SDF_BLOCKS {ungated_sdf} are not in CENTROID_GATED_BLOCKS — an "
-            "SDF twin runs no focus oracle, so its centroid is its only gate.")
+            f"SDF_BLOCKS {ungated_sdf} are in neither CENTROID_GATED_BLOCKS nor "
+            "SDF_FOCUS_BLOCKS — no oracle would gate the twin.")
     zooms = args.zoom if args.zoom else [4.0]
 
     worktree = verify_common.detect_worktree_root(Path.cwd())
@@ -458,11 +477,12 @@ def main(argv: list[str] | None = None) -> int:
                             len(frames), "-"))
             continue
 
-        # Pinned-point oracle. The SDF twin renders the probe through the
+        # Pinned-point oracle. An SDF twin renders the probe through the
         # analytic solver rather than the voxel carve the oracle mirrors, so
-        # it is scored by silhouette only.
+        # only a twin whose graded gestures hit a face both agree on (the
+        # probe's flat cap, SDF_FOCUS_BLOCKS) is scored by it.
         focus = "-"
-        if block in FOCUS_ASSERT_BLOCKS and not sdf:
+        if block in FOCUS_ASSERT_BLOCKS and (not sdf or block in SDF_FOCUS_BLOCKS):
             focus, detail = _score_focus_asserts(output, block)
             print(f"[pivot-verify] ({label}) focus assert: {detail}",
                   file=sys.stderr)

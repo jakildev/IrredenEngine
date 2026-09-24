@@ -109,10 +109,18 @@ helper.
      cardinal key 1.5 yawed-depth units behind the surface the pixel shows.
      Taking it off lands `W` on the visible surface, to within one micro-face.
      The per-axis (non-cardinal) store keys without that shift, so its sample is
-     used as-is. The analytic SDF store keys without it at a cardinal too, so an
-     SDF surface acquired from a cardinal frame lands 1.5 depth units (0.87
-     world) in front of itself — open, see §"Known deviations" 2. The latch
-     stores `isoDepth = W.x + W.y + W.z` and a view
+     used as-is. The analytic SDF store keys without it at a cardinal too, so
+     the latch takes the lattice off only when a **voxel-store** fragment won
+     the sampled pixel. Next to the depth readback, at cardinal sources only,
+     `RenderManager` reads the main canvas's entity-id texture
+     (`C_TriangleCanvasTextures::readEntityIdAt`) at the texel that pixel
+     displayed — `defaultPivotCrosshairCanvasTexel`, the hover path's
+     cursor→texel mapping evaluated at the canvas center with the source
+     frame's effective camera and subdivisions — and an SDF shape winner
+     (`C_ShapeDescriptor`) latches its key as it stands. Both stores write the
+     winner's id at the texel that holds its depth. The branch exists only for
+     the voxel/SDF store disagreement (§"Known deviations" 2, #3742) and goes
+     with it. The latch stores `isoDepth = W.x + W.y + W.z` and a view
      offset `o = C − cameraIso − pos3DtoPos2DIso(W)`; by construction the
      effective camera of the source pose is unchanged, so **acquisition never
      moves the view**. A source within `kYawSettleDelta` of yaw 0 latches `d`
@@ -156,8 +164,9 @@ helper.
 
    **Verification.** `test/render/default_pivot_latch_test.cpp` drives the latch
    frame by frame — pan, zoom, in-RENDER yaw mutation, background, the mode
-   gate, the stamped divisor, the cardinal lattice — and asserts the effective
-   camera across an acquisition at yaw 0, 22.5°, ±45°, 90° and 180°.
+   gate, the stamped divisor, the cardinal lattice and its subject branch, the
+   crosshair texel — and asserts the effective camera across an acquisition at
+   yaw 0, 22.5°, ±45°, 90° and 180°.
    `scripts/pivot-verify.py`'s sweep blocks assert per gesture: every shot is a
    pose snap, so each shot whose yaw changed acquires from the previous shot's
    settled frame; a non-gesture shot is scored against the previous focus
@@ -175,17 +184,28 @@ helper.
      at every yaw).
    - **Per-axis source** — the per-axis store keys a fragment by its face
      origin's yawed depth, which sits about the cell rather than on the
-     surface, so the target is the ray point level with the cell's center. With
-     `(c, s) = (cos ψ, sin ψ)`, a face origin's yawed depth lies at most
-     `½·(|c − s| + |c + s| + 1)` units from its cell center's, and the store
-     quantizes depth to `1/effSub`. The bound is their sum times `√3/3` — 0.933
-     / 0.861 at 30° and 0.841 / 0.769 at 45°, zoom 4 / 8.
-   - **Grazing** — a line tested against unit cubes has no pixel footprint.
-     When a ray within one game pixel of the crosshair (`1/zoom` iso units) and
-     the crosshair ray disagree on whether the probe is hit at all, the
-     gesture's hold/acquire classification is undecidable: it is reported
-     (`result=SKIP`), not graded, the harness prints each block's skip count,
-     and a block whose every gesture is skipped fails.
+     surface, so the target is the crosshair-ray point level with the cell's
+     center. With `(c, s) = (cos ψ, sin ψ)`, a face origin's yawed depth lies at
+     most `½·(|c − s| + |c + s| + 1)` units from its cell center's, and the
+     store quantizes depth to `1/effSub`. The bound is their sum times `√3/3` —
+     0.933 / 0.861 at 30° and 0.841 / 0.769 at 45°, zoom 4 / 8. Which cell won
+     the pixel is not the crosshair ray's alone: a line has no footprint, and a
+     ray that clips a cell corner for a few hundredths of a depth unit names a
+     cell a ray one pixel over never enters. So the target set is the first
+     cell entered by each of nine rays — the crosshair ray and its eight
+     neighbours one game pixel (`1/zoom` iso units) away — and a gesture passes
+     within the bound of any of them. The bound is not widened; the demo prints
+     the cell each gesture graded against and whether it was the crosshair
+     ray's own (`neighbour_cell=`).
+   - **Grazing** — when those nine rays disagree on whether the probe is hit
+     at all, the gesture's hold/acquire classification is undecidable: it is
+     reported (`result=SKIP skip=grazing`), not graded, the harness prints each
+     block's skip count, and a block whose every gesture is skipped fails.
+   - **SDF subject** — the `center-column` SDF twin (`--pivot-verify-sdf`)
+     grades its cardinal gestures against the same surface entry and
+     micro-face bound, which reads the SDF side of the subject branch. Its
+     per-axis gestures are reported, not graded (`skip=sdf-per-axis`): the
+     per-axis bound is derived from the voxel store's face origins.
 
    The `acquire-continuity` block pans the probe under the crosshair at yaw 0,
    22.5° and 180° and scores the frames straddling the acquisition with
@@ -370,13 +390,15 @@ closes:
    |---|---|---|
    | voxel, cardinal (residual yaw 0) | surface entry + 1.5 (lower-corner lattice), within one micro-face | latch subtracts 1.5; graded at one micro-face |
    | voxel, per-axis | the winning face origin's yawed depth, quantized to `1/effSub` | used as-is; graded at the derived bound |
-   | SDF, cardinal | surface entry − one quantum, no lattice | over-corrected by the 1.5 subtraction — **open** |
+   | SDF, cardinal | surface entry − one quantum, no lattice | the latch reads the winner's id and does not subtract; graded at one micro-face by the `center-column` SDF twin |
 
-   The last row is two defects, not one. The pivot needs to know which store
-   won the crosshair texel, and the composite carries no subject bit
-   (depth / face / flip only). The voxel and SDF stores also disagree with each
-   other by 1.5 at a subdivided cardinal, which is a sort-order defect of its
-   own, independent of the pivot: #3742.
+   The voxel and SDF stores disagree with each other by 1.5 at a subdivided
+   cardinal, which is a sort-order defect of its own, independent of the pivot:
+   #3742 (**open**). Until it lands the latch branches on the winning subject
+   (`RenderManager::crosshairWinnerIsVoxelStore`), one entity-id read per
+   cardinal gesture start; the change that co-sorts the two stores deletes that
+   branch and subtracts for every winner, and the SDF twin's cardinal gestures
+   are the gate it reads.
 
    `center-axis` is centroid-gated at a bound AFFINE in zoom — `1.5 px/zoom +
    1.0 px` of game resolution, scaled by the run's own `outputScaleFactor`
@@ -621,3 +643,9 @@ which is what still catches an SDF-side pivot regression (#2851).
   per-axis sources are graded at a bound derived from the face-origin offset,
   and grazing gestures are reported, not graded. `center-axis` moved onto the
   acquired surface point. The SDF store keys without the lattice (#3742).
+- #3169, D19 — the SDF store's missing lattice is answered by a subject branch:
+  the latch reads the winning entity id next to the depth and subtracts only
+  for a voxel-store winner, and an SDF `center-column` twin grades it. A
+  per-axis reading of 1.051 against a 0.841 bound traced to the crosshair ray
+  clipping a cell corner for 0.040 depth units; per-axis sources are now graded
+  against the first cells of the pixel's nine footprint rays.

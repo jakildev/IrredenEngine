@@ -200,6 +200,9 @@ class RenderManager {
     // this class owns only the readback it admits.
     DefaultPivotLatch m_defaultPivotLatch;
     bool defaultPivotOwnsDepth() const;
+    // Whether the fragment an acquisition's depth sample came from belongs to
+    // the voxel store, whose cardinal key sits on a lattice the latch removes.
+    bool crosshairWinnerIsVoxelStore() const;
     bool m_hoveredTrixelVisible = true;
     int m_voxelRenderSubdivisions = 1;
     // Unit vector pointing from surfaces toward the sun. Default is a
