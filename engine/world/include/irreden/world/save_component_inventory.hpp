@@ -187,14 +187,11 @@ IR_SAVE_OPT_OUT(IRComponents::C_CanvasLocalRotation)
 IR_SAVE_OPT_OUT(IRComponents::C_LayoutState)
 IR_SAVE_OPT_OUT(IRComponents::C_LayoutLeaf)
 IR_SAVE_OPT_OUT(IRComponents::C_ResolvedFields)
-// Fog governance, subject-class tags, and thresholds are recreated by creation
-// setup. The factor/verdict are derived each eval tick and must not outlive
-// their render visibility state, which is intentionally transient on
-// C_VoxelSetNew.
+// Fog governance and its thresholds are recreated by creation setup. The
+// factor/verdict are derived each eval tick and must not outlive their render
+// visibility state, which is intentionally transient on C_VoxelSetNew.
 IR_SAVE_OPT_OUT(IRComponents::C_FogRevealed)
 IR_SAVE_OPT_OUT(IRComponents::C_FogRevealSettings)
-IR_SAVE_OPT_OUT(IRComponents::C_FogField)
-IR_SAVE_OPT_OUT(IRComponents::C_FogExempt)
 
 // Class C — transient per-frame events / device input
 IR_SAVE_OPT_OUT(IRComponents::C_ContactEvent)
@@ -242,6 +239,11 @@ IR_SAVE_OPT_OUT(IRComponents::C_LerpEntity)
 // it. Version 1 reads via
 // SaveMigration<C_VoxelSetNew> in voxel/voxel_set_serialize.hpp (anchor CORNER).
 IR_SAVE_OPT_IN(IRComponents::C_VoxelSetNew, 2)
+
+// Class E — fog subject-class markers: OPT-IN (authored classification; a set
+// that reloads without its marker is adopted as the default BODY class)
+IR_SAVE_OPT_IN(IRComponents::C_FogField, 1)
+IR_SAVE_OPT_IN(IRComponents::C_FogExempt, 1)
 
 // Class E — C_Skeleton: OPT-IN (authored rig topology; joint EntityIds round-trip under the
 // snapshot's id-stable contract)
@@ -432,8 +434,6 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_ResolvedFields,
     IRComponents::C_FogRevealed,
     IRComponents::C_FogRevealSettings,
-    IRComponents::C_FogField,
-    IRComponents::C_FogExempt,
     IRComponents::C_ContactEvent,
     IRComponents::C_OverlapContactBatch,
     IRComponents::C_CursorPosition,
@@ -460,6 +460,8 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_Modifiers,
     IRComponents::C_EntityEventHandlers,
     IRComponents::C_VoxelSetNew,
+    IRComponents::C_FogField,
+    IRComponents::C_FogExempt,
     IRComponents::C_Skeleton,
     IRComponents::C_JointHierarchy,
     IRComponents::C_LocalTransform,

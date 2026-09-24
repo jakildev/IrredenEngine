@@ -13,6 +13,8 @@
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 
+#include <irreden/job/worker_block_queue.hpp>
+
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -37,7 +39,7 @@ template <> struct System<FOG_REVEAL_EVAL> {
     IRComponents::C_VoxelPool *activePool_ = nullptr;
     std::uint64_t frameCounter_ = 0;
     bool fogAttached_ = false;
-    std::vector<std::vector<PendingTransition>> pendingByWorker_;
+    IRJob::WorkerBlockQueue<PendingTransition> pending_;
     // Voxels whose carrier factor was rewritten this frame, per worker, summed
     // into `restampedVoxelsLastFrame_` in endTick for perf probes.
     std::vector<std::uint32_t> restampedByWorker_;
@@ -66,13 +68,17 @@ template <> struct System<FOG_REVEAL_EVAL> {
         settings_.staggerPeriod_ = IRMath::max(settings_.staggerPeriod_, std::uint32_t{1});
         ++frameCounter_;
 
+        std::size_t population = 0;
+        for (IREntity::ArchetypeNode *node : IREntity::queryArchetypeNodesSimple(
+                 IREntity::getArchetype<
+                     IRComponents::C_FogRevealed,
+                     IRComponents::C_WorldTransform,
+                     IRComponents::C_VoxelSetNew>()
+             )) {
+            population += static_cast<std::size_t>(node->length_);
+        }
+        pending_.reset(population);
         const std::size_t slots = static_cast<std::size_t>(IRJob::workerCount()) + 1u;
-        if (pendingByWorker_.size() < slots) {
-            pendingByWorker_.resize(slots);
-        }
-        for (std::vector<PendingTransition> &worker : pendingByWorker_) {
-            worker.clear();
-        }
         restampedByWorker_.assign(slots, 0u);
     }
 
@@ -133,9 +139,7 @@ template <> struct System<FOG_REVEAL_EVAL> {
             return;
         }
         revealed.shown_ = shown;
-        pendingByWorker_[static_cast<std::size_t>(IRJob::workerId())].push_back(
-            PendingTransition{&voxelSet, activePool_, shown}
-        );
+        pending_.push(PendingTransition{&voxelSet, activePool_, shown});
     }
 
     void endTick() {
@@ -143,26 +147,24 @@ template <> struct System<FOG_REVEAL_EVAL> {
         for (std::uint32_t count : restampedByWorker_) {
             restampedVoxelsLastFrame_ += count;
         }
-        for (std::vector<PendingTransition> &worker : pendingByWorker_) {
-            for (const PendingTransition &transition : worker) {
-                if (transition.voxelSet_ == nullptr || transition.pool_ == nullptr) {
-                    continue;
-                }
-                IRComponents::C_VoxelSetNew &voxelSet = *transition.voxelSet_;
-                voxelSet.visible_ = transition.visible_;
-                if (transition.visible_) {
-                    transition.pool_->resyncActiveMaskFromColors(
-                        voxelSet.voxelStartIdx_,
-                        static_cast<std::size_t>(voxelSet.numVoxels_)
-                    );
-                } else {
-                    transition.pool_->clearActiveMaskRange(
-                        voxelSet.voxelStartIdx_,
-                        static_cast<std::size_t>(voxelSet.numVoxels_)
-                    );
-                }
+        pending_.forEach([](const PendingTransition &transition) {
+            if (transition.voxelSet_ == nullptr || transition.pool_ == nullptr) {
+                return;
             }
-        }
+            IRComponents::C_VoxelSetNew &voxelSet = *transition.voxelSet_;
+            voxelSet.visible_ = transition.visible_;
+            if (transition.visible_) {
+                transition.pool_->resyncActiveMaskFromColors(
+                    voxelSet.voxelStartIdx_,
+                    static_cast<std::size_t>(voxelSet.numVoxels_)
+                );
+            } else {
+                transition.pool_->clearActiveMaskRange(
+                    voxelSet.voxelStartIdx_,
+                    static_cast<std::size_t>(voxelSet.numVoxels_)
+                );
+            }
+        });
     }
 
     static SystemId create() {

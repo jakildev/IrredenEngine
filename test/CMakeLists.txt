@@ -145,6 +145,7 @@ add_executable(IrredenEngineTest
   time/stopwatch_test.cpp
   time/lua_sim_test.cpp
   job/ir_job_test.cpp
+  job/worker_block_queue_test.cpp
   utility/ir_utility_test.cpp
   video/auto_screenshot_helpers_test.cpp
   video/capture_output_resolution_test.cpp

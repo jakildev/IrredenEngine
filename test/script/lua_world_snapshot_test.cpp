@@ -10,7 +10,10 @@
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/common/components/component_position_int_3d.hpp>
 #include <irreden/common/components/component_size_int_3d.hpp>
+#include <irreden/render/components/component_fog_exempt.hpp>
+#include <irreden/render/components/component_fog_field.hpp>
 #include <irreden/render/components/component_widget.hpp>
+#include <irreden/render/fog_of_war.hpp>
 #include <irreden/update/components/component_goto_easing_3d.hpp>
 #include <irreden/update/components/component_rotation_target.hpp>
 #include <irreden/update/systems/system_goto_3d.hpp>
@@ -38,6 +41,8 @@
 namespace {
 
 using IRComponents::C_BindPoints;
+using IRComponents::C_FogExempt;
+using IRComponents::C_FogField;
 using IRComponents::C_GotoEasing3D;
 using IRComponents::C_LocalTransform;
 using IRComponents::C_Name;
@@ -240,6 +245,38 @@ TEST_F(LuaWorldSnapshotTest, RoundTripsVoxelSetNew) {
         EXPECT_EQ(0, std::memcmp(&reloaded.pendingVoxels_[i], &voxels[i], sizeof(C_Voxel)))
             << "voxel record " << i << " differs after round-trip";
     }
+}
+
+// The fog subject-class markers are authored classification: a voxel set that
+// reloads without its marker is silently adopted as the default BODY class, so
+// each marker must survive the Lua round trip and read back its class, and a
+// marker-less set must still read BODY.
+TEST_F(LuaWorldSnapshotTest, RoundTripsFogSubjectClassMarkers) {
+    const IRMath::ivec3 size{1, 1, 1};
+    const std::vector<C_Voxel> voxels(1);
+    const auto stagedSet = [&]() {
+        return C_VoxelSetNew{C_VoxelSetNew::StagedInit{}, size, IRMath::ivec3(0), voxels, 777};
+    };
+    const EntityId field = m_entity_manager.createEntity(stagedSet(), C_FogField{});
+    const EntityId exempt = m_entity_manager.createEntity(stagedSet(), C_FogExempt{});
+    const EntityId body = m_entity_manager.createEntity(stagedSet());
+
+    const std::string path = tempPath("fog_subject_class");
+    ASSERT_TRUE(runOk("assert(IRPersist.saveWorld('" + path + "'))"));
+
+    m_entity_manager.destroyAllEntities();
+    ASSERT_EQ(m_entity_manager.getLiveEntityCount(), 0u);
+    ASSERT_TRUE(runOk("assert(IRPersist.loadWorld('" + path + "'))"));
+
+    using IRPrefab::Fog::FogSubjectClass;
+    ASSERT_TRUE(m_entity_manager.entityExists(field));
+    EXPECT_TRUE(m_entity_manager.getComponentOptional<C_FogField>(field).has_value());
+    EXPECT_EQ(IRPrefab::Fog::subjectClass(field), FogSubjectClass::FIELD);
+    ASSERT_TRUE(m_entity_manager.entityExists(exempt));
+    EXPECT_TRUE(m_entity_manager.getComponentOptional<C_FogExempt>(exempt).has_value());
+    EXPECT_EQ(IRPrefab::Fog::subjectClass(exempt), FogSubjectClass::EXEMPT);
+    ASSERT_TRUE(m_entity_manager.entityExists(body));
+    EXPECT_EQ(IRPrefab::Fog::subjectClass(body), FogSubjectClass::BODY);
 }
 
 // The process-default registry derives its membership

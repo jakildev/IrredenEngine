@@ -2,7 +2,6 @@
 #define SYSTEM_FOG_SUBJECT_ADOPT_H
 
 #include <irreden/ir_entity.hpp>
-#include <irreden/ir_job.hpp>
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_system.hpp>
 #include <irreden/common/components/component_world_transform.hpp>
@@ -15,8 +14,9 @@
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 
+#include <irreden/job/worker_block_queue.hpp>
+
 #include <cstddef>
-#include <vector>
 
 namespace IRSystem {
 
@@ -41,7 +41,7 @@ template <> struct System<FOG_SUBJECT_ADOPT> {
     const IRComponents::C_CanvasFogOfWar *fog_ = nullptr;
     IRComponents::C_VoxelPool *activePool_ = nullptr;
     IRComponents::C_FogRevealSettings settings_{};
-    std::vector<std::vector<PendingHide>> pendingByWorker_;
+    IRJob::WorkerBlockQueue<PendingHide> pending_;
 
     void beginTick() {
         activeCanvas_ = IRRender::getActiveCanvasEntityOrNull();
@@ -59,13 +59,18 @@ template <> struct System<FOG_SUBJECT_ADOPT> {
         }
         settings_ = IREntity::singleton<IRComponents::C_FogRevealSettings>();
 
-        const std::size_t slots = static_cast<std::size_t>(IRJob::workerCount()) + 1u;
-        if (pendingByWorker_.size() < slots) {
-            pendingByWorker_.resize(slots);
+        std::size_t population = 0;
+        for (IREntity::ArchetypeNode *node : IREntity::queryArchetypeNodesSimple(
+                 IREntity::
+                     getArchetype<IRComponents::C_WorldTransform, IRComponents::C_VoxelSetNew>(),
+                 IREntity::getArchetype<
+                     IRComponents::C_FogRevealed,
+                     IRComponents::C_FogField,
+                     IRComponents::C_FogExempt>()
+             )) {
+            population += static_cast<std::size_t>(node->length_);
         }
-        for (std::vector<PendingHide> &worker : pendingByWorker_) {
-            worker.clear();
-        }
+        pending_.reset(population);
     }
 
     void tick(
@@ -91,24 +96,20 @@ template <> struct System<FOG_SUBJECT_ADOPT> {
             IRPrefab::Fog::quantizeRevealFactor(revealed.revealFactor_)
         );
         if (!revealed.shown_) {
-            pendingByWorker_[static_cast<std::size_t>(IRJob::workerId())].push_back(
-                PendingHide{&voxelSet, activePool_}
-            );
+            pending_.push(PendingHide{&voxelSet, activePool_});
         }
         IREntity::setComponentDeferred(entity, revealed);
     }
 
     void endTick() {
-        for (std::vector<PendingHide> &worker : pendingByWorker_) {
-            for (const PendingHide &hide : worker) {
-                IRComponents::C_VoxelSetNew &voxelSet = *hide.voxelSet_;
-                voxelSet.visible_ = false;
-                hide.pool_->clearActiveMaskRange(
-                    voxelSet.voxelStartIdx_,
-                    static_cast<std::size_t>(voxelSet.numVoxels_)
-                );
-            }
-        }
+        pending_.forEach([](const PendingHide &hide) {
+            IRComponents::C_VoxelSetNew &voxelSet = *hide.voxelSet_;
+            voxelSet.visible_ = false;
+            hide.pool_->clearActiveMaskRange(
+                voxelSet.voxelStartIdx_,
+                static_cast<std::size_t>(voxelSet.numVoxels_)
+            );
+        });
     }
 
     static SystemId create() {

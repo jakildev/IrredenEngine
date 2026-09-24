@@ -110,7 +110,7 @@ TEST(FogRevealEvalTest, RejectsOutsideBoundingRadiusBeforeExactCurve) {
 TEST(FogRevealEvalTest, HysteresisAndStaggerControlEntityVerdict) {
     C_VoxelPool pool{IRMath::ivec3(1)};
     IRSystem::System<IRSystem::FOG_REVEAL_EVAL> system;
-    system.pendingByWorker_.resize(1);
+    system.pending_.reset(4);
     system.fogAttached_ = true;
     system.activeCanvas_ = IREntity::kNullEntity;
     system.activePool_ = &pool;
@@ -146,7 +146,7 @@ TEST(FogRevealEvalTest, HysteresisAndStaggerControlEntityVerdict) {
 
 TEST(FogRevealEvalTest, MissingPoolDoesNotLatchAnUnappliedTransition) {
     IRSystem::System<IRSystem::FOG_REVEAL_EVAL> system;
-    system.pendingByWorker_.resize(1);
+    system.pending_.reset(4);
     system.fogAttached_ = false;
     system.activeCanvas_ = IREntity::kNullEntity;
 
@@ -158,7 +158,7 @@ TEST(FogRevealEvalTest, MissingPoolDoesNotLatchAnUnappliedTransition) {
 
     EXPECT_FLOAT_EQ(revealed.revealFactor_, 1.0f);
     EXPECT_FALSE(revealed.shown_);
-    EXPECT_TRUE(system.pendingByWorker_[0].empty());
+    EXPECT_EQ(system.pending_.size(), 0u);
 }
 
 // The fog pass reads unexploredColor as the std140 member after
@@ -202,7 +202,7 @@ TEST(FogRevealEvalTest, ActiveMaskHideAndRestoreAreAlphaPreserving) {
     voxelSet.voxelStartIdx_ = 0;
     voxelSet.numVoxels_ = 4;
     IRSystem::System<IRSystem::FOG_REVEAL_EVAL> system;
-    system.pendingByWorker_.resize(1);
+    system.pending_.reset(4);
     allocation.voxels_[0].color_.alpha_ = 255;
     allocation.voxels_[1].color_.alpha_ = 0;
     allocation.voxels_[2].color_.alpha_ = 255;
@@ -210,14 +210,15 @@ TEST(FogRevealEvalTest, ActiveMaskHideAndRestoreAreAlphaPreserving) {
     pool.resyncActiveMaskFromColors(0, 4);
     EXPECT_EQ(pool.getActiveMask()[0] & 0xfu, 0xdu);
 
-    system.pendingByWorker_[0].push_back({&voxelSet, &pool, false});
+    system.pending_.push({&voxelSet, &pool, false});
     system.endTick();
     EXPECT_FALSE(voxelSet.visible_);
     EXPECT_EQ(pool.getActiveMask()[0] & 0xfu, 0u);
     EXPECT_EQ(allocation.voxels_[0].color_.alpha_, 255);
     EXPECT_EQ(allocation.voxels_[1].color_.alpha_, 0);
 
-    system.pendingByWorker_[0][0].visible_ = true;
+    system.pending_.reset(1);
+    system.pending_.push({&voxelSet, &pool, true});
     system.endTick();
     EXPECT_TRUE(voxelSet.visible_);
     EXPECT_EQ(pool.getActiveMask()[0] & 0xfu, 0xdu);
@@ -239,7 +240,7 @@ TEST(FogRevealEvalTest, ShownBodyRestampsItsCarrierOnlyWhenTheFactorMoves) {
     pool.resyncActiveMaskFromColors(0, 4);
 
     IRSystem::System<IRSystem::FOG_REVEAL_EVAL> system;
-    system.pendingByWorker_.resize(1);
+    system.pending_.reset(4);
     system.restampedByWorker_.assign(1, 0u);
     system.fogAttached_ = true;
     system.activePool_ = &pool;
