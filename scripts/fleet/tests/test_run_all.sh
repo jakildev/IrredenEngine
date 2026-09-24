@@ -138,6 +138,13 @@ else
     ok "T10 skipped — no timeout(1)/gtimeout(1) on this host"
 fi
 
+echo "T10b: the pure-bash fallback still bounds a hung suite with neither timeout(1) nor gtimeout(1) on PATH"
+d=$(new_sandbox t10b)
+printf '#!/usr/bin/env bash\nsleep 30\n' > "$d/test_hang.sh"
+out=$(RUN_ALL_NO_EXTERNAL_TIMEOUT=1 bash "$d/run_all.sh" --timeout 1 2>&1); rc=$?
+assert_eq "$rc" "1" "T10b the fallback still fails the run on a hang"
+assert_contains "$out" "timed out after 1s" "T10b the fallback reports the timeout the same way"
+
 echo "T11: --timeout 0 disables the guard"
 d=$(new_sandbox t11)
 fixture_pass "$d" alpha
@@ -256,6 +263,8 @@ if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; th
 else
     ok "T16 timeout arm skipped — no timeout(1)/gtimeout(1) on this host"
 fi
+assert_eq "$(suite_token "$(RUN_ALL_NO_EXTERNAL_TIMEOUT=1 bash "$d/run_all.sh" --timeout 1 2>&1)" test_hang.sh)" \
+    "test_hang.sh@?" "T16 the fallback timeout is unitemized too, regardless of host"
 
 # Each pair below runs in ONE sandbox, rewriting the fixture between runs, so
 # the suite path a traceback names is identical and only the detail differs.
@@ -310,5 +319,20 @@ d=$(new_sandbox t17d)
 fixture_fail_lines "$d" item "  FAIL: alpha broke" "" "trailing $d $RANDOM"
 assert_eq "$(suite_token "$(bash "$d/run_all.sh" 2>&1)" test_item.sh)" "$item_a" \
     "T17 output after the blank line closing a lib_assert block is not detail"
+
+echo "T18: a RUN line is printed immediately before each suite, so a hang is diagnosable"
+d=$(new_sandbox t18)
+fixture_pass "$d" alpha
+fixture_pass "$d" beta
+out=$(bash "$d/run_all.sh" 2>&1)
+assert_contains "$out" "RUN   test_alpha.sh" "T18 RUN line precedes alpha"
+assert_contains "$out" "RUN   test_beta.sh" "T18 RUN line precedes beta"
+run_line=$(printf '%s\n' "$out" | grep -n '^RUN   test_alpha.sh$' | head -1 | cut -d: -f1)
+pass_line=$(printf '%s\n' "$out" | grep -n '^PASS  test_alpha.sh$' | head -1 | cut -d: -f1)
+if [[ -n "$run_line" && -n "$pass_line" && "$run_line" -lt "$pass_line" ]]; then
+    ok "T18 RUN line for a suite precedes that suite's own result line"
+else
+    bad "T18 RUN line for a suite precedes that suite's own result line (RUN@$run_line PASS@$pass_line)"
+fi
 
 summarize "run_all.sh tests"
