@@ -2,6 +2,7 @@
 
 import io
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -48,6 +49,7 @@ class Transport(unittest.TestCase):
             with patch.object(codex.Path, "cwd", return_value=worktree), \
                     patch.object(codex, "writable_roots", return_value=[str(worktree)]), \
                     patch.object(codex, "prepare"), patch.object(codex, "probe"), \
+                    patch.object(codex, "probe_display") as display, \
                     patch.object(codex, "prompt", return_value="batch prompt"), \
                     patch.object(codex.shutil, "which", return_value="codex"), \
                     patch.object(codex.subprocess, "Popen", side_effect=launch) as popen, \
@@ -55,6 +57,7 @@ class Transport(unittest.TestCase):
                                clear=True):
                 self.assertEqual(codex.run(args), 0)
                 self.assertIn("-C", popen.call_args.args[0])
+                display.assert_not_called()
             args.role = "worker"
             with patch.object(codex.Path, "cwd", return_value=worktree), \
                     patch.dict(codex.os.environ, {"FLEET_STATE_DIR": str(root / "state")},
@@ -131,6 +134,74 @@ class Transport(unittest.TestCase):
             self.assertIn("index.lock denied", data["reason"])
             self.assertEqual(data["worktree"], str(worktree))
 
+    def test_missing_display_cools_provider_without_launching_model(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp).resolve()
+            worktree = root / ".claude/worktrees/pool-1"
+            args = SimpleNamespace(prepare=False, check=False, doctor=False, role="worker",
+                                   model="gpt-5.6-sol", effort="high", mode="live",
+                                   resume="", interactive=False, print_launch=False)
+            stderr = io.StringIO()
+            with patch.object(codex.Path, "cwd", return_value=worktree), \
+                    patch.object(codex, "writable_roots", return_value=[str(worktree)]), \
+                    patch.object(codex, "prepare"), patch.object(codex, "prompt"), \
+                    patch.object(codex, "probe"), \
+                    patch.object(codex, "probe_display",
+                                 side_effect=ValueError("no display session")), \
+                    patch.object(codex.shutil, "which", return_value="codex"), \
+                    patch.object(codex.subprocess, "Popen") as launch, \
+                    patch.object(codex.sys, "stderr", stderr), \
+                    patch.dict(codex.os.environ, {"FLEET_STATE_DIR": str(root / "state"),
+                                                  "FLEET_DISPATCH_TARGET": "task:engine:901"},
+                               clear=True):
+                self.assertEqual(codex.run(args), 2)
+                launch.assert_not_called()
+            self.assertIn("no display session", stderr.getvalue())
+            data = json.loads((root / "state/runtime-cooldown/codex.json").read_text())
+            self.assertEqual(data["kind"], "display")
+
+    def test_display_probe_reads_online_displays_on_macos_only(self):
+        self.assertIsNone(doctor.probe_display("linux"))
+        with patch.object(doctor.subprocess, "run",
+                          return_value=Mock(stdout="2\n", stderr="")) as run:
+            self.assertEqual(doctor.probe_display("darwin"), 2)
+        self.assertIn("CGGetOnlineDisplayList", run.call_args.args[0][-1])
+        for stdout in ("0\n", "-1000\n", ""):
+            with self.subTest(stdout=stdout), \
+                    patch.object(doctor.subprocess, "run",
+                                 return_value=Mock(stdout=stdout, stderr="")):
+                with self.assertRaisesRegex(ValueError, "no display session.*--doctor"):
+                    doctor.probe_display("darwin")
+
+    def test_display_validators_run_outside_the_sandbox(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp).resolve()
+            text = policy.rules(root, "sonnet-reviewer")
+            for pattern in (["python3", "scripts/render-verify.py"],
+                            ["python3", str(root / "scripts/perf/repeat_profile.py")],
+                            ["bash", "scripts/perf/perf_grid_matrix.sh"],
+                            ["scripts/perf/perf_grid_matrix.sh"]):
+                self.assertIn(f"pattern={json.dumps(pattern)}, decision=\"allow\"", text)
+            self.assertNotIn('pattern=["python3"]', text)
+
+    def test_display_validator_list_covers_every_fleet_run_driver(self):
+        # A new driver that launches a demo through fleet-run times out on a
+        # macOS Codex worker until it is named in DISPLAY_VALIDATORS.
+        repo = Path(__file__).resolve().parents[3]
+        launches = {".py": (r"^if __name__ == [\"']__main__[\"']", r"[\"']fleet-run[\"']"),
+                    ".sh": (r"^\s*fleet-run\s",)}
+        drivers = set()
+        for path in (repo / "scripts").rglob("*"):
+            rel = path.relative_to(repo).as_posix()
+            if (path.suffix not in launches or rel.startswith("scripts/fleet/")
+                    or path.name.startswith("test_")):
+                continue
+            text = path.read_text()
+            if all(re.search(pattern, text, re.M) for pattern in launches[path.suffix]):
+                drivers.add(rel)
+        self.assertTrue(drivers)
+        self.assertEqual(drivers, set(policy.DISPLAY_VALIDATORS))
+
     def test_stderr_quota_and_stdout_notice(self):
         for rc, error in ((1, "rate limit exceeded"), (0, "startup warning")):
             with self.subTest(rc=rc), tempfile.TemporaryDirectory() as temp:
@@ -149,7 +220,7 @@ class Transport(unittest.TestCase):
                 with patch.object(codex.Path, "cwd", return_value=worktree), \
                         patch.object(codex, "writable_roots", return_value=[str(worktree)]), \
                         patch.object(codex, "prepare"), patch.object(codex, "prompt"), \
-                        patch.object(codex, "probe"), \
+                        patch.object(codex, "probe"), patch.object(codex, "probe_display"), \
                         patch.object(codex.shutil, "which", return_value="codex"), \
                         patch.object(codex.subprocess, "Popen", side_effect=launch), \
                         patch.object(codex.sys, "stderr", io.StringIO()), \

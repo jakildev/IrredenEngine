@@ -101,11 +101,15 @@ References:
    separate files — regeneration refuses a manually modified generated
    policy. No blanket unsandboxed Python/Bash rule is added.
 4. `fleet-codex --role worker --doctor` probes real create/rename/delete
-   access inside the sandbox without a model call. Every unattended launch
-   repeats it; a failure records paths and errors in
+   access inside the sandbox and, on macOS, counts the displays the
+   launcher's session sees, without a model call. Every unattended launch
+   repeats both (the display check skips target-less batch roles); a
+   failure records the kind (`permissions` / `display`) and reason in
    `state/runtime-cooldown/codex.json`, exits 2 (preserving a resume
    sidecar), and pauses Codex dispatch 15 minutes while Claude stays
-   eligible. Fix the host, re-run the doctor, let the cooldown expire.
+   eligible. Fix the host, re-run the doctor, let the cooldown expire. Zero
+   displays means `fleet-up` runs outside the logged-in GUI session (ssh,
+   a LaunchDaemon).
 5. Qualify build, GitHub, and screenshot access per OS before enabling its
    pool (below); filesystem probes certify none of GPU/display,
    authentication, or project-rule trust.
@@ -143,6 +147,18 @@ host and after upgrading Codex:
 | Screenshots and ROI inspection | the render skills, `fleet-run` auto-capture, `view_image` on frame and crop | real display/GPU session and a writable capture destination |
 | GitHub review and PR publication | read-only `gh pr view`; a real assigned review or publication | login, network, trusted rules are separate from filesystem access |
 | Skills and helpers | read the named `SKILL.md` and procedures; use equivalent tools | Claude hooks / slash commands do not run in Codex |
+
+The macOS sandbox grants no WindowServer access: a demo launched from
+inside it logs `Discovered 0 display monitors` and idles until the
+`fleet-run` watchdog reports `RESULT=ALIVE-TIMEOUT`. `fleet-run` and the
+display-backed drivers in `DISPLAY_VALIDATORS`
+(`scripts/fleet/fleet_codex_policy.py`) run outside it through generated
+allow rules, which match only the bare form — `python3 scripts/render-verify.py …`,
+`python3 scripts/perf/repeat_profile.py …`, as relative or absolute path.
+A `VAR=value` or `env` prefix, or an interpreter flag, falls back into
+the sandbox; set a build-tree override in the launch
+environment instead. A new driver that launches a demo joins the list
+(`test_fleet_codex.py` fails until it does).
 
 After a failed checkout, verify `git rev-parse HEAD` against the PR's
 `headRefOid` before testing — never attribute the old checkout's results

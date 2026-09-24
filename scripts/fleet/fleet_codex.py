@@ -11,7 +11,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from fleet_codex_doctor import probe
+from fleet_codex_doctor import probe, probe_display
 from fleet_codex_policy import check, prepare
 from fleet_runtime import BATCH_ROLES, CODEX_MODELS, atomic_json
 
@@ -171,7 +171,8 @@ def run(args):
         policy = prepare(worktree, args.role)
         count = check(policy, args.role)
         checks = probe(worktree, writable_roots(worktree, state))
-        print(json.dumps({"policy_checks": count, "sandbox_writes": checks}, indent=2))
+        print(json.dumps({"policy_checks": count, "sandbox_writes": checks,
+                          "displays": probe_display()}, indent=2))
         return 0
     if args.prepare or args.check:
         policy = prepare(worktree, args.role)
@@ -195,17 +196,23 @@ def run(args):
         raise ValueError("codex CLI is not installed")
     prepare(worktree, args.role)
     if not args.interactive:
-        try:
-            probe(worktree, writable_roots(worktree, state))
-        except (ValueError, OSError, subprocess.SubprocessError) as exc:
-            # The dispatcher already respects the provider cooldown and the
-            # wrapper preserves resumable sessions for exit 2. Fail before
-            # spending a model iteration discovering the same host defect.
-            atomic_json(state / "runtime-cooldown/codex.json",
-                        {"until": int(time.time()) + 900, "kind": "permissions",
-                         "worktree": str(worktree), "reason": str(exc)})
-            print(f"fleet-codex: preflight blocked; no model launched: {exc}", file=sys.stderr)
-            return 2
+        # Batch roles never launch a demo, so only targeted roles need a display.
+        checks = [("permissions", lambda: probe(worktree, writable_roots(worktree, state)))]
+        if args.role not in BATCH_ROLES:
+            checks.append(("display", probe_display))
+        for kind, check_host in checks:
+            try:
+                check_host()
+            except (ValueError, OSError, subprocess.SubprocessError) as exc:
+                # The dispatcher already respects the provider cooldown and the
+                # wrapper preserves resumable sessions for exit 2. Fail before
+                # spending a model iteration discovering the same host defect.
+                atomic_json(state / "runtime-cooldown/codex.json",
+                            {"until": int(time.time()) + 900, "kind": kind,
+                             "worktree": str(worktree), "reason": str(exc)})
+                print(f"fleet-codex: preflight blocked; no model launched: {exc}",
+                      file=sys.stderr)
+                return 2
     env = dict(os.environ, FLEET_RUNTIME="codex", FLEET_ROLE=args.role,
                FLEET_ASSIGNED_WORKTREE=str(worktree))
     # Saved CLI subscription login is intentional; never inherit an API billing override.

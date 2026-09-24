@@ -25,6 +25,42 @@ sys.exit(int(any(not result["ok"] for result in results)))
 '''
 
 
+# Online (not active) displays match GLFW's monitor discovery, so an
+# unattended host whose screen merely sleeps still qualifies.
+DISPLAY_PROBE = '''
+import ctypes, ctypes.util
+cg = ctypes.CDLL(ctypes.util.find_library("CoreGraphics"))
+ids = (ctypes.c_uint32 * 16)()
+count = ctypes.c_uint32(0)
+err = cg.CGGetOnlineDisplayList(16, ids, ctypes.byref(count))
+print(count.value if err == 0 else -abs(err))
+'''
+
+
+def probe_display(platform=sys.platform):
+    """Count displays the launcher's session sees; allow-listed render commands inherit it.
+
+    Returns None off macOS. Raises when a demo launched from this session
+    could only idle to the fleet-run watchdog.
+    """
+    if platform != "darwin":
+        return None
+    result = subprocess.run([sys.executable, "-c", DISPLAY_PROBE],
+                            capture_output=True, text=True, timeout=30)
+    try:
+        count = int(result.stdout.strip())
+    except ValueError:
+        count = None
+    if count is None or count < 1:
+        raise ValueError(
+            f"no display session (CoreGraphics online displays: {count}; "
+            f"{result.stderr.strip()[-500:] or 'no stderr'}). fleet-run and the display "
+            "validators would time out. Start fleet-up from a logged-in GUI (Aqua) "
+            "session, not ssh or a LaunchDaemon, then re-run "
+            "`fleet-codex --role worker --doctor`.")
+    return count
+
+
 def probe(worktree, roots):
     argv = ["codex", "sandbox",
             "-c", 'sandbox_mode="workspace-write"',
