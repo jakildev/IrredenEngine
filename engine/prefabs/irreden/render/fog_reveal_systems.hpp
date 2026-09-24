@@ -6,7 +6,9 @@
 
 #include <irreden/ir_system.hpp>
 #include <irreden/render/systems/system_fog_reveal_eval.hpp>
+#include <irreden/render/systems/system_fog_reveal_eval_shape.hpp>
 #include <irreden/render/systems/system_fog_subject_adopt.hpp>
+#include <irreden/render/systems/system_fog_subject_adopt_shape.hpp>
 #include <irreden/render/systems/system_fog_subject_exempt.hpp>
 
 #include <list>
@@ -22,7 +24,9 @@ inline std::list<IRSystem::SystemId> revealSystems() {
     return {
         IRSystem::createSystem<IRSystem::FOG_SUBJECT_EXEMPT>(),
         IRSystem::createSystem<IRSystem::FOG_SUBJECT_ADOPT>(),
+        IRSystem::createSystem<IRSystem::FOG_SUBJECT_ADOPT_SHAPE>(),
         IRSystem::createSystem<IRSystem::FOG_REVEAL_EVAL>(),
+        IRSystem::createSystem<IRSystem::FOG_REVEAL_EVAL_SHAPE>(),
     };
 }
 
