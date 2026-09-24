@@ -47,6 +47,11 @@ struct MetalVertexLayoutBinding {
     MTL::VertexDescriptor *vertexDescriptor_ = nullptr;
 };
 
+struct MetalStagingBufferSlice {
+    MTL::Buffer *buffer_ = nullptr;
+    NS::UInteger offset_ = 0;
+};
+
 void initializeMetalRuntime(MTL::Device *device, CA::MetalLayer *layer);
 void setMetalBootstrapDevice(MTL::Device *device);
 void shutdownMetalRuntime();
@@ -117,6 +122,10 @@ void releaseDeferredMetalBuffers();
 // Orphaned buffers awaiting the next wait point. Diagnostic only: tests read
 // the delta across one upload to count orphans.
 std::size_t deferredMetalBufferReleaseCount();
+// Arena slices remain valid until releaseDeferredMetalBuffers(), which may
+// reuse their storage only after the caller has waited for GPU completion.
+MetalStagingBufferSlice stageMetalTextureUpload(const void *data, std::size_t byteCount);
+std::size_t metalStagingBufferAllocationCount();
 void replaceMetalBufferInBindings(MTL::Buffer *oldBuffer, MTL::Buffer *newBuffer);
 
 // Null every sticky uniform/storage bind slot (and the active vertex-layout
