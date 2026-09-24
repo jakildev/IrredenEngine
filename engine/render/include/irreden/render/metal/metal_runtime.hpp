@@ -4,6 +4,7 @@
 #include <irreden/render/metal/metal_types.hpp>
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 
 namespace IRRender {
@@ -113,6 +114,9 @@ MTL::PixelFormat metalCurrentDepthPixelFormat();
 // releaseDeferredMetalBuffers clears it only after GPU completion.
 void deferReleaseMetalBuffer(MTL::Buffer *buffer);
 void releaseDeferredMetalBuffers();
+// Orphaned buffers awaiting the next wait point. Diagnostic only: tests read
+// the delta across one upload to count orphans.
+std::size_t deferredMetalBufferReleaseCount();
 void replaceMetalBufferInBindings(MTL::Buffer *oldBuffer, MTL::Buffer *newBuffer);
 
 // Null every sticky uniform/storage bind slot (and the active vertex-layout

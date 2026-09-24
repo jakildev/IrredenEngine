@@ -56,11 +56,12 @@ See [`engine/prefabs/CLAUDE.md` § "Component method rules"](../../engine/prefab
    to the destination resource directly (`Buffer::subData`,
    `Texture2D::subImage2D`). When per-mutation upload cost dominates (Metal
    `subData` orphans the whole buffer), the mutator queues an index into a
-   pending list and the owning system flushes once per frame as coalesced
-   contiguous-run `subData` calls — bounded, deterministic, never
-   re-uploading untouched slots. Example: `C_GPUParticlePool::writeSlot` →
-   `pendingIndices_`, flushed by `UPDATE_GPU_PARTICLES` before its compute
-   dispatch.
+   pending list and the owning system flushes once per frame, submitting
+   the coalesced contiguous runs in one `Buffer::subDataRanges` call
+   (Metal orphans once per call, not once per run) — bounded,
+   deterministic, never re-uploading untouched slots. Example:
+   `C_VoxelPool::queuePositionRange`, flushed by `VOXEL_TO_TRIXEL_STAGE_1`
+   through `flushPendingPositionRanges`.
 2. **GPU owns ongoing state.** If the GPU mutates the resource every frame,
    the CPU mirror is a one-shot seed: upload once in the component ctor and
    never read the mirror as truth again (allocator bookkeeping is fine).
@@ -70,7 +71,7 @@ GPU's per-frame writes), is usually a pessimization (per-write `subData` is
 `O(bytes changed)` on GL; a dirty-gated full re-upload is `O(buffer)`), and
 accumulates "set dirty when X" sites that drift. Dense whole-buffer mutation
 in one frame wants a sparse dirty-range tracker, not a boolean; on Metal,
-batch high-rate CPU writes into one per-frame `subData`.
+batch high-rate CPU writes into one per-frame `subData` or `subDataRanges`.
 
 Allowed exception: the resource is strictly CPU-authored, GPU-read-only, and
 re-uploading it whole is genuinely expensive. Document it in the component
