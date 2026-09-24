@@ -83,17 +83,6 @@ done
 workdir=$(mktemp -d "${TMPDIR:-/tmp}/fleet-decisions.XXXXXX")
 trap 'rm -rf "$workdir"' EXIT
 
-# The manifest's contents reach a native-Windows python untranslated: MSYS2
-# rewrites POSIX paths only on argv, so the /tmp spelling mktemp returns is
-# converted here or the report cannot open its own fixtures.
-native_path() {
-    if command -v cygpath >/dev/null 2>&1; then
-        cygpath -m "$1"
-    else
-        printf '%s\n' "$1"
-    fi
-}
-
 manifest="$workdir/manifest.tsv"
 : > "$manifest"
 idx=0
@@ -104,7 +93,7 @@ for repo in "${REPOS[@]}"; do
             --json number,title,labels,url,headRefOid,mergeStateStatus --limit 200 > "$prs_f" 2>/dev/null \
         && gh issue list --repo "$repo" --state open \
             --json number,title,labels,url --limit 200 > "$issues_f" 2>/dev/null; then
-        printf '%s\t%s\t%s\n' "$repo" "$(native_path "$prs_f")" "$(native_path "$issues_f")" >> "$manifest"
+        printf '%s\t%s\t%s\n' "$repo" "$prs_f" "$issues_f" >> "$manifest"
     else
         echo "fleet-decisions: skipping $repo (query failed)" >&2
     fi
