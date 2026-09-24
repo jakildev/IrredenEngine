@@ -383,9 +383,9 @@ presentation. [Evidence](../pr-screenshots/codex/selected-surface-query/README.m
 analytical boxes at the continuous presentation coordinate. Ownership comes from
 the displayed, clamped sample texel; it is not re-elected from the query coordinate.
 The shared selected-receiver helper performs a finite intersection and supplies
-position, signed normal and continuous view depth to `worldSunShadowFactor`.
-This deliberately retains the compute pass's biased sampler, isolating receiver
-placement rather than changing both receiver and caster sampling together.
+position, signed normal and continuous view depth to the shared finite surface sampler.
+The diagnostic uses `worldSurfaceSunShadowFactor` with the actual camera-to-world
+quaternion. Its initial sampled-caster control is retained in the linked evidence.
 
 A successful opaque query writes only diagnostic RGB. Alpha, stored depth,
 identity, hover and coverage remain unchanged. Misses and unsupported winners
@@ -398,8 +398,8 @@ draw, dispatch or readback is introduced; eligible draws upload the existing
 
 [Eight-angle controls](../pr-screenshots/codex/fragment-receiver-probe/README.md)
 show changed edge pixels but residual repeating jagged outlines. Receiver precision
-alone is insufficient in this fixture. Compare exact finite caster sampling next,
-including view-aligned caster normal rotation, before adding beauty payload storage.
+alone is insufficient in this fixture. Finite caster indexing below resolves the
+repeating teeth in this control; full beauty payload integration remains pending.
 The diagnostic does not establish a final geometry oracle for those outlines.
 
 Beauty integration must also preserve fog, which currently modifies lit RGBA8
@@ -407,3 +407,35 @@ after lighting. Saving linear inputs and later replacing that color would bypass
 fog unless composition and validity are explicitly handled. Two full-resolution
 vec4 payloads would cost 32 bytes per retained trixel (112.5 MiB at 2560×1440);
 profile and consider compact storage before adopting that design.
+
+
+## Shared finite caster footprints
+
+Analytical box casters and voxel casters publish the same representation:
+a light-space corner `C` and oriented edge vectors `U,V`. For a light ray at
+`q`, solve `q - C.xy = a*U.xy + b*V.xy` with the signed 2×2 determinant.
+The ray covers the face iff both coordinates lie in `[0,1]`; caster depth is
+`C.z + a*U.z + b*V.z`. Negative determinant changes orientation, not coverage.
+Transform corner and both edges together; do not infer a new face or triangle
+parity from the destination texel. Legitimate voxel steps remain the union of
+individual finite cell faces, while an analytical box contributes its box faces.
+
+The shared `ir_sun_face_index` inserts at most three light-facing faces per box
+using its full object quaternion, center and producer density-dependent extent.
+Only lane zero of depth-partition group zero inserts records. The original
+ray-box depth raster remains in the indexed fallback layer. Complete candidate
+lists use exact finite faces; incomplete lists preserve sampled fallback. Other
+casters retain their independent primary layer. Ordinary sampled receivers merge
+both layers as before. No buffer or dispatch is added, but record insertion and
+tile atomics add real production GPU work.
+
+Boxes share the existing 65,536-record / 64-candidate-per-tile limits with voxel
+faces. Large faces can touch many tiles, and overflow still loses exact boundary
+coverage. Profile large overlapping boxes and mixed dense voxel scenes before
+claiming scalability or widening the index. A broader capacity strategy belongs
+with the performance work, not a hidden allocation increase here.
+
+[Native comparisons](../pr-screenshots/codex/fragment-caster-footprint/README.md)
+show straight boundaries in the fragment diagnostic and normal source-face floor
+rendering. Sampled SDF beauty receivers still require linear lighting/fog
+integration; curved and rotated analytical receiving remain separate work.
