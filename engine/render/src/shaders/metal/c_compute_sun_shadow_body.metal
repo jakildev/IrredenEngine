@@ -4,6 +4,7 @@
 #include "ir_sdf_common.metal"
 #include "ir_shape_data.metal"
 #include "ir_shape_receiver.metal"
+#include "ir_selected_shape_receiver.metal"
 #include "ir_receiver_face.metal"
 #endif
 // FrameDataSun, the cascade PCF sampler, and the world-space
@@ -139,18 +140,10 @@ kernel void IR_SUN_SHADOW_KERNEL_NAME(
 
     float receiverFace = 0.0;
 #if IR_SHAPE_RECEIVER
-    if (!perAxis && receiverFrame.shapeCount > 0) {
-        uint key = receiverOwners[uint(pixel.y * size.x + pixel.x)];
-        if (key != 0xffffffffu) {
-            int shapeIndex = receiverTiles[key / kShapeSamplesPerTile].shapeIndex;
-            float3 exactPosition, exactNormal;
-            if (shapeBoxReceiver(receiverShapes[shapeIndex], receiverFrame,
-                                 float2(pixel), exactPosition, exactNormal)) {
-                pos3D = exactPosition;
-                normal = exactNormal;
-                receiverFace = encodeReceiverFace(exactNormal);
-            }
-        }
+    if (!perAxis && selectedShapeBoxReceiver(pixel, size.x, float2(pixel),
+            receiverFrame, receiverShapes, receiverOwners, receiverTiles,
+            pos3D, normal)) {
+        receiverFace = encodeReceiverFace(normal);
     }
 
 #endif
