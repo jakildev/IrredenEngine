@@ -345,8 +345,12 @@ TEST(FogCrossSectionShaderParity, UnexploredColourAnchorIsIdenticalAcrossBackend
 TEST(FogCrossSectionShaderParity, CommonFogShadingIsIdenticalAcrossBackends) {
     const std::string glsl = readShaderSource(kGlslFogCommonPath);
     const std::string metal = readShaderSource(kMetalFogCommonPath);
-    const std::string glslReveal =
-        extractSpan(glsl, "FogReveal fogRevealSample(", "float state = gridState;", "return FogReveal");
+    const std::string glslReveal = extractSpan(
+        glsl,
+        "FogReveal fogRevealSample(",
+        "float state = gridState;",
+        "return FogReveal"
+    );
     const std::string metalReveal = extractSpan(
         metal,
         "FogReveal fogRevealSample(",
