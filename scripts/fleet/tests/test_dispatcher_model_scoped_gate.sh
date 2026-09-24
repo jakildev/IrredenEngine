@@ -14,7 +14,12 @@
 #   - a claude-only host (no FLEET_RUNTIMES) gates the claim walk on the
 #     window scoped to the launch model: an opus wall holds an opus task and
 #     leaves a sonnet task running
-#   - controls: with no wall latched the fable class is served as fable
+#   - a reserved Claude worker is gated on the model its sidecar resumes,
+#     not the model the current slice resolves: a Fable session holds at the
+#     Fable wall while the slice serves opus (whole --dispatch-role ticks
+#     against a stubbed tmux)
+#   - controls: with no wall latched the fable class is served as fable; an
+#     opus sidecar, or a sidecar the wrapper would not resume, launches
 
 set -euo pipefail
 unset FLEET_RUNTIMES FLEET_CROSS_PROVIDER_REVIEW FLEET_WORKER_RUNTIME FLEET_MODEL_FABLE_PROBED
@@ -59,6 +64,7 @@ export FLEET_CLAIM_LOG="$TMPROOT/fleet-claim.log"
 STUB_BIN="$TMPROOT/bin"; mkdir -p "$STUB_BIN"
 cat > "$STUB_BIN/fleet-claim" <<'EOF'
 #!/usr/bin/env bash
+[[ "$1" == reservation-role ]] && { echo worker; exit 0; }
 printf '%s\n' "$*" >> "$FLEET_CLAIM_LOG"
 EOF
 chmod +x "$STUB_BIN/fleet-claim"
@@ -137,5 +143,62 @@ assert_eq "$(assign worker)" "target=task:engine:12" "a sonnet task runs through
 clear_walls
 write_slice worker "$OPUS_TASK"
 assert_eq "$(assign worker)" "target=task:engine:11" "control: with no wall the opus task is claimed"
+
+echo "T6: a reserved Claude worker is gated on the model it resumes"
+export FLEET_RESERVATIONS_DIR="$TMPROOT/reservations"
+export FLEET_SESSION="fleet-test-$$"
+export FLEET_DISPATCH_MIN_GAP_SECONDS=0 BOOT_FANOUT_WINDOW_SECONDS=0
+export FLEET_CONCURRENCY_WORKER=1
+export SEND_LOG="$TMPROOT/send-keys.log"
+mkdir -p "$FLEET_RESERVATIONS_DIR" "$FLEET_STATE_DIR/triggers"
+cat > "$STUB_BIN/tmux" <<'EOF'
+#!/usr/bin/env bash
+sub="$1"; shift
+case "$sub" in
+    list-panes) printf '%%1|pool|zsh\n' ;;
+    display-message)
+        if [[ "$*" == *pane_current_path* ]]; then
+            printf '/fake/.claude/worktrees/pool-1\n'
+        elif [[ "$*" == *pane_pid* ]]; then
+            printf '1\n'
+        fi
+        ;;
+    send-keys) printf '%s\n' "$*" >> "$SEND_LOG" ;;
+esac
+exit 0
+EOF
+printf '#!/usr/bin/env bash\nexit 1\n' > "$STUB_BIN/pgrep"
+chmod +x "$STUB_BIN/tmux" "$STUB_BIN/pgrep"
+printf '{"task":"#11","role":"worker"}\n' > "$FLEET_RESERVATIONS_DIR/pool-1.json"
+TRIGGER="$FLEET_STATE_DIR/triggers/worker"
+sidecar() { # $1 = role, $2 = model
+    printf '{"session_id":"sid","role":"%s","model":"%s","effort":"high","runtime":"claude"}\n' \
+        "$1" "$2" > "$FLEET_SESSIONS_DIR/pool-1.session.json"
+}
+tick() {
+    rm -f "$FLEET_STATE_DIR/dispatch"/*.json
+    : > "$SEND_LOG"
+    : > "$TRIGGER"
+    "$DISPATCHER" --dispatch-role worker 1 2>&1 >/dev/null
+}
+clear_walls
+wall seven_day_overage_included
+write_slice worker "$OPUS_TASK"
+sidecar worker "$FLEET_MODEL_FABLE"
+out=$(tick)
+assert_absent "$out" "dispatching worker" "a reserved Fable session does not launch into the Fable wall"
+assert_eq "$(grep -c . "$SEND_LOG" || true)" "0" "no keys are sent to the reserved pane"
+[[ -f "$TRIGGER" ]] && ok "the held resume keeps the trigger" || bad "the held resume consumed the trigger"
+sidecar worker "$FLEET_MODEL_OPUS"
+out=$(tick)
+assert_contains "$out" "dispatching worker -> %1" "control: a reserved opus session launches through the Fable wall"
+sidecar sonnet-reviewer "$FLEET_MODEL_FABLE"
+out=$(tick)
+assert_contains "$out" "dispatching worker -> %1" \
+    "control: a sidecar the wrapper launches fresh is gated on the slice's model"
+clear_walls
+sidecar worker "$FLEET_MODEL_FABLE"
+out=$(tick)
+assert_contains "$out" "dispatching worker -> %1" "control: with no wall the reserved Fable session launches"
 
 summarize "fleet-dispatcher model-scoped gate tests"

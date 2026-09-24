@@ -1956,6 +1956,25 @@ fable_model_walled() {
     [[ "$(usage_gate_status scoped "${CLASS_MODEL[fable]}")" == closed:* ]]
 }
 
+# The model a reserved Claude pane resumes on, or empty when it launches
+# fresh. $1 = session sidecar, $2 = role. fleet-dispatch-wrap resumes a
+# sidecar of the same runtime and role that carries a session id, on the
+# sidecar's own model — not the one the dispatcher resolves for the launch —
+# so the pre-launch gate reads it here. Keep the conditions in sync with the
+# wrapper's resume branch.
+reserved_claude_model() {
+    python3 - "$1" "$2" <<'PY' 2>/dev/null | tr -d '\r' || true
+import json, sys
+try:
+    data = json.load(open(sys.argv[1]))
+except (OSError, ValueError):
+    sys.exit(0)
+if (isinstance(data, dict) and (data.get("runtime") or "claude") == "claude"
+        and data.get("role", "") in ("", sys.argv[2]) and data.get("session_id")):
+    print(data.get("model", ""))
+PY
+}
+
 # Returns 0 (true) when the gate is open and dispatching may proceed.
 # Side effect: the one-shot transition log above.
 usage_gate_open() {
@@ -3022,7 +3041,7 @@ dispatch_role() {
         # reservation IS its assignment); every other pane launches only
         # behind a granted claim, and when no candidate can be claimed the
         # fan-out stops here.
-        local target_arg="" pane_basename=""
+        local target_arg="" pane_basename="" resume_model=""
         ASSIGN_RUNTIME="" ASSIGN_MODEL="" ASSIGN_EFFORT="" ASSIGN_CLASS=""
         if [[ -n "${ROLE_TARGET_BOUND[$role]+x}" && "$DISPATCH_MODE" == "live" ]]; then
             if ! pane_basename=$(pane_worktree_basename "$pane_id"); then
@@ -3054,13 +3073,17 @@ dispatch_role() {
                 # A reservation belongs to its original provider and target.
                 # Never hand a Codex conversation to Claude during recovery.
                 local resume_route resume_rc
-                resume_route=$(python3 "$FLEET_LIB_DIR/fleet_runtime.py" resume-route                     "${FLEET_SESSIONS_DIR:-$HOME/.fleet/sessions}/$pane_basename.session.json")                     && resume_rc=0 || resume_rc=$?
+                local sidecar="${FLEET_SESSIONS_DIR:-$HOME/.fleet/sessions}/$pane_basename.session.json"
+                resume_route=$(python3 "$FLEET_LIB_DIR/fleet_runtime.py" resume-route "$sidecar") \
+                    && resume_rc=0 || resume_rc=$?
                 if (( resume_rc == 0 )); then
                     read -r ASSIGN_RUNTIME ASSIGN_CLASS ASSIGN_MODEL ASSIGN_EFFORT target_arg <<< "$resume_route"
                     if ! command -v codex >/dev/null 2>&1                         || ! python3 "$FLEET_LIB_DIR/fleet_runtime.py" ready "$STATE_DIR"; then
                         ASSIGN_BLOCK_REASON="codex-unavailable"; assign_budget_hit=1; break
                     fi
-                elif (( resume_rc != 2 )); then
+                elif (( resume_rc == 2 )); then
+                    resume_model=$(reserved_claude_model "$sidecar" "$role")
+                else
                     ASSIGN_BLOCK_REASON="resume-route-failed"; assign_budget_hit=1; continue
                 fi
             fi
@@ -3093,7 +3116,8 @@ dispatch_role() {
             fi
         fi
         if [[ -z "${ASSIGN_RUNTIME:-}" ]]; then
-            local launch_model="${DISPATCH_MODEL:-${ROLE_MODEL[$role]}}" claude_gate_now=""
+            local launch_model="${resume_model:-${DISPATCH_MODEL:-${ROLE_MODEL[$role]}}}"
+            local claude_gate_now=""
             if [[ "${FLEET_RUNTIMES:-claude}" == *codex* ]]; then
                 claude_gate_now="${batch_claude_gate:-}"
                 [[ -n "$claude_gate_now" ]] \
