@@ -68,6 +68,8 @@ assert_file_absent() {
 
 # --- Sandbox setup ---------------------------------------------------------
 TMPROOT=$(mktemp -d)
+source "$(dirname "$0")/lib_hermetic.sh"
+hermetic_poison_gh_env "$TMPROOT"
 mkdir -p "$TMPROOT/reservations" "$TMPROOT/wt" "$TMPROOT/bin" "$TMPROOT/log"
 
 export FLEET_RESERVATIONS_DIR="$TMPROOT/reservations"

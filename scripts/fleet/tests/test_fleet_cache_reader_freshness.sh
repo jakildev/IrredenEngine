@@ -35,6 +35,8 @@ for exe in "$FLEET_PR" "$FLEET_ISSUE"; do
 done
 
 TMPROOT=$(mktemp -d "${TMPDIR:-/tmp}/fleet-cache-freshness.XXXXXX")
+source "$(dirname "$0")/lib_hermetic.sh"
+hermetic_poison_gh_env "$TMPROOT"
 trap '[[ -n "${TMPROOT:-}" ]] && rm -rf "$TMPROOT"' EXIT
 
 FAKE_HOME="$TMPROOT/home"

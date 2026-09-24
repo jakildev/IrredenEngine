@@ -11,6 +11,8 @@ FLEET_CLAIM="$SCRIPT_DIR/fleet-claim"
 source "$(dirname "$0")/lib_assert.sh"
 
 TMPROOT=$(mktemp -d)
+source "$(dirname "$0")/lib_hermetic.sh"
+hermetic_poison_gh_env "$TMPROOT"
 cleanup() {
     rm -rf "$TMPROOT"
 }

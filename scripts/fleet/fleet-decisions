@@ -148,6 +148,7 @@ import base64
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 
@@ -193,6 +194,13 @@ WORKFLOW_DIR = ".github/workflows"
 SUITES_ANNOTATION_TITLE = "fleet-tests failed suites"
 UNITEMIZED = "?"
 
+# Resolve gh through PATH ourselves: on a native-Windows python (os.name ==
+# "nt") CreateProcess appends only ".exe" to a bare name, so a PATH-shim
+# `gh`/`gh.bat` earlier in PATH is silently skipped in favor of the real
+# gh.exe — shutil.which honors PATH order and PATHEXT, and is a no-op
+# passthrough on POSIX.
+GH = shutil.which("gh") or "gh"
+
 
 class Unreadable(Exception):
     pass
@@ -201,7 +209,7 @@ class Unreadable(Exception):
 def gh_api(path):
     """The JSON at REST `path`; None on a 404."""
     try:
-        run = subprocess.run(["gh", "api", path], capture_output=True, text=True, timeout=60)
+        run = subprocess.run([GH, "api", path], capture_output=True, text=True, timeout=60)
     except (OSError, subprocess.TimeoutExpired) as e:
         raise Unreadable(f"gh api {path.split('?')[0]}: {e}") from e
     if run.returncode != 0:

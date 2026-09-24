@@ -31,6 +31,8 @@ ok()  { PASS=$((PASS + 1)); echo "  ok: $1"; }
 bad() { FAIL=$((FAIL + 1)); echo "  FAIL: $1"; }
 
 TMPROOT=$(mktemp -d)
+source "$(dirname "$0")/lib_hermetic.sh"
+hermetic_poison_gh_env "$TMPROOT"
 export HOME="$TMPROOT/home"
 mkdir -p "$HOME/.fleet/state/projections" "$HOME/.fleet/logs"
 
@@ -70,66 +72,71 @@ STUB_DIR="$TMPROOT/bin"
 mkdir -p "$STUB_DIR"
 export EDIT_LOG="$TMPROOT/edit.log"; : > "$EDIT_LOG"
 cat > "$STUB_DIR/gh" <<'GHSTUB'
-#!/usr/bin/env bash
-case "$1" in
-    issue)
-        case "$2" in
-            view)
-                # Blocker-state probes pass `--jq .state`; the body/labels fetch
-                # asks for `--json body,labels`. Dispatch on which one this is.
-                if [[ "$*" == *"--jq"* ]]; then
-                    # Capture the --repo value so cross-repo refs resolve
-                    # against the referenced repo, not the issue's own.
-                    bref_repo=""; bprev=""
-                    for ba in "$@"; do
-                        [[ "$bprev" == "--repo" ]] && bref_repo="$ba"; bprev="$ba"
-                    done
-                    case "$3" in
-                        717) echo "CLOSED" ;;   # task 733's predecessor — satisfied
-                        718) echo "CLOSED" ;;   # task 732's predecessor — satisfied
-                        719) echo "OPEN" ;;     # task 731/734's predecessor — open
-                        202) echo "CLOSED" ;;   # closed pull request, not merged
-                        777)
-                            # CLOSED only when routed to game (the
-                            # referenced repo); OPEN if mis-routed to engine.
-                            case "$bref_repo" in
-                                jakildev/irreden) echo "CLOSED" ;;
-                                *)                 echo "OPEN" ;;
-                            esac ;;
-                        778) echo "OPEN" ;;     # cross-repo game ref, still open
-                        *)   echo "OPEN" ;;
-                    esac
-                    exit 0
-                fi
-                case "$3" in
-                    730) echo '{"body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"}],"comments":[{"body":"## Plan: stub\n\nstep one"}]}' ;;
-                    731) echo '{"body":"**Model:** sonnet\n**Blocked by:** #719","labels":[{"name":"human:approved"}],"comments":[{"body":"## Plan: stub\n\nstep one"}]}' ;;
-                    732) echo '{"body":"**Model:** opus\n**Blocked by:** #718","labels":[{"name":"human:approved"}],"comments":[{"body":"## Plan: stub\n\nstep one"}]}' ;;
-                    733) echo '{"body":"**Blocked by:** #717","labels":[{"name":"fleet:queued"},{"name":"fleet:opus"},{"name":"fleet:blocked"}]}' ;;
-                    734) echo '{"body":"**Blocked by:** #719","labels":[{"name":"fleet:queued"},{"name":"fleet:opus"},{"name":"fleet:blocked"}]}' ;;
-                    735) echo '{"body":"**Model:** opus\n**Blocked by:** jakildev/irreden#777","labels":[{"name":"human:approved"}],"comments":[{"body":"## Plan: stub\n\nstep one"}]}' ;;
-                    736) echo '{"body":"**Model:** opus\n**Blocked by:** jakildev/irreden#778","labels":[{"name":"human:approved"}],"comments":[{"body":"## Plan: stub\n\nstep one"}]}' ;;
-                    737) echo '{"body":"**Model:** opus\nPart of epic #174 (Phase D). [opus] Blocked by: #719.","labels":[{"name":"human:approved"}],"comments":[{"body":"## Plan: stub\n\nstep one"}]}' ;;
-                    738) echo '{"body":"**Model:** opus\n**Blocked by:** https://github.com/jakildev/IrredenEngine/pull/202","labels":[{"name":"human:approved"}],"comments":[{"body":"## Plan: stub\n\nstep one"}]}' ;;
-                    *)   echo '{"body":"","labels":[]}' ;;
-                esac
-                exit 0 ;;
-            edit)
-                printf '%s\n' "$*" >> "$EDIT_LOG"
-                exit 0 ;;
-            comment) exit 0 ;;
-            *) exit 0 ;;
-        esac ;;
-    pr)
-        case "$2" in
-            list) echo '[]'; exit 0 ;;   # scope-shipped: no merged coverage
-            view) echo 'CLOSED'; exit 0 ;;
-            *) exit 0 ;;
-        esac ;;
-    *) exit 0 ;;
-esac
+#!/usr/bin/env python3
+import os, sys
+args = sys.argv[1:]
+
+def _repo_of(argv):
+    for i, a in enumerate(argv):
+        if a == "--repo" and i + 1 < len(argv):
+            return argv[i + 1]
+    return ""
+
+if args[:2] == ["issue", "view"]:
+    # Blocker-state probes pass `--jq .state`; the body/labels fetch asks
+    # for `--json body,labels`. Dispatch on which one this is.
+    if "--jq" in args:
+        # Cross-repo refs resolve against the referenced repo, not the
+        # issue's own — capture the --repo value passed to this call.
+        bref_repo = _repo_of(args)
+        n3 = args[2] if len(args) > 2 else ""
+        if n3 in ("717", "718"):   # 733/732's predecessor — satisfied
+            print("CLOSED")
+        elif n3 == "719":          # 731/734's predecessor — open
+            print("OPEN")
+        elif n3 == "202":         # closed pull request, not merged
+            print("CLOSED")
+        elif n3 == "777":
+            # CLOSED only when routed to game (the referenced repo);
+            # OPEN if mis-routed to engine.
+            print("CLOSED" if bref_repo == "jakildev/irreden" else "OPEN")
+        elif n3 == "778":          # cross-repo game ref, still open
+            print("OPEN")
+        else:
+            print("OPEN")
+        sys.exit(0)
+    n3 = args[2] if len(args) > 2 else ""
+    bodies = {
+        "730": '{"body":"**Model:** opus\\n**Blocked by:** (none)","labels":[{"name":"human:approved"}],"comments":[{"body":"## Plan: stub\\n\\nstep one"}]}',
+        "731": '{"body":"**Model:** sonnet\\n**Blocked by:** #719","labels":[{"name":"human:approved"}],"comments":[{"body":"## Plan: stub\\n\\nstep one"}]}',
+        "732": '{"body":"**Model:** opus\\n**Blocked by:** #718","labels":[{"name":"human:approved"}],"comments":[{"body":"## Plan: stub\\n\\nstep one"}]}',
+        "733": '{"body":"**Blocked by:** #717","labels":[{"name":"fleet:queued"},{"name":"fleet:opus"},{"name":"fleet:blocked"}]}',
+        "734": '{"body":"**Blocked by:** #719","labels":[{"name":"fleet:queued"},{"name":"fleet:opus"},{"name":"fleet:blocked"}]}',
+        "735": '{"body":"**Model:** opus\\n**Blocked by:** jakildev/irreden#777","labels":[{"name":"human:approved"}],"comments":[{"body":"## Plan: stub\\n\\nstep one"}]}',
+        "736": '{"body":"**Model:** opus\\n**Blocked by:** jakildev/irreden#778","labels":[{"name":"human:approved"}],"comments":[{"body":"## Plan: stub\\n\\nstep one"}]}',
+        "737": '{"body":"**Model:** opus\\nPart of epic #174 (Phase D). [opus] Blocked by: #719.","labels":[{"name":"human:approved"}],"comments":[{"body":"## Plan: stub\\n\\nstep one"}]}',
+        "738": '{"body":"**Model:** opus\\n**Blocked by:** https://github.com/jakildev/IrredenEngine/pull/202","labels":[{"name":"human:approved"}],"comments":[{"body":"## Plan: stub\\n\\nstep one"}]}',
+    }
+    print(bodies.get(n3, '{"body":"","labels":[]}'))
+    sys.exit(0)
+elif args[:2] == ["issue", "edit"]:
+    with open(os.environ["EDIT_LOG"], "a") as f:
+        f.write(" ".join(args) + "\n")
+elif args[:2] == ["pr", "list"]:
+    print("[]")  # scope-shipped: no merged coverage
+elif args[:2] == ["pr", "view"]:
+    print("CLOSED")
+sys.exit(0)
 GHSTUB
 chmod +x "$STUB_DIR/gh"
+# Native-Windows twin: fleet-queue-ingest invokes `gh` from PYTHON
+# (subprocess), which cannot exec an extensionless shebang script on
+# native-Windows python3 (mingw64) — see scripts/fleet/CLAUDE.md's
+# native-Windows PATHEXT rule. Inert on POSIX hosts.
+cat > "$STUB_DIR/gh.bat" <<'BATEOF'
+@echo off
+python3 "%~dp0gh" %*
+BATEOF
 export PATH="$STUB_DIR:$PATH"
 
 # Per-issue edit-log line (gh issue edit <N> ...) for assertions. Tolerates
