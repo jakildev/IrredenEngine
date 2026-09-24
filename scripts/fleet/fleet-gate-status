@@ -30,6 +30,16 @@ STATE_DIR="${FLEET_STATE_DIR:-$HOME/.fleet/state}"
 USAGE_DIR="$STATE_DIR/usage"
 RATE_LIMIT_DIR="$STATE_DIR/rate-limit"
 
+# Source the conf the dispatcher sources, the same way (a plain `source`
+# after the env is set, so a conf assignment wins as it does there): a
+# gate threshold or scope override set only in fleet-up.conf must read
+# the same here as in the dispatch decision.
+FLEET_CONF="${FLEET_CONF:-$HOME/.fleet/fleet-up.conf}"
+if [[ -f "$FLEET_CONF" ]]; then
+    # shellcheck disable=SC1090
+    source "$FLEET_CONF"
+fi
+
 # Same env vars and defaults as fleet-dispatcher, so output cannot
 # disagree with what the dispatcher actually evaluates.
 USAGE_STALE_SECONDS="${FLEET_DISPATCHER_USAGE_STALE_SECONDS:-3600}"
@@ -67,7 +77,8 @@ A window that meters one model family (the Fable-only weekly limit,
 seven_day_opus, ...) never closes the fleet-wide gate: it is listed under
 "Model-scoped usage gate" and defers only launches on that family's models.
 
-Tunables (env, shared with fleet-dispatcher):
+Tunables (env or $FLEET_CONF, default ~/.fleet/fleet-up.conf; shared with
+fleet-dispatcher, which reads them the same way):
   FLEET_DISPATCHER_USAGE_GATE_<TYPE>  per-type threshold (e.g. _FIVE_HOUR=0.7)
   FLEET_DISPATCHER_USAGE_GATE         global threshold override
   FLEET_DISPATCHER_USAGE_SCOPE_<TYPE> fable|opus|sonnet|haiku|account

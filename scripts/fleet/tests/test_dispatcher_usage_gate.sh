@@ -24,7 +24,8 @@
 #     from the conf) and `seven_day_<family>` types; an unlisted `seven_day*`
 #     type takes the weekly threshold and any other unlisted type names the
 #     fallback; fleet-gate-status reports the scoped wall apart from the
-#     fleet-wide verdict
+#     fleet-wide verdict, and reads the dispatcher's conf so a conf-only
+#     scope or threshold override gives both tools the same verdict
 
 set -euo pipefail
 
@@ -434,6 +435,31 @@ PY
 else
     FAIL=$((FAIL + 1)); echo "  FAIL: drift guard could not load a copy: $drift"
 fi
+
+echo "T27: fleet-gate-status reads the dispatcher's conf, so a conf-only override agrees"
+feed_session 'claude-fable-5-1[1m]' \
+    "{\"status\":\"rejected\",\"resetsAt\":$RESETS_EPOCH,\"rateLimitType\":\"seven_day_overage_included\"}"
+gate_summary() {  # $1 = conf path
+    FLEET_CONF="$1" "$GATE_STATUS_TOOL" --json | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+print(d["gate"], [(o["rateLimitType"], o["scope"]) for o in d["breaching"]], len(d["scoped_breaching"]))'
+}
+assert_starts_with "$(FLEET_CONF="$SCOPE_CONF" "$DISPATCHER" --gate-status)" \
+    "closed:seven_day_overage_included rejected" "scope conf: dispatcher closes the fleet-wide gate"
+assert_starts_with "$(gate_summary "$SCOPE_CONF")" \
+    "closed [('seven_day_overage_included', 'account')] 0" \
+    "scope conf: fleet-gate-status closes it too, the wall account-wide"
+check_contains "$(FLEET_CONF="$SCOPE_CONF" "$GATE_STATUS_TOOL")" "Fleet-wide usage gate: CLOSED" \
+    "scope conf: text reports the fleet-wide gate CLOSED"
+THRESHOLD_CONF="$TMPROOT/threshold.conf"
+printf '%s\n' 'FLEET_DISPATCHER_USAGE_SCOPE_SEVEN_DAY_OVERAGE_INCLUDED=account' \
+    'FLEET_DISPATCHER_USAGE_GATE_SEVEN_DAY_OVERAGE_INCLUDED=1.01' > "$THRESHOLD_CONF"
+assert_starts_with "$(FLEET_CONF="$THRESHOLD_CONF" "$DISPATCHER" --gate-status)" "open" \
+    "threshold conf: dispatcher open (a rejected wall reads 100% < 101%)"
+assert_starts_with "$(gate_summary "$THRESHOLD_CONF")" "open [] 0" \
+    "threshold conf: fleet-gate-status open too"
+rm -f "$FLEET_STATE_DIR/usage"/*.json
 
 echo
 echo "PASS: $PASS  FAIL: $FAIL"
