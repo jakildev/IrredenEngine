@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <irreden/render/camera.hpp>
 #include <irreden/render/default_pivot_latch.hpp>
 
 #include <optional>
@@ -32,6 +33,7 @@ using IRMath::vec2;
 using IRMath::vec3;
 using IRRender::DefaultPivotLatch;
 using IRRender::DefaultPivotSourceFrame;
+using IRRender::DefaultPivotSurface;
 
 // One frame of a real rotation, comfortably above kYawSettleDelta.
 constexpr float kYawStep = 0.05f;
@@ -66,7 +68,7 @@ class LatchDriver {
         if (derive) {
             ++m_derives;
             if (m_attachment.has_value()) {
-                m_latch.acquire(*m_attachment);
+                m_latch.acquire(*m_attachment, m_surface);
             }
         }
         m_latch.stampSourceFrame(
@@ -75,7 +77,8 @@ class LatchDriver {
                 cameraIso,
                 effectiveCameraIso(renderYaw, cameraIso),
                 kCanvasCenterIso,
-                effSub
+                effSub,
+                IRPrefab::Camera::computeYawSplit(renderYaw).second == 0.0f
             },
             m_pivotOwnsDepth
         );
@@ -108,6 +111,10 @@ class LatchDriver {
     void setPivotOwnsDepth(bool owns) {
         m_pivotOwnsDepth = owns;
     }
+    // What wins the crosshair in every frame from here on.
+    void setSurface(DefaultPivotSurface surface) {
+        m_surface = surface;
+    }
     const DefaultPivotLatch &latch() const {
         return m_latch;
     }
@@ -124,6 +131,9 @@ class LatchDriver {
   private:
     DefaultPivotLatch m_latch;
     bool m_pivotOwnsDepth = true;
+    // OTHER unless an arm is about the voxel store's lattice: every other arm
+    // is about policy and recovery, which the lattice removal does not touch.
+    DefaultPivotSurface m_surface = DefaultPivotSurface::OTHER;
     std::optional<float> m_attachment;
     int m_derives = 0;
 };
@@ -456,6 +466,93 @@ TEST(DefaultPivotLatch, AStampIsDecodedWithItsOwnSubdivisions) {
     driver.stepWithInFrameYaw(0.0f, 0.0f, cameraIso, kDepthAfterPan, 2);
     EXPECT_TRUE(driver.stepWithInFrameYaw(kYawStep, kYawStep, cameraIso, kDepthAfterPan, 4));
     EXPECT_FLOAT_EQ(driver.isoDepth(), kDepthAfterPan);
+}
+
+// ---------------------------------------------------------------------------
+// The cardinal-path voxel store's lattice offset: removed exactly when the
+// sample carries it.
+// ---------------------------------------------------------------------------
+
+constexpr float kLattice = DefaultPivotLatch::kCardinalStoreLatticeDepth;
+
+// Yawed iso depth of @p world at @p yaw, unrounded.
+float yawedDepth(vec3 world, float yaw) {
+    const float c = IRMath::cos(yaw);
+    const float s = IRMath::sin(yaw);
+    return world.x * (c - s) + world.y * (s + c) + world.z;
+}
+
+const float kCardinalYaws[] = {0.0f, IRMath::kHalfPi, kPi, -IRMath::kHalfPi};
+
+TEST(DefaultPivotLatch, ACardinalVoxelStoreSampleDropsTheLatticeOffset) {
+    // The store keys a voxel surface kLattice behind where the crosshair
+    // enters it; the anchor lands on the surface, at the same screen point.
+    const vec2 cameraIso = vec2(64.0f, -12.0f);
+    for (const float yaw : kCardinalYaws) {
+        LatchDriver driver;
+        driver.setSurface(DefaultPivotSurface::VOXEL_STORE);
+        const vec2 before = settleThenStartGesture(driver, yaw, cameraIso, kDepthAfterPan);
+        EXPECT_NEAR(yawedDepth(driver.focus(cameraIso), yaw), kDepthAfterPan - kLattice, 1e-3f)
+            << "yaw=" << yaw;
+        const vec2 after = driver.effectiveCameraIso(yaw, cameraIso);
+        EXPECT_NEAR(after.x, before.x, 1e-4f) << "yaw=" << yaw;
+        EXPECT_NEAR(after.y, before.y, 1e-4f) << "yaw=" << yaw;
+    }
+}
+
+TEST(DefaultPivotLatch, ACardinalVoxelStoreSampleAtYawZeroLeavesTheViewOffsetBitExact) {
+    // The removal moves the anchor along the depth axis, which projects to
+    // nothing — so the yaw-0 byte-identity guarantee survives it.
+    LatchDriver driver;
+    driver.setSurface(DefaultPivotSurface::VOXEL_STORE);
+    settleThenStartGesture(driver, 0.0f, vec2(-3.3f, 7.1f), kDepthAfterPan);
+    EXPECT_EQ(driver.viewOffsetIso(), vec2(0.0f));
+    EXPECT_EQ(driver.isoDepth(), kDepthAfterPan - kLattice);
+}
+
+TEST(DefaultPivotLatch, AnotherWriterAtACardinalKeepsTheSampledDepth) {
+    // An SDF surface is keyed where it is drawn, cardinal or not.
+    for (const float yaw : kCardinalYaws) {
+        LatchDriver driver;
+        driver.setSurface(DefaultPivotSurface::OTHER);
+        settleThenStartGesture(driver, yaw, vec2(64.0f, -12.0f), kDepthAfterPan);
+        EXPECT_NEAR(yawedDepth(driver.focus(vec2(64.0f, -12.0f)), yaw), kDepthAfterPan, 1e-3f)
+            << "yaw=" << yaw;
+    }
+}
+
+TEST(DefaultPivotLatch, AnOffCardinalSampleKeepsItsDepthWhateverWonIt) {
+    // Off the cardinals every writer — the forward scatter included — keys
+    // the drawn surface, so the winner does not change the recovery.
+    const vec2 cameraIso = vec2(64.0f, -12.0f);
+    const float yaws[] = {IRMath::kPi / 8.0f, IRMath::kQuarterPi, 2.0f * kPi / 3.0f};
+    for (const float yaw : yaws) {
+        LatchDriver voxel;
+        voxel.setSurface(DefaultPivotSurface::VOXEL_STORE);
+        settleThenStartGesture(voxel, yaw, cameraIso, kDepthAfterPan);
+        LatchDriver other;
+        settleThenStartGesture(other, yaw, cameraIso, kDepthAfterPan);
+        EXPECT_EQ(voxel.isoDepth(), other.isoDepth()) << "yaw=" << yaw;
+        EXPECT_EQ(voxel.viewOffsetIso(), other.viewOffsetIso()) << "yaw=" << yaw;
+    }
+}
+
+TEST(DefaultPivotLatch, TheCardinalTestIsTheRendersOwnDeadband) {
+    // A yaw the renderer draws on the cardinal path — within its residual-yaw
+    // deadband of pi/2 — is a cardinal source; just outside it is not.
+    const vec2 cameraIso = vec2(0.0f);
+    const float inside = IRMath::kHalfPi + 0.5f * IRPrefab::Camera::kResidualYawDeadband;
+    const float outside = IRMath::kHalfPi + 4.0f * IRPrefab::Camera::kResidualYawDeadband;
+
+    LatchDriver cardinal;
+    cardinal.setSurface(DefaultPivotSurface::VOXEL_STORE);
+    settleThenStartGesture(cardinal, inside, cameraIso, kDepthAfterPan);
+    EXPECT_NEAR(yawedDepth(cardinal.focus(cameraIso), inside), kDepthAfterPan - kLattice, 1e-3f);
+
+    LatchDriver offCardinal;
+    offCardinal.setSurface(DefaultPivotSurface::VOXEL_STORE);
+    settleThenStartGesture(offCardinal, outside, cameraIso, kDepthAfterPan);
+    EXPECT_NEAR(yawedDepth(offCardinal.focus(cameraIso), outside), kDepthAfterPan, 1e-3f);
 }
 
 // ---------------------------------------------------------------------------

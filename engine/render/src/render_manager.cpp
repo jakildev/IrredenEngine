@@ -16,6 +16,7 @@
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
+#include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 
 #include <irreden/common/components/component_position_2d_iso.hpp>
@@ -25,6 +26,7 @@
 #include <irreden/render/components/component_camera.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 namespace IRRender {
@@ -318,13 +320,14 @@ vec2 RenderManager::getDefaultPivotViewOffsetIso() const {
 }
 
 void RenderManager::stampDefaultPivotSourceFrame() {
-    const vec2 cameraIso = getCameraPosition2DIso();
+    const float visualYaw = IRPrefab::Camera::getYaw();
     const DefaultPivotSourceFrame frame{
-        IRPrefab::Camera::getYaw(),
-        cameraIso,
+        visualYaw,
+        getCameraPosition2DIso(),
         IRRender::getEffectiveCameraIso(),
         getCanvasCenterIso(),
-        getVoxelRenderEffectiveSubdivisions()
+        getVoxelRenderEffectiveSubdivisions(),
+        IRPrefab::Camera::computeYawSplit(visualYaw).second == 0.0f
     };
     m_defaultPivotLatch.stampSourceFrame(frame, defaultPivotOwnsDepth());
 }
@@ -368,7 +371,56 @@ void RenderManager::updateDefaultRotationPivotFocus() {
         decoded.tier_ != 0) {
         return;
     }
-    m_defaultPivotLatch.acquire(static_cast<float>(decoded.iso_));
+    // Only a cardinal-path sample needs its winner: that is the one path whose
+    // voxel key is on a different lattice from everything else's.
+    const DefaultPivotSurface surface = m_defaultPivotLatch.sourceFrame().cardinalRaster_
+                                            ? defaultPivotSourceSurface(decoded.enc_)
+                                            : DefaultPivotSurface::OTHER;
+    m_defaultPivotLatch.acquire(static_cast<float>(decoded.iso_), surface);
+}
+
+DefaultPivotSurface RenderManager::defaultPivotSourceSurface(int sampledEncodedDepth) const {
+    const auto texturesOpt =
+        IREntity::getComponentOptional<C_TriangleCanvasTextures>(m_mainCanvas);
+    if (!texturesOpt.has_value()) {
+        return DefaultPivotSurface::OTHER;
+    }
+    const C_TriangleCanvasTextures &textures = *texturesOpt.value();
+    // The main canvas still holds the source frame — nothing clears it before
+    // RENDER — and on the cardinal path the composite copies its distance texel
+    // for texel. The crosshair's world iso is `canvasCenter − effectiveCamera`,
+    // which the store places at `z1 + effectiveCamera·effSub + iso·effSub`,
+    // `+ (1, 1)` for the CPU iso frame's one-texel offset (the hover gate's
+    // chain). The gather's sub-pixel camera placement can move the texel it
+    // shows by one either way, so the texel is the one in the block around that
+    // estimate whose stored key IS the sampled one.
+    const DefaultPivotSourceFrame &source = m_defaultPivotLatch.sourceFrame();
+    const vec2 effSub = vec2(static_cast<float>(IRMath::max(1, source.effectiveSubdivisions_)));
+    const vec2 worldTexel = IRMath::floor(
+        (source.canvasCenterIso_ - source.effectiveCameraIso_) * effSub + vec2(1.0f)
+    );
+    const ivec2 estimate = ivec2(IRMath::floor(
+        worldTexel + vec2(IRMath::trixelOriginOffsetZ1(textures.size_)) +
+        source.effectiveCameraIso_ * effSub
+    ));
+    std::array<int, 9> distances{};
+    std::array<EntityId, 9> entityIds{};
+    if (!textures.readTexelBlock3x3(estimate, distances, entityIds)) {
+        return DefaultPivotSurface::OTHER;
+    }
+    // The estimate first, then its neighbors.
+    constexpr std::array<int, 9> kSearchOrder = {4, 1, 3, 5, 7, 0, 2, 6, 8};
+    for (const int i : kSearchOrder) {
+        if (distances[i] != sampledEncodedDepth) {
+            continue;
+        }
+        const EntityId winner = entityIds[i];
+        return winner != IREntity::kNullEntity &&
+                       IREntity::getComponentOptional<C_VoxelSetNew>(winner).has_value()
+                   ? DefaultPivotSurface::VOXEL_STORE
+                   : DefaultPivotSurface::OTHER;
+    }
+    return DefaultPivotSurface::OTHER;
 }
 
 void RenderManager::setVoxelRenderSubdivisions(int subdivisions) {

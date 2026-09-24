@@ -200,6 +200,10 @@ class RenderManager {
     // this class owns only the readback it admits.
     DefaultPivotLatch m_defaultPivotLatch;
     bool defaultPivotOwnsDepth() const;
+    // What won the main canvas under the crosshair in the source frame of the
+    // derive in progress, found as the texel whose stored key is
+    // @p sampledEncodedDepth. Valid only for a cardinal-path source.
+    DefaultPivotSurface defaultPivotSourceSurface(int sampledEncodedDepth) const;
     bool m_hoveredTrixelVisible = true;
     int m_voxelRenderSubdivisions = 1;
     // Unit vector pointing from surfaces toward the sun. Default is a

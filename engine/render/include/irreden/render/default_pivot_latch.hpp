@@ -26,6 +26,19 @@ struct DefaultPivotSourceFrame {
     // SubdivisionMode::FULL, and the frame a gesture acquires from can be at a
     // different zoom than the frame that reads it back.
     int effectiveSubdivisions_ = 1;
+    // Drawn on the cardinal path — residual yaw exactly 0 after the render's
+    // own deadband — where voxel depth comes from the integer store rather than
+    // the forward scatter.
+    bool cardinalRaster_ = true;
+};
+
+// What won the composite at the sampled pixel, as far as the depth key's
+// convention goes. On the cardinal path the voxel store keys a surface on a
+// lattice the other writers (SDF shapes) do not share, so the recovery has to
+// know which one it read.
+enum class DefaultPivotSurface {
+    VOXEL_STORE,
+    OTHER,
 };
 
 // Update policy and state of the depth-aware default pivot: when
@@ -68,6 +81,16 @@ class DefaultPivotLatch {
     // a source frame the settle predicate cannot tell from yaw 0 latches its
     // depth directly and leaves the view offset untouched.
     static constexpr float kYawSettleDelta = 1e-4f;
+
+    // Yawed iso depth by which the cardinal-path voxel store keys a surface
+    // behind where the crosshair ray enters it. The store lays each voxel over
+    // `[p, p + 1]` in view space — the authored cube shifted half a cell along
+    // every view axis, which the iso projection cannot see — and keys each
+    // micro-face by its lower corner, so the key lands 1.5 depth units (three
+    // half cells) deeper than the authored surface, to within one micro-face.
+    // The forward scatter and the SDF writers key on the authored surface, so
+    // only a cardinal-path voxel-store sample carries it.
+    static constexpr float kCardinalStoreLatticeDepth = 1.5f;
 
     // Record the pose the main composite is drawing this frame with, or — when
     // the default pivot does not own the depth (ORIGIN mode, or an explicit
@@ -120,10 +143,18 @@ class DefaultPivotLatch {
     // its yaw and its effective camera — so it projects to the pixel it was
     // read from, and the new state leaves the effective camera of the source
     // pose unchanged: acquisition never moves the view.
-    void acquire(float framebufferIsoDepth) {
+    //
+    // @p surface says what won that pixel. A cardinal-path voxel-store key
+    // sits kCardinalStoreLatticeDepth behind the surface it draws; removing it
+    // moves the point along the same crosshair ray, so the view still does not
+    // move — only which point of the ray the rotation pivots about.
+    void acquire(float framebufferIsoDepth, DefaultPivotSurface surface) {
         const DefaultPivotSourceFrame &source = m_source;
-        const float yawedIsoDepth =
+        float yawedIsoDepth =
             framebufferIsoDepth / static_cast<float>(IRMath::max(1, source.effectiveSubdivisions_));
+        if (source.cardinalRaster_ && surface == DefaultPivotSurface::VOXEL_STORE) {
+            yawedIsoDepth -= kCardinalStoreLatticeDepth;
+        }
         m_hasAcquired = true;
         if (IRMath::abs(source.visualYaw_) <= kYawSettleDelta) {
             // At yaw 0 the yawed depth IS the un-yawed depth and the focus

@@ -103,12 +103,67 @@ helper.
      moves the view**. A source within `kYawSettleDelta` of yaw 0 latches `d`
      directly and leaves `o` untouched bit-for-bit: yaw-0 frames depend on `o`
      alone and are byte-compared by the reference suites, and the round trip
-     through the recovery is not a float identity.
+     through the recovery is not a float identity. Before any of that, a
+     cardinal-path sample won by a voxel set drops
+     `DefaultPivotLatch::kCardinalStoreLatticeDepth` (1.5) from `d` — see
+     "Where the key sits" below. That moves `W` along the same crosshair ray,
+     so it cannot move the view either.
    - **Background holds.** A background or foreground-tier center sample keeps
      both the depth and the offset — the previous anchor, carried by any pan
      since — rather than jumping to the depth-0 point. Before the first
      acquisition the anchor is the depth-0 point under the viewport center with
      `o = 0`, exactly the pre-depth-aware default.
+
+   **Where the key sits, and the bounds the oracle derives from it (epic
+   #2544 D17, D18).** The recovered `W` is the ray point at the composite's
+   key, and what that key measures depends on the path the source frame was
+   drawn on and on what won the pixel. Along the crosshair ray one yawed depth
+   unit is `1/sqrt(3)` world units (the ray runs along `R_z(ψ)·(1,1,1)`), which
+   converts every bound below.
+
+   - *Cardinal path (residual yaw 0 after `computeYawSplit`'s deadband), voxel
+     store.* Stage 1 builds each face with `faceMicroPositionFixed6` on
+     `round(p·s)` and keys each micro-face by its lower corner: the voxel spans
+     `[p, p + 1]` in view space, the authored cube shifted `(½,½,½)` along the
+     view axis — invisible to the iso projection, 1.5 depth units to the key.
+     So the key sits 1.5 behind where the ray enters the authored cube, to
+     within one micro-face, `2/effSub`, by where on the micro-face the ray
+     lands. The latch removes the 1.5 (`kCardinalStoreLatticeDepth`), and the
+     oracle's target is the ray's **entry into the first carved cube**,
+     tolerance **`(2/effSub)/sqrt(3)`** world units — 0.289 at zoom 4, 0.144
+     at zoom 8. Measured on Windows/OpenGL at zoom 8 before the removal, the
+     key read 1.256–1.375 behind the entry at every cardinal gesture of
+     `center-column` and `center-axis`; the prior Metal run found the same
+     offset at all 24 cardinal frames, yaw 0 included.
+   - *Cardinal path, SDF.* `c_shapes_to_trixel_body.glsl` keys the solved
+     surface itself: an SDF acquisition reads 0.25–0.32 depth units in front
+     of the analytic surface at cardinal and off-cardinal sources alike, with
+     no 1.5 step. The removal therefore branches on the winner.
+     `RenderManager` finds it as the main-canvas texel, around the crosshair's
+     estimated texel, whose stored key IS the sampled one — the canvas still
+     holds the source frame at `beginFrame`, and on the cardinal path the
+     composite copies its distance texel for texel — and reads that texel's
+     entity id: a `C_VoxelSetNew` is `DefaultPivotSurface::VOXEL_STORE`,
+     anything else keeps its key. That makes the voxel and SDF keys disagree
+     by 1.5 on the cardinal path, a store co-sort defect filed as #3741.
+   - *Off-cardinal (forward scatter).* The scatter keys a fragment by the
+     yawed depth of its recovered face ORIGIN, cell-anchored so it co-sorts
+     with the SDF writer (`yawedIsoDistanceCellAnchor`). A face origin sits at
+     `±½` from its cell center on every axis, and the yawed depth of that
+     offset is `Δx(c − s) + Δy(s + c) + Δz` at yaw `(c, s) = (cos ψ, sin ψ)`,
+     so it reaches at most **`½(|c − s| + |c + s| + 1)`** depth units; the
+     stored composite then quantizes the key to **`1/effSub`**. The oracle's
+     target is the ray point level with the first carved cell's center, and
+     the bound is the sum of the two, converted — 0.933 world at 30° and zoom
+     4, 0.769 at 45° and zoom 8. It is derived, not fitted: a reading above it
+     is an unexplained miss, not a reason to widen it.
+   - *Grazing rays.* The geometric target is a line tested against unit
+     cubes; the rendered center texel has a footprint. When moving the ray by
+     one game pixel's iso footprint (`(1/(2·zoom), 1/zoom)`) in any of eight
+     directions changes whether it meets a carved cube, the gesture's
+     hold/acquire call is reported (`result=SKIP`) rather than graded. The
+     harness prints the skip count per block, and a block whose every gesture
+     is skipped fails.
 
    **What is latched: an iso DEPTH and a view offset, not the point.**
    `getDefaultRotationPivotFocus` recomputes
@@ -142,15 +197,19 @@ helper.
    **Verification.** `test/render/default_pivot_latch_test.cpp` drives the latch
    frame by frame — pan, zoom, in-RENDER yaw mutation, background, the mode
    gate, the stamped divisor — and asserts the effective camera across an
-   acquisition at yaw 0, 22.5°, ±45°, 90° and 180°. `scripts/pivot-verify.py`'s
-   sweep blocks assert per gesture: every shot is a pose snap, so each shot
-   whose yaw changed acquires from the previous shot's settled frame, and the
-   demo scores the derived focus against that frame's geometric crosshair target
-   (the first carved cell the ray enters, from the probe's own carve), a
-   non-gesture shot against the previous focus carried by the pan, and at most
-   one latch move per gesture. Its `acquire-continuity` block pans the probe
-   under the crosshair at yaw 0, 22.5° and 180° and scores the frames straddling
-   the acquisition with `jitter_probe --stationary`.
+   acquisition at yaw 0, 22.5°, ±45°, 90° and 180°, plus the lattice removal
+   and its branch. `scripts/pivot-verify.py`'s sweep blocks assert per gesture:
+   every shot is a pose snap, so each shot whose yaw changed acquires from the
+   previous shot's settled frame, and the demo scores the derived focus against
+   that frame's geometric target and bound from the list above (exact slab
+   tests of the ray against the probe's own carve), a non-gesture shot against
+   the previous focus carried by the pan, and at most one latch move per
+   gesture. Each gesture line also carries a control reading — the same sample
+   recovered without the source yaw and effective camera — which must land
+   outside the bound in force at every non-zero-yaw source (at yaw 0 there is
+   no yaw term to drop). Its `acquire-continuity` block pans the
+   probe under the crosshair at yaw 0, 22.5° and 180° and scores the frames
+   straddling the acquisition with `jitter_probe --stationary`.
 
    The offset is the drift-cancel `cameraYawPivotOffset` form
    above — NOT a bare `pos3DtoPos2DIsoYawed(F, yaw)`, which leaves a yaw-varying
@@ -276,14 +335,15 @@ closes:
      Its probe stays rotationally symmetric about the pinned column, so the
      whole-silhouette oracle remains exact for it: PINNED at 0.91/1.21 px
      (zoom 4) and 0.94/1.25 px (zoom 8).
-   - `center-axis` — the probe's axis lies ON the viewport-center ray with its
-     near cap at the ray's entry step, so the derived surface point is the
-     probe's own axis point and the silhouette *should* rotate onto itself. It
-     is the isolating diagnostic for the residual below.
+   - `center-axis` — the probe's axis runs through the point the default pivot
+     acquires on it (since #3169, the yaw-0 ray's entry into its near cap), so
+     the silhouette *should* rotate onto itself. It is the isolating diagnostic
+     for the residual below.
 
    A third joins them in #2548, for the CURSOR pivot rather than the default:
 
-   - `cursor-latch` — `center-axis` geometry, but the focus comes from
+   - `cursor-latch` — `center-axis`'s original geometry (the axis ON the
+     viewport-center ray, the near cap at the ray's step), but the focus comes from
      `IRPrefab::CursorPivot::resolveFocusWorld` (the real `castVoxelRay` path)
      with a synthetic cursor parked on the viewport-center anchor's screen
      pixel, latched once and held for the sweep. Pinned-point oracle like
@@ -296,7 +356,7 @@ closes:
      pivot focus at every shot boundary and the latched point is only known at
      runtime, so it cannot ride the shot table.
 
-     Its tolerance is a whole world unit rather than 0.58, and the reason is
+     Its tolerance is a whole world unit, and the reason is
      geometric, not slack: the cursor latch reports a `castVoxelRay` SURFACE hit
      — the marched point where the ray first lands inside the winning voxel's
      unit cube — while the analytic oracle predicts that voxel's CENTER. The L2
@@ -307,90 +367,47 @@ closes:
      exists to catch (a revert to the pre-#2548 iso-depth-0 latch lands ~8.5
      world units off on this geometry).
 
-   **Residual: the composite is a per-face SORT KEY, not a metric surface depth
-   — INHERENT (#2641, root-caused).** The derive consumes what the composite
-   reports. Measured: `background-center` 0.00 (exact — no depth read at all),
-   `center-column` and `center-axis` +1.0 iso (both enter through a
-   camera-facing cap), `center-depth` up to +1.0 iso (lateral-surface entry;
-   +0.5 at zoom 4). The two cap blocks are the ceiling and hold it
-   **zoom-invariantly** — `center-axis` reports `world_delta` 0.5773514 at zoom
-   1, 2, 4, 8 and 16, byte-identical across a 16x range — while `center-depth`'s
-   off-centre crossing wanders below it with zoom (0.577 / 0.000 / 0.289 /
-   0.433 / 0.505 at those zooms). That split is the mechanism predicting itself,
-   not noise: see the anchor-stamp explanation below. A 1-iso-unit bias
-   displaces `F` by (1/3, 1/3, 1/3) world units, whose xy part leaves a residual
-   orbit: `center-axis` measures 12 px at zoom 4 and 22 px at zoom 8 on the 2x
-   host — ~12x better than the pre-#2547 focus (150 px at zoom 4), but not
-   exact.
+   **Residual: a latch misregistration, not a sort-key residual — FIXED
+   (#3169, D18; ledger F16 carries the correction).** The cap blocks used to
+   read a `world_delta` of 0.5773514 — one iso-depth unit, `sqrt(3)/3` — at
+   zoom 1, 2, 4, 8 and 16 alike, byte-identical on Metal and OpenGL. #2641
+   attributed it to the composite being a per-face sort key stamped at the
+   face's anchor (half a unit voxel face's 2-unit depth spread), and #2544 D12
+   recorded that account; the `[pivot-focus-assert]` tolerance was set to it
+   (0.58) and `center-axis`'s centroid bound absorbed the orbit it caused.
 
-   The cause is **not** a sampling / ray-pairing error. `emitDeformedFace`
-   (`c_voxel_to_trixel_stage_1_body.glsl`) stamps ONE `encodeDepthWithFace`
-   value — the emitting (sub-)voxel's own `pos3DtoDistance` anchor — across
-   every trixel that face paints. So the value a trixel carries is the depth of
-   its face's ANCHOR, while the metric depth of the surface *at that trixel*
-   varies across the face's footprint (spread: 2 iso units for a unit voxel
-   face). `isoPixelToPos3D(viewCenterIso, storedDepth)` pairs the center's exact
-   2D coordinate with that anchor depth, so the reconstruction is off by however
-   far the center ray crosses the face from its anchor. That predicts exactly
-   what the blocks measure: both cap-entry blocks are constructed so the ray
-   hits the cap dead-centre and both read exactly +1.0 (half the 2-unit spread),
-   while `center-depth`'s off-centre lateral crossing reads +0.5.
+   The attribution was wrong. `RenderManager::getCanvasCenterIso` was built on
+   the canvas store's `trixelOriginOffsetZ1`, whose `(−1,−1)` is the trixel
+   lattice's storage alignment, not a screen offset — deviation 3 below is the
+   same confusion in the scatter. The latch therefore read its depth off the
+   center texel, which shows iso `C − (1,1)`, and rebuilt the point on the ray
+   through `C`: one iso unit per axis off its own sample, at every zoom and on
+   every backend, which is exactly what a flat cap turns into a constant
+   0.577. Built on `trixelOriginOffsetX1`, the canvas center is the texel the
+   readback samples, and the yaw-0 cap blocks read 0.000.
 
-   Three measurements rule out the alternatives (macOS/Metal, `--pivot-verify`
-   + a per-row composite-depth scan around the center texel):
+   What a sample does carry is the store convention in §"Latch policy" ("Where
+   the key sits"): 1.5 depth units behind the entry on the cardinal voxel path,
+   which the latch now removes, and the face-origin spread plus one quantum off
+   the cardinals. The oracle's two tolerances are those, derived per gesture —
+   0.58 is retired. `center-axis` was moved at the same time: its axis now runs
+   through the yaw-0 ray's entry into its near cap (the half-integer point
+   `anchor + 5.5·(1,1,1)`, the cap carved on an even xy grid so the voxels stay
+   on the integer lattice), because that entry is what the cardinal path
+   acquires. Both of #2544 A8's gates stay on it — the focus assert and the
+   whole-silhouette centroid at the unchanged `CENTROID_BOUND_GAME_PX`.
 
-   - **Not the trixel→framebuffer parity shift / a neighbouring-ray read.** That
-     is a fixed *pixel* offset, so its world error would halve from zoom 4 to
-     zoom 8. The measured bias is a constant 1.0 world iso unit at both, i.e.
-     4 framebuffer rows at `effSub` 4 and 8 rows at `effSub` 8.
-   - **Not a fixed sampling offset in any direction.** The analytic depth sits
-     4 rows ABOVE the sampled center row on the cap blocks and 4 rows BELOW it
-     on `center-depth` — opposite signs, because the two surfaces' depth-vs-row
-     slopes have opposite signs. No single corrected sample row fixes both.
-   - **Not a constant per-face encode offset** correctable from the decoded
-     `face_` bits: the offset is where the ray crosses the face, which is
-     content geometry, not a property of the face type.
-
-   Recovering the metric depth would need the winning face's anchor cell — which
-   the composite does not carry (only depth / face / flip) — i.e. a CPU inverse
-   of `emitDeformedFace`'s footprint, including the residual-yaw deform and
-   riser flip. The forward option instead of that inverse is to stop consuming
-   the sort key for this purpose and cast a CPU ray
-   (`IRPrefab::Picking::castVoxelRay`, exact surface hit, no GPU flush) — the
-   same primitive #2548 latches the cursor pivot with. That is a design change
-   to the derive's source of truth, not a residual fix, so it is out of #2641's
-   scope; #2548's landing is the natural point to weigh it.
-
-   The `[pivot-focus-assert]` tolerance is therefore set to the residual that
-   remains (0.58 world units, just over the measured max `sqrt(3)/3` = 0.5774)
-   rather than to a round 0.6, and `center-axis` is centroid-gated at a bound
-   AFFINE in zoom — `1.5 px/zoom + 1.0 px` of game resolution, scaled by the
-   run's own `outputScaleFactor` (`CENTROID_BOUND_GAME_PX` in
-   `scripts/pivot-verify.py`) — so the inherent orbit is admitted but any growth
-   in it fails. Affine rather than proportional because the deviation carries
-   two terms: the world-space orbit, which scales with zoom, plus the
-   one-game-pixel destination-grid floor documented under deviation 2 below,
-   which cannot. A purely proportional bound therefore holds no uniform margin
-   (the measured ratio falls monotonically from 2.00 to 1.375 px/zoom over zoom
-   1..16) and false-fails at zoom 1. Calibrated over zoom 1, 2, 4, 8, 16 on both
-   backends; clears every cell by 14-33% and still separates a pre-#2547-class
-   regression by ~10x. The gate still separates every failure
-   it exists to catch by an order of magnitude: a regression to the pre-#2547
-   iso-depth-0 focus is 3.46 world units off on `center-column` and 12.1 on
-   `center-depth`, and electing the far surface instead of the near one is 10.0
-   off on `center-depth`.
-
-   **Cross-backend: CONFIRMED (#2641 criterion 4).** Re-measured on
-   Windows/OpenGL (mingw64, `windows-debug`) against the same sweeps. The
-   GL-only row flip in `readbackCompositeDepth` (`resolution.y - 1 - y`,
-   `engine/render/src/ir_render.cpp:116`) does **not** perturb the derive: every
-   derived focus is byte-identical to the Metal value — `background-center`
-   `(12,-12,0)` / 0.0, `center-column` `(14.333333,-9.666667,2.333333)` /
-   0.5773497, `center-axis` `(18.333334,-5.666666,6.333334)` / 0.5773514, all 9
-   shots, `view_held=1` throughout. `center-depth` agrees at zoom 4
-   (0.28867403) and lands on a different sub-voxel step at zoom 8 (0.4330127) —
-   still under tolerance, and expected for the off-centre crossing described
-   above rather than a backend disagreement.
+   `center-axis` is centroid-gated at a bound AFFINE in zoom — `1.5 px/zoom +
+   1.0 px` of game resolution, scaled by the run's own `outputScaleFactor`
+   (`CENTROID_BOUND_GAME_PX` in `scripts/pivot-verify.py`). Affine rather than
+   proportional because the deviation carries two terms: the world-space
+   orbit, which scales with zoom, plus the one-game-pixel destination-grid
+   floor documented under deviation 2 below, which cannot. A purely
+   proportional bound therefore holds no uniform margin (the measured ratio
+   fell monotonically from 2.00 to 1.375 px/zoom over zoom 1..16) and
+   false-fails at zoom 1. The bound was calibrated over zoom 1, 2, 4, 8, 16 on
+   both backends while the misregistration above was still in the latch, and
+   it is not re-fitted now that the orbit it absorbed is gone.
 
    The **centroid** deviations are scored on the captured FRAMEBUFFER but land
    on a GAME-resolution quantum, so the raw readings differ by the host's
@@ -600,3 +617,10 @@ which is what still catches an SDF-side pivot regression (#2851).
   recovery, with the residue kept as a view offset, made every rotation start
   sound at any yaw, and dropping the pan/zoom derive removed the pop. The
   sweep's sweep-wide constant-focus check became the per-gesture oracle.
+  Grading that oracle away from yaw 0 (D17, D18) found the canvas-center
+  misregistration behind #2641's 0.577 (§"Known deviations" 2) and the voxel
+  store's cardinal lattice offset, which the latch now removes for voxel
+  winners; the oracle's single 0.58 tolerance became the two derived bounds of
+  §"Latch policy", and `center-axis`'s probe moved onto the point the cardinal
+  path acquires. The voxel/SDF disagreement the lattice offset leaves on the
+  cardinal path is #3741.

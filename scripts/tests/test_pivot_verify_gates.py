@@ -47,10 +47,26 @@ def _load(mod_name: str, file_name: str):
 
 pv = _load("pivot_verify", "pivot-verify.py")
 
-# One `[pivot-focus-assert]` line per shot, all at the same latched derive so
-# _score_focus_asserts' moved-value check is not what decides the verdict.
-_ASSERT_LINE = ("[pivot-focus-assert] probe derived=(4.0,4.0,2.5) "
-                "analytic=(4.0,4.0,2.5) view_held=1 result={result}")
+# One `[pivot-focus-assert]` line per shot in the demo's live format, all at
+# the same latched derive so _score_focus_asserts' moved-value check is not
+# what decides the verdict: shot 0 holds the initial state, every later shot is
+# an acquiring gesture.
+_ASSERT_LINE = ("[pivot-focus-assert] block=probe shot={shot} yaw=0 "
+                "gesture={gesture} latch_moves={gesture} derived=(4.0,4.0,2.5) "
+                "target=(4.0,4.0,2.5) world_delta=0.01 tolerance=0.289 "
+                "view_held=1 result={result} source={source} grazing={grazing} "
+                "control_delta=9.5")
+
+
+def _assert_lines(results):
+    lines = []
+    for shot, result in enumerate(results):
+        gesture = 0 if shot == 0 else 1
+        lines.append(_ASSERT_LINE.format(
+            shot=shot, gesture=gesture, result=result,
+            source="none" if gesture == 0 else "cardinal",
+            grazing=1 if result == "SKIP" else 0))
+    return "\n".join(lines)
 
 
 class _Harness:
@@ -61,11 +77,12 @@ class _Harness:
     """
 
     def __init__(self, readings=None, default_reading=0.5, scale=2.0,
-                 focus_result="PASS"):
+                 focus_result="PASS", focus_results=None):
         self.readings = readings or {}
         self.default_reading = default_reading
         self.scale = scale
-        self.focus_result = focus_result
+        # Per-shot results override the uniform one.
+        self.focus_results = focus_results or [focus_result] * 9
         self.captures = []          # (block, sdf, zoom) per run_pass call
         self.scores = []            # (block, sdf, zoom, max_deviation, dev)
         self._current = None
@@ -76,8 +93,7 @@ class _Harness:
         zoom = float(cmd[cmd.index("--zoom") + 1])
         self._current = (block, sdf, zoom)
         self.captures.append(self._current)
-        output = "\n".join(_ASSERT_LINE.format(result=self.focus_result)
-                           for _ in range(9))
+        output = _assert_lines(self.focus_results)
         frames = [Path(f"shot_{i:03d}.png") for i in range(9)]
         return 0, output, frames
 
@@ -179,13 +195,13 @@ class SdfTwinGate(unittest.TestCase):
 
 class CensusEveryPassCanFail(unittest.TestCase):
 
-    def test_t4_maximally_bad_reading_fails_all_eight_passes(self):
-        # 7 blocks + the focus-ctr twin, every silhouette 200px off and every
-        # [pivot-focus-assert] FAIL. The issue's census: 7/8 gated before,
-        # 8/8 after.
+    def test_t4_maximally_bad_reading_fails_every_pass(self):
+        # 8 blocks + the focus-ctr twin, acquire-continuity once per base yaw,
+        # every silhouette 200px off and every [pivot-focus-assert] FAIL:
+        # all 11 passes fail.
         h = _Harness(default_reading=200.0, focus_result="FAIL")
         rc, verdicts = _run(h, [])
-        self.assertEqual(len(verdicts), 8)
+        self.assertEqual(len(verdicts), 11)
         self.assertEqual(rc, 1)
         self.assertEqual(verdicts, {
             "focus-ctr@z4": "DRIFT",
@@ -196,6 +212,9 @@ class CensusEveryPassCanFail(unittest.TestCase):
             "background-center@z4": "FOCUS-BAD",
             "center-axis@z4": "FOCUS-BAD",
             "cursor-latch@z4": "FOCUS-BAD",
+            "acquire-continuity@z4@y0": "FOCUS-BAD",
+            "acquire-continuity@z4@y22.5": "FOCUS-BAD",
+            "acquire-continuity@z4@y180": "FOCUS-BAD",
         })
         self.assertNotIn("REPORT", set(verdicts.values()))
 
@@ -254,6 +273,32 @@ class PerBlockBoundSurvives(unittest.TestCase):
         h = _Harness(readings={("center-axis", False): 40.0}, scale=1.0)
         rc, verdicts = _run(h, ["--blocks", "center-axis"])
         self.assertEqual(verdicts["center-axis@z4"], "DRIFT")
+        self.assertEqual(rc, 1)
+
+
+class GrazingSkips(unittest.TestCase):
+    """A grazing gesture is reported, not graded — but never makes a block
+    vacuous."""
+
+    def test_t7_a_skip_among_graded_gestures_passes(self):
+        results = ["PASS"] * 9
+        results[4] = "SKIP"
+        h = _Harness(focus_results=results)
+        rc, verdicts = _run(h, ["--blocks", "center-column"])
+        self.assertEqual(verdicts["center-column@z4"], "FOCUS-OK")
+        self.assertEqual(rc, 0)
+
+    def test_t7b_a_block_whose_every_gesture_grazes_fails(self):
+        h = _Harness(focus_results=["PASS"] + ["SKIP"] * 8)
+        rc, verdicts = _run(h, ["--blocks", "center-column"])
+        self.assertEqual(verdicts["center-column@z4"], "FOCUS-BAD")
+        self.assertEqual(rc, 1)
+
+    def test_t7c_a_failed_gesture_still_fails_beside_skips(self):
+        results = ["PASS"] + ["SKIP"] * 7 + ["FAIL"]
+        h = _Harness(focus_results=results)
+        rc, verdicts = _run(h, ["--blocks", "center-column"])
+        self.assertEqual(verdicts["center-column@z4"], "FOCUS-BAD")
         self.assertEqual(rc, 1)
 
 

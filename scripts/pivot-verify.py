@@ -17,10 +17,11 @@ Blocks (see ``g_pivotVerifyBlock`` in ``creations/demos/shape_debug/main.cpp``):
 - ``center-depth`` — default pivot, probe AT the viewport center at z > 0.
 - ``background-center`` — default pivot, center pixel on BACKGROUND, so the
   derive must take its iso-depth-0 fallback (epic #2544 Phase 3 criterion 2).
-- ``center-axis`` — default pivot, probe axis ON the viewport-center ray with
-  its near cap at the ray's entry step, so the derived surface point is the
-  probe's own axis point.
-- ``cursor-latch`` — CURSOR pivot (#2548): center-axis geometry, but the focus
+- ``center-axis`` — default pivot, probe axis through the yaw-0
+  viewport-center ray's entry into its near cap, so the point the cardinal
+  path acquires is the probe's own axis point.
+- ``cursor-latch`` — CURSOR pivot (#2548): probe axis ON the viewport-center
+  ray with its near cap at the ray's step, but the focus
   is latched once from ``IRPrefab::CursorPivot::resolveFocusWorld`` (the real
   ``castVoxelRay`` path) with a synthetic cursor on the viewport-center
   anchor's pixel. Pinned-point oracle only, for the same reason as its
@@ -43,12 +44,20 @@ Two oracles, applied per block:
   shot. Each shot is a one-frame pose snap, so a shot whose yaw differs from the
   previous one is one rotation gesture, and the default pivot acquires at it
   from the previous shot's settled frame. The demo scores the focus the engine
-  derived against that frame's geometric crosshair target (the first carved
-  cell on the crosshair ray, from the probe's own carve constants), a
+  derived against that frame's geometric crosshair target, computed from the
+  probe's own carve constants, within a bound derived for the path that frame
+  was drawn on: at a cardinal source, the ray's entry into the first carved
+  cube within one micro-face; at an off-cardinal source, the ray point level
+  with that cube's center within the face-origin + quantum bound. It scores a
   non-gesture shot against the previous focus carried by the pan (the latch
   holds), and counts the frames the latch moved — at most one in a gesture
-  shot, none otherwise. The focus may take a new value at every gesture; a sweep
-  in which the frontmost surface never changes still reads one value. The sweep
+  shot, none otherwise. A gesture whose hold/acquire call turns on less than a
+  pixel is reported as a skip, not graded, and a block whose every gesture is
+  skipped fails. Each gesture line also carries a control reading — the same
+  acquisition under a recovery that drops the source yaw — which the bound in
+  force must separate from the real one. The focus may take a new value at
+  every gesture; a sweep in which the frontmost surface never changes still
+  reads one value. The sweep
   blocks must hold the camera pan/zoom FIXED across their shots, so the demo
   reports ``view_held`` per shot and a sweep block that moves the view is
   flagged as misconfigured, not as a regression. ``cursor-latch`` keeps the
@@ -59,8 +68,9 @@ Two oracles, applied per block:
   silhouette onto itself. Every other block's deviation is measured and
   reported but not gated. ``center-axis`` is gated at its own zoom-scaled
   bound (``CENTROID_BOUND_GAME_PX``) rather than ``--max-deviation``,
-  because it consumes the derived focus and so carries the inherent #2641
-  residual — see that constant for the measurement. The SDF twin has no voxel
+  because it consumes the derived focus, which lands within its acquisition
+  bound rather than exactly on the axis — see that constant for the
+  measurement. The SDF twin has no voxel
   lattice to land on, so its centroid rides a destination-grid floor; it is
   gated at ``SDF_BOUND_GAME_PX`` — that floor plus the same budget every gated
   voxel pass gets — rather than at ``--max-deviation`` (#2645 measured the
@@ -161,10 +171,9 @@ SDF_BOUND_GAME_PX = 2.5
 # outputScaleFactor read off the captured frame (`_output_scale_factor`).
 #
 # `center-axis` rotates about a point on its probe's own axis, so it is a valid
-# centroid pin — but it consumes the derived focus, which carries an inherent
-# residual: the composite is a per-face sort key stamped at the face's
-# anchor, so the derive lands up to one iso-depth unit off the metric surface
-# (docs/design/camera-yaw-pivot.md §"Known deviations" 2).
+# centroid pin — but it consumes the derived focus, which lands within the
+# bound of the path it acquired on rather than exactly on the axis
+# (docs/design/camera-yaw-pivot.md §"Latch policy").
 #
 # The bound is AFFINE in zoom, not proportional, and stated in game px rather
 # than framebuffer px. Both shapes come from the same mechanism:
@@ -211,12 +220,22 @@ GAME_RES_WIDTH_RE = re.compile(r"game_resolution_width\s*=\s*(\d+)")
 # 9-yaw sweep table (`yaws[]` in creations/demos/shape_debug/main.cpp).
 CARDINAL_FRAME_INDICES = (0, 3, 5, 7)
 # `[pivot-focus-assert] ... gesture=0|1 latch_moves=N derived=(x,y,z) ...
-# world_delta=D tolerance=T view_held=0|1 result=PASS|FAIL`
+# world_delta=D tolerance=T view_held=0|1 result=PASS|FAIL|SKIP
+# source=none|cardinal|off-cardinal grazing=0|1 control_delta=C`
+#
+# `tolerance` is the bound in force for that shot, computed by the demo from
+# the frame the gesture acquired from: one micro-face at a cardinal source,
+# the face-origin + quantum bound at an off-cardinal one (see
+# `docs/design/camera-yaw-pivot.md` §"Latch policy"). A SKIP is a gesture whose
+# hold/acquire call turns on less than one pixel of the crosshair ray, reported
+# rather than graded.
 FOCUS_ASSERT_RE = re.compile(
     r"\[pivot-focus-assert\].*?gesture=(?P<gesture>[01]) "
     r"latch_moves=(?P<moves>\d+) derived=\((?P<derived>[^)]*)\).*?"
     r"world_delta=(?P<delta>\S+) tolerance=(?P<tolerance>\S+) "
-    r"view_held=(?P<held>[01]) result=(?P<result>PASS|FAIL)")
+    r"view_held=(?P<held>[01]) result=(?P<result>PASS|FAIL|SKIP)"
+    r"(?: source=(?P<source>\S+) grazing=(?P<grazing>[01]) "
+    r"control_delta=(?P<control>\S+))?")
 
 
 def _parse_point(text: str) -> tuple[float, ...]:
@@ -287,8 +306,31 @@ def _score_focus_asserts(output: str, block: str) -> tuple[str, str]:
     if block == "cursor-latch" and len(set(derived)) > 1:
         return "BAD", (f"cursor latch moved mid-sweep across "
                        f"{len(set(derived))} values")
+    gestures = [m for m in matches if m["gesture"] == "1"]
+    skipped = [m for m in gestures if m["result"] == "SKIP"]
+    # A skip can never make a block vacuous: a block whose every gesture
+    # grazes graded nothing.
+    if gestures and len(skipped) == len(gestures):
+        return "BAD", (f"all {len(gestures)} gestures graze the probe — the "
+                       "block graded nothing")
     return "OK", (f"{len(matches)} shots, {len(set(derived))} distinct "
-                  f"derived value(s)")
+                  f"derived value(s), {len(skipped)} grazing skip(s)")
+
+
+def _gesture_report(output: str) -> list[str]:
+    """One line per gesture shot: the path its source frame was drawn on, the
+    reading against the bound in force there, and the control reading — where
+    the same acquisition lands under a recovery that drops the source yaw."""
+    lines = []
+    for i, m in enumerate(FOCUS_ASSERT_RE.finditer(output)):
+        if m["gesture"] != "1" or m["source"] is None:
+            continue
+        control = "-" if m["source"] == "none" else f"{float(m['control']):.3f}"
+        lines.append(f"  shot {i}: source={m['source']:<12} "
+                     f"world_delta={float(m['delta']):.3f} "
+                     f"bound={float(m['tolerance']):.3f} control={control} "
+                     f"{m['result']}{' (grazing)' if m['grazing'] == '1' else ''}")
+    return lines
 
 
 def _output_scale_factor(frame: Path, config: Path) -> float:
@@ -451,9 +493,10 @@ def main(argv: list[str] | None = None) -> int:
         focus = "-"
         if block in FOCUS_ASSERT_BLOCKS and not sdf:
             focus, detail = _score_focus_asserts(output, block)
-            if focus != "OK" or block == "acquire-continuity":
-                print(f"[pivot-verify] ({label}) focus assert: {detail}",
-                      file=sys.stderr)
+            print(f"[pivot-verify] ({label}) focus assert: {detail}",
+                  file=sys.stderr)
+            for line in _gesture_report(output):
+                print(line, file=sys.stderr)
 
         # Whole-silhouette oracle. Always measured; gated where it is a valid
         # pin (CENTROID_GATED_BLOCKS), at that pass's own bound. The SDF twin
