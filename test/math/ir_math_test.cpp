@@ -336,6 +336,18 @@ TEST(ByteConversionTest, RoundTripIsNearIdentity) {
     }
 }
 
+TEST(ByteConversionTest, ColorToVec4NormalizesEachChannel) {
+    EXPECT_EQ(
+        IRMath::colorToVec4(IRMath::Color{255, 0, 255, 255}),
+        IRMath::vec4(1.0f, 0.0f, 1.0f, 1.0f)
+    );
+    const IRMath::vec4 mid = IRMath::colorToVec4(IRMath::Color{51, 102, 0, 0});
+    EXPECT_FLOAT_EQ(mid.r, 0.2f);
+    EXPECT_FLOAT_EQ(mid.g, 0.4f);
+    EXPECT_FLOAT_EQ(mid.b, 0.0f);
+    EXPECT_FLOAT_EQ(mid.a, 0.0f);
+}
+
 // ---------------------------------------------------------------------------
 // lerpByte
 // ---------------------------------------------------------------------------

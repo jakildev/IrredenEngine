@@ -83,7 +83,7 @@ perf-stats overlay region (top-right by default).
 - `C_FogRevealed` (`setEntityRevealGoverned`) opts a grid-canvas voxel set into
   one ground-anchor verdict (`FOG_REVEAL_EVAL`, active canvas only; hysteresis
   and stagger in `C_FogRevealSettings`); reserved bit 3 exempts it from the compact
-  reject and stage-1 z drop and its pixels carry id bit 28 (shapes opt in via
+  reject and stage-1 column drop and its pixels carry id bit 28 (shapes opt in via
   `SHAPE_FLAG_FOG_WHOLE_BODY_EXEMPT`). The FIELD / BODY / EXEMPT target and the
   child that lands each part: [reveal model](../../../../docs/design/fog-of-war-reveal-model.md).
 - GPU transforms: a voxel set opts in with `C_VoxelSetNew::gpuTransformSlot_

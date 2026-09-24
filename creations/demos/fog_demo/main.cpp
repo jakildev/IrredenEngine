@@ -533,6 +533,80 @@ constexpr IRVideo::AutoScreenshotShot kEdgeZCostCeilingShots[] = {
      sizeof(kCropsEdgeZCostCeiling9) / sizeof(kCropsEdgeZCostCeiling9[0])},
 };
 
+// --fog-debug-color: paint fully unexplored matter magenta instead of black, so
+// matter the fog pass paints reads apart from matter the raster removed (the
+// black background shows through both otherwise). Under --edge-zcost-ceiling it
+// also arms the FOG-PAINT-PROBE: one readback after warmup that counts the
+// central pillar's texels (entity-id low word) and how many carry the debug
+// colour within kFogPaintProbeTolerance per channel. A pillar whose above-ceiling
+// voxels are painted rather than dropped reads a large painted fraction.
+bool g_fogDebugColor = false; // --fog-debug-color
+constexpr Color kFogDebugUnexploredColor{255, 0, 255, 255};
+// Same framing as kEdgeZCostCeilingShots; own labels so both variants gate.
+// The last shot parks a non-cardinal yaw, so the scene renders through the
+// per-axis rotation route, which FOG_TO_TRIXEL never paints: the above-ceiling
+// pillar voxels must be dropped there, neither magenta nor lit.
+constexpr float kEdgeZCostCeilingPaintYaw = 0.35f;
+constexpr IRVideo::RoiCrop kCropsEdgeZCostCeilingPaintYaw9[] = {
+    {1100, 0, 300, 920, "zcost_ceiling_yaw_pillar"},
+};
+constexpr IRVideo::AutoScreenshotShot kEdgeZCostCeilingPaintShots[] = {
+    {5.0f, vec2(0, 0), 0.0f, "fog_edge_zcost_ceiling_paint5"},
+    {9.0f,
+     vec2(0, 0),
+     0.0f,
+     "fog_edge_zcost_ceiling_paint9",
+     kCropsEdgeZCostCeiling9,
+     sizeof(kCropsEdgeZCostCeiling9) / sizeof(kCropsEdgeZCostCeiling9[0])},
+    {9.0f,
+     vec2(0, 0),
+     kEdgeZCostCeilingPaintYaw,
+     "fog_edge_zcost_ceiling_paint_yaw9",
+     kCropsEdgeZCostCeilingPaintYaw9,
+     sizeof(kCropsEdgeZCostCeilingPaintYaw9) / sizeof(kCropsEdgeZCostCeilingPaintYaw9[0])},
+};
+constexpr int kFogPaintProbeTolerance = 2;
+IREntity::EntityId g_ceilingPillar = IREntity::kNullEntity;
+int g_fogPaintProbeFrame = 0;
+
+bool matchesFogDebugColor(Color color) {
+    const auto near = [](std::uint8_t channel, std::uint8_t target) {
+        return IRMath::abs(static_cast<int>(channel) - static_cast<int>(target)) <=
+               kFogPaintProbeTolerance;
+    };
+    return near(color.red_, kFogDebugUnexploredColor.red_) &&
+           near(color.green_, kFogDebugUnexploredColor.green_) &&
+           near(color.blue_, kFogDebugUnexploredColor.blue_);
+}
+
+// Runs at the render front, so it reads the previous frame's completed colour
+// (post-FOG_TO_TRIXEL) and entity-id planes.
+void probeCeilingPillarPaint() {
+    if (++g_fogPaintProbeFrame != g_autoWarmupFrames) {
+        return;
+    }
+    const auto &textures =
+        IREntity::getComponent<C_TriangleCanvasTextures>(IRRender::getActiveCanvasEntity());
+    std::vector<IRMath::uvec2> carriers;
+    std::vector<Color> colors;
+    textures.readEntityIdCarriers(carriers);
+    textures.readColors(colors);
+
+    const auto expected = static_cast<std::uint32_t>(g_ceilingPillar);
+    int texels = 0;
+    int painted = 0;
+    for (std::size_t i = 0; i < carriers.size(); ++i) {
+        if (carriers[i].x != expected) {
+            continue;
+        }
+        ++texels;
+        if (matchesFogDebugColor(colors[i])) {
+            ++painted;
+        }
+    }
+    IR_LOG_INFO("FOG-PAINT-PROBE pillar={} texels={} painted={}", g_ceilingPillar, texels, painted);
+}
+
 // --entity-reveal: whole-body fog reveal under the --edge-zcost-ceiling hard
 // ceiling. One screen row (x + y = 0) of equal-height bodies rising
 // past the ceiling, each pair side by side so its crops compare like for like:
@@ -629,6 +703,12 @@ void probeEntityRevealIds() {
 // (one shot per step) because the auto-screenshot harness applies shot.yawRadians_
 // via Camera::setYaw per shot. jitter_probe the sequence to score temporal
 // stability. Implies --edge-zoom (it owns the scene).
+// --auto-profile [N]: N render frames (default 300) with per-system frame
+// timing and GPU stage timing on, then exit; the World writes
+// save_files/profile_report.txt on shutdown.
+int g_autoProfileFrames = 0;
+int g_autoProfileCount = 0;
+
 bool g_edgeYawSweep = false; // --edge-yaw-sweep
 std::vector<IRVideo::AutoScreenshotShot> g_edgeYawSweepShots;
 std::vector<std::array<char, 40>> g_edgeYawSweepShotLabels;
@@ -700,6 +780,17 @@ int main(int argc, char **argv) {
         "up-cost (#2557): matter within the band reveals fully, then cuts off "
         "within ~1 unit past it — a hard ceiling; skips the static grid reveal"
     );
+    IREngine::args().optionalInt(
+        "--auto-profile",
+        "Run N frames (default 300) with frame + GPU stage timing, then exit",
+        300
+    );
+    IREngine::args().flag(
+        "--fog-debug-color",
+        "Paint fully unexplored matter magenta instead of black; with "
+        "--edge-zcost-ceiling, also log FOG-PAINT-PROBE (the central pillar's "
+        "painted texel count)"
+    );
     IREngine::args().flag(
         "--entity-reveal",
         "Whole-body fog reveal under the --edge-zcost-ceiling hard ceiling: governed "
@@ -730,6 +821,10 @@ int main(int argc, char **argv) {
     g_edgeZCostAsym = IREngine::args().getFlag("--edge-zcost-asym");
     g_edgeZCostCeiling = IREngine::args().getFlag("--edge-zcost-ceiling");
     g_entityReveal = IREngine::args().getFlag("--entity-reveal");
+    g_fogDebugColor = IREngine::args().getFlag("--fog-debug-color");
+    if (IREngine::args().wasProvided("--auto-profile")) {
+        g_autoProfileFrames = IREngine::args().getInt("--auto-profile");
+    }
     g_luaFogSelftest = IREngine::args().getFlag("--lua-fog-selftest");
     if (g_luaFogSelftest) {
         g_movingObserver = false;
@@ -862,6 +957,10 @@ int main(int argc, char **argv) {
     }
 
     IR_LOG_INFO("Starting creation: fog_demo");
+    if (g_autoProfileFrames > 0) {
+        IREngine::enableFrameTiming(true);
+        IRRender::gpuStageTiming().enabled_ = true;
+    }
     initSystems();
     initCommands();
     initEntities();
@@ -934,6 +1033,20 @@ void initSystems() {
     }
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>());
 
+    if (g_autoProfileFrames > 0) {
+        IRSystem::SystemId autoProfileId = IRSystem::createSystem<C_Name>(
+            "FogAutoProfile",
+            [](C_Name &) {},
+            []() {
+                if (++g_autoProfileCount >= g_autoProfileFrames) {
+                    IR_LOG_INFO("Auto-profile: {} frames collected, exiting", g_autoProfileFrames);
+                    IRWindow::closeWindow();
+                }
+            }
+        );
+        renderPipeline.push_back(autoProfileId);
+    }
+
     // --moving-observer: a once-per-frame beginTick hook (same idiom as the
     // day_cycle sun hook) that re-points the analytic vision circle at the
     // advancing float center. Pushed to the front so the new fog is current
@@ -973,6 +1086,15 @@ void initSystems() {
         renderPipeline.push_front(probeTickId);
     }
 
+    if (g_edgeZCostCeiling && g_fogDebugColor && g_autoWarmupFrames > 0) {
+        IRSystem::SystemId probeTickId = IRSystem::createSystem<C_Name>(
+            "FogPaintProbe",
+            [](C_Name &) {},
+            []() { probeCeilingPillarPaint(); }
+        );
+        renderPipeline.push_front(probeTickId);
+    }
+
     if (g_autoWarmupFrames > 0) {
         IRVideo::AutoScreenshotConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
@@ -988,6 +1110,8 @@ void initSystems() {
             IRVideo::setAutoScreenshotShots(cfg, kEntityRevealShots);
         } else if (g_edgeZCostAsym) {
             IRVideo::setAutoScreenshotShots(cfg, kEdgeZCostAsymShots);
+        } else if (g_edgeZCostCeiling && g_fogDebugColor) {
+            IRVideo::setAutoScreenshotShots(cfg, kEdgeZCostCeilingPaintShots);
         } else if (g_edgeZCostCeiling) {
             IRVideo::setAutoScreenshotShots(cfg, kEdgeZCostCeilingShots);
         } else if (g_edgeZCost) {
@@ -1189,6 +1313,9 @@ void initEntities() {
     if (g_entityReveal || g_edgeZoom || g_edgeSmooth || g_edgeSdfBlocker || g_detachedEdge ||
         g_edgeZCost || g_edgeZCostAsym || g_edgeZCostCeiling) {
         IRRender::setSunDirection(vec3(0.0f, 0.0f, -1.0f));
+    }
+    if (g_fogDebugColor) {
+        IRPrefab::Fog::setUnexploredColor(kFogDebugUnexploredColor);
     }
 
     if (g_luaFogSelftest) {
@@ -1511,7 +1638,7 @@ void initEntities() {
         // (z from ~4.5 down to ~-3.5) reads fully revealed — the band — then cuts
         // off within ~1 unit past it as kEdgeZCostCeilingUpCost drives the
         // effective distance past the disc radius almost immediately.
-        IREntity::createEntity(
+        g_ceilingPillar = IREntity::createEntity(
             C_LocalTransform{vec3(0.0f, 0.0f, -10.0f)},
             C_VoxelSetNew{IRMath::ivec3{4, 4, 28}, Color{120, 200, 240, 255}, true}
         );

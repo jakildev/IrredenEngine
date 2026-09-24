@@ -302,23 +302,21 @@ struct Voxel {
 // through the atomic scratch buffer; Metal passes the texture + observers into
 // the shared functions as arguments.
 
-// Z-cost twins of fogColumnReveal / fogColumnRevealNearest for the
-// OWN-COLUMN DROP only (the voxel's world Z is known there). They fold the
-// per-circle height penalty zCostUp * max(dzUp - freeBand, 0) +
-// zCostDown * max(dzDown - freeBand, 0), where dzUp = max(observerZ - voxelZ,
-// 0) and dzDown = max(voxelZ - observerZ, 0), into the effective radial
-// distance so a boundary voxel clips consistently with FOG_TO_TRIXEL's
-// per-pixel z reveal — a pillar top / pit floor far from the observer height
-// drops even with its XY column inside the disc. Mirror of the GLSL twins. These
-// live HERE rather than beside their z-free twins in ir_voxel_face_select.metal
-// because the drop is STAGE-1-ONLY — stage 2 never repeats it — and the shared
-// include holds exactly the definitions both stages must agree on. The reveal
-// math is inlined rather than a shared ir_iso_common Z helper — a new symbol
-// there perturbs the cardinal fast path. The cut-face + keep-ring tests call the
-// z-free twins in the shared include (best-case-z, keep a superset); only the
-// DROP metric and nearest-Z DISTANCE carry the penalty, the keep-ring WIDTH
-// stays z-free. All-zero heights make these return exactly the z-free twins'
-// values.
+// Z-cost twin of fogColumnReveal for the own-column drop on the routes
+// FOG_TO_TRIXEL never paints — the DETACHED canvas and the per-axis rotation
+// textures (the voxel's world Z is known there). It folds the per-circle height
+// penalty zCostUp * max(dzUp - freeBand, 0) + zCostDown * max(dzDown -
+// freeBand, 0), where dzUp = max(observerZ - voxelZ, 0) and dzDown =
+// max(voxelZ - observerZ, 0), into the effective radial distance, so a
+// height-hidden voxel is removed on the z-aware curve FOG_TO_TRIXEL reveals by.
+// The world canvas does NOT use it: its drop is z-free so a height-hidden voxel
+// keeps its geometry and the fog pass paints it unexplored. Mirror of the GLSL twin. It lives HERE
+// rather than beside the z-free twins in ir_voxel_face_select.metal because the
+// drop is STAGE-1-ONLY — stage 2 never repeats it — and the shared include
+// holds exactly the definitions both stages must agree on. The reveal math is
+// inlined rather than a shared ir_iso_common Z helper — a new symbol there
+// perturbs the cardinal fast path. All-zero heights make this return exactly
+// fogColumnReveal's value.
 static float fogColumnRevealZ(
     texture2d<float, access::read> fog, constant FogObserverData& obs, int2 col, float voxelZ
 ) {
@@ -341,43 +339,6 @@ static float fogColumnRevealZ(
         const float distEff = length(float2(col) - obs.visionCircles[i].xy) +
             h.y * max(dzUp - h.w, 0.0f) + h.z * max(dzDown - h.w, 0.0f);
         const float a = max(obs.visionCircles[i].w, 0.0f);
-        reveal = max(
-            reveal,
-            1.0f - smoothstep(obs.visionCircles[i].z - a, obs.visionCircles[i].z + a, distEff)
-        );
-    }
-    return reveal;
-}
-
-static float fogColumnRevealNearestZ(
-    texture2d<float, access::read> fog, constant FogObserverData& obs, int2 col, float voxelZ
-) {
-    const int2 fogSize = int2(int(fog.get_width()), int(fog.get_height()));
-    if (fogSize.x <= 1) {
-        return 1.0f;
-    }
-    const int2 cell = col + int2(kFogOfWarHalfExtent);
-    if (cell.x < 0 || cell.x >= fogSize.x || cell.y < 0 || cell.y >= fogSize.y) {
-        return 1.0f;
-    }
-    if (fog.read(uint2(cell)).r >= kFogExploredThreshold) {
-        return 1.0f;
-    }
-    float reveal = 0.0f;
-    for (int i = 0; i < obs.visionCircleCount; ++i) {
-        const float2 nearest = clamp(
-            obs.visionCircles[i].xy,
-            float2(col) - kFogColumnCellHalf,
-            float2(col) + kFogColumnCellHalf
-        );
-        const float4 h = obs.visionCircleHeights[i];
-        const float dzUp = max(h.x - voxelZ, 0.0f);
-        const float dzDown = max(voxelZ - h.x, 0.0f);
-        const float distEff = length(nearest - obs.visionCircles[i].xy) +
-            h.y * max(dzUp - h.w, 0.0f) + h.z * max(dzDown - h.w, 0.0f);
-        // Keep-ring WIDTH stays z-free (a fixed geometric ring so the cut always
-        // has matter to repaint); only the distance carries the z penalty.
-        const float a = max(obs.visionCircles[i].w, kFogColumnKeepAa + kFogHiddenKeepCells);
         reveal = max(
             reveal,
             1.0f - smoothstep(obs.visionCircles[i].z - a, obs.visionCircles[i].z + a, distEff)
@@ -483,16 +444,14 @@ kernel void IR_STAGE1_KERNEL_NAME(
     // fogColumnRevealNearest so the fog cut has matter to repaint; a
     // world-placed DETACHED canvas has no fog pass and clips tight at the voxel
     // lattice. The per-axis routes run their own clip inside their branch.
-    // The drop uses this voxel's OWN world Z so a height-penalized voxel
-    // (pillar top / pit floor far from the observer height) clips consistently
-    // with FOG_TO_TRIXEL's per-pixel z reveal. Only the DROP takes the Z twins —
-    // the cut-face test inside selectVoxelFace stays on the z-free
-    // fogColumnReveal (best-case-z keeps a superset). All-zero heights reduce
-    // this to the 2D drop.
+    // The GRID drop is z-FREE: a voxel above the height ceiling but inside the
+    // disc keeps its geometry and FOG_TO_TRIXEL paints it the unexplored colour
+    // per pixel — removing it would expose the ground through a hollow, shorter
+    // body. The detached canvas, which has no paint pass, drops on its own
+    // world Z. Mirror of the GLSL twin.
     const bool ownColumnHidden = frameData.isDetachedCanvas > 0.5f
         ? fogColumnRevealZ(canvasFogOfWar, fogObservers, sel.worldColumn, voxelPosition.z) <= 0.0f
-        : fogColumnRevealNearestZ(
-              canvasFogOfWar, fogObservers, sel.worldColumn, voxelPosition.z) <= 0.0f;
+        : fogColumnRevealNearest(canvasFogOfWar, fogObservers, sel.worldColumn) <= 0.0f;
     if (!fogWholeBodyExempt && sel.fogActive &&
         frameData.perAxisRoute == 0 && ownColumnHidden) {
         return;
@@ -537,17 +496,15 @@ kernel void IR_STAGE1_KERNEL_NAME(
     // resolves occlusion per cell and the framebuffer scatter reconstructs the
     // deformed face quad, so D is not applied here.
     if (frameData.perAxisRoute != 0) {
-        // Per-axis own-column fog clip: the same drop as the single-canvas route
-        // (reveal <= 0 — FULLY hidden), applied on EVERY axis route (1/2/3) so a
-        // rotating boundary object clips its hidden half identically (a hidden
-        // column's Z-face would otherwise float on route 3). visionCircleCount==0
-        // and the 1×1 placeholder grid short-circuit non-fog rotating scenes.
-        // The two arguments round differently on purpose: the COLUMN is rounded
-        // because it indexes the integer fog grid, while the HEIGHT stays the raw
-        // continuous voxelPosition.z. Rounding the height would quantize the
-        // penalty into whole world-Z steps AND disagree with c_fog_to_trixel's
-        // per-pixel reveal, which penalizes against the unrounded `pos3D.z`.
-        // The single-canvas route splits the same way. Mirror of the GLSL twin.
+        // Per-axis own-column fog clip: reveal <= 0 (FULLY hidden), applied on
+        // EVERY axis route (1/2/3) so a rotating boundary object clips its
+        // hidden half identically (a hidden column's Z-face would otherwise float
+        // on route 3). z-AWARE, unlike the single-canvas GRID drop: FOG_TO_TRIXEL
+        // paints only the main canvas, and the per-axis textures composite
+        // straight into the framebuffer, so a height-hidden voxel kept here
+        // would render lit. visionCircleCount==0 and the 1×1 placeholder grid
+        // short-circuit non-fog rotating scenes. The COLUMN is rounded, the
+        // HEIGHT stays the raw voxelPosition.z. Mirror of the GLSL twin.
         if (!fogWholeBodyExempt && fogObservers.visionCircleCount > 0 &&
             fogColumnRevealZ(
                 canvasFogOfWar, fogObservers, roundHalfUp(voxelPosition.xyz).xy, voxelPosition.z

@@ -167,6 +167,22 @@ inline void clearVisionCircles() {
     }
 }
 
+/// Write @p color, normalized per channel, into @p observers as the unexplored
+/// anchor FOG_TO_TRIXEL reads. Every other member of the payload is untouched.
+inline void
+setUnexploredColor(IRComponents::FrameDataFogObservers &observers, IRMath::Color color) {
+    observers.unexploredColor_ = IRMath::colorToVec4(color);
+}
+
+/// Set the colour FOG_TO_TRIXEL paints fully unexplored matter with (default
+/// opaque black). Partially revealed pixels and the rim fade blend from it, so
+/// a non-black value separates painted-hidden matter from an empty background.
+inline void setUnexploredColor(IRMath::Color color) {
+    if (auto *fog = detail::activeFogComponent()) {
+        setUnexploredColor(fog->observers_, color);
+    }
+}
+
 /// Reset every cell to `kFogStateUnexplored`.
 inline void clear() {
     if (auto *fog = detail::activeFogComponent()) {

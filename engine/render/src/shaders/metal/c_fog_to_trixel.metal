@@ -10,7 +10,7 @@ constant int kFogOfWarHalfExtent = 128;
 constant int kEmptyDistanceEncoded = 65535;
 // Normalized stored explored value (128/255, NOT 0.5). The two-segment lerp
 // pivots through this so the three canonical stored states (0 / 128 / 255) land
-// exactly on the black / explored / source anchors.
+// exactly on the unexplored / explored / source anchors.
 constant float kFogExploredValue = 128.0f / 255.0f;
 
 // Live analytic vision circles. Mirrors kMaxFogVisionCircles and
@@ -31,6 +31,9 @@ struct FogObserverData {
     // dzUp = max(observerZ - z, 0) and dzDown = max(z - observerZ, 0). All-zero
     // (the default) → the plain 2D disc.
     float4 visionCircleHeights[kMaxFogVisionCircles];
+    // Colour of fully unexplored matter — the lerp's state-0 anchor. Only this
+    // pass declares it; every other declaration of the struct stops earlier.
+    float4 unexploredColor;
 };
 
 // Cross-section cap tuning — mirrors the GLSL twin. kFogCutTone is a pure
@@ -40,8 +43,8 @@ struct FogObserverData {
 constant float kFogCutTone = 0.85f;
 constant float kFogCutMaxRimCells = 2.0f;
 // Rim fade — mirrors the GLSL twin. kFogRimFadeCells MUST equal
-// kFogHiddenKeepCells (ir_voxel_face_select.metal) so the fade reaches black
-// exactly where hidden columns stop rasterizing.
+// kFogHiddenKeepCells (ir_voxel_face_select.metal) so the fade reaches the
+// unexplored colour exactly where hidden columns stop rasterizing.
 constant float kFogRimFadeCells = 8.0f;
 constant float kFogRimFadeLevel = 0.75f;
 
@@ -189,21 +192,22 @@ kernel void c_fog_to_trixel(
     const float3 exploredColor = float3(luminance) * 0.4f;
 
     // Two-segment continuous lerp anchored on the three canonical stored
-    // states: black at 0, exploredColor at 128/255, src at 1.0. Alpha is
-    // preserved so any text/overlay antialiasing still composites cleanly.
+    // states: unexploredColor at 0, exploredColor at 128/255, src at 1.0. Alpha
+    // is preserved so any text/overlay antialiasing still composites cleanly.
     float3 outColor;
     if (state >= kFogExploredValue) {
         const float t = (state - kFogExploredValue) / (1.0f - kFogExploredValue);
         outColor = mix(exploredColor, src.rgb, t);
     } else {
         const float t = state / kFogExploredValue;
-        outColor = mix(float3(0.0f), exploredColor, t);
+        outColor = mix(fogObservers.unexploredColor.rgb, exploredColor, t);
     }
     if (gridState < kFogExploredValue) {
-        // The squared ease-out crushes the fade tail to black well before the
-        // keep-ring drop, so the outermost kept columns' wall faces (whose
-        // constant-depth recovery reads a column slightly INSIDE their true
-        // one) can't catch a visible lift against the void behind them.
+        // The squared ease-out crushes the fade tail to the unexplored colour
+        // well before the keep-ring drop, so the outermost kept columns' wall
+        // faces (whose constant-depth recovery reads a column slightly INSIDE
+        // their true one) can't catch a visible lift against the void behind
+        // them.
         const float u = 1.0f - smoothstep(0.0f, kFogRimFadeCells, hardDistPastRim);
         outColor = mix(outColor, src.rgb, kFogRimFadeLevel * u * u);
         // `state` carries the disc's ~1px AA rim, so the junction with visible

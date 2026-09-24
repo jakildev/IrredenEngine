@@ -1861,6 +1861,17 @@ constexpr Color lerpColor(const Color &from, const Color &to, float t) {
     };
 }
 
+/// Normalizes each RGBA byte channel of @p color to [0, 1] — the form a
+/// shader-side colour uniform takes.
+inline vec4 colorToVec4(const Color &color) {
+    return vec4(
+        roundByteToFloat(color.red_),
+        roundByteToFloat(color.green_),
+        roundByteToFloat(color.blue_),
+        roundByteToFloat(color.alpha_)
+    );
+}
+
 /// Linearly interpolates each HSV channel of @p from toward @p to at
 /// parameter @p t (clamped to [0, 1]).
 constexpr ColorHSV lerpHSV(const ColorHSV &from, const ColorHSV &to, float t) {

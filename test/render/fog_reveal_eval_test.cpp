@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <cstddef>
+
 #include <irreden/render/fog_of_war.hpp>
 #include <irreden/render/systems/system_fog_reveal_eval.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
@@ -114,6 +116,40 @@ TEST(FogRevealEvalTest, MissingPoolDoesNotLatchAnUnappliedTransition) {
     EXPECT_FLOAT_EQ(revealed.revealFactor_, 1.0f);
     EXPECT_FALSE(revealed.shown_);
     EXPECT_TRUE(system.pendingByWorker_[0].empty());
+}
+
+// The fog pass reads unexploredColor as the std140 member after
+// vec4 visionCircles[8] + ivec4 tail + vec4 visionCircleHeights[8]; the default
+// is opaque black, the anchor the pass hard-coded before it became a parameter.
+TEST(FogRevealEvalTest, UnexploredColorDefaultsToBlackAtItsStd140Offset) {
+    EXPECT_EQ(offsetof(FrameDataFogObservers, unexploredColor_), 272u);
+    const FrameDataFogObservers observers{};
+    EXPECT_EQ(observers.unexploredColor_, IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f));
+    EXPECT_EQ(IRMath::colorToVec4(IRMath::IRColors::kBlack), observers.unexploredColor_);
+}
+
+// The write the active-canvas setter performs, on a payload: a non-black value
+// lands normalized in unexploredColor_ and touches no other member.
+TEST(FogRevealEvalTest, SetUnexploredColorWritesTheNormalizedAnchor) {
+    FrameDataFogObservers observers = oneCircle(10.0f, 2.0f, 3.0f, 0.5f, 0.25f, 1.0f);
+    const FrameDataFogObservers before = observers;
+
+    IRPrefab::Fog::setUnexploredColor(observers, IRMath::Color{255, 0, 255, 128});
+
+    EXPECT_EQ(observers.unexploredColor_, IRMath::vec4(1.0f, 0.0f, 1.0f, 128.0f / 255.0f));
+    EXPECT_EQ(observers.visionCircleCount_, before.visionCircleCount_);
+    EXPECT_EQ(observers.visionCircles_[0], before.visionCircles_[0]);
+    EXPECT_EQ(observers.visionCircleHeights_[0], before.visionCircleHeights_[0]);
+
+    IRPrefab::Fog::setUnexploredColor(observers, IRMath::IRColors::kBlack);
+    EXPECT_EQ(observers.unexploredColor_, before.unexploredColor_);
+}
+
+// Headless (no RenderManager, so no active canvas) the creation-facing setter
+// is the documented silent no-op rather than an assert.
+TEST(FogRevealEvalTest, SetUnexploredColorWithoutAnActiveCanvasIsANoOp) {
+    IRPrefab::Fog::setUnexploredColor(IRMath::Color{255, 0, 255, 255});
+    EXPECT_EQ(IRPrefab::Fog::evalActiveVisionReveal(IRMath::vec3(0.0f)), 1.0f);
 }
 
 TEST(FogRevealEvalTest, ActiveMaskHideAndRestoreAreAlphaPreserving) {

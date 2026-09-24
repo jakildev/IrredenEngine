@@ -91,6 +91,14 @@ const std::string kGlslIsoCommonPath =
     std::string(IR_TEST_RENDER_SHADER_DIR) + "/ir_iso_common.glsl";
 const std::string kMetalIsoCommonPath =
     std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/ir_iso_common.metal";
+const std::string kGlslStage1BodyPath =
+    std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_voxel_to_trixel_stage_1_body.glsl";
+const std::string kMetalStage1BodyPath =
+    std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/c_voxel_to_trixel_stage_1_body.metal";
+const std::string kGlslFogPassPath =
+    std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_fog_to_trixel.glsl";
+const std::string kMetalFogPassPath =
+    std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/c_fog_to_trixel.metal";
 
 // Reduces a GLSL or MSL snippet to the dialect-free math it expresses: line
 // comments dropped, MSL vector spellings folded onto the GLSL ones, float
@@ -109,6 +117,29 @@ std::string normalizeShaderMath(const std::string &source) {
     return std::regex_replace(trimmedFront, std::regex(R"( $)"), "");
 }
 
+// Extracts the text from the first `startToken` at or after `anchor` up to
+// (not including) the next `endToken`. Empty when any token is missing.
+std::string extractSpan(
+    const std::string &source,
+    const std::string &anchor,
+    const std::string &startToken,
+    const std::string &endToken
+) {
+    const std::size_t anchorAt = source.find(anchor);
+    if (anchorAt == std::string::npos) {
+        return {};
+    }
+    const std::size_t startAt = source.find(startToken, anchorAt);
+    if (startAt == std::string::npos) {
+        return {};
+    }
+    const std::size_t endAt = source.find(endToken, startAt);
+    if (endAt == std::string::npos) {
+        return {};
+    }
+    return source.substr(startAt, endAt - startAt);
+}
+
 // Extracts the `float reveal = 0.0 … return reveal;` accumulation out of a
 // column-reveal function. That span is the portion the two backends express
 // identically — the surrounding grid-memory / out-of-range short-circuits
@@ -116,26 +147,14 @@ std::string normalizeShaderMath(const std::string &source) {
 // `get_width`), so comparing whole bodies there would fail on dialect alone.
 //
 // The anchor is `<name>(`, not the bare name: both files mention
-// `fogColumnRevealNearestZ` (the Z twin, which lives in the stage body)
+// `fogColumnRevealZ` (the unpainted-route Z twin, which lives in the stage body)
 // in a comment ABOVE these definitions, and a bare-name search matches that
 // prefix — landing the span on fogColumnReveal in BOTH files, so the test
 // compares one function to itself and passes no matter how far the twins have
 // drifted. Verified by mutation: with the anchor fixed, a one-sided edit to
 // the GLSL nearest-cell clamp fails this test.
 std::string extractRevealAccumulation(const std::string &source, const std::string &functionName) {
-    const std::size_t functionAt = source.find(functionName + "(");
-    if (functionAt == std::string::npos) {
-        return {};
-    }
-    const std::size_t startAt = source.find("float reveal = 0.0", functionAt);
-    if (startAt == std::string::npos) {
-        return {};
-    }
-    const std::size_t endAt = source.find("return reveal;", startAt);
-    if (endAt == std::string::npos) {
-        return {};
-    }
-    return source.substr(startAt, endAt - startAt);
+    return extractSpan(source, functionName + "(", "float reveal = 0.0", "return reveal;");
 }
 
 // Extracts a function's `{ … }` body by brace matching from its declaration.
@@ -160,6 +179,24 @@ std::string extractFunctionBody(const std::string &source, const std::string &fu
         }
     }
     return {};
+}
+
+// normalizeShaderMath plus the kernel-scope plumbing only MSL spells out: the
+// `frameData.` / `fogObservers.` struct qualifiers and the fog texture +
+// observer arguments Metal passes to the shared reveal functions. Padding just
+// inside parentheses is dropped too, so a call the formatter wrapped onto its
+// own lines compares equal to the same call on one line.
+std::string normalizeKernelMath(const std::string &source) {
+    const std::string noArgs =
+        std::regex_replace(source, std::regex(R"(\bcanvasFogOfWar,\s*fogObservers,\s*)"), "");
+    const std::string normalized = normalizeShaderMath(
+        std::regex_replace(noArgs, std::regex(R"(\b(frameData|fogObservers)\.)"), "")
+    );
+    return std::regex_replace(
+        std::regex_replace(normalized, std::regex(R"(\(\s+)"), "("),
+        std::regex(R"(\s+\))"),
+        ")"
+    );
 }
 
 // Reads the numeric literal a named shader constant is initialized to, in
@@ -238,6 +275,56 @@ TEST(FogCrossSectionShaderParity, ColumnRevealAccumulationsAreIdenticalAcrossBac
         EXPECT_EQ(normalizeShaderMath(glslMath), normalizeShaderMath(metalMath))
             << functionName << " diverged between the GLSL and MSL fog clips";
     }
+}
+
+// Test E, part 4: stage 1's own-column drops. The world canvas drop is z-free —
+// FIELD matter FOG_TO_TRIXEL paints is never removed, and a one-sided swap back
+// to a Z metric would render a hollow box on one backend. The detached and
+// per-axis drops keep the z-aware twin: FOG_TO_TRIXEL never paints those
+// targets, so a z-free drop there would render height-hidden matter lit.
+TEST(FogCrossSectionShaderParity, StageOneDropExpressionsAreIdenticalAcrossBackends) {
+    const std::string glsl = readShaderSource(kGlslStage1BodyPath);
+    const std::string metal = readShaderSource(kMetalStage1BodyPath);
+    ASSERT_FALSE(glsl.empty()) << "could not read " << kGlslStage1BodyPath;
+    ASSERT_FALSE(metal.empty()) << "could not read " << kMetalStage1BodyPath;
+
+    const std::string glslSingle = extractSpan(glsl, "ownColumnHidden =", "ownColumnHidden =", ";");
+    const std::string metalSingle =
+        extractSpan(metal, "ownColumnHidden =", "ownColumnHidden =", ";");
+    ASSERT_FALSE(glslSingle.empty()) << "single-canvas drop not found in GLSL";
+    ASSERT_FALSE(metalSingle.empty()) << "single-canvas drop not found in MSL";
+    EXPECT_EQ(normalizeKernelMath(glslSingle), normalizeKernelMath(metalSingle))
+        << "the single-canvas drop diverged between backends";
+    const std::string gridBranch = glslSingle.substr(glslSingle.find(':'));
+    EXPECT_EQ(gridBranch.find("RevealZ"), std::string::npos)
+        << "the non-detached single-canvas drop must be z-free: " << gridBranch;
+
+    const std::string glslPerAxis =
+        extractSpan(glsl, "perAxisRoute != 0) {", "if (!fogWholeBodyExempt", "return;");
+    const std::string metalPerAxis =
+        extractSpan(metal, "perAxisRoute != 0) {", "if (!fogWholeBodyExempt", "return;");
+    ASSERT_FALSE(glslPerAxis.empty()) << "per-axis drop not found in GLSL";
+    ASSERT_FALSE(metalPerAxis.empty()) << "per-axis drop not found in MSL";
+    EXPECT_EQ(normalizeKernelMath(glslPerAxis), normalizeKernelMath(metalPerAxis))
+        << "the per-axis drop diverged between backends";
+    EXPECT_NE(glslPerAxis.find("fogColumnRevealZ("), std::string::npos)
+        << "the per-axis drop must be z-aware (no paint pass covers it): " << glslPerAxis;
+}
+
+// Test E, part 5: the fog pass's state-0 anchor is the per-canvas unexplored
+// colour on both backends.
+TEST(FogCrossSectionShaderParity, UnexploredColourAnchorIsIdenticalAcrossBackends) {
+    const std::string glsl = readShaderSource(kGlslFogPassPath);
+    const std::string metal = readShaderSource(kMetalFogPassPath);
+    const std::string anchor = "const float t = state / kFogExploredValue;";
+    const std::string glslAnchor = extractSpan(glsl, anchor, anchor, "}");
+    const std::string metalAnchor = extractSpan(metal, anchor, anchor, "}");
+    ASSERT_FALSE(glslAnchor.empty()) << "unexplored anchor not found in " << kGlslFogPassPath;
+    ASSERT_FALSE(metalAnchor.empty()) << "unexplored anchor not found in " << kMetalFogPassPath;
+    EXPECT_EQ(normalizeKernelMath(glslAnchor), normalizeKernelMath(metalAnchor))
+        << "the unexplored-colour anchor diverged between backends";
+    EXPECT_NE(glslAnchor.find("unexploredColor"), std::string::npos)
+        << "the fog pass must anchor state 0 on unexploredColor: " << glslAnchor;
 }
 
 // ---------------------------------------------------------------------------
@@ -378,7 +465,8 @@ class FogCrossSectionTest : public ::testing::Test {
 
     // Uploads one vision circle (centerX, centerY, radius, edgeSoftness) with
     // all-zero height penalties — which is what keeps the z-free curves this
-    // probe reads bit-identical to the stage body's Z twins — then dispatches
+    // probe reads bit-identical to the stage body's unpainted-route Z twin —
+    // then dispatches
     // over the whole column domain and reads the records back.
     std::vector<FogColumnProbe> runProbe(IRMath::vec4 circle) {
         using namespace IRRender;
