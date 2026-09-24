@@ -112,13 +112,17 @@ helper.
      used as-is. The analytic SDF store keys without it at a cardinal too, so
      the latch takes the lattice off only when a **voxel-store** fragment won
      the sampled pixel. Next to the depth readback, at cardinal sources only,
-     `RenderManager` reads the main canvas's entity-id texture
-     (`C_TriangleCanvasTextures::readEntityIdAt`) at the texel that pixel
-     displayed — `defaultPivotCrosshairCanvasTexel`, the hover path's
-     cursor→texel mapping evaluated at the canvas center with the source
-     frame's effective camera and subdivisions — and an SDF shape winner
-     (`C_ShapeDescriptor`) latches its key as it stands. Both stores write the
-     winner's id at the texel that holds its depth. The branch exists only for
+     `RenderManager` reads the main canvas's distance and entity-id textures
+     in the 3×3 block (`C_TriangleCanvasTextures::readTexelBlock3x3`) around
+     `defaultPivotCrosshairCanvasTexel` — the hover path's cursor→texel
+     mapping evaluated at the canvas center with the source frame's effective
+     camera and subdivisions — and takes the id of the texel whose stored key
+     equals the sampled one (`defaultPivotSampledTexelInBlock`). The mapping
+     is exact on Metal; at a fractional camera the OpenGL gather displays the
+     row one further in +y, and the cardinal composite copies the canvas key
+     texel for texel, so the key match finds the displayed texel on both. An
+     SDF shape winner (`C_ShapeDescriptor`) latches its key as it stands. Both
+     stores write the winner's id at the texel that holds its depth. The branch exists only for
      the voxel/SDF store disagreement (§"Known deviations" 2, #3742) and goes
      with it. The latch stores `isoDepth = W.x + W.y + W.z` and a view
      offset `o = C − cameraIso − pos3DtoPos2DIso(W)`; by construction the

@@ -26,6 +26,7 @@
 #include <irreden/render/components/component_camera.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 namespace IRRender {
@@ -371,10 +372,13 @@ void RenderManager::updateDefaultRotationPivotFocus() {
         decoded.tier_ != 0) {
         return;
     }
-    m_defaultPivotLatch.acquire(static_cast<float>(decoded.iso_), crosshairWinnerIsVoxelStore());
+    m_defaultPivotLatch.acquire(
+        static_cast<float>(decoded.iso_),
+        crosshairWinnerIsVoxelStore(decoded.enc_)
+    );
 }
 
-bool RenderManager::crosshairWinnerIsVoxelStore() const {
+bool RenderManager::crosshairWinnerIsVoxelStore(int sampledEncodedDepth) const {
     // Only a cardinal source subtracts the voxel store's lattice, so only there
     // does the winning subject matter — and only there does the main canvas
     // hold the frame the depth came from (the per-axis canvases draw the rest).
@@ -382,12 +386,15 @@ bool RenderManager::crosshairWinnerIsVoxelStore() const {
     if (source.residualYaw_ != 0.0f) {
         return true;
     }
-    // The winner's id, read at the canvas texel the sampled pixel displayed.
-    // Called right after the depth readback, which already waited on the
-    // device, and the canvas still holds the source frame: nothing has cleared
-    // it since that frame's composite. Both stores write the winning entity id
-    // at the same texel as its depth, so the id names the subject the depth
-    // came from.
+    // The winner's id, read at the canvas texel the sampled pixel displayed:
+    // the texel in the block around the crosshair estimate whose stored key IS
+    // the sampled one (the backends' gathers place a fractional camera one row
+    // apart). Called right after the depth readback, which already waited on
+    // the device, and the canvas still holds the source frame: nothing has
+    // cleared it since that frame's composite. Both stores write the winning
+    // entity id at the same texel as its depth, so the id names the subject the
+    // depth came from. No matching texel falls back to the estimate's id; a
+    // block past the canvas edge classifies as a null winner does.
     //
     // The SDF shape store keys a cardinal fragment on the surface, not on the
     // voxel store's lattice. This branch exists only for that disagreement,
@@ -395,9 +402,18 @@ bool RenderManager::crosshairWinnerIsVoxelStore() const {
     // change that co-sorts the two stores deletes it, and the latch subtracts
     // for every winner.
     const auto &textures = IREntity::getComponent<C_TriangleCanvasTextures>(m_mainCanvas);
-    const IREntity::EntityId winner = textures.readEntityIdAt(
-        defaultPivotCrosshairCanvasTexel(source, getMainCanvasSizeTriangles())
-    );
+    std::array<int, 9> distances{};
+    std::array<IREntity::EntityId, 9> entityIds{};
+    if (!textures.readTexelBlock3x3(
+            defaultPivotCrosshairCanvasTexel(source, getMainCanvasSizeTriangles()),
+            distances,
+            entityIds
+        )) {
+        return true;
+    }
+    const IREntity::EntityId winner =
+        entityIds[defaultPivotSampledTexelInBlock(distances, sampledEncodedDepth)
+                      .value_or(kDefaultPivotBlockEstimateIndex)];
     return !IREntity::getComponentOptional<C_ShapeDescriptor>(winner).has_value();
 }
 

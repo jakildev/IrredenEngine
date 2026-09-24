@@ -3,6 +3,7 @@
 #include <irreden/render/camera.hpp>
 #include <irreden/render/default_pivot_latch.hpp>
 
+#include <array>
 #include <optional>
 
 // ---------------------------------------------------------------------------
@@ -554,6 +555,8 @@ TEST(DefaultPivotLatch, TheCrosshairTexelIsTheCanvasCenterUpToTheCameraFraction)
     // lattice and the texel one lower where it is not. Measured on macOS/Metal
     // against the canvas depth at that texel: (24, 0) at effSub 4 reads
     // (321, 361) and (3.0645, -27.041) reads (320, 360) on a 642 x 722 canvas.
+    // OpenGL displays (320, 361) at the fractional camera; the block search
+    // covers that.
     const IRMath::ivec2 canvasSize = IRMath::ivec2(642, 722);
     const IRMath::ivec2 centerTexel = IRMath::trixelOriginOffsetX1(canvasSize);
     const IRMath::ivec2 lowerTexel = IRMath::trixelOriginOffsetZ1(canvasSize);
@@ -576,6 +579,36 @@ TEST(DefaultPivotLatch, TheCrosshairTexelIsTheCanvasCenterUpToTheCameraFraction)
         EXPECT_EQ(texel, c.texel_)
             << "camera=(" << c.effectiveCameraIso_.x << ", " << c.effectiveCameraIso_.y << ")";
     }
+}
+
+TEST(DefaultPivotLatch, TheSampledTexelIsTheBlockTexelHoldingTheSampledKey) {
+    // Stored canvas distances around the crosshair estimate, one key per row.
+    // The estimate (index 4) and its +y neighbour (index 7) hold what
+    // Windows/OpenGL stored at the pi/2 cardinal source with a fractional
+    // camera: the sample decoded to -678, the neighbour's key — the OpenGL
+    // gather displays the next row.
+    const std::array<int, 9> glBlock = {-662, -662, -662, -670, -670, -670, -678, -678, -678};
+    EXPECT_EQ(IRRender::defaultPivotSampledTexelInBlock(glBlock, -678), std::optional<int>(7));
+
+    // The estimate wins whenever it holds the key, even if a neighbour does too:
+    // it is exact on Metal and at a whole-texel camera on either backend.
+    const std::array<int, 9> flatBlock = {186, 186, 186, 186, 186, 186, 186, 186, 186};
+    EXPECT_EQ(
+        IRRender::defaultPivotSampledTexelInBlock(flatBlock, 186),
+        std::optional<int>(IRRender::kDefaultPivotBlockEstimateIndex)
+    );
+
+    // Each other texel is found when it alone holds the key.
+    for (int i = 0; i < 9; ++i) {
+        std::array<int, 9> block{};
+        block.fill(1000);
+        block[static_cast<std::size_t>(i)] = 2;
+        EXPECT_EQ(IRRender::defaultPivotSampledTexelInBlock(block, 2), std::optional<int>(i))
+            << "texel " << i;
+    }
+
+    // No texel holds the key: the caller keeps its fallback.
+    EXPECT_EQ(IRRender::defaultPivotSampledTexelInBlock(glBlock, 10), std::nullopt);
 }
 
 TEST(DefaultPivotLatch, AStampIsDecodedWithItsOwnSubdivisions) {
