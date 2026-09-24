@@ -93,7 +93,12 @@ for repo in "${REPOS[@]}"; do
             --json number,title,labels,url,headRefOid,mergeStateStatus --limit 200 > "$prs_f" 2>/dev/null \
         && gh issue list --repo "$repo" --state open \
             --json number,title,labels,url --limit 200 > "$issues_f" 2>/dev/null; then
-        printf '%s\t%s\t%s\n' "$repo" "$prs_f" "$issues_f" >> "$manifest"
+        # Only the repo slug and artifact index go in the manifest — never a
+        # host absolute path. MSYS translates a POSIX path handed to a native
+        # Windows python3 process at the argv/env boundary, never inside data
+        # the process reads from a file mid-run, so the artifact paths are
+        # derived in Python from $workdir (passed as argv) plus this index.
+        printf '%s\t%s\n' "$repo" "$idx" >> "$manifest"
     else
         echo "fleet-decisions: skipping $repo (query failed)" >&2
     fi
@@ -138,9 +143,10 @@ fi
 
 # PYTHONIOENCODING forces UTF-8 stdout for native-Windows consoles (cp1252
 # default raises on the report's em-dash / middle-dot glyphs).
-PYTHONIOENCODING=utf-8 python3 - "$manifest" "$feedback_f" "$marker_age_days" << 'PYEOF'
+PYTHONIOENCODING=utf-8 python3 - "$manifest" "$workdir" "$feedback_f" "$marker_age_days" << 'PYEOF'
 import base64
 import json
+import os
 import re
 import subprocess
 import sys
@@ -432,20 +438,22 @@ def merge_box_holds(pr, holds, notes):
     return []
 
 
+workdir = sys.argv[2]
+
 repos = []
 with open(sys.argv[1], encoding="utf-8") as manifest_file:
     for line in manifest_file:
-        slug, prs_path, issues_path = line.rstrip("\n").split("\t")
-        with open(prs_path, encoding="utf-8") as f:
+        slug, idx = line.rstrip("\n").split("\t")
+        with open(os.path.join(workdir, f"{idx}-prs.json"), encoding="utf-8") as f:
             prs = json.load(f)
-        with open(issues_path, encoding="utf-8") as f:
+        with open(os.path.join(workdir, f"{idx}-issues.json"), encoding="utf-8") as f:
             issues = json.load(f)
         repos.append((SHORT.get(slug, slug), prs, issues, GateReader(slug)))
 
-with open(sys.argv[2], encoding="utf-8") as f:
+with open(sys.argv[3], encoding="utf-8") as f:
     unread_roles = [line.strip() for line in f if line.strip()]
 
-marker_age_days = None if sys.argv[3] == "none" else int(sys.argv[3])
+marker_age_days = None if sys.argv[4] == "none" else int(sys.argv[4])
 
 
 def names(item):
