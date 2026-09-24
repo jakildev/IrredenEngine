@@ -124,14 +124,43 @@ inline void syncEntityIds(C_VoxelPool &pool, int liveCount, Buffer *entityIdBuf)
     pool.clearEntityIdsDirty();
 }
 
-// CPU uploads must leave GPU-transform-owned slots intact, including full-pool
-// fallback uploads after a canvas switch or queue saturation.
-inline void flushStaticPositionRanges(C_VoxelPool &pool, Buffer *buf, int liveCount) {
+namespace detail {
+
+inline BufferUploadRange positionUploadRange(
+    const std::vector<IRRender::VoxelGpuPosition> &globals, size_t start, size_t end
+) {
     constexpr size_t kStride = sizeof(IRRender::VoxelGpuPosition);
+    IR_ASSERT(
+        end <= globals.size(),
+        "position upload range end {} exceeds globals.size() {}",
+        end,
+        globals.size()
+    );
+    return {static_cast<std::ptrdiff_t>(start * kStride), (end - start) * kStride, &globals[start]};
+}
+
+// One `subDataRanges` per logical flush: Metal orphans an encoded buffer once
+// per call, so a call per run costs a full-buffer allocation and copy each.
+inline void submitPositionRanges(Buffer *buf, std::vector<BufferUploadRange> &ranges) {
+    if (!ranges.empty()) {
+        buf->subDataRanges(ranges);
+    }
+    ranges.clear();
+}
+
+} // namespace detail
+
+// CPU uploads must leave GPU-transform-owned slots intact, including full-pool
+// fallback uploads after a canvas switch or queue saturation. `scratch` is
+// caller-owned so its capacity persists across frames.
+inline void flushStaticPositionRanges(
+    C_VoxelPool &pool, Buffer *buf, int liveCount, std::vector<BufferUploadRange> &scratch
+) {
     const auto &globals = pool.getPositionGlobals();
     const auto &indices = pool.getTransformIndices();
     const int n = IRMath::min(liveCount, static_cast<int>(indices.size()));
 
+    scratch.clear();
     int runStart = -1;
     for (int i = 0; i <= n; ++i) {
         const bool isStatic = (i < n) && (indices[i] == IRRender::kVoxelTransformStatic);
@@ -139,37 +168,37 @@ inline void flushStaticPositionRanges(C_VoxelPool &pool, Buffer *buf, int liveCo
             if (runStart < 0)
                 runStart = i;
         } else if (runStart >= 0) {
-            buf->subData(
-                static_cast<std::ptrdiff_t>(runStart) * kStride,
-                static_cast<size_t>(i - runStart) * kStride,
-                &globals[runStart]
-            );
+            scratch.push_back(detail::positionUploadRange(globals, runStart, i));
             runStart = -1;
         }
     }
+    detail::submitPositionRanges(buf, scratch);
 }
 
-// Drain `pool.getPendingPositionRanges()` to the position SSBO as one
-// `subData` per contiguous run. Mirrors `C_GPUParticlePool::flushPendingSpawns`
-// — sort, coalesce, emit. Empty list is a fast-path no-op so a static
-// voxel scene pays zero bytes/frame.
-inline void flushPendingPositionRanges(C_VoxelPool &pool, Buffer *buf) {
+// Drain `pool.getPendingPositionRanges()` to the position SSBO as one batched
+// upload of its contiguous runs. Mirrors `C_GPUParticlePool::flushPendingSpawns`
+// — sort, coalesce, emit. Gaps between runs are never uploaded: they may hold
+// GPU-transform-owned slots. Empty list is a fast-path no-op so a static voxel
+// scene pays zero bytes/frame.
+inline void flushPendingPositionRanges(
+    C_VoxelPool &pool, Buffer *buf, std::vector<BufferUploadRange> &scratch
+) {
     auto &ranges = pool.getPendingPositionRanges();
     if (ranges.empty()) {
         return;
     }
-    constexpr size_t kStride = sizeof(IRRender::VoxelGpuPosition);
     const auto &globals = pool.getPositionGlobals();
 
     // Saturation discards later notifications, so revisit all CPU-owned slots.
     // GPU-owned positions have already been produced by the transform prepass.
     if (ranges.size() >= C_VoxelPool::kMaxPendingPositionRanges) {
-        flushStaticPositionRanges(pool, buf, pool.getLiveVoxelCount());
+        flushStaticPositionRanges(pool, buf, pool.getLiveVoxelCount(), scratch);
         pool.clearPendingPositionRanges();
         return;
     }
 
     std::sort(ranges.begin(), ranges.end());
+    scratch.clear();
     size_t runStart = ranges.front().first;
     size_t runEnd = runStart + ranges.front().second;
     for (size_t i = 1; i < ranges.size(); ++i) {
@@ -182,31 +211,12 @@ inline void flushPendingPositionRanges(C_VoxelPool &pool, Buffer *buf) {
             }
             continue;
         }
-        IR_ASSERT(
-            runEnd <= globals.size(),
-            "flushPendingPositionRanges: runEnd {} exceeds globals.size() {}",
-            runEnd,
-            globals.size()
-        );
-        buf->subData(
-            static_cast<std::ptrdiff_t>(runStart * kStride),
-            (runEnd - runStart) * kStride,
-            &globals[runStart]
-        );
+        scratch.push_back(detail::positionUploadRange(globals, runStart, runEnd));
         runStart = s;
         runEnd = e;
     }
-    IR_ASSERT(
-        runEnd <= globals.size(),
-        "flushPendingPositionRanges: runEnd {} exceeds globals.size() {}",
-        runEnd,
-        globals.size()
-    );
-    buf->subData(
-        static_cast<std::ptrdiff_t>(runStart * kStride),
-        (runEnd - runStart) * kStride,
-        &globals[runStart]
-    );
+    scratch.push_back(detail::positionUploadRange(globals, runStart, runEnd));
+    detail::submitPositionRanges(buf, scratch);
 
     pool.clearPendingPositionRanges();
 }
@@ -324,6 +334,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // (capacity persists across frames — no per-tick allocation after the
     // first high-water mark).
     std::vector<std::uint64_t> tieScanCellScratch_;
+    // Reused span list for the batched position flushes (same high-water-mark
+    // capacity rule).
+    std::vector<BufferUploadRange> positionUploadScratch_;
     // Detached re-voxelize GPU scatter: fills binding 5 for a
     // DETACHED_REVOXELIZE pool from its resident locals + the canvas quat, in
     // place of the CPU flushStaticPositionRanges.
@@ -1681,7 +1694,12 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 // Re-seed only static-transform voxel runs so the GPU-prepass
                 // output (UPDATE_VOXEL_POSITIONS_GPU, binding 5) is preserved
                 // for GPU-transformed slots across canvas switches.
-                flushStaticPositionRanges(voxelPool, voxelPosBuf_, liveVoxelCount);
+                flushStaticPositionRanges(
+                    voxelPool,
+                    voxelPosBuf_,
+                    liveVoxelCount,
+                    positionUploadScratch_
+                );
                 voxelPool.clearPendingPositionRanges();
                 lastUploadedCanvas_ = entity;
                 // the re-seed is a position-content change for this
@@ -1692,7 +1710,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 recomputeStoreTiesPossible(voxelPool, liveVoxelCount, tieScanCellScratch_);
             } else {
                 const bool positionsChanged = !voxelPool.getPendingPositionRanges().empty();
-                flushPendingPositionRanges(voxelPool, voxelPosBuf_);
+                flushPendingPositionRanges(voxelPool, voxelPosBuf_, positionUploadScratch_);
                 if (positionsChanged || activeMaskChanged) {
                     // positions moved OR an activation-only edit changed
                     // which voxels are live this frame — refresh the tie signal.

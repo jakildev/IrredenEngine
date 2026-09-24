@@ -9,6 +9,8 @@ source "$(dirname "$0")/lib_assert.sh"
 FLEET_CLAIM="$SCRIPT_DIR/fleet-claim"
 
 TMPROOT=$(mktemp -d "${TMPDIR:-/tmp}/fleet-cross-lane.XXXXXX")
+source "$(dirname "$0")/lib_hermetic.sh"
+hermetic_poison_gh_env "$TMPROOT"
 trap 'rm -rf "$TMPROOT"' EXIT
 
 export FLEET_CLAIMS_DIR="$TMPROOT/claims"

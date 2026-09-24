@@ -12,8 +12,12 @@
 #
 # Each suite runs in its own process with the tests directory as cwd —
 # matching how the suites are run by hand — and is timeout-guarded so one
-# hung suite cannot wedge CI. Suites are hermetic by the authoring rules
-# (no live GitHub, no live ~/.fleet), so this is safe to run unattended.
+# hung suite cannot wedge CI, even on a host where neither `timeout` nor
+# `gtimeout` is on PATH (a pure-bash fallback covers that case). A `RUN`
+# line is printed immediately before each suite starts, so a hang is
+# diagnosable from which suite's result line never follows. Suites are
+# hermetic by the authoring rules (no live GitHub, no live ~/.fleet), so
+# this is safe to run unattended.
 #
 # The pane's own FLEET_* exports are removed from every suite's environment.
 # fleet-dispatch-wrap exports them into each dispatched pane, and a subject
@@ -101,16 +105,65 @@ if [[ "$list_only" -eq 1 ]]; then
     exit 0
 fi
 
-# `timeout` is coreutils; absent on a stock macOS host, where the guard is
-# simply skipped rather than failing the run (CI is Linux and does have it).
+# `timeout` is coreutils; absent on a stock macOS host, and observed missing
+# from a native-Windows fleet host's PATH too. Either way, a missing external
+# binary must never disable the per-suite guard outright — `run_with_timeout`
+# below reimplements it in pure bash as the fallback.
+# `RUN_ALL_NO_EXTERNAL_TIMEOUT` is a test-only seam (tests/test_run_all.sh)
+# that forces the fallback on a host where the external binaries happen to
+# be present, so that code path still gets exercised.
 timeout_cmd=""
-if [[ "$per_timeout" -gt 0 ]]; then
+if [[ "$per_timeout" -gt 0 && -z "${RUN_ALL_NO_EXTERNAL_TIMEOUT:-}" ]]; then
     if command -v timeout >/dev/null 2>&1; then
         timeout_cmd="timeout $per_timeout"
     elif command -v gtimeout >/dev/null 2>&1; then
         timeout_cmd="gtimeout $per_timeout"
     fi
 fi
+
+# Portable per-suite timeout, used whenever no external `timeout`/`gtimeout`
+# binary is on PATH: sends TERM, then KILL if the suite is still alive 5s
+# later. Mirrors coreutils timeout's exit-124-on-deadline contract via the
+# marker file, since a signal-killed direct child's own exit status (128+sig)
+# does not distinguish "we killed it" from any other signal death.
+#
+# Like coreutils timeout, the signals go to the suite's whole process group
+# (`set -m` gives each background job its own), so a suite's `sleep` or
+# daemon child dies with it. The suite writes to a file rather than to the
+# caller's `$(...)` pipe, so a descendant that escapes the group still cannot
+# hold the capture open past the deadline. The watcher gets its own group
+# and no stdio for the same reason: its pending `sleep` must neither outlive
+# it nor block the caller.
+run_with_timeout() {
+    local secs="$1"; shift
+    local out_file marker
+    out_file=$(mktemp "${TMPDIR:-/tmp}/run-all-out.XXXXXX")
+    marker="$out_file.timed-out"
+    set -m
+    "$@" >"$out_file" 2>&1 </dev/null &
+    local cmd_pid=$!
+    (
+        sleep "$secs"
+        kill -TERM -- "-$cmd_pid" 2>/dev/null && : > "$marker"
+        sleep 5
+        kill -KILL -- "-$cmd_pid" 2>/dev/null
+    ) >/dev/null 2>&1 </dev/null &
+    local watcher_pid=$!
+    set +m
+
+    local rc=0
+    wait "$cmd_pid" 2>/dev/null || rc=$?
+    kill -- "-$watcher_pid" 2>/dev/null
+    wait "$watcher_pid" 2>/dev/null
+
+    if [[ -e "$marker" ]]; then
+        rc=124
+        kill -KILL -- "-$cmd_pid" 2>/dev/null   # a TERM-ignoring straggler
+    fi
+    cat "$out_file"
+    rm -f "$out_file" "$marker"
+    return "$rc"
+}
 
 cd "$TESTS_DIR" || exit 1
 
@@ -169,8 +222,17 @@ for f in "${suites[@]}"; do
         *)    interp=(bash) ;;
     esac
 
-    out=$(env ${scrub_args[@]+"${scrub_args[@]}"} $timeout_cmd "${interp[@]}" "$f" 2>&1)
-    rc=$?
+    printf 'RUN   %s\n' "$name"
+    if [[ -n "$timeout_cmd" ]]; then
+        out=$(env ${scrub_args[@]+"${scrub_args[@]}"} $timeout_cmd "${interp[@]}" "$f" 2>&1)
+        rc=$?
+    elif [[ "$per_timeout" -gt 0 ]]; then
+        out=$(run_with_timeout "$per_timeout" env ${scrub_args[@]+"${scrub_args[@]}"} "${interp[@]}" "$f" 2>&1)
+        rc=$?
+    else
+        out=$(env ${scrub_args[@]+"${scrub_args[@]}"} "${interp[@]}" "$f" 2>&1)
+        rc=$?
+    fi
     if [[ "$rc" -eq 0 ]]; then
         passed=$((passed + 1))
         printf 'PASS  %s\n' "$name"

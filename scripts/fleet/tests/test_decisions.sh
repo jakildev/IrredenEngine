@@ -2,8 +2,9 @@
 # Tests for fleet-decisions (the human decision digest).
 #
 # Hermetic: `gh` is a PATH stub that serves fixtures for the engine repo,
-# fails for the game repo (exercising the skip-with-warning path), and
-# exits 99 on any unexpected invocation (fails closed — no live GitHub).
+# fails for the game repo by default (exercising the skip-with-warning path,
+# overridable per-test via GH_STUB_GAME_PRS/GH_STUB_GAME_ISSUES), and exits
+# 99 on any unexpected invocation (fails closed — no live GitHub).
 # FLEET_HOME points at a temp dir for the feedback-channel check.
 #
 # Covers:
@@ -21,6 +22,8 @@
 #     fresh) — both arms of each threshold exercised
 #   - headline decision count = merge queue + decisions
 #   - unreachable repo is skipped with a warning, not fatal
+#   - both repos reachable at once: each repo's manifest-indexed artifacts
+#     resolve independently, not cross-contaminated
 #   - --repo=engine equals-form works; empty --repo= rejected (dual-spelling)
 #   - CI gate holds per approved PR, keyed on (head sha, workflow path): a
 #     replay of a recorded head whose runs predate one gate (a
@@ -43,6 +46,8 @@ if [[ ! -x "$FLEET_DECISIONS" ]]; then
 fi
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-decisions.XXXXXX")
+source "$(dirname "$0")/lib_hermetic.sh"
+hermetic_poison_gh_env "$TMP"
 trap 'rm -rf "$TMP"' EXIT
 
 # --- fixtures ---------------------------------------------------------------
@@ -175,45 +180,76 @@ python3 "$TMP/write_api.py" "$TMP/api-default" "$TMP/api-default.json"
 # --- gh stub (fails closed) -------------------------------------------------
 
 mkdir -p "$TMP/bin"
-cat > "$TMP/bin/gh" << EOF
-#!/usr/bin/env bash
-fixtures="$TMP"
-EOF
-cat >> "$TMP/bin/gh" << 'EOF'
-repo=""
-prev=""
-for arg in "$@"; do
-    [[ "$prev" == "--repo" ]] && repo="$arg"
-    prev="$arg"
-done
-if [[ "$1" == "api" ]]; then
+# FIXTURES_DIR travels through the environment, not interpolated into the
+# stub's source text: MSYS translates a POSIX path at the argv/env boundary
+# for a native-Windows python process, but a path baked directly into program
+# text is never rewritten (scripts/fleet/CLAUDE.md's native-Windows PATHEXT
+# rule; the same hazard fleet-queue-ingest's own SCOPE_PY comment documents).
+export FIXTURES_DIR="$TMP"
+cat > "$TMP/bin/gh" << 'PYEOF'
+#!/usr/bin/env python3
+import os, sys
+
+FIXTURES = os.environ["FIXTURES_DIR"]
+args = sys.argv[1:]
+repo = ""
+prev = ""
+for arg in args:
+    if prev == "--repo":
+        repo = arg
+    prev = arg
+
+if args[:1] == ["api"]:
     # `gh api <path>`: a GET with no flags. Anything else is a call this stub
     # does not model, so it fails closed.
-    if [[ $# -ne 2 || "$2" == -* ]]; then
-        echo "gh stub: unexpected api invocation: $*" >&2
-        exit 99
-    fi
-    if [[ -n "${GH_STUB_API_FAIL:-}" ]]; then
-        echo "gh: API rate limit exceeded (HTTP 403)" >&2
-        exit 1
-    fi
-    f="${GH_STUB_API:-$fixtures/api-default}/$(printf '%s' "$2" | tr '/?&=' '____')"
-    if [[ -f "$f" ]]; then
-        cat "$f"
-        exit 0
-    fi
-    echo "gh: Not Found (HTTP 404)" >&2
-    exit 1
-fi
-case "$1 $2 $repo" in
-    "pr list jakildev/IrredenEngine")    cat "${GH_STUB_ENGINE_PRS:-$fixtures/engine-prs.json}" ;;
-    "issue list jakildev/IrredenEngine") cat "${GH_STUB_ENGINE_ISSUES:-$fixtures/engine-issues.json}" ;;
-    "pr list jakildev/irreden")          exit 1 ;;
-    "issue list jakildev/irreden")       exit 1 ;;
-    *) echo "gh stub: unexpected invocation: $*" >&2; exit 99 ;;
-esac
-EOF
+    if len(args) != 2 or args[1].startswith("-"):
+        sys.stderr.write(f"gh stub: unexpected api invocation: {' '.join(args)}\n")
+        sys.exit(99)
+    if os.environ.get("GH_STUB_API_FAIL"):
+        sys.stderr.write("gh: API rate limit exceeded (HTTP 403)\n")
+        sys.exit(1)
+    translated = args[1]
+    for ch in "/?&=":
+        translated = translated.replace(ch, "_")
+    api_dir = os.environ.get("GH_STUB_API") or os.path.join(FIXTURES, "api-default")
+    f = os.path.join(api_dir, translated)
+    if os.path.isfile(f):
+        with open(f, "r", encoding="utf-8") as fh:
+            sys.stdout.write(fh.read())
+        sys.exit(0)
+    sys.stderr.write("gh: Not Found (HTTP 404)\n")
+    sys.exit(1)
+
+key = (args[0] if len(args) > 0 else "", args[1] if len(args) > 1 else "", repo)
+if key == ("pr", "list", "jakildev/IrredenEngine"):
+    p = os.environ.get("GH_STUB_ENGINE_PRS") or os.path.join(FIXTURES, "engine-prs.json")
+    sys.stdout.write(open(p, encoding="utf-8").read())
+elif key == ("issue", "list", "jakildev/IrredenEngine"):
+    p = os.environ.get("GH_STUB_ENGINE_ISSUES") or os.path.join(FIXTURES, "engine-issues.json")
+    sys.stdout.write(open(p, encoding="utf-8").read())
+elif key == ("pr", "list", "jakildev/irreden"):
+    p = os.environ.get("GH_STUB_GAME_PRS")
+    if not p:
+        sys.exit(1)
+    sys.stdout.write(open(p, encoding="utf-8").read())
+elif key == ("issue", "list", "jakildev/irreden"):
+    p = os.environ.get("GH_STUB_GAME_ISSUES")
+    if not p:
+        sys.exit(1)
+    sys.stdout.write(open(p, encoding="utf-8").read())
+else:
+    sys.stderr.write(f"gh stub: unexpected invocation: {' '.join(args)}\n")
+    sys.exit(99)
+PYEOF
 chmod +x "$TMP/bin/gh"
+# Native-Windows twin: fleet-decisions invokes `gh` from PYTHON (subprocess),
+# which cannot exec an extensionless shebang script on native-Windows python3
+# (mingw64) — see scripts/fleet/CLAUDE.md's native-Windows PATHEXT rule.
+# Inert on POSIX hosts.
+cat > "$TMP/bin/gh.bat" << 'BATEOF'
+@echo off
+python3 "%~dp0gh" %*
+BATEOF
 
 # --- feedback channel fixture ----------------------------------------------
 
@@ -736,5 +772,38 @@ assert_eq "$status" "1" "empty --repo= rejected (dual-spelling rule)"
 
 status=$(run_decisions --bogus)
 assert_eq "$status" "1" "unknown flag rejected with usage"
+
+# --- both repos reachable: manifest artifact index isn't cross-contaminated -
+#
+# The manifest carries only a repo slug and an artifact index (never a host
+# path); each repo's `<idx>-prs.json`/`<idx>-issues.json` is derived in
+# Python from that index. Two simultaneously-reachable repos is the only way
+# to prove index 0 and index 1 each resolve to their own artifacts rather
+# than the last repo queried overwriting the read.
+
+cat > "$TMP/game-prs.json" << 'EOF'
+[
+  {"number": 301, "title": "game: gated edit", "url": "u",
+   "labels": [{"name": "fleet:gated"}]}
+]
+EOF
+
+cat > "$TMP/game-issues.json" << 'EOF'
+[
+  {"number": 401, "title": "game: parked for a human decision", "url": "u",
+   "labels": [{"name": "fleet:needs-human"}]}
+]
+EOF
+
+status=$(GH_STUB_GAME_PRS="$TMP/game-prs.json" GH_STUB_GAME_ISSUES="$TMP/game-issues.json" \
+    run_decisions)
+out=$(cat "$TMP/out.txt")
+err=$(cat "$TMP/err.txt")
+assert_eq "$status" "0" "both-repos-reachable run exits 0"
+assert_absent "$err" "skipping" "neither repo is reported unreachable"
+assert_contains "$out" "[engine+game]" "scope lists both repos"
+assert_contains "$out" "engine PR #101" "engine's own PR survives alongside game's"
+assert_contains "$out" "game PR #301  game: gated edit" "game's PR is read from its own artifact, not engine's"
+assert_contains "$out" "game issue #401" "game's issue is read from its own artifact, not engine's"
 
 summarize "fleet-decisions tests"

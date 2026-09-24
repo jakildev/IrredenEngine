@@ -654,7 +654,7 @@ struct C_VoxelPool {
     // pending-list-flush pattern documented in `cpp-ecs.md`: the
     // mutating system (UPDATE_VOXEL_SET_CHILDREN) queues the affected
     // slice; the GPU-buffer-owning system (VOXEL_TO_TRIXEL_STAGE_1)
-    // coalesces contiguous queued ranges into one `subData` per run.
+    // coalesces contiguous queued ranges into one batched upload.
     // Saturating `kMaxPendingPositionRanges` switches the flusher to a
     // scan of all CPU-owned positions — see `flushPendingPositionRanges`.
     void queuePositionRange(size_t startIdx, size_t count) {

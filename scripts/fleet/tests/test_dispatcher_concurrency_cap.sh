@@ -58,6 +58,8 @@ assert_eq() {
 # on issue numbers; `reservation-role` resolves the model by calling
 # `gh issue view <N>`, which we stub to canned-respond per issue.
 TMPROOT=$(mktemp -d)
+source "$(dirname "$0")/lib_hermetic.sh"
+hermetic_poison_gh_env "$TMPROOT"
 export FLEET_STATE_DIR="$TMPROOT/state"
 export FLEET_RESERVATIONS_DIR="$TMPROOT/reservations"
 export FLEET_CLAIMS_DIR="$TMPROOT/claims"

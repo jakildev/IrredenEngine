@@ -29,6 +29,9 @@ subjects; `ctest` never sees them. Validator index: [`VALIDATION.md`](../../docs
   than sharing `fleet_gh_poll.DEFAULT_CACHE_DIR`; when a function changes
   transport or gains its first network call, re-point every suite covering it
   in the same PR; prefer obviously synthetic fixtures to plausible real IDs.
+- **An extensionless PATH stub is invisible to native-Windows Python
+  `subprocess`**: the subject resolves `shutil.which("gh") or "gh"`, and the
+  suite poisons the real binary's environment — recipe: `tests/lib_hermetic.sh`.
 - **A CLI stub models the tool's argument parsing, not just its endpoint.**
   Transcribe the accepted flag set from the real tool's `--help` and fail the
   way it fails; a stub that emulates `--jq` evaluates the program against

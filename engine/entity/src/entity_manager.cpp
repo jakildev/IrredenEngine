@@ -168,11 +168,13 @@ void EntityManager::destroyEntity(EntityId entity) {
     // the entity (and its peers) in their final fully-valid state.
     // Hooks must not unregister hooks during this loop — see the
     // assert in unregisterPreDestroyHook.
-    m_preDestroyHookIterating = true;
-    for (std::size_t i = 0; i < m_preDestroyHooks.size(); ++i) {
-        m_preDestroyHooks[i].hook_(entity);
+    if (!m_preDestroyHooksSuppressed) {
+        m_preDestroyHookIterating = true;
+        for (std::size_t i = 0; i < m_preDestroyHooks.size(); ++i) {
+            m_preDestroyHooks[i].hook_(entity);
+        }
+        m_preDestroyHookIterating = false;
     }
-    m_preDestroyHookIterating = false;
     EntityRecord &record = getRecord(entity);
     IRE_LOG_DEBUG("entity={}, record.row={}", entity, record.row);
     ArchetypeNode *node = record.archetypeNode;
@@ -413,7 +415,12 @@ void EntityManager::destroyAllEntities() {
 
     flushStructuralChanges();
 
-    // Process pending deferred deletes first.
+    // Index order is not a dependency order: a canvas can die after the
+    // pool storage its sets' span views alias, and a pre-destroy sweep that
+    // reads through such a view faults. Nothing a hook would sweep survives
+    // teardown, so hooks are quiet for both drains, deferred deletes
+    // included; `onDestroy()` still runs.
+    m_preDestroyHooksSuppressed = true;
     destroyMarkedEntities();
 
     std::vector<EntityId> entitiesToDestroy;
@@ -427,6 +434,7 @@ void EntityManager::destroyAllEntities() {
             destroyEntity(entity);
         }
     }
+    m_preDestroyHooksSuppressed = false;
 
     m_singletonEntityByComponent.clear();
 }

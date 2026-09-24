@@ -16,6 +16,8 @@ LINT="$SCRIPT_DIR/fleet-plan-lint"
 
 PASS=0; FAIL=0
 TMPROOT=$(mktemp -d)
+source "$(dirname "$0")/lib_hermetic.sh"
+hermetic_poison_gh_env "$TMPROOT"
 cleanup() { [[ -n "$TMPROOT" && -d "$TMPROOT" ]] && rm -rf "$TMPROOT"; }
 trap cleanup EXIT
 ok()  { PASS=$((PASS + 1)); echo "  ok: $1"; }

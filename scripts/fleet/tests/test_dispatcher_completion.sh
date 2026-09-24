@@ -30,6 +30,8 @@ source "$(dirname "$0")/lib_assert.sh"
 DISPATCHER="$SCRIPT_DIR/fleet-dispatcher"
 
 TMPROOT=$(mktemp -d)
+source "$(dirname "$0")/lib_hermetic.sh"
+hermetic_poison_gh_env "$TMPROOT"
 trap 'rm -rf "$TMPROOT"' EXIT
 export HOME="$TMPROOT/home"
 export FLEET_STATE_DIR="$TMPROOT/state"

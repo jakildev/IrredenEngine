@@ -44,6 +44,14 @@ class OpenGLBufferImpl final : public BufferImpl {
         );
     }
 
+    // glNamedBufferSubData costs what it uploads, so the batch stays exact:
+    // bridging the gaps would only add bytes.
+    void subDataRanges(std::span<const BufferUploadRange> ranges) const override {
+        for (const BufferUploadRange &range : ranges) {
+            subData(range.offset_, range.size_, range.data_);
+        }
+    }
+
     void getSubData(std::ptrdiff_t offset, std::size_t size, void *data) const override {
         ENG_API->glGetNamedBufferSubData(
             m_handle, static_cast<GLintptr>(offset), static_cast<GLsizeiptr>(size), data
