@@ -13,4 +13,9 @@ inline float3 surfaceDisplayColor(float3 linear, float exposure, bool hdr) {
     return hdr ? ACESFilm(linear * exposure) : clamp(linear, 0.0, 1.0);
 }
 
+// World +Z points down; the upper sky hemisphere is -Z.
+inline float3 surfaceSkyLight(float3 worldNormal, float3 skyColor, float intensity, float ao) {
+    return skyColor * intensity * max(0.0, -worldNormal.z) * ao;
+}
+
 #endif

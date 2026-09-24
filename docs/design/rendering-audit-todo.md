@@ -480,7 +480,11 @@ runs and existing thresholds; add an SDF-active workload to measure election cos
   two-backend composition/mutation controls and native output-equivalence captures.
 - Still pending: retained linear SDF lighting payload and finite queries at actual
   presentation fragments. This consolidation does not itself change shadow edges.
-- Proposed focused check: verify the sky hemisphere sign. Existing code gates sky
-  with `max(worldNormal.z, 0)`, while floor/upward receiver normals are `-Z`.
-  Establish HDR controls for upward, underside, side and rotated surfaces before
-  changing defaults; ensure sky stays independent of direct sun visibility.
+- Implemented the sky hemisphere correction: shared `surfaceSkyLight` uses
+  `max(-worldNormal.z, 0)` because world +Z points down. Executed six-axis and
+  tilted-normal/yaw/AO controls cover both shader backends; native HDR probes
+  cover analytical boxes and rotated source faces. Sun-shadow on/off controls
+  are pixel-identical. See [sky evidence](../pr-screenshots/codex/sky-hemisphere-normal/README.md).
+- Next: retain linear SDF inputs and query finite geometry at presentation
+  fragments, including sky from the actual fragment normal. The sky sign fix
+  does not resolve trixel-sized shadow outlines or add sky occlusion tracing.

@@ -14,6 +14,7 @@ PREAMBLE = r"""
 #include <algorithm>
 #include <cmath>
 using uint = unsigned;
+float max(float a,float b){return std::max(a,b);}
 struct vec3 {
     float x,y,z;
     vec3(float a): x(a),y(a),z(a) {}
@@ -39,6 +40,22 @@ bool same(vec4 a,vec4 b) {
 
 CASES = r"""
 int main() {
+    const vec3 sky{.2f,.4f,.8f};
+    const vec3 axes[]={{-1,0,0},{1,0,0},{0,-1,0},{0,1,0},{0,0,-1},{0,0,1}};
+    for(int face=0;face<6;++face){
+        const vec3 expected=face==4?sky*2.f:vec3(0.f);
+        if(!same(vec4(surfaceSkyLight(axes[face],sky,4.f,.5f),1),vec4(expected,1)))return 9;
+    }
+    for(int angle=0;angle<360;angle+=5)for(int tilt=-90;tilt<=90;tilt+=5){
+        const double yaw=angle*3.141592653589793/180., pitch=tilt*3.141592653589793/180.;
+        const vec3 normal{float(std::cos(pitch)*std::cos(yaw)),
+                          float(std::cos(pitch)*std::sin(yaw)),float(std::sin(pitch))};
+        for(float ao:{0.f,.25f,1.f}){
+            const vec3 expected=sky*float(2.*std::max(0.,-std::sin(pitch))*ao);
+            if(!same(vec4(surfaceSkyLight(normal,sky,2.f,ao),1),vec4(expected,1)))return 10;
+        }
+    }
+
     for(int a=0;a<=10;++a)for(int l=0;l<=10;++l)
     for(int v=0;v<=10;++v)for(int intensity=0;intensity<=8;++intensity){
         const float ambient=a/10.f,lambert=l/10.f,visibility=v/10.f;
@@ -94,6 +111,8 @@ class SourceFaceLightingTest(unittest.TestCase):
                     " : surfaceDisplayColor(linear, directSunAndExposure.w, false))"), 4),
                 "opaque_alpha": (compose.replace("base.a", "1.0"), 1),
                 "shadow_ambient_factor": (compose, 8),
+                "wrong_sky_hemisphere": (compose, 9),
+                "sky_ignores_ao": (compose, 9),
             }
             for variant, (body, expected) in variants.items():
                 with self.subTest(backend=suffix, variant=variant):
@@ -102,6 +121,12 @@ class SourceFaceLightingTest(unittest.TestCase):
                         candidate_surface = surface.replace(
                             "ambient + (1.0 - ambient) * lambert * visibility",
                             "(ambient + (1.0 - ambient) * lambert) * visibility")
+                        self.assertNotEqual(candidate_surface, surface)
+                    if variant == "wrong_sky_hemisphere":
+                        candidate_surface = surface.replace("-worldNormal.z", "worldNormal.z")
+                    if variant == "sky_ignores_ao":
+                        candidate_surface = surface.replace(" * ao;", ";")
+                    if variant.startswith("wrong_sky") or variant.startswith("sky_ignores"):
                         self.assertNotEqual(candidate_surface, surface)
                     shader = (constants + tone + candidate_surface + body)
                     shader = shader.replace("constant uint", "const uint")

@@ -451,8 +451,7 @@ void main() {
         // emissive contribution from the sky hemisphere, gated by
         // AO so recessed surfaces stay dark.
         if (skyIntensity > 0.0) {
-            float skyFactor = max(0.0, worldNormal.z);
-            baseRgb += skyColor.rgb * skyIntensity * skyFactor * ao;
+            baseRgb += surfaceSkyLight(worldNormal, skyColor.rgb, skyIntensity, ao);
         }
     }
     if (!continuousShadow) {

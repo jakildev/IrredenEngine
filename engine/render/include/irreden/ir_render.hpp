@@ -463,7 +463,7 @@ bool getHDREnabled();
 void setExposure(float exposure);
 float getExposure();
 /// Additive sky-hemisphere intensity. Upward-facing surfaces receive
-/// @c skyColor * skyIntensity * max(0, normal.z) * ao.
+/// @c skyColor * skyIntensity * max(0, -normal.z) * ao; world +Z points down.
 void setSkyIntensity(float intensity);
 float getSkyIntensity();
 /// RGB color of the sky hemisphere contribution.

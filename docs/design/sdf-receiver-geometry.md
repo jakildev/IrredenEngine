@@ -335,3 +335,18 @@ ambient, tone-map before visibility, or overwrite alpha and must fail.
 [Native equivalence captures](../pr-screenshots/codex/surface-lighting-contract/README.md)
 cover boxes and mixed per-axis geometry; a source-face overlapping-caster probe
 exercises native fragment composition. Analytical SDF fragment payloads remain pending.
+
+
+### Sky hemisphere
+
+`surfaceSkyLight` shares the sky response between canvas and overflow lighting
+on both backends: `skyColor * intensity * max(-worldNormal.z, 0) * ao`.
+World +Z points down. A top face has normal -Z; the underside +Z receives no
+upper-hemisphere term. Yaw leaves that response unchanged, while object pitch
+changes it continuously. Sky remains independent of direct sun visibility and
+is composed in linear space before display mapping. This is an AO-modulated
+hemisphere approximation, not geometry-traced sky visibility.
+
+The finite SDF presentation follow-up must evaluate this term using its actual
+fragment normal; storing only already-lit RGBA8 cannot recover that response.
+See [native and deterministic controls](../pr-screenshots/codex/sky-hemisphere-normal/README.md).

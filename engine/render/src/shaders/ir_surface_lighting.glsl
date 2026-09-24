@@ -13,4 +13,9 @@ vec3 surfaceDisplayColor(vec3 linear, float exposure, bool hdr) {
     return hdr ? ACESFilm(linear * exposure) : clamp(linear, 0.0, 1.0);
 }
 
+// World +Z points down; the upper sky hemisphere is -Z.
+vec3 surfaceSkyLight(vec3 worldNormal, vec3 skyColor, float intensity, float ao) {
+    return skyColor * intensity * max(0.0, -worldNormal.z) * ao;
+}
+
 #endif

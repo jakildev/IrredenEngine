@@ -363,8 +363,7 @@ kernel void IR_LIGHTING_KERNEL_NAME(
 
     if (frameData.hdrEnabled != 0) {
         if (frameData.skyIntensity > 0.0f) {
-            float skyFactor = max(0.0f, worldNormal.z);
-            baseRgb += frameData.skyColor.rgb * frameData.skyIntensity * skyFactor * ao;
+            baseRgb += surfaceSkyLight(worldNormal, frameData.skyColor.rgb, frameData.skyIntensity, ao);
         }
     }
     if (!continuousShadow) {

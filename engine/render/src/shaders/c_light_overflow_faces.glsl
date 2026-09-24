@@ -191,8 +191,7 @@ void main() {
 
     if (hdrEnabled != 0) {
         if (skyIntensity > 0.0) {
-            const float skyFactor = max(0.0, worldNormal.z);
-            baseRgb += skyColor.rgb * skyIntensity * skyFactor * ao;
+            baseRgb += surfaceSkyLight(worldNormal, skyColor.rgb, skyIntensity, ao);
         }
     }
     baseRgb = surfaceDisplayColor(baseRgb, exposure, hdrEnabled != 0);
