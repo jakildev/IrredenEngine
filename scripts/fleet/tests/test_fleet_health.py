@@ -327,6 +327,30 @@ class Runtimes(Env):
 
 
 class DaemonsAndWindow(Env):
+    @unittest.skipUnless(os.name == "nt", "native-Windows pid probe")
+    def test_windows_pid_probe_reads_native_and_msys_pids(self):
+        # A native pid (the test's own) and a dead one go through OpenProcess.
+        self.assertTrue(fleet_health._windows_pid_alive(os.getpid()))
+        self.assertFalse(fleet_health._windows_pid_alive(999999999))
+        # A bash-written pid file holds the MSYS2 pid, which only that
+        # runtime's ps can see; skip when no MSYS2 bash is installed.
+        msys_bash = Path(sys.executable).parents[2] / "usr" / "bin" / "bash.exe"
+        if not msys_bash.is_file():
+            self.skipTest("no MSYS2 bash beside the interpreter")
+        # The trailing `true` keeps bash from tail-exec'ing the sleep, so the
+        # printed pid stays bash's own and the kill below really ends it.
+        proc = subprocess.Popen([str(msys_bash), "-c", "echo $$; sleep 5; true"],
+                                stdout=subprocess.PIPE, text=True)
+        try:
+            msys_pid = int(proc.stdout.readline().strip())
+            self.assertTrue(fleet_health._windows_pid_alive(msys_pid))
+        finally:
+            proc.kill()
+            proc.wait(timeout=30)
+        # A hard-killed MSYS2 process keeps its table row for a while; the
+        # probe must read the row's WINPID as dead rather than trust the row.
+        self.assertFalse(fleet_health._windows_pid_alive(msys_pid))
+
     def test_dead_scout_pid_warns(self):
         rc, rep = self.run_report()
         self.assertTrue(rep["daemons"]["dispatcher"]["alive"])

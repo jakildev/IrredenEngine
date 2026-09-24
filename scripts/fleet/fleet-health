@@ -47,6 +47,7 @@ import os
 import re
 import shutil
 import statistics
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -138,11 +139,51 @@ def kv(text):
     return dict(RE_KV.findall(text))
 
 
+def _windows_native_alive(pid):
+    import ctypes
+    kernel32 = ctypes.windll.kernel32
+    handle = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not handle:
+        return False
+    try:
+        code = ctypes.c_ulong()
+        return bool(kernel32.GetExitCodeProcess(handle, ctypes.byref(code))) and code.value == 259
+    finally:
+        kernel32.CloseHandle(handle)  # 259 = STILL_ACTIVE
+
+
+def _windows_pid_alive(pid):
+    """Native Windows probe first (the scout writes ``os.getpid()``), then
+    the MSYS2 runtime's own ``ps``: a bash-written pid file (dispatcher.pid)
+    holds the MSYS2 pid, which is not the Windows pid, and Git Bash's ``ps``
+    cannot see the MSYS2 process table. The ``ps`` row's WINPID is checked
+    natively too, because a hard-killed MSYS2 process keeps its table entry
+    for a while."""
+    if _windows_native_alive(pid):
+        return True
+    candidates = [Path(sys.executable).parents[2] / "usr" / "bin" / "ps.exe", shutil.which("ps")]
+    for ps in candidates:
+        if not ps or not Path(ps).is_file():
+            continue
+        try:
+            run = subprocess.run([str(ps), "-p", str(pid)], capture_output=True,
+                                 text=True, timeout=10)
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        for line in run.stdout.splitlines():
+            m = re.match(r"^\s*[A-Z]?\s*(\d+)\s+\d+\s+\d+\s+(\d+)\b", line)
+            if m and int(m.group(1)) == pid:
+                return _windows_native_alive(int(m.group(2)))
+    return False
+
+
 def pid_alive(path):
     try:
         pid = int(Path(path).read_text().strip())
     except (OSError, ValueError):
         return None, False
+    if os.name == "nt":
+        return pid, _windows_pid_alive(pid)
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
