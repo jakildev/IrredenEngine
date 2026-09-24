@@ -47,10 +47,13 @@ def _load(mod_name: str, file_name: str):
 
 pv = _load("pivot_verify", "pivot-verify.py")
 
-# One `[pivot-focus-assert]` line per shot, all at the same latched derive so
-# _score_focus_asserts' moved-value check is not what decides the verdict.
-_ASSERT_LINE = ("[pivot-focus-assert] probe derived=(4.0,4.0,2.5) "
-                "analytic=(4.0,4.0,2.5) view_held=1 result={result}")
+# One `[pivot-focus-assert]` line per shot, in the demo's own field order, all
+# at the same latched derive and none a gesture, so the per-gesture verdict the
+# line carries is what decides the focus half.
+_ASSERT_LINE = ("[pivot-focus-assert] block=probe shot=0 yaw=0 gesture=0 "
+                "latch_moves=0 derived=(4.0,4.0,2.5) target=(4.0,4.0,2.5) "
+                "source=none cell=(4.0,4.0,2.5) grazing=0 world_delta=0 "
+                "tolerance=0.001 view_held=1 result={result}")
 
 
 class _Harness:
@@ -179,13 +182,13 @@ class SdfTwinGate(unittest.TestCase):
 
 class CensusEveryPassCanFail(unittest.TestCase):
 
-    def test_t4_maximally_bad_reading_fails_all_eight_passes(self):
-        # 7 blocks + the focus-ctr twin, every silhouette 200px off and every
-        # [pivot-focus-assert] FAIL. The issue's census: 7/8 gated before,
-        # 8/8 after.
+    def test_t4_maximally_bad_reading_fails_every_pass(self):
+        # 8 blocks + the focus-ctr twin, acquire-continuity once per base yaw,
+        # every silhouette 200px off and every [pivot-focus-assert] FAIL: all
+        # 11 passes fail.
         h = _Harness(default_reading=200.0, focus_result="FAIL")
         rc, verdicts = _run(h, [])
-        self.assertEqual(len(verdicts), 8)
+        self.assertEqual(len(verdicts), 11)
         self.assertEqual(rc, 1)
         self.assertEqual(verdicts, {
             "focus-ctr@z4": "DRIFT",
@@ -196,6 +199,9 @@ class CensusEveryPassCanFail(unittest.TestCase):
             "background-center@z4": "FOCUS-BAD",
             "center-axis@z4": "FOCUS-BAD",
             "cursor-latch@z4": "FOCUS-BAD",
+            "acquire-continuity@z4@y0": "FOCUS-BAD",
+            "acquire-continuity@z4@y22.5": "FOCUS-BAD",
+            "acquire-continuity@z4@y180": "FOCUS-BAD",
         })
         self.assertNotIn("REPORT", set(verdicts.values()))
 
@@ -230,6 +236,39 @@ class LoudClassification(unittest.TestCase):
         message = self._expect_systemexit_before_capture(
             ["--blocks", "not-a-block"])
         self.assertIn("not-a-block", message)
+
+
+def _gesture_line(shot, result, gesture=1):
+    return (f"[pivot-focus-assert] block=center-depth shot={shot} yaw=0.5 "
+            f"gesture={gesture} latch_moves={gesture} derived=({shot}.0,0.0,0.0) "
+            f"target=({shot}.0,0.0,0.0) source=cardinal cell=(0,0,0) "
+            f"grazing={int(result == 'SKIP')} world_delta=0 tolerance=0.29 "
+            f"view_held=1 result={result}")
+
+
+class GrazingSkips(unittest.TestCase):
+    """A grazing gesture is reported, not graded — but never makes a block
+    vacuous."""
+
+    def test_some_skips_pass_and_are_counted(self):
+        output = "\n".join([_gesture_line(0, "PASS", gesture=0),
+                            _gesture_line(1, "SKIP"), _gesture_line(2, "PASS")])
+        verdict, detail = pv._score_focus_asserts(output, "center-depth")
+        self.assertEqual(verdict, "OK")
+        self.assertIn("grazing skips 1/2", detail)
+
+    def test_every_gesture_skipped_fails(self):
+        output = "\n".join([_gesture_line(0, "PASS", gesture=0),
+                            _gesture_line(1, "SKIP"), _gesture_line(2, "SKIP")])
+        verdict, detail = pv._score_focus_asserts(output, "center-depth")
+        self.assertEqual(verdict, "BAD")
+        self.assertIn("vacuous", detail)
+
+    def test_a_graded_failure_still_fails_beside_skips(self):
+        output = "\n".join([_gesture_line(0, "PASS", gesture=0),
+                            _gesture_line(1, "SKIP"), _gesture_line(2, "FAIL")])
+        verdict, _ = pv._score_focus_asserts(output, "center-depth")
+        self.assertEqual(verdict, "BAD")
 
 
 class PerBlockBoundSurvives(unittest.TestCase):

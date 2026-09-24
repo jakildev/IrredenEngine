@@ -319,8 +319,10 @@ vec2 RenderManager::getDefaultPivotViewOffsetIso() const {
 
 void RenderManager::stampDefaultPivotSourceFrame() {
     const vec2 cameraIso = getCameraPosition2DIso();
+    const float visualYaw = IRPrefab::Camera::getYaw();
     const DefaultPivotSourceFrame frame{
-        IRPrefab::Camera::getYaw(),
+        visualYaw,
+        IRPrefab::Camera::computeYawSplit(visualYaw).second,
         cameraIso,
         IRRender::getEffectiveCameraIso(),
         getCanvasCenterIso(),

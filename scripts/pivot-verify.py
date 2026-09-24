@@ -59,8 +59,9 @@ Two oracles, applied per block:
   silhouette onto itself. Every other block's deviation is measured and
   reported but not gated. ``center-axis`` is gated at its own zoom-scaled
   bound (``CENTROID_BOUND_GAME_PX``) rather than ``--max-deviation``,
-  because it consumes the derived focus and so carries the inherent #2641
-  residual — see that constant for the measurement. The SDF twin has no voxel
+  because it consumes the derived focus, whose per-axis acquisitions land
+  within a derived bound of the surface rather than on it — see that constant
+  for the measurement. The SDF twin has no voxel
   lattice to land on, so its centroid rides a destination-grid floor; it is
   gated at ``SDF_BOUND_GAME_PX`` — that floor plus the same budget every gated
   voxel pass gets — rather than at ``--max-deviation`` (#2645 measured the
@@ -161,10 +162,9 @@ SDF_BOUND_GAME_PX = 2.5
 # outputScaleFactor read off the captured frame (`_output_scale_factor`).
 #
 # `center-axis` rotates about a point on its probe's own axis, so it is a valid
-# centroid pin — but it consumes the derived focus, which carries an inherent
-# residual: the composite is a per-face sort key stamped at the face's
-# anchor, so the derive lands up to one iso-depth unit off the metric surface
-# (docs/design/camera-yaw-pivot.md §"Known deviations" 2).
+# centroid pin — but it consumes the derived focus: a cardinal acquisition lands
+# within one micro-face of the axis point, a per-axis one within the derived
+# face-origin bound of it (docs/design/camera-yaw-pivot.md §"Latch policy").
 #
 # The bound is AFFINE in zoom, not proportional, and stated in game px rather
 # than framebuffer px. Both shapes come from the same mechanism:
@@ -182,8 +182,9 @@ SDF_BOUND_GAME_PX = 2.5
 #   DISPLAY property, not a backend one, so a bound calibrated in framebuffer
 #   px on one host silently mis-scales on the other.
 #
-# Calibrated over zoom 1, 2, 4, 8, 16 on both backends. Measured `center-axis`
-# dev_x, in GAME px:
+# Calibrated over zoom 1, 2, 4, 8, 16 on both backends, on the earlier
+# integer-axis probe whose axis sat 0.71 world units off the acquired surface
+# point. Measured `center-axis` dev_x, in GAME px:
 #
 #     zoom                          1     2     4     8    16
 #     macOS/Metal (2026-08-21)   2.00  3.00  6.00 11.00 22.00
@@ -197,7 +198,9 @@ SDF_BOUND_GAME_PX = 2.5
 # 1.0 px` clears every Metal cell by 14-33% and every GL cell by 25-150%, and
 # still fails any growth in the residual: a focus derived at iso depth 0
 # instead of on the probe's axis orbits 150 framebuffer px at zoom 4 on the 2x
-# host, i.e. 75 game px, ~10x this bound.
+# host, i.e. 75 game px, ~10x this bound. The probe whose axis passes through
+# the acquired point reads 1.00 game px — the floor alone — at zoom 4 and 8
+# (macOS/Metal, 2026-09-24); the bound is kept, not re-fitted to that.
 CENTROID_BOUND_GAME_PX = {"center-axis": (1.5, 1.0)}
 # PNG IHDR width lives at bytes 16..20, right after the 8-byte signature and the
 # length/type of the first chunk. Deliberately a 24-byte header peek rather than
@@ -211,12 +214,13 @@ GAME_RES_WIDTH_RE = re.compile(r"game_resolution_width\s*=\s*(\d+)")
 # 9-yaw sweep table (`yaws[]` in creations/demos/shape_debug/main.cpp).
 CARDINAL_FRAME_INDICES = (0, 3, 5, 7)
 # `[pivot-focus-assert] ... gesture=0|1 latch_moves=N derived=(x,y,z) ...
-# world_delta=D tolerance=T view_held=0|1 result=PASS|FAIL`
+# world_delta=D tolerance=T view_held=0|1 result=PASS|FAIL|SKIP`. SKIP is a
+# gesture whose source ray grazes the probe: reported, not graded.
 FOCUS_ASSERT_RE = re.compile(
     r"\[pivot-focus-assert\].*?gesture=(?P<gesture>[01]) "
     r"latch_moves=(?P<moves>\d+) derived=\((?P<derived>[^)]*)\).*?"
     r"world_delta=(?P<delta>\S+) tolerance=(?P<tolerance>\S+) "
-    r"view_held=(?P<held>[01]) result=(?P<result>PASS|FAIL)")
+    r"view_held=(?P<held>[01]) result=(?P<result>PASS|FAIL|SKIP)")
 
 
 def _parse_point(text: str) -> tuple[float, ...]:
@@ -280,15 +284,24 @@ def _score_focus_asserts(output: str, block: str) -> tuple[str, str]:
                 "creations/demos/shape_debug/main.cpp")
     failed = [f"{i} ({float(m['delta']):.3f} > {float(m['tolerance']):g})"
               for i, m in enumerate(matches) if m["result"] == "FAIL"]
+    gestures = [m for m in matches if m["gesture"] == "1"]
+    skipped = [i for i, m in enumerate(matches) if m["result"] == "SKIP"]
+    skip_note = (f"grazing skips {len(skipped)}/{len(gestures)} gesture(s)"
+                 + (f" (shot {', '.join(map(str, skipped))})" if skipped else ""))
     if failed:
         return "BAD", (f"{len(failed)}/{len(matches)} shots off their gesture "
-                       f"target — shot (world_delta > tolerance): {', '.join(failed)}")
+                       f"target — shot (world_delta > tolerance): "
+                       f"{', '.join(failed)}; {skip_note}")
+    # A skip is reported instead of graded, so a block whose every gesture is
+    # skipped would pass without its oracle ever running.
+    if gestures and len(skipped) == len(gestures):
+        return "BAD", f"every gesture skipped as grazing — the block is vacuous; {skip_note}"
     derived = [m["derived"] for m in matches]
     if block == "cursor-latch" and len(set(derived)) > 1:
         return "BAD", (f"cursor latch moved mid-sweep across "
                        f"{len(set(derived))} values")
     return "OK", (f"{len(matches)} shots, {len(set(derived))} distinct "
-                  f"derived value(s)")
+                  f"derived value(s); {skip_note}")
 
 
 def _output_scale_factor(frame: Path, config: Path) -> float:
@@ -451,9 +464,8 @@ def main(argv: list[str] | None = None) -> int:
         focus = "-"
         if block in FOCUS_ASSERT_BLOCKS and not sdf:
             focus, detail = _score_focus_asserts(output, block)
-            if focus != "OK" or block == "acquire-continuity":
-                print(f"[pivot-verify] ({label}) focus assert: {detail}",
-                      file=sys.stderr)
+            print(f"[pivot-verify] ({label}) focus assert: {detail}",
+                  file=sys.stderr)
 
         # Whole-silhouette oracle. Always measured; gated where it is a valid
         # pin (CENTROID_GATED_BLOCKS), at that pass's own bound. The SDF twin

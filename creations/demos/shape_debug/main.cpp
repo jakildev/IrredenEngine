@@ -409,14 +409,16 @@ constexpr vec3 kPivotPillarCenter = vec3(8.0f, -8.0f, 10.0f);
 //                   point. Discharges the acceptance criterion; center-column cannot, because its
 //                   center pixel hits the probe and so never exercises the
 //                   fallback.
-//   center-axis   — DEFAULT pivot, probe axis ON the viewport-center ray with
-//                   its near cap AT the ray's entry step, so the derived
-//                   surface point IS the probe's own axis point and rotating
-//                   about it maps the column onto itself — the derived-focus
-//                   twin of focus-ctr. It isolates how far the derive lands
-//                   from that axis: a regression to the iso-depth-0
-//                   focus swings the probe about a point 8.5 world units away.
-//   cursor-latch  — CURSOR pivot: same geometry as center-axis, but
+//   center-axis   — DEFAULT pivot, probe axis through the point where the
+//                   yaw-0 viewport-center ray enters its near cap, so the
+//                   acquired surface point IS the probe's own axis point and
+//                   rotating about it maps the column onto itself — the
+//                   derived-focus twin of focus-ctr. It isolates how far the
+//                   derive lands from that axis: a regression to the
+//                   iso-depth-0 focus swings the probe about a point 8.5 world
+//                   units away.
+//   cursor-latch  — CURSOR pivot: center-axis's probe on an integer axis
+//                   through the near-cap voxel the ray enters, and
 //                   the focus comes from IRPrefab::CursorPivot::resolveFocusWorld
 //                   — the real castVoxelRay path — with a synthetic cursor
 //                   parked on the viewport-center anchor's screen pixel. The
@@ -494,6 +496,12 @@ constexpr float kPivotVerifyProbeHeight = 17.0f;
 constexpr vec4 kPivotVerifyProbeParams =
     vec4(kPivotVerifyProbeRadius, kPivotVerifyProbeRadius, kPivotVerifyProbeHeight, 0.0f);
 constexpr ivec3 kPivotVerifyProbeHalfExtent = ivec3(5, 5, 8);
+// center-axis's grid is EVEN in x and y: centered on a half-integer xy, its
+// voxels stay on the integer lattice while the cylinder's axis runs along cell
+// boundaries — through the point where the yaw-0 crosshair ray enters the near
+// cap (see pivotVerifyProbeCenter).
+constexpr ivec3 kPivotVerifyAxisProbeGridSize =
+    ivec3(10, 10, 2 * kPivotVerifyProbeHalfExtent.z + 1);
 // background-center gets a SHORTER column. It has to clear the viewport-center
 // ray in z for the center pixel to read background, and at zoom 8 a full-height
 // probe pushed that far down the screen runs off the bottom of the framebuffer
@@ -521,44 +529,41 @@ vec4 pivotVerifyProbeParams() {
                                                      : kPivotVerifyProbeParams;
 }
 
-ivec3 pivotVerifyProbeHalfExtent() {
-    return g_pivotVerifyBlock == "background-center" ? kPivotVerifyBackgroundProbeHalfExtent
-                                                     : kPivotVerifyProbeHalfExtent;
+// Cells per axis of the probe's voxel grid, centered on pivotVerifyProbeCenter.
+ivec3 pivotVerifyProbeGridSize() {
+    if (g_pivotVerifyBlock == "center-axis") {
+        return kPivotVerifyAxisProbeGridSize;
+    }
+    const ivec3 halfExtent = g_pivotVerifyBlock == "background-center"
+                                 ? kPivotVerifyBackgroundProbeHalfExtent
+                                 : kPivotVerifyProbeHalfExtent;
+    return 2 * halfExtent + ivec3(1);
 }
-// `[pivot-focus-assert]` tolerance, in world units, set to the residual the
-// derive inherently carries: ONE iso-depth unit, `1/3` per axis, i.e.
-// `sqrt(3)/3 ~= 0.5774`. It sits just above the measured max rather than at a
-// round 0.6 so the admitted band is the measurement, not a guess.
+// `[pivot-focus-assert]` bounds for a gesture's acquisition, in world units
+// along the crosshair ray of the frame it acquired from. @p rayStepWorld is the
+// world length of one yawed iso-depth unit along that ray (sqrt(3)/3 at every
+// yaw). Both are derived from how the store keys a fragment, never fitted to
+// readings: docs/design/camera-yaw-pivot.md §"Latch policy".
 //
-// That residual exists because `emitDeformedFace` stamps the emitting
-// (sub-)voxel's own anchor depth across every trixel its face paints: the
-// composite is a per-face SORT KEY, not the metric depth at this trixel, so the
-// reconstruction is off by however far the center ray crosses the face from its
-// anchor. Measured on BOTH backends — macOS/Metal and Windows/OpenGL agree to
-// the printed digit: background-center 0.000 (exact — it takes the d=0 fallback
-// and reads no depth), center-column and center-axis 0.577 (both cross a
-// camera-facing cap dead-centre, half the face's 2-unit depth spread).
-//
-// Those two cap blocks are the ceiling, and they are zoom-INVARIANT:
-// center-axis prints 0.5773514 unchanged at zoom 1, 2, 4, 8 and 16.
-// center-depth's crossing is off-centre, so it reads a varying fraction UNDER
-// that ceiling rather than one fixed value (0.577 / 0.000 / 0.289 / 0.433 /
-// 0.505 at those same zooms) — the mechanism predicting itself: a dead-centre
-// cap crossing is half the spread by construction, an off-centre one depends on
-// where the ray meets the face. Derivation + the ruled-out alternatives
-// (notably that this is NOT a neighbouring-triangle sampling ambiguity — that
-// would be a fixed pixel offset, and the cap blocks' bias is instead constant
-// in WORLD units across a 16x zoom range):
-// docs/design/camera-yaw-pivot.md §"Known deviations" 2.
-//
-// The gate stays sharp — every failure this assert exists to catch is an order
-// of magnitude outside it: a regression to the iso-depth-0 focus is
-// 3.46 world units off on center-column and 12.1 on center-depth, and electing
-// the far surface instead of the near one is 10.0 off on center-depth.
-//
-// Deliberately NOT measured in iso-depth units: `pos3DtoDistance` rounds to an
-// integer, which would hide exactly the sub-voxel disagreement being bounded.
-constexpr float kPivotFocusAssertToleranceWorld = 0.58f;
+// A cardinal source's key sits on the store's lattice, which the latch removes
+// (DefaultPivotLatch::kCardinalStoreLatticeDepth). What is left is where the
+// keyed micro-face starts against where the ray enters the surface: at most
+// one micro-face, 2/effSub depth units. The target is that entry point.
+float pivotVerifyCardinalTolerance(int effectiveSubdivisions, float rayStepWorld) {
+    return 2.0f / static_cast<float>(effectiveSubdivisions) * rayStepWorld;
+}
+
+// A per-axis (non-cardinal) source's key is its face origin's yawed depth,
+// stored quantized. The target is the ray point level with the winning cell's
+// center, and a face origin sits at most `0.5 * (|c - s| + |c + s| + 1)` depth
+// units from its cell's center at (c, s) = (cos yaw, sin yaw); the store adds
+// one quantum, 1/effSub.
+float pivotVerifyPerAxisBound(float yaw, int effectiveSubdivisions, float rayStepWorld) {
+    const float c = IRMath::cos(yaw);
+    const float sn = IRMath::sin(yaw);
+    const float faceOriginOffset = 0.5f * (IRMath::abs(c - sn) + IRMath::abs(c + sn) + 1.0f);
+    return (faceOriginOffset + 1.0f / static_cast<float>(effectiveSubdivisions)) * rayStepWorld;
+}
 // cursor-latch's own tolerance: ONE world unit, i.e. one voxel.
 //
 // This block's focus is a `castVoxelRay` SURFACE hit — the marched point where
@@ -571,13 +576,11 @@ constexpr float kPivotFocusAssertToleranceWorld = 0.58f;
 // cell's near corner and the measured delta is exactly 0.87 (macOS/Metal,
 // zoom 4). Rounding the bound up to a whole voxel keeps the assert off a
 // knife-edge float comparison without blunting it — the regression this block
-// exists to catch, a revert to the iso-depth-0 latch, lands ~8.5
-// world units off (see the center-axis note above, same probe geometry), so
-// the gate still has ~8x of margin.
+// exists to catch, a revert to the iso-depth-0 latch, lands ~8.5 world units
+// off, so the gate still has ~8x of margin.
 constexpr float kCursorLatchFocusToleranceWorld = 1.0f;
-// center-axis: the lattice step along the viewport-center ray at which that
-// block's probe places its near cap, centred on the ray, so the probe's axis
-// passes through the derived surface point.
+// center-axis / cursor-latch: the lattice step along the yaw-0 viewport-center
+// ray at which the probe's near cap sits.
 constexpr float kPivotVerifyAxisProbeStep = 6.0f;
 
 // acquire-continuity: the yaw of each of its two gesture steps — a few times
@@ -641,15 +644,32 @@ vec3 pivotVerifyProbeCenter() {
             kPivotVerifyBackgroundProbeZ
         );
     }
-    if (g_pivotVerifyBlock == "center-axis" || g_pivotVerifyBlock == "cursor-latch") {
-        // Axis ON the viewport-center ray, near cap AT the ray's entry step: the
-        // ray meets the cap dead centre, so the derived surface point is the
-        // probe's own axis point. Offsetting the center by the grid's z
-        // half-extent is what puts the cap — not the mid-height — at the step.
+    // Offsetting either axis probe's center by the grid's z half-extent is what
+    // puts the near cap — not the mid-height — at the step.
+    const float axisProbeZ =
+        kPivotVerifyAxisProbeStep + static_cast<float>(kPivotVerifyProbeHalfExtent.z);
+    if (g_pivotVerifyBlock == "center-axis") {
+        // Axis through the point where the yaw-0 viewport-center ray ENTERS the
+        // near cap — the visible surface the default pivot acquires — so every
+        // rotation about it maps the column onto itself. The ray runs along
+        // (1,1,1) from the anchor and meets the cap's face plane, half a voxel
+        // in front of the cap cells, at xy half a voxel short of the step: a
+        // half-integer axis, hence the even grid.
+        const float entryStep = kPivotVerifyAxisProbeStep - 0.5f;
+        return vec3(
+            kPivotVerifyDefaultAnchor.x + entryStep,
+            kPivotVerifyDefaultAnchor.y + entryStep,
+            axisProbeZ
+        );
+    }
+    if (g_pivotVerifyBlock == "cursor-latch") {
+        // Axis ON the viewport-center ray, through the center of the near-cap
+        // voxel the ray enters: castVoxelRay names that voxel, and its center
+        // is the probe's own axis point.
         return vec3(
             kPivotVerifyDefaultAnchor.x + kPivotVerifyAxisProbeStep,
             kPivotVerifyDefaultAnchor.y + kPivotVerifyAxisProbeStep,
-            kPivotVerifyAxisProbeStep + static_cast<float>(kPivotVerifyProbeHalfExtent.z)
+            axisProbeZ
         );
     }
     // focus-ctr / focus-off pin the same off-origin z>0 center the
@@ -666,94 +686,144 @@ bool pivotVerifyIsDefaultBlock() {
            g_pivotVerifyBlock == "acquire-continuity";
 }
 
-// Analytic focus oracle for the DEFAULT-pivot blocks: the world point the
-// engine's depth-aware derive must land on, computed from the SAME constants
-// and the SAME surface test the spawn carves with, so the two cannot drift.
-//
-// The preimage of one iso pixel is the world line along (1,1,1), so the
-// viewport-center ray is `anchor + a*(1,1,1)` and a point's iso depth is 3a (the
-// anchor sits at iso depth 0). Voxel CENTERS on that ray are the integer a —
-// the probe is spawned on the integer lattice for exactly this reason — and the
-// raster elects its per-pixel winner by atomicMin over x + y + z, so the winner
-// is the smallest integer a whose voxel is carved active.
-//
-// Predicting the winning voxel center rather than the smooth cylinder's surface
-// entry is what makes this a SHARP oracle: the composite depth the derive reads
-// back is the winning voxel's own x + y + z, which sits half a voxel inside the
-// smooth surface — asserting against the smooth entry would need a tolerance
-// wide enough to also admit the defect. Returns the anchor when no lattice voxel
-// on the ray is active, which is exactly the iso-depth-0 background fallback the
-// derive is specified to take.
-//
-// True when the probe's carve keeps the voxel at lattice offset @p cell from
-// its center — createVoxelPoolShape's own predicate over the same grid.
-bool pivotVerifyProbeCellCarved(ivec3 cell) {
-    const ivec3 gridHalfExtent = pivotVerifyProbeHalfExtent();
+// World offset from the probe center of the cell at grid index @p index —
+// createVoxelPoolShapeSized's own layout (a C_VoxelSetNew centered about its
+// position), for an odd or even grid alike.
+vec3 pivotVerifyProbeCellOffset(ivec3 index) {
+    return vec3(index) - vec3(pivotVerifyProbeGridSize()) * 0.5f + vec3(0.5f);
+}
+
+// True when the probe's carve keeps the voxel at grid index @p index —
+// createVoxelPoolShapeSized's own predicate over the same grid, so the rendered
+// geometry and every oracle below cannot drift.
+bool pivotVerifyProbeCellCarved(ivec3 index) {
+    const ivec3 size = pivotVerifyProbeGridSize();
     // Outside the carved grid there is no voxel to win, however the unbounded
     // SDF reads there.
-    if (IRMath::abs(cell.x) > gridHalfExtent.x || IRMath::abs(cell.y) > gridHalfExtent.y ||
-        IRMath::abs(cell.z) > gridHalfExtent.z) {
+    if (index.x < 0 || index.y < 0 || index.z < 0 || index.x >= size.x || index.y >= size.y ||
+        index.z >= size.z) {
         return false;
     }
     const auto sdfType = static_cast<IRMath::SDF::ShapeType>(IRRender::ShapeType::CYLINDER);
     const vec4 sdfParams = IRMath::SDF::effectiveParams(sdfType, pivotVerifyProbeParams());
-    return IRMath::SDF::evaluate(vec3(cell), sdfType, sdfParams) <= IRMath::SDF::kSurfaceThreshold;
+    return IRMath::SDF::evaluate(pivotVerifyProbeCellOffset(index), sdfType, sdfParams) <=
+           IRMath::SDF::kSurfaceThreshold;
 }
 
+// cursor-latch's oracle: the center of the voxel `castVoxelRay` names under the
+// cursor parked on the anchor's pixel — the first carved voxel on the yaw-0
+// viewport-center ray `anchor + a*(1,1,1)`. That probe is spawned on the
+// integer lattice with its axis on the ray, so the voxel centers on the ray are
+// the integer a. Returns the anchor when no voxel on the ray is carved.
 vec3 pivotVerifyAnalyticFocus() {
     const vec3 center = pivotVerifyProbeCenter();
+    const vec3 gridOrigin = center - vec3(pivotVerifyProbeGridSize()) * 0.5f + vec3(0.5f);
     // The ray leaves the carved grid for good once its z clears the grid top;
     // z along the ray IS a, so that bound is the walk's end.
-    const int lastStep = static_cast<int>(center.z + pivotVerifyProbeHalfExtent().z);
+    const int lastStep = static_cast<int>(center.z) + pivotVerifyProbeGridSize().z;
     for (int step = 0; step <= lastStep; ++step) {
         const vec3 world = kPivotVerifyDefaultAnchor + vec3(static_cast<float>(step));
-        if (pivotVerifyProbeCellCarved(ivec3(world - center))) {
+        if (pivotVerifyProbeCellCarved(IRMath::roundVec3HalfUp(world - gridOrigin))) {
             return world;
         }
     }
     return kPivotVerifyDefaultAnchor;
 }
 
-// Where the default pivot must land when a rotation gesture acquires from a
-// frame drawn at @p yaw with effective camera @p effectiveCameraIso: the
-// point of that frame's crosshair ray nearest the center of the first carved
-// cell the ray enters, or nothing when the ray meets no voxel (the latch holds).
-//
-// The ray is every world point that projects to the canvas center at that
-// pose, `isoPixelToPos3DYawed(canvasCenter - effectiveCamera, depth, yaw)`,
-// walked from near (small yawed depth) to far in 1/64-depth steps. The
-// composite sorts each fragment by its cell's yawed depth, which is why the
-// target is the ray point level with the cell center rather than the ray's
-// entry point into the cube. At yaw 0 the ray runs through lattice points and
-// this is pivotVerifyAnalyticFocus's walk.
-std::optional<vec3> pivotVerifyCrosshairTarget(float yaw, vec2 effectiveCameraIso) {
-    const vec2 iso = pivotVerifyCanvasCenterIso() - effectiveCameraIso;
+// What the crosshair ray of one frame meets first: a carved probe cell, and the
+// two points on the ray a gesture acquiring from that frame is graded against.
+struct PivotCrosshairHit {
+    vec3 cellCenter_ = vec3(0.0f);
+    // Where the ray enters the cell's unit cube — the visible surface. A
+    // cardinal source's target.
+    vec3 entry_ = vec3(0.0f);
+    // The ray point level with the cell center in yawed depth. A per-axis
+    // source's target: that store keys a fragment by its face origin, which
+    // sits about the cell center, not on the surface.
+    vec3 levelWithCenter_ = vec3(0.0f);
+};
+
+// World length of one yawed iso-depth unit along a crosshair ray:
+// `isoPixelToPos3D`'s depth step is (1,1,1)/3, and a Z-yaw preserves its length.
+constexpr float kPivotVerifyDepthUnitWorld = 0.57735027f;
+
+// The first carved cell the ray through canvas iso @p iso meets in a frame
+// drawn at @p yaw, or nothing when it meets none (a gesture from that frame
+// holds). The ray is every world point that projects to that iso at that pose,
+// `isoPixelToPos3DYawed(iso, depth, yaw)`; each carved cell is intersected with
+// it exactly (slab test on its unit cube) and the nearest entry wins. A ray
+// that only touches a cube's edge or corner does not enter it.
+std::optional<PivotCrosshairHit> pivotVerifyRayHit(float yaw, vec2 iso) {
     const vec3 rayOrigin = IRMath::isoPixelToPos3DYawed(iso, 0.0f, yaw);
     const vec3 rayStep = IRMath::isoPixelToPos3DYawed(iso, 1.0f, yaw) - rayOrigin;
     const vec3 center = pivotVerifyProbeCenter();
-    // Depth of the probe center along the ray, and a reach that covers the
-    // whole carve grid from it.
-    const float centerDepth =
-        IRMath::dot(center - rayOrigin, rayStep) / IRMath::dot(rayStep, rayStep);
-    const ivec3 half = pivotVerifyProbeHalfExtent();
-    const float reach = 3.0f * static_cast<float>(half.x + half.y + half.z + 2);
-    constexpr float kStep = 1.0f / 64.0f;
-    const int steps = static_cast<int>(2.0f * reach / kStep);
-    for (int i = 0; i <= steps; ++i) {
-        // Half-step offset keeps a sample off the exact cell corners the yaw-0
-        // ray passes through.
-        const float depth = centerDepth - reach + (static_cast<float>(i) + 0.5f) * kStep;
-        const vec3 sample = rayOrigin + rayStep * depth;
-        const ivec3 cell = IRMath::roundVec3HalfUp(sample - center);
-        if (!pivotVerifyProbeCellCarved(cell)) {
-            continue;
+    const ivec3 size = pivotVerifyProbeGridSize();
+    constexpr float kMinChordDepth = 1e-4f;
+    std::optional<PivotCrosshairHit> hit;
+    float nearestEntry = 0.0f;
+    for (int z = 0; z < size.z; ++z) {
+        for (int y = 0; y < size.y; ++y) {
+            for (int x = 0; x < size.x; ++x) {
+                const ivec3 index = ivec3(x, y, z);
+                if (!pivotVerifyProbeCellCarved(index)) {
+                    continue;
+                }
+                const vec3 cellCenter = center + pivotVerifyProbeCellOffset(index);
+                float enter = -1e30f;
+                float exit = 1e30f;
+                for (int axis = 0; axis < 3; ++axis) {
+                    const float lo = cellCenter[axis] - 0.5f - rayOrigin[axis];
+                    const float hi = cellCenter[axis] + 0.5f - rayOrigin[axis];
+                    if (IRMath::abs(rayStep[axis]) < 1e-7f) {
+                        if (lo > 0.0f || hi < 0.0f) {
+                            enter = 1e30f;
+                        }
+                        continue;
+                    }
+                    const float t0 = lo / rayStep[axis];
+                    const float t1 = hi / rayStep[axis];
+                    enter = IRMath::max(enter, IRMath::min(t0, t1));
+                    exit = IRMath::min(exit, IRMath::max(t0, t1));
+                }
+                if (exit - enter <= kMinChordDepth || (hit.has_value() && enter >= nearestEntry)) {
+                    continue;
+                }
+                nearestEntry = enter;
+                const float centerDepth =
+                    IRMath::dot(cellCenter - rayOrigin, rayStep) / IRMath::dot(rayStep, rayStep);
+                hit = PivotCrosshairHit{
+                    cellCenter,
+                    rayOrigin + rayStep * enter,
+                    rayOrigin + rayStep * centerDepth
+                };
+            }
         }
-        const vec3 cellCenter = center + vec3(cell);
-        const float cellDepth =
-            IRMath::dot(cellCenter - rayOrigin, rayStep) / IRMath::dot(rayStep, rayStep);
-        return rayOrigin + rayStep * cellDepth;
     }
-    return std::nullopt;
+    return hit;
+}
+
+// True when a ray within one game pixel of the crosshair — 1/zoom iso units,
+// at the shot's @p zoom — meets the probe where the crosshair ray does not, or
+// misses it where the crosshair ray hits. A line tested against unit cubes has
+// no pixel footprint, so it cannot decide whether a pixel that straddles a
+// cell boundary shows the probe; such a gesture's hold/acquire classification
+// is reported, not graded.
+bool pivotVerifyRayGrazes(float yaw, vec2 iso, float zoom) {
+    const bool hits = pivotVerifyRayHit(yaw, iso).has_value();
+    const float footprint = 1.0f / zoom;
+    for (int dy = -1; dy <= 1; ++dy) {
+        for (int dx = -1; dx <= 1; ++dx) {
+            if (dx == 0 && dy == 0) {
+                continue;
+            }
+            const vec2 nudged =
+                iso + vec2(static_cast<float>(dx), static_cast<float>(dy)) * footprint;
+            if (pivotVerifyRayHit(yaw, nudged).has_value() != hits) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 // The view (camera pan + zoom) the sweep's FIRST capture frame rendered, latched
@@ -774,7 +844,14 @@ struct PivotGestureOracle {
     float yaw_ = 0.0f;
     vec2 cameraIso_ = vec2(0.0f);
     vec3 derived_ = vec3(0.0f);
-    std::optional<vec3> nextTarget_;
+    // What a gesture acquiring from the previous capture's frame is graded
+    // against: that frame's crosshair hit, whether it was a cardinal frame
+    // (entry target) or a per-axis one (level-with-center target), the bound
+    // for that class, and whether its hold/acquire classification is decidable.
+    std::optional<PivotCrosshairHit> sourceHit_;
+    bool sourceCardinal_ = false;
+    float sourceTolerance_ = 0.0f;
+    bool sourceGrazes_ = false;
     // Frames since the previous capture on which the default focus moved while
     // the camera pan and zoom held — i.e. the latch itself changed.
     int latchMoves_ = 0;
@@ -881,12 +958,16 @@ void logPivotFocusAssert(int shotIndex) {
     // Each shot is a one-frame pose snap, so a shot whose yaw differs from the
     // previous capture's is one rotation gesture, acquired from the previous
     // shot's settled frame. The expected focus is:
-    //   - gesture over a surface — that frame's crosshair target
-    //     (pivotVerifyCrosshairTarget), within the derive's per-face residual;
+    //   - gesture over a surface from a cardinal frame — where that frame's
+    //     crosshair ray enters the surface, within one micro-face;
+    //   - gesture over a surface from a per-axis frame — the ray point level
+    //     with the first carved cell's center, within the derived bound;
     //   - gesture over background, or no gesture — the previous focus carried by
     //     the pan, exactly (the latch holds);
     //   - shot 0 — the never-acquired depth-0 point under the viewport center.
-    // And the latch may move at most once in a gesture shot, never otherwise.
+    // And the latch may move at most once in a gesture shot, never otherwise. A
+    // gesture whose source ray grazes the probe is reported, not graded
+    // (result=SKIP).
     PivotGestureOracle &oracle = g_pivotGestureOracle;
     const vec3 derived = IRRender::getDefaultRotationPivotFocus();
     // The latch's own gesture test: a yaw change above its settle delta.
@@ -894,14 +975,21 @@ void logPivotFocusAssert(int shotIndex) {
     const bool gesture =
         IRMath::abs(yaw - previousYaw) > IRRender::DefaultPivotLatch::kYawSettleDelta;
     vec3 target = IRMath::isoPixelToPos3D(pivotVerifyCanvasCenterIso() - cameraIso, 0.0f);
+    vec3 targetCell = target;
     float tolerance = kPivotFocusHoldToleranceWorld;
+    const char *source = "none";
     const bool targetKnown = oracle.hasPrevious_ || !gesture;
+    const bool graded = !(gesture && oracle.hasPrevious_ && oracle.sourceGrazes_);
     if (oracle.hasPrevious_) {
-        if (gesture && oracle.nextTarget_.has_value()) {
-            target = *oracle.nextTarget_;
-            tolerance = kPivotFocusAssertToleranceWorld;
+        if (gesture && oracle.sourceHit_.has_value()) {
+            const PivotCrosshairHit &hit = *oracle.sourceHit_;
+            target = oracle.sourceCardinal_ ? hit.entry_ : hit.levelWithCenter_;
+            targetCell = hit.cellCenter_;
+            tolerance = oracle.sourceTolerance_;
+            source = oracle.sourceCardinal_ ? "cardinal" : "per-axis";
         } else {
             target = oracle.derived_ + IRMath::isoPixelToPos3D(oracle.cameraIso_ - cameraIso, 0.0f);
+            targetCell = target;
         }
     }
     const float worldDelta = IRMath::length(derived - target);
@@ -909,8 +997,8 @@ void logPivotFocusAssert(int shotIndex) {
     const bool pass = targetKnown && worldDelta <= tolerance && movesOk;
     IR_LOG_INFO(
         "[pivot-focus-assert] block={} shot={} yaw={} gesture={} latch_moves={} "
-        "derived=({},{},{}) target=({},{},{}) world_delta={} tolerance={} view_held={} "
-        "result={}",
+        "derived=({},{},{}) target=({},{},{}) source={} cell=({},{},{}) grazing={} "
+        "world_delta={} tolerance={} view_held={} result={}",
         g_pivotVerifyBlock,
         shotIndex,
         yaw,
@@ -922,17 +1010,31 @@ void logPivotFocusAssert(int shotIndex) {
         target.x,
         target.y,
         target.z,
+        source,
+        targetCell.x,
+        targetCell.y,
+        targetCell.z,
+        graded ? 0 : 1,
         worldDelta,
         tolerance,
         viewHeld ? 1 : 0,
-        pass ? "PASS" : "FAIL"
+        !graded ? "SKIP" : (pass ? "PASS" : "FAIL")
     );
 
+    // This frame is the source of the next shot's gesture, if it is one.
+    const vec2 crosshairIso = pivotVerifyCanvasCenterIso() - IRRender::getEffectiveCameraIso();
+    const int effectiveSubdivisions = IRRender::getVoxelRenderEffectiveSubdivisions();
+    const float rayStepWorld = kPivotVerifyDepthUnitWorld;
     oracle.hasPrevious_ = true;
     oracle.yaw_ = yaw;
     oracle.cameraIso_ = cameraIso;
     oracle.derived_ = derived;
-    oracle.nextTarget_ = pivotVerifyCrosshairTarget(yaw, IRRender::getEffectiveCameraIso());
+    oracle.sourceHit_ = pivotVerifyRayHit(yaw, crosshairIso);
+    oracle.sourceCardinal_ = IRPrefab::Camera::computeYawSplit(yaw).second == 0.0f;
+    oracle.sourceTolerance_ =
+        oracle.sourceCardinal_ ? pivotVerifyCardinalTolerance(effectiveSubdivisions, rayStepWorld)
+                               : pivotVerifyPerAxisBound(yaw, effectiveSubdivisions, rayStepWorld);
+    oracle.sourceGrazes_ = pivotVerifyRayGrazes(yaw, crosshairIso, zoom.x);
     oracle.latchMoves_ = 0;
 }
 
@@ -3068,12 +3170,12 @@ void applyDepthColor(C_VoxelSetNew &voxelSet, IRRender::ShapeType type, vec4 sdf
 }
 
 // Create a voxel-pool entity carved to match an SDF shape.  Allocates a
-// centered box of the given halfExtent, then deactivates every voxel whose
-// SDF value exceeds the 0.5 surface threshold.
-EntityId createVoxelPoolShape(
-    vec3 position, IRRender::ShapeType type, vec4 shapeParams, Color color, ivec3 halfExtent
+// centered box of @p size cells, then deactivates every voxel whose SDF value
+// exceeds the 0.5 surface threshold. An even size puts the cells, and so the
+// shape's center, half a voxel off the lattice of @p position.
+EntityId createVoxelPoolShapeSized(
+    vec3 position, IRRender::ShapeType type, vec4 shapeParams, Color color, ivec3 size
 ) {
-    ivec3 size = halfExtent * 2 + ivec3(1);
     EntityId entity =
         IREntity::createEntity(C_LocalTransform{position}, C_VoxelSetNew{size, color, true});
     auto &vs = IREntity::getComponent<C_VoxelSetNew>(entity);
@@ -3119,6 +3221,14 @@ EntityId createVoxelPoolShape(
         activeCount
     );
     return entity;
+}
+
+// createVoxelPoolShapeSized over the odd, lattice-centered box of half-extent
+// @p halfExtent.
+EntityId createVoxelPoolShape(
+    vec3 position, IRRender::ShapeType type, vec4 shapeParams, Color color, ivec3 halfExtent
+) {
+    return createVoxelPoolShapeSized(position, type, shapeParams, color, halfExtent * 2 + ivec3(1));
 }
 
 // Directly-authored asymmetric voxel figure — the non-uniform stress case for
@@ -3366,12 +3476,12 @@ void initPivotVerifyScene() {
             Color{235, 235, 235, 255}
         );
     } else {
-        createVoxelPoolShape(
+        createVoxelPoolShapeSized(
             center,
             IRRender::ShapeType::CYLINDER,
             pivotVerifyProbeParams(),
             Color{235, 235, 235, 255},
-            pivotVerifyProbeHalfExtent()
+            pivotVerifyProbeGridSize()
         );
     }
     // Spawn the cursor-pivot marker up front, hidden — cursorLatchOnFrame only
