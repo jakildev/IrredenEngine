@@ -93,7 +93,7 @@ kernel void c_light_overflow_faces(
     }
 
     if (frameData.lightVolumeEnabled != 0) {
-        constexpr sampler volumeSampler(filter::nearest, address::clamp_to_edge);
+        constexpr sampler volumeSampler(filter::linear, address::clamp_to_edge);
         const float3 localPos = pos3D - float3(lightVolumeParams.worldOriginVoxel.xyz);
         const float3 sampleCoord =
             (localPos + float3(kLightVolumeHalfExtent) + float3(0.5)) / float3(kLightVolumeSize);
