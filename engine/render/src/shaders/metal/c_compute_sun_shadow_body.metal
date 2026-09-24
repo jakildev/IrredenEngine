@@ -4,6 +4,7 @@
 #include "ir_sdf_common.metal"
 #include "ir_shape_data.metal"
 #include "ir_shape_receiver.metal"
+#include "ir_receiver_face.metal"
 #endif
 // FrameDataSun, the cascade PCF sampler, and the world-space
 // worldSunShadowFactor() lookup — shared with c_lighting_to_trixel's detached
@@ -68,10 +69,12 @@ kernel void IR_SUN_SHADOW_KERNEL_NAME(
         canvasSunShadow.write(float4(1.0, 0.0, 0.0, 0.0), uint2(pixel));
         return;
     }
+#if !IR_SHAPE_RECEIVER
     if (sunFrameData.shadowsEnabled == 0) {
         canvasSunShadow.write(float4(1.0, 0.0, 0.0, 0.0), uint2(pixel));
         return;
     }
+#endif
 
     // Shared decode helpers (ir_iso_common) own both encodings' bit layouts
     // (per-axis / single-canvas, flip carrier).
@@ -134,6 +137,7 @@ kernel void IR_SUN_SHADOW_KERNEL_NAME(
         normal = -normal;
     }
 
+    float receiverFace = 0.0;
 #if IR_SHAPE_RECEIVER
     if (!perAxis && receiverFrame.shapeCount > 0) {
         uint key = receiverOwners[uint(pixel.y * size.x + pixel.x)];
@@ -144,6 +148,7 @@ kernel void IR_SUN_SHADOW_KERNEL_NAME(
                                  float2(pixel), exactPosition, exactNormal)) {
                 pos3D = exactPosition;
                 normal = exactNormal;
+                receiverFace = encodeReceiverFace(exactNormal);
             }
         }
     }
@@ -153,6 +158,6 @@ kernel void IR_SUN_SHADOW_KERNEL_NAME(
     // World iso depth picks the cascade; rawDepth IS the world iso depth for the
     // world canvas this pass runs on. The cascade PCF lookup is shared with the
     // detached world-receive path (ir_sun_shadow_sample.metal).
-    float factor = worldSunShadowFactor(pos3D, normal, float(rawDepth), sunFrameData, sunDepthBuf);
-    canvasSunShadow.write(float4(factor, 0.0, 0.0, 0.0), uint2(pixel));
+    float factor = sunFrameData.shadowsEnabled == 0 ? 1.0 : worldSunShadowFactor(pos3D, normal, float(rawDepth), sunFrameData, sunDepthBuf);
+    canvasSunShadow.write(float4(factor, 0.0, 0.0, receiverFace), uint2(pixel));
 }

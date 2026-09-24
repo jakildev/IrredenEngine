@@ -13,6 +13,7 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 #include "ir_sdf_common.glsl"
 #include "ir_shape_data.glsl"
 #include "ir_shape_receiver.glsl"
+#include "ir_receiver_face.glsl"
 #endif
 // Shared caster/receiver sun-space projection.
 #include "ir_sun_projection.glsl"
@@ -98,10 +99,12 @@ void main() {
         imageStore(canvasSunShadow, pixel, vec4(1.0, 0.0, 0.0, 0.0));
         return;
     }
+#if !IR_SHAPE_RECEIVER
     if (shadowsEnabled == 0) {
         imageStore(canvasSunShadow, pixel, vec4(1.0, 0.0, 0.0, 0.0));
         return;
     }
+#endif
 
     // Shared decode helpers (ir_iso_common) own both encodings' bit layouts
     // (per-axis / single-canvas, flip carrier).
@@ -153,6 +156,7 @@ void main() {
         normal = -normal;
     }
 
+    float receiverFace = 0.0;
 #if IR_SHAPE_RECEIVER
     if (!perAxis && receiverFrame.shapeCount > 0) {
         uint key = receiverOwners[uint(pixel.y * size.x + pixel.x)];
@@ -163,6 +167,7 @@ void main() {
                                  vec2(pixel), exactPosition, exactNormal)) {
                 pos3D = exactPosition;
                 normal = exactNormal;
+                receiverFace = encodeReceiverFace(exactNormal);
             }
         }
     }
@@ -172,6 +177,6 @@ void main() {
     // World iso depth picks the cascade; rawDepth IS the world iso depth for the
     // world canvas this pass runs on. The cascade PCF lookup is shared with the
     // detached world-receive path (ir_sun_shadow_sample.glsl).
-    float factor = worldSunShadowFactor(pos3D, normal, float(rawDepth));
-    imageStore(canvasSunShadow, pixel, vec4(factor, 0.0, 0.0, 0.0));
+    float factor = shadowsEnabled == 0 ? 1.0 : worldSunShadowFactor(pos3D, normal, float(rawDepth));
+    imageStore(canvasSunShadow, pixel, vec4(factor, 0.0, 0.0, receiverFace));
 }
