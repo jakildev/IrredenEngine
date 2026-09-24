@@ -11,7 +11,7 @@ void indexSourceSunFace(vec3 corner, vec3 edgeU, vec3 edgeV) {
         const ivec2 last = min(ivec2(floor((high - origin) / cellSize)), ivec2(kSourceFaceTilesPerAxis - 1u));
         if (first.x > last.x || first.y > last.y) continue;
         if (faceIndex == 0xFFFFFFFFu) {
-            faceIndex = atomicAdd(sunDepthBuf[kSourceFaceHeaderOffset], 1u);
+            faceIndex = atomicAdd(sunDepthBuf[sourceFaceHeaderIndex(uint(sunDepthBuf.length()))], 1u);
             if (faceIndex < kSourceFaceCapacity) {
                 const uint record = kSourceFaceRecordOffset + faceIndex * kSourceFaceRecordWords;
                 for (uint axis = 0; axis < 3u; ++axis) {

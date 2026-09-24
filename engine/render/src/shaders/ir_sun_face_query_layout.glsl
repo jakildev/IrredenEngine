@@ -17,6 +17,16 @@ const uint kSourceFaceTileOffset = kSourceFaceHeaderOffset + 1u;
 const uint kSourceFaceRecordOffset = kSourceFaceTileOffset + kSourceFaceTileCount * (kSourceFaceTileCapacity + 1u);
 const uint kSourceFaceBufferWords = kSourceFaceRecordOffset + kSourceFaceCapacity * kSourceFaceRecordWords;
 
+// Every header access passes `uint(sunDepthBuf.length())`: NVIDIA's cold link
+// time grows with a compile-time-constant SSBO index, and this one costs minutes
+// per program, while a runtime-derived index links in well under a second.
+// Addresses the header word only while binding 28 holds the whole
+// SunShadowDepthMap; a bindRange, a resize not derived from
+// kSourceFaceBufferWords, or another buffer aliased onto slot 28 misaddresses it.
+uint sourceFaceHeaderIndex(uint boundWords) {
+    return boundWords - (kSourceFaceBufferWords - kSourceFaceHeaderOffset);
+}
+
 uint sourceFaceTileBase(uint tileIndex) {
     return kSourceFaceTileOffset + tileIndex * (kSourceFaceTileCapacity + 1u);
 }

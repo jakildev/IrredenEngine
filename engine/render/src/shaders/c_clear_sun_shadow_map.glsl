@@ -20,7 +20,7 @@ void main() {
     if (linearIdx >= kTotalTexels) {
         return;
     }
-    if (linearIdx == 0) sunDepthBuf[kSourceFaceHeaderOffset] = 0u;
+    if (linearIdx == 0) sunDepthBuf[sourceFaceHeaderIndex(uint(sunDepthBuf.length()))] = 0u;
     if (uint(linearIdx) < kSourceFaceTileCount) sunDepthBuf[sourceFaceTileBase(uint(linearIdx))] = 0u;
     sunDepthBuf[linearIdx + kSourceFaceFallbackOffset] = 0xFFFFFFFFu;
     sunDepthBuf[linearIdx] = 0xFFFFFFFFu;
