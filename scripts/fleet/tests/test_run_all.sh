@@ -369,4 +369,47 @@ else
     bad "T18 RUN line for a suite precedes that suite's own result line (RUN@$run_line PASS@$pass_line)"
 fi
 
+timeout_line() {  # $1 = run_all output -> the effective-timeout preamble line
+    printf '%s\n' "$1" | grep -a '^run_all.sh: per-suite timeout'
+}
+
+echo "T19: the default per-suite timeout follows FLEET_TEST_HOST; --timeout stays literal"
+d=$(new_sandbox t19)
+fixture_pass "$d" alpha
+for pair in windows:360 linux:120 mac:120; do
+    host=${pair%%:*} want=${pair#*:}
+    out=$(FLEET_TEST_HOST=$host bash "$d/run_all.sh" 2>&1)
+    assert_contains "$(timeout_line "$out")" "per-suite timeout ${want}s" \
+        "T19 FLEET_TEST_HOST=$host defaults to ${want}s"
+    out=$(FLEET_TEST_HOST=$host bash "$d/run_all.sh" --timeout 45 2>&1)
+    assert_contains "$(timeout_line "$out")" "per-suite timeout 45s (--timeout" \
+        "T19 --timeout 45 is literal under FLEET_TEST_HOST=$host"
+done
+out=$(FLEET_TEST_HOST=windows bash "$d/run_all.sh" 2>&1)
+assert_eq "$(printf '%s\n' "$out" | head -n 1)" "$(timeout_line "$out")" \
+    "T19 the preamble precedes the first RUN line"
+assert_contains "$out" "1 passed" "T19 suites still run under the host default"
+out=$(bash "$d/run_all.sh" --timeout 0 2>&1)
+assert_contains "$(timeout_line "$out")" "disabled (--timeout 0)" "T19 --timeout 0 is reported as disabled"
+
+# The uname stub answers with values on both sides of the split, so a run that
+# ignored it and read the real host would fail one arm on every host.
+echo "T20: with FLEET_TEST_HOST unset the default comes from uname -s"
+stub_bin="$TMPROOT/t20-bin"
+mkdir -p "$stub_bin"
+printf '#!/usr/bin/env bash\necho "$STUB_UNAME"\n' > "$stub_bin/uname"
+chmod +x "$stub_bin/uname"
+for pair in MINGW64_NT-10.0-19045:360 MSYS_NT-10.0-19045:360 CYGWIN_NT-10.0-19045:360 \
+            Linux:120 Darwin:120; do
+    sys=${pair%%:*} want=${pair#*:}
+    out=$(env -u FLEET_TEST_HOST PATH="$stub_bin:$PATH" STUB_UNAME="$sys" \
+          bash "$d/run_all.sh" 2>&1)
+    assert_contains "$(timeout_line "$out")" "per-suite timeout ${want}s" \
+        "T20 uname -s $sys defaults to ${want}s"
+done
+out=$(FLEET_TEST_HOST=linux PATH="$stub_bin:$PATH" STUB_UNAME=MINGW64_NT-10.0-19045 \
+      bash "$d/run_all.sh" 2>&1)
+assert_contains "$(timeout_line "$out")" "per-suite timeout 120s" \
+    "T20 FLEET_TEST_HOST outranks uname -s"
+
 summarize "run_all.sh tests"

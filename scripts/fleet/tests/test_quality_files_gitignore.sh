@@ -19,7 +19,19 @@
 
 set -euo pipefail
 
-REPO_ROOT=$(cd "$(dirname "$0")/../../.." && pwd)
+# Every path below is embedded in a generated CMakeLists.txt or matched
+# against cmake's own output, and native-Windows cmake neither opens nor
+# prints the MSYS `/c/...` spelling `pwd` yields there. `cygpath -m` gives
+# the native `C:/...` form; hosts without cygpath keep the POSIX path.
+native_path() {
+    if command -v cygpath >/dev/null 2>&1; then
+        cygpath -m "$1"
+    else
+        printf '%s\n' "$1"
+    fi
+}
+
+REPO_ROOT=$(native_path "$(cd "$(dirname "$0")/../../.." && pwd)")
 QUALITY_CMAKE="$REPO_ROOT/cmake/ir_quality_tools.cmake"
 
 if [[ ! -f "$QUALITY_CMAKE" ]]; then
@@ -37,7 +49,7 @@ fi
 
 source "$(dirname "$0")/lib_assert.sh"
 
-WORKDIR="$(mktemp -d)"
+WORKDIR=$(native_path "$(mktemp -d)")
 trap 'rm -rf "$WORKDIR"' EXIT
 
 # --- Fixture repo -------------------------------------------------------
