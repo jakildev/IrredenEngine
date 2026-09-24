@@ -415,7 +415,12 @@ void EntityManager::destroyAllEntities() {
 
     flushStructuralChanges();
 
-    // Process pending deferred deletes first.
+    // Index order is not a dependency order: a canvas can die after the
+    // pool storage its sets' span views alias, and a pre-destroy sweep that
+    // reads through such a view faults. Nothing a hook would sweep survives
+    // teardown, so hooks are quiet for both drains, deferred deletes
+    // included; `onDestroy()` still runs.
+    m_preDestroyHooksSuppressed = true;
     destroyMarkedEntities();
 
     std::vector<EntityId> entitiesToDestroy;
@@ -424,11 +429,6 @@ void EntityManager::destroyAllEntities() {
         entitiesToDestroy.push_back(entityId);
     }
 
-    // Index order is not a dependency order: a canvas can die after the
-    // pool storage its sets' span views alias, and a pre-destroy sweep that
-    // reads through such a view faults. Nothing a hook would sweep survives
-    // this drain, so hooks are quiet for its span; `onDestroy()` still runs.
-    m_preDestroyHooksSuppressed = true;
     for (const EntityId entity : entitiesToDestroy) {
         if (m_entityIndex.contains(entity & IR_ENTITY_ID_BITS)) {
             destroyEntity(entity);

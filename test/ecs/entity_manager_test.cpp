@@ -174,14 +174,16 @@ TEST_F(IREntityTest, UnregisterPreDestroyHookStopsFiring) {
 // World teardown destroys in index order, not dependency order, so a hook
 // that reads a dying entity's peers (the voxel-pool re-stage sweep reads the
 // pool storage a set's span views alias) can fault on storage that is
-// already gone. Hooks are therefore quiet for the whole drain and re-arm
-// afterwards; `onDestroy()` is the per-component teardown path there.
+// already gone. Hooks are therefore quiet for the whole drain, including the
+// deferred deletes it processes first, and re-arm afterwards; `onDestroy()`
+// is the per-component teardown path there.
 TEST_F(IREntityTest, PreDestroyHooksAreQuietDuringDestroyAllEntities) {
     int fireCount = 0;
     m_entity_manager.registerPreDestroyHook([&](IREntity::EntityId) { ++fireCount; });
 
     IREntity::createEntity(TestMarker{});
-    IREntity::createEntity(TestMarker{});
+    IREntity::EntityId marked = IREntity::createEntity(TestMarker{});
+    m_entity_manager.markEntityForDeletion(marked);
     m_entity_manager.destroyAllEntities();
     EXPECT_EQ(fireCount, 0);
 
