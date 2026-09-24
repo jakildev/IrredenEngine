@@ -29,24 +29,9 @@ subjects; `ctest` never sees them. Validator index: [`VALIDATION.md`](../../docs
   than sharing `fleet_gh_poll.DEFAULT_CACHE_DIR`; when a function changes
   transport or gains its first network call, re-point every suite covering it
   in the same PR; prefer obviously synthetic fixtures to plausible real IDs.
-- **A PATH shell stub is invisible to native-Windows Python `subprocess`, and
-  the fix is at the call site, not just the stub.** A suite hermetic-izes by
-  writing an extensionless `gh` bash stub into a PATH-prepended dir; that's
-  enough for a bash subject, but a subject reaching `gh` from Python resolves
-  it via `CreateProcess`, which appends only `.exe` to a bare name on native
-  Windows — the stub is skipped in favor of the real `gh.exe` further down
-  PATH (measured: this mutated live issues #830/#831, #3044). Two changes,
-  both required: the **subject** resolves `gh` once via
-  `shutil.which("gh") or "gh"` (honors PATH order and PATHEXT; a no-op
-  passthrough on POSIX — `fleet-plan-lint`'s precedent) and reuses that
-  handle in every `subprocess.run([...])` call; the **suite** ships its stub
-  as a `#!/usr/bin/env python3` script plus a `gh.bat` twin
-  (`python3 "%~dp0gh" %*`) beside the extensionless original, and sources
-  `tests/lib_hermetic.sh`'s `hermetic_poison_gh_env "$TMPROOT"` right after
-  creating its temp root — the fail-closed backstop that poisons
-  `GH_TOKEN`/`GH_CONFIG_DIR`/`GH_HOST` so a call that still escapes the stub
-  fails before touching live GitHub, for suites where the resolution fix
-  hasn't landed yet.
+- **An extensionless PATH stub is invisible to native-Windows Python
+  `subprocess`**: the subject resolves `shutil.which("gh") or "gh"`, and the
+  suite poisons the real binary's environment — recipe: `tests/lib_hermetic.sh`.
 - **A CLI stub models the tool's argument parsing, not just its endpoint.**
   Transcribe the accepted flag set from the real tool's `--help` and fail the
   way it fails; a stub that emulates `--jq` evaluates the program against
