@@ -4,6 +4,7 @@
 #include <irreden/ir_profile.hpp>
 
 #include <cstring>
+#include <span>
 
 namespace IRRender {
 
@@ -54,48 +55,79 @@ class MetalBufferImpl final : public BufferImpl {
         if (data == nullptr || size == 0 || offset < 0) {
             return;
         }
-        IR_ASSERT(
-            static_cast<std::size_t>(offset) + size <= m_size,
-            "Metal buffer subData write exceeded buffer size"
-        );
+        const BufferUploadRange range{offset, size, data};
+        subDataRanges({&range, 1});
+    }
 
-        const std::size_t writeOffset = static_cast<std::size_t>(offset);
+    void subDataRanges(std::span<const BufferUploadRange> ranges) const override {
+        std::size_t writtenBytes = 0;
+        std::size_t alignmentBits = m_size;
+        std::size_t previousEnd = 0;
+        for (const BufferUploadRange &range : ranges) {
+            IR_ASSERT(
+                range.offset_ >= 0 && static_cast<std::size_t>(range.offset_) >= previousEnd,
+                "Metal buffer subDataRanges ranges must be sorted and disjoint"
+            );
+            IR_ASSERT(
+                range.data_ != nullptr || range.size_ == 0,
+                "Metal buffer subDataRanges range has no data"
+            );
+            previousEnd = static_cast<std::size_t>(range.offset_) + range.size_;
+            IR_ASSERT(
+                previousEnd <= m_size,
+                "Metal buffer subDataRanges write exceeded buffer size"
+            );
+            writtenBytes += range.size_;
+            alignmentBits |= static_cast<std::size_t>(range.offset_) | range.size_;
+        }
+        if (writtenBytes == 0) {
+            return;
+        }
 
         // No queued encoder can observe this allocation yet.
         if (!wasMetalBufferEncoded(m_buffer)) {
-            std::uint8_t *dst = static_cast<std::uint8_t *>(m_buffer->contents());
-            std::memcpy(dst + writeOffset, data, size);
+            writeRanges(m_buffer, ranges);
             return;
         }
 
-        const bool partialWrite = writeOffset != 0 || size != m_size;
+        const bool partialWrite = writtenBytes != m_size;
         // macOS buffer blits require four-byte offsets and lengths. Preserve the
         // byte-granular Buffer API by synchronizing only unsupported copy spans.
-        if (partialWrite && ((writeOffset | size | m_size) & 3u) != 0) {
+        if (partialWrite && (alignmentBits & 3u) != 0) {
             device()->finish();
-            auto *dst = static_cast<std::uint8_t *>(m_buffer->contents());
-            std::memcpy(dst + writeOffset, data, size);
+            writeRanges(m_buffer, ranges);
             return;
         }
 
+        // One orphan for the whole batch: a per-range orphan would allocate
+        // and copy the full buffer once per range.
         auto *newBuffer = metalDevice()->newBuffer(
             static_cast<NS::UInteger>(m_size),
             MTL::ResourceStorageModeShared
         );
-        IR_ASSERT(newBuffer != nullptr, "Failed to orphan Metal buffer in subData");
-        auto *dst = static_cast<std::uint8_t *>(newBuffer->contents());
-        std::memcpy(dst + writeOffset, data, size);
+        IR_ASSERT(newBuffer != nullptr, "Failed to orphan Metal buffer in subDataRanges");
+        writeRanges(newBuffer, ranges);
 
         if (partialWrite) {
             // Untouched bytes may be produced by queued GPU writes. CPU memcpy
             // would read their previous contents before those writes execute.
             auto *blit = createMetalBlitEncoder();
-            if (writeOffset > 0) {
-                blit->copyFromBuffer(m_buffer, 0, newBuffer, 0, writeOffset);
+            std::size_t gapStart = 0;
+            for (const BufferUploadRange &range : ranges) {
+                const auto rangeStart = static_cast<std::size_t>(range.offset_);
+                if (rangeStart > gapStart) {
+                    blit->copyFromBuffer(
+                        m_buffer,
+                        gapStart,
+                        newBuffer,
+                        gapStart,
+                        rangeStart - gapStart
+                    );
+                }
+                gapStart = rangeStart + range.size_;
             }
-            const std::size_t tailStart = writeOffset + size;
-            if (tailStart < m_size) {
-                blit->copyFromBuffer(m_buffer, tailStart, newBuffer, tailStart, m_size - tailStart);
+            if (gapStart < m_size) {
+                blit->copyFromBuffer(m_buffer, gapStart, newBuffer, gapStart, m_size - gapStart);
             }
             blit->endEncoding();
             markMetalBufferEncoded(newBuffer);
@@ -138,6 +170,15 @@ class MetalBufferImpl final : public BufferImpl {
     void unmap() override {}
 
   private:
+    static void writeRanges(MTL::Buffer *buffer, std::span<const BufferUploadRange> ranges) {
+        auto *dst = static_cast<std::uint8_t *>(buffer->contents());
+        for (const BufferUploadRange &range : ranges) {
+            if (range.size_ != 0) {
+                std::memcpy(dst + range.offset_, range.data_, range.size_);
+            }
+        }
+    }
+
     // mutable: subData is const on the BufferImpl interface but may
     // orphan the backing buffer (allocate a fresh MTL::Buffer + swap)
     // when the previous one is already encoded into an in-flight

@@ -43,6 +43,10 @@ void Buffer::subData(std::ptrdiff_t offset, std::size_t size, const void *data) 
     m_impl->subData(offset, size, data);
 }
 
+void Buffer::subDataRanges(std::span<const BufferUploadRange> ranges) const {
+    m_impl->subDataRanges(ranges);
+}
+
 void Buffer::getSubData(std::ptrdiff_t offset, std::size_t size, void *data) const {
     m_impl->getSubData(offset, size, data);
 }
