@@ -2,8 +2,8 @@
 #define IR_CHUNKED_FIELD_H
 
 // PURPOSE: Sparse storage for integer-valued 2D cell fields. Dense field chunk
-//   buffers are retained across clear() while logical presence remains map
-//   membership. See docs/design/chunked-field-placement-kit.md.
+//   buffers are retained across clear() and eraseChunk() while logical presence
+//   remains map membership. See docs/design/chunked-field-placement-kit.md.
 
 #include <irreden/ir_math.hpp>
 
@@ -72,7 +72,9 @@ template <typename T> class ChunkedField2D {
         friend class ChunkedField2D<T>;
     };
 
-    void setCell(IRMath::ivec2 cell, T value) {
+    /// True when the field chunk's presence or the cell's value changed; an
+    /// inserted field chunk counts as a change even when @p value is zero.
+    bool setCell(IRMath::ivec2 cell, T value) {
         const FieldChunkKey key = packFieldChunkKey(fieldChunkOf(cell));
         auto [it, inserted] = m_fieldChunks.try_emplace(key);
         FieldChunk &fieldChunk = it->second;
@@ -83,7 +85,7 @@ template <typename T> class ChunkedField2D {
         const int index = fieldChunkLocalIndex(fieldChunkLocal(cell));
         const T oldValue = fieldChunk.m_cells[index];
         if (!inserted && oldValue == value) {
-            return;
+            return false;
         }
 
         if (oldValue != T{}) {
@@ -94,6 +96,90 @@ template <typename T> class ChunkedField2D {
         }
         fieldChunk.m_cells[index] = value;
         markDirty(key, fieldChunk);
+        return true;
+    }
+
+    /// Removes a present field chunk, keeping its buffer for reuse. False
+    /// when the field chunk is absent.
+    bool eraseChunk(IRMath::ivec2 chunkCoord) {
+        const FieldChunkKey key = packFieldChunkKey(chunkCoord);
+        auto it = m_fieldChunks.find(key);
+        if (it == m_fieldChunks.end()) {
+            return false;
+        }
+        m_dirtyKeys.push_back(key);
+        m_freeBuffers.push_back(std::move(it->second.m_cells));
+        m_fieldChunks.erase(it);
+        return true;
+    }
+
+    /// Inserts or replaces every cell of a field chunk. True when the field
+    /// chunk was inserted or any cell differs.
+    bool assignChunk(IRMath::ivec2 chunkCoord, std::span<const T, kFieldChunkCells> cells) {
+        const FieldChunkKey key = packFieldChunkKey(chunkCoord);
+        auto [it, inserted] = m_fieldChunks.try_emplace(key);
+        FieldChunk &fieldChunk = it->second;
+        if (inserted) {
+            fieldChunk.m_cells = acquireBuffer();
+        } else if (std::equal(cells.begin(), cells.end(), fieldChunk.m_cells.get())) {
+            return false;
+        }
+
+        std::copy(cells.begin(), cells.end(), fieldChunk.m_cells.get());
+        fieldChunk.nonZeroCount_ = static_cast<int>(
+            std::count_if(cells.begin(), cells.end(), [](T value) { return value != T{}; })
+        );
+        markDirty(key, fieldChunk);
+        return true;
+    }
+
+    /// Writes @p value to @p count cells along +x from @p firstCell and
+    /// returns the number of changed cells; every cell written into an
+    /// inserted field chunk counts as changed. Requires `count >= 0` and the
+    /// whole run representable in int32 — callers clip.
+    int fillRow(IRMath::ivec2 firstCell, int count, T value) {
+        int changed = 0;
+        int x = firstCell.x;
+        int remaining = count;
+        while (remaining > 0) {
+            const IRMath::ivec2 cell{x, firstCell.y};
+            const int localX = fieldChunkLocal(cell).x;
+            const int run = IRMath::min(remaining, kFieldChunkEdge - localX);
+            const FieldChunkKey key = packFieldChunkKey(fieldChunkOf(cell));
+            auto [it, inserted] = m_fieldChunks.try_emplace(key);
+            FieldChunk &fieldChunk = it->second;
+            if (inserted) {
+                fieldChunk.m_cells = acquireBuffer();
+            }
+
+            T *row = fieldChunk.m_cells.get() + fieldChunkLocalIndex(fieldChunkLocal(cell));
+            int runChanged = 0;
+            for (int i = 0; i < run; ++i) {
+                if (row[i] == value) {
+                    continue;
+                }
+                if (row[i] != T{}) {
+                    --fieldChunk.nonZeroCount_;
+                }
+                if (value != T{}) {
+                    ++fieldChunk.nonZeroCount_;
+                }
+                row[i] = value;
+                ++runChanged;
+            }
+            if (inserted) {
+                runChanged = run;
+            }
+            if (runChanged > 0) {
+                markDirty(key, fieldChunk);
+            }
+            changed += runChanged;
+            remaining -= run;
+            if (remaining > 0) {
+                x += run;
+            }
+        }
+        return changed;
     }
 
     void clear() {
