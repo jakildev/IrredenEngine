@@ -64,12 +64,7 @@ const uint kDispatchArgsBaseUint = 8u;      // kPerAxisCellDispatchArgsOffsetByt
 const uint kPerAxisCellComputeTile = 256u;  // kPerAxisCellComputeTile (16×16 threads)
 
 #if IR_SHAPE_RECEIVER
-layout(std140, binding = 23) uniform ShapeReceiverFrame {
-    ShapeProjectionData receiverFrame;
-};
-layout(std430, binding = 20) readonly buffer ReceiverShapes { ShapeDescriptor receiverShapes[]; };
-layout(std430, binding = 22) readonly buffer ReceiverOwners { uint receiverOwners[]; };
-layout(std430, binding = 30) readonly buffer ReceiverTiles { ShapeTileDescriptor receiverTiles[]; };
+#include "ir_selected_shape_receiver.glsl"
 
 #endif
 
@@ -158,18 +153,9 @@ void main() {
 
     float receiverFace = 0.0;
 #if IR_SHAPE_RECEIVER
-    if (!perAxis && receiverFrame.shapeCount > 0) {
-        uint key = receiverOwners[uint(pixel.y * size.x + pixel.x)];
-        if (key != 0xffffffffu) {
-            int shapeIndex = receiverTiles[key / kShapeSamplesPerTile].shapeIndex;
-            vec3 exactPosition, exactNormal;
-            if (shapeBoxReceiver(receiverShapes[shapeIndex], receiverFrame,
-                                 vec2(pixel), exactPosition, exactNormal)) {
-                pos3D = exactPosition;
-                normal = exactNormal;
-                receiverFace = encodeReceiverFace(exactNormal);
-            }
-        }
+    if (!perAxis && selectedShapeBoxReceiver(pixel, size.x, vec2(pixel),
+            pos3D, normal)) {
+        receiverFace = encodeReceiverFace(normal);
     }
 
 #endif

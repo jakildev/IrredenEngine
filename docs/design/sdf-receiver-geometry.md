@@ -350,3 +350,27 @@ hemisphere approximation, not geometry-traced sky visibility.
 The finite SDF presentation follow-up must evaluate this term using its actual
 fragment normal; storing only already-lit RGBA8 cannot recover that response.
 See [native and deterministic controls](../pr-screenshots/codex/sky-hemisphere-normal/README.md).
+
+
+### Stored owner versus continuous query
+
+`selectedShapeBoxReceiver` owns the elected-key → tile → descriptor lookup in
+both backends. Its integer `ownerPixel` and retained row width address the
+visible winner. Its independent floating-point `queryPixel` addresses the
+finite surface. Compute currently supplies the same pixel to both; presentation
+must use the displayed sample for ownership and the actual fragment coordinate
+for the query. Rounding that query back to the owner would retain the very
+trixel-sized edge quantization that fragment integration is intended to remove.
+
+The helper preserves incoming position and normal on an empty submission,
+missing owner, unsupported descriptor or finite miss. GLSL uses `inout`, not
+`out`, because an unwritten `out` argument does not preserve the caller's value.
+Both backends query into temporary values before publishing a successful hit.
+The existing whole-canvas validity and in-bounds owner preconditions still apply.
+
+Executed selection controls exercise all 384 half-face keys of a nonzero tile,
+a fractional query distinct from its owner, finite misses whose callee writes
+partial outputs, and mutations that snap the query, lose the sentinel, choose
+the wrong tile or overwrite fallback. Native output remains identical; this
+extraction introduces no storage or passes and does not yet move lighting into
+presentation. [Evidence](../pr-screenshots/codex/selected-surface-query/README.md).

@@ -488,3 +488,14 @@ runs and existing thresholds; add an SDF-active workload to measure election cos
 - Next: retain linear SDF inputs and query finite geometry at presentation
   fragments, including sky from the actual fragment normal. The sky sign fix
   does not resolve trixel-sized shadow outlines or add sky occlusion tracing.
+
+
+### Selected finite receiver query
+
+- Centralized elected-owner selection separately from continuous finite query
+  coordinates, with executable fractional-query and fallback-preservation gates
+  on both backends. Compute now consumes that shared contract.
+- Still pending: linear SDF lighting retention, final-write validity through
+  fog/post-lighting color operations, actual fragment receiver evaluation, and
+  measured memory/bandwidth cost before broadening eligibility. No new payload
+  allocation or visual edge improvement is claimed by the extraction.

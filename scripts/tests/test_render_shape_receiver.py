@@ -205,9 +205,23 @@ int main(){
         for suffix, folder in (("glsl", ""), ("metal", "metal/")):
             shaders = ROOT / "engine/render/src/shaders" / folder
             shader = (shaders / f"c_compute_sun_shadow_body.{suffix}").read_text()
-            start = shader.index("    if (!perAxis && receiverFrame.shapeCount > 0)")
+            start = shader.index("    if (!perAxis && selectedShapeBoxReceiver(")
             block = shader[start:shader.index("#endif", start)]
-            block = block.replace("float3", "vec3").replace("float2", "vec2")
+            helper = (shaders / f"ir_selected_shape_receiver.{suffix}").read_text()
+            helper = helper[helper.index("bool selectedShapeBoxReceiver"):]
+            helper = helper.replace("inout vec3 ", "vec3& ")
+            helper = helper.replace("thread float3 &", "vec3& ")
+            helper = helper.replace("constant ShapeProjectionData &receiverFrame,", "")
+            helper = helper.replace("device const ShapeDescriptor *receiverShapes,", "")
+            helper = helper.replace("device const uint *receiverOwners,", "")
+            helper = helper.replace("device const ShapeTileDescriptor *receiverTiles,", "")
+            block = block.replace(
+                "receiverFrame, receiverShapes, receiverOwners, receiverTiles,", "")
+            for source, target in (("float3", "vec3"), ("float2", "vec2"),
+                                   ("ivec2", "Point"), ("int2", "Point")):
+                helper = helper.replace(source, target)
+                block = block.replace(source, target)
+            block = helper + "\nvoid run(){\n" + block + "}\n"
             data = (shaders / f"ir_shape_data.{suffix}").read_text()
             stride = re.search(r"(?:const|constant) uint kShapeSamplesPerTile = [^;]+;",
                                data).group().replace("constant", "const")
@@ -215,7 +229,8 @@ int main(){
 #include <vector>
 #include <cstdlib>
 using uint=unsigned;
-struct vec2 {int x,y; template<class T> vec2(T v):x(v.x),y(v.y){} };
+struct vec2 {float x,y; vec2(float a,float b):x(a),y(b){}
+ template<class T> vec2(T v):x(v.x),y(v.y){} };
 struct vec3 {int value=0;};
 struct Tile {int shapeIndex;};
 struct Frame {int shapeCount;};
@@ -231,8 +246,9 @@ Checked<Tile> receiverTiles{{{0},{2}}}; Checked<int> receiverShapes{{11,22,33}};
 vec3 pos3D{7},normal{8}; bool finiteHit=true;
 float receiverFace=0;
 float encodeReceiverFace(vec3 n){return float(n.value);}
-bool shapeBoxReceiver(int shape,Frame,vec2,vec3& p,vec3& n){
- p.value=shape;n.value=-shape;return finiteHit;
+vec2 lastQuery{0,0};
+bool shapeBoxReceiver(int shape,Frame,vec2 query,vec3& p,vec3& n){
+ lastQuery=query;p.value=shape;n.value=-shape;return finiteHit;
 }
 """
             main = r"""
@@ -251,6 +267,14 @@ int main(){
   if(kind<2&&receiverOwners.reads!=0)return 3;
   if(kind<3&&(receiverTiles.reads!=0||receiverShapes.reads!=0))return 4;
  }
+ perAxis=false;receiverFrame.shapeCount=3;finiteHit=true;
+ receiverOwners.data[4]=384u;
+ vec3 p{7},n{8};
+ if(!selectedShapeBoxReceiver(pixel,size.x,vec2(1.25f,-.75f),p,n))return 5;
+ if(lastQuery.x!=1.25f||lastQuery.y!=-.75f||p.value!=33||n.value!=-33)return 5;
+ finiteHit=false;p.value=7;n.value=8;
+ if(selectedShapeBoxReceiver(pixel,size.x,vec2(100.f,100.f),p,n))return 6;
+ if(p.value!=7||n.value!=8)return 6;
  return 0;
 }
 """
@@ -266,12 +290,14 @@ int main(){
             variants = {
                 "production": block,
                 "wrong_tile": block.replace("key / kShapeSamplesPerTile", "0u"),
-                "lost_sentinel": block.replace("key != 0xffffffffu", "true"),
+                "lost_sentinel": block.replace("key == 0xffffffffu", "false"),
                 "lost_normal_carrier": block.replace(
-                    "receiverFace = encodeReceiverFace(exactNormal);", ""),
+                    "receiverFace = encodeReceiverFace(normal);", ""),
                 "lost_axis_gate": block.replace("!perAxis && ", ""),
+                "snapped_query": block.replace(
+                    "queryPixel, exactPosition", "vec2(ownerPixel), exactPosition"),
                 "lost_finite_fallback": block.replace(
-                    "if (shapeBoxReceiver", "if (true || shapeBoxReceiver"),
+                    "if (!shapeBoxReceiver", "if (false && !shapeBoxReceiver"),
             }
             for name, query in variants.items():
                 with (
@@ -279,7 +305,7 @@ int main(){
                     tempfile.TemporaryDirectory() as tmp,
                 ):
                     cpp, exe = Path(tmp) / "select.cpp", Path(tmp) / "select"
-                    cpp.write_text(harness + stride + "\nvoid run(){\n" + query + "}\n" + main)
+                    cpp.write_text(harness + stride + "\n" + query + main)
                     build = subprocess.run([COMPILER, "-std=c++17", str(cpp), "-o", str(exe)],
                                            capture_output=True, text=True)
                     self.assertEqual(build.returncode, 0, build.stderr)
@@ -288,7 +314,7 @@ int main(){
                         self.assertEqual(run.returncode, 0, run.stderr)
                     else:
                         self.assertNotEqual(query, block)
-                        self.assertIn(run.returncode, (1, 2, 3, 4, 42), name)
+                        self.assertIn(run.returncode, (1, 2, 3, 4, 5, 6, 42), name)
 
     def test_shared_projection_layout(self):
         shaders = ROOT / "engine/render/src/shaders"
