@@ -337,7 +337,7 @@ kernel void IR_LIGHTING_KERNEL_NAME(
                       )));
 
         constexpr sampler volumeSampler(
-            filter::nearest, address::clamp_to_edge
+            filter::linear, address::clamp_to_edge
         );
         const float3 localPos =
             pos3D - float3(lightVolumeParams.worldOriginVoxel.xyz);
