@@ -43,7 +43,7 @@ release-early rule) ships as its own follow-up PR.
 | `bin/ir-host-probe` | Print this host's JSON fingerprint. Cached at `$XDG_CACHE_HOME/irreden/host-fingerprint.json`. |
 | `bin/ir-acquire` | Acquire CPU slots, GPU, perf, or all three (`benchmark`). Releases on command exit. |
 | `bin/ir-build` | `cmake --build` wrapper, holds `ir-acquire cpu` for the build window. Each worktree builds into its own `build/`. |
-| `bin/ir-run` | Run a built executable from its own directory; wraps `--auto-screenshot` in `ir-acquire gpu` and `--auto-profile` in `ir-acquire benchmark`. |
+| `bin/ir-run` | Run a built executable from its own directory; wraps `--auto-screenshot` in `ir-acquire gpu` and `--auto-profile` in `ir-acquire benchmark`. On native Windows every run takes the gpu lock (`IR_RUN_GL_EXCLUSIVE=0` opts out) — a second live GL context stalls other engine processes' shader links for minutes. |
 | `bin/ir-perf-grid` | Perf-matrix runner (`ir-perf-grid [matrix-args]`, `ir-perf-grid calibrate`, `ir-perf-grid ref`). Wraps `scripts/perf/perf_grid_matrix.sh` in `ir-acquire benchmark` and splices ref_ms + host fingerprint into `manifest.json`. |
 | `bench/ir_ref_bench.cpp` | Deterministic IRMath hot-path mini-bench. Tuned to ~50ms on the calibration host; ref_ms above target means the host was loaded and per-cell measurements should be weighted normalized. |
 | `lib/concurrency_helpers.sh` | Sourced by `bin/ir-*`. Lock primitives + 3-layer config resolver. |

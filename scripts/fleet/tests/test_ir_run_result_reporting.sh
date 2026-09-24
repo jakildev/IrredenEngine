@@ -10,8 +10,9 @@
 #   RESULT=ALIVE-TIMEOUT exe=<name> ...           — watchdog kill, healthy
 #
 # Hermetic: a fake build dir with tiny scripts stands in for real demos.
-# The plain --timeout cases take no ir-acquire lock; the lock-queue cases
-# use an isolated IR_LOCK_ROOT so they never touch the host's real locks.
+# The plain --timeout cases take no ir-acquire lock off Windows (on native
+# Windows ir-run wraps every run); every case uses an isolated IR_LOCK_ROOT
+# so none touches the host's real locks.
 
 set -uo pipefail
 
@@ -130,5 +131,21 @@ assert_contains "$OUT" "timeout waiting for lock lock (gpu, 1s)" \
 assert_contains "$OUT" "RESULT=LOCK-FAILED exe=short-run" \
     "LOCK-FAILED verdict, not a watchdog verdict"
 assert_absent "$OUT" "ALIVE-TIMEOUT" "lock failure is not reported as ALIVE-TIMEOUT"
+
+echo "verb-less run and the host's gpu-lock default:"
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+        run_ir --timeout 10 clean-exit
+        assert_contains "$OUT" "ir-acquire gpu --"             "native Windows wraps a verb-less run in the gpu lock"
+        OUT="$(IR_RUN_GL_EXCLUSIVE=0 "$IR_RUN" --build-dir "$FAKE_BUILD"             --timeout 10 clean-exit 2>&1)"
+        RC=$?
+        assert_absent "$OUT" "ir-acquire gpu"             "IR_RUN_GL_EXCLUSIVE=0 opts a verb-less run out of the lock"
+        assert_contains "$OUT" "RESULT=CLEAN exe=clean-exit exit=0"             "opted-out run still reports CLEAN"
+        ;;
+    *)
+        run_ir --timeout 10 clean-exit
+        assert_absent "$OUT" "ir-acquire gpu"             "verb-less run takes no lock off native Windows"
+        ;;
+esac
 
 summarize "ir-run result-reporting tests"
