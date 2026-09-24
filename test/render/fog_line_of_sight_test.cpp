@@ -46,7 +46,7 @@ std::vector<std::int32_t> emptyColumns() {
 }
 
 void setColumn(std::vector<std::int32_t> &columns, int x, int y, int top) {
-    columns[C_CanvasFogOfWar::flatIndex(x, y)] = top;
+    columns[FogLineOfSightField::columnIndex(x, y)] = top;
 }
 
 std::vector<std::int32_t> flatColumns(int top) {
@@ -427,7 +427,7 @@ class FogLineOfSightEcsTest : public testing::Test {
     }
 
     int top(int x, int y) const {
-        return m_columns[C_CanvasFogOfWar::flatIndex(x, y)];
+        return m_columns[FogLineOfSightField::columnIndex(x, y)];
     }
 };
 

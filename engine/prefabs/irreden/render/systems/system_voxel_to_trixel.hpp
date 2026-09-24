@@ -485,10 +485,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // buffer (not FOG_TO_TRIXEL's) so STAGE_1 carries no creation-order
     // dependency and reads the CURRENT frame's circles, not a frame-stale copy.
     Buffer *fogObserverBuf_ = nullptr;
-    // Reusable .r → RGBA8 expansion scratch for the relocated fog upload.
-    // System ticks are serial, so one shared buffer keeps the
-    // per-dirty-frame upload allocation-free across however many fog canvases
-    // exist; the value-init resize zeros the GBA bytes the loop never writes.
+    // Fog window gather scratch: the drained pending field chunks, the plan,
+    // and one RGBA8 upload strip. System ticks are serial, so one high-water
+    // set keeps the gather allocation-free across every fog canvas.
+    std::vector<IRPrefab::Spatial::FieldChunkKey> fogPendingKeys_;
+    IRPrefab::Fog::detail::WindowGatherPlan fogGatherPlan_;
     std::vector<std::uint8_t> fogUploadScratch_;
     // The MAIN canvas's fog component, resolved + uploaded once per frame in
     // beginTick. A detached re-voxelize canvas carries no C_CanvasFogOfWar
@@ -1253,34 +1254,41 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         compactedBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_CompactedVoxelIndices);
     }
 
-    // Relocated from FOG_TO_TRIXEL: push the CPU fog mirror to its GPU
-    // texture once per dirty frame. STAGE_1 now owns the upload so the column
-    // cull below — and the later FOG_TO_TRIXEL post-process — read the SAME,
-    // current-frame fog (no one-frame lag, no startup-frame garbage). The
-    // dirty-flag exception (CPU-authored, GPU-read-only, 256 KiB whole-texture
-    // upload) is unchanged; only the system performing the upload moved.
-    void uploadFogIfDirty(C_CanvasFogOfWar &fog) {
-        if (!fog.dirty_) {
-            return;
-        }
-        const std::size_t cellCount = fog.cpuBuffer_.size();
-        if (fogUploadScratch_.size() < cellCount * 4) {
-            fogUploadScratch_.resize(cellCount * 4);
-        }
-        // Only the .r channel ever changes; GBA stay at the resize zero-init.
-        for (std::size_t i = 0; i < cellCount; ++i) {
-            fogUploadScratch_[i * 4] = fog.cpuBuffer_[i];
-        }
-        fog.getTexture()->subImage2D(
-            0,
-            0,
+    // Brings the fog texture up to date with the field before the column cull
+    // below and the later FOG_TO_TRIXEL post-process read it: drains the
+    // field's pending field chunks, re-expands those inside the window and
+    // uploads one rectangle per run. The first gather (and the first after
+    // `clearAll`) uploads the whole window; a second call in the same frame
+    // finds nothing pending and uploads nothing.
+    void gatherFogWindow(C_CanvasFogOfWar &fog) {
+        IR_PROFILE_SCOPE("fogWindowGather");
+        const IRMath::ivec2 origin{-kFogOfWarHalfExtent, -kFogOfWarHalfExtent};
+        fog.field_->consumePending(fogPendingKeys_);
+        IRPrefab::Fog::detail::planWindowGather(
+            fog.windowOrigin_,
+            origin,
             kFogOfWarSize,
-            kFogOfWarSize,
-            PixelDataFormat::RGBA,
-            PixelDataType::UNSIGNED_BYTE,
-            fogUploadScratch_.data()
+            fogPendingKeys_,
+            fogGatherPlan_
         );
-        fog.dirty_ = false;
+        fog.windowOrigin_ = origin;
+        for (const IRPrefab::Fog::detail::WindowUploadRect &rect : fogGatherPlan_.rects_) {
+            const std::size_t bytes =
+                static_cast<std::size_t>(rect.size_.x) * static_cast<std::size_t>(rect.size_.y) * 4;
+            if (fogUploadScratch_.size() < bytes) {
+                fogUploadScratch_.resize(bytes);
+            }
+            IRPrefab::Fog::detail::expandWindowChunks(*fog.field_, origin, rect, fogUploadScratch_);
+            fog.getTexture()->subImage2D(
+                rect.texel_.x,
+                rect.texel_.y,
+                rect.size_.x,
+                rect.size_.y,
+                PixelDataFormat::RGBA,
+                PixelDataType::UNSIGNED_BYTE,
+                fogUploadScratch_.data()
+            );
+        }
     }
 
     // Lazily (re)allocate the cardinal winner buffer to cover @p canvasSize.
@@ -1356,7 +1364,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             auto fogOpt = IREntity::getComponentOptional<C_CanvasFogOfWar>(entity);
             if (fogOpt.has_value()) {
                 fog = fogOpt.value();
-                uploadFogIfDirty(*fog);
+                gatherFogWindow(*fog);
             }
         }
 
@@ -2246,10 +2254,10 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         }
 
         // Resolve the MAIN canvas's fog once per frame for a world-placed detached
-        // re-voxelize canvas to cross-section against. Upload it each frame
+        // re-voxelize canvas to cross-section against. Gather it each frame
         // HERE so the world fog grid is fresh regardless of canvas tick order — a
         // detached canvas may tick before the main canvas, whose own
-        // uploadFogIfDirty then no-ops (dirty already cleared). Null on a scene with
+        // gatherFogWindow then finds nothing pending. Null on a scene with
         // no fog → the detached path falls back to the no-fog placeholder.
         worldFog_ = nullptr;
         if (perAxisCanvasEntity_ != IREntity::kNullEntity) {
@@ -2257,7 +2265,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 IREntity::getComponentOptional<C_CanvasFogOfWar>(perAxisCanvasEntity_);
             if (worldFogOpt.has_value()) {
                 worldFog_ = worldFogOpt.value();
-                uploadFogIfDirty(*worldFog_);
+                gatherFogWindow(*worldFog_);
             }
         }
 
