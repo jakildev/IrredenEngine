@@ -317,7 +317,7 @@ IR_SAVE_OPT_IN(IRComponents::C_ColorHSV, 1)
 // the family (same one-representative-instantiation approach used for
 // any templated component with more than one concrete specialization).
 IR_SAVE_OPT_IN(IRComponents::C_GeometricShape<IRMath::Shape3D::SPHERE>, 1)
-IR_SAVE_OPT_IN(IRComponents::C_ShapeDescriptor, 1)
+IR_SAVE_OPT_IN(IRComponents::C_ShapeDescriptor, 2)
 IR_SAVE_OPT_IN(IRComponents::C_TriangleCanvasBackground, 1)
 IR_SAVE_OPT_IN(IRComponents::C_TrianglesOnlySet, 1)
 IR_SAVE_OPT_IN(IRComponents::C_LightSource, 1)

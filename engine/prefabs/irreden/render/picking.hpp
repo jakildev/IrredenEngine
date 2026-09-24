@@ -172,6 +172,8 @@ gatherVisibleShapes(IRMath::CardinalIndex cardinalIndex, IREntity::EntityId excl
                 return;
             if (!(sd.flags_ & IRRender::SHAPE_FLAG_VISIBLE))
                 return;
+            if (sd.flags_ & IRRender::SHAPE_FLAG_FOG_HIDDEN)
+                return;
 
             // forEachComponent iterates one component type; position is
             // fetched per-entity because the API has no multi-component

@@ -196,6 +196,38 @@ TEST(SaveSerializers, JointNameRoundTrips) {
     expectConsumesAllBytes(joint);
 }
 
+TEST(SaveSerializers, ShapeDescriptorV1MigrationPreservesLayoutAndDefaultsFogFactor) {
+    IRWorld::detail::ShapeDescriptorV1 old{
+        IRMath::SDF::ShapeType::SPHERE,
+        IRMath::vec4(7.0f, 6.0f, 5.0f, 4.0f),
+        IRMath::Color{1, 2, 3, 4},
+        IRMath::SDF::SHAPE_FLAG_VISIBLE | IRMath::SDF::SHAPE_FLAG_FOG_BODY,
+        IRRender::LodLevel::LOD_3,
+        IRRender::LodLevel::LOD_1,
+        42,
+    };
+    IRAsset::MemoryBinaryWriter writer;
+    writer.writeBytes(&old, sizeof(old));
+
+    const auto migrators = IRWorld::SaveMigration<C_ShapeDescriptor>::migrators();
+    ASSERT_EQ(migrators.size(), 1u);
+    ASSERT_EQ(migrators.front().first, 1u);
+    IRAsset::MemoryBinaryReader reader(writer.buffer().data(), writer.buffer().size(), "shape-v1");
+    const IRAsset::Result<C_ShapeDescriptor> restored = migrators.front().second(reader);
+
+    ASSERT_TRUE(restored.ok()) << restored.status_.message_;
+    EXPECT_EQ(restored.value_.shapeType_, old.shapeType_);
+    EXPECT_EQ(restored.value_.params_, old.params_);
+    EXPECT_EQ(restored.value_.color_.toPackedRGBA(), old.color_.toPackedRGBA());
+    EXPECT_EQ(restored.value_.flags_, old.flags_);
+    EXPECT_EQ(restored.value_.fogBodyFactor_, 255u);
+    EXPECT_EQ(restored.value_.lodMin_, old.lodMin_);
+    EXPECT_EQ(restored.value_.lodMax_, old.lodMax_);
+    EXPECT_EQ(restored.value_.canvasEntity_, old.canvasEntity_);
+    EXPECT_EQ(reader.remaining(), 0u);
+    EXPECT_EQ(IRWorld::saveVersion<C_ShapeDescriptor>(), 2u);
+}
+
 TEST(SaveSerializers, SkeletonRoundTrips) {
     C_Skeleton skeleton{};
     // A severance hole (kNullEntity) in the middle: slot order is the bone-id

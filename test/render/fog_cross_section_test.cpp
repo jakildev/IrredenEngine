@@ -99,6 +99,10 @@ const std::string kGlslStage2BodyPath =
     std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_voxel_to_trixel_stage_2_body.glsl";
 const std::string kMetalStage2BodyPath =
     std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/c_voxel_to_trixel_stage_2_body.metal";
+const std::string kGlslShapeBodyPath =
+    std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_shapes_to_trixel_body.glsl";
+const std::string kMetalShapeBodyPath =
+    std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/c_shapes_to_trixel_body.metal";
 const std::string kGlslFogPassPath =
     std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_fog_to_trixel.glsl";
 const std::string kMetalFogPassPath =
@@ -428,6 +432,21 @@ TEST(FogCrossSectionShaderParity, FogBodyCarrierTwinsAreIdenticalAcrossBackends)
         << "the stage-2 fold diverged between backends";
     EXPECT_NE(glslFold.find("reserved >> 4u) & 0xFFu"), std::string::npos)
         << "stage 2 must fold reserved bits 11:4 as the factor: " << glslFold;
+}
+
+TEST(FogCrossSectionShaderParity, ShapeRasterFoldsBodyClassAndFactorAcrossBackends) {
+    const std::string glsl = readShaderSource(kGlslShapeBodyPath);
+    const std::string metal = readShaderSource(kMetalShapeBodyPath);
+    const std::string glslFold =
+        extractSpan(glsl, "const uvec2 packedEntityId", "const uvec2 packedEntityId", ";");
+    const std::string metalFold =
+        extractSpan(metal, "const uint2 packedEntityId", "const uint2 packedEntityId", ";");
+
+    ASSERT_FALSE(glslFold.empty()) << "shape carrier fold not found in " << kGlslShapeBodyPath;
+    ASSERT_FALSE(metalFold.empty()) << "shape carrier fold not found in " << kMetalShapeBodyPath;
+    EXPECT_EQ(normalizeShaderMath(glslFold), normalizeShaderMath(metalFold));
+    EXPECT_NE(glslFold.find("encodeEntityIdFogBody"), std::string::npos);
+    EXPECT_NE(glslFold.find("(shape.flags >> 16u) & 0xFFu"), std::string::npos);
 }
 
 // Test E, part 8: the cut-face widening is gated off for a BODY voxel on

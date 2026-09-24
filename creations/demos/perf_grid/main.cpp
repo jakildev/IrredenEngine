@@ -1487,8 +1487,8 @@ void initSystems() {
     };
     for (IRSystem::SystemId id : IRPrefab::Fog::revealSystems()) {
         updateGroups.push_back({id});
-        g_fogRevealEvalId = id;
     }
+    g_fogRevealEvalId = IRSystem::findSystem(IRSystem::FOG_REVEAL_EVAL);
     updateGroups.push_back({IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>()});
     IRSystem::registerPipelineGroups(IRTime::Events::UPDATE, updateGroups);
     IRSystem::registerPipeline(

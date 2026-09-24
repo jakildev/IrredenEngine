@@ -41,7 +41,7 @@ Rationale: [`docs/design/prefab-render-surface.md`](../../../../docs/design/pref
 | System(s) | Must sit |
 |---|---|
 | `LOD_UPDATE` | UPDATE, before `PROPAGATE_TRANSFORM` |
-| `FOG_SUBJECT_EXEMPT` → `FOG_SUBJECT_ADOPT` → `FOG_REVEAL_EVAL` (`IRPrefab::Fog::revealSystems()`) | after `PROPAGATE_TRANSFORM`, before `UPDATE_VOXEL_SET_CHILDREN` |
+| `FOG_SUBJECT_EXEMPT` → voxel/shape adoption → voxel/shape eval (`IRPrefab::Fog::revealSystems()`) | after `PROPAGATE_TRANSFORM`, before `UPDATE_VOXEL_SET_CHILDREN` |
 | `UPDATE_JOINT_MATRICES` | after `PROPAGATE_TRANSFORM`, before `UPDATE_VOXEL_POSITIONS_GPU`; a creation with skeletons registers the prepass too |
 | `UPDATE_VOXEL_POSITIONS_GPU` | before `VOXEL_TO_TRIXEL_STAGE_1` |
 | `VOXEL_PICKING` | RENDER, after the camera systems, before `VOXEL_TO_TRIXEL_STAGE_1` |
@@ -80,10 +80,10 @@ perf-stats overlay region (top-right by default).
   variants swap, overlapping bands stack. Shapes only.
 - Sprites bypass the trixel pipeline ([`docs/design/sprites.md`](../../../../docs/design/sprites.md));
   `C_Sprite::screenPixelSmooth_` (no game-pixel snap) is for the avatar or a camera-locked entity only.
-- Fog subject classes: an untagged voxel set on the fog canvas is adopted as a
-  BODY (`FOG_SUBJECT_ADOPT`, one ground-anchor verdict via `evalReveal`, state in
+- Fog subject classes: untagged voxel sets and SDF shapes on the fog canvas are
+  adopted as BODY subjects (one anchor verdict via `evalReveal`, state in
   `C_FogRevealed`); `C_FogField` / `C_FogExempt` are explicit; `revealSystems()`
-  is the pipeline splice. Reserved bit 3 + factor bits 11:4 fold into id bit 28 +
+  is the pipeline splice. Each raster folds its class + factor into id bit 28 +
   27:20, and FOG_TO_TRIXEL paints a BODY pixel at that one factor. Contract:
   [reveal model](../../../../docs/design/fog-of-war-reveal-model.md).
 - GPU transforms: a voxel set opts in with `C_VoxelSetNew::gpuTransformSlot_

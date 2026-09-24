@@ -141,7 +141,8 @@ with `test/ecs/chunk_bounds_eviction_test.cpp` and
   `PROPAGATE_TRANSFORM`; fields with no renderer consumer remain unattached.
 - `C_ShapeDescriptor` renders directly on the GPU and allocates no voxels. It
   snapshots the active canvas with the nullable accessor so headless prefab
-  construction remains valid.
+  construction remains valid. Fog owns `SHAPE_FLAG_FOG_HIDDEN` independently
+  of the author-owned visibility bit and folds `fogBodyFactor_` into GPU flags.
 
 ## C_VoxelSetNew headless / staged mode
 
