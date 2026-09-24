@@ -665,7 +665,7 @@ esac
     && { PASS=$((PASS+1)); echo "  ok: trigger kept through the cooldown tick"; } \
     || { FAIL=$((FAIL+1)); echo "  FAIL: trigger consumed while the reserved pane was held: $out"; }
 case "$out" in
-    *"reserved pane is in usage-limit cooldown"*) PASS=$((PASS+1)); echo "  ok: the hold is logged" ;;
+    *"reserved pane is held"*) PASS=$((PASS+1)); echo "  ok: the hold is logged" ;;
     *) FAIL=$((FAIL+1)); echo "  FAIL: hold log line missing: $out" ;;
 esac
 # The window resets and the cooldown elapses: the next tick resumes pool-2.

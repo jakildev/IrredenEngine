@@ -17,7 +17,8 @@
 #   - a reserved Claude worker is gated on the model its sidecar resumes,
 #     not the model the current slice resolves: a Fable session holds at the
 #     Fable wall while the slice serves opus (whole --dispatch-role ticks
-#     against a stubbed tmux)
+#     against a stubbed tmux), and holds only its own pane: a free pane
+#     behind it still claims and launches the opus task
 #   - controls: with no wall latched the fable class is served as fable; an
 #     opus sidecar, or a sidecar the wrapper would not resume, launches
 
@@ -155,9 +156,11 @@ cat > "$STUB_BIN/tmux" <<'EOF'
 #!/usr/bin/env bash
 sub="$1"; shift
 case "$sub" in
-    list-panes) printf '%%1|pool|zsh\n' ;;
+    list-panes) printf '%s\n' "${STUB_PANES:-%1|pool|zsh}" ;;
     display-message)
-        if [[ "$*" == *pane_current_path* ]]; then
+        if [[ "$*" == *pane_current_path* && "$*" == *%2* ]]; then
+            printf '/fake/.claude/worktrees/pool-2\n'
+        elif [[ "$*" == *pane_current_path* ]]; then
             printf '/fake/.claude/worktrees/pool-1\n'
         elif [[ "$*" == *pane_pid* ]]; then
             printf '1\n'
@@ -200,5 +203,20 @@ clear_walls
 sidecar worker "$FLEET_MODEL_FABLE"
 out=$(tick)
 assert_contains "$out" "dispatching worker -> %1" "control: with no wall the reserved Fable session launches"
+
+echo "T7: a reserved Fable session held at the Fable wall holds only its own pane"
+export FLEET_CONCURRENCY_WORKER=2
+export STUB_PANES=$'%1|pool|zsh\n%2|pool|zsh'
+TWO_OPUS='{"tasks_open":[{"issue":"#11","model":"opus","effort":null,"owner":"free","blocked":false},{"issue":"#13","model":"opus","effort":null,"owner":"free","blocked":false}],"feedback_prs":[],"needs_plan":[]}'
+write_slice worker "$TWO_OPUS"
+wall seven_day_overage_included
+sidecar worker "$FLEET_MODEL_FABLE"
+out=$(tick)
+assert_contains "$out" "dispatching worker -> %2" "the free pane behind the held reservation dispatches"
+assert_contains "$(cat "$SEND_LOG")" "-t %2" "keys are sent to the free pane"
+assert_absent "$(cat "$SEND_LOG")" "-t %1" "no keys are sent to the reserved pane"
+[[ -f "$TRIGGER" ]] && ok "the held resume keeps the trigger" || bad "the held resume consumed the trigger"
+assert_absent "$out" "claude-quota-closed" "the hold is not reported as a closed lane"
+unset STUB_PANES
 
 summarize "fleet-dispatcher model-scoped gate tests"

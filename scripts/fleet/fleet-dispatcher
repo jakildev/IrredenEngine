@@ -2971,10 +2971,11 @@ dispatch_role() {
     # every 10 s. assign_budget_hit: the walk stopped on the per-tick claim
     # budget with candidates left — the trigger is kept instead.
     local assign_exhausted="" assign_budget_hit="" assign_rc=0
-    # reserved_held: a reserved worker pane sat out this tick in its
-    # usage-limit cooldown. Its reservation is the resume nobody else can
-    # serve (free panes fall through to the lane default and exhaust), so
-    # the trigger must outlive the tick instead of being consumed below.
+    # reserved_held: a reserved worker pane sat out this tick, in its
+    # usage-limit cooldown or behind a closed gate on the model it resumes.
+    # Its reservation is the resume nobody else can serve (free panes fall
+    # through to the lane default and exhaust), so the trigger must outlive
+    # the tick instead of being consumed below.
     local reserved_held=""
     local batch_route_checked=0 batch_claude_gate=""
     local batch_runtime="" batch_class="" batch_model="" batch_effort=""
@@ -3041,7 +3042,7 @@ dispatch_role() {
         # reservation IS its assignment); every other pane launches only
         # behind a granted claim, and when no candidate can be claimed the
         # fan-out stops here.
-        local target_arg="" pane_basename="" resume_model=""
+        local target_arg="" pane_basename="" resume_model="" claude_resume=""
         ASSIGN_RUNTIME="" ASSIGN_MODEL="" ASSIGN_EFFORT="" ASSIGN_CLASS=""
         if [[ -n "${ROLE_TARGET_BOUND[$role]+x}" && "$DISPATCH_MODE" == "live" ]]; then
             if ! pane_basename=$(pane_worktree_basename "$pane_id"); then
@@ -3082,6 +3083,7 @@ dispatch_role() {
                         ASSIGN_BLOCK_REASON="codex-unavailable"; assign_budget_hit=1; break
                     fi
                 elif (( resume_rc == 2 )); then
+                    claude_resume=1
                     resume_model=$(reserved_claude_model "$sidecar" "$role")
                 else
                     ASSIGN_BLOCK_REASON="resume-route-failed"; assign_budget_hit=1; continue
@@ -3126,9 +3128,17 @@ dispatch_role() {
                 # Claude-only: the fleet-wide gate holds the account windows.
                 claude_gate_now=$(usage_gate_status scoped "$launch_model")
             fi
-            [[ "$claude_gate_now" == open* ]] || {
-                ASSIGN_BLOCK_REASON="claude-quota-closed"; assign_budget_hit=1; break;
-            }
+            # A closed gate holds the whole lane only for a pane launching on
+            # the lane's model: a reserved resume's model is its own, so a
+            # wall on it holds that pane and the free panes behind it still
+            # read the gate for theirs.
+            if [[ "$claude_gate_now" != open* ]]; then
+                if [[ -n "$claude_resume" ]]; then
+                    reserved_held=1
+                    continue
+                fi
+                ASSIGN_BLOCK_REASON="claude-quota-closed"; assign_budget_hit=1; break
+            fi
         fi
         local cmd
         cmd=$(build_dispatch_command "$role" "$pane_key" "$DISPATCH_MODEL" "$DISPATCH_EFFORT" "$target_arg")
@@ -3208,7 +3218,7 @@ dispatch_role() {
     clear_gate_block "$role"
     if [[ -n "$reserved_held" ]]; then
         if [[ -z "${CAP_DEFER_LOGGED[$role-reserved-held]+x}" ]]; then
-            log "$role: dispatched $dispatched; a reserved pane is in usage-limit cooldown — trigger kept for its resume"
+            log "$role: dispatched $dispatched; a reserved pane is held (usage-limit cooldown or its resume model's gate closed) — trigger kept for its resume"
             CAP_DEFER_LOGGED["$role-reserved-held"]=1
         fi
         return

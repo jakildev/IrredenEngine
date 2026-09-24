@@ -376,7 +376,7 @@ implementation and thresholds: `scripts/fleet/fleet-dispatcher`
   ages out (`FLEET_DISPATCHER_USAGE_STALE_SECONDS`, 3600; `fleet-up --reset-usage`
   wipes them after an account switch). A type metering one model family (Fable's weekly
   `seven_day_overage_included`, `seven_day_<family>`; `FLEET_DISPATCHER_USAGE_SCOPE_<TYPE>`)
-  defers only launches on that family (a reserved resume is gated on its own session's model); a walled fable model serves as a saturated fable cap.
+  defers only launches on that family (a reserved resume is gated on its own session's model and, walled, holds only its pane); a walled fable model serves as a saturated fable cap.
 - **GitHub API quota** — `github-{core,graphql,search}.json`: graphql from its
   own `rateLimit` self-report (a refused sample latches `rejected`), core from the `X-RateLimit-*` headers on the scout's own conditional REST reads (a follower sends none, so writes no core file), search
   from `/rate_limit`; core and graphql gate at 90 % (`FLEET_DISPATCHER_USAGE_GATE_GITHUB_{CORE,GRAPHQL}`), search never.
