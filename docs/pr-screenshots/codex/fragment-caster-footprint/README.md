@@ -51,3 +51,9 @@ floating-point behavior. Mutations reverse face polarity, omit edge rotation,
 shrink edges, lose translation, or duplicate index emission and must fail.
 Existing executed index controls cover tile/global overflow and off-map faces;
 mixed-caster tests cover preserving the independent sampled layer.
+
+
+After rebasing onto updated parent `6a1049d82237e43352133d111b5226f3add5506a`,
+the eight-angle diagnostic (2357–2364) and normal source-floor pair (2365–2366)
+were recaptured. All ten are RGB-identical to their included pre-rebase controls
+(2337–2344 and 2347–2348). The feature patch is byte-identical across the rebase.
