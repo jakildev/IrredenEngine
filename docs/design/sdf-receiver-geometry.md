@@ -115,15 +115,15 @@ opaque ownership guarantee. Its read/modify/write blending is a separate
 ordering problem. Native controls and validation live in the
 [ownership evidence](../pr-screenshots/codex/sdf-winner-ownership/README.md).
 
-## Fragment integration still pending
+## Beauty fragment integration still pending
 
 The continuous interval helper does not by itself provide a fragment receiver.
 A finite descriptor-backed query is required at box corners; extrapolating one
 sample's infinite plane can cross onto the wrong face. Retained per-canvas
 descriptors must reproduce the producer's rounded projected origin, density and
 cell expansion. Canvas-owned descriptor storage now survives other canvas uploads;
-elected sample references survive too, but per-texel final-winner validity and fragment consumer
-bindings remain to be implemented. The compute-shadow consumer below uses the
+elected sample references survive too, but per-texel final-winner validity remains pending. The diagnostic fragment consumer
+below uses the same conservative whole-canvas eligibility as compute. The compute-shadow consumer below uses the
 conservative whole-canvas validity contract.
 Voxelized/lattice SDF receivers retain cell-union geometry rather than one smooth
 analytical box.
@@ -139,7 +139,7 @@ unsupported winners and later same-depth overwrites. A failed finite query must
 not silently discard the producer's splatted coverage or change depth. The
 initial integration should preserve that legacy coverage while accepting exact
 receiving only where the finite intersection succeeds. The lifecycle is guarded conservatively by whole-canvas invalidation below;
-finite per-fragment queries and coverage remain unimplemented. The shared
+finite per-fragment queries are diagnostic-only; beauty integration remains pending. The shared
 helper and scalar checks do not accept floor edges.
 
 ## Canvas-owned descriptor uploads
@@ -168,8 +168,8 @@ leaked growth allocations. It does not substitute for native GPU validation.
 
 These descriptors are producer inputs, not winning surface metadata. Canvas
 clears, later same-depth overpainting, unsupported shapes and X-ray blending
-still need explicit validity handling when winner references are added. No
-fragment consumes this storage yet, and no visual shadow-edge fix is claimed.
+still need explicit validity handling when winner references are added. The diagnostic fragment consumer below reads this storage; no final visual
+shadow-edge fix is claimed.
 
 
 ## Retained elected sample references
@@ -208,8 +208,8 @@ The retained reference is valid for the SDF submission only. Later canvas clears
 voxel/text/widget/particle writes, same-depth overwrites and X-ray color mixing
 must be accounted for before a shadow or lighting consumer uses it. An entity-ID
 or quantized-depth equality test alone is insufficient to certify a same-entity,
-same-depth overwrite. The compute-shadow consumer below performs a finite box query. Fragment queries
-and linear lighting payload remain unimplemented; retention alone does not improve shadow edges.
+same-depth overwrite. The compute-shadow consumer below performs a finite box query. Diagnostic fragment queries are implemented below; linear lighting payload
+remains pending and retention alone does not improve shadow edges.
 
 
 ## Conservative final-write validity
@@ -243,7 +243,8 @@ still disables the whole canvas’s exact-SDF eligibility. Per-texel invalidatio
 is pending. Custom renderers using raw texture handles must invalidate before
 replacing geometry; the public raw resource API cannot enforce this automatically.
 The compute-shadow pass consumes this state for eligible main-canvas boxes.
-Presentation does not consume it, and linear lighting payload remains unimplemented.
+Diagnostic presentation consumes it; beauty presentation and linear lighting
+payload remain unimplemented.
 
 The resource-owner test executes validity transitions and mutations that accept
 X-ray publication or skip invalidation. Writer coverage is additionally pinned
@@ -374,3 +375,35 @@ partial outputs, and mutations that snap the query, lose the sentinel, choose
 the wrong tile or overwrite fallback. Native output remains identical; this
 extraction introduces no storage or passes and does not yet move lighting into
 presentation. [Evidence](../pr-screenshots/codex/selected-surface-query/README.md).
+
+
+## Fragment receiver diagnostic
+
+`SURFACE_SHADOW` (`--debug-overlay surface_shadow`) evaluates eligible main-canvas
+analytical boxes at the continuous presentation coordinate. Ownership comes from
+the displayed, clamped sample texel; it is not re-elected from the query coordinate.
+The shared selected-receiver helper performs a finite intersection and supplies
+position, signed normal and continuous view depth to `worldSunShadowFactor`.
+This deliberately retains the compute pass's biased sampler, isolating receiver
+placement rather than changing both receiver and caster sampling together.
+
+A successful opaque query writes only diagnostic RGB. Alpha, stored depth,
+identity, hover and coverage remain unchanged. Misses and unsupported winners
+retain the existing SHADOW output. Disabled shadows skip sampling. Whole-canvas
+validity, sun-system presence and main-canvas eligibility guard the specialized
+gather; ordinary variants preprocess out its resources. Compute and gather share
+binding/restoration helpers for the retained buffers. No dense payload, additional
+draw, dispatch or readback is introduced; eligible draws upload the existing
+128-byte projection record. GPU cost is not yet measured.
+
+[Eight-angle controls](../pr-screenshots/codex/fragment-receiver-probe/README.md)
+show changed edge pixels but residual repeating jagged outlines. Receiver precision
+alone is insufficient in this fixture. Compare exact finite caster sampling next,
+including view-aligned caster normal rotation, before adding beauty payload storage.
+The diagnostic does not establish a final geometry oracle for those outlines.
+
+Beauty integration must also preserve fog, which currently modifies lit RGBA8
+after lighting. Saving linear inputs and later replacing that color would bypass
+fog unless composition and validity are explicitly handled. Two full-resolution
+vec4 payloads would cost 32 bytes per retained trixel (112.5 MiB at 2560×1440);
+profile and consider compact storage before adopting that design.
