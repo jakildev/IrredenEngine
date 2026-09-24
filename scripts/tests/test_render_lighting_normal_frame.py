@@ -62,7 +62,7 @@ class LightingNormalFrameTest(unittest.TestCase):
         )
         for suffix, directory in (("glsl", ""), ("metal", "metal/")):
             root = ROOT / "engine/render/src/shaders" / directory
-            source = (root / f"c_lighting_to_trixel.{suffix}").read_text()
+            source = (root / f"c_lighting_to_trixel_body.{suffix}").read_text()
             source = source.replace("frameData.", "").replace("voxelFrameData.", "")
             begin = source.index("if (normalOptions.x")
             end = source.index("\n    }", begin) + len("\n    }")

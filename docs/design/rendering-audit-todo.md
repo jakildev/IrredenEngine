@@ -458,3 +458,16 @@ runs and existing thresholds; add an SDF-active workload to measure election cos
   actual presentation fragments; analytical Lambert/sky normals; curved/rotated
   receivers; per-texel validity; native OpenGL smoke; GPU profiling of the added
   receiver reads. One-value-per-trixel shadow edges remain visibly jagged.
+
+
+### Analytical box normal continuity
+
+- Implemented exact finite-box normal forwarding from shadow compute to main-canvas
+  Lambert, sky and normal debug through unused RGBA8 alpha. Specialized ordinary
+  kernels exclude the carrier path. Shadows-disabled normals remain identical.
+- Native captures and executed shader/mutation controls are recorded in
+  [box lighting normals](../pr-screenshots/codex/sdf-box-lighting-normal/README.md).
+- Remaining: preserve linear material/ambient/direct lighting inputs for finite
+  per-fragment receiving; use actual fragment coordinates without extrapolating
+  finite misses; curved/rotated geometry and native GL smoke. Current shadow
+  outlines are still not accepted as the final sharp-edge result.

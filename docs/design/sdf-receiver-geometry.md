@@ -265,8 +265,7 @@ lattice rasterization, and residual-only face deformation. Private/model-space
 canvases and per-axis voxel canvases keep their existing reconstruction. A miss
 retains the original sampled receiver: finite geometry never discards existing
 splat coverage or changes stored color, depth or entity identity. Invalidated
-canvases also retain the original route. Actual fragment coordinates, true-normal
-Lambert/sky lighting, curved and rotated analytical receivers remain pending.
+canvases also retain the original route. Actual fragment coordinates and curved/rotated analytical receivers remain pending.
 
 The CPU selects a compile-time specialized kernel for eligible canvases. The
 ordinary kernel and all per-axis dispatches exclude the receiver query and its
@@ -297,3 +296,24 @@ Native evidence and exact shadows-disabled controls are in
 The one-value-per-trixel output still cannot express a shadow boundary within
 one displayed triangle. The captured outlines remain jagged; this is not acceptance
 of the final sharp-shadow objective and no blur was added.
+
+## Exact box normals in lighting
+
+The shadow texture remains RGBA8: R holds visibility, A holds `(FaceId + 1) / 255`
+for the six signed world-axis normals, and A=0 selects the legacy receiver.
+Only a successful finite box query writes a face code. Empty pixels, unsupported
+shapes and finite misses write zero. The specialized producer computes this code
+even with shadows disabled, keeping Lambert/sky lighting independent of the shadow toggle.
+This exact encoding is restricted to axis-aligned analytical boxes; general curved
+or rotated normals need a different representation.
+
+The main canvas lighting variant decodes the retained face before normal debug,
+Lambert and sky terms. CPU validity selects the variant each canvas tick, and the
+ordinary program is restored before per-axis dispatch. Both variants share a body;
+ordinary kernels exclude the carrier read and helper at preprocessing time.
+No additional texture, dispatch or allocation is introduced. Position-dependent
+local lights still use the legacy reconstructed position.
+
+The receiver tests execute production producer/consumer assignments and UNORM8
+roundtrips, with dropped carrier, consumer and sentinel mutations. Native evidence:
+[box lighting normals](../pr-screenshots/codex/sdf-box-lighting-normal/README.md).

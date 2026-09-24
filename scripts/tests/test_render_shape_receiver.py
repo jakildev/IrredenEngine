@@ -117,6 +117,58 @@ int main(){
 
 @unittest.skipUnless(COMPILER, "receiver controls require a C++ compiler")
 class ShapeReceiverTest(unittest.TestCase):
+    def test_receiver_face_unorm_roundtrip(self):
+        harness = r"""
+#include <cmath>
+struct vec3 {
+ float x,y,z;
+ float operator[](int i)const{return i==0?x:(i==1?y:z);}
+};
+vec3 faceOutwardNormal6(int face){
+ vec3 n{0,0,0};float s=(face&1)?1.f:-1.f;
+ if(face/2==0)n.x=s;else if(face/2==1)n.y=s;else n.z=s;
+ return n;
+}
+bool same(vec3 a,vec3 b){return a.x==b.x&&a.y==b.y&&a.z==b.z;}
+"""
+        main = r"""
+int main(){
+ vec3 fallback{0.3f,-0.4f,0.5f};
+ if(!same(applyReceiverFace(0.f,fallback),fallback))return 1;
+ for(int face=0;face<6;++face){
+  vec3 n=faceOutwardNormal6(face);
+  int byte=int(std::round(encodeReceiverFace(n)*255.f));
+  if(byte!=face+1)return 2;
+  if(!same(applyReceiverFace(float(byte)/255.f,fallback),n))return 3;
+ }
+ return 0;
+}
+"""
+        for suffix, folder in (("glsl", ""), ("metal", "metal/")):
+            shader = ROOT / "engine/render/src/shaders" / folder / f"ir_receiver_face.{suffix}"
+            source = shader.read_text().replace("float3", "vec3")
+            lighting = (shader.parent / f"c_lighting_to_trixel_body.{suffix}").read_text()
+            override = re.search(r"    worldNormal = receiverFaceNormal\([^;]+;", lighting).group()
+            texture_read = ("imageLoad(canvasSunShadow, pixel).a" if suffix == "glsl"
+                            else "canvasSunShadow.read(uint2(pixel)).a")
+            override = override.replace(texture_read, "encoded")
+            consumer = ("vec3 applyReceiverFace(float encoded,vec3 worldNormal){\n"
+                        + override + "\nreturn worldNormal;}\n")
+            for mutation in ("none", "lost_sentinel", "lost_consumer"):
+                candidate = source + consumer
+                if mutation == "lost_sentinel":
+                    candidate = candidate.replace("float(face + 1)", "float(face)")
+                if mutation == "lost_consumer":
+                    candidate = candidate.replace(override, "")
+                with tempfile.TemporaryDirectory() as tmp:
+                    cpp, exe = Path(tmp) / "face.cpp", Path(tmp) / "face"
+                    cpp.write_text(harness + candidate + main)
+                    build = subprocess.run([COMPILER, "-std=c++17", str(cpp), "-o", str(exe)],
+                                           capture_output=True, text=True)
+                    self.assertEqual(build.returncode, 0, build.stderr)
+                    run = subprocess.run([str(exe)], capture_output=True, text=True)
+                    self.assertEqual(run.returncode == 0, mutation == "none")
+
     def test_plain_kernel_excludes_receiver_code(self):
         def expand(path):
             source = path.read_text()
@@ -126,22 +178,28 @@ class ShapeReceiverTest(unittest.TestCase):
 
         for suffix, folder in (("glsl", ""), ("metal", "metal/")):
             shaders = ROOT / "engine/render/src/shaders" / folder
-            for variant, enabled in (("", False), ("_shapes", True)):
-                source = expand(shaders / f"c_compute_sun_shadow{variant}.{suffix}")
-                for mutation in (False, True):
-                    candidate = source
-                    if mutation:
-                        candidate = source.replace(f"#define IR_SHAPE_RECEIVER {int(enabled)}",
-                                                   f"#define IR_SHAPE_RECEIVER {int(not enabled)}")
-                        self.assertNotEqual(candidate, source)
-                    result = subprocess.run([COMPILER, "-E", "-P", "-x", "c++", "-"],
-                                            input=candidate, text=True, capture_output=True)
-                    self.assertEqual(result.returncode, 0, result.stderr)
-                    contains_receiver = enabled != mutation
-                    for token in ("shapeBoxReceiver", "receiverShapes", "receiverOwners",
-                                  "receiverTiles", "receiverFrame"):
-                        self.assertEqual(token in result.stdout, contains_receiver,
-                                         (suffix, variant, mutation, token))
+            kernels = (
+                ("c_compute_sun_shadow", ("shapeBoxReceiver", "receiverShapes",
+                                          "receiverOwners", "receiverTiles", "receiverFrame")),
+                ("c_lighting_to_trixel", ("receiverFaceNormal",)),
+            )
+            for kernel, tokens in kernels:
+                for variant, enabled in (("", False), ("_shapes", True)):
+                    source = expand(shaders / f"{kernel}{variant}.{suffix}")
+                    for mutation in (False, True):
+                        candidate = source
+                        if mutation:
+                            candidate = source.replace(
+                                f"#define IR_SHAPE_RECEIVER {int(enabled)}",
+                                f"#define IR_SHAPE_RECEIVER {int(not enabled)}")
+                            self.assertNotEqual(candidate, source)
+                        result = subprocess.run([COMPILER, "-E", "-P", "-x", "c++", "-"],
+                                                input=candidate, text=True, capture_output=True)
+                        self.assertEqual(result.returncode, 0, result.stderr)
+                        contains_receiver = enabled != mutation
+                        for token in tokens:
+                            self.assertEqual(token in result.stdout, contains_receiver,
+                                             (suffix, variant, mutation, token))
 
     def test_consumer_selects_elected_descriptor(self):
         for suffix, folder in (("glsl", ""), ("metal", "metal/")):
@@ -171,6 +229,8 @@ Checked<uint> receiverOwners{{0xffffffffu,0xffffffffu,0xffffffffu,
                               0xffffffffu,0xffffffffu,0xffffffffu}};
 Checked<Tile> receiverTiles{{{0},{2}}}; Checked<int> receiverShapes{{11,22,33}};
 vec3 pos3D{7},normal{8}; bool finiteHit=true;
+float receiverFace=0;
+float encodeReceiverFace(vec3 n){return float(n.value);}
 bool shapeBoxReceiver(int shape,Frame,vec2,vec3& p,vec3& n){
  p.value=shape;n.value=-shape;return finiteHit;
 }
@@ -180,14 +240,14 @@ int main(){
  for(uint local=0;local<64;++local)for(uint face=0;face<3;++face)
  for(uint half=0;half<2;++half){
   receiverOwners.data[4]=((1u*64u+local)*3u+face)*2u+half;
-  run();if(pos3D.value!=33||normal.value!=-33)return 1;
+  run();if(pos3D.value!=33||normal.value!=-33||receiverFace!=-33)return 1;
  }
  for(int kind=0;kind<4;++kind){
   perAxis=kind==0;receiverFrame.shapeCount=kind==1?0:3;
   receiverOwners.data[4]=kind==2?0xffffffffu:384u;finiteHit=kind!=3;
-  pos3D.value=7;normal.value=8;
+  pos3D.value=7;normal.value=8;receiverFace=0;
   receiverOwners.reads=receiverTiles.reads=receiverShapes.reads=0;run();
-  if(pos3D.value!=7||normal.value!=8)return 2;
+  if(pos3D.value!=7||normal.value!=8||receiverFace!=0)return 2;
   if(kind<2&&receiverOwners.reads!=0)return 3;
   if(kind<3&&(receiverTiles.reads!=0||receiverShapes.reads!=0))return 4;
  }
@@ -207,6 +267,8 @@ int main(){
                 "production": block,
                 "wrong_tile": block.replace("key / kShapeSamplesPerTile", "0u"),
                 "lost_sentinel": block.replace("key != 0xffffffffu", "true"),
+                "lost_normal_carrier": block.replace(
+                    "receiverFace = encodeReceiverFace(exactNormal);", ""),
                 "lost_axis_gate": block.replace("!perAxis && ", ""),
                 "lost_finite_fallback": block.replace(
                     "if (shapeBoxReceiver", "if (true || shapeBoxReceiver"),

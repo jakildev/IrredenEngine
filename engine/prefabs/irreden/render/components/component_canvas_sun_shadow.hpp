@@ -5,7 +5,9 @@
 // and consumed by LIGHTING_TO_TRIXEL. Opt-in: attach alongside
 // C_TriangleCanvasTextures + C_CanvasAOTexture to enable sun shadows for a
 // canvas. Format is RGBA8 rather than R8 so Metal's rgba8 shader access
-// path can share a single binding-layout with the AO texture.
+// path can share a single binding-layout with the AO texture. R is visibility;
+// A is zero for legacy receivers or (FaceId + 1) / 255 for exact box normals,
+// including frames with shadows disabled. G/B are reserved.
 
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_profile.hpp>

@@ -84,6 +84,7 @@ static_assert(sizeof(FrameDataLightingToTrixel) == 80, "Lighting frame must matc
 // return in the tick.
 template <> struct System<LIGHTING_TO_TRIXEL> {
     ShaderProgram *program_ = nullptr;
+    ShaderProgram *shapeProgram_ = nullptr;
     // View-visibility overflow-face relight kernel: a bounded compute
     // dispatch at the tail of per-axis lighting that relights overflow entries
     // at their world position and rewrites their stored colour in
@@ -166,6 +167,10 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
 
         // Only the main canvas moves its voxel geometry to per-axis storage during yaw.
         // Its remaining raster slots describe view-aligned SDF/text faces.
+        const bool useShapeReceiver = entity == perAxisCanvasEntity_ &&
+                                      mainCanvasSunShadow_ != nullptr &&
+                                      canvasTextures.shapeGeometry_.samplesValid();
+        (useShapeReceiver ? shapeProgram_ : program_)->use();
         frameData_.normalOptions_.x = entity == perAxisCanvasEntity_ ? 1 : 0;
         frameDataBuf_->subData(0, sizeof(FrameDataLightingToTrixel), &frameData_);
 
@@ -341,6 +346,7 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         // sun-shadow, so `shadow` is non-null on this path.
         if (entity == perAxisCanvasEntity_ && perAxisCanvases_ != nullptr &&
             perAxisCanvases_->isAllocated() && shadow != nullptr) {
+            program_->use();
             dispatchPerAxisLighting(*perAxisCanvases_, canvasTextures, ao, *shadow);
         }
     }
@@ -388,8 +394,7 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             // relight the entries appended albedo-only by the overflow lane,
             // at their recovered world pos, while the sun-depth map (slot 28) + light
             // volume are still bound from the cell pass above. Switches the compute
-            // program, so restore the lighting program for any remaining per-canvas
-            // ticks this frame (beginTick's program_->use() runs once per frame).
+            // program; the caller leaves the ordinary lighting kernel active.
             dispatchOverflowLighting(axes);
             program_->use();
         }
@@ -469,7 +474,6 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
     }
 
     void beginTick() {
-        program_->use();
         // Resolve the baked sun-depth map once (created by BAKE_SUN_SHADOW_MAP,
         // registered ahead of LIGHTING_TO_TRIXEL). Lazy single-init: the resolve
         // is deferred to beginTick so BAKE_SUN_SHADOW_MAP has already registered
@@ -554,6 +558,10 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             "LightingToTrixelProgram",
             std::vector{ShaderStage{IRRender::kFileCompLightingToTrixel, ShaderType::COMPUTE}}
         );
+        IRRender::createNamedResource<ShaderProgram>(
+            "LightingToTrixelShapesProgram",
+            std::vector{ShaderStage{IRRender::kFileCompLightingToTrixelShapes, ShaderType::COMPUTE}}
+        );
         // overflow-face relight kernel, dispatched at the tail of the
         // per-axis lighting (see dispatchOverflowLighting).
         IRRender::createNamedResource<ShaderProgram>(
@@ -634,6 +642,8 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             C_TrixelCanvasRenderBehavior,
             C_CanvasAOTexture>("LightingToTrixel");
         auto *p = getSystemParams<System<LIGHTING_TO_TRIXEL>>(systemId);
+        p->shapeProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("LightingToTrixelShapesProgram");
         p->program_ = IRRender::getNamedResource<ShaderProgram>("LightingToTrixelProgram");
         p->overflowLightingProgram_ =
             IRRender::getNamedResource<ShaderProgram>("LightOverflowFacesProgram");
