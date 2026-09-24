@@ -730,17 +730,16 @@ vec3 pivotVerifyAnalyticFocus() {
     return kPivotVerifyDefaultAnchor;
 }
 
-// What the crosshair ray of one frame meets first: a carved probe cell, and the
-// two points on the ray a gesture acquiring from that frame is graded against.
+// What the crosshair ray of one frame meets first: a carved probe cell, and
+// where the ray enters it.
 struct PivotCrosshairHit {
+    // A per-axis source's target is the crosshair-ray point level with this
+    // center in yawed depth: that store keys a fragment by its face origin,
+    // which sits about the cell center, not on the surface.
     vec3 cellCenter_ = vec3(0.0f);
     // Where the ray enters the cell's unit cube — the visible surface. A
     // cardinal source's target.
     vec3 entry_ = vec3(0.0f);
-    // The ray point level with the cell center in yawed depth. A per-axis
-    // source's target: that store keys a fragment by its face origin, which
-    // sits about the cell center, not on the surface.
-    vec3 levelWithCenter_ = vec3(0.0f);
 };
 
 // World length of one yawed iso-depth unit along a crosshair ray:
@@ -789,41 +788,63 @@ std::optional<PivotCrosshairHit> pivotVerifyRayHit(float yaw, vec2 iso) {
                     continue;
                 }
                 nearestEntry = enter;
-                const float centerDepth =
-                    IRMath::dot(cellCenter - rayOrigin, rayStep) / IRMath::dot(rayStep, rayStep);
-                hit = PivotCrosshairHit{
-                    cellCenter,
-                    rayOrigin + rayStep * enter,
-                    rayOrigin + rayStep * centerDepth
-                };
+                hit = PivotCrosshairHit{cellCenter, rayOrigin + rayStep * enter};
             }
         }
     }
     return hit;
 }
 
-// True when a ray within one game pixel of the crosshair — 1/zoom iso units,
-// at the shot's @p zoom — meets the probe where the crosshair ray does not, or
-// misses it where the crosshair ray hits. A line tested against unit cubes has
-// no pixel footprint, so it cannot decide whether a pixel that straddles a
-// cell boundary shows the probe; such a gesture's hold/acquire classification
-// is reported, not graded.
-bool pivotVerifyRayGrazes(float yaw, vec2 iso, float zoom) {
-    const bool hits = pivotVerifyRayHit(yaw, iso).has_value();
-    const float footprint = 1.0f / zoom;
+// What the rays through one pixel's footprint meet: the crosshair ray and its
+// eight neighbours one game pixel away — 1/zoom iso units at the shot's zoom. A
+// line tested against unit cubes has no pixel footprint, so the pixel the
+// readback samples can show any cell one of these rays enters first.
+struct PivotCrosshairFootprint {
+    std::optional<PivotCrosshairHit> center_;
+    // Distinct centers of the first cell each footprint ray enters.
+    std::vector<vec3> cellCenters_;
+    // Some footprint ray meets the probe where the crosshair ray does not, or
+    // misses it where the crosshair ray hits: whether the pixel shows the probe
+    // at all is undecidable, so a gesture's hold/acquire classification from
+    // that frame is reported, not graded.
+    bool grazes_ = false;
+};
+
+PivotCrosshairFootprint pivotVerifyCrosshairFootprint(float yaw, vec2 iso, float zoom) {
+    PivotCrosshairFootprint footprint;
+    footprint.center_ = pivotVerifyRayHit(yaw, iso);
+    const float step = 1.0f / zoom;
     for (int dy = -1; dy <= 1; ++dy) {
         for (int dx = -1; dx <= 1; ++dx) {
-            if (dx == 0 && dy == 0) {
+            const std::optional<PivotCrosshairHit> hit =
+                (dx == 0 && dy == 0)
+                    ? footprint.center_
+                    : pivotVerifyRayHit(
+                          yaw,
+                          iso + vec2(static_cast<float>(dx), static_cast<float>(dy)) * step
+                      );
+            if (hit.has_value() != footprint.center_.has_value()) {
+                footprint.grazes_ = true;
+            }
+            if (!hit.has_value()) {
                 continue;
             }
-            const vec2 nudged =
-                iso + vec2(static_cast<float>(dx), static_cast<float>(dy)) * footprint;
-            if (pivotVerifyRayHit(yaw, nudged).has_value() != hits) {
-                return true;
+            std::vector<vec3> &cells = footprint.cellCenters_;
+            if (std::find(cells.begin(), cells.end(), hit->cellCenter_) == cells.end()) {
+                cells.push_back(hit->cellCenter_);
             }
         }
     }
-    return false;
+    return footprint;
+}
+
+// The point on the ray through canvas iso @p iso at @p yaw level with @p point in
+// yawed depth.
+vec3 pivotVerifyRayPointLevelWith(float yaw, vec2 iso, vec3 point) {
+    const vec3 rayOrigin = IRMath::isoPixelToPos3DYawed(iso, 0.0f, yaw);
+    const vec3 rayStep = IRMath::isoPixelToPos3DYawed(iso, 1.0f, yaw) - rayOrigin;
+    return rayOrigin +
+           rayStep * (IRMath::dot(point - rayOrigin, rayStep) / IRMath::dot(rayStep, rayStep));
 }
 
 // The view (camera pan + zoom) the sweep's FIRST capture frame rendered, latched
@@ -845,13 +866,13 @@ struct PivotGestureOracle {
     vec2 cameraIso_ = vec2(0.0f);
     vec3 derived_ = vec3(0.0f);
     // What a gesture acquiring from the previous capture's frame is graded
-    // against: that frame's crosshair hit, whether it was a cardinal frame
-    // (entry target) or a per-axis one (level-with-center target), the bound
-    // for that class, and whether its hold/acquire classification is decidable.
-    std::optional<PivotCrosshairHit> sourceHit_;
+    // against: that frame's crosshair iso and pixel footprint, whether it was a
+    // cardinal frame (entry target) or a per-axis one (level-with-center
+    // target), and the bound for that class.
+    vec2 sourceIso_ = vec2(0.0f);
+    PivotCrosshairFootprint sourceFootprint_;
     bool sourceCardinal_ = false;
     float sourceTolerance_ = 0.0f;
-    bool sourceGrazes_ = false;
     // Frames since the previous capture on which the default focus moved while
     // the camera pan and zoom held — i.e. the latch itself changed.
     int latchMoves_ = 0;
@@ -960,14 +981,17 @@ void logPivotFocusAssert(int shotIndex) {
     // shot's settled frame. The expected focus is:
     //   - gesture over a surface from a cardinal frame — where that frame's
     //     crosshair ray enters the surface, within one micro-face;
-    //   - gesture over a surface from a per-axis frame — the ray point level
-    //     with the first carved cell's center, within the derived bound;
+    //   - gesture over a surface from a per-axis frame — the crosshair-ray point
+    //     level with the center of a cell some ray of the pixel's footprint
+    //     enters first, within the derived bound of at least one such cell;
     //   - gesture over background, or no gesture — the previous focus carried by
     //     the pan, exactly (the latch holds);
     //   - shot 0 — the never-acquired depth-0 point under the viewport center.
-    // And the latch may move at most once in a gesture shot, never otherwise. A
-    // gesture whose source ray grazes the probe is reported, not graded
-    // (result=SKIP).
+    // And the latch may move at most once in a gesture shot, never otherwise.
+    // Reported, not graded (result=SKIP): a gesture whose source footprint
+    // grazes the probe (skip=grazing), and a per-axis gesture on the SDF probe
+    // (skip=sdf-per-axis) — the per-axis bound is derived from the voxel
+    // store's face origins, which an SDF fragment does not have.
     PivotGestureOracle &oracle = g_pivotGestureOracle;
     const vec3 derived = IRRender::getDefaultRotationPivotFocus();
     // The latch's own gesture test: a yaw change above its settle delta.
@@ -978,27 +1002,61 @@ void logPivotFocusAssert(int shotIndex) {
     vec3 targetCell = target;
     float tolerance = kPivotFocusHoldToleranceWorld;
     const char *source = "none";
+    const char *skip = nullptr;
+    int footprintCells = 0;
+    bool neighbourCell = false;
     const bool targetKnown = oracle.hasPrevious_ || !gesture;
-    const bool graded = !(gesture && oracle.hasPrevious_ && oracle.sourceGrazes_);
+    const PivotCrosshairFootprint &footprint = oracle.sourceFootprint_;
     if (oracle.hasPrevious_) {
-        if (gesture && oracle.sourceHit_.has_value()) {
-            const PivotCrosshairHit &hit = *oracle.sourceHit_;
-            target = oracle.sourceCardinal_ ? hit.entry_ : hit.levelWithCenter_;
-            targetCell = hit.cellCenter_;
+        if (gesture && footprint.center_.has_value()) {
+            const PivotCrosshairHit &hit = *footprint.center_;
             tolerance = oracle.sourceTolerance_;
             source = oracle.sourceCardinal_ ? "cardinal" : "per-axis";
+            if (oracle.sourceCardinal_) {
+                target = hit.entry_;
+                targetCell = hit.cellCenter_;
+            } else {
+                // The crosshair ray's own cell, else the nearest of the
+                // footprint's cells — each on the crosshair ray the latch
+                // recovers along — so neighbour_cell=1 marks a reading that
+                // passes only on a cell a neighbouring ray enters.
+                footprintCells = static_cast<int>(footprint.cellCenters_.size());
+                targetCell = hit.cellCenter_;
+                target = pivotVerifyRayPointLevelWith(oracle.yaw_, oracle.sourceIso_, targetCell);
+                if (IRMath::length(derived - target) > tolerance) {
+                    float nearest = IRMath::length(derived - target);
+                    for (const vec3 &cell : footprint.cellCenters_) {
+                        const vec3 level =
+                            pivotVerifyRayPointLevelWith(oracle.yaw_, oracle.sourceIso_, cell);
+                        const float delta = IRMath::length(derived - level);
+                        if (delta < nearest) {
+                            nearest = delta;
+                            target = level;
+                            targetCell = cell;
+                        }
+                    }
+                }
+                neighbourCell = targetCell != hit.cellCenter_;
+                if (g_pivotVerifySdf) {
+                    skip = "sdf-per-axis";
+                }
+            }
         } else {
             target = oracle.derived_ + IRMath::isoPixelToPos3D(oracle.cameraIso_ - cameraIso, 0.0f);
             targetCell = target;
         }
+        if (gesture && footprint.grazes_) {
+            skip = "grazing";
+        }
     }
+    const bool graded = skip == nullptr;
     const float worldDelta = IRMath::length(derived - target);
     const bool movesOk = oracle.latchMoves_ <= (gesture ? 1 : 0);
     const bool pass = targetKnown && worldDelta <= tolerance && movesOk;
     IR_LOG_INFO(
         "[pivot-focus-assert] block={} shot={} yaw={} gesture={} latch_moves={} "
-        "derived=({},{},{}) target=({},{},{}) source={} cell=({},{},{}) grazing={} "
-        "world_delta={} tolerance={} view_held={} result={}",
+        "derived=({},{},{}) target=({},{},{}) source={} cell=({},{},{}) footprint_cells={} "
+        "neighbour_cell={} skip={} world_delta={} tolerance={} view_held={} result={}",
         g_pivotVerifyBlock,
         shotIndex,
         yaw,
@@ -1014,7 +1072,9 @@ void logPivotFocusAssert(int shotIndex) {
         targetCell.x,
         targetCell.y,
         targetCell.z,
-        graded ? 0 : 1,
+        footprintCells,
+        neighbourCell ? 1 : 0,
+        graded ? "none" : skip,
         worldDelta,
         tolerance,
         viewHeld ? 1 : 0,
@@ -1029,12 +1089,12 @@ void logPivotFocusAssert(int shotIndex) {
     oracle.yaw_ = yaw;
     oracle.cameraIso_ = cameraIso;
     oracle.derived_ = derived;
-    oracle.sourceHit_ = pivotVerifyRayHit(yaw, crosshairIso);
+    oracle.sourceIso_ = crosshairIso;
+    oracle.sourceFootprint_ = pivotVerifyCrosshairFootprint(yaw, crosshairIso, zoom.x);
     oracle.sourceCardinal_ = IRPrefab::Camera::computeYawSplit(yaw).second == 0.0f;
     oracle.sourceTolerance_ =
         oracle.sourceCardinal_ ? pivotVerifyCardinalTolerance(effectiveSubdivisions, rayStepWorld)
                                : pivotVerifyPerAxisBound(yaw, effectiveSubdivisions, rayStepWorld);
-    oracle.sourceGrazes_ = pivotVerifyRayGrazes(yaw, crosshairIso, zoom.x);
     oracle.latchMoves_ = 0;
 }
 

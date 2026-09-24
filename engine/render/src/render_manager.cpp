@@ -16,6 +16,7 @@
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
+#include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 
 #include <irreden/common/components/component_position_2d_iso.hpp>
@@ -370,7 +371,34 @@ void RenderManager::updateDefaultRotationPivotFocus() {
         decoded.tier_ != 0) {
         return;
     }
-    m_defaultPivotLatch.acquire(static_cast<float>(decoded.iso_));
+    m_defaultPivotLatch.acquire(static_cast<float>(decoded.iso_), crosshairWinnerIsVoxelStore());
+}
+
+bool RenderManager::crosshairWinnerIsVoxelStore() const {
+    // Only a cardinal source subtracts the voxel store's lattice, so only there
+    // does the winning subject matter — and only there does the main canvas
+    // hold the frame the depth came from (the per-axis canvases draw the rest).
+    const DefaultPivotSourceFrame &source = m_defaultPivotLatch.sourceFrame();
+    if (source.residualYaw_ != 0.0f) {
+        return true;
+    }
+    // The winner's id, read at the canvas texel the sampled pixel displayed.
+    // Called right after the depth readback, which already waited on the
+    // device, and the canvas still holds the source frame: nothing has cleared
+    // it since that frame's composite. Both stores write the winning entity id
+    // at the same texel as its depth, so the id names the subject the depth
+    // came from.
+    //
+    // The SDF shape store keys a cardinal fragment on the surface, not on the
+    // voxel store's lattice. This branch exists only for that disagreement,
+    // tracked in docs/design/camera-yaw-pivot.md §"Known deviations": the
+    // change that co-sorts the two stores deletes it, and the latch subtracts
+    // for every winner.
+    const auto &textures = IREntity::getComponent<C_TriangleCanvasTextures>(m_mainCanvas);
+    const IREntity::EntityId winner = textures.readEntityIdAt(
+        defaultPivotCrosshairCanvasTexel(source, getMainCanvasSizeTriangles())
+    );
+    return !IREntity::getComponentOptional<C_ShapeDescriptor>(winner).has_value();
 }
 
 void RenderManager::setVoxelRenderSubdivisions(int subdivisions) {

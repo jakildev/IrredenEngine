@@ -455,8 +455,16 @@ TEST(DefaultPivotLatch, YawZeroAcquisitionsLeaveTheViewOffsetBitExact) {
 }
 
 // The anchor a latch holds after acquiring @p framebufferIsoDepth from a
-// source frame drawn at @p yaw with effective camera @p effectiveCameraIso.
-vec3 acquiredAnchor(float yaw, vec2 cameraIso, vec2 effectiveCameraIso, float framebufferIsoDepth) {
+// source frame drawn at @p yaw with effective camera @p effectiveCameraIso,
+// sampled off a fragment of the voxel store or, with @p voxelStoreWinner false,
+// of the SDF shape store.
+vec3 acquiredAnchor(
+    float yaw,
+    vec2 cameraIso,
+    vec2 effectiveCameraIso,
+    float framebufferIsoDepth,
+    bool voxelStoreWinner = true
+) {
     constexpr int kEffSub = 4;
     DefaultPivotLatch latch;
     latch.stampSourceFrame(
@@ -471,7 +479,7 @@ vec3 acquiredAnchor(float yaw, vec2 cameraIso, vec2 effectiveCameraIso, float fr
         true
     );
     latch.observeFrame(yaw, true);
-    latch.acquire(framebufferIsoDepth * static_cast<float>(kEffSub));
+    latch.acquire(framebufferIsoDepth * static_cast<float>(kEffSub), voxelStoreWinner);
     return latch.focus(kCanvasCenterIso - cameraIso);
 }
 
@@ -514,6 +522,59 @@ TEST(DefaultPivotLatch, ANonCardinalSourceKeepsTheStoreKey) {
         EXPECT_NEAR(anchor.x, key.x, 1e-3f) << "yaw=" << yaw;
         EXPECT_NEAR(anchor.y, key.y, 1e-3f) << "yaw=" << yaw;
         EXPECT_NEAR(anchor.z, key.z, 1e-3f) << "yaw=" << yaw;
+    }
+}
+
+TEST(DefaultPivotLatch, ACardinalSdfWinnerLatchesItsKeyAsItStands) {
+    // The SDF shape store keys a cardinal fragment on the surface, with no
+    // lattice, so an SDF winner's sample is the surface already. Positive fire
+    // for the subject branch: the voxel-store subtraction applied here would
+    // put the anchor the lattice depth in front of the surface.
+    const vec2 cameraIso = vec2(64.0f, -12.0f);
+    const float cardinals[] = {0.0f, IRMath::kHalfPi, kPi, -IRMath::kHalfPi};
+    for (const float yaw : cardinals) {
+        const vec2 effectiveCameraIso = yaw == 0.0f ? cameraIso : vec2(61.5f, -9.25f);
+        const vec3 anchor =
+            acquiredAnchor(yaw, cameraIso, effectiveCameraIso, kDepthAfterPan, false);
+        const vec3 key = IRMath::isoPixelToPos3DYawed(
+            kCanvasCenterIso - effectiveCameraIso,
+            kDepthAfterPan,
+            yaw
+        );
+        EXPECT_NEAR(anchor.x, key.x, 1e-3f) << "yaw=" << yaw;
+        EXPECT_NEAR(anchor.y, key.y, 1e-3f) << "yaw=" << yaw;
+        EXPECT_NEAR(anchor.z, key.z, 1e-3f) << "yaw=" << yaw;
+    }
+}
+
+TEST(DefaultPivotLatch, TheCrosshairTexelIsTheCanvasCenterUpToTheCameraFraction) {
+    // The main canvas is placed at the whole-texel part of the effective
+    // camera and the gather shifts it by the rest, so on each axis the crosshair
+    // displays the canvas center texel where the camera term is on the texel
+    // lattice and the texel one lower where it is not. Measured on macOS/Metal
+    // against the canvas depth at that texel: (24, 0) at effSub 4 reads
+    // (321, 361) and (3.0645, -27.041) reads (320, 360) on a 642 x 722 canvas.
+    const IRMath::ivec2 canvasSize = IRMath::ivec2(642, 722);
+    const IRMath::ivec2 centerTexel = IRMath::trixelOriginOffsetX1(canvasSize);
+    const IRMath::ivec2 lowerTexel = IRMath::trixelOriginOffsetZ1(canvasSize);
+    struct Case {
+        vec2 effectiveCameraIso_;
+        int effectiveSubdivisions_;
+        IRMath::ivec2 texel_;
+    };
+    const Case cases[] = {
+        {vec2(24.0f, 0.0f), 4, centerTexel},
+        {vec2(-7.25f, 13.5f), 4, centerTexel},
+        {vec2(3.0645046f, -27.041023f), 4, lowerTexel},
+        {vec2(-24.01165f, -6.0203533f), 8, lowerTexel},
+    };
+    for (const Case &c : cases) {
+        DefaultPivotSourceFrame frame;
+        frame.effectiveCameraIso_ = c.effectiveCameraIso_;
+        frame.effectiveSubdivisions_ = c.effectiveSubdivisions_;
+        const IRMath::ivec2 texel = IRRender::defaultPivotCrosshairCanvasTexel(frame, canvasSize);
+        EXPECT_EQ(texel, c.texel_)
+            << "camera=(" << c.effectiveCameraIso_.x << ", " << c.effectiveCameraIso_.y << ")";
     }
 }
 
