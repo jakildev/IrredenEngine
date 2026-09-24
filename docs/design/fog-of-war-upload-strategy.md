@@ -1,13 +1,11 @@
 # Fog-of-war CPU→GPU upload strategy
 
-**Status:** Deferred. The current full-buffer dirty-gated `subImage2D`
-upload remains the implementation, and `C_CanvasFogOfWar::dirty_` /
-`allUnexplored_` remain the documented exception to the no-dirty-flags
-rule (see `.claude/rules/cpp-ecs.md` §"No dirty flags on components").
-T-161 evaluated migration to per-write `subData` semantics (the
-follow-up that PR #638 originally suggested) and concluded the
-optimization does not pay under any workload exercised by today's
-engine.
+**Status:** Superseded by
+[`fog-of-war-world-field.md`](fog-of-war-world-field.md). Its D5 replaces the
+fixed-buffer dirty gate with a pending field-chunk set, a toroidal window
+planner and bounded strip uploads. The strategy comparison below remains the
+rationale for avoiding both per-write uploads and unconditional whole-window
+uploads; the remainder is historical analysis, not implementation direction.
 
 This doc captures the strategy comparison, the workload reality that
 gates the call, and the migration sketch for the day the trigger

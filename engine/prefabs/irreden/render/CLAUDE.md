@@ -84,8 +84,8 @@ perf-stats overlay region (top-right by default).
   one ground-anchor verdict (`FOG_REVEAL_EVAL`, active canvas only; hysteresis
   and stagger in `C_FogRevealSettings`); reserved bit 3 exempts it from the compact
   reject and stage-1 column drop and its pixels carry id bit 28 (shapes opt in via
-  `SHAPE_FLAG_FOG_WHOLE_BODY_EXEMPT`). The FIELD / BODY / EXEMPT target and the
-  child that lands each part: [reveal model](../../../../docs/design/fog-of-war-reveal-model.md).
+  `SHAPE_FLAG_FOG_WHOLE_BODY_EXEMPT`). [Reveal model](../../../../docs/design/fog-of-war-reveal-model.md)
+  owns FIELD / BODY / EXEMPT; [world field](../../../../docs/design/fog-of-war-world-field.md) owns chunked storage, persistence and the GPU window.
 - GPU transforms: a voxel set opts in with `C_VoxelSetNew::gpuTransformSlot_
   != kVoxelTransformStatic` (the default is CPU-direct, dispatch-free). Joints
   share binding 18 — set slots grow up from 0, joint blocks are carved down from
