@@ -217,6 +217,10 @@ template <> struct System<PERF_STATS_OVERLAY> {
             return "PA-LIGHTING";
         if (name == "lightingOverflow")
             return "PA-OVF-LIGHT";
+        if (name == "fogPerAxis")
+            return "PA-FOG";
+        if (name == "fogOverflow")
+            return "PA-OVF-FOG";
         if (name == "perAxisScatter")
             return "PA-SCATTER";
         if (name == "shapeCompact")

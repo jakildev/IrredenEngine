@@ -31,7 +31,7 @@ namespace IRPrefab::Fog {
 
 /// Cells past `radius + edge` whose horizons are still built. A hard disc
 /// (`edge` 0) lifts unexplored matter up to `kFogLosRimFadeCells` past its
-/// radius (c_fog_to_trixel's kFogRimFadeCells); an occluded source must
+/// radius (ir_fog_common's kFogRimFadeCells); an occluded source must
 /// suppress that lift too, or the fade halo reappears behind the shadow at the
 /// build's edge. The margin covers the antialiasing floor and a sample rounding
 /// into a cell centre up to ~0.71 units farther out.

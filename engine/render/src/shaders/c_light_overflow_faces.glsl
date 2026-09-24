@@ -118,12 +118,7 @@ void main() {
     const uint colorPacked = overflowScratch[entryBase + 1u];
     const int  rawDist = int(overflowScratch[entryBase + 2u]);
 
-    // Empty-slot guard mirrors the scatter's alpha<0.1 degenerate test: never
-    // relight (and never repack) a cleared cell.
     const vec4 albedo = unpackColor(colorPacked);
-    if (albedo.a < 0.1) {
-        return;
-    }
 
     // Recover the face's cardinal store cell, its world FaceId, and its world
     // position — bit-for-bit the same decode the scatter's overflow branch uses

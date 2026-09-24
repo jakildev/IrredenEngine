@@ -67,6 +67,7 @@
 #include <irreden/render/components/component_canvas_light_volume.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
 #include <irreden/render/components/component_light_blocker.hpp>
+#include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
@@ -543,6 +544,7 @@ constexpr IRVideo::AutoScreenshotShot kEdgeZCostCeilingShots[] = {
 // colour within kFogPaintProbeTolerance per channel. A pillar whose above-ceiling
 // voxels are painted rather than dropped reads a large painted fraction.
 bool g_fogDebugColor = false; // --fog-debug-color
+bool g_perAxisOverflow = false; // --peraxis-overflow
 constexpr Color kFogDebugUnexploredColor{255, 0, 255, 255};
 // Same framing as kEdgeZCostCeilingShots; own labels so both variants gate.
 // The last shot parks a non-cardinal yaw, so the scene renders through the
@@ -567,9 +569,13 @@ constexpr IRVideo::AutoScreenshotShot kEdgeZCostCeilingPaintShots[] = {
      kCropsEdgeZCostCeilingPaintYaw9,
      sizeof(kCropsEdgeZCostCeilingPaintYaw9) / sizeof(kCropsEdgeZCostCeilingPaintYaw9[0])},
 };
+constexpr IRVideo::AutoScreenshotShot kPerAxisOverflowShots[] = {
+    {9.0f, vec2(0, 0), kEdgeZCostCeilingPaintYaw, "fog_peraxis_overflow_yaw9"},
+};
 constexpr int kFogPaintProbeTolerance = 2;
 IREntity::EntityId g_ceilingPillar = IREntity::kNullEntity;
 int g_fogPaintProbeFrame = 0;
+bool g_fogPerAxisProbeDone = false;
 
 bool matchesFogDebugColor(Color color) {
     const auto near = [](std::uint8_t channel, std::uint8_t target) {
@@ -607,6 +613,69 @@ void probeCeilingPillarPaint() {
         }
     }
     IR_LOG_INFO("FOG-PAINT-PROBE pillar={} texels={} painted={}", g_ceilingPillar, texels, painted);
+}
+
+void probePerAxisPaint() {
+    if (g_fogPerAxisProbeDone ||
+        IRMath::abs(IRPrefab::Camera::getYaw() - kEdgeZCostCeilingPaintYaw) > 0.001f) {
+        return;
+    }
+    auto perAxis =
+        IREntity::getComponentOptional<C_PerAxisTrixelCanvases>(IRRender::getCanvas("main"));
+    if (!perAxis.has_value() || !perAxis.value()->isAllocated()) {
+        return;
+    }
+
+    g_fogPerAxisProbeDone = true;
+    const auto expected = static_cast<std::uint32_t>(g_ceilingPillar);
+    int pillarCells = 0;
+    int pillarPainted = 0;
+    int painted = 0;
+    const C_PerAxisTrixelCanvases &axes = *perAxis.value();
+    const std::size_t cellCount =
+        static_cast<std::size_t>(axes.size_.x) * static_cast<std::size_t>(axes.size_.y);
+    for (const auto &axis : axes.axes_) {
+        std::vector<IRMath::uvec2> carriers(cellCount);
+        std::vector<Color> colors(cellCount);
+        axis.entityIds_.second->getSubImage2D(
+            0,
+            0,
+            axes.size_.x,
+            axes.size_.y,
+            PixelDataFormat::RG_INTEGER,
+            PixelDataType::UINT32,
+            carriers.data()
+        );
+        axis.colors_.second->getSubImage2D(
+            0,
+            0,
+            axes.size_.x,
+            axes.size_.y,
+            PixelDataFormat::RGBA,
+            PixelDataType::UNSIGNED_BYTE,
+            colors.data()
+        );
+        for (std::size_t i = 0; i < cellCount; ++i) {
+            const bool isPainted = matchesFogDebugColor(colors[i]);
+            if (isPainted) {
+                ++painted;
+            }
+            if (carriers[i].x != expected) {
+                continue;
+            }
+            ++pillarCells;
+            if (isPainted) {
+                ++pillarPainted;
+            }
+        }
+    }
+    IR_LOG_INFO(
+        "FOG-PERAXIS-PROBE pillar={} pillarCells={} pillarPainted={} painted={}",
+        g_ceilingPillar,
+        pillarCells,
+        pillarPainted,
+        painted
+    );
 }
 
 // --entity-reveal: whole-body fog reveal under the --edge-zcost-ceiling hard
@@ -901,6 +970,10 @@ int main(int argc, char **argv) {
         "painted texel count)"
     );
     IREngine::args().flag(
+        "--peraxis-overflow",
+        "Add the fog-hidden keep-ring overflow fixture and capture its rotated paint shot"
+    );
+    IREngine::args().flag(
         "--entity-reveal",
         "Whole-body fog reveal under the --edge-zcost-ceiling hard ceiling: governed "
         "voxel pillars and a flagged SDF box render whole beside clipped untagged twins"
@@ -946,6 +1019,11 @@ int main(int argc, char **argv) {
     g_edgeZCostCeiling = IREngine::args().getFlag("--edge-zcost-ceiling");
     g_entityReveal = IREngine::args().getFlag("--entity-reveal");
     g_fogDebugColor = IREngine::args().getFlag("--fog-debug-color");
+    g_perAxisOverflow = IREngine::args().getFlag("--peraxis-overflow");
+    if (g_perAxisOverflow) {
+        g_edgeZCostCeiling = true;
+        g_fogDebugColor = true;
+    }
     if (IREngine::args().wasProvided("--auto-profile")) {
         g_autoProfileFrames = IREngine::args().getInt("--auto-profile");
     }
@@ -956,6 +1034,7 @@ int main(int argc, char **argv) {
     }
     if (g_luaFogSelftest || g_occlusion != OcclusionScene::NONE) {
         g_entityReveal = false;
+        g_perAxisOverflow = false;
     }
     if (g_luaFogSelftest || g_entityReveal || g_occlusion != OcclusionScene::NONE) {
         g_movingObserver = false;
@@ -1223,6 +1302,12 @@ void initSystems() {
             []() { probeCeilingPillarPaint(); }
         );
         renderPipeline.push_front(probeTickId);
+        IRSystem::SystemId perAxisProbeTickId = IRSystem::createSystem<C_Name>(
+            "FogPerAxisPaintProbe",
+            [](C_Name &) {},
+            []() { probePerAxisPaint(); }
+        );
+        renderPipeline.push_front(perAxisProbeTickId);
     }
 
     if (g_autoWarmupFrames > 0) {
@@ -1262,6 +1347,8 @@ void initSystems() {
             case OcclusionScene::NONE:
                 break;
             }
+        } else if (g_perAxisOverflow) {
+            IRVideo::setAutoScreenshotShots(cfg, kPerAxisOverflowShots);
         } else if (g_entityReveal) {
             IRVideo::setAutoScreenshotShots(cfg, kEntityRevealShots);
         } else if (g_edgeZCostAsym) {
@@ -1888,6 +1975,12 @@ void initEntities() {
             C_LocalTransform{vec3(6.0f, 0.0f, 2.0f)},
             C_VoxelSetNew{IRMath::ivec3{5, 5, 4}, Color{130, 230, 150, 255}, true}
         );
+        if (g_perAxisOverflow) {
+            IREntity::createEntity(
+                C_LocalTransform{vec3(18.0f, 0.0f, 2.0f)},
+                C_VoxelSetNew{IRMath::ivec3{4, 4, 4}, Color{220, 180, 70, 255}, true}
+            );
+        }
         return;
     }
 

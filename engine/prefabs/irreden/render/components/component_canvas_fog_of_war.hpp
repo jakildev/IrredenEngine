@@ -41,10 +41,10 @@
 // as visible via an explicit bounds check (image bindings bypass sampler
 // wrap modes).
 //
-// `kFogOfWarSize` / `kFogOfWarHalfExtent` are mirrored as literals in
-// `c_fog_to_trixel.glsl`, `metal/c_fog_to_trixel.metal` and the
-// `ir_fog_los.{glsl,metal}` include pair. Renaming the C++ constants requires
-// editing all four shader files in lockstep.
+// `kFogOfWarSize` / `kFogOfWarHalfExtent` are mirrored as literals in the
+// `ir_fog_common.{glsl,metal}` and `ir_fog_los.{glsl,metal}` include pairs.
+// Renaming the C++ constants requires editing all four shader files in
+// lockstep.
 //
 // Line of sight. A vision circle opted in with `setVisionCircleLineOfSight`
 // reveals only what its eye can see over a 2.5D column model:
@@ -111,8 +111,8 @@ constexpr std::uint8_t kFogStateVisible = 255;
 // `kMaxFogVisionCircles` sources compose via max (player + a few allies/lights);
 // past that, callers fall back to the grid.
 //
-// `kMaxFogVisionCircles` is mirrored as a literal in `c_fog_to_trixel.glsl` /
-// `metal/c_fog_to_trixel.metal` (the UBO array length); changing it requires
+// `kMaxFogVisionCircles` is mirrored as a literal in `ir_fog_common.glsl` /
+// `metal/ir_fog_common.metal` (the UBO array length); changing it requires
 // editing both shaders and re-checking the std140 / Metal struct size below.
 constexpr int kMaxFogVisionCircles = 8;
 constexpr float kFogVisionEdgeDefault = 0.0f;
@@ -209,7 +209,7 @@ struct FrameDataFogObservers {
     IRMath::vec4 visionCircleHeights_[kMaxFogVisionCircles] = {};
     /// RGBA the fog pass paints fully unexplored matter with — the state-0
     /// anchor of its two-segment lerp. Appended after `visionCircleHeights_`
-    /// so every earlier offset is unchanged; only `c_fog_to_trixel` declares
+    /// so every earlier offset is unchanged; only `ir_fog_common` declares
     /// it. Alpha is unused (the pass preserves the source alpha).
     IRMath::vec4 unexploredColor_ = IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f);
 };
