@@ -12,7 +12,9 @@
 #   --auto-screenshot N  → ir-acquire gpu
 #   --auto-record N      → ir-acquire gpu
 #   --auto-profile N     → ir-acquire benchmark (cpu(budget-1) + gpu + perf)
-#   interactive (none)   → no acquire (human-supervised)
+#   interactive (none)   → no acquire (human-supervised); on native Windows
+#                          every run takes the gpu lock (IR_RUN_GL_EXCLUSIVE=0
+#                          opts out) — see the note at the verb detection.
 # Two parallel screenshot-capture runs on macOS serialize automatically,
 # and a perf measurement does not share cores with a concurrent build.
 #
@@ -146,7 +148,9 @@ Run mode
     --auto-screenshot N  → wrapped in ir-acquire gpu
     --auto-record N      → wrapped in ir-acquire gpu
     --auto-profile N     → wrapped in ir-acquire benchmark (cpu+gpu+perf)
-    no exclusive verb    → no acquire (interactive / unit-test mode)
+    no exclusive verb    → no acquire (interactive / unit-test mode);
+                           on native Windows every run takes the gpu lock
+                           (IR_RUN_GL_EXCLUSIVE=0 opts out)
 
   Options (run mode):
     --build-dir <dir>   CMake build directory (must contain the built binary).
@@ -258,6 +262,17 @@ for arg in "$@"; do
         --auto-profile)    acquire_verb="benchmark" ;;
     esac
 done
+
+# Native Windows: the NVIDIA GL driver parks a process inside glLinkProgram
+# for minutes while another engine process holds a live GL context on the
+# same GPU (two identical demos launched together: one links in 2 s, the
+# other waits ~150 s per contended program, its main thread parked on a
+# driver worker). Every engine executable therefore takes the gpu lock
+# here, exclusive verb or not, so a test suite or a scratch launch never
+# overlaps a smoke run; IR_RUN_GL_EXCLUSIVE=0 opts a call out.
+if [[ -z "$acquire_verb" && "$IR_IS_WINDOWS" == "1"       && "${IR_RUN_GL_EXCLUSIVE:-1}" == "1" ]]; then
+    acquire_verb="gpu"
+fi
 
 # Default build dir: invoker's worktree, not the script-source clone.
 # Downstream-creation worktrees resolve to the dedicated

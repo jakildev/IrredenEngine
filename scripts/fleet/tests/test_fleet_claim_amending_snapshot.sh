@@ -30,6 +30,8 @@ FLEET_CLAIM="$SCRIPT_DIR/fleet-claim"
 TMPROOT=""; cleanup(){ [[ -n "$TMPROOT" && -d "$TMPROOT" ]] && rm -rf "$TMPROOT"; }
 trap cleanup EXIT
 TMPROOT=$(mktemp -d)
+source "$(dirname "$0")/lib_hermetic.sh"
+hermetic_poison_gh_env "$TMPROOT"
 
 export HOME="$TMPROOT/home"
 export FLEET_CLAIMS_DIR="$TMPROOT/claims"

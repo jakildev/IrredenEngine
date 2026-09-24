@@ -31,6 +31,8 @@ ok()  { PASS=$((PASS + 1)); echo "  ok: $1"; }
 bad() { FAIL=$((FAIL + 1)); echo "  FAIL: $1"; }
 
 TMPROOT=$(mktemp -d)
+source "$(dirname "$0")/lib_hermetic.sh"
+hermetic_poison_gh_env "$TMPROOT"
 export HOME="$TMPROOT/home"
 mkdir -p "$HOME/.fleet/state/projections" "$HOME/.fleet/logs"
 
@@ -65,41 +67,42 @@ mkdir -p "$STUB_DIR"
 export EDIT_LOG="$TMPROOT/edit.log"; : > "$EDIT_LOG"
 export COMMENT_LOG="$TMPROOT/comment.log"; : > "$COMMENT_LOG"
 cat > "$STUB_DIR/gh" <<'GHSTUB'
-#!/usr/bin/env bash
-case "$1" in
-    issue)
-        case "$2" in
-            view)
-                case "$3" in
-                    740) echo '{"title":"render: fix residual","body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"}]}' ;;
-                    743) echo '{"title":"render: probe the culling path","body":"**Model:** opus\n**Blocked by:** (none)\n\nExplicit investigation spike: report findings, no fix expected.","labels":[{"name":"human:approved"}]}' ;;
-                    745) echo '{"title":"render: planned via comment","body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"}],"comments":[{"body":"## Plan: do the thing\n\nstep one"}]}' ;;
-                    746) echo '{"title":"render: tiny tweak [no-plan]","body":"**Model:** sonnet\n**Blocked by:** (none)","labels":[{"name":"human:approved"}]}' ;;
-                    747) echo '{"title":"render: human said skip","body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"},{"name":"human:no-plan"}]}' ;;
-                    748) echo '{"title":"render: plan under review","body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"},{"name":"fleet:plan-review"}]}' ;;
-                    749) echo '{"title":"render: stale baseline follow-up","body":"**Model:** sonnet\n**Blocked by:** (none)","labels":[{"name":"fleet:agent-approved"},{"name":"fleet:no-plan"}]}' ;;
-                    750) echo '{"title":"render: verified defect, fix unknown","body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"fleet:agent-approved"}]}' ;;
-                    751) echo '{"title":"render: follow-up filed with plan","body":"**Model:** sonnet\n**Blocked by:** (none)","labels":[{"name":"fleet:agent-approved"},{"name":"fleet:plan-review"}],"comments":[{"body":"## Plan: filed by the finder\n\nstep one"}]}' ;;
-                    *)   echo '{"title":"","body":"","labels":[]}' ;;
-                esac
-                exit 0 ;;
-            edit)
-                printf '%s\n' "$*" >> "$EDIT_LOG"
-                exit 0 ;;
-            comment)
-                printf '%s\n' "$*" >> "$COMMENT_LOG"
-                exit 0 ;;
-            *) exit 0 ;;
-        esac ;;
-    pr)
-        case "$2" in
-            list) echo '[]'; exit 0 ;;   # scope-shipped: no merged coverage
-            *) exit 0 ;;
-        esac ;;
-    *) exit 0 ;;
-esac
+#!/usr/bin/env python3
+import os, sys
+args = sys.argv[1:]
+if args[:2] == ["issue", "view"]:
+    n = args[2] if len(args) > 2 else ""
+    bodies = {
+        "740": '{"title":"render: fix residual","body":"**Model:** opus\\n**Blocked by:** (none)","labels":[{"name":"human:approved"}]}',
+        "743": '{"title":"render: probe the culling path","body":"**Model:** opus\\n**Blocked by:** (none)\\n\\nExplicit investigation spike: report findings, no fix expected.","labels":[{"name":"human:approved"}]}',
+        "745": '{"title":"render: planned via comment","body":"**Model:** opus\\n**Blocked by:** (none)","labels":[{"name":"human:approved"}],"comments":[{"body":"## Plan: do the thing\\n\\nstep one"}]}',
+        "746": '{"title":"render: tiny tweak [no-plan]","body":"**Model:** sonnet\\n**Blocked by:** (none)","labels":[{"name":"human:approved"}]}',
+        "747": '{"title":"render: human said skip","body":"**Model:** opus\\n**Blocked by:** (none)","labels":[{"name":"human:approved"},{"name":"human:no-plan"}]}',
+        "748": '{"title":"render: plan under review","body":"**Model:** opus\\n**Blocked by:** (none)","labels":[{"name":"human:approved"},{"name":"fleet:plan-review"}]}',
+        "749": '{"title":"render: stale baseline follow-up","body":"**Model:** sonnet\\n**Blocked by:** (none)","labels":[{"name":"fleet:agent-approved"},{"name":"fleet:no-plan"}]}',
+        "750": '{"title":"render: verified defect, fix unknown","body":"**Model:** opus\\n**Blocked by:** (none)","labels":[{"name":"fleet:agent-approved"}]}',
+        "751": '{"title":"render: follow-up filed with plan","body":"**Model:** sonnet\\n**Blocked by:** (none)","labels":[{"name":"fleet:agent-approved"},{"name":"fleet:plan-review"}],"comments":[{"body":"## Plan: filed by the finder\\n\\nstep one"}]}',
+    }
+    print(bodies.get(n, '{"title":"","body":"","labels":[]}'))
+elif args[:2] == ["issue", "edit"]:
+    with open(os.environ["EDIT_LOG"], "a") as f:
+        f.write(" ".join(args) + "\n")
+elif args[:2] == ["issue", "comment"]:
+    with open(os.environ["COMMENT_LOG"], "a") as f:
+        f.write(" ".join(args) + "\n")
+elif args[:2] == ["pr", "list"]:
+    print("[]")  # scope-shipped: no merged coverage
+sys.exit(0)
 GHSTUB
 chmod +x "$STUB_DIR/gh"
+# Native-Windows twin: fleet-queue-ingest invokes `gh` from PYTHON
+# (subprocess), which cannot exec an extensionless shebang script on
+# native-Windows python3 (mingw64) — see scripts/fleet/CLAUDE.md's
+# native-Windows PATHEXT rule. Inert on POSIX hosts.
+cat > "$STUB_DIR/gh.bat" <<'BATEOF'
+@echo off
+python3 "%~dp0gh" %*
+BATEOF
 export PATH="$STUB_DIR:$PATH"
 
 # Per-issue edit-log line (gh issue edit <N> ...) for assertions. Tolerates

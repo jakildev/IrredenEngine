@@ -6,8 +6,17 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <span>
 
 namespace IRRender {
+
+// One span of a sparse batched write. `data_` must stay valid for the
+// duration of the `subDataRanges` call only.
+struct BufferUploadRange {
+    std::ptrdiff_t offset_ = 0;
+    std::size_t size_ = 0;
+    const void *data_ = nullptr;
+};
 
 class BufferImpl {
   public:
@@ -17,6 +26,7 @@ class BufferImpl {
     // getHandle is canonical). Mirrors Texture2DImpl::getNativeTexture.
     virtual void *getNativeBuffer() const = 0;
     virtual void subData(std::ptrdiff_t offset, std::size_t size, const void *data) const = 0;
+    virtual void subDataRanges(std::span<const BufferUploadRange> ranges) const = 0;
     virtual void getSubData(std::ptrdiff_t offset, std::size_t size, void *data) const = 0;
     virtual void bindRange(BufferTarget target, std::uint32_t index, std::ptrdiff_t offset, std::size_t size) = 0;
     virtual void bindBase(BufferTarget target, std::uint32_t index) = 0;
@@ -43,6 +53,11 @@ class Buffer {
     std::uint32_t getHandle() const;
     void *getNativeBuffer() const;
     void subData(std::ptrdiff_t offset, std::size_t size, const void *data) const;
+    // One logical upload of several disjoint spans: bytes outside them keep
+    // their contents, including queued GPU writes. `ranges` must be sorted by
+    // offset, non-overlapping, and inside the buffer. On Metal an encoded
+    // buffer is orphaned once per call, not once per range.
+    void subDataRanges(std::span<const BufferUploadRange> ranges) const;
     void getSubData(std::ptrdiff_t offset, std::size_t size, void *data) const;
     void bindRange(BufferTarget target, std::uint32_t index, std::ptrdiff_t offset, std::size_t size);
     void bindBase(BufferTarget target, std::uint32_t index);

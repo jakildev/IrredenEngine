@@ -138,6 +138,47 @@ else
     ok "T10 skipped — no timeout(1)/gtimeout(1) on this host"
 fi
 
+echo "T10b: the pure-bash fallback still bounds a hung suite with neither timeout(1) nor gtimeout(1) on PATH"
+d=$(new_sandbox t10b)
+# The foreground `sleep 30` would hold the runner's output capture open past
+# the deadline if it outlived the suite shell. The background child has no
+# hold on that capture, so it isolates the other half of the contract:
+# signalling the suite's whole process tree.
+printf '#!/usr/bin/env bash\nsleep 60 >/dev/null 2>&1 </dev/null &\necho $! > "%s/child.pid"\nsleep 30\n' "$d" > "$d/test_hang.sh"
+SECONDS=0
+out=$(RUN_ALL_NO_EXTERNAL_TIMEOUT=1 bash "$d/run_all.sh" --timeout 1 2>&1); rc=$?
+elapsed=$SECONDS
+assert_eq "$rc" "1" "T10b the fallback still fails the run on a hang"
+assert_contains "$out" "timed out after 1s" "T10b the fallback reports the timeout the same way"
+if [[ "$elapsed" -lt 10 ]]; then
+    ok "T10b the fallback returns within the deadline plus grace, not the fixture's 30s"
+else
+    bad "T10b the fallback returns within the deadline plus grace, not the fixture's 30s (took ${elapsed}s)"
+fi
+child_pid=$(cat "$d/child.pid" 2>/dev/null)
+if [[ -n "$child_pid" ]] && ! kill -0 "$child_pid" 2>/dev/null; then
+    ok "T10b the fallback kills the suite's descendants, not just the suite shell"
+else
+    bad "T10b the fallback kills the suite's descendants, not just the suite shell (pid '$child_pid' alive)"
+    [[ -n "$child_pid" ]] && kill "$child_pid" 2>/dev/null
+fi
+
+echo "T10c: the fallback passes a suite that finishes in time, without waiting out the timeout"
+d=$(new_sandbox t10c)
+fixture_pass "$d" alpha
+fixture_fail "$d" broken
+SECONDS=0
+out=$(RUN_ALL_NO_EXTERNAL_TIMEOUT=1 bash "$d/run_all.sh" --timeout 20 2>&1); rc=$?
+elapsed=$SECONDS
+assert_contains "$out" "PASS  test_alpha.sh" "T10c a passing suite passes under the fallback"
+assert_contains "$out" "FAIL  test_broken.sh (exit 1)" "T10c a failing suite keeps its own exit status under the fallback"
+assert_contains "$out" "boom in broken" "T10c the fallback still captures the suite's output"
+if [[ "$elapsed" -lt 10 ]]; then
+    ok "T10c the fallback does not wait out the 20s timeout on suites that finished"
+else
+    bad "T10c the fallback does not wait out the 20s timeout on suites that finished (took ${elapsed}s)"
+fi
+
 echo "T11: --timeout 0 disables the guard"
 d=$(new_sandbox t11)
 fixture_pass "$d" alpha
@@ -256,6 +297,8 @@ if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; th
 else
     ok "T16 timeout arm skipped — no timeout(1)/gtimeout(1) on this host"
 fi
+assert_eq "$(suite_token "$(RUN_ALL_NO_EXTERNAL_TIMEOUT=1 bash "$d/run_all.sh" --timeout 1 2>&1)" test_hang.sh)" \
+    "test_hang.sh@?" "T16 the fallback timeout is unitemized too, regardless of host"
 
 # Each pair below runs in ONE sandbox, rewriting the fixture between runs, so
 # the suite path a traceback names is identical and only the detail differs.
@@ -310,5 +353,20 @@ d=$(new_sandbox t17d)
 fixture_fail_lines "$d" item "  FAIL: alpha broke" "" "trailing $d $RANDOM"
 assert_eq "$(suite_token "$(bash "$d/run_all.sh" 2>&1)" test_item.sh)" "$item_a" \
     "T17 output after the blank line closing a lib_assert block is not detail"
+
+echo "T18: a RUN line is printed immediately before each suite, so a hang is diagnosable"
+d=$(new_sandbox t18)
+fixture_pass "$d" alpha
+fixture_pass "$d" beta
+out=$(bash "$d/run_all.sh" 2>&1)
+assert_contains "$out" "RUN   test_alpha.sh" "T18 RUN line precedes alpha"
+assert_contains "$out" "RUN   test_beta.sh" "T18 RUN line precedes beta"
+run_line=$(printf '%s\n' "$out" | grep -n '^RUN   test_alpha.sh$' | head -1 | cut -d: -f1)
+pass_line=$(printf '%s\n' "$out" | grep -n '^PASS  test_alpha.sh$' | head -1 | cut -d: -f1)
+if [[ -n "$run_line" && -n "$pass_line" && "$run_line" -lt "$pass_line" ]]; then
+    ok "T18 RUN line for a suite precedes that suite's own result line"
+else
+    bad "T18 RUN line for a suite precedes that suite's own result line (RUN@$run_line PASS@$pass_line)"
+fi
 
 summarize "run_all.sh tests"

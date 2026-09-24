@@ -93,7 +93,7 @@ kernel void c_light_overflow_faces(
     }
 
     if (frameData.lightVolumeEnabled != 0) {
-        constexpr sampler volumeSampler(filter::nearest, address::clamp_to_edge);
+        constexpr sampler volumeSampler(filter::linear, address::clamp_to_edge);
         const float3 light = surfaceLightVolume(pos3D, lightVolumeParams.worldOriginVoxel,
             lightVolume, lightVolumeId, volumeSampler, lights);
         baseRgb = baseRgb + albedo.rgb * light;

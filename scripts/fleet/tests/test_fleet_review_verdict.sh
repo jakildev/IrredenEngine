@@ -63,6 +63,8 @@ assert_eq() {
 
 # --- Sandbox + stubs -------------------------------------------------------
 TMPROOT=$(mktemp -d)
+source "$(dirname "$0")/lib_hermetic.sh"
+hermetic_poison_gh_env "$TMPROOT"
 BIN="$TMPROOT/bin"
 export STORE="$TMPROOT/store"        # one file per PR: pr-<N>, one label per line
 export FT_LOG="$TMPROOT/ft.log"      # fleet-transition invocations (argv per line)

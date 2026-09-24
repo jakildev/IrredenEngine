@@ -377,6 +377,10 @@ void releaseDeferredMetalBuffers() {
     g_runtime().encodedBuffers_.clear();
 }
 
+std::size_t deferredMetalBufferReleaseCount() {
+    return g_runtime().pendingReleaseBuffers_.size();
+}
+
 void markMetalBufferEncoded(MTL::Buffer *buffer) {
     if (buffer == nullptr) {
         return;

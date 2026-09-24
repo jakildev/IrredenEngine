@@ -33,6 +33,8 @@ ok()  { PASS=$((PASS + 1)); echo "  ok: $1"; }
 bad() { FAIL=$((FAIL + 1)); echo "  FAIL: $1"; }
 
 TMPROOT=$(mktemp -d)
+source "$(dirname "$0")/lib_hermetic.sh"
+hermetic_poison_gh_env "$TMPROOT"
 export HOME="$TMPROOT/home"
 mkdir -p "$HOME/.fleet/state/projections" "$HOME/.fleet/logs"
 
@@ -52,29 +54,39 @@ STUB_DIR="$TMPROOT/bin"; mkdir -p "$STUB_DIR"
 export EDIT_LOG="$TMPROOT/edit.log"; : > "$EDIT_LOG"
 export COMMENT_LOG="$TMPROOT/comment.log"; : > "$COMMENT_LOG"
 cat > "$STUB_DIR/gh" <<'GHSTUB'
-#!/usr/bin/env bash
-case "$1" in
-    issue)
-        case "$2" in
-            view)
-                case "$3" in
-                    760) echo '{"title":"render: fast-track","body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"},{"name":"fleet:needs-plan"},{"name":"human:no-plan"}]}' ;;
-                    761) echo '{"title":"render: genuinely needs a plan","body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"},{"name":"fleet:needs-plan"}]}' ;;
-                    762) echo '{"title":"render: tiny tweak [no-plan]","body":"**Model:** sonnet\n**Blocked by:** (none)","labels":[{"name":"human:approved"},{"name":"fleet:needs-plan"}]}' ;;
-                    *)   echo '{"title":"","body":"","labels":[]}' ;;
-                esac
-                exit 0 ;;
-            edit)    printf '%s\n' "$*" >> "$EDIT_LOG"; exit 0 ;;
-            comment) printf '%s\n' "$*" >> "$COMMENT_LOG"; exit 0 ;;
-            *) exit 0 ;;
-        esac ;;
-    pr)
-        case "$2" in list) echo '[]'; exit 0 ;; *) exit 0 ;; esac ;;
-    api) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
-    *) exit 0 ;;
-esac
+#!/usr/bin/env python3
+import os, sys
+args = sys.argv[1:]
+if args[:2] == ["issue", "view"]:
+    n = args[2] if len(args) > 2 else ""
+    bodies = {
+        "760": '{"title":"render: fast-track","body":"**Model:** opus\\n**Blocked by:** (none)","labels":[{"name":"human:approved"},{"name":"fleet:needs-plan"},{"name":"human:no-plan"}]}',
+        "761": '{"title":"render: genuinely needs a plan","body":"**Model:** opus\\n**Blocked by:** (none)","labels":[{"name":"human:approved"},{"name":"fleet:needs-plan"}]}',
+        "762": '{"title":"render: tiny tweak [no-plan]","body":"**Model:** sonnet\\n**Blocked by:** (none)","labels":[{"name":"human:approved"},{"name":"fleet:needs-plan"}]}',
+    }
+    print(bodies.get(n, '{"title":"","body":"","labels":[]}'))
+elif args[:2] == ["issue", "edit"]:
+    with open(os.environ["EDIT_LOG"], "a") as f:
+        f.write(" ".join(args) + "\n")
+elif args[:2] == ["issue", "comment"]:
+    with open(os.environ["COMMENT_LOG"], "a") as f:
+        f.write(" ".join(args) + "\n")
+elif args[:2] == ["pr", "list"]:
+    print("[]")
+elif args[:1] == ["api"]:
+    sys.stderr.write("gh: Not Found (HTTP 404)\n")
+    sys.exit(1)
+sys.exit(0)
 GHSTUB
 chmod +x "$STUB_DIR/gh"
+# Native-Windows twin: fleet-queue-ingest invokes `gh` from PYTHON
+# (subprocess), which cannot exec an extensionless shebang script on
+# native-Windows python3 (mingw64) — see scripts/fleet/CLAUDE.md's
+# native-Windows PATHEXT rule. Inert on POSIX hosts.
+cat > "$STUB_DIR/gh.bat" <<'BATEOF'
+@echo off
+python3 "%~dp0gh" %*
+BATEOF
 export PATH="$STUB_DIR:$PATH"
 
 echo "=== run fleet-queue-ingest ==="
