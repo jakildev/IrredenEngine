@@ -68,8 +68,6 @@ layout(rg32ui, binding = 2) writeonly uniform uimage2D triangleCanvasEntityIds;
 const uint FLAG_HOLLOW = 1u;
 const uint FLAG_VISIBLE = 8u;
 const uint FLAG_FOG_WHOLE_BODY_EXEMPT = 16u;
-const uint FLAG_CHECKERBOARD = 32u;
-const uint FLAG_DEPTH_COLOR = 64u;
 const uint FLAG_XRAY_OCCLUDED = 128u;
 
 // X-ray silhouette intensity. When a SHAPE_FLAG_XRAY_OCCLUDED fragment

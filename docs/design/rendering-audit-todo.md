@@ -545,3 +545,21 @@ runs and existing thresholds; add an SDF-active workload to measure election cos
   linear payloads remain an alternative to measure, not a committed requirement.
 - Still pending: ordinary SDF sharp receiving, curved/rotated receiver coverage,
   crowded finite-index overflow/performance, and native Windows/OpenGL validation.
+
+### Finite box shadows in ordinary lighting
+
+- Implemented descriptor-backed fragment lighting for eligible main-canvas
+  analytical boxes. AO/material, local light, ambient and sky compose before
+  display mapping; finite sun visibility removes the sampled teeth in the
+  eight-angle floor-shadow fixture. No blur or dense per-trixel payload.
+  [Evidence](../pr-screenshots/codex/finite-box-fragment-lighting/README.md).
+- Conservative fallbacks remain for fog pipelines, procedural color, X-ray
+  blending, invalid provenance, unsupported shape geometry and finite misses.
+- Next: shared fog composition, then procedural material/curved and rotated
+  receiver support. Consolidate AO/LUT material modulation across compute and
+  fragment consumers while preserving sampler policy. Profile bounded index
+  queries under crowding and across zoom before widening use.
+- Windows/OpenGL native validation remains pending. The finite fragment path
+  uses linear local-light volume sampling, matching merged sampler PR #3740;
+  the parent stack still needs that merge reconciled in its compute consumers.
+  This slice does not claim million-entity throughput.

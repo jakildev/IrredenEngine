@@ -1260,6 +1260,8 @@ constexpr std::uint32_t kBufferIndex_ShapeSampleOwners = kBufferIndex_AnimationP
 // Shape and light-volume passes bind their own UBOs to this shared Metal slot.
 constexpr std::uint32_t kBufferIndex_ShapesFrameData = 23;
 constexpr std::uint32_t kBufferIndex_LightVolumeParams = kBufferIndex_ShapesFrameData;
+// Finite fragment lighting borrows the voxel frame slot and restores it after drawing.
+constexpr std::uint32_t kBufferIndex_SurfaceLightVolumeParams = kBufferIndex_FrameDataVoxelToCanvas;
 constexpr std::uint32_t kBufferIndex_ChunkVisibility = 24;
 constexpr std::uint32_t kBufferIndex_CompactedVoxelIndices = 25;
 constexpr std::uint32_t kBufferIndex_IndirectDispatchParams = 26;

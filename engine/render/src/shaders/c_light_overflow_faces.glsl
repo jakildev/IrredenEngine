@@ -29,19 +29,7 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 #include "ir_world_lighting.glsl"    // GPULightSource list (slot 4), spotConeFactor, ACESFilm
 #include "ir_surface_light_volume.glsl"
 
-layout(std140, binding = 27) uniform FrameDataLightingToTrixel {
-    int   lightingEnabled;
-    int   lutEnabled;
-    int   lightVolumeEnabled;
-    float debugLightLevel;
-    int   debugOverlayMode;
-    int   hdrEnabled;
-    float exposure;
-    float skyIntensity;
-    vec4  skyColor;
-    vec4  detachedViewToWorld;
-    ivec4 normalOptions;
-};
+#include "ir_lighting_frame_data.glsl"
 
 // Prefix of FrameDataVoxelToCanvas (binding 7) through overflowScratchLayout_
 // (offset 208). Only the fields this pass reads are named; every other field is

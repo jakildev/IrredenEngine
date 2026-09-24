@@ -10,6 +10,7 @@
 
 #include <irreden/render/camera.hpp>
 #include <irreden/render/shape_receiver_bindings.hpp>
+#include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/components/component_detached_canvas.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
@@ -47,6 +48,11 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     Buffer *sunFrameBuf_ = nullptr;
     Buffer *sunDepthBuf_ = nullptr;
     bool shapeProbeEnabled_ = false;
+    ShaderProgram *shapeLightingProgram_ = nullptr;
+    System<LIGHTING_TO_TRIXEL> *lighting_ = nullptr;
+    const C_CanvasAOTexture *surfaceAO_ = nullptr;
+    const C_CanvasLightVolume *surfaceLightVolume_ = nullptr;
+    bool shapeLightingEnabled_ = false;
     // Smooth camera Z-yaw forward-scatter composite. Replaces the
     // single-canvas gather draw on the main canvas while rotating; see
     // drawPerAxisScatter.
@@ -187,7 +193,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                                              );
         }
 
-        if (shapeProbeEnabled_ && entity == perAxisCanvasEntity_)
+        if ((shapeProbeEnabled_ || shapeLightingEnabled_) && entity == perAxisCanvasEntity_)
             frameData.frameData_.detachedDepthAxis_ = IRPrefab::Camera::getRotationQuat();
         frameData.updateFrameData(frameDataBuf_);
 
@@ -195,11 +201,31 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             // Sub-scope: the single-canvas gather draw only — the
             // per-axis scatter above owns its own row (perAxisScatter).
             GpuSubStageScope gatherScope("trixelToFb");
-            const bool probe = shapeProbeEnabled_ && entity == perAxisCanvasEntity_ &&
+            const bool probe = (shapeProbeEnabled_ || shapeLightingEnabled_) &&
+                               entity == perAxisCanvasEntity_ &&
                                triangleCanvasTextures.shapeGeometry_.samplesValid();
             if (probe) {
                 bindShapeProbe(triangleCanvasTextures);
-                shapeProbeProgram_->use();
+                if (shapeLightingEnabled_) {
+                    lighting_->frameDataBuf_->bindBase(
+                        BufferTarget::UNIFORM,
+                        kBufferIndex_FrameDataLightingToTrixel
+                    );
+                    lighting_->lightVolumeParamsBuf_->bindBase(
+                        BufferTarget::UNIFORM,
+                        kBufferIndex_SurfaceLightVolumeParams
+                    );
+                    lighting_->lightSourceBuf_->bindBase(
+                        BufferTarget::SHADER_STORAGE,
+                        kBufferIndex_LightSourceBuffer
+                    );
+                    lighting_->paletteLUT_->bind(3);
+                    surfaceAO_->getTexture()->bind(4);
+                    surfaceLightVolume_->getReadTexture()->bind(5);
+                    surfaceLightVolume_->getIdReadTexture()
+                        ->bindAsImage(7, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+                }
+                (shapeLightingEnabled_ ? shapeLightingProgram_ : shapeProbeProgram_)->use();
             }
             triangleCanvasTextures.bind(0, 1, 2);
             IRRender::device()->setPolygonMode(PolygonMode::FILL);
@@ -210,6 +236,11 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             );
             IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
             if (probe) {
+                if (shapeLightingEnabled_)
+                    lighting_->voxelFrameDataBuf_->bindBase(
+                        BufferTarget::UNIFORM,
+                        kBufferIndex_FrameDataVoxelToCanvas
+                    );
                 restoreShapeProbe();
                 program_->use();
             }
@@ -479,13 +510,36 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             }
         }
 
-        shapeProbeEnabled_ =
-            IRRender::getDebugOverlay() == DebugOverlayMode::SURFACE_SHADOW &&
+        const bool shapeReceiverAvailable =
             findSystem(COMPUTE_SUN_SHADOW) != kNullSystemId &&
             findSystem(SHAPES_TO_TRIXEL) != kNullSystemId &&
             perAxisCanvasEntity_ != IREntity::kNullEntity &&
             IREntity::getComponentOptional<C_CanvasSunShadow>(perAxisCanvasEntity_).has_value();
-        if (shapeProbeEnabled_ && shapeProbeFrameBuf_ == nullptr) {
+        shapeProbeEnabled_ = shapeReceiverAvailable &&
+                             IRRender::getDebugOverlay() == DebugOverlayMode::SURFACE_SHADOW;
+        lighting_ = nullptr;
+        surfaceAO_ = nullptr;
+        surfaceLightVolume_ = nullptr;
+        shapeLightingEnabled_ = false;
+        const SystemId lightingId = findSystem(LIGHTING_TO_TRIXEL);
+        // Fog currently owns post-lighting canvas color; retain it until fragment fog composition
+        // exists.
+        if (shapeReceiverAvailable && IRRender::getDebugOverlay() == DebugOverlayMode::NONE &&
+            findSystem(FOG_TO_TRIXEL) == kNullSystemId && lightingId != kNullSystemId &&
+            !IRRender::getDepthColorDebugMode()) {
+            lighting_ = getSystemParams<System<LIGHTING_TO_TRIXEL>>(lightingId);
+            auto ao = IREntity::getComponentOptional<C_CanvasAOTexture>(perAxisCanvasEntity_);
+            auto volume = IREntity::getComponentOptional<C_CanvasLightVolume>(perAxisCanvasEntity_);
+            auto behavior =
+                IREntity::getComponentOptional<C_TrixelCanvasRenderBehavior>(perAxisCanvasEntity_);
+            if (ao.has_value() && volume.has_value() && behavior.has_value() &&
+                behavior.value()->useCameraPositionIso_) {
+                surfaceAO_ = ao.value();
+                surfaceLightVolume_ = volume.value();
+                shapeLightingEnabled_ = true;
+            }
+        }
+        if ((shapeProbeEnabled_ || shapeLightingEnabled_) && shapeProbeFrameBuf_ == nullptr) {
             shapeProbeFrameBuf_ = IRRender::getNamedResource<Buffer>("ShapeReceiverFrameData");
             shapeProbeFallbackBuf_ = IRRender::getNamedResource<Buffer>("ShapeReceiverFallback");
             shapeProducerFrameBuf_ = IRRender::getNamedResource<Buffer>("ShapesFrameDataBuffer");
@@ -501,6 +555,13 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     }
 
     static SystemId create() {
+        IRRender::createNamedResource<ShaderProgram>(
+            "CanvasShapeLightingProgram",
+            std::vector{
+                ShaderStage{IRRender::kFileVertTrixelToFramebuffer, ShaderType::VERTEX},
+                ShaderStage{IRRender::kFileFragTrixelToFramebufferLitShapes, ShaderType::FRAGMENT}
+            }
+        );
         IRRender::createNamedResource<ShaderProgram>(
             "CanvasToFramebufferProgram",
             std::vector{
@@ -556,6 +617,8 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         sys->frameDataBuf_ = IRRender::getNamedResource<Buffer>("TrixelToFramebufferFrameData");
         sys->hoveredIdBuf_ = IRRender::getNamedResource<Buffer>("HoveredEntityIdBuffer");
         sys->program_ = IRRender::getNamedResource<ShaderProgram>("CanvasToFramebufferProgram");
+        sys->shapeLightingProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("CanvasShapeLightingProgram");
         sys->shapeProbeProgram_ =
             IRRender::getNamedResource<ShaderProgram>("CanvasSurfaceShadowProbeProgram");
         sys->scatterProgram_ = IRRender::getNamedResource<ShaderProgram>("PerAxisScatterProgram");
