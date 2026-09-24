@@ -252,7 +252,11 @@ late, release early:** hold a lock for exactly the operation (`exec
 ir-acquire cpu … -- cmake --build …`; the perf lock for the perf-grid run
 only), never across simplify, commit, comment drafting, or reading
 feedback. Applies to every role calling `ir-build`, `ir-run`, or any
-wrapper of `ir-acquire`.
+wrapper of `ir-acquire`. Launch engine executables only through `ir-run` /
+`fleet-run`, never the binary directly from a script or scratch: on native
+Windows `ir-run` holds the gpu lock for every run because a second live GL
+context on the NVIDIA driver stalls other engine processes' shader links for
+minutes ([`BUILD.md`](BUILD.md) §"`ir-build` / `ir-run`").
 
 ### Worktree identity
 
