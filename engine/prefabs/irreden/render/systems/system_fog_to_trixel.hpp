@@ -130,7 +130,7 @@ template <> struct System<FOG_TO_TRIXEL> {
                 });
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
             }
-            dispatchOverflowFog(axes);
+            dispatchOverflowFog(axes, mainTextures.size_);
             program_->use();
         }
 
@@ -147,7 +147,7 @@ template <> struct System<FOG_TO_TRIXEL> {
             ->bindAsImage(3, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
     }
 
-    void dispatchOverflowFog(C_PerAxisTrixelCanvases &axes) {
+    void dispatchOverflowFog(C_PerAxisTrixelCanvases &axes, ivec2 mainCanvasSize) {
         if (overflowFogDisabled_ || axes.overflowCap_ <= 0 || axes.winnerIds_.second == nullptr) {
             return;
         }
@@ -164,6 +164,14 @@ template <> struct System<FOG_TO_TRIXEL> {
             sizeof(ivec4),
             &overflowLayout
         );
+        // Entries are keyed on the per-axis store's origin anchor, which the
+        // kernel derives from canvasSizePixels_. This tick's UBO carries the
+        // main canvas size, so publish the store size for the dispatch.
+        voxelFrameDataBuf_->subData(
+            offsetof(FrameDataVoxelToCanvas, canvasSizePixels_),
+            sizeof(ivec2),
+            &axes.size_
+        );
         axes.winnerIds_.second->bindBase(
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_OverflowLightingScratch
@@ -173,6 +181,11 @@ template <> struct System<FOG_TO_TRIXEL> {
             kOverflowLightingDispatchArgsOffsetBytes
         );
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+        voxelFrameDataBuf_->subData(
+            offsetof(FrameDataVoxelToCanvas, canvasSizePixels_),
+            sizeof(ivec2),
+            &mainCanvasSize
+        );
     }
 
     void beginTick() {
