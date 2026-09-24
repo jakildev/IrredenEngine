@@ -106,6 +106,10 @@ template <> struct System<SHAPES_TO_TRIXEL> {
     void tick(
         IREntity::EntityId entityId, const C_ShapeDescriptor &shape, const C_WorldTransform &xform
     ) {
+        if ((shape.flags_ & SHAPE_FLAG_VISIBLE) == 0u ||
+            (shape.flags_ & SHAPE_FLAG_FOG_HIDDEN) != 0u) {
+            return;
+        }
         if (IRRender::shouldSkipAtLod(shape.lodMin_, shape.lodMax_, activeLod_)) {
             return;
         }
@@ -170,7 +174,9 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         desc.color = shape.color_.toPackedRGBA();
         desc.entityId = entityId;
         desc.jointIndex = 0;
-        desc.flags = shape.flags_;
+        desc.flags = (shape.flags_ & ~IRMath::SDF::kShapeFogBodyFactorMask) |
+                     (static_cast<std::uint32_t>(shape.fogBodyFactor_)
+                      << IRMath::SDF::kShapeFogBodyFactorShift);
         desc.lodLevel = IRRender::toUnderlying(shape.lodMin_);
         bucket.push_back(desc);
     }

@@ -18,8 +18,8 @@ namespace IRComponents {
 //   SHAPE_FLAG_VISIBLE           - shape is rendered (default on)
 //   SHAPE_FLAG_HOLLOW            - only render the shell of the SDF
 //   SHAPE_FLAG_MIRROR_X/Y        - mirror the shape along an axis
-//   SHAPE_FLAG_FOG_WHOLE_BODY_EXEMPT - fog on XY distance only, no height
-//                                  penalty (per pixel; no whole-shape hide)
+//   SHAPE_FLAG_FOG_BODY          - carrier uses one whole-shape fog verdict
+//   SHAPE_FLAG_FOG_HIDDEN        - fog-owned raster gate
 //
 // lodMin_ / lodMax_ bound the inclusive LOD band this shape draws in.
 // lodMin_ is the coarsest tier (largest index) and lodMax_ the finest tier
@@ -40,6 +40,7 @@ struct C_ShapeDescriptor {
     vec4 params_ = vec4(1.0f, 1.0f, 1.0f, 0.0f);
     Color color_ = Color{255, 255, 255, 255};
     std::uint32_t flags_ = IRMath::SDF::SHAPE_FLAG_VISIBLE;
+    std::uint8_t fogBodyFactor_ = 0;
     IRRender::LodLevel lodMin_ = IRRender::LodLevel::LOD_4;
     IRRender::LodLevel lodMax_ = IRRender::LodLevel::LOD_0;
     IREntity::EntityId canvasEntity_ = IREntity::kNullEntity;

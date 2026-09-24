@@ -33,6 +33,7 @@
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/common/components/component_world_transform.hpp>
+#include <irreden/render/components/component_fog_exempt.hpp>
 #include <irreden/render/picking.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 
@@ -101,6 +102,7 @@ inline IREntity::EntityId createIndicator() {
     return IREntity::createEntity(
         IRComponents::C_LocalTransform{IRMath::vec3(0.0f)},
         marker,
+        IRComponents::C_FogExempt{},
         IRComponents::C_Name{"CursorPivotIndicator"}
     );
 }

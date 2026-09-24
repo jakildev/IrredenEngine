@@ -976,6 +976,8 @@ using ShapeType = IRMath::SDF::ShapeType;
 using ShapeFlags = IRMath::SDF::ShapeFlags;
 using IRMath::SDF::SHAPE_FLAG_CHECKERBOARD;
 using IRMath::SDF::SHAPE_FLAG_DEPTH_COLOR;
+using IRMath::SDF::SHAPE_FLAG_FOG_BODY;
+using IRMath::SDF::SHAPE_FLAG_FOG_HIDDEN;
 using IRMath::SDF::SHAPE_FLAG_FOG_WHOLE_BODY_EXEMPT;
 using IRMath::SDF::SHAPE_FLAG_HOLLOW;
 using IRMath::SDF::SHAPE_FLAG_MIRROR_X;
