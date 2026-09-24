@@ -91,7 +91,8 @@ template <> struct System<WIDGET_RENDER_CHECKBOX> {
             IRComponents::C_Widget,
             IRComponents::C_WidgetCheckbox,
             IRComponents::C_WidgetState,
-            IRComponents::C_GuiPosition>("WidgetRenderCheckbox");
+            IRComponents::C_GuiPosition,
+            AlsoWrites<IRComponents::C_TriangleCanvasTextures>>("WidgetRenderCheckbox");
     }
 };
 

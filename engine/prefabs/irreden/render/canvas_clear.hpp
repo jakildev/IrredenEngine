@@ -23,6 +23,7 @@ namespace IRSystem {
 inline void clearCanvasAndDistances(
     IREntity::EntityId canvasEntity, IRComponents::C_TriangleCanvasTextures &canvas
 ) {
+    canvas.shapeGeometry_.invalidateSamples();
     auto background =
         IREntity::getComponentOptional<IRComponents::C_TriangleCanvasBackground>(canvasEntity);
     if (background.has_value()) {

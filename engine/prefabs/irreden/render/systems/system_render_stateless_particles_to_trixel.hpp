@@ -87,7 +87,8 @@ template <> struct System<RENDER_STATELESS_PARTICLES_TO_TRIXEL> {
             kBufferIndex_StatelessParticleEmitters
         );
 
-        canvas.getTextureColors()->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+        canvas.getTextureColorsForGeometryWrite()
+            ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
         canvas.getTextureDistances()
             ->bindAsImage(1, TextureAccess::READ_WRITE, TextureFormat::R32I);
 

@@ -77,8 +77,8 @@ rendered floor fixture.
 3. Retain receiver data until its last consumer. Shape descriptor uploads now
    belong to their canvas together with the producer's projection snapshot.
    The retained elected sample key addresses the retained tile lookup, whose
-   shape index identifies its descriptor. Later overpainting still needs an
-   explicit validity rule before a consumer may use that reference. Prefer storage tied
+   shape index identifies its descriptor. Later overpainting conservatively invalidates the whole canvas;
+   per-texel validity remains pending. Prefer storage tied
    to visible canvas winners over allocation proportional to world population,
    and never scan every shape per fragment.
 4. Evaluate the receiver at the fragment's actual projected position. Carry
@@ -122,7 +122,7 @@ A finite descriptor-backed query is required at box corners; extrapolating one
 sample's infinite plane can cross onto the wrong face. Retained per-canvas
 descriptors must reproduce the producer's rounded projected origin, density and
 cell expansion. Canvas-owned descriptor storage now survives other canvas uploads;
-elected sample references survive too, but final-winner validity and consumer
+elected sample references survive too, but per-texel final-winner validity and consumer
 bindings remain to be implemented.
 Voxelized/lattice SDF receivers retain cell-union geometry rather than one smooth
 analytical box.
@@ -137,8 +137,9 @@ Winner metadata needs a lifecycle covering empty-SDF frames, canvas clears,
 unsupported winners and later same-depth overwrites. A failed finite query must
 not silently discard the producer's splatted coverage or change depth. The
 initial integration should preserve that legacy coverage while accepting exact
-receiving only where the finite intersection succeeds. These constraints remain
-unimplemented; the shared helper and scalar checks do not accept floor edges.
+receiving only where the finite intersection succeeds. The lifecycle is guarded conservatively by whole-canvas invalidation below;
+finite queries and per-fragment coverage remain unimplemented. The shared
+helper and scalar checks do not accept floor edges.
 
 ## Canvas-owned descriptor uploads
 
@@ -208,3 +209,41 @@ must be accounted for before a shadow or lighting consumer uses it. An entity-ID
 or quantized-depth equality test alone is insufficient to certify a same-entity,
 same-depth overwrite. Exact finite queries and linear lighting payload remain
 unimplemented; preserving these buffers does not improve shadow edges yet.
+
+
+## Conservative final-write validity
+
+`CanvasShapeGeometry::samplesValid()` is false until the SDF producer publishes
+its completed submission. Uploads, owner preparation and frame reset invalidate
+it first. Publication with any X-ray descriptor leaves it false, because mixed
+color cannot be attributed to the elected opaque surface alone. The publication
+assert checks populated submission fields; pipeline ordering, not that assert,
+establishes that the GPU publication dispatch has been encoded.
+
+Engine geometry writers acquire color through
+`C_TriangleCanvasTextures::getTextureColorsForGeometryWrite()`. This invalidates
+retained sample references before geometry/depth replacement, including a
+same-entity, same-depth overwrite. CPU trixel/rectangle/mask painting, text and
+widget glyphs, voxel rasterization, both particle paths and canvas clears use
+this contract. A background-throttled clear still invalidates when depth clears.
+Lighting and fog preserve geometric ownership and keep the ordinary getter.
+Foreign GUI canvas writers declare their CPU canvas writes in system metadata.
+
+Invalidation is whole-canvas and costs a boolean store, with no GPU dispatch,
+readback, upload or additional per-texel allocation. Buffers remain resident for
+reuse and diagnosis. Const canvas clear APIs can mutate GPU content, so the
+matching derived validity bit is mutable as well. Re-validating requires a new
+trusted SDF publication; readers must not infer validity from nonempty retained
+buffers or matching entity IDs/depth alone.
+
+This is conservative: a particle dispatch that changes no visible samples,
+one overwritten corner, or an X-ray descriptor that never becomes visible
+still disables the whole canvas’s exact-SDF eligibility. Per-texel invalidation
+is pending. Custom renderers using raw texture handles must invalidate before
+replacing geometry; the public raw resource API cannot enforce this automatically.
+The state is not yet consumed by lighting or presentation, and is not a claim
+that exact receiver queries or linear lighting payload have been implemented.
+
+The resource-owner test executes validity transitions and mutations that accept
+X-ray publication or skip invalidation. Writer coverage is additionally pinned
+in source; it does not execute every producer or prove GPU completion.

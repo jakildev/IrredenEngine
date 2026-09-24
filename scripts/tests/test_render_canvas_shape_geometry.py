@@ -1,5 +1,6 @@
 """Execute the canvas descriptor owner with a checked in-memory GPU resource adapter."""
 
+import re
 import shutil
 import subprocess
 import tempfile
@@ -71,8 +72,39 @@ using IRComponents::CanvasShapeGeometry;
 int samples() {
     CanvasShapeGeometry a, b;
     std::array<ShapeTileDescriptor, 1> tile{{{7, 0, {13, -9}}}};
-    a.uploadTiles(tile);
+    bool rejectedEmpty = false;
+    try { a.publishSamples(true); } catch (const std::runtime_error&) { rejectedEmpty = true; }
+    if (!rejectedEmpty || a.samplesValid()) return 32;
+    std::array<GPUShapeDescriptor, 1> descriptor{{{7, 2.5f}}};
+    GPUShapesFrameData frame{1, .4f, 3};
+    a.upload(descriptor, frame);
+    bool noTiles = false, noOwners = false;
     a.prepareSampleOwners({2, 3});
+    try { a.publishSamples(true); } catch (const std::runtime_error&) { noTiles = true; }
+    a.reset();
+    a.upload(descriptor, frame);
+    a.uploadTiles(tile);
+    try { a.publishSamples(true); } catch (const std::runtime_error&) { noOwners = true; }
+    if (!noTiles || !noOwners) return 40;
+    a.prepareSampleOwners({2, 3});
+    a.publishSamples(true);
+    if (!a.samplesValid()) return 33;
+    a.publishSamples(false);
+    if (a.samplesValid()) return 34;
+    a.publishSamples(true);
+    const CanvasShapeGeometry& readonly = a;
+    readonly.invalidateSamples();
+    if (a.samplesValid()) return 35;
+    a.publishSamples(true);
+    a.upload(descriptor, frame);
+    if (a.samplesValid()) return 36;
+    a.publishSamples(true);
+    a.uploadTiles(tile);
+    if (a.samplesValid()) return 37;
+    a.publishSamples(true);
+    a.prepareSampleOwners({2, 3});
+    if (a.samplesValid()) return 38;
+    a.publishSamples(true);
     const auto ownerHandle = a.sampleOwners_.first;
     const auto tileHandle = a.tiles_.first;
     const std::uint32_t key = (17 * 3 + 2) * 2 + 1;
@@ -88,6 +120,7 @@ int samples() {
     if (a.sampleOwners_.first == b.sampleOwners_.first || a.tiles_.first == b.tiles_.first)
         return 21;
     a.reset();
+    if (a.samplesValid()) return 39;
     if (a.tileCount_ || a.ownerSize_.x || a.ownerSize_.y) return 22;
     if (a.sampleOwners_.first != ownerHandle || a.tiles_.first != tileHandle) return 23;
     a.prepareSampleOwners({3, 2});
@@ -109,7 +142,11 @@ int samples() {
     bool rejected = false;
     try { a.prepareSampleOwners({0, 3}); } catch (const std::runtime_error&) { rejected = true; }
     if (!rejected) return 29;
+    a.upload(descriptor, frame);
+    a.uploadTiles(tile);
+    a.publishSamples(true);
     a.onDestroy(); b.onDestroy();
+    if (a.samplesValid()) return 41;
     if (!resources.empty() || a.sampleOwners_.second || a.tiles_.second ||
         a.ownerCapacityBytes_ || a.tileCapacity_ || a.ownerSize_.x || a.tileCount_) return 30;
     return 0;
@@ -162,6 +199,9 @@ class CanvasShapeGeometryTest(unittest.TestCase):
             "production": (source, 0),
             "stale_frame": (source.replace("frameData_ = {};", ""), 5),
             "lost_projection": (source.replace("frameData_ = frameData;", ""), 3),
+            "stale_validity": (source.replace("        m_samplesValid = false;", ""), 35),
+            "xray_accepted": (source.replace("m_samplesValid = unblended;",
+                                             "m_samplesValid = true;"), 34),
             "unordered_clear": (source.replace(
                 "IRRender::device()->memoryBarrier(IRRender::BarrierType::ALL);", ""), 31),
             "stale_tiles": (source.replace("        tileCount_ = 0;", "", 1), 22),
@@ -203,6 +243,43 @@ class CanvasShapeGeometryTest(unittest.TestCase):
         self.assertIn("shapeGeometry_.prepareSampleOwners(canvasTextures.size_)", system)
         textures = HEADER.with_name("component_triangle_canvas_textures.hpp").read_text()
         self.assertIn("shapeGeometry_.onDestroy()", textures)
+
+    def test_geometry_writers_invalidate_and_shading_preserves(self):
+        render = ROOT / "engine/prefabs/irreden/render"
+        textures = HEADER.with_name("component_triangle_canvas_textures.hpp").read_text()
+        for name in ("clear()", "clearWithColor(", "clearWithColorData(", "setTrixel(",
+                     "clearDistances()", "clearDistanceTexture()",
+                     "getTextureColorsForGeometryWrite()"):
+            match = re.search(r"\n    [^\n;{}]*" + re.escape(name) + r"[^\n;{}]*\{",
+                              textures)
+            self.assertIsNotNone(match, name)
+            start = match.start()
+            body = textures[start:textures.index("\n    }", start)]
+            self.assertIn("shapeGeometry_.invalidateSamples()", body, name)
+        clear = (render / "canvas_clear.hpp").read_text()
+        self.assertLess(clear.index("shapeGeometry_.invalidateSamples()"),
+                        clear.index("clearTexImage" , clear.index("inline void")))
+        writers = [
+            "systems/system_voxel_to_trixel.hpp", "systems/system_text_to_trixel.hpp",
+            "systems/system_render_gpu_particles_to_trixel.hpp",
+            "systems/system_render_stateless_particles_to_trixel.hpp", "gui_text_batch.hpp",
+        ]
+        for name in writers:
+            source = (render / name).read_text()
+            self.assertIn("getTextureColorsForGeometryWrite()", source, name)
+            self.assertNotIn("getTextureColors()", source, name)
+        for name in ("trixel_rect.hpp", "mask_grid_painter.hpp"):
+            source = (ROOT / "engine/render/include/irreden/render" / name).read_text()
+            self.assertIn("getTextureColorsForGeometryWrite()->subImage2D", source, name)
+            self.assertNotIn("textureTriangleColors_.second->subImage2D", source, name)
+        for name in ("system_lighting_to_trixel.hpp", "system_fog_to_trixel.hpp"):
+            source = (render / "systems" / name).read_text()
+            self.assertNotIn("invalidateSamples", source, name)
+            self.assertNotIn("getTextureColorsForGeometryWrite", source, name)
+        shapes = (render / "systems/system_shapes_to_trixel.hpp").read_text()
+        self.assertLess(shapes.index("shapePublishProgram_->use()"),
+                        shapes.index("shapeGeometry_.publishSamples(!hasXray)"))
+        self.assertIn("shape.flags & SHAPE_FLAG_XRAY_OCCLUDED", shapes)
 
 
 if __name__ == "__main__":

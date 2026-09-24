@@ -71,7 +71,7 @@ inline void fillRect(
     scratch.colors_.assign(pixels, color);
     scratch.distances_.assign(pixels, distance);
 
-    canvas.textureTriangleColors_.second->subImage2D(
+    canvas.getTextureColorsForGeometryWrite()->subImage2D(
         lo.x,
         lo.y,
         w,

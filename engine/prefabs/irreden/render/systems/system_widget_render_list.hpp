@@ -124,7 +124,8 @@ template <> struct System<WIDGET_RENDER_LIST> {
             IRComponents::C_Widget,
             IRComponents::C_WidgetList,
             IRComponents::C_WidgetState,
-            IRComponents::C_GuiPosition>("WidgetRenderList");
+            IRComponents::C_GuiPosition,
+            AlsoWrites<IRComponents::C_TriangleCanvasTextures>>("WidgetRenderList");
     }
 };
 

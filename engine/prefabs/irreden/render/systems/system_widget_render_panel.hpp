@@ -95,7 +95,8 @@ template <> struct System<WIDGET_RENDER_PANEL> {
             IRComponents::C_Widget,
             IRComponents::C_WidgetPanel,
             IRComponents::C_WidgetState,
-            IRComponents::C_GuiPosition>("WidgetRenderPanel");
+            IRComponents::C_GuiPosition,
+            AlsoWrites<IRComponents::C_TriangleCanvasTextures>>("WidgetRenderPanel");
     }
 };
 

@@ -78,7 +78,8 @@ template <> struct System<WIDGET_RENDER_COLOR_SWATCH> {
             IRComponents::C_Widget,
             IRComponents::C_WidgetColorSwatch,
             IRComponents::C_WidgetState,
-            IRComponents::C_GuiPosition>("WidgetRenderColorSwatch");
+            IRComponents::C_GuiPosition,
+            AlsoWrites<IRComponents::C_TriangleCanvasTextures>>("WidgetRenderColorSwatch");
     }
 };
 

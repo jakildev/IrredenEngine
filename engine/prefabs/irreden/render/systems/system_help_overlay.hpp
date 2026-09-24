@@ -142,7 +142,10 @@ template <> struct System<HELP_OVERLAY> {
         // archetype this system iterates, so the tick fires from frame 1.
         IRPrefab::HelpOverlay::ensureStateSingleton();
         IRPrefab::Widget::ensureThemeSingleton();
-        return registerSystem<HELP_OVERLAY, IRComponents::C_HelpOverlayState>("HelpOverlay");
+        return registerSystem<
+            HELP_OVERLAY,
+            IRComponents::C_HelpOverlayState,
+            AlsoWrites<IRComponents::C_TriangleCanvasTextures>>("HelpOverlay");
     }
 
   private:

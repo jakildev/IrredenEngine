@@ -62,7 +62,8 @@ template <> struct System<WIDGET_RENDER_SPLITTER> {
             WIDGET_RENDER_SPLITTER,
             IRComponents::C_Splitter,
             IRComponents::C_Widget,
-            IRComponents::C_GuiPosition>("WidgetRenderSplitter");
+            IRComponents::C_GuiPosition,
+            AlsoWrites<IRComponents::C_TriangleCanvasTextures>>("WidgetRenderSplitter");
     }
 };
 

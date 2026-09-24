@@ -185,6 +185,11 @@ struct C_TriangleCanvasTextures {
         return textureTriangleColors_.second;
     }
 
+    Texture2D *getTextureColorsForGeometryWrite() {
+        shapeGeometry_.invalidateSamples();
+        return textureTriangleColors_.second;
+    }
+
     const Texture2D *getTextureDistances() const {
         return textureTriangleDistances_.second;
     }
@@ -205,6 +210,7 @@ struct C_TriangleCanvasTextures {
     }
 
     void clear() const {
+        shapeGeometry_.invalidateSamples();
         textureTriangleColors_.second
             ->clear(PixelDataFormat::RGBA, PixelDataType::UNSIGNED_BYTE, &u8vec4(0, 0, 0, 0)[0]);
         textureTriangleDistances_.second->clear(
@@ -218,12 +224,14 @@ struct C_TriangleCanvasTextures {
     }
 
     void clearWithColor(const Color &color) const {
+        shapeGeometry_.invalidateSamples();
         textureTriangleColors_.second
             ->clear(PixelDataFormat::RGBA, PixelDataType::UNSIGNED_BYTE, &color);
         clearDistanceTexture();
     }
 
     void clearWithColorData(ivec2 size, const std::vector<Color> &colorData) const {
+        shapeGeometry_.invalidateSamples();
         textureTriangleColors_.second->subImage2D(
             0,
             0,
@@ -237,6 +245,7 @@ struct C_TriangleCanvasTextures {
     }
 
     void setTrixel(ivec2 index, Color color, int distance = 0) {
+        shapeGeometry_.invalidateSamples();
         textureTriangleColors_.second->subImage2D(
             index.x,
             index.y,
@@ -294,6 +303,7 @@ struct C_TriangleCanvasTextures {
     }
 
     void clearDistances() const {
+        shapeGeometry_.invalidateSamples();
         textureTriangleDistances_.second->clear(
             PixelDataFormat::RED_INTEGER,
             PixelDataType::INT32,
@@ -318,6 +328,7 @@ struct C_TriangleCanvasTextures {
     // on call-sites (e.g. entity_trixel_canvas.hpp) that invoke clearWithColor()
     // or clearWithColorData() without a subsequent clearDistances().
     void clearDistanceTexture() const {
+        shapeGeometry_.invalidateSamples();
         textureTriangleDistances_.second->clear(
             PixelDataFormat::RED_INTEGER,
             PixelDataType::INT32,

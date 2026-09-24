@@ -73,7 +73,8 @@ template <> struct System<WIDGET_RENDER_BUTTON> {
             IRComponents::C_Widget,
             IRComponents::C_WidgetButton,
             IRComponents::C_WidgetState,
-            IRComponents::C_GuiPosition>("WidgetRenderButton");
+            IRComponents::C_GuiPosition,
+            AlsoWrites<IRComponents::C_TriangleCanvasTextures>>("WidgetRenderButton");
     }
 };
 

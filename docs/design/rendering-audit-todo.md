@@ -441,3 +441,5 @@ voxel-only slowdowns despite a zero SDF stage, with clean retries. Keep failed
 runs and existing thresholds; add an SDF-active workload to measure election cost.
 
 - Implemented next SDF provenance slice: retain elected sample keys and padded tile lookup per shape canvas, with frame invalidation, owner-stride reset and capacity reuse. This preserves the SDF pass winner without another GPU pass. Final-winner validity after later writes, fragment bindings, linear lighting payload and exact finite receiver evaluation remain pending. Track aggregate per-canvas owner memory alongside GPU timing before widening the consumer.
+
+- Implemented conservative SDF sample validity: completed non-X-ray submissions become eligible; geometry writes and clears invalidate the whole canvas, including equal-depth/equal-ID replacements. Per-texel invalidation, consumer bindings, linear lighting payload and finite fragment receiver evaluation remain pending. Raw custom GPU writers must use the geometry-write accessor or invalidate explicitly.

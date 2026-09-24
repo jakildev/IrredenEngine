@@ -99,7 +99,8 @@ template <> struct System<WIDGET_RENDER_RADIO> {
             IRComponents::C_Widget,
             IRComponents::C_WidgetRadio,
             IRComponents::C_WidgetState,
-            IRComponents::C_GuiPosition>("WidgetRenderRadio");
+            IRComponents::C_GuiPosition,
+            AlsoWrites<IRComponents::C_TriangleCanvasTextures>>("WidgetRenderRadio");
     }
 };
 
