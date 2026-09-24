@@ -438,8 +438,14 @@ read_dispatch_mode() {
 #   2. FLEET_DISPATCHER_USAGE_GATE                   (global override)
 #   3. BUILTIN_PER_TYPE_DEFAULTS in the Python below (seven_day=0.95,
 #      five_hour=0.80, github_core=0.90, github_graphql=0.90,
-#      github_search=1.01; everything else falls to the global default)
-#   4. Final fallback 0.80
+#      github_search=1.01)
+#   4. The seven_day threshold for any other `seven_day*` type
+#   5. Final fallback 0.80, named in the status line as the fallback
+#
+# Scope, separately: a type that meters one model family (the Fable-only
+# weekly window, `seven_day_<family>`; FLEET_DISPATCHER_USAGE_SCOPE_<TYPE>)
+# gates only launches on that family and never the fleet-wide gate — see
+# usage_gate_status.
 #
 # Conservative against staleness, but resetsAt is authoritative: an
 # observation whose resetsAt + RESET_GRACE_SECONDS is in the past is
@@ -479,14 +485,15 @@ fi
 
 # Export the gate env vars so the inline-Python in usage_gate_status
 # sees them. Sourcing fleet-up.conf doesn't auto-export, so without
-# this an operator's `FLEET_DISPATCHER_USAGE_GATE_SEVEN_DAY=0.50` in
-# conf would only exist as a bash-scope local. Export wraps only
+# this an operator's `FLEET_DISPATCHER_USAGE_GATE_SEVEN_DAY=0.50` (or a
+# `FLEET_DISPATCHER_USAGE_SCOPE_<TYPE>` scope override) in conf would only
+# exist as a bash-scope local. Export wraps only
 # already-set vars so unset ones stay unset (and the Python lookup
 # falls through to its baked defaults).
 if [[ -n "${FLEET_DISPATCHER_USAGE_GATE:-}" ]]; then
     export FLEET_DISPATCHER_USAGE_GATE
 fi
-for _gate_var in $(compgen -A variable | grep '^FLEET_DISPATCHER_USAGE_GATE_' || true); do
+for _gate_var in $(compgen -A variable | grep -E '^FLEET_DISPATCHER_USAGE_(GATE|SCOPE)_' || true); do
     export "$_gate_var"
 done
 unset _gate_var
@@ -1677,11 +1684,19 @@ pane_in_rate_limit_cooldown() {
 # closed when at least one observation breaches its own threshold; the
 # highest-utilization breach wins the report when several are over.
 #
+# $1 = scope: all (account-wide Anthropic windows + GitHub pools), claude
+# (account-wide Anthropic windows), shared (GitHub pools), or scoped
+# (model-scoped Anthropic windows only). $2 = optional model string: with
+# claude it adds, and with scoped it narrows to, the windows that meter that
+# model's family. A model-scoped window (scope_of below) never reaches all or
+# a model-less claude: a Fable-only weekly wall holds Fable launches, not the
+# account.
+#
 # Inlined python3 so we get JSON parsing + ISO-8601 timestamp math
 # without adding a shell dep. Same pattern rearm_periodic_meta_triggers
-# uses below.
+# uses below. fleet-gate-status mirrors the tables; change both.
 usage_gate_status() {
-    FLEET_USAGE_RUNTIME="${1:-all}" USAGE_DIR="$USAGE_DIR" \
+    FLEET_USAGE_RUNTIME="${1:-all}" FLEET_USAGE_MODEL="${2:-}" USAGE_DIR="$USAGE_DIR" \
     USAGE_STALE_SECONDS="$USAGE_STALE_SECONDS" \
     RESET_GRACE_SECONDS="$RESET_GRACE_SECONDS" \
     python3 - <<'PY'
@@ -1699,7 +1714,9 @@ reset_grace_s = int(os.environ.get("RESET_GRACE_SECONDS", "600"))
 # Built-in per-type defaults. Used only when neither the per-type env
 # override nor the global env override is set. This lets a fresh
 # install ship with the operator's preferred 80%/95% split without
-# requiring fleet-up.conf entries.
+# requiring fleet-up.conf entries. An unlisted `seven_day*` type takes the
+# `seven_day` threshold: every weekly window shares its pre-empt-near-the-wall
+# semantics.
 BUILTIN_PER_TYPE_DEFAULTS = {
     "seven_day": 0.95,   # all-models weekly window — pre-empt close to wall
     "five_hour": 0.80,   # short-window — leave 20% headroom for in-flight work
@@ -1708,38 +1725,83 @@ BUILTIN_PER_TYPE_DEFAULTS = {
     "github_search": 1.01,   # surface-only — fleet usage of /search is negligible, never gate
 }
 # Final fallback for unknown types when the operator hasn't set a
-# global override either.
+# global override either. Sized for short windows; a closed line that rests
+# on it says so.
 BUILTIN_FALLBACK = 0.80
+
+MODEL_FAMILIES = ("fable", "opus", "sonnet", "haiku")
+# Rate-limit types that meter one model family rather than the account.
+# `seven_day_<family>` is recognised without a row. Override per type with
+# FLEET_DISPATCHER_USAGE_SCOPE_<TYPE>=<family>|account.
+BUILTIN_MODEL_SCOPES = {
+    "seven_day_overage_included": "fable",  # the plan's Fable-only weekly meter
+}
+
+
+def env_suffix(rate_limit_type):
+    return "".join(c.upper() if c.isalnum() else "_" for c in (rate_limit_type or ""))
+
+
+def family_of_model(model):
+    """Model family of a model string or alias ('' when unrecognised)."""
+    m = (model or "").lower()
+    if "mythos" in m:
+        return "fable"
+    for family in MODEL_FAMILIES:
+        if family in m:
+            return family
+    return ""
+
+
+def scope_of(rate_limit_type):
+    """'account', or the model family whose usage this type meters."""
+    t = rate_limit_type or ""
+    if t.startswith("github"):
+        return "account"
+    override = os.environ.get(f"FLEET_DISPATCHER_USAGE_SCOPE_{env_suffix(t)}", "")
+    override = override.strip().lower()
+    if override == "account" or override in MODEL_FAMILIES:
+        return override
+    if t in BUILTIN_MODEL_SCOPES:
+        return BUILTIN_MODEL_SCOPES[t]
+    suffix = t[len("seven_day_"):] if t.startswith("seven_day_") else ""
+    return suffix if suffix in MODEL_FAMILIES else "account"
 
 
 def threshold_for(rate_limit_type):
-    """Per-type threshold lookup.
+    """(threshold, from_fallback) for one observation type.
 
     Order:
       1. FLEET_DISPATCHER_USAGE_GATE_<TYPE_UPPER>  (operator per-type)
       2. FLEET_DISPATCHER_USAGE_GATE               (operator global)
       3. BUILTIN_PER_TYPE_DEFAULTS[type]           (baked sensible default)
-      4. BUILTIN_FALLBACK (0.80) for unknown types
+      4. the `seven_day` threshold for any other `seven_day*` type
+      5. BUILTIN_FALLBACK (0.80) for unknown types — from_fallback=True
 
     The per-type env name is the rate-limit type uppercased with
     non-alnum chars replaced by `_` (e.g. `five_hour` →
     `FIVE_HOUR`).
     """
-    safe = "".join(c.upper() if c.isalnum() else "_" for c in (rate_limit_type or ""))
+    safe = env_suffix(rate_limit_type)
     if safe:
         var = f"FLEET_DISPATCHER_USAGE_GATE_{safe}"
         if var in os.environ and os.environ[var]:
             try:
-                return float(os.environ[var])
+                return float(os.environ[var]), False
             except ValueError:
                 pass
     glob = os.environ.get("FLEET_DISPATCHER_USAGE_GATE", "")
     if glob:
         try:
-            return float(glob)
+            return float(glob), False
         except ValueError:
             pass
-    return BUILTIN_PER_TYPE_DEFAULTS.get(rate_limit_type or "", BUILTIN_FALLBACK)
+    t = rate_limit_type or ""
+    if t in BUILTIN_PER_TYPE_DEFAULTS:
+        return BUILTIN_PER_TYPE_DEFAULTS[t], False
+    if t.startswith("seven_day"):
+        return threshold_for("seven_day")[0], False
+    return BUILTIN_FALLBACK, True
 
 
 if not usage_dir.is_dir():
@@ -1747,7 +1809,11 @@ if not usage_dir.is_dir():
     sys.exit(0)
 
 now = int(time.time())
-breaches = []  # list of (util_f, threshold, type, resets_at)
+scope = os.environ.get("FLEET_USAGE_RUNTIME", "all")
+model_arg = os.environ.get("FLEET_USAGE_MODEL", "")
+# A model outside every known family matches no model-scoped window.
+want_family = (family_of_model(model_arg) or "unrecognised") if model_arg else ""
+breaches = []  # list of (util_f, threshold, type, resets_at, note, scope_note)
 top_observation = None  # for the all-open log line
 
 for path in sorted(usage_dir.glob("*.json")):
@@ -1755,11 +1821,22 @@ for path in sorted(usage_dir.glob("*.json")):
         data = json.loads(path.read_text())
     except (OSError, json.JSONDecodeError):
         continue
-    scope = os.environ.get("FLEET_USAGE_RUNTIME", "all")
-    is_github = str(data.get("rateLimitType", path.stem)).startswith("github")
+    raw_type = str(data.get("rateLimitType", path.stem))
+    is_github = raw_type.startswith("github")
     if scope == "shared" and not is_github:
         continue
-    if scope == "claude" and is_github:
+    if scope in ("claude", "scoped") and is_github:
+        continue
+    bucket_scope = scope_of(raw_type)
+    if bucket_scope == "account":
+        if scope == "scoped":
+            continue
+    elif scope in ("all", "shared"):
+        continue
+    elif want_family:
+        if bucket_scope != want_family:
+            continue
+    elif scope == "claude":
         continue
     util = data.get("utilization")
     if not isinstance(util, (int, float)):
@@ -1807,31 +1884,33 @@ for path in sorted(usage_dir.glob("*.json")):
     # it as a percent, but the value itself is a fraction today).
     if util_f > 1.5:
         util_f = util_f / 100.0
-    rl_type = data.get("rateLimitType", path.stem)
+    rl_type = raw_type
     # A latched `status:"rejected"` is the wall itself (fleet-claude-stream
     # writes it at 100%); name it so the log reads "rejected", not "util=100%".
     if data.get("status") == "rejected":
         rl_type = f"{rl_type} rejected"
-    th = threshold_for(data.get("rateLimitType", path.stem))
+    th, from_fallback = threshold_for(raw_type)
+    note = ", unlisted type, fallback threshold" if from_fallback else ""
+    scope_note = f" scope={bucket_scope}" if bucket_scope != "account" else ""
     if util_f >= th:
-        breaches.append((util_f, th, rl_type, resets_at))
+        breaches.append((util_f, th, rl_type, resets_at, note, scope_note))
     if top_observation is None or util_f > top_observation[0]:
-        top_observation = (util_f, th, rl_type, resets_at)
+        top_observation = (util_f, th, rl_type, resets_at, note, scope_note)
 
 if breaches:
     # Multiple breaches: report the highest utilization. That's the
     # most pressing one and what the operator will care about first.
     breaches.sort(key=lambda x: x[0], reverse=True)
-    util_f, th, rl_type, resets = breaches[0]
+    util_f, th, rl_type, resets, note, scope_note = breaches[0]
     pct = int(round(util_f * 100))
     thr_pct = int(round(th * 100))
     resets_part = f" resets={resets}" if resets else ""
-    print(f"closed:{rl_type} util={pct}% (>= {thr_pct}%){resets_part}")
+    print(f"closed:{rl_type} util={pct}% (>= {thr_pct}%{note}){scope_note}{resets_part}")
 elif top_observation is not None:
-    util_f, th, rl_type, _resets = top_observation
+    util_f, th, rl_type, _resets, note, scope_note = top_observation
     pct = int(round(util_f * 100))
     thr_pct = int(round(th * 100))
-    print(f"open:{rl_type} util={pct}% (< {thr_pct}%)")
+    print(f"open:{rl_type} util={pct}% (< {thr_pct}%{note}){scope_note}")
 else:
     print("open")
 PY
@@ -1859,6 +1938,41 @@ log_gate_transition() {
 log_claude_gate_transition() {
     log_gate_transition claude "$(usage_gate_status claude)" "claude usage gate" \
         "Claude dispatch deferred, Codex unaffected" "Claude dispatch resumes"
+}
+
+# The model-scoped windows' transitions, on every host: a closed one defers
+# only launches on that model's family, per dispatch, so no other gate logs it.
+log_scoped_gate_transition() {
+    log_gate_transition scoped "$(usage_gate_status scoped)" "model-scoped usage gate" \
+        "launches on that model deferred, other models unaffected" \
+        "launches on that model resume"
+}
+
+# True while a model-scoped usage window metering the fable class's model is
+# at its threshold. The worker lane then serves the class as it serves a
+# saturated fable cap: fable-class tasks wait and fable plans degrade to opus.
+fable_model_walled() {
+    [[ -n "${CLASS_MODEL[fable]:-}" ]] || return 1
+    [[ "$(usage_gate_status scoped "${CLASS_MODEL[fable]}")" == closed:* ]]
+}
+
+# The model a reserved Claude pane resumes on, or empty when it launches
+# fresh. $1 = session sidecar, $2 = role. fleet-dispatch-wrap resumes a
+# sidecar of the same runtime and role that carries a session id, on the
+# sidecar's own model — not the one the dispatcher resolves for the launch —
+# so the pre-launch gate reads it here. Keep the conditions in sync with the
+# wrapper's resume branch.
+reserved_claude_model() {
+    python3 - "$1" "$2" <<'PY' 2>/dev/null | tr -d '\r' || true
+import json, sys
+try:
+    data = json.load(open(sys.argv[1]))
+except (OSError, ValueError):
+    sys.exit(0)
+if (isinstance(data, dict) and (data.get("runtime") or "claude") == "claude"
+        and data.get("role", "") in ("", sys.argv[2]) and data.get("session_id")):
+    print(data.get("model", ""))
+PY
 }
 
 # Returns 0 (true) when the gate is open and dispatching may proceed.
@@ -2052,7 +2166,8 @@ resolve_worker_class() {
     [[ -f "$slice" ]] || return 0
     # Published (not local): assign_for_pane's pick walk needs the same
     # answer and must not rescan the dispatch records to re-derive it.
-    if (( $(count_active_for_class fable) >= FABLE_CONCURRENCY_CAP )); then
+    if (( $(count_active_for_class fable) >= FABLE_CONCURRENCY_CAP )) \
+        || fable_model_walled; then
         DISPATCH_FABLE_BLOCKED=1
     fi
     local out
@@ -2421,7 +2536,8 @@ assign_for_pane() {
     # its claim, so the item legitimately re-enters.
     local inflight
     inflight=$(grep -ho '"target":"[^"]*"' "$DISPATCH_DIR"/*.json 2>/dev/null || true)
-    local line now runtime_blocked=0
+    local line now runtime_blocked=0 claude_gate="" claude_gate_model=""
+    local claude_only_gate=""
     now=$(date +%s)
     ASSIGN_BLOCK_REASON=""
     while IFS= read -r line; do
@@ -2454,7 +2570,11 @@ assign_for_pane() {
             route="${route//$'\r'/}"
             read -r ASSIGN_RUNTIME ASSIGN_CLASS ASSIGN_MODEL ASSIGN_EFFORT <<< "$route"
             if [[ "$ASSIGN_RUNTIME" == claude ]]; then
-                [[ "$(usage_gate_status claude)" == open* ]] || {
+                if [[ -z "$claude_gate" || "$claude_gate_model" != "$ASSIGN_MODEL" ]]; then
+                    claude_gate=$(usage_gate_status claude "$ASSIGN_MODEL")
+                    claude_gate_model="$ASSIGN_MODEL"
+                fi
+                [[ "$claude_gate" == open* ]] || {
                     ASSIGN_BLOCK_REASON="claude-quota-closed"; runtime_blocked=1; continue;
                 }
             else
@@ -2465,6 +2585,15 @@ assign_for_pane() {
                     ASSIGN_BLOCK_REASON="codex-cooldown"; runtime_blocked=1; continue;
                 }
             fi
+        else
+            # No routing on this host: the fleet-wide gate already holds the
+            # account windows, and a window scoped to the launch model binds
+            # here, before the claim.
+            [[ -n "$claude_only_gate" ]] || claude_only_gate=$(usage_gate_status scoped \
+                "${DISPATCH_MODEL:-${ROLE_MODEL[$role]}}")
+            [[ "$claude_only_gate" == open* ]] || {
+                ASSIGN_BLOCK_REASON="claude-quota-closed"; runtime_blocked=1; continue;
+            }
         fi
         if (( CLAIM_ATTEMPTS_LEFT <= 0 )); then
             ASSIGN_BLOCK_REASON="claim-attempts-exhausted"
@@ -2842,10 +2971,11 @@ dispatch_role() {
     # every 10 s. assign_budget_hit: the walk stopped on the per-tick claim
     # budget with candidates left — the trigger is kept instead.
     local assign_exhausted="" assign_budget_hit="" assign_rc=0
-    # reserved_held: a reserved worker pane sat out this tick in its
-    # usage-limit cooldown. Its reservation is the resume nobody else can
-    # serve (free panes fall through to the lane default and exhaust), so
-    # the trigger must outlive the tick instead of being consumed below.
+    # reserved_held: a reserved worker pane sat out this tick, in its
+    # usage-limit cooldown or behind a closed gate on the model it resumes.
+    # Its reservation is the resume nobody else can serve (free panes fall
+    # through to the lane default and exhaust), so the trigger must outlive
+    # the tick instead of being consumed below.
     local reserved_held=""
     local batch_route_checked=0 batch_claude_gate=""
     local batch_runtime="" batch_class="" batch_model="" batch_effort=""
@@ -2912,7 +3042,7 @@ dispatch_role() {
         # reservation IS its assignment); every other pane launches only
         # behind a granted claim, and when no candidate can be claimed the
         # fan-out stops here.
-        local target_arg="" pane_basename=""
+        local target_arg="" pane_basename="" resume_model="" claude_resume=""
         ASSIGN_RUNTIME="" ASSIGN_MODEL="" ASSIGN_EFFORT="" ASSIGN_CLASS=""
         if [[ -n "${ROLE_TARGET_BOUND[$role]+x}" && "$DISPATCH_MODE" == "live" ]]; then
             if ! pane_basename=$(pane_worktree_basename "$pane_id"); then
@@ -2944,13 +3074,18 @@ dispatch_role() {
                 # A reservation belongs to its original provider and target.
                 # Never hand a Codex conversation to Claude during recovery.
                 local resume_route resume_rc
-                resume_route=$(python3 "$FLEET_LIB_DIR/fleet_runtime.py" resume-route                     "${FLEET_SESSIONS_DIR:-$HOME/.fleet/sessions}/$pane_basename.session.json")                     && resume_rc=0 || resume_rc=$?
+                local sidecar="${FLEET_SESSIONS_DIR:-$HOME/.fleet/sessions}/$pane_basename.session.json"
+                resume_route=$(python3 "$FLEET_LIB_DIR/fleet_runtime.py" resume-route "$sidecar") \
+                    && resume_rc=0 || resume_rc=$?
                 if (( resume_rc == 0 )); then
                     read -r ASSIGN_RUNTIME ASSIGN_CLASS ASSIGN_MODEL ASSIGN_EFFORT target_arg <<< "$resume_route"
                     if ! command -v codex >/dev/null 2>&1                         || ! python3 "$FLEET_LIB_DIR/fleet_runtime.py" ready "$STATE_DIR"; then
                         ASSIGN_BLOCK_REASON="codex-unavailable"; assign_budget_hit=1; break
                     fi
-                elif (( resume_rc != 2 )); then
+                elif (( resume_rc == 2 )); then
+                    claude_resume=1
+                    resume_model=$(reserved_claude_model "$sidecar" "$role")
+                else
                     ASSIGN_BLOCK_REASON="resume-route-failed"; assign_budget_hit=1; continue
                 fi
             fi
@@ -2960,7 +3095,8 @@ dispatch_role() {
             if (( ! batch_route_checked )); then
                 local batch_route
                 batch_claude_gate="closed"
-                [[ "$(usage_gate_status claude)" == open* ]] && batch_claude_gate="open"
+                [[ "$(usage_gate_status claude "${ROLE_MODEL[$role]}")" == open* ]] \
+                    && batch_claude_gate="open"
                 batch_route=$(python3 "$FLEET_LIB_DIR/fleet_runtime.py" route-role \
                     "$role" "$(class_of_model "${ROLE_MODEL[$role]}")" \
                     "${ROLE_MODEL[$role]}" "${ROLE_EFFORT[$role]}" "$batch_claude_gate") || {
@@ -2981,12 +3117,28 @@ dispatch_role() {
                 ASSIGN_MODEL="$batch_model" ASSIGN_EFFORT="$batch_effort"
             fi
         fi
-        if [[ -z "${ASSIGN_RUNTIME:-}" && "${FLEET_RUNTIMES:-claude}" == *codex* ]]; then
-            local claude_gate_now="${batch_claude_gate:-}"
-            [[ -n "$claude_gate_now" ]] || claude_gate_now=$(usage_gate_status claude)
-            [[ "$claude_gate_now" == open* ]] || {
-                ASSIGN_BLOCK_REASON="claude-quota-closed"; assign_budget_hit=1; break;
-            }
+        if [[ -z "${ASSIGN_RUNTIME:-}" ]]; then
+            local launch_model="${resume_model:-${DISPATCH_MODEL:-${ROLE_MODEL[$role]}}}"
+            local claude_gate_now=""
+            if [[ "${FLEET_RUNTIMES:-claude}" == *codex* ]]; then
+                claude_gate_now="${batch_claude_gate:-}"
+                [[ -n "$claude_gate_now" ]] \
+                    || claude_gate_now=$(usage_gate_status claude "$launch_model")
+            else
+                # Claude-only: the fleet-wide gate holds the account windows.
+                claude_gate_now=$(usage_gate_status scoped "$launch_model")
+            fi
+            # A closed gate holds the whole lane only for a pane launching on
+            # the lane's model: a reserved resume's model is its own, so a
+            # wall on it holds that pane and the free panes behind it still
+            # read the gate for theirs.
+            if [[ "$claude_gate_now" != open* ]]; then
+                if [[ -n "$claude_resume" ]]; then
+                    reserved_held=1
+                    continue
+                fi
+                ASSIGN_BLOCK_REASON="claude-quota-closed"; assign_budget_hit=1; break
+            fi
         fi
         local cmd
         cmd=$(build_dispatch_command "$role" "$pane_key" "$DISPATCH_MODEL" "$DISPATCH_EFFORT" "$target_arg")
@@ -3066,7 +3218,7 @@ dispatch_role() {
     clear_gate_block "$role"
     if [[ -n "$reserved_held" ]]; then
         if [[ -z "${CAP_DEFER_LOGGED[$role-reserved-held]+x}" ]]; then
-            log "$role: dispatched $dispatched; a reserved pane is in usage-limit cooldown — trigger kept for its resume"
+            log "$role: dispatched $dispatched; a reserved pane is held (usage-limit cooldown or its resume model's gate closed) — trigger kept for its resume"
             CAP_DEFER_LOGGED["$role-reserved-held"]=1
         fi
         return
@@ -3671,6 +3823,7 @@ main() {
         else
             FLEET_USAGE_RUNTIME=all
         fi
+        log_scoped_gate_transition
         if session_exists && usage_gate_open; then
             for role in "${DISPATCHED_ROLES[@]}"; do
                 # Dry-run: each role gets ONE standby iteration, then idles.
@@ -3978,11 +4131,14 @@ case "${1:-}" in
         # Print the live usage gate status (open / closed) and exit.
         # Used by operators to inspect the 5-hour-window state without
         # tailing the dispatcher log. Optional scope: all (default) |
-        # claude (Anthropic windows only — what a Claude launch is gated
-        # on) | shared (GitHub pools only).
+        # claude (account-wide Anthropic windows) | shared (GitHub pools
+        # only) | scoped (model-scoped Anthropic windows only), then an
+        # optional model: `claude <model>` is what a Claude launch on that
+        # model is gated on.
         case "${2:-all}" in
-            all|claude|shared) usage_gate_status "${2:-all}" ;;
-            *) echo "usage: fleet-dispatcher --gate-status [all|claude|shared]" >&2; exit 2 ;;
+            all|shared) usage_gate_status "${2:-all}" ;;
+            claude|scoped) usage_gate_status "$2" "${3:-}" ;;
+            *) echo "usage: fleet-dispatcher --gate-status [all|claude|shared|scoped] [<model>]" >&2; exit 2 ;;
         esac
         exit 0
         ;;

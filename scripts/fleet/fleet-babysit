@@ -514,8 +514,11 @@ else
     STREAM_FORMATTER=""
 fi
 
-# The dispatcher's Claude usage gate, read the same way it reads it
-# (`fleet-dispatcher --gate-status claude`): the pool panes' streams latch
+# The dispatcher's Claude usage gate for this pane's model, read the way a
+# dispatch on that model reads it (`fleet-dispatcher --gate-status claude
+# <model>`): the account-wide windows plus any window metering only this
+# model's family, so a Fable pane waits out a Fable-only wall that leaves an
+# Opus pane running. The pool panes' streams latch
 # every rate_limit_event — including the wall's `rejected` one — under
 # ~/.fleet/state/usage/, so this pane learns the account is closed without
 # launching into it. The sibling script first — under the ~/bin install it
@@ -533,7 +536,7 @@ fi
 # Prints the gate's one-line status ("open..." / "closed:<reason>").
 claude_gate_status() {
     [[ -n "$GATE_READER" ]] || { echo open; return 0; }
-    "$GATE_READER" --gate-status claude 2>/dev/null || echo open
+    "$GATE_READER" --gate-status claude "$MODEL" 2>/dev/null || echo open
 }
 
 # Exit 0 = the Claude usage gate is closed (a window is at its threshold or

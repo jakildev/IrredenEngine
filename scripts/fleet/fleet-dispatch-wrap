@@ -317,6 +317,8 @@ if (( _resume_role )) && [[ -f "$SIDECAR" ]]; then
         # Resume with the ORIGINAL session's model/effort (stored at launch),
         # never the dispatcher's freshly-resolved class — a thinking session must
         # keep its launch config, and the resumed task's class is fixed.
+        # fleet-dispatcher's reserved_claude_model gates the launch on this
+        # model under the same resume conditions; keep the two in sync.
         _smodel=$(_read_sidecar model); _seffort=$(_read_sidecar effort)
         [[ -n "$_smodel" ]] && MODEL="$_smodel"
         [[ -n "$_seffort" ]] && EFFORT="$_seffort"

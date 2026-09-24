@@ -299,6 +299,70 @@ kill "$BABYSIT_BG_PID" 2>/dev/null || true
 wait "$BABYSIT_BG_PID" 2>/dev/null || true
 BABYSIT_BG_PID=""
 
+# --- T7b: a Fable-only wall holds a Fable pane, never an Opus one ------------
+# The pane reads the gate for its own model: a window metering one model
+# family (the Fable-only weekly limit) holds relaunches of a pane on that
+# family and leaves a pane on any other model to its ordinary crash loop.
+echo "T7b: a Fable-only wall holds the Fable architect's relaunch, not the Opus one's"
+run_scoped_wall_babysit() {  # $1 = home, $2 = model, $3 = calls log
+    local sid="7b7b7b7b-7b7b-7b7b-7b7b-7b7b7b7b7b7b"
+    mkdir -p "$1/.fleet/sessions" "$1/.fleet/state/usage"
+    echo "$sid" > "$1/.fleet/sessions/opus-architect.session-id"
+    make_transcript "$1" "$sid"
+    printf '{"rateLimitType":"seven_day_overage_included","utilization":1.0,"resetsAt":%s,"observed_at":%s,"status":"rejected"}\n' \
+        "$(( $(date +%s) + 3600 ))" "$(date +%s)" \
+        > "$1/.fleet/state/usage/seven_day_overage_included.rejected.json"
+    : > "$3"
+    (
+        for _v in $(compgen -A variable | grep -E '^FLEET_DISPATCHER_USAGE_(GATE|SCOPE)' || true); do
+            unset "$_v"
+        done
+        cd "$PROJECT_CWD" && env HOME="$1" PATH="$T6_BIN:$PATH" FLEET_CONF=/dev/null \
+            CLAUDE_CALLS_LOG="$3" \
+            FLEET_CRASH_DELAY=1 FLEET_CLEAN_DELAY=1 FLEET_GATE_POLL_SECONDS=1 \
+            FLEET_RESUME_FAIL_THRESHOLD=2 FLEET_MAX_ATTEMPTS=6 \
+            "$BABYSIT" "$2" opus-architect live >/dev/null 2>&1
+    ) &
+    BABYSIT_BG_PID=$!
+}
+count_resumes() {  # grep -c prints 0 AND exits 1 on no match
+    local n
+    n=$(grep -c -- '--resume' "$1" 2>/dev/null) || true
+    echo "${n:-0}"
+}
+stop_babysit() {
+    kill "$BABYSIT_BG_PID" 2>/dev/null || true
+    wait "$BABYSIT_BG_PID" 2>/dev/null || true
+    BABYSIT_BG_PID=""
+}
+
+H7F="$TMPROOT/h7f"; T7F_CALLS="$TMPROOT/t7f-claude-calls.log"
+run_scoped_wall_babysit "$H7F" 'claude-fable-5[1m]' "$T7F_CALLS"
+hold_line=""
+for _ in $(seq 1 50); do
+    hold_line=$(grep "holding relaunch" "$H7F/.fleet/logs/opus-architect.log" 2>/dev/null || true)
+    [[ -n "$hold_line" ]] && break
+    sleep 0.3
+done
+assert_contains "$hold_line" "claude usage gate closed:seven_day_overage_included rejected" \
+    "the Fable pane holds on the Fable-only wall"
+stop_babysit
+
+H7O="$TMPROOT/h7o"; T7O_CALLS="$TMPROOT/t7o-claude-calls.log"
+run_scoped_wall_babysit "$H7O" 'claude-opus-4-8[1m]' "$T7O_CALLS"
+for _ in $(seq 1 50); do
+    (( $(count_resumes "$T7O_CALLS") >= 2 )) && break
+    sleep 0.3
+done
+resume_calls=$(count_resumes "$T7O_CALLS")
+[[ "$resume_calls" -ge 2 ]] \
+    && ok "the Opus pane relaunches through the Fable-only wall" \
+    || bad "the Opus pane did not relaunch (saw $resume_calls --resume calls)"
+grep -q "holding relaunch" "$H7O/.fleet/logs/opus-architect.log" 2>/dev/null \
+    && bad "the Opus pane held on a Fable-only wall" \
+    || ok "no hold logged for the Opus pane"
+stop_babysit
+
 # --- T8: campaign-<slug> panes launch like architects, via role-campaign ----
 # fleet-up babysits FLEET_CAMPAIGNS panes as `campaign-<slug>`. The role file
 # is the shared role-campaign.md with "<slug> <mode>" as its arguments, so the

@@ -161,6 +161,18 @@ def write_usage_record(record, payload):
 # the result-text fallback below does not add a second record beside it.
 REJECTION_LATCHED = False
 
+# The session's model from its init event, stamped on every usage record as
+# `model`: which model observed a window is how an operator confirms a
+# rate-limit type's scope (fleet-gate-status shows it). Display only — the
+# gate scopes a type by name, never by who happened to observe it.
+SESSION_MODEL = None
+
+
+def with_session_model(payload):
+    if SESSION_MODEL:
+        payload["model"] = SESSION_MODEL
+    return payload
+
 
 def latch_result_rejection(text):
     """Latch the wall from its result text alone, as `wall.rejected.json`.
@@ -181,13 +193,13 @@ def latch_result_rejection(text):
     rl_type = "seven_day" if "weekly" in text.lower() else "five_hour"
     write_usage_record(
         "wall.rejected",
-        {
+        with_session_model({
             "rateLimitType": rl_type,
             "utilization": 1.0,
             "resetsAt": None,
             "observed_at": int(time.time()),
             "status": "rejected",
-        },
+        }),
     )
 
 
@@ -250,7 +262,7 @@ def latch_usage_observation(rl_type, info):
     }
     if status is not None:
         payload["status"] = status
-    write_usage_record(record, payload)
+    write_usage_record(record, with_session_model(payload))
     if status == "rejected":
         REJECTION_LATCHED = True
 
@@ -313,6 +325,7 @@ def note_quota_rejection():
 
 
 def main():
+    global SESSION_MODEL
     for line in sys.stdin:
         line = line.strip()
         if not line:
@@ -339,6 +352,8 @@ def main():
             sub = event.get("subtype")
             if sub == "init":
                 model = event.get("model", "?")
+                if isinstance(event.get("model"), str) and event["model"]:
+                    SESSION_MODEL = event["model"]
                 cwd = event.get("cwd", "?").rsplit("/", 1)[-1]
                 sess = (event.get("session_id") or "?")[:8]
                 emit(f"{DIM}[claude {model} sess={sess} cwd={cwd}]{RESET}\n")

@@ -366,17 +366,17 @@ Both gates auto-resume; there is no "wait for reset" command. Canonical
 implementation and thresholds: `scripts/fleet/fleet-dispatcher`
 (`usage_gate_status()`, "Usage gate" header); change `fleet-gate-status` too.
 
-- **Fleet-wide usage gate** — `fleet-claude-stream` latches every
-  `rate_limit_event` into `~/.fleet/state/usage/<type>.json`; the wall's
-  `status:"rejected"` event is its own `<type>.rejected.json` at 100 %,
-  which a later warning from another pane cannot overwrite (the wall's
-  result text alone latches `wall.rejected.json`, no `resetsAt`). The
-  dispatcher defers Claude dispatches while an observation is at or above
-  threshold (`five_hour` 80 %, `seven_day` 95 %;
-  `FLEET_DISPATCHER_USAGE_GATE[_FIVE_HOUR|_SEVEN_DAY]`) until `resetsAt` +
-  `FLEET_DISPATCHER_RESET_GRACE_SECONDS` (600); only an observation with no
-  parsed `resetsAt` ages out (`FLEET_DISPATCHER_USAGE_STALE_SECONDS`, 3600;
-  `fleet-up --reset-usage` wipes them after an account switch).
+- **Fleet-wide usage gate** — `fleet-claude-stream` latches every `rate_limit_event`
+  into `~/.fleet/state/usage/<type>.json` (with the observing `model`); the wall's
+  `rejected` event is its own `<type>.rejected.json` at 100 % that no later warning
+  overwrites (the wall's result text alone: `wall.rejected.json`, no `resetsAt`).
+  Claude dispatch defers while an observation is at or above threshold (`five_hour`
+  80 %, any `seven_day*` 95 %; `FLEET_DISPATCHER_USAGE_GATE[_<TYPE>]`) until its
+  `resetsAt` plus `FLEET_DISPATCHER_RESET_GRACE_SECONDS` (600); one with no `resetsAt`
+  ages out (`FLEET_DISPATCHER_USAGE_STALE_SECONDS`, 3600; `fleet-up --reset-usage`
+  wipes them after an account switch). A type metering one model family (Fable's weekly
+  `seven_day_overage_included`, `seven_day_<family>`; `FLEET_DISPATCHER_USAGE_SCOPE_<TYPE>`)
+  defers only launches on that family (a reserved resume is gated on its own session's model and, walled, holds only its pane); a walled fable model serves as a saturated fable cap.
 - **GitHub API quota** — `github-{core,graphql,search}.json`: graphql from its
   own `rateLimit` self-report (a refused sample latches `rejected`), core from the `X-RateLimit-*` headers on the scout's own conditional REST reads (a follower sends none, so writes no core file), search
   from `/rate_limit`; core and graphql gate at 90 % (`FLEET_DISPATCHER_USAGE_GATE_GITHUB_{CORE,GRAPHQL}`), search never.
@@ -388,7 +388,7 @@ implementation and thresholds: `scripts/fleet/fleet-dispatcher`
   Codex twin: 15-minute `runtime-cooldown/codex.json` ([`CODEX.md`](CODEX.md)).
 
 `fleet-gate-status [--json]` prints gate state, breaching observation (`REJECTED`
-on the wall), reset ETA, cooldowns, GitHub pool `remaining/limit`; `fleet-dispatcher --gate-status [all|claude|shared]` is the one-liner.
+on the wall), reset ETA, cooldowns, GitHub pool `remaining/limit`; `fleet-dispatcher --gate-status [all|claude|shared|scoped] [<model>]` is the one-liner.
 `fleet-health [--since 24h|7d|ISO] [--json]` is the first read after
 autonomous running: per-role productive vs empty iterations, trigger
 sources, merger tier-0 vs LLM hand-offs, provider readiness, unstamped
