@@ -1254,13 +1254,12 @@ constexpr std::uint32_t kBufferIndex_ShapeDescriptors = 20;
 // (kBufferIndex_LocalVoxelPositions) for per-voxel bone-slot indices.
 constexpr std::uint32_t kBufferIndex_JointTransforms = 21;
 constexpr std::uint32_t kBufferIndex_AnimationParams = 22;
-// SHAPES_TO_TRIXEL transiently borrows the unused animation slot for its
-// per-pixel deterministic sample-owner buffer and restores it after dispatch.
+// Shape production and shadow receiving borrow the animation slot for
+// per-pixel sample owners and restore it after dispatch.
 constexpr std::uint32_t kBufferIndex_ShapeSampleOwners = kBufferIndex_AnimationParams;
-// Slot 23 was previously unused; reused for the GPU light-volume
-// dilation chain's UBO. Same Metal-cap rationale as
-// `kBufferIndex_LightSourceBuffer` above.
-constexpr std::uint32_t kBufferIndex_LightVolumeParams = 23;
+// Shape and light-volume passes bind their own UBOs to this shared Metal slot.
+constexpr std::uint32_t kBufferIndex_ShapesFrameData = 23;
+constexpr std::uint32_t kBufferIndex_LightVolumeParams = kBufferIndex_ShapesFrameData;
 constexpr std::uint32_t kBufferIndex_ChunkVisibility = 24;
 constexpr std::uint32_t kBufferIndex_CompactedVoxelIndices = 25;
 constexpr std::uint32_t kBufferIndex_IndirectDispatchParams = 26;

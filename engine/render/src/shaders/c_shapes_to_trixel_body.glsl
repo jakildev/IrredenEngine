@@ -7,6 +7,7 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 #include "ir_iso_common.glsl"
 #include "ir_constants.glsl"
 #include "ir_sdf_common.glsl"
+#include "ir_shape_data.glsl"
 
 layout(std140, binding = 23) uniform ShapesFrameData {
     uniform vec2 frameCanvasOffset;
@@ -43,20 +44,6 @@ layout(std140, binding = 23) uniform ShapesFrameData {
     // .zw = col1 of IRMath::faceDeformationMatrix(face, residualYaw).
     // Identity at residualYaw==0.
     uniform vec4 faceDeform[3];
-};
-
-struct ShapeDescriptor {
-    vec4 worldPosition;
-    vec4 params;
-    vec4 rotation;
-    uint shapeType;
-    uint color;
-    uint entityId;
-    uint jointIndex;
-    uint flags;
-    uint lodLevel;
-    uint _pad0;
-    uint _pad1;
 };
 
 layout(std430, binding = 20) readonly buffer ShapeBuffer {
@@ -116,11 +103,6 @@ const float kSdfBiasEpsilon = 1.0e-3;
 // Each workgroup handles one 8×8 iso-pixel tile; shapeIndex selects which
 // shape in the ShapeBuffer it belongs to, and tileIsoOrigin is that tile's
 // iso-space origin (already pre-aligned on CPU).
-struct ShapeTileDescriptor {
-    int shapeIndex;
-    int _pad0;
-    ivec2 tileIsoOrigin;
-};
 
 layout(std430, binding = 30) readonly buffer ShapeTileBuffer {
     ShapeTileDescriptor tiles[];

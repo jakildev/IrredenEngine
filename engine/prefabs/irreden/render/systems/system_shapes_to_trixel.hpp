@@ -39,7 +39,6 @@ namespace IRSystem {
 
 constexpr int kMaxShapeDescriptors = 8192;
 constexpr int kMaxShapeTileDescriptors = 262144;
-constexpr std::uint32_t kBufferIndex_ShapesFrameData = 23;
 constexpr int kShapeTileSize = 8;
 static_assert(
     std::uint64_t(kMaxShapeTileDescriptors) * kShapeTileSize * kShapeTileSize * 6 <

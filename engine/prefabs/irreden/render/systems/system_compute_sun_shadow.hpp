@@ -39,8 +39,13 @@ constexpr int kComputeSunShadowGroupSize = 16;
 
 template <> struct System<COMPUTE_SUN_SHADOW> {
     ShaderProgram *program_ = nullptr;
+    ShaderProgram *shapeProgram_ = nullptr;
     Buffer *sunShadowFrameDataBuf_ = nullptr;
     Buffer *voxelFrameDataBuf_ = nullptr;
+    Buffer *shapeReceiverFrameBuf_ = nullptr;
+    Buffer *shapeReceiverFallbackBuf_ = nullptr;
+    Buffer *animationParamsBuf_ = nullptr;
+    Buffer *shapeProducerFrameBuf_ = nullptr;
     // Created by BAKE_SUN_SHADOW_MAP. Resolved lazily so this lookup
     // links even when the bake system isn't registered.
     Buffer *sunShadowDepthMap_ = nullptr;
@@ -74,6 +79,30 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
         voxelFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas);
         sunShadowFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
 
+        const auto &geometry = canvasTextures.shapeGeometry_;
+        const bool useShapeReceiver = entity == perAxisCanvasEntity_ && geometry.samplesValid();
+        (useShapeReceiver ? shapeProgram_ : program_)->use();
+        if (useShapeReceiver) {
+            IR_ASSERT(
+                geometry.ownerSize_ == canvasTextures.size_,
+                "Retained shape owner extent must match the receiver canvas"
+            );
+            shapeReceiverFrameBuf_->subData(0, sizeof(GPUShapesFrameData), &geometry.frameData_);
+            shapeReceiverFrameBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_ShapesFrameData);
+            geometry.descriptors_.second->bindBase(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_ShapeDescriptors
+            );
+            geometry.sampleOwners_.second->bindBase(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_ShapeSampleOwners
+            );
+            geometry.tiles_.second->bindBase(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_ShapeTileDescriptors
+            );
+        }
+
         const int groupsX = IRMath::divCeil(canvasTextures.size_.x, kComputeSunShadowGroupSize);
         const int groupsY = IRMath::divCeil(canvasTextures.size_.y, kComputeSunShadowGroupSize);
         IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
@@ -83,7 +112,26 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
         // voxel canvas (reads the shared depth map baked from all four canvases).
         if (entity == perAxisCanvasEntity_ && perAxisCanvases_ != nullptr &&
             perAxisCanvases_->isAllocated()) {
+            program_->use();
             dispatchPerAxisSunShadow(*perAxisCanvases_, canvasTextures, shadow);
+        }
+        if (useShapeReceiver) {
+            if (shapeProducerFrameBuf_ != nullptr)
+                shapeProducerFrameBuf_->bindBase(
+                    BufferTarget::UNIFORM,
+                    kBufferIndex_ShapesFrameData
+                );
+            // Persistent bindings must not retain canvas allocations across destruction.
+            shapeReceiverFallbackBuf_->bindBase(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_ShapeDescriptors
+            );
+            shapeReceiverFallbackBuf_->bindBase(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_ShapeTileDescriptors
+            );
+            (animationParamsBuf_ != nullptr ? animationParamsBuf_ : shapeReceiverFallbackBuf_)
+                ->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_AnimationParams);
         }
     }
 
@@ -125,7 +173,10 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
     }
 
     void beginTick() {
-        program_->use();
+        if (animationParamsBuf_ == nullptr && findSystem(SHAPES_TO_TRIXEL) != kNullSystemId) {
+            animationParamsBuf_ = IRRender::getNamedResource<Buffer>("AnimationParamsBuffer");
+            shapeProducerFrameBuf_ = IRRender::getNamedResource<Buffer>("ShapesFrameDataBuffer");
+        }
         // BAKE_SUN_SHADOW_MAP owns FrameDataSun uploads — its
         // tick is the authoritative writer for the full struct
         // (sun direction + basis + AABB + flags), uploaded via
@@ -152,6 +203,10 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
             "ComputeSunShadowProgram",
             std::vector{ShaderStage{IRRender::kFileCompComputeSunShadow, ShaderType::COMPUTE}}
         );
+        IRRender::createNamedResource<ShaderProgram>(
+            "ComputeSunShadowShapesProgram",
+            std::vector{ShaderStage{IRRender::kFileCompComputeSunShadowShapes, ShaderType::COMPUTE}}
+        );
         IRRender::createNamedResource<Buffer>(
             "ComputeSunShadowFrameData",
             nullptr,
@@ -161,13 +216,31 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
             kBufferIndex_FrameDataSun
         );
 
+        IRRender::createNamedResource<Buffer>(
+            "ShapeReceiverFrameData",
+            nullptr,
+            sizeof(GPUShapesFrameData),
+            BUFFER_STORAGE_DYNAMIC
+        );
+        const GPUShapeDescriptor fallback{};
+        IRRender::createNamedResource<Buffer>(
+            "ShapeReceiverFallback",
+            &fallback,
+            sizeof(fallback),
+            BUFFER_STORAGE_DYNAMIC
+        );
+
         SystemId systemId = registerSystem<
             COMPUTE_SUN_SHADOW,
             C_TriangleCanvasTextures,
             C_CanvasSunShadow,
             C_TrixelCanvasRenderBehavior>("ComputeSunShadow");
         auto *p = getSystemParams<System<COMPUTE_SUN_SHADOW>>(systemId);
+        p->shapeReceiverFrameBuf_ = IRRender::getNamedResource<Buffer>("ShapeReceiverFrameData");
+        p->shapeReceiverFallbackBuf_ = IRRender::getNamedResource<Buffer>("ShapeReceiverFallback");
         p->program_ = IRRender::getNamedResource<ShaderProgram>("ComputeSunShadowProgram");
+        p->shapeProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("ComputeSunShadowShapesProgram");
         p->sunShadowFrameDataBuf_ = IRRender::getNamedResource<Buffer>("ComputeSunShadowFrameData");
         p->voxelFrameDataBuf_ = IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
         IRRender::tagGpuStage(systemId, "computeSunShadow");
