@@ -533,3 +533,15 @@ runs and existing thresholds; add an SDF-active workload to measure election cos
 - Performance follow-up: quantify box tile insertion and shared index saturation
   with large overlapping boxes and dense voxel scenes. Overflow currently retains
   sampled coverage, not the exact sharp boundary. Native OpenGL smoke is pending.
+
+### Shared local-light query
+
+- Consolidated canvas and overflow volume sampling on both backends, preserving
+  caller filtering and world-space spotlight direction. No new GPU storage or
+  dispatch. Executable coordinate tests and six pixel-identical native controls
+  cover the extraction; [evidence](../pr-screenshots/codex/surface-light-volume-query/README.md).
+- Next: use retained descriptor material and existing lighting resources for
+  finite SDF fragment lighting, with explicit fog composition. Dense per-trixel
+  linear payloads remain an alternative to measure, not a committed requirement.
+- Still pending: ordinary SDF sharp receiving, curved/rotated receiver coverage,
+  crowded finite-index overflow/performance, and native Windows/OpenGL validation.

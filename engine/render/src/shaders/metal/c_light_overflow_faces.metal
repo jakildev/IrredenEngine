@@ -2,8 +2,8 @@
                                      // FrameDataVoxelToTrixel (with overflowScratchLayout)
 #include "ir_per_axis_lighting.metal" // perAxisCellToWorld3DSubCell
 #include "ir_sun_shadow_sample.metal" // FrameDataSun + worldSunShadowFactor()
-#include "ir_world_lighting.metal"    // GPULightSource layout, spotConeFactor, ACESFilm,
-                                     // FrameDataLightingToTrixel + LightVolumeParams
+#include "ir_world_lighting.metal"
+#include "ir_surface_light_volume.metal"
 
 // Mirrors shaders/c_light_overflow_faces.glsl. Dispatched inside
 // LIGHTING_TO_TRIXEL after the per-axis CELL lighting, and ONLY while rotating
@@ -94,20 +94,8 @@ kernel void c_light_overflow_faces(
 
     if (frameData.lightVolumeEnabled != 0) {
         constexpr sampler volumeSampler(filter::nearest, address::clamp_to_edge);
-        const float3 localPos = pos3D - float3(lightVolumeParams.worldOriginVoxel.xyz);
-        const float3 sampleCoord =
-            (localPos + float3(kLightVolumeHalfExtent) + float3(0.5)) / float3(kLightVolumeSize);
-        const float4 lightSample = lightVolume.sample(volumeSampler, sampleCoord);
-        float3 light = lightSample.rgb * lightSample.a;
-        if (lightVolumeParams.worldOriginVoxel.w != 0) {
-            const int3 idCell = int3(floor(localPos + float3(kLightVolumeHalfExtent) + float3(0.5)));
-            if (all(idCell >= int3(0)) && all(idCell < int3(int(kLightVolumeSize)))) {
-                const int winId = roundHalfUp(lightVolumeId.read(uint3(idCell)).r * 255.0f);
-                if (winId > 0 && int(lights[winId - 1].originAndType.w) == kLightTypeSpot) {
-                    light *= spotConeFactor(lights, winId - 1, pos3D);
-                }
-            }
-        }
+        const float3 light = surfaceLightVolume(pos3D, lightVolumeParams.worldOriginVoxel,
+            lightVolume, lightVolumeId, volumeSampler, lights);
         baseRgb = baseRgb + albedo.rgb * light;
     }
 

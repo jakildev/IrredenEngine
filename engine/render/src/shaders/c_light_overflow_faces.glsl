@@ -27,6 +27,7 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 #include "ir_sun_projection.glsl"    // shared caster/receiver sun-space projection
 #include "ir_sun_shadow_sample.glsl" // FrameDataSun(29), sun-depth SSBO(28), worldSunShadowFactor()
 #include "ir_world_lighting.glsl"    // GPULightSource list (slot 4), spotConeFactor, ACESFilm
+#include "ir_surface_light_volume.glsl"
 
 layout(std140, binding = 27) uniform FrameDataLightingToTrixel {
     int   lightingEnabled;
@@ -170,22 +171,7 @@ void main() {
     // Light-volume bleed at the recovered world pos (+ SPOT cone shaping),
     // identical to the cell path.
     if (lightVolumeEnabled != 0) {
-        const vec3 localPos = pos3D - vec3(lightVolumeWorldOrigin.xyz);
-        const vec3 sampleCoord =
-            (localPos + vec3(kLightVolumeHalfExtent) + vec3(0.5)) / vec3(kLightVolumeSize);
-        const vec4 lightSample = texture(lightVolume, sampleCoord);
-        vec3 light = lightSample.rgb * lightSample.a;
-        if (lightVolumeWorldOrigin.w != 0) {
-            const ivec3 idCell =
-                ivec3(floor(localPos + vec3(kLightVolumeHalfExtent) + vec3(0.5)));
-            if (all(greaterThanEqual(idCell, ivec3(0))) &&
-                all(lessThan(idCell, ivec3(int(kLightVolumeSize))))) {
-                const int winId = roundHalfUp(imageLoad(lightVolumeId, idCell).r * 255.0);
-                if (winId > 0 && int(lights[winId - 1].originAndType.w) == kLightTypeSpot) {
-                    light *= spotConeFactor(winId - 1, pos3D);
-                }
-            }
-        }
+        const vec3 light = surfaceLightVolume(pos3D, lightVolumeWorldOrigin, lightVolume, lightVolumeId);
         baseRgb = baseRgb + albedo.rgb * light;
     }
 

@@ -26,6 +26,7 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 #include "ir_sun_shadow_sample.glsl"
 // GPULightSource list (slot 4), light-volume extents, spotConeFactor, ACESFilm.
 #include "ir_world_lighting.glsl"
+#include "ir_surface_light_volume.glsl"
 
 layout(std140, binding = 27) uniform FrameDataLightingToTrixel {
     uniform int   lightingEnabled;
@@ -413,36 +414,7 @@ void main() {
                           voxelRenderOptions, rasterYaw
                       )));
 
-        // CLAMP_TO_EDGE means out-of-volume samples read zero light (the
-        // border texels are cleared during volume staging). The propagate
-        // pass stores unattenuated emit color in rgb and residual strength
-        // in alpha, so the visible contribution is `rgb * alpha` (linear
-        // falloff with Manhattan distance, zero past the light's radius).
-        // Subtracting the camera-anchored world origin maps the sample onto
-        // the texel the seed/propagate passes wrote.
-        const vec3 localPos =
-            pos3D - vec3(lightVolumeWorldOrigin.xyz);
-        const vec3 sampleCoord =
-            (localPos + vec3(kLightVolumeHalfExtent) + vec3(0.5)) /
-            vec3(kLightVolumeSize);
-        const vec4 lightSample = texture(lightVolume, sampleCoord);
-        vec3 light = lightSample.rgb * lightSample.a;
-
-        // SPOT cone shaping, gated on the has-SPOT flag
-        // (lightVolumeWorldOrigin.w). The winning light's ID is fetched
-        // NEAREST — the surface voxel's own cell, not interpolated — and a
-        // SPOT winner's volume contribution is attenuated by the analytic
-        // cone factor. POINT/EMISSIVE winners keep the omni field.
-        if (lightVolumeWorldOrigin.w != 0) {
-            const ivec3 idCell = ivec3(floor(localPos + vec3(kLightVolumeHalfExtent) + vec3(0.5)));
-            if (all(greaterThanEqual(idCell, ivec3(0))) &&
-                all(lessThan(idCell, ivec3(int(kLightVolumeSize))))) {
-                const int winId = roundHalfUp(imageLoad(lightVolumeId, idCell).r * 255.0);
-                if (winId > 0 && int(lights[winId - 1].originAndType.w) == kLightTypeSpot) {
-                    light *= spotConeFactor(winId - 1, pos3D);
-                }
-            }
-        }
+        const vec3 light = surfaceLightVolume(pos3D, lightVolumeWorldOrigin, lightVolume, lightVolumeId);
         baseRgb = baseRgb + src.rgb * light;
     }
 

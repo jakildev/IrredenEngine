@@ -128,8 +128,9 @@ conservative whole-canvas validity contract.
 Voxelized/lattice SDF receivers retain cell-union geometry rather than one smooth
 analytical box.
 
-Lighting must retain linear ambient/indirect terms and an unlambertized material
-sun coefficient. The fragment derives Lambert and visibility from its actual
+Lighting must provide linear ambient/indirect terms and an unlambertized material
+sun coefficient, either retained or recomputed from the selected descriptor and
+lighting resources. The fragment derives Lambert and visibility from its actual
 surface before composition and tone mapping; the existing RGBA8 lit color cannot
 be inverted to recover these terms. Normal-dependent sky lighting must follow
 the same normal. Fog, AO and local-light semantics must remain explicit.
@@ -439,3 +440,29 @@ with the performance work, not a hidden allocation increase here.
 show straight boundaries in the fragment diagnostic and normal source-face floor
 rendering. Sampled SDF beauty receivers still require linear lighting/fog
 integration; curved and rotated analytical receiving remain separate work.
+
+## Shared local-light query
+
+`ir_surface_light_volume` provides the canvas and overflow lighting paths with
+one world-position query on each backend. It subtracts the camera-anchored
+volume origin, applies the half-cell texture offset, samples level zero, and
+multiplies propagated RGB by residual strength. Spotlight shaping reads an
+unfiltered winning ID only inside the volume and evaluates the cone at the
+absolute world position. The caller retains sampler policy and material
+multiplication; the helper returns incident light before display mapping.
+
+This permits finite fragment lighting to reuse the same coordinate contract.
+The retained descriptor already contains material color, so new dense linear
+lighting textures are not yet justified. Integration must still bind eligible
+lighting resources and compose fog explicitly after lighting; sampling or
+inverting the existing tone-mapped RGBA8 cannot preserve those terms. No
+fragment beauty integration or shadow-edge correction is claimed by this
+query extraction.
+
+`test_render_surface_light_volume.py` executes both shader bodies through checked
+texture adapters: 594 cases per backend cover translated anchors, three axes,
+boundaries, point/spot winners and disabled spotlight shaping. Five mutations
+per backend prove detection of lost origin, half-cell offset, strength, spotlight
+gating and absolute cone position. Native Metal spotlight captures at three yaw
+angles and two zoom levels are RGB-identical to the parent; native GL execution
+is still required. [Evidence](../pr-screenshots/codex/surface-light-volume-query/README.md).
