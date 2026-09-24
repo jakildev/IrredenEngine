@@ -67,7 +67,7 @@ layout(rg32ui, binding = 2) writeonly uniform uimage2D triangleCanvasEntityIds;
 
 const uint FLAG_HOLLOW = 1u;
 const uint FLAG_VISIBLE = 8u;
-const uint FLAG_FOG_WHOLE_BODY_EXEMPT = 16u;
+const uint FLAG_FOG_BODY = 16u;
 const uint FLAG_XRAY_OCCLUDED = 128u;
 
 // X-ray silhouette intensity. When a SHAPE_FLAG_XRAY_OCCLUDED fragment
@@ -962,10 +962,11 @@ void main() {
     }
 
     bool xrayOccluded = (shape.flags & FLAG_XRAY_OCCLUDED) != 0u;
-    // Shape ids are 32-bit (high word zero) plus the fog whole-body and the
-    // analytic-surface carrier bits.
-    const uvec2 packedEntityId = encodeEntityIdAnalyticSurface(encodeEntityIdFogWholeBody(
-        uvec2(shape.entityId, 0u), (shape.flags & FLAG_FOG_WHOLE_BODY_EXEMPT) != 0u
+    // Shape ids are 32-bit; descriptor bits 23:16 carry the BODY factor.
+    const uvec2 packedEntityId = encodeEntityIdAnalyticSurface(encodeEntityIdFogBody(
+        uvec2(shape.entityId, 0u),
+        (shape.flags & FLAG_FOG_BODY) != 0u,
+        (shape.flags >> 16u) & 0xFFu
     ));
 
 #endif
