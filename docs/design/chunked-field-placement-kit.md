@@ -989,6 +989,11 @@ edits and carry a value ⇒ this kit.
 | **C4** (#3162) | `field_regions.hpp` — per-chunk CCL + seam-stitch union-find (D5) | **shipped** |
 | **C5** (#3163) | `IRMath::Pcg32` + `IRMath::isqrt` + `field_placement.hpp` — draw, `PlacementField`, `queryPlacements` + stats (D6, D7, D8); flips this table to shipped | **shipped** |
 
+The fog-field extension to C2's storage surface — `setCell -> bool`,
+`eraseChunk`, `assignChunk` and `fillRow` — lands with the fog CPU-field phase.
+The shipped row describes the original placement-kit child, not those pending
+additions.
+
 Each child is `**Blocked by:**` its predecessor. Tests live in **`test/ecs/`**,
 beside `spatial_grid_test.cpp` — the kit's composing sibling — and every new
 `.cpp` must be added explicitly to the `add_executable(IrredenEngineTest …)`

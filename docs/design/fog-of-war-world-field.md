@@ -101,8 +101,11 @@ and Lua service names remain unchanged.
 
 `revealRadius` clamps its radius to `kFogRevealRadiusMax = 1024` and computes
 row bounds in 64-bit arithmetic, so a centre near an int32 limit touches only
-representable cells. `kFogOfWarSize` and `kFogOfWarHalfExtent` remain as
-deprecated legacy API values but bound nothing after the window phase.
+representable cells. The Lua binding keeps its existing preflight rejection
+when the requested disc would cross the int32 bounds; the C++ field operation
+performs the clamped write. `kFogOfWarSize` and `kFogOfWarHalfExtent` cease to
+bound the fog grid after the window phase. The LOS layout gets its own
+`kFogLosFieldSize = 256` and `kFogLosFieldHalfExtent = 128` constants.
 
 Read-only diagnostics expose `windowEdge()`, `windowOrigin()` and
 `fieldStats()`. The statistics contain resident region and field-chunk counts,
@@ -311,9 +314,12 @@ crossing and one upload per field chunk are rejected.
 
 The centre is the world XY point at z = 0 under the fog canvas viewport centre
 for the live effective camera, including visual yaw and pivot. It is computed
-through `IRMath::pos2DIsoToPos3DAtZLevelYawed`, the exact fixed-z inverse of
-the yawed projection. A raw camera anchor is rejected because explicit pivots
-and origin-mode yaw move the viewport centre away from it.
+through a new `IRMath::pos2DIsoToPos3DAtZLevelYawed` helper, the exact fixed-z
+inverse of the yawed projection. If `isoPixelToPos3DYawed` exists when the
+window phase starts, the new helper is implemented alongside or in terms of
+that inverse rather than establishing a competing convention. A raw camera
+anchor is rejected because explicit pivots and origin-mode yaw move the
+viewport centre away from it.
 
 Let `C = (Cx, Cy)` be the fog canvas size, and let:
 
@@ -366,9 +372,24 @@ the analytic circle centre already in the observer block, so no new UBO field
 is needed. Sampling outside the tile remains unoccluded, and a disc wider than
 128 cells is documented as clipped to the tile.
 
+Each gated source has a co-anchored 256x256 column-top view. The component
+retains at most eight views: `8 * 256 * 256 * sizeof(int32) = 2 MiB`. One pool
+pass tests each live voxel against at most eight source boxes, and flagged
+shape rasterization clips to the same boxes. `buildLosHorizons` traces a
+source only through its matching column view, so moving the source moves both
+the horizon tile and every occluder it can observe.
+
+`IRPrefab::Fog::lineOfSight` follows the same convention independently: it
+anchors its one reusable 256x256 query view at
+`roundHalfUp(from.xy) - 128`, rasterizes that box, and returns unoccluded when
+the target is outside it. `FogLineOfSightField::cellInField`, `horizonIndex`,
+the CPU trace and both shader helpers therefore take or derive a tile origin;
+no LOS path retains a world-centred half-extent test.
+
 Growing every tile to `W` is rejected for its build and memory cost. Anchoring
 tiles on the fog-window centre is rejected because off-centre sources lose
-occlusion.
+occlusion. One union column view is rejected because widely separated sources
+make its bound either larger than the fixed tile contract or incomplete.
 
 ## D8 — Vision-source tier
 
@@ -402,10 +423,17 @@ phase changes all of them together.
 | `engine/render/src/shaders/metal/c_voxel_visibility_compact.metal` | Metal twin of the compact lookup. |
 | `engine/render/src/shaders/ir_voxel_face_select.glsl` | Shared face-selection fog taps. |
 | `engine/render/src/shaders/metal/ir_voxel_face_select.metal` | Metal twin of the shared taps. |
+| `engine/render/src/shaders/ir_fog_los.glsl` | LOS tile bounds, local lookup and texture packing. |
+| `engine/render/src/shaders/metal/ir_fog_los.metal` | Metal twin of the LOS lookup. |
 | `test/render/shaders/c_fog_cross_section_probe.glsl` | Includes the real GLSL face-selection helper. |
-| `test/render/fog_cross_section_test.cpp` | Mirrors the 256-cell grid and half-extent for the probe host. |
+| `engine/prefabs/irreden/render/fog_line_of_sight.hpp` | Column stamping, shape clip boxes, horizon traces and build bounds use the LOS tile origin. |
+| `component_canvas_fog_of_war.hpp` — `FogLineOfSightField::cellInField` / `horizonIndex` | CPU visibility and horizon indexing use source-local tile coordinates. |
 | `VOXEL_TO_TRIXEL_STAGE_1::uploadFogIfDirty` | Uploads before the per-canvas early return and again through the world-fog `beginTick` resolve; the second call must no-op in the same frame. |
 | `FOG_TO_TRIXEL` | Binds the same texture and observer block for paint. |
+| `FOG_LOS_BUILD` | Builds each source's co-anchored column view and horizon tile, then uploads the packed LOS texture. |
+| `IRPrefab::Fog::lineOfSight` | Anchors and fills the standalone query view before tracing to the target. |
+| `test/render/fog_line_of_sight_test.cpp` | Pins LOS field edges, indexing, rasterization and horizon behavior. |
+| `test/render/fog_cross_section_test.cpp` | Mirrors the fog-grid convention for the probe host and the LOS tile constants for the LOS arm. |
 
 Fog-attached demo coverage is `fog_demo`, `perf_grid`, `lua_perf_grid`,
 `skeletal_demo` and the `lighting/main_combined` configuration. Their existing
