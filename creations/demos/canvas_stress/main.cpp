@@ -1174,6 +1174,7 @@ void registerArgs() {
     args.flag("--no-lighting", "Disable world lighting");
     args.flag("--no-shadows", "Disable sun shadows while retaining directional shading");
     args.flag("--no-ao", "Disable ambient occlusion");
+    args.flag("--probe-sky", "Isolate HDR sky lighting with a white sky and zero sun intensity");
     args.numbers(
         "--sun-direction",
         "World-to-sun vector <x> <y> <z>; nonzero, z <= 0 (+Z is down)",
@@ -1821,6 +1822,13 @@ void initEntities() {
         IRRender::setSunAmbient(kSunAmbient);
         IRRender::setSunShadowsEnabled(!IREngine::args().getFlag("--no-shadows"));
         IRRender::setAOEnabled(!IREngine::args().getFlag("--no-ao"));
+        if (IREngine::args().getFlag("--probe-sky")) {
+            IRRender::setHDREnabled(true);
+            IRRender::setExposure(1.0f);
+            IRRender::setSkyColor(vec3(1.0f));
+            IRRender::setSkyIntensity(1.0f);
+            IRRender::setSunIntensity(0.0f);
+        }
 
         // Shadow floor (SDF box) just below the center GRID spin cluster.
         // Receives sun shadow + AO. The GRID-mode spin cubes and the grounded

@@ -113,8 +113,7 @@ kernel void c_light_overflow_faces(
 
     if (frameData.hdrEnabled != 0) {
         if (frameData.skyIntensity > 0.0f) {
-            const float skyFactor = max(0.0f, worldNormal.z);
-            baseRgb += frameData.skyColor.rgb * frameData.skyIntensity * skyFactor * ao;
+            baseRgb += surfaceSkyLight(worldNormal, frameData.skyColor.rgb, frameData.skyIntensity, ao);
         }
     }
     baseRgb = surfaceDisplayColor(baseRgb, frameData.exposure, frameData.hdrEnabled != 0);
