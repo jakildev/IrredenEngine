@@ -22,11 +22,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from fleet_branch_match import (
     _is_game,
+    _normalize_newlines,
     body_closed_issue_numbers,
     body_closed_issue_refs,
     body_closes_issue,
     body_closes_issue_in,
+    body_would_close_refs,
     branch_matches_issue,
+    declared_closing_refs,
     issue_branch_prefixes,
     issue_from_branch,
     issue_pr_state,
@@ -302,6 +305,39 @@ class BodyClosesIssue(unittest.TestCase):
         self.assertEqual(sorted(body_closed_issue_numbers(body)), [10, 20, 255])
         self.assertEqual(body_closed_issue_numbers(""), [])
         self.assertEqual(body_closed_issue_numbers(None), [])
+
+
+class NormalizeNewlines(unittest.TestCase):
+    def test_crlf_and_bare_cr_fold_to_lf(self):
+        self.assertEqual(_normalize_newlines("a\r\nb\rc\n"), "a\nb\nc\n")
+
+    def test_lf_only_is_unchanged(self):
+        self.assertEqual(_normalize_newlines("a\nb\nc"), "a\nb\nc")
+
+    def test_empty_and_none(self):
+        self.assertEqual(_normalize_newlines(""), "")
+        self.assertEqual(_normalize_newlines(None), "")
+
+
+class CrlfBody(unittest.TestCase):
+    """A CRLF body (stored verbatim from a native-Windows edit) still parses.
+
+    `declared_closing_refs` and `body_would_close_refs` split on `"\\n"`;
+    an un-normalized CRLF body leaves a trailing `\\r` on the last field of
+    each line, which the strict end-anchored link-line grammar rejects.
+    """
+
+    def test_declared_closing_refs_reads_a_crlf_link_line(self):
+        self.assertEqual(
+            declared_closing_refs("Closes #3730\r\n", "jakildev/IrredenEngine"),
+            {("jakildev/irredenengine", 3730)})
+
+    def test_would_close_and_declared_scans_agree_on_a_crlf_body(self):
+        body = "Summary.\r\n\r\nCloses #3730\r\n"
+        would_close = {k for k, _, _ in body_would_close_refs(body, "jakildev/IrredenEngine")}
+        declared = declared_closing_refs(body, "jakildev/IrredenEngine")
+        self.assertEqual(would_close, declared)
+        self.assertEqual(would_close, {("jakildev/irredenengine", 3730)})
 
 
 class CrossRepoClosingRefs(unittest.TestCase):
