@@ -54,7 +54,6 @@ template <> struct System<SHAPES_TO_TRIXEL> {
     ShaderProgram *shapePublishProgram_ = nullptr;
     ShaderProgram *shapeCasterProgram_ = nullptr;
     ShaderProgram *shapeOwnerProgram_ = nullptr;
-    Buffer *shapeDescBuf_ = nullptr;
     Buffer *shapesFrameDataBuf_ = nullptr;
     Buffer *shapeTileDescBuf_ = nullptr;
     GPUShapesFrameData frameData_{};
@@ -206,6 +205,9 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             baker->beginVoxelFaceCoverage();
         }
         gpuShapesByCanvas_.clear();
+        executeQuery<C_TriangleCanvasTextures>([](C_TriangleCanvasTextures &textures) {
+            textures.shapeGeometry_.reset();
+        });
 
         // Dense per-archetype-column scan of the canvas owners (a handful of
         // entities), never a per-shape getComponent.
@@ -384,9 +386,6 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                 }
             }
 
-            shapeDescBuf_
-                ->subData(0, gpuShapes.size() * sizeof(GPUShapeDescriptor), gpuShapes.data());
-
             // Tile bounds are computed at rasterYaw — same rotation
             // the shader uses to rasterize each shape — so the
             // per-tile iso footprint matches the SDF surface that
@@ -412,13 +411,15 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             }
             const int gridY = IRMath::divCeil(tileCount, gridX);
             frameData_.tileGridX = gridX;
+            canvasTextures.shapeGeometry_.upload(gpuShapes, frameData_);
+            Buffer *shapeDescriptors = canvasTextures.shapeGeometry_.descriptors_.second;
 
             {
                 IRRender::GpuSubStageScope timing("shapeOwnerClear");
                 prepareWinnerBuffer(canvasTextures.size_);
             }
             shapeDepthProgram_->use();
-            shapeDescBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_ShapeDescriptors);
+            shapeDescriptors->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_ShapeDescriptors);
             canvasTextures.getTextureDistances()
                 ->bindAsImage(1, TextureAccess::READ_WRITE, TextureFormat::R32I);
             // All three declared kernel slots are bound ahead of BOTH passes,
@@ -573,14 +574,6 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             std::vector{ShaderStage{IRRender::kFileCompShapesToTrixelOwner, ShaderType::COMPUTE}}
         );
         IRRender::createNamedResource<Buffer>(
-            "ShapeDescriptorBuffer",
-            nullptr,
-            kMaxShapeDescriptors * sizeof(GPUShapeDescriptor),
-            BUFFER_STORAGE_DYNAMIC,
-            BufferTarget::SHADER_STORAGE,
-            kBufferIndex_ShapeDescriptors
-        );
-        IRRender::createNamedResource<Buffer>(
             "ShapesFrameDataBuffer",
             nullptr,
             sizeof(GPUShapesFrameData),
@@ -617,8 +610,11 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             kBufferIndex_ShapeTileDescriptors
         );
 
-        SystemId systemId =
-            registerSystem<SHAPES_TO_TRIXEL, C_ShapeDescriptor, C_WorldTransform>("ShapesToTrixel");
+        SystemId systemId = registerSystem<
+            SHAPES_TO_TRIXEL,
+            C_ShapeDescriptor,
+            C_WorldTransform,
+            AlsoWrites<C_TriangleCanvasTextures>>("ShapesToTrixel");
         auto *p = getSystemParams<System<SHAPES_TO_TRIXEL>>(systemId);
         p->shapeDepthProgram_ =
             IRRender::getNamedResource<ShaderProgram>("ShapesToTrixelDepthProgram");
@@ -628,7 +624,6 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             IRRender::getNamedResource<ShaderProgram>("ShapesToTrixelCasterProgram");
         p->shapeOwnerProgram_ =
             IRRender::getNamedResource<ShaderProgram>("ShapesToTrixelOwnerProgram");
-        p->shapeDescBuf_ = IRRender::getNamedResource<Buffer>("ShapeDescriptorBuffer");
         p->shapesFrameDataBuf_ = IRRender::getNamedResource<Buffer>("ShapesFrameDataBuffer");
         p->shapeTileDescBuf_ = IRRender::getNamedResource<Buffer>("ShapeTileDescriptorBuffer");
         p->animationParamsBuf_ = IRRender::getNamedResource<Buffer>("AnimationParamsBuffer");

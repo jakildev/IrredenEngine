@@ -5,6 +5,7 @@
 #include <irreden/ir_render.hpp>
 
 #include <irreden/render/texture.hpp>
+#include <irreden/render/components/canvas_shape_geometry.hpp>
 
 #include <utility>
 #include <vector>
@@ -85,6 +86,7 @@ inline std::vector<std::pair<ResourceId, Texture2D *>> makeHiZMipChain(ivec2 siz
 
 struct C_TriangleCanvasTextures {
     ivec2 size_;
+    CanvasShapeGeometry shapeGeometry_;
     std::pair<ResourceId, Texture2D *> textureTriangleColors_;
     std::pair<ResourceId, Texture2D *> textureTriangleDistances_;
     std::pair<ResourceId, Texture2D *> textureTriangleEntityIds_;
@@ -152,6 +154,7 @@ struct C_TriangleCanvasTextures {
     C_TriangleCanvasTextures() {}
 
     void onDestroy() {
+        shapeGeometry_.onDestroy();
         if (sourceFaces_.second != nullptr)
             IRRender::destroyResource<Buffer>(sourceFaces_.first);
         if (sourceFaceOrder_.second != nullptr)

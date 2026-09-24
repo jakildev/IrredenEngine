@@ -74,9 +74,10 @@ rendered floor fixture.
 2. Publish geometry from the same elected owner as color and identity. Opaque
    ownership is implemented below; independently raced normal/depth stores would
    still permit geometry from different winners to mix.
-3. Retain receiver data until its last consumer. The current shape upload buffer
-   is reused across canvases; a fragment cannot blindly refer to a previous
-   canvas's descriptor index after that upload is replaced. Prefer storage tied
+3. Retain receiver data until its last consumer. Shape descriptor uploads now
+   belong to their canvas together with the producer's projection snapshot.
+   A descriptor index must still be published with the elected sample; retained
+   descriptors alone do not identify which shape won a texel. Prefer storage tied
    to visible canvas winners over allocation proportional to world population,
    and never scan every shape per fragment.
 4. Evaluate the receiver at the fragment's actual projected position. Carry
@@ -116,7 +117,8 @@ The continuous interval helper does not by itself provide a fragment receiver.
 A finite descriptor-backed query is required at box corners; extrapolating one
 sample's infinite plane can cross onto the wrong face. Retained per-canvas
 descriptors must reproduce the producer's rounded projected origin, density and
-cell expansion. The general shape upload cannot outlive its next canvas upload.
+cell expansion. Canvas-owned descriptor storage now survives other canvas uploads;
+winning-texel references and consumer bindings remain to be implemented.
 Voxelized/lattice SDF receivers retain cell-union geometry rather than one smooth
 analytical box.
 
@@ -132,3 +134,32 @@ not silently discard the producer's splatted coverage or change depth. The
 initial integration should preserve that legacy coverage while accepting exact
 receiving only where the finite intersection succeeds. These constraints remain
 unimplemented; the shared helper and scalar checks do not accept floor edges.
+
+## Canvas-owned descriptor uploads
+
+`CanvasShapeGeometry` retains the exact descriptor array submitted to a canvas
+and its `GPUShapesFrameData` snapshot, including camera offset, density, yaw,
+lattice mode and deformation. Submission uses that same buffer for depth,
+election, publication and casting. Allocation grows to the next power of two
+of the submitted count and is reused until growth or canvas destruction.
+Canvases without a submitted tile allocate nothing. `SHAPES_TO_TRIXEL::beginTick`
+resets active counts even if no shapes match; retained allocation is not a live
+submission when its count is zero.
+
+Storage is 80 bytes per descriptor capacity, bounded by the existing 8192-shape
+submission cap per canvas. It replaces the shared fixed 655,360-byte upload,
+not an additional copy. Multiple canvases can collectively exceed that former
+fixed allocation; the tradeoff is stable per-canvas lifetime. No full-resolution
+surface texture, GPU readback or extra dispatch is introduced. The 128-byte CPU
+projection snapshot is retained per canvas, not per entity or trixel.
+
+`scripts/tests/test_render_canvas_shape_geometry.py` executes the production
+resource owner against checked in-memory resource operations. It tests two
+independent canvases, snapshot retention, growth, reuse, empty uploads, invalid
+counts and release; mutations must expose stale counts, lost snapshots and
+leaked growth allocations. It does not substitute for native GPU validation.
+
+These descriptors are producer inputs, not winning surface metadata. Canvas
+clears, later same-depth overpainting, unsupported shapes and X-ray blending
+still need explicit validity handling when winner references are added. No
+fragment consumes this storage yet, and no visual shadow-edge fix is claimed.

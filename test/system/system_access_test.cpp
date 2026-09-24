@@ -167,6 +167,22 @@ TEST(SystemAccessTest, AlsoReadsAndAlsoWritesAcceptMultipleTypes) {
     EXPECT_TRUE(access.writesType<C_AccessA>());
 }
 
+TEST(SystemAccessTest, ForeignAccessTagsDoNotConstructComponents) {
+    struct ForeignResource {
+        ForeignResource() = delete;
+        ForeignResource(const ForeignResource &) = delete;
+    };
+    constexpr auto access = deriveAccessFromSignature<
+        void(C_AccessA &),
+        C_AccessA,
+        AlsoReads<ForeignResource>,
+        AlsoWrites<ForeignResource>>();
+    static_assert(access.readsType<ForeignResource>());
+    static_assert(access.writesType<ForeignResource>());
+    EXPECT_EQ(access.readCount_, 1u);
+    EXPECT_EQ(access.writeCount_, 2u);
+}
+
 TEST(SystemAccessTest, ExcludeContributesNoAccess) {
     auto access = deriveAccessFromSignature<void(C_AccessA &), C_AccessA, Exclude<C_AccessB>>();
 
