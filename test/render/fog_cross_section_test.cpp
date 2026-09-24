@@ -1004,7 +1004,7 @@ std::vector<std::int32_t> losProbeColumns(bool withOccluders) {
     }
     for (int y = -7; y <= 8; ++y) {
         for (int x = 0; x <= 1; ++x) {
-            columns[IRComponents::C_CanvasFogOfWar::flatIndex(x, y)] = kLosGround - 4;
+            columns[IRComponents::FogLineOfSightField::columnIndex(x, y)] = kLosGround - 4;
         }
     }
     IRMath::SDF::forEachInteriorCell(
@@ -1085,7 +1085,8 @@ TEST_F(FogCrossSectionTest, GpuOcclusionMatchesTheCpuOracle) {
             for (int y = -kLosProbeHalfExtent; y < kLosProbeHalfExtent; ++y) {
                 for (int x = -kLosProbeHalfExtent; x < kLosProbeHalfExtent; ++x) {
                     sampleZ[losProbeRecord(level, x, y)] =
-                        columns[C_CanvasFogOfWar::flatIndex(x, y)] - kLosLevelLift[level];
+                        columns[IRComponents::FogLineOfSightField::columnIndex(x, y)] -
+                        kLosLevelLift[level];
                 }
             }
         }

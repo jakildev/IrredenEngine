@@ -319,4 +319,227 @@ TEST(ChunkedFieldStorageTest, PresentAllZeroFieldChunkSurvivesUpdate) {
     EXPECT_EQ(after->max_, 0);
 }
 
+using FieldModel = std::map<FieldChunkKey, std::array<int, kFieldChunkCells>>;
+
+void expectFieldMatchesModel(const ChunkedField2D<int> &field, const FieldModel &model) {
+    ASSERT_EQ(field.chunkCount(), model.size());
+    for (const auto &[key, cells] : model) {
+        const auto *fieldChunk = field.findChunk(unpackFieldChunkKey(key));
+        ASSERT_NE(fieldChunk, nullptr);
+        const int nonZeroCount = static_cast<int>(
+            std::count_if(cells.begin(), cells.end(), [](int value) { return value != 0; })
+        );
+        ASSERT_EQ(fieldChunk->nonZeroCount_, nonZeroCount);
+        ASSERT_TRUE(std::equal(cells.begin(), cells.end(), fieldChunk->cells().begin()));
+    }
+}
+
+TEST(ChunkedFieldMutationTest, EveryMutationKeepsNonZeroCountExact) {
+    ChunkedField2D<int> field;
+    FieldModel model;
+    std::set<FieldChunkKey> changedSinceUpdate;
+    std::mt19937 rng(0x3704u);
+    std::uniform_int_distribution<int> opDistribution(0, 99);
+    std::uniform_int_distribution<int> cellDistribution(-80, 70);
+    std::uniform_int_distribution<int> chunkDistribution(-3, 2);
+    std::uniform_int_distribution<int> valueDistribution(-2, 2);
+    std::uniform_int_distribution<int> countDistribution(0, 100);
+    std::array<int, 5> opCounts{};
+
+    const auto modelCell = [&](IRMath::ivec2 cell) -> int & {
+        return model[packFieldChunkKey(fieldChunkOf(cell))]
+                    [fieldChunkLocalIndex(fieldChunkLocal(cell))];
+    };
+
+    for (int step = 0; step < 2400; ++step) {
+        const int op = opDistribution(rng);
+        if (op < 40) {
+            const IRMath::ivec2 cell{cellDistribution(rng), cellDistribution(rng)};
+            const int value = valueDistribution(rng);
+            const FieldChunkKey key = packFieldChunkKey(fieldChunkOf(cell));
+            const bool present = model.count(key) != 0;
+            const bool expected = !present || modelCell(cell) != value;
+            modelCell(cell) = value;
+            EXPECT_EQ(field.setCell(cell, value), expected);
+            if (expected) {
+                changedSinceUpdate.insert(key);
+            }
+            ++opCounts[0];
+        } else if (op < 70) {
+            const IRMath::ivec2 first{cellDistribution(rng), cellDistribution(rng)};
+            const int count = countDistribution(rng);
+            const int value = valueDistribution(rng);
+            std::set<FieldChunkKey> absentBefore;
+            for (int i = 0; i < count; ++i) {
+                const FieldChunkKey key =
+                    packFieldChunkKey(fieldChunkOf(IRMath::ivec2{first.x + i, first.y}));
+                if (model.count(key) == 0) {
+                    absentBefore.insert(key);
+                }
+            }
+            int expected = 0;
+            for (int i = 0; i < count; ++i) {
+                const IRMath::ivec2 cell{first.x + i, first.y};
+                const FieldChunkKey key = packFieldChunkKey(fieldChunkOf(cell));
+                int &stored = modelCell(cell);
+                if (absentBefore.count(key) != 0 || stored != value) {
+                    changedSinceUpdate.insert(key);
+                    ++expected;
+                }
+                stored = value;
+            }
+            EXPECT_EQ(field.fillRow(first, count, value), expected);
+            ++opCounts[1];
+        } else if (op < 85) {
+            const IRMath::ivec2 chunk{chunkDistribution(rng), chunkDistribution(rng)};
+            const FieldChunkKey key = packFieldChunkKey(chunk);
+            std::array<int, kFieldChunkCells> cells{};
+            const bool copyPresent = model.count(key) != 0 && valueDistribution(rng) == 0;
+            if (copyPresent) {
+                cells = model[key];
+            } else {
+                for (int &cell : cells) {
+                    cell = valueDistribution(rng) > 0 ? valueDistribution(rng) : 0;
+                }
+            }
+            const bool expected = model.count(key) == 0 || model[key] != cells;
+            model[key] = cells;
+            EXPECT_EQ(field.assignChunk(chunk, cells), expected);
+            if (expected) {
+                changedSinceUpdate.insert(key);
+            }
+            ++opCounts[2];
+        } else if (op < 98) {
+            const IRMath::ivec2 chunk{chunkDistribution(rng), chunkDistribution(rng)};
+            const FieldChunkKey key = packFieldChunkKey(chunk);
+            const bool expected = model.erase(key) != 0;
+            EXPECT_EQ(field.eraseChunk(chunk), expected);
+            if (expected) {
+                changedSinceUpdate.insert(key);
+            }
+            ++opCounts[3];
+        } else {
+            for (const auto &entry : model) {
+                changedSinceUpdate.insert(entry.first);
+            }
+            model.clear();
+            field.clear();
+            ++opCounts[4];
+        }
+
+        expectFieldMatchesModel(field, model);
+        if (HasFatalFailure()) {
+            return;
+        }
+
+        if (step % 37 == 36) {
+            std::vector<FieldChunkKey> dirty;
+            field.dirtyKeys(dirty);
+            EXPECT_EQ(
+                dirty,
+                std::vector<FieldChunkKey>(changedSinceUpdate.begin(), changedSinceUpdate.end())
+            );
+            field.update();
+            field.dirtyKeys(dirty);
+            EXPECT_TRUE(dirty.empty());
+            changedSinceUpdate.clear();
+        }
+    }
+
+    for (int count : opCounts) {
+        EXPECT_GT(count, 0);
+    }
+}
+
+TEST(ChunkedFieldMutationTest, SetCellReportsInsertChangeAndNoOp) {
+    ChunkedField2D<int> field;
+    EXPECT_TRUE(field.setCell({3, 4}, 0));
+    EXPECT_FALSE(field.setCell({3, 4}, 0));
+    EXPECT_TRUE(field.setCell({3, 4}, 7));
+    EXPECT_FALSE(field.setCell({3, 4}, 7));
+    EXPECT_TRUE(field.setCell({3, 4}, 0));
+    EXPECT_EQ(field.findChunk({0, 0})->nonZeroCount_, 0);
+}
+
+TEST(ChunkedFieldMutationTest, EraseChunkReusesTheBufferAndReportsAbsence) {
+    ChunkedField2D<int> field;
+    field.setCell({-5, 6}, 9);
+    field.update();
+    const int *buffer = field.findChunk({-1, 0})->cells().data();
+
+    EXPECT_TRUE(field.eraseChunk({-1, 0}));
+    EXPECT_EQ(field.findChunk({-1, 0}), nullptr);
+    EXPECT_FALSE(field.eraseChunk({-1, 0}));
+    std::vector<FieldChunkKey> dirty;
+    field.dirtyKeys(dirty);
+    EXPECT_EQ(dirty, std::vector<FieldChunkKey>{packFieldChunkKey({-1, 0})});
+
+    field.setCell({100, 100}, 1);
+    const auto *reused = field.findChunk({3, 3});
+    ASSERT_NE(reused, nullptr);
+    EXPECT_EQ(reused->cells().data(), buffer);
+    EXPECT_EQ(reused->nonZeroCount_, 1);
+    for (int localIndex = 0; localIndex < kFieldChunkCells; ++localIndex) {
+        const int expected = localIndex == fieldChunkLocalIndex({4, 4}) ? 1 : 0;
+        EXPECT_EQ(reused->cells()[localIndex], expected);
+    }
+}
+
+TEST(ChunkedFieldMutationTest, AssignChunkReportsIdenticalContentsAsNoChange) {
+    ChunkedField2D<int> field;
+    std::array<int, kFieldChunkCells> cells{};
+    cells[0] = 3;
+    cells[kFieldChunkCells - 1] = -2;
+
+    EXPECT_TRUE(field.assignChunk({2, -3}, cells));
+    EXPECT_EQ(field.findChunk({2, -3})->nonZeroCount_, 2);
+    field.update();
+
+    EXPECT_FALSE(field.assignChunk({2, -3}, cells));
+    std::vector<FieldChunkKey> dirty;
+    field.dirtyKeys(dirty);
+    EXPECT_TRUE(dirty.empty());
+
+    cells[5] = 1;
+    EXPECT_TRUE(field.assignChunk({2, -3}, cells));
+    EXPECT_EQ(field.findChunk({2, -3})->nonZeroCount_, 3);
+    field.dirtyKeys(dirty);
+    EXPECT_EQ(dirty, std::vector<FieldChunkKey>{packFieldChunkKey({2, -3})});
+
+    const std::array<int, kFieldChunkCells> zeros{};
+    EXPECT_TRUE(field.assignChunk({7, 7}, zeros));
+    EXPECT_NE(field.findChunk({7, 7}), nullptr);
+}
+
+TEST(ChunkedFieldMutationTest, FillRowCrossesTheNegativeChunkBoundary) {
+    ChunkedField2D<int> field;
+    field.setCell({-2, 5}, 4);
+    field.setCell({1, 5}, 4);
+    field.update();
+
+    EXPECT_EQ(field.fillRow({-3, 5}, 6, 4), 4);
+    for (int x = -3; x < 3; ++x) {
+        int value = 0;
+        ASSERT_TRUE(field.getCell({x, 5}, value));
+        EXPECT_EQ(value, 4);
+    }
+    int outside = -1;
+    ASSERT_TRUE(field.getCell({3, 5}, outside));
+    EXPECT_EQ(outside, 0);
+    EXPECT_EQ(field.findChunk({-1, 0})->nonZeroCount_, 3);
+    EXPECT_EQ(field.findChunk({0, 0})->nonZeroCount_, 3);
+
+    std::vector<FieldChunkKey> dirty;
+    field.dirtyKeys(dirty);
+    EXPECT_EQ(dirty.size(), 2u);
+    field.update();
+    EXPECT_EQ(field.fillRow({-3, 5}, 6, 4), 0);
+    field.dirtyKeys(dirty);
+    EXPECT_TRUE(dirty.empty());
+
+    EXPECT_EQ(field.fillRow({30, 40}, 4, 0), 4);
+    EXPECT_NE(field.findChunk({1, 1}), nullptr);
+    EXPECT_EQ(field.fillRow({0, 0}, 0, 9), 0);
+}
+
 } // namespace

@@ -80,8 +80,8 @@ single-chunk creation never sees it. Config knobs, the eviction / prefetch /
 deferred-upload behavior, and `FrameStats` are documented on the header.
 Chunk-coordinate utilities: [`engine/prefabs/irreden/world/`](../prefabs/irreden/world/).
 `IRWorld::ChunkVoxelDiskPersistence` (`chunk_persistence.hpp`) saves `.vxs`
-voxel slices only; the independent 2D field-region persistence contract is
-[`fog-of-war-world-field.md`](../../docs/design/fog-of-war-world-field.md) D4.
+voxel slices only; `FieldChunkDiskPersistence` stores 2D field regions
+([`fog-of-war-world-field.md`](../../docs/design/fog-of-war-world-field.md) D4).
 
 ### Chunk mutation must route through `markChunkDirty`
 

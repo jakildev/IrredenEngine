@@ -23,23 +23,22 @@
 // the .r channel carries fog state; the other channels are written 0
 // and unused.
 //
-// The CPU mirror's dirty flag gates `subImage2D`. VOXEL_TO_TRIXEL_STAGE_1
-// performs the upload before using fog to cull unexplored columns;
-// FOG_TO_TRIXEL is a read-only consumer. This is the documented exception to the
-// "no dirty flags on components" rule —
-// see `.claude/rules/cpp-ecs.md` § "No dirty flags on components".
-// The texture is CPU-authored and GPU-read-only; per-cell uploads would split
-// `revealRadius` into hundreds of API calls. Population is driver-side: gameplay calls
+// The CPU state is `IRPrefab::Fog::WorldField` (`render/fog_world_field.hpp`):
+// unbounded, world-space, optionally persisted, held through a shared handle
+// so ECS copies alias it as they alias the texture. The texture is a window
+// over it. Every mutation lands in the field's pending field-chunk set;
+// VOXEL_TO_TRIXEL_STAGE_1 drains that set once per frame, re-expands the
+// pending field chunks inside the window and uploads one rectangle per run,
+// before using fog to cull unexplored columns. FOG_TO_TRIXEL is a read-only
+// consumer. Population is driver-side: gameplay calls
 // `IRPrefab::Fog::setCell` / `IRPrefab::Fog::revealRadius` (see
 // `render/fog_of_war.hpp`) to drive the visibility set directly.
 //
-// Sized to match the light-occlusion SSBO's 256×256 footprint on the ground
-// plane (256 KiB CPU+GPU) and using the same `[-halfExtent, +halfExtent)`
-// world-centered cell convention. One cell per integer voxel column.
-// Out-of-range writes are silently dropped; out-of-range reads return
-// `kFogStateUnexplored`. Out-of-range pixels in the shader are treated
-// as visible via an explicit bounds check (image bindings bypass sampler
-// wrap modes).
+// The window is 256×256 at `[-halfExtent, +halfExtent)`, matching the
+// light-occlusion SSBO's ground-plane footprint, one texel per integer voxel
+// column. Cells outside it are stored but not displayed. Out-of-window pixels
+// in the shader are treated as visible via an explicit bounds check (image
+// bindings bypass sampler wrap modes).
 //
 // `kFogOfWarSize` / `kFogOfWarHalfExtent` are mirrored as literals in the
 // `ir_fog_common.{glsl,metal}` and `ir_fog_los.{glsl,metal}` include pairs.
@@ -74,12 +73,15 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_render.hpp>
 
+#include <irreden/render/fog_world_field.hpp>
 #include <irreden/render/texture.hpp>
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <memory>
+#include <optional>
 #include <vector>
 
 using namespace IRMath;
@@ -89,10 +91,6 @@ namespace IRComponents {
 
 constexpr int kFogOfWarSize = 256;
 constexpr int kFogOfWarHalfExtent = kFogOfWarSize / 2;
-
-constexpr std::uint8_t kFogStateUnexplored = 0;
-constexpr std::uint8_t kFogStateExplored = 128;
-constexpr std::uint8_t kFogStateVisible = 255;
 
 // Live analytic "vision circle" reveal — the smooth, render-resolution path
 // that the voxel grid above cannot express. Each circle is a world-space disc
@@ -146,6 +144,14 @@ struct FogLineOfSightField {
     static bool cellInField(int cellX, int cellY) {
         return cellX >= -kFogOfWarHalfExtent && cellX < kFogOfWarHalfExtent &&
                cellY >= -kFogOfWarHalfExtent && cellY < kFogOfWarHalfExtent;
+    }
+
+    /// Row-major index of in-field column @p (cellX, cellY) in a column-top
+    /// image (`C_CanvasFogOfWar::losColumnTops_`).
+    static std::size_t columnIndex(int cellX, int cellY) {
+        const std::size_t x = static_cast<std::size_t>(cellX + kFogOfWarHalfExtent);
+        const std::size_t y = static_cast<std::size_t>(cellY + kFogOfWarHalfExtent);
+        return y * static_cast<std::size_t>(kFogOfWarSize) + x;
     }
 
     /// Flat float index of source @p source's horizon at in-field cell
@@ -220,23 +226,11 @@ static_assert(
 
 struct C_CanvasFogOfWar {
     std::pair<ResourceId, Texture2D *> texture_;
-    /// CPU mirror of the .r channel of the GPU texture. Writes go here
-    /// first; the system expands to RGBA on upload when `dirty_` is set.
-    /// Held on the component (rather than re-allocated per frame) so
-    /// writes stay allocation-free for the common per-frame
-    /// `revealRadius` case.
-    std::vector<std::uint8_t> cpuBuffer_;
-    /// Set by any cell-mutating helper; cleared by VOXEL_TO_TRIXEL_STAGE_1
-    /// after the `subImage2D` upload completes. Also set on construction so the
-    /// initial all-zero state ships through to the GPU before the first
-    /// FOG_TO_TRIXEL dispatch (a stale GPU-side texture from a previous
-    /// frame's canvas teardown would otherwise leak into this canvas).
-    bool dirty_ = true;
-    /// Tracks whether every cell is `kFogStateUnexplored`. Set true by
-    /// `clearAll()` after the fill; cleared false by `setCell()` and
-    /// `revealRadius()` on first write. Lets `clearAll()` skip the O(N)
-    /// scan and avoid the GPU upload when the buffer is already clean.
-    bool allUnexplored_ = true;
+    std::shared_ptr<IRPrefab::Fog::WorldField> field_;
+    /// Field column at texel (0, 0) of the texture's current contents; unset
+    /// until the first gather and after `clearAll`, which makes the next
+    /// gather re-expand the whole window.
+    std::optional<IRMath::ivec2> windowOrigin_;
     /// Live analytic vision circles (the smooth, sub-voxel reveal). This is
     /// the upload payload the system pushes to the `kBufferIndex_FogObservers`
     /// UBO verbatim every frame — small and unconditional, so unlike the grid
@@ -250,9 +244,9 @@ struct C_CanvasFogOfWar {
     /// mirror is the texel image itself; `FOG_LOS_BUILD` writes both.
     std::pair<ResourceId, Texture2D *> losTexture_;
     std::vector<float> losHorizons_;
-    /// Column tops `T(c)` in `flatIndex` order, `kFogLosColumnEmpty` for none.
-    /// `FOG_LOS_BUILD` scratch; `losQueryColumnTops_` is `lineOfSight`'s own,
-    /// sized on its first call.
+    /// Column tops `T(c)` in `FogLineOfSightField::columnIndex` order, `kFogLosColumnEmpty` for
+    /// none. `FOG_LOS_BUILD` scratch; `losQueryColumnTops_` is `lineOfSight`'s own, sized on its
+    /// first call.
     std::vector<std::int32_t> losColumnTops_;
     std::vector<std::int32_t> losQueryColumnTops_;
     /// The observers `losHorizons_` was built from, published together with
@@ -271,10 +265,7 @@ struct C_CanvasFogOfWar {
               TextureWrap::CLAMP_TO_EDGE,
               TextureFilter::NEAREST
           )}
-        , cpuBuffer_(
-              static_cast<std::size_t>(kFogOfWarSize) * static_cast<std::size_t>(kFogOfWarSize),
-              kFogStateUnexplored
-          )
+        , field_{std::make_shared<IRPrefab::Fog::WorldField>()}
         , losTexture_{IRRender::createResource<IRRender::Texture2D>(
               TextureKind::TEXTURE_2D,
               kFogLosTextureWidth,
@@ -297,6 +288,7 @@ struct C_CanvasFogOfWar {
     void onDestroy() {
         IRRender::destroyResource<Texture2D>(texture_.first);
         IRRender::destroyResource<Texture2D>(losTexture_.first);
+        field_.reset();
     }
 
     Texture2D *getLosTexture() const {
@@ -319,73 +311,23 @@ struct C_CanvasFogOfWar {
         return texture_.second;
     }
 
-    static bool inBounds(int wx, int wy) {
-        return wx >= -kFogOfWarHalfExtent && wx < kFogOfWarHalfExtent &&
-               wy >= -kFogOfWarHalfExtent && wy < kFogOfWarHalfExtent;
-    }
-
-    static std::size_t flatIndex(int wx, int wy) {
-        const std::size_t x = static_cast<std::size_t>(wx + kFogOfWarHalfExtent);
-        const std::size_t y = static_cast<std::size_t>(wy + kFogOfWarHalfExtent);
-        const std::size_t s = static_cast<std::size_t>(kFogOfWarSize);
-        return y * s + x;
-    }
-
     std::uint8_t getCell(int wx, int wy) const {
-        if (!inBounds(wx, wy))
-            return kFogStateUnexplored;
-        return cpuBuffer_[flatIndex(wx, wy)];
+        return field_->getCell({wx, wy});
     }
 
     void setCell(int wx, int wy, std::uint8_t state) {
-        if (!inBounds(wx, wy))
-            return;
-        const std::size_t idx = flatIndex(wx, wy);
-        if (cpuBuffer_[idx] == state)
-            return;
-        cpuBuffer_[idx] = state;
-        dirty_ = true;
-        if (state != kFogStateUnexplored)
-            allUnexplored_ = false;
+        field_->setCell({wx, wy}, state);
     }
 
-    /// Mark every cell within `radius` (Euclidean distance) of `(cx,cy)`
-    /// as visible. Cells previously visible but now outside the radius
-    /// are NOT downgraded — that lifecycle belongs to the deferred
-    /// `fadeExplored` pass, since downgrade requires knowing every
-    /// vision source's union (game-state-specific). v1 callers that
-    /// want a single moving observer can wipe the texture themselves
-    /// before each `revealRadius` call.
+    /// Mark every cell within `radius` (Euclidean distance, clamped to
+    /// `IRPrefab::Fog::kFogRevealRadiusMax`) of `(cx,cy)` as visible. Cells
+    /// previously visible but now outside the radius are NOT downgraded —
+    /// that lifecycle belongs to the deferred `fadeExplored` pass, since
+    /// downgrade requires knowing every vision source's union
+    /// (game-state-specific). v1 callers that want a single moving observer
+    /// can wipe the field themselves before each `revealRadius` call.
     void revealRadius(int cx, int cy, int radius) {
-        if (radius < 0)
-            return;
-        const int xMin = IRMath::max(cx - radius, -kFogOfWarHalfExtent);
-        const int xMax = IRMath::min(cx + radius, kFogOfWarHalfExtent - 1);
-        const int yMin = IRMath::max(cy - radius, -kFogOfWarHalfExtent);
-        const int yMax = IRMath::min(cy + radius, kFogOfWarHalfExtent - 1);
-        // The loop bounds already clamp iteration to the grid, so a radius
-        // spanning more than the full grid extent reveals every in-bounds
-        // cell regardless. Clamp before squaring so `radius * radius` can't
-        // overflow int (UB above ~46340) for absurd inputs — `2 *
-        // kFogOfWarSize` exceeds the largest squared cell distance any
-        // in-bounds center can produce, so every in-range call stays
-        // byte-identical, and the multiply is hoisted out of the inner loop.
-        const int radiusClamped = IRMath::min(radius, 2 * kFogOfWarSize);
-        const int radiusSq = radiusClamped * radiusClamped;
-        for (int y = yMin; y <= yMax; ++y) {
-            for (int x = xMin; x <= xMax; ++x) {
-                const int dx = x - cx;
-                const int dy = y - cy;
-                if (dx * dx + dy * dy > radiusSq)
-                    continue;
-                const std::size_t idx = flatIndex(x, y);
-                if (cpuBuffer_[idx] == kFogStateVisible)
-                    continue;
-                cpuBuffer_[idx] = kFogStateVisible;
-                dirty_ = true;
-                allUnexplored_ = false;
-            }
-        }
+        field_->revealRadius({cx, cy}, radius);
     }
 
     /// Drop all live vision circles, returning to grid-only fog. A
@@ -543,11 +485,8 @@ struct C_CanvasFogOfWar {
     }
 
     void clearAll() {
-        if (allUnexplored_)
-            return;
-        std::fill(cpuBuffer_.begin(), cpuBuffer_.end(), kFogStateUnexplored);
-        allUnexplored_ = true;
-        dirty_ = true;
+        field_->clear();
+        windowOrigin_.reset();
     }
 };
 
