@@ -327,6 +327,16 @@ def _strip_indented_code(body):
     return "\n".join(out)
 
 
+def _normalize_newlines(text):
+    """`text` with CRLF and bare CR line endings folded to LF.
+
+    A body carrying CRLF (stored verbatim from a native-Windows edit) leaves a
+    trailing `\\r` on every line after a `"\\n"` split, which a strict
+    end-anchored pattern such as `_LINK_LINE_RE` then rejects.
+    """
+    return (text or "").replace("\r\n", "\n").replace("\r", "\n")
+
+
 def strip_code(body):
     """`body` with code blocks and inline code spans replaced by a sentinel.
 
@@ -342,6 +352,7 @@ def strip_code(body):
     gives them: no indented block starts inside a fenced one, and by this point
     a fenced block is a single sentinel line that can no longer look indented.
     """
+    body = _normalize_newlines(body)
     return _CODE_SPAN_RE.sub(
         _CODE_PLACEHOLDER,
         _strip_indented_code(_CODE_FENCE_RE.sub(_CODE_PLACEHOLDER, body)))
@@ -566,7 +577,7 @@ def raw_closing_refs(text, pr_slug):
     `line_no` is 1-based and names the keyword's line, which for a ref
     wrapped onto the next line is the line before the `#N`.
     """
-    text = text or ""
+    text = _normalize_newlines(text)
     lines = text.split("\n")
     hits = []
     for m in _CLOSES_RAW_REF_RE.finditer(text):
@@ -584,8 +595,9 @@ def body_would_close_refs(body, pr_slug):
     recovered from the first original line carrying a raw ref with the same
     key, and is 0 when none does (a keyword wrapped across lines).
     """
-    stripped = strip_code(body or "")
-    raw_lines = (body or "").split("\n")
+    body = _normalize_newlines(body)
+    stripped = strip_code(body)
+    raw_lines = body.split("\n")
     hits = []
     for m in _CLOSES_REF_RE.finditer(stripped):
         key = closing_ref_key(m.group(1), m.group(2), pr_slug)
