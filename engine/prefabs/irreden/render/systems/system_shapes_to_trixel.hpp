@@ -55,30 +55,8 @@ template <> struct System<SHAPES_TO_TRIXEL> {
     ShaderProgram *shapeCasterProgram_ = nullptr;
     ShaderProgram *shapeOwnerProgram_ = nullptr;
     Buffer *shapesFrameDataBuf_ = nullptr;
-    Buffer *shapeTileDescBuf_ = nullptr;
     GPUShapesFrameData frameData_{};
-    ResourceId winnerBufferId_ = 0;
-    Buffer *winnerBuffer_ = nullptr;
-    std::size_t winnerCapacityBytes_ = 0;
     Buffer *animationParamsBuf_ = nullptr;
-
-    void prepareWinnerBuffer(ivec2 size) {
-        const auto bytes = std::size_t(size.x) * std::size_t(size.y) * sizeof(std::uint32_t);
-        if (bytes > winnerCapacityBytes_) {
-            if (winnerBuffer_)
-                IRRender::destroyResource<Buffer>(winnerBufferId_);
-            const auto resource =
-                IRRender::createResource<Buffer>(nullptr, bytes, BUFFER_STORAGE_DYNAMIC);
-            winnerBufferId_ = resource.first;
-            winnerBuffer_ = resource.second;
-            winnerCapacityBytes_ = bytes;
-        }
-        // Buffer clears must observe the previous canvas/frame's shader writes on OpenGL.
-        IRRender::device()->memoryBarrier(BarrierType::ALL);
-        IRRender::device()->fillBuffer(winnerBuffer_, bytes, 0xFF);
-        // Shapes do not consume animation parameters; restore this borrowed slot after dispatch.
-        winnerBuffer_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_ShapeSampleOwners);
-    }
 
     std::unordered_map<CanvasId, std::vector<GPUShapeDescriptor>> gpuShapesByCanvas_;
     // Owner translation per entity canvas, snapshotted at beginTick. An entity
@@ -393,7 +371,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             int gridX = 1;
             const int tileCount = buildAndUploadTileDescriptors(
                 gpuShapes,
-                shapeTileDescBuf_,
+                canvasTextures.shapeGeometry_,
                 effectiveSub,
                 renderMode,
                 rasterYaw,
@@ -416,8 +394,17 @@ template <> struct System<SHAPES_TO_TRIXEL> {
 
             {
                 IRRender::GpuSubStageScope timing("shapeOwnerClear");
-                prepareWinnerBuffer(canvasTextures.size_);
+                canvasTextures.shapeGeometry_.prepareSampleOwners(canvasTextures.size_);
+                // Shapes borrow the animation slot until their dispatches complete.
+                canvasTextures.shapeGeometry_.sampleOwners_.second->bindBase(
+                    BufferTarget::SHADER_STORAGE,
+                    kBufferIndex_ShapeSampleOwners
+                );
             }
+            canvasTextures.shapeGeometry_.tiles_.second->bindBase(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_ShapeTileDescriptors
+            );
             shapeDepthProgram_->use();
             shapeDescriptors->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_ShapeDescriptors);
             canvasTextures.getTextureDistances()
@@ -601,15 +588,6 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_AnimationParams
         );
-        IRRender::createNamedResource<Buffer>(
-            "ShapeTileDescriptorBuffer",
-            nullptr,
-            kMaxShapeTileDescriptors * sizeof(ShapeTileDescriptor),
-            BUFFER_STORAGE_DYNAMIC,
-            BufferTarget::SHADER_STORAGE,
-            kBufferIndex_ShapeTileDescriptors
-        );
-
         SystemId systemId = registerSystem<
             SHAPES_TO_TRIXEL,
             C_ShapeDescriptor,
@@ -625,7 +603,6 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         p->shapeOwnerProgram_ =
             IRRender::getNamedResource<ShaderProgram>("ShapesToTrixelOwnerProgram");
         p->shapesFrameDataBuf_ = IRRender::getNamedResource<Buffer>("ShapesFrameDataBuffer");
-        p->shapeTileDescBuf_ = IRRender::getNamedResource<Buffer>("ShapeTileDescriptorBuffer");
         p->animationParamsBuf_ = IRRender::getNamedResource<Buffer>("AnimationParamsBuffer");
         // Metal has one active timestamp attachment; dispatch scopes cannot nest
         // inside a per-system GPU timing tag.
@@ -656,7 +633,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
     // rasterYaw footprint is used unchanged (byte-identical).
     static int buildAndUploadTileDescriptors(
         const std::vector<GPUShapeDescriptor> &gpuShapes,
-        Buffer *tileDescBuf,
+        CanvasShapeGeometry &geometry,
         int effectiveSubdivisions,
         IRRender::SubdivisionMode renderMode,
         float rasterYaw,
@@ -774,7 +751,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         while (static_cast<int>(tiles.size()) < paddedCount) {
             tiles.push_back(sentinel);
         }
-        tileDescBuf->subData(0, paddedCount * sizeof(ShapeTileDescriptor), tiles.data());
+        geometry.uploadTiles(tiles);
         gridXOut = grid.x;
         return tileCount;
     }

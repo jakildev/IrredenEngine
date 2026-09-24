@@ -21,11 +21,13 @@ ADAPTER = r"""
 #include <vector>
 #define IR_ASSERT(p, message) if (!(p)) throw std::runtime_error(message)
 namespace IRMath {
+struct ivec2 { int x, y; ivec2(int v=0):x(v),y(v){} ivec2(int a,int b):x(a),y(b){} };
 inline std::uint32_t nextPowerOfTwo(std::uint32_t n) { return std::bit_ceil(n); }
 }
 namespace IRRender {
 using ResourceId = unsigned;
 constexpr int BUFFER_STORAGE_DYNAMIC = 1;
+struct ShapeTileDescriptor { int shapeIndex; int pad; IRMath::ivec2 tileIsoOrigin; };
 struct GPUShapeDescriptor { int identity; float position; };
 struct GPUShapesFrameData { int shapeCount = 0; float visualYaw = 0; int density = 0; };
 struct Buffer {
@@ -36,6 +38,17 @@ struct Buffer {
         std::memcpy(bytes.data() + offset, source, size);
     }
 };
+enum class BarrierType { ALL };
+struct Device {
+    bool ordered = false;
+    void memoryBarrier(BarrierType) { ordered = true; }
+    void fillBuffer(Buffer* b, std::size_t bytes, unsigned char value) {
+        if (!ordered || bytes > b->bytes.size()) throw std::runtime_error("unordered fill");
+        std::memset(b->bytes.data(), value, bytes); ordered = false;
+    }
+};
+inline Device adapterDevice;
+inline Device* device() { return &adapterDevice; }
 inline std::map<ResourceId, std::unique_ptr<Buffer>> resources;
 inline unsigned nextId = 1;
 template<class T, class... Args> auto createResource(Args... args) {
@@ -55,6 +68,52 @@ PROGRAM = r"""
 #include <array>
 using namespace IRRender;
 using IRComponents::CanvasShapeGeometry;
+int samples() {
+    CanvasShapeGeometry a, b;
+    std::array<ShapeTileDescriptor, 1> tile{{{7, 0, {13, -9}}}};
+    a.uploadTiles(tile);
+    a.prepareSampleOwners({2, 3});
+    const auto ownerHandle = a.sampleOwners_.first;
+    const auto tileHandle = a.tiles_.first;
+    const std::uint32_t key = (17 * 3 + 2) * 2 + 1;
+    a.sampleOwners_.second->subData(0, sizeof(key), &key);
+    tile[0].shapeIndex = 91;
+    b.uploadTiles(tile);
+    b.prepareSampleOwners({3, 2});
+    std::uint32_t retained;
+    std::memcpy(&retained, a.sampleOwners_.second->bytes.data(), sizeof(retained));
+    ShapeTileDescriptor source{};
+    std::memcpy(&source, a.tiles_.second->bytes.data(), sizeof(source));
+    if (retained != key || source.shapeIndex != 7 || source.tileIsoOrigin.y != -9) return 20;
+    if (a.sampleOwners_.first == b.sampleOwners_.first || a.tiles_.first == b.tiles_.first)
+        return 21;
+    a.reset();
+    if (a.tileCount_ || a.ownerSize_.x || a.ownerSize_.y) return 22;
+    if (a.sampleOwners_.first != ownerHandle || a.tiles_.first != tileHandle) return 23;
+    a.prepareSampleOwners({3, 2});
+    if (a.sampleOwners_.first != ownerHandle || a.ownerSize_.x != 3 || a.ownerSize_.y != 2)
+        return 24;
+    for (auto byte : a.sampleOwners_.second->bytes) if (byte != 255) return 25;
+    a.uploadTiles(tile);
+    if (a.tiles_.first != tileHandle || a.tileCount_ != 1) return 26;
+    std::array<ShapeTileDescriptor, 3> larger{};
+    a.uploadTiles(larger);
+    a.prepareSampleOwners({4, 4});
+    if (resources.contains(tileHandle) || resources.contains(ownerHandle) ||
+        a.tileCapacity_ != 4 || a.ownerCapacityBytes_ != 64) return 27;
+    const auto grownOwner = a.sampleOwners_.first, grownTile = a.tiles_.first;
+    a.prepareSampleOwners({1, 1});
+    a.uploadTiles({});
+    if (a.tileCount_ || a.sampleOwners_.first != grownOwner || a.tiles_.first != grownTile)
+        return 28;
+    bool rejected = false;
+    try { a.prepareSampleOwners({0, 3}); } catch (const std::runtime_error&) { rejected = true; }
+    if (!rejected) return 29;
+    a.onDestroy(); b.onDestroy();
+    if (!resources.empty() || a.sampleOwners_.second || a.tiles_.second ||
+        a.ownerCapacityBytes_ || a.tileCapacity_ || a.ownerSize_.x || a.tileCount_) return 30;
+    return 0;
+}
 int main() {
     CanvasShapeGeometry a, b, empty;
     if (a.descriptors_.second || a.frameData_.shapeCount || a.capacity_) return 1;
@@ -90,6 +149,7 @@ int main() {
     a.onDestroy(); b.onDestroy(); empty.onDestroy();
     if (!resources.empty() || a.descriptors_.second || a.capacity_ ||
         a.frameData_.shapeCount) return 13;
+    try { return samples(); } catch (const std::runtime_error&) { return 31; }
 }
 """
 
@@ -102,6 +162,11 @@ class CanvasShapeGeometryTest(unittest.TestCase):
             "production": (source, 0),
             "stale_frame": (source.replace("frameData_ = {};", ""), 5),
             "lost_projection": (source.replace("frameData_ = frameData;", ""), 3),
+            "unordered_clear": (source.replace(
+                "IRRender::device()->memoryBarrier(IRRender::BarrierType::ALL);", ""), 31),
+            "stale_tiles": (source.replace("        tileCount_ = 0;", "", 1), 22),
+            "stale_owners": (source.replace(
+                "IRRender::device()->fillBuffer(sampleOwners_.second, bytes, 0xFF);", ""), 25),
             "unreleased_growth": (source.replace(
                 "IRRender::destroyResource<IRRender::Buffer>(descriptors_.first);",
                 "(void)0;", 1), 8),
@@ -111,6 +176,7 @@ class CanvasShapeGeometryTest(unittest.TestCase):
                 root = Path(temporary)
                 (root / "irreden").mkdir()
                 (root / "irreden/ir_render.hpp").write_text(ADAPTER)
+                (root / "irreden/ir_math.hpp").write_text("#pragma once\n")
                 (root / "canvas_shape_geometry.hpp").write_text(header)
                 (root / "test.cpp").write_text(PROGRAM)
                 built = subprocess.run(
@@ -131,6 +197,10 @@ class CanvasShapeGeometryTest(unittest.TestCase):
         self.assertIn("canvasTextures.shapeGeometry_.descriptors_.second", system)
         self.assertIn("shapeDescriptors->bindBase", system)
         self.assertNotIn('"ShapeDescriptorBuffer"', system)
+        self.assertNotIn('"ShapeTileDescriptorBuffer"', system)
+        self.assertNotIn("winnerBuffer_", system)
+        self.assertIn("geometry.uploadTiles(tiles)", system)
+        self.assertIn("shapeGeometry_.prepareSampleOwners(canvasTextures.size_)", system)
         textures = HEADER.with_name("component_triangle_canvas_textures.hpp").read_text()
         self.assertIn("shapeGeometry_.onDestroy()", textures)
 

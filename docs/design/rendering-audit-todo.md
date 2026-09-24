@@ -439,3 +439,5 @@ on the same CI host and record runner image, Mesa/LLVM renderer, CPU quota and
 available threads. Recent historical EPYC baseline comparisons showed broad
 voxel-only slowdowns despite a zero SDF stage, with clean retries. Keep failed
 runs and existing thresholds; add an SDF-active workload to measure election cost.
+
+- Implemented next SDF provenance slice: retain elected sample keys and padded tile lookup per shape canvas, with frame invalidation, owner-stride reset and capacity reuse. This preserves the SDF pass winner without another GPU pass. Final-winner validity after later writes, fragment bindings, linear lighting payload and exact finite receiver evaluation remain pending. Track aggregate per-canvas owner memory alongside GPU timing before widening the consumer.

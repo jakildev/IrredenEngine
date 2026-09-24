@@ -1,8 +1,11 @@
 #ifndef CANVAS_SHAPE_GEOMETRY_H
 #define CANVAS_SHAPE_GEOMETRY_H
 
+#include <irreden/ir_math.hpp>
 #include <irreden/ir_render.hpp>
 
+#include <cstddef>
+#include <cstdint>
 #include <span>
 #include <utility>
 
@@ -14,9 +17,17 @@ struct CanvasShapeGeometry {
     std::pair<IRRender::ResourceId, IRRender::Buffer *> descriptors_{0, nullptr};
     std::size_t capacity_ = 0;
     IRRender::GPUShapesFrameData frameData_{};
+    std::pair<IRRender::ResourceId, IRRender::Buffer *> tiles_{0, nullptr};
+    std::size_t tileCapacity_ = 0;
+    std::size_t tileCount_ = 0;
+    std::pair<IRRender::ResourceId, IRRender::Buffer *> sampleOwners_{0, nullptr};
+    std::size_t ownerCapacityBytes_ = 0;
+    IRMath::ivec2 ownerSize_{};
 
     void reset() {
         frameData_ = {};
+        tileCount_ = 0;
+        ownerSize_ = IRMath::ivec2(0);
     }
 
     void upload(
@@ -46,11 +57,54 @@ struct CanvasShapeGeometry {
         frameData_ = frameData;
     }
 
+    void uploadTiles(std::span<const IRRender::ShapeTileDescriptor> tiles) {
+        if (tiles.size() > tileCapacity_) {
+            if (tiles_.second != nullptr)
+                IRRender::destroyResource<IRRender::Buffer>(tiles_.first);
+            tileCapacity_ = IRMath::nextPowerOfTwo(static_cast<std::uint32_t>(tiles.size()));
+            tiles_ = IRRender::createResource<IRRender::Buffer>(
+                nullptr,
+                tileCapacity_ * sizeof(IRRender::ShapeTileDescriptor),
+                IRRender::BUFFER_STORAGE_DYNAMIC
+            );
+        }
+        if (!tiles.empty())
+            tiles_.second->subData(0, tiles.size_bytes(), tiles.data());
+        tileCount_ = tiles.size();
+    }
+
+    void prepareSampleOwners(IRMath::ivec2 size) {
+        IR_ASSERT(size.x > 0 && size.y > 0, "Shape owner dimensions must be positive");
+        const auto bytes = std::size_t(size.x) * std::size_t(size.y) * sizeof(std::uint32_t);
+        if (bytes > ownerCapacityBytes_) {
+            if (sampleOwners_.second != nullptr)
+                IRRender::destroyResource<IRRender::Buffer>(sampleOwners_.first);
+            sampleOwners_ = IRRender::createResource<IRRender::Buffer>(
+                nullptr,
+                bytes,
+                IRRender::BUFFER_STORAGE_DYNAMIC
+            );
+            ownerCapacityBytes_ = bytes;
+        }
+        // The fill must follow previous shader writes to a retained allocation on OpenGL.
+        IRRender::device()->memoryBarrier(IRRender::BarrierType::ALL);
+        IRRender::device()->fillBuffer(sampleOwners_.second, bytes, 0xFF);
+        ownerSize_ = size;
+    }
+
     void onDestroy() {
         if (descriptors_.second != nullptr)
             IRRender::destroyResource<IRRender::Buffer>(descriptors_.first);
         descriptors_ = {0, nullptr};
         capacity_ = 0;
+        if (tiles_.second != nullptr)
+            IRRender::destroyResource<IRRender::Buffer>(tiles_.first);
+        tiles_ = {0, nullptr};
+        tileCapacity_ = 0;
+        if (sampleOwners_.second != nullptr)
+            IRRender::destroyResource<IRRender::Buffer>(sampleOwners_.first);
+        sampleOwners_ = {0, nullptr};
+        ownerCapacityBytes_ = 0;
         reset();
     }
 };
