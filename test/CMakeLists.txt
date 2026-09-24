@@ -263,4 +263,12 @@ add_custom_command(
     COMMAND_EXPAND_LISTS
 )
 
-gtest_discover_tests(IrredenEngineTest TEST_LIST IrredenEngineTest_targets)
+# Discovery runs the freshly linked binary once to list its tests. A cold
+# first load of the 200+ MB mingw executable plus its runtime DLLs can
+# take longer than the 5 s default on the native-Windows host, and a
+# timeout there deletes the binary that just linked.
+gtest_discover_tests(
+    IrredenEngineTest
+    TEST_LIST IrredenEngineTest_targets
+    DISCOVERY_TIMEOUT 120
+)

@@ -171,6 +171,25 @@ TEST_F(IREntityTest, UnregisterPreDestroyHookStopsFiring) {
     EXPECT_EQ(fireCount, 1);
 }
 
+// World teardown destroys in index order, not dependency order, so a hook
+// that reads a dying entity's peers (the voxel-pool re-stage sweep reads the
+// pool storage a set's span views alias) can fault on storage that is
+// already gone. Hooks are therefore quiet for the whole drain and re-arm
+// afterwards; `onDestroy()` is the per-component teardown path there.
+TEST_F(IREntityTest, PreDestroyHooksAreQuietDuringDestroyAllEntities) {
+    int fireCount = 0;
+    m_entity_manager.registerPreDestroyHook([&](IREntity::EntityId) { ++fireCount; });
+
+    IREntity::createEntity(TestMarker{});
+    IREntity::createEntity(TestMarker{});
+    m_entity_manager.destroyAllEntities();
+    EXPECT_EQ(fireCount, 0);
+
+    auto survivor = IREntity::createEntity(TestMarker{});
+    m_entity_manager.destroyEntity(survivor);
+    EXPECT_EQ(fireCount, 1);
+}
+
 // Dead-id contract. Probing a destroyed or never-allocated id must answer
 // honestly AND leave the entity index untouched. The second half is the
 // load-bearing one: a lookup implemented with `std::unordered_map::operator[]`

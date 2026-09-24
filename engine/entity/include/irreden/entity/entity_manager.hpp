@@ -553,6 +553,12 @@ class EntityManager {
     /// peer entities are fine to mutate. Hooks fire in registration
     /// order. Returns a token; pass it to `unregisterPreDestroyHook`
     /// to remove. Token `0` is reserved for "invalid".
+    ///
+    /// Hooks do not fire during `destroyAllEntities`. That drain destroys
+    /// in index order, so a peer a hook would read — the pool storage a
+    /// voxel set's span views alias, say — may already be gone, and
+    /// everything a hook would sweep dies with the world anyway.
+    /// Component-local teardown belongs in `onDestroy()`, which still runs.
     PreDestroyHookId registerPreDestroyHook(PreDestroyHook hook);
     void unregisterPreDestroyHook(PreDestroyHookId id);
 
@@ -624,6 +630,9 @@ class EntityManager {
     std::vector<PreDestroyHookEntry> m_preDestroyHooks;
     PreDestroyHookId m_nextPreDestroyHookId{1};
     bool m_preDestroyHookIterating{false};
+    // Set for the span of `destroyAllEntities`: peers die in index order
+    // there, so no hook may run against them (see registerPreDestroyHook).
+    bool m_preDestroyHooksSuppressed{false};
     // Singleton-component cache. Key is `ComponentId`, value is the entity
     // owning that component. Stale entries (entity destroyed externally)
     // are evicted lazily via the `entityExists` check on lookup. Cleared
