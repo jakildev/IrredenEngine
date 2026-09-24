@@ -71,6 +71,8 @@
 #include <irreden/render/components/component_detached_canvas.hpp>
 #include <irreden/render/components/component_detached_revoxelize_buffer.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
+#include <irreden/render/components/component_fog_exempt.hpp>
+#include <irreden/render/components/component_fog_field.hpp>
 #include <irreden/render/components/component_fog_reveal_settings.hpp>
 #include <irreden/render/components/component_fog_revealed.hpp>
 #include <irreden/render/components/component_frame_data_trixel_to_framebuffer.hpp>
@@ -185,11 +187,14 @@ IR_SAVE_OPT_OUT(IRComponents::C_CanvasLocalRotation)
 IR_SAVE_OPT_OUT(IRComponents::C_LayoutState)
 IR_SAVE_OPT_OUT(IRComponents::C_LayoutLeaf)
 IR_SAVE_OPT_OUT(IRComponents::C_ResolvedFields)
-// Fog governance and its thresholds are recreated by creation setup. The
-// factor/verdict are derived each eval tick and must not outlive their render
-// visibility state, which is intentionally transient on C_VoxelSetNew.
+// Fog governance, subject-class tags, and thresholds are recreated by creation
+// setup. The factor/verdict are derived each eval tick and must not outlive
+// their render visibility state, which is intentionally transient on
+// C_VoxelSetNew.
 IR_SAVE_OPT_OUT(IRComponents::C_FogRevealed)
 IR_SAVE_OPT_OUT(IRComponents::C_FogRevealSettings)
+IR_SAVE_OPT_OUT(IRComponents::C_FogField)
+IR_SAVE_OPT_OUT(IRComponents::C_FogExempt)
 
 // Class C — transient per-frame events / device input
 IR_SAVE_OPT_OUT(IRComponents::C_ContactEvent)
@@ -427,6 +432,8 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_ResolvedFields,
     IRComponents::C_FogRevealed,
     IRComponents::C_FogRevealSettings,
+    IRComponents::C_FogField,
+    IRComponents::C_FogExempt,
     IRComponents::C_ContactEvent,
     IRComponents::C_OverlapContactBatch,
     IRComponents::C_CursorPosition,
