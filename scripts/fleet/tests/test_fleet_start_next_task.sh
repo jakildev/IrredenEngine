@@ -33,6 +33,8 @@ source "$(dirname "$0")/lib_assert.sh"
 TMPROOT=""; cleanup(){ [[ -n "$TMPROOT" && -d "$TMPROOT" ]] && rm -rf "$TMPROOT"; }
 trap cleanup EXIT
 TMPROOT=$(mktemp -d "${TMPDIR:-/tmp}/fsnt.XXXXXX")
+source "$(dirname "$0")/lib_hermetic.sh"
+hermetic_poison_gh_env "$TMPROOT"
 unset FLEET_ALLOW_MAIN_CLONE
 
 git_q() { git -C "$1" "${@:2}" >/dev/null 2>&1; }

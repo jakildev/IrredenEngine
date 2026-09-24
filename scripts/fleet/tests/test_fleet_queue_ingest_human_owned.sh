@@ -30,6 +30,8 @@ ok()  { PASS=$((PASS + 1)); echo "  ok: $1"; }
 bad() { FAIL=$((FAIL + 1)); echo "  FAIL: $1"; }
 
 TMPROOT=$(mktemp -d)
+source "$(dirname "$0")/lib_hermetic.sh"
+hermetic_poison_gh_env "$TMPROOT"
 export HOME="$TMPROOT/home"
 mkdir -p "$HOME/.fleet/state/projections" "$HOME/.fleet/logs"
 
@@ -46,33 +48,34 @@ STUB_DIR="$TMPROOT/bin"
 mkdir -p "$STUB_DIR"
 export EDIT_LOG="$TMPROOT/edit.log"; : > "$EDIT_LOG"
 cat > "$STUB_DIR/gh" <<'GHSTUB'
-#!/usr/bin/env bash
-case "$1" in
-    issue)
-        case "$2" in
-            view)
-                # issue 710 is human-owned (de-queued); issue 711 is a normal approved issue.
-                case "$3" in
-                    710) echo '{"body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"},{"name":"human:owned"}]}' ;;
-                    711) echo '{"body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"}],"comments":[{"body":"## Plan: stub\n\nstep one"}]}' ;;
-                    *)   echo '{"body":"","labels":[]}' ;;
-                esac
-                exit 0 ;;
-            edit)
-                printf '%s\n' "$*" >> "$EDIT_LOG"
-                exit 0 ;;
-            comment) exit 0 ;;
-            *) exit 0 ;;
-        esac ;;
-    pr)
-        case "$2" in
-            list) echo '[]'; exit 0 ;;   # scope-shipped: no merged coverage
-            *) exit 0 ;;
-        esac ;;
-    *) exit 0 ;;
-esac
+#!/usr/bin/env python3
+import os, sys
+args = sys.argv[1:]
+# issue 710 is human-owned (de-queued); issue 711 is a normal approved issue.
+if args[:2] == ["issue", "view"]:
+    n = args[2] if len(args) > 2 else ""
+    if n == "710":
+        print('{"body":"**Model:** opus\\n**Blocked by:** (none)","labels":[{"name":"human:approved"},{"name":"human:owned"}]}')
+    elif n == "711":
+        print('{"body":"**Model:** opus\\n**Blocked by:** (none)","labels":[{"name":"human:approved"}],"comments":[{"body":"## Plan: stub\\n\\nstep one"}]}')
+    else:
+        print('{"body":"","labels":[]}')
+elif args[:2] == ["issue", "edit"]:
+    with open(os.environ["EDIT_LOG"], "a") as f:
+        f.write(" ".join(args) + "\n")
+elif args[:2] == ["pr", "list"]:
+    print("[]")  # scope-shipped: no merged coverage
+sys.exit(0)
 GHSTUB
 chmod +x "$STUB_DIR/gh"
+# Native-Windows twin: fleet-queue-ingest invokes `gh` from PYTHON
+# (subprocess), which cannot exec an extensionless shebang script on
+# native-Windows python3 (mingw64) — see scripts/fleet/CLAUDE.md's
+# native-Windows PATHEXT rule. Inert on POSIX hosts.
+cat > "$STUB_DIR/gh.bat" <<'BATEOF'
+@echo off
+python3 "%~dp0gh" %*
+BATEOF
 export PATH="$STUB_DIR:$PATH"
 
 echo "=== run fleet-queue-ingest over a batch with one human:owned issue ==="

@@ -32,6 +32,8 @@ TMPROOT=""
 cleanup() { [[ -n "$TMPROOT" && -d "$TMPROOT" ]] && rm -rf "$TMPROOT"; }
 trap cleanup EXIT
 TMPROOT=$(mktemp -d)
+source "$(dirname "$0")/lib_hermetic.sh"
+hermetic_poison_gh_env "$TMPROOT"
 
 # gh stub: logs and fails, so no assertion can be satisfied by live GitHub.
 mkdir -p "$TMPROOT/bin"

@@ -15,6 +15,8 @@ if [[ ! -x "$INGEST" || ! -x "$BACKFILL" ]]; then
 fi
 
 TMPROOT=$(mktemp -d)
+source "$(dirname "$0")/lib_hermetic.sh"
+hermetic_poison_gh_env "$TMPROOT"
 trap 'rm -rf "$TMPROOT"' EXIT
 export HOME="$TMPROOT/home"
 mkdir -p "$HOME/.fleet/state/projections" "$HOME/.fleet/logs"
@@ -36,32 +38,10 @@ JSON
 STUB_DIR="$TMPROOT/bin"
 mkdir -p "$STUB_DIR"
 cat >"$STUB_DIR/gh" <<'GHSTUB'
-#!/usr/bin/env bash
-body_for() {
-    case "$1" in
-        2101) printf '%s' '**Model:** sonnet' ;;
-        2102) printf '%s' '**Model:** `sonnet`' ;;
-        2103) printf '%s' '**Model:** [sonnet]' ;;
-        2104) printf '%s' '- **Model:** sonnet' ;;
-        2105) printf '%s' '**Suggested Model:** sonnet' ;;
-        2106) printf '%s' '**Model:** sonnet (escalate to opus if needed)' ;;
-        2107) printf '%s' '**Model:** fable' ;;
-        2108) printf '%s' 'No model field.' ;;
-        2109) printf '%s' '**Model:** either opus or sonnet' ;;
-        2110) printf '%s' '**Model:** TBD' ;;
-        2111) printf '%s' '**Area:** tooling · **Owner:** fleet · **Model:** sonnet' ;;
-    esac
-}
+#!/usr/bin/env python3
+import json, os, sys
 
-case "$1 $2" in
-    "pr list")
-        echo '[]'
-        ;;
-    "issue list")
-        python3 - <<'PY'
-import json
-
-bodies = {
+BODIES = {
     2101: "**Model:** sonnet",
     2102: "**Model:** `sonnet`",
     2103: "**Model:** [sonnet]",
@@ -74,36 +54,40 @@ bodies = {
     2110: "**Model:** TBD",
     2111: "**Area:** tooling · **Owner:** fleet · **Model:** sonnet",
 }
-print(json.dumps([
-    {"number": number, "labels": [{"name": "fleet:queued"}], "body": body}
-    for number, body in bodies.items()
-]))
-PY
-        ;;
-    "issue view")
-        body=$(body_for "$3")
-        BODY="$body" python3 - <<'PY'
-import json
-import os
 
-print(json.dumps({
-    "body": os.environ["BODY"] + "\n**Blocked by:** (none)",
-    "labels": [{"name": "human:approved"}, {"name": "fleet:no-plan"}],
-}))
-PY
-        ;;
-    "issue edit")
-        printf '%s|%s\n' "${MINTER:?}" "$*" >>"$EDIT_LOG"
-        ;;
-    "issue comment")
-        ;;
-    *)
-        echo "unexpected gh invocation: $*" >&2
-        exit 1
-        ;;
-esac
+args = sys.argv[1:]
+if args[:2] == ["pr", "list"]:
+    print("[]")
+elif args[:2] == ["issue", "list"]:
+    print(json.dumps([
+        {"number": number, "labels": [{"name": "fleet:queued"}], "body": body}
+        for number, body in BODIES.items()
+    ]))
+elif args[:2] == ["issue", "view"]:
+    num = int(args[2]) if len(args) > 2 else 0
+    body = BODIES.get(num, "")
+    print(json.dumps({
+        "body": body + "\n**Blocked by:** (none)",
+        "labels": [{"name": "human:approved"}, {"name": "fleet:no-plan"}],
+    }))
+elif args[:2] == ["issue", "edit"]:
+    with open(os.environ["EDIT_LOG"], "a", encoding="utf-8") as f:
+        f.write(f'{os.environ["MINTER"]}|{" ".join(args)}\n')
+elif args[:2] == ["issue", "comment"]:
+    pass
+else:
+    sys.stderr.write(f"unexpected gh invocation: {' '.join(args)}\n")
+    sys.exit(1)
 GHSTUB
 chmod +x "$STUB_DIR/gh"
+# Native-Windows twin: fleet-queue-ingest / fleet-queue-backfill-model-labels
+# invoke `gh` from PYTHON (subprocess), which cannot exec an extensionless
+# shebang script on native-Windows python3 (mingw64) — see
+# scripts/fleet/CLAUDE.md's native-Windows PATHEXT rule. Inert on POSIX hosts.
+cat >"$STUB_DIR/gh.bat" <<'BATEOF'
+@echo off
+python3 "%~dp0gh" %*
+BATEOF
 export PATH="$STUB_DIR:$PATH"
 
 MINTER=ingest bash "$INGEST" >/dev/null

@@ -33,6 +33,8 @@ for subject in "$SCOUT" "$DISPATCHER" "$GATE_STATUS"; do
 done
 
 TMPROOT=$(mktemp -d)
+source "$(dirname "$0")/lib_hermetic.sh"
+hermetic_poison_gh_env "$TMPROOT"
 cleanup() { [[ -n "${TMPROOT:-}" && -d "$TMPROOT" ]] && rm -rf "$TMPROOT"; return 0; }
 trap cleanup EXIT
 

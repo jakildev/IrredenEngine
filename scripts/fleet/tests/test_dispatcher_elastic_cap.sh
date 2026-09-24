@@ -48,6 +48,8 @@ cleanup() {
 trap cleanup EXIT
 
 TMPROOT=$(mktemp -d)
+source "$(dirname "$0")/lib_hermetic.sh"
+hermetic_poison_gh_env "$TMPROOT"
 export FLEET_STATE_DIR="$TMPROOT/state"
 export FLEET_CONF="$TMPROOT/fleet-up.conf"
 export FLEET_SESSIONS_DIR="$TMPROOT/sessions"
