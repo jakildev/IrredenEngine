@@ -202,6 +202,38 @@ UNITEMIZED = "?"
 GH = shutil.which("gh") or "gh"
 
 
+def _gh_argv(gh):
+    """The argv vector to launch `gh` with.
+
+    A native-Windows `shutil.which()` hit on a `.bat` file is CreateProcess'd
+    through cmd.exe, which re-parses the *entire* argv for its own
+    metacharacters (`&`, `|`, `^`, ...) before the batch body's `%*` ever
+    sees it — fatal for a REST path like `...&per_page=100`, which cmd.exe
+    splits into two commands at the `&`. Real `gh.exe` is CreateProcess'd
+    directly with no such layer, so only a `.bat` resolution needs this.
+
+    The one `.bat` this can safely reach into is the hermetic test twin: a
+    `gh.bat` shipped beside an extensionless Python sibling of the same name
+    (`scripts/fleet/tests/test_decisions.sh`'s `gh`/`gh.bat` pair) — invoking
+    that sibling directly through the interpreter bypasses cmd.exe entirely.
+    Any other `.bat` (a real-world PATH shim this repo doesn't ship) falls
+    back to the original behavior unchanged.
+    """
+    if os.name == "nt" and gh.lower().endswith(".bat"):
+        sibling = gh[: -len(".bat")]
+        try:
+            with open(sibling, "r", encoding="utf-8") as f:
+                first_line = f.readline()
+        except OSError:
+            first_line = ""
+        if first_line.startswith("#!") and "python" in first_line:
+            return [sys.executable, sibling]
+    return [gh]
+
+
+GH_ARGV = _gh_argv(GH)
+
+
 class Unreadable(Exception):
     pass
 
@@ -209,7 +241,7 @@ class Unreadable(Exception):
 def gh_api(path):
     """The JSON at REST `path`; None on a 404."""
     try:
-        run = subprocess.run([GH, "api", path], capture_output=True, text=True, timeout=60)
+        run = subprocess.run(GH_ARGV + ["api", path], capture_output=True, text=True, timeout=60)
     except (OSError, subprocess.TimeoutExpired) as e:
         raise Unreadable(f"gh api {path.split('?')[0]}: {e}") from e
     if run.returncode != 0:
