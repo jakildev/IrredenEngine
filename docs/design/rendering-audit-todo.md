@@ -471,3 +471,16 @@ runs and existing thresholds; add an SDF-active workload to measure election cos
   per-fragment receiving; use actual fragment coordinates without extrapolating
   finite misses; curved/rotated geometry and native GL smoke. Current shadow
   outlines are still not accepted as the final sharp-edge result.
+
+
+### Shared surface lighting math
+
+- Consolidated ambient-preserving sun response and final display mapping across
+  canvas/overflow compute and deferred source-face fragments, with executable
+  two-backend composition/mutation controls and native output-equivalence captures.
+- Still pending: retained linear SDF lighting payload and finite queries at actual
+  presentation fragments. This consolidation does not itself change shadow edges.
+- Proposed focused check: verify the sky hemisphere sign. Existing code gates sky
+  with `max(worldNormal.z, 0)`, while floor/upward receiver normals are `-Z`.
+  Establish HDR controls for upward, underside, side and rotated surfaces before
+  changing defaults; ensure sky stays independent of direct sun visibility.

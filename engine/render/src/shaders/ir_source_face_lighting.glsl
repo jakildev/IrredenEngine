@@ -1,4 +1,4 @@
-#include "ir_tonemap.glsl"
+#include "ir_surface_lighting.glsl"
 
 vec4 sourceFaceLitColor(vec4 base, vec4 directSunAndExposure,
                          float ao, uint mode, float visibility) {
@@ -10,6 +10,5 @@ vec4 sourceFaceLitColor(vec4 base, vec4 directSunAndExposure,
         return vec4(visibility >= 0.999 ? vec3(0.0) : vec3(1.0, 0.0, 1.0), base.a);
     }
     const vec3 linear = base.rgb + directSunAndExposure.rgb * visibility;
-    return vec4(mode == kSourceLightingHDR
-        ? ACESFilm(linear * directSunAndExposure.w) : clamp(linear, 0.0, 1.0), base.a);
+    return vec4(surfaceDisplayColor(linear, directSunAndExposure.w, mode == kSourceLightingHDR), base.a);
 }

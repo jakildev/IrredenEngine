@@ -53,4 +53,4 @@ float spotConeFactor(int lightIdx, vec3 pos3D) {
     return smoothstep(cosOuter, cosInner, cosToCell);
 }
 
-#include "ir_tonemap.glsl"
+#include "ir_surface_lighting.glsl"

@@ -1,6 +1,6 @@
 // Finite analytical geometry only: lattice, hollow and entity-rotated shapes
 // retain their sampled-cell receiver until their own finite query is available.
-bool shapeBoxReceiver(ShapeDescriptor shape, ShapeProjectionData projection,
+inline bool shapeBoxReceiver(ShapeDescriptor shape, ShapeProjectionData projection,
                       float2 canvasPixel, thread float3& position, thread float3& normal) {
     bool smoothMode = projection.voxelRenderOptions.x != 0 &&
                       projection.voxelRenderOptions.y > 1;
