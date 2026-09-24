@@ -88,13 +88,15 @@ void main() {
         if (any(lessThan(displayOrigin, vec2(0.0))) ||
             any(greaterThanEqual(displayOrigin, vec2(textureSize)))) discard;
     }
-    vec4 color = textureLod(triangleColors, displayOrigin / textureSize, 0);
-    int rawDist = textureLod(triangleDistances, displayOrigin / textureSize, 0).r;
+    // Every texture read below fetches this one texel: the truncated
+    // displayOrigin, clamped onto the canvas. The hover compare stays unclamped.
+    ivec2 sampleCoord = trixelCanvasReadCoord(displayOrigin, textureSize);
+    vec4 color = texelFetch(triangleColors, sampleCoord, 0);
+    int rawDist = texelFetch(triangleDistances, sampleCoord, 0).r;
 #if IR_SHAPE_RECEIVER && !IR_SHAPE_LIGHTING
     if (color.a >= 0.1) {
         vec3 position = vec3(0.0), normal = vec3(0.0);
-        if (selectedShapeBoxReceiver(clamp(ivec2(floor(displayOrigin)), ivec2(0), textureSize - 1), textureSize.x,
-                                     originRaw, position, normal)) {
+        if (selectedShapeBoxReceiver(sampleCoord, textureSize.x, originRaw, position, normal)) {
             float visibility = shadowsEnabled == 0 ? 1.0 :
                 worldSurfaceSunShadowFactor(position, normal, pos3DtoDistance(position),
                     casterViewToWorld);
@@ -106,10 +108,9 @@ void main() {
 
 #if IR_SHAPE_LIGHTING
     if (color.a >= 0.1 && lightingEnabled != 0) {
-        const ivec2 ownerPixel = clamp(ivec2(floor(displayOrigin)), ivec2(0), textureSize - 1);
         vec3 position = vec3(0.0), normal = vec3(0.0);
-        if (selectedShapeBoxReceiver(ownerPixel, textureSize.x, originRaw, position, normal))
-            color.rgb = shapeSurfaceLighting(ownerPixel, textureSize.x, position, normal, casterViewToWorld, color.rgb);
+        if (selectedShapeBoxReceiver(sampleCoord, textureSize.x, originRaw, position, normal))
+            color.rgb = shapeSurfaceLighting(sampleCoord, textureSize.x, position, normal, casterViewToWorld, color.rgb);
     }
 #endif
 
@@ -143,7 +144,7 @@ void main() {
     // without prioritized voxels avoid the extra entity-id fetch.
     int tier = depthPriorityMode;
     if (anyPerTrixelPriority != 0) {
-        uvec2 sampleEntityId = textureLod(triangleEntityIds, displayOrigin / vec2(textureSize), 0).rg;
+        uvec2 sampleEntityId = texelFetch(triangleEntityIds, sampleCoord, 0).rg;
         // Resolve the tier: the higher of this draw's per-entity tier
         // (depthPriorityMode, C_EntityCanvas::depthPriority_) and the
         // per-voxel tier authored into the id carrier.
@@ -174,11 +175,11 @@ void main() {
     if (isMouseHovered) {
         if (color.a >= 0.1 && depth <= hoveredDepth) {
             // Strip the per-trixel priority carrier so a prioritized fragment
-            // reports its true picked id. Read at the same texel the color and
-            // depth gate above sampled: the stage-2 writers store color and id
-            // together, so this is the id of what the fragment displays.
-            uvec2 entityId = decodeEntityId(
-                textureLod(triangleEntityIds, displayOrigin / vec2(textureSize), 0).rg);
+            // reports its true picked id. Read at sampleCoord, the texel the
+            // color and depth gate above sampled: the stage-2 writers store
+            // color and id together, so this is the id of what the fragment
+            // displays.
+            uvec2 entityId = decodeEntityId(texelFetch(triangleEntityIds, sampleCoord, 0).rg);
             if (entityId != uvec2(0u)) {
                 hoveredEntityId = entityId;
                 hoveredDepth = depth;
