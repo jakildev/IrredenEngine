@@ -3,6 +3,9 @@
 
 #include <irreden/ir_math.hpp>
 
+#include <array>
+#include <optional>
+
 namespace IRRender {
 
 // The pose one main-framebuffer composite drew with — everything needed to
@@ -32,12 +35,14 @@ struct DefaultPivotSourceFrame {
     int effectiveSubdivisions_ = 1;
 };
 
-// The main-canvas texel the crosshair displayed in @p frame — the hover path's
-// cursor→texel mapping (`IRRender::mouseCanvasTexelWorld`, then the gather's
-// `+ trixelOriginOffsetZ1 + cameraTrixelOffset`) evaluated with the cursor at
-// the canvas center and the frame's own camera and subdivisions. Hover identity
-// follows display identity, so this is the texel whose fragment the composite
-// depth readback at the framebuffer center sampled.
+// Estimate of the main-canvas texel the crosshair displayed in @p frame — the
+// hover path's cursor→texel mapping (`IRRender::mouseCanvasTexelWorld`, then
+// the gather's `+ trixelOriginOffsetZ1 + cameraTrixelOffset`) evaluated with
+// the cursor at the canvas center and the frame's own camera and subdivisions.
+// Exact on Metal. At a fractional `effectiveCameraIso · subdivisions` the
+// OpenGL gather displays the texel one row further in +y, so the texel the
+// depth readback sampled is found in the block around this estimate
+// (defaultPivotSampledTexelInBlock).
 inline IRMath::ivec2
 defaultPivotCrosshairCanvasTexel(const DefaultPivotSourceFrame &frame, IRMath::ivec2 canvasSize) {
     const float subdivisions = static_cast<float>(IRMath::max(1, frame.effectiveSubdivisions_));
@@ -50,6 +55,27 @@ defaultPivotCrosshairCanvasTexel(const DefaultPivotSourceFrame &frame, IRMath::i
             frame.effectiveCameraIso_ * subdivisions
         )
     );
+}
+
+// The crosshair estimate's index in a 3×3 texel block centered on it, row-major
+// from the block's low corner (its +y neighbour is 7).
+constexpr int kDefaultPivotBlockEstimateIndex = 4;
+
+// Index, in a 3×3 block of stored canvas distances centered on the crosshair
+// estimate, of the texel whose stored key is @p sampledEncodedDepth. On the
+// cardinal path the composite copies the canvas distance texel for texel, so
+// that texel is the one the sample came from. The estimate is tried first, then
+// its edge neighbours, then the corners; nullopt when no texel holds the key.
+inline std::optional<int>
+defaultPivotSampledTexelInBlock(const std::array<int, 9> &distances, int sampledEncodedDepth) {
+    constexpr std::array<int, 9> kSearchOrder =
+        {kDefaultPivotBlockEstimateIndex, 1, 3, 5, 7, 0, 2, 6, 8};
+    for (const int i : kSearchOrder) {
+        if (distances[i] == sampledEncodedDepth) {
+            return i;
+        }
+    }
+    return std::nullopt;
 }
 
 // Update policy and state of the depth-aware default pivot: when

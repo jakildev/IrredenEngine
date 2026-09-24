@@ -7,6 +7,7 @@
 #include <irreden/render/texture.hpp>
 #include <irreden/render/components/canvas_shape_geometry.hpp>
 
+#include <array>
 #include <utility>
 #include <vector>
 
@@ -284,6 +285,43 @@ struct C_TriangleCanvasTextures {
         // Strip the per-trixel priority carrier before reconstructing the
         // 64-bit id — same chokepoint as getEntityIdAtMouseTrixel.
         return static_cast<IREntity::EntityId>(IRRender::decodeCarrierEntityId(packed));
+    }
+
+    // Stored distance and entity id of the 3×3 texel block centered on
+    // @p center, row-major from its low corner. Two small GPU readbacks: for a
+    // per-event probe, never per frame. False when the block reaches past the
+    // canvas edge.
+    bool readTexelBlock3x3(
+        ivec2 center, std::array<int, 9> &distances, std::array<IREntity::EntityId, 9> &entityIds
+    ) const {
+        const ivec2 low = center - ivec2(1);
+        if (low.x < 0 || low.y < 0 || low.x + 3 > size_.x || low.y + 3 > size_.y) {
+            return false;
+        }
+        textureTriangleDistances_.second->getSubImage2D(
+            low.x,
+            low.y,
+            3,
+            3,
+            PixelDataFormat::RED_INTEGER,
+            PixelDataType::INT32,
+            distances.data()
+        );
+        std::array<uvec2, 9> packed{};
+        textureTriangleEntityIds_.second->getSubImage2D(
+            low.x,
+            low.y,
+            3,
+            3,
+            PixelDataFormat::RG_INTEGER,
+            PixelDataType::UINT32,
+            packed.data()
+        );
+        for (std::size_t i = 0; i < packed.size(); ++i) {
+            entityIds[i] =
+                static_cast<IREntity::EntityId>(IRRender::decodeCarrierEntityId(packed[i]));
+        }
+        return true;
     }
 
     // Raw entity-id carrier words (.x = low word, .y = high word with the
