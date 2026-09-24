@@ -167,7 +167,7 @@ class SourceFaceIndexTest(unittest.TestCase):
     def test_production_indexers_and_mutation_controls(self):
         for suffix, directory in (("glsl", ""), ("metal", "metal/")):
             shaders = ROOT / "engine/render/src/shaders" / directory
-            source = (shaders / f"c_bake_voxel_sun_faces.{suffix}").read_text()
+            source = (shaders / f"ir_sun_face_index.{suffix}").read_text()
             match = re.search(
                 r"(?:inline )?void indexSourceSunFace\([^\n]*\) \{.*?^\}",
                 source, re.MULTILINE | re.DOTALL,

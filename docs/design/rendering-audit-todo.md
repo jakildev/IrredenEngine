@@ -515,3 +515,21 @@ runs and existing thresholds; add an SDF-active workload to measure election cos
 - Then choose/profile linear lighting storage and preserve fog/post-lighting
   composition before beauty integration. Curved/rotated receivers, per-texel
   validity, mixed-mode coverage, native GL smoke and GPU cost remain pending.
+
+
+### Unified finite caster footprint
+
+- Implemented: analytical boxes index their oriented light-facing faces using
+  the same finite-face indexer/query as voxel casters. No blur, new buffer or
+  extra dispatch. The fragment diagnostic uses finite sampling and the actual
+  camera quaternion for view-aligned fallback faces.
+- Validated: repeating teeth disappear in eight-angle analytical controls;
+  normal source-face floor shadows also gain straight boundaries. Independent
+  ray/slab oracle, index-overflow and mixed-caster tests pass.
+  [Evidence](../pr-screenshots/codex/fragment-caster-footprint/README.md).
+- Next: carry finite receiving into SDF beauty composition while preserving fog,
+  AO and local lights; choose/profile compact linear inputs first. Continue
+  representation coverage for voxel/revoxelized/rigid casters and receivers.
+- Performance follow-up: quantify box tile insertion and shared index saturation
+  with large overlapping boxes and dense voxel scenes. Overflow currently retains
+  sampled coverage, not the exact sharp boundary. Native OpenGL smoke is pending.

@@ -187,6 +187,8 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                                              );
         }
 
+        if (shapeProbeEnabled_ && entity == perAxisCanvasEntity_)
+            frameData.frameData_.detachedDepthAxis_ = IRPrefab::Camera::getRotationQuat();
         frameData.updateFrameData(frameDataBuf_);
 
         {
