@@ -63,9 +63,16 @@ for c in claude tmux gh; do
 done
 
 # Mirrors fleet-babysit's project_transcripts_dir(): every non-alnum byte to
-# '-', runs not collapsed. Kept in sync by hand — a bash script cannot be
-# imported function-only without executing it.
-slug_for() { printf '%s' "$1" | sed 's/[^A-Za-z0-9]/-/g'; }
+# '-', runs not collapsed, from the Windows spelling of the path on native
+# Windows. Kept in sync by hand — a bash script cannot be imported
+# function-only without executing it.
+slug_for() {
+    local p="$1"
+    case "$(uname -s)" in
+        MINGW*|MSYS*|CYGWIN*) p=$(cygpath -m "$p") ;;
+    esac
+    printf '%s' "$p" | sed 's/[^A-Za-z0-9]/-/g'
+}
 
 PROJECT_CWD="$TMPROOT/campaign-cwd"
 mkdir -p "$PROJECT_CWD"

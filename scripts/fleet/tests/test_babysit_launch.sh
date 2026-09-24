@@ -12,7 +12,8 @@
 # T5/T6 cover the dead-session fallback: a saved session-id whose transcript
 # no longer resolves (pruned after ~30 days idle, or otherwise unusable) must
 # fall back to a fresh session instead of crash-looping forever on a pointer
-# that can never succeed.
+# that can never succeed. T10 pins the transcript-directory spelling per host,
+# since a live pointer looked up under the wrong spelling reads as dead.
 
 set -euo pipefail
 
@@ -50,11 +51,16 @@ done
 
 # Every architect launch resolves its transcript directory from `pwd` —
 # fleet-babysit's project_transcripts_dir() maps every non-alnum byte to
-# '-' (Claude Code's own project-dir munging; runs are not collapsed). Kept
-# in sync with that function by hand since a bash script can't be imported
+# '-' (Claude Code's own project-dir munging; runs are not collapsed), from
+# the Windows spelling of the path on native Windows. Kept in sync with
+# that function by hand since a bash script can't be imported
 # function-only without executing it.
 slug_for() {
-    printf '%s' "$1" | sed 's/[^A-Za-z0-9]/-/g'
+    local p="$1"
+    case "$(uname -s)" in
+        MINGW*|MSYS*|CYGWIN*) p=$(cygpath -m "$p") ;;
+    esac
+    printf '%s' "$p" | sed 's/[^A-Za-z0-9]/-/g'
 }
 
 PROJECT_CWD="$TMPROOT/architect-cwd"
@@ -396,5 +402,26 @@ make_transcript "$H9" "$CSID"
 out=$(launch_for_in_fleet "$H9" 'fable[1m]' campaign-million-entity-render)
 assert_eq "$out" "claude --model fable[1m] --effort xhigh --resume $CSID" \
     "campaign resume argv carries --resume <id> and no prompt"
+
+# --- T10: the transcript slug is spelled the way Claude Code spells it -------
+# Claude Code names ~/.claude/projects/<slug> from the cwd as its own process
+# sees it. On native Windows that is the drive-letter form ("C--Users-..."),
+# never MSYS's ("-c-Users-..."); a slug in the wrong spelling names a
+# directory that never receives a transcript, and every resume is condemned
+# as stale. T1/T3/T4/T9 create their transcripts under the spelling this
+# suite derives, so babysit has to derive the same one for them to resume.
+echo "T10: transcript slug uses the host's Claude Code spelling"
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+        [[ "$PROJECT_SLUG" =~ ^[A-Za-z]-- ]] \
+            && ok "native Windows slug starts with the drive letter ($PROJECT_SLUG)" \
+            || bad "native Windows slug is MSYS-spelled ($PROJECT_SLUG)"
+        ;;
+    *)
+        [[ "$PROJECT_SLUG" == -* ]] \
+            && ok "POSIX slug starts with the root separator ($PROJECT_SLUG)" \
+            || bad "POSIX slug is not derived from an absolute path ($PROJECT_SLUG)"
+        ;;
+esac
 
 summarize
