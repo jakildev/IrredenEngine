@@ -48,6 +48,22 @@ constant float kFogCutMaxRimCells = 2.0f;
 constant float kFogRimFadeCells = 8.0f;
 constant float kFogRimFadeLevel = 0.75f;
 
+// The one state → colour curve every fogged pixel takes — mirror of the GLSL
+// twin: a two-segment continuous lerp anchored on the three canonical stored
+// states (unexploredColor at 0, the desaturated "memory" tone at 128/255, the
+// source colour at 1.0). The BODY branch feeds it the body's uniform factor;
+// the FIELD branch the per-pixel field state.
+static float3 fogStateColor(float3 src, float state, float3 unexplored) {
+    const float luminance = dot(src, float3(0.299f, 0.587f, 0.114f));
+    const float3 exploredColor = float3(luminance) * 0.4f;
+    if (state >= kFogExploredValue) {
+        const float t = (state - kFogExploredValue) / (1.0f - kFogExploredValue);
+        return mix(exploredColor, src, t);
+    }
+    const float t = state / kFogExploredValue;
+    return mix(unexplored, exploredColor, t);
+}
+
 // Out-of-range cells read as visible (1.0): texture reads have no sampler wrap
 // mode, so this bounds check is load-bearing. Matches the OOB-as-visible
 // contract on C_CanvasFogOfWar.
@@ -64,7 +80,7 @@ kernel void c_fog_to_trixel(
     texture2d<float, access::read_write> trixelColors [[texture(0)]],
     texture2d<int, access::read> trixelDistances [[texture(1)]],
     texture2d<float, access::read> canvasFogOfWar [[texture(2)]],
-    // Read only for the fog whole-body carrier bit (decodeFogWholeBody).
+    // Read only for the fog BODY carrier (decodeFogBody / decodeFogBodyFactor).
     texture2d<uint, access::read> triangleCanvasEntityIds [[texture(3)]],
     // buffer(27) ALIASES kBufferIndex_FrameDataLightingToTrixel — the Metal
     // 0-30 buffer table is full, and fog runs right after lighting (done with
@@ -84,6 +100,23 @@ kernel void c_fog_to_trixel(
 
     const int encoded = trixelDistances.read(uint2(pixel)).x;
     if (encoded >= kEmptyDistanceEncoded) {
+        return;
+    }
+
+    // A BODY pixel takes its body's one verdict — mirror of the GLSL twin:
+    // the carrier factor is the state, with no grid tap, no height term, no
+    // rim fade and no cut cap. A hidden body never reaches this pass.
+    const uint2 rawId = triangleCanvasEntityIds.read(uint2(pixel)).xy;
+    if (decodeFogBody(rawId)) {
+        const float bodyState = float(decodeFogBodyFactor(rawId)) / 255.0f;
+        if (bodyState >= 1.0f) {
+            return;
+        }
+        const float4 bodySrc = trixelColors.read(uint2(pixel));
+        trixelColors.write(
+            float4(fogStateColor(bodySrc.rgb, bodyState, fogObservers.unexploredColor.rgb), bodySrc.a),
+            uint2(pixel)
+        );
         return;
     }
 
@@ -133,10 +166,6 @@ kernel void c_fog_to_trixel(
             frameData.rasterYaw
         );
         const float worldPerPixel = length(pos3DNeighborX.xy - pos3D.xy);
-        // A whole-body fog-governed body fogs on XY distance alone — mirror of
-        // the GLSL twin: both height-penalty terms drop for its pixels.
-        const bool fogWholeBody =
-            decodeFogWholeBody(triangleCanvasEntityIds.read(uint2(pixel)).xy);
         // Must trace the same analytic curve as c_voxel_to_trixel_stage_1's
         // per-voxel clip, so the floor's per-pixel reveal here and the
         // voxel-object edge there coincide. worldPerPixel floors the rim at ~1
@@ -147,16 +176,14 @@ kernel void c_fog_to_trixel(
             // zCostDown * max(dzDown - freeBand, 0)) into the radial distance
             // so matter far above/below the observer's height reveals less at
             // the same XY, asymmetrically and with a free band around the
-            // observer's height. All-zero heights (or a whole-body pixel) →
-            // distEff == the plain 2D length.
+            // observer's height. All-zero heights → distEff == the plain 2D
+            // length.
             const float4 heights = fogObservers.visionCircleHeights[i];
-            const float zCostUp = fogWholeBody ? 0.0f : heights.y;
-            const float zCostDown = fogWholeBody ? 0.0f : heights.z;
             const float dzUp = max(heights.x - pos3D.z, 0.0f);
             const float dzDown = max(pos3D.z - heights.x, 0.0f);
             const float distEff = length(pos3D.xy - fogObservers.visionCircles[i].xy) +
-                zCostUp * max(dzUp - heights.w, 0.0f) +
-                zCostDown * max(dzDown - heights.w, 0.0f);
+                heights.y * max(dzUp - heights.w, 0.0f) +
+                heights.z * max(dzDown - heights.w, 0.0f);
             const float aa = max(fogObservers.visionCircles[i].w, worldPerPixel);
             const float reveal = 1.0f - smoothstep(
                 fogObservers.visionCircles[i].z - aa,
@@ -188,20 +215,9 @@ kernel void c_fog_to_trixel(
     // plain radial curve). Colour-only, after lighting — never touches
     // trixelDistances.
 
-    const float luminance = dot(src.rgb, float3(0.299f, 0.587f, 0.114f));
-    const float3 exploredColor = float3(luminance) * 0.4f;
-
-    // Two-segment continuous lerp anchored on the three canonical stored
-    // states: unexploredColor at 0, exploredColor at 128/255, src at 1.0. Alpha
-    // is preserved so any text/overlay antialiasing still composites cleanly.
-    float3 outColor;
-    if (state >= kFogExploredValue) {
-        const float t = (state - kFogExploredValue) / (1.0f - kFogExploredValue);
-        outColor = mix(exploredColor, src.rgb, t);
-    } else {
-        const float t = state / kFogExploredValue;
-        outColor = mix(fogObservers.unexploredColor.rgb, exploredColor, t);
-    }
+    // Alpha is preserved so any text/overlay antialiasing still composites
+    // cleanly.
+    float3 outColor = fogStateColor(src.rgb, state, fogObservers.unexploredColor.rgb);
     if (gridState < kFogExploredValue) {
         // The squared ease-out crushes the fade tail to the unexplored colour
         // well before the keep-ring drop, so the outermost kept columns' wall

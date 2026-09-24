@@ -41,7 +41,7 @@ Rationale: [`docs/design/prefab-render-surface.md`](../../../../docs/design/pref
 | System(s) | Must sit |
 |---|---|
 | `LOD_UPDATE` | UPDATE, before `PROPAGATE_TRANSFORM` |
-| `FOG_REVEAL_EVAL` | after `PROPAGATE_TRANSFORM`, before `UPDATE_VOXEL_SET_CHILDREN` |
+| `FOG_SUBJECT_EXEMPT` → `FOG_SUBJECT_ADOPT` → `FOG_REVEAL_EVAL` (`IRPrefab::Fog::revealSystems()`) | after `PROPAGATE_TRANSFORM`, before `UPDATE_VOXEL_SET_CHILDREN` |
 | `UPDATE_JOINT_MATRICES` | after `PROPAGATE_TRANSFORM`, before `UPDATE_VOXEL_POSITIONS_GPU`; a creation with skeletons registers the prepass too |
 | `UPDATE_VOXEL_POSITIONS_GPU` | before `VOXEL_TO_TRIXEL_STAGE_1` |
 | `VOXEL_PICKING` | RENDER, after the camera systems, before `VOXEL_TO_TRIXEL_STAGE_1` |
@@ -80,12 +80,12 @@ perf-stats overlay region (top-right by default).
   variants swap, overlapping bands stack. Shapes only.
 - Sprites bypass the trixel pipeline ([`docs/design/sprites.md`](../../../../docs/design/sprites.md));
   `C_Sprite::screenPixelSmooth_` (no game-pixel snap) is for the avatar or a camera-locked entity only.
-- `C_FogRevealed` (`setEntityRevealGoverned`) opts a grid-canvas voxel set into
-  one ground-anchor verdict (`FOG_REVEAL_EVAL`, active canvas only; hysteresis
-  and stagger in `C_FogRevealSettings`); reserved bit 3 exempts it from the compact
-  reject and stage-1 column drop and its pixels carry id bit 28 (shapes opt in via
-  `SHAPE_FLAG_FOG_WHOLE_BODY_EXEMPT`). The FIELD / BODY / EXEMPT target and the
-  child that lands each part: [reveal model](../../../../docs/design/fog-of-war-reveal-model.md).
+- Fog subject classes: an untagged voxel set on the fog canvas is adopted as a
+  BODY (`FOG_SUBJECT_ADOPT`, one ground-anchor verdict via `evalReveal`, state in
+  `C_FogRevealed`); `C_FogField` / `C_FogExempt` are explicit; `revealSystems()`
+  is the pipeline splice. Reserved bit 3 + factor bits 11:4 fold into id bit 28 +
+  27:20, and FOG_TO_TRIXEL paints a BODY pixel at that one factor. Contract:
+  [reveal model](../../../../docs/design/fog-of-war-reveal-model.md).
 - GPU transforms: a voxel set opts in with `C_VoxelSetNew::gpuTransformSlot_
   != kVoxelTransformStatic` (the default is CPU-direct, dispatch-free). Joints
   share binding 18 — set slots grow up from 0, joint blocks are carved down from

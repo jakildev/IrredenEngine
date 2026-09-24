@@ -42,7 +42,7 @@
 #include <irreden/render/systems/system_compute_sun_shadow.hpp>
 #include <irreden/render/systems/system_compute_voxel_ao.hpp>
 #include <irreden/render/systems/system_fog_to_trixel.hpp>
-#include <irreden/render/systems/system_fog_reveal_eval.hpp>
+#include <irreden/render/fog_reveal_systems.hpp>
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_perf_stats_overlay.hpp>
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
@@ -534,6 +534,33 @@ bool g_feederClassifyPadSet = false;
 // default -> flagless spawn path is untouched (byte-identical to master).
 bool g_waveFreeze = false;
 bool g_fogReveal = false;
+// --fog-reveal-sweep: eight vision circles inside the grid, orbiting one cell
+// of arc per frame, so cells cross a rim every frame and the BODY carrier
+// re-stamp path runs at its worst; the grid stays unexplored so only the
+// circles reveal. FOG-RESTAMP reports the per-frame re-stamped voxel count.
+bool g_fogRevealSweep = false;
+constexpr float kFogSweepRingRadius = 20.0f;
+constexpr float kFogSweepCircleRadius = 8.0f;
+constexpr float kFogSweepCircleEdge = 1.0f;
+int g_fogSweepFrame = 0;
+IRSystem::SystemId g_fogRevealEvalId = IRSystem::kNullSystemId;
+AutoProfileStat g_autoProfileRestamp;
+std::uint32_t g_autoProfileRestampMax = 0;
+
+void driveFogRevealSweep() {
+    const float turn = static_cast<float>(g_fogSweepFrame++) / kFogSweepRingRadius;
+    IRPrefab::Fog::clearVisionCircles();
+    for (int i = 0; i < IRComponents::kMaxFogVisionCircles; ++i) {
+        const float angle = turn + IRMath::kTwoPi * static_cast<float>(i) /
+                                       static_cast<float>(IRComponents::kMaxFogVisionCircles);
+        IRPrefab::Fog::addVisionCircle(
+            kFogSweepRingRadius * IRMath::cos(angle),
+            kFogSweepRingRadius * IRMath::sin(angle),
+            kFogSweepCircleRadius,
+            kFogSweepCircleEdge
+        );
+    }
+}
 
 PerfGridMode parseMode(const std::string &value) {
     if (value == "voxel_set" || value == "voxel") {
@@ -735,6 +762,11 @@ void registerCliArgs() {
         "--fog-reveal",
         "Tag every voxel-set entity for entity-anchor fog evaluation against 8 outside circles"
     );
+    args.flag(
+        "--fog-reveal-sweep",
+        "Orbit 8 vision circles inside the grid one cell per frame on an unexplored grid, so "
+        "adopted cells cross a rim every frame; logs FOG-RESTAMP"
+    );
     args.string(
         "--mode",
         "Scene mode: voxel_set | sdf | dense_set | hollow_set | gallery",
@@ -826,6 +858,7 @@ void readCliArgs() {
     g_noPerVoxelOcclusion = args.getFlag("--no-per-voxel-occlusion");
     g_waveFreeze = args.getFlag("--wave-freeze");
     g_fogReveal = args.getFlag("--fog-reveal");
+    g_fogRevealSweep = args.getFlag("--fog-reveal-sweep");
     g_feederClassifyPadSet = args.wasProvided("--feeder-classify-pad");
     g_feederClassifyPad = args.getInt("--feeder-classify-pad");
 
@@ -1274,7 +1307,9 @@ void configureLightingAndCanvas() {
     }
     IREntity::setComponent(mainCanvas, C_CanvasLightVolume{});
     IRPrefab::Fog::attachToCanvas(mainCanvas);
-    if (g_fogReveal) {
+    if (g_fogRevealSweep) {
+        driveFogRevealSweep();
+    } else if (g_fogReveal) {
         IRPrefab::Fog::clearVisionCircles();
         for (int i = 0; i < IRComponents::kMaxFogVisionCircles; ++i) {
             IRPrefab::Fog::addVisionCircle(
@@ -1304,7 +1339,9 @@ void configureLightingAndCanvas() {
             static_cast<uint8_t>(24)
         }
     );
-    IRPrefab::Fog::revealRadius(0, 0, 128);
+    if (!g_fogRevealSweep) {
+        IRPrefab::Fog::revealRadius(0, 0, 128);
+    }
 }
 
 } // namespace
@@ -1442,15 +1479,18 @@ void initSystems() {
     // and ordered as a producer→consumer chain: PERIODIC_IDLE_POSITION_OFFSET reads C_PeriodicIdle
     // (after PERIODIC_IDLE), then PROPAGATE_TRANSFORM and UPDATE_VOXEL_SET_CHILDREN run in sequence
     // on C_WorldTransform.
-    IRSystem::registerPipelineGroups(
-        IRTime::Events::UPDATE,
-        {{IRSystem::createSystem<IRSystem::PERIODIC_IDLE>()},
-         {IRSystem::createSystem<IRSystem::MODIFIER_DECAY>()},
-         {IRSystem::createSystem<IRSystem::PERIODIC_IDLE_POSITION_OFFSET>()},
-         {IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>()},
-         {IRSystem::createSystem<IRSystem::FOG_REVEAL_EVAL>()},
-         {IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>()}}
-    );
+    std::vector<std::vector<IRSystem::SystemId>> updateGroups = {
+        {IRSystem::createSystem<IRSystem::PERIODIC_IDLE>()},
+        {IRSystem::createSystem<IRSystem::MODIFIER_DECAY>()},
+        {IRSystem::createSystem<IRSystem::PERIODIC_IDLE_POSITION_OFFSET>()},
+        {IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>()},
+    };
+    for (IRSystem::SystemId id : IRPrefab::Fog::revealSystems()) {
+        updateGroups.push_back({id});
+        g_fogRevealEvalId = id;
+    }
+    updateGroups.push_back({IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>()});
+    IRSystem::registerPipelineGroups(IRTime::Events::UPDATE, updateGroups);
     IRSystem::registerPipeline(
         IRTime::Events::INPUT,
         {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()}
@@ -1520,6 +1560,18 @@ void initSystems() {
         );
     }
 
+    // The orbit advances once per rendered frame at the render front, so the
+    // circles are current before the frame's UPDATE verdicts and raster.
+    if (g_fogRevealSweep) {
+        renderPipeline.push_front(
+            IRSystem::createSystem<C_Camera>(
+                "FogRevealSweepTick",
+                [](C_Camera &) {},
+                []() { driveFogRevealSweep(); }
+            )
+        );
+    }
+
     // Stepped per rendered frame, not per second, so every run of a sweep
     // renders the same poses whatever its frame time, and as an absolute yaw so
     // the pose of frame N carries no accumulated rounding. It runs after the
@@ -1564,6 +1616,13 @@ void initSystems() {
                     for (std::size_t i = 0; i < kAutoProfileCpuScopeCount; ++i) {
                         g_autoProfileCpu[i].add(cpuThisFrame.lastFrameMs(kAutoProfileCpuScopes[i]));
                     }
+                    const auto *reveal =
+                        IRSystem::getSystemParams<IRSystem::System<IRSystem::FOG_REVEAL_EVAL>>(
+                            g_fogRevealEvalId
+                        );
+                    const std::uint32_t restamped = reveal->restampedVoxelsLastFrame_;
+                    g_autoProfileRestamp.add(static_cast<double>(restamped));
+                    g_autoProfileRestampMax = IRMath::max(g_autoProfileRestampMax, restamped);
                 }
                 if (g_autoProfileCount >= g_autoProfileFrames) {
                     IR_LOG_INFO("Auto-profile: {} frames collected, exiting", g_autoProfileFrames);
@@ -1588,6 +1647,13 @@ void initSystems() {
                         g_autoProfileFrameTime.mean(),
                         g_autoProfileFrameTime.stddev(),
                         g_autoProfileFrameTime.count_
+                    );
+                    IR_LOG_INFO(
+                        "FOG-RESTAMP voxels={:.1f} sd={:.1f} max={} n={}",
+                        g_autoProfileRestamp.mean(),
+                        g_autoProfileRestamp.stddev(),
+                        g_autoProfileRestampMax,
+                        g_autoProfileRestamp.count_
                     );
                     for (std::size_t i = 0; i < kAutoProfileCpuScopeCount; ++i) {
                         IR_LOG_INFO(

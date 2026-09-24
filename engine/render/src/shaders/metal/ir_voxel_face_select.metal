@@ -169,9 +169,11 @@ static VoxelFaceSelect selectVoxelFace(
                  ? roundHalfUp(detachedWorldReceiveIn.xy)
                  : int2(0));
     }
+    // A fog BODY (reserved bit 3) is never sliced: it renders whole at one
+    // factor, so its interior faces stay hidden and the cut rule is skipped.
     sel.keepFace = faceIsExposed(flagsByte, sel.faceId);
     sel.isCutFace = false;
-    if (!sel.keepFace && sel.faceId < kFaceZNeg && sel.fogActive) {
+    if (!sel.keepFace && sel.faceId < kFaceZNeg && sel.fogActive && (reserved & 8u) == 0u) {
         sel.keepFace = fogColumnReveal(
             fog, obs, sel.worldColumn + faceOutwardNormal6I(sel.faceId).xy) < 1.0f;
         sel.isCutFace = sel.keepFace;

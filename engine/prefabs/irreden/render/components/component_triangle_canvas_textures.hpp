@@ -317,6 +317,30 @@ struct C_TriangleCanvasTextures {
         );
     }
 
+    // readColors after a full GPU flush, so a read issued mid-frame (a probe
+    // spliced between two render systems) observes every encoder queued
+    // before it: Metal commits and waits, OpenGL glFinish-es. A full flush
+    // per call — debug probes only.
+    void readColorsSynced(std::vector<Color> &out) const {
+        IRRender::device()->finish();
+        readColors(out);
+    }
+
+    // Encoded distance texels, row-major over the whole canvas — the same
+    // full-texture readback contract as readEntityIdCarriers.
+    void readDistances(std::vector<int> &out) const {
+        out.resize(static_cast<std::size_t>(size_.x) * static_cast<std::size_t>(size_.y));
+        textureTriangleDistances_.second->getSubImage2D(
+            0,
+            0,
+            size_.x,
+            size_.y,
+            PixelDataFormat::RED_INTEGER,
+            PixelDataType::INT32,
+            out.data()
+        );
+    }
+
     void clearDistances() const {
         shapeGeometry_.invalidateSamples();
         textureTriangleDistances_.second->clear(

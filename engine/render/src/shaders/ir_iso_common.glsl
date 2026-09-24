@@ -227,22 +227,34 @@ const uint kEntityIdPriorityMaskInHighWord = 0x3u << kEntityIdPriorityShiftInHig
 // kEntityIdHighWordMask strips it, so every id READER (picking) ignores it. A
 // non-cut face leaves the stored id unchanged.
 const uint kEntityIdCutFaceMaskInHighWord = 0x1u << 29u;
-// Fog whole-body carrier: bit 28 of the high word flags a pixel of a
-// whole-body fog-governed body (voxel reserved bit 3, or the shape flag
-// SHAPE_FLAG_FOG_WHOLE_BODY_EXEMPT) so FOG_TO_TRIXEL fogs it on XY distance
-// alone, with no height penalty. Same masking chokepoint as the bits above.
-const uint kEntityIdFogWholeBodyMaskInHighWord = 0x1u << 28u;
+// Fog BODY carrier: bit 28 of the high word flags a pixel of a BODY-classed
+// subject (voxel reserved bit 3, or the shape flag
+// SHAPE_FLAG_FOG_WHOLE_BODY_EXEMPT) and bits 27:20 carry its 8-bit reveal
+// factor, so FOG_TO_TRIXEL paints the pixel at factor / 255 with no field
+// lookup. Entity ids are allocation counters, so a live id never sets bits
+// 27:20. Same masking chokepoint as the bits above.
+const uint kEntityIdFogBodyMaskInHighWord = 0x1u << 28u;
+const uint kEntityIdFogWholeBodyMaskInHighWord = kEntityIdFogBodyMaskInHighWord;
+const uint kEntityIdFogBodyFactorShiftInHighWord = 20u;
+const uint kEntityIdFogBodyFactorMaskInHighWord = 0xFFu << kEntityIdFogBodyFactorShiftInHighWord;
 const uint kEntityIdHighWordMask =
     ~(kEntityIdPriorityMaskInHighWord | kEntityIdCutFaceMaskInHighWord |
-      kEntityIdFogWholeBodyMaskInHighWord);
+      kEntityIdFogBodyMaskInHighWord | kEntityIdFogBodyFactorMaskInHighWord);
 uint decodePriority(uvec2 rawId) {
     return (rawId.y >> kEntityIdPriorityShiftInHighWord) & 0x3u;
 }
 bool decodeCutFace(uvec2 rawId) {
     return (rawId.y & kEntityIdCutFaceMaskInHighWord) != 0u;
 }
+bool decodeFogBody(uvec2 rawId) {
+    return (rawId.y & kEntityIdFogBodyMaskInHighWord) != 0u;
+}
 bool decodeFogWholeBody(uvec2 rawId) {
-    return (rawId.y & kEntityIdFogWholeBodyMaskInHighWord) != 0u;
+    return decodeFogBody(rawId);
+}
+// The BODY reveal factor in 0..255; meaningful only when decodeFogBody.
+uint decodeFogBodyFactor(uvec2 rawId) {
+    return (rawId.y >> kEntityIdFogBodyFactorShiftInHighWord) & 0xFFu;
 }
 uvec2 decodeEntityId(uvec2 rawId) {
     return uvec2(rawId.x, rawId.y & kEntityIdHighWordMask);
@@ -260,12 +272,19 @@ uvec2 encodeEntityIdCutFace(uvec2 packedId, bool isCutFace) {
     return isCutFace ? uvec2(packedId.x, packedId.y | kEntityIdCutFaceMaskInHighWord)
                      : packedId;
 }
-// Set the fog whole-body flag on an ALREADY priority-encoded id, like
-// encodeEntityIdCutFace.
-uvec2 encodeEntityIdFogWholeBody(uvec2 packedId, bool isFogWholeBody) {
-    return isFogWholeBody
-        ? uvec2(packedId.x, packedId.y | kEntityIdFogWholeBodyMaskInHighWord)
+// Fold the fog BODY class bit and its 8-bit reveal factor into an ALREADY
+// priority-encoded id, like encodeEntityIdCutFace. A non-BODY leaves the id
+// unchanged.
+uvec2 encodeEntityIdFogBody(uvec2 packedId, bool isFogBody, uint factor) {
+    return isFogBody
+        ? uvec2(packedId.x, packedId.y | kEntityIdFogBodyMaskInHighWord |
+                                ((factor & 0xFFu) << kEntityIdFogBodyFactorShiftInHighWord))
         : packedId;
+}
+// A subject whose raster route carries no factor of its own (a flagged SDF
+// shape) renders whole: the class bit with the factor pinned at 255.
+uvec2 encodeEntityIdFogWholeBody(uvec2 packedId, bool isFogWholeBody) {
+    return encodeEntityIdFogBody(packedId, isFogWholeBody, 255u);
 }
 
 // Per-axis fractional encoding:

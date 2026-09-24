@@ -1,6 +1,9 @@
 #include <irreden/ir_entity.hpp>
+#include <irreden/render/active_canvas.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
+#include <irreden/render/components/component_fog_field.hpp>
 #include <irreden/render/components/component_fog_revealed.hpp>
+#include <irreden/render/fog_of_war.hpp>
 #include <irreden/script/lua_script.hpp>
 
 #include <gtest/gtest.h>
@@ -172,6 +175,56 @@ TEST_F(LuaFogBindingsTest, RejectsWrongOptionalTypesWithoutMutatingDefaults) {
         "IRFog.addVision(0, 0, 2, nil, nil, nil, nil, false)",
     };
     expectScriptsFail(kBadCalls);
+}
+
+// `setEntityGoverned(e, false)` compares against the FIELD class, not
+// against BODY state: on an entity that was never adopted it tags FIELD
+// instead of returning early, and the tag is idempotent.
+TEST_F(LuaFogBindingsTest, UngovernedCallOnAFreshEntityTagsField) {
+    const IREntity::EntityId fresh = IREntity::createEntity();
+    m_lua.lua()["fresh"] = static_cast<double>(fresh);
+    ASSERT_EQ(IRPrefab::Fog::subjectClass(fresh), IRPrefab::Fog::FogSubjectClass::BODY);
+
+    EXPECT_TRUE(scriptSucceeds("IRFog.setEntityGoverned(fresh, false)"));
+
+    EXPECT_EQ(IRPrefab::Fog::subjectClass(fresh), IRPrefab::Fog::FogSubjectClass::FIELD);
+    EXPECT_TRUE(IREntity::getComponentOptional<IRComponents::C_FogField>(fresh).has_value());
+    EXPECT_TRUE(scriptSucceeds("IRFog.setEntityGoverned(fresh, false)"));
+    EXPECT_EQ(IRPrefab::Fog::subjectClass(fresh), IRPrefab::Fog::FogSubjectClass::FIELD);
+}
+
+// With a fogged canvas active (headless seam, textureless fog), the service's
+// oracle is the BODY verdict: a VISIBLE grid cell reveals with no circle at
+// all, an EXPLORED or UNEXPLORED cell does not, and a circle still reveals on
+// its own. The circles-only forward reads 0 on the VISIBLE cell.
+class LuaFogBindingsActiveCanvasTest : public LuaFogBindingsTest {
+  protected:
+    LuaFogBindingsActiveCanvasTest() {
+        m_canvas = IREntity::createEntity(
+            IRComponents::C_CanvasFogOfWar{IRComponents::C_CanvasFogOfWar::HeadlessInit{}}
+        );
+        IRRender::setHeadlessActiveCanvasEntity(m_canvas);
+    }
+    ~LuaFogBindingsActiveCanvasTest() override {
+        IRRender::setHeadlessActiveCanvasEntity(IREntity::kNullEntity);
+    }
+
+    IREntity::EntityId m_canvas = IREntity::kNullEntity;
+};
+
+TEST_F(LuaFogBindingsActiveCanvasTest, EvalRevealReadsAVisibleCellWithNoCircles) {
+    EXPECT_TRUE(scriptSucceeds(R"lua(
+        IRFog.clearVisions()
+        assert(IRFog.evalReveal(3, 4, 0) == 0)
+        IRFog.setCell(3, 4, IRFog.State.VISIBLE)
+        assert(IRFog.evalReveal(3, 4, 0) == 1)
+        IRFog.setCell(3, 4, IRFog.State.EXPLORED)
+        assert(IRFog.evalReveal(3, 4, 0) == 0)
+        IRFog.setCell(3, 4, IRFog.State.UNEXPLORED)
+        IRFog.addVision(3, 4, 6)
+        assert(IRFog.evalReveal(3, 4, 0) == 1)
+        assert(IRFog.evalReveal(30, 40, 0) == 0)
+    )lua"));
 }
 
 } // namespace

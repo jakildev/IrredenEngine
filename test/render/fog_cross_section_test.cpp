@@ -95,6 +95,10 @@ const std::string kGlslStage1BodyPath =
     std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_voxel_to_trixel_stage_1_body.glsl";
 const std::string kMetalStage1BodyPath =
     std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/c_voxel_to_trixel_stage_1_body.metal";
+const std::string kGlslStage2BodyPath =
+    std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_voxel_to_trixel_stage_2_body.glsl";
+const std::string kMetalStage2BodyPath =
+    std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/c_voxel_to_trixel_stage_2_body.metal";
 const std::string kGlslFogPassPath =
     std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_fog_to_trixel.glsl";
 const std::string kMetalFogPassPath =
@@ -111,6 +115,8 @@ std::string normalizeShaderMath(const std::string &source) {
     const std::string noComments = std::regex_replace(source, std::regex(R"(//[^\n]*)"), "");
     const std::string noObs = std::regex_replace(noComments, std::regex(R"(\bobs\.)"), "");
     std::string folded = std::regex_replace(noObs, std::regex(R"(\bfloat([234])\b)"), "vec$1");
+    folded = std::regex_replace(folded, std::regex(R"(\buint([234])\b)"), "uvec$1");
+    folded = std::regex_replace(folded, std::regex(R"(\bint([234])\b)"), "ivec$1");
     folded = std::regex_replace(folded, std::regex(R"((\d)f\b)"), "$1");
     folded = std::regex_replace(folded, std::regex(R"(\s+)"), " ");
     const std::string trimmedFront = std::regex_replace(folded, std::regex(R"(^ )"), "");
@@ -204,7 +210,7 @@ std::string normalizeKernelMath(const std::string &source) {
 // Returns false when the constant is absent, which is itself a parity failure.
 bool readShaderConstant(const std::string &source, const std::string &name, double &value) {
     std::smatch match;
-    const std::regex pattern(R"(\b)" + name + R"(\s*=\s*(-?[0-9]+(?:\.[0-9]*)?)f?\s*;)");
+    const std::regex pattern(R"(\b)" + name + R"(\s*=\s*(-?[0-9]+(?:\.[0-9]*)?)[fu]?\s*;)");
     if (!std::regex_search(source, match, pattern)) {
         return false;
     }
@@ -311,20 +317,134 @@ TEST(FogCrossSectionShaderParity, StageOneDropExpressionsAreIdenticalAcrossBacke
         << "the per-axis drop must be z-aware (no paint pass covers it): " << glslPerAxis;
 }
 
-// Test E, part 5: the fog pass's state-0 anchor is the per-canvas unexplored
-// colour on both backends.
+// Test E, part 5: the shared state → colour curve is identical on both
+// backends, and both branches of the fog pass feed it the per-canvas
+// unexplored colour as the state-0 anchor.
 TEST(FogCrossSectionShaderParity, UnexploredColourAnchorIsIdenticalAcrossBackends) {
     const std::string glsl = readShaderSource(kGlslFogPassPath);
     const std::string metal = readShaderSource(kMetalFogPassPath);
-    const std::string anchor = "const float t = state / kFogExploredValue;";
-    const std::string glslAnchor = extractSpan(glsl, anchor, anchor, "}");
-    const std::string metalAnchor = extractSpan(metal, anchor, anchor, "}");
-    ASSERT_FALSE(glslAnchor.empty()) << "unexplored anchor not found in " << kGlslFogPassPath;
-    ASSERT_FALSE(metalAnchor.empty()) << "unexplored anchor not found in " << kMetalFogPassPath;
-    EXPECT_EQ(normalizeKernelMath(glslAnchor), normalizeKernelMath(metalAnchor))
-        << "the unexplored-colour anchor diverged between backends";
-    EXPECT_NE(glslAnchor.find("unexploredColor"), std::string::npos)
-        << "the fog pass must anchor state 0 on unexploredColor: " << glslAnchor;
+    const std::string glslCurve = extractFunctionBody(glsl, "vec3 fogStateColor");
+    const std::string metalCurve = extractFunctionBody(metal, "float3 fogStateColor");
+    ASSERT_FALSE(glslCurve.empty()) << "fogStateColor not found in " << kGlslFogPassPath;
+    ASSERT_FALSE(metalCurve.empty()) << "fogStateColor not found in " << kMetalFogPassPath;
+    EXPECT_EQ(normalizeKernelMath(glslCurve), normalizeKernelMath(metalCurve))
+        << "the state → colour curve diverged between backends";
+    EXPECT_NE(glslCurve.find("mix(unexplored, exploredColor, t)"), std::string::npos)
+        << "the curve must anchor state 0 on the unexplored colour: " << glslCurve;
+    const std::string glslField =
+        extractSpan(glsl, "vec3 outColor = fogStateColor(", "vec3 outColor = fogStateColor(", ";");
+    const std::string metalField = extractSpan(
+        metal,
+        "float3 outColor = fogStateColor(",
+        "float3 outColor = fogStateColor(",
+        ";"
+    );
+    ASSERT_FALSE(glslField.empty()) << "FIELD branch call not found in GLSL";
+    ASSERT_FALSE(metalField.empty()) << "FIELD branch call not found in MSL";
+    EXPECT_EQ(normalizeKernelMath(glslField), normalizeKernelMath(metalField))
+        << "the FIELD branch call diverged between backends";
+    EXPECT_NE(glslField.find("unexploredColor.rgb"), std::string::npos)
+        << "the FIELD branch must pass unexploredColor: " << glslField;
+}
+
+// Test E, part 6: the BODY branch of the fog pass — the pixel takes the
+// carrier factor as its state and skips the field, the height terms, the rim
+// fade and the cut cap — is identical on both backends.
+TEST(FogCrossSectionShaderParity, FogPassBodyBranchIsIdenticalAcrossBackends) {
+    const std::string glsl = readShaderSource(kGlslFogPassPath);
+    const std::string metal = readShaderSource(kMetalFogPassPath);
+    // The branch closes at the first 4-space-indented brace after its start;
+    // its inner early return sits deeper.
+    const std::string glslBody =
+        extractSpan(glsl, "if (decodeFogBody(rawId))", "if (decodeFogBody(rawId))", "\n    }\n");
+    const std::string metalBody =
+        extractSpan(metal, "if (decodeFogBody(rawId))", "if (decodeFogBody(rawId))", "\n    }\n");
+    ASSERT_FALSE(glslBody.empty()) << "BODY branch not found in " << kGlslFogPassPath;
+    ASSERT_FALSE(metalBody.empty()) << "BODY branch not found in " << kMetalFogPassPath;
+    // The colour image access is the one dialect difference left after
+    // normalization (imageLoad / imageStore against read / write); both fold
+    // onto READ / WRITE so the math around them compares.
+    const std::string glslMath = std::regex_replace(
+        std::regex_replace(
+            normalizeKernelMath(glslBody),
+            std::regex(R"(imageLoad\(trixelColors, pixel\))"),
+            "READ"
+        ),
+        std::regex(R"(imageStore\(trixelColors, pixel, (.*)\);)"),
+        "WRITE($1);"
+    );
+    const std::string metalMath = std::regex_replace(
+        std::regex_replace(
+            normalizeKernelMath(metalBody),
+            std::regex(R"(trixelColors\.read\(uvec2\(pixel\)\))"),
+            "READ"
+        ),
+        std::regex(R"(trixelColors\.write\((.*), uvec2\(pixel\)\);)"),
+        "WRITE($1);"
+    );
+    EXPECT_EQ(glslMath, metalMath) << "the BODY branch diverged between backends";
+    EXPECT_NE(glslBody.find("decodeFogBodyFactor(rawId)) / 255.0"), std::string::npos)
+        << "the BODY state must be the carrier factor over 255: " << glslBody;
+    EXPECT_EQ(glslBody.find("fogTap"), std::string::npos) << "a BODY pixel takes no grid tap";
+    EXPECT_EQ(glslBody.find("visionCircle"), std::string::npos)
+        << "a BODY pixel evaluates no circle";
+}
+
+// Test E, part 7: the entity-id carrier twins — the BODY bit + factor fold and
+// their decodes — are identical on both backends, and stage 2 folds the voxel
+// reserved word's class bit and factor field through them identically.
+TEST(FogCrossSectionShaderParity, FogBodyCarrierTwinsAreIdenticalAcrossBackends) {
+    const std::string glslIso = readShaderSource(kGlslIsoCommonPath);
+    const std::string metalIso = readShaderSource(kMetalIsoCommonPath);
+    for (const char *function :
+         {"decodeFogBody",
+          "decodeFogBodyFactor",
+          "encodeEntityIdFogBody",
+          "encodeEntityIdFogWholeBody"}) {
+        SCOPED_TRACE(function);
+        const std::string glslBody = extractFunctionBody(glslIso, function);
+        const std::string metalBody = extractFunctionBody(metalIso, function);
+        ASSERT_FALSE(glslBody.empty()) << function << " missing from GLSL";
+        ASSERT_FALSE(metalBody.empty()) << function << " missing from MSL";
+        EXPECT_EQ(normalizeShaderMath(glslBody), normalizeShaderMath(metalBody))
+            << function << " diverged between backends";
+    }
+    double glslShift = 0.0;
+    double metalShift = 0.0;
+    ASSERT_TRUE(readShaderConstant(glslIso, "kEntityIdFogBodyFactorShiftInHighWord", glslShift));
+    ASSERT_TRUE(readShaderConstant(metalIso, "kEntityIdFogBodyFactorShiftInHighWord", metalShift));
+    EXPECT_EQ(glslShift, 20.0);
+    EXPECT_EQ(metalShift, 20.0);
+
+    const std::string glslStage2 = readShaderSource(kGlslStage2BodyPath);
+    const std::string metalStage2 = readShaderSource(kMetalStage2BodyPath);
+    const std::string glslFold =
+        extractSpan(glslStage2, "encodeEntityIdFogBody(", "encodeEntityIdFogBody(", ";");
+    const std::string metalFold =
+        extractSpan(metalStage2, "encodeEntityIdFogBody(", "encodeEntityIdFogBody(", ";");
+    ASSERT_FALSE(glslFold.empty()) << "stage-2 fold not found in " << kGlslStage2BodyPath;
+    ASSERT_FALSE(metalFold.empty()) << "stage-2 fold not found in " << kMetalStage2BodyPath;
+    EXPECT_EQ(normalizeKernelMath(glslFold), normalizeKernelMath(metalFold))
+        << "the stage-2 fold diverged between backends";
+    EXPECT_NE(glslFold.find("reserved >> 4u) & 0xFFu"), std::string::npos)
+        << "stage 2 must fold reserved bits 11:4 as the factor: " << glslFold;
+}
+
+// Test E, part 8: the cut-face widening is gated off for a BODY voxel on
+// both backends.
+TEST(FogCrossSectionShaderParity, CutFaceRuleSkipsBodyVoxelsOnBothBackends) {
+    const std::string glsl = readShaderSource(kGlslFaceSelectPath);
+    const std::string metal = readShaderSource(kMetalFaceSelectPath);
+    const std::string glslGate =
+        extractSpan(glsl, "sel.isCutFace = false;", "if (!sel.keepFace", "{");
+    const std::string metalGate =
+        extractSpan(metal, "sel.isCutFace = false;", "if (!sel.keepFace", "{");
+    ASSERT_FALSE(glslGate.empty()) << "cut-face gate not found in GLSL";
+    ASSERT_FALSE(metalGate.empty()) << "cut-face gate not found in MSL";
+    EXPECT_EQ(normalizeKernelMath(glslGate), normalizeKernelMath(metalGate))
+        << "the cut-face gate diverged between backends";
+    EXPECT_NE(glslGate.find("(reserved & 8u) == 0u"), std::string::npos)
+        << "the cut rule must skip reserved bit 3 (kFogBody): " << glslGate;
 }
 
 // ---------------------------------------------------------------------------

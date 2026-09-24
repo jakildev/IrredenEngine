@@ -456,18 +456,30 @@ constexpr std::uint32_t kEntityIdPriorityMaskInHighWord = ((1u << kEntityIdPrior
 // priority tier also strips this — picking never sees it. Mirror of the
 // .glsl/.metal kEntityIdCutFaceMaskInHighWord.
 constexpr std::uint32_t kEntityIdCutFaceMaskInHighWord = 1u << 29;
-// Fog whole-body carrier: bit 28 of the high word. Set on every pixel of a
-// whole-body-governed voxel set (VoxelReserved::kFogWholeBodyExempt) or of a
-// SHAPE_FLAG_FOG_WHOLE_BODY_EXEMPT shape; FOG_TO_TRIXEL drops the height
-// penalty for it. Stripped by kEntityIdHighWordMask like the bits above.
-// Mirror of the .glsl/.metal kEntityIdFogWholeBodyMaskInHighWord.
-constexpr std::uint32_t kEntityIdFogWholeBodyMaskInHighWord = 1u << 28;
+// Fog BODY carrier: bit 28 of the high word flags every pixel of a BODY-classed
+// subject (VoxelReserved::kFogBody on a voxel set, SHAPE_FLAG_FOG_WHOLE_BODY_EXEMPT
+// on a shape) and bits 27:20 carry its 8-bit reveal factor. FOG_TO_TRIXEL paints
+// a flagged pixel at factor / 255 with no per-pixel field lookup. Entity ids are
+// an allocation counter, so bits 27:20 of a live id's high word are zero. Both
+// fields are stripped by kEntityIdHighWordMask like the bits above. Mirror of
+// the .glsl/.metal kEntityIdFogBody* constants.
+constexpr std::uint32_t kEntityIdFogBodyMaskInHighWord = 1u << 28;
+constexpr std::uint32_t kEntityIdFogWholeBodyMaskInHighWord = kEntityIdFogBodyMaskInHighWord;
+constexpr int kEntityIdFogBodyFactorShiftInHighWord = 20;
+constexpr std::uint32_t kEntityIdFogBodyFactorMaskInHighWord =
+    0xFFu << kEntityIdFogBodyFactorShiftInHighWord;
 constexpr std::uint32_t kEntityIdHighWordMask =
     ~(kEntityIdPriorityMaskInHighWord | kEntityIdCutFaceMaskInHighWord |
-      kEntityIdFogWholeBodyMaskInHighWord);
+      kEntityIdFogBodyMaskInHighWord | kEntityIdFogBodyFactorMaskInHighWord);
 static_assert(
     kDepthForegroundTierCount <= (1 << kEntityIdPriorityBits),
     "tier count must fit in the K stolen entity-id bits"
+);
+static_assert(
+    (kEntityIdFogBodyFactorMaskInHighWord &
+     (kEntityIdPriorityMaskInHighWord | kEntityIdCutFaceMaskInHighWord |
+      kEntityIdFogBodyMaskInHighWord)) == 0u,
+    "the fog BODY factor field must not overlap another carrier bit"
 );
 
 // Reconstruct the 64-bit entity id from its two stored words with the priority
@@ -480,6 +492,14 @@ inline std::uint64_t decodeCarrierEntityId(uvec2 packed) {
 }
 inline std::uint32_t decodeCarrierPriority(uvec2 packed) {
     return (packed.y >> kEntityIdPriorityShiftInHighWord) & ((1u << kEntityIdPriorityBits) - 1u);
+}
+inline bool decodeCarrierFogBody(uvec2 packed) {
+    return (packed.y & kEntityIdFogBodyMaskInHighWord) != 0u;
+}
+// The BODY reveal factor in 0..255; meaningful only when decodeCarrierFogBody.
+// Mirror of the .glsl/.metal `decodeFogBodyFactor`.
+inline std::uint32_t decodeFogBodyFactor(uvec2 packed) {
+    return (packed.y >> kEntityIdFogBodyFactorShiftInHighWord) & 0xFFu;
 }
 
 // The scatter path quantizes each fragment's final depth to a coarse band and

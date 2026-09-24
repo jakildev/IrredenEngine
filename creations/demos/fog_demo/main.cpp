@@ -66,14 +66,17 @@
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
+#include <irreden/render/components/component_fog_exempt.hpp>
+#include <irreden/render/components/component_fog_field.hpp>
 #include <irreden/render/components/component_light_blocker.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 
-// Fog driver-side API (revealRadius / setCell).
+// Fog driver-side API (revealRadius / setCell) and the BODY reveal systems.
 #include <irreden/render/fog_of_war.hpp>
+#include <irreden/render/fog_reveal_systems.hpp>
 
 // Scene systems.
 #include <irreden/input/systems/system_input_key_mouse.hpp>
@@ -85,7 +88,6 @@
 #include <irreden/render/systems/system_compute_sun_shadow.hpp>
 #include <irreden/render/systems/system_compute_voxel_ao.hpp>
 #include <irreden/render/systems/system_fog_to_trixel.hpp>
-#include <irreden/render/systems/system_fog_reveal_eval.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_lod_update.hpp>
@@ -607,19 +609,24 @@ void probeCeilingPillarPaint() {
     IR_LOG_INFO("FOG-PAINT-PROBE pillar={} texels={} painted={}", g_ceilingPillar, texels, painted);
 }
 
-// --entity-reveal: whole-body fog reveal under the --edge-zcost-ceiling hard
-// ceiling. One screen row (x + y = 0) of equal-height bodies rising
-// past the ceiling, each pair side by side so its crops compare like for like:
-// an untagged and a governed voxel pillar, a flagged and an unflagged SDF box,
-// and a governed pillar whose anchor is inside the disc while its outer
-// columns cross the XY rim. A governed pillar outside every circle stays
-// hidden. Row offsets are along (1, -1); kEntityRevealSpacing leaves a
+// --entity-reveal: fog BODY subjects under the --edge-zcost-ceiling hard
+// ceiling. One screen row (x + y = 0) of equal-height bodies rising past the
+// ceiling, each pair side by side so its crops compare like for like: an
+// untagged pillar (adopted as a BODY) and a governed one, a flagged and an
+// unflagged SDF box, a governed pillar whose anchor is inside the disc while
+// its outer columns cross the XY rim, and a FIELD control column at the same
+// anchor distance whose outer columns straddle the rim too. A governed pillar
+// outside every circle stays hidden; an EXEMPT pillar outside every circle
+// renders whole. Row offsets are along (1, -1); kEntityRevealSpacing leaves a
 // 2-unit gap between the 4-wide footprints. Slot 0 lands screen-right, and
 // each crop frames one whole body (base to top) at the 2560x1440 zoom-6 shot.
-bool g_entityReveal = false; // --entity-reveal
+bool g_entityReveal = false;         // --entity-reveal
+bool g_entityRevealSoftEdge = false; // --entity-reveal-soft-edge
 constexpr float kEntityRevealRadius = 20.0f;
+constexpr float kEntityRevealSoftEdge = 4.0f;
 constexpr float kEntityRevealSpacing = 5.0f;
 constexpr int kEntityRevealBodyHeight = 16;
+constexpr int kEntityRevealDropColumnHeight = 6;
 constexpr std::uint32_t kEntityRevealShapeFlag = IRRender::SHAPE_FLAG_FOG_WHOLE_BODY_EXEMPT;
 IREntity::EntityId g_entityRevealProbe = IREntity::kNullEntity;
 int g_entityRevealProbeFrame = 0;
@@ -629,6 +636,8 @@ constexpr IRVideo::RoiCrop kCropsEntityReveal[] = {
     {940, 240, 300, 680, "flagged_shape"},
     {620, 240, 300, 680, "unflagged_shape"},
     {210, 220, 410, 720, "governed_rim_pillar"},
+    {2040, 240, 262, 700, "field_column"},
+    {2295, 40, 265, 700, "exempt_pillar"},
 };
 constexpr IRVideo::AutoScreenshotShot kEntityRevealShots[] = {
     {6.0f,
@@ -638,6 +647,130 @@ constexpr IRVideo::AutoScreenshotShot kEntityRevealShots[] = {
      kCropsEntityReveal,
      sizeof(kCropsEntityReveal) / sizeof(kCropsEntityReveal[0])},
 };
+// Same framing and crops, own label: the soft-edge variant is a separate
+// manifest run, so the hard-edge reference above never moves for it.
+constexpr IRVideo::AutoScreenshotShot kEntityRevealSoftShots[] = {
+    {6.0f,
+     vec2(0, 0),
+     0.0f,
+     "fog_entity_reveal_soft",
+     kCropsEntityReveal,
+     sizeof(kCropsEntityReveal) / sizeof(kCropsEntityReveal[0])},
+};
+
+// FOG-BODY-PROBE: per fixture body, the luminance ratio after fog over before
+// fog on the body's carrier texels, the texels whose recovered world z is
+// past the ceiling, and the texels carrying the cut-face bit. The "before"
+// colours come from a snapshot taken immediately ahead of FOG_TO_TRIXEL on
+// the frame preceding the readback frame; the "after" colours, carriers and
+// depths are read at the render front the next frame, as FOG-ID-PROBE does,
+// so both halves describe the same frame.
+struct BodyProbeSubject {
+    const char *label_;
+    IREntity::EntityId entity_;
+};
+std::vector<BodyProbeSubject> g_bodyProbeSubjects;
+std::vector<Color> g_bodyProbeBeforeColors;
+int g_bodyProbeBeforeFrame = 0;
+int g_bodyProbeFrame = 0;
+// A texel darker than this before fog contributes no ratio: the divisor is
+// noise there.
+constexpr float kBodyProbeMinLuminance = 8.0f;
+
+float luminanceOf(Color color) {
+    return 0.299f * static_cast<float>(color.red_) + 0.587f * static_cast<float>(color.green_) +
+           0.114f * static_cast<float>(color.blue_);
+}
+
+void snapshotBodyProbeBeforeFog() {
+    if (++g_bodyProbeBeforeFrame != g_autoWarmupFrames - 1) {
+        return;
+    }
+    const auto &textures =
+        IREntity::getComponent<C_TriangleCanvasTextures>(IRRender::getActiveCanvasEntity());
+    textures.readColorsSynced(g_bodyProbeBeforeColors);
+}
+
+// CPU twin of the fog pass's pixel → world recovery on the cardinal
+// single-canvas route (yaw 0): iso = pixel - frame offset, then the iso
+// inverse at the stored depth, then the subdivision rescale.
+vec3 canvasTexelToWorld(
+    IRMath::ivec2 texel, int encoded, const IRRender::FrameDataVoxelToCanvas &frameData
+) {
+    const int scale =
+        frameData.voxelRenderOptions_.x != 0 ? IRMath::max(frameData.voxelRenderOptions_.y, 1) : 1;
+    const IRMath::ivec2 frameOffset =
+        frameData.trixelCanvasOffsetZ1_ +
+        IRMath::ivec2(IRMath::floor(frameData.cameraTrixelOffset_ * static_cast<float>(scale)));
+    const IRMath::ivec2 isoRel = texel - frameOffset;
+    const int rawDepth = encoded >> 3;
+    return IRMath::isoPixelToPos3D(isoRel.x, isoRel.y, static_cast<float>(rawDepth)) /
+           static_cast<float>(scale);
+}
+
+void probeEntityRevealBodies() {
+    if (++g_bodyProbeFrame != g_autoWarmupFrames || g_bodyProbeBeforeColors.empty()) {
+        return;
+    }
+    const auto &textures =
+        IREntity::getComponent<C_TriangleCanvasTextures>(IRRender::getActiveCanvasEntity());
+    std::vector<IRMath::uvec2> carriers;
+    std::vector<Color> colors;
+    std::vector<int> distances;
+    textures.readEntityIdCarriers(carriers);
+    textures.readColors(colors);
+    textures.readDistances(distances);
+    const auto *stage1 =
+        IRSystem::getSystemParams<IRSystem::System<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>>(
+            IRSystem::findSystem(IRSystem::VOXEL_TO_TRIXEL_STAGE_1)
+        );
+    const float zCeiling = kEdgeZCostObserverZ - kEdgeZCostCeilingFreeBand;
+
+    for (const BodyProbeSubject &subject : g_bodyProbeSubjects) {
+        const auto expected = static_cast<std::uint32_t>(subject.entity_);
+        int texels = 0;
+        int aboveCeiling = 0;
+        int cutFaceTexels = 0;
+        int rated = 0;
+        float ratioMin = 0.0f;
+        float ratioMax = 0.0f;
+        for (int y = 0; y < textures.size_.y; ++y) {
+            for (int x = 0; x < textures.size_.x; ++x) {
+                const std::size_t i = static_cast<std::size_t>(y) * textures.size_.x + x;
+                if (carriers[i].x != expected) {
+                    continue;
+                }
+                ++texels;
+                if ((carriers[i].y & IRRender::kEntityIdCutFaceMaskInHighWord) != 0u) {
+                    ++cutFaceTexels;
+                }
+                const vec3 world =
+                    canvasTexelToWorld(IRMath::ivec2(x, y), distances[i], stage1->frameData_);
+                if (world.z < zCeiling) {
+                    ++aboveCeiling;
+                }
+                const float before = luminanceOf(g_bodyProbeBeforeColors[i]);
+                if (before < kBodyProbeMinLuminance) {
+                    continue;
+                }
+                const float ratio = luminanceOf(colors[i]) / before;
+                ratioMin = rated == 0 ? ratio : IRMath::min(ratioMin, ratio);
+                ratioMax = rated == 0 ? ratio : IRMath::max(ratioMax, ratio);
+                ++rated;
+            }
+        }
+        IR_LOG_INFO(
+            "FOG-BODY-PROBE body={} texels={} aboveCeiling={} cutFaceTexels={} ratioMin={:.3f} "
+            "ratioMax={:.3f}",
+            subject.label_,
+            texels,
+            aboveCeiling,
+            cutFaceTexels,
+            ratioMin,
+            ratioMax
+        );
+    }
+}
 
 // One-shot picking probe for the fog whole-body carrier bit: after warmup,
 // read the canvas entity-id channel, count the governed pillar's texels (raw
@@ -793,8 +926,14 @@ int main(int argc, char **argv) {
     );
     IREngine::args().flag(
         "--entity-reveal",
-        "Whole-body fog reveal under the --edge-zcost-ceiling hard ceiling: governed "
-        "voxel pillars and a flagged SDF box render whole beside clipped untagged twins"
+        "Fog BODY subjects under the --edge-zcost-ceiling hard ceiling: untagged and "
+        "governed voxel pillars and a flagged SDF box render whole at one factor beside "
+        "a FIELD control column that clips; logs FOG-BODY-PROBE per body"
+    );
+    IREngine::args().flag(
+        "--entity-reveal-soft-edge",
+        "The --entity-reveal scene on a soft-edged disc (edge softness 4), so the "
+        "rim pillar's verdict lands inside the hysteresis band; implies --entity-reveal"
     );
     IREngine::args().flag(
         "--lua-fog-selftest",
@@ -821,6 +960,8 @@ int main(int argc, char **argv) {
     g_edgeZCostAsym = IREngine::args().getFlag("--edge-zcost-asym");
     g_edgeZCostCeiling = IREngine::args().getFlag("--edge-zcost-ceiling");
     g_entityReveal = IREngine::args().getFlag("--entity-reveal");
+    g_entityRevealSoftEdge = IREngine::args().getFlag("--entity-reveal-soft-edge");
+    g_entityReveal = g_entityReveal || g_entityRevealSoftEdge;
     g_fogDebugColor = IREngine::args().getFlag("--fog-debug-color");
     if (IREngine::args().wasProvided("--auto-profile")) {
         g_autoProfileFrames = IREngine::args().getInt("--auto-profile");
@@ -972,11 +1113,16 @@ void initSystems() {
     std::list<IRSystem::SystemId> updatePipeline = {
         IRSystem::createSystem<IRSystem::LOD_UPDATE>(),
         IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
-        IRSystem::createSystem<IRSystem::FOG_REVEAL_EVAL>(),
-        IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
-        IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>(),
-        IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS_IMPLICIT>(),
     };
+    updatePipeline.splice(updatePipeline.end(), IRPrefab::Fog::revealSystems());
+    updatePipeline.insert(
+        updatePipeline.end(),
+        {
+            IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
+            IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>(),
+            IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS_IMPLICIT>(),
+        }
+    );
     // --detached-edge adds the world-placed DETACHED_REVOXELIZE path:
     // PROPAGATE_CANVAS_ROTATION publishes worldPlaced_ + worldCellOffset_ onto the
     // canvas (so STAGE_1/2 recover each detached voxel's world column), and
@@ -1011,9 +1157,20 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
             IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
             IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
-            IRSystem::createSystem<IRSystem::FOG_TO_TRIXEL>(),
         }
     );
+    // The body probe's "before" snapshot reads the lit composite the fog pass
+    // is about to modulate, so it sits between the two.
+    if (g_entityReveal && g_autoWarmupFrames > 1) {
+        renderPipeline.push_back(
+            IRSystem::createSystem<C_Name>(
+                "FogBodyProbeBeforeSnapshot",
+                [](C_Name &) {},
+                []() { snapshotBodyProbeBeforeFog(); }
+            )
+        );
+    }
+    renderPipeline.push_back(IRSystem::createSystem<IRSystem::FOG_TO_TRIXEL>());
     if (g_luaFogSelftest) {
         renderPipeline.push_back(
             IRSystem::createSystem<C_Name>(
@@ -1084,6 +1241,12 @@ void initSystems() {
             []() { probeEntityRevealIds(); }
         );
         renderPipeline.push_front(probeTickId);
+        IRSystem::SystemId bodyProbeTickId = IRSystem::createSystem<C_Name>(
+            "FogBodyProbe",
+            [](C_Name &) {},
+            []() { probeEntityRevealBodies(); }
+        );
+        renderPipeline.push_front(bodyProbeTickId);
     }
 
     if (g_edgeZCostCeiling && g_fogDebugColor && g_autoWarmupFrames > 0) {
@@ -1106,7 +1269,9 @@ void initSystems() {
         // --edge-smooth zoom on the GRID cross-section clip edge (hard vs smooth
         // disc); --player-walk captures the walking reveal sequence; the
         // default captures the three static fog-boundary shots.
-        if (g_entityReveal) {
+        if (g_entityRevealSoftEdge) {
+            IRVideo::setAutoScreenshotShots(cfg, kEntityRevealSoftShots);
+        } else if (g_entityReveal) {
             IRVideo::setAutoScreenshotShots(cfg, kEntityRevealShots);
         } else if (g_edgeZCostAsym) {
             IRVideo::setAutoScreenshotShots(cfg, kEdgeZCostAsymShots);
@@ -1180,8 +1345,22 @@ void initCommands() {
 // Spawn one SDF shape at a ground-plane position. +Z is downward in this iso
 // convention, so a shape of half-height h has its base at z ≈ +h and the floor
 // sits just beyond.
-void createShape(vec3 position, IRRender::ShapeType type, vec4 params, Color color) {
-    IREntity::createEntity(C_LocalTransform{position}, C_ShapeDescriptor{type, params, color});
+IREntity::EntityId createShape(vec3 position, IRRender::ShapeType type, vec4 params, Color color) {
+    return IREntity::createEntity(
+        C_LocalTransform{position},
+        C_ShapeDescriptor{type, params, color}
+    );
+}
+
+// Terrain-tier SDF: tagged FIELD so shape adoption, once it lands, never
+// turns it into a BODY.
+IREntity::EntityId
+createFieldShape(vec3 position, IRRender::ShapeType type, vec4 params, Color color) {
+    return IREntity::createEntity(
+        C_LocalTransform{position},
+        C_ShapeDescriptor{type, params, color},
+        C_FogField{}
+    );
 }
 
 // The cross-section scenes' shared VOXEL ground slab. centerAroundOrigin
@@ -1189,10 +1368,11 @@ void createShape(vec3 position, IRRender::ShapeType type, vec4 params, Color col
 // fully interior and the whole cut arc runs through pool voxels the occlusion
 // bitfield knows — an off-origin slab covers only part of the arc and the
 // uncovered segments cut to black.
-void createEdgeGroundSlab() {
-    IREntity::createEntity(
+IREntity::EntityId createEdgeGroundSlab() {
+    return IREntity::createEntity(
         C_LocalTransform{vec3(0.0f, 0.0f, 5.0f)},
-        C_VoxelSetNew{IRMath::ivec3{60, 60, 3}, Color{90, 100, 120, 255}, true}
+        C_VoxelSetNew{IRMath::ivec3{60, 60, 3}, Color{90, 100, 120, 255}, true},
+        C_FogField{}
     );
 }
 
@@ -1209,7 +1389,7 @@ void initEntities() {
     constexpr float kFloorZ = 5.0f;
     if (!g_entityReveal && !g_edgeZoom && !g_edgeSmooth && !g_edgeSdfBlocker && !g_detachedEdge &&
         !g_edgeZCost && !g_edgeZCostAsym && !g_edgeZCostCeiling) {
-        createShape(
+        createFieldShape(
             vec3(0.0f, 0.0f, kFloorZ),
             IRRender::ShapeType::BOX,
             vec4(96.0f, 96.0f, 2.0f, 0.0f),
@@ -1271,7 +1451,8 @@ void initEntities() {
         // black silhouette reappears over the disk and the shot diff catches it.
         IREntity::createEntity(
             C_LocalTransform{vec3(-22.0f, -22.0f, -19.0f)},
-            C_VoxelSetNew{IRMath::ivec3{5, 5, 44}, Color{220, 70, 200, 255}, true}
+            C_VoxelSetNew{IRMath::ivec3{5, 5, 44}, Color{220, 70, 200, 255}, true},
+            C_FogField{}
         );
     }
 
@@ -1327,28 +1508,37 @@ void initEntities() {
             0.0f,
             0.0f,
             kEntityRevealRadius,
-            kFogVisionEdgeDefault,
+            g_entityRevealSoftEdge ? kEntityRevealSoftEdge : kFogVisionEdgeDefault,
             kEdgeZCostObserverZ,
             kEdgeZCostCeilingUpCost,
             IRComponents::kFogVisionZCostMirrorUp,
             kEdgeZCostCeilingFreeBand
         );
-        createEdgeGroundSlab();
+        const IREntity::EntityId slab = createEdgeGroundSlab();
 
         const auto rowPos = [](int slot, float z) {
             const float offset = -7.0f + kEntityRevealSpacing * static_cast<float>(slot);
             return vec3(offset, -offset, z);
         };
-        const auto createPillar = [](vec3 pos, Color color, int footprint = 4) {
+        const auto createPillar = [](vec3 pos, Color color, int footprint = 4, auto... tags) {
             return IREntity::createEntity(
                 C_LocalTransform{pos},
                 C_VoxelSetNew{
                     IRMath::ivec3{footprint, footprint, kEntityRevealBodyHeight},
                     color,
                     IRComponents::EntityAnchor::GROUND
-                }
+                },
+                tags...
             );
         };
+        const auto probe = [](const char *label, IREntity::EntityId entity) {
+            g_bodyProbeSubjects.push_back(BodyProbeSubject{label, entity});
+            return entity;
+        };
+        // The FIELD slab spans the keep ring's outer boundary, where its
+        // interior faces toward dropped columns are the cut faces the rule
+        // still emits on this route.
+        probe("ground_slab", slab);
         // The SDF twins span the pillars' z range: box params are full extents,
         // centred half a body height above the ground surface (+Z is down).
         const auto createBox = [](vec3 pos, Color color, std::uint32_t extraFlags) {
@@ -1364,22 +1554,63 @@ void initEntities() {
             );
         };
 
-        createPillar(rowPos(0, 4.0f), Color{245, 155, 75, 255});
-        g_entityRevealProbe = createPillar(rowPos(1, 4.0f), Color{80, 210, 245, 255});
+        probe("untagged_pillar", createPillar(rowPos(0, 4.0f), Color{245, 155, 75, 255}));
+        g_entityRevealProbe =
+            probe("governed_pillar", createPillar(rowPos(1, 4.0f), Color{80, 210, 245, 255}));
         IRPrefab::Fog::setEntityRevealGoverned(g_entityRevealProbe);
         createBox(rowPos(2, 4.0f), Color{120, 235, 140, 255}, kEntityRevealShapeFlag);
         createBox(rowPos(3, 4.0f), Color{235, 225, 110, 255}, 0u);
         // A 6-wide body with its anchor ~19.1 from the observer and its outer
-        // corner ~23.3: the anchor reveals the body while its outer columns sit
-        // up to ~3 units past the radius-20 rim.
-        IRPrefab::Fog::setEntityRevealGoverned(
+        // corner ~23.3: the anchor reveals the body, and as a BODY its outer
+        // columns past the radius-20 rim render at the same factor.
+        IRPrefab::Fog::setEntityRevealGoverned(probe(
+            "rim_pillar",
             createPillar(rowPos(4, 4.0f) + vec3(0.5f, -0.5f, 0.0f), Color{190, 140, 245, 255}, 6)
-        );
+        ));
         // Governed but outside every circle: its anchor never reveals, so the
         // whole body stays hidden. Voxels appended to a governed set after
         // setEntityRevealGoverned would not inherit the tag.
-        IRPrefab::Fog::setEntityRevealGoverned(
+        IRPrefab::Fog::setEntityRevealGoverned(probe(
+            "governed_outside_pillar",
             createPillar(vec3(18.0f, 18.0f, 4.0f), Color{235, 80, 170, 255})
+        ));
+        // The FIELD control on the other side of the row: anchor ~19.8 from
+        // the observer with its outer columns up to ~2.6 units past the
+        // radius-20 rim, tagged FIELD, so the same frame shows per-sample
+        // paint above the ceiling and cut faces where its kept columns face
+        // its dropped ones, beside the uniform bodies.
+        probe(
+            "field_column",
+            createPillar(
+                rowPos(-1, 4.0f) + vec3(-2.0f, 2.0f, 0.0f),
+                Color{245, 155, 75, 255},
+                4,
+                C_FogField{}
+            )
+        );
+        // EXEMPT at construction and outside every circle, up-screen of the
+        // row: the marker route renders it whole where a BODY stays hidden.
+        probe(
+            "exempt_pillar",
+            createPillar(vec3(-12.0f, 24.0f, 4.0f), Color{120, 235, 140, 255}, 4, C_FogExempt{})
+        );
+        // Stage 1 keeps kFogHiddenKeepCells fog-hidden columns past the rim
+        // for the fog pass to paint, so a cut face toward a kept column sits
+        // behind that column and never reaches the id texture. Cut-face
+        // texels appear only where the drop removes the neighbour: a short
+        // FIELD column straddling radius + keep ring, down-screen of the row
+        // and painted the unexplored colour, is the probe body for them.
+        probe(
+            "field_drop_column",
+            IREntity::createEntity(
+                C_LocalTransform{vec3(4.0f, -28.0f, 4.0f)},
+                C_VoxelSetNew{
+                    IRMath::ivec3{4, 4, kEntityRevealDropColumnHeight},
+                    Color{245, 155, 75, 255},
+                    IRComponents::EntityAnchor::GROUND
+                },
+                C_FogField{}
+            )
         );
         return;
     }
@@ -1471,14 +1702,16 @@ void initEntities() {
         // on the floor (base near z≈4, top up-screen).
         IREntity::createEntity(
             C_LocalTransform{vec3(9.0f, 0.0f, -6.0f)},
-            C_VoxelSetNew{IRMath::ivec3{4, 4, 20}, Color{120, 200, 240, 255}, true}
+            C_VoxelSetNew{IRMath::ivec3{4, 4, 20}, Color{120, 200, 240, 255}, true},
+            C_FogField{}
         );
         // A second pillar straddling the +Y boundary (up-screen side), a cut
         // angle the iso projection lays out differently from the +X pillar (also
         // a back-face cut at yaw 0).
         IREntity::createEntity(
             C_LocalTransform{vec3(0.0f, 9.0f, -6.0f)},
-            C_VoxelSetNew{IRMath::ivec3{4, 4, 20}, Color{240, 160, 90, 255}, true}
+            C_VoxelSetNew{IRMath::ivec3{4, 4, 20}, Color{240, 160, 90, 255}, true},
+            C_FogField{}
         );
         // Low wide voxel slab straddling the -X boundary: columns x∈[-16,-2], so
         // the revealed boundary voxels face hidden columns across their -X face —
@@ -1486,7 +1719,8 @@ void initEntities() {
         // its -X interior wall fills the cut instead of leaving a see-through hole.
         IREntity::createEntity(
             C_LocalTransform{vec3(-9.0f, 0.0f, 2.0f)},
-            C_VoxelSetNew{IRMath::ivec3{14, 6, 3}, Color{130, 230, 150, 255}, true}
+            C_VoxelSetNew{IRMath::ivec3{14, 6, 3}, Color{130, 230, 150, 255}, true},
+            C_FogField{}
         );
 
         // --edge-sdf-blocker: one SDF BOX (C_ShapeDescriptor, NOT a voxel
@@ -1509,7 +1743,8 @@ void initEntities() {
                     IRRender::ShapeType::BOX,
                     kSdfBlockerHalfExtents,
                     kSdfBlockerColor
-                }
+                },
+                C_FogField{}
             );
             IREntity::setComponent(blocker, C_LightBlocker{true, false, 1.0f});
         }
@@ -1548,7 +1783,13 @@ void initEntities() {
         );
         IREntity::createEntity(
             C_LocalTransform{vec3(0.0f)},
-            C_VoxelSetNew{kDetachedSolidSize, Color{130, 230, 150, 255}, true, canvas.canvasEntity_}
+            C_VoxelSetNew{
+                kDetachedSolidSize,
+                Color{130, 230, 150, 255},
+                true,
+                canvas.canvasEntity_
+            },
+            C_FogField{}
         );
         // Identity rotation keeps the re-voxelize raster on its deterministic SOURCE
         // path (a spinning solid round-to-cell speckles); the cut-face code
@@ -1588,7 +1829,8 @@ void initEntities() {
         // makes the down block's own near face the exposed "ground" there.
         IREntity::createEntity(
             C_LocalTransform{vec3(-10.0f, 0.0f, 5.0f)},
-            C_VoxelSetNew{IRMath::ivec3{20, 60, 3}, Color{90, 100, 120, 255}, true}
+            C_VoxelSetNew{IRMath::ivec3{20, 60, 3}, Color{90, 100, 120, 255}, true},
+            C_FogField{}
         );
 
         // UP pillar (identical shape to --edge-zcost's): base near the floor
@@ -1596,7 +1838,8 @@ void initEntities() {
         // kEdgeZCostAsymUpCost.
         IREntity::createEntity(
             C_LocalTransform{vec3(-kEdgeZCostAsymUpXOffset, 0.0f, -10.0f)},
-            C_VoxelSetNew{IRMath::ivec3{4, 4, 28}, Color{120, 200, 240, 255}, true}
+            C_VoxelSetNew{IRMath::ivec3{4, 4, 28}, Color{120, 200, 240, 255}, true},
+            C_FogField{}
         );
 
         // DOWN counterpart, floor-less footprint, short (see the scene comment
@@ -1607,7 +1850,8 @@ void initEntities() {
         // pushes the far end past the disc radius.
         IREntity::createEntity(
             C_LocalTransform{vec3(kEdgeZCostAsymDownXOffset, 0.0f, 7.0f)},
-            C_VoxelSetNew{IRMath::ivec3{4, 4, 4}, Color{130, 230, 150, 255}, true}
+            C_VoxelSetNew{IRMath::ivec3{4, 4, 4}, Color{130, 230, 150, 255}, true},
+            C_FogField{}
         );
         return;
     }
@@ -1640,7 +1884,8 @@ void initEntities() {
         // effective distance past the disc radius almost immediately.
         g_ceilingPillar = IREntity::createEntity(
             C_LocalTransform{vec3(0.0f, 0.0f, -10.0f)},
-            C_VoxelSetNew{IRMath::ivec3{4, 4, 28}, Color{120, 200, 240, 255}, true}
+            C_VoxelSetNew{IRMath::ivec3{4, 4, 28}, Color{120, 200, 240, 255}, true},
+            C_FogField{}
         );
 
         // A LOW wide cube a few cells off-origin, well inside both the disc and
@@ -1648,7 +1893,8 @@ void initEntities() {
         // against the pillar's sharp cutoff.
         IREntity::createEntity(
             C_LocalTransform{vec3(6.0f, 0.0f, 2.0f)},
-            C_VoxelSetNew{IRMath::ivec3{5, 5, 4}, Color{130, 230, 150, 255}, true}
+            C_VoxelSetNew{IRMath::ivec3{5, 5, 4}, Color{130, 230, 150, 255}, true},
+            C_FogField{}
         );
         return;
     }
@@ -1681,7 +1927,8 @@ void initEntities() {
         // revealed floor behind. The height fade down its length is the headline.
         IREntity::createEntity(
             C_LocalTransform{vec3(0.0f, 0.0f, -10.0f)},
-            C_VoxelSetNew{IRMath::ivec3{4, 4, 28}, Color{120, 200, 240, 255}, true}
+            C_VoxelSetNew{IRMath::ivec3{4, 4, 28}, Color{120, 200, 240, 255}, true},
+            C_FogField{}
         );
 
         // A LOW wide cube a few cells off-origin, still well inside the disc: its
@@ -1690,7 +1937,8 @@ void initEntities() {
         // contrast that reads the penalty as a height effect, not an XY one.
         IREntity::createEntity(
             C_LocalTransform{vec3(6.0f, 0.0f, 2.0f)},
-            C_VoxelSetNew{IRMath::ivec3{5, 5, 4}, Color{130, 230, 150, 255}, true}
+            C_VoxelSetNew{IRMath::ivec3{5, 5, 4}, Color{130, 230, 150, 255}, true},
+            C_FogField{}
         );
         return;
     }

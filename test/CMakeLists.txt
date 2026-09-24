@@ -77,6 +77,7 @@ add_executable(IrredenEngineTest
   render/entity_id_carrier_test.cpp
   render/fog_cross_section_test.cpp
   render/fog_reveal_eval_test.cpp
+  render/fog_subject_adopt_test.cpp
   render/per_axis_canvas_lifecycle_test.cpp
   render/per_axis_canvas_size_test.cpp
   render/per_axis_cast_subcell_test.cpp

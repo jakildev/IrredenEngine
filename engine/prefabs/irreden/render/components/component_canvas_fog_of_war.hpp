@@ -65,6 +65,10 @@ constexpr std::uint8_t kFogStateUnexplored = 0;
 constexpr std::uint8_t kFogStateExplored = 128;
 constexpr std::uint8_t kFogStateVisible = 255;
 
+// The one reveal channel the engine assigns. Grid cells and every vision
+// source reveal on it; a creation's own channel bits are its own to define.
+constexpr std::uint32_t kFogChannelDefault = 1u;
+
 // Live analytic "vision circle" reveal — the smooth, render-resolution path
 // that the voxel grid above cannot express. Each circle is a world-space disc
 // (center + radius) the fog shader evaluates PER PIXEL from the continuous
@@ -173,8 +177,23 @@ struct C_CanvasFogOfWar {
               kFogStateUnexplored
           ) {}
 
+    // Tag selecting the textureless constructor.
+    struct HeadlessInit {};
+
+    // The CPU grid and observers with no GPU texture, for a headless test
+    // that drives the reveal systems without a render manager. A render
+    // system reaching `getTexture()` on this instance asserts.
+    explicit C_CanvasFogOfWar(HeadlessInit)
+        : texture_{0, nullptr}
+        , cpuBuffer_(
+              static_cast<std::size_t>(kFogOfWarSize) * static_cast<std::size_t>(kFogOfWarSize),
+              kFogStateUnexplored
+          ) {}
+
     void onDestroy() {
-        IRRender::destroyResource<Texture2D>(texture_.first);
+        if (texture_.second != nullptr) {
+            IRRender::destroyResource<Texture2D>(texture_.first);
+        }
     }
 
     Texture2D *getTexture() const {
