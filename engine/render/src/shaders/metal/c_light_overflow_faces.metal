@@ -80,8 +80,7 @@ kernel void c_light_overflow_faces(
         : 1.0f;
     const float lambert = max(0.0f, dot(worldNormal, sunFrameData.sunDirection.xyz));
     const float faceFactor =
-        (sunFrameData.sunAmbient + (1.0f - sunFrameData.sunAmbient) * lambert * shadow) *
-        sunFrameData.sunIntensity;
+        surfaceSunFactor(sunFrameData.sunAmbient, sunFrameData.sunIntensity, lambert, shadow);
 
     float3 baseRgb;
     if (frameData.lutEnabled == 0) {
@@ -117,10 +116,8 @@ kernel void c_light_overflow_faces(
             const float skyFactor = max(0.0f, worldNormal.z);
             baseRgb += frameData.skyColor.rgb * frameData.skyIntensity * skyFactor * ao;
         }
-        baseRgb = ACESFilm(baseRgb * frameData.exposure);
-    } else {
-        baseRgb = clamp(baseRgb, 0.0f, 1.0f);
     }
+    baseRgb = surfaceDisplayColor(baseRgb, frameData.exposure, frameData.hdrEnabled != 0);
 
     overflowScratch[entryBase + 1u] = packColor(float4(baseRgb, albedo.a));
 }

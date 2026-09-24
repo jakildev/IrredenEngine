@@ -272,8 +272,7 @@ kernel void IR_LIGHTING_KERNEL_NAME(
     // is never blocked, so a fully self-shadowed face keeps its ambient floor
     // instead of collapsing to pure black.
     const float faceFactor =
-        (sunFrameData.sunAmbient + (1.0f - sunFrameData.sunAmbient) * lambert * shadow) *
-        sunFrameData.sunIntensity;
+        surfaceSunFactor(sunFrameData.sunAmbient, sunFrameData.sunIntensity, lambert, shadow);
 
     float3 baseRgb;
     float3 materialRgb;
@@ -367,9 +366,9 @@ kernel void IR_LIGHTING_KERNEL_NAME(
             float skyFactor = max(0.0f, worldNormal.z);
             baseRgb += frameData.skyColor.rgb * frameData.skyIntensity * skyFactor * ao;
         }
-        if (!continuousShadow) baseRgb = ACESFilm(baseRgb * frameData.exposure);
-    } else if (!continuousShadow) {
-        baseRgb = clamp(baseRgb, 0.0f, 1.0f);
+    }
+    if (!continuousShadow) {
+        baseRgb = surfaceDisplayColor(baseRgb, frameData.exposure, frameData.hdrEnabled != 0);
     }
 
     writeLitTrixel(trixelColors, sourceFaces, sourceMode, sourceIndex, uint2(pixel), float4(baseRgb, src.a));

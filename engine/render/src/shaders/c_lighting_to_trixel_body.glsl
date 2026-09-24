@@ -354,7 +354,7 @@ void main() {
     // (e.g. a re-voxelize cube's side facing away from the sun, inside its own
     // cast shadow) to pure black instead of its ambient floor.
     const float faceFactor =
-        (sunAmbient + (1.0 - sunAmbient) * lambert * shadow) * sunIntensity;
+        surfaceSunFactor(sunAmbient, sunIntensity, lambert, shadow);
 
     vec3 baseRgb;
     vec3 materialRgb;
@@ -454,13 +454,9 @@ void main() {
             float skyFactor = max(0.0, worldNormal.z);
             baseRgb += skyColor.rgb * skyIntensity * skyFactor * ao;
         }
-
-        // Exposure + ACES Filmic tonemap. The HDR dynamic range lives
-        // in the float baseRgb; the tonemap compresses it to [0, 1]
-        // before the RGBA8 imageStore.
-        if (!continuousShadow) baseRgb = ACESFilm(baseRgb * exposure);
-    } else if (!continuousShadow) {
-        baseRgb = clamp(baseRgb, 0.0, 1.0);
+    }
+    if (!continuousShadow) {
+        baseRgb = surfaceDisplayColor(baseRgb, exposure, hdrEnabled != 0);
     }
 
     writeLitTrixel(sourceMode, sourceIndex, pixel, vec4(baseRgb, src.a));

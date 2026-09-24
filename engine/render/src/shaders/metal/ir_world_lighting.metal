@@ -89,4 +89,4 @@ float spotConeFactor(device const GPULightSource* lights, int lightIdx, float3 p
     return smoothstep(cosOuter, cosInner, cosToCell);
 }
 
-#include "ir_tonemap.metal"
+#include "ir_surface_lighting.metal"

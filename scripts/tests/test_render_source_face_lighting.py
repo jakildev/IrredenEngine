@@ -39,6 +39,14 @@ bool same(vec4 a,vec4 b) {
 
 CASES = r"""
 int main() {
+    for(int a=0;a<=10;++a)for(int l=0;l<=10;++l)
+    for(int v=0;v<=10;++v)for(int intensity=0;intensity<=8;++intensity){
+        const float ambient=a/10.f,lambert=l/10.f,visibility=v/10.f;
+        const float scale=intensity/2.f;
+        const double expected=(double(ambient)+(1.-ambient)*lambert*visibility)*scale;
+        if(std::abs(surfaceSunFactor(ambient,scale,lambert,visibility)-expected)>1e-6)
+            return 8;
+    }
     const vec4 base{.2f,.1f,.05f,.37f}, sun{.6f,.4f,.2f,2};
     if(!same(sourceFaceLitColor(base,sun,.6f,kSourceLightingLinear,0),base)) return 1;
     if(!same(sourceFaceLitColor(base,sun,.6f,kSourceLightingLinear,.5f),
@@ -69,21 +77,34 @@ class SourceFaceLightingTest(unittest.TestCase):
                 r"(?:constant|const) uint kSourceLighting\w+ = \d+u;", common))
             tone = (base / f"ir_tonemap.{suffix}").read_text()
             compose = (base / f"ir_source_face_lighting.{suffix}").read_text()
-            compose = compose.replace(f'#include "ir_tonemap.{suffix}"', "")
+            surface = (base / f"ir_surface_lighting.{suffix}").read_text()
+            surface = surface.replace(f'#include "ir_tonemap.{suffix}"', "")
+            compose = compose.replace(f'#include "ir_surface_lighting.{suffix}"', "")
             variants = {
                 "production": (compose, 0),
                 "shadow_indirect_light": (compose.replace(
                     "base.rgb + directSunAndExposure.rgb * visibility",
                     "(base.rgb + directSunAndExposure.rgb) * visibility"), 1),
                 "tonemap_before_visibility": (compose.replace(
-                    "ACESFilm(linear * directSunAndExposure.w)",
-                    "ACESFilm((base.rgb + directSunAndExposure.rgb) * "
-                    "directSunAndExposure.w) * visibility"), 4),
+                    "surfaceDisplayColor(linear, directSunAndExposure.w, "
+                    "mode == kSourceLightingHDR)",
+                    "(mode == kSourceLightingHDR ? surfaceDisplayColor("
+                    "base.rgb + directSunAndExposure.rgb, "
+                    "directSunAndExposure.w, true) * visibility"
+                    " : surfaceDisplayColor(linear, directSunAndExposure.w, false))"), 4),
                 "opaque_alpha": (compose.replace("base.a", "1.0"), 1),
+                "shadow_ambient_factor": (compose, 8),
             }
             for variant, (body, expected) in variants.items():
                 with self.subTest(backend=suffix, variant=variant):
-                    shader = (constants + tone + body).replace("constant uint", "const uint")
+                    candidate_surface = surface
+                    if variant == "shadow_ambient_factor":
+                        candidate_surface = surface.replace(
+                            "ambient + (1.0 - ambient) * lambert * visibility",
+                            "(ambient + (1.0 - ambient) * lambert) * visibility")
+                        self.assertNotEqual(candidate_surface, surface)
+                    shader = (constants + tone + candidate_surface + body)
+                    shader = shader.replace("constant uint", "const uint")
                     shader = shader.replace("float3", "vec3").replace("float4", "vec4")
                     shader = shader.replace(".rgb", ".rgb()")
                     with tempfile.TemporaryDirectory() as tmp:

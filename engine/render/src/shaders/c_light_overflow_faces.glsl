@@ -156,7 +156,7 @@ void main() {
         : 1.0;
     const float lambert = max(0.0, dot(worldNormal, sunDirection.xyz));
     const float faceFactor =
-        (sunAmbient + (1.0 - sunAmbient) * lambert * shadow) * sunIntensity;
+        surfaceSunFactor(sunAmbient, sunIntensity, lambert, shadow);
 
     vec3 baseRgb;
     if (lutEnabled == 0) {
@@ -194,10 +194,8 @@ void main() {
             const float skyFactor = max(0.0, worldNormal.z);
             baseRgb += skyColor.rgb * skyIntensity * skyFactor * ao;
         }
-        baseRgb = ACESFilm(baseRgb * exposure);
-    } else {
-        baseRgb = clamp(baseRgb, 0.0, 1.0);
     }
+    baseRgb = surfaceDisplayColor(baseRgb, exposure, hdrEnabled != 0);
 
     overflowScratch[entryBase + 1u] = packColor(vec4(baseRgb, albedo.a));
 }

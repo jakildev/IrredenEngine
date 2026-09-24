@@ -1,6 +1,6 @@
-#include "ir_tonemap.metal"
+#include "ir_surface_lighting.metal"
 
-float4 sourceFaceLitColor(float4 base, float4 directSunAndExposure,
+inline float4 sourceFaceLitColor(float4 base, float4 directSunAndExposure,
                          float ao, uint mode, float visibility) {
     if (mode == kSourceLightingAOShadow) {
         const float level = ao * visibility;
@@ -10,6 +10,5 @@ float4 sourceFaceLitColor(float4 base, float4 directSunAndExposure,
         return float4(visibility >= 0.999 ? float3(0.0) : float3(1.0, 0.0, 1.0), base.a);
     }
     const float3 linear = base.rgb + directSunAndExposure.rgb * visibility;
-    return float4(mode == kSourceLightingHDR
-        ? ACESFilm(linear * directSunAndExposure.w) : clamp(linear, 0.0, 1.0), base.a);
+    return float4(surfaceDisplayColor(linear, directSunAndExposure.w, mode == kSourceLightingHDR), base.a);
 }

@@ -317,3 +317,21 @@ local lights still use the legacy reconstructed position.
 The receiver tests execute production producer/consumer assignments and UNORM8
 roundtrips, with dropped carrier, consumer and sentinel mutations. Native evidence:
 [box lighting normals](../pr-screenshots/codex/sdf-box-lighting-normal/README.md).
+
+## Linear lighting composition contract
+
+`ir_surface_lighting` is shared by canvas/overflow compute lighting and source-face
+fragment composition. `surfaceSunFactor` attenuates only the directional term;
+ambient survives zero sun visibility. `surfaceDisplayColor` applies exposure and
+ACES only after linear contributions are composed (or clamps the non-HDR result).
+Deferred source faces keep the untone-mapped base and direct-sun contribution until
+the fragment samples visibility. The helpers add no new geometry or payload storage.
+
+`test_render_source_face_lighting.py` executes both backend implementations with
+11,979 ambient/intensity/Lambert/visibility combinations against a double-precision
+oracle, plus deferred composition, HDR, debug and alpha checks. Mutations darken
+ambient, tone-map before visibility, or overwrite alpha and must fail.
+
+[Native equivalence captures](../pr-screenshots/codex/surface-lighting-contract/README.md)
+cover boxes and mixed per-axis geometry; a source-face overlapping-caster probe
+exercises native fragment composition. Analytical SDF fragment payloads remain pending.
