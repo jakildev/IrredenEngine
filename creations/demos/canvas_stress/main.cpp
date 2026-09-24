@@ -1283,7 +1283,8 @@ void registerArgs() {
     args.enumValue(
         "--debug-overlay",
         "Force a render debug overlay for the run "
-        "(none|ao|light_level|shadow|peraxis_id|peraxis_origin|peraxis_margin|unlit|normals|"
+        "(none|ao|light_level|shadow|surface_shadow|peraxis_id|peraxis_origin|peraxis_margin|unlit|"
+        "normals|"
         "receiver_position)",
         {"none",
          "ao",
@@ -1294,7 +1295,8 @@ void registerArgs() {
          "peraxis_margin",
          "unlit",
          "normals",
-         "receiver_position"},
+         "receiver_position",
+         "surface_shadow"},
         "none"
     );
     args.string(

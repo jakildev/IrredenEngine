@@ -182,6 +182,9 @@ int main(){
                 ("c_compute_sun_shadow", ("shapeBoxReceiver", "receiverShapes",
                                           "receiverOwners", "receiverTiles", "receiverFrame")),
                 ("c_lighting_to_trixel", ("receiverFaceNormal",)),
+                ("f_trixel_to_framebuffer" if suffix == "glsl" else "trixel_to_framebuffer",
+                 ("selectedShapeBoxReceiver", "receiverShapes", "receiverOwners",
+                  "receiverTiles", "receiverFrame", "worldSunShadowFactor")),
             )
             for kernel, tokens in kernels:
                 for variant, enabled in (("", False), ("_shapes", True)):

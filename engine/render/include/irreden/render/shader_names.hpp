@@ -11,6 +11,8 @@ const char *const kFileFragSpritesToScreen = "shaders/f_sprites_to_screen.glsl";
 
 const char *const kFileVertTrixelToFramebuffer = "shaders/v_trixel_to_framebuffer.glsl";
 const char *const kFileFragTrixelToFramebuffer = "shaders/f_trixel_to_framebuffer.glsl";
+const char *const kFileFragTrixelToFramebufferShapes =
+    "shaders/f_trixel_to_framebuffer_shapes.glsl";
 
 // Smooth camera Z-yaw forward-scatter composite: an instanced draw
 // over per-axis canvas cells, scattering each occupied cell as its deformed

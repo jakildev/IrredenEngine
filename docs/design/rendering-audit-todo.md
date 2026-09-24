@@ -499,3 +499,19 @@ runs and existing thresholds; add an SDF-active workload to measure election cos
   fog/post-lighting color operations, actual fragment receiver evaluation, and
   measured memory/bandwidth cost before broadening eligibility. No new payload
   allocation or visual edge improvement is claimed by the extraction.
+
+
+### Actual fragment receiver diagnostic
+
+- Implemented `surface_shadow` for finite analytical boxes using the selected
+  stored owner and actual continuous fragment coordinate. Shared buffer binding
+  and restoration serve compute and presentation; ordinary variants omit the path.
+- Native eight-angle comparisons change edges but retain jagged outlines. Default
+  beauty controls remain RGB-identical and shadows-disabled controls are black.
+  [Evidence and scope](../pr-screenshots/codex/fragment-receiver-probe/README.md).
+- Next: isolate finite caster footprint/sampling with correct camera-frame normals;
+  receiver precision alone has not met the sharp-edge objective. Keep legitimate
+  voxel steps and do not use blur to hide mismatches.
+- Then choose/profile linear lighting storage and preserve fog/post-lighting
+  composition before beauty integration. Curved/rotated receivers, per-texel
+  validity, mixed-mode coverage, native GL smoke and GPU cost remain pending.

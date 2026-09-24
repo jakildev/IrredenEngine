@@ -14,6 +14,7 @@
 // which folds the shadow factor into final color.
 
 #include <irreden/ir_render.hpp>
+#include <irreden/render/shape_receiver_bindings.hpp>
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_profile.hpp>
@@ -83,23 +84,10 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
         const bool useShapeReceiver = entity == perAxisCanvasEntity_ && geometry.samplesValid();
         (useShapeReceiver ? shapeProgram_ : program_)->use();
         if (useShapeReceiver) {
-            IR_ASSERT(
-                geometry.ownerSize_ == canvasTextures.size_,
-                "Retained shape owner extent must match the receiver canvas"
-            );
-            shapeReceiverFrameBuf_->subData(0, sizeof(GPUShapesFrameData), &geometry.frameData_);
-            shapeReceiverFrameBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_ShapesFrameData);
-            geometry.descriptors_.second->bindBase(
-                BufferTarget::SHADER_STORAGE,
-                kBufferIndex_ShapeDescriptors
-            );
-            geometry.sampleOwners_.second->bindBase(
-                BufferTarget::SHADER_STORAGE,
-                kBufferIndex_ShapeSampleOwners
-            );
-            geometry.tiles_.second->bindBase(
-                BufferTarget::SHADER_STORAGE,
-                kBufferIndex_ShapeTileDescriptors
+            IRPrefab::detail::bindShapeReceiver(
+                geometry,
+                canvasTextures.size_,
+                *shapeReceiverFrameBuf_
             );
         }
 
@@ -116,22 +104,11 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
             dispatchPerAxisSunShadow(*perAxisCanvases_, canvasTextures, shadow);
         }
         if (useShapeReceiver) {
-            if (shapeProducerFrameBuf_ != nullptr)
-                shapeProducerFrameBuf_->bindBase(
-                    BufferTarget::UNIFORM,
-                    kBufferIndex_ShapesFrameData
-                );
-            // Persistent bindings must not retain canvas allocations across destruction.
-            shapeReceiverFallbackBuf_->bindBase(
-                BufferTarget::SHADER_STORAGE,
-                kBufferIndex_ShapeDescriptors
+            IRPrefab::detail::restoreShapeReceiver(
+                *shapeReceiverFallbackBuf_,
+                shapeProducerFrameBuf_,
+                animationParamsBuf_
             );
-            shapeReceiverFallbackBuf_->bindBase(
-                BufferTarget::SHADER_STORAGE,
-                kBufferIndex_ShapeTileDescriptors
-            );
-            (animationParamsBuf_ != nullptr ? animationParamsBuf_ : shapeReceiverFallbackBuf_)
-                ->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_AnimationParams);
         }
     }
 

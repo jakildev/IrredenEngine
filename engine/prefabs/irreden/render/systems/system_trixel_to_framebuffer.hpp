@@ -9,7 +9,9 @@
 #include <irreden/ir_window.hpp>
 
 #include <irreden/render/camera.hpp>
+#include <irreden/render/shape_receiver_bindings.hpp>
 #include <irreden/render/components/component_detached_canvas.hpp>
+#include <irreden/render/components/component_canvas_sun_shadow.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 #include <irreden/render/per_axis_canvas.hpp>
@@ -37,6 +39,14 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     Buffer *frameDataBuf_ = nullptr;
     Buffer *hoveredIdBuf_ = nullptr;
     ShaderProgram *program_ = nullptr;
+    ShaderProgram *shapeProbeProgram_ = nullptr;
+    Buffer *shapeProbeFrameBuf_ = nullptr;
+    Buffer *shapeProbeFallbackBuf_ = nullptr;
+    Buffer *shapeProducerFrameBuf_ = nullptr;
+    Buffer *animationParamsBuf_ = nullptr;
+    Buffer *sunFrameBuf_ = nullptr;
+    Buffer *sunDepthBuf_ = nullptr;
+    bool shapeProbeEnabled_ = false;
     // Smooth camera Z-yaw forward-scatter composite. Replaces the
     // single-canvas gather draw on the main canvas while rotating; see
     // drawPerAxisScatter.
@@ -183,6 +193,12 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             // Sub-scope: the single-canvas gather draw only — the
             // per-axis scatter above owns its own row (perAxisScatter).
             GpuSubStageScope gatherScope("trixelToFb");
+            const bool probe = shapeProbeEnabled_ && entity == perAxisCanvasEntity_ &&
+                               triangleCanvasTextures.shapeGeometry_.samplesValid();
+            if (probe) {
+                bindShapeProbe(triangleCanvasTextures);
+                shapeProbeProgram_->use();
+            }
             triangleCanvasTextures.bind(0, 1, 2);
             IRRender::device()->setPolygonMode(PolygonMode::FILL);
             IRRender::device()->drawElements(
@@ -191,7 +207,29 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                 IndexType::UNSIGNED_SHORT
             );
             IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+            if (probe) {
+                restoreShapeProbe();
+                program_->use();
+            }
         }
+    }
+
+    void bindShapeProbe(const C_TriangleCanvasTextures &canvas) {
+        IRPrefab::detail::bindShapeReceiver(
+            canvas.shapeGeometry_,
+            canvas.size_,
+            *shapeProbeFrameBuf_
+        );
+        sunFrameBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
+        sunDepthBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap);
+    }
+
+    void restoreShapeProbe() {
+        IRPrefab::detail::restoreShapeReceiver(
+            *shapeProbeFallbackBuf_,
+            shapeProducerFrameBuf_,
+            animationParamsBuf_
+        );
     }
 
     // Smooth camera Z-yaw forward-scatter composite. See
@@ -439,6 +477,20 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             }
         }
 
+        shapeProbeEnabled_ =
+            IRRender::getDebugOverlay() == DebugOverlayMode::SURFACE_SHADOW &&
+            findSystem(COMPUTE_SUN_SHADOW) != kNullSystemId &&
+            findSystem(SHAPES_TO_TRIXEL) != kNullSystemId &&
+            perAxisCanvasEntity_ != IREntity::kNullEntity &&
+            IREntity::getComponentOptional<C_CanvasSunShadow>(perAxisCanvasEntity_).has_value();
+        if (shapeProbeEnabled_ && shapeProbeFrameBuf_ == nullptr) {
+            shapeProbeFrameBuf_ = IRRender::getNamedResource<Buffer>("ShapeReceiverFrameData");
+            shapeProbeFallbackBuf_ = IRRender::getNamedResource<Buffer>("ShapeReceiverFallback");
+            shapeProducerFrameBuf_ = IRRender::getNamedResource<Buffer>("ShapesFrameDataBuffer");
+            animationParamsBuf_ = IRRender::getNamedResource<Buffer>("AnimationParamsBuffer");
+            sunFrameBuf_ = IRRender::getNamedResource<Buffer>("ComputeSunShadowFrameData");
+            sunDepthBuf_ = IRRender::getNamedResource<Buffer>("SunShadowDepthMap");
+        }
         program_->use();
         quadVao_->bind();
         auto &framebuffer = IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
@@ -452,6 +504,13 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             std::vector{
                 ShaderStage{IRRender::kFileVertTrixelToFramebuffer, ShaderType::VERTEX},
                 ShaderStage{IRRender::kFileFragTrixelToFramebuffer, ShaderType::FRAGMENT}
+            }
+        );
+        IRRender::createNamedResource<ShaderProgram>(
+            "CanvasSurfaceShadowProbeProgram",
+            std::vector{
+                ShaderStage{IRRender::kFileVertTrixelToFramebuffer, ShaderType::VERTEX},
+                ShaderStage{IRRender::kFileFragTrixelToFramebufferShapes, ShaderType::FRAGMENT}
             }
         );
         // Smooth camera Z-yaw forward-scatter composite — see
@@ -495,6 +554,8 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         sys->frameDataBuf_ = IRRender::getNamedResource<Buffer>("TrixelToFramebufferFrameData");
         sys->hoveredIdBuf_ = IRRender::getNamedResource<Buffer>("HoveredEntityIdBuffer");
         sys->program_ = IRRender::getNamedResource<ShaderProgram>("CanvasToFramebufferProgram");
+        sys->shapeProbeProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("CanvasSurfaceShadowProbeProgram");
         sys->scatterProgram_ = IRRender::getNamedResource<ShaderProgram>("PerAxisScatterProgram");
         sys->quadVao_ = IRRender::getNamedResource<VAO>("QuadVAO");
         sys->overflowDrawDisabled_ = std::getenv("IR_PERAXIS_OVERFLOW_DISABLE") != nullptr;

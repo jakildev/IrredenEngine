@@ -141,13 +141,18 @@ enum class DebugOverlayMode : std::uint8_t {
     PER_AXIS_MARGIN = 7,
     NORMALS = 8,
     // Detached world receiver relative to its raster origin: RGB = position / 4 + 0.5.
-    RECEIVER_POSITION = 9
+    RECEIVER_POSITION = 9,
+    // Finite SDF box receiver at each displayed fragment; other samples retain SHADOW.
+    SURFACE_SHADOW = 10
 };
 
 /// Parse a string to @c DebugOverlayMode. Accepts "none", "ao",
 /// "light_level", "shadow", "peraxis_id", "peraxis_origin", "unlit",
-/// "peraxis_margin", "normals", "receiver_position". Returns @c NONE for unrecognized input.
+/// "peraxis_margin", "normals", "receiver_position", "surface_shadow". Returns @c NONE for
+/// unrecognized input.
 inline DebugOverlayMode debugOverlayModeFromString(const char *s) {
+    if (std::strcmp(s, "surface_shadow") == 0)
+        return DebugOverlayMode::SURFACE_SHADOW;
     if (std::strcmp(s, "receiver_position") == 0)
         return DebugOverlayMode::RECEIVER_POSITION;
     if (std::strcmp(s, "normals") == 0)
