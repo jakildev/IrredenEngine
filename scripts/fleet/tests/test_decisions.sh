@@ -2,8 +2,9 @@
 # Tests for fleet-decisions (the human decision digest).
 #
 # Hermetic: `gh` is a PATH stub that serves fixtures for the engine repo,
-# fails for the game repo (exercising the skip-with-warning path), and
-# exits 99 on any unexpected invocation (fails closed — no live GitHub).
+# fails for the game repo by default (exercising the skip-with-warning path,
+# overridable per-test via GH_STUB_GAME_PRS/GH_STUB_GAME_ISSUES), and exits
+# 99 on any unexpected invocation (fails closed — no live GitHub).
 # FLEET_HOME points at a temp dir for the feedback-channel check.
 #
 # Covers:
@@ -21,6 +22,8 @@
 #     fresh) — both arms of each threshold exercised
 #   - headline decision count = merge queue + decisions
 #   - unreachable repo is skipped with a warning, not fatal
+#   - both repos reachable at once: each repo's manifest-indexed artifacts
+#     resolve independently, not cross-contaminated
 #   - --repo=engine equals-form works; empty --repo= rejected (dual-spelling)
 #   - CI gate holds per approved PR, keyed on (head sha, workflow path): a
 #     replay of a recorded head whose runs predate one gate (a
@@ -208,8 +211,10 @@ fi
 case "$1 $2 $repo" in
     "pr list jakildev/IrredenEngine")    cat "${GH_STUB_ENGINE_PRS:-$fixtures/engine-prs.json}" ;;
     "issue list jakildev/IrredenEngine") cat "${GH_STUB_ENGINE_ISSUES:-$fixtures/engine-issues.json}" ;;
-    "pr list jakildev/irreden")          exit 1 ;;
-    "issue list jakildev/irreden")       exit 1 ;;
+    "pr list jakildev/irreden")
+        [[ -n "${GH_STUB_GAME_PRS:-}" ]] && cat "$GH_STUB_GAME_PRS" || exit 1 ;;
+    "issue list jakildev/irreden")
+        [[ -n "${GH_STUB_GAME_ISSUES:-}" ]] && cat "$GH_STUB_GAME_ISSUES" || exit 1 ;;
     *) echo "gh stub: unexpected invocation: $*" >&2; exit 99 ;;
 esac
 EOF
@@ -736,5 +741,38 @@ assert_eq "$status" "1" "empty --repo= rejected (dual-spelling rule)"
 
 status=$(run_decisions --bogus)
 assert_eq "$status" "1" "unknown flag rejected with usage"
+
+# --- both repos reachable: manifest artifact index isn't cross-contaminated -
+#
+# The manifest carries only a repo slug and an artifact index (never a host
+# path); each repo's `<idx>-prs.json`/`<idx>-issues.json` is derived in
+# Python from that index. Two simultaneously-reachable repos is the only way
+# to prove index 0 and index 1 each resolve to their own artifacts rather
+# than the last repo queried overwriting the read.
+
+cat > "$TMP/game-prs.json" << 'EOF'
+[
+  {"number": 301, "title": "game: gated edit", "url": "u",
+   "labels": [{"name": "fleet:gated"}]}
+]
+EOF
+
+cat > "$TMP/game-issues.json" << 'EOF'
+[
+  {"number": 401, "title": "game: parked for a human decision", "url": "u",
+   "labels": [{"name": "fleet:needs-human"}]}
+]
+EOF
+
+status=$(GH_STUB_GAME_PRS="$TMP/game-prs.json" GH_STUB_GAME_ISSUES="$TMP/game-issues.json" \
+    run_decisions)
+out=$(cat "$TMP/out.txt")
+err=$(cat "$TMP/err.txt")
+assert_eq "$status" "0" "both-repos-reachable run exits 0"
+assert_absent "$err" "skipping" "neither repo is reported unreachable"
+assert_contains "$out" "[engine+game]" "scope lists both repos"
+assert_contains "$out" "engine PR #101" "engine's own PR survives alongside game's"
+assert_contains "$out" "game PR #301  game: gated edit" "game's PR is read from its own artifact, not engine's"
+assert_contains "$out" "game issue #401" "game's issue is read from its own artifact, not engine's"
 
 summarize "fleet-decisions tests"
