@@ -122,31 +122,46 @@ if [[ "$per_timeout" -gt 0 && -z "${RUN_ALL_NO_EXTERNAL_TIMEOUT:-}" ]]; then
 fi
 
 # Portable per-suite timeout, used whenever no external `timeout`/`gtimeout`
-# binary is on PATH: sends TERM, then KILL if the process is still alive 5s
+# binary is on PATH: sends TERM, then KILL if the suite is still alive 5s
 # later. Mirrors coreutils timeout's exit-124-on-deadline contract via the
 # marker file, since a signal-killed direct child's own exit status (128+sig)
 # does not distinguish "we killed it" from any other signal death.
+#
+# Like coreutils timeout, the signals go to the suite's whole process group
+# (`set -m` gives each background job its own), so a suite's `sleep` or
+# daemon child dies with it. The suite writes to a file rather than to the
+# caller's `$(...)` pipe, so a descendant that escapes the group still cannot
+# hold the capture open past the deadline. The watcher gets its own group
+# and no stdio for the same reason: its pending `sleep` must neither outlive
+# it nor block the caller.
 run_with_timeout() {
     local secs="$1"; shift
-    local marker
-    marker=$(mktemp "${TMPDIR:-/tmp}/run-all-timeout.XXXXXX")
-    "$@" &
+    local out_file marker
+    out_file=$(mktemp "${TMPDIR:-/tmp}/run-all-out.XXXXXX")
+    marker="$out_file.timed-out"
+    set -m
+    "$@" >"$out_file" 2>&1 </dev/null &
     local cmd_pid=$!
     (
         sleep "$secs"
-        kill -TERM "$cmd_pid" 2>/dev/null && : > "$marker"
+        kill -TERM -- "-$cmd_pid" 2>/dev/null && : > "$marker"
         sleep 5
-        kill -KILL "$cmd_pid" 2>/dev/null
-    ) &
+        kill -KILL -- "-$cmd_pid" 2>/dev/null
+    ) >/dev/null 2>&1 </dev/null &
     local watcher_pid=$!
+    set +m
 
     local rc=0
     wait "$cmd_pid" 2>/dev/null || rc=$?
-    kill "$watcher_pid" 2>/dev/null
+    kill -- "-$watcher_pid" 2>/dev/null
     wait "$watcher_pid" 2>/dev/null
 
-    [[ -e "$marker" ]] && rc=124
-    rm -f "$marker"
+    if [[ -e "$marker" ]]; then
+        rc=124
+        kill -KILL -- "-$cmd_pid" 2>/dev/null   # a TERM-ignoring straggler
+    fi
+    cat "$out_file"
+    rm -f "$out_file" "$marker"
     return "$rc"
 }
 

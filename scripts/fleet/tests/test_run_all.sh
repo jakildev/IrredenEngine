@@ -140,10 +140,44 @@ fi
 
 echo "T10b: the pure-bash fallback still bounds a hung suite with neither timeout(1) nor gtimeout(1) on PATH"
 d=$(new_sandbox t10b)
-printf '#!/usr/bin/env bash\nsleep 30\n' > "$d/test_hang.sh"
+# The foreground `sleep 30` would hold the runner's output capture open past
+# the deadline if it outlived the suite shell. The background child has no
+# hold on that capture, so it isolates the other half of the contract:
+# signalling the suite's whole process tree.
+printf '#!/usr/bin/env bash\nsleep 60 >/dev/null 2>&1 </dev/null &\necho $! > "%s/child.pid"\nsleep 30\n' "$d" > "$d/test_hang.sh"
+SECONDS=0
 out=$(RUN_ALL_NO_EXTERNAL_TIMEOUT=1 bash "$d/run_all.sh" --timeout 1 2>&1); rc=$?
+elapsed=$SECONDS
 assert_eq "$rc" "1" "T10b the fallback still fails the run on a hang"
 assert_contains "$out" "timed out after 1s" "T10b the fallback reports the timeout the same way"
+if [[ "$elapsed" -lt 10 ]]; then
+    ok "T10b the fallback returns within the deadline plus grace, not the fixture's 30s"
+else
+    bad "T10b the fallback returns within the deadline plus grace, not the fixture's 30s (took ${elapsed}s)"
+fi
+child_pid=$(cat "$d/child.pid" 2>/dev/null)
+if [[ -n "$child_pid" ]] && ! kill -0 "$child_pid" 2>/dev/null; then
+    ok "T10b the fallback kills the suite's descendants, not just the suite shell"
+else
+    bad "T10b the fallback kills the suite's descendants, not just the suite shell (pid '$child_pid' alive)"
+    [[ -n "$child_pid" ]] && kill "$child_pid" 2>/dev/null
+fi
+
+echo "T10c: the fallback passes a suite that finishes in time, without waiting out the timeout"
+d=$(new_sandbox t10c)
+fixture_pass "$d" alpha
+fixture_fail "$d" broken
+SECONDS=0
+out=$(RUN_ALL_NO_EXTERNAL_TIMEOUT=1 bash "$d/run_all.sh" --timeout 20 2>&1); rc=$?
+elapsed=$SECONDS
+assert_contains "$out" "PASS  test_alpha.sh" "T10c a passing suite passes under the fallback"
+assert_contains "$out" "FAIL  test_broken.sh (exit 1)" "T10c a failing suite keeps its own exit status under the fallback"
+assert_contains "$out" "boom in broken" "T10c the fallback still captures the suite's output"
+if [[ "$elapsed" -lt 10 ]]; then
+    ok "T10c the fallback does not wait out the 20s timeout on suites that finished"
+else
+    bad "T10c the fallback does not wait out the 20s timeout on suites that finished (took ${elapsed}s)"
+fi
 
 echo "T11: --timeout 0 disables the guard"
 d=$(new_sandbox t11)
