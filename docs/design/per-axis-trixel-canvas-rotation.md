@@ -124,6 +124,20 @@ stores + view mask ×3 (mode 0)  →  overflow append ×3 (mode 3)
    relights it in place (sun cascade + light volume + Lambert, `AO = 1.0`,
    mirroring `c_lighting_to_trixel`'s own world sample) before the scatter
    draws it — so the rotating frame shows lit slivers, not flat albedo.
+5. **Fog (#3710, `c_fog_overflow_faces.{glsl,metal}`)** — a bounded compute
+   pass in `FOG_TO_TRIXEL`, dispatched off the same indirect args as the
+   relight, recovers each entry's world position on the per-axis store
+   anchor and paints it with the shared FIELD shading (`ir_fog_common`).
+
+**Opacity contract.** An overflow entry's `colorPacked` alpha byte is not
+the voxel's alpha: the append overwrites it with the fog class byte (255
+FIELD, 254 whole-body exempt) so the fog pass can tell the two apart. Every
+overflow consumer therefore treats the packed colour as opaque: neither the
+relight nor the fog pass has an `alpha < 0.1` empty-slot guard (every entry
+below the settled count was written by an append), and the scatter's
+overflow branch forces `color.a = 1`. A translucent voxel that reaches the screen through the
+overflow lane (not its cardinal cell's store winner, camera off-cardinal)
+renders opaque there. Its cell-path fragments keep their alpha.
 
 **Binding.** No new permanent binding. The view-mask + ctrl-block +
 overflow-entries scratch rides `kBufferIndex_PerAxisResolveScratch` — the

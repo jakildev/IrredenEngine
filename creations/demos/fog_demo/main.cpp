@@ -548,8 +548,8 @@ bool g_perAxisOverflow = false; // --peraxis-overflow
 constexpr Color kFogDebugUnexploredColor{255, 0, 255, 255};
 // Same framing as kEdgeZCostCeilingShots; own labels so both variants gate.
 // The last shot parks a non-cardinal yaw, so the scene renders through the
-// per-axis rotation route, which FOG_TO_TRIXEL never paints: the above-ceiling
-// pillar voxels must be dropped there, neither magenta nor lit.
+// per-axis rotation route, which FOG_TO_TRIXEL paints per occupied face: the
+// above-ceiling pillar keeps its full height in the magenta unexplored colour.
 constexpr float kEdgeZCostCeilingPaintYaw = 0.35f;
 constexpr IRVideo::RoiCrop kCropsEdgeZCostCeilingPaintYaw9[] = {
     {1100, 0, 300, 920, "zcost_ceiling_yaw_pillar"},
