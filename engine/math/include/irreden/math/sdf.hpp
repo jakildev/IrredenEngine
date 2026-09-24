@@ -201,6 +201,81 @@ inline void evaluateGrid(ivec3 size, ShapeType type, vec4 params, std::span<floa
     }
 }
 
+/// The inclusive cell box `forEachInteriorCell` walks for a shape centred at
+/// @p center: its world AABB padded by one cell — surface samples can round into
+/// a neighbour — clipped to `[clipMin, clipMax]`. Empty when any `lo > hi`.
+inline void interiorCellBounds(
+    ShapeType type,
+    vec4 shapeParams,
+    vec3 center,
+    ivec3 clipMin,
+    ivec3 clipMax,
+    ivec3 &lo,
+    ivec3 &hi
+) {
+    const vec3 half = boundingHalf(type, shapeParams);
+    lo = glm::max(ivec3(glm::floor(center - half)) - ivec3(1), clipMin);
+    hi = glm::min(ivec3(glm::ceil(center + half)) + ivec3(1), clipMax);
+}
+
+inline bool isInteriorCell(ShapeType type, vec4 shapeParams, vec3 center, ivec3 cell) {
+    return evaluate(vec3(cell) - center, type, shapeParams) <= kSurfaceThreshold;
+}
+
+/// Visit every integer cell of a shape centred at @p center whose centre sample
+/// is interior (`evaluate(...) <= kSurfaceThreshold`), in z-then-y-then-x order.
+/// @p params are the authored params (`effectiveParams` is applied here). The
+/// walk is `interiorCellBounds`, so the cost is bounded by the clipped AABB
+/// volume.
+template <typename Visit>
+inline void forEachInteriorCell(
+    ShapeType type, vec4 params, vec3 center, ivec3 clipMin, ivec3 clipMax, Visit &&visit
+) {
+    const vec4 shapeParams = effectiveParams(type, params);
+    ivec3 lo;
+    ivec3 hi;
+    interiorCellBounds(type, shapeParams, center, clipMin, clipMax, lo, hi);
+    if (lo.x > hi.x || lo.y > hi.y || lo.z > hi.z)
+        return;
+    for (int z = lo.z; z <= hi.z; ++z) {
+        for (int y = lo.y; y <= hi.y; ++y) {
+            for (int x = lo.x; x <= hi.x; ++x) {
+                const ivec3 cell(x, y, z);
+                if (isInteriorCell(type, shapeParams, center, cell)) {
+                    visit(cell);
+                }
+            }
+        }
+    }
+}
+
+/// For each (x, y) column of `interiorCellBounds`, visit the interior cell of
+/// `forEachInteriorCell`'s set with the smallest z (the highest, +Z being down),
+/// if any. Walks z upward from the box's top and stops at the first hit, so a
+/// solid shape costs about one evaluation per column.
+template <typename Visit>
+inline void forEachInteriorColumnTop(
+    ShapeType type, vec4 params, vec3 center, ivec3 clipMin, ivec3 clipMax, Visit &&visit
+) {
+    const vec4 shapeParams = effectiveParams(type, params);
+    ivec3 lo;
+    ivec3 hi;
+    interiorCellBounds(type, shapeParams, center, clipMin, clipMax, lo, hi);
+    if (lo.x > hi.x || lo.y > hi.y || lo.z > hi.z)
+        return;
+    for (int y = lo.y; y <= hi.y; ++y) {
+        for (int x = lo.x; x <= hi.x; ++x) {
+            for (int z = lo.z; z <= hi.z; ++z) {
+                const ivec3 cell(x, y, z);
+                if (isInteriorCell(type, shapeParams, center, cell)) {
+                    visit(cell);
+                    break;
+                }
+            }
+        }
+    }
+}
+
 inline float boundingRadius(ShapeType type, vec4 params) {
     const vec3 halfExtents = boundingHalf(type, params);
     switch (type) {

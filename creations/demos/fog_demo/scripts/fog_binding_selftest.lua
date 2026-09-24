@@ -16,6 +16,10 @@ assert(IRFog.evalReveal(-10, 0, 3) == 1)
 assert(IRFog.evalReveal(10, 0, 3) == 1)
 assert(IRFog.evalReveal(0, 0, 3) == 0)
 assert(IRFog.lineOfSight(-10, 0, 3, 10, 0, 3))
+-- The probe voxel at (0, 0, 4) is ungoverned, so it occludes a ray that passes
+-- its column from an eye below its top; a ray beside it stays clear.
+assert(not IRFog.lineOfSight(-10, 0, 10, 10, 0, 3))
+assert(IRFog.lineOfSight(-10, 0, 10, 10, 6, 3))
 
 local before = IRFog.evalReveal(-10, 0, 3)
 local ok = pcall(IRFog.addVision, 0, 0, "bad radius")

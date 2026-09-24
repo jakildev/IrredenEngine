@@ -29,6 +29,7 @@ template <> struct System<FOG_REVEAL_EVAL> {
     };
 
     IRComponents::FrameDataFogObservers observers_{};
+    IRComponents::FogLineOfSightField los_{};
     IRComponents::C_FogRevealSettings settings_{};
     IREntity::EntityId activeCanvas_ = IREntity::kNullEntity;
     IRComponents::C_VoxelPool *activePool_ = nullptr;
@@ -41,6 +42,7 @@ template <> struct System<FOG_REVEAL_EVAL> {
         activePool_ = nullptr;
         fogAttached_ = false;
         observers_ = {};
+        los_ = {};
 
         if (activeCanvas_ != IREntity::kNullEntity) {
             if (auto pool =
@@ -49,7 +51,14 @@ template <> struct System<FOG_REVEAL_EVAL> {
             }
             if (auto fog =
                     IREntity::getComponentOptional<IRComponents::C_CanvasFogOfWar>(activeCanvas_)) {
-                observers_ = (*fog)->observers_;
+                const IRComponents::C_CanvasFogOfWar &canvasFog = **fog;
+                IRPrefab::Fog::selectRevealSnapshot(
+                    canvasFog.observers_,
+                    canvasFog.losPublishedObservers_,
+                    canvasFog.losField(),
+                    observers_,
+                    los_
+                );
                 fogAttached_ = true;
             }
         }
@@ -81,8 +90,9 @@ template <> struct System<FOG_REVEAL_EVAL> {
         }
 
         revealed.revealFactor_ =
-            fogAttached_ ? IRPrefab::Fog::evalVisionReveal(observers_, worldTransform.translation_)
-                         : 1.0f;
+            fogAttached_
+                ? IRPrefab::Fog::evalVisionReveal(observers_, los_, worldTransform.translation_)
+                : 1.0f;
         bool shown = revealed.shown_;
         if (!shown && revealed.revealFactor_ >= settings_.showThreshold_) {
             shown = true;

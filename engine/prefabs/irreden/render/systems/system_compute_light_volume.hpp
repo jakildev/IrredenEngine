@@ -80,7 +80,6 @@
 #include <irreden/render/detail/camera_anchor.hpp>
 #include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
 
-#include <chrono>
 #include <cstdint>
 #include <vector>
 
@@ -118,23 +117,6 @@ struct LightGatherRecord {
 };
 
 namespace detail {
-
-class ScopedCpuPhaseTimer {
-  public:
-    explicit ScopedCpuPhaseTimer(IRRender::CpuPhaseTiming &timing)
-        : m_timing{timing}
-        , m_start{std::chrono::steady_clock::now()} {}
-
-    ~ScopedCpuPhaseTimer() {
-        const auto end = std::chrono::steady_clock::now();
-        const auto elapsed = std::chrono::duration<double, std::milli>(end - m_start);
-        m_timing.record(elapsed.count());
-    }
-
-  private:
-    IRRender::CpuPhaseTiming &m_timing;
-    std::chrono::steady_clock::time_point m_start;
-};
 
 // `seedCellVoxel` is where the seed pass writes this light's texel (the true
 // origin for in-window lights, or the clamped window-boundary cell for an
@@ -560,7 +542,7 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
 
         // Phase: gather + upload light SSBO.
         {
-            detail::ScopedCpuPhaseTimer timer{phaseTiming.upload_};
+            IRRender::ScopedCpuPhaseTimer timer{phaseTiming.upload_};
             IR_PROFILE_BLOCK("ComputeLightVolume::Upload", IR_PROFILER_COLOR_RENDER);
             // Re-anchor the volume on the
             // iso camera each frame; the seed/propagate/
@@ -636,7 +618,7 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
         paramsBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_LightVolumeParams);
 
         {
-            detail::ScopedCpuPhaseTimer timer{phaseTiming.clear_};
+            IRRender::ScopedCpuPhaseTimer timer{phaseTiming.clear_};
             IR_PROFILE_BLOCK("ComputeLightVolume::Clear", IR_PROFILER_COLOR_RENDER);
             clearProgram_->use();
             volume.getReadTexture()
@@ -650,7 +632,7 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
         }
 
         {
-            detail::ScopedCpuPhaseTimer timer{phaseTiming.populate_};
+            IRRender::ScopedCpuPhaseTimer timer{phaseTiming.populate_};
             IR_PROFILE_BLOCK("ComputeLightVolume::Populate", IR_PROFILER_COLOR_RENDER);
 
             // Seed pass: one thread per light, writes one
