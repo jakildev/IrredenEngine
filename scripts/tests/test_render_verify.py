@@ -717,6 +717,172 @@ class CommittedManifestsResolve(unittest.TestCase):
         self.assertEqual(mismatched["IRLightingSdfBlocker"], "lighting")
 
 
+class RunResultToken(unittest.TestCase):
+    """verify_common.run_result reads ir-run's verdict token."""
+
+    def test_reads_each_verdict(self):
+        vc = _rv.verify_common
+        self.assertEqual(vc.run_result("ir-run: RESULT=CLEAN exe=X exit=0"), "CLEAN")
+        self.assertEqual(vc.run_result(
+            "noise\nir-run: RESULT=HOST-CLOSED exe=X exit=127 "
+            "event=Application-Hang/1002 at=2026-09-25T12:00:10Z\n"), vc.HOST_CLOSED)
+        self.assertEqual(vc.run_result(
+            "ir-run: RESULT=CRASH exe=X exit=139 signal=SIGSEGV"), "CRASH")
+
+    def test_no_token_is_none(self):
+        self.assertIsNone(_rv.verify_common.run_result("demo log only\n"))
+
+
+class HostClosedRetry(unittest.TestCase):
+    """A capture pass that ir-run reports HOST-CLOSED is re-run exactly once.
+
+    ``subprocess.run`` is stubbed for the ``fleet-run`` call only (render-compare
+    still runs for real): each scripted attempt writes its screenshots into the
+    demo's shots dir and returns the ``RESULT=`` line ir-run would print.
+    """
+
+    HOST_CLOSED_OUT = ("ir-run: RESULT=HOST-CLOSED exe=IRFake exit=127 "
+                       "event=Application-Hang/1002 at=2026-09-25T12:00:10Z\n")
+    CRASH_OUT = "ir-run: RESULT=CRASH exe=IRFake exit=139 signal=SIGSEGV\n"
+    CLEAN_OUT = "ir-run: RESULT=CLEAN exe=IRFake exit=0\n"
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        root = Path(self._tmp.name)
+        self.worktree = root
+        self.demo_dir = root / "creations" / "demos" / "fake"
+        self.refs = self.demo_dir / "test" / "references" / "linux-debug"
+        self.refs.mkdir(parents=True)
+        _write(self.refs / "a.png", 16, 16, lambda x, y: BLACK)
+        self.exe = root / "build" / "fake" / "IRFake"
+        self.exe.parent.mkdir(parents=True)
+        self.exe.touch()
+        self.shots_dir = self.exe.parent / "save_files" / "screenshots"
+        self.manifest = {"target": "IRFake", "shots": ["a"]}
+        self.calls: list[list[str]] = []
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _manifest(self, **extra):
+        path = self.demo_dir / "test" / "references" / "manifest.json"
+        path.write_text(json.dumps({**self.manifest, **extra}))
+
+    def _run(self, attempts, update_references=False):
+        """Run ``_verify_one`` with each fleet-run call taking the next
+        ``(rc, output, colour)`` of ``attempts``; returns (tally, stdout, stderr)."""
+        real_run = _rv.subprocess.run
+        script = list(attempts)
+
+        def fake_run(cmd, *a, **kw):
+            if "fleet-run" not in " ".join(cmd):
+                return real_run(cmd, *a, **kw)
+            self.calls.append(cmd)
+            rc, output, colour = script.pop(0)
+            if colour is not None:
+                n = len(_rv.verify_common.collect_full_frames(self.shots_dir))
+                _write(self.shots_dir / f"screenshot_{n:06d}.png", 16, 16,
+                       lambda x, y: colour)
+            return _rv.subprocess.CompletedProcess(cmd, rc, output, "")
+
+        args = _rv.argparse.Namespace(
+            no_build=True, warmup=None, timeout=60, demo_arg=[],
+            update_references=update_references, force=True)
+        out, err = io.StringIO(), io.StringIO()
+        with patch.object(_rv.subprocess, "run", side_effect=fake_run), \
+                patch.object(_rv.verify_common, "find_exe", return_value=self.exe), \
+                redirect_stdout(out), redirect_stderr(err):
+            tally = _rv._verify_one(
+                args=args, worktree=self.worktree, build_dir=self.worktree / "build",
+                backend="linux-debug", target="IRFake", demo_dir=self.demo_dir)
+        self.assertEqual(script, [], "every scripted fleet-run attempt was consumed")
+        return tally, out.getvalue(), err.getvalue()
+
+    def test_host_closed_then_clean_grades_only_the_retry(self):
+        # The first attempt's capture would FAIL the diff; only the retry's
+        # (matching) capture may be graded.
+        self._manifest()
+        tally, out, err = self._run([(1, self.HOST_CLOSED_OUT, MAGENTA),
+                                     (0, self.CLEAN_OUT, BLACK)])
+        self.assertEqual(len(self.calls), 2)
+        self.assertEqual(tally["rc"], 0)
+        self.assertEqual((tally["checked"], tally["failed"], tally["host_closed"]), (1, 0, 0))
+        self.assertIn("re-running the pass once", err)
+        self.assertNotIn("crashed at shutdown", err)
+
+    def test_host_closed_twice_is_no_verdict_not_a_crash(self):
+        self._manifest()
+        tally, out, err = self._run([(1, self.HOST_CLOSED_OUT, BLACK),
+                                     (1, self.HOST_CLOSED_OUT, BLACK)])
+        self.assertEqual(len(self.calls), 2, "retried once, never twice")
+        self.assertEqual(tally["rc"], 1)
+        self.assertEqual((tally["checked"], tally["failed"], tally["host_closed"]), (0, 0, 1))
+        self.assertRegex(out, r"default\s+HOST-CLOSED")
+        self.assertIn("RESULT=HOST-CLOSED", err)
+        self.assertNotIn("crashed at shutdown", err)
+
+    def test_crash_is_not_retried(self):
+        self._manifest()
+        tally, out, err = self._run([(139, self.CRASH_OUT, BLACK)])
+        self.assertEqual(len(self.calls), 1)
+        self.assertEqual(tally["rc"], 1)
+        self.assertEqual(tally["host_closed"], 0)
+        self.assertIn("crashed at shutdown (fleet-run exit=139)", err)
+
+    def test_nonzero_without_host_closed_token_is_a_crash(self):
+        # The verdict comes from ir-run's token, not the exit status: a
+        # HOST-CLOSED-shaped rc (127) with no token stays a crash.
+        self._manifest()
+        tally, _, err = self._run([(127, "demo died\n", BLACK)])
+        self.assertEqual(len(self.calls), 1)
+        self.assertIn("crashed at shutdown (fleet-run exit=127)", err)
+
+    def _extra_manifest(self):
+        _write(self.refs / "b.png", 16, 16, lambda x, y: BLACK)
+        self._manifest(extra_runs=[{"name": "compare", "demo_args": ["--only", "compare"],
+                                    "shots": ["b"]}])
+
+    def test_extra_pass_shares_the_one_retry_cap(self):
+        self._extra_manifest()
+        tally, out, err = self._run([(0, self.CLEAN_OUT, BLACK),
+                                     (1, self.HOST_CLOSED_OUT, MAGENTA),
+                                     (1, self.HOST_CLOSED_OUT, MAGENTA)])
+        self.assertEqual(len(self.calls), 3)
+        self.assertEqual(tally["rc"], 1)
+        self.assertEqual((tally["checked"], tally["failed"], tally["host_closed"]), (1, 0, 1))
+        self.assertRegex(out, r"compare\s+HOST-CLOSED")
+        self.assertNotIn("crashed at shutdown", err)
+
+    def test_extra_pass_retry_clean_passes(self):
+        self._extra_manifest()
+        tally, _, _ = self._run([(0, self.CLEAN_OUT, BLACK),
+                                 (1, self.HOST_CLOSED_OUT, MAGENTA),
+                                 (0, self.CLEAN_OUT, BLACK)])
+        self.assertEqual(len(self.calls), 3)
+        self.assertEqual(tally["rc"], 0)
+
+    def test_update_references_blesses_only_the_retry(self):
+        self._manifest()
+        tally, _, _ = self._run([(1, self.HOST_CLOSED_OUT, MAGENTA),
+                                 (0, self.CLEAN_OUT, WHITE)], update_references=True)
+        self.assertEqual(len(self.calls), 2)
+        self.assertEqual(tally["rc"], 0)
+        _write(self.worktree / "white.png", 16, 16, lambda x, y: WHITE)
+        self.assertEqual((self.refs / "a.png").read_bytes(),
+                         (self.worktree / "white.png").read_bytes(),
+                         "the reference is the retry's capture")
+
+    def test_update_references_host_closed_twice_writes_nothing(self):
+        self._manifest()
+        before = (self.refs / "a.png").read_bytes()
+        tally, _, err = self._run([(1, self.HOST_CLOSED_OUT, WHITE),
+                                   (1, self.HOST_CLOSED_OUT, WHITE)], update_references=True)
+        self.assertEqual(len(self.calls), 2)
+        self.assertEqual((tally["rc"], tally["host_closed"]), (1, 1))
+        self.assertEqual((self.refs / "a.png").read_bytes(), before)
+        self.assertIn("references not updated", err)
+
+
 class SweepSummary(unittest.TestCase):
     def _summary(self, results):
         out, err = io.StringIO(), io.StringIO()

@@ -11,7 +11,10 @@ Workflow:
   2. Detect the active CMake preset (linux-debug / macos-debug / windows-debug).
   3. Build the target via `fleet-build`.
   4. Clear the demo's `save_files/screenshots/` directory.
-  5. Run the demo with `--auto-screenshot` via `fleet-run`.
+  5. Run the demo with `--auto-screenshot` via `fleet-run`. A pass ir-run
+     reports ``RESULT=HOST-CLOSED`` (Windows hang handling closed the window)
+     is discarded and re-run once; a second one leaves that pass with no
+     verdict, reported apart from crashes and failures.
   6. For each shot (manifest order), map `screenshot_NNNNNN.png` → `<label>.png`
      and compare via `render-compare.py`.
   7. For each shot the manifest opts into a `crops` block, compare its ROI
@@ -614,13 +617,15 @@ def _parse_extra_runs(manifest: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _run_capture(*, worktree: Path, target: str, shots_dir: Path, warmup: int,
                  timeout: int, demo_args: list[str],
-                 pass_label: str) -> tuple[int, str] | None:
+                 pass_label: str) -> tuple[int, str, str] | None:
     """Clear ``shots_dir`` and run one ``--auto-screenshot`` capture pass.
 
-    Returns a ``(returncode, tail)`` crash tuple if ``fleet-run`` exits
-    non-zero (a real early-exit crash — ``--timeout`` makes a clean kill exit
-    0), else ``None``. Each pass owns the whole ``shots_dir``, so the caller
-    must collect this pass's screenshots before starting the next one.
+    Returns ``None`` when ``fleet-run`` exits 0 (``--timeout`` makes a clean
+    kill exit 0), else ``(returncode, tail, verdict)``: ``verdict`` is
+    ``verify_common.HOST_CLOSED`` when ir-run proved Windows' hang handling
+    closed the demo, else ``"CRASH"`` (a real early-exit crash). Each pass
+    owns the whole ``shots_dir``, so the caller must collect this pass's
+    screenshots before starting the next one.
     """
     if shots_dir.exists():
         shutil.rmtree(shots_dir)
@@ -633,19 +638,48 @@ def _run_capture(*, worktree: Path, target: str, shots_dir: Path, warmup: int,
     # The demo logs arbitrary OS-provided strings at startup — audio/MIDI
     # device names enumerate through here, and on some hosts those carry
     # non-UTF-8 bytes (e.g. a Mac-Roman curly apostrophe in "Robert's iPhone").
-    # The captured output is only used for the crash tail below, never parsed,
-    # so decode tolerantly instead of letting a stray byte abort the whole run.
+    # The captured output is only used for the crash tail and ir-run's RESULT
+    # token below, so decode tolerantly instead of letting a stray byte abort
+    # the whole run.
     proc = subprocess.run(verify_common.platform_launch_argv(run_cmd), cwd=str(worktree),
                           capture_output=True, text=True, errors="replace")
     if proc.returncode != 0:
+        output = proc.stdout + proc.stderr
         print(f"[render-verify] ({pass_label}) fleet-run exited "
               f"{proc.returncode}; tail of output follows (screenshot count "
               f"will be checked against manifest below):", file=sys.stderr)
-        tail = (proc.stdout + proc.stderr).splitlines()[-40:]
+        tail = output.splitlines()[-40:]
         for line in tail:
             print(f"    {line}", file=sys.stderr)
-        return (proc.returncode, "\n".join(tail))
+        verdict = (verify_common.HOST_CLOSED
+                   if verify_common.run_result(output) == verify_common.HOST_CLOSED
+                   else "CRASH")
+        return (proc.returncode, "\n".join(tail), verdict)
     return None
+
+
+def _capture_pass(**kwargs: Any) -> tuple[int, str, str] | None:
+    """``_run_capture``, re-run once when the host closed the demo.
+
+    A HOST-CLOSED attempt says nothing about the demo, so its partial captures
+    are discarded (the retry clears ``shots_dir``) and the identical pass runs
+    once more. Only the retry's outcome is returned: a second HOST-CLOSED means
+    this pass has no verdict. A CRASH is never retried.
+    """
+    outcome = _run_capture(**kwargs)
+    if outcome is None or outcome[2] != verify_common.HOST_CLOSED:
+        return outcome
+    print(f"[render-verify] ({kwargs['pass_label']}) RESULT=HOST-CLOSED — "
+          f"Windows hang handling closed the demo; host interference, not a "
+          f"demo failure. Discarding this attempt and re-running the pass "
+          f"once.", file=sys.stderr)
+    return _run_capture(**kwargs)
+
+
+def _host_closed_row(pass_label: str) -> dict[str, Any]:
+    return {"label": pass_label, "kind": "host-closed", "pass": False,
+            "reason": "closed twice by Windows hang handling (RESULT=HOST-CLOSED) "
+                      "— no verdict; re-run"}
 
 
 def _write_references(*, captured: list[Path], shot_labels: list[str],
@@ -684,10 +718,13 @@ def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
                 backend: str, target: str, demo_dir: Path) -> dict[str, Any]:
     """Build, capture, and gate one target; return its tally.
 
-    ``{target, demo, rc, checked, failed, skipped}``. ``rc`` is what a
-    single-target run exits with (0 pass, 1 fail/crash, 2 no references); the
-    counts are what ``--all`` aggregates. Everything a single-target run prints
-    is printed here — ``main`` adds output only when it is sweeping.
+    ``{target, demo, rc, checked, failed, skipped, host_closed}``. ``rc`` is
+    what a single-target run exits with (0 pass, 1 fail/crash/no verdict, 2 no
+    references); the counts are what ``--all`` aggregates. ``host_closed``
+    counts capture passes the host closed on both attempts — they have no
+    verdict, so they are neither checks nor failures. Everything a
+    single-target run prints is printed here — ``main`` adds output only when
+    it is sweeping.
     """
     demo_name = demo_dir.name
     manifest = _load_manifest(demo_dir)
@@ -717,9 +754,10 @@ def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
     warmup: int = args.warmup if args.warmup is not None else manifest.get("warmup", 10)
 
     def tally(rc: int, checked: int = 0, failed: int = 0,
-              skipped: int = 0) -> dict[str, Any]:
+              skipped: int = 0, host_closed: int = 0) -> dict[str, Any]:
         return {"target": target, "demo": demo_name, "rc": rc,
-                "checked": checked, "failed": failed, "skipped": skipped}
+                "checked": checked, "failed": failed, "skipped": skipped,
+                "host_closed": host_closed}
 
     print(
         f"[render-verify] target={target} demo={demo_name} "
@@ -765,36 +803,47 @@ def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
     # destruction segfault landing AFTER the screenshots save, which the per-
     # shot comparator would otherwise silently "pass"). `--timeout` also exits
     # 0 on a clean kill, so a crash is the only non-zero path; we let it block a
-    # PASS verdict even when every shot compares clean.
+    # PASS verdict even when every shot compares clean. A pass the host closed
+    # twice (RESULT=HOST-CLOSED) has no captures worth grading and no verdict.
     crashes: list[tuple[int, str]] = []
-    crash_main = _run_capture(
+    main_outcome = _capture_pass(
         worktree=worktree, target=target, shots_dir=shots_dir,
         warmup=warmup, timeout=args.timeout, demo_args=default_demo_args,
         pass_label="default")
-    if crash_main is not None:
-        crashes.append(crash_main)
-    captured = _collect_shots(shots_dir, len(shot_labels))
+    main_closed = main_outcome is not None and main_outcome[2] == verify_common.HOST_CLOSED
+    if main_outcome is not None and not main_closed:
+        crashes.append(main_outcome[:2])
+    captured = None if main_closed else _collect_shots(shots_dir, len(shot_labels))
 
     if args.update_references:
+        if captured is None:
+            print("[render-verify] --update-references: the default pass was "
+                  "closed twice by Windows hang handling (RESULT=HOST-CLOSED); "
+                  "references not updated — re-run.", file=sys.stderr)
+            return tally(1, host_closed=1)
         _write_references(captured=captured, shot_labels=shot_labels,
                           ref_dir=ref_dir, crops_block=crops_block,
                           structural_only=structural_only)
         # Each extra pass must run even when its references don't exist yet —
         # this is exactly how those references get blessed for the first time.
         for extra in extra_runs:
-            crash = _run_capture(
+            outcome = _capture_pass(
                 worktree=worktree, target=target, shots_dir=shots_dir,
                 warmup=extra["warmup"] if extra["warmup"] is not None else warmup,
                 timeout=args.timeout, demo_args=extra["demo_args"],
                 pass_label=extra["name"])
-            if crash is not None:
+            if outcome is not None:
+                closed = outcome[2] == verify_common.HOST_CLOSED
+                what = ("was closed twice by Windows hang handling "
+                        "(RESULT=HOST-CLOSED)" if closed
+                        else f"crashed (exit {outcome[0]})")
                 print(
                     f"[render-verify] --update-references: extra run "
-                    f"'{extra['name']}' crashed (exit {crash[0]}); "
-                    f"references not updated for this pass.",
+                    f"'{extra['name']}' {what}; references not updated for "
+                    f"this pass.",
                     file=sys.stderr,
                 )
-                return tally(1)
+                return tally(1, host_closed=int(closed))
             all_caps = _collect_all_shots(shots_dir)
             sliced = _slice_capture(all_caps, extra["capture_offset"],
                                     len(extra["shots"]), extra["name"])
@@ -818,7 +867,7 @@ def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
         )
         return tally(2)
 
-    rows = evaluate_shots(
+    rows = [_host_closed_row("default")] if captured is None else evaluate_shots(
         captured=captured,
         shot_labels=shot_labels,
         ref_dir=ref_dir,
@@ -852,13 +901,16 @@ def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
             continue
         print(f"[render-verify] extra run '{extra['name']}': "
               f"{' '.join(extra['demo_args'])}")
-        crash = _run_capture(
+        outcome = _capture_pass(
             worktree=worktree, target=target, shots_dir=shots_dir,
             warmup=extra["warmup"] if extra["warmup"] is not None else warmup,
             timeout=args.timeout, demo_args=extra["demo_args"],
             pass_label=extra["name"])
-        if crash is not None:
-            crashes.append(crash)
+        if outcome is not None and outcome[2] == verify_common.HOST_CLOSED:
+            rows.append(_host_closed_row(extra["name"]))
+            continue
+        if outcome is not None:
+            crashes.append(outcome[:2])
         all_caps = _collect_all_shots(shots_dir)
         sliced = _slice_capture(all_caps, extra["capture_offset"],
                                 len(gated), extra["name"])
@@ -886,8 +938,10 @@ def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
     print("-" * 76)
     failures: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
+    host_closed: list[dict[str, Any]] = []
     for row in rows:
         verdict = ("SKIP" if row["kind"] == "skip"
+                   else "HOST-CLOSED" if row["kind"] == "host-closed"
                    else "PASS" if row["pass"] else "FAIL")
         result = row.get("result")
         if row["kind"] in ("frame", "crop") and result and "match_pct" in result:
@@ -900,14 +954,16 @@ def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
             print(f"{row['label']:40} {verdict:8} {reason}")
         if row["kind"] == "skip":
             skipped.append(row)
+        elif row["kind"] == "host-closed":
+            host_closed.append(row)
         elif not row["pass"]:
             failures.append(row)
     all_pass = not failures
-    checked = len(rows) - len(skipped)
+    checked = len(rows) - len(skipped) - len(host_closed)
 
     print()
     skip_note = f" ({len(skipped)} skipped — references pending)" if skipped else ""
-    if all_pass and not crashes:
+    if all_pass and not crashes and not host_closed:
         print(f"[render-verify] all {checked} checks PASS{skip_note}")
         return tally(0, checked=checked, skipped=len(skipped))
 
@@ -923,8 +979,14 @@ def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
         print(f"[render-verify] demo crashed at shutdown (fleet-run exit={rc}); "
               f"failing the verify run even when shots match — see tail above.",
               file=sys.stderr)
+    if host_closed:
+        print(f"[render-verify] {len(host_closed)} capture pass(es) closed twice "
+              f"by Windows hang handling (RESULT=HOST-CLOSED): "
+              f"{', '.join(r['label'] for r in host_closed)} — host "
+              f"interference, not a demo failure, but no verdict either; "
+              f"re-run.", file=sys.stderr)
     return tally(1, checked=checked, failed=len(failures),
-                 skipped=len(skipped))
+                 skipped=len(skipped), host_closed=len(host_closed))
 
 
 def _print_sweep_summary(results: list[dict[str, Any]]) -> None:
@@ -938,8 +1000,11 @@ def _print_sweep_summary(results: list[dict[str, Any]]) -> None:
     print()
     print(f"[render-verify] --all summary over {len(results)} demo(s):")
     for r in results:
+        closed = r.get("host_closed", 0)
         if r["rc"] == 0:
             verdict = "PASS"
+        elif closed and not r["failed"]:
+            verdict = f"HOST-CLOSED ({closed} pass(es), no verdict — re-run)"
         elif r["checked"] == 0:
             verdict = f"ERROR ({r.get('error') or 'exit ' + str(r['rc'])})"
         else:
@@ -950,9 +1015,17 @@ def _print_sweep_summary(results: list[dict[str, Any]]) -> None:
     total = sum(r["checked"] for r in results)
     failed = sum(r["failed"] for r in results)
     skipped = sum(r["skipped"] for r in results)
-    errored = [r["target"] for r in results if r["rc"] != 0 and r["checked"] == 0]
+    closed = [r["target"] for r in results if r.get("host_closed", 0)]
+    errored = [r["target"] for r in results
+               if r["rc"] != 0 and r["checked"] == 0 and not r.get("host_closed", 0)]
+    closed_note = f", {len(closed)} HOST-CLOSED" if closed else ""
     print(f"[render-verify] total: {total} checks across {len(results)} demos, "
-          f"{failed} FAIL, {skipped} skipped")
+          f"{failed} FAIL, {skipped} skipped{closed_note}")
+    if closed:
+        print(f"[render-verify] {len(closed)} demo(s) had a capture pass closed "
+              f"twice by Windows hang handling (RESULT=HOST-CLOSED): "
+              f"{', '.join(closed)} — not a regression, not a pass; re-run "
+              f"them.", file=sys.stderr)
     if errored:
         print(f"[render-verify] {len(errored)} demo(s) produced NO checks: "
               f"{', '.join(errored)} — their coverage is missing from the "

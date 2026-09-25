@@ -67,6 +67,23 @@ GUI_TEST_SHOT_RE = re.compile(r"GuiTest\s+(\d+)/(\d+):")
 # filename from the full frame (render-verify.py's crop gate), never by globbing.
 FULL_FRAME_RE = re.compile(r"screenshot_\d+\.png")
 
+# The one-line verdict ir-run prints for every self-terminating run
+# (``engine/tools/bin/ir-run`` ``ir_report_result``): CLEAN, CRASH,
+# ALIVE-TIMEOUT, LOCK-FAILED, or HOST-CLOSED. HOST-CLOSED shares CRASH's
+# non-zero exit status, so only this token tells them apart.
+RUN_RESULT_RE = re.compile(r"ir-run: RESULT=([A-Z][A-Z-]*)")
+
+# Windows' hang handling closed a Not Responding window: host interference,
+# neither a pass nor a demo failure — re-run (docs/agents/FLEET.md
+# §"Clean-exit policy").
+HOST_CLOSED = "HOST-CLOSED"
+
+
+def run_result(output: str) -> str | None:
+    """The last ``ir-run: RESULT=<token>`` token in ``output``, or ``None``."""
+    found = RUN_RESULT_RE.findall(output)
+    return found[-1] if found else None
+
 
 def collect_full_frames(shots_dir: Path) -> list[Path]:
     """Full-frame captures in ``shots_dir``, index-ordered, crops excluded.

@@ -172,6 +172,8 @@ Run mode
                                 to catch fleet agents that forgot --timeout.
     IR_QUEUE_TIMEOUT            Seconds a wrapped run may wait for its
                                 ir-acquire lock (default 600).
+    IR_RUN_HOST_CLOSE_*         Test seams for the HOST-CLOSED check (see
+                                the comment above ir_host_closed_event).
 
   Result reporting (self-terminating runs — auto verbs and --timeout):
     ir-run: RESULT=CLEAN exe=<name> exit=0
@@ -180,6 +182,12 @@ Run mode
         FAILED run, exit code propagated. Saved outputs (screenshots,
         profiles) do not make a crashed run green — see
         docs/agents/FLEET.md "Clean-exit policy".
+    ir-run: RESULT=HOST-CLOSED exe=<name> exit=<rc> event=Application-Hang/1002 at=<time>
+        Native Windows only: the host's hang handling closed a Not
+        Responding window (Task Manager "End task", the not-responding
+        dialog), proven by an Application-log event naming this exact
+        process — path, pid, and creation time. Not a demo failure and
+        not green: re-run it. Exit code propagated as for CRASH.
     ir-run: RESULT=ALIVE-TIMEOUT exe=<name> ...
         Watchdog killed a still-healthy process at --timeout. Says
         nothing about shutdown-path health (teardown never ran).
@@ -337,17 +345,270 @@ ir_exit_signal_name() {
     fi
 }
 
+ir_lower() {
+    printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
+}
+
+# Wall-clock epoch seconds, sub-second where the host can say so.
+# EPOCHREALTIME is bash >= 5 and uses the locale's radix character.
+ir_epoch_now() {
+    if [[ -n "${IR_RUN_HOST_CLOSE_CLOCK:-}" ]]; then
+        "$IR_RUN_HOST_CLOSE_CLOCK"
+        return
+    fi
+    local t="${EPOCHREALTIME:-}"
+    [[ -n "$t" ]] || t="$(date -u +%s.%N 2>/dev/null || true)"
+    t="${t/,/.}"
+    [[ "$t" =~ ^[0-9]+(\.[0-9]+)?$ ]] || t="$(date -u +%s)"
+    echo "$t"
+}
+
+# --- HOST-CLOSED classification -------------------------------------------
+# On native Windows, a Not Responding window closed by the host's hang
+# handling (Task Manager "End task", the not-responding dialog) exits with a
+# status bash cannot tell from a crash (Git Bash and MSYS2 bash both report
+# 127). Windows records the closure in the Application log as provider
+# "Application Hang", event 1002, whose EventData carries the process id
+# (hex), the process creation FILETIME (hex), and the full image path. A
+# non-zero exit is HOST-CLOSED only when such an event names this exact
+# process instance — path, pid, and creation FILETIME captured while the
+# child was alive — and its TimeCreated lies in
+# [max(child start, exit - PRE_EXIT_SLACK), exit + POST_EXIT_SLACK]. The pid
+# alone is not enough: the lock is released before the query runs, so a
+# later launch may reuse it. Anything less (no event, no identity, a failed
+# query) stays CRASH.
+#
+# Measured on the Windows fleet host (Git Bash and MSYS2 bash, post-lock
+# launch): the event is written 0.12-0.15 s before the parent observes the
+# exit, never after it, and is query-visible within 0.05 s of it. Timeout
+# mode's liveness poll observes the exit up to 1 s late. The slacks and query
+# budget below are those readings plus margin; the query budget only decides
+# how long to look, never which event times are accepted.
+IR_HOST_CLOSE_PRE_EXIT_SLACK=3
+IR_HOST_CLOSE_POST_EXIT_SLACK=1
+IR_HOST_CLOSE_QUERY_BUDGET=3
+#
+# Test seams (each replaces one live dependency; setting
+# IR_RUN_HOST_CLOSE_QUERY also enables the check off Windows):
+#   IR_RUN_HOST_CLOSE_QUERY     command run instead of wevtutil with
+#                               <attempt> <native-path> <pid> <creation-filetime>
+#                               <lo-epoch> <hi-epoch>; prints event XML
+#   IR_RUN_HOST_CLOSE_IDENTITY  command run instead of the live lookup with the
+#                               launch's MSYS pid; prints
+#                               "<native-pid> <creation-filetime>" (decimal)
+#   IR_RUN_HOST_CLOSE_CLOCK     command printing epoch seconds for the child's
+#                               start and exit stamps
+#   IR_RUN_HOST_CLOSE_ATTEMPTS  query attempts (default QUERY_BUDGET + 1)
+#   IR_RUN_HOST_CLOSE_INTERVAL  seconds between attempts (default 1)
+HOST_CLOSE=0
+if [[ "$IR_IS_WINDOWS" == "1" || -n "${IR_RUN_HOST_CLOSE_QUERY:-}" ]]; then
+    HOST_CLOSE=1
+fi
+# Per-launch record written by the launch shim and the identity capturer:
+# start, pid, identity, end, done.
+LAUNCH_DIR=""
+CAPTURE_PID=""
+
+# Stamps the child start (when classifying) and publishes the pid once any
+# ir-acquire lock is granted, then execs the exe so the published pid IS the
+# exe's. The pid file is written last and atomically, so its presence implies
+# the start stamp.
+IR_LAUNCH_SHIM="$(declare -f ir_epoch_now)"'
+d="$1"; stamp="$2"; shift 2
+if [[ "$stamp" == 1 ]]; then ir_epoch_now > "$d/start"; fi
+echo "$$" > "$d/pid.tmp" && mv "$d/pid.tmp" "$d/pid"
+exec "$@"'
+
+# Runs in the background for the life of the launch: records the native pid
+# and creation FILETIME of the exe while it is still alive (after exit the
+# mapping is gone). Gives up silently — the verdict then fails closed to
+# CRASH — if the exe exits first or any lookup fails.
+ir_capture_launch_identity() {
+    local d="$1" msys native="" ft="" out
+    until [[ -s "$d/pid" ]]; do
+        [[ -e "$d/done" ]] && return 0
+        sleep 0.1
+    done
+    msys="$(<"$d/pid")"
+    if [[ -n "${IR_RUN_HOST_CLOSE_IDENTITY:-}" ]]; then
+        out="$("$IR_RUN_HOST_CLOSE_IDENTITY" "$msys" 2>/dev/null | tr -d '\r')" || return 0
+        read -r native ft <<<"$out" || true
+    else
+        # The shim's MSYS pid names bash.exe until exec has replaced it
+        # with the exe; only then does winpid map to the exe.
+        local want exe=""
+        want="$(ir_lower "$EXE_RUN")"
+        while [[ -r "/proc/$msys/winexename" ]]; do
+            exe="$(ir_lower "$(tr -d '\0' < "/proc/$msys/winexename" 2>/dev/null || true)")"
+            [[ "${exe##*\\}" == "$want" ]] && break
+            [[ -e "$d/done" ]] && return 0
+            sleep 0.1
+        done
+        [[ "${exe##*\\}" == "$want" ]] || return 0
+        native="$(<"/proc/$msys/winpid")" 2>/dev/null || return 0
+        [[ "$native" =~ ^[0-9]+$ ]] || return 0
+        ft="$(timeout 30 powershell.exe -NoProfile -NonInteractive -Command \
+            "(Get-Process -Id $native).StartTime.ToFileTimeUtc()" 2>/dev/null \
+            | tr -d '\r')" || return 0
+    fi
+    [[ "$native" =~ ^[0-9]+$ && "$ft" =~ ^[0-9]+$ ]] || return 0
+    echo "$native $ft" > "$d/identity.tmp" && mv "$d/identity.tmp" "$d/identity"
+}
+
+# Creates the per-launch record and starts the identity capturer. Sets
+# LAUNCH_DIR; a no-op unless the HOST-CLOSED check is enabled.
+ir_launch_begin() {
+    (( HOST_CLOSE )) || return 0
+    LAUNCH_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ir-run-launch.XXXXXX")"
+    ir_capture_launch_identity "$LAUNCH_DIR" &
+    CAPTURE_PID=$!
+}
+
+# Records the observed exit and lets the capturer finish (it returns at once
+# when the exe is already gone).
+ir_launch_end() {
+    [[ -n "$LAUNCH_DIR" ]] || return 0
+    ir_epoch_now > "$LAUNCH_DIR/end" 2>/dev/null || true
+    : > "$LAUNCH_DIR/done"
+    if [[ -n "$CAPTURE_PID" ]]; then
+        wait "$CAPTURE_PID" 2>/dev/null || true
+        CAPTURE_PID=""
+    fi
+}
+
+ir_launch_cleanup() {
+    if [[ -n "$CAPTURE_PID" ]]; then
+        kill "$CAPTURE_PID" 2>/dev/null || true
+    fi
+    if [[ -n "$LAUNCH_DIR" ]]; then
+        rm -rf "$LAUNCH_DIR"
+    fi
+}
+trap ir_launch_cleanup EXIT
+
+# Newest Application Hang/1002 events as XML, one per line. Never fails:
+# a missing wevtutil or a query error yields no candidates. Git Bash rewrites
+# the /q: and /f: switches as paths unless told not to, and wevtutil emits
+# CRLF.
+ir_host_close_query() {
+    if [[ -n "${IR_RUN_HOST_CLOSE_QUERY:-}" ]]; then
+        "$IR_RUN_HOST_CLOSE_QUERY" "$@" 2>/dev/null | tr -d '\r' || true
+        return 0
+    fi
+    MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' wevtutil qe Application /c:32 /rd:true /f:xml \
+        "/q:*[System[Provider[@Name='Application Hang'] and (EventID=1002)]]" \
+        2>/dev/null | tr -d '\r' || true
+}
+
+# Reads event XML on stdin; prints the TimeCreated of the first event that
+# names this process instance inside [lo, hi], else nothing. Pid and FILETIME
+# compare as hex strings: a FILETIME exceeds awk's exact-integer range. The
+# path travels through the environment because `awk -v` would read the
+# backslashes of a Windows path as escape sequences.
+ir_host_close_match() {
+    IR_HC_WANT_PATH="$1" awk -v want_pid="$2" -v want_ft="$3" -v lo="$4" -v hi="$5" '
+        BEGIN { want_path = ENVIRON["IR_HC_WANT_PATH"] }
+        function strip0(s) { s = tolower(s); sub(/^0+/, "", s); return s == "" ? "0" : s }
+        function unxml(s) {
+            gsub(/&lt;/, "<", s); gsub(/&gt;/, ">", s); gsub(/&quot;/, "\"", s)
+            gsub(/&apos;/, "\047", s); gsub(/&amp;/, "\\&", s); return s
+        }
+        function days_from_civil(y, m, d,   era, yoe, doy, doe) {
+            y -= (m <= 2); era = int(y / 400); yoe = y - era * 400
+            doy = int((153 * (m > 2 ? m - 3 : m + 9) + 2) / 5) + d - 1
+            doe = yoe * 365 + int(yoe / 4) - int(yoe / 100) + doy
+            return era * 146097 + doe - 719468
+        }
+        function iso_epoch(s,   f) {
+            if (s !~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]/) return -1
+            f = substr(s, 20); sub(/Z$/, "", f)
+            return days_from_civil(substr(s, 1, 4) + 0, substr(s, 6, 2) + 0, substr(s, 9, 2) + 0) * 86400 \
+                + substr(s, 12, 2) * 3600 + substr(s, 15, 2) * 60 + substr(s, 18, 2) + (f ~ /^\.[0-9]+$/ ? f + 0 : 0)
+        }
+        function check(ev,   t, n, i, j, rest, data, st, when) {
+            if (ev !~ /Provider Name=.Application Hang./) return
+            if (ev !~ /<EventID[^>]*>1002<\/EventID>/) return
+            if (!match(ev, /SystemTime=.[^\047"]+/)) return
+            st = substr(ev, RSTART + 12, RLENGTH - 12)
+            i = index(ev, "<EventData>"); if (!i) return
+            rest = substr(ev, i + 11); n = 0
+            while ((i = index(rest, "<Data")) > 0) {
+                rest = substr(rest, i + 5)
+                j = index(rest, ">"); if (!j) return
+                if (substr(rest, j - 1, 1) == "/") { data[++n] = ""; rest = substr(rest, j + 1); continue }
+                rest = substr(rest, j + 1)
+                j = index(rest, "</Data>"); if (!j) return
+                data[++n] = substr(rest, 1, j - 1); rest = substr(rest, j + 7)
+            }
+            if (n < 6) return
+            if (tolower(unxml(data[6])) != tolower(want_path)) return
+            if (strip0(data[3]) != strip0(want_pid)) return
+            if (strip0(data[4]) != strip0(want_ft)) return
+            when = iso_epoch(st)
+            if (when < lo || when > hi) return
+            print st; found = 1; exit
+        }
+        { buf = buf $0 }
+        END {
+            if (found) exit
+            while ((k = index(buf, "</Event>")) > 0) {
+                check(substr(buf, 1, k - 1)); if (found) exit
+                buf = substr(buf, k + 8)
+            }
+        }'
+}
+
+# Prints the TimeCreated of the Application Hang/1002 event that proves the
+# host closed this launch, or nothing. Never fails.
+ir_host_closed_event() {
+    (( HOST_CLOSE )) || return 0
+    local d="$LAUNCH_DIR"
+    [[ -n "$d" && -s "$d/start" && -s "$d/end" && -s "$d/identity" ]] || return 0
+    local start end native ft path lo hi attempts interval attempt at
+    start="$(<"$d/start")"; end="$(<"$d/end")"
+    read -r native ft < "$d/identity" || return 0
+    [[ "$start" =~ ^[0-9]+(\.[0-9]+)?$ && "$end" =~ ^[0-9]+(\.[0-9]+)?$ ]] || return 0
+    # Every launch path runs from the exe's directory, so PWD is absolute
+    # where EXE_DIR (from a relative --build-dir) may not be.
+    path="$(cygpath -w "$PWD/$EXE_RUN" 2>/dev/null || echo "$PWD/$EXE_RUN")"
+    lo="$(awk -v s="$start" -v e="$end" -v p="$IR_HOST_CLOSE_PRE_EXIT_SLACK" \
+        'BEGIN { b = e - p; printf "%.6f", (s > b ? s : b) }')"
+    hi="$(awk -v e="$end" -v p="$IR_HOST_CLOSE_POST_EXIT_SLACK" 'BEGIN { printf "%.6f", e + p }')"
+    attempts="${IR_RUN_HOST_CLOSE_ATTEMPTS:-$((IR_HOST_CLOSE_QUERY_BUDGET + 1))}"
+    interval="${IR_RUN_HOST_CLOSE_INTERVAL:-1}"
+    for (( attempt = 1; attempt <= attempts; attempt++ )); do
+        at="$(ir_host_close_query "$attempt" "$path" "$native" "$ft" "$lo" "$hi" \
+            | ir_host_close_match "$path" "$(printf '%x' "$native")" "$(printf '%x' "$ft")" "$lo" "$hi")" || at=""
+        if [[ -n "$at" ]]; then
+            echo "$at"
+            return 0
+        fi
+        (( attempt < attempts )) && sleep "$interval"
+    done
+    return 0
+}
+
 # One-line, machine-greppable verdict + the clean-exit directive. Every
 # self-terminating run (auto-screenshot, auto-profile, timeout mode)
 # reports through this so harnesses and agents key off a single stable
 # token instead of re-deriving "did it really pass" from log prose.
 # Policy: docs/agents/FLEET.md §"Clean-exit policy" — a signal exit is a
 # FAILED run even when outputs (screenshots, profiles) were saved before
-# the crash, teardown included.
+# the crash, teardown included. HOST-CLOSED is neither a pass nor a demo
+# failure; it asks for a re-run.
 ir_report_result() {
     local rc="$1"
     if [[ $rc -eq 0 ]]; then
         echo "ir-run: RESULT=CLEAN exe=$EXE_NAME exit=0"
+        return
+    fi
+    local at
+    at="$(ir_host_closed_event)"
+    if [[ -n "$at" ]]; then
+        echo "ir-run: RESULT=HOST-CLOSED exe=$EXE_NAME exit=$rc event=Application-Hang/1002 at=$at" >&2
+        echo "ir-run: Windows hang handling closed this Not Responding window" \
+             "— host interference, not a demo failure and not a green run." \
+             "Re-run it (docs/agents/FLEET.md §\"Clean-exit policy\")." >&2
         return
     fi
     local sig
@@ -371,13 +632,19 @@ if [[ -z "$TIMEOUT" ]]; then
     if [[ -n "$acquire_verb" ]]; then
         echo "ir-run: ${acquire_prefix[*]} $EXE_PATH $*"
         cd "$EXE_DIR"
+        launch=("./$EXE_RUN" "$@")
+        ir_launch_begin
+        if [[ -n "$LAUNCH_DIR" ]]; then
+            launch=(bash -c "$IR_LAUNCH_SHIM" ir-run-launch "$LAUNCH_DIR" 1 "./$EXE_RUN" "$@")
+        fi
         # Disarm `set -e` around the run so we can inspect the exit code
         # ourselves rather than letting bash bail out on the first non-
         # zero (which is exactly the signal we want to surface).
         set +e
-        "${acquire_prefix[@]}" "./$EXE_RUN" "$@"
+        "${acquire_prefix[@]}" "${launch[@]}"
         rc=$?
         set -e
+        ir_launch_end
         ir_report_result "$rc"
         exit "$rc"
     fi
@@ -395,19 +662,18 @@ fi
 cd "$EXE_DIR"
 
 # The watchdog budget is the executable's run time, not the time queued on
-# the resource lock. A wrapped run launches the exe through a tiny shim
-# that records its own pid to READY_FILE once ir-acquire has granted the
-# lock and exec's the exe (so the recorded pid IS the exe's). The loop
-# below holds the clock until that file appears.
-READY_DIR=""
+# the resource lock. A wrapped run launches the exe through the launch shim,
+# whose pid file (READY_FILE) appears once ir-acquire has granted the lock.
+# The loop below holds the clock until that file appears.
 READY_FILE=""
+ir_launch_begin
 if (( ${#acquire_prefix[@]} > 0 )); then
-    READY_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ir-run-ready.XXXXXX")"
-    READY_FILE="$READY_DIR/exe-pid"
-    trap 'rm -rf "$READY_DIR"' EXIT
-    "${acquire_prefix[@]}" bash -c \
-        'echo "$$" > "$1.tmp" && mv "$1.tmp" "$1"; shift; exec "$@"' \
-        ir-run-ready "$READY_FILE" "./$EXE_RUN" "$@" &
+    [[ -n "$LAUNCH_DIR" ]] || LAUNCH_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ir-run-launch.XXXXXX")"
+    READY_FILE="$LAUNCH_DIR/pid"
+    "${acquire_prefix[@]}" bash -c "$IR_LAUNCH_SHIM" \
+        ir-run-launch "$LAUNCH_DIR" "$HOST_CLOSE" "./$EXE_RUN" "$@" &
+elif [[ -n "$LAUNCH_DIR" ]]; then
+    bash -c "$IR_LAUNCH_SHIM" ir-run-launch "$LAUNCH_DIR" 1 "./$EXE_RUN" "$@" &
 else
     "./$EXE_RUN" "$@" &
 fi
@@ -420,6 +686,7 @@ while true; do
         # Process exited before timeout — check if it crashed.
         exit_code=0
         wait "$PID" 2>/dev/null || exit_code=$?
+        ir_launch_end
         if [[ -n "$READY_FILE" && ! -s "$READY_FILE" ]]; then
             # ir-acquire gave up on the lock; the exe never started.
             echo "ir-run: RESULT=LOCK-FAILED exe=$EXE_NAME exit=$exit_code" \
