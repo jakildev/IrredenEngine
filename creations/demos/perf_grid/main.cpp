@@ -556,6 +556,41 @@ constexpr float kFogLosObserverZ = 33.5f;
 constexpr vec3 kFogLosWallCenter{0.5f, 0.5f, 27.5f};
 constexpr vec4 kFogLosWallSize{2.0f, 120.0f, 12.0f, 0.0f};
 int g_fogLosProbeFrame = 0;
+// --fog-world-pan: the camera pans +X at kFogWorldPanCellsPerFrame cells per
+// rendered frame, one field-chunk crossing every 8 frames and one region
+// column entry every 128, so the window gather's strip path is measured.
+// --fog-world-pan-persist adds a persistence root populated before
+// measurement: a band of radius-24 discs every 64 cells along the pan path,
+// flushed to disk and then evicted, so every region column entered loads from
+// disk. --fog-teleport (with the persist root, in place of the pan) reveals a
+// radius-1024 disc at two poses 8192 cells apart, flushes and evicts them, and
+// jumps between the poses every kFogTeleportPeriodFrames frames: each jump is
+// a whole-window re-expansion over a dense save. The gather's cost lands in
+// the `fogWindowGather` CPU phase row.
+bool g_fogWorldPan = false;
+bool g_fogWorldPanPersist = false;
+bool g_fogTeleport = false;
+constexpr int kFogWorldPanCellsPerFrame = 4;
+constexpr int kFogWorldPanBandStep = 64;
+constexpr int kFogWorldPanBandRadius = 24;
+constexpr int kFogWorldPanBandLength = 2048;
+constexpr int kFogTeleportPeriodFrames = 30;
+constexpr int kFogTeleportRadius = IRPrefab::Fog::kFogRevealRadiusMax;
+constexpr ivec2 kFogTeleportPoseB{8192, 0};
+constexpr const char *kFogWorldPanSaveRoot = "save_files/fog_world_pan_perf";
+int g_fogWorldPanFrame = 0;
+int g_fogTeleportJumps = 0;
+IRPrefab::Fog::WorldFieldStats g_fogWorldPanTotals{};
+IRPrefab::Fog::WorldFieldStats g_fogTeleportSinceJump{};
+
+void accumulateFogStats(
+    IRPrefab::Fog::WorldFieldStats &into, const IRPrefab::Fog::WorldFieldStats &stats
+) {
+    into.probes_ += stats.probes_;
+    into.loads_ += stats.loads_;
+    into.saves_ += stats.saves_;
+    into.evictions_ += stats.evictions_;
+}
 
 PerfGridMode parseMode(const std::string &value) {
     if (value == "voxel_set" || value == "voxel") {
@@ -767,6 +802,23 @@ void registerCliArgs() {
         "--fog-los-disabled",
         "The --fog-los scene with line of sight off (the A/B control); implies --fog-reveal"
     );
+    args.flag(
+        "--fog-world-pan",
+        "Pan the camera +X at 4 cells per frame so the fog window gather crosses a field "
+        "chunk every 8 frames (the `fogWindowGather` phase row)"
+    );
+    args.flag(
+        "--fog-world-pan-persist",
+        "Give the fog field a persistence root populated with a band of revealed discs "
+        "along the pan path, flushed and evicted before measurement, so every region "
+        "column the window enters loads from disk"
+    );
+    args.flag(
+        "--fog-teleport",
+        "With --fog-world-pan-persist: reveal a radius-1024 disc at two poses 8192 cells "
+        "apart, flush and evict them, then jump the camera between the poses every 30 "
+        "frames (whole-window re-expansions over a dense save); replaces the pan"
+    );
     args.string(
         "--mode",
         "Scene mode: voxel_set | sdf | dense_set | hollow_set | gallery",
@@ -865,6 +917,12 @@ void readCliArgs() {
     }
     if (g_fogLos != FogLosFixture::NONE) {
         g_fogReveal = true;
+    }
+    g_fogWorldPanPersist = args.getFlag("--fog-world-pan-persist");
+    g_fogTeleport = args.getFlag("--fog-teleport") && g_fogWorldPanPersist;
+    g_fogWorldPan = args.getFlag("--fog-world-pan") && !g_fogTeleport;
+    if (args.getFlag("--fog-teleport") && !g_fogWorldPanPersist) {
+        IR_LOG_WARN("--fog-teleport needs --fog-world-pan-persist; ignoring");
     }
     g_feederClassifyPadSet = args.wasProvided("--feeder-classify-pad");
     g_feederClassifyPad = args.getInt("--feeder-classify-pad");
@@ -1355,6 +1413,100 @@ void logFogLosWitness() {
     }
 }
 
+// The reveal radius that keeps every grid voxel inside revealed columns: the
+// half-diagonal of the grid's XY extent plus one, never below 128, so a large
+// grid keeps rendering every voxel now that unexplored columns cull.
+int gridRevealRadius() {
+    const float extent = static_cast<float>(g_settings.gridSize_) * g_settings.spacing_;
+    const float halfDiagonal = IRMath::kSqrt2 * extent * 0.5f;
+    return IRMath::max(128, static_cast<int>(IRMath::ceil(halfDiagonal)) + 1);
+}
+
+// The camera pan that centres world column @p cell (the pan is the negated
+// iso projection of the point).
+vec2 cameraIsoCentredOn(ivec2 cell) {
+    return -IRMath::pos3DtoPos2DIso(vec3(cell.x, cell.y, 0));
+}
+
+// Drops every resident fog region to disk: two eviction passes over a keep
+// rectangle no region intersects (the first clears the access bits the
+// reveals set, the second evicts).
+void evictAllFogRegions() {
+    auto &fog =
+        IREntity::getComponent<IRComponents::C_CanvasFogOfWar>(IRRender::getActiveCanvasEntity());
+    constexpr int kFarChunk = std::numeric_limits<int>::max() / 2;
+    for (int pass = 0; pass < 2; ++pass) {
+        fog.field_->evict(ivec2(kFarChunk), ivec2(kFarChunk));
+    }
+}
+
+// Populates the --fog-world-pan-persist save: the band along the pan path,
+// or the two teleport discs, saved and evicted so measurement starts cold.
+void populateFogWorldPanSave() {
+    if (g_fogTeleport) {
+        IRPrefab::Fog::revealRadius(0, 0, kFogTeleportRadius);
+        IRPrefab::Fog::revealRadius(kFogTeleportPoseB.x, kFogTeleportPoseB.y, kFogTeleportRadius);
+    } else {
+        for (int x = 0; x <= kFogWorldPanBandLength; x += kFogWorldPanBandStep) {
+            IRPrefab::Fog::revealRadius(x, 0, kFogWorldPanBandRadius);
+        }
+    }
+    const int saved = IRPrefab::Fog::flushToDisk();
+    evictAllFogRegions();
+    const IRPrefab::Fog::WorldFieldStats stats = IRPrefab::Fog::fieldStats();
+    IR_LOG_INFO(
+        "FOG-WORLD-PAN-SAVE regions={} evicted={} resident={}",
+        saved,
+        stats.evictions_,
+        stats.residentRegions_
+    );
+}
+
+// Runs at the render front: advances the pan or the teleport before this
+// frame's gather, logging each jump's field statistics (those of the gather
+// the previous jump triggered) and accumulating the run's totals.
+void driveFogWorldPan() {
+    const IRPrefab::Fog::WorldFieldStats stats = IRPrefab::Fog::fieldStats();
+    accumulateFogStats(g_fogWorldPanTotals, stats);
+    accumulateFogStats(g_fogTeleportSinceJump, stats);
+    if (g_fogTeleport) {
+        if (g_fogWorldPanFrame % kFogTeleportPeriodFrames == 0) {
+            if (g_fogTeleportJumps > 0) {
+                IR_LOG_INFO(
+                    "FOG-TELEPORT jump={} probes={} loads={} evictions={}",
+                    g_fogTeleportJumps,
+                    g_fogTeleportSinceJump.probes_,
+                    g_fogTeleportSinceJump.loads_,
+                    g_fogTeleportSinceJump.evictions_
+                );
+            }
+            g_fogTeleportSinceJump = {};
+            const bool poseB = (g_fogWorldPanFrame / kFogTeleportPeriodFrames) % 2 == 1;
+            IRRender::setCameraPosition2DIso(
+                cameraIsoCentredOn(poseB ? kFogTeleportPoseB : ivec2(0))
+            );
+            ++g_fogTeleportJumps;
+        }
+    } else {
+        IRRender::setCameraPosition2DIso(
+            cameraIsoCentredOn(ivec2(g_fogWorldPanFrame * kFogWorldPanCellsPerFrame, 0))
+        );
+    }
+    ++g_fogWorldPanFrame;
+}
+
+void logFogWorldPanTotals() {
+    IR_LOG_INFO(
+        "FOG-WORLD-PAN-STATS frames={} jumps={} probes={} loads={} saves={} evictions={}",
+        g_fogWorldPanFrame,
+        g_fogTeleportJumps,
+        g_fogWorldPanTotals.probes_,
+        g_fogWorldPanTotals.loads_,
+        g_fogWorldPanTotals.saves_,
+        g_fogWorldPanTotals.evictions_
+    );
+}
+
 void configureLightingAndCanvas() {
     EntityId mainCanvas = IRRender::getActiveCanvasEntity();
     const ivec2 canvasSize = IREntity::getComponent<C_TriangleCanvasTextures>(mainCanvas).size_;
@@ -1376,6 +1528,13 @@ void configureLightingAndCanvas() {
     }
     IREntity::setComponent(mainCanvas, C_CanvasLightVolume{});
     IRPrefab::Fog::attachToCanvas(mainCanvas);
+    if (g_fogWorldPanPersist) {
+        IR_ASSERT(
+            IRPrefab::Fog::setPersistenceRoot(kFogWorldPanSaveRoot),
+            "the fog world-pan persistence root was refused"
+        );
+        IRPrefab::Fog::clear();
+    }
     if (g_fogLos != FogLosFixture::NONE) {
         configureFogLosFixture();
     } else if (g_fogReveal) {
@@ -1408,7 +1567,10 @@ void configureLightingAndCanvas() {
             static_cast<uint8_t>(24)
         }
     );
-    IRPrefab::Fog::revealRadius(0, 0, 128);
+    IRPrefab::Fog::revealRadius(0, 0, gridRevealRadius());
+    if (g_fogWorldPanPersist) {
+        populateFogWorldPanSave();
+    }
 }
 
 } // namespace
@@ -1672,6 +1834,9 @@ void initSystems() {
                 }
                 if (g_autoProfileCount >= g_autoProfileFrames) {
                     IR_LOG_INFO("Auto-profile: {} frames collected, exiting", g_autoProfileFrames);
+                    if (g_fogWorldPan || g_fogTeleport) {
+                        logFogWorldPanTotals();
+                    }
                     // Dump the last completed frame's CPU + GPU per-stage
                     // ms so PR bodies can quote concrete before/after numbers
                     // without screenshotting the HUD. Single-frame value, but
@@ -1786,6 +1951,15 @@ void initSystems() {
                 "FogLosWitness",
                 [](C_Name &) {},
                 []() { logFogLosWitness(); }
+            )
+        );
+    }
+    if (g_fogWorldPan || g_fogTeleport) {
+        renderPipeline.push_front(
+            IRSystem::createSystem<C_Name>(
+                "FogWorldPanDrive",
+                [](C_Name &) {},
+                []() { driveFogWorldPan(); }
             )
         );
     }

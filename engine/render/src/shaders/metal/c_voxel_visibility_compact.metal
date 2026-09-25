@@ -66,32 +66,10 @@ static void writeDispatchDims(
 
 // Fog-of-war column cull. Mirrors c_voxel_visibility_compact.glsl. The
 // fog `.r` channel reads back in normalized space: unexplored 0.0, explored
-// ≈0.5, visible 1.0. The world fog canvas binds its 256² fog texture at
-// [[texture(0)]]; every non-fog canvas binds a 1×1 all-visible placeholder, so
-// `get_width() <= 1` short-circuits the cull.
-constant int kFogOfWarHalfExtent = 128;
+// ≈0.5, visible 1.0. The world fog canvas binds its camera-anchored fog window
+// texture at [[texture(0)]]; every non-fog canvas binds a 1×1 all-visible
+// placeholder, so `get_width() <= 1` short-circuits the cull.
 constant float kFogExploredThreshold = 0.25f;
-
-// True iff this voxel's RAW world column is unexplored. World-space fog grid →
-// use voxelPosRaw (pre-cardinal-rotation). Out-of-range columns + the 1×1
-// placeholder both return false (visible → no cull), matching c_fog_to_trixel.
-static bool fogColumnUnexplored(
-    texture2d<float, access::read> fog, int3 voxelPosRaw
-) {
-    const int2 fogSize = int2(int(fog.get_width()), int(fog.get_height()));
-    if (fogSize.x <= 1) {
-        return false;
-    }
-    const int2 fogCell = int2(
-        voxelPosRaw.x + kFogOfWarHalfExtent,
-        voxelPosRaw.y + kFogOfWarHalfExtent
-    );
-    if (fogCell.x < 0 || fogCell.x >= fogSize.x ||
-        fogCell.y < 0 || fogCell.y >= fogSize.y) {
-        return false;
-    }
-    return fog.read(uint2(fogCell)).r < kFogExploredThreshold;
-}
 
 // Live analytic fog vision circles. Std140/Metal-tight
 // mirror of FrameDataFogObservers (component_canvas_fog_of_war.hpp); the
@@ -100,15 +78,59 @@ static bool fogColumnUnexplored(
 // compact. canvasFogOfWar carries only coarse explored/voxelized
 // memory; these discs carry the smooth "currently visible". A column any disc
 // covers survives the grid cull, so a voxel-floor scene driven purely by
-// setVisionCircle keeps its floor.
+// setVisionCircle keeps its floor. The tail after the count is the
+// line-of-sight mask (unread here) and the field column at texel (0, 0) of
+// the fog window.
 constant int kMaxFogVisionCircles = 8; // mirror of component_canvas_fog_of_war.hpp kMaxFogVisionCircles — must stay in sync
 struct FogObserverData {
     float4 visionCircles[kMaxFogVisionCircles]; // (centerX, centerY, radius, edgeSoftness)
     int visionCircleCount;
-    int _fogObsPad0;
-    int _fogObsPad1;
-    int _fogObsPad2;
+    int losSourceMask;
+    int windowOriginX;
+    int windowOriginY;
 };
+
+// Texel of world column `col` in the fog window, or (-1, -1) when the column
+// is outside it. Column `c` lives at texel floorMod(c, W) with W the window
+// edge; the window covers [origin, origin + W) per axis. Every modulo takes
+// non-negative operands only. GLSL twin: fogWindowTexel in
+// ../c_voxel_visibility_compact.glsl (keep byte-identical).
+static int2 fogWindowTexel(int2 col, int2 origin, int2 fogSize) {
+    const int2 rel = col - origin;
+    if (rel.x < 0 || rel.x >= fogSize.x || rel.y < 0 || rel.y >= fogSize.y) {
+        return int2(-1);
+    }
+    int2 base;
+    base.x = origin.x >= 0 ? origin.x % fogSize.x : fogSize.x - 1 - (-(origin.x + 1)) % fogSize.x;
+    base.y = origin.y >= 0 ? origin.y % fogSize.y : fogSize.y - 1 - (-(origin.y + 1)) % fogSize.y;
+    int2 texel = rel + base;
+    if (texel.x >= fogSize.x) {
+        texel.x -= fogSize.x;
+    }
+    if (texel.y >= fogSize.y) {
+        texel.y -= fogSize.y;
+    }
+    return texel;
+}
+
+// True iff this voxel's RAW world column is unexplored. World-space fog grid →
+// use voxelPosRaw (pre-cardinal-rotation). The 1×1 placeholder returns false
+// (visible → no cull); a column outside the window reads unexplored (true),
+// matching every other tap, so only a live circle keeps it.
+static bool fogColumnUnexplored(
+    texture2d<float, access::read> fog, constant FogObserverData& obs, int3 voxelPosRaw
+) {
+    const int2 fogSize = int2(int(fog.get_width()), int(fog.get_height()));
+    if (fogSize.x <= 1) {
+        return false;
+    }
+    const int2 fogCell =
+        fogWindowTexel(voxelPosRaw.xy, int2(obs.windowOriginX, obs.windowOriginY), fogSize);
+    if (fogCell.x < 0) {
+        return true;
+    }
+    return fog.read(uint2(fogCell)).r < kFogExploredThreshold;
+}
 
 // Safety margin (cells) — mirrors kCullSafetyCells in the GLSL: covers the
 // per-pixel worldPerPixel AA in c_fog_to_trixel that this shader can't compute.
@@ -305,7 +327,7 @@ kernel void c_voxel_visibility_compact(
                     isoPos.y >= frameData.cullIsoMin.y - cullMargin &&
                     isoPos.y <= frameData.cullIsoMax.y + cullMargin &&
                     (fogWholeBodyExempt ||
-                     !fogColumnUnexplored(canvasFogOfWar, voxelPosRaw) ||
+                     !fogColumnUnexplored(canvasFogOfWar, fogObservers, voxelPosRaw) ||
                      fogColumnInVisionCircle(fogObservers, voxelPosRaw))) {
                     if (frameData.perAxisRoute == 0) {
                         // Fully-interior drop — mirrors the GLSL twin: all six

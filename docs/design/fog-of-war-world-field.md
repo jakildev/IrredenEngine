@@ -412,13 +412,14 @@ source expresses visibility now, not explored memory.
 
 ## Consumer audit
 
-The current fixed-window convention has these direct consumers. The window
-phase changes all of them together.
+The window convention has these direct consumers. The window phase changed
+all of them together: every tap addresses the toroidal window through the
+observer block's origin lanes, and every LOS path anchors on its source.
 
 | Consumer | Window dependency |
 |---|---|
-| `engine/render/src/shaders/c_fog_to_trixel.glsl` | Paint lookup uses the fixed half-extent. |
-| `engine/render/src/shaders/metal/c_fog_to_trixel.metal` | Metal twin of the paint lookup. |
+| `engine/render/src/shaders/ir_fog_common.glsl` | Paint lookup shared by `c_fog_to_trixel` and `c_fog_overflow_faces`. |
+| `engine/render/src/shaders/metal/ir_fog_common.metal` | Metal twin of the paint lookup. |
 | `engine/render/src/shaders/c_voxel_to_trixel_stage_1_body.glsl` | Stage-1 column keep/drop lookup. |
 | `engine/render/src/shaders/metal/c_voxel_to_trixel_stage_1_body.metal` | Metal twin of the stage-1 lookup. |
 | `engine/render/src/shaders/c_voxel_visibility_compact.glsl` | Compact-pass fog cull and 1x1 placeholder path. |
@@ -440,7 +441,14 @@ phase changes all of them together.
 Fog-attached demo coverage is `fog_demo`, `perf_grid`, `lua_perf_grid`,
 `skeletal_demo` and the `lighting/main_combined` configuration. Their existing
 content lies inside the legacy window; the pre-existing reference rows are the
-OFF-path parity gate while the field and moving-window phases land.
+OFF-path parity gate. The window phase adds `fog_demo --world-pan` (reveal,
+leave and return over a persisted field; the `FOG-WORLD-PAN` probe) and
+`fog_demo --depth-slab` (D10's coverage at yaw 0 and π/4; the
+`FOG-DEPTH-SLAB` probe), and the `IRPerfGrid` arms `--fog-world-pan`,
+`--fog-world-pan-persist` and `--fog-teleport` for D12's frame budgets,
+reported as the `FogWindowGather` CPU phase. The perf grids reveal
+`max(128, ⌈half-diagonal of the grid's XY extent⌉ + 1)` so a large grid keeps
+rendering every voxel under D10.
 
 ## D9 — Phase map
 

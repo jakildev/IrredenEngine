@@ -5,9 +5,10 @@
 // for every gated vision circle of the active grid canvas and uploads them to
 // `losTexture_` for FOG_TO_TRIXEL. RENDER, before FOG_TO_TRIXEL, in its own
 // pipeline group. With no gated source it returns before touching anything;
-// with one it rebuilds the columns and every tile and uploads the whole
-// texture each frame, then publishes the observers it built from for
-// FOG_REVEAL_EVAL's next UPDATE. The model: `component_canvas_fog_of_war.hpp`.
+// with one it rebuilds each gated source's column view (a tile anchored on
+// that source) and every tile and uploads the whole texture each frame, then
+// publishes the observers it built from for FOG_REVEAL_EVAL's next UPDATE.
+// The model: `component_canvas_fog_of_war.hpp`.
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_profile.hpp>
@@ -22,6 +23,9 @@
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
+
+#include <cstddef>
+#include <span>
 
 namespace IRSystem {
 
@@ -46,15 +50,22 @@ template <> struct System<FOG_LOS_BUILD> {
         IRRender::FogLosBuildTiming &phaseTiming = IRRender::fogLosBuildTiming();
         {
             IRRender::ScopedCpuPhaseTimer timer{phaseTiming.build_};
+            IRPrefab::Fog::LosColumnViews views{};
+            const int viewCount =
+                IRPrefab::Fog::losSourceViews(fog.observers_, fog.losColumnTops_, views);
+            const std::span<const IRPrefab::Fog::LosColumnView> gated{
+                views.data(),
+                static_cast<std::size_t>(viewCount)
+            };
             {
                 IR_PROFILE_BLOCK("FogLosBuild::Columns", IR_PROFILER_COLOR_RENDER);
-                IRPrefab::Fog::rasterizeLosColumns(pool, canvas, fog.losColumnTops_);
+                IRPrefab::Fog::rasterizeLosColumns(pool, canvas, gated);
             }
             IR_PROFILE_BLOCK("FogLosBuild::Horizons", IR_PROFILER_COLOR_RENDER);
             IRPrefab::Fog::buildLosHorizons(
                 fog.observers_,
                 fog.losEyeHeights_,
-                fog.losColumnTops_,
+                gated,
                 fog.losHorizons_
             );
         }

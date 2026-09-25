@@ -409,6 +409,7 @@ void World::enableFrameTiming(bool enabled) {
         m_systemManager.resetTimingStats();
         IRRender::computeLightVolumeTiming().reset();
         IRRender::fogLosBuildTiming().reset();
+        IRRender::fogWindowGatherTiming().reset();
         IRRender::voxelCullAccumulator().reset();
         IRRender::renderRunWitness().reset();
         IRRender::resetGpuStageAccumulators();
@@ -468,6 +469,7 @@ void World::buildAndWriteProfileReport() {
     for (const auto &[name, phase] :
          {std::pair{"FogLosBuild::Build", IRRender::fogLosBuildTiming().build_},
           std::pair{"FogLosBuild::Upload", IRRender::fogLosBuildTiming().upload_},
+          std::pair{"FogWindowGather", IRRender::fogWindowGatherTiming().gather_},
           std::pair{"PerAxisCanvas::Allocate", IRRender::renderRunWitness().perAxisAllocate_},
           std::pair{"PerAxisCanvas::Release", IRRender::renderRunWitness().perAxisRelease_},
           std::pair{"PerAxisCanvas::Park", IRRender::renderRunWitness().perAxisPark_},

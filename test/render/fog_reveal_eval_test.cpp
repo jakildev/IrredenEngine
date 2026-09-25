@@ -32,21 +32,41 @@ FrameDataFogObservers oneCircle(
     return observers;
 }
 
-// A horizon image with every cell clear, and a setter for one source's cell.
+// A horizon image with every cell clear, and a setter for one source's cell
+// in the tile anchored on that source's circle.
 std::vector<float> clearHorizons() {
     return std::vector<float>(IRComponents::kFogLosHorizonCount, IRComponents::kFogLosHorizonClear);
 }
 
-void setHorizon(std::vector<float> &horizons, int source, int x, int y, float value) {
-    horizons[FogLineOfSightField::horizonIndex(source, x, y)] = value;
+void setHorizon(
+    std::vector<float> &horizons,
+    const FrameDataFogObservers &observers,
+    int source,
+    int x,
+    int y,
+    float value
+) {
+    const IRMath::ivec2 origin = FogLineOfSightField::tileOrigin(observers.visionCircles_[source]);
+    horizons[FogLineOfSightField::horizonIndex(source, IRMath::ivec2(x, y), origin)] = value;
 }
 
-void setHorizonColumnsFromX(std::vector<float> &horizons, int source, int fromX, float value) {
+void setHorizonColumnsFromX(
+    std::vector<float> &horizons,
+    const FrameDataFogObservers &observers,
+    int source,
+    int fromX,
+    float value
+) {
     for (int y = -20; y <= 20; ++y) {
         for (int x = fromX; x <= 20; ++x) {
-            setHorizon(horizons, source, x, y, value);
+            setHorizon(horizons, observers, source, x, y, value);
         }
     }
+}
+
+FogLineOfSightField
+fieldOf(const std::vector<float> &horizons, const FrameDataFogObservers &observers) {
+    return FogLineOfSightField{horizons.data(), FogLineOfSightField::tileOriginsOf(observers)};
 }
 
 TEST(FogRevealEvalTest, MirrorsDiscHeightPenaltyAndSoftEdge) {
@@ -87,11 +107,11 @@ TEST(FogRevealEvalTest, RejectsOutsideBoundingRadiusBeforeExactCurve) {
 // An occluded sample is unrevealed with no cost at all; clearing only the
 // source's mask bit restores the full reveal.
 TEST(FogRevealEvalTest, OccludedSampleIsUnrevealedRegardlessOfCost) {
-    std::vector<float> horizons = clearHorizons();
-    setHorizon(horizons, 0, 3, 4, -2.0f);
-    const FogLineOfSightField field{horizons.data()};
     FrameDataFogObservers observers = oneCircle(10.0f, 0.0f);
     observers.losSourceMask_ = 1;
+    std::vector<float> horizons = clearHorizons();
+    setHorizon(horizons, observers, 0, 3, 4, -2.0f);
+    const FogLineOfSightField field = fieldOf(horizons, observers);
     EXPECT_FLOAT_EQ(IRPrefab::Fog::evalVisionReveal(observers, field, IRMath::vec3(3, 4, 0)), 0.0f);
     EXPECT_FLOAT_EQ(IRPrefab::Fog::evalVisionReveal(observers, field, IRMath::vec3(3, 4, -2)), 1.0f)
         << "a sample at the horizon is visible";
@@ -108,9 +128,9 @@ TEST(FogRevealEvalTest, OccludedSampleIsUnrevealedRegardlessOfCost) {
 // the gated reveal equals the cost-only overload, height penalty included.
 TEST(FogRevealEvalTest, UnoccludedSampleTakesTheCostCurve) {
     const std::vector<float> horizons = clearHorizons();
-    const FogLineOfSightField field{horizons.data()};
     FrameDataFogObservers observers = oneCircle(10.0f, 2.0f, 0.0f, 0.3f, 0.1f, 1.0f);
     observers.losSourceMask_ = 1;
+    const FogLineOfSightField field = fieldOf(horizons, observers);
     for (const IRMath::vec3 sample :
          {IRMath::vec3(3, 4, 0), IRMath::vec3(6, 5, -7), IRMath::vec3(9.5f, 0, 3)}) {
         EXPECT_FLOAT_EQ(
@@ -145,9 +165,9 @@ TEST(FogRevealEvalTest, UnpublishedFieldRevealsNothingThroughAGatedSource) {
 // set re-authored after the build never pairs with the old horizons.
 TEST(FogRevealEvalTest, SnapshotPairsPublishedSourcesWithTheirField) {
     const std::vector<float> horizons = clearHorizons();
-    const FogLineOfSightField published{horizons.data()};
     FrameDataFogObservers built = oneCircle(10.0f, 0.0f);
     built.losSourceMask_ = 1;
+    const FogLineOfSightField published = fieldOf(horizons, built);
     FrameDataFogObservers live = built;
     live.visionCircles_[0] = IRMath::vec4(50.0f, 0.0f, 3.0f, 0.0f);
 
@@ -187,14 +207,14 @@ TEST(FogRevealEvalTest, SourcesOccludeIndependently) {
     observers.visionCircleCount_ = 2;
     observers.losSourceMask_ = 0b11;
     std::vector<float> horizons = clearHorizons();
-    setHorizonColumnsFromX(horizons, 0, 2, -5.0f);
+    setHorizonColumnsFromX(horizons, observers, 0, 2, -5.0f);
     for (int y = -20; y <= 20; ++y) {
         for (int x = -20; x <= -1; ++x) {
-            setHorizon(horizons, 1, x, y, -5.0f);
+            setHorizon(horizons, observers, 1, x, y, -5.0f);
         }
     }
     system.observers_ = observers;
-    system.los_ = FogLineOfSightField{horizons.data()};
+    system.los_ = fieldOf(horizons, observers);
 
     const auto verdict = [&](IRMath::vec3 position) {
         IREntity::EntityId entity = 1;

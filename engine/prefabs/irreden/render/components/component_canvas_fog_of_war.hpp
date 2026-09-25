@@ -25,25 +25,34 @@
 //
 // The CPU state is `IRPrefab::Fog::WorldField` (`render/fog_world_field.hpp`):
 // unbounded, world-space, optionally persisted, held through a shared handle
-// so ECS copies alias it as they alias the texture. The texture is a window
-// over it. Every mutation lands in the field's pending field-chunk set;
-// VOXEL_TO_TRIXEL_STAGE_1 drains that set once per frame, re-expands the
-// pending field chunks inside the window and uploads one rectangle per run,
-// before using fog to cull unexplored columns. FOG_TO_TRIXEL is a read-only
-// consumer. Population is driver-side: gameplay calls
-// `IRPrefab::Fog::setCell` / `IRPrefab::Fog::revealRadius` (see
-// `render/fog_of_war.hpp`) to drive the visibility set directly.
+// so ECS copies alias it as they alias the texture. The texture is a
+// camera-anchored window over it. Every mutation lands in the field's pending
+// field-chunk set; VOXEL_TO_TRIXEL_STAGE_1 drains that set once per frame,
+// re-expands the pending field chunks inside the window (and the strip a
+// window move exposes) and uploads one rectangle per run, before using fog to
+// cull unexplored columns. FOG_TO_TRIXEL is a read-only consumer. Population
+// is driver-side: gameplay calls `IRPrefab::Fog::setCell` /
+// `IRPrefab::Fog::revealRadius` (see `render/fog_of_war.hpp`) to drive the
+// visibility set directly.
 //
-// The window is 256×256 at `[-halfExtent, +halfExtent)`, matching the
-// light-occlusion SSBO's ground-plane footprint, one texel per integer voxel
-// column. Cells outside it are stored but not displayed. Out-of-window pixels
-// in the shader are treated as visible via an explicit bounds check (image
-// bindings bypass sampler wrap modes).
+// The window is `windowEdge_` texels square, one texel per integer voxel
+// column, sized at construction from the canvas footprint
+// (`IRPrefab::Fog::detail::windowEdgeForCanvas`) so every column whose matter
+// in the camera depth slab can reach the canvas is inside it. Its origin
+// (`windowOrigin_`, the field column at local (0, 0)) is snapped to field
+// chunks around the world point under the viewport centre and rides the
+// observer UBO's `windowOriginX_` / `windowOriginY_` lanes, written by the
+// gather in the same frame as the texture contents. Addressing is toroidal:
+// column `c` is at texel `floorMod(c, windowEdge_)` whatever the origin, so a
+// move re-expands only the exposed strip. A column outside the window reads
+// UNEXPLORED in every shader tap (the analytic circles still compose over
+// it); the 1×1 placeholder a non-fog canvas binds still reads visible.
+// Contract: docs/design/fog-of-war-world-field.md (D6, D10).
 //
-// `kFogOfWarSize` / `kFogOfWarHalfExtent` are mirrored as literals in the
-// `ir_fog_common.{glsl,metal}` and `ir_fog_los.{glsl,metal}` include pairs.
-// Renaming the C++ constants requires editing all four shader files in
-// lockstep.
+// `kFogOfWarSize` / `kFogOfWarHalfExtent` are the legacy fixed window's
+// dimensions, kept as deprecated values for out-of-tree callers; no engine
+// code or shader reads them. The line-of-sight tiles have their own
+// `kFogLosTileEdge` / `kFogLosTileHalfExtent`.
 //
 // Line of sight. A vision circle opted in with `setVisionCircleLineOfSight`
 // reveals only what its eye can see over a 2.5D column model:
@@ -64,11 +73,16 @@
 //     an integer voxel-centre height against the stored float, identical in
 //     the shader (`surfaceVoxel`) and the CPU oracle. Distance and height cost
 //     keep reading the continuous position.
-// `FOG_LOS_BUILD` rebuilds the columns and every gated source's horizons each
-// RENDER frame and uploads `losTexture_` (256 × 512 RGBA32F: source `i` at
-// tile row `i / 4`, channel `i % 4`; `kFogLosHorizonClear` = unoccluded, the
-// value outside the disc and outside the footprint). Cells outside the fog
-// footprint are clear, and occluders outside it are unknown.
+// Each source's horizons and column tops live in a 256×256 tile anchored on
+// the source: tile origin `roundHalfUp(centre) - kFogLosTileHalfExtent`,
+// derived identically on the CPU and in `ir_fog_los.{glsl,metal}` from the
+// circle already in the observer block. `FOG_LOS_BUILD` rebuilds every gated
+// source's column view and horizons each RENDER frame and uploads
+// `losTexture_` (256 × 512 RGBA32F: source `i` at tile row `i / 4`, channel
+// `i % 4`; `kFogLosHorizonClear` = unoccluded, the value outside the disc).
+// Cells outside a source's tile are clear for it, and occluders outside the
+// tile are unknown to it, so a disc wider than the tile's half extent is
+// clipped to the tile.
 
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_render.hpp>
@@ -89,6 +103,9 @@ using namespace IRRender;
 
 namespace IRComponents {
 
+/// Deprecated: the edge and half extent of the legacy fixed fog window. The
+/// window is now sized per canvas (`C_CanvasFogOfWar::windowEdge_`) and
+/// anchored on the camera; nothing in the engine reads these.
 constexpr int kFogOfWarSize = 256;
 constexpr int kFogOfWarHalfExtent = kFogOfWarSize / 2;
 
@@ -122,45 +139,71 @@ constexpr float kFogVisionZCostMirrorUp = -1.0f;
 constexpr float kFogVisionLosOff = -1.0f;
 using FogLosEyeHeights = std::array<float, kMaxFogVisionCircles>;
 
+// Each line-of-sight source owns one square tile of columns, anchored on the
+// source's circle centre; mirrored as literals in `ir_fog_los.{glsl,metal}`.
+constexpr int kFogLosTileEdge = 256;
+constexpr int kFogLosTileHalfExtent = kFogLosTileEdge / 2;
 constexpr int kFogLosSourcesPerTile = 4;
-constexpr int kFogLosTextureWidth = kFogOfWarSize;
-constexpr int kFogLosTextureHeight = kFogOfWarSize * (kMaxFogVisionCircles / kFogLosSourcesPerTile);
+constexpr int kFogLosTextureWidth = kFogLosTileEdge;
+constexpr int kFogLosTextureHeight =
+    kFogLosTileEdge * (kMaxFogVisionCircles / kFogLosSourcesPerTile);
 static_assert(
     kMaxFogVisionCircles % kFogLosSourcesPerTile == 0, "LOS tiles pack four sources per RGBA texel"
 );
 constexpr std::size_t kFogLosHorizonCount = static_cast<std::size_t>(kFogLosTextureWidth) *
                                             static_cast<std::size_t>(kFogLosTextureHeight) * 4u;
+/// Columns in one source's tile; a column-top view is this many `int32`.
 constexpr std::size_t kFogLosColumnCount =
-    static_cast<std::size_t>(kFogOfWarSize) * static_cast<std::size_t>(kFogOfWarSize);
+    static_cast<std::size_t>(kFogLosTileEdge) * static_cast<std::size_t>(kFogLosTileEdge);
+/// The component's column views, one tile per source, back to back.
+constexpr std::size_t kFogLosColumnViewCount =
+    kFogLosColumnCount * static_cast<std::size_t>(kMaxFogVisionCircles);
 constexpr float kFogLosHorizonClear = std::numeric_limits<float>::max();
 constexpr std::int32_t kFogLosColumnEmpty = std::numeric_limits<std::int32_t>::max();
+using FogLosTileOrigins = std::array<IRMath::ivec2, kMaxFogVisionCircles>;
+struct FrameDataFogObservers;
 
-// Read-only view over a published LOS horizon image (`C_CanvasFogOfWar::losField`).
-// A default-constructed view is unpublished: every gated source reads occluded,
+// Read-only view over a published LOS horizon image (`C_CanvasFogOfWar::losField`)
+// together with the tile origin each source's horizons were built at. A
+// default-constructed view is unpublished: every gated source reads occluded,
 // so nothing is revealed through a field that has never been built.
 struct FogLineOfSightField {
     const float *horizons_ = nullptr;
+    FogLosTileOrigins tileOrigins_{};
 
-    static bool cellInField(int cellX, int cellY) {
-        return cellX >= -kFogOfWarHalfExtent && cellX < kFogOfWarHalfExtent &&
-               cellY >= -kFogOfWarHalfExtent && cellY < kFogOfWarHalfExtent;
+    /// The first column of the tile anchored on vision circle @p circle:
+    /// `roundHalfUp(centre) - kFogLosTileHalfExtent`, the same derivation the
+    /// shader gate performs from the observer block.
+    static IRMath::ivec2 tileOrigin(IRMath::vec4 circle) {
+        return IRMath::ivec2(IRMath::roundHalfUp(circle.x), IRMath::roundHalfUp(circle.y)) -
+               kFogLosTileHalfExtent;
     }
 
-    /// Row-major index of in-field column @p (cellX, cellY) in a column-top
-    /// image (`C_CanvasFogOfWar::losColumnTops_`).
-    static std::size_t columnIndex(int cellX, int cellY) {
-        const std::size_t x = static_cast<std::size_t>(cellX + kFogOfWarHalfExtent);
-        const std::size_t y = static_cast<std::size_t>(cellY + kFogOfWarHalfExtent);
-        return y * static_cast<std::size_t>(kFogOfWarSize) + x;
+    /// The tile origins of every registered source in @p observers.
+    static FogLosTileOrigins tileOriginsOf(const FrameDataFogObservers &observers);
+
+    static bool cellInTile(IRMath::ivec2 cell, IRMath::ivec2 tileOrigin) {
+        const IRMath::ivec2 local = cell - tileOrigin;
+        return local.x >= 0 && local.x < kFogLosTileEdge && local.y >= 0 &&
+               local.y < kFogLosTileEdge;
     }
 
-    /// Flat float index of source @p source's horizon at in-field cell
-    /// @p (cellX, cellY) — the texel layout `losTexture_` uploads verbatim.
-    static std::size_t horizonIndex(int source, int cellX, int cellY) {
-        const std::size_t x = static_cast<std::size_t>(cellX + kFogOfWarHalfExtent);
-        const std::size_t y = static_cast<std::size_t>(
-            cellY + kFogOfWarHalfExtent + (source / kFogLosSourcesPerTile) * kFogOfWarSize
-        );
+    /// Row-major index of in-tile column @p cell in a column-top view
+    /// anchored at @p tileOrigin.
+    static std::size_t columnIndex(IRMath::ivec2 cell, IRMath::ivec2 tileOrigin) {
+        const IRMath::ivec2 local = cell - tileOrigin;
+        return static_cast<std::size_t>(local.y) * static_cast<std::size_t>(kFogLosTileEdge) +
+               static_cast<std::size_t>(local.x);
+    }
+
+    /// Flat float index of source @p source's horizon at in-tile cell @p cell
+    /// for a tile at @p tileOrigin — the texel layout `losTexture_` uploads
+    /// verbatim: tile row `source / 4`, channel `source % 4`.
+    static std::size_t horizonIndex(int source, IRMath::ivec2 cell, IRMath::ivec2 tileOrigin) {
+        const IRMath::ivec2 local = cell - tileOrigin;
+        const std::size_t x = static_cast<std::size_t>(local.x);
+        const std::size_t y =
+            static_cast<std::size_t>(local.y + (source / kFogLosSourcesPerTile) * kFogLosTileEdge);
         const std::size_t channel = static_cast<std::size_t>(source % kFogLosSourcesPerTile);
         return (y * static_cast<std::size_t>(kFogLosTextureWidth) + x) * 4u + channel;
     }
@@ -170,13 +213,15 @@ struct FogLineOfSightField {
     }
 
     /// The gate for source @p source at sample voxel @p sample (the rounded
-    /// sample position). Out-of-field cells are visible.
+    /// sample position). Cells outside the source's tile are visible.
     bool visible(int source, IRMath::ivec3 sample) const {
         if (horizons_ == nullptr)
             return false;
-        if (!cellInField(sample.x, sample.y))
+        const IRMath::ivec2 origin = tileOrigins_[static_cast<std::size_t>(source)];
+        const IRMath::ivec2 cell(sample);
+        if (!cellInTile(cell, origin))
             return true;
-        return static_cast<float>(sample.z) <= horizons_[horizonIndex(source, sample.x, sample.y)];
+        return static_cast<float>(sample.z) <= horizons_[horizonIndex(source, cell, origin)];
     }
 };
 
@@ -191,11 +236,15 @@ struct FrameDataFogObservers {
     IRMath::vec4 visionCircles_[kMaxFogVisionCircles] = {};
     std::int32_t visionCircleCount_ = 0;
     /// Bit `i` set = source `i` is gated by line of sight. Read by the fog
-    /// shaders only; the other `FogObserverData` mirrors keep this lane as
-    /// unread padding at the same offset.
+    /// pass only; every other `FogObserverData` mirror spells the lane out at
+    /// the same offset.
     std::int32_t losSourceMask_ = 0;
-    std::int32_t pad1_ = 0;
-    std::int32_t pad2_ = 0;
+    /// The field column at texel (0, 0) of the fog window texture the same
+    /// frame uploads (`C_CanvasFogOfWar::windowOrigin_`), written by the
+    /// gather before any observer upload so the taps and the texture agree.
+    /// Every shader that taps the grid declares both lanes.
+    std::int32_t windowOriginX_ = 0;
+    std::int32_t windowOriginY_ = 0;
     /// Per-circle height penalty, std140-appended after the tail so
     /// every preceding member offset is unchanged. A shader that reads only
     /// `visionCircles_` / `visionCircleCount_` (c_voxel_to_trixel_stage_2,
@@ -224,13 +273,25 @@ static_assert(
     "FrameDataFogObservers must stay std140/Metal-tight (vec4[N] + ivec4 tail + vec4[N] + vec4)"
 );
 
+inline FogLosTileOrigins
+FogLineOfSightField::tileOriginsOf(const FrameDataFogObservers &observers) {
+    FogLosTileOrigins origins{};
+    for (int source = 0; source < observers.visionCircleCount_; ++source) {
+        origins[static_cast<std::size_t>(source)] = tileOrigin(observers.visionCircles_[source]);
+    }
+    return origins;
+}
+
 struct C_CanvasFogOfWar {
     std::pair<ResourceId, Texture2D *> texture_;
     std::shared_ptr<IRPrefab::Fog::WorldField> field_;
-    /// Field column at texel (0, 0) of the texture's current contents; unset
-    /// until the first gather and after `clearAll` or an accepted
-    /// persistence root, which makes the next gather re-expand the whole
-    /// window.
+    /// Edge of the square window texture, fixed at construction from the
+    /// canvas the fog is attached to.
+    int windowEdge_ = 0;
+    /// Field column at texel (0, 0) of the window the texture currently
+    /// shows (the toroidal address of that column); unset until the first
+    /// gather and after `clearAll` or an accepted persistence root, which
+    /// makes the next gather re-expand the whole window.
     std::optional<IRMath::ivec2> windowOrigin_;
     /// Live analytic vision circles (the smooth, sub-voxel reveal). This is
     /// the upload payload the system pushes to the `kBufferIndex_FogObservers`
@@ -245,8 +306,10 @@ struct C_CanvasFogOfWar {
     /// mirror is the texel image itself; `FOG_LOS_BUILD` writes both.
     std::pair<ResourceId, Texture2D *> losTexture_;
     std::vector<float> losHorizons_;
-    /// Column tops `T(c)` in `FogLineOfSightField::columnIndex` order, `kFogLosColumnEmpty` for
-    /// none. `FOG_LOS_BUILD` scratch; `losQueryColumnTops_` is `lineOfSight`'s own, sized on its
+    /// Column tops `T(c)`, one `kFogLosColumnCount` view per source in
+    /// `FogLineOfSightField::columnIndex` order at that source's tile origin,
+    /// `kFogLosColumnEmpty` for none. `FOG_LOS_BUILD` scratch;
+    /// `losQueryColumnTops_` is `lineOfSight`'s own single view, sized on its
     /// first call.
     std::vector<std::int32_t> losColumnTops_;
     std::vector<std::int32_t> losQueryColumnTops_;
@@ -257,16 +320,24 @@ struct C_CanvasFogOfWar {
     FrameDataFogObservers losPublishedObservers_{};
     bool losPublished_ = false;
 
+    /// Sizes the window for the main canvas; `attachToCanvas` passes the
+    /// target canvas's own size.
     C_CanvasFogOfWar()
+        : C_CanvasFogOfWar(IRMath::ivec2(IRRender::getMainCanvasSizeTrixels())) {}
+
+    /// A window sized for a fog canvas of @p canvasSize trixels
+    /// (`IRPrefab::Fog::detail::windowEdgeForCanvas`).
+    explicit C_CanvasFogOfWar(IRMath::ivec2 canvasSize)
         : texture_{IRRender::createResource<IRRender::Texture2D>(
               TextureKind::TEXTURE_2D,
-              kFogOfWarSize,
-              kFogOfWarSize,
+              IRPrefab::Fog::detail::windowEdgeForCanvas(canvasSize),
+              IRPrefab::Fog::detail::windowEdgeForCanvas(canvasSize),
               TextureFormat::RGBA8,
               TextureWrap::CLAMP_TO_EDGE,
               TextureFilter::NEAREST
           )}
         , field_{std::make_shared<IRPrefab::Fog::WorldField>()}
+        , windowEdge_{IRPrefab::Fog::detail::windowEdgeForCanvas(canvasSize)}
         , losTexture_{IRRender::createResource<IRRender::Texture2D>(
               TextureKind::TEXTURE_2D,
               kFogLosTextureWidth,
@@ -276,7 +347,7 @@ struct C_CanvasFogOfWar {
               TextureFilter::NEAREST
           )}
         , losHorizons_(kFogLosHorizonCount, kFogLosHorizonClear)
-        , losColumnTops_(kFogLosColumnCount, kFogLosColumnEmpty) {
+        , losColumnTops_(kFogLosColumnViewCount, kFogLosColumnEmpty) {
         losEyeHeights_.fill(kFogVisionLosOff);
         // The shader reads this texture only for gated sources, and a gated
         // frame uploads it whole first; the clear seed keeps a creation that
@@ -296,10 +367,13 @@ struct C_CanvasFogOfWar {
         return losTexture_.second;
     }
 
-    /// The published horizon view; unpublished until `FOG_LOS_BUILD` has run
-    /// with a gated source.
+    /// The published horizon view at the tile origins it was built with;
+    /// unpublished until `FOG_LOS_BUILD` has run with a gated source.
     FogLineOfSightField losField() const {
-        return FogLineOfSightField{losPublished_ ? losHorizons_.data() : nullptr};
+        return FogLineOfSightField{
+            losPublished_ ? losHorizons_.data() : nullptr,
+            FogLineOfSightField::tileOriginsOf(losPublishedObservers_)
+        };
     }
 
     Texture2D *getTexture() const {

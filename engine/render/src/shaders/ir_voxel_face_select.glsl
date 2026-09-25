@@ -21,47 +21,68 @@
 
 // Per-voxel analytic fog clip inputs, mirroring
 // c_voxel_visibility_compact + c_fog_to_trixel. The world fog canvas binds its
-// 256² grid texture and uploads the live vision circles at binding 27; every
-// non-fog / detached canvas binds the shared 1×1 all-visible placeholder + a
-// count-0 observer buffer, so `fogColumnReveal` short-circuits to "fully
-// visible".
-const int kFogOfWarHalfExtent = 128;
+// camera-anchored window texture and uploads the live vision circles at
+// binding 27; every non-fog / detached canvas binds the shared 1×1 all-visible
+// placeholder + a count-0 observer buffer, so `fogColumnReveal` short-circuits
+// to "fully visible".
 const float kFogExploredThreshold = 0.25;
 const int kMaxFogVisionCircles = 8; // mirror of component_canvas_fog_of_war.hpp kMaxFogVisionCircles
 layout(rgba8, binding = IR_VOXEL_FOG_GRID_BINDING) readonly uniform image2D canvasFogOfWar;
 layout(std140, binding = 27) uniform FogObserverData {
     vec4 visionCircles[kMaxFogVisionCircles]; // (centerX, centerY, radius, edgeSoftness)
     int visionCircleCount;
-    // Per-circle height penalty, std140-appended after the count so the leading
-    // fields keep the offsets every shorter declaration of this block uses
-    // (std140 16-aligns the array, landing it at 144 in every declaring shader
-    // whether or not the block spells out the trailing pad ints).
-    // visionCircleHeights[i] = (observerZ, zCostUp, zCostDown, freeBand). The
-    // face-selection math here never reads it — only stage 1's detached-canvas
-    // and per-axis own-column DROPs do (fogColumnRevealZ in
-    // c_voxel_to_trixel_stage_1_body.glsl) — but the field lives on this block
-    // because GLSL admits exactly one declaration of a named uniform block and
-    // this is it. All-zero heights (the default) make those drops equal the 2D
-    // column clip.
+    // The ivec4 tail after the count, spelled out so the heights land at 144:
+    // the line-of-sight mask (read by the fog pass only) and the field column
+    // at texel (0, 0) of the fog window, uploaded with the texture it indexes.
+    int losSourceMask;
+    int windowOriginX;
+    int windowOriginY;
+    // Per-circle height penalty. visionCircleHeights[i] = (observerZ, zCostUp,
+    // zCostDown, freeBand). The face-selection math here never reads it — only
+    // stage 1's detached-canvas and per-axis own-column DROPs do
+    // (fogColumnRevealZ in c_voxel_to_trixel_stage_1_body.glsl) — but the field
+    // lives on this block because GLSL admits exactly one declaration of a
+    // named uniform block and this is it. All-zero heights (the default) make
+    // those drops equal the 2D column clip.
     vec4 visionCircleHeights[kMaxFogVisionCircles];
 };
+
+// Texel of world column `col` in the fog window, or (-1, -1) when the column
+// is outside it. Column `c` lives at texel floorMod(c, W) with W the window
+// edge (imageSize); the window covers [origin, origin + W) per axis. Every
+// modulo takes non-negative operands only (GLSL leaves the negative case
+// undefined). Metal twin: fogWindowTexel in metal/ir_voxel_face_select.metal.
+ivec2 fogWindowTexel(ivec2 col, ivec2 origin, ivec2 fogSize) {
+    const ivec2 rel = col - origin;
+    if (rel.x < 0 || rel.x >= fogSize.x || rel.y < 0 || rel.y >= fogSize.y) {
+        return ivec2(-1);
+    }
+    ivec2 base;
+    base.x = origin.x >= 0 ? origin.x % fogSize.x : fogSize.x - 1 - (-(origin.x + 1)) % fogSize.x;
+    base.y = origin.y >= 0 ? origin.y % fogSize.y : fogSize.y - 1 - (-(origin.y + 1)) % fogSize.y;
+    ivec2 texel = rel + base;
+    if (texel.x >= fogSize.x) {
+        texel.x -= fogSize.x;
+    }
+    if (texel.y >= fogSize.y) {
+        texel.y -= fogSize.y;
+    }
+    return texel;
+}
 
 // Fog reveal of world grid COLUMN `col` in [0,1]. Stage 1 emits the cut face's
 // DISTANCE for `reveal < 1.0` and stage 2 paints colour on the same
 // set of faces — both through this one definition, so the cut wall's depth and
 // colour cannot desync. Explored grid memory and in/at-disc columns are kept;
-// the 1×1 placeholder + OOB columns read as fully visible, matching the
-// OOB-as-visible invariant.
+// the 1×1 placeholder reads as fully visible, and a column outside the window
+// reads as UNEXPLORED grid state, so only the circles can reveal it.
 float fogColumnReveal(ivec2 col) {
     const ivec2 fogSize = imageSize(canvasFogOfWar);
     if (fogSize.x <= 1) {
         return 1.0; // 1×1 all-visible placeholder (non-fog / detached canvas)
     }
-    const ivec2 cell = col + ivec2(kFogOfWarHalfExtent);
-    if (cell.x < 0 || cell.x >= fogSize.x || cell.y < 0 || cell.y >= fogSize.y) {
-        return 1.0; // out-of-range column reads as visible
-    }
-    if (imageLoad(canvasFogOfWar, cell).r >= kFogExploredThreshold) {
+    const ivec2 cell = fogWindowTexel(col, ivec2(windowOriginX, windowOriginY), fogSize);
+    if (cell.x >= 0 && imageLoad(canvasFogOfWar, cell).r >= kFogExploredThreshold) {
         return 1.0; // explored / visible grid memory — keep (FOG_TO_TRIXEL fades it)
     }
     float reveal = 0.0;
@@ -95,11 +116,8 @@ float fogColumnRevealNearest(ivec2 col) {
     if (fogSize.x <= 1) {
         return 1.0;
     }
-    const ivec2 cell = col + ivec2(kFogOfWarHalfExtent);
-    if (cell.x < 0 || cell.x >= fogSize.x || cell.y < 0 || cell.y >= fogSize.y) {
-        return 1.0;
-    }
-    if (imageLoad(canvasFogOfWar, cell).r >= kFogExploredThreshold) {
+    const ivec2 cell = fogWindowTexel(col, ivec2(windowOriginX, windowOriginY), fogSize);
+    if (cell.x >= 0 && imageLoad(canvasFogOfWar, cell).r >= kFogExploredThreshold) {
         return 1.0;
     }
     float reveal = 0.0;
