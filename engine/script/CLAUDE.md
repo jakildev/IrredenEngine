@@ -142,9 +142,10 @@ C++ declares nameable prefab systems with `registerPrefabSystems` or
 `LuaScript::bindLuaFog()` installs the opt-in engine table, preserves custom
 keys, and stays separate from `bindLuaDrivenEcs()`.
 
-- `setVision` replaces circles; `addVision` appends; `clearVisions` clears only
-  circles. Their optional defaults are `edge = kFogVisionEdgeDefault`,
-  `observerZ = zCostUp = freeBand = 0`, and `zCostDown = -1` (mirror up-cost).
+- `setVision` replaces sources; `addVision` appends (past the analytic cap, a
+  plain XY disc in the field that `getCell` reads); `clearVisions` clears both.
+  Defaults: `edge = kFogVisionEdgeDefault`, `observerZ = zCostUp = freeBand =
+  0`, `zCostDown = -1` (mirror up-cost).
 - `evalReveal(x,y,z)` evaluates circles (LOS gates included), not grid memory or the
   hysteretic body verdict; attached fog with no circles returns 0, absent fog 1.
   `lineOfSight(from...,to...)` rebuilds the column view per call: not per-unit per-frame.

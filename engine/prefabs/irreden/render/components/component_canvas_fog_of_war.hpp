@@ -146,7 +146,8 @@ constexpr int kFogOfWarHalfExtent = kFogOfWarSize / 2;
 // the circle stays sharp at every zoom and never aliases. A positive value adds
 // a deliberately soft falloff of that many world units on top. Up to
 // `kMaxFogVisionCircles` sources compose via max (player + a few allies/lights);
-// past that, callers fall back to the grid.
+// every later source is field-tier: its XY disc is stamped into the world
+// field's transient layer (see `C_CanvasFogOfWar::addVisionCircle`).
 //
 // `kMaxFogVisionCircles` is mirrored as a literal in `ir_fog_common.glsl` /
 // `metal/ir_fog_common.metal` (the UBO array length); changing it requires
@@ -480,12 +481,13 @@ struct C_CanvasFogOfWar {
         field_->revealRadius({cx, cy}, radius);
     }
 
-    /// Drop all live vision circles, returning to grid-only fog. A
-    /// single moving observer calls this then `addVisionCircle` each frame —
-    /// and, for a line-of-sight source, `setVisionCircleLineOfSight` again,
-    /// since every new slot starts with LOS off.
+    /// Drop all live vision sources, analytic and field-tier, returning to
+    /// grid-only fog. A single moving observer calls this then
+    /// `addVisionCircle` each frame — and, for a line-of-sight source,
+    /// `setVisionCircleLineOfSight` again, since every new slot starts with
+    /// LOS off.
     void clearVisionCircles() {
-        clearVisionCircles(observers_);
+        clearVisionCircles(observers_, *field_);
     }
 
     /// Add a live analytic vision disc centered at the (fractional) world
@@ -495,11 +497,23 @@ struct C_CanvasFogOfWar {
     /// — no grid write, no texture upload. @p edge is the edge softness in
     /// world units (default `kFogVisionEdgeDefault` reads as antialiasing;
     /// larger = a deliberately soft falloff). Multiple circles compose via
-    /// `max` in the shader; silently dropped past `kMaxFogVisionCircles` or
-    /// for a non-positive radius. Unlike `revealRadius`, this touches NO grid
-    /// cell — to also leave explored "memory" behind a moving observer, stamp
-    /// the grid separately (e.g. integer `revealRadius` for the voxelized
-    /// floor).
+    /// `max` in the shader; dropped for a non-positive radius. Unlike
+    /// `revealRadius`, an analytic source touches NO grid cell — to also leave
+    /// explored "memory" behind a moving observer, stamp the grid separately
+    /// (e.g. integer `revealRadius` for the voxelized floor).
+    ///
+    /// Tiers. The first `kMaxFogVisionCircles` sources since the last
+    /// `clearVisionCircles`, in call order, are analytic; add the
+    /// highest-priority sources first. Every later source is field-tier: its
+    /// XY disc (cells whose centres lie within @p radius of
+    /// `roundHalfUp(cx, cy)`, the `revealRadius` metric) is stamped visible
+    /// into the world field's transient layer until `clearVisionCircles`. The
+    /// tier ignores @p edge, the height terms, line of sight and channels, and
+    /// leaves no explored memory; it is never persisted. `getCell` reads it
+    /// (so a cell under a tier disc reads visible even after `setCell` wrote
+    /// it lower), and it reaches the screen only inside the fog window — a
+    /// tier disc off the window changes nothing drawn but still reads visible
+    /// through `getCell`.
     ///
     /// @p observerZ + @p zCostUp + @p zCostDown + @p freeBand shape the disc
     /// into an XY radius with an
@@ -515,8 +529,9 @@ struct C_CanvasFogOfWar {
     /// zCostUp 0, @p freeBand 0) is the back-compat plain 2D disc —
     /// byte-identical to the reveal without vertical-cost weighting.
     ///
-    /// Returns the slot the circle took — the index `setVisionCircleLineOfSight`
-    /// takes — or -1 when it was dropped. The slot starts with LOS off.
+    /// Returns the analytic slot the circle took — the index
+    /// `setVisionCircleLineOfSight` takes — or -1 when it took none (dropped,
+    /// or field-tier). The slot starts with LOS off.
     int addVisionCircle(
         float cx,
         float cy,
@@ -529,6 +544,7 @@ struct C_CanvasFogOfWar {
     ) {
         return addVisionCircle(
             observers_,
+            *field_,
             cx,
             cy,
             radius,
@@ -558,13 +574,51 @@ struct C_CanvasFogOfWar {
     }
 
     /// The slot-authoring rules the members above apply to this component's
-    /// `observers_`, on any payload.
+    /// `observers_`, on any payload. These field-free overloads author the
+    /// analytic slots only: past the cap they drop.
     static void clearVisionCircles(FrameDataFogObservers &observers) {
         observers.visionCircleCount_ = 0;
         observers.losSourceMask_ = 0;
         for (IRMath::vec4 &params : observers.losParams_) {
             params = IRMath::vec4(kFogVisionLosOff, kFogLosHardGate, 0.0f, 0.0f);
         }
+    }
+
+    /// The members' full rules on any observers / field pair: the analytic
+    /// slots plus @p field's transient tier layer. GPU-free.
+    static void
+    clearVisionCircles(FrameDataFogObservers &observers, IRPrefab::Fog::WorldField &field) {
+        clearVisionCircles(observers);
+        field.clearTransient();
+    }
+
+    static int addVisionCircle(
+        FrameDataFogObservers &observers,
+        IRPrefab::Fog::WorldField &field,
+        float cx,
+        float cy,
+        float radius,
+        float edge,
+        float observerZ,
+        float zCostUp,
+        float zCostDown,
+        float freeBand
+    ) {
+        if (radius > 0.0f && observers.visionCircleCount_ >= kMaxFogVisionCircles) {
+            field.stampTransientDisc(IRMath::vec2(cx, cy), radius);
+            return -1;
+        }
+        return addVisionCircle(
+            observers,
+            cx,
+            cy,
+            radius,
+            edge,
+            observerZ,
+            zCostUp,
+            zCostDown,
+            freeBand
+        );
     }
 
     static int addVisionCircle(
