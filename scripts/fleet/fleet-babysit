@@ -373,9 +373,17 @@ resume_fail_streak=0
 # byte mapped to '-' (Claude Code's own project-dir munging; runs are not
 # collapsed, so ".../.claude/worktrees" -> "...--claude-worktrees"). Derived
 # from `pwd` so it matches whatever worktree this babysit instance is
-# running in.
+# running in. Claude Code munges the cwd as its own process sees it: on
+# native Windows that is the Windows spelling ("C:/Users/..." ->
+# "C--Users-..."), not the MSYS one ("/c/Users/..." -> "-c-Users-..."), so
+# the path is converted before the munge there.
 project_transcripts_dir() {
-    printf '%s' "$(pwd)" | sed 's/[^A-Za-z0-9]/-/g'
+    local cwd
+    cwd=$(pwd)
+    case "$(uname -s)" in
+        MINGW*|MSYS*|CYGWIN*) cwd=$(cygpath -m "$cwd") ;;
+    esac
+    printf '%s' "$cwd" | sed 's/[^A-Za-z0-9]/-/g'
 }
 
 # Exit 0 = the session-id's transcript exists on disk; 1 = missing/unreadable.
