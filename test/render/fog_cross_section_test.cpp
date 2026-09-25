@@ -577,6 +577,7 @@ TEST(FogCrossSectionShaderParity, LosGateIsIdenticalAcrossBackends) {
 #include <irreden/render/shader.hpp>
 #include <irreden/render/texture.hpp>
 
+#include <bit>
 #include <cstdint>
 #include <cstring>
 #include <limits>
@@ -1203,8 +1204,23 @@ struct FogLosSmoothProbeHeader {
 };
 static_assert(sizeof(FogLosSmoothProbeHeader) == 32, "must match the smooth probe's std430 header");
 
+// The world side face whose outward normal @p cardinal rotates onto @p view's.
+IRMath::FaceId worldSideFaceOf(IRMath::FaceId view, IRMath::CardinalIndex cardinal) {
+    const IRMath::ivec3 viewNormal(IRMath::faceOutwardNormal(view));
+    for (int id = 0; id < 4; ++id) {
+        const auto face = static_cast<IRMath::FaceId>(id);
+        if (IRMath::rotateCardinalZ(IRMath::ivec3(IRMath::faceOutwardNormal(face)), cardinal) ==
+            viewNormal) {
+            return face;
+        }
+    }
+    return IRMath::FaceId::NONE;
+}
+
 // Side-face pixels of a few voxels on both lattices, every cardinal, micro and
-// plain rasters: (isoRel, rawDepth, viewFace) + (scale, microFaces, cardinal).
+// plain rasters: (isoRel, rawDepth, worldFace) + (scale, microFaces, cardinal,
+// viewFace). The emitters straddle the fixture's ridge, so the columns their
+// faces look into are both occluded and visible.
 std::vector<IRMath::ivec4> smoothProbeFacePixels() {
     std::vector<IRMath::ivec4> pixels;
     const IRMath::vec3 emitters[] = {
@@ -1235,9 +1251,11 @@ std::vector<IRMath::ivec4> smoothProbeFacePixels() {
                                 iso.x,
                                 iso.y,
                                 microPos.x + microPos.y + microPos.z,
-                                face
+                                static_cast<int>(
+                                    worldSideFaceOf(static_cast<IRMath::FaceId>(face), cardinal)
+                                )
                             );
-                            pixels.emplace_back(scale, micro ? 1 : 0, c, 0);
+                            pixels.emplace_back(scale, micro ? 1 : 0, c, face);
                         }
                     }
                 }
@@ -1256,8 +1274,12 @@ std::vector<IRMath::ivec4> smoothProbeFacePixels() {
 // Non-vacuity: each softness has occluded, visible and partial samples in the
 // disc. At softness 0 every tap verdict is 0 or 1, so the partial samples are
 // the fractional-XY ones whose four taps straddle a boundary — the bilinear
-// blend is what they pin. The face arm runs fogLosFaceVoxel over enumerated side-face pixels and
-// matches the CPU twin exactly.
+// blend is what they pin. The face arm runs the fog kernel's face chain from the
+// world face over enumerated side-face pixels: the view face, the recovered
+// voxel, and fogLosFaceSample's column and height match the CPU twins
+// (losFaceVoxel, losFaceColumn) exactly, and the single-tap visibility matches
+// that column's cellVerdict within 1e-3, with occluded and visible faces at
+// each softness.
 TEST_F(FogCrossSectionTest, GpuSmoothOcclusionMatchesTheCpuOracle) {
     using namespace IRRender;
     using IRComponents::C_CanvasFogOfWar;
@@ -1360,10 +1382,7 @@ TEST_F(FogCrossSectionTest, GpuSmoothOcclusionMatchesTheCpuOracle) {
             BufferTarget::SHADER_STORAGE,
             kBindingLosProbeOut
         };
-        const std::vector<IRMath::ivec4> faceSeed(
-            static_cast<std::size_t>(faceCount),
-            IRMath::ivec4(-9999)
-        );
+        const std::vector<IRMath::ivec4> faceSeed(facePixels.size(), IRMath::ivec4(-9999));
         Buffer faceOut{
             faceSeed.data(),
             faceSeed.size() * sizeof(IRMath::ivec4),
@@ -1390,7 +1409,7 @@ TEST_F(FogCrossSectionTest, GpuSmoothOcclusionMatchesTheCpuOracle) {
 
         std::vector<IRMath::vec4> samples(positions.size(), IRMath::vec4(-1.0f));
         sampleOut.getSubData(0, samples.size() * sizeof(IRMath::vec4), samples.data());
-        std::vector<IRMath::ivec4> faces(static_cast<std::size_t>(faceCount), IRMath::ivec4(-9999));
+        std::vector<IRMath::ivec4> faces(facePixels.size(), IRMath::ivec4(-9999));
         faceOut.getSubData(0, faces.size() * sizeof(IRMath::ivec4), faces.data());
 
         const FogLineOfSightField field{horizons.data()};
@@ -1423,20 +1442,50 @@ TEST_F(FogCrossSectionTest, GpuSmoothOcclusionMatchesTheCpuOracle) {
         EXPECT_GT(visible, 0) << "softness " << softness;
         EXPECT_GT(partial, 0) << "softness " << softness;
 
+        int faceOccluded = 0;
+        int faceVisible = 0;
         for (int i = 0; i < faceCount; ++i) {
-            const IRMath::ivec4 pixel = facePixels[static_cast<std::size_t>(2 * i)];
-            const IRMath::ivec4 raster = facePixels[static_cast<std::size_t>(2 * i + 1)];
-            const IRMath::ivec3 expected = IRPrefab::Fog::losFaceVoxel(
+            const auto index = static_cast<std::size_t>(2 * i);
+            const IRMath::ivec4 pixel = facePixels[index];
+            const IRMath::ivec4 raster = facePixels[index + 1];
+            const auto viewFace = static_cast<IRMath::FaceId>(raster.w);
+            const IRMath::ivec3 voxel = IRPrefab::Fog::losFaceVoxel(
                 IRMath::ivec2(pixel),
                 pixel.z,
-                static_cast<IRMath::FaceId>(pixel.w),
+                viewFace,
                 raster.x,
                 raster.y != 0,
                 static_cast<IRMath::CardinalIndex>(raster.z)
             );
-            ASSERT_EQ(IRMath::ivec3(faces[static_cast<std::size_t>(i)]), expected)
+            const IRMath::ivec2 column =
+                IRPrefab::Fog::losFaceColumn(voxel, static_cast<IRMath::FaceId>(pixel.w));
+            const float cpuVisibility = field.cellVerdict(
+                0,
+                column.x,
+                column.y,
+                static_cast<float>(voxel.z),
+                softness
+            );
+            const IRMath::ivec4 gpuVoxel = faces[index];
+            const IRMath::ivec4 gpuSample = faces[index + 1];
+            ASSERT_EQ(gpuVoxel.w, raster.w) << "GPU view face diverged on face pixel " << i;
+            ASSERT_EQ(IRMath::ivec3(gpuVoxel), voxel)
                 << "GPU and CPU face recovery disagree on face pixel " << i;
+            ASSERT_EQ(IRMath::ivec2(gpuSample), column)
+                << "GPU face sample column diverged on face pixel " << i;
+            ASSERT_EQ(std::bit_cast<float>(gpuSample.z), static_cast<float>(voxel.z))
+                << "GPU face sample height diverged on face pixel " << i;
+            ASSERT_NEAR(std::bit_cast<float>(gpuSample.w), cpuVisibility, 1e-3f)
+                << "GPU and CPU face visibility disagree on face pixel " << i << " softness "
+                << softness;
+            if (cpuVisibility == 0.0f) {
+                ++faceOccluded;
+            } else if (cpuVisibility == 1.0f) {
+                ++faceVisible;
+            }
         }
+        EXPECT_GT(faceOccluded, 0) << "softness " << softness;
+        EXPECT_GT(faceVisible, 0) << "softness " << softness;
     }
 }
 

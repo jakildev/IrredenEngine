@@ -4,8 +4,10 @@
 // Includes the REAL gate (ir_fog_los.glsl) and reveal curve (ir_iso_common.glsl).
 // Sample arm: for every float position, the smooth visibility and the gated
 // reveal the fog kernel's source loop computes for source 0. Face arm: for
-// every enumerated side-face pixel, the line-of-sight voxel fogLosFaceVoxel
-// recovers.
+// every enumerated side-face pixel, the chain c_fog_to_trixel's
+// fogLosPixelSample runs from the world face on — the view face, the recovered
+// line-of-sight voxel, the fogLosFaceSample column and height, and that
+// sample's smooth visibility for source 0.
 
 #version 450 core
 #include "../../../engine/render/src/shaders/ir_iso_common.glsl"
@@ -24,7 +26,7 @@ layout(std430, binding = 2) readonly buffer FogLosSmoothProbeIn {
     vec4 samplePositions[];
 };
 
-// Per face pixel: (isoRel.x, isoRel.y, rawDepth, viewFaceId),
+// Per face pixel: (isoRel.x, isoRel.y, rawDepth, worldFaceId),
 // (scale, microFaces, cardinalIndex, unused).
 layout(std430, binding = 3) readonly buffer FogLosFaceProbeIn {
     ivec4 facePixels[];
@@ -34,6 +36,7 @@ layout(std430, binding = 1) writeonly buffer FogLosSmoothProbeOut {
     vec4 sampleResults[];
 };
 
+// Per face pixel: (voxel.xyz, viewFaceId), (cell.xy, bits(z), bits(visibility)).
 layout(std430, binding = 4) writeonly buffer FogLosFaceProbeOut {
     ivec4 faceResults[];
 };
@@ -51,9 +54,13 @@ void main() {
     if (index < faceCount) {
         const ivec4 pixel = facePixels[2 * index];
         const ivec4 raster = facePixels[2 * index + 1];
-        faceResults[index] = ivec4(
-            fogLosFaceVoxel(pixel.xy, pixel.z, pixel.w, raster.x, raster.y != 0, raster.z),
-            0
-        );
+        const int viewFaceId = rotateFaceIdCardinalZ(pixel.w, raster.z);
+        const ivec3 voxel =
+            fogLosFaceVoxel(pixel.xy, pixel.z, viewFaceId, raster.x, raster.y != 0, raster.z);
+        const FogLosSample s = fogLosFaceSample(voxel, pixel.w);
+        const float visibility = fogLosSmoothVisibility(fogLosLoadTaps(s, 0), 0, s, softness);
+        faceResults[2 * index] = ivec4(voxel, viewFaceId);
+        faceResults[2 * index + 1] =
+            ivec4(s.cell, floatBitsToInt(s.z), floatBitsToInt(visibility));
     }
 }
