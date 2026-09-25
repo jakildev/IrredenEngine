@@ -126,7 +126,9 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
             IRPrefab::PerAxisCanvas::LightingRouteScope route(
                 voxelFrameDataBuf_,
                 voxelCompactedBuf_,
-                voxelIndirectBuf_
+                voxelIndirectBuf_,
+                axes.size_,
+                mainTextures.size_
             );
             IRPrefab::PerAxisCanvas::dispatchPerAxisCells(axes, [&](int axis) {
                 auto &tex = axes.axes_[axis];

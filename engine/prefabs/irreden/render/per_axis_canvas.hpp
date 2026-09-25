@@ -243,10 +243,13 @@ inline void restoreVoxelCompactionSlots(
 // lighting): flips the shared voxel frame-data UBO onto the per-axis decode
 // route (perAxisRoute_ = 1 — a boolean route flag on the lighting path; the
 // shader recovers the axis per-pixel from faceId, distinct from stage-1's
-// 1/2/3 axis selector) at the capped lattice density the store wrote,
-// and restores the single-canvas state on destruction: route 0, the uncapped
-// effSub density, and the voxel-compaction slots 25/26 (see
-// restoreVoxelCompactionSlots — the loop below borrows them). One definition
+// 1/2/3 axis selector) at the capped lattice density the store wrote, with
+// canvasSizePixels_ set to the per-axis store size — the overflow-entry kernels
+// derive the store's origin anchor from it, and the cell kernels read their
+// bound image's own size instead. Restores the single-canvas state on
+// destruction: route 0, the uncapped effSub density, the main canvas size, and
+// the voxel-compaction slots 25/26 (see restoreVoxelCompactionSlots — the loop
+// below borrows them). One definition
 // of the patch/restore discipline those three dispatches each hand-rolled —
 // the FrameYawRestoreGuard idiom (system_bake_sun_shadow_map.hpp) applied to
 // the lighting family, so a new consumer cannot forget a restore.
@@ -255,11 +258,14 @@ class LightingRouteScope {
     LightingRouteScope(
         IRRender::Buffer *frameDataUbo,
         IRRender::Buffer *&voxelCompactedBuf,
-        IRRender::Buffer *&voxelIndirectBuf
+        IRRender::Buffer *&voxelIndirectBuf,
+        IRMath::ivec2 storeCanvasSize,
+        IRMath::ivec2 mainCanvasSize
     )
         : m_frameDataUbo{frameDataUbo}
         , m_voxelCompactedBuf{voxelCompactedBuf}
-        , m_voxelIndirectBuf{voxelIndirectBuf} {
+        , m_voxelIndirectBuf{voxelIndirectBuf}
+        , m_mainCanvasSize{mainCanvasSize} {
         const int kPerAxisRoute = 1;
         m_frameDataUbo->subData(
             offsetof(IRRender::FrameDataVoxelToCanvas, perAxisRoute_),
@@ -267,6 +273,7 @@ class LightingRouteScope {
             &kPerAxisRoute
         );
         setUboSubdivisionDensity(m_frameDataUbo, subdivisionDensity());
+        setUboCanvasSize(storeCanvasSize);
     }
 
     ~LightingRouteScope() {
@@ -277,6 +284,7 @@ class LightingRouteScope {
             &kSingleCanvasRoute
         );
         setUboSubdivisionDensity(m_frameDataUbo, IRRender::getVoxelRenderEffectiveSubdivisions());
+        setUboCanvasSize(m_mainCanvasSize);
         restoreVoxelCompactionSlots(m_voxelCompactedBuf, m_voxelIndirectBuf);
     }
 
@@ -286,12 +294,21 @@ class LightingRouteScope {
     LightingRouteScope &operator=(LightingRouteScope &&) = delete;
 
   private:
+    void setUboCanvasSize(IRMath::ivec2 size) {
+        m_frameDataUbo->subData(
+            offsetof(IRRender::FrameDataVoxelToCanvas, canvasSizePixels_),
+            sizeof(IRMath::ivec2),
+            &size
+        );
+    }
+
     IRRender::Buffer *m_frameDataUbo;
     // References to the owning system's lazily-resolved members (the
     // restoreVoxelCompactionSlots contract) — the scope is stack-local inside
     // one tick, so the referents always outlive it.
     IRRender::Buffer *&m_voxelCompactedBuf;
     IRRender::Buffer *&m_voxelIndirectBuf;
+    IRMath::ivec2 m_mainCanvasSize;
 };
 
 // One indirect compute dispatch per axis over that axis's compacted OCCUPIED
