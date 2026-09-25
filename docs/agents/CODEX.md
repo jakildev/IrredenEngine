@@ -103,7 +103,8 @@ References:
 4. `fleet-codex --role worker --doctor` probes real create/rename/delete
    access inside the sandbox and, on macOS, counts the displays the
    launcher's session sees, without a model call. Every unattended launch
-   repeats both (the display check skips target-less batch roles); a
+   repeats both (the display check covers only the roles that launch
+   demos: worker, smoke-worker, architect); a
    failure records the kind (`permissions` / `display`) and reason in
    `state/runtime-cooldown/codex.json`, exits 2 (preserving a resume
    sidecar), and pauses Codex dispatch 15 minutes while Claude stays

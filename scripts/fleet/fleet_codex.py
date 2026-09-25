@@ -18,6 +18,9 @@ from fleet_runtime import BATCH_ROLES, CODEX_MODELS, atomic_json
 ROOT = Path(__file__).resolve().parents[2]
 ROLES = ("worker", "sonnet-reviewer", "opus-reviewer", "smoke-worker", *BATCH_ROLES,
          "opus-architect")
+# Roles that launch demos. Reviewers read diffs and batch roles take no
+# target, so a missing display must not cool Codex down for them.
+DISPLAY_ROLES = ("worker", "smoke-worker", "opus-architect")
 
 
 def prompt(role, mode, target, worktree=None):
@@ -196,9 +199,8 @@ def run(args):
         raise ValueError("codex CLI is not installed")
     prepare(worktree, args.role)
     if not args.interactive:
-        # Batch roles never launch a demo, so only targeted roles need a display.
         checks = [("permissions", lambda: probe(worktree, writable_roots(worktree, state)))]
-        if args.role not in BATCH_ROLES:
+        if args.role in DISPLAY_ROLES:
             checks.append(("display", probe_display))
         for kind, check_host in checks:
             try:

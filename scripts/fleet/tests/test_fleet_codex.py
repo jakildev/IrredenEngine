@@ -134,14 +134,19 @@ class Transport(unittest.TestCase):
             self.assertIn("index.lock denied", data["reason"])
             self.assertEqual(data["worktree"], str(worktree))
 
-    def test_missing_display_cools_provider_without_launching_model(self):
+    def _run_without_display(self, role):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp).resolve()
             worktree = root / ".claude/worktrees/pool-1"
-            args = SimpleNamespace(prepare=False, check=False, doctor=False, role="worker",
+            args = SimpleNamespace(prepare=False, check=False, doctor=False, role=role,
                                    model="gpt-5.6-sol", effort="high", mode="live",
                                    resume="", interactive=False, print_launch=False)
             stderr = io.StringIO()
+
+            def launch(*_args, **_kwargs):
+                return Mock(stdout=iter(['{"type":"turn.completed"}\n']),
+                            wait=Mock(return_value=0), poll=Mock(return_value=0))
+
             with patch.object(codex.Path, "cwd", return_value=worktree), \
                     patch.object(codex, "writable_roots", return_value=[str(worktree)]), \
                     patch.object(codex, "prepare"), patch.object(codex, "prompt"), \
@@ -149,16 +154,38 @@ class Transport(unittest.TestCase):
                     patch.object(codex, "probe_display",
                                  side_effect=ValueError("no display session")), \
                     patch.object(codex.shutil, "which", return_value="codex"), \
-                    patch.object(codex.subprocess, "Popen") as launch, \
+                    patch.object(codex.subprocess, "Popen", side_effect=launch) as popen, \
                     patch.object(codex.sys, "stderr", stderr), \
                     patch.dict(codex.os.environ, {"FLEET_STATE_DIR": str(root / "state"),
                                                   "FLEET_DISPATCH_TARGET": "task:engine:901"},
                                clear=True):
-                self.assertEqual(codex.run(args), 2)
-                launch.assert_not_called()
-            self.assertIn("no display session", stderr.getvalue())
-            data = json.loads((root / "state/runtime-cooldown/codex.json").read_text())
-            self.assertEqual(data["kind"], "display")
+                rc = codex.run(args)
+            cooldown = root / "state/runtime-cooldown/codex.json"
+            data = json.loads(cooldown.read_text()) if cooldown.is_file() else None
+            return rc, popen.called, stderr.getvalue(), data
+
+    def test_missing_display_cools_provider_without_launching_model(self):
+        for role in codex.DISPLAY_ROLES:
+            with self.subTest(role=role):
+                rc, launched, stderr, data = self._run_without_display(role)
+                self.assertEqual(rc, 2)
+                self.assertFalse(launched)
+                self.assertIn("no display session", stderr)
+                self.assertEqual(data["kind"], "display")
+
+    def test_reviewer_roles_launch_without_a_display(self):
+        for role in ("sonnet-reviewer", "opus-reviewer"):
+            with self.subTest(role=role):
+                rc, launched, _stderr, data = self._run_without_display(role)
+                self.assertEqual(rc, 0)
+                self.assertTrue(launched)
+                self.assertIsNone(data)
+
+    def test_every_role_is_classified_for_the_display_preflight(self):
+        # A new role must state whether it launches demos.
+        self.assertEqual(set(codex.ROLES),
+                         {*codex.DISPLAY_ROLES, *codex.BATCH_ROLES,
+                          "sonnet-reviewer", "opus-reviewer"})
 
     def test_display_probe_reads_online_displays_on_macos_only(self):
         self.assertIsNone(doctor.probe_display("linux"))
