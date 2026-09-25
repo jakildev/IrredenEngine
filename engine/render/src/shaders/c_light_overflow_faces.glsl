@@ -71,9 +71,6 @@ layout(std140, binding = 23) uniform LightVolumeParams {
 
 layout(binding = 3) uniform sampler2D paletteLUT;
 layout(binding = 5) uniform sampler3D lightVolume;
-// Winning-light ID volume, image unit 7 — read (NEAREST) only on the
-// has-SPOT path to attenuate a spot winner's volume contribution.
-layout(rgba8, binding = 7) readonly uniform image3D lightVolumeId;
 
 // The overflow entry list + ctrl block live in the per-axis resolve scratch.
 // Slot 28 is held by the sun-depth map this pass samples, so the scratch is
@@ -154,7 +151,7 @@ void main() {
     // Light-volume bleed at the recovered world pos (+ SPOT cone shaping),
     // identical to the cell path.
     if (lightVolumeEnabled != 0) {
-        const vec3 light = surfaceLightVolume(pos3D, lightVolumeWorldOrigin, lightVolume, lightVolumeId);
+        const vec3 light = surfaceLightVolume(pos3D, lightVolumeWorldOrigin, lightVolume);
         baseRgb = baseRgb + albedo.rgb * light;
     }
 

@@ -112,12 +112,15 @@ class HostGateTest(unittest.TestCase):
 
 class ShaderTreeContractTest(unittest.TestCase):
     """The real tree: every program resolves and takes a nonce. A compile-time-constant
-    source-face header index is the construct that costs NVIDIA minutes per cold link."""
+    source-face header index is the construct that costs NVIDIA minutes per cold link.
+    An image-typed function parameter has no portable form: NVIDIA rejects imageLoad on
+    one without a format qualifier, and Mesa rejects a format qualifier on a parameter."""
 
     def test_every_program_resolves(self):
         programs = _scv.select_programs(_scv.DEFAULT_SHADER_DIR)
         self.assertGreater(len(programs), 40)
         header_constant_index = re.compile(r"\[\s*kSourceFaceHeaderOffset\s*\]")
+        image_parameter = re.compile(r"\b[iu]?image(?:[123]D|Cube|2DRect|Buffer)\w*\s+\w+\s*[,)]")
         include_directive = re.compile(r'^[ \t]*#include "[^"]*"', re.MULTILINE)
         for path in programs:
             with self.subTest(program=path.name):
@@ -126,6 +129,7 @@ class ShaderTreeContractTest(unittest.TestCase):
                 self.assertIsNone(include_directive.search(source))
                 _scv.inject_nonce(source, "0")
                 self.assertIsNone(header_constant_index.search(source))
+                self.assertIsNone(image_parameter.search(source))
 
 
 if __name__ == "__main__":
