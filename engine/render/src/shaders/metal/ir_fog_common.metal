@@ -24,6 +24,9 @@ struct FogObserverData {
     int losSourceMask;
     float4 visionCircleHeights[kMaxFogVisionCircles];
     float4 unexploredColor;
+    // Per-source line-of-sight softness, source i at [i / 4][i % 4]: < 0 is the
+    // hard gate, >= 0 the smooth gate with that band in voxels.
+    float4 losSoftness[2];
 };
 
 struct FogReveal {
@@ -54,10 +57,34 @@ inline float3 fogStateColor(float state, float3 sourceColor, float3 unexplored) 
     return mix(unexplored, exploredColor, t);
 }
 
+inline bool fogLosSmoothSampleNeeded(
+    bool fogWholeBody,
+    constant FogObserverData& fogObservers
+) {
+    if (fogWholeBody) {
+        return false;
+    }
+    for (int i = 0; i < fogObservers.visionCircleCount; ++i) {
+        if (fogLosSourceGated(fogObservers.losSourceMask, i) &&
+            fogObservers.losSoftness[i >> 2][i & 3] >= 0.0f) {
+            return true;
+        }
+    }
+    return false;
+}
+
+inline FogLosSample fogLosVoxelSample(float3 pos3D, int faceId) {
+    if ((faceId >> 1) == kZFace) {
+        return fogLosSurfaceSample(pos3D);
+    }
+    return fogLosFaceSample(roundHalfUp(pos3D), faceId);
+}
+
 inline FogReveal fogRevealSample(
     float3 pos3D,
     float aaFloor,
     bool fogWholeBody,
+    FogLosSample losSample,
     constant FogObserverData& fogObservers,
     texture2d<float, access::read> canvasFogOfWar,
     texture2d<float, access::read> fogLineOfSight
@@ -71,11 +98,35 @@ inline FogReveal fogRevealSample(
     const float gridState = fogTap(fogCell, fogSize, canvasFogOfWar);
     float state = gridState;
     float hardDistPastRim = kFogRimFadeCells;
+    FogLosTaps losTaps0;
+    FogLosTaps losTaps1;
+    bool losTapsLoaded0 = false;
+    bool losTapsLoaded1 = false;
 
     for (int i = 0; i < fogObservers.visionCircleCount; ++i) {
-        if (fogLosSourceGated(fogObservers.losSourceMask, i) && !fogWholeBody &&
+        float losVisibility = 1.0f;
+        const float softness = fogObservers.losSoftness[i >> 2][i & 3];
+        if (fogLosSourceGated(fogObservers.losSourceMask, i) && !fogWholeBody && softness < 0.0f &&
             !fogLosVisible(surfaceVoxel, i, fogLineOfSight)) {
             continue;
+        }
+        if (fogLosSourceGated(fogObservers.losSourceMask, i) && !fogWholeBody && softness >= 0.0f) {
+            if (i < kFogLosSourcesPerTile) {
+                if (!losTapsLoaded0) {
+                    losTaps0 = fogLosLoadTaps(losSample, 0, fogLineOfSight);
+                    losTapsLoaded0 = true;
+                }
+                losVisibility = fogLosSmoothVisibility(losTaps0, i, losSample, softness);
+            } else {
+                if (!losTapsLoaded1) {
+                    losTaps1 = fogLosLoadTaps(losSample, 1, fogLineOfSight);
+                    losTapsLoaded1 = true;
+                }
+                losVisibility = fogLosSmoothVisibility(losTaps1, i, losSample, softness);
+            }
+            if (losVisibility <= 0.0f) {
+                continue;
+            }
         }
         const float4 heights = fogObservers.visionCircleHeights[i];
         const float zCostUp = fogWholeBody ? 0.0f : heights.y;
@@ -86,15 +137,19 @@ inline FogReveal fogRevealSample(
             zCostUp * max(dzUp - heights.w, 0.0f) +
             zCostDown * max(dzDown - heights.w, 0.0f);
         const float aa = max(fogObservers.visionCircles[i].w, aaFloor);
-        const float reveal = 1.0f - smoothstep(
+        const float reveal = losVisibility * (1.0f - smoothstep(
             fogObservers.visionCircles[i].z - aa,
             fogObservers.visionCircles[i].z + aa,
             distEff
-        );
+        ));
         state = max(state, reveal);
         if (fogObservers.visionCircles[i].w == 0.0f) {
-            hardDistPastRim =
-                min(hardDistPastRim, distEff - fogObservers.visionCircles[i].z);
+            const float distPastRim = distEff - fogObservers.visionCircles[i].z;
+            hardDistPastRim = min(
+                hardDistPastRim,
+                losVisibility < 1.0f ? mix(kFogRimFadeCells, distPastRim, losVisibility)
+                                     : distPastRim
+            );
         }
     }
     return FogReveal{state, gridState, hardDistPastRim};

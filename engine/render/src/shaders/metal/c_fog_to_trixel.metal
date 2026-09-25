@@ -36,6 +36,31 @@ static float3 fogPixelToWorld(
     );
 }
 
+// The smooth line-of-sight sample of a single-canvas vertical face — mirror of
+// the GLSL twin.
+static FogLosSample fogLosPixelFaceSample(
+    int2 pixel,
+    int encoded,
+    int worldFaceId,
+    constant FrameDataVoxelToTrixel& frameData
+) {
+    const int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
+    const int3 voxel = fogLosFaceVoxel(
+        trixelCanvasPixelToIsoRel(
+            pixel,
+            frameData.trixelCanvasOffsetZ1,
+            frameData.frameCanvasOffset,
+            frameData.voxelRenderOptions
+        ),
+        decodeDepthSingle(encoded),
+        rotateFaceIdCardinalZ(worldFaceId, cardinalIndex),
+        effectiveTrixelSubdivisionScale(frameData.voxelRenderOptions),
+        frameData.voxelRenderOptions.x != 0,
+        cardinalIndex
+    );
+    return fogLosFaceSample(voxel, worldFaceId);
+}
+
 kernel void c_fog_to_trixel(
     constant FrameDataVoxelToTrixel& frameData [[buffer(7)]],
     texture2d<float, access::read_write> trixelColors [[texture(0)]],
@@ -94,10 +119,19 @@ kernel void c_fog_to_trixel(
         fogWholeBody = decodeFogWholeBody(triangleCanvasEntityIds.read(uint2(pixel)).xy);
     }
 
+    // Mirror of the GLSL twin: a single-canvas vertical face recovers its voxel
+    // from the raster, only when a smooth source reads it.
+    FogLosSample losSample = fogLosVoxelSample(pos3D, faceId);
+    if (frameData.perAxisRoute == 0 && (faceId >> 1) != kZFace &&
+        fogLosSmoothSampleNeeded(fogWholeBody, fogObservers)) {
+        losSample = fogLosPixelFaceSample(pixel, encoded, faceId, frameData);
+    }
+
     const FogReveal reveal = fogRevealSample(
         pos3D,
         aaFloor,
         fogWholeBody,
+        losSample,
         fogObservers,
         canvasFogOfWar,
         fogLineOfSight

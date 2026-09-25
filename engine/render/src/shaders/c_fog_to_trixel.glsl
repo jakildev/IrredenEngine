@@ -75,6 +75,22 @@ vec3 fogPixelToWorld(ivec2 pixel, int encoded, int faceId, ivec2 size) {
     );
 }
 
+// The smooth line-of-sight sample of a single-canvas vertical face: the column
+// its emitting voxel's face looks into, the voxel recovered from the raster
+// (ir_fog_los.glsl).
+FogLosSample fogLosPixelFaceSample(ivec2 pixel, int encoded, int worldFaceId) {
+    const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
+    const ivec3 voxel = fogLosFaceVoxel(
+        trixelCanvasPixelToIsoRel(pixel, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions),
+        decodeDepthSingle(encoded),
+        rotateFaceIdCardinalZ(worldFaceId, cardinalIndex),
+        effectiveTrixelSubdivisionScale(voxelRenderOptions),
+        voxelRenderOptions.x != 0,
+        cardinalIndex
+    );
+    return fogLosFaceSample(voxel, worldFaceId);
+}
+
 void main() {
     const ivec2 size = imageSize(trixelColors);
     ivec2 pixel;
@@ -111,7 +127,15 @@ void main() {
         fogWholeBody = decodeFogWholeBody(imageLoad(triangleCanvasEntityIds, pixel).xy);
     }
 
-    const FogReveal reveal = fogRevealSample(pos3D, aaFloor, fogWholeBody);
+    // A per-axis cell's pos3D rounds to its emitting voxel; a single-canvas
+    // vertical face recovers it from the raster, and only when a smooth source
+    // reads it.
+    FogLosSample losSample = fogLosVoxelSample(pos3D, faceId);
+    if (perAxisRoute == 0 && (faceId >> 1) != kZFace && fogLosSmoothSampleNeeded(fogWholeBody)) {
+        losSample = fogLosPixelFaceSample(pixel, encoded, faceId);
+    }
+
+    const FogReveal reveal = fogRevealSample(pos3D, aaFloor, fogWholeBody, losSample);
     if (reveal.state >= 1.0) {
         return;
     }

@@ -75,7 +75,8 @@ void main() {
         aaFloor = length(neighbor.xy - pos3D.xy);
     }
 
-    const FogReveal reveal = fogRevealSample(pos3D, aaFloor, fogWholeBody);
+    const FogReveal reveal =
+        fogRevealSample(pos3D, aaFloor, fogWholeBody, fogLosVoxelSample(pos3D, faceId));
     if (reveal.state >= 1.0) {
         return;
     }

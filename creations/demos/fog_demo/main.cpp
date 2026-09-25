@@ -202,6 +202,11 @@ void probeLuaFogUpload() {
             observers.visionCircleHeights_[1] == vec4(3.0f, 0.5f, 0.5f, 1.0f),
         "IRFog Lua two-source probe uploaded unexpected height records"
     );
+    requireLuaFogSelftest(
+        observers.losSourceMask_ == (1 << 1) && observers.losSoftness(1) == 0.75f &&
+            observers.losSoftness(0) == kFogLosHardGate,
+        "IRFog Lua line-of-sight entry uploaded an unexpected gate"
+    );
     IR_LOG_INFO(
         "LUA-FOG-PROBE sources={} centers={},{};{},{} observerZ={} zCostUp={} "
         "zCostDown={} freeBand={} PASS",
@@ -792,6 +797,9 @@ enum class OcclusionScene {
     GROUND_LOS_OFF,
 };
 OcclusionScene g_occlusion = OcclusionScene::NONE;
+// --los-softness: every gated --occlusion source takes the smooth gate with this
+// band; absent keeps the hard gate.
+float g_occlusionLosSoftness = kFogLosHardGate;
 constexpr float kOcclusionRadius = 12.0f;
 constexpr float kOcclusionGroundZ = 4.5f;
 constexpr float kOcclusionEyeHeight = 1.5f;
@@ -830,6 +838,16 @@ constexpr IRVideo::AutoScreenshotShot kOcclusionFlatShots[] = {
 };
 constexpr IRVideo::AutoScreenshotShot kOcclusionGroundLosOffShots[] = {
     {6.0f, vec2(0, 0), 0.0f, "fog_occlusion_ground_los_off"},
+};
+// The same poses under --los-softness, named apart from the hard-gate rows.
+constexpr IRVideo::AutoScreenshotShot kOcclusionGroundSmoothShots[] = {
+    {6.0f, vec2(0, 0), 0.0f, "fog_occlusion_smooth"},
+};
+constexpr IRVideo::AutoScreenshotShot kOcclusionHighGroundSmoothShots[] = {
+    {6.0f, vec2(0, 0), 0.0f, "fog_occlusion_high_ground_smooth"},
+};
+constexpr IRVideo::AutoScreenshotShot kOcclusionBlockerSmoothShots[] = {
+    {6.0f, vec2(0, 0), 0.0f, "fog_occlusion_blocker_smooth"},
 };
 
 // One-shot point-query probe for the --occlusion scenes: after warmup, ask
@@ -993,6 +1011,12 @@ int main(int argc, char **argv) {
          "ground-los-off"},
         "none"
     );
+    IREngine::args().number(
+        "--los-softness",
+        "With --occlusion: gate every source with the smooth line-of-sight gate, "
+        "this band wide in voxels (absent = the hard gate)",
+        kFogLosHardGate
+    );
     IREngine::args().flag(
         "--lua-fog-selftest",
         "Drive the engine-owned IRFog binding and verify its observer UBO upload"
@@ -1029,6 +1053,7 @@ int main(int argc, char **argv) {
     }
     g_luaFogSelftest = IREngine::args().getFlag("--lua-fog-selftest");
     g_occlusion = parseOcclusionScene(IREngine::args().getEnum("--occlusion"));
+    g_occlusionLosSoftness = IREngine::args().getFloat("--los-softness");
     if (g_luaFogSelftest) {
         g_occlusion = OcclusionScene::NONE;
     }
@@ -1321,7 +1346,18 @@ void initSystems() {
         // --edge-smooth zoom on the GRID cross-section clip edge (hard vs smooth
         // disc); --player-walk captures the walking reveal sequence; the
         // default captures the three static fog-boundary shots.
-        if (g_occlusion != OcclusionScene::NONE) {
+        const bool smoothOcclusion = g_occlusionLosSoftness >= 0.0f;
+        if (smoothOcclusion &&
+            (g_occlusion == OcclusionScene::GROUND || g_occlusion == OcclusionScene::HIGH_GROUND ||
+             g_occlusion == OcclusionScene::BLOCKER)) {
+            if (g_occlusion == OcclusionScene::GROUND) {
+                IRVideo::setAutoScreenshotShots(cfg, kOcclusionGroundSmoothShots);
+            } else if (g_occlusion == OcclusionScene::HIGH_GROUND) {
+                IRVideo::setAutoScreenshotShots(cfg, kOcclusionHighGroundSmoothShots);
+            } else {
+                IRVideo::setAutoScreenshotShots(cfg, kOcclusionBlockerSmoothShots);
+            }
+        } else if (g_occlusion != OcclusionScene::NONE) {
             switch (g_occlusion) {
             case OcclusionScene::GROUND:
                 IRVideo::setAutoScreenshotShots(cfg, kOcclusionGroundShots);
@@ -1451,7 +1487,11 @@ void addOcclusionSource(vec2 center, float observerZ, float radius, bool lineOfS
     );
     IR_ASSERT(slot >= 0, "occlusion scene vision circle was rejected");
     if (lineOfSight) {
-        IRPrefab::Fog::setVisionCircleLineOfSight(slot, kOcclusionEyeHeight);
+        IRPrefab::Fog::setVisionCircleLineOfSight(
+            slot,
+            kOcclusionEyeHeight,
+            g_occlusionLosSoftness
+        );
     }
 }
 

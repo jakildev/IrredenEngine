@@ -440,10 +440,12 @@ TEST(FogCrossSectionShaderParity, OverflowFogClassEncodingIsIdenticalAcrossBacke
 }
 
 // Test E, part 6: the line-of-sight gate. The pure helpers of the
-// ir_fog_los include pair reduce to the same maths on both backends, their
-// constants agree with each other and with the component they mirror, and both
-// shared fog reveals carry the gate at the head of their source loop and
-// declare the mask lane — so removing the gate from one backend fails here.
+// ir_fog_los include pair — the hard gate's and the smooth gate's — reduce to
+// the same maths on both backends, their constants agree with each other and
+// with the component they mirror, and both shared fog reveals carry the hard
+// gate and the smooth branch at the head of their source loop and declare the
+// mask lane and the softness tail — so removing either gate from one backend
+// fails here.
 namespace {
 
 const std::string kGlslFogLosPath = std::string(IR_TEST_RENDER_SHADER_DIR) + "/ir_fog_los.glsl";
@@ -494,7 +496,13 @@ TEST(FogCrossSectionShaderParity, LosGateIsIdenticalAcrossBackends) {
           "fogLosCellInField",
           "fogLosTexel",
           "fogLosHorizonChannel",
-          "fogLosSampleVisible"}) {
+          "fogLosSampleVisible",
+          "fogLosTapVerdict",
+          "fogLosBilinear",
+          "fogLosSmoothVisibility",
+          "fogLosSurfaceSample",
+          "fogLosFaceVoxel",
+          "fogLosFaceSample"}) {
         const std::string glslBody = extractFunctionBody(glsl, helper);
         const std::string metalBody = extractFunctionBody(metal, helper);
         ASSERT_FALSE(glslBody.empty()) << helper << " not found in ir_fog_los.glsl";
@@ -516,14 +524,30 @@ TEST(FogCrossSectionShaderParity, LosGateIsIdenticalAcrossBackends) {
     }
 
     const std::regex gate(
-        R"(if \(fogLosSourceGated\(losSourceMask, i\) && !fogWholeBody && )"
+        R"(if \(fogLosSourceGated\(losSourceMask, i\) && !fogWholeBody && softness < 0\.0f? && )"
         R"(!fogLosVisible\(surfaceVoxel, i\)\) \{ continue; \})"
+    );
+    const std::regex smoothBranch(
+        R"(if \(fogLosSourceGated\(losSourceMask, i\) && !fogWholeBody && softness >= 0\.0f?\) \{)"
     );
     for (const std::string &path : {kGlslFogCommonPath, kMetalFogCommonPath}) {
         const std::string kernel = readShaderSource(path);
         ASSERT_FALSE(kernel.empty()) << "could not read " << path;
         EXPECT_TRUE(std::regex_search(normalizeGateCallSite(kernel), gate))
             << path << " lost its line-of-sight gate";
+        EXPECT_TRUE(std::regex_search(normalizeGateCallSite(kernel), smoothBranch))
+            << path << " lost its smooth line-of-sight branch";
+        EXPECT_NE(kernel.find("losSoftness[i >> 2][i & 3]"), std::string::npos)
+            << path << " no longer reads the per-source softness";
+        EXPECT_TRUE(
+            std::regex_search(
+                kernel,
+                std::regex(
+                    R"((vec4|float4) unexploredColor;\s*(//[^\n]*\s*)*(vec4|float4) losSoftness\[2\];)"
+                )
+            )
+        ) << path
+          << " no longer declares the softness tail after the unexplored colour";
         EXPECT_TRUE(
             std::regex_search(
                 kernel,
@@ -1162,6 +1186,256 @@ TEST_F(FogCrossSectionTest, GpuOcclusionMatchesTheCpuOracle) {
     runOcclusionProbe(false, occluded, visible);
     EXPECT_EQ(occluded, 0) << "flat ground occluded itself";
     EXPECT_GT(visible, 0);
+}
+
+namespace {
+
+constexpr int kSmoothProbeLocalSize = 64;
+constexpr std::uint32_t kBindingSmoothProbeFaceIn = 3;  // std430 binding in the probe
+constexpr std::uint32_t kBindingSmoothProbeFaceOut = 4; // std430 binding in the probe
+
+struct FogLosSmoothProbeHeader {
+    IRMath::vec4 circle_;
+    float softness_;
+    std::int32_t sampleCount_;
+    std::int32_t faceCount_;
+    std::int32_t pad_;
+};
+static_assert(sizeof(FogLosSmoothProbeHeader) == 32, "must match the smooth probe's std430 header");
+
+// Side-face pixels of a few voxels on both lattices, every cardinal, micro and
+// plain rasters: (isoRel, rawDepth, viewFace) + (scale, microFaces, cardinal).
+std::vector<IRMath::ivec4> smoothProbeFacePixels() {
+    std::vector<IRMath::ivec4> pixels;
+    const IRMath::vec3 emitters[] = {
+        IRMath::vec3(3.0f, -7.0f, 4.0f),
+        IRMath::vec3(-0.5f, 0.5f, 2.5f)
+    };
+    for (int c = 0; c < 4; ++c) {
+        const auto cardinal = static_cast<IRMath::CardinalIndex>(c);
+        for (const IRMath::vec3 &emitter : emitters) {
+            for (const int scale : {1, 8}) {
+                const bool micro = scale > 1;
+                const IRMath::ivec3 cell = IRMath::rotateCardinalZ(
+                    IRMath::roundVec3HalfUp(emitter * static_cast<float>(scale)),
+                    cardinal
+                );
+                for (int face = 0; face < 4; ++face) {
+                    const bool xAxis = face < 2;
+                    const int lift = (face & 1) != 0 && micro ? scale : 0;
+                    for (int u = 0; u < scale; ++u) {
+                        const IRMath::ivec3 microPos =
+                            xAxis ? IRMath::ivec3(cell.x + lift, cell.y + u, cell.z + u)
+                                  : IRMath::ivec3(cell.x + u, cell.y + lift, cell.z + u);
+                        for (int sub = 0; sub < 2; ++sub) {
+                            const IRMath::ivec2 iso =
+                                IRMath::pos3DtoPos2DIso(microPos) +
+                                (xAxis ? IRMath::ivec2(1, 1 + sub) : IRMath::ivec2(0, 1 + sub));
+                            pixels.emplace_back(
+                                iso.x,
+                                iso.y,
+                                microPos.x + microPos.y + microPos.z,
+                                face
+                            );
+                            pixels.emplace_back(scale, micro ? 1 : 0, c, 0);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return pixels;
+}
+
+} // namespace
+
+// The smooth gate, both sides: at fractional positions around the fixture's
+// boundaries, for softness 0 and 1, the GPU visibility (the real ir_fog_los.glsl
+// over the production-built texture) matches FogLineOfSightField::visibility
+// and the gated reveal matches the field-aware oracle, both within 1e-3.
+// Non-vacuity: each softness has occluded, visible and partial samples in the
+// disc. The face arm runs fogLosFaceVoxel over enumerated side-face pixels and
+// matches the CPU twin exactly.
+TEST_F(FogCrossSectionTest, GpuSmoothOcclusionMatchesTheCpuOracle) {
+    using namespace IRRender;
+    using IRComponents::C_CanvasFogOfWar;
+    using IRComponents::FogLineOfSightField;
+
+    const std::string probePath =
+        std::string(IR_TEST_GPU_SHADER_DIR) + "/c_fog_los_smooth_probe.glsl";
+    ShaderProgram program{std::vector{ShaderStage{probePath.c_str(), ShaderType::COMPUTE}}};
+    Texture2D losTexture{
+        TextureKind::TEXTURE_2D,
+        IRComponents::kFogLosTextureWidth,
+        IRComponents::kFogLosTextureHeight,
+        TextureFormat::RGBA32F
+    };
+
+    const std::vector<std::int32_t> columns = losProbeColumns(true);
+    std::vector<IRMath::vec4> positions;
+    for (int y = -kLosProbeHalfExtent; y < kLosProbeHalfExtent; ++y) {
+        for (int x = -kLosProbeHalfExtent; x < kLosProbeHalfExtent; ++x) {
+            const float top = static_cast<float>(columns[C_CanvasFogOfWar::flatIndex(x, y)]);
+            for (const IRMath::vec2 offset :
+                 {IRMath::vec2(0.0f), IRMath::vec2(0.25f, 0.5f), IRMath::vec2(0.75f, 0.125f)}) {
+                positions.emplace_back(
+                    static_cast<float>(x) + offset.x,
+                    static_cast<float>(y) + offset.y,
+                    top,
+                    0.0f
+                );
+            }
+        }
+    }
+    const std::vector<IRMath::ivec4> facePixels = smoothProbeFacePixels();
+    const int faceCount = static_cast<int>(facePixels.size() / 2);
+
+    for (const float softness : {0.0f, 1.0f}) {
+        FrameDataFogObservers observers{};
+        IRComponents::FogLosEyeHeights eyes{};
+        eyes.fill(IRComponents::kFogVisionLosOff);
+        const int slot = C_CanvasFogOfWar::addVisionCircle(
+            observers,
+            eyes,
+            kLosCircle.x,
+            kLosCircle.y,
+            kLosCircle.z,
+            kLosCircle.w,
+            kLosObserverZ,
+            0.0f,
+            0.0f,
+            0.0f
+        );
+        ASSERT_EQ(slot, 0);
+        C_CanvasFogOfWar::setVisionCircleLineOfSight(
+            observers,
+            eyes,
+            slot,
+            kLosEyeHeight,
+            softness
+        );
+
+        std::vector<float> horizons(IRComponents::kFogLosHorizonCount, 0.0f);
+        IRPrefab::Fog::buildLosHorizons(observers, eyes, columns, horizons);
+        losTexture.subImage2D(
+            0,
+            0,
+            IRComponents::kFogLosTextureWidth,
+            IRComponents::kFogLosTextureHeight,
+            PixelDataFormat::RGBA,
+            PixelDataType::FLOAT32,
+            horizons.data()
+        );
+
+        const FogLosSmoothProbeHeader
+            header{kLosCircle, softness, static_cast<std::int32_t>(positions.size()), faceCount, 0};
+        std::vector<std::uint8_t> input(sizeof(header) + positions.size() * sizeof(IRMath::vec4));
+        std::memcpy(input.data(), &header, sizeof(header));
+        std::memcpy(
+            input.data() + sizeof(header),
+            positions.data(),
+            positions.size() * sizeof(IRMath::vec4)
+        );
+        Buffer probeIn{
+            input.data(),
+            input.size(),
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::SHADER_STORAGE,
+            kBindingLosProbeIn
+        };
+        Buffer faceIn{
+            facePixels.data(),
+            facePixels.size() * sizeof(IRMath::ivec4),
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::SHADER_STORAGE,
+            kBindingSmoothProbeFaceIn
+        };
+        const std::vector<IRMath::vec4> sampleSeed(positions.size(), IRMath::vec4(-1.0f));
+        Buffer sampleOut{
+            sampleSeed.data(),
+            sampleSeed.size() * sizeof(IRMath::vec4),
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::SHADER_STORAGE,
+            kBindingLosProbeOut
+        };
+        const std::vector<IRMath::ivec4> faceSeed(
+            static_cast<std::size_t>(faceCount),
+            IRMath::ivec4(-9999)
+        );
+        Buffer faceOut{
+            faceSeed.data(),
+            faceSeed.size() * sizeof(IRMath::ivec4),
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::SHADER_STORAGE,
+            kBindingSmoothProbeFaceOut
+        };
+
+        program.use();
+        losTexture
+            .bindAsImage(kBindingLosTexture, TextureAccess::READ_ONLY, TextureFormat::RGBA32F);
+        probeIn.bindBase(BufferTarget::SHADER_STORAGE, kBindingLosProbeIn);
+        faceIn.bindBase(BufferTarget::SHADER_STORAGE, kBindingSmoothProbeFaceIn);
+        sampleOut.bindBase(BufferTarget::SHADER_STORAGE, kBindingLosProbeOut);
+        faceOut.bindBase(BufferTarget::SHADER_STORAGE, kBindingSmoothProbeFaceOut);
+        const int threads = IRMath::max(static_cast<int>(positions.size()), faceCount);
+        ENG_API->glDispatchCompute(
+            (threads + kSmoothProbeLocalSize - 1) / kSmoothProbeLocalSize,
+            1,
+            1
+        );
+        ENG_API->glMemoryBarrier(GL_ALL_BARRIER_BITS);
+        ENG_API->glFinish();
+
+        std::vector<IRMath::vec4> samples(positions.size(), IRMath::vec4(-1.0f));
+        sampleOut.getSubData(0, samples.size() * sizeof(IRMath::vec4), samples.data());
+        std::vector<IRMath::ivec4> faces(static_cast<std::size_t>(faceCount), IRMath::ivec4(-9999));
+        faceOut.getSubData(0, faces.size() * sizeof(IRMath::ivec4), faces.data());
+
+        const FogLineOfSightField field{horizons.data()};
+        int occluded = 0;
+        int visible = 0;
+        int partial = 0;
+        for (std::size_t i = 0; i < positions.size(); ++i) {
+            const IRMath::vec3 position(positions[i]);
+            const float cpuVisibility = field.visibility(0, position, softness);
+            ASSERT_NEAR(samples[i].x, cpuVisibility, 1e-3f)
+                << "GPU and CPU smooth gates disagree at (" << position.x << ", " << position.y
+                << ", " << position.z << ") softness " << softness;
+            EXPECT_NEAR(
+                samples[i].y,
+                IRPrefab::Fog::evalVisionReveal(observers, field, position),
+                1e-3f
+            ) << "GPU smooth reveal diverged from the oracle at ("
+              << position.x << ", " << position.y << ")";
+            if (IRPrefab::Fog::evalVisionReveal(observers, position) > 0.0f) {
+                if (cpuVisibility == 0.0f) {
+                    ++occluded;
+                } else if (cpuVisibility == 1.0f) {
+                    ++visible;
+                } else {
+                    ++partial;
+                }
+            }
+        }
+        EXPECT_GT(occluded, 0) << "softness " << softness;
+        EXPECT_GT(visible, 0) << "softness " << softness;
+        EXPECT_GT(partial, 0) << "softness " << softness;
+
+        for (int i = 0; i < faceCount; ++i) {
+            const IRMath::ivec4 pixel = facePixels[static_cast<std::size_t>(2 * i)];
+            const IRMath::ivec4 raster = facePixels[static_cast<std::size_t>(2 * i + 1)];
+            const IRMath::ivec3 expected = IRPrefab::Fog::losFaceVoxel(
+                IRMath::ivec2(pixel),
+                pixel.z,
+                static_cast<IRMath::FaceId>(pixel.w),
+                raster.x,
+                raster.y != 0,
+                static_cast<IRMath::CardinalIndex>(raster.z)
+            );
+            ASSERT_EQ(IRMath::ivec3(faces[static_cast<std::size_t>(i)]), expected)
+                << "GPU and CPU face recovery disagree on face pixel " << i;
+        }
+    }
 }
 
 #else // Metal / other backends
