@@ -2,10 +2,10 @@
   "target": "IRPerfGrid",
   "matrix": "quick",
   "frames": 60,
-  "git_sha": "32be7eb95",
+  "git_sha": "68bffdf8e",
   "git_dirty": false,
-  "run_name": "32be7eb95-ci",
-  "started_at": "2026-09-22T21:28:43Z",
+  "run_name": "68bffdf8e-ci",
+  "started_at": "2026-09-25T02:28:39Z",
   "cells": [
     {
       "id": "target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1",
@@ -28,15 +28,15 @@
       "report": "target=IRPerfGrid,zoom=4,sub_mode=full,sub_base=1.txt"
     }
   ],
-  "finished_at": "2026-09-22T21:30:43Z",
+  "finished_at": "2026-09-25T02:30:48Z",
   "calibration": {
-    "ref_ms": 70.922,
+    "ref_ms": 71.457,
     "ref_target_ms": 50,
     "host_slug": "linux-x86_64-xeon-6973p-c-unknown",
     "host_fingerprint": {
       "cpu": {
         "cores": 2,
-        "mhz": 2600,
+        "mhz": 4200,
         "model": "Intel(R) Xeon(R) 6973P-C",
         "threads": 4
       },
@@ -52,6 +52,6 @@
       },
       "slug": "linux-x86_64-xeon-6973p-c-unknown"
     },
-    "math_sha": "e3c40f89ad8b176f354bf3446911e113e75e1411"
+    "math_sha": "6e108d5e591a71ff2fb7da5b75765ceca0cd6d20"
   }
 }
