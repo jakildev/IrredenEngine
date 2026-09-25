@@ -181,6 +181,10 @@ void probeLuaFogUpload() {
             observers.visionCircles_[7].x == 160.0f,
             "IRFog Lua cap probe must retain the eighth source"
         );
+        requireLuaFogSelftest(
+            IRPrefab::Fog::getCell(180, 0) == kFogStateVisible,
+            "IRFog Lua cap probe's ninth source must reveal through the field tier"
+        );
         IREngine::getWorld().runScript(
             IREngine::resolveScriptPath("fog_binding_selftest.lua").c_str()
         );
@@ -821,6 +825,69 @@ void probeDepthSlab(int shotIndex) {
     );
 }
 
+// --many-sources: sixteen static vision sources in a ring over the plain
+// floor, the grid all unexplored. Sources are added in ring order at angles
+// k × 45° first, then 22.5° + k × 45°, so the first eight are analytic and the
+// last eight are field-tier, each covering floor no analytic disc reaches
+// (neighbouring discs on the ring never touch). The tier discs read as
+// cell-quantized circles beside the smooth analytic ones.
+bool g_manySources = false;
+constexpr int kManySources = 16;
+constexpr float kManySourcesRingRadius = 30.0f;
+constexpr float kManySourcesRadius = 5.0f;
+static_assert(
+    2.0f * kManySourcesRadius + 1.0f <
+        kManySourcesRingRadius * 2.0f * IRMath::kPi / static_cast<float>(kManySources),
+    "neighbouring ring discs must stay disjoint, or a tier disc overlaps an analytic one"
+);
+static_assert(kManySources == 2 * kMaxFogVisionCircles, "half the ring must be field-tier");
+constexpr IRVideo::AutoScreenshotShot kManySourcesShots[] = {
+    {2.0f, vec2(0, 0), 0.0f, "fog_many_sources"},
+};
+int g_manySourcesFieldTier = 0;
+
+vec2 manySourceCentre(int index) {
+    const int ringStep =
+        index < kMaxFogVisionCircles ? 2 * index : 2 * (index - kMaxFogVisionCircles) + 1;
+    const float angle = static_cast<float>(ringStep) * IRMath::kTwoPi / kManySources;
+    return vec2(IRMath::cos(angle), IRMath::sin(angle)) * kManySourcesRingRadius;
+}
+
+void initManySourcesScene() {
+    IRPrefab::Fog::clearVisionCircles();
+    for (int i = 0; i < kManySources; ++i) {
+        const vec2 centre = manySourceCentre(i);
+        if (IRPrefab::Fog::addVisionCircle(centre.x, centre.y, kManySourcesRadius) < 0) {
+            ++g_manySourcesFieldTier;
+        }
+    }
+}
+
+void probeManySources(int) {
+    const auto &fog = IREntity::getComponent<C_CanvasFogOfWar>(IRRender::getActiveCanvasEntity());
+    constexpr int kExtent = static_cast<int>(kManySourcesRingRadius + kManySourcesRadius) + 2;
+    int fieldCells = 0;
+    for (int y = -kExtent; y <= kExtent; ++y) {
+        for (int x = -kExtent; x <= kExtent; ++x) {
+            fieldCells += IRPrefab::Fog::getCell(x, y) == kFogStateVisible ? 1 : 0;
+        }
+    }
+    std::string centreCells;
+    for (int i = kMaxFogVisionCircles; i < kManySources; ++i) {
+        const vec2 centre = manySourceCentre(i);
+        const int state =
+            IRPrefab::Fog::getCell(IRMath::roundHalfUp(centre.x), IRMath::roundHalfUp(centre.y));
+        centreCells += (i == kMaxFogVisionCircles ? "" : ",") + std::to_string(state);
+    }
+    IR_LOG_INFO(
+        "FOG-TIER analytic={} field={} fieldCells={} centreCells={}",
+        fog.observers_.visionCircleCount_,
+        g_manySourcesFieldTier,
+        fieldCells,
+        centreCells
+    );
+}
+
 // --entity-reveal: whole-body fog reveal under the --edge-zcost-ceiling hard
 // ceiling. One screen row (x + y = 0) of equal-height bodies rising
 // past the ceiling, each pair side by side so its crops compare like for like:
@@ -1149,6 +1216,12 @@ int main(int argc, char **argv) {
         "corner renders, one far outside the slab under the canvas centre is fogged out; "
         "logs FOG-DEPTH-SLAB per shot; overrides every other reveal mode"
     );
+    IREngine::args().flag(
+        "--many-sources",
+        "Sixteen static vision sources in a ring: the first eight analytic, the last eight "
+        "past the cap and revealed through the world field's tier; logs FOG-TIER per shot; "
+        "overrides every other reveal mode"
+    );
     IREngine::registerLuaBindings([](IRScript::LuaScript &script) {
         script.bindLuaFog();
         script.lua()["fogSelftestEntity"] = []() {
@@ -1177,17 +1250,20 @@ int main(int argc, char **argv) {
     g_luaFogSelftest = IREngine::args().getFlag("--lua-fog-selftest");
     g_worldPan = IREngine::args().getFlag("--world-pan");
     g_depthSlab = IREngine::args().getFlag("--depth-slab") && !g_worldPan;
+    g_manySources = IREngine::args().getFlag("--many-sources") && !g_worldPan && !g_depthSlab &&
+                    !g_luaFogSelftest;
     if (g_worldPan) {
         g_fogDebugColor = true;
     }
     g_occlusion = parseOcclusionScene(IREngine::args().getEnum("--occlusion"));
-    if (g_luaFogSelftest || g_worldPan || g_depthSlab) {
+    if (g_luaFogSelftest || g_worldPan || g_depthSlab || g_manySources) {
         g_occlusion = OcclusionScene::NONE;
     }
-    if (g_luaFogSelftest || g_worldPan || g_depthSlab || g_occlusion != OcclusionScene::NONE) {
+    if (g_luaFogSelftest || g_worldPan || g_depthSlab || g_manySources ||
+        g_occlusion != OcclusionScene::NONE) {
         g_entityReveal = false;
     }
-    if (g_luaFogSelftest || g_worldPan || g_depthSlab || g_entityReveal ||
+    if (g_luaFogSelftest || g_worldPan || g_depthSlab || g_manySources || g_entityReveal ||
         g_occlusion != OcclusionScene::NONE) {
         g_movingObserver = false;
         g_playerWalk = false;
@@ -1474,6 +1550,8 @@ void initSystems() {
             cfg.onCaptureFrame_ = &probeWorldPan;
         } else if (g_depthSlab) {
             cfg.onCaptureFrame_ = &probeDepthSlab;
+        } else if (g_manySources) {
+            cfg.onCaptureFrame_ = &probeManySources;
         }
         // --edge-zcost-asym / --edge-zcost-ceiling capture the asymmetric /
         // hard-ceiling height-penalty readouts; --detached-edge zooms on a
@@ -1486,6 +1564,8 @@ void initSystems() {
             IRVideo::setAutoScreenshotShots(cfg, kWorldPanShots);
         } else if (g_depthSlab) {
             IRVideo::setAutoScreenshotShots(cfg, kDepthSlabShots);
+        } else if (g_manySources) {
+            IRVideo::setAutoScreenshotShots(cfg, kManySourcesShots);
         } else if (g_occlusion != OcclusionScene::NONE) {
             switch (g_occlusion) {
             case OcclusionScene::GROUND:
@@ -1756,9 +1836,9 @@ void initEntities() {
     // its own content (the gliding disc + marker / the boundary-straddling voxel
     // objects) reads clearly without the tall shapes' iso-projected tops poking
     // through the disc.
-    if (!occlusionScene && !windowScene && !g_entityReveal && !g_playerWalk && !g_edgeZoom &&
-        !g_edgeSmooth && !g_edgeSdfBlocker && !g_detachedEdge && !g_edgeZCost && !g_edgeZCostAsym &&
-        !g_edgeZCostCeiling) {
+    if (!occlusionScene && !windowScene && !g_manySources && !g_entityReveal && !g_playerWalk &&
+        !g_edgeZoom && !g_edgeSmooth && !g_edgeSdfBlocker && !g_detachedEdge && !g_edgeZCost &&
+        !g_edgeZCostAsym && !g_edgeZCostCeiling) {
         // A few simple SDF primitives sitting on the floor inside the visible
         // circle, so the bright (visible) region has recognizable content.
         createShape(
@@ -1844,8 +1924,8 @@ void initEntities() {
     // face IS the band under test, so an angled sun's terminator across it would
     // masquerade as a cut defect. Fog x shadow composition stays covered by the
     // default grid scene's refs, which keep the angled sun.
-    if (occlusionScene || windowScene || g_entityReveal || g_edgeZoom || g_edgeSmooth ||
-        g_edgeSdfBlocker || g_detachedEdge || g_edgeZCost || g_edgeZCostAsym ||
+    if (occlusionScene || windowScene || g_manySources || g_entityReveal || g_edgeZoom ||
+        g_edgeSmooth || g_edgeSdfBlocker || g_detachedEdge || g_edgeZCost || g_edgeZCostAsym ||
         g_edgeZCostCeiling) {
         IRRender::setSunDirection(vec3(0.0f, 0.0f, -1.0f));
     }
@@ -1862,6 +1942,10 @@ void initEntities() {
     }
     if (g_depthSlab) {
         initDepthSlabScene();
+        return;
+    }
+    if (g_manySources) {
+        initManySourcesScene();
         return;
     }
     if (occlusionScene) {

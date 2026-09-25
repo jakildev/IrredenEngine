@@ -583,6 +583,22 @@ int g_fogTeleportJumps = 0;
 IRPrefab::Fog::WorldFieldStats g_fogWorldPanTotals{};
 IRPrefab::Fog::WorldFieldStats g_fogTeleportSinceJump{};
 
+// --fog-tier: the vision-source tier's budget fixture. Every frame clears the
+// vision set, re-adds the eight --fog-reveal analytic circles to fill the cap,
+// then adds kFogTierSources field-tier sources of radius kFogTierRadius on
+// concentric rings inside the revealed grid, each advancing
+// kFogTierCellsPerFrame cells along its ring, so every frame re-stamps the
+// transient layer and the gather re-expands the chunks the discs left and
+// entered (the `fogWindowGather` phase row).
+bool g_fogTier = false;
+constexpr int kFogTierSources = 64;
+constexpr float kFogTierRadius = 16.0f;
+constexpr int kFogTierRings = 8;
+constexpr float kFogTierInnerRing = 24.0f;
+constexpr float kFogTierRingStep = 12.0f;
+constexpr float kFogTierCellsPerFrame = 1.5f;
+int g_fogTierFrame = 0;
+
 void accumulateFogStats(
     IRPrefab::Fog::WorldFieldStats &into, const IRPrefab::Fog::WorldFieldStats &stats
 ) {
@@ -819,6 +835,12 @@ void registerCliArgs() {
         "apart, flush and evict them, then jump the camera between the poses every 30 "
         "frames (whole-window re-expansions over a dense save); replaces the pan"
     );
+    args.flag(
+        "--fog-tier",
+        "Vision-source tier budget: every frame, eight analytic circles fill the cap and 64 "
+        "field-tier sources of radius 16 move along rings inside the grid (the "
+        "`fogWindowGather` phase row)"
+    );
     args.string(
         "--mode",
         "Scene mode: voxel_set | sdf | dense_set | hollow_set | gallery",
@@ -924,6 +946,7 @@ void readCliArgs() {
     if (args.getFlag("--fog-teleport") && !g_fogWorldPanPersist) {
         IR_LOG_WARN("--fog-teleport needs --fog-world-pan-persist; ignoring");
     }
+    g_fogTier = args.getFlag("--fog-tier");
     g_feederClassifyPadSet = args.wasProvided("--feeder-classify-pad");
     g_feederClassifyPad = args.getInt("--feeder-classify-pad");
 
@@ -1507,6 +1530,48 @@ void logFogWorldPanTotals() {
     );
 }
 
+void addFogRevealCircles() {
+    for (int i = 0; i < IRComponents::kMaxFogVisionCircles; ++i) {
+        IRPrefab::Fog::addVisionCircle(
+            10000.0f + static_cast<float>(i) * 100.0f,
+            10000.0f,
+            32.0f,
+            1.0f,
+            0.0f,
+            0.5f
+        );
+    }
+}
+
+// Runs at the render front, before this frame's gather.
+void driveFogTier() {
+    IRPrefab::Fog::clearVisionCircles();
+    addFogRevealCircles();
+    int fieldTier = 0;
+    for (int i = 0; i < kFogTierSources; ++i) {
+        const float ring =
+            kFogTierInnerRing + kFogTierRingStep * static_cast<float>(i % kFogTierRings);
+        const float angle = static_cast<float>(i) * IRMath::kTwoPi / kFogTierSources +
+                            static_cast<float>(g_fogTierFrame) * kFogTierCellsPerFrame / ring;
+        const vec2 centre = vec2(IRMath::cos(angle), IRMath::sin(angle)) * ring;
+        if (IRPrefab::Fog::addVisionCircle(centre.x, centre.y, kFogTierRadius) < 0) {
+            ++fieldTier;
+        }
+    }
+    if (g_fogTierFrame == 0) {
+        IR_LOG_INFO(
+            "FOG-TIER-PERF analytic={} field={} radius={}",
+            IREntity::getComponent<IRComponents::C_CanvasFogOfWar>(
+                IRRender::getActiveCanvasEntity()
+            )
+                .observers_.visionCircleCount_,
+            fieldTier,
+            kFogTierRadius
+        );
+    }
+    ++g_fogTierFrame;
+}
+
 void configureLightingAndCanvas() {
     EntityId mainCanvas = IRRender::getActiveCanvasEntity();
     const ivec2 canvasSize = IREntity::getComponent<C_TriangleCanvasTextures>(mainCanvas).size_;
@@ -1539,16 +1604,7 @@ void configureLightingAndCanvas() {
         configureFogLosFixture();
     } else if (g_fogReveal) {
         IRPrefab::Fog::clearVisionCircles();
-        for (int i = 0; i < IRComponents::kMaxFogVisionCircles; ++i) {
-            IRPrefab::Fog::addVisionCircle(
-                10000.0f + static_cast<float>(i) * 100.0f,
-                10000.0f,
-                32.0f,
-                1.0f,
-                0.0f,
-                0.5f
-            );
-        }
+        addFogRevealCircles();
     }
 
     IRRender::setSunDirection(vec3(0.35f, 0.85f, -0.4f));
@@ -1960,6 +2016,15 @@ void initSystems() {
                 "FogWorldPanDrive",
                 [](C_Name &) {},
                 []() { driveFogWorldPan(); }
+            )
+        );
+    }
+    if (g_fogTier) {
+        renderPipeline.push_front(
+            IRSystem::createSystem<C_Name>(
+                "FogTierDrive",
+                [](C_Name &) {},
+                []() { driveFogTier(); }
             )
         );
     }

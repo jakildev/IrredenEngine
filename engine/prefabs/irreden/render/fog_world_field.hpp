@@ -12,6 +12,12 @@
 // so a write never shadows a disk copy. A changed write marks the region
 // persistence-dirty; a load does not. CPU access sets the region's access bit,
 // which `evict` reads.
+//
+// Beside the persistent cells sits the transient vision-tier layer (D8):
+// discs stamped by vision sources past the analytic cap, cleared with the
+// vision set. It never persists, probes, evicts or sets an access bit, and
+// every read (`getCell`, `peekCell`, the gather) takes the per-cell maximum of
+// both layers.
 
 #include <irreden/ir_math.hpp>
 #include <irreden/spatial/chunked_field.hpp>
@@ -86,26 +92,34 @@ class WorldField {
         return m_persistence.has_value();
     }
 
-    /// Absent cells read `kFogStateUnexplored`. Not const: the read can load
-    /// the cell's region.
+    /// `max(persistent, transient)`; absent cells read `kFogStateUnexplored`.
+    /// Not const: the read can load the cell's region.
     std::uint8_t getCell(IRMath::ivec2 cell) {
         touchRegion(regionOfCell(cell), true);
         std::uint8_t state = IRComponents::kFogStateUnexplored;
+        std::uint8_t transient = IRComponents::kFogStateUnexplored;
         m_cells.getCell(cell, state);
-        return state;
+        m_transient.getCell(cell, transient);
+        return IRMath::max(state, transient);
     }
 
-    /// The resident value of @p cell, or nullopt when its field chunk is not
-    /// in memory. Never probes and never sets the access bit, so a fixture
-    /// can observe residency without changing what the next eviction drops.
+    /// `max(persistent, transient)` over the layers whose field chunk holding
+    /// @p cell is in memory, or nullopt when neither is. Never probes and
+    /// never sets the access bit, so a fixture can observe residency without
+    /// changing what the next eviction drops.
     std::optional<std::uint8_t> peekCell(IRMath::ivec2 cell) const {
         std::uint8_t state = IRComponents::kFogStateUnexplored;
-        if (!m_cells.getCell(cell, state)) {
+        std::uint8_t transient = IRComponents::kFogStateUnexplored;
+        const bool persistentPresent = m_cells.getCell(cell, state);
+        const bool transientPresent = m_transient.getCell(cell, transient);
+        if (!persistentPresent && !transientPresent) {
             return std::nullopt;
         }
-        return state;
+        return IRMath::max(state, transient);
     }
 
+    /// Writes the persistent layer only: under a transient disc the cell
+    /// still reads visible.
     bool setCell(IRMath::ivec2 cell, std::uint8_t state) {
         RegionRecord *record = touchRegion(regionOfCell(cell), true);
         if (state == IRComponents::kFogStateUnexplored &&
@@ -155,34 +169,44 @@ class WorldField {
         if (radius < 0) {
             return 0;
         }
-        constexpr std::int64_t kCellMin = std::numeric_limits<std::int32_t>::min();
-        constexpr std::int64_t kCellMax = std::numeric_limits<std::int32_t>::max();
         const std::int64_t r = IRMath::min(radius, kFogRevealRadiusMax);
-        const std::int64_t radiusSquared = r * r;
         int changed = 0;
-        for (std::int64_t dy = -r; dy <= r; ++dy) {
-            const std::int64_t y = centre.y + dy;
-            if (y < kCellMin || y > kCellMax) {
-                continue;
-            }
-            const std::int64_t halfWidth = IRMath::isqrt(radiusSquared - dy * dy);
-            const std::int64_t first = IRMath::max(centre.x - halfWidth, kCellMin);
-            const std::int64_t last = IRMath::min(centre.x + halfWidth, kCellMax);
-            if (first > last) {
-                continue;
-            }
-            changed += fillRow(
-                IRMath::ivec2{static_cast<int>(first), static_cast<int>(y)},
-                static_cast<int>(last - first + 1),
-                IRComponents::kFogStateVisible
-            );
-        }
+        forEachDiscRow(centre, r, r * r, [&](IRMath::ivec2 firstCell, int count) {
+            changed += fillRow(firstCell, count, IRComponents::kFogStateVisible);
+        });
         return changed;
     }
 
-    /// Resets every cell to unexplored. With persistence it also deletes the
-    /// layer's region files and forgets every region, so the next access
-    /// probes again.
+    /// Stamps the vision-tier disc of a source at world point @p centre into
+    /// the transient layer: every cell whose centre lies within @p radius of
+    /// `roundHalfUp(centre)` (`dx² + dy² <= radius²`, the `revealRadius`
+    /// metric) reads visible until `clearTransient`. The radius clamps to
+    /// `kFogRevealRadiusMax`; a non-positive one stamps nothing. Returns the
+    /// changed-cell count.
+    int stampTransientDisc(IRMath::vec2 centre, float radius) {
+        if (!(radius > 0.0f)) {
+            return 0;
+        }
+        const float clamped = IRMath::min(radius, static_cast<float>(kFogRevealRadiusMax));
+        const IRMath::ivec2 cell{IRMath::roundHalfUp(centre.x), IRMath::roundHalfUp(centre.y)};
+        const auto radiusSquared = static_cast<std::int64_t>(IRMath::floor(clamped * clamped));
+        const auto rowRadius = static_cast<std::int64_t>(IRMath::floor(clamped));
+        int changed = 0;
+        forEachDiscRow(cell, rowRadius, radiusSquared, [&](IRMath::ivec2 firstCell, int count) {
+            changed += m_transient.fillRow(firstCell, count, IRComponents::kFogStateVisible);
+        });
+        return changed;
+    }
+
+    /// Drops every transient disc. The persistent layer, the regions and the
+    /// persistence handle are untouched.
+    void clearTransient() {
+        m_transient.clear();
+    }
+
+    /// Resets every persistent cell to unexplored; the transient layer is the
+    /// vision set's and survives. With persistence it also deletes the layer's
+    /// region files and forgets every region, so the next access probes again.
     void clear() {
         m_cells.clear();
         if (!m_persistence.has_value()) {
@@ -262,12 +286,26 @@ class WorldField {
         return m_cells.findChunk(chunkCoord);
     }
 
-    /// Replaces @p out with the field chunks changed since the previous call
-    /// (sorted) and refreshes their summaries. The only drain of the pending
-    /// set; an undrained field grows it.
+    /// The transient layer's field chunk, or null when absent. Invalidated by
+    /// any later stamp or `clearTransient`.
+    const Cells::FieldChunk *findTransientChunk(IRMath::ivec2 chunkCoord) const {
+        return m_transient.findChunk(chunkCoord);
+    }
+
+    /// Replaces @p out with the field chunks either layer changed since the
+    /// previous call (sorted, unique) and refreshes their summaries. The only
+    /// drain of the pending set; an undrained field grows it.
     void consumePending(std::vector<IRPrefab::Spatial::FieldChunkKey> &out) {
         m_cells.dirtyKeys(out);
         m_cells.update();
+        if (!m_transient.hasDirtyKeys()) {
+            return;
+        }
+        m_transient.dirtyKeys(m_transientKeysScratch);
+        m_transient.update();
+        out.insert(out.end(), m_transientKeysScratch.begin(), m_transientKeysScratch.end());
+        std::sort(out.begin(), out.end());
+        out.erase(std::unique(out.begin(), out.end()), out.end());
     }
 
     WorldFieldStats stats() {
@@ -288,6 +326,8 @@ class WorldField {
     };
 
     Cells m_cells;
+    Cells m_transient;
+    std::vector<IRPrefab::Spatial::FieldChunkKey> m_transientKeysScratch;
     std::optional<IRWorld::FieldChunkDiskPersistence> m_persistence;
     std::unordered_map<IRPrefab::Spatial::FieldChunkKey, RegionRecord> m_regions;
     std::vector<IRPrefab::Spatial::FieldChunkKey> m_evictScratch;
@@ -296,6 +336,31 @@ class WorldField {
 
     static IRMath::ivec2 regionOfCell(IRMath::ivec2 cell) {
         return IRWorld::FieldChunkDiskPersistence::regionOf(IRPrefab::Spatial::fieldChunkOf(cell));
+    }
+
+    /// Calls @p row(firstCell, count) for each row of the disc of cells within
+    /// `dy <= rowRadius` and `dx² + dy² <= radiusSquared` of @p centre, with the
+    /// row bounds computed in 64 bits and the part beyond int32 skipped.
+    template <typename RowFn>
+    static void forEachDiscRow(
+        IRMath::ivec2 centre, std::int64_t rowRadius, std::int64_t radiusSquared, RowFn &&row
+    ) {
+        constexpr std::int64_t kCellMin = std::numeric_limits<std::int32_t>::min();
+        constexpr std::int64_t kCellMax = std::numeric_limits<std::int32_t>::max();
+        for (std::int64_t dy = -rowRadius; dy <= rowRadius; ++dy) {
+            const std::int64_t y = centre.y + dy;
+            if (y < kCellMin || y > kCellMax) {
+                continue;
+            }
+            const std::int64_t halfWidth = IRMath::isqrt(radiusSquared - dy * dy);
+            const std::int64_t first = IRMath::max(centre.x - halfWidth, kCellMin);
+            const std::int64_t last = IRMath::min(centre.x + halfWidth, kCellMax);
+            if (first > last) {
+                continue;
+            }
+            row(IRMath::ivec2{static_cast<int>(first), static_cast<int>(y)},
+                static_cast<int>(last - first + 1));
+        }
     }
 
     static void markPersistenceDirty(RegionRecord *record) {
@@ -601,10 +666,10 @@ inline void planWindowGather(
 }
 
 /// Writes @p rect's cells into @p scratch as RGBA8 rows of `rect.size_.x`
-/// texels (state in .r, zero elsewhere), making each covered region resident
-/// first. Each texture chunk shows the in-window field chunk at its toroidal
-/// address for the window at @p origin. @p scratch holds at least
-/// `rect.size_.x * rect.size_.y * 4` bytes.
+/// texels (`max(persistent, transient)` in .r, zero elsewhere), making each
+/// covered region resident first. Each texture chunk shows the in-window
+/// field chunk at its toroidal address for the window at @p origin.
+/// @p scratch holds at least `rect.size_.x * rect.size_.y * 4` bytes.
 inline void expandWindowChunks(
     WorldField &field,
     IRMath::ivec2 origin,
@@ -620,12 +685,14 @@ inline void expandWindowChunks(
     const std::size_t rowBytes = static_cast<std::size_t>(rect.size_.x) * 4;
     for (int chunkRow = 0; chunkRow < chunkExtent.y; ++chunkRow) {
         for (int chunkColumn = 0; chunkColumn < chunkExtent.x; ++chunkColumn) {
-            const WorldField::Cells::FieldChunk *fieldChunk =
-                field.findChunkForGather(windowChunkOfTextureChunk(
-                    originChunk,
-                    firstTextureChunk + IRMath::ivec2{chunkColumn, chunkRow},
-                    edgeChunks
-                ));
+            const IRMath::ivec2 chunkCoord = windowChunkOfTextureChunk(
+                originChunk,
+                firstTextureChunk + IRMath::ivec2{chunkColumn, chunkRow},
+                edgeChunks
+            );
+            const WorldField::Cells::FieldChunk *fieldChunk = field.findChunkForGather(chunkCoord);
+            const WorldField::Cells::FieldChunk *transientChunk =
+                field.findTransientChunk(chunkCoord);
             for (int y = 0; y < kFieldChunkEdge; ++y) {
                 std::uint8_t *texel =
                     scratch.data() +
@@ -634,8 +701,17 @@ inline void expandWindowChunks(
                 const std::uint8_t *cells = fieldChunk == nullptr
                                                 ? nullptr
                                                 : fieldChunk->cells().data() + y * kFieldChunkEdge;
+                const std::uint8_t *transient =
+                    transientChunk == nullptr
+                        ? nullptr
+                        : transientChunk->cells().data() + y * kFieldChunkEdge;
                 for (int x = 0; x < kFieldChunkEdge; ++x) {
-                    texel[x * 4] = cells == nullptr ? IRComponents::kFogStateUnexplored : cells[x];
+                    std::uint8_t state =
+                        cells == nullptr ? IRComponents::kFogStateUnexplored : cells[x];
+                    if (transient != nullptr) {
+                        state = IRMath::max(state, transient[x]);
+                    }
+                    texel[x * 4] = state;
                     texel[x * 4 + 1] = 0;
                     texel[x * 4 + 2] = 0;
                     texel[x * 4 + 3] = 0;
