@@ -95,10 +95,10 @@ other transform-bearing entity nobody queries for — pay nothing.
 
 ## The chunked-field placement kit
 
-**Locked contract:** [`docs/design/chunked-field-placement-kit.md`](../../../../docs/design/chunked-field-placement-kit.md).
-Read it before touching any `chunked_field` / `field_*` header — every design
-decision is pinned there as `D1`–`D10`, and code that disagrees with the doc is
-the bug.
+**Locked contract:** [`chunked-field-placement-kit.md`](../../../../docs/design/chunked-field-placement-kit.md).
+Read it before touching any `chunked_field` / `field_*` header; fog's world-scale
+consumer contract is [`fog-of-war-world-field.md`](../../../../docs/design/fog-of-war-world-field.md).
+Code that disagrees with either owning decision is the bug.
 
 The invariant, in one sentence:
 

@@ -150,8 +150,20 @@ Per-chunk summary, maintained beside the cells:
 | Field | Maintenance |
 |---|---|
 | `min_`, `max_` | refreshed by whole-chunk passes (a `setCell` cannot cheaply repair a `min`) |
-| `nonZeroCount_` | incremental on every `setCell` |
-| `dirty_` | set on any `setCell` that changes a value **and on any `clear()` of a live chunk**; cleared by `update()` |
+| `nonZeroCount_` | exact after every mutation |
+| `dirty_` | set if and only if a mutation changes presence or contents; cleared by `update()` |
+
+Four mutation operations preserve those summaries and dirty semantics:
+
+| Operation | Presence and result |
+|---|---|
+| `setCell(cell, value) -> bool` | Inserts as needed; true only when presence or value changed. |
+| `eraseChunk(chunkCoord) -> bool` | Explicitly removes a present chunk to the free list and records its key dirty; false when absent. |
+| `assignChunk(chunkCoord, cells) -> bool` | Inserts or replaces all 1024 cells, recounts `nonZeroCount_`, and reports a change. |
+| `fillRow(firstCell, count, value) -> int` | Writes along +x, resolves each touched chunk once and returns the changed-cell count. |
+
+A raw mutable span is deliberately absent: it cannot keep `nonZeroCount_`
+exact without a recount and can silently skip the dirty mark.
 
 Allocation discipline is `SpatialGrid`'s **allocation Pattern B**
 (`spatial_grid.hpp:13-20`): buckets retain capacity across rebuilds, `clear()`
@@ -197,7 +209,7 @@ are tracked separately. They are:
   absent, which D4 reads as all-occupied. Dropping it "to save memory" flips
   those cells to occupied. `ChunkedField2D` is generic storage and cannot know
   a layer's zero semantics, so the rule is stated at the storage level: nothing
-  but an explicit `clear()` ever removes a chunk.
+  but an explicit `clear()` or `eraseChunk()` ever removes a chunk.
 - **Clearing a live chunk marks it dirty.** Its key stays in the dirty set even
   though the chunk is gone — C3 must rebuild derived membership because an
   absent chunk is occupied under D4 and can only preserve or lower its
@@ -976,6 +988,11 @@ edits and carry a value ⇒ this kit.
 | **C3** (#3161) | `IRMath` 1-D squared-EDT kernel + `field_clearance.hpp` — capped windowed F–H (D4, D10) | **shipped** |
 | **C4** (#3162) | `field_regions.hpp` — per-chunk CCL + seam-stitch union-find (D5) | **shipped** |
 | **C5** (#3163) | `IRMath::Pcg32` + `IRMath::isqrt` + `field_placement.hpp` — draw, `PlacementField`, `queryPlacements` + stats (D6, D7, D8); flips this table to shipped | **shipped** |
+
+The fog-field extension to C2's storage surface — `setCell -> bool`,
+`eraseChunk`, `assignChunk` and `fillRow` — lands with the fog CPU-field phase.
+The shipped row describes the original placement-kit child, not those pending
+additions.
 
 Each child is `**Blocked by:**` its predecessor. Tests live in **`test/ecs/`**,
 beside `spatial_grid_test.cpp` — the kit's composing sibling — and every new
