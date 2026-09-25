@@ -204,6 +204,13 @@ constexpr std::int64_t floorDiv(std::int64_t numerator, std::int64_t denominator
     return quotient - static_cast<std::int64_t>(remainder < 0);
 }
 
+/// The remainder paired with `floorDiv`: `numerator - floorDiv(numerator,
+/// denominator) * denominator`, always in `[0, denominator)`. @p denominator
+/// must be positive (throws std::invalid_argument otherwise).
+constexpr std::int64_t floorMod(std::int64_t numerator, std::int64_t denominator) {
+    return numerator - floorDiv(numerator, denominator) * denominator;
+}
+
 /// Exact integer square root: the largest `n` with `n * n <= value`, computed
 /// digit-by-digit in integers, so it is exact over the whole non-negative
 /// int64 range where a floating-point sqrt would round. Throws
@@ -745,6 +752,21 @@ constexpr vec2 pos3DtoPos2DIsoYawed(const vec3 worldPos, float visualYaw) {
     const float vx = worldPos.x * c + worldPos.y * s;
     const float vy = -worldPos.x * s + worldPos.y * c;
     return vec2(-vx + vy, -vx - vy + 2.0f * worldPos.z);
+}
+
+/// Exact inverse of `pos3DtoPos2DIsoYawed` on the plane `z == zLevel`: the
+/// world point at that height whose yawed iso projection is @p iso. The
+/// projection is a bijection per z plane (its 2×2 in-plane part is
+/// invertible at every yaw), so
+/// `pos3DtoPos2DIsoYawed(pos2DIsoToPos3DAtZLevelYawed(p, z, yaw), yaw) == p`
+/// up to float rounding. Continuous: the result is not snapped to a voxel.
+constexpr vec3 pos2DIsoToPos3DAtZLevelYawed(const vec2 iso, float zLevel, float visualYaw) {
+    const float isoYAtZ = iso.y - 2.0f * zLevel;
+    const float vx = -(iso.x + isoYAtZ) * 0.5f;
+    const float vy = (iso.x - isoYAtZ) * 0.5f;
+    const float c = glm::cos(visualYaw);
+    const float s = glm::sin(visualYaw);
+    return vec3(vx * c - vy * s, vx * s + vy * c, zLevel);
 }
 
 /// Conservative XY growth of an axis-aligned half-extent swept under a Z-yaw of

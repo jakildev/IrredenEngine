@@ -18,6 +18,7 @@
 #include <irreden/world/field_chunk_persistence.hpp>
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <optional>
@@ -39,6 +40,21 @@ namespace IRPrefab::Fog {
 constexpr int kFogRevealRadiusMax = 1024;
 constexpr int kFogFieldBytesPerCell = 1;
 constexpr const char *kFogFieldLayer = "fog";
+
+/// The camera depth slab the GPU window is exact for: matter at
+/// `z ∈ [-kFogWindowDepthHalfBand, kFogWindowDepthHalfBand)` that lands
+/// anywhere on the canvas has its column inside the window.
+constexpr int kFogWindowDepthHalfBand = 128;
+/// Window edges are multiples of this (two field chunks) and never exceed
+/// `kFogWindowEdgeMax` (16 MiB of RGBA8); a capped window over-fogs its
+/// periphery.
+constexpr int kFogWindowEdgeQuantum = 64;
+constexpr int kFogWindowEdgeMax = 4096;
+/// Cells the window adds past the covered radius: 32 for the chunk snap of
+/// the origin and 1 for column rounding.
+constexpr int kFogWindowSnapMargin = 33;
+/// Field chunks the eviction keep rectangle extends past the window.
+constexpr int kFogResidentMarginChunks = 4;
 
 /// Resident counts now; probes, loads, saves and evictions since the
 /// previous `WorldField::stats()` call.
@@ -76,6 +92,17 @@ class WorldField {
         touchRegion(regionOfCell(cell), true);
         std::uint8_t state = IRComponents::kFogStateUnexplored;
         m_cells.getCell(cell, state);
+        return state;
+    }
+
+    /// The resident value of @p cell, or nullopt when its field chunk is not
+    /// in memory. Never probes and never sets the access bit, so a fixture
+    /// can observe residency without changing what the next eviction drops.
+    std::optional<std::uint8_t> peekCell(IRMath::ivec2 cell) const {
+        std::uint8_t state = IRComponents::kFogStateUnexplored;
+        if (!m_cells.getCell(cell, state)) {
+            return std::nullopt;
+        }
         return state;
     }
 
@@ -349,23 +376,113 @@ class WorldField {
 
 namespace detail {
 
+/// The window edge the umbrella formula gives @p canvasSize before the cap:
+/// the smallest multiple of `kFogWindowEdgeQuantum` that is at least
+/// `2 × (R + √2 × kFogWindowDepthHalfBand + kFogWindowSnapMargin)`, where
+/// `R` is the world-XY radius of the canvas's projected footprint at z = 0.
+/// A voxel at height `z` that draws anywhere on the canvas has its column
+/// within `R + √2 × |z|` of the centre, and rotation preserves that length.
+inline int windowEdgeUncapped(IRMath::ivec2 canvasSize) {
+    const float footprintRadius = IRMath::length(IRMath::vec2(canvasSize) * 0.5f) / IRMath::kSqrt2;
+    const float columnRadius = footprintRadius + IRMath::kSqrt2 * kFogWindowDepthHalfBand;
+    const float required = 2.0f * (columnRadius + static_cast<float>(kFogWindowSnapMargin));
+    const int quanta = static_cast<int>(IRMath::ceil(required / kFogWindowEdgeQuantum));
+    return quanta * kFogWindowEdgeQuantum;
+}
+
+/// The RGBA8 window edge for a fog canvas of @p canvasSize trixels:
+/// `windowEdgeUncapped` capped at `kFogWindowEdgeMax`.
+inline int windowEdgeForCanvas(IRMath::ivec2 canvasSize) {
+    return IRMath::min(windowEdgeUncapped(canvasSize), kFogWindowEdgeMax);
+}
+
+/// The Chebyshev radius of columns a window of @p edge covers exactly.
+constexpr int windowCoveredRadius(int edge) {
+    return edge / 2 - kFogWindowSnapMargin;
+}
+
+/// The window origin for the world point @p centre under the viewport centre:
+/// the rounded centre snapped down to a field-chunk boundary, less half the
+/// edge (a multiple of the field-chunk edge, so the origin stays aligned).
+inline IRMath::ivec2 windowOriginForCentre(IRMath::vec2 centre, int edge) {
+    const IRMath::ivec2 rounded{IRMath::roundHalfUp(centre.x), IRMath::roundHalfUp(centre.y)};
+    return IRPrefab::Spatial::fieldChunkOf(rounded) * IRPrefab::Spatial::kFieldChunkEdge - edge / 2;
+}
+
+/// The texel world column @p column lives at, whatever the origin:
+/// `floorMod(column, edge)`. The origin decides only which columns are in
+/// the window.
+inline IRMath::ivec2 windowTexel(IRMath::ivec2 column, int edge) {
+    return {
+        static_cast<int>(IRMath::floorMod(column.x, edge)),
+        static_cast<int>(IRMath::floorMod(column.y, edge))
+    };
+}
+
+/// The in-window field chunk shown at texture chunk @p textureChunk for a
+/// window whose first chunk is @p originChunk: the inverse of
+/// `floorMod(chunk, edgeChunks)` restricted to the window.
+inline IRMath::ivec2
+windowChunkOfTextureChunk(IRMath::ivec2 originChunk, IRMath::ivec2 textureChunk, int edgeChunks) {
+    return originChunk +
+           IRMath::ivec2{
+               static_cast<int>(IRMath::floorMod(textureChunk.x - originChunk.x, edgeChunks)),
+               static_cast<int>(IRMath::floorMod(textureChunk.y - originChunk.y, edgeChunks))
+           };
+}
+
 /// One texture-space upload: `texel_` is the top-left texel, `size_` the
-/// extent. Field-chunk aligned and inside the window.
+/// extent. Field-chunk aligned and inside the texture (never across its
+/// wrap).
 struct WindowUploadRect {
     IRMath::ivec2 texel_{0};
     IRMath::ivec2 size_{0};
 };
 
+/// The field chunks a gather re-expands and the texture rectangles it
+/// uploads.
 struct WindowGatherPlan {
     std::vector<IRMath::ivec2> chunks_;
     std::vector<WindowUploadRect> rects_;
 };
 
-/// Plans the gather of the @p edge-square window at field column @p origin
-/// (both multiples of the field-chunk edge; texel = column − origin). An unset
-/// or different @p previousOrigin plans the whole window in one-field-chunk
-/// strips; otherwise the pending field chunks inside the window, one
-/// rectangle per run of adjacent pending field chunks in a field-chunk row.
+/// Appends the rectangles covering texture chunks `[first, first + count)`
+/// along one axis, the full edge along the other, split once where the
+/// range wraps past the texture edge.
+inline void appendWrappedStrip(
+    int firstTextureChunk, int count, int edge, bool alongX, std::vector<WindowUploadRect> &rects
+) {
+    using IRPrefab::Spatial::kFieldChunkEdge;
+    const int edgeChunks = edge / kFieldChunkEdge;
+    int first = firstTextureChunk;
+    int remaining = count;
+    while (remaining > 0) {
+        const int run = IRMath::min(remaining, edgeChunks - first);
+        if (alongX) {
+            rects.push_back(
+                {IRMath::ivec2{first * kFieldChunkEdge, 0},
+                 IRMath::ivec2{run * kFieldChunkEdge, edge}}
+            );
+        } else {
+            rects.push_back(
+                {IRMath::ivec2{0, first * kFieldChunkEdge},
+                 IRMath::ivec2{edge, run * kFieldChunkEdge}}
+            );
+        }
+        remaining -= run;
+        first = 0;
+    }
+}
+
+/// Plans the gather of the @p edge-square, toroidally addressed window whose
+/// first column is @p origin (a multiple of the field-chunk edge; column `c`
+/// is at texel `floorMod(c, edge)`). An unset @p previousOrigin, or a move of
+/// at least the window's width of field chunks on an axis, plans the whole
+/// window in one-field-chunk-row strips. A smaller move plans the newly
+/// exposed strip on each moved axis, split at the texture wrap into at most
+/// two rectangles. Pending field chunks inside the window and outside those
+/// strips are planned in place, one rectangle per run of adjacent chunks in a
+/// row (split at the wrap); pending chunks outside the window are dropped.
 /// @p pendingKeys must be sorted and unique, as `consumePending` returns them.
 inline void planWindowGather(
     std::optional<IRMath::ivec2> previousOrigin,
@@ -380,10 +497,18 @@ inline void planWindowGather(
     const IRMath::ivec2 originChunk = IRPrefab::Spatial::fieldChunkOf(origin);
     const int edgeChunks = edge / kFieldChunkEdge;
 
-    if (!previousOrigin.has_value() || *previousOrigin != origin) {
+    IRMath::ivec2 moved{0};
+    bool whole = !previousOrigin.has_value();
+    if (!whole) {
+        moved = originChunk - IRPrefab::Spatial::fieldChunkOf(*previousOrigin);
+        whole = IRMath::abs(moved.x) >= edgeChunks || IRMath::abs(moved.y) >= edgeChunks;
+    }
+    if (whole) {
         for (int row = 0; row < edgeChunks; ++row) {
             for (int column = 0; column < edgeChunks; ++column) {
-                out.chunks_.push_back(originChunk + IRMath::ivec2{column, row});
+                out.chunks_.push_back(
+                    windowChunkOfTextureChunk(originChunk, {column, row}, edgeChunks)
+                );
             }
             out.rects_.push_back(
                 {IRMath::ivec2{0, row * kFieldChunkEdge}, IRMath::ivec2{edge, kFieldChunkEdge}}
@@ -392,30 +517,84 @@ inline void planWindowGather(
         return;
     }
 
+    // The newly exposed local chunk range per axis: the trailing `moved`
+    // columns or rows of the new window for a positive move, the leading
+    // ones for a negative move.
+    const auto exposedRange = [edgeChunks](int delta, int &first, int &last) {
+        first = delta > 0 ? edgeChunks - delta : 0;
+        last = delta < 0 ? -delta : (delta > 0 ? edgeChunks : 0);
+    };
+    int exposedX0 = 0;
+    int exposedX1 = 0;
+    int exposedY0 = 0;
+    int exposedY1 = 0;
+    exposedRange(moved.x, exposedX0, exposedX1);
+    exposedRange(moved.y, exposedY0, exposedY1);
+    const auto inExposedStrip = [&](IRMath::ivec2 local) {
+        return (local.x >= exposedX0 && local.x < exposedX1) ||
+               (local.y >= exposedY0 && local.y < exposedY1);
+    };
+    for (int localY = 0; localY < edgeChunks; ++localY) {
+        for (int localX = 0; localX < edgeChunks; ++localX) {
+            if (inExposedStrip({localX, localY})) {
+                out.chunks_.push_back(originChunk + IRMath::ivec2{localX, localY});
+            }
+        }
+    }
+    if (moved.x != 0) {
+        appendWrappedStrip(
+            static_cast<int>(IRMath::floorMod(originChunk.x + exposedX0, edgeChunks)),
+            exposedX1 - exposedX0,
+            edge,
+            true,
+            out.rects_
+        );
+    }
+    if (moved.y != 0) {
+        appendWrappedStrip(
+            static_cast<int>(IRMath::floorMod(originChunk.y + exposedY0, edgeChunks)),
+            exposedY1 - exposedY0,
+            edge,
+            false,
+            out.rects_
+        );
+    }
+
+    const std::size_t pendingStart = out.chunks_.size();
     for (IRPrefab::Spatial::FieldChunkKey key : pendingKeys) {
         const IRMath::ivec2 local = IRPrefab::Spatial::unpackFieldChunkKey(key) - originChunk;
-        if (local.x >= 0 && local.x < edgeChunks && local.y >= 0 && local.y < edgeChunks) {
+        if (local.x >= 0 && local.x < edgeChunks && local.y >= 0 && local.y < edgeChunks &&
+            !inExposedStrip(local)) {
             out.chunks_.push_back(originChunk + local);
         }
     }
-    std::sort(out.chunks_.begin(), out.chunks_.end(), [](IRMath::ivec2 a, IRMath::ivec2 b) {
-        return a.y != b.y ? a.y < b.y : a.x < b.x;
-    });
+    std::sort(
+        out.chunks_.begin() + static_cast<std::ptrdiff_t>(pendingStart),
+        out.chunks_.end(),
+        [](IRMath::ivec2 a, IRMath::ivec2 b) { return a.y != b.y ? a.y < b.y : a.x < b.x; }
+    );
 
-    std::size_t runStart = 0;
-    for (std::size_t i = 1; i <= out.chunks_.size(); ++i) {
+    std::size_t runStart = pendingStart;
+    for (std::size_t i = pendingStart + 1; i <= out.chunks_.size(); ++i) {
         const bool continues = i < out.chunks_.size() && out.chunks_[i].y == out.chunks_[i - 1].y &&
                                out.chunks_[i].x == out.chunks_[i - 1].x + 1;
         if (continues) {
             continue;
         }
         if (runStart < out.chunks_.size()) {
-            const IRMath::ivec2 firstLocal = out.chunks_[runStart] - originChunk;
-            const int runLength = static_cast<int>(i - runStart);
-            out.rects_.push_back(
-                {firstLocal * kFieldChunkEdge,
-                 IRMath::ivec2{runLength * kFieldChunkEdge, kFieldChunkEdge}}
-            );
+            const IRMath::ivec2 firstChunk = out.chunks_[runStart];
+            const int textureRow = static_cast<int>(IRMath::floorMod(firstChunk.y, edgeChunks));
+            int textureColumn = static_cast<int>(IRMath::floorMod(firstChunk.x, edgeChunks));
+            int remaining = static_cast<int>(i - runStart);
+            while (remaining > 0) {
+                const int run = IRMath::min(remaining, edgeChunks - textureColumn);
+                out.rects_.push_back(
+                    {IRMath::ivec2{textureColumn * kFieldChunkEdge, textureRow * kFieldChunkEdge},
+                     IRMath::ivec2{run * kFieldChunkEdge, kFieldChunkEdge}}
+                );
+                remaining -= run;
+                textureColumn = 0;
+            }
         }
         runStart = i;
     }
@@ -423,21 +602,30 @@ inline void planWindowGather(
 
 /// Writes @p rect's cells into @p scratch as RGBA8 rows of `rect.size_.x`
 /// texels (state in .r, zero elsewhere), making each covered region resident
-/// first. @p scratch holds at least `rect.size_.x * rect.size_.y * 4` bytes.
+/// first. Each texture chunk shows the in-window field chunk at its toroidal
+/// address for the window at @p origin. @p scratch holds at least
+/// `rect.size_.x * rect.size_.y * 4` bytes.
 inline void expandWindowChunks(
     WorldField &field,
     IRMath::ivec2 origin,
+    int edge,
     const WindowUploadRect &rect,
     std::span<std::uint8_t> scratch
 ) {
     using IRPrefab::Spatial::kFieldChunkEdge;
-    const IRMath::ivec2 firstChunk = IRPrefab::Spatial::fieldChunkOf(origin + rect.texel_);
+    const IRMath::ivec2 originChunk = IRPrefab::Spatial::fieldChunkOf(origin);
+    const int edgeChunks = edge / kFieldChunkEdge;
+    const IRMath::ivec2 firstTextureChunk = rect.texel_ / kFieldChunkEdge;
     const IRMath::ivec2 chunkExtent = rect.size_ / kFieldChunkEdge;
     const std::size_t rowBytes = static_cast<std::size_t>(rect.size_.x) * 4;
     for (int chunkRow = 0; chunkRow < chunkExtent.y; ++chunkRow) {
         for (int chunkColumn = 0; chunkColumn < chunkExtent.x; ++chunkColumn) {
             const WorldField::Cells::FieldChunk *fieldChunk =
-                field.findChunkForGather(firstChunk + IRMath::ivec2{chunkColumn, chunkRow});
+                field.findChunkForGather(windowChunkOfTextureChunk(
+                    originChunk,
+                    firstTextureChunk + IRMath::ivec2{chunkColumn, chunkRow},
+                    edgeChunks
+                ));
             for (int y = 0; y < kFieldChunkEdge; ++y) {
                 std::uint8_t *texel =
                     scratch.data() +
@@ -454,6 +642,55 @@ inline void expandWindowChunks(
                 }
             }
         }
+    }
+}
+
+/// The gather's reusable buffers, held by the owning system so every frame is
+/// allocation-free once the high-water marks are reached.
+struct WindowGatherScratch {
+    std::vector<IRPrefab::Spatial::FieldChunkKey> pendingKeys_;
+    WindowGatherPlan plan_;
+    std::vector<std::uint8_t> upload_;
+};
+
+/// One frame of the window gather, GPU-free: drains the field's pending set,
+/// plans the window at @p origin against @p windowOrigin (the origin the
+/// texture currently shows, updated here), expands each planned rectangle and
+/// hands it to @p upload as `(rect, rgba8Rows)`, then, on a frame whose
+/// origin changed, evicts every region outside the window's field-chunk
+/// rectangle grown by `kFogResidentMarginChunks`. The eviction runs after the
+/// expansion so an in-window region is probed once per residency epoch, and
+/// on the first frame too, which clears the access bits the initial reveals
+/// set. A second call in one frame finds nothing pending and issues nothing.
+template <typename UploadFn>
+inline void gatherWindow(
+    WorldField &field,
+    std::optional<IRMath::ivec2> &windowOrigin,
+    IRMath::ivec2 origin,
+    int edge,
+    WindowGatherScratch &scratch,
+    UploadFn &&upload
+) {
+    const bool originChanged = !windowOrigin.has_value() || *windowOrigin != origin;
+    field.consumePending(scratch.pendingKeys_);
+    planWindowGather(windowOrigin, origin, edge, scratch.pendingKeys_, scratch.plan_);
+    windowOrigin = origin;
+    for (const WindowUploadRect &rect : scratch.plan_.rects_) {
+        const std::size_t bytes =
+            static_cast<std::size_t>(rect.size_.x) * static_cast<std::size_t>(rect.size_.y) * 4;
+        if (scratch.upload_.size() < bytes) {
+            scratch.upload_.resize(bytes);
+        }
+        expandWindowChunks(field, origin, edge, rect, scratch.upload_);
+        upload(rect, std::span<const std::uint8_t>{scratch.upload_.data(), bytes});
+    }
+    if (originChanged) {
+        const IRMath::ivec2 originChunk = IRPrefab::Spatial::fieldChunkOf(origin);
+        const int edgeChunks = edge / IRPrefab::Spatial::kFieldChunkEdge;
+        field.evict(
+            originChunk - kFogResidentMarginChunks,
+            originChunk + (edgeChunks - 1 + kFogResidentMarginChunks)
+        );
     }
 }
 

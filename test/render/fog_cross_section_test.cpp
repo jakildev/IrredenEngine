@@ -29,10 +29,12 @@
 #include <gtest/gtest.h>
 
 #include <irreden/ir_math.hpp>
+#include <irreden/render/components/component_canvas_fog_of_war.hpp>
 
 #include <cstddef>
 #include <fstream>
 #include <regex>
+#include <span>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -70,7 +72,6 @@ std::string readShaderSource(const std::string &path) {
 // Mirrors of the shader-side constants declared in ir_voxel_face_select.glsl.
 // Test E asserts these against BOTH shader sources, so a one-sided edit to
 // either backend fails here rather than surviving to a screenshot.
-constexpr int kFogOfWarHalfExtent = 128;
 constexpr float kFogColumnCellHalf = 0.5f;
 constexpr float kFogColumnKeepAa = 0.5f;
 constexpr float kFogHiddenKeepCells = 8.0f;
@@ -225,7 +226,6 @@ TEST(FogCrossSectionShaderParity, ClipConstantsAgreeAcrossBackends) {
     ASSERT_FALSE(metal.empty()) << "could not read " << kMetalFaceSelectPath;
 
     const std::pair<const char *, double> expected[] = {
-        {"kFogOfWarHalfExtent", static_cast<double>(kFogOfWarHalfExtent)},
         {"kFogExploredThreshold", 0.25},
         {"kMaxFogVisionCircles", 8.0},
         {"kFogColumnCellHalf", static_cast<double>(kFogColumnCellHalf)},
@@ -241,6 +241,67 @@ TEST(FogCrossSectionShaderParity, ClipConstantsAgreeAcrossBackends) {
             << name << " diverged between the GLSL and MSL fog clips";
         EXPECT_DOUBLE_EQ(glslValue, mirrored)
             << name << " changed in the shaders without updating this test's mirror";
+    }
+}
+
+// Test E, part 1b: the window tap. Every include family that taps the fog
+// grid defines `fogWindowTexel` (the toroidal address of a world column, or
+// (-1, -1) outside the window) and declares the origin lanes the tap reads;
+// the mapping must be the same expression in every file on both backends, or
+// one pass reads a different texel than the others for the same column.
+TEST(FogCrossSectionShaderParity, WindowTexelMappingIsIdenticalAcrossBackends) {
+    const std::string kGlslCompactPath =
+        std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_voxel_visibility_compact.glsl";
+    const std::string kMetalCompactPath =
+        std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/c_voxel_visibility_compact.metal";
+    const std::string reference =
+        extractFunctionBody(readShaderSource(kGlslFaceSelectPath), "fogWindowTexel");
+    ASSERT_FALSE(reference.empty()) << "fogWindowTexel not found in ir_voxel_face_select.glsl";
+    EXPECT_NE(reference.find("% fogSize"), std::string::npos)
+        << "the tap must wrap through the window edge, not offset by a literal";
+    EXPECT_EQ(reference.find("128"), std::string::npos) << "no legacy half-extent literal";
+    const std::string normalizedReference = std::regex_replace(
+        normalizeShaderMath(reference),
+        std::regex(R"(\bint([234])\b)"),
+        "ivec$1"
+    );
+    for (const std::string &path :
+         {kMetalFaceSelectPath,
+          kGlslFogPassPath,
+          kMetalFogPassPath,
+          kGlslCompactPath,
+          kMetalCompactPath}) {
+        const std::string source = readShaderSource(path);
+        ASSERT_FALSE(source.empty()) << "could not read " << path;
+        const std::string body = extractFunctionBody(source, "fogWindowTexel");
+        ASSERT_FALSE(body.empty()) << "fogWindowTexel not found in " << path;
+        EXPECT_EQ(
+            std::regex_replace(
+                normalizeShaderMath(body),
+                std::regex(R"(\bint([234])\b)"),
+                "ivec$1"
+            ),
+            normalizedReference
+        ) << "fogWindowTexel diverged in "
+          << path;
+        EXPECT_TRUE(
+            std::regex_search(
+                source,
+                std::regex(
+                    R"(int visionCircleCount;\s*(//[^\n]*\s*)*int losSourceMask;\s*(//[^\n]*\s*)*)"
+                    R"(int windowOriginX;\s*(//[^\n]*\s*)*int windowOriginY;)"
+                )
+            )
+        ) << path
+          << " must spell the observer tail out as count, mask, windowOriginX, windowOriginY";
+        EXPECT_NE(source.find("windowOriginX, "), std::string::npos)
+            << path << " never reads the origin lanes";
+    }
+    for (const std::string &path : {kGlslStage1BodyPath, kMetalStage1BodyPath}) {
+        const std::string body = extractFunctionBody(readShaderSource(path), "fogColumnRevealZ");
+        ASSERT_FALSE(body.empty()) << "fogColumnRevealZ not found in " << path;
+        EXPECT_NE(body.find("fogWindowTexel("), std::string::npos)
+            << path << "'s z-aware drop must tap through the window";
     }
 }
 
@@ -364,9 +425,9 @@ TEST(FogCrossSectionShaderParity, LosGateIsIdenticalAcrossBackends) {
     ASSERT_FALSE(metal.empty()) << "could not read " << kMetalFogLosPath;
 
     const std::pair<const char *, double> expected[] = {
-        {"kFogLosFieldSize", 256.0},
-        {"kFogLosFieldHalfExtent", static_cast<double>(kFogOfWarHalfExtent)},
-        {"kFogLosSourcesPerTile", 4.0},
+        {"kFogLosTileEdge", static_cast<double>(IRComponents::kFogLosTileEdge)},
+        {"kFogLosTileHalfExtent", static_cast<double>(IRComponents::kFogLosTileHalfExtent)},
+        {"kFogLosSourcesPerTile", static_cast<double>(IRComponents::kFogLosSourcesPerTile)},
     };
     for (const auto &[name, mirrored] : expected) {
         double glslValue = 0.0;
@@ -379,7 +440,8 @@ TEST(FogCrossSectionShaderParity, LosGateIsIdenticalAcrossBackends) {
 
     for (const char *helper :
          {"fogLosSourceGated",
-          "fogLosCellInField",
+          "fogLosTileOrigin",
+          "fogLosCellInTile",
           "fogLosTexel",
           "fogLosHorizonChannel",
           "fogLosSampleVisible"}) {
@@ -390,13 +452,21 @@ TEST(FogCrossSectionShaderParity, LosGateIsIdenticalAcrossBackends) {
         EXPECT_EQ(normalizeLosMath(glslBody), normalizeLosMath(metalBody))
             << helper << " diverged between the GLSL and MSL line-of-sight gates";
     }
+    // The tile origin is derived from the circle exactly as the CPU derives it.
+    const std::string originBody = extractFunctionBody(glsl, "fogLosTileOrigin");
+    EXPECT_NE(
+        originBody.find("roundHalfUp(circle.xy) - ivec2(kFogLosTileHalfExtent)"),
+        std::string::npos
+    ) << "the shader tile origin must be roundHalfUp(centre) - half extent: "
+      << originBody;
     // Both loaders round-trip through the shared helpers, so the dialect-only
     // image read is the one line they may differ on.
     for (const std::string *source : {&glsl, &metal}) {
         const std::string body = extractFunctionBody(*source, "fogLosVisible");
         ASSERT_FALSE(body.empty());
-        EXPECT_NE(body.find("fogLosCellInField(sampleVoxel.xy)"), std::string::npos);
-        EXPECT_NE(body.find("fogLosTexel(sampleVoxel.xy, source)"), std::string::npos);
+        EXPECT_NE(body.find("fogLosTileOrigin(circle)"), std::string::npos);
+        EXPECT_NE(body.find("fogLosCellInTile(sampleVoxel.xy, tileOrigin)"), std::string::npos);
+        EXPECT_NE(body.find("fogLosTexel(sampleVoxel.xy, tileOrigin, source)"), std::string::npos);
         EXPECT_NE(
             body.find("fogLosSampleVisible(fogLosHorizonChannel(texel, source), sampleVoxel.z)"),
             std::string::npos
@@ -405,7 +475,7 @@ TEST(FogCrossSectionShaderParity, LosGateIsIdenticalAcrossBackends) {
 
     const std::regex gate(
         R"(if \(fogLosSourceGated\(losSourceMask, i\) && !fogWholeBody && )"
-        R"(!fogLosVisible\(surfaceVoxel, i\)\) \{ continue; \})"
+        R"(!fogLosVisible\(surfaceVoxel, i, visionCircles\[i\]\)\) \{ continue; \})"
     );
     for (const std::string &path : {kGlslFogPassPath, kMetalFogPassPath}) {
         const std::string kernel = readShaderSource(path);
@@ -457,11 +527,15 @@ constexpr int kProbeDim = kProbeHalfExtent * 2;
 constexpr int kProbeColumnCount = kProbeDim * kProbeDim;
 constexpr int kProbeLocalSize = 8;
 
-// Matches the fog-of-war grid the world fog canvas binds (2 x kFogOfWarHalfExtent).
-constexpr int kFogGridDim = kFogOfWarHalfExtent * 2;
+// The probe's fog window: a small edge (the smallest the toroidal tap can
+// exercise a wrap on), with the origin lanes set per run.
+constexpr int kProbeWindowEdge = 256;
+const IRMath::ivec2 kProbeDefaultWindowOrigin{-kProbeWindowEdge / 2, -kProbeWindowEdge / 2};
+const IRMath::ivec2 kProbeDefaultOrigin{-kProbeHalfExtent, -kProbeHalfExtent};
 
 constexpr std::uint32_t kBindingFogGridImage = 0; // IR_VOXEL_FOG_GRID_BINDING in the probe
 constexpr std::uint32_t kBindingProbeOut = 1;     // std430 binding in the probe
+constexpr std::uint32_t kBindingProbeIn = 2;      // std430 binding in the probe
 constexpr std::uint32_t kBindingFogObservers = 27; // std140 binding in ir_voxel_face_select.glsl
 
 // The probe uploads the ENGINE's own observer struct rather than a hand-rolled
@@ -517,16 +591,26 @@ class FogCrossSectionTest : public ::testing::Test {
 
         // Fog grid: all zeros == UNEXPLORED everywhere, so no column takes the
         // `>= kFogExploredThreshold` grid-memory short-circuit and every probed
-        // reveal is the analytic one under test. Full 256² so the probe domain
-        // is nowhere near the out-of-range-reads-as-visible edge either.
+        // reveal is the analytic one under test. A column outside the window
+        // reads unexplored too, so the default window placement changes no
+        // analytic result; the window-tap test moves it deliberately.
         m_fogGrid = std::make_unique<Texture2D>(
-            TextureKind::TEXTURE_2D, kFogGridDim, kFogGridDim, TextureFormat::RGBA8
+            TextureKind::TEXTURE_2D,
+            kProbeWindowEdge,
+            kProbeWindowEdge,
+            TextureFormat::RGBA8
         );
         const std::vector<std::uint8_t> unexplored(
-            static_cast<std::size_t>(kFogGridDim) * kFogGridDim * 4, 0u
+            static_cast<std::size_t>(kProbeWindowEdge) * kProbeWindowEdge * 4,
+            0u
         );
         m_fogGrid->subImage2D(
-            0, 0, kFogGridDim, kFogGridDim, PixelDataFormat::RGBA, PixelDataType::UNSIGNED_BYTE,
+            0,
+            0,
+            kProbeWindowEdge,
+            kProbeWindowEdge,
+            PixelDataFormat::RGBA,
+            PixelDataType::UNSIGNED_BYTE,
             unexplored.data()
         );
 
@@ -534,6 +618,15 @@ class FogCrossSectionTest : public ::testing::Test {
         m_observers = std::make_unique<Buffer>(
             &seedObservers, sizeof(FrameDataFogObservers), BUFFER_STORAGE_DYNAMIC,
             BufferTarget::UNIFORM, kBindingFogObservers
+        );
+
+        const IRMath::ivec2 seedProbeOrigin = kProbeDefaultOrigin;
+        m_probeIn = std::make_unique<Buffer>(
+            &seedProbeOrigin,
+            sizeof(seedProbeOrigin),
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::SHADER_STORAGE,
+            kBindingProbeIn
         );
 
         // Seed the output with a value no reveal can take, so a probe record the
@@ -549,6 +642,7 @@ class FogCrossSectionTest : public ::testing::Test {
     void TearDown() override {
         // GPU resources release through the context, so they must go first.
         m_probeOut.reset();
+        m_probeIn.reset();
         m_observers.reset();
         m_fogGrid.reset();
         m_probeProgram.reset();
@@ -565,15 +659,23 @@ class FogCrossSectionTest : public ::testing::Test {
     // Uploads one vision circle (centerX, centerY, radius, edgeSoftness) with
     // all-zero height penalties — which is what keeps the z-free curves this
     // probe reads bit-identical to the stage body's unpainted-route Z twin —
-    // then dispatches
-    // over the whole column domain and reads the records back.
-    std::vector<FogColumnProbe> runProbe(IRMath::vec4 circle) {
+    // plus the window origin lanes, then dispatches over the column domain
+    // starting at @p probeOrigin and reads the records back. A zero-radius
+    // circle registers no source, so the grid alone decides each reveal.
+    std::vector<FogColumnProbe> runProbe(
+        IRMath::vec4 circle,
+        IRMath::ivec2 windowOrigin = kProbeDefaultWindowOrigin,
+        IRMath::ivec2 probeOrigin = kProbeDefaultOrigin
+    ) {
         using namespace IRRender;
 
         FrameDataFogObservers observers{};
         observers.visionCircles_[0] = circle;
-        observers.visionCircleCount_ = 1;
+        observers.visionCircleCount_ = circle.z > 0.0f ? 1 : 0;
+        observers.windowOriginX_ = windowOrigin.x;
+        observers.windowOriginY_ = windowOrigin.y;
         m_observers->subData(0, sizeof(FrameDataFogObservers), &observers);
+        m_probeIn->subData(0, sizeof(probeOrigin), &probeOrigin);
 
         const std::vector<FogColumnProbe> seedProbes(kProbeColumnCount, kUnwrittenProbe);
         m_probeOut->subData(
@@ -585,6 +687,7 @@ class FogCrossSectionTest : public ::testing::Test {
             kBindingFogGridImage, TextureAccess::READ_ONLY, TextureFormat::RGBA8
         );
         m_observers->bindBase(BufferTarget::UNIFORM, kBindingFogObservers);
+        m_probeIn->bindBase(BufferTarget::SHADER_STORAGE, kBindingProbeIn);
         m_probeOut->bindBase(BufferTarget::SHADER_STORAGE, kBindingProbeOut);
 
         const int groups = kProbeDim / kProbeLocalSize;
@@ -597,6 +700,27 @@ class FogCrossSectionTest : public ::testing::Test {
             0, readback.size() * sizeof(FogColumnProbe), readback.data()
         );
         return readback;
+    }
+
+    // Writes one grid texel: world column @p column's state at its toroidal
+    // address `floorMod(column, edge)`.
+    void writeGridTexel(IRMath::ivec2 column, std::uint8_t state) {
+        using namespace IRRender;
+        const IRMath::ivec2 texel = IRPrefab::Fog::detail::windowTexel(column, kProbeWindowEdge);
+        const std::uint8_t rgba[4] = {state, 0u, 0u, 0u};
+        m_fogGrid->subImage2D(
+            texel.x,
+            texel.y,
+            1,
+            1,
+            PixelDataFormat::RGBA,
+            PixelDataType::UNSIGNED_BYTE,
+            rgba
+        );
+    }
+
+    static int record(int localX, int localY) {
+        return localY * kProbeDim + localX;
     }
 
     static int columnX(int record) {
@@ -636,8 +760,50 @@ class FogCrossSectionTest : public ::testing::Test {
     std::unique_ptr<IRRender::ShaderProgram> m_probeProgram;
     std::unique_ptr<IRRender::Texture2D> m_fogGrid;
     std::unique_ptr<IRRender::Buffer> m_observers;
+    std::unique_ptr<IRRender::Buffer> m_probeIn;
     std::unique_ptr<IRRender::Buffer> m_probeOut;
 };
+
+// The grid tap indexes the toroidal window at the origin the lanes carry: with
+// the lanes at (1024, -3072) and one explored texel written at
+// floorMod(col, 256) for col = (1100, -2950), the probe's tap at that column
+// reads it; the column one window width over is outside the window and reads
+// unexplored, not visible; and the same column under the legacy origin lanes
+// is outside the window (the control that fails on a `col + 128` tap, which
+// would read the texel at (1100 + 128, -2950 + 128) instead).
+TEST_F(FogCrossSectionTest, GridTapFollowsTheWindowOrigin) {
+    const IRMath::ivec2 lanes{1024, -3072};
+    const IRMath::ivec2 column{1100, -2950};
+    const IRMath::vec4 noCircle{0.0f, 0.0f, 0.0f, 0.0f};
+    writeGridTexel(column, IRComponents::kFogStateVisible);
+
+    const IRMath::ivec2 probeAt = column - IRMath::ivec2(kProbeHalfExtent);
+    const std::vector<FogColumnProbe> probes = runProbe(noCircle, lanes, probeAt);
+    EXPECT_FLOAT_EQ(probes[record(kProbeHalfExtent, kProbeHalfExtent)].revealCenter, 1.0f)
+        << "the written texel was not read back at its column";
+    EXPECT_FLOAT_EQ(probes[record(kProbeHalfExtent, kProbeHalfExtent)].revealNearest, 1.0f);
+    EXPECT_FLOAT_EQ(probes[record(kProbeHalfExtent + 1, kProbeHalfExtent)].revealCenter, 0.0f)
+        << "the neighbouring column is unexplored";
+    int explored = 0;
+    for (const FogColumnProbe &probe : probes) {
+        explored += probe.revealCenter > 0.0f ? 1 : 0;
+    }
+    EXPECT_EQ(explored, 1) << "exactly one column of the domain is explored";
+
+    const IRMath::ivec2 outside = column + IRMath::ivec2(kProbeWindowEdge, 0);
+    const std::vector<FogColumnProbe> wrapped =
+        runProbe(noCircle, lanes, outside - IRMath::ivec2(kProbeHalfExtent));
+    EXPECT_FLOAT_EQ(wrapped[record(kProbeHalfExtent, kProbeHalfExtent)].revealCenter, 0.0f)
+        << "a column one window width over shares the texel but is outside the window";
+
+    const std::vector<FogColumnProbe> control =
+        runProbe(noCircle, kProbeDefaultWindowOrigin, probeAt);
+    EXPECT_FLOAT_EQ(control[record(kProbeHalfExtent, kProbeHalfExtent)].revealCenter, 0.0f)
+        << "under the legacy lanes the column is outside the window";
+    for (const FogColumnProbe &probe : control) {
+        EXPECT_FLOAT_EQ(probe.revealCenter, 0.0f);
+    }
+}
 
 // A hard disc (edgeSoftness 0) placed off-lattice so the rim crosses cells at
 // every angle rather than landing on cell centres. Radius 10 keeps the whole
@@ -864,18 +1030,23 @@ constexpr std::uint32_t kBindingLosProbeIn = 2;  // std430 binding in the probe
 
 // The fixture: flat ground (top voxel 4), the fog_demo ridge (x 0..1,
 // y -7..8, four voxels up) and a free-standing flagged SDF pillar, seen from a
-// soft-edged source at (-6, 0) with its eye 2 above observerZ 4.5.
+// soft-edged source at (-6, 0) with its eye 2 above observerZ 4.5. The whole
+// scene is also run translated far from the origin, where a world-centred
+// tile would hold none of it.
 constexpr int kLosGround = 4;
 const IRMath::vec4 kLosCircle{-6.0f, 0.0f, 14.0f, 2.0f};
 constexpr float kLosObserverZ = 4.5f;
 constexpr float kLosEyeHeight = 2.0f;
+const IRMath::ivec2 kLosSceneShifts[] = {IRMath::ivec2(0, 0), IRMath::ivec2(4000, -7000)};
 // The probed sample heights: the column's top voxel, and 2 and 6 above it.
 constexpr int kLosLevelLift[kLosProbeLevels] = {0, 2, 6};
 
 struct FogLosProbeHeader {
     IRMath::vec4 circle_;
     std::int32_t losSourceMask_;
-    std::int32_t pad_[3];
+    std::int32_t pad_;
+    std::int32_t probeOriginX_;
+    std::int32_t probeOriginY_;
 };
 static_assert(sizeof(FogLosProbeHeader) == 32, "must match the probe's std430 header");
 
@@ -885,30 +1056,47 @@ struct FogLosProbeRecord {
 };
 static_assert(sizeof(FogLosProbeRecord) == 8, "must match the probe's std430 struct");
 
-std::vector<std::int32_t> losProbeColumns(bool withOccluders) {
+// The source's column view at its tile origin, for the scene translated by
+// @p shift.
+std::vector<std::int32_t>
+losProbeColumns(bool withOccluders, IRMath::ivec2 shift, IRMath::ivec2 tileOrigin) {
     std::vector<std::int32_t> columns(IRComponents::kFogLosColumnCount, kLosGround);
     if (!withOccluders) {
         return columns;
     }
     for (int y = -7; y <= 8; ++y) {
         for (int x = 0; x <= 1; ++x) {
-            columns[IRComponents::FogLineOfSightField::columnIndex(x, y)] = kLosGround - 4;
+            IRPrefab::Fog::stampLosColumn(
+                columns,
+                tileOrigin,
+                IRMath::ivec3(x + shift.x, y + shift.y, kLosGround - 4)
+            );
         }
     }
     IRMath::SDF::forEachInteriorCell(
         IRMath::SDF::ShapeType::BOX,
         IRMath::vec4(3.0f, 3.0f, 10.0f, 0.0f),
-        IRMath::vec3(-8.0f, 4.0f, -1.0f),
-        IRMath::ivec3(-kFogOfWarHalfExtent, -kFogOfWarHalfExtent, -1000),
-        IRMath::ivec3(kFogOfWarHalfExtent - 1, kFogOfWarHalfExtent - 1, 1000),
-        [&](IRMath::ivec3 cell) { IRPrefab::Fog::stampLosColumn(columns, cell); }
+        IRMath::vec3(
+            -8.0f + static_cast<float>(shift.x),
+            4.0f + static_cast<float>(shift.y),
+            -1.0f
+        ),
+        IRMath::ivec3(tileOrigin.x, tileOrigin.y, -1000),
+        IRMath::ivec3(
+            tileOrigin.x + IRComponents::kFogLosTileEdge - 1,
+            tileOrigin.y + IRComponents::kFogLosTileEdge - 1,
+            1000
+        ),
+        [&](IRMath::ivec3 cell) { IRPrefab::Fog::stampLosColumn(columns, tileOrigin, cell); }
     );
     return columns;
 }
 
-int losProbeRecord(int level, int x, int y) {
-    return (level * kLosProbeDim + (y + kLosProbeHalfExtent)) * kLosProbeDim +
-           (x + kLosProbeHalfExtent);
+// Record of probed cell @p cell at @p level for a probe domain starting at
+// @p probeOrigin.
+int losProbeRecord(int level, IRMath::ivec2 cell, IRMath::ivec2 probeOrigin) {
+    const IRMath::ivec2 local = cell - probeOrigin;
+    return (level * kLosProbeDim + local.y) * kLosProbeDim + local.x;
 }
 
 } // namespace
@@ -919,7 +1107,9 @@ int losProbeRecord(int level, int x, int y) {
 // same integer — and the gated reveal matches the field-aware oracle within
 // the 1e-5 the ungated GpuRevealMatchesTheCpuOracle already allows the shared
 // curve. Non-vacuity: the fixture has occluded and visible in-disc probes;
-// without the ridge and the pillar nothing is occluded.
+// without the ridge and the pillar nothing is occluded. Both arms run with the
+// source at the origin and far from it: the tile follows the source, so the
+// far arm reads the same verdicts.
 TEST_F(FogCrossSectionTest, GpuOcclusionMatchesTheCpuOracle) {
     using namespace IRRender;
     using IRComponents::C_CanvasFogOfWar;
@@ -934,123 +1124,149 @@ TEST_F(FogCrossSectionTest, GpuOcclusionMatchesTheCpuOracle) {
         TextureFormat::RGBA32F
     };
 
-    FrameDataFogObservers observers{};
-    IRComponents::FogLosEyeHeights eyes{};
-    eyes.fill(IRComponents::kFogVisionLosOff);
-    const int slot = C_CanvasFogOfWar::addVisionCircle(
-        observers,
-        eyes,
-        kLosCircle.x,
-        kLosCircle.y,
-        kLosCircle.z,
-        kLosCircle.w,
-        kLosObserverZ,
-        0.0f,
-        0.0f,
-        0.0f
-    );
-    ASSERT_EQ(slot, 0);
-    C_CanvasFogOfWar::setVisionCircleLineOfSight(observers, eyes, slot, kLosEyeHeight);
-
-    const auto runOcclusionProbe = [&](bool withOccluders,
-                                       int &occludedInDisc,
-                                       int &visibleInDisc) {
-        const std::vector<std::int32_t> columns = losProbeColumns(withOccluders);
-        std::vector<float> horizons(IRComponents::kFogLosHorizonCount, 0.0f);
-        IRPrefab::Fog::buildLosHorizons(observers, eyes, columns, horizons);
-        losTexture.subImage2D(
-            0,
-            0,
-            IRComponents::kFogLosTextureWidth,
-            IRComponents::kFogLosTextureHeight,
-            PixelDataFormat::RGBA,
-            PixelDataType::FLOAT32,
-            horizons.data()
+    for (const IRMath::ivec2 shift : kLosSceneShifts) {
+        const IRMath::vec4 circle(
+            kLosCircle.x + static_cast<float>(shift.x),
+            kLosCircle.y + static_cast<float>(shift.y),
+            kLosCircle.z,
+            kLosCircle.w
         );
-
-        std::vector<std::int32_t> sampleZ(kLosProbeRecords, 0);
-        for (int level = 0; level < kLosProbeLevels; ++level) {
-            for (int y = -kLosProbeHalfExtent; y < kLosProbeHalfExtent; ++y) {
-                for (int x = -kLosProbeHalfExtent; x < kLosProbeHalfExtent; ++x) {
-                    sampleZ[losProbeRecord(level, x, y)] =
-                        columns[IRComponents::FogLineOfSightField::columnIndex(x, y)] -
-                        kLosLevelLift[level];
-                }
-            }
-        }
-        const FogLosProbeHeader header{kLosCircle, observers.losSourceMask_, {0, 0, 0}};
-        std::vector<std::uint8_t> input(sizeof(header) + sampleZ.size() * sizeof(std::int32_t));
-        std::memcpy(input.data(), &header, sizeof(header));
-        std::memcpy(
-            input.data() + sizeof(header),
-            sampleZ.data(),
-            sampleZ.size() * sizeof(std::int32_t)
+        FrameDataFogObservers observers{};
+        IRComponents::FogLosEyeHeights eyes{};
+        eyes.fill(IRComponents::kFogVisionLosOff);
+        const int slot = C_CanvasFogOfWar::addVisionCircle(
+            observers,
+            eyes,
+            circle.x,
+            circle.y,
+            circle.z,
+            circle.w,
+            kLosObserverZ,
+            0.0f,
+            0.0f,
+            0.0f
         );
-        Buffer probeIn{
-            input.data(),
-            input.size(),
-            BUFFER_STORAGE_DYNAMIC,
-            BufferTarget::SHADER_STORAGE,
-            kBindingLosProbeIn
-        };
-        const std::vector<FogLosProbeRecord> seed(kLosProbeRecords, FogLosProbeRecord{-1, -1.0f});
-        Buffer probeOut{
-            seed.data(),
-            seed.size() * sizeof(FogLosProbeRecord),
-            BUFFER_STORAGE_DYNAMIC,
-            BufferTarget::SHADER_STORAGE,
-            kBindingLosProbeOut
-        };
+        ASSERT_EQ(slot, 0);
+        C_CanvasFogOfWar::setVisionCircleLineOfSight(observers, eyes, slot, kLosEyeHeight);
+        const IRMath::ivec2 tileOrigin = FogLineOfSightField::tileOrigin(circle);
+        const IRMath::ivec2 probeOrigin = shift - IRMath::ivec2(kLosProbeHalfExtent);
 
-        program.use();
-        losTexture
-            .bindAsImage(kBindingLosTexture, TextureAccess::READ_ONLY, TextureFormat::RGBA32F);
-        probeIn.bindBase(BufferTarget::SHADER_STORAGE, kBindingLosProbeIn);
-        probeOut.bindBase(BufferTarget::SHADER_STORAGE, kBindingLosProbeOut);
-        const int groups = kLosProbeDim / kProbeLocalSize;
-        ENG_API->glDispatchCompute(groups, groups, 1);
-        ENG_API->glMemoryBarrier(GL_ALL_BARRIER_BITS);
-        ENG_API->glFinish();
+        const auto runOcclusionProbe = [&](bool withOccluders,
+                                           int &occludedInDisc,
+                                           int &visibleInDisc) {
+            std::vector<std::int32_t> columns = losProbeColumns(withOccluders, shift, tileOrigin);
+            const IRPrefab::Fog::LosColumnView view{0, tileOrigin, columns};
+            std::vector<float> horizons(IRComponents::kFogLosHorizonCount, 0.0f);
+            IRPrefab::Fog::buildLosHorizons(
+                observers,
+                eyes,
+                std::span<const IRPrefab::Fog::LosColumnView>{&view, 1},
+                horizons
+            );
+            losTexture.subImage2D(
+                0,
+                0,
+                IRComponents::kFogLosTextureWidth,
+                IRComponents::kFogLosTextureHeight,
+                PixelDataFormat::RGBA,
+                PixelDataType::FLOAT32,
+                horizons.data()
+            );
 
-        std::vector<FogLosProbeRecord> readback(kLosProbeRecords, FogLosProbeRecord{-1, -1.0f});
-        probeOut.getSubData(0, readback.size() * sizeof(FogLosProbeRecord), readback.data());
-
-        const FogLineOfSightField field{horizons.data()};
-        occludedInDisc = 0;
-        visibleInDisc = 0;
-        for (int level = 0; level < kLosProbeLevels; ++level) {
-            for (int y = -kLosProbeHalfExtent; y < kLosProbeHalfExtent; ++y) {
-                for (int x = -kLosProbeHalfExtent; x < kLosProbeHalfExtent; ++x) {
-                    const int record = losProbeRecord(level, x, y);
-                    const IRMath::ivec3 sample(x, y, sampleZ[record]);
-                    const bool cpuVisible = field.visible(0, sample);
-                    ASSERT_EQ(readback[record].visible_, cpuVisible ? 1 : 0)
-                        << "GPU and CPU line-of-sight gates disagree at (" << x << ", " << y << ", "
-                        << sample.z << ")";
-                    const IRMath::vec3 position(sample);
-                    EXPECT_NEAR(
-                        readback[record].reveal_,
-                        IRPrefab::Fog::evalVisionReveal(observers, field, position),
-                        1e-5f
-                    ) << "GPU gated reveal diverged from the oracle at ("
-                      << x << ", " << y << ", " << sample.z << ")";
-                    if (IRPrefab::Fog::evalVisionReveal(observers, position) > 0.0f) {
-                        ++(cpuVisible ? visibleInDisc : occludedInDisc);
+            std::vector<std::int32_t> sampleZ(kLosProbeRecords, 0);
+            for (int level = 0; level < kLosProbeLevels; ++level) {
+                for (int ly = 0; ly < kLosProbeDim; ++ly) {
+                    for (int lx = 0; lx < kLosProbeDim; ++lx) {
+                        const IRMath::ivec2 cell = probeOrigin + IRMath::ivec2(lx, ly);
+                        sampleZ[losProbeRecord(level, cell, probeOrigin)] =
+                            columns[FogLineOfSightField::columnIndex(cell, tileOrigin)] -
+                            kLosLevelLift[level];
                     }
                 }
             }
-        }
-    };
+            const FogLosProbeHeader
+                header{circle, observers.losSourceMask_, 0, probeOrigin.x, probeOrigin.y};
+            std::vector<std::uint8_t> input(sizeof(header) + sampleZ.size() * sizeof(std::int32_t));
+            std::memcpy(input.data(), &header, sizeof(header));
+            std::memcpy(
+                input.data() + sizeof(header),
+                sampleZ.data(),
+                sampleZ.size() * sizeof(std::int32_t)
+            );
+            Buffer probeIn{
+                input.data(),
+                input.size(),
+                BUFFER_STORAGE_DYNAMIC,
+                BufferTarget::SHADER_STORAGE,
+                kBindingLosProbeIn
+            };
+            const std::vector<FogLosProbeRecord> seed(
+                kLosProbeRecords,
+                FogLosProbeRecord{-1, -1.0f}
+            );
+            Buffer probeOut{
+                seed.data(),
+                seed.size() * sizeof(FogLosProbeRecord),
+                BUFFER_STORAGE_DYNAMIC,
+                BufferTarget::SHADER_STORAGE,
+                kBindingLosProbeOut
+            };
 
-    int occluded = 0;
-    int visible = 0;
-    runOcclusionProbe(true, occluded, visible);
-    EXPECT_GT(occluded, 0) << "the ridge and pillar occlude nothing in the disc";
-    EXPECT_GT(visible, 0) << "the fixture reveals nothing";
+            program.use();
+            losTexture
+                .bindAsImage(kBindingLosTexture, TextureAccess::READ_ONLY, TextureFormat::RGBA32F);
+            probeIn.bindBase(BufferTarget::SHADER_STORAGE, kBindingLosProbeIn);
+            probeOut.bindBase(BufferTarget::SHADER_STORAGE, kBindingLosProbeOut);
+            const int groups = kLosProbeDim / kProbeLocalSize;
+            ENG_API->glDispatchCompute(groups, groups, 1);
+            ENG_API->glMemoryBarrier(GL_ALL_BARRIER_BITS);
+            ENG_API->glFinish();
 
-    runOcclusionProbe(false, occluded, visible);
-    EXPECT_EQ(occluded, 0) << "flat ground occluded itself";
-    EXPECT_GT(visible, 0);
+            std::vector<FogLosProbeRecord> readback(kLosProbeRecords, FogLosProbeRecord{-1, -1.0f});
+            probeOut.getSubData(0, readback.size() * sizeof(FogLosProbeRecord), readback.data());
+
+            const FogLineOfSightField field{
+                horizons.data(),
+                FogLineOfSightField::tileOriginsOf(observers)
+            };
+            occludedInDisc = 0;
+            visibleInDisc = 0;
+            for (int level = 0; level < kLosProbeLevels; ++level) {
+                for (int ly = 0; ly < kLosProbeDim; ++ly) {
+                    for (int lx = 0; lx < kLosProbeDim; ++lx) {
+                        const IRMath::ivec2 cell = probeOrigin + IRMath::ivec2(lx, ly);
+                        const int record = losProbeRecord(level, cell, probeOrigin);
+                        const IRMath::ivec3 sample(cell, sampleZ[record]);
+                        const bool cpuVisible = field.visible(0, sample);
+                        ASSERT_EQ(readback[record].visible_, cpuVisible ? 1 : 0)
+                            << "GPU and CPU line-of-sight gates disagree at (" << cell.x << ", "
+                            << cell.y << ", " << sample.z << ")";
+                        const IRMath::vec3 position(sample);
+                        EXPECT_NEAR(
+                            readback[record].reveal_,
+                            IRPrefab::Fog::evalVisionReveal(observers, field, position),
+                            1e-5f
+                        ) << "GPU gated reveal diverged from the oracle at ("
+                          << cell.x << ", " << cell.y << ", " << sample.z << ")";
+                        if (IRPrefab::Fog::evalVisionReveal(observers, position) > 0.0f) {
+                            ++(cpuVisible ? visibleInDisc : occludedInDisc);
+                        }
+                    }
+                }
+            }
+        };
+
+        int occluded = 0;
+        int visible = 0;
+        runOcclusionProbe(true, occluded, visible);
+        EXPECT_GT(occluded, 0) << "the ridge and pillar occlude nothing in the disc at shift "
+                               << shift.x << "," << shift.y;
+        EXPECT_GT(visible, 0) << "the fixture reveals nothing";
+
+        runOcclusionProbe(false, occluded, visible);
+        EXPECT_EQ(occluded, 0) << "flat ground occluded itself";
+        EXPECT_GT(visible, 0);
+    }
 }
 
 #else // Metal / other backends

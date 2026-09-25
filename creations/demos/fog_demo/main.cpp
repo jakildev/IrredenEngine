@@ -100,9 +100,13 @@
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 
 #include <array>
+#include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <list>
+#include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -609,6 +613,214 @@ void probeCeilingPillarPaint() {
     IR_LOG_INFO("FOG-PAINT-PROBE pillar={} texels={} painted={}", g_ceilingPillar, texels, painted);
 }
 
+// --world-pan: the camera-anchored fog window over a persisted field. An SDF
+// floor strip runs from x = -300 to x = 3000; a disc is revealed at the
+// origin and another at (2400, 0), far enough that each disc's regions leave
+// the other pose's keep rectangle. The four shots jump origin → far → origin
+// → far, so each jump is one window move and one eviction pass: the disc left
+// behind is saved and evicted, and reloaded on return. Unexplored matter is
+// painted the debug colour so the probe can count it. Per shot, the probe
+// logs the window origin, the field statistics since the previous shot, the
+// resident state of the far disc's centre (read without touching the access
+// bit) and the floor's texel counts.
+bool g_worldPan = false;
+constexpr float kWorldPanFloorZ = 5.0f;
+// The strip is several boxes, not one: the shape rasterizer tiles a shape's
+// whole iso footprint every frame, so one 3300-cell box would cost thousands
+// of tiles per frame and run into the tile-descriptor cap from its far end.
+constexpr int kWorldPanFloorMinX = -300;
+constexpr int kWorldPanFloorSegmentLength = 300;
+constexpr int kWorldPanFloorSegments = 11;
+constexpr float kWorldPanFloorWidth = 96.0f;
+constexpr int kWorldPanRevealRadius = 40;
+constexpr IRMath::ivec2 kWorldPanFarCell{2400, 0};
+constexpr const char *kWorldPanSaveRoot = "save_files/fog_world_pan";
+// The pan that centres world point P is -iso(P); iso(2400, 0, 0) = (-2400, -2400).
+constexpr vec2 kWorldPanFarIso{2400.0f, 2400.0f};
+constexpr IRVideo::AutoScreenshotShot kWorldPanShots[] = {
+    {2.0f, vec2(0, 0), 0.0f, "fog_world_pan_origin"},
+    {2.0f, kWorldPanFarIso, 0.0f, "fog_world_pan_far"},
+    {2.0f, vec2(0, 0), 0.0f, "fog_world_pan_origin_return"},
+    {2.0f, kWorldPanFarIso, 0.0f, "fog_world_pan_far_return"},
+};
+std::array<IREntity::EntityId, kWorldPanFloorSegments> g_worldPanFloor{};
+
+// Counts the texels of any entity in @p entities on the active canvas and how
+// many of them carry the debug unexplored colour.
+void countEntityTexels(std::span<const IREntity::EntityId> entities, int &texels, int &unexplored) {
+    const auto &textures =
+        IREntity::getComponent<C_TriangleCanvasTextures>(IRRender::getActiveCanvasEntity());
+    std::vector<IRMath::uvec2> carriers;
+    std::vector<Color> colors;
+    textures.readEntityIdCarriers(carriers);
+    textures.readColors(colors);
+    texels = 0;
+    unexplored = 0;
+    for (std::size_t i = 0; i < carriers.size(); ++i) {
+        const std::uint64_t id = IRRender::decodeCarrierEntityId(carriers[i]);
+        bool matches = false;
+        for (const IREntity::EntityId entity : entities) {
+            matches = matches || id == static_cast<std::uint64_t>(entity);
+        }
+        if (!matches) {
+            continue;
+        }
+        ++texels;
+        if (matchesFogDebugColor(colors[i])) {
+            ++unexplored;
+        }
+    }
+}
+
+// Counts the composited framebuffer's pixels whose colour is dominated by
+// @p channel (0 = red, 1 = green, 2 = blue) by at least kHueDominance over
+// both others. The per-axis rotation route composites straight to the
+// framebuffer and carries no entity-id plane, so a probe that must read a
+// rotated shot keys on the framebuffer's hue: fogged matter paints black and
+// the background is black, so only lit matter of that hue counts.
+constexpr int kHueDominance = 40;
+int countHuePixels(int channel) {
+    const IRMath::ivec2 size = IRRender::getViewport() * IRRender::getOutputScaleFactor();
+    std::vector<std::uint8_t> rgba(
+        static_cast<std::size_t>(size.x) * static_cast<std::size_t>(size.y) * 4u
+    );
+    if (!IRRender::readDefaultFramebuffer(0, 0, size.x, size.y, rgba.data())) {
+        return -1;
+    }
+    int pixels = 0;
+    for (std::size_t i = 0; i + 3 < rgba.size(); i += 4) {
+        const int channels[3] = {rgba[i], rgba[i + 1], rgba[i + 2]};
+        const int own = channels[channel];
+        const int otherA = channels[(channel + 1) % 3];
+        const int otherB = channels[(channel + 2) % 3];
+        if (own >= otherA + kHueDominance && own >= otherB + kHueDominance) {
+            ++pixels;
+        }
+    }
+    return pixels;
+}
+
+void probeWorldPan(int shotIndex) {
+    const auto &fog = IREntity::getComponent<C_CanvasFogOfWar>(IRRender::getActiveCanvasEntity());
+    const IRPrefab::Fog::WorldFieldStats stats = IRPrefab::Fog::fieldStats();
+    const IRMath::ivec2 origin = IRPrefab::Fog::windowOrigin().value_or(IRMath::ivec2(0));
+    const std::optional<std::uint8_t> farCell = fog.field_->peekCell(kWorldPanFarCell);
+    int floorTexels = 0;
+    int unexploredTexels = 0;
+    countEntityTexels(g_worldPanFloor, floorTexels, unexploredTexels);
+    IR_LOG_INFO(
+        "FOG-WORLD-PAN shot={} origin={},{} edge={} resident={} probes={} loads={} evictions={} "
+        "farCell={} floorTexels={} unexploredTexels={}",
+        kWorldPanShots[shotIndex].label_,
+        origin.x,
+        origin.y,
+        IRPrefab::Fog::windowEdge(),
+        stats.residentRegions_,
+        stats.probes_,
+        stats.loads_,
+        stats.evictions_,
+        farCell.has_value() ? std::to_string(*farCell) : std::string("-"),
+        floorTexels,
+        unexploredTexels
+    );
+}
+
+// --depth-slab: the window's coverage contract. Two 8×8×1 voxel platforms are
+// placed per frame from the world point under the viewport centre and the
+// live yaw: `inSlab` at z = -120 (inside the camera depth slab) projected near
+// a canvas corner at zoom 1, the worst case the window edge is sized for, with
+// its columns revealed; `outSlab` at z = -(W/2 + 64) projected at the canvas
+// centre, whose columns are outside the window and stay unexplored. The
+// out-of-window tap reads unexplored, so the far platform is culled and paints
+// no texel; a tap that read visible there would render it. Shot 2 parks yaw
+// π/4, where the depth shift is axis-aligned and longest in Chebyshev terms.
+bool g_depthSlab = false;
+constexpr int kDepthSlabInZ = -120;
+constexpr int kDepthSlabOutZPastHalfEdge = 64;
+constexpr int kDepthSlabRevealRadius = 8;
+constexpr IRMath::ivec3 kDepthSlabSize{8, 8, 1};
+constexpr vec2 kDepthSlabCornerIsoOffset{-300.0f, -340.0f};
+// The platforms are hue-coded (green in, red out) so the probe can count
+// their texels on the rotated shot too.
+constexpr Color kDepthSlabInColor{120, 210, 140, 255};
+constexpr Color kDepthSlabOutColor{230, 120, 120, 255};
+constexpr int kDepthSlabInHueChannel = 1;
+constexpr int kDepthSlabOutHueChannel = 0;
+constexpr IRVideo::AutoScreenshotShot kDepthSlabShots[] = {
+    {1.0f, vec2(0, 0), 0.0f, "fog_depth_slab_yaw0"},
+    {1.0f, vec2(0, 0), IRMath::kPi / 4.0f, "fog_depth_slab_yaw45"},
+};
+IREntity::EntityId g_depthSlabIn = IREntity::kNullEntity;
+IREntity::EntityId g_depthSlabOut = IREntity::kNullEntity;
+
+// The world point at height @p z under the viewport centre offset by
+// @p isoOffset canvas pixels, for the live camera and yaw: the same
+// derivation the fog gather centres its window on.
+IRMath::ivec3 depthSlabPlacement(vec2 isoOffset, int z) {
+    const IRMath::ivec2 canvasSize =
+        IREntity::getComponent<C_TriangleCanvasTextures>(IRRender::getActiveCanvasEntity()).size_;
+    const IRMath::IsoBounds2D viewport = IRMath::visibleIsoViewport(
+        IRRender::getEffectiveCameraIso(),
+        IRMath::trixelOriginOffsetZ1(canvasSize),
+        canvasSize
+    );
+    const vec2 centreIso = (viewport.min_ + viewport.max_) * 0.5f;
+    return IRMath::roundVec3HalfUp(
+        IRMath::pos2DIsoToPos3DAtZLevelYawed(
+            centreIso + isoOffset,
+            static_cast<float>(z),
+            IRPrefab::Camera::getYaw()
+        )
+    );
+}
+
+// Runs at the render front so both platforms sit at this frame's placement
+// before the raster; the transform propagates on the next UPDATE tick, well
+// inside the shot's settle frames.
+void driveDepthSlab() {
+    const IRMath::ivec3 inSlab = depthSlabPlacement(kDepthSlabCornerIsoOffset, kDepthSlabInZ);
+    const IRMath::ivec3 outSlab = depthSlabPlacement(
+        vec2(0.0f),
+        -(IRPrefab::Fog::windowEdge() / 2 + kDepthSlabOutZPastHalfEdge)
+    );
+    IREntity::getComponent<C_LocalTransform>(g_depthSlabIn).translation_ = vec3(inSlab);
+    IREntity::getComponent<C_LocalTransform>(g_depthSlabOut).translation_ = vec3(outSlab);
+    IRPrefab::Fog::revealRadius(inSlab.x, inSlab.y, kDepthSlabRevealRadius);
+}
+
+// Every column of an 8×8 platform centred at @p centre lies inside the window.
+bool depthSlabCovered(IRMath::ivec3 centre) {
+    const std::optional<IRMath::ivec2> origin = IRPrefab::Fog::windowOrigin();
+    if (!origin.has_value()) {
+        return false;
+    }
+    const int edge = IRPrefab::Fog::windowEdge();
+    const int half = kDepthSlabSize.x / 2;
+    return centre.x - half >= origin->x && centre.x + half < origin->x + edge &&
+           centre.y - half >= origin->y && centre.y + half < origin->y + edge;
+}
+
+void probeDepthSlab(int shotIndex) {
+    const IRMath::ivec3 inSlab = IRMath::roundVec3HalfUp(
+        IREntity::getComponent<C_LocalTransform>(g_depthSlabIn).translation_
+    );
+    const IRMath::ivec3 outSlab = IRMath::roundVec3HalfUp(
+        IREntity::getComponent<C_LocalTransform>(g_depthSlabOut).translation_
+    );
+    const int inTexels = countHuePixels(kDepthSlabInHueChannel);
+    const int outTexels = countHuePixels(kDepthSlabOutHueChannel);
+    IR_LOG_INFO(
+        "FOG-DEPTH-SLAB shot={} edge={} inSlabCovered={} inSlabTexels={} outSlabCovered={} "
+        "outSlabTexels={}",
+        kDepthSlabShots[shotIndex].label_,
+        IRPrefab::Fog::windowEdge(),
+        depthSlabCovered(inSlab) ? 1 : 0,
+        inTexels,
+        depthSlabCovered(outSlab) ? 1 : 0,
+        outTexels
+    );
+}
+
 // --entity-reveal: whole-body fog reveal under the --edge-zcost-ceiling hard
 // ceiling. One screen row (x + y = 0) of equal-height bodies rising
 // past the ceiling, each pair side by side so its crops compare like for like:
@@ -924,6 +1136,19 @@ int main(int argc, char **argv) {
         "--lua-fog-selftest",
         "Drive the engine-owned IRFog binding and verify its observer UBO upload"
     );
+    IREngine::args().flag(
+        "--world-pan",
+        "Camera-anchored fog window over a persisted field: reveal a disc at the origin and "
+        "one 2400 cells away, then jump between them (reveal, leave, return); paints "
+        "unexplored matter the debug colour and logs FOG-WORLD-PAN per shot; overrides every "
+        "other reveal mode"
+    );
+    IREngine::args().flag(
+        "--depth-slab",
+        "Fog window coverage: a voxel platform inside the camera depth slab near a canvas "
+        "corner renders, one far outside the slab under the canvas centre is fogged out; "
+        "logs FOG-DEPTH-SLAB per shot; overrides every other reveal mode"
+    );
     IREngine::registerLuaBindings([](IRScript::LuaScript &script) {
         script.bindLuaFog();
         script.lua()["fogSelftestEntity"] = []() {
@@ -950,14 +1175,20 @@ int main(int argc, char **argv) {
         g_autoProfileFrames = IREngine::args().getInt("--auto-profile");
     }
     g_luaFogSelftest = IREngine::args().getFlag("--lua-fog-selftest");
+    g_worldPan = IREngine::args().getFlag("--world-pan");
+    g_depthSlab = IREngine::args().getFlag("--depth-slab") && !g_worldPan;
+    if (g_worldPan) {
+        g_fogDebugColor = true;
+    }
     g_occlusion = parseOcclusionScene(IREngine::args().getEnum("--occlusion"));
-    if (g_luaFogSelftest) {
+    if (g_luaFogSelftest || g_worldPan || g_depthSlab) {
         g_occlusion = OcclusionScene::NONE;
     }
-    if (g_luaFogSelftest || g_occlusion != OcclusionScene::NONE) {
+    if (g_luaFogSelftest || g_worldPan || g_depthSlab || g_occlusion != OcclusionScene::NONE) {
         g_entityReveal = false;
     }
-    if (g_luaFogSelftest || g_entityReveal || g_occlusion != OcclusionScene::NONE) {
+    if (g_luaFogSelftest || g_worldPan || g_depthSlab || g_entityReveal ||
+        g_occlusion != OcclusionScene::NONE) {
         g_movingObserver = false;
         g_playerWalk = false;
         g_edgeZoom = false;
@@ -1225,10 +1456,25 @@ void initSystems() {
         renderPipeline.push_front(probeTickId);
     }
 
+    if (g_depthSlab) {
+        renderPipeline.push_front(
+            IRSystem::createSystem<C_Name>(
+                "FogDepthSlabTick",
+                [](C_Name &) {},
+                []() { driveDepthSlab(); }
+            )
+        );
+    }
+
     if (g_autoWarmupFrames > 0) {
         IRVideo::AutoScreenshotConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
         cfg.settleFrames_ = 3;
+        if (g_worldPan) {
+            cfg.onCaptureFrame_ = &probeWorldPan;
+        } else if (g_depthSlab) {
+            cfg.onCaptureFrame_ = &probeDepthSlab;
+        }
         // --edge-zcost-asym / --edge-zcost-ceiling capture the asymmetric /
         // hard-ceiling height-penalty readouts; --detached-edge zooms on a
         // detached-canvas cross-section; --edge-yaw-sweep sweeps the GRID
@@ -1236,7 +1482,11 @@ void initSystems() {
         // --edge-smooth zoom on the GRID cross-section clip edge (hard vs smooth
         // disc); --player-walk captures the walking reveal sequence; the
         // default captures the three static fog-boundary shots.
-        if (g_occlusion != OcclusionScene::NONE) {
+        if (g_worldPan) {
+            IRVideo::setAutoScreenshotShots(cfg, kWorldPanShots);
+        } else if (g_depthSlab) {
+            IRVideo::setAutoScreenshotShots(cfg, kDepthSlabShots);
+        } else if (g_occlusion != OcclusionScene::NONE) {
             switch (g_occlusion) {
             case OcclusionScene::GROUND:
                 IRVideo::setAutoScreenshotShots(cfg, kOcclusionGroundShots);
@@ -1375,6 +1625,54 @@ void createOcclusionWall(IRMath::ivec3 size) {
     );
 }
 
+// The --world-pan scene: persistence first (the root refuses a populated
+// field), a cleared root, then the two discs.
+void initWorldPanScene() {
+    // Adjacent segments overlap by two cells so their touching faces leave
+    // no seam on the floor.
+    constexpr float kSegmentOverlap = 2.0f;
+    for (int segment = 0; segment < kWorldPanFloorSegments; ++segment) {
+        const float centreX = static_cast<float>(kWorldPanFloorMinX) +
+                              (static_cast<float>(segment) + 0.5f) * kWorldPanFloorSegmentLength;
+        g_worldPanFloor[static_cast<std::size_t>(segment)] = IREntity::createEntity(
+            C_LocalTransform{vec3(centreX, 0.0f, kWorldPanFloorZ)},
+            C_ShapeDescriptor{
+                IRRender::ShapeType::BOX,
+                vec4(
+                    static_cast<float>(kWorldPanFloorSegmentLength) + kSegmentOverlap,
+                    kWorldPanFloorWidth,
+                    2.0f,
+                    0.0f
+                ),
+                Color{150, 150, 160, 255}
+            }
+        );
+    }
+    IR_ASSERT(
+        IRPrefab::Fog::setPersistenceRoot(kWorldPanSaveRoot),
+        "the --world-pan persistence root was refused"
+    );
+    IRPrefab::Fog::clear();
+    IRPrefab::Fog::revealRadius(0, 0, kWorldPanRevealRadius);
+    IRPrefab::Fog::revealRadius(kWorldPanFarCell.x, kWorldPanFarCell.y, kWorldPanRevealRadius);
+}
+
+// The --depth-slab scene: the two platforms at their yaw-0 placement (the
+// render-front hook re-places them per shot).
+void initDepthSlabScene() {
+    g_depthSlabIn = IREntity::createEntity(
+        C_LocalTransform{vec3(depthSlabPlacement(kDepthSlabCornerIsoOffset, kDepthSlabInZ))},
+        C_VoxelSetNew{kDepthSlabSize, kDepthSlabInColor, true}
+    );
+    g_depthSlabOut = IREntity::createEntity(
+        C_LocalTransform{vec3(depthSlabPlacement(
+            vec2(0.0f),
+            -(IRPrefab::Fog::windowEdge() / 2 + kDepthSlabOutZPastHalfEdge)
+        ))},
+        C_VoxelSetNew{kDepthSlabSize, kDepthSlabOutColor, true}
+    );
+}
+
 void initOcclusionScene() {
     createEdgeGroundSlab();
     IRPrefab::Fog::clearVisionCircles();
@@ -1440,8 +1738,10 @@ void initEntities() {
     // cut colour.
     constexpr float kFloorZ = 5.0f;
     const bool occlusionScene = g_occlusion != OcclusionScene::NONE;
-    if (!occlusionScene && !g_entityReveal && !g_edgeZoom && !g_edgeSmooth && !g_edgeSdfBlocker &&
-        !g_detachedEdge && !g_edgeZCost && !g_edgeZCostAsym && !g_edgeZCostCeiling) {
+    const bool windowScene = g_worldPan || g_depthSlab;
+    if (!occlusionScene && !windowScene && !g_entityReveal && !g_edgeZoom && !g_edgeSmooth &&
+        !g_edgeSdfBlocker && !g_detachedEdge && !g_edgeZCost && !g_edgeZCostAsym &&
+        !g_edgeZCostCeiling) {
         createShape(
             vec3(0.0f, 0.0f, kFloorZ),
             IRRender::ShapeType::BOX,
@@ -1456,8 +1756,8 @@ void initEntities() {
     // its own content (the gliding disc + marker / the boundary-straddling voxel
     // objects) reads clearly without the tall shapes' iso-projected tops poking
     // through the disc.
-    if (!occlusionScene && !g_entityReveal && !g_playerWalk && !g_edgeZoom && !g_edgeSmooth &&
-        !g_edgeSdfBlocker && !g_detachedEdge && !g_edgeZCost && !g_edgeZCostAsym &&
+    if (!occlusionScene && !windowScene && !g_entityReveal && !g_playerWalk && !g_edgeZoom &&
+        !g_edgeSmooth && !g_edgeSdfBlocker && !g_detachedEdge && !g_edgeZCost && !g_edgeZCostAsym &&
         !g_edgeZCostCeiling) {
         // A few simple SDF primitives sitting on the floor inside the visible
         // circle, so the bright (visible) region has recognizable content.
@@ -1544,8 +1844,9 @@ void initEntities() {
     // face IS the band under test, so an angled sun's terminator across it would
     // masquerade as a cut defect. Fog x shadow composition stays covered by the
     // default grid scene's refs, which keep the angled sun.
-    if (occlusionScene || g_entityReveal || g_edgeZoom || g_edgeSmooth || g_edgeSdfBlocker ||
-        g_detachedEdge || g_edgeZCost || g_edgeZCostAsym || g_edgeZCostCeiling) {
+    if (occlusionScene || windowScene || g_entityReveal || g_edgeZoom || g_edgeSmooth ||
+        g_edgeSdfBlocker || g_detachedEdge || g_edgeZCost || g_edgeZCostAsym ||
+        g_edgeZCostCeiling) {
         IRRender::setSunDirection(vec3(0.0f, 0.0f, -1.0f));
     }
     if (g_fogDebugColor) {
@@ -1553,6 +1854,14 @@ void initEntities() {
     }
 
     if (g_luaFogSelftest) {
+        return;
+    }
+    if (g_worldPan) {
+        initWorldPanScene();
+        return;
+    }
+    if (g_depthSlab) {
+        initDepthSlabScene();
         return;
     }
     if (occlusionScene) {

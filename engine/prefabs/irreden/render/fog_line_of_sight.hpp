@@ -3,7 +3,7 @@
 
 // The fog line-of-sight model's CPU half: column rasterisation, the horizon
 // trace, and the per-source horizon build. The model itself (occluder set,
-// eye, horizon rule, gate) is stated once, in
+// eye, horizon rule, gate, per-source tile anchoring) is stated once, in
 // `component_canvas_fog_of_war.hpp`. `FOG_LOS_BUILD`, the reveal oracle and
 // `IRPrefab::Fog::lineOfSight` all reach the rule through `traceLosHorizon`,
 // so the point query and the built field agree exactly on one column set.
@@ -38,6 +38,16 @@ namespace IRPrefab::Fog {
 constexpr float kFogLosRimFadeCells = 8.0f;
 constexpr float kFogLosDiscMargin = 2.0f;
 
+/// One source's column-top view: the tile of `kFogLosColumnCount` tops at
+/// `origin_`, in `FogLineOfSightField::columnIndex` order.
+struct LosColumnView {
+    int source_ = 0;
+    IRMath::ivec2 origin_{0};
+    std::span<std::int32_t> tops_;
+};
+
+using LosColumnViews = std::array<LosColumnView, IRComponents::kMaxFogVisionCircles>;
+
 /// The distance from a disc's centre past which `buildLosHorizons` leaves the
 /// field clear.
 inline float losBuildReach(IRMath::vec4 circle) {
@@ -46,25 +56,58 @@ inline float losBuildReach(IRMath::vec4 circle) {
 }
 
 /// Lower column @p cell's top to @p cell.z (the smallest Z is the highest
-/// voxel). Out-of-field cells are dropped.
-inline void stampLosColumn(std::span<std::int32_t> columnTops, IRMath::ivec3 cell) {
-    if (!IRComponents::FogLineOfSightField::cellInField(cell.x, cell.y))
+/// voxel) in the view anchored at @p tileOrigin. Cells outside the tile are
+/// dropped.
+inline void
+stampLosColumn(std::span<std::int32_t> columnTops, IRMath::ivec2 tileOrigin, IRMath::ivec3 cell) {
+    const IRMath::ivec2 column(cell);
+    if (!IRComponents::FogLineOfSightField::cellInTile(column, tileOrigin))
         return;
-    std::int32_t &top = columnTops[IRComponents::FogLineOfSightField::columnIndex(cell.x, cell.y)];
+    std::int32_t &top =
+        columnTops[IRComponents::FogLineOfSightField::columnIndex(column, tileOrigin)];
     top = IRMath::min(top, static_cast<std::int32_t>(cell.z));
 }
 
-/// Rebuild @p columnTops from @p pool's occluding voxels and every
+/// The views the gated sources of @p observers need, one per gated source,
+/// over @p columnTops (`kFogLosColumnViewCount` tops: source `i`'s tile is the
+/// `i`-th `kFogLosColumnCount` run). Returns the number of views filled.
+inline int losSourceViews(
+    const IRComponents::FrameDataFogObservers &observers,
+    std::span<std::int32_t> columnTops,
+    LosColumnViews &views
+) {
+    int count = 0;
+    for (int source = 0; source < observers.visionCircleCount_; ++source) {
+        if (((observers.losSourceMask_ >> source) & 1) == 0)
+            continue;
+        views[static_cast<std::size_t>(count++)] = LosColumnView{
+            source,
+            IRComponents::FogLineOfSightField::tileOrigin(observers.visionCircles_[source]),
+            columnTops.subspan(
+                static_cast<std::size_t>(source) * IRComponents::kFogLosColumnCount,
+                IRComponents::kFogLosColumnCount
+            )
+        };
+    }
+    return count;
+}
+
+/// Rebuild every view in @p views from @p pool's occluding voxels and every
 /// `blocksLOS_` shape on @p canvas (a shape whose `canvasEntity_` is unset
-/// belongs to the active canvas, which the caller passes). Cost: one pass over
-/// the live voxels plus about one SDF evaluation per column of each flagged
-/// shape's footprint.
+/// belongs to the active canvas, which the caller passes). Cost: one pass
+/// over the live voxels testing each against every view's tile, plus about
+/// one SDF evaluation per column of each flagged shape's footprint inside
+/// each tile.
 inline void rasterizeLosColumns(
     const IRComponents::C_VoxelPool &pool,
     IREntity::EntityId canvas,
-    std::span<std::int32_t> columnTops
+    std::span<const LosColumnView> views
 ) {
-    std::fill(columnTops.begin(), columnTops.end(), IRComponents::kFogLosColumnEmpty);
+    for (const LosColumnView &view : views) {
+        std::fill(view.tops_.begin(), view.tops_.end(), IRComponents::kFogLosColumnEmpty);
+    }
+    if (views.empty())
+        return;
 
     const IRRender::VoxelGpuPosition *positions = pool.getPositionGlobals().data();
     const IRComponents::C_Voxel *voxels = pool.getColors().data();
@@ -75,20 +118,13 @@ inline void rasterizeLosColumns(
             (voxel.reserved_ & IRComponents::VoxelReserved::kFogWholeBodyExempt) != 0u) {
             continue;
         }
-        stampLosColumn(columnTops, IRMath::roundVec3HalfUp(positions[i].pos_));
+        const IRMath::ivec3 cell = IRMath::roundVec3HalfUp(positions[i].pos_);
+        for (const LosColumnView &view : views) {
+            stampLosColumn(view.tops_, view.origin_, cell);
+        }
     }
 
     constexpr int kUnclippedZ = std::numeric_limits<int>::max() / 2;
-    const IRMath::ivec3 clipMin(
-        -IRComponents::kFogOfWarHalfExtent,
-        -IRComponents::kFogOfWarHalfExtent,
-        -kUnclippedZ
-    );
-    const IRMath::ivec3 clipMax(
-        IRComponents::kFogOfWarHalfExtent - 1,
-        IRComponents::kFogOfWarHalfExtent - 1,
-        kUnclippedZ
-    );
     const auto nodes = IREntity::queryArchetypeNodesSimple(
         IREntity::getArchetype<
             IRComponents::C_ShapeDescriptor,
@@ -105,25 +141,39 @@ inline void rasterizeLosColumns(
                 (shape.canvasEntity_ != IREntity::kNullEntity && shape.canvasEntity_ != canvas)) {
                 continue;
             }
-            IRMath::SDF::forEachInteriorColumnTop(
-                static_cast<IRMath::SDF::ShapeType>(shape.shapeType_),
-                shape.params_,
-                transforms[i].translation_,
-                clipMin,
-                clipMax,
-                [&](IRMath::ivec3 cell) { stampLosColumn(columnTops, cell); }
-            );
+            for (const LosColumnView &view : views) {
+                const IRMath::ivec3 clipMin(view.origin_.x, view.origin_.y, -kUnclippedZ);
+                const IRMath::ivec3 clipMax(
+                    view.origin_.x + IRComponents::kFogLosTileEdge - 1,
+                    view.origin_.y + IRComponents::kFogLosTileEdge - 1,
+                    kUnclippedZ
+                );
+                IRMath::SDF::forEachInteriorColumnTop(
+                    static_cast<IRMath::SDF::ShapeType>(shape.shapeType_),
+                    shape.params_,
+                    transforms[i].translation_,
+                    clipMin,
+                    clipMax,
+                    [&](IRMath::ivec3 cell) { stampLosColumn(view.tops_, view.origin_, cell); }
+                );
+            }
         }
     }
 }
 
-/// Horizon `H` of target cell @p target seen from @p eye over @p columnTops
-/// (the header comment of `component_canvas_fog_of_war.hpp` has the rule).
-/// `kFogLosHorizonClear` when no occupied column lies strictly between the
-/// eye's cell and the target, including when they are the same cell.
-/// Out-of-field columns are empty.
-inline float
-traceLosHorizon(std::span<const std::int32_t> columnTops, IRMath::vec3 eye, IRMath::ivec2 target) {
+/// Horizon `H` of target cell @p target seen from @p eye over the view
+/// @p columnTops anchored at @p tileOrigin (the header comment of
+/// `component_canvas_fog_of_war.hpp` has the rule). `kFogLosHorizonClear`
+/// when no occupied column lies strictly between the eye's cell and the
+/// target, including when they are the same cell. Columns outside the tile
+/// are empty.
+inline float traceLosHorizon(
+    std::span<const std::int32_t> columnTops,
+    IRMath::ivec2 tileOrigin,
+    IRMath::vec3 eye,
+    IRMath::ivec2 target
+) {
+    using IRComponents::FogLineOfSightField;
     const int sourceX = IRMath::roundHalfUp(eye.x);
     const int sourceY = IRMath::roundHalfUp(eye.y);
     if (sourceX == target.x && sourceY == target.y)
@@ -162,15 +212,17 @@ traceLosHorizon(std::span<const std::int32_t> columnTops, IRMath::vec3 eye, IRMa
     );
     double horizon = std::numeric_limits<double>::infinity();
     // Every visited cell lies in the box spanned by the eye's cell and the
-    // target, so the per-cell field test is needed only when that box leaves
-    // the field.
-    const bool boxInField = IRComponents::FogLineOfSightField::cellInField(sourceX, sourceY) &&
-                            IRComponents::FogLineOfSightField::cellInField(target.x, target.y);
+    // target, so the per-cell tile test is needed only when that box leaves
+    // the tile.
+    const bool boxInTile =
+        FogLineOfSightField::cellInTile(IRMath::ivec2(sourceX, sourceY), tileOrigin) &&
+        FogLineOfSightField::cellInTile(target, tileOrigin);
     const std::int32_t *tops = columnTops.data();
     const auto visit = [&](int x, int y) {
-        if (!boxInField && !IRComponents::FogLineOfSightField::cellInField(x, y))
+        const IRMath::ivec2 cell(x, y);
+        if (!boxInTile && !FogLineOfSightField::cellInTile(cell, tileOrigin))
             return;
-        const std::int32_t top = tops[IRComponents::FogLineOfSightField::columnIndex(x, y)];
+        const std::int32_t top = tops[FogLineOfSightField::columnIndex(cell, tileOrigin)];
         if (top == IRComponents::kFogLosColumnEmpty)
             return;
         const double distance = IRMath::planarLength(
@@ -237,19 +289,22 @@ inline IRMath::vec3 losEye(
 }
 
 /// Fill @p horizons (the `losTexture_` texel image) for @p observers: clear
-/// everywhere, then each gated source's horizon at every in-field cell within
-/// `losBuildReach` of its centre. (source, row) pairs fan out over the job
-/// pool (serial with none); every cell and source owns its own float.
+/// everywhere, then each view's source's horizon at every cell of its tile
+/// within `losBuildReach` of its centre, traced over that view (`views` as
+/// `losSourceViews` fills them, already rasterised). (view, row) pairs fan out
+/// over the job pool (serial with none); every cell and source owns its own
+/// float.
 inline void buildLosHorizons(
     const IRComponents::FrameDataFogObservers &observers,
     const IRComponents::FogLosEyeHeights &eyeHeights,
-    std::span<const std::int32_t> columnTops,
+    std::span<const LosColumnView> views,
     std::span<float> horizons
 ) {
+    using IRComponents::FogLineOfSightField;
     std::fill(horizons.begin(), horizons.end(), IRComponents::kFogLosHorizonClear);
 
     struct SourceBuild {
-        int source_;
+        const LosColumnView *view_ = nullptr;
         IRMath::vec2 centre_;
         IRMath::vec3 eye_;
         float reachSq_;
@@ -258,34 +313,29 @@ inline void buildLosHorizons(
     };
     std::array<SourceBuild, IRComponents::kMaxFogVisionCircles> builds{};
     int buildCount = 0;
-    // Work items are (source, row) pairs: `rowOffset_` is where a source's
-    // rows start in the flat item range.
+    // Work items are (view, row) pairs: `rowOffset_` is where a view's rows
+    // start in the flat item range.
     int itemCount = 0;
-    for (int source = 0; source < observers.visionCircleCount_; ++source) {
-        if (((observers.losSourceMask_ >> source) & 1) == 0)
-            continue;
-        const IRMath::vec4 circle = observers.visionCircles_[source];
+    for (const LosColumnView &view : views) {
+        const IRMath::vec4 circle = observers.visionCircles_[view.source_];
         const float reach = losBuildReach(circle);
         SourceBuild &build = builds[static_cast<std::size_t>(buildCount++)];
-        build.source_ = source;
+        build.view_ = &view;
         build.centre_ = IRMath::vec2(circle);
-        build.eye_ = losEye(observers, eyeHeights, source);
+        build.eye_ = losEye(observers, eyeHeights, view.source_);
         build.reachSq_ = reach * reach;
-        build.xMin_ = IRMath::max(
-            static_cast<int>(IRMath::floor(circle.x - reach)),
-            -IRComponents::kFogOfWarHalfExtent
-        );
+        const int tileLast = IRComponents::kFogLosTileEdge - 1;
+        build.xMin_ =
+            IRMath::max(static_cast<int>(IRMath::floor(circle.x - reach)), view.origin_.x);
         build.xMax_ = IRMath::min(
             static_cast<int>(IRMath::ceil(circle.x + reach)),
-            IRComponents::kFogOfWarHalfExtent - 1
+            view.origin_.x + tileLast
         );
-        build.yMin_ = IRMath::max(
-            static_cast<int>(IRMath::floor(circle.y - reach)),
-            -IRComponents::kFogOfWarHalfExtent
-        );
+        build.yMin_ =
+            IRMath::max(static_cast<int>(IRMath::floor(circle.y - reach)), view.origin_.y);
         build.yMax_ = IRMath::min(
             static_cast<int>(IRMath::ceil(circle.y + reach)),
-            IRComponents::kFogOfWarHalfExtent - 1
+            view.origin_.y + tileLast
         );
         build.rowOffset_ = itemCount;
         itemCount += IRMath::max(build.yMax_ - build.yMin_ + 1, 0);
@@ -305,14 +355,16 @@ inline void buildLosHorizons(
                        item >= builds[static_cast<std::size_t>(b + 1)].rowOffset_)
                     ++b;
                 const SourceBuild &build = builds[static_cast<std::size_t>(b)];
+                const LosColumnView &view = *build.view_;
                 const int y = build.yMin_ + (item - build.rowOffset_);
                 const float dy = static_cast<float>(y) - build.centre_.y;
                 for (int x = build.xMin_; x <= build.xMax_; ++x) {
                     const float dx = static_cast<float>(x) - build.centre_.x;
                     if (dx * dx + dy * dy > build.reachSq_)
                         continue;
-                    horizons[IRComponents::FogLineOfSightField::horizonIndex(build.source_, x, y)] =
-                        traceLosHorizon(columnTops, build.eye_, IRMath::ivec2(x, y));
+                    const IRMath::ivec2 cell(x, y);
+                    horizons[FogLineOfSightField::horizonIndex(view.source_, cell, view.origin_)] =
+                        traceLosHorizon(view.tops_, view.origin_, build.eye_, cell);
                 }
             }
         },

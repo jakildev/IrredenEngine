@@ -24,32 +24,58 @@
 
 // Per-voxel analytic fog clip inputs, mirroring
 // c_voxel_visibility_compact + c_fog_to_trixel. The world fog canvas binds its
-// 256² grid + live vision circles; every non-fog / detached canvas binds a 1×1
-// all-visible placeholder + count-0 observers, so `fogColumnReveal`
-// short-circuits to "fully visible".
-constant int kFogOfWarHalfExtent = 128;
+// camera-anchored window texture + live vision circles; every non-fog /
+// detached canvas binds a 1×1 all-visible placeholder + count-0 observers, so
+// `fogColumnReveal` short-circuits to "fully visible".
 constant float kFogExploredThreshold = 0.25f;
 constant int kMaxFogVisionCircles = 8; // mirror of component_canvas_fog_of_war.hpp kMaxFogVisionCircles
 struct FogObserverData {
     float4 visionCircles[kMaxFogVisionCircles]; // (centerX, centerY, radius, edgeSoftness)
     int visionCircleCount;
-    int _fogObsPad0;
-    int _fogObsPad1;
-    int _fogObsPad2;
-    // Per-circle height penalty, appended after
-    // the ivec4 tail to match FrameDataFogObservers::visionCircleHeights_
-    // (offset 144) and the GLSL block. heights[i] = (observerZ, zCostUp,
-    // zCostDown, freeBand), read only by stage 1's detached-canvas and per-axis
-    // own-column DROPs (fogColumnRevealZ in c_voxel_to_trixel_stage_1_body.metal);
-    // the selection math in this file ignores it. All-zero heights (the default)
+    // The int4 tail after the count, matching the GLSL block: the
+    // line-of-sight mask (read by the fog pass only) and the field column at
+    // texel (0, 0) of the fog window, uploaded with the texture it indexes.
+    int losSourceMask;
+    int windowOriginX;
+    int windowOriginY;
+    // Per-circle height penalty, after the int4 tail to match
+    // FrameDataFogObservers::visionCircleHeights_ (offset 144) and the GLSL
+    // block. heights[i] = (observerZ, zCostUp, zCostDown, freeBand), read only
+    // by stage 1's detached-canvas and per-axis own-column DROPs
+    // (fogColumnRevealZ in c_voxel_to_trixel_stage_1_body.metal); the
+    // selection math in this file ignores it. All-zero heights (the default)
     // make those drops equal the 2D column clip.
     float4 visionCircleHeights[kMaxFogVisionCircles];
 };
 
+// Texel of world column `col` in the fog window, or (-1, -1) when the column
+// is outside it. Column `c` lives at texel floorMod(c, W) with W the window
+// edge; the window covers [origin, origin + W) per axis. Every modulo takes
+// non-negative operands only. GLSL twin: fogWindowTexel in
+// ../ir_voxel_face_select.glsl (keep byte-identical).
+static int2 fogWindowTexel(int2 col, int2 origin, int2 fogSize) {
+    const int2 rel = col - origin;
+    if (rel.x < 0 || rel.x >= fogSize.x || rel.y < 0 || rel.y >= fogSize.y) {
+        return int2(-1);
+    }
+    int2 base;
+    base.x = origin.x >= 0 ? origin.x % fogSize.x : fogSize.x - 1 - (-(origin.x + 1)) % fogSize.x;
+    base.y = origin.y >= 0 ? origin.y % fogSize.y : fogSize.y - 1 - (-(origin.y + 1)) % fogSize.y;
+    int2 texel = rel + base;
+    if (texel.x >= fogSize.x) {
+        texel.x -= fogSize.x;
+    }
+    if (texel.y >= fogSize.y) {
+        texel.y -= fogSize.y;
+    }
+    return texel;
+}
+
 // Fog reveal of world grid COLUMN `col` in [0,1]. Stage 1 emits the cut face's
 // DISTANCE for `reveal < 1.0` and stage 2 paints colour on the same
 // set of faces — both through this one definition, so the cut wall's depth and
-// colour cannot desync. GLSL twin: fogColumnReveal in
+// colour cannot desync. A column outside the window reads as UNEXPLORED grid
+// state, so only the circles can reveal it. GLSL twin: fogColumnReveal in
 // ../ir_voxel_face_select.glsl.
 static float fogColumnReveal(
     texture2d<float, access::read> fog, constant FogObserverData& obs, int2 col
@@ -58,11 +84,8 @@ static float fogColumnReveal(
     if (fogSize.x <= 1) {
         return 1.0f; // 1×1 all-visible placeholder (non-fog / detached canvas)
     }
-    const int2 cell = col + int2(kFogOfWarHalfExtent);
-    if (cell.x < 0 || cell.x >= fogSize.x || cell.y < 0 || cell.y >= fogSize.y) {
-        return 1.0f; // out-of-range column reads as visible
-    }
-    if (fog.read(uint2(cell)).r >= kFogExploredThreshold) {
+    const int2 cell = fogWindowTexel(col, int2(obs.windowOriginX, obs.windowOriginY), fogSize);
+    if (cell.x >= 0 && fog.read(uint2(cell)).r >= kFogExploredThreshold) {
         return 1.0f; // explored / visible grid memory — keep
     }
     float reveal = 0.0f;
@@ -89,11 +112,8 @@ static float fogColumnRevealNearest(
     if (fogSize.x <= 1) {
         return 1.0f;
     }
-    const int2 cell = col + int2(kFogOfWarHalfExtent);
-    if (cell.x < 0 || cell.x >= fogSize.x || cell.y < 0 || cell.y >= fogSize.y) {
-        return 1.0f;
-    }
-    if (fog.read(uint2(cell)).r >= kFogExploredThreshold) {
+    const int2 cell = fogWindowTexel(col, int2(obs.windowOriginX, obs.windowOriginY), fogSize);
+    if (cell.x >= 0 && fog.read(uint2(cell)).r >= kFogExploredThreshold) {
         return 1.0f;
     }
     float reveal = 0.0f;

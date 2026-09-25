@@ -6,8 +6,6 @@
 // the CONTINUOUS world column per pixel, so a disc edge is crisp at render
 // resolution and slides smoothly with sub-voxel observer motion.
 
-constant int kFogOfWarSize = 256;
-constant int kFogOfWarHalfExtent = 128;
 constant int kEmptyDistanceEncoded = 65535;
 // Normalized stored explored value (128/255, NOT 0.5). The two-segment lerp
 // pivots through this so the three canonical stored states (0 / 128 / 255) land
@@ -25,7 +23,11 @@ struct FogObserverData {
     int visionCircleCount;
     // Bit i set = source i is gated by the line-of-sight field (ir_fog_los).
     int losSourceMask;
-    // Per-circle height penalty, appended after the count (float4 re-aligns to
+    // The field column at texel (0, 0) of the fog window (C_CanvasFogOfWar's
+    // windowOrigin_), uploaded in the same frame as the texture it indexes.
+    int windowOriginX;
+    int windowOriginY;
+    // Per-circle height penalty, appended after the tail (float4 re-aligns to
     // 16). heights[i] = (observerZ, zCostUp, zCostDown, freeBand); the reveal
     // folds zCostUp * max(dzUp - freeBand, 0) + zCostDown *
     // max(dzDown - freeBand, 0) into the radial distance, where
@@ -49,13 +51,39 @@ constant float kFogCutMaxRimCells = 2.0f;
 constant float kFogRimFadeCells = 8.0f;
 constant float kFogRimFadeLevel = 0.75f;
 
-// Out-of-range cells read as visible (1.0): texture reads have no sampler wrap
-// mode, so this bounds check is load-bearing. Matches the OOB-as-visible
-// contract on C_CanvasFogOfWar.
-static float fogTap(int2 cell, int2 fogSize, texture2d<float, access::read> fog) {
-    if (cell.x < 0 || cell.x >= fogSize.x ||
-        cell.y < 0 || cell.y >= fogSize.y) {
-        return 1.0f;
+// Texel of world column `col` in the fog window, or (-1, -1) when the column
+// is outside it. Column `c` lives at texel floorMod(c, W) with W the window
+// edge; the window covers [origin, origin + W) per axis. Every modulo takes
+// non-negative operands only. GLSL twin: fogWindowTexel in
+// ../c_fog_to_trixel.glsl (keep byte-identical).
+static int2 fogWindowTexel(int2 col, int2 origin, int2 fogSize) {
+    const int2 rel = col - origin;
+    if (rel.x < 0 || rel.x >= fogSize.x || rel.y < 0 || rel.y >= fogSize.y) {
+        return int2(-1);
+    }
+    int2 base;
+    base.x = origin.x >= 0 ? origin.x % fogSize.x : fogSize.x - 1 - (-(origin.x + 1)) % fogSize.x;
+    base.y = origin.y >= 0 ? origin.y % fogSize.y : fogSize.y - 1 - (-(origin.y + 1)) % fogSize.y;
+    int2 texel = rel + base;
+    if (texel.x >= fogSize.x) {
+        texel.x -= fogSize.x;
+    }
+    if (texel.y >= fogSize.y) {
+        texel.y -= fogSize.y;
+    }
+    return texel;
+}
+
+// Grid state of world column `col`: the window texel's .r, or 0.0
+// (unexplored) for a column outside the window. Texture reads have no sampler
+// wrap mode, so the window test is load-bearing; the circles below still
+// max-compose over an out-of-window column. Mirrors the GLSL twin.
+static float fogTap(
+    int2 col, int2 origin, int2 fogSize, texture2d<float, access::read> fog
+) {
+    const int2 cell = fogWindowTexel(col, origin, fogSize);
+    if (cell.x < 0) {
+        return 0.0f;
     }
     return fog.read(uint2(cell)).r;
 }
@@ -103,11 +131,10 @@ kernel void c_fog_to_trixel(
         frameData.rasterYaw
     );
 
-    // Iso convention: X-Y is the floor plane, so the fog grid lookup is (x, y)
-    // with the half-extent offset; +Z is the downward height axis and plays no
-    // part.
+    // Iso convention: X-Y is the floor plane, so the fog grid lookup is the
+    // (x, y) column through the window; +Z is the downward height axis and
+    // plays no part.
     const int3 surfaceVoxel = roundHalfUp(pos3D);
-    const int2 fogCell = surfaceVoxel.xy + int2(kFogOfWarHalfExtent);
     const int2 fogSize = int2(
         int(canvasFogOfWar.get_width()),
         int(canvasFogOfWar.get_height())
@@ -115,7 +142,12 @@ kernel void c_fog_to_trixel(
     // Kept separate from the circle-combined `state`: the rim fade and the
     // cross-section cap apply only to UNEXPLORED surfaces (explored memory
     // keeps its desaturated tone).
-    const float gridState = fogTap(fogCell, fogSize, canvasFogOfWar);
+    const float gridState = fogTap(
+        surfaceVoxel.xy,
+        int2(fogObservers.windowOriginX, fogObservers.windowOriginY),
+        fogSize,
+        canvasFogOfWar
+    );
     float state = gridState;
     // This column's world distance PAST the nearest hard disc's radius —
     // drives the cross-section cap band and the rim fade. Initialized to the
@@ -150,7 +182,7 @@ kernel void c_fog_to_trixel(
             // contributes neither reveal nor rim distance; whole-body pixels
             // are never gated per pixel.
             if (fogLosSourceGated(fogObservers.losSourceMask, i) && !fogWholeBody &&
-                !fogLosVisible(surfaceVoxel, i, fogLineOfSight)) {
+                !fogLosVisible(surfaceVoxel, i, fogObservers.visionCircles[i], fogLineOfSight)) {
                 continue;
             }
             // Height-penalized reveal — mirror of the GLSL twin: fold this
