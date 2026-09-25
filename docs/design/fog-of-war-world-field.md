@@ -406,6 +406,16 @@ never persists, probes or evicts, and leaves no explored memory. It deliberately
 does not provide analytic edge softness, height cost, line of sight or
 channels; callers add their highest-priority sources first.
 
+The tier boundary is call order since the last `clearVisionCircles`; an
+admitted field-tier source returns no analytic slot (-1), so it cannot be
+gated by line of sight. A disc stamps cells whose centres lie within the
+radius of `roundHalfUp(centre)`, the radius clamped to `kFogRevealRadiusMax`.
+`setCell` writes the persistent layer only, so a cell under a tier disc still
+reads visible. A disc outside the window changes nothing drawn (D10 reads the
+column unexplored and nothing uploads it) but still reads visible through
+`getCell`, which is the gameplay contract. `clearVisionCircles` puts every key
+the layer held in the pending set, so the gather re-expands those chunks.
+
 Raising the analytic cap is rejected because it changes every mirrored std140
 block and remains a cap. Persisting tier stamps is rejected because a live
 source expresses visibility now, not explored memory.

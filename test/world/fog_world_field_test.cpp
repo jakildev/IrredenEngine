@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/fog_world_field.hpp>
 #include <irreden/spatial/chunked_field.hpp>
 #include <irreden/world/field_chunk_persistence.hpp>
@@ -21,6 +22,9 @@
 
 namespace {
 
+using IRComponents::C_CanvasFogOfWar;
+using IRComponents::FogLosEyeHeights;
+using IRComponents::FrameDataFogObservers;
 using IRComponents::kFogStateExplored;
 using IRComponents::kFogStateUnexplored;
 using IRComponents::kFogStateVisible;
@@ -489,6 +493,179 @@ TEST_F(FogWorldFieldTest, ColdWholeWindowGather) {
         EXPECT_EQ(stats.residentChunks_, savedChunks) << subdirectory;
         EXPECT_TRUE(readBack) << subdirectory;
     }
+}
+
+// Vision source @p index of the tier fixtures: far-apart centres with
+// half-integer offsets, so the stamp's `roundHalfUp` centre is exercised on
+// both signs.
+IRMath::vec2 tierSourceCentre(int index) {
+    return {static_cast<float>(index * 1000) + 0.5f, static_cast<float>(-index * 700) - 0.5f};
+}
+
+IRMath::ivec2 tierSourceCell(int index) {
+    const IRMath::vec2 centre = tierSourceCentre(index);
+    return {IRMath::roundHalfUp(centre.x), IRMath::roundHalfUp(centre.y)};
+}
+
+int admitTierSource(
+    FrameDataFogObservers &observers,
+    FogLosEyeHeights &eyes,
+    WorldField &field,
+    int index,
+    float radius
+) {
+    const IRMath::vec2 centre = tierSourceCentre(index);
+    return C_CanvasFogOfWar::addVisionCircle(
+        observers,
+        eyes,
+        field,
+        centre.x,
+        centre.y,
+        radius,
+        0.0f,
+        0.0f,
+        0.0f,
+        IRComponents::kFogVisionZCostMirrorUp,
+        0.0f
+    );
+}
+
+TEST_F(FogWorldFieldTest, SourcesPastTheCapRevealThroughTheField) {
+    constexpr int kSources = 12;
+    constexpr int kRadius = 6;
+    static_assert(kSources > IRComponents::kMaxFogVisionCircles);
+    WorldField field;
+    FrameDataFogObservers observers;
+    FogLosEyeHeights eyes{};
+    eyes.fill(IRComponents::kFogVisionLosOff);
+
+    for (int i = 0; i < kSources; ++i) {
+        const int slot = admitTierSource(observers, eyes, field, i, static_cast<float>(kRadius));
+        EXPECT_EQ(slot, i < IRComponents::kMaxFogVisionCircles ? i : -1) << "source " << i;
+    }
+    EXPECT_EQ(observers.visionCircleCount_, IRComponents::kMaxFogVisionCircles)
+        << "the UBO still holds exactly the analytic cap";
+
+    for (int i = 0; i < kSources; ++i) {
+        const IRMath::ivec2 centre = tierSourceCell(i);
+        if (i < IRComponents::kMaxFogVisionCircles) {
+            EXPECT_EQ(field.getCell(centre), kFogStateUnexplored)
+                << "analytic source " << i << " stamps nothing";
+            continue;
+        }
+        EXPECT_EQ(field.getCell(centre), kFogStateVisible) << "tier source " << i;
+        EXPECT_EQ(field.getCell(centre + IRMath::ivec2{kRadius + 1, 0}), kFogStateUnexplored);
+        EXPECT_EQ(field.getCell(centre + IRMath::ivec2{0, -(kRadius + 1)}), kFogStateUnexplored);
+        std::int64_t visible = 0;
+        for (int dy = -kRadius - 1; dy <= kRadius + 1; ++dy) {
+            for (int dx = -kRadius - 1; dx <= kRadius + 1; ++dx) {
+                visible += field.getCell(centre + IRMath::ivec2{dx, dy}) == kFogStateVisible;
+            }
+        }
+        EXPECT_EQ(visible, discCellCount(kRadius)) << "tier source " << i;
+    }
+
+    const IRMath::ivec2 written = tierSourceCell(kSources - 1);
+    field.setCell(written, kFogStateExplored);
+    EXPECT_EQ(field.getCell(written), kFogStateVisible)
+        << "setCell writes the persistent layer; the tier disc still composes over it";
+
+    C_CanvasFogOfWar::clearVisionCircles(observers, eyes, field);
+    EXPECT_EQ(observers.visionCircleCount_, 0);
+    for (int i = IRComponents::kMaxFogVisionCircles; i < kSources - 1; ++i) {
+        EXPECT_EQ(field.getCell(tierSourceCell(i)), kFogStateUnexplored)
+            << "tier source " << i << " after clearVisionCircles";
+    }
+    EXPECT_EQ(field.getCell(written), kFogStateExplored)
+        << "the tier leaves no memory; the persistent write stands";
+    EXPECT_EQ(field.stats().probes_, 0);
+}
+
+// An integer radius and centre stamp exactly the cells `revealRadius` marks.
+TEST_F(FogWorldFieldTest, FieldTierDiscMatchesRevealRadius) {
+    constexpr int kRadius = 16;
+    const IRMath::ivec2 centre{-37, 90};
+    WorldField tier;
+    WorldField revealed;
+    EXPECT_EQ(
+        tier.stampTransientDisc(IRMath::vec2(centre), static_cast<float>(kRadius)),
+        revealed.revealRadius(centre, kRadius)
+    );
+    for (int dy = -kRadius - 2; dy <= kRadius + 2; ++dy) {
+        for (int dx = -kRadius - 2; dx <= kRadius + 2; ++dx) {
+            const IRMath::ivec2 cell = centre + IRMath::ivec2{dx, dy};
+            ASSERT_EQ(tier.getCell(cell), revealed.getCell(cell)) << dx << ", " << dy;
+        }
+    }
+    EXPECT_EQ(tier.stampTransientDisc(IRMath::vec2(centre), 0.0f), 0);
+    EXPECT_EQ(tier.stampTransientDisc(IRMath::vec2(centre), -3.0f), 0);
+}
+
+// The gather composes both layers per cell, and clearing the tier re-expands
+// the chunks it covered.
+TEST_F(FogWorldFieldTest, FieldTierDiscReachesTheWindowGather) {
+    const IRMath::ivec2 centre{10, -20};
+    const IRMath::ivec2 persistentCell{12, -20};
+    WorldField field;
+    field.setCell(persistentCell, kFogStateExplored);
+    field.stampTransientDisc(IRMath::vec2(centre), 4.0f);
+    std::vector<FieldChunkKey> pending;
+    field.consumePending(pending);
+    EXPECT_TRUE(
+        std::binary_search(pending.begin(), pending.end(), packFieldChunkKey(fieldChunkOf(centre)))
+    );
+
+    std::vector<std::uint8_t> image;
+    const auto texelState = [&](IRMath::ivec2 column) {
+        const IRMath::ivec2 texel = IRPrefab::Fog::detail::windowTexel(column, kLegacyEdge);
+        return image[static_cast<std::size_t>((texel.y * kLegacyEdge + texel.x) * 4)];
+    };
+    expandWholeWindow(field, kLegacyOrigin, kLegacyEdge, image);
+    EXPECT_EQ(texelState(centre), kFogStateVisible);
+    EXPECT_EQ(texelState(persistentCell), kFogStateVisible);
+    EXPECT_EQ(texelState(centre + IRMath::ivec2{5, 0}), kFogStateUnexplored);
+
+    field.clearTransient();
+    field.consumePending(pending);
+    EXPECT_TRUE(
+        std::binary_search(pending.begin(), pending.end(), packFieldChunkKey(fieldChunkOf(centre)))
+    ) << "clearing the tier re-expands the chunks it covered";
+    expandWholeWindow(field, kLegacyOrigin, kLegacyEdge, image);
+    EXPECT_EQ(texelState(centre), kFogStateUnexplored);
+    EXPECT_EQ(texelState(persistentCell), kFogStateExplored);
+}
+
+TEST_F(FogWorldFieldTest, FieldTierStampsAreNotPersisted) {
+    const int tierIndex = IRComponents::kMaxFogVisionCircles;
+    const IRMath::ivec2 centre = tierSourceCell(tierIndex);
+    const IRMath::ivec2 persistentCell = centre + IRMath::ivec2{3, 0};
+    {
+        WorldField field;
+        persist(field);
+        FrameDataFogObservers observers;
+        FogLosEyeHeights eyes{};
+        eyes.fill(IRComponents::kFogVisionLosOff);
+        for (int i = 0; i <= tierIndex; ++i) {
+            admitTierSource(observers, eyes, field, i, 5.0f);
+        }
+        field.setCell(persistentCell, kFogStateExplored);
+        ASSERT_EQ(field.getCell(centre), kFogStateVisible);
+        EXPECT_EQ(field.stats().saves_, 0);
+        EXPECT_EQ(field.flush(), 1) << "only the persistent write's region is saved";
+
+        const IRMath::ivec2 farChunk{-100000, -100000};
+        field.evict(farChunk, farChunk);
+        field.evict(farChunk, farChunk);
+        const IRPrefab::Fog::WorldFieldStats stats = field.stats();
+        EXPECT_EQ(stats.evictions_, 1);
+        EXPECT_EQ(stats.residentRegions_, 0);
+        EXPECT_EQ(field.peekCell(centre), std::optional<std::uint8_t>{kFogStateVisible})
+            << "eviction never drops the transient layer";
+    }
+    WorldField fresh;
+    persist(fresh);
+    EXPECT_EQ(fresh.getCell(centre), kFogStateUnexplored);
+    EXPECT_EQ(fresh.getCell(persistentCell), kFogStateExplored);
 }
 
 class FogWindowGatherTest : public ::testing::Test {

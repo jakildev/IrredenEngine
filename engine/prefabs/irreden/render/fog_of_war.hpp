@@ -163,9 +163,9 @@ inline void setCell(int worldX, int worldY, std::uint8_t state) {
     }
 }
 
-/// Read the fog state at @p (worldX, worldY). Returns
-/// `kFogStateUnexplored` if the active canvas has no fog component or the
-/// cell was never written.
+/// Read the fog state at @p (worldX, worldY): the written state, raised to
+/// visible under a live field-tier vision disc. Returns `kFogStateUnexplored`
+/// if the active canvas has no fog component or neither applies.
 inline std::uint8_t getCell(int worldX, int worldY) {
     if (auto *fog = detail::activeFogComponent()) {
         return fog->getCell(worldX, worldY);
@@ -214,12 +214,16 @@ inline int setVisionCircle(
     return -1;
 }
 
-/// Append one analytic vision disc to the live set (up to
-/// `kMaxFogVisionCircles`). See `setVisionCircle` for disc semantics (including
-/// the @p observerZ / @p zCostUp / @p zCostDown / @p freeBand height penalty);
-/// use this after `clearVisionCircles` to drive several vision
-/// sources in one frame. Returns the assigned slot — the index
-/// `setVisionCircleLineOfSight` takes — or -1 when the circle was dropped.
+/// Append one vision source to the live set. See `setVisionCircle` for disc
+/// semantics (including the @p observerZ / @p zCostUp / @p zCostDown /
+/// @p freeBand height penalty); use this after `clearVisionCircles` to drive
+/// several vision sources in one frame, highest priority first: the first
+/// `kMaxFogVisionCircles` are analytic, every later one is field-tier — an XY
+/// disc stamped into the world field with no edge softness, height cost, line
+/// of sight, channels or explored memory (the contract is at
+/// `C_CanvasFogOfWar::addVisionCircle`). Returns the analytic slot — the index
+/// `setVisionCircleLineOfSight` takes — or -1 when the source took none
+/// (dropped, field-tier, or no active fog canvas).
 inline int addVisionCircle(
     float cx,
     float cy,
@@ -288,7 +292,7 @@ inline bool lineOfSight(IRMath::vec3 from, IRMath::vec3 to) {
            traceLosHorizon(view.tops_, tileOrigin, from, IRMath::ivec2(target));
 }
 
-/// Drop every live analytic vision disc → grid-only fog.
+/// Drop every live vision source, analytic and field-tier → grid-only fog.
 inline void clearVisionCircles() {
     if (auto *fog = detail::activeFogComponent()) {
         fog->clearVisionCircles();
