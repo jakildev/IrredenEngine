@@ -1254,7 +1254,9 @@ std::vector<IRMath::ivec4> smoothProbeFacePixels() {
 // over the production-built texture) matches FogLineOfSightField::visibility
 // and the gated reveal matches the field-aware oracle, both within 1e-3.
 // Non-vacuity: each softness has occluded, visible and partial samples in the
-// disc. The face arm runs fogLosFaceVoxel over enumerated side-face pixels and
+// disc. At softness 0 every tap verdict is 0 or 1, so the partial samples are
+// the fractional-XY ones whose four taps straddle a boundary — the bilinear
+// blend is what they pin. The face arm runs fogLosFaceVoxel over enumerated side-face pixels and
 // matches the CPU twin exactly.
 TEST_F(FogCrossSectionTest, GpuSmoothOcclusionMatchesTheCpuOracle) {
     using namespace IRRender;
