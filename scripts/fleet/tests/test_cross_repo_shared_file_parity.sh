@@ -75,11 +75,16 @@ for path in "${CONTRACT_FILES[@]+"${CONTRACT_FILES[@]}"}"; do
     engine_blob="$TMPROOT/engine.$slug"
     game_blob="$TMPROOT/game.$slug"
 
-    if ! git -C "$ENGINE_ROOT" show "origin/master:$path" >"$engine_blob" 2>/dev/null; then
+    # `<rev>:./<path>`, not `<rev>:<path>`: MSYS rewrites an argument whose
+    # post-colon segment starts with `.` as a POSIX path list
+    # (`origin\master;.github\...`), so a dotted path dies "unknown revision"
+    # on native Windows. `./` resolves against the cwd, which `-C` pins to
+    # the repo root — keep `-C` on both calls or the form changes meaning.
+    if ! git -C "$ENGINE_ROOT" show "origin/master:./$path" >"$engine_blob" 2>/dev/null; then
         bad "$path: missing from engine origin/master"
         continue
     fi
-    if ! git -C "$GAME_ROOT" show "origin/master:$path" >"$game_blob" 2>/dev/null; then
+    if ! git -C "$GAME_ROOT" show "origin/master:./$path" >"$game_blob" 2>/dev/null; then
         bad "$path: missing from downstream origin/master"
         continue
     fi

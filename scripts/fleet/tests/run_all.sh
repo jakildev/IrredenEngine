@@ -31,7 +31,9 @@
 # Options:
 #   --only <substring>  Run only suites whose filename contains <substring>.
 #   --list              Print the discovered suite list; run nothing.
-#   --timeout <secs>    Per-suite timeout (default 120). 0 disables.
+#   --timeout <secs>    Per-suite timeout (default 120; 360 on native
+#                       Windows). 0 disables. An explicit value is literal
+#                       on every host.
 #   -h, --help          Show this help.
 #
 # A suite that cannot find its subject under test should print
@@ -52,7 +54,7 @@ TESTS_DIR=$(cd "$(dirname "$0")" && pwd)
 
 only=""
 list_only=0
-per_timeout=120
+per_timeout=""
 
 # `env -u` arguments naming every FLEET_* variable the dispatch wrapper assigns.
 scrub_args=()
@@ -86,6 +88,20 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+if [[ -z "$per_timeout" ]]; then
+    # Native Windows (MSYS2 / Git-for-Windows) spends over half of a suite's
+    # wall time on process spawn, so its slowest suite needs ~165s there
+    # against well under 120s elsewhere. The cost: a genuinely hung suite
+    # there holds the run a full 360s before it is killed.
+    # Host detection mirrors fleet-claim's derive_host / host_from_uname and
+    # fleet_task_class.py's _current_host, FLEET_TEST_HOST override included.
+    case "${FLEET_TEST_HOST:-$(uname -s 2>/dev/null)}" in
+        windows|MINGW*|MSYS*|CYGWIN*|Windows*) per_timeout=360; timeout_source="windows host default" ;;
+        *)                                     per_timeout=120; timeout_source="default" ;;
+    esac
+else
+    timeout_source="--timeout"
+fi
 [[ "$per_timeout" =~ ^[0-9]+$ ]] || die_usage "--timeout takes a non-negative integer"
 
 suites=()
@@ -164,6 +180,14 @@ run_with_timeout() {
     rm -f "$out_file" "$marker"
     return "$rc"
 }
+
+# The default differs by host, so the effective value is printed before the
+# first RUN line rather than left for the reader to derive.
+if [[ "$per_timeout" -eq 0 ]]; then
+    echo "$PROG: per-suite timeout disabled (--timeout 0)"
+else
+    echo "$PROG: per-suite timeout ${per_timeout}s ($timeout_source)"
+fi
 
 cd "$TESTS_DIR" || exit 1
 

@@ -49,7 +49,12 @@ function(_irreden_drop_gitignored_files file_list_var repo_root)
 
     set(stdin_file "${CMAKE_BINARY_DIR}/irreden_quality_files_check_ignore_input.txt")
     string(REPLACE ";" "\n" stdin_contents "${candidates}")
-    file(WRITE "${stdin_file}" "${stdin_contents}\n")
+    # Not file(WRITE): on Windows it emits CRLF, check-ignore then reads each
+    # path with a trailing `\r`, still matches it, and echoes it C-quoted
+    # (`"<path>\r"`) — a string REMOVE_ITEM never matches, so the filter
+    # silently drops nothing. @ONLY keeps `${...}` in a path literal.
+    file(CONFIGURE OUTPUT "${stdin_file}" CONTENT "${stdin_contents}\n"
+         @ONLY NEWLINE_STYLE UNIX)
 
     execute_process(
         COMMAND "${IRREDEN_GIT_EXECUTABLE}" -C "${repo_root}" check-ignore --stdin

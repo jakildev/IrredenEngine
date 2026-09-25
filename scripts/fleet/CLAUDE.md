@@ -97,6 +97,8 @@ subjects; `ctest` never sees them. Validator index: [`VALIDATION.md`](../../docs
   (`tests/test_fleet_claim_parked_release.sh` Phase 2d is the shape).
   `lint_crlf_producers.py` ratchets this tree-wide (exception set frozen
   empty; the fix is always at the producer, never a suppression).
+- **MSYS rewrites a `<rev>:.<path>` argument as a Windows path list**; spell a
+  dotted path `git -C <root> show "<rev>:./<path>"` (`./` is cwd-relative).
 - **`--help` and docstrings track the code.** A `--help` that slices its own
   header derives the end from the first non-`#` line or ships a regression
   test; a diff that adds or removes an enumerated pass/subcommand/sweep
