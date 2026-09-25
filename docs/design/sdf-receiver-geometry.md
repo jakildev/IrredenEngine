@@ -385,8 +385,8 @@ analytical boxes at the continuous presentation coordinate. Ownership comes from
 the displayed, clamped sample texel; it is not re-elected from the query coordinate.
 The shared selected-receiver helper performs a finite intersection and supplies
 position, signed normal and continuous view depth to the shared finite surface sampler.
-The diagnostic uses `worldSurfaceSunShadowFactor` with the actual camera-to-world
-quaternion. Its initial sampled-caster control is retained in the linked evidence.
+The diagnostic uses `worldShapeSurfaceSunShadowFactor` with the actual camera-to-world
+quaternion and the canvas cascade depth described under fragment lighting below. Its initial sampled-caster control is retained in the linked evidence.
 
 A successful opaque query writes only diagnostic RGB. Alpha, stored depth,
 identity, hover and coverage remain unchanged. Misses and unsupported winners
@@ -422,7 +422,13 @@ parity from the destination texel. Legitimate voxel steps remain the union of
 individual finite cell faces, while an analytical box contributes its box faces.
 
 The shared `ir_sun_face_index` inserts at most three light-facing faces per box
-using its full object quaternion, center and producer density-dependent extent.
+using its full object quaternion, rendered center and producer density-dependent extent.
+The rendered center is `shapeRenderedCenter` (`ir_shape_receiver`): the rasterizer's
+view-frame `roundHalfUp` origin rotated back to world, or the unsnapped position under
+smooth yaw off the lattice walk. The raw descriptor position can sit half a voxel
+off the drawn box, and an exact receiver on that box then lies behind its own
+indexed face and reads fully shadowed. `test_render_box_caster_center.py` executes
+the bake's center against the rasterizer's origin prologue on both backends.
 Only lane zero of depth-partition group zero inserts records. The original
 ray-box depth raster remains in the indexed fallback layer. Complete candidate
 lists use exact finite faces; incomplete lists preserve sampled fallback. Other
@@ -474,7 +480,15 @@ fragment coordinate when retained ownership is valid and the pipeline provides
 lighting, AO, sun and local-volume resources. Material RGB comes from the
 selected descriptor; AO is sampled from the selected owner texel. Lambert, sky
 and local-light queries use the exact finite surface position/normal. Sun
-visibility uses the same bounded finite-face query as the diagnostic. Ambient,
+visibility uses the same bounded finite-face query as the diagnostic.
+The canvas coverage layer keeps the convention of the canvas cell receiver the
+fragment replaces: the cascade is selected by `shapeCanvasIsoDepth` (view-frame
+x+y+z at the canvas's subdivided resolution, matching the cell's raw depth), and
+the bilinear splat taps are sampled at `kNormalBiasVoxels` along the normal. The
+exact source-face and nearest-tap queries stay unbiased. World-unit depth picks
+the coarser cascade near the split, where a nearby caster's coverage-splat dilation
+reaches past the box's sun-side edge and darkens its lit face.
+`test_render_shape_cascade_depth.py` executes the depth against the canvas inverse. Ambient,
 direct, local and sky contributions compose in linear space before exposure
 and display mapping. Alpha, stored coverage, depth and hover ownership remain
 unchanged.

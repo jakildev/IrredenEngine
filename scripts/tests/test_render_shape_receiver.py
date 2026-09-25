@@ -349,7 +349,7 @@ int main(){
             sdf = (shaders / f"ir_sdf_common.{suffix}").read_text()
             functions = "\n".join(extract_function(common, name) for name in (
                 "rasterYawCardinalIndex", "cardinalYawCosSin", "pos3DtoPos2DIsoYawed",
-                "isoPositionToPos3D"))
+                "isoPositionToPos3D", "yawedIsoDistance"))
             functions += "\n" + "\n".join(extract_function(sdf, name) for name in (
                 "slabFromLinear", "boxSurfaceIntervalYaw"))
             functions += "\n" + (shaders / f"ir_shape_receiver.{suffix}").read_text()
