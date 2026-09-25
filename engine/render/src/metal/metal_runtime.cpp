@@ -12,6 +12,15 @@ namespace {
 
 constexpr std::size_t kMaxMetalBufferBindings = 32;
 constexpr std::size_t kMaxMetalTextureBindings = 32;
+constexpr std::size_t kMetalStagingChunkSize = 4u * 1024u * 1024u;
+constexpr std::size_t kMetalStagingAlignment = 256;
+constexpr std::size_t kMetalStagingIdleDrainLimit = 120;
+
+struct MetalStagingChunk {
+    MTL::Buffer *buffer_ = nullptr;
+    std::size_t cursor_ = 0;
+    std::size_t idleDrainCount_ = 0;
+};
 
 struct MetalRuntimeState {
     MTL::Device *device_ = nullptr;
@@ -54,6 +63,9 @@ struct MetalRuntimeState {
     // an in-flight command encoder.  Released after the next
     // present/waitUntilCompleted boundary.
     std::vector<MTL::Buffer *> pendingReleaseBuffers_;
+
+    std::vector<MetalStagingChunk> stagingChunks_;
+    std::size_t stagingBufferAllocationCount_ = 0;
 
     // Buffers that have been encoded into a command encoder since the
     // previous wait point. subData() consults this set to decide whether
@@ -146,6 +158,9 @@ void shutdownMetalRuntime() {
         g_runtime().depthTestWriteState_ = nullptr;
     }
     releaseDeferredMetalBuffers();
+    for (auto &chunk : g_runtime().stagingChunks_) {
+        chunk.buffer_->release();
+    }
     g_runtime() = MetalRuntimeState{};
 }
 
@@ -375,10 +390,77 @@ void releaseDeferredMetalBuffers() {
     // also means any stale pointer entries here would dangle — clearing
     // the set keeps both invariants tight.
     g_runtime().encodedBuffers_.clear();
+
+    // Every caller reaches this reset only after waitUntilCompleted(). If the
+    // renderer permits multiple command buffers in flight, staging ownership
+    // must become per-in-flight-command-buffer before this reset remains safe.
+    auto &chunks = g_runtime().stagingChunks_;
+    for (auto chunk = chunks.begin(); chunk != chunks.end();) {
+        if (chunk->cursor_ == 0) {
+            ++chunk->idleDrainCount_;
+        } else {
+            chunk->idleDrainCount_ = 0;
+        }
+        chunk->cursor_ = 0;
+        if (chunk->idleDrainCount_ >= kMetalStagingIdleDrainLimit) {
+            chunk->buffer_->release();
+            chunk = chunks.erase(chunk);
+        } else {
+            ++chunk;
+        }
+    }
 }
 
 std::size_t deferredMetalBufferReleaseCount() {
     return g_runtime().pendingReleaseBuffers_.size();
+}
+
+MetalStagingBufferSlice stageMetalTextureUpload(const void *data, std::size_t byteCount) {
+    IR_ASSERT(data != nullptr, "Metal texture staging data must not be null");
+    IR_ASSERT(byteCount > 0, "Metal texture staging byte count must be positive");
+
+    auto &runtime = g_runtime();
+    if (byteCount > kMetalStagingChunkSize) {
+        auto *buffer = runtime.device_->newBuffer(
+            data,
+            static_cast<NS::UInteger>(byteCount),
+            MTL::ResourceStorageModeShared
+        );
+        IR_ASSERT(buffer != nullptr, "Failed to create oversized Metal texture staging buffer");
+        ++runtime.stagingBufferAllocationCount_;
+        deferReleaseMetalBuffer(buffer);
+        return {buffer, 0};
+    }
+
+    for (auto &chunk : runtime.stagingChunks_) {
+        const std::size_t alignedOffset =
+            (chunk.cursor_ + kMetalStagingAlignment - 1) & ~(kMetalStagingAlignment - 1);
+        if (alignedOffset > kMetalStagingChunkSize ||
+            byteCount > kMetalStagingChunkSize - alignedOffset) {
+            continue;
+        }
+        std::memcpy(
+            static_cast<std::uint8_t *>(chunk.buffer_->contents()) + alignedOffset,
+            data,
+            byteCount
+        );
+        chunk.cursor_ = alignedOffset + byteCount;
+        return {chunk.buffer_, static_cast<NS::UInteger>(alignedOffset)};
+    }
+
+    auto *buffer = runtime.device_->newBuffer(
+        static_cast<NS::UInteger>(kMetalStagingChunkSize),
+        MTL::ResourceStorageModeShared
+    );
+    IR_ASSERT(buffer != nullptr, "Failed to create Metal texture staging arena chunk");
+    ++runtime.stagingBufferAllocationCount_;
+    runtime.stagingChunks_.push_back({buffer, byteCount, 0});
+    std::memcpy(buffer->contents(), data, byteCount);
+    return {buffer, 0};
+}
+
+std::size_t metalStagingBufferAllocationCount() {
+    return g_runtime().stagingBufferAllocationCount_;
 }
 
 void markMetalBufferEncoded(MTL::Buffer *buffer) {

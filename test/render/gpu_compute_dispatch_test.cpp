@@ -157,6 +157,7 @@ TEST_F(GpuComputeDispatchTest, ClearSunShadowKernelFillsBufferWithLitSentinel) {
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -199,6 +200,131 @@ class MetalGpuComputeDispatchTest : public ::testing::Test {
 
     IRRender::RenderDevice *device_ = nullptr;
 };
+
+TEST_F(MetalGpuComputeDispatchTest, TextureUploadStagingAllocationsStopAfterWarmup) {
+    using namespace IRRender;
+    constexpr int width = 256;
+    constexpr int height = 512;
+    constexpr int uploadsPerDrain = 8;
+    constexpr int drainCount = 5;
+    Texture2D texture{TextureKind::TEXTURE_2D, width, height, TextureFormat::RGBA32F};
+    const std::vector<float> pixels(
+        static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4u,
+        0.25f
+    );
+
+    const std::size_t allocationsBefore = metalStagingBufferAllocationCount();
+    std::size_t allocationsAfterWarmup = allocationsBefore;
+    for (int drain = 0; drain < drainCount; ++drain) {
+        for (int upload = 0; upload < uploadsPerDrain; ++upload) {
+            texture.subImage2D(
+                0,
+                0,
+                width,
+                height,
+                PixelDataFormat::RGBA,
+                PixelDataType::FLOAT32,
+                pixels.data()
+            );
+        }
+        device_->finish();
+        if (drain == 0) {
+            allocationsAfterWarmup = metalStagingBufferAllocationCount();
+            EXPECT_GT(allocationsAfterWarmup, allocationsBefore);
+        } else {
+            EXPECT_EQ(metalStagingBufferAllocationCount(), allocationsAfterWarmup)
+                << "drain " << drain;
+        }
+    }
+}
+
+TEST_F(MetalGpuComputeDispatchTest, OversizedTextureUploadUsesDeferredStaging) {
+    using namespace IRRender;
+    constexpr int width = 320;
+    constexpr int height = 1024;
+    Texture2D texture{TextureKind::TEXTURE_2D, width, height, TextureFormat::RGBA32F};
+    const std::vector<float> pixels(
+        static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4u,
+        0.5f
+    );
+    const std::size_t allocationsBefore = metalStagingBufferAllocationCount();
+    const std::size_t deferredBefore = deferredMetalBufferReleaseCount();
+
+    texture.subImage2D(
+        0,
+        0,
+        width,
+        height,
+        PixelDataFormat::RGBA,
+        PixelDataType::FLOAT32,
+        pixels.data()
+    );
+
+    EXPECT_EQ(metalStagingBufferAllocationCount(), allocationsBefore + 1);
+    EXPECT_EQ(deferredMetalBufferReleaseCount(), deferredBefore + 1);
+    device_->finish();
+    EXPECT_EQ(deferredMetalBufferReleaseCount(), 0u);
+}
+
+TEST_F(MetalGpuComputeDispatchTest, TextureUploadStagingPreservesEverySliceUntilDrain) {
+    using namespace IRRender;
+    constexpr int textureSize = 16;
+    constexpr int rectSize = 2;
+    constexpr int uploadCount = 8;
+    Texture2D texture{TextureKind::TEXTURE_2D, textureSize, textureSize, TextureFormat::RGBA8};
+    const std::uint8_t clearPixel[4] = {7, 11, 13, 17};
+    texture.clear(PixelDataFormat::RGBA, PixelDataType::UNSIGNED_BYTE, clearPixel);
+    std::vector<std::uint8_t> expected(
+        static_cast<std::size_t>(textureSize) * static_cast<std::size_t>(textureSize) * 4u
+    );
+    for (std::size_t byte = 0; byte < expected.size(); byte += 4) {
+        std::memcpy(expected.data() + byte, clearPixel, 4);
+    }
+    std::vector<std::uint8_t> rect(static_cast<std::size_t>(rectSize * rectSize * 4));
+
+    for (int upload = 0; upload < uploadCount; ++upload) {
+        const int x = (upload % 4) * 3;
+        const int y = (upload / 4) * 3;
+        const std::uint8_t pixel[4] = {
+            static_cast<std::uint8_t>(20 + upload),
+            static_cast<std::uint8_t>(40 + upload),
+            static_cast<std::uint8_t>(60 + upload),
+            255,
+        };
+        for (std::size_t byte = 0; byte < rect.size(); byte += 4) {
+            std::memcpy(rect.data() + byte, pixel, 4);
+        }
+        texture.subImage2D(
+            x,
+            y,
+            rectSize,
+            rectSize,
+            PixelDataFormat::RGBA,
+            PixelDataType::UNSIGNED_BYTE,
+            rect.data()
+        );
+        for (int row = 0; row < rectSize; ++row) {
+            for (int column = 0; column < rectSize; ++column) {
+                const std::size_t destination =
+                    static_cast<std::size_t>(((y + row) * textureSize + x + column) * 4);
+                std::memcpy(expected.data() + destination, pixel, 4);
+            }
+        }
+    }
+
+    device_->finish();
+    std::vector<std::uint8_t> actual(expected.size());
+    texture.getSubImage2D(
+        0,
+        0,
+        textureSize,
+        textureSize,
+        PixelDataFormat::RGBA,
+        PixelDataType::UNSIGNED_BYTE,
+        actual.data()
+    );
+    EXPECT_EQ(actual, expected);
+}
 
 // Positive control / oracle validation: with NO write dispatch, a read of the
 // cleared texture must report exactly the clear sentinel. This proves the
