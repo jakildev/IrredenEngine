@@ -40,7 +40,7 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     int scatterDebugMode;
     ivec4 visibleFaceIds;
     vec4 _detachedResidualPad;
-    vec4 _detachedDepthAxisPad;
+    vec4 casterViewToWorld;
     vec4 scatterFbResolution;
     int depthColorMode;
     float depthColorExtent;
