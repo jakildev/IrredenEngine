@@ -73,17 +73,11 @@ inline bool fogLosSmoothSampleNeeded(
     return false;
 }
 
-inline FogLosSample fogLosVoxelSample(float3 pos3D, int faceId) {
-    if ((faceId >> 1) == kZFace) {
-        return fogLosSurfaceSample(pos3D);
-    }
-    return fogLosFaceSample(roundHalfUp(pos3D), faceId);
-}
-
 inline FogReveal fogRevealSample(
     float3 pos3D,
     float aaFloor,
     bool fogWholeBody,
+    bool losSmooth,
     FogLosSample losSample,
     constant FogObserverData& fogObservers,
     texture2d<float, access::read> canvasFogOfWar,
@@ -105,7 +99,7 @@ inline FogReveal fogRevealSample(
 
     for (int i = 0; i < fogObservers.visionCircleCount; ++i) {
         float losVisibility = 1.0f;
-        const float softness = fogObservers.losSoftness[i >> 2][i & 3];
+        const float softness = losSmooth ? fogObservers.losSoftness[i >> 2][i & 3] : -1.0f;
         if (fogLosSourceGated(fogObservers.losSourceMask, i) && !fogWholeBody && softness < 0.0f &&
             !fogLosVisible(surfaceVoxel, i, fogLineOfSight)) {
             continue;

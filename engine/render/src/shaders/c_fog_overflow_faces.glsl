@@ -76,7 +76,7 @@ void main() {
     }
 
     const FogReveal reveal =
-        fogRevealSample(pos3D, aaFloor, fogWholeBody, fogLosVoxelSample(pos3D, faceId));
+        fogRevealSample(pos3D, aaFloor, fogWholeBody, false, fogLosSurfaceSample(pos3D));
     if (reveal.state >= 1.0) {
         return;
     }

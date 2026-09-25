@@ -127,15 +127,15 @@ void main() {
         fogWholeBody = decodeFogWholeBody(imageLoad(triangleCanvasEntityIds, pixel).xy);
     }
 
-    // A per-axis cell's pos3D rounds to its emitting voxel; a single-canvas
-    // vertical face recovers it from the raster, and only when a smooth source
-    // reads it.
-    FogLosSample losSample = fogLosVoxelSample(pos3D, faceId);
-    if (perAxisRoute == 0 && (faceId >> 1) != kZFace && fogLosSmoothSampleNeeded(fogWholeBody)) {
+    // Only the main canvas carries the smooth gate; a vertical face recovers
+    // its voxel from the raster, and only when a smooth source reads it.
+    const bool losSmooth = perAxisRoute == 0;
+    FogLosSample losSample = fogLosSurfaceSample(pos3D);
+    if (losSmooth && (faceId >> 1) != kZFace && fogLosSmoothSampleNeeded(fogWholeBody)) {
         losSample = fogLosPixelFaceSample(pixel, encoded, faceId);
     }
 
-    const FogReveal reveal = fogRevealSample(pos3D, aaFloor, fogWholeBody, losSample);
+    const FogReveal reveal = fogRevealSample(pos3D, aaFloor, fogWholeBody, losSmooth, losSample);
     if (reveal.state >= 1.0) {
         return;
     }

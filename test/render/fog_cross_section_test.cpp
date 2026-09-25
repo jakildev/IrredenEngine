@@ -1459,13 +1459,8 @@ TEST_F(FogCrossSectionTest, GpuSmoothOcclusionMatchesTheCpuOracle) {
             );
             const IRMath::ivec2 column =
                 IRPrefab::Fog::losFaceColumn(voxel, static_cast<IRMath::FaceId>(pixel.w));
-            const float cpuVisibility = field.cellVerdict(
-                0,
-                column.x,
-                column.y,
-                static_cast<float>(voxel.z),
-                softness
-            );
+            const float cpuVisibility =
+                field.cellVerdict(0, column.x, column.y, static_cast<float>(voxel.z), softness);
             const IRMath::ivec4 gpuVoxel = faces[index];
             const IRMath::ivec4 gpuSample = faces[index + 1];
             ASSERT_EQ(gpuVoxel.w, raster.w) << "GPU view face diverged on face pixel " << i;

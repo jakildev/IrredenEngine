@@ -103,22 +103,18 @@ bool fogLosSmoothSampleNeeded(bool fogWholeBody) {
     return false;
 }
 
-// The smooth line-of-sight sample of a sample whose pos3D rounds to the voxel
-// that emitted it — a per-axis cell or overflow entry, whose hard gate reads
-// that same voxel: a top face samples its position, a vertical face the column
-// that voxel's face looks into (ir_fog_los).
-FogLosSample fogLosVoxelSample(vec3 pos3D, int faceId) {
-    if ((faceId >> 1) == kZFace) {
-        return fogLosSurfaceSample(pos3D);
-    }
-    return fogLosFaceSample(roundHalfUp(pos3D), faceId);
-}
-
 // `aaFloor` (world units per canvas pixel), `fogWholeBody` and `losSample` are
 // read only by the vision-circle loop, so callers may skip computing them when
-// visionCircleCount is 0; `losSample` is read only when
-// fogLosSmoothSampleNeeded.
-FogReveal fogRevealSample(vec3 pos3D, float aaFloor, bool fogWholeBody, FogLosSample losSample) {
+// visionCircleCount is 0; `losSample` is read only when `losSmooth` and
+// fogLosSmoothSampleNeeded. A route without `losSmooth` gates every source
+// hard: the per-axis and overflow routes do not carry the smooth gate yet.
+FogReveal fogRevealSample(
+    vec3 pos3D,
+    float aaFloor,
+    bool fogWholeBody,
+    bool losSmooth,
+    FogLosSample losSample
+) {
     const ivec3 surfaceVoxel = roundHalfUp(pos3D);
     const ivec2 fogCell = surfaceVoxel.xy + ivec2(kFogOfWarHalfExtent);
     const float gridState = fogTap(fogCell, imageSize(canvasFogOfWar));
@@ -136,7 +132,7 @@ FogReveal fogRevealSample(vec3 pos3D, float aaFloor, bool fogWholeBody, FogLosSa
         // smooth source scales both by its visibility. A whole-body pixel's
         // visibility is its anchor's verdict, so it is never gated per pixel.
         float losVisibility = 1.0;
-        const float softness = losSoftness[i >> 2][i & 3];
+        const float softness = losSmooth ? losSoftness[i >> 2][i & 3] : -1.0;
         if (fogLosSourceGated(losSourceMask, i) && !fogWholeBody && softness < 0.0 &&
             !fogLosVisible(surfaceVoxel, i)) {
             continue;

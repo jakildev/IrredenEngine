@@ -119,10 +119,10 @@ kernel void c_fog_to_trixel(
         fogWholeBody = decodeFogWholeBody(triangleCanvasEntityIds.read(uint2(pixel)).xy);
     }
 
-    // Mirror of the GLSL twin: a single-canvas vertical face recovers its voxel
-    // from the raster, only when a smooth source reads it.
-    FogLosSample losSample = fogLosVoxelSample(pos3D, faceId);
-    if (frameData.perAxisRoute == 0 && (faceId >> 1) != kZFace &&
+    // Mirror of the GLSL twin: only the main canvas carries the smooth gate.
+    const bool losSmooth = frameData.perAxisRoute == 0;
+    FogLosSample losSample = fogLosSurfaceSample(pos3D);
+    if (losSmooth && (faceId >> 1) != kZFace &&
         fogLosSmoothSampleNeeded(fogWholeBody, fogObservers)) {
         losSample = fogLosPixelFaceSample(pixel, encoded, faceId, frameData);
     }
@@ -131,6 +131,7 @@ kernel void c_fog_to_trixel(
         pos3D,
         aaFloor,
         fogWholeBody,
+        losSmooth,
         losSample,
         fogObservers,
         canvasFogOfWar,

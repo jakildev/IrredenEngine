@@ -5,7 +5,7 @@
 // Sample arm: for every float position, the smooth visibility and the gated
 // reveal the fog kernel's source loop computes for source 0. Face arm: for
 // every enumerated side-face pixel, the chain c_fog_to_trixel's
-// fogLosPixelSample runs from the world face on — the view face, the recovered
+// fogLosPixelFaceSample runs from the world face on — the view face, the recovered
 // line-of-sight voxel, the fogLosFaceSample column and height, and that
 // sample's smooth visibility for source 0.
 

@@ -54,7 +54,8 @@ kernel void c_fog_overflow_faces(
         pos3D,
         aaFloor,
         fogWholeBody,
-        fogLosVoxelSample(pos3D, faceId),
+        false,
+        fogLosSurfaceSample(pos3D),
         fogObservers,
         canvasFogOfWar,
         fogLineOfSight
