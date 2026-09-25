@@ -315,8 +315,9 @@ inline void clear() {
 /// 512×512 columns; docs/design/fog-of-war-world-field.md D4): cells load on
 /// first touch and save through `flushToDisk`. False without an active fog
 /// canvas, for an empty root, or once the field holds any cell — set it after
-/// `attachToCanvas(canvas, 0)` and before the first reveal. Destruction never
-/// saves.
+/// `attachToCanvas(canvas, 0)` and before the first reveal. Accepting a root
+/// makes the next gather re-upload the whole window, so saved state reaches
+/// the texture even when frames rendered first. Destruction never saves.
 inline bool setPersistenceRoot(std::string saveRoot) {
     auto *fog = detail::activeFogComponent();
     if (fog == nullptr) {
@@ -328,7 +329,11 @@ inline bool setPersistenceRoot(std::string saveRoot) {
             kFogFieldLayer,
             kFogFieldBytesPerCell
         );
-    return persistence.has_value() && fog->field_->setPersistence(std::move(*persistence));
+    if (!persistence.has_value() || !fog->field_->setPersistence(std::move(*persistence))) {
+        return false;
+    }
+    fog->windowOrigin_.reset();
+    return true;
 }
 
 /// Save every changed region of the active canvas's persisted fog; returns

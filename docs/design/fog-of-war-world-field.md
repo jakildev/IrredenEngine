@@ -161,7 +161,9 @@ and removes only bucket directories it emptied. The layer directory itself
 being a symlink is a refusal, not a traversal.
 
 `setPersistenceRoot(saveRoot) -> bool` fails for an invalid root and after the
-field already holds a chunk, because a late root could shadow disk state.
+field already holds a chunk, because a late root could shadow disk state. An
+accepted root invalidates the gathered window, so a root set after frames have
+rendered still uploads the saved regions on the next gather.
 `flushToDisk() -> int` saves every persistence-dirty resident region; the
 creation's save-all path calls it. `clear()` also removes the layer files and
 drops all region records. Destruction never flushes.
