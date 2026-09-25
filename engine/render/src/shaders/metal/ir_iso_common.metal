@@ -1184,6 +1184,7 @@ struct FrameDataVoxelToTrixel {
     // bit-position window [pLo, pHi].
     // Mirrors FrameDataVoxelToCanvas::overflowSortStep_ (offset 224).
     int4 overflowSortStep;
+    float4 detachedViewToWorld;
 };
 
 // Smooth analytic vision-circle reveal for one fog disc, shared by

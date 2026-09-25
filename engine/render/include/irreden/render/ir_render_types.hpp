@@ -815,6 +815,10 @@ struct FrameDataVoxelToCanvas {
     // width apart). std140-appended (offset 224) so every prior offset — and
     // every prefix-declaring binding-7 shader — is unchanged.
     ivec4 overflowSortStep_ = ivec4(0, 0, 0, 0);
+    // Camera rotation that recovers a world-placed detached re-voxelize pool
+    // from its view-local frame before fog probes its world columns. Identity
+    // preserves the world and screen-locked paths.
+    vec4 detachedViewToWorld_ = vec4(0.0f, 0.0f, 0.0f, 1.0f);
 };
 
 struct FrameDataTrixelToTrixel {
@@ -1111,9 +1115,14 @@ static_assert(
     "overflow-sort shader declares it there and every prefix-reading shader stays unchanged"
 );
 static_assert(
-    sizeof(FrameDataVoxelToCanvas) == 240,
+    offsetof(FrameDataVoxelToCanvas, detachedViewToWorld_) == 240,
+    "FrameDataVoxelToCanvas::detachedViewToWorld_ must land at offset 240; the "
+    "fog face-selection shaders declare it after overflowSortStep_"
+);
+static_assert(
+    sizeof(FrameDataVoxelToCanvas) == 256,
     "FrameDataVoxelToCanvas size must mirror its std140 GLSL block "
-    "(overflowSortStep_ ivec4 append: 224 + 16 = 240)"
+    "(detachedViewToWorld_ vec4 append: 240 + 16 = 256)"
 );
 
 struct FrameDataSun {

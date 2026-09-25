@@ -144,8 +144,8 @@ struct VoxelFaceSelect {
 // the non-fog per-axis store, and restructuring it reshuffles the Metal
 // per-axis tie-winner resolution. A world-placed
 // re-voxelize detached canvas rasters in the pool-centered MODEL frame, so its
-// world column is model + detachedWorldReceiveIn.xy — the same recovery
-// c_lighting_to_trixel uses. ±Z faces are never cut (the vision region is a
+// world column rotates by detachedViewToWorldIn before adding
+// detachedWorldReceiveIn.xy. ±Z faces are never cut (the vision region is a
 // vertical cylinder), hence the `faceId < kFaceZNeg` bound.
 VoxelFaceSelect selectVoxelFace(
     const int faceIdIn,
@@ -155,7 +155,8 @@ VoxelFaceSelect selectVoxelFace(
     const vec4 voxelPosition,
     const int perAxisRouteIn,
     const float isDetachedCanvasIn,
-    const vec4 detachedWorldReceiveIn
+    const vec4 detachedWorldReceiveIn,
+    const vec4 detachedViewToWorldIn
 ) {
     VoxelFaceSelect sel;
     sel.faceId = faceIdIn;
@@ -185,8 +186,10 @@ VoxelFaceSelect selectVoxelFace(
          (perAxisRouteIn == 0 && detachedWorldReceiveIn.w != 0.0));
     sel.worldColumn = ivec2(0);
     if (sel.fogActive) {
-        sel.worldColumn = roundHalfUp(voxelPosition.xyz).xy +
-            (isDetachedCanvasIn > 0.5 ? roundHalfUp(detachedWorldReceiveIn.xy) : ivec2(0));
+        sel.worldColumn = isDetachedCanvasIn > 0.5
+            ? roundHalfUp(rotateByQuat(voxelPosition.xyz, detachedViewToWorldIn)).xy +
+                  roundHalfUp(detachedWorldReceiveIn.xy)
+            : roundHalfUp(voxelPosition.xyz).xy;
     }
     // Exposed-face gate widened with the fog CUT-FACE rule: at the fog
     // boundary a non-exposed VERTICAL face becomes the interior cross-section
@@ -197,8 +200,11 @@ VoxelFaceSelect selectVoxelFace(
     sel.keepFace = faceIsExposed(flagsByte, sel.faceId);
     sel.isCutFace = false;
     if (!sel.keepFace && sel.faceId < kFaceZNeg && sel.fogActive) {
-        sel.keepFace =
-            fogColumnReveal(sel.worldColumn + faceOutwardNormal6I(sel.faceId).xy) < 1.0;
+        const ivec2 probeStep = isDetachedCanvasIn > 0.5
+            ? roundHalfUp(rotateByQuat(
+                  vec3(faceOutwardNormal6I(sel.faceId)), detachedViewToWorldIn)).xy
+            : faceOutwardNormal6I(sel.faceId).xy;
+        sel.keepFace = fogColumnReveal(sel.worldColumn + probeStep) < 1.0;
         sel.isCutFace = sel.keepFace;
     }
     return sel;

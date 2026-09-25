@@ -86,6 +86,13 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     // colour/entity-id taps (stage 1 still wrote its full-res depth). Matches
     // FrameDataVoxelToCanvas::visibleIsoBounds_ (offset 176).
     uniform ivec4 visibleIsoBounds;
+    uniform int resolveMode;
+    uniform int occlusionCullMipCount;
+    uniform int feederSubCap;
+    uniform int feederPassTailBase;
+    uniform ivec4 overflowScratchLayout;
+    uniform ivec4 overflowSortStep;
+    uniform vec4 detachedViewToWorld;
 };
 
 layout(std430, binding = 5) readonly buffer PositionBuffer {
@@ -318,7 +325,8 @@ void main() {
     // writeColorTap rejects their colour taps.
     const VoxelFaceSelect sel = selectVoxelFace(
         faceId, reVoxelize, voxels[voxelIndex].reserved, flagsByte,
-        voxelPosition, perAxisRoute, isDetachedCanvas, detachedWorldReceive
+        voxelPosition, perAxisRoute, isDetachedCanvas, detachedWorldReceive,
+        detachedViewToWorld
     );
     if (!sel.keepFace) return;
     faceId = sel.faceId;

@@ -73,6 +73,7 @@ inline void buildVoxelFrameData(
     // (reused member) so a prior world-placed detached canvas can't leak its
     // offset into a world / non-opt-in frame and corrupt its lighting.
     frameData.detachedWorldReceive_ = vec4(0.0f, 0.0f, 0.0f, 0.0f);
+    frameData.detachedViewToWorld_ = vec4(0.0f, 0.0f, 0.0f, 1.0f);
 
     // A non-zero `canvasRotation` marks a detached entity canvas (the main
     // world canvas keeps the all-zero `C_CanvasLocalRotation::kSentinelNoRotation`
@@ -93,6 +94,7 @@ inline void buildVoxelFrameData(
         frameData.cameraTrixelOffset_ = vec2(0.0f);
     }
     if (detachedCanvas && canvasRotation.reVoxelize_) {
+        const vec4 cameraRotation = IRPrefab::Camera::getRotationQuat();
         // Re-voxelize detached canvas: the entity's full rotation is
         // baked into the private pool's CELL positions by
         // SYSTEM_REBUILD_DETACHED_VOXELS, so this canvas rasterizes its pool with
@@ -131,12 +133,11 @@ inline void buildVoxelFrameData(
         // byte-identical. Resampled raster phase belongs to this camera-aligned
         // receiver; source faces use their own continuous geometry.
         frameData.detachedWorldReceive_ = vec4(
-            canvasRotation.worldCellOffset_ + IRMath::rotateVectorByQuat(
-                                                  canvas.renderedCellOffset_,
-                                                  IRPrefab::Camera::getRotationQuat()
-                                              ),
+            canvasRotation.worldCellOffset_ +
+                IRMath::rotateVectorByQuat(canvas.renderedCellOffset_, cameraRotation),
             canvasRotation.worldPlaced_ ? 1.0f : 0.0f
         );
+        frameData.detachedViewToWorld_ = cameraRotation;
         return;
     }
     if (detachedCanvas) {

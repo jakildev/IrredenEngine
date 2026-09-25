@@ -34,7 +34,8 @@
       ],
       "shots": [
         "fog_detached_edge_zoom5",
-        "fog_detached_edge_zoom9"
+        "fog_detached_edge_zoom9",
+        "fog_detached_edge_yaw90_zoom5"
       ],
       "capture_offset": 0
     },
