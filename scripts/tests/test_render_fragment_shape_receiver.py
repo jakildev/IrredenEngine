@@ -1,5 +1,6 @@
 """Execute the fragment receiver diagnostic with checked query and shadow adapters."""
 
+import re
 import shutil
 import subprocess
 import tempfile
@@ -21,6 +22,8 @@ ivec2 clamp(ivec2 v,ivec2 lo,ivec2 hi){return {
 vec2 floor(vec2 v){return {std::floor(v.x),std::floor(v.y)};}
 struct vec3 {float x,y,z; explicit vec3(float v):x(v),y(v),z(v){}
  vec3(float a,float b,float c):x(a),y(b),z(c){} };
+struct vec4 {float x,y,z,w;};
+vec4 casterViewToWorld{.1f,.2f,.3f,.9f};
 struct Color {vec3 rgb{.2f,.3f,.4f};float a=.7f;};
 Color color;
 vec2 originRaw{1.25f,2.75f},displayOrigin=originRaw,textureSize{8,6};
@@ -33,7 +36,8 @@ bool selectedShapeBoxReceiver(ivec2 owner,int width,vec2 query,vec3& p,vec3& n){
  p={query.x,query.y,1};n={0,0,-1};return hit;
 }
 float pos3DtoDistance(vec3 p){return p.x+p.y+p.z;}
-float worldSunShadowFactor(vec3 p,vec3 n,float depth){
+float worldSurfaceSunShadowFactor(vec3 p,vec3 n,float depth,vec4 rotation){
+ if(rotation.x!=.1f||rotation.y!=.2f||rotation.z!=.3f||rotation.w!=.9f)std::exit(12);
  ++shadowCalls;
  if(p.x!=originRaw.x||p.y!=originRaw.y||p.z!=1||n.z!=-1||depth!=originRaw.x+originRaw.y+1)std::exit(12);
  return .5f;
@@ -144,12 +148,15 @@ int main(int argc,char**){
             block = source[start:source.index("#endif", start)]
             block = block.replace(
                 "receiverFrame, receiverShapes, receiverOwners, receiverTiles,", "")
-            block = block.replace(", sunFrameData, sunDepthBuf", "")
+            block = re.sub(r",\s*sunFrameData, sunDepthBuf", "", block)
+            block = block.replace("frameData.casterViewToWorld", "casterViewToWorld")
             block = block.replace("sunFrameData.shadowsEnabled", "shadowsEnabled")
             for a, b in (("float3", "vec3"), ("float2", "vec2"), ("int2", "ivec2")):
                 block = block.replace(a, b)
             variants = {
                 "production": block,
+                "lost_caster_rotation": block.replace(
+                    "casterViewToWorld", "vec4{0,0,0,1}"),
                 "snapped_query": block.replace("originRaw,", "floor(originRaw),"),
                 "wrong_owner": block.replace("floor(displayOrigin)", "vec2(0,0)")
                 if suffix == "glsl" else block.replace("ivec2(sampleCoord)", "ivec2(vec2(0,0))"),

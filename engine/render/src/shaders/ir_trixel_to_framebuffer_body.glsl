@@ -37,16 +37,14 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     vec2 effectiveSubdivisionsForHover;
     float showHoverHighlight;
     int distanceOffset;
-    // The scatter UBO tail (consumed only by v_/f_peraxis_scatter). Declared
-    // here only to reach depthPriorityMode at offset 204; the gather reads none
-    // of these but the std140 layout must match the shared C++ struct
-    // (FrameDataTrixelToFramebuffer, ir_render_types.hpp).
+    // Shared scatter/gather layout; the surface diagnostic uses the slot at
+    // byte 160 as the camera-to-world quaternion for view-aligned caster faces.
     ivec2 perAxisBase;
     float visualYaw;
     int scatterDebugMode;
     ivec4 visibleFaceIds;
     vec4 _detachedResidualPad;
-    vec4 _detachedDepthAxisPad;
+    vec4 casterViewToWorld;
     vec4 scatterFbResolution;
     int depthColorMode;
     float depthColorExtent;
@@ -95,7 +93,8 @@ void main() {
         if (selectedShapeBoxReceiver(clamp(ivec2(floor(displayOrigin)), ivec2(0), textureSize - 1), textureSize.x,
                                      originRaw, position, normal)) {
             float visibility = shadowsEnabled == 0 ? 1.0 :
-                worldSunShadowFactor(position, normal, pos3DtoDistance(position));
+                worldSurfaceSunShadowFactor(position, normal, pos3DtoDistance(position),
+                    casterViewToWorld);
             color.rgb = visibility >= 0.999 ? vec3(0.0) : vec3(1.0, 0.0, 1.0);
         }
     }

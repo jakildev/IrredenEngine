@@ -28,15 +28,14 @@ struct FrameDataIsoTriangles {
     float2 effectiveSubdivisionsForHover;
     float showHoverHighlight;
     int distanceOffset;
-    // Scatter UBO tail (consumed only by peraxis_scatter). Declared here only to
-    // reach depthPriorityMode at offset 204 — the gather reads none of these but
-    // the struct must mirror the shared C++ FrameDataTrixelToFramebuffer layout.
+    // Shared scatter/gather layout; the surface diagnostic uses the slot at
+    // byte 160 as the camera-to-world quaternion for view-aligned caster faces.
     int2 perAxisBase;
     float visualYaw;
     int scatterDebugMode;
     int4 visibleFaceIds;
     float4 _detachedResidualPad;
-    float4 _detachedDepthAxisPad;
+    float4 casterViewToWorld;
     float4 scatterFbResolution;
     int depthColorMode;
     float depthColorExtent;
@@ -135,7 +134,9 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
                                      originRaw, receiverFrame, receiverShapes, receiverOwners, receiverTiles,
                                      position, normal)) {
             float visibility = sunFrameData.shadowsEnabled == 0 ? 1.0 :
-                worldSunShadowFactor(position, normal, pos3DtoDistance(position), sunFrameData, sunDepthBuf);
+                worldSurfaceSunShadowFactor(position, normal, pos3DtoDistance(position),
+                    frameData.casterViewToWorld,
+                    sunFrameData, sunDepthBuf);
             color.rgb = visibility >= 0.999 ? float3(0.0) : float3(1.0, 0.0, 1.0);
         }
     }
