@@ -139,3 +139,7 @@ class ShapeSurfaceLightingTest(unittest.TestCase):
                         print(suffix, run.stdout.strip())
                     else:
                         self.assertNotEqual(run.returncode, 0)
+
+
+if __name__ == "__main__":
+    unittest.main()
