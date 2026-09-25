@@ -51,9 +51,6 @@ kernel void c_light_overflow_faces(
     const int  rawDist = int(overflowScratch[entryBase + 2u]);
 
     const float4 albedo = unpackColor(colorPacked);
-    if (albedo.a < 0.1f) {
-        return;   // cleared slot — never relight/repack (scatter degenerates it)
-    }
 
     // Recover cardinal store cell → world FaceId + world pos, bit-for-bit the
     // same decode/recovery the scatter's overflow branch + per-axis cell lighting

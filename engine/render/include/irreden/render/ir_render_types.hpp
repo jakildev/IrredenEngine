@@ -1670,8 +1670,9 @@ constexpr std::ptrdiff_t kPerAxisCellIndirectStrideBytes = 256;
 // kernels read `visibleCount` from the same SSBO region for the in-shader bound
 // guard.
 constexpr std::ptrdiff_t kPerAxisCellDispatchArgsOffsetBytes = 32;
-// Axis zero also owns the overflow-lighting dispatch, authored from the settled
-// append count by c_per_axis_cell_finalize and consumed by LIGHTING_TO_TRIXEL.
+// Axis zero also owns the overflow dispatch, authored from the settled append
+// count by c_per_axis_cell_finalize and consumed by both overflow passes: the
+// relight in LIGHTING_TO_TRIXEL and the fog paint in FOG_TO_TRIXEL.
 constexpr std::ptrdiff_t kOverflowLightingDispatchArgsOffsetBytes = 64;
 static_assert(
     kOverflowLightingDispatchArgsOffsetBytes >=

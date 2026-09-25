@@ -43,8 +43,8 @@ keep-ring culls may drop samples only when their column is unexplored and
 outside every source's keep radius, never when a sample could be revealed or
 drawn as explored. A dropped region exposes what is behind it instead of the
 unexplored color, so it looks identical only while that color matches the
-backdrop. In particular, the world raster route does not remove FIELD voxels
-because of the fog height ceiling.
+backdrop. In particular, the world and per-axis raster routes do not remove
+FIELD voxels because of the fog height ceiling.
 
 ## Engine mapping
 
@@ -59,7 +59,7 @@ this contract.
 | Entity-id carrier | High-word bit 28 says the pixel is BODY-classed; bits 27:20 carry its quantized 8-bit reveal factor. All entity-id readers strip these carrier bits before decoding the entity. | #3676 (P3), with the shape fold in #3677 (P4) |
 | Voxel carrier source | `C_Voxel::reserved_` bit 3 carries the BODY class and bits 11:4 carry the factor. Stage 2 folds them into entity-id bit 28 and bits 27:20. | #3676 (P3) |
 | Shape carrier source | `C_ShapeDescriptor` uses `SHAPE_FLAG_FOG_BODY` for the class and reserves GPU descriptor `flags` bits 23:16 for the factor before the shape raster folds both into the entity id. | #3677 (P4) |
-| FIELD paint | `FOG_TO_TRIXEL` samples the field per pixel and paints toward the per-canvas unexplored color. The world stage-1 height drop is removed; the z-free compact and keep-ring culls retain only the sanctioned unexplored/outside-keep-radius exception above. The per-axis rotation route keeps its height drop (below). | #3675 (P2) |
+| FIELD paint | `FOG_TO_TRIXEL` samples the field and paints toward the per-canvas unexplored color: per pixel on the world canvas, and per occupied face sample plus overflow entry on the per-axis rotation route. Both routes use the z-free nearest-column keep ring; only the sanctioned unexplored/outside-keep-radius exception above is removed. | #3675 (P2), #3710 (per-axis) |
 | Voxel BODY apply route | Hidden voxel bodies are removed through the pool active mask. Shown pixels decode the BODY factor in `FOG_TO_TRIXEL`, skip grid, height, rim, and cut-cap evaluation, and apply one uniform result. | #3676 (P3) |
 | Shape BODY apply route | `SHAPE_FLAG_FOG_HIDDEN` suppresses a hidden shape before raster work, independently of the author's `SHAPE_FLAG_VISIBLE`. Shown pixels carry and use the uniform BODY factor. | #3677 (P4) |
 | Detached-canvas BODY apply route | The canvas owner carries `fogHidden_` and `fogRevealFactor_`. `ENTITY_CANVAS_TO_FRAMEBUFFER` suppresses a hidden canvas or applies the uniform factor to the whole composite; private-pool voxels carry the BODY exemption. | #3680 (P6) |
@@ -79,15 +79,7 @@ BODY instead: the verdict is evaluated at the world-space owner, its private
 pool is exempt from that clip, and the result is applied at composite time
 (#3680).
 
-The per-axis rotation route has no paint pass either: at a non-cardinal yaw
-the world voxels raster into the X/Y/Z per-axis textures, which the
-forward-scatter composite draws straight into the framebuffer, and
-`FOG_TO_TRIXEL` paints only the main canvas. Its stage-1 drop therefore keeps
-the z-aware clip, so a height-hidden FIELD voxel is removed while the camera
-is off-cardinal instead of rendering lit. `fog_edge_zcost_ceiling_paint_yaw9`
-gates it. A per-axis paint pass would retire this deviation (#3710).
-
-These exceptions do not create a fourth subject class. They are the closest
+This exception does not create a fourth subject class. It is the closest
 available application of the FIELD verdict on a route that cannot paint.
 
 ## Creation-facing seams

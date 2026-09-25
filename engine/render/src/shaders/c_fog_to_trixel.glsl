@@ -2,314 +2,119 @@
 
 // Screen-space fog-of-war pass. Runs after LIGHTING_TO_TRIXEL and before
 // TRIXEL_TO_TRIXEL. For each rasterized pixel, recovers the source voxel's
-// world (x,y) column from the encoded distance + iso pixel coords, then masks
-// the canvas color by the MAX of two reveal sources:
-//   1. The voxel GRID — a single NEAREST read of the fog texture at the
-//      rounded cell. Coarse, voxel-quantized: explored/voxelized memory.
-//   2. Live analytic VISION CIRCLES — world-space discs (FogObserverData)
-//      evaluated against the CONTINUOUS world column `pos3D.xy`. Because the
-//      distance test runs per pixel (render resolution, not per cell), a disc
-//      edge is crisp and slides smoothly with sub-voxel observer motion, and a
-//      voxel straddling the boundary is partially revealed (some pixels inside,
-//      some out).
-// The combined visibility then drives a continuous modulation:
-//   visible    (1.0)     — pass through
-//   explored   (128/255) — desaturate + darken (fog-of-war "memory")
-//   unexplored (0.0)     — unexploredColor (default black)
-// with a smooth two-segment lerp between those anchors. With no vision circles
-// (count 0) the pass is grid-only, and the canonical 0/128/255 stored states
-// land exactly on those three anchors.
-//
-// Background pixels (no rasterized geometry) keep their cleared color.
+// world position from the encoded distance + pixel coords and shades it with
+// the shared reveal model (ir_fog_common.glsl). Two routes, one kernel:
+//   perAxisRoute == 0 — the main canvas, one thread per pixel.
+//   perAxisRoute != 0 — a per-axis canvas, one thread per compacted occupied
+//                       cell (the per-axis lighting route's args, slots 25/26).
+// Background pixels (no rasterized geometry) keep their cleared color, and a
+// fully revealed pixel is never read or rewritten.
 
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"
+#include "ir_per_axis_lighting.glsl"
 #define IR_FOG_LOS_BINDING 4
-#include "ir_fog_los.glsl"
+#include "ir_fog_common.glsl"
 
-// Mirrors C_CanvasFogOfWar in
-// engine/prefabs/irreden/render/components/component_canvas_fog_of_war.hpp.
-// World-space fog grid is centered on origin with half-extent = size / 2.
-const int kFogOfWarSize = 256;
-const int kFogOfWarHalfExtent = 128;
-
-// Same threshold LIGHTING_TO_TRIXEL uses for "empty pixel" — encoded
-// distances >= 65535 mean the clear value was never overwritten.
-const int kEmptyDistanceEncoded = 65535;
-
-// Normalized stored explored value (128/255, NOT 0.5). The two-segment lerp
-// pivots through this so the three canonical stored states (0 / 128 / 255) land
-// exactly on the unexplored / explored / source anchors; only a fractional
-// (analytic vision-circle) value falls between them.
-const float kFogExploredValue = 128.0 / 255.0;
-
-// Live analytic vision circles. Mirrors kMaxFogVisionCircles and
-// FrameDataFogObservers in component_canvas_fog_of_war.hpp — the std140 block
-// is the system's `FogObserverData` upload verbatim. visionCircles[i] =
-// (centerX, centerY, radius, edgeSoftness) in world units; only the first
-// visionCircleCount entries are read.
-// binding 27 ALIASES kBufferIndex_FrameDataLightingToTrixel — the Metal 0-30
-// buffer table is full, and fog runs right after lighting (which has finished
-// with slot 27 by then). Must match kBufferIndex_FogObservers in
-// ir_render_types.hpp.
-const int kMaxFogVisionCircles = 8;
-layout(std140, binding = 27) uniform FogObserverData {
-    vec4 visionCircles[kMaxFogVisionCircles];
-    int visionCircleCount;
-    // Bit i set = source i is gated by the line-of-sight field (ir_fog_los).
-    int losSourceMask;
-    // Per-circle height penalty, std140-appended after the count.
-    // visionCircleHeights[i] = (observerZ, zCostUp, zCostDown, freeBand). The
-    // reveal folds zCostUp * max(dzUp - freeBand, 0) + zCostDown *
-    // max(dzDown - freeBand, 0) into the radial distance, where
-    // dzUp = max(observerZ - z, 0) and dzDown = max(z - observerZ, 0). All-zero
-    // (the default) → both terms are 0 and the reveal is the plain 2D disc.
-    vec4 visionCircleHeights[kMaxFogVisionCircles];
-    // Colour of fully unexplored matter — the lerp's state-0 anchor. Only this
-    // pass declares it; every other declaration of the block stops earlier.
-    vec4 unexploredColor;
-};
-
-// Cross-section cap tuning. The tone is the factor applied to the hidden
-// surface's lit colour where the cap tints it, so the cross-section reads as
-// the object's inside rather than its surface. A pure multiply — NO constant
-// lift: hidden matter must always be at-or-darker than its lit self, and the
-// cap sits between the lit surface and the fade start (kFogRimFadeLevel <
-// tone < 1), so brightness is monotone across the rim on every material. A
-// constant lift makes any surface darker than ~40% brightness GLOW past the
-// rim; the feathered blend into the rim fade is what keeps dark cuts from
-// vanishing against fog black.
-const float kFogCutTone = 0.85;
-// The cap is a boundary CAP, not a reveal: only VERTICAL faces whose OWN
-// world column sits within this many world units PAST the disc radius are
-// tinted; beyond it the rim fade owns the falloff. The cap metric is RADIAL
-// surface-XY distance past the rim — the same metric the reveal and the rim
-// fade key on — so every fog boundary is a circle concentric with the disc
-// at every face height. Capping by ray-entry distance instead would sweep the
-// disc along the view ray's world-(1,1) XY — a pure screen-vertical
-// displacement in iso — so the band edge would read screen-space on elevated
-// faces. VERTICAL surfaces far past the radius (an arena slab's side, border
-// rails) fail the same radial test and stay on the fade; TOP faces are never
-// capped.
-const float kFogCutMaxRimCells = 2.0;
-
-// Rim fade — the fallback for hidden RASTERIZED matter the cap does not
-// tint. Instead of dropping straight to the unexplored colour, an
-// unexplored pixel's dark tone is lifted toward its lit colour by a factor
-// that starts at kFogRimFadeLevel at the disc rim and decays to zero over
-// kFogRimFadeCells of column distance past the radius. Air pockets at an
-// object's cut corner, sub-cell-thin floors, and hollow interiors land in
-// this smooth gradient instead of a black band, so the boundary stays
-// artifact-free for ANY content the raster kept.
-// kFogRimFadeCells MUST equal kFogHiddenKeepCells (ir_voxel_face_select.glsl):
-// the fade reaches the unexplored colour exactly where hidden columns stop
-// rasterizing, so the keep-ring's outer drop edge never shows as a visible
-// step. The level sits just under kFogCutTone so the cut band still reads
-// brighter than the fade around it (the cross-section face keeps its
-// identity).
-// Hard discs only — a soft (Mode B) disc's wide falloff IS its fade.
-const float kFogRimFadeCells = 8.0;
-const float kFogRimFadeLevel = 0.75;
-
-// Mirrors FrameDataVoxelToTrixel; this pass reads frameCanvasOffset,
-// trixelCanvasOffsetZ1, voxelRenderOptions, and rasterYaw for the pixel→pos3D
-// reconstruction, plus visibleFaceIds so the cross-section cap can resolve
-// each pixel's rasterized face axis from the depth encoding's slot bits (the
-// same slot→faceId mapping AO and lighting use). std140 layout must match the
-// producer declaration in c_voxel_to_trixel_stage_1.glsl.
+// Mirrors FrameDataVoxelToTrixel; std140 layout must match the producer
+// declaration in c_voxel_to_trixel_stage_1.glsl.
 layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
-    uniform vec2 frameCanvasOffset;
-    uniform ivec2 trixelCanvasOffsetZ1;
-    uniform ivec2 voxelRenderOptions;
-    uniform ivec2 voxelDispatchGrid;
-    uniform int voxelCount;
-    uniform int _voxelDispatchPadding;
-    uniform ivec2 canvasSizePixels;
-    uniform ivec2 cullIsoMin;
-    uniform ivec2 cullIsoMax;
-    uniform float visualYaw;
-    uniform float rasterYaw;
-    uniform float residualYaw;
-    uniform float _yawPadding;
-    uniform vec4 faceDeform[3];
-    uniform ivec4 visibleFaceIds;
+    vec2 frameCanvasOffset;
+    ivec2 trixelCanvasOffsetZ1;
+    ivec2 voxelRenderOptions;
+    ivec2 _voxelDispatchGrid;
+    int _voxelCount;
+    int perAxisRoute;
+    ivec2 canvasSizePixels;
+    ivec2 _cullIsoMin;
+    ivec2 _cullIsoMax;
+    float _visualYaw;
+    float rasterYaw;
+    float _residualYaw;
+    float _isDetachedCanvas;
+    vec4 _faceDeform[3];
+    ivec4 visibleFaceIds;
 };
 
 layout(rgba8, binding = 0) uniform image2D trixelColors;
 layout(r32i, binding = 1) readonly uniform iimage2D trixelDistances;
-layout(rgba8, binding = 2) readonly uniform image2D canvasFogOfWar;
 // Read only for the fog whole-body carrier bit (decodeFogWholeBody).
 layout(rg32ui, binding = 3) readonly uniform uimage2D triangleCanvasEntityIds;
 
-// Out-of-range cells read as visible (1.0): imageLoad has no sampler wrap mode,
-// so this bounds check is load-bearing. Matches the OOB-as-visible contract on
-// C_CanvasFogOfWar.
-float fogTap(ivec2 cell, ivec2 fogSize) {
-    if (cell.x < 0 || cell.x >= fogSize.x ||
-        cell.y < 0 || cell.y >= fogSize.y) {
-        return 1.0;
+layout(std430, binding = 25) readonly buffer PerAxisCellCompacted {
+    uint compactedCells[];
+};
+layout(std430, binding = 26) readonly buffer PerAxisCellIndirect {
+    uint cellDrawArgs[];
+};
+const uint kDispatchArgsBaseUint = 8u;
+const uint kPerAxisCellComputeTile = 256u;
+
+// The three pos3D-recovery shaders (AO, sun shadow, fog) must stay in
+// lockstep with the stage-2 encoding. R(-rasterYaw) recovers world coords
+// from the cardinal-rotated raster frame.
+vec3 fogPixelToWorld(ivec2 pixel, int encoded, int faceId, ivec2 size) {
+    if (perAxisRoute != 0) {
+        return perAxisCellToWorld3DSubCell(
+            pixel,
+            encoded,
+            faceId,
+            size,
+            frameCanvasOffset,
+            voxelRenderOptions
+        );
     }
-    return imageLoad(canvasFogOfWar, cell).r;
+    return trixelCanvasPixelToWorld3D(
+        pixel,
+        decodeDepthSingle(encoded),
+        trixelCanvasOffsetZ1,
+        frameCanvasOffset,
+        voxelRenderOptions,
+        rasterYaw
+    );
 }
 
 void main() {
-    const ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
     const ivec2 size = imageSize(trixelColors);
-    if (pixel.x >= size.x || pixel.y >= size.y) {
-        return;
-    }
-
-    // Background pixels have no associated world cell; they keep their cleared
-    // color.
-    const int encoded = imageLoad(trixelDistances, pixel).x;
-    if (encoded >= kEmptyDistanceEncoded) {
-        return;
-    }
-
-    // Applies the same subdivision-aware scaling as c_compute_voxel_ao.glsl.
-    // The three pos3D-recovery shaders (AO, sun shadow, fog) must stay in
-    // lockstep with the stage-2 encoding. R(-rasterYaw) recovers world coords
-    // from the cardinal-rotated raster frame.
-    const int rawDepth = decodeDepthSingle(encoded);
-    vec3 pos3D = trixelCanvasPixelToWorld3D(
-        pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, rasterYaw
-    );
-
-    // Grid memory: a single NEAREST read at the rounded cell. Iso convention:
-    // X-Y is the floor plane, so the fog grid lookup is (x, y) with the
-    // half-extent offset; +Z is the downward height axis and plays no part.
-    const ivec3 surfaceVoxel = roundHalfUp(pos3D);
-    const ivec2 fogCell = surfaceVoxel.xy + ivec2(kFogOfWarHalfExtent);
-    const ivec2 fogSize = imageSize(canvasFogOfWar);
-    // Kept separate from the circle-combined `state`: the rim fade and the
-    // cross-section cap apply only to UNEXPLORED surfaces (explored memory
-    // keeps its desaturated tone).
-    const float gridState = fogTap(fogCell, fogSize);
-    float state = gridState;
-    // This column's world distance PAST the nearest hard disc's radius —
-    // drives the cross-section cap band and the rim fade. Initialized to the
-    // full fade width so no-hard-disc scenes (including soft Mode B discs)
-    // resolve to cap-off + fade 0.
-    float hardDistPastRim = kFogRimFadeCells;
-
-    if (visionCircleCount > 0) {
-        // Local world-units-per-pixel from the iso inverse-projection Jacobian:
-        // recover the +x neighbour at the same depth and measure the world step.
-        // Zoom- and iso-correct, so the AA rim stays ~1px at any zoom with no
-        // uniform.
-        const vec3 pos3DNeighborX = trixelCanvasPixelToWorld3D(
-            pixel + ivec2(1, 0), rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset,
-            voxelRenderOptions, rasterYaw
-        );
-        const float worldPerPixel = length(pos3DNeighborX.xy - pos3D.xy);
-        // A whole-body fog-governed body fogs on XY distance alone: its pixels
-        // drop both height-penalty terms, so the reveal, rim fade, and cut cap
-        // all key on the plain disc while grid memory still max-combines.
-        const bool fogWholeBody =
-            decodeFogWholeBody(imageLoad(triangleCanvasEntityIds, pixel).xy);
-        // Must trace the same analytic curve as VOXEL_TO_TRIXEL_STAGE_1's
-        // per-voxel clip, so the floor's per-pixel reveal here and the
-        // voxel-object edge there coincide. worldPerPixel floors the rim at ~1
-        // canvas px for zoom-stable AA.
-        for (int i = 0; i < visionCircleCount; ++i) {
-            // A source that cannot see this pixel's voxel contributes neither
-            // reveal nor rim distance, so occluded matter inside the disc gets
-            // no rim lift and no cut cap. A whole-body pixel's visibility is
-            // its anchor's verdict, so it is never gated per pixel.
-            if (fogLosSourceGated(losSourceMask, i) && !fogWholeBody &&
-                !fogLosVisible(surfaceVoxel, i)) {
-                continue;
-            }
-            // Height-penalized reveal: fold this pixel's world-Z penalty
-            // (zCostUp * max(dzUp - freeBand, 0) + zCostDown *
-            // max(dzDown - freeBand, 0)) into the radial distance so matter far
-            // above/below the observer's height reveals less at the same XY,
-            // asymmetrically and with a free band around the observer's height.
-            // All-zero heights (or a whole-body pixel) → distEff == the plain
-            // 2D length.
-            const vec4 heights = visionCircleHeights[i];
-            const float zCostUp = fogWholeBody ? 0.0 : heights.y;
-            const float zCostDown = fogWholeBody ? 0.0 : heights.z;
-            const float dzUp = max(heights.x - pos3D.z, 0.0);
-            const float dzDown = max(pos3D.z - heights.x, 0.0);
-            const float distEff = length(pos3D.xy - visionCircles[i].xy) +
-                zCostUp * max(dzUp - heights.w, 0.0) +
-                zCostDown * max(dzDown - heights.w, 0.0);
-            const float aa = max(visionCircles[i].w, worldPerPixel);
-            const float reveal =
-                1.0 - smoothstep(visionCircles[i].z - aa, visionCircles[i].z + aa, distEff);
-            state = max(state, reveal);
-            if (visionCircles[i].w == 0.0) {
-                // The rim fade tracks the SAME penalized boundary (distEff past
-                // the radius) so a z-hidden surface fades on the z-aware curve.
-                hardDistPastRim = min(hardDistPastRim, distEff - visionCircles[i].z);
-            }
+    ivec2 pixel;
+    if (perAxisRoute != 0) {
+        const uint groupIndex = gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x;
+        const uint idx = groupIndex * kPerAxisCellComputeTile + gl_LocalInvocationIndex;
+        if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
+            return;
         }
-    }
-
-    if (state >= 1.0) {
-        return;
-    }
-
-    const vec4 src = imageLoad(trixelColors, pixel);
-
-    // Cross-section cap. A fog-hidden pixel within the cap band shows matter
-    // the vision cylinder slices; its VERTICAL faces are tinted as the cut
-    // surface so a sliced object reads as capped rather than hollow. The test
-    // is pure per-pixel geometry — the rasterized face's axis (the depth
-    // encoding's slot bits resolved through visibleFaceIds, the same mapping
-    // AO and lighting use) and the surface column's radial distance past the
-    // rim (hardDistPastRim — the metric the reveal and the rim fade key on) —
-    // so it has no content dependence and reads no occupancy data:
-    //   * TOP (Z) faces are never capped: flat ground and object tops fade on
-    //     the plain radial curve (capping them rings the flat ground around
-    //     every rim).
-    //   * VERTICAL (X/Y) faces blend the cut tint over the fade with a
-    //     weight that is 1 at the rim and reaches 0 exactly at
-    //     kFogCutMaxRimCells, so the wall is ONE continuous curve that
-    //     CONVERGES to the plain fade — the top face's exact tone — at the
-    //     band's end. A binary in-band cap would step straight to the fade at
-    //     the band edge: a harsh line down the wall, dithered into
-    //     voxel-stepped teeth by the per-voxel-quantized depth recovery.
-    // Colour-only, after lighting: AO, the sun bake, and lighting see no new
-    // geometry. Hard discs only — for a soft Mode B disc hardDistPastRim keeps
-    // its no-hard-disc init, zeroing the cap blend. `state` carries the disc's
-    // ~1px AA rim, so the junction with visible matter stays antialiased.
-
-    // The explored "memory" tone keeps shape silhouettes visible without being
-    // confused with what is *currently* in view.
-    const float luminance = dot(src.rgb, vec3(0.299, 0.587, 0.114));
-    const vec3 exploredColor = vec3(luminance) * 0.4;
-
-    // Two-segment continuous lerp anchored on the three canonical stored
-    // states: unexploredColor at 0, exploredColor at 128/255, src at 1.0. Alpha
-    // is preserved so any text/overlay antialiasing still composites cleanly.
-    vec3 outColor;
-    if (state >= kFogExploredValue) {
-        const float t = (state - kFogExploredValue) / (1.0 - kFogExploredValue);
-        outColor = mix(exploredColor, src.rgb, t);
+        const uint linearCell = compactedCells[idx];
+        pixel = ivec2(int(linearCell) % size.x, int(linearCell) / size.x);
     } else {
-        const float t = state / kFogExploredValue;
-        outColor = mix(unexploredColor.rgb, exploredColor, t);
-    }
-    if (gridState < kFogExploredValue) {
-        // The squared ease-out crushes the fade tail to the unexplored colour
-        // well before the keep-ring drop, so the outermost kept columns' wall
-        // faces (whose constant-depth recovery reads a column slightly INSIDE
-        // their true one) can't catch a visible lift against the void behind
-        // them.
-        const float u = 1.0 - smoothstep(0.0, kFogRimFadeCells, hardDistPastRim);
-        outColor = mix(outColor, src.rgb, kFogRimFadeLevel * u * u);
-        // Axis only — the riser-polarity flip never changes a face's axis, so
-        // it is not decoded here.
-        const int faceAxis = visibleFaceIds[decodeSlot(encoded)] >> 1;
-        if (visionCircleCount > 0 && faceAxis != 2) {
-            const float capBlend =
-                1.0 - smoothstep(0.0, kFogCutMaxRimCells, max(hardDistPastRim, 0.0));
-            const vec3 capColor = mix(src.rgb * kFogCutTone, src.rgb, state);
-            outColor = mix(outColor, capColor, capBlend);
+        pixel = ivec2(gl_GlobalInvocationID.xy);
+        if (pixel.x >= size.x || pixel.y >= size.y) {
+            return;
         }
     }
-    imageStore(trixelColors, pixel, vec4(outColor, src.a));
+
+    const int encoded = imageLoad(trixelDistances, pixel).x;
+    if (encoded >= (perAxisRoute != 0 ? 0x7FFFFFFF : 65535)) {
+        return;
+    }
+
+    const int slot = decodeSlot(encoded);
+    const int faceId = visibleFaceIds[slot] ^ decodeFlipRoute(encoded, perAxisRoute);
+    const vec3 pos3D = fogPixelToWorld(pixel, encoded, faceId, size);
+    float aaFloor = 0.0;
+    bool fogWholeBody = false;
+    if (visionCircleCount > 0) {
+        // Local world-units-per-pixel from the +x neighbour at the same depth:
+        // floors the disc's AA rim at ~1 canvas px at any zoom.
+        const vec3 neighbor = fogPixelToWorld(pixel + ivec2(1, 0), encoded, faceId, size);
+        aaFloor = length(neighbor.xy - pos3D.xy);
+        fogWholeBody = decodeFogWholeBody(imageLoad(triangleCanvasEntityIds, pixel).xy);
+    }
+
+    const FogReveal reveal = fogRevealSample(pos3D, aaFloor, fogWholeBody);
+    if (reveal.state >= 1.0) {
+        return;
+    }
+    const vec4 sourceColor = imageLoad(trixelColors, pixel);
+    imageStore(trixelColors, pixel, fogApplyReveal(reveal, faceId >> 1, sourceColor));
 }

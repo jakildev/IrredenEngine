@@ -591,15 +591,12 @@ void main() {
         // Per-axis own-column fog clip: reveal <= 0 (FULLY hidden), applied on
         // EVERY axis route (1/2/3) so a rotating boundary object clips its
         // hidden half identically (a hidden column's Z face would otherwise float
-        // on route 3). z-AWARE, unlike the single-canvas GRID drop: FOG_TO_TRIXEL
-        // paints only the main canvas, and the per-axis textures composite
-        // straight into the framebuffer, so a height-hidden voxel kept here
-        // would render lit. visionCircleCount==0 and the 1×1 placeholder grid
-        // short-circuit non-fog rotating scenes. The COLUMN is rounded because
-        // it indexes the integer fog grid; the HEIGHT stays the raw
-        // voxelPosition.z, the same unrounded z c_fog_to_trixel penalizes.
+        // on route 3). The nearest-cell metric keeps the same hidden ring as the
+        // cardinal world route because the fog pass paints every per-axis sample.
+        // visionCircleCount==0 and the 1×1 placeholder grid short-circuit
+        // non-fog rotating scenes.
         if (!fogWholeBodyExempt && visionCircleCount > 0 &&
-            fogColumnRevealZ(roundHalfUp(voxelPosition.xyz).xy, voxelPosition.z) <= 0.0) {
+            fogColumnRevealNearest(roundHalfUp(voxelPosition.xyz).xy) <= 0.0) {
             return;
         }
         const int axis = perAxisRoute - 1;
@@ -633,7 +630,10 @@ void main() {
         if (resolveMode == 3) {
             // Each record reconstructs the whole face, not one of its two trixels.
             if (any(notEqual(ivec2(gl_LocalInvocationID.xy), faceOffset_2x3(slot, 0)))) return;
-            overflowAppendTap(perAxisBase, facePos, voxelDistance, voxels[voxelIndex].colorPacked);
+            const uint fogClassByte = fogWholeBodyExempt ? 254u : 255u;
+            const uint overflowColor =
+                (voxels[voxelIndex].colorPacked & 0x00FFFFFFu) | (fogClassByte << 24u);
+            overflowAppendTap(perAxisBase, facePos, voxelDistance, overflowColor);
             return;
         }
         // Equal keys arise from perAxisStoreFacePos's 4-bit frac quantization —

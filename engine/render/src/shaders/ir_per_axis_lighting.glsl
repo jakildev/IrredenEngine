@@ -3,11 +3,12 @@
 // ir_iso_common.glsl — because growing ir_iso_common changes the SDF / voxel /
 // scatter shaders that share it, which perturbs their floating-point
 // instruction scheduling and drifts a few SDF-edge pixels at the cardinal fast
-// path (breaking the residualYaw == 0 byte-identity guarantee). Six shaders
-// include this file — the five lighting compute passes (c_compute_voxel_ao,
+// path (breaking the residualYaw == 0 byte-identity guarantee). The lighting
+// compute passes (c_compute_voxel_ao,
 // c_bake_sun_shadow_map, c_compute_sun_shadow, c_lighting_to_trixel,
-// c_light_overflow_faces) plus the per-axis sun-shadow cast/resolve bridge
-// (c_resolve_per_axis_screen_depth) — and that set IS the blast radius of
+// c_light_overflow_faces), fog compute passes, and the per-axis sun-shadow
+// cast/resolve bridge (c_resolve_per_axis_screen_depth) include it. That set is
+// the blast radius of
 // editing it. All include it AFTER ir_iso_common.glsl (whose helpers —
 // trixelFrameOffset, trixelOriginOffsetZ1, isoPixelToPos3D,
 // effectiveTrixelSubdivisionScale — this builds on). GLSL's include resolver

@@ -311,9 +311,9 @@ TEST(FogLineOfSightTest, UngatedTilesAndCellsBeyondReachAreClear) {
 
 // A hard disc's shadow must reach as far as the fog kernel's rim fade, or the
 // fade halo reappears behind the shadow at the build's edge: the builder's
-// mirror of kFogRimFadeCells must match both kernels.
+// mirror of kFogRimFadeCells must match both shared fog reveals.
 TEST(FogLineOfSightTest, BuildReachCoversTheShaderRimFade) {
-    for (const char *kernel : {"/c_fog_to_trixel.glsl", "/metal/c_fog_to_trixel.metal"}) {
+    for (const char *kernel : {"/ir_fog_common.glsl", "/metal/ir_fog_common.metal"}) {
         std::ifstream file(std::string(IR_TEST_RENDER_SHADER_DIR) + kernel);
         std::ostringstream source;
         source << file.rdbuf();

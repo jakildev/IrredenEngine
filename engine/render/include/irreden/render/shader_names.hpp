@@ -84,6 +84,7 @@ const char *const kFileCompLightingToTrixel = "shaders/c_lighting_to_trixel.glsl
 // metal_pipeline.cpp).
 const char *const kFileCompLightOverflowFaces = "shaders/c_light_overflow_faces.glsl";
 const char *const kFileCompFogToTrixel = "shaders/c_fog_to_trixel.glsl";
+const char *const kFileCompFogOverflowFaces = "shaders/c_fog_overflow_faces.glsl";
 const char *const kFileCompComputeVoxelAO = "shaders/c_compute_voxel_ao.glsl";
 // Hi-Z (max-depth) distance mip-chain build for voxel occlusion culling.
 const char *const kFileCompBuildDistanceHiZ = "shaders/c_build_distance_hiz.glsl";

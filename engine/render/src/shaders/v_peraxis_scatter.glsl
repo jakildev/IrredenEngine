@@ -223,6 +223,7 @@ void main() {
         const uint packedCell = compactedCells[entryBase + 0u];
         ij = ivec2(int(packedCell & 0xFFFFu), int(packedCell >> 16u));
         color = unpackColor(compactedCells[entryBase + 1u]);
+        color.a = 1.0;
         rawDist = int(compactedCells[entryBase + 2u]);
     } else {
         const int cell = int(compactedCells[gl_InstanceID]);

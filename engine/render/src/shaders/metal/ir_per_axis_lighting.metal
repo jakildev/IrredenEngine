@@ -3,11 +3,12 @@
 // Kept OUT of ir_iso_common.metal because growing ir_iso_common changes the SDF /
 // voxel / scatter shaders that share it, which perturbs their FP scheduling and
 // drifts SDF-edge pixels at the cardinal fast path (breaking the
-// residualYaw == 0 byte-identity guarantee). Six kernels include this file
-// — the five lighting compute passes (c_compute_voxel_ao, c_bake_sun_shadow_map,
+// residualYaw == 0 byte-identity guarantee). The lighting compute passes
+// (c_compute_voxel_ao, c_bake_sun_shadow_map,
 // c_compute_sun_shadow, c_lighting_to_trixel, c_light_overflow_faces) plus the
-// per-axis sun-shadow cast/resolve bridge (c_resolve_per_axis_screen_depth) —
-// and that set IS the blast radius of editing it. This file includes
+// fog compute passes and per-axis sun-shadow cast/resolve bridge
+// (c_resolve_per_axis_screen_depth) include it. That set is the blast radius of
+// editing it. This file includes
 // ir_iso_common.metal (guarded) to resolve its helpers and stay self-contained
 // as an include-fragment; the runtime preprocessor's visited-set (metal_pipeline.cpp)
 // dedupes the include when a wrapper also pulls in ir_iso_common.metal directly.

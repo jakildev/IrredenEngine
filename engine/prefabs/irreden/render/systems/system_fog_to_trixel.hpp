@@ -1,16 +1,21 @@
 #ifndef SYSTEM_FOG_TO_TRIXEL_H
 #define SYSTEM_FOG_TO_TRIXEL_H
 
-#include <irreden/ir_render.hpp>
-#include <irreden/ir_system.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_profile.hpp>
-#include <irreden/render/gpu_stage_timing.hpp>
-#include <irreden/render/gpu_stage_timing_observer.hpp>
+#include <irreden/ir_render.hpp>
+#include <irreden/ir_system.hpp>
+
+#include <cstddef>
+#include <cstdlib>
 
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
+#include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
+#include <irreden/render/gpu_stage_timing.hpp>
+#include <irreden/render/gpu_substage_timing.hpp>
+#include <irreden/render/per_axis_canvas.hpp>
 
 using namespace IRComponents;
 using namespace IRMath;
@@ -24,46 +29,46 @@ constexpr int kFogToTrixelGroupSize = 16;
 // Screen-space fog-of-war pass. Sits between LIGHTING_TO_TRIXEL (which
 // modulates by AO × sun-shadow) and TRIXEL_TO_TRIXEL (compositing) so
 // fog masks the *lit* canvas — explored cells fade their lighting too,
-// not just the base albedo.
+// not just the base albedo. On the main canvas it also paints the per-axis
+// canvases and the per-axis overflow lane (dispatchPerAxisFog).
 //
 // GUI canvases skip this pass via the same
 // `useCameraPositionIso_ == false` early-return that lighting uses; GUI
 // pixels have no associated world position and would render garbage if
 // the pos3D recovery ran on them.
 //
-// CPU→GPU sync: the dirty-gated `subImage2D` upload now lives in
-// VOXEL_TO_TRIXEL_STAGE_1, which both performs the column cull
-// (it needs current-frame fog) and runs earlier in the pipeline. This
-// pass is read-only on the already-uploaded fog texture — hence the
-// const fog param — so the cull and this post-process always see the
-// same fog with no one-frame lag.
+// CPU→GPU sync: the dirty-gated `subImage2D` upload lives in
+// VOXEL_TO_TRIXEL_STAGE_1, which both performs the column cull (it needs
+// current-frame fog) and runs earlier in the pipeline. This pass is
+// read-only on the already-uploaded fog texture — hence the const fog
+// param — so the cull and this post-process always see the same fog.
 template <> struct System<FOG_TO_TRIXEL> {
     ShaderProgram *program_ = nullptr;
+    ShaderProgram *overflowProgram_ = nullptr;
     Buffer *voxelFrameDataBuf_ = nullptr;
     // Tiny per-canvas UBO carrying the live analytic vision circles. Uploaded
     // every frame (a few vec4 + a count) — small and unconditional, so unlike
     // the fog texture it needs no dirty flag.
     Buffer *observerBuf_ = nullptr;
+    Buffer *voxelActiveMaskBuf_ = nullptr;
+    Buffer *voxelCompactedBuf_ = nullptr;
+    Buffer *voxelIndirectBuf_ = nullptr;
+    bool overflowFogDisabled_ = false;
+    IREntity::EntityId perAxisCanvasEntity_ = IREntity::kNullEntity;
+    C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
 
     void tick(
+        IREntity::EntityId entity,
         const C_TriangleCanvasTextures &canvasTextures,
         const C_TrixelCanvasRenderBehavior &behavior,
         const C_CanvasFogOfWar &fog
     ) {
-        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
         if (!behavior.useCameraPositionIso_) {
             return;
         }
+        IR_PROFILE_SCOPE("fogToTrixel");
 
-        // Live analytic vision circles. Small, GPU-read-only, re-authored by
-        // gameplay each frame — uploaded unconditionally (no dirty flag). The
-        // shader max-combines these with the grid memory above. (The grid fog
-        // texture itself is uploaded earlier in VOXEL_TO_TRIXEL_STAGE_1;
-        // this pass only reads it — hence the const fog param.) The shader's
-        // cross-section cap is pure per-pixel geometry (face axis + radial
-        // band), so no occupancy source is bound for this dispatch.
         observerBuf_->subData(0, sizeof(FrameDataFogObservers), &fog.observers_);
-
         canvasTextures.getTextureColors()
             ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
         canvasTextures.getTextureDistances()
@@ -87,14 +92,114 @@ template <> struct System<FOG_TO_TRIXEL> {
         voxelFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas);
         observerBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
 
-        const int groupsX = IRMath::divCeil(canvasTextures.size_.x, kFogToTrixelGroupSize);
-        const int groupsY = IRMath::divCeil(canvasTextures.size_.y, kFogToTrixelGroupSize);
-        IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
-        IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+        {
+            GpuSubStageScope mainScope("fogToTrixel");
+            const int groupsX = IRMath::divCeil(canvasTextures.size_.x, kFogToTrixelGroupSize);
+            const int groupsY = IRMath::divCeil(canvasTextures.size_.y, kFogToTrixelGroupSize);
+            IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
+            IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+        }
+
+        if (entity == perAxisCanvasEntity_ && perAxisCanvases_ != nullptr &&
+            perAxisCanvases_->isAllocated()) {
+            dispatchPerAxisFog(*perAxisCanvases_, canvasTextures, fog);
+        }
+    }
+
+    void dispatchPerAxisFog(
+        C_PerAxisTrixelCanvases &axes,
+        const C_TriangleCanvasTextures &mainTextures,
+        const C_CanvasFogOfWar &fog
+    ) {
+        {
+            IRPrefab::PerAxisCanvas::LightingRouteScope route(
+                voxelFrameDataBuf_,
+                voxelCompactedBuf_,
+                voxelIndirectBuf_
+            );
+            {
+                GpuSubStageScope perAxisScope("fogPerAxis");
+                IRPrefab::PerAxisCanvas::dispatchPerAxisCells(axes, [&](int axis) {
+                    auto &textures = axes.axes_[axis];
+                    textures.colors_.second
+                        ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
+                    textures.distances_.second
+                        ->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
+                    textures.entityIds_.second
+                        ->bindAsImage(3, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
+                });
+                IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+            }
+            dispatchOverflowFog(axes, mainTextures.size_);
+            program_->use();
+        }
+
+        if (voxelActiveMaskBuf_ == nullptr) {
+            voxelActiveMaskBuf_ = IRRender::getNamedResource<Buffer>("VoxelActiveMaskBuffer");
+        }
+        voxelActiveMaskBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_VoxelActiveMask);
+        mainTextures.getTextureColors()
+            ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
+        mainTextures.getTextureDistances()
+            ->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
+        fog.getTexture()->bindAsImage(2, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+        mainTextures.getTextureEntityIds()
+            ->bindAsImage(3, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
+    }
+
+    void dispatchOverflowFog(C_PerAxisTrixelCanvases &axes, ivec2 mainCanvasSize) {
+        if (overflowFogDisabled_ || axes.overflowCap_ <= 0 || axes.winnerIds_.second == nullptr) {
+            return;
+        }
+        GpuSubStageScope overflowScope("fogOverflow");
+        overflowProgram_->use();
+        const ivec4 overflowLayout(
+            axes.viewMaskBaseUints_,
+            axes.ctrlBaseUints_,
+            axes.entriesBaseUints_,
+            axes.overflowCap_
+        );
+        voxelFrameDataBuf_->subData(
+            offsetof(FrameDataVoxelToCanvas, overflowScratchLayout_),
+            sizeof(ivec4),
+            &overflowLayout
+        );
+        // Entries are keyed on the per-axis store's origin anchor, which the
+        // kernel derives from canvasSizePixels_. This tick's UBO carries the
+        // main canvas size, so publish the store size for the dispatch.
+        voxelFrameDataBuf_->subData(
+            offsetof(FrameDataVoxelToCanvas, canvasSizePixels_),
+            sizeof(ivec2),
+            &axes.size_
+        );
+        axes.winnerIds_.second->bindBase(
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_OverflowLightingScratch
+        );
+        IRRender::device()->dispatchComputeIndirect(
+            axes.cellIndirect_.second,
+            kOverflowLightingDispatchArgsOffsetBytes
+        );
+        IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+        voxelFrameDataBuf_->subData(
+            offsetof(FrameDataVoxelToCanvas, canvasSizePixels_),
+            sizeof(ivec2),
+            &mainCanvasSize
+        );
     }
 
     void beginTick() {
         program_->use();
+        perAxisCanvasEntity_ = IRRender::getCanvas("main");
+        perAxisCanvases_ = nullptr;
+        if (perAxisCanvasEntity_ == IREntity::kNullEntity) {
+            return;
+        }
+        auto perAxis =
+            IREntity::getComponentOptional<C_PerAxisTrixelCanvases>(perAxisCanvasEntity_);
+        if (perAxis.has_value()) {
+            perAxisCanvases_ = perAxis.value();
+        }
     }
 
     static SystemId create() {
@@ -102,8 +207,10 @@ template <> struct System<FOG_TO_TRIXEL> {
             "FogToTrixelProgram",
             std::vector{ShaderStage{IRRender::kFileCompFogToTrixel, ShaderType::COMPUTE}}
         );
-
-        // Per-canvas analytic vision-circle UBO (binding kBufferIndex_FogObservers).
+        IRRender::createNamedResource<ShaderProgram>(
+            "FogOverflowFacesProgram",
+            std::vector{ShaderStage{IRRender::kFileCompFogOverflowFaces, ShaderType::COMPUTE}}
+        );
         IRRender::createNamedResource<Buffer>(
             "FogObserverData",
             nullptr,
@@ -118,11 +225,13 @@ template <> struct System<FOG_TO_TRIXEL> {
             C_TriangleCanvasTextures,
             C_TrixelCanvasRenderBehavior,
             C_CanvasFogOfWar>("FogToTrixel");
-        auto *p = getSystemParams<System<FOG_TO_TRIXEL>>(systemId);
-        p->program_ = IRRender::getNamedResource<ShaderProgram>("FogToTrixelProgram");
-        p->voxelFrameDataBuf_ = IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
-        p->observerBuf_ = IRRender::getNamedResource<Buffer>("FogObserverData");
-        IRRender::tagGpuStage(systemId, "fogToTrixel");
+        auto *params = getSystemParams<System<FOG_TO_TRIXEL>>(systemId);
+        params->program_ = IRRender::getNamedResource<ShaderProgram>("FogToTrixelProgram");
+        params->overflowProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("FogOverflowFacesProgram");
+        params->voxelFrameDataBuf_ = IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
+        params->observerBuf_ = IRRender::getNamedResource<Buffer>("FogObserverData");
+        params->overflowFogDisabled_ = std::getenv("IR_OVERFLOW_FOG_DISABLE") != nullptr;
         return systemId;
     }
 };

@@ -14,7 +14,7 @@ inline constexpr float kFrameTimeBudgetMs = 1000.0f / 60.0f;
 
 // Number of named GPU stages in `gpuStageRegistry()`. Single source of truth
 // for both the registry array and the parallel per-stage accumulator array.
-inline constexpr std::size_t kGpuStageCount = 39;
+inline constexpr std::size_t kGpuStageCount = 41;
 
 struct GpuStageTiming {
     float canvasClearMs_ = 0.0f;
@@ -32,6 +32,8 @@ struct GpuStageTiming {
     float computeVoxelAoPerAxisMs_ = 0.0f;
     float lightingPerAxisMs_ = 0.0f;
     float lightingOverflowMs_ = 0.0f;
+    float fogPerAxisMs_ = 0.0f;
+    float fogOverflowMs_ = 0.0f;
     float perAxisScatterMs_ = 0.0f;
     float shapeCompactMs_ = 0.0f;
     float shapePass0Ms_ = 0.0f;
@@ -385,7 +387,9 @@ inline void commitGpuStageSample(const GpuStageInfo &info, int registryIndex, fl
 //   `computeVoxelAoPerAxis` ← the 3 per-axis AO dispatches
 //   `lightingToTrixel`      ← the main-canvas lighting dispatch ONLY
 //   `lightingPerAxis`       ← the 3 per-axis relight dispatches
-// `lightingOverflow` ← the overflow-face relight dispatch
+//   `lightingOverflow`      ← the overflow-face relight dispatch
+//   `fogPerAxis`            ← the 3 per-axis fog dispatches
+//   `fogOverflow`           ← the overflow-face fog dispatch
 //   `trixelToFb`            ← the single-canvas gather draw ONLY
 //   `perAxisScatter`        ← the 3 per-axis scatter draws + overflow draw
 // and VOXEL_TO_TRIXEL_STAGE_1's rotating-only per-axis dispatch groups get
@@ -420,6 +424,8 @@ inline const std::array<GpuStageInfo, kGpuStageCount> &gpuStageRegistry() {
         {"computeVoxelAoPerAxis", &GpuStageTiming::computeVoxelAoPerAxisMs_, 0.05f},
         {"lightingPerAxis", &GpuStageTiming::lightingPerAxisMs_, 0.05f},
         {"lightingOverflow", &GpuStageTiming::lightingOverflowMs_, 0.05f},
+        {"fogPerAxis", &GpuStageTiming::fogPerAxisMs_, 0.05f},
+        {"fogOverflow", &GpuStageTiming::fogOverflowMs_, 0.05f},
         {"perAxisScatter", &GpuStageTiming::perAxisScatterMs_, 0.10f},
         {"shapeCompact", &GpuStageTiming::shapeCompactMs_, 0.05f},
         {"shapePass0", &GpuStageTiming::shapePass0Ms_, 0.10f},

@@ -499,15 +499,12 @@ kernel void IR_STAGE1_KERNEL_NAME(
         // Per-axis own-column fog clip: reveal <= 0 (FULLY hidden), applied on
         // EVERY axis route (1/2/3) so a rotating boundary object clips its
         // hidden half identically (a hidden column's Z-face would otherwise float
-        // on route 3). z-AWARE, unlike the single-canvas GRID drop: FOG_TO_TRIXEL
-        // paints only the main canvas, and the per-axis textures composite
-        // straight into the framebuffer, so a height-hidden voxel kept here
-        // would render lit. visionCircleCount==0 and the 1×1 placeholder grid
-        // short-circuit non-fog rotating scenes. The COLUMN is rounded, the
-        // HEIGHT stays the raw voxelPosition.z. Mirror of the GLSL twin.
+        // on route 3). The nearest-cell metric keeps the hidden ring that the fog
+        // pass paints on every per-axis sample. visionCircleCount==0 and the 1×1
+        // placeholder grid short-circuit non-fog rotating scenes.
         if (!fogWholeBodyExempt && fogObservers.visionCircleCount > 0 &&
-            fogColumnRevealZ(
-                canvasFogOfWar, fogObservers, roundHalfUp(voxelPosition.xyz).xy, voxelPosition.z
+            fogColumnRevealNearest(
+                canvasFogOfWar, fogObservers, roundHalfUp(voxelPosition.xyz).xy
             ) <= 0.0f) {
             return;
         }
@@ -540,8 +537,11 @@ kernel void IR_STAGE1_KERNEL_NAME(
         if (frameData.resolveMode == 3) {
             // Each record reconstructs the whole face, not one of its two trixels.
             if (any(int2(localId) != faceOffset_2x3(slot, 0))) return;
+            const uint fogClassByte = fogWholeBodyExempt ? 254u : 255u;
+            const uint overflowColor =
+                (voxels[voxelIndex].colorPacked & 0x00FFFFFFu) | (fogClassByte << 24u);
             overflowAppendTap(
-                perAxisBase, facePos, voxelDistance, voxels[voxelIndex].colorPacked,
+                perAxisBase, facePos, voxelDistance, overflowColor,
                 frameData, distanceScratch, perAxisWinnerIds, canvasSize
             );
             return;
