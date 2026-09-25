@@ -98,7 +98,7 @@ class SurfaceLightVolumeTest(unittest.TestCase):
             body = body.replace("textureLod(volume, ", "sampleVolume(")
             body = body.replace("volume.sample(volumeSampler, ", "sampleVolume(")
             body = body.replace("level(0.0)", "0.0")
-            body = body.replace("imageLoad(winnerIds, cell).r", "sampleIds(cell).x")
+            body = body.replace("imageLoad(lightVolumeId, cell).r", "sampleIds(cell).x")
             body = body.replace("winnerIds.read(uint3(cell)).r", "sampleIds(cell).x")
             body = body.replace("spotConeFactor(lights, ", "spotConeFactor(")
             variants = {

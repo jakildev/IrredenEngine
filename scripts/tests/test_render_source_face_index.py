@@ -63,7 +63,14 @@ struct FrameDataSun {
 FrameDataSun sunFrame;
 const vec2 cascadeOriginUV_0{0,0},cascadeOriginUV_1{-8,-8};
 const vec2 cascadeTexelSize_0{1,1},cascadeTexelSize_1{2,3};
-uint* sunDepthBuf;
+// GLSL indexes the bound SSBO and reads its length(); Metal takes the raw pointer.
+struct BoundBuffer {
+    uint* data;
+    uint words;
+    uint& operator[](uint i) const {return data[i];}
+    int length() const {return int(words);}
+};
+BoundBuffer sunDepthBuf;
 """
 
 CASES = r"""
@@ -72,8 +79,8 @@ std::vector<uint> actual(kSourceFaceBufferWords+2*guardWords,canary),expected;
 uint* oracle;
 void reset() {
     std::fill(actual.begin(),actual.end(),canary);
-    sunDepthBuf=actual.data()+guardWords;
-    std::fill(sunDepthBuf,sunDepthBuf+kSourceFaceBufferWords,unwritten);
+    sunDepthBuf={actual.data()+guardWords,kSourceFaceBufferWords};
+    std::fill(sunDepthBuf.data,sunDepthBuf.data+kSourceFaceBufferWords,unwritten);
     sunDepthBuf[kSourceFaceHeaderOffset]=0;
     for(uint tile=0;tile<32768;++tile)
         sunDepthBuf[kSourceFaceTileOffset+tile*65]=0;
@@ -108,7 +115,7 @@ void emit(vec3 corner,vec3 u,vec3 v,std::initializer_list<uint> tiles) {
 }
 vec3 storedVector(uint record,uint offset) {
     float value[3];
-    for(uint i=0;i<3;++i) std::memcpy(&value[i],sunDepthBuf+record+offset+i,4);
+    for(uint i=0;i<3;++i) std::memcpy(&value[i],sunDepthBuf.data+record+offset+i,4);
     return {value[0],value[1],value[2]};
 }
 int main() {
@@ -191,17 +198,23 @@ class SourceFaceIndexTest(unittest.TestCase):
                 "unculled_off_map": indexer.replace(
                     "if (first.x > last.x || first.y > last.y) continue;", ""),
             }
+            layouts = dict.fromkeys(variants, layout)
+            if suffix == "glsl":
+                variants["header_index_off_by_one"] = indexer
+                layouts["header_index_off_by_one"] = layout.replace(
+                    "kSourceFaceBufferWords - kSourceFaceHeaderOffset)",
+                    "kSourceFaceBufferWords - kSourceFaceHeaderOffset - 1u)")
             call = ("indexSourceSunFace(corner,u,v);" if suffix == "glsl" else
-                    "indexSourceSunFace(sunDepthBuf,corner,u,v,sunFrame);")
+                    "indexSourceSunFace(sunDepthBuf.data,corner,u,v,sunFrame);")
             degenerate = ("indexSourceSunFace(corner,u,u);" if suffix == "glsl" else
-                          "indexSourceSunFace(sunDepthBuf,corner,u,u,sunFrame);")
+                          "indexSourceSunFace(sunDepthBuf.data,corner,u,u,sunFrame);")
             cases = CASES.replace("CALL_INDEX", call).replace("INDEX_DEGENERATE", degenerate)
             for variant, body in variants.items():
                 with (self.subTest(backend=suffix, variant=variant),
                       tempfile.TemporaryDirectory() as temporary):
                     if variant != "production":
-                        self.assertNotEqual(body, indexer)
-                    shader = layout + "\n" + body
+                        self.assertNotEqual((layouts[variant], body), (layout, indexer))
+                    shader = layouts[variant] + "\n" + body
                     shader = (shader.replace("constant uint", "const uint")
                               .replace("constant FrameDataSun&", "const FrameDataSun&")
                               .replace("device atomic_uint*", "atomic_uint*")

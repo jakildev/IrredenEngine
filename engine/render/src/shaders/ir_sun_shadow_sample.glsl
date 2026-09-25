@@ -51,7 +51,7 @@ float sampleCascadeShadow(
     vec2 sunUV, float sunZ, vec3 normal, vec3 sunDir, vec3 uHat, vec3 vHat,
     vec2 origin, vec2 texelSz, int bufferOffset, float maxShadowThrow, bool surfaceReceiver, vec4 casterViewToWorld
 ) {
-    const bool hasSourceFaces = sunDepthBuf[kSourceFaceHeaderOffset] != 0u;
+    const bool hasSourceFaces = sunDepthBuf[sourceFaceHeaderIndex(uint(sunDepthBuf.length()))] != 0u;
     bool sourceQueryComplete = !hasSourceFaces;
     if (surfaceReceiver && hasSourceFaces) {
         const ivec2 tile = ivec2(floor((sunUV - origin) / (texelSz * float(kSourceFaceTileEdge))));

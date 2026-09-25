@@ -26,6 +26,9 @@ class SourceFaceQueryTest(unittest.TestCase):
                 names = re.findall(r"const uint (kSourceFace\w+) =", shader)
                 checks = "\n".join(f"static_assert({n} == IRPrefab::SunShadow::{n});"
                                    for n in names)
+                header_check = (
+                    "if (sourceFaceHeaderIndex(kSourceFaceBufferWords) != kSourceFaceHeaderOffset)"
+                    " return 19;" if suffix == "glsl" else "")
                 source = """#include <cstdint>
 #include <cmath>
 using std::abs;
@@ -79,6 +82,7 @@ int main() {
             }
         }
     }
+    """ + header_check + """
     return 0;
 }
 """

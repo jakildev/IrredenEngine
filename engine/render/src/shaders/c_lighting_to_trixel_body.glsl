@@ -86,11 +86,6 @@ layout(binding = 5) uniform sampler3D lightVolume;
 // unbound and the `perAxisRoute == 0` guard skips the read. Non-fog scenes never
 // set the flag.
 layout(rg32ui, binding = 6) readonly uniform uimage2D trixelEntityIds;
-// Winning-light ID volume, image unit 7. `.r` = the index+1 (÷255) of the light
-// that won each cell's flood contest. Fetched (NEAREST — no interpolation) only
-// when the frame gathered a SPOT light (`lightVolumeWorldOrigin.w != 0`). Bound
-// every tick so Metal's slot table is populated.
-layout(rgba8, binding = 7) readonly uniform image3D lightVolumeId;
 
 // Per-axis empty-cell compaction: on the per-axis route (perAxisRoute !=
 // 0) this kernel is dispatched indirectly over only each axis's OCCUPIED cells
@@ -402,7 +397,7 @@ void main() {
                           voxelRenderOptions, rasterYaw
                       )));
 
-        const vec3 light = surfaceLightVolume(pos3D, lightVolumeWorldOrigin, lightVolume, lightVolumeId);
+        const vec3 light = surfaceLightVolume(pos3D, lightVolumeWorldOrigin, lightVolume);
         baseRgb = baseRgb + src.rgb * light;
     }
 

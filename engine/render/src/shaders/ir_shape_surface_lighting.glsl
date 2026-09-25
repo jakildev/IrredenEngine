@@ -5,7 +5,6 @@
 layout(binding = 3) uniform sampler2D paletteLUT;
 layout(binding = 4) uniform sampler2D surfaceAO;
 layout(binding = 5) uniform sampler3D lightVolume;
-layout(rgba8, binding = 7) readonly uniform image3D lightVolumeId;
 layout(std140, binding = 7) uniform SurfaceLightVolumeParams {
     int gridSize;
     int halfExtent;
@@ -32,8 +31,7 @@ vec3 shapeSurfaceLighting(ivec2 ownerPixel, int ownerWidth, vec3 position, vec3 
     const float lambert = max(0.0, dot(normal, sunDirection.xyz));
     vec3 linearColor = material * surfaceSunFactor(sunAmbient, sunIntensity, lambert, visibility);
     if (lightVolumeEnabled != 0)
-        linearColor += albedo * surfaceLightVolume(position, lightVolumeWorldOrigin,
-                                                   lightVolume, lightVolumeId);
+        linearColor += albedo * surfaceLightVolume(position, lightVolumeWorldOrigin, lightVolume);
     if (hdrEnabled != 0 && skyIntensity > 0.0)
         linearColor += surfaceSkyLight(normal, skyColor.rgb, skyIntensity, ao);
     return surfaceDisplayColor(linearColor, exposure, hdrEnabled != 0);
