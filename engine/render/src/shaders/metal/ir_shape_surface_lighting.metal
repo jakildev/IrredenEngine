@@ -2,7 +2,7 @@
 #include "ir_surface_light_volume.metal"
 
 inline float3 shapeSurfaceLighting(uint2 ownerPixel, int ownerWidth, float3 position, float3 normal,
-                                   float4 casterRotation, float3 fallbackColor,
+                                   float cascadeDepth, float4 casterRotation, float3 fallbackColor,
                                    device const ShapeDescriptor *receiverShapes,
                                    device const uint *receiverOwners,
                                    device const ShapeTileDescriptor *receiverTiles,
@@ -27,7 +27,7 @@ inline float3 shapeSurfaceLighting(uint2 ownerPixel, int ownerWidth, float3 posi
         material = albedo * paletteLUT.sample(paletteSampler, float2(ao, luminance), level(0.0)).rgb;
     }
     const float visibility = sun.shadowsEnabled == 0 ? 1.0 :
-        worldSurfaceSunShadowFactor(position, normal, pos3DtoDistance(position), casterRotation,
+        worldShapeSurfaceSunShadowFactor(position, normal, cascadeDepth, casterRotation,
                                     sun, sunDepthBuf);
     const float lambert = max(0.0, dot(normal, sun.sunDirection.xyz));
     float3 linearColor = material * surfaceSunFactor(sun.sunAmbient, sun.sunIntensity, lambert, visibility);

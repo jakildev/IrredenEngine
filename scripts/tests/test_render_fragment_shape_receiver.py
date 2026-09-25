@@ -36,10 +36,12 @@ bool selectedShapeBoxReceiver(ivec2 owner,int width,vec2 query,vec3& p,vec3& n){
  p={query.x,query.y,1};n={0,0,-1};return hit;
 }
 float pos3DtoDistance(vec3 p){return p.x+p.y+p.z;}
-float worldSurfaceSunShadowFactor(vec3 p,vec3 n,float depth,vec4 rotation){
+struct Frame {} receiverFrame;
+float shapeCanvasIsoDepth(vec3 p,Frame){return 4*(p.x-p.y+p.z);}
+float worldShapeSurfaceSunShadowFactor(vec3 p,vec3 n,float depth,vec4 rotation){
  if(rotation.x!=.1f||rotation.y!=.2f||rotation.z!=.3f||rotation.w!=.9f)std::exit(12);
  ++shadowCalls;
- if(p.x!=originRaw.x||p.y!=originRaw.y||p.z!=1||n.z!=-1||depth!=originRaw.x+originRaw.y+1)std::exit(12);
+ if(p.x!=originRaw.x||p.y!=originRaw.y||p.z!=1||n.z!=-1||depth!=4*(originRaw.x-originRaw.y+1))std::exit(12);
  return .5f;
 }
 """
@@ -162,6 +164,8 @@ int main(int argc,char**){
                 if suffix == "glsl" else block.replace("ivec2(sampleCoord)", "ivec2(vec2(0,0))"),
                 "lost_miss_fallback": block.replace(
                     "if (selectedShapeBoxReceiver", "if (true || selectedShapeBoxReceiver"),
+                "world_cascade_depth": block.replace(
+                    "shapeCanvasIsoDepth(position, receiverFrame)", "pos3DtoDistance(position)"),
                 "shadow_toggle_ignored": block.replace("shadowsEnabled == 0", "false"),
                 "transparent_query": block.replace("color.a >= 0.1", "true"),
             }

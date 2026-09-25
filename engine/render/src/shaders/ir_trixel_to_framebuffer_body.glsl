@@ -96,7 +96,7 @@ void main() {
         if (selectedShapeBoxReceiver(clamp(ivec2(floor(displayOrigin)), ivec2(0), textureSize - 1), textureSize.x,
                                      originRaw, position, normal)) {
             float visibility = shadowsEnabled == 0 ? 1.0 :
-                worldSurfaceSunShadowFactor(position, normal, pos3DtoDistance(position),
+                worldShapeSurfaceSunShadowFactor(position, normal, shapeCanvasIsoDepth(position, receiverFrame),
                     casterViewToWorld);
             color.rgb = visibility >= 0.999 ? vec3(0.0) : vec3(1.0, 0.0, 1.0);
         }
@@ -109,7 +109,8 @@ void main() {
         const ivec2 ownerPixel = clamp(ivec2(floor(displayOrigin)), ivec2(0), textureSize - 1);
         vec3 position = vec3(0.0), normal = vec3(0.0);
         if (selectedShapeBoxReceiver(ownerPixel, textureSize.x, originRaw, position, normal))
-            color.rgb = shapeSurfaceLighting(ownerPixel, textureSize.x, position, normal, casterViewToWorld, color.rgb);
+            color.rgb = shapeSurfaceLighting(ownerPixel, textureSize.x, position, normal,
+                shapeCanvasIsoDepth(position, receiverFrame), casterViewToWorld, color.rgb);
     }
 #endif
 

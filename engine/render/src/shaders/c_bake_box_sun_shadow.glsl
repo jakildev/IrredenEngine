@@ -2,24 +2,14 @@
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 #include "ir_iso_common.glsl"
+#include "ir_sdf_common.glsl"
+#include "ir_shape_data.glsl"
+#include "ir_shape_receiver.glsl"
 #include "ir_sun_projection.glsl"
 #include "ir_sun_face_query_layout.glsl"
 
-struct ShapeDescriptor {
-    vec4 worldPosition;
-    vec4 params;
-    vec4 rotation;
-    uint shapeType;
-    uint color;
-    uint entityId;
-    uint jointIndex;
-    uint flags;
-    uint lodLevel;
-    uint _pad0;
-    uint _pad1;
-};
-
 layout(std430, binding = 20) readonly buffer ShapeBuffer { ShapeDescriptor shapes[]; };
+layout(std140, binding = 23) uniform ShapeProjectionFrame { ShapeProjectionData boxProjection; };
 layout(std430, binding = 28) restrict buffer SunShadowDepthMap { uint sunDepthBuf[]; };
 layout(std140, binding = 16) uniform ShapeSunFrame { ivec4 dispatch; };
 layout(std140, binding = 29) uniform FrameDataSun {
@@ -55,7 +45,9 @@ void main() {
     const vec3 axisX = rotateByQuat(vec3(1, 0, 0), shape.rotation);
     const vec3 axisY = rotateByQuat(vec3(0, 1, 0), shape.rotation);
     const vec3 axisZ = rotateByQuat(vec3(0, 0, 1), shape.rotation);
-    const vec3 center = sunSpaceProject(shape.worldPosition.xyz, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz);
+    // Faces and footprint follow the drawn box, not the raw descriptor position.
+    const vec3 boxCenter = shapeRenderedCenter(shape.worldPosition.xyz, boxProjection);
+    const vec3 center = sunSpaceProject(boxCenter, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz);
     const vec3 extent = abs(sunSpaceProject(axisX, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz)) * halfExtent.x
         + abs(sunSpaceProject(axisY, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz)) * halfExtent.y
         + abs(sunSpaceProject(axisZ, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz)) * halfExtent.z;
@@ -70,7 +62,7 @@ void main() {
             vec3 edgeU = vec3(0.0), edgeV = vec3(0.0);
             edgeU[(axis + 1) % 3] = 2.0 * halfExtent[(axis + 1) % 3];
             edgeV[(axis + 2) % 3] = 2.0 * halfExtent[(axis + 2) % 3];
-            corner = shape.worldPosition.xyz + rotateByQuat(corner, shape.rotation);
+            corner = boxCenter + rotateByQuat(corner, shape.rotation);
             edgeU = rotateByQuat(edgeU, shape.rotation);
             edgeV = rotateByQuat(edgeV, shape.rotation);
             const vec3 projected = sunSpaceProject(corner, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz);
@@ -89,7 +81,7 @@ void main() {
         for (uint sampleIndex = gl_WorkGroupID.z * 64u + gl_LocalInvocationID.x; sampleIndex < uint(size.x * size.y); sampleIndex += 64u * uint(dispatch.w)) {
             const ivec2 pixel = first + ivec2(int(sampleIndex) % size.x, int(sampleIndex) / size.x);
             const vec2 uv = origin + (vec2(pixel) + 0.5) * texel;
-            const vec3 worldDelta = sunBasisU.xyz * uv.x + sunBasisV.xyz * uv.y - shape.worldPosition.xyz;
+            const vec3 worldDelta = sunBasisU.xyz * uv.x + sunBasisV.xyz * uv.y - boxCenter;
             const vec3 rayOrigin = vec3(dot(worldDelta, axisX), dot(worldDelta, axisY), dot(worldDelta, axisZ));
             float nearDepth = -1e30;
             float farDepth = 1e30;

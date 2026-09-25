@@ -32,7 +32,8 @@ vec3 cross(vec3 a,vec3 b){return {a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.
 vec3 unit(vec3 a){return a*(1/std::sqrt(dot(a,a)));}
 vec3 rotateByQuat(vec3 p,vec4 q){vec3 v{q.x,q.y,q.z};return p+cross(v,cross(v,p)+p*q.w)*2;}
 vec3 sunSpaceProject(vec3 p,vec3 u,vec3 v,vec3 light){return {dot(p,u),dot(p,v),-dot(p,light)};}
-struct Shape {vec3 worldPosition{2.25,-3.125,1.75};vec4 rotation{0,0,0,1};} shape;
+struct Shape {vec4 rotation{0,0,0,1};} shape;
+vec3 boxCenter{2.25,-3.125,1.75};
 vec3 halfExtent{1,2,3},sunDirection{0,0,-1},sunBasisU{1,0,0},sunBasisV{0,1,0};
 struct Face {vec3 corner,u,v;};
 std::vector<Face> faces;
@@ -58,7 +59,7 @@ int main(){
    {1-2*(q.y*q.y+q.z*q.z),2*(q.x*q.y-q.z*q.w),2*(q.x*q.z+q.y*q.w)},
    {2*(q.x*q.y+q.z*q.w),1-2*(q.x*q.x+q.z*q.z),2*(q.y*q.z-q.x*q.w)},
    {2*(q.x*q.z-q.y*q.w),2*(q.y*q.z+q.x*q.w),1-2*(q.x*q.x+q.y*q.y)}};
-  const vec3 center=sunSpaceProject(shape.worldPosition,sunBasisU,sunBasisV,light);
+  const vec3 center=sunSpaceProject(boxCenter,sunBasisU,sunBasisV,light);
   for(int x=-30;x<=30;++x)for(int y=-30;y<=30;++y){
    const double u=center.x+x*.137+.017,v=center.y+y*.137+.031;
    double actual=1e30;
@@ -69,7 +70,7 @@ int main(){
     double s=(du*f.v.y-dv*f.v.x)/det,t=(f.u.x*dv-f.u.y*du)/det;
     if(s>=0&&s<=1&&t>=0&&t<=1)actual=std::min(actual,f.corner.z+s*f.u.z+t*f.v.z);
    }
-   vec3 origin=sunBasisU*u+sunBasisV*v-shape.worldPosition;
+   vec3 origin=sunBasisU*u+sunBasisV*v-boxCenter;
    double near=-1e30,far=1e30;bool hit=true;
    for(int i=0;i<3;++i){
     double o=0,d=0;for(int j=0;j<3;++j){o+=m[j][i]*origin[j];d-=m[j][i]*light[j];}
@@ -106,7 +107,7 @@ class BoxFaceProjectionTest(unittest.TestCase):
                 "unrotated_edges": block.replace(
                     "edgeU = rotateByQuat(edgeU, shape.rotation);", ""),
                 "half_extent_edge": block.replace("2.0 * halfExtent", "halfExtent"),
-                "lost_translation": block.replace("shape.worldPosition +", ""),
+                "lost_translation": block.replace("boxCenter +", ""),
             }
             gate = re.search(r"if \(((?:gl_WorkGroupID|groupId).*?)\) \{", source)[1]
             gate = gate.replace("gl_WorkGroupID.z", "group").replace("groupId.z", "group")
