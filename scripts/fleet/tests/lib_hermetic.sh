@@ -24,6 +24,16 @@
 #   - the suite calls hermetic_poison_gh_env right after creating its temp
 #     root.
 #
+# A native-Windows `shutil.which()` hit on the `gh.bat` twin still isn't
+# safe to hand to `subprocess.run([...])` as-is: CreateProcess routes a
+# `.bat` target through cmd.exe, which re-parses the whole argv for its own
+# metacharacters (`&`, `|`, `^`, ...) before the batch body's `%*` sees
+# anything — a REST query string's `&per_page=` silently splits into two
+# commands. A subject detects the twin (`.bat` beside this exact
+# `#!/usr/bin/env python3` extensionless sibling) and execs the sibling
+# through `sys.executable` instead, bypassing cmd.exe entirely
+# (`fleet-decisions`'s `_gh_argv`).
+#
 # hermetic_poison_gh_env poisons the real binary's credentials, config, and
 # default host, so a call that escapes the PATH stub fails before it can
 # authenticate against or mutate live GitHub. It is a fail-closed backstop
