@@ -8,10 +8,12 @@
 // canvas is fully wired without crashing.
 
 #include <irreden/ir_entity.hpp>
+#include <irreden/ir_profile.hpp>
 #include <irreden/ir_render.hpp>
 
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_fog_revealed.hpp>
+#include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/fog_line_of_sight.hpp>
 #include <irreden/voxel/components/component_voxel.hpp>
@@ -19,6 +21,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <utility>
 
@@ -269,9 +272,11 @@ inline void setVisionCircleLineOfSight(
 /// Whether @p to is visible from the eye @p from under the line-of-sight model
 /// (the exact segment march of `component_canvas_fog_of_war.hpp`, with @p to
 /// lifted onto its column's top plane when it sits below it), over the active
-/// canvas's current occluders at the frame's raster lattice. True without an
-/// active fog canvas, when @p to shares @p from's half-cell, and when @p to
-/// lies outside the fog footprint.
+/// canvas's current occluders at the frame's raster lattice. The query's
+/// field is anchored with the fog window the last gather uploaded, as
+/// `FOG_LOS_BUILD` anchors the built one. True without an active fog canvas,
+/// when @p to shares @p from's half-cell, and when @p to lies outside that
+/// field.
 ///
 /// Cost: rebuilds a 2 MiB column view from every live pool voxel and flagged
 /// shape on each call, then one lattice walk — an occasional gameplay query,
@@ -283,9 +288,10 @@ inline bool lineOfSight(IRMath::vec3 from, IRMath::vec3 to) {
     if (fog == nullptr) {
         return true;
     }
+    const IRMath::ivec2 fieldMin = fog->losFieldMinForLiveWindow();
     if (!FogLosColumnField::cellInField(
-            FogLosColumnField::halfCellOf(to.x),
-            FogLosColumnField::halfCellOf(to.y)
+            IRMath::ivec2(FogLosColumnField::halfCellOf(to.x), FogLosColumnField::halfCellOf(to.y)),
+            fieldMin
         )) {
         return true;
     }
@@ -300,8 +306,8 @@ inline bool lineOfSight(IRMath::vec3 from, IRMath::vec3 to) {
             IRComponents::kFogLosColumnEmpty
         );
     }
-    rasterizeLosColumns(**pool, canvas, activeLosRasterFrame(), fog->losQueryColumnTops_);
-    const FogLosColumnField field{fog->losQueryColumnTops_.data()};
+    rasterizeLosColumns(**pool, canvas, activeLosRasterFrame(), fieldMin, fog->losQueryColumnTops_);
+    const FogLosColumnField field{fog->losQueryColumnTops_.data(), fieldMin};
     const float ownTop =
         field.topPlane(FogLosColumnField::halfCellOf(to.x), FogLosColumnField::halfCellOf(to.y));
     float bandClearance = 0.0f;
@@ -390,20 +396,67 @@ inline WorldFieldStats fieldStats() {
     return {};
 }
 
+/// Edge of the active canvas's fog window texture in columns; 0 without an
+/// active fog canvas.
+inline int windowEdge() {
+    if (auto *fog = detail::activeFogComponent()) {
+        return fog->windowEdge_;
+    }
+    return 0;
+}
+
+/// The field column at texel (0, 0) of the window the active canvas's fog
+/// texture currently shows; nullopt without an active fog canvas or before
+/// the first gather.
+inline std::optional<IRMath::ivec2> windowOrigin() {
+    if (auto *fog = detail::activeFogComponent()) {
+        return fog->windowOrigin_;
+    }
+    return std::nullopt;
+}
+
 /// Attach both components FOG_TO_TRIXEL's archetype requires to @p canvas:
 /// C_TrixelCanvasRenderBehavior (added only if absent, preserving any prior
-/// customized behavior component) and a fresh C_CanvasFogOfWar. FOG_TO_TRIXEL
-/// silently no-ops on a canvas missing either, so co-attaching here removes
-/// that footgun from call sites. @p revealRadius > 0 also reveals an
-/// origin-centered disc of that radius on @p canvas (pass kFogOfWarSize for a
-/// full reveal); 0 (default) attaches only, leaving the grid unexplored. A
-/// persistent creation attaches with 0, calls `setPersistenceRoot`, then
-/// reveals: a reveal here would make the root refuse.
+/// customized behavior component) and a fresh C_CanvasFogOfWar whose window
+/// is sized for @p canvas's trixel footprint (logged once as `FOG-WINDOW`,
+/// with a warning when the cap leaves the periphery over-fogged).
+/// FOG_TO_TRIXEL silently no-ops on a canvas missing either, so co-attaching
+/// here removes that footgun from call sites. @p revealRadius > 0 also reveals
+/// an origin-centered disc of that radius on @p canvas (up to
+/// `kFogRevealRadiusMax`); 0 (default) attaches only, leaving the grid
+/// unexplored. A persistent creation attaches with 0, calls
+/// `setPersistenceRoot`, then reveals: a reveal here would make the root
+/// refuse.
 inline void attachToCanvas(IREntity::EntityId canvas, int revealRadius = 0) {
     if (!IREntity::getComponentOptional<IRComponents::C_TrixelCanvasRenderBehavior>(canvas)
              .has_value())
         IREntity::setComponent(canvas, IRComponents::C_TrixelCanvasRenderBehavior{});
-    IREntity::setComponent(canvas, IRComponents::C_CanvasFogOfWar{});
+    IRMath::ivec2 canvasSize(IRRender::getMainCanvasSizeTrixels());
+    if (auto textures =
+            IREntity::getComponentOptional<IRComponents::C_TriangleCanvasTextures>(canvas)) {
+        canvasSize = (*textures)->size_;
+    }
+    const int edge = detail::windowEdgeForCanvas(canvasSize);
+    const int uncapped = detail::windowEdgeUncapped(canvasSize);
+    IR_LOG_INFO(
+        "FOG-WINDOW edge={} canvas={}x{} coveredRadius={}",
+        edge,
+        canvasSize.x,
+        canvasSize.y,
+        detail::windowCoveredRadius(edge)
+    );
+    if (uncapped > edge) {
+        IR_LOG_WARN(
+            "Fog window for a {}x{} canvas wants edge {} but is capped at {}: columns beyond "
+            "a Chebyshev radius of {} from the view centre read unexplored",
+            canvasSize.x,
+            canvasSize.y,
+            uncapped,
+            edge,
+            detail::windowCoveredRadius(edge)
+        );
+    }
+    IREntity::setComponent(canvas, IRComponents::C_CanvasFogOfWar{canvasSize});
     if (revealRadius > 0) {
         if (auto opt = IREntity::getComponentOptional<IRComponents::C_CanvasFogOfWar>(canvas))
             (*opt)->revealRadius(0, 0, revealRadius);

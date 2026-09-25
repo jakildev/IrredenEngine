@@ -55,6 +55,27 @@ struct LosRasterFrame {
     bool rotating_ = false;
 };
 
+namespace detail {
+
+/// The fog window origin for a canvas of @p canvasSize this frame: the window
+/// is centred on the world point at z = 0 under the canvas's viewport centre
+/// for the live effective camera and yaw, snapped to field chunks. The gather
+/// and `FOG_LOS_BUILD` both call it after the camera systems, so they agree
+/// on the origin within a frame.
+inline IRMath::ivec2 cameraWindowOrigin(int edge, IRMath::ivec2 canvasSize) {
+    const IRMath::IsoBounds2D viewport = IRMath::visibleIsoViewport(
+        IRRender::getEffectiveCameraIso(),
+        IRMath::trixelOriginOffsetZ1(canvasSize),
+        canvasSize
+    );
+    const IRMath::vec2 centreIso = (viewport.min_ + viewport.max_) * 0.5f;
+    const IRMath::vec3 centre =
+        IRMath::pos2DIsoToPos3DAtZLevelYawed(centreIso, 0.0f, IRPrefab::Camera::getYaw());
+    return windowOriginForCentre(IRMath::vec2(centre), edge);
+}
+
+} // namespace detail
+
 /// The frame the active canvas renders with right now.
 inline LosRasterFrame activeLosRasterFrame() {
     const auto [rasterYaw, residualYaw] = IRPrefab::Camera::getYawSplit();
@@ -100,20 +121,25 @@ inline int losHalfCellEdge(float world) {
     return IRMath::roundHalfUp(world * static_cast<float>(IRComponents::kFogLosCellsPerUnit));
 }
 
-/// Lower the top planes of every half-cell in `[minXY, maxXY)` to
-/// @p topPlane (the smallest Z is the highest). Out-of-field cells are
-/// dropped.
-inline void
-stampLosBox(std::span<float> columnTops, IRMath::vec2 minXY, IRMath::vec2 maxXY, float topPlane) {
+/// Lower the top planes of every half-cell in `[minXY, maxXY)` of the field
+/// whose lower corner is @p fieldMin to @p topPlane (the smallest Z is the
+/// highest). Out-of-field cells are dropped.
+inline void stampLosBox(
+    std::span<float> columnTops,
+    IRMath::ivec2 fieldMin,
+    IRMath::vec2 minXY,
+    IRMath::vec2 maxXY,
+    float topPlane
+) {
     using IRComponents::FogLosColumnField;
-    using IRComponents::kFogLosFieldHalfExtent;
-    const int xBegin = IRMath::max(losHalfCellEdge(minXY.x), -kFogLosFieldHalfExtent);
-    const int xEnd = IRMath::min(losHalfCellEdge(maxXY.x), kFogLosFieldHalfExtent);
-    const int yBegin = IRMath::max(losHalfCellEdge(minXY.y), -kFogLosFieldHalfExtent);
-    const int yEnd = IRMath::min(losHalfCellEdge(maxXY.y), kFogLosFieldHalfExtent);
+    using IRComponents::kFogLosFieldSize;
+    const int xBegin = IRMath::max(losHalfCellEdge(minXY.x), fieldMin.x);
+    const int xEnd = IRMath::min(losHalfCellEdge(maxXY.x), fieldMin.x + kFogLosFieldSize);
+    const int yBegin = IRMath::max(losHalfCellEdge(minXY.y), fieldMin.y);
+    const int yEnd = IRMath::min(losHalfCellEdge(maxXY.y), fieldMin.y + kFogLosFieldSize);
     for (int y = yBegin; y < yEnd; ++y) {
         for (int x = xBegin; x < xEnd; ++x) {
-            float &top = columnTops[FogLosColumnField::columnIndex(x, y)];
+            float &top = columnTops[FogLosColumnField::columnIndex(IRMath::ivec2(x, y), fieldMin)];
             top = IRMath::min(top, topPlane);
         }
     }
@@ -125,6 +151,7 @@ stampLosBox(std::span<float> columnTops, IRMath::vec2 minXY, IRMath::vec2 maxXY,
 /// and top plane are within a quarter unit of the drawn surface.
 inline void stampLosShape(
     std::span<float> columnTops,
+    IRMath::ivec2 fieldMin,
     const IRComponents::C_ShapeDescriptor &shape,
     IRMath::vec3 translation,
     IRMath::vec4 rotation,
@@ -148,6 +175,7 @@ inline void stampLosShape(
     if (type == ShapeType::BOX && !rotated) {
         stampLosBox(
             columnTops,
+            fieldMin,
             IRMath::vec2(centre) - IRMath::vec2(half),
             IRMath::vec2(centre) + IRMath::vec2(half),
             centre.z - half.z
@@ -188,6 +216,7 @@ inline void stampLosShape(
                 }
                 stampLosBox(
                     columnTops,
+                    fieldMin,
                     cellCentre - IRMath::vec2(0.5f * kHalfCell),
                     cellCentre + IRMath::vec2(0.5f * kHalfCell),
                     static_cast<float>(z) * kHalfCell
@@ -226,16 +255,18 @@ inline void buildLosPyramid(std::span<float> columnTops) {
     }
 }
 
-/// Rebuild @p columnTops from @p pool's occluding voxels and every
-/// `blocksLOS_` shape on @p canvas (a shape whose `canvasEntity_` is unset
-/// belongs to the active canvas, which the caller passes), each at the box
-/// the raster draws it as under @p frame, then its pyramid. Cost: one pass
-/// over the live voxels (four half-cells each) plus one SDF pass per flagged
-/// shape's footprint, plus a third of the field again for the pyramid.
+/// Rebuild @p columnTops, the field whose lower corner is @p fieldMin, from
+/// @p pool's occluding voxels and every `blocksLOS_` shape on @p canvas (a
+/// shape whose `canvasEntity_` is unset belongs to the active canvas, which
+/// the caller passes), each at the box the raster draws it as under @p frame,
+/// then its pyramid. Cost: one pass over the live voxels (four half-cells
+/// each) plus one SDF pass per flagged shape's footprint, plus a third of the
+/// field again for the pyramid.
 inline void rasterizeLosColumns(
     const IRComponents::C_VoxelPool &pool,
     IREntity::EntityId canvas,
     const LosRasterFrame &frame,
+    IRMath::ivec2 fieldMin,
     std::span<float> columnTops
 ) {
     std::fill(columnTops.begin(), columnTops.end(), IRComponents::kFogLosColumnEmpty);
@@ -252,7 +283,7 @@ inline void rasterizeLosColumns(
         IRMath::vec3 boxMin;
         IRMath::vec3 boxMax;
         losVoxelBox(positions[i].pos_, frame, boxMin, boxMax);
-        stampLosBox(columnTops, IRMath::vec2(boxMin), IRMath::vec2(boxMax), boxMin.z);
+        stampLosBox(columnTops, fieldMin, IRMath::vec2(boxMin), IRMath::vec2(boxMax), boxMin.z);
     }
 
     const auto nodes = IREntity::queryArchetypeNodesSimple(
@@ -273,6 +304,7 @@ inline void rasterizeLosColumns(
             }
             stampLosShape(
                 columnTops,
+                fieldMin,
                 shape,
                 transforms[i].translation_,
                 transforms[i].rotation_,

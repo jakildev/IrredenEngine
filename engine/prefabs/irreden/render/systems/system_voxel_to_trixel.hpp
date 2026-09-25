@@ -31,6 +31,7 @@
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 #include <irreden/render/components/component_detached_revoxelize_buffer.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
+#include <irreden/render/fog_line_of_sight.hpp>
 
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
@@ -42,6 +43,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <limits>
+#include <span>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -506,8 +508,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // C_CanvasFogOfWar (detached, GUI, non-fog creations). The compact shader
     // short-circuits on imageSize().x <= 1, so the placeholder is a true no-op —
     // it exists only to satisfy Metal's "every bound texture slot must be
-    // populated" requirement. The real 256² fog texture is bound for the world
-    // fog canvas instead.
+    // populated" requirement. The real fog window texture is bound for the
+    // world fog canvas instead.
     Texture2D *fogCullPlaceholder_ = nullptr;
     // Analytic vision-circle UBO for the compact's fog cull (slot 27). Uploaded
     // + bound just before the compact so a column a live vision circle covers
@@ -516,11 +518,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // dependency and reads the CURRENT frame's circles, not a frame-stale copy.
     Buffer *fogObserverBuf_ = nullptr;
     // Fog window gather scratch: the drained pending field chunks, the plan,
-    // and one RGBA8 upload strip. System ticks are serial, so one high-water
+    // and the RGBA8 upload strip. System ticks are serial, so one high-water
     // set keeps the gather allocation-free across every fog canvas.
-    std::vector<IRPrefab::Spatial::FieldChunkKey> fogPendingKeys_;
-    IRPrefab::Fog::detail::WindowGatherPlan fogGatherPlan_;
-    std::vector<std::uint8_t> fogUploadScratch_;
+    IRPrefab::Fog::detail::WindowGatherScratch fogGather_;
     // The MAIN canvas's fog component, resolved + uploaded once per frame in
     // beginTick. A detached re-voxelize canvas carries no C_CanvasFogOfWar
     // of its own, but a WORLD-PLACED one cross-sections against the world vision
@@ -793,7 +793,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     ) {
         IR_PROFILE_SCOPE("vs1_per_axis");
         // Fog cut-face / own-column-clip input for the per-axis rotation route
-        // the real 256² fog grid on the main world canvas, else the 1×1
+        // the real fog window on the main world canvas, else the 1×1
         // all-visible placeholder so a rotating non-fog scene short-circuits the
         // shader test and stays byte-identical. The live vision circles were
         // uploaded into fogObserverBuf_ by the compact pass earlier in this same
@@ -1278,39 +1278,42 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
 
     // Brings the fog texture up to date with the field before the column cull
     // below and the later FOG_TO_TRIXEL post-process read it: drains the
-    // field's pending field chunks, re-expands those inside the window and
-    // uploads one rectangle per run. The first gather (and the first after
-    // `clearAll`) uploads the whole window; a second call in the same frame
-    // finds nothing pending and uploads nothing.
-    void gatherFogWindow(C_CanvasFogOfWar &fog) {
+    // field's pending field chunks, re-expands those inside the window (and
+    // the strip a window move exposes), uploads one rectangle per run and
+    // evicts regions the move left behind. The origin lanes of `observers_`
+    // are written here, before the frame's observer uploads, so every tap
+    // indexes the texture contents uploaded alongside them. The first gather
+    // (and the first after `clearAll`) uploads the whole window; a second call
+    // in the same frame finds nothing pending and uploads nothing.
+    void gatherFogWindow(C_CanvasFogOfWar &fog, ivec2 canvasSize) {
         IR_PROFILE_SCOPE("fogWindowGather");
-        const IRMath::ivec2 origin{-kFogOfWarHalfExtent, -kFogOfWarHalfExtent};
-        fog.field_->consumePending(fogPendingKeys_);
-        IRPrefab::Fog::detail::planWindowGather(
+        IRRender::ScopedCpuPhaseTimer phaseTimer{IRRender::fogWindowGatherTiming().gather_};
+        const IRMath::ivec2 origin =
+            IRPrefab::Fog::detail::cameraWindowOrigin(fog.windowEdge_, canvasSize);
+        Texture2D *texture = fog.getTexture();
+        IRPrefab::Fog::detail::gatherWindow(
+            *fog.field_,
             fog.windowOrigin_,
             origin,
-            kFogOfWarSize,
-            fogPendingKeys_,
-            fogGatherPlan_
-        );
-        fog.windowOrigin_ = origin;
-        for (const IRPrefab::Fog::detail::WindowUploadRect &rect : fogGatherPlan_.rects_) {
-            const std::size_t bytes =
-                static_cast<std::size_t>(rect.size_.x) * static_cast<std::size_t>(rect.size_.y) * 4;
-            if (fogUploadScratch_.size() < bytes) {
-                fogUploadScratch_.resize(bytes);
+            fog.windowEdge_,
+            fogGather_,
+            [texture](
+                const IRPrefab::Fog::detail::WindowUploadRect &rect,
+                std::span<const std::uint8_t> rows
+            ) {
+                texture->subImage2D(
+                    rect.texel_.x,
+                    rect.texel_.y,
+                    rect.size_.x,
+                    rect.size_.y,
+                    PixelDataFormat::RGBA,
+                    PixelDataType::UNSIGNED_BYTE,
+                    rows.data()
+                );
             }
-            IRPrefab::Fog::detail::expandWindowChunks(*fog.field_, origin, rect, fogUploadScratch_);
-            fog.getTexture()->subImage2D(
-                rect.texel_.x,
-                rect.texel_.y,
-                rect.size_.x,
-                rect.size_.y,
-                PixelDataFormat::RGBA,
-                PixelDataType::UNSIGNED_BYTE,
-                fogUploadScratch_.data()
-            );
-        }
+        );
+        fog.observers_.windowOriginX_ = origin.x;
+        fog.observers_.windowOriginY_ = origin.y;
     }
 
     // Lazily (re)allocate the cardinal winner buffer to cover @p canvasSize.
@@ -1386,7 +1389,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             auto fogOpt = IREntity::getComponentOptional<C_CanvasFogOfWar>(entity);
             if (fogOpt.has_value()) {
                 fog = fogOpt.value();
-                gatherFogWindow(*fog);
+                gatherFogWindow(*fog, triangleCanvasTextures.size_);
             }
         }
 
@@ -1915,7 +1918,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             (fog != nullptr) ? fog : (worldPlacedRevoxel ? worldFog_ : nullptr);
 
         compactProgram_->use();
-        // Fog cull input: the real 256² fog texture for the world fog
+        // Fog cull input: the real fog window texture for the world fog
         // canvas, else the shared 1×1 all-visible placeholder (compact shader
         // short-circuits on imageSize<=1 → no cull, byte-identical to master).
         // Bound right before the dispatch so an intervening chunk-occlusion
@@ -2275,9 +2278,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         if (perAxisCanvasEntity_ != IREntity::kNullEntity) {
             auto worldFogOpt =
                 IREntity::getComponentOptional<C_CanvasFogOfWar>(perAxisCanvasEntity_);
-            if (worldFogOpt.has_value()) {
+            auto worldTextures =
+                IREntity::getComponentOptional<C_TriangleCanvasTextures>(perAxisCanvasEntity_);
+            if (worldFogOpt.has_value() && worldTextures.has_value()) {
                 worldFog_ = worldFogOpt.value();
-                gatherFogWindow(*worldFog_);
+                gatherFogWindow(*worldFog_, worldTextures.value()->size_);
             }
         }
 

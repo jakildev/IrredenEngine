@@ -14,6 +14,7 @@
 #include <limits>
 #include <optional>
 #include <set>
+#include <span>
 #include <string>
 #include <system_error>
 #include <vector>
@@ -36,6 +37,16 @@ using IRWorld::FieldChunkDiskPersistence;
 
 const IRMath::ivec2 kLegacyOrigin{-128, -128};
 constexpr int kLegacyEdge = 256;
+constexpr int kDemoEdge = 1152;
+
+// The world column texel @p texel of a window at @p origin shows: the inverse
+// of the toroidal address restricted to the window.
+IRMath::ivec2 windowColumnOfTexel(IRMath::ivec2 origin, int edge, IRMath::ivec2 texel) {
+    return origin + IRMath::ivec2{
+                        static_cast<int>(IRMath::floorMod(texel.x - origin.x, edge)),
+                        static_cast<int>(IRMath::floorMod(texel.y - origin.y, edge))
+                    };
+}
 
 std::int64_t discCellCount(std::int64_t radius) {
     std::int64_t count = 0;
@@ -73,7 +84,7 @@ void expandWholeWindow(
     std::vector<std::uint8_t> strip;
     for (const WindowUploadRect &rect : plan.rects_) {
         strip.assign(static_cast<std::size_t>(rect.size_.x * rect.size_.y) * 4, 0xCD);
-        expandWindowChunks(field, origin, rect, strip);
+        expandWindowChunks(field, origin, edge, rect, strip);
         for (int y = 0; y < rect.size_.y; ++y) {
             std::copy_n(
                 strip.begin() + static_cast<std::ptrdiff_t>(y * rect.size_.x * 4),
@@ -313,7 +324,12 @@ TEST_F(FogWorldFieldTest, CoordinatesFarOutsideTheLegacyWindow) {
     EXPECT_EQ(edge.getCell({static_cast<int>(kCellMax), 0}), kFogStateVisible);
 }
 
-TEST_F(FogWorldFieldTest, LegacyWindowExpansionMatchesTheFixedGridLayout) {
+// The expanded window is toroidal: column `c` lands at texel
+// `floorMod(c, edge)` whatever the origin, and the origin only decides which
+// columns are shown. At the legacy origin that is a half-texture rotation of
+// the old `c + 128` layout, and a second origin shows a different column set
+// at the same texels.
+TEST_F(FogWorldFieldTest, WindowExpansionUsesTheToroidalLayout) {
     WorldField field;
     field.revealRadius({0, 0}, 40);
     field.revealRadius({120, -120}, 30);
@@ -322,30 +338,41 @@ TEST_F(FogWorldFieldTest, LegacyWindowExpansionMatchesTheFixedGridLayout) {
     field.setCell({128, 0}, kFogStateVisible);
     field.setCell({0, -129}, kFogStateVisible);
 
-    std::vector<std::uint8_t> legacy(static_cast<std::size_t>(kLegacyEdge * kLegacyEdge), 0);
-    const auto legacyReveal = [&](int cx, int cy, int radius) {
-        for (int y = -128; y < 128; ++y) {
-            for (int x = -128; x < 128; ++x) {
-                if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= radius * radius) {
-                    legacy[static_cast<std::size_t>((y + 128) * kLegacyEdge + x + 128)] =
-                        kFogStateVisible;
-                }
+    for (const IRMath::ivec2 origin : {kLegacyOrigin, IRMath::ivec2{0, -256}}) {
+        std::vector<std::uint8_t> image;
+        expandWholeWindow(field, origin, kLegacyEdge, image);
+        int visible = 0;
+        for (int ty = 0; ty < kLegacyEdge; ++ty) {
+            for (int tx = 0; tx < kLegacyEdge; ++tx) {
+                const IRMath::ivec2 column = windowColumnOfTexel(origin, kLegacyEdge, {tx, ty});
+                ASSERT_GE(column.x, origin.x);
+                ASSERT_LT(column.x, origin.x + kLegacyEdge);
+                ASSERT_EQ(IRMath::floorMod(column.x, kLegacyEdge), tx);
+                ASSERT_EQ(IRMath::floorMod(column.y, kLegacyEdge), ty);
+                const std::size_t i = static_cast<std::size_t>(ty * kLegacyEdge + tx);
+                const std::uint8_t expected = field.peekCell(column).value_or(kFogStateUnexplored);
+                ASSERT_EQ(image[i * 4], expected) << "texel " << tx << "," << ty;
+                ASSERT_EQ(image[i * 4 + 1], 0);
+                ASSERT_EQ(image[i * 4 + 2], 0);
+                ASSERT_EQ(image[i * 4 + 3], 0);
+                visible += expected == kFogStateVisible ? 1 : 0;
             }
         }
-    };
-    legacyReveal(0, 0, 40);
-    legacyReveal(120, -120, 30);
-    legacy[0] = kFogStateExplored;
-    legacy[static_cast<std::size_t>(kLegacyEdge * kLegacyEdge - 1)] = kFogStateExplored;
+        EXPECT_GT(visible, 0) << "origin " << origin.x << "," << origin.y;
+    }
 
     std::vector<std::uint8_t> image;
     expandWholeWindow(field, kLegacyOrigin, kLegacyEdge, image);
-    for (std::size_t i = 0; i < legacy.size(); ++i) {
-        ASSERT_EQ(image[i * 4], legacy[i]) << "texel " << i;
-        ASSERT_EQ(image[i * 4 + 1], 0);
-        ASSERT_EQ(image[i * 4 + 2], 0);
-        ASSERT_EQ(image[i * 4 + 3], 0);
-    }
+    // Column (0, 0) is at texel (0, 0), not (128, 128); column (-128, -128)
+    // at (128, 128); column (127, 127) at (127, 127).
+    EXPECT_EQ(image[0], kFogStateVisible);
+    EXPECT_EQ(image[static_cast<std::size_t>(128 * kLegacyEdge + 128) * 4], kFogStateExplored);
+    EXPECT_EQ(image[static_cast<std::size_t>(127 * kLegacyEdge + 127) * 4], kFogStateExplored);
+    EXPECT_EQ(image[static_cast<std::size_t>(255 * kLegacyEdge + 0) * 4], kFogStateVisible)
+        << "texel row 255 shows column (0, -1), inside the disc";
+    EXPECT_EQ(image[static_cast<std::size_t>(127 * kLegacyEdge + 0) * 4], kFogStateUnexplored)
+        << "texel row 127 shows column (0, 127), not the visible column (0, -129) that shares "
+           "its address outside the window";
 }
 
 // The cold whole-window gather over a populated save, at every window edge
@@ -427,12 +454,13 @@ TEST_F(FogWorldFieldTest, ColdWholeWindowGather) {
         bool readBack = true;
         for (const WindowUploadRect &rect : plan.rects_) {
             const auto expandStart = std::chrono::steady_clock::now();
-            expandWindowChunks(reader, origin, rect, strip);
+            expandWindowChunks(reader, origin, row.edge_, rect, strip);
             elapsed += std::chrono::steady_clock::now() - expandStart;
 
             for (int y = 0; y < kFieldChunkEdge && readBack; ++y) {
                 for (int x = 0; x < row.edge_; ++x) {
-                    const IRMath::ivec2 cell = origin + rect.texel_ + IRMath::ivec2{x, y};
+                    const IRMath::ivec2 cell =
+                        windowColumnOfTexel(origin, row.edge_, rect.texel_ + IRMath::ivec2{x, y});
                     const IRMath::ivec2 chunk = fieldChunkOf(cell);
                     const std::uint8_t expected = written(chunk) ? chunkValue(chunk, y) : 0;
                     if (strip[static_cast<std::size_t>(y * row.edge_ + x) * 4] != expected) {
@@ -496,31 +524,42 @@ TEST_F(FogWindowGatherTest, PendingOutsideTheWindowPlansNothing) {
     EXPECT_TRUE(result.rects_.empty());
 }
 
+// A pending chunk lands at its toroidal texel, `floorMod(chunk, edgeChunks)`
+// field chunks in, whatever the origin.
 TEST_F(FogWindowGatherTest, OnePendingChunkPlansItsSquare) {
     WindowGatherPlan result = plan({{0, 0}});
     ASSERT_EQ(result.rects_.size(), 1u);
-    expectRect(result.rects_[0], {128, 128}, {32, 32});
+    expectRect(result.rects_[0], {0, 0}, {32, 32});
     EXPECT_EQ(result.chunks_, std::vector<IRMath::ivec2>{IRMath::ivec2(0, 0)});
 
     result = plan({{-4, -1}});
     ASSERT_EQ(result.rects_.size(), 1u);
-    expectRect(result.rects_[0], {0, 96}, {32, 32});
+    expectRect(result.rects_[0], {128, 224}, {32, 32});
 }
 
+// Adjacent pending chunks in a row upload as one span, split once where the
+// span wraps past the texture edge.
 TEST_F(FogWindowGatherTest, AdjacentChunksInARowCoalesce) {
-    WindowGatherPlan result = plan({{0, 0}, {-1, 0}});
+    WindowGatherPlan result = plan({{1, 0}, {2, 0}});
     ASSERT_EQ(result.rects_.size(), 1u);
-    expectRect(result.rects_[0], {96, 128}, {64, 32});
+    expectRect(result.rects_[0], {32, 0}, {64, 32});
 
     result = plan({{0, 0}, {0, 1}});
     ASSERT_EQ(result.rects_.size(), 2u);
-    expectRect(result.rects_[0], {128, 128}, {32, 32});
-    expectRect(result.rects_[1], {128, 160}, {32, 32});
+    expectRect(result.rects_[0], {0, 0}, {32, 32});
+    expectRect(result.rects_[1], {0, 32}, {32, 32});
 
     result = plan({{-2, 2}, {0, 2}, {1, 2}});
     ASSERT_EQ(result.rects_.size(), 2u);
-    expectRect(result.rects_[0], {64, 192}, {32, 32});
-    expectRect(result.rects_[1], {128, 192}, {64, 32});
+    expectRect(result.rects_[0], {192, 64}, {32, 32});
+    expectRect(result.rects_[1], {0, 64}, {64, 32});
+
+    // Chunks -1 and 0 are adjacent in the world but sit at texture columns 7
+    // and 0: one span, two rectangles.
+    result = plan({{-1, 0}, {0, 0}});
+    ASSERT_EQ(result.rects_.size(), 2u);
+    expectRect(result.rects_[0], {224, 0}, {32, 32});
+    expectRect(result.rects_[1], {0, 0}, {32, 32});
 }
 
 TEST_F(FogWindowGatherTest, UnsetPreviousOriginPlansTheWholeWindowInStrips) {
@@ -530,6 +569,197 @@ TEST_F(FogWindowGatherTest, UnsetPreviousOriginPlansTheWholeWindowInStrips) {
     for (int row = 0; row < 8; ++row) {
         expectRect(result.rects_[static_cast<std::size_t>(row)], {0, row * 32}, {256, 32});
     }
+}
+
+// The camera-anchored window: its edge per canvas, its origin from the view
+// centre, the strips a move plans, and the region probes a crossing costs.
+class FogWindowTest : public FogWorldFieldTest {
+  protected:
+    static bool rectInsideTexture(const WindowUploadRect &rect, int edge) {
+        return rect.texel_.x >= 0 && rect.texel_.y >= 0 && rect.size_.x > 0 && rect.size_.y > 0 &&
+               rect.texel_.x + rect.size_.x <= edge && rect.texel_.y + rect.size_.y <= edge &&
+               rect.texel_.x % kFieldChunkEdge == 0 && rect.texel_.y % kFieldChunkEdge == 0 &&
+               rect.size_.x % kFieldChunkEdge == 0 && rect.size_.y % kFieldChunkEdge == 0;
+    }
+
+    static int rectChunks(const WindowUploadRect &rect) {
+        return (rect.size_.x / kFieldChunkEdge) * (rect.size_.y / kFieldChunkEdge);
+    }
+
+    static WindowGatherPlan move(IRMath::ivec2 previous, IRMath::ivec2 origin, int edge) {
+        WindowGatherPlan result;
+        planWindowGather(previous, origin, edge, {}, result);
+        for (const WindowUploadRect &rect : result.rects_) {
+            EXPECT_TRUE(rectInsideTexture(rect, edge))
+                << "rect " << rect.texel_.x << "," << rect.texel_.y << " " << rect.size_.x << "x"
+                << rect.size_.y;
+        }
+        return result;
+    }
+};
+
+TEST_F(FogWindowTest, EdgeTable) {
+    using IRPrefab::Fog::detail::windowEdgeForCanvas;
+    using IRPrefab::Fog::detail::windowEdgeUncapped;
+    EXPECT_EQ(windowEdgeForCanvas({642, 722}), 1152);
+    EXPECT_EQ(windowEdgeForCanvas({962, 1082}), 1472);
+    EXPECT_EQ(windowEdgeForCanvas({1282, 1442}), 1856);
+    EXPECT_EQ(windowEdgeForCanvas({1922, 2162}), 2496);
+    EXPECT_EQ(windowEdgeForCanvas({2562, 2882}), 3200);
+    EXPECT_EQ(windowEdgeForCanvas({3842, 4322}), 4096);
+    EXPECT_EQ(windowEdgeUncapped({3842, 4322}), 4544);
+    EXPECT_EQ(IRPrefab::Fog::detail::windowCoveredRadius(1152), 543);
+    for (const int edge : {1152, 1472, 1856, 2496, 3200, 4096}) {
+        EXPECT_EQ(edge % IRPrefab::Fog::kFogWindowEdgeQuantum, 0);
+    }
+}
+
+// The origin is the rounded centre snapped down to a field chunk, less half
+// the edge, so it is always chunk-aligned; and the yawed inverse the centre
+// comes through round-trips the forward projection.
+TEST_F(FogWindowTest, CentreRoundTrips) {
+    using IRPrefab::Fog::detail::windowOriginForCentre;
+    EXPECT_EQ(windowOriginForCentre({0.0f, 0.0f}, kDemoEdge), IRMath::ivec2(-576, -576));
+    EXPECT_EQ(windowOriginForCentre({100.4f, -0.6f}, kDemoEdge), IRMath::ivec2(-480, -608));
+    EXPECT_EQ(windowOriginForCentre({-0.5f, 31.5f}, kDemoEdge), IRMath::ivec2(-576, -544));
+    EXPECT_EQ(windowOriginForCentre({2400.0f, 0.0f}, kDemoEdge), IRMath::ivec2(1824, -576));
+    for (const float centre : {-1000.75f, -33.0f, -0.5f, 0.0f, 0.49f, 31.9f, 32.0f, 4095.5f}) {
+        const IRMath::ivec2 origin = windowOriginForCentre({centre, centre}, kDemoEdge);
+        EXPECT_EQ(IRMath::floorMod(origin.x, kFieldChunkEdge), 0) << centre;
+        const int rounded = IRMath::roundHalfUp(centre);
+        EXPECT_LE(origin.x + kDemoEdge / 2, rounded);
+        EXPECT_GT(origin.x + kDemoEdge / 2 + kFieldChunkEdge, rounded);
+    }
+
+    for (const float yaw : {0.0f, 0.3f, IRMath::kPi / 4.0f, IRMath::kHalfPi, 2.5f}) {
+        for (const float z : {-128.0f, 0.0f, 127.0f}) {
+            for (const IRMath::vec2 iso :
+                 {IRMath::vec2(1.0f, 1.0f), IRMath::vec2(-2399.0f, 2401.0f)}) {
+                const IRMath::vec3 world = IRMath::pos2DIsoToPos3DAtZLevelYawed(iso, z, yaw);
+                const IRMath::vec2 back = IRMath::pos3DtoPos2DIsoYawed(world, yaw);
+                EXPECT_NEAR(back.x, iso.x, 1e-3f) << "yaw " << yaw;
+                EXPECT_NEAR(back.y, iso.y, 1e-3f) << "yaw " << yaw;
+            }
+        }
+    }
+}
+
+TEST_F(FogWindowTest, StripPlan) {
+    constexpr int kEdgeChunks = kDemoEdge / kFieldChunkEdge;
+
+    // A one-chunk +X move: exactly one column of the window, one rectangle.
+    WindowGatherPlan result = move({0, 0}, {32, 0}, kDemoEdge);
+    EXPECT_EQ(result.chunks_.size(), static_cast<std::size_t>(kEdgeChunks));
+    ASSERT_EQ(result.rects_.size(), 1u);
+    EXPECT_EQ(rectChunks(result.rects_[0]), kEdgeChunks);
+    EXPECT_EQ(result.rects_[0].size_.x, kFieldChunkEdge);
+    EXPECT_EQ(result.rects_[0].size_.y, kDemoEdge);
+    for (const IRMath::ivec2 chunk : result.chunks_) {
+        EXPECT_EQ(chunk.x, kEdgeChunks) << "the exposed column is the window's last";
+    }
+
+    // A one-chunk -Y move: one row.
+    result = move({0, 0}, {0, -32}, kDemoEdge);
+    EXPECT_EQ(result.chunks_.size(), static_cast<std::size_t>(kEdgeChunks));
+    ASSERT_EQ(result.rects_.size(), 1u);
+    EXPECT_EQ(result.rects_[0].size_.x, kDemoEdge);
+    EXPECT_EQ(result.rects_[0].size_.y, kFieldChunkEdge);
+    for (const IRMath::ivec2 chunk : result.chunks_) {
+        EXPECT_EQ(chunk.y, -1) << "the exposed row is the window's first";
+    }
+
+    // A two-chunk +X move whose exposed columns straddle the texture edge:
+    // two rectangles covering the two columns.
+    result = move({-32, 0}, {32, 0}, kDemoEdge);
+    EXPECT_EQ(result.chunks_.size(), static_cast<std::size_t>(2 * kEdgeChunks));
+    ASSERT_EQ(result.rects_.size(), 2u);
+    EXPECT_EQ(rectChunks(result.rects_[0]) + rectChunks(result.rects_[1]), 2 * kEdgeChunks);
+    EXPECT_EQ(result.rects_[0].texel_.x, kDemoEdge - kFieldChunkEdge);
+    EXPECT_EQ(result.rects_[1].texel_.x, 0);
+
+    // A diagonal move: one column plus one row, at most two rectangles each.
+    result = move({0, 0}, {32, 32}, kDemoEdge);
+    EXPECT_EQ(result.chunks_.size(), static_cast<std::size_t>(2 * kEdgeChunks - 1));
+    ASSERT_EQ(result.rects_.size(), 2u);
+    EXPECT_EQ(result.rects_[0].size_, IRMath::ivec2(kFieldChunkEdge, kDemoEdge));
+    EXPECT_EQ(result.rects_[1].size_, IRMath::ivec2(kDemoEdge, kFieldChunkEdge));
+
+    // A move of the window's width re-expands the whole window in row strips.
+    result = move({0, 0}, {kDemoEdge, 0}, kDemoEdge);
+    EXPECT_EQ(result.chunks_.size(), static_cast<std::size_t>(kEdgeChunks * kEdgeChunks));
+    ASSERT_EQ(result.rects_.size(), static_cast<std::size_t>(kEdgeChunks));
+    for (const WindowUploadRect &rect : result.rects_) {
+        EXPECT_EQ(rect.size_, IRMath::ivec2(kDemoEdge, kFieldChunkEdge));
+    }
+
+    // No move plans nothing.
+    result = move({32, 32}, {32, 32}, kDemoEdge);
+    EXPECT_TRUE(result.chunks_.empty());
+    EXPECT_TRUE(result.rects_.empty());
+}
+
+// The gather over a persisted, empty root: a one-chunk crossing probes only
+// when it enters a new region column, then exactly one region per window row
+// (four at this edge), and a static origin never evicts or probes.
+TEST_F(FogWindowTest, CrossingProbeBound) {
+    WorldField field;
+    persist(field);
+    IRPrefab::Fog::detail::WindowGatherScratch scratch;
+    std::optional<IRMath::ivec2> windowOrigin;
+    int uploads = 0;
+    const auto upload = [&](const WindowUploadRect &, std::span<const std::uint8_t>) { ++uploads; };
+
+    // Region-local chunk index 15 on both axes: the worst-case alignment.
+    const IRMath::ivec2 originChunk{15, 15};
+    IRMath::ivec2 origin = originChunk * kFieldChunkEdge;
+    IRPrefab::Fog::detail::gatherWindow(field, windowOrigin, origin, kDemoEdge, scratch, upload);
+    IRPrefab::Fog::WorldFieldStats stats = field.stats();
+    EXPECT_EQ(stats.probes_, 16) << "the first frame probes every window region once";
+    EXPECT_EQ(stats.loads_, 0);
+    EXPECT_EQ(stats.evictions_, 0);
+    EXPECT_EQ(uploads, kDemoEdge / kFieldChunkEdge);
+
+    for (int repeat = 0; repeat < 3; ++repeat) {
+        uploads = 0;
+        IRPrefab::Fog::detail::gatherWindow(
+            field,
+            windowOrigin,
+            origin,
+            kDemoEdge,
+            scratch,
+            upload
+        );
+        stats = field.stats();
+        EXPECT_EQ(stats.probes_, 0) << "a static origin never probes";
+        EXPECT_EQ(stats.evictions_, 0) << "a static origin never evicts";
+        EXPECT_EQ(uploads, 0);
+    }
+
+    int totalProbes = 0;
+    int columnsEntered = 0;
+    for (int step = 1; step <= 32; ++step) {
+        origin.x += kFieldChunkEdge;
+        uploads = 0;
+        IRPrefab::Fog::detail::gatherWindow(
+            field,
+            windowOrigin,
+            origin,
+            kDemoEdge,
+            scratch,
+            upload
+        );
+        stats = field.stats();
+        const int lastChunkX = originChunk.x + step + kDemoEdge / kFieldChunkEdge - 1;
+        const bool enteredColumn = lastChunkX % IRWorld::kFieldRegionEdgeChunks == 0;
+        EXPECT_LE(stats.probes_, 4) << "step " << step;
+        EXPECT_EQ(stats.probes_, enteredColumn ? 4 : 0) << "step " << step;
+        EXPECT_EQ(uploads, 1) << "one exposed column, one rectangle at step " << step;
+        totalProbes += stats.probes_;
+        columnsEntered += enteredColumn ? 1 : 0;
+    }
+    EXPECT_EQ(columnsEntered, 2);
+    EXPECT_EQ(totalProbes, 4 * columnsEntered);
+    EXPECT_LE(field.stats().residentRegions_, 20) << "regions the window left behind were evicted";
 }
 
 } // namespace

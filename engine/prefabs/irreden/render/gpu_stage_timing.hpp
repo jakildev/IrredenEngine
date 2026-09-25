@@ -172,6 +172,23 @@ inline FogLosBuildTiming &fogLosBuildTiming() {
     return instance;
 }
 
+// `VOXEL_TO_TRIXEL_STAGE_1`'s fog window gather: the pending drain, the
+// re-expansion and upload of the planned rectangles, and the region eviction
+// a window move triggers. One sample per gather call (two per frame on a
+// scene with a world-placed detached canvas).
+struct FogWindowGatherTiming {
+    CpuPhaseTiming gather_;
+
+    void reset() {
+        gather_.reset();
+    }
+};
+
+inline FogWindowGatherTiming &fogWindowGatherTiming() {
+    static FogWindowGatherTiming instance;
+    return instance;
+}
+
 class ScopedCpuPhaseTimer {
   public:
     explicit ScopedCpuPhaseTimer(CpuPhaseTiming &timing)

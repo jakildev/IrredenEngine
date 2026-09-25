@@ -317,7 +317,13 @@ void configureLightingAndCanvas() {
     IREntity::setComponent(mainCanvas, C_CanvasAOTexture{canvasSize});
     IREntity::setComponent(mainCanvas, C_CanvasSunShadow{canvasSize});
     IREntity::setComponent(mainCanvas, C_CanvasLightVolume{});
-    IRPrefab::Fog::attachToCanvas(mainCanvas, 128);
+    // The reveal keeps every grid voxel inside revealed columns: the
+    // half-diagonal of the grid's XY extent plus one, never below 128, the
+    // same rule perf_grid applies so the parity run compares like with like.
+    const float extent = static_cast<float>(g_settings.gridSize_) * g_settings.spacing_;
+    const int revealRadius =
+        IRMath::max(128, static_cast<int>(IRMath::ceil(IRMath::kSqrt2 * extent * 0.5f)) + 1);
+    IRPrefab::Fog::attachToCanvas(mainCanvas, revealRadius);
 
     IRRender::setSunDirection(vec3(0.35f, 0.85f, -0.4f));
     IREntity::createEntity(

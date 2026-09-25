@@ -32,7 +32,8 @@
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 // Mirrored by kProbeHalfExtent / kProbeDim in fog_cross_section_test.cpp: the
-// probed columns are [-kProbeHalfExtent, kProbeHalfExtent) on both axes. A
+// probed columns are `probeOrigin + [0, kProbeDim)` on both axes, where the
+// host's default origin is (-kProbeHalfExtent, -kProbeHalfExtent). A
 // divergence shows up as a row of untouched sentinel values in the readback.
 const int kProbeHalfExtent = 32;
 const int kProbeDim = kProbeHalfExtent * 2;
@@ -46,6 +47,11 @@ struct FogColumnProbe {
     float revealFloorNearest;
 };
 
+// The first probed world column; std430, one ivec2 at 0.
+layout(std430, binding = 2) readonly buffer FogProbeIn {
+    ivec2 probeOrigin;
+};
+
 layout(std430, binding = 1) writeonly buffer FogProbeOut {
     FogColumnProbe probes[];
 };
@@ -55,7 +61,7 @@ void main() {
     if (idx.x >= kProbeDim || idx.y >= kProbeDim) {
         return;
     }
-    const ivec2 col = idx - ivec2(kProbeHalfExtent);
+    const ivec2 col = probeOrigin + idx;
     const int record = idx.y * kProbeDim + idx.x;
 
     probes[record].revealCenter = fogColumnReveal(col);
