@@ -24,6 +24,9 @@
 # that reads one would otherwise verdict on the pane instead of the fixture:
 # green in CI, red only for the agents who run the suites most. The name set
 # is read from the wrapper, so a new export is scrubbed with no edit here.
+# FLEET_ENGINE_ROOT and FLEET_GAME_ROOT are scrubbed too, wrapper or not: a
+# subject that mutates the clone they name (fleet-rebase's scratch worktree)
+# would otherwise reach a live clone from a suite that pinned only HOME.
 #
 # Usage:
 #   run_all.sh [--only <substring>] [--list] [--timeout <seconds>]
@@ -56,8 +59,9 @@ only=""
 list_only=0
 per_timeout=""
 
-# `env -u` arguments naming every FLEET_* variable the dispatch wrapper assigns.
-scrub_args=()
+# `env -u` arguments naming the clone roots and every FLEET_* variable the
+# dispatch wrapper assigns.
+scrub_args=(-u FLEET_ENGINE_ROOT -u FLEET_GAME_ROOT)
 dispatch_wrap="$TESTS_DIR/../fleet-dispatch-wrap"
 if [[ -f "$dispatch_wrap" ]]; then
     while IFS= read -r scrub_name; do

@@ -23,9 +23,11 @@ subjects; `ctest` never sees them. Validator index: [`VALIDATION.md`](../../docs
 
 ## Test conventions
 
-- **Hermetic: no live GitHub, no live `~/.fleet`.** Mock every network fetcher
-  at a seam that fails closed (a mock miss raises, never falls through to
-  `urllib`/`gh`); inject a `tempfile.TemporaryDirectory()` `cache_dir` rather
+- **Hermetic: no live GitHub, no live `~/.fleet`, no live clone.** A suite
+  driving a subject that reads `FLEET_ENGINE_ROOT` exports it under its temp
+  root beside `HOME` (`run_all.sh` scrubs both clone roots). Mock every network
+  fetcher at a seam that fails closed (a mock miss raises, never falls through
+  to `urllib`/`gh`); inject a `tempfile.TemporaryDirectory()` `cache_dir` rather
   than sharing `fleet_gh_poll.DEFAULT_CACHE_DIR`; when a function changes
   transport or gains its first network call, re-point every suite covering it
   in the same PR; prefer obviously synthetic fixtures to plausible real IDs.

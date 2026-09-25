@@ -47,6 +47,7 @@ trap cleanup EXIT
 # --- Sandbox ------------------------------------------------------------------
 TMPROOT=$(mktemp -d)
 export HOME="$TMPROOT"
+export FLEET_ENGINE_ROOT="$TMPROOT/src/IrredenEngine"
 export FLEET_STATE_DIR="$TMPROOT/.fleet/state"
 export FLEET_REBASE_SCRATCH="$TMPROOT/.fleet/rebase-scratch"
 export GH_STUB_LOG="$TMPROOT/gh-calls.log"
