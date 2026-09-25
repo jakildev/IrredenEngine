@@ -11,6 +11,7 @@
 // the FrameDataLightingToTrixel + LightVolumeParams UBO layouts this kernel and
 // c_light_overflow_faces both bind.
 #include "ir_world_lighting.metal"
+#include "ir_surface_light_volume.metal"
 
 // Mirrors shaders/c_lighting_to_trixel.glsl.
 
@@ -339,25 +340,8 @@ kernel void IR_LIGHTING_KERNEL_NAME(
         constexpr sampler volumeSampler(
             filter::linear, address::clamp_to_edge
         );
-        const float3 localPos =
-            pos3D - float3(lightVolumeParams.worldOriginVoxel.xyz);
-        const float3 sampleCoord =
-            (localPos + float3(kLightVolumeHalfExtent) + float3(0.5)) /
-            float3(kLightVolumeSize);
-        const float4 lightSample = lightVolume.sample(volumeSampler, sampleCoord);
-        float3 light = lightSample.rgb * lightSample.a;
-
-        // The winning light's ID is fetched at the surface voxel's own cell
-        // (NEAREST — not interpolated).
-        if (lightVolumeParams.worldOriginVoxel.w != 0) {
-            const int3 idCell = int3(floor(localPos + float3(kLightVolumeHalfExtent) + float3(0.5)));
-            if (all(idCell >= int3(0)) && all(idCell < int3(int(kLightVolumeSize)))) {
-                const int winId = roundHalfUp(lightVolumeId.read(uint3(idCell)).r * 255.0f);
-                if (winId > 0 && int(lights[winId - 1].originAndType.w) == kLightTypeSpot) {
-                    light *= spotConeFactor(lights, winId - 1, pos3D);
-                }
-            }
-        }
+        const float3 light = surfaceLightVolume(pos3D, lightVolumeParams.worldOriginVoxel,
+            lightVolume, lightVolumeId, volumeSampler, lights);
         baseRgb = baseRgb + src.rgb * light;
     }
 
