@@ -10,6 +10,11 @@
 #   T4: branch that doesn't match claude/<N>-* + worktree on it +
 #       no reservation → warned-and-left-alone (no malformed task id)
 #   T5: idempotent re-run on the post-T2 state → no second reserve
+#   T6: detached worktree with an unconsumed fleet-amend-ref sentinel
+#       naming the PR's head ref → counts as owning the branch, label
+#       left alone
+#   T7: detached worktree with a consumed sentinel (and, separately, no
+#       sentinel at all) → still orphaned, label reverted
 
 set -euo pipefail
 
@@ -160,6 +165,38 @@ make_worktree() {
     )
 }
 
+# Helper: like make_worktree, but leaves HEAD detached at the branch tip
+# (the shape of an in-flight AMEND checkout via fleet-pr-checkout-detached)
+# and writes a fleet-amend-ref sentinel naming it. $3 selects the sentinel
+# shape: "unconsumed" (2-line), "consumed" (3-line with a consumed marker),
+# or "none" (no sentinel at all — an orphan with no recovery signal).
+make_detached_worktree() {
+    local name="$1" branch="$2" sentinel="$3"
+    local path="$TMPROOT/wt/$name"
+    mkdir -p "$path"
+    (
+        cd "$path"
+        git init --quiet -b master
+        git config user.email "test@test"
+        git config user.name "test"
+        git commit --allow-empty --quiet -m "init" --no-gpg-sign
+        git branch --quiet "$branch"
+        git checkout --quiet --detach "$branch"
+        case "$sentinel" in
+            unconsumed)
+                printf '%s\n%s\n' "$branch" "$(git rev-parse HEAD)" >.git/fleet-amend-ref
+                ;;
+            consumed)
+                printf '%s\n%s\nconsumed 2026-01-01T00:00:00Z\n' \
+                    "$branch" "$(git rev-parse HEAD)" >.git/fleet-amend-ref
+                ;;
+            none)
+                : # no sentinel written
+                ;;
+        esac
+    )
+}
+
 # Helper: write the gh pr list response payload for a given test scenario.
 write_pr_list() {
     # $1 = JSON array literal of {number, headRefName, title}
@@ -260,6 +297,39 @@ first_reserve_count=$(grep -c 'reserve' "$FC_LOG" || true)
 second_reserve_count=$(grep -c 'reserve' "$FC_LOG" || true)
 assert_eq "$first_reserve_count" "1" "T5 first run reconstructs reservation"
 assert_eq "$second_reserve_count" "0" "T5 second run is a no-op (idempotent)"
+
+# === T6: detached worktree + unconsumed sentinel → owns branch, leave alone
+echo "T6: detached worktree with unconsumed fleet-amend-ref sentinel → leave alone"
+make_detached_worktree amend-worker-1 claude/800-amend-inflight unconsumed
+write_pr_list '[{"number":800,"headRefName":"claude/800-amend-inflight","title":"T-800 in-flight amend"}]'
+rm -f "$FLEET_RESERVATIONS_DIR"/*.json 2>/dev/null || true
+: >"$GH_LOG"; : >"$FC_LOG"
+"$RECONCILER" >"$TMPROOT/log/t6.log" 2>&1 || true
+assert_eq "$(grep -c 'pr edit 800' "$GH_LOG" 2>/dev/null || true)" "0" \
+    "T6 no gh pr edit call (detached worktree counts as owning the branch)"
+# The sentinel-owned branch has no reservation on disk, so the reconciler
+# also reconstructs one — same as T2's non-detached case.
+assert_eq "$(grep -c 'reserve 800 amend-worker-1' "$FC_LOG" 2>/dev/null || true)" "1" \
+    "T6 reconstructed reservation for the sentinel-owning worktree"
+
+# === T7: detached worktree, no live sentinel → still orphaned ==============
+echo "T7: detached worktree with consumed sentinel → orphan, label reverted"
+make_detached_worktree amend-worker-2 claude/801-amend-consumed consumed
+write_pr_list '[{"number":801,"headRefName":"claude/801-amend-consumed","title":"T-801 consumed amend"}]'
+rm -f "$FLEET_RESERVATIONS_DIR"/*.json 2>/dev/null || true
+: >"$GH_LOG"; : >"$FC_LOG"
+"$RECONCILER" >"$TMPROOT/log/t7a.log" 2>&1 || true
+assert_eq "$(grep -c 'pr edit 801.*--remove-label fleet:human-amending' "$GH_LOG")" "1" \
+    "T7a consumed sentinel does not save the branch from being orphaned"
+
+echo "T7b: detached worktree with no sentinel at all → orphan, label reverted"
+make_detached_worktree amend-worker-3 claude/802-amend-none none
+write_pr_list '[{"number":802,"headRefName":"claude/802-amend-none","title":"T-802 no sentinel"}]'
+rm -f "$FLEET_RESERVATIONS_DIR"/*.json 2>/dev/null || true
+: >"$GH_LOG"; : >"$FC_LOG"
+"$RECONCILER" >"$TMPROOT/log/t7b.log" 2>&1 || true
+assert_eq "$(grep -c 'pr edit 802.*--remove-label fleet:human-amending' "$GH_LOG")" "1" \
+    "T7b no sentinel still orphans a detached worktree"
 
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"

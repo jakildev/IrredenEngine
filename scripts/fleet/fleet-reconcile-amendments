@@ -124,8 +124,40 @@ def list_amending_prs(repo: str) -> list[dict]:
         return []
 
 
+def amend_ref_sentinel_owner(wt: pathlib.Path) -> tuple[str | None, bool]:
+    """Returns (head_ref, consumed) from `wt`'s fleet-amend-ref sentinel.
+
+    (None, False) if the worktree has no readable sentinel.
+    """
+    try:
+        git_dir_out = subprocess.run(
+            ["git", "-C", str(wt), "rev-parse", "--git-dir"],
+            capture_output=True, text=True, timeout=10, check=True,
+        ).stdout.strip()
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return None, False
+    if not git_dir_out:
+        return None, False
+    git_dir = pathlib.Path(git_dir_out)
+    if not git_dir.is_absolute():
+        git_dir = wt / git_dir
+    sentinel = git_dir / "fleet-amend-ref"
+    try:
+        lines = sentinel.read_text().splitlines()
+    except OSError:
+        return None, False
+    if not lines or not lines[0].strip():
+        return None, False
+    consumed = len(lines) > 2 and lines[2].startswith("consumed")
+    return lines[0].strip(), consumed
+
+
 def worktree_basename_on_branch(wt_root: pathlib.Path, branch: str) -> str | None:
-    """Returns the worktree basename whose HEAD is on `branch`, or None."""
+    """Returns the worktree basename whose HEAD is on `branch`, or None.
+
+    A worktree whose HEAD is detached (an in-flight AMEND checkout) counts as
+    owning `branch` when its unconsumed `fleet-amend-ref` sentinel names it.
+    """
     if not wt_root.is_dir():
         return None
     for wt in sorted(wt_root.iterdir()):
@@ -143,6 +175,10 @@ def worktree_basename_on_branch(wt_root: pathlib.Path, branch: str) -> str | Non
             continue
         if head == branch:
             return wt.name
+        if head == "HEAD":
+            sentinel_ref, consumed = amend_ref_sentinel_owner(wt)
+            if sentinel_ref == branch and not consumed:
+                return wt.name
     return None
 
 
