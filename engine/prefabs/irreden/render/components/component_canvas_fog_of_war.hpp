@@ -228,8 +228,9 @@ struct C_CanvasFogOfWar {
     std::pair<ResourceId, Texture2D *> texture_;
     std::shared_ptr<IRPrefab::Fog::WorldField> field_;
     /// Field column at texel (0, 0) of the texture's current contents; unset
-    /// until the first gather and after `clearAll`, which makes the next
-    /// gather re-expand the whole window.
+    /// until the first gather and after `clearAll` or an accepted
+    /// persistence root, which makes the next gather re-expand the whole
+    /// window.
     std::optional<IRMath::ivec2> windowOrigin_;
     /// Live analytic vision circles (the smooth, sub-voxel reveal). This is
     /// the upload payload the system pushes to the `kBufferIndex_FogObservers`
