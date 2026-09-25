@@ -545,3 +545,38 @@ runs and existing thresholds; add an SDF-active workload to measure election cos
   linear payloads remain an alternative to measure, not a committed requirement.
 - Still pending: ordinary SDF sharp receiving, curved/rotated receiver coverage,
   crowded finite-index overflow/performance, and native Windows/OpenGL validation.
+
+### Finite box shadows in ordinary lighting
+
+- Implemented descriptor-backed fragment lighting for eligible main-canvas
+  analytical boxes. AO/material, local light, ambient and sky compose before
+  display mapping; finite sun visibility removes the sampled teeth in the
+  eight-angle floor-shadow fixture. No blur or dense per-trixel payload.
+  [Evidence](../pr-screenshots/codex/finite-box-fragment-lighting/README.md).
+- Conservative fallbacks remain for fog pipelines, procedural color, X-ray
+  blending, invalid provenance, unsupported shape geometry and finite misses.
+- Next: shared fog composition, then procedural material/curved and rotated
+  receiver support. Consolidate AO/LUT material modulation across compute and
+  fragment consumers while preserving sampler policy. Profile bounded index
+  queries under crowding and across zoom before widening use.
+- Windows/OpenGL native validation remains pending. The finite fragment path
+  uses linear local-light volume sampling, matching merged sampler PR #3740;
+  the parent stack now preserves that policy in its compute consumers too.
+  This slice does not claim million-entity throughput.
+
+### Fog integration dependencies
+
+- Stack reconciliation preserves the shared light-volume query and merged
+  sampler policy. Four updated-parent spotlight controls remain RGB-identical.
+- Coordinate the next finite-fragment fog implementation with #3719 (shared
+  per-axis paint), #3763 (BODY factor semantics) and #3770 (SDF adoption and
+  hidden-shape exclusion). Do not introduce a competing fog formula while these
+  contracts are being integrated.
+- Required checks: hidden BODY geometry stays absent; soft BODY factors remain
+  uniform across a shape; FIELD fog uses the finite surface position and normal;
+  fog follows display mapping exactly once. Cover all camera quadrants, hard
+  and soft edges, explored memory, and side/top receiver transitions.
+- Lighting and fog currently alias buffer slot 27. Fragment composition needs
+  both resources simultaneously, so binding lifetime and restoration must be
+  solved before removing the conservative fog-pipeline fallback. Shared color
+  math alone is insufficient.

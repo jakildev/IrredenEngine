@@ -115,7 +115,7 @@ opaque ownership guarantee. Its read/modify/write blending is a separate
 ordering problem. Native controls and validation live in the
 [ownership evidence](../pr-screenshots/codex/sdf-winner-ownership/README.md).
 
-## Beauty fragment integration still pending
+## Fragment lighting composition
 
 The continuous interval helper does not by itself provide a fragment receiver.
 A finite descriptor-backed query is required at box corners; extrapolating one
@@ -140,7 +140,7 @@ unsupported winners and later same-depth overwrites. A failed finite query must
 not silently discard the producer's splatted coverage or change depth. The
 initial integration should preserve that legacy coverage while accepting exact
 receiving only where the finite intersection succeeds. The lifecycle is guarded conservatively by whole-canvas invalidation below;
-finite per-fragment queries are diagnostic-only; beauty integration remains pending. The shared
+finite per-fragment queries also feed eligible analytical-box beauty lighting as described below. The shared
 helper and scalar checks do not accept floor edges.
 
 ## Canvas-owned descriptor uploads
@@ -209,7 +209,7 @@ The retained reference is valid for the SDF submission only. Later canvas clears
 voxel/text/widget/particle writes, same-depth overwrites and X-ray color mixing
 must be accounted for before a shadow or lighting consumer uses it. An entity-ID
 or quantized-depth equality test alone is insufficient to certify a same-entity,
-same-depth overwrite. The compute-shadow consumer below performs a finite box query. Diagnostic fragment queries are implemented below; linear lighting payload
+same-depth overwrite. The compute-shadow consumer below performs a finite box query. Diagnostic and eligible analytical-box beauty fragment queries are implemented below; broader linear lighting payload
 remains pending and retention alone does not improve shadow edges.
 
 
@@ -466,3 +466,38 @@ per backend prove detection of lost origin, half-cell offset, strength, spotligh
 gating and absolute cone position. Native Metal spotlight captures at three yaw
 angles and two zoom levels are RGB-identical to the parent; native GL execution
 is still required. [Evidence](../pr-screenshots/codex/surface-light-volume-query/README.md).
+
+## Finite analytical-box fragment lighting
+
+Ordinary main-canvas presentation uses the finite box query at the actual
+fragment coordinate when retained ownership is valid and the pipeline provides
+lighting, AO, sun and local-volume resources. Material RGB comes from the
+selected descriptor; AO is sampled from the selected owner texel. Lambert, sky
+and local-light queries use the exact finite surface position/normal. Sun
+visibility uses the same bounded finite-face query as the diagnostic. Ambient,
+direct, local and sky contributions compose in linear space before exposure
+and display mapping. Alpha, stored coverage, depth and hover ownership remain
+unchanged.
+
+The shader specialization adds no dense per-trixel payload and replaces the
+existing gather draw. It borrows uniform slot 7 for the existing light-volume
+frame and restores the voxel frame after drawing; retained geometry bindings
+use the existing bind/restore lifecycle. Lighting-system resources are read
+without re-authoring their frame. The canvas-specific normal options in that
+frame are not consumed. CPU component and system pointers refresh in beginTick.
+
+Eligibility is deliberately bounded: any registered fog pass keeps the sampled
+lighting route, as do diagnostic overlays, depth-color mode, missing resources,
+invalid owners and finite-query misses. Checkerboard/depth-color materials keep
+their raster-generated color. The producer already invalidates any submission
+containing X-ray blending. Hollow, rotated, lattice and non-box receivers retain
+the finite-query fallback. Fog composition, procedural material reconstruction
+and broader receiver geometry remain follow-ups; no fallback is certified as
+sharp merely because it is preserved.
+
+[Native evidence](../pr-screenshots/codex/finite-box-fragment-lighting/README.md)
+shows eight camera angles and a straight floor-shadow boundary without blur.
+The composition harness executes 3,456 cases per backend including back/side/
+angled normals, AO, LUT, local light, shadow toggles, HDR and procedural fallback,
+with seven broken variants rejected. Existing receiver oracles establish finite
+hit geometry. Native OpenGL and crowded-query performance remain unverified.

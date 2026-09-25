@@ -55,3 +55,7 @@ struct ShapeTileDescriptor {
     int pad0;
     int2 tileIsoOrigin;
 };
+
+constant uint FLAG_CHECKERBOARD = 32u;
+constant uint FLAG_DEPTH_COLOR = 64u;
+constant uint kShapeProceduralColorFlags = FLAG_CHECKERBOARD | FLAG_DEPTH_COLOR;

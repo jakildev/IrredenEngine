@@ -28,19 +28,7 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 #include "ir_world_lighting.glsl"
 #include "ir_surface_light_volume.glsl"
 
-layout(std140, binding = 27) uniform FrameDataLightingToTrixel {
-    uniform int   lightingEnabled;
-    uniform int   lutEnabled;
-    uniform int   lightVolumeEnabled;
-    uniform float debugLightLevel;
-    uniform int   debugOverlayMode;
-    uniform int   hdrEnabled;
-    uniform float exposure;
-    uniform float skyIntensity;
-    uniform vec4  skyColor;
-    uniform vec4  detachedViewToWorld;
-    uniform ivec4 normalOptions;
-};
+#include "ir_lighting_frame_data.glsl"
 
 layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform vec2 frameCanvasOffset;

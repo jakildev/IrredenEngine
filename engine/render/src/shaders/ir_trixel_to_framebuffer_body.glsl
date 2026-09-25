@@ -15,6 +15,9 @@
 #include "ir_shape_receiver.glsl"
 #include "ir_selected_shape_receiver.glsl"
 #include "ir_sun_shadow_sample.glsl"
+#if IR_SHAPE_LIGHTING
+#include "ir_shape_surface_lighting.glsl"
+#endif
 #endif
 
 in vec2 TexCoords;
@@ -87,7 +90,7 @@ void main() {
     }
     vec4 color = textureLod(triangleColors, displayOrigin / textureSize, 0);
     int rawDist = textureLod(triangleDistances, displayOrigin / textureSize, 0).r;
-#if IR_SHAPE_RECEIVER
+#if IR_SHAPE_RECEIVER && !IR_SHAPE_LIGHTING
     if (color.a >= 0.1) {
         vec3 position = vec3(0.0), normal = vec3(0.0);
         if (selectedShapeBoxReceiver(clamp(ivec2(floor(displayOrigin)), ivec2(0), textureSize - 1), textureSize.x,
@@ -97,6 +100,16 @@ void main() {
                     casterViewToWorld);
             color.rgb = visibility >= 0.999 ? vec3(0.0) : vec3(1.0, 0.0, 1.0);
         }
+    }
+#endif
+
+
+#if IR_SHAPE_LIGHTING
+    if (color.a >= 0.1 && lightingEnabled != 0) {
+        const ivec2 ownerPixel = clamp(ivec2(floor(displayOrigin)), ivec2(0), textureSize - 1);
+        vec3 position = vec3(0.0), normal = vec3(0.0);
+        if (selectedShapeBoxReceiver(ownerPixel, textureSize.x, originRaw, position, normal))
+            color.rgb = shapeSurfaceLighting(ownerPixel, textureSize.x, position, normal, casterViewToWorld, color.rgb);
     }
 #endif
 

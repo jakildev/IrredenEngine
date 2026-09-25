@@ -37,3 +37,7 @@ struct ShapeTileDescriptor {
     int _pad0;
     ivec2 tileIsoOrigin;
 };
+
+const uint FLAG_CHECKERBOARD = 32u;
+const uint FLAG_DEPTH_COLOR = 64u;
+const uint kShapeProceduralColorFlags = FLAG_CHECKERBOARD | FLAG_DEPTH_COLOR;

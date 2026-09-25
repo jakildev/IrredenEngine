@@ -8,6 +8,9 @@ using namespace metal;
 #include "ir_shape_receiver.metal"
 #include "ir_selected_shape_receiver.metal"
 #include "ir_sun_shadow_sample.metal"
+#if IR_SHAPE_LIGHTING
+#include "ir_shape_surface_lighting.metal"
+#endif
 #endif
 
 struct VertexIn {
@@ -103,6 +106,15 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
     device const ShapeTileDescriptor *receiverTiles [[buffer(30)]],
     constant FrameDataSun &sunFrameData [[buffer(29)]],
     device const uint *sunDepthBuf [[buffer(28)]],
+#if IR_SHAPE_LIGHTING
+    constant FrameDataLightingToTrixel &lighting [[buffer(27)]],
+    constant LightVolumeParams &volumeParams [[buffer(7)]],
+    device const GPULightSource *lights [[buffer(4)]],
+    texture2d<float> paletteLUT [[texture(3)]],
+    texture2d<float> surfaceAO [[texture(4)]],
+    texture3d<float> lightVolume [[texture(5)]],
+    texture3d<float, access::read> lightVolumeId [[texture(7)]],
+#endif
 #endif
     device HoveredEntityIdBuffer& hovered [[buffer(14)]]
 ) {
@@ -127,7 +139,7 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
 
     float4 color = triangleColors.read(sampleCoord);
     const int rawDist = triangleDistances.read(sampleCoord).r;
-#if IR_SHAPE_RECEIVER
+#if IR_SHAPE_RECEIVER && !IR_SHAPE_LIGHTING
     if (color.a >= 0.1) {
         float3 position = float3(0.0), normal = float3(0.0);
         if (selectedShapeBoxReceiver(int2(sampleCoord), int(textureSize.x),
@@ -139,6 +151,20 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
                     sunFrameData, sunDepthBuf);
             color.rgb = visibility >= 0.999 ? float3(0.0) : float3(1.0, 0.0, 1.0);
         }
+    }
+#endif
+
+
+#if IR_SHAPE_LIGHTING
+    if (color.a >= 0.1 && lighting.lightingEnabled != 0) {
+        float3 position = float3(0.0), normal = float3(0.0);
+        if (selectedShapeBoxReceiver(int2(sampleCoord), int(textureSize.x), originRaw,
+                                     receiverFrame, receiverShapes, receiverOwners, receiverTiles,
+                                     position, normal))
+            color.rgb = shapeSurfaceLighting(sampleCoord, int(textureSize.x), position, normal,
+                frameData.casterViewToWorld, color.rgb, receiverShapes, receiverOwners, receiverTiles,
+                lighting, volumeParams, sunFrameData, sunDepthBuf, lights,
+                paletteLUT, surfaceAO, lightVolume, lightVolumeId);
     }
 #endif
 

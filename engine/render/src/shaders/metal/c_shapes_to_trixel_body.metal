@@ -8,8 +8,6 @@
 constant uint FLAG_HOLLOW       = 1u;
 constant uint FLAG_VISIBLE      = 8u;
 constant uint FLAG_FOG_WHOLE_BODY_EXEMPT = 16u;
-constant uint FLAG_CHECKERBOARD = 32u;
-constant uint FLAG_DEPTH_COLOR  = 64u;
 constant uint FLAG_XRAY_OCCLUDED = 128u;
 
 // X-ray silhouette intensity. When a SHAPE_FLAG_XRAY_OCCLUDED fragment
