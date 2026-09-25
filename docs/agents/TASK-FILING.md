@@ -38,9 +38,10 @@ Optional:
 - **Host:** `linux` | `windows` | `macos` — for work that runs on one OS
   only (a `linux-debug` reference bless, a Windows DLL-staging check, a
   Metal-only capture). The scout projects it as `needs_host` and the
-  dispatcher never elects the task on another host; `fleet-claim` does not
-  enforce it, so a hand-picked claim on the wrong host is refused only by
-  the pane's own read of the body. Finer than `fleet:needs-gl-host`, which
+  dispatcher never elects the task, or a feedback PR that `Closes` it, on
+  another host; `fleet-claim` does not enforce it, so a hand-picked claim
+  on the wrong host is refused only by the pane's own read of the body.
+  Finer than `fleet:needs-gl-host`, which
   lets linux and windows stand in for each other.
 
 ### File with a plan

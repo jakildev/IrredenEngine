@@ -3909,6 +3909,32 @@ def _slice_issue_with_repo(repo_key, issue):
     return out
 
 
+def _task_required_hosts(repo_state):
+    """{issue number: needs_host} for every open or in-progress task whose body
+    pins it to one OS. A task stays `fleet:queued` while its PR is open, so
+    the issue a feedback PR closes is normally still in one of these sections."""
+    hosts = {}
+    tasks = repo_state.get("tasks", {})
+    for key in ("open", "in_progress"):
+        for task in tasks.get(key, []) or []:
+            number = (task.get("issue") or "").lstrip("#")
+            if task.get("needs_host") and number.isdigit():
+                hosts[int(number)] = task["needs_host"]
+    return hosts
+
+
+def _feedback_pr_required_host(pr, task_hosts):
+    # A feedback PR inherits its backing issue's `**Host:**` pin: the residual
+    # of a macOS-only task (a Metal re-capture) is no more actionable on a
+    # Windows pane than the task was. Same-repo `closes_issues` only — the
+    # pin is read off this repo's task records. Stamped only when every pinned
+    # linked issue agrees; unpinned links don't veto, and disagreeing pins
+    # leave the PR ungated (today's behaviour) rather than guess a host.
+    pinned = {task_hosts[n] for n in pr.get("closes_issues") or []
+              if n in task_hosts}
+    return pinned.pop() if len(pinned) == 1 else None
+
+
 def slice_worker(state):
     # Unified worker slice (P2): all open tasks of every class, all
     # needs-plan issues, all feedback/design-resume PRs, and all claimable
@@ -3942,6 +3968,7 @@ def slice_worker(state):
         head_labels = {
             p.get("headRefName"): set(p.get("labels", [])) for p in prs
         }
+        task_hosts = _task_required_hosts(repo_state)
         for pr in prs:
             labels = set(pr["labels"])
             if "human:wip" in labels:
@@ -3955,7 +3982,13 @@ def slice_worker(state):
             # unfiltered, and FLEET-CACHE.md tells every role to prefer the
             # slice over state.json.
             if worker_feedback_labels(labels):
-                out["feedback_prs"].append(_slice_pr_with_repo(repo_key, pr))
+                record = _slice_pr_with_repo(repo_key, pr)
+                # Slice-time only, so the stored PR record (PR_RECORD_SCHEMA)
+                # is unchanged; fleet_task_class._host_incompatible reads it.
+                required_host = _feedback_pr_required_host(pr, task_hosts)
+                if required_host:
+                    record["needs_host"] = required_host
+                out["feedback_prs"].append(record)
             if _semantic_conflict_claimable(pr, labels, head_labels):
                 out["semantic_conflict_prs"].append(
                     _slice_pr_with_repo(repo_key, pr))
