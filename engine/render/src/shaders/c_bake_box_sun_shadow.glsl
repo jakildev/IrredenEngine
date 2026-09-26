@@ -42,6 +42,8 @@ layout(std140, binding = 29) uniform FrameDataSun {
     uniform float sunMaxShadowThrow;  // Unused here (receiver-only)
 };
 
+#define IR_SUN_FACE_INDEX_COOPERATIVE
+shared uint sharedFaceIndex;
 #include "ir_sun_face_index.glsl"
 
 void main() {
@@ -60,23 +62,24 @@ void main() {
         + abs(sunSpaceProject(axisY, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz)) * halfExtent.y
         + abs(sunSpaceProject(axisZ, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz)) * halfExtent.z;
     const vec3 direction = -vec3(dot(sunDirection.xyz, axisX), dot(sunDirection.xyz, axisY), dot(sunDirection.xyz, axisZ));
-    if (gl_WorkGroupID.z == 0u && gl_LocalInvocationID.x < 3u) {
-        const int axis = int(gl_LocalInvocationID.x);
-        vec3 localNormal = vec3(0.0);
-        localNormal[axis] = 1.0;
-        const bool positive = dot(rotateByQuat(localNormal, shape.rotation), sunDirection.xyz) > 0.0;
-        vec3 corner = -halfExtent;
-        corner[axis] = positive ? halfExtent[axis] : -halfExtent[axis];
-        vec3 edgeU = vec3(0.0), edgeV = vec3(0.0);
-        edgeU[(axis + 1) % 3] = 2.0 * halfExtent[(axis + 1) % 3];
-        edgeV[(axis + 2) % 3] = 2.0 * halfExtent[(axis + 2) % 3];
-        corner = shape.worldPosition.xyz + rotateByQuat(corner, shape.rotation);
-        edgeU = rotateByQuat(edgeU, shape.rotation);
-        edgeV = rotateByQuat(edgeV, shape.rotation);
-        const vec3 projected = sunSpaceProject(corner, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz);
-        const vec3 projectedU = sunSpaceProject(edgeU, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz);
-        const vec3 projectedV = sunSpaceProject(edgeV, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz);
-        indexSourceSunFace(projected, projectedU, projectedV);
+    if (gl_WorkGroupID.z == 0u) {
+        for (int axis = 0; axis < 3; ++axis) {
+            vec3 localNormal = vec3(0.0);
+            localNormal[axis] = 1.0;
+            const bool positive = dot(rotateByQuat(localNormal, shape.rotation), sunDirection.xyz) > 0.0;
+            vec3 corner = -halfExtent;
+            corner[axis] = positive ? halfExtent[axis] : -halfExtent[axis];
+            vec3 edgeU = vec3(0.0), edgeV = vec3(0.0);
+            edgeU[(axis + 1) % 3] = 2.0 * halfExtent[(axis + 1) % 3];
+            edgeV[(axis + 2) % 3] = 2.0 * halfExtent[(axis + 2) % 3];
+            corner = shape.worldPosition.xyz + rotateByQuat(corner, shape.rotation);
+            edgeU = rotateByQuat(edgeU, shape.rotation);
+            edgeV = rotateByQuat(edgeV, shape.rotation);
+            const vec3 projected = sunSpaceProject(corner, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz);
+            const vec3 projectedU = sunSpaceProject(edgeU, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz);
+            const vec3 projectedV = sunSpaceProject(edgeV, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz);
+            indexSourceSunFace(projected, projectedU, projectedV);
+        }
     }
     for (int cascade = 0; cascade < 2; ++cascade) {
         const vec2 origin = cascade == 0 ? cascadeOriginUV_0 : cascadeOriginUV_1;

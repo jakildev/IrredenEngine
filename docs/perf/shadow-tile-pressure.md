@@ -57,3 +57,6 @@ Serial execution cannot certify GPU races or performance. Before shipping a
 cooperative implementation, validate interleaved ownership, native Metal and
 OpenGL behavior, identical matched captures, and repeat the native span/count
 matrix. No smoothing, bias or geometry change follows from this audit.
+
+[Cooperative box indexing](cooperative-box-face-index.md) implements and measures
+the tile-loop scheduling experiment while retaining the same reservation counts.
