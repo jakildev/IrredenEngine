@@ -82,14 +82,18 @@ std::vector<IRAsset::VoxelRecord> makeRecordsWithSentinel(std::uint32_t sentinel
 TEST_F(ChunkPersistenceFixture, ChunkPathEmbedsSignedAxisFragments) {
     // Two-level layout: chunks/<x_div_64>/<y_div_64>/<sx>NNNNN_<sy>NNNNN_<sz>NNNNN.vxs
     // chunk(0,0,0) → floorDiv(0,64)=0, floorDiv(0,64)=0 → chunks/0/0/+00000_+00000_+00000.vxs
+    // chunkPath returns native separators, so compare in generic form.
     ChunkVoxelDiskPersistence persistence{rootStr()};
-    auto path = persistence.chunkPath(pack(IRMath::ivec3{0, 0, 0}));
+    const auto generic = [&](IRMath::ivec3 chunk) {
+        return std::filesystem::path{persistence.chunkPath(pack(chunk))}.generic_string();
+    };
+    auto path = generic(IRMath::ivec3{0, 0, 0});
     EXPECT_NE(path.find("/chunks/"), std::string::npos);
     EXPECT_NE(path.find("/0/0/"), std::string::npos);
     EXPECT_NE(path.find("+00000_+00000_+00000.vxs"), std::string::npos);
 
     // chunk(-1,2,-32767) → floorDiv(-1,64)=-1, floorDiv(2,64)=0 → chunks/-1/0/...
-    auto negPath = persistence.chunkPath(pack(IRMath::ivec3{-1, 2, -32767}));
+    auto negPath = generic(IRMath::ivec3{-1, 2, -32767});
     EXPECT_NE(negPath.find("/-1/0/"), std::string::npos);
     EXPECT_NE(negPath.find("-00001_+00002_-32767.vxs"), std::string::npos);
 }

@@ -10,15 +10,18 @@
 namespace {
 
 // One directory per test: CTest registers each test separately and may run two
-// of them at once.
+// of them at once. The read stream is closed before remove_all because Windows
+// refuses to delete a file that still has an open handle.
 std::string writeAndRead(const IRProfile::ProfileReport &report) {
     const std::string test = testing::UnitTest::GetInstance()->current_test_info()->name();
     const auto path = std::filesystem::temp_directory_path() / ("ir_profile_report_" + test) /
                       "profile_report.txt";
     IRProfile::writeProfileReport(report, path.string().c_str());
-    std::ifstream file(path);
     std::stringstream text;
-    text << file.rdbuf();
+    {
+        std::ifstream file(path);
+        text << file.rdbuf();
+    }
     std::filesystem::remove_all(path.parent_path());
     return text.str();
 }
