@@ -83,8 +83,9 @@ fleet-run IRCanvasStress --only shadowbox,floor --probe-analytic-box --analytic-
 
 ## Pending work
 
-1. Add opt-in native readback of source-face candidate counts and incomplete
-   tiles, outside timing runs. Correlate those tiles with receiver pixels.
+1. [Native tile readback](sun-face-index-diagnostics.md) confirms incomplete
+   lists in the dense fixture. Correlate individual boundary pixels with
+   exact geometry using a same-geometry overflow control.
 2. Isolate outer receiver tiles covered by caster AABBs but missed by their
    actual faces; compare exact shadows with the finite-face oracle before
    revisiting tile rejection or saturated-list atomics.
