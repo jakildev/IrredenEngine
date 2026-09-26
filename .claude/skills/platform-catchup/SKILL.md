@@ -68,6 +68,15 @@ Built but not run-gated:
 - `IRZYawInteractive` — mouse-driven, no `--auto-screenshot`.
 - `DemoMidiDevice` — needs a USB MIDI controller.
 
+Run-gated on an exit-code contract, not a screenshot:
+
+- `IRRepositionStress` — registers no capture system (the engine logs a
+  warning when `--auto-screenshot` is passed) and runs a 3600-tick horizon,
+  about 60 s, before exiting. Pass = `ir-run: RESULT=CLEAN exit=0` plus its
+  own `[reposition_stress] PASSED <N> ticks clean` line; the no-shots bucket
+  below does not apply to it. Run it with `--timeout 120`; at the 30 s
+  smoke budget it is always `ALIVE-TIMEOUT`.
+
 A single-target smoke (`IRShapeDebug` alone) is not a catch-up: a broken
 include chain surfaces only in the demos that include it.
 
@@ -91,6 +100,32 @@ desktop (no build-only downgrade) and MSYS2 ships `/usr/bin/timeout`.
   derive the cohort from the CMakeLists instead.
 - A trailing `; echo …` masks a wrapper's exit code — make the command you
   gate on the last one, or scan the log.
+- The fleet's own smokes share the gpu lock with the run pass, and a
+  reviewer or worker run on a pre-fix tree can hold it for minutes. Export
+  `IR_QUEUE_TIMEOUT=3600` for the pass and size the bash backstop as
+  `<budget> + 15 + 3600`; at ir-acquire's default 600 s queue limit a demo
+  behind a deep queue reports `RESULT=LOCK-FAILED` without ever starting.
+- `RESULT=CRASH exe=<name> exit=127 signal=none` is not a demo crash when
+  the Windows Application log carries an `Application Hang` event (id 1002,
+  "stopped interacting with Windows and was closed") for that executable at
+  the same second: someone closed a Not Responding window while the demo
+  was inside a driver compile. The closure exits with a status whose low
+  byte is `0x7F`, which bash reports as 127. Re-run the demo; do not grade
+  it. Check with
+  `powershell -NoProfile -Command "Get-WinEvent -FilterHashtable @{LogName='Application'; ProviderName='Application Hang'} -MaxEvents 20 | Format-List TimeCreated,Message"`.
+  A real fault reports its signal (`exit=139 signal=SIGSEGV`). Nobody at
+  the desk should close a demo window during the pass.
+- The NVIDIA GL shader cache is keyed per application executable, so every
+  demo pays its own cold links on its first run and a second copy of the
+  same demo in another worktree pays them again. On a tree with a slow
+  kernel a first run can exceed the smoke budget for that reason alone:
+  retry an `ALIVE-TIMEOUT` once at 300 s before calling it a hang.
+- When `gh pr list` returns `GraphQL: API rate limit already exceeded`, the
+  backlog is still readable through REST:
+  `gh api --paginate "repos/<repo>/issues?labels=fleet:needs-windows-smoke&state=closed&per_page=100" --jq '.[] | select(.pull_request != null and .pull_request.merged_at != null) | .number'`,
+  and the sweep can swap labels through
+  `gh api -X POST repos/<repo>/issues/<N>/labels -f "labels[]=fleet:verified-windows"`
+  and `gh api -X DELETE repos/<repo>/issues/<N>/labels/fleet:needs-windows-smoke`.
 - SIGSEGV (exit 139) backtrace:
   `cmd.exe /c "set PATH=C:\msys64\mingw64\bin;%PATH% && cd /d <exe-dir> && gdb --batch -ex run -ex bt -ex quit --args <exe>.exe --auto-screenshot 5"`
 - The native GL driver enforces rules lenient Linux/macOS drivers tolerate (a
