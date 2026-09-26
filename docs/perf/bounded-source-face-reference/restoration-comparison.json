@@ -1,0 +1,66 @@
+{
+  "count63/yaw0": {
+    "before_restored_rgb_identical": true,
+    "reference_restored_decompressed_probe_identical": true
+  },
+  "count63/yaw90": {
+    "before_restored_rgb_identical": true,
+    "reference_restored_decompressed_probe_identical": true
+  },
+  "count63/yaw180": {
+    "before_restored_rgb_identical": true,
+    "reference_restored_decompressed_probe_identical": true
+  },
+  "count63/yaw270": {
+    "before_restored_rgb_identical": true,
+    "reference_restored_decompressed_probe_identical": true
+  },
+  "count64/yaw0": {
+    "before_restored_rgb_identical": true,
+    "reference_restored_decompressed_probe_identical": true
+  },
+  "count64/yaw90": {
+    "before_restored_rgb_identical": true,
+    "reference_restored_decompressed_probe_identical": true
+  },
+  "count64/yaw180": {
+    "before_restored_rgb_identical": true,
+    "reference_restored_decompressed_probe_identical": true
+  },
+  "count64/yaw270": {
+    "before_restored_rgb_identical": true,
+    "reference_restored_decompressed_probe_identical": true
+  },
+  "count128/yaw0": {
+    "before_restored_rgb_identical": true,
+    "reference_restored_decompressed_probe_identical": true
+  },
+  "count128/yaw90": {
+    "before_restored_rgb_identical": true,
+    "reference_restored_decompressed_probe_identical": true
+  },
+  "count128/yaw180": {
+    "before_restored_rgb_identical": true,
+    "reference_restored_decompressed_probe_identical": true
+  },
+  "count128/yaw270": {
+    "before_restored_rgb_identical": true,
+    "reference_restored_decompressed_probe_identical": true
+  },
+  "count128-oblique-sun/yaw0": {
+    "before_restored_rgb_identical": true,
+    "reference_restored_decompressed_probe_identical": true
+  },
+  "count128-oblique-sun/yaw90": {
+    "before_restored_rgb_identical": true,
+    "reference_restored_decompressed_probe_identical": true
+  },
+  "count128-oblique-sun/yaw180": {
+    "before_restored_rgb_identical": true,
+    "reference_restored_decompressed_probe_identical": true
+  },
+  "count128-oblique-sun/yaw270": {
+    "before_restored_rgb_identical": true,
+    "reference_restored_decompressed_probe_identical": true
+  }
+}

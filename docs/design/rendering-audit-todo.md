@@ -7,6 +7,20 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
 
 ## Current shadow investigation
 
+- [Bounded overflow reference](../perf/bounded-source-face-reference.md) isolates
+  the dense analytical-box teeth: identical geometry and tile tables regain
+  clean floor edges when incomplete tiles query the complete small face pool.
+  The reference remains default-off; its 256-record budget is a diagnostic
+  boundary, not a scalable exactness guarantee.
+- Prioritize the remaining receiver modes alongside index scaling. Attached
+  GRID/per-axis and overflow faces still use sampled receiver queries; eligible
+  analytical boxes and continuous detached source faces use finite geometry.
+  Validate displayed surface positions, normals and sub-cell phase before
+  extending finite receiving. Revoxelized shapes must retain their actual
+  occupancy steps. The [mode-routing audit](../perf/bounded-source-face-reference.md#rendering-modes-remain-distinct)
+  separates these cases and sampled non-box SDF casters; no blur or enlarged
+  footprint is an acceptance criterion.
+
 - [Rigid SO(3) probes](../pr-screenshots/codex/rigid-voxel-rotation-probes/README.md)
   expose the existing continuous source-face path without revoxelizing. Fourteen
   single-voxel pose/camera checks pass; two nearly edge-on cases are inconclusive.
