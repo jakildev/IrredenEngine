@@ -684,10 +684,6 @@ using PositionUploadTest = GpuComputeDispatchTest;
 #endif
 
 TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions) {
-#if defined(_WIN32) && !defined(IR_GRAPHICS_METAL)
-    GTEST_SKIP() << "The overflow sort network does not execute on this host's GL driver "
-                    "(Windows OpenGL); tracked in #3828.";
-#endif
     using namespace IRRender;
     using Axes = IRComponents::C_PerAxisTrixelCanvases;
     constexpr std::uint32_t cap = 1u << 19;
@@ -771,17 +767,19 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
             ENG_API->glMemoryBarrier(GL_ALL_BARRIER_BITS);
 #endif
         };
-        step(3, 0, 0, 0, 0);
-        step(0, 0, 0, 0, 0);
-        step(1, 0, 0, 0, 1);
         const auto dispatchSpan =
             IRSystem::detail::overflowSortDispatchSpan(sortCase.laggedCount, cap);
         std::uint32_t mergeDispatches = 0;
-        IRSystem::detail::forEachOverflowSortMergeStep(
+        IRSystem::detail::forEachOverflowSortStep(
             dispatchSpan,
-            [&](std::uint32_t k, std::uint32_t pLo, std::uint32_t pHi, std::uint32_t commandIndex) {
-                step(2, k, pLo, pHi, commandIndex);
-                ++mergeDispatches;
+            [&](int mode,
+                std::uint32_t k,
+                std::uint32_t pLo,
+                std::uint32_t pHi,
+                std::uint32_t commandIndex) {
+                step(mode, k, pLo, pHi, commandIndex);
+                if (mode == 2)
+                    ++mergeDispatches;
             }
         );
         if (sortCase.laggedCount == 0u) {

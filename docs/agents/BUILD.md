@@ -189,9 +189,7 @@ fleet-build --target IRShapeDebug
 fleet-run IRShapeDebug --auto-screenshot 10
 ```
 
-A green `fleet-run IrredenEngineTest` on this host means every test passes
-except `PositionUploadTest.OverflowSortHandlesFirstPopulationAndCountTransitions`,
-which is host-skipped on Windows OpenGL pending #3828.
+A green `fleet-run IrredenEngineTest` on this host means every test passes.
 
 The raw form they run, for debugging the wrappers themselves:
 
