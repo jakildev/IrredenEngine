@@ -93,11 +93,12 @@ work and the chance of losing exact coverage through overflow.
 
 ## Next implementation experiments
 
-1. Add a separately timed analytical-box bake stage and counters for tile
-   insertions, incomplete tiles and global face-record exhaustion. Current
-   `bakeAnalyticBoxes` has no dedicated GPU substage scope, so the existing
-   table cannot isolate its cost. Measure large plates and crowded small
-   boxes separately before changing its scheduling.
+1. Use the existing `shapeCastBoxes` GPU substage around the call to
+   `bakeAnalyticBoxes` in `SHAPES_TO_TRIXEL`; the voxel-only matrix above
+   does not exercise it. Measure large plates and crowded small boxes
+   separately before changing scheduling. Add counters for tile insertions,
+   incomplete tiles and global face-record exhaustion when isolating index
+   pressure from the fallback raster cost.
 2. Compare cooperative tile insertion for boxes with the current serial
    loop, retaining one face record and the same complete/incomplete contract.
    Independently test reflected bases, cascade edges, partial overlap and

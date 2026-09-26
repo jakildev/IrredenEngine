@@ -455,3 +455,10 @@ frame totals. Raw reports retain CPU systems, update counts and overflow
 witnesses. Use the million controls above for scale and continuous yaw.
 
 Results and the finite shadow-index follow-up: [rotation, zoom and index audit](shadow-index-audit.md).
+
+## Analytical-box indexing controls
+
+`python3 scripts/perf/box_shadow_controls.py --rounds 3 --output /tmp/box-controls`
+sweeps caster span and coincident caster count through the existing repeat runner.
+It retains fresh GPU reports and captures; the controls isolate analytical-box
+pressure, not million-entity throughput. [Method and results](box-shadow-index-lanes.md).
