@@ -268,6 +268,19 @@ class RenderVerifyHarness(unittest.TestCase):
         self.assertEqual(struct["kind"], "struct")
         self.assertFalse(struct["pass"])
 
+    def test_structural_metric_exit2_surfaces_stdout_reason(self):
+        # render-shadow-metric.py reports an out-of-bounds roi as JSON on
+        # stdout (exit 2) with stderr empty; the abort must not drop it.
+        self._ref("shotA.png")
+        self._ref("shotB.png")
+        with self.assertRaises(SystemExit) as cm:
+            _run_structural_metric(
+                self.frames[0],
+                {"metric": "shadow", "roi": [0, 0, 32, 32],
+                 "max_hole_ratio": 0.05},
+                "shotA")
+        self.assertIn("out of bounds for 16x16 image", str(cm.exception))
+
     def test_structural_unimplemented_metric_raises(self):
         # shadow/coverage/silhouette/clip are implemented; an unknown metric
         # name must still fail loudly (no render-<metric>-metric.py script).
