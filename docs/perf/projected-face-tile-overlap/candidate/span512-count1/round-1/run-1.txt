@@ -1,0 +1,115 @@
+=== PROFILE REPORT (275 frames) ===
+Frame time:   avg=9.63ms   p50=8.35ms   p95=9.64ms   p99=48.62ms   min=5.42ms   max=154.50ms
+Steady frame time (first 68 of 275 frames excluded):   avg=9.88ms   p50=8.36ms   p95=9.61ms   p99=17.50ms   min=6.06ms   max=154.50ms
+Update ticks: avg=1.0/frame  max=1
+Entity count: 176 (37 archetypes)
+
+--- Per-system timing (by pipeline, then total descending) ---
+Pipeline System                                Total(ms)   Avg(ms)   Min(ms)   Max(ms)   Calls   Entities
+INPUT    InputKeyMouse                              3.64     0.013     0.003     0.043     275      34375
+INPUT    CameraScrollZoom                           0.51     0.002     0.000     0.004     275          0
+UPDATE   PropagateTransform                        25.64     0.093     0.027     0.217     275      36300
+UPDATE   RebuildDetachedVoxels                      2.75     0.010     0.003     0.022     275        275
+UPDATE   UpdateVoxelSetChildren                     2.36     0.009     0.002     0.027     275          0
+UPDATE   LodUpdate                                  1.94     0.007     0.002     0.033     275        275
+UPDATE   PropagateCanvasRotation                    0.57     0.002     0.001     0.019     275          0
+UPDATE   RebuildGridVoxels                          0.53     0.002     0.000     0.008     275          0
+UPDATE   RebuildGridVoxelsImplicit                  0.46     0.002     0.000     0.014     275          0
+UPDATE   AutoSpinLocalTransform                     0.25     0.001     0.000     0.002     275          0
+UPDATE   Lifetime                                   0.16     0.001     0.000     0.015     275          0
+RENDER   CanvasToFramebuffer                       55.54     0.202     0.052     0.572     275        825
+RENDER   ShapesToTrixel                            44.66     0.162     0.066     0.475     275        550
+RENDER   SingleVoxelToCanvasFirst                  41.40     0.151     0.036     4.973     275        275
+RENDER   BuildLightOcclusionGrid                   33.98     0.124     0.039     0.280     275        275
+RENDER   ComputeVoxelAO                            21.08     0.077     0.022     0.193     275        275
+RENDER   LightingToTrixel                          20.02     0.073     0.020     0.162     275        275
+RENDER   FramebufferToScreen                       12.26     0.045     0.013     0.126     275        275
+RENDER   BakeSunShadowMap                           7.88     0.029     0.008     0.072     275        275
+RENDER   ComputeSunShadow                           7.44     0.027     0.008     0.085     275        275
+RENDER   ComputeLightVolume                         7.04     0.026     0.008     0.095     275        275
+RENDER   ResolvePerAxisScreenDepth                  4.83     0.018     0.005     0.043     275        550
+RENDER   CameraMousePan                             2.72     0.010     0.003     0.032     275        275
+RENDER   EntityCanvasToFramebuffer                  2.64     0.010     0.003     0.032     275          0
+RENDER   CameraKeyDragPan                           1.69     0.006     0.002     0.022     275        275
+RENDER   CameraMouseRotate                          1.24     0.005     0.001     0.018     275        275
+RENDER   CameraKeyDragRotate                        1.06     0.004     0.001     0.019     275        275
+RENDER   AutoScreenshot                             0.42     0.002     0.000     0.045     275          0
+
+--- GPU frame timing ---
+Envelope includes inter-submission gaps; buffer spans include GPU stalls.
+Neither is GPU busy time. commandBuffers counts valid frames only.
+Coverage: supported=1 attempted=275 valid=275 invalid=0 commandBuffers=277
+Metric Avg(ms) Min(ms) Max(ms) Samples
+envelope 6.580 4.299 150.977 275
+commandBufferSpans 5.521 4.299 18.307 275
+
+--- GPU stage timing ---
+Stage                                  Avg(ms)   Min(ms)   Max(ms) Samples
+canvasClear                              0.135     0.008     0.700     274
+shapeOwnerClear                          0.046     0.004     0.355     274
+shapeDepth                               1.655     1.138     8.408     274
+shapeOwnerElect                          1.284     1.122     6.715     274
+shapePublish                             1.257     1.172     3.960     274
+shapeCastBoxes                           0.394     0.358     0.632     274
+computeVoxelAO                           0.031     0.027     0.334     274
+computeSunShadow                         0.039     0.034     0.489     274
+computeLightVolume                       0.588     0.026     3.358     274
+lightingToTrixel                         0.037     0.033     0.056     274
+trixelToFb                               0.272     0.036     0.855     274
+fbToScreen                               0.042     0.033     0.057     274
+
+--- CPU phase timing ---
+Phase                                  Avg(ms)   Max(ms) Samples
+ComputeLightVolume::Clear                0.010     0.046     275
+ComputeLightVolume::Populate             0.000     0.001     275
+ComputeLightVolume::Upload               0.003     0.011     275
+
+--- Run witness ---
+Camera yaw: first=0.000deg last=0.000deg travel=0.000deg samples=275
+Camera zoom: first=1.000 last=1.000
+Camera pivot: explicit focus on 0 of 275 frames
+Per-axis overflow: maxEntries=0 maxDropped=0 cap=0 samples=0
+
+--- Frame times (ms, in order) ---
+48.621 13.354 8.110 7.313 6.600 5.421 5.643 6.236 8.684 8.577
+8.079 8.644 8.153 8.226 8.416 9.244 10.492 6.311 7.406 8.256
+8.698 7.750 8.594 8.306 8.204 8.559 8.331 8.127 8.471 8.176
+8.413 8.315 8.224 8.432 8.269 8.468 8.183 8.266 8.495 8.543
+8.096 8.515 8.340 8.336 8.383 8.217 8.416 8.387 8.352 8.341
+8.564 8.137 8.515 8.120 8.570 9.086 8.266 8.412 8.874 6.810
+10.059 8.040 7.845 8.851 7.864 8.603 8.505 6.869 9.845 8.319
+7.804 8.903 6.797 9.840 8.354 8.372 6.864 9.685 8.105 8.194
+8.771 7.794 8.556 8.592 8.107 8.529 7.852 8.236 8.954 7.924
+8.563 8.522 7.903 8.760 8.092 7.919 8.987 7.887 8.759 7.782
+8.300 8.067 7.884 8.787 8.195 9.378 7.855 8.776 7.610 8.297
+8.563 9.015 7.620 8.031 8.240 8.519 9.118 6.974 9.614 7.717
+8.935 7.636 8.233 8.836 8.227 8.449 7.940 9.025 8.467 6.894
+9.643 7.702 8.377 8.901 7.910 7.927 8.848 9.114 14.321 17.496
+8.533 8.436 8.380 8.332 8.368 8.198 8.424 8.369 8.354 8.509
+153.683 17.212 6.265 6.157 6.648 8.839 8.105 8.496 8.498 8.137
+8.501 8.358 8.272 8.477 8.258 8.529 8.513 8.091 8.599 8.235
+8.447 8.410 8.490 8.080 8.446 8.391 8.256 8.394 8.483 8.132
+8.416 8.346 8.356 8.141 8.208 8.588 8.163 9.484 6.854 9.543
+7.929 8.245 8.620 8.281 8.320 8.506 8.071 8.104 8.455 8.302
+8.412 8.424 8.465 8.444 8.071 8.216 8.453 8.167 8.636 8.412
+8.086 8.602 8.074 8.230 8.829 8.010 8.408 8.165 8.655 8.254
+8.170 8.387 8.171 8.477 8.420 8.791 7.802 8.528 8.106 8.285
+8.560 8.025 8.602 8.184 8.365 8.437 8.214 8.344 8.256 8.302
+8.955 7.842 8.706 8.026 8.179 8.511 8.171 8.602 8.220 8.402
+8.358 8.032 8.978 8.060 8.186 8.602 7.955 8.426 8.220 8.214
+8.334 8.541 8.758 7.932 8.509 8.180 8.429 8.186 8.420 8.475
+8.141 8.465 154.505 16.789 6.057
+
+--- Update ticks (per frame, in order) ---
+1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
+1 1 1 1 1
+
+=== END REPORT ===
