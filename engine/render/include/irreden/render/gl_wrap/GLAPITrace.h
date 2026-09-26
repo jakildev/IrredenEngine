@@ -1030,7 +1030,7 @@ void GLTracer_glCreateBuffers(GLsizei n, GLuint *buffers) {
     IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
-void GLTracer_glNamedBufferStorage(GLuint buffer, GLsizei size, const void *data,
+void GLTracer_glNamedBufferStorage(GLuint buffer, GLsizeiptr size, const void *data,
                                    GLbitfield flags) {
     IRE_GL_LOG_DEBUG("glNamedBufferStorage({}, {}, {}, {})", buffer, size, data,
                      (unsigned int)(flags));
@@ -1039,14 +1039,15 @@ void GLTracer_glNamedBufferStorage(GLuint buffer, GLsizei size, const void *data
     IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
-void GLTracer_glNamedBufferData(GLuint buffer, GLsizei size, const void *data, GLenum usage) {
+void GLTracer_glNamedBufferData(GLuint buffer, GLsizeiptr size, const void *data, GLenum usage) {
     IRE_GL_LOG_DEBUG("glNamedBufferData({}, {}, {}, {})", buffer, size, data, E2S(usage));
     apiHook.glNamedBufferData(buffer, size, data, usage);
     GLenum glError = apiHook.glGetError();
     IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
-void GLTracer_glNamedBufferSubData(GLuint buffer, GLintptr offset, GLsizei size, const void *data) {
+void GLTracer_glNamedBufferSubData(GLuint buffer, GLintptr offset, GLsizeiptr size,
+                                   const void *data) {
     IRE_GL_LOG_DEBUG("glNamedBufferSubData({}, {}, {}, {})", buffer, offset, size, data);
     apiHook.glNamedBufferSubData(buffer, offset, size, data);
     GLenum glError = apiHook.glGetError();
@@ -1054,7 +1055,7 @@ void GLTracer_glNamedBufferSubData(GLuint buffer, GLintptr offset, GLsizei size,
 }
 
 void GLTracer_glCopyNamedBufferSubData(GLuint readBuffer, GLuint writeBuffer, GLintptr readOffset,
-                                       GLintptr writeOffset, GLsizei size) {
+                                       GLintptr writeOffset, GLsizeiptr size) {
     IRE_GL_LOG_DEBUG("glCopyNamedBufferSubData({}, {}, {}, {}, {})", readBuffer, writeBuffer,
                      readOffset, writeOffset, size);
     apiHook.glCopyNamedBufferSubData(readBuffer, writeBuffer, readOffset, writeOffset, size);
@@ -1072,7 +1073,7 @@ void GLTracer_glClearNamedBufferData(GLuint buffer, GLenum internalformat, GLenu
 }
 
 void GLTracer_glClearNamedBufferSubData(GLuint buffer, GLenum internalformat, GLintptr offset,
-                                        GLsizei size, GLenum format, GLenum type,
+                                        GLsizeiptr size, GLenum format, GLenum type,
                                         const void *data) {
     IRE_GL_LOG_DEBUG("glClearNamedBufferSubData({}, {}, {}, {}, {}, {}, {})", buffer,
                      E2S(internalformat), offset, size, E2S(format), E2S(type), data);
@@ -1107,7 +1108,7 @@ GLboolean GLTracer_glUnmapNamedBuffer(GLuint buffer) {
     return r;
 }
 
-void GLTracer_glFlushMappedNamedBufferRange(GLuint buffer, GLintptr offset, GLsizei length) {
+void GLTracer_glFlushMappedNamedBufferRange(GLuint buffer, GLintptr offset, GLsizeiptr length) {
     IRE_GL_LOG_DEBUG("glFlushMappedNamedBufferRange({}, {}, {})", buffer, offset, length);
     apiHook.glFlushMappedNamedBufferRange(buffer, offset, length);
     GLenum glError = apiHook.glGetError();
@@ -1137,7 +1138,7 @@ void GLTracer_glGetNamedBufferPointerv(GLuint buffer, GLenum pname, void **param
     IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
-void GLTracer_glGetNamedBufferSubData(GLuint buffer, GLintptr offset, GLsizei size, void *data) {
+void GLTracer_glGetNamedBufferSubData(GLuint buffer, GLintptr offset, GLsizeiptr size, void *data) {
     IRE_GL_LOG_DEBUG("glGetNamedBufferSubData({}, {}, {}, {})", buffer, offset, size, data);
     apiHook.glGetNamedBufferSubData(buffer, offset, size, data);
     GLenum glError = apiHook.glGetError();

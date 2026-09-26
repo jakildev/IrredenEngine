@@ -3259,19 +3259,19 @@ typedef void(APIENTRYP PFNGLGETTRANSFORMFEEDBACKI_VPROC)(GLuint xfb, GLenum pnam
 typedef void(APIENTRYP PFNGLGETTRANSFORMFEEDBACKI64_VPROC)(GLuint xfb, GLenum pname, GLuint index,
                                                            GLint64 *param);
 typedef void(APIENTRYP PFNGLCREATEBUFFERSPROC)(GLsizei n, GLuint *buffers);
-typedef void(APIENTRYP PFNGLNAMEDBUFFERSTORAGEPROC)(GLuint buffer, GLsizei size, const void *data,
+typedef void(APIENTRYP PFNGLNAMEDBUFFERSTORAGEPROC)(GLuint buffer, GLsizeiptr size, const void *data,
                                                     GLbitfield flags);
-typedef void(APIENTRYP PFNGLNAMEDBUFFERDATAPROC)(GLuint buffer, GLsizei size, const void *data,
+typedef void(APIENTRYP PFNGLNAMEDBUFFERDATAPROC)(GLuint buffer, GLsizeiptr size, const void *data,
                                                  GLenum usage);
-typedef void(APIENTRYP PFNGLNAMEDBUFFERSUBDATAPROC)(GLuint buffer, GLintptr offset, GLsizei size,
+typedef void(APIENTRYP PFNGLNAMEDBUFFERSUBDATAPROC)(GLuint buffer, GLintptr offset, GLsizeiptr size,
                                                     const void *data);
 typedef void(APIENTRYP PFNGLCOPYNAMEDBUFFERSUBDATAPROC)(GLuint readBuffer, GLuint writeBuffer,
                                                         GLintptr readOffset, GLintptr writeOffset,
-                                                        GLsizei size);
+                                                        GLsizeiptr size);
 typedef void(APIENTRYP PFNGLCLEARNAMEDBUFFERDATAPROC)(GLuint buffer, GLenum internalformat,
                                                       GLenum format, GLenum type, const void *data);
 typedef void(APIENTRYP PFNGLCLEARNAMEDBUFFERSUBDATAPROC)(GLuint buffer, GLenum internalformat,
-                                                         GLintptr offset, GLsizei size,
+                                                         GLintptr offset, GLsizeiptr size,
                                                          GLenum format, GLenum type,
                                                          const void *data);
 typedef void *(APIENTRYP PFNGLMAPNAMEDBUFFERPROC)(GLuint buffer, GLenum access);
@@ -3279,13 +3279,13 @@ typedef void *(APIENTRYP PFNGLMAPNAMEDBUFFERRANGEPROC)(GLuint buffer, GLintptr o
                                                        GLsizei length, GLbitfield access);
 typedef GLboolean(APIENTRYP PFNGLUNMAPNAMEDBUFFERPROC)(GLuint buffer);
 typedef void(APIENTRYP PFNGLFLUSHMAPPEDNAMEDBUFFERRANGEPROC)(GLuint buffer, GLintptr offset,
-                                                             GLsizei length);
+                                                             GLsizeiptr length);
 typedef void(APIENTRYP PFNGLGETNAMEDBUFFERPARAMETERIVPROC)(GLuint buffer, GLenum pname,
                                                            GLint *params);
 typedef void(APIENTRYP PFNGLGETNAMEDBUFFERPARAMETERI64VPROC)(GLuint buffer, GLenum pname,
                                                              GLint64 *params);
 typedef void(APIENTRYP PFNGLGETNAMEDBUFFERPOINTERVPROC)(GLuint buffer, GLenum pname, void **params);
-typedef void(APIENTRYP PFNGLGETNAMEDBUFFERSUBDATAPROC)(GLuint buffer, GLintptr offset, GLsizei size,
+typedef void(APIENTRYP PFNGLGETNAMEDBUFFERSUBDATAPROC)(GLuint buffer, GLintptr offset, GLsizeiptr size,
                                                        void *data);
 typedef void(APIENTRYP PFNGLCREATEFRAMEBUFFERSPROC)(GLsizei n, GLuint *framebuffers);
 typedef void(APIENTRYP PFNGLNAMEDFRAMEBUFFERRENDERBUFFERPROC)(GLuint framebuffer, GLenum attachment,
@@ -3489,28 +3489,28 @@ GLAPI void APIENTRY glGetTransformFeedbacki_v(GLuint xfb, GLenum pname, GLuint i
 GLAPI void APIENTRY glGetTransformFeedbacki64_v(GLuint xfb, GLenum pname, GLuint index,
                                                 GLint64 *param);
 GLAPI void APIENTRY glCreateBuffers(GLsizei n, GLuint *buffers);
-GLAPI void APIENTRY glNamedBufferStorage(GLuint buffer, GLsizei size, const void *data,
+GLAPI void APIENTRY glNamedBufferStorage(GLuint buffer, GLsizeiptr size, const void *data,
                                          GLbitfield flags);
-GLAPI void APIENTRY glNamedBufferData(GLuint buffer, GLsizei size, const void *data, GLenum usage);
-GLAPI void APIENTRY glNamedBufferSubData(GLuint buffer, GLintptr offset, GLsizei size,
+GLAPI void APIENTRY glNamedBufferData(GLuint buffer, GLsizeiptr size, const void *data, GLenum usage);
+GLAPI void APIENTRY glNamedBufferSubData(GLuint buffer, GLintptr offset, GLsizeiptr size,
                                          const void *data);
 GLAPI void APIENTRY glCopyNamedBufferSubData(GLuint readBuffer, GLuint writeBuffer,
                                              GLintptr readOffset, GLintptr writeOffset,
-                                             GLsizei size);
+                                             GLsizeiptr size);
 GLAPI void APIENTRY glClearNamedBufferData(GLuint buffer, GLenum internalformat, GLenum format,
                                            GLenum type, const void *data);
 GLAPI void APIENTRY glClearNamedBufferSubData(GLuint buffer, GLenum internalformat, GLintptr offset,
-                                              GLsizei size, GLenum format, GLenum type,
+                                              GLsizeiptr size, GLenum format, GLenum type,
                                               const void *data);
 GLAPI void *APIENTRY glMapNamedBuffer(GLuint buffer, GLenum access);
 GLAPI void *APIENTRY glMapNamedBufferRange(GLuint buffer, GLintptr offset, GLsizei length,
                                            GLbitfield access);
 GLAPI GLboolean APIENTRY glUnmapNamedBuffer(GLuint buffer);
-GLAPI void APIENTRY glFlushMappedNamedBufferRange(GLuint buffer, GLintptr offset, GLsizei length);
+GLAPI void APIENTRY glFlushMappedNamedBufferRange(GLuint buffer, GLintptr offset, GLsizeiptr length);
 GLAPI void APIENTRY glGetNamedBufferParameteriv(GLuint buffer, GLenum pname, GLint *params);
 GLAPI void APIENTRY glGetNamedBufferParameteri64v(GLuint buffer, GLenum pname, GLint64 *params);
 GLAPI void APIENTRY glGetNamedBufferPointerv(GLuint buffer, GLenum pname, void **params);
-GLAPI void APIENTRY glGetNamedBufferSubData(GLuint buffer, GLintptr offset, GLsizei size,
+GLAPI void APIENTRY glGetNamedBufferSubData(GLuint buffer, GLintptr offset, GLsizeiptr size,
                                             void *data);
 GLAPI void APIENTRY glCreateFramebuffers(GLsizei n, GLuint *framebuffers);
 GLAPI void APIENTRY glNamedFramebufferRenderbuffer(GLuint framebuffer, GLenum attachment,
