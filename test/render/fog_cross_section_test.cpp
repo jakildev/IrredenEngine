@@ -993,12 +993,10 @@ TEST_F(FogCrossSectionTest, GpuRevealMatchesTheCpuOracle) {
         const IRMath::vec2 column = columnCentre(record);
         EXPECT_NEAR(
             probes[record].revealCenter,
-            discRevealAtDistance(
-                IRMath::length(column - kDiscCentre), kHardDisc.z, kHardDisc.w
-            ),
+            discRevealAtDistance(IRMath::length(column - kDiscCentre), kHardDisc.z, kHardDisc.w),
             1e-5f
-        ) << "GPU own-column reveal diverged from the CPU oracle at (" << column.x << ", "
-          << column.y << ")";
+        ) << "GPU own-column reveal diverged from the CPU oracle at ("
+          << column.x << ", " << column.y << ")";
 
         EXPECT_NEAR(
             probes[record].revealNearest,
