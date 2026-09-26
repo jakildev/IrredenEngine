@@ -13,7 +13,7 @@ struct VoxelSunSample {
     uint reserved;
 };
 struct VoxelSunFaceFrame {
-    float4 worldOrigin;
+    float4 worldOrigin; // xyz: world translation; w: per-axis raster enabled
     float4 viewToWorld;
     int4 dispatch;
 };
@@ -62,6 +62,7 @@ kernel void c_bake_voxel_sun_faces(
     // carries the camera-aligned cells produced by detached revoxelization.
     const bool rigidSource = faceFrame.dispatch.w == 2;
     const float3 position = rigidSource ? positions[index].xyz
+        : faceFrame.worldOrigin.w != 0.0 ? perAxisRenderedVoxelCenter(positions[index].xyz)
         : float3(roundHalfUp(snapNearIntegerVoxelPosition(positions[index].xyz) * subdivisions)) / subdivisions;
     for (int axis = 0; axis < 3; ++axis) {
         float3 normal = float3(0.0);

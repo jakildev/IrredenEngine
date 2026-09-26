@@ -1778,6 +1778,12 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             }
         }
         syncEntityIds(voxelPool, liveVoxelCount, voxelEntityIdBuf_);
+        // Per-axis scatter owns the main canvas's voxel geometry during smooth
+        // yaw; the single canvas retains only shapes and overlays. The caster
+        // must use the same position quantization as the active raster path.
+        const bool skipSingleCanvasVoxels = entity == perAxisCanvasEntity_ &&
+                                            perAxisCanvases_ != nullptr &&
+                                            perAxisCanvases_->isAllocated();
         if (voxelFaceBaker_ != nullptr) {
             voxelPosBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SingleVoxelPositions);
             voxelColorBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SingleVoxelColors);
@@ -1792,7 +1798,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                     effectiveVoxelCount,
                     renderMode == 0 ? 1 : effectiveSub,
                     canvasLocalRotation,
-                    triangleCanvasTextures.renderedCellOffset_
+                    triangleCanvasTextures.renderedCellOffset_,
+                    skipSingleCanvasVoxels
                 );
             }
             winnerPlaceholderBuf_->bindBase(
@@ -1800,23 +1807,6 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 kBufferIndex_PerAxisResolveScratch
             );
         }
-
-        // Smooth camera Z-yaw: while the main canvas's per-axis
-        // canvases are active, SKIP the single-canvas voxel rasterization. The
-        // per-axis dispatch below writes the voxels (smooth), and the framebuffer
-        // scatter composites them; rasterizing the snapped voxels into the single
-        // canvas too would double-draw them (the single canvas is composited for
-        // its SDF / overlay content, which sits at the SAME depth as the smooth
-        // copies → snapped ghosts). Skipping leaves the single canvas holding only
-        // SHAPES_TO_TRIXEL / text / overlay content, which the composite draws
-        // alongside the smooth voxels. The compact pass below still runs (the
-        // per-axis dispatch reuses its compacted list). Detached entities (incl.
-        // re-voxelize SO(3)) always take the single-canvas emit + blit, so this is
-        // false for them, byte-identical to master. Resolved before the cull
-        // diagnostic so it can pick the matching indirect-dispatch-params source.
-        const bool skipSingleCanvasVoxels = entity == perAxisCanvasEntity_ &&
-                                            perAxisCanvases_ != nullptr &&
-                                            perAxisCanvases_->isAllocated();
 
         // Shared buffers hold the previous compact dispatch, which may belong
         // to another canvas in this frame. Readback can synchronize with the GPU.

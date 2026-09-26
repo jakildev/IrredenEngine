@@ -7,6 +7,20 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
 
 ## Current shadow investigation
 
+- Implemented [per-axis caster position agreement](../pr-screenshots/codex/peraxis-shadow-caster-position/README.md):
+  finite voxel faces now use the display's signed sixteenth-cell translation
+  instead of the subdivision grid when per-axis rendering is active. Executed
+  GLSL/Metal geometry controls cover six face directions and density changes;
+  four native off-grid views change only floor shadows, while twelve control
+  views are identical. This does not enable finite receiving on attached faces.
+- Next, reconcile per-axis receiver points in both regular and overflow lanes:
+  for decoded face origin `O`, the displayed point is
+  `O + u*eu + v*ev - (0.5,0.5,0.5)`. Its center is
+  `O - 0.5*positiveAxis`; polarity already lives in `O`. The legacy normal
+  offset places positive-face queries one cell outward. Validate all six signs,
+  camera quadrants and world-depth cascade selection before adopting finite
+  center queries. Per-fragment receiving remains a separate step for boundaries
+  crossing a face.
 - [Bounded overflow reference](../perf/bounded-source-face-reference.md) isolates
   the dense analytical-box teeth: identical geometry and tile tables regain
   clean floor edges when incomplete tiles query the complete small face pool.

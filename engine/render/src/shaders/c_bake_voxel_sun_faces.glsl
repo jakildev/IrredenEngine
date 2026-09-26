@@ -19,7 +19,7 @@ layout(std430, binding = 5) readonly buffer PositionBuffer { vec4 positions[]; }
 layout(std430, binding = 6) readonly buffer ColorBuffer { VoxelSunSample voxels[]; };
 layout(std430, binding = 28) restrict buffer SunShadowDepthMap { uint sunDepthBuf[]; };
 layout(std140, binding = 16) uniform VoxelSunFaceFrame {
-    vec4 worldOrigin;
+    vec4 worldOrigin; // xyz: world translation; w: per-axis raster enabled
     vec4 viewToWorld;
     ivec4 dispatch;
 };
@@ -78,6 +78,7 @@ void main() {
     // carries the camera-aligned cells produced by detached revoxelization.
     const bool rigidSource = dispatch.w == 2;
     const vec3 position = rigidSource ? positions[index].xyz
+        : worldOrigin.w != 0.0 ? perAxisRenderedVoxelCenter(positions[index].xyz)
         : vec3(roundHalfUp(snapNearIntegerVoxelPosition(positions[index].xyz) * subdivisions)) / subdivisions;
     for (int axis = 0; axis < 3; ++axis) {
         vec3 normal = vec3(0.0);
