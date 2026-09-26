@@ -54,6 +54,13 @@ Merge gate: OpenGL is satisfied by an OpenGL author or by either
 every render PR, also add `fleet:needs-windows-smoke` to linux-authored
 PRs.
 
+`fleet:verified-<host>` means the PR **builds and runs clean** on that host:
+it compiled, linked its shaders, and exited clean with its screenshots
+captured. It does **not** mean the PR **renders as the references say**:
+that is the separate parity verdict, `render-verify` against the host's
+`test/references/<preset>/` sets. A red parity result is reported and
+holds the PRs touching that demo; no label carries it.
+
 ---
 
 ## Author side: claiming + running

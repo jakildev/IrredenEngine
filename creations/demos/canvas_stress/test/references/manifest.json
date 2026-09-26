@@ -44,7 +44,7 @@
       "structural_only": ["shadow_overlay_floor"],
       "structural": {
         "shadow_overlay_floor": [
-          {"metric": "shadow", "roi": [1010, 540, 450, 250], "min_hole_ratio": 0.98}
+          {"metric": "shadow", "roi": [1010, 540, 450, 250], "roi_at": [2560, 1440], "min_hole_ratio": 0.98}
         ]
       }
     },
