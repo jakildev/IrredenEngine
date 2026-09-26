@@ -246,6 +246,53 @@ class Prune(unittest.TestCase):
             self.assertEqual(removed, ["route:task:engine:9"])
             self.assertFalse((state_dir / "runtime-problems" / (closed_tag + ".json")).exists())
 
+    def test_plan_gated_bare_numbers_keep_issue_kind_live(self):
+        with tempfile.TemporaryDirectory() as temp:
+            state_dir = Path(temp) / "state"
+            alerts_dir = Path(temp) / "alerts"
+            self._write_state(state_dir, {
+                "engine": {"prs": [], "tasks": {"open": [], "in_progress": [],
+                                                "plan_gated": [700]}},
+            })
+            gated_tag = self._write_problem(state_dir, alerts_dir,
+                                            "route:task:engine:700", count=3)
+            self._write_problem(state_dir, alerts_dir, "route:task:engine:9", count=3)
+            removed = runtime.prune(state_dir, alerts_dir)
+            self.assertEqual(removed, ["route:task:engine:9"])
+            self.assertTrue((state_dir / "runtime-problems" / (gated_tag + ".json")).exists())
+
+    def test_plan_kinds_checked_against_planning_slices(self):
+        with tempfile.TemporaryDirectory() as temp:
+            state_dir = Path(temp) / "state"
+            alerts_dir = Path(temp) / "alerts"
+            self._write_state(state_dir, {
+                "engine": {"prs": [], "tasks": {"open": [], "in_progress": [], "plan_gated": []},
+                           "needs_plan": [{"number": 3540}], "plan_review": [{"number": 3541}]},
+            })
+            plan_tag = self._write_problem(state_dir, alerts_dir, "route:plan:engine:3540",
+                                           count=3, with_alert=True)
+            review_tag = self._write_problem(state_dir, alerts_dir,
+                                             "route:planreview:engine:3541", count=3)
+            self._write_problem(state_dir, alerts_dir, "route:plan:engine:9", count=3)
+            removed = runtime.prune(state_dir, alerts_dir)
+            self.assertEqual(removed, ["route:plan:engine:9"])
+            self.assertTrue((state_dir / "runtime-problems" / (plan_tag + ".json")).exists())
+            self.assertTrue((alerts_dir / ("fleet-runtime-" + plan_tag)).exists())
+            self.assertTrue((state_dir / "runtime-problems" / (review_tag + ".json")).exists())
+
+    def test_degraded_planning_slice_holds_issue_kinds(self):
+        with tempfile.TemporaryDirectory() as temp:
+            state_dir = Path(temp) / "state"
+            alerts_dir = Path(temp) / "alerts"
+            self._write_state(state_dir, {
+                "engine": {"prs": [], "tasks": {"open": [], "in_progress": [], "plan_gated": []},
+                           "needs_plan": [], "plan_review": []},
+            }, degraded=["engine.needs_plan"])
+            tag = self._write_problem(state_dir, alerts_dir, "route:plan:engine:3540", count=3)
+            removed = runtime.prune(state_dir, alerts_dir)
+            self.assertEqual(removed, [])
+            self.assertTrue((state_dir / "runtime-problems" / (tag + ".json")).exists())
+
     def test_degraded_slice_is_left_untouched(self):
         with tempfile.TemporaryDirectory() as temp:
             state_dir = Path(temp) / "state"

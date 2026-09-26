@@ -61,31 +61,43 @@ def routing_problem(state, key, message=None):
 
 PR_KINDS = {"review", "smoke", "feedback", "conflict", "merge"}
 ISSUE_KINDS = {"task", "stack", "plan", "planreview"}
+# An issue can sit in any open-issue slice while a record keyed on it is live
+# (a `plan` target is a needs_plan row, never a task row), so issue kinds
+# check the union: pruning a live record resets its count below the alert
+# threshold.
+ISSUE_FIELDS = ("tasks", "needs_plan", "plan_review")
+
+
+def _live_fields(kind):
+    return ("prs",) if kind in PR_KINDS else ISSUE_FIELDS
 
 
 def _live_numbers(repo_state, kind):
-    if kind in PR_KINDS:
-        rows = repo_state.get("prs") or []
-    else:
-        tasks = repo_state.get("tasks") or {}
-        rows = [*(tasks.get("open") or []), *(tasks.get("in_progress") or []),
-                *(tasks.get("plan_gated") or [])]
+    rows = []
+    for field in _live_fields(kind):
+        if field == "tasks":
+            tasks = repo_state.get("tasks") or {}
+            rows += [*(tasks.get("open") or []), *(tasks.get("in_progress") or []),
+                     *(tasks.get("plan_gated") or [])]
+        else:
+            rows += repo_state.get(field) or []
     numbers = set()
     for row in rows:
-        n = row.get("number", row.get("issue", row.get("id", "")))
+        # tasks.plan_gated holds bare issue numbers, not issue records.
+        n = row.get("number", row.get("issue", row.get("id", ""))) \
+            if isinstance(row, dict) else row
         if n not in (None, ""):
             numbers.add(str(n).lstrip("#"))
     return numbers
 
 
 def prune(state, alerts_dir=None):
-    """Drop a runtime-problems/alert pair once its target leaves the live queue.
+    """Drop a runtime-problems/alert pair once its target leaves every open slice.
 
-    A record's key is missing from the live projection precisely when its
-    target merged, closed, or was planned away — `target_record` raising
-    "target missing from projection" is the routing-time symptom of the same
-    fact this checks directly against state.json, so re-derive liveness from
-    the queue rather than trusting that any one reason string caused it.
+    A merged or closed target never routes again, so its record can never
+    clear itself; `target_record` raising "target missing from projection"
+    is the routing-time symptom of that fact, so re-derive liveness from
+    state.json rather than trusting that any one reason string caused it.
     """
     state_dir = Path(state)
     alerts_dir = Path(alerts_dir or os.environ.get(
@@ -109,8 +121,8 @@ def prune(state, alerts_dir=None):
         if (kind not in PR_KINDS and kind not in ISSUE_KINDS) or repo not in repos \
                 or not number.isdigit():
             continue
-        slice_name = "prs" if kind in PR_KINDS else "tasks"
-        if f"{repo}.{slice_name}" in degraded or number in _live_numbers(repos[repo], kind):
+        if any(f"{repo}.{field}" in degraded for field in _live_fields(kind)) \
+                or number in _live_numbers(repos[repo], kind):
             continue
         path.unlink(missing_ok=True)
         (alerts_dir / ("fleet-runtime-" + path.stem)).unlink(missing_ok=True)
