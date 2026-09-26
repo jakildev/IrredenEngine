@@ -355,8 +355,9 @@ def _run_structural_metric(image: Path, entry: dict[str, Any],
 
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode == 2:
+        reason = (proc.stderr or proc.stdout).strip()
         raise SystemExit(
-            f"render-{metric}-metric errored on '{image.name}': {proc.stderr}"
+            f"render-{metric}-metric errored on '{image.name}': {reason}"
         )
     try:
         data = json.loads(proc.stdout)
