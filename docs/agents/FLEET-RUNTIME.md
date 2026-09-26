@@ -172,11 +172,7 @@ issue a local reservation will resume. A resume that fails on quota keeps
 the sidecar; any other failure gets one more attempt before the next
 dispatch goes fresh. A fresh launch also starts without the gitignored
 scratch bodies (`.review-body.md`, `.pr-body.md`, `.merger-body.md`, …):
-the wrapper removes them, so no iteration inherits a stale one. It also
-starts from a clean pane — the wrapper backs up and discards any tracked
-modifications left by a prior lane and drops stale untracked `.retry-*.sh`
-scripts, unless a live reservation on the pane says otherwise
-(`scripts/fleet/CLAUDE.md` § "Lane and loop contracts").
+the wrapper removes them, so no iteration inherits a stale one.
 
 ---
 
