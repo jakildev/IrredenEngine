@@ -22,7 +22,8 @@ IR_RUN="$REPO_ROOT/engine/tools/bin/ir-run"
 # Stage a fake build dir holding two scripts pretending to be demo exes.
 # One exits 0, the other exits 139 (the bash convention for SIGSEGV).
 BUILD_DIR="$(mktemp -d)"
-trap 'rm -rf "$BUILD_DIR"' EXIT
+SEAMS="$(mktemp -d)"
+trap 'rm -rf "$BUILD_DIR" "$SEAMS"' EXIT
 
 # ir-run's --auto-screenshot detection wraps in ir-acquire gpu; that
 # really takes the GPU lock. Point IR_LOCK_ROOT (read by
@@ -30,6 +31,17 @@ trap 'rm -rf "$BUILD_DIR"' EXIT
 # host locks and parallel CI jobs don't serialize on this test.
 export IR_LOCK_ROOT
 IR_LOCK_ROOT="$(mktemp -d)"
+
+# After a non-zero exit, ir-run's HOST-CLOSED check (native Windows) reads
+# the host's Application log. Pin it to hermetic seams — a fixed identity,
+# an event query that finds nothing, one attempt — so no run reads the live
+# log or sleeps between attempts, and every crash stays a CRASH.
+printf '#!/usr/bin/env bash\necho "4660 134348514173385979"\n' > "$SEAMS/identity"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$SEAMS/query"
+chmod +x "$SEAMS/identity" "$SEAMS/query"
+export IR_RUN_HOST_CLOSE_IDENTITY="$SEAMS/identity"
+export IR_RUN_HOST_CLOSE_QUERY="$SEAMS/query"
+export IR_RUN_HOST_CLOSE_ATTEMPTS=1
 
 mkdir -p "$BUILD_DIR/creations/demos/clean/scripts"
 cat > "$BUILD_DIR/creations/demos/clean/IRFakeClean" <<'EOF'
