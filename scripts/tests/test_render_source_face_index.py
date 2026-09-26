@@ -19,11 +19,13 @@ PREAMBLE = r"""
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <cstdlib>
 #include <initializer_list>
 #include <iostream>
 #include <vector>
 using uint = std::uint32_t;
 using atomic_uint = uint;
+std::uint64_t atomicAdds=0, atomicMaxes=0;
 using std::abs;
 constexpr int memory_order_relaxed = 0;
 struct vec2 {
@@ -51,8 +53,8 @@ ivec2 max(ivec2 a,ivec2 b){return ivec2(vec2(std::max(a.x,b.x),std::max(a.y,b.y)
 vec2 floor(vec2 a){return {std::floor(a.x),std::floor(a.y)};}
 uint floatBitsToUint(float a){uint b;std::memcpy(&b,&a,4);return b;}
 template<class T> T as_type(float a){T b;std::memcpy(&b,&a,4);return b;}
-uint atomicAdd(uint& p,uint n){uint old=p;p+=n;return old;}
-uint atomicMax(uint& p,uint n){uint old=p;p=std::max(p,n);return old;}
+uint atomicAdd(uint& p,uint n){++atomicAdds;uint old=p;p+=n;return old;}
+uint atomicMax(uint& p,uint n){++atomicMaxes;uint old=p;p=std::max(p,n);return old;}
 uint atomic_fetch_add_explicit(uint* p,uint n,int){return atomicAdd(*p,n);}
 uint atomic_fetch_max_explicit(uint* p,uint n,int){return atomicMax(*p,n);}
 void atomic_store_explicit(uint* p,uint n,int){*p=n;}
@@ -78,6 +80,7 @@ constexpr uint guardWords=32, canary=0xa5c31e79u, unwritten=0xccccccccu;
 std::vector<uint> actual(kSourceFaceBufferWords+2*guardWords,canary),expected;
 uint* oracle;
 void reset() {
+    atomicAdds=atomicMaxes=0;
     std::fill(actual.begin(),actual.end(),canary);
     sunDepthBuf={actual.data()+guardWords,kSourceFaceBufferWords};
     std::fill(sunDepthBuf.data,sunDepthBuf.data+kSourceFaceBufferWords,unwritten);
@@ -86,6 +89,19 @@ void reset() {
         sunDepthBuf[kSourceFaceTileOffset+tile*65]=0;
     expected=actual;
     oracle=expected.data()+guardWords;
+}
+void report(const char* label) {
+    uint occupied=0,incomplete=0,peak=0;
+    for(uint tile=0;tile<32768;++tile) {
+        const uint count=sunDepthBuf[kSourceFaceTileOffset+tile*65];
+        occupied+=count>0;
+        incomplete+=!sourceFaceQueryComplete(count);
+        peak=std::max(peak,count);
+    }
+    std::cout<<label<<": allocation_attempts="<<sunDepthBuf[kSourceFaceHeaderOffset]
+             <<" occupied="<<occupied<<" incomplete="<<incomplete
+             <<" peak_raw_count="<<peak<<" atomic_add="<<atomicAdds
+             <<" atomic_max="<<atomicMaxes<<"\n";
 }
 bool check(const char* label) {
     for(std::size_t i=0;i<actual.size();++i) if(actual[i]!=expected[i]) {
@@ -96,7 +112,18 @@ bool check(const char* label) {
 }
 // Explicit fixture tile IDs are independent of the shader's bounds arithmetic.
 void emit(vec3 corner,vec3 u,vec3 v,const std::vector<uint>& tiles) {
+    const auto addsBefore=atomicAdds, maxesBefore=atomicMaxes;
+    const uint expectedId=oracle[kSourceFaceHeaderOffset];
     CALL_INDEX
+    const bool allocated=tiles.size()>0;
+    const bool exact=expectedId<65536;
+    const auto expectedAdds=allocated ? 1+(exact ? tiles.size() : 0) : 0;
+    const auto expectedMaxes=allocated && !exact ? tiles.size() : 0;
+    if(CHECK_ATOMIC_WORKLOAD &&
+       (atomicAdds-addsBefore!=expectedAdds || atomicMaxes-maxesBefore!=expectedMaxes)) {
+        std::cerr<<"unexpected index atomic workload\n";
+        std::exit(18);
+    }
     if(tiles.size()==0) return;
     const uint id=oracle[kSourceFaceHeaderOffset]++;
     if(id<65536) {
@@ -145,9 +172,14 @@ int main() {
     for(uint n=0;n<64;++n) emit(corner,u,v,{0,1,128,129,16384,16385});
     if(!check("64 candidates") ||
        !sourceFaceQueryComplete(sunDepthBuf[kSourceFaceTileOffset])) return 6;
+    report("small-64");
     emit(corner,u,v,{0,1,128,129,16384,16385});
+    report("small-65");
     if(!check("65 candidates") ||
        sourceFaceQueryComplete(sunDepthBuf[kSourceFaceTileOffset])) return 7;
+    emit(corner,u,v,{0,1,128,129,16384,16385});
+    if(!check("66 candidates remain bounded")) return 19;
+    report("small-66");
     reset();
     emit({-100,-100,2},u,v,{});
     if(!check("off-map faces consume no quota")) return 8;
@@ -160,6 +192,7 @@ int main() {
        sourceFaceQueryComplete(sunDepthBuf[kSourceFaceTileOffset+516*65])) return 10;
     emit({48,48,2},u,v,{774,16643});
     if(!check("overflow on previously empty tiles")) return 11;
+    report("global-exhaustion");
     emit({-100,-100,2},u,v,{});
     if(!check("off-map overflow")) return 12;
     reset();
@@ -172,7 +205,9 @@ int main() {
     if(!check("large faces cover both complete cascades")) return 14;
     for(uint tile:allTiles)
         if(!sourceFaceQueryComplete(sunDepthBuf[kSourceFaceTileOffset+tile*65])) return 15;
+    report("full-map-64");
     emit({-8,-8,2},{4096,0,0},{0,4096,0},allTiles);
+    report("full-map-65");
     if(!check("large face overflow keeps every tile bounded")) return 16;
     for(uint tile:allTiles)
         if(sourceFaceQueryComplete(sunDepthBuf[kSourceFaceTileOffset+tile*65])) return 17;
@@ -234,7 +269,10 @@ class SourceFaceIndexTest(unittest.TestCase):
                               .replace("float2", "vec2").replace("float3", "vec3")
                               .replace("int2", "ivec2").replace(".xy", ".xy()"))
                     path = Path(temporary)
-                    (path / "index.cpp").write_text(PREAMBLE + shader + cases)
+                    (path / "index.cpp").write_text(
+                        PREAMBLE + shader + cases.replace(
+                            "CHECK_ATOMIC_WORKLOAD",
+                            "true" if variant == "production" else "false"))
                     build = subprocess.run(
                         [COMPILER, "-std=c++17", "-O2", str(path / "index.cpp"),
                          "-o", str(path / "index")], capture_output=True, text=True,
@@ -243,6 +281,7 @@ class SourceFaceIndexTest(unittest.TestCase):
                     run = subprocess.run([str(path / "index")], capture_output=True, text=True)
                     if variant == "production":
                         self.assertEqual(run.returncode, 0, run.stderr)
+                        print(f"{suffix}:\n{run.stdout}", end="")
                     else:
                         self.assertNotEqual(run.returncode, 0, "mutation escaped the oracle")
 

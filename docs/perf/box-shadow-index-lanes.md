@@ -88,3 +88,6 @@ fix or validate that unmerged visual correction.
 - Retain exact geometry for projected edges; no blur, footprint inflation or
   receiver bias is part of this optimization.
 - Native OpenGL smoke and performance comparison remain due.
+
+The [deterministic tile-pressure audit](shadow-tile-pressure.md) separates
+per-face reservation work, tile saturation and global record exhaustion.
