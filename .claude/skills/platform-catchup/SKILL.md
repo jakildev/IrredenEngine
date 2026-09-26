@@ -105,16 +105,16 @@ desktop (no build-only downgrade) and MSYS2 ships `/usr/bin/timeout`.
   `IR_QUEUE_TIMEOUT=3600` for the pass and size the bash backstop as
   `<budget> + 15 + 3600`; at ir-acquire's default 600 s queue limit a demo
   behind a deep queue reports `RESULT=LOCK-FAILED` without ever starting.
-- `RESULT=CRASH exe=<name> exit=127 signal=none` is not a demo crash when
-  the Windows Application log carries an `Application Hang` event (id 1002,
-  "stopped interacting with Windows and was closed") for that executable at
-  the same second: someone closed a Not Responding window while the demo
-  was inside a driver compile. The closure exits with a status whose low
-  byte is `0x7F`, which bash reports as 127. Re-run the demo; do not grade
-  it. Check with
-  `powershell -NoProfile -Command "Get-WinEvent -FilterHashtable @{LogName='Application'; ProviderName='Application Hang'} -MaxEvents 20 | Format-List TimeCreated,Message"`.
-  A real fault reports its signal (`exit=139 signal=SIGSEGV`). Nobody at
-  the desk should close a demo window during the pass.
+- `RESULT=CRASH exe=<name> exit=127 signal=none` is graded as a crash, like
+  every other CRASH. A Not Responding window that someone closed while the
+  demo was inside a driver compile is reported by `ir-run` as
+  `RESULT=HOST-CLOSED exe=<name> exit=<rc> event=Application-Hang/1002 at=<t>`,
+  proven by an Application Hang event for that exact process. HOST-CLOSED
+  is the only result the pass retries: re-run that demo once; a second
+  HOST-CLOSED leaves no verdict, bucketed apart from crash and pass. Never
+  reclassify a CRASH from raw event-log messages: a same-second 1002 entry
+  carries no process identity, so it can mask a real fault. Nobody at the
+  desk should close a demo window during the pass.
 - The NVIDIA GL shader cache is keyed per application executable, so every
   demo pays its own cold links on its first run and a second copy of the
   same demo in another worktree pays them again. On a tree with a slow
