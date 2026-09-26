@@ -553,6 +553,13 @@ float pivotVerifyCardinalTolerance(int effectiveSubdivisions, float rayStepWorld
     return 2.0f / static_cast<float>(effectiveSubdivisions) * rayStepWorld;
 }
 
+// A cardinal source on the SDF probe grades the latch's subject branch, not the
+// SDF key's accuracy against the surface: half the store lattice, which a
+// misbranch that subtracts the lattice from an SDF key always exceeds.
+float pivotVerifySdfCardinalBound(float rayStepWorld) {
+    return 0.5f * IRRender::DefaultPivotLatch::kCardinalStoreLatticeDepth * rayStepWorld;
+}
+
 // A per-axis (non-cardinal) source's key is its face origin's yawed depth,
 // stored quantized. The target is the ray point level with the winning cell's
 // center, and a face origin sits at most `0.5 * (|c - s| + |c + s| + 1)` depth
@@ -980,7 +987,8 @@ void logPivotFocusAssert(int shotIndex) {
     // previous capture's is one rotation gesture, acquired from the previous
     // shot's settled frame. The expected focus is:
     //   - gesture over a surface from a cardinal frame — where that frame's
-    //     crosshair ray enters the surface, within one micro-face;
+    //     crosshair ray enters the surface, within one micro-face (half the
+    //     store lattice on the SDF probe);
     //   - gesture over a surface from a per-axis frame — the crosshair-ray point
     //     level with the center of a cell some ray of the pixel's footprint
     //     enters first, within the derived bound of at least one such cell;
@@ -1092,9 +1100,13 @@ void logPivotFocusAssert(int shotIndex) {
     oracle.sourceIso_ = crosshairIso;
     oracle.sourceFootprint_ = pivotVerifyCrosshairFootprint(yaw, crosshairIso, zoom.x);
     oracle.sourceCardinal_ = IRPrefab::Camera::computeYawSplit(yaw).second == 0.0f;
-    oracle.sourceTolerance_ =
-        oracle.sourceCardinal_ ? pivotVerifyCardinalTolerance(effectiveSubdivisions, rayStepWorld)
-                               : pivotVerifyPerAxisBound(yaw, effectiveSubdivisions, rayStepWorld);
+    if (!oracle.sourceCardinal_) {
+        oracle.sourceTolerance_ = pivotVerifyPerAxisBound(yaw, effectiveSubdivisions, rayStepWorld);
+    } else if (g_pivotVerifySdf) {
+        oracle.sourceTolerance_ = pivotVerifySdfCardinalBound(rayStepWorld);
+    } else {
+        oracle.sourceTolerance_ = pivotVerifyCardinalTolerance(effectiveSubdivisions, rayStepWorld);
+    }
     oracle.latchMoves_ = 0;
 }
 

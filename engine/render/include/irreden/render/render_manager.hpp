@@ -202,8 +202,10 @@ class RenderManager {
     bool defaultPivotOwnsDepth() const;
     // Whether the fragment an acquisition's depth sample (@p sampledEncodedDepth,
     // the composite's encoded key) came from belongs to the voxel store, whose
-    // cardinal key sits on a lattice the latch removes.
-    bool crosshairWinnerIsVoxelStore(int sampledEncodedDepth) const;
+    // cardinal key sits on a lattice the latch removes. nullopt at a
+    // non-cardinal source, where the subject is not read, and wherever the
+    // canvas does not establish it.
+    std::optional<bool> crosshairWinnerIsVoxelStore(int sampledEncodedDepth) const;
     bool m_hoveredTrixelVisible = true;
     int m_voxelRenderSubdivisions = 1;
     // Unit vector pointing from surfaces toward the sun. Default is a

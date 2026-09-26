@@ -378,23 +378,22 @@ void RenderManager::updateDefaultRotationPivotFocus() {
     );
 }
 
-bool RenderManager::crosshairWinnerIsVoxelStore(int sampledEncodedDepth) const {
+std::optional<bool> RenderManager::crosshairWinnerIsVoxelStore(int sampledEncodedDepth) const {
     // Only a cardinal source subtracts the voxel store's lattice, so only there
     // does the winning subject matter — and only there does the main canvas
     // hold the frame the depth came from (the per-axis canvases draw the rest).
     const DefaultPivotSourceFrame &source = m_defaultPivotLatch.sourceFrame();
     if (source.residualYaw_ != 0.0f) {
-        return true;
+        return std::nullopt;
     }
-    // The winner's id, read at the canvas texel the sampled pixel displayed:
-    // the texel in the block around the crosshair estimate whose stored key IS
-    // the sampled one (the backends' gathers place a fractional camera one row
-    // apart). Called right after the depth readback, which already waited on
-    // the device, and the canvas still holds the source frame: nothing has
-    // cleared it since that frame's composite. Both stores write the winning
-    // entity id at the same texel as its depth, so the id names the subject the
-    // depth came from. No matching texel falls back to the estimate's id; a
-    // block past the canvas edge classifies as a null winner does.
+    // The winner's subject, read at the canvas texels around the crosshair
+    // estimate whose stored key IS the sampled one. Called right after the
+    // depth readback, which already waited on the device, and the canvas still
+    // holds the source frame: nothing has cleared it since that frame's
+    // composite. Both stores write the winning entity id at the same texel as
+    // its depth, so the id names the subject the depth came from. A block past
+    // the canvas edge establishes no subject, like a block with no matching
+    // texel.
     //
     // The SDF shape store keys a cardinal fragment on the surface, not on the
     // voxel store's lattice. This branch exists only for that disagreement,
@@ -409,12 +408,14 @@ bool RenderManager::crosshairWinnerIsVoxelStore(int sampledEncodedDepth) const {
             distances,
             entityIds
         )) {
-        return true;
+        return std::nullopt;
     }
-    const IREntity::EntityId winner =
-        entityIds[defaultPivotSampledTexelInBlock(distances, sampledEncodedDepth)
-                      .value_or(kDefaultPivotBlockEstimateIndex)];
-    return !IREntity::getComponentOptional<C_ShapeDescriptor>(winner).has_value();
+    std::array<bool, 9> voxelStoreTexels{};
+    for (std::size_t i = 0; i < entityIds.size(); ++i) {
+        voxelStoreTexels[i] =
+            !IREntity::getComponentOptional<C_ShapeDescriptor>(entityIds[i]).has_value();
+    }
+    return defaultPivotSampledSubjectIsVoxelStore(distances, voxelStoreTexels, sampledEncodedDepth);
 }
 
 void RenderManager::setVoxelRenderSubdivisions(int subdivisions) {

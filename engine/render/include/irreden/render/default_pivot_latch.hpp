@@ -39,10 +39,10 @@ struct DefaultPivotSourceFrame {
 // hover path's cursor→texel mapping (`IRRender::mouseCanvasTexelWorld`, then
 // the gather's `+ trixelOriginOffsetZ1 + cameraTrixelOffset`) evaluated with
 // the cursor at the canvas center and the frame's own camera and subdivisions.
-// Exact on Metal. At a fractional `effectiveCameraIso · subdivisions` the
-// OpenGL gather displays the texel one row further in +y, so the texel the
-// depth readback sampled is found in the block around this estimate
-// (defaultPivotSampledTexelInBlock).
+// Measured exact on Metal. The subject of the sample is read off every texel
+// in the 3×3 block around this estimate that holds its key
+// (defaultPivotSampledSubjectIsVoxelStore), so a displayed texel one off the
+// estimate classifies too.
 inline IRMath::ivec2
 defaultPivotCrosshairCanvasTexel(const DefaultPivotSourceFrame &frame, IRMath::ivec2 canvasSize) {
     const float subdivisions = static_cast<float>(IRMath::max(1, frame.effectiveSubdivisions_));
@@ -57,25 +57,32 @@ defaultPivotCrosshairCanvasTexel(const DefaultPivotSourceFrame &frame, IRMath::i
     );
 }
 
-// The crosshair estimate's index in a 3×3 texel block centered on it, row-major
-// from the block's low corner (its +y neighbour is 7).
-constexpr int kDefaultPivotBlockEstimateIndex = 4;
-
-// Index, in a 3×3 block of stored canvas distances centered on the crosshair
-// estimate, of the texel whose stored key is @p sampledEncodedDepth. On the
-// cardinal path the composite copies the canvas distance texel for texel, so
-// that texel is the one the sample came from. The estimate is tried first, then
-// its edge neighbours, then the corners; nullopt when no texel holds the key.
-inline std::optional<int>
-defaultPivotSampledTexelInBlock(const std::array<int, 9> &distances, int sampledEncodedDepth) {
-    constexpr std::array<int, 9> kSearchOrder =
-        {kDefaultPivotBlockEstimateIndex, 1, 3, 5, 7, 0, 2, 6, 8};
-    for (const int i : kSearchOrder) {
-        if (distances[i] == sampledEncodedDepth) {
-            return i;
+// Whether the fragment a cardinal depth sample came from belongs to the voxel
+// store, read off a 3×3 block of main-canvas texels centered on the crosshair
+// estimate: @p distances holds each texel's stored key and @p voxelStoreTexels
+// whether its winning entity is a voxel-store one. On the cardinal path the
+// composite copies the canvas distance texel for texel, so the texels holding
+// @p sampledEncodedDepth are the ones the sample can have come from.
+//
+// nullopt when the subject is not established — no texel holds the key, or the
+// texels that do disagree on subject. The latch holds its anchor then rather
+// than branch on a guess.
+inline std::optional<bool> defaultPivotSampledSubjectIsVoxelStore(
+    const std::array<int, 9> &distances,
+    const std::array<bool, 9> &voxelStoreTexels,
+    int sampledEncodedDepth
+) {
+    std::optional<bool> subject;
+    for (std::size_t i = 0; i < distances.size(); ++i) {
+        if (distances[i] != sampledEncodedDepth) {
+            continue;
         }
+        if (subject.has_value() && *subject != voxelStoreTexels[i]) {
+            return std::nullopt;
+        }
+        subject = voxelStoreTexels[i];
     }
-    return std::nullopt;
+    return subject;
 }
 
 // Update policy and state of the depth-aware default pivot: when
@@ -183,13 +190,21 @@ class DefaultPivotLatch {
     // pose unchanged: acquisition never moves the view. A cardinal source's
     // sample is first moved off the voxel store's lattice onto the visible
     // surface (kCardinalStoreLatticeDepth) when @p voxelStoreWinner says a
-    // voxel-pool fragment won the sampled texel.
-    void acquire(float framebufferIsoDepth, bool voxelStoreWinner = true) {
+    // voxel-pool fragment won the sampled texel, and taken as it stands when
+    // an SDF shape did. A cardinal source whose winner is unestablished
+    // (nullopt) holds the previous anchor, as a background sample does; a
+    // non-cardinal source never reads the subject.
+    void acquire(float framebufferIsoDepth, std::optional<bool> voxelStoreWinner = true) {
         const DefaultPivotSourceFrame &source = m_source;
         float yawedIsoDepth =
             framebufferIsoDepth / static_cast<float>(IRMath::max(1, source.effectiveSubdivisions_));
-        if (source.residualYaw_ == 0.0f && voxelStoreWinner) {
-            yawedIsoDepth -= kCardinalStoreLatticeDepth;
+        if (source.residualYaw_ == 0.0f) {
+            if (!voxelStoreWinner.has_value()) {
+                return;
+            }
+            if (*voxelStoreWinner) {
+                yawedIsoDepth -= kCardinalStoreLatticeDepth;
+            }
         }
         m_hasAcquired = true;
         if (IRMath::abs(source.visualYaw_) <= kYawSettleDelta) {

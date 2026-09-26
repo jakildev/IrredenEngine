@@ -103,7 +103,9 @@ SDF_BLOCKS = ["focus-ctr", "center-column"]
 # SDF twins graded by the per-gesture focus oracle. The SDF shape store keys a
 # cardinal fragment on the surface where the voxel store keys it on a lattice
 # 1.5 depth units behind, so the latch branches on the winning subject; this
-# twin is the gate that reads the SDF side of that branch. Its per-axis gestures
+# twin is the gate that reads the SDF side of that branch, at half the lattice
+# (the demo's tolerance) rather than the voxel rows' micro-face, so it grades
+# the branch and not the SDF key's accuracy. Its per-axis gestures
 # are reported, not graded (`skip=sdf-per-axis`): the per-axis bound is derived
 # from the voxel store's face origins.
 SDF_FOCUS_BLOCKS = {"center-column"}
