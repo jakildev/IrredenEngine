@@ -95,7 +95,7 @@ bool check(const char* label) {
     return true;
 }
 // Explicit fixture tile IDs are independent of the shader's bounds arithmetic.
-void emit(vec3 corner,vec3 u,vec3 v,std::initializer_list<uint> tiles) {
+void emit(vec3 corner,vec3 u,vec3 v,const std::vector<uint>& tiles) {
     CALL_INDEX
     if(tiles.size()==0) return;
     const uint id=oracle[kSourceFaceHeaderOffset]++;
@@ -165,6 +165,19 @@ int main() {
     reset();
     INDEX_DEGENERATE
     if(!check("degenerate projection")) return 13;
+    reset();
+    std::vector<uint> allTiles;
+    for(uint tile=0;tile<32768;++tile) allTiles.push_back(tile);
+    for(uint n=0;n<64;++n) emit({-8,-8,2},{4096,0,0},{0,4096,0},allTiles);
+    if(!check("large faces cover both complete cascades")) return 14;
+    for(uint tile:allTiles)
+        if(!sourceFaceQueryComplete(sunDepthBuf[kSourceFaceTileOffset+tile*65])) return 15;
+    emit({-8,-8,2},{4096,0,0},{0,4096,0},allTiles);
+    if(!check("large face overflow keeps every tile bounded")) return 16;
+    for(uint tile:allTiles)
+        if(sourceFaceQueryComplete(sunDepthBuf[kSourceFaceTileOffset+tile*65])) return 17;
+    std::cout<<"large-face control: 32768 tile entries per face; "
+             <<"65 overlapping faces make both cascades incomplete\n";
 }
 """
 

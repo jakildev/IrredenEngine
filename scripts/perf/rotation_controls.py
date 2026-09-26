@@ -33,6 +33,15 @@ def cases(suite: str) -> dict[str, list[str]]:
                     "--base-subdivisions",
                     str(base),
                 ]
+    if suite in ("all", "zoom"):
+        for yaw, angle in (("cardinal", "0"), ("rotated", "0.785398163")):
+            for zoom in (1, 4):
+                for mode in ("none", "full"):
+                    result[f"zoom-{yaw}-zoom{zoom}-{mode}"] = [
+                        "--grid-size", "32", "--zoom", str(zoom), "--yaw", angle,
+                        "--subdivision-mode", mode, "--base-subdivisions", "1",
+                        "--pivot-origin", "--wave-amplitude", "0", "--no-overlay",
+                    ]
     if suite in ("all", "extent"):
         for yaw, angle in (("cardinal", "0"), ("rotated", "0.785398163")):
             for edge, zoom in ((16, 4), (32, 2), (64, 1)):
@@ -72,20 +81,30 @@ def cases(suite: str) -> dict[str, list[str]]:
 
 def summarize(output: Path, selected: dict[str, list[str]]) -> None:
     lines = [
-        "| Case | Frame mean ms | Run min–max ms | Retained mean | Axis entries mean |",
-        "|---|---:|---:|---:|---:|",
+        "| Case | Frame mean ms | Run min–max ms | Steady mean ms | GPU envelope mean ms "
+        "| Retained mean | Axis entries mean |",
+        "|---|---:|---:|---:|---:|---:|---:|",
     ]
     for name in selected:
         reports = [parse_report(p, name) for p in sorted((output / name).glob("round-*/run-1.txt"))]
         if not reports:
             continue
         frames = [r.frame.avg for r in reports]
+        steady = [r.steady_frame.avg for r in reports if r.steady_frame is not None]
+        steady_text = f"{statistics.mean(steady):.3f}" if len(steady) == len(reports) else "—"
+        envelopes = [
+            metric.avg_ms for r in reports for metric in r.gpu_frame.metrics
+            if metric.name == "envelope"
+        ]
+        gpu_text = (
+            f"{statistics.mean(envelopes):.3f}" if len(envelopes) == len(reports) else "—"
+        )
         retained = statistics.mean(r.cull.avg_visible + r.cull.avg_feeder for r in reports)
         axis = [r.cull.avg_axis_entries for r in reports]
         axis_text = f"{statistics.mean(axis):.1f}" if all(v is not None for v in axis) else "—"
         lines.append(
             f"| {name} | {statistics.mean(frames):.3f} | {min(frames):.3f}–{max(frames):.3f} "
-            f"| {retained:.1f} | {axis_text} |"
+            f"| {steady_text} | {gpu_text} | {retained:.1f} | {axis_text} |"
         )
     (output / "summary.md").write_text("\n".join(lines) + "\n")
 
@@ -178,7 +197,9 @@ def run_rounds(
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--suite", choices=("all", "density", "extent", "culling"), default="all")
+    parser.add_argument(
+        "--suite", choices=("all", "density", "zoom", "extent", "culling"), default="all"
+    )
     parser.add_argument("--rounds", type=int, default=3)
     parser.add_argument("--frames", type=int, default=300)
     parser.add_argument("--dry-run", action="store_true")

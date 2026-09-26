@@ -5,7 +5,29 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from rotation_controls import verify_artifacts
+from rotation_controls import cases, verify_artifacts
+
+
+class ZoomControlsTest(unittest.TestCase):
+    def test_zoom_matrix_holds_scene_and_pivot_fixed(self):
+        selected = cases("zoom")
+        self.assertEqual(len(selected), 8)
+        combinations = set()
+        for arguments in selected.values():
+            def value(flag):
+                return arguments[arguments.index(flag) + 1]
+            self.assertEqual(value("--grid-size"), "32")
+            self.assertEqual(value("--base-subdivisions"), "1")
+            self.assertEqual(value("--wave-amplitude"), "0")
+            self.assertIn("--pivot-origin", arguments)
+            self.assertIn("--no-overlay", arguments)
+            combinations.add((value("--yaw"), value("--zoom"), value("--subdivision-mode")))
+        self.assertEqual(combinations, {
+            (yaw, zoom, mode)
+            for yaw in ("0", "0.785398163")
+            for zoom in ("1", "4")
+            for mode in ("none", "full")
+        })
 
 
 class ArtifactIdentityTest(unittest.TestCase):
