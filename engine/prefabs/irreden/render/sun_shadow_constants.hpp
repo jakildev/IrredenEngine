@@ -8,7 +8,7 @@
 #include <irreden/render/components/component_light_source.hpp>
 #include <irreden/render/cull_viewport_state.hpp>
 
-#include <limits>
+#include <irreden/render/sun_shadow_cascade.hpp>
 
 namespace IRPrefab::SunShadow {
 
@@ -135,19 +135,8 @@ shadowFeederRingNonEmpty(const IRMath::IsoBounds2D &feeder, const IRMath::IsoBou
            IRMath::ivec2(IRMath::ceil(feeder.max_)) != IRMath::ivec2(IRMath::ceil(visible.max_));
 }
 
-// Sun-UV bounding box of the iso-frustum depth slab [@p depthMin, @p depthMax]
-// over @p isoBounds, with every corner ALSO offset by @p sweep (world-frame,
-// = -sunDir * sweepDistance) so off-screen casters within shadow range are
-// enclosed — the box BAKE_SUN_SHADOW_MAP fits its depth map to before the
-// texel-grid snap. Each corner is lifted from the rasterYaw-rotated canvas frame
-// into world frame (rotateCardinalZInv) before projecting onto the sun basis, so
-// the sweep (a world-frame vector) shares the corners' frame; no-op at
-// rasterYaw == 0. @p uHat / @p vHat / @p sunDir are the sun basis from
-// buildOrthonormalBasis; @p cardinalIndex is the rasterYaw cardinal snap.
-// Projects via IRMath::sunSpaceProject — the same projection the bake +
-// receiver shaders use — so the AABB brackets exactly what they will
-// project. Lives in the shared sun-shadow header so a sun-space feeder-density
-// consumer can reuse the bake's exact derivation rather than re-deriving it.
+// Bake coordinates use integer iso corners, truncated toward zero from the
+// fitted viewport. The feeder density uses the same quantization.
 inline IRMath::IsoBounds2D sunBakeFrustumUVBounds(
     const IRMath::IsoBounds2D &isoBounds,
     float depthMin,
@@ -158,38 +147,24 @@ inline IRMath::IsoBounds2D sunBakeFrustumUVBounds(
     IRMath::CardinalIndex cardinalIndex,
     const IRMath::vec3 &sweep
 ) {
-    IRMath::vec2 uvMin(std::numeric_limits<float>::max());
-    IRMath::vec2 uvMax(std::numeric_limits<float>::lowest());
-    for (float depth : {depthMin, depthMax}) {
-        for (int y : {isoBounds.min_.y, isoBounds.max_.y}) {
-            for (int x : {isoBounds.min_.x, isoBounds.max_.x}) {
-                const IRMath::vec3 corner =
-                    IRMath::rotateCardinalZInv(IRMath::isoPixelToPos3D(x, y, depth), cardinalIndex);
-                for (const IRMath::vec3 &offset : {IRMath::vec3(0.0f), sweep}) {
-                    const IRMath::vec3 p = corner + offset;
-                    const IRMath::vec2 uv(IRMath::sunSpaceProject(p, uHat, vHat, sunDir));
-                    uvMin = IRMath::min(uvMin, uv);
-                    uvMax = IRMath::max(uvMax, uv);
-                }
-            }
-        }
-    }
-    return IRMath::IsoBounds2D{uvMin, uvMax};
+    return IRMath::sunFrustumUVBounds(
+        IRMath::ivec2(isoBounds.min_),
+        IRMath::ivec2(isoBounds.max_),
+        depthMin,
+        depthMax,
+        uHat,
+        vHat,
+        sunDir,
+        cardinalIndex,
+        sweep
+    );
 }
 
-// Sun-bake density constants for the shadow-feeder dispatch cap.
-// These MUST match system_bake_sun_shadow_map.hpp (kSunShadowMapDim /
-// kSunShadowCascadeCount / kCascadeSplitRatio) and the bake's local iso-depth
-// clip range — the cap is only meaningful if it reproduces the bake's texel
-// density. Kept here (not in the bake header) so the feeder-density consumer
-// in VOXEL_TO_TRIXEL_STAGE_1 can reuse the exact derivation without pulling the
-// bake system header; a drift here shows as shadow holes in the render-debug
-// loop, which is the required bounded-work contract.
-constexpr int kFeederSunShadowMapDim = 1024;     // == kSunShadowMapDim
-constexpr int kFeederSunShadowCascadeCount = 2;  // == kSunShadowCascadeCount
-constexpr float kFeederCascadeSplitRatio = 0.4f; // == kCascadeSplitRatio
-constexpr float kFeederIsoDepthMin = -256.0f;    // == the bake's local kIsoDepthMin
-constexpr float kFeederIsoDepthMax = 256.0f;     // == the bake's local kIsoDepthMax
+constexpr int kFeederSunShadowMapDim = kSunShadowMapDim;
+constexpr int kFeederSunShadowCascadeCount = kSunShadowCascadeCount;
+constexpr float kFeederCascadeSplitRatio = kCascadeSplitRatio;
+constexpr float kFeederIsoDepthMin = kIsoDepthMin;
+constexpr float kFeederIsoDepthMax = kIsoDepthMax;
 // Render-debug-loop knob: the per-face-edge
 // feeder sample count as a multiple of the bake's texel density. Widen above
 // 1.0 only if validation shows shadow holes at an off-screen-caster boundary.
@@ -224,16 +199,12 @@ feederSubCap(const IRMath::vec3 &sunDir, IRMath::CardinalIndex cardinalIndex, in
     const IRMath::IsoBounds2D isoBounds = cull.isoViewportForCanvas(cull.canvasSize_, 0);
     const IRMath::vec3 sweep = -dir * kSunShadowMaxDistance;
 
-    const float splitDepth =
-        kFeederIsoDepthMin + (kFeederIsoDepthMax - kFeederIsoDepthMin) * kFeederCascadeSplitRatio;
-    const float cascadeMaxDepth[kFeederSunShadowCascadeCount] = {splitDepth, kFeederIsoDepthMax};
-
     int cap = 1;
-    for (int ci = 0; ci < kFeederSunShadowCascadeCount; ++ci) {
+    for (const auto &range : kSunCascadeDepthRanges) {
         const IRMath::IsoBounds2D uv = sunBakeFrustumUVBounds(
             isoBounds,
-            kFeederIsoDepthMin,
-            cascadeMaxDepth[ci],
+            range.min_,
+            range.max_,
             uHat,
             vHat,
             dir,

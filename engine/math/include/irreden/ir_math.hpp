@@ -17,6 +17,7 @@
 #include <bit>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <random>
 #include <stdexcept>
 #include <type_traits>
@@ -1496,6 +1497,37 @@ constexpr Distance pos3DtoDistanceYawed(const vec3 worldPos, float visualYaw) {
 constexpr vec3
 sunSpaceProject(const vec3 pos3D, const vec3 uHat, const vec3 vHat, const vec3 sunDir) {
     return vec3(glm::dot(pos3D, uHat), glm::dot(pos3D, vHat), -glm::dot(pos3D, sunDir));
+}
+
+/// Sun-UV bounds of an integer iso rectangle extruded over [depthMin, depthMax]
+/// and swept by a world-space vector. Iso corners are in the cardinal view
+/// frame; the basis and sweep are in world space.
+inline IsoBounds2D sunFrustumUVBounds(
+    ivec2 isoMin,
+    ivec2 isoMax,
+    float depthMin,
+    float depthMax,
+    const vec3 &uHat,
+    const vec3 &vHat,
+    const vec3 &sunDir,
+    CardinalIndex cardinalIndex,
+    const vec3 &sweep
+) {
+    vec2 uvMin(std::numeric_limits<float>::max());
+    vec2 uvMax(std::numeric_limits<float>::lowest());
+    for (float depth : {depthMin, depthMax}) {
+        for (int y : {isoMin.y, isoMax.y}) {
+            for (int x : {isoMin.x, isoMax.x}) {
+                const vec3 corner = rotateCardinalZInv(isoPixelToPos3D(x, y, depth), cardinalIndex);
+                for (const vec3 &offset : {vec3(0.0f), sweep}) {
+                    const vec2 uv(sunSpaceProject(corner + offset, uHat, vHat, sunDir));
+                    uvMin = glm::min(uvMin, uv);
+                    uvMax = glm::max(uvMax, uv);
+                }
+            }
+        }
+    }
+    return {uvMin, uvMax};
 }
 
 /// Determines which isometric face (X, Y, Z, or NONE) a canvas triangle

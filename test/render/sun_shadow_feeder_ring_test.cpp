@@ -23,6 +23,35 @@ using IRMath::vec2;
 using IRMath::vec3;
 using IRPrefab::SunShadow::shadowFeederRingNonEmpty;
 
+TEST(SunShadowCascadePolicy, FarRangeIncludesNearAndFeederAliasesMatch) {
+    using namespace IRPrefab::SunShadow;
+    ASSERT_EQ(kSunCascadeDepthRanges.size(), 2u);
+    EXPECT_EQ(kSunCascadeDepthRanges[0].min_, kSunCascadeDepthRanges[1].min_);
+    EXPECT_EQ(kSunCascadeDepthRanges[0].max_, kCascadeSplitDepth);
+    EXPECT_LT(kSunCascadeDepthRanges[0].max_, kSunCascadeDepthRanges[1].max_);
+    EXPECT_EQ(kFeederSunShadowMapDim, kSunShadowMapDim);
+    EXPECT_EQ(kFeederSunShadowCascadeCount, kSunShadowCascadeCount);
+    EXPECT_EQ(kFeederCascadeSplitRatio, kCascadeSplitRatio);
+    EXPECT_EQ(kFeederIsoDepthMin, kSunCascadeDepthRanges.front().min_);
+    EXPECT_EQ(kFeederIsoDepthMax, kSunCascadeDepthRanges.back().max_);
+}
+
+TEST(SunShadowCascadePolicy, FractionalViewportKeepsBakeCornerQuantization) {
+    const IsoBounds2D viewport{vec2(-6.75f, -12.5f), vec2(12.25f, 18.75f)};
+    const auto bounds = IRPrefab::SunShadow::sunBakeFrustumUVBounds(
+        viewport,
+        -3,
+        9,
+        {1, 0, 0},
+        {0, 1, 0},
+        {0, 0, -1},
+        IRMath::CardinalIndex::k0,
+        {0, 0, 0}
+    );
+    EXPECT_EQ(bounds.min_, vec2(-10, -7));
+    EXPECT_EQ(bounds.max_, vec2(8, 11));
+}
+
 namespace {
 
 // A representative visible cull box. Deliberately NOT integer-aligned:

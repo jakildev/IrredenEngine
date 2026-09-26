@@ -52,21 +52,11 @@ using namespace IRRender;
 
 namespace IRSystem {
 
-// Must match `kSunShadowMapDim` in ir_sun_projection.glsl /
-// c_clear_sun_shadow_map.glsl (and Metal counterparts).
-constexpr int kSunShadowMapDim = 1024;
-// `kSunShadowMaxDistance` (the AABB-sweep length, also consumed by the iso
-// rasterizers' shadow-feeder cull) lives in `sun_shadow_constants.hpp` so
-// both producers stay in lockstep.
+using IRPrefab::SunShadow::kCascadeSplitRatio;
+using IRPrefab::SunShadow::kSunShadowCascadeCount;
+using IRPrefab::SunShadow::kSunShadowMapDim;
 using IRPrefab::SunShadow::kSunShadowMaxDistance;
 constexpr int kBakeSunShadowGroupSize = 16;
-constexpr int kSunShadowCascadeCount = 2;
-static_assert(
-    kSunShadowMapDim == IRPrefab::SunShadow::kSourceFaceMapDimension &&
-        kSunShadowCascadeCount == IRPrefab::SunShadow::kSourceFaceCascadeCount,
-    "Source face query storage must follow the complete sun depth map"
-);
-constexpr float kCascadeSplitRatio = 0.4f;
 // coverage-splat radius (sun texels): c_bake_sun_shadow_map atomicMin's
 // each caster's depth into a (2·r+1)² box, filling the sun texels a grazing /
 // point-scattered caster footprint leaves empty (the moth-eaten cast-shadow
@@ -749,18 +739,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         const ivec2 canvasSize = cull.canvasSize_;
         const IsoBounds2D isoBounds = cull.isoViewportForCanvas(canvasSize, 0);
 
-        constexpr float kIsoDepthMin = -256.0f;
-        constexpr float kIsoDepthMax = 256.0f;
-        const float splitDepth = kIsoDepthMin + (kIsoDepthMax - kIsoDepthMin) * kCascadeSplitRatio;
-
-        struct CascadeDepthRange {
-            float min_;
-            float max_;
-        };
-        const CascadeDepthRange cascadeRanges[kSunShadowCascadeCount] = {
-            {kIsoDepthMin, splitDepth},
-            {kIsoDepthMin, kIsoDepthMax},
-        };
+        const auto &cascadeRanges = IRPrefab::SunShadow::kSunCascadeDepthRanges;
 
         const vec3 sweep = -sunDir * kSunShadowMaxDistance;
         constexpr float kAABBPad = 1.0f;
@@ -811,7 +790,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
                 frameData_.cascadeTexelSize_1_ = texelSize;
             }
         }
-        frameData_.cascadeSplitDepth_ = splitDepth;
+        frameData_.cascadeSplitDepth_ = IRPrefab::SunShadow::kCascadeSplitDepth;
         frameData_.cascadeCount_ = kSunShadowCascadeCount;
 
         // coverage-splat radius / kill switch. c_bake_sun_shadow_map
