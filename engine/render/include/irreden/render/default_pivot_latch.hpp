@@ -61,7 +61,7 @@ defaultPivotCrosshairCanvasTexel(const DefaultPivotSourceFrame &frame, IRMath::i
 // store, read off a 3×3 block of main-canvas texels centered on the crosshair
 // estimate: @p distances holds each texel's stored key and @p voxelStoreTexels
 // whether its winning entity is a voxel-store one — nullopt for an entity that
-// is neither store's (RenderManager::texelSubjectIsVoxelStore). On the
+// is neither store's or both (RenderManager::texelSubjectIsVoxelStore). On the
 // cardinal path the composite copies the canvas distance texel for texel, so
 // the texels holding @p sampledEncodedDepth are the ones the sample can have
 // come from.

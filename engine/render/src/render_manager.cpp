@@ -419,13 +419,12 @@ std::optional<bool> RenderManager::crosshairWinnerIsVoxelStore(int sampledEncode
 }
 
 std::optional<bool> RenderManager::texelSubjectIsVoxelStore(EntityId entityId) {
-    if (IREntity::getComponentOptional<C_ShapeDescriptor>(entityId).has_value()) {
-        return false;
+    const bool isShape = IREntity::getComponentOptional<C_ShapeDescriptor>(entityId).has_value();
+    const bool isVoxelSet = IREntity::getComponentOptional<C_VoxelSetNew>(entityId).has_value();
+    if (isShape == isVoxelSet) {
+        return std::nullopt;
     }
-    if (IREntity::getComponentOptional<C_VoxelSetNew>(entityId).has_value()) {
-        return true;
-    }
-    return std::nullopt;
+    return isVoxelSet;
 }
 
 void RenderManager::setVoxelRenderSubdivisions(int subdivisions) {

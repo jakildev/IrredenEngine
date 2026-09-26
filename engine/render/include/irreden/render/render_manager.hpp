@@ -83,7 +83,8 @@ class RenderManager {
     // (C_ShapeDescriptor), nullopt for anything else. The texel belongs to the
     // previous rendered frame and UPDATE destroys entities in between, so a
     // dead id is common, and ids never recycle — nullopt is its only honest
-    // answer.
+    // answer. An entity carrying both components is nullopt too: either store
+    // can write its id, so the id does not say which one won the texel.
     static std::optional<bool> texelSubjectIsVoxelStore(EntityId entityId);
     // Iso coordinate of the main canvas center with no camera applied.
     vec2 getCanvasCenterIso() const;

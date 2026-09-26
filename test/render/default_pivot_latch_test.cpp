@@ -767,6 +767,29 @@ TEST_F(DefaultPivotTexelSubject, OnlyALiveStoreEntityEstablishesItsStore) {
     );
 }
 
+TEST_F(DefaultPivotTexelSubject, AnEntityInBothStoresHolds) {
+    // Either store can write the id of an entity carrying both components, so
+    // the id does not establish which one won the texel.
+    const IREntity::EntityId both =
+        IREntity::createEntity(IRComponents::C_ShapeDescriptor{}, IRComponents::C_VoxelSetNew{});
+    const std::optional<bool> subject = IRRender::RenderManager::texelSubjectIsVoxelStore(both);
+    EXPECT_EQ(subject, std::nullopt);
+
+    TexelSubjects subjects{};
+    subjects.fill(subject);
+    const std::array<int, 9> flatBlock = {186, 186, 186, 186, 186, 186, 186, 186, 186};
+    const std::optional<bool> classified =
+        IRRender::defaultPivotSampledSubjectIsVoxelStore(flatBlock, subjects, 186);
+    EXPECT_EQ(classified, std::nullopt);
+
+    const float held = kDepthStart - DefaultPivotLatch::kCardinalStoreLatticeDepth;
+    for (const float yaw : {0.0f, IRMath::kHalfPi, kPi, -IRMath::kHalfPi}) {
+        const DefaultPivotLatch latch = latchReacquiredFrom(yaw, classified);
+        EXPECT_EQ(latch.isoDepth(), held) << "yaw=" << yaw;
+        EXPECT_EQ(latch.viewOffsetIso(), vec2(0.0f)) << "yaw=" << yaw;
+    }
+}
+
 TEST_F(DefaultPivotTexelSubject, APriorFrameSdfWinnerDestroyedBeforeAcquisitionHolds) {
     // The canvas still holds the frame the SDF entity won, key and id at every
     // texel of the block; UPDATE destroys the entity before beginFrame reads

@@ -129,7 +129,8 @@ helper.
      applies a branch on a subject it has not established: when no texel in
      the block holds the sampled key, when one that does names neither store
      (the previous frame's id of an entity UPDATE destroyed before the
-     readback), when the texels that do disagree on subject (a voxel/SDF seam
+     readback) or both (an entity carrying both components, whose id either
+     store can write), when the texels that do disagree on subject (a voxel/SDF seam
      at equal key), or when the block reaches past the canvas edge, the latch **holds** its
      previous anchor, as it does for a background sample. The branch exists only for
      the voxel/SDF store disagreement (§"Known deviations" 2, #3742) and goes
@@ -676,4 +677,6 @@ which is what still catches an SDF-side pivot regression (#2851).
   block past the canvas edge) had classified an unestablished subject; they,
   and key-matching texels that disagree on subject, now hold. So does a
   key-matching texel whose id is neither a live voxel set nor a live shape: the
-  id of a winner destroyed since its frame had read as the voxel store.
+  id of a winner destroyed since its frame had read as the voxel store — and
+  one whose entity carries both a voxel set and a shape, whose id does not say
+  which store wrote it.
