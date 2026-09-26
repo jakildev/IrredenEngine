@@ -232,9 +232,16 @@ const uint kEntityIdCutFaceMaskInHighWord = 0x1u << 29u;
 // SHAPE_FLAG_FOG_WHOLE_BODY_EXEMPT) so FOG_TO_TRIXEL fogs it on XY distance
 // alone, with no height penalty. Same masking chokepoint as the bits above.
 const uint kEntityIdFogWholeBodyMaskInHighWord = 0x1u << 28u;
+// Analytic-surface carrier: bit 19 of the high word flags a pixel the shape
+// raster wrote — an exact world surface point — as opposed to a voxel raster
+// point on the lower-corner cell lattice. FOG_TO_TRIXEL's line-of-sight gate
+// maps the two onto one occluder lattice. Entity ids occupy the low word plus
+// the flag bits 0..2 of the high word, so bit 19 never carries id state. Same
+// masking chokepoint as the bits above.
+const uint kEntityIdAnalyticSurfaceMaskInHighWord = 0x1u << 19u;
 const uint kEntityIdHighWordMask =
     ~(kEntityIdPriorityMaskInHighWord | kEntityIdCutFaceMaskInHighWord |
-      kEntityIdFogWholeBodyMaskInHighWord);
+      kEntityIdFogWholeBodyMaskInHighWord | kEntityIdAnalyticSurfaceMaskInHighWord);
 uint decodePriority(uvec2 rawId) {
     return (rawId.y >> kEntityIdPriorityShiftInHighWord) & 0x3u;
 }
@@ -243,6 +250,9 @@ bool decodeCutFace(uvec2 rawId) {
 }
 bool decodeFogWholeBody(uvec2 rawId) {
     return (rawId.y & kEntityIdFogWholeBodyMaskInHighWord) != 0u;
+}
+bool decodeAnalyticSurface(uvec2 rawId) {
+    return (rawId.y & kEntityIdAnalyticSurfaceMaskInHighWord) != 0u;
 }
 uvec2 decodeEntityId(uvec2 rawId) {
     return uvec2(rawId.x, rawId.y & kEntityIdHighWordMask);
@@ -266,6 +276,11 @@ uvec2 encodeEntityIdFogWholeBody(uvec2 packedId, bool isFogWholeBody) {
     return isFogWholeBody
         ? uvec2(packedId.x, packedId.y | kEntityIdFogWholeBodyMaskInHighWord)
         : packedId;
+}
+// Set the analytic-surface flag on an ALREADY priority-encoded id, like
+// encodeEntityIdCutFace.
+uvec2 encodeEntityIdAnalyticSurface(uvec2 packedId) {
+    return uvec2(packedId.x, packedId.y | kEntityIdAnalyticSurfaceMaskInHighWord);
 }
 
 // Per-axis fractional encoding:

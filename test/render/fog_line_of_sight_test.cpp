@@ -1,8 +1,8 @@
 // FogLineOfSight exercises the CPU half of the fog line-of-sight model
 // (component_canvas_fog_of_war.hpp states it; fog_line_of_sight.hpp implements
-// it): the column rasteriser, the supercover horizon trace, the per-source
-// horizon build and the field gate the reveal oracle reads. Headless — the
-// builder works on plain vectors, and the shape rasteriser needs only an
+// it): the half-cell column raster, the exact segment march, the softness
+// band and the oracle the reveal evaluator reads. Headless — the raster and
+// the march work on plain vectors, and the shape raster needs only an
 // EntityManager.
 
 #include <gtest/gtest.h>
@@ -14,7 +14,6 @@
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 
 #include <cstddef>
-#include <cstdint>
 #include <fstream>
 #include <regex>
 #include <sstream>
@@ -29,113 +28,145 @@ using IRComponents::C_LightBlocker;
 using IRComponents::C_ShapeDescriptor;
 using IRComponents::C_VoxelPool;
 using IRComponents::C_WorldTransform;
-using IRComponents::FogLineOfSightField;
-using IRComponents::FogLosEyeHeights;
+using IRComponents::FogLosColumnField;
 using IRComponents::FrameDataFogObservers;
+using IRComponents::kFogLosClearanceTolerance;
 using IRComponents::kFogLosColumnEmpty;
-using IRComponents::kFogLosHorizonClear;
-using IRComponents::kFogOfWarHalfExtent;
+using IRComponents::kFogLosFieldHalfExtent;
+using IRComponents::kFogLosHardGate;
 using IRMath::ivec2;
 using IRMath::ivec3;
 using IRMath::vec2;
 using IRMath::vec3;
 using IRMath::vec4;
+using IRPrefab::Fog::LosRasterFrame;
 
-std::vector<std::int32_t> emptyColumns() {
-    return std::vector<std::int32_t>(IRComponents::kFogLosColumnCount, kFogLosColumnEmpty);
+std::vector<float> emptyField() {
+    return std::vector<float>(IRComponents::kFogLosFieldFloatCount, kFogLosColumnEmpty);
 }
 
-void setColumn(std::vector<std::int32_t> &columns, int x, int y, int top) {
-    columns[C_CanvasFogOfWar::flatIndex(x, y)] = top;
+std::vector<float> flatField(float topPlane) {
+    return std::vector<float>(IRComponents::kFogLosFieldFloatCount, topPlane);
 }
 
-std::vector<std::int32_t> flatColumns(int top) {
-    std::vector<std::int32_t> columns(IRComponents::kFogLosColumnCount, top);
-    return columns;
+LosRasterFrame subdividedFrame() {
+    LosRasterFrame frame;
+    frame.subdivisions_ = 8;
+    return frame;
 }
 
-// The shared scene: flat ground at `groundTop`, a ridge four voxels above it
-// at x 0..1, y -7..8 (the fog_demo --occlusion ridge), and a free-standing
-// tower at (-2, 5) ten voxels above the ground.
-constexpr int kGroundTop = 4;
+void stampVoxel(std::vector<float> &field, vec3 position, const LosRasterFrame &frame) {
+    vec3 boxMin;
+    vec3 boxMax;
+    IRPrefab::Fog::losVoxelBox(position, frame, boxMin, boxMax);
+    IRPrefab::Fog::stampLosBox(field, vec2(boxMin), vec2(boxMax), boxMin.z);
+    IRPrefab::Fog::buildLosPyramid(field);
+}
 
-std::vector<std::int32_t> ridgeColumns(int shift = 0) {
-    std::vector<std::int32_t> columns = flatColumns(kGroundTop + shift);
-    for (int y = -7; y <= 8; ++y) {
-        for (int x = 0; x <= 1; ++x) {
-            setColumn(columns, x, y, kGroundTop - 4 + shift);
-        }
+float topAt(const std::vector<float> &field, int halfCellX, int halfCellY) {
+    return FogLosColumnField{field.data()}.topPlane(halfCellX, halfCellY);
+}
+
+// The fog_demo --occlusion scene as the subdivided raster draws it: slab top
+// voxels with centre z 4 (top plane 4), the ridge's even-sized set at
+// x {-0.5, 0.5}, y -7.5..7.5, top voxel centre -0.5 (top plane -0.5, box
+// x -0.5..1.5, y -7.5..8.5), and a free-standing tower at (-2, 5) ten voxels
+// above the ground.
+constexpr float kGroundTop = 4.0f;
+constexpr float kRidgeTop = -0.5f;
+const vec3 kGroundEye(-6.0f, 0.0f, 3.0f);
+const vec3 kRidgeEye(0.0f, 0.0f, -2.0f);
+
+std::vector<float> ridgeField(float shift = 0.0f) {
+    std::vector<float> field = flatField(kGroundTop + shift);
+    const LosRasterFrame frame = subdividedFrame();
+    for (int row = -7; row <= 8; ++row) {
+        const float y = static_cast<float>(row) - 0.5f;
+        stampVoxel(field, vec3(-0.5f, y, kRidgeTop + shift), frame);
+        stampVoxel(field, vec3(0.5f, y, kRidgeTop + shift), frame);
     }
-    setColumn(columns, -2, 5, kGroundTop - 10 + shift);
-    return columns;
+    stampVoxel(field, vec3(-2.0f, 5.0f, kGroundTop - 10.0f + shift), frame);
+    return field;
 }
 
-float horizon(const std::vector<std::int32_t> &columns, vec3 eye, ivec2 target) {
-    return IRPrefab::Fog::traceLosHorizon(columns, eye, target);
+bool clear(const std::vector<float> &field, vec3 eye, vec3 target) {
+    float bandClearance = 0.0f;
+    const float minClearance = IRPrefab::Fog::traceLosClearance(
+        FogLosColumnField{field.data()},
+        eye,
+        target,
+        kFogLosHardGate,
+        bandClearance
+    );
+    return minClearance >= -kFogLosClearanceTolerance;
 }
 
-bool visible(const std::vector<std::int32_t> &columns, vec3 eye, ivec3 sample) {
-    return static_cast<float>(sample.z) <= horizon(columns, eye, ivec2(sample));
-}
-
-FrameDataFogObservers gatedSources(std::initializer_list<vec4> circles, float observerZ) {
+FrameDataFogObservers gatedSources(
+    std::initializer_list<vec4> circles, float observerZ, float eyeHeight, float softness = 0.0f
+) {
     FrameDataFogObservers observers{};
     for (const vec4 &circle : circles) {
-        const int slot = observers.visionCircleCount_++;
-        observers.visionCircles_[slot] = circle;
-        observers.visionCircleHeights_[slot] = vec4(observerZ, 0.0f, 0.0f, 0.0f);
-        observers.losSourceMask_ |= 1 << slot;
+        const int slot = C_CanvasFogOfWar::addVisionCircle(
+            observers,
+            circle.x,
+            circle.y,
+            circle.z,
+            circle.w,
+            observerZ,
+            0.0f,
+            0.0f,
+            0.0f
+        );
+        C_CanvasFogOfWar::setVisionCircleLineOfSight(observers, slot, eyeHeight, softness);
     }
     return observers;
 }
 
-std::vector<float> buildField(
+float visibility(
+    const std::vector<float> &field,
     const FrameDataFogObservers &observers,
-    const FogLosEyeHeights &eyes,
-    const std::vector<std::int32_t> &columns
+    int source,
+    vec3 position
 ) {
-    std::vector<float> horizons(IRComponents::kFogLosHorizonCount, 0.0f);
-    IRPrefab::Fog::buildLosHorizons(observers, eyes, columns, horizons);
-    return horizons;
-}
-
-FogLosEyeHeights eyesOf(float height) {
-    FogLosEyeHeights eyes{};
-    eyes.fill(height);
-    return eyes;
+    return IRPrefab::Fog::losVisibility(
+        FogLosColumnField{field.data()},
+        observers,
+        source,
+        position
+    );
 }
 
 } // namespace
 
-// Flat ground never hides itself: every in-disc top voxel (the height a top-face
-// pixel recovers exactly) passes, across fractional eye heights and centres
-// (one on a negative half-integer) and integer translations of the whole scene.
-// Mutation control: adding a `- 0.5f` surface offset to the column top in
-// `traceLosHorizon` fails this beyond the near cells.
-TEST(FogLineOfSightTest, FlatSlabRemainsVisible) {
+// Flat ground never hides itself: samples resting on the plane pass hard and
+// soft, across fractional eye heights and centres (one on a negative
+// half-integer) and translations of the whole scene. Mutation control: letting
+// the sample's own surface into the softness band fails the soft half beyond
+// the eye's cell.
+TEST(FogLineOfSightTest, FlatGroundRemainsVisible) {
     constexpr float kRadius = 32.0f;
     int probed = 0;
-    for (const int top : {4, 0, -1024, 1024}) {
-        const std::vector<std::int32_t> columns = flatColumns(top);
-        for (const float eyeHeight : {1.5f, 0.5f, 0.73f, 2.25f, 0.0f}) {
+    for (const float top : {4.0f, 0.0f, -1024.0f, 1024.0f}) {
+        const std::vector<float> field = flatField(top);
+        for (const float eyeHeight : {1.5f, 0.5f, 0.73f, 2.25f, 0.05f}) {
             for (const vec2 centre : {vec2(0.0f), vec2(0.37f, -0.61f), vec2(-2.5f, -3.5f)}) {
-                const FrameDataFogObservers observers =
-                    gatedSources({vec4(centre, kRadius, 0.0f)}, static_cast<float>(top));
-                const FogLosEyeHeights eyes = eyesOf(eyeHeight);
-                const std::vector<float> horizons = buildField(observers, eyes, columns);
-                const FogLineOfSightField field{horizons.data()};
-                const vec3 eye(centre, static_cast<float>(top) - eyeHeight);
-                for (int y = -40; y <= 40; ++y) {
-                    for (int x = -40; x <= 40; ++x) {
-                        if (IRMath::length(vec2(x, y) - centre) > kRadius) {
-                            continue;
+                for (const float softness : {kFogLosHardGate, 1.0f}) {
+                    const FrameDataFogObservers observers =
+                        gatedSources({vec4(centre, kRadius, 0.0f)}, top, eyeHeight, softness);
+                    for (float y = -40.0f; y <= 40.0f; y += 0.5f) {
+                        for (float x = -40.0f; x <= 40.0f; x += 0.5f) {
+                            const vec2 sample(x + 0.13f, y - 0.29f);
+                            if (IRMath::length(sample - centre) > kRadius) {
+                                continue;
+                            }
+                            ++probed;
+                            ASSERT_FLOAT_EQ(
+                                visibility(field, observers, 0, vec3(sample, top)),
+                                1.0f
+                            ) << "flat ground hid itself at ("
+                              << sample.x << ", " << sample.y << ") top " << top << " eye height "
+                              << eyeHeight << " softness " << softness;
                         }
-                        ++probed;
-                        ASSERT_TRUE(visible(columns, eye, ivec3(x, y, top)))
-                            << "flat ground hid its own top voxel at (" << x << ", " << y
-                            << ") top " << top << " eye height " << eyeHeight;
-                        ASSERT_TRUE(field.visible(0, ivec3(x, y, top)))
-                            << "the built field hid flat ground at (" << x << ", " << y << ")";
                     }
                 }
             }
@@ -144,126 +175,182 @@ TEST(FogLineOfSightTest, FlatSlabRemainsVisible) {
     EXPECT_GT(probed, 0);
 }
 
-// The eye's cell is `roundHalfUp` of the eye: at (-2.5, -3.5) that is (-2, -3),
-// not std::round's (-3, -4). A tower in the eye's own cell never occludes.
-TEST(FogLineOfSightTest, NegativeHalfIntegerEyeRoundsHalfUp) {
-    std::vector<std::int32_t> columns = flatColumns(kGroundTop);
-    setColumn(columns, -2, -3, -20);
-    const vec3 eye(-2.5f, -3.5f, 2.0f);
-    EXPECT_TRUE(visible(columns, eye, ivec3(3, -3, kGroundTop)))
-        << "the eye's own (round-half-up) cell occluded the ray";
+// The eye's own half-cell never occludes, whatever stands in it; the next
+// half-cell along the ray does.
+TEST(FogLineOfSightTest, EyeCellNeverOccludes) {
+    std::vector<float> field = flatField(kGroundTop);
+    const vec3 eye(-2.3f, -3.4f, 2.0f);
+    IRPrefab::Fog::stampLosBox(field, vec2(-2.5f, -3.5f), vec2(-2.0f, -3.0f), -20.0f);
+    IRPrefab::Fog::buildLosPyramid(field);
+    EXPECT_TRUE(clear(field, eye, vec3(3.0f, -3.4f, kGroundTop)))
+        << "the eye's own half-cell occluded the ray";
 
-    setColumn(columns, -1, -3, -20);
-    EXPECT_FALSE(visible(columns, eye, ivec3(3, -3, kGroundTop)))
-        << "control: a tower one cell along the ray must occlude";
+    IRPrefab::Fog::stampLosBox(field, vec2(-2.0f, -3.5f), vec2(-1.5f, -3.0f), -20.0f);
+    IRPrefab::Fog::buildLosPyramid(field);
+    EXPECT_FALSE(clear(field, eye, vec3(3.0f, -3.4f, kGroundTop)))
+        << "control: a tower one half-cell along the ray must occlude";
 }
 
-TEST(FogLineOfSightTest, SameCellAndOutOfFieldAreClear) {
-    const std::vector<std::int32_t> columns = flatColumns(-100);
-    EXPECT_EQ(horizon(columns, vec3(3.2f, 4.4f, 0.0f), ivec2(3, 4)), kFogLosHorizonClear);
+TEST(FogLineOfSightTest, SameCellOutOfFieldAndUnpublishedAreClear) {
+    const std::vector<float> field = flatField(-100.0f);
+    EXPECT_TRUE(clear(field, vec3(3.2f, 4.4f, 0.0f), vec3(3.4f, 4.3f, 50.0f)))
+        << "a target in the eye's half-cell is never occluded";
+    EXPECT_TRUE(clear(emptyField(), vec3(0.0f), vec3(kFogLosFieldHalfExtent + 4.0f, 0.0f, 0.0f)))
+        << "out-of-field columns are empty";
 
-    const std::vector<float> horizons(IRComponents::kFogLosHorizonCount, -1000.0f);
-    const FogLineOfSightField field{horizons.data()};
-    EXPECT_TRUE(field.visible(0, ivec3(kFogOfWarHalfExtent, 0, 0)));
-    EXPECT_TRUE(field.visible(7, ivec3(0, -kFogOfWarHalfExtent - 1, 0)));
-    EXPECT_FALSE(field.visible(7, ivec3(0, -kFogOfWarHalfExtent, 0)));
-    EXPECT_FALSE(FogLineOfSightField{}.visible(0, ivec3(0))) << "an unpublished field is closed";
+    const FrameDataFogObservers observers =
+        gatedSources({vec4(0.0f, 0.0f, 10.0f, 0.0f)}, 0.0f, 1.0f);
+    EXPECT_FLOAT_EQ(
+        IRPrefab::Fog::losVisibility(FogLosColumnField{}, observers, 0, vec3(1.0f)),
+        0.0f
+    ) << "an unpublished field is closed";
+    EXPECT_FLOAT_EQ(visibility(field, observers, 0, vec3(40.0f, 0.0f, 0.0f)), 1.0f)
+        << "past the source's reach nothing is gated";
 }
 
-// An exact corner crossing visits both side cells: a tower on either side of
-// the diagonal occludes the target.
-TEST(FogLineOfSightTest, CornerTieVisitsBothSideCells) {
-    const vec3 eye(0.0f, 0.0f, 2.0f);
-    const ivec3 target(2, 2, kGroundTop);
-    EXPECT_TRUE(visible(emptyColumns(), eye, target));
-    for (const ivec2 side : {ivec2(1, 0), ivec2(0, 1), ivec2(2, 1), ivec2(1, 2)}) {
-        std::vector<std::int32_t> columns = emptyColumns();
-        setColumn(columns, side.x, side.y, -20);
-        EXPECT_FALSE(visible(columns, eye, target))
-            << "side cell (" << side.x << ", " << side.y << ") of the corner tie was skipped";
-    }
-    std::vector<std::int32_t> offRay = emptyColumns();
-    setColumn(offRay, 2, 0, -20);
-    EXPECT_TRUE(visible(offRay, eye, target)) << "control: a tower off the ray must not occlude";
-}
-
-// The ridge scene: ground behind the ridge hides from a ground observer, the
-// near ground and a tower top above the ridge's shadow line stay visible, and
-// the same far ground reveals from the ridge top.
+// The ridge scene from the ground: the near slab and the ridge's facing wall
+// are visible, the slab behind it and the ridge's top (the eye is below it)
+// are hidden, and a tower top above the ridge's shadow line stays visible.
+// From the ridge top the far slab reveals while the strip at the ridge's base
+// stays in its shadow.
 TEST(FogLineOfSightTest, RidgeHidesWhatIsBehindItFromTheGround) {
-    const std::vector<std::int32_t> columns = ridgeColumns();
-    const vec3 groundEye(-6.0f, 0.0f, 3.0f);
-    EXPECT_TRUE(visible(columns, groundEye, ivec3(-3, 0, kGroundTop)));
-    EXPECT_TRUE(visible(columns, groundEye, ivec3(0, 0, kGroundTop - 4)))
-        << "the ridge's near top voxel faces the eye";
-    EXPECT_FALSE(visible(columns, groundEye, ivec3(6, 0, kGroundTop)));
-    EXPECT_TRUE(visible(columns, groundEye, ivec3(6, 0, -10)))
+    const std::vector<float> field = ridgeField();
+    EXPECT_TRUE(clear(field, kGroundEye, vec3(-3.0f, 0.0f, kGroundTop)));
+    EXPECT_TRUE(clear(field, kGroundEye, vec3(-0.52f, 0.0f, 1.0f)))
+        << "the ridge's facing wall, a hair out of the face, is visible";
+    EXPECT_FALSE(clear(field, kGroundEye, vec3(-0.25f, 0.0f, kRidgeTop)))
+        << "a wall top seen from below is hidden";
+    EXPECT_FALSE(clear(field, kGroundEye, vec3(6.0f, 0.0f, kGroundTop)));
+    EXPECT_TRUE(clear(field, kGroundEye, vec3(6.0f, 0.0f, -10.0f)))
         << "a tower top above the ridge's shadow line stays visible";
 
-    const vec3 ridgeEye(0.0f, 0.0f, -1.0f);
-    EXPECT_TRUE(visible(columns, ridgeEye, ivec3(6, 0, kGroundTop)));
-    EXPECT_FALSE(visible(columns, ridgeEye, ivec3(2, 0, kGroundTop)))
+    EXPECT_TRUE(clear(field, kRidgeEye, vec3(0.75f, 0.0f, kRidgeTop)))
+        << "the ridge top is visible from an eye above it";
+    EXPECT_FALSE(clear(field, kRidgeEye, vec3(3.0f, 0.0f, kGroundTop)))
         << "the strip at the ridge's base is in its own shadow";
+    EXPECT_TRUE(clear(field, kRidgeEye, vec3(10.0f, 0.0f, kGroundTop)));
 
-    EXPECT_TRUE(visible(flatColumns(kGroundTop), groundEye, ivec3(6, 0, kGroundTop)))
+    EXPECT_TRUE(clear(flatField(kGroundTop), kGroundEye, vec3(6.0f, 0.0f, kGroundTop)))
         << "control: without the ridge the far ground is visible";
 }
 
-// `lineOfSight`'s core — the trace over the same columns — agrees with the
-// built field at every finite horizon: floor(H) visible, floor(H) + 1 hidden,
-// and the stored value is the trace's exact float. Across Z translations.
-TEST(FogLineOfSightTest, PointQueryAgreesWithFieldAtCellCentres) {
-    for (const int shift : {0, -1024, 1024}) {
-        const std::vector<std::int32_t> columns = ridgeColumns(shift);
-        const FrameDataFogObservers observers = gatedSources(
-            {vec4(-6.0f, 0.0f, 14.0f, 0.0f), vec4(0.0f, 0.0f, 14.0f, 0.0f)},
-            static_cast<float>(kGroundTop + shift) + 0.5f
-        );
-        FogLosEyeHeights eyes = eyesOf(2.0f);
-        eyes[1] = 1.5f;
-        const std::vector<float> horizons = buildField(observers, eyes, columns);
-        const FogLineOfSightField field{horizons.data()};
-        int finite = 0;
-        for (int source = 0; source < 2; ++source) {
-            const vec3 eye = IRPrefab::Fog::losEye(observers, eyes, source);
-            const vec4 circle = observers.visionCircles_[source];
-            const float reach = IRPrefab::Fog::losBuildReach(circle);
-            for (int y = -20; y <= 20; ++y) {
-                for (int x = -20; x <= 20; ++x) {
-                    if (IRMath::length(vec2(x, y) - vec2(circle)) > reach) {
-                        continue;
-                    }
-                    const float stored = horizons[FogLineOfSightField::horizonIndex(source, x, y)];
-                    ASSERT_EQ(stored, horizon(columns, eye, ivec2(x, y)))
-                        << "field and point trace disagree at (" << x << ", " << y << ")";
-                    if (stored == kFogLosHorizonClear) {
-                        continue;
-                    }
-                    ++finite;
-                    const int floorZ = static_cast<int>(IRMath::floor(stored));
-                    EXPECT_TRUE(field.visible(source, ivec3(x, y, floorZ)));
-                    EXPECT_FALSE(field.visible(source, ivec3(x, y, floorZ + 1)));
-                    EXPECT_TRUE(visible(columns, eye, ivec3(x, y, floorZ)));
-                    EXPECT_FALSE(visible(columns, eye, ivec3(x, y, floorZ + 1)));
-                }
-            }
-        }
-        EXPECT_GT(finite, 0) << "the fixture has no finite horizon";
+// The shadow's edges are straight lines: along the ridge's flank the verdict
+// flips exactly where the segment leaves the ridge's footprint, and behind a
+// plateau exactly where the segment clears its top plane.
+TEST(FogLineOfSightTest, ShadowEdgesAreExactLines) {
+    const std::vector<float> field = ridgeField();
+    // The ridge spans y -7.5..8.5; from the ground eye at (-6, 0) a segment to
+    // (2, y) crosses the ridge's near face (x = -0.5) at y * 5.5 / 8.
+    for (const float y : {12.0f, 12.4f, 13.0f, 20.0f}) {
+        const bool inside = y * 5.5f / 8.0f < 8.5f;
+        EXPECT_EQ(clear(field, kGroundEye, vec3(2.0f, y, kGroundTop)), !inside)
+            << "flank at y " << y;
+    }
+    // From the ridge eye 1.5 above the top, the plateau's far edge (x = 1.5)
+    // hides the ground until x = 6 and no farther.
+    for (const float x : {2.0f, 5.9f, 6.1f, 8.0f}) {
+        EXPECT_EQ(clear(field, kRidgeEye, vec3(x, 0.0f, kGroundTop)), x > 6.0f)
+            << "far edge at x " << x;
     }
 }
 
-// Every lane of the RGBA32F tiles is addressed independently: each of the
-// eight sources sits at its own spot, and at least one probe per lane differs
-// from the next lane's verdict, so a swapped channel or tile fails here.
-TEST(FogLineOfSightTest, EightSourcesUseIndependentLanes) {
-    const std::vector<std::int32_t> columns = ridgeColumns();
+// Softness grades the far edge behind a plateau over the clearance band and
+// never softens a flank, a sample's own surface, or a hard-blocked sample.
+TEST(FogLineOfSightTest, SoftnessGradesTheFarEdgeOnly) {
+    const std::vector<float> field = ridgeField();
+    const FrameDataFogObservers observers =
+        gatedSources({vec4(0.0f, 0.0f, 14.0f, 0.0f)}, kRidgeTop, 1.5f, 1.0f);
+    EXPECT_FLOAT_EQ(visibility(field, observers, 0, vec3(3.0f, 0.0f, kGroundTop)), 0.0f)
+        << "a blocked sample stays 0 under softness";
+    const float nearEdge = visibility(field, observers, 0, vec3(6.5f, 0.0f, kGroundTop));
+    const float farther = visibility(field, observers, 0, vec3(8.0f, 0.0f, kGroundTop));
+    EXPECT_GT(nearEdge, 0.0f);
+    EXPECT_LT(nearEdge, 1.0f);
+    EXPECT_GT(farther, nearEdge) << "the band rises with clearance";
+    // The segment to x = 20 clears the ridge's far edge by 1.05, past the band.
+    EXPECT_FLOAT_EQ(visibility(field, observers, 0, vec3(20.0f, 0.0f, kGroundTop)), 1.0f)
+        << "well past the band the sample is fully visible";
+
+    FrameDataFogObservers hard = observers;
+    C_CanvasFogOfWar::setVisionCircleLineOfSight(hard, 0, 1.5f, kFogLosHardGate);
+    EXPECT_FLOAT_EQ(visibility(field, hard, 0, vec3(6.5f, 0.0f, kGroundTop)), 1.0f)
+        << "the hard gate is a step at the same edge";
+
+    // From the ground, the ridge's flank stays a step under softness: the
+    // segment to (2, 12) crosses the ridge, the one to (2, 14) passes its end
+    // and crosses only ground at the sample's own height.
+    const FrameDataFogObservers ground =
+        gatedSources({vec4(-6.0f, 0.0f, 14.0f, 0.0f)}, 4.5f, 1.5f, 1.0f);
+    EXPECT_FLOAT_EQ(visibility(field, ground, 0, vec3(2.0f, 12.0f, kGroundTop)), 0.0f);
+    EXPECT_FLOAT_EQ(visibility(field, ground, 0, vec3(2.0f, 14.0f, kGroundTop)), 1.0f)
+        << "a flank stays a step: nothing higher than the sample is crossed";
+}
+
+// An anchor authored inside its ground voxel is evaluated on the voxel's top
+// plane, so bodies resting on the ground read their surface.
+TEST(FogLineOfSightTest, AnchorsBelowTheirSurfaceAreLifted) {
+    const std::vector<float> field = ridgeField();
+    const FrameDataFogObservers observers =
+        gatedSources({vec4(-6.0f, 0.0f, 14.0f, 0.0f)}, 4.5f, 1.5f);
+    EXPECT_FLOAT_EQ(visibility(field, observers, 0, vec3(-3.0f, 0.5f, 4.5f)), 1.0f);
+    EXPECT_FLOAT_EQ(visibility(field, observers, 0, vec3(6.0f, 0.5f, 4.5f)), 0.0f);
+    EXPECT_FLOAT_EQ(visibility(field, observers, 0, vec3(6.0f, 0.5f, -10.0f)), 1.0f)
+        << "a point above the surface keeps its own height";
+}
+
+// Voxel boxes land on the half-cell lattice whether the set is integer- or
+// half-integer-positioned, follow the raster's subdivision snap, and turn
+// with the cardinal view.
+TEST(FogLineOfSightTest, VoxelBoxesFollowTheRasterLattice) {
+    std::vector<float> field = emptyField();
+    stampVoxel(field, vec3(0.5f, 0.5f, -3.0f), subdividedFrame());
+    EXPECT_FLOAT_EQ(topAt(field, 1, 1), -3.0f);
+    EXPECT_FLOAT_EQ(topAt(field, 2, 2), -3.0f);
+    EXPECT_FLOAT_EQ(topAt(field, 0, 1), kFogLosColumnEmpty);
+    EXPECT_FLOAT_EQ(topAt(field, 3, 1), kFogLosColumnEmpty);
+
+    field = emptyField();
+    stampVoxel(field, vec3(0.0f, 0.0f, -3.0f), subdividedFrame());
+    EXPECT_FLOAT_EQ(topAt(field, 0, 0), -3.0f);
+    EXPECT_FLOAT_EQ(topAt(field, 1, 1), -3.0f);
+    EXPECT_FLOAT_EQ(topAt(field, -1, 0), kFogLosColumnEmpty);
+    EXPECT_FLOAT_EQ(topAt(field, 2, 0), kFogLosColumnEmpty);
+
+    field = emptyField();
+    stampVoxel(field, vec3(0.5f, 0.5f, -3.5f), LosRasterFrame{});
+    EXPECT_FLOAT_EQ(topAt(field, 2, 2), -3.0f)
+        << "at subdivision 1 the raster rounds the half-integer set half up";
+    EXPECT_FLOAT_EQ(topAt(field, 1, 1), kFogLosColumnEmpty);
+
+    field = emptyField();
+    LosRasterFrame quarterTurn;
+    quarterTurn.cardinal_ = IRMath::CardinalIndex::k90;
+    stampVoxel(field, vec3(0.0f, 0.0f, 2.0f), quarterTurn);
+    EXPECT_FLOAT_EQ(topAt(field, -2, 0), 2.0f) << "a quarter turn draws the cell toward -X";
+    EXPECT_FLOAT_EQ(topAt(field, -1, 1), 2.0f);
+    EXPECT_FLOAT_EQ(topAt(field, 0, 0), kFogLosColumnEmpty);
+
+    field = emptyField();
+    LosRasterFrame turning;
+    turning.rotating_ = true;
+    stampVoxel(field, vec3(0.25f, 0.0f, 2.0f), turning);
+    EXPECT_FLOAT_EQ(topAt(field, 1, 0), 2.0f)
+        << "a turning camera keeps the continuous box, on the nearest half-cell edges";
+    EXPECT_FLOAT_EQ(topAt(field, 2, 0), 2.0f);
+    EXPECT_FLOAT_EQ(topAt(field, 0, 0), kFogLosColumnEmpty);
+    EXPECT_FLOAT_EQ(topAt(field, 3, 0), kFogLosColumnEmpty);
+}
+
+// Every source reads its own eye and softness: eight sources at distinct
+// spots each agree with the plain march from their own eye, and at least one
+// probe per source differs from the next source's verdict.
+TEST(FogLineOfSightTest, EightSourcesUseIndependentParams) {
+    const std::vector<float> field = ridgeField();
     FrameDataFogObservers observers{};
-    FogLosEyeHeights eyes{};
     for (int i = 0; i < IRComponents::kMaxFogVisionCircles; ++i) {
         const float x = i % 2 == 0 ? -6.0f - static_cast<float>(i) : 7.0f + static_cast<float>(i);
         const int slot = C_CanvasFogOfWar::addVisionCircle(
             observers,
-            eyes,
             x,
             0.0f,
             20.0f,
@@ -274,68 +361,61 @@ TEST(FogLineOfSightTest, EightSourcesUseIndependentLanes) {
             0.0f
         );
         ASSERT_EQ(slot, i);
-        C_CanvasFogOfWar::setVisionCircleLineOfSight(observers, eyes, slot, 1.5f);
+        C_CanvasFogOfWar::setVisionCircleLineOfSight(observers, slot, 1.5f);
     }
-    const std::vector<float> horizons = buildField(observers, eyes, columns);
-    const FogLineOfSightField field{horizons.data()};
     for (int i = 0; i < IRComponents::kMaxFogVisionCircles; ++i) {
         const int next = (i + 1) % IRComponents::kMaxFogVisionCircles;
         int distinguishing = 0;
         for (int x = -12; x <= 12; ++x) {
-            const ivec3 probe(x, 0, kGroundTop);
-            const bool expected =
-                visible(columns, IRPrefab::Fog::losEye(observers, eyes, i), probe);
-            ASSERT_EQ(field.visible(i, probe), expected) << "lane " << i << " at x " << x;
-            if (field.visible(i, probe) != field.visible(next, probe)) {
+            const vec3 probe(static_cast<float>(x) + 0.25f, 0.25f, kGroundTop);
+            const bool expected = clear(field, IRPrefab::Fog::losEye(observers, i), probe);
+            ASSERT_EQ(visibility(field, observers, i, probe) > 0.0f, expected)
+                << "source " << i << " at x " << x;
+            if ((visibility(field, observers, i, probe) > 0.0f) !=
+                (visibility(field, observers, next, probe) > 0.0f)) {
                 ++distinguishing;
             }
         }
-        EXPECT_GT(distinguishing, 0) << "lanes " << i << " and " << next << " read identically";
+        EXPECT_GT(distinguishing, 0) << "sources " << i << " and " << next << " read identically";
     }
 }
 
-// Ungated sources and cells past the build reach read clear.
-TEST(FogLineOfSightTest, UngatedTilesAndCellsBeyondReachAreClear) {
-    const std::vector<std::int32_t> columns = ridgeColumns();
-    FrameDataFogObservers observers =
-        gatedSources({vec4(-6.0f, 0.0f, 10.0f, 0.0f), vec4(-6.0f, 0.0f, 10.0f, 0.0f)}, 4.5f);
-    observers.losSourceMask_ = 0b10;
-    const std::vector<float> horizons = buildField(observers, eyesOf(1.5f), columns);
-    const FogLineOfSightField field{horizons.data()};
-    EXPECT_TRUE(field.visible(0, ivec3(6, 0, kGroundTop))) << "an ungated tile must be clear";
-    EXPECT_FALSE(field.visible(1, ivec3(6, 0, kGroundTop)));
-    const int beyond =
-        static_cast<int>(IRPrefab::Fog::losBuildReach(vec4(-6.0f, 0.0f, 10.0f, 0.0f))) + 2;
-    EXPECT_EQ(horizons[FogLineOfSightField::horizonIndex(1, -6 + beyond, 0)], kFogLosHorizonClear);
-}
-
 // A hard disc's shadow must reach as far as the fog kernel's rim fade, or the
-// fade halo reappears behind the shadow at the build's edge: the builder's
-// mirror of kFogRimFadeCells must match both shared fog reveals.
-TEST(FogLineOfSightTest, BuildReachCoversTheShaderRimFade) {
-    for (const char *kernel : {"/ir_fog_common.glsl", "/metal/ir_fog_common.metal"}) {
+// fade halo reappears behind the shadow: the CPU reach mirrors the constant
+// both shared fog reveals and both gate helpers carry.
+TEST(FogLineOfSightTest, ReachCoversTheShaderRimFade) {
+    for (const char *kernel :
+         {"/ir_fog_common.glsl",
+          "/metal/ir_fog_common.metal",
+          "/ir_fog_los.glsl",
+          "/metal/ir_fog_los.metal"}) {
         std::ifstream file(std::string(IR_TEST_RENDER_SHADER_DIR) + kernel);
         std::ostringstream source;
         source << file.rdbuf();
         std::smatch match;
         const std::string text = source.str();
         ASSERT_TRUE(
-            std::regex_search(text, match, std::regex(R"(kFogRimFadeCells\s*=\s*([0-9.]+)f?;)"))
+            std::regex_search(
+                text,
+                match,
+                std::regex(R"(kFog(Los)?RimFadeCells\s*=\s*([0-9.]+)f?;)")
+            )
         ) << kernel;
-        EXPECT_FLOAT_EQ(std::stof(match[1].str()), IRPrefab::Fog::kFogLosRimFadeCells) << kernel;
+        EXPECT_FLOAT_EQ(std::stof(match[2].str()), IRPrefab::Fog::kFogLosRimFadeCells) << kernel;
     }
     EXPECT_FLOAT_EQ(
-        IRPrefab::Fog::losBuildReach(vec4(0.0f, 0.0f, 10.0f, 0.0f)),
+        IRPrefab::Fog::losReach(vec4(0.0f, 0.0f, 10.0f, 0.0f)),
         10.0f + IRPrefab::Fog::kFogLosRimFadeCells + IRPrefab::Fog::kFogLosDiscMargin
     );
     EXPECT_FLOAT_EQ(
-        IRPrefab::Fog::losBuildReach(vec4(0.0f, 0.0f, 10.0f, 3.0f)),
+        IRPrefab::Fog::losReach(vec4(0.0f, 0.0f, 10.0f, 3.0f)),
         13.0f + IRPrefab::Fog::kFogLosDiscMargin
     ) << "a soft disc has no rim fade";
 }
 
 // The shared interior-cell visitor visits exactly the cells a brute-force
-// evaluation over a generous box marks interior, clipped to the requested box.
+// evaluation over a generous box marks interior, clipped to the requested
+// box, and the column-top walk keeps each column's highest cell of that set.
 TEST(FogLineOfSightTest, InteriorCellVisitorMatchesBruteForce) {
     using IRMath::SDF::ShapeType;
     const struct {
@@ -383,22 +463,23 @@ TEST(FogLineOfSightTest, InteriorCellVisitorMatchesBruteForce) {
             ASSERT_FALSE(expected.empty());
             EXPECT_EQ(visited, expected);
 
-            // The column-top walk keeps exactly the smallest-z cell of each
-            // column of the full walk.
-            std::vector<std::int32_t> fromCells = emptyColumns();
-            for (const ivec3 &cell : visited) {
-                IRPrefab::Fog::stampLosColumn(fromCells, cell);
-            }
-            std::vector<std::int32_t> fromTops = emptyColumns();
+            std::vector<ivec3> tops;
             IRMath::SDF::forEachInteriorColumnTop(
                 shape.type_,
                 shape.params_,
                 shape.centre_,
                 clipMin,
                 clipMax,
-                [&](ivec3 cell) { setColumn(fromTops, cell.x, cell.y, cell.z); }
+                [&](ivec3 cell) { tops.push_back(cell); }
             );
-            EXPECT_EQ(fromTops, fromCells);
+            for (const ivec3 &top : tops) {
+                for (const ivec3 &cell : visited) {
+                    if (cell.x == top.x && cell.y == top.y) {
+                        EXPECT_GE(cell.z, top.z) << "a column top above an interior cell";
+                    }
+                }
+            }
+            EXPECT_FALSE(tops.empty());
         }
     }
 }
@@ -407,7 +488,8 @@ class FogLineOfSightEcsTest : public testing::Test {
   protected:
     IREntity::EntityManager m_entityManager{};
     C_VoxelPool m_pool{ivec3(4, 4, 4)};
-    std::vector<std::int32_t> m_columns = emptyColumns();
+    std::vector<float> m_field = emptyField();
+    LosRasterFrame m_frame{};
 
     IREntity::EntityId makeWall(bool blocksLos, vec3 centre = vec3(0.5f, 0.5f, 1.5f)) {
         C_ShapeDescriptor shape{
@@ -423,41 +505,58 @@ class FogLineOfSightEcsTest : public testing::Test {
     }
 
     void rasterize() {
-        IRPrefab::Fog::rasterizeLosColumns(m_pool, IREntity::kNullEntity, m_columns);
+        IRPrefab::Fog::rasterizeLosColumns(m_pool, IREntity::kNullEntity, m_frame, m_field);
     }
 
-    int top(int x, int y) const {
-        return m_columns[C_CanvasFogOfWar::flatIndex(x, y)];
+    float top(int halfCellX, int halfCellY) const {
+        return topAt(m_field, halfCellX, halfCellY);
     }
 };
 
+// A flagged box is stamped at the surface the shape raster draws: at
+// subdivision 1 its cardinal-snapped origin (1, 1, 2) with half extents
+// (1, 8, 2), so x 0..2, y -7..9 and a top plane at 0.
 TEST_F(FogLineOfSightEcsTest, ShapeOccludesOnlyWhenFlagged) {
     const IREntity::EntityId wall = makeWall(true);
     rasterize();
-    EXPECT_EQ(top(0, 0), 0) << "the box spans z -0.5..3.5; its top interior cell centre is 0";
-    EXPECT_NE(top(1, 8), kFogLosColumnEmpty);
-    EXPECT_EQ(top(6, 0), kFogLosColumnEmpty);
+    EXPECT_FLOAT_EQ(top(0, 0), 0.0f);
+    EXPECT_FLOAT_EQ(top(3, 17), 0.0f);
+    EXPECT_FLOAT_EQ(top(-1, 0), kFogLosColumnEmpty);
+    EXPECT_FLOAT_EQ(top(4, 0), kFogLosColumnEmpty);
+    EXPECT_FLOAT_EQ(top(12, 0), kFogLosColumnEmpty);
 
     IREntity::getComponent<C_LightBlocker>(wall).blocksLOS_ = false;
     rasterize();
-    EXPECT_EQ(top(0, 0), kFogLosColumnEmpty) << "blocksLOS_ = false must not occlude";
+    EXPECT_FLOAT_EQ(top(0, 0), kFogLosColumnEmpty) << "blocksLOS_ = false must not occlude";
 
     IREntity::getComponent<C_LightBlocker>(wall).blocksLOS_ = true;
     IREntity::getComponent<C_ShapeDescriptor>(wall).canvasEntity_ = 12345;
     rasterize();
-    EXPECT_EQ(top(0, 0), kFogLosColumnEmpty) << "a shape on another canvas must not occlude";
+    EXPECT_FLOAT_EQ(top(0, 0), kFogLosColumnEmpty) << "a shape on another canvas must not occlude";
+}
+
+// At a higher subdivision the drawn box shrinks to half a micro cell past its
+// voxel centres, and the stamp follows to the nearest half-cell edge.
+TEST_F(FogLineOfSightEcsTest, ShapeFootprintFollowsTheSubdivision) {
+    makeWall(true);
+    m_frame.subdivisions_ = 8;
+    rasterize();
+    EXPECT_FLOAT_EQ(top(1, 0), 2.0f - 1.5f - 0.0625f)
+        << "top plane at origin z 2 minus half 1.5625";
+    EXPECT_FLOAT_EQ(top(2, 0), 2.0f - 1.5f - 0.0625f);
+    EXPECT_FLOAT_EQ(top(0, 0), kFogLosColumnEmpty) << "x 0.4375..1.5625 rounds to half-cells 1..2";
+    EXPECT_FLOAT_EQ(top(3, 0), kFogLosColumnEmpty);
 }
 
 // Moving, toggling and removing a blocker between builds leaves no stale
 // occlusion: each build reads only the current frame's occluders.
 TEST_F(FogLineOfSightEcsTest, BlockerChangesLeaveNoStaleOcclusion) {
-    const FrameDataFogObservers observers = gatedSources({vec4(-6.0f, 0.0f, 14.0f, 0.0f)}, 4.5f);
-    const FogLosEyeHeights eyes = eyesOf(1.5f);
-    const ivec3 behind(6, 0, 4);
+    const FrameDataFogObservers observers =
+        gatedSources({vec4(-6.0f, 0.0f, 14.0f, 0.0f)}, 4.5f, 1.5f);
+    const vec3 behind(6.0f, 0.5f, 4.0f);
     const auto farSideVisible = [&]() {
         rasterize();
-        const std::vector<float> horizons = buildField(observers, eyes, m_columns);
-        return FogLineOfSightField{horizons.data()}.visible(0, behind);
+        return visibility(m_field, observers, 0, behind) > 0.0f;
     };
 
     const IREntity::EntityId wall = makeWall(true);
@@ -474,8 +573,8 @@ TEST_F(FogLineOfSightEcsTest, BlockerChangesLeaveNoStaleOcclusion) {
     EXPECT_TRUE(farSideVisible()) << "a destroyed blocker left its shadow behind";
 }
 
-// Pool voxels stamp their rounded cells; carved (alpha 0) and governed
-// (kFogWholeBodyExempt) voxels never occlude.
+// Pool voxels stamp the box the raster draws them as; carved (alpha 0) and
+// governed (kFogWholeBodyExempt) voxels never occlude.
 TEST_F(FogLineOfSightEcsTest, PoolVoxelsOccludeExceptCarvedAndGoverned) {
     IRRender::VoxelPoolAllocation allocation = m_pool.allocateVoxels(3);
     allocation.positionGlobals_[0].pos_ = vec3(2.4f, -0.5f, -3.5f);
@@ -486,65 +585,73 @@ TEST_F(FogLineOfSightEcsTest, PoolVoxelsOccludeExceptCarvedAndGoverned) {
     allocation.voxels_[2].color_.alpha_ = 255;
     allocation.voxels_[2].reserved_ |= IRComponents::VoxelReserved::kFogWholeBodyExempt;
     rasterize();
-    EXPECT_EQ(top(2, 0), -3) << "roundHalfUp(-0.5) = 0 and roundHalfUp(-3.5) = -3";
-    EXPECT_EQ(top(5, 5), kFogLosColumnEmpty) << "a carved voxel must not occlude";
-    EXPECT_EQ(top(7, 7), kFogLosColumnEmpty) << "a governed voxel must not occlude";
+    EXPECT_FLOAT_EQ(top(4, 0), -3.0f)
+        << "at subdivision 1 the voxel snaps to (2, 0, -3) and fills x 2..3, y 0..1";
+    EXPECT_FLOAT_EQ(top(5, 1), -3.0f);
+    EXPECT_FLOAT_EQ(top(3, 0), kFogLosColumnEmpty);
+    EXPECT_FLOAT_EQ(top(10, 10), kFogLosColumnEmpty) << "a carved voxel must not occlude";
+    EXPECT_FLOAT_EQ(top(14, 14), kFogLosColumnEmpty) << "a governed voxel must not occlude";
 }
 
 // Slot authoring: addVisionCircle hands back the slot it filled (or -1), a new
-// slot starts ungated, and clearing drops every gate.
+// slot starts ungated with the hard gate, and clearing drops every gate.
 TEST(FogVisionSlotTest, SlotsStartUngatedAndClearDropsGates) {
     FrameDataFogObservers observers{};
-    FogLosEyeHeights eyes = eyesOf(IRComponents::kFogVisionLosOff);
-    EXPECT_EQ(C_CanvasFogOfWar::addVisionCircle(observers, eyes, 0, 0, 0.0f, 0, 0, 0, -1, 0), -1)
+    EXPECT_EQ(C_CanvasFogOfWar::addVisionCircle(observers, 0, 0, 0.0f, 0, 0, 0, -1, 0), -1)
         << "a non-positive radius is rejected";
     for (int i = 0; i < IRComponents::kMaxFogVisionCircles; ++i) {
-        EXPECT_EQ(C_CanvasFogOfWar::addVisionCircle(observers, eyes, 0, 0, 5, 0, 0, 0, -1, 0), i);
+        EXPECT_EQ(C_CanvasFogOfWar::addVisionCircle(observers, 0, 0, 5, 0, 0, 0, -1, 0), i);
     }
-    EXPECT_EQ(C_CanvasFogOfWar::addVisionCircle(observers, eyes, 0, 0, 5, 0, 0, 0, -1, 0), -1)
+    EXPECT_EQ(C_CanvasFogOfWar::addVisionCircle(observers, 0, 0, 5, 0, 0, 0, -1, 0), -1)
         << "past the cap is rejected";
     EXPECT_EQ(observers.losSourceMask_, 0);
 
-    C_CanvasFogOfWar::setVisionCircleLineOfSight(observers, eyes, 3, 1.5f);
-    C_CanvasFogOfWar::setVisionCircleLineOfSight(observers, eyes, 5, 0.0f);
+    C_CanvasFogOfWar::setVisionCircleLineOfSight(observers, 3, 1.5f);
+    C_CanvasFogOfWar::setVisionCircleLineOfSight(observers, 5, 0.0f, 0.75f);
     EXPECT_EQ(observers.losSourceMask_, (1 << 3) | (1 << 5));
-    EXPECT_FLOAT_EQ(eyes[3], 1.5f);
+    EXPECT_FLOAT_EQ(observers.losEyeHeight(3), 1.5f);
+    EXPECT_FLOAT_EQ(observers.losSoftness(3), kFogLosHardGate);
+    EXPECT_FLOAT_EQ(observers.losEyeHeight(5), 0.0f);
+    EXPECT_FLOAT_EQ(observers.losSoftness(5), 0.75f);
     C_CanvasFogOfWar::setVisionCircleLineOfSight(
         observers,
-        eyes,
         5,
-        IRComponents::kFogVisionLosOff
+        IRComponents::kFogVisionLosOff,
+        0.75f
     );
     EXPECT_EQ(observers.losSourceMask_, 1 << 3);
+    EXPECT_FLOAT_EQ(observers.losSoftness(5), kFogLosHardGate)
+        << "ungating a slot resets its softness";
+    C_CanvasFogOfWar::setVisionCircleLineOfSight(observers, 3, 1.5f, -2.0f);
+    EXPECT_FLOAT_EQ(observers.losSoftness(3), kFogLosHardGate) << "a negative softness is hard";
 
-    C_CanvasFogOfWar::clearVisionCircles(observers, eyes);
+    C_CanvasFogOfWar::clearVisionCircles(observers);
     EXPECT_EQ(observers.losSourceMask_, 0);
     EXPECT_EQ(observers.visionCircleCount_, 0);
     for (int i = 0; i < 4; ++i) {
-        C_CanvasFogOfWar::addVisionCircle(observers, eyes, 0, 0, 5, 0, 0, 0, -1, 0);
+        C_CanvasFogOfWar::addVisionCircle(observers, 0, 0, 5, 0, 0, 0, -1, 0);
     }
     EXPECT_EQ(observers.losSourceMask_, 0) << "a re-added slot 3 inherited a stale gate";
-    EXPECT_FLOAT_EQ(eyes[3], IRComponents::kFogVisionLosOff);
+    EXPECT_FLOAT_EQ(observers.losEyeHeight(3), IRComponents::kFogVisionLosOff);
 }
 
 // Gating an unregistered slot is a caller bug: it asserts in debug and, in a
 // release build, leaves the gates untouched.
 TEST(FogVisionSlotTest, GatingAnUnregisteredSlotIsRejected) {
     FrameDataFogObservers observers{};
-    FogLosEyeHeights eyes = eyesOf(IRComponents::kFogVisionLosOff);
-    C_CanvasFogOfWar::addVisionCircle(observers, eyes, 0, 0, 5, 0, 0, 0, -1, 0);
+    C_CanvasFogOfWar::addVisionCircle(observers, 0, 0, 5, 0, 0, 0, -1, 0);
 #ifndef IR_RELEASE
     EXPECT_THROW(
-        C_CanvasFogOfWar::setVisionCircleLineOfSight(observers, eyes, 1, 1.5f),
+        C_CanvasFogOfWar::setVisionCircleLineOfSight(observers, 1, 1.5f),
         std::runtime_error
     );
     EXPECT_THROW(
-        C_CanvasFogOfWar::setVisionCircleLineOfSight(observers, eyes, -1, 1.5f),
+        C_CanvasFogOfWar::setVisionCircleLineOfSight(observers, -1, 1.5f),
         std::runtime_error
     );
 #else
-    C_CanvasFogOfWar::setVisionCircleLineOfSight(observers, eyes, 1, 1.5f);
+    C_CanvasFogOfWar::setVisionCircleLineOfSight(observers, 1, 1.5f);
 #endif
     EXPECT_EQ(observers.losSourceMask_, 0);
-    EXPECT_FLOAT_EQ(eyes[1], IRComponents::kFogVisionLosOff);
+    EXPECT_FLOAT_EQ(observers.losEyeHeight(1), 0.0f) << "a rejected call writes nothing";
 }

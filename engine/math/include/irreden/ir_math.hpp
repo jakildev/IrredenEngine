@@ -185,6 +185,29 @@ constexpr ivec3 roundVec3HalfUp(vec3 value) {
     return ivec3(roundHalfUp(value.x), roundHalfUp(value.y), roundHalfUp(value.z));
 }
 
+/// CPU mirror of `snapNearIntegerVoxelPosition` in `shaders/ir_iso_common.glsl`
+/// and its Metal twin: a component within 1e-4 of an integer snaps onto it, so
+/// float noise on an authored integer position cannot straddle a cell boundary
+/// on one side of a CPU↔GPU handshake and not the other.
+inline vec3 snapNearIntegerVoxelPosition(vec3 voxelPosition) {
+    const vec3 rounded = glm::round(voxelPosition);
+    vec3 snapped = voxelPosition;
+    for (int axis = 0; axis < 3; ++axis) {
+        if (glm::abs(voxelPosition[axis] - rounded[axis]) <= 0.0001f) {
+            snapped[axis] = rounded[axis];
+        }
+    }
+    return snapped;
+}
+
+/// The GLSL / MSL `smoothstep`: the clamped cubic Hermite ramp from 0 at
+/// @p edge0 to 1 at @p edge1. Mirrored here so a CPU oracle of a shader curve
+/// evaluates the same polynomial the GPU does. @p edge1 must exceed @p edge0.
+constexpr float smoothstep(float edge0, float edge1, float x) {
+    const float t = glm::clamp((x - edge0) / (edge1 - edge0), 0.0f, 1.0f);
+    return t * t * (3.0f - 2.0f * t);
+}
+
 /// Ceiling division: equivalent to ceil(numerator / denominator) without
 /// floating-point arithmetic.
 constexpr int divCeil(int numerator, int denominator) {

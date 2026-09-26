@@ -212,9 +212,14 @@ constant uint kEntityIdCutFaceMaskInHighWord = 0x1u << 29u;
 // Bit 28 flags a whole-body fog-governed pixel so FOG_TO_TRIXEL fogs it on XY
 // distance alone. Rides the same masking chokepoint.
 constant uint kEntityIdFogWholeBodyMaskInHighWord = 0x1u << 28u;
+// Analytic-surface carrier — GLSL twin's kEntityIdAnalyticSurfaceMaskInHighWord.
+// Bit 19 flags a pixel the shape raster wrote (an exact world surface point)
+// as opposed to a voxel raster point on the lower-corner cell lattice. Rides
+// the same masking chokepoint.
+constant uint kEntityIdAnalyticSurfaceMaskInHighWord = 0x1u << 19u;
 constant uint kEntityIdHighWordMask =
     ~(kEntityIdPriorityMaskInHighWord | kEntityIdCutFaceMaskInHighWord |
-      kEntityIdFogWholeBodyMaskInHighWord);
+      kEntityIdFogWholeBodyMaskInHighWord | kEntityIdAnalyticSurfaceMaskInHighWord);
 inline uint decodePriority(uint2 rawId) {
     return (rawId.y >> kEntityIdPriorityShiftInHighWord) & 0x3u;
 }
@@ -223,6 +228,9 @@ inline bool decodeCutFace(uint2 rawId) {
 }
 inline bool decodeFogWholeBody(uint2 rawId) {
     return (rawId.y & kEntityIdFogWholeBodyMaskInHighWord) != 0u;
+}
+inline bool decodeAnalyticSurface(uint2 rawId) {
+    return (rawId.y & kEntityIdAnalyticSurfaceMaskInHighWord) != 0u;
 }
 inline uint2 decodeEntityId(uint2 rawId) {
     return uint2(rawId.x, rawId.y & kEntityIdHighWordMask);
@@ -243,6 +251,10 @@ inline uint2 encodeEntityIdFogWholeBody(uint2 packedId, bool isFogWholeBody) {
     return isFogWholeBody
         ? uint2(packedId.x, packedId.y | kEntityIdFogWholeBodyMaskInHighWord)
         : packedId;
+}
+// Set the analytic-surface flag on an ALREADY priority-encoded id — GLSL twin.
+inline uint2 encodeEntityIdAnalyticSurface(uint2 packedId) {
+    return uint2(packedId.x, packedId.y | kEntityIdAnalyticSurfaceMaskInHighWord);
 }
 
 // Per-axis fractional encoding:

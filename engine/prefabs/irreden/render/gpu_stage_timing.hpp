@@ -155,8 +155,8 @@ inline ComputeLightVolumeTiming &computeLightVolumeTiming() {
     return instance;
 }
 
-// `FOG_LOS_BUILD`'s two halves: the CPU build (columns + horizons) and the
-// LOS texture upload. The system row covers both.
+// `FOG_LOS_BUILD`'s two halves: the CPU column-field build and the LOS
+// texture upload. The system row covers both.
 struct FogLosBuildTiming {
     CpuPhaseTiming build_;
     CpuPhaseTiming upload_;

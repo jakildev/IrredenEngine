@@ -202,6 +202,11 @@ void probeLuaFogUpload() {
             observers.visionCircleHeights_[1] == vec4(3.0f, 0.5f, 0.5f, 1.0f),
         "IRFog Lua two-source probe uploaded unexpected height records"
     );
+    requireLuaFogSelftest(
+        observers.losSourceMask_ == (1 << 1) && observers.losEyeHeight(1) == 1.5f &&
+            observers.losSoftness(1) == 0.75f && !observers.losGated(0),
+        "IRFog Lua line-of-sight entry uploaded an unexpected gate"
+    );
     IR_LOG_INFO(
         "LUA-FOG-PROBE sources={} centers={},{};{},{} observerZ={} zCostUp={} "
         "zCostDown={} freeBand={} PASS",
@@ -765,16 +770,19 @@ void probeEntityRevealIds() {
 }
 
 // --occlusion=<scene>: line-of-sight fog. Static, marker-free scenes on the
-// shared ground slab (top voxel centre T = 4) with every vision circle gated
-// at eye height kOcclusionEyeHeight above kOcclusionGroundZ (E.z = 3, one unit
-// above the slab top). The ridge is a voxel wall on the slab — cells x 0..1,
-// y -7..8, z 0..3 (top T = 0, four voxels above the ground) — the only
-// occluder in the ground scenes; the grid stays unexplored so only the discs
-// reveal:
-//   ground           observer on the ground at -X: the near ground reveals,
-//                    the ground behind the ridge (+X) stays black
-//   high-ground      the observer stands on the ridge top: the far ground
-//                    reveals (the strip in the ridge's own shadow stays dark)
+// shared ground slab (top voxel centre 4, drawn top plane 4) with every vision
+// circle gated at eye height kOcclusionEyeHeight above kOcclusionGroundZ
+// (E.z = 3, one unit above the slab top). The ridge is a voxel wall on the
+// slab — an even-sized set at x -0.5..0.5, y -7.5..7.5, z -0.5..2.5, drawn as
+// the boxes x -0.5..1.5, y -7.5..8.5 with its top plane at -0.5, four and a
+// half units above the ground — the only occluder in the ground scenes; the
+// grid stays unexplored so only the discs reveal:
+//   ground           observer on the ground at -X: the near ground and the
+//                    ridge's facing wall reveal, the ridge top (the eye is
+//                    below it) and the ground behind the ridge (+X) stay black
+//   high-ground      the observer stands on the ridge top, the eye 1.5 above
+//                    it: the far ground reveals past six units from the
+//                    ridge's far edge, the strip in its own shadow stays dark
 //   blocker          the ridge is an SDF box with C_LightBlocker{blocksLOS_}
 //   blocker-inert    the same box with blocksLOS_ = false: nothing occludes
 //   two-sources      a long wall between two gated sources offset in y: each
@@ -793,13 +801,18 @@ enum class OcclusionScene {
     GROUND_LOS_OFF,
 };
 OcclusionScene g_occlusion = OcclusionScene::NONE;
+// --los-softness: every gated --occlusion source grades its verdict over this
+// clearance band (world units); 0 keeps the hard gate.
+float g_occlusionLosSoftness = kFogLosHardGate;
 constexpr float kOcclusionRadius = 12.0f;
 constexpr float kOcclusionGroundZ = 4.5f;
 constexpr float kOcclusionEyeHeight = 1.5f;
 constexpr vec2 kOcclusionGroundObserver{-6.0f, 0.0f};
-// Standing on the ridge top voxel (centre z 0), mirroring the ground
-// observer's half-cell offset from the slab top.
-constexpr vec3 kOcclusionRidgeObserver{0.0f, 0.0f, 0.5f};
+// Standing on the ridge's drawn top plane (-0.5), so the eye sits the same
+// kOcclusionEyeHeight above it as the ground observer's eye does above the
+// slab (that observer stands half a voxel into its top slab voxel, whose
+// drawn top plane is 4).
+constexpr vec3 kOcclusionRidgeObserver{0.0f, 0.0f, -0.5f};
 constexpr vec3 kOcclusionRidgeCenter{0.0f, 0.0f, 1.0f};
 constexpr IRMath::ivec3 kOcclusionRidgeSize{2, 16, 4};
 constexpr vec3 kOcclusionBlockerCenter{0.5f, 0.5f, 1.5f};
@@ -831,6 +844,10 @@ constexpr IRVideo::AutoScreenshotShot kOcclusionFlatShots[] = {
 };
 constexpr IRVideo::AutoScreenshotShot kOcclusionGroundLosOffShots[] = {
     {6.0f, vec2(0, 0), 0.0f, "fog_occlusion_ground_los_off"},
+};
+// The high-ground pose under --los-softness, named apart from the hard row.
+constexpr IRVideo::AutoScreenshotShot kOcclusionHighGroundSoftShots[] = {
+    {6.0f, vec2(0, 0), 0.0f, "fog_occlusion_high_ground_soft"},
 };
 
 // One-shot point-query probe for the --occlusion scenes: after warmup, ask
@@ -994,6 +1011,12 @@ int main(int argc, char **argv) {
          "ground-los-off"},
         "none"
     );
+    IREngine::args().number(
+        "--los-softness",
+        "With --occlusion: grade every gated source's line of sight over this clearance "
+        "band in world units (0 = the hard gate)",
+        kFogLosHardGate
+    );
     IREngine::args().flag(
         "--lua-fog-selftest",
         "Drive the engine-owned IRFog binding and verify its observer UBO upload"
@@ -1030,6 +1053,7 @@ int main(int argc, char **argv) {
     }
     g_luaFogSelftest = IREngine::args().getFlag("--lua-fog-selftest");
     g_occlusion = parseOcclusionScene(IREngine::args().getEnum("--occlusion"));
+    g_occlusionLosSoftness = IREngine::args().getFloat("--los-softness");
     if (g_luaFogSelftest) {
         g_occlusion = OcclusionScene::NONE;
     }
@@ -1328,7 +1352,11 @@ void initSystems() {
                 IRVideo::setAutoScreenshotShots(cfg, kOcclusionGroundShots);
                 break;
             case OcclusionScene::HIGH_GROUND:
-                IRVideo::setAutoScreenshotShots(cfg, kOcclusionHighGroundShots);
+                if (g_occlusionLosSoftness > kFogLosHardGate) {
+                    IRVideo::setAutoScreenshotShots(cfg, kOcclusionHighGroundSoftShots);
+                } else {
+                    IRVideo::setAutoScreenshotShots(cfg, kOcclusionHighGroundShots);
+                }
                 break;
             case OcclusionScene::BLOCKER:
                 IRVideo::setAutoScreenshotShots(cfg, kOcclusionBlockerShots);
@@ -1452,7 +1480,11 @@ void addOcclusionSource(vec2 center, float observerZ, float radius, bool lineOfS
     );
     IR_ASSERT(slot >= 0, "occlusion scene vision circle was rejected");
     if (lineOfSight) {
-        IRPrefab::Fog::setVisionCircleLineOfSight(slot, kOcclusionEyeHeight);
+        IRPrefab::Fog::setVisionCircleLineOfSight(
+            slot,
+            kOcclusionEyeHeight,
+            g_occlusionLosSoftness
+        );
     }
 }
 

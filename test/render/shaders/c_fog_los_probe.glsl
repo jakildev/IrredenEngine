@@ -2,37 +2,39 @@
 // (test/render/fog_cross_section_test.cpp, GpuOcclusionMatchesTheCpuOracle).
 //
 // Includes the REAL gate (ir_fog_los.glsl) and the real reveal curve
-// (ir_iso_common.glsl's fogVisionCircleReveal), and for every probed column and
-// sample height writes the gate verdict and the gated reveal the fog kernel's
-// source loop computes for source 0, so a one-sided edit to the gate changes
-// what this kernel returns.
+// (ir_iso_common.glsl's fogVisionCircleReveal). For every probed sample it
+// writes the gate's visibility over the uploaded column field, the gated
+// reveal the fog kernel's source loop computes for source 0, and the
+// canonical sample the cardinal route would evaluate for a face pixel at that
+// position — so a one-sided edit to the gate changes what this kernel
+// returns.
 
 #version 450 core
 #include "../../../engine/render/src/shaders/ir_iso_common.glsl"
 #define IR_FOG_LOS_BINDING 0
 #include "../../../engine/render/src/shaders/ir_fog_los.glsl"
 
-layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
-// Mirrored by kLosProbeHalfExtent / kLosProbeDim / kLosProbeLevels in
-// fog_cross_section_test.cpp.
-const int kProbeHalfExtent = 32;
-const int kProbeDim = kProbeHalfExtent * 2;
-const int kProbeLevels = 3;
-
-// std430: vec4 at 0, four ints at 16, the int array at 32.
+// std430: vec4 at 0, vec4 at 16, four ints at 32, the sample array at 48.
 layout(std430, binding = 2) readonly buffer FogLosProbeIn {
     vec4 circle;
+    // (observerZ, eyeHeight, softness, subdivisions)
+    vec4 source;
     int losSourceMask;
+    int sampleCount;
     int _probePad0;
     int _probePad1;
-    int _probePad2;
-    int sampleZ[];
+    // (x, y, z, faceId) — a negative faceId probes the point itself.
+    vec4 samples[];
 };
 
 struct FogLosProbe {
-    int visible;
+    float visibility;
     float reveal;
+    float clearance;
+    float bandClearance;
+    vec4 canonical;
 };
 
 layout(std430, binding = 1) writeonly buffer FogLosProbeOut {
@@ -40,18 +42,25 @@ layout(std430, binding = 1) writeonly buffer FogLosProbeOut {
 };
 
 void main() {
-    const ivec2 idx = ivec2(gl_GlobalInvocationID.xy);
-    if (idx.x >= kProbeDim || idx.y >= kProbeDim) {
+    const int index = int(gl_GlobalInvocationID.x);
+    if (index >= sampleCount) {
         return;
     }
-    const ivec2 cell = idx - ivec2(kProbeHalfExtent);
-    for (int level = 0; level < kProbeLevels; ++level) {
-        const int record = (level * kProbeDim + idx.y) * kProbeDim + idx.x;
-        const ivec3 sampleVoxel = ivec3(cell, sampleZ[record]);
-        const bool visible = fogLosVisible(sampleVoxel, 0);
-        probes[record].visible = visible ? 1 : 0;
-        probes[record].reveal = fogLosSourceGated(losSourceMask, 0) && !visible
-            ? 0.0
-            : fogVisionCircleReveal(vec2(cell), circle, 0.0);
-    }
+    const vec4 sample = samples[index];
+    const int faceId = int(sample.w);
+    const vec3 target = faceId < 0
+        ? sample.xyz
+        : fogLosCanonicalSample(sample.xyz, faceId, kFogLosRouteCardinal, int(source.w));
+    const vec3 eye = fogLosEye(circle, source.x, source.y);
+    float bandClearance;
+    const float clearance = fogLosTraceClearance(eye, target, source.z, bandClearance);
+    const float visibility = fogLosVisibilityFromClearance(clearance, bandClearance, source.z);
+    const bool gated = fogLosSourceGated(losSourceMask, 0) &&
+        length(target.xy - circle.xy) <= fogLosReach(circle);
+    probes[index].visibility = gated ? visibility : 1.0;
+    probes[index].reveal =
+        (gated ? visibility : 1.0) * fogVisionCircleReveal(target.xy, circle, 0.0);
+    probes[index].clearance = clearance;
+    probes[index].bandClearance = bandClearance;
+    probes[index].canonical = vec4(target, 0.0);
 }

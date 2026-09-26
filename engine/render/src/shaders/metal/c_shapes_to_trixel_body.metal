@@ -1009,10 +1009,11 @@ kernel void IR_SHAPE_KERNEL_NAME(
     }
 
     const bool xrayOccluded = (shape.flags & FLAG_XRAY_OCCLUDED) != 0u;
-    // Shape ids are 32-bit (high word zero) plus the fog whole-body carrier bit.
-    const uint2 packedEntityId = encodeEntityIdFogWholeBody(
+    // Shape ids are 32-bit (high word zero) plus the fog whole-body and the
+    // analytic-surface carrier bits.
+    const uint2 packedEntityId = encodeEntityIdAnalyticSurface(encodeEntityIdFogWholeBody(
         uint2(shape.entityId, 0u), (shape.flags & FLAG_FOG_WHOLE_BODY_EXEMPT) != 0u
-    );
+    ));
 
 #endif
 

@@ -1,19 +1,22 @@
 #ifndef IR_PREFAB_FOG_LINE_OF_SIGHT_H
 #define IR_PREFAB_FOG_LINE_OF_SIGHT_H
 
-// The fog line-of-sight model's CPU half: column rasterisation, the horizon
-// trace, and the per-source horizon build. The model itself (occluder set,
-// eye, horizon rule, gate) is stated once, in
+// The fog line-of-sight model's CPU half: the column-field raster, its
+// pyramid and the exact segment march every consumer shares. The model itself (occluder set,
+// eye, gate, sample mapping) is stated once, in
 // `component_canvas_fog_of_war.hpp`. `FOG_LOS_BUILD`, the reveal oracle and
-// `IRPrefab::Fog::lineOfSight` all reach the rule through `traceLosHorizon`,
-// so the point query and the built field agree exactly on one column set.
+// `IRPrefab::Fog::lineOfSight` all reach the rule through `traceLosClearance`,
+// and the shader twins (`ir_fog_los.{glsl,metal}`) walk the same lattice with
+// the same arithmetic, so a pixel and an entity anchor agree on one column
+// set.
 
 #include <irreden/ir_entity.hpp>
-#include <irreden/ir_job.hpp>
 #include <irreden/ir_math.hpp>
+#include <irreden/ir_render.hpp>
 
 #include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/math/sdf.hpp>
+#include <irreden/render/camera.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_light_blocker.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
@@ -21,48 +24,219 @@
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 
 #include <algorithm>
-#include <array>
 #include <cstddef>
-#include <cstdint>
-#include <limits>
 #include <span>
 
 namespace IRPrefab::Fog {
 
-/// Cells past `radius + edge` whose horizons are still built. A hard disc
+/// Cells past `radius + edge` a source can still affect. A hard disc
 /// (`edge` 0) lifts unexplored matter up to `kFogLosRimFadeCells` past its
 /// radius (ir_fog_common's kFogRimFadeCells); an occluded source must
-/// suppress that lift too, or the fade halo reappears behind the shadow at the
-/// build's edge. The margin covers the antialiasing floor and a sample rounding
-/// into a cell centre up to ~0.71 units farther out.
+/// suppress that lift too, or the fade halo reappears behind the shadow. The
+/// margin covers the antialiasing floor.
 constexpr float kFogLosRimFadeCells = 8.0f;
 constexpr float kFogLosDiscMargin = 2.0f;
 
-/// The distance from a disc's centre past which `buildLosHorizons` leaves the
-/// field clear.
-inline float losBuildReach(IRMath::vec4 circle) {
+/// The distance from a disc's centre past which a sample is not gated.
+/// Mirrors `fogLosReach` in the shader twins.
+inline float losReach(IRMath::vec4 circle) {
     const float edge = IRMath::max(circle.w, 0.0f);
     return circle.z + edge + (edge == 0.0f ? kFogLosRimFadeCells : 0.0f) + kFogLosDiscMargin;
 }
 
-/// Lower column @p cell's top to @p cell.z (the smallest Z is the highest
-/// voxel). Out-of-field cells are dropped.
-inline void stampLosColumn(std::span<std::int32_t> columnTops, IRMath::ivec3 cell) {
-    if (!IRComponents::FogLineOfSightField::cellInField(cell.x, cell.y))
+/// How the active canvas rasterizes this frame — what the column field must
+/// reproduce so a column box lies where its voxel or shape is drawn. At a
+/// cardinal pose a voxel snaps to the `1 / subdivisions_` lattice and a shape
+/// origin to the integer view lattice; while the camera turns (per-axis
+/// voxels, smooth-yaw shapes) both keep their continuous positions.
+struct LosRasterFrame {
+    IRMath::CardinalIndex cardinal_ = IRMath::CardinalIndex::k0;
+    int subdivisions_ = 1;
+    bool rotating_ = false;
+};
+
+/// The frame the active canvas renders with right now.
+inline LosRasterFrame activeLosRasterFrame() {
+    const auto [rasterYaw, residualYaw] = IRPrefab::Camera::getYawSplit();
+    LosRasterFrame frame;
+    frame.cardinal_ = IRMath::rasterYawCardinalIndex(rasterYaw);
+    frame.rotating_ = residualYaw != 0.0f;
+    frame.subdivisions_ = IRRender::getSubdivisionMode() == IRRender::SubdivisionMode::NONE
+                              ? 1
+                              : IRMath::max(IRRender::getVoxelRenderEffectiveSubdivisions(), 1);
+    return frame;
+}
+
+/// The box the raster draws the voxel at pool position @p position as, in
+/// the world coordinates every pixel recovers: the unit cube on the voxel's
+/// lower-corner lattice. At a cardinal pose the position first snaps to the
+/// `1 / subdivisions_` lattice and the cube is the cardinal-rotated view
+/// cell, so at a quarter turn it extends toward -X instead of +X; while the
+/// camera turns the per-axis store keeps the world axes and the continuous
+/// position. The top plane is `boxMin.z`.
+inline void losVoxelBox(
+    IRMath::vec3 position, const LosRasterFrame &frame, IRMath::vec3 &boxMin, IRMath::vec3 &boxMax
+) {
+    if (frame.rotating_) {
+        boxMin = position;
+        boxMax = position + IRMath::vec3(1.0f);
         return;
-    std::int32_t &top = columnTops[IRComponents::C_CanvasFogOfWar::flatIndex(cell.x, cell.y)];
-    top = IRMath::min(top, static_cast<std::int32_t>(cell.z));
+    }
+    const float scale = static_cast<float>(frame.subdivisions_);
+    const IRMath::vec3 snapped =
+        IRMath::vec3(
+            IRMath::roundVec3HalfUp(IRMath::snapNearIntegerVoxelPosition(position) * scale)
+        ) /
+        scale;
+    const IRMath::vec3 farCorner =
+        IRMath::rotateCardinalZInv(IRMath::vec3(1.0f, 1.0f, 0.0f), frame.cardinal_);
+    boxMin = snapped + IRMath::min(farCorner, IRMath::vec3(0.0f));
+    boxMax = snapped + IRMath::max(farCorner, IRMath::vec3(0.0f)) + IRMath::vec3(0.0f, 0.0f, 1.0f);
+}
+
+/// The half-cell whose lower edge is nearest world coordinate @p world, the
+/// lattice line a box edge snaps onto.
+inline int losHalfCellEdge(float world) {
+    return IRMath::roundHalfUp(world * static_cast<float>(IRComponents::kFogLosCellsPerUnit));
+}
+
+/// Lower the top planes of every half-cell in `[minXY, maxXY)` to
+/// @p topPlane (the smallest Z is the highest). Out-of-field cells are
+/// dropped.
+inline void
+stampLosBox(std::span<float> columnTops, IRMath::vec2 minXY, IRMath::vec2 maxXY, float topPlane) {
+    using IRComponents::FogLosColumnField;
+    using IRComponents::kFogLosFieldHalfExtent;
+    const int xBegin = IRMath::max(losHalfCellEdge(minXY.x), -kFogLosFieldHalfExtent);
+    const int xEnd = IRMath::min(losHalfCellEdge(maxXY.x), kFogLosFieldHalfExtent);
+    const int yBegin = IRMath::max(losHalfCellEdge(minXY.y), -kFogLosFieldHalfExtent);
+    const int yEnd = IRMath::min(losHalfCellEdge(maxXY.y), kFogLosFieldHalfExtent);
+    for (int y = yBegin; y < yEnd; ++y) {
+        for (int x = xBegin; x < xEnd; ++x) {
+            float &top = columnTops[FogLosColumnField::columnIndex(x, y)];
+            top = IRMath::min(top, topPlane);
+        }
+    }
+}
+
+/// Stamp one flagged shape: an unrotated box is stamped exactly at the
+/// surface the shape raster draws (`bounding half + half a raster cell`);
+/// any other shape samples its SDF at half-cell centres, so its footprint
+/// and top plane are within a quarter unit of the drawn surface.
+inline void stampLosShape(
+    std::span<float> columnTops,
+    const IRComponents::C_ShapeDescriptor &shape,
+    IRMath::vec3 translation,
+    IRMath::vec4 rotation,
+    const LosRasterFrame &frame
+) {
+    using IRMath::SDF::ShapeType;
+    const ShapeType type = static_cast<ShapeType>(shape.shapeType_);
+    const IRMath::vec4 params = IRMath::SDF::effectiveParams(type, shape.params_);
+    const float dilation = 0.5f / static_cast<float>(frame.subdivisions_);
+    IRMath::vec3 centre = translation;
+    if (!frame.rotating_) {
+        centre = IRMath::rotateCardinalZInv(
+            IRMath::vec3(
+                IRMath::roundVec3HalfUp(IRMath::rotateCardinalZ(translation, frame.cardinal_))
+            ),
+            frame.cardinal_
+        );
+    }
+    const bool rotated = IRMath::abs(rotation.w) < 0.9999f;
+    IRMath::vec3 half = IRMath::SDF::boundingHalf(type, params) + IRMath::vec3(dilation);
+    if (type == ShapeType::BOX && !rotated) {
+        stampLosBox(
+            columnTops,
+            IRMath::vec2(centre) - IRMath::vec2(half),
+            IRMath::vec2(centre) + IRMath::vec2(half),
+            centre.z - half.z
+        );
+        return;
+    }
+    if (rotated) {
+        const IRMath::vec3 ax =
+            IRMath::abs(IRMath::rotateVectorByQuat(IRMath::vec3(half.x, 0.0f, 0.0f), rotation));
+        const IRMath::vec3 ay =
+            IRMath::abs(IRMath::rotateVectorByQuat(IRMath::vec3(0.0f, half.y, 0.0f), rotation));
+        const IRMath::vec3 az =
+            IRMath::abs(IRMath::rotateVectorByQuat(IRMath::vec3(0.0f, 0.0f, half.z), rotation));
+        half = ax + ay + az;
+    }
+    const IRMath::vec4 inverseRotation(-rotation.x, -rotation.y, -rotation.z, rotation.w);
+    constexpr float kHalfCell = 1.0f / static_cast<float>(IRComponents::kFogLosCellsPerUnit);
+    const int xBegin = losHalfCellEdge(centre.x - half.x);
+    const int xEnd = losHalfCellEdge(centre.x + half.x);
+    const int yBegin = losHalfCellEdge(centre.y - half.y);
+    const int yEnd = losHalfCellEdge(centre.y + half.y);
+    const int zBegin = losHalfCellEdge(centre.z - half.z);
+    const int zEnd = losHalfCellEdge(centre.z + half.z);
+    for (int y = yBegin; y < yEnd; ++y) {
+        for (int x = xBegin; x < xEnd; ++x) {
+            const IRMath::vec2 cellCentre(
+                (static_cast<float>(x) + 0.5f) * kHalfCell,
+                (static_cast<float>(y) + 0.5f) * kHalfCell
+            );
+            for (int z = zBegin; z < zEnd; ++z) {
+                IRMath::vec3 local =
+                    IRMath::vec3(cellCentre, (static_cast<float>(z) + 0.5f) * kHalfCell) - centre;
+                if (rotated) {
+                    local = IRMath::rotateVectorByQuat(local, inverseRotation);
+                }
+                if (IRMath::SDF::evaluate(local, type, params) > dilation) {
+                    continue;
+                }
+                stampLosBox(
+                    columnTops,
+                    cellCentre - IRMath::vec2(0.5f * kHalfCell),
+                    cellCentre + IRMath::vec2(0.5f * kHalfCell),
+                    static_cast<float>(z) * kHalfCell
+                );
+                break;
+            }
+        }
+    }
+}
+
+/// Fill the pyramid levels of @p columnTops from its level 0: every block of
+/// level `k` takes the highest top plane (the smallest Z) of its four level
+/// `k - 1` children. Every producer of a field runs this after its stamps,
+/// so the march's block tests are sound.
+inline void buildLosPyramid(std::span<float> columnTops) {
+    using IRComponents::FogLosColumnField;
+    for (int level = 1; level < IRComponents::kFogLosLevelCount; ++level) {
+        const std::size_t blocks =
+            static_cast<std::size_t>(IRComponents::kFogLosFieldSize >> level);
+        for (std::size_t y = 0; y < blocks; ++y) {
+            for (std::size_t x = 0; x < blocks; ++x) {
+                const float top = IRMath::min(
+                    IRMath::min(
+                        columnTops[FogLosColumnField::blockIndex(level - 1, 2u * x, 2u * y)],
+                        columnTops[FogLosColumnField::blockIndex(level - 1, 2u * x + 1u, 2u * y)]
+                    ),
+                    IRMath::min(
+                        columnTops[FogLosColumnField::blockIndex(level - 1, 2u * x, 2u * y + 1u)],
+                        columnTops
+                            [FogLosColumnField::blockIndex(level - 1, 2u * x + 1u, 2u * y + 1u)]
+                    )
+                );
+                columnTops[FogLosColumnField::blockIndex(level, x, y)] = top;
+            }
+        }
+    }
 }
 
 /// Rebuild @p columnTops from @p pool's occluding voxels and every
 /// `blocksLOS_` shape on @p canvas (a shape whose `canvasEntity_` is unset
-/// belongs to the active canvas, which the caller passes). Cost: one pass over
-/// the live voxels plus about one SDF evaluation per column of each flagged
-/// shape's footprint.
+/// belongs to the active canvas, which the caller passes), each at the box
+/// the raster draws it as under @p frame, then its pyramid. Cost: one pass
+/// over the live voxels (four half-cells each) plus one SDF pass per flagged
+/// shape's footprint, plus a third of the field again for the pyramid.
 inline void rasterizeLosColumns(
     const IRComponents::C_VoxelPool &pool,
     IREntity::EntityId canvas,
-    std::span<std::int32_t> columnTops
+    const LosRasterFrame &frame,
+    std::span<float> columnTops
 ) {
     std::fill(columnTops.begin(), columnTops.end(), IRComponents::kFogLosColumnEmpty);
 
@@ -75,20 +249,12 @@ inline void rasterizeLosColumns(
             (voxel.reserved_ & IRComponents::VoxelReserved::kFogWholeBodyExempt) != 0u) {
             continue;
         }
-        stampLosColumn(columnTops, IRMath::roundVec3HalfUp(positions[i].pos_));
+        IRMath::vec3 boxMin;
+        IRMath::vec3 boxMax;
+        losVoxelBox(positions[i].pos_, frame, boxMin, boxMax);
+        stampLosBox(columnTops, IRMath::vec2(boxMin), IRMath::vec2(boxMax), boxMin.z);
     }
 
-    constexpr int kUnclippedZ = std::numeric_limits<int>::max() / 2;
-    const IRMath::ivec3 clipMin(
-        -IRComponents::kFogOfWarHalfExtent,
-        -IRComponents::kFogOfWarHalfExtent,
-        -kUnclippedZ
-    );
-    const IRMath::ivec3 clipMax(
-        IRComponents::kFogOfWarHalfExtent - 1,
-        IRComponents::kFogOfWarHalfExtent - 1,
-        kUnclippedZ
-    );
     const auto nodes = IREntity::queryArchetypeNodesSimple(
         IREntity::getArchetype<
             IRComponents::C_ShapeDescriptor,
@@ -105,219 +271,204 @@ inline void rasterizeLosColumns(
                 (shape.canvasEntity_ != IREntity::kNullEntity && shape.canvasEntity_ != canvas)) {
                 continue;
             }
-            IRMath::SDF::forEachInteriorColumnTop(
-                static_cast<IRMath::SDF::ShapeType>(shape.shapeType_),
-                shape.params_,
+            stampLosShape(
+                columnTops,
+                shape,
                 transforms[i].translation_,
-                clipMin,
-                clipMax,
-                [&](IRMath::ivec3 cell) { stampLosColumn(columnTops, cell); }
+                transforms[i].rotation_,
+                frame
             );
         }
     }
+    buildLosPyramid(columnTops);
 }
 
-/// Horizon `H` of target cell @p target seen from @p eye over @p columnTops
-/// (the header comment of `component_canvas_fog_of_war.hpp` has the rule).
-/// `kFogLosHorizonClear` when no occupied column lies strictly between the
-/// eye's cell and the target, including when they are the same cell.
-/// Out-of-field columns are empty.
-inline float
-traceLosHorizon(std::span<const std::int32_t> columnTops, IRMath::vec3 eye, IRMath::ivec2 target) {
-    const int sourceX = IRMath::roundHalfUp(eye.x);
-    const int sourceY = IRMath::roundHalfUp(eye.y);
-    if (sourceX == target.x && sourceY == target.y)
-        return IRComponents::kFogLosHorizonClear;
+/// Upper bound on the walk's steps for one segment inside the field: a
+/// level-0 cell costs at most one climb and one descent around it.
+constexpr int kFogLosMaxMarchSteps = 8 * IRComponents::kFogLosFieldSize;
+/// How far past a lattice line the walk's position is taken, in half-cells:
+/// a position on the line belongs to the cell ahead, beyond float rounding.
+constexpr float kFogLosMarchNudge = 4.0e-3f;
 
-    const float deltaX = static_cast<float>(target.x) - eye.x;
-    const float deltaY = static_cast<float>(target.y) - eye.y;
-    const int stepX = deltaX > 0.0f ? 1 : (deltaX < 0.0f ? -1 : 0);
-    const int stepY = deltaY > 0.0f ? 1 : (deltaY < 0.0f ? -1 : 0);
-    constexpr float kNever = std::numeric_limits<float>::infinity();
-    // Ray parameter (0 at the eye, 1 at the target centre) of the next cell
-    // boundary on each axis; cells span [c - 0.5, c + 0.5).
-    float tMaxX =
-        stepX == 0
-            ? kNever
-            : (static_cast<float>(sourceX) + 0.5f * static_cast<float>(stepX) - eye.x) / deltaX;
-    float tMaxY =
-        stepY == 0
-            ? kNever
-            : (static_cast<float>(sourceY) + 0.5f * static_cast<float>(stepY) - eye.y) / deltaY;
-    const float tDeltaX = stepX == 0 ? kNever : 1.0f / IRMath::abs(deltaX);
-    const float tDeltaY = stepY == 0 ? kNever : 1.0f / IRMath::abs(deltaY);
-
-    // Each column's horizon is `E.z + (T - E.z) * (d(t) / d(c))`, in double:
-    // every term is monotone in its inputs, so a column no farther from the eye
-    // than the target (`d(c) <= d(t)`, always true on the walk) yields exactly
-    // `H >= T` — flat ground can never hide itself by rounding, even when the
-    // eye sits on a cell corner and a side cell is as far as the target. The
-    // float the texture stores rounds that bound monotonically.
-    const double originX = static_cast<double>(eye.x);
-    const double originY = static_cast<double>(eye.y);
-    const double eyeZ = static_cast<double>(eye.z);
-    const double targetDistance = IRMath::planarLength(
-        static_cast<double>(target.x) - originX,
-        static_cast<double>(target.y) - originY
+/// The smallest clearance the segment from @p eye to @p target keeps above
+/// any column it crosses (the header comment of
+/// `component_canvas_fog_of_war.hpp` has the rule); positive means the
+/// segment passes above every column, `kFogLosColumnEmpty` when it crosses
+/// none. The eye's own half-cell never counts. Only columns whose top plane
+/// lies strictly above @p target's height enter @p bandClearance, the value
+/// @p softness grades; @p target's own surface and the ground around it
+/// therefore never soften a sample that rests on them.
+///
+/// The walk is hierarchical. At level `L` it stands in the block of `2^L`
+/// half-cells holding its position, and the block's highest top against the
+/// segment's lowest point over the block bounds every clearance inside it
+/// from below. A block whose bound cannot lower the verdict — it is at least
+/// `-kFogLosClearanceTolerance`, and at least `min(bandClearance, softness)`
+/// when the block holds band columns and the gate is soft — is stepped over
+/// whole, and the walk climbs to the coarsest level whose block ahead is new
+/// (the crossing lies on its boundary); one that might is entered a level
+/// finer. A level-0 cell is evaluated exactly. So the result is exact
+/// whenever it is below the tolerance, @p bandClearance whenever it is below
+/// @p softness, and each is otherwise at least that threshold: the gate's
+/// factor is the flat march's. Mirrors `fogLosTraceClearance` in the shader
+/// twins, step for step.
+inline float traceLosClearance(
+    const IRComponents::FogLosColumnField &field,
+    IRMath::vec3 eye,
+    IRMath::vec3 target,
+    float softness,
+    float &bandClearance
+) {
+    using IRComponents::FogLosColumnField;
+    using IRComponents::kFogLosClearanceTolerance;
+    using IRComponents::kFogLosColumnEmpty;
+    constexpr float kCells = static_cast<float>(IRComponents::kFogLosCellsPerUnit);
+    constexpr float kNever = kFogLosColumnEmpty;
+    constexpr int kMaxLevel = IRComponents::kFogLosLevelCount - 1;
+    const IRMath::vec2 start = IRMath::vec2(eye) * kCells;
+    const IRMath::vec2 delta = IRMath::vec2(target) * kCells - start;
+    const IRMath::ivec2 step(
+        delta.x > 0.0f ? 1 : (delta.x < 0.0f ? -1 : 0),
+        delta.y > 0.0f ? 1 : (delta.y < 0.0f ? -1 : 0)
     );
-    double horizon = std::numeric_limits<double>::infinity();
-    // Every visited cell lies in the box spanned by the eye's cell and the
-    // target, so the per-cell field test is needed only when that box leaves
-    // the field.
-    const bool boxInField = IRComponents::FogLineOfSightField::cellInField(sourceX, sourceY) &&
-                            IRComponents::FogLineOfSightField::cellInField(target.x, target.y);
-    const std::int32_t *tops = columnTops.data();
-    const auto visit = [&](int x, int y) {
-        if (!boxInField && !IRComponents::FogLineOfSightField::cellInField(x, y))
-            return;
-        const std::int32_t top = tops[IRComponents::C_CanvasFogOfWar::flatIndex(x, y)];
-        if (top == IRComponents::kFogLosColumnEmpty)
-            return;
-        const double distance = IRMath::planarLength(
-            static_cast<double>(x) - originX,
-            static_cast<double>(y) - originY
+    const IRMath::vec2 nudge =
+        IRMath::vec2(static_cast<float>(step.x), static_cast<float>(step.y)) * kFogLosMarchNudge;
+    // The eye's own half-cell is `halfCellOf` its position; the walk starts
+    // in the cell ahead of it, which is the same cell off a lattice line.
+    const IRMath::ivec2 eyeCell(
+        static_cast<int>(IRMath::floor(start.x)),
+        static_cast<int>(IRMath::floor(start.y))
+    );
+    const float rise = target.z - eye.z;
+    const float bandHorizon = target.z - kFogLosClearanceTolerance;
+    float minClearance = kNever;
+    bandClearance = kNever;
+    float t = 0.0f;
+    IRMath::ivec2 cell(
+        static_cast<int>(IRMath::floor(start.x + nudge.x)),
+        static_cast<int>(IRMath::floor(start.y + nudge.y))
+    );
+    int level = 0;
+    for (int i = 0; i < kFogLosMaxMarchSteps; ++i) {
+        const float size = static_cast<float>(1 << level);
+        const IRMath::ivec2 blockMin(
+            FogLosColumnField::blockMin(level, cell.x),
+            FogLosColumnField::blockMin(level, cell.y)
         );
-        if (distance <= 0.0)
-            return;
-        const double columnHorizon =
-            eyeZ + (static_cast<double>(top) - eyeZ) * (targetDistance / distance);
-        if (columnHorizon < horizon)
-            horizon = columnHorizon;
-    };
-
-    // Each axis stops once it reaches the target's row/column, so the walk
-    // always lands on the target in at most |dx| + |dy| steps.
-    int cellX = sourceX;
-    int cellY = sourceY;
-    if (cellX == target.x)
-        tMaxX = kNever;
-    if (cellY == target.y)
-        tMaxY = kNever;
-    while (true) {
-        if (tMaxX < tMaxY) {
-            cellX += stepX;
-            tMaxX += tDeltaX;
-        } else if (tMaxY < tMaxX) {
-            cellY += stepY;
-            tMaxY += tDeltaY;
-        } else {
-            visit(cellX + stepX, cellY);
-            visit(cellX, cellY + stepY);
-            cellX += stepX;
-            cellY += stepY;
-            tMaxX += tDeltaX;
-            tMaxY += tDeltaY;
+        const IRMath::vec2 exitEdge(
+            static_cast<float>(blockMin.x) + (step.x > 0 ? size : 0.0f),
+            static_cast<float>(blockMin.y) + (step.y > 0 ? size : 0.0f)
+        );
+        const IRMath::vec2 tEdge(
+            step.x == 0 ? kNever : (exitEdge.x - start.x) / delta.x,
+            step.y == 0 ? kNever : (exitEdge.y - start.y) / delta.y
+        );
+        const float tExit = IRMath::min(IRMath::min(tEdge.x, tEdge.y), 1.0f);
+        const float top = (level == 0 && cell.x == eyeCell.x && cell.y == eyeCell.y)
+                              ? kNever
+                              : field.blockTop(level, blockMin.x, blockMin.y);
+        if (top != kNever) {
+            const float tLow = rise > 0.0f ? tExit : t;
+            const float clearance = top - (eye.z + tLow * rise);
+            const bool inBand = top < bandHorizon;
+            if (level == 0) {
+                minClearance = IRMath::min(minClearance, clearance);
+                if (inBand) {
+                    bandClearance = IRMath::min(bandClearance, clearance);
+                }
+                if (clearance < -kFogLosClearanceTolerance) {
+                    return minClearance;
+                }
+            } else {
+                const float needed = (inBand && softness > 0.0f)
+                                         ? IRMath::min(bandClearance, softness)
+                                         : -kFogLosClearanceTolerance;
+                if (clearance < needed) {
+                    --level;
+                    continue;
+                }
+            }
         }
-        if (cellX == target.x)
-            tMaxX = kNever;
-        if (cellY == target.y)
-            tMaxY = kNever;
-        if (cellX == target.x && cellY == target.y)
+        if (tExit >= 1.0f) {
             break;
-        visit(cellX, cellY);
+        }
+        t = tExit;
+        const IRMath::vec2 next = start + delta * t + nudge;
+        cell = IRMath::ivec2(
+            static_cast<int>(IRMath::floor(next.x)),
+            static_cast<int>(IRMath::floor(next.y))
+        );
+        // Climb while the crossing lies on a coarser block's boundary: only
+        // then is the block ahead one the walk has not already found blocking.
+        const bool crossedX = tEdge.x <= tEdge.y;
+        const bool crossedY = tEdge.y <= tEdge.x;
+        const int edgeX = static_cast<int>(exitEdge.x) + IRComponents::kFogLosLevelBias;
+        const int edgeY = static_cast<int>(exitEdge.y) + IRComponents::kFogLosLevelBias;
+        for (; level < kMaxLevel; ++level) {
+            const int mask = (2 << level) - 1;
+            if (!((crossedX && (edgeX & mask) == 0) || (crossedY && (edgeY & mask) == 0))) {
+                break;
+            }
+        }
     }
+    return minClearance;
+}
 
-    if (horizon >= static_cast<double>(IRComponents::kFogLosHorizonClear))
-        return IRComponents::kFogLosHorizonClear;
-    return static_cast<float>(horizon);
+/// The gate's factor for the clearances `traceLosClearance` returned: a step
+/// at `kFogLosHardGate`, else `smoothstep(0, softness, bandClearance)` for a
+/// segment nothing blocks. Mirrors `fogLosVisibilityFromClearance`.
+inline float losVisibilityFromClearance(float minClearance, float bandClearance, float softness) {
+    if (minClearance < -IRComponents::kFogLosClearanceTolerance) {
+        return 0.0f;
+    }
+    if (softness <= IRComponents::kFogLosHardGate) {
+        return 1.0f;
+    }
+    return IRMath::smoothstep(0.0f, softness, bandClearance);
 }
 
 /// The eye of vision circle @p source.
-inline IRMath::vec3 losEye(
-    const IRComponents::FrameDataFogObservers &observers,
-    const IRComponents::FogLosEyeHeights &eyeHeights,
-    int source
-) {
+inline IRMath::vec3 losEye(const IRComponents::FrameDataFogObservers &observers, int source) {
     const IRMath::vec4 circle = observers.visionCircles_[source];
     return IRMath::vec3(
         circle.x,
         circle.y,
-        observers.visionCircleHeights_[source].x - eyeHeights[static_cast<std::size_t>(source)]
+        observers.visionCircleHeights_[source].x - observers.losEyeHeight(source)
     );
 }
 
-/// Fill @p horizons (the `losTexture_` texel image) for @p observers: clear
-/// everywhere, then each gated source's horizon at every in-field cell within
-/// `losBuildReach` of its centre. (source, row) pairs fan out over the job
-/// pool (serial with none); every cell and source owns its own float.
-inline void buildLosHorizons(
+/// Source @p source's line-of-sight factor at @p position over @p field:
+/// the segment march with the source's softness, 1 past the source's reach.
+/// A point at or below its own column's top plane is evaluated on that plane,
+/// so an anchor resting on (or authored inside) the ground reads its surface.
+/// 0 for an unpublished field.
+inline float losVisibility(
+    const IRComponents::FogLosColumnField &field,
     const IRComponents::FrameDataFogObservers &observers,
-    const IRComponents::FogLosEyeHeights &eyeHeights,
-    std::span<const std::int32_t> columnTops,
-    std::span<float> horizons
+    int source,
+    IRMath::vec3 position
 ) {
-    std::fill(horizons.begin(), horizons.end(), IRComponents::kFogLosHorizonClear);
-
-    struct SourceBuild {
-        int source_;
-        IRMath::vec2 centre_;
-        IRMath::vec3 eye_;
-        float reachSq_;
-        int xMin_, xMax_, yMin_, yMax_;
-        int rowOffset_;
-    };
-    std::array<SourceBuild, IRComponents::kMaxFogVisionCircles> builds{};
-    int buildCount = 0;
-    // Work items are (source, row) pairs: `rowOffset_` is where a source's
-    // rows start in the flat item range.
-    int itemCount = 0;
-    for (int source = 0; source < observers.visionCircleCount_; ++source) {
-        if (((observers.losSourceMask_ >> source) & 1) == 0)
-            continue;
-        const IRMath::vec4 circle = observers.visionCircles_[source];
-        const float reach = losBuildReach(circle);
-        SourceBuild &build = builds[static_cast<std::size_t>(buildCount++)];
-        build.source_ = source;
-        build.centre_ = IRMath::vec2(circle);
-        build.eye_ = losEye(observers, eyeHeights, source);
-        build.reachSq_ = reach * reach;
-        build.xMin_ = IRMath::max(
-            static_cast<int>(IRMath::floor(circle.x - reach)),
-            -IRComponents::kFogOfWarHalfExtent
-        );
-        build.xMax_ = IRMath::min(
-            static_cast<int>(IRMath::ceil(circle.x + reach)),
-            IRComponents::kFogOfWarHalfExtent - 1
-        );
-        build.yMin_ = IRMath::max(
-            static_cast<int>(IRMath::floor(circle.y - reach)),
-            -IRComponents::kFogOfWarHalfExtent
-        );
-        build.yMax_ = IRMath::min(
-            static_cast<int>(IRMath::ceil(circle.y + reach)),
-            IRComponents::kFogOfWarHalfExtent - 1
-        );
-        build.rowOffset_ = itemCount;
-        itemCount += IRMath::max(build.yMax_ - build.yMin_ + 1, 0);
+    if (!field.published()) {
+        return 0.0f;
     }
-    if (itemCount == 0)
-        return;
-
-    IRJob::ParallelTuning tuning{};
-    tuning.minItemsToParallelize_ = 8;
-    tuning.minChunk_ = 4;
-    IRJob::parallelForAutoGrain(
-        itemCount,
-        [&](int itemBegin, int itemEnd) {
-            int b = 0;
-            for (int item = itemBegin; item < itemEnd; ++item) {
-                while (b + 1 < buildCount &&
-                       item >= builds[static_cast<std::size_t>(b + 1)].rowOffset_)
-                    ++b;
-                const SourceBuild &build = builds[static_cast<std::size_t>(b)];
-                const int y = build.yMin_ + (item - build.rowOffset_);
-                const float dy = static_cast<float>(y) - build.centre_.y;
-                for (int x = build.xMin_; x <= build.xMax_; ++x) {
-                    const float dx = static_cast<float>(x) - build.centre_.x;
-                    if (dx * dx + dy * dy > build.reachSq_)
-                        continue;
-                    horizons[IRComponents::FogLineOfSightField::horizonIndex(build.source_, x, y)] =
-                        traceLosHorizon(columnTops, build.eye_, IRMath::ivec2(x, y));
-                }
-            }
-        },
-        tuning
+    const IRMath::vec4 circle = observers.visionCircles_[source];
+    if (IRMath::length(IRMath::vec2(position) - IRMath::vec2(circle)) > losReach(circle)) {
+        return 1.0f;
+    }
+    const float ownTop = field.topPlane(
+        IRComponents::FogLosColumnField::halfCellOf(position.x),
+        IRComponents::FogLosColumnField::halfCellOf(position.y)
     );
+    const IRMath::vec3 target(position.x, position.y, IRMath::min(position.z, ownTop));
+    float bandClearance = 0.0f;
+    const float minClearance = traceLosClearance(
+        field,
+        losEye(observers, source),
+        target,
+        observers.losSoftness(source),
+        bandClearance
+    );
+    return losVisibilityFromClearance(minClearance, bandClearance, observers.losSoftness(source));
 }
 
 } // namespace IRPrefab::Fog
