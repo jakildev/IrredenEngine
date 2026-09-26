@@ -158,8 +158,7 @@ int main(int argc,char**){
                 "lost_caster_rotation": block.replace(
                     "casterViewToWorld", "vec4{0,0,0,1}"),
                 "snapped_query": block.replace("originRaw,", "floor(originRaw),"),
-                "wrong_owner": block.replace("floor(displayOrigin)", "vec2(0,0)")
-                if suffix == "glsl" else block.replace("ivec2(sampleCoord)", "ivec2(vec2(0,0))"),
+                "wrong_owner": block.replace("sampleCoord", "ivec2(vec2(0,0))"),
                 "lost_miss_fallback": block.replace(
                     "if (selectedShapeBoxReceiver", "if (true || selectedShapeBoxReceiver"),
                 "shadow_toggle_ignored": block.replace("shadowsEnabled == 0", "false"),

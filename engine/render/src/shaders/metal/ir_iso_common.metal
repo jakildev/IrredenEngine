@@ -512,9 +512,10 @@ inline int trixelOriginModifier(int2 trixelCanvasOffsetZ1, float2 frameCanvasOff
     ) & 1;
 }
 
-// Clamp a float canvas-pixel position into a valid `texture.read()` index.
-// Metal's `texture.read()` has no built-in edge handling, unlike GLSL's
-// `textureLod()` (implicit `clamp_to_edge` via sampler).
+// Clamp a float canvas-pixel position into a valid `texture.read()` index;
+// `texture.read()` has no edge handling of its own. The GLSL twin
+// (`trixelCanvasReadCoord` in `ir_iso_common.glsl`) applies the same explicit
+// clamp before its `texelFetch()`, so both backends pick the same texel.
 inline uint2 trixelCanvasReadCoord(float2 origin, float2 textureSize) {
     return uint2(clamp(origin, float2(0.0f), textureSize - float2(1.0f)));
 }

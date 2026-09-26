@@ -536,6 +536,16 @@ ivec2 trixelOriginOffsetZ1(ivec2 trixelCanvasSize) {
     return trixelOriginOffsetX1(trixelCanvasSize) + ivec2(-1, -1);
 }
 
+// Clamp a float canvas-pixel position into a valid `texelFetch()` index. Metal
+// twin: `trixelCanvasReadCoord` in `metal/ir_iso_common.metal`. Both backends
+// select the canvas texel by this explicit integer rule rather than normalized
+// sampler addressing, whose edge handling follows each texture's wrap mode
+// (REPEAT on the colour/distance canvases) and whose texel pick is computed at
+// implementation-defined precision.
+ivec2 trixelCanvasReadCoord(vec2 origin, ivec2 canvasSize) {
+    return ivec2(clamp(origin, vec2(0.0), vec2(canvasSize - 1)));
+}
+
 int trixelOriginModifier(ivec2 trixelCanvasOffsetZ1, vec2 frameCanvasOffset) {
     vec2 canvasOffsetFloored = floor(frameCanvasOffset);
     return (trixelCanvasOffsetZ1.x + trixelCanvasOffsetZ1.y +
