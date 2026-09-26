@@ -3844,6 +3844,9 @@ print(0)
             | claim_labels_from_json "$lane_prefix" 1000 issue)
         while IFS=$'\t' read -r target_num label_name; do
             [[ -z "$target_num" || -z "$label_name" ]] && continue
+            # cmd_planning_claim writes no reservation of its own, so this
+            # only fires on a leftover task reservation for the same issue
+            # number; it never guards a live planning session.
             local resv_holder
             resv_holder="${reservation_holders[$target_num]:-}"
             if [[ -n "$resv_holder" ]]; then

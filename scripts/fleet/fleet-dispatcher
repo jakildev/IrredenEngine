@@ -2261,7 +2261,8 @@ PICKS_CACHE=""
 # A claim fleet-claim refused inside the last CLAIM_REFUSE_TTL_SECONDS is not
 # re-attempted: a refusal is almost always "held elsewhere" or "blocked
 # live", which does not clear inside a tick, and each attempt is several gh
-# round trips. Daemon-lifetime, like CAP_DEFER_LOGGED.
+# round trips. Keyed <role>|<class>|<target>, so one lane's refusal never
+# masks another's; pruned per walk when the target leaves that lane's picks.
 declare -A CLAIM_REFUSED_AT=()
 declare -A CLAIM_REFUSED_REASON=()
 CLAIM_TARGET_ERROR=""
@@ -2450,6 +2451,7 @@ claim_target() {
     # instead of assigned again (see the breaker block above).
     n=$(target_dispatch_count "$target")
     if (( TARGET_DISPATCH_CAP > 0 && n >= TARGET_DISPATCH_CAP )); then
+        CLAIM_TARGET_ERROR="dispatch cap reached; parked"
         park_target "$target" "$n"
         return 1
     fi
