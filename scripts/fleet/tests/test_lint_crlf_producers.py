@@ -673,20 +673,33 @@ class HistoricalSites(unittest.TestCase):
     def test_cleanup_gh_planning_sweep_is_stripped(self):
         self._assert_clean(*self.SITES[2])
 
-    def test_shared_open_claim_producer_strip_protects_both_consumers(self):
-        head, body, tail = self._split(self.text, "open_issue_claim_labels")
+    def test_shared_open_claim_producer_strip_protects_all_consumers(self):
+        head, body, tail = self._split(self.text, "claim_labels_from_json")
         self.assertIn("name.startswith(prefix)", body)
         self.assertEqual(body.count(self.STRIP), 1)
         consumers = {"cmd_cleanup_gh", "cmd_reset_sweep_host_claims"}
-        for function in consumers:
-            self.assertIn("open_issue_claim_labels", self._split(self.text, function)[1])
+        self.assertIn("open_issue_claim_labels",
+                      self._split(self.text, "cmd_cleanup_gh")[1])
+        self.assertIn("claim_labels_from_json",
+                      self._split(self.text, "cmd_reset_sweep_host_claims")[1])
         self.assertEqual(self.findings, [])
         mutated = head + body.replace(self.STRIP, "", 1) + tail
         hits = _fleet_claim_findings(mutated)
         self.assertEqual({hit.function for hit in hits}, consumers)
-        self.assertEqual(len(hits), 2)
+        expected_calls = (
+            self._split(self.text, "cmd_cleanup_gh")[1].count(
+                "open_issue_claim_labels"
+            )
+            + self._split(self.text, "cmd_reset_sweep_host_claims")[1].count(
+                "claim_labels_from_json"
+            )
+        )
+        self.assertEqual(len(hits), expected_calls)
         for hit in hits:
-            self.assertIn("open_issue_claim_labels", hit.command)
+            self.assertTrue(
+                "claim_labels_from_json" in hit.command
+                or "open_issue_claim_labels" in hit.command
+            )
 
     def test_each_strip_is_load_bearing(self):
         # Removing one site's strip re-flags exactly that site: the detector

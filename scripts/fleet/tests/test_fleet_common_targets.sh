@@ -90,7 +90,23 @@ done
 assert_eq "${FLEET_TARGET_CLAIM[merge]+set}" "set" "merge is a kind"
 assert_eq "${FLEET_TARGET_CLAIM[merge]-absent}" "" "merge is claimless"
 
-echo "T2c: fleet_target_key and fleet_pane_worktrees"
+echo "T2c: first-abandon release is exactly the marker-vouched prefix set"
+marker_prefixes=$(sed -n '/^_stamp_label_claim_liveness()/,/^}/p' "$FLEET_CLAIM_SRC" \
+    | grep -o 'fleet:\(reviewing\|resolving\|planning\)-' | sort -u)
+release_prefixes=""
+for kind in "${!FLEET_TARGET_LABEL[@]}"; do
+    if fleet_target_releases_on_first_abandon "$kind"; then
+        release_prefixes+="${FLEET_TARGET_LABEL[$kind]}"$'\n'
+    fi
+done
+release_prefixes=$(printf '%s' "$release_prefixes" | sort -u)
+assert_eq "$release_prefixes" "$marker_prefixes" "predicate prefix set matches liveness-marker arm"
+fleet_target_releases_on_first_abandon review \
+    && ok "review releases on first abandon" || bad "review retained on first abandon"
+fleet_target_releases_on_first_abandon task \
+    && bad "task released on first abandon" || ok "task keeps retry-once behavior"
+
+echo "T2d: fleet_target_key and fleet_pane_worktrees"
 assert_eq "$(fleet_target_key task:engine:1969)" "task-engine-1969" "target key"
 assert_eq "$(fleet_target_key stack:game:344:397)" "stack-game-344-397" "stack key keeps the base"
 WT_ROOT=$(mktemp -d)

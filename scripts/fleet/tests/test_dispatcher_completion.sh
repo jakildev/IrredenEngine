@@ -193,8 +193,28 @@ assert_contains "$handoff" "salvage: $FLEET_STATE_DIR/salvage/task-engine-42-eng
 [[ ! -f "$FLEET_STATE_DIR/abandoned/task-engine-42" ]] \
     && ok "abandonment counter cleared" || bad "counter left after handoff"
 
-echo "T6: a game feedback target releases through its own lane, namespaced"
+echo "T6: marker-vouched lane claims release on their first abandonment"
+while IFS='|' read -r target expected_release; do
+    printf '{"session":"dead"}\n' > "$FLEET_SESSIONS_DIR/pool-3.session.json"
+    out=$(handle "$target" pool-3)
+    assert_contains "$out" "first-abandon claim released" "$target logs immediate release"
+    assert_eq "$(cat "$CLAIM_LOG")" "$expected_release" "$target routes to its release arm"
+    key=${target//:/-}
+    [[ ! -f "$FLEET_STATE_DIR/abandoned/$key" ]] \
+        && ok "$target leaves no abandon counter" || bad "$target left an abandon counter"
+    [[ ! -f "$FLEET_SESSIONS_DIR/pool-3.session.json" ]] \
+        && ok "$target clears the dead sidecar" || bad "$target left the dead sidecar"
+done <<'EOF'
+review:engine:50|review-release 50 pool-3
+planreview:engine:51|review-release 51 pool-3
+smoke:engine:52|review-release 52 pool-3
+conflict:engine:53|resolving-release 53 pool-3
+plan:engine:54|planning-release 54 pool-3
+EOF
+
+echo "T6b: feedback keeps retry-once and releases through its own lane"
 handle feedback:game:7 pool-3 >/dev/null
+assert_contains "$(cat "$FLEET_STATE_DIR/abandoned/feedback-game-7")" "1" "feedback keeps its first-abandon counter"
 handle feedback:game:7 pool-3 >/dev/null
 assert_eq "$(cat "$CLAIM_LOG")" "--repo game amending-release 7 pool-3" "amending-release under --repo game"
 assert_contains "$(cat "$FLEET_STATE_DIR/handoff/feedback-game-7.md")" "salvage: none" \

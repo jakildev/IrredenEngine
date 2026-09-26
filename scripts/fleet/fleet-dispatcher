@@ -1453,14 +1453,11 @@ remember_decline() {
 }
 
 # An abandoned target: the pane exited with its claim label standing and no
-# record of why. The first time, log and leave it — the item is still the
-# pane's (its next dispatch re-grants the claim under the same basename, and
-# a hard-killed session resumes through the wrap's sidecar). The second time
-# (within the same TTL as the dispatch counter) the claim is released, the
-# pane's worktrees are salvaged to patches under $STATE_DIR/salvage/, a
-# handoff note names them for the next claimant (FLEET-RUNTIME.md § The
-# dispatch target), and the session sidecar is cleared so the next launch
-# goes fresh. $1 = target, $2 = agent.
+# record of why. Reservation-backed work retries once under the same pane;
+# marker-vouched lane claims release immediately because another idle pane is
+# their recovery path. Release salvages dirty worktrees, writes a handoff, and
+# clears the sidecar so a later assignment cannot resume the dead session.
+# $1 = target, $2 = agent.
 handle_abandoned_target() {
     local target="$1" agent="$2"
     local key f n
@@ -1469,7 +1466,11 @@ handle_abandoned_target() {
     mkdir -p "$STATE_DIR/abandoned" 2>/dev/null || true
     n=$(( $(ttl_counter_read "$f" "$TARGET_DISPATCH_COUNT_TTL") + 1 ))
     echo "$n" > "$f" 2>/dev/null || true
-    if (( n < 2 )); then
+    fleet_parse_target "$target" || return 0
+    local first_abandon_release=0
+    fleet_target_releases_on_first_abandon "$FLEET_TARGET_KIND" \
+        && first_abandon_release=1
+    if (( n < 2 && ! first_abandon_release )); then
         log "$target: abandoned by $agent (claim standing, no record); retrying once — a hard-killed session resumes via its sidecar"
         return 0
     fi
@@ -1492,11 +1493,17 @@ handle_abandoned_target() {
     done < <(fleet_pane_worktrees "$agent" "$ENGINE")
     fleet_release_assignment "$target" "$agent"
     rm -f "${FLEET_SESSIONS_DIR:-$HOME/.fleet/sessions}/$agent.session.json"
-    printf '# Handoff — %s\n\n- abandoned twice by %s on this host (%s); claim released\n- salvage: %s\n\nApply the patch onto a fresh branch for this target (`git apply <path>`), then delete this file — it is consumed once.\n' \
-        "$target" "$agent" "$stamp" "${salvage:-none (worktrees were clean)}" \
+    local release_detail="abandoned twice"
+    (( first_abandon_release )) && release_detail="abandoned on first exit (marker-vouched lane claim)"
+    printf '# Handoff — %s\n\n- %s by %s on this host (%s); claim released\n- salvage: %s\n\nApply the patch onto a fresh branch for this target (`git apply <path>`), then delete this file — it is consumed once.\n' \
+        "$target" "$release_detail" "$agent" "$stamp" "${salvage:-none (worktrees were clean)}" \
         > "$STATE_DIR/handoff/$key.md" 2>/dev/null || true
     rm -f "$f"
-    log "$target: abandoned twice by $agent — claim released, worktrees salvaged (${salvage:-nothing dirty}), handoff at $STATE_DIR/handoff/$key.md"
+    if (( first_abandon_release )); then
+        log "$target: abandoned by $agent — first-abandon claim released, worktrees salvaged (${salvage:-nothing dirty}), handoff at $STATE_DIR/handoff/$key.md"
+    else
+        log "$target: abandoned twice by $agent — claim released, worktrees salvaged (${salvage:-nothing dirty}), handoff at $STATE_DIR/handoff/$key.md"
+    fi
 }
 
 # --- Usage-wall verdict --------------------------------------------------------
@@ -2254,10 +2261,28 @@ PICKS_CACHE=""
 # A claim fleet-claim refused inside the last CLAIM_REFUSE_TTL_SECONDS is not
 # re-attempted: a refusal is almost always "held elsewhere" or "blocked
 # live", which does not clear inside a tick, and each attempt is several gh
-# round trips. Daemon-lifetime, like CAP_DEFER_LOGGED.
+# round trips. Keyed <role>|<class>|<target>, so one lane's refusal never
+# masks another's; pruned per walk when the target leaves that lane's picks.
 declare -A CLAIM_REFUSED_AT=()
+declare -A CLAIM_REFUSED_REASON=()
+CLAIM_TARGET_ERROR=""
 CLAIM_REFUSE_TTL_SECONDS="${FLEET_DISPATCHER_CLAIM_REFUSE_TTL:-120}"
 [[ "$CLAIM_REFUSE_TTL_SECONDS" =~ ^[0-9]+$ ]] || CLAIM_REFUSE_TTL_SECONDS=120
+
+prune_claim_refusals_for_walk() {  # $1 = role  $2 = class  $3 = current picks
+    local owner="$1|$2|" picks="$3" memo_key target line
+    local -A current=()
+    while IFS= read -r line; do
+        [[ -n "$line" ]] && current["$line"]=1
+    done <<< "$picks"
+    for memo_key in "${!CLAIM_REFUSED_AT[@]}"; do
+        [[ "$memo_key" == "$owner"* ]] || continue
+        target="${memo_key#"$owner"}"
+        if [[ -z "${current[$target]+x}" ]]; then
+            unset "CLAIM_REFUSED_AT[$memo_key]" "CLAIM_REFUSED_REASON[$memo_key]"
+        fi
+    done
+}
 
 # Why the last "claim budget spent" tick actually stalled: route-failed,
 # claude-quota-closed, codex-unavailable, codex-cooldown, resume-route-failed,
@@ -2419,27 +2444,39 @@ park_target() {
 # breaker + --replan) are spelled out here.
 claim_target() {
     local target="$1" agent="$2" rc=0 n
-    fleet_parse_target "$target" || return 1
+    CLAIM_TARGET_ERROR=""
+    fleet_parse_target "$target" || { CLAIM_TARGET_ERROR="invalid target"; return 1; }
     # Dispatch cap: a target that has already burned the cap's worth of
     # dispatches on this host without completing is parked for the human
     # instead of assigned again (see the breaker block above).
     n=$(target_dispatch_count "$target")
     if (( TARGET_DISPATCH_CAP > 0 && n >= TARGET_DISPATCH_CAP )); then
+        CLAIM_TARGET_ERROR="dispatch cap reached; parked"
         park_target "$target" "$n"
         return 1
     fi
     fleet_repo_ns "$FLEET_TARGET_REPO"
+    local claim_error_file
+    claim_error_file=$(mktemp "${TMPDIR:-/tmp}/fleet-dispatch-claim.XXXXXX") || {
+        CLAIM_TARGET_ERROR="could not create claim stderr capture"
+        return 1
+    }
     case "$FLEET_TARGET_KIND" in
         task|stack)
             local -a stack_args=()
             if [[ "$FLEET_TARGET_KIND" == stack ]]; then
-                [[ -n "$FLEET_TARGET_EXTRA" ]] || return 1
+                if [[ -z "$FLEET_TARGET_EXTRA" ]]; then
+                    rm -f "$claim_error_file"
+                    CLAIM_TARGET_ERROR="stack target has no base PR"
+                    return 1
+                fi
                 stack_args=(--stackable-on "$FLEET_TARGET_EXTRA")
             fi
             # fleet-claim's model-tag gate reads the claimant's class from
             # FLEET_ROLE_MODEL — the same class the pane's wrapper exports.
             FLEET_ROLE_MODEL="$DISPATCH_CLASS" fleet-claim ${FLEET_NS[@]+"${FLEET_NS[@]}"} \
-                claim "$FLEET_TARGET_NUM" "$agent" ${stack_args[@]+"${stack_args[@]}"} >/dev/null 2>&1 || rc=$?
+                claim "$FLEET_TARGET_NUM" "$agent" ${stack_args[@]+"${stack_args[@]}"} \
+                >/dev/null 2>"$claim_error_file" || rc=$?
             ;;
         merge)
             # Claimless: tier-0 named the PR and the in-flight records already
@@ -2456,11 +2493,13 @@ claim_target() {
             # fleet:needs-plan label: 0 = assigned as a re-plan, 2 = the
             # label is gone, genuinely done — next line.
             fleet-claim ${FLEET_NS[@]+"${FLEET_NS[@]}"} planning-claim \
-                "$FLEET_TARGET_NUM" "$agent" >/dev/null 2>&1 || rc=$?
+                "$FLEET_TARGET_NUM" "$agent" >/dev/null 2>"$claim_error_file" || rc=$?
             if (( rc == 3 )); then
                 rc=0
+                : > "$claim_error_file"
                 fleet-claim ${FLEET_NS[@]+"${FLEET_NS[@]}"} planning-claim \
-                    "$FLEET_TARGET_NUM" "$agent" --replan >/dev/null 2>&1 || rc=$?
+                    "$FLEET_TARGET_NUM" "$agent" --replan \
+                    >/dev/null 2>"$claim_error_file" || rc=$?
             fi
             ;;
         *)
@@ -2480,10 +2519,17 @@ claim_target() {
             # fleet-claim's _amending_owner_live for how it is read.
             FLEET_DISPATCH_ID="$FLEET_PRECLAIM_DISPATCH_ID" \
             fleet-claim ${FLEET_NS[@]+"${FLEET_NS[@]}"} "${FLEET_TARGET_CLAIM[$FLEET_TARGET_KIND]}" \
-                "$FLEET_TARGET_NUM" "$agent" >/dev/null 2>&1 || rc=$?
+                "$FLEET_TARGET_NUM" "$agent" >/dev/null 2>"$claim_error_file" || rc=$?
             ;;
     esac
-    (( rc == 0 )) || return "$rc"
+    if (( rc != 0 )); then
+        CLAIM_TARGET_ERROR=$(sed -e 's/\r$//' -e '/^[[:space:]]*$/d' "$claim_error_file" \
+            | tail -n 1 | cut -c1-200)
+        [[ -n "$CLAIM_TARGET_ERROR" ]] || CLAIM_TARGET_ERROR="no reason given"
+        rm -f "$claim_error_file"
+        return "$rc"
+    fi
+    rm -f "$claim_error_file"
     target_dispatch_note "$target" "$n"
     return 0
 }
@@ -2529,6 +2575,7 @@ assign_for_pane() {
         # also pins LF; this is the backstop.
         PICKS_CACHE="${PICKS_CACHE//$'\r'/}"
     fi
+    prune_claim_refusals_for_walk "$role" "$DISPATCH_CLASS" "$PICKS_CACHE"
     [[ -n "$PICKS_CACHE" ]] || return 1
     # In-flight targets, read once per walk. A record is written for every
     # launch before the next pane is considered, so the records alone are the
@@ -2537,14 +2584,16 @@ assign_for_pane() {
     local inflight
     inflight=$(grep -ho '"target":"[^"]*"' "$DISPATCH_DIR"/*.json 2>/dev/null || true)
     local line now runtime_blocked=0 claude_gate="" claude_gate_model=""
+    local refusal_key claim_rc
     local claude_only_gate=""
     now=$(date +%s)
     ASSIGN_BLOCK_REASON=""
     while IFS= read -r line; do
         [[ -n "$line" ]] || continue
         [[ "$inflight" == *"\"target\":\"$line\""* ]] && continue
-        if [[ -n "${CLAIM_REFUSED_AT[$line]+x}" ]] \
-            && (( now - CLAIM_REFUSED_AT[$line] < CLAIM_REFUSE_TTL_SECONDS )); then
+        refusal_key="$role|$DISPATCH_CLASS|$line"
+        if [[ -n "${CLAIM_REFUSED_AT[$refusal_key]+x}" ]] \
+            && (( now - CLAIM_REFUSED_AT[$refusal_key] < CLAIM_REFUSE_TTL_SECONDS )); then
             continue
         fi
         # FLEET_RUNTIMES is the sole gate for whether routing runs at all.
@@ -2602,10 +2651,16 @@ assign_for_pane() {
         CLAIM_ATTEMPTS_LEFT=$(( CLAIM_ATTEMPTS_LEFT - 1 ))
         if claim_target "$line" "$agent"; then
             ASSIGNMENT="$line"
-            unset "CLAIM_REFUSED_AT[$line]"
+            unset "CLAIM_REFUSED_AT[$refusal_key]" "CLAIM_REFUSED_REASON[$refusal_key]"
             return 0
+        else
+            claim_rc=$?
         fi
-        CLAIM_REFUSED_AT[$line]=$now
+        if [[ "${CLAIM_REFUSED_REASON[$refusal_key]:-}" != "$CLAIM_TARGET_ERROR" ]]; then
+            log "$role: claim of $line under $agent refused (rc=$claim_rc): $CLAIM_TARGET_ERROR"
+            CLAIM_REFUSED_REASON[$refusal_key]="$CLAIM_TARGET_ERROR"
+        fi
+        CLAIM_REFUSED_AT[$refusal_key]=$now
     done <<< "$PICKS_CACHE"
     (( runtime_blocked )) && return 3
     return 1

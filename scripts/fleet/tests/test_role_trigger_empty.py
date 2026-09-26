@@ -52,7 +52,7 @@ _mod = importlib.util.module_from_spec(_spec)
 _loader.exec_module(_mod)
 
 
-class UpdateRoleTriggerEmpty(unittest.TestCase):
+class RoleTriggerTempCase(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         base = Path(self._tmp.name)
@@ -67,6 +67,9 @@ class UpdateRoleTriggerEmpty(unittest.TestCase):
         _mod.SEEN_DIR = self._orig_seen
         _mod.TRIGGERS_DIR = self._orig_triggers
         self._tmp.cleanup()
+
+
+class UpdateRoleTriggerEmpty(RoleTriggerTempCase):
 
     def _trigger_exists(self, role):
         return (_mod.TRIGGERS_DIR / role).exists()
@@ -110,6 +113,7 @@ class UpdateRoleTriggerEmpty(unittest.TestCase):
         self.assertFalse(_mod.update_role_trigger("r", [{"pr": 1}]))
         self.assertFalse(self._trigger_exists("r"))
 
+
     # --- empty-suppression marker (fleet-debug triggers reads it) ------------
     # Invariant: the marker is present iff the most recent hash *write* for the
     # role was an empty-projection suppression.
@@ -142,6 +146,45 @@ class UpdateRoleTriggerEmpty(unittest.TestCase):
         _mod.update_role_trigger("r", [])
         self.assertFalse(_mod.update_role_trigger("r", []))  # unchanged empty
         self.assertTrue(self._suppressed_marker("r").exists())
+
+
+class ReviewerClaimDropRearms(RoleTriggerTempCase):
+    @staticmethod
+    def _pr(number, labels):
+        return {"number": number, "headRefName": f"claude/{number}-x",
+                "labels": labels, "mergeable": "MERGEABLE", "isDraft": False}
+
+    def test_sonnet_review_claim_drop_rearms_within_one_tick(self):
+        held = self._pr(1, ["fleet:reviewing-mac-pool-1"])
+        free = self._pr(2, [])
+        before = _mod.project_sonnet_reviewer(
+            {"repos": {"engine": {"prs": [held, free]}}})
+        _mod.update_role_trigger("sonnet-reviewer", before)
+        (_mod.TRIGGERS_DIR / "sonnet-reviewer").unlink()
+
+        held["labels"] = []
+        after = _mod.project_sonnet_reviewer(
+            {"repos": {"engine": {"prs": [held, free]}}})
+        self.assertTrue(_mod.update_role_trigger("sonnet-reviewer", after))
+        self.assertTrue((_mod.TRIGGERS_DIR / "sonnet-reviewer").exists())
+
+    def test_opus_pr_and_plan_claim_drop_rearm(self):
+        held_pr = self._pr(1, ["fleet:needs-opus-recheck",
+                               "fleet:reviewing-mac-pool-1"])
+        free_pr = self._pr(2, ["fleet:needs-opus-recheck"])
+        held_issue = {"number": 3, "labels": ["fleet:plan-review",
+                                                "fleet:reviewing-mac-pool-2"]}
+        state = {"repos": {"engine": {"prs": [held_pr, free_pr],
+                                        "plan_review": [held_issue]}}}
+        before = _mod.project_opus_reviewer(state)
+        _mod.update_role_trigger("opus-reviewer", before)
+        (_mod.TRIGGERS_DIR / "opus-reviewer").unlink()
+
+        held_pr["labels"] = ["fleet:needs-opus-recheck"]
+        held_issue["labels"] = ["fleet:plan-review"]
+        after = _mod.project_opus_reviewer(state)
+        self.assertTrue(_mod.update_role_trigger("opus-reviewer", after))
+        self.assertTrue((_mod.TRIGGERS_DIR / "opus-reviewer").exists())
 
 
 class UpdateRoleTriggerStalledRearm(unittest.TestCase):

@@ -2276,6 +2276,9 @@ REVIEW_SKIP_LABELS = frozenset({
 # claim. Released alongside fleet:changes-made, which re-triggers review via
 # RECHECK_LABELS.
 REVIEW_SKIP_PREFIXES = ("fleet:amending-",)
+# Same-lane claims remove a target from both the projection and dispatch slice.
+# Their removal is therefore a projection edge that wakes the lane promptly.
+REVIEW_HELD_PREFIXES = ("fleet:reviewing-",)
 RECHECK_LABELS = frozenset({"human:re-review", "fleet:changes-made"})
 
 # Only an explicit escalation wakes the opus-reviewer for PR work. Author-facing
@@ -2291,6 +2294,11 @@ def _review_skipped(labels):
     if labels & REVIEW_SKIP_LABELS:
         return True
     return any(label.startswith(p) for label in labels for p in REVIEW_SKIP_PREFIXES)
+
+
+def _review_claim_held(labels):
+    return any(label.startswith(p) for label in labels
+               for p in REVIEW_HELD_PREFIXES)
 
 # Smoke-worker label sets. Every host label belongs in the pending set:
 # update_role_trigger keys the smoke-worker wake on this projection's hash, so
@@ -3318,7 +3326,9 @@ def _reviewable(pr, labels):
     reviewer lane admits it; the merger or a conflict worker changes its state
     and re-arms the lane. Shared by each lane's projection and slice — the
     dispatcher elects targets from the slice."""
-    return not _review_skipped(labels) and pr.get("mergeable") != "CONFLICTING"
+    return (not _review_skipped(labels)
+            and not _review_claim_held(labels)
+            and pr.get("mergeable") != "CONFLICTING")
 
 
 def sonnet_review_admissible(pr, labels):
@@ -3374,7 +3384,7 @@ def project_opus_reviewer(state):
         # swallows even the single trailing wake.)
         for issue in repo_state.get("plan_review", []):
             labels = set(issue.get("labels", []))
-            if labels & _HUMAN_GATE_LABELS:
+            if labels & _HUMAN_GATE_LABELS or _review_claim_held(labels):
                 continue
             items.append({"repo": repo, "kind": "plan_review",
                           "issue": issue["number"]})
@@ -4014,7 +4024,7 @@ def slice_opus_reviewer(state):
         # so a woken reviewer reads the same set that triggered it).
         for issue in repo_state.get("plan_review", []):
             labels = set(issue.get("labels", []))
-            if labels & _HUMAN_GATE_LABELS:
+            if labels & _HUMAN_GATE_LABELS or _review_claim_held(labels):
                 continue
             out["plan_review"].append(_slice_issue_with_repo(repo_key, issue))
     return out
