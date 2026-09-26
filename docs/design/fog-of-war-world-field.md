@@ -161,7 +161,9 @@ and removes only bucket directories it emptied. The layer directory itself
 being a symlink is a refusal, not a traversal.
 
 `setPersistenceRoot(saveRoot) -> bool` fails for an invalid root and after the
-field already holds a chunk, because a late root could shadow disk state.
+field already holds a chunk, because a late root could shadow disk state. An
+accepted root invalidates the gathered window, so a root set after frames have
+rendered still uploads the saved regions on the next gather.
 `flushToDisk() -> int` saves every persistence-dirty resident region; the
 creation's save-all path calls it. `clear()` also removes the layer files and
 drops all region records. Destruction never flushes.
@@ -428,7 +430,7 @@ phase changes all of them together.
 | `test/render/shaders/c_fog_cross_section_probe.glsl` | Includes the real GLSL face-selection helper. |
 | `engine/prefabs/irreden/render/fog_line_of_sight.hpp` | Column stamping, shape clip boxes, horizon traces and build bounds use the LOS tile origin. |
 | `component_canvas_fog_of_war.hpp` — `FogLineOfSightField::cellInField` / `horizonIndex` | CPU visibility and horizon indexing use source-local tile coordinates. |
-| `VOXEL_TO_TRIXEL_STAGE_1::uploadFogIfDirty` | Uploads before the per-canvas early return and again through the world-fog `beginTick` resolve; the second call must no-op in the same frame. |
+| `VOXEL_TO_TRIXEL_STAGE_1::gatherFogWindow` | Gathers before the per-canvas early return and again through the world-fog `beginTick` resolve; the second call finds nothing pending in the same frame. |
 | `FOG_TO_TRIXEL` | Binds the same texture and observer block for paint. |
 | `FOG_LOS_BUILD` | Builds each source's co-anchored column view and horizon tile, then uploads the packed LOS texture. |
 | `IRPrefab::Fog::lineOfSight` | Anchors and fills the standalone query view before tracing to the target. |

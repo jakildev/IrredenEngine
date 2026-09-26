@@ -50,7 +50,7 @@ inline float losBuildReach(IRMath::vec4 circle) {
 inline void stampLosColumn(std::span<std::int32_t> columnTops, IRMath::ivec3 cell) {
     if (!IRComponents::FogLineOfSightField::cellInField(cell.x, cell.y))
         return;
-    std::int32_t &top = columnTops[IRComponents::C_CanvasFogOfWar::flatIndex(cell.x, cell.y)];
+    std::int32_t &top = columnTops[IRComponents::FogLineOfSightField::columnIndex(cell.x, cell.y)];
     top = IRMath::min(top, static_cast<std::int32_t>(cell.z));
 }
 
@@ -170,7 +170,7 @@ traceLosHorizon(std::span<const std::int32_t> columnTops, IRMath::vec3 eye, IRMa
     const auto visit = [&](int x, int y) {
         if (!boxInField && !IRComponents::FogLineOfSightField::cellInField(x, y))
             return;
-        const std::int32_t top = tops[IRComponents::C_CanvasFogOfWar::flatIndex(x, y)];
+        const std::int32_t top = tops[IRComponents::FogLineOfSightField::columnIndex(x, y)];
         if (top == IRComponents::kFogLosColumnEmpty)
             return;
         const double distance = IRMath::planarLength(

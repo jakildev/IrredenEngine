@@ -18,6 +18,9 @@
 #include <irreden/voxel/components/component_voxel_set.hpp>
 
 #include <cstdint>
+#include <optional>
+#include <string>
+#include <utility>
 
 namespace IRPrefab::Fog {
 
@@ -148,9 +151,9 @@ inline float getEntityReveal(IREntity::EntityId entity) {
     return revealed.has_value() ? (*revealed)->revealFactor_ : 1.0f;
 }
 
-/// Set a single fog cell at world-space voxel column @p (worldX, worldY).
-/// State values: 0 = unexplored, 128 = explored, 255 = visible.
-/// Out-of-range writes are silently dropped.
+/// Set a single fog cell at world-space voxel column @p (worldX, worldY), any
+/// representable column. State values: 0 = unexplored, 128 = explored,
+/// 255 = visible.
 inline void setCell(int worldX, int worldY, std::uint8_t state) {
     if (auto *fog = detail::activeFogComponent()) {
         fog->setCell(worldX, worldY, state);
@@ -158,8 +161,8 @@ inline void setCell(int worldX, int worldY, std::uint8_t state) {
 }
 
 /// Read the fog state at @p (worldX, worldY). Returns
-/// `kFogStateUnexplored` if the active canvas has no fog component or
-/// the coordinate is out of range.
+/// `kFogStateUnexplored` if the active canvas has no fog component or the
+/// cell was never written.
 inline std::uint8_t getCell(int worldX, int worldY) {
     if (auto *fog = detail::activeFogComponent()) {
         return fog->getCell(worldX, worldY);
@@ -300,11 +303,56 @@ inline void setUnexploredColor(IRMath::Color color) {
     }
 }
 
-/// Reset every cell to `kFogStateUnexplored`.
+/// Reset every cell to `kFogStateUnexplored`. With a persistence root set,
+/// this also deletes the saved fog files under it.
 inline void clear() {
     if (auto *fog = detail::activeFogComponent()) {
         fog->clearAll();
     }
+}
+
+/// Persist the active canvas's fog under @p saveRoot (one region file per
+/// 512×512 columns; docs/design/fog-of-war-world-field.md D4): cells load on
+/// first touch and save through `flushToDisk`. False without an active fog
+/// canvas, for an empty root, or once the field holds any cell — set it after
+/// `attachToCanvas(canvas, 0)` and before the first reveal. Accepting a root
+/// makes the next gather re-upload the whole window, so saved state reaches
+/// the texture even when frames rendered first. Destruction never saves.
+inline bool setPersistenceRoot(std::string saveRoot) {
+    auto *fog = detail::activeFogComponent();
+    if (fog == nullptr) {
+        return false;
+    }
+    std::optional<IRWorld::FieldChunkDiskPersistence> persistence =
+        IRWorld::FieldChunkDiskPersistence::create(
+            std::move(saveRoot),
+            kFogFieldLayer,
+            kFogFieldBytesPerCell
+        );
+    if (!persistence.has_value() || !fog->field_->setPersistence(std::move(*persistence))) {
+        return false;
+    }
+    fog->windowOrigin_.reset();
+    return true;
+}
+
+/// Save every changed region of the active canvas's persisted fog; returns
+/// the number of region files written. 0 without an active fog canvas or a
+/// persistence root.
+inline int flushToDisk() {
+    if (auto *fog = detail::activeFogComponent()) {
+        return fog->field_->flush();
+    }
+    return 0;
+}
+
+/// Resident counts, plus region probes, loads, saves and evictions since the
+/// previous call. Empty without an active fog canvas.
+inline WorldFieldStats fieldStats() {
+    if (auto *fog = detail::activeFogComponent()) {
+        return fog->field_->stats();
+    }
+    return {};
 }
 
 /// Attach both components FOG_TO_TRIXEL's archetype requires to @p canvas:
@@ -313,7 +361,9 @@ inline void clear() {
 /// silently no-ops on a canvas missing either, so co-attaching here removes
 /// that footgun from call sites. @p revealRadius > 0 also reveals an
 /// origin-centered disc of that radius on @p canvas (pass kFogOfWarSize for a
-/// full reveal); 0 (default) attaches only, leaving the grid unexplored.
+/// full reveal); 0 (default) attaches only, leaving the grid unexplored. A
+/// persistent creation attaches with 0, calls `setPersistenceRoot`, then
+/// reveals: a reveal here would make the root refuse.
 inline void attachToCanvas(IREntity::EntityId canvas, int revealRadius = 0) {
     if (!IREntity::getComponentOptional<IRComponents::C_TrixelCanvasRenderBehavior>(canvas)
              .has_value())
