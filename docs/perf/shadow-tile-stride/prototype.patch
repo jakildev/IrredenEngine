@@ -1,0 +1,150 @@
+diff --git a/engine/render/src/shaders/ir_sun_face_index.glsl b/engine/render/src/shaders/ir_sun_face_index.glsl
+index 34d61ebc6..9fa32d112 100644
+--- a/engine/render/src/shaders/ir_sun_face_index.glsl
++++ b/engine/render/src/shaders/ir_sun_face_index.glsl
+@@ -40,9 +40,19 @@ void indexSourceSunFace(vec3 corner, vec3 edgeU, vec3 edgeV) {
+ #ifdef IR_SUN_FACE_INDEX_COOPERATIVE
+         const uint width = uint(last.x - first.x + 1);
+         const uint count = width * uint(last.y - first.y + 1);
++        const uint columnStride = stride % width;
++        const uint rowStride = stride / width;
++        uint column = lane % width;
++        uint row = lane / width;
+         for (uint item = lane; item < count; item += stride) {
+-            const int x = first.x + int(item % width);
+-            const int y = first.y + int(item / width);
++            const int x = first.x + int(column);
++            const int y = first.y + int(row);
++            column += columnStride;
++            row += rowStride;
++            if (column >= width) {
++                column -= width;
++                ++row;
++            }
+ #else
+         for (int y = first.y; y <= last.y; ++y) for (int x = first.x; x <= last.x; ++x) {
+ #endif
+diff --git a/engine/render/src/shaders/metal/ir_sun_face_index.metal b/engine/render/src/shaders/metal/ir_sun_face_index.metal
+index a99df0d1c..e0f535335 100644
+--- a/engine/render/src/shaders/metal/ir_sun_face_index.metal
++++ b/engine/render/src/shaders/metal/ir_sun_face_index.metal
+@@ -43,9 +43,19 @@ inline void indexSourceSunFace(device atomic_uint* sunDepthBuf, float3 corner, f
+ #ifdef IR_SUN_FACE_INDEX_COOPERATIVE
+         const uint width = uint(last.x - first.x + 1);
+         const uint count = width * uint(last.y - first.y + 1);
++        const uint columnStride = stride % width;
++        const uint rowStride = stride / width;
++        uint column = lane % width;
++        uint row = lane / width;
+         for (uint item = lane; item < count; item += stride) {
+-            const int x = first.x + int(item % width);
+-            const int y = first.y + int(item / width);
++            const int x = first.x + int(column);
++            const int y = first.y + int(row);
++            column += columnStride;
++            row += rowStride;
++            if (column >= width) {
++                column -= width;
++                ++row;
++            }
+ #else
+         for (int y = first.y; y <= last.y; ++y) for (int x = first.x; x <= last.x; ++x) {
+ #endif
+diff --git a/scripts/tests/test_render_face_tile_partition.py b/scripts/tests/test_render_face_tile_partition.py
+new file mode 100644
+index 000000000..f951c715a
+--- /dev/null
++++ b/scripts/tests/test_render_face_tile_partition.py
+@@ -0,0 +1,92 @@
++"""Check production cooperative tile iteration against independent rectangles."""
++
++import subprocess
++import tempfile
++import unittest
++from pathlib import Path
++
++from test_render_source_face_index import COMPILER, ROOT
++
++PROGRAM = r"""
++#include <cstdint>
++#include <iostream>
++#include <vector>
++using uint = std::uint32_t;
++struct ivec2 {int x,y;};
++bool check(ivec2 first,ivec2 last) {
++    std::vector<ivec2> expected;
++    for(int y=first.y;y<=last.y;++y)
++        for(int x=first.x;x<=last.x;++x) expected.push_back({x,y});
++    const uint stride=64u;
++    for(uint lane=0;lane<64;++lane) {
++        uint expectedItem=lane;
++        PRODUCTION_LOOP
++            if(expectedItem>=expected.size() ||
++               x!=expected[expectedItem].x || y!=expected[expectedItem].y) return false;
++            expectedItem+=64;
++        }
++        if(expectedItem<expected.size()) return false;
++    }
++    return true;
++}
++int main() {
++    std::uint64_t tiles=0;
++    uint rectangles=0;
++    for(int height=1;height<=128;++height) for(int width=1;width<=128;++width) {
++        for(ivec2 first:{ivec2{0,0},ivec2{128-width,128-height}}) {
++            if(!check(first,{first.x+width-1,first.y+height-1})) {
++                std::cerr<<"partition mismatch: "<<width<<"x"<<height
++                         <<" origin "<<first.x<<","<<first.y<<"\n";
++                return 1;
++            }
++            tiles+=width*height;
++            ++rectangles;
++        }
++    }
++    std::cout<<rectangles<<" rectangles, "<<tiles
++             <<" tile visits preserve lane ownership and order\n";
++}
++"""
++
++
++@unittest.skipUnless(COMPILER, "tile partition controls require a C++ compiler")
++class FaceTilePartitionTest(unittest.TestCase):
++    def test_every_rectangle_and_carry_mutations(self):
++        for suffix, folder in (("glsl", ""), ("metal", "metal/")):
++            source = (ROOT / "engine/render/src/shaders" / folder
++                      / f"ir_sun_face_index.{suffix}").read_text()
++            start = source.index("        const uint width =")
++            end = source.index("#else", start)
++            loop = source[start:end]
++            variants = {
++                "production": loop,
++                "missing_carry": loop.replace("column >= width", "false"),
++                "late_carry": loop.replace("column >= width", "column > width"),
++                "missing_row_stride": loop.replace("row += rowStride", "row += 0u"),
++                "wrong_first_column": loop.replace("column = lane % width", "column = 0u"),
++                "wrong_first_row": loop.replace("row = lane / width", "row = 0u"),
++            }
++            for name, variant in variants.items():
++                with (self.subTest(backend=suffix, variant=name),
++                      tempfile.TemporaryDirectory() as temporary):
++                    if name != "production":
++                        self.assertNotEqual(variant, loop)
++                    path = Path(temporary)
++                    (path / "partition.cpp").write_text(
++                        PROGRAM.replace("PRODUCTION_LOOP", variant))
++                    build = subprocess.run(
++                        [COMPILER, "-std=c++17", "-O2", str(path / "partition.cpp"),
++                         "-o", str(path / "partition")], capture_output=True, text=True,
++                    )
++                    self.assertEqual(build.returncode, 0, build.stderr)
++                    run = subprocess.run([str(path / "partition")], capture_output=True,
++                                         text=True, timeout=60)
++                    if name == "production":
++                        self.assertEqual(run.returncode, 0, run.stderr)
++                        print(suffix, run.stdout.strip())
++                    else:
++                        self.assertNotEqual(run.returncode, 0, "carry mutation escaped")
++
++
++if __name__ == "__main__":
++    unittest.main()
