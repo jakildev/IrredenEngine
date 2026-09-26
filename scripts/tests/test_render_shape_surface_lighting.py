@@ -32,10 +32,10 @@ vec3 samplePalette(float ao,float l){
  return {.7f,.5f,.3f};
 }
 float pos3DtoDistance(vec3 p){return p.x+p.y+p.z;}
-float worldSurfaceSunShadowFactor(vec3 p,vec3 n,float d,vec4 r){
+float worldShapeSurfaceSunShadowFactor(vec3 p,vec3 n,float d,vec4 r){
  ++shadowCalls;
  if(!near(p.x,10.25f)||!near(p.y,-20.5f)||!near(p.z,30.75f)||
-    !near(n.z,normalZ)||!near(d,20.5f)||!near(r.w,.7f))std::exit(23);
+    !near(n.z,normalZ)||!near(d,-81.f)||!near(r.w,.7f))std::exit(23);
  return visibilityInput;
 }
 vec3 localLight(vec3 p){++lightCalls;if(!near(p.x,10.25f))std::exit(24);return {.1f,.2f,.3f};}
@@ -57,7 +57,7 @@ int main(){
   aoInput=ao;sunAmbient=ambient;visibilityInput=vis;receiverShapes[1].flags=flags;
   shadowCalls=lightCalls=aoCalls=0;
   vec3 out=query({1,1},4,{10.25f,-20.5f,30.75f},{float(std::sqrt(1-z*z)),0,z},
-                 {0,0,0,.7f},{.9f,.8f,.7f});
+                 -81.f,{0,0,0,.7f},{.9f,.8f,.7f});
   if(flags){
    if(!same(vec4(out,1),{.9f,.8f,.7f,1})||aoCalls||shadowCalls||lightCalls)return 1;
   }else{
@@ -117,6 +117,9 @@ class ShapeSurfaceLightingTest(unittest.TestCase):
                 "lost_local_light": body.replace("localLight(position)", "vec3(0.0)"),
                 "wrong_sky_normal": body.replace("surfaceSkyLight(normal,",
                                                  "surfaceSkyLight(vec3(0,0,1),"),
+                "world_cascade_depth": body.replace(
+                    "normal, cascadeDepth, casterRotation",
+                    "normal, pos3DtoDistance(position), casterRotation"),
                 "tone_before_composition": body.replace("return surfaceDisplayColor(linearColor",
                                                         "return surfaceDisplayColor(material"),
             }
@@ -128,7 +131,8 @@ class ShapeSurfaceLightingTest(unittest.TestCase):
                     cpp, exe = Path(tmp) / "lighting.cpp", Path(tmp) / "lighting"
                     cpp.write_text(PREAMBLE + ADAPTERS + helpers +
                                    "vec3 query(ivec2 ownerPixel,int ownerWidth,vec3 position,"
-                                   "vec3 normal,vec4 casterRotation,vec3 fallbackColor){" +
+                                   "vec3 normal,float cascadeDepth,vec4 casterRotation,"
+                                   "vec3 fallbackColor){" +
                                    candidate + "}" + CASES)
                     result = subprocess.run([COMPILER, "-std=c++17", str(cpp), "-o", str(exe)],
                                             capture_output=True, text=True)

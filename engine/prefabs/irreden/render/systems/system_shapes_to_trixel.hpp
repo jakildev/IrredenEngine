@@ -490,6 +490,11 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                     auto *baker = getSystemParams<System<BAKE_SUN_SHADOW_MAP>>(bakeSystem);
                     {
                         IRRender::GpuSubStageScope timing("shapeCastBoxes");
+                        // The box bake centers each caster where this canvas drew it.
+                        shapesFrameDataBuf_->bindBase(
+                            BufferTarget::UNIFORM,
+                            kBufferIndex_ShapesFrameData
+                        );
                         baker->bakeAnalyticBoxes(
                             static_cast<int>(gpuShapes.size()),
                             renderMode == SubdivisionMode::NONE ? 1 : effectiveSub

@@ -1,21 +1,10 @@
 #include "ir_iso_common.metal"
+#include "ir_sdf_common.metal"
+#include "ir_shape_data.metal"
+#include "ir_shape_receiver.metal"
 #include "ir_sun_projection.metal"
 #include "ir_sun_shadow_sample.metal"
 #include <metal_atomic>
-
-struct ShapeDescriptor {
-    float4 worldPosition;
-    float4 params;
-    float4 rotation;
-    uint shapeType;
-    uint color;
-    uint entityId;
-    uint jointIndex;
-    uint flags;
-    uint lodLevel;
-    uint _pad0;
-    uint _pad1;
-};
 
 #include "ir_sun_face_index.metal"
 
@@ -24,6 +13,7 @@ kernel void c_bake_box_sun_shadow(
     device atomic_uint* sunDepthBuf [[buffer(28)]],
     constant int4& dispatch [[buffer(16)]],
     constant FrameDataSun& sunFrame [[buffer(29)]],
+    constant ShapeProjectionData& boxProjection [[buffer(23)]],
     uint3 groupId [[threadgroup_position_in_grid]],
     uint3 localId [[thread_position_in_threadgroup]]
 ) {
@@ -37,7 +27,9 @@ kernel void c_bake_box_sun_shadow(
     const float3 axisX = rotateByQuat(float3(1, 0, 0), shape.rotation);
     const float3 axisY = rotateByQuat(float3(0, 1, 0), shape.rotation);
     const float3 axisZ = rotateByQuat(float3(0, 0, 1), shape.rotation);
-    const float3 center = sunSpaceProject(shape.worldPosition.xyz, sunFrame.sunBasisU.xyz, sunFrame.sunBasisV.xyz, sunFrame.sunDirection.xyz);
+    // Faces and footprint follow the drawn box, not the raw descriptor position.
+    const float3 boxCenter = shapeRenderedCenter(shape.worldPosition.xyz, boxProjection);
+    const float3 center = sunSpaceProject(boxCenter, sunFrame.sunBasisU.xyz, sunFrame.sunBasisV.xyz, sunFrame.sunDirection.xyz);
     const float3 extent = abs(sunSpaceProject(axisX, sunFrame.sunBasisU.xyz, sunFrame.sunBasisV.xyz, sunFrame.sunDirection.xyz)) * halfExtent.x
         + abs(sunSpaceProject(axisY, sunFrame.sunBasisU.xyz, sunFrame.sunBasisV.xyz, sunFrame.sunDirection.xyz)) * halfExtent.y
         + abs(sunSpaceProject(axisZ, sunFrame.sunBasisU.xyz, sunFrame.sunBasisV.xyz, sunFrame.sunDirection.xyz)) * halfExtent.z;
@@ -52,7 +44,7 @@ kernel void c_bake_box_sun_shadow(
             float3 edgeU = float3(0.0), edgeV = float3(0.0);
             edgeU[(axis + 1) % 3] = 2.0 * halfExtent[(axis + 1) % 3];
             edgeV[(axis + 2) % 3] = 2.0 * halfExtent[(axis + 2) % 3];
-            corner = shape.worldPosition.xyz + rotateByQuat(corner, shape.rotation);
+            corner = boxCenter + rotateByQuat(corner, shape.rotation);
             edgeU = rotateByQuat(edgeU, shape.rotation);
             edgeV = rotateByQuat(edgeV, shape.rotation);
             const float3 projected = sunSpaceProject(corner, sunFrame.sunBasisU.xyz, sunFrame.sunBasisV.xyz, sunFrame.sunDirection.xyz);
@@ -71,7 +63,7 @@ kernel void c_bake_box_sun_shadow(
         for (uint sampleIndex = groupId.z * 64u + localId.x; sampleIndex < uint(size.x * size.y); sampleIndex += 64u * uint(dispatch.w)) {
             const int2 pixel = first + int2(int(sampleIndex) % size.x, int(sampleIndex) / size.x);
             const float2 uv = origin + (float2(pixel) + 0.5) * texel;
-            const float3 worldDelta = sunFrame.sunBasisU.xyz * uv.x + sunFrame.sunBasisV.xyz * uv.y - shape.worldPosition.xyz;
+            const float3 worldDelta = sunFrame.sunBasisU.xyz * uv.x + sunFrame.sunBasisV.xyz * uv.y - boxCenter;
             const float3 rayOrigin = float3(dot(worldDelta, axisX), dot(worldDelta, axisY), dot(worldDelta, axisZ));
             float nearDepth = -1e30;
             float farDepth = 1e30;
