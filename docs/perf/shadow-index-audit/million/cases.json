@@ -1,0 +1,56 @@
+{
+  "rounds": 2,
+  "common": [
+    "--wave-freeze",
+    "--no-overlay",
+    "--pivot-origin",
+    "--auto-profile",
+    "300"
+  ],
+  "cases": {
+    "debug-profiling-on-yaw0": [
+      "--config-preset",
+      "configs/perf/million.lua",
+      "--yaw",
+      "0"
+    ],
+    "debug-profiling-on-yaw45": [
+      "--config-preset",
+      "configs/perf/million.lua",
+      "--yaw",
+      "0.785398163"
+    ],
+    "debug-profiling-on-yawsweep": [
+      "--config-preset",
+      "configs/perf/million.lua",
+      "--yaw",
+      "0",
+      "--yaw-step",
+      "0.020943951"
+    ],
+    "debug-profiling-off-yaw0": [
+      "--config-preset",
+      "configs/perf/million-profiling-off.lua",
+      "--yaw",
+      "0"
+    ],
+    "debug-profiling-off-yaw45": [
+      "--config-preset",
+      "configs/perf/million-profiling-off.lua",
+      "--yaw",
+      "0.785398163"
+    ],
+    "debug-profiling-off-yawsweep": [
+      "--config-preset",
+      "configs/perf/million-profiling-off.lua",
+      "--yaw",
+      "0",
+      "--yaw-step",
+      "0.020943951"
+    ]
+  },
+  "trees": {
+    "debug": "build"
+  },
+  "order": "forward on odd rounds; reverse on even rounds"
+}

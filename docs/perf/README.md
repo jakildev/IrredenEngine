@@ -435,3 +435,23 @@ The current GPU timings use async `GL_TIMESTAMP` / `MTLCounterSample`
 queries (see T-310). The original `glFinish()`-style synchronous
 bracketing added per-frame overhead — keep `gpu_stage_timing` off in
 shipping builds, on during a matrix run.
+
+## Fixed-scene zoom control
+
+`rotation_controls.py --suite zoom` holds a solid 32³ voxel scene, zero wave
+amplitude and explicit origin pivot fixed, hides the profiler overlay, and
+crosses yaw 0°/45°, zoom 1/4 and subdivision mode none/full (base 1).
+It separates zoom-dependent visibility from subdivision work; it is a small
+control, not a million-entity throughput qualification. Two rounds reverse
+the case order; three are the default.
+
+```bash
+python3 scripts/perf/rotation_controls.py --suite zoom --rounds 3 --frames 300 --output /tmp/zoom-control
+```
+
+The summary separates all-frame and warmup-excluded wall time from the GPU
+envelope. The envelope includes stalls; sampled stage means are not additive
+frame totals. Raw reports retain CPU systems, update counts and overflow
+witnesses. Use the million controls above for scale and continuous yaw.
+
+Results and the finite shadow-index follow-up: [rotation, zoom and index audit](shadow-index-audit.md).
