@@ -114,7 +114,10 @@ fixture() {  # <prs-json> <issues-json> <ages-json>
     : > "$CALLS"
 }
 beat() {  # <agent> <age-secs>
-    touch -d "@$(( NOW - $2 ))" "$FLEET_HEARTBEATS_DIR/$1"
+    # os.utime, not `touch -d @<epoch>`: BSD touch (macOS) rejects that form.
+    touch "$FLEET_HEARTBEATS_DIR/$1"
+    python3 -c 'import os, sys; t = int(sys.argv[2]); os.utime(sys.argv[1], (t, t))' \
+        "$FLEET_HEARTBEATS_DIR/$1" "$(( NOW - $2 ))"
 }
 lock() {  # <slug> <owner> [<dispatch-id>]
     mkdir -p "$FLEET_CLAIMS_DIR/$1"

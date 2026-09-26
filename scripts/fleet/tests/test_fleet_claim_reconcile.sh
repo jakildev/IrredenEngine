@@ -329,7 +329,9 @@ for spec in "520 opus-worker-8 60" "521 opus-worker-10 9000"; do
     echo D1 > "$FLEET_CLAIMS_DIR/$_n/dispatch_id"
     echo D2 > "$FLEET_STATE_DIR/dispatch-current/$_owner"
     "$FLEET_CLAIM" reserve "$_n" "$_owner" >/dev/null
-    touch -d "@$((NOW - _beat_age))" "$FLEET_HEARTBEATS_DIR/$_owner"
+    touch "$FLEET_HEARTBEATS_DIR/$_owner"
+    python3 -c 'import os, sys; t = int(sys.argv[2]); os.utime(sys.argv[1], (t, t))' \
+        "$FLEET_HEARTBEATS_DIR/$_owner" "$((NOW - _beat_age))"
 done
 "$FLEET_CLAIM" reconcile --repo jakildev/IrredenEngine >/dev/null 2>&1
 python3 - "$REPORT" <<'PY' && ok "R1 keeps the live detached pane flag-only and releases the stale control" || bad "R1 detached-pane findings wrong"
