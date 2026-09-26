@@ -193,5 +193,71 @@ class Routing(unittest.TestCase):
             self.assertIn("fleet:author-claude", run.call_args.args[0])
 
 
+class Prune(unittest.TestCase):
+    def _write_problem(self, state_dir, alerts_dir, key, count=1, with_alert=False):
+        tag = runtime.hashlib.sha256(key.encode()).hexdigest()[:16]
+        path = state_dir / "runtime-problems" / (tag + ".json")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"key": key, "reason": "x", "count": count}))
+        if with_alert:
+            alerts_dir.mkdir(parents=True, exist_ok=True)
+            (alerts_dir / ("fleet-runtime-" + tag)).write_text(json.dumps(
+                {"key": key, "reason": "x", "count": count}))
+        return tag
+
+    def _write_state(self, state_dir, repos, degraded=None):
+        state_dir.mkdir(parents=True, exist_ok=True)
+        data = {"repos": repos}
+        if degraded is not None:
+            data["degraded"] = degraded
+        (state_dir / "state.json").write_text(json.dumps(data))
+
+    def test_closed_target_removes_both_files_open_target_survives(self):
+        with tempfile.TemporaryDirectory() as temp:
+            state_dir = Path(temp) / "state"
+            alerts_dir = Path(temp) / "alerts"
+            self._write_state(state_dir, {
+                "engine": {"prs": [{"number": 900}], "tasks": {"open": [], "in_progress": [],
+                                                                "plan_gated": []}},
+            })
+            closed_tag = self._write_problem(state_dir, alerts_dir,
+                                             "route:review:engine:901", count=7, with_alert=True)
+            open_tag = self._write_problem(state_dir, alerts_dir,
+                                           "route:review:engine:900", count=7, with_alert=True)
+            removed = runtime.prune(state_dir, alerts_dir)
+            self.assertEqual(removed, ["route:review:engine:901"])
+            self.assertFalse((state_dir / "runtime-problems" / (closed_tag + ".json")).exists())
+            self.assertFalse((alerts_dir / ("fleet-runtime-" + closed_tag)).exists())
+            self.assertTrue((state_dir / "runtime-problems" / (open_tag + ".json")).exists())
+            self.assertTrue((alerts_dir / ("fleet-runtime-" + open_tag)).exists())
+
+    def test_issue_kind_checked_against_open_task_lists(self):
+        with tempfile.TemporaryDirectory() as temp:
+            state_dir = Path(temp) / "state"
+            alerts_dir = Path(temp) / "alerts"
+            self._write_state(state_dir, {
+                "engine": {"prs": [], "tasks": {"open": [{"number": 3851}],
+                                                "in_progress": [], "plan_gated": []}},
+            })
+            self._write_problem(state_dir, alerts_dir, "route:task:engine:3851", count=3)
+            closed_tag = self._write_problem(state_dir, alerts_dir,
+                                             "route:task:engine:9", count=3)
+            removed = runtime.prune(state_dir, alerts_dir)
+            self.assertEqual(removed, ["route:task:engine:9"])
+            self.assertFalse((state_dir / "runtime-problems" / (closed_tag + ".json")).exists())
+
+    def test_degraded_slice_is_left_untouched(self):
+        with tempfile.TemporaryDirectory() as temp:
+            state_dir = Path(temp) / "state"
+            alerts_dir = Path(temp) / "alerts"
+            self._write_state(state_dir, {
+                "engine": {"prs": [], "tasks": {"open": [], "in_progress": [], "plan_gated": []}},
+            }, degraded=["engine.prs"])
+            tag = self._write_problem(state_dir, alerts_dir, "route:review:engine:901", count=3)
+            removed = runtime.prune(state_dir, alerts_dir)
+            self.assertEqual(removed, [])
+            self.assertTrue((state_dir / "runtime-problems" / (tag + ".json")).exists())
+
+
 if __name__ == "__main__":
     unittest.main()
