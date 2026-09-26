@@ -142,4 +142,20 @@ patch=$(latest_patch)
 [[ "$(git -C "$WT" rev-parse --abbrev-ref HEAD)" == "master" ]] && ok "T4: branch unchanged on a clean pane" || bad "T4: branch changed on a clean pane"
 [[ -s "$TMPROOT/stderr.log" ]] && bad "T4: spurious log line on a clean pane: $(cat "$TMPROOT/stderr.log")" || ok "T4: no spurious log line"
 
+echo "T5: backup failure — an unwritable leftovers dir leaves the tracked diff in place"
+reset_pane; seed_dirty
+# A regular file where the leftovers dir's parent should be: mkdir and the
+# patch redirect both fail, independent of uid (a chmod'd dir does not stop root).
+: > "$TMPROOT/not-a-dir"
+: > "$TMPROOT/stderr.log"
+out=$(FLEET_LEFTOVERS_DIR="$TMPROOT/not-a-dir/leftovers" launch sonnet high worker "" live)
+[[ "$out" == resumed=0* ]] && ok "T5: fresh launch decision" || bad "T5: launch decision: $out"
+assert_eq "$(cat "$WT/tracked.txt")" "modified" "T5: text modification survives a failed backup"
+cmp -s <(printf '\x00\x01\xff\xfe\x00CHANGED\x00') "$WT/image.bin" \
+  && ok "T5: binary modification survives a failed backup" || bad "T5: binary modification was discarded"
+[[ "$(git -C "$WT" rev-parse --abbrev-ref HEAD)" == "master" ]] && ok "T5: branch untouched" || bad "T5: branch reset despite the failed backup"
+grep -q "could not back up .*leaving pane as-is" "$TMPROOT/stderr.log" \
+  && ok "T5: stderr names the skipped reset" || bad "T5: stderr: $(cat "$TMPROOT/stderr.log")"
+[[ -f "$WT/.retry-verdict.sh" ]] && bad "T5: retry script survived" || ok "T5: retry-script cleanup is independent of the backup"
+
 summarize "fleet-dispatch-wrap clean-pane pre-launch arm"

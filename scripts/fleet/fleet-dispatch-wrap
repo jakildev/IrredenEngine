@@ -351,25 +351,27 @@ if (( ! RESUMED )); then
             _leftovers_dir="${FLEET_LEFTOVERS_DIR:-$HOME/.fleet/leftovers}"
             mkdir -p "$_leftovers_dir" 2>/dev/null || true
             _leftover_patch="$_leftovers_dir/$worktree_name-$(date -u +%Y%m%dT%H%M%SZ).patch"
+            # The forced checkout below is the only copy-destroying step, so it
+            # runs only once a non-empty patch is on disk.
             if git diff --binary HEAD > "$_leftover_patch" 2>/dev/null && [[ -s "$_leftover_patch" ]]; then
                 echo "fleet-dispatch-wrap: tracked modifications in $worktree_name backed up to $_leftover_patch" >&2
+                case "$PWD" in
+                    */creations/game/.claude/worktrees/*) _clean_scratch_branch="claude/game-$worktree_name-scratch" ;;
+                    *) _clean_scratch_branch="claude/$worktree_name-scratch" ;;
+                esac
+                if git fetch --quiet origin master 2>/dev/null; then
+                    # --force: the backup above already captured the tracked diff, so
+                    # this checkout is meant to discard it, not preserve it — plain
+                    # `checkout -B` refuses to switch when the destination tree
+                    # conflicts with the dirty working tree.
+                    git checkout --quiet --force -B "$_clean_scratch_branch" origin/master 2>/dev/null \
+                        || echo "fleet-dispatch-wrap: could not reset $worktree_name to $_clean_scratch_branch" >&2
+                else
+                    echo "fleet-dispatch-wrap: git fetch origin master failed in $worktree_name; leaving pane as-is" >&2
+                fi
             else
-                rm -f "$_leftover_patch"
-                echo "fleet-dispatch-wrap: could not back up tracked modifications in $worktree_name" >&2
-            fi
-            case "$PWD" in
-                */creations/game/.claude/worktrees/*) _clean_scratch_branch="claude/game-$worktree_name-scratch" ;;
-                *) _clean_scratch_branch="claude/$worktree_name-scratch" ;;
-            esac
-            if git fetch --quiet origin master 2>/dev/null; then
-                # --force: the backup above already captured the tracked diff, so
-                # this checkout is meant to discard it, not preserve it — plain
-                # `checkout -B` refuses to switch when the destination tree
-                # conflicts with the dirty working tree.
-                git checkout --quiet --force -B "$_clean_scratch_branch" origin/master 2>/dev/null \
-                    || echo "fleet-dispatch-wrap: could not reset $worktree_name to $_clean_scratch_branch" >&2
-            else
-                echo "fleet-dispatch-wrap: git fetch origin master failed in $worktree_name; leaving pane as-is" >&2
+                rm -f "$_leftover_patch" 2>/dev/null
+                echo "fleet-dispatch-wrap: could not back up tracked modifications in $worktree_name; leaving pane as-is" >&2
             fi
             unset _clean_scratch_branch _leftover_patch _leftovers_dir
         fi
