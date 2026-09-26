@@ -194,12 +194,10 @@ subjects; `ctest` never sees them. Validator index: [`VALIDATION.md`](../../docs
   `continue`s, and test the row present in the candidate list **and** absent
   from every section (`tests/test_scout_task_queue_plan_gated.py`).
 - **A pane-keyed signal is not an iteration-keyed one.** Per-iteration claim
-  liveness compares dispatch ids; a file a later role in the same pane
-  refreshes (heartbeat, `FLEET_CLAIM_FLAG`) never vouches alone. Every sweep
-  of an amending/issue claim asks the one predicate in
-  `fleet_claim_liveness.py`; missing identity = "cannot vouch", not
-  "orphan". The verdict is not a mutex: claim and sweep serialize on the
-  owned, fenced `amend-snapshots/<pr>.lock` (`fleet-claim`).
+  liveness (one predicate, `fleet_claim_liveness.py`) compares dispatch ids; a
+  file a later role in the same pane refreshes (heartbeat, `FLEET_CLAIM_FLAG`)
+  never vouches alone, and missing identity = "cannot vouch", not "orphan". Not a
+  mutex: claim and sweep serialize on the fenced `amend-snapshots/<pr>.lock`.
 
 ### An every-tick guard that warns must escalate-then-quiet
 

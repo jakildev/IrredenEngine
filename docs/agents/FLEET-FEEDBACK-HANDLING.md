@@ -90,7 +90,7 @@ owning dispatch is superseded, which proves the owner ended, and the sweep
 reaps it after a 120 s grace. Until such a dispatch lands, the claim
 outlives the 30-min TTL only while its owner is live — a dispatch record
 naming the PR, or a fresh heartbeat under the claim's own dispatch id
-([`FLEET.md § Claim liveness`](FLEET.md#claim-liveness)). The pane heartbeat
+([`fleet-claim-liveness.md`](fleet-claim-liveness.md)). The pane heartbeat
 alone proves nothing here (`FLEET-RUNTIME.md` § "Heartbeat — step 0").
 
 A **reservation resume** (step 0.5) runs under a new dispatch, so its

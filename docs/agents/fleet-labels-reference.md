@@ -171,10 +171,8 @@ never orphan replay that could erase resumed ownership. Issue claims are unchang
 `cleanup --gh` sweeps transient claims after their TTL (30 min for review/amend/resolve;
 `FLEET_CLAIM_STALE_SECS_PLANNING` for planning), or after a missing/mismatched same-host
 liveness marker exceeds `FLEET_CLAIM_PRLABEL_ORPHAN_GRACE_SECS` (120 s), and replays orphans.
-A past-TTL `fleet:amending-*` or `fleet:claim-*` label survives while its owner is live
-([FLEET.md § Claim liveness](FLEET.md#claim-liveness)); another host's survives until
-`FLEET_CLAIM_CROSSHOST_STALE_SECS` (12 h). Removing an amending or resolving claim on age
-alone stamps `fleet:sweep-cooldown`.
+A past-TTL `fleet:amending-*` or `fleet:claim-*` label survives while its owner is live, and
+another host's until a 12 h backstop ([`fleet-claim-liveness.md`](fleet-claim-liveness.md)).
 Reviewer projections skip `fleet:amending-*`; worker feedback/conflict tiers skip
 `fleet:reviewing-*` and each other's mutation claims. The live precheck and both
 confirmation reads arbitrate the symmetric excluded-prefix union; same-agent
