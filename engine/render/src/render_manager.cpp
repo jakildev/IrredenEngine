@@ -17,6 +17,7 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
+#include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 
 #include <irreden/common/components/component_position_2d_iso.hpp>
@@ -410,12 +411,21 @@ std::optional<bool> RenderManager::crosshairWinnerIsVoxelStore(int sampledEncode
         )) {
         return std::nullopt;
     }
-    std::array<bool, 9> voxelStoreTexels{};
+    std::array<std::optional<bool>, 9> voxelStoreTexels{};
     for (std::size_t i = 0; i < entityIds.size(); ++i) {
-        voxelStoreTexels[i] =
-            !IREntity::getComponentOptional<C_ShapeDescriptor>(entityIds[i]).has_value();
+        voxelStoreTexels[i] = texelSubjectIsVoxelStore(entityIds[i]);
     }
     return defaultPivotSampledSubjectIsVoxelStore(distances, voxelStoreTexels, sampledEncodedDepth);
+}
+
+std::optional<bool> RenderManager::texelSubjectIsVoxelStore(EntityId entityId) {
+    if (IREntity::getComponentOptional<C_ShapeDescriptor>(entityId).has_value()) {
+        return false;
+    }
+    if (IREntity::getComponentOptional<C_VoxelSetNew>(entityId).has_value()) {
+        return true;
+    }
+    return std::nullopt;
 }
 
 void RenderManager::setVoxelRenderSubdivisions(int subdivisions) {

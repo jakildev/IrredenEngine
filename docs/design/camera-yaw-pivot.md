@@ -123,11 +123,14 @@ helper.
      `displayOrigin`; the cardinal composite copies the canvas key texel for
      texel, so the key match also finds a displayed texel one off the
      estimate. An SDF shape winner (`C_ShapeDescriptor`) latches its key as it
-     stands. Both stores write the winner's id at the texel that holds its
-     depth. The classifier never applies a branch on a subject it has not
-     established: when no texel in the block holds the sampled key, when the
-     texels that do disagree on subject (a voxel/SDF seam at equal key), or
-     when the block reaches past the canvas edge, the latch **holds** its
+     stands; a voxel-store winner is a live `C_VoxelSetNew`
+     (`RenderManager::texelSubjectIsVoxelStore`). Both stores write the
+     winner's id at the texel that holds its depth. The classifier never
+     applies a branch on a subject it has not established: when no texel in
+     the block holds the sampled key, when one that does names neither store
+     (the previous frame's id of an entity UPDATE destroyed before the
+     readback), when the texels that do disagree on subject (a voxel/SDF seam
+     at equal key), or when the block reaches past the canvas edge, the latch **holds** its
      previous anchor, as it does for a background sample. The branch exists only for
      the voxel/SDF store disagreement (§"Known deviations" 2, #3742) and goes
      with it. The latch stores `isoDepth = W.x + W.y + W.z` and a view
@@ -671,4 +674,6 @@ which is what still catches an SDF-side pivot regression (#2851).
   offset rather than a misbranch (filed as #3861). The row now grades the
   branch at half the lattice. The classifier's fallbacks (no key match, a
   block past the canvas edge) had classified an unestablished subject; they,
-  and key-matching texels that disagree on subject, now hold.
+  and key-matching texels that disagree on subject, now hold. So does a
+  key-matching texel whose id is neither a live voxel set nor a live shape: the
+  id of a winner destroyed since its frame had read as the voxel store.

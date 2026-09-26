@@ -1,7 +1,11 @@
 #include <gtest/gtest.h>
 
+#include <irreden/ir_entity.hpp>
 #include <irreden/render/camera.hpp>
 #include <irreden/render/default_pivot_latch.hpp>
+#include <irreden/render/render_manager.hpp>
+#include <irreden/voxel/components/component_shape_descriptor.hpp>
+#include <irreden/voxel/components/component_voxel_set.hpp>
 
 #include <array>
 #include <optional>
@@ -35,6 +39,8 @@ using IRMath::vec2;
 using IRMath::vec3;
 using IRRender::DefaultPivotLatch;
 using IRRender::DefaultPivotSourceFrame;
+// Per-texel store of a 3×3 block's winners; nullopt names neither store.
+using TexelSubjects = std::array<std::optional<bool>, 9>;
 
 // One frame of a real rotation, comfortably above kYawSettleDelta.
 constexpr float kYawStep = 0.05f;
@@ -588,8 +594,7 @@ TEST(DefaultPivotLatch, TheSubjectIsReadOffTheBlockTexelsHoldingTheSampledKey) {
     // That row is an SDF winner and the estimate a voxel one, so the row
     // decides.
     const std::array<int, 9> glBlock = {-662, -662, -662, -670, -670, -670, -678, -678, -678};
-    const std::array<bool, 9> voxelBelowSdf =
-        {true, true, true, true, true, true, false, false, false};
+    const TexelSubjects voxelBelowSdf = {true, true, true, true, true, true, false, false, false};
     EXPECT_EQ(
         IRRender::defaultPivotSampledSubjectIsVoxelStore(glBlock, voxelBelowSdf, -678),
         std::optional<bool>(false)
@@ -601,7 +606,7 @@ TEST(DefaultPivotLatch, TheSubjectIsReadOffTheBlockTexelsHoldingTheSampledKey) {
         block.fill(1000);
         block[i] = 2;
         for (const bool voxel : {true, false}) {
-            std::array<bool, 9> subjects{};
+            TexelSubjects subjects{};
             subjects.fill(!voxel);
             subjects[i] = voxel;
             SCOPED_TRACE(testing::Message() << "texel " << i << " voxel=" << voxel);
@@ -614,7 +619,8 @@ TEST(DefaultPivotLatch, TheSubjectIsReadOffTheBlockTexelsHoldingTheSampledKey) {
 
     // Every texel holding the key agrees: the subject is established.
     const std::array<int, 9> flatBlock = {186, 186, 186, 186, 186, 186, 186, 186, 186};
-    std::array<bool, 9> allSdf{};
+    TexelSubjects allSdf{};
+    allSdf.fill(false);
     EXPECT_EQ(
         IRRender::defaultPivotSampledSubjectIsVoxelStore(flatBlock, allSdf, 186),
         std::optional<bool>(false)
@@ -630,7 +636,7 @@ TEST(DefaultPivotLatch, KeyMatchingTexelsThatDisagreeOnSubjectHold) {
         if (i == 4) {
             continue;
         }
-        std::array<bool, 9> subjects{};
+        TexelSubjects subjects{};
         subjects.fill(true);
         subjects[i] = false;
         SCOPED_TRACE(testing::Message() << "texel " << i);
@@ -642,7 +648,7 @@ TEST(DefaultPivotLatch, KeyMatchingTexelsThatDisagreeOnSubjectHold) {
     // Texels that do not hold the key take no part, whatever their subject.
     std::array<int, 9> block = flatBlock;
     block[7] = 190;
-    std::array<bool, 9> subjects{};
+    TexelSubjects subjects{};
     subjects.fill(true);
     subjects[7] = false;
     EXPECT_EQ(
@@ -654,11 +660,40 @@ TEST(DefaultPivotLatch, KeyMatchingTexelsThatDisagreeOnSubjectHold) {
 TEST(DefaultPivotLatch, ABlockWithNoTexelHoldingTheSampledKeyHolds) {
     // The estimate's own subject is no evidence for a key it does not hold.
     const std::array<int, 9> glBlock = {-662, -662, -662, -670, -670, -670, -678, -678, -678};
-    std::array<bool, 9> allVoxel{};
+    TexelSubjects allVoxel{};
     allVoxel.fill(true);
     EXPECT_EQ(
         IRRender::defaultPivotSampledSubjectIsVoxelStore(glBlock, allVoxel, 10),
         std::nullopt
+    );
+}
+
+TEST(DefaultPivotLatch, AKeyMatchingTexelNamingNoKnownStoreHolds) {
+    // A texel holding the key whose entity is neither store's — dead since the
+    // frame was drawn, or a producer the classifier does not know — leaves the
+    // sample's store unproven, even when every other matching texel agrees.
+    const std::array<int, 9> flatBlock = {186, 186, 186, 186, 186, 186, 186, 186, 186};
+    for (std::size_t i = 0; i < 9; ++i) {
+        for (const bool voxel : {true, false}) {
+            TexelSubjects subjects{};
+            subjects.fill(voxel);
+            subjects[i] = std::nullopt;
+            SCOPED_TRACE(testing::Message() << "texel " << i << " voxel=" << voxel);
+            EXPECT_EQ(
+                IRRender::defaultPivotSampledSubjectIsVoxelStore(flatBlock, subjects, 186),
+                std::nullopt
+            );
+        }
+    }
+    // One that does not hold the key takes no part.
+    std::array<int, 9> block = flatBlock;
+    block[2] = 190;
+    TexelSubjects subjects{};
+    subjects.fill(false);
+    subjects[2] = std::nullopt;
+    EXPECT_EQ(
+        IRRender::defaultPivotSampledSubjectIsVoxelStore(block, subjects, 186),
+        std::optional<bool>(false)
     );
 }
 
@@ -710,6 +745,55 @@ TEST(DefaultPivotLatch, ACardinalSourceWithAnUnestablishedSubjectHoldsItsAnchor)
     const DefaultPivotLatch perAxis = latchReacquiredFrom(IRMath::kQuarterPi, std::nullopt);
     EXPECT_NE(perAxis.isoDepth(), held);
     EXPECT_NE(perAxis.viewOffsetIso(), vec2(0.0f));
+}
+
+// The per-texel store read (`RenderManager::texelSubjectIsVoxelStore`) against a
+// live EntityManager. No RenderManager: the read touches only the ECS.
+class DefaultPivotTexelSubject : public testing::Test {
+  protected:
+    IREntity::EntityManager m_entityManager;
+};
+
+TEST_F(DefaultPivotTexelSubject, OnlyALiveStoreEntityEstablishesItsStore) {
+    const IREntity::EntityId sdf = IREntity::createEntity(IRComponents::C_ShapeDescriptor{});
+    const IREntity::EntityId voxel = IREntity::createEntity(IRComponents::C_VoxelSetNew{});
+    const IREntity::EntityId neither = IREntity::createEntity();
+    EXPECT_EQ(IRRender::RenderManager::texelSubjectIsVoxelStore(sdf), std::optional<bool>(false));
+    EXPECT_EQ(IRRender::RenderManager::texelSubjectIsVoxelStore(voxel), std::optional<bool>(true));
+    EXPECT_EQ(IRRender::RenderManager::texelSubjectIsVoxelStore(neither), std::nullopt);
+    EXPECT_EQ(
+        IRRender::RenderManager::texelSubjectIsVoxelStore(IREntity::kNullEntity),
+        std::nullopt
+    );
+}
+
+TEST_F(DefaultPivotTexelSubject, APriorFrameSdfWinnerDestroyedBeforeAcquisitionHolds) {
+    // The canvas still holds the frame the SDF entity won, key and id at every
+    // texel of the block; UPDATE destroys the entity before beginFrame reads
+    // them back. Its dead id must not read as the voxel store — that would
+    // subtract the voxel lattice from an SDF surface key.
+    const IREntity::EntityId sdf = IREntity::createEntity(IRComponents::C_ShapeDescriptor{});
+    const std::array<int, 9> flatBlock = {186, 186, 186, 186, 186, 186, 186, 186, 186};
+    const auto classify = [&] {
+        TexelSubjects subjects{};
+        for (auto &subject : subjects) {
+            subject = IRRender::RenderManager::texelSubjectIsVoxelStore(sdf);
+        }
+        return IRRender::defaultPivotSampledSubjectIsVoxelStore(flatBlock, subjects, 186);
+    };
+    ASSERT_EQ(classify(), std::optional<bool>(false));
+
+    IREntity::destroyEntity(sdf);
+    m_entityManager.destroyMarkedEntities();
+    const std::optional<bool> afterDestroy = classify();
+    EXPECT_EQ(afterDestroy, std::nullopt);
+
+    const float held = kDepthStart - DefaultPivotLatch::kCardinalStoreLatticeDepth;
+    for (const float yaw : {0.0f, IRMath::kHalfPi, kPi, -IRMath::kHalfPi}) {
+        const DefaultPivotLatch latch = latchReacquiredFrom(yaw, afterDestroy);
+        EXPECT_EQ(latch.isoDepth(), held) << "yaw=" << yaw;
+        EXPECT_EQ(latch.viewOffsetIso(), vec2(0.0f)) << "yaw=" << yaw;
+    }
 }
 
 TEST(DefaultPivotLatch, AStampIsDecodedWithItsOwnSubdivisions) {

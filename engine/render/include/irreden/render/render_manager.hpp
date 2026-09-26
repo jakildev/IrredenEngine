@@ -78,6 +78,13 @@ class RenderManager {
     // source a gesture starting next frame acquires from. Called once per
     // frame by TRIXEL_TO_FRAMEBUFFER.
     void stampDefaultPivotSourceFrame();
+    // Which store an entity id read off a canvas texel names: true for a live
+    // voxel-store subject (C_VoxelSetNew), false for a live SDF shape-store one
+    // (C_ShapeDescriptor), nullopt for anything else. The texel belongs to the
+    // previous rendered frame and UPDATE destroys entities in between, so a
+    // dead id is common, and ids never recycle — nullopt is its only honest
+    // answer.
+    static std::optional<bool> texelSubjectIsVoxelStore(EntityId entityId);
     // Iso coordinate of the main canvas center with no camera applied.
     vec2 getCanvasCenterIso() const;
     // Iso coordinate of the viewport center — the point a world position must

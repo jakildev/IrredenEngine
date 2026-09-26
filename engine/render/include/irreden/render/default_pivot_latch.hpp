@@ -60,16 +60,18 @@ defaultPivotCrosshairCanvasTexel(const DefaultPivotSourceFrame &frame, IRMath::i
 // Whether the fragment a cardinal depth sample came from belongs to the voxel
 // store, read off a 3×3 block of main-canvas texels centered on the crosshair
 // estimate: @p distances holds each texel's stored key and @p voxelStoreTexels
-// whether its winning entity is a voxel-store one. On the cardinal path the
-// composite copies the canvas distance texel for texel, so the texels holding
-// @p sampledEncodedDepth are the ones the sample can have come from.
+// whether its winning entity is a voxel-store one — nullopt for an entity that
+// is neither store's (RenderManager::texelSubjectIsVoxelStore). On the
+// cardinal path the composite copies the canvas distance texel for texel, so
+// the texels holding @p sampledEncodedDepth are the ones the sample can have
+// come from.
 //
-// nullopt when the subject is not established — no texel holds the key, or the
-// texels that do disagree on subject. The latch holds its anchor then rather
-// than branch on a guess.
+// nullopt when the subject is not established — no texel holds the key, one
+// that does names no known store, or the texels that do disagree on subject.
+// The latch holds its anchor then rather than branch on a guess.
 inline std::optional<bool> defaultPivotSampledSubjectIsVoxelStore(
     const std::array<int, 9> &distances,
-    const std::array<bool, 9> &voxelStoreTexels,
+    const std::array<std::optional<bool>, 9> &voxelStoreTexels,
     int sampledEncodedDepth
 ) {
     std::optional<bool> subject;
@@ -77,7 +79,8 @@ inline std::optional<bool> defaultPivotSampledSubjectIsVoxelStore(
         if (distances[i] != sampledEncodedDepth) {
             continue;
         }
-        if (subject.has_value() && *subject != voxelStoreTexels[i]) {
+        if (!voxelStoreTexels[i].has_value() ||
+            (subject.has_value() && *subject != *voxelStoreTexels[i])) {
             return std::nullopt;
         }
         subject = voxelStoreTexels[i];
