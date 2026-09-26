@@ -758,6 +758,29 @@ TEST(FogVisionSlotTest, SlotsStartUngatedAndClearDropsGates) {
     EXPECT_FLOAT_EQ(eyes[3], IRComponents::kFogVisionLosOff);
 }
 
+// FOG_TO_TRIXEL swaps in its smooth kernel only while a live gated source is
+// smooth: an ungated slot's softness, a hard gate, and a slot past the count
+// all keep the hard kernel.
+TEST(FogVisionSlotTest, SmoothKernelOnlyWhileAGatedSourceIsSmooth) {
+    FrameDataFogObservers observers{};
+    FogLosEyeHeights eyes = eyesOf(IRComponents::kFogVisionLosOff);
+    EXPECT_FALSE(observers.hasSmoothLosSource());
+    C_CanvasFogOfWar::addVisionCircle(observers, eyes, 0, 0, 5, 0, 0, 0, -1, 0);
+    C_CanvasFogOfWar::addVisionCircle(observers, eyes, 0, 0, 5, 0, 0, 0, -1, 0);
+    EXPECT_FALSE(observers.hasSmoothLosSource());
+
+    C_CanvasFogOfWar::setVisionCircleLineOfSight(observers, eyes, 1, 1.5f);
+    EXPECT_FALSE(observers.hasSmoothLosSource()) << "a hard gate needs no smooth kernel";
+    C_CanvasFogOfWar::setVisionCircleLineOfSight(observers, eyes, 1, 1.5f, 0.0f);
+    EXPECT_TRUE(observers.hasSmoothLosSource()) << "softness 0 is the smooth gate";
+
+    observers.visionCircleCount_ = 1;
+    EXPECT_FALSE(observers.hasSmoothLosSource()) << "a slot past the count is not read";
+    observers.visionCircleCount_ = 2;
+    observers.losSourceMask_ = 0;
+    EXPECT_FALSE(observers.hasSmoothLosSource()) << "an ungated slot's softness is not read";
+}
+
 // Gating an unregistered slot is a caller bug: it asserts in debug and, in a
 // release build, leaves the gates untouched.
 TEST(FogVisionSlotTest, GatingAnUnregisteredSlotIsRejected) {

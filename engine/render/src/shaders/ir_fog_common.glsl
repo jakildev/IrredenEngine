@@ -11,8 +11,16 @@
 // of a revealed scene's pixels.
 //
 // Include-FRAGMENT: the wrapper defines IR_FOG_LOS_BINDING before including it
-// (ir_fog_los). Metal twin: metal/ir_fog_common.metal — the reveal loop and the
-// apply body must normalize equal (FogCrossSectionShaderParity).
+// (ir_fog_los), and IR_FOG_LOS_SMOOTH 1 to compile the smooth line-of-sight
+// gate into the reveal loop; without it every gated source gates hard. The
+// smooth arm is a compile-time specialization, not a runtime branch: compiled
+// in behind a uniform flag it roughly doubles the pass even with no smooth
+// source in the scene. Metal twin: metal/ir_fog_common.metal — the reveal loop
+// and the apply body must normalize equal (FogCrossSectionShaderParity).
+
+#ifndef IR_FOG_LOS_SMOOTH
+#define IR_FOG_LOS_SMOOTH 0
+#endif
 
 #include "ir_iso_common.glsl"
 #include "ir_fog_los.glsl"
@@ -89,6 +97,7 @@ vec3 fogStateColor(float state, vec3 sourceColor, vec3 unexplored) {
     return mix(unexplored, exploredColor, t);
 }
 
+#if IR_FOG_LOS_SMOOTH
 // True when a source reads the smooth line-of-sight gate for this sample, so a
 // caller builds its FogLosSample only then.
 bool fogLosSmoothSampleNeeded(bool fogWholeBody) {
@@ -102,41 +111,43 @@ bool fogLosSmoothSampleNeeded(bool fogWholeBody) {
     }
     return false;
 }
+#endif
 
 // `aaFloor` (world units per canvas pixel), `fogWholeBody` and `losSample` are
 // read only by the vision-circle loop, so callers may skip computing them when
-// visionCircleCount is 0; `losSample` is read only when `losSmooth` and
-// fogLosSmoothSampleNeeded. A route without `losSmooth` gates every source
-// hard: the per-axis and overflow routes do not carry the smooth gate yet.
-FogReveal fogRevealSample(
-    vec3 pos3D,
-    float aaFloor,
-    bool fogWholeBody,
-    bool losSmooth,
-    FogLosSample losSample
-) {
+// visionCircleCount is 0; `losSample` is read only by the smooth gate, when
+// fogLosSmoothSampleNeeded. The per-axis and overflow routes do not carry the
+// smooth gate yet.
+FogReveal fogRevealSample(vec3 pos3D, float aaFloor, bool fogWholeBody, FogLosSample losSample) {
     const ivec3 surfaceVoxel = roundHalfUp(pos3D);
     const ivec2 fogCell = surfaceVoxel.xy + ivec2(kFogOfWarHalfExtent);
     const float gridState = fogTap(fogCell, imageSize(canvasFogOfWar));
     float state = gridState;
     float hardDistPastRim = kFogRimFadeCells;
+#if IR_FOG_LOS_SMOOTH
     // The smooth gate's taps load on first use, one tap set per four-source
     // tile.
     FogLosTaps losTaps0;
     FogLosTaps losTaps1;
     bool losTapsLoaded0 = false;
     bool losTapsLoaded1 = false;
+#endif
 
     for (int i = 0; i < visionCircleCount; ++i) {
         // An occluded source contributes neither reveal nor rim distance; a
         // smooth source scales both by its visibility. A whole-body pixel's
         // visibility is its anchor's verdict, so it is never gated per pixel.
         float losVisibility = 1.0;
-        const float softness = losSmooth ? losSoftness[i >> 2][i & 3] : -1.0;
+#if IR_FOG_LOS_SMOOTH
+        const float softness = losSoftness[i >> 2][i & 3];
+#else
+        const float softness = -1.0;
+#endif
         if (fogLosSourceGated(losSourceMask, i) && !fogWholeBody && softness < 0.0 &&
             !fogLosVisible(surfaceVoxel, i)) {
             continue;
         }
+#if IR_FOG_LOS_SMOOTH
         if (fogLosSourceGated(losSourceMask, i) && !fogWholeBody && softness >= 0.0) {
             if (i < kFogLosSourcesPerTile) {
                 if (!losTapsLoaded0) {
@@ -155,6 +166,7 @@ FogReveal fogRevealSample(
                 continue;
             }
         }
+#endif
         // Height-penalized reveal; a whole-body pixel drops both terms.
         const vec4 heights = visionCircleHeights[i];
         const float zCostUp = fogWholeBody ? 0.0 : heights.y;

@@ -80,7 +80,9 @@ vertical-face pixel gates on the column its face looks into, so a wall is lit
 by the space in front of it rather than by its own column. That source's
 visibility then scales both its reveal and its rim lift. Only the world canvas
 carries the smooth gate; the per-axis and overflow paint routes gate every
-source hard. The rule lives in
+source hard. The smooth gate is a compile-time kernel variant
+(`c_fog_to_trixel_smooth`), dispatched only while a gated source is smooth,
+so a scene without one pays nothing for it. The rule lives in
 `component_canvas_fog_of_war.hpp`; `FogLineOfSightField::visibility` is the
 CPU oracle, and entities evaluate the top-face rule at their anchor. The
 horizon field itself is unchanged, so shallow-angle flank stairs are reduced,

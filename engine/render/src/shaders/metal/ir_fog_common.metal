@@ -1,9 +1,14 @@
 #ifndef IR_FOG_COMMON_METAL_INCLUDED
 #define IR_FOG_COMMON_METAL_INCLUDED
 
-// Metal twin of ../ir_fog_common.glsl — the reveal model, constants, and the
-// reveal / apply split are documented there. The reveal loop and the apply
-// body must normalize equal to the GLSL twin (FogCrossSectionShaderParity).
+// Metal twin of ../ir_fog_common.glsl — the reveal model, constants, the
+// reveal / apply split and the IR_FOG_LOS_SMOOTH specialization are documented
+// there. The reveal loop and the apply body must normalize equal to the GLSL
+// twin (FogCrossSectionShaderParity).
+
+#ifndef IR_FOG_LOS_SMOOTH
+#define IR_FOG_LOS_SMOOTH 0
+#endif
 
 #include "ir_iso_common.metal"
 #include "ir_fog_los.metal"
@@ -57,6 +62,7 @@ inline float3 fogStateColor(float state, float3 sourceColor, float3 unexplored) 
     return mix(unexplored, exploredColor, t);
 }
 
+#if IR_FOG_LOS_SMOOTH
 inline bool fogLosSmoothSampleNeeded(
     bool fogWholeBody,
     constant FogObserverData& fogObservers
@@ -72,12 +78,12 @@ inline bool fogLosSmoothSampleNeeded(
     }
     return false;
 }
+#endif
 
 inline FogReveal fogRevealSample(
     float3 pos3D,
     float aaFloor,
     bool fogWholeBody,
-    bool losSmooth,
     FogLosSample losSample,
     constant FogObserverData& fogObservers,
     texture2d<float, access::read> canvasFogOfWar,
@@ -92,18 +98,25 @@ inline FogReveal fogRevealSample(
     const float gridState = fogTap(fogCell, fogSize, canvasFogOfWar);
     float state = gridState;
     float hardDistPastRim = kFogRimFadeCells;
+#if IR_FOG_LOS_SMOOTH
     FogLosTaps losTaps0;
     FogLosTaps losTaps1;
     bool losTapsLoaded0 = false;
     bool losTapsLoaded1 = false;
+#endif
 
     for (int i = 0; i < fogObservers.visionCircleCount; ++i) {
         float losVisibility = 1.0f;
-        const float softness = losSmooth ? fogObservers.losSoftness[i >> 2][i & 3] : -1.0f;
+#if IR_FOG_LOS_SMOOTH
+        const float softness = fogObservers.losSoftness[i >> 2][i & 3];
+#else
+        const float softness = -1.0f;
+#endif
         if (fogLosSourceGated(fogObservers.losSourceMask, i) && !fogWholeBody && softness < 0.0f &&
             !fogLosVisible(surfaceVoxel, i, fogLineOfSight)) {
             continue;
         }
+#if IR_FOG_LOS_SMOOTH
         if (fogLosSourceGated(fogObservers.losSourceMask, i) && !fogWholeBody && softness >= 0.0f) {
             if (i < kFogLosSourcesPerTile) {
                 if (!losTapsLoaded0) {
@@ -122,6 +135,7 @@ inline FogReveal fogRevealSample(
                 continue;
             }
         }
+#endif
         const float4 heights = fogObservers.visionCircleHeights[i];
         const float zCostUp = fogWholeBody ? 0.0f : heights.y;
         const float zCostDown = fogWholeBody ? 0.0f : heights.z;

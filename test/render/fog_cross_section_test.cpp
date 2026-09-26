@@ -100,9 +100,9 @@ const std::string kGlslFogCommonPath =
 const std::string kMetalFogCommonPath =
     std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/ir_fog_common.metal";
 const std::string kGlslFogPassPath =
-    std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_fog_to_trixel.glsl";
+    std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_fog_to_trixel_body.glsl";
 const std::string kMetalFogPassPath =
-    std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/c_fog_to_trixel.metal";
+    std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/c_fog_to_trixel_body.metal";
 const std::string kGlslFogOverflowPath =
     std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_fog_overflow_faces.glsl";
 const std::string kMetalFogOverflowPath =
@@ -370,6 +370,44 @@ TEST(FogCrossSectionShaderParity, CommonFogShadingIsIdenticalAcrossBackends) {
     ASSERT_FALSE(metalApply.empty()) << "fogApplyReveal body not found in MSL";
     EXPECT_EQ(normalizeKernelMath(glslApply), normalizeKernelMath(metalApply))
         << "the shared fog colour apply diverged between backends";
+}
+
+// The smooth line-of-sight gate is a compile-time specialization: the hard
+// kernel (IR_FOG_LOS_SMOOTH 0) serves every route and carries none of the
+// smooth path, which a uniform runtime flag would keep compiled in.
+// Stripping each `#if IR_FOG_LOS_SMOOTH` arm must leave no smooth-gate code.
+TEST(FogCrossSectionShaderParity, SmoothLineOfSightGateIsACompileTimeVariant) {
+    const std::string dir = std::string(IR_TEST_RENDER_SHADER_DIR);
+    const std::pair<std::string, std::string> wrappers[] = {
+        {dir + "/c_fog_to_trixel.glsl", "0"},
+        {dir + "/c_fog_to_trixel_smooth.glsl", "1"},
+        {dir + "/metal/c_fog_to_trixel.metal", "0"},
+        {dir + "/metal/c_fog_to_trixel_smooth.metal", "1"},
+    };
+    for (const auto &[path, value] : wrappers) {
+        const std::string wrapper = readShaderSource(path);
+        ASSERT_FALSE(wrapper.empty()) << "could not read " << path;
+        EXPECT_NE(wrapper.find("#define IR_FOG_LOS_SMOOTH " + value), std::string::npos) << path;
+        EXPECT_NE(wrapper.find("#include \"c_fog_to_trixel_body."), std::string::npos) << path;
+    }
+
+    const std::regex smoothArm(R"(#if IR_FOG_LOS_SMOOTH\b[\s\S]*?#(else|endif))");
+    for (const std::string &path :
+         {kGlslFogCommonPath, kMetalFogCommonPath, kGlslFogPassPath, kMetalFogPassPath}) {
+        const std::string source = readShaderSource(path);
+        ASSERT_FALSE(source.empty()) << "could not read " << path;
+        EXPECT_NE(source.find("#if IR_FOG_LOS_SMOOTH"), std::string::npos) << path;
+        const std::string hard = std::regex_replace(source, smoothArm, "");
+        for (const char *smoothOnly :
+             {"fogLosLoadTaps(",
+              "fogLosSmoothVisibility(",
+              "losSoftness[i",
+              "fogLosSmoothSampleNeeded(",
+              "fogLosPixelFaceSample("}) {
+            EXPECT_EQ(hard.find(smoothOnly), std::string::npos)
+                << path << " compiles " << smoothOnly << " into the hard fog kernel";
+        }
+    }
 }
 
 // Every route skips the colour read-modify-write for a fully revealed sample:
