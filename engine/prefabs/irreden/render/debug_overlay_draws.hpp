@@ -241,7 +241,7 @@ inline IRMath::vec2 worldToScreen(IRMath::vec3 worldPos) {
     IRMath::vec2 stepSize = IRMath::vec2(IRRender::getTriangleStepSizeScreen());
     IRMath::vec2 viewport = IRMath::vec2(IRRender::getViewport());
     IRMath::vec2 screenCenter = viewport * 0.5f;
-    IRMath::vec2 camIso = IRRender::getCameraPosition2DIso();
+    IRMath::vec2 camIso = IRRender::getEffectiveCameraIso();
 
     IRMath::vec2 posIso = IRMath::pos3DtoPos2DIso(worldPos);
     IRMath::vec2 relIso = posIso + camIso;
@@ -253,7 +253,7 @@ inline IRMath::vec3 screenToWorld(IRMath::vec2 screenPos, float zLevel = 0.0f) {
     IRMath::vec2 stepSize = IRMath::vec2(IRRender::getTriangleStepSizeScreen());
     IRMath::vec2 viewport = IRMath::vec2(IRRender::getViewport());
     IRMath::vec2 screenCenter = viewport * 0.5f;
-    IRMath::vec2 camIso = IRRender::getCameraPosition2DIso();
+    IRMath::vec2 camIso = IRRender::getEffectiveCameraIso();
 
     IRMath::vec2 screenOffset = screenPos - screenCenter;
     IRMath::vec2 relIso = IRMath::screenDeltaToIsoDelta(screenOffset, stepSize);
@@ -326,7 +326,7 @@ struct WorldToScreenCache {
         stepSize = IRMath::vec2(IRRender::getTriangleStepSizeScreen());
         IRMath::vec2 viewport = IRMath::vec2(IRRender::getViewport());
         screenCenter = viewport * 0.5f;
-        camIso = IRRender::getCameraPosition2DIso();
+        camIso = IRRender::getEffectiveCameraIso();
         stepSizeFlipped = IRMath::isoDeltaToScreenDelta(IRMath::vec2(1.0f), stepSize);
     }
 

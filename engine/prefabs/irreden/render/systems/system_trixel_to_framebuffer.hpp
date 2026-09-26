@@ -492,6 +492,14 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         HoveredEntityIdLayout resetData;
         hoveredIdBuf_->subData(0, sizeof(resetData), &resetData);
 
+        // The pose this frame's main composite draws with — the source a
+        // rotation gesture starting next frame acquires the default pivot
+        // from. Equivalent to reading it beside the tick's own yaw /
+        // effective-camera reads: nothing in this system mutates the pose
+        // between here and its per-canvas ticks, and stamping once per frame
+        // here keeps the background / gui canvases from re-stamping it.
+        IRRender::getRenderManager().stampDefaultPivotSourceFrame();
+
         // Resolve the main canvas's per-axis trixel canvases once per frame for
         // the per-entity tick to consume without a getComponent on its own
         // iterating canvas. Re-resolved every frame; never held across

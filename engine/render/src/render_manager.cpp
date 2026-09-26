@@ -16,6 +16,7 @@
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
+#include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 
 #include <irreden/common/components/component_position_2d_iso.hpp>
@@ -25,6 +26,7 @@
 #include <irreden/render/components/component_camera.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 namespace IRRender {
@@ -280,81 +282,139 @@ vec3 RenderManager::getRotationPivotFocus() const {
     return m_rotationPivotFocus;
 }
 
+vec2 RenderManager::getCanvasCenterIso() const {
+    // The iso coordinate the main framebuffer's center texel displays — the
+    // texel the default-pivot readback samples — so a point acquired from it
+    // projects back onto that same texel. The canvas store's
+    // trixelOriginOffsetZ1 origin carries a (-1,-1) lattice alignment that is
+    // not a screen offset (the per-axis scatter anchors on canvasSize/2 for the
+    // same reason); built on it, this lands one iso unit per axis off the
+    // center texel at every zoom.
+    const ivec2 canvasSize = getMainCanvasSizeTriangles();
+    return vec2(canvasSize) * 0.5f - vec2(IRMath::trixelOriginOffsetX1(canvasSize));
+}
+
 vec2 RenderManager::getViewCenterIso() const {
     // A world point W lands at screen center when `pos3DtoPos2DIso(W) +
     // cameraIso == canvasCenterIso`, so the iso coordinate to invert is
     // `canvasCenterIso - cameraIso`.
-    const ivec2 canvasSize = getMainCanvasSizeTriangles();
-    return vec2(canvasSize) * 0.5f - vec2(IRMath::trixelOriginOffsetZ1(canvasSize)) -
-           getCameraPosition2DIso();
+    return getCanvasCenterIso() - getCameraPosition2DIso();
 }
 
 vec3 RenderManager::getDefaultRotationPivotFocus() const {
-    // The point under the viewport center at the LATCHED iso depth — the POINT
-    // is derived live from the current camera, only the DEPTH is held. That
+    // The anchor under the viewport center — the POINT is derived live from
+    // the current camera, only the DEPTH and the view offset are held. That
     // split is load-bearing, not a style choice: `isoPixelToPos3D`'s depth
-    // parameter shifts along (1,1,1), which projects to (0,0), so
-    // `pos3DtoPos2DIso(F) == canvasCenterIso - cameraIso` at every latched
-    // depth, and `d getEffectiveCameraIso() / d cameraIso` stays exactly the
-    // transform `IRMath::cameraMoveRelativeToYaw` pre-compensates a pan by.
-    // Latching F as a WORLD POINT instead freezes it against cameraIso, that
-    // derivative collapses to the identity, and interactive pan at any non-zero
-    // yaw moves content in the wrong direction and pops back on mouse-stop.
-    // Depth 0 — before the first derive, whenever the center pixel reads
-    // background, and for a creation whose frame never reaches beginFrame — is
-    // the exact fallback point, so this uses the same expression rather than a
-    // structurally different branch.
-    return IRMath::isoPixelToPos3D(getViewCenterIso(), m_defaultPivotLatch.isoDepth());
+    // parameter shifts along (1,1,1), which projects to (0,0), so the focus
+    // tracks `cameraIso` one-for-one at every latched depth, and
+    // `d getEffectiveCameraIso() / d cameraIso` stays exactly the transform
+    // `IRMath::cameraMoveRelativeToYaw` pre-compensates a pan by.
+    // Latching F as a bare WORLD POINT instead freezes it against cameraIso,
+    // that derivative collapses to the identity, and interactive pan at any
+    // non-zero yaw moves content in the wrong direction.
+    return m_defaultPivotLatch.focus(getViewCenterIso());
+}
+
+vec2 RenderManager::getDefaultPivotViewOffsetIso() const {
+    return m_defaultPivotLatch.viewOffsetIso();
+}
+
+void RenderManager::stampDefaultPivotSourceFrame() {
+    const vec2 cameraIso = getCameraPosition2DIso();
+    const float visualYaw = IRPrefab::Camera::getYaw();
+    const DefaultPivotSourceFrame frame{
+        visualYaw,
+        IRPrefab::Camera::computeYawSplit(visualYaw).second,
+        cameraIso,
+        IRRender::getEffectiveCameraIso(),
+        getCanvasCenterIso(),
+        getVoxelRenderEffectiveSubdivisions()
+    };
+    m_defaultPivotLatch.stampSourceFrame(frame, defaultPivotOwnsDepth());
+}
+
+bool RenderManager::defaultPivotOwnsDepth() const {
+    // ORIGIN mode ignores the focus entirely and an explicit
+    // setRotationPivotFocus overrides it, so only the DEFAULT CAMERA_CENTER
+    // pivot may pay a readback or source one.
+    return m_rotationPivotMode == RotationPivotMode::CAMERA_CENTER && !m_hasRotationPivotFocus;
 }
 
 void RenderManager::updateDefaultRotationPivotFocus() {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
 
-    // Stamped in EVERY pivot mode, ahead of the mode gate below, because the
-    // pose describes what this frame renders — which is true whatever the pivot
-    // is. Only the DEFAULT CAMERA_CENTER pivot may pay a readback, though:
-    // ORIGIN mode ignores the focus entirely and an explicit
-    // setRotationPivotFocus overrides it. The whole decision — the settle
-    // predicate, the previous frame's depth attachment, the rotation-start edge
-    // and the pan/zoom key — is DefaultPivotLatch's.
-    const DefaultPivotPose pose{
-        IRPrefab::Camera::getYaw(),
-        getCameraPosition2DIso(),
-        getCameraZoom()
-    };
-    const bool pivotOwnsDepth =
-        m_rotationPivotMode == RotationPivotMode::CAMERA_CENTER && !m_hasRotationPivotFocus;
-    if (!m_defaultPivotLatch.observeFrame(pose, pivotOwnsDepth).derive_) {
+    // Observed in EVERY pivot mode, ahead of the mode gate, so the settle state
+    // tracks every frame. The whole decision — the gesture-start edge, and
+    // whether the previous frame left a usable source stamp — is
+    // DefaultPivotLatch's.
+    if (!m_defaultPivotLatch.observeFrame(IRPrefab::Camera::getYaw(), defaultPivotOwnsDepth())) {
         return;
     }
 
     // The framebuffer texel under the viewport center. The framebuffer's
     // resolution-plus-buffer is symmetric about the view, so its center texel is
-    // the center of the view.
+    // the center of the view. The attachment still holds the PREVIOUS frame —
+    // the one the source stamp describes.
     const auto framebufferOpt =
         IREntity::getComponentOptional<C_TrixelCanvasFramebuffer>(m_mainFramebuffer);
-    float isoDepth = 0.0f;
-    if (framebufferOpt.has_value()) {
-        const ivec2 resolution = (*framebufferOpt.value()).getResolutionPlusBuffer();
-        const IRRender::CompositeDepthSample sample =
-            IRRender::readbackCompositeDepth(resolution / 2);
-        const IRRender::DecodedCompositeDepth decoded =
-            IRRender::decodeCompositeDepth(sample.rawDist_);
-        // Background (depth clear at the far plane) and any foreground-tier
-        // fragment fall back to iso depth 0. A foreground-tier hit is a
-        // screen-locked / priority overlay whose
-        // encoded depth is a reserved band code, NOT a world iso depth, so
-        // consuming it would pin the pivot to a meaningless world point.
-        if (sample.valid_ && sample.normDepth_ < IRRender::kBackgroundNormDepthThreshold &&
-            decoded.tier_ == 0) {
-            // decoded.iso_ is in shared framebuffer units (worldIso × effSub);
-            // divide the subdivision factor back out to land in world units.
-            isoDepth = static_cast<float>(decoded.iso_) /
-                       static_cast<float>(IRMath::max(1, getVoxelRenderEffectiveSubdivisions()));
-        }
+    if (!framebufferOpt.has_value()) {
+        return;
     }
+    const ivec2 resolution = (*framebufferOpt.value()).getResolutionPlusBuffer();
+    const IRRender::CompositeDepthSample sample = IRRender::readbackCompositeDepth(resolution / 2);
+    const IRRender::DecodedCompositeDepth decoded = IRRender::decodeCompositeDepth(sample.rawDist_);
+    // Background (depth clear at the far plane) and any foreground-tier
+    // fragment hold the previous anchor. A foreground-tier hit is a
+    // screen-locked / priority overlay whose encoded depth is a reserved band
+    // code, NOT a world iso depth, so acquiring it would pin the pivot to a
+    // meaningless world point.
+    if (!sample.valid_ || sample.normDepth_ >= IRRender::kBackgroundNormDepthThreshold ||
+        decoded.tier_ != 0) {
+        return;
+    }
+    m_defaultPivotLatch.acquire(
+        static_cast<float>(decoded.iso_),
+        crosshairWinnerIsVoxelStore(decoded.enc_)
+    );
+}
 
-    m_defaultPivotLatch.noteDerived(isoDepth);
+bool RenderManager::crosshairWinnerIsVoxelStore(int sampledEncodedDepth) const {
+    // Only a cardinal source subtracts the voxel store's lattice, so only there
+    // does the winning subject matter — and only there does the main canvas
+    // hold the frame the depth came from (the per-axis canvases draw the rest).
+    const DefaultPivotSourceFrame &source = m_defaultPivotLatch.sourceFrame();
+    if (source.residualYaw_ != 0.0f) {
+        return true;
+    }
+    // The winner's id, read at the canvas texel the sampled pixel displayed:
+    // the texel in the block around the crosshair estimate whose stored key IS
+    // the sampled one (the backends' gathers place a fractional camera one row
+    // apart). Called right after the depth readback, which already waited on
+    // the device, and the canvas still holds the source frame: nothing has
+    // cleared it since that frame's composite. Both stores write the winning
+    // entity id at the same texel as its depth, so the id names the subject the
+    // depth came from. No matching texel falls back to the estimate's id; a
+    // block past the canvas edge classifies as a null winner does.
+    //
+    // The SDF shape store keys a cardinal fragment on the surface, not on the
+    // voxel store's lattice. This branch exists only for that disagreement,
+    // tracked in docs/design/camera-yaw-pivot.md §"Known deviations": the
+    // change that co-sorts the two stores deletes it, and the latch subtracts
+    // for every winner.
+    const auto &textures = IREntity::getComponent<C_TriangleCanvasTextures>(m_mainCanvas);
+    std::array<int, 9> distances{};
+    std::array<IREntity::EntityId, 9> entityIds{};
+    if (!textures.readTexelBlock3x3(
+            defaultPivotCrosshairCanvasTexel(source, getMainCanvasSizeTriangles()),
+            distances,
+            entityIds
+        )) {
+        return true;
+    }
+    const IREntity::EntityId winner =
+        entityIds[defaultPivotSampledTexelInBlock(distances, sampledEncodedDepth)
+                      .value_or(kDefaultPivotBlockEstimateIndex)];
+    return !IREntity::getComponentOptional<C_ShapeDescriptor>(winner).has_value();
 }
 
 void RenderManager::setVoxelRenderSubdivisions(int subdivisions) {

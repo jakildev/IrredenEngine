@@ -3,173 +3,254 @@
 
 #include <irreden/ir_math.hpp>
 
+#include <array>
+#include <optional>
+
 namespace IRRender {
 
-// The camera pose one frame renders with — the whole input to the default
-// pivot's latch-update policy.
-struct DefaultPivotPose {
+// The pose one main-framebuffer composite drew with — everything needed to
+// turn a depth sample off that frame's depth attachment back into the world
+// point it came from. Stamped at the composite, not at beginFrame: a camera
+// system that mutates yaw inside RENDER ahead of geometry, and an
+// auto-screenshot shot applied at the RENDER tail, both make the beginFrame
+// observation a different pose from the one the attachment was drawn with.
+struct DefaultPivotSourceFrame {
     float visualYaw_ = 0.0f;
+    // `IRPrefab::Camera::computeYawSplit`'s residual for visualYaw_: exactly 0
+    // at a settled cardinal, where the frame took the cardinal store rather
+    // than the per-axis one.
+    float residualYaw_ = 0.0f;
+    // The raw camera (`C_Position2DIso`) and the pivot-corrected offset the
+    // composite placed content with (`getEffectiveCameraIso`).
     IRMath::vec2 cameraIso_ = IRMath::vec2(0.0f);
-    IRMath::vec2 zoom_ = IRMath::vec2(0.0f);
+    IRMath::vec2 effectiveCameraIso_ = IRMath::vec2(0.0f);
+    // Iso coordinate of the main canvas center with no camera applied: a world
+    // point W sits under the crosshair when `P_yaw(W) + effectiveCameraIso ==
+    // canvasCenterIso`.
+    IRMath::vec2 canvasCenterIso_ = IRMath::vec2(0.0f);
+    // The composite stores depth in shared framebuffer units (world iso depth
+    // × effective subdivisions). The divisor is zoom-dependent in
+    // SubdivisionMode::FULL, and the frame a gesture acquires from can be at a
+    // different zoom than the frame that reads it back.
+    int effectiveSubdivisions_ = 1;
 };
 
-// What DefaultPivotLatch::observeFrame decided for one frame. When derive_ is
-// true exactly one of the two clauses below explains it — they are mutually
-// exclusive by construction (rotationStart_ requires a yaw delta, viewMoved_
-// requires a settled yaw).
-struct DefaultPivotLatchDecision {
-    bool derive_ = false;
-    // The rotation-start edge: yaw is changing THIS frame, was settled the
-    // previous one (so the depth attachment still on the GPU belongs to a
-    // still view), and that previous frame's yaw was 0 within
-    // DefaultPivotLatch::kYawSettleDelta (so the depth it reads pins the point
-    // actually under the crosshair — see observeFrame).
-    bool rotationStart_ = false;
-    // Pan or zoom moved since the last derive and the camera has settled
-    // again.
-    bool viewMoved_ = false;
-};
+// Estimate of the main-canvas texel the crosshair displayed in @p frame — the
+// hover path's cursor→texel mapping (`IRRender::mouseCanvasTexelWorld`, then
+// the gather's `+ trixelOriginOffsetZ1 + cameraTrixelOffset`) evaluated with
+// the cursor at the canvas center and the frame's own camera and subdivisions.
+// Exact on Metal. At a fractional `effectiveCameraIso · subdivisions` the
+// OpenGL gather displays the texel one row further in +y, so the texel the
+// depth readback sampled is found in the block around this estimate
+// (defaultPivotSampledTexelInBlock).
+inline IRMath::ivec2
+defaultPivotCrosshairCanvasTexel(const DefaultPivotSourceFrame &frame, IRMath::ivec2 canvasSize) {
+    const float subdivisions = static_cast<float>(IRMath::max(1, frame.effectiveSubdivisions_));
+    const IRMath::vec2 cursorTexel = IRMath::floor(
+        (frame.canvasCenterIso_ - frame.effectiveCameraIso_) * subdivisions + IRMath::vec2(1.0f)
+    );
+    return IRMath::ivec2(
+        IRMath::floor(
+            cursorTexel + IRMath::vec2(IRMath::trixelOriginOffsetZ1(canvasSize)) +
+            frame.effectiveCameraIso_ * subdivisions
+        )
+    );
+}
 
-// Update policy for the depth-aware default pivot's latched iso depth: when
-// may RenderManager pay a composite-depth readback and re-latch?
+// The crosshair estimate's index in a 3×3 texel block centered on it, row-major
+// from the block's low corner (its +y neighbour is 7).
+constexpr int kDefaultPivotBlockEstimateIndex = 4;
+
+// Index, in a 3×3 block of stored canvas distances centered on the crosshair
+// estimate, of the texel whose stored key is @p sampledEncodedDepth. On the
+// cardinal path the composite copies the canvas distance texel for texel, so
+// that texel is the one the sample came from. The estimate is tried first, then
+// its edge neighbours, then the corners; nullopt when no texel holds the key.
+inline std::optional<int>
+defaultPivotSampledTexelInBlock(const std::array<int, 9> &distances, int sampledEncodedDepth) {
+    constexpr std::array<int, 9> kSearchOrder =
+        {kDefaultPivotBlockEstimateIndex, 1, 3, 5, 7, 0, 2, 6, 8};
+    for (const int i : kSearchOrder) {
+        if (distances[i] == sampledEncodedDepth) {
+            return i;
+        }
+    }
+    return std::nullopt;
+}
+
+// Update policy and state of the depth-aware default pivot: when
+// RenderManager may pay a composite-depth readback, and what the sample it
+// reads turns into.
 //
 // Split out of RenderManager because the policy is the thing under contract
-// (docs/design/camera-yaw-pivot.md §"The contract", latch policy) while the
-// readback is the thing that needs a GPU. Nothing here touches the device, so
-// the whole policy — including the rotation-start edge, which no
-// pivot-verify.py block can observe because every block holds the camera fixed
-// — is machine-gated headlessly by test/render/default_pivot_latch_test.cpp.
+// (docs/design/camera-yaw-pivot.md §"Latch policy") while the readback is the
+// thing that needs a GPU. Nothing here touches the device, so the whole policy
+// and the recovery arithmetic are machine-gated headlessly by
+// test/render/default_pivot_latch_test.cpp.
 //
-// NOT a dirty flag over caller-authored data: a derive costs a full GPU flush
-// (single-pixel depth readback), and holding the depth WHILE yaw moves is the
-// semantic requirement — re-deriving mid-rotation would chase the pivot across
-// the very content it is pinning.
+// The latch is ROTATION-scoped. It acquires once per rotation gesture — the
+// frame yaw starts moving, at any yaw — from the surface under the crosshair
+// in the frame before, and holds that anchor for the gesture. A pan or zoom
+// never re-latches: between gestures the anchor rides the camera so the pan
+// identity `IRMath::cameraMoveRelativeToYaw` pre-compensates holds, and
+// nothing about the view jumps when the camera stops.
+//
+// State is an un-yawed iso DEPTH and a view offset in iso units. The focus is
+// `isoPixelToPos3D(viewCenterIso − viewOffsetIso, isoDepth)` — derived live
+// from the camera, so a pan transports it — and the offset is also added to the
+// camera by every CAMERA_CENTER branch of `getEffectiveCameraIso`. With both
+// terms the anchor stays at the canvas center for any offset, and an
+// acquisition at non-zero yaw can re-anchor onto a different point of the same
+// crosshair ray without moving the view. Offset zero is the pre-acquisition
+// state and stays bit-exactly zero until a gesture acquires at non-zero yaw.
 class DefaultPivotLatch {
   public:
     // Per-frame delta of ABSOLUTE visualYaw at or below which the camera counts
-    // as not rotating, so the latch holds instead of re-deriving. Deliberately
-    // local rather than IRPrefab::Camera::kResidualYawDeadband: that constant is
-    // the one source for the *residual*-yaw predicate its four consumers share
-    // (per-axis allocation gate, render path-select, the FrameData UBO, the
-    // shadow bake), which is a different question, and borrowing it would
-    // silently couple this settle threshold to a value tuned for those.
+    // as not rotating. Deliberately local rather than
+    // IRPrefab::Camera::kResidualYawDeadband: that constant is the one source
+    // for the *residual*-yaw predicate its four consumers share (per-axis
+    // allocation gate, render path-select, the FrameData UBO, the shadow bake),
+    // which is a different question, and borrowing it would silently couple
+    // this settle threshold to a value tuned for those.
     // 1e-4 rad/frame is ~0.34 deg/s at 60 fps.
     //
-    // Doubles as the rotation-start edge's yaw-0 tolerance (`|yaw| <= delta`):
-    // the same "indistinguishable from zero" that decides whether yaw moved
-    // decides whether the pre-rotation frame rendered in the world frame.
+    // Doubles as the yaw-0 tolerance of an acquisition (`|yaw| <= delta`):
+    // a source frame the settle predicate cannot tell from yaw 0 latches its
+    // depth directly and leaves the view offset untouched.
     static constexpr float kYawSettleDelta = 1e-4f;
 
-    // Stamp `pose` as what this frame is about to render and decide whether the
-    // latched depth may be re-derived now.
+    // How far behind the visible surface the cardinal voxel store keys a
+    // fragment, in yawed iso-depth units. At residual yaw 0 each voxel face is
+    // keyed on the lower-corner lattice `[p, p + 1]` of view space rather than
+    // on the authored cube `[p - 1/2, p + 1/2]`: a (1/2, 1/2, 1/2) shift along
+    // the view axis, invisible on screen, that puts every cardinal voxel key 1.5
+    // units deeper than the surface the pixel shows. The per-axis (non-cardinal)
+    // store and the SDF shape store key without it. Removing it from a cardinal
+    // voxel sample makes the acquired point the surface itself, to within one
+    // micro-face.
+    static constexpr float kCardinalStoreLatticeDepth = 1.5f;
+
+    // Record the pose the main composite is drawing this frame with, or — when
+    // the default pivot does not own the depth (ORIGIN mode, or an explicit
+    // focus) — that this frame's attachment is unusable as a source. A frame
+    // that never reaches the composite leaves no stamp at all.
+    void stampSourceFrame(const DefaultPivotSourceFrame &frame, bool pivotOwnsDepth) {
+        m_pendingSource = frame;
+        m_hasPendingSource = pivotOwnsDepth;
+    }
+
+    // Observe the yaw this frame starts with and decide whether a readback may
+    // be paid now. Call EXACTLY ONCE per frame, in EVERY pivot mode, ahead of
+    // the RENDER pipeline: the previous frame's stamp becomes the source a
+    // derive this frame reads, and the settle state has to track every frame
+    // or the first frame back on the default pivot would compare against a
+    // stale yaw.
     //
-    // Call EXACTLY ONCE per frame and in EVERY pivot mode: the pose stamps
-    // describe what the frame renders, which is true whatever the pivot is, and
-    // freezing them behind the mode gate let the first frame back on the default
-    // pivot match a pose several frames stale and consume a depth attachment for
-    // a different view. `pivotOwnsDepth` is that gate — false when the mode is
-    // not CAMERA_CENTER or an explicit focus overrides the default, in which
-    // case no readback may be paid but the pose is still observed.
-    DefaultPivotLatchDecision observeFrame(const DefaultPivotPose &pose, bool pivotOwnsDepth) {
-        // Settle predicate: the per-frame change in ABSOLUTE yaw, against this
-        // class's own kYawSettleDelta. No residual and no computeYawSplit are
-        // involved — see the constant for why it isn't the shared
-        // Camera::kResidualYawDeadband.
-        const bool yawSettled = IRMath::abs(pose.visualYaw_ - m_lastYaw) <= kYawSettleDelta;
-        // The depth attachment a derive reads was written by the PREVIOUS frame
-        // (beginFrame runs ahead of the RENDER pipeline), so it only describes
-        // the current view once the previous frame rendered this same pan/zoom.
-        // Deriving on the frame a pan lands would read the pre-pan image and
-        // latch a depth for a view that no longer exists.
-        const bool viewMatchesLastRender =
-            pose.cameraIso_ == m_renderedCameraIso && pose.zoom_ == m_renderedZoom;
-        const bool wasYawSettled = m_yawSettled;
-        const bool wasYawZero = IRMath::abs(m_lastYaw) <= kYawSettleDelta;
+    // True on the gesture-start edge — yaw settled last frame, moving this one —
+    // when the default pivot owns the depth and the previous frame left a stamp.
+    // A continuous rotation derives once, at its first yaw-delta frame; a drag
+    // that pauses for a frame and resumes is a new gesture and acquires again,
+    // at whatever yaw it paused. A settled camera, and any pan or zoom, derives
+    // nothing.
+    bool observeFrame(float visualYaw, bool pivotOwnsDepth) {
+        m_source = m_pendingSource;
+        m_hasSource = m_hasPendingSource;
+        m_hasPendingSource = false;
 
-        m_lastYaw = pose.visualYaw_;
-        m_renderedCameraIso = pose.cameraIso_;
-        m_renderedZoom = pose.zoom_;
+        const bool yawSettled =
+            !m_hasObservedFrame || IRMath::abs(visualYaw - m_lastYaw) <= kYawSettleDelta;
+        const bool gestureStart = m_yawSettled && !yawSettled;
+        m_hasObservedFrame = true;
+        m_lastYaw = visualYaw;
         m_yawSettled = yawSettled;
-
-        if (!pivotOwnsDepth || !viewMatchesLastRender) {
-            return {};
-        }
-
-        DefaultPivotLatchDecision decision;
-        if (!yawSettled) {
-            // Rotation-start re-derive, gesture-start ONLY: the edge is "was
-            // settled, is not now", so a continuous rotation derives once at its
-            // first yaw-delta frame and never again while yaw keeps moving. A
-            // drag that pauses for a frame and resumes re-arms the edge — the
-            // paused frame's attachment is a still view.
-            //
-            // Yaw-0 ONLY, on top of that. The focus is
-            // isoPixelToPos3D(viewCenterIso, isoDepth), an expression with no
-            // yaw term, so a depth read from a frame rendered at non-zero yaw
-            // pins a point that is NOT the one under the crosshair: the view
-            // shifts, which changes what the next rotation start reads, and
-            // successive derives walk the pivot into the background. Only the
-            // world frame (yaw 0) is a fixed point of that map, so the edge
-            // fires from there and the latch holds everywhere else — the
-            // non-zero-yaw derive needs a yaw-aware readback-to-focus map, which
-            // this policy does not have.
-            decision.rotationStart_ = wasYawSettled && wasYawZero;
-            decision.derive_ = decision.rotationStart_;
-            return decision;
-        }
-
-        // Pan/zoom-scoped derive. A genuinely still camera does ZERO readbacks,
-        // but the cost lands on every motion-stop frame of a real drag, not
-        // once at startup.
-        decision.viewMoved_ =
-            !m_hasIsoDepth || pose.cameraIso_ != m_derivedCameraIso || pose.zoom_ != m_derivedZoom;
-        decision.derive_ = decision.viewMoved_;
-        return decision;
+        return gestureStart && pivotOwnsDepth && m_hasSource;
     }
 
-    // Record the depth the derive `observeFrame` admitted actually read. Keyed
-    // on the pose observeFrame just stamped, so a caller cannot key a derive to
-    // a pose the policy did not decide against.
-    void noteDerived(float isoDepth) {
-        m_isoDepth = isoDepth;
-        m_hasIsoDepth = true;
-        m_derivedCameraIso = m_renderedCameraIso;
-        m_derivedZoom = m_renderedZoom;
+    // The frame a derive admitted by observeFrame reads its depth from.
+    const DefaultPivotSourceFrame &sourceFrame() const {
+        return m_source;
     }
 
-    // Latched iso depth of the surface under the crosshair. 0 — before the
-    // first derive, whenever the center pixel reads background, and for a
-    // creation whose frame never reaches beginFrame — is the exact fallback
-    // point, so the fallback is the same expression rather than a structurally
-    // different branch.
+    // Acquire the surface a derive read: @p framebufferIsoDepth is the decoded
+    // composite depth at the canvas center of the source frame, in framebuffer
+    // units. A background or foreground-tier sample is NOT passed here — the
+    // latch holds instead, so a crosshair over nothing keeps the previous anchor
+    // rather than jumping to the depth-0 point.
+    //
+    // The world point is recovered in the frame the source was drawn in —
+    // its yaw and its effective camera — so it projects to the pixel it was
+    // read from, and the new state leaves the effective camera of the source
+    // pose unchanged: acquisition never moves the view. A cardinal source's
+    // sample is first moved off the voxel store's lattice onto the visible
+    // surface (kCardinalStoreLatticeDepth) when @p voxelStoreWinner says a
+    // voxel-pool fragment won the sampled texel.
+    void acquire(float framebufferIsoDepth, bool voxelStoreWinner = true) {
+        const DefaultPivotSourceFrame &source = m_source;
+        float yawedIsoDepth =
+            framebufferIsoDepth / static_cast<float>(IRMath::max(1, source.effectiveSubdivisions_));
+        if (source.residualYaw_ == 0.0f && voxelStoreWinner) {
+            yawedIsoDepth -= kCardinalStoreLatticeDepth;
+        }
+        m_hasAcquired = true;
+        if (IRMath::abs(source.visualYaw_) <= kYawSettleDelta) {
+            // At yaw 0 the yawed depth IS the un-yawed depth and the focus
+            // expression already puts it under the crosshair. Recomputing the
+            // offset would round-trip it through isoPixelToPos3D and
+            // pos3DtoPos2DIso, which is not a float identity — and yaw-0
+            // frames depend on the offset alone, so it must not drift.
+            m_isoDepth = yawedIsoDepth;
+            return;
+        }
+        const IRMath::vec3 world = IRMath::isoPixelToPos3DYawed(
+            source.canvasCenterIso_ - source.effectiveCameraIso_,
+            yawedIsoDepth,
+            source.visualYaw_
+        );
+        m_isoDepth = world.x + world.y + world.z;
+        m_viewOffsetIso =
+            source.canvasCenterIso_ - source.cameraIso_ - IRMath::pos3DtoPos2DIso(world);
+    }
+
+    // The anchor under the view center @p viewCenterIso (`canvasCenterIso −
+    // cameraIso` for the live camera).
+    IRMath::vec3 focus(IRMath::vec2 viewCenterIso) const {
+        return IRMath::isoPixelToPos3D(viewCenterIso - m_viewOffsetIso, m_isoDepth);
+    }
+
+    // Un-yawed iso depth of the anchor. 0 — before the first acquisition, and
+    // for a creation whose frame never reaches beginFrame — is the exact
+    // fallback point, so the fallback is the same expression rather than a
+    // structurally different branch.
     float isoDepth() const {
         return m_isoDepth;
     }
-    bool hasIsoDepth() const {
-        return m_hasIsoDepth;
+    IRMath::vec2 viewOffsetIso() const {
+        return m_viewOffsetIso;
+    }
+    bool hasAcquired() const {
+        return m_hasAcquired;
     }
 
   private:
     float m_isoDepth = 0.0f;
-    bool m_hasIsoDepth = false;
+    IRMath::vec2 m_viewOffsetIso = IRMath::vec2(0.0f);
+    bool m_hasAcquired = false;
 
-    // Camera state the PREVIOUS frame rendered with — the depth attachment a
-    // derive reads belongs to that frame. Stamped every frame in every pivot
-    // mode, so returning to CAMERA_CENTER cannot inherit a stale pose stamp.
+    // The stamp the composite left this frame, and the one the previous frame
+    // left — the source a derive in this frame's beginFrame reads.
+    DefaultPivotSourceFrame m_pendingSource;
+    bool m_hasPendingSource = false;
+    DefaultPivotSourceFrame m_source;
+    bool m_hasSource = false;
+
     float m_lastYaw = 0.0f;
-    IRMath::vec2 m_renderedCameraIso = IRMath::vec2(0.0f);
-    // A live zoom is never 0, so this initialiser is the first-frame sentinel
-    // that makes the pose check fail by construction before anything has
-    // rendered — do not "tidy" it to a plausible default.
-    IRMath::vec2 m_renderedZoom = IRMath::vec2(0.0f);
-    // Was the previous frame's yaw settled? The rotation-start edge is this
+    // The first observed frame has no previous yaw, so it is settled by
+    // definition — a creation that starts at non-zero yaw is not a gesture.
+    bool m_hasObservedFrame = false;
+    // Was the previous frame's yaw settled? The gesture-start edge is this
     // going true -> false, which is why the flag has to persist across frames
     // rather than being recomputed from m_lastYaw alone.
     bool m_yawSettled = true;
-
-    // Camera state the latched iso depth was derived from.
-    IRMath::vec2 m_derivedCameraIso = IRMath::vec2(0.0f);
-    IRMath::vec2 m_derivedZoom = IRMath::vec2(0.0f);
 };
 
 } // namespace IRRender

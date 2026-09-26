@@ -235,6 +235,67 @@ TEST(Pos3DtoPos2DIsoYawedTest, CardinalsAgreeWithRotateCardinalZ) {
 }
 
 // ---------------------------------------------------------------------------
+// isoPixelToPos3DYawed
+// ---------------------------------------------------------------------------
+
+TEST(IsoPixelToPos3DYawedTest, ZeroYawMatchesIsoPixelToPos3D) {
+    const IRMath::vec2 isos[] =
+        {IRMath::vec2(0.0f, 0.0f), IRMath::vec2(3.5f, -2.25f), IRMath::vec2(-17.0f, 41.0f)};
+    for (const auto &iso : isos) {
+        for (float depth : {0.0f, 5.0f, -12.5f}) {
+            const IRMath::vec3 expected = IRMath::isoPixelToPos3D(iso, depth);
+            const IRMath::vec3 actual = IRMath::isoPixelToPos3DYawed(iso, depth, 0.0f);
+            EXPECT_EQ(actual, expected);
+        }
+    }
+}
+
+TEST(IsoPixelToPos3DYawedTest, InvertsTheYawedProjectionAndDepthAtEveryYaw) {
+    // The round trip the default pivot's acquisition relies on: the recovered
+    // point projects back to the pixel it was read from, at the depth the
+    // composite sorted it by. The depth is compared unrounded —
+    // pos3DtoDistanceYawed rounds to the integer the composite stores, which
+    // would hide the sub-unit error this test bounds.
+    const float yaws[] = {
+        0.0f,
+        IRMath::kPi / 8.0f,
+        IRMath::kQuarterPi,
+        -IRMath::kQuarterPi,
+        IRMath::kHalfPi,
+        2.0f * IRMath::kPi / 3.0f,
+        IRMath::kPi
+    };
+    const IRMath::vec2 iso(12.75f, -30.5f);
+    const float depth = 17.0f;
+    for (float yaw : yaws) {
+        const IRMath::vec3 world = IRMath::isoPixelToPos3DYawed(iso, depth, yaw);
+        const IRMath::vec2 projected = IRMath::pos3DtoPos2DIsoYawed(world, yaw);
+        EXPECT_NEAR(projected.x, iso.x, 1e-4f) << "yaw=" << yaw;
+        EXPECT_NEAR(projected.y, iso.y, 1e-4f) << "yaw=" << yaw;
+        const float c = IRMath::cos(yaw);
+        const float s = IRMath::sin(yaw);
+        const float yawedDepth = world.x * (c - s) + world.y * (s + c) + world.z;
+        EXPECT_NEAR(yawedDepth, depth, 1e-4f) << "yaw=" << yaw;
+        EXPECT_EQ(IRMath::pos3DtoDistanceYawed(world, yaw), 17);
+    }
+}
+
+TEST(IsoPixelToPos3DYawedTest, DepthMovesAlongTheRotatedIsoDepthAxis) {
+    // One unit of yawed depth moves the point by R_z(+yaw)·(1,1,1)/3 — the
+    // camera-forward axis at that yaw — so two depths on one pixel differ only
+    // along it.
+    const float yaw = IRMath::kPi / 6.0f;
+    const IRMath::vec2 iso(4.0f, 9.0f);
+    const IRMath::vec3 delta =
+        IRMath::isoPixelToPos3DYawed(iso, 9.0f, yaw) - IRMath::isoPixelToPos3DYawed(iso, 6.0f, yaw);
+    const float c = IRMath::cos(yaw);
+    const float s = IRMath::sin(yaw);
+    EXPECT_NEAR(delta.x, c - s, 1e-5f);
+    EXPECT_NEAR(delta.y, s + c, 1e-5f);
+    EXPECT_NEAR(delta.z, 1.0f, 1e-5f);
+}
+
+// ---------------------------------------------------------------------------
 // deformedTrixelIsoPixel
 // ---------------------------------------------------------------------------
 

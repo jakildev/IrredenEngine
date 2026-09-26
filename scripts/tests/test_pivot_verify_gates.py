@@ -47,10 +47,14 @@ def _load(mod_name: str, file_name: str):
 
 pv = _load("pivot_verify", "pivot-verify.py")
 
-# One `[pivot-focus-assert]` line per shot, all at the same latched derive so
-# _score_focus_asserts' moved-value check is not what decides the verdict.
-_ASSERT_LINE = ("[pivot-focus-assert] probe derived=(4.0,4.0,2.5) "
-                "analytic=(4.0,4.0,2.5) view_held=1 result={result}")
+# One `[pivot-focus-assert]` line per shot, in the demo's own field order, all
+# at the same latched derive and none a gesture, so the per-gesture verdict the
+# line carries is what decides the focus half.
+_ASSERT_LINE = ("[pivot-focus-assert] block=probe shot=0 yaw=0 gesture=0 "
+                "latch_moves=0 derived=(4.0,4.0,2.5) target=(4.0,4.0,2.5) "
+                "source=none cell=(4.0,4.0,2.5) footprint_cells=0 neighbour_cell=0 "
+                "skip=none world_delta=0 "
+                "tolerance=0.001 view_held=1 result={result}")
 
 
 class _Harness:
@@ -179,23 +183,27 @@ class SdfTwinGate(unittest.TestCase):
 
 class CensusEveryPassCanFail(unittest.TestCase):
 
-    def test_t4_maximally_bad_reading_fails_all_eight_passes(self):
-        # 7 blocks + the focus-ctr twin, every silhouette 200px off and every
-        # [pivot-focus-assert] FAIL. The issue's census: 7/8 gated before,
-        # 8/8 after.
+    def test_t4_maximally_bad_reading_fails_every_pass(self):
+        # 8 blocks + the focus-ctr and center-column twins, acquire-continuity
+        # once per base yaw, every silhouette 200px off and every
+        # [pivot-focus-assert] FAIL: all 12 passes fail.
         h = _Harness(default_reading=200.0, focus_result="FAIL")
         rc, verdicts = _run(h, [])
-        self.assertEqual(len(verdicts), 8)
+        self.assertEqual(len(verdicts), 12)
         self.assertEqual(rc, 1)
         self.assertEqual(verdicts, {
             "focus-ctr@z4": "DRIFT",
             "focus-ctr-sdf@z4": "DRIFT",
             "focus-off@z4": "DRIFT",
             "center-column@z4": "FOCUS-BAD",
+            "center-column-sdf@z4": "FOCUS-BAD",
             "center-depth@z4": "FOCUS-BAD",
             "background-center@z4": "FOCUS-BAD",
             "center-axis@z4": "FOCUS-BAD",
             "cursor-latch@z4": "FOCUS-BAD",
+            "acquire-continuity@z4@y0": "FOCUS-BAD",
+            "acquire-continuity@z4@y22.5": "FOCUS-BAD",
+            "acquire-continuity@z4@y180": "FOCUS-BAD",
         })
         self.assertNotIn("REPORT", set(verdicts.values()))
 
@@ -217,19 +225,89 @@ class LoudClassification(unittest.TestCase):
         self.assertIn("CENTROID_GATED_BLOCKS", message)
         self.assertIn("FOCUS_ASSERT_BLOCKS", message)
 
-    def test_t5b_sdf_block_outside_the_centroid_gate_exits_before_capture(self):
-        # center-column is classified (FOCUS_ASSERT_BLOCKS) but not
-        # centroid-gated, and an SDF twin runs no focus oracle — so its twin
-        # would reach the verdict lookup ungated.
-        with patch.object(pv, "SDF_BLOCKS", ["focus-ctr", "center-column"]):
+    def test_t5b_sdf_block_outside_both_twin_gates_exits_before_capture(self):
+        # center-depth is classified (FOCUS_ASSERT_BLOCKS) but neither
+        # centroid-gated nor an SDF focus block, and an SDF twin runs the
+        # focus oracle only in SDF_FOCUS_BLOCKS — so its twin would reach the
+        # verdict lookup ungated.
+        with patch.object(pv, "SDF_BLOCKS", pv.SDF_BLOCKS + ["center-depth"]):
             message = self._expect_systemexit_before_capture([])
-        self.assertIn("center-column", message)
+        self.assertIn("center-depth", message)
         self.assertIn("CENTROID_GATED_BLOCKS", message)
+        self.assertIn("SDF_FOCUS_BLOCKS", message)
 
     def test_unknown_block_still_rejected(self):
         message = self._expect_systemexit_before_capture(
             ["--blocks", "not-a-block"])
         self.assertIn("not-a-block", message)
+
+
+def _gesture_line(shot, result, gesture=1, skip="grazing"):
+    return (f"[pivot-focus-assert] block=center-depth shot={shot} yaw=0.5 "
+            f"gesture={gesture} latch_moves={gesture} derived=({shot}.0,0.0,0.0) "
+            f"target=({shot}.0,0.0,0.0) source=cardinal cell=(0,0,0) "
+            f"footprint_cells=0 neighbour_cell=0 "
+            f"skip={skip if result == 'SKIP' else 'none'} world_delta=0 "
+            f"tolerance=0.29 view_held=1 result={result}")
+
+
+class GrazingSkips(unittest.TestCase):
+    """A grazing gesture is reported, not graded — but never makes a block
+    vacuous."""
+
+    def test_some_skips_pass_and_are_counted(self):
+        output = "\n".join([_gesture_line(0, "PASS", gesture=0),
+                            _gesture_line(1, "SKIP"), _gesture_line(2, "PASS")])
+        verdict, detail = pv._score_focus_asserts(output, "center-depth")
+        self.assertEqual(verdict, "OK")
+        self.assertIn("grazing skips 1/2", detail)
+
+    def test_every_gesture_skipped_fails(self):
+        output = "\n".join([_gesture_line(0, "PASS", gesture=0),
+                            _gesture_line(1, "SKIP"), _gesture_line(2, "SKIP")])
+        verdict, detail = pv._score_focus_asserts(output, "center-depth")
+        self.assertEqual(verdict, "BAD")
+        self.assertIn("vacuous", detail)
+
+    def test_a_graded_failure_still_fails_beside_skips(self):
+        output = "\n".join([_gesture_line(0, "PASS", gesture=0),
+                            _gesture_line(1, "SKIP"), _gesture_line(2, "FAIL")])
+        verdict, _ = pv._score_focus_asserts(output, "center-depth")
+        self.assertEqual(verdict, "BAD")
+
+
+class SdfFocusRow(unittest.TestCase):
+    """The center-column SDF twin is graded by its cardinal gestures; its
+    per-axis gestures are reported under their own skip reason."""
+
+    def test_sdf_per_axis_skips_are_counted_apart_from_grazing(self):
+        output = "\n".join([_gesture_line(0, "PASS", gesture=0),
+                            _gesture_line(1, "PASS"),
+                            _gesture_line(2, "SKIP", skip="sdf-per-axis")])
+        verdict, detail = pv._score_focus_asserts(output, "center-column")
+        self.assertEqual(verdict, "OK")
+        self.assertIn("grazing skips 0/2", detail)
+        self.assertIn("sdf-per-axis skips 1/2 gesture(s) (shot 2)", detail)
+
+    def test_every_gesture_skipped_under_mixed_reasons_fails(self):
+        output = "\n".join([_gesture_line(0, "PASS", gesture=0),
+                            _gesture_line(1, "SKIP"),
+                            _gesture_line(2, "SKIP", skip="sdf-per-axis")])
+        verdict, detail = pv._score_focus_asserts(output, "center-column")
+        self.assertEqual(verdict, "BAD")
+        self.assertIn("vacuous", detail)
+
+    def test_the_twin_is_gated_by_its_focus_asserts_not_its_centroid(self):
+        # The focus oracle is the twin's gate: a failing assert fails it, and
+        # a drifting silhouette alone does not (center-column rotates about a
+        # point off its probe's axis, so its centroid is reported only).
+        for focus_result, expected in (("FAIL", "FOCUS-BAD"), ("PASS", "FOCUS-OK")):
+            with self.subTest(focus_result=focus_result):
+                h = _Harness(readings={("center-column", True): 200.0},
+                             focus_result=focus_result)
+                rc, verdicts = _run(h, ["--blocks", "center-column"])
+                self.assertEqual(verdicts["center-column-sdf@z4"], expected)
+                self.assertEqual(rc, 0 if focus_result == "PASS" else 1)
 
 
 class PerBlockBoundSurvives(unittest.TestCase):

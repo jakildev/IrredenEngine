@@ -62,14 +62,24 @@ class RenderManager {
     bool hasRotationPivotFocus() const;
     vec3 getRotationPivotFocus() const;
     // Focus the DEFAULT (no explicit override) CAMERA_CENTER pivot rotates
-    // about: the content under the viewport center at its rendered depth.
-    // The point is derived live from the current camera position on
-    // every call; only the iso DEPTH is latched (re-derived by @ref
-    // updateDefaultRotationPivotFocus on the frames DefaultPivotLatch admits —
-    // a settled camera whose pan/zoom moved, and a rotation start from yaw 0 —
-    // held otherwise). Depth 0 — before the first derive and whenever the center
-    // pixel reads background — is the fallback.
+    // about: the surface that was under the viewport center when the last
+    // rotation gesture started, acquired by @ref
+    // updateDefaultRotationPivotFocus and held until the next one. The point is
+    // derived live from the current camera position on every call, so a pan
+    // carries it along; only its iso DEPTH and the view offset are latched.
+    // Depth 0 with no offset — before the first acquisition — is the fallback.
     vec3 getDefaultRotationPivotFocus() const;
+    // Iso offset every CAMERA_CENTER branch of getEffectiveCameraIso adds to
+    // the raw camera: what keeps the view still when a gesture at non-zero yaw
+    // re-anchors onto a different point of the crosshair ray. Zero until such
+    // an acquisition.
+    vec2 getDefaultPivotViewOffsetIso() const;
+    // Stamp the pose the main composite is drawing this frame with — the
+    // source a gesture starting next frame acquires from. Called once per
+    // frame by TRIXEL_TO_FRAMEBUFFER.
+    void stampDefaultPivotSourceFrame();
+    // Iso coordinate of the main canvas center with no camera applied.
+    vec2 getCanvasCenterIso() const;
     // Iso coordinate of the viewport center — the point a world position must
     // project to (before the camera offset) to land at screen center.
     vec2 getViewCenterIso() const;
@@ -127,8 +137,8 @@ class RenderManager {
     void beginFrame();
     void renderFrame();
     void presentFrame();
-    // Re-derive the depth-aware default pivot focus if this frame's camera
-    // state admits it. Called once from @ref beginFrame, ahead of the RENDER
+    // Acquire the depth-aware default pivot focus if this frame starts a
+    // rotation gesture. Called once from @ref beginFrame, ahead of the RENDER
     // pipeline, so every stage in a frame reads ONE focus value. The WHEN is
     // DefaultPivotLatch's (default_pivot_latch.hpp); this function owns only
     // the readback the latch admits.
@@ -183,12 +193,17 @@ class RenderManager {
     vec3 m_rotationPivotFocus = vec3(0.0f);
     bool m_hasRotationPivotFocus = false;
     // Depth-aware default-pivot latch and its update policy. Only the iso DEPTH
-    // is latched — the focus POINT is re-derived from the live cameraIso on
-    // every read (see getDefaultRotationPivotFocus), which is what keeps
-    // IRMath::cameraMoveRelativeToYaw's pan identity true. The policy itself
-    // lives in DefaultPivotLatch so it is testable with no GPU; this class owns
-    // only the readback it admits.
+    // and a view offset are latched — the focus POINT is re-derived from the
+    // live cameraIso on every read (see getDefaultRotationPivotFocus), which is
+    // what keeps IRMath::cameraMoveRelativeToYaw's pan identity true. The
+    // policy itself lives in DefaultPivotLatch so it is testable with no GPU;
+    // this class owns only the readback it admits.
     DefaultPivotLatch m_defaultPivotLatch;
+    bool defaultPivotOwnsDepth() const;
+    // Whether the fragment an acquisition's depth sample (@p sampledEncodedDepth,
+    // the composite's encoded key) came from belongs to the voxel store, whose
+    // cardinal key sits on a lattice the latch removes.
+    bool crosshairWinnerIsVoxelStore(int sampledEncodedDepth) const;
     bool m_hoveredTrixelVisible = true;
     int m_voxelRenderSubdivisions = 1;
     // Unit vector pointing from surfaces toward the sun. Default is a
