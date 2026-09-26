@@ -1223,6 +1223,12 @@ void registerArgs() {
     args.flag("--probe-hidden-box", "Hide the detached shadowbox and its cast shadow");
     args.numbers("--probe-box-offset", "Shadowbox translation offset <x> <y> <z>", 3);
     args.flag("--probe-analytic-box", "Use an analytic box for shadowbox");
+    args.integer("--analytic-box-span", "Analytic probe X/Y extent, 1..512 (0 keeps default)", 0);
+    args.integer(
+        "--analytic-box-count",
+        "Coincident analytic probes for index pressure, 1..128",
+        1
+    );
     args.flag(
         "--probe-sdf-depth-tie",
         "With --probe-analytic-box, overlap an orange box to test equal-depth ownership"
@@ -2020,16 +2026,28 @@ void initEntities() {
                 vec3(0.0f, 0.0f, 1.0f),
                 IREngine::args().getFloat("--analytic-box-yaw")
             );
-            IREntity::createEntity(
-                C_LocalTransform{position + offset, rotation},
-                C_ShapeDescriptor{IRRender::ShapeType::BOX, vec4(vec3(size), 0.0f), color}
-            );
+            const int requestedSpan = IREngine::args().getInt("--analytic-box-span");
+            const vec3 extent = requestedSpan == 0
+                                    ? vec3(size)
+                                    : vec3(
+                                          float(IRMath::clamp(requestedSpan, 1, 512)),
+                                          float(IRMath::clamp(requestedSpan, 1, 512)),
+                                          float(size.z)
+                                      );
+            const int count =
+                IRMath::clamp(IREngine::args().getInt("--analytic-box-count"), 1, 128);
+            for (int index = 0; index < count; ++index) {
+                IREntity::createEntity(
+                    C_LocalTransform{position + offset, rotation},
+                    C_ShapeDescriptor{IRRender::ShapeType::BOX, vec4(extent, 0.0f), color}
+                );
+            }
             if (IREngine::args().getFlag("--probe-sdf-depth-tie")) {
                 IREntity::createEntity(
                     C_LocalTransform{position + offset, rotation},
                     C_ShapeDescriptor{
                         IRRender::ShapeType::BOX,
-                        vec4(vec3(size), 0.0f),
+                        vec4(extent, 0.0f),
                         Color{240, 120, 60, 255}
                     }
                 );

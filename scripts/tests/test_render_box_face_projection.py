@@ -93,15 +93,17 @@ class BoxFaceProjectionTest(unittest.TestCase):
         for suffix, folder in (("glsl", ""), ("metal", "metal/")):
             source = (ROOT / f"engine/render/src/shaders/{folder}"
                       f"c_bake_box_sun_shadow.{suffix}").read_text()
-            start = source.index("        for (int axis = 0; axis < 3; ++axis)")
+            start = source.index("        const int axis =")
             end = source.index("    for (int cascade", start)
             block = source[start:end].rsplit("    }", 1)[0]
             block = block.replace("sunFrame.", "").replace(".xyz", "")
             block = block.replace("sunDepthBuf, ", "").replace(", sunFrame", "")
             block = block.replace("float3", "vec3")
+            block = block.replace("gl_LocalInvocationID.x", "lane").replace("localId.x", "lane")
             variants = {
                 "production": block,
                 "duplicate_index": block,
+                "missing_lane": block,
                 "wrong_polarity": block.replace("> 0.0", "< 0.0"),
                 "unrotated_edges": block.replace(
                     "edgeU = rotateByQuat(edgeU, shape.rotation);", ""),
@@ -114,10 +116,13 @@ class BoxFaceProjectionTest(unittest.TestCase):
             for name, body in variants.items():
                 with (self.subTest(backend=suffix, mutation=name),
                       tempfile.TemporaryDirectory() as tmp):
-                    if name not in ("production", "duplicate_index"):
+                    if name not in ("production", "duplicate_index", "missing_lane"):
                         self.assertNotEqual(body, block)
                     cpp, exe = Path(tmp) / "box.cpp", Path(tmp) / "box"
                     selected_gate = "true" if name == "duplicate_index" else gate
+                    if name == "missing_lane":
+                        selected_gate = gate.replace("< 3u", "< 2u")
+                        self.assertNotEqual(selected_gate, gate)
                     emitter = ("void emit(){for(unsigned group=0;group<32;++group)"
                                "for(unsigned lane=0;lane<64;++lane)if("
                                + selected_gate + "){" + body + "}}")
