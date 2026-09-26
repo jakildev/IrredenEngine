@@ -236,7 +236,11 @@ cap, so the first rotated frame on a fresh set draws the settled pose's order;
 an unparked set keeps its pre-park frame's count as the bound. Growth
 within the two-times headroom is fully sorted; a larger jump between two
 rotating frames remains a valid permutation and becomes fully sorted on the next
-frame. Unflagged pools skip the sort entirely. Flagged empty pools pay only the argument-preparation,
+frame. On OpenGL the sequence ends with one extra direct argument-preparation
+dispatch: NVIDIA GL defers the last indirect step (its arguments live in the
+buffer the sort writes) until the program dispatches again or the buffer is
+cleared, and the trailer completes the sort inside the sequence rather than
+leaving it to whatever touches the scratch next. Unflagged pools skip the sort entirely. Flagged empty pools pay only the argument-preparation,
 fill and local-sort encoders; their GPU-authored grids are empty.
 
 The expanded aligned control region owns the arguments separately from draw
