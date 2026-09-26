@@ -1,0 +1,214 @@
+diff --git a/engine/render/src/shaders/ir_projected_face.glsl b/engine/render/src/shaders/ir_projected_face.glsl
+index 1b921a4d9..ff4184bd1 100644
+--- a/engine/render/src/shaders/ir_projected_face.glsl
++++ b/engine/render/src/shaders/ir_projected_face.glsl
+@@ -12,4 +12,23 @@ vec2 projectedFaceCoordinates(vec2 delta, vec2 edgeU, vec2 edgeV, float determin
+                 (edgeU.x * delta.y - edgeU.y * delta.x) / determinant);
+ }
+
++// The tile already overlaps the face AABB. Strict separation keeps shared edges;
++// the roundoff allowance makes uncertain floating-point cases conservative.
++bool projectedFaceTileMayOverlap(vec2 corner, vec2 edgeU, vec2 edgeV, vec2 tileLow, vec2 tileHigh) {
++    const vec2 tileCenter = (tileLow + tileHigh) * 0.5;
++    const vec2 tileHalf = (tileHigh - tileLow) * 0.5;
++    const vec2 faceCenter = corner + (edgeU + edgeV) * 0.5;
++    const vec2 delta = tileCenter - faceCenter;
++    const float faceRadius = abs(projectedFaceDeterminant(edgeU, edgeV)) * 0.5;
++    for (int axis = 0; axis < 2; ++axis) {
++        const vec2 edge = axis == 0 ? edgeU : edgeV;
++        const float radius = faceRadius + abs(edge.y) * tileHalf.x + abs(edge.x) * tileHalf.y;
++        const float magnitudeX = abs(tileCenter.x) + abs(corner.x) + (abs(edgeU.x) + abs(edgeV.x)) * 0.5;
++        const float magnitudeY = abs(tileCenter.y) + abs(corner.y) + (abs(edgeU.y) + abs(edgeV.y)) * 0.5;
++        const float roundoff = 0.000002 * (abs(edge.y) * magnitudeX + abs(edge.x) * magnitudeY + radius);
++        if (abs(projectedFaceDeterminant(delta, edge)) > radius + roundoff) return false;
++    }
++    return true;
++}
++
+ #endif
+diff --git a/engine/render/src/shaders/ir_sun_face_index.glsl b/engine/render/src/shaders/ir_sun_face_index.glsl
+index 34d61ebc6..d8c03c48d 100644
+--- a/engine/render/src/shaders/ir_sun_face_index.glsl
++++ b/engine/render/src/shaders/ir_sun_face_index.glsl
+@@ -45,6 +45,10 @@ void indexSourceSunFace(vec3 corner, vec3 edgeU, vec3 edgeV) {
+             const int y = first.y + int(item / width);
+ #else
+         for (int y = first.y; y <= last.y; ++y) for (int x = first.x; x <= last.x; ++x) {
++#endif
++#ifdef IR_SUN_FACE_INDEX_COOPERATIVE
++            const vec2 tileLow = origin + vec2(float(x), float(y)) * cellSize;
++            if (!projectedFaceTileMayOverlap(corner.xy, edgeU.xy, edgeV.xy, tileLow, tileLow + cellSize)) continue;
+ #endif
+             const uint tile = cascade * kSourceFaceTilesPerAxis * kSourceFaceTilesPerAxis + uint(y) * kSourceFaceTilesPerAxis + uint(x);
+             const uint base = sourceFaceTileBase(tile);
+diff --git a/engine/render/src/shaders/metal/ir_projected_face.metal b/engine/render/src/shaders/metal/ir_projected_face.metal
+index 7afe8ef84..c1ec9a08d 100644
+--- a/engine/render/src/shaders/metal/ir_projected_face.metal
++++ b/engine/render/src/shaders/metal/ir_projected_face.metal
+@@ -12,4 +12,23 @@ inline float2 projectedFaceCoordinates(float2 delta, float2 edgeU, float2 edgeV,
+                 (edgeU.x * delta.y - edgeU.y * delta.x) / determinant);
+ }
+
++// The tile already overlaps the face AABB. Strict separation keeps shared edges;
++// the roundoff allowance makes uncertain floating-point cases conservative.
++inline bool projectedFaceTileMayOverlap(float2 corner, float2 edgeU, float2 edgeV, float2 tileLow, float2 tileHigh) {
++    const float2 tileCenter = (tileLow + tileHigh) * 0.5;
++    const float2 tileHalf = (tileHigh - tileLow) * 0.5;
++    const float2 faceCenter = corner + (edgeU + edgeV) * 0.5;
++    const float2 delta = tileCenter - faceCenter;
++    const float faceRadius = abs(projectedFaceDeterminant(edgeU, edgeV)) * 0.5;
++    for (int axis = 0; axis < 2; ++axis) {
++        const float2 edge = axis == 0 ? edgeU : edgeV;
++        const float radius = faceRadius + abs(edge.y) * tileHalf.x + abs(edge.x) * tileHalf.y;
++        const float magnitudeX = abs(tileCenter.x) + abs(corner.x) + (abs(edgeU.x) + abs(edgeV.x)) * 0.5;
++        const float magnitudeY = abs(tileCenter.y) + abs(corner.y) + (abs(edgeU.y) + abs(edgeV.y)) * 0.5;
++        const float roundoff = 0.000002 * (abs(edge.y) * magnitudeX + abs(edge.x) * magnitudeY + radius);
++        if (abs(projectedFaceDeterminant(delta, edge)) > radius + roundoff) return false;
++    }
++    return true;
++}
++
+ #endif
+diff --git a/engine/render/src/shaders/metal/ir_sun_face_index.metal b/engine/render/src/shaders/metal/ir_sun_face_index.metal
+index a99df0d1c..40d78ff3f 100644
+--- a/engine/render/src/shaders/metal/ir_sun_face_index.metal
++++ b/engine/render/src/shaders/metal/ir_sun_face_index.metal
+@@ -48,6 +48,10 @@ inline void indexSourceSunFace(device atomic_uint* sunDepthBuf, float3 corner, f
+             const int y = first.y + int(item / width);
+ #else
+         for (int y = first.y; y <= last.y; ++y) for (int x = first.x; x <= last.x; ++x) {
++#endif
++#ifdef IR_SUN_FACE_INDEX_COOPERATIVE
++            const float2 tileLow = origin + float2(float(x), float(y)) * cellSize;
++            if (!projectedFaceTileMayOverlap(corner.xy, edgeU.xy, edgeV.xy, tileLow, tileLow + cellSize)) continue;
+ #endif
+             const uint tile = cascade * kSourceFaceTilesPerAxis * kSourceFaceTilesPerAxis + uint(y) * kSourceFaceTilesPerAxis + uint(x);
+             const uint base = sourceFaceTileBase(tile);
+diff --git a/scripts/tests/test_render_source_face_index.py b/scripts/tests/test_render_source_face_index.py
+index 09e0342ea..a129b2dfd 100644
+--- a/scripts/tests/test_render_source_face_index.py
++++ b/scripts/tests/test_render_source_face_index.py
+@@ -45,6 +45,7 @@ vec2 operator+(vec2 a,vec2 b){return {a.x+b.x,a.y+b.y};}
+ vec2 operator-(vec2 a,vec2 b){return {a.x-b.x,a.y-b.y};}
+ vec2 operator/(vec2 a,vec2 b){return {a.x/b.x,a.y/b.y};}
+ vec2 operator*(vec2 a,float b){return {a.x*b,a.y*b};}
++vec2 operator*(vec2 a,vec2 b){return {a.x*b.x,a.y*b.y};}
+ vec2 min(vec2 a,vec2 b){return {std::min(a.x,b.x),std::min(a.y,b.y)};}
+ vec2 max(vec2 a,vec2 b){return {std::max(a.x,b.x),std::max(a.y,b.y)};}
+ ivec2 min(ivec2 a,ivec2 b){return ivec2(vec2(std::min(a.x,b.x),std::min(a.y,b.y)));}
+diff --git a/scripts/tests/test_render_projected_face_tiles.py b/scripts/tests/test_render_projected_face_tiles.py
+new file mode 100644
+index 000000000..1c68206fd
+--- /dev/null
++++ b/scripts/tests/test_render_projected_face_tiles.py
+@@ -0,0 +1,110 @@
++"""Check conservative projected-face tile rejection against polygon clipping."""
++
++import subprocess
++import tempfile
++import unittest
++from pathlib import Path
++
++from test_render_source_face_index import COMPILER, PREAMBLE, ROOT
++
++CASES = r"""
++struct Point {double x,y;};
++bool oracle(vec2 c,vec2 u,vec2 v,vec2 low,vec2 high){
++ std::vector<Point> polygon={{c.x,c.y},{double(c.x)+u.x,double(c.y)+u.y},
++  {double(c.x)+u.x+v.x,double(c.y)+u.y+v.y},{double(c.x)+v.x,double(c.y)+v.y}};
++ for(int side=0;side<4;++side){
++  std::vector<Point> result;
++  if(polygon.empty())return false;
++  const bool x=side<2,lower=side%2==0;
++  const double bound=x?(lower?low.x:high.x):(lower?low.y:high.y);
++  auto distance=[&](Point p){return ((x?p.x:p.y)-bound)*(lower?1:-1);};
++  Point previous=polygon.back();double pd=distance(previous);
++  for(Point current:polygon){
++   double cd=distance(current);
++   if((pd<0)!=(cd<0)){
++    double t=pd/(pd-cd);
++    result.push_back({previous.x+t*(current.x-previous.x),
++                      previous.y+t*(current.y-previous.y)});
++   }
++   if(cd>=0)result.push_back(current);
++   previous=current;pd=cd;
++  }
++  polygon=result;
++ }
++ return !polygon.empty();
++}
++int main(){
++ if(!projectedFaceTileMayOverlap({0,0},{4,4},{-4,4},{1,1},{2,2}))return 1;
++ if(projectedFaceTileMayOverlap({0,0},{4,4},{-4,4},{3,0},{4,1}))return 2;
++ if(projectedFaceTileMayOverlap({0,0},{4,4},{-4,4},{-4,0},{-3,1}))return 3;
++ unsigned long candidates=0,hits=0,rejected=0,extra=0;
++ for(int grid=0;grid<2;++grid)
++ for(float normalScale:{1.f,.0001f})
++ for(float offset:{-1000000.f,0.f,1000000.f})
++ for(int pose=0;pose<16;++pose)
++ for(float width:{1.f,8.f,64.f,256.f})
++ for(float height:{1.f,16.f,128.f})
++ for(float sign:{-1.f,1.f}){
++  const double angle=pose*3.141592653589793/8;
++  vec2 c{offset+7.25f,offset-3.5f};
++  vec2 u{float(std::cos(angle)*width),float(std::sin(angle)*width)};
++  vec2 v{float((-std::sin(angle)*normalScale+.3*std::cos(angle))*height*sign),
++         float((std::cos(angle)*normalScale+.3*std::sin(angle))*height*sign)};
++  const vec2 low=min(min(c,c+u),min(c+v,c+u+v));
++  const vec2 high=max(max(c,c+u),max(c+v,c+u+v));
++  const float cell=grid?7.25f:8.f;
++  const vec2 origin=grid?vec2{-.375f,.625f}:vec2{0,0};
++  for(int y=int(std::floor((low.y-origin.y)/cell));
++      y<=int(std::floor((high.y-origin.y)/cell));++y)
++  for(int x=int(std::floor((low.x-origin.x)/cell));
++      x<=int(std::floor((high.x-origin.x)/cell));++x){
++   const vec2 tileLow{origin.x+float(x)*cell,origin.y+float(y)*cell};
++   const vec2 tileHigh=tileLow+vec2{cell,cell};
++   const bool expected=oracle(c,u,v,tileLow,tileHigh);
++   const bool actual=projectedFaceTileMayOverlap(c,u,v,tileLow,tileHigh);
++   if(expected&&!actual){std::cerr<<"lost overlap at "<<offset<<" pose "<<pose<<"\n";return 4;}
++   ++candidates;hits+=expected;rejected+=!actual;extra+=actual&&!expected;
++  }
++ }
++ if(rejected<1000)return 5;
++ std::cout<<"candidates="<<candidates<<" intersections="<<hits
++          <<" rejected="<<rejected<<" conservative_extra="<<extra<<"\n";
++}
++"""
++
++
++@unittest.skipUnless(COMPILER, "projected tile controls require a C++ compiler")
++class ProjectedFaceTileTest(unittest.TestCase):
++    def test_production_and_mutations(self):
++        for suffix, folder in (("glsl", ""), ("metal", "metal/")):
++            source = (ROOT / f"engine/render/src/shaders/{folder}"
++                      f"ir_projected_face.{suffix}").read_text().replace("float2", "vec2")
++            variants = {
++                "production": source,
++                "missing_axis": source.replace("axis < 2", "axis < 1"),
++                "shrunken_face": source.replace("edgeV)) * 0.5", "edgeV)) * 0.25"),
++                "open_edges": source.replace("radius + roundoff", "radius")
++                .replace("> radius", ">= radius"),
++                "no_rejection": source.replace("return false", "return true"),
++            }
++            for name, shader in variants.items():
++                with (self.subTest(backend=suffix, mutation=name),
++                      tempfile.TemporaryDirectory() as tmp):
++                    if name != "production":
++                        self.assertNotEqual(shader, source)
++                    path = Path(tmp)
++                    (path / "tiles.cpp").write_text(PREAMBLE + shader + CASES)
++                    build = subprocess.run([COMPILER, "-std=c++17", "-O2",
++                                            str(path / "tiles.cpp"), "-o", str(path / "tiles")],
++                                           capture_output=True, text=True)
++                    self.assertEqual(build.returncode, 0, build.stderr)
++                    run = subprocess.run([str(path / "tiles")], capture_output=True, text=True)
++                    if name == "production":
++                        self.assertEqual(run.returncode, 0, run.stderr)
++                        print(suffix, run.stdout.strip())
++                    else:
++                        self.assertNotEqual(run.returncode, 0, "mutation escaped")
++
++
++if __name__ == "__main__":
++    unittest.main()

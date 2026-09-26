@@ -89,3 +89,7 @@ separate experiments. This change reduces serial tile-loop latency without
 reducing tile reservations. No blur, coverage inflation or receiver bias is
 introduced. PR #3804's rendered-center correction overlaps box emission;
 preserve that geometry correction when reconciling it with this scheduling.
+
+[The tile-rejection experiment](projected-face-tile-overlap.md) retains a
+validated prototype but defers deployment: the existing native controls did
+not demonstrate a frame-time benefit.
