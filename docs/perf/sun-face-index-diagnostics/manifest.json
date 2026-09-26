@@ -1,0 +1,42 @@
+{
+  "parent": "813fff25d0e6000a5299e8a3cb48c0f1589faaf5",
+  "binary_sha256": "a54134185da1b2eb43e504a622040d255468f4c3a1f790fec6ed5ef92e1afc84",
+  "backend": "Metal",
+  "build": "Debug",
+  "host": "Apple M4 Max / macOS 26.5.2",
+  "counts": [
+    1,
+    63,
+    64,
+    128
+  ],
+  "camera_yaws": {
+    "1": [
+      0,
+      90,
+      180,
+      270
+    ],
+    "63": [
+      90
+    ],
+    "64": [
+      0,
+      90,
+      180,
+      270
+    ],
+    "128": [
+      0,
+      90,
+      180,
+      270
+    ]
+  },
+  "world_point": [
+    0,
+    0,
+    0
+  ],
+  "notes": "Capture-only readback; no performance conclusions. Runtime built from dirty diagnostics source on parent. First sandbox display failure excluded."
+}
