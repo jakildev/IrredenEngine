@@ -1,4 +1,9 @@
+// Cooperative callers provide identical geometry and cascade bounds on every lane.
 void indexSourceSunFace(vec3 corner, vec3 edgeU, vec3 edgeV) {
+#ifdef IR_SUN_FACE_INDEX_COOPERATIVE
+    const uint lane = gl_LocalInvocationID.x;
+    const uint stride = 64u;
+#endif
     const float determinant = projectedFaceDeterminant(edgeU.xy, edgeV.xy);
     if (abs(determinant) < 0.000001) return;
     uint faceIndex = 0xFFFFFFFFu;
@@ -11,6 +16,9 @@ void indexSourceSunFace(vec3 corner, vec3 edgeU, vec3 edgeV) {
         const ivec2 last = min(ivec2(floor((high - origin) / cellSize)), ivec2(kSourceFaceTilesPerAxis - 1u));
         if (first.x > last.x || first.y > last.y) continue;
         if (faceIndex == 0xFFFFFFFFu) {
+#ifdef IR_SUN_FACE_INDEX_COOPERATIVE
+            if (lane == 0u) {
+#endif
             faceIndex = atomicAdd(sunDepthBuf[sourceFaceHeaderIndex(uint(sunDepthBuf.length()))], 1u);
             if (faceIndex < kSourceFaceCapacity) {
                 const uint record = kSourceFaceRecordOffset + faceIndex * kSourceFaceRecordWords;
@@ -20,8 +28,24 @@ void indexSourceSunFace(vec3 corner, vec3 edgeU, vec3 edgeV) {
                     sunDepthBuf[record + 6u + axis] = floatBitsToUint(edgeV[axis]);
                 }
             }
+#ifdef IR_SUN_FACE_INDEX_COOPERATIVE
+            sharedFaceIndex = faceIndex;
+            }
+            barrier();
+            faceIndex = sharedFaceIndex;
+            // Every lane must consume the shared record before the next face overwrites it.
+            barrier();
+#endif
         }
+#ifdef IR_SUN_FACE_INDEX_COOPERATIVE
+        const uint width = uint(last.x - first.x + 1);
+        const uint count = width * uint(last.y - first.y + 1);
+        for (uint item = lane; item < count; item += stride) {
+            const int x = first.x + int(item % width);
+            const int y = first.y + int(item / width);
+#else
         for (int y = first.y; y <= last.y; ++y) for (int x = first.x; x <= last.x; ++x) {
+#endif
             const uint tile = cascade * kSourceFaceTilesPerAxis * kSourceFaceTilesPerAxis + uint(y) * kSourceFaceTilesPerAxis + uint(x);
             const uint base = sourceFaceTileBase(tile);
             if (faceIndex >= kSourceFaceCapacity) {

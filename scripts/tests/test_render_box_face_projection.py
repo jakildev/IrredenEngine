@@ -36,7 +36,10 @@ struct Shape {vec3 worldPosition{2.25,-3.125,1.75};vec4 rotation{0,0,0,1};} shap
 vec3 halfExtent{1,2,3},sunDirection{0,0,-1},sunBasisU{1,0,0},sunBasisV{0,1,0};
 struct Face {vec3 corner,u,v;};
 std::vector<Face> faces;
-void indexSourceSunFace(vec3 c,vec3 u,vec3 v){faces.push_back({c,u,v});}
+unsigned currentLane=0,faceCalls=0;
+void indexSourceSunFace(vec3 c,vec3 u,vec3 v){
+ ++faceCalls;if(currentLane==0)faces.push_back({c,u,v});
+}
 """
 
 CASES = r"""
@@ -51,7 +54,7 @@ int main(){
   sunDirection=light;
   sunBasisU=unit(cross(light,std::abs(light.z)<.9?vec3{0,0,1}:vec3{0,1,0}));
   sunBasisV=cross(light,sunBasisU);
-  faces.clear();emit();if(faces.size()!=3)return 1;
+  faces.clear();faceCalls=0;emit();if(faces.size()!=3||faceCalls!=192)return 1;
   const vec4 q=shape.rotation;
   // Transposed rotation matrix transforms each world ray into box coordinates.
   const double m[3][3]={
@@ -93,17 +96,18 @@ class BoxFaceProjectionTest(unittest.TestCase):
         for suffix, folder in (("glsl", ""), ("metal", "metal/")):
             source = (ROOT / f"engine/render/src/shaders/{folder}"
                       f"c_bake_box_sun_shadow.{suffix}").read_text()
-            start = source.index("        const int axis =")
+            start = source.index("        for (int axis = 0;")
             end = source.index("    for (int cascade", start)
             block = source[start:end].rsplit("    }", 1)[0]
             block = block.replace("sunFrame.", "").replace(".xyz", "")
             block = block.replace("sunDepthBuf, ", "").replace(", sunFrame", "")
+            block = block.replace(", localId.x, sharedFaceIndex", "")
             block = block.replace("float3", "vec3")
             block = block.replace("gl_LocalInvocationID.x", "lane").replace("localId.x", "lane")
             variants = {
                 "production": block,
                 "duplicate_index": block,
-                "missing_lane": block,
+                "missing_face": block.replace("axis < 3", "axis < 2"),
                 "wrong_polarity": block.replace("> 0.0", "< 0.0"),
                 "unrotated_edges": block.replace(
                     "edgeU = rotateByQuat(edgeU, shape.rotation);", ""),
@@ -116,16 +120,13 @@ class BoxFaceProjectionTest(unittest.TestCase):
             for name, body in variants.items():
                 with (self.subTest(backend=suffix, mutation=name),
                       tempfile.TemporaryDirectory() as tmp):
-                    if name not in ("production", "duplicate_index", "missing_lane"):
+                    if name not in ("production", "duplicate_index"):
                         self.assertNotEqual(body, block)
                     cpp, exe = Path(tmp) / "box.cpp", Path(tmp) / "box"
                     selected_gate = "true" if name == "duplicate_index" else gate
-                    if name == "missing_lane":
-                        selected_gate = gate.replace("< 3u", "< 2u")
-                        self.assertNotEqual(selected_gate, gate)
                     emitter = ("void emit(){for(unsigned group=0;group<32;++group)"
                                "for(unsigned lane=0;lane<64;++lane)if("
-                               + selected_gate + "){" + body + "}}")
+                               + selected_gate + "){currentLane=lane;" + body + "}}")
                     cpp.write_text(HARNESS + emitter + CASES)
                     build = subprocess.run(
                         [COMPILER, "-std=c++17", "-O2", str(cpp), "-o", str(exe)],

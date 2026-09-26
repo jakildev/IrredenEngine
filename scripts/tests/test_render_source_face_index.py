@@ -4,7 +4,6 @@ Checks projected records and bounded writes, not GPU ordering, caster transforms
 fallback rasterization, or the complete receiver shader.
 """
 
-import re
 import shutil
 import subprocess
 import tempfile
@@ -223,12 +222,7 @@ class SourceFaceIndexTest(unittest.TestCase):
         for suffix, directory in (("glsl", ""), ("metal", "metal/")):
             shaders = ROOT / "engine/render/src/shaders" / directory
             source = (shaders / f"ir_sun_face_index.{suffix}").read_text()
-            match = re.search(
-                r"(?:inline )?void indexSourceSunFace\([^\n]*\) \{.*?^\}",
-                source, re.MULTILINE | re.DOTALL,
-            )
-            self.assertIsNotNone(match)
-            indexer = match[0]
+            indexer = source
             layout = (shaders / f"ir_sun_face_query_layout.{suffix}").read_text()
             geometry = (shaders / f"ir_projected_face.{suffix}").read_text()
             layout = layout.replace(f'#include "ir_projected_face.{suffix}"', geometry)
