@@ -2259,6 +2259,31 @@ declare -A CLAIM_REFUSED_AT=()
 CLAIM_REFUSE_TTL_SECONDS="${FLEET_DISPATCHER_CLAIM_REFUSE_TTL:-120}"
 [[ "$CLAIM_REFUSE_TTL_SECONDS" =~ ^[0-9]+$ ]] || CLAIM_REFUSE_TTL_SECONDS=120
 
+# Target -> the updatedAt its sweep-cooldown deferral was last logged at, so
+# each deferral logs once per PR state rather than once per tick.
+# Daemon-lifetime, like CLAIM_REFUSED_AT.
+declare -A SWEEP_COOLDOWN_LOGGED=()
+
+# Log each worker-lane target fleet_task_class withholds for a sweep cooldown
+# (a sweep just removed a claim it could not vouch was dead, so the PR's
+# feedback/conflict target waits out FLEET_CLAIM_SWEPT_COOLDOWN_SECS). The
+# withholding itself happens in the picker and the class election; this only
+# reports it, once per target + updatedAt. Runs in the caller's shell: the
+# log-once memory must survive the call. $1 = role.
+note_sweep_cooldowns() {
+    [[ "$1" == worker ]] || return 0
+    local slice="$STATE_DIR/projections/worker.json" lines target age cooldown updated
+    [[ -f "$slice" ]] || return 0
+    lines=$(python3 "$FLEET_LIB_DIR/fleet_task_class.py" --sweep-cooldowns "$slice" \
+        2>/dev/null | tr -d '\r') || return 0
+    while read -r target age cooldown updated; do
+        [[ -n "$target" ]] || continue
+        [[ "${SWEEP_COOLDOWN_LOGGED[$target]:-}" == "$updated" ]] && continue
+        SWEEP_COOLDOWN_LOGGED[$target]="$updated"
+        log "deferring $target: claim swept ${age}s ago (cooldown ${cooldown}s)"
+    done <<< "$lines"
+}
+
 # Why the last "claim budget spent" tick actually stalled: route-failed,
 # claude-quota-closed, codex-unavailable, codex-cooldown, resume-route-failed,
 # no-projection-slice, or the mundane claim-attempts-exhausted. Set by
@@ -2438,6 +2463,9 @@ claim_target() {
             fi
             # fleet-claim's model-tag gate reads the claimant's class from
             # FLEET_ROLE_MODEL — the same class the pane's wrapper exports.
+            # The iteration's dispatch id is not minted yet, so the claim is
+            # stamped with the pre-claim sentinel (see the `*` arm below).
+            FLEET_DISPATCH_ID="$FLEET_PRECLAIM_DISPATCH_ID" \
             FLEET_ROLE_MODEL="$DISPATCH_CLASS" fleet-claim ${FLEET_NS[@]+"${FLEET_NS[@]}"} \
                 claim "$FLEET_TARGET_NUM" "$agent" ${stack_args[@]+"${stack_args[@]}"} >/dev/null 2>&1 || rc=$?
             ;;
@@ -2477,7 +2505,7 @@ claim_target() {
             # that window, freeing the PR for a second feedback worker: the
             # double-amend this pre-claim exists to prevent. Hand the claim the
             # pre-claim sentinel instead (fleet-common.sh); see
-            # fleet-claim's _amending_owner_live for how it is read.
+            # fleet_claim_liveness.py for how it is read.
             FLEET_DISPATCH_ID="$FLEET_PRECLAIM_DISPATCH_ID" \
             fleet-claim ${FLEET_NS[@]+"${FLEET_NS[@]}"} "${FLEET_TARGET_CLAIM[$FLEET_TARGET_KIND]}" \
                 "$FLEET_TARGET_NUM" "$agent" >/dev/null 2>&1 || rc=$?
@@ -2900,6 +2928,7 @@ dispatch_role() {
     # finds a class with headroom, hits the uncapped path, or defers.
     local claim_headroom=-1   # -1 = uncapped
     local _sat_excluded="" _passes=0
+    note_sweep_cooldowns "$role"
     while : ; do
         resolve_worker_class "$role" "$_sat_excluded"
         if (( DISPATCH_DEFER )); then

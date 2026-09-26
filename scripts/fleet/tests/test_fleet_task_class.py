@@ -1158,5 +1158,75 @@ class StackOfferDispatch(unittest.TestCase):
         self.assertTrue(out.startswith("opus "), out)
 
 
+class SweepCooldown(HostSeamCase):
+    """`fleet:sweep-cooldown` withholds a PR's feedback/conflict target while
+    its updatedAt is younger than FLEET_CLAIM_SWEPT_COOLDOWN_SECS. The clock is
+    pinned through FLEET_TASK_CLASS_NOW (1800000000 = 2027-01-15T08:00:00Z)."""
+
+    FIVE_MIN_AGO = "2027-01-15T07:55:00Z"
+    AT_COOLDOWN = "2027-01-15T07:30:00Z"      # exactly 1800 s old
+
+    def setUp(self):
+        super().setUp()
+        self._saved = {k: os.environ.get(k) for k in
+                       ("FLEET_TASK_CLASS_NOW", "FLEET_CLAIM_SWEPT_COOLDOWN_SECS")}
+        os.environ["FLEET_TASK_CLASS_NOW"] = "1800000000"
+        os.environ.pop("FLEET_CLAIM_SWEPT_COOLDOWN_SECS", None)
+        os.environ["FLEET_TEST_HOST"] = "linux"
+
+    def tearDown(self):
+        for k, v in self._saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        super().tearDown()
+
+    @staticmethod
+    def _pr(number, updated, *labels):
+        return {"number": number, "repo": "engine", "updatedAt": updated,
+                "labels": ["fleet:sweep-cooldown", *labels]}
+
+    def test_cooling_feedback_pr_is_not_picked_and_the_lane_defers(self):
+        s = {"feedback_prs": [self._pr(50, self.FIVE_MIN_AGO, "fleet:needs-fix")]}
+        self.assertEqual(pick(s, "opus", False), [])
+        self.assertEqual(resolve(s, "opus", fable_blocked=False), "defer")
+
+    def test_cooling_conflict_pr_is_not_picked_and_the_lane_defers(self):
+        s = {"semantic_conflict_prs": [self._pr(2417, self.FIVE_MIN_AGO)]}
+        self.assertEqual(pick(s, "opus", False), [])
+        self.assertEqual(resolve(s, "opus", fable_blocked=False), "defer")
+
+    def test_the_cooldown_ends_at_its_boundary(self):
+        s = {"feedback_prs": [self._pr(50, self.AT_COOLDOWN, "fleet:needs-fix")],
+             "semantic_conflict_prs": [self._pr(2417, self.AT_COOLDOWN)]}
+        self.assertEqual(pick(s, "opus", False), ["conflict:engine:2417", "feedback:engine:50"])
+
+    def test_the_window_follows_the_env_knob(self):
+        os.environ["FLEET_CLAIM_SWEPT_COOLDOWN_SECS"] = "120"
+        s = {"feedback_prs": [self._pr(50, self.FIVE_MIN_AGO, "fleet:needs-fix")]}
+        self.assertEqual(pick(s, "opus", False), ["feedback:engine:50"])
+
+    def test_control_the_label_alone_gates(self):
+        s = {"feedback_prs": [{"number": 50, "repo": "engine", "updatedAt": self.FIVE_MIN_AGO,
+                               "labels": ["fleet:needs-fix"]}]}
+        self.assertEqual(pick(s, "opus", False), ["feedback:engine:50"])
+
+    def test_an_unparsable_stamp_does_not_withhold(self):
+        s = {"feedback_prs": [self._pr(50, "", "fleet:needs-fix")]}
+        self.assertEqual(pick(s, "opus", False), ["feedback:engine:50"])
+
+    def test_other_work_still_elects(self):
+        s = {"feedback_prs": [self._pr(50, self.FIVE_MIN_AGO, "fleet:needs-fix")],
+             "tasks_open": [dict(_task("#10", "sonnet"), repo="engine")]}
+        self.assertTrue(resolve(s, "opus", fable_blocked=False).startswith("sonnet "))
+
+    def test_deferrals_name_each_withheld_target_with_its_age(self):
+        s = {"feedback_prs": [self._pr(50, self.FIVE_MIN_AGO, "fleet:needs-fix")],
+             "semantic_conflict_prs": [self._pr(2417, self.AT_COOLDOWN)]}
+        self.assertEqual(fleet_task_class.sweep_cooldown_deferrals(s),
+                         [("feedback:engine:50", 300, self.FIVE_MIN_AGO)])
+
+
 if __name__ == "__main__":
     unittest.main()

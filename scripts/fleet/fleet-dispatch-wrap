@@ -375,7 +375,7 @@ export FLEET_DISPATCH_ID="$DISPATCH_ID"
 # which is precisely what makes a DIFFERENT id here proof that a recorded owner
 # has ended — the dispatcher never launches into an occupied pane. Clearing it
 # would turn that proof back into "unknown". Best-effort, like FLEET_CLAIM_FLAG.
-# keep in sync with fleet-claim (_amending_owner_live)
+# keep in sync with fleet_claim_liveness.py (dispatch-current/<agent>)
 mkdir -p "$STATE_DIR/dispatch-current" 2>/dev/null || true
 printf '%s\n' "$DISPATCH_ID" > "$STATE_DIR/dispatch-current/$worktree_name" 2>/dev/null || true
 
