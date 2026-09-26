@@ -393,6 +393,7 @@ constexpr IRMath::ivec3 kDetachedSolidSize{16, 8, 4};
 constexpr IRVideo::AutoScreenshotShot kDetachedEdgeShots[] = {
     {5.0f, vec2(0, 0), 0.0f, "fog_detached_edge_zoom5"},
     {9.0f, vec2(0, 0), 0.0f, "fog_detached_edge_zoom9"},
+    {5.0f, vec2(0, 0), IRMath::kHalfPi, "fog_detached_edge_yaw90_zoom5"},
 };
 
 // --edge-smooth (Mode B): the SAME boundary-straddling voxel scene as

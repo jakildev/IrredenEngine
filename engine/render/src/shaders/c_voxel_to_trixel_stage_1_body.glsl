@@ -122,6 +122,8 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     // FrameDataVoxelToCanvas::overflowScratchLayout_. Read at resolveMode 0
     // (mask write) and 3 (append), rotating frames only.
     uniform ivec4 overflowScratchLayout;
+    uniform ivec4 overflowSortStep;
+    uniform vec4 detachedViewToWorld;
 };
 
 layout(std430, binding = 5) readonly buffer PositionBuffer {
@@ -504,7 +506,8 @@ void main() {
     // so the colour tap cannot desync from the distance tap.
     const VoxelFaceSelect sel = selectVoxelFace(
         faceId, reVoxelize, voxels[voxelIndex].reserved, flagsByte,
-        voxelPosition, perAxisRoute, isDetachedCanvas, detachedWorldReceive
+        voxelPosition, perAxisRoute, isDetachedCanvas, detachedWorldReceive,
+        detachedViewToWorld
     );
     if (!sel.keepFace) return;
     faceId = sel.faceId;

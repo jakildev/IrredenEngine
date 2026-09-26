@@ -144,7 +144,8 @@ static VoxelFaceSelect selectVoxelFace(
     const float4 voxelPosition,
     const int perAxisRouteIn,
     const float isDetachedCanvasIn,
-    const float4 detachedWorldReceiveIn
+    const float4 detachedWorldReceiveIn,
+    const float4 detachedViewToWorldIn
 ) {
     VoxelFaceSelect sel;
     sel.faceId = faceIdIn;
@@ -164,16 +165,19 @@ static VoxelFaceSelect selectVoxelFace(
          (perAxisRouteIn == 0 && detachedWorldReceiveIn.w != 0.0f));
     sel.worldColumn = int2(0);
     if (sel.fogActive) {
-        sel.worldColumn = roundHalfUp(voxelPosition.xyz).xy +
-            (isDetachedCanvasIn > 0.5f
-                 ? roundHalfUp(detachedWorldReceiveIn.xy)
-                 : int2(0));
+        sel.worldColumn = isDetachedCanvasIn > 0.5f
+            ? roundHalfUp(rotateByQuat(voxelPosition.xyz, detachedViewToWorldIn)).xy +
+                  roundHalfUp(detachedWorldReceiveIn.xy)
+            : roundHalfUp(voxelPosition.xyz).xy;
     }
     sel.keepFace = faceIsExposed(flagsByte, sel.faceId);
     sel.isCutFace = false;
     if (!sel.keepFace && sel.faceId < kFaceZNeg && sel.fogActive) {
-        sel.keepFace = fogColumnReveal(
-            fog, obs, sel.worldColumn + faceOutwardNormal6I(sel.faceId).xy) < 1.0f;
+        const int2 probeStep = isDetachedCanvasIn > 0.5f
+            ? roundHalfUp(rotateByQuat(
+                  float3(faceOutwardNormal6I(sel.faceId)), detachedViewToWorldIn)).xy
+            : faceOutwardNormal6I(sel.faceId).xy;
+        sel.keepFace = fogColumnReveal(fog, obs, sel.worldColumn + probeStep) < 1.0f;
         sel.isCutFace = sel.keepFace;
     }
     return sel;

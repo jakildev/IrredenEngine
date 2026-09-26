@@ -168,14 +168,14 @@ grep-stable token so it re-locates if lines drift.
 
 ### 3-B. Receive (`LIGHTING_TO_TRIXEL` world-receive)
 
-**Status (2026-09-19).** B2 and B3 are compensated on master: PR #3366
+**Status (2026-09-24).** B2 and B3 are compensated on master: PR #3366
 rotates both `worldReceivePos` and `worldNormal` by `detachedViewToWorld`
 (authored from the camera rotation quaternion — full SO(3), so it also
 covers the residual-yaw tier), and `scripts/render-detached-lighting-metric.py`
 is the oracle. The cast-scatter site in `c_resolve_world_placed_depth` was
-compensated in the same PR. The one recovery still on the pre-#3366 shape is
-the fog cut-face column in `ir_voxel_face_select.glsl` (#3534). The rows
-below are the audit as it read before that PR.
+compensated in the same PR. The fog cut-face recovery also rotates its column
+and neighbour probe through `detachedViewToWorld` before sampling world fog.
+The rows below are the audit as it read before that PR.
 
 | # | Site | What it assumes | Break under SO(3) / camera pose |
 |---|------|-----------------|------------------------------|
