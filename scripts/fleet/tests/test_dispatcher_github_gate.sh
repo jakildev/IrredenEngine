@@ -15,6 +15,8 @@
 #   - a github pool past resetsAt + grace => ignored (open)
 #   - github and five_hour observations coexist without cross-perturbing
 #     each other's evaluation (worst-of picks whichever actually breaches)
+#   - a github-graphql.rejected.json refusal latch closes the gate beside a
+#     healthy github-graphql.json, and stops gating past resetsAt + grace
 
 set -euo pipefail
 
@@ -109,6 +111,29 @@ printf '{"rateLimitType":"five_hour","utilization":0.85,"resetsAt":%s,"observed_
 out=$("$DISPATCHER" --gate-status)
 assert_starts_with "$out" "closed:five_hour util=85%" "five_hour breach wins when github pool is under its own threshold"
 rm -f "$FLEET_STATE_DIR/usage/github-graphql.json" "$FLEET_STATE_DIR/usage/five_hour.json"
+
+echo "T7: refusal latch beside a healthy self-report => closed, REJECTED"
+# The GraphQL self-report can read 22% while the limiter refuses real calls;
+# the refusal latch (fleet_gh_fallback.latch_refusal) is its own file, so the
+# healthy reading cannot re-open the gate.
+printf '{"rateLimitType":"github_graphql","utilization":0.22,"resetsAt":%s,"observed_at":%s,"limit":5000,"remaining":3900}\n' \
+    "$FUTURE_RESET" "$NOW" > "$FLEET_STATE_DIR/usage/github-graphql.json"
+printf '{"rateLimitType":"github_graphql","status":"rejected","utilization":1.0,"observed_at":%s,"resetsAt":%s,"reason":"gh pr list: GraphQL: API rate limit already exceeded for user ID 1."}\n' \
+    "$NOW" "$FUTURE_RESET" > "$FLEET_STATE_DIR/usage/github-graphql.rejected.json"
+out=$("$DISPATCHER" --gate-status)
+if [[ "$out" == "closed:github_graphql rejected util=100% (>= 90%) resets=$FUTURE_RESET" ]]; then
+    PASS=$((PASS + 1)); echo "  ok: refusal latch closes the gate despite a 22% self-report"
+else
+    FAIL=$((FAIL + 1)); echo "  FAIL: refusal latch closes the gate despite a 22% self-report"
+    echo "        actual: $out"
+fi
+
+echo "T8: refusal latch past resetsAt + grace => ignored (open)"
+printf '{"rateLimitType":"github_graphql","status":"rejected","utilization":1.0,"observed_at":%s,"resetsAt":%s,"reason":"x"}\n' \
+    "$((NOW - 7200))" "$((NOW - 3600))" > "$FLEET_STATE_DIR/usage/github-graphql.rejected.json"
+out=$("$DISPATCHER" --gate-status)
+assert_starts_with "$out" "open:github_graphql util=22%" "expired refusal latch no longer gates"
+rm -f "$FLEET_STATE_DIR/usage/github-graphql.json" "$FLEET_STATE_DIR/usage/github-graphql.rejected.json"
 
 echo
 echo "PASS: $PASS  FAIL: $FAIL"

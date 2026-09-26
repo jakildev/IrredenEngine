@@ -294,10 +294,12 @@ def validate_snapshot(data, issue_number):
 
 
 def fetch_issue(issue_number, repo):
+    # REST only: the GraphQL pool is the one that runs dry under fleet load,
+    # and this lint gates every PR publication.
     gh = shutil.which("gh") or "gh"
     try:
         issue_result = subprocess.run(
-            [gh, "issue", "view", str(issue_number), "--repo", repo, "--json", "number,title,body"],
+            [gh, "api", f"repos/{repo}/issues/{issue_number}"],
             capture_output=True,
             text=True,
             check=True,
@@ -316,10 +318,18 @@ def fetch_issue(issue_number, repo):
             check=True,
             timeout=20,
         )
-        data = json.loads(issue_result.stdout)
+        issue = json.loads(issue_result.stdout)
         pages = json.loads(comments_result.stdout)
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
         raise LintInputError(f"GitHub issue fetch failed: {exc}") from exc
+    if not isinstance(issue, dict):
+        raise LintInputError("GitHub issue fetch returned an invalid shape")
+    # REST sends an empty body as null.
+    data = {
+        "number": issue.get("number"),
+        "title": issue.get("title"),
+        "body": issue.get("body") if issue.get("body") is not None else "",
+    }
     if not isinstance(pages, list) or any(not isinstance(page, list) for page in pages):
         raise LintInputError("GitHub comments pagination returned an invalid shape")
     data["comments"] = [comment for page in pages for comment in page]

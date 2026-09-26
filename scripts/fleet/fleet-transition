@@ -64,13 +64,20 @@ resolve_symlink_chain() {
     echo "$path"
 }
 
+SCRIPT_PATH=$(resolve_symlink_chain "${BASH_SOURCE[0]}")
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 if [[ -n "${FLEET_STATE_MACHINE:-}" ]]; then
     STATE_MACHINE="$FLEET_STATE_MACHINE"
 else
-    SCRIPT_PATH=$(resolve_symlink_chain "${BASH_SOURCE[0]}")
-    SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
     ENGINE_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
     STATE_MACHINE="$ENGINE_ROOT/docs/agents/fleet-state-machine.json"
+fi
+
+# fleet-net.sh bounds every gh call and re-runs a GraphQL-refused
+# `gh pr|issue view|edit` over REST. A missing lib degrades to unguarded calls.
+if [[ -f "$SCRIPT_DIR/fleet-net.sh" ]]; then
+    # shellcheck source=/dev/null
+    source "$SCRIPT_DIR/fleet-net.sh"
 fi
 
 # ----------------------------------------------------------------------

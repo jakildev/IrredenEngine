@@ -13,6 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 LINT = ROOT / "fleet-pr-body-lint"
 ISSUE = 2563
+GRAPHQL_REFUSAL = "GraphQL: API rate limit already exceeded for user ID 1.\n"
 CRITERIA = [f"Criterion {number}" for number in range(1, 7)]
 PLAN = "## Plan: fixture\n\n### Acceptance criteria\n\n" + "\n".join(
     f"{number}. {criterion}" for number, criterion in enumerate(CRITERIA, 1)
@@ -319,19 +320,27 @@ class FleetPrBodyLintTests(unittest.TestCase):
                 2,
             )
 
-    def test_live_fetch_paginates_and_matches_cached_mode(self):
+    def run_live_fetch(self, issue_reply):
+        """Run the live fetch against a stub whose GraphQL `issue view` is refused.
+
+        Returns (result, snapshot or None, recorded gh calls).
+        """
         with tempfile.TemporaryDirectory() as temp:
             temp_path = Path(temp)
             calls = temp_path / "calls"
             gh = temp_path / "gh"
             late_plan = json.dumps([[{"body": "ordinary"}], [{"body": PLAN}]])
+            issue_route = f"repos/jakildev/IrredenEngine/issues/{ISSUE}"
             gh.write_text(
                 "#!/usr/bin/env python3\n"
                 "import json, pathlib, sys\n"
                 f"pathlib.Path({str(calls)!r}).open('a').write(' '.join(sys.argv[1:]) + '\\n')\n"
                 "if sys.argv[1:3] == ['issue', 'view']:\n"
-                f"    print(json.dumps({{'number': {ISSUE}, 'title': 'x', 'body': ''}}))\n"
-                "elif sys.argv[1] == 'api':\n"
+                f"    sys.stderr.write({GRAPHQL_REFUSAL!r})\n"
+                "    raise SystemExit(1)\n"
+                f"elif sys.argv[1:] == ['api', {issue_route!r}]:\n"
+                f"    print({json.dumps(issue_reply)!r})\n"
+                "elif sys.argv[1:3] == ['api', '--paginate']:\n"
                 f"    print({late_plan!r})\n"
                 "else:\n"
                 "    raise SystemExit(2)\n",
@@ -348,14 +357,34 @@ class FleetPrBodyLintTests(unittest.TestCase):
                 env=env,
                 check=False,
             )
-            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            self.assertIn("required=6, present=6", result.stdout)
-            written = json.loads((temp_path / "snapshot.json").read_text(encoding="utf-8"))
-            self.assertTrue(written["comments_complete"])
-            self.assertEqual(len(written["comments"]), 2)
-            call_text = calls.read_text(encoding="utf-8")
-            self.assertIn("api --paginate --slurp", call_text)
-            self.assertIn("per_page=100", call_text)
+            snapshot_path = temp_path / "snapshot.json"
+            written = (
+                json.loads(snapshot_path.read_text(encoding="utf-8"))
+                if snapshot_path.exists()
+                else None
+            )
+            return result, written, calls.read_text(encoding="utf-8")
+
+    def test_live_fetch_paginates_and_matches_cached_mode(self):
+        rest_issue = {"number": ISSUE, "title": "x", "body": "", "node_id": "I_x"}
+        result, written, call_text = self.run_live_fetch(rest_issue)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("required=6, present=6", result.stdout)
+        self.assertTrue(written["comments_complete"])
+        self.assertEqual(len(written["comments"]), 2)
+        self.assertEqual(
+            {key: written[key] for key in ("number", "title", "body")},
+            {"number": ISSUE, "title": "x", "body": ""},
+        )
+        self.assertIn(f"api repos/jakildev/IrredenEngine/issues/{ISSUE}\n", call_text)
+        self.assertNotIn("issue view", call_text)
+        self.assertIn("api --paginate --slurp", call_text)
+        self.assertIn("per_page=100", call_text)
+
+    def test_live_fetch_maps_a_null_rest_body_to_empty(self):
+        result, written, _calls = self.run_live_fetch({"number": ISSUE, "title": "x", "body": None})
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(written["body"], "")
 
     def test_live_fetch_failure_is_exit_two(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -452,10 +481,10 @@ class FleetPrBodyLintTests(unittest.TestCase):
                 "import json, os, pathlib, sys\n"
                 "args = sys.argv[1:]\n"
                 "if args[:2] == ['issue', 'view']:\n"
-                "    expected = ['issue', 'view', '2563', '--repo', "
-                "'jakildev/IrredenEngine', '--json', 'number,title,body']\n"
-                "    if args != expected: raise SystemExit(90)\n"
-                "    print(json.dumps({'number': 2563, 'title': 'Fixture issue', 'body': ''}))\n"
+                f"    sys.stderr.write({GRAPHQL_REFUSAL!r})\n"
+                "    raise SystemExit(1)\n"
+                "elif args == ['api', 'repos/jakildev/IrredenEngine/issues/2563']:\n"
+                "    print(json.dumps({'number': 2563, 'title': 'Fixture issue', 'body': None}))\n"
                 "elif args[:1] == ['api']:\n"
                 "    expected = ['api', '--paginate', '--slurp', "
                 "'repos/jakildev/IrredenEngine/issues/2563/comments?per_page=100']\n"
