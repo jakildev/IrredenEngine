@@ -1326,3 +1326,172 @@ TEST_F(PositionUploadTest, UnalignedPartialUploadPreservesPendingGpuBytes) {
 #endif
 } // namespace
 #endif
+
+#include <irreden/entity/entity_manager.hpp>
+#include <irreden/render/sun_shadow_probe.hpp>
+#include <chrono>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
+
+namespace {
+
+struct C_SunProbeFixture {};
+
+class SunProbeFixture {
+  public:
+    SunProbeFixture()
+        : path_(
+              std::filesystem::temp_directory_path() /
+              ("ir-sun-index-" +
+               std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".csv")
+          ) {}
+
+    ~SunProbeFixture() {
+        std::error_code error;
+        std::filesystem::remove(path_, error);
+    }
+
+    IRSystem::System<IRSystem::BAKE_SUN_SHADOW_MAP> &registerBake() {
+        const auto id =
+            IRSystem::createSystem<C_SunProbeFixture>("SunProbeFixture", [](C_SunProbeFixture &) {
+            });
+        IRSystem::getSystemManager().recordEngineSystemId(IRSystem::BAKE_SUN_SHADOW_MAP, id);
+        auto params = std::make_unique<IRSystem::System<IRSystem::BAKE_SUN_SHADOW_MAP>>();
+        auto &result = *params;
+        IRSystem::setSystemParams(id, std::move(params));
+        return result;
+    }
+
+    std::string contents() const {
+        std::ifstream input(path_);
+        return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+    }
+
+    void seedActiveFile() const {
+        std::ofstream(path_) << "# active=1\n";
+    }
+
+    const std::filesystem::path path_;
+
+  private:
+    IREntity::EntityManager m_entities;
+    IRSystem::SystemManager m_systems;
+};
+
+TEST(SunShadowProbeTest, MissingSystemReplacesStaleActiveCapture) {
+    SunProbeFixture probe;
+    probe.seedActiveFile();
+    EXPECT_FALSE(IRPrefab::SunShadow::writeSourceFaceIndexProbe(probe.path_.string()));
+    EXPECT_EQ(probe.contents(), "# active=0\n");
+}
+
+TEST(SunShadowProbeTest, DisabledModesDoNotAccessUnboundGpuResources) {
+    SunProbeFixture probe;
+    auto &bake = probe.registerBake();
+    ASSERT_EQ(IRSystem::findSystem(IRSystem::BAKE_SUN_SHADOW_MAP), 0u);
+    for (bool finiteCoverage : {false, true}) {
+        SCOPED_TRACE(finiteCoverage);
+        bake.frameUsesFiniteCoverage_ = finiteCoverage;
+        bake.frameData_.shadowsEnabled_ = finiteCoverage ? 0 : 1;
+        probe.seedActiveFile();
+        EXPECT_FALSE(IRPrefab::SunShadow::writeSourceFaceIndexProbe(probe.path_.string()));
+        EXPECT_EQ(probe.contents(), "# active=0\n");
+    }
+}
+
+TEST(SunShadowProbeTest, UnwritablePathFailsBeforeGpuAccess) {
+    SunProbeFixture probe;
+    auto &bake = probe.registerBake();
+    bake.frameUsesFiniteCoverage_ = true;
+    bake.frameData_.shadowsEnabled_ = 1;
+    probe.seedActiveFile();
+    EXPECT_FALSE(
+        IRPrefab::SunShadow::writeSourceFaceIndexProbe((probe.path_ / "child.csv").string())
+    );
+    EXPECT_EQ(probe.contents(), "# active=1\n");
+}
+
+#if defined(IR_GRAPHICS_METAL)
+TEST_F(MetalGpuComputeDispatchTest, SourceFaceProbeReadsPendingGpuClearAndTileBoundaries) {
+    using namespace IRRender;
+    namespace Shadow = IRPrefab::SunShadow;
+    SunProbeFixture probe;
+    auto &bake = probe.registerBake();
+    std::vector<std::uint32_t> seed(Shadow::kSourceFaceBufferWords, 0xDEADBEEFu);
+    Buffer depth(seed.data(), seed.size() * sizeof(std::uint32_t), BUFFER_STORAGE_DYNAMIC);
+    FrameDataSun frame{};
+    frame.sunBasisU_ = IRMath::vec4(0.125f, 0.25f, 0.5f, 0.0f);
+    frame.sunBasisV_ = IRMath::vec4(-0.5f, 0.0f, 0.25f, 0.0f);
+    frame.cascadeOriginUV_0_ = IRMath::vec2(-3, 5);
+    frame.cascadeTexelSize_0_ = IRMath::vec2(0.25f, 0.5f);
+    frame.cascadeOriginUV_1_ = IRMath::vec2(11, -7);
+    frame.cascadeTexelSize_1_ = IRMath::vec2(1, 2);
+    Buffer uniform(&frame, sizeof(frame), BUFFER_STORAGE_DYNAMIC);
+    bake.sunShadowDepthMap_ = &depth;
+    bake.sunShadowFrameDataBuf_ = &uniform;
+    bake.frameUsesFiniteCoverage_ = true;
+    bake.frameData_.shadowsEnabled_ = 1;
+    bake.frameData_.sunBasisU_ = IRMath::vec4(9.0f);
+
+    const std::string shaderPath =
+        std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_clear_sun_shadow_map.glsl";
+    ShaderProgram clear{std::vector{ShaderStage{shaderPath.c_str(), ShaderType::COMPUTE}}};
+    depth.bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap);
+    clear.use();
+    device_->dispatchCompute(64, 128, 1);
+    // The capture helper owns the synchronization of this pending GPU write.
+    ASSERT_TRUE(Shadow::writeSourceFaceIndexProbe(probe.path_.string()));
+    const std::string cleared = probe.contents();
+    EXPECT_NE(cleared.find("# active=1\n"), std::string::npos);
+    ASSERT_NE(cleared.find("# face_records_requested=0\n"), std::string::npos);
+    std::istringstream rows(cleared);
+    std::string line;
+    std::size_t tileRows = 0;
+    while (std::getline(rows, line)) {
+        if (line.empty() || line[0] == '#' || line.starts_with("cascade,"))
+            continue;
+        std::istringstream row(line);
+        unsigned cascade, x, y, count, complete;
+        char separator;
+        ASSERT_TRUE(
+            bool(
+                row >> cascade >> separator >> x >> separator >> y >> separator >> count >>
+                separator >> complete
+            )
+        );
+        ASSERT_EQ(count, 0u);
+        ASSERT_EQ(complete, 1u);
+        ++tileRows;
+    }
+    EXPECT_EQ(tileRows, Shadow::kSourceFaceTileCount);
+
+    const std::uint32_t requested = 65u;
+    const std::uint32_t completeCount = 64u;
+    depth.subData(
+        Shadow::kSourceFaceHeaderOffset * sizeof(std::uint32_t),
+        sizeof(requested),
+        &requested
+    );
+    depth.subData(
+        Shadow::kSourceFaceTileOffset * sizeof(std::uint32_t),
+        sizeof(completeCount),
+        &completeCount
+    );
+    const auto lastTile =
+        Shadow::kSourceFaceTileOffset +
+        (Shadow::kSourceFaceTileCount - 1u) * (Shadow::kSourceFaceTileCapacity + 1u);
+    depth.subData(lastTile * sizeof(std::uint32_t), sizeof(requested), &requested);
+    ASSERT_TRUE(Shadow::writeSourceFaceIndexProbe(probe.path_.string()));
+    const std::string captured = probe.contents();
+    EXPECT_NE(captured.find("# face_records_requested=65\n"), std::string::npos);
+    EXPECT_NE(captured.find("# basis_u=0.125,0.25,0.5\n"), std::string::npos);
+    EXPECT_NE(captured.find("# basis_v=-0.5,0,0.25\n"), std::string::npos);
+    EXPECT_NE(captured.find("\n0,0,0,64,1,-3,5,-1,9\n"), std::string::npos);
+    EXPECT_NE(captured.find("\n0,127,127,0,1,251,513,253,517\n"), std::string::npos);
+    EXPECT_NE(captured.find("\n1,0,0,0,1,11,-7,19,9\n"), std::string::npos);
+    EXPECT_NE(captured.find("\n1,127,127,65,0,1027,2025,1035,2041\n"), std::string::npos);
+}
+#endif
+
+} // namespace

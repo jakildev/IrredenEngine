@@ -44,8 +44,25 @@ It does not decide which cascade a screen fragment selected, reconstruct
 receiver geometry or count exact face intersections. World-point queries use
 CPU arithmetic on captured float values; a near-boundary query is not a
 bit-exact shader oracle.
+Malformed metadata or rows and nonfinite or empty tile bounds are rejected.
+If rounded bounds make a queried point belong to multiple tiles in one
+cascade, the analyzer rejects that ambiguous query instead of reporting a
+definite tile. A point outside a cascade has no entry for that cascade.
 
 ## Native evidence
+
+The public C++ writer has three CPU tests for absent systems, both disabled
+modes and an unwritable destination, including stale-file replacement and a
+valid system ID of zero. A native headless Metal test queues the real shadow
+clear shader, then calls the writer without external synchronization. It
+checks all 32,768 cleared counters, GPU-backed sun basis, both cascade bounds
+and the 64/65 completeness boundary. Twelve analyzer tests cover malformed
+metadata/rows, duplicate headers, nonfinite bounds, ambiguous lookup, gzip
+and ordinary capacity/coordinate cases.
+
+Captured floats retain nine significant digits, including exponent notation
+when needed. Fixed nine decimal places would lose small basis values; the
+analyzer accepts both forms.
 
 Apple M4 Max, macOS 26.5.2, Metal Debug. All four camera quadrants were
 captured for counts 1, 64 and 128; the 63-box boundary control uses yaw 90°.
