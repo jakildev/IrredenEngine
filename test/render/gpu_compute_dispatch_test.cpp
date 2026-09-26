@@ -131,11 +131,9 @@ TEST_F(GpuComputeDispatchTest, ClearSunShadowKernelFillsBufferWithLitSentinel) {
     EXPECT_EQ(readback.back(), kLitSentinel);
 }
 
-// Regression lock for the DSA size/length ABI mismatch: glcorearb.h declared
-// this parameter GLsizei (32-bit) where Khronos has GLsizeiptr (64-bit). On
-// Win64 the size argument is stack-passed (5th argument), so a caller built
-// against the narrower type writes 4 bytes where the driver reads 8, and this
-// call previously failed with GL_INVALID_VALUE on that host.
+// glCopyNamedBufferSubData's size is GLsizeiptr, and on Win64 it is the
+// stack-passed 5th argument: a caller declaring it GLsizei writes only 4 of
+// the 8 bytes the driver reads, and the call fails with GL_INVALID_VALUE.
 TEST_F(GpuComputeDispatchTest, CopyNamedBufferSubDataMatchesSourceBytes) {
     using namespace IRRender;
 
@@ -167,7 +165,8 @@ TEST_F(GpuComputeDispatchTest, CopyNamedBufferSubDataMatchesSourceBytes) {
 
     const auto copyBytes = static_cast<std::ptrdiff_t>(kCopyBytes);
     const std::vector<std::uint8_t> expected(
-        srcSeed.begin() + kSrcOffset, srcSeed.begin() + kSrcOffset + copyBytes
+        srcSeed.begin() + kSrcOffset,
+        srcSeed.begin() + kSrcOffset + copyBytes
     );
     EXPECT_EQ(readback, expected);
 }
