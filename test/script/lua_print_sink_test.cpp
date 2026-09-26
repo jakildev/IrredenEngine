@@ -27,11 +27,13 @@ class ScriptLogCapture {
         : m_captured{}
         , m_logger{LoggerSpd::instance()->getScriptLogger()}
         , m_sink{std::make_shared<spdlog::sinks::ostream_sink_st>(m_captured)} {
-        m_sink->set_formatter(std::make_unique<spdlog::pattern_formatter>(
-            "[%n] [%l] %v",
-            spdlog::pattern_time_type::local,
-            "\n"
-        ));
+        m_sink->set_formatter(
+            std::make_unique<spdlog::pattern_formatter>(
+                "[%n] [%l] %v",
+                spdlog::pattern_time_type::local,
+                "\n"
+            )
+        );
         m_logger->sinks().push_back(m_sink);
     }
 
