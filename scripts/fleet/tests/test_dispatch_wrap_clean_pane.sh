@@ -31,6 +31,8 @@ BIN="$TMPROOT/bin"; mkdir -p "$BIN"
 for tool in claude codex fleet-claude-stream tmux; do
   printf '#!/usr/bin/env bash\nexit 0\n' > "$BIN/$tool"
 done
+export FLEET_RESERVATIONS_DIR="$TMPROOT/reservations"
+mkdir -p "$FLEET_RESERVATIONS_DIR"
 export FLEET_CLAIM_RESV_FILE="$TMPROOT/resv.txt"
 : > "$FLEET_CLAIM_RESV_FILE"
 cat > "$BIN/fleet-claim" <<'STUB'
@@ -66,8 +68,17 @@ reset_pane() {
   git -C "$WT" checkout --quiet master
   git -C "$WT" reset --quiet --hard origin/master
   git -C "$WT" clean --quiet -fd
+  git -C "$WT" for-each-ref --format='%(refname:short)' refs/heads/ \
+    | grep -vx master | xargs -r git -C "$WT" branch --quiet -D
   : > "$FLEET_CLAIM_RESV_FILE"
+  rm -f "$FLEET_RESERVATIONS_DIR"/pool-4.json
   rm -f "$SIDECAR"
+}
+
+write_resv() {  # $1 = task id, $2 = recorded branch (optional)
+  printf '{"task_id": "%s", "worktree": "pool-4", "branch": "%s", "created_epoch": 1}\n' \
+    "$1" "${2:-}" > "$FLEET_RESERVATIONS_DIR/pool-4.json"
+  echo "$1" > "$FLEET_CLAIM_RESV_FILE"
 }
 
 seed_dirty() {
@@ -89,6 +100,7 @@ launch() {  # args: model effort role [fallback] [mode] [target] [runtime] [clas
 # =============================================================================
 echo "T1: positive-fire — tracked mods + retry script, no reservation, no sidecar"
 reset_pane; seed_dirty
+rm -f "$FLEET_LEFTOVERS_DIR"/pool-4-*.patch
 : > "$TMPROOT/stderr.log"
 out=$(launch sonnet high worker "" live)
 [[ "$out" == resumed=0* ]] && ok "T1: fresh launch decision" || bad "T1: launch decision: $out"
@@ -106,9 +118,9 @@ if [[ -n "$patch" ]]; then
 fi
 grep -q "backed up to" "$TMPROOT/stderr.log" && ok "T1: stderr names the patch" || bad "T1: stderr silent on the backup"
 
-echo "T2: reservation exemption — a live lock on this pane leaves it untouched"
+echo "T2: reservation exemption — a recorded branch (feedback-amend reserve) leaves the pane untouched"
 reset_pane; seed_dirty
-echo "9001" > "$FLEET_CLAIM_RESV_FILE"
+write_resv 9001 claude/9001-amend
 rm -f "$FLEET_LEFTOVERS_DIR"/pool-4-*.patch
 : > "$TMPROOT/stderr.log"
 out=$(launch sonnet high worker "" live)
@@ -118,6 +130,18 @@ tracked_dirty_present && ok "T2: tracked modifications survive under a live rese
 [[ "$(git -C "$WT" rev-parse --abbrev-ref HEAD)" == "master" ]] && ok "T2: branch untouched" || bad "T2: branch changed under reservation"
 patch=$(latest_patch)
 [[ -z "$patch" ]] && ok "T2: no patch written" || bad "T2: a patch was written despite the reservation"
+
+echo "T2b: reservation exemption — a branchless reservation with its task branch checked out"
+reset_pane
+git -C "$WT" checkout --quiet -b claude/9001-some-task
+seed_dirty
+write_resv 9001
+: > "$TMPROOT/stderr.log"
+out=$(launch sonnet high worker "" live)
+[[ "$out" == resumed=0* ]] && ok "T2b: fresh launch decision" || bad "T2b: launch decision: $out"
+tracked_dirty_present && ok "T2b: in-flight task edits survive" || bad "T2b: in-flight task edits were discarded"
+[[ "$(git -C "$WT" rev-parse --abbrev-ref HEAD)" == "claude/9001-some-task" ]] && ok "T2b: task branch untouched" || bad "T2b: task branch changed"
+[[ -z "$(latest_patch)" ]] && ok "T2b: no patch written" || bad "T2b: a patch was written for in-flight work"
 
 echo "T3: resume exemption — a role-matching sidecar leaves it untouched"
 reset_pane; seed_dirty
@@ -142,20 +166,105 @@ patch=$(latest_patch)
 [[ "$(git -C "$WT" rev-parse --abbrev-ref HEAD)" == "master" ]] && ok "T4: branch unchanged on a clean pane" || bad "T4: branch changed on a clean pane"
 [[ -s "$TMPROOT/stderr.log" ]] && bad "T4: spurious log line on a clean pane: $(cat "$TMPROOT/stderr.log")" || ok "T4: no spurious log line"
 
-echo "T5: backup failure — an unwritable leftovers dir leaves the tracked diff in place"
+# The dispatcher pre-claims a target-bound worker pane before the wrapper
+# runs, and `fleet-claim claim` auto-writes a branchless reservation for it.
+for kind in task stack; do
+  target="target=$kind:engine:9001"
+  [[ "$kind" == stack ]] && target="$target:9000"
+  echo "T6 ($kind): a fresh pre-claim's own reservation does not exempt inherited dirt"
+  reset_pane
+  # The prior lane left a task branch checked out: the pre-claim match alone
+  # must decide, not the branch evidence.
+  git -C "$WT" checkout --quiet -b claude/8000-prior-lane
+  seed_dirty
+  write_resv 9001
+  rm -f "$FLEET_LEFTOVERS_DIR"/pool-4-*.patch
+  : > "$TMPROOT/stderr.log"
+  out=$(launch sonnet high worker "" live "$target")
+  [[ "$out" == "resumed=0 target=${target#target=}"* ]] && ok "T6 ($kind): fresh target-bound launch" || bad "T6 ($kind): launch decision: $out"
+  tracked_dirty_present && bad "T6 ($kind): inherited tracked dirt survived the pre-claim" || ok "T6 ($kind): worktree clean"
+  [[ "$(git -C "$WT" rev-parse --abbrev-ref HEAD)" == "claude/pool-4-scratch" ]] \
+    && ok "T6 ($kind): reset to the scratch branch" || bad "T6 ($kind): branch is $(git -C "$WT" rev-parse --abbrev-ref HEAD)"
+  [[ -n "$(latest_patch)" ]] && ok "T6 ($kind): backup patch written" || bad "T6 ($kind): no backup patch"
+  [[ -f "$WT/.retry-verdict.sh" ]] && bad "T6 ($kind): retry script survived" || ok "T6 ($kind): retry script removed"
+done
+
+echo "T6b: a branchless reservation for a DIFFERENT number than the target still exempts in-flight work"
+reset_pane
+git -C "$WT" checkout --quiet -b claude/9002-other-task
+seed_dirty
+write_resv 9002
+out=$(launch sonnet high worker "" live "target=task:engine:9001")
+tracked_dirty_present && ok "T6b: the other task's edits survive" || bad "T6b: the other task's edits were discarded"
+
+echo "T7: a reservation with no in-flight evidence (no branch, scratch HEAD) does not exempt"
+reset_pane
+git -C "$WT" checkout --quiet -b claude/pool-4-scratch
+seed_dirty
+write_resv 9001
+rm -f "$FLEET_LEFTOVERS_DIR"/pool-4-*.patch
+out=$(launch sonnet high worker "" live)
+[[ "$out" == resumed=0* ]] && ok "T7: fresh launch decision" || bad "T7: launch decision: $out"
+tracked_dirty_present && bad "T7: tracked dirt survived" || ok "T7: worktree clean"
+[[ -n "$(latest_patch)" ]] && ok "T7: backup patch written" || bad "T7: no backup patch"
+
+# Fail closed: no launch decision is printed (the provider is never reached),
+# the exit is non-zero, and the tracked diff is still on disk.
+assert_no_launch() {  # $1 = label, $2 = captured stdout, $3 = rc
+  [[ -z "$2" ]] && ok "$1: no provider launch" || bad "$1: launched anyway: $2"
+  [[ "$3" != 0 ]] && ok "$1: non-zero exit" || bad "$1: exit 0"
+  grep -q "not launching worker" "$TMPROOT/stderr.log" && ok "$1: stderr names the refusal" || bad "$1: stderr: $(cat "$TMPROOT/stderr.log")"
+}
+
+echo "T5: backup failure — an unwritable leftovers dir fails closed with the tracked diff in place"
 reset_pane; seed_dirty
+write_resv 9001
 # A regular file where the leftovers dir's parent should be: mkdir and the
 # patch redirect both fail, independent of uid (a chmod'd dir does not stop root).
 : > "$TMPROOT/not-a-dir"
 : > "$TMPROOT/stderr.log"
-out=$(FLEET_LEFTOVERS_DIR="$TMPROOT/not-a-dir/leftovers" launch sonnet high worker "" live)
-[[ "$out" == resumed=0* ]] && ok "T5: fresh launch decision" || bad "T5: launch decision: $out"
+out=$(FLEET_LEFTOVERS_DIR="$TMPROOT/not-a-dir/leftovers" launch sonnet high worker "" live "target=task:engine:9001"); rc=$?
+assert_no_launch "T5" "$out" "$rc"
 assert_eq "$(cat "$WT/tracked.txt")" "modified" "T5: text modification survives a failed backup"
 cmp -s <(printf '\x00\x01\xff\xfe\x00CHANGED\x00') "$WT/image.bin" \
   && ok "T5: binary modification survives a failed backup" || bad "T5: binary modification was discarded"
 [[ "$(git -C "$WT" rev-parse --abbrev-ref HEAD)" == "master" ]] && ok "T5: branch untouched" || bad "T5: branch reset despite the failed backup"
-grep -q "could not back up .*leaving pane as-is" "$TMPROOT/stderr.log" \
-  && ok "T5: stderr names the skipped reset" || bad "T5: stderr: $(cat "$TMPROOT/stderr.log")"
-[[ -f "$WT/.retry-verdict.sh" ]] && bad "T5: retry script survived" || ok "T5: retry-script cleanup is independent of the backup"
+grep -q "could not back up" "$TMPROOT/stderr.log" && ok "T5: stderr names the failed backup" || bad "T5: stderr: $(cat "$TMPROOT/stderr.log")"
+[[ -f "$FLEET_RESERVATIONS_DIR/pool-4.json" ]] && ok "T5: pre-claim reservation left for the completion fold" || bad "T5: reservation was dropped"
+
+echo "T8: reset failure — a held index lock fails closed with the backup kept"
+reset_pane; seed_dirty
+rm -f "$FLEET_LEFTOVERS_DIR"/pool-4-*.patch
+touch "$WT/.git/index.lock"
+: > "$TMPROOT/stderr.log"
+out=$(launch sonnet high worker "" live); rc=$?
+rm -f "$WT/.git/index.lock"
+assert_no_launch "T8" "$out" "$rc"
+grep -q "could not reset" "$TMPROOT/stderr.log" && ok "T8: stderr names the failed reset" || bad "T8: stderr: $(cat "$TMPROOT/stderr.log")"
+patch=$(latest_patch)
+[[ -n "$patch" ]] && grep -q "tracked.txt" "$patch" && ok "T8: backup patch kept" || bad "T8: backup patch missing"
+tracked_dirty_present && ok "T8: tracked diff still on disk" || bad "T8: tracked diff gone"
+
+echo "T9: status failure — a corrupt index fails closed"
+reset_pane; seed_dirty
+cp "$WT/.git/index" "$TMPROOT/index.good"
+printf 'not an index' > "$WT/.git/index"
+: > "$TMPROOT/stderr.log"
+out=$(launch sonnet high worker "" live); rc=$?
+cp "$TMPROOT/index.good" "$WT/.git/index"
+assert_no_launch "T9" "$out" "$rc"
+grep -q "git status failed" "$TMPROOT/stderr.log" && ok "T9: stderr names the failed status" || bad "T9: stderr: $(cat "$TMPROOT/stderr.log")"
+assert_eq "$(cat "$WT/tracked.txt")" "modified" "T9: text modification survives"
+
+echo "T10: fetch failure — resets to the last-fetched origin/master and launches"
+reset_pane; seed_dirty
+git -C "$WT" remote set-url origin "$TMPROOT/no-such-origin.git"
+rm -f "$FLEET_LEFTOVERS_DIR"/pool-4-*.patch
+: > "$TMPROOT/stderr.log"
+out=$(launch sonnet high worker "" live); rc=$?
+git -C "$WT" remote set-url origin "$ORIGIN"
+[[ "$out" == resumed=0* && "$rc" == 0 ]] && ok "T10: launches after a failed fetch" || bad "T10: rc=$rc out=$out"
+tracked_dirty_present && bad "T10: tracked dirt survived" || ok "T10: worktree clean"
+grep -q "fetch origin master failed" "$TMPROOT/stderr.log" && ok "T10: stderr names the failed fetch" || bad "T10: stderr: $(cat "$TMPROOT/stderr.log")"
 
 summarize "fleet-dispatch-wrap clean-pane pre-launch arm"
