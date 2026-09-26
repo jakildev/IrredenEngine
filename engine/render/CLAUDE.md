@@ -68,8 +68,11 @@ validation index's jitter probe plus the camera contracts below.
   `.glsl` identifiers (NVIDIA GL fails, Metal doesn't); rename the `.metal` twin.
 - Derive large SSBO word indices at runtime; constant ones cost NVIDIA minutes per cold link.
 - NVIDIA GL defers an indirect compute dispatch whose argument buffer the same
-  program writes until that program dispatches again or the buffer is cleared;
-  `glFinish` does not release it. See `detail::forEachOverflowSortStep`.
+  program writes. Only that program's next dispatch or a
+  `glClearNamedBufferSubData` on that same buffer releases it; a clear of
+  another buffer, `glFinish`, and other programs' dispatches do not. A pass
+  that dispatches from its own writable buffer ends itself with a direct
+  dispatch (`detail::forEachOverflowSortStep`).
 
 ### Metal compute kernel threadgroup registry
 

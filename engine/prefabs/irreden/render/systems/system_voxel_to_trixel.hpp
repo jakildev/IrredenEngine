@@ -93,15 +93,16 @@ inline void forEachOverflowSortMergeStep(std::uint32_t dispatchSpan, Callback &&
 // preparation (mode 3, a direct dispatch), fill, local sort, then every merge
 // step, each dispatched indirectly from the commands mode 3 wrote.
 //
-// OpenGL appends a direct mode-3 dispatch as the last step. NVIDIA GL defers
-// an indirect compute dispatch whose argument buffer the dispatching program
-// writes until that program dispatches again or the buffer is cleared;
-// glFinish, a readback, and other programs' dispatches do not release it.
-// Without the trailer the final encoded step completes only when some later,
-// unrelated operation happens to touch the program or the buffer. A direct
-// dispatch is not itself deferred, and mode 3 is idempotent here: it rewrites
-// the same grids from the live count, which the network never changes. It must
-// stay last.
+// The sort is complete when the sequence ends, on every backend; no consumer
+// may rely on a later clear or dispatch to finish it. OpenGL appends a direct
+// mode-3 dispatch as the last step for that reason. NVIDIA GL defers an
+// indirect compute dispatch whose argument buffer the dispatching program
+// writes until either that program dispatches again or
+// glClearNamedBufferSubData clears that same buffer. A clear of another
+// buffer, glFinish, a readback, and other programs' dispatches do not release
+// it. A direct dispatch is not itself deferred, and mode 3 is idempotent here:
+// it rewrites the same grids from the live count, which the network never
+// changes. It must stay last.
 template <typename Callback>
 inline void forEachOverflowSortStep(std::uint32_t dispatchSpan, Callback &&callback) {
     callback(3, 0u, 0u, 0u, 0u);
