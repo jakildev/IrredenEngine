@@ -1,0 +1,483 @@
+{
+  "count1/yaw0": {
+    "face_records_requested": 2,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 0,
+        "max_counter": 2
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 0,
+        "max_counter": 2
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 100,
+        "y": 27,
+        "counter": 2,
+        "complete": true
+      },
+      {
+        "cascade": 1,
+        "x": 64,
+        "y": 64,
+        "counter": 2,
+        "complete": true
+      }
+    ]
+  },
+  "count1/yaw180": {
+    "face_records_requested": 2,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 0,
+        "max_counter": 2
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 0,
+        "max_counter": 2
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 27,
+        "y": 100,
+        "counter": 2,
+        "complete": true
+      },
+      {
+        "cascade": 1,
+        "x": 63,
+        "y": 63,
+        "counter": 2,
+        "complete": true
+      }
+    ]
+  },
+  "count1/yaw270": {
+    "face_records_requested": 2,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 0,
+        "max_counter": 2
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 0,
+        "max_counter": 2
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 100,
+        "y": 100,
+        "counter": 2,
+        "complete": true
+      },
+      {
+        "cascade": 1,
+        "x": 63,
+        "y": 64,
+        "counter": 2,
+        "complete": true
+      }
+    ]
+  },
+  "count1/yaw90": {
+    "face_records_requested": 2,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 0,
+        "max_counter": 2
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 0,
+        "max_counter": 2
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 27,
+        "y": 27,
+        "counter": 2,
+        "complete": true
+      },
+      {
+        "cascade": 1,
+        "x": 64,
+        "y": 63,
+        "counter": 2,
+        "complete": true
+      }
+    ]
+  },
+  "count63/yaw90": {
+    "face_records_requested": 64,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 0,
+        "max_counter": 64
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 0,
+        "max_counter": 64
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 27,
+        "y": 27,
+        "counter": 64,
+        "complete": true
+      },
+      {
+        "cascade": 1,
+        "x": 64,
+        "y": 63,
+        "counter": 64,
+        "complete": true
+      }
+    ]
+  },
+  "count64/yaw0": {
+    "face_records_requested": 65,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 132,
+        "max_counter": 65
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 56,
+        "max_counter": 65
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 100,
+        "y": 27,
+        "counter": 65,
+        "complete": false
+      },
+      {
+        "cascade": 1,
+        "x": 64,
+        "y": 64,
+        "counter": 65,
+        "complete": false
+      }
+    ]
+  },
+  "count64/yaw180": {
+    "face_records_requested": 65,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 120,
+        "max_counter": 65
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 56,
+        "max_counter": 65
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 27,
+        "y": 100,
+        "counter": 65,
+        "complete": false
+      },
+      {
+        "cascade": 1,
+        "x": 63,
+        "y": 63,
+        "counter": 65,
+        "complete": false
+      }
+    ]
+  },
+  "count64/yaw270": {
+    "face_records_requested": 65,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 132,
+        "max_counter": 65
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 56,
+        "max_counter": 65
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 100,
+        "y": 100,
+        "counter": 65,
+        "complete": false
+      },
+      {
+        "cascade": 1,
+        "x": 63,
+        "y": 64,
+        "counter": 65,
+        "complete": false
+      }
+    ]
+  },
+  "count64/yaw90": {
+    "face_records_requested": 65,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 132,
+        "max_counter": 65
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 56,
+        "max_counter": 65
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 27,
+        "y": 27,
+        "counter": 65,
+        "complete": false
+      },
+      {
+        "cascade": 1,
+        "x": 64,
+        "y": 63,
+        "counter": 65,
+        "complete": false
+      }
+    ]
+  },
+  "count128/yaw0": {
+    "face_records_requested": 129,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 144,
+        "max_counter": 129
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 64,
+        "max_counter": 129
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 100,
+        "y": 27,
+        "counter": 129,
+        "complete": false
+      },
+      {
+        "cascade": 1,
+        "x": 64,
+        "y": 64,
+        "counter": 129,
+        "complete": false
+      }
+    ]
+  },
+  "count128/yaw180": {
+    "face_records_requested": 129,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 144,
+        "max_counter": 129
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 64,
+        "max_counter": 129
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 27,
+        "y": 100,
+        "counter": 129,
+        "complete": false
+      },
+      {
+        "cascade": 1,
+        "x": 63,
+        "y": 63,
+        "counter": 129,
+        "complete": false
+      }
+    ]
+  },
+  "count128/yaw270": {
+    "face_records_requested": 129,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 154,
+        "max_counter": 129
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 71,
+        "max_counter": 129
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 100,
+        "y": 100,
+        "counter": 129,
+        "complete": false
+      },
+      {
+        "cascade": 1,
+        "x": 63,
+        "y": 64,
+        "counter": 129,
+        "complete": false
+      }
+    ]
+  },
+  "count128/yaw90": {
+    "face_records_requested": 129,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 154,
+        "max_counter": 129
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 71,
+        "max_counter": 129
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 27,
+        "y": 27,
+        "counter": 129,
+        "complete": false
+      },
+      {
+        "cascade": 1,
+        "x": 64,
+        "y": 63,
+        "counter": 129,
+        "complete": false
+      }
+    ]
+  }
+}
