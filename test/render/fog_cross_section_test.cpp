@@ -100,9 +100,9 @@ const std::string kGlslFogCommonPath =
 const std::string kMetalFogCommonPath =
     std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/ir_fog_common.metal";
 const std::string kGlslFogPassPath =
-    std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_fog_to_trixel.glsl";
+    std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_fog_to_trixel_body.glsl";
 const std::string kMetalFogPassPath =
-    std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/c_fog_to_trixel.metal";
+    std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/c_fog_to_trixel_body.metal";
 const std::string kGlslFogOverflowPath =
     std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_fog_overflow_faces.glsl";
 const std::string kMetalFogOverflowPath =
@@ -395,6 +395,48 @@ TEST(FogCrossSectionShaderParity, FullyRevealedSamplesSkipTheColourWrite) {
         EXPECT_LT(earlyOutAt, colourAt)
             << path << " reads the colour before the fully-revealed early-out";
     }
+}
+
+// The main fog kernel is two compile-time variants of one body: the hard
+// variant's smooth flag must be a constant false so the smooth gate folds out
+// of its reveal loop, and the smooth variant keeps the per-axis route hard.
+TEST(FogCrossSectionShaderParity, FogKernelVariantsSpecializeTheSmoothGate) {
+    const std::string dir = IR_TEST_RENDER_SHADER_DIR;
+    const struct {
+        std::string path_;
+        std::string include_;
+        const char *smooth_;
+    } wrappers[] = {
+        {dir + "/c_fog_to_trixel.glsl", "c_fog_to_trixel_body.glsl", "0"},
+        {dir + "/c_fog_to_trixel_los_smooth.glsl", "c_fog_to_trixel_body.glsl", "1"},
+        {dir + "/metal/c_fog_to_trixel.metal", "c_fog_to_trixel_body.metal", "0"},
+        {dir + "/metal/c_fog_to_trixel_los_smooth.metal", "c_fog_to_trixel_body.metal", "1"},
+    };
+    for (const auto &wrapper : wrappers) {
+        const std::string source = readShaderSource(wrapper.path_);
+        ASSERT_FALSE(source.empty()) << "could not read " << wrapper.path_;
+        const std::string define = std::string("#define IR_FOG_LOS_SMOOTH ") + wrapper.smooth_;
+        const std::size_t defineAt = source.find(define);
+        const std::size_t includeAt = source.find("#include \"" + wrapper.include_ + "\"");
+        ASSERT_NE(defineAt, std::string::npos) << wrapper.path_ << " lost `" << define << "`";
+        ASSERT_NE(includeAt, std::string::npos) << wrapper.path_ << " no longer includes the body";
+        EXPECT_LT(defineAt, includeAt) << wrapper.path_ << " defines the variant after the body";
+    }
+
+    const std::string glsl = readShaderSource(kGlslFogPassPath);
+    const std::string metal = readShaderSource(kMetalFogPassPath);
+    const std::string glslFlag = extractSpan(glsl, "const bool losSmooth =", "losSmooth =", ";");
+    const std::string metalFlag = extractSpan(metal, "const bool losSmooth =", "losSmooth =", ";");
+    ASSERT_FALSE(glslFlag.empty()) << "losSmooth not found in " << kGlslFogPassPath;
+    ASSERT_FALSE(metalFlag.empty()) << "losSmooth not found in " << kMetalFogPassPath;
+    EXPECT_EQ(normalizeKernelMath(glslFlag), normalizeKernelMath(metalFlag))
+        << "the smooth-gate flag diverged between backends";
+    EXPECT_NE(glslFlag.find("IR_FOG_LOS_SMOOTH != 0 && "), std::string::npos)
+        << "the smooth-gate flag must be a compile-time false in the hard variant: " << glslFlag;
+    EXPECT_NE(glslFlag.find("perAxisRoute == 0"), std::string::npos)
+        << "the per-axis route must stay on the hard gate: " << glslFlag;
+    EXPECT_NE(metal.find("kernel void IR_FOG_KERNEL_NAME("), std::string::npos)
+        << "the Metal body must take its kernel name from the wrapper";
 }
 
 TEST(FogCrossSectionShaderParity, OverflowFogClassEncodingIsIdenticalAcrossBackends) {

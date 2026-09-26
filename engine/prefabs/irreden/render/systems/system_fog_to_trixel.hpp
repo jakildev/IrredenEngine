@@ -23,7 +23,7 @@ using namespace IRRender;
 
 namespace IRSystem {
 
-// Must match local_size in c_fog_to_trixel.glsl / .metal.
+// Must match local_size in c_fog_to_trixel_body.glsl / .metal.
 constexpr int kFogToTrixelGroupSize = 16;
 
 // Screen-space fog-of-war pass. Sits between LIGHTING_TO_TRIXEL (which
@@ -43,7 +43,12 @@ constexpr int kFogToTrixelGroupSize = 16;
 // read-only on the already-uploaded fog texture — hence the const fog
 // param — so the cull and this post-process always see the same fog.
 template <> struct System<FOG_TO_TRIXEL> {
+    // The hard-gate kernel; every per-axis dispatch uses it.
     ShaderProgram *program_ = nullptr;
+    // The main-canvas kernel variant carrying the smooth line-of-sight gate,
+    // bound only while a smooth source is live: compiled in, the gate slows
+    // the pass even on pixels no gated source reaches.
+    ShaderProgram *losSmoothProgram_ = nullptr;
     ShaderProgram *overflowProgram_ = nullptr;
     Buffer *voxelFrameDataBuf_ = nullptr;
     // Tiny per-canvas UBO carrying the live analytic vision circles. Uploaded
@@ -68,6 +73,7 @@ template <> struct System<FOG_TO_TRIXEL> {
         }
         IR_PROFILE_SCOPE("fogToTrixel");
 
+        (fog.observers_.hasSmoothLineOfSightSource() ? losSmoothProgram_ : program_)->use();
         observerBuf_->subData(0, sizeof(FrameDataFogObservers), &fog.observers_);
         canvasTextures.getTextureColors()
             ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
@@ -111,6 +117,7 @@ template <> struct System<FOG_TO_TRIXEL> {
         const C_TriangleCanvasTextures &mainTextures,
         const C_CanvasFogOfWar &fog
     ) {
+        program_->use();
         {
             IRPrefab::PerAxisCanvas::LightingRouteScope route(
                 voxelFrameDataBuf_,
@@ -131,7 +138,6 @@ template <> struct System<FOG_TO_TRIXEL> {
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
             }
             dispatchOverflowFog(axes, mainTextures.size_);
-            program_->use();
         }
 
         if (voxelActiveMaskBuf_ == nullptr) {
@@ -189,7 +195,6 @@ template <> struct System<FOG_TO_TRIXEL> {
     }
 
     void beginTick() {
-        program_->use();
         perAxisCanvasEntity_ = IRRender::getCanvas("main");
         perAxisCanvases_ = nullptr;
         if (perAxisCanvasEntity_ == IREntity::kNullEntity) {
@@ -206,6 +211,12 @@ template <> struct System<FOG_TO_TRIXEL> {
         IRRender::createNamedResource<ShaderProgram>(
             "FogToTrixelProgram",
             std::vector{ShaderStage{IRRender::kFileCompFogToTrixel, ShaderType::COMPUTE}}
+        );
+        IRRender::createNamedResource<ShaderProgram>(
+            "FogToTrixelLosSmoothProgram",
+            std::vector{
+                ShaderStage{IRRender::kFileCompFogToTrixelLosSmooth, ShaderType::COMPUTE}
+            }
         );
         IRRender::createNamedResource<ShaderProgram>(
             "FogOverflowFacesProgram",
@@ -227,6 +238,8 @@ template <> struct System<FOG_TO_TRIXEL> {
             C_CanvasFogOfWar>("FogToTrixel");
         auto *params = getSystemParams<System<FOG_TO_TRIXEL>>(systemId);
         params->program_ = IRRender::getNamedResource<ShaderProgram>("FogToTrixelProgram");
+        params->losSmoothProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("FogToTrixelLosSmoothProgram");
         params->overflowProgram_ =
             IRRender::getNamedResource<ShaderProgram>("FogOverflowFacesProgram");
         params->voxelFrameDataBuf_ = IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");

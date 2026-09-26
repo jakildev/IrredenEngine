@@ -283,6 +283,18 @@ struct FrameDataFogObservers {
     void setLosSoftness(int source, float softness) {
         losSoftness_[source / 4][source % 4] = softness;
     }
+
+    /// True when a live source reads the smooth gate: FOG_TO_TRIXEL dispatches
+    /// the smooth kernel variant only then, so the hard variant's reveal loop
+    /// carries no smooth-gate code.
+    bool hasSmoothLineOfSightSource() const {
+        for (int source = 0; source < visionCircleCount_; ++source) {
+            if ((losSourceMask_ & (1 << source)) != 0 && losSoftness(source) >= 0.0f) {
+                return true;
+            }
+        }
+        return false;
+    }
 };
 static_assert(
     sizeof(FrameDataFogObservers) ==

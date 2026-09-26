@@ -779,3 +779,43 @@ TEST(FogVisionSlotTest, GatingAnUnregisteredSlotIsRejected) {
     EXPECT_EQ(observers.losSourceMask_, 0);
     EXPECT_FLOAT_EQ(eyes[1], IRComponents::kFogVisionLosOff);
 }
+
+// FOG_TO_TRIXEL dispatches the smooth kernel variant only while a live source
+// reads the smooth gate: gated, softness >= 0, and inside the circle count.
+TEST(FogVisionSlotTest, SmoothSourceSelectsTheSmoothKernelVariant) {
+    FrameDataFogObservers observers{};
+    FogLosEyeHeights eyes = eyesOf(IRComponents::kFogVisionLosOff);
+    EXPECT_FALSE(observers.hasSmoothLineOfSightSource()) << "no sources";
+    for (int i = 0; i < IRComponents::kMaxFogVisionCircles; ++i) {
+        C_CanvasFogOfWar::addVisionCircle(observers, eyes, 0, 0, 5, 0, 0, 0, -1, 0);
+    }
+    EXPECT_FALSE(observers.hasSmoothLineOfSightSource()) << "ungated sources";
+
+    C_CanvasFogOfWar::setVisionCircleLineOfSight(observers, eyes, 2, 1.5f);
+    EXPECT_FALSE(observers.hasSmoothLineOfSightSource()) << "a hard-gated source";
+
+    C_CanvasFogOfWar::setVisionCircleLineOfSight(observers, eyes, 7, 1.5f, 0.0f);
+    EXPECT_TRUE(observers.hasSmoothLineOfSightSource()) << "softness 0 is the smooth gate";
+
+    observers.visionCircleCount_ = 7;
+    EXPECT_FALSE(observers.hasSmoothLineOfSightSource()) << "a slot past the count is not live";
+    observers.visionCircleCount_ = IRComponents::kMaxFogVisionCircles;
+
+    observers.losSourceMask_ &= ~(1 << 7);
+    EXPECT_FALSE(observers.hasSmoothLineOfSightSource()) << "an ungated softness is never read";
+    observers.losSourceMask_ |= 1 << 7;
+    ASSERT_TRUE(observers.hasSmoothLineOfSightSource());
+
+    C_CanvasFogOfWar::setVisionCircleLineOfSight(
+        observers,
+        eyes,
+        7,
+        IRComponents::kFogVisionLosOff
+    );
+    EXPECT_FALSE(observers.hasSmoothLineOfSightSource()) << "an ungated slot";
+
+    C_CanvasFogOfWar::setVisionCircleLineOfSight(observers, eyes, 0, 1.5f, 1.0f);
+    ASSERT_TRUE(observers.hasSmoothLineOfSightSource());
+    C_CanvasFogOfWar::clearVisionCircles(observers, eyes);
+    EXPECT_FALSE(observers.hasSmoothLineOfSightSource()) << "clearing drops every source";
+}
