@@ -219,26 +219,22 @@ screenshot pair (exceptions: `engine/render/CLAUDE.md` "Verifying render changes
 ### Clean-exit policy
 
 Every scripted demo, test, or tool run through `fleet-run` / `ir-run` must
-end `RESULT=CLEAN`. `RESULT=CRASH` — any signal death or non-zero exit
-not proven HOST-CLOSED (below), including a teardown crash after outputs were saved — fails the step that
-ran it; parse the RESULT line or exit code, never log prose or the
-existence of outputs. `RESULT=ALIVE-TIMEOUT` is healthy for smoke but says
-nothing about shutdown. On a CRASH, fix it this session (fix-forward;
-ownership of the introducing change is irrelevant; bisect if needed). Only
-if genuinely out of reach (another host or hardware, design escalation,
-exceeds the session) file an issue with the repro command, RESULT line and
-bisect window — and mark your own lane failed: no smoke verdict, PR body,
-or `fleet:verified-<host>` reports green over an observed crash ("N/M
-shots captured, run FAILED clean-exit (issue #X)"). Partial outputs stay
-usable for diagnosis.
-
-`RESULT=HOST-CLOSED` (native Windows only) means the host's hang handling
-closed a Not Responding window — Task Manager "End task" or the
-not-responding dialog, proven by an Application Hang event naming that exact
-process. It is host interference: not a demo failure, and never green.
-Re-run the step once; a second HOST-CLOSED leaves the step with no verdict —
-report it as such, in its own bucket, never as a crash or a pass.
-`render-verify` applies this retry itself.
+end `RESULT=CLEAN`. `RESULT=CRASH` — any signal death or non-zero exit not
+proven HOST-CLOSED, including a teardown crash after outputs were saved —
+fails the step that ran it; parse the RESULT line or exit code, never log
+prose or the existence of outputs. `RESULT=ALIVE-TIMEOUT` is healthy for
+smoke but says nothing about shutdown. On a CRASH, fix it this session
+(fix-forward; ownership of the introducing change is irrelevant; bisect if
+needed). Only if genuinely out of reach (another host or hardware, design
+escalation, exceeds the session) file an issue with the repro command,
+RESULT line and bisect window — and mark your own lane failed: no smoke
+verdict, PR body, or `fleet:verified-<host>` reports green over an observed
+crash ("N/M shots captured, run FAILED clean-exit (issue #X)"). Partial
+outputs stay usable for diagnosis. `RESULT=HOST-CLOSED` (native Windows)
+means host hang handling closed a Not Responding window, proven by an
+Application Hang event for that exact process. It is host interference,
+never green: re-run once; a second leaves no verdict, bucketed apart from
+crash and pass (`render-verify` retries itself).
 
 ### Fix-forward
 
