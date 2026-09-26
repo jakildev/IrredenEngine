@@ -1225,16 +1225,13 @@ ivec3 matrixApplyToVoxelGrid(mat4 transformMat, ivec3 cell) {
     return roundHalfUp(vec3(worldPos));
 }
 
-// Smooth analytic vision-circle reveal for one fog disc, shared by
-// FOG_TO_TRIXEL (per-pixel floor reveal) and VOXEL_TO_TRIXEL_STAGE_1 (per-voxel
-// object clip) so the floor edge and the voxel-object edge are the SAME
-// analytic curve.
+// Smooth analytic vision-circle reveal for one fog disc at `worldXY`.
 // `circle` = (centerX, centerY, radius, edgeSoftness) in world units; `aa` is
-// an extra antialias half-width (FOG_TO_TRIXEL passes its per-pixel
-// worldPerPixel for a zoom-stable rim; the voxel clip passes 0 for a binary
-// inside/outside test — `reveal >= 0.5` is `worldXY inside radius` regardless
-// of the softening width, since smoothstep is 0.5 at its midpoint). Returns
-// 1.0 fully revealed, 0.0 fully hidden.
+// an extra half-width the band is widened to. Pass `aa > 0`: with a hard disc
+// (edgeSoftness 0) and `aa == 0` the band has zero width and smoothstep is
+// undefined — a binary per-column disc test goes through
+// fogDiscRevealAtDistance (ir_voxel_face_select.glsl) instead. Returns 1.0
+// fully revealed, 0.0 fully hidden.
 float fogVisionCircleReveal(vec2 worldXY, vec4 circle, float aa) {
     const float dist = length(worldXY - circle.xy);
     const float a = max(circle.w, aa);

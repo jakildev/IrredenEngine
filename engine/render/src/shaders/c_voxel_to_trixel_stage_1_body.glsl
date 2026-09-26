@@ -403,10 +403,10 @@ void emitDeformedFace(
 // unexplored. It lives HERE rather than beside the z-free twins
 // in ir_voxel_face_select.glsl because the drop is STAGE-1-ONLY — stage 2 never
 // repeats it — and the shared include holds exactly the definitions both stages
-// must agree on. The reveal math is INLINED rather than a shared ir_iso_common
-// Z helper, as fogColumnReveal is — a new symbol there perturbs the cardinal
-// fast path. All-zero heights make both penalty terms exactly 0, so this
-// returns exactly fogColumnReveal's value.
+// must agree on. The disc test itself is fogDiscRevealAtDistance, the one
+// fogColumnReveal uses, so the drop and the cut-face rule resolve a column on a
+// hard disc's rim the same way. All-zero heights make both penalty terms
+// exactly 0, so this returns exactly fogColumnReveal's value.
 float fogColumnRevealZ(ivec2 col, float voxelZ) {
     const ivec2 fogSize = imageSize(canvasFogOfWar);
     if (fogSize.x <= 1) {
@@ -426,9 +426,8 @@ float fogColumnRevealZ(ivec2 col, float voxelZ) {
         const float dzDown = max(voxelZ - h.x, 0.0);
         const float distEff = length(vec2(col) - visionCircles[i].xy) +
             h.y * max(dzUp - h.w, 0.0) + h.z * max(dzDown - h.w, 0.0);
-        const float a = max(visionCircles[i].w, 0.0);
         reveal = max(
-            reveal, 1.0 - smoothstep(visionCircles[i].z - a, visionCircles[i].z + a, distEff)
+            reveal, fogDiscRevealAtDistance(distEff, visionCircles[i].z, visionCircles[i].w)
         );
     }
     return reveal;

@@ -313,10 +313,10 @@ struct Voxel {
 // keeps its geometry and the fog pass paints it unexplored. Mirror of the GLSL twin. It lives HERE
 // rather than beside the z-free twins in ir_voxel_face_select.metal because the
 // drop is STAGE-1-ONLY — stage 2 never repeats it — and the shared include
-// holds exactly the definitions both stages must agree on. The reveal math is
-// inlined rather than a shared ir_iso_common Z helper — a new symbol there
-// perturbs the cardinal fast path. All-zero heights make this return exactly
-// fogColumnReveal's value.
+// holds exactly the definitions both stages must agree on. The disc test itself
+// is fogDiscRevealAtDistance, the one fogColumnReveal uses, so the drop and the
+// cut-face rule resolve a column on a hard disc's rim the same way. All-zero
+// heights make this return exactly fogColumnReveal's value.
 static float fogColumnRevealZ(
     texture2d<float, access::read> fog, constant FogObserverData& obs, int2 col, float voxelZ
 ) {
@@ -338,10 +338,9 @@ static float fogColumnRevealZ(
         const float dzDown = max(voxelZ - h.x, 0.0f);
         const float distEff = length(float2(col) - obs.visionCircles[i].xy) +
             h.y * max(dzUp - h.w, 0.0f) + h.z * max(dzDown - h.w, 0.0f);
-        const float a = max(obs.visionCircles[i].w, 0.0f);
         reveal = max(
             reveal,
-            1.0f - smoothstep(obs.visionCircles[i].z - a, obs.visionCircles[i].z + a, distEff)
+            fogDiscRevealAtDistance(distEff, obs.visionCircles[i].z, obs.visionCircles[i].w)
         );
     }
     return reveal;
