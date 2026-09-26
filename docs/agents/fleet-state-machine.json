@@ -165,6 +165,12 @@
       "description": "Merger touched this PR; skip until next iteration"
     },
     {
+      "name": "fleet:sweep-cooldown",
+      "scope": "pr",
+      "color": "bfdadc",
+      "description": "cleanup --gh removed the PR's amending/resolving claim on age alone; the dispatcher withholds the PR's feedback/conflict target until updatedAt is older than FLEET_CLAIM_SWEPT_COOLDOWN_SECS. A won amending/resolving claim, or the sweep once the PR is quiet past the cooldown, removes it"
+    },
+    {
       "name": "fleet:design-blocked",
       "scope": "pr",
       "color": "fbca04",

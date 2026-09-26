@@ -22,7 +22,7 @@
 #   fleet-claim release <issue-number> [--wip-ok]
 #   fleet-claim check <issue-number>
 #   fleet-claim list [--with-age]
-#   fleet-claim cleanup [--repo <owner/repo>] [--gh] ...
+#   fleet-claim cleanup [--repo <owner/repo>] [--gh [--own-host]] ...
 #   fleet-claim reconcile [--apply] [--repo <owner/repo>] ...
 #   fleet-claim review-claim <pr-number> <agent>
 #   fleet-claim review-release <pr-number> <agent> [--require-verdict]
@@ -136,7 +136,7 @@ unset _fleet_claim_self
 # python3's ModuleNotFoundError propagating through a pipefail command substitution.
 # A missing module would otherwise fail OPEN in the --stackable-on guard below
 # (empty reason -> claim proceeds), so fail loud here instead.
-for _fleet_lib in fleet_branch_match.py fleet_stack_base.py fleet_blocked_by.py fleet_model_field.py fleet-common.sh; do
+for _fleet_lib in fleet_branch_match.py fleet_stack_base.py fleet_blocked_by.py fleet_model_field.py fleet_claim_liveness.py fleet-common.sh; do
     if [[ ! -f "$FLEET_LIB_DIR/$_fleet_lib" ]]; then
         echo "fleet-claim: $_fleet_lib not found in FLEET_LIB_DIR=$FLEET_LIB_DIR" >&2
         echo "             Ensure fleet-claim's real script dir is scripts/fleet/ in the engine repo." >&2
@@ -269,7 +269,8 @@ _ns_token() {
 # `fleet:claim-*` labels are retained through the PR lifecycle and
 # preserved on closed issues as historical "who worked on this" record;
 # cleanup only sweeps them off OPEN issues whose claim is abandoned (no
-# matching open `claude/<N>-*` PR + age > TTL).
+# matching open `claude/<N>-*` PR + age > TTL + owner not live, judged on the
+# owning host — see _claim_owner_live).
 
 host_from_uname() {
     # Pure mapping from a `uname -s` string to the canonical host key
@@ -458,8 +459,8 @@ _amend_snapshot_path() {
 
 # _file_fresh <path> <secs>
 #   True iff <path> exists and its mtime is within the last <secs> seconds —
-#   the one freshness test behind every "is this writer still live" read of
-#   a heartbeat or intent file.
+#   the freshness test behind the sweep-intent reads. Heartbeat freshness is
+#   fleet_claim_liveness.py's.
 _file_fresh() {
     local path="$1" secs="$2" mtime
     [[ -f "$path" ]] || return 1
@@ -488,7 +489,7 @@ _file_fresh() {
 #   macOS), keyed beside the ownership record so FLEET_AMEND_SNAPSHOTS_DIR
 #   sandboxes it with the record. Host-local by construction, which is the
 #   right scope: only the owning host ever vouches for or reaps its own
-#   amending labels; a cross-host label rides the pure TTL on both sides.
+#   amending labels; a cross-host label waits out the cross-host backstop.
 #   Bounded: a holder older than FLEET_AMEND_LOCK_STALE_SECS is a crashed
 #   process and is stolen; a live holder is waited on for at most
 #   FLEET_AMEND_LOCK_WAIT_SECS, after which the caller fails CLOSED (the claim
@@ -619,20 +620,6 @@ _amend_record_fingerprint() {
     [[ -f "$snap" ]] || { echo absent; return 0; }
     python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' \
         "$snap" 2>/dev/null | tr -d '\r' || echo absent
-}
-
-# _amending_label_owner <label> → "<host>\t<agent>" on stdout; exit 1 when the
-#   label is not a fleet:amending-<host>-<agent> label.
-_amending_label_owner() {
-    local after="${1#fleet:amending-}" hp
-    [[ "$1" == fleet:amending-* ]] || return 1
-    for hp in mac linux windows; do
-        if [[ "$after" == "${hp}-"* ]]; then
-            printf '%s\t%s\n' "$hp" "${after#${hp}-}"
-            return 0
-        fi
-    done
-    return 1
 }
 
 # _amend_sweep_intent_write <repo> <pr> <label> → intent path on stdout.
@@ -766,138 +753,131 @@ _write_amend_ownership() {
         > "$snap" 2>/dev/null || true
 }
 
-# _amending_pane_heartbeat_fresh <agent>
-#   The PANE-scoped liveness rule: true iff ~/.fleet/heartbeats/<agent> is
-#   fresh (< FLEET_CLAIM_STALE_SECS). It is the fallback arm of
-#   _amending_owner_live, for a claim with no dispatch identity to compare —
-#   see there for when that applies and why it is not a confirmed orphan.
-_amending_pane_heartbeat_fresh() {
-    _file_fresh "$HEARTBEATS_DIR/$1" "${FLEET_CLAIM_STALE_SECS:-1800}"
-}
-
-# _amending_owner_live <label-name> [<pr>]
-#   Three-way verdict on whether the owner of a fleet:amending-<host>-<agent>
-#   claim is still alive. Used by the cleanup amending-sweep and the
-#   _acquire_label_on force-sweep as the "don't sweep an active amend" guard.
+# _claim_owner_live <label> <ns> <number> <ttl-secs>
+#   The one keep/reap predicate for a fleet:amending-* or fleet:claim-* label's
+#   owner, shared by every sweep that removes one: fleet_claim_liveness.py
+#   (its docstring holds the arms and why a heartbeat never vouches alone).
+#   <ns> is engine|game, <number> the PR (amending) or issue (claim), and
+#   <ttl-secs> the CALLING sweep's TTL — the window the heartbeat must fall in.
 #
 #     0  LIVE          — the owner is working; never sweep.
-#     1  CANNOT VOUCH  — fall through to label-age TTL.
-#     2  CONFIRMED DEAD— the owning iteration has provably ended; the caller
-#                        treats it as an orphan and applies the short grace.
+#     1  CANNOT VOUCH  — fall through to the caller's age rule. Also what a
+#                        cross-host or unparsable label gets: every input is
+#                        host-local, so only the owning host can judge it.
+#     2  CONFIRMED DEAD— amending only: the owning dispatch was superseded;
+#                        the caller applies the short orphan grace.
 #
-#   Exit codes are DATA here, not errors: under `set -e` call this as
-#   `rc=0; _amending_owner_live … || rc=$?` and branch on $rc.
-#
-#   Host qualification comes first. Heartbeats and dispatch records are
-#   HOST-LOCAL: only the owning host writes its own
-#   ~/.fleet/heartbeats/<agent>, so keying freshness by bare basename would let
-#   a same-basename local worker (mac-worker-1) vouch for a dead cross-host
-#   claim (windows-worker-1) forever. So a cross-host label, a non-amending
-#   label (reviewing/resolving/claim carry no heartbeat semantics), and an
-#   unparsable one all return 1.
-#
-#   Ownership is keyed on the DISPATCH, not the pane. The pane heartbeat
-#   cannot distinguish the two: `fleet-heartbeat <worktree-basename>`
-#   is step 0 of five role docs, so a reviewer or merger dispatch landing in the
-#   same pane renews a dead amend claim's liveness — leaving it un-reapable (the
-#   probe says "live") and un-claimable (every other pane skips an
-#   `fleet:amending-*` PR), with the reviewer held off too.
-#   So: the amend-snapshot carries the claiming dispatch's FLEET_DISPATCH_ID,
-#   fleet-dispatch-wrap records the worktree's current dispatch id at every
-#   launch, and a MISMATCH is proof the owner has ended — the dispatcher never
-#   launches into an occupied pane.
-#
-#   Absent either record, the pane-heartbeat rule decides. That fallback is
-#   deliberate, not a gap: the architect pane keeps a heartbeat without ever
-#   running fleet-dispatch-wrap, so it has no dispatch id at all, and a snapshot
-#   written by an older fleet-claim carries no id either. "Snapshot missing"
-#   must therefore NOT be a confirmed orphan the way a missing _prlabel-*
-#   marker is for reviewing/resolving.
-#
-#   One id is not a dispatch's: FLEET_PRECLAIM_DISPATCH_ID (fleet-common.sh),
-#   which fleet-dispatcher hands the claim it takes BEFORE launching the
-#   iteration that will own it. It reads as LIVE for
-#   FLEET_CLAIM_PRECLAIM_GRACE_SECS (default 300) from the snapshot's
-#   acquired_epoch, then falls through to the pane-heartbeat arm. Vouching for
-#   it is the point: during that window the pane heartbeat still belongs to the
-#   PREVIOUS iteration, and the dispatcher only launches into an idle pane, so
-#   deferring to it would let the sweep remove a fresh pre-claim carried on a
-#   past-TTL label and admit a second feedback worker. Both clocks in that
-#   comparison are local (the snapshot is written by this host), so it does not
-#   reintroduce the host-clock-vs-GitHub skew the id comparison exists to avoid.
-#
-#   On verdict 2 the caller can read $_AMENDING_OWNER_DISPATCH (the dead owner)
-#   and $_AMENDING_SUPERSEDED_BY (the dispatch that replaced it) for its log.
+#   Exit codes are DATA, not errors: under `set -e` call this as
+#   `rc=0; _claim_owner_live … || rc=$?` and branch on $rc. A predicate that
+#   prints nothing (crash, missing module) reads as 1, never as 0 or 2.
+#   Sets $_OWNER_LIVE_ARM (the deciding arm) and $_OWNER_LIVE_TARGET (the
+#   dispatch target on a dispatch keep) for the caller's log; on verdict 2,
+#   $_AMENDING_OWNER_DISPATCH (the dead owner) and $_AMENDING_SUPERSEDED_BY
+#   (the dispatch that replaced it).
 _AMENDING_OWNER_DISPATCH=""
 _AMENDING_SUPERSEDED_BY=""
-_amending_owner_live() {
-    local label_name="$1" pr="${2:-}"
+_OWNER_LIVE_ARM=""
+_OWNER_LIVE_TARGET=""
+_claim_owner_live() {
+    local label="$1" ns="$2" number="$3" ttl="$4"
+    local line code="" arm="" owner="" superseded="" target=""
     _AMENDING_OWNER_DISPATCH=""
     _AMENDING_SUPERSEDED_BY=""
-    local owner claim_host="" claim_agent=""
-    owner=$(_amending_label_owner "$label_name") || return 1
-    IFS=$'\t' read -r claim_host claim_agent <<< "$owner" || true
-    [[ -n "$claim_agent" ]] || return 1
-    # Cross-host: the owner's heartbeat and dispatch record live on its host,
-    # not ours — we cannot vouch either way, so fall through to pure TTL.
-    [[ "$claim_host" == "$(derive_host)" ]] || return 1
+    _OWNER_LIVE_ARM=""
+    _OWNER_LIVE_TARGET=""
+    [[ "$number" =~ ^[0-9]+$ && "$ttl" =~ ^[0-9]+$ ]] || return 1
+    line=$(python3 "$FLEET_LIB_DIR/fleet_claim_liveness.py" verdict \
+        "$label" "$ns" "$number" "$(derive_host)" "$ttl" \
+        --heartbeats-dir "$HEARTBEATS_DIR" \
+        --state-dir "${FLEET_STATE_DIR:-$HOME/.fleet/state}" \
+        --reservations-dir "$RESERVATIONS_DIR" \
+        --amend-snapshots-dir "${FLEET_AMEND_SNAPSHOTS_DIR:-$HOME/.fleet/amend-snapshots}" \
+        --claims-dir "$CLAIMS_DIR" 2>/dev/null | tr -d '\r' || true)
+    IFS=$'\t' read -r code arm owner superseded target <<< "$line" || true
+    [[ "$arm" == - ]] && arm=""
+    [[ "$owner" == - ]] && owner=""
+    [[ "$superseded" == - ]] && superseded=""
+    [[ "$target" == - ]] && target=""
+    _OWNER_LIVE_ARM="$arm"
+    _OWNER_LIVE_TARGET="$target"
+    case "$code" in
+        0) return 0 ;;
+        2)
+            _AMENDING_OWNER_DISPATCH="$owner"
+            _AMENDING_SUPERSEDED_BY="$superseded"
+            return 2
+            ;;
+        *) return 1 ;;
+    esac
+}
 
-    # Dispatch-scoped arm. Both records must be present and agree on the agent;
-    # anything else falls through to the legacy arm below.
-    if [[ "$pr" =~ ^[0-9]+$ ]]; then
-        local snap snap_info snap_agent="" snap_dispatch="" snap_epoch=0
-        snap=$(_amend_snapshot_path "$pr")
-        if [[ -f "$snap" ]]; then
-            # tr -d '\r': native-Windows python3 CRLF-terminates print(), and
-            # the CR would ride on the last field of the captured line.
-            snap_info=$(SNAP="$snap" python3 -c '
-import json, os
-try:
-    with open(os.environ["SNAP"]) as fh:
-        d = json.load(fh)
-except Exception:
-    d = {}
-print("%s\t%s\t%s" % (
-    d.get("agent") or "", d.get("dispatch_id") or "", d.get("acquired_epoch") or 0))
-' 2>/dev/null | tr -d '\r' || true)
-            IFS=$'\t' read -r snap_agent snap_dispatch snap_epoch <<< "$snap_info" || true
-        fi
-        # A dispatcher PRE-CLAIM, whose iteration has not launched yet and so
-        # has no minted id to record. Vouch LIVE: the
-        # dispatcher took this claim moments ago and is launching into the
-        # pane, which is exactly the window in which the pane heartbeat is
-        # still the PREVIOUS iteration's and may be stale — deferring to it
-        # here lets `cleanup --gh` sweep a carried-over past-TTL label out from
-        # under the dispatcher and hand the PR to a second feedback worker.
-        # Bounded by its own grace so a pre-claim whose launch never happened
-        # (dispatcher killed between claim and send-keys) still ages out, via
-        # the legacy arm below and then the label TTL. Never verdict 2: the
-        # sentinel is not a superseded id, it is the absence of one, and the
-        # role's step-a re-acquire replaces it with the minted id.
-        if [[ "$snap_agent" == "$claim_agent" && "$snap_dispatch" == "$FLEET_PRECLAIM_DISPATCH_ID" ]]; then
-            local preclaim_grace="${FLEET_CLAIM_PRECLAIM_GRACE_SECS:-300}"
-            [[ "$snap_epoch" =~ ^[0-9]+$ ]] || snap_epoch=0
-            if (( snap_epoch > 0 && $(date +%s) - snap_epoch < preclaim_grace )); then
-                return 0
-            fi
-        elif [[ "$snap_agent" == "$claim_agent" && -n "$snap_dispatch" ]]; then
-            local cur_file="${FLEET_STATE_DIR:-$HOME/.fleet/state}/dispatch-current/$claim_agent"
-            if [[ -f "$cur_file" ]]; then
-                local cur_dispatch
-                cur_dispatch=$(tr -d '\r' < "$cur_file" 2>/dev/null | head -n1 || true)
-                if [[ -n "$cur_dispatch" && "$cur_dispatch" != "$snap_dispatch" ]]; then
-                    _AMENDING_OWNER_DISPATCH="$snap_dispatch"
-                    _AMENDING_SUPERSEDED_BY="$cur_dispatch"
-                    return 2
-                fi
-            fi
-        fi
+# _ns_of_repo <owner/repo> → engine|game, the dispatch-target namespace.
+_ns_of_repo() {
+    case "$1" in
+        jakildev/irreden) echo game ;;
+        *)                echo engine ;;
+    esac
+}
+
+# _label_host <label> → the <host> segment of fleet:<kind>-<host>-<agent>.
+_label_host() {
+    local rest="${1#fleet:}"
+    rest="${rest#*-}"
+    echo "${rest%%-*}"
+}
+
+# _amending_owner_live <label-name> [<pr>] [<repo>]
+#   _claim_owner_live for an amending label, at the PR-label TTL
+#   (FLEET_CLAIM_STALE_SECS). A non-amending label returns 1.
+_amending_owner_live() {
+    local label_name="$1" pr="${2:-}" repo="${3:-$(repo_from_ns)}"
+    _AMENDING_OWNER_DISPATCH=""
+    _AMENDING_SUPERSEDED_BY=""
+    [[ "$label_name" == fleet:amending-* ]] || return 1
+    _claim_owner_live "$label_name" "$(_ns_of_repo "$repo")" "$pr" \
+        "${FLEET_CLAIM_STALE_SECS:-1800}"
+}
+
+# _crosshost_backstop_secs
+#   How long another host's fleet:amending-* / fleet:claim-* label survives a
+#   sweep on this host. Only the owning host can judge liveness, and
+#   `fleet-up` clears a returning host's own claims (reset-sweep-host-claims),
+#   so this only serves a host that went dark without `fleet-down`. It must
+#   outlast a live long task on the owning host.
+_crosshost_backstop_secs() {
+    echo "${FLEET_CLAIM_CROSSHOST_STALE_SECS:-43200}"
+}
+
+# Deliberately outside the `fleet:claim-` prefix: every claim-label parser
+# splits that prefix as <host>-<agent>.
+SWEEP_COOLDOWN_LABEL="fleet:sweep-cooldown"
+
+# _mark_sweep_cooldown <repo> <pr> <removed-label>
+#   Stamp fleet:sweep-cooldown on a PR whose amending/resolving claim a sweep
+#   just removed without being able to vouch its owner was dead. The add bumps
+#   the PR's updatedAt, which is the clock fleet_task_class's deferral reads,
+#   so nothing is recorded here. Best-effort: a failed add forgoes the grace.
+_mark_sweep_cooldown() {
+    if gh issue edit "$2" --repo "$1" --add-label "$SWEEP_COOLDOWN_LABEL" >/dev/null 2>&1; then
+        echo "cleanup --gh: marked $1 PR#$2 '$SWEEP_COOLDOWN_LABEL' after removing '$3'"
+    else
+        echo "fleet-claim: WARN could not add '$SWEEP_COOLDOWN_LABEL' to $1 PR#$2" >&2
     fi
+}
 
-    # Fallback arm: no dispatch identity to compare (architect pane, id-less
-    # snapshot), or the owner IS the current dispatch. A hung current owner
-    # ages out on the full TTL.
-    _amending_pane_heartbeat_fresh "$claim_agent"
+# _clear_sweep_cooldown <pr>
+#   A won amending/resolving claim ends the cooldown: the PR has an owner
+#   again. Reads the label set _cross_lane_precheck already fetched, so a PR
+#   without the label costs no call. Best-effort.
+_clear_sweep_cooldown() {
+    local label
+    for label in $(_issue_info_field labels "${CROSS_LANE_INFO:-}"); do
+        [[ "$label" == "$SWEEP_COOLDOWN_LABEL" ]] || continue
+        gh issue edit "$1" --repo "$(repo_from_ns)" \
+            --remove-label "$SWEEP_COOLDOWN_LABEL" >/dev/null 2>&1 || true
+        return 0
+    done
+    return 0
 }
 
 # _sweep_stale_prefix_holders <repo> <target> <prefix> <mine>
@@ -912,8 +892,9 @@ print("%s\t%s\t%s" % (
 #   Scoped to the transient PR-label claims (reviewing/resolving/amending).
 #   Issue `fleet:claim-*` locks have their own longer-TTL + PR-existence sweep
 #   in cmd_cleanup_gh and must not be second-guessed from the claim hot path.
-#   Reuses the cleanup sweep's host-qualified liveness predicate: a same-host
-#   amending label whose owning dispatch is still live is never force-swept.
+#   Reuses the cleanup sweep's liveness predicate: a same-host amending label
+#   whose owner is live is never force-swept, and a cross-host amending label,
+#   which this host cannot judge, waits out the cross-host backstop.
 #   For the amending prefix this decide-then-remove runs inside the per-PR
 #   amend lock that cmd_amending_claim holds across the whole acquire — the
 #   only caller that reaches here with that prefix — so it does not take the
@@ -933,20 +914,25 @@ _sweep_stale_prefix_holders() {
     done <<< "$all_labels"
     [[ -z "$holders" ]] && return 1
     local stale_secs="${FLEET_CLAIM_STALE_SECS:-1800}"
-    local now
+    local now this_host
     now=$(date +%s)
+    this_host=$(derive_host)
     local swept=1   # 1 = nothing swept (false)
-    local h added
+    local h added h_ttl
     while IFS= read -r h; do
         [[ -z "$h" || "$h" == "$mine" ]] && continue
         added=$(label_added_epoch "$repo" "$target" "$h")
         [[ "$added" -gt 0 ]] || continue            # unknown age — leave it
-        (( now - added < stale_secs )) && continue  # within TTL — legit holder
-        # Verdict is data, not an error (see _amending_owner_live): 0 = live
+        h_ttl="$stale_secs"
+        if [[ "$h" == fleet:amending-* && "$(_label_host "$h")" != "$this_host" ]]; then
+            h_ttl=$(_crosshost_backstop_secs)
+        fi
+        (( now - added < h_ttl )) && continue       # within TTL — legit holder
+        # Verdict is data, not an error (see _claim_owner_live): 0 = live
         # owner, leave it; 1/2 both proceed to the removal below, which this
         # path already gates on the full TTL.
         local _alive_rc=0
-        _amending_owner_live "$h" "$target" || _alive_rc=$?
+        _amending_owner_live "$h" "$target" "$repo" || _alive_rc=$?
         (( _alive_rc == 0 )) && continue            # same-host live owner
         local _rm_rc=0
         if [[ "$h" == fleet:amending-* ]]; then
@@ -1866,6 +1852,7 @@ for pr in prs:
         echo "$agent" > "$CLAIMS_DIR/$slug/owner"
         echo "$issue_num" > "$CLAIMS_DIR/$slug/title"
         date +%s     > "$CLAIMS_DIR/$slug/created"
+        _stamp_claim_dispatch "$slug"
 
         # Cross-host visibility: stamp the linked GitHub issue with
         # `fleet:claim-<host>-<agent>`. Generic prefix `fleet:claim-` is
@@ -1924,9 +1911,26 @@ for pr in prs:
         if [[ -f "$CLAIMS_DIR/$slug/owner" ]]; then
             owner=$(cat "$CLAIMS_DIR/$slug/owner")
         fi
+        # The incumbent re-acquiring its own claim from a newer dispatch moves
+        # the claim's identity to that dispatch. The pre-claim sentinel never
+        # overwrites a real id.
+        if [[ "$owner" == "$agent" && "${FLEET_DISPATCH_ID:-}" != "$FLEET_PRECLAIM_DISPATCH_ID" ]]; then
+            _stamp_claim_dispatch "$slug"
+        fi
         echo "already claimed by $owner: #${issue_num} (slug: $slug)"
         return 1
     fi
+}
+
+# _stamp_claim_dispatch <slug>
+#   Record the claiming dispatch's FLEET_DISPATCH_ID in the FS lock: the
+#   identity _claim_owner_live compares to the pane's current dispatch before
+#   a fresh heartbeat may vouch for the claim. No id (architect pane, a claim
+#   taken outside fleet-dispatch-wrap) writes nothing — "cannot compare", not
+#   a mismatch.
+_stamp_claim_dispatch() {
+    [[ -n "${FLEET_DISPATCH_ID:-}" ]] || return 0
+    printf '%s\n' "$FLEET_DISPATCH_ID" > "$CLAIMS_DIR/$1/dispatch_id" 2>/dev/null || true
 }
 
 cmd_claim_base() {
@@ -2267,12 +2271,15 @@ for pr in prs:
 #     - "host" — the pass removes only `fleet:claim-<this-host>-*`
 #       (`cmd_release`, `cmd_reset_sweep_host_claims`), so ANY other host's
 #       claim is live by construction and same-host labels never count.
-#     - "ttl"  — the pass removes any host's claim once it ages past
-#       <stale-secs> (`cmd_cleanup_gh`), so another claim is live while it is
-#       younger than that. Same-host claims with no local lock are confirmed
-#       orphans that this pass sweeps on their own row, so they don't count.
-#       The PR-state gate is per-issue, shared by every label on it, so age
-#       (plus the orphan fast path) is the only per-label discriminator.
+#     - "ttl"  — the full `cmd_cleanup_gh` pass. A same-host claim is live
+#       while it is younger than <stale-secs> or its owner is live
+#       (_claim_owner_live); one with no local lock is a confirmed orphan this
+#       pass sweeps on its own row, so it doesn't count. Another host's claim
+#       is live until it passes the cross-host backstop.
+#     - "own-host" — `cleanup --gh --own-host`: same-host claims as "ttl";
+#       another host's claim is never swept by the pass, so it is live.
+#       The PR-state gate is per-issue, shared by every label on it, so it is
+#       no per-label discriminator.
 #
 #   Fails closed: an unreadable label set or an unknown label age counts as
 #   live. Keeping `fleet:in-progress` one sweep cycle too long costs a delay;
@@ -2285,22 +2292,25 @@ _issue_has_unswept_claim() {
     issue_labels=$(gh issue view "$issue_num" --repo "$repo" \
         --json labels --jq '.labels[].name' 2>/dev/null) || return 0
     while IFS= read -r lbl; do
+        lbl="${lbl//$'\r'/}"
         [[ -z "$lbl" || "$lbl" == "$self_label" ]] && continue
         [[ "$lbl" == fleet:claim-* ]] || continue
-        lbl_host="${lbl#fleet:claim-}"
-        lbl_host="${lbl_host%%-*}"
-        if [[ "$scope" == "host" ]]; then
-            [[ "$lbl_host" == "$this_host" ]] && continue
-            return 0
-        fi
-        if [[ "$lbl_host" == "$this_host" \
-              && ! -d "$CLAIMS_DIR/$(slugify "$issue_num")" ]]; then
+        lbl_host=$(_label_host "$lbl")
+        if [[ "$lbl_host" != "$this_host" ]]; then
+            [[ "$scope" == "ttl" ]] || return 0
+            added=$(label_added_epoch "$repo" "$issue_num" "$lbl")
+            if [[ "$added" -eq 0 ]] || (( now - added < $(_crosshost_backstop_secs) )); then
+                return 0
+            fi
             continue
         fi
+        [[ "$scope" == "host" ]] && continue
+        [[ -d "$CLAIMS_DIR/$(slugify "$issue_num")" ]] || continue
         added=$(label_added_epoch "$repo" "$issue_num" "$lbl")
         if [[ "$added" -eq 0 ]] || (( now - added < stale_secs )); then
             return 0
         fi
+        _claim_owner_live "$lbl" "$(_ns_of_repo "$repo")" "$issue_num" "$stale_secs" && return 0
     done <<< "$issue_labels"
     return 1
 }
@@ -2695,10 +2705,12 @@ cmd_resolving_claim() {
     _cross_lane_precheck "fleet:resolving-" "resolving-claim" "${1:-}" "${2:-unknown}" || cross_lane_rc=$?
     if [[ "$cross_lane_rc" -eq 3 ]]; then
         _confirm_incumbent_claim "fleet:resolving-" "resolving-claim" "${1:-}" "${2:-unknown}"
+        _clear_sweep_cooldown "${1:-}"
         return 0
     fi
     [[ "$cross_lane_rc" -eq 0 ]] || return "$cross_lane_rc"
-    _cmd_pr_label_claim   "fleet:resolving-" "resolving-claim"   "$@"
+    _cmd_pr_label_claim   "fleet:resolving-" "resolving-claim"   "$@" || return $?
+    _clear_sweep_cooldown "${1:-}"
 }
 cmd_resolving_release() { _cmd_pr_label_release "fleet:resolving-" "resolving-release" "$@"; }
 cmd_amending_claim() {
@@ -2754,6 +2766,7 @@ cmd_amending_claim() {
         _amend_claim_void "${1:-}" "${2:-unknown}" "$posted"
         rc=1
     fi
+    (( rc == 0 )) && _clear_sweep_cooldown "${1:-}"
     _amend_lock_release "${1:-}"
     return "$rc"
 }
@@ -3137,11 +3150,13 @@ cmd_cleanup() {
 
     local -a repos=()
     local do_gh=0
+    CLEANUP_OWN_HOST=0
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --repo) repos+=("$2"); shift 2 ;;
-            --gh)   do_gh=1; shift ;;
-            *)      shift ;;
+            --repo)     repos+=("$2"); shift 2 ;;
+            --gh)       do_gh=1; shift ;;
+            --own-host) CLEANUP_OWN_HOST=1; shift ;;
+            *)          shift ;;
         esac
     done
     if [[ ${#repos[@]} -eq 0 ]]; then
@@ -3210,16 +3225,23 @@ _cleanup_sweep_label() {
 
     local age=$(( now - added_epoch ))
 
-    # Dispatch-scoped amend liveness, resolved once per label:
-    # 0 = live owner, 1 = cannot vouch (fall through to TTL), 2 = the
-    # owning iteration is provably gone. Non-amending labels take no
-    # verdict at all (1), so neither branch below fires for them.
+    # Amend liveness, resolved once per label: 0 = live owner, 1 = cannot
+    # vouch (fall through to the age rule), 2 = the owning iteration is
+    # provably gone. Non-amending labels take no verdict at all (1), so
+    # neither branch below fires for them.
     local _amend_rc=1 _amend_owner="" _amend_superseded=""
     if [[ "$label_name" == fleet:amending-* ]]; then
         _amend_rc=0
-        _amending_owner_live "$label_name" "$target_num" || _amend_rc=$?
+        _amending_owner_live "$label_name" "$target_num" "$repo" || _amend_rc=$?
         _amend_owner="$_AMENDING_OWNER_DISPATCH"
         _amend_superseded="$_AMENDING_SUPERSEDED_BY"
+    fi
+
+    # Another host's amending label: this host cannot judge its owner, so it
+    # waits out the cross-host backstop rather than the PR-label TTL.
+    local label_ttl="$stale_secs"
+    if [[ "$label_name" == fleet:amending-* && "$(_label_host "$label_name")" != "$this_host" ]]; then
+        label_ttl=$(_crosshost_backstop_secs)
     fi
 
     # Confirmed-orphan fast path for reviewing/resolving claims on PRs and
@@ -3235,8 +3257,8 @@ _cleanup_sweep_label() {
     # amending is vouched for by its own dispatch-ownership record
     # rather than a _prlabel-* marker, but a CONFIRMED-dead
     # verdict lands in the same orphan lane: the short grace instead
-    # of the 30-min TTL. Cross-host labels can't be vouched for locally
-    # and stay on the full TTL either way.
+    # of the 30-min TTL. Cross-host labels can't be vouched for locally:
+    # reviewing/resolving stay on the full TTL, amending on the backstop.
     local prlabel_orphan=0
     case "$label_name" in
         fleet:amending-*)
@@ -3260,19 +3282,17 @@ _cleanup_sweep_label() {
     local _orphan_grace="${FLEET_CLAIM_PRLABEL_ORPHAN_GRACE_SECS:-120}"
     if (( prlabel_orphan )); then
         [[ $age -lt $_orphan_grace ]] && return 0
-    elif [[ $age -lt $stale_secs ]]; then
+    elif [[ $age -lt $label_ttl ]]; then
         return 0
     fi
 
     # For amending claims: skip the sweep while the owner is LIVE —
     # TTL-sweeping an active amend causes duplicate dispatch by
-    # triggering the R7 heal. Liveness is host-qualified:
-    # heartbeats and dispatch records are host-local, so only a
-    # SAME-HOST amending label can be vouched for here; a cross-host
-    # stale label ages out on pure TTL — never honor a same-basename
-    # local worker's heartbeat for it.
+    # triggering the R7 heal. Only a same-host label can read LIVE:
+    # heartbeats and dispatch records are host-local, and a same-basename
+    # local worker's heartbeat must never vouch for another host's claim.
     if (( _amend_rc == 0 )); then
-        echo "cleanup --gh: skipping '$label_name' on $repo $target_surface#$target_num — same-host owning dispatch still live"
+        echo "cleanup --gh: skipping '$label_name' on $repo $target_surface#$target_num — same-host owning dispatch still live (owner live: ${_OWNER_LIVE_ARM:-?}${_OWNER_LIVE_TARGET:+ $_OWNER_LIVE_TARGET})"
         return 0
     fi
 
@@ -3301,6 +3321,17 @@ _cleanup_sweep_label() {
             # 2xTTL. On the legacy TTL path the snapshot STAYS — liveness is
             # unknown there, which is exactly when the deferral earns its keep.
             (( _amend_rc == 2 )) && rm -f "$(_amend_snapshot_path "$target_num")" 2>/dev/null || true
+            # A removal on age alone may have taken a live owner's claim, so
+            # the dispatcher holds the PR's feedback/conflict target off for
+            # a cooldown. A provably dead owner (superseded dispatch, missing
+            # marker) needs no grace.
+            if [[ "$target_surface" == PR ]] && (( ! prlabel_orphan )); then
+                case "$label_name" in
+                    fleet:amending-*|fleet:resolving-*)
+                        _mark_sweep_cooldown "$repo" "$target_num" "$label_name"
+                        ;;
+                esac
+            fi
             ;;
         3)
             echo "cleanup --gh: amend lock on $repo PR#$target_num was stolen during the sweep of '$label_name'; not counted (the label is re-judged next pass if still present)"
@@ -3353,6 +3384,10 @@ for issue in issues:
 
 # cmd_cleanup_gh <repo> [<repo> ...]
 #   Five-pass GitHub label sweep — see help text for the full contract.
+#   With CLEANUP_OWN_HOST=1 (`cleanup --gh --own-host`, the follower form the
+#   scout spawns) it runs passes 1–2 over labels naming this host only and
+#   skips passes 3–5, which stay with the authoritative poller's full run.
+CLEANUP_OWN_HOST=0
 cmd_cleanup_gh() {
     if ! command -v gh >/dev/null 2>&1; then
         echo "fleet-claim cleanup --gh: 'gh' not on PATH; skipping" >&2
@@ -3371,26 +3406,43 @@ cmd_cleanup_gh() {
     # This host's key, for the confirmed-orphan fast paths below (PR-label sweep
     # and the issue-claim sweep). A claim label names its owning host; only THIS
     # host can vouch for its own local claim markers, so the fast path applies to
-    # our own claims and cross-host claims stay on the TTL.
+    # our own claims and cross-host claims stay on their age rule.
     local this_host
     this_host=$(derive_host)
 
+    local cooldown_secs="${FLEET_CLAIM_SWEPT_COOLDOWN_SECS:-1800}"
     for repo in "${repos[@]}"; do
         local prs_json plan_review_issues label_sweep_plan
         prs_json=$(gh pr list --repo "$repo" --state open \
-            --json number,labels --limit 200 2>/dev/null || echo "[]")
-        label_sweep_plan=$(echo "$prs_json" | python3 -c '
-import json, sys
+            --json number,labels,updatedAt --limit 200 2>/dev/null || echo "[]")
+        # A `cooldown` row is a fleet:sweep-cooldown whose PR has been quiet
+        # past the cooldown: the dispatcher no longer defers on it, and a
+        # leftover label would re-defer the PR on its next unrelated update.
+        # Full run only: --own-host touches no label that isn't this host's.
+        label_sweep_plan=$(echo "$prs_json" | NOW="$now" COOLDOWN="$cooldown_secs" \
+            EXPIRE_COOLDOWN="$(( ! CLEANUP_OWN_HOST ))" python3 -c '
+import datetime, json, os, sys
+now, cooldown = int(os.environ["NOW"]), int(os.environ["COOLDOWN"])
 try:
     prs = json.load(sys.stdin)
 except Exception:
     prs = []
+def epoch(stamp):
+    try:
+        return int(datetime.datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ")
+                   .replace(tzinfo=datetime.timezone.utc).timestamp())
+    except (TypeError, ValueError):
+        return 0
 for pr in prs:
     n = pr.get("number")
     for l in (pr.get("labels") or []):
         name = (l or {}).get("name", "") if isinstance(l, dict) else ""
         if name.startswith("fleet:reviewing-") or name.startswith("fleet:resolving-") or name.startswith("fleet:amending-"):
             print(f"PR\t{n}\t{name}")
+        elif name == "fleet:sweep-cooldown" and os.environ["EXPIRE_COOLDOWN"] == "1":
+            updated = epoch(pr.get("updatedAt"))
+            if updated and now - updated >= cooldown:
+                print(f"cooldown\t{n}\t{name}")
 ' 2>/dev/null | tr -d '\r' || echo "")
         plan_review_issues=$(gh issue list --repo "$repo" --state open \
             --label "fleet:plan-review" --json number,labels --limit 200 2>/dev/null \
@@ -3413,6 +3465,16 @@ for issue in issues:
 
         while IFS=$'\t' read -r target_surface target_num label_name; do
             [[ -z "$target_surface" || -z "$target_num" || -z "$label_name" ]] && continue
+            if [[ "$target_surface" == cooldown ]]; then
+                if gh issue edit "$target_num" --repo "$repo" \
+                        --remove-label "$label_name" >/dev/null 2>&1; then
+                    echo "cleanup --gh: cleared expired '$label_name' on $repo PR#$target_num"
+                fi
+                continue
+            fi
+            if (( CLEANUP_OWN_HOST )) && [[ "$(_label_host "$label_name")" != "$this_host" ]]; then
+                continue
+            fi
             if [[ "$label_name" == fleet:amending-* ]]; then
                 if ! _amend_lock_acquire "$target_num"; then
                     echo "cleanup --gh: skipping '$label_name' on $repo PR#$target_num this pass — amend lock held"
@@ -3449,13 +3511,20 @@ for issue in issues:
     # closed-issue label sweep runs here.
 
     # Second pass: sweep `fleet:claim-*` labels off OPEN issues when the
-    # claim is stale (age > TTL) and no *active* matching PR exists. A
+    # claim is stale (age > TTL), its owner is not live, and no *active*
+    # matching PR exists. Liveness (_claim_owner_live) is the owner's
+    # heartbeat and dispatch record, judged on the owning host only; the PR
+    # match is the ownership/activity check and never a liveness input. A
     # matching PR that is parked (fleet:design-blocked / -unblocked) does NOT
     # count as active: the worker released its claim to let any worker resume
     # after the architect responds, so its lingering claim is sweepable just
     # like a no-PR abandon. Only an active (non-parked) matching
     # WIP PR (head-branch claude/<N>-*) keeps the claim.
     local claim_issue_stale_secs="${FLEET_CLAIM_STALE_SECS_ISSUES:-7200}"
+    local crosshost_stale_secs
+    crosshost_stale_secs=$(_crosshost_backstop_secs)
+    local unswept_scope="ttl"
+    (( CLEANUP_OWN_HOST )) && unswept_scope="own-host"
     # this_host computed once at the top of cmd_cleanup_gh (shared with the
     # PR-label orphan fast path).
     for repo in "${repos[@]}"; do
@@ -3482,10 +3551,14 @@ for issue in issues:
             # an orphan strands a claimable task as in_progress for the whole
             # cross-host TTL. Sweep it now
             # instead of waiting the TTL out. Cross-host claims have no local lock
-            # here by definition, so they're left on the TTL + PR-state path —
-            # only the owning host can distinguish "dead" from "live elsewhere".
-            local claim_host="${label_name#fleet:claim-}"
-            claim_host="${claim_host%%-*}"
+            # here by definition; only the owning host can distinguish "dead"
+            # from "live elsewhere", so here they wait out the cross-host
+            # backstop, and an --own-host run leaves them alone.
+            local claim_host
+            claim_host=$(_label_host "$label_name")
+            if (( CLEANUP_OWN_HOST )) && [[ "$claim_host" != "$this_host" ]]; then
+                continue
+            fi
             local same_host_orphan=0
             if [[ "$claim_host" == "$this_host" \
                   && ! -d "$CLAIMS_DIR/$(slugify "$issue_num")" ]]; then
@@ -3496,13 +3569,22 @@ for issue in issues:
             local age=0
             # Orphans skip the age TTL — skip the API call entirely for confirmed
             # same-host orphans (label_added_epoch is irrelevant to the decision).
-            # Cross-host / lock-present claims wait out the TTL and do need it.
+            # Cross-host / lock-present claims wait out their TTL and do need it.
             if (( same_host_orphan == 0 )); then
                 added_epoch=$(label_added_epoch "$repo" "$issue_num" "$label_name")
                 [[ "$added_epoch" -eq 0 ]] && continue
                 age=$(( now - added_epoch ))
-                if (( age < claim_issue_stale_secs )); then
-                    continue
+                if [[ "$claim_host" != "$this_host" ]]; then
+                    (( age < crosshost_stale_secs )) && continue
+                else
+                    (( age < claim_issue_stale_secs )) && continue
+                    local _live_rc=0
+                    _claim_owner_live "$label_name" "$(_ns_of_repo "$repo")" \
+                        "$issue_num" "$claim_issue_stale_secs" || _live_rc=$?
+                    if (( _live_rc == 0 )); then
+                        echo "cleanup --gh: keeping '$label_name' on $repo issue#$issue_num (age: $((age / 60))m) — owner live: ${_OWNER_LIVE_ARM:-?}${_OWNER_LIVE_TARGET:+ $_OWNER_LIVE_TARGET}"
+                        continue
+                    fi
                 fi
             fi
 
@@ -3528,7 +3610,7 @@ for issue in issues:
                 # at different times; only the row that retires the LAST live
                 # claim may clear fleet:in-progress.
                 if _issue_has_unswept_claim "$repo" "$issue_num" "$label_name" \
-                        "ttl" "$claim_issue_stale_secs" "$now"; then
+                        "$unswept_scope" "$claim_issue_stale_secs" "$now"; then
                     echo "cleanup --gh: keeping 'fleet:in-progress' on $repo issue#$issue_num — another claim is still live"
                 else
                     gh issue edit "$issue_num" --repo "$repo" \
@@ -3540,6 +3622,11 @@ for issue in issues:
             fi
         done <<< "$open_claim_plan"
     done
+
+    if (( CLEANUP_OWN_HOST )); then
+        echo "cleanup --gh --own-host: removed $total_removed stale label(s) naming $this_host"
+        return 0
+    fi
 
     # Third pass: sweep stale `fleet:stewarding-*` labels off open
     # fleet:epic issues. A stewardship session is one transient
@@ -4109,18 +4196,31 @@ cmd_reconcile() {
 
     # ---- classify drift across the four surfaces -------------------------
     local findings="$work/findings.jsonl"
+    LIVENESS_HEARTBEATS_DIR="$HEARTBEATS_DIR" \
+    LIVENESS_RESERVATIONS_DIR="$RESERVATIONS_DIR" \
+    LIVENESS_AMEND_SNAPSHOTS_DIR="${FLEET_AMEND_SNAPSHOTS_DIR:-$HOME/.fleet/amend-snapshots}" \
+    LIVENESS_CLAIMS_DIR="$CLAIMS_DIR" \
     python3 - "$work" "$host" "$now" "$claim_ttl" "${repos[*]}" \
         "$work/fs_claims.json" "$work/reservations.json" \
-        "$state_dir/dispatch" \
+        "$state_dir" \
         > "$findings" <<'PYEOF'
 import sys, os, json, re
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
 from fleet_branch_match import issue_from_branch, PARKED_PR_LABELS
+import fleet_claim_liveness as liveness
 
 work, host, now_s, ttl_s = sys.argv[1:5]
 repos = sys.argv[5].split() if sys.argv[5] else []
-fs_path, res_path, dispatch_dir = sys.argv[6], sys.argv[7], sys.argv[8]
+fs_path, res_path, state_dir = sys.argv[6], sys.argv[7], sys.argv[8]
+dispatch_dir = os.path.join(state_dir, "dispatch")
 now, ttl = int(now_s), int(ttl_s)
+liveness_dirs = {
+    "heartbeats": os.environ["LIVENESS_HEARTBEATS_DIR"],
+    "state": state_dir,
+    "reservations": os.environ["LIVENESS_RESERVATIONS_DIR"],
+    "amend_snapshots": os.environ["LIVENESS_AMEND_SNAPSHOTS_DIR"],
+    "claims": os.environ["LIVENESS_CLAIMS_DIR"],
+}
 
 def load(p, default):
     try:
@@ -4187,11 +4287,13 @@ def has_open_pr(repo, issue):
     return None if d is None else (issue in d["open_pr_issues"])
 
 # ---- R1/R5: host-local stale claim (FS lock + label, no PR, age>TTL) ----
-# A live dispatch record is the dispatcher's own statement that a pane is
-# working the item right now (written before launch, consumed at exit). Age
-# alone cannot tell a wedged claim from a long task that has not opened its
-# PR yet, and releasing the latter re-queues the issue under a working pane
-# — the next dispatch claims it again and two panes ship the same task.
+# Age alone cannot tell a wedged claim from a long task that has not opened
+# its PR yet, and releasing the latter re-queues the issue under a working
+# pane — the next dispatch claims it again and two panes ship the same task.
+# So a past-TTL claim is released only when the shared liveness predicate
+# cannot vouch for its owner: no live dispatch record naming the item, and no
+# fresh heartbeat whose dispatch identity (or reservation) ties it to this
+# claim. The predicate never reads the worktree's branch or HEAD.
 def live_dispatches(path):
     live = {}
     try:
@@ -4226,25 +4328,36 @@ for c in fs_claims:
                 "stale claim suspected but its repo is outside the scan set; skipped",
                 "repo-not-scanned")
         continue
+    if op or age < ttl:
+        continue
     # The keep is for the claim's OWN pane: the dispatcher claims under the
     # target pane's basename before launch, so a dispatch by another agent
     # is not this claim's work and the claim ages out as usual.
-    live = dispatched.get((c["ns"], c["issue"]))
-    if not op and age >= ttl and live is not None and live["agent"] == c["owner"]:
-        add("R1", repo, c["issue"], "issue", ["fs_claim", "dispatch"],
-            "stale-aged claim kept: its owner is live-dispatched on it",
-            "age %dm >= TTL %dm, no open PR, but owner %s is dispatched on %s (pane %s)"
-            % (age // 60, ttl // 60, live["agent"], live["target"], live["pane"]),
+    code, detail = liveness.verdict(
+        "fleet:claim-%s-%s" % (host, c["owner"]), c["ns"], c["issue"],
+        this_host=host, ttl=ttl, now=now, dirs=liveness_dirs)
+    if code == liveness.LIVE:
+        if detail["arm"] == "dispatch":
+            live = dispatched.get((c["ns"], c["issue"])) or {}
+            why = "owner %s is dispatched on %s (pane %s)" % (
+                c["owner"], detail["target"], live.get("pane", "?"))
+            action = "stale-aged claim kept: its owner is live-dispatched on it"
+        else:
+            why = "owner %s has a fresh heartbeat (%s)" % (c["owner"], detail["arm"])
+            action = "stale-aged claim kept: its owner's heartbeat is live"
+        add("R1", repo, c["issue"], "issue", ["fs_claim", "dispatch", "heartbeat"],
+            action,
+            "age %dm >= TTL %dm, no open PR, but %s" % (age // 60, ttl // 60, why),
             escalate=False)
         continue
-    if not op and age >= ttl:
-        add("R1", repo, c["issue"], "issue", ["fs_claim", "label", "pr"],
-            "release host-local stale FS claim + remove this host's claim "
-            "label + fleet:in-progress",
-            "age %dm >= TTL %dm, no open claude/%d-* PR" % (age // 60, ttl // 60, c["issue"]),
-            apply={"type": "stale_claim", "slug": c["slug"], "issue": c["issue"],
-                   "repo": repo, "claim_label": "fleet:claim-%s-%s" % (host, c["owner"]),
-                   "owner": c["owner"]})
+    add("R1", repo, c["issue"], "issue", ["fs_claim", "label", "pr"],
+        "release host-local stale FS claim + remove this host's claim "
+        "label + fleet:in-progress",
+        "age %dm >= TTL %dm, no open claude/%d-* PR, owner not live (%s)"
+        % (age // 60, ttl // 60, c["issue"], detail["arm"]),
+        apply={"type": "stale_claim", "slug": c["slug"], "issue": c["issue"],
+               "repo": repo, "claim_label": "fleet:claim-%s-%s" % (host, c["owner"]),
+               "owner": c["owner"]})
 
 # ---- R3: reservation/claim consistency ----
 for r in reservations:
@@ -6417,32 +6530,42 @@ commands:
                                 stack.
   check-stale [max-secs]        release claims older than max-secs
                                 (default: 7200).
-  cleanup [--repo o/r] [--gh] ...
+  cleanup [--repo o/r] [--gh [--own-host]] ...
                                 Remove claims whose linked issue is
                                 CLOSED. With --gh also runs five
-                                GitHub sweeps:
+                                GitHub sweeps. Liveness of an
+                                amending/claim owner comes from one
+                                predicate (fleet_claim_liveness.py),
+                                judged on the owning host only:
                                 (1) stale fleet:reviewing-* labels off
                                     open PRs and fleet:plan-review
                                     issues; stale fleet:resolving-* and
                                     fleet:amending-* labels off open
                                     PRs (>30 min age). A same-host
-                                    amending label is kept while its
-                                    owning DISPATCH is still the
-                                    worktree's current one and the
-                                    pane heartbeat is fresh; one whose
-                                    worktree has since launched a
-                                    newer dispatch is a confirmed
-                                    orphan, swept after the 120s
-                                    grace instead of the TTL (#2973).
-                                    With no dispatch identity on
-                                    record (architect pane, pre-#2973
-                                    claim) the pane heartbeat alone
-                                    decides, as before. A dispatcher
+                                    amending label is kept while a
+                                    live dispatch record names its
+                                    owner on the PR, or while the pane
+                                    heartbeat is fresh and the owning
+                                    DISPATCH is still the worktree's
+                                    current one; one whose worktree
+                                    has since launched a newer
+                                    dispatch is a confirmed orphan,
+                                    swept after the 120s grace instead
+                                    of the TTL (#2973). With no
+                                    dispatch identity on record
+                                    (architect pane) the fresh
+                                    heartbeat decides. A dispatcher
                                     PRE-CLAIM, taken before its
                                     iteration is launched, is kept for
                                     300s (FLEET_CLAIM_PRECLAIM_GRACE_
                                     SECS) without consulting the
-                                    heartbeat, then falls back to it.
+                                    heartbeat. An amending/resolving
+                                    label removed on age alone (not a
+                                    confirmed orphan) stamps
+                                    fleet:sweep-cooldown on the PR;
+                                    that label is cleared once the PR
+                                    is quiet past FLEET_CLAIM_SWEPT_
+                                    COOLDOWN_SECS (1800).
                                     Each amending label is aged,
                                     judged and removed under a per-PR
                                     lock shared with amending-claim
@@ -6462,13 +6585,22 @@ commands:
                                     nothing is ever re-added from
                                     local state. A dead writer's
                                     intent is retired by the next
-                                    lock holder. Cross-host labels age
-                                    out on pure TTL,
+                                    lock holder. Cross-host amending
+                                    labels wait out FLEET_CLAIM_
+                                    CROSSHOST_STALE_SECS (43200);
+                                    cross-host reviewing/resolving
+                                    labels age out on pure TTL,
                                 (2) fleet:claim-* labels off open
                                     issues where the claim is
                                     abandoned — age > TTL (default
-                                    7200s) AND no *active* matching PR
-                                    exists. A matching PR that is parked
+                                    7200s), owner not live (same
+                                    predicate, heartbeat window = that
+                                    TTL; a detached HEAD is no signal
+                                    either way) AND no *active*
+                                    matching PR exists. A cross-host
+                                    claim waits out the 43200s
+                                    backstop instead. A matching PR
+                                    that is parked
                                     (fleet:design-blocked/-unblocked/
                                     -proposed) counts as abandoned, not
                                     active (#1488). `fleet:in-progress`
@@ -6493,6 +6625,9 @@ commands:
                                 `fleet:claim-*` labels on CLOSED
                                 issues are preserved as a historical
                                 "who worked on this" record.
+                                --own-host (the scout's follower form)
+                                runs (1)-(2) over labels naming this
+                                host only and skips (3)-(5).
   review-claim <pr> <agent>     atomically claim a PR for review/smoke
                                 work via a
                                 fleet:reviewing-<host>-<agent> label.
@@ -6586,7 +6721,10 @@ commands:
                                 --apply, performs only host-local,
                                 TTL/corroboration-gated auto-fixes:
                                   R1/R5 stale FS claim (no open PR + age>TTL;
-                                  kept while a live dispatch works it)
+                                  kept while its owner is live — a
+                                  live dispatch on it, or a fresh
+                                  heartbeat whose dispatch id or
+                                  reservation ties it to the claim)
                                         → release FS lock + this host's
                                         claim label + fleet:in-progress;
                                   R3    reservation/claim owner mismatch (or

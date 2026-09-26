@@ -231,14 +231,16 @@ declare -A FLEET_CLAIM_EXCLUDES=(
 # The dispatch identity a PRE-CLAIM carries. fleet-dispatcher
 # takes a target's claim BEFORE fleet-dispatch-wrap mints the iteration's real
 # FLEET_DISPATCH_ID, so the ownership record fleet-claim writes on the
-# `feedback` (amending) arm would otherwise be stamped with an EMPTY id — the
-# one value that routes the claim onto the pane-heartbeat fallback the
-# dispatch-keyed rule exists to replace. The dispatcher exports this sentinel
-# for the pre-claim call instead; `_amending_owner_live` reads it as "claimed,
-# iteration launching" and vouches LIVE until the pre-claim grace expires, and
-# never as a superseded (confirmed-dead) id. The role's own step-a re-acquire
-# overwrites it with the minted id, which is what ends the window in the normal
-# case. Deliberately not a uuid shape, so it can never collide with a minted id.
+# `feedback` (amending) and `task`/`stack` arms would otherwise be stamped with
+# an EMPTY id — which fleet_claim_liveness.py reads as "no identity to compare",
+# letting any later role's pane heartbeat vouch for the claim. The dispatcher
+# exports this sentinel for the pre-claim call instead. For an amend it reads
+# as "claimed, iteration launching" and vouches LIVE until the pre-claim grace
+# expires, and never as a superseded (confirmed-dead) id; the role's own step-a
+# re-acquire overwrites it with the minted id. Otherwise it is an id that
+# matches no dispatch, so past the grace only the live dispatch record (or a
+# reservation) keeps the claim. Deliberately not a uuid shape, so it can never
+# collide with a minted id. keep in sync with fleet_claim_liveness.DEFAULT_PRECLAIM_ID
 FLEET_PRECLAIM_DISPATCH_ID="preclaim"
 
 # `task:engine:1969` -> `task-engine-1969`: the one per-target file key

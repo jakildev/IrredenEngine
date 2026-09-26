@@ -128,6 +128,7 @@ LABELS=(
     "fleet:needs-opus-recheck|1d76db|Sonnet approved but flagged 'Opus recheck required'; wakes the opus-reviewer, which removes it"
     "fleet:semantic-conflict|d73a4a|Merger hit non-mechanical conflict; opus+-class worker resolves or escalates"
     "fleet:merger-cooldown|bfdadc|Merger touched this PR; skip until next iteration"
+    "fleet:sweep-cooldown|bfdadc|cleanup --gh swept a claim it could not vouch was dead; dispatcher defers the PR ~30 min"
     "fleet:design-blocked|fbca04|Worker escalated for architectural input mid-task; architect should respond"
     "fleet:design-unblocked|c5def5|Architect responded; worker resumes per the architect comment + plan corrections"
     "fleet:design-proposed|fbca04|Epic-steward parked this design-blocked child; its question rides a STEWARD PROPOSAL upstream"

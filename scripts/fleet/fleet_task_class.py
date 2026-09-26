@@ -99,6 +99,7 @@ means this host owes no smoke work, and the dispatcher stands the lane down
 instead of spending a pane on another host's backlog.
 """
 
+import calendar
 import json
 import os
 import platform
@@ -292,10 +293,64 @@ def _terminally_unclaimable(task, host):
     )
 
 
+# Sweep cooldown. `fleet-claim cleanup --gh` stamps `fleet:sweep-cooldown` on a
+# PR when it removes a `fleet:amending-*` / `fleet:resolving-*` claim on age
+# alone — an owner it could not vouch was dead, which may still be working on
+# another host. The PR's feedback/conflict target is withheld while its
+# `updatedAt` (bumped by that label add) is younger than the cooldown, so a
+# second pane is not sent into work the first may be about to push. The winning
+# claim, or the sweep once the cooldown has passed, removes the label.
+SWEEP_COOLDOWN_LABEL = "fleet:sweep-cooldown"
+DEFAULT_SWEEP_COOLDOWN_SECS = 1800
+
+
+def _sweep_cooldown_secs():
+    raw = os.environ.get("FLEET_CLAIM_SWEPT_COOLDOWN_SECS", "")
+    return int(raw) if raw.isdigit() else DEFAULT_SWEEP_COOLDOWN_SECS
+
+
+def _now():
+    # FLEET_TASK_CLASS_NOW is the suites' clock seam.
+    raw = os.environ.get("FLEET_TASK_CLASS_NOW", "")
+    return int(raw) if raw.isdigit() else int(time.time())
+
+
+def _iso_epoch(stamp):
+    try:
+        return calendar.timegm(time.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ"))
+    except (TypeError, ValueError, OverflowError):
+        return 0
+
+
+def _sweep_cooldown_age(pr):
+    """Seconds since a cooling PR's last update, or None when the PR is not
+    cooling down (no label, no parsable `updatedAt`, or the cooldown passed)."""
+    if SWEEP_COOLDOWN_LABEL not in (pr.get("labels") or []):
+        return None
+    updated = _iso_epoch(pr.get("updatedAt") or "")
+    if not updated:
+        return None
+    age = max(0, _now() - updated)
+    return age if age < _sweep_cooldown_secs() else None
+
+
+def sweep_cooldown_deferrals(slice_data):
+    """``(target, age, updatedAt)`` for every conflict/feedback PR in the
+    worker slice that `_candidates` withholds for a sweep cooldown."""
+    out = []
+    for kind, key in (("conflict", "semantic_conflict_prs"), ("feedback", "feedback_prs")):
+        for pr in slice_data.get(key) or []:
+            age = _sweep_cooldown_age(pr)
+            target = _target(kind, pr)
+            if age is not None and target is not None:
+                out.append((target, age, pr.get("updatedAt") or ""))
+    return out
+
+
 def _only_unclaimable_work(slice_data, host):
     """True when the slice carries claimable-shaped work but EVERY item of it
     is terminally unclaimable — tasks per `_terminally_unclaimable`, feedback
-    PRs per the host gate.
+    PRs per the host gate — or held off for now by a sweep cooldown.
 
     Used to pick 'go quiet' (defer) over the lane-default dispatch fallthrough:
     in this shape a fresh worker can claim nothing, so a dispatch is a no-op.
@@ -309,16 +364,20 @@ def _only_unclaimable_work(slice_data, host):
     relocates the churn it removes: a slice whose one item is a
     host-locked feedback PR yields no candidate, and a tasks-only quiet check
     then reports nothing-unclaimable and falls through to a lane-default
-    no-op. Only `tasks_open` and `feedback_prs` are
-    consulted because reaching this point means every other source (semantic
-    conflicts, needs_plan) yielded nothing, and those two yield
+    no-op. A cooling-down PR is folded in the same way: an untargeted worker
+    launched on the '' fallthrough scans the cached PRs itself and would claim
+    the very PR the cooldown withholds. needs_plan is not consulted because
+    reaching this point means it yielded nothing, and it yields
     unconditionally when non-empty."""
     tasks = slice_data.get("tasks_open") or []
     feedback = slice_data.get("feedback_prs") or []
-    if not (tasks or feedback):
+    conflicts = slice_data.get("semantic_conflict_prs") or []
+    if not (tasks or feedback or conflicts):
         return False
     return (all(_terminally_unclaimable(t, host) for t in tasks)
-            and all(_host_incompatible(pr, host) for pr in feedback))
+            and all(_host_incompatible(pr, host) or _sweep_cooldown_age(pr) is not None
+                    for pr in feedback)
+            and all(_sweep_cooldown_age(pr) is not None for pr in conflicts))
 
 
 def feedback_pr_class(labels):
@@ -443,7 +502,12 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False):
     # no fleet:resolving-* claim, stacked children deferred to their base),
     # so no re-filtering here. No host gate either: step 1c build-verifies
     # IRShapeDebug, which every fleet host builds natively.
+    # A PR in its sweep cooldown is withheld exactly like a declined one: it
+    # neither counts toward the election nor reaches the claim walk
+    # (`--sweep-cooldowns` reports it to the dispatcher's log).
     for pr in slice_data.get("semantic_conflict_prs", []) or []:
+        if _sweep_cooldown_age(pr) is not None:
+            continue
         if not _declined("conflict", pr, "worker"):
             yield "opus", CLASS_DEFAULT_EFFORT["opus"], "work", _target("conflict", pr)
     for pr in slice_data.get("feedback_prs", []) or []:
@@ -458,7 +522,7 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False):
         # concurrency cap.
         if _host_incompatible(pr, host):
             continue
-        if _declined("feedback", pr, "worker"):
+        if _declined("feedback", pr, "worker") or _sweep_cooldown_age(pr) is not None:
             continue
         cls = feedback_pr_class(pr.get("labels", []))
         yield cls, CLASS_DEFAULT_EFFORT[cls], "work", _target("feedback", pr)
@@ -731,6 +795,23 @@ def main(argv):
         lane_default = argv[5] if len(argv) == 6 else "opus"
         for line in pick(slice_data, argv[3], argv[4] == "1", lane_default):
             print(line)
+        return 0
+    if argv[1:2] == ["--sweep-cooldowns"]:
+        # --sweep-cooldowns <worker-slice.json>: one
+        # `<target> <age-secs> <cooldown-secs> <updatedAt>` line per PR the
+        # worker lane withholds for a sweep cooldown. `_candidates` already
+        # withholds them; the dispatcher only logs these (log once per
+        # target + updatedAt), which a generator behind --pick cannot do.
+        if len(argv) != 3:
+            print("usage: fleet_task_class.py --sweep-cooldowns <slice.json>",
+                  file=sys.stderr)
+            return 2
+        slice_data = _load_slice(argv[2])
+        if slice_data is None:
+            return 0
+        cooldown = _sweep_cooldown_secs()
+        for target, age, updated in sweep_cooldown_deferrals(slice_data):
+            print(f"{target} {age} {cooldown} {updated}")
         return 0
     if argv[1:2] == ["--pick-role"]:
         # --pick-role <slice.json> <role>: the ordered dispatch targets for a

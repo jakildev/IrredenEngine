@@ -100,6 +100,8 @@ dispatches into the same pane (#2973). Per-iteration ownership is keyed on the
 dispatch id instead — `fleet-dispatch-wrap` exports `FLEET_DISPATCH_ID` and
 records the worktree's current dispatch at
 `~/.fleet/state/dispatch-current/<worktree>`; `fleet-claim` compares the two.
+A claim sweep counts a fresh heartbeat only when that identity ties it to
+the claim ([`FLEET.md § Claim liveness`](FLEET.md#claim-liveness)).
 
 ---
 

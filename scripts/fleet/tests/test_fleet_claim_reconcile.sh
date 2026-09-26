@@ -81,9 +81,10 @@ export FLEET_CLAIMS_DIR="$TMPROOT/claims"
 export FLEET_RESERVATIONS_DIR="$TMPROOT/reservations"
 export FLEET_STATE_DIR="$TMPROOT/state"
 export FLEET_ORPHANS_DIR="$TMPROOT/orphans"
+export FLEET_HEARTBEATS_DIR="$TMPROOT/heartbeats"
 export FLEET_TEST_HOST="mac"
 export FLEET_CLAIM_STALE_SECS=1800
-mkdir -p "$FLEET_CLAIMS_DIR" "$FLEET_RESERVATIONS_DIR" "$FLEET_STATE_DIR"
+mkdir -p "$FLEET_CLAIMS_DIR" "$FLEET_RESERVATIONS_DIR" "$FLEET_STATE_DIR" "$FLEET_HEARTBEATS_DIR"
 
 REPORT="$FLEET_STATE_DIR/drift-report.json"
 REMOVED_FILE="$TMPROOT/removed.log"
@@ -309,6 +310,43 @@ assert not [k for k in state if k.endswith(":508")], "R1 #508 must never accrue:
 r2 = state.get("R2:jakildev/IrredenEngine:pr:600")
 assert r2 and r2["count"] >= 3, "the flag-only R2 finding must still accrue across ticks: %s" % r2
 PY
+
+echo "=== Phase 4: a detached-HEAD pane with a fresh heartbeat keeps its claim ==="
+# opus-worker-8 resumed its reserved task 520 under a new dispatch (D2 vs the
+# claim's D1) and is doing evidence work on a detached HEAD with no PR open
+# yet. No live dispatch record names the item. The heartbeat, tied to the
+# claim by the reservation, is what keeps it; the HEAD is no input at all.
+# Issue 521 is the control: identical but for a heartbeat past the TTL.
+WT="$TMPROOT/worktrees/opus-worker-8"
+git init -q "$WT"
+git -C "$WT" -c user.email=t@t -c user.name=t commit -q --allow-empty -m base
+git -C "$WT" checkout -q --detach
+if [[ "$(git -C "$WT" rev-parse --abbrev-ref HEAD)" == HEAD ]]; then ok "fixture pane is on a detached HEAD"; else bad "fixture pane is not detached"; fi
+mkdir -p "$FLEET_STATE_DIR/dispatch-current"
+for spec in "520 opus-worker-8 60" "521 opus-worker-10 9000"; do
+    read -r _n _owner _beat_age <<< "$spec"
+    mk_claim "$_n" "$_owner" $((NOW - 3600))
+    echo D1 > "$FLEET_CLAIMS_DIR/$_n/dispatch_id"
+    echo D2 > "$FLEET_STATE_DIR/dispatch-current/$_owner"
+    "$FLEET_CLAIM" reserve "$_n" "$_owner" >/dev/null
+    touch -d "@$((NOW - _beat_age))" "$FLEET_HEARTBEATS_DIR/$_owner"
+done
+"$FLEET_CLAIM" reconcile --repo jakildev/IrredenEngine >/dev/null 2>&1
+python3 - "$REPORT" <<'PY' && ok "R1 keeps the live detached pane flag-only and releases the stale control" || bad "R1 detached-pane findings wrong"
+import sys, json
+r = json.load(open(sys.argv[1]))
+r1 = {f["target"]: f for f in r["findings"] if f["rule"] == "R1"}
+keep = r1.get(520)
+assert keep and keep["apply"] is None, "R1 #520 must be flag-only: %s" % keep
+assert keep.get("escalate") is False, keep
+assert "heartbeat" in keep["gated_by"] and "opus-worker-8" in keep["gated_by"], keep["gated_by"]
+ctl = r1.get(521)
+assert ctl and ctl["apply"] and ctl["apply"]["type"] == "stale_claim", \
+    "control #521 (stale heartbeat) must carry the R1 stale_claim apply: %s" % ctl
+PY
+"$FLEET_CLAIM" reconcile --apply --repo jakildev/IrredenEngine >/dev/null 2>&1
+assert_dir_present "$FLEET_CLAIMS_DIR/520" "--apply keeps the detached pane's live claim #520"
+assert_dir_absent  "$FLEET_CLAIMS_DIR/521" "--apply releases control #521 (stale heartbeat)"
 
 echo
 echo "================================"

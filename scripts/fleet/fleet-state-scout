@@ -4350,7 +4350,8 @@ def _claim_cleanup_marker_path() -> Path:
 
 
 def _claim_cleanup_due(now: int | None = None) -> bool:
-    """Return whether the authoritative stale-claim sweep is due."""
+    """Return whether this host's stale-claim sweep is due (the full sweep on
+    the authoritative poller, `--own-host` on a follower)."""
     if now is None:
         now = int(time.time())
     try:
@@ -4953,7 +4954,11 @@ def tick_once():
             except FileNotFoundError:
                 old_hash = ""
             projection_changed = new_hash != old_hash
-            cleanup_due = authoritative and _claim_cleanup_due()
+            # Every host runs the claim-cleanup cadence: claim liveness is
+            # judged only on the host that owns the claim, so a follower
+            # sweeps its own labels (`--own-host`) while the authoritative
+            # poller runs the full, global form.
+            cleanup_due = _claim_cleanup_due()
             stalled_due = authoritative and _stalled_sweep_due()
             if projection_changed or cleanup_due or stalled_due:
                 if state.get("degraded"):
@@ -4972,16 +4977,19 @@ def tick_once():
                 # fleet-stalled-sweep posts a GLOBAL human-facing comment — run
                 # both only on the authoritative poller (leader, or a follower
                 # currently self-polling), else every follower re-multiplies the
-                # very mutation calls Q2 exists to collapse. reconcile
+                # very mutation calls Q2 exists to collapse. A follower runs
+                # `cleanup --gh --own-host` instead: only labels naming its own
+                # host, the only ones it can judge. reconcile
                 # --apply is conservative host-local + TTL-gated claim hygiene
                 # and runs on EVERY host (one multi-repo pass — one drift report
                 # + one deduped tracker — with the reachable repos as --repo
                 # flags). All backgrounded so their gh calls never stall the 30s
                 # tick or race a live pane.
+                cleanup_scope = [] if authoritative else ["--own-host"]
                 sweep_cmds = []
                 if cleanup_due:
                     sweep_cmds.append(
-                        ["fleet-claim", "cleanup", "--gh",
+                        ["fleet-claim", "cleanup", "--gh", *cleanup_scope,
                          "--repo", "jakildev/IrredenEngine"])
                 # One process per sweep, both repos in one argv: fleet-stalled-sweep
                 # takes --repo repeatably and sweeps each independently.
@@ -4993,7 +5001,7 @@ def tick_once():
                     if cleanup_due:
                         sweep_cmds.append(
                             ["fleet-claim", "--repo", "game", "cleanup",
-                             "--gh", "--repo", "jakildev/irreden"])
+                             "--gh", *cleanup_scope, "--repo", "jakildev/irreden"])
                     stalled_cmd += ["--repo", "jakildev/irreden"]
                     reconcile_cmd += ["--repo", "jakildev/irreden"]
                 if stalled_due:
