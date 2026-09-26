@@ -371,7 +371,9 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             IRPrefab::PerAxisCanvas::LightingRouteScope route(
                 voxelFrameDataBuf_,
                 voxelCompactedBuf_,
-                voxelIndirectBuf_
+                voxelIndirectBuf_,
+                axes.size_,
+                mainTextures.size_
             );
             {
                 GpuSubStageScope perAxisScope("lightingPerAxis");
