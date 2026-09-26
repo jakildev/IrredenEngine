@@ -235,6 +235,56 @@ TEST(Pos3DtoPos2DIsoYawedTest, CardinalsAgreeWithRotateCardinalZ) {
 }
 
 // ---------------------------------------------------------------------------
+// pos2DIsoToPos3DAtZLevelYawed
+// ---------------------------------------------------------------------------
+
+// The fixed-z inverse of the yawed projection: projecting the recovered point
+// lands back on the iso input, at every yaw and z level, and the recovered
+// point sits on the requested plane. Both directions are checked so the
+// inverse cannot merely land on a point of the same depth.
+TEST(Pos2DIsoToPos3DAtZLevelYawedTest, RoundTripsThroughTheForwardProjection) {
+    constexpr float kRoundTripTolerance = 1e-3f;
+    const float yaws[] = {0.0f, 0.3f, IRMath::kPi / 4.0f, IRMath::kHalfPi, 2.5f};
+    const float zLevels[] = {-128.0f, 0.0f, 127.0f};
+    const IRMath::vec2 isoPoints[] = {
+        IRMath::vec2(0.0f, 0.0f),
+        IRMath::vec2(321.0f, -361.0f),
+        IRMath::vec2(-2400.5f, 17.25f),
+        IRMath::vec2(1.0f, 1.0f),
+    };
+    for (const float yaw : yaws) {
+        for (const float zLevel : zLevels) {
+            for (const IRMath::vec2 iso : isoPoints) {
+                const IRMath::vec3 world = IRMath::pos2DIsoToPos3DAtZLevelYawed(iso, zLevel, yaw);
+                EXPECT_FLOAT_EQ(world.z, zLevel);
+                const IRMath::vec2 back = IRMath::pos3DtoPos2DIsoYawed(world, yaw);
+                EXPECT_NEAR(back.x, iso.x, kRoundTripTolerance) << "yaw " << yaw << " z " << zLevel;
+                EXPECT_NEAR(back.y, iso.y, kRoundTripTolerance) << "yaw " << yaw << " z " << zLevel;
+            }
+        }
+    }
+    for (const float yaw : yaws) {
+        for (const IRMath::vec3 world :
+             {IRMath::vec3(4.0f, 2.0f, -1.0f), IRMath::vec3(-700.0f, 33.0f, 120.0f)}) {
+            const IRMath::vec2 iso = IRMath::pos3DtoPos2DIsoYawed(world, yaw);
+            const IRMath::vec3 back = IRMath::pos2DIsoToPos3DAtZLevelYawed(iso, world.z, yaw);
+            EXPECT_NEAR(back.x, world.x, kRoundTripTolerance) << "yaw " << yaw;
+            EXPECT_NEAR(back.y, world.y, kRoundTripTolerance) << "yaw " << yaw;
+        }
+    }
+}
+
+// At yaw 0 the inverse is the plain iso inverse on a z plane, in closed form.
+TEST(Pos2DIsoToPos3DAtZLevelYawedTest, ZeroYawMatchesTheUnyawedClosedForm) {
+    const IRMath::vec3 world =
+        IRMath::pos2DIsoToPos3DAtZLevelYawed(IRMath::vec2(6.0f, -10.0f), 2.0f, 0.0f);
+    // iso.x = -x + y = 6, iso.y = -x - y + 2z = -10 with z = 2 → x = 4, y = 10.
+    EXPECT_NEAR(world.x, 4.0f, kTolerance);
+    EXPECT_NEAR(world.y, 10.0f, kTolerance);
+    EXPECT_NEAR(world.z, 2.0f, kTolerance);
+}
+
+// ---------------------------------------------------------------------------
 // deformedTrixelIsoPixel
 // ---------------------------------------------------------------------------
 

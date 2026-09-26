@@ -8,7 +8,6 @@
 #include "ir_iso_common.metal"
 #include "ir_fog_los.metal"
 
-constant int kFogOfWarHalfExtent = 128;
 constant float kFogExploredValue = 128.0f / 255.0f;
 constant int kMaxFogVisionCircles = 8;
 constant float kFogCutTone = 0.85f;
@@ -22,6 +21,10 @@ struct FogObserverData {
     int visionCircleCount;
     // Bit i set = source i is gated by the line-of-sight field (ir_fog_los).
     int losSourceMask;
+    // The field column at texel (0, 0) of the fog window (C_CanvasFogOfWar's
+    // windowOrigin_), uploaded in the same frame as the texture it indexes.
+    int windowOriginX;
+    int windowOriginY;
     float4 visionCircleHeights[kMaxFogVisionCircles];
     float4 unexploredColor;
 };
@@ -32,13 +35,37 @@ struct FogReveal {
     float hardDistPastRim;
 };
 
+// Texel of world column `col` in the fog window, or (-1, -1) when the column
+// is outside it. GLSL twin: fogWindowTexel in ../ir_fog_common.glsl.
+inline int2 fogWindowTexel(int2 col, int2 origin, int2 fogSize) {
+    const int2 rel = col - origin;
+    if (rel.x < 0 || rel.x >= fogSize.x || rel.y < 0 || rel.y >= fogSize.y) {
+        return int2(-1);
+    }
+    int2 base;
+    base.x = origin.x >= 0 ? origin.x % fogSize.x : fogSize.x - 1 - (-(origin.x + 1)) % fogSize.x;
+    base.y = origin.y >= 0 ? origin.y % fogSize.y : fogSize.y - 1 - (-(origin.y + 1)) % fogSize.y;
+    int2 texel = rel + base;
+    if (texel.x >= fogSize.x) {
+        texel.x -= fogSize.x;
+    }
+    if (texel.y >= fogSize.y) {
+        texel.y -= fogSize.y;
+    }
+    return texel;
+}
+
+// Grid state of world column `col`: the window texel's .r, or 0.0
+// (unexplored) for a column outside the window.
 inline float fogTap(
-    int2 cell,
+    int2 col,
+    int2 origin,
     int2 fogSize,
     texture2d<float, access::read> canvasFogOfWar
 ) {
-    if (cell.x < 0 || cell.x >= fogSize.x || cell.y < 0 || cell.y >= fogSize.y) {
-        return 1.0f;
+    const int2 cell = fogWindowTexel(col, origin, fogSize);
+    if (cell.x < 0) {
+        return 0.0f;
     }
     return canvasFogOfWar.read(uint2(cell)).r;
 }
@@ -63,18 +90,22 @@ inline FogReveal fogRevealSample(
     texture2d<float, access::read> fogLineOfSight
 ) {
     const int3 surfaceVoxel = roundHalfUp(pos3D);
-    const int2 fogCell = surfaceVoxel.xy + int2(kFogOfWarHalfExtent);
     const int2 fogSize = int2(
         int(canvasFogOfWar.get_width()),
         int(canvasFogOfWar.get_height())
     );
-    const float gridState = fogTap(fogCell, fogSize, canvasFogOfWar);
+    const float gridState = fogTap(
+        surfaceVoxel.xy,
+        int2(fogObservers.windowOriginX, fogObservers.windowOriginY),
+        fogSize,
+        canvasFogOfWar
+    );
     float state = gridState;
     float hardDistPastRim = kFogRimFadeCells;
 
     for (int i = 0; i < fogObservers.visionCircleCount; ++i) {
         if (fogLosSourceGated(fogObservers.losSourceMask, i) && !fogWholeBody &&
-            !fogLosVisible(surfaceVoxel, i, fogLineOfSight)) {
+            !fogLosVisible(surfaceVoxel, i, fogObservers.visionCircles[i], fogLineOfSight)) {
             continue;
         }
         const float4 heights = fogObservers.visionCircleHeights[i];

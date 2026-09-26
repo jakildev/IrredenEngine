@@ -4,25 +4,29 @@
 // needed here. Every function is `static`, so a single include per wrapper
 // needs no self-guard.
 
-// Mirrors kFogOfWarSize / kFogOfWarHalfExtent / kFogLosSourcesPerTile.
-constant int kFogLosFieldSize = 256;
-constant int kFogLosFieldHalfExtent = 128;
+// Mirrors kFogLosTileEdge / kFogLosTileHalfExtent / kFogLosSourcesPerTile.
+constant int kFogLosTileEdge = 256;
+constant int kFogLosTileHalfExtent = 128;
 constant int kFogLosSourcesPerTile = 4;
 
 static bool fogLosSourceGated(int losSourceMask, int source) {
     return ((losSourceMask >> source) & 1) != 0;
 }
 
-static bool fogLosCellInField(int2 cell) {
-    return cell.x >= -kFogLosFieldHalfExtent && cell.x < kFogLosFieldHalfExtent &&
-        cell.y >= -kFogLosFieldHalfExtent && cell.y < kFogLosFieldHalfExtent;
+// The first column of the tile anchored on `circle` (CPU twin:
+// FogLineOfSightField::tileOrigin).
+static int2 fogLosTileOrigin(float4 circle) {
+    return roundHalfUp(circle.xy) - int2(kFogLosTileHalfExtent);
 }
 
-static int2 fogLosTexel(int2 cell, int source) {
-    return int2(
-        cell.x + kFogLosFieldHalfExtent,
-        cell.y + kFogLosFieldHalfExtent + (source / kFogLosSourcesPerTile) * kFogLosFieldSize
-    );
+static bool fogLosCellInTile(int2 cell, int2 tileOrigin) {
+    const int2 local = cell - tileOrigin;
+    return local.x >= 0 && local.x < kFogLosTileEdge && local.y >= 0 && local.y < kFogLosTileEdge;
+}
+
+static int2 fogLosTexel(int2 cell, int2 tileOrigin, int source) {
+    const int2 local = cell - tileOrigin;
+    return int2(local.x, local.y + (source / kFogLosSourcesPerTile) * kFogLosTileEdge);
 }
 
 static float fogLosHorizonChannel(float4 texel, int source) {
@@ -37,11 +41,14 @@ static bool fogLosSampleVisible(float horizon, int sampleZ) {
 static bool fogLosVisible(
     int3 sampleVoxel,
     int source,
+    float4 circle,
     texture2d<float, access::read> fogLineOfSight
 ) {
-    if (!fogLosCellInField(sampleVoxel.xy)) {
+    const int2 tileOrigin = fogLosTileOrigin(circle);
+    if (!fogLosCellInTile(sampleVoxel.xy, tileOrigin)) {
         return true;
     }
-    const float4 texel = fogLineOfSight.read(uint2(fogLosTexel(sampleVoxel.xy, source)));
+    const float4 texel =
+        fogLineOfSight.read(uint2(fogLosTexel(sampleVoxel.xy, tileOrigin, source)));
     return fogLosSampleVisible(fogLosHorizonChannel(texel, source), sampleVoxel.z);
 }

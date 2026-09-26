@@ -15,7 +15,8 @@
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 // Mirrored by kLosProbeHalfExtent / kLosProbeDim / kLosProbeLevels in
-// fog_cross_section_test.cpp.
+// fog_cross_section_test.cpp: the probed cells are `probeOrigin + [0, kProbeDim)`
+// on both axes.
 const int kProbeHalfExtent = 32;
 const int kProbeDim = kProbeHalfExtent * 2;
 const int kProbeLevels = 3;
@@ -25,8 +26,8 @@ layout(std430, binding = 2) readonly buffer FogLosProbeIn {
     vec4 circle;
     int losSourceMask;
     int _probePad0;
-    int _probePad1;
-    int _probePad2;
+    int probeOriginX;
+    int probeOriginY;
     int sampleZ[];
 };
 
@@ -44,11 +45,11 @@ void main() {
     if (idx.x >= kProbeDim || idx.y >= kProbeDim) {
         return;
     }
-    const ivec2 cell = idx - ivec2(kProbeHalfExtent);
+    const ivec2 cell = ivec2(probeOriginX, probeOriginY) + idx;
     for (int level = 0; level < kProbeLevels; ++level) {
         const int record = (level * kProbeDim + idx.y) * kProbeDim + idx.x;
         const ivec3 sampleVoxel = ivec3(cell, sampleZ[record]);
-        const bool visible = fogLosVisible(sampleVoxel, 0);
+        const bool visible = fogLosVisible(sampleVoxel, 0, circle);
         probes[record].visible = visible ? 1 : 0;
         probes[record].reveal = fogLosSourceGated(losSourceMask, 0) && !visible
             ? 0.0

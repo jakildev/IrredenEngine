@@ -113,6 +113,25 @@ TEST(FloorDivTest, FloorsTowardNegativeInfinityUnlikeTruncation) {
     EXPECT_NE(IRMath::floorDiv(-1, 3), std::int64_t{-1} / 3);
     EXPECT_NE(IRMath::floorDiv(-4, 3), std::int64_t{-4} / 3);
     EXPECT_THROW(IRMath::floorDiv(1, 0), std::invalid_argument);
+}
+
+// `floorMod` is the remainder that pairs with `floorDiv`: always in
+// `[0, denominator)`, so `q * d + r == n` for every sign of `n`.
+TEST(FloorDivTest, FloorModIsTheNonNegativeRemainderOfFloorDiv) {
+    EXPECT_EQ(IRMath::floorMod(-1, 256), 255);
+    EXPECT_EQ(IRMath::floorMod(-256, 256), 0);
+    EXPECT_EQ(IRMath::floorMod(-257, 256), 255);
+    EXPECT_EQ(IRMath::floorMod(0, 256), 0);
+    EXPECT_EQ(IRMath::floorMod(300, 256), 44);
+    for (const std::int64_t n : {-5000, -1152, -1, 0, 1, 1151, 1152, 99999}) {
+        for (const std::int64_t d : {1, 3, 32, 1152}) {
+            const std::int64_t r = IRMath::floorMod(n, d);
+            EXPECT_GE(r, 0);
+            EXPECT_LT(r, d);
+            EXPECT_EQ(IRMath::floorDiv(n, d) * d + r, n);
+        }
+    }
+    EXPECT_THROW(IRMath::floorMod(1, 0), std::invalid_argument);
     EXPECT_THROW(IRMath::floorDiv(1, -3), std::invalid_argument);
 }
 

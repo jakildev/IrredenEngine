@@ -17,8 +17,6 @@
 #include "ir_iso_common.glsl"
 #include "ir_fog_los.glsl"
 
-// Mirrors C_CanvasFogOfWar: the world-space fog grid is centered on origin.
-const int kFogOfWarHalfExtent = 128;
 // Normalized stored explored value (128/255, NOT 0.5). The two-segment lerp
 // pivots through it so the canonical stored states 0 / 128 / 255 land exactly
 // on the unexplored / explored / source anchors.
@@ -47,6 +45,10 @@ layout(std140, binding = 27) uniform FogObserverData {
     int visionCircleCount;
     // Bit i set = source i is gated by the line-of-sight field (ir_fog_los).
     int losSourceMask;
+    // The field column at texel (0, 0) of the fog window (C_CanvasFogOfWar's
+    // windowOrigin_), uploaded in the same frame as the texture it indexes.
+    int windowOriginX;
+    int windowOriginY;
     // (observerZ, zCostUp, zCostDown, freeBand); all-zero = the plain 2D disc.
     vec4 visionCircleHeights[kMaxFogVisionCircles];
     // The lerp's state-0 anchor.
@@ -65,11 +67,38 @@ struct FogReveal {
     float hardDistPastRim;
 };
 
-// Out-of-range cells read as visible (1.0): imageLoad has no sampler wrap
-// mode, so this bounds check is load-bearing.
-float fogTap(ivec2 cell, ivec2 fogSize) {
-    if (cell.x < 0 || cell.x >= fogSize.x || cell.y < 0 || cell.y >= fogSize.y) {
-        return 1.0;
+// Texel of world column `col` in the fog window, or (-1, -1) when the column
+// is outside it. Column `c` lives at texel floorMod(c, W) with W the window
+// edge (imageSize); the window covers [origin, origin + W) per axis. Every
+// modulo takes non-negative operands only (GLSL leaves the negative case
+// undefined). Mirrors fogWindowTexel in ir_voxel_face_select.glsl; Metal
+// twin in metal/ir_fog_common.metal.
+ivec2 fogWindowTexel(ivec2 col, ivec2 origin, ivec2 fogSize) {
+    const ivec2 rel = col - origin;
+    if (rel.x < 0 || rel.x >= fogSize.x || rel.y < 0 || rel.y >= fogSize.y) {
+        return ivec2(-1);
+    }
+    ivec2 base;
+    base.x = origin.x >= 0 ? origin.x % fogSize.x : fogSize.x - 1 - (-(origin.x + 1)) % fogSize.x;
+    base.y = origin.y >= 0 ? origin.y % fogSize.y : fogSize.y - 1 - (-(origin.y + 1)) % fogSize.y;
+    ivec2 texel = rel + base;
+    if (texel.x >= fogSize.x) {
+        texel.x -= fogSize.x;
+    }
+    if (texel.y >= fogSize.y) {
+        texel.y -= fogSize.y;
+    }
+    return texel;
+}
+
+// Grid state of world column `col`: the window texel's .r, or 0.0
+// (unexplored) for a column outside the window. imageLoad has no sampler
+// wrap mode, so the window test is load-bearing; the vision circles still
+// max-compose over an out-of-window column.
+float fogTap(ivec2 col, ivec2 fogSize) {
+    const ivec2 cell = fogWindowTexel(col, ivec2(windowOriginX, windowOriginY), fogSize);
+    if (cell.x < 0) {
+        return 0.0;
     }
     return imageLoad(canvasFogOfWar, cell).r;
 }
@@ -90,8 +119,7 @@ vec3 fogStateColor(float state, vec3 sourceColor, vec3 unexplored) {
 // visionCircleCount is 0.
 FogReveal fogRevealSample(vec3 pos3D, float aaFloor, bool fogWholeBody) {
     const ivec3 surfaceVoxel = roundHalfUp(pos3D);
-    const ivec2 fogCell = surfaceVoxel.xy + ivec2(kFogOfWarHalfExtent);
-    const float gridState = fogTap(fogCell, imageSize(canvasFogOfWar));
+    const float gridState = fogTap(surfaceVoxel.xy, imageSize(canvasFogOfWar));
     float state = gridState;
     float hardDistPastRim = kFogRimFadeCells;
 
@@ -100,7 +128,7 @@ FogReveal fogRevealSample(vec3 pos3D, float aaFloor, bool fogWholeBody) {
         // whole-body pixel's visibility is its anchor's verdict, so it is
         // never gated per pixel.
         if (fogLosSourceGated(losSourceMask, i) && !fogWholeBody &&
-            !fogLosVisible(surfaceVoxel, i)) {
+            !fogLosVisible(surfaceVoxel, i, visionCircles[i])) {
             continue;
         }
         // Height-penalized reveal; a whole-body pixel drops both terms.
