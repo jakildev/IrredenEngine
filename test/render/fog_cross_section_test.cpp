@@ -60,6 +60,16 @@ float visionCircleReveal(IRMath::vec2 worldXY, IRMath::vec4 circle, float aa) {
     return 1.0f - smoothstepMirror(circle.z - a, circle.z + a, dist);
 }
 
+// CPU mirror of `fogDiscRevealAtDistance` (ir_voxel_face_select.glsl) — the
+// per-column disc test. A hard disc reveals strictly inside the radius, so a
+// column exactly on the rim is hidden.
+float discRevealAtDistance(float dist, float radius, float softness) {
+    if (softness <= 0.0f) {
+        return dist < radius ? 1.0f : 0.0f;
+    }
+    return 1.0f - smoothstepMirror(radius - softness, radius + softness, dist);
+}
+
 std::string readShaderSource(const std::string &path) {
     std::ifstream file(path);
     std::ostringstream contents;
@@ -267,6 +277,40 @@ TEST(FogCrossSectionShaderParity, VisionCircleRevealCurveIsIdenticalAcrossBacken
 
     EXPECT_EQ(normalizeShaderMath(glslBody), normalizeShaderMath(metalBody))
         << "the floor/object shared reveal curve diverged between backends";
+}
+
+// Test E, part 2b: the per-column disc test. Its hard-disc branch is the strict
+// `dist < radius` step — smoothstep(R, R, d) is undefined and GL and Metal
+// resolve its tie differently — and the cut-face rule and the detached
+// own-column drop must both route through it: two spellings of the tie drop a
+// rim column with no cut wall painted behind it.
+TEST(FogCrossSectionShaderParity, DiscRevealIsOneStrictDefinitionOnBothBackends) {
+    const std::string glslFaceSelect = readShaderSource(kGlslFaceSelectPath);
+    const std::string metalFaceSelect = readShaderSource(kMetalFaceSelectPath);
+    const std::string glslBody =
+        extractFunctionBody(glslFaceSelect, "float fogDiscRevealAtDistance");
+    const std::string metalBody =
+        extractFunctionBody(metalFaceSelect, "float fogDiscRevealAtDistance");
+    ASSERT_FALSE(glslBody.empty()) << "fogDiscRevealAtDistance not found in GLSL";
+    ASSERT_FALSE(metalBody.empty()) << "fogDiscRevealAtDistance not found in MSL";
+    EXPECT_EQ(normalizeShaderMath(glslBody), normalizeShaderMath(metalBody))
+        << "the per-column disc test diverged between backends";
+    EXPECT_NE(normalizeShaderMath(glslBody).find("1.0 - step(radius, dist)"), std::string::npos)
+        << "the hard-disc branch must be the strict step form: " << glslBody;
+
+    for (const std::string *source : {&glslFaceSelect, &metalFaceSelect}) {
+        EXPECT_NE(
+            extractRevealAccumulation(*source, "fogColumnReveal").find("fogDiscRevealAtDistance("),
+            std::string::npos
+        ) << "the cut-face rule must evaluate the disc through fogDiscRevealAtDistance";
+    }
+    for (const std::string &path : {kGlslStage1BodyPath, kMetalStage1BodyPath}) {
+        const std::string body =
+            extractFunctionBody(readShaderSource(path), "float fogColumnRevealZ");
+        ASSERT_FALSE(body.empty()) << "fogColumnRevealZ not found in " << path;
+        EXPECT_NE(body.find("fogDiscRevealAtDistance(distEff"), std::string::npos)
+            << path << "'s own-column drop must evaluate the disc through fogDiscRevealAtDistance";
+    }
 }
 
 // Test E, part 3: the two column-reveal accumulations — the stage-1 cut-face
@@ -900,11 +944,12 @@ TEST_F(FogCrossSectionTest, KeptColumnsFormAHoleFreeRadialRegion) {
         << ") — the revealed region has interior holes";
 }
 
-// Test D — floor/object edge agreement. The two edges coincide because they are
-// not two curves: stage 1's own-column test and FOG_TO_TRIXEL's per-pixel
-// reveal both call `fogVisionCircleReveal` on the same circle. Asserted in its
-// exact form (equality of the evaluations), which is stronger than the ±1px
-// tolerance the property is usually stated with.
+// Test D — floor/object edge agreement. On a hard disc the object clip's strict
+// step and FOG_TO_TRIXEL's curve sampled at aa = 0 are the same threshold at the
+// same radius; the off-lattice disc puts no column exactly on the rim, where
+// only the strict step is defined. Asserted in its exact form (equality of the
+// evaluations), which is stronger than the ±1px tolerance the property is
+// usually stated with.
 TEST_F(FogCrossSectionTest, ObjectClipAndFloorRevealTraceOneCurve) {
     const std::vector<FogColumnProbe> probes =
         runProbe(kHardDisc);
@@ -947,7 +992,11 @@ TEST_F(FogCrossSectionTest, GpuRevealMatchesTheCpuOracle) {
     for (int record = 0; record < kProbeColumnCount; ++record) {
         const IRMath::vec2 column = columnCentre(record);
         EXPECT_NEAR(
-            probes[record].revealCenter, visionCircleReveal(column, kHardDisc, 0.0f), 1e-5f
+            probes[record].revealCenter,
+            discRevealAtDistance(
+                IRMath::length(column - kDiscCentre), kHardDisc.z, kHardDisc.w
+            ),
+            1e-5f
         ) << "GPU own-column reveal diverged from the CPU oracle at (" << column.x << ", "
           << column.y << ")";
 
@@ -961,6 +1010,35 @@ TEST_F(FogCrossSectionTest, GpuRevealMatchesTheCpuOracle) {
         ) << "GPU keep metric diverged from the CPU oracle at (" << column.x << ", " << column.y
           << ")";
     }
+}
+
+// The hard-disc rim tie. An integer-centred disc of integer radius 5 puts twelve
+// columns exactly on the rim — (±5,0), (0,±5), (±3,±4), (±4,±3) — and the strict
+// rule hides every one of them. smoothstep(R, R, d) would leave the tie to the
+// driver — NVIDIA keeps the column where Metal hides it — so a detached solid
+// straddling the rim would stand a stray column past its fog cut wall on one
+// backend only. The expectation is exact integer arithmetic: each tie's squared
+// length is a perfect square, so `length` returns the radius itself.
+TEST_F(FogCrossSectionTest, HardDiscHidesColumnsExactlyOnTheRim) {
+    constexpr int kTieRadius = 5;
+    constexpr int kTieRadiusSquared = kTieRadius * kTieRadius;
+    const std::vector<FogColumnProbe> probes =
+        runProbe(IRMath::vec4(0.0f, 0.0f, static_cast<float>(kTieRadius), 0.0f));
+
+    int rimColumns = 0;
+    for (int record = 0; record < kProbeColumnCount; ++record) {
+        const int x = columnX(record);
+        const int y = columnY(record);
+        const int distanceSquared = x * x + y * y;
+        if (distanceSquared == kTieRadiusSquared) {
+            ++rimColumns;
+        }
+        const float expected = distanceSquared < kTieRadiusSquared ? 1.0f : 0.0f;
+        EXPECT_EQ(probes[record].revealCenter, expected)
+            << "column (" << x << ", " << y << ") at squared distance " << distanceSquared
+            << " from a radius-" << kTieRadius << " hard disc";
+    }
+    EXPECT_EQ(rimColumns, 12) << "the probe domain lost the rim tie columns";
 }
 
 namespace {
