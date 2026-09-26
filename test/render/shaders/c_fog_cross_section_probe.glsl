@@ -63,8 +63,10 @@ void main() {
 
     // FOG_TO_TRIXEL's per-pixel curve, sampled at two points inside this
     // column's unit cell. `aa` is 0 here (not the pass's worldPerPixel) so the
-    // sample is the zoom-independent hard-disc form the object clip uses — the
-    // shared-curve identity tests D asserts is between THESE evaluations.
+    // sample is zoom-independent; on a hard disc that makes the band zero-width,
+    // so the sample is only defined off the exact rim, where it is the same
+    // threshold as the object clip's strict step — the identity tests D assert
+    // is between THESE evaluations, on a disc with no rim-tie columns.
     const vec4 circle = visionCircles[0];
     probes[record].revealFloorCenter = fogVisionCircleReveal(vec2(col), circle, 0.0);
     const vec2 nearest =

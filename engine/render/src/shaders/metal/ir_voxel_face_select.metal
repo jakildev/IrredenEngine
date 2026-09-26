@@ -46,6 +46,26 @@ struct FogObserverData {
     float4 visionCircleHeights[kMaxFogVisionCircles];
 };
 
+// Reveal in [0,1] of a column whose center is `dist` world units from a vision
+// circle's center. A hard disc (`softness <= 0`) reveals strictly inside:
+// revealed iff `dist < radius`, so a column exactly on the rim is hidden. It is
+// spelled with step because smoothstep(radius, radius, dist) is undefined in
+// GLSL and MSL alike, and drivers resolve that tie differently. The rule holds
+// at `dist` as computed; `length` is not correctly rounded, so which columns
+// tie is itself up to the backend. A soft disc (`softness > 0`) blends across
+// [radius - softness, radius + softness].
+// Every per-column test that must agree on which columns a hard disc hides —
+// the cut-face rule (fogColumnReveal) and stage 1's own-column drop
+// (fogColumnRevealZ) — routes through this one definition; two spellings of the
+// tie leave a column dropped with no cut wall painted behind it. GLSL twin:
+// fogDiscRevealAtDistance in ../ir_voxel_face_select.glsl.
+static float fogDiscRevealAtDistance(float dist, float radius, float softness) {
+    if (softness <= 0.0f) {
+        return 1.0f - step(radius, dist);
+    }
+    return 1.0f - smoothstep(radius - softness, radius + softness, dist);
+}
+
 // Fog reveal of world grid COLUMN `col` in [0,1]. Stage 1 emits the cut face's
 // DISTANCE for `reveal < 1.0` and stage 2 paints colour on the same
 // set of faces — both through this one definition, so the cut wall's depth and
@@ -67,7 +87,14 @@ static float fogColumnReveal(
     }
     float reveal = 0.0f;
     for (int i = 0; i < obs.visionCircleCount; ++i) {
-        reveal = max(reveal, fogVisionCircleReveal(float2(col), obs.visionCircles[i], 0.0f));
+        reveal = max(
+            reveal,
+            fogDiscRevealAtDistance(
+                length(float2(col) - obs.visionCircles[i].xy),
+                obs.visionCircles[i].z,
+                obs.visionCircles[i].w
+            )
+        );
     }
     return reveal;
 }
