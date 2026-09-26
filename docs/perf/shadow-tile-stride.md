@@ -64,7 +64,7 @@ All 32 corresponding capture pairs are RGB-identical. The
 [representative pairs](../pr-screenshots/codex/shadow-tile-stride/README.md)
 show unchanged appearance, not a shadow-quality fix.
 
-Both production shader adapters pass every width and height from 1 through
+Both backend adapters of the candidate pass every width and height from 1 through
 128 at low and high grid origins: 32,768 rectangles and 136,323,072 tile
 visits per backend preserve lane ownership and order. Five carry/initial-state
 mutations fail. The existing concurrent adapter also passes with narrow
