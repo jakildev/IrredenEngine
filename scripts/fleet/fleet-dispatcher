@@ -423,7 +423,10 @@ read_dispatch_mode() {
 # sample_github_rate_limit() latches github-{core,graphql,search}.json
 # into the same $USAGE_DIR every tick, so a near-exhausted
 # GitHub pool defers dispatch exactly like a near-exhausted Anthropic
-# window — no separate code path.
+# window — no separate code path. A GraphQL call the limiter refused
+# (seen by the scout or fleet-net.sh's gh()) latches its own
+# github-graphql.rejected.json at 100% until the sampled reset
+# (fleet_gh_fallback.py), which the self-report never overwrites.
 #
 # Per-type thresholds let the operator distinguish a short-window
 # limit (5-hour, baked default 80% — leaves 20% headroom for

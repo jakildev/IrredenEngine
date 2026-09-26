@@ -16,18 +16,23 @@
 # source pattern resolves through ~/bin, the same way fleet-common.sh and
 # fleet-clone-freshness.sh do.
 #
-# Usage (bash consumers — fleet-rebase / fleet-claim / fleet-dispatcher):
+# Usage (bash consumers — fleet-rebase / fleet-claim / fleet-dispatcher /
+# fleet-review-verdict / fleet-transition):
 #   source "$FLEET_LIB_DIR/fleet-net.sh"     # FLEET_LIB_DIR is symlink-resolved
 #   git -C "$wt" fetch origin master         # now bounded by FLEET_NET_TIMEOUT
 #
 # The scout is python and does NOT source this — python subprocesses invoke the
 # `git`/`gh` executables directly (no bash function resolution), and its own
-# fetchers (fleet_gh_poll.py) already carry urllib/subprocess timeouts.
+# fetchers (fleet_gh_poll.py) already carry urllib/subprocess timeouts. It
+# latches GraphQL refusals through fleet_gh_fallback.py directly.
 #
 # Env:
 #   FLEET_TIMEOUT_CMD   — override the resolved timeout runner (e.g. a test
 #                         double, or "" to force the unguarded passthrough).
-#   FLEET_NET_TIMEOUT   — per-call budget in seconds (default 120).
+#   FLEET_NET_TIMEOUT   — per-call budget in seconds (default 120); also bounds
+#                         each REST call the GraphQL fallback makes.
+#   FLEET_STATE_DIR     — where the fallback latches a refusal (default
+#                         ~/.fleet/state; the latch is usage/github-graphql.rejected.json).
 
 # --- Resolve a coreutils-compatible `timeout` runner, once -------------------
 # GNU coreutils ships it as `timeout` on Linux and `gtimeout` on macOS
@@ -101,14 +106,66 @@ git() {
 }
 
 # --- gh() shadow: every gh call is a network call ----------------------------
-# No subcommand parsing needed — the GitHub CLI hits the API for essentially
-# everything, so guard unconditionally.
+# The GitHub CLI hits the API for essentially everything, so the timeout is
+# unconditional.
+#
+# The `gh pr|issue` subcommands the REST fallback models are GraphQL clients:
+# when GitHub's GraphQL limiter refuses one (`GraphQL: API rate limit already
+# exceeded`) while REST still answers, fleet_gh_fallback.py latches the refusal
+# for the dispatcher's usage gate and re-runs the call over REST, printing what
+# the GraphQL call would have printed. Only those subcommands are buffered, and
+# their stdout and stderr are replayed byte-for-byte and separately (callers
+# parse one and discard the other); every other gh call streams through
+# unbuffered. A call the fallback does not model keeps the original GraphQL
+# stderr and exit status.
+
+# The fallback module sits beside the real file, not beside a ~/bin symlink.
+_fleet_net_self="${BASH_SOURCE[0]}"
+while [[ -L "$_fleet_net_self" ]]; do
+    _fleet_net_link="$(readlink "$_fleet_net_self")"
+    [[ "$_fleet_net_link" == /* ]] || _fleet_net_link="$(dirname "$_fleet_net_self")/$_fleet_net_link"
+    _fleet_net_self="$_fleet_net_link"
+done
+_FLEET_NET_GH_FALLBACK="$(cd "$(dirname "$_fleet_net_self")" && pwd)/fleet_gh_fallback.py"
+[[ -f "$_FLEET_NET_GH_FALLBACK" ]] || _FLEET_NET_GH_FALLBACK=""
+unset _fleet_net_self _fleet_net_link
+
+_fleet_net_gh_fallback_candidate() {
+    [[ -n "$_FLEET_NET_GH_FALLBACK" ]] || return 1
+    case "${1:-} ${2:-}" in
+        "pr view"|"pr list"|"pr edit"|"pr comment") return 0 ;;
+        "issue view"|"issue list"|"issue edit"|"issue comment"|"issue create") return 0 ;;
+    esac
+    return 1
+}
+
 gh() {
-    local tmo="${FLEET_TIMEOUT_CMD:-}"
-    if [[ -z "$tmo" ]]; then
-        command gh "$@"
+    local -a run=(command gh)
+    [[ -n "${FLEET_TIMEOUT_CMD:-}" ]] && run=(command "$FLEET_TIMEOUT_CMD" "$FLEET_NET_TIMEOUT" gh)
+    if ! _fleet_net_gh_fallback_candidate "$@"; then
+        "${run[@]}" "$@"
         return $?
     fi
-    command "$tmo" "$FLEET_NET_TIMEOUT" gh "$@"
-    return $?
+    # Per-call temp dir removed on every path below — no trap: this file is
+    # sourced into long-lived daemons that own their own traps.
+    local tmp rc=0 frc=0
+    if ! tmp="$(mktemp -d "${TMPDIR:-/tmp}/fleet-gh.XXXXXX")"; then
+        "${run[@]}" "$@"
+        return $?
+    fi
+    "${run[@]}" "$@" >"$tmp/out" 2>"$tmp/err" || rc=$?
+    if (( rc != 0 )); then
+        python3 "$_FLEET_NET_GH_FALLBACK" shim --stderr-file "$tmp/err" -- "$@" \
+            >"$tmp/rest-out" 2>"$tmp/rest-err" </dev/null || frc=$?
+        case "$frc" in
+            0) cat "$tmp/rest-out"; rc=0 ;;
+            3) cat "$tmp/out"; cat "$tmp/err" >&2 ;;
+            *) cat "$tmp/rest-err" >&2; rc=1 ;;
+        esac
+    else
+        cat "$tmp/out"
+        cat "$tmp/err" >&2
+    fi
+    rm -rf "$tmp"
+    return "$rc"
 }
