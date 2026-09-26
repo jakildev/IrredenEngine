@@ -394,10 +394,11 @@ ensure_scratch() {
     wt="$SCRATCH_ROOT/$repo_key"
     if [[ ! -d "$wt" ]]; then
         mkdir -p "$SCRATCH_ROOT"
-        # A registered-but-deleted scratch path makes `worktree add` fail
-        # until pruned.
-        git -C "$repo_path" worktree prune 2>/dev/null || true
-        git -C "$repo_path" worktree add --detach "$wt" >/dev/null 2>&1 || {
+        # Registrations other than $wt belong to other agents' worktrees and
+        # are never pruned here: git cannot resolve a path spelled by another
+        # host's git, and would judge the entry dead. A single --force drops
+        # only a stale registration of $wt itself, and still honors a lock.
+        git -C "$repo_path" worktree add --force --detach "$wt" >/dev/null 2>&1 || {
             log "$repo_key: failed to create scratch worktree at $wt"
             return 1
         }

@@ -48,6 +48,7 @@ cleanup() {
 }
 trap cleanup EXIT
 TMPROOT=$(mktemp -d)
+export FLEET_ENGINE_ROOT="$TMPROOT/no-such-engine"
 
 ok()   { echo "  ok: $1";   PASS=$((PASS + 1)); }
 fail() { echo "  FAIL: $1"; FAIL=$((FAIL + 1)); }

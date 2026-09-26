@@ -240,7 +240,7 @@ else
     bad "T14 fleet-dispatch-wrap missing at $WRAPPER — the scrub set has no source"
 fi
 
-echo "T15: with no wrapper beside it the runner scrubs nothing (negative control)"
+echo "T15: with no wrapper beside it the runner scrubs no wrapper-derived name (negative control)"
 d=$(new_sandbox t15)
 fixture_env_probe "$d"
 out=$(FLEET_ROLE=worker FLEET_ROLE_MODEL=opus bash "$d/run_all.sh" 2>&1); rc=$?
@@ -411,5 +411,27 @@ out=$(FLEET_TEST_HOST=linux PATH="$stub_bin:$PATH" STUB_UNAME=MINGW64_NT-10.0-19
       bash "$d/run_all.sh" 2>&1)
 assert_contains "$(timeout_line "$out")" "per-suite timeout 120s" \
     "T20 FLEET_TEST_HOST outranks uname -s"
+
+echo "T21: the clone-root variables never reach a suite, with or without the wrapper"
+fixture_root_probe() {
+    printf '%s\n' '#!/usr/bin/env bash' \
+        'echo "engine=${FLEET_ENGINE_ROOT-unset} game=${FLEET_GAME_ROOT-unset} keep=${UNRELATED_KEEP-unset}"' \
+        'exit 1' > "$1/test_rootprobe.sh"
+}
+decoy="$TMPROOT/t21-decoy"
+if [[ -f "$WRAPPER" ]]; then
+    d=$(new_nested_sandbox t21a)
+    fixture_root_probe "$d"
+    out=$(FLEET_ENGINE_ROOT="$decoy" FLEET_GAME_ROOT="$decoy/game" UNRELATED_KEEP=yes \
+          bash "$d/run_all.sh" 2>&1)
+    assert_contains "$out" "engine=unset game=unset keep=yes" "T21 scrubbed beside the wrapper"
+else
+    bad "T21 fleet-dispatch-wrap missing at $WRAPPER"
+fi
+d=$(new_sandbox t21b)
+fixture_root_probe "$d"
+out=$(FLEET_ENGINE_ROOT="$decoy" FLEET_GAME_ROOT="$decoy/game" UNRELATED_KEEP=yes \
+      bash "$d/run_all.sh" 2>&1)
+assert_contains "$out" "engine=unset game=unset keep=yes" "T21 scrubbed with no wrapper beside the runner"
 
 summarize "run_all.sh tests"
