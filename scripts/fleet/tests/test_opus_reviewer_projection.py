@@ -150,6 +150,17 @@ class SkipLabelsGateTheEscalation(unittest.TestCase):
         ])])
         self.assertEqual(_hash(empty), _hash(amending))
 
+    def test_reviewing_prefix_drops_pr_from_both_lanes_and_slices(self):
+        held = "fleet:reviewing-mac-pool-1"
+        opus_state = _state([_pr(101, labels=[
+            "fleet:needs-opus-recheck", held,
+        ])])
+        sonnet_state = _state([_pr(102, labels=[held])])
+        self.assertEqual(project_opus_reviewer(opus_state), [])
+        self.assertEqual(slice_opus_reviewer(opus_state)["flagged_prs"], [])
+        self.assertEqual(project_sonnet_reviewer(sonnet_state), [])
+        self.assertEqual(slice_sonnet_reviewer(sonnet_state)["candidate_prs"], [])
+
 
 class SliceTagsRepo(unittest.TestCase):
     """The slice carries full PR records tagged with their repo."""
@@ -213,6 +224,13 @@ class PlanReviewWakesPane(unittest.TestCase):
         out = slice_opus_reviewer(_state_pr_plan(plan_review=[
             _issue(50, labels=["fleet:plan-review", "fleet:needs-human"])]))
         self.assertEqual(out["plan_review"], [])
+
+    def test_review_claim_drops_plan_review_from_projection_and_slice(self):
+        state = _state_pr_plan(plan_review=[_issue(50, labels=[
+            "fleet:plan-review", "fleet:reviewing-mac-pool-1",
+        ])])
+        self.assertEqual(project_opus_reviewer(state), [])
+        self.assertEqual(slice_opus_reviewer(state)["plan_review"], [])
 
     def test_cleared_plan_review_drops(self):
         # The reviewer verdict removed fleet:plan-review -> the issue leaves the

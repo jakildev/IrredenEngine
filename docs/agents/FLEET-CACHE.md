@@ -87,8 +87,8 @@ the mirrored wording. Stays direct: all writes, `gh pr diff --name-only`,
 | Role | Slice keys |
 |---|---|
 | worker | `tasks_open` (all classes, both repos), `needs_plan`, `feedback_prs`, `semantic_conflict_prs` |
-| sonnet-reviewer | `candidate_prs` (review-skip filter applied) |
-| opus-reviewer | `flagged_prs` (`fleet:needs-opus-recheck`), `plan_review` (both repos) |
+| sonnet-reviewer | `candidate_prs` (review-skip filter applied; targets with a live `fleet:reviewing-*` claim excluded) |
+| opus-reviewer | `flagged_prs` (`fleet:needs-opus-recheck`), `plan_review` (both repos; targets with a live `fleet:reviewing-*` claim excluded) |
 | smoke-worker | `smoke_pending_prs` (engine + game, tagged with `repo`, engine first; host-agnostic — the dispatcher applies the host) |
 | merger | `prs` (engine + game, approved or non-MERGEABLE, tagged with `repo`), `merger_candidates` (the PRs tier-0 can name as `merge:` targets, with `signal`) |
 

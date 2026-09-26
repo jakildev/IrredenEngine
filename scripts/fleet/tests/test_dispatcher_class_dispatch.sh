@@ -182,7 +182,22 @@ case "$sub" in
         # review-claim) is granted unless STUB_REFUSE names its key — the
         # assignment tests below drive refusal explicitly, and the fairness
         # ticks (T20+) need every pane's task claim to succeed.
-        [[ " ${STUB_REFUSE:-} " == *" $key "* ]] && exit 1
+        if [[ " ${STUB_REFUSE:-} " == *" $key "* ]]; then
+            count=1
+            if [[ -n "${STUB_REFUSE_COUNT_DIR:-}" ]]; then
+                mkdir -p "$STUB_REFUSE_COUNT_DIR"
+                count_file="$STUB_REFUSE_COUNT_DIR/${repo}-${num}"
+                [[ -f "$count_file" ]] && count=$(( $(cat "$count_file") + 1 ))
+                printf '%s\n' "$count" > "$count_file"
+            fi
+            reason="${STUB_REFUSE_REASON:-held by existing claim label}"
+            if [[ -n "${STUB_REFUSE_REASON_CHANGED:-}" \
+                    && $count -gt ${STUB_REFUSE_REASON_CHANGE_AFTER:-1} ]]; then
+                reason="$STUB_REFUSE_REASON_CHANGED"
+            fi
+            printf '%s\n' "$reason" >&2
+            exit 1
+        fi
         exit 0
         ;;
 esac
@@ -339,6 +354,14 @@ sub="$1"; shift
 case "$sub" in
     has-session) exit 0 ;;
     list-panes)
+        if [[ -n "${STUB_TICK_SLICE_DIR:-}" ]]; then
+            count_file="$STUB_TICK_SLICE_DIR/count"
+            tick=1
+            [[ -f "$count_file" ]] && tick=$(( $(cat "$count_file") + 1 ))
+            printf '%s\n' "$tick" > "$count_file"
+            cp "$STUB_TICK_SLICE_DIR/tick-$tick.json" \
+                "$FLEET_STATE_DIR/projections/sonnet-reviewer.json"
+        fi
         for i in 1 2 3 4 5; do printf '%%%s|pool|zsh\n' "$i"; done
         exit 0
         ;;
@@ -546,6 +569,58 @@ assert_eq "$(count_dispatches "$out")" "0" "empty candidate list -> no launch (t
 [[ ! -f "$FLEET_STATE_DIR/triggers/sonnet-reviewer" ]] \
     && { PASS=$((PASS+1)); echo "  ok: trigger consumed"; } \
     || { FAIL=$((FAIL+1)); echo "  FAIL: trigger left standing"; }
+
+echo "T25b2: a refusal memo is pruned after its target leaves one pick walk"
+SEQUENCE_DIR="$TMPROOT/reviewer-slice-sequence"
+mkdir -p "$SEQUENCE_DIR"
+cat > "$SEQUENCE_DIR/tick-1.json" <<'EOF'
+{"candidate_prs":[{"number":41,"repo":"engine"},{"number":42,"repo":"engine"},{"number":43,"repo":"engine"}]}
+EOF
+cp "$SEQUENCE_DIR/tick-1.json" "$SEQUENCE_DIR/tick-2.json"
+cat > "$SEQUENCE_DIR/tick-3.json" <<'EOF'
+{"candidate_prs":[{"number":42,"repo":"engine"},{"number":43,"repo":"engine"}]}
+EOF
+cp "$SEQUENCE_DIR/tick-3.json" "$SEQUENCE_DIR/tick-4.json"
+cat > "$SEQUENCE_DIR/tick-5.json" <<'EOF'
+{"candidate_prs":[{"number":41,"repo":"engine"},{"number":42,"repo":"engine"},{"number":43,"repo":"engine"}]}
+EOF
+cp "$SEQUENCE_DIR/tick-5.json" "$SEQUENCE_DIR/tick-6.json"
+out=$(tick sonnet-reviewer 3 \
+    STUB_TICK_SLICE_DIR="$SEQUENCE_DIR" \
+    STUB_REFUSE='engine:41 engine:42 engine:43' \
+    FLEET_DISPATCHER_CLAIM_ATTEMPTS_PER_TICK=1)
+assert_eq "$(grep -c '^review-claim 41 ' "$FLEET_CLAIM_LOG")" "2" \
+    "target absent for one walk is attempted again inside the TTL"
+assert_eq "$(grep -c '^review-claim 42 ' "$FLEET_CLAIM_LOG")" "1" \
+    "target continuously listed retains its refusal memo"
+
+echo "T25b3: refusal diagnostics dedupe a stable reason and log a changed reason"
+rm -rf "$TMPROOT/refusal-counts"
+write_slice sonnet-reviewer '{"candidate_prs":[
+  {"number":60,"repo":"engine"},{"number":60,"repo":"engine"},{"number":60,"repo":"engine"}]}'
+out=$(tick sonnet-reviewer 1 \
+    STUB_REFUSE='engine:60' \
+    STUB_REFUSE_COUNT_DIR="$TMPROOT/refusal-counts" \
+    STUB_REFUSE_REASON='held by fleet:reviewing-mac-pool-1' \
+    STUB_REFUSE_REASON_CHANGED='held by fleet:reviewing-linux-pool-2' \
+    STUB_REFUSE_REASON_CHANGE_AFTER=1 \
+    FLEET_DISPATCHER_CLAIM_REFUSE_TTL=0)
+assert_eq "$(printf '%s\n' "$out" | grep -c 'claim of review:engine:60')" "2" \
+    "one diagnostic per distinct target and reason"
+assert_contains "$out" "fleet:reviewing-mac-pool-1" "first refusal reason logged"
+assert_contains "$out" "fleet:reviewing-linux-pool-2" "changed refusal reason logged"
+
+echo "T25b4: one reviewer lane's refusal does not suppress the other"
+write_slice sonnet-reviewer '{"candidate_prs":[{"number":77,"repo":"engine"}]}'
+write_slice opus-reviewer '{"flagged_prs":[{"number":77,"repo":"engine"}],"plan_review":[]}'
+rm -f "$FLEET_STATE_DIR/dispatch"/*.json
+: > "$FLEET_CLAIM_LOG"; : > "$FLEET_CLAIM_ENV_LOG"; : > "$SEND_LOG"
+: > "$FLEET_STATE_DIR/triggers/sonnet-reviewer"
+: > "$FLEET_STATE_DIR/triggers/opus-reviewer"
+out=$(STUB_REFUSE='engine:77' FLEET_DISPATCHER_CLAIM_ATTEMPTS_PER_TICK=1 \
+    "$DISPATCHER" --dispatch-tick 1 2>&1 >/dev/null)
+assert_eq "$(grep -c '^review-claim 77 ' "$FLEET_CLAIM_LOG")" "2" \
+    "sonnet and opus walks each attempt the shared target"
 
 echo "T25c: dry-run launches the standby path without a claim or a target"
 write_slice worker "$TWO_CLASS_SLICE"

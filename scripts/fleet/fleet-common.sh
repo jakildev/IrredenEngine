@@ -219,6 +219,17 @@ declare -A FLEET_TARGET_LABEL=(
     [merge]=""
 )
 
+# Marker-vouched claims have no worktree reservation and no pane affinity.
+# Once their owning iteration disappears, retaining the label can only block
+# another pane from serving the lane.
+fleet_target_releases_on_first_abandon() {
+    local kind="$1"
+    case "${FLEET_TARGET_LABEL[$kind]:-}" in
+        fleet:reviewing-|fleet:resolving-|fleet:planning-) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 # Claim-label namespaces that arbitrate as one mutex. The table is symmetric:
 # a one-sided entry lets the unregistered lane co-win after both POSTs race.
 declare -A FLEET_CLAIM_EXCLUDES=(

@@ -3312,10 +3312,34 @@ _cleanup_sweep_label() {
     esac
 }
 
+# claim_labels_from_json <label-prefix> <listing-limit> <item-name>
+#   Read an issue/PR-list JSON document and emit `<number><TAB><label>` matches.
+claim_labels_from_json() {
+    local prefix="$1" limit="${2:-0}" item_name="${3:-item}"
+    LABEL_PREFIX="$prefix" CLAIM_LIMIT="$limit" CLAIM_ITEM="$item_name" python3 -c '
+import json, os, sys
+prefix = os.environ.get("LABEL_PREFIX", "")
+limit = int(os.environ.get("CLAIM_LIMIT", "0") or 0)
+item_name = os.environ.get("CLAIM_ITEM", "item")
+try:
+    items = json.load(sys.stdin)
+except Exception:
+    items = []
+if limit and len(items) >= limit:
+    print(f"fleet-claim: open-{item_name} claim sweep hit the {limit}-{item_name} "
+          "listing limit; claims past it were not enumerated this pass",
+          file=sys.stderr)
+for item in items:
+    number = item.get("number")
+    for label in (item.get("labels") or []):
+        name = (label or {}).get("name", "") if isinstance(label, dict) else ""
+        if name.startswith(prefix):
+            print(f"{number}\t{name}")
+' | tr -d '\r' || echo ""
+}
+
 # open_issue_claim_labels <repo> <label-prefix>
-#   Emit `<issue-number><TAB><label>` for every OPEN issue in <repo> carrying a
-#   label that starts with <label-prefix>. Sole enumerator for both claim-label
-#   sweeps, so their populations cannot diverge.
+#   Emit every open issue label beginning with <label-prefix>.
 #
 #   The listing carries no label qualifier on purpose. Every terminal park
 #   removes `fleet:queued`, so a population selected by `label:"fleet:queued"`
@@ -3329,26 +3353,7 @@ open_issue_claim_labels() {
     local limit=1000
     gh issue list --repo "$repo" --state open \
         --json number,labels --limit "$limit" 2>/dev/null \
-        | LABEL_PREFIX="$prefix" ISSUE_LIMIT="$limit" python3 -c '
-import json, os, sys
-prefix = os.environ.get("LABEL_PREFIX", "")
-limit = int(os.environ.get("ISSUE_LIMIT", "0") or 0)
-try:
-    issues = json.load(sys.stdin)
-except Exception:
-    issues = []
-# A full page is indistinguishable from a truncated one, so say so rather than
-# reporting a sweep that covered an unknown fraction of the open issues.
-if limit and len(issues) >= limit:
-    print(f"fleet-claim: open-issue claim sweep hit the {limit}-issue listing "
-          "limit; claims past it were not enumerated this pass", file=sys.stderr)
-for issue in issues:
-    n = issue.get("number")
-    for l in (issue.get("labels") or []):
-        name = (l or {}).get("name", "") if isinstance(l, dict) else ""
-        if name.startswith(prefix):
-            print(f"{n}\t{name}")
-' | tr -d '\r' || echo ""
+        | claim_labels_from_json "$prefix" "$limit" issue
 }
 
 # cmd_cleanup_gh <repo> [<repo> ...]
@@ -3710,10 +3715,9 @@ for issue in issues:
 }
 
 # cmd_reset_sweep_host_claims
-#   Unconditionally remove this host's fleet:claim-<host>-* labels from open
-#   issues that have no matching open claude/<N>-* PR. Called by fleet-up
-#   immediately after cmd_clear_all so the queue shows a clean slate without
-#   waiting for the 2h TTL in cmd_cleanup_gh's second pass.
+#   Remove stale task claims and every marker-vouched label owned by this host.
+#   Called immediately after cmd_clear_all, which intentionally erases the
+#   liveness markers for reviewing, resolving, and planning claims.
 #
 #   Multi-host safety: only touches fleet:claim-<THIS_HOST>-* labels.
 #   Another host's labels are authoritative for that host and MUST NOT be
@@ -3734,15 +3738,22 @@ cmd_reset_sweep_host_claims() {
     fi
 
     local total_removed=0
+    local -A reservation_holders=()
+    local reservation_worktree reservation_task reservation_branch reservation_time reservation_epoch
+    while IFS=$'\t' read -r reservation_worktree reservation_task reservation_branch reservation_time reservation_epoch; do
+        [[ -n "$reservation_task" ]] \
+            && reservation_holders["$reservation_task"]="$reservation_worktree"
+    done < <(reservations_dump)
 
     for repo in "${repos[@]}"; do
-        local open_claim_plan open_pr_branches_json
-        open_claim_plan=$(open_issue_claim_labels "$repo" "$prefix")
-
-        [[ -z "$open_claim_plan" ]] && continue
+        local open_claim_plan open_pr_branches_json open_issues_json
+        open_issues_json=$(gh issue list --repo "$repo" --state open \
+            --json number,labels --limit 1000 2>/dev/null || echo "[]")
+        open_claim_plan=$(printf '%s\n' "$open_issues_json" \
+            | claim_labels_from_json "$prefix" 1000 issue)
 
         open_pr_branches_json=$(gh pr list --repo "$repo" --state open \
-            --json headRefName,body --limit 300 2>/dev/null || echo "[]")
+            --json number,headRefName,body,labels --limit 1000 2>/dev/null || echo "[]")
 
         while IFS=$'\t' read -r issue_num label_name; do
             [[ -z "$issue_num" || -z "$label_name" ]] && continue
@@ -3780,7 +3791,7 @@ print(0)
             # sequence. (task_id is repo-unqualified; a cross-repo number
             # collision at worst keeps a label that the 2h TTL still reaps.)
             local resv_holder
-            resv_holder=$(reservation_holder_for_task "$issue_num" 2>/dev/null || true)
+            resv_holder="${reservation_holders[$issue_num]:-}"
             if [[ -n "$resv_holder" ]]; then
                 echo "reset-sweep-host-claims: keeping '$label_name' on $repo issue#$issue_num — reserved by worktree '$resv_holder' (resumes)"
                 continue
@@ -3801,6 +3812,50 @@ print(0)
                 fi
             fi
         done <<< "$open_claim_plan"
+
+        local lane lane_prefix open_lane_plan target_num label_name
+        for lane in reviewing resolving; do
+            lane_prefix="fleet:${lane}-${host}-"
+            open_lane_plan=$(printf '%s\n' "$open_pr_branches_json" \
+                | claim_labels_from_json "$lane_prefix" 1000 PR)
+            while IFS=$'\t' read -r target_num label_name; do
+                [[ -z "$target_num" || -z "$label_name" ]] && continue
+                if gh pr edit "$target_num" --repo "$repo" \
+                        --remove-label "$label_name" >/dev/null 2>&1; then
+                    echo "reset-sweep-host-claims: removed '$label_name' on $repo PR#$target_num (boot marker reset)"
+                    total_removed=$((total_removed + 1))
+                fi
+            done <<< "$open_lane_plan"
+
+            open_lane_plan=$(printf '%s\n' "$open_issues_json" \
+                | claim_labels_from_json "$lane_prefix" 1000 issue)
+            while IFS=$'\t' read -r target_num label_name; do
+                [[ -z "$target_num" || -z "$label_name" ]] && continue
+                if gh issue edit "$target_num" --repo "$repo" \
+                        --remove-label "$label_name" >/dev/null 2>&1; then
+                    echo "reset-sweep-host-claims: removed '$label_name' on $repo issue#$target_num (boot marker reset)"
+                    total_removed=$((total_removed + 1))
+                fi
+            done <<< "$open_lane_plan"
+        done
+
+        lane_prefix="fleet:planning-${host}-"
+        open_lane_plan=$(printf '%s\n' "$open_issues_json" \
+            | claim_labels_from_json "$lane_prefix" 1000 issue)
+        while IFS=$'\t' read -r target_num label_name; do
+            [[ -z "$target_num" || -z "$label_name" ]] && continue
+            local resv_holder
+            resv_holder="${reservation_holders[$target_num]:-}"
+            if [[ -n "$resv_holder" ]]; then
+                echo "reset-sweep-host-claims: keeping '$label_name' on $repo issue#$target_num — reserved by worktree '$resv_holder' (resumes)"
+                continue
+            fi
+            if gh issue edit "$target_num" --repo "$repo" \
+                    --remove-label "$label_name" >/dev/null 2>&1; then
+                echo "reset-sweep-host-claims: removed '$label_name' on $repo issue#$target_num (boot marker reset)"
+                total_removed=$((total_removed + 1))
+            fi
+        done <<< "$open_lane_plan"
     done
 
     if [[ $total_removed -eq 0 ]]; then
@@ -6572,10 +6627,9 @@ commands:
                                 release a planning claim.
   clear-all                     wipe all claims (used by fleet-up on
                                 restart).
-  reset-sweep-host-claims       unconditionally remove this host's
-                                fleet:claim-<host>-* labels from open
-                                issues with no matching open PR (called
-                                by fleet-up after clear-all).
+  reset-sweep-host-claims       remove this host's stale task claims and
+                                marker-vouched reviewing, resolving, and
+                                planning labels after clear-all.
   reconcile [--apply] [--repo o/r] ...
                                 Cross-surface reconciliation pass: cross-
                                 checks labels, open-PR state, host-local FS

@@ -1296,11 +1296,11 @@ done
 unset _p
 
 # ----------------------------------------------------------------------
-# Step 3b: clear stale task claims
+# Step 3b: clear stale task and lane claims
 # ----------------------------------------------------------------------
 #
-# fleet-up resets every worktree to a fresh branch, so any claims from
-# a previous fleet session are stale. Wipe them so agents start clean.
+# fleet-up resets every worktree and the local lane-liveness markers. Sweep
+# their GitHub labels before the dispatcher can route work against them.
 
 if command -v fleet-claim >/dev/null 2>&1; then
     fleet-claim clear-all
