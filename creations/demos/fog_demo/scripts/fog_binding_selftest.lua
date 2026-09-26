@@ -15,6 +15,11 @@ assert(IRFog.addVision(10, 0, 4, 0, 3, 0.5, -1, 1) == 1)
 assert(IRFog.evalReveal(-10, 0, 3) == 1)
 assert(IRFog.evalReveal(10, 0, 3) == 1)
 assert(IRFog.evalReveal(0, 0, 3) == 0)
+IRFog.setCell(0, 0, IRFog.State.VISIBLE)
+assert(IRFog.evalReveal(0, 0, 3) == 1)
+IRFog.setCell(0, 0, IRFog.State.EXPLORED)
+assert(IRFog.evalReveal(0, 0, 3) == 0)
+IRFog.clear()
 assert(IRFog.lineOfSight(-10, 0, 3, 10, 0, 3))
 -- The probe voxel at (0, 0, 4) is ungoverned, so it occludes a ray that passes
 -- its column from an eye below its top; a ray beside it stays clear.

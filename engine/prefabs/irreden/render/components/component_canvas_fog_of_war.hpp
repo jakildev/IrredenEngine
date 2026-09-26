@@ -131,6 +131,10 @@ namespace IRComponents {
 constexpr int kFogOfWarSize = 256;
 constexpr int kFogOfWarHalfExtent = kFogOfWarSize / 2;
 
+// The one reveal channel the engine assigns. Grid cells and every vision
+// source reveal on it; a creation's own channel bits are its own to define.
+constexpr std::uint32_t kFogChannelDefault = 1u;
+
 // Live analytic "vision circle" reveal — the smooth, render-resolution path
 // that the voxel grid above cannot express. Each circle is a world-space disc
 // (center + radius) the fog shader evaluates PER PIXEL from the continuous
@@ -424,9 +428,25 @@ struct C_CanvasFogOfWar {
         losTexture_.second->clear(PixelDataFormat::RGBA, PixelDataType::FLOAT32, emptyTexel);
     }
 
+    // Tag selecting the textureless constructor.
+    struct HeadlessInit {};
+
+    // The CPU field and observers with no GPU texture, for a headless test
+    // that drives the reveal systems without a render manager. A render
+    // system reaching `getTexture()` on this instance asserts.
+    explicit C_CanvasFogOfWar(HeadlessInit)
+        : texture_{0, nullptr}
+        , field_{std::make_shared<IRPrefab::Fog::WorldField>()}
+        , losTexture_{0, nullptr}
+        , losColumnTops_(kFogLosFieldFloatCount, kFogLosColumnEmpty) {}
+
     void onDestroy() {
-        IRRender::destroyResource<Texture2D>(texture_.first);
-        IRRender::destroyResource<Texture2D>(losTexture_.first);
+        if (texture_.second != nullptr) {
+            IRRender::destroyResource<Texture2D>(texture_.first);
+        }
+        if (losTexture_.second != nullptr) {
+            IRRender::destroyResource<Texture2D>(losTexture_.first);
+        }
         field_.reset();
     }
 

@@ -39,7 +39,8 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
 
 layout(rgba8, binding = 0) uniform image2D trixelColors;
 layout(r32i, binding = 1) readonly uniform iimage2D trixelDistances;
-// Read only for the fog whole-body and analytic-surface carrier bits.
+// Read only for the fog BODY carrier (decodeFogBody / decodeFogBodyFactor) and
+// the analytic-surface carrier bit.
 layout(rg32ui, binding = 3) readonly uniform uimage2D triangleCanvasEntityIds;
 
 layout(std430, binding = 25) readonly buffer PerAxisCellCompacted {
@@ -116,10 +117,22 @@ void main() {
         return;
     }
 
+    // A hidden body never reaches this pass (its pool range is inactive), so a
+    // BODY pixel here is a shown body's, painted at its carrier factor.
+    const uvec2 rawId = imageLoad(triangleCanvasEntityIds, pixel).xy;
+    if (decodeFogBody(rawId)) {
+        const float bodyState = float(decodeFogBodyFactor(rawId)) / 255.0;
+        if (bodyState < 1.0) {
+            imageStore(
+                trixelColors, pixel, fogApplyBody(bodyState, imageLoad(trixelColors, pixel))
+            );
+        }
+        return;
+    }
+
     const int slot = decodeSlot(encoded);
     const int faceId = visibleFaceIds[slot] ^ decodeFlipRoute(encoded, perAxisRoute);
     const int scale = effectiveTrixelSubdivisionScale(voxelRenderOptions);
-    const uvec2 rawId = imageLoad(triangleCanvasEntityIds, pixel).xy;
     const bool analyticCardinal =
         perAxisRoute == 0 && residualYaw == 0.0 && scale > 1 && decodeAnalyticSurface(rawId);
     const int rasterDepth = decodeDepthSingle(encoded);
@@ -128,7 +141,6 @@ void main() {
         : rasterDepth;
     const vec3 pos3D = fogPixelToWorld(pixel, encoded, faceId, size, cardinalDepth);
     float aaFloor = 0.0;
-    bool fogWholeBody = false;
     vec3 losSample = pos3D;
     if (visionCircleCount > 0) {
         // Local world-units-per-pixel from the +x neighbour at the same depth:
@@ -136,7 +148,6 @@ void main() {
         const vec3 neighbor = fogPixelToWorld(
             pixel + ivec2(1, 0), encoded, faceId, size, cardinalDepth);
         aaFloor = length(neighbor.xy - pos3D.xy);
-        fogWholeBody = decodeFogWholeBody(rawId);
         if (losSourceMask != 0) {
             // A per-axis cell and a cardinal voxel pixel sit on the raster's
             // lower-corner lattice. Analytic cardinal pixels are restored to
@@ -156,7 +167,7 @@ void main() {
         }
     }
 
-    const FogReveal reveal = fogRevealSample(pos3D, losSample, aaFloor, fogWholeBody);
+    const FogReveal reveal = fogRevealSample(pos3D, losSample, aaFloor);
     if (reveal.state >= 1.0) {
         return;
     }

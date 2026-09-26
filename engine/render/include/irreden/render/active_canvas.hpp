@@ -15,6 +15,13 @@ namespace IRRender {
 // in the full render surface.
 IREntity::EntityId getActiveCanvasEntityOrNull();
 
+// Names the canvas getActiveCanvasEntityOrNull() reports while no
+// RenderManager exists, so a headless test can drive the systems that key
+// on the active canvas (the fog reveal systems, the fog Lua service).
+// Ignored whenever a RenderManager is live; kNullEntity restores the
+// default.
+void setHeadlessActiveCanvasEntity(IREntity::EntityId canvas);
+
 } // namespace IRRender
 
 #endif /* IRREDEN_RENDER_ACTIVE_CANVAS_H */

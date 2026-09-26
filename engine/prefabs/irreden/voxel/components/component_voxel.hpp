@@ -48,18 +48,25 @@ constexpr std::uint8_t kFaceOccludedMask = kFaceOccludedNegX | kFaceOccludedPosX
 /// per-trixel priority tier. Bit 2 (`kRotatedEmit`) marks a voxel
 /// whose render-frame CELL positions are a ROTATED re-voxelization
 /// (`REBUILD_GRID_VOXELS` for GRID-mode sets; the detached path uses the
-/// `visibleFaceIds.w` re-voxelize uniform instead). Bit 3
-/// (`kFogWholeBodyExempt`) marks a set governed by one entity-anchor fog
-/// verdict, so its live voxels bypass per-column fog rejection. The
-/// voxel→trixel raster reads
-/// it to enable the silhouette-riser face selection — emit the exposed
+/// `visibleFaceIds.w` re-voxelize uniform instead). The voxel→trixel raster
+/// reads it to enable the silhouette-riser face selection — emit the exposed
 /// opposite-polarity face that the convex visible-triplet drops on a
 /// rotated staircase's grazing edge. Non-rotated voxels never set it, so the
 /// strict-triplet fast path (and its byte-identity) is preserved.
+/// Bit 3 (`kFogBody`) marks a fog BODY: a set governed by one entity-anchor
+/// verdict, so its live voxels bypass per-column fog rejection and stage 2
+/// folds the bit into entity-id bit 28. Bits[11:4] carry that verdict as an
+/// 8-bit reveal factor (`C_FogRevealed::revealFactor_ * 255`, round half up)
+/// which stage 2 folds into entity-id bits 27:20; FOG_TO_TRIXEL paints every
+/// BODY pixel at that one factor. An EXEMPT set pins the factor at 255.
 namespace VoxelReserved {
 constexpr std::uint32_t kPriorityMask = 0x3u;   // bits[1:0]
 constexpr std::uint32_t kRotatedEmit = 1u << 2; // bit 2
-constexpr std::uint32_t kFogWholeBodyExempt = 1u << 3; // bit 3
+constexpr std::uint32_t kFogBody = 1u << 3;     // bit 3
+constexpr std::uint32_t kFogWholeBodyExempt = kFogBody;
+constexpr int kFogBodyFactorShift = 4;
+constexpr std::uint32_t kFogBodyFactorMask = 0xFFu << kFogBodyFactorShift; // bits[11:4]
+constexpr std::uint32_t kFogCarrierMask = kFogBody | kFogBodyFactorMask;
 } // namespace VoxelReserved
 
 /// Per-voxel record. 12 B std430 layout — matches the v2 entity-editor record
@@ -74,8 +81,8 @@ constexpr std::uint32_t kFogWholeBodyExempt = 1u << 3; // bit 3
 ///                         the trailing uint32 4-byte aligned
 ///   [8:11] reserved_      bits[1:0] = per-trixel priority tier carrier;
 ///                         bit 2 = kRotatedEmit (rotated re-voxelize, see
-///                         VoxelReserved); bit 3 = kFogWholeBodyExempt;
-///                         bits[31:4] reserved
+///                         VoxelReserved); bit 3 = kFogBody; bits[11:4] =
+///                         the BODY reveal factor; bits[31:12] reserved
 ///
 /// The compute shaders (`c_voxel_to_trixel_stage_*`) read `color_` from
 /// offset 0; `flags_` is consumed by stage 1 to skip occluded faces;

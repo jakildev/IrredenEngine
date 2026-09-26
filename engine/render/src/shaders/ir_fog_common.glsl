@@ -124,11 +124,12 @@ vec3 fogStateColor(float state, vec3 sourceColor, vec3 unexplored) {
     return mix(unexplored, exploredColor, t);
 }
 
-// `aaFloor` (world units per canvas pixel), `fogWholeBody` and `losSample`
+// The FIELD reveal. `aaFloor` (world units per canvas pixel) and `losSample`
 // (the sample's canonical position, fogLosCanonicalSample) are read only by
 // the vision-circle loop, so callers may skip computing them when
-// visionCircleCount is 0; `losSample` is read only for a gated source.
-FogReveal fogRevealSample(vec3 pos3D, vec3 losSample, float aaFloor, bool fogWholeBody) {
+// visionCircleCount is 0; `losSample` is read only for a gated source. A BODY
+// sample never reaches it (fogApplyBody).
+FogReveal fogRevealSample(vec3 pos3D, vec3 losSample, float aaFloor) {
     const ivec3 surfaceVoxel = roundHalfUp(pos3D);
     const ivec2 fogSize = imageSize(canvasFogOfWar);
     const float gridState = fogTap(surfaceVoxel.xy, fogSize);
@@ -142,15 +143,13 @@ FogReveal fogRevealSample(vec3 pos3D, vec3 losSample, float aaFloor, bool fogWho
         if (state >= 1.0) {
             break;
         }
-        // Height-penalized reveal; a whole-body pixel drops both terms.
+        // Height-penalized reveal.
         const vec4 heights = visionCircleHeights[i];
-        const float zCostUp = fogWholeBody ? 0.0 : heights.y;
-        const float zCostDown = fogWholeBody ? 0.0 : heights.z;
         const float dzUp = max(heights.x - pos3D.z, 0.0);
         const float dzDown = max(pos3D.z - heights.x, 0.0);
         const float distEff = length(pos3D.xy - visionCircles[i].xy) +
-            zCostUp * max(dzUp - heights.w, 0.0) +
-            zCostDown * max(dzDown - heights.w, 0.0);
+            heights.y * max(dzUp - heights.w, 0.0) +
+            heights.z * max(dzDown - heights.w, 0.0);
         const float aa = max(visionCircles[i].w, aaFloor);
         const float reveal =
             1.0 - smoothstep(visionCircles[i].z - aa, visionCircles[i].z + aa, distEff);
@@ -164,11 +163,9 @@ FogReveal fogRevealSample(vec3 pos3D, vec3 losSample, float aaFloor, bool fogWho
             continue;
         }
         // A gated source is scaled by its line of sight to the sample; only a
-        // sample the source can reveal or rim-lift is marched. A whole-body
-        // pixel's visibility is its anchor's verdict, so it is never gated per
-        // pixel.
+        // sample the source can reveal or rim-lift is marched.
         float losVisibility = 1.0;
-        if (fogLosSourceGated(losSourceMask, i) && !fogWholeBody &&
+        if (fogLosSourceGated(losSourceMask, i) &&
             (reveal > 0.0 || (visionCircles[i].w == 0.0 && distPastRim < kFogRimFadeCells)) &&
             length(losSample.xy - visionCircles[i].xy) <= fogLosReach(visionCircles[i])) {
             losVisibility = fogLosVisibility(
@@ -213,4 +210,16 @@ vec4 fogApplyReveal(FogReveal reveal, int faceAxis, vec4 sourceColor) {
         }
     }
     return vec4(outColor, sourceColor.a);
+}
+
+// A BODY sample takes its body's one verdict: `state` is the carrier factor,
+// with no grid tap, height term, line-of-sight gate, rim fade or cut cap, so
+// the whole body reads at one tone. Only meaningful for state < 1.0.
+vec4 fogApplyBody(float state, vec4 sourceColor) {
+    return vec4(fogStateColor(state, sourceColor.rgb, unexploredColor.rgb), sourceColor.a);
+}
+
+// The BODY state an overflow entry's class byte carries (encodeFogOverflowClassByte).
+float fogOverflowBodyState(uint classByte) {
+    return float(classByte) / 254.0;
 }

@@ -84,6 +84,7 @@ add_executable(IrredenEngineTest
   render/fog_cross_section_test.cpp
   render/fog_line_of_sight_test.cpp
   render/fog_reveal_eval_test.cpp
+  render/fog_subject_adopt_test.cpp
   render/per_axis_canvas_lifecycle_test.cpp
   render/per_axis_canvas_size_test.cpp
   render/per_axis_cast_subcell_test.cpp
@@ -155,6 +156,7 @@ add_executable(IrredenEngineTest
   time/stopwatch_test.cpp
   time/lua_sim_test.cpp
   job/ir_job_test.cpp
+  job/worker_block_queue_test.cpp
   utility/ir_utility_test.cpp
   video/auto_screenshot_helpers_test.cpp
   video/capture_output_resolution_test.cpp

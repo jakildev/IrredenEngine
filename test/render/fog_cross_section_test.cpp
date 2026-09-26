@@ -38,6 +38,7 @@
 #include <span>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <utility>
 
 namespace {
@@ -103,6 +104,10 @@ const std::string kGlslFogCommonPath =
     std::string(IR_TEST_RENDER_SHADER_DIR) + "/ir_fog_common.glsl";
 const std::string kMetalFogCommonPath =
     std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/ir_fog_common.metal";
+const std::string kGlslStage2BodyPath =
+    std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_voxel_to_trixel_stage_2_body.glsl";
+const std::string kMetalStage2BodyPath =
+    std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/c_voxel_to_trixel_stage_2_body.metal";
 const std::string kGlslFogPassPath =
     std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_fog_to_trixel.glsl";
 const std::string kMetalFogPassPath =
@@ -123,6 +128,8 @@ std::string normalizeShaderMath(const std::string &source) {
     const std::string noComments = std::regex_replace(source, std::regex(R"(//[^\n]*)"), "");
     const std::string noObs = std::regex_replace(noComments, std::regex(R"(\bobs\.)"), "");
     std::string folded = std::regex_replace(noObs, std::regex(R"(\bfloat([234])\b)"), "vec$1");
+    folded = std::regex_replace(folded, std::regex(R"(\buint([234])\b)"), "uvec$1");
+    folded = std::regex_replace(folded, std::regex(R"(\bint([234])\b)"), "ivec$1");
     folded = std::regex_replace(folded, std::regex(R"((\d)f\b)"), "$1");
     folded = std::regex_replace(folded, std::regex(R"(\s+)"), " ");
     const std::string trimmedFront = std::regex_replace(folded, std::regex(R"(^ )"), "");
@@ -203,6 +210,7 @@ std::string normalizeKernelMath(const std::string &source) {
     std::string noArgs =
         std::regex_replace(source, std::regex(R"(\bcanvasFogOfWar,\s*fogObservers,\s*)"), "");
     noArgs = std::regex_replace(noArgs, std::regex(R"(,\s*fogLineOfSight\s*\))"), ")");
+    noArgs = std::regex_replace(noArgs, std::regex(R"(,\s*fogObservers\s*\))"), ")");
     const std::string normalized = normalizeShaderMath(
         std::regex_replace(noArgs, std::regex(R"(\b(frameData|fogObservers)\.)"), "")
     );
@@ -218,7 +226,7 @@ std::string normalizeKernelMath(const std::string &source) {
 // Returns false when the constant is absent, which is itself a parity failure.
 bool readShaderConstant(const std::string &source, const std::string &name, double &value) {
     std::smatch match;
-    const std::regex pattern(R"(\b)" + name + R"(\s*=\s*(-?[0-9]+(?:\.[0-9]*)?)f?\s*;)");
+    const std::regex pattern(R"(\b)" + name + R"(\s*=\s*(-?[0-9]+(?:\.[0-9]*)?)[fu]?\s*;)");
     if (!std::regex_search(source, match, pattern)) {
         return false;
     }
@@ -468,27 +476,62 @@ TEST(FogCrossSectionShaderParity, CommonFogShadingIsIdenticalAcrossBackends) {
     ASSERT_FALSE(metalApply.empty()) << "fogApplyReveal body not found in MSL";
     EXPECT_EQ(normalizeKernelMath(glslApply), normalizeKernelMath(metalApply))
         << "the shared fog colour apply diverged between backends";
+
+    // The BODY apply and the overflow lane's BODY state decode.
+    for (const auto &[glslName, metalName] :
+         {std::pair{"vec4 fogApplyBody", "float4 fogApplyBody"},
+          std::pair{"float fogOverflowBodyState", "float fogOverflowBodyState"}}) {
+        SCOPED_TRACE(glslName);
+        const std::string glslBody = extractFunctionBody(glsl, glslName);
+        const std::string metalBody = extractFunctionBody(metal, metalName);
+        ASSERT_FALSE(glslBody.empty()) << glslName << " not found in GLSL";
+        ASSERT_FALSE(metalBody.empty()) << metalName << " not found in MSL";
+        EXPECT_EQ(normalizeKernelMath(glslBody), normalizeKernelMath(metalBody))
+            << glslName << " diverged between backends";
+    }
+    const std::string glslBodyApply = extractFunctionBody(glsl, "vec4 fogApplyBody");
+    EXPECT_NE(
+        glslBodyApply.find("fogStateColor(state, sourceColor.rgb, unexploredColor.rgb)"),
+        std::string::npos
+    ) << "a BODY takes the shared state curve at its own factor: "
+      << glslBodyApply;
+    EXPECT_EQ(glslBodyApply.find("hardDistPastRim"), std::string::npos)
+        << "a BODY takes no rim fade and no cut cap";
 }
 
 // Every route skips the colour read-modify-write for a fully revealed sample:
 // the early return sits between the reveal and the colour read, on both
-// backends.
+// backends. The BODY branch returns ahead of the FIELD reveal, and its own
+// colour read sits behind its `< 1.0` guard.
 TEST(FogCrossSectionShaderParity, FullyRevealedSamplesSkipTheColourWrite) {
-    const std::pair<std::string, std::string> kernels[] = {
-        {kGlslFogPassPath, "imageLoad(trixelColors"},
-        {kMetalFogPassPath, "trixelColors.read("},
-        {kGlslFogOverflowPath, "unpackColor(colorPacked)"},
-        {kMetalFogOverflowPath, "unpackColor(colorPacked)"},
+    const std::tuple<std::string, std::string, std::string> kernels[] = {
+        {kGlslFogPassPath, "imageLoad(trixelColors", "if (decodeFogBody(rawId))"},
+        {kMetalFogPassPath, "trixelColors.read(", "if (decodeFogBody(rawId))"},
+        {kGlslFogOverflowPath,
+         "unpackColor(colorPacked)",
+         "if (fogClassByte != kFogOverflowFieldByte)"},
+        {kMetalFogOverflowPath,
+         "unpackColor(colorPacked)",
+         "if (fogClassByte != kFogOverflowFieldByte)"},
     };
-    for (const auto &[path, colourRead] : kernels) {
+    for (const auto &[path, colourRead, bodyBranch] : kernels) {
         const std::string kernel = readShaderSource(path);
         ASSERT_FALSE(kernel.empty()) << "could not read " << path;
+        const std::size_t bodyAt = kernel.find(bodyBranch);
+        ASSERT_NE(bodyAt, std::string::npos) << path << " lost its BODY branch";
+        const std::size_t bodyGuardAt = kernel.find("if (bodyState < 1.0", bodyAt);
+        const std::size_t bodyColourAt = kernel.find(colourRead, bodyAt);
+        ASSERT_NE(bodyGuardAt, std::string::npos) << path << " lost the BODY early-out";
+        EXPECT_LT(bodyGuardAt, bodyColourAt)
+            << path << " reads a BODY colour before its fully-revealed early-out";
+
         const std::size_t revealAt = kernel.find("fogRevealSample(");
         const std::size_t earlyOutAt = kernel.find("if (reveal.state >= 1.0");
-        const std::size_t colourAt = kernel.find(colourRead);
+        const std::size_t colourAt = kernel.find(colourRead, revealAt);
         ASSERT_NE(revealAt, std::string::npos) << path << " no longer calls fogRevealSample";
         ASSERT_NE(earlyOutAt, std::string::npos) << path << " lost its fully-revealed early-out";
         ASSERT_NE(colourAt, std::string::npos) << path << " colour read not found";
+        EXPECT_LT(bodyColourAt, revealAt) << path << " BODY branch must precede the FIELD reveal";
         EXPECT_LT(revealAt, earlyOutAt) << path;
         EXPECT_LT(earlyOutAt, colourAt)
             << path << " reads the colour before the fully-revealed early-out";
@@ -513,8 +556,14 @@ TEST(FogCrossSectionShaderParity, OverflowFogClassEncodingIsIdenticalAcrossBacke
     ASSERT_FALSE(glslAppend.empty()) << "overflow fog class append not found in GLSL";
     ASSERT_FALSE(metalAppend.empty()) << "overflow fog class append not found in MSL";
     EXPECT_EQ(normalizeKernelMath(glslAppend), normalizeKernelMath(metalAppend));
-    EXPECT_NE(glslAppend.find("254u : 255u"), std::string::npos)
-        << "overflow class byte must reserve 255 for FIELD and 254 for BODY";
+    EXPECT_NE(
+        glslAppend.find(
+            "encodeFogOverflowClassByte(\n                fogWholeBodyExempt, "
+            "(voxels[voxelIndex].reserved >> 4u) & 0xFFu"
+        ),
+        std::string::npos
+    ) << "overflow class byte must carry the BODY bit and the reserved-word factor: "
+      << glslAppend;
 
     const std::string glslOverflow = readShaderSource(kGlslFogOverflowPath);
     const std::string metalOverflow = readShaderSource(kMetalFogOverflowPath);
@@ -522,19 +571,22 @@ TEST(FogCrossSectionShaderParity, OverflowFogClassEncodingIsIdenticalAcrossBacke
         glslOverflow,
         "const uint fogClassByte",
         "const uint fogClassByte",
-        "float aaFloor"
+        "\n        return;\n    }\n"
     );
     const std::string metalDecode = extractSpan(
         metalOverflow,
         "const uint fogClassByte",
         "const uint fogClassByte",
-        "float aaFloor"
+        "\n        return;\n    }\n"
     );
     ASSERT_FALSE(glslDecode.empty()) << "overflow fog class decode not found in GLSL";
     ASSERT_FALSE(metalDecode.empty()) << "overflow fog class decode not found in MSL";
     EXPECT_EQ(normalizeKernelMath(glslDecode), normalizeKernelMath(metalDecode));
-    EXPECT_NE(glslDecode.find("== 254u"), std::string::npos)
-        << "overflow fog route must decode BODY from class byte 254";
+    EXPECT_NE(glslDecode.find("fogClassByte != kFogOverflowFieldByte"), std::string::npos)
+        << "overflow fog route must read every non-FIELD class byte as a BODY: " << glslDecode;
+    EXPECT_NE(glslDecode.find("fogOverflowBodyState(fogClassByte)"), std::string::npos)
+        << glslDecode;
+    EXPECT_NE(glslDecode.find("fogApplyBody(bodyState, "), std::string::npos) << glslDecode;
 }
 
 // Test E, part 6: the line-of-sight gate. The pure helpers of the
@@ -655,6 +707,115 @@ TEST(FogCrossSectionShaderParity, LosGateIsIdenticalAcrossBackends) {
         ) << path
           << " no longer declares the line-of-sight parameter tail after the unexplored colour";
     }
+}
+
+// Test E, part 7: the BODY branch of the fog pass — the pixel takes the
+// carrier factor as its state and skips the field, the height terms, the rim
+// fade and the cut cap — is identical on both backends.
+TEST(FogCrossSectionShaderParity, FogPassBodyBranchIsIdenticalAcrossBackends) {
+    const std::string glsl = readShaderSource(kGlslFogPassPath);
+    const std::string metal = readShaderSource(kMetalFogPassPath);
+    // The branch closes at the first 4-space-indented brace after its start;
+    // its inner early return sits deeper.
+    const std::string glslBody =
+        extractSpan(glsl, "if (decodeFogBody(rawId))", "if (decodeFogBody(rawId))", "\n    }\n");
+    const std::string metalBody =
+        extractSpan(metal, "if (decodeFogBody(rawId))", "if (decodeFogBody(rawId))", "\n    }\n");
+    ASSERT_FALSE(glslBody.empty()) << "BODY branch not found in " << kGlslFogPassPath;
+    ASSERT_FALSE(metalBody.empty()) << "BODY branch not found in " << kMetalFogPassPath;
+    // The colour image access is the one dialect difference left after
+    // normalization (imageLoad / imageStore against read / write); both fold
+    // onto READ / WRITE so the math around them compares.
+    const std::string glslMath = std::regex_replace(
+        std::regex_replace(
+            normalizeKernelMath(glslBody),
+            std::regex(R"(imageLoad\(trixelColors, pixel\))"),
+            "READ"
+        ),
+        std::regex(R"(imageStore\(trixelColors, pixel, (.*)\);)"),
+        "WRITE($1);"
+    );
+    const std::string metalMath = std::regex_replace(
+        std::regex_replace(
+            normalizeKernelMath(metalBody),
+            std::regex(R"(trixelColors\.read\(uvec2\(pixel\)\))"),
+            "READ"
+        ),
+        std::regex(R"(trixelColors\.write\((.*), uvec2\(pixel\)\);)"),
+        "WRITE($1);"
+    );
+    EXPECT_EQ(glslMath, metalMath) << "the BODY branch diverged between backends";
+    EXPECT_NE(glslBody.find("fogApplyBody(bodyState, "), std::string::npos)
+        << "the BODY branch must shade through the shared BODY apply: " << glslBody;
+    EXPECT_NE(glslBody.find("decodeFogBodyFactor(rawId)) / 255.0"), std::string::npos)
+        << "the BODY state must be the carrier factor over 255: " << glslBody;
+    EXPECT_EQ(glslBody.find("fogTap"), std::string::npos) << "a BODY pixel takes no grid tap";
+    EXPECT_EQ(glslBody.find("visionCircle"), std::string::npos)
+        << "a BODY pixel evaluates no circle";
+}
+
+// Test E, part 8: the entity-id carrier twins — the BODY bit + factor fold and
+// their decodes — are identical on both backends, and stage 2 folds the voxel
+// reserved word's class bit and factor field through them identically.
+TEST(FogCrossSectionShaderParity, FogBodyCarrierTwinsAreIdenticalAcrossBackends) {
+    const std::string glslIso = readShaderSource(kGlslIsoCommonPath);
+    const std::string metalIso = readShaderSource(kMetalIsoCommonPath);
+    for (const char *function :
+         {"decodeFogBody",
+          "decodeFogBodyFactor",
+          "encodeEntityIdFogBody",
+          "encodeEntityIdFogWholeBody",
+          "encodeFogOverflowClassByte"}) {
+        SCOPED_TRACE(function);
+        const std::string glslBody = extractFunctionBody(glslIso, function);
+        const std::string metalBody = extractFunctionBody(metalIso, function);
+        ASSERT_FALSE(glslBody.empty()) << function << " missing from GLSL";
+        ASSERT_FALSE(metalBody.empty()) << function << " missing from MSL";
+        EXPECT_EQ(normalizeShaderMath(glslBody), normalizeShaderMath(metalBody))
+            << function << " diverged between backends";
+    }
+    double glslShift = 0.0;
+    double metalShift = 0.0;
+    ASSERT_TRUE(readShaderConstant(glslIso, "kEntityIdFogBodyFactorShiftInHighWord", glslShift));
+    ASSERT_TRUE(readShaderConstant(metalIso, "kEntityIdFogBodyFactorShiftInHighWord", metalShift));
+    EXPECT_EQ(glslShift, 20.0);
+    EXPECT_EQ(metalShift, 20.0);
+    double glslFieldByte = 0.0;
+    double metalFieldByte = 0.0;
+    ASSERT_TRUE(readShaderConstant(glslIso, "kFogOverflowFieldByte", glslFieldByte));
+    ASSERT_TRUE(readShaderConstant(metalIso, "kFogOverflowFieldByte", metalFieldByte));
+    EXPECT_EQ(glslFieldByte, 255.0);
+    EXPECT_EQ(metalFieldByte, 255.0);
+
+    const std::string glslStage2 = readShaderSource(kGlslStage2BodyPath);
+    const std::string metalStage2 = readShaderSource(kMetalStage2BodyPath);
+    const std::string glslFold =
+        extractSpan(glslStage2, "encodeEntityIdFogBody(", "encodeEntityIdFogBody(", ";");
+    const std::string metalFold =
+        extractSpan(metalStage2, "encodeEntityIdFogBody(", "encodeEntityIdFogBody(", ";");
+    ASSERT_FALSE(glslFold.empty()) << "stage-2 fold not found in " << kGlslStage2BodyPath;
+    ASSERT_FALSE(metalFold.empty()) << "stage-2 fold not found in " << kMetalStage2BodyPath;
+    EXPECT_EQ(normalizeKernelMath(glslFold), normalizeKernelMath(metalFold))
+        << "the stage-2 fold diverged between backends";
+    EXPECT_NE(glslFold.find("reserved >> 4u) & 0xFFu"), std::string::npos)
+        << "stage 2 must fold reserved bits 11:4 as the factor: " << glslFold;
+}
+
+// Test E, part 9: the cut-face widening is gated off for a BODY voxel on
+// both backends.
+TEST(FogCrossSectionShaderParity, CutFaceRuleSkipsBodyVoxelsOnBothBackends) {
+    const std::string glsl = readShaderSource(kGlslFaceSelectPath);
+    const std::string metal = readShaderSource(kMetalFaceSelectPath);
+    const std::string glslGate =
+        extractSpan(glsl, "sel.isCutFace = false;", "if (!sel.keepFace", "{");
+    const std::string metalGate =
+        extractSpan(metal, "sel.isCutFace = false;", "if (!sel.keepFace", "{");
+    ASSERT_FALSE(glslGate.empty()) << "cut-face gate not found in GLSL";
+    ASSERT_FALSE(metalGate.empty()) << "cut-face gate not found in MSL";
+    EXPECT_EQ(normalizeKernelMath(glslGate), normalizeKernelMath(metalGate))
+        << "the cut-face gate diverged between backends";
+    EXPECT_NE(glslGate.find("(reserved & 8u) == 0u"), std::string::npos)
+        << "the cut rule must skip reserved bit 3 (kFogBody): " << glslGate;
 }
 
 // ---------------------------------------------------------------------------

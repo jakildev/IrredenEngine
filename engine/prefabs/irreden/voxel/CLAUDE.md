@@ -20,8 +20,8 @@ binding. API contracts live in the headers; this file owns cross-header and pipe
   pair. `syncActiveMask()` remains only for existing low-level raw-loop sites.
 - `visible_` is a transient whole-set render gate: hiding clears the mask but
   preserves authored alpha; showing reconstructs it; both update arms skip
-  hidden sets. Fog's whole-body exemption bit and the rotated silhouette-riser
-  bit are independent and must survive the rotation-source snapshot.
+  hidden sets. Fog's BODY carrier (bit 3 + factor bits 11:4) and the rotated
+  silhouette-riser bit are independent and must survive the rotation-source snapshot.
 - Color mutations made while GRID rotation is active must also reach
   `rotationSourceVoxels_`; the identity frame restores that source span and
   clears the snapshot. Direct raw-span writes are safe only before the first

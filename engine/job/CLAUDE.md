@@ -20,6 +20,12 @@ The `JobManager` class itself lives at
 `engine/job/include/irreden/job/job_manager.hpp` — engine-internal
 shape. Creations only need the umbrella header.
 
+`IRJob::WorkerBlockQueue<T>` (`job/worker_block_queue.hpp`) is the
+staging queue for a `PARALLEL_FOR` tick that defers work to `endTick`:
+`reset(populationBound)` in `beginTick`, `push` from the tick, `forEach`
+after the join. Nothing on the tick path allocates, and executors claim
+slots in blocks rather than contending on one atomic per entry.
+
 ## Auto-grain dispatch helpers
 
 `parallelFor` is the raw primitive — the caller picks the grain.

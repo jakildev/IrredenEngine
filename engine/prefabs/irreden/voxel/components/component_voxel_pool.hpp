@@ -286,7 +286,7 @@ struct C_VoxelPool {
             m_voxelEntities.size()
         );
         // The entity-id carrier steals high-word bits (priority tier, fog
-        // cut-face, fog whole-body — everything outside
+        // cut-face, fog BODY class + factor — everything outside
         // IRRender::kEntityIdHighWordMask). A live id that sets one would decode
         // as a carrier flag AND a corrupted picked id — guard the invariant once
         // per set (entity ids are allocation counters far below 2^60).

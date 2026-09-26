@@ -155,16 +155,16 @@ voxel mutation is main-thread setup work, never `PARALLEL_FOR` tick work.
 `LuaScript::bindLuaFog()` installs the opt-in engine table, preserves custom
 keys, and stays separate from `bindLuaDrivenEcs()`.
 
-- `setVision` replaces sources; `addVision` appends (past the analytic cap, a
-  plain XY disc in the field that `getCell` reads); `clearVisions` clears both.
-  Defaults: `edge = kFogVisionEdgeDefault`, `observerZ = zCostUp = freeBand =
-  0`, `zCostDown = -1` (mirror up-cost).
-- `evalReveal(x,y,z)` evaluates circles and LOS gates, not grid memory or the body
-  verdict (no circles 0, no fog 1). `lineOfSight(from...,to...)` rebuilds per call; for
+- `setVision` replaces sources; `addVision` appends (past the analytic cap, a plain XY
+  disc in the field that `getCell` reads); `clearVisions` clears both. Defaults: `edge =
+  kFogVisionEdgeDefault`, `observerZ = zCostUp = freeBand = 0`, `zCostDown = -1` (mirror up-cost).
+- `evalReveal(x,y,z)` is the BODY verdict oracle: a VISIBLE grid cell or the circle
+  term (LOS gates included), never hysteretic body state; attached fog revealing
+  nothing returns 0, absent fog 1. `lineOfSight(from...,to...)` rebuilds per call; for
   many per frame, `captureLineOfSight()` once, then `lineOfSightCaptured(eye..., {x,y,z,...})`.
-- `setEntityGoverned(id, governed?)` defaults true and changes archetypes, so
-  defer it during iteration. `getEntityReveal` returns stored body reveal, or 1
-  for an ungoverned entity.
+- `setEntityGoverned(id, governed?)` defaults true (synchronous BODY); `false`
+  tags FIELD, even on a never-adopted entity. It changes archetypes, so defer it
+  during iteration. `getEntityReveal` is stored body reveal, or 1 when untagged.
 - `setCell`, `getCell`, and `revealRadius` edit/query the grid; `clear()` clears
   only that grid. States are `UNEXPLORED`, `EXPLORED`, and `VISIBLE`.
 
