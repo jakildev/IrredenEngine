@@ -66,9 +66,10 @@ evalVisionReveal(const IRComponents::FrameDataFogObservers &observers, IRMath::v
 
 /// The authoritative reveal: the cost curve above, with each source gated in
 /// @p observers' `losSourceMask_` contributing only where @p los sees
-/// @p worldPosition's rounded voxel. @p observers and @p los must come from one
-/// publication (`C_CanvasFogOfWar::losPublishedObservers_` + `losField()`); an
-/// unpublished field reveals nothing through a gated source.
+/// @p worldPosition — the rounded voxel for a hard-gate source, scaled by
+/// `FogLineOfSightField::visibility` for a smooth one. @p observers and @p los
+/// must come from one publication (`C_CanvasFogOfWar::losPublishedObservers_` +
+/// `losField()`); an unpublished field reveals nothing through a gated source.
 inline float evalVisionReveal(
     const IRComponents::FrameDataFogObservers &observers,
     const IRComponents::FogLineOfSightField &los,
@@ -77,10 +78,21 @@ inline float evalVisionReveal(
     const IRMath::ivec3 sample = IRMath::roundVec3HalfUp(worldPosition);
     float reveal = 0.0f;
     for (int i = 0; i < observers.visionCircleCount_; ++i) {
-        if (((observers.losSourceMask_ >> i) & 1) != 0 && !los.visible(i, sample)) {
-            continue;
+        float visibility = 1.0f;
+        if (((observers.losSourceMask_ >> i) & 1) != 0) {
+            const float softness = observers.losSoftness(i);
+            if (softness < 0.0f) {
+                if (!los.visible(i, sample)) {
+                    continue;
+                }
+            } else {
+                visibility = los.visibility(i, worldPosition, softness);
+            }
         }
-        reveal = IRMath::max(reveal, detail::evalVisionCircleReveal(observers, i, worldPosition));
+        reveal = IRMath::max(
+            reveal,
+            visibility * detail::evalVisionCircleReveal(observers, i, worldPosition)
+        );
     }
     return reveal;
 }
@@ -232,13 +244,16 @@ inline int addVisionCircle(
 
 /// Gate vision circle @p source by line of sight, the eye @p losEyeHeight world
 /// units above its `observerZ`; `kFogVisionLosOff` (any negative height)
-/// ungates it. See `C_CanvasFogOfWar::setVisionCircleLineOfSight` for the slot
-/// contract and the occluder model; the RENDER pipeline must carry
-/// `FOG_LOS_BUILD`. The per-frame clear-then-add pattern re-enables it every
-/// frame.
-inline void setVisionCircleLineOfSight(int source, float losEyeHeight) {
+/// ungates it. @p losSoftness >= 0 selects the smooth gate with that band in
+/// voxels; the default `kFogLosHardGate` keeps the hard gate. See
+/// `C_CanvasFogOfWar::setVisionCircleLineOfSight` for the slot contract and
+/// the occluder model; the RENDER pipeline must carry `FOG_LOS_BUILD`. The
+/// per-frame clear-then-add pattern re-enables it every frame.
+inline void setVisionCircleLineOfSight(
+    int source, float losEyeHeight, float losSoftness = IRComponents::kFogLosHardGate
+) {
     if (auto *fog = detail::activeFogComponent()) {
-        fog->setVisionCircleLineOfSight(source, losEyeHeight);
+        fog->setVisionCircleLineOfSight(source, losEyeHeight, losSoftness);
     }
 }
 

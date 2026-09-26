@@ -64,7 +64,24 @@
 //   * Gate: a sample is visible iff `roundHalfUp(z) <= H(roundHalfUp(xy))` —
 //     an integer voxel-centre height against the stored float, identical in
 //     the shader (`surfaceVoxel`) and the CPU oracle. Distance and height cost
-//     keep reading the continuous position.
+//     keep reading the continuous position. This is the hard gate, the default
+//     (`kFogLosHardGate`).
+//   * Smooth gate (a source's `losSoftness` s >= 0): each cell's verdict is
+//     `t = 1 - smoothstep(H, H + s, z)` (a step at s = 0; clear and out-of-field
+//     cells read 1), and the source's visibility `v` blends the four cell
+//     centres around the sample's continuous XY bilinearly at the rounded
+//     voxel height the hard gate compares, so a cell centre reads its own
+//     verdict and the ramp between cells is one cell wide. A vertical-face
+//     pixel instead takes the single cell one step along its face's outward
+//     normal from the voxel it belongs to (recovered from the pixel's depth
+//     encoding, rounded as the column build rounds it), at that voxel's height:
+//     a face is gated by the space it faces. `v` scales the source's
+//     reveal, and its rim distance past the radius eases toward the fade width
+//     (no lift) as `v` falls. The CPU oracle (`FogLineOfSightField::visibility`)
+//     evaluates the top-face rule at a point; entities have no face. Limit: a
+//     taller clear-horizon column beside a shadowed cell lifts that cell's
+//     samples toward 1/2 at the shared edge, falling to its own verdict at its
+//     centre; the hard gate steps at the same edge.
 // `FOG_LOS_BUILD` rebuilds the columns and every gated source's horizons each
 // RENDER frame and uploads `losTexture_` (256 × 512 RGBA32F: source `i` at
 // tile row `i / 4`, channel `i % 4`; `kFogLosHorizonClear` = unoccluded, the
@@ -122,6 +139,9 @@ constexpr float kFogVisionZCostMirrorUp = -1.0f;
 // `setVisionCircleLineOfSight` eye height that disables line of sight for a
 // source; any value >= 0 enables it.
 constexpr float kFogVisionLosOff = -1.0f;
+// `setVisionCircleLineOfSight` softness that selects the hard gate; any value
+// >= 0 selects the smooth gate with that band width in voxels.
+constexpr float kFogLosHardGate = -1.0f;
 using FogLosEyeHeights = std::array<float, kMaxFogVisionCircles>;
 
 constexpr int kFogLosSourcesPerTile = 4;
@@ -172,6 +192,42 @@ struct FogLineOfSightField {
             return true;
         return static_cast<float>(sample.z) <= horizons_[horizonIndex(source, sample.x, sample.y)];
     }
+
+    /// One cell's smooth verdict at height @p z: 1 at or below its horizon,
+    /// 0 above it at @p softness 0, else the smoothstep band. Mirrors
+    /// `fogLosTapVerdict`; out-of-field cells read 1.
+    float cellVerdict(int source, int cellX, int cellY, float z, float softness) const {
+        if (!cellInField(cellX, cellY))
+            return 1.0f;
+        const float horizon = horizons_[horizonIndex(source, cellX, cellY)];
+        if (z <= horizon)
+            return 1.0f;
+        if (softness <= 0.0f)
+            return 0.0f;
+        const float t = IRMath::clamp((z - horizon) / softness, 0.0f, 1.0f);
+        return 1.0f - t * t * (3.0f - 2.0f * t);
+    }
+
+    /// The smooth gate for source @p source at @p position with band
+    /// @p softness (>= 0): the four cell centres around its continuous XY
+    /// blended bilinearly at its rounded voxel height (the header comment has
+    /// the rule). 0 for an unpublished field.
+    float visibility(int source, IRMath::vec3 position, float softness) const {
+        if (horizons_ == nullptr)
+            return 0.0f;
+        const float z = static_cast<float>(IRMath::roundHalfUp(position.z));
+        const float baseX = IRMath::floor(position.x);
+        const float baseY = IRMath::floor(position.y);
+        const float wx = position.x - baseX;
+        const float wy = position.y - baseY;
+        const int x = static_cast<int>(baseX);
+        const int y = static_cast<int>(baseY);
+        const float v00 = cellVerdict(source, x, y, z, softness);
+        const float v10 = cellVerdict(source, x + 1, y, z, softness);
+        const float v01 = cellVerdict(source, x, y + 1, z, softness);
+        const float v11 = cellVerdict(source, x + 1, y + 1, z, softness);
+        return IRMath::mix(IRMath::mix(v00, v10, wx), IRMath::mix(v01, v11, wx), wy);
+    }
 };
 
 // GPU UBO payload for the analytic vision circles (binding
@@ -212,11 +268,40 @@ struct FrameDataFogObservers {
     /// so every earlier offset is unchanged; only `ir_fog_common` declares
     /// it. Alpha is unused (the pass preserves the source alpha).
     IRMath::vec4 unexploredColor_ = IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    /// Per-source line-of-sight softness, source `i` at `[i / 4][i % 4]`:
+    /// `kFogLosHardGate` (any negative) selects the hard gate, >= 0 the smooth
+    /// gate with that band in voxels. Read only for sources in
+    /// `losSourceMask_`; appended last, and only the fog passes declare it.
+    IRMath::vec4 losSoftness_[kMaxFogVisionCircles / 4] = {
+        IRMath::vec4(kFogLosHardGate), IRMath::vec4(kFogLosHardGate)
+    };
+
+    float losSoftness(int source) const {
+        return losSoftness_[source / 4][source % 4];
+    }
+
+    void setLosSoftness(int source, float softness) {
+        losSoftness_[source / 4][source % 4] = softness;
+    }
+
+    /// True when a live line-of-sight gated source reads the smooth gate, so
+    /// FOG_TO_TRIXEL dispatches its smooth kernel variant.
+    bool hasSmoothLosSource() const {
+        for (int i = 0; i < visionCircleCount_; ++i) {
+            if (((losSourceMask_ >> i) & 1) != 0 && losSoftness(i) >= 0.0f) {
+                return true;
+            }
+        }
+        return false;
+    }
 };
 static_assert(
-    sizeof(FrameDataFogObservers) == 2 * kMaxFogVisionCircles * 16 + 16 + 16,
-    "FrameDataFogObservers must stay std140/Metal-tight (vec4[N] + ivec4 tail + vec4[N] + vec4)"
+    sizeof(FrameDataFogObservers) ==
+        2 * kMaxFogVisionCircles * 16 + 16 + 16 + kMaxFogVisionCircles * 4,
+    "FrameDataFogObservers must stay std140/Metal-tight "
+    "(vec4[N] + ivec4 tail + vec4[N] + vec4 + vec4[N / 4])"
 );
+static_assert(kMaxFogVisionCircles == 8, "losSoftness_ initializes two vec4 lanes");
 
 struct C_CanvasFogOfWar {
     std::pair<ResourceId, Texture2D *> texture_;
@@ -451,14 +536,19 @@ struct C_CanvasFogOfWar {
 
     /// Gate registered source @p source by line of sight with its eye
     /// @p losEyeHeight world units above its `observerZ` (the header comment
-    /// has the model); a negative height (`kFogVisionLosOff`) ungates it.
-    /// @p source must name a registered slot — use `addVisionCircle`'s return.
+    /// has the model); a negative height (`kFogVisionLosOff`) ungates it and
+    /// resets its softness. @p losSoftness >= 0 selects the smooth gate with a
+    /// band that many voxels wide; the default (`kFogLosHardGate`, any
+    /// negative) keeps the hard gate. @p source must name a registered slot —
+    /// use `addVisionCircle`'s return.
     /// The eye's own column never occludes, but an ungoverned observer body
     /// spanning several columns does unless the eye clears its top; a governed
     /// body (`IRPrefab::Fog::setEntityRevealGoverned`) never occludes. A gated
     /// source needs `FOG_LOS_BUILD` in the RENDER pipeline.
-    void setVisionCircleLineOfSight(int source, float losEyeHeight) {
-        setVisionCircleLineOfSight(observers_, losEyeHeights_, source, losEyeHeight);
+    void setVisionCircleLineOfSight(
+        int source, float losEyeHeight, float losSoftness = kFogLosHardGate
+    ) {
+        setVisionCircleLineOfSight(observers_, losEyeHeights_, source, losEyeHeight, losSoftness);
     }
 
     /// The slot-authoring rules the members above apply to this component's
@@ -466,6 +556,9 @@ struct C_CanvasFogOfWar {
     static void clearVisionCircles(FrameDataFogObservers &observers, FogLosEyeHeights &eyeHeights) {
         observers.visionCircleCount_ = 0;
         observers.losSourceMask_ = 0;
+        for (IRMath::vec4 &lane : observers.losSoftness_) {
+            lane = IRMath::vec4(kFogLosHardGate);
+        }
         eyeHeights.fill(kFogVisionLosOff);
     }
 
@@ -485,6 +578,7 @@ struct C_CanvasFogOfWar {
             return -1;
         const int slot = observers.visionCircleCount_;
         observers.losSourceMask_ &= ~(1 << slot);
+        observers.setLosSoftness(slot, kFogLosHardGate);
         eyeHeights[static_cast<std::size_t>(slot)] = kFogVisionLosOff;
         observers.visionCircles_[observers.visionCircleCount_] =
             IRMath::vec4(cx, cy, radius, IRMath::max(edge, 0.0f));
@@ -523,7 +617,8 @@ struct C_CanvasFogOfWar {
         FrameDataFogObservers &observers,
         FogLosEyeHeights &eyeHeights,
         int source,
-        float losEyeHeight
+        float losEyeHeight,
+        float losSoftness = kFogLosHardGate
     ) {
         IR_ASSERT(
             source >= 0 && source < observers.visionCircleCount_,
@@ -536,9 +631,11 @@ struct C_CanvasFogOfWar {
         if (losEyeHeight >= 0.0f) {
             observers.losSourceMask_ |= 1 << source;
             eyeHeights[static_cast<std::size_t>(source)] = losEyeHeight;
+            observers.setLosSoftness(source, losSoftness >= 0.0f ? losSoftness : kFogLosHardGate);
         } else {
             observers.losSourceMask_ &= ~(1 << source);
             eyeHeights[static_cast<std::size_t>(source)] = kFogVisionLosOff;
+            observers.setLosSoftness(source, kFogLosHardGate);
         }
     }
 

@@ -2,7 +2,8 @@
 #define IR_PREFAB_FOG_LINE_OF_SIGHT_H
 
 // The fog line-of-sight model's CPU half: column rasterisation, the horizon
-// trace, and the per-source horizon build. The model itself (occluder set,
+// trace, the per-source horizon build, and the CPU twin of the smooth gate's
+// face-pixel voxel recovery. The model itself (occluder set,
 // eye, horizon rule, gate) is stated once, in
 // `component_canvas_fog_of_war.hpp`. `FOG_LOS_BUILD`, the reveal oracle and
 // `IRPrefab::Fog::lineOfSight` all reach the rule through `traceLosHorizon`,
@@ -234,6 +235,51 @@ inline IRMath::vec3 losEye(
         circle.y,
         observers.visionCircleHeights_[source].x - eyeHeights[static_cast<std::size_t>(source)]
     );
+}
+
+/// CPU twin of `fogLosFaceVoxel` (ir_fog_los.glsl, which states the
+/// derivation): the line-of-sight voxel whose X- or Y-axis face @p viewFace
+/// (the view-frame face at @p cardinal) emitted the single-canvas pixel at iso
+/// @p isoRel with raw depth @p rawDepth, at effective subdivision @p scale.
+/// @p microFaces is the subdivided raster (`voxelRenderOptions.x != 0`).
+inline IRMath::ivec3 losFaceVoxel(
+    IRMath::ivec2 isoRel,
+    int rawDepth,
+    IRMath::FaceId viewFace,
+    int scale,
+    bool microFaces,
+    IRMath::CardinalIndex cardinal
+) {
+    const bool xAxis = IRMath::faceAxis(viewFace) == 0;
+    IRMath::ivec3 micro = IRMath::roundVec3HalfUp(
+        IRMath::isoPixelToPos3D(isoRel.x, isoRel.y, static_cast<float>(rawDepth)) -
+        IRMath::vec3(-0.5f, 0.0f, 0.5f)
+    );
+    if (microFaces) {
+        const int corner =
+            (xAxis ? micro.x : micro.y) - (IRMath::faceIsPositive(viewFace) ? scale : 0);
+        const float scaleF = static_cast<float>(scale);
+        const int phase =
+            corner - scale * static_cast<int>(IRMath::floor(static_cast<float>(corner) / scaleF));
+        micro =
+            IRMath::ivec3(phase) +
+            scale *
+                IRMath::ivec3(IRMath::floor(IRMath::vec3(micro - IRMath::ivec3(phase)) / scaleF));
+        if (xAxis) {
+            micro.x = corner;
+        } else {
+            micro.y = corner;
+        }
+    }
+    return IRMath::roundVec3HalfUp(
+        IRMath::rotateCardinalZInv(IRMath::vec3(micro) / static_cast<float>(scale), cardinal)
+    );
+}
+
+/// The column a vertical face of @p voxel with world face @p worldFace gates
+/// against under the smooth gate: one cell along its outward normal.
+inline IRMath::ivec2 losFaceColumn(IRMath::ivec3 voxel, IRMath::FaceId worldFace) {
+    return IRMath::ivec2(voxel) + IRMath::ivec2(IRMath::faceOutwardNormal(worldFace));
 }
 
 /// Fill @p horizons (the `losTexture_` texel image) for @p observers: clear

@@ -70,6 +70,25 @@ Only FIELD matter and shapes with `C_LightBlocker::blocksLOS_` occlude the
 reveal field; BODY matter does not. BODY pixels skip the per-pixel LOS gate
 because their anchor verdict owns visibility (#3662).
 
+Each gated source picks its LOS gate with a per-source softness (#3775). The
+default hard gate compares a FIELD pixel's rounded voxel against its own
+cell's horizon, so every pixel in a cell shares one verdict and the shadow
+boundary follows the cell lattice. The smooth gate (softness >= 0) grades each
+cell's verdict over a softness-wide height band. A top-face pixel blends the
+four surrounding cell centres' verdicts bilinearly at its continuous XY. A
+vertical-face pixel gates on the column its face looks into, so a wall is lit
+by the space in front of it rather than by its own column. That source's
+visibility then scales both its reveal and its rim lift. Only the world canvas
+carries the smooth gate; the per-axis and overflow paint routes gate every
+source hard. The smooth gate is a compile-time kernel variant
+(`c_fog_to_trixel_smooth`), dispatched only while a gated source is smooth,
+so a scene without one pays nothing for it. The rule lives in
+`component_canvas_fog_of_war.hpp`; `FogLineOfSightField::visibility` is the
+CPU oracle, and entities evaluate the top-face rule at their anchor. The
+horizon field itself is unchanged, so shallow-angle flank stairs are reduced,
+not removed. `scripts/render-fog-los-boundary-metric.py` measures the smooth
+`fog_demo` occlusion rows against their hard-gate controls.
+
 ### Unpainted-route FIELD deviations
 
 A world-placed detached canvas has no `FOG_TO_TRIXEL` paint pass. When its

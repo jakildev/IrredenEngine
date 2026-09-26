@@ -543,9 +543,12 @@ bool g_fogReveal = false;
 // both visible and occluded ground. --fog-los gates every source at eye height
 // kFogLosEyeHeight; --fog-los-disabled is the identical scene with LOS off —
 // the A/B control. Both imply --fog-reveal; bare --fog-reveal keeps its
-// outside-the-field circles.
+// outside-the-field circles. --fog-los-smooth gates every source with the
+// smooth gate (softness kFogLosSmoothSoftness) and implies --fog-los.
 enum class FogLosFixture { NONE, ENABLED, DISABLED };
 FogLosFixture g_fogLos = FogLosFixture::NONE;
+bool g_fogLosSmooth = false;
+constexpr float kFogLosSmoothSoftness = 1.0f;
 constexpr float kFogLosRingRadius = 24.0f;
 constexpr float kFogLosRadius = 32.0f;
 constexpr float kFogLosEyeHeight = 1.5f;
@@ -764,6 +767,11 @@ void registerCliArgs() {
         "implies --fog-reveal"
     );
     args.flag(
+        "--fog-los-smooth",
+        "The --fog-los scene with every source on the smooth line-of-sight gate "
+        "(softness 1); implies --fog-los"
+    );
+    args.flag(
         "--fog-los-disabled",
         "The --fog-los scene with line of sight off (the A/B control); implies --fog-reveal"
     );
@@ -858,7 +866,8 @@ void readCliArgs() {
     g_noPerVoxelOcclusion = args.getFlag("--no-per-voxel-occlusion");
     g_waveFreeze = args.getFlag("--wave-freeze");
     g_fogReveal = args.getFlag("--fog-reveal");
-    if (args.getFlag("--fog-los")) {
+    g_fogLosSmooth = args.getFlag("--fog-los-smooth");
+    if (args.getFlag("--fog-los") || g_fogLosSmooth) {
         g_fogLos = FogLosFixture::ENABLED;
     } else if (args.getFlag("--fog-los-disabled")) {
         g_fogLos = FogLosFixture::DISABLED;
@@ -1317,7 +1326,11 @@ void configureFogLosFixture() {
             0.5f
         );
         if (g_fogLos == FogLosFixture::ENABLED) {
-            IRPrefab::Fog::setVisionCircleLineOfSight(slot, kFogLosEyeHeight);
+            IRPrefab::Fog::setVisionCircleLineOfSight(
+                slot,
+                kFogLosEyeHeight,
+                g_fogLosSmooth ? kFogLosSmoothSoftness : IRComponents::kFogLosHardGate
+            );
         }
     }
 }

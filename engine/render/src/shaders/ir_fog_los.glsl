@@ -50,3 +50,129 @@ bool fogLosVisible(ivec3 sampleVoxel, int source) {
     const vec4 texel = imageLoad(fogLineOfSight, fogLosTexel(sampleVoxel.xy, source));
     return fogLosSampleVisible(fogLosHorizonChannel(texel, source), sampleVoxel.z);
 }
+
+// Smooth gate — a gated source with softness >= 0 (component header states
+// the model). Each cell's verdict is graded over a `softness`-voxel band above
+// its horizon; a top-face sample blends the four surrounding cell centres'
+// verdicts bilinearly at its continuous XY, and a vertical-face sample takes
+// the single column its emitting voxel's face looks into. Out-of-field taps
+// read clear. The kernel includes ir_iso_common first.
+
+// Mirrors kFogLosHorizonClear (FLT_MAX).
+const float kFogLosHorizonClear = 3.402823466e+38;
+
+struct FogLosSample {
+    ivec2 cell;
+    vec2 weight;
+    float z;
+    bool singleTap;
+};
+
+struct FogLosTaps {
+    vec4 t00;
+    vec4 t10;
+    vec4 t01;
+    vec4 t11;
+};
+
+float fogLosTapVerdict(float horizon, float sampleZ, float softness) {
+    if (sampleZ <= horizon) {
+        return 1.0;
+    }
+    if (softness <= 0.0) {
+        return 0.0;
+    }
+    return 1.0 - smoothstep(horizon, horizon + softness, sampleZ);
+}
+
+float fogLosBilinear(float v00, float v10, float v01, float v11, vec2 weight) {
+    return mix(mix(v00, v10, weight.x), mix(v01, v11, weight.x), weight.y);
+}
+
+float fogLosSmoothVisibility(FogLosTaps taps, int source, FogLosSample s, float softness) {
+    return fogLosBilinear(
+        fogLosTapVerdict(fogLosHorizonChannel(taps.t00, source), s.z, softness),
+        fogLosTapVerdict(fogLosHorizonChannel(taps.t10, source), s.z, softness),
+        fogLosTapVerdict(fogLosHorizonChannel(taps.t01, source), s.z, softness),
+        fogLosTapVerdict(fogLosHorizonChannel(taps.t11, source), s.z, softness),
+        s.weight
+    );
+}
+
+FogLosSample fogLosSurfaceSample(vec3 pos3D) {
+    const vec2 base = floor(pos3D.xy);
+    FogLosSample s;
+    s.cell = ivec2(base);
+    s.weight = pos3D.xy - base;
+    s.z = float(roundHalfUp(pos3D.z));
+    s.singleTap = false;
+    return s;
+}
+
+// The line-of-sight voxel (the cell FOG_LOS_BUILD rounds it to) whose X- or
+// Y-axis face emitted a single-canvas pixel: the raster inverted from the
+// pixel's iso position, raw depth and view face. A face's two pixels sit at
+// fixed sub-cell offsets from its micro position — (-2/3, 1/3, 1/3) /
+// (-5/6, 1/6, 2/3) on a voxel X face, (-1/6, -1/6, 1/3) / (-1/3, -1/3, 2/3) on
+// a voxel Y face, and an SDF face takes the other axis's pair — so
+// subtracting (-1/2, 0, 1/2) leaves a residual of at most 1/3 and rounding
+// recovers the micro position. With micro faces the plane fixes the voxel's
+// lower corner on the face axis (a POS face sits `scale` above it), and the
+// in-plane micro offsets snap down onto the same sub-voxel phase; a voxel set
+// whose axes sit on different phases recovers the in-plane cell to within one.
+// Without micro faces every face is placed at the voxel's own rounded cell.
+ivec3 fogLosFaceVoxel(
+    ivec2 isoRel,
+    int rawDepth,
+    int viewFaceId,
+    int scale,
+    bool microFaces,
+    int cardinalIndex
+) {
+    const bool xAxis = (viewFaceId >> 1) == kXFace;
+    ivec3 micro =
+        roundHalfUp(isoPixelToPos3D(isoRel.x, isoRel.y, float(rawDepth)) - vec3(-0.5, 0.0, 0.5));
+    if (microFaces) {
+        const int corner = (xAxis ? micro.x : micro.y) - ((viewFaceId & 1) != 0 ? scale : 0);
+        const int phase = corner - scale * int(floor(float(corner) / float(scale)));
+        micro = ivec3(phase) + scale * ivec3(floor(vec3(micro - ivec3(phase)) / float(scale)));
+        if (xAxis) {
+            micro.x = corner;
+        } else {
+            micro.y = corner;
+        }
+    }
+    return roundHalfUp(rotateCardinalZInv(vec3(micro) / float(scale), cardinalIndex));
+}
+
+FogLosSample fogLosFaceSample(ivec3 voxel, int worldFaceId) {
+    FogLosSample s;
+    s.cell = voxel.xy + faceOutwardNormal6I(worldFaceId).xy;
+    s.weight = vec2(0.0);
+    s.z = float(voxel.z);
+    s.singleTap = true;
+    return s;
+}
+
+vec4 fogLosTexelOrClear(ivec2 cell, int tile) {
+    if (!fogLosCellInField(cell)) {
+        return vec4(kFogLosHorizonClear);
+    }
+    return imageLoad(fogLineOfSight, fogLosTexel(cell, tile * kFogLosSourcesPerTile));
+}
+
+// One tile's taps for sample @p s — four texels, or one for a face sample.
+FogLosTaps fogLosLoadTaps(FogLosSample s, int tile) {
+    FogLosTaps taps;
+    taps.t00 = fogLosTexelOrClear(s.cell, tile);
+    if (s.singleTap) {
+        taps.t10 = taps.t00;
+        taps.t01 = taps.t00;
+        taps.t11 = taps.t00;
+        return taps;
+    }
+    taps.t10 = fogLosTexelOrClear(s.cell + ivec2(1, 0), tile);
+    taps.t01 = fogLosTexelOrClear(s.cell + ivec2(0, 1), tile);
+    taps.t11 = fogLosTexelOrClear(s.cell + ivec2(1, 1), tile);
+    return taps;
+}

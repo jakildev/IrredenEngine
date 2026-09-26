@@ -16,6 +16,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
+#include <random>
 #include <regex>
 #include <sstream>
 #include <stdexcept>
@@ -250,6 +251,236 @@ TEST(FogLineOfSightTest, PointQueryAgreesWithFieldAtCellCentres) {
         }
         EXPECT_GT(finite, 0) << "the fixture has no finite horizon";
     }
+}
+
+// The smooth gate at softness 0 reproduces the hard gate at every cell centre
+// of the point-query fixture — at the ground, at floor(H) and at floor(H) + 1 —
+// and the band grades a centre whose horizon sits within one voxel below it.
+TEST(FogLineOfSightTest, SmoothGateAtCellCentresMatchesTheHardGate) {
+    const std::vector<std::int32_t> columns = ridgeColumns();
+    const FrameDataFogObservers observers = gatedSources(
+        {vec4(-6.0f, 0.0f, 14.0f, 0.0f), vec4(0.0f, 0.0f, 14.0f, 0.0f)},
+        static_cast<float>(kGroundTop) + 0.5f
+    );
+    FogLosEyeHeights eyes = eyesOf(2.0f);
+    eyes[1] = 1.5f;
+    const std::vector<float> horizons = buildField(observers, eyes, columns);
+    const FogLineOfSightField field{horizons.data()};
+    int compared = 0;
+    int banded = 0;
+    for (int source = 0; source < 2; ++source) {
+        for (int y = -24; y <= 24; ++y) {
+            for (int x = -30; x <= 24; ++x) {
+                const float stored = horizons[FogLineOfSightField::horizonIndex(source, x, y)];
+                std::vector<int> heights{kGroundTop, kGroundTop - 4};
+                if (stored != kFogLosHorizonClear) {
+                    const int floorZ = static_cast<int>(IRMath::floor(stored));
+                    heights.push_back(floorZ);
+                    heights.push_back(floorZ + 1);
+                }
+                for (const int z : heights) {
+                    const ivec3 cell(x, y, z);
+                    ASSERT_EQ(
+                        field.visibility(source, vec3(cell), 0.0f),
+                        field.visible(source, cell) ? 1.0f : 0.0f
+                    ) << "source "
+                      << source << " at (" << x << ", " << y << ", " << z << ")";
+                    ++compared;
+                }
+                if (stored != kFogLosHorizonClear && stored != IRMath::floor(stored)) {
+                    const vec3 above(x, y, IRMath::floor(stored) + 1.0f);
+                    EXPECT_EQ(field.visibility(source, above, 0.0f), 0.0f);
+                    const float graded = field.visibility(source, above, 1.0f);
+                    EXPECT_GT(graded, 0.0f) << "(" << x << ", " << y << ")";
+                    EXPECT_LT(graded, 1.0f) << "(" << x << ", " << y << ")";
+                    ++banded;
+                }
+            }
+        }
+    }
+    EXPECT_GT(compared, 0);
+    EXPECT_GT(banded, 0) << "the fixture has no horizon strictly inside a voxel";
+}
+
+// Flat ground never hides itself under the smooth gate either: 1000 random
+// fractional positions on the slab top inside the disc all read fully visible.
+TEST(FogLineOfSightTest, SmoothGateKeepsFlatGroundVisible) {
+    const std::vector<std::int32_t> columns = flatColumns(kGroundTop);
+    const vec2 centre(0.37f, -0.61f);
+    constexpr float kRadius = 14.0f;
+    const FrameDataFogObservers observers =
+        gatedSources({vec4(centre, kRadius, 0.0f)}, static_cast<float>(kGroundTop));
+    const std::vector<float> horizons = buildField(observers, eyesOf(0.73f), columns);
+    const FogLineOfSightField field{horizons.data()};
+    std::mt19937 rng(3775u);
+    std::uniform_real_distribution<float> unit(-1.0f, 1.0f);
+    int probed = 0;
+    while (probed < 1000) {
+        const vec2 offset(unit(rng) * kRadius, unit(rng) * kRadius);
+        if (IRMath::length(offset) > kRadius) {
+            continue;
+        }
+        const vec3 position(centre + offset, static_cast<float>(kGroundTop) + 0.49f * unit(rng));
+        for (const float softness : {0.0f, 1.0f}) {
+            ASSERT_EQ(field.visibility(0, position, softness), 1.0f)
+                << "(" << position.x << ", " << position.y << ") softness " << softness;
+        }
+        ++probed;
+    }
+}
+
+// The bilinear kernel interpolates: a one-cell occluded strip reads fully
+// hidden along its centre line at softness 0, fully visible one cell away, and
+// in between across the shared edge.
+TEST(FogLineOfSightTest, SmoothGateHidesAOneCellStripAlongItsCentreLine) {
+    std::vector<float> horizons(IRComponents::kFogLosHorizonCount, kFogLosHorizonClear);
+    for (int y = -10; y <= 10; ++y) {
+        horizons[FogLineOfSightField::horizonIndex(0, 3, y)] = -100.0f;
+    }
+    const FogLineOfSightField field{horizons.data()};
+    for (float y = -5.0f; y <= 5.0f; y += 0.37f) {
+        EXPECT_EQ(field.visibility(0, vec3(3.0f, y, 0.0f), 0.0f), 0.0f) << "y " << y;
+        EXPECT_EQ(field.visibility(0, vec3(2.0f, y, 0.0f), 0.0f), 1.0f) << "y " << y;
+        EXPECT_FLOAT_EQ(field.visibility(0, vec3(3.5f, y, 0.0f), 0.0f), 0.5f) << "y " << y;
+    }
+    EXPECT_EQ(FogLineOfSightField{}.visibility(0, vec3(0.0f), 1.0f), 0.0f)
+        << "an unpublished field reveals nothing through a smooth source";
+}
+
+namespace {
+
+// The view-frame face whose outward normal is the cardinal image of @p world's.
+IRMath::FaceId viewFaceOf(IRMath::FaceId world, IRMath::CardinalIndex cardinal) {
+    const ivec3 normal =
+        IRMath::rotateCardinalZ(IRMath::ivec3(IRMath::faceOutwardNormal(world)), cardinal);
+    for (int id = 0; id < 6; ++id) {
+        const auto face = static_cast<IRMath::FaceId>(id);
+        if (IRMath::ivec3(IRMath::faceOutwardNormal(face)) == normal) {
+            return face;
+        }
+    }
+    return IRMath::FaceId::NONE;
+}
+
+// The stage-2 micro position of view face @p face of the voxel at fixed view
+// cell @p cell (faceMicroPositionFixed6).
+ivec3 faceMicroPosition(IRMath::FaceId face, ivec3 cell, int u, int v, int scale) {
+    const int lift = IRMath::faceIsPositive(face) ? scale : 0;
+    if (IRMath::faceAxis(face) == 0) {
+        return ivec3(cell.x + lift, cell.y + u, cell.z + v);
+    }
+    return ivec3(cell.x + u, cell.y + lift, cell.z + v);
+}
+
+// The two pixel offsets of a face in the 2x3 diamond: a voxel face uses its own
+// axis's pair, an SDF face the other axis's.
+ivec2 facePixelOffset(int axis, int subPixel) {
+    return axis == 0 ? ivec2(1, 1 + subPixel) : ivec2(0, 1 + subPixel);
+}
+
+} // namespace
+
+// Every camera-visible side-face pixel — voxel and SDF pixel layouts, NEG faces
+// and POS risers, on the integer and the half-integer lattice, at every
+// cardinal, with and without micro faces — recovers the voxel the column build
+// rounds its emitter to, and the face samples the column one step along its
+// outward normal. Mutation control: recovering the voxel as the rounded
+// continuous pixel position (the hard gate's `surfaceVoxel`) misses.
+TEST(FogLineOfSightTest, FacePixelsRecoverTheirLineOfSightVoxel) {
+    const vec3 emitters[] = {
+        vec3(0.0f, 0.0f, 0.0f),
+        vec3(3.0f, -7.0f, 4.0f),
+        vec3(-0.5f, 0.5f, -0.5f),
+        vec3(-12.5f, 6.5f, 2.5f),
+    };
+    struct Raster {
+        int scale_;
+        bool microFaces_;
+    };
+    const Raster rasters[] = {{1, false}, {1, true}, {8, true}, {4, true}};
+    int enumerated = 0;
+    int roundedMisses = 0;
+    for (int c = 0; c < 4; ++c) {
+        const auto cardinal = static_cast<IRMath::CardinalIndex>(c);
+        for (const vec3 &emitter : emitters) {
+            const ivec3 losVoxel = IRMath::roundVec3HalfUp(emitter);
+            for (const Raster &raster : rasters) {
+                const int scale = raster.scale_;
+                const ivec3 viewCell = IRMath::rotateCardinalZ(
+                    raster.microFaces_
+                        ? IRMath::roundVec3HalfUp(emitter * static_cast<float>(scale))
+                        : losVoxel,
+                    cardinal
+                );
+                for (const IRMath::FaceId viewFace :
+                     {IRMath::FaceId::X_NEG,
+                      IRMath::FaceId::Y_NEG,
+                      IRMath::FaceId::X_POS,
+                      IRMath::FaceId::Y_POS}) {
+                    IRMath::FaceId worldFace = IRMath::FaceId::NONE;
+                    for (int id = 0; id < 6; ++id) {
+                        const auto face = static_cast<IRMath::FaceId>(id);
+                        if (viewFaceOf(face, cardinal) == viewFace) {
+                            worldFace = face;
+                        }
+                    }
+                    ASSERT_NE(worldFace, IRMath::FaceId::NONE);
+                    const int axis = IRMath::faceAxis(viewFace);
+                    const int samples = raster.microFaces_ ? scale : 1;
+                    for (int u = 0; u < samples; ++u) {
+                        for (int v = 0; v < samples; ++v) {
+                            const ivec3 micro =
+                                raster.microFaces_
+                                    ? faceMicroPosition(viewFace, viewCell, u, v, scale)
+                                    : viewCell;
+                            for (const int layoutAxis : {axis, 1 - axis}) {
+                                for (int sub = 0; sub < 2; ++sub) {
+                                    const ivec2 isoRel = IRMath::pos3DtoPos2DIso(micro) +
+                                                         facePixelOffset(layoutAxis, sub);
+                                    const int rawDepth = micro.x + micro.y + micro.z;
+                                    const ivec3 recovered = IRPrefab::Fog::losFaceVoxel(
+                                        isoRel,
+                                        rawDepth,
+                                        viewFace,
+                                        scale,
+                                        raster.microFaces_,
+                                        cardinal
+                                    );
+                                    ASSERT_EQ(recovered, losVoxel)
+                                        << "cardinal " << c << " scale " << scale << " micro "
+                                        << raster.microFaces_ << " face "
+                                        << static_cast<int>(viewFace) << " layout " << layoutAxis
+                                        << " sub " << sub << " (u, v) " << u << ", " << v
+                                        << " emitter (" << emitter.x << ", " << emitter.y << ", "
+                                        << emitter.z << ")";
+                                    EXPECT_EQ(
+                                        IRPrefab::Fog::losFaceColumn(recovered, worldFace),
+                                        ivec2(losVoxel) +
+                                            ivec2(IRMath::faceOutwardNormal(worldFace))
+                                    );
+                                    const vec3 continuous = IRMath::rotateCardinalZInv(
+                                        IRMath::isoPixelToPos3D(
+                                            isoRel.x,
+                                            isoRel.y,
+                                            static_cast<float>(rawDepth)
+                                        ) / static_cast<float>(scale),
+                                        cardinal
+                                    );
+                                    if (IRMath::roundVec3HalfUp(continuous) != losVoxel) {
+                                        ++roundedMisses;
+                                    }
+                                    ++enumerated;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    EXPECT_GT(enumerated, 0);
+    EXPECT_GT(roundedMisses, enumerated / 4)
+        << "control: the rounded continuous position should miss the emitting voxel";
 }
 
 // Every lane of the RGBA32F tiles is addressed independently: each of the
@@ -525,6 +756,29 @@ TEST(FogVisionSlotTest, SlotsStartUngatedAndClearDropsGates) {
     }
     EXPECT_EQ(observers.losSourceMask_, 0) << "a re-added slot 3 inherited a stale gate";
     EXPECT_FLOAT_EQ(eyes[3], IRComponents::kFogVisionLosOff);
+}
+
+// FOG_TO_TRIXEL swaps in its smooth kernel only while a live gated source is
+// smooth: an ungated slot's softness, a hard gate, and a slot past the count
+// all keep the hard kernel.
+TEST(FogVisionSlotTest, SmoothKernelOnlyWhileAGatedSourceIsSmooth) {
+    FrameDataFogObservers observers{};
+    FogLosEyeHeights eyes = eyesOf(IRComponents::kFogVisionLosOff);
+    EXPECT_FALSE(observers.hasSmoothLosSource());
+    C_CanvasFogOfWar::addVisionCircle(observers, eyes, 0, 0, 5, 0, 0, 0, -1, 0);
+    C_CanvasFogOfWar::addVisionCircle(observers, eyes, 0, 0, 5, 0, 0, 0, -1, 0);
+    EXPECT_FALSE(observers.hasSmoothLosSource());
+
+    C_CanvasFogOfWar::setVisionCircleLineOfSight(observers, eyes, 1, 1.5f);
+    EXPECT_FALSE(observers.hasSmoothLosSource()) << "a hard gate needs no smooth kernel";
+    C_CanvasFogOfWar::setVisionCircleLineOfSight(observers, eyes, 1, 1.5f, 0.0f);
+    EXPECT_TRUE(observers.hasSmoothLosSource()) << "softness 0 is the smooth gate";
+
+    observers.visionCircleCount_ = 1;
+    EXPECT_FALSE(observers.hasSmoothLosSource()) << "a slot past the count is not read";
+    observers.visionCircleCount_ = 2;
+    observers.losSourceMask_ = 0;
+    EXPECT_FALSE(observers.hasSmoothLosSource()) << "an ungated slot's softness is not read";
 }
 
 // Gating an unregistered slot is a caller bug: it asserts in debug and, in a
