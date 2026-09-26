@@ -215,7 +215,8 @@ def _current_host():
 
 def _host_incompatible(item, host):
     # An item the body pins to ONE OS (`needs_host`, scout-derived on task
-    # records) is unclaimable everywhere else. Finer than the GL gate below,
+    # records, and inherited from the closed issue on a feedback PR in the
+    # worker slice) is unclaimable everywhere else. Finer than the GL gate below,
     # which treats linux and windows alike: a "must run on a Linux host" task
     # (blessing linux-debug references) passes the GL gate on a Windows pane,
     # and without this the dispatcher elects it every tick while each worker

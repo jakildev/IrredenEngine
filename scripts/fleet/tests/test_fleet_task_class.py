@@ -37,6 +37,9 @@ that matter:
     route that phantom item would win the election every tick and starve the
     other lanes behind the concurrency cap. The quiet path must widen with it,
     or the gate only relocates the no-op it removes;
+  - a feedback PR inherits its closed issue's ``**Host:**`` pin: the scout's
+    slice_worker stamps ``needs_host`` on the slice record from the same-repo
+    task it closes, so a macOS-only residual is not elected on windows/linux;
   - per-task **Effort:** overrides beat class defaults; work dispatches
     default to effort ``high`` for every class, while planning yields carry
     ``xhigh`` (``PLAN_EFFORT`` — plans are the fleet's design surface);
@@ -868,6 +871,102 @@ class FeedbackPrHostGate(HostSeamCase):
                                        "labels": ["fleet:semantic-conflict"]}],
         })
         self.assertEqual(out, "opus high 0 1 0")
+
+
+class FeedbackPrInheritsIssueHostPin(HostSeamCase):
+    """End-to-end (slice_worker -> resolve / pick): a feedback PR whose
+    `Closes #N` issue body pins `**Host:** macos` carries that pin into the
+    worker slice, so the dispatcher elects it on mac only: a Metal re-capture
+    residual is no more actionable on a Windows pane than the task was."""
+
+    def setUp(self):
+        super().setUp()
+        self._saved_state_dir = os.environ.get("FLEET_STATE_DIR")
+        self._tmp = tempfile.TemporaryDirectory()
+        os.environ["FLEET_STATE_DIR"] = self._tmp.name
+
+    def tearDown(self):
+        if self._saved_state_dir is None:
+            os.environ.pop("FLEET_STATE_DIR", None)
+        else:
+            os.environ["FLEET_STATE_DIR"] = self._saved_state_dir
+        self._tmp.cleanup()
+        super().tearDown()
+
+    @staticmethod
+    def _pr(number, closes, labels=("fleet:needs-fix",)):
+        return {"number": number, "title": "T: fix",
+                "headRefName": f"claude/{number}", "baseRefName": "master",
+                "labels": sorted(labels), "isDraft": False,
+                "mergeable": "MERGEABLE", "author": "bot",
+                "closes_issues": list(closes), "closes_cross_repo": []}
+
+    @staticmethod
+    def _state(prs, in_progress=(), open_tasks=(), game_tasks=()):
+        empty = {"prs": [], "tasks": {"open": [], "in_progress": []},
+                 "needs_plan": []}
+        return {"repos": {
+            "engine": {"prs": list(prs), "needs_plan": [],
+                       "tasks": {"open": list(open_tasks),
+                                 "in_progress": list(in_progress)}},
+            "game": dict(empty, tasks={"open": [],
+                                       "in_progress": list(game_tasks)}),
+        }}
+
+    def _on(self, host, state):
+        """(resolve verdict, opus-lane dispatch targets) as seen from `host`."""
+        slice_data = slice_worker(state)
+        out = self._resolve_on(host, slice_data)
+        return out, pick(slice_data, "opus", False)
+
+    def test_mac_pinned_issue_gates_feedback_pr_off_windows_and_linux(self):
+        state = self._state([self._pr(3768, [3757])],
+                            in_progress=[_task("#3757", "opus", needs_host="mac")])
+        self.assertEqual(slice_worker(state)["feedback_prs"][0]["needs_host"],
+                         "mac")
+        for host in ("windows", "linux"):
+            self.assertEqual(self._on(host, state), ("defer", []), host)
+        self.assertEqual(self._on("mac", state),
+                         ("opus high 0 1 0", ["feedback:engine:3768"]))
+
+    def test_pin_read_from_an_open_task_too(self):
+        # An unclaimed task with an open PR stays in tasks.open.
+        state = self._state([self._pr(3768, [3757])],
+                            open_tasks=[_task("#3757", "opus", needs_host="mac",
+                                              inflight_pr={"number": 3768})])
+        self.assertEqual(self._on("windows", state), ("defer", []))
+
+    def test_unpinned_issue_elects_everywhere(self):
+        # Regression: no Host pin -> no `needs_host` on the record and the
+        # same election as before on every host.
+        state = self._state([self._pr(3768, [3757])],
+                            in_progress=[_task("#3757", "opus")])
+        self.assertNotIn("needs_host", slice_worker(state)["feedback_prs"][0])
+        for host in ("mac", "windows", "linux"):
+            self.assertEqual(self._on(host, state),
+                             ("opus high 0 1 0", ["feedback:engine:3768"]),
+                             host)
+
+    def test_unpinned_link_does_not_veto_a_pinned_one(self):
+        state = self._state([self._pr(3768, [3757, 3758])],
+                            in_progress=[_task("#3757", "opus", needs_host="mac"),
+                                         _task("#3758", "opus")])
+        self.assertEqual(self._on("windows", state), ("defer", []))
+
+    def test_disagreeing_pins_leave_the_pr_ungated(self):
+        state = self._state([self._pr(3768, [3757, 3758])],
+                            in_progress=[_task("#3757", "opus", needs_host="mac"),
+                                         _task("#3758", "opus",
+                                               needs_host="windows")])
+        self.assertNotIn("needs_host", slice_worker(state)["feedback_prs"][0])
+        self.assertEqual(self._on("linux", state)[0], "opus high 0 1 0")
+
+    def test_other_repo_task_with_the_same_number_is_ignored(self):
+        # `closes_issues` is same-repo: a pinned game issue with the same
+        # number says nothing about the engine issue the PR closes.
+        state = self._state([self._pr(3768, [3757])],
+                            game_tasks=[_task("#3757", "opus", needs_host="mac")])
+        self.assertEqual(self._on("windows", state)[0], "opus high 0 1 0")
 
 
 class SemanticConflictDispatchPressure(HostSeamCase):
