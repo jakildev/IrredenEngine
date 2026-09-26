@@ -248,6 +248,13 @@ on PATH, creates the worktrees (no Developer Mode needed, unlike
 `tmux attach -t fleet`, `fleet-up live`. See FLEET.md "Cross-platform
 parity".
 
+`fleet-pr-overlap` needs git >= 2.38 (`git merge-tree --write-tree`); a
+Git for Windows install can lag this (measured 2.34.1 on one fleet host) —
+check `git --version` and update Git for Windows if it reads below 2.38.
+Below the floor, `fleet-pr-overlap` reports a diagnostic naming both the
+required and the installed version instead of a raw `git merge-tree` usage
+error.
+
 ## Build-hygiene canary (both environments)
 
 `[100%] Built target` does not prove anything compiled — `make` prints it

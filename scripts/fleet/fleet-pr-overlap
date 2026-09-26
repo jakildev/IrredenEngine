@@ -34,6 +34,8 @@ SLUG_RES = (
     re.compile(r"^(?:https?|ssh)://(?:[^@/]+@)?github\.com/(?P<slug>[^/\s]+/[^/\s]+?)(?:\.git)?/?$"),
 )
 NET_TIMEOUT = 60
+MERGE_TREE_MIN_VERSION = "2.38"
+MERGE_TREE_USAGE_RE = re.compile(r"^usage: git merge-tree <base-tree> <branch1> <branch2>")
 
 EXIT_CLEAN, EXIT_OVERLAP, EXIT_ERROR, EXIT_BLOCK = 0, 1, 2, 3
 
@@ -248,6 +250,13 @@ def fetch_pr_head(row):
         )
 
 
+def installed_git_version():
+    rc, out, err = git_status("--version")
+    if rc != 0 or not out.strip():
+        return f"unknown ({err or 'git --version produced no output'})"
+    return out.strip().removeprefix("git version ")
+
+
 def blob_oid_at(commit, path):
     rc, out, _ = git_status("rev-parse", "--verify", "--quiet", f"{commit}:{path}")
     return out.strip() if rc == 0 else None
@@ -308,6 +317,16 @@ def conflict_paths(number, head_oid, other_oid, shared):
                 break
             conflicts.add(line)
         return conflicts & shared
+    # This call passes 4 positional args after `merge-tree`, one more than
+    # pre-2.38 git's 3-arg <base-tree> <branch1> <branch2> form takes, so a
+    # pre-2.38 git always rejects it with this exact usage line regardless of
+    # the trees' content — a 3-arg call would instead read --write-tree as a
+    # tree-ish and fail a different way (no false positive risk here).
+    if MERGE_TREE_USAGE_RE.match(err):
+        raise OverlapError(
+            f"git merge-tree --write-tree needs git >= {MERGE_TREE_MIN_VERSION}; "
+            f"this host has {installed_git_version()}. Upgrade git to grade overlaps."
+        )
     raise OverlapError(
         f"#{number} git merge-tree --write-tree {head_oid} {other_oid} exited {rc}: {err}"
     )
