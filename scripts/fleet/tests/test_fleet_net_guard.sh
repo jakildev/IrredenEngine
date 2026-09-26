@@ -6,6 +6,8 @@
 # and `command git`/`command gh`, which do a normal PATH lookup (command only
 # skips shell functions/aliases), so the fakes stand in for the real binaries.
 # The fake `timeout` prints a marker so a test can prove the guard fired.
+# The REST fallback itself is covered by test_fleet_gh_fallback.sh; this suite
+# proves which calls it leaves alone.
 
 set -euo pipefail
 
@@ -132,6 +134,38 @@ if [[ -f "$SHIM" ]] && command -v python3 >/dev/null 2>&1; then
 else
     echo "  SKIP: shim or python3 unavailable"
 fi
+
+echo "T9: non-candidate gh calls stream unbuffered behind the timeout"
+# The fake writes stdout, stderr, stdout. Merged into one stream, a streamed
+# call keeps that order; the REST-fallback candidates are buffered and replay
+# stdout before stderr.
+cat > "$BIN/gh" <<'EOF'
+#!/usr/bin/env bash
+echo "OUT-1"; echo "ERR-2" >&2; echo "OUT-3"
+exit "${FAKE_GH_RC:-0}"
+EOF
+chmod +x "$BIN/gh"
+order() { tr '\n' ' ' <<<"$1" | sed 's/ $//'; }
+out=$(gh api repos/o/r/pulls 2>&1 || true)
+echo "$out" | grep -q "TIMEOUT-INVOKED budget=7" && ok "gh api still takes the timeout prefix" || fail "gh api not guarded: $out"
+[[ "$(order "$(grep -v TIMEOUT <<<"$out")")" == "OUT-1 ERR-2 OUT-3" ]] && ok "gh api streams unbuffered" \
+    || fail "gh api was buffered: $(order "$out")"
+out=$(gh pr create --title t --body b 2>&1 || true)
+echo "$out" | grep -q "TIMEOUT-INVOKED budget=7" && ok "gh pr create still takes the timeout prefix" || fail "gh pr create not guarded: $out"
+[[ "$(order "$(grep -v TIMEOUT <<<"$out")")" == "OUT-1 ERR-2 OUT-3" ]] && ok "gh pr create streams unbuffered" \
+    || fail "gh pr create was buffered: $(order "$out")"
+out=$(gh pr view 5 --json state 2>&1 || true)
+[[ "$(order "$(grep -v TIMEOUT <<<"$out")")" == "OUT-1 OUT-3 ERR-2" ]] && ok "gh pr view (a fallback candidate) is buffered" \
+    || fail "gh pr view order: $(order "$out")"
+
+echo "T10: a candidate failure that is not a GraphQL refusal replays as-is"
+export FLEET_STATE_DIR="$TMPROOT/state"
+stdout=$(FAKE_GH_RC=5 gh issue view 5 --json state 2>"$TMPROOT/err") && rc=0 || rc=$?
+[[ "$rc" == "5" ]] && ok "exit status 5 preserved" || fail "expected 5, got $rc"
+[[ "$(order "$stdout")" == "OUT-1 OUT-3" ]] && ok "stdout replayed" || fail "stdout: $stdout"
+grep -q "ERR-2" "$TMPROOT/err" && ok "stderr replayed" || fail "stderr: $(cat "$TMPROOT/err")"
+[[ ! -e "$FLEET_STATE_DIR/usage/github-graphql.rejected.json" ]] && ok "no refusal latch written" \
+    || fail "a non-refusal failure latched the gate"
 
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"

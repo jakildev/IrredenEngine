@@ -345,6 +345,68 @@ assert_eq "$(run design-block 114)" "0" "T14 design-block exits 0 (has-nits case
 assert_eq "$(get_labels pr 114)" "fleet:design-blocked human:needs-fix" \
     "T14 fleet:has-nits cleared, human:needs-fix survives (outranks the park)"
 
+# === T15: GraphQL throttled → same result over REST =======================
+# lib_gh_stub.py serves both GraphQL subcommands and REST routes from one
+# state file. With GH_STUB_THROTTLE set, every `gh pr|issue` call is refused
+# the way GitHub's GraphQL limiter refuses it; fleet-net.sh (sourced by
+# fleet-transition) must finish the edge over REST with the same labels.
+echo "T15: GraphQL rate-limited → the edge still applies, over REST"
+BIN2="$TMPROOT/bin-rest"
+mkdir -p "$BIN2"
+cp "$(dirname "$0")/lib_gh_stub.py" "$BIN2/gh"
+printf '@python3 "%%~dp0gh" %%*\r\n' >"$BIN2/gh.bat"
+chmod +x "$BIN2/gh"
+export GH_STUB_STATE="$TMPROOT/stub-state.json" GH_STUB_LOG="$TMPROOT/stub.log"
+export GH_STUB_MISSES="$TMPROOT/stub-misses" FLEET_STATE_DIR="$TMPROOT/fleet-state"
+: >"$GH_STUB_MISSES"
+seed_stub() {  # seed_stub <kind> <N> <label...>: one target, every state-machine label
+    python3 - "$STATE_MACHINE" "$GH_STUB_STATE" "$@" <<'PY'
+import json, sys
+sm, out, kind, number, *labels = sys.argv[1:]
+rec = {"title": "t", "body": "b", "state": "open", "labels": labels, "comments": [],
+       "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z"}
+if kind == "pr":
+    rec.update(head="h", sha="0" * 40, base="master", draft=False, merged_at=None, mergeable=True)
+state = {"repo": "acme/widgets", "reviews": {}, "pulls": {}, "issues": {},
+         "labels": {l["name"]: {"description": l.get("description"), "color": l.get("color", "ededed")}
+                    for l in json.load(open(sm))["labels"]}}
+state["pulls" if kind == "pr" else "issues"][number] = rec
+json.dump(state, open(out, "w"), indent=1, sort_keys=True)
+PY
+}
+stub_labels() {  # stub_labels <N>: sorted, space-joined
+    python3 -c 'import json,sys; s=json.load(open(sys.argv[1])); r=s["pulls"].get(sys.argv[2]) or s["issues"][sys.argv[2]]; print(" ".join(sorted(r["labels"])))' \
+        "$GH_STUB_STATE" "$1"
+}
+throttle_arm() {  # throttle_arm <0|1> <edge> <kind> <N> <label...>: prints "rc|labels"
+    local throttle="$1" edge="$2" kind="$3" num="$4" rc=0
+    shift 4
+    seed_stub "$kind" "$num" "$@"
+    : >"$GH_STUB_LOG"
+    if [[ "$throttle" == 1 ]]; then export GH_STUB_THROTTLE=1; fi
+    PATH="$BIN2:$PATH" "$WRAPPER" "$edge" "$num" >"$TMPROOT/out" 2>&1 || rc=$?
+    unset GH_STUB_THROTTLE
+    echo "$rc|$(stub_labels "$num")"
+}
+plain=$(throttle_arm 0 verdict-approve pr 300 fleet:needs-fix fleet:wip)
+assert_eq "$plain" "0|fleet:approved fleet:wip" "T15 unthrottled verdict-approve baseline"
+assert_eq "$(grep -c '^api ' "$GH_STUB_LOG" || true)" "0" "T15 unthrottled run makes no REST call"
+throttled=$(throttle_arm 1 verdict-approve pr 300 fleet:needs-fix fleet:wip)
+assert_eq "$throttled" "$plain" "T15 throttled verdict-approve: same exit and label set"
+grep -q -- '-X DELETE repos/{owner}/{repo}/issues/300/labels/fleet%3Aneeds-fix' "$GH_STUB_LOG" && \
+    { PASS=$((PASS+1)); echo "  ok: T15 removal went through the REST label route"; } || \
+    { FAIL=$((FAIL+1)); echo "  FAIL: T15 removal went through the REST label route"; }
+grep -q -- '-X POST repos/{owner}/{repo}/issues/300/labels' "$GH_STUB_LOG" && \
+    { PASS=$((PASS+1)); echo "  ok: T15 addition went through the REST label route"; } || \
+    { FAIL=$((FAIL+1)); echo "  FAIL: T15 addition went through the REST label route"; }
+plain=$(throttle_arm 0 escalate-class-sonnet-opus issue 301 fleet:sonnet fleet:queued)
+throttled=$(throttle_arm 1 escalate-class-sonnet-opus issue 301 fleet:sonnet fleet:queued)
+assert_eq "$throttled" "$plain" "T15 throttled issue-scope edge matches the unthrottled run"
+assert_eq "$plain" "0|fleet:opus fleet:queued" "T15 issue-scope edge applied"
+throttled=$(throttle_arm 1 verdict-approve issue 302 fleet:needs-fix)
+assert_eq "${throttled%%|*}" "2" "T15 throttled scope mismatch still exits 2"
+assert_eq "$(cat "$GH_STUB_MISSES")" "" "T15 every stub invocation was modeled"
+
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"
 (( FAIL == 0 ))

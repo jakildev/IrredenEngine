@@ -47,6 +47,7 @@ if sys.platform == "win32" and not os.environ.get("PYTHONUTF8"):
 # python. Insert this script's own dir so the import resolves whether the
 # scout is run directly or loaded by-path in the unit tests.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import fleet_gh_fallback
 import fleet_poll_topology
 from fleet_blocked_by import (
     is_no_blocker_value,
@@ -451,8 +452,28 @@ def run_capture(cmd, cwd=None):
         return None
     if proc.returncode != 0:
         log(f"command rc={proc.returncode}: {' '.join(cmd)}: {proc.stderr.strip()}")
+        _latch_graphql_refusal(cmd, proc.stderr)
         return None
     return proc.stdout
+
+
+def _latch_graphql_refusal(cmd, stderr):
+    """Close the dispatcher's usage gate on a GraphQL rate-limit refusal.
+
+    The GraphQL self-report can read healthy while the limiter refuses real
+    calls, so a refusal latches its own file until the sampled reset. Logs
+    once per refusal window, on the open->refused edge.
+    """
+    if not fleet_gh_fallback.is_refusal(stderr):
+        return
+    reason = fleet_gh_fallback.refusal_reason(cmd[1:], stderr)
+    try:
+        opened = fleet_gh_fallback.latch_refusal(reason, USAGE_DIR)
+    except OSError as e:
+        log(f"github graphql refusal latch failed: {e}")
+        return
+    if opened:
+        log(f"github graphql refused; usage gate latched closed: {reason}")
 
 
 # Both constants are sized against the ONE predicate that reads a review body:
@@ -1029,6 +1050,11 @@ def _sample_github_graphql():
     wall, since no counter can be read through it — and the next good
     reply overwrites it, so recovery needs no TTL. Any other failure
     leaves the prior latch untouched.
+
+    A refusal of any other GraphQL call latches the separate
+    github-graphql.rejected.json (_latch_graphql_refusal), which this
+    sampler never writes or clears: the self-report can read healthy while
+    the limiter still refuses real calls.
     """
     cmd = ["gh", "api", "graphql", "-f", f"query={_GITHUB_GRAPHQL_RATE_QUERY}"]
     try:

@@ -384,6 +384,19 @@ implementation and thresholds: `scripts/fleet/fleet-dispatcher`
 - **GitHub API quota** — `github-{core,graphql,search}.json`: graphql from its
   own `rateLimit` self-report (a refused sample latches `rejected`), core from the `X-RateLimit-*` headers on the scout's own conditional REST reads (a follower sends none, so writes no core file), search
   from `/rate_limit`; core and graphql gate at 90 % (`FLEET_DISPATCHER_USAGE_GATE_GITHUB_{CORE,GRAPHQL}`), search never.
+- **GraphQL refusal** — the limiter can refuse `gh pr|issue` calls (`GraphQL: API rate
+  limit already exceeded`) while graphql's self-report reads healthy and REST still
+  answers. A refusal seen by the scout's `run_capture` or `fleet-net.sh`'s `gh()` latches
+  `github-graphql.rejected.json` at 100 % until the sampled graphql reset (else 15 min);
+  the self-report never overwrites it. That `gh()` (sourced by the dispatcher,
+  `fleet-claim`, `fleet-rebase`, `fleet-review-verdict`, `fleet-transition`) re-runs a
+  refused call over REST with byte-identical output; `fleet_gh_fallback.py`'s docstring
+  lists the modeled shapes, and anything else (`--search`, `author`, a branch
+  positional, non-label edits, a `--jq` list past one page) keeps the refusal.
+  `fleet-pr-body-lint` reads its issue over REST outright. An agent's own `gh` calls get
+  no fallback: use `gh api repos/<slug>/issues/<N>` to read, `-X POST …/issues/<N>/labels
+  -f "labels[]=<l>"` / `-X DELETE …/issues/<N>/labels/<l>` for labels, and
+  `…/issues/<N>/comments -F body=@<file>` to comment.
 - **Per-pane cooldown** — a launch that died at the wall (`claude` exit 1
   with a stream-flagged rejection; legacy exit 2) excludes the pane for
   `FLEET_DISPATCHER_LIMIT_DELAY` seconds (900). The exit is a provider
