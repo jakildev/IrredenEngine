@@ -279,6 +279,12 @@
       "description": "Remaining work needs GL runtime verification on an OpenGL-4.5 host (Linux/Windows); macOS/Metal panes skip it (dispatcher filter, claim + amending-claim gates, feedback-tier skip). Human/architect triage signal. On an ISSUE the refusal is narrowed by fleet:backend-symmetric, which says the task also has a natively Metal-verifiable half; on a PR the label describes the remaining work, so it is never narrowed."
     },
     {
+      "name": "fleet:needs-macos-host",
+      "scope": "issue+pr",
+      "color": "c5def5",
+      "description": "Remaining work needs a macOS host (Metal runs, macOS-only repro); non-mac panes skip it (dispatcher filter, claim + amending-claim gates, feedback-tier skip). Stamped on a PR by whoever knows the residual (architect/steward unblock, a worker design-blocking); overrides the host pin a feedback PR inherits from its Closes issue. Never narrowed. Removed by the pane that clears the residual; swapped with fleet:needs-gl-host, never carried with it. On an issue prefer the **Host:** mac body pin."
+    },
+    {
       "name": "fleet:backend-symmetric",
       "scope": "issue",
       "color": "c5def5",

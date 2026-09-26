@@ -130,6 +130,13 @@ GL_CAPABLE_HOSTS = {"linux", "windows"}
 # `needs_gl_host`, so the feedback dimension of the gate matches on this.
 GL_HOST_LABEL = "fleet:needs-gl-host"
 
+# The macOS counterpart: a one-OS residual pin (host key `mac`), stamped on a
+# PR by whoever knows the remaining work is Metal/macOS-only. It overrides a
+# derived `needs_host` — the label describes the residual, the derived pin the
+# task — and it has no backend-symmetric narrowing, since it names an OS, not
+# a backend two OSes share.
+MACOS_HOST_LABEL = "fleet:needs-macos-host"
+
 # Hosts that can build/run/verify the Metal backend — the narrowing side of the
 # gate above. A `fleet:backend-symmetric` task must be fixed in both a
 # `.glsl` and its `.metal` twin, so a Metal host can author both halves,
@@ -221,8 +228,12 @@ def _host_incompatible(item, host):
     # (blessing linux-debug references) passes the GL gate on a Windows pane,
     # and without this the dispatcher elects it every tick while each worker
     # reads the body, refuses, and exits. Fail-closed on `unknown`, like the
-    # GL gate.
-    required_host = item.get("needs_host")
+    # GL gate. A `MACOS_HOST_LABEL` on the record is the same pin read from a
+    # label, and it wins over the derived field.
+    if MACOS_HOST_LABEL in (item.get("labels") or []):
+        required_host = "mac"
+    else:
+        required_host = item.get("needs_host")
     if required_host and host != required_host:
         return True
     # A GL-only item on a non-GL host (macOS/Metal, or unknown) can never be

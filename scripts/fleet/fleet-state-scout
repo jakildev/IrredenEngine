@@ -4301,6 +4301,52 @@ def check_state_size(size_bytes: int) -> None:
         pass
 
 
+# A PR carrying both residual host labels is refused by every host (the macOS
+# pin refuses linux/windows, the GL gate refuses mac) and vanishes from every
+# lane until a human drops the stale label. "<repo>-<number>" -> consecutive
+# ticks; in-process, like _state_size_over_streak.
+_DUAL_HOST_LABELS = {"fleet:needs-macos-host", "fleet:needs-gl-host"}
+_dual_host_label_streak = {}
+
+
+def _dual_host_label_alert_path(key) -> Path:
+    return _alerts_dir() / f"state-scout-dual-host-labels-{key}"
+
+
+def check_dual_host_labels(state) -> None:
+    """Escalate-then-quiet for PRs carrying both residual host labels: loud on
+    the first tick and every Nth after, alert file rewritten every tick,
+    one all-clear line and the file removed once the PR is gone or fixed.
+    Best-effort: a read-only $HOME never breaks the tick."""
+    live = set()
+    for repo_key, repo_state in state.get("repos", {}).items():
+        for pr in repo_state.get("prs", []):
+            if not _DUAL_HOST_LABELS <= set(pr.get("labels", [])):
+                continue
+            key = f"{repo_key}-{pr.get('number')}"
+            live.add(key)
+            streak = _dual_host_label_streak.get(key, 0) + 1
+            _dual_host_label_streak[key] = streak
+            if streak == 1 or streak % STATE_SIZE_WARN_REPEAT_TICKS == 0:
+                log(f"{repo_key} PR#{pr.get('number')}: carries both "
+                    "fleet:needs-macos-host and fleet:needs-gl-host — no fleet "
+                    f"host can claim it; drop the stale one [tick {streak}]")
+            try:
+                path = _dual_host_label_alert_path(key)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                write_atomic(path, "dual residual host labels\n"
+                                   f"pr={key}\nconsecutive_ticks={streak}\n")
+            except OSError:
+                pass
+    for key in [k for k in _dual_host_label_streak if k not in live]:
+        log(f"{key}: no longer carries both residual host labels")
+        del _dual_host_label_streak[key]
+        try:
+            _dual_host_label_alert_path(key).unlink()
+        except OSError:
+            pass
+
+
 # --- Self-spawned-lane spawn failures --------------------------------------
 #
 # The queue-manager reconcile lane and queue-manager-ingest write their
@@ -5147,6 +5193,7 @@ def tick_once():
         elif update_role_trigger(role, projection):
             triggers_fired.append(role)
 
+    check_dual_host_labels(state)
     for role, slicer in SLICERS.items():
         try:
             sliced = slicer(state)

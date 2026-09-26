@@ -307,7 +307,7 @@ Protocol: [`FLEET-FEEDBACK-HANDLING.md`](FLEET-FEEDBACK-HANDLING.md).
   which R7 re-arms `fleet:design-unblocked`. A park with no parsable line
   accrues to `fleet:state-drift`. Not needed when the backing issue is
   `fleet:blocked` (R7 skips those) or the residual is host-class-only
-  (`fleet:needs-gl-host`).
+  (`fleet:needs-gl-host`, `fleet:needs-macos-host`).
 - `fleet:semantic-conflict` — **merger**, either repo, when the rebase is
   not mechanical (`fleet:approved` removed). Cleared by an opus+ worker
   that resolves it (rebase, build-verify, push; game via the game worktree
@@ -318,13 +318,14 @@ Protocol: [`FLEET-FEEDBACK-HANDLING.md`](FLEET-FEEDBACK-HANDLING.md).
   `fleet:amending-*` (the lane force-pushes; both namespaces are disjoint,
   so each is excluded explicitly); stacked children defer to their base. Counts as one opus
   item in the class election, ranked ahead of feedback and task pickup.
-- `fleet:needs-gl-host` — issue and PR. **Human/architect** triage signal
-  with a precision-first scout body backstop (an explicit Linux / Windows /
-  OpenGL requirement or a `src/opengl/` file; never `.glsl` or
-  `src/metal/`). On an issue the whole task needs a GL 4.5 host; on a PR
-  the remaining work does (added with the unblock swap, removed by the GL
-  pane that finishes). Honored on macOS by the dispatcher filter,
-  `fleet-claim claim`, `amending-claim`, and the feedback-tier skip.
+- `fleet:needs-gl-host` / `fleet:needs-macos-host` — issue and PR.
+  **Human/architect** signal (GL also has a precision-first scout body
+  backstop: an explicit Linux / Windows / OpenGL requirement or a
+  `src/opengl/` file, never `.glsl` or `src/metal/`). Each names the host
+  (GL 4.5, or macOS) the task (issue) or remaining work needs — on a PR,
+  stamped at unblock or by a worker parking that residual, removed by the
+  finishing pane; swapped, never carried together. The macOS label beats an
+  inherited `**Host:**` pin. Enforced by dispatch, `claim`, `amending-claim`.
 - `fleet:backend-symmetric` — issue only. **Human/architect** (scout
   backstop: the body cites a real `.glsl` and a real `.metal`). Paired with
   `fleet:needs-gl-host` it narrows the issue-claim refusal to hosts that

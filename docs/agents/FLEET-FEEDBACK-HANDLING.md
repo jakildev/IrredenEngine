@@ -36,7 +36,8 @@ Skip `human:wip`; `fleet:semantic-conflict` at sonnet class (the opus+
 lane, `role-worker.md` step 1c; its escalation to `human:needs-fix`
 re-enters tier 1); a `fleet:amending-*` label (another worker's claim; the
 Step a claim is the real mutex); `fleet:needs-gl-host` unless this host is
-GL-capable (`{linux, windows}`); a `fleet:reviewing-*` or `fleet:resolving-*`
+GL-capable (`{linux, windows}`); `fleet:needs-macos-host` unless this host
+is macOS; a `fleet:reviewing-*` or `fleet:resolving-*`
 label held by another agent (a review is mid-flight and your force-push
 would land its verdict on a diff nobody read; a conflict resolution
 force-pushes the same head); `fleet:needs-opus-recheck` (`fleet:has-nits`
@@ -147,8 +148,9 @@ then append `Parked-until: #<blocker-issue>` to the PR body on its own
 line (same repo), comment the rationale, keep `fleet:wip`, and release
 the claim; reconcile un-parks it when the blocker closes. No park when the
 backing issue is `fleet:blocked` (a plain label clear is terminal) or when
-the residual is host-class-only (`fleet:needs-gl-host` — leave it for a
-capable pane). Semantics:
+the residual is host-class-only (`fleet:needs-gl-host` or
+`fleet:needs-macos-host` — stamp the one naming the residual's host if the
+PR lacks it, drop the other, and leave it for a capable pane). Semantics:
 [`fleet-labels-reference.md`](fleet-labels-reference.md)
 §`fleet:awaiting-infra`.
 

@@ -27,6 +27,9 @@
 #     semantic-conflict lane. fleet:reviewing-* is disjoint from
 #     fleet:resolving-* exactly as it is from fleet:amending-*, and step 1c
 #     force-pushes too, so the gate has to cover both callers
+#   - fleet:needs-macos-host: claim and amending-claim refuse off mac with
+#     no label POST, pass on mac; review-claim passes on windows; a PR
+#     carrying both host labels refuses everywhere
 #
 # These arms assert the PR's label set is untouched, not just the
 # exit code: _acquire_label_on POSTs the fleet:amending-* / fleet:resolving-*
@@ -102,6 +105,9 @@ mkdir -p "$FLEET_CLAIMS_DIR" "$FLEET_HEARTBEATS_DIR" "$FLEET_RESERVATIONS_DIR"
 #   3103 — conflicted PR under ANOTHER agent's same-host review claim
 #   3104 — conflicted PR under the claiming agent's OWN review claim
 #   3105 — conflicted PR under another agent's CROSS-host review claim
+#   2201 — issue carrying fleet:needs-macos-host
+#   3201 — PR carrying fleet:needs-macos-host (macOS-only residual)
+#   3202 — PR carrying both host labels (contradictory; refused everywhere)
 # Every label-mutating `gh api ... --method POST` is appended to $GH_POST_LOG
 # so a test can assert the refuse path mutated nothing.
 # The `api` arm emulates the cross-host fleet:claim-* lock acquire so a
@@ -176,6 +182,15 @@ case "$1 $2" in
                 ;;
             2007)
                 echo '{"state":"OPEN","labels":[{"name":"fleet:wip"},{"name":"fleet:needs-gl-host"},{"name":"fleet:backend-symmetric"}],"body":""}'
+                ;;
+            2201)
+                echo '{"state":"OPEN","labels":[{"name":"fleet:needs-macos-host"},{"name":"fleet:opus"},{"name":"fleet:queued"}],"body":""}'
+                ;;
+            3201)
+                echo '{"state":"OPEN","labels":[{"name":"fleet:wip"},{"name":"fleet:design-unblocked"},{"name":"fleet:needs-macos-host"}],"body":""}'
+                ;;
+            3202)
+                echo '{"state":"OPEN","labels":[{"name":"fleet:wip"},{"name":"fleet:needs-gl-host"},{"name":"fleet:needs-macos-host"}],"body":""}'
                 ;;
             *)
                 echo '{"state":"OPEN","labels":[],"body":""}'
@@ -449,5 +464,41 @@ actual=0; output=$(FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" amen
 assert_exit "$actual" 1 "mac + incumbent amend + fleet:needs-gl-host → amending-claim exit 1"
 assert_no_label_post "host-refused incumbent amending-claim POSTed no label"
 assert_absent "$output" "acquired" "host-refused incumbent amending-claim reports no acquisition"
+
+# --- fleet:needs-macos-host: the one-OS residual pin ------------------------
+# Refuses every host but mac on claim and amending-claim, ahead of any label
+# POST; review stays host-agnostic.
+
+echo "T28: windows and linux refuse amending-claim on a fleet:needs-macos-host PR"
+: > "$GH_POST_LOG"
+actual=0; output=$(FLEET_TEST_HOST=windows FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" amending-claim 3201 test-agent 2>&1) || actual=$?
+assert_exit "$actual" 1 "windows + fleet:needs-macos-host PR → amending-claim exit 1"
+assert_contains "$output" "fleet:needs-macos-host" "refusal names the label"
+actual=0; FLEET_TEST_HOST=linux FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" amending-claim 3201 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 1 "linux + fleet:needs-macos-host PR → amending-claim exit 1"
+assert_no_label_post "host-refused macOS amending-claim POSTed no label"
+
+echo "T29: mac passes amending-claim on a fleet:needs-macos-host PR"
+: > "$GH_POST_LOG"
+actual=0; FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" amending-claim 3201 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 0 "mac + fleet:needs-macos-host PR → amending-claim exit 0"
+
+echo "T30: windows review-claim on a fleet:needs-macos-host PR is allowed"
+actual=0; FLEET_TEST_HOST=windows FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" review-claim 3201 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 0 "windows + fleet:needs-macos-host PR → review-claim exit 0"
+
+echo "T31: issue claim honors fleet:needs-macos-host"
+actual=0; FLEET_TEST_HOST=windows FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" claim 2201 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 1 "windows + fleet:needs-macos-host issue → claim exit 1"
+release_quiet 2201
+actual=0; FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" claim 2201 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 0 "mac + fleet:needs-macos-host issue → claim exit 0"
+release_quiet 2201
+
+echo "T32: a PR carrying both host labels refuses on every host"
+actual=0; FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" amending-claim 3202 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 1 "mac + both host labels → amending-claim exit 1"
+actual=0; FLEET_TEST_HOST=linux FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" amending-claim 3202 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 1 "linux + both host labels → amending-claim exit 1"
 
 summarize "fleet-claim pre-acquire gates"
