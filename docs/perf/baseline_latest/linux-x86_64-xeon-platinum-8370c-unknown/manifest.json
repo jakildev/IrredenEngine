@@ -2,10 +2,10 @@
   "target": "IRPerfGrid",
   "matrix": "quick",
   "frames": 60,
-  "git_sha": "0991c6590",
+  "git_sha": "9fcd33471",
   "git_dirty": false,
-  "run_name": "0991c6590-ci",
-  "started_at": "2026-09-24T20:04:11Z",
+  "run_name": "9fcd33471-ci",
+  "started_at": "2026-09-27T23:20:46Z",
   "cells": [
     {
       "id": "target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1",
@@ -28,15 +28,15 @@
       "report": "target=IRPerfGrid,zoom=4,sub_mode=full,sub_base=1.txt"
     }
   ],
-  "finished_at": "2026-09-24T20:07:13Z",
+  "finished_at": "2026-09-27T23:23:52Z",
   "calibration": {
-    "ref_ms": 115.32,
+    "ref_ms": 115.345,
     "ref_target_ms": 50,
     "host_slug": "linux-x86_64-xeon-platinum-8370c-unknown",
     "host_fingerprint": {
       "cpu": {
         "cores": 2,
-        "mhz": 3483,
+        "mhz": 3492,
         "model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
         "threads": 4
       },
@@ -52,6 +52,6 @@
       },
       "slug": "linux-x86_64-xeon-platinum-8370c-unknown"
     },
-    "math_sha": "a83e681b472dc5540d81c151b934aca378b68908"
+    "math_sha": "ead6c9aa8e50e8db89492a9ec1ac72c5650b6bb6"
   }
 }
