@@ -1224,11 +1224,13 @@ void registerArgs() {
     args.numbers("--probe-box-offset", "Shadowbox translation offset <x> <y> <z>", 3);
     args.flag("--probe-analytic-box", "Use an analytic box for shadowbox");
     args.integer("--analytic-box-span", "Analytic probe X/Y extent, 1..512 (0 keeps default)", 0);
-    args.integer(
-        "--analytic-box-count",
-        "Coincident analytic probes for index pressure, 1..128",
-        1
+    args.integer("--analytic-box-count", "Analytic probes for index pressure, 1..128", 1);
+    args.numbers(
+        "--analytic-box-step",
+        "World-space translation between analytic probes <x> <y> <z>",
+        3
     );
+    args.number("--analytic-box-yaw-step", "Yaw increment between analytic probes, radians", 0.0f);
     args.flag(
         "--probe-sdf-depth-tie",
         "With --probe-analytic-box, overlap an orange box to test equal-depth ownership"
@@ -2022,10 +2024,8 @@ void initEntities() {
             const vec3 offset = offsetValues.empty()
                                     ? vec3(0.0f)
                                     : vec3(offsetValues[0], offsetValues[1], offsetValues[2]);
-            const auto rotation = IRMath::quatAxisAngle(
-                vec3(0.0f, 0.0f, 1.0f),
-                IREngine::args().getFloat("--analytic-box-yaw")
-            );
+            const float yaw = IREngine::args().getFloat("--analytic-box-yaw");
+            const auto rotation = IRMath::quatAxisAngle(vec3(0.0f, 0.0f, 1.0f), yaw);
             const int requestedSpan = IREngine::args().getInt("--analytic-box-span");
             const vec3 extent = requestedSpan == 0
                                     ? vec3(size)
@@ -2036,9 +2036,19 @@ void initEntities() {
                                       );
             const int count =
                 IRMath::clamp(IREngine::args().getInt("--analytic-box-count"), 1, 128);
+            const auto stepValues = IREngine::args().getFloats("--analytic-box-step");
+            const vec3 step =
+                stepValues.empty() ? vec3(0.0f) : vec3(stepValues[0], stepValues[1], stepValues[2]);
+            const float yawStep = IREngine::args().getFloat("--analytic-box-yaw-step");
             for (int index = 0; index < count; ++index) {
+                const auto instanceRotation = index == 0 || yawStep == 0.0f
+                                                  ? rotation
+                                                  : IRMath::quatAxisAngle(
+                                                        vec3(0.0f, 0.0f, 1.0f),
+                                                        yaw + float(index) * yawStep
+                                                    );
                 IREntity::createEntity(
-                    C_LocalTransform{position + offset, rotation},
+                    C_LocalTransform{position + offset + float(index) * step, instanceRotation},
                     C_ShapeDescriptor{IRRender::ShapeType::BOX, vec4(extent, 0.0f), color}
                 );
             }
