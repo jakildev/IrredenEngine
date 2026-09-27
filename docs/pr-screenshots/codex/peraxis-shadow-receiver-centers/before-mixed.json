@@ -1,0 +1,97 @@
+{
+  "head": "2b9d1ae8c92b45c29fb8732671f7df425235b03a",
+  "changes": "",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "host_power": "AC Power",
+  "host_cpus": 14,
+  "build_dir": "build",
+  "build_type": "Debug",
+  "binary_sha256": "21ed93f45cbbfb2ea0835ad67838897d3d48600d2b39e65c6a3b5d6d469de115",
+  "shader_sha256": "41de45a417a2ab67acc0fb726cce48f241a8191c2d40da252a52a3638a484b07",
+  "runtime_scripts_sha256": "c3ab47543e58c89b874850315b06881210a2dc81013b1524233269e9f7edad5b",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "120",
+    "IRCanvasStress",
+    "--only",
+    "shadowbox,floor",
+    "--probe-grid",
+    "--probe-single-voxel",
+    "--probe-box-offset",
+    "0.30",
+    "-0.20",
+    "0",
+    "--probe-overlapping-source",
+    "--sun-direction",
+    "0.42",
+    "0.60",
+    "-0.55",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--no-ao",
+    "--pivot-origin",
+    "--zoom",
+    "16",
+    "--subdivisions",
+    "1",
+    "--auto-profile",
+    "--auto-screenshot",
+    "6",
+    "--sweep-yaw",
+    "0.39269908",
+    "5.10508806",
+    "4"
+  ],
+  "runs": [
+    {
+      "index": 1,
+      "launched_utc": "2026-09-26T19:16:19Z",
+      "finished_utc": "2026-09-26T19:16:23Z",
+      "host_battery_percent": 99,
+      "host_load_1m": 5.27,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "engine_logged": true,
+      "yaw_pose_mismatch": null,
+      "pivot_mismatch": null,
+      "explicit_pivot_samples": 0,
+      "overflow_failure": null,
+      "yaw_first_deg": 0.0,
+      "yaw_last_deg": -67.5,
+      "yaw_travel_deg": 292.5,
+      "zoom_first": 16.0,
+      "zoom_last": 16.0,
+      "overflow_max_dropped": 0,
+      "overflow_max_entries": 0,
+      "overflow_samples": 248,
+      "gpu_measured": true
+    }
+  ],
+  "note": "Capture run; screenshot readbacks and short sweeps are not throughput measurements.",
+  "source_state": "PR3860 binary and shader assets",
+  "captures": [
+    {
+      "file": "before-mixed-q0.png",
+      "native_file": "screenshot_002910.png",
+      "sha256": "7ccd1b9f07a767598a95ff3a1843b3b44342d1f34bb098e75e6d23d8f7532bbd"
+    },
+    {
+      "file": "before-mixed-q1.png",
+      "native_file": "screenshot_002911.png",
+      "sha256": "ef98c4d9978ab3586f0d51f12c36b55cef6267c769eab3580f611709595e5579"
+    },
+    {
+      "file": "before-mixed-q2.png",
+      "native_file": "screenshot_002912.png",
+      "sha256": "fe6916df55f58adf0303f2afc9663dfc7ae21de8025a96a061799afa22357eba"
+    },
+    {
+      "file": "before-mixed-q3.png",
+      "native_file": "screenshot_002913.png",
+      "sha256": "16b4b46245f9d43bf89ae6afe1cf106efbd8aa251fcdb067739ecce0eac28229"
+    }
+  ]
+}

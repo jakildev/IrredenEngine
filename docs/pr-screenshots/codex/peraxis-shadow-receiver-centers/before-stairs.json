@@ -1,0 +1,92 @@
+{
+  "head": "2b9d1ae8c92b45c29fb8732671f7df425235b03a",
+  "changes": "",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "host_power": "AC Power",
+  "host_cpus": 14,
+  "build_dir": "build",
+  "build_type": "Debug",
+  "binary_sha256": "21ed93f45cbbfb2ea0835ad67838897d3d48600d2b39e65c6a3b5d6d469de115",
+  "shader_sha256": "41de45a417a2ab67acc0fb726cce48f241a8191c2d40da252a52a3638a484b07",
+  "runtime_scripts_sha256": "c3ab47543e58c89b874850315b06881210a2dc81013b1524233269e9f7edad5b",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "120",
+    "IRCanvasStress",
+    "--only",
+    "shadowocclusion",
+    "--probe-grid",
+    "--probe-staircase",
+    "--sun-direction",
+    "-0.42",
+    "-0.60",
+    "-0.55",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--no-ao",
+    "--pivot-origin",
+    "--zoom",
+    "2",
+    "--subdivisions",
+    "1",
+    "--auto-profile",
+    "--auto-screenshot",
+    "6",
+    "--sweep-yaw",
+    "0.39269908",
+    "5.10508806",
+    "4"
+  ],
+  "runs": [
+    {
+      "index": 1,
+      "launched_utc": "2026-09-26T19:13:39Z",
+      "finished_utc": "2026-09-26T19:13:43Z",
+      "host_battery_percent": 99,
+      "host_load_1m": 9.63,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "engine_logged": true,
+      "yaw_pose_mismatch": null,
+      "pivot_mismatch": null,
+      "explicit_pivot_samples": 0,
+      "overflow_failure": null,
+      "yaw_first_deg": 0.0,
+      "yaw_last_deg": -67.5,
+      "yaw_travel_deg": 292.5,
+      "zoom_first": 2.0,
+      "zoom_last": 2.0,
+      "overflow_max_dropped": 0,
+      "overflow_max_entries": 122,
+      "overflow_samples": 248,
+      "gpu_measured": true
+    }
+  ],
+  "note": "Capture run; screenshot readbacks and short sweeps are not throughput measurements.",
+  "source_state": "PR3860 binary and shader assets",
+  "captures": [
+    {
+      "file": "before-stairs-q0.png",
+      "native_file": "screenshot_002902.png",
+      "sha256": "fc67bf6ea10ea3036c08eb684331e9a7dd9c35c6a7fa41523032a0ed8706651a"
+    },
+    {
+      "file": "before-stairs-q1.png",
+      "native_file": "screenshot_002903.png",
+      "sha256": "752c4712e9934d3f42785129005d0edda730c98b5edb1599c527bc788d34547e"
+    },
+    {
+      "file": "before-stairs-q2.png",
+      "native_file": "screenshot_002904.png",
+      "sha256": "f8c3a735a82101f34fed67ba18bc36520441e83694c1ed7a642a35ce06f03456"
+    },
+    {
+      "file": "before-stairs-q3.png",
+      "native_file": "screenshot_002905.png",
+      "sha256": "c9269afd56d94d2db495a9a989dc08b9c0cd2de376ac4a5fb58c1fa498a05a91"
+    }
+  ]
+}

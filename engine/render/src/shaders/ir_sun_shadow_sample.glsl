@@ -46,6 +46,7 @@ layout(std140, binding = 29) uniform FrameDataSun {
     // sweep uses — so a baked caster is receivable at its full throw and the
     // two cannot drift.
     uniform float sunMaxShadowThrow;
+    uniform vec4 sunCasterViewToWorld;
 };
 
 layout(std430, binding = 28) readonly buffer SunShadowDepthMap {

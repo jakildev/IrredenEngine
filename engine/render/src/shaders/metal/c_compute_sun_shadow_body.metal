@@ -11,6 +11,7 @@
 // worldSunShadowFactor() lookup — shared with c_lighting_to_trixel's detached
 // world-receive path.
 #include "ir_sun_shadow_sample.metal"
+#include "ir_per_axis_shadow.metal"
 
 // Mirrors shaders/c_compute_sun_shadow.glsl.
 
@@ -84,23 +85,20 @@ kernel void IR_SUN_SHADOW_KERNEL_NAME(
     int flip = decodeFlipRoute(encoded, frameData.perAxisRoute);
     int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
 
-    // Smooth camera Z-yaw: a per-axis canvas stores the world frame
-    // face-locally — recover world-pos via isoPixelToPos3D and read the
-    // world-frame outward normal directly. The single canvas uses its
-    // cardinal-snap reconstruction + R_z(-rasterYaw) normal rotation. Mirrors GLSL.
-    bool perAxis = frameData.perAxisRoute != 0;
+    if (frameData.perAxisRoute != 0) {
+        const int faceId = frameData.visibleFaceIds[face] ^ flip;
+        const float3 faceOrigin = perAxisCellToWorld3DSubCell(
+            pixel, encoded, faceId, size, frameData.frameCanvasOffset, frameData.voxelRenderOptions
+        );
+        const float factor = sunFrameData.shadowsEnabled == 0 ? 1.0
+            : perAxisSunShadowFactor(faceOrigin, faceId, sunFrameData, sunDepthBuf);
+        canvasSunShadow.write(float4(factor, 0.0, 0.0, 0.0), uint2(pixel));
+        return;
+    }
+
     float3 pos3D;
     float3 normal;
-    if (perAxis) {
-        int faceId = frameData.visibleFaceIds[face];
-        // Sub-cell recovery — the receiver must sample the sun map at the
-        // drawn surface, not the lattice cell origin. Mirrors GLSL.
-        pos3D = perAxisCellToWorld3DSubCell(
-            pixel, encoded, faceId, size,
-            frameData.frameCanvasOffset, frameData.voxelRenderOptions
-        );
-        normal = faceOutwardNormal6(faceId);
-    } else if (frameData.residualYaw != 0.0) {
+    if (frameData.residualYaw != 0.0) {
         // Smooth-yaw receive. While rotating, voxels leave the single canvas
         // (per-axis scatter) and its remaining SDF/text content is stored at the
         // FULL visualYaw with view-frame depth — recover with the matching smooth
@@ -132,15 +130,15 @@ kernel void IR_SUN_SHADOW_KERNEL_NAME(
     // Riser-polarity flip: a flipped face's true outward normal is the
     // NEGATION of the slot-derived one — without it the normal bias pushes the
     // shadow sample INTO the caster and the riser reads fully sun-shadowed.
-    // Negation commutes with the frame rotations above, so one flip covers all
-    // three recovery branches; flip == 0 everywhere on non-rotated content.
+    // Negation commutes with the frame rotations above, so one flip covers
+    // both recovery branches; flip == 0 everywhere on non-rotated content.
     if (flip != 0) {
         normal = -normal;
     }
 
     float receiverFace = 0.0;
 #if IR_SHAPE_RECEIVER
-    if (!perAxis && selectedShapeBoxReceiver(pixel, size.x, float2(pixel),
+    if (selectedShapeBoxReceiver(pixel, size.x, float2(pixel),
             receiverFrame, receiverShapes, receiverOwners, receiverTiles,
             pos3D, normal)) {
         receiverFace = encodeReceiverFace(normal);

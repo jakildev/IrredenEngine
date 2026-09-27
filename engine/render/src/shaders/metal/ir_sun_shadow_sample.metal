@@ -48,6 +48,7 @@ struct FrameDataSun {
     // sweep uses — so a baked caster is receivable at its full throw and the
     // two cannot drift.
     float sunMaxShadowThrow;
+    float4 sunCasterViewToWorld;
 };
 
 inline float sampleCascadeShadow(

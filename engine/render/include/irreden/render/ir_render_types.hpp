@@ -1178,8 +1178,7 @@ struct FrameDataSun {
     // and the world-placed cast resolve; the C++ driver zeros it for the per-axis
     // resolve dispatch (structural per-axis / smooth-yaw byte-identity — see
     // system_bake_sun_shadow_map.hpp patchSunSplatRadius). See
-    // docs/design/sun-shadow-bake-coverage.md. Occupies the trailing std140 pad
-    // floats so the 128-byte layout is unchanged.
+    // docs/design/sun-shadow-bake-coverage.md.
     float sunSplatMaxTexels_ = 6.0f;
     // Maximum shadow-throw window in sun-Z voxels: the receiver
     // (ir_sun_shadow_sample) rejects an occluder whose sun-Z gap exceeds this,
@@ -1187,12 +1186,17 @@ struct FrameDataSun {
     // AABB sweep distance (kSunShadowMaxDistance) by BAKE_SUN_SHADOW_MAP each
     // frame so a caster the sweep bakes is receivable at its full throw and the
     // two cannot drift; a shorter window truncates a floating caster's
-    // top-face shadow (its farthest-from-floor caster). Occupies the trailing
-    // std140 pad float (128-byte layout unchanged); default only matters before
-    // the first bake tick.
+    // top-face shadow (its farthest-from-floor caster).
     float sunMaxShadowThrow_ = 64.0f;
+    // View-aligned caster fallback planes need the camera basis even when
+    // the receiving canvas stores world-space geometry. Quaternion xyzw.
+    vec4 sunCasterViewToWorld_ = vec4(0.0f, 0.0f, 0.0f, 1.0f);
 };
-static_assert(sizeof(FrameDataSun) == 128, "FrameDataSun must match std140 layout");
+static_assert(sizeof(FrameDataSun) == 144, "FrameDataSun must match std140 layout");
+static_assert(
+    offsetof(FrameDataSun, sunCasterViewToWorld_) == 128,
+    "sunCasterViewToWorld_ must align after sunMaxShadowThrow_"
+);
 static_assert(offsetof(FrameDataSun, sunBasisU_) == 32, "sunBasisU_ must align after aoEnabled_");
 static_assert(
     offsetof(FrameDataSun, sunBufferOriginUV_) == 64,
