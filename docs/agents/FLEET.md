@@ -58,6 +58,13 @@ one canonical set (`derive_host()`: `Linux` → `linux`, `Darwin` → `mac`,
 `MINGW*/MSYS*/CYGWIN*` → `windows`); WSL2 is `linux`, so two such fleets on
 one account collide unless one forces `FLEET_TEST_HOST`.
 
+Claim liveness is heartbeat- and dispatch-derived and judged only on the host
+that owns the claim: TTLs are 30 min for PR labels and 2 h for issue claims,
+another host's amending/issue claim falls only past a 12 h backstop (a host
+that dies without `fleet-down` strands those up to 12 h; recover with `fleet-up`
+there or by hand), and an age-only sweep defers the PR 30 min under
+`fleet:sweep-cooldown` ([`fleet-claim-liveness.md`](fleet-claim-liveness.md)).
+
 ### Who takes the claim
 
 The **dispatcher**, before launch. For the target-bound roles (worker, both
