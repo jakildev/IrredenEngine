@@ -221,7 +221,7 @@ vec3 fogLosCanonicalSample(vec3 pos3D, int worldFaceId, int route, int scale) {
         return pos3D;
     }
     const vec3 normal = faceOutwardNormal6(worldFaceId);
-    vec3 sample = pos3D;
+    vec3 canonical = pos3D;
     if (route == kFogLosRouteCardinal) {
         const vec3 axisMask = abs(normal);
         const float outward = dot(normal, vec3(1.0));
@@ -229,7 +229,7 @@ vec3 fogLosCanonicalSample(vec3 pos3D, int worldFaceId, int route, int scale) {
         const float coordinate = dot(pos3D, axisMask);
         const float snapped =
             float(roundHalfUp((coordinate - outward * kFogLosFaceSnapOffset / micro) * micro)) / micro;
-        sample = mix(pos3D, vec3(snapped), axisMask);
+        canonical = mix(pos3D, vec3(snapped), axisMask);
     }
-    return sample + normal * kFogLosFaceBias;
+    return canonical + normal * kFogLosFaceBias;
 }

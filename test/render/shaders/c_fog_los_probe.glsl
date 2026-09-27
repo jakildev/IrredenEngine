@@ -46,11 +46,11 @@ void main() {
     if (index >= sampleCount) {
         return;
     }
-    const vec4 sample = samples[index];
-    const int faceId = int(sample.w);
+    const vec4 probed = samples[index];
+    const int faceId = int(probed.w);
     const vec3 target = faceId < 0
-        ? sample.xyz
-        : fogLosCanonicalSample(sample.xyz, faceId, kFogLosRouteCardinal, int(source.w));
+        ? probed.xyz
+        : fogLosCanonicalSample(probed.xyz, faceId, kFogLosRouteCardinal, int(source.w));
     const vec3 eye = fogLosEye(circle, source.x, source.y);
     float bandClearance;
     const float clearance = fogLosTraceClearance(eye, target, source.z, bandClearance);

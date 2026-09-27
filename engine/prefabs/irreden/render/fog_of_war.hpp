@@ -270,7 +270,7 @@ inline void setVisionCircleLineOfSight(
 /// active fog canvas, when @p to shares @p from's half-cell, and when @p to
 /// lies outside the fog footprint.
 ///
-/// Cost: rebuilds a 1 MiB column view from every live pool voxel and flagged
+/// Cost: rebuilds a 2 MiB column view from every live pool voxel and flagged
 /// shape on each call, then one lattice walk — an occasional gameplay query,
 /// not a per-unit per-frame one. Needs no registered vision circle, and agrees
 /// with the built field on the same occluders.

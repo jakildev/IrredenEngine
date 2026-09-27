@@ -19,13 +19,18 @@ if(shader_count EQUAL 0)
     )
 endif()
 
-# GLSL 4.60 section 3.6 reserves these words for future use. packed is also
-# rejected as an identifier by NVIDIA's GLSL front end.
+# GLSL 4.60 section 3.6 reserves the first group for future use; packed is
+# also rejected as an identifier by NVIDIA's GLSL front end. The second group
+# are live GLSL qualifier keywords that are ordinary identifiers in MSL, so a
+# Metal-only build never sees the collision.
 set(glsl_reserved_words
     common partition active asm class union enum typedef template this
     resource goto inline noinline public static extern external interface
     long short half fixed unsigned superp input output hvec2 hvec3 hvec4
     fvec2 fvec3 fvec4 sampler3DRect filter sizeof cast namespace using packed
+    sample centroid patch precise subroutine smooth flat noperspective
+    invariant attribute varying coherent readonly writeonly shared lowp
+    mediump highp precision
 )
 list(JOIN glsl_reserved_words "|" reserved_word_pattern)
 set(declaration_pattern

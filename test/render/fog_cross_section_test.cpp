@@ -45,21 +45,13 @@ namespace {
 // Shared CPU mirrors + shader-source helpers (used by both halves).
 // ---------------------------------------------------------------------------
 
-// The GLSL/MSL `smoothstep` (clamped Hermite), mirrored so the oracle in Test E
-// evaluates the same curve the GPU does. IRMath has no smoothstep wrapper, and
-// this is a shader-language mirror rather than a general math primitive.
-float smoothstepMirror(float edge0, float edge1, float x) {
-    const float t = IRMath::clamp((x - edge0) / (edge1 - edge0), 0.0f, 1.0f);
-    return t * t * (3.0f - 2.0f * t);
-}
-
 // CPU mirror of `fogVisionCircleReveal` (ir_iso_common.glsl) — the ONE analytic
 // curve the floor's per-pixel reveal and the per-voxel object clip share.
 // `circle` = (centerX, centerY, radius, edgeSoftness).
 float visionCircleReveal(IRMath::vec2 worldXY, IRMath::vec4 circle, float aa) {
     const float dist = IRMath::length(worldXY - IRMath::vec2(circle));
     const float a = IRMath::max(circle.w, aa);
-    return 1.0f - smoothstepMirror(circle.z - a, circle.z + a, dist);
+    return 1.0f - IRMath::smoothstep(circle.z - a, circle.z + a, dist);
 }
 
 // CPU mirror of `fogDiscRevealAtDistance` (ir_voxel_face_select.glsl) — the
@@ -69,7 +61,7 @@ float discRevealAtDistance(float dist, float radius, float softness) {
     if (softness <= 0.0f) {
         return dist < radius ? 1.0f : 0.0f;
     }
-    return 1.0f - smoothstepMirror(radius - softness, radius + softness, dist);
+    return 1.0f - IRMath::smoothstep(radius - softness, radius + softness, dist);
 }
 
 std::string readShaderSource(const std::string &path) {
@@ -1067,13 +1059,28 @@ constexpr int kLosProbeLocalSize = 64;           // local_size_x in the probe
 
 // The fixture: flat ground (top plane 4), the fog_demo ridge as the subdivided
 // raster draws it (x -0.5..1.5, y -7.5..8.5, top plane -0.5) and a
-// free-standing flagged SDF pillar, seen from a soft-edged source at (-6, 0)
-// with its eye 2 above observerZ 4.5.
+// free-standing flagged SDF pillar, seen from a soft-edged source with its eye
+// 2 above its observer: on the ground at (-6, 0), or on the ridge top at
+// (0.5, 0). The ground eye sits below every occluder top, so it has no far
+// shadow edge for softness to grade; the ridge eye does.
 constexpr float kLosGround = 4.0f;
 constexpr float kLosRidgeTop = -0.5f;
-const IRMath::vec4 kLosCircle{-6.0f, 0.0f, 14.0f, 2.0f};
-constexpr float kLosObserverZ = 4.5f;
 constexpr float kLosEyeHeight = 2.0f;
+
+struct LosProbeSource {
+    IRMath::vec4 circle_;
+    float observerZ_;
+};
+const LosProbeSource kLosGroundSource{IRMath::vec4(-6.0f, 0.0f, 14.0f, 2.0f), 4.5f};
+const LosProbeSource kLosRidgeSource{IRMath::vec4(0.5f, 0.0f, 14.0f, 2.0f), kLosRidgeTop};
+
+struct LosProbeCounts {
+    int occludedInDisc_ = 0;
+    int visibleInDisc_ = 0;
+    int partialInDisc_ = 0;
+    int faceVisible_ = 0;
+    int faceHidden_ = 0;
+};
 constexpr int kLosSubdivisions = 8;
 // The probed sample heights above the ground plane.
 constexpr float kLosLevelLift[] = {0.0f, 2.0f, 6.0f};
@@ -1155,7 +1162,9 @@ void uploadLosField(IRRender::Texture2D &texture, const std::vector<float> &fiel
 // the fixture has occluded, visible and (under softness) partial in-disc
 // probes; without the ridge and the pillar nothing is occluded. The face arm
 // hands the probe raster-recovered face pixels and checks the canonical
-// sample lands on the face plane the CPU raster stamped.
+// sample lands on the face plane the CPU raster stamped. Softness grades only
+// a far shadow edge, so the ground eye stays a step under it and the ridge-top
+// eye produces the partial samples.
 TEST_F(FogCrossSectionTest, GpuOcclusionMatchesTheCpuOracle) {
     using namespace IRRender;
     using IRComponents::C_CanvasFogOfWar;
@@ -1170,19 +1179,20 @@ TEST_F(FogCrossSectionTest, GpuOcclusionMatchesTheCpuOracle) {
         TextureFormat::RGBA32F
     };
 
-    const auto runOcclusionProbe = [&](bool withOccluders,
+    const auto runOcclusionProbe = [&](const LosProbeSource &source,
+                                       bool withOccluders,
                                        float softness,
-                                       int &occludedInDisc,
-                                       int &visibleInDisc,
-                                       int &partialInDisc) {
+                                       LosProbeCounts &counts) {
+        counts = LosProbeCounts{};
+        const IRMath::vec4 circle = source.circle_;
         FrameDataFogObservers observers{};
         const int slot = C_CanvasFogOfWar::addVisionCircle(
             observers,
-            kLosCircle.x,
-            kLosCircle.y,
-            kLosCircle.z,
-            kLosCircle.w,
-            kLosObserverZ,
+            circle.x,
+            circle.y,
+            circle.z,
+            circle.w,
+            source.observerZ_,
             0.0f,
             0.0f,
             0.0f
@@ -1196,17 +1206,27 @@ TEST_F(FogCrossSectionTest, GpuOcclusionMatchesTheCpuOracle) {
 
         // Point samples at fractional positions on and above the ground, plus
         // raster-style face pixels: the ridge's -X face and top face with the
-        // cardinal raster's in-depth-plane offsets applied.
+        // cardinal raster's in-depth-plane offsets applied. A point inside a
+        // column is placed on its top plane, where the oracle evaluates it; the
+        // shader only ever marches to surfaces.
         std::vector<IRMath::vec4> samples;
         for (const float lift : kLosLevelLift) {
             for (int y = -32; y < 32; ++y) {
                 for (int x = -32; x < 32; ++x) {
                     for (const IRMath::vec2 frac :
                          {IRMath::vec2(0.25f, 0.5f), IRMath::vec2(0.75f, 0.125f)}) {
-                        samples.emplace_back(
+                        const IRMath::vec2 xy(
                             static_cast<float>(x) + frac.x,
-                            static_cast<float>(y) + frac.y,
-                            kLosGround - lift,
+                            static_cast<float>(y) + frac.y
+                        );
+                        const float ownTop = columns.topPlane(
+                            FogLosColumnField::halfCellOf(xy.x),
+                            FogLosColumnField::halfCellOf(xy.y)
+                        );
+                        samples.emplace_back(
+                            xy.x,
+                            xy.y,
+                            IRMath::min(kLosGround - lift, ownTop),
                             -1.0f
                         );
                     }
@@ -1236,9 +1256,9 @@ TEST_F(FogCrossSectionTest, GpuOcclusionMatchesTheCpuOracle) {
         }
 
         const FogLosProbeHeader header{
-            kLosCircle,
+            circle,
             IRMath::vec4(
-                kLosObserverZ,
+                source.observerZ_,
                 kLosEyeHeight,
                 softness,
                 static_cast<float>(kLosSubdivisions)
@@ -1284,9 +1304,6 @@ TEST_F(FogCrossSectionTest, GpuOcclusionMatchesTheCpuOracle) {
         std::vector<FogLosProbeRecord> readback(samples.size(), unwritten);
         probeOut.getSubData(0, readback.size() * sizeof(FogLosProbeRecord), readback.data());
 
-        occludedInDisc = 0;
-        visibleInDisc = 0;
-        partialInDisc = 0;
         for (std::size_t i = 0; i < pointCount; ++i) {
             const IRMath::vec3 position(samples[i]);
             const float cpuVisibility =
@@ -1302,16 +1319,14 @@ TEST_F(FogCrossSectionTest, GpuOcclusionMatchesTheCpuOracle) {
               << position.x << ", " << position.y << ", " << position.z << ")";
             if (IRPrefab::Fog::evalVisionReveal(observers, position) > 0.0f) {
                 if (cpuVisibility <= 0.0f) {
-                    ++occludedInDisc;
+                    ++counts.occludedInDisc_;
                 } else if (cpuVisibility >= 1.0f) {
-                    ++visibleInDisc;
+                    ++counts.visibleInDisc_;
                 } else {
-                    ++partialInDisc;
+                    ++counts.partialInDisc_;
                 }
             }
         }
-        int faceVisible = 0;
-        int faceHidden = 0;
         for (std::size_t i = pointCount; i < samples.size(); ++i) {
             const IRMath::vec4 sample = samples[i];
             const IRMath::vec3 canonical(readback[i].canonical_);
@@ -1330,30 +1345,31 @@ TEST_F(FogCrossSectionTest, GpuOcclusionMatchesTheCpuOracle) {
             ASSERT_NEAR(readback[i].visibility_, cpuVisibility, 1e-3f)
                 << "the face arm diverged at (" << sample.x << ", " << sample.y << ", " << sample.z
                 << ")";
-            ++(cpuVisibility > 0.0f ? faceVisible : faceHidden);
-        }
-        if (withOccluders) {
-            EXPECT_GT(faceVisible, 0) << "the ridge's facing wall is never visible";
-            EXPECT_GT(faceHidden, 0) << "the ridge's top, seen from below, is never hidden";
+            ++(cpuVisibility > 0.0f ? counts.faceVisible_ : counts.faceHidden_);
         }
     };
 
-    int occluded = 0;
-    int visible = 0;
-    int partial = 0;
-    runOcclusionProbe(true, IRComponents::kFogLosHardGate, occluded, visible, partial);
-    EXPECT_GT(occluded, 0) << "the ridge and pillar occlude nothing in the disc";
-    EXPECT_GT(visible, 0) << "the fixture reveals nothing";
-    EXPECT_EQ(partial, 0) << "the hard gate is a step";
+    LosProbeCounts counts;
+    runOcclusionProbe(kLosGroundSource, true, IRComponents::kFogLosHardGate, counts);
+    EXPECT_GT(counts.occludedInDisc_, 0) << "the ridge and pillar occlude nothing in the disc";
+    EXPECT_GT(counts.visibleInDisc_, 0) << "the fixture reveals nothing";
+    EXPECT_EQ(counts.partialInDisc_, 0) << "the hard gate is a step";
+    EXPECT_GT(counts.faceVisible_, 0) << "the ridge's facing wall is never visible";
+    EXPECT_GT(counts.faceHidden_, 0) << "the ridge's top, seen from below, is never hidden";
 
-    runOcclusionProbe(true, 1.0f, occluded, visible, partial);
-    EXPECT_GT(occluded, 0);
-    EXPECT_GT(visible, 0);
-    EXPECT_GT(partial, 0) << "softness 1 grades no sample";
+    runOcclusionProbe(kLosGroundSource, true, 1.0f, counts);
+    EXPECT_GT(counts.occludedInDisc_, 0);
+    EXPECT_GT(counts.visibleInDisc_, 0);
+    EXPECT_EQ(counts.partialInDisc_, 0) << "an eye below every occluder top has no far edge";
 
-    runOcclusionProbe(false, IRComponents::kFogLosHardGate, occluded, visible, partial);
-    EXPECT_EQ(occluded, 0) << "flat ground occluded itself";
-    EXPECT_GT(visible, 0);
+    runOcclusionProbe(kLosRidgeSource, true, 1.0f, counts);
+    EXPECT_GT(counts.occludedInDisc_, 0) << "the ridge hides nothing at its base";
+    EXPECT_GT(counts.visibleInDisc_, 0);
+    EXPECT_GT(counts.partialInDisc_, 0) << "softness 1 grades no sample past the far edge";
+
+    runOcclusionProbe(kLosGroundSource, false, IRComponents::kFogLosHardGate, counts);
+    EXPECT_EQ(counts.occludedInDisc_, 0) << "flat ground occluded itself";
+    EXPECT_GT(counts.visibleInDisc_, 0);
 }
 
 #else // Metal / other backends
