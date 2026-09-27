@@ -19,6 +19,43 @@ TEST(RenderRunWitness, StaticPoseTravelsNothing) {
     EXPECT_FLOAT_EQ(witness.yawLast_, 45.0f * kDegree);
     EXPECT_EQ(witness.yawTravel_, 0.0f);
     EXPECT_FLOAT_EQ(witness.zoomFirst_, 4.0f);
+    EXPECT_FLOAT_EQ(witness.zoomMin_, 4.0f);
+    EXPECT_FLOAT_EQ(witness.zoomMax_, 4.0f);
+}
+
+TEST(RenderRunWitness, FirstPoseInitializesTheZoomRange) {
+    RenderRunWitness witness;
+    EXPECT_EQ(witness.poseSamples_, 0u);
+    EXPECT_FLOAT_EQ(witness.zoomMin_, 0.0f);
+    EXPECT_FLOAT_EQ(witness.zoomMax_, 0.0f);
+
+    witness.recordPose(0.0f, 2.0f, true);
+    EXPECT_FLOAT_EQ(witness.zoomMin_, 2.0f);
+    EXPECT_FLOAT_EQ(witness.zoomMax_, 2.0f);
+}
+
+TEST(RenderRunWitness, ZoomRangeRetainsExcursionBelowMatchingEndpoints) {
+    RenderRunWitness witness;
+    for (float zoom : {2.0f, 1.0f, 2.0f}) {
+        witness.recordPose(0.0f, zoom, true);
+    }
+    EXPECT_EQ(witness.poseSamples_, 3u);
+    EXPECT_FLOAT_EQ(witness.zoomFirst_, 2.0f);
+    EXPECT_FLOAT_EQ(witness.zoomLast_, 2.0f);
+    EXPECT_FLOAT_EQ(witness.zoomMin_, 1.0f);
+    EXPECT_FLOAT_EQ(witness.zoomMax_, 2.0f);
+}
+
+TEST(RenderRunWitness, ZoomRangeRetainsExcursionAboveMatchingEndpoints) {
+    RenderRunWitness witness;
+    for (float zoom : {2.0f, 32.0f, 2.0f}) {
+        witness.recordPose(0.0f, zoom, true);
+    }
+    EXPECT_EQ(witness.poseSamples_, 3u);
+    EXPECT_FLOAT_EQ(witness.zoomFirst_, 2.0f);
+    EXPECT_FLOAT_EQ(witness.zoomLast_, 2.0f);
+    EXPECT_FLOAT_EQ(witness.zoomMin_, 2.0f);
+    EXPECT_FLOAT_EQ(witness.zoomMax_, 32.0f);
 }
 
 TEST(RenderRunWitness, TravelSumsTheArcAcrossTheSeam) {
@@ -64,7 +101,7 @@ TEST(RenderRunWitness, OverflowKeepsTheWorstFrameNotTheLast) {
 TEST(RenderRunWitness, ResetForgetsThePreviousRun) {
     RenderRunWitness witness;
     witness.recordPose(1.0f, 2.0f, true);
-    witness.recordPose(2.0f, 2.0f, true);
+    witness.recordPose(2.0f, 32.0f, true);
     witness.recordOverflow(9u, 9u, 9u);
     witness.perAxisAllocate_.record(1.5);
     witness.perAxisRelease_.record(1.5);
@@ -72,11 +109,17 @@ TEST(RenderRunWitness, ResetForgetsThePreviousRun) {
     EXPECT_EQ(witness.perAxisAllocate_.sampleCount_, 0u);
     EXPECT_EQ(witness.perAxisRelease_.sampleCount_, 0u);
     EXPECT_EQ(witness.poseSamples_, 0u);
+    EXPECT_FLOAT_EQ(witness.zoomFirst_, 0.0f);
+    EXPECT_FLOAT_EQ(witness.zoomLast_, 0.0f);
+    EXPECT_FLOAT_EQ(witness.zoomMin_, 0.0f);
+    EXPECT_FLOAT_EQ(witness.zoomMax_, 0.0f);
     EXPECT_EQ(witness.overflowSamples_, 0u);
     EXPECT_EQ(witness.maxOverflowDropped_, 0u);
     witness.recordPose(0.5f, 1.0f, true);
     EXPECT_FLOAT_EQ(witness.yawFirst_, 0.5f);
     EXPECT_EQ(witness.yawTravel_, 0.0f);
+    EXPECT_FLOAT_EQ(witness.zoomMin_, 1.0f);
+    EXPECT_FLOAT_EQ(witness.zoomMax_, 1.0f);
 }
 
 } // namespace

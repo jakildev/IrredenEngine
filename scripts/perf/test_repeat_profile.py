@@ -1,5 +1,7 @@
 """Sampling must never attach to a different fleet run."""
 
+import io
+import json
 import subprocess
 import tempfile
 import unittest
@@ -16,6 +18,7 @@ from repeat_profile import (
     host_battery_percent,
     host_load,
     host_power_source,
+    main,
     overflow_failure,
     percentile,
     pivot_mismatch,
@@ -24,9 +27,11 @@ from repeat_profile import (
     requested_yaw,
     requested_yaw_step,
     run_profile,
+    static_canvas_frame_sweep,
     witness_checks,
     yaw_pose_mismatch,
 )
+from test_profile_parser import WITNESSED_REPORT
 
 
 def witnessed(
@@ -37,6 +42,8 @@ def witnessed(
     dropped=0,
     overflow_samples=299,
     zoom_last=4.0,
+    zoom_min=4.0,
+    zoom_max=4.0,
     pinned=None,
 ):
     return RunWitness(
@@ -46,6 +53,8 @@ def witnessed(
         pose_samples=samples,
         zoom_first=4.0,
         zoom_last=zoom_last,
+        zoom_min=zoom_min,
+        zoom_max=zoom_max,
         explicit_pivot_samples=pinned,
         overflow_max_entries=630842,
         overflow_max_dropped=dropped,
@@ -106,6 +115,132 @@ class YawPoseTest(unittest.TestCase):
     def test_a_zoom_that_moved_during_a_static_pose_fails(self):
         reason = self.mismatch(["--yaw", "0"], witnessed(0.0, zoom_last=1.0))
         self.assertIn("zoom went from 4.0 to 1.0", reason)
+
+
+class CanvasStaticPoseTest(unittest.TestCase):
+    ARGS = ["--yaw", "0", "--zoom", "1.6", "--auto-profile",
+            "--auto-screenshot", "6", "--sweep-frames", "2", "480"]
+
+    def mismatch(self, witness, args=None):
+        return yaw_pose_mismatch("IRCanvasStress", self.ARGS if args is None else args, witness)
+
+    def test_frame_sweep_requires_capture_and_a_positive_shot_count(self):
+        self.assertTrue(static_canvas_frame_sweep(self.ARGS))
+        self.assertTrue(static_canvas_frame_sweep([*self.ARGS, "--auto-rotate"]))
+        for args in (["--sweep-frames", "2", "480"],
+                     ["--auto-screenshot=0", "--sweep-frames", "2", "480"],
+                     [*self.ARGS, "--sweep-frames", "0.9", "480"]):
+            self.assertFalse(static_canvas_frame_sweep(args))
+
+    def test_optional_capture_and_inline_sweep_arguments_match_demo_semantics(self):
+        for args in (["--auto-screenshot", "--sweep-frames", "2", "480"],
+                     ["--sweep-frames=2,480", "--auto-screenshot"],
+                     ["--auto-screenshot=6", "--sweep-frames=2,480"],
+                     [*self.ARGS, "--sweep-yaw=0,3,0", "--sweep-pan=0,0,1,1,-1"]):
+            with self.subTest(args=args):
+                self.assertTrue(static_canvas_frame_sweep(args))
+                self.assertIsNotNone(self.mismatch(RunWitness(), args))
+        self.assertFalse(static_canvas_frame_sweep(
+            [*self.ARGS, "--auto-screenshot=0", "--auto-screenshot"]))
+        self.assertTrue(static_canvas_frame_sweep(
+            [*self.ARGS, "--auto-screenshot=0", "--auto-screenshot", "6"]))
+        self.assertFalse(static_canvas_frame_sweep([*self.ARGS, "--sweep-frames=0,480"]))
+
+    def test_invalid_sweep_arguments_are_refused(self):
+        for extra in (["--sweep-frames=2"], ["--sweep-frames=nan,480"],
+                      ["--sweep-frames", "2"], ["--sweep-pan=0,0,0,0,inf"]):
+            with self.subTest(extra=extra), self.assertRaises(ValueError):
+                static_canvas_frame_sweep([*self.ARGS, *extra])
+
+    def test_realized_zoom_is_checked_without_assuming_requested_fraction(self):
+        self.assertIsNone(self.mismatch(witnessed(yaw=0)))
+        self.assertIsNone(self.mismatch(witnessed(yaw=30), self.ARGS[2:]))
+
+    def test_moving_capture_modes_are_not_misclassified_as_static(self):
+        for extra in (["--sweep-yaw", "0", "3.14", "4"],
+                      ["--sweep-pan", "0", "0", "10", "10", "4"],
+                      ["--full-rotate"]):
+            self.assertIsNone(self.mismatch(RunWitness(), [*self.ARGS, *extra]))
+        self.assertIsNone(self.mismatch(RunWitness(), ["--auto-screenshot", "6"]))
+
+    def test_yaw_movement_wrong_pose_and_missing_samples_fail(self):
+        for sample in (witnessed(yaw=20), witnessed(yaw=0, last=1),
+                       witnessed(yaw=0, travel=360), witnessed(yaw=0, samples=0),
+                       witnessed(yaw=0, travel=float("nan")),
+                       witnessed(yaw=0, travel=-1), RunWitness()):
+            with self.subTest(sample=sample):
+                self.assertIsNotNone(self.mismatch(sample))
+
+    def test_zoom_movement_return_excursions_and_missing_ranges_fail(self):
+        for sample in (witnessed(yaw=0, zoom_last=1),
+                       witnessed(yaw=0, zoom_min=1), witnessed(yaw=0, zoom_max=32),
+                       witnessed(yaw=0, zoom_min=None, zoom_max=None),
+                       witnessed(yaw=0, zoom_min=5, zoom_max=3),
+                       witnessed(yaw=0, zoom_max=float("inf"))):
+            with self.subTest(sample=sample):
+                self.assertIn("zoom", self.mismatch(sample))
+
+    def test_perf_grid_checks_available_bounds_but_can_read_legacy_endpoints(self):
+        self.assertIn("zoom range", yaw_pose_mismatch(
+            "IRPerfGrid", ["--yaw", "0"], witnessed(yaw=0, zoom_min=1)))
+        self.assertIsNone(yaw_pose_mismatch(
+            "IRPerfGrid", ["--yaw", "0"],
+            witnessed(yaw=0, zoom_min=None, zoom_max=None)))
+
+    def test_runner_rejects_bad_pose_before_producing_summary(self):
+        cases = (("min=4.000 max=4.000", None, True),
+                 ("min=1.000 max=4.000", "zoom range", False),
+                 ("min=4.000 max=32.000", "zoom range", False),
+                 ("min=nan max=4.000", "all-frame", False),
+                 ("min=4..000 max=4.000", "all-frame", False),
+                 (None, "all-frame", False))
+        for bounds, reason, accepted in cases:
+            with self.subTest(bounds=bounds), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                demo = root / "build/creations/demos/canvas_stress"
+                demo.mkdir(parents=True)
+                (demo / "IRCanvasStress").write_bytes(b"fixture executable")
+                (demo / "shaders").mkdir()
+                (demo / "scripts").mkdir()
+                (demo / "save_files").mkdir()
+                output = root / "results"
+                text = WITNESSED_REPORT.replace("-135.000", "0.000")
+                range_line = "Camera zoom range: min=4.000 max=4.000\n"
+                text = text.replace(range_line, f"Camera zoom range: {bounds}\n" if bounds else "")
+                text = text.replace("maxDropped=7", "maxDropped=0")
+
+                def capture(command, repo, log, binary, seconds, delay):
+                    log.write_text("RESULT=CLEAN\n")
+                    (demo / "save_files/profile_report.txt").write_text(text)
+                    return 0, None
+
+                with (
+                    patch("repeat_profile.__file__", str(root / "scripts/perf/repeat_profile.py")),
+                    patch.dict("os.environ", {"IRREDEN_BUILD_DIR": str(root / "build")}),
+                    patch("sys.argv", ["repeat_profile.py", "--target", "IRCanvasStress",
+                                       "--output", str(output), "--repeats", "1", "--",
+                                       *self.ARGS]),
+                    patch("repeat_profile.subprocess.check_output", return_value="fixture"),
+                    patch("repeat_profile.platform.platform", return_value="fixture host"),
+                    patch("repeat_profile.host_power_source", return_value=None),
+                    patch("repeat_profile.host_battery_percent", return_value=None),
+                    patch("repeat_profile.run_profile", side_effect=capture),
+                    patch("sys.stdout", new_callable=io.StringIO),
+                ):
+                    self.assertEqual(main(), 0 if accepted else 1)
+                self.assertEqual((output / "summary.md").exists(), accepted)
+                self.assertTrue((output / "run-1.txt").exists())
+                run = json.loads((output / "manifest.json").read_text())["runs"][0]
+                if reason:
+                    self.assertIn(reason, run["yaw_pose_mismatch"])
+                else:
+                    self.assertIsNone(run["yaw_pose_mismatch"])
+                self.assertEqual(run["zoom_first"], run["zoom_last"])
+                self.assertEqual(run["zoom_range_present"], bounds is not None)
+                if reason == "all-frame":
+                    self.assertIsNone(run["zoom_min"])
+                else:
+                    self.assertEqual(run["zoom_min"], float(bounds.split()[0][4:]))
 
 
 class YawSweepTest(unittest.TestCase):

@@ -110,6 +110,94 @@ def checked_pose(target: str, demo_args: list[str]) -> str | None:
     return "static" if requested_yaw(demo_args) is not None else None
 
 
+def canvas_capture_enabled(demo_args: list[str]) -> bool:
+    """Mirror OPTIONAL_INT: a bare occurrence preserves the prior/default value."""
+    provided, enabled = False, True
+    for index, argument in enumerate(demo_args):
+        if argument.startswith("--auto-screenshot="):
+            provided = True
+            enabled = int(argument.split("=", 1)[1]) > 0
+        elif argument == "--auto-screenshot":
+            provided = True
+            following = demo_args[index + 1] if index + 1 < len(demo_args) else ""
+            if re.fullmatch(r"[+]?\d+", following) and int(following) > 0:
+                enabled = True
+    return provided and enabled
+
+
+def canvas_sweep_count(demo_args: list[str], flag: str, size: int, count_index: int) -> int:
+    count = 0
+    for index, argument in enumerate(demo_args):
+        if argument == flag:
+            values = demo_args[index + 1:index + 1 + size]
+        elif argument.startswith(flag + "="):
+            values = argument.split("=", 1)[1].split(",")
+        else:
+            continue
+        if len(values) != size:
+            raise ValueError(f"{flag} requires {size} values")
+        numbers = [float(value) for value in values]
+        if not all(math.isfinite(value) for value in numbers):
+            raise ValueError(f"{flag} requires finite values")
+        count = int(numbers[count_index])
+    return count
+
+
+def static_canvas_frame_sweep(demo_args: list[str]) -> bool:
+    """Frame-only screenshot sweeps disable CanvasStress's automatic yaw.
+
+    Yaw/pan shot tables and the independent full-rotation driver are moving
+    captures. The demo truncates the sweep count to an integer.
+    """
+    if "--full-rotate" in demo_args or not canvas_capture_enabled(demo_args):
+        return False
+    if (canvas_sweep_count(demo_args, "--sweep-yaw", 3, 2) > 0
+            or canvas_sweep_count(demo_args, "--sweep-pan", 5, 4) > 0):
+        return False
+    return canvas_sweep_count(demo_args, "--sweep-frames", 2, 0) > 0
+
+
+def fixed_zoom_mismatch(witness: RunWitness, *, require_range: bool = False) -> str | None:
+    endpoints = (witness.zoom_first, witness.zoom_last)
+    if any(value is None or not math.isfinite(value) or value <= 0 for value in endpoints):
+        return "the report witnessed no finite positive camera zoom endpoints"
+    if witness.zoom_first != witness.zoom_last:
+        return (
+            f"the camera zoom went from {witness.zoom_first} to {witness.zoom_last} "
+            "during the run"
+        )
+    bounds = (witness.zoom_min, witness.zoom_max)
+    if not require_range and not witness.zoom_range_present and bounds == (None, None):
+        return None
+    if any(value is None or not math.isfinite(value) or value <= 0 for value in bounds):
+        return "the report witnessed no finite positive all-frame camera zoom range"
+    if not witness.zoom_min == witness.zoom_first == witness.zoom_max:
+        return (
+            f"the camera zoom range was {witness.zoom_min} to {witness.zoom_max}; "
+            f"a fixed zoom of {witness.zoom_first} was required throughout the run"
+        )
+    return None
+
+
+def canvas_frame_pose_mismatch(demo_args: list[str], witness: RunWitness) -> str | None:
+    if not static_canvas_frame_sweep(demo_args):
+        return None
+    yaw_values = (witness.yaw_first_deg, witness.yaw_last_deg, witness.yaw_travel_deg)
+    if witness.pose_samples <= 0 or any(
+        value is None or not math.isfinite(value) for value in yaw_values
+    ):
+        return "the report witnessed no finite camera yaw for the static frame sweep"
+    requested = requested_yaw(demo_args)
+    expected = math.degrees(requested) if requested is not None else witness.yaw_first_deg
+    for label, value in (("first", witness.yaw_first_deg), ("last", witness.yaw_last_deg)):
+        if degrees_apart(expected, value) > YAW_POSE_TOLERANCE_DEG:
+            return f"the {label} frame yaw was {value:.3f} deg; expected {expected:.3f} deg"
+    if not 0 <= witness.yaw_travel_deg <= YAW_POSE_TOLERANCE_DEG:
+        return f"the static frame sweep camera yawed {witness.yaw_travel_deg:.3f} deg"
+    # Canvas zoom is quantized; the requested fraction is not the rendered scale.
+    return fixed_zoom_mismatch(witness, require_range=True)
+
+
 def requested_frames(demo_args: list[str]) -> int | None:
     """How many frames --auto-profile asks IRPerfGrid to render; None if unreadable."""
     frames = None
@@ -157,6 +245,8 @@ def yaw_pose_mismatch(target: str, demo_args: list[str], witness: RunWitness) ->
     held pose was held from frame 2: a gradual ramp to it has the same first,
     last and travel as the jump.
     """
+    if target == "IRCanvasStress":
+        return canvas_frame_pose_mismatch(demo_args, witness)
     pose = checked_pose(target, demo_args)
     if pose is None:
         return None
@@ -189,12 +279,7 @@ def yaw_pose_mismatch(target: str, demo_args: list[str], witness: RunWitness) ->
             f"the camera yawed {witness.yaw_travel_deg:.3f} deg over {witness.pose_samples} "
             f"frames; {' '.join(pose_arguments(demo_args))} is {expected_travel:.3f} deg"
         )
-    if witness.zoom_first != witness.zoom_last:
-        return (
-            f"the camera zoom went from {witness.zoom_first} to {witness.zoom_last} "
-            "during the run"
-        )
-    return None
+    return fixed_zoom_mismatch(witness)
 
 
 def pose_arguments(demo_args: list[str]) -> list[str]:
@@ -256,6 +341,9 @@ def witness_checks(target: str, demo_args: list[str], witness: RunWitness) -> di
         "yaw_travel_deg": witness.yaw_travel_deg,
         "zoom_first": witness.zoom_first,
         "zoom_last": witness.zoom_last,
+        "zoom_min": witness.zoom_min,
+        "zoom_max": witness.zoom_max,
+        "zoom_range_present": witness.zoom_range_present,
         "overflow_max_dropped": witness.overflow_max_dropped,
         "overflow_max_entries": witness.overflow_max_entries,
         "overflow_samples": witness.overflow_samples,
@@ -464,8 +552,10 @@ def main() -> int:
         requested_yaw(demo_args)
         requested_yaw_step(demo_args)
         requested_first_frame_yaw(demo_args)
+        if args.target == "IRCanvasStress":
+            static_canvas_frame_sweep(demo_args)
     except ValueError as error:
-        parser.error(f"--yaw, --yaw-step and --yaw-first-frame must be finite radians: {error}")
+        parser.error(f"camera and sweep arguments must be finite numbers: {error}")
     if any(argument.split("=", 1)[0] == "--capture-frame" for argument in demo_args):
         parser.error("--capture-frame puts a screenshot readback inside the timed window")
     root = Path(__file__).resolve().parents[2]
