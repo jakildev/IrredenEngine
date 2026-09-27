@@ -36,6 +36,7 @@ project_sonnet_reviewer = _mod.project_sonnet_reviewer
 slice_worker = _mod.slice_worker
 stable_hash = _mod.stable_hash
 worker_feedback_labels = _mod.worker_feedback_labels
+_review_skipped = _mod._review_skipped
 
 
 def _state(prs, tasks=None, needs_plan=None):
@@ -282,6 +283,30 @@ class WorkerFeedbackLabelsSuppressedWhileDesignParked(unittest.TestCase):
             worker_feedback_labels({"fleet:needs-fix"}),
             frozenset({"fleet:needs-fix"}),
         )
+
+
+class WorkerFeedbackLabelsSuppressedWhileAwaitingInfra(unittest.TestCase):
+    """A PR parked with fleet:awaiting-infra (an open blocker named in its
+    own `Parked-until: #N` line) is not worker feedback work even when it
+    still carries a fleet verdict tier — the reviewer path re-flags the
+    unchanged head on every pass, and nothing else clears the tier until the
+    blocker closes. human:needs-fix / human:blocker outrank the park and
+    keep dispatching, mirroring the design-park carve-out above."""
+
+    def test_needs_fix_suppressed_while_awaiting_infra(self):
+        self.assertEqual(
+            worker_feedback_labels({"fleet:needs-fix", "fleet:awaiting-infra"}),
+            frozenset(),
+        )
+
+    def test_human_needs_fix_still_dispatches_while_awaiting_infra(self):
+        self.assertEqual(
+            worker_feedback_labels({"human:needs-fix", "fleet:awaiting-infra"}),
+            frozenset({"human:needs-fix"}),
+        )
+
+    def test_review_skipped_true_for_awaiting_infra(self):
+        self.assertTrue(_review_skipped({"fleet:awaiting-infra"}))
 
 
 def _sc_pr(num, **kwargs):

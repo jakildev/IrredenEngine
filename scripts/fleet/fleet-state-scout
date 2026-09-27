@@ -2267,6 +2267,13 @@ REVIEW_SKIP_LABELS = frozenset({
     # fleet:human-deferred this is NOT mergeable-by-the-merger: the conflict
     # itself sits in the gated file, so a human must resolve before merge.
     "fleet:gated",
+    # Complete, but parked behind an open blocker named in the PR's own
+    # `Parked-until: #N` line. Re-reviewing the unchanged head every tick
+    # re-stamps a fleet verdict tier, which WORKER_SKIP_LABELS below then
+    # re-declines — an unbounded review/decline cycle with no diff change
+    # and no blocker change. Resume signal is `fleet-claim reconcile`'s
+    # auto-un-park removing the label once the blocker closes.
+    "fleet:awaiting-infra",
 })
 # Dynamic per-host claim prefixes that also bar reviewer pickup. A worker
 # amending a fleet:needs-fix PR holds fleet:amending-<host>-<agent> (minted
@@ -3130,8 +3137,16 @@ SEMANTIC_CONFLICT_SKIP_PREFIXES = WORKER_SKIP_PREFIXES + (
 # resume signal is fleet:design-unblocked, which the state machine keeps
 # mutually exclusive with both park labels, so suppressing the fleet tiers
 # here never masks real resume work.
+#
+# fleet:awaiting-infra parks a PR the same way, behind an open blocker named
+# in the PR's own `Parked-until: #N` line rather than a design question. Its
+# resume signal is the label's own removal (`fleet-claim reconcile`'s
+# auto-un-park once the blocker closes), which re-arms whatever fleet verdict
+# tier is still on the PR — so suppressing here never masks real resume work
+# either.
 WORKER_SKIP_LABELS = frozenset({
     "fleet:needs-opus-recheck", "fleet:design-blocked", "fleet:design-proposed",
+    "fleet:awaiting-infra",
 })
 # Only the fleet-owned tiers are suppressible by transient lane state.
 # human:needs-fix / human:blocker outrank that state, but persistent PR
