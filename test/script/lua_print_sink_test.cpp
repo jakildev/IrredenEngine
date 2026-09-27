@@ -3,6 +3,7 @@
 #include <irreden/profile/logger_spd.hpp>
 #include <irreden/script/lua_script.hpp>
 
+#include <spdlog/pattern_formatter.h>
 #include <spdlog/sinks/ostream_sink.h>
 
 #include <algorithm>
@@ -18,14 +19,21 @@ namespace {
 // pattern is set explicitly for the reason engine/profile/CLAUDE.md gives
 // for the console sink — spdlog's default "%+" routes through
 // full_formatter, whose thread_local MDC map crashes mingw's emutls at
-// thread exit.
+// thread exit. The eol is pinned to "\n" because spdlog's default is "\r\n"
+// on Windows, and the expectations are byte-exact.
 class ScriptLogCapture {
   public:
     ScriptLogCapture()
         : m_captured{}
         , m_logger{LoggerSpd::instance()->getScriptLogger()}
         , m_sink{std::make_shared<spdlog::sinks::ostream_sink_st>(m_captured)} {
-        m_sink->set_pattern("[%n] [%l] %v");
+        m_sink->set_formatter(
+            std::make_unique<spdlog::pattern_formatter>(
+                "[%n] [%l] %v",
+                spdlog::pattern_time_type::local,
+                "\n"
+            )
+        );
         m_logger->sinks().push_back(m_sink);
     }
 

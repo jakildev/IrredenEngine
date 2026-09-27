@@ -23,6 +23,7 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -114,8 +115,12 @@ class LuaWorldSnapshotTest : public testing::Test {
         );
     }
 
+    // Spliced into single-quoted Lua literals, so it must be free of
+    // backslashes: Windows' native separator would read as an escape.
     std::string tempPath(const char *name) const {
-        return testing::TempDir() + "/ir_ws_lua_" + name + ".irws";
+        return (std::filesystem::path{testing::TempDir()} /
+                (std::string{"ir_ws_lua_"} + name + ".irws"))
+            .generic_string();
     }
 
     IRScript::LuaScript m_lua;
