@@ -29,7 +29,7 @@ template <> struct System<FOG_REVEAL_EVAL> {
     };
 
     IRComponents::FrameDataFogObservers observers_{};
-    IRComponents::FogLineOfSightField los_{};
+    IRComponents::FogLosColumnField los_{};
     IRComponents::C_FogRevealSettings settings_{};
     IREntity::EntityId activeCanvas_ = IREntity::kNullEntity;
     IRComponents::C_VoxelPool *activePool_ = nullptr;

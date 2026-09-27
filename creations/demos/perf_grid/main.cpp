@@ -1336,9 +1336,8 @@ void logFogLosWitness() {
         return;
     }
     const IRComponents::C_CanvasFogOfWar &canvasFog = **fog;
-    const IRComponents::FogLineOfSightField field = canvasFog.losField();
-    const int terrainTop =
-        IRMath::roundHalfUp(kFogLosTerrainCenter.z - kFogLosTerrainSize.z * 0.5f + 0.5f);
+    const IRComponents::FogLosColumnField field = canvasFog.losField();
+    const float terrainTop = kFogLosTerrainCenter.z - kFogLosTerrainSize.z * 0.5f;
     for (int i = 0; i < canvasFog.losPublishedObservers_.visionCircleCount_; ++i) {
         const vec4 circle = canvasFog.losPublishedObservers_.visionCircles_[i];
         int hidden = 0;
@@ -1348,7 +1347,13 @@ void logFogLosWitness() {
                 if (IRMath::length(vec2(x, y) - vec2(circle)) > circle.z) {
                     continue;
                 }
-                ++(field.visible(i, ivec3(x, y, terrainTop)) ? shown : hidden);
+                const float visibility = IRPrefab::Fog::losVisibility(
+                    field,
+                    canvasFog.losPublishedObservers_,
+                    i,
+                    vec3(static_cast<float>(x), static_cast<float>(y), terrainTop)
+                );
+                ++(visibility > 0.0f ? shown : hidden);
             }
         }
         IR_LOG_INFO("FOG-LOS-WITNESS source={} visible={} occluded={}", i, shown, hidden);

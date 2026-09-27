@@ -462,9 +462,17 @@ constexpr std::uint32_t kEntityIdCutFaceMaskInHighWord = 1u << 29;
 // penalty for it. Stripped by kEntityIdHighWordMask like the bits above.
 // Mirror of the .glsl/.metal kEntityIdFogWholeBodyMaskInHighWord.
 constexpr std::uint32_t kEntityIdFogWholeBodyMaskInHighWord = 1u << 28;
+// Analytic-surface carrier: bit 19 of the high word. Set on every pixel the
+// shape raster writes, so a per-pixel world-position consumer (FOG_TO_TRIXEL's
+// line-of-sight gate) can tell an exact analytic surface point from a voxel
+// raster point on the lower-corner cell lattice. Entity ids occupy the low
+// word plus the flag bits 0..2 of the high word (ir_entity_types.hpp), so bit
+// 19 never carries id state. Stripped by kEntityIdHighWordMask like the bits
+// above. Mirror of the .glsl/.metal kEntityIdAnalyticSurfaceMaskInHighWord.
+constexpr std::uint32_t kEntityIdAnalyticSurfaceMaskInHighWord = 1u << 19;
 constexpr std::uint32_t kEntityIdHighWordMask =
     ~(kEntityIdPriorityMaskInHighWord | kEntityIdCutFaceMaskInHighWord |
-      kEntityIdFogWholeBodyMaskInHighWord);
+      kEntityIdFogWholeBodyMaskInHighWord | kEntityIdAnalyticSurfaceMaskInHighWord);
 static_assert(
     kDepthForegroundTierCount <= (1 << kEntityIdPriorityBits),
     "tier count must fit in the K stolen entity-id bits"

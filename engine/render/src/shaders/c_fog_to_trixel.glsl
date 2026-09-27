@@ -29,9 +29,9 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     ivec2 canvasSizePixels;
     ivec2 _cullIsoMin;
     ivec2 _cullIsoMax;
-    float _visualYaw;
+    float visualYaw;
     float rasterYaw;
-    float _residualYaw;
+    float residualYaw;
     float _isDetachedCanvas;
     vec4 _faceDeform[3];
     ivec4 visibleFaceIds;
@@ -39,7 +39,7 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
 
 layout(rgba8, binding = 0) uniform image2D trixelColors;
 layout(r32i, binding = 1) readonly uniform iimage2D trixelDistances;
-// Read only for the fog whole-body carrier bit (decodeFogWholeBody).
+// Read only for the fog whole-body and analytic-surface carrier bits.
 layout(rg32ui, binding = 3) readonly uniform uimage2D triangleCanvasEntityIds;
 
 layout(std430, binding = 25) readonly buffer PerAxisCellCompacted {
@@ -53,7 +53,9 @@ const uint kPerAxisCellComputeTile = 256u;
 
 // The three pos3D-recovery shaders (AO, sun shadow, fog) must stay in
 // lockstep with the stage-2 encoding. R(-rasterYaw) recovers world coords
-// from the cardinal-rotated raster frame.
+// from the cardinal-rotated raster frame; while the camera turns, the single
+// canvas holds only smooth-yaw content (voxels scatter per axis), recovered
+// with the matching smooth inverse.
 vec3 fogPixelToWorld(ivec2 pixel, int encoded, int faceId, ivec2 size) {
     if (perAxisRoute != 0) {
         return perAxisCellToWorld3DSubCell(
@@ -63,6 +65,16 @@ vec3 fogPixelToWorld(ivec2 pixel, int encoded, int faceId, ivec2 size) {
             size,
             frameCanvasOffset,
             voxelRenderOptions
+        );
+    }
+    if (residualYaw != 0.0) {
+        return trixelCanvasPixelToWorld3DSmoothYaw(
+            pixel,
+            decodeDepthSingle(encoded),
+            trixelCanvasOffsetZ1,
+            frameCanvasOffset,
+            voxelRenderOptions,
+            visualYaw
         );
     }
     return trixelCanvasPixelToWorld3D(
@@ -103,15 +115,34 @@ void main() {
     const vec3 pos3D = fogPixelToWorld(pixel, encoded, faceId, size);
     float aaFloor = 0.0;
     bool fogWholeBody = false;
+    vec3 losSample = pos3D;
     if (visionCircleCount > 0) {
         // Local world-units-per-pixel from the +x neighbour at the same depth:
         // floors the disc's AA rim at ~1 canvas px at any zoom.
         const vec3 neighbor = fogPixelToWorld(pixel + ivec2(1, 0), encoded, faceId, size);
         aaFloor = length(neighbor.xy - pos3D.xy);
-        fogWholeBody = decodeFogWholeBody(imageLoad(triangleCanvasEntityIds, pixel).xy);
+        const uvec2 rawId = imageLoad(triangleCanvasEntityIds, pixel).xy;
+        fogWholeBody = decodeFogWholeBody(rawId);
+        if (losSourceMask != 0) {
+            // A per-axis cell and a cardinal voxel pixel sit on the raster's
+            // lower-corner lattice; a shape pixel and the smooth-yaw canvas's
+            // content are exact world points.
+            int losRoute = kFogLosRouteAnalytic;
+            if (perAxisRoute != 0) {
+                losRoute = kFogLosRoutePerAxis;
+            } else if (residualYaw == 0.0 && !decodeAnalyticSurface(rawId)) {
+                losRoute = kFogLosRouteCardinal;
+            }
+            losSample = fogLosCanonicalSample(
+                pos3D,
+                faceId,
+                losRoute,
+                effectiveTrixelSubdivisionScale(voxelRenderOptions)
+            );
+        }
     }
 
-    const FogReveal reveal = fogRevealSample(pos3D, aaFloor, fogWholeBody);
+    const FogReveal reveal = fogRevealSample(pos3D, losSample, aaFloor, fogWholeBody);
     if (reveal.state >= 1.0) {
         return;
     }

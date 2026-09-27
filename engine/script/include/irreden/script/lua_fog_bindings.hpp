@@ -8,6 +8,7 @@
 #include <sol/sol.hpp>
 
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -100,7 +101,21 @@ requireFogEntity(sol::object value, const char *function, std::size_t index) {
     return entity;
 }
 
-inline void applyFogVision(const sol::variadic_args &args, bool replace) {
+/// The vision payload the `IRFog` vision entries author: the active canvas's
+/// `C_CanvasFogOfWar::observers_`, or null when no canvas owns fog (the
+/// entries then no-op).
+using FogVisionSlotsResolver = std::function<IRComponents::FrameDataFogObservers *()>;
+
+inline IRComponents::FrameDataFogObservers *activeFogVisionSlots() {
+    if (auto *fog = IRPrefab::Fog::detail::activeFogComponent()) {
+        return &fog->observers_;
+    }
+    return nullptr;
+}
+
+inline int applyFogVision(
+    const sol::variadic_args &args, bool replace, IRComponents::FrameDataFogObservers *observers
+) {
     const char *function = replace ? "setVision" : "addVision";
     requireFogArity(function, args.size(), 3, 8);
     const float cx = requireFogFloat(args[0], function, 0);
@@ -112,23 +127,56 @@ inline void applyFogVision(const sol::variadic_args &args, bool replace) {
     const float zCostDown =
         optionalFogFloat(args, 6, IRComponents::kFogVisionZCostMirrorUp, function);
     const float freeBand = optionalFogFloat(args, 7, 0.0f, function);
-    if (replace) {
-        IRPrefab::Fog::setVisionCircle(
-            cx,
-            cy,
-            radius,
-            edge,
-            observerZ,
-            zCostUp,
-            zCostDown,
-            freeBand
-        );
-        return;
+    if (observers == nullptr) {
+        return -1;
     }
-    IRPrefab::Fog::addVisionCircle(cx, cy, radius, edge, observerZ, zCostUp, zCostDown, freeBand);
+    if (replace) {
+        IRComponents::C_CanvasFogOfWar::clearVisionCircles(*observers);
+    }
+    return IRComponents::C_CanvasFogOfWar::addVisionCircle(
+        *observers,
+        cx,
+        cy,
+        radius,
+        edge,
+        observerZ,
+        zCostUp,
+        zCostDown,
+        freeBand
+    );
 }
 
-inline void bindFog(LuaScript &script) {
+/// `IRFog.setVisionLineOfSight(slot, losEyeHeight[, losSoftness])`: validates
+/// in Lua what `C_CanvasFogOfWar::setVisionCircleLineOfSight` asserts, so an
+/// unregistered slot raises a named error instead of reaching the assert.
+inline void applyFogVisionLineOfSight(
+    const sol::variadic_args &args, IRComponents::FrameDataFogObservers *observers
+) {
+    constexpr const char *function = "setVisionLineOfSight";
+    requireFogArity(function, args.size(), 2, 3);
+    const int slot = requireFogInt(args[0], function, 0);
+    const float eyeHeight = requireFogFloat(args[1], function, 1);
+    const float softness = optionalFogFloat(args, 2, IRComponents::kFogLosHardGate, function);
+    if (observers == nullptr) {
+        return;
+    }
+    if (slot < 0 || slot >= observers->visionCircleCount_) {
+        throw std::invalid_argument(
+            fogArgumentName(function, 0) + " is not a registered vision slot (count " +
+            std::to_string(observers->visionCircleCount_) + ")"
+        );
+    }
+    IRComponents::C_CanvasFogOfWar::setVisionCircleLineOfSight(
+        *observers,
+        slot,
+        eyeHeight,
+        softness
+    );
+}
+
+/// @p resolveSlots names the vision payload the vision entries author; the
+/// default is the active canvas's.
+inline void bindFog(LuaScript &script, FogVisionSlotsResolver resolveSlots = activeFogVisionSlots) {
     sol::state &lua = script.lua();
     sol::object existing = lua["IRFog"];
     if (existing.valid() && existing.get_type() != sol::type::lua_nil &&
@@ -139,11 +187,20 @@ inline void bindFog(LuaScript &script) {
     sol::table fog =
         existing.get_type() == sol::type::table ? existing.as<sol::table>() : lua.create_table();
 
-    fog["setVision"] = [](sol::variadic_args args) { applyFogVision(args, true); };
-    fog["addVision"] = [](sol::variadic_args args) { applyFogVision(args, false); };
-    fog["clearVisions"] = [](sol::variadic_args args) {
+    fog["setVision"] = [resolveSlots](sol::variadic_args args) {
+        return applyFogVision(args, true, resolveSlots());
+    };
+    fog["addVision"] = [resolveSlots](sol::variadic_args args) {
+        return applyFogVision(args, false, resolveSlots());
+    };
+    fog["setVisionLineOfSight"] = [resolveSlots](sol::variadic_args args) {
+        applyFogVisionLineOfSight(args, resolveSlots());
+    };
+    fog["clearVisions"] = [resolveSlots](sol::variadic_args args) {
         requireFogArity("clearVisions", args.size(), 0, 0);
-        IRPrefab::Fog::clearVisionCircles();
+        if (IRComponents::FrameDataFogObservers *observers = resolveSlots()) {
+            IRComponents::C_CanvasFogOfWar::clearVisionCircles(*observers);
+        }
     };
     fog["evalReveal"] = [](sol::variadic_args args) {
         requireFogArity("evalReveal", args.size(), 3, 3);

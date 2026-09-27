@@ -14,7 +14,7 @@ using IRComponents::C_FogRevealed;
 using IRComponents::C_VoxelPool;
 using IRComponents::C_VoxelSetNew;
 using IRComponents::C_WorldTransform;
-using IRComponents::FogLineOfSightField;
+using IRComponents::FogLosColumnField;
 using IRComponents::FrameDataFogObservers;
 
 FrameDataFogObservers oneCircle(
@@ -32,21 +32,24 @@ FrameDataFogObservers oneCircle(
     return observers;
 }
 
-// A horizon image with every cell clear, and a setter for one source's cell.
-std::vector<float> clearHorizons() {
-    return std::vector<float>(IRComponents::kFogLosHorizonCount, IRComponents::kFogLosHorizonClear);
+// A column field with no occluder, and a wall stamp: a tall box whose top
+// plane sits at `top`.
+std::vector<float> emptyField() {
+    return std::vector<float>(
+        IRComponents::kFogLosFieldFloatCount,
+        IRComponents::kFogLosColumnEmpty
+    );
 }
 
-void setHorizon(std::vector<float> &horizons, int source, int x, int y, float value) {
-    horizons[FogLineOfSightField::horizonIndex(source, x, y)] = value;
+void stampWall(std::vector<float> &field, IRMath::vec2 minXY, IRMath::vec2 maxXY, float top) {
+    IRPrefab::Fog::stampLosBox(field, minXY, maxXY, top);
+    IRPrefab::Fog::buildLosPyramid(field);
 }
 
-void setHorizonColumnsFromX(std::vector<float> &horizons, int source, int fromX, float value) {
-    for (int y = -20; y <= 20; ++y) {
-        for (int x = fromX; x <= 20; ++x) {
-            setHorizon(horizons, source, x, y, value);
-        }
-    }
+// Gates source 0 with its eye one unit above its observerZ.
+FrameDataFogObservers gated(FrameDataFogObservers observers) {
+    IRComponents::C_CanvasFogOfWar::setVisionCircleLineOfSight(observers, 0, 1.0f);
+    return observers;
 }
 
 TEST(FogRevealEvalTest, MirrorsDiscHeightPenaltyAndSoftEdge) {
@@ -84,33 +87,34 @@ TEST(FogRevealEvalTest, RejectsOutsideBoundingRadiusBeforeExactCurve) {
     );
 }
 
-// An occluded sample is unrevealed with no cost at all; clearing only the
-// source's mask bit restores the full reveal.
+// An occluded sample is unrevealed with no cost at all; a sample the segment
+// clears above the wall keeps its reveal, and clearing only the source's mask
+// bit restores the full reveal.
 TEST(FogRevealEvalTest, OccludedSampleIsUnrevealedRegardlessOfCost) {
-    std::vector<float> horizons = clearHorizons();
-    setHorizon(horizons, 0, 3, 4, -2.0f);
-    const FogLineOfSightField field{horizons.data()};
-    FrameDataFogObservers observers = oneCircle(10.0f, 0.0f);
-    observers.losSourceMask_ = 1;
+    std::vector<float> columns = emptyField();
+    stampWall(columns, IRMath::vec2(1.0f, 1.0f), IRMath::vec2(2.0f, 3.0f), -5.0f);
+    const FogLosColumnField field{columns.data()};
+    FrameDataFogObservers observers = gated(oneCircle(10.0f, 0.0f));
     EXPECT_FLOAT_EQ(IRPrefab::Fog::evalVisionReveal(observers, field, IRMath::vec3(3, 4, 0)), 0.0f);
-    EXPECT_FLOAT_EQ(IRPrefab::Fog::evalVisionReveal(observers, field, IRMath::vec3(3, 4, -2)), 1.0f)
-        << "a sample at the horizon is visible";
     EXPECT_FLOAT_EQ(
-        IRPrefab::Fog::evalVisionReveal(observers, field, IRMath::vec3(3.3f, 3.6f, -1.6f)),
+        IRPrefab::Fog::evalVisionReveal(observers, field, IRMath::vec3(3, 4, -20)),
         1.0f
-    ) << "the gate reads the rounded voxel (3, 4, -2)";
+    ) << "a sample the segment clears above the wall is visible";
+    EXPECT_FLOAT_EQ(
+        IRPrefab::Fog::evalVisionReveal(observers, field, IRMath::vec3(3.3f, 0.2f, 0.0f)),
+        1.0f
+    ) << "a sample the segment passes beside the wall is visible";
 
     observers.losSourceMask_ = 0;
     EXPECT_FLOAT_EQ(IRPrefab::Fog::evalVisionReveal(observers, field, IRMath::vec3(3, 4, 0)), 1.0f);
 }
 
-// An unoccluded sample takes the unchanged cost curve: over an all-clear field
+// An unoccluded sample takes the unchanged cost curve: over an empty field
 // the gated reveal equals the cost-only overload, height penalty included.
 TEST(FogRevealEvalTest, UnoccludedSampleTakesTheCostCurve) {
-    const std::vector<float> horizons = clearHorizons();
-    const FogLineOfSightField field{horizons.data()};
-    FrameDataFogObservers observers = oneCircle(10.0f, 2.0f, 0.0f, 0.3f, 0.1f, 1.0f);
-    observers.losSourceMask_ = 1;
+    const std::vector<float> columns = emptyField();
+    const FogLosColumnField field{columns.data()};
+    const FrameDataFogObservers observers = gated(oneCircle(10.0f, 2.0f, 0.0f, 0.3f, 0.1f, 1.0f));
     for (const IRMath::vec3 sample :
          {IRMath::vec3(3, 4, 0), IRMath::vec3(6, 5, -7), IRMath::vec3(9.5f, 0, 3)}) {
         EXPECT_FLOAT_EQ(
@@ -123,14 +127,30 @@ TEST(FogRevealEvalTest, UnoccludedSampleTakesTheCostCurve) {
         << "the probe must sit on the curve, not at a plateau";
 }
 
+// A softened source scales its reveal by the band factor behind a low wall.
+TEST(FogRevealEvalTest, SoftenedSourceScalesItsReveal) {
+    std::vector<float> columns = emptyField();
+    stampWall(columns, IRMath::vec2(-20.0f, -20.0f), IRMath::vec2(20.0f, 20.0f), 0.0f);
+    stampWall(columns, IRMath::vec2(1.0f, -5.0f), IRMath::vec2(2.0f, 5.0f), -1.0f);
+    const FogLosColumnField field{columns.data()};
+    FrameDataFogObservers observers = oneCircle(10.0f, 0.0f);
+    IRComponents::C_CanvasFogOfWar::setVisionCircleLineOfSight(observers, 0, 3.0f, 2.0f);
+    const float behind = IRPrefab::Fog::evalVisionReveal(observers, field, IRMath::vec3(5, 0, 0));
+    EXPECT_GT(behind, 0.0f);
+    EXPECT_LT(behind, 1.0f) << "the band scales the reveal behind the wall";
+    EXPECT_FLOAT_EQ(
+        IRPrefab::Fog::evalVisionReveal(observers, field, IRMath::vec3(-5, 0, 0)),
+        1.0f
+    );
+}
+
 // Before the first publication a gated source reveals nothing while an
 // ungated one still reveals.
 TEST(FogRevealEvalTest, UnpublishedFieldRevealsNothingThroughAGatedSource) {
-    FrameDataFogObservers observers = oneCircle(10.0f, 0.0f);
+    FrameDataFogObservers observers = gated(oneCircle(10.0f, 0.0f));
     observers.visionCircles_[1] = IRMath::vec4(20.0f, 0.0f, 5.0f, 0.0f);
     observers.visionCircleCount_ = 2;
-    observers.losSourceMask_ = 1;
-    const FogLineOfSightField unpublished{};
+    const FogLosColumnField unpublished{};
     EXPECT_FLOAT_EQ(
         IRPrefab::Fog::evalVisionReveal(observers, unpublished, IRMath::vec3(1, 1, 0)),
         0.0f
@@ -142,22 +162,21 @@ TEST(FogRevealEvalTest, UnpublishedFieldRevealsNothingThroughAGatedSource) {
 }
 
 // The system evaluates the published sources with the published field: a live
-// set re-authored after the build never pairs with the old horizons.
+// set re-authored after the build never pairs with the old columns.
 TEST(FogRevealEvalTest, SnapshotPairsPublishedSourcesWithTheirField) {
-    const std::vector<float> horizons = clearHorizons();
-    const FogLineOfSightField published{horizons.data()};
-    FrameDataFogObservers built = oneCircle(10.0f, 0.0f);
-    built.losSourceMask_ = 1;
+    const std::vector<float> columns = emptyField();
+    const FogLosColumnField published{columns.data()};
+    FrameDataFogObservers built = gated(oneCircle(10.0f, 0.0f));
     FrameDataFogObservers live = built;
     live.visionCircles_[0] = IRMath::vec4(50.0f, 0.0f, 3.0f, 0.0f);
 
     FrameDataFogObservers observers{};
-    FogLineOfSightField los{};
+    FogLosColumnField los{};
     IRPrefab::Fog::selectRevealSnapshot(live, built, published, observers, los);
     EXPECT_EQ(observers.visionCircles_[0], built.visionCircles_[0]);
-    EXPECT_EQ(los.horizons_, horizons.data());
+    EXPECT_EQ(los.tops_, columns.data());
 
-    IRPrefab::Fog::selectRevealSnapshot(live, built, FogLineOfSightField{}, observers, los);
+    IRPrefab::Fog::selectRevealSnapshot(live, built, FogLosColumnField{}, observers, los);
     EXPECT_EQ(observers.visionCircles_[0], live.visionCircles_[0]);
     EXPECT_FALSE(los.published()) << "before the first build, gated sources read closed";
 
@@ -185,16 +204,12 @@ TEST(FogRevealEvalTest, SourcesOccludeIndependently) {
     observers.visionCircles_[0] = IRMath::vec4(-6.0f, -6.0f, 10.0f, 0.0f);
     observers.visionCircles_[1] = IRMath::vec4(7.0f, 6.0f, 10.0f, 0.0f);
     observers.visionCircleCount_ = 2;
-    observers.losSourceMask_ = 0b11;
-    std::vector<float> horizons = clearHorizons();
-    setHorizonColumnsFromX(horizons, 0, 2, -5.0f);
-    for (int y = -20; y <= 20; ++y) {
-        for (int x = -20; x <= -1; ++x) {
-            setHorizon(horizons, 1, x, y, -5.0f);
-        }
-    }
+    IRComponents::C_CanvasFogOfWar::setVisionCircleLineOfSight(observers, 0, 1.0f);
+    IRComponents::C_CanvasFogOfWar::setVisionCircleLineOfSight(observers, 1, 1.0f);
+    std::vector<float> columns = emptyField();
+    stampWall(columns, IRMath::vec2(1.0f, -20.0f), IRMath::vec2(2.0f, 20.0f), -5.0f);
     system.observers_ = observers;
-    system.los_ = FogLineOfSightField{horizons.data()};
+    system.los_ = FogLosColumnField{columns.data()};
 
     const auto verdict = [&](IRMath::vec3 position) {
         IREntity::EntityId entity = 1;

@@ -157,8 +157,8 @@ keys, and stays separate from `bindLuaDrivenEcs()`.
 The tested examples are
 [`fog_binding_selftest.lua`](../../creations/demos/fog_demo/scripts/fog_binding_selftest.lua)
 and its [cap/governance companion](../../creations/demos/fog_demo/scripts/fog_binding_cap_selftest.lua).
-These are setup/EVAL APIs, not tick intrinsics. Per-source LOS gating has no Lua
-setter yet; the follow-up is **IRFog subject-model and channel integration**.
+These are setup/EVAL APIs, not tick intrinsics. `setVisionLineOfSight(slot, eye[,
+softness])` gates a slot the vision calls returned; it needs `FOG_LOS_BUILD`.
 
 - **`IRModifier`:** `add*` writes `C_Modifiers`; resolved values need
   `registerResolverPipeline()` in UPDATE. Wrong types no-op; cache ids hot.

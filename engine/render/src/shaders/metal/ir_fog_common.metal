@@ -24,6 +24,8 @@ struct FogObserverData {
     int losSourceMask;
     float4 visionCircleHeights[kMaxFogVisionCircles];
     float4 unexploredColor;
+    // Per-source line of sight, (eye height above observerZ, softness, 0, 0).
+    float4 losParams[kMaxFogVisionCircles];
 };
 
 struct FogReveal {
@@ -56,6 +58,7 @@ inline float3 fogStateColor(float state, float3 sourceColor, float3 unexplored) 
 
 inline FogReveal fogRevealSample(
     float3 pos3D,
+    float3 losSample,
     float aaFloor,
     bool fogWholeBody,
     constant FogObserverData& fogObservers,
@@ -73,10 +76,6 @@ inline FogReveal fogRevealSample(
     float hardDistPastRim = kFogRimFadeCells;
 
     for (int i = 0; i < fogObservers.visionCircleCount; ++i) {
-        if (fogLosSourceGated(fogObservers.losSourceMask, i) && !fogWholeBody &&
-            !fogLosVisible(surfaceVoxel, i, fogLineOfSight)) {
-            continue;
-        }
         const float4 heights = fogObservers.visionCircleHeights[i];
         const float zCostUp = fogWholeBody ? 0.0f : heights.y;
         const float zCostDown = fogWholeBody ? 0.0f : heights.z;
@@ -91,10 +90,30 @@ inline FogReveal fogRevealSample(
             fogObservers.visionCircles[i].z + aa,
             distEff
         );
-        state = max(state, reveal);
+        const float distPastRim = distEff - fogObservers.visionCircles[i].z;
+        float losVisibility = 1.0f;
+        if (fogLosSourceGated(fogObservers.losSourceMask, i) && !fogWholeBody &&
+            (reveal > 0.0f ||
+             (fogObservers.visionCircles[i].w == 0.0f && distPastRim < kFogRimFadeCells)) &&
+            length(losSample.xy - fogObservers.visionCircles[i].xy) <=
+                fogLosReach(fogObservers.visionCircles[i])) {
+            losVisibility = fogLosVisibility(
+                fogLosEye(fogObservers.visionCircles[i], heights.x, fogObservers.losParams[i].x),
+                losSample,
+                fogObservers.losParams[i].y,
+                fogLineOfSight
+            );
+        }
+        if (losVisibility <= 0.0f) {
+            continue;
+        }
+        state = max(state, losVisibility * reveal);
         if (fogObservers.visionCircles[i].w == 0.0f) {
-            hardDistPastRim =
-                min(hardDistPastRim, distEff - fogObservers.visionCircles[i].z);
+            hardDistPastRim = min(
+                hardDistPastRim,
+                losVisibility < 1.0f ? mix(kFogRimFadeCells, distPastRim, losVisibility)
+                                     : distPastRim
+            );
         }
     }
     return FogReveal{state, gridState, hardDistPastRim};

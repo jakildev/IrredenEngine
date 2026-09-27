@@ -47,36 +47,54 @@
 // lockstep.
 //
 // Line of sight. A vision circle opted in with `setVisionCircleLineOfSight`
-// reveals only what its eye can see over a 2.5D column model:
+// reveals only what its eye can see over a 2.5D column model, evaluated
+// exactly at every sample rather than once per cell:
 //   * Occluders: the active grid canvas's pool voxels with alpha > 0 and no
 //     `VoxelReserved::kFogWholeBodyExempt` (a governed body never occludes),
 //     plus every `C_ShapeDescriptor + C_LightBlocker{blocksLOS_} +
-//     C_WorldTransform` shape on that canvas. A column is opaque downward from
-//     its highest occupied voxel centre `T(c)` (the smallest Z; +Z is down).
-//     Overhangs, caves and detached canvases are out of the model.
-//   * Eye: `(cx, cy, observerZ - losEyeHeight)`, continuous.
-//   * Horizon: for a target cell `t`, walk the supercover of the XY segment
-//     from the eye to `t`'s centre, excluding the eye's cell and `t` (both
-//     side cells of an exact corner tie are visited). Over the occupied columns
-//     `c` on the walk, `H(t) = min[E.z + (T(c) - E.z) * d(t) / d(c)]`, with `d`
-//     the XY distance from the eye to a cell centre; no occupied column means
-//     clear.
-//   * Gate: a sample is visible iff `roundHalfUp(z) <= H(roundHalfUp(xy))` —
-//     an integer voxel-centre height against the stored float, identical in
-//     the shader (`surfaceVoxel`) and the CPU oracle. Distance and height cost
-//     keep reading the continuous position.
-// `FOG_LOS_BUILD` rebuilds the columns and every gated source's horizons each
-// RENDER frame and uploads `losTexture_` (256 × 512 RGBA32F: source `i` at
-// tile row `i / 4`, channel `i % 4`; `kFogLosHorizonClear` = unoccluded, the
-// value outside the disc and outside the footprint). Cells outside the fog
-// footprint are clear, and occluders outside it are unknown.
+//     C_WorldTransform` shape on that canvas. Each occupies the box the
+//     raster draws it as, in the world coordinates its pixels recover: a
+//     voxel at position `p` fills the unit cube on its lower-corner lattice
+//     (`[p, p + 1]` at yaw 0, after the raster's subdivision snap and
+//     cardinal rotation), a shape its drawn surface about its cardinal-snap
+//     origin. A column is opaque downward from its highest occupied top plane
+//     `T(c)` (the smallest Z; +Z is down), stored per half-cell so both
+//     integer- and half-integer-positioned voxel sets sit exactly on the
+//     lattice. Overhangs, caves and detached canvases are out of the model.
+//   * Eye: `(cx, cy, observerZ - losEyeHeight)`, continuous, and above the
+//     column it stands in; that column never occludes, so an ungoverned body
+//     spanning several half-cells occludes unless the eye clears its top.
+//   * Gate: walk the XY segment from the eye to the sample through the
+//     half-cell lattice. A column blocks when the segment's height at the
+//     point of the column's footprint where it is lowest is at or below the
+//     column's top plane; a segment that reaches the sample's own column
+//     from above keeps it visible, and a segment that reaches it from
+//     below hides it, so a face seen from behind or a wall top seen from
+//     below hides without any per-face rule. The clearance is the smallest
+//     gap the segment keeps above any column it crosses; the hard verdict is
+//     `clearance >= -kFogLosClearanceTolerance`, and a source's softness `s`
+//     grades it as `smoothstep(0, s, clearance)`. The walk steps over blocks
+//     of a pyramid of the field that cannot change that verdict
+//     (`fog_line_of_sight.hpp`), which changes its cost, not its result.
+//   * Sample: every route evaluates its pixel's recovered world position on
+//     that lattice (`fogLosCanonicalSample`): the cardinal voxel raster
+//     recovers a face's pixels up to a micro cell off the face plane, so
+//     their face-axis coordinate snaps onto it; a per-axis cell and an
+//     analytic pixel (the shape raster's carrier bit) are already on their
+//     surface. Every sample then steps a hair out along its face normal. The
+//     CPU oracle (`IRPrefab::Fog::losVisibility`) evaluates an entity at its
+//     ground anchor, lifted onto its column's top plane when it sits below it.
+// `FOG_LOS_BUILD` rebuilds the column field each RENDER frame and uploads
+// `losTexture_` (256 × 510 RGBA32F: the four half-cells of each integer cell
+// in one texel's four channels, then the field's pyramid; `kFogLosColumnEmpty`
+// = no occluder). Columns outside the fog footprint are empty, and occluders
+// outside it are unknown.
 
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_render.hpp>
 
 #include <irreden/render/texture.hpp>
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -122,55 +140,111 @@ constexpr float kFogVisionZCostMirrorUp = -1.0f;
 // `setVisionCircleLineOfSight` eye height that disables line of sight for a
 // source; any value >= 0 enables it.
 constexpr float kFogVisionLosOff = -1.0f;
-using FogLosEyeHeights = std::array<float, kMaxFogVisionCircles>;
+// `setVisionCircleLineOfSight` softness that keeps the gate hard; a positive
+// value grades the verdict over that many world units of clearance.
+constexpr float kFogLosHardGate = 0.0f;
 
-constexpr int kFogLosSourcesPerTile = 4;
-constexpr int kFogLosTextureWidth = kFogOfWarSize;
-constexpr int kFogLosTextureHeight = kFogOfWarSize * (kMaxFogVisionCircles / kFogLosSourcesPerTile);
-static_assert(
-    kMaxFogVisionCircles % kFogLosSourcesPerTile == 0, "LOS tiles pack four sources per RGBA texel"
-);
-constexpr std::size_t kFogLosHorizonCount = static_cast<std::size_t>(kFogLosTextureWidth) *
-                                            static_cast<std::size_t>(kFogLosTextureHeight) * 4u;
+// Half-cells per world unit of the column field: a voxel box edge lands on
+// the lattice whether its position is integer or half-integer.
+constexpr int kFogLosCellsPerUnit = 2;
+constexpr int kFogLosFieldSize = kFogOfWarSize * kFogLosCellsPerUnit;
+constexpr int kFogLosFieldHalfExtent = kFogLosFieldSize / 2;
+// The upload image packs each integer cell's four half-cells into one RGBA
+// texel, channel `(hx & 1) + 2 * (hy & 1)` (`kFogLosTextureSize` texels
+// across), and stacks the field's pyramid under that level 0: level `k` holds
+// one value per block of `2^k` half-cells on a side — the highest top plane
+// in the block, the smallest Z — packed the same way from texel row
+// `losLevelRowOffset(k)`. The march steps over a block whose highest top
+// cannot lower its result. The CPU field is that whole image.
+constexpr int kFogLosTextureSize = kFogOfWarSize;
+constexpr int kFogLosLevelCount = 8;
+constexpr int losLevelRowOffset(int level) {
+    return 2 * kFogLosTextureSize - ((2 * kFogLosTextureSize) >> level);
+}
+constexpr int kFogLosTextureHeight = losLevelRowOffset(kFogLosLevelCount);
 constexpr std::size_t kFogLosColumnCount =
-    static_cast<std::size_t>(kFogOfWarSize) * static_cast<std::size_t>(kFogOfWarSize);
-constexpr float kFogLosHorizonClear = std::numeric_limits<float>::max();
-constexpr std::int32_t kFogLosColumnEmpty = std::numeric_limits<std::int32_t>::max();
+    static_cast<std::size_t>(kFogLosFieldSize) * static_cast<std::size_t>(kFogLosFieldSize);
+constexpr std::size_t kFogLosFieldFloatCount = static_cast<std::size_t>(kFogLosTextureSize) *
+                                               static_cast<std::size_t>(kFogLosTextureHeight) * 4u;
+// Added to a half-cell index before it is shifted down to a block index, so
+// the shift never sees a negative value; a multiple of every block size.
+constexpr int kFogLosLevelBias = 1 << 16;
+constexpr float kFogLosColumnEmpty = std::numeric_limits<float>::max();
+// Below this signed clearance (world units, positive = the segment passes
+// above the column top) a column hides the sample. A sample resting exactly
+// on its own column's top plane reads a clearance of 0 up to float rounding.
+constexpr float kFogLosClearanceTolerance = 1.0e-3f;
+static_assert(
+    kMaxFogVisionCircles == 8, "losParams_ mirrors two vec4 lanes per field in the shaders"
+);
 
-// Read-only view over a published LOS horizon image (`C_CanvasFogOfWar::losField`).
-// A default-constructed view is unpublished: every gated source reads occluded,
-// so nothing is revealed through a field that has never been built.
-struct FogLineOfSightField {
-    const float *horizons_ = nullptr;
+// Read-only view over a published line-of-sight column field
+// (`C_CanvasFogOfWar::losField`). A default-constructed view is unpublished:
+// every gated source reads occluded, so nothing is revealed through a field
+// that has never been built.
+struct FogLosColumnField {
+    const float *tops_ = nullptr;
 
-    static bool cellInField(int cellX, int cellY) {
-        return cellX >= -kFogOfWarHalfExtent && cellX < kFogOfWarHalfExtent &&
-               cellY >= -kFogOfWarHalfExtent && cellY < kFogOfWarHalfExtent;
+    static bool cellInField(int halfCellX, int halfCellY) {
+        return halfCellX >= -kFogLosFieldHalfExtent && halfCellX < kFogLosFieldHalfExtent &&
+               halfCellY >= -kFogLosFieldHalfExtent && halfCellY < kFogLosFieldHalfExtent;
     }
 
-    /// Flat float index of source @p source's horizon at in-field cell
-    /// @p (cellX, cellY) — the texel layout `losTexture_` uploads verbatim.
-    static std::size_t horizonIndex(int source, int cellX, int cellY) {
-        const std::size_t x = static_cast<std::size_t>(cellX + kFogOfWarHalfExtent);
-        const std::size_t y = static_cast<std::size_t>(
-            cellY + kFogOfWarHalfExtent + (source / kFogLosSourcesPerTile) * kFogOfWarSize
+    /// The half-cell containing world coordinate @p worldXY: half-cell `h`
+    /// spans `[h / 2, (h + 1) / 2)`.
+    static int halfCellOf(float world) {
+        return static_cast<int>(IRMath::floor(world * static_cast<float>(kFogLosCellsPerUnit)));
+    }
+
+    /// Flat float index of block @p (blockX, blockY) of pyramid level
+    /// @p level — level 0's blocks are the half-cells — counted from the
+    /// field's corner, in the packed image `losTexture_` uploads verbatim.
+    static std::size_t blockIndex(int level, std::size_t blockX, std::size_t blockY) {
+        const std::size_t texel =
+            (static_cast<std::size_t>(losLevelRowOffset(level)) + blockY / 2u) *
+                static_cast<std::size_t>(kFogLosTextureSize) +
+            blockX / 2u;
+        return texel * 4u + (blockX & 1u) + 2u * (blockY & 1u);
+    }
+
+    /// Flat float index of in-field half-cell @p (halfCellX, halfCellY).
+    static std::size_t columnIndex(int halfCellX, int halfCellY) {
+        return blockIndex(
+            0,
+            static_cast<std::size_t>(halfCellX + kFogLosFieldHalfExtent),
+            static_cast<std::size_t>(halfCellY + kFogLosFieldHalfExtent)
         );
-        const std::size_t channel = static_cast<std::size_t>(source % kFogLosSourcesPerTile);
-        return (y * static_cast<std::size_t>(kFogLosTextureWidth) + x) * 4u + channel;
+    }
+
+    /// The lower corner, in half-cells, of the level-@p level block holding
+    /// half-cell @p halfCell along one axis.
+    static int blockMin(int level, int halfCell) {
+        return (((halfCell + kFogLosLevelBias) >> level) << level) - kFogLosLevelBias;
     }
 
     bool published() const {
-        return horizons_ != nullptr;
+        return tops_ != nullptr;
     }
 
-    /// The gate for source @p source at sample voxel @p sample (the rounded
-    /// sample position). Out-of-field cells are visible.
-    bool visible(int source, IRMath::ivec3 sample) const {
-        if (horizons_ == nullptr)
-            return false;
-        if (!cellInField(sample.x, sample.y))
-            return true;
-        return static_cast<float>(sample.z) <= horizons_[horizonIndex(source, sample.x, sample.y)];
+    /// The top plane of half-cell @p (halfCellX, halfCellY); empty outside
+    /// the field.
+    float topPlane(int halfCellX, int halfCellY) const {
+        if (!cellInField(halfCellX, halfCellY))
+            return kFogLosColumnEmpty;
+        return tops_[columnIndex(halfCellX, halfCellY)];
+    }
+
+    /// The highest top plane (the smallest Z) among the half-cells of the
+    /// level-@p level block whose lower corner is @p (blockMinX, blockMinY);
+    /// empty outside the field. Level 0 is `topPlane`.
+    float blockTop(int level, int blockMinX, int blockMinY) const {
+        if (!cellInField(blockMinX, blockMinY))
+            return kFogLosColumnEmpty;
+        return tops_[blockIndex(
+            level,
+            static_cast<std::size_t>(blockMinX + kFogLosFieldHalfExtent) >> level,
+            static_cast<std::size_t>(blockMinY + kFogLosFieldHalfExtent) >> level
+        )];
     }
 };
 
@@ -212,10 +286,29 @@ struct FrameDataFogObservers {
     /// so every earlier offset is unchanged; only `ir_fog_common` declares
     /// it. Alpha is unused (the pass preserves the source alpha).
     IRMath::vec4 unexploredColor_ = IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    /// Per-source line of sight, `losParams_[i]` = (losEyeHeight, losSoftness,
+    /// 0, 0): the eye's height above `observerZ` (`kFogVisionLosOff` while
+    /// the source is ungated) and the clearance band the gate grades over
+    /// (`kFogLosHardGate` = a step). Read only for sources in `losSourceMask_`
+    /// by the fog passes, which alone declare this tail.
+    IRMath::vec4 losParams_[kMaxFogVisionCircles] = {};
+
+    float losEyeHeight(int source) const {
+        return losParams_[source].x;
+    }
+
+    float losSoftness(int source) const {
+        return losParams_[source].y;
+    }
+
+    bool losGated(int source) const {
+        return ((losSourceMask_ >> source) & 1) != 0;
+    }
 };
 static_assert(
-    sizeof(FrameDataFogObservers) == 2 * kMaxFogVisionCircles * 16 + 16 + 16,
-    "FrameDataFogObservers must stay std140/Metal-tight (vec4[N] + ivec4 tail + vec4[N] + vec4)"
+    sizeof(FrameDataFogObservers) == 3 * kMaxFogVisionCircles * 16 + 16 + 16,
+    "FrameDataFogObservers must stay std140/Metal-tight (vec4[N] + ivec4 tail + vec4[N] + vec4 + "
+    "vec4[N])"
 );
 
 struct C_CanvasFogOfWar {
@@ -243,22 +336,16 @@ struct C_CanvasFogOfWar {
     /// texture it needs no dirty flag. Cleared/added via `clearVisionCircles`
     /// / `addVisionCircle`; empty (count 0) means grid-only.
     FrameDataFogObservers observers_{};
-    /// Per-source eye height above `observerZ`; `kFogVisionLosOff` when the
-    /// source is not gated. CPU-only: the shader reads built horizons.
-    FogLosEyeHeights losEyeHeights_{};
-    /// Line-of-sight horizon image (layout in the header comment). The CPU
+    /// Line-of-sight column field (layout in the header comment). The CPU
     /// mirror is the texel image itself; `FOG_LOS_BUILD` writes both.
+    /// `losQueryColumnTops_` is `lineOfSight`'s own, sized on its first call.
     std::pair<ResourceId, Texture2D *> losTexture_;
-    std::vector<float> losHorizons_;
-    /// Column tops `T(c)` in `flatIndex` order, `kFogLosColumnEmpty` for none.
-    /// `FOG_LOS_BUILD` scratch; `losQueryColumnTops_` is `lineOfSight`'s own,
-    /// sized on its first call.
-    std::vector<std::int32_t> losColumnTops_;
-    std::vector<std::int32_t> losQueryColumnTops_;
-    /// The observers `losHorizons_` was built from, published together with
+    std::vector<float> losColumnTops_;
+    std::vector<float> losQueryColumnTops_;
+    /// The observers `losColumnTops_` was built for, published together with
     /// it: a CPU consumer of the field reads source slots from here, never from
     /// the live `observers_`, so a slot re-authored after the build cannot pair
-    /// with another source's horizons.
+    /// with another frame's columns.
     FrameDataFogObservers losPublishedObservers_{};
     bool losPublished_ = false;
 
@@ -277,21 +364,19 @@ struct C_CanvasFogOfWar {
           )
         , losTexture_{IRRender::createResource<IRRender::Texture2D>(
               TextureKind::TEXTURE_2D,
-              kFogLosTextureWidth,
+              kFogLosTextureSize,
               kFogLosTextureHeight,
               TextureFormat::RGBA32F,
               TextureWrap::CLAMP_TO_EDGE,
               TextureFilter::NEAREST
           )}
-        , losHorizons_(kFogLosHorizonCount, kFogLosHorizonClear)
-        , losColumnTops_(kFogLosColumnCount, kFogLosColumnEmpty) {
-        losEyeHeights_.fill(kFogVisionLosOff);
+        , losColumnTops_(kFogLosFieldFloatCount, kFogLosColumnEmpty) {
         // The shader reads this texture only for gated sources, and a gated
-        // frame uploads it whole first; the clear seed keeps a creation that
+        // frame uploads it whole first; the empty seed keeps a creation that
         // gates a source without registering FOG_LOS_BUILD unoccluded.
-        const float clearTexel[4] =
-            {kFogLosHorizonClear, kFogLosHorizonClear, kFogLosHorizonClear, kFogLosHorizonClear};
-        losTexture_.second->clear(PixelDataFormat::RGBA, PixelDataType::FLOAT32, clearTexel);
+        const float emptyTexel[4] =
+            {kFogLosColumnEmpty, kFogLosColumnEmpty, kFogLosColumnEmpty, kFogLosColumnEmpty};
+        losTexture_.second->clear(PixelDataFormat::RGBA, PixelDataType::FLOAT32, emptyTexel);
     }
 
     void onDestroy() {
@@ -303,10 +388,10 @@ struct C_CanvasFogOfWar {
         return losTexture_.second;
     }
 
-    /// The published horizon view; unpublished until `FOG_LOS_BUILD` has run
+    /// The published column view; unpublished until `FOG_LOS_BUILD` has run
     /// with a gated source.
-    FogLineOfSightField losField() const {
-        return FogLineOfSightField{losPublished_ ? losHorizons_.data() : nullptr};
+    FogLosColumnField losField() const {
+        return FogLosColumnField{losPublished_ ? losColumnTops_.data() : nullptr};
     }
 
     Texture2D *getTexture() const {
@@ -393,7 +478,7 @@ struct C_CanvasFogOfWar {
     /// and, for a line-of-sight source, `setVisionCircleLineOfSight` again,
     /// since every new slot starts with LOS off.
     void clearVisionCircles() {
-        clearVisionCircles(observers_, losEyeHeights_);
+        clearVisionCircles(observers_);
     }
 
     /// Add a live analytic vision disc centered at the (fractional) world
@@ -437,7 +522,6 @@ struct C_CanvasFogOfWar {
     ) {
         return addVisionCircle(
             observers_,
-            losEyeHeights_,
             cx,
             cy,
             radius,
@@ -452,26 +536,32 @@ struct C_CanvasFogOfWar {
     /// Gate registered source @p source by line of sight with its eye
     /// @p losEyeHeight world units above its `observerZ` (the header comment
     /// has the model); a negative height (`kFogVisionLosOff`) ungates it.
-    /// @p source must name a registered slot — use `addVisionCircle`'s return.
-    /// The eye's own column never occludes, but an ungoverned observer body
-    /// spanning several columns does unless the eye clears its top; a governed
-    /// body (`IRPrefab::Fog::setEntityRevealGoverned`) never occludes. A gated
+    /// @p losSoftness > 0 grades the verdict over that many world units of
+    /// clearance above an occluder's top; `kFogLosHardGate` (the default)
+    /// keeps a step. @p source must name a registered slot — use
+    /// `addVisionCircle`'s return. The eye's own column never occludes, but
+    /// an ungoverned observer body spanning several columns does unless the
+    /// eye clears its top; a governed body
+    /// (`IRPrefab::Fog::setEntityRevealGoverned`) never occludes. A gated
     /// source needs `FOG_LOS_BUILD` in the RENDER pipeline.
-    void setVisionCircleLineOfSight(int source, float losEyeHeight) {
-        setVisionCircleLineOfSight(observers_, losEyeHeights_, source, losEyeHeight);
+    void setVisionCircleLineOfSight(
+        int source, float losEyeHeight, float losSoftness = kFogLosHardGate
+    ) {
+        setVisionCircleLineOfSight(observers_, source, losEyeHeight, losSoftness);
     }
 
     /// The slot-authoring rules the members above apply to this component's
-    /// `observers_` / `losEyeHeights_`, on any pair.
-    static void clearVisionCircles(FrameDataFogObservers &observers, FogLosEyeHeights &eyeHeights) {
+    /// `observers_`, on any payload.
+    static void clearVisionCircles(FrameDataFogObservers &observers) {
         observers.visionCircleCount_ = 0;
         observers.losSourceMask_ = 0;
-        eyeHeights.fill(kFogVisionLosOff);
+        for (IRMath::vec4 &params : observers.losParams_) {
+            params = IRMath::vec4(kFogVisionLosOff, kFogLosHardGate, 0.0f, 0.0f);
+        }
     }
 
     static int addVisionCircle(
         FrameDataFogObservers &observers,
-        FogLosEyeHeights &eyeHeights,
         float cx,
         float cy,
         float radius,
@@ -485,7 +575,7 @@ struct C_CanvasFogOfWar {
             return -1;
         const int slot = observers.visionCircleCount_;
         observers.losSourceMask_ &= ~(1 << slot);
-        eyeHeights[static_cast<std::size_t>(slot)] = kFogVisionLosOff;
+        observers.losParams_[slot] = IRMath::vec4(kFogVisionLosOff, kFogLosHardGate, 0.0f, 0.0f);
         observers.visionCircles_[observers.visionCircleCount_] =
             IRMath::vec4(cx, cy, radius, IRMath::max(edge, 0.0f));
         // Sentinel BEFORE clamp: zCostDown < 0 means "mirror zCostUp",
@@ -521,9 +611,9 @@ struct C_CanvasFogOfWar {
 
     static void setVisionCircleLineOfSight(
         FrameDataFogObservers &observers,
-        FogLosEyeHeights &eyeHeights,
         int source,
-        float losEyeHeight
+        float losEyeHeight,
+        float losSoftness = kFogLosHardGate
     ) {
         IR_ASSERT(
             source >= 0 && source < observers.visionCircleCount_,
@@ -535,10 +625,12 @@ struct C_CanvasFogOfWar {
             return;
         if (losEyeHeight >= 0.0f) {
             observers.losSourceMask_ |= 1 << source;
-            eyeHeights[static_cast<std::size_t>(source)] = losEyeHeight;
+            observers.losParams_[source] =
+                IRMath::vec4(losEyeHeight, IRMath::max(losSoftness, kFogLosHardGate), 0.0f, 0.0f);
         } else {
             observers.losSourceMask_ &= ~(1 << source);
-            eyeHeights[static_cast<std::size_t>(source)] = kFogVisionLosOff;
+            observers.losParams_[source] =
+                IRMath::vec4(kFogVisionLosOff, kFogLosHardGate, 0.0f, 0.0f);
         }
     }
 

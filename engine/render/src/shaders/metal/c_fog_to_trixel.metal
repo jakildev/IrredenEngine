@@ -26,6 +26,16 @@ static float3 fogPixelToWorld(
             frameData.voxelRenderOptions
         );
     }
+    if (frameData.residualYaw != 0.0f) {
+        return trixelCanvasPixelToWorld3DSmoothYaw(
+            pixel,
+            decodeDepthSingle(encoded),
+            frameData.trixelCanvasOffsetZ1,
+            frameData.frameCanvasOffset,
+            frameData.voxelRenderOptions,
+            frameData.visualYaw
+        );
+    }
     return trixelCanvasPixelToWorld3D(
         pixel,
         decodeDepthSingle(encoded),
@@ -41,10 +51,10 @@ kernel void c_fog_to_trixel(
     texture2d<float, access::read_write> trixelColors [[texture(0)]],
     texture2d<int, access::read> trixelDistances [[texture(1)]],
     texture2d<float, access::read> canvasFogOfWar [[texture(2)]],
-    // Read only for the fog whole-body carrier bit (decodeFogWholeBody).
+    // Read only for the fog whole-body and analytic-surface carrier bits.
     texture2d<uint, access::read> triangleCanvasEntityIds [[texture(3)]],
-    // Line-of-sight horizons (ir_fog_los). Slot 4 is lighting's sun-shadow
-    // input too; lighting rebinds it inside its own tick.
+    // Line-of-sight column field (ir_fog_los). Slot 4 is lighting's
+    // sun-shadow input too; lighting rebinds it inside its own tick.
     texture2d<float, access::read> fogLineOfSight [[texture(4)]],
     // buffer(27) ALIASES kBufferIndex_FrameDataLightingToTrixel — fog runs
     // after lighting is done with the slot.
@@ -87,15 +97,32 @@ kernel void c_fog_to_trixel(
     const float3 pos3D = fogPixelToWorld(pixel, encoded, faceId, size, frameData);
     float aaFloor = 0.0f;
     bool fogWholeBody = false;
+    float3 losSample = pos3D;
     if (fogObservers.visionCircleCount > 0) {
         const float3 neighbor =
             fogPixelToWorld(pixel + int2(1, 0), encoded, faceId, size, frameData);
         aaFloor = length(neighbor.xy - pos3D.xy);
-        fogWholeBody = decodeFogWholeBody(triangleCanvasEntityIds.read(uint2(pixel)).xy);
+        const uint2 rawId = triangleCanvasEntityIds.read(uint2(pixel)).xy;
+        fogWholeBody = decodeFogWholeBody(rawId);
+        if (fogObservers.losSourceMask != 0) {
+            int losRoute = kFogLosRouteAnalytic;
+            if (frameData.perAxisRoute != 0) {
+                losRoute = kFogLosRoutePerAxis;
+            } else if (frameData.residualYaw == 0.0f && !decodeAnalyticSurface(rawId)) {
+                losRoute = kFogLosRouteCardinal;
+            }
+            losSample = fogLosCanonicalSample(
+                pos3D,
+                faceId,
+                losRoute,
+                effectiveTrixelSubdivisionScale(frameData.voxelRenderOptions)
+            );
+        }
     }
 
     const FogReveal reveal = fogRevealSample(
         pos3D,
+        losSample,
         aaFloor,
         fogWholeBody,
         fogObservers,

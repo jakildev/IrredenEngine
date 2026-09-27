@@ -5,7 +5,10 @@
 //      rounded cell. Coarse, voxel-quantized: explored/voxelized memory.
 //   2. Live analytic VISION CIRCLES (FogObserverData) evaluated against the
 //      CONTINUOUS world column, so a disc edge is crisp and slides smoothly
-//      with sub-voxel observer motion.
+//      with sub-voxel observer motion. A line-of-sight gated source is scaled
+//      by the exact segment march (ir_fog_los) from its eye to the sample's
+//      canonical position, which each route builds with
+//      fogLosCanonicalSample.
 // The reveal is split from the colour apply so a caller can skip the colour
 // read-modify-write for a fully revealed sample (state >= 1.0), which is most
 // of a revealed scene's pixels.
@@ -49,8 +52,12 @@ layout(std140, binding = 27) uniform FogObserverData {
     int losSourceMask;
     // (observerZ, zCostUp, zCostDown, freeBand); all-zero = the plain 2D disc.
     vec4 visionCircleHeights[kMaxFogVisionCircles];
-    // The lerp's state-0 anchor.
+    // The lerp's state-0 anchor. Only the fog passes declare it and the tail
+    // below; every other declaration of the block stops earlier.
     vec4 unexploredColor;
+    // Per-source line of sight, (eye height above observerZ, softness, 0, 0);
+    // read only for sources in losSourceMask.
+    vec4 losParams[kMaxFogVisionCircles];
 };
 
 layout(rgba8, binding = 2) readonly uniform image2D canvasFogOfWar;
@@ -85,10 +92,11 @@ vec3 fogStateColor(float state, vec3 sourceColor, vec3 unexplored) {
     return mix(unexplored, exploredColor, t);
 }
 
-// `aaFloor` (world units per canvas pixel) and `fogWholeBody` are read only
-// by the vision-circle loop, so callers may skip computing them when
-// visionCircleCount is 0.
-FogReveal fogRevealSample(vec3 pos3D, float aaFloor, bool fogWholeBody) {
+// `aaFloor` (world units per canvas pixel), `fogWholeBody` and `losSample`
+// (the sample's canonical position, fogLosCanonicalSample) are read only by
+// the vision-circle loop, so callers may skip computing them when
+// visionCircleCount is 0; `losSample` is read only for a gated source.
+FogReveal fogRevealSample(vec3 pos3D, vec3 losSample, float aaFloor, bool fogWholeBody) {
     const ivec3 surfaceVoxel = roundHalfUp(pos3D);
     const ivec2 fogCell = surfaceVoxel.xy + ivec2(kFogOfWarHalfExtent);
     const float gridState = fogTap(fogCell, imageSize(canvasFogOfWar));
@@ -96,13 +104,6 @@ FogReveal fogRevealSample(vec3 pos3D, float aaFloor, bool fogWholeBody) {
     float hardDistPastRim = kFogRimFadeCells;
 
     for (int i = 0; i < visionCircleCount; ++i) {
-        // An occluded source contributes neither reveal nor rim distance. A
-        // whole-body pixel's visibility is its anchor's verdict, so it is
-        // never gated per pixel.
-        if (fogLosSourceGated(losSourceMask, i) && !fogWholeBody &&
-            !fogLosVisible(surfaceVoxel, i)) {
-            continue;
-        }
         // Height-penalized reveal; a whole-body pixel drops both terms.
         const vec4 heights = visionCircleHeights[i];
         const float zCostUp = fogWholeBody ? 0.0 : heights.y;
@@ -115,9 +116,31 @@ FogReveal fogRevealSample(vec3 pos3D, float aaFloor, bool fogWholeBody) {
         const float aa = max(visionCircles[i].w, aaFloor);
         const float reveal =
             1.0 - smoothstep(visionCircles[i].z - aa, visionCircles[i].z + aa, distEff);
-        state = max(state, reveal);
+        const float distPastRim = distEff - visionCircles[i].z;
+        // A gated source is scaled by its line of sight to the sample; only a
+        // sample the source can reveal or rim-lift is marched. A whole-body
+        // pixel's visibility is its anchor's verdict, so it is never gated per
+        // pixel.
+        float losVisibility = 1.0;
+        if (fogLosSourceGated(losSourceMask, i) && !fogWholeBody &&
+            (reveal > 0.0 || (visionCircles[i].w == 0.0 && distPastRim < kFogRimFadeCells)) &&
+            length(losSample.xy - visionCircles[i].xy) <= fogLosReach(visionCircles[i])) {
+            losVisibility = fogLosVisibility(
+                fogLosEye(visionCircles[i], heights.x, losParams[i].x), losSample, losParams[i].y
+            );
+        }
+        // An occluded source contributes neither reveal nor rim distance; a
+        // partly visible one scales both, easing its rim distance toward no
+        // lift so the rim lift and cut cap fade with the reveal.
+        if (losVisibility <= 0.0) {
+            continue;
+        }
+        state = max(state, losVisibility * reveal);
         if (visionCircles[i].w == 0.0) {
-            hardDistPastRim = min(hardDistPastRim, distEff - visionCircles[i].z);
+            hardDistPastRim = min(
+                hardDistPastRim,
+                losVisibility < 1.0 ? mix(kFogRimFadeCells, distPastRim, losVisibility) : distPastRim
+            );
         }
     }
     return FogReveal(state, gridState, hardDistPastRim);

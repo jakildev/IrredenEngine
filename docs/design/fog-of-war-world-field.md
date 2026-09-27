@@ -104,8 +104,9 @@ row bounds in 64-bit arithmetic, so a centre near an int32 limit touches only
 representable cells. The Lua binding keeps its existing preflight rejection
 when the requested disc would cross the int32 bounds; the C++ field operation
 performs the clamped write. `kFogOfWarSize` and `kFogOfWarHalfExtent` cease to
-bound the fog grid after the window phase. The LOS layout gets its own
-`kFogLosFieldSize = 256` and `kFogLosFieldHalfExtent = 128` constants.
+bound the fog grid after the window phase. The LOS layout has its own
+`kFogLosFieldSize = 512` and `kFogLosFieldHalfExtent = 256` half-cell
+constants.
 
 Read-only diagnostics expose `windowEdge()`, `windowOrigin()` and
 `fieldStats()`. The statistics contain resident region and field-chunk counts,
@@ -366,30 +367,26 @@ separately registered gather system are rejected.
 
 ## D7 — Line-of-sight re-anchoring
 
-Each per-source 256x256 line-of-sight tile is anchored on its source:
-`roundHalfUp(sourceCentre) - 128`. CPU and shader derive the same origin from
-the analytic circle centre already in the observer block, so no new UBO field
-is needed. Sampling outside the tile remains unoccluded, and a disc wider than
-128 cells is documented as clipped to the tile.
-
-Each gated source has a co-anchored 256x256 column-top view. The component
-retains at most eight views: `8 * 256 * 256 * sizeof(int32) = 2 MiB`. One pool
-pass tests each live voxel against at most eight source boxes, and flagged
-shape rasterization clips to the same boxes. `buildLosHorizons` traces a
-source only through its matching column view, so moving the source moves both
-the horizon tile and every occluder it can observe.
+The line-of-sight column field is one shared 512x512 half-cell image (the
+top plane of every occluding column, four half-cells per RGBA32F texel, with
+the field's pyramid of block maxima stacked below it), not a per-source
+horizon tile: every gated source marches the same field from its own eye,
+stepping over pyramid blocks that cannot change its verdict, so the field has
+no per-source anchor to move. It is anchored
+with the fog window: `FogLosColumnField::cellInField`, `columnIndex`, the
+CPU march and both shader helpers derive the origin from the window's, and
+no LOS path retains a world-centred half-extent test once the window moves.
+Sampling outside the field remains unoccluded, and an occluder outside it is
+unknown.
 
 `IRPrefab::Fog::lineOfSight` follows the same convention independently: it
-anchors its one reusable 256x256 query view at
-`roundHalfUp(from.xy) - 128`, rasterizes that box, and returns unoccluded when
-the target is outside it. `FogLineOfSightField::cellInField`, `horizonIndex`,
-the CPU trace and both shader helpers therefore take or derive a tile origin;
-no LOS path retains a world-centred half-extent test.
+rasterizes its one reusable query view at the window's origin, marches to the
+target, and returns unoccluded when the target is outside it.
 
-Growing every tile to `W` is rejected for its build and memory cost. Anchoring
-tiles on the fog-window centre is rejected because off-centre sources lose
-occlusion. One union column view is rejected because widely separated sources
-make its bound either larger than the fixed tile contract or incomplete.
+Per-source column views are rejected because the exact march reads the
+occluders at the eye's own resolution and needs no per-source horizon build;
+one field costs `512 * 512 * sizeof(float) = 1 MiB` however many sources are
+gated.
 
 ## D8 — Vision-source tier
 
@@ -423,17 +420,17 @@ phase changes all of them together.
 | `engine/render/src/shaders/metal/c_voxel_visibility_compact.metal` | Metal twin of the compact lookup. |
 | `engine/render/src/shaders/ir_voxel_face_select.glsl` | Shared face-selection fog taps. |
 | `engine/render/src/shaders/metal/ir_voxel_face_select.metal` | Metal twin of the shared taps. |
-| `engine/render/src/shaders/ir_fog_los.glsl` | LOS tile bounds, local lookup and texture packing. |
-| `engine/render/src/shaders/metal/ir_fog_los.metal` | Metal twin of the LOS lookup. |
+| `engine/render/src/shaders/ir_fog_los.glsl` | LOS field bounds, half-cell and pyramid-block lookup, texture packing and the hierarchical segment march. |
+| `engine/render/src/shaders/metal/ir_fog_los.metal` | Metal twin of the LOS march. |
 | `test/render/shaders/c_fog_cross_section_probe.glsl` | Includes the real GLSL face-selection helper. |
-| `engine/prefabs/irreden/render/fog_line_of_sight.hpp` | Column stamping, shape clip boxes, horizon traces and build bounds use the LOS tile origin. |
-| `component_canvas_fog_of_war.hpp` — `FogLineOfSightField::cellInField` / `horizonIndex` | CPU visibility and horizon indexing use source-local tile coordinates. |
+| `engine/prefabs/irreden/render/fog_line_of_sight.hpp` | Column stamping, shape stamps, the CPU march and the reach use the LOS field origin. |
+| `component_canvas_fog_of_war.hpp` — `FogLosColumnField::cellInField` / `columnIndex` | CPU visibility and column indexing use field-local half-cell coordinates. |
 | `VOXEL_TO_TRIXEL_STAGE_1::uploadFogIfDirty` | Uploads before the per-canvas early return and again through the world-fog `beginTick` resolve; the second call must no-op in the same frame. |
 | `FOG_TO_TRIXEL` | Binds the same texture and observer block for paint. |
-| `FOG_LOS_BUILD` | Builds each source's co-anchored column view and horizon tile, then uploads the packed LOS texture. |
-| `IRPrefab::Fog::lineOfSight` | Anchors and fills the standalone query view before tracing to the target. |
-| `test/render/fog_line_of_sight_test.cpp` | Pins LOS field edges, indexing, rasterization and horizon behavior. |
-| `test/render/fog_cross_section_test.cpp` | Mirrors the fog-grid convention for the probe host and the LOS tile constants for the LOS arm. |
+| `FOG_LOS_BUILD` | Builds the column field at the frame's raster lattice, then uploads the packed LOS texture. |
+| `IRPrefab::Fog::lineOfSight` | Fills the standalone query view before marching to the target. |
+| `test/render/fog_line_of_sight_test.cpp` | Pins LOS field edges, indexing, rasterization and march behavior. |
+| `test/render/fog_cross_section_test.cpp` | Mirrors the fog-grid convention for the probe host and the LOS field constants for the LOS arm. |
 
 Fog-attached demo coverage is `fog_demo`, `perf_grid`, `lua_perf_grid`,
 `skeletal_demo` and the `lighting/main_combined` configuration. Their existing

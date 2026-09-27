@@ -1,13 +1,13 @@
 #ifndef SYSTEM_FOG_LOS_BUILD_H
 #define SYSTEM_FOG_LOS_BUILD_H
 
-// Builds the fog line-of-sight horizons (`C_CanvasFogOfWar::losHorizons_`)
-// for every gated vision circle of the active grid canvas and uploads them to
-// `losTexture_` for FOG_TO_TRIXEL. RENDER, before FOG_TO_TRIXEL, in its own
-// pipeline group. With no gated source it returns before touching anything;
-// with one it rebuilds the columns and every tile and uploads the whole
-// texture each frame, then publishes the observers it built from for
-// FOG_REVEAL_EVAL's next UPDATE. The model: `component_canvas_fog_of_war.hpp`.
+// Builds the fog line-of-sight column field (`C_CanvasFogOfWar::losColumnTops_`)
+// of the active grid canvas and uploads it to `losTexture_` for FOG_TO_TRIXEL.
+// RENDER, before FOG_TO_TRIXEL, in its own pipeline group. With no gated
+// source it returns before touching anything; with one it rebuilds the field
+// and its pyramid at the frame's raster lattice and uploads the whole texture
+// each frame, then publishes the observers it built for FOG_REVEAL_EVAL's
+// next UPDATE. The model: `component_canvas_fog_of_war.hpp`.
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_profile.hpp>
@@ -27,9 +27,11 @@ namespace IRSystem {
 
 template <> struct System<FOG_LOS_BUILD> {
     IREntity::EntityId activeCanvas_ = IREntity::kNullEntity;
+    IRPrefab::Fog::LosRasterFrame frame_{};
 
     void beginTick() {
         activeCanvas_ = IRRender::getActiveCanvasEntityOrNull();
+        frame_ = IRPrefab::Fog::activeLosRasterFrame();
     }
 
     void tick(
@@ -46,17 +48,8 @@ template <> struct System<FOG_LOS_BUILD> {
         IRRender::FogLosBuildTiming &phaseTiming = IRRender::fogLosBuildTiming();
         {
             IRRender::ScopedCpuPhaseTimer timer{phaseTiming.build_};
-            {
-                IR_PROFILE_BLOCK("FogLosBuild::Columns", IR_PROFILER_COLOR_RENDER);
-                IRPrefab::Fog::rasterizeLosColumns(pool, canvas, fog.losColumnTops_);
-            }
-            IR_PROFILE_BLOCK("FogLosBuild::Horizons", IR_PROFILER_COLOR_RENDER);
-            IRPrefab::Fog::buildLosHorizons(
-                fog.observers_,
-                fog.losEyeHeights_,
-                fog.losColumnTops_,
-                fog.losHorizons_
-            );
+            IR_PROFILE_BLOCK("FogLosBuild::Columns", IR_PROFILER_COLOR_RENDER);
+            IRPrefab::Fog::rasterizeLosColumns(pool, canvas, frame_, fog.losColumnTops_);
         }
         fog.losPublishedObservers_ = fog.observers_;
         fog.losPublished_ = true;
@@ -66,11 +59,11 @@ template <> struct System<FOG_LOS_BUILD> {
             fog.getLosTexture()->subImage2D(
                 0,
                 0,
-                IRComponents::kFogLosTextureWidth,
+                IRComponents::kFogLosTextureSize,
                 IRComponents::kFogLosTextureHeight,
                 IRRender::PixelDataFormat::RGBA,
                 IRRender::PixelDataType::FLOAT32,
-                fog.losHorizons_.data()
+                fog.losColumnTops_.data()
             );
         }
     }

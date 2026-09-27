@@ -63,6 +63,7 @@ void main() {
     const uint fogClassByte = colorPacked >> 24u;
     const bool fogWholeBody = fogClassByte == 254u;
     float aaFloor = 0.0;
+    vec3 losSample = pos3D;
     if (visionCircleCount > 0) {
         const vec3 neighbor = perAxisCellToWorld3DSubCell(
             cell + ivec2(1, 0),
@@ -73,9 +74,12 @@ void main() {
             voxelRenderOptions
         );
         aaFloor = length(neighbor.xy - pos3D.xy);
+        if (losSourceMask != 0) {
+            losSample = fogLosCanonicalSample(pos3D, faceId, kFogLosRoutePerAxis, 1);
+        }
     }
 
-    const FogReveal reveal = fogRevealSample(pos3D, aaFloor, fogWholeBody);
+    const FogReveal reveal = fogRevealSample(pos3D, losSample, aaFloor, fogWholeBody);
     if (reveal.state >= 1.0) {
         return;
     }

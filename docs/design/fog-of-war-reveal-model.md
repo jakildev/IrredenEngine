@@ -70,6 +70,32 @@ Only FIELD matter and shapes with `C_LightBlocker::blocksLOS_` occlude the
 reveal field; BODY matter does not. BODY pixels skip the per-pixel LOS gate
 because their anchor verdict owns visibility (#3662).
 
+The gate is exact at every sample. `FOG_LOS_BUILD` rasterizes the occluders
+into one column field on a half-cell lattice, each column holding the top
+plane of the box the raster draws its voxel or shape as, and every FIELD
+pixel marches the segment from a source's eye to its own recovered world
+position through that lattice, on every paint route (the cardinal canvas, the
+smooth-yaw canvas, the per-axis canvases and the overflow lane). A column
+blocks when the segment's lowest point over its footprint sits at or below
+the column's top plane, so a wall's shadow ends on the straight line the
+wall's edge projects to, a wall top seen from below and a face seen from
+behind hide without any per-face rule, and the same march evaluated at an
+entity's ground anchor is the BODY verdict. The march is hierarchical:
+`FOG_LOS_BUILD` also stacks a pyramid of the field (per block, its highest
+top plane), and the walk steps over any block whose highest top cannot change
+the verdict, so open ground costs a few block tests instead of a cell per
+half-cell crossed, and a pixel and an entity reach the flat march's verdict
+at a fraction of its cost. This is the sun shadow's
+receiver model applied to a point eye: an exact geometric test against the
+drawn geometry at each pixel's continuous position, with a normal bias that
+keeps a face out of its own column, instead of a per-cell verdict
+interpolated across the lattice. A source's optional softness grades the
+verdict over the segment's clearance above the occluder it passes, which
+fades the far edge of a plateau's shadow; the flank of a shadow, where the
+segment leaves an occluder's footprint, stays a crisp line. The model is
+stated in `component_canvas_fog_of_war.hpp`; `IRPrefab::Fog::losVisibility`
+is the CPU oracle, and `ir_fog_los.{glsl,metal}` carry the same march.
+
 ### Unpainted-route FIELD deviations
 
 A world-placed detached canvas has no `FOG_TO_TRIXEL` paint pass. When its

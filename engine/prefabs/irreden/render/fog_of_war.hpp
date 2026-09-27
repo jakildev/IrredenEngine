@@ -64,39 +64,57 @@ evalVisionReveal(const IRComponents::FrameDataFogObservers &observers, IRMath::v
     return reveal;
 }
 
-/// The authoritative reveal: the cost curve above, with each source gated in
-/// @p observers' `losSourceMask_` contributing only where @p los sees
-/// @p worldPosition's rounded voxel. @p observers and @p los must come from one
-/// publication (`C_CanvasFogOfWar::losPublishedObservers_` + `losField()`); an
-/// unpublished field reveals nothing through a gated source.
+/// The authoritative reveal: the cost curve above, each source gated in
+/// @p observers' `losSourceMask_` scaled by its line-of-sight factor at
+/// @p worldPosition over @p los (`losVisibility`). @p observers and @p los
+/// must come from one publication (`C_CanvasFogOfWar::losPublishedObservers_`
+/// + `losField()`); an unpublished field reveals nothing through a gated
+/// source. The march is the cost, so gated sources are marched strongest
+/// curve first and only while one could still raise the maximum: a source
+/// whose ungated reveal is already covered cannot change it.
 inline float evalVisionReveal(
     const IRComponents::FrameDataFogObservers &observers,
-    const IRComponents::FogLineOfSightField &los,
+    const IRComponents::FogLosColumnField &los,
     IRMath::vec3 worldPosition
 ) {
-    const IRMath::ivec3 sample = IRMath::roundVec3HalfUp(worldPosition);
     float reveal = 0.0f;
+    float pending[IRComponents::kMaxFogVisionCircles] = {};
     for (int i = 0; i < observers.visionCircleCount_; ++i) {
-        if (((observers.losSourceMask_ >> i) & 1) != 0 && !los.visible(i, sample)) {
-            continue;
+        const float circleReveal = detail::evalVisionCircleReveal(observers, i, worldPosition);
+        if (observers.losGated(i)) {
+            pending[i] = circleReveal;
+        } else {
+            reveal = IRMath::max(reveal, circleReveal);
         }
-        reveal = IRMath::max(reveal, detail::evalVisionCircleReveal(observers, i, worldPosition));
     }
-    return reveal;
+    for (;;) {
+        int strongest = -1;
+        for (int i = 0; i < observers.visionCircleCount_; ++i) {
+            if (pending[i] > reveal && (strongest < 0 || pending[i] > pending[strongest])) {
+                strongest = i;
+            }
+        }
+        if (strongest < 0) {
+            return reveal;
+        }
+        const float visibility = losVisibility(los, observers, strongest, worldPosition);
+        reveal = IRMath::max(reveal, visibility * pending[strongest]);
+        pending[strongest] = 0.0f;
+    }
 }
 
 /// The observers and field a reveal evaluates. With a gated live source: the
-/// last FOG_LOS_BUILD publication — sources and horizons together, one RENDER
+/// last FOG_LOS_BUILD publication — sources and columns together, one RENDER
 /// frame old — so a slot re-authored since then never pairs with another
-/// source's horizons; before the first publication, the live set with an
+/// frame's columns; before the first publication, the live set with an
 /// unpublished field (gated sources reveal nothing). Without one: the live set,
 /// and the field is never read.
 inline void selectRevealSnapshot(
     const IRComponents::FrameDataFogObservers &live,
     const IRComponents::FrameDataFogObservers &published,
-    IRComponents::FogLineOfSightField publishedField,
+    IRComponents::FogLosColumnField publishedField,
     IRComponents::FrameDataFogObservers &observers,
-    IRComponents::FogLineOfSightField &los
+    IRComponents::FogLosColumnField &los
 ) {
     if (live.losSourceMask_ != 0 && publishedField.published()) {
         observers = published;
@@ -128,7 +146,7 @@ inline IRComponents::C_CanvasFogOfWar *activeFogComponent() {
 inline float evalActiveVisionReveal(IRMath::vec3 worldPosition) {
     if (auto *fog = detail::activeFogComponent()) {
         IRComponents::FrameDataFogObservers observers;
-        IRComponents::FogLineOfSightField los;
+        IRComponents::FogLosColumnField los;
         selectRevealSnapshot(
             fog->observers_,
             fog->losPublishedObservers_,
@@ -232,33 +250,40 @@ inline int addVisionCircle(
 
 /// Gate vision circle @p source by line of sight, the eye @p losEyeHeight world
 /// units above its `observerZ`; `kFogVisionLosOff` (any negative height)
-/// ungates it. See `C_CanvasFogOfWar::setVisionCircleLineOfSight` for the slot
-/// contract and the occluder model; the RENDER pipeline must carry
-/// `FOG_LOS_BUILD`. The per-frame clear-then-add pattern re-enables it every
-/// frame.
-inline void setVisionCircleLineOfSight(int source, float losEyeHeight) {
+/// ungates it. @p losSoftness > 0 grades the verdict over that many world
+/// units of clearance above an occluder; `kFogLosHardGate` keeps a step. See
+/// `C_CanvasFogOfWar::setVisionCircleLineOfSight` for the slot contract and
+/// the occluder model; the RENDER pipeline must carry `FOG_LOS_BUILD`. The
+/// per-frame clear-then-add pattern re-enables it every frame.
+inline void setVisionCircleLineOfSight(
+    int source, float losEyeHeight, float losSoftness = IRComponents::kFogLosHardGate
+) {
     if (auto *fog = detail::activeFogComponent()) {
-        fog->setVisionCircleLineOfSight(source, losEyeHeight);
+        fog->setVisionCircleLineOfSight(source, losEyeHeight, losSoftness);
     }
 }
 
 /// Whether @p to is visible from the eye @p from under the line-of-sight model
-/// (the rounded voxel of @p to against the horizon of its column; see
-/// `component_canvas_fog_of_war.hpp`), over the active canvas's current
-/// occluders. True without an active fog canvas, when @p to shares @p from's
-/// column, and when @p to's column is outside the fog footprint.
+/// (the exact segment march of `component_canvas_fog_of_war.hpp`, with @p to
+/// lifted onto its column's top plane when it sits below it), over the active
+/// canvas's current occluders at the frame's raster lattice. True without an
+/// active fog canvas, when @p to shares @p from's half-cell, and when @p to
+/// lies outside the fog footprint.
 ///
-/// Cost: rebuilds a 256 KiB column view from every live pool voxel and flagged
-/// shape on each call, then one supercover walk — an occasional gameplay query,
+/// Cost: rebuilds a 2 MiB column view from every live pool voxel and flagged
+/// shape on each call, then one lattice walk — an occasional gameplay query,
 /// not a per-unit per-frame one. Needs no registered vision circle, and agrees
-/// with the built field at integer heights on the same occluders.
+/// with the built field on the same occluders.
 inline bool lineOfSight(IRMath::vec3 from, IRMath::vec3 to) {
+    using IRComponents::FogLosColumnField;
     auto *fog = detail::activeFogComponent();
     if (fog == nullptr) {
         return true;
     }
-    const IRMath::ivec3 target = IRMath::roundVec3HalfUp(to);
-    if (!IRComponents::FogLineOfSightField::cellInField(target.x, target.y)) {
+    if (!FogLosColumnField::cellInField(
+            FogLosColumnField::halfCellOf(to.x),
+            FogLosColumnField::halfCellOf(to.y)
+        )) {
         return true;
     }
     const IREntity::EntityId canvas = IRRender::getActiveCanvasEntity();
@@ -266,15 +291,25 @@ inline bool lineOfSight(IRMath::vec3 from, IRMath::vec3 to) {
     if (!pool.has_value()) {
         return true;
     }
-    if (fog->losQueryColumnTops_.size() != IRComponents::kFogLosColumnCount) {
+    if (fog->losQueryColumnTops_.size() != IRComponents::kFogLosFieldFloatCount) {
         fog->losQueryColumnTops_.assign(
-            IRComponents::kFogLosColumnCount,
+            IRComponents::kFogLosFieldFloatCount,
             IRComponents::kFogLosColumnEmpty
         );
     }
-    rasterizeLosColumns(**pool, canvas, fog->losQueryColumnTops_);
-    return static_cast<float>(target.z) <=
-           traceLosHorizon(fog->losQueryColumnTops_, from, IRMath::ivec2(target));
+    rasterizeLosColumns(**pool, canvas, activeLosRasterFrame(), fog->losQueryColumnTops_);
+    const FogLosColumnField field{fog->losQueryColumnTops_.data()};
+    const float ownTop =
+        field.topPlane(FogLosColumnField::halfCellOf(to.x), FogLosColumnField::halfCellOf(to.y));
+    float bandClearance = 0.0f;
+    const float minClearance = traceLosClearance(
+        field,
+        from,
+        IRMath::vec3(to.x, to.y, IRMath::min(to.z, ownTop)),
+        IRComponents::kFogLosHardGate,
+        bandClearance
+    );
+    return minClearance >= -IRComponents::kFogLosClearanceTolerance;
 }
 
 /// Drop every live analytic vision disc → grid-only fog.
