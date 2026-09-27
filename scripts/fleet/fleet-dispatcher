@@ -3863,6 +3863,8 @@ main() {
 
         cleanup_stale_dispatches
 
+        python3 "$FLEET_LIB_DIR/fleet_runtime.py" prune "$STATE_DIR" || true
+
         # Keep the main clone current so a fleet-script fix that merges
         # mid-session goes live (rate-limited to one fetch/60s in the helper;
         # guarded to only ff-advance a clean, on-master, fast-forwardable clone).
