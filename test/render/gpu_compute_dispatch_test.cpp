@@ -131,6 +131,46 @@ TEST_F(GpuComputeDispatchTest, ClearSunShadowKernelFillsBufferWithLitSentinel) {
     EXPECT_EQ(readback.back(), kLitSentinel);
 }
 
+// glCopyNamedBufferSubData's size is GLsizeiptr, and on Win64 it is the
+// stack-passed 5th argument: a caller declaring it GLsizei writes only 4 of
+// the 8 bytes the driver reads, and the call fails with GL_INVALID_VALUE.
+TEST_F(GpuComputeDispatchTest, CopyNamedBufferSubDataMatchesSourceBytes) {
+    using namespace IRRender;
+
+    constexpr std::size_t kSrcBytes = 4096;
+    constexpr std::size_t kCopyBytes = 336;
+    constexpr GLintptr kSrcOffset = 288;
+    constexpr GLintptr kDstOffset = 0;
+
+    std::vector<std::uint8_t> srcSeed(kSrcBytes);
+    for (std::size_t i = 0; i < srcSeed.size(); ++i) {
+        srcSeed[i] = static_cast<std::uint8_t>(i);
+    }
+    const std::vector<std::uint8_t> dstSeed(kCopyBytes, 0xCD);
+
+    Buffer src{srcSeed.data(), srcSeed.size(), BUFFER_STORAGE_NONE};
+    Buffer dst{dstSeed.data(), dstSeed.size(), BUFFER_STORAGE_NONE};
+
+    ENG_API->glCopyNamedBufferSubData(
+        src.getHandle(),
+        dst.getHandle(),
+        kSrcOffset,
+        kDstOffset,
+        static_cast<GLsizeiptr>(kCopyBytes)
+    );
+    ASSERT_EQ(ENG_API->glGetError(), static_cast<GLenum>(GL_NO_ERROR));
+
+    std::vector<std::uint8_t> readback(kCopyBytes, 0);
+    dst.getSubData(0, readback.size(), readback.data());
+
+    const auto copyBytes = static_cast<std::ptrdiff_t>(kCopyBytes);
+    const std::vector<std::uint8_t> expected(
+        srcSeed.begin() + kSrcOffset,
+        srcSeed.begin() + kSrcOffset + copyBytes
+    );
+    EXPECT_EQ(readback, expected);
+}
+
 } // namespace
 
 #elif defined(IR_GRAPHICS_METAL)
