@@ -208,8 +208,15 @@ int main(){
         for suffix, folder in (("glsl", ""), ("metal", "metal/")):
             shaders = ROOT / "engine/render/src/shaders" / folder
             shader = (shaders / f"c_compute_sun_shadow_body.{suffix}").read_text()
-            start = shader.index("    if (!perAxis && selectedShapeBoxReceiver(")
+            start = shader.index("    if (selectedShapeBoxReceiver(")
             block = shader[start:shader.index("#endif", start)]
+            per_axis = re.search(
+                r"    if \((?:frameData\.)?perAxisRoute != 0\) \{\s*const int faceId\b.*?\n    \}",
+                shader, re.DOTALL)
+            self.assertIsNotNone(per_axis)
+            self.assertLess(per_axis.end(), start)
+            block = per_axis[0] + "\n" + block
+            block = block.replace("frameData.", "").replace("sunFrameData.", "")
             helper = (shaders / f"ir_selected_shape_receiver.{suffix}").read_text()
             helper = helper[helper.index("bool selectedShapeBoxReceiver"):]
             helper = helper.replace("inout vec3 ", "vec3& ")
@@ -220,8 +227,9 @@ int main(){
             helper = helper.replace("device const ShapeTileDescriptor *receiverTiles,", "")
             block = block.replace(
                 "receiverFrame, receiverShapes, receiverOwners, receiverTiles,", "")
-            for source, target in (("float3", "vec3"), ("float2", "vec2"),
-                                   ("ivec2", "Point"), ("int2", "Point")):
+            for source, target in (("float4", "vec4"), ("float3", "vec3"),
+                                   ("float2", "vec2"), ("ivec2", "Point"),
+                                   ("uint2", "Point"), ("int2", "Point")):
                 helper = helper.replace(source, target)
                 block = block.replace(source, target)
             block = helper + "\nvoid run(){\n" + block + "}\n"
@@ -235,14 +243,22 @@ using uint=unsigned;
 struct vec2 {float x,y; vec2(float a,float b):x(a),y(b){}
  template<class T> vec2(T v):x(v.x),y(v.y){} };
 struct vec3 {int value=0;};
+struct vec4 {vec4(float,float,float,float){}};
 struct Tile {int shapeIndex;};
 struct Frame {int shapeCount;};
 struct Point {int x,y;};
+struct Canvas {void write(vec4,Point){}} canvasSunShadow;
+void imageStore(Canvas&,Point,vec4){}
+int perAxisRoute=0,perAxisSamples=0,face=0,flip=0,encoded=0,shadowsEnabled=1;
+int visibleFaceIds[3]={0,2,4},sunFrameData=0,sunDepthBuf=0;
+vec2 frameCanvasOffset{0,0}; Point voxelRenderOptions{0,0};
+vec3 perAxisCellToWorld3DSubCell(Point,int,int,Point,vec2,Point){return {};}
+float perAxisSunShadowFactor(vec3,int,int=0,int=0){++perAxisSamples;return 1;}
 template<class T> struct Checked {
  std::vector<T> data;int reads=0;
  T operator[](size_t i){++reads;if(i>=data.size())std::exit(42);return data[i];}
 };
-Frame receiverFrame{3}; Point pixel{1,1},size{3,2}; bool perAxis=false;
+Frame receiverFrame{3}; Point pixel{1,1},size{3,2};
 Checked<uint> receiverOwners{{0xffffffffu,0xffffffffu,0xffffffffu,
                               0xffffffffu,0xffffffffu,0xffffffffu}};
 Checked<Tile> receiverTiles{{{0},{2}}}; Checked<int> receiverShapes{{11,22,33}};
@@ -262,15 +278,16 @@ int main(){
   run();if(pos3D.value!=33||normal.value!=-33||receiverFace!=-33)return 1;
  }
  for(int kind=0;kind<4;++kind){
-  perAxis=kind==0;receiverFrame.shapeCount=kind==1?0:3;
+  perAxisRoute=kind==0;receiverFrame.shapeCount=kind==1?0:3;
   receiverOwners.data[4]=kind==2?0xffffffffu:384u;finiteHit=kind!=3;
   pos3D.value=7;normal.value=8;receiverFace=0;
-  receiverOwners.reads=receiverTiles.reads=receiverShapes.reads=0;run();
+  receiverOwners.reads=receiverTiles.reads=receiverShapes.reads=perAxisSamples=0;run();
+  if(perAxisSamples!=(kind==0))return 2;
   if(pos3D.value!=7||normal.value!=8||receiverFace!=0)return 2;
   if(kind<2&&receiverOwners.reads!=0)return 3;
   if(kind<3&&(receiverTiles.reads!=0||receiverShapes.reads!=0))return 4;
  }
- perAxis=false;receiverFrame.shapeCount=3;finiteHit=true;
+ perAxisRoute=0;receiverFrame.shapeCount=3;finiteHit=true;
  receiverOwners.data[4]=384u;
  vec3 p{7},n{8};
  if(!selectedShapeBoxReceiver(pixel,size.x,vec2(1.25f,-.75f),p,n))return 5;
@@ -296,7 +313,8 @@ int main(){
                 "lost_sentinel": block.replace("key == 0xffffffffu", "false"),
                 "lost_normal_carrier": block.replace(
                     "receiverFace = encodeReceiverFace(normal);", ""),
-                "lost_axis_gate": block.replace("!perAxis && ", ""),
+                "lost_axis_gate": block.replace("perAxisRoute != 0", "false"),
+                "lost_axis_return": block.replace("        return;", ""),
                 "snapped_query": block.replace(
                     "queryPixel, exactPosition", "vec2(ownerPixel), exactPosition"),
                 "lost_finite_fallback": block.replace(
