@@ -67,6 +67,7 @@ validation index's jitter probe plus the camera contracts below.
 - `cmake/run_glsl_reserved_word_check.cmake` rejects GLSL reserved words as
   `.glsl` identifiers (NVIDIA GL fails, Metal doesn't); rename the `.metal` twin.
 - Derive large SSBO word indices at runtime; constant ones cost NVIDIA minutes per cold link.
+- NVIDIA GL defers a self-fed indirect dispatch; what releases it: `detail::forEachOverflowSortStep`.
 
 ### Metal compute kernel threadgroup registry
 

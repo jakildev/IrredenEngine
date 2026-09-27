@@ -7,6 +7,7 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_constants.hpp>
 #include <irreden/ir_entity.hpp>
+#include <irreden/ir_platform.hpp>
 
 #include <irreden/common/components/component_tags_all.hpp>
 #include <irreden/common/components/component_position_2d.hpp>
@@ -86,6 +87,35 @@ inline void forEachOverflowSortMergeStep(std::uint32_t dispatchSpan, Callback &&
             remaining -= width;
         }
     }
+}
+
+// The complete sort step list as (mode, k, pLo, pHi, commandIndex): argument
+// preparation (mode 3, a direct dispatch), fill, local sort, then every merge
+// step, each dispatched indirectly from the commands mode 3 wrote.
+//
+// The sort is complete when the sequence ends, on every backend; no consumer
+// may rely on a later clear or dispatch to finish it. OpenGL appends a direct
+// mode-3 dispatch as the last step for that reason. NVIDIA GL defers an
+// indirect compute dispatch whose argument buffer the dispatching program
+// writes until either that program dispatches again or
+// glClearNamedBufferSubData clears that same buffer. A clear of another
+// buffer, glFinish, a readback, and other programs' dispatches do not release
+// it. A direct dispatch is not itself deferred, and mode 3 is idempotent here:
+// it rewrites the same grids from the live count, which the network never
+// changes. It must stay last.
+template <typename Callback>
+inline void forEachOverflowSortStep(std::uint32_t dispatchSpan, Callback &&callback) {
+    callback(3, 0u, 0u, 0u, 0u);
+    callback(0, 0u, 0u, 0u, 0u);
+    callback(1, 0u, 0u, 0u, 1u);
+    forEachOverflowSortMergeStep(
+        dispatchSpan,
+        [&](std::uint32_t k, std::uint32_t pLo, std::uint32_t pHi, std::uint32_t commandIndex) {
+            callback(2, k, pLo, pHi, commandIndex);
+        }
+    );
+    if constexpr (IRPlatform::kIsOpenGL)
+        callback(3, 0u, 0u, 0u, 0u);
 }
 
 } // namespace detail
@@ -739,15 +769,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
             ++sortDispatches;
         };
-        sortStep(3, 0, 0, 0, 0);
-        sortStep(0, 0, 0, 0, 0);
-        sortStep(1, 0, 0, 0, 1);
-        detail::forEachOverflowSortMergeStep(
-            dispatchSpan,
-            [&](std::uint32_t k, std::uint32_t pLo, std::uint32_t pHi, std::uint32_t commandIndex) {
-                sortStep(2, k, pLo, pHi, commandIndex);
-            }
-        );
+        detail::forEachOverflowSortStep(dispatchSpan, sortStep);
         frameData_.overflowScratchLayout_ = previousLayout;
         frameDataBuf_->subData(
             offsetof(FrameDataVoxelToCanvas, overflowScratchLayout_),
