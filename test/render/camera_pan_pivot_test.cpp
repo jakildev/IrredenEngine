@@ -10,9 +10,10 @@
 // `getEffectiveCameraIso`'s focus is re-derived from the LIVE `cameraIso` every
 // frame — `d effCam / d cameraIso == P(R_z(-yaw) * Pinv(delta))`, exactly what
 // the helper inverts. The depth-aware default pivot latches only the iso DEPTH
-// and keeps deriving the point live, which preserves that derivative because
-// `isoPixelToPos3D`'s depth parameter shifts along (1,1,1) and projects to
-// (0,0).
+// and a constant view offset and keeps deriving the point live, which preserves
+// that derivative because `isoPixelToPos3D`'s depth parameter shifts along
+// (1,1,1) and projects to (0,0), and the offset enters the camera and the focus
+// expression as the same constant.
 //
 // Nothing in the tree guarded that premise: `pivot-verify.py` and
 // `jitter_probe --stationary` hold the camera fixed while sweeping yaw, which
@@ -33,26 +34,47 @@ constexpr float kTolerance = 1e-4f;
 constexpr vec2 kCanvasCenterIso = vec2(311.0f, -47.0f);
 
 // The default-pivot focus expression, mirroring
-// `RenderManager::getDefaultRotationPivotFocus`: the point under the viewport
-// center at the latched iso depth, with the POINT derived from the live camera.
-vec3 liveFocus(const vec2 cameraIso, const float isoDepth) {
-    return IRMath::isoPixelToPos3D(kCanvasCenterIso - cameraIso, isoDepth);
+// `DefaultPivotLatch::focus`: the point under the viewport center, less the
+// latched view offset, at the latched iso depth — the POINT derived from the
+// live camera.
+vec3 liveFocus(const vec2 cameraIso, const float isoDepth, const vec2 viewOffsetIso = vec2(0.0f)) {
+    return IRMath::isoPixelToPos3D(kCanvasCenterIso - cameraIso - viewOffsetIso, isoDepth);
 }
 
-// `IRRender::getEffectiveCameraIso`'s CAMERA_CENTER branch.
-vec2 effectiveCameraIso(const vec2 cameraIso, const vec3 focusWorld, const float visualYaw) {
-    return IRMath::cameraYawPivotOffset(cameraIso, focusWorld, visualYaw);
+// `IRRender::getEffectiveCameraIso`'s CAMERA_CENTER branch: the camera carries
+// the latched view offset.
+vec2 effectiveCameraIso(
+    const vec2 cameraIso,
+    const vec3 focusWorld,
+    const float visualYaw,
+    const vec2 viewOffsetIso = vec2(0.0f)
+) {
+    return IRMath::cameraYawPivotOffset(cameraIso + viewOffsetIso, focusWorld, visualYaw);
 }
 
 // On-screen shift of a fixed world point when the camera iso moves by `delta`:
 // content sits at `pos3DtoPos2DIsoYawed(W, yaw) + effCam`, and the first term
 // does not depend on the camera, so the shift IS the change in effCam.
 vec2 screenShiftUnderLiveFocus(
-    const vec2 cameraIso, const vec2 delta, const float isoDepth, const float visualYaw
+    const vec2 cameraIso,
+    const vec2 delta,
+    const float isoDepth,
+    const float visualYaw,
+    const vec2 viewOffsetIso = vec2(0.0f)
 ) {
     const vec2 moved = cameraIso + delta;
-    return effectiveCameraIso(moved, liveFocus(moved, isoDepth), visualYaw) -
-           effectiveCameraIso(cameraIso, liveFocus(cameraIso, isoDepth), visualYaw);
+    return effectiveCameraIso(
+               moved,
+               liveFocus(moved, isoDepth, viewOffsetIso),
+               visualYaw,
+               viewOffsetIso
+           ) -
+           effectiveCameraIso(
+               cameraIso,
+               liveFocus(cameraIso, isoDepth, viewOffsetIso),
+               visualYaw,
+               viewOffsetIso
+           );
 }
 
 // Yaws to sweep. 2pi/3 is excluded deliberately: the iso projection is
@@ -117,6 +139,26 @@ TEST(CameraPanPivot, PreCompensatedDragShiftsContentByTheDragAtEveryYawAndDepth)
     }
 }
 
+TEST(CameraPanPivot, PanIdentityHoldsWithANonZeroViewOffset) {
+    // A rotation gesture that acquires at non-zero yaw leaves a view offset
+    // behind. The offset is a constant added to both the camera and the focus
+    // expression, so the derivative the pan helper inverts is unchanged.
+    const vec2 cameraIso = vec2(64.0f, -12.0f);
+    const vec2 viewOffsetIso = vec2(-6.341f, 11.5f);
+    const vec2 isoDelta = vec2(-7.5f, 3.25f);
+    for (const float visualYaw : kYaws) {
+        for (const float isoDepth : kIsoDepths) {
+            const vec2 delta = IRMath::cameraMoveRelativeToYaw(isoDelta, visualYaw);
+            const vec2 shift =
+                screenShiftUnderLiveFocus(cameraIso, delta, isoDepth, visualYaw, viewOffsetIso);
+            EXPECT_NEAR(shift.x, isoDelta.x, kTolerance)
+                << "yaw=" << visualYaw << " isoDepth=" << isoDepth;
+            EXPECT_NEAR(shift.y, isoDelta.y, kTolerance)
+                << "yaw=" << visualYaw << " isoDepth=" << isoDepth;
+        }
+    }
+}
+
 TEST(CameraPanPivot, PanIdentityIsIndependentOfTheStartingCameraPosition) {
     const vec2 isoDelta = vec2(10.0f, 0.0f);
     const vec2 starts[] = {vec2(0.0f), vec2(64.0f, -12.0f), vec2(-1024.5f, 903.75f)};
@@ -164,9 +206,9 @@ TEST(CameraPanPivot, WorldPointLatchBreaksThePanIdentity) {
 }
 
 // ---------------------------------------------------------------------------
-// Cardinal fast path: at yaw 0 the effective camera is the raw camera iso at
-// every latched depth, so a depth-aware pivot cannot perturb the byte-identical
-// un-yawed path.
+// Cardinal fast path: at yaw 0 the effective camera is the raw camera iso plus
+// the view offset at every latched depth, so with no offset a depth-aware pivot
+// cannot perturb the byte-identical un-yawed path.
 // ---------------------------------------------------------------------------
 
 TEST(CameraPanPivot, YawZeroReturnsRawCameraIsoAtEveryLatchedDepth) {
@@ -175,6 +217,21 @@ TEST(CameraPanPivot, YawZeroReturnsRawCameraIsoAtEveryLatchedDepth) {
         const vec2 effCam = effectiveCameraIso(cameraIso, liveFocus(cameraIso, isoDepth), 0.0f);
         EXPECT_NEAR(effCam.x, cameraIso.x, kTolerance) << "isoDepth=" << isoDepth;
         EXPECT_NEAR(effCam.y, cameraIso.y, kTolerance) << "isoDepth=" << isoDepth;
+    }
+}
+
+TEST(CameraPanPivot, YawZeroAddsExactlyTheViewOffsetAtEveryLatchedDepth) {
+    const vec2 cameraIso = vec2(64.0f, -12.0f);
+    const vec2 viewOffsetIso = vec2(3.75f, -9.5f);
+    for (const float isoDepth : kIsoDepths) {
+        const vec2 effCam = effectiveCameraIso(
+            cameraIso,
+            liveFocus(cameraIso, isoDepth, viewOffsetIso),
+            0.0f,
+            viewOffsetIso
+        );
+        EXPECT_NEAR(effCam.x, cameraIso.x + viewOffsetIso.x, kTolerance) << "isoDepth=" << isoDepth;
+        EXPECT_NEAR(effCam.y, cameraIso.y + viewOffsetIso.y, kTolerance) << "isoDepth=" << isoDepth;
     }
 }
 
