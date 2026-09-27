@@ -104,6 +104,9 @@ EOF
 cat > "$BIN/git" <<'EOF'
 #!/usr/bin/env bash
 case "$*" in
+  # WT is a plain dir, as real git reports; the clean-pane pre-launch arm is
+  # test_dispatch_wrap_clean_pane.sh's subject, against a real worktree.
+  *"rev-parse --is-inside-work-tree"*) exit 1 ;;
   *"rev-parse --abbrev-ref HEAD"*) echo "${STUB_BRANCH:-master}" ;;
   *"rev-parse --verify --quiet refs/remotes/origin/"*) exit "${STUB_REMOTE_REF_RC:-1}" ;;
   *"status --porcelain"*)

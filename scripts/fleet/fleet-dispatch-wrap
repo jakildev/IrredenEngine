@@ -335,6 +335,87 @@ if (( ! RESUMED )); then
         "$PWD"/.merger-body.md "$PWD"/.coding-improvement-body.md
 fi
 
+# A role launch starts from a clean pane or does not start: back up any
+# tracked modifications a prior lane left, reset to the pane's scratch
+# branch, and drop stale untracked retry-loop scripts. Exempt: a resumed
+# session (it owns its edits) and a reservation showing in-flight work — a
+# recorded branch (the feedback-amend reserve) or a task branch checked out —
+# unless it is this dispatch's own pre-claim. The dispatcher pre-claims only
+# an unreserved worker pane, so a branchless reservation matching a task or
+# stack target's number is the one `fleet-claim claim` just auto-wrote, and
+# the dirt under it is a prior lane's.
+#
+# When cleanliness cannot be established the wrapper exits before the
+# provider launch with the pre-claim standing: the dispatcher's completion
+# fold reads the target as abandoned, releases it, and salvages the pane
+# (fleet-dispatcher handle_abandoned_target).
+_clean_pane_fail() {
+    echo "fleet-dispatch-wrap: $1 — $worktree_name is not clean; not launching $ROLE" >&2
+    exit 1
+}
+if (( ! RESUMED )) && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    _clean_pane_exempt=0
+    _clean_pane_resv_file="${FLEET_RESERVATIONS_DIR:-$HOME/.fleet/reservations}/$worktree_name.json"  # keep in sync with fleet-claim reservation_file
+    if [[ -f "$_clean_pane_resv_file" ]]; then
+        IFS=$'\t' read -r _resv_task _resv_branch < <(python3 -c 'import json,sys
+d=json.load(open(sys.argv[1]))
+print("%s\t%s" % (d.get("task_id", ""), d.get("branch", "")))' "$_clean_pane_resv_file" 2>/dev/null | tr -d '\r')
+        _head_branch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+        if [[ -n "${_resv_task:-}" ]] \
+            && ! [[ "${FLEET_DISPATCH_KIND:-}" =~ ^(task|stack)$ && "$_resv_task" == "${FLEET_DISPATCH_NUMBER:-}" && -z "${_resv_branch:-}" ]] \
+            && [[ -n "${_resv_branch:-}" || ( "$_head_branch" == claude/* && "$_head_branch" != *-scratch ) ]]; then
+            _clean_pane_exempt=1
+        fi
+        unset _resv_task _resv_branch _head_branch
+    fi
+    if (( ! _clean_pane_exempt )); then
+        shopt -s nullglob
+        _retry_scripts=("$PWD"/.retry-*.sh)
+        shopt -u nullglob
+        if (( ${#_retry_scripts[@]} > 0 )); then
+            echo "fleet-dispatch-wrap: removing stale retry script(s) in $worktree_name: ${_retry_scripts[*]##*/}" >&2
+            rm -f "${_retry_scripts[@]}"
+        fi
+        unset _retry_scripts
+        _tracked_dirty=$(git status --porcelain 2>/dev/null) || _clean_pane_fail "git status failed"
+        _tracked_dirty=$(grep -v '^??' <<< "$_tracked_dirty" || true)
+        if [[ -n "$_tracked_dirty" ]]; then
+            _leftovers_dir="${FLEET_LEFTOVERS_DIR:-$HOME/.fleet/leftovers}"
+            mkdir -p "$_leftovers_dir" 2>/dev/null || true
+            _leftover_patch="$_leftovers_dir/$worktree_name-$(date -u +%Y%m%dT%H%M%SZ).patch"
+            # The forced checkout below is the only copy-destroying step, so it
+            # runs only once a non-empty patch is on disk.
+            if ! { git diff --binary HEAD > "$_leftover_patch" 2>/dev/null && [[ -s "$_leftover_patch" ]]; }; then
+                rm -f "$_leftover_patch" 2>/dev/null
+                _clean_pane_fail "could not back up tracked modifications"
+            fi
+            echo "fleet-dispatch-wrap: tracked modifications in $worktree_name backed up to $_leftover_patch" >&2
+            case "$PWD" in
+                */creations/game/.claude/worktrees/*) _clean_scratch_branch="claude/game-$worktree_name-scratch" ;;
+                *) _clean_scratch_branch="claude/$worktree_name-scratch" ;;
+            esac
+            # A failed fetch still resets to the last-fetched origin/master:
+            # every role fetches at startup, so a stale base costs nothing and
+            # a network blip must not strand the launch.
+            git fetch --quiet origin master 2>/dev/null \
+                || echo "fleet-dispatch-wrap: git fetch origin master failed in $worktree_name; resetting to the last-fetched origin/master" >&2
+            # --force: the backup above already captured the tracked diff, so
+            # this checkout is meant to discard it, not preserve it — plain
+            # `checkout -B` refuses to switch when the destination tree
+            # conflicts with the dirty working tree.
+            git checkout --quiet --force -B "$_clean_scratch_branch" origin/master 2>/dev/null \
+                || _clean_pane_fail "could not reset to $_clean_scratch_branch (backup kept at $_leftover_patch)"
+            _tracked_dirty=$(git status --porcelain 2>/dev/null) || _clean_pane_fail "git status failed after the reset"
+            [[ -z "$(grep -v '^??' <<< "$_tracked_dirty" || true)" ]] \
+                || _clean_pane_fail "tracked modifications survived the reset (backup kept at $_leftover_patch)"
+            unset _clean_scratch_branch _leftover_patch _leftovers_dir
+        fi
+        unset _tracked_dirty
+    fi
+    unset _clean_pane_exempt _clean_pane_resv_file
+fi
+unset -f _clean_pane_fail
+
 # A resume reloads the prior session and discards this dispatch's fresh config
 # — including the dispatch target. Release the pre-claim now, under the same
 # worktree basename the dispatcher claimed with, rather than stranding the

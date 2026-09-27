@@ -152,9 +152,8 @@ subjects; `ctest` never sees them. Validator index: [`VALIDATION.md`](../../docs
   per-PR record shape bumps `PR_RECORD_SCHEMA` in the same commit, or the 304
   fast path keeps serving the old shape from disk.
 - **Concurrently-read writers use `write_atomic`**, never `Path.write_text`.
-- **A REST list fetch passes an explicit `per_page` and pages**
-  (`gh --paginate`; `_rest_list`'s `max_pages`); the 30-item default
-  truncates without error.
+- **A REST list fetch sets `per_page` and pages** (`gh --paginate`;
+  `_rest_list`'s `max_pages`); the 30-item default truncates silently.
 - **Unattended daemons timeout-guard every network call**: `source
   fleet-net.sh` shadows `git()`/`gh()` with a `timeout`, bounding current and
   future call sites by construction; Python fetchers carry their own
@@ -163,6 +162,7 @@ subjects; `ctest` never sees them. Validator index: [`VALIDATION.md`](../../docs
 
 ## Lane and loop contracts
 
+- **A role launch starts from a clean pane or does not start.**
 - **A new consumer of a PR label excludes PRs claimable by other lanes.**
   Disjoint claim-label namespaces (`fleet:amending-*`, `fleet:resolving-*`,
   `fleet:reviewing-*`) give no mutual exclusion on their own. Every
