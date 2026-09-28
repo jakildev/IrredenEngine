@@ -19,6 +19,10 @@
 #                 issue (already claimed under this pane's worktree basename)
 #                 and releases the claim when done. Absent → unset — the
 #                 iteration does no planning work.
+#   $8  runtime   provider the iteration launches on — claude | codex.
+#   $9  class     model class the dispatcher elected (fable|opus|sonnet);
+#                 empty derives it from $2. The pane record must agree with
+#                 both for this launch to clean the pane.
 #
 # On a usage-limit exit — the stream flagged a rejected rate_limit_event
 # (claude exits rc=1 at the wall) or the legacy exit code 2 — writes a
@@ -351,18 +355,47 @@ if (( _resume_role )) && [[ -f "$SIDECAR" ]]; then
     fi
 fi
 
+# Destructive pre-launch cleanup is authorized, never assumed: the
+# dispatcher's pane record is the capability. It must name this launch — the
+# wrapper PID record_wrapper_pid stamped, the role, runtime and argv class,
+# and the pane's worktree basename — and the cwd must be the top of a linked
+# worktree (a `.git` file; the main clone has a directory) named pool-<N>.
+# A record naming a different invocation is a broken dispatch: fail closed
+# before the provider starts. No record grants nothing, so a manual or test
+# invocation launches without cleaning anything.
+CLEANUP_AUTHORIZED=0
+_dispatch_record="$DISPATCH_DIR/$PANE_KEY.json"
+if (( ! RESUMED )) && [[ -f "$_dispatch_record" ]]; then
+    # A non-whitespace separator: IFS tab collapses an empty field into its neighbor.
+    IFS=$'\x1f' read -r _rec_pid _rec_role _rec_runtime _rec_class _rec_agent < <(python3 -c 'import json,sys
+d=json.load(open(sys.argv[1]))
+print("\x1f".join(str(d.get(k, "")) for k in ("wrapper_pid", "role", "runtime", "launch_class", "agent")))' \
+        "$_dispatch_record" 2>/dev/null | tr -d '\r')
+    _rec_want="$$|$ROLE|$FLEET_RUNTIME|${9:-}|$worktree_name"
+    _rec_have="${_rec_pid:-}|${_rec_role:-}|${_rec_runtime:-}|${_rec_class:-}|${_rec_agent:-}"
+    if [[ "$_rec_have" != "$_rec_want" ]]; then
+        echo "fleet-dispatch-wrap: dispatch record $PANE_KEY.json names pid|role|runtime|class|agent $_rec_have, this launch is $_rec_want — not launching $ROLE" >&2
+        exit 1
+    fi
+    _rec_prefix=$(git rev-parse --show-prefix 2>/dev/null) \
+        && [[ -z "${_rec_prefix%$'\r'}" && -f "$PWD/.git" && "$worktree_name" =~ ^pool-[0-9]+$ ]] \
+        && CLEANUP_AUTHORIZED=1
+    unset _rec_pid _rec_role _rec_runtime _rec_class _rec_agent _rec_want _rec_have _rec_prefix
+fi
+unset _dispatch_record
+
 # Per-iteration scratch bodies (gitignored; consumed by the gh call that
 # posts them) carry nothing a later iteration can use, and a stale one breaks
 # a fresh Codex launch: apply_patch has no overwrite, and Delete + Add of one
 # path inside a single call is rejected. A resume keeps them — the prior
 # session may be mid-draft.
-if (( ! RESUMED )); then
+if (( CLEANUP_AUTHORIZED )); then
     rm -f "$PWD"/.review-body.md "$PWD"/.review-body-*.md "$PWD"/.pr-body.md \
         "$PWD"/.merger-body.md "$PWD"/.coding-improvement-body.md
 fi
 
-# A role launch starts from a clean pane or does not start: back up any
-# tracked modifications a prior lane left, reset to the pane's scratch
+# An authorized launch starts from a clean pane or does not start: back up
+# any tracked modifications a prior lane left, reset to the pane's scratch
 # branch, and drop stale untracked retry-loop scripts. Exempt: a resumed
 # session (it owns its edits) and a reservation showing in-flight work — a
 # recorded branch (the feedback-amend reserve) or a task branch checked out —
@@ -379,7 +412,7 @@ _clean_pane_fail() {
     echo "fleet-dispatch-wrap: $1 — $worktree_name is not clean; not launching $ROLE" >&2
     exit 1
 }
-if (( ! RESUMED )) && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+if (( CLEANUP_AUTHORIZED )); then
     _clean_pane_exempt=0
     _clean_pane_resv_file="${FLEET_RESERVATIONS_DIR:-$HOME/.fleet/reservations}/$worktree_name.json"  # keep in sync with fleet-claim reservation_file
     if [[ -f "$_clean_pane_resv_file" ]]; then

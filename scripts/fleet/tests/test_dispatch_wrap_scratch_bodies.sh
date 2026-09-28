@@ -2,8 +2,9 @@
 # Tests for fleet-dispatch-wrap's pre-launch removal of the gitignored
 # per-iteration scratch bodies (.review-body.md and its siblings).
 #
-# A fresh launch — any runtime, any role — starts with none of them in the
-# pool worktree; a resume leaves them alone. Checked through the
+# A fresh dispatcher launch into a pool worktree — any runtime, any role,
+# with or without a target — starts with none of them; a resume, and a direct
+# call with no dispatch record, leave them alone. Checked through the
 # FLEET_DISPATCH_PRINT_LAUNCH hook, which exits after the launch decision and
 # before any agent spawns, so the suite never runs claude or codex.
 
@@ -53,8 +54,12 @@ STUB
 chmod +x "$BIN"/*
 export PATH="$BIN:$PATH"
 
+# git is stubbed, so a `.git` file is all that makes this a linked worktree.
 WT="$TMPROOT/pool-4"; mkdir -p "$WT"
+echo "gitdir: $TMPROOT/main/.git/worktrees/pool-4" > "$WT/.git"
 SIDECAR="$FLEET_SESSIONS_DIR/pool-4.session.json"
+RECORD="$FLEET_STATE_DIR/dispatch/pane-4.json"
+mkdir -p "$FLEET_STATE_DIR/dispatch"
 
 BODIES=(.review-body.md .review-body-3421.md .pr-body.md .merger-body.md .coding-improvement-body.md)
 
@@ -78,19 +83,28 @@ bodies_absent() {
   return 0
 }
 
+# A dispatcher launch: the pane record the dispatcher writes for this argv,
+# before the wrapper stamps its PID. launch_bare runs with no record at all.
 launch() {  # args: model effort role [fallback] [mode] [target] [runtime] [class]
+  local extra=""
+  [[ -n "${8:-}" ]] && extra=",\"launch_class\":\"$8\""
+  printf '{"role":"%s","pane":"%%4","class":"sonnet","dispatched_epoch":1,"wrapper_pid":0,"runtime":"%s","agent":"pool-4"%s}\n' \
+    "$3" "${7:-claude}" "$extra" > "$RECORD"
+  launch_bare "$@"
+}
+launch_bare() {
   ( cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-4 "$@" 2>>"$TMPROOT/stderr.log" )
 }
 
 # =========================================================================
-echo "T1: fresh claude worker launch removes every scratch body, keeps other files"
+echo "T1: fresh targetless claude worker launch removes every scratch body, keeps other files"
 rm -f "$SIDECAR"; seed_bodies
 out=$(launch sonnet high worker "" live)
 [[ "$out" == resumed=0* ]] && ok "T1: fresh launch decision" || bad "T1: launch decision: $out"
 bodies_absent && ok "T1: all five scratch bodies removed" || bad "T1: a scratch body survived: $(ls -A "$WT" | tr '\n' ' ')"
 [[ -f "$WT/notes.txt" ]] && ok "T1: unrelated untracked file kept" || bad "T1: notes.txt removed"
 
-echo "T2: fresh codex reviewer launch removes them too"
+echo "T2: fresh target-bound codex reviewer launch removes them too"
 rm -f "$SIDECAR"; seed_bodies
 out=$(launch gpt-5.6-terra medium sonnet-reviewer "" live target=review:engine:3421 codex sonnet)
 [[ "$out" == resumed=0* ]] && ok "T2: fresh codex launch decision" || bad "T2: launch decision: $out"
@@ -112,10 +126,12 @@ out=$(launch sonnet high worker "" live)
 bodies_absent && ok "T4: scratch bodies removed on the cross-role fresh launch" || bad "T4: a scratch body survived"
 rm -f "$SIDECAR"
 
-echo "T5: non-dispatched role (queue-manager) is a fresh launch as well"
-seed_bodies
-out=$(launch sonnet high queue-manager "" live)
-[[ "$out" == resumed=0* ]] && ok "T5: queue-manager launch decision" || bad "T5: launch decision: $out"
-bodies_absent && ok "T5: scratch bodies removed" || bad "T5: a scratch body survived"
+echo "T5: a direct call with no dispatch record keeps them"
+for target in "" "target=review:engine:3421"; do
+  rm -f "$RECORD" "$SIDECAR"; seed_bodies
+  out=$(launch_bare sonnet high worker "" live "$target")
+  [[ "$out" == resumed=0* ]] && ok "T5 (${target:-targetless}): fresh launch decision" || bad "T5: launch decision: $out"
+  bodies_present && ok "T5 (${target:-targetless}): scratch bodies untouched" || bad "T5 (${target:-targetless}): a scratch body was removed"
+done
 
 summarize "fleet-dispatch-wrap scratch-body cleanup"
