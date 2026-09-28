@@ -1,0 +1,321 @@
+diff --git a/engine/render/src/shaders/ir_projected_face.glsl b/engine/render/src/shaders/ir_projected_face.glsl
+index 1b921a4d9..f03e3219d 100644
+--- a/engine/render/src/shaders/ir_projected_face.glsl
++++ b/engine/render/src/shaders/ir_projected_face.glsl
+@@ -5,11 +5,16 @@ float projectedFaceDeterminant(vec2 edgeU, vec2 edgeV) {
+     return edgeU.x * edgeV.y - edgeU.y * edgeV.x;
+ }
+ 
++vec2 projectedFaceCoordinateNumerators(vec2 delta, vec2 edgeU, vec2 edgeV) {
++    return vec2(delta.x * edgeV.y - delta.y * edgeV.x,
++                edgeU.x * delta.y - edgeU.y * delta.x);
++}
++
+ // The caller rejects degenerate bases before dividing. Coverage ownership is
+ // separate: display faces are half-open; finite shadow footprints are closed.
+ vec2 projectedFaceCoordinates(vec2 delta, vec2 edgeU, vec2 edgeV, float determinant) {
+-    return vec2((delta.x * edgeV.y - delta.y * edgeV.x) / determinant,
+-                (edgeU.x * delta.y - edgeU.y * delta.x) / determinant);
++    const vec2 numerators = projectedFaceCoordinateNumerators(delta, edgeU, edgeV);
++    return vec2(numerators.x / determinant, numerators.y / determinant);
+ }
+ 
+ #endif
+diff --git a/engine/render/src/shaders/ir_sun_face_query_layout.glsl b/engine/render/src/shaders/ir_sun_face_query_layout.glsl
+index dccefb82f..9a088780e 100644
+--- a/engine/render/src/shaders/ir_sun_face_query_layout.glsl
++++ b/engine/render/src/shaders/ir_sun_face_query_layout.glsl
+@@ -39,9 +39,16 @@ bool sourceFaceQueryComplete(uint count) {
+ float sourceFaceRaySeparation(vec2 sunUV, float sunZ, vec3 corner, vec3 edgeU, vec3 edgeV) {
+     const float determinant = projectedFaceDeterminant(vec2(edgeU.x, edgeU.y), vec2(edgeV.x, edgeV.y));
+     if (abs(determinant) < 0.000001) return -1.0;
+-    const vec2 uv = projectedFaceCoordinates(
++    const vec2 numerators = projectedFaceCoordinateNumerators(
+         vec2(sunUV.x - corner.x, sunUV.y - corner.y),
+-        vec2(edgeU.x, edgeU.y), vec2(edgeV.x, edgeV.y), determinant);
++        vec2(edgeU.x, edgeU.y), vec2(edgeV.x, edgeV.y));
++    const float direction = determinant < 0.0 ? -1.0 : 1.0;
++    const float extent = abs(determinant);
++    // A whole coordinate of slack retains rounded boundary hits; the divided
++    // closed-footprint test still decides coverage for every survivor.
++    if (numerators.x * direction < -extent || numerators.x * direction > 2.0 * extent ||
++        numerators.y * direction < -extent || numerators.y * direction > 2.0 * extent) return -1.0;
++    const vec2 uv = vec2(numerators.x / determinant, numerators.y / determinant);
+     if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return -1.0;
+     return sunZ - (corner.z + uv.x * edgeU.z + uv.y * edgeV.z);
+ }
+diff --git a/engine/render/src/shaders/metal/ir_projected_face.metal b/engine/render/src/shaders/metal/ir_projected_face.metal
+index 7afe8ef84..eb8a2aaa3 100644
+--- a/engine/render/src/shaders/metal/ir_projected_face.metal
++++ b/engine/render/src/shaders/metal/ir_projected_face.metal
+@@ -5,11 +5,16 @@ inline float projectedFaceDeterminant(float2 edgeU, float2 edgeV) {
+     return edgeU.x * edgeV.y - edgeU.y * edgeV.x;
+ }
+ 
++inline float2 projectedFaceCoordinateNumerators(float2 delta, float2 edgeU, float2 edgeV) {
++    return float2(delta.x * edgeV.y - delta.y * edgeV.x,
++                edgeU.x * delta.y - edgeU.y * delta.x);
++}
++
+ // The caller rejects degenerate bases before dividing. Coverage ownership is
+ // separate: display faces are half-open; finite shadow footprints are closed.
+ inline float2 projectedFaceCoordinates(float2 delta, float2 edgeU, float2 edgeV, float determinant) {
+-    return float2((delta.x * edgeV.y - delta.y * edgeV.x) / determinant,
+-                (edgeU.x * delta.y - edgeU.y * delta.x) / determinant);
++    const float2 numerators = projectedFaceCoordinateNumerators(delta, edgeU, edgeV);
++    return float2(numerators.x / determinant, numerators.y / determinant);
+ }
+ 
+ #endif
+diff --git a/engine/render/src/shaders/metal/ir_sun_face_query_layout.metal b/engine/render/src/shaders/metal/ir_sun_face_query_layout.metal
+index 14cb025bc..957efe069 100644
+--- a/engine/render/src/shaders/metal/ir_sun_face_query_layout.metal
++++ b/engine/render/src/shaders/metal/ir_sun_face_query_layout.metal
+@@ -29,9 +29,16 @@ inline bool sourceFaceQueryComplete(uint count) {
+ inline float sourceFaceRaySeparation(float2 sunUV, float sunZ, float3 corner, float3 edgeU, float3 edgeV) {
+     const float determinant = projectedFaceDeterminant(float2(edgeU.x, edgeU.y), float2(edgeV.x, edgeV.y));
+     if (abs(determinant) < 0.000001) return -1.0;
+-    const float2 uv = projectedFaceCoordinates(
++    const float2 numerators = projectedFaceCoordinateNumerators(
+         float2(sunUV.x - corner.x, sunUV.y - corner.y),
+-        float2(edgeU.x, edgeU.y), float2(edgeV.x, edgeV.y), determinant);
++        float2(edgeU.x, edgeU.y), float2(edgeV.x, edgeV.y));
++    const float direction = determinant < 0.0 ? -1.0 : 1.0;
++    const float extent = abs(determinant);
++    // A whole coordinate of slack retains rounded boundary hits; the divided
++    // closed-footprint test still decides coverage for every survivor.
++    if (numerators.x * direction < -extent || numerators.x * direction > 2.0 * extent ||
++        numerators.y * direction < -extent || numerators.y * direction > 2.0 * extent) return -1.0;
++    const float2 uv = float2(numerators.x / determinant, numerators.y / determinant);
+     if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return -1.0;
+     return sunZ - (corner.z + uv.x * edgeU.z + uv.y * edgeV.z);
+ }
+diff --git a/scripts/tests/test_render_source_face_pruning.py b/scripts/tests/test_render_source_face_pruning.py
+new file mode 100644
+--- /dev/null
++++ b/scripts/tests/test_render_source_face_pruning.py
+@@ -0,0 +1,224 @@
++"""Compare finite-face pruning with fixed scalar algebra and exact rectangles.
++
++Host float arithmetic disables contraction; GPU fast-math and instruction cost
++require separate native evidence. Counters measure entry into the divided test.
++"""
++
++import re
++import subprocess
++import tempfile
++import unittest
++from pathlib import Path
++
++from test_render_per_axis_caster_position import COMPILER, ROOT, functions
++
++PREAMBLE = r"""
++#include <algorithm>
++#include <cmath>
++#include <cstdint>
++#include <cstdio>
++#include <cstring>
++#include <limits>
++using std::abs;
++struct vec2 {float x,y;vec2(float a,float b):x(a),y(b){}};
++struct vec3 {float x,y,z;};
++unsigned broadRejects=0,divisionPairs=0;
++uint32_t bits(float value){uint32_t result;std::memcpy(&result,&value,4);return result;}
++bool referenceCovered=false;
++vec2 referenceCoordinates(vec2 delta,vec2 edgeU,vec2 edgeV,float determinant){
++    return vec2((delta.x*edgeV.y-delta.y*edgeV.x)/determinant,
++                (edgeU.x*delta.y-edgeU.y*delta.x)/determinant);
++}
++float referenceSeparation(vec2 point,float depth,vec3 corner,vec3 edgeU,vec3 edgeV){
++    referenceCovered=false;
++    const float determinant=edgeU.x*edgeV.y-edgeU.y*edgeV.x;
++    if(abs(determinant)<0.000001f)return -1.f;
++    const vec2 uv=referenceCoordinates({point.x-corner.x,point.y-corner.y},
++                                      {edgeU.x,edgeU.y},{edgeV.x,edgeV.y},determinant);
++    if(uv.x<0.f||uv.y<0.f||uv.x>1.f||uv.y>1.f)return -1.f;
++    referenceCovered=true;
++    return depth-(corner.z+uv.x*edgeU.z+uv.y*edgeV.z);
++}
++using Query=float(*)(vec2,float,vec3,vec3,vec3);
++Query query;
++float lastResult=0;
++unsigned checks=0,covered=0,positive=0,negative=0,degenerate=0,nonfinite=0;
++int compare(vec2 point,float depth,vec3 corner,vec3 edgeU,vec3 edgeV){
++    const float expected=referenceSeparation(point,depth,corner,edgeU,edgeV);
++    const float actual=query(point,depth,corner,edgeU,edgeV);
++    lastResult=actual;
++    ++checks;covered+=referenceCovered&&std::isfinite(expected);
++    nonfinite+=!std::isfinite(expected);
++    if(bits(actual)!=bits(expected)){
++        std::fprintf(stderr,"separation bits: query %u actual=%08x expected=%08x\n",
++                     checks,bits(actual),bits(expected));return 1;
++    }
++    const vec2 a(edgeU.x,edgeU.y),b(edgeV.x,edgeV.y);
++    const float determinant=a.x*b.y-a.y*b.x;
++    positive+=determinant>0;negative+=determinant<0;degenerate+=abs(determinant)<0.000001f;
++    if(std::isfinite(determinant)&&determinant!=0.f){
++        const vec2 delta(point.x-corner.x,point.y-corner.y);
++        const vec2 old=referenceCoordinates(delta,a,b,determinant);
++        const vec2 current=projectedFaceCoordinates(delta,a,b,determinant);
++        if(bits(old.x)!=bits(current.x)||bits(old.y)!=bits(current.y)){
++            std::fprintf(stderr,"coordinate bits\n");return 2;
++        }
++    }
++    return 0;
++}
++uint32_t randomState=0x8351ad27u;
++uint32_t nextRandom(){
++    randomState^=randomState<<13;randomState^=randomState>>17;randomState^=randomState<<5;
++    return randomState;
++}
++float signedRandom(){return float(int(nextRandom()%2049)-1024)/1024.f;}
++"""
++
++CASES = r"""
++int main(int argc,char** argv){
++    query=sourceFaceRaySeparation;
++    if(argc>1&&std::strcmp(argv[1],"no-pruning")==0)query=withoutPruning;
++    if(argc>1&&std::strcmp(argv[1],"tight-bounds")==0)query=tightBounds;
++    if(argc>1&&std::strcmp(argv[1],"lost-sign")==0)query=withoutSign;
++    // The rectangle spans x=[2,6], y=[-3,5], z=5+(x-2)/2-(y+3)/2.
++    for(bool flipU:{false,true})for(bool flipV:{false,true})for(bool swap:{false,true}){
++        vec3 corner{2,-3,5},u{4,0,2},v{0,8,-4};
++        if(flipU){corner.x+=u.x;corner.z+=u.z;u={-u.x,-u.y,-u.z};}
++        if(flipV){corner.y+=v.y;corner.z+=v.z;v={-v.x,-v.y,-v.z};}
++        if(swap)std::swap(u,v);
++        for(float x:{0.f,2.f,4.f,6.f,8.f})for(float y:{-5.f,-3.f,1.f,5.f,7.f}){
++            if(compare({x,y},20,corner,u,v))return 1;
++            const bool inside=x>=2&&x<=6&&y>=-3&&y<=5;
++            const float exact=inside?20.f-(5.f+(x-2.f)*.5f-(y+3.f)*.5f):-1.f;
++            if(bits(lastResult)!=bits(exact)){
++                std::fprintf(stderr,"independent rectangle\n");return 3;
++            }
++        }
++    }
++    const float infinity=std::numeric_limits<float>::infinity();
++    const float tiny=std::numeric_limits<float>::denorm_min();
++    const float boundaries[]={-0.f,0.f,-tiny,tiny,std::nextafter(1.f,0.f),1.f,
++                              std::nextafter(1.f,infinity),-4.f,4.f};
++    for(float x:boundaries)for(float y:boundaries)for(float sign:{-1.f,1.f}){
++        if(compare({x,y},7,{0,0,2},{sign,0,.25f},{0,1,-.5f}))return 1;
++    }
++    const float epsilon=0.000001f;
++    for(float determinant:{0.f,-0.f,std::nextafter(epsilon,0.f),epsilon,
++                          std::nextafter(epsilon,infinity)})for(float sign:{-1.f,1.f}){
++        const float d=determinant*sign;
++        if(compare({.25f,d*.25f},7,{0,0,2},{1,0,.25f},{0,d,-.5f}))return 1;
++        if(referenceCovered!=(abs(d)>=epsilon)){
++            std::fprintf(stderr,"degenerate threshold\n");return 4;
++        }
++    }
++    if(compare({-tiny,.5f},4,{0,0,0},{1e30f,0,0},{0,1,0}))return 1;
++    if(!referenceCovered||!std::signbit(-tiny/1e30f)||-tiny/1e30f!=0.f)return 5;
++    for(float sign:{-1.f,1.f}){
++        if(compare({sign*1e38f,.5f},4,{0,0,0},{sign*2e38f,0,1},{0,1,2}))return 1;
++        if(bits(lastResult)!=bits(2.5f))return 5;
++    }
++    const vec3 extreme[][3]={
++        {{0,0,0},{1e30f,0,1},{0,1e30f,2}},
++        {{0,0,0},{1e30f,1e30f,1},{1e30f,1e30f,2}},
++        {{1e30f,-1e30f,1e30f},{1,0,1},{0,1,2}},
++    };
++    for(const auto& face:extreme){
++        if(compare({5e29f,5e29f},1e30f,face[0],face[1],face[2]))return 1;
++    }
++    // Orthogonal 3D edges from normalized quaternion rotations, with signed scales.
++    for(int transform=0;transform<5000;++transform){
++        double x=signedRandom(),y=signedRandom(),z=signedRandom(),w=signedRandom();
++        const double length=std::sqrt(x*x+y*y+z*z+w*w);
++        if(length==0)continue;
++        x/=length;y/=length;z/=length;w/=length;
++        const float su=std::ldexp(nextRandom()&1?1.f:-1.f,int(nextRandom()%41)-20);
++        const float sv=std::ldexp(nextRandom()&1?1.f:-1.f,int(nextRandom()%41)-20);
++        const vec3 u{float(1-2*(y*y+z*z))*su,float(2*(x*y+z*w))*su,float(2*(x*z-y*w))*su};
++        const vec3 v{float(2*(x*y-z*w))*sv,float(1-2*(x*x+z*z))*sv,float(2*(y*z+x*w))*sv};
++        const float translation=std::ldexp(1.f,int(nextRandom()%61)-20);
++        const vec3 corner{signedRandom()*translation,signedRandom()*translation,
++                          signedRandom()*translation};
++        for(int sample=0;sample<8;++sample){
++            const float a=sample<6?boundaries[sample]:4*signedRandom();
++            const float b=sample<6?boundaries[5-sample]:4*signedRandom();
++            vec2 point(corner.x+a*u.x+b*v.x,corner.y+a*u.y+b*v.y);
++            if(sample==6)point.x=std::nextafter(point.x,infinity);
++            if(sample==7)point.y=std::nextafter(point.y,-infinity);
++            if(compare(point,corner.z+2,corner,u,v))return 1;
++        }
++    }
++    // A far miss in either winding must exit before either coordinate division.
++    for(float sign:{1.f,-1.f}){
++        const unsigned beforeBroad=broadRejects,beforeDivisions=divisionPairs;
++        if(compare({-1.5f,0},4,{0,0,0},{1,0,0},{0,sign,0}))return 1;
++        if(broadRejects!=beforeBroad+1||divisionPairs!=beforeDivisions){
++            std::fprintf(stderr,"miss did not prune before division, winding=%g\n",sign);return 6;
++        }
++    }
++    if(!covered||!positive||!negative||!degenerate||!nonfinite)return 7;
++    std::printf("queries=%u finite_hits=%u broad_rejects=%u division_pairs=%u nonfinite=%u\n",
++                checks,covered,broadRejects,divisionPairs,nonfinite);
++}
++"""
++
++
++def host_shader(source):
++    source = source.replace("float2", "vec2").replace("float3", "vec3")
++    return re.sub(r"(?<![\w.])(\d+\.\d*(?:[eE][+-]?\d+)?)(?![\w.])", r"\1f", source)
++
++
++def harness(suffix, folder):
++    root = ROOT / "engine/render/src/shaders" / folder
++    projected = (root / f"ir_projected_face.{suffix}").read_text()
++    helpers = "\n".join(functions(projected, name) for name in (
++        "projectedFaceDeterminant", "projectedFaceCoordinateNumerators",
++        "projectedFaceCoordinates"))
++    query = functions((root / f"ir_sun_face_query_layout.{suffix}").read_text(),
++                      "sourceFaceRaySeparation")
++    broad = re.search(r"if\s*\(\s*numerators\.x\b[^;]+return\s+-1\.0\s*;", query)
++    if broad is None:
++        raise ValueError("missing numerator rejection")
++    original = broad[0]
++    instrumented = re.sub(r"return\s+-1\.0\s*;", "{ ++broadRejects; return -1.0; }", original)
++    query = query.replace(original, instrumented)
++    query = re.sub(r"(const\s+(?:vec2|float2)\s+uv\s*=)", r"++divisionPairs; \1", query)
++    no_pruning = query.replace(instrumented, "")
++    tight = query.replace(instrumented, instrumented.replace("-extent", "0.0")
++                          .replace("2.0 * extent", "extent"))
++    no_sign, count = re.subn(r"(const\s+float\s+direction\s*=)[^;]+;", r"\1 1.0;", query)
++    if count != 1:
++        raise ValueError("missing determinant sign")
++    queries = query + "\n" + no_pruning.replace("sourceFaceRaySeparation", "withoutPruning")
++    queries += "\n" + tight.replace("sourceFaceRaySeparation", "tightBounds")
++    queries += "\n" + no_sign.replace("sourceFaceRaySeparation", "withoutSign")
++    # The coordinate helper is declared before the comparison adapter calls it.
++    declaration = "vec2 projectedFaceCoordinates(vec2,vec2,vec2,float);\n"
++    adapter = PREAMBLE.replace("unsigned broadRejects=", declaration + "unsigned broadRejects=")
++    return adapter + host_shader(helpers + queries) + CASES
++
++
++@unittest.skipUnless(COMPILER, "finite-face pruning controls require a C++ compiler")
++class SourceFacePruningTest(unittest.TestCase):
++    def test_preserved_separation_and_early_miss_rejection(self):
++        for suffix, folder in (("glsl", ""), ("metal", "metal/")):
++            with self.subTest(backend=suffix), tempfile.TemporaryDirectory() as temporary:
++                path = Path(temporary)
++                source, executable = path / "pruning.cpp", path / "pruning"
++                source.write_text(harness(suffix, folder))
++                build = subprocess.run(
++                    [COMPILER, "-std=c++17", "-O2", "-ffp-contract=off", "-fno-fast-math",
++                     str(source), "-o", str(executable)], capture_output=True, text=True)
++                self.assertEqual(build.returncode, 0, build.stderr)
++                for variant, expected in (("production", 0), ("no-pruning", 6),
++                                          ("tight-bounds", 1), ("lost-sign", 6)):
++                    with self.subTest(variant=variant):
++                        run = subprocess.run([str(executable), variant],
++                                             capture_output=True, text=True)
++                        self.assertEqual(run.returncode, expected, run.stderr)
++                        if variant == "production":
++                            self.assertIn("queries=40380 ", run.stdout)
++                            print(suffix, run.stdout.strip())
++
++
++if __name__ == "__main__":
++    unittest.main()
