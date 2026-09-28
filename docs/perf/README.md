@@ -135,6 +135,8 @@ new bounds are checked when present, and malformed bounds fail validation.
 Active yaw/pan sweeps, `--full-rotate` and the default screenshot suite remain
 moving captures outside the static guard. Translation and pitch/roll are not
 witnessed by this check.
+The [static-camera smoke report](static-camera-profile/README.md) retains a native
+accepted run and describes the deterministic rejection controls.
 
 `--legacy-depth-shadows` on either demo provides the point-caster comparison.
 Use the same pose, population and flags in both arms. GPU values are encoder
