@@ -5,14 +5,13 @@
 #     N --apply ticks files EXACTLY ONE fleet:state-drift tracking issue, then
 #     refreshes it in place (never a second one), and resets when drift clears.
 #   - report-only stays pure: it neither advances persistence nor files issues.
-#   - The tracker lookup itself (`reconcile_open_drift_trackers`) reads REST
+#   - The tracker lookup (`reconcile_open_drift_trackers`) is a REST GET
 #     (`gh api repos/.../issues?labels=fleet:state-drift&state=open`, filtering
-#     out pull requests) rather than `gh issue list --json` (GraphQL), and a
-#     FAILED lookup is distinguished from a CONFIRMED-empty one: a tick whose
-#     lookup errors neither files nor closes a tracker, and a tick that sees
-#     more than one open tracker (the exact state a failed lookup used to
-#     cause) refreshes the newest and closes the rest, naming the survivor in
-#     the close comment.
+#     out pull requests), never `gh issue list` (GraphQL), and a FAILED lookup
+#     is distinguished from a CONFIRMED-empty one: a tick whose lookup errors
+#     neither files nor closes a tracker, and a tick that sees more than one
+#     open tracker refreshes the newest and closes the rest, naming the
+#     survivor in the close comment.
 #
 # Like the C1 test, `gh` is stubbed so the label/PR surfaces are canned JSON.
 # The stub is stateful for the tracker: it keeps an ordered list of open
@@ -95,8 +94,8 @@ case "$1" in
         case "$2" in
             list)
                 printf '%s\n' "$*" >> "$ISSUE_LIST_LOG"
-                # A GraphQL tracker lookup shares $FAIL_LOOKUP with the REST
-                # one, so a regression back to `issue list` fails the same way.
+                # The GraphQL form of the tracker lookup honors $FAIL_LOOKUP
+                # too, so a caller using `issue list` fails the same way.
                 if printf '%s ' "$@" | grep -q 'fleet:state-drift'; then
                     [[ -f "$FAIL_LOOKUP" ]] && exit 1
                     head -n1 "$TRACKER_LIST"
@@ -259,10 +258,9 @@ run_reconcile --apply   # count 3 == threshold → re-file
 create_n=$(wc -l < "$CREATE_LOG" | tr -d ' ')
 [[ "$create_n" == "2" ]] && ok "recurring drift re-files a fresh tracker after auto-close" || bad "no fresh tracker after recurrence (create count=$create_n)"
 
-echo "=== Phase 7: two open trackers → one tick refreshes the newest, closes the other, naming the survivor (AC2) ==="
-# Simulate the exact state a failed lookup used to cause: a second tracker
-# (9010) open alongside the one Phase 6 already filed (9002), newest first
-# per the real REST call's sort=created&direction=desc.
+echo "=== Phase 7: two open trackers → one tick refreshes the newest, closes the other, naming the survivor ==="
+# A second tracker (9010) open alongside the one Phase 6 filed (9002), newest
+# first per the real REST call's sort=created&direction=desc.
 { echo "9010"; cat "$TRACKER_LIST"; } > "$TRACKER_LIST.setup"
 mv "$TRACKER_LIST.setup" "$TRACKER_LIST"
 edit_n_before=$(wc -l < "$EDIT_LOG" | tr -d ' ')
@@ -278,7 +276,7 @@ if printf '%s' "$last_close" | grep -qE '\bissue close 9002\b'; then ok "the dup
 if printf '%s' "$last_close" | grep -q '#9010'; then ok "the close comment names the survivor (#9010)"; else bad "close comment does not name the survivor: $last_close"; fi
 [[ "$(cat "$TRACKER_LIST")" == "9010" ]] && ok "exactly one tracker (#9010) remains open after dedup" || bad "tracker list after dedup: $(cat "$TRACKER_LIST" | tr '\n' ',')"
 
-echo "=== Phase 8: a failing tracker lookup skips filing/refreshing entirely (AC1) ==="
+echo "=== Phase 8: a failing tracker lookup skips filing/refreshing entirely ==="
 create_n_before=$(wc -l < "$CREATE_LOG" | tr -d ' ')
 edit_n_before=$(wc -l < "$EDIT_LOG" | tr -d ' ')
 touch "$FAIL_LOOKUP"
@@ -288,7 +286,7 @@ create_n=$(wc -l < "$CREATE_LOG" | tr -d ' ')
 edit_n=$(wc -l < "$EDIT_LOG" | tr -d ' ')
 [[ "$edit_n" == "$edit_n_before" ]] && ok "a failed lookup also skips the refresh (no gh issue edit)" || bad "a failed lookup still edited anyway (edit count $edit_n_before -> $edit_n)"
 
-echo "=== Phase 9: drift clears but the lookup still fails → no gh issue close, tick still exits 0 (AC3) ==="
+echo "=== Phase 9: drift clears but the lookup still fails → no gh issue close, tick still exits 0 ==="
 echo '[]' > "$ISSUES_JSON"   # issue 700 no longer queued+human:owned
 close_n_before=$(wc -l < "$CLOSE_LOG" | tr -d ' ')
 rc=0

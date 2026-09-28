@@ -5201,10 +5201,8 @@ PYEOF
         else
             echo "  reconcile --apply: failed to refresh fleet:state-drift tracker #$existing" >&2
         fi
-        # More than one tracker open (the exact state a failed lookup used to
-        # cause): the newest survives, every other closes naming it, so the
-        # tick converges back to one deduped tracker instead of refreshing
-        # them all forever.
+        # More than one tracker open: the newest survives and every other
+        # closes naming it, so the tick converges on one deduped tracker.
         while IFS= read -r t; do
             [[ -z "$t" || "$t" == "$existing" ]] && continue
             if gh issue close "$t" --repo "$FLEET_GITHUB_REPO" \
