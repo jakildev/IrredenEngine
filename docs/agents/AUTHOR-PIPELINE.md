@@ -98,6 +98,13 @@ nor an `**Acceptance criteria**` block.
    the plan; a criterion whose literal wording the diff violates is
    *Fails*, not "met in substance".
 
+**Render-verify rows.** A render-verify criterion is met when every row
+the PR moves passes, and every other failing row fails with the same
+metrics on a master control run in the same session and is tracked by an
+open re-bless issue. The PR body shows that control row by row. A row that
+fails only on the PR head, or a tracked row whose metrics differ from the
+control, still fails.
+
 If `commit-and-push`'s simplify pass applies a behavior-affecting fix,
 re-run the affected checks before the PR opens; the reviewer grades this
 table against the plan.
