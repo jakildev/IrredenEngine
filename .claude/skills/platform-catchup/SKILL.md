@@ -236,6 +236,29 @@ Pass criteria, all required:
 - ≥ 1 `Saved screenshot:` line. None → the "no-shots" bucket, never a pass.
 - No `panic`, `segmentation fault`, `FATAL`, `[error]` in the log tail.
 
+### 6b. Parity leg (`windows-x86_64` only)
+
+The smoke pass proves every demo builds and runs; this leg checks the demos
+that carry Windows references still render as those references say. Run it
+for every demo with a `creations/demos/<demo>/test/references/windows-debug/`
+set, plus every manifest with only `structural` gates (`IRAnalyticOracle`),
+skipping targets that failed step 5:
+
+    python3 scripts/render-verify.py --target <T> --no-build \
+      > <log-dir>/parity-<T>.log 2>&1
+
+`render-verify` exit 0 with `all N checks PASS` is **green**; any `FAIL` row
+or a non-zero exit is **red**. A demo with no `windows-debug` set is
+**skipped**, not red (render-verify only runs its structural gates there).
+A pass Windows hang handling closed twice (`RESULT=HOST-CLOSED`, reported
+by render-verify as no verdict) is **no-verdict**: it holds like red but is
+reported apart from it.
+
+A red demo's source tree joins the held-paths set exactly as a step 6
+runtime failure does (the 8b hold-back table), whatever step 7 decides.
+Parity never adds or removes a label by itself, and never changes the step 7
+outcome.
+
 ### 7. Decide outcome
 
 | Build | Run | Outcome |
@@ -247,7 +270,8 @@ Pass criteria, all required:
 
 ### 8a. green — full label sweep
 
-For every merged PR in the backlog, serially:
+For every merged PR in the backlog whose `gh pr diff <N> --name-only` touches
+no step 6b red demo's tree, serially:
 
 ```bash
 gh pr edit <N> --repo <repo> \
@@ -256,13 +280,13 @@ gh pr edit <N> --repo <repo> \
 ```
 
 OPEN PRs keep their label. Marker: `last_verified_commit = origin/master HEAD`,
-`last_outcome = "green"`.
+`last_outcome = "green"`, `held_prs = [<parity-held PRs>]`.
 
 ### 8b. partial-runtime — sweep most, hold the offender's PRs
 
 A runtime hang or per-demo crash implicates only that demo's source paths.
 Sweep every merged PR except those whose `gh pr diff <N> --name-only` touches
-the offending demo's tree:
+the offending demo's tree or a step 6b red demo's tree:
 
 | Offending demo | Hold-back path glob |
 |---|---|
@@ -350,6 +374,8 @@ platform-catchup: <repo> on <host-tag>
   master:  <oid> (<git log --oneline -1>)
   build:   <X/Y> targets clean (<failed>)
   run:     <X/Y> targets pass (<failed>)
+  parity:  green <demos> | red <demos> (held) | no-verdict <demos> (held)
+           | skipped <demos> (no windows-debug set)
   outcome: <green | partial-runtime | partial-build | red>
   swept:   <N> PRs (fleet:needs-<label-host-tag>-smoke → fleet:verified-<label-host-tag>)
   held:    <N> PRs (touched <held-paths>; will sweep after <PR/issue> resolves)
