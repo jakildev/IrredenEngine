@@ -488,7 +488,9 @@ the bilinear splat taps are sampled at `kNormalBiasVoxels` along the normal. The
 exact source-face and nearest-tap queries stay unbiased. World-unit depth picks
 the coarser cascade near the split, where a nearby caster's coverage-splat dilation
 reaches past the box's sun-side edge and darkens its lit face.
-`test_render_shape_cascade_depth.py` executes the depth against the canvas inverse. Ambient,
+`test_render_shape_cascade_depth.py` executes the depth against the canvas inverse;
+`test_render_shape_pcf_bias.py` executes each sun wrapper's query position and
+checks that the fragment's splat taps land where the raster receiver's do. Ambient,
 direct, local and sky contributions compose in linear space before exposure
 and display mapping. Alpha, stored coverage, depth and hover ownership remain
 unchanged.
