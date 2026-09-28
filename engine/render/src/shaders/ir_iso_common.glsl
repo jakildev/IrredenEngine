@@ -860,6 +860,13 @@ vec2 pos3DtoPos2DIsoYawed(vec3 worldPos, float visualYaw) {
 // centroid, equal in amplitude to the ordinary coverage noise.
 const vec3 kVoxelRasterCellAnchor = vec3(0.5);
 
+// Composite-depth displacement of the lower-corner raster lattice from an
+// authored surface, in subdivided depth units. Odd densities round toward the
+// deeper key so an analytic surface never sorts in front of its voxel twin.
+int cardinalRasterLatticeDepthOffset(int subdivisions) {
+    return (3 * subdivisions + 1) / 2;
+}
+
 vec2 pos3DtoPos2DIsoYawedCellAnchor(vec3 rasterPos, float visualYaw) {
     return pos3DtoPos2DIsoYawed(rasterPos - kVoxelRasterCellAnchor, visualYaw);
 }

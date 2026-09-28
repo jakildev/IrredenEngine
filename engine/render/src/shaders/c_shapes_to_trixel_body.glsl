@@ -884,6 +884,12 @@ void main() {
     } else {
         int originDistance = originScaled.x + originScaled.y + originScaled.z;
         baseDepth = surfaceD + originDistance;
+        // Store selection is per canvas, not per camera pose. Main/entity
+        // canvases reach this arm at cardinals; other canvases use the
+        // cardinal-snap + faceDeform raster store at every yaw.
+        if (smoothMode && !smoothYaw) {
+            baseDepth += cardinalRasterLatticeDepthOffset(sub);
+        }
     }
 #if IR_SHAPE_PASS == 1
     vec4 baseColor = unpackColor(shape.color);

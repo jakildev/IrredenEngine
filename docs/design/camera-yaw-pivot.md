@@ -108,33 +108,11 @@ helper.
      shift along the view axis that is invisible on screen and puts every
      cardinal key 1.5 yawed-depth units behind the surface the pixel shows.
      Taking it off lands `W` on the visible surface, to within one micro-face.
-     The per-axis (non-cardinal) store keys without that shift, so its sample is
-     used as-is. The analytic SDF store keys without it at a cardinal too, so
-     the latch takes the lattice off only when a **voxel-store** fragment won
-     the sampled pixel. Next to the depth readback, at cardinal sources only,
-     `RenderManager` reads the main canvas's distance and entity-id textures
-     in the 3×3 block (`C_TriangleCanvasTextures::readTexelBlock3x3`) around
-     `defaultPivotCrosshairCanvasTexel` — the hover path's cursor→texel
-     mapping evaluated at the canvas center with the source frame's effective
-     camera and subdivisions — and reads the subject off the texels whose
-     stored key equals the sampled one
-     (`defaultPivotSampledSubjectIsVoxelStore`). The mapping is measured exact
-     on Metal, and both gathers read the texel at the same clamped
-     `displayOrigin`; the cardinal composite copies the canvas key texel for
-     texel, so the key match also finds a displayed texel one off the
-     estimate. An SDF shape winner (`C_ShapeDescriptor`) latches its key as it
-     stands; a voxel-store winner is a live `C_VoxelSetNew`
-     (`RenderManager::texelSubjectIsVoxelStore`). Both stores write the
-     winner's id at the texel that holds its depth. The classifier never
-     applies a branch on a subject it has not established: when no texel in
-     the block holds the sampled key, when one that does names neither store
-     (the previous frame's id of an entity UPDATE destroyed before the
-     readback) or both (an entity carrying both components, whose id either
-     store can write), when the texels that do disagree on subject (a voxel/SDF seam
-     at equal key), or when the block reaches past the canvas edge, the latch **holds** its
-     previous anchor, as it does for a background sample. The branch exists only for
-     the voxel/SDF store disagreement (§"Known deviations" 2, #3742) and goes
-     with it. The latch stores `isoDepth = W.x + W.y + W.z` and a view
+     Subdivided analytic SDF cardinals use that same raster-lattice key;
+     subdivision-one lattice walks are unchanged. The per-axis (non-cardinal)
+     store keys without the shift, so its sample is used as-is. No producer
+     classification is needed because the composite key has one convention.
+     The latch stores `isoDepth = W.x + W.y + W.z` and a view
      offset `o = C − cameraIso − pos3DtoPos2DIso(W)`; by construction the
      effective camera of the source pose is unchanged, so **acquisition never
      moves the view**. A source within `kYawSettleDelta` of yaw 0 latches `d`
@@ -178,8 +156,8 @@ helper.
 
    **Verification.** `test/render/default_pivot_latch_test.cpp` drives the latch
    frame by frame — pan, zoom, in-RENDER yaw mutation, background, the mode
-   gate, the stamped divisor, the cardinal lattice and its subject branch, the
-   crosshair texel — and asserts the effective camera across an acquisition at
+   gate, the stamped divisor, and the shared cardinal lattice — and asserts the
+   effective camera across an acquisition at
    yaw 0, 22.5°, ±45°, 90° and 180°.
    `scripts/pivot-verify.py`'s sweep blocks assert per gesture: every shot is a
    pose snap, so each shot whose yaw changed acquires from the previous shot's
@@ -215,18 +193,15 @@ helper.
      at all, the gesture's hold/acquire classification is undecidable: it is
      reported (`result=SKIP skip=grazing`), not graded, the harness prints each
      block's skip count, and a block whose every gesture is skipped fails.
-   - **SDF subject** — the `center-column` SDF twin (`--pivot-verify-sdf`)
-     grades its cardinal gestures against the same surface entry at half the
-     cardinal store lattice, `kCardinalStoreLatticeDepth / 2` = 0.75 yawed
-     depth = `√3/4` ≈ 0.433 world, on both backends and at every zoom. The
-     row grades the subject branch, not the SDF key's accuracy against the
-     surface: a misbranch that subtracts the lattice from an SDF key reads
-     0.94–1.14 world, and the largest SDF key offset measured (0.348, OpenGL,
-     zoom 4) passes. The voxel rows keep the micro-face bound. The row and the
-     branch are removed together when the stores are co-sorted (§"Known
-     deviations" 2). Its per-axis gestures are reported, not graded
-     (`skip=sdf-per-axis`): the per-axis bound is derived from the voxel
-     store's face origins.
+   - **SDF cardinal** — at subdivisions above one, the `center-column` and
+     `center-axis` SDF twins (`--pivot-verify-sdf`) use the same one-micro-face
+     focus bound as the voxel runs. `center-axis` also reads each twin's raw
+     composite depth at the shared-surface crosshair and fails when the four
+     subdivided cardinal pairs differ by more than `2/effSub` depth units.
+     Subdivision one is the unchanged lattice-walk control and is verified by
+     the before/after render pair. Per-axis gestures are reported, not graded
+     (`skip=sdf-per-axis`): the per-axis bound is derived from voxel face
+     origins.
 
    The `acquire-continuity` block pans the probe under the crosshair at yaw 0,
    22.5° and 180° and scores the frames straddling the acquisition with
@@ -411,15 +386,12 @@ closes:
    |---|---|---|
    | voxel, cardinal (residual yaw 0) | surface entry + 1.5 (lower-corner lattice), within one micro-face | latch subtracts 1.5; graded at one micro-face |
    | voxel, per-axis | the winning face origin's yawed depth, quantized to `1/effSub` | used as-is; graded at the derived bound |
-   | SDF, cardinal | surface entry − one quantum, no lattice (Metal; OpenGL keys it 0.3–0.6 depth units in front, #3861) | the latch reads the winner's id and does not subtract; the `center-column` SDF twin grades the branch at half the lattice (0.433 world) |
+   | SDF, subdivided cardinal | surface entry + 1.5 raster-lattice offset, within one micro-face | latch subtracts 1.5; raw voxel/SDF pair is gated at one micro-face |
 
-   The voxel and SDF stores disagree with each other by 1.5 at a subdivided
-   cardinal, which is a sort-order defect of its own, independent of the pivot:
-   #3742 (**open**). Until it lands the latch branches on the winning subject
-   (`RenderManager::crosshairWinnerIsVoxelStore`), one entity-id read per
-   cardinal gesture start, and holds when the subject is unestablished; the
-   change that co-sorts the two stores deletes that branch and subtracts for
-   every winner, and removes the SDF twin's cardinal row with it.
+   Subdivision-one SDF lattice walks and smooth-yaw per-axis keys do not take
+   the analytic cardinal offset. Canvases that do not enable smooth yaw use the
+   cardinal-snap + faceDeform raster store at every yaw, so their subdivided
+   analytic keys take the offset at every yaw as well.
 
    `center-axis` is centroid-gated at a bound AFFINE in zoom — `1.5 px/zoom +
    1.0 px` of game resolution, scaled by the run's own `outputScaleFactor`
@@ -663,20 +635,23 @@ which is what still catches an SDF-side pivot regression (#2851).
   sources and is graded against the ray's surface entry at one micro-face;
   per-axis sources are graded at a bound derived from the face-origin offset,
   and grazing gestures are reported, not graded. `center-axis` moved onto the
-  acquired surface point. The SDF store keys without the lattice (#3742).
-- #3169, D19 — the SDF store's missing lattice is answered by a subject branch:
-  the latch reads the winning entity id next to the depth and subtracts only
-  for a voxel-store winner, and an SDF `center-column` twin grades it. A
+  acquired surface point. At that stage the SDF store still keyed without the
+  lattice, which #3742 later unified.
+- #3169, D19 — the SDF store's missing lattice was temporarily answered by a
+  subject branch: the latch read the winning entity id next to the depth and
+  subtracted only for a voxel-store winner, and an SDF `center-column` twin
+  graded it. A
   per-axis reading of 1.051 against a 0.841 bound traced to the crosshair ray
   clipping a cell corner for 0.040 depth units; per-axis sources are now graded
   against the first cells of the pixel's nine footprint rays.
 - #3169, D20 — the SDF row read 0.289–0.348 world on OpenGL against the
   micro-face bound it had inherited from the voxel rows, the SDF key's own
-  offset rather than a misbranch (filed as #3861). The row now grades the
-  branch at half the lattice. The classifier's fallbacks (no key match, a
-  block past the canvas edge) had classified an unestablished subject; they,
-  and key-matching texels that disagree on subject, now hold. So does a
-  key-matching texel whose id is neither a live voxel set nor a live shape: the
-  id of a winner destroyed since its frame had read as the voxel store — and
-  one whose entity carries both a voxel set and a shape, whose id does not say
-  which store wrote it.
+  offset rather than a misbranch (filed as #3861). The temporary row was
+  changed to grade the branch at half the lattice. The temporary classifier
+  was then hardened so no key match, an edge-overlapping block, disagreeing
+  matching texels, a dead winner id, and an entity carrying both store
+  components all held the prior anchor instead of guessing a subject.
+- #3742 — subdivided analytic SDF cardinal keys adopt the raster-lattice
+  offset, so voxel and SDF winners share one composite-depth convention. The
+  temporary subject classifier and its 3×3 distance/entity readback are gone;
+  every cardinal acquisition subtracts the shared 1.5-unit lattice depth.

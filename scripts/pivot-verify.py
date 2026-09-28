@@ -36,9 +36,12 @@ so the voxel-pool and SDF render paths' pivot conventions are compared A/B.
 The twin is gated at its own floor-aware bound (``SDF_BOUND_GAME_PX``, #2851),
 so the SDF path's pivot convention is machine-checked against the same
 invariance contract; the printed voxel/SDF rows stay the A/B diagnostic.
-``center-column`` runs an SDF twin too, gated by its cardinal gestures' focus
-asserts (``SDF_FOCUS_BLOCKS``): the default pivot's acquisition off an SDF
-surface.
+``center-column`` and ``center-axis`` run SDF twins too, gated by their
+cardinal gestures' focus asserts (``SDF_FOCUS_BLOCKS``). ``center-axis`` also
+pairs the twins' raw composite-depth samples at the shared-surface crosshair;
+at subdivided zooms their difference must fit one micro-face
+(``2/effSub`` depth units), while subdivision one remains the unchanged
+lattice-walk control.
 
 Two oracles, applied per block:
 
@@ -99,16 +102,11 @@ import verify_common
 ALL_BLOCKS = ["focus-ctr", "focus-off", "center-column", "center-depth",
               "background-center", "center-axis", "cursor-latch",
               "acquire-continuity"]
-SDF_BLOCKS = ["focus-ctr", "center-column"]
-# SDF twins graded by the per-gesture focus oracle. The SDF shape store keys a
-# cardinal fragment on the surface where the voxel store keys it on a lattice
-# 1.5 depth units behind, so the latch branches on the winning subject; this
-# twin is the gate that reads the SDF side of that branch, at half the lattice
-# (the demo's tolerance) rather than the voxel rows' micro-face, so it grades
-# the branch and not the SDF key's accuracy. Its per-axis gestures
-# are reported, not graded (`skip=sdf-per-axis`): the per-axis bound is derived
-# from the voxel store's face origins.
-SDF_FOCUS_BLOCKS = {"center-column"}
+SDF_BLOCKS = ["focus-ctr", "center-column", "center-axis"]
+# SDF twins whose flat-cap cardinal gestures share the voxel oracle. Per-axis
+# gestures remain reported rather than graded (`skip=sdf-per-axis`), because
+# that bound is derived from voxel face origins.
+SDF_FOCUS_BLOCKS = {"center-column", "center-axis"}
 # Blocks that derive their focus rather than taking an explicit
 # setRotationPivotFocus.
 DEFAULT_PIVOT_BLOCKS = {"center-column", "center-depth", "background-center",
@@ -236,6 +234,10 @@ FOCUS_ASSERT_RE = re.compile(
     r"(?:.*? skip=(?P<skip>\S+))?.*?"
     r"world_delta=(?P<delta>\S+) tolerance=(?P<tolerance>\S+) "
     r"view_held=(?P<held>[01]) result=(?P<result>PASS|FAIL|SKIP)")
+COMPOSITE_DEPTH_RE = re.compile(
+    r"\[pivot-composite-depth\].*?shot=(?P<shot>\d+) .*?subject=(?P<subject>\w+) "
+    r"valid=(?P<valid>[01]) tier=(?P<tier>-?\d+) raw_iso=(?P<raw_iso>-?\d+) "
+    r"eff_sub=(?P<eff_sub>\d+)")
 
 
 def _parse_point(text: str) -> tuple[float, ...]:
@@ -323,6 +325,54 @@ def _score_focus_asserts(output: str, block: str) -> tuple[str, str]:
                        f"{len(set(derived))} values")
     return "OK", (f"{len(matches)} shots, {len(set(derived))} distinct "
                   f"derived value(s); {skip_note}")
+
+
+def _parse_composite_depths(output: str, subject: str) -> dict[int, tuple[int, int]]:
+    readings = {}
+    for match in COMPOSITE_DEPTH_RE.finditer(output):
+        fields = match.groupdict()
+        if fields["subject"] != subject:
+            continue
+        if fields["valid"] != "1" or fields["tier"] != "0":
+            continue
+        readings[int(fields["shot"])] = (
+            int(fields["raw_iso"]), int(fields["eff_sub"]))
+    return readings
+
+
+def _score_composite_cosort(
+    voxel: dict[int, tuple[int, int]], sdf: dict[int, tuple[int, int]]
+) -> tuple[str, float, float, str]:
+    missing = [i for i in CARDINAL_FRAME_INDICES if i not in voxel or i not in sdf]
+    if missing:
+        return "KEY-MISSING", float("nan"), float("nan"), (
+            f"missing valid tier-0 paired sample(s) at shot {missing}")
+
+    rows = []
+    max_delta = 0.0
+    bound = 0.0
+    for shot in CARDINAL_FRAME_INDICES:
+        voxel_raw, voxel_sub = voxel[shot]
+        sdf_raw, sdf_sub = sdf[shot]
+        if voxel_sub != sdf_sub or voxel_sub <= 0:
+            return "KEY-MISSING", float("nan"), float("nan"), (
+                f"shot {shot} subdivision mismatch voxel={voxel_sub} sdf={sdf_sub}")
+        delta = abs(voxel_raw - sdf_raw) / voxel_sub
+        shot_bound = 2.0 / voxel_sub
+        max_delta = max(max_delta, delta)
+        bound = max(bound, shot_bound)
+        rows.append(
+            f"shot {shot}: voxel={voxel_raw / voxel_sub:.3f} "
+            f"sdf={sdf_raw / sdf_sub:.3f} delta={delta:.3f}")
+    subdivisions = {sample[1] for sample in voxel.values()} | {
+        sample[1] for sample in sdf.values()}
+    # Subdivision one never enters the continuous solver changed here.
+    # Its paired samples are reported as a preservation control; the same-host
+    # before/after render comparison proves identity for that path.
+    if subdivisions == {1}:
+        return "LATTICE", max_delta, float("nan"), "; ".join(rows)
+    verdict = "CO-SORT" if max_delta <= bound else "KEY-MISMATCH"
+    return verdict, max_delta, bound, "; ".join(rows)
 
 
 def _output_scale_factor(frame: Path, config: Path) -> float:
@@ -448,6 +498,7 @@ def main(argv: list[str] | None = None) -> int:
                 passes.append((block, True, zoom, None))
 
     results: list[tuple[str, str, float, float, int, str]] = []
+    composite_depths: dict[tuple[float, bool], dict[int, tuple[int, int]]] = {}
     for block, sdf, zoom, base_yaw in passes:
         yaw_label = "" if base_yaw is None else f"@y{math.degrees(base_yaw):g}"
         label = (f"{block}{'-sdf' if sdf else ''}"
@@ -472,6 +523,9 @@ def main(argv: list[str] | None = None) -> int:
             results.append((label, "CRASH", float("nan"), float("nan"),
                             len(frames), "-"))
             continue
+        if block == "center-axis":
+            composite_depths[(zoom, sdf)] = _parse_composite_depths(
+                output, "sdf" if sdf else "voxel")
         if len(frames) < 3:
             print(f"[pivot-verify] ({label}) only {len(frames)} frames captured",
                   file=sys.stderr)
@@ -508,7 +562,15 @@ def main(argv: list[str] | None = None) -> int:
                                     scale * (px_per_zoom * zoom + floor_px))
         centroid, dev_x, dev_y, _ = _score_pass(probe_exe, frames,
                                                 max_deviation)
-        if block in CENTROID_GATED_BLOCKS or block == "acquire-continuity":
+        if sdf and block == "center-axis" and zoom == 1.0:
+            verdict = "LATTICE"
+        elif sdf and block in SDF_FOCUS_BLOCKS:
+            # These twins have a direct analytic focus oracle. Their centroid
+            # is still reported, but destination-grid quantization is not a
+            # second gate on the same acquisition contract.
+            verdict = {"OK": "FOCUS-OK", "BAD": "FOCUS-BAD",
+                       "NONE": "NO-ASSERT"}[focus]
+        elif block in CENTROID_GATED_BLOCKS or block == "acquire-continuity":
             verdict = centroid if focus in ("-", "OK") else "FOCUS-BAD"
         else:
             # Not centroid-gated, so the focus oracle is this pass's only gate.
@@ -519,7 +581,18 @@ def main(argv: list[str] | None = None) -> int:
                        "NONE": "NO-ASSERT"}[focus]
         results.append((label, verdict, dev_x, dev_y, len(frames), focus))
 
-    passing = {"PINNED", "FOCUS-OK"}
+    if "center-axis" in blocks and not args.skip_sdf:
+        for zoom in zooms:
+            verdict, delta, bound, detail = _score_composite_cosort(
+                composite_depths.get((zoom, False), {}),
+                composite_depths.get((zoom, True), {})
+            )
+            print(f"[pivot-verify] (center-axis-cosort@z{zoom:g}) {detail}",
+                  file=sys.stderr)
+            results.append((f"center-axis-cosort@z{zoom:g}", verdict,
+                            delta, bound, len(CARDINAL_FRAME_INDICES), "RAW"))
+
+    passing = {"PINNED", "FOCUS-OK", "CO-SORT", "LATTICE"}
     print()
     print(f"{'pass':<28} {'verdict':<10} {'dev_x(px)':>10} {'dev_y(px)':>10} "
           f"{'frames':>7} {'focus':>7}")
@@ -535,7 +608,10 @@ def main(argv: list[str] | None = None) -> int:
           "a block's zoom-scaled CENTROID_BOUND_GAME_PX entry, or "
           f"SDF_BOUND_GAME_PX ({SDF_BOUND_GAME_PX:g}) for the SDF twin) "
           "· FOCUS-OK = derived focus matched the analytic pin; the "
-          "silhouette deviation is reported, not gated")
+          "silhouette deviation is reported, not gated · CO-SORT = paired "
+          "subdivided cardinal raw keys differ by at most one micro-face "
+          "· LATTICE = z1 unchanged-path control (identity is checked by the "
+          "before/after render comparison)")
     if failed:
         print(f"pivot-verify: {failed}/{len(results)} passes FAILED")
         return 1

@@ -78,14 +78,6 @@ class RenderManager {
     // source a gesture starting next frame acquires from. Called once per
     // frame by TRIXEL_TO_FRAMEBUFFER.
     void stampDefaultPivotSourceFrame();
-    // Which store an entity id read off a canvas texel names: true for a live
-    // voxel-store subject (C_VoxelSetNew), false for a live SDF shape-store one
-    // (C_ShapeDescriptor), nullopt for anything else. The texel belongs to the
-    // previous rendered frame and UPDATE destroys entities in between, so a
-    // dead id is common, and ids never recycle — nullopt is its only honest
-    // answer. An entity carrying both components is nullopt too: either store
-    // can write its id, so the id does not say which one won the texel.
-    static std::optional<bool> texelSubjectIsVoxelStore(EntityId entityId);
     // Iso coordinate of the main canvas center with no camera applied.
     vec2 getCanvasCenterIso() const;
     // Iso coordinate of the viewport center — the point a world position must
@@ -208,12 +200,6 @@ class RenderManager {
     // this class owns only the readback it admits.
     DefaultPivotLatch m_defaultPivotLatch;
     bool defaultPivotOwnsDepth() const;
-    // Whether the fragment an acquisition's depth sample (@p sampledEncodedDepth,
-    // the composite's encoded key) came from belongs to the voxel store, whose
-    // cardinal key sits on a lattice the latch removes. nullopt at a
-    // non-cardinal source, where the subject is not read, and wherever the
-    // canvas does not establish it.
-    std::optional<bool> crosshairWinnerIsVoxelStore(int sampledEncodedDepth) const;
     bool m_hoveredTrixelVisible = true;
     int m_voxelRenderSubdivisions = 1;
     // Unit vector pointing from surfaces toward the sun. Default is a
