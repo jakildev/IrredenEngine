@@ -16,7 +16,8 @@ State:
    "labels": {"<name>": {"description": str|null, "color": str}},
    "issues": {"<N>": {"title", "body": str|null, "state": "open"|"closed",
                       "labels": [names], "created_at", "updated_at",
-                      "comments": [{"id", "body", "user", "created_at"}]}},
+                      "comments": [{"id", "body", "user", "created_at",
+                                    optional "minimized_reason"}]}},
    "pulls":  {"<N>": issue keys plus "head", "sha", "base", "draft",
                      "merged_at": str|null, "mergeable": bool|null},
    "reviews": {"<N>": [{"commit_id", "state"}]}}
@@ -186,7 +187,8 @@ def gh_object(state, kind, number):
            "comments": [{"id": f"IC_{c['id']}", "author": {"login": c["user"]},
                          "authorAssociation": "OWNER", "body": c["body"],
                          "createdAt": c["created_at"], "includesCreatedEdit": False,
-                         "isMinimized": False, "minimizedReason": "",
+                         "isMinimized": bool(c.get("minimized_reason")),
+                         "minimizedReason": c.get("minimized_reason", ""),
                          "reactionGroups": [], "viewerDidAuthor": False,
                          "url": comment_url(state, number, c)}
                         for c in rec.get("comments", [])]}

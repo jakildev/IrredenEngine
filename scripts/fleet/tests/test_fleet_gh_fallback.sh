@@ -9,9 +9,9 @@
 #
 #   T1  view / list / edit / comment / create: throttled == unthrottled, and
 #       only the throttled run reaches `gh api` (positive fire)
-#   T2  unmodeled shapes keep the GraphQL refusal and make no REST call;
-#       a comments --jq program that reads a key REST cannot supply keeps
-#       it too, whether it names the key or reaches it dynamically
+#   T2  unmodeled shapes keep the GraphQL refusal and make no REST call,
+#       including every comments --jq program outside the audited census
+#       shapes, even one whose output GraphQL would make differ
 #   T3  label writes keep gh's semantics: an unknown label fails with no
 #       POST, removing an absent label is a no-op
 #   T4  a --jq list whose first page is not the whole result fails closed;
@@ -119,6 +119,8 @@ for n in range(131, 271):
 issues["131"]["comments"] = [
     {"id": 11, "body": "ordinary", "user": "a", "created_at": stamp(1)},
     {"id": 12, "body": "## Plan\n\nsteps", "user": "b", "created_at": stamp(2)},
+    {"id": 13, "body": "stale note", "user": "c", "created_at": stamp(3),
+     "minimized_reason": "OUTDATED"},
 ]
 json.dump({"repo": "acme/widgets", "labels": labels, "pulls": pulls, "issues": issues,
            "reviews": {}}, open(sys.argv[1], "w"), indent=1, sort_keys=True)
@@ -194,7 +196,12 @@ refused_verbatim() {
 BODY_FILE="$TMPROOT/comment-body.md"
 printf 'from a file\n\n- with <markup> & "quotes"\n' > "$BODY_FILE"
 TSV='[.state, .baseRefName, ([.labels[].name] | join(","))] | @tsv'
-PLAN='[.comments[] | select(.body | test("^## Plan"))] | length'
+# The census programs verbatim from their callers, so a caller edit that
+# leaves the audited shape fails here rather than silently going unmodeled.
+PLAN=$(grep -o '\[\.comments\[\] | select(.body | test("[^'"'"']*"))\] | length' "$SCRIPT_DIR/fleet-claim" || true)
+MERGER=$(grep -o '\[\.comments\[\] | select(.body | test("[^'"'"']*"))\] | last | \.body' \
+    "$SCRIPT_DIR/../../.claude/commands/role-merger.md" || true)
+[[ -n "$PLAN" && -n "$MERGER" ]] || { echo "test setup: a census program was not found in its caller" >&2; exit 2; }
 
 echo "T1: modeled shapes are identical over REST"
 identity "issue view" issue view 200 --json number,title,body,state,url,labels,createdAt,updatedAt
@@ -204,9 +211,10 @@ identity "pr view, every field" pr view 12 --repo acme/widgets \
 identity "pr view, null body + draft" pr view 77 -R acme/widgets --json body,isDraft,mergeable,labels
 identity "pr view --jq @tsv" pr view 20 --json state,baseRefName,labels --jq "$TSV"
 identity "pr view -q labels" pr view 5 --json labels -q '.labels[].name'
-identity "issue view comments --jq" issue view 131 --json comments --jq "$PLAN"
-identity "issue view comments, gh's key set" issue view 131 --json comments \
-    --jq '.comments[0] | keys | join(",")'
+identity "issue view comments, fleet-claim plan count" issue view 131 --json comments --jq "$PLAN"
+identity "pr view comments, no match prints null" pr view 12 --json comments \
+    --jq '[.comments[] | select(.body | test("ordinary"))] | last | .body'
+identity "issue view comments, merger program" issue view 131 --json comments --jq "$MERGER"
 identity "issue view null body --jq" issue view 135 --json body --jq .body
 identity "pr list, default limit" pr list --json number,title
 identity "pr list --state all across pages" pr list --state all --limit 120 --json number,state,isDraft,mergedAt
@@ -233,18 +241,19 @@ refused_verbatim "edit --title" pr edit 12 --title renamed
 refused_verbatim "list --search" pr list --search foo --json number
 refused_verbatim "comments beside another field" issue view 131 --json comments,title --jq .title
 refused_verbatim "body from stdin" issue comment 131 --body-file -
-refused_verbatim "named unsourced comment key" issue view 131 --json comments \
-    --jq '.comments[0].includesCreatedEdit'
-# Dynamic reads need the comments page first, so these make REST calls.
-for prog in '.comments' '.comments[0] | tojson' \
-    '[.comments[] | to_entries[] | select(.key | startswith("isMin")) | .value]'; do
-    arm rest 1 issue view 131 --json comments --jq "$prog"
-    assert_eq "$(cat "$OUT/rest.rc")" "1" "unsourced comment key via '$prog': exits 1"
-    assert_eq "$(cat "$OUT/rest.err")" "$REFUSAL" "unsourced comment key via '$prog': replays the refusal"
-    assert_eq "$(wc -c < "$OUT/rest.out" | tr -d ' ')" "0" "unsourced comment key via '$prog': prints nothing"
-    same_bytes "$SEED" "$OUT/rest.state" && ok "unsourced comment key via '$prog': state untouched" \
-        || bad "unsourced comment key via '$prog': state changed"
+for prog in '.comments[0].includesCreatedEdit' '.comments' '.comments[0] | tojson' \
+    '.comments[0] | keys | join(",")' \
+    '[.comments[] | select(.body | test("x\(.isMinimized)"))] | length' \
+    '[.comments[] | select(.body | test("Plan"))] | last'; do
+    refused_verbatim "comments --jq outside the census: '$prog'" issue view 131 --json comments --jq "$prog"
 done
+# A value outside any finite probe set: GraphQL counts the OUTDATED comment,
+# a REST projection could not, so the refusal is the only faithful answer.
+OUTDATED='[.comments[] | to_entries[] | select(.key | startswith("minimized")) | .value | select(. == "OUTDATED")] | length'
+arm gql 0 issue view 131 --json comments --jq "$OUTDATED"
+assert_eq "$(cat "$OUT/gql.out")" "1" "OUTDATED probe: GraphQL sees the minimized comment (non-vacuous)"
+refused_verbatim "comments --jq reaching minimizedReason dynamically" \
+    issue view 131 --json comments --jq "$OUTDATED"
 
 echo "T3: label writes keep gh's semantics"
 arm rest 1 issue edit 131 --add-label bug --add-label no-such-label
