@@ -5,11 +5,22 @@
 #     N --apply ticks files EXACTLY ONE fleet:state-drift tracking issue, then
 #     refreshes it in place (never a second one), and resets when drift clears.
 #   - report-only stays pure: it neither advances persistence nor files issues.
+#   - The tracker lookup itself (`reconcile_open_drift_trackers`) reads REST
+#     (`gh api repos/.../issues?labels=fleet:state-drift&state=open`, filtering
+#     out pull requests) rather than `gh issue list --json` (GraphQL), and a
+#     FAILED lookup is distinguished from a CONFIRMED-empty one: a tick whose
+#     lookup errors neither files nor closes a tracker, and a tick that sees
+#     more than one open tracker (the exact state a failed lookup used to
+#     cause) refreshes the newest and closes the rest, naming the survivor in
+#     the close comment.
 #
 # Like the C1 test, `gh` is stubbed so the label/PR surfaces are canned JSON.
-# The stub is stateful for the tracker: `issue create` flips a marker file so a
-# later `issue list --label fleet:state-drift` reports the tracker as existing
-# (emulating --json number --jq '.[0].number' directly).
+# The stub is stateful for the tracker: it keeps an ordered list of open
+# tracker numbers (newest first) in $TRACKER_LIST, `issue create` prepends a
+# freshly-minted number, `issue close <n>` removes `<n>`, and `gh api` against
+# the state-drift query echoes the list's numbers one per line — emulating the
+# real REST + --jq shape directly. Touching $FAIL_LOOKUP makes that `gh api`
+# call exit 1 with no output, modeling a rate-limited/errored lookup.
 
 set -euo pipefail
 
@@ -63,35 +74,37 @@ mkdir -p "$STUB_DIR"
 export CREATE_LOG="$TMPROOT/create.log"; : > "$CREATE_LOG"
 export EDIT_LOG="$TMPROOT/edit.log"; : > "$EDIT_LOG"
 export CLOSE_LOG="$TMPROOT/close.log"; : > "$CLOSE_LOG"
-export TRACKER_STATE="$TMPROOT/tracker.exists"
+export API_LOG="$TMPROOT/api.log"; : > "$API_LOG"
+# Ordered (newest-first) list of open tracker numbers, one per line.
+export TRACKER_LIST="$TMPROOT/tracker.list"; : > "$TRACKER_LIST"
+export TRACKER_NEXT="$TMPROOT/tracker.next"; echo 9001 > "$TRACKER_NEXT"
+# Touch this to make the state-drift `gh api` lookup fail (exit 1, no output).
+export FAIL_LOOKUP="$TMPROOT/fail-lookup.flag"
 cat > "$STUB_DIR/gh" <<'GHSTUB'
 #!/usr/bin/env bash
 case "$1" in
     issue)
         case "$2" in
             list)
-                # The escalation's tracker lookup carries --label fleet:state-drift
-                # with --json number --jq '.[0].number'; emulate the jq output
-                # directly (bare number when the tracker exists, else nothing).
-                if printf '%s ' "$@" | grep -q 'fleet:state-drift'; then
-                    [[ -f "$TRACKER_STATE" ]] && echo "9001" || true
-                else
-                    cat "$ISSUES_JSON"
-                fi
+                # Only the queued-issue surface fetch is left here — the
+                # state-drift tracker lookup moved to `gh api` (REST) below.
+                cat "$ISSUES_JSON"
                 exit 0 ;;
             create)
                 printf '%s\n' "$*" >> "$CREATE_LOG"
-                touch "$TRACKER_STATE"
-                echo "https://github.com/jakildev/IrredenEngine/issues/9001"
+                n=$(cat "$TRACKER_NEXT")
+                echo "$((n + 1))" > "$TRACKER_NEXT"
+                { echo "$n"; cat "$TRACKER_LIST"; } > "$TRACKER_LIST.tmp"
+                mv "$TRACKER_LIST.tmp" "$TRACKER_LIST"
+                echo "https://github.com/jakildev/IrredenEngine/issues/$n"
                 exit 0 ;;
             edit)
                 printf '%s\n' "$*" >> "$EDIT_LOG"
                 exit 0 ;;
             close)
-                # Auto-close path: log the call and flip the tracker marker off
-                # so a later `issue list --label fleet:state-drift` reports none.
                 printf '%s\n' "$*" >> "$CLOSE_LOG"
-                rm -f "$TRACKER_STATE"
+                grep -vFx "$3" "$TRACKER_LIST" > "$TRACKER_LIST.tmp" || true
+                mv "$TRACKER_LIST.tmp" "$TRACKER_LIST"
                 exit 0 ;;
             *) exit 0 ;;
         esac ;;
@@ -100,7 +113,14 @@ case "$1" in
             list) cat "$PRS_JSON"; exit 0 ;;
             *) exit 0 ;;
         esac ;;
-    api)   exit 0 ;;
+    api)
+        printf '%s\n' "$*" >> "$API_LOG"
+        if printf '%s ' "$@" | grep -q 'labels=fleet:state-drift'; then
+            [[ -f "$FAIL_LOOKUP" ]] && exit 1
+            cat "$TRACKER_LIST"
+            exit 0
+        fi
+        exit 0 ;;
     repo)  exit 1 ;;   # game repo "not reachable"
     label) exit 0 ;;
     *)     exit 0 ;;
@@ -195,6 +215,52 @@ create_n=$(wc -l < "$CREATE_LOG" | tr -d ' ')
 run_reconcile --apply   # count 3 == threshold → re-file
 create_n=$(wc -l < "$CREATE_LOG" | tr -d ' ')
 [[ "$create_n" == "2" ]] && ok "recurring drift re-files a fresh tracker after auto-close" || bad "no fresh tracker after recurrence (create count=$create_n)"
+
+echo "=== Phase 7: two open trackers → one tick refreshes the newest, closes the other, naming the survivor (AC2) ==="
+# Simulate the exact state a failed lookup used to cause: a second tracker
+# (9010) open alongside the one Phase 6 already filed (9002), newest first
+# per the real REST call's sort=created&direction=desc.
+{ echo "9010"; cat "$TRACKER_LIST"; } > "$TRACKER_LIST.setup"
+mv "$TRACKER_LIST.setup" "$TRACKER_LIST"
+edit_n_before=$(wc -l < "$EDIT_LOG" | tr -d ' ')
+close_n_before=$(wc -l < "$CLOSE_LOG" | tr -d ' ')
+run_reconcile --apply
+edit_n=$(wc -l < "$EDIT_LOG" | tr -d ' ')
+[[ "$edit_n" -eq $((edit_n_before + 1)) ]] && ok "the newest tracker is refreshed via issue edit" || bad "edit count did not advance by 1 ($edit_n_before -> $edit_n)"
+if tail -n1 "$EDIT_LOG" | grep -qE '\bissue edit 9010\b'; then ok "the refreshed tracker is #9010, the newest"; else bad "edit did not target #9010: $(tail -n1 "$EDIT_LOG")"; fi
+close_n=$(wc -l < "$CLOSE_LOG" | tr -d ' ')
+[[ "$close_n" -eq $((close_n_before + 1)) ]] && ok "exactly one duplicate tracker closed this tick" || bad "close count did not advance by 1 ($close_n_before -> $close_n)"
+last_close=$(tail -n1 "$CLOSE_LOG")
+if printf '%s' "$last_close" | grep -qE '\bissue close 9002\b'; then ok "the duplicate closed is #9002 (the older tracker)"; else bad "closed the wrong tracker: $last_close"; fi
+if printf '%s' "$last_close" | grep -q '#9010'; then ok "the close comment names the survivor (#9010)"; else bad "close comment does not name the survivor: $last_close"; fi
+[[ "$(cat "$TRACKER_LIST")" == "9010" ]] && ok "exactly one tracker (#9010) remains open after dedup" || bad "tracker list after dedup: $(cat "$TRACKER_LIST" | tr '\n' ',')"
+
+echo "=== Phase 8: a failing tracker lookup skips filing/refreshing entirely (AC1) ==="
+create_n_before=$(wc -l < "$CREATE_LOG" | tr -d ' ')
+edit_n_before=$(wc -l < "$EDIT_LOG" | tr -d ' ')
+touch "$FAIL_LOOKUP"
+run_reconcile --apply
+create_n=$(wc -l < "$CREATE_LOG" | tr -d ' ')
+[[ "$create_n" == "$create_n_before" ]] && ok "a failed lookup files no gh issue create (does not mistake the failure for 'no tracker')" || bad "a failed lookup filed a tracker anyway (create count $create_n_before -> $create_n)"
+edit_n=$(wc -l < "$EDIT_LOG" | tr -d ' ')
+[[ "$edit_n" == "$edit_n_before" ]] && ok "a failed lookup also skips the refresh (no gh issue edit)" || bad "a failed lookup still edited anyway (edit count $edit_n_before -> $edit_n)"
+
+echo "=== Phase 9: drift clears but the lookup still fails → no gh issue close, tick still exits 0 (AC3) ==="
+echo '[]' > "$ISSUES_JSON"   # issue 700 no longer queued+human:owned
+close_n_before=$(wc -l < "$CLOSE_LOG" | tr -d ' ')
+rc=0
+run_reconcile --apply || rc=$?
+close_n=$(wc -l < "$CLOSE_LOG" | tr -d ' ')
+[[ "$close_n" == "$close_n_before" ]] && ok "a failed lookup on drift-clear makes no gh issue close call" || bad "a failed lookup on drift-clear closed anyway (close count $close_n_before -> $close_n)"
+[[ "$rc" == "0" ]] && ok "reconcile --apply still exits 0 when the tracker lookup fails" || bad "reconcile --apply exited $rc when the tracker lookup fails (want 0)"
+
+echo "=== Phase 10: once the lookup recovers, the next tick closes the survivor normally ==="
+rm -f "$FAIL_LOOKUP"
+close_n_before=$(wc -l < "$CLOSE_LOG" | tr -d ' ')
+run_reconcile --apply
+close_n=$(wc -l < "$CLOSE_LOG" | tr -d ' ')
+[[ "$close_n" -eq $((close_n_before + 1)) ]] && ok "a recovered lookup closes the surviving tracker (#9010) once drift stays cleared" || bad "recovered lookup did not close (count $close_n_before -> $close_n)"
+[[ -z "$(cat "$TRACKER_LIST")" ]] && ok "no open trackers remain after recovery" || bad "tracker list not empty after recovery: $(cat "$TRACKER_LIST" | tr '\n' ',')"
 
 echo
 echo "================================"
