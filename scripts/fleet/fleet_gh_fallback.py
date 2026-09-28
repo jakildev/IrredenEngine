@@ -32,8 +32,10 @@ Two jobs, both keyed on one predicate (`is_refusal`, REFUSAL_RE):
   labels, createdAt, updatedAt; pr adds headRefName, headRefOid, baseRefName,
   isDraft, mergedAt, and `pr view` adds mergeable. `comments` is modeled only
   as the sole field of a view with `--jq`, on an item with at most 100
-  comments. `author` is not modeled: gh's author object carries a `name` REST
-  cannot supply.
+  comments, for a program whose output does not depend on the comment keys
+  REST cannot supply (minimization, reactions, edit and viewer flags).
+  `author` is not modeled: gh's author object carries a `name` REST cannot
+  supply.
 
   A `--jq` program runs inside one `gh api --jq` call, composed as
   `<mapping> | (<program>)`, so it sees exactly the object gh would have
@@ -117,13 +119,41 @@ PR_VIEW_ONLY_FIELDS = {
     "mergeable": '(if .mergeable == true then "MERGEABLE" '
                  'elif .mergeable == false then "CONFLICTING" else "UNKNOWN" end)',
 }
-# Comment objects carry only what REST has; gh's minimization, reaction and
-# viewer fields read as null.
 _COMMENT = (
     '{id: .node_id, author: {login: .user.login}, '
     'authorAssociation: .author_association, body: (.body // ""), '
     'createdAt: .created_at, url: .html_url}'
 )
+# gh's comment keys REST has no source for: (the value gh prints for an
+# ordinary comment, a contrasting one). Carrying every key keeps `keys`,
+# `length` and `has` exact; a program whose output moves between the two
+# values reads one of them and is not modeled.
+_COMMENT_UNSOURCED = {
+    "includesCreatedEdit": ("false", "true"),
+    "isMinimized": ("false", "true"),
+    "minimizedReason": ('""', '"SPAM"'),
+    "reactionGroups": ("[]", '[{content: "THUMBS_UP", users: {totalCount: 1}}]'),
+    "viewerDidAuthor": ("false", "true"),
+}
+
+
+def _comments_program(program):
+    """jq over a REST comments page: a `modeled`/`unmodeled` line, then output.
+
+    The output is the caller's program over the ordinary values; the verdict
+    compares its outputs (or its errors) over the ordinary and contrasting
+    values, so a program that prints or branches on an unsourced key fails
+    closed even when it never names one.
+    """
+    def comments(side):
+        extra = ", ".join(f"{k}: {v[side]}" for k, v in _COMMENT_UNSOURCED.items())
+        return f"{{comments: map({_COMMENT} + {{{extra}}})}}"
+    return (
+        f"def _fleet_run: try ([(\n{program}\n)] | [true, .]) catch [false];\n"
+        f"(if ({comments(0)} | _fleet_run) == ({comments(1)} | _fleet_run) "
+        f'then "modeled" else "unmodeled" end), '
+        f"({comments(0)} | (\n{program}\n))"
+    )
 
 _SHORT_FLAGS = {
     "-R": "--repo", "-q": "--jq", "-L": "--limit", "-s": "--state",
@@ -412,11 +442,18 @@ def _view(call):
     if "comments" in fields:
         if fields != ["comments"] or program is None:
             raise Unmodeled("comments beside other fields, or without --jq")
+        # A named unsourced key could still match both probe values
+        # (`.minimizedReason == "OUTDATED"`); refuse it outright.
+        if any(key in program for key in _COMMENT_UNSOURCED):
+            raise Unmodeled("--jq reads a comment field REST cannot supply")
         count = json.loads(_api_ok([route, "--jq", ".comments"]) or b"null")
         if not isinstance(count, int) or count > PER_PAGE:
             raise Unmodeled("comments span more than one page")
         comments = f"{call.repo_path}/issues/{call.number}/comments?per_page={PER_PAGE}"
-        return _api_ok([comments, "--jq", _compose(f"{{comments: map({_COMMENT})}}", program)])
+        verdict, _, out = _api_ok([comments, "--jq", _comments_program(program)]).partition(b"\n")
+        if verdict != b"modeled":
+            raise Unmodeled("--jq output depends on a comment field REST cannot supply")
+        return out
     mapping = _mapping(table, fields)
     if program is not None:
         return _api_ok([route, "--jq", _compose(mapping, program)])
@@ -575,8 +612,9 @@ def translate(argv):
     """Run one gh call over REST; returns its stdout bytes.
 
     Raises Unmodeled when the shape is not modeled — before any REST call for
-    an argument-level shape, after read-only calls for a size-dependent one
-    (a comment count or a list page) — and RestFailed when a REST call fails.
+    an argument-level shape, after read-only calls for a data-dependent one
+    (a comment count or page, or a list page) — and RestFailed when a REST
+    call fails.
     """
     call = parse_call(list(argv))
     return _HANDLERS[call.verb](call)

@@ -9,7 +9,9 @@
 #
 #   T1  view / list / edit / comment / create: throttled == unthrottled, and
 #       only the throttled run reaches `gh api` (positive fire)
-#   T2  unmodeled shapes keep the GraphQL refusal and make no REST call
+#   T2  unmodeled shapes keep the GraphQL refusal and make no REST call;
+#       a comments --jq program that reads a key REST cannot supply keeps
+#       it too, whether it names the key or reaches it dynamically
 #   T3  label writes keep gh's semantics: an unknown label fails with no
 #       POST, removing an absent label is a no-op
 #   T4  a --jq list whose first page is not the whole result fails closed;
@@ -203,6 +205,8 @@ identity "pr view, null body + draft" pr view 77 -R acme/widgets --json body,isD
 identity "pr view --jq @tsv" pr view 20 --json state,baseRefName,labels --jq "$TSV"
 identity "pr view -q labels" pr view 5 --json labels -q '.labels[].name'
 identity "issue view comments --jq" issue view 131 --json comments --jq "$PLAN"
+identity "issue view comments, gh's key set" issue view 131 --json comments \
+    --jq '.comments[0] | keys | join(",")'
 identity "issue view null body --jq" issue view 135 --json body --jq .body
 identity "pr list, default limit" pr list --json number,title
 identity "pr list --state all across pages" pr list --state all --limit 120 --json number,state,isDraft,mergedAt
@@ -229,6 +233,18 @@ refused_verbatim "edit --title" pr edit 12 --title renamed
 refused_verbatim "list --search" pr list --search foo --json number
 refused_verbatim "comments beside another field" issue view 131 --json comments,title --jq .title
 refused_verbatim "body from stdin" issue comment 131 --body-file -
+refused_verbatim "named unsourced comment key" issue view 131 --json comments \
+    --jq '.comments[0].includesCreatedEdit'
+# Dynamic reads need the comments page first, so these make REST calls.
+for prog in '.comments' '.comments[0] | tojson' \
+    '[.comments[] | to_entries[] | select(.key | startswith("isMin")) | .value]'; do
+    arm rest 1 issue view 131 --json comments --jq "$prog"
+    assert_eq "$(cat "$OUT/rest.rc")" "1" "unsourced comment key via '$prog': exits 1"
+    assert_eq "$(cat "$OUT/rest.err")" "$REFUSAL" "unsourced comment key via '$prog': replays the refusal"
+    assert_eq "$(wc -c < "$OUT/rest.out" | tr -d ' ')" "0" "unsourced comment key via '$prog': prints nothing"
+    same_bytes "$SEED" "$OUT/rest.state" && ok "unsourced comment key via '$prog': state untouched" \
+        || bad "unsourced comment key via '$prog': state changed"
+done
 
 echo "T3: label writes keep gh's semantics"
 arm rest 1 issue edit 131 --add-label bug --add-label no-such-label
