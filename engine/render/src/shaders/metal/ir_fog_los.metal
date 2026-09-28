@@ -176,10 +176,10 @@ static float fogLosVisibility(
 }
 
 static float3 fogLosCanonicalSample(float3 pos3D, int worldFaceId, int route, int scale) {
-    if (route == kFogLosRouteAnalytic) {
-        return pos3D;
-    }
     const float3 normal = faceOutwardNormal6(worldFaceId);
+    if (route == kFogLosRouteAnalytic) {
+        return pos3D + normal * kFogLosFaceBias;
+    }
     float3 canonical = pos3D;
     if (route == kFogLosRouteCardinal) {
         const float3 axisMask = abs(normal);

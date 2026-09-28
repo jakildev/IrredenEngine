@@ -214,13 +214,13 @@ float fogLosVisibility(vec3 eye, vec3 target, float softness) {
 // lattice the column field is built on. A cardinal voxel pixel is recovered
 // up to a micro cell off its face plane, so its face-axis coordinate snaps
 // onto the micro lattice; a per-axis cell sits exactly on its plane, and an
-// analytic pixel is exact. The voxel routes then step kFogLosFaceBias out
-// along the face normal; the analytic route returns pos3D unbiased.
+// analytic pixel is normalized to its authored surface by the caller. Every
+// route then steps kFogLosFaceBias out along the face normal.
 vec3 fogLosCanonicalSample(vec3 pos3D, int worldFaceId, int route, int scale) {
-    if (route == kFogLosRouteAnalytic) {
-        return pos3D;
-    }
     const vec3 normal = faceOutwardNormal6(worldFaceId);
+    if (route == kFogLosRouteAnalytic) {
+        return pos3D + normal * kFogLosFaceBias;
+    }
     vec3 canonical = pos3D;
     if (route == kFogLosRouteCardinal) {
         const vec3 axisMask = abs(normal);
