@@ -16,6 +16,7 @@ COMPILER = shutil.which("c++")
 PREAMBLE = r"""
 #include <cmath>
 #include <cstdio>
+#include <initializer_list>
 #include <tuple>
 #define constant
 #define device
