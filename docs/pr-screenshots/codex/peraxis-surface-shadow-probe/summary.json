@@ -1,0 +1,33 @@
+{
+  "beauty_changed_pixels": [
+    0,
+    0,
+    0,
+    0
+  ],
+  "crop_rectangle": [
+    1000,
+    450,
+    1550,
+    1000
+  ],
+  "native_capture_size": [
+    2560,
+    1440
+  ],
+  "shadow_tested_pixels": 208344,
+  "shadow_false_pixels": 0,
+  "shadow_missed_pixels": 0,
+  "normal_wrong_interior_pixels": [
+    0,
+    0,
+    0,
+    0
+  ],
+  "outline_extra_pixels": [
+    1,
+    54,
+    71,
+    20
+  ]
+}

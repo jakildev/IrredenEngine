@@ -56,63 +56,7 @@ struct FrameDataIsoTriangles {
     int _overflowPad2;
 };
 
-struct VertexOut {
-    float4 position [[position]];
-    float4 color [[flat]];
-    // Per-fragment PLANAR composite depth + margin classification —
-    // mirror of v_/f_peraxis_scatter.glsl. depth is the face plane's exact
-    // depth linearly interpolated (no-perspective, w==1) from per-corner
-    // planar keys; quadParam spans the exact footprint on [0,1]^2 with
-    // dilated corners landing outside, so the fragment stage can make
-    // conservative-dilation margins yield by marginBias instead of letting
-    // draw order decide same-plane overlaps (which paints wrong-voxel-color
-    // bands).
-    float depth [[center_no_perspective]];
-    float2 quadParam [[center_no_perspective]];
-    float marginBias [[flat]];
-    // Per-axis margin-yield slope, vDepth units per unit quad-param
-    // penetration — mirror of v_/f_peraxis_scatter.glsl. The fragment stage scales
-    // a margin's yield by penetration * slope so a cell-deep margin yields a shared
-    // ridge to the neighbor face's exact footprint (the doubled top<->side sliver).
-    float marginYieldGradU [[flat]];
-    float marginYieldGradV [[flat]];
-    // Interior-edge yield-slope floor, vDepth units per unit quad-param
-    // penetration. The per-axis slopes above are the OWN plane's depth
-    // gradients — near zero along a foreshortened axis — but a margin that
-    // penetrates an INTERIOR edge extends over the ADJACENT visible face,
-    // whose plane can diverge from the extrapolation at up to
-    // 2*sqrt(2)*encScale per world unit. At fractional offsets the sub-pixel
-    // phase then tips the near-balanced margin-vs-exact contest per pixel,
-    // producing a shared-edge fringe. Flooring the slope at
-    // kScatterMarginYieldGradScale * encScale (>= the divergence bound) for
-    // interior-edge penetration makes such margins always lose to the
-    // adjacent face's exact fragments; they keep only their gap-fill job.
-    // Boundary (silhouette) penetrations keep the tighter own-slope yield.
-    float marginYieldGradFloor [[flat]];
-    // Flat interior-edge yield: covers the constant (flip << 2) | slot
-    // key-tiebreak span between adjacent faces' planes — the
-    // penetration-independent advantage a sub-pixel interior margin can hold
-    // over the adjacent face's exact fragments. Equals
-    // kScatterMarginInteriorBiasKey (ir_iso_common.metal) in depth units.
-    float marginInteriorYieldBias [[flat]];
-    // Face-center iso-depth for depth-color. Flat (constant across the
-    // quad) — origin is the same for all 4 corners of a face instance so
-    // interpolation is a no-op; flat avoids rasterization divergence.
-    float isoDepth [[flat]];
-    int depthColorMode [[flat]];
-    float depthColorExtent [[flat]];
-    // Face/cell priority within a depth band. Displaced cells can share
-    // a code; final coverage arbitration only separates margin/exact ties.
-    float cellTieOffset [[flat]];
-    // Per-edge interior/boundary classification for analytic coverage —
-    // .x = u-low, .y = u-high, .z = v-low, .w = v-high (in the face's eu/ev basis);
-    // 1 = interior (fill solid / close seam), 0 = true silhouette (crisp trim). An
-    // edge is interior if the face continues to its same-axis in-plane neighbour OR
-    // it points toward a visible perpendicular face (a convex cube edge shared with
-    // another visible face). Flat: classified once per instance, constant across its
-    // quad.
-    float4 edgeInterior [[flat]];
-};
+#include "ir_peraxis_scatter_interface.metal"
 
 // Composite-instrumentation overlay modes — raw DebugOverlayMode
 // values (ir_render_enums.hpp). Both modes recolor the scattered quad and
@@ -138,11 +82,6 @@ static inline float3 hueWheel(float t) {
         1.0
     );
 }
-
-struct FragmentOut {
-    float4 color [[color(0)]];
-    float depth [[depth(any)]];
-};
 
 // Occupancy of a per-axis canvas cell at pixel `p`, for the interior/
 // boundary edge classification. The bound `triangleColors` holds ONLY this axis's
@@ -224,6 +163,8 @@ vertex VertexOut v_peraxis_scatter(
     if (color.a < 0.1f) {
         out.position = float4(2.0, 2.0, 2.0, 1.0);
         out.color = float4(0.0);
+        out.faceOrigin = float3(0.0);
+        out.faceId = 0;
         out.depth = 1.0;
         out.isoDepth = 0.0;
         out.depthColorMode = 0;
@@ -358,6 +299,8 @@ vertex VertexOut v_peraxis_scatter(
     out.position = clipCorner;
 
     out.color = color;
+    out.faceOrigin = origin;
+    out.faceId = faceId;
     // Cell-anchor sum — keeps the depth-color binning consistent with the
     // authored-lattice depth the composite key carries.
     out.isoDepth = origin.x + origin.y + origin.z - 1.5f;
@@ -459,80 +402,5 @@ vertex VertexOut v_peraxis_scatter(
     return out;
 }
 
-// HSV → RGB. Keep identical to hsvToRgb in c_shapes_to_trixel_body.metal so
-// voxel-scatter depth-color is bit-exact with the SDF twin when mode is on.
-static inline float3 hsvToRgb(float3 c) {
-    const float4 K = float4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
-    const float3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
-    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
-}
-
-fragment FragmentOut f_peraxis_scatter(VertexOut in [[stage_in]]) {
-    FragmentOut out;
-    if (in.color.a < 0.1f) {
-        discard_fragment();
-    }
-    // Analytic edge-aware coverage. The visit-bound
-    // dilation only guarantees this fragment was VISITED; the coverage DECISION
-    // is here, from the fragment's position in the true [0,1]^2 footprint
-    // (in.quadParam) and its per-edge interior/boundary flags. Hard-thresholded for
-    // the depth co-sort write (no alpha blend). fwidth() before any non-uniform
-    // discard so the derivative is valid (the alpha discard is on a flat varying —
-    // uniform across the instance).
-    const float coverage = scatterAnalyticEdgeCoverage(
-        in.quadParam, fwidth(in.quadParam), in.edgeInterior);
-    if (coverage < 0.5f) {
-        discard_fragment();
-    }
-    // Margin-yield: fragments outside the exact [0,1]^2 footprint are
-    // conservative-dilation margin and only fill pixels no exact footprint
-    // claims — mirror of f_peraxis_scatter.glsl.
-    const bool inMargin = any(in.quadParam < float2(0.0)) || any(in.quadParam > float2(1.0));
-    if (in.depthColorMode == -1) {
-        // Margin-classification overlay — mirror of
-        // f_peraxis_scatter.glsl: bright = margin fragment, dim = exact.
-        out.color = float4(in.color.rgb * (inMargin ? 1.0f : 0.4f), 1.0f);
-    } else if (in.depthColorMode != 0) {
-        float dColor = in.depthColorExtent;
-        float denomC = max((4.0f / 3.0f) * dColor, 1.0f);
-        float t = clamp((in.isoDepth + dColor) / denomC, 0.0f, 1.0f);
-        out.color = float4(hsvToRgb(float3(0.66f * t, 1.0f, 1.0f)), 1.0f);
-    } else {
-        out.color = in.color;
-    }
-    // Penetration past the exact [0,1]^2 footprint (per axis, >= 0). A margin
-    // fragment yields by the flat bias PLUS penetration * per-axis yield slope so a
-    // cell-deep margin yields the shared ridge to the neighbor face's exact
-    // footprint while a sub-pixel gap-fill still wins — mirror of
-    // f_peraxis_scatter.glsl.
-    const float2 outside = max(max(-in.quadParam, in.quadParam - float2(1.0)), float2(0.0));
-    // Interior-edge yield floor: a margin that penetrated an INTERIOR
-    // edge is extending over the adjacent visible face — floor its yield
-    // slope at the cross-face divergence bound so it always loses to that
-    // face's exact fragments. The penetrated side
-    // is u/v-low when quadParam < 0, u/v-high when > 1; edgeInterior packs
-    // (u-low, u-high, v-low, v-high).
-    const float interiorU =
-        (in.quadParam.x < 0.5f) ? in.edgeInterior.x : in.edgeInterior.y;
-    const float interiorV =
-        (in.quadParam.y < 0.5f) ? in.edgeInterior.z : in.edgeInterior.w;
-    const float gradU = (interiorU > 0.5f)
-        ? max(in.marginYieldGradU, in.marginYieldGradFloor)
-        : in.marginYieldGradU;
-    const float gradV = (interiorV > 0.5f)
-        ? max(in.marginYieldGradV, in.marginYieldGradFloor)
-        : in.marginYieldGradV;
-    // The flat interior term (marginInteriorYieldBias) covers the
-    // penetration-INDEPENDENT (flip<<2)|slot key gap between adjacent faces;
-    // the floored slope covers the penetration-proportional plane divergence.
-    const bool interiorPen = (outside.x > 0.0f && interiorU > 0.5f) ||
-                             (outside.y > 0.0f && interiorV > 0.5f);
-    const float yieldBias = in.marginBias + outside.x * gradU + outside.y * gradV +
-        (interiorPen ? in.marginInteriorYieldBias : 0.0f);
-    // Band-quantize + cell-code injection — mirror of f_peraxis_scatter.glsl
-    // (exact power-of-two float ops on both backends).
-    const float scatterDepth = in.depth + (inMargin ? yieldBias : 0.0f);
-    out.depth =
-        scatterFinalDepth(scatterDepth, in.cellTieOffset, inMargin);
-    return out;
-}
+#define IR_PER_AXIS_FRAGMENT_NAME f_peraxis_scatter
+#include "ir_peraxis_scatter_fragment_body.metal"

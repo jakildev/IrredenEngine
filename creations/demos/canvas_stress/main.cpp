@@ -1251,7 +1251,7 @@ void registerArgs() {
     );
     args.flag(
         "--probe-grid",
-        "Render shadowbox and shadowocclusion probes through the shared GRID canvas"
+        "Render shadowbox, shadowocclusion and focused orbit probes through the shared GRID canvas"
     );
     args.flag(
         "--probe-single-voxel",
@@ -2544,7 +2544,8 @@ void initEntities() {
             i,
             focusOrbit >= 0 ? vec3(0.0f) : worldPos,
             kOrbitShapes[i],
-            kOrbitModes[i],
+            focusOrbit >= 0 && IREngine::args().getFlag("--probe-grid") ? RotationMode::GRID
+                                                                        : kOrbitModes[i],
             kOrbitExtents[i],
             axis,
             spinRate,
