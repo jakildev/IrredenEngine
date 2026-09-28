@@ -2294,6 +2294,11 @@ RECHECK_LABELS = frozenset({"human:re-review", "fleet:changes-made"})
 # its verdict swap, so a handled escalation drops back out of the projection.
 OPUS_REVIEWER_FLAG_LABELS = frozenset({"fleet:needs-opus-recheck"})
 
+# Labels on the upstream PR that lift a stacked child's
+# fleet:awaiting-upstream-review gate (REVIEWER-PROTOCOL.md §"Stack
+# awareness" step 3).
+_UPSTREAM_APPROVAL_LABELS = frozenset({"fleet:approved", "human:approved"})
+
 
 def _review_skipped(labels):
     """True if a PR's label set bars reviewer pickup — exact-name skip
@@ -2306,6 +2311,25 @@ def _review_skipped(labels):
 def _review_claim_held(labels):
     return any(label.startswith(p) for label in labels
                for p in REVIEW_HELD_PREFIXES)
+
+
+def _upstream_review_gate_holds(pr, labels, head_labels):
+    """True when a stacked PR's fleet:awaiting-upstream-review gate is still
+    live — the upstream (found by baseRefName in the repo's open-PR head map,
+    the same lookup _semantic_conflict_claimable uses for a stacked base)
+    carries neither fleet:approved nor human:approved. REVIEWER-PROTOCOL.md
+    §"Stack awareness" step 3 has the human skip this case silently, so
+    admission must not fan a pane out onto the same no-op every tick. An
+    upstream absent from the open-PR map (merged or closed) does not hold
+    the gate — step 3 lifts it on merge, and a closed-unmerged upstream is a
+    stack issue surfaced once to a human, not repeated review dispatch."""
+    if "fleet:awaiting-upstream-review" not in labels:
+        return False
+    upstream_labels = head_labels.get(pr.get("baseRefName"))
+    if upstream_labels is None:
+        return False
+    return not (upstream_labels & _UPSTREAM_APPROVAL_LABELS)
+
 
 # Smoke-worker label sets. Every host label belongs in the pending set:
 # update_role_trigger keys the smoke-worker wake on this projection's hash, so
@@ -3184,6 +3208,12 @@ def worker_feedback_labels(labels):
     return relevant
 
 
+def _head_labels_map(prs):
+    """headRefName -> label set, for resolving a stacked PR's upstream (its
+    baseRefName) among a repo's other open PRs."""
+    return {p.get("headRefName"): set(p.get("labels", [])) for p in prs}
+
+
 def _semantic_conflict_claimable(pr, labels, head_labels):
     """True when role-worker step 1c would pick this PR up right now, so it
     must count as opus-class claimable work in the worker projection + slice.
@@ -3301,9 +3331,7 @@ def project_worker(state):
             items.append({"kind": "needs_plan", "repo": repo,
                           "issue": issue["number"]})
         prs = repo_state.get("prs", [])
-        head_labels = {
-            p.get("headRefName"): set(p.get("labels", [])) for p in prs
-        }
+        head_labels = _head_labels_map(prs)
         for pr in prs:
             labels = set(pr["labels"])
             if "human:wip" in labels:
@@ -3336,18 +3364,19 @@ def project_worker(state):
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 
 
-def _reviewable(pr, labels):
+def _reviewable(pr, labels, head_labels):
     """A conflicting PR's diff is not the diff that will merge, so neither
     reviewer lane admits it; the merger or a conflict worker changes its state
     and re-arms the lane. Shared by each lane's projection and slice — the
     dispatcher elects targets from the slice."""
     return (not _review_skipped(labels)
             and not _review_claim_held(labels)
-            and pr.get("mergeable") != "CONFLICTING")
+            and pr.get("mergeable") != "CONFLICTING"
+            and not _upstream_review_gate_holds(pr, labels, head_labels))
 
 
-def sonnet_review_admissible(pr, labels):
-    if not _reviewable(pr, labels) or pr.get("isDraft"):
+def sonnet_review_admissible(pr, labels, head_labels):
+    if not _reviewable(pr, labels, head_labels) or pr.get("isDraft"):
         return False
     # Re-review triggers override every standing-state check below.
     if labels & RECHECK_LABELS:
@@ -3366,15 +3395,18 @@ def sonnet_review_admissible(pr, labels):
     return not (labels & REVIEW_VERDICT_LABELS)
 
 
-def opus_review_admissible(pr, labels):
-    return _reviewable(pr, labels) and bool(labels & OPUS_REVIEWER_FLAG_LABELS)
+def opus_review_admissible(pr, labels, head_labels):
+    return (_reviewable(pr, labels, head_labels)
+            and bool(labels & OPUS_REVIEWER_FLAG_LABELS))
 
 
 def project_sonnet_reviewer(state):
     items = []
     for repo, repo_state in state["repos"].items():
-        for pr in repo_state.get("prs", []):
-            if not sonnet_review_admissible(pr, set(pr["labels"])):
+        prs = repo_state.get("prs", [])
+        head_labels = _head_labels_map(prs)
+        for pr in prs:
+            if not sonnet_review_admissible(pr, set(pr["labels"]), head_labels):
                 continue
             items.append({"repo": repo, "pr": pr["number"],
                           "head": pr["headRefName"]})
@@ -3384,9 +3416,11 @@ def project_sonnet_reviewer(state):
 def project_opus_reviewer(state):
     items = []
     for repo, repo_state in state["repos"].items():
-        for pr in repo_state.get("prs", []):
+        prs = repo_state.get("prs", [])
+        head_labels = _head_labels_map(prs)
+        for pr in prs:
             labels = set(pr["labels"])
-            if not opus_review_admissible(pr, labels):
+            if not opus_review_admissible(pr, labels, head_labels):
                 continue
             items.append({"repo": repo, "pr": pr["number"],
                           "labels": sorted(labels & OPUS_REVIEWER_FLAG_LABELS)})
@@ -3990,9 +4024,7 @@ def slice_worker(state):
                 continue
             out["needs_plan"].append(_slice_issue_with_repo(repo_key, issue))
         prs = repo_state.get("prs", [])
-        head_labels = {
-            p.get("headRefName"): set(p.get("labels", [])) for p in prs
-        }
+        head_labels = _head_labels_map(prs)
         task_hosts = _task_required_hosts(repo_state)
         for pr in prs:
             labels = set(pr["labels"])
@@ -4023,8 +4055,10 @@ def slice_worker(state):
 def slice_sonnet_reviewer(state):
     out = {"candidate_prs": []}
     for repo_key, repo_state in state["repos"].items():
-        for pr in repo_state.get("prs", []):
-            if sonnet_review_admissible(pr, set(pr["labels"])):
+        prs = repo_state.get("prs", [])
+        head_labels = _head_labels_map(prs)
+        for pr in prs:
+            if sonnet_review_admissible(pr, set(pr["labels"]), head_labels):
                 out["candidate_prs"].append(_slice_pr_with_repo(repo_key, pr))
     return out
 
@@ -4032,8 +4066,10 @@ def slice_sonnet_reviewer(state):
 def slice_opus_reviewer(state):
     out = {"flagged_prs": [], "plan_review": []}
     for repo_key, repo_state in state["repos"].items():
-        for pr in repo_state.get("prs", []):
-            if opus_review_admissible(pr, set(pr["labels"])):
+        prs = repo_state.get("prs", [])
+        head_labels = _head_labels_map(prs)
+        for pr in prs:
+            if opus_review_admissible(pr, set(pr["labels"]), head_labels):
                 out["flagged_prs"].append(_slice_pr_with_repo(repo_key, pr))
         # Plan-review issues the reviewer should vet (mirror project_opus_reviewer
         # so a woken reviewer reads the same set that triggered it).
