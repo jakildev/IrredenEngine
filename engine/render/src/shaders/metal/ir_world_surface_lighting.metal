@@ -18,10 +18,11 @@ inline float3 worldSurfaceLighting(float3 albedo, float ao, float3 position, flo
                                    texture3d<float> lightVolume,
                                    texture3d<float, access::read> lightVolumeId) {
     const float3 material = surfaceMaterialColor(albedo, ao, lighting.lutEnabled != 0, paletteLUT);
-    const float visibility = sun.shadowsEnabled == 0 ? 1.0 :
+    const float lambert = max(0.0, dot(normal, sun.sunDirection.xyz));
+    const float visibility = sun.shadowsEnabled == 0 || lambert == 0.0 ||
+        sun.sunIntensity == 0.0 || sun.sunAmbient == 1.0 ? 1.0 :
         worldSurfaceSunShadowFactor(position, normal, pos3DtoDistance(position), casterRotation,
                                     sun, sunDepthBuf);
-    const float lambert = max(0.0, dot(normal, sun.sunDirection.xyz));
     float3 linearColor = material * surfaceSunFactor(sun.sunAmbient, sun.sunIntensity, lambert, visibility);
     if (lighting.lightVolumeEnabled != 0) {
         constexpr sampler volumeSampler(filter::linear, address::clamp_to_edge);

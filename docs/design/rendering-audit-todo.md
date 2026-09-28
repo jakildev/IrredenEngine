@@ -70,8 +70,12 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
   Three-run Metal controls show a wider-view GPU envelope increase from 5.190
   to 9.922 ms; zoom 4 has far fewer visible overflow faces and is not a scaling
   proof. Disabling shadows lowers the new scatter scope from 5.294 to 0.488 ms.
-  Next: measure query visits/overdraw, skip unobservable direct-sun queries and
-  improve finite candidate pruning; material work alone is not the main cost.
+  Added [exact zero-contribution query gates](../pr-screenshots/codex/surface-shadow-query-gate/README.md):
+  14 native views remain RGB-identical; three fresh run pairs reduce scatter
+  scope from 5.308 to 5.198 ms and GPU envelope from 10.007 to 9.815 ms.
+  This is modest and does not resolve the wider-view cost. Next measure query
+  visits/overdraw and test conservative projected-face candidate bounds; material
+  work alone is not the main cost.
   Keep this default-off and avoid capacity-sized records. Validate cardinal
   transitions, dense/incomplete tiles, overflow and fog before default adoption.
 - [Bounded overflow reference](../perf/bounded-source-face-reference.md) isolates

@@ -1,0 +1,17 @@
+[
+  {
+    "before": "perf/before/run-1-0.png",
+    "after": "perf/after/run-1-0.png",
+    "changed_rgb_pixels": 0
+  },
+  {
+    "before": "perf/before/run-2-0.png",
+    "after": "perf/after/run-2-0.png",
+    "changed_rgb_pixels": 0
+  },
+  {
+    "before": "perf/before/run-3-0.png",
+    "after": "perf/after/run-3-0.png",
+    "changed_rgb_pixels": 0
+  }
+]

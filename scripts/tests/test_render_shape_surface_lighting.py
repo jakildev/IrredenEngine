@@ -57,11 +57,13 @@ float expectedDisplay(float x,bool hdr){
 int main(){
  int checks=0;
  for(int lut:{0,1})for(int shadow:{0,1})for(int volume:{0,1})for(int hdr:{0,1})
- for(float ao:{0.f,.4f,1.f})for(float ambient:{0.f,.25f,1.f})for(float vis:{0.f,1.f})
- for(uint flags:{0u,32u,64u})for(float z:{-1.f,-.6f,0.f,1.f}){
+ for(float ao:{0.f,.4f,1.f})for(float ambient:{0.f,.25f,std::nextafter(1.f,0.f),1.f})
+ for(float intensity:{0.f,0x1p-20f,1.5f})for(float vis:{0.f,1.f})
+ for(uint flags:{0u,32u,64u})for(float z:{-1.f,-.6f,-0x1p-20f,0.f,0x1p-20f,1.f}){
   lutEnabled=lut;shadowsEnabled=shadow;lightVolumeEnabled=volume;hdrEnabled=hdr;
   normalZ=z;
-  aoInput=ao;sunAmbient=ambient;visibilityInput=vis;receiverShapes[1].flags=flags;
+  aoInput=ao;sunAmbient=ambient;sunIntensity=intensity;
+  visibilityInput=vis;receiverShapes[1].flags=flags;
   expectedLocalPosition=vec3(10.25f,-20.5f,30.75f);
   shadowCalls=lightCalls=aoCalls=paletteCalls=albedoCalls=0;
   vec3 out=query({1,1},4,{10.25f,-20.5f,30.75f},{float(std::sqrt(1-z*z)),0,z},
@@ -74,19 +76,26 @@ int main(){
    float actual[]={out.x,out.y,out.z};
    for(int i=0;i<3;++i){
     float material=a[i]*(lut?palette[i]:ao);
-    float sunlight=material*(ambient+(1-ambient)*std::max(0.f,-z)*(shadow?vis:1))*1.5f;
+    float sunlight=material*(ambient+(1-ambient)*std::max(0.f,-z)*(shadow?vis:1))*intensity;
     float local=volume?a[i]*float(i+1)*.1f:0;
     float skyTerm=hdr?sky[i]*.7f*ao*std::max(0.f,-z):0;
     if(!near(actual[i],expectedDisplay(sunlight+local+skyTerm,hdr)))return 2;
    }
-   if(shadowCalls!=shadow||lightCalls!=volume||aoCalls!=1||
-      paletteCalls!=lut||albedoCalls!=1)return 3;
+   const double directEnergy=(1.-double(ambient))*double(intensity)*std::max(0.,-double(z));
+   const int expectedQueries=shadow && directEnergy>0;
+   if(shadowCalls!=expectedQueries||lightCalls!=volume||aoCalls!=1||
+      paletteCalls!=lut||albedoCalls!=1){
+    std::cerr<<"query count "<<shadowCalls<<" expected "<<expectedQueries
+             <<" shadow="<<shadow<<" ambient="<<ambient<<" intensity="<<intensity
+             <<" normalZ="<<z<<"\n";
+    return 3;
+   }
    expectedLocalPosition=vec3(7.25f,-2.5f,4.75f);
    shadowCalls=lightCalls=paletteCalls=0;
    const vec3 separateLocal=worldSurfaceLighting(vec3(.2f,.3f,.4f),ao,
        vec3(10.25f,-20.5f,30.75f),vec3(float(std::sqrt(1-z*z)),0,z),
        vec4(0,0,0,.7f),expectedLocalPosition);
-   if(!same(vec4(separateLocal,1),vec4(out,1))||shadowCalls!=shadow||
+   if(!same(vec4(separateLocal,1),vec4(out,1))||shadowCalls!=expectedQueries||
       lightCalls!=volume||paletteCalls!=lut)return 4;
   }
   ++checks;
@@ -165,6 +174,22 @@ class ShapeSurfaceLightingTest(unittest.TestCase):
                 "tone_before_composition": body.replace("return surfaceDisplayColor(linearColor",
                                                         "return surfaceDisplayColor(material"),
             }
+            query_mutations = {
+                "unconditional_shadow_query": re.sub(
+                    r"(\bconst\s+float\s+visibility\s*=\s*)[^?;]+\?", r"\1false ?", body),
+                "query_back_facing": re.sub(r"\|\|\s*lambert\s*==\s*0\.0f?\b", "", body),
+                "query_zero_intensity": re.sub(
+                    r"\|\|\s*sunIntensity\s*==\s*0\.0f?\b", "", body),
+                "query_full_ambient": re.sub(
+                    r"\|\|\s*sunAmbient\s*==\s*1\.0f?\b", "", body),
+                "skip_grazing_light": re.sub(
+                    r"\blambert\s*==\s*0\.0f?\b", "lambert <= 0.00001", body),
+                "skip_tiny_intensity": re.sub(
+                    r"\bsunIntensity\s*==\s*0\.0f?\b", "sunIntensity <= 0.00001", body),
+                "skip_near_full_ambient": re.sub(
+                    r"\bsunAmbient\s*==\s*1\.0f?\b", "sunAmbient >= 0.99999", body),
+            }
+            variants.update(query_mutations)
             for name, candidate in variants.items():
                 with (self.subTest(backend=suffix, mutation=name),
                       tempfile.TemporaryDirectory() as tmp):
@@ -179,6 +204,9 @@ class ShapeSurfaceLightingTest(unittest.TestCase):
                     if name == "production":
                         self.assertEqual(run.returncode, 0, run.stderr)
                         print(suffix, run.stdout.strip())
+                    elif name in query_mutations:
+                        self.assertEqual(run.returncode, 3, run.stderr)
+                        self.assertIn("query count", run.stderr)
                     else:
                         self.assertNotEqual(run.returncode, 0)
 

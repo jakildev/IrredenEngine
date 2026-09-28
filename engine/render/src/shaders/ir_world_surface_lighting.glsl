@@ -21,9 +21,10 @@ layout(std140, binding = 7) uniform SurfaceLightVolumeParams {
 vec3 worldSurfaceLighting(vec3 albedo, float ao, vec3 position, vec3 normal,
                           vec4 casterRotation, vec3 localLightPosition) {
     const vec3 material = surfaceMaterialColor(albedo, ao, lutEnabled != 0, paletteLUT);
-    const float visibility = shadowsEnabled == 0 ? 1.0 :
-        worldSurfaceSunShadowFactor(position, normal, pos3DtoDistance(position), casterRotation);
     const float lambert = max(0.0, dot(normal, sunDirection.xyz));
+    const float visibility = shadowsEnabled == 0 || lambert == 0.0 ||
+        sunIntensity == 0.0 || sunAmbient == 1.0 ? 1.0 :
+        worldSurfaceSunShadowFactor(position, normal, pos3DtoDistance(position), casterRotation);
     vec3 linearColor = material * surfaceSunFactor(sunAmbient, sunIntensity, lambert, visibility);
     if (lightVolumeEnabled != 0)
         linearColor += albedo * surfaceLightVolume(localLightPosition, lightVolumeWorldOrigin, lightVolume);
