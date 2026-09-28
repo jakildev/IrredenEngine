@@ -26,7 +26,11 @@
 #include <irreden/render/gpu_substage_timing.hpp>
 #include <irreden/ir_profile.hpp>
 
+#include <array>
+#include <cstddef>
+#include <cstdint>
 #include <cstdlib>
+#include <memory>
 
 using namespace IRComponents;
 using namespace IRRender;
@@ -59,8 +63,16 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     ShaderProgram *scatterProgram_ = nullptr;
     ShaderProgram *scatterProbeProgram_ = nullptr;
     ShaderProgram *scatterLightingProgram_ = nullptr;
+    ShaderProgram *visibleLightingProgram_ = nullptr;
     bool scatterProbeEnabled_ = false;
     bool scatterLightingEnabled_ = false;
+    bool visibilityPrepassEnabled_ = false;
+    bool visibilityStatsEnabled_ = false;
+    int visibilityStatsFrameCount_ = 0;
+    // One uint per framebuffer pixel, followed by three optional diagnostic counters.
+    // Slot 26 is borrowed from voxel compaction only while these draws run.
+    std::unique_ptr<Buffer> visibilityBuffer_;
+    std::size_t visibilityPixelCount_ = 0;
     VAO *quadVao_ = nullptr;
 
     // Smooth camera Z-yaw state. Re-resolved every frame in beginTick,
@@ -409,7 +421,12 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             vec2(static_cast<float>(effSub), 0.0f);
         // Conservative-coverage dilation needs the framebuffer extent the ortho
         // mpMatrix maps into, to convert a pixel margin to NDC.
-        frameData.frameData_.scatterFbResolution_ = vec4(framebufferResolution, 0.0f, 0.0f);
+        const bool visibilityPrepass = visibilityPrepassEnabled_ && scatterLightingEnabled_;
+        frameData.frameData_.scatterFbResolution_ = vec4(
+            framebufferResolution,
+            visibilityPrepass && visibilityStatsEnabled_ ? 1.0f : 0.0f,
+            0.0f
+        );
         // Per-pixel depth-color debug: evaluate hue from interpolated
         // face-corner world depth in the fragment shader instead of pre-baked
         // per-voxel vColor, eliminating the 4/3-band moiré at non-cardinal yaw.
@@ -420,32 +437,86 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         // is active. Depth is untouched, so the visualized winner per pixel is
         // exactly the real composite's winner.
         frameData.frameData_.scatterDebugMode_ = static_cast<int>(IRRender::getDebugOverlay());
-        frameData.updateFrameData(frameDataBuf_);
+        {
+            // The timer includes visibility clear, prepass and replay when enabled.
+            GpuSubStageScope scatterScope("perAxisScatter");
+            IRRender::device()->setPolygonMode(PolygonMode::FILL);
+            if (scatterProbeEnabled_ || scatterLightingEnabled_) {
+                bindSunShadowResources();
+            }
+            if (scatterLightingEnabled_) {
+                bindSurfaceLightingResources();
+            }
+            // Both passes must share the compiled fragment function: independent
+            // interpolation rounding can cross a quantized depth boundary.
+            (visibilityPrepass
+                 ? visibleLightingProgram_
+                 : (scatterLightingEnabled_
+                        ? scatterLightingProgram_
+                        : (scatterProbeEnabled_ ? scatterProbeProgram_ : scatterProgram_)))
+                ->use();
+            if (visibilityPrepass) {
+                // Order prior shader writes before the API clear reuses this buffer.
+                IRRender::device()->memoryBarrier(BarrierType::ALL);
+                IRRender::device()->fillBuffer(
+                    visibilityBuffer_.get(),
+                    (visibilityPixelCount_ + 3u) * sizeof(std::uint32_t),
+                    0xFF
+                );
+                IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+                visibilityBuffer_->bindBase(
+                    BufferTarget::SHADER_STORAGE,
+                    kBufferIndex_IndirectDispatchParams
+                );
+                IRRender::device()->setDepthTest(false);
+                IRRender::device()->setDepthWrite(false);
+                // Bit 0 enables counters; bit 1 selects prepass in the shared fragment program.
+                frameData.frameData_.scatterFbResolution_.z =
+                    static_cast<float>((visibilityStatsEnabled_ ? 1 : 0) | 2);
+                drawPerAxisFaces(frameData, axes, true);
+                IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+                // The framebuffer composite uses depth testing and writes for beauty.
+                IRRender::device()->setDepthTest(true);
+                IRRender::device()->setDepthWrite(true);
+            }
+            frameData.frameData_.scatterFbResolution_.z =
+                visibilityPrepass && visibilityStatsEnabled_ ? 1.0f : 0.0f;
+            drawPerAxisFaces(frameData, axes, scatterLightingEnabled_);
+            restoreVoxelCompactionSlots();
+            if (scatterLightingEnabled_) {
+                restoreSurfaceLightingResources();
+            }
+            program_->use();
+        }
+        if (visibilityPrepass && visibilityStatsEnabled_ && visibilityStatsFrameCount_ < 180 &&
+            ++visibilityStatsFrameCount_ == 180) {
+            // Readback is diagnostic-only; ordinary profiles never wait for it.
+            IRRender::device()->memoryBarrier(BarrierType::ALL);
+            IRRender::device()->finish();
+            std::array<std::uint32_t, 3> counts{};
+            visibilityBuffer_->getSubData(
+                static_cast<std::ptrdiff_t>(visibilityPixelCount_ * sizeof(std::uint32_t)),
+                sizeof(counts),
+                counts.data()
+            );
+            // The shared 0xFF clear starts each wrapping atomic counter at UINT_MAX.
+            IR_LOG_INFO(
+                "VISIBILITY-PROBE fragments={} retained={} rejected={} pixels={}",
+                counts[0] + 1u,
+                counts[1] + 1u,
+                counts[2] + 1u,
+                visibilityPixelCount_
+            );
+        }
+    }
 
-        // Sub-scope: the 3 per-axis instanced scatter draws + the
-        // overflow-entry draw — the rotating-only composite work, separated
-        // from the fall-through gather's trixelToFb row.
-        GpuSubStageScope scatterScope("perAxisScatter");
-        if (scatterProbeEnabled_ || scatterLightingEnabled_) {
-            bindSunShadowResources();
-        }
-        if (scatterLightingEnabled_) {
-            bindSurfaceLightingResources();
-        }
-        (scatterLightingEnabled_ ? scatterLightingProgram_
-                                 : (scatterProbeEnabled_ ? scatterProbeProgram_ : scatterProgram_))
-            ->use();
-        IRRender::device()->setPolygonMode(PolygonMode::FILL);
-        // instance over only the compacted occupied cells (filled by the
-        // beginTick compaction pre-pass) via an indirect draw whose instance
-        // count is the GPU-written occupied-cell count — instead of the full
-        // worst-case grid (axes.size_.x * axes.size_.y, mostly empty). Each axis
-        // binds its own compacted-list region + indirect-args struct.
-        // the per-axis compaction (now run in VOXEL_TO_TRIXEL_STAGE_1
-        // right after the per-axis stores) filled the component-owned cell buffers
-        // this frame. Instance over only the occupied cells via the per-axis
-        // indirect draw; recompute the region stride from the axis size the same
-        // way the compaction sized the buffer.
+    void drawPerAxisFaces(
+        C_FrameDataTrixelToFramebuffer &frameData, const C_PerAxisTrixelCanvases &axes, bool bindAO
+    ) {
+        // An overflow draw leaves mode 1 resident; every pass starts with cell records.
+        frameData.frameData_.overflowMode_ = 0;
+        frameData.updateFrameData(frameDataBuf_);
+        // Each axis owns a compacted-list region and GPU-authored indirect draw count.
         Buffer *cellCompacted = axes.cellCompacted_.second;
         Buffer *cellIndirect = axes.cellIndirect_.second;
         const int regionStride = axes.cellRegionStride_;
@@ -453,7 +524,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             const C_PerAxisTrixelCanvases::AxisTextures &tex = axes.axes_[axis];
             tex.colors_.second->bind(0);
             tex.distances_.second->bind(1);
-            if (scatterLightingEnabled_) {
+            if (bindAO) {
                 tex.ao_.second->bind(4);
             }
             cellCompacted->bindRange(
@@ -471,19 +542,8 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             );
         }
 
-        // View-visibility overflow lane: one indirect instanced draw
-        // over the entries VOXEL_TO_TRIXEL_STAGE_1's mode-3 dispatch appended —
-        // the view-visible faces the cardinal-keyed store dropped. Entries are
-        // albedo-only when presentation lighting is ready, otherwise relit by
-        // LIGHTING_TO_TRIXEL. The unified
-        // resolve scratch rides binding 25 (the same transient reuse as the
-        // cell lists above) and the ctrl block doubles as the draw args, with
-        // instanceCount GPU-authored — an empty list draws zero instances for
-        // free. Updating the shared frame-data UBO between draws is the
-        // established pattern (this function already re-uploads it for the
-        // fall-through gather). Axis-agnostic: the recovery decodes faceId from
-        // each entry, so whichever axis's textures stay bound only feed
-        // textureSize().
+        // Overflow entries encode their own face and albedo at slot 25; the
+        // resident axis textures supply only their dimensions, never AO.
         if (!overflowDrawDisabled_) {
             frameData.frameData_.overflowMode_ = 1;
             frameData.updateFrameData(frameDataBuf_);
@@ -502,20 +562,20 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             );
             frameData.frameData_.overflowMode_ = 0;
         }
-        // Restore slots 25/26 to the voxel-compaction buffers. The cell
-        // compaction + the per-axis bindRange above leave 25/26 pointing at the
-        // cell buffers; the next frame's VOXEL_TO_TRIXEL_STAGE_1 single-canvas
-        // compact relies on those slots still holding its own buffers (it binds
-        // them once at create() + sticky thereafter), so a leak here re-reads the
-        // cell list as the voxel list and corrupts the world voxels the following
-        // frame (the center-cube regression).
-        restoreVoxelCompactionSlots();
-        if (scatterLightingEnabled_) {
-            restoreSurfaceLightingResources();
+    }
+
+    void ensurePerAxisVisibilityBuffer(ivec2 framebufferSize) {
+        const std::size_t pixels = static_cast<std::size_t>(framebufferSize.x) *
+                                   static_cast<std::size_t>(framebufferSize.y);
+        if (visibilityBuffer_ != nullptr && visibilityPixelCount_ == pixels) {
+            return;
         }
-        // Restore the gather program for any subsequent canvas's single-canvas
-        // tick (background / gui / overlays draw after the main canvas).
-        program_->use();
+        visibilityBuffer_ = std::make_unique<Buffer>(
+            nullptr,
+            (pixels + 3u) * sizeof(std::uint32_t),
+            BUFFER_STORAGE_DYNAMIC
+        );
+        visibilityPixelCount_ = pixels;
     }
 
     // Rebind slots 25/26 to VOXEL_TO_TRIXEL_STAGE_1's compaction buffers after the
@@ -611,6 +671,9 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         program_->use();
         quadVao_->bind();
         auto &framebuffer = IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
+        if (visibilityPrepassEnabled_ && scatterLightingEnabled_) {
+            ensurePerAxisVisibilityBuffer(framebuffer.getResolutionPlusBuffer());
+        }
         framebuffer.bindFramebuffer();
         framebuffer.clear();
     }
@@ -660,6 +723,13 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                 ShaderStage{IRRender::kFileFragPerAxisSurfaceLighting, ShaderType::FRAGMENT}
             }
         );
+        IRRender::createNamedResource<ShaderProgram>(
+            "PerAxisVisibleLightingProgram",
+            std::vector{
+                ShaderStage{IRRender::kFileVertPerAxisScatter, ShaderType::VERTEX},
+                ShaderStage{IRRender::kFileFragPerAxisVisibleLighting, ShaderType::FRAGMENT}
+            }
+        );
         IRRender::createNamedResource<Buffer>(
             "TrixelToFramebufferFrameData",
             nullptr,
@@ -701,6 +771,15 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             IRRender::getNamedResource<ShaderProgram>("PerAxisSurfaceShadowProbeProgram");
         sys->scatterLightingProgram_ =
             IRRender::getNamedResource<ShaderProgram>("PerAxisSurfaceLightingProgram");
+        sys->visibleLightingProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("PerAxisVisibleLightingProgram");
+        const char *visibilityPrepass = std::getenv("IR_PERAXIS_VISIBILITY_PREPASS");
+        sys->visibilityPrepassEnabled_ = visibilityPrepass != nullptr &&
+                                         visibilityPrepass[0] == '1' &&
+                                         visibilityPrepass[1] == '\0';
+        const char *visibilityStats = std::getenv("IR_PERAXIS_VISIBILITY_STATS");
+        sys->visibilityStatsEnabled_ =
+            visibilityStats != nullptr && visibilityStats[0] == '1' && visibilityStats[1] == '\0';
         sys->quadVao_ = IRRender::getNamedResource<VAO>("QuadVAO");
         sys->overflowDrawDisabled_ = std::getenv("IR_PERAXIS_OVERFLOW_DISABLE") != nullptr;
         // NOT observer-tagged: the tick owns GpuSubStageScopes, which

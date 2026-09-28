@@ -26,6 +26,7 @@ const char *const kFileVertPerAxisScatter = "shaders/v_peraxis_scatter.glsl";
 const char *const kFileFragPerAxisScatter = "shaders/f_peraxis_scatter.glsl";
 const char *const kFileFragPerAxisSurfaceShadow = "shaders/f_peraxis_surface_shadow.glsl";
 const char *const kFileFragPerAxisSurfaceLighting = "shaders/f_peraxis_surface_lighting.glsl";
+const char *const kFileFragPerAxisVisibleLighting = "shaders/f_peraxis_visible_lighting.glsl";
 // The per-axis empty-cell compaction pre-pass scans each canvas's
 // distance image and atomic-appends every occupied cell's linear index into a
 // per-axis SSBO region + sets the indirect instanced-draw arg count, so the

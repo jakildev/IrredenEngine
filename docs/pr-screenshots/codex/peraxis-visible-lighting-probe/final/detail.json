@@ -1,0 +1,13 @@
+{
+  "file": "frame-detail.png",
+  "source": "frame-0.png",
+  "box_left_top_right_bottom": [
+    1040,
+    475,
+    1510,
+    955
+  ],
+  "resampling": false,
+  "provenance": "Existing lossless parent detail copied only after exact RGB verification against corrected candidate region.",
+  "sha256": "81c92d7f000dfcfda331c9ca995b89fb3daed1f3f42ce880679efae07851856b"
+}

@@ -76,10 +76,22 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
   This is modest and does not resolve the wider-view cost. A conservative
   [pre-division face rejection experiment](../perf/finite-shadow-query-pruning.md)
   preserves tested hits but shows no useful native speedup; shaders are restored.
-  Next measure query visits/overdraw and test visibility-before-lighting with
-  unchanged margin/depth arbitration; material work alone is not the main cost.
-  Keep this default-off and avoid capacity-sized records. Validate cardinal
-  transitions, dense/incomplete tiles, overflow and fog before default adoption.
+  Added an opt-in [visibility prepass](../pr-screenshots/codex/peraxis-visible-lighting-probe/final/README.md)
+  that shares one compiled fragment program and the regular/overflow draw sequence
+  between visibility and lighting. Independent programs produced a one-band depth
+  disagreement and foreground holes despite passing CPU controls; native captures
+  now guard that distinction without widening the rejection threshold. Three-run
+  same-binary Metal controls reduce the zoom-1 GPU envelope from 9.852 to 8.572 ms
+  and scatter scope from 5.217 to 3.960 ms. All 26 final image comparisons are
+  identical. Zoom 4 reduces the GPU envelope from 4.922 to 4.783 ms, while steady
+  frame ranges overlap. Wider population and subdivision scaling are not
+  established; retained evidence includes the rejected first attempt.
+  Storage follows internal framebuffer pixels (3.54 MiB in this fixture), not
+  entity or face capacity. Both attached lighting and this extra pass remain
+  default-off. Next measure candidate visits and dense/moving-camera workloads,
+  including subdivisions and native OpenGL, before deciding adoption or routing.
+  Validate cardinal transitions, dense/incomplete tiles, overflow and fog before
+  default adoption; exact shadow-query cost remains substantial after this pass.
 - [Bounded overflow reference](../perf/bounded-source-face-reference.md) isolates
   the dense analytical-box teeth: identical geometry and tile tables regain
   clean floor edges when incomplete tiles query the complete small face pool.

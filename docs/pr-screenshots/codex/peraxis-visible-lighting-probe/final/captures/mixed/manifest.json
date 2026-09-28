@@ -1,0 +1,123 @@
+{
+  "head": "44352414ef8046651bfadf1c923d4224c380f365",
+  "changes": " M docs/design/rendering-audit-todo.md\n M engine/prefabs/irreden/render/systems/system_trixel_to_framebuffer.hpp\n M engine/render/include/irreden/render/shader_names.hpp\n M engine/render/src/shaders/ir_peraxis_scatter_fragment_body.glsl\n M engine/render/src/shaders/metal/ir_peraxis_scatter_fragment_body.metal\n M engine/render/src/shaders/metal/ir_peraxis_scatter_interface.metal\n M engine/render/src/shaders/metal/peraxis_scatter.metal\n M engine/render/src/shaders/v_peraxis_scatter.glsl\n M scripts/tests/test_render_per_axis_probe_routing.py\n?? docs/pr-screenshots/codex/peraxis-visible-lighting-probe/\n?? engine/render/src/shaders/f_peraxis_visible_lighting.glsl\n?? engine/render/src/shaders/ir_scatter_visibility.glsl\n?? engine/render/src/shaders/metal/ir_scatter_visibility.metal\n?? engine/render/src/shaders/metal/peraxis_visible_lighting.metal\n?? scripts/tests/test_render_scatter_visibility.py\n?? scripts/tests/test_render_visibility_routing.py\n",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "host_power": "Battery Power",
+  "host_cpus": 14,
+  "build_dir": "build",
+  "build_type": "Debug",
+  "binary_sha256": "e5dee137ecfbba1cbeb0c06d6d66c6cc4e665802586e90801d5c439b1af0cc06",
+  "shader_sha256": "8b7d7b000c65f3e63412749d9d428845509b89ce83df4698c41ff9ce00dbe627",
+  "runtime_scripts_sha256": "c3ab47543e58c89b874850315b06881210a2dc81013b1524233269e9f7edad5b",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "120",
+    "IRCanvasStress",
+    "--only",
+    "shadowocclusion,orbit,floor",
+    "--probe-grid",
+    "--probe-staircase",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--subdivisions",
+    "1",
+    "--zoom",
+    "1",
+    "--auto-profile",
+    "--auto-screenshot",
+    "6",
+    "--sweep-yaw",
+    "0",
+    "5.10508806",
+    "5"
+  ],
+  "runs": [
+    {
+      "index": 1,
+      "launched_utc": "2026-09-28T22:57:47Z",
+      "finished_utc": "2026-09-28T22:57:53Z",
+      "host_battery_percent": 43,
+      "host_load_1m": 4.68,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "engine_logged": true,
+      "yaw_pose_mismatch": null,
+      "pivot_mismatch": null,
+      "explicit_pivot_samples": 0,
+      "overflow_failure": null,
+      "yaw_first_deg": 0.0,
+      "yaw_last_deg": -67.5,
+      "yaw_travel_deg": 292.5,
+      "zoom_first": 1.0,
+      "zoom_last": 1.0,
+      "zoom_min": 1.0,
+      "zoom_max": 1.0,
+      "zoom_range_present": true,
+      "overflow_max_dropped": 0,
+      "overflow_max_entries": 1552,
+      "overflow_samples": 248,
+      "gpu_measured": true
+    }
+  ],
+  "capture_manifest_sha256": "1a8b8141a22b5b3f02e5ed9995251c61c2a3ecf0f003050e2f7b1e1c1078d79c",
+  "source_manifest": "/tmp/codex-visibility-final-mixed/manifest.json",
+  "environment_supplement": {
+    "IR_PERAXIS_SURFACE_LIGHTING": "1",
+    "IR_PERAXIS_VISIBILITY_PREPASS": "1",
+    "IR_PERAXIS_VISIBILITY_STATS": null
+  },
+  "environment_supplement_provenance": "Frame launch confirmed by capture operator; other configurations explicitly set/unset these values in retained launch-controls.txt. Original repeat_profile manifests omit inherited environment. null means unset.",
+  "launch_controls_sha256": "424e0ebe5a1d332f3bc84bc55288777eae7c6ed509cabcc6d6b845536818528f",
+  "revision_note": "Shared fragment-program correction, captured from a dirty source tree. head is the source base, not a clean commit containing this candidate. Original changes field retained. Runtime hashes identify staged artifacts; run.clean describes runtime validation, not Git status.",
+  "screenshots": [
+    {
+      "source": "screenshot_003194.png",
+      "run": 1,
+      "image_index": 0,
+      "file": "mixed-0.png",
+      "sha256": "4b2a279c41ec311e8623977a688020acdc5b2f7ea78f1cd5e89c145fb8ae8f59",
+      "log_excerpt": "captures/mixed/run-1-excerpt.log",
+      "source_log_sha256": "89795e2057859986f47c4b0b22310ceec69dca5fa4a5439a45fd69e6135604cf"
+    },
+    {
+      "source": "screenshot_003195.png",
+      "run": 1,
+      "image_index": 1,
+      "file": "mixed-1.png",
+      "sha256": "3779a3e11e137764fd645821f6ceeee42481d51a25098b5dee3eba2db09e48dc",
+      "log_excerpt": "captures/mixed/run-1-excerpt.log",
+      "source_log_sha256": "89795e2057859986f47c4b0b22310ceec69dca5fa4a5439a45fd69e6135604cf"
+    },
+    {
+      "source": "screenshot_003196.png",
+      "run": 1,
+      "image_index": 2,
+      "file": "mixed-2.png",
+      "sha256": "bedfc511e8327c2e189e49848017d6865e6f7ccc619d291b63788cdd139dd862",
+      "log_excerpt": "captures/mixed/run-1-excerpt.log",
+      "source_log_sha256": "89795e2057859986f47c4b0b22310ceec69dca5fa4a5439a45fd69e6135604cf"
+    },
+    {
+      "source": "screenshot_003197.png",
+      "run": 1,
+      "image_index": 3,
+      "file": "mixed-3.png",
+      "sha256": "3b2ad53cc8eea2728e6fc3071451fbb0c2406c3dfe3cd1e60d1be2845ab7a83f",
+      "log_excerpt": "captures/mixed/run-1-excerpt.log",
+      "source_log_sha256": "89795e2057859986f47c4b0b22310ceec69dca5fa4a5439a45fd69e6135604cf"
+    },
+    {
+      "source": "screenshot_003198.png",
+      "run": 1,
+      "image_index": 4,
+      "file": "mixed-4.png",
+      "sha256": "0405a9c25c8def07220f4381c6f66e26315bc07d8f997fc8a7ffac2fba6a1088",
+      "log_excerpt": "captures/mixed/run-1-excerpt.log",
+      "source_log_sha256": "89795e2057859986f47c4b0b22310ceec69dca5fa4a5439a45fd69e6135604cf"
+    }
+  ]
+}

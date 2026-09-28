@@ -1,0 +1,15 @@
+{
+  "candidate": "frame-detail.png",
+  "reference": "frame-detail-parent.png",
+  "difference": "frame-detail-difference.png",
+  "source": "frame-0.png",
+  "box_left_top_right_bottom": [
+    1040,
+    475,
+    1510,
+    955
+  ],
+  "resampling": false,
+  "difference_encoding": "Absolute per-channel RGB subtraction at original pixel size, no amplification.",
+  "candidate_sha256": "ae1f7795b3665c8068b81f264a82b64219a209f9452cc625426b49609df31cc9"
+}

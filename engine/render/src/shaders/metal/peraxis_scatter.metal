@@ -138,6 +138,7 @@ vertex VertexOut v_peraxis_scatter(
     device const uint* compactedCells [[buffer(25)]]
 ) {
     VertexOut out;
+    out.visibilityExtent = int3(frameData.scatterFbResolution.xyz);
     const int2 canvasSize = int2(triangleColors.get_width(), triangleColors.get_height());
     int2 ij;
     float4 color;

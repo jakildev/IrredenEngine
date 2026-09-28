@@ -1,0 +1,22 @@
+[
+  {
+    "frame": 0,
+    "wrongly_rejected_pixel_delta_codes": {
+      "32": 76
+    }
+  },
+  {
+    "frame": 1,
+    "wrongly_rejected_pixel_delta_codes": {}
+  },
+  {
+    "frame": 2,
+    "wrongly_rejected_pixel_delta_codes": {
+      "32": 20
+    }
+  },
+  {
+    "frame": 3,
+    "wrongly_rejected_pixel_delta_codes": {}
+  }
+]
