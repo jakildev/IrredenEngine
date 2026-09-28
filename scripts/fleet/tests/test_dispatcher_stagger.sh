@@ -114,13 +114,22 @@ exit 0
 STUB
 chmod +x "$STUB_BIN/claude" "$STUB_BIN/fleet-claude-stream"
 
+WRAP_WT="$TMPROOT/pool-9"
+mkdir -p "$WRAP_WT"
+git -C "$WRAP_WT" init -q
+git -C "$WRAP_WT" config user.email test@example.invalid
+git -C "$WRAP_WT" config user.name Test
+printf 'seed\n' > "$WRAP_WT/seed"
+git -C "$WRAP_WT" add seed
+git -C "$WRAP_WT" commit -qm seed
+
 run_wrap() {
     # $1 rc, $2 throttle(0/1), $3 role; uses a fresh state dir each call.
     local rc="$1" throttle="$2" role="$3"
     WRAP_STATE=$(mktemp -d "$TMPROOT/state.XXXXXX")
-    PATH="$STUB_BIN:$PATH" FLEET_STATE_DIR="$WRAP_STATE" \
+    ( cd "$WRAP_WT" && PATH="$STUB_BIN:$PATH" FLEET_STATE_DIR="$WRAP_STATE" \
         FAKE_CLAUDE_RC="$rc" FAKE_STREAM_THROTTLE="$throttle" \
-        bash "$WRAP" pane-9 sonnet high "$role" >/dev/null 2>&1 || true
+        bash "$WRAP" pane-9 sonnet high "$role" >/dev/null 2>&1 ) || true
     echo "$WRAP_STATE"
 }
 

@@ -62,6 +62,24 @@ boot, a reserved worktree resuming its own task, or a target-less batch role
 running on the provider elected by the dispatcher — run the role's discovery
 flow, starting with the cache read.
 
+## Pane health — dispatch preflight and fleet-up self-heal
+
+Before taking a target claim, the dispatcher verifies that each existing pane
+path resolves as its own registered Git worktree. A broken registration is
+skipped, logged once, and recorded at
+`~/.fleet/alerts/dispatch-pane-<worktree>` until the pane becomes healthy.
+`fleet-dispatch-wrap` repeats the check before any wrapper-side state is
+written or a role starts; its one-shot backstop is
+`~/.fleet/alerts/dispatch-wrap-<worktree>` and releases an assigned target.
+
+On the next `fleet-up`, an existing pane whose `.git` file names a missing
+admin directory under the same clone is registered again in place. The repair
+recreates `HEAD`, `commondir`, and `gitdir`, keeps an existing scratch ref (or
+creates it at `origin/master`), and performs a mixed reset, so tracked and
+untracked working-tree bytes are preserved. A healed tree with tracked changes
+also writes `~/.fleet/alerts/fleet-up-healed-dirty-<worktree>` because its
+pre-break branch cannot be recovered.
+
 ## Startup — shared fleet state cache read
 
 Every target-less startup reads the scout's cache first
