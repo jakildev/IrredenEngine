@@ -5018,12 +5018,13 @@ reconcile_apply_field() {
 #   fail open on a transient error. Reads REST rather than `gh issue list
 #   --json` (GraphQL), so the lookup does not share the budget that throttles
 #   first under a rate limit; `select(.pull_request == null)` drops PRs, since
-#   the issues endpoint returns both. Both the refresh/create path and the
-#   auto-close path resolve the tracker set the same way.
+#   the issues endpoint returns both. The query rides in the URL, not `-f`
+#   fields: any `-f` switches `gh api` to POST, which would try to create an
+#   issue. Both the refresh/create path and the auto-close path resolve the
+#   tracker set the same way.
 reconcile_open_drift_trackers() {
-    gh api "repos/$FLEET_GITHUB_REPO/issues" \
-        -f state=open -f labels="fleet:state-drift" \
-        -f sort=created -f direction=desc -f per_page=100 \
+    gh api --paginate \
+        "repos/$FLEET_GITHUB_REPO/issues?state=open&labels=fleet:state-drift&sort=created&direction=desc&per_page=100" \
         --jq '.[] | select(.pull_request == null) | .number' \
         2>/dev/null
 }

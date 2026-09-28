@@ -18,9 +18,11 @@
 # The stub is stateful for the tracker: it keeps an ordered list of open
 # tracker numbers (newest first) in $TRACKER_LIST, `issue create` prepends a
 # freshly-minted number, `issue close <n>` removes `<n>`, and `gh api` against
-# the state-drift query echoes the list's numbers one per line — emulating the
-# real REST + --jq shape directly. Touching $FAIL_LOOKUP makes that `gh api`
-# call exit 1 with no output, modeling a rate-limited/errored lookup.
+# the state-drift query renders the list (plus a labeled PR decoy) as REST JSON
+# and runs the caller's own --jq program over it through real `jq`. The stub
+# resolves the HTTP method as gh does (any parameter flag without --method
+# means POST) and fails a non-GET lookup. Touching $FAIL_LOOKUP makes that
+# `gh api` call exit 1 with no output, modeling a rate-limited/errored lookup.
 
 set -euo pipefail
 
@@ -31,6 +33,11 @@ FLEET_CLAIM="$SCRIPT_DIR/fleet-claim"
 if [[ ! -x "$FLEET_CLAIM" ]]; then
     echo "test setup: fleet-claim not found at $FLEET_CLAIM" >&2
     exit 1
+fi
+
+if ! command -v jq >/dev/null 2>&1; then
+    echo "test setup: jq not on PATH; skipping (the gh stub runs the tracker lookup's real --jq filter)" >&2
+    exit 0
 fi
 
 PASS=0
@@ -75,6 +82,7 @@ export CREATE_LOG="$TMPROOT/create.log"; : > "$CREATE_LOG"
 export EDIT_LOG="$TMPROOT/edit.log"; : > "$EDIT_LOG"
 export CLOSE_LOG="$TMPROOT/close.log"; : > "$CLOSE_LOG"
 export API_LOG="$TMPROOT/api.log"; : > "$API_LOG"
+export ISSUE_LIST_LOG="$TMPROOT/issue-list.log"; : > "$ISSUE_LIST_LOG"
 # Ordered (newest-first) list of open tracker numbers, one per line.
 export TRACKER_LIST="$TMPROOT/tracker.list"; : > "$TRACKER_LIST"
 export TRACKER_NEXT="$TMPROOT/tracker.next"; echo 9001 > "$TRACKER_NEXT"
@@ -86,8 +94,14 @@ case "$1" in
     issue)
         case "$2" in
             list)
-                # Only the queued-issue surface fetch is left here — the
-                # state-drift tracker lookup moved to `gh api` (REST) below.
+                printf '%s\n' "$*" >> "$ISSUE_LIST_LOG"
+                # A GraphQL tracker lookup shares $FAIL_LOOKUP with the REST
+                # one, so a regression back to `issue list` fails the same way.
+                if printf '%s ' "$@" | grep -q 'fleet:state-drift'; then
+                    [[ -f "$FAIL_LOOKUP" ]] && exit 1
+                    head -n1 "$TRACKER_LIST"
+                    exit 0
+                fi
                 cat "$ISSUES_JSON"
                 exit 0 ;;
             create)
@@ -115,9 +129,38 @@ case "$1" in
         esac ;;
     api)
         printf '%s\n' "$*" >> "$API_LOG"
+        # Real `gh api` sends POST once any parameter flag is present unless
+        # --method/-X names another verb; POST to the issues list endpoint is
+        # issue creation, which 422s without a title.
+        shift
+        method="" has_params=0 jqexpr="" prev=""
+        for a in "$@"; do
+            case "$prev" in
+                -X|--method) method="$a" ;;
+                --jq|-q)     jqexpr="$a" ;;
+            esac
+            case "$a" in
+                -f|-F|--field|--raw-field|--input) has_params=1 ;;
+                --method=*) method="${a#--method=}" ;;
+            esac
+            prev="$a"
+        done
+        [[ -z "$method" ]] && { (( has_params )) && method=POST || method=GET; }
         if printf '%s ' "$@" | grep -q 'labels=fleet:state-drift'; then
+            if [[ "$method" != GET ]]; then
+                echo "gh: Validation Failed (HTTP 422)" >&2
+                exit 1
+            fi
             [[ -f "$FAIL_LOOKUP" ]] && exit 1
-            cat "$TRACKER_LIST"
+            # The issues endpoint returns PRs carrying the label too; the
+            # decoy proves the caller's --jq filters them out.
+            {
+                echo '[{"number":8999,"pull_request":{"url":"x"}}'
+                while IFS= read -r n; do
+                    [[ -n "$n" ]] && echo ",{\"number\":$n}"
+                done < "$TRACKER_LIST"
+                echo ']'
+            } | jq -r "${jqexpr:-.}"
             exit 0
         fi
         exit 0 ;;
@@ -261,6 +304,22 @@ run_reconcile --apply
 close_n=$(wc -l < "$CLOSE_LOG" | tr -d ' ')
 [[ "$close_n" -eq $((close_n_before + 1)) ]] && ok "a recovered lookup closes the surviving tracker (#9010) once drift stays cleared" || bad "recovered lookup did not close (count $close_n_before -> $close_n)"
 [[ -z "$(cat "$TRACKER_LIST")" ]] && ok "no open trackers remain after recovery" || bad "tracker list not empty after recovery: $(cat "$TRACKER_LIST" | tr '\n' ',')"
+
+echo "=== Phase 11: lookup shape + stub fidelity ==="
+if grep -q 'fleet:state-drift' "$ISSUE_LIST_LOG"; then bad "the tracker lookup still goes through gh issue list (GraphQL)"; else ok "the tracker lookup never calls gh issue list (GraphQL)"; fi
+lookup=$(grep 'labels=fleet:state-drift' "$API_LOG" | tail -n1 || true)
+if printf '%s' "$lookup" | grep -q -- '--paginate'; then ok "the tracker lookup pages (--paginate)"; else bad "the tracker lookup does not page: $lookup"; fi
+if printf '%s' "$lookup" | grep -q 'per_page=100'; then ok "the tracker lookup sets per_page=100"; else bad "the tracker lookup keeps the 30-item default: $lookup"; fi
+if gh api "repos/jakildev/IrredenEngine/issues?labels=fleet:state-drift" -f state=open >/dev/null 2>&1; then
+    bad "stub accepted a -f parameter without --method GET (real gh sends POST)"
+else
+    ok "stub rejects a -f parameter without --method GET, as real gh's POST would"
+fi
+if gh api --method GET "repos/jakildev/IrredenEngine/issues?labels=fleet:state-drift" -f state=open >/dev/null 2>&1; then
+    ok "stub accepts -f parameters under an explicit --method GET"
+else
+    bad "stub rejected -f parameters under an explicit --method GET"
+fi
 
 echo
 echo "================================"
