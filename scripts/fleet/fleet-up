@@ -546,6 +546,7 @@ FABLE_TAG="$(fleet_model_tag "$FLEET_MODEL_FABLE")"
 # Step 1: ensure all worktrees exist
 # ----------------------------------------------------------------------
 
+# $1 = main repo, $2 = worktree subpath, $3 = scratch branch; non-zero leaves it untouched.
 heal_worktree_registration() {
     local repo="$1" subpath="$2" scratch="$3" wt="$repo/$subpath"
     local dotgit admin suffix main_spelling expected_main worktree_name alert tracked status prune_output
@@ -593,7 +594,7 @@ heal_worktree_registration() {
         rm -rf "$admin"
         return 1
     }
-    if [[ "$prune_output" == *"$admin"* || "$prune_output" == *"$wt"* ]]; then
+    if [[ "$prune_output" == *"worktrees/$(basename "$admin"):"* ]]; then
         echo "fleet-up: failed to heal worktree registration $wt — prune still names the pane" >&2
         rm -rf "$admin"
         return 1

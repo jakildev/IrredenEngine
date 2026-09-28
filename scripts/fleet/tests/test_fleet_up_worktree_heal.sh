@@ -106,4 +106,24 @@ assert_contains "$out" "belongs to another clone" "foreign gitdir is explained"
 [[ ! -e "$FOREIGN/.git/worktrees/pool-4" ]] \
     && ok "foreign admin dir is not created" || bad "foreign admin dir was created"
 
+echo "T5: a prunable rebuilt registration is rejected"
+WT5="$REPO/.claude/worktrees/pool-5"
+git -C "$REPO" worktree add -q -b claude/pool-5-scratch "$WT5" master
+ADMIN5=$(sed -n 's/^gitdir: //p' "$WT5/.git")
+rm -rf "$ADMIN5"
+FLEET_FAKE_PRUNE_REPO="$REPO"
+git() {
+    if [[ "$1" == "-C" && "$2" == "$FLEET_FAKE_PRUNE_REPO" && "$3" == "worktree" \
+        && "$4" == "prune" && "$5" == "--dry-run" && "$6" == "-v" ]]; then
+        printf 'Removing worktrees/pool-5: gitdir file points to non-existent location\n'
+        return 0
+    fi
+    command git "$@"
+}
+out=$(ensure_worktree "$REPO" .claude/worktrees/pool-5 fleet/pool-5 claude/pool-5-scratch 2>&1)
+unset -f git
+assert_contains "$out" "prune still names the pane" "prunable rebuilt registration is rejected"
+[[ ! -e "$ADMIN5" ]] \
+    && ok "prunable rebuilt registration is removed" || bad "prunable registration was retained"
+
 summarize "fleet-up worktree registration heal"
