@@ -135,28 +135,36 @@ class PerAxisProbeRoutingTest(unittest.TestCase):
     def test_discovery_binding_and_draw_gates(self):
         source = adapter_source()
         variants = {
-            "production": source,
-            "requires_shapes": source.replace(
-                "scatterProbeEnabled_ = sunReceiverAvailable",
-                "scatterProbeEnabled_ = shapeReceiverAvailable"),
-            "lost_sun_gate": source.replace(
-                "scatterProbeEnabled_ = sunReceiverAvailable &&", "scatterProbeEnabled_ ="),
-            "lost_overlay_gate": source.replace(
-                "IRRender::getDebugOverlay() == DebugOverlayMode::SURFACE_SHADOW", "true"),
-            "lost_binding": source.replace("            bindSunShadowResources();", ""),
-            "wrong_depth_slot": source.replace(
-                "BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap",
-                "BufferTarget::SHADER_STORAGE, 27"),
-            "wrong_program": source.replace(
-                "scatterProbeEnabled_ ? scatterProbeProgram_ : scatterProgram_", "scatterProgram_"),
-            "lost_cache": source.replace("sunFrameBuf_ == nullptr", "true"),
-            "lost_cardinal_gate": source.replace("perAxisCanvases_->isAllocated()", "true"),
-            "foreign_canvas": source.replace("entity == perAxisCanvasEntity_ &&", ""),
+            "production": None,
+            "requires_shapes": (
+                r"(\bscatterProbeEnabled_\s*=\s*)sunReceiverAvailable\b",
+                r"\g<1>shapeReceiverAvailable"),
+            "lost_sun_gate": (
+                r"(\bscatterProbeEnabled_\s*=\s*)sunReceiverAvailable\s*&&\s*", r"\g<1>"),
+            "lost_overlay_gate": (
+                r"(\bscatterProbeEnabled_\s*=\s*sunReceiverAvailable\s*&&\s*)"
+                r"IRRender::getDebugOverlay\(\s*\)\s*==\s*DebugOverlayMode::SURFACE_SHADOW",
+                r"\g<1>true"),
+            "lost_binding": (r"\bbindSunShadowResources\(\s*\)\s*;", ""),
+            "wrong_depth_slot": (
+                r"(BufferTarget::SHADER_STORAGE\s*,\s*)kBufferIndex_SunShadowDepthMap\b",
+                r"\g<1>27"),
+            "wrong_program": (
+                r"\bscatterProbeEnabled_\s*\?\s*scatterProbeProgram_\s*:\s*scatterProgram_\b",
+                "scatterProgram_"),
+            "lost_cache": (r"\bsunFrameBuf_\s*==\s*nullptr\b", "true"),
+            "lost_cardinal_gate": (r"\bperAxisCanvases_\s*->\s*isAllocated\(\s*\)", "true"),
+            "foreign_canvas": (r"\bentity\s*==\s*perAxisCanvasEntity_\s*&&\s*", ""),
         }
-        for name, body in variants.items():
+        for name, mutation in variants.items():
             with self.subTest(variant=name), tempfile.TemporaryDirectory() as tmp:
-                if name != "production":
-                    self.assertNotEqual(body, source)
+                body = source
+                if mutation is not None:
+                    body, count = re.subn(*mutation, source)
+                    self.assertEqual(count, 1, f"{name}: expected exactly one mutation target")
+                    _, inline_count = re.subn(*mutation, re.sub(r"\s+", " ", source))
+                    self.assertEqual(
+                        inline_count, 1, f"{name}: expected one inline mutation target")
                 cpp, executable = Path(tmp) / "routing.cpp", Path(tmp) / "routing"
                 cpp.write_text(body)
                 build = subprocess.run(

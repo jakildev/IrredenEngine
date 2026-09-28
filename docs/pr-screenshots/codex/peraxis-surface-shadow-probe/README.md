@@ -39,7 +39,9 @@ The baseline is the staged executable/shaders from parent
 `9b446559df2cb831cd92284e559bc1e8fd9e9028`. Its manifests list pending source edits
 because captures preceded the candidate build; executable and staged-shader hashes
 identify the actual artifacts. Candidate captures followed `fleet-build --target
-IRCanvasStress`. No source or shader changed between candidate capture runs.
+IRCanvasStress`. All candidate captures used identical executable and staged-shader
+hashes. Subsequent C++ formatting and mutation-test cleanup do not change their
+rendering behavior.
 
 | Control | Result |
 |---|---|
