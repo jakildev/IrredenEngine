@@ -381,7 +381,6 @@ class SemanticConflictDispatch(unittest.TestCase):
         # worker never wakes to a conflict it would refuse on sight.
         for label in ("fleet:wip", "human:wip", "human:needs-fix",
                       "human:blocker", "fleet:awaiting-base",
-                      "fleet:awaiting-upstream-review",
                       "fleet:fork-of-other-pr"):
             prs = [_sc_pr(2417, labels=["fleet:semantic-conflict", label])]
             self.assertEqual(self._items(prs), [], label)
@@ -414,6 +413,39 @@ class SemanticConflictDispatch(unittest.TestCase):
         self.assertEqual([i["pr"] for i in items], [2417])
         self.assertEqual([p["number"] for p in self._slice([base, child])],
                          [2417])
+
+    def _gated_child(self, base_labels=None, base_open=True):
+        child = _sc_pr(2418, head="claude/child-feat", base="claude/base-feat",
+                       labels=["fleet:semantic-conflict",
+                               "fleet:awaiting-upstream-review"])
+        prs = [child]
+        if base_open:
+            prs.insert(0, _pr(2417, head="claude/base-feat", labels=base_labels))
+        return prs
+
+    def test_upstream_review_gate_holds_while_upstream_unapproved(self):
+        # The upstream's next amend would redo the resolution.
+        prs = self._gated_child(base_labels=["fleet:needs-fix"])
+        self.assertEqual(self._items(prs), [])
+        self.assertEqual(self._slice(prs), [])
+
+    def test_upstream_review_gate_is_stale_once_upstream_approved(self):
+        # No reviewer admits a semantic-conflicted PR, so nothing lifts the
+        # gate on a conflicted child; an approved upstream makes it stale.
+        for label in ("fleet:approved", "human:approved"):
+            prs = self._gated_child(base_labels=[label])
+            self.assertEqual([i["pr"] for i in self._items(prs)], [2418], label)
+            self.assertEqual([p["number"] for p in self._slice(prs)], [2418], label)
+
+    def test_upstream_review_gate_is_stale_once_upstream_gone(self):
+        # Upstream merged (no open PR owns the base branch).
+        prs = self._gated_child(base_open=False)
+        self.assertEqual([i["pr"] for i in self._items(prs)], [2418])
+
+    def test_upstream_review_gate_on_master_based_pr_is_stale(self):
+        prs = [_sc_pr(2418, labels=["fleet:semantic-conflict",
+                                    "fleet:awaiting-upstream-review"])]
+        self.assertEqual([i["pr"] for i in self._items(prs)], [2418])
 
     def test_stacked_child_with_clean_base_is_claimable(self):
         # A conflicted child whose base PR is NOT semantic-conflicted is

@@ -1,22 +1,22 @@
 """Drift guard for `_SMOKE_PENDING_LABELS`'s two hand-listed consumers (#2957).
 
 `fleet-state-scout`'s `_SMOKE_PENDING_LABELS` is the producer set for the
-cross-host smoke labels. Two consumers need every member of that set to also
-treat the label as "not my job right now":
+cross-host smoke labels. Two consumers must agree on what a pending smoke
+means for merger work:
 
-  - `_merger_action_signal`'s skip set (`fleet-state-scout`) — same module,
-    same language, so it's derived from `_SMOKE_PENDING_LABELS` directly
-    (a union, not a second hand-written list) rather than merely guarded.
-  - `SKIP_LABEL_RE` (`fleet-rebase`) — a bash regex string in a different
-    language and process, so derivation isn't practical; this file is the
-    guard that keeps it honest instead.
+  - `_merger_action_signal` (`fleet-state-scout`): a smoke-pending PR is
+    never `merge-ready`, and a smoke-pending conflict is always
+    `needs-resolve`. The human merges without waiting for smoke, so a
+    pending smoke never holds conflict work.
+  - `SKIP_LABEL_RE` (`fleet-rebase`): a bash regex in a different language
+    and process, so derivation isn't practical and this file guards it. It
+    must match NO smoke label, or tier-0 parks every approved conflict
+    until a host of that tier smokes a head that cannot merge.
 
-This has orphaned both consumers twice already (#2804 widened the producer
-two->three and left both at two; #2888 / PR #2953 fixed the instance but
-added no guard against a repeat). Both assertions below read their expected
-label set from `_SMOKE_PENDING_LABELS` at runtime — neither re-lists the
-labels — so a future widening of the producer is exercised against both
-consumers automatically, with no test edit required.
+The producer has orphaned its consumers before (#2804 widened it from two
+labels to three; #2888 / PR #2953 fixed that instance). Every assertion below
+reads the label set from `_SMOKE_PENDING_LABELS` at runtime, so widening the
+producer is exercised against both consumers with no test edit.
 """
 import importlib.machinery
 import importlib.util
@@ -46,11 +46,11 @@ def _fleet_rebase_skip_label_re():
     raise AssertionError(f"SKIP_LABEL_RE= assignment not found in {_REBASE_PATH}")
 
 
-class MergerSkipSetCoversEverySmokeLabel(unittest.TestCase):
-    """`_merger_action_signal` must skip (return None for) every producer
-    label — an approved, otherwise-mergeable PR carrying only that label."""
+class MergerKeepsEverySmokeLabelOffMergeReady(unittest.TestCase):
+    """`_merger_action_signal` must return None, not `merge-ready`, for an
+    approved, MERGEABLE PR carrying any producer label."""
 
-    def test_every_smoke_label_is_skipped(self):
+    def test_every_smoke_label_is_not_merge_ready(self):
         self.assertTrue(_SMOKE_PENDING_LABELS, "producer set must be non-empty")
         for label in sorted(_SMOKE_PENDING_LABELS):
             with self.subTest(label=label):
@@ -59,27 +59,40 @@ class MergerSkipSetCoversEverySmokeLabel(unittest.TestCase):
                 )
                 self.assertIsNone(
                     signal,
-                    f"{label} is missing from _merger_action_signal's skip "
-                    f"set — the merger would treat it as {signal!r} instead "
-                    "of leaving it for the smoke-runner",
+                    f"{label} reads {signal!r}: a PR still owing that smoke "
+                    "must not be reported merge-ready",
                 )
 
 
-class FleetRebaseSkipRegexCoversEverySmokeLabel(unittest.TestCase):
-    """`fleet-rebase`'s `SKIP_LABEL_RE` must match every producer label —
-    the same substring test `preflight_pr` runs against a joined label list
+class MergerTreatsEverySmokeConflictAsWork(unittest.TestCase):
+    """`_merger_action_signal` must report `needs-resolve` for an approved,
+    conflicting PR carrying any producer label."""
+
+    def test_every_smoke_label_conflict_needs_resolve(self):
+        for label in sorted(_SMOKE_PENDING_LABELS):
+            with self.subTest(label=label):
+                self.assertEqual(
+                    _merger_action_signal({"fleet:approved", label},
+                                          "CONFLICTING", "master"),
+                    "needs-resolve",
+                    f"{label} hides a conflict from the merger",
+                )
+
+
+class FleetRebaseSkipRegexMatchesNoSmokeLabel(unittest.TestCase):
+    """`fleet-rebase`'s `SKIP_LABEL_RE` must match no producer label: the
+    same substring test `preflight_pr` runs against a joined label list
     (`grep -qE "$SKIP_LABEL_RE"`)."""
 
-    def test_every_smoke_label_matches_skip_regex(self):
+    def test_no_smoke_label_matches_skip_regex(self):
         skip_re = _fleet_rebase_skip_label_re()
         self.assertTrue(_SMOKE_PENDING_LABELS, "producer set must be non-empty")
         for label in sorted(_SMOKE_PENDING_LABELS):
             with self.subTest(label=label):
-                self.assertIsNotNone(
+                self.assertIsNone(
                     re.search(skip_re, label),
-                    f"{label} does not match fleet-rebase's SKIP_LABEL_RE — "
-                    "tier-0 would rebase and force-push a PR still pending "
-                    "that host's smoke run",
+                    f"{label} matches fleet-rebase's SKIP_LABEL_RE — tier-0 "
+                    "would leave an approved conflict parked on a pending smoke",
                 )
 
 

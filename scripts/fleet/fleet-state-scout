@@ -2238,9 +2238,12 @@ DESIGN_RESUME_LABELS = frozenset({"fleet:design-unblocked"})
 # Keep in lockstep with the step-1c filter list in role-worker.md.
 SEMANTIC_CONFLICT_EXCLUDE_LABELS = frozenset({
     "fleet:wip", "human:wip", "human:needs-fix", "human:blocker",
-    "fleet:awaiting-base", "fleet:awaiting-upstream-review",
+    "fleet:awaiting-base",
     "fleet:fork-of-other-pr", "fleet:design-blocked", "fleet:design-proposed",
 })
+# What makes a stacked child's upstream count as reviewed for the
+# fleet:awaiting-upstream-review gate (REVIEWER-PROTOCOL.md step 3).
+_UPSTREAM_APPROVED_LABELS = frozenset({"fleet:approved", "human:approved"})
 REVIEW_VERDICT_LABELS = frozenset({
     "fleet:approved", "fleet:needs-fix", "fleet:has-nits",
 })
@@ -3261,6 +3264,17 @@ def _semantic_conflict_claimable(pr, labels, head_labels):
     base_labels = head_labels.get(pr.get("baseRefName"))
     if base_labels and "fleet:semantic-conflict" in base_labels:
         return False
+    # fleet:awaiting-upstream-review holds a stacked child's *review* until
+    # its upstream is approved, and the reviewer lifts it (REVIEWER-PROTOCOL
+    # step 3). No reviewer admits a semantic-conflicted PR, though, so on a
+    # conflicted child nothing ever lifts it. The gate holds only while the
+    # upstream is open and unapproved, when its next amend would redo the
+    # resolution. Once the upstream is approved or no longer open (merged,
+    # or the PR is master-based), the gate is stale and the conflict is
+    # claimable. Mirror in role-worker.md step 1c.
+    if ("fleet:awaiting-upstream-review" in labels and base_labels is not None
+            and not base_labels & _UPSTREAM_APPROVED_LABELS):
+        return False
     return True
 
 
@@ -3425,11 +3439,12 @@ def project_queue_manager(state):
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 
 
-# The labels that park a PR away from the merger entirely. Every member of
-# `_SMOKE_PENDING_LABELS` is one — the merger isn't the agent that resolves
-# those; a smoke-runner clears them — read straight from the constant so
-# widening the producer set can never orphan this consumer.
-_MERGER_PROJECTION_SKIP_LABELS = frozenset(_SMOKE_PENDING_LABELS | {
+# The labels that park a PR away from the merger entirely. The cross-host
+# smoke labels (`_SMOKE_PENDING_LABELS`) are deliberately NOT here: the human
+# merges without waiting for smoke, and a conflicting head must change before
+# anything merges, so a pending smoke never holds conflict work.
+# `_merger_action_signal` still keeps a smoke-pending PR off `merge-ready`.
+_MERGER_PROJECTION_SKIP_LABELS = frozenset({
     "fleet:wip", "human:wip",
     "fleet:fork-of-other-pr", "fleet:design-blocked",
     # Parked by the epic-steward pending a proposal answer on the
@@ -3495,12 +3510,14 @@ def _merger_action_signal(labels, mergeable, base_ref, checks=None):
     them turns the projection hash into a self-trigger loop: the merger
     fires, toggles its cooldown, and re-fires itself on the next scout tick.
 
-    Every member of `_SMOKE_PENDING_LABELS` is also a skip signal — the
-    merger isn't the agent that resolves those; a smoke-runner clears them.
-    Including them as merger candidates just makes the merger fire
-    repeatedly to find nothing to do. Read straight from the constant
-    (rather than hand-listed) so widening the producer set can never
-    orphan this consumer.
+    A `_SMOKE_PENDING_LABELS` member suppresses only `merge-ready`: a
+    smoke-runner, not the merger, clears it. It never suppresses
+    `needs-resolve`. The human merges without waiting for smoke, and a
+    conflicting PR's head changes before anything merges, so the smoke runs
+    on the resolved head. Hiding the conflict instead parks it until a host
+    of that tier happens to smoke a head that cannot merge. Read straight
+    from the constant so widening the producer set can never orphan this
+    consumer.
 
     `fleet:human-deferred` is intentionally NOT skipped. It marks a PR
     whose *human-review feedback* was deferred to a follow-up issue
@@ -3532,6 +3549,8 @@ def _merger_action_signal(labels, mergeable, base_ref, checks=None):
             return None
         return "needs-resolve"
     if approved and mergeable == "MERGEABLE" and base_ref == "master":
+        if labels & _SMOKE_PENDING_LABELS:
+            return None
         return {"red": "checks-red", "unread": "checks-unread"}.get(checks, "merge-ready")
     return None
 
