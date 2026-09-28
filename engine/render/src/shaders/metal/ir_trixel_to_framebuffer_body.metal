@@ -146,7 +146,7 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
                                      originRaw, receiverFrame, receiverShapes, receiverOwners, receiverTiles,
                                      position, normal)) {
             float visibility = sunFrameData.shadowsEnabled == 0 ? 1.0 :
-                worldSurfaceSunShadowFactor(position, normal, pos3DtoDistance(position),
+                worldShapeSurfaceSunShadowFactor(position, normal, shapeCanvasIsoDepth(position, receiverFrame),
                     frameData.casterViewToWorld,
                     sunFrameData, sunDepthBuf);
             color.rgb = visibility >= 0.999 ? float3(0.0) : float3(1.0, 0.0, 1.0);
@@ -162,7 +162,7 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
                                      receiverFrame, receiverShapes, receiverOwners, receiverTiles,
                                      position, normal))
             color.rgb = shapeSurfaceLighting(sampleCoord, int(textureSize.x), position, normal,
-                frameData.casterViewToWorld, color.rgb, receiverShapes, receiverOwners, receiverTiles,
+                shapeCanvasIsoDepth(position, receiverFrame), frameData.casterViewToWorld, color.rgb, receiverShapes, receiverOwners, receiverTiles,
                 lighting, volumeParams, sunFrameData, sunDepthBuf, lights,
                 paletteLUT, surfaceAO, lightVolume, lightVolumeId);
     }
