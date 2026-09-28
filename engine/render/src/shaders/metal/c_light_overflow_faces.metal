@@ -4,6 +4,7 @@
 #include "ir_per_axis_shadow.metal"
 #include "ir_world_lighting.metal"
 #include "ir_surface_light_volume.metal"
+#include "ir_surface_material.metal"
 
 // Mirrors shaders/c_light_overflow_faces.glsl. Dispatched inside
 // LIGHTING_TO_TRIXEL after the per-axis CELL lighting, and ONLY while rotating
@@ -78,15 +79,8 @@ kernel void c_light_overflow_faces(
     const float faceFactor =
         surfaceSunFactor(sunFrameData.sunAmbient, sunFrameData.sunIntensity, lambert, shadow);
 
-    float3 baseRgb;
-    if (frameData.lutEnabled == 0) {
-        baseRgb = albedo.rgb * ao * faceFactor;
-    } else {
-        constexpr sampler s(filter::nearest, address::clamp_to_edge);
-        const float luminance = dot(albedo.rgb, float3(0.299f, 0.587f, 0.114f));
-        const float4 lut = paletteLUT.sample(s, float2(ao, luminance));
-        baseRgb = albedo.rgb * lut.rgb * faceFactor;
-    }
+    const float3 materialRgb = surfaceMaterialColor(albedo.rgb, ao, frameData.lutEnabled != 0, paletteLUT);
+    float3 baseRgb = materialRgb * faceFactor;
 
     if (frameData.lightVolumeEnabled != 0) {
         constexpr sampler volumeSampler(filter::linear, address::clamp_to_edge);

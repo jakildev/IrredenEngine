@@ -1,6 +1,7 @@
 #include "ir_world_lighting.glsl"
 #include "ir_lighting_frame_data.glsl"
 #include "ir_surface_light_volume.glsl"
+#include "ir_surface_material.glsl"
 
 layout(binding = 3) uniform sampler2D paletteLUT;
 layout(binding = 4) uniform sampler2D surfaceAO;
@@ -21,11 +22,7 @@ vec3 shapeSurfaceLighting(ivec2 ownerPixel, int ownerWidth, vec3 position, vec3 
         return fallbackColor;
     const vec3 albedo = unpackColor(receiverShapes[shapeIndex].color).rgb;
     const float ao = texelFetch(surfaceAO, ownerPixel, 0).r;
-    vec3 material = albedo * ao;
-    if (lutEnabled != 0) {
-        const float luminance = dot(albedo, vec3(0.299, 0.587, 0.114));
-        material = albedo * textureLod(paletteLUT, vec2(ao, luminance), 0.0).rgb;
-    }
+    const vec3 material = surfaceMaterialColor(albedo, ao, lutEnabled != 0, paletteLUT);
     const float visibility = shadowsEnabled == 0 ? 1.0 :
         worldSurfaceSunShadowFactor(position, normal, pos3DtoDistance(position), casterRotation);
     const float lambert = max(0.0, dot(normal, sunDirection.xyz));

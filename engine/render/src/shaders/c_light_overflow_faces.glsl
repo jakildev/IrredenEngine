@@ -28,6 +28,7 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 #include "ir_per_axis_shadow.glsl"
 #include "ir_world_lighting.glsl"    // GPULightSource list (slot 4), spotConeFactor, ACESFilm
 #include "ir_surface_light_volume.glsl"
+#include "ir_surface_material.glsl"
 
 #include "ir_lighting_frame_data.glsl"
 
@@ -138,14 +139,8 @@ void main() {
     const float faceFactor =
         surfaceSunFactor(sunAmbient, sunIntensity, lambert, shadow);
 
-    vec3 baseRgb;
-    if (lutEnabled == 0) {
-        baseRgb = albedo.rgb * ao * faceFactor;
-    } else {
-        const float luminance = dot(albedo.rgb, vec3(0.299, 0.587, 0.114));
-        const vec4 lut = texture(paletteLUT, vec2(ao, luminance));
-        baseRgb = albedo.rgb * lut.rgb * faceFactor;
-    }
+    const vec3 materialRgb = surfaceMaterialColor(albedo.rgb, ao, lutEnabled != 0, paletteLUT);
+    vec3 baseRgb = materialRgb * faceFactor;
 
     // Light-volume bleed at the recovered world pos (+ SPOT cone shaping),
     // identical to the cell path.

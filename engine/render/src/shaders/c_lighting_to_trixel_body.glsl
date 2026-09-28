@@ -27,6 +27,7 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 // GPULightSource list (slot 4), light-volume extents, spotConeFactor, ACESFilm.
 #include "ir_world_lighting.glsl"
 #include "ir_surface_light_volume.glsl"
+#include "ir_surface_material.glsl"
 
 #include "ir_lighting_frame_data.glsl"
 
@@ -340,29 +341,15 @@ void main() {
     const float faceFactor =
         surfaceSunFactor(sunAmbient, sunIntensity, lambert, shadow);
 
-    vec3 baseRgb;
-    vec3 materialRgb;
-    if (lutEnabled == 0) {
-        materialRgb = src.rgb * ao;
-        baseRgb = materialRgb * faceFactor;
-    } else {
-        // LUT palette shading: AO drives the X axis (light level) and pixel
-        // luminance selects the palette row so highlights and shadows get
-        // distinct cel-shade colour casts. The directional shadow is already
-        // folded into faceFactor (ambient-preserving), so the LUT path composes
-        // palette shading and shadows without needing a 3D LUT.
-        const float luminance = dot(src.rgb, vec3(0.299, 0.587, 0.114));
-        const vec4  lut       = texture(paletteLUT, vec2(ao, luminance));
-        materialRgb = src.rgb * lut.rgb;
-        baseRgb = materialRgb * faceFactor;
-    }
+    const vec3 materialRgb = surfaceMaterialColor(src.rgb, ao, lutEnabled != 0, paletteLUT);
+    vec3 baseRgb = materialRgb * faceFactor;
 
     if (continuousShadow) {
+        const SurfaceSunTerms sunTerms = surfaceSunTerms(materialRgb, sunAmbient, sunIntensity, lambert);
         sourceFaces[sourceIndex].worldCenterAndAO = vec4(worldReceivePos, ao);
-        sourceFaces[sourceIndex].directSunAndExposure = vec4(
-            materialRgb * (1.0 - sunAmbient) * lambert * sunIntensity, exposure);
+        sourceFaces[sourceIndex].directSunAndExposure = vec4(sunTerms.direct, exposure);
         sourceFaces[sourceIndex].owner.z = hdrEnabled != 0 ? kSourceLightingHDR : kSourceLightingLinear;
-        baseRgb = materialRgb * sunAmbient * sunIntensity;
+        baseRgb = sunTerms.ambient;
     }
 
     // Light-volume bleed: the world canvas (and per-axis camera canvases) sample
