@@ -157,8 +157,8 @@ Before editing any of them:
   out of bounds. Same rule the voxel-side residency helper documents at
   `engine/prefabs/irreden/world/chunk_coord.hpp:38` (doc §D2).
 - **Presence is map membership, not allocation.** `clear()` makes a field chunk
-  logically *absent* (D4 then reads its cells as **occupied**) while its dense
-  buffer goes to a free list for reuse — that is how Pattern B and D4 coexist.
+  logically *absent* (D4 then reads its cells as **occupied**) while its node
+  and buffer go to a free list for reuse — that is how Pattern B and D4 coexist.
   A present all-zero chunk means "all free" and is the *opposite* state; never
   evict one because `nonZeroCount_ == 0` (doc §D2).
 - **Region labels are epoch-scoped.** Global ids are *not* stable across

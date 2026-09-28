@@ -2,6 +2,8 @@
 
 #include <irreden/spatial/chunked_field.hpp>
 
+#include "common/allocation_counter.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -540,6 +542,34 @@ TEST(ChunkedFieldMutationTest, FillRowCrossesTheNegativeChunkBoundary) {
     EXPECT_EQ(field.fillRow({30, 40}, 4, 0), 4);
     EXPECT_NE(field.findChunk({1, 1}), nullptr);
     EXPECT_EQ(field.fillRow({0, 0}, 0, 9), 0);
+}
+
+// clear() and eraseChunk() recycle whole field chunks, map node and buffer, so
+// a working set rebuilt every frame stops allocating once it has been seen.
+TEST(ChunkedFieldStorageTest, RebuildingAWarmWorkingSetAllocatesNothing) {
+    constexpr int kPeriod = 8;
+    ChunkedField2D<int> field;
+    std::vector<FieldChunkKey> dirty;
+    const auto frame = [&](int index) {
+        const int shift = (index % kPeriod) * 13;
+        field.clear();
+        for (int row = -40; row < 40; row += 3) {
+            field.fillRow({shift - 70, row}, 90, 1);
+        }
+        field.setCell({shift * 5, 500}, 2);
+        field.eraseChunk(fieldChunkOf({shift - 70, -40}));
+        field.dirtyKeys(dirty);
+        field.update();
+    };
+    for (int index = 0; index < kPeriod; ++index) {
+        frame(index);
+    }
+
+    const IRTest::AllocationCounter counter;
+    for (int index = kPeriod; index < 3 * kPeriod; ++index) {
+        frame(index);
+    }
+    EXPECT_EQ(counter.allocations(), 0u);
 }
 
 } // namespace

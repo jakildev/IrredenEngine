@@ -17,6 +17,8 @@ add_executable(IrredenEngineTest
   audio/music_theory_test.cpp
   command/default_binding_manifest_test.cpp
   command/keyboard_dispatch_test.cpp
+  # Replaces the global operator new/delete for the whole binary.
+  common/allocation_counter.cpp
   common/command_registry_test.cpp
   common/ir_args_test.cpp
   common/ir_platform_test.cpp
@@ -255,6 +257,7 @@ target_compile_definitions(IrredenEngineTest PRIVATE
 )
 
 target_include_directories(IrredenEngineTest PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
     ${googletest_SOURCE_DIR}/googletest/include
     ${googletest_SOURCE_DIR}/googlemock/include
 )

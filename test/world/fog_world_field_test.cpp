@@ -5,6 +5,8 @@
 #include <irreden/spatial/chunked_field.hpp>
 #include <irreden/world/field_chunk_persistence.hpp>
 
+#include "common/allocation_counter.hpp"
+
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -506,12 +508,7 @@ IRMath::ivec2 tierSourceCell(int index) {
     return {IRMath::roundHalfUp(centre.x), IRMath::roundHalfUp(centre.y)};
 }
 
-int admitTierSource(
-    FrameDataFogObservers &observers,
-    WorldField &field,
-    int index,
-    float radius
-) {
+int admitTierSource(FrameDataFogObservers &observers, WorldField &field, int index, float radius) {
     const IRMath::vec2 centre = tierSourceCentre(index);
     return C_CanvasFogOfWar::addVisionCircle(
         observers,
@@ -659,6 +656,57 @@ TEST_F(FogWorldFieldTest, FieldTierStampsAreNotPersisted) {
     persist(fresh);
     EXPECT_EQ(fresh.getCell(centre), kFogStateUnexplored);
     EXPECT_EQ(fresh.getCell(persistentCell), kFogStateExplored);
+}
+
+// A moving set past the cap, cleared and re-stamped every frame and drained by
+// the gather, allocates nothing once warm.
+TEST_F(FogWorldFieldTest, MovingFieldTierAllocatesNothingOnceWarm) {
+    constexpr int kSources = IRComponents::kMaxFogVisionCircles + 64;
+    constexpr int kPeriod = 16;
+    constexpr float kRadius = 24.0f;
+    WorldField field;
+    FrameDataFogObservers observers;
+    std::vector<FieldChunkKey> pending;
+    const auto centreOf = [](int source, int index) {
+        const float step = static_cast<float>(index % kPeriod) * 9.5f;
+        return IRMath::vec2{
+            static_cast<float>((source % 8) * 150) + step,
+            static_cast<float>((source / 8) * 150) - step
+        };
+    };
+    const auto frame = [&](int index) {
+        C_CanvasFogOfWar::clearVisionCircles(observers, field);
+        for (int i = 0; i < kSources; ++i) {
+            const IRMath::vec2 centre = centreOf(i, index);
+            C_CanvasFogOfWar::addVisionCircle(
+                observers,
+                field,
+                centre.x,
+                centre.y,
+                kRadius,
+                0.0f,
+                0.0f,
+                0.0f,
+                IRComponents::kFogVisionZCostMirrorUp,
+                0.0f
+            );
+        }
+        field.consumePending(pending);
+    };
+    for (int index = 0; index < kPeriod; ++index) {
+        frame(index);
+    }
+    const IRMath::vec2 last = centreOf(kSources - 1, kPeriod - 1);
+    ASSERT_EQ(
+        field.peekCell({IRMath::roundHalfUp(last.x), IRMath::roundHalfUp(last.y)}),
+        std::optional<std::uint8_t>{kFogStateVisible}
+    ) << "the last source is field-tier";
+
+    const IRTest::AllocationCounter counter;
+    for (int index = kPeriod; index < 3 * kPeriod; ++index) {
+        frame(index);
+    }
+    EXPECT_EQ(counter.allocations(), 0u);
 }
 
 class FogWindowGatherTest : public ::testing::Test {

@@ -167,7 +167,7 @@ exact without a recount and can silently skip the dirty mark.
 
 Allocation discipline is `SpatialGrid`'s **allocation Pattern B**
 (`spatial_grid.hpp:13-20`): buckets retain capacity across rebuilds, `clear()`
-releases touched chunks without freeing their buffers (see below), and queries
+releases touched chunks without freeing their nodes (see below), and queries
 write into **caller-owned** out-vectors. ("Pattern B" is overloaded in tree — the *API
 shape* sense in `engine/prefabs/irreden/render/CLAUDE.md` is a different thing.
 Always say *allocation* Pattern B and cite `spatial_grid.hpp:13`.)
@@ -192,12 +192,13 @@ are tracked separately. They are:
 | | Meaning | Where it lives |
 |---|---|---|
 | **present** | this chunk's cells are authoritative; D4 reads them | membership in the `unordered_map` |
-| **retained** | a dense 32×32 buffer kept for reuse, owned by no key | a free list of detached buffers |
+| **retained** | a dense 32×32 buffer kept for reuse, owned by no key | a free list of detached map nodes, each still owning its buffer |
 
-- **`clear()` makes touched chunks logically ABSENT**, detaching their buffers
-  to the free list rather than freeing them. The next chunk created at any key
-  takes a buffer off that list, so capacity survives (Pattern B) while presence
-  does not.
+- **`clear()` makes touched chunks logically ABSENT**, detaching their map
+  nodes, buffers included, to the free list rather than freeing them. The next
+  chunk created at any key takes a node off that list and re-keys it, so
+  capacity survives (Pattern B) while presence does not, and a working set
+  rebuilt every frame allocates nothing once its peak has been seen.
 - **There is no present-but-stale chunk.** Presence *is* map membership, so
   lookup and iteration cannot observe a retained buffer — iteration walks the
   map, never the pool. That is the whole point of the split: a zero-filled chunk
