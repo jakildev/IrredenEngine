@@ -1,0 +1,187 @@
+{
+  "original_log_lines": 1666,
+  "selected_log_lines": 1154,
+  "compaction": "Original first/last lines and occurrence count for each selected message after timestamp/logger/level removal. Screenshot messages retain distinct membership.",
+  "messages": [
+    {
+      "message": "ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/canvas_stress/IRCanvasStress --only shadowocclusion,orbit,floor --probe-grid --probe-staircase --no-spin --no-auto-rotate --pivot-origin --zoom 1 --auto-profile --auto-screenshot 6 --subdivisions 4 --sweep-yaw 0 6.28318530718 9 (timeout: 120s)",
+      "count": 1,
+      "first_line": "ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/canvas_stress/IRCanvasStress --only shadowocclusion,orbit,floor --probe-grid --probe-staircase --no-spin --no-auto-rotate --pivot-origin --zoom 1 --auto-profile --auto-screenshot 6 --subdivisions 4 --sweep-yaw 0 6.28318530718 9 (timeout: 120s)",
+      "last_line": "ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/canvas_stress/IRCanvasStress --only shadowocclusion,orbit,floor --probe-grid --probe-staircase --no-spin --no-auto-rotate --pivot-origin --zoom 1 --auto-profile --auto-screenshot 6 --subdivisions 4 --sweep-yaw 0 6.28318530718 9 (timeout: 120s)"
+    },
+    {
+      "message": "Metal device: Apple M4 Max",
+      "count": 1,
+      "first_line": "[2026-09-28 16:15:33.349] [EngineLog] [info] Metal device: Apple M4 Max",
+      "last_line": "[2026-09-28 16:15:33.349] [EngineLog] [info] Metal device: Apple M4 Max"
+    },
+    {
+      "message": "REBUILD_GRID_VOXELS span cap: dropped 12 of 1740 covered dest cells (span=1728, surface=610) \u2014 new high-water for this run",
+      "count": 1,
+      "first_line": "[2026-09-28 16:15:33.441] [EngineLog] [warning] REBUILD_GRID_VOXELS span cap: dropped 12 of 1740 covered dest cells (span=1728, surface=610) \u2014 new high-water for this run",
+      "last_line": "[2026-09-28 16:15:33.441] [EngineLog] [warning] REBUILD_GRID_VOXELS span cap: dropped 12 of 1740 covered dest cells (span=1728, surface=610) \u2014 new high-water for this run"
+    },
+    {
+      "message": "Voxel render mode=2, base_subdivisions=4, zoom_scale=1, effective_subdivisions=4",
+      "count": 565,
+      "first_line": "[2026-09-28 16:15:33.449] [EngineLog] [info] Voxel render mode=2, base_subdivisions=4, zoom_scale=1, effective_subdivisions=4",
+      "last_line": "[2026-09-28 16:15:40.423] [EngineLog] [info] Voxel render mode=2, base_subdivisions=4, zoom_scale=1, effective_subdivisions=4"
+    },
+    {
+      "message": "Voxel render mode=2, base_subdivisions=4, zoom_scale=1, effective_subdivisions=1",
+      "count": 565,
+      "first_line": "[2026-09-28 16:15:33.450] [EngineLog] [info] Voxel render mode=2, base_subdivisions=4, zoom_scale=1, effective_subdivisions=1",
+      "last_line": "[2026-09-28 16:15:40.424] [EngineLog] [info] Voxel render mode=2, base_subdivisions=4, zoom_scale=1, effective_subdivisions=1"
+    },
+    {
+      "message": "AutoScreenshot 1/9: sweep_yaw_0 (zoom=1, cam=(0,0), yaw=0, cull=0)",
+      "count": 1,
+      "first_line": "[2026-09-28 16:15:33.536] [ClientLog] [info] AutoScreenshot 1/9: sweep_yaw_0 (zoom=1, cam=(0,0), yaw=0, cull=0)",
+      "last_line": "[2026-09-28 16:15:33.536] [ClientLog] [info] AutoScreenshot 1/9: sweep_yaw_0 (zoom=1, cam=(0,0), yaw=0, cull=0)"
+    },
+    {
+      "message": "Saved screenshot: save_files/screenshots/screenshot_003249.png",
+      "count": 1,
+      "first_line": "[2026-09-28 16:15:34.182] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003249.png",
+      "last_line": "[2026-09-28 16:15:34.182] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003249.png"
+    },
+    {
+      "message": "AutoScreenshot 2/9: sweep_yaw_1 (zoom=1, cam=(0,0), yaw=0.7853982, cull=0)",
+      "count": 1,
+      "first_line": "[2026-09-28 16:15:34.200] [ClientLog] [info] AutoScreenshot 2/9: sweep_yaw_1 (zoom=1, cam=(0,0), yaw=0.7853982, cull=0)",
+      "last_line": "[2026-09-28 16:15:34.200] [ClientLog] [info] AutoScreenshot 2/9: sweep_yaw_1 (zoom=1, cam=(0,0), yaw=0.7853982, cull=0)"
+    },
+    {
+      "message": "Per-axis Z-yaw store: subdivision density capped 4 -> 2 so on-screen voxel faces aren't clipped by the bounded per-axis canvas (#1431); sub-voxel detail reduced while rotating only.",
+      "count": 1,
+      "first_line": "[2026-09-28 16:15:34.208] [EngineLog] [info] Per-axis Z-yaw store: subdivision density capped 4 -> 2 so on-screen voxel faces aren't clipped by the bounded per-axis canvas (#1431); sub-voxel detail reduced while rotating only.",
+      "last_line": "[2026-09-28 16:15:34.208] [EngineLog] [info] Per-axis Z-yaw store: subdivision density capped 4 -> 2 so on-screen voxel faces aren't clipped by the bounded per-axis canvas (#1431); sub-voxel detail reduced while rotating only."
+    },
+    {
+      "message": "Saved screenshot: save_files/screenshots/screenshot_003250.png",
+      "count": 1,
+      "first_line": "[2026-09-28 16:15:35.116] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003250.png",
+      "last_line": "[2026-09-28 16:15:35.116] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003250.png"
+    },
+    {
+      "message": "AutoScreenshot 3/9: sweep_yaw_2 (zoom=1, cam=(0,0), yaw=1.5707964, cull=0)",
+      "count": 1,
+      "first_line": "[2026-09-28 16:15:35.148] [ClientLog] [info] AutoScreenshot 3/9: sweep_yaw_2 (zoom=1, cam=(0,0), yaw=1.5707964, cull=0)",
+      "last_line": "[2026-09-28 16:15:35.148] [ClientLog] [info] AutoScreenshot 3/9: sweep_yaw_2 (zoom=1, cam=(0,0), yaw=1.5707964, cull=0)"
+    },
+    {
+      "message": "Saved screenshot: save_files/screenshots/screenshot_003251.png",
+      "count": 1,
+      "first_line": "[2026-09-28 16:15:35.822] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003251.png",
+      "last_line": "[2026-09-28 16:15:35.822] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003251.png"
+    },
+    {
+      "message": "AutoScreenshot 4/9: sweep_yaw_3 (zoom=1, cam=(0,0), yaw=2.3561945, cull=0)",
+      "count": 1,
+      "first_line": "[2026-09-28 16:15:35.842] [ClientLog] [info] AutoScreenshot 4/9: sweep_yaw_3 (zoom=1, cam=(0,0), yaw=2.3561945, cull=0)",
+      "last_line": "[2026-09-28 16:15:35.842] [ClientLog] [info] AutoScreenshot 4/9: sweep_yaw_3 (zoom=1, cam=(0,0), yaw=2.3561945, cull=0)"
+    },
+    {
+      "message": "Saved screenshot: save_files/screenshots/screenshot_003252.png",
+      "count": 1,
+      "first_line": "[2026-09-28 16:15:36.687] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003252.png",
+      "last_line": "[2026-09-28 16:15:36.687] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003252.png"
+    },
+    {
+      "message": "AutoScreenshot 5/9: sweep_yaw_4 (zoom=1, cam=(0,0), yaw=3.1415927, cull=0)",
+      "count": 1,
+      "first_line": "[2026-09-28 16:15:36.712] [ClientLog] [info] AutoScreenshot 5/9: sweep_yaw_4 (zoom=1, cam=(0,0), yaw=3.1415927, cull=0)",
+      "last_line": "[2026-09-28 16:15:36.712] [ClientLog] [info] AutoScreenshot 5/9: sweep_yaw_4 (zoom=1, cam=(0,0), yaw=3.1415927, cull=0)"
+    },
+    {
+      "message": "Saved screenshot: save_files/screenshots/screenshot_003253.png",
+      "count": 1,
+      "first_line": "[2026-09-28 16:15:37.371] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003253.png",
+      "last_line": "[2026-09-28 16:15:37.371] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003253.png"
+    },
+    {
+      "message": "AutoScreenshot 6/9: sweep_yaw_5 (zoom=1, cam=(0,0), yaw=3.926991, cull=0)",
+      "count": 1,
+      "first_line": "[2026-09-28 16:15:37.390] [ClientLog] [info] AutoScreenshot 6/9: sweep_yaw_5 (zoom=1, cam=(0,0), yaw=3.926991, cull=0)",
+      "last_line": "[2026-09-28 16:15:37.390] [ClientLog] [info] AutoScreenshot 6/9: sweep_yaw_5 (zoom=1, cam=(0,0), yaw=3.926991, cull=0)"
+    },
+    {
+      "message": "Saved screenshot: save_files/screenshots/screenshot_003254.png",
+      "count": 1,
+      "first_line": "[2026-09-28 16:15:38.185] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003254.png",
+      "last_line": "[2026-09-28 16:15:38.185] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003254.png"
+    },
+    {
+      "message": "AutoScreenshot 7/9: sweep_yaw_6 (zoom=1, cam=(0,0), yaw=4.712389, cull=0)",
+      "count": 1,
+      "first_line": "[2026-09-28 16:15:38.210] [ClientLog] [info] AutoScreenshot 7/9: sweep_yaw_6 (zoom=1, cam=(0,0), yaw=4.712389, cull=0)",
+      "last_line": "[2026-09-28 16:15:38.210] [ClientLog] [info] AutoScreenshot 7/9: sweep_yaw_6 (zoom=1, cam=(0,0), yaw=4.712389, cull=0)"
+    },
+    {
+      "message": "Saved screenshot: save_files/screenshots/screenshot_003255.png",
+      "count": 1,
+      "first_line": "[2026-09-28 16:15:38.854] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003255.png",
+      "last_line": "[2026-09-28 16:15:38.854] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003255.png"
+    },
+    {
+      "message": "AutoScreenshot 8/9: sweep_yaw_7 (zoom=1, cam=(0,0), yaw=5.4977875, cull=0)",
+      "count": 1,
+      "first_line": "[2026-09-28 16:15:38.865] [ClientLog] [info] AutoScreenshot 8/9: sweep_yaw_7 (zoom=1, cam=(0,0), yaw=5.4977875, cull=0)",
+      "last_line": "[2026-09-28 16:15:38.865] [ClientLog] [info] AutoScreenshot 8/9: sweep_yaw_7 (zoom=1, cam=(0,0), yaw=5.4977875, cull=0)"
+    },
+    {
+      "message": "Saved screenshot: save_files/screenshots/screenshot_003256.png",
+      "count": 1,
+      "first_line": "[2026-09-28 16:15:39.707] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003256.png",
+      "last_line": "[2026-09-28 16:15:39.707] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003256.png"
+    },
+    {
+      "message": "AutoScreenshot 9/9: sweep_yaw_8 (zoom=1, cam=(0,0), yaw=6.2831855, cull=0)",
+      "count": 1,
+      "first_line": "[2026-09-28 16:15:39.735] [ClientLog] [info] AutoScreenshot 9/9: sweep_yaw_8 (zoom=1, cam=(0,0), yaw=6.2831855, cull=0)",
+      "last_line": "[2026-09-28 16:15:39.735] [ClientLog] [info] AutoScreenshot 9/9: sweep_yaw_8 (zoom=1, cam=(0,0), yaw=6.2831855, cull=0)"
+    },
+    {
+      "message": "Saved screenshot: save_files/screenshots/screenshot_003257.png",
+      "count": 1,
+      "first_line": "[2026-09-28 16:15:40.407] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003257.png",
+      "last_line": "[2026-09-28 16:15:40.407] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003257.png"
+    },
+    {
+      "message": "ir-run: IRCanvasStress exited cleanly after 8s",
+      "count": 1,
+      "first_line": "ir-run: IRCanvasStress exited cleanly after 8s",
+      "last_line": "ir-run: IRCanvasStress exited cleanly after 8s"
+    },
+    {
+      "message": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0",
+      "count": 1,
+      "first_line": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0",
+      "last_line": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+    }
+  ],
+  "profile_witness_lines": [
+    "PerAxisCanvas::Allocate                  1.685     1.685       1",
+    "PerAxisCanvas::Park                      0.000     0.000       4",
+    "PerAxisCanvas::Unpark                    0.000     0.001       3",
+    "Camera yaw: first=0.000deg last=-0.000deg travel=360.000deg samples=565",
+    "Camera zoom: first=1.000 last=1.000",
+    "Camera zoom range: min=1.000 max=1.000",
+    "Camera pivot: explicit focus on 0 of 565 frames",
+    "Per-axis overflow: maxEntries=1617 maxDropped=0 cap=1048576 samples=248"
+  ],
+  "canvas_lifecycle": {
+    "Allocate": {
+      "calls": 1,
+      "report_line": "PerAxisCanvas::Allocate                  1.685     1.685       1"
+    },
+    "Park": {
+      "calls": 4,
+      "report_line": "PerAxisCanvas::Park                      0.000     0.000       4"
+    },
+    "Unpark": {
+      "calls": 3,
+      "report_line": "PerAxisCanvas::Unpark                    0.000     0.001       3"
+    }
+  }
+}

@@ -1,0 +1,21 @@
+# Exact selected first-occurrence log lines; repeated messages are counted below.
+ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/canvas_stress/IRCanvasStress --only shadowocclusion,orbit,floor --probe-grid --probe-staircase --no-spin --no-auto-rotate --pivot-origin --zoom 1 --auto-profile --yaw 1.276272 --auto-screenshot 180 --subdivisions 4 --sweep-frames 1 180 (timeout: 120s)
+[2026-09-28 16:20:59.935] [EngineLog] [info] Metal device: Apple M4 Max
+[2026-09-28 16:21:00.005] [EngineLog] [warning] REBUILD_GRID_VOXELS span cap: dropped 12 of 1740 covered dest cells (span=1728, surface=610) — new high-water for this run
+[2026-09-28 16:21:00.015] [EngineLog] [info] Voxel render mode=2, base_subdivisions=4, zoom_scale=1, effective_subdivisions=4
+# 363 occurrences total; final occurrence: [2026-09-28 16:21:05.107] [EngineLog] [info] Voxel render mode=2, base_subdivisions=4, zoom_scale=1, effective_subdivisions=4
+[2026-09-28 16:21:00.015] [EngineLog] [info] Per-axis Z-yaw store: subdivision density capped 4 -> 2 so on-screen voxel faces aren't clipped by the bounded per-axis canvas (#1431); sub-voxel detail reduced while rotating only.
+[2026-09-28 16:21:00.054] [EngineLog] [info] Voxel render mode=2, base_subdivisions=4, zoom_scale=1, effective_subdivisions=1
+# 363 occurrences total; final occurrence: [2026-09-28 16:21:05.107] [EngineLog] [info] Voxel render mode=2, base_subdivisions=4, zoom_scale=1, effective_subdivisions=1
+[2026-09-28 16:21:02.528] [ClientLog] [info] AutoScreenshot 1/1: sweep_frame_0 (zoom=1, cam=(0,0), yaw=1.276272, cull=0)
+[2026-09-28 16:21:05.079] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003298.png
+ir-run: IRCanvasStress exited cleanly after 6s
+ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+
+# Exact profile-report lifecycle/camera/overflow witnesses:
+PerAxisCanvas::Allocate                  1.606     1.606       1
+Camera yaw: first=73.125deg last=73.125deg travel=0.000deg samples=363
+Camera zoom: first=1.000 last=1.000
+Camera zoom range: min=1.000 max=1.000
+Camera pivot: explicit focus on 0 of 363 frames
+Per-axis overflow: maxEntries=1533 maxDropped=0 cap=1048576 samples=363

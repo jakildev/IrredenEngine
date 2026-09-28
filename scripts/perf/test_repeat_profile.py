@@ -2,6 +2,7 @@
 
 import io
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -453,6 +454,76 @@ class BuildTreeTest(unittest.TestCase):
             self.assertEqual(cmake_build_type(tree), "Release")
             cache.write_text("CMAKE_BUILD_TYPE:STRING=\n")
             self.assertIsNone(cmake_build_type(tree))
+
+
+class ManifestEnvironmentTest(unittest.TestCase):
+    def test_records_only_allowlisted_raw_values_inherited_by_the_child(self):
+        names = (
+            "IR_PERAXIS_SURFACE_LIGHTING", "IR_PERAXIS_VISIBILITY_PREPASS",
+            "IR_PERAXIS_VISIBILITY_STATS", "IR_PERAXIS_OVERFLOW_DISABLE",
+            "IR_OVERFLOW_LIGHTING_DISABLE", "IR_OVERFLOW_FOG_DISABLE", "IR_OVERFLOW_COUNT_LOG",
+        )
+        values = (None, "", "0", "1", " enabled \n")
+        cases = [dict.fromkeys(names, None)] + [
+            {name: values[(index + offset) % len(values)] for index, name in enumerate(names)}
+            for offset in range(len(values))
+        ]
+        for expected in cases:
+            with self.subTest(values=expected), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                demo = root / "build/creations/demos/canvas_stress"
+                demo.mkdir(parents=True)
+                (demo / "IRCanvasStress").write_bytes(b"fixture executable")
+                (demo / "shaders").mkdir()
+                (demo / "scripts").mkdir()
+                (demo / "save_files").mkdir()
+                output = root / "results"
+                environment = {
+                    "IRREDEN_BUILD_DIR": str(root / "build"),
+                    "UNRELATED_SECRET": "private-value-not-for-manifest",
+                    "IR_PERAXIS_SECRET": "private-value-not-for-manifest",
+                    "IR_PERAXIS_VISIBILITY_PREPASS_TOKEN": "private-value-not-for-manifest",
+                }
+                environment.update({name: value for name, value in expected.items()
+                                    if value is not None})
+                inherited = []
+
+                def launch(command, **kwargs):
+                    child_env = kwargs.get("env")
+                    if child_env is None:
+                        child_env = os.environ
+                    inherited.append({name: child_env.get(name) for name in names})
+                    self.assertEqual(child_env["UNRELATED_SECRET"], environment["UNRELATED_SECRET"])
+                    kwargs["stdout"].write("RESULT=CLEAN\n")
+                    (demo / "save_files/profile_report.txt").write_text(
+                        WITNESSED_REPORT.replace("maxDropped=7", "maxDropped=0"))
+                    process = MagicMock()
+                    process.__enter__.return_value = process
+                    process.wait.return_value = 0
+                    return process
+
+                with (
+                    patch("repeat_profile.__file__", str(root / "scripts/perf/repeat_profile.py")),
+                    patch.dict(os.environ, environment, clear=True),
+                    patch("sys.argv", ["repeat_profile.py", "--target", "IRCanvasStress",
+                                       "--output", str(output), "--repeats", "1", "--",
+                                       "--auto-profile"]),
+                    patch("repeat_profile.subprocess.check_output", return_value="fixture"),
+                    patch("repeat_profile.platform.platform", return_value="fixture host"),
+                    patch("repeat_profile.host_power_source", return_value=None),
+                    patch("repeat_profile.host_battery_percent", return_value=None),
+                    patch("repeat_profile.subprocess.Popen", side_effect=launch),
+                    patch("sys.stdout", new_callable=io.StringIO),
+                ):
+                    self.assertEqual(main(), 0)
+                manifest_text = (output / "manifest.json").read_text()
+                recorded = json.loads(manifest_text)["render_environment"]
+                self.assertEqual(recorded, expected)
+                self.assertEqual(inherited, [recorded])
+                self.assertNotIn("private-value-not-for-manifest", manifest_text)
+                self.assertNotIn("UNRELATED_SECRET", manifest_text)
+                self.assertNotIn("IR_PERAXIS_SECRET", manifest_text)
+                self.assertNotIn("IR_PERAXIS_VISIBILITY_PREPASS_TOKEN", manifest_text)
 
 
 class RuntimeAssetsTest(unittest.TestCase):

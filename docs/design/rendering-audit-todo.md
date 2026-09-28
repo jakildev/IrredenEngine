@@ -84,14 +84,28 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
   same-binary Metal controls reduce the zoom-1 GPU envelope from 9.852 to 8.572 ms
   and scatter scope from 5.217 to 3.960 ms. All 26 final image comparisons are
   identical. Zoom 4 reduces the GPU envelope from 4.922 to 4.783 ms, while steady
-  frame ranges overlap. Wider population and subdivision scaling are not
-  established; retained evidence includes the rejected first attempt.
+  frame ranges overlap. Wider population scaling is not established; retained
+  evidence includes the rejected first attempt.
   Storage follows internal framebuffer pixels (3.54 MiB in this fixture), not
   entity or face capacity. Both attached lighting and this extra pass remain
   default-off. Next measure candidate visits and dense/moving-camera workloads,
-  including subdivisions and native OpenGL, before deciding adoption or routing.
-  Validate cardinal transitions, dense/incomplete tiles, overflow and fog before
-  default adoption; exact shadow-query cost remains substantial after this pass.
+  including native OpenGL, before deciding adoption or routing.
+  Added [subdivision and cardinal-lifecycle controls](../pr-screenshots/codex/visibility-subdivision-controls/README.md):
+  nine yaw views at each base density 2, 4 and 8 remain RGB-identical with the
+  prepass off/on. Near-cardinal controls exercise both park/unpark and
+  release/reallocation. These controls cover global effective subdivision and
+  composite depth scaling; per-axis face storage remains at base resolution.
+  The profiler automatically records seven exact rendering-environment values,
+  preserving unset versus empty and zero-valued flags without collecting unrelated
+  environment data. Orbit-shape banding remains visible in both arms; image
+  parity does not accept those existing visual defects. Validate dense/incomplete
+  tiles, overflow and fog before default adoption; exact shadow-query cost remains
+  substantial after this pass. Next instrument actual post-prepass candidate
+  visits, footprint misses and first-blocker ordinal in diagnostic-only runs,
+  then time any change with counters disabled. Consider delaying depth-coordinate
+  loads until the unchanged footprint test accepts only if native evidence shows
+  avoidable work; compilers may already do this. Coordinate shared sampler edits
+  with the separate analytical-box self-shadow work.
 - [Bounded overflow reference](../perf/bounded-source-face-reference.md) isolates
   the dense analytical-box teeth: identical geometry and tile tables regain
   clean floor edges when incomplete tiles query the complete small face pool.
