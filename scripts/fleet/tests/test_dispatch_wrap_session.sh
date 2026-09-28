@@ -505,12 +505,13 @@ python3 -c "import json,sys;d=json.load(open(sys.argv[1]));assert d['wrapper_pid
   "$FLEET_STATE_DIR/dispatch/pane-3.json" 2>/dev/null \
   && ok "wrapper PID stamped without losing record fields" || bad "wrapper PID missing or record fields changed"
 
-echo "T18: target-less Codex failures re-arm batch roles"
+echo "T18: Codex failures re-arm merger targets"
 BATCH_RUNTIME="$TMPROOT/batch-runtime"
 BATCH_WT="$TMPROOT/batch-worktree"
 mkdir -p "$BATCH_RUNTIME" "$BATCH_WT" "$FLEET_STATE_DIR/runtime-cooldown" \
   "$FLEET_STATE_DIR/triggers"
 cp "$WRAP" "$BATCH_RUNTIME/fleet-dispatch-wrap"
+cp "$SCRIPT_DIR/fleet-common.sh" "$BATCH_RUNTIME/fleet-common.sh"
 cat > "$BATCH_RUNTIME/fleet_codex.py" <<'PYEOF'
 import json
 import os
@@ -525,18 +526,25 @@ if os.environ.get("STUB_CODEX_COOLDOWN"):
 sys.exit(int(os.environ.get("STUB_CODEX_RC", "0")))
 PYEOF
 rm -f "$FLEET_STATE_DIR/triggers/merger"
+( cd "$BATCH_WT" && STUB_CODEX_RC=1 \
+    "$BATCH_RUNTIME/fleet-dispatch-wrap" pane-8 gpt-5.6-terra medium merger "" live \
+    target=merge:engine:811 codex sonnet >/dev/null 2>>"$TMPROOT/stderr.log" ) || true
+[[ "$(cat "$FLEET_STATE_DIR/triggers/merger" 2>/dev/null)" == "merge:engine:811" ]] \
+  && ok "failed Codex merger restored its exact target" \
+  || bad "failed Codex merger lost its exact target"
+rm -f "$FLEET_STATE_DIR/triggers/merger"
 ( cd "$BATCH_WT" && STUB_CODEX_RC=2 STUB_CODEX_COOLDOWN=1 \
     "$BATCH_RUNTIME/fleet-dispatch-wrap" pane-8 gpt-5.6-terra medium merger "" live \
-    target= codex sonnet >/dev/null 2>>"$TMPROOT/stderr.log" ) || true
-[[ -f "$FLEET_STATE_DIR/triggers/merger" ]] \
-  && ok "Codex preflight/cooldown exit re-armed merger" \
-  || bad "Codex preflight/cooldown exit lost the merger trigger"
+    target=merge:engine:812 codex sonnet >/dev/null 2>>"$TMPROOT/stderr.log" ) || true
+[[ "$(cat "$FLEET_STATE_DIR/triggers/merger" 2>/dev/null)" == "merge:engine:812" ]] \
+  && ok "Codex preflight/cooldown exit restored the merger target" \
+  || bad "Codex preflight/cooldown exit lost the merger target"
 rm -f "$FLEET_STATE_DIR/triggers/merger" "$FLEET_STATE_DIR/runtime-cooldown/codex.json"
 ( cd "$BATCH_WT" && STUB_CODEX_RC=0 \
     "$BATCH_RUNTIME/fleet-dispatch-wrap" pane-8 gpt-5.6-terra medium merger "" live \
-    target= codex sonnet >/dev/null 2>>"$TMPROOT/stderr.log" )
+    target=merge:engine:812 codex sonnet >/dev/null 2>>"$TMPROOT/stderr.log" )
 [[ ! -f "$FLEET_STATE_DIR/triggers/merger" ]] \
-  && ok "clean Codex batch exit does not re-arm" \
-  || bad "clean Codex batch exit wrote a trigger"
+  && ok "clean Codex merger exit does not re-arm" \
+  || bad "clean Codex merger exit wrote a trigger"
 
 summarize "fleet-dispatch-wrap session tests"

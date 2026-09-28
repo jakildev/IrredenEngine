@@ -16,8 +16,8 @@ from fleet_codex_policy import check, prepare
 from fleet_runtime import BATCH_ROLES, CODEX_MODELS, atomic_json
 
 ROOT = Path(__file__).resolve().parents[2]
-ROLES = ("worker", "sonnet-reviewer", "opus-reviewer", "smoke-worker", *BATCH_ROLES,
-         "opus-architect")
+ROLES = ("worker", "sonnet-reviewer", "opus-reviewer", "smoke-worker", "merger",
+         *BATCH_ROLES, "opus-architect")
 # Roles that launch demos. Reviewers read diffs and batch roles take no
 # target, so a missing display must not cool Codex down for them.
 DISPLAY_ROLES = ("worker", "smoke-worker", "opus-architect")
@@ -50,6 +50,10 @@ def prompt(role, mode, target, worktree=None):
             "reason through the completion contract; do not repeatedly retry it. "
             "Finish the assigned workflow and return a final response so this iteration exits."
         )
+    provenance = "" if role == "merger" else (
+        "For every PR you create or amend, run fleet-runtime stamp <PR> --repo <owner/repo> "
+        "--runtime codex after pushing and before requesting review. "
+    )
     return (
         f"Read AGENTS.md and docs/agents/CODEX.md, then {role_path}. "
         f"Execute that role in {mode} mode. Runtime is codex, not Claude. "
@@ -57,8 +61,7 @@ def prompt(role, mode, target, worktree=None):
         "Follow FLEET-RUNTIME.md's target and completion contracts. "
         "Do not discover or claim a different item. Read the complete issue/PR thread. "
         "Use the available Codex tools for referenced Claude tool names. "
-        "For every PR you create or amend, run fleet-runtime stamp <PR> --repo <owner/repo> "
-        "--runtime codex after pushing and before requesting review. "
+        f"{provenance}"
         "Use the real model/runtime in authorship. Preserve human merge authority. "
         "A permissions failure is a blocked operation: report the exact command and "
         "reason through the completion contract; do not repeatedly retry it. "

@@ -552,7 +552,7 @@ assert_eq "$(assign opus-reviewer)" "target=planreview:engine:605" "opus-reviewe
 grep -q '^review-claim 605 pool-3$' "$FLEET_CLAIM_LOG" \
     && { PASS=$((PASS+1)); echo "  ok: plan review claims the issue via review-claim"; } \
     || { FAIL=$((FAIL+1)); echo "  FAIL: planreview claim argv: $(cat "$FLEET_CLAIM_LOG")"; }
-assert_eq "$(assign merger)" "target=" "merger is not target-bound (legacy batch pass)"
+assert_eq "$(assign merger)" "target=" "merger with no trigger target does not launch"
 
 echo "T25b: a reviewer lane fans out one pane per candidate and goes quiet on an empty slice"
 write_slice sonnet-reviewer '{"candidate_prs":[{"number":3074,"repo":"engine","labels":[]},{"number":3080,"repo":"engine","labels":[]}]}'
