@@ -44,13 +44,18 @@ force-pushes the same head); `fleet:needs-opus-recheck` (`fleet:has-nits`
 beside it is not a verdict — the pending opus pass owns the PR); a live
 `fleet:design-blocked` / `fleet:design-proposed` park still carrying
 `fleet:needs-fix` or `fleet:has-nits` (whichever lane parked it, the fleet
-tier is stale until `fleet:design-unblocked` re-arms it).
+tier is stale until `fleet:design-unblocked` re-arms it); a live
+`fleet:awaiting-infra` park still carrying a fleet verdict tier (the PR is
+complete — its own `Parked-until: #N` line names the open blocker, and the
+tier is stale until `fleet-claim reconcile` removes the label once that
+blocker closes; do not strip the label yourself).
 `amending-claim` refuses the reviewing/resolving/amending/opus-recheck cases
 as a backstop; its independent two-read confirmation with `review-claim` and
 `resolving-claim` closes the observed snapshot race. The scout's
 `worker_feedback_labels()` enforces the reviewing / resolving / opus-recheck
-/ design-park skips in both the worker trigger and `projections/worker.json`;
-`human:needs-fix` / `human:blocker` outrank all of them and keep dispatching.
+/ design-park / awaiting-infra skips in both the worker trigger and
+`projections/worker.json`; `human:needs-fix` / `human:blocker` outrank all of
+them and keep dispatching.
 The reviewing skip, a live foreign `fleet:amending-*` claim, and a
 `fleet:design-blocked` / `fleet:design-proposed` park also bar the
 conflict-resolution lane (`role-worker.md` step 1c), which force-pushes too:
