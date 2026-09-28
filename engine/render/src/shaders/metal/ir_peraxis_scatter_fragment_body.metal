@@ -1,6 +1,9 @@
 #ifndef IR_PER_AXIS_SURFACE_SHADOW
 #define IR_PER_AXIS_SURFACE_SHADOW 0
 #endif
+#ifndef IR_PER_AXIS_SURFACE_LIGHTING
+#define IR_PER_AXIS_SURFACE_LIGHTING 0
+#endif
 
 // HSV → RGB. Keep identical to hsvToRgb in c_shapes_to_trixel_body.metal so
 // voxel-scatter depth-color is bit-exact with the SDF twin when mode is on.
@@ -12,9 +15,18 @@ static inline float3 hsvToRgb(float3 c) {
 
 fragment FragmentOut IR_PER_AXIS_FRAGMENT_NAME(
     VertexOut in [[stage_in]]
-#if IR_PER_AXIS_SURFACE_SHADOW
+#if IR_PER_AXIS_SURFACE_SHADOW || IR_PER_AXIS_SURFACE_LIGHTING
     , constant FrameDataSun& sunFrameData [[buffer(29)]]
     , device const uint* sunDepthBuf [[buffer(28)]]
+#endif
+#if IR_PER_AXIS_SURFACE_LIGHTING
+    , constant FrameDataLightingToTrixel& lighting [[buffer(27)]]
+    , constant LightVolumeParams& volumeParams [[buffer(7)]]
+    , device const GPULightSource* lights [[buffer(4)]]
+    , texture2d<float> paletteLUT [[texture(3)]]
+    , texture2d<float> surfaceAO [[texture(4)]]
+    , texture3d<float> lightVolume [[texture(5)]]
+    , texture3d<float, access::read> lightVolumeId [[texture(7)]]
 #endif
 ) {
     FragmentOut out;
@@ -50,6 +62,14 @@ fragment FragmentOut IR_PER_AXIS_FRAGMENT_NAME(
             );
         out.color = float4(visibility >= 0.999 ? float3(0.0) : float3(1.0, 0.0, 1.0), in.color.a);
     }
+#elif IR_PER_AXIS_SURFACE_LIGHTING
+    const float3 position = perAxisFaceClosestPoint(in.faceOrigin, in.faceId, in.quadParam);
+    // Overflow faces have no AO owner texel; their material uses AO 1.
+    const float ao = in.ownerPixel.x < 0 ? 1.0 : surfaceAO.read(uint2(in.ownerPixel)).r;
+    out.color = float4(worldSurfaceLighting(in.color.rgb, ao, position,
+                       faceOutwardNormal6(in.faceId), sunFrameData.sunCasterViewToWorld, in.faceOrigin,
+                       lighting, volumeParams, sunFrameData, sunDepthBuf, lights,
+                       paletteLUT, lightVolume, lightVolumeId), in.color.a);
 #else
     if (in.depthColorMode == -1) {
         // Margin-classification overlay — mirror of

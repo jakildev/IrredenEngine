@@ -58,7 +58,9 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     // drawPerAxisScatter.
     ShaderProgram *scatterProgram_ = nullptr;
     ShaderProgram *scatterProbeProgram_ = nullptr;
+    ShaderProgram *scatterLightingProgram_ = nullptr;
     bool scatterProbeEnabled_ = false;
+    bool scatterLightingEnabled_ = false;
     VAO *quadVao_ = nullptr;
 
     // Smooth camera Z-yaw state. Re-resolved every frame in beginTick,
@@ -209,23 +211,8 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             if (probe) {
                 bindShapeProbe(triangleCanvasTextures);
                 if (shapeLightingEnabled_) {
-                    lighting_->frameDataBuf_->bindBase(
-                        BufferTarget::UNIFORM,
-                        kBufferIndex_FrameDataLightingToTrixel
-                    );
-                    lighting_->lightVolumeParamsBuf_->bindBase(
-                        BufferTarget::UNIFORM,
-                        kBufferIndex_SurfaceLightVolumeParams
-                    );
-                    lighting_->lightSourceBuf_->bindBase(
-                        BufferTarget::SHADER_STORAGE,
-                        kBufferIndex_LightSourceBuffer
-                    );
-                    lighting_->paletteLUT_->bind(3);
+                    bindSurfaceLightingResources();
                     surfaceAO_->getTexture()->bind(4);
-                    surfaceLightVolume_->getReadTexture()->bind(5);
-                    surfaceLightVolume_->getIdReadTexture()
-                        ->bindAsImage(7, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
                 }
                 (shapeLightingEnabled_ ? shapeLightingProgram_ : shapeProbeProgram_)->use();
             }
@@ -239,10 +226,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
             if (probe) {
                 if (shapeLightingEnabled_)
-                    lighting_->voxelFrameDataBuf_->bindBase(
-                        BufferTarget::UNIFORM,
-                        kBufferIndex_FrameDataVoxelToCanvas
-                    );
+                    restoreSurfaceLightingResources();
                 restoreShapeProbe();
                 program_->use();
             }
@@ -261,6 +245,38 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     void bindSunShadowResources() {
         sunFrameBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
         sunDepthBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap);
+    }
+
+    void bindSurfaceLightingResources() {
+        lighting_->frameDataBuf_->bindBase(
+            BufferTarget::UNIFORM,
+            kBufferIndex_FrameDataLightingToTrixel
+        );
+        lighting_->lightVolumeParamsBuf_->bindBase(
+            BufferTarget::UNIFORM,
+            kBufferIndex_SurfaceLightVolumeParams
+        );
+        lighting_->lightSourceBuf_->bindBase(
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_LightSourceBuffer
+        );
+        lighting_->paletteLUT_->bind(3);
+        surfaceLightVolume_->getReadTexture()->bind(5);
+        auto *lightVolumeId = surfaceLightVolume_->getIdReadTexture();
+        lightVolumeId->bindAsImage(7, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+        // GL keeps its image binding; Metal's render encoder reads only the
+        // texture table, so the sampler bind must be last in its shared namespace.
+        lightVolumeId->bind(7);
+    }
+
+    void restoreSurfaceLightingResources() {
+        lighting_->voxelFrameDataBuf_->bindBase(
+            BufferTarget::UNIFORM,
+            kBufferIndex_FrameDataVoxelToCanvas
+        );
+        // The per-axis store can be released on a later cardinal frame. Leave
+        // the persistent Metal texture table pointing at the main canvas AO.
+        surfaceAO_->getTexture()->bind(4);
     }
 
     void restoreShapeProbe() {
@@ -410,10 +426,15 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         // overflow-entry draw — the rotating-only composite work, separated
         // from the fall-through gather's trixelToFb row.
         GpuSubStageScope scatterScope("perAxisScatter");
-        if (scatterProbeEnabled_) {
+        if (scatterProbeEnabled_ || scatterLightingEnabled_) {
             bindSunShadowResources();
         }
-        (scatterProbeEnabled_ ? scatterProbeProgram_ : scatterProgram_)->use();
+        if (scatterLightingEnabled_) {
+            bindSurfaceLightingResources();
+        }
+        (scatterLightingEnabled_ ? scatterLightingProgram_
+                                 : (scatterProbeEnabled_ ? scatterProbeProgram_ : scatterProgram_))
+            ->use();
         IRRender::device()->setPolygonMode(PolygonMode::FILL);
         // instance over only the compacted occupied cells (filled by the
         // beginTick compaction pre-pass) via an indirect draw whose instance
@@ -432,6 +453,9 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             const C_PerAxisTrixelCanvases::AxisTextures &tex = axes.axes_[axis];
             tex.colors_.second->bind(0);
             tex.distances_.second->bind(1);
+            if (scatterLightingEnabled_) {
+                tex.ao_.second->bind(4);
+            }
             cellCompacted->bindRange(
                 BufferTarget::SHADER_STORAGE,
                 kBufferIndex_PerAxisCellCompacted,
@@ -450,7 +474,8 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         // View-visibility overflow lane: one indirect instanced draw
         // over the entries VOXEL_TO_TRIXEL_STAGE_1's mode-3 dispatch appended —
         // the view-visible faces the cardinal-keyed store dropped. Entries are
-        // albedo-only here; LIGHTING_TO_TRIXEL applies lighting. The unified
+        // albedo-only when presentation lighting is ready, otherwise relit by
+        // LIGHTING_TO_TRIXEL. The unified
         // resolve scratch rides binding 25 (the same transient reuse as the
         // cell lists above) and the ctrl block doubles as the draw args, with
         // instanceCount GPU-authored — an empty list draws zero instances for
@@ -485,6 +510,9 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         // cell list as the voxel list and corrupts the world voxels the following
         // frame (the center-cube regression).
         restoreVoxelCompactionSlots();
+        if (scatterLightingEnabled_) {
+            restoreSurfaceLightingResources();
+        }
         // Restore the gather program for any subsequent canvas's single-canvas
         // tick (background / gui / overlays draw after the main canvas).
         program_->use();
@@ -542,12 +570,21 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         surfaceLightVolume_ = nullptr;
         shapeLightingEnabled_ = false;
         const SystemId lightingId = findSystem(LIGHTING_TO_TRIXEL);
+        if (lightingId != kNullSystemId) {
+            lighting_ = getSystemParams<System<LIGHTING_TO_TRIXEL>>(lightingId);
+        }
+        // The producer owns eligibility and publishes only after preserving
+        // this frame's albedo. Do not infer readiness from consumer resources.
+        scatterLightingEnabled_ = lighting_ != nullptr && lighting_->perAxisSurfaceLightingReady_;
+        if (scatterLightingEnabled_) {
+            surfaceAO_ = lighting_->mainCanvasAO_;
+            surfaceLightVolume_ = lighting_->mainCanvasLightVolume_;
+        }
         // Fog currently owns post-lighting canvas color; retain it until fragment fog composition
         // exists.
         if (shapeReceiverAvailable && IRRender::getDebugOverlay() == DebugOverlayMode::NONE &&
             findSystem(FOG_TO_TRIXEL) == kNullSystemId && lightingId != kNullSystemId &&
             !IRRender::getDepthColorDebugMode()) {
-            lighting_ = getSystemParams<System<LIGHTING_TO_TRIXEL>>(lightingId);
             auto ao = IREntity::getComponentOptional<C_CanvasAOTexture>(perAxisCanvasEntity_);
             auto volume = IREntity::getComponentOptional<C_CanvasLightVolume>(perAxisCanvasEntity_);
             auto behavior =
@@ -565,7 +602,8 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             shapeProducerFrameBuf_ = IRRender::getNamedResource<Buffer>("ShapesFrameDataBuffer");
             animationParamsBuf_ = IRRender::getNamedResource<Buffer>("AnimationParamsBuffer");
         }
-        if ((scatterProbeEnabled_ || shapeProbeEnabled_ || shapeLightingEnabled_) &&
+        if ((scatterProbeEnabled_ || scatterLightingEnabled_ || shapeProbeEnabled_ ||
+             shapeLightingEnabled_) &&
             sunFrameBuf_ == nullptr) {
             sunFrameBuf_ = IRRender::getNamedResource<Buffer>("ComputeSunShadowFrameData");
             sunDepthBuf_ = IRRender::getNamedResource<Buffer>("SunShadowDepthMap");
@@ -615,6 +653,13 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                 ShaderStage{IRRender::kFileFragPerAxisSurfaceShadow, ShaderType::FRAGMENT}
             }
         );
+        IRRender::createNamedResource<ShaderProgram>(
+            "PerAxisSurfaceLightingProgram",
+            std::vector{
+                ShaderStage{IRRender::kFileVertPerAxisScatter, ShaderType::VERTEX},
+                ShaderStage{IRRender::kFileFragPerAxisSurfaceLighting, ShaderType::FRAGMENT}
+            }
+        );
         IRRender::createNamedResource<Buffer>(
             "TrixelToFramebufferFrameData",
             nullptr,
@@ -654,6 +699,8 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         sys->scatterProgram_ = IRRender::getNamedResource<ShaderProgram>("PerAxisScatterProgram");
         sys->scatterProbeProgram_ =
             IRRender::getNamedResource<ShaderProgram>("PerAxisSurfaceShadowProbeProgram");
+        sys->scatterLightingProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("PerAxisSurfaceLightingProgram");
         sys->quadVao_ = IRRender::getNamedResource<VAO>("QuadVAO");
         sys->overflowDrawDisabled_ = std::getenv("IR_PERAXIS_OVERFLOW_DISABLE") != nullptr;
         // NOT observer-tagged: the tick owns GpuSubStageScopes, which

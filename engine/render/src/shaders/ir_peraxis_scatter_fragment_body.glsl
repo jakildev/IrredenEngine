@@ -1,10 +1,14 @@
 #ifndef IR_PER_AXIS_SURFACE_SHADOW
 #define IR_PER_AXIS_SURFACE_SHADOW 0
 #endif
+#ifndef IR_PER_AXIS_SURFACE_LIGHTING
+#define IR_PER_AXIS_SURFACE_LIGHTING 0
+#endif
 
 flat in vec4 vColor;
 flat in vec3 vFaceOrigin;
 flat in int vFaceId;
+flat in ivec2 vOwnerPixel;
 // Per-fragment planar depth + margin-yield classification: vDepth is
 // the face plane's exact depth at this fragment (linear interpolation of
 // per-corner planar keys); fragments outside the exact [0,1]^2 footprint are
@@ -80,6 +84,12 @@ void main() {
             );
         FragColor = vec4(visibility >= 0.999 ? vec3(0.0) : vec3(1.0, 0.0, 1.0), vColor.a);
     }
+#elif IR_PER_AXIS_SURFACE_LIGHTING
+    const vec3 position = perAxisFaceClosestPoint(vFaceOrigin, vFaceId, vQuadParam);
+    // Overflow faces have no AO owner texel; their material uses AO 1.
+    const float ao = vOwnerPixel.x < 0 ? 1.0 : texelFetch(surfaceAO, vOwnerPixel, 0).r;
+    FragColor = vec4(worldSurfaceLighting(vColor.rgb, ao, position,
+                      faceOutwardNormal6(vFaceId), sunCasterViewToWorld, vFaceOrigin), vColor.a);
 #else
     if (vDepthColorMode == -1) {
         // Margin-classification overlay: bright = margin fragment

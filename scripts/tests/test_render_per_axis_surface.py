@@ -34,7 +34,7 @@ bvec2 operator<(vec2 a,vec2 b){return lessThan(a,b);}
 bvec2 operator>(vec2 a,vec2 b){return greaterThan(a,b);}
 bool any(bvec2 value){return value.x || value.y;}
 vec4 fragmentColor;
-struct FaceFields {vec3 faceOrigin;int faceId;};
+struct FaceFields {vec3 faceOrigin;int faceId;ivec2 ownerPixel;};
 struct DistanceSample {int r;};
 struct DistanceTexture {
     ivec2 cell;
@@ -133,7 +133,7 @@ int main(int argc,char** argv) {
                                          vec2(1,2),vec2(2,4));
     if(!same(degenerate,vec2(1,0)))return 2;
     shadowsEnabled=0;sunFrameData.shadowsEnabled=0;calls=0;
-    const float disabled=fragmentShadow({vec3(1),0},vec2(.25f,.75f));
+    const float disabled=fragmentShadow({vec3(1),0,ivec2(-1)},vec2(.25f,.75f));
     if(calls || disabled!=1.f || !same(fragmentColor,vec4(0,0,0,.75f))) {
         std::fprintf(stderr,"disabled shadow query\n");return 1;
     }
@@ -153,7 +153,7 @@ def vertex_decode(vertex):
                        r"const vec3 origin = baseOrigin\b[^;]+;", vertex, re.DOTALL)[0]
     output_source = vertex[vertex.index(decode) + len(decode):]
     outputs = []
-    for field in ("faceOrigin", "faceId"):
+    for field in ("faceOrigin", "faceId", "ownerPixel"):
         varying = "v" + field[0].upper() + field[1:]
         match = re.search(r"(?:" + varying + r"|out\." + field + r") = [^;]+;",
                           output_source)
@@ -224,7 +224,7 @@ def fragment_controls(source, suffix):
         source = source.replace(shader, adapter)
     margin = re.search(r"const bool inMargin = [^;]+;", source)[0]
     start = source.index("#if IR_PER_AXIS_SURFACE_SHADOW", source.index(margin))
-    end = source.index("#else", start)
+    end = start + re.search(r"^#(?:elif|else)\b", source[start:], re.MULTILINE).start()
     body = source[start:end].split("\n", 1)[1]
     query = re.search(r"const float visibility = [^;]+;", body)[0]
     body = replace_once(body, query, query + "\nqueryVisibility = visibility;")

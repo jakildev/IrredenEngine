@@ -165,6 +165,7 @@ vertex VertexOut v_peraxis_scatter(
         out.color = float4(0.0);
         out.faceOrigin = float3(0.0);
         out.faceId = 0;
+        out.ownerPixel = int2(-1);
         out.depth = 1.0;
         out.isoDepth = 0.0;
         out.depthColorMode = 0;
@@ -301,6 +302,7 @@ vertex VertexOut v_peraxis_scatter(
     out.color = color;
     out.faceOrigin = origin;
     out.faceId = faceId;
+    out.ownerPixel = frameData.overflowMode != 0 ? int2(-1) : ij;
     // Cell-anchor sum — keeps the depth-color binning consistent with the
     // authored-lattice depth the composite key carries.
     out.isoDepth = origin.x + origin.y + origin.z - 1.5f;

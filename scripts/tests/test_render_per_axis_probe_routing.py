@@ -68,10 +68,13 @@ struct Adapter {
  Buffer *shapeProbeFallbackBuf_=nullptr,*shapeProducerFrameBuf_=nullptr;
  Buffer *animationParamsBuf_=nullptr;
  bool scatterProbeEnabled_=false,shapeProbeEnabled_=false,shapeLightingEnabled_=false;
+ bool scatterLightingEnabled_=false;
  int perAxisCanvasEntity_=-1;
  Axes *perAxisCanvases_=nullptr;
- ShaderProgram beauty{1},probe{2};
+ ShaderProgram beauty{1},probe{2},surfaceLighting{3};
  ShaderProgram *scatterProgram_=&beauty,*scatterProbeProgram_=&probe;
+ ShaderProgram *scatterLightingProgram_=&surfaceLighting;
+ void bindSurfaceLightingResources(){std::exit(24);}
 """
 
 CASES = r"""
@@ -117,7 +120,8 @@ def adapter_source():
     resources = source[start:source.index("        program_->use();", start)]
     start = source.index("    void bindSunShadowResources()")
     binding = source[start:source.index("\n    }", start) + len("\n    }")]
-    start = source.index("        if (scatterProbeEnabled_) {")
+    start = re.search(
+        r"if\s*\(scatterProbeEnabled_\s*\|\|\s*scatterLightingEnabled_\)", source).start()
     selection = source[start:source.index("        IRRender::device()->setPolygonMode", start)]
     route = re.search(
         r"        if \(entity == perAxisCanvasEntity_ &&.*?drawPerAxisScatter\(.*?\);",
@@ -175,7 +179,7 @@ class PerAxisProbeRoutingTest(unittest.TestCase):
                 if name == "production":
                     self.assertEqual(run.returncode, 0, run.stderr)
                 else:
-                    self.assertIn(run.returncode, (1, 2, 3, 4, 5, 6, 7, 20, 21, 22, 23))
+                    self.assertIn(run.returncode, (1, 2, 3, 4, 5, 6, 7, 20, 21, 22, 23, 24))
 
 
 if __name__ == "__main__":

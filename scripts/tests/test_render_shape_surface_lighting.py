@@ -24,6 +24,7 @@ int lutEnabled=0,shadowsEnabled=1,lightVolumeEnabled=0,hdrEnabled=0;
 float aoInput=.4f,visibilityInput=0,sunAmbient=.25f,sunIntensity=1.5f,normalZ=-1;
 float exposure=2,skyIntensity=.7f;
 vec3 sunDirection{0,0,-1},skyColor{.2f,.4f,.6f};
+vec3 expectedLocalPosition{10.25f,-20.5f,30.75f};
 int shadowCalls=0,lightCalls=0,aoCalls=0,paletteCalls=0,albedoCalls=0;
 int paletteLUT=5;
 vec4 unpackColor(uint c){++albedoCalls;if(c!=7)std::exit(20);return {.2f,.3f,.4f,1};}
@@ -40,7 +41,11 @@ float worldSurfaceSunShadowFactor(vec3 p,vec3 n,float d,vec4 r){
     !near(n.z,normalZ)||!near(d,20.5f)||!near(r.w,.7f))std::exit(23);
  return visibilityInput;
 }
-vec3 localLight(vec3 p){++lightCalls;if(!near(p.x,10.25f))std::exit(24);return {.1f,.2f,.3f};}
+vec3 localLight(vec3 p){
+ ++lightCalls;
+ if(!same(vec4(p,1),vec4(expectedLocalPosition,1)))std::exit(24);
+ return {.1f,.2f,.3f};
+}
 """
 
 CASES = r"""
@@ -57,6 +62,7 @@ int main(){
   lutEnabled=lut;shadowsEnabled=shadow;lightVolumeEnabled=volume;hdrEnabled=hdr;
   normalZ=z;
   aoInput=ao;sunAmbient=ambient;visibilityInput=vis;receiverShapes[1].flags=flags;
+  expectedLocalPosition=vec3(10.25f,-20.5f,30.75f);
   shadowCalls=lightCalls=aoCalls=paletteCalls=albedoCalls=0;
   vec3 out=query({1,1},4,{10.25f,-20.5f,30.75f},{float(std::sqrt(1-z*z)),0,z},
                  {0,0,0,.7f},{.9f,.8f,.7f});
@@ -75,6 +81,13 @@ int main(){
    }
    if(shadowCalls!=shadow||lightCalls!=volume||aoCalls!=1||
       paletteCalls!=lut||albedoCalls!=1)return 3;
+   expectedLocalPosition=vec3(7.25f,-2.5f,4.75f);
+   shadowCalls=lightCalls=paletteCalls=0;
+   const vec3 separateLocal=worldSurfaceLighting(vec3(.2f,.3f,.4f),ao,
+       vec3(10.25f,-20.5f,30.75f),vec3(float(std::sqrt(1-z*z)),0,z),
+       vec4(0,0,0,.7f),expectedLocalPosition);
+   if(!same(vec4(separateLocal,1),vec4(out,1))||shadowCalls!=shadow||
+      lightCalls!=volume||paletteCalls!=lut)return 4;
   }
   ++checks;
  }
@@ -83,25 +96,42 @@ int main(){
 """
 
 
+def function_body(source, name):
+    start = re.search(r"\b" + name + r"\s*\([^{}]*\)\s*\{", source)
+    if start is None:
+        raise ValueError(f"missing function {name}")
+    return source[start.end():source.rindex("}")]
+
+
+def host_body(body):
+    body = re.sub(r"constexpr sampler .*?;", "", body)
+    body = body.replace("float3", "vec3").replace("float4", "vec4")
+    body = body.replace("lighting.", "").replace("sun.", "")
+    body = re.sub(r",\s*lighting\s*,\s*volumeParams\s*,\s*sun\s*,\s*sunDepthBuf\s*,"
+                  r"\s*lights\s*,\s*paletteLUT\s*,\s*lightVolume\s*,\s*lightVolumeId", "", body)
+    body = re.sub(r",\s*sunFrameData\s*,\s*sunDepthBuf", "", body)
+    body = re.sub(r",\s*sun\s*,\s*sunDepthBuf", "", body)
+    body = re.sub(r"texelFetch\(surfaceAO\s*,\s*ownerPixel\s*,\s*0\).r",
+                  "sampleAO(ownerPixel)", body)
+    body = body.replace("surfaceAO.read(ownerPixel).r", "sampleAO(ownerPixel)")
+    body = re.sub(r"surfaceLightVolume\(localLightPosition\s*,.*?\)",
+                  "localLight(localLightPosition)", body, flags=re.S)
+    return body.replace(".xyz", "").replace("skyColor.rgb", "skyColor").replace(".rgb", ".rgb()")
+
+
 @unittest.skipUnless(COMPILER, "finite lighting controls require a C++ compiler")
 class ShapeSurfaceLightingTest(unittest.TestCase):
     def test_composition_and_mutations(self):
         for suffix, folder in (("glsl", ""), ("metal", "metal/")):
             base = SHADERS / folder
             source = (base / f"ir_shape_surface_lighting.{suffix}").read_text()
-            start = source.index("{", source.index("shapeSurfaceLighting("))
-            body = source[start + 1:source.rindex("}")]
-            body = re.sub(r"constexpr sampler .*?;", "", body)
-            body = body.replace("float3", "vec3").replace("float4", "vec4")
-            body = body.replace("lighting.", "").replace("sun.", "")
-            body = re.sub(r",\s*sunFrameData, sunDepthBuf", "", body)
-            body = re.sub(r",\s*sun, sunDepthBuf", "", body)
-            body = body.replace("texelFetch(surfaceAO, ownerPixel, 0).r", "sampleAO(ownerPixel)")
-            body = body.replace("surfaceAO.read(ownerPixel).r", "sampleAO(ownerPixel)")
-            body = re.sub(r"surfaceLightVolume\(position,.*?\)", "localLight(position)",
-                          body, flags=re.S)
-            body = body.replace(".xyz", "").replace("skyColor.rgb", "skyColor")
-            body = body.replace(".rgb", ".rgb()")
+            body = host_body(function_body(source, "shapeSurfaceLighting"))
+            shared = (base / f"ir_world_surface_lighting.{suffix}").read_text()
+            shared = host_body(function_body(shared, "worldSurfaceLighting"))
+            body = ("vec3 worldSurfaceLighting(vec3 albedo,float ao,vec3 position,vec3 normal,"
+                    "vec4 casterRotation,vec3 localLightPosition){" + shared + "}\n"
+                    "vec3 query(ivec2 ownerPixel,int ownerWidth,vec3 position,"
+                    "vec3 normal,vec4 casterRotation,vec3 fallbackColor){" + body + "}\n")
             tone = (base / f"ir_tonemap.{suffix}").read_text()
             surface = (base / f"ir_surface_lighting.{suffix}").read_text()
             material = (base / f"ir_surface_material.{suffix}").read_text()
@@ -125,7 +155,11 @@ class ShapeSurfaceLightingTest(unittest.TestCase):
                 "lost_shadow_toggle": body.replace("shadowsEnabled == 0", "false"),
                 "ignored_lambert": body.replace("sunIntensity, lambert, visibility",
                                                 "sunIntensity, 1.0, visibility"),
-                "lost_local_light": body.replace("localLight(position)", "vec3(0.0)"),
+                "lost_local_light": body.replace("localLight(localLightPosition)", "vec3(0.0)"),
+                "local_uses_shadow_point": body.replace("localLight(localLightPosition)",
+                                                        "localLight(position)"),
+                "shape_local_position": re.sub(
+                    r"casterRotation\s*,\s*position", "casterRotation, vec3(0.0)", body),
                 "wrong_sky_normal": body.replace("surfaceSkyLight(normal,",
                                                  "surfaceSkyLight(vec3(0,0,1),"),
                 "tone_before_composition": body.replace("return surfaceDisplayColor(linearColor",
@@ -137,10 +171,7 @@ class ShapeSurfaceLightingTest(unittest.TestCase):
                     if name != "production":
                         self.assertTrue(candidate != body, f"{name}: missing mutation target")
                     cpp, exe = Path(tmp) / "lighting.cpp", Path(tmp) / "lighting"
-                    cpp.write_text(PREAMBLE + ADAPTERS + helpers +
-                                   "vec3 query(ivec2 ownerPixel,int ownerWidth,vec3 position,"
-                                   "vec3 normal,vec4 casterRotation,vec3 fallbackColor){" +
-                                   candidate + "}" + CASES)
+                    cpp.write_text(PREAMBLE + ADAPTERS + helpers + candidate + CASES)
                     result = subprocess.run([COMPILER, "-std=c++17", str(cpp), "-o", str(exe)],
                                             capture_output=True, text=True)
                     self.assertEqual(result.returncode, 0, result.stderr)

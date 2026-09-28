@@ -94,6 +94,12 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
     // (entries stay albedo-only) — the A/B kill switch for the lit-vs-albedo
     // screenshot pair and GPU-delta diagnostics.
     bool overflowLightingDisabled_ = false;
+    // Opt-in presentation lighting keeps the existing per-axis colors and
+    // overflow entries as albedo. Publish readiness only after the main tick
+    // skips their in-place relight; an eligible frame may have no main tick.
+    bool perAxisSurfaceLightingEnabled_ = false;
+    bool perAxisSurfaceLightingEligible_ = false;
+    bool perAxisSurfaceLightingReady_ = false;
     Buffer *frameDataBuf_ = nullptr;
     // Reuse the voxel pipeline's per-frame UBO so we can recover the
     // world voxel position of each pixel via the same iso math the AO
@@ -152,6 +158,7 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
     // canvas's as inert placeholders. Resolved in beginTick.
     const C_CanvasSunShadow *mainCanvasSunShadow_ = nullptr;
     const C_CanvasLightVolume *mainCanvasLightVolume_ = nullptr;
+    const C_CanvasAOTexture *mainCanvasAO_ = nullptr;
 
     void tick(
         IREntity::EntityId entity,
@@ -339,15 +346,16 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             );
         }
 
-        // Smooth camera Z-yaw: apply lighting to each per-axis voxel
-        // canvas (AO x sun-shadow x face Lambert + shared world light volume) so
-        // the framebuffer scatter composites LIT colours while rotating. Only
-        // the main canvas allocates per-axis canvases, and it always carries
-        // sun-shadow, so `shadow` is non-null on this path.
+        // Preserve both cell and overflow albedo for eligible presentation
+        // lighting; otherwise relight both stores in place before scatter.
         if (entity == perAxisCanvasEntity_ && perAxisCanvases_ != nullptr &&
             perAxisCanvases_->isAllocated() && shadow != nullptr) {
-            program_->use();
-            dispatchPerAxisLighting(*perAxisCanvases_, canvasTextures, ao, *shadow);
+            if (perAxisSurfaceLightingEligible_) {
+                perAxisSurfaceLightingReady_ = true;
+            } else {
+                program_->use();
+                dispatchPerAxisLighting(*perAxisCanvases_, canvasTextures, ao, *shadow);
+            }
         }
     }
 
@@ -476,6 +484,8 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
     }
 
     void beginTick() {
+        perAxisSurfaceLightingEligible_ = false;
+        perAxisSurfaceLightingReady_ = false;
         // Resolve the baked sun-depth map once (created by BAKE_SUN_SHADOW_MAP,
         // registered ahead of LIGHTING_TO_TRIXEL). Lazy single-init: the resolve
         // is deferred to beginTick so BAKE_SUN_SHADOW_MAP has already registered
@@ -517,6 +527,7 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         perAxisCanvases_ = nullptr;
         mainCanvasSunShadow_ = nullptr;
         mainCanvasLightVolume_ = nullptr;
+        mainCanvasAO_ = nullptr;
         if (perAxisCanvasEntity_ != IREntity::kNullEntity) {
             auto perAxis =
                 IREntity::getComponentOptional<C_PerAxisTrixelCanvases>(perAxisCanvasEntity_);
@@ -528,10 +539,13 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             // frame inputs come from resolveMainCanvasVoxelFrameInputs below.
             auto shadow = IREntity::getComponentOptional<C_CanvasSunShadow>(perAxisCanvasEntity_);
             auto lv = IREntity::getComponentOptional<C_CanvasLightVolume>(perAxisCanvasEntity_);
+            auto ao = IREntity::getComponentOptional<C_CanvasAOTexture>(perAxisCanvasEntity_);
             if (shadow.has_value())
                 mainCanvasSunShadow_ = shadow.value();
             if (lv.has_value())
                 mainCanvasLightVolume_ = lv.value();
+            if (ao.has_value())
+                mainCanvasAO_ = ao.value();
         }
         resolveMainCanvasVoxelFrameInputs(
             perAxisCanvasEntity_,
@@ -539,6 +553,21 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             &mainVoxelPool_,
             &mainCanvasRotation_
         );
+        // Fog still consumes lit colors. Debug modes and incomplete pipelines
+        // retain the compute path; presentation must never mistake them for albedo.
+        if (perAxisSurfaceLightingEnabled_ && perAxisCanvases_ != nullptr &&
+            perAxisCanvases_->isAllocated() && mainCanvasTextures_ != nullptr &&
+            mainCanvasAO_ != nullptr && mainCanvasSunShadow_ != nullptr &&
+            mainCanvasLightVolume_ != nullptr && findSystem(COMPUTE_SUN_SHADOW) != kNullSystemId &&
+            findSystem(TRIXEL_TO_FRAMEBUFFER) != kNullSystemId &&
+            findSystem(FOG_TO_TRIXEL) == kNullSystemId &&
+            IRRender::getDebugOverlay() == DebugOverlayMode::NONE &&
+            !IRRender::getDepthColorDebugMode()) {
+            auto behavior =
+                IREntity::getComponentOptional<C_TrixelCanvasRenderBehavior>(perAxisCanvasEntity_);
+            perAxisSurfaceLightingEligible_ =
+                behavior.has_value() && behavior.value()->useCameraPositionIso_;
+        }
     }
 
     // Restore the main world canvas's voxel frame data so FOG_TO_TRIXEL /
@@ -653,6 +682,9 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             IRRender::getNamedResource<ShaderProgram>("LightOverflowFacesProgram");
         // A/B kill switch for the lit-vs-albedo overflow screenshots + GPU delta.
         p->overflowLightingDisabled_ = std::getenv("IR_OVERFLOW_LIGHTING_DISABLE") != nullptr;
+        const char *surfaceLighting = std::getenv("IR_PERAXIS_SURFACE_LIGHTING");
+        p->perAxisSurfaceLightingEnabled_ =
+            surfaceLighting != nullptr && surfaceLighting[0] == '1' && surfaceLighting[1] == '\0';
         p->frameDataBuf_ = IRRender::getNamedResource<Buffer>("LightingToTrixelFrameData");
         p->voxelFrameDataBuf_ = IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
         p->sunFrameDataBuf_ = IRRender::getNamedResource<Buffer>("ComputeSunShadowFrameData");

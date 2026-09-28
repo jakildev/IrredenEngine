@@ -77,6 +77,7 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
 flat out vec4 vColor;
 flat out vec3 vFaceOrigin;
 flat out int vFaceId;
+flat out ivec2 vOwnerPixel;
 // Per-fragment PLANAR composite depth: linear (no-perspective, w==1)
 // interpolation of the exact yawed plane depth sampled at each (dilated)
 // corner reproduces the face plane's affine depth field at every fragment —
@@ -240,6 +241,7 @@ void main() {
         vColor = vec4(0.0);
         vFaceOrigin = vec3(0.0);
         vFaceId = 0;
+        vOwnerPixel = ivec2(-1);
         vDepth = 1.0;
         vIsoDepth = 0.0;    // unused (discarded in fragment)
         vDepthColorMode = 0;
@@ -383,6 +385,7 @@ void main() {
     vColor = color;
     vFaceOrigin = origin;
     vFaceId = faceId;
+    vOwnerPixel = overflowMode != 0 ? ivec2(-1) : ij;
     // Cell-anchor sum — keeps the depth-color binning consistent with the
     // authored-lattice depth the composite key carries.
     vIsoDepth = origin.x + origin.y + origin.z - 1.5;

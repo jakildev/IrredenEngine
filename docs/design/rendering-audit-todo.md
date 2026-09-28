@@ -56,6 +56,24 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
   sparse control's overflow lane alone, before its three regular axis regions.
   Include fog eligibility, margin handling and per-vertex repeated work in that
   decision rather than expanding buffers by default.
+- Added an opt-in [attached presentation-lighting reference](../pr-screenshots/codex/peraxis-surface-lighting/README.md)
+  that preserves existing albedo storage and shares analytical-surface lighting.
+  Continuous finite-face sun queries replace face-center visibility; conservative
+  margins sample the nearest finite-face point without changing coverage/depth.
+  The independent sun-only beauty oracle rejects all four parent views (1,750
+  errors) and passes all four enabled views (208,344 tested pixels, zero errors).
+  Default-off, no-shadows and HDR sky controls remain pixel-identical. Readiness
+  is published by the producer after preserving regular and overflow albedo;
+  fog/debug/cardinal paths retain compute lighting. No dense per-face lighting
+  payload is allocated. Shared ID-volume binding now satisfies both GL image and
+  Metal render texture tables; native SPOT coverage remains pending.
+  Three-run Metal controls show a wider-view GPU envelope increase from 5.190
+  to 9.922 ms; zoom 4 has far fewer visible overflow faces and is not a scaling
+  proof. Disabling shadows lowers the new scatter scope from 5.294 to 0.488 ms.
+  Next: measure query visits/overdraw, skip unobservable direct-sun queries and
+  improve finite candidate pruning; material work alone is not the main cost.
+  Keep this default-off and avoid capacity-sized records. Validate cardinal
+  transitions, dense/incomplete tiles, overflow and fog before default adoption.
 - [Bounded overflow reference](../perf/bounded-source-face-reference.md) isolates
   the dense analytical-box teeth: identical geometry and tile tables regain
   clean floor edges when incomplete tiles query the complete small face pool.

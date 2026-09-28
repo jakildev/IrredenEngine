@@ -1,0 +1,94 @@
+{
+  "head": "27bc48fed1f5f43f484c75041ff6f113022c494e",
+  "changes": " M engine/prefabs/irreden/render/systems/system_lighting_to_trixel.hpp\n M engine/prefabs/irreden/render/systems/system_trixel_to_framebuffer.hpp\n M scripts/tests/test_render_per_axis_surface.py\n M scripts/tests/test_render_shape_surface_lighting.py\n",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "host_power": "Battery Power",
+  "host_cpus": 14,
+  "build_dir": "build",
+  "build_type": "Debug",
+  "binary_sha256": "b223db8629b6bb1c8359dbe7170c620c8e958c5baa9f1796f71917f6db64da97",
+  "shader_sha256": "a3d2eb136bcf3af644b12eaa689d1d8e66ec068171076a8f16b428f1f4d577eb",
+  "runtime_scripts_sha256": "c3ab47543e58c89b874850315b06881210a2dc81013b1524233269e9f7edad5b",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "120",
+    "IRCanvasStress",
+    "--only",
+    "orbit",
+    "--focus-orbit",
+    "7",
+    "--focus-identity",
+    "--probe-grid",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--no-ao",
+    "--zoom",
+    "4",
+    "--subdivisions",
+    "1",
+    "--auto-profile",
+    "--auto-screenshot",
+    "6",
+    "--sweep-yaw",
+    "0.39269908",
+    "5.10508806",
+    "4"
+  ],
+  "runs": [
+    {
+      "index": 1,
+      "launched_utc": "2026-09-28T04:27:33Z",
+      "finished_utc": "2026-09-28T04:27:37Z",
+      "host_battery_percent": 87,
+      "host_load_1m": 9.85,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "engine_logged": true,
+      "yaw_pose_mismatch": null,
+      "pivot_mismatch": null,
+      "explicit_pivot_samples": 0,
+      "overflow_failure": null,
+      "yaw_first_deg": 0.0,
+      "yaw_last_deg": -67.5,
+      "yaw_travel_deg": 292.5,
+      "zoom_first": 4.0,
+      "zoom_last": 4.0,
+      "zoom_min": 4.0,
+      "zoom_max": 4.0,
+      "zoom_range_present": true,
+      "overflow_max_dropped": 0,
+      "overflow_max_entries": 0,
+      "overflow_samples": 248,
+      "gpu_measured": true
+    }
+  ],
+  "environment": {
+    "IR_PERAXIS_SURFACE_LIGHTING": null
+  },
+  "screenshots": [
+    {
+      "source": "screenshot_003045.png",
+      "file": "before-frame-0.png",
+      "sha256": "8072f9433643082474ecf066136f3ff3b038ab1d055a1e4c13eba80db1cca9e3"
+    },
+    {
+      "source": "screenshot_003046.png",
+      "file": "before-frame-1.png",
+      "sha256": "bf6e2c54db903502e2edfa9f64869e2ee99eb3ff18619b7fa5ed4643dca20160"
+    },
+    {
+      "source": "screenshot_003047.png",
+      "file": "before-frame-2.png",
+      "sha256": "2a8b05c2f6642952ec8164e18fc6f9ffb74343a2e8babe2d64c5e93c0e1400fc"
+    },
+    {
+      "source": "screenshot_003048.png",
+      "file": "before-frame-3.png",
+      "sha256": "c21400bf42adef927fef94f12596df96443be8ff7a7f2892f9404b9dd93fc513"
+    }
+  ]
+}
