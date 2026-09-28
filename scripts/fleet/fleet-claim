@@ -1444,7 +1444,8 @@ check_planning_gates() {
 # --- host-capability gate -------------------------------------------------
 
 check_host_capability() {
-    # Refuse the claim if the issue requires GL runtime verification (label
+    # Refuse the claim if the record carries `fleet:needs-macos-host` and this
+    # machine is not macOS, or if it requires GL runtime verification (label
     # `fleet:needs-gl-host`) and this machine is not GL-capable. GL-capable
     # hosts are {linux, windows}; macOS GL is 4.1 (< the shaders' required
     # 4.5), so a Metal host cannot run/verify the GL backend. Mirrors
@@ -1492,12 +1493,25 @@ check_host_capability() {
         esac
     done <<< "$info"
 
+    local host
+    case " $labels " in
+        *" fleet:needs-macos-host "*)
+            # One-OS residual pin; no backend-symmetric narrowing (it names
+            # an OS, not a backend). Checked first so a record carrying both
+            # host labels refuses everywhere, as the dispatcher does.
+            host=$(derive_host)
+            if [[ "$host" != "mac" ]]; then
+                echo "fleet-claim: refuse #${issue_num} — tagged [fleet:needs-macos-host], this host is [${host}]; the remaining work needs a macOS host" >&2
+                return 1
+            fi
+            ;;
+    esac
+
     case " $labels " in
         *" fleet:needs-gl-host "*) ;;
         *) return 0 ;;
     esac
 
-    local host
     host=$(derive_host)
     case "$host" in
         linux|windows) return 0 ;;
