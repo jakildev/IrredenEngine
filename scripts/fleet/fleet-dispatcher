@@ -2639,6 +2639,15 @@ assign_for_pane() {
     local line now runtime_blocked=0 claude_gate="" claude_gate_model=""
     local refusal_key claim_rc
     local claude_only_gate=""
+    local route_class="$DISPATCH_CLASS" route_claude_gate="open"
+    if [[ -n "${FLEET_RUNTIMES:-}" && "$role" == "merger" ]]; then
+        if [[ -z "$route_class" ]]; then
+            route_class=$(class_of_model "${DISPATCH_MODEL:-${ROLE_MODEL[$role]}}")
+        fi
+        claude_gate_model="${DISPATCH_MODEL:-${ROLE_MODEL[$role]}}"
+        claude_gate=$(usage_gate_status claude "$claude_gate_model")
+        [[ "$claude_gate" == open* ]] || route_claude_gate="closed"
+    fi
     now=$(date +%s)
     ASSIGN_BLOCK_REASON=""
     while IFS= read -r line; do
@@ -2657,8 +2666,8 @@ assign_for_pane() {
         if [[ -n "${FLEET_RUNTIMES:-}" ]]; then
             local route
             route=$(python3 "$FLEET_LIB_DIR/fleet_runtime.py" route "$slice" "$line" \
-                "$role" "$DISPATCH_CLASS" "${DISPATCH_MODEL:-${ROLE_MODEL[$role]}}" \
-                "${DISPATCH_EFFORT:-${ROLE_EFFORT[$role]}}") || {
+                "$role" "$route_class" "${DISPATCH_MODEL:-${ROLE_MODEL[$role]}}" \
+                "${DISPATCH_EFFORT:-${ROLE_EFFORT[$role]}}" "$route_claude_gate") || {
                     if [[ "$role" == "merger" ]]; then
                         # The PR left the merger's candidate set since tier-0
                         # named it (a skip label, a merge); a line that cannot

@@ -13,7 +13,7 @@ from pathlib import Path
 
 RUNTIMES = ("claude", "codex")
 CODEX_MODELS = {"fable": "gpt-6-astra", "opus": "gpt-5.6-sol", "sonnet": "gpt-5.6-terra"}
-BATCH_ROLES = ("merger", "epic-steward")
+BATCH_ROLES = ("epic-steward",)
 ROLE_CLASSES = {"sonnet-reviewer": "sonnet", "opus-reviewer": "opus", "smoke-worker": "sonnet"}
 TARGET_RECORDS = {
     "task": ("tasks_open",), "stack": ("tasks_open",),
@@ -145,10 +145,12 @@ def target_record(data, target):
     raise ValueError("target missing from projection")
 
 
-def choose_runtime(kind, record, target, env):
+def choose_runtime(kind, record, target, env, claude_gate="open"):
     available = sorted({x.strip() for x in env.get("FLEET_RUNTIMES", "claude").split(",")})
     if not available or any(x not in RUNTIMES for x in available):
         raise ValueError("FLEET_RUNTIMES must contain claude and/or codex")
+    if claude_gate not in ("open", "closed"):
+        raise ValueError("Claude gate must be open or closed")
     labels = {x["name"] if isinstance(x, dict) else x for x in record.get("labels") or []}
     authors = [x for x in RUNTIMES if f"fleet:author-{x}" in labels]
     if len(authors) > 1:
@@ -174,6 +176,9 @@ def choose_runtime(kind, record, target, env):
             chosen = available[index % len(available)]
         else:
             raise ValueError("FLEET_WORKER_RUNTIME must be balanced, claude, or codex")
+    if kind == "merge" and chosen == "claude" and claude_gate == "closed" \
+            and "codex" in available:
+        chosen = "codex"
     if chosen not in available:
         raise ValueError(f"required runtime {chosen} unavailable on this host")
     return chosen
@@ -195,9 +200,9 @@ def resolve_assignment(runtime, role, cls, model, effort, env, explicit_effort=N
     return runtime, cls, model, effort
 
 
-def route(data, target, role, cls, model, effort, env):
+def route(data, target, role, cls, model, effort, env, claude_gate="open"):
     kind, record = target_record(data, target)
-    runtime = choose_runtime(kind, record, target, env)
+    runtime = choose_runtime(kind, record, target, env, claude_gate)
     cls = cls or ROLE_CLASSES.get(role, "opus")
     return resolve_assignment(runtime, role, cls, model, effort, env, record.get("effort"))
 
@@ -269,6 +274,7 @@ def main(argv=None):
     p = subs.add_parser("route")
     for name in ("slice", "target", "role", "cls", "model", "effort"):
         p.add_argument(name)
+    p.add_argument("claude_gate", nargs="?", choices=("open", "closed"), default="open")
     p = subs.add_parser("route-role", help="select a provider for a target-less batch role")
     for name in ("role", "cls", "model", "effort", "claude_gate"):
         p.add_argument(name)
@@ -314,7 +320,7 @@ def main(argv=None):
         else:
             data = json.loads(Path(args.slice).read_text())
             result = route(data, args.target, args.role, args.cls,
-                           args.model, args.effort, os.environ)
+                           args.model, args.effort, os.environ, args.claude_gate)
             if state:
                 routing_problem(state, key)
             print(" ".join(result))

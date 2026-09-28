@@ -59,8 +59,9 @@ for the claimless kind too — the comment is the whole record.
 
 **Target unset** — a manual `/role-<role>`, a `dry-run` / `review-only`
 boot, a reserved worktree resuming its own task, or a target-less batch role
-running on the provider elected by the dispatcher — run the role's discovery
-flow, starting with the cache read.
+(`epic-steward`) running on the provider elected by the dispatcher — run the
+role's discovery flow, starting with the cache read. The merger is
+target-bound; each launch carries one `merge:<repo>:<N>` item.
 
 ## Pane health — dispatch preflight and fleet-up self-heal
 
