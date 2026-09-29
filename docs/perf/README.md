@@ -17,11 +17,11 @@ profiler, no per-cell stopwatch.
 | `engine/tools/bin/ir-perf-grid`       | Canonical perf-matrix runner — wraps `perf_grid_matrix.sh` in `ir-acquire benchmark` and splices `ref_ms` + host fingerprint into `manifest.json`. Calibrates on demand via `ir_ref_bench`. |
 | `scripts/perf/perf_grid_matrix.sh`    | The matrix loop — `IRPerfGrid` (or `IRLuaPerfGrid`, or both) across a zoom × subdivision matrix. Called via `ir-perf-grid` for CI/perf gating; raw call is fine for ad-hoc local diffs. |
 | `scripts/perf/perf_summary.py`        | One-screen markdown summary of a single run                                        |
-| `scripts/perf/compare_perf_runs.py`   | Diff two runs as a markdown table for the PR body. Fingerprint-aware: `resolve_baseline` picks `<baseline-root>/<slug>/` for the head's SKU, falling back to a legacy flat root. The root is an argument — in CI it comes from the `perf-baseline` branch, locally it is any directory you pass. |
+| `scripts/perf/compare_perf_runs.py`   | Diff two runs as a markdown table for the PR body. Fingerprint-aware: `resolve_baseline` picks `<baseline-root>/<slug>/` for the head's SKU, falling back to a legacy flat root; `resolve_class_matched_baseline` picks the head's calibration class out of a per-capture history root. The root is an argument — in CI it comes from the `perf-baseline` branch, locally it is any directory you pass. |
 | `scripts/perf/ci_compare_step.sh`      | The perf gate's PR-path step, extracted from the workflow so it is testable outside Actions. |
 | `scripts/perf/tests/test_baseline_layouts.py` | Executed control for baseline resolution + the gate's exit mapping. Runs as the perf-gate job's first step after checkout. |
 | `scripts/perf/tests/test_baseline_writer.sh` | Executed control for the `perf-baseline` branch writer and the PR-path reader, driving the shipped workflow step bodies against a local bare origin. Same CI step. |
-| `scripts/perf/check_regression.py`    | CI gate — fingerprint-aware regression check. Same fingerprint → gates; different fingerprint or no baseline → informational. |
+| `scripts/perf/check_regression.py`    | CI gate — fingerprint-aware regression check. Same fingerprint → gates; different fingerprint or no baseline → informational. `--baseline-history` gates against the class-matched capture instead of the tip. |
 | `scripts/perf/lua_cpp_parity.py`      | Lua-vs-C++ overhead table from a `--target both` run                               |
 | `scripts/perf/million_controls.py`    | The million control as one interleaved matrix: build tree × stage profiling × pose, through `repeat_profile.py` |
 
@@ -57,6 +57,14 @@ can commit one there (#2817).
 The CI gate at `.github/workflows/perf-gate.yml` reads the head run's
 slug from `manifest.json.calibration.host_slug` and looks up the
 matching baseline. Cross-host runs report informational only.
+
+One slug can cover runner instances of different speeds: the hosted
+`epyc-9v74-80` runners split into a fast class (`ref_ms` ~90) and a slow
+one (~116) that no `host.json` field tells apart, and the grid runs ~1.45×
+slower on the slow class (#3924). So the PR path does not gate against the
+branch tip. The reader also materializes every past capture as
+`<history>/<slug>/<perf-baseline commit>/`, and the gate picks the most
+recent one in the head's class (see the pass/fail rules below).
 
 **Coverage is per-SKU, and the hosted runner pool is heterogeneous.**
 Measured over 39 baseline-producing runs (#2817): `epyc-7763` 49%,
@@ -379,9 +387,10 @@ the gate is exercised by the gate.
   The author must justify or fix before merging.
 - Any cell that improves by **>5%** causes the `perf:improved` label to
   be added to the PR automatically.
-- Baseline resolution belongs to `compare_perf_runs.py:resolve_baseline`
-  alone — the workflow hands over a baseline *root* and never tests the
-  layout itself. A bash-side layout check is what silently retired the
+- Baseline resolution belongs to `compare_perf_runs.py` alone
+  (`resolve_baseline` for the tip, `resolve_class_matched_baseline` for the
+  history) — the workflow hands over a baseline *root* and a history root
+  and never tests the layout or picks a capture itself. A bash-side layout check is what silently retired the
   gate when T-330 moved the writer to per-slug directories (#2817).
 - `check_regression.py` exit ≥ 2 means it could not compare at all. That
   turns the step **red** and posts no comment: an infra failure must not
@@ -393,10 +402,21 @@ the gate is exercised by the gate.
   the writer the next time any SKU files a measured baseline — otherwise the
   exit-2 rule above leaves every PR on that SKU red with no author-side
   remedy.
-- Normalization weighs the head against the **baseline run's own `ref_ms`**,
-  both readings taken on the same SKU, so the load factor isolates how
-  contended the machine was. `ref_target_ms` (a fixed 50 ms) stays in the
-  manifest and the host note as information only: the hosted pool calibrates
+- The PR gate compares against the most recent capture of the head's slug
+  that is **in the head's calibration class**: `ref_ms` strictly within
+  1.20× of the head's either way, finished at most 14 days before the head
+  started, same `matrix` and `frames`, every cell measured. The comparison
+  is raw, and the host note names the capture (perf-baseline commit, master
+  SHA, age, `ref_ms`). With no such capture the gate is informational: exit 0,
+  no table, so no `perf:improved`. The next master push on that class files
+  one. Normalizing across the class split instead under-corrected it: `ref_ms`
+  scales ~1.28× there while the grid scales ~1.45×, which left a neutral PR
+  at +12.9 % (#3924).
+- Without `--baseline-history` (local runs), normalization weighs the head
+  against the **baseline run's own `ref_ms`**, both readings taken on the
+  same SKU, so the load factor isolates how contended the machine was.
+  `ref_target_ms` (a fixed 50 ms) stays in the manifest and the host note
+  as information only: the hosted pool calibrates
   at 59–104 ms, so weighing against the target divided every head by
   0.43–0.85 and no regression below roughly 2× could fire (#3471).
 - The PR-path reader takes the seed-new (empty root) path only when
@@ -408,7 +428,7 @@ the gate is exercised by the gate.
 
 `scripts/perf/tests/test_baseline_layouts.py` is the executed control for
 all of the above (layout resolution across empty / per-slug / legacy-flat
-roots, plus the exit mapping), and
+roots, the exit mapping, and class-matched selection on the #3899 readings), and
 `scripts/perf/tests/test_baseline_writer.sh` drives the branch writer and
 the PR-path reader against a local bare origin. `test/tools/normalization_test.sh`
 covers the calibration helpers and the gate's decision tree. All three run as

@@ -14,8 +14,16 @@ tree from #1074:
     Different fingerprint              → informational only, pass.
     No baseline at all                 → informational only, pass (seed-new).
 
+With --baseline-history (CI always passes it) the baseline is not the branch
+tip but the most recent capture of the head's slug whose ref_ms sits inside
+the LOAD_FACTOR_TRUST_NORMALIZED band of the head's:
+
+    Class-matched capture found        → check raw deltas against it.
+    No capture in the head's class     → informational only, pass, no table.
+
 Usage:
     scripts/perf/check_regression.py <baseline_root> <head_dir>
+        [--baseline-history DIR]
         [--regress-pct N] [--improve-pct N] [--gpu-only] [--cpu-only]
 
 Exit codes:
@@ -33,8 +41,11 @@ from pathlib import Path
 _SCRIPTS_PERF = Path(__file__).resolve().parent
 sys.path.insert(0, str(_SCRIPTS_PERF))
 from compare_perf_runs import (  # noqa: E402
+    CLASS_MATCH_MAX_AGE_DAYS,
     LOAD_FACTOR_TRUST_NORMALIZED,
+    ClassMatch,
     build_host_note,
+    calibration_ref_ms,
     host_slug,
     load_factor,
     load_manifest,
@@ -43,6 +54,7 @@ from compare_perf_runs import (  # noqa: E402
     pct_delta,
     render_markdown,
     resolve_baseline,
+    resolve_class_matched_baseline,
     unmeasured_cell_ids,
 )
 
@@ -68,11 +80,35 @@ def _regressed_cells(base, head, regress_pct: float, *,
     return out
 
 
+def _no_class_match_body(slug: str, head_ref_ms: float, match: ClassMatch) -> str:
+    """The informational comment body. It carries no comparison table: a
+    cross-class reading is meaningless, and a `↓` in it would earn the PR
+    perf:improved."""
+    lines = [
+        "# Perf gate — no class-matched baseline",
+        "",
+        f"No capture of `{slug}` on the baseline branch is in this head's "
+        f"calibration class (head ref_ms {head_ref_ms:.2f}; a capture qualifies "
+        f"within {LOAD_FACTOR_TRUST_NORMALIZED:.2f}× of it, at most "
+        f"{CLASS_MATCH_MAX_AGE_DAYS} days old, same matrix and frame count, "
+        "every cell measured). The next master push that lands on this runner "
+        "class files one. Gate is informational this PR.",
+    ]
+    if match.captures:
+        lines += ["", "Captures considered:", ""]
+        lines += [f"- `{c.path.name}` ref_ms {c.ref_ms:.2f} — {c.rejected}"
+                  for c in match.captures]
+    return "\n".join(lines) + "\n"
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("baseline", help="baseline root (docs/perf/baseline_latest/) — "
                                     "must contain <host-slug>/manifest.json for the head's slug")
     p.add_argument("head", help="head run directory")
+    p.add_argument("--baseline-history", metavar="DIR",
+                   help="per-capture history root (<slug>/<commit>/) — gate "
+                        "against the class-matched capture instead of the tip")
     p.add_argument("--regress-pct", type=float, default=10.0,
                    help=">= this %% on mean frame avg counts as regression (default 10)")
     p.add_argument("--improve-pct", type=float, default=5.0,
@@ -93,6 +129,13 @@ def main() -> int:
     if not head_dir.is_dir():
         print(f"check_regression: head dir not found: {head_dir}", file=sys.stderr)
         return 2
+    history_root = None
+    if args.baseline_history:
+        history_root = Path(args.baseline_history).resolve()
+        if not history_root.is_dir():
+            print(f"check_regression: baseline history not found: {history_root}",
+                  file=sys.stderr)
+            return 2
 
     head_manifest = load_manifest(head_dir)
     head = load_run(head_dir)
@@ -125,6 +168,25 @@ def main() -> int:
         )
         return 0
 
+    capture = None
+    capture_is_tip = False
+    if history_root is not None:
+        match = resolve_class_matched_baseline(history_root, head_manifest)
+        if match.selected is None:
+            head_slug_str = host_slug(head_manifest) or "(none)"
+            head_ref_ms = calibration_ref_ms(head_manifest)
+            print(_no_class_match_body(head_slug_str, head_ref_ms, match), end="")
+            print(
+                f"check_regression: NO CLASS-MATCHED BASELINE — pass "
+                f"(informational, slug {head_slug_str}, head ref_ms "
+                f"{head_ref_ms:.2f}, {len(match.captures)} capture(s) considered)",
+                file=sys.stderr,
+            )
+            return 0
+        capture = match.selected
+        capture_is_tip = capture.manifest == load_manifest(base_dir)
+        base_dir = capture.path
+
     base = load_run(base_dir)
     if not base:
         print(f"check_regression: no cells in baseline {base_dir}", file=sys.stderr)
@@ -139,7 +201,8 @@ def main() -> int:
         return 2
 
     base_manifest = load_manifest(base_dir)
-    host_note = build_host_note(base_manifest, head_manifest)
+    host_note = build_host_note(base_manifest, head_manifest,
+                                capture=capture, capture_is_tip=capture_is_tip)
 
     md = render_markdown(
         base_dir, head_dir, base, head,
@@ -173,7 +236,9 @@ def main() -> int:
     # it does not have.
     base_ref_ms = float(base_cal.get("ref_ms", 0.0))
     lf = load_factor(head_ref_ms, base_ref_ms)
-    use_normalized = lf >= LOAD_FACTOR_TRUST_NORMALIZED
+    # A class-matched capture is in band by construction; normalizing across
+    # a class split under-corrects it, so history mode never does.
+    use_normalized = capture is None and lf >= LOAD_FACTOR_TRUST_NORMALIZED
 
     regressed = _regressed_cells(
         base, head, args.regress_pct,

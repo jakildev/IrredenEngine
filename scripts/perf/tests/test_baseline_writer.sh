@@ -85,6 +85,8 @@ READER_BODY="$LAB/reader-body.sh"
 extract_step "$READER_STEP" "$READER_BODY"
 grep -q 'git archive FETCH_HEAD' "$READER_BODY" \
   || { echo "FATAL: extracted reader body does not archive FETCH_HEAD" >&2; exit 1; }
+grep -q 'history=' "$READER_BODY" \
+  || { echo "FATAL: extracted reader body does not emit the history root" >&2; exit 1; }
 
 # --- Fixtures -------------------------------------------------------------
 
@@ -101,7 +103,7 @@ git -C "$LAB/work" remote add origin "$LAB/origin.git"
 git -C "$LAB/work" push -q -u origin master
 MASTER_BEFORE=$(git -C "$LAB/origin.git" rev-parse master)
 
-mk_head () { # $1=dir  $2=slug  $3=frame avg ms
+mk_head () { # $1=dir  $2=slug  $3=frame avg ms  [$4=calibration ref_ms]
   mkdir -p "$1"
   printf 'Frame time:  avg=%sms p50=%sms p95=%sms p99=%sms min=%sms max=%sms\n' \
     "$3" "$3" "$3" "$3" "$3" "$3" > "$1/z4-s8.txt"
@@ -110,10 +112,10 @@ mk_head () { # $1=dir  $2=slug  $3=frame avg ms
   python3 -c "
 import json, sys
 json.dump({'cells': [{'id': 'z4-s8', 'report': 'z4-s8.txt'}],
-           'calibration': {'host_slug': sys.argv[2], 'ref_ms': 1.0,
+           'calibration': {'host_slug': sys.argv[2], 'ref_ms': float(sys.argv[3]),
                            'ref_target_ms': 1.0,
                            'host_fingerprint': {'slug': sys.argv[2]}}},
-          open(sys.argv[1] + '/manifest.json', 'w'))" "$1" "$2"
+          open(sys.argv[1] + '/manifest.json', 'w'))" "$1" "$2" "${4:-1.0}"
 }
 
 mk_head_reportless () { # $1=dir  $2=slug — a run the matrix would now refuse
@@ -145,12 +147,13 @@ run_writer () { # $1=head dir -> exit code of the shipped step body
   ( cd "$LAB/work" && bash -e "$LAB/step.sh" ) > "$LAB/out.txt" 2>&1
 }
 
-run_reader () { # -> exit code; sets READER_ROOT from the step's GITHUB_OUTPUT
+run_reader () { # -> exit code; sets READER_ROOT / READER_HISTORY from the step's GITHUB_OUTPUT
   rm -rf "$RUNNER_TEMP/perf-baseline"
   export GITHUB_OUTPUT="$LAB/reader-output.txt"; : > "$GITHUB_OUTPUT"
   ( cd "$LAB/work" && bash -e "$READER_BODY" ) > "$LAB/reader-out.txt" 2>&1
   local rc=$?
   READER_ROOT="$(sed -n 's/^root=//p' "$GITHUB_OUTPUT")"
+  READER_HISTORY="$(sed -n 's/^history=//p' "$GITHUB_OUTPUT")"
   return $rc
 }
 
@@ -166,6 +169,8 @@ check H $rc "unborn branch exits 0 (seed-new, not red)"
 check H $? "an empty baseline root is still emitted (root=$READER_ROOT)"
 [[ -z "$(ls -A "$READER_ROOT" 2>/dev/null)" ]]
 check H $? "the root is empty, so resolve_baseline returns None"
+[[ -n "$READER_HISTORY" && -d "$READER_HISTORY" && -z "$(ls -A "$READER_HISTORY")" ]]
+check H $? "an empty history root is emitted too (history=$READER_HISTORY)"
 
 # --- A: unborn branch -----------------------------------------------------
 run_writer "$LAB/head-a"; rc=$?
@@ -222,6 +227,48 @@ check I $? "both SKU baselines land under the emitted root"
 check I $? "the host.json sidecar comes along"
 [[ -z "$(git -C "$LAB/work" status --porcelain)" ]]
 check I $? "the PR checkout's index and tree are untouched (archive, not checkout)"
+
+# --- N: the reader materializes every capture, skipping purge deletions ----
+# The gate picks its baseline from the branch history by calibration class,
+# so each capture must land as <history>/<slug>/<commit>/. Arm M's
+# purge commit deleted SKU_DEAD — archiving that commit's (absent) slug dir
+# is the fatal the reader has to step around.
+mk_head "$LAB/head-a" "$SKU_A" 9.3 2.0   # a second runner class on SKU_A
+run_writer "$LAB/head-a"; rc=$?
+check N $rc "a capture with a different ref_ms is filed (fixture setup)"
+run_reader; rc=$?
+check N $rc "materialize exits 0 over a history that includes a purge commit"
+grep -q "history=$READER_HISTORY" "$GITHUB_OUTPUT" && [[ -d "$READER_HISTORY" ]]
+check N $? "the step output carries the history root (history=$READER_HISTORY)"
+MISSING=""; PURGES=0; CAPTURES=0
+for sku in "$SKU_A" "$SKU_B" "$SKU_DEAD"; do
+  for c in $(git -C "$LAB/origin.git" log --format=%H "$BASELINE_BRANCH" \
+               -- "docs/perf/baseline_latest/$sku"); do
+    if git -C "$LAB/origin.git" cat-file -e "$c:docs/perf/baseline_latest/$sku/manifest.json" 2>/dev/null; then
+      CAPTURES=$((CAPTURES + 1))
+      [[ -f "$READER_HISTORY/$sku/$c/manifest.json" && -f "$READER_HISTORY/$sku/$c/z4-s8.txt" ]] \
+        || [[ "$sku" == "$SKU_DEAD" && -f "$READER_HISTORY/$sku/$c/manifest.json" ]] \
+        || MISSING="$MISSING $sku@$c"
+    else
+      PURGES=$((PURGES + 1))
+      [[ -e "$READER_HISTORY/$sku/$c" ]] && MISSING="$MISSING deleted:$sku@$c"
+    fi
+  done
+done
+[[ -z "$MISSING" && $CAPTURES -ge 5 ]]
+check N $? "every capture is at <history>/<slug>/<commit>/ ($CAPTURES captures; wrong:${MISSING:- none})"
+[[ $PURGES -ge 1 ]]
+check N $? "the history includes a slug deletion, and it wrote no capture dir ($PURGES)"
+REFS=$(python3 -c "import json,sys; print(sorted({json.load(open(f))['calibration']['ref_ms'] for f in sys.argv[1:]}))" \
+       "$READER_HISTORY/$SKU_A"/*/manifest.json)
+[[ "$REFS" == "[1.0, 2.0]" ]]
+check N $? "both runner classes of $SKU_A are in the history (ref_ms $REFS)"
+python3 -c "import json,sys; sys.exit(json.load(open(sys.argv[1]))['calibration']['ref_ms'] != 2.0)" \
+  "$READER_ROOT/$SKU_A/manifest.json"
+check N $? "the tip root still holds the branch tip's capture"
+[[ "$(ls -1 "$READER_ROOT" | sort | tr '\n' ' ')" == \
+   "$(git -C "$LAB/origin.git" ls-tree --name-only "$BASELINE_BRANCH:docs/perf/baseline_latest" | sort | tr '\n' ' ')" ]]
+check N $? "the tip root lists exactly the tip's slugs (no purged slug resurrected)"
 
 # --- J: seeded branch, remote unreachable -> RED, never seed-new -----------
 # `remote.origin.uploadpack` is the server side of every fetch and ls-remote

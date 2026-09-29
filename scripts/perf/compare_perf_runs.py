@@ -25,6 +25,7 @@ import math
 import re
 import sys
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional
 
@@ -472,6 +473,113 @@ def load_factor(ref_ms: float, target_ms: float) -> float:
 LOAD_FACTOR_TRUST_NORMALIZED = 1.20
 
 
+# --- Class-matched baseline selection ------------------------------------
+
+# One host slug can cover runner instances whose speed differs by ~1.5x at the
+# gated workload while every host.json field matches. The calibration
+# ref_ms separates the classes, and within a class it stays well inside the
+# LOAD_FACTOR_TRUST_NORMALIZED band, so the gate picks its baseline from the
+# captures inside that band rather than normalizing across classes: ref_ms
+# scales ~1.28x across the split while the grid scales ~1.45x.
+CLASS_MATCH_MAX_AGE_DAYS = 14
+
+
+@dataclass
+class HistoryCapture:
+    path: Path
+    manifest: Dict
+    ref_ms: float
+    finished_at: Optional[datetime]
+    # Why the capture cannot stand in for the head; empty while it qualifies.
+    rejected: str = ""
+
+
+@dataclass
+class ClassMatch:
+    selected: Optional[HistoryCapture]
+    captures: List[HistoryCapture]
+
+
+def parse_utc(stamp: object) -> Optional[datetime]:
+    """A manifest's `started_at` / `finished_at` (`2026-09-27T23:25:21Z`)."""
+    if not isinstance(stamp, str) or not stamp:
+        return None
+    try:
+        parsed = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def calibration_ref_ms(manifest: Dict) -> float:
+    return float((manifest.get("calibration") or {}).get("ref_ms", 0.0) or 0.0)
+
+
+def in_calibration_band(head_ref_ms: float, capture_ref_ms: float) -> bool:
+    """Strict on both sides, so a ratio of exactly 1.20 is out of band exactly
+    where check_regression's `lf >= 1.20` would have started normalizing."""
+    if head_ref_ms <= 0.0 or capture_ref_ms <= 0.0:
+        return False
+    ratio = head_ref_ms / capture_ref_ms
+    return 1.0 / LOAD_FACTOR_TRUST_NORMALIZED < ratio < LOAD_FACTOR_TRUST_NORMALIZED
+
+
+def resolve_class_matched_baseline(history_root: Path, head_manifest: Dict) -> ClassMatch:
+    """Pick the head's baseline from the perf-baseline branch history.
+
+    `history_root` holds one directory per capture, `<slug>/<commit>/`, as the
+    PR-path reader materializes it. A capture qualifies when it is on the
+    head's slug, ran the head's matrix and frame count, has a `ref_ms` inside
+    the calibration band of the head's, finished no more than
+    CLASS_MATCH_MAX_AGE_DAYS before the head started, and measured every cell.
+    The most recent qualifier by `finished_at` wins; directory names are commit
+    SHAs and carry no order.
+    """
+    slug = host_slug(head_manifest)
+    slug_dir = history_root / slug if slug else None
+    if slug_dir is None or not slug_dir.is_dir():
+        return ClassMatch(None, [])
+
+    head_ref_ms = calibration_ref_ms(head_manifest)
+    head_started = parse_utc(head_manifest.get("started_at"))
+    oldest = (head_started - timedelta(days=CLASS_MATCH_MAX_AGE_DAYS)
+              if head_started else None)
+    head_params = (head_manifest.get("matrix"), head_manifest.get("frames"))
+
+    captures: List[HistoryCapture] = []
+    for path in sorted(p for p in slug_dir.iterdir() if p.is_dir()):
+        manifest = load_manifest(path)
+        if not manifest:
+            continue
+        capture = HistoryCapture(path, manifest, calibration_ref_ms(manifest),
+                                 parse_utc(manifest.get("finished_at")))
+        if host_slug(manifest) != slug:
+            capture.rejected = "different host slug"
+        elif (manifest.get("matrix"), manifest.get("frames")) != head_params:
+            capture.rejected = "different matrix or frame count"
+        elif not in_calibration_band(head_ref_ms, capture.ref_ms):
+            capture.rejected = "outside the calibration band"
+        elif capture.finished_at is None or oldest is None:
+            capture.rejected = "no timestamp to age it by"
+        elif capture.finished_at < oldest:
+            capture.rejected = f"older than {CLASS_MATCH_MAX_AGE_DAYS} days"
+        captures.append(capture)
+
+    unknown = datetime.min.replace(tzinfo=timezone.utc)
+    captures.sort(key=lambda c: (c.finished_at or unknown, c.path.name), reverse=True)
+    # Parsing the reports is the costly filter, so it runs newest-first and
+    # stops at the first measured qualifier.
+    for capture in captures:
+        if capture.rejected:
+            continue
+        cells = load_run(capture.path)
+        if not cells or unmeasured_cell_ids(cells):
+            capture.rejected = "report-less"
+            continue
+        return ClassMatch(capture, captures)
+    return ClassMatch(None, captures)
+
+
 # --- Comparator ----------------------------------------------------------
 
 def pct_delta(baseline: float, head: float) -> float:
@@ -689,10 +797,15 @@ def render_markdown(
     return "\n".join(out).rstrip() + "\n"
 
 
-def build_host_note(base_manifest: Dict, head_manifest: Dict) -> str:
+def build_host_note(base_manifest: Dict, head_manifest: Dict,
+                    capture: Optional[HistoryCapture] = None,
+                    capture_is_tip: bool = False) -> str:
     """Markdown bullet block reporting fingerprint-match status, load factor,
     and normalization decision. Returns an empty string when neither manifest
-    carries calibration info (legacy flat baselines)."""
+    carries calibration info (legacy flat baselines).
+
+    `capture` is the class-matched history capture the gate compared against;
+    the note then names it, so the class decision reads from the comment."""
     base_cal = base_manifest.get("calibration") or {}
     head_cal = head_manifest.get("calibration") or {}
     if not base_cal and not head_cal:
@@ -722,13 +835,39 @@ def build_host_note(base_manifest: Dict, head_manifest: Dict) -> str:
     # Informational: the fixed 50 ms target says how fast this SKU is, which
     # is not what the gate weighs on.
     lines.append(f"- calibration target: {target_ms:.2f} ms (informational)")
-    lines.append(
-        "- weighting: normalized over raw "
-        f"(load_factor ≥ {LOAD_FACTOR_TRUST_NORMALIZED:.2f}×)"
-        if trust_norm
-        else "- weighting: raw (lock uncontested)"
-    )
+    if capture is not None:
+        lines.append(format_capture_line(capture, head_manifest, capture_is_tip))
+        lines.append(
+            "- weighting: raw (class-matched capture, ref_ms within "
+            f"{LOAD_FACTOR_TRUST_NORMALIZED:.2f}× of the head's)"
+        )
+    else:
+        lines.append(
+            "- weighting: normalized over raw "
+            f"(load_factor ≥ {LOAD_FACTOR_TRUST_NORMALIZED:.2f}×)"
+            if trust_norm
+            else "- weighting: raw (lock uncontested)"
+        )
     return "\n".join(lines)
+
+
+def format_capture_line(capture: HistoryCapture, head_manifest: Dict,
+                        is_tip: bool) -> str:
+    """The capture the gate compared against: its perf-baseline commit, the
+    master commit it measured, and how far it trails the head run — master
+    drift within the age window counts against the regression margin."""
+    kind = "branch tip" if is_tip else "class-matched history capture, not the branch tip"
+    head_started = parse_utc(head_manifest.get("started_at"))
+    age = ""
+    if capture.finished_at and head_started:
+        days = (head_started - capture.finished_at).total_seconds() / 86400.0
+        age = f", {days:.1f} d before the head run"
+    finished = capture.manifest.get("finished_at") or "unknown"
+    git_sha = capture.manifest.get("git_sha") or "unknown"
+    return (
+        f"- baseline capture: `perf-baseline@{capture.path.name[:9]}` ({kind}); "
+        f"master `{git_sha}`, finished {finished}{age}, ref_ms {capture.ref_ms:.2f}"
+    )
 
 
 def main() -> int:
