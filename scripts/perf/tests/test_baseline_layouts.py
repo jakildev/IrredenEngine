@@ -27,6 +27,8 @@ a gate that silently passes produce the same check mark — so they get arms:
     N  an in-band report-less capture newer than a measured one is skipped
     O  a capture with a different frame count is excluded
     P  ci_compare_step.sh forwards BASELINE_HISTORY as --baseline-history
+    Q  an in-band capture finished after the head started is excluded,
+       even though it is the newest
 
 Stdlib only, no network, no build. Wired into the perf-gate job so it
 executes rather than drifting.
@@ -533,6 +535,29 @@ def arm_p_step_forwards_history(tmp: Path) -> None:
           "unset BASELINE_HISTORY keeps the tip-only invocation")
 
 
+def arm_q_future_capture(tmp: Path) -> None:
+    """A capture filed after the head started is the newest qualifier by
+    `finished_at` unless the upper bound rejects it. Its frame times sit 25%
+    under the head's, so selecting it would fail a neutral head."""
+    work = tmp / "q"
+    ref_ms, *avgs = SLOW_CAPTURE
+    root, history = split_fixture(work, {
+        **SLOW_3AE,
+        "future": ((ref_ms, *(a * 0.75 for a in avgs)), "2026-09-28T13:00:00Z", {}),
+    })
+    head = write_head(work)
+    r = run_checker(root, head, history)
+    check("Q", r.returncode == 0 and "`perf-baseline@3ae85adf8`" in r.stdout,
+          f"the latest pre-head capture wins over a newer one (rc {r.returncode})")
+
+    (history / SPLIT_SLUG / "3ae85adf8" / "manifest.json").unlink()
+    r = run_checker(root, head, history)
+    check("Q", "NO CLASS-MATCHED BASELINE" in r.stderr,
+          f"a capture finished after the head started is excluded (rc {r.returncode})")
+    check("Q", "finished after the head run started" in r.stdout,
+          "the exclusion is named")
+
+
 def main() -> int:
     print("perf-gate baseline layout + exit-mapping control")
     with tempfile.TemporaryDirectory(prefix="perfgate.") as td:
@@ -552,6 +577,7 @@ def main() -> int:
         arm_n_reportless_skipped(tmp)
         arm_o_frames_mismatch(tmp)
         arm_p_step_forwards_history(tmp)
+        arm_q_future_capture(tmp)
     arm_g_retired_literal()
 
     if _failures:

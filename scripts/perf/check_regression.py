@@ -89,9 +89,9 @@ def _no_class_match_body(slug: str, head_ref_ms: float, match: ClassMatch) -> st
         "",
         f"No capture of `{slug}` on the baseline branch is in this head's "
         f"calibration class (head ref_ms {head_ref_ms:.2f}; a capture qualifies "
-        f"within {LOAD_FACTOR_TRUST_NORMALIZED:.2f}× of it, at most "
-        f"{CLASS_MATCH_MAX_AGE_DAYS} days old, same matrix and frame count, "
-        "every cell measured). The next master push that lands on this runner "
+        f"within {LOAD_FACTOR_TRUST_NORMALIZED:.2f}× of it, finished at most "
+        f"{CLASS_MATCH_MAX_AGE_DAYS} days before this head started, same matrix "
+        "and frame count, every cell measured). The next master push that lands on this runner "
         "class files one. Gate is informational this PR.",
     ]
     if match.captures:

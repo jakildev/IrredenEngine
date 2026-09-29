@@ -530,8 +530,8 @@ def resolve_class_matched_baseline(history_root: Path, head_manifest: Dict) -> C
     `history_root` holds one directory per capture, `<slug>/<commit>/`, as the
     PR-path reader materializes it. A capture qualifies when it is on the
     head's slug, ran the head's matrix and frame count, has a `ref_ms` inside
-    the calibration band of the head's, finished no more than
-    CLASS_MATCH_MAX_AGE_DAYS before the head started, and measured every cell.
+    the calibration band of the head's, finished before the head started but
+    no more than CLASS_MATCH_MAX_AGE_DAYS before it, and measured every cell.
     The most recent qualifier by `finished_at` wins; directory names are commit
     SHAs and carry no order.
     """
@@ -563,6 +563,8 @@ def resolve_class_matched_baseline(history_root: Path, head_manifest: Dict) -> C
             capture.rejected = "no timestamp to age it by"
         elif capture.finished_at < oldest:
             capture.rejected = f"older than {CLASS_MATCH_MAX_AGE_DAYS} days"
+        elif capture.finished_at > head_started:
+            capture.rejected = "finished after the head run started"
         captures.append(capture)
 
     unknown = datetime.min.replace(tzinfo=timezone.utc)
