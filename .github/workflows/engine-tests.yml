@@ -37,7 +37,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             gcc-13 g++-13 cmake ninja-build pkg-config \
-            libgl1-mesa-dev libglu1-mesa-dev xorg-dev \
+            libgl1-mesa-dev libglu1-mesa-dev xorg-dev xvfb xauth \
             libwayland-dev libxkbcommon-dev wayland-protocols \
             libasound2-dev libpulse-dev libjack-jackd2-dev \
             libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
@@ -51,6 +51,22 @@ jobs:
 
       - name: Run tests
         run: ctest --preset linux-default-tests
+
+      - name: Exercise native OpenGL sun-index readback
+        run: |
+          xvfb-run --auto-servernum build/IrredenEngineTest \
+            --gtest_filter=SunProbeGpuTest.SourceFaceProbeReadsPendingGpuClearAndTileBoundaries \
+            --gtest_output=json:build/sun-probe-gpu.json
+          python3 - <<'PYTEST'
+          import json
+          with open("build/sun-probe-gpu.json") as report:
+              result = json.load(report)
+          if result["tests"] != 1 or result.get("disabled", 0) or result.get("failures", 0):
+              raise SystemExit("Expected one passing GPU probe test")
+          cases = [case for suite in result["testsuites"] for case in suite["testsuite"]]
+          if len(cases) != 1 or cases[0].get("result") != "COMPLETED":
+              raise SystemExit("GPU probe was skipped instead of executed")
+          PYTEST
 
       - name: Build smoke target (IRShapeDebug)
         run: cmake --build build --target IRShapeDebug -j $(nproc)

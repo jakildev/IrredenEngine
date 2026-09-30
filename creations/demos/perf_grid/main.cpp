@@ -543,9 +543,14 @@ bool g_fogReveal = false;
 // both visible and occluded ground. --fog-los gates every source at eye height
 // kFogLosEyeHeight; --fog-los-disabled is the identical scene with LOS off —
 // the A/B control. Both imply --fog-reveal; bare --fog-reveal keeps its
-// outside-the-field circles.
+// outside-the-field circles. The scene's grid pre-reveal (revealRadius 128)
+// covers every disc, so every gated pixel is already fully revealed and the
+// fog pass's gate is output-invariant there: it measures the pass's skip, not
+// the march. --fog-los-unexplored drops that pre-reveal, leaving every in-disc
+// march live — the arm that measures the march itself.
 enum class FogLosFixture { NONE, ENABLED, DISABLED };
 FogLosFixture g_fogLos = FogLosFixture::NONE;
+bool g_fogLosUnexplored = false;
 constexpr float kFogLosRingRadius = 24.0f;
 constexpr float kFogLosRadius = 32.0f;
 constexpr float kFogLosEyeHeight = 1.5f;
@@ -767,6 +772,11 @@ void registerCliArgs() {
         "--fog-los-disabled",
         "The --fog-los scene with line of sight off (the A/B control); implies --fog-reveal"
     );
+    args.flag(
+        "--fog-los-unexplored",
+        "With --fog-los or --fog-los-disabled: skip the grid pre-reveal so every in-disc "
+        "line-of-sight march is live; ignored without either"
+    );
     args.string(
         "--mode",
         "Scene mode: voxel_set | sdf | dense_set | hollow_set | gallery",
@@ -865,6 +875,7 @@ void readCliArgs() {
     }
     if (g_fogLos != FogLosFixture::NONE) {
         g_fogReveal = true;
+        g_fogLosUnexplored = args.getFlag("--fog-los-unexplored");
     }
     g_feederClassifyPadSet = args.wasProvided("--feeder-classify-pad");
     g_feederClassifyPad = args.getInt("--feeder-classify-pad");
@@ -1413,7 +1424,9 @@ void configureLightingAndCanvas() {
             static_cast<uint8_t>(24)
         }
     );
-    IRPrefab::Fog::revealRadius(0, 0, 128);
+    if (!g_fogLosUnexplored) {
+        IRPrefab::Fog::revealRadius(0, 0, 128);
+    }
 }
 
 } // namespace

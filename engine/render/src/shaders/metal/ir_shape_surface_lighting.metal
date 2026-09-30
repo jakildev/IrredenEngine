@@ -1,7 +1,7 @@
 #include "ir_world_surface_lighting.metal"
 
 inline float3 shapeSurfaceLighting(uint2 ownerPixel, int ownerWidth, float3 position, float3 normal,
-                                   float4 casterRotation, float3 fallbackColor,
+                                   float cascadeDepth, float4 casterRotation, float3 fallbackColor,
                                    device const ShapeDescriptor *receiverShapes,
                                    device const uint *receiverOwners,
                                    device const ShapeTileDescriptor *receiverTiles,
@@ -19,7 +19,11 @@ inline float3 shapeSurfaceLighting(uint2 ownerPixel, int ownerWidth, float3 posi
         return fallbackColor;
     const float3 albedo = unpackColor(receiverShapes[shapeIndex].color).rgb;
     const float ao = surfaceAO.read(ownerPixel).r;
-    return worldSurfaceLighting(albedo, ao, position, normal, casterRotation, position,
-                                 lighting, volumeParams, sun, sunDepthBuf, lights,
-                                 paletteLUT, lightVolume, lightVolumeId);
+    const float lambert = max(0.0, dot(normal, sun.sunDirection.xyz));
+    const float visibility = worldSurfaceNeedsSunShadow(lambert, sun) ?
+        worldShapeSurfaceSunShadowFactor(position, normal, cascadeDepth, casterRotation,
+                                        sun, sunDepthBuf) : 1.0;
+    return composeWorldSurfaceLighting(albedo, ao, normal, lambert, visibility, position,
+                                       lighting, volumeParams, sun, lights, paletteLUT,
+                                       lightVolume, lightVolumeId);
 }

@@ -15,7 +15,7 @@
 set -uo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
-source "$(dirname "$0")/lib_preflight.sh"
+source "$(dirname "$0")/lib_assert.sh"
 DISPATCHER="$SCRIPT_DIR/fleet-dispatcher"
 WRAP="$SCRIPT_DIR/fleet-dispatch-wrap"
 STREAM="$SCRIPT_DIR/fleet-claude-stream"
@@ -27,25 +27,12 @@ for f in "$DISPATCHER" "$WRAP" "$STREAM"; do
     fi
 done
 
-PASS=0
-FAIL=0
 TMPROOT=""
 
 cleanup() {
     [[ -n "$TMPROOT" && -d "$TMPROOT" ]] && rm -rf "$TMPROOT"
 }
 trap cleanup EXIT
-
-assert_eq() {
-    local actual="$1" expected="$2" msg="$3"
-    if [[ "$actual" == "$expected" ]]; then
-        PASS=$((PASS + 1)); echo "  ok: $msg"
-    else
-        FAIL=$((FAIL + 1)); echo "  FAIL: $msg"
-        echo "        expected: $expected"
-        echo "        actual:   $actual"
-    fi
-}
 
 assert_file() {
     local path="$1" msg="$2"
@@ -67,6 +54,7 @@ assert_no_file() {
 
 TMPROOT=$(mktemp -d)
 export FLEET_SESSION="fleet-test-$$"   # never touch a real fleet session
+mkdir -p "$TMPROOT/leftovers" "$TMPROOT/reservations" "$TMPROOT/alerts"
 
 # --- Part 1: global min-gap math (--dispatch-gap-check) --------------------
 echo "T1: dispatch min-gap gate (default 8s)"
@@ -114,13 +102,28 @@ exit 0
 STUB
 chmod +x "$STUB_BIN/claude" "$STUB_BIN/fleet-claude-stream"
 
+WRAP_WT="$TMPROOT/pool-9"
+mkdir -p "$WRAP_WT"
+git -C "$WRAP_WT" init -q
+git -C "$WRAP_WT" config user.email test@example.invalid
+git -C "$WRAP_WT" config user.name Test
+printf 'seed\n' > "$WRAP_WT/seed"
+git -C "$WRAP_WT" add seed
+git -C "$WRAP_WT" commit -qm seed
+
 run_wrap() {
     # $1 rc, $2 throttle(0/1), $3 role; uses a fresh state dir each call.
     local rc="$1" throttle="$2" role="$3"
     WRAP_STATE=$(mktemp -d "$TMPROOT/state.XXXXXX")
-    PATH="$STUB_BIN:$PATH" FLEET_STATE_DIR="$WRAP_STATE" \
+    (
+        cd "$WRAP_WT" || exit 1
+        PATH="$STUB_BIN:$PATH" FLEET_STATE_DIR="$WRAP_STATE" \
+        FLEET_LEFTOVERS_DIR="$TMPROOT/leftovers" \
+        FLEET_RESERVATIONS_DIR="$TMPROOT/reservations" \
+        FLEET_ALERTS_DIR="$TMPROOT/alerts" \
         FAKE_CLAUDE_RC="$rc" FAKE_STREAM_THROTTLE="$throttle" \
         bash "$WRAP" pane-9 sonnet high "$role" >/dev/null 2>&1 || true
+    )
     echo "$WRAP_STATE"
 }
 
@@ -165,5 +168,4 @@ printf '%s\n' "just some ordinary stderr output" \
 assert_no_file "$flag2" "non-throttle line leaves the flag untouched"
 
 echo
-echo "passed: $PASS  failed: $FAIL"
-[[ "$FAIL" -eq 0 ]]
+summarize "dispatcher stagger tests"

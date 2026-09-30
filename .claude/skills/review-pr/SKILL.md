@@ -69,7 +69,8 @@ Confirm or raise each item.
 - A rebased shader-kernel/encoding PR forked before a carrier or encoding
   migration on master: check every `encode*`/`decode*` arity and that the
   carrier is threaded on the enabled path — byte-identity at default
-  proves nothing (`engine/render/CLAUDE.md` §"Verifying render changes").
+  proves nothing (`docs/agents/VALIDATION.md` §"Default-off features need a
+  positive enabled-path test").
 - A new `*.glsl` without its `*.metal` counterpart, unless the body
   acknowledges the deferral and names a follow-up.
 
