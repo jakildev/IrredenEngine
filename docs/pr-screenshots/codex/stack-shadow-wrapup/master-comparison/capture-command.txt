@@ -30,6 +30,6 @@ for case,target,demo,warmup,extra in cases:
   if not src.is_absolute():src=binary.parent/src
   shutil.copy2(src,dest/('shot-'+str(i)+'.png'))
  (dest/'manifest.json').write_text(json.dumps({'head':head,'command':cmd,'clean':True,'count':len(shots),'binary_sha256':hashlib.sha256(binary.read_bytes()).hexdigest()},indent=2)+'\n')
- 
+
  for probe in binary.parent.glob("sun-face-index-*.csv"):shutil.copy2(probe,dest/probe.name)
  print('SAVED',len(shots),flush=True)

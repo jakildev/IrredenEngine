@@ -30,6 +30,6 @@ for case,target,demo,warmup,extra in cases:
   if not src.is_absolute():src=binary.parent/src
   shutil.copy2(src,dest/('shot-'+str(i)+'.png'))
  (dest/'manifest.json').write_text(json.dumps({'head':head,'command':cmd,'clean':True,'count':len(shots),'binary_sha256':hashlib.sha256(binary.read_bytes()).hexdigest(),'shader_files_sha256':{str(p.relative_to(binary.parent)):hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted((binary.parent/'shaders').rglob('*')) if p.is_file()},'source_dirty':subprocess.check_output(['git','status','--porcelain','--','engine/render/src/shaders'],text=True).splitlines()},indent=2)+'\n')
- 
+
  for probe in binary.parent.glob("sun-face-index-*.csv"):shutil.copy2(probe,dest/probe.name)
  print('SAVED',len(shots),flush=True)
