@@ -10,6 +10,11 @@
 
 namespace IRRender {
 
+class RenderDevice;
+
+// Requires an OpenGL context current on the calling thread; no window owner.
+RenderDevice *bootstrapHeadlessRenderDevice();
+
 class OpenGLRenderImpl : public RenderImpl {
   public:
     OpenGLRenderImpl() {

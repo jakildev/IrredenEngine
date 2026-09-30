@@ -36,20 +36,26 @@ Skip `human:wip`; `fleet:semantic-conflict` at sonnet class (the opus+
 lane, `role-worker.md` step 1c; its escalation to `human:needs-fix`
 re-enters tier 1); a `fleet:amending-*` label (another worker's claim; the
 Step a claim is the real mutex); `fleet:needs-gl-host` unless this host is
-GL-capable (`{linux, windows}`); a `fleet:reviewing-*` or `fleet:resolving-*`
+GL-capable (`{linux, windows}`); `fleet:needs-macos-host` unless this host
+is macOS; a `fleet:reviewing-*` or `fleet:resolving-*`
 label held by another agent (a review is mid-flight and your force-push
 would land its verdict on a diff nobody read; a conflict resolution
 force-pushes the same head); `fleet:needs-opus-recheck` (`fleet:has-nits`
 beside it is not a verdict — the pending opus pass owns the PR); a live
 `fleet:design-blocked` / `fleet:design-proposed` park still carrying
 `fleet:needs-fix` or `fleet:has-nits` (whichever lane parked it, the fleet
-tier is stale until `fleet:design-unblocked` re-arms it).
+tier is stale until `fleet:design-unblocked` re-arms it); a live
+`fleet:awaiting-infra` park still carrying a fleet verdict tier (the PR is
+complete — its own `Parked-until: #N` line names the open blocker, and the
+tier is stale until `fleet-claim reconcile` removes the label once that
+blocker closes; do not strip the label yourself).
 `amending-claim` refuses the reviewing/resolving/amending/opus-recheck cases
 as a backstop; its independent two-read confirmation with `review-claim` and
 `resolving-claim` closes the observed snapshot race. The scout's
 `worker_feedback_labels()` enforces the reviewing / resolving / opus-recheck
-/ design-park skips in both the worker trigger and `projections/worker.json`;
-`human:needs-fix` / `human:blocker` outrank all of them and keep dispatching.
+/ design-park / awaiting-infra skips in both the worker trigger and
+`projections/worker.json`; `human:needs-fix` / `human:blocker` outrank all of
+them and keep dispatching.
 The reviewing skip, a live foreign `fleet:amending-*` claim, and a
 `fleet:design-blocked` / `fleet:design-proposed` park also bar the
 conflict-resolution lane (`role-worker.md` step 1c), which force-pushes too:
@@ -149,8 +155,9 @@ then append `Parked-until: #<blocker-issue>` to the PR body on its own
 line (same repo), comment the rationale, keep `fleet:wip`, and release
 the claim; reconcile un-parks it when the blocker closes. No park when the
 backing issue is `fleet:blocked` (a plain label clear is terminal) or when
-the residual is host-class-only (`fleet:needs-gl-host` — leave it for a
-capable pane). Semantics:
+the residual is host-class-only (`fleet:needs-gl-host` or
+`fleet:needs-macos-host` — stamp the one naming the residual's host if the
+PR lacks it, drop the other, and leave it for a capable pane). Semantics:
 [`fleet-labels-reference.md`](fleet-labels-reference.md)
 §`fleet:awaiting-infra`.
 

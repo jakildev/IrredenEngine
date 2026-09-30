@@ -40,6 +40,8 @@ that matter:
   - a feedback PR inherits its closed issue's ``**Host:**`` pin: the scout's
     slice_worker stamps ``needs_host`` on the slice record from the same-repo
     task it closes, so a macOS-only residual is not elected on windows/linux;
+  - a ``fleet:needs-macos-host`` label pins any record to mac and wins over
+    that derived pin, covering `Refs`-only PRs and unpinned issues;
   - per-task **Effort:** overrides beat class defaults; work dispatches
     default to effort ``high`` for every class, while planning yields carry
     ``xhigh`` (``PLAN_EFFORT`` — plans are the fleet's design surface);
@@ -873,11 +875,9 @@ class FeedbackPrHostGate(HostSeamCase):
         self.assertEqual(out, "opus high 0 1 0")
 
 
-class FeedbackPrInheritsIssueHostPin(HostSeamCase):
-    """End-to-end (slice_worker -> resolve / pick): a feedback PR whose
-    `Closes #N` issue body pins `**Host:** macos` carries that pin into the
-    worker slice, so the dispatcher elects it on mac only: a Metal re-capture
-    residual is no more actionable on a Windows pane than the task was."""
+class SliceHostCase(HostSeamCase):
+    """End-to-end fixture: a state.json-shaped engine repo run through the
+    scout's slice_worker, then resolve / pick as seen from a host."""
 
     def setUp(self):
         super().setUp()
@@ -918,6 +918,13 @@ class FeedbackPrInheritsIssueHostPin(HostSeamCase):
         slice_data = slice_worker(state)
         out = self._resolve_on(host, slice_data)
         return out, pick(slice_data, "opus", False)
+
+
+class FeedbackPrInheritsIssueHostPin(SliceHostCase):
+    """A feedback PR whose `Closes #N` issue body pins `**Host:** macos`
+    carries that pin into the worker slice, so the dispatcher elects it on mac
+    only: a Metal re-capture residual is no more actionable on a Windows pane
+    than the task was."""
 
     def test_mac_pinned_issue_gates_feedback_pr_off_windows_and_linux(self):
         state = self._state([self._pr(3768, [3757])],
@@ -967,6 +974,91 @@ class FeedbackPrInheritsIssueHostPin(HostSeamCase):
         state = self._state([self._pr(3768, [3757])],
                             game_tasks=[_task("#3757", "opus", needs_host="mac")])
         self.assertEqual(self._on("windows", state)[0], "opus high 0 1 0")
+
+
+class MacosResidualLabelGate(SliceHostCase):
+    """`fleet:needs-macos-host` pins a PR's residual to macOS by label, for the
+    shapes the derived pin cannot reach: a `Refs #N`-only PR (no
+    `closes_issues`) and a PR whose issue carries no `**Host:**` pin. The
+    label wins over a derived `needs_host` — it describes the residual, the
+    derived pin the task."""
+
+    MACOS = "fleet:needs-macos-host"
+
+    def test_predicate_refuses_every_host_but_mac(self):
+        record = {"number": 3643, "repo": "engine",
+                  "labels": ["fleet:design-unblocked", self.MACOS]}
+        for host in ("windows", "linux", "unknown"):
+            self.assertTrue(_host_incompatible(record, host), host)
+        self.assertFalse(_host_incompatible(record, "mac"))
+
+    def test_refs_only_labeled_pr_elects_on_mac_only(self):
+        state = self._state([self._pr(3643, [], labels=(
+            "fleet:design-unblocked", self.MACOS))])
+        for host in ("windows", "linux"):
+            self.assertEqual(self._on(host, state), ("defer", []), host)
+        self.assertEqual(self._on("mac", state),
+                         ("opus high 0 1 0", ["feedback:engine:3643"]))
+
+    def test_label_beats_a_derived_windows_pin(self):
+        state = self._state([self._pr(3643, [3169], labels=(
+            "fleet:needs-fix", self.MACOS))],
+            in_progress=[_task("#3169", "opus", needs_host="windows")])
+        self.assertEqual(slice_worker(state)["feedback_prs"][0]["needs_host"],
+                         "windows")
+        for host in ("windows", "linux"):
+            self.assertEqual(self._on(host, state), ("defer", []), host)
+        self.assertEqual(self._on("mac", state),
+                         ("opus high 0 1 0", ["feedback:engine:3643"]))
+
+    def test_unlabeled_unpinned_pr_elects_everywhere(self):
+        state = self._state([self._pr(3643, [], labels=(
+            "fleet:design-unblocked",))])
+        for host in ("mac", "windows", "linux"):
+            self.assertEqual(self._on(host, state),
+                             ("opus high 0 1 0", ["feedback:engine:3643"]),
+                             host)
+
+    def test_gl_host_label_still_refuses_on_mac(self):
+        state = self._state([self._pr(3643, [], labels=(
+            "fleet:design-unblocked", "fleet:needs-gl-host"))])
+        self.assertEqual(self._on("mac", state), ("defer", []))
+        self.assertEqual(self._on("linux", state),
+                         ("opus high 0 1 0", ["feedback:engine:3643"]))
+
+    def test_both_host_labels_refuse_everywhere(self):
+        state = self._state([self._pr(3643, [], labels=(
+            "fleet:design-unblocked", "fleet:needs-gl-host", self.MACOS))])
+        for host in ("mac", "windows", "linux"):
+            self.assertEqual(self._on(host, state), ("defer", []), host)
+
+    def test_both_host_labels_escalate_then_quiet(self):
+        dual = self._state([self._pr(3643, [], labels=(
+            "fleet:design-unblocked", "fleet:needs-gl-host", self.MACOS))])
+        logged = []
+        saved = (_scout_mod.log, os.environ.get("FLEET_ALERTS_DIR"))
+        _scout_mod.log = logged.append
+        os.environ["FLEET_ALERTS_DIR"] = self._tmp.name
+        alert = Path(self._tmp.name) / "state-scout-dual-host-labels-engine-3643"
+        try:
+            _scout_mod.check_dual_host_labels(dual)
+            _scout_mod.check_dual_host_labels(dual)
+            self.assertEqual(len(logged), 1)
+            self.assertIn("PR#3643", logged[0])
+            self.assertIn("consecutive_ticks=2", alert.read_text())
+            _scout_mod.check_dual_host_labels(self._state([self._pr(3643, [], labels=(
+                "fleet:design-unblocked", self.MACOS))]))
+            self.assertEqual(len(logged), 2)
+            self.assertFalse(alert.exists())
+            _scout_mod.check_dual_host_labels(dual)
+            self.assertEqual(len(logged), 3)
+        finally:
+            _scout_mod.log = saved[0]
+            _scout_mod._dual_host_label_streak.clear()
+            if saved[1] is None:
+                os.environ.pop("FLEET_ALERTS_DIR", None)
+            else:
+                os.environ["FLEET_ALERTS_DIR"] = saved[1]
 
 
 class SemanticConflictDispatchPressure(HostSeamCase):

@@ -1312,9 +1312,10 @@ constexpr std::uint32_t kBufferIndex_ShapeTileDescriptors = 30;
 constexpr std::uint32_t kBufferIndex_FogObservers = kBufferIndex_FrameDataLightingToTrixel;
 // Aliases the light-occlusion-grid slot. The light-volume propagate
 // shader reads LightOcclusionGrid; the sun bake writes /
-// the sun shadow lookup reads SunShadowDepthMap. Both consumers run on
-// different stages and rebind slot 28 to whichever resource they need
-// before their own dispatch, so the alias is safe.
+// the sun shadow lookup reads SunShadowDepthMap. TRIXEL_TO_FRAMEBUFFER
+// also binds the sun map for analytical-shape and per-axis surface fragments.
+// These consumers occupy separate stages and bind their own resource before
+// each dispatch or draw; compute scratch must not remain bound for presentation.
 constexpr std::uint32_t kBufferIndex_SunShadowDepthMap = kBufferIndex_LightOcclusionGrid;
 // RESOLVE_PER_AXIS_SCREEN_DEPTH scatters the three per-axis voxel canvases into
 // this scratch SSBO via imageAtomicMin
