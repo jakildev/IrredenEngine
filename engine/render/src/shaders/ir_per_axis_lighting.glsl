@@ -19,7 +19,7 @@
 // ir_per_axis_lighting.metal).
 #include "ir_iso_common.glsl"
 
-// Reconstruct the world-unit surface position of a per-axis trixel canvas cell.
+// Reconstruct the uncentered world-unit face origin of a per-axis canvas cell.
 // The per-axis store (base-resolution encoding) keys each cell by its
 // un-yawed (cardinal) iso pixel `perAxisBase + pos3DtoPos2DIso(facePos)`; this
 // recovers the face origin by the exact iso inverse the forward scatter uses
@@ -60,19 +60,9 @@ vec3 perAxisSubCellFrac(int encoded) {
     );
 }
 
-// Sub-cell variant: the lattice recovery plus the encoding's 4-bit frac
-// offset — the SAME reconstruction v_peraxis_scatter draws, so lighting
-// samples the surface where it is actually rendered. The frac is not a
-// sub-pixel nicety: fractional-positioned content (a voxel mid-glide, the
-// roundHalfUp tie convention placing half-integer content at cell − 0.5)
-// carries up to half a world cell here, and a lattice-only recovery samples
-// the light volume / sun map INSIDE the solid on every camera-facing surface.
-// Integer-positioned content encodes frac 8/8 → zero offset, so it is
-// bit-identical to the lattice recovery. Consumers whose output provably
-// cancels the in-plane offset may keep the cheaper lattice form. AO distance
-// weighting and absolute-position consumers (light volume, sun-shadow
-// receive, overflow relight, and the sun-shadow CAST bridge) must recover
-// with the frac applied.
+// Decode the face origin O, including signed sixteenth-cell phase. Scatter
+// centers its displayed square by subtracting (0.5,0.5,0.5) from each corner;
+// a sun receiver uses perAxisFaceCenter rather than treating O as that center.
 vec3 perAxisCellToWorld3DSubCell(
     ivec2 cell, int encoded, int faceId,
     ivec2 canvasSize, vec2 frameCanvasOffset, ivec2 voxelRenderOptions
@@ -86,4 +76,10 @@ vec3 perAxisCellToWorld3DSubCell(
     faceInPlaneUnitAxes(faceId >> 1, eu, ev);
     return origin + eu * frac.x + ev * frac.y +
            faceOutOfPlaneUnitAxis(faceId >> 1) * frac.z;
+}
+
+// The scatter draws O + u*eu + v*ev - 0.5. Polarity is already in O,
+// so its square center subtracts half the positive axis for either sign.
+vec3 perAxisFaceCenter(vec3 faceOrigin, int faceId) {
+    return faceOrigin - 0.5 * faceOutOfPlaneUnitAxis(faceId >> 1);
 }

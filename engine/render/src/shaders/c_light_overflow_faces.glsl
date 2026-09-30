@@ -23,9 +23,9 @@
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"        // decode*, faceOutwardNormal6, unpack/packColor
-#include "ir_per_axis_lighting.glsl" // perAxisCellToWorld3DSubCell
 #include "ir_sun_projection.glsl"    // shared caster/receiver sun-space projection
 #include "ir_sun_shadow_sample.glsl" // FrameDataSun(29), sun-depth SSBO(28), worldSunShadowFactor()
+#include "ir_per_axis_shadow.glsl"
 #include "ir_world_lighting.glsl"    // GPULightSource list (slot 4), spotConeFactor, ACESFilm
 #include "ir_surface_light_volume.glsl"
 
@@ -115,7 +115,6 @@ void main() {
     const ivec2 cell = ivec2(int(packedCell & 0xFFFFu), int(packedCell >> 16u));
     const int slot = decodeSlot(rawDist);
     const int flip = decodeFlipPerAxis(rawDist);
-    const int rawDepth = decodeDepthPerAxis(rawDist);
     const int faceId = visibleFaceIds[slot] ^ flip;
     const vec3 worldNormal = faceOutwardNormal6(faceId);
     if (debugOverlayMode == 8) {
@@ -133,7 +132,7 @@ void main() {
     // only the directional term so a self-shadowed sliver keeps its ambient floor.
     const float ao = 1.0;
     const float shadow = shadowsEnabled != 0
-        ? worldSunShadowFactor(pos3D, worldNormal, float(rawDepth))
+        ? perAxisSunShadowFactor(pos3D, faceId)
         : 1.0;
     const float lambert = max(0.0, dot(worldNormal, sunDirection.xyz));
     const float faceFactor =

@@ -17,7 +17,7 @@
 
 #include "ir_iso_common.metal"
 
-// Reconstruct the world-unit surface position of a per-axis trixel canvas cell.
+// Reconstruct the uncentered world-unit face origin of a per-axis canvas cell.
 // rawDepth is in world units (base-resolution encoding); no subdivision-scale
 // division. `faceId` and `voxelRenderOptions` are unused by the recovery.
 inline float3 perAxisCellToWorld3D(
@@ -50,14 +50,9 @@ inline float3 perAxisSubCellFrac(int encoded) {
     );
 }
 
-// Sub-cell variant — mirrors ir_per_axis_lighting.glsl. Lattice recovery plus
-// the encoding's 4-bit frac offset (the same reconstruction the scatter draws),
-// so absolute-position lighting consumers (light volume, sun-shadow receive,
-// overflow relight, and the sun-shadow CAST bridge) sample the surface where it
-// is actually rendered. Fractional-positioned content carries up to half a
-// world cell here, and a lattice-only recovery samples INSIDE the solid;
-// integer content encodes frac 8/8 → zero offset, bit-identical to the
-// lattice form.
+// Decode the face origin O, including signed sixteenth-cell phase. Scatter
+// centers its displayed square by subtracting (0.5,0.5,0.5) from each corner;
+// a sun receiver uses perAxisFaceCenter rather than treating O as that center.
 inline float3 perAxisCellToWorld3DSubCell(
     int2 cell, int encoded, int faceId,
     int2 canvasSize, float2 frameCanvasOffset, int2 voxelRenderOptions
@@ -72,6 +67,12 @@ inline float3 perAxisCellToWorld3DSubCell(
     faceInPlaneUnitAxes(faceId >> 1, eu, ev);
     return origin + eu * frac.x + ev * frac.y +
            faceOutOfPlaneUnitAxis(faceId >> 1) * frac.z;
+}
+
+// The scatter draws O + u*eu + v*ev - 0.5. Polarity is already in O,
+// so its square center subtracts half the positive axis for either sign.
+inline float3 perAxisFaceCenter(float3 faceOrigin, int faceId) {
+    return faceOrigin - 0.5 * faceOutOfPlaneUnitAxis(faceId >> 1);
 }
 
 #endif // IR_PER_AXIS_LIGHTING_METAL_INCLUDED

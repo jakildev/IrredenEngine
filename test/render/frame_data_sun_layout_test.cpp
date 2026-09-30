@@ -6,7 +6,7 @@
 
 // Runtime tripwire mirroring the compile-time static_asserts in ir_render_types.hpp (std140 leading edge).
 TEST(FrameDataSunLayout, MatchesStd140Packing) {
-    EXPECT_EQ(sizeof(IRRender::FrameDataSun), 128u);
+    EXPECT_EQ(sizeof(IRRender::FrameDataSun), 144u);
     EXPECT_EQ(offsetof(IRRender::FrameDataSun, sunDirection_), 0u);
     EXPECT_EQ(offsetof(IRRender::FrameDataSun, sunIntensity_), 16u);
     EXPECT_EQ(offsetof(IRRender::FrameDataSun, sunAmbient_), 20u);
@@ -22,4 +22,12 @@ TEST(FrameDataSunLayout, MatchesStd140Packing) {
     EXPECT_EQ(offsetof(IRRender::FrameDataSun, cascadeTexelSize_1_), 104u);
     EXPECT_EQ(offsetof(IRRender::FrameDataSun, cascadeSplitDepth_), 112u);
     EXPECT_EQ(offsetof(IRRender::FrameDataSun, cascadeCount_), 116u);
+    EXPECT_EQ(offsetof(IRRender::FrameDataSun, sunSplatMaxTexels_), 120u);
+    EXPECT_EQ(offsetof(IRRender::FrameDataSun, sunMaxShadowThrow_), 124u);
+    EXPECT_EQ(offsetof(IRRender::FrameDataSun, sunCasterViewToWorld_), 128u);
+}
+
+TEST(FrameDataSunLayout, DefaultCasterBasisIsIdentity) {
+    const IRRender::FrameDataSun frame;
+    EXPECT_EQ(frame.sunCasterViewToWorld_, IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f));
 }

@@ -13,22 +13,30 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
   GLSL/Metal geometry controls cover six face directions and density changes;
   four native off-grid views change only floor shadows, while twelve control
   views are identical. This does not enable finite receiving on attached faces.
-- Next, reconcile per-axis receiver points in both regular and overflow lanes:
-  for decoded face origin `O`, the displayed point is
-  `O + u*eu + v*ev - (0.5,0.5,0.5)`. Its center is
-  `O - 0.5*positiveAxis`; polarity already lives in `O`. The legacy normal
-  offset places positive-face queries one cell outward. Validate all six signs,
-  camera quadrants and world-depth cascade selection before adopting finite
-  center queries. Per-fragment receiving remains a separate step for boundaries
-  crossing a face.
+- Implemented [per-axis receiver centers](../pr-screenshots/codex/peraxis-shadow-receiver-centers/README.md)
+  for regular and overflow faces. Both use `O - 0.5*positiveAxis`, continuous
+  world depth and finite surface queries; all signed faces and encoded fractions
+  are checked against displayed square geometry. Native stair controls improve
+  while cardinal, shadows-disabled and isolated/mixed-caster cube controls remain
+  identical. Incomplete tiles retain approximate fallback. Next, evaluate
+  continuous receiver positions during presentation for boundaries crossing a
+  face, and validate transitions to the cardinal route against ray geometry.
+  The complete-tile cost control (36/41 peak candidates) increases the two
+  affected GPU pass means by about 0.09/0.15 ms; frame ranges overlap. Profile
+  worst-case complete tiles and larger populations before extrapolating, and
+  retain a native camera-change/off-on GPU frame-upload assertion as follow-up.
+  Extend the profile runner's pose guard to static `IRCanvasStress` frame
+  sweeps: rejected candidate runs changed zoom from 2 to 1 and 32 to 2 without failing
+  the runner's existing IRPerfGrid-only pose checks.
 - [Bounded overflow reference](../perf/bounded-source-face-reference.md) isolates
   the dense analytical-box teeth: identical geometry and tile tables regain
   clean floor edges when incomplete tiles query the complete small face pool.
   The reference remains default-off; its 256-record budget is a diagnostic
   boundary, not a scalable exactness guarantee.
 - Prioritize the remaining receiver modes alongside index scaling. Attached
-  GRID/per-axis and overflow faces still use sampled receiver queries; eligible
-  analytical boxes and continuous detached source faces use finite geometry.
+  GRID/per-axis and overflow faces now query finite geometry at face centers;
+  the cardinal GRID route remains sampled. Eligible analytical boxes and
+  continuous detached source faces evaluate finite queries during presentation.
   Validate displayed surface positions, normals and sub-cell phase before
   extending finite receiving. Revoxelized shapes must retain their actual
   occupancy steps. The [mode-routing audit](../perf/bounded-source-face-reference.md#rendering-modes-remain-distinct)

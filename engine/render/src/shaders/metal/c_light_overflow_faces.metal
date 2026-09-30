@@ -1,7 +1,7 @@
 #include "ir_iso_common.metal"        // decode*, faceOutwardNormal6, unpack/packColor,
                                      // FrameDataVoxelToTrixel (with overflowScratchLayout)
-#include "ir_per_axis_lighting.metal" // perAxisCellToWorld3DSubCell
 #include "ir_sun_shadow_sample.metal" // FrameDataSun + worldSunShadowFactor()
+#include "ir_per_axis_shadow.metal"
 #include "ir_world_lighting.metal"
 #include "ir_surface_light_volume.metal"
 
@@ -59,7 +59,6 @@ kernel void c_light_overflow_faces(
     const int2 cell = int2(int(packedCell & 0xFFFFu), int(packedCell >> 16u));
     const int slot = decodeSlot(rawDist);
     const int flip = decodeFlipPerAxis(rawDist);
-    const int rawDepth = decodeDepthPerAxis(rawDist);
     const int faceId = voxelFrameData.visibleFaceIds[slot] ^ flip;
     const float3 worldNormal = faceOutwardNormal6(faceId);
     if (frameData.debugOverlayMode == 8) {
@@ -73,7 +72,7 @@ kernel void c_light_overflow_faces(
 
     const float ao = 1.0f;
     const float shadow = sunFrameData.shadowsEnabled != 0
-        ? worldSunShadowFactor(pos3D, worldNormal, float(rawDepth), sunFrameData, sunDepthBuf)
+        ? perAxisSunShadowFactor(pos3D, faceId, sunFrameData, sunDepthBuf)
         : 1.0f;
     const float lambert = max(0.0f, dot(worldNormal, sunFrameData.sunDirection.xyz));
     const float faceFactor =

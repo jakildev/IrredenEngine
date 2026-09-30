@@ -726,6 +726,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         frameData_.sunAmbient_ = sun.ambient_;
         frameData_.shadowsEnabled_ = sun.shadowsEnabled_ ? 1 : 0;
         frameData_.aoEnabled_ = sun.aoEnabled_ ? 1 : 0;
+        frameData_.sunCasterViewToWorld_ = IRPrefab::Camera::getRotationQuat();
         if (frameData_.shadowsEnabled_ == 0) {
             return;
         }

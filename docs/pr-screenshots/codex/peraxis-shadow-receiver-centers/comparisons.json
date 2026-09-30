@@ -1,0 +1,234 @@
+[
+  {
+    "case": "stairs",
+    "quadrant": 0,
+    "before": "before-stairs-q0.png",
+    "after": "after-stairs-q0.png",
+    "changed_rgb_pixels": 708,
+    "changed_bounds": [
+      1166,
+      668,
+      1332,
+      764
+    ]
+  },
+  {
+    "case": "stairs",
+    "quadrant": 1,
+    "before": "before-stairs-q1.png",
+    "after": "after-stairs-q1.png",
+    "changed_rgb_pixels": 380,
+    "changed_bounds": [
+      1210,
+      694,
+      1276,
+      758
+    ]
+  },
+  {
+    "case": "stairs",
+    "quadrant": 2,
+    "before": "before-stairs-q2.png",
+    "after": "after-stairs-q2.png",
+    "changed_rgb_pixels": 868,
+    "changed_bounds": [
+      1196,
+      696,
+      1394,
+      758
+    ]
+  },
+  {
+    "case": "stairs",
+    "quadrant": 3,
+    "before": "before-stairs-q3.png",
+    "after": "after-stairs-q3.png",
+    "changed_rgb_pixels": 1324,
+    "changed_bounds": [
+      1232,
+      666,
+      1352,
+      780
+    ]
+  },
+  {
+    "case": "positive-stairs",
+    "quadrant": 0,
+    "before": "before-positive-stairs-q0.png",
+    "after": "after-positive-stairs-q0.png",
+    "changed_rgb_pixels": 6368,
+    "changed_bounds": [
+      1090,
+      606,
+      1480,
+      864
+    ]
+  },
+  {
+    "case": "positive-stairs",
+    "quadrant": 1,
+    "before": "before-positive-stairs-q1.png",
+    "after": "after-positive-stairs-q1.png",
+    "changed_rgb_pixels": 556,
+    "changed_bounds": [
+      1326,
+      690,
+      1468,
+      800
+    ]
+  },
+  {
+    "case": "positive-stairs",
+    "quadrant": 2,
+    "before": "before-positive-stairs-q2.png",
+    "after": "after-positive-stairs-q2.png",
+    "changed_rgb_pixels": 2440,
+    "changed_bounds": [
+      1088,
+      642,
+      1460,
+      814
+    ]
+  },
+  {
+    "case": "positive-stairs",
+    "quadrant": 3,
+    "before": "before-positive-stairs-q3.png",
+    "after": "after-positive-stairs-q3.png",
+    "changed_rgb_pixels": 5560,
+    "changed_bounds": [
+      1068,
+      610,
+      1478,
+      850
+    ]
+  },
+  {
+    "case": "unit",
+    "quadrant": 0,
+    "before": "before-unit-q0.png",
+    "after": "after-unit-q0.png",
+    "changed_rgb_pixels": 0,
+    "changed_bounds": null
+  },
+  {
+    "case": "unit",
+    "quadrant": 1,
+    "before": "before-unit-q1.png",
+    "after": "after-unit-q1.png",
+    "changed_rgb_pixels": 0,
+    "changed_bounds": null
+  },
+  {
+    "case": "unit",
+    "quadrant": 2,
+    "before": "before-unit-q2.png",
+    "after": "after-unit-q2.png",
+    "changed_rgb_pixels": 0,
+    "changed_bounds": null
+  },
+  {
+    "case": "unit",
+    "quadrant": 3,
+    "before": "before-unit-q3.png",
+    "after": "after-unit-q3.png",
+    "changed_rgb_pixels": 0,
+    "changed_bounds": null
+  },
+  {
+    "case": "mixed",
+    "quadrant": 0,
+    "before": "before-mixed-q0.png",
+    "after": "after-mixed-q0.png",
+    "changed_rgb_pixels": 0,
+    "changed_bounds": null
+  },
+  {
+    "case": "mixed",
+    "quadrant": 1,
+    "before": "before-mixed-q1.png",
+    "after": "after-mixed-q1.png",
+    "changed_rgb_pixels": 0,
+    "changed_bounds": null
+  },
+  {
+    "case": "mixed",
+    "quadrant": 2,
+    "before": "before-mixed-q2.png",
+    "after": "after-mixed-q2.png",
+    "changed_rgb_pixels": 0,
+    "changed_bounds": null
+  },
+  {
+    "case": "mixed",
+    "quadrant": 3,
+    "before": "before-mixed-q3.png",
+    "after": "after-mixed-q3.png",
+    "changed_rgb_pixels": 0,
+    "changed_bounds": null
+  },
+  {
+    "case": "cardinal",
+    "quadrant": 0,
+    "before": "before-cardinal-q0.png",
+    "after": "after-cardinal-q0.png",
+    "changed_rgb_pixels": 0,
+    "changed_bounds": null
+  },
+  {
+    "case": "cardinal",
+    "quadrant": 1,
+    "before": "before-cardinal-q1.png",
+    "after": "after-cardinal-q1.png",
+    "changed_rgb_pixels": 0,
+    "changed_bounds": null
+  },
+  {
+    "case": "cardinal",
+    "quadrant": 2,
+    "before": "before-cardinal-q2.png",
+    "after": "after-cardinal-q2.png",
+    "changed_rgb_pixels": 0,
+    "changed_bounds": null
+  },
+  {
+    "case": "cardinal",
+    "quadrant": 3,
+    "before": "before-cardinal-q3.png",
+    "after": "after-cardinal-q3.png",
+    "changed_rgb_pixels": 0,
+    "changed_bounds": null
+  },
+  {
+    "case": "disabled",
+    "quadrant": 0,
+    "before": "before-disabled-q0.png",
+    "after": "after-disabled-q0.png",
+    "changed_rgb_pixels": 0,
+    "changed_bounds": null
+  },
+  {
+    "case": "disabled",
+    "quadrant": 1,
+    "before": "before-disabled-q1.png",
+    "after": "after-disabled-q1.png",
+    "changed_rgb_pixels": 0,
+    "changed_bounds": null
+  },
+  {
+    "case": "disabled",
+    "quadrant": 2,
+    "before": "before-disabled-q2.png",
+    "after": "after-disabled-q2.png",
+    "changed_rgb_pixels": 0,
+    "changed_bounds": null
+  },
+  {
+    "case": "disabled",
+    "quadrant": 3,
+    "before": "before-disabled-q3.png",
+    "after": "after-disabled-q3.png",
+    "changed_rgb_pixels": 0,
+    "changed_bounds": null
+  }
+]
