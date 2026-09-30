@@ -3252,7 +3252,7 @@ typedef void(APIENTRYP PFNGLTRANSFORMFEEDBACKBUFFERBASEPROC)(GLuint xfb, GLuint 
                                                              GLuint buffer);
 typedef void(APIENTRYP PFNGLTRANSFORMFEEDBACKBUFFERRANGEPROC)(GLuint xfb, GLuint index,
                                                               GLuint buffer, GLintptr offset,
-                                                              GLsizei size);
+                                                              GLsizeiptr size);
 typedef void(APIENTRYP PFNGLGETTRANSFORMFEEDBACKIVPROC)(GLuint xfb, GLenum pname, GLint *param);
 typedef void(APIENTRYP PFNGLGETTRANSFORMFEEDBACKI_VPROC)(GLuint xfb, GLenum pname, GLuint index,
                                                          GLint *param);
@@ -3276,7 +3276,7 @@ typedef void(APIENTRYP PFNGLCLEARNAMEDBUFFERSUBDATAPROC)(GLuint buffer, GLenum i
                                                          const void *data);
 typedef void *(APIENTRYP PFNGLMAPNAMEDBUFFERPROC)(GLuint buffer, GLenum access);
 typedef void *(APIENTRYP PFNGLMAPNAMEDBUFFERRANGEPROC)(GLuint buffer, GLintptr offset,
-                                                       GLsizei length, GLbitfield access);
+                                                       GLsizeiptr length, GLbitfield access);
 typedef GLboolean(APIENTRYP PFNGLUNMAPNAMEDBUFFERPROC)(GLuint buffer);
 typedef void(APIENTRYP PFNGLFLUSHMAPPEDNAMEDBUFFERRANGEPROC)(GLuint buffer, GLintptr offset,
                                                              GLsizeiptr length);
@@ -3344,7 +3344,8 @@ typedef void(APIENTRYP PFNGLCREATETEXTURESPROC)(GLenum target, GLsizei n, GLuint
 typedef void(APIENTRYP PFNGLTEXTUREBUFFERPROC)(GLuint texture, GLenum internalformat,
                                                GLuint buffer);
 typedef void(APIENTRYP PFNGLTEXTUREBUFFERRANGEPROC)(GLuint texture, GLenum internalformat,
-                                                    GLuint buffer, GLintptr offset, GLsizei size);
+                                                    GLuint buffer, GLintptr offset,
+                                                    GLsizeiptr size);
 typedef void(APIENTRYP PFNGLTEXTURESTORAGE1DPROC)(GLuint texture, GLsizei levels,
                                                   GLenum internalformat, GLsizei width);
 typedef void(APIENTRYP PFNGLTEXTURESTORAGE2DPROC)(GLuint texture, GLsizei levels,
@@ -3483,7 +3484,7 @@ GLAPI void APIENTRY glClipControl(GLenum origin, GLenum depth);
 GLAPI void APIENTRY glCreateTransformFeedbacks(GLsizei n, GLuint *ids);
 GLAPI void APIENTRY glTransformFeedbackBufferBase(GLuint xfb, GLuint index, GLuint buffer);
 GLAPI void APIENTRY glTransformFeedbackBufferRange(GLuint xfb, GLuint index, GLuint buffer,
-                                                   GLintptr offset, GLsizei size);
+                                                   GLintptr offset, GLsizeiptr size);
 GLAPI void APIENTRY glGetTransformFeedbackiv(GLuint xfb, GLenum pname, GLint *param);
 GLAPI void APIENTRY glGetTransformFeedbacki_v(GLuint xfb, GLenum pname, GLuint index, GLint *param);
 GLAPI void APIENTRY glGetTransformFeedbacki64_v(GLuint xfb, GLenum pname, GLuint index,
@@ -3503,7 +3504,7 @@ GLAPI void APIENTRY glClearNamedBufferSubData(GLuint buffer, GLenum internalform
                                               GLsizeiptr size, GLenum format, GLenum type,
                                               const void *data);
 GLAPI void *APIENTRY glMapNamedBuffer(GLuint buffer, GLenum access);
-GLAPI void *APIENTRY glMapNamedBufferRange(GLuint buffer, GLintptr offset, GLsizei length,
+GLAPI void *APIENTRY glMapNamedBufferRange(GLuint buffer, GLintptr offset, GLsizeiptr length,
                                            GLbitfield access);
 GLAPI GLboolean APIENTRY glUnmapNamedBuffer(GLuint buffer);
 GLAPI void APIENTRY glFlushMappedNamedBufferRange(GLuint buffer, GLintptr offset, GLsizeiptr length);
@@ -3558,7 +3559,7 @@ GLAPI void APIENTRY glGetNamedRenderbufferParameteriv(GLuint renderbuffer, GLenu
 GLAPI void APIENTRY glCreateTextures(GLenum target, GLsizei n, GLuint *textures);
 GLAPI void APIENTRY glTextureBuffer(GLuint texture, GLenum internalformat, GLuint buffer);
 GLAPI void APIENTRY glTextureBufferRange(GLuint texture, GLenum internalformat, GLuint buffer,
-                                         GLintptr offset, GLsizei size);
+                                         GLintptr offset, GLsizeiptr size);
 GLAPI void APIENTRY glTextureStorage1D(GLuint texture, GLsizei levels, GLenum internalformat,
                                        GLsizei width);
 GLAPI void APIENTRY glTextureStorage2D(GLuint texture, GLsizei levels, GLenum internalformat,
@@ -4221,17 +4222,17 @@ GLAPI void APIENTRY glGetNamedStringivARB(GLint namelen, const GLchar *name, GLe
 #define GL_SPARSE_STORAGE_BIT_ARB 0x0400
 #define GL_SPARSE_BUFFER_PAGE_SIZE_ARB 0x82F8
 typedef void(APIENTRYP PFNGLBUFFERPAGECOMMITMENTARBPROC)(GLenum target, GLintptr offset,
-                                                         GLsizei size, GLboolean commit);
+                                                         GLsizeiptr size, GLboolean commit);
 typedef void(APIENTRYP PFNGLNAMEDBUFFERPAGECOMMITMENTEXTPROC)(GLuint buffer, GLintptr offset,
-                                                              GLsizei size, GLboolean commit);
+                                                              GLsizeiptr size, GLboolean commit);
 typedef void(APIENTRYP PFNGLNAMEDBUFFERPAGECOMMITMENTARBPROC)(GLuint buffer, GLintptr offset,
-                                                              GLsizei size, GLboolean commit);
+                                                              GLsizeiptr size, GLboolean commit);
 #ifdef GL_GLEXT_PROTOTYPES
-GLAPI void APIENTRY glBufferPageCommitmentARB(GLenum target, GLintptr offset, GLsizei size,
+GLAPI void APIENTRY glBufferPageCommitmentARB(GLenum target, GLintptr offset, GLsizeiptr size,
                                               GLboolean commit);
-GLAPI void APIENTRY glNamedBufferPageCommitmentEXT(GLuint buffer, GLintptr offset, GLsizei size,
+GLAPI void APIENTRY glNamedBufferPageCommitmentEXT(GLuint buffer, GLintptr offset, GLsizeiptr size,
                                                    GLboolean commit);
-GLAPI void APIENTRY glNamedBufferPageCommitmentARB(GLuint buffer, GLintptr offset, GLsizei size,
+GLAPI void APIENTRY glNamedBufferPageCommitmentARB(GLuint buffer, GLintptr offset, GLsizeiptr size,
                                                    GLboolean commit);
 #endif
 #endif /* GL_ARB_sparse_buffer */
