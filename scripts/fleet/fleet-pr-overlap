@@ -19,7 +19,6 @@ REPO_SLUGS = {
     "engine": "jakildev/IrredenEngine",
     "game": "jakildev/irreden",
 }
-BLOCK_TREES = ("docs/agents/", ".claude/")
 DEFAULT_LIMIT = 1000
 PR_FIELDS = (
     "number,title,headRefName,headRefOid,baseRefName,isCrossRepository,changedFiles,files"
@@ -406,11 +405,11 @@ def grade(args):
         raise OverlapError("open-PR population moved during the run: " + ", ".join(delta))
 
     print_rows(rows)
-    competitor_paths = [path for _, path, verdict, _ in rows if verdict != "upstream"]
-    if any(path.startswith(BLOCK_TREES) for path in competitor_paths):
+    competitor_rows = [row for row in rows if row[2] != "upstream"]
+    if any(verdict == "conflicts" for _, _, verdict, _ in competitor_rows):
         print("VERDICT: block")
         return EXIT_BLOCK
-    if competitor_paths:
+    if competitor_rows:
         print("VERDICT: overlap")
         return EXIT_OVERLAP
     print("VERDICT: clean")
