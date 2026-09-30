@@ -78,6 +78,7 @@ else
     fleet_parse_target() { return 1; }
     fleet_model_tag() { printf '%s' "$1"; }  # raw-id label fallback
     fleet_main_clone_root() { :; }  # game-worktree in-flight check degrades off
+    fleet_worktree_registered() { return 0; }
 fi
 unset _FLEET_COMMON_SH
 
@@ -108,6 +109,31 @@ if [[ -n "$_target" ]] && fleet_parse_target "$_target"; then
     [[ "$FLEET_TARGET_KIND" == plan ]] && export FLEET_PLAN_ISSUE="$FLEET_TARGET_REPO:$FLEET_TARGET_NUM"
 fi
 unset _target_arg _target
+
+_worktree_name=$(basename "$PWD")
+_preflight_alerts="${FLEET_ALERTS_DIR:-$HOME/.fleet/alerts}"
+_preflight_alert="$_preflight_alerts/dispatch-wrap-$_worktree_name"
+_preflight_counter="$_preflight_alerts/.dispatch-wrap-$_worktree_name.count"
+if ! fleet_worktree_registered "$PWD"; then
+    _preflight_count=0
+    [[ -f "$_preflight_counter" ]] && read -r _preflight_count < "$_preflight_counter" 2>/dev/null || true
+    [[ "${_preflight_count:-}" =~ ^[0-9]+$ ]] || _preflight_count=0
+    _preflight_count=$((_preflight_count + 1))
+    mkdir -p "$_preflight_alerts" 2>/dev/null || true
+    printf '%s\n' "$_preflight_count" > "$_preflight_counter" 2>/dev/null || true
+    if (( _preflight_count == 1 )); then
+        echo "fleet-dispatch-wrap: refusing $_worktree_name: $FLEET_WORKTREE_ERROR" >&2
+    fi
+    printf 'dispatch wrap refused: pane=%s error=%s remedy=restart via fleet-up\n' \
+        "$_worktree_name" "$FLEET_WORKTREE_ERROR" > "$_preflight_alert" 2>/dev/null || true
+    unset FLEET_CLAIM_FLAG
+    if [[ -n "${FLEET_DISPATCH_TARGET:-}" ]]; then
+        fleet_release_assignment "$FLEET_DISPATCH_TARGET" "$_worktree_name"
+    fi
+    exit 1
+fi
+rm -f "$_preflight_alert" "$_preflight_counter" 2>/dev/null || true
+unset _worktree_name _preflight_alerts _preflight_alert _preflight_counter _preflight_count
 
 # Expose the iteration's model class so fleet-claim can enforce the
 # model-tag gate. Classes are literal — fable | opus | sonnet — and the
@@ -550,9 +576,16 @@ if [[ "$FLEET_RUNTIME" == claude ]] && { [[ "$rc" == "2" ]] || (( rc != 0 && QUO
     touch "$TRIGGERS_DIR/$ROLE"
     echo "fleet-dispatch-wrap: usage limit on $ROLE ($PANE_KEY, rc=$rc); wrote usage-limit cooldown + re-armed $ROLE" >&2
 elif [[ "$FLEET_RUNTIME" == codex && "$ROLE" =~ ^(merger|epic-steward)$ ]] \
-    && { [[ "$rc" == "2" ]] || ! fleet-runtime ready "$STATE_DIR" >/dev/null 2>&1; }; then
+    && { [[ "$ROLE" == merger && "$rc" != "0" ]] || [[ "$rc" == "2" ]] \
+        || ! fleet-runtime ready "$STATE_DIR" >/dev/null 2>&1; }; then
     mkdir -p "$TRIGGERS_DIR"
-    touch "$TRIGGERS_DIR/$ROLE"
+    if [[ "$ROLE" == merger && -n "${FLEET_DISPATCH_TARGET:-}" ]]; then
+        touch "$TRIGGERS_DIR/$ROLE"
+        grep -qxF -- "$FLEET_DISPATCH_TARGET" "$TRIGGERS_DIR/$ROLE" 2>/dev/null \
+            || printf '%s\n' "$FLEET_DISPATCH_TARGET" >> "$TRIGGERS_DIR/$ROLE"
+    else
+        touch "$TRIGGERS_DIR/$ROLE"
+    fi
     echo "fleet-dispatch-wrap: Codex unavailable for $ROLE ($PANE_KEY, rc=$rc); re-armed $ROLE" >&2
 elif [[ "$rc" != "0" && -f "$FLEET_THROTTLE_FLAG" ]]; then
     # Short-window 429 failure: claude exhausted its internal retries against a

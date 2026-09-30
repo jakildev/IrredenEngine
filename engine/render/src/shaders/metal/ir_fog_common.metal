@@ -76,6 +76,9 @@ inline FogReveal fogRevealSample(
     float hardDistPastRim = kFogRimFadeCells;
 
     for (int i = 0; i < fogObservers.visionCircleCount; ++i) {
+        if (state >= 1.0f) {
+            break;
+        }
         const float4 heights = fogObservers.visionCircleHeights[i];
         const float zCostUp = fogWholeBody ? 0.0f : heights.y;
         const float zCostDown = fogWholeBody ? 0.0f : heights.z;
@@ -91,6 +94,10 @@ inline FogReveal fogRevealSample(
             distEff
         );
         const float distPastRim = distEff - fogObservers.visionCircles[i].z;
+        if (fogLosSourceGated(fogObservers.losSourceMask, i) && reveal <= state &&
+            (fogObservers.visionCircles[i].w != 0.0f || gridState >= kFogExploredValue)) {
+            continue;
+        }
         float losVisibility = 1.0f;
         if (fogLosSourceGated(fogObservers.losSourceMask, i) && !fogWholeBody &&
             (reveal > 0.0f ||

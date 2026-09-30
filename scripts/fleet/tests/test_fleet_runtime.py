@@ -21,22 +21,20 @@ import fleet_runtime as runtime
 class Routing(unittest.TestCase):
     def test_targetless_role_routing(self):
         cases = (
-            ({}, "merger", "sonnet", "sonnet", "high", "open",
-             ("claude", "sonnet", "sonnet", "high")),
-            ({}, "merger", "sonnet", "sonnet", "high", "closed",
-             ("codex", "sonnet", "gpt-5.6-terra", "medium")),
+            ({}, "epic-steward", "opus", "opus", "xhigh", "open",
+             ("claude", "opus", "opus", "xhigh")),
             ({}, "epic-steward", "opus", "opus", "xhigh", "closed",
              ("codex", "opus", "gpt-5.6-sol", "medium")),
-            ({"FLEET_CODEX_EFFORT_SONNET": "high"}, "merger", "sonnet", "sonnet",
-             "high", "closed", ("codex", "sonnet", "gpt-5.6-terra", "high")),
-            ({"FLEET_WORKER_RUNTIME": "claude"}, "merger", "sonnet", "sonnet",
-             "high", "closed", ("claude", "sonnet", "sonnet", "high")),
-            ({"FLEET_WORKER_RUNTIME": "codex"}, "merger", "sonnet", "sonnet",
-             "high", "open", ("codex", "sonnet", "gpt-5.6-terra", "medium")),
-            ({"FLEET_RUNTIMES": "claude"}, "merger", "sonnet", "sonnet", "high",
-             "closed", ("claude", "sonnet", "sonnet", "high")),
-            ({"FLEET_RUNTIMES": "codex"}, "merger", "sonnet", "sonnet", "high",
-             "open", ("codex", "sonnet", "gpt-5.6-terra", "medium")),
+            ({"FLEET_CODEX_EFFORT_OPUS": "high"}, "epic-steward", "opus", "opus",
+             "xhigh", "closed", ("codex", "opus", "gpt-5.6-sol", "high")),
+            ({"FLEET_WORKER_RUNTIME": "claude"}, "epic-steward", "opus", "opus",
+             "xhigh", "closed", ("claude", "opus", "opus", "xhigh")),
+            ({"FLEET_WORKER_RUNTIME": "codex"}, "epic-steward", "opus", "opus",
+             "xhigh", "open", ("codex", "opus", "gpt-5.6-sol", "medium")),
+            ({"FLEET_RUNTIMES": "claude"}, "epic-steward", "opus", "opus", "xhigh",
+             "closed", ("claude", "opus", "opus", "xhigh")),
+            ({"FLEET_RUNTIMES": "codex"}, "epic-steward", "opus", "opus", "xhigh",
+             "open", ("codex", "opus", "gpt-5.6-sol", "medium")),
         )
         for overrides, role, cls, model, effort, gate, expected in cases:
             with self.subTest(role=role, gate=gate, overrides=overrides):
@@ -45,23 +43,24 @@ class Routing(unittest.TestCase):
                                  expected)
 
         with self.assertRaisesRegex(ValueError, "unavailable"):
-            runtime.route_role("merger", "sonnet", "sonnet", "high", "closed",
+            runtime.route_role("epic-steward", "opus", "opus", "xhigh", "closed",
                                {"FLEET_RUNTIMES": "codex",
                                 "FLEET_WORKER_RUNTIME": "claude"})
         with self.assertRaisesRegex(ValueError, "target-less"):
             runtime.route_role("worker", "sonnet", "sonnet", "high", "closed", self.env)
         with self.assertRaisesRegex(ValueError, "class"):
-            runtime.route_role("merger", "unknown", "sonnet", "high", "closed", self.env)
+            runtime.route_role("epic-steward", "unknown", "opus", "xhigh", "closed",
+                               self.env)
 
     def test_targetless_role_executable(self):
         wrapper = Path(__file__).resolve().parents[1] / "fleet-runtime"
         bash = shutil.which("bash") or "bash"
         env = {**runtime.os.environ, **self.env}
-        result = subprocess.run([bash, str(wrapper), "route-role", "merger", "sonnet",
-                                 "sonnet", "high", "closed"], env=env,
+        result = subprocess.run([bash, str(wrapper), "route-role", "epic-steward", "opus",
+                                 "opus", "xhigh", "closed"], env=env,
                                 capture_output=True, text=True, timeout=15)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout.strip(), "codex sonnet gpt-5.6-terra medium")
+        self.assertEqual(result.stdout.strip(), "codex opus gpt-5.6-sol medium")
 
     def test_route_diagnostic_escalates_reappears_and_clears(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -159,11 +158,19 @@ class Routing(unittest.TestCase):
             {"number": 77, "repo": "game", "labels": ["fleet:author-claude"],
              "signal": "needs-resolve"},
         ]}
-        # The author's provider serves its own conflict, like `conflict`.
+        # The author's provider serves its own conflict while its gate is open.
         self.assertEqual(runtime.route(data, "merge:engine:77", "merger", "sonnet",
                                        "sonnet", "high", self.env)[0], "codex")
         self.assertEqual(runtime.route(data, "merge:game:77", "merger", "sonnet",
                                        "sonnet", "high", self.env)[0], "claude")
+        self.assertEqual(runtime.route(data, "merge:game:77", "merger", "sonnet",
+                                       "sonnet", "high", self.env, "closed")[0], "codex")
+        feedback = {"feedback_prs": [data["merger_candidates"][1]]}
+        self.assertEqual(runtime.route(feedback, "feedback:game:77", "worker", "opus",
+                                       "opus", "high", self.env, "closed")[0], "claude")
+        claude_only = {**self.env, "FLEET_RUNTIMES": "claude"}
+        self.assertEqual(runtime.route(data, "merge:game:77", "merger", "sonnet",
+                                       "sonnet", "high", claude_only, "closed")[0], "claude")
         with self.assertRaisesRegex(ValueError, "missing"):
             runtime.route({"prs": data["merger_candidates"]}, "merge:engine:77", "merger",
                           "sonnet", "sonnet", "high", self.env)
@@ -191,6 +198,119 @@ class Routing(unittest.TestCase):
             runtime.stamp("123", "example/test", "codex")
             self.assertIn("fleet:author-codex", run.call_args.args[0])
             self.assertIn("fleet:author-claude", run.call_args.args[0])
+
+
+class Prune(unittest.TestCase):
+    def _write_problem(self, state_dir, alerts_dir, key, count=1, with_alert=False):
+        tag = runtime.hashlib.sha256(key.encode()).hexdigest()[:16]
+        path = state_dir / "runtime-problems" / (tag + ".json")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"key": key, "reason": "x", "count": count}))
+        if with_alert:
+            alerts_dir.mkdir(parents=True, exist_ok=True)
+            (alerts_dir / ("fleet-runtime-" + tag)).write_text(json.dumps(
+                {"key": key, "reason": "x", "count": count}))
+        return tag
+
+    def _write_state(self, state_dir, repos, degraded=None):
+        state_dir.mkdir(parents=True, exist_ok=True)
+        data = {"repos": repos}
+        if degraded is not None:
+            data["degraded"] = degraded
+        (state_dir / "state.json").write_text(json.dumps(data))
+
+    def test_closed_target_removes_both_files_open_target_survives(self):
+        with tempfile.TemporaryDirectory() as temp:
+            state_dir = Path(temp) / "state"
+            alerts_dir = Path(temp) / "alerts"
+            self._write_state(state_dir, {
+                "engine": {"prs": [{"number": 900}], "tasks": {"open": [], "in_progress": [],
+                                                                "plan_gated": []}},
+            })
+            closed_tag = self._write_problem(state_dir, alerts_dir,
+                                             "route:review:engine:901", count=7, with_alert=True)
+            open_tag = self._write_problem(state_dir, alerts_dir,
+                                           "route:review:engine:900", count=7, with_alert=True)
+            removed = runtime.prune(state_dir, alerts_dir)
+            self.assertEqual(removed, ["route:review:engine:901"])
+            self.assertFalse((state_dir / "runtime-problems" / (closed_tag + ".json")).exists())
+            self.assertFalse((alerts_dir / ("fleet-runtime-" + closed_tag)).exists())
+            self.assertTrue((state_dir / "runtime-problems" / (open_tag + ".json")).exists())
+            self.assertTrue((alerts_dir / ("fleet-runtime-" + open_tag)).exists())
+
+    def test_issue_kind_checked_against_open_task_lists(self):
+        with tempfile.TemporaryDirectory() as temp:
+            state_dir = Path(temp) / "state"
+            alerts_dir = Path(temp) / "alerts"
+            self._write_state(state_dir, {
+                "engine": {"prs": [], "tasks": {"open": [{"number": 3851}],
+                                                "in_progress": [], "plan_gated": []}},
+            })
+            self._write_problem(state_dir, alerts_dir, "route:task:engine:3851", count=3)
+            closed_tag = self._write_problem(state_dir, alerts_dir,
+                                             "route:task:engine:9", count=3)
+            removed = runtime.prune(state_dir, alerts_dir)
+            self.assertEqual(removed, ["route:task:engine:9"])
+            self.assertFalse((state_dir / "runtime-problems" / (closed_tag + ".json")).exists())
+
+    def test_plan_gated_bare_numbers_keep_issue_kind_live(self):
+        with tempfile.TemporaryDirectory() as temp:
+            state_dir = Path(temp) / "state"
+            alerts_dir = Path(temp) / "alerts"
+            self._write_state(state_dir, {
+                "engine": {"prs": [], "tasks": {"open": [], "in_progress": [],
+                                                "plan_gated": [700]}},
+            })
+            gated_tag = self._write_problem(state_dir, alerts_dir,
+                                            "route:task:engine:700", count=3)
+            self._write_problem(state_dir, alerts_dir, "route:task:engine:9", count=3)
+            removed = runtime.prune(state_dir, alerts_dir)
+            self.assertEqual(removed, ["route:task:engine:9"])
+            self.assertTrue((state_dir / "runtime-problems" / (gated_tag + ".json")).exists())
+
+    def test_plan_kinds_checked_against_planning_slices(self):
+        with tempfile.TemporaryDirectory() as temp:
+            state_dir = Path(temp) / "state"
+            alerts_dir = Path(temp) / "alerts"
+            self._write_state(state_dir, {
+                "engine": {"prs": [], "tasks": {"open": [], "in_progress": [], "plan_gated": []},
+                           "needs_plan": [{"number": 3540}], "plan_review": [{"number": 3541}]},
+            })
+            plan_tag = self._write_problem(state_dir, alerts_dir, "route:plan:engine:3540",
+                                           count=3, with_alert=True)
+            review_tag = self._write_problem(state_dir, alerts_dir,
+                                             "route:planreview:engine:3541", count=3)
+            self._write_problem(state_dir, alerts_dir, "route:plan:engine:9", count=3)
+            removed = runtime.prune(state_dir, alerts_dir)
+            self.assertEqual(removed, ["route:plan:engine:9"])
+            self.assertTrue((state_dir / "runtime-problems" / (plan_tag + ".json")).exists())
+            self.assertTrue((alerts_dir / ("fleet-runtime-" + plan_tag)).exists())
+            self.assertTrue((state_dir / "runtime-problems" / (review_tag + ".json")).exists())
+
+    def test_degraded_planning_slice_holds_issue_kinds(self):
+        with tempfile.TemporaryDirectory() as temp:
+            state_dir = Path(temp) / "state"
+            alerts_dir = Path(temp) / "alerts"
+            self._write_state(state_dir, {
+                "engine": {"prs": [], "tasks": {"open": [], "in_progress": [], "plan_gated": []},
+                           "needs_plan": [], "plan_review": []},
+            }, degraded=["engine.needs_plan"])
+            tag = self._write_problem(state_dir, alerts_dir, "route:plan:engine:3540", count=3)
+            removed = runtime.prune(state_dir, alerts_dir)
+            self.assertEqual(removed, [])
+            self.assertTrue((state_dir / "runtime-problems" / (tag + ".json")).exists())
+
+    def test_degraded_slice_is_left_untouched(self):
+        with tempfile.TemporaryDirectory() as temp:
+            state_dir = Path(temp) / "state"
+            alerts_dir = Path(temp) / "alerts"
+            self._write_state(state_dir, {
+                "engine": {"prs": [], "tasks": {"open": [], "in_progress": [], "plan_gated": []}},
+            }, degraded=["engine.prs"])
+            tag = self._write_problem(state_dir, alerts_dir, "route:review:engine:901", count=3)
+            removed = runtime.prune(state_dir, alerts_dir)
+            self.assertEqual(removed, [])
+            self.assertTrue((state_dir / "runtime-problems" / (tag + ".json")).exists())
 
 
 if __name__ == "__main__":

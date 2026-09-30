@@ -105,7 +105,7 @@ numbers are stable IDs cited elsewhere; retired numbers are never reused.
 
 ### 2c. Serialized-struct version bump
 
-`engine/asset/CLAUDE.md` §"Automated version-bump detection", for any
+`engine/asset/CLAUDE.md` §"Serialized-record evolution", for any
 `.hpp`/`.cpp` under `engine/asset/`, `engine/prefabs/irreden/voxel/`, or
 `engine/world/`.
 
