@@ -21,6 +21,10 @@ whose output reaches a line-oriented *consumer* without a CR strip in between:
   v=$(producer); gh … --add-label "$v"   capture, then a label argument
   w=$(echo "$v" | sed -n 1p)         a re-capture carries the taint one hop on
 
+A function forwards its producer from any top-level statement, an `if`/`elif`
+condition included (`if ! … | python3 -c '…'; then`), unless a stage redirects
+stdout away (`>file`, `&>`, `>&2`).
+
 The exclusion is drawn on the *consumer*, not the payload: a numeric capture
 that only ever reaches `(( ))`, `-eq`/`-gt` and friends is out of contract
 (bash arithmetic fails loudly on a stray CR — a different defect); the same
@@ -80,6 +84,7 @@ _PASS_THROUGH = {"sed", "head", "tail", "sort", "uniq", "cut", "awk", "grep",
                  "cat", "tee", "tac", "tr"}
 _ECHOERS = {"echo", "printf"}
 _CR_LITERAL_RE = re.compile(r"\\r|\\015|\\x0[dD]")
+_STDOUT_REDIRECT_RE = re.compile(r"^(1|&)?>")
 _IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _ASSIGN_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)(\[[^\]]*\])?\+?=")
 
@@ -584,6 +589,11 @@ def _is_reader(cmd):
     return cmd.name in _READERS
 
 
+def _redirects_stdout(cmd):
+    """`>file`, `>>file`, `1>…`, `&>…` or `>&2`: stdout leaves the pipeline."""
+    return any(_STDOUT_REDIRECT_RE.match(w.text) for w in cmd.words)
+
+
 class Finding:
     __slots__ = ("path", "line", "producer", "command", "function", "variable",
                  "consumer_line", "consumer")
@@ -656,7 +666,8 @@ class _Analyzer:
         """The taint flowing out of a pipeline's stdout, or None.
 
         A native/forwarding producer, or an echo/here-string of a tainted
-        variable, followed by no CR guard and only pass-through filters."""
+        variable, followed by no CR guard and only pass-through filters. A
+        stage that redirects stdout to a file or stderr ends the stream."""
         cmds = pipeline.commands
         for i, cmd in enumerate(cmds):
             src = self.producer_of(cmd)
@@ -664,8 +675,10 @@ class _Analyzer:
                 src = self.tainted_ref_source(cmd, tainted)
             if src is None:
                 continue
+            if _redirects_stdout(cmd):
+                return None
             for later in cmds[i + 1:]:
-                if _is_guard(later):
+                if _is_guard(later) or _redirects_stdout(later):
                     return None
                 if later.name.rsplit("/", 1)[-1] not in _PASS_THROUGH:
                     return None
@@ -755,7 +768,7 @@ class _Analyzer:
                 self.assign(cmd, tainted)
             # Forwarding: an uncaptured producer pipeline at a function's top
             # level puts CR-terminated lines on the function's stdout.
-            if top_level and forwards is None and first not in ("if", "elif", "while", "until"):
+            if top_level and forwards is None and first not in ("while", "until"):
                 src = self.unguarded_source(p, tainted)
                 if src and not any(_is_reader(c) for c in cmds):
                     forwards = src

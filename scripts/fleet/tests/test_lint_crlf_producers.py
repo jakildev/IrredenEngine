@@ -14,8 +14,8 @@ pipeline. These cases lock that contract, form by form:
   - LF and CRLF source encodings select identical sites
   - byte oracle: an unguarded consumer keeps the CR on the first of two
     CRLF rows, a guarded one emits exact LF-only rows (no grep, no `$(…)`)
-  - the five historical `fleet-claim` work-list producers are named and
-    clean; removing any one strip re-flags exactly that site
+  - the five historical `fleet-claim` work-list producers and the live-label
+    fetch are named and clean; removing any one strip re-flags its consumers
   - the committed scripts/fleet tree is green with nonzero coverage and a
     frozen-empty exception set
 
@@ -315,6 +315,73 @@ class Forwarding(unittest.TestCase):
             case "$atype" in x) ;; esac
         """)
         self.assertEqual([(f.line, f.variable) for f in found], [(7, "atype")])
+
+    LIVE_LABELS = """
+        fetch_labels() {
+            local json
+            json=$(gh api "repos/$1/labels" --paginate --slurp) || return 1
+            if ! printf '%s' "$json" | python3 -c '
+        import json, sys
+        for name in sorted(json.load(sys.stdin)):
+            print(name)
+        'STRIP; then
+                echo "invalid JSON" >&2
+                return 1
+            fi
+        }
+        decide() {
+            local all mine
+            all=$(fetch_labels "$1") || return 2
+            mapfile -t mine <<< "$all"
+            [[ "${mine[0]}" == "$2" ]]
+        }
+    """
+
+    def test_producer_in_an_if_condition_forwards_to_a_capturing_caller(self):
+        found = _findings(self.LIVE_LABELS.replace("STRIP", ""))
+        self.assertEqual([(f.function, f.variable) for f in found], [("decide", "all")])
+        self.assertIn("fetch_labels() (forwards python3 -c from line", found[0].producer)
+
+    def test_strip_in_the_if_condition_pipeline_clears_the_caller(self):
+        self.assertEqual(_lines(self.LIVE_LABELS.replace("STRIP", " | tr -d '\\r'")), [])
+
+    def test_jq_in_an_elif_condition_forwards(self):
+        found = _findings("""
+            pick() {
+                if [[ -z "$1" ]]; then
+                    return 1
+                elif ! jq -r '.[]' "$1"; then
+                    return 1
+                fi
+            }
+            v=$(pick "$f")
+            case "$v" in x) ;; esac
+        """)
+        self.assertEqual([f.variable for f in found], ["v"])
+
+    def test_condition_whose_stdout_is_redirected_away_does_not_forward(self):
+        for redirect in (">/dev/null 2>&1", "> /dev/null", ">>log", "&>/dev/null", ">&2"):
+            with self.subTest(redirect=redirect):
+                self.assertEqual(_lines(f"""
+                    valid() {{
+                        if ! printf '%s' "$1" | python3 -c 'print(1)' {redirect}; then
+                            return 1
+                        fi
+                    }}
+                    v=$(valid "$x")
+                    [[ "$v" == "" ]] && echo ok
+                """), [])
+
+    def test_stderr_only_redirect_still_forwards(self):
+        self.assertEqual(len(_findings("""
+            emit() {
+                if ! python3 -c 'print(1)' 2>/dev/null; then
+                    return 1
+                fi
+            }
+            v=$(emit)
+            [[ "$v" == "" ]] && echo ok
+        """)), 1)
 
     def test_helper_that_consumes_internally_is_not_a_producer(self):
         self.assertEqual(_lines("""
@@ -713,6 +780,15 @@ class HistoricalSites(unittest.TestCase):
                 hits = [(f.function, anchor in f.command)
                         for f in _fleet_claim_findings(head + pre + anchor + post + tail)]
                 self.assertEqual(hits, [(function, True)])
+
+    def test_live_label_fetch_strip_is_load_bearing_for_both_callers(self):
+        head, body, tail = self._split(self.text, "_fetch_live_labels")
+        self.assertEqual(body.count(self.STRIP), 1)
+        hits = _fleet_claim_findings(head + body.replace(self.STRIP, "", 1) + tail)
+        self.assertEqual({hit.function for hit in hits},
+                         {"_sweep_stale_prefix_holders", "_read_claim_decision"})
+        for hit in hits:
+            self.assertIn("_fetch_live_labels", hit.command)
 
 
 class CommittedTree(unittest.TestCase):
