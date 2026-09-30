@@ -411,6 +411,19 @@ struct DecodedCompositeDepth {
     int flip_ = 0;
 };
 
+inline float compositeRawDepthFromNormalized(float normalizedDepth) {
+    return static_cast<float>(IRConstants::kTrixelDistanceMinDistance) +
+           normalizedDepth *
+               static_cast<float>(
+                   IRConstants::kTrixelDistanceMaxDistance - IRConstants::kTrixelDistanceMinDistance
+               );
+}
+
+inline int pickIsoDepthForWorldPosition(vec3 worldPosition, float visualYaw, int effectiveSub) {
+    return IRMath::pos3DtoDistanceYawed(vec3(IRMath::roundVec3HalfUp(worldPosition)), visualYaw) *
+           effectiveSub;
+}
+
 /// Partition @p rawDist (a @ref CompositeDepthSample::rawDist_) into tier / iso /
 /// face / flip. Pure arithmetic over the constants above — no GPU access.
 inline DecodedCompositeDepth decodeCompositeDepth(float rawDist) {

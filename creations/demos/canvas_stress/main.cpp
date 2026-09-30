@@ -21,11 +21,14 @@
 #include <irreden/render/components/component_light_blocker.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
+#include <irreden/input/components/component_hitbox_2d.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 
 // Systems
 #include <irreden/input/systems/system_input_key_mouse.hpp>
+#include <irreden/input/systems/system_entity_hover_detect.hpp>
+#include <irreden/input/systems/system_hitbox_mouse_test.hpp>
 #include <irreden/render/systems/system_auto_yaw_rotate.hpp>
 #include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
 #include <irreden/render/sun_shadow_probe.hpp>
@@ -55,6 +58,7 @@
 #include <irreden/render/camera_controls.hpp>
 #include <irreden/render/depth_probe.hpp>
 #include <irreden/render/entity_canvas.hpp>
+#include <irreden/render/gui_test_assertions.hpp>
 #include <irreden/render/trixel_text.hpp>
 
 // Command suites
@@ -112,6 +116,7 @@ struct CanvasStressSettings {
     int subdivisions_ = 0;
     float cameraYaw_ = 0.0f;
     bool autoRotate_ = true;
+    bool hoverCanarySession_ = false;
     bool fullRotate_ = false;
     bool noSpin_ = false;
     // Diagnostic (gridspin gap isolation): freeze the GRID spin cubes at a fixed
@@ -382,6 +387,44 @@ static_assert(
 CanvasStressSettings g_settings{};
 int g_autoWarmupFrames = 0;
 int g_autoRecordFrames = 0; // 0 = --auto-record not requested
+EntityId g_hoverCanary = IREntity::kNullEntity;
+IRSystem::SystemId g_hoverDetectSystem = IRSystem::kNullSystemId;
+IRVideo::GuiInputEvent g_hoverCanaryMove{0, IRVideo::GuiInputEvent::Type::MOVE, ivec2(0)};
+IRVideo::GuiTestShot g_hoverCanaryShot{
+    {1.0f, vec2(0.0f), 0.0f, "hover_canary"}, &g_hoverCanaryMove, 1
+};
+IRPrefab::GuiTest::LatchState g_hoverCanaryLatch;
+std::vector<IRPrefab::GuiTest::Assertion> g_hoverCanaryAssertions;
+
+bool hoverCanaryResolved(const void *, std::string &actual) {
+    const auto *hover = IRSystem::getSystemParams<IRSystem::System<IRSystem::ENTITY_HOVER_DETECT>>(
+        g_hoverDetectSystem
+    );
+    actual = "hovered=" + std::to_string(hover->hoveredEntity()) +
+             " expected=" + std::to_string(g_hoverCanary);
+    return hover->hoveredEntity() == g_hoverCanary;
+}
+
+void onHoverCanaryAssertFrame(int shotIndex, bool isCaptureFrame) {
+    if (g_hoverCanary != IREntity::kNullEntity) {
+        const C_HitBox2D &hitbox = IREntity::getComponent<C_HitBox2D>(g_hoverCanary);
+        g_hoverCanaryMove.screenPx_ =
+            ivec2(hitbox.centerScreen_) + ivec2(
+                                              static_cast<int>(IRMath::roundHalfUp(
+                                                  hitbox.halfExtent_.x + hitbox.padding_ * 0.5f
+                                              )),
+                                              0
+                                          );
+    }
+    IRPrefab::GuiTest::onFrame(
+        g_hoverCanaryLatch,
+        shotIndex,
+        isCaptureFrame,
+        g_hoverCanaryShot.render_.label_,
+        g_hoverCanaryAssertions.data(),
+        static_cast<int>(g_hoverCanaryAssertions.size())
+    );
+}
 
 bool groupEnabled(std::uint32_t group) {
     return g_settings.onlyGroups_ == 0u || (g_settings.onlyGroups_ & group) != 0u;
@@ -606,9 +649,8 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
 // DETACHED's single-canvas faceDeformationMatrixSO3 deform, which degrades
 // off-snap. Re-voxelize reads cleanly at every pose.
 
-void spawnDetachedVoxelObject(
-    int index, vec3 worldPos, vec3 spinAxis, float spinRate, Color color
-) {
+EntityId
+spawnDetachedVoxelObject(int index, vec3 worldPos, vec3 spinAxis, float spinRate, Color color) {
     // The pool MUST span the cube's ROTATED AABB or the rotated cells clip at the
     // pool bound: a 10³ cube reaches 5√3 ≈ 8.66 cells from the centered pool
     // origin under rotation, so a 20³ pool (half-extent 10) clears it with margin
@@ -648,10 +690,11 @@ void spawnDetachedVoxelObject(
     // continuous spin. AUTO_SPIN_LOCAL_TRANSFORM advances C_LocalTransform's SO(3)
     // quaternion each UPDATE tick; PROPAGATE_CANVAS_ROTATION threads it onto the
     // canvas, and REBUILD_DETACHED_VOXELS re-rasterizes the cells at that rotation.
-    IREntity::createEntity(
+    return IREntity::createEntity(
         C_LocalTransform{worldPos},
         C_RotationMode{RotationMode::DETACHED_REVOXELIZE},
         C_AutoSpin{spinAxis, spinRate},
+        C_HitBox2D{},
         canvas
     );
 }
@@ -1194,6 +1237,12 @@ void applyDepthProbeAssert(const std::string &value) {
 // working.
 void registerArgs() {
     IRArgs::Parser &args = IREngine::args();
+    args.enumValue(
+        "--gui-session",
+        "Scripted GUI verification session",
+        {"none", "hover_canary"},
+        "none"
+    );
     args.integer("--focus-canary", "Isolate a canary by its original index and center it", -1);
     args.integer(
         "--focus-revox",
@@ -1430,6 +1479,7 @@ void registerArgs() {
 // config.lua can't re-enable it.
 void applyArgs() {
     IRArgs::Parser &args = IREngine::args();
+    g_settings.hoverCanarySession_ = args.getEnum("--gui-session") == "hover_canary";
     g_settings.cameraYaw_ = args.getFloat("--yaw");
     // Force base subdivisions when requested. 0 leaves the engine
     // default (1) untouched, so a flagless run stays byte-identical.
@@ -1538,6 +1588,14 @@ int main(int argc, char **argv) {
         modeSwitchScript->bindLuaDrivenEcs();
         g_settings.modeSwitchScript_ = modeSwitchScript.get();
     }
+    if (g_settings.hoverCanarySession_) {
+        g_settings.onlyGroups_ = kGroupCanary;
+        g_settings.detachedCount_ = 1;
+        g_settings.autoRotate_ = false;
+        g_settings.autoRotateSetByCli_ = true;
+        g_settings.noSpin_ = true;
+        g_settings.initialZoom_ = 1.0f;
+    }
     if (g_settings.autoProfile_) {
         IREngine::enableFrameTiming(true);
         IRRender::gpuStageTiming().enabled_ = true;
@@ -1598,10 +1656,14 @@ void initSystems() {
     if (g_settings.modeSwitchProbe_) {
         IRSystem::appendToPipeline(IRTime::Events::UPDATE, createModeSwitchProbeSystem());
     }
+    const IRSystem::SystemId hitboxMouse = IRSystem::createSystem<IRSystem::HITBOX_MOUSE_TEST>();
+    g_hoverDetectSystem = IRSystem::createSystem<IRSystem::ENTITY_HOVER_DETECT>();
     IRSystem::registerPipeline(
         IRTime::Events::INPUT,
         {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>(),
-         IRSystem::System<IRSystem::CAMERA_SCROLL_ZOOM>::create()}
+         IRSystem::System<IRSystem::CAMERA_SCROLL_ZOOM>::create(),
+         hitboxMouse,
+         g_hoverDetectSystem}
     );
 
     std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
@@ -1767,7 +1829,16 @@ void initSystems() {
         );
     }
 
-    if (g_autoWarmupFrames > 0) {
+    if (g_autoWarmupFrames > 0 && g_settings.hoverCanarySession_) {
+        IRVideo::GuiTestConfig cfg{};
+        cfg.warmupFrames_ = g_autoWarmupFrames;
+        cfg.settleFrames_ = 4;
+        cfg.shots_ = &g_hoverCanaryShot;
+        cfg.numShots_ = 1;
+        cfg.onAssertFrame_ = &onHoverCanaryAssertFrame;
+        renderPipeline.push_back(IRVideo::createGuiTestSystem(cfg));
+    }
+    if (g_autoWarmupFrames > 0 && !g_settings.hoverCanarySession_) {
         int settleFrames = 60;
         if (modeSwitchGroupRequested()) {
             constexpr IRVideo::AutoScreenshotShot kModeSwitchShots[]{
@@ -2437,13 +2508,23 @@ void initEntities() {
         // full SO(3) bake matrix.
         const float spinRate =
             g_settings.noSpin_ ? 0.0f : kDetachedSpinBaseRadPerFrame * static_cast<float>(i + 1);
-        spawnDetachedVoxelObject(
+        const EntityId canary = spawnDetachedVoxelObject(
             i,
             focusCanary >= 0 ? vec3(0.0f) : worldPos,
             kAxes[i % 4],
             spinRate,
             kDetachedColors[i % 6]
         );
+        if (g_settings.hoverCanarySession_) {
+            g_hoverCanary = canary;
+        }
+    }
+    if (g_settings.hoverCanarySession_) {
+        g_hoverCanaryAssertions = {IRPrefab::GuiTest::predicate(
+            &hoverCanaryResolved,
+            nullptr,
+            "detached_owner_from_padding_band"
+        )};
     }
 
     // Detached RE-VOXELIZE proof solids: a MULTI-COLOR asymmetric L-prism

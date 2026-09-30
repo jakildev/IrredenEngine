@@ -339,6 +339,15 @@ vec3 mainCanvasTexelWorldPos3DAtIsoDepth(ivec2 texel, float canvasIsoDepth);
 /// point on a visible surface (a face centre), never at a voxel centre — a
 /// voxel centre projects onto the vertex its three camera-facing faces share.
 ivec2 worldPos3DToMouseScreenPxExact(vec3 worldPos);
+struct MouseTrixelPick {
+    IREntity::EntityId entity_ = IREntity::kNullEntity;
+    int priority_ = 0;
+    int isoDepth_ = 0;
+};
+/// Entity id and backend-neutral priority/depth key of the trixel under the
+/// mouse. All values come from one persistent-mapped read of the previous
+/// frame's hover buffer.
+MouseTrixelPick getMouseTrixelPick();
 /// Entity id of the voxel under the mouse cursor, read from the entity-id GPU texture.
 /// @note This reads a persistent-mapped GPU buffer — values become valid only after the
 ///       GPU pipeline has completed the previous frame's @c FRAMEBUFFER_TO_SCREEN pass.

@@ -40,6 +40,7 @@ add_executable(IrredenEngineTest
   ecs/modifier_runtime_test.cpp
   ecs/modifier_types_test.cpp
   ecs/modifier_vec3_runtime_test.cpp
+  ecs/pick_priority_test.cpp
   ecs/propagate_transform_test.cpp
   ecs/rebuild_detached_voxels_guard_test.cpp
   ecs/rotation_mode_set_test.cpp

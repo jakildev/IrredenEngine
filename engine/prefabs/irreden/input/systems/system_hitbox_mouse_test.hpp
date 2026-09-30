@@ -17,47 +17,51 @@ using namespace IRMath;
 namespace IRSystem {
 
 template <> struct System<HITBOX_MOUSE_TEST> {
+    vec2 mouseCanvas_{};
+    vec2 cameraIso_{};
+    vec2 cameraZoom_{};
+    vec2 fbResHalf_{};
+    IRMath::CardinalIndex cardinalIndex_ = IRMath::CardinalIndex::k0;
+    float visualYaw_ = 0.0f;
+    int effectiveSub_ = 1;
+
+    void beginTick() {
+        cameraIso_ = IRRender::getEffectiveCameraIso();
+        cameraZoom_ = IRRender::getCameraZoom();
+        auto &framebuffer = IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
+        fbResHalf_ = vec2(framebuffer.getResolutionPlusBuffer()) * 0.5f;
+        cardinalIndex_ = IRMath::rasterYawCardinalIndex(IRPrefab::Camera::getRasterYaw());
+        visualYaw_ = IRPrefab::Camera::getYaw();
+        effectiveSub_ = IRMath::max(IRRender::getVoxelRenderEffectiveSubdivisions(), 1);
+        mouseCanvas_ = IRRender::getMousePositionOutputView();
+    }
+
+    void tick(C_HitBox2D &hitbox, const C_WorldTransform &worldXform) {
+        vec2 entityCenter = hitbox.centerScreen_;
+        if (!hitbox.screenSpaceCenter_) {
+            const vec3 viewPos = IRMath::rotateCardinalZ(worldXform.translation_, cardinalIndex_);
+            const vec2 entityIso = IRMath::pos3DtoPos2DIso(viewPos);
+            const vec2 relativeIso = entityIso - cameraIso_;
+            const vec2 screenOffset =
+                IRMath::pos2DIsoToPos2DGameResolution(relativeIso, cameraZoom_);
+            entityCenter = vec2(fbResHalf_.x + screenOffset.x, fbResHalf_.y - screenOffset.y);
+        }
+
+        const vec2 paddedExtent = hitbox.halfExtent_ + vec2(hitbox.padding_);
+        hitbox.hovered_ = hitbox.enabled_ &&
+                          abs(mouseCanvas_.x - entityCenter.x) <= paddedExtent.x &&
+                          abs(mouseCanvas_.y - entityCenter.y) <= paddedExtent.y;
+        if (!hitbox.screenSpaceCenter_) {
+            hitbox.isoDepth_ = IRRender::pickIsoDepthForWorldPosition(
+                worldXform.translation_,
+                visualYaw_,
+                effectiveSub_
+            );
+        }
+    }
+
     static SystemId create() {
-        // After T-293 the framebuffer is no longer post-rotated by
-        // residualYaw (the trixel emit handles continuous yaw geometrically
-        // via faceDeform[]), so the cursor's framebuffer pixel IS its
-        // canvas-pixel position — no inverse residual rotation needed
-        // here. `s_mouseCanvas` therefore just caches `mouseFb`.
-        static vec2 s_mouseCanvas;
-        static vec2 s_cameraIso;
-        static vec2 s_cameraZoom;
-        static vec2 s_fbResHalf;
-        static IRMath::CardinalIndex s_cardinalIndex;
-
-        return createSystem<C_HitBox2D, C_WorldTransform>(
-            "HitBoxMouseTest",
-            [](C_HitBox2D &hitbox, const C_WorldTransform &worldXform) {
-                // Apply the cardinal-snap world->view rotation that the
-                // voxel rasterizer applies on the GPU side; without this,
-                // the entity's projected center stays at its yaw=0 location
-                // while the rendered output spins under the camera, and
-                // hover misses the rendered position.
-                vec3 viewPos = IRMath::rotateCardinalZ(worldXform.translation_, s_cardinalIndex);
-                vec2 entityIso = IRMath::pos3DtoPos2DIso(viewPos);
-                vec2 relativeIso = entityIso - s_cameraIso;
-                vec2 screenOffset =
-                    IRMath::pos2DIsoToPos2DGameResolution(relativeIso, s_cameraZoom);
-                vec2 entityCenter =
-                    vec2(s_fbResHalf.x + screenOffset.x, s_fbResHalf.y - screenOffset.y);
-
-                hitbox.hovered_ = abs(s_mouseCanvas.x - entityCenter.x) <= hitbox.halfExtent_.x &&
-                                  abs(s_mouseCanvas.y - entityCenter.y) <= hitbox.halfExtent_.y;
-            },
-            []() {
-                s_cameraIso = IRRender::getEffectiveCameraIso();
-                s_cameraZoom = IRRender::getCameraZoom();
-                auto &framebuffer =
-                    IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
-                s_fbResHalf = vec2(framebuffer.getResolutionPlusBuffer()) * 0.5f;
-                s_cardinalIndex = IRMath::rasterYawCardinalIndex(IRPrefab::Camera::getRasterYaw());
-                s_mouseCanvas = IRRender::getMousePositionOutputView();
-            }
-        );
+        return registerSystem<HITBOX_MOUSE_TEST, C_HitBox2D, C_WorldTransform>("HitBoxMouseTest");
     }
 };
 

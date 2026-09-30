@@ -27,6 +27,11 @@ constexpr vec2 kTrixelCanvasZoomMin = vec2{1.0f, 1.0f};
 /// Maximum scale factor for trixel canvas rendering.
 constexpr vec2 kTrixelCanvasZoomMax = vec2{64.0f, 64.0f};
 
+/// Extra screen-pixel margin around world hitboxes. The generous default keeps
+/// thin rendered parts targetable without requiring every caller to author a
+/// larger geometric bound.
+constexpr float kDefaultPickPadding = 4.0f;
+
 /// Voxel pool dimensions reserved for the player entity.
 constexpr ivec3 kVoxelPoolPlayerSize = ivec3{16, 16, 16};
 /// Trixel-canvas dimensions for the player voxel pool, derived via the
