@@ -26,6 +26,8 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/render/buffer.hpp>
 #include <irreden/render/ir_gl_api.hpp>
+#include <irreden/render/opengl/opengl_render_impl.hpp>
+#include <irreden/render/render_device.hpp>
 #include <irreden/render/ir_render_enums.hpp>
 #include <irreden/render/shader.hpp>
 
@@ -65,9 +67,11 @@ class GpuComputeDispatchTest : public ::testing::Test {
             GTEST_SKIP() << "OpenGL 4.5 core context unavailable on this host.";
         }
         glfwMakeContextCurrent(window_);
+        ASSERT_NE(IRRender::bootstrapHeadlessRenderDevice(), nullptr);
     }
 
     void TearDown() override {
+        IRRender::setDevice(nullptr);
         if (window_ != nullptr) {
             glfwDestroyWindow(window_);
             window_ = nullptr;
@@ -1413,7 +1417,13 @@ TEST(SunShadowProbeTest, UnwritablePathFailsBeforeGpuAccess) {
 }
 
 #if defined(IR_GRAPHICS_METAL)
-TEST_F(MetalGpuComputeDispatchTest, SourceFaceProbeReadsPendingGpuClearAndTileBoundaries) {
+using SunProbeGpuTest = MetalGpuComputeDispatchTest;
+#elif defined(IR_GRAPHICS_OPENGL)
+using SunProbeGpuTest = GpuComputeDispatchTest;
+#endif
+
+#if defined(IR_GRAPHICS_METAL) || defined(IR_GRAPHICS_OPENGL)
+TEST_F(SunProbeGpuTest, SourceFaceProbeReadsPendingGpuClearAndTileBoundaries) {
     using namespace IRRender;
     namespace Shadow = IRPrefab::SunShadow;
     SunProbeFixture probe;
@@ -1439,7 +1449,7 @@ TEST_F(MetalGpuComputeDispatchTest, SourceFaceProbeReadsPendingGpuClearAndTileBo
     ShaderProgram clear{std::vector{ShaderStage{shaderPath.c_str(), ShaderType::COMPUTE}}};
     depth.bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap);
     clear.use();
-    device_->dispatchCompute(64, 128, 1);
+    device()->dispatchCompute(64, 128, 1);
     // The capture helper owns the synchronization of this pending GPU write.
     ASSERT_TRUE(Shadow::writeSourceFaceIndexProbe(probe.path_.string()));
     const std::string cleared = probe.contents();
