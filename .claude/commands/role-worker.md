@@ -121,12 +121,13 @@ Bash calls until the next fresh launch), add `--repo jakildev/irreden` to `gh` c
 1c. **[opus+ only] One `fleet:semantic-conflict` PR, engine first, then game.**
    Candidates: cached `prs[]` with the label and none of `fleet:wip`, `human:wip`,
    `human:needs-fix`, `human:blocker`, `fleet:design-blocked`, `fleet:design-proposed`,
-   `fleet:awaiting-base`, `fleet:awaiting-upstream-review`, `fleet:fork-of-other-pr`; skip a
-   stacked candidate whose base PR also carries the label; skip a candidate carrying a
-   foreign `fleet:amending-*` claim or a `fleet:reviewing-*` label held by another agent (an
-   amend or review is in flight and this lane force-pushes the head they are reading — your
-   own corresponding claim does not bar it; `fleet-claim resolving-claim` refuses as the
-   backstop); pick the oldest. Game PR: § Cross-repo model flags throughout.
+   `fleet:awaiting-base`, `fleet:fork-of-other-pr`; skip a stacked candidate whose base PR
+   also carries the label; skip one carrying `fleet:awaiting-upstream-review` only while its
+   base PR is open and unapproved (an approved or merged base makes the gate stale); skip a
+   candidate carrying a foreign `fleet:amending-*` claim or a `fleet:reviewing-*` label held
+   by another agent (an amend or review is in flight and this lane force-pushes the head they
+   are reading — your own corresponding claim does not bar it; `fleet-claim resolving-claim`
+   refuses as the backstop); pick the oldest. Game PR: § Cross-repo model flags throughout.
    a. `fleet-heartbeat <basename>`.
    b. Read the merger's comment (`fleet-pr comments <N>`; ends `— fleet merger`).
    b′. `fleet-claim resolving-claim <N> <basename>` — exit 1: go to step 2.

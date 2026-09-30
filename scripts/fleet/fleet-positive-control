@@ -37,6 +37,11 @@
 #                tests/test_positive_control.sh call, so the grammar has one
 #                copy and nothing to drift from.
 #
+# A `lib_*` helper beside the suite that <ref> lacks (a stub or fixture
+# library the new suite brings) is copied from the working tree with it: it
+# belongs to the new test, not the old code. A helper <ref> already carries
+# stays at <ref>'s version.
+#
 # The suite is driven by an interpreter, never by its own shebang — the
 # test_*.py suites carry none, and executing one hands a Python file to the
 # shell. Counts come from the suite's own summary line: for bash one of
@@ -278,9 +283,20 @@ git -C "$REPO_ROOT" archive "$REF" scripts/fleet "${INCLUDES[@]+"${INCLUDES[@]}"
 # Drop the working-tree suite over the old tree: new test, old code.
 mkdir -p "$STAGE/$(dirname "$TEST_REL")"
 cp "$TEST_ABS" "$STAGE/$TEST_REL"
+NEW_HELPERS=()
+for helper in "$(dirname "$TEST_ABS")"/lib_*; do
+    [[ -f "$helper" ]] || continue
+    helper_rel="$(dirname "$TEST_REL")/$(basename "$helper")"
+    [[ -e "$STAGE/$helper_rel" ]] && continue
+    cp -p "$helper" "$STAGE/$helper_rel"
+    NEW_HELPERS+=("$helper_rel")
+done
 
 echo "positive control: $(basename "$TEST_FILE") vs $REF_LABEL"
 echo "  staged scripts/fleet${INCLUDES[*]+ + ${INCLUDES[*]}} into $STAGE"
+if (( ${#NEW_HELPERS[@]} > 0 )); then
+    echo "  plus the working tree's ${NEW_HELPERS[*]} (absent at $REF_LABEL)"
+fi
 echo ""
 
 set +e

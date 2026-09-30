@@ -200,6 +200,24 @@ failed_names=()
 failed_ids=()
 skipped_names=()
 
+host_repo=$(git -C "$TESTS_DIR" rev-parse --show-toplevel 2>/dev/null || true)
+host_head=""
+host_ref=""
+host_status=""
+if [[ -n "$host_repo" ]]; then
+    host_head=$(git -C "$host_repo" rev-parse HEAD) || exit 1
+    host_ref=$(git -C "$host_repo" symbolic-ref -q HEAD || true)
+    host_status=$(git -C "$host_repo" status --porcelain) || exit 1
+fi
+
+host_worktree_changed() {
+    [[ -n "$host_repo" ]] || return 1
+    [[ "$(git -C "$host_repo" rev-parse HEAD)" == "$host_head" ]] || return 0
+    [[ "$(git -C "$host_repo" symbolic-ref -q HEAD || true)" == "$host_ref" ]] || return 0
+    [[ "$(git -C "$host_repo" status --porcelain)" == "$host_status" ]] || return 0
+    return 1
+}
+
 # Skip status: a suite whose subject under test is missing exits with this
 # code instead of 0, so a vacuous run is never folded into "passed".
 SKIP_STATUS=3
@@ -261,7 +279,14 @@ for f in "${suites[@]}"; do
         out=$(env ${scrub_args[@]+"${scrub_args[@]}"} "${interp[@]}" "$f" 2>&1)
         rc=$?
     fi
-    if [[ "$rc" -eq 0 ]]; then
+    if host_worktree_changed; then
+        failed_names+=("$name")
+        failed_ids+=("$name@host-worktree-mutation")
+        printf 'FAIL  %s (mutated host worktree)\n' "$name"
+        printf '      | host HEAD, symbolic ref, or status changed while this suite ran\n'
+        printf '%s\n' "$out" | sed 's/^/      | /'
+        break
+    elif [[ "$rc" -eq 0 ]]; then
         passed=$((passed + 1))
         printf 'PASS  %s\n' "$name"
     elif [[ "$rc" -eq "$SKIP_STATUS" ]]; then
