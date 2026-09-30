@@ -2868,10 +2868,27 @@ worker_rearm_should_fire() {
 # reach it. A missing, unreadable, or host-empty slice yields no numbers, i.e.
 # don't fire.
 SMOKE_SERVABLE_PRS=""
+DISPATCHER_STARTED_EPOCH="${FLEET_DISPATCHER_STARTED_EPOCH:-$(date +%s)}"
 smoke_worker_should_fire() {
-    local slice="$STATE_DIR/projections/smoke-worker.json"
+    local slice="$STATE_DIR/projections/smoke-worker.json" generated_epoch
     SMOKE_SERVABLE_PRS=""
     [[ -f "$slice" ]] || return 1
+    generated_epoch=$(python3 - "$slice" <<'PY'
+import calendar
+import json
+import sys
+import time
+
+try:
+    with open(sys.argv[1]) as source:
+        generated_at = json.load(source).get("generated_at")
+    print(calendar.timegm(time.strptime(generated_at, "%Y-%m-%dT%H:%M:%SZ")))
+except (OSError, TypeError, ValueError):
+    pass
+PY
+    )
+    [[ "$generated_epoch" =~ ^[0-9]+$ ]] || return 1
+    (( generated_epoch >= DISPATCHER_STARTED_EPOCH )) || return 1
     SMOKE_SERVABLE_PRS=$(python3 "$FLEET_LIB_DIR/fleet_task_class.py" \
         --smoke-check "$slice" 2>/dev/null) || SMOKE_SERVABLE_PRS=""
     [[ -n "$SMOKE_SERVABLE_PRS" ]]
