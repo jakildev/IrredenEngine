@@ -193,6 +193,21 @@ assert_contains "$handoff" "salvage: $FLEET_STATE_DIR/salvage/task-engine-42-eng
 [[ ! -f "$FLEET_STATE_DIR/abandoned/task-engine-42" ]] \
     && ok "abandonment counter cleared" || bad "counter left after handoff"
 
+echo "T5b: salvage aborts an interrupted rebase before resetting the worktree"
+printf 'topic\n' > "$WT/tracked.txt"
+git -C "$WT" add tracked.txt
+git -C "$WT" -c user.name=t -c user.email=t@t commit -q -m topic
+printf 'upstream\n' > "$FLEET_ENGINE_ROOT/tracked.txt"
+git -C "$FLEET_ENGINE_ROOT" add tracked.txt
+git -C "$FLEET_ENGINE_ROOT" -c user.name=t -c user.email=t@t commit -q -m upstream
+git -C "$WT" rebase master >/dev/null 2>&1 || true
+rebase_dir=$(git -C "$WT" rev-parse --git-path rebase-merge)
+[[ -d "$rebase_dir" ]] && ok "fixture has an interrupted rebase" \
+    || bad "fixture did not enter rebase state"
+handle conflict:engine:55 pool-3 >/dev/null
+[[ ! -d "$rebase_dir" ]] && ok "salvage aborts the interrupted rebase" \
+    || bad "salvage left rebase state behind"
+
 echo "T6: marker-vouched lane claims release on their first abandonment"
 while IFS='|' read -r target expected_release; do
     printf '{"session":"dead"}\n' > "$FLEET_SESSIONS_DIR/pool-3.session.json"

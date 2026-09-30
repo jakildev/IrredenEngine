@@ -1510,6 +1510,9 @@ handle_abandoned_target() {
         [[ -n "$(git -C "$wt" status --porcelain 2>/dev/null)" ]] || continue
         case "$wt" in */creations/game/*) which=game ;; *) which=engine ;; esac
         patch="$STATE_DIR/salvage/$key-$which-$stamp.patch"
+        git -C "$wt" rebase --abort >/dev/null 2>&1 \
+            || git -C "$wt" merge --abort >/dev/null 2>&1 \
+            || true
         git -C "$wt" add -A --intent-to-add >/dev/null 2>&1 || true
         if git -C "$wt" diff HEAD > "$patch" 2>/dev/null; then
             salvage="${salvage:+$salvage }$patch"
