@@ -6,6 +6,7 @@
 
 #include <irreden/render/ir_render_enums.hpp>
 #include <irreden/render/ir_render_types.hpp>
+#include <irreden/render/render_device.hpp>
 #include <irreden/render/shader_names.hpp>
 
 #include <glad/glad.h>
@@ -229,6 +230,22 @@ inline GLenum toGLVertexAttributeDataType(VertexAttributeDataType type) {
         return GL_FLOAT;
     }
     return GL_FLOAT;
+}
+
+// A completed-but-inverted pair (endNs < startNs) is a bad query, not a
+// still-in-flight one — INVALID so the caller releases its ring slot instead
+// of polling it forever.
+inline TimestampReadStatus classifyOpenGLTimestampPair(
+    bool startAvailable, bool endAvailable, GLuint64 startNs, GLuint64 endNs, float &outMs
+) {
+    if (!startAvailable || !endAvailable) {
+        return TimestampReadStatus::PENDING;
+    }
+    if (endNs < startNs) {
+        return TimestampReadStatus::INVALID;
+    }
+    outMs = static_cast<float>(endNs - startNs) / 1'000'000.0f;
+    return TimestampReadStatus::READY;
 }
 
 } // namespace IRRender

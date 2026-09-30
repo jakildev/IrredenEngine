@@ -2,6 +2,10 @@
 #include <irreden/render/gpu_stage_timing_observer.hpp>
 #include <irreden/render/gpu_substage_timing.hpp>
 
+#if defined(IR_GRAPHICS_OPENGL)
+#include <irreden/render/opengl/opengl_types.hpp>
+#endif
+
 namespace IRRender {
 extern RenderDevice *g_renderDevice;
 }
@@ -133,6 +137,30 @@ TEST_F(GpuTimestampPollTest, ExistingBooleanBackendAdaptsToPolling) {
     EXPECT_EQ(device_.RenderDevice::pollTimestampPairMs(1, ms), TimestampReadStatus::READY);
     EXPECT_FLOAT_EQ(ms, 2.5f);
 }
+
+#if defined(IR_GRAPHICS_OPENGL)
+// classifyOpenGLTimestampPair is the decision OpenGLRenderDevice::pollTimestampPairMs
+// delegates to; testing it directly needs no GL context.
+TEST(OpenGLTimestampClassifyTest, NotYetAvailableStaysPending) {
+    float ms = -1.0f;
+    EXPECT_EQ(classifyOpenGLTimestampPair(false, false, 0, 0, ms), TimestampReadStatus::PENDING);
+    EXPECT_EQ(classifyOpenGLTimestampPair(true, false, 100, 50, ms), TimestampReadStatus::PENDING);
+}
+
+TEST(OpenGLTimestampClassifyTest, AvailableAndInvertedIsInvalid) {
+    float ms = -1.0f;
+    EXPECT_EQ(classifyOpenGLTimestampPair(true, true, 200, 100, ms), TimestampReadStatus::INVALID);
+}
+
+TEST(OpenGLTimestampClassifyTest, AvailableAndOrderedIsReadyWithDurationMs) {
+    float ms = -1.0f;
+    EXPECT_EQ(
+        classifyOpenGLTimestampPair(true, true, 1'000'000, 3'500'000, ms),
+        TimestampReadStatus::READY
+    );
+    EXPECT_FLOAT_EQ(ms, 2.5f);
+}
+#endif
 
 TEST(GpuFrameTimingTest, SplitSubmissionsKeepEnvelopeSeparateFromSpanSum) {
     GpuFrameTimingAccumulator timing;
