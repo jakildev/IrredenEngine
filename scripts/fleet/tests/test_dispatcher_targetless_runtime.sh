@@ -27,6 +27,7 @@ export BOOT_FANOUT_WINDOW_SECONDS=0
 export FLEET_CONCURRENCY_MERGER=1
 export FLEET_CONCURRENCY_EPIC_STEWARD=1
 mkdir -p "$FLEET_STATE_DIR/dispatch" "$FLEET_STATE_DIR/triggers" \
+  "$FLEET_STATE_DIR/projections" \
   "$FLEET_STATE_DIR/usage" "$FLEET_STATE_DIR/runtime-cooldown" \
   "$FLEET_SESSIONS_DIR" "$FLEET_RESERVATIONS_DIR"
 
@@ -77,16 +78,24 @@ close_gate() {
 open_gate() { rm -f "$FLEET_STATE_DIR/usage/five_hour.json"; }
 
 tick() {
+    local role="$1" trigger_contents="$2"
+    shift 2
     rm -f "$FLEET_STATE_DIR/dispatch"/*.json
+    rm -rf "$FLEET_STATE_DIR/target-dispatch-counts"
     : > "$SEND_LOG"
-    : > "$FLEET_STATE_DIR/triggers/epic-steward"
-    env "$@" "$DISPATCHER" --dispatch-role epic-steward 1 2>&1 >/dev/null
+    printf '%s' "$trigger_contents" > "$FLEET_STATE_DIR/triggers/$role"
+    env "$@" "$DISPATCHER" --dispatch-role "$role" 1 2>&1 >/dev/null
 }
 TRIGGER="$FLEET_STATE_DIR/triggers/epic-steward"
-
+MERGER_TRIGGER="$FLEET_STATE_DIR/triggers/merger"
+cat > "$FLEET_STATE_DIR/projections/merger.json" <<'JSON'
+{"prs":[],"merger_candidates":[
+  {"number":77,"repo":"engine","labels":["fleet:author-claude"],"signal":"needs-resolve"}
+]}
+JSON
 echo "T1: closed Claude gate elects Codex for the epic steward"
 close_gate
-out=$(tick)
+out=$(tick epic-steward "")
 assert_contains "$out" "dispatching epic-steward -> %1 runtime=codex" \
   "closed gate launches epic steward on Codex"
 assert_contains "$(<"$SEND_LOG")" \
@@ -96,7 +105,7 @@ assert_absent "$out" "claude-quota-closed" "successful fallback is not reported 
 
 echo "T2: open gate keeps the legacy Claude launch"
 open_gate
-out=$(tick)
+out=$(tick epic-steward "")
 assert_contains "$out" "dispatching epic-steward -> %1 runtime=claude" \
   "open gate keeps epic steward on Claude"
 assert_contains "$(<"$SEND_LOG")" \
@@ -106,14 +115,14 @@ assert_absent "$(<"$SEND_LOG")" "target=" "legacy launch carries no target argum
 
 echo "T3: a Claude pin waits at the closed gate"
 close_gate
-out=$(tick FLEET_WORKER_RUNTIME=claude)
+out=$(tick epic-steward "" FLEET_WORKER_RUNTIME=claude)
 assert_contains "$out" "claude-quota-closed" "Claude pin reports the closed gate"
 assert_absent "$out" "dispatching epic-steward" "Claude pin does not launch"
 [[ -f "$TRIGGER" ]] && ok "blocked launch keeps trigger" || bad "blocked launch consumed trigger"
 
 echo "T4: Codex cooldown keeps the trigger"
 printf '{"until":%s}\n' "$((NOW + 900))" > "$FLEET_STATE_DIR/runtime-cooldown/codex.json"
-out=$(tick)
+out=$(tick epic-steward "")
 assert_contains "$out" "codex-cooldown" "live Codex cooldown blocks fallback"
 assert_absent "$out" "dispatching epic-steward" "cooling provider does not launch"
 [[ -f "$TRIGGER" ]] && ok "cooldown keeps trigger" || bad "cooldown consumed trigger"
@@ -123,7 +132,7 @@ echo "T5: missing Codex binary keeps the trigger"
 NO_CODEX_BIN="$TMPROOT/no-codex-bin"
 mkdir -p "$NO_CODEX_BIN"
 cp "$BIN/tmux" "$BIN/pgrep" "$BIN/fleet-claim" "$BIN/gh" "$NO_CODEX_BIN/"
-out=$(PATH="$NO_CODEX_BIN:/usr/bin:/bin" tick)
+out=$(PATH="$NO_CODEX_BIN:/usr/bin:/bin" tick epic-steward "")
 assert_contains "$out" "codex-unavailable" "missing Codex binary blocks fallback"
 assert_absent "$out" "dispatching epic-steward" "missing Codex binary does not launch"
 [[ -f "$TRIGGER" ]] && ok "unavailable provider keeps trigger" \
@@ -132,14 +141,14 @@ assert_absent "$out" "dispatching epic-steward" "missing Codex binary does not l
 echo "T6: target-less sidecars never enter reserved-target routing"
 printf '{"runtime":"codex","target":"","role":"epic-steward","session_id":"sid"}\n' \
   > "$FLEET_SESSIONS_DIR/pool-1.session.json"
-out=$(tick)
+out=$(tick epic-steward "")
 assert_contains "$out" "dispatching epic-steward -> %1 runtime=codex" \
   "empty-target sidecar does not prevent target-less dispatch"
 assert_absent "$out" "resume-route-failed" "target-less role skips reserved-target routing"
 rm -f "$FLEET_SESSIONS_DIR/pool-1.session.json"
 
 echo "T7: an unset runtime list leaves Claude-only behavior unchanged"
-out=$(tick FLEET_RUNTIMES=)
+out=$(tick epic-steward "" FLEET_RUNTIMES=)
 assert_contains "$out" "dispatching epic-steward -> %1 runtime=claude" \
   "legacy host launches Claude without provider election"
 assert_contains "$(<"$SEND_LOG")" "fleet-dispatch-wrap pane-1 opus xhigh epic-steward '' live" \
@@ -147,9 +156,28 @@ assert_contains "$(<"$SEND_LOG")" "fleet-dispatch-wrap pane-1 opus xhigh epic-st
 
 echo "T8: an explicit Codex pin overrides an open Claude gate"
 open_gate
-out=$(tick FLEET_WORKER_RUNTIME=codex)
+out=$(tick epic-steward "" FLEET_WORKER_RUNTIME=codex)
 assert_contains "$out" "dispatching epic-steward -> %1 runtime=codex" \
   "Codex pin elects Codex while Claude is open"
 assert_contains "$(<"$SEND_LOG")" "target= codex opus" "Codex pin uses the 9-argument launch"
+
+echo "T9: a closed Claude gate reroutes a target-bound merger pass to Codex"
+close_gate
+out=$(tick merger $'merge:engine:77\n')
+assert_contains "$out" "dispatching merger -> %1 [target=merge:engine:77] runtime=codex" \
+  "closed gate launches the merger target on Codex"
+assert_contains "$(<"$SEND_LOG")" \
+  "fleet-dispatch-wrap pane-1 gpt-5.6-terra medium merger '' live target=merge:engine:77 codex sonnet" \
+  "Codex merger keeps the assigned target"
+assert_absent "$out" "claude-quota-closed" "merge fallback is not reported as Claude-blocked"
+
+echo "T10: an open Claude gate preserves merger author affinity"
+open_gate
+out=$(tick merger $'merge:engine:77\n')
+assert_contains "$out" "dispatching merger -> %1 [target=merge:engine:77] runtime=claude" \
+  "open gate keeps the Claude-authored merger target on Claude"
+assert_contains "$(<"$SEND_LOG")" \
+  "fleet-dispatch-wrap pane-1 sonnet high merger '' live target=merge:engine:77 claude sonnet" \
+  "open gate keeps the targeted Claude launch"
 
 summarize "target-less runtime dispatcher tests"

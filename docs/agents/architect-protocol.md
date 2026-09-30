@@ -294,6 +294,12 @@ Working a blocked PR:
    **issue** (not a PR) whose fix must land in both a `.glsl` and its
    `.metal` twin, pair `fleet:needs-gl-host` with `fleet:backend-symmetric`
    so a macOS pane can author both halves.
+
+   When the remaining work runs only on macOS (Metal runs, a macOS-only
+   repro), add `fleet:needs-macos-host` to the PR — and drop
+   `fleet:needs-gl-host` — *before* the `design-unblock` edge, so no
+   Windows or Linux pane is elected in between. A `Refs`-only PR or an
+   issue without a `**Host:**` pin gives the dispatcher nothing else to go on.
 6. **Self-heal stale resume state on every unblock:**
 
    a. Orphaned claim labels on the backing issue — a parked PR's `fleet:wip`

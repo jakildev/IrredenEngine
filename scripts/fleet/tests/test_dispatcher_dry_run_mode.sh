@@ -34,6 +34,12 @@ cleanup() {
 trap cleanup EXIT
 
 TMPROOT=$(mktemp -d)
+git -C "$TMPROOT" init -q
+git -C "$TMPROOT" config user.email test@example.invalid
+git -C "$TMPROOT" config user.name Test
+printf 'seed\n' > "$TMPROOT/seed"
+git -C "$TMPROOT" add seed
+git -C "$TMPROOT" commit -qm seed
 export FLEET_STATE_DIR="$TMPROOT/state"
 # Point at a guaranteed non-existent tmux session so the dispatcher never
 # touches a real fleet running on the dev machine.

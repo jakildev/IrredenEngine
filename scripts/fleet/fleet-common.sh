@@ -71,6 +71,27 @@ canonicalize_path_spelling() {
     printf '%s' "$p"
 }
 
+# fleet_worktree_registered <dir> — succeed only when Git recognizes <dir>
+# as a worktree rooted at that directory. A directory inside another checkout
+# can make rev-parse succeed after its own .git file disappears, so the root
+# name comparison is part of the registration contract.
+FLEET_WORKTREE_ERROR=""
+fleet_worktree_registered() {
+    local dir="$1" toplevel output
+    FLEET_WORKTREE_ERROR=""
+    if ! output=$(git -C "$dir" rev-parse --show-toplevel 2>&1); then
+        FLEET_WORKTREE_ERROR="${output%%$'\n'*}"
+        [[ -n "$FLEET_WORKTREE_ERROR" ]] || FLEET_WORKTREE_ERROR="git could not resolve the worktree"
+        return 1
+    fi
+    toplevel="${output%%$'\n'*}"
+    if [[ "$(basename "$toplevel")" != "$(basename "$dir")" ]]; then
+        FLEET_WORKTREE_ERROR="resolves to $toplevel, not $dir"
+        return 1
+    fi
+    return 0
+}
+
 # --- Model-class defaults (single source of truth) --------------------------
 # CLI tier ALIASES on purpose ("opus[1m]", never "claude-opus-4-8[1m]"): the
 # claude CLI resolves an alias to the NEWEST model of that tier at launch, so

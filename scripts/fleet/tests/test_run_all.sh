@@ -434,4 +434,20 @@ out=$(FLEET_ENGINE_ROOT="$decoy" FLEET_GAME_ROOT="$decoy/game" UNRELATED_KEEP=ye
       bash "$d/run_all.sh" 2>&1)
 assert_contains "$out" "engine=unset game=unset keep=yes" "T21 scrubbed with no wrapper beside the runner"
 
+echo "T22: a suite that mutates the host worktree fails with its filename"
+d=$(new_sandbox t22)
+git -C "$d" init -q
+git -C "$d" config user.email fleet-test@example.invalid
+git -C "$d" config user.name "Fleet Test"
+printf 'baseline\n' > "$d/tracked"
+git -C "$d" add run_all.sh tracked
+git -C "$d" commit -qm "fixture"
+printf '#!/usr/bin/env bash\nprintf mutation >> tracked\n' > "$d/test_mutator.sh"
+out=$(bash "$d/run_all.sh" 2>&1); rc=$?
+assert_eq "$rc" "1" "T22 host-worktree mutation fails the run"
+assert_contains "$out" "FAIL  test_mutator.sh (mutated host worktree)" \
+    "T22 mutation failure names the responsible suite"
+assert_contains "$out" "failed: test_mutator.sh" \
+    "T22 summary retains the responsible suite name"
+
 summarize "run_all.sh tests"
