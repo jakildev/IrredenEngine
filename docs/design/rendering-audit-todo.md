@@ -73,9 +73,11 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
   Added [exact zero-contribution query gates](../pr-screenshots/codex/surface-shadow-query-gate/README.md):
   14 native views remain RGB-identical; three fresh run pairs reduce scatter
   scope from 5.308 to 5.198 ms and GPU envelope from 10.007 to 9.815 ms.
-  This is modest and does not resolve the wider-view cost. Next measure query
-  visits/overdraw and test conservative projected-face candidate bounds; material
-  work alone is not the main cost.
+  This is modest and does not resolve the wider-view cost. A conservative
+  [pre-division face rejection experiment](../perf/finite-shadow-query-pruning.md)
+  preserves tested hits but shows no useful native speedup; shaders are restored.
+  Next measure query visits/overdraw and test visibility-before-lighting with
+  unchanged margin/depth arbitration; material work alone is not the main cost.
   Keep this default-off and avoid capacity-sized records. Validate cardinal
   transitions, dense/incomplete tiles, overflow and fog before default adoption.
 - [Bounded overflow reference](../perf/bounded-source-face-reference.md) isolates

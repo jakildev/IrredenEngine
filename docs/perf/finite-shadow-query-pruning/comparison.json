@@ -1,0 +1,67 @@
+[
+  {
+    "baseline": "baseline-1-0.png",
+    "candidate": "candidate-1-0.png",
+    "identical": true
+  },
+  {
+    "baseline": "baseline-2-0.png",
+    "candidate": "candidate-2-0.png",
+    "identical": true
+  },
+  {
+    "baseline": "baseline-3-0.png",
+    "candidate": "candidate-3-0.png",
+    "identical": true
+  },
+  {
+    "baseline": "baseline-1-0.png",
+    "candidate": "candidate-stalled-1-0.png",
+    "identical": true
+  },
+  {
+    "baseline": "baseline-2-0.png",
+    "candidate": "candidate-stalled-2-0.png",
+    "identical": true
+  },
+  {
+    "baseline": "baseline-3-0.png",
+    "candidate": "candidate-stalled-3-0.png",
+    "identical": true
+  },
+  {
+    "baseline": "baseline-1-0.png",
+    "candidate": "restored-1-0.png",
+    "identical": true
+  },
+  {
+    "baseline": "baseline-2-0.png",
+    "candidate": "restored-2-0.png",
+    "identical": true
+  },
+  {
+    "baseline": "baseline-3-0.png",
+    "candidate": "restored-3-0.png",
+    "identical": true
+  },
+  {
+    "source": "screenshot_003133.png",
+    "parent": "docs/pr-screenshots/codex/surface-shadow-query-gate/frame-0.png",
+    "identical": true
+  },
+  {
+    "source": "screenshot_003134.png",
+    "parent": "docs/pr-screenshots/codex/surface-shadow-query-gate/frame-1.png",
+    "identical": true
+  },
+  {
+    "source": "screenshot_003135.png",
+    "parent": "docs/pr-screenshots/codex/surface-shadow-query-gate/frame-2.png",
+    "identical": true
+  },
+  {
+    "source": "screenshot_003136.png",
+    "parent": "docs/pr-screenshots/codex/surface-shadow-query-gate/frame-3.png",
+    "identical": true
+  }
+]

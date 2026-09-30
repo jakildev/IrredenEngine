@@ -1,0 +1,7 @@
+Prototype replay: python3 scripts/tests/test_render_source_face_pruning.py
+PASS both backends, 1 suite
+glsl queries=40380 finite_hits=19686 broad_rejects=9650 division_pairs=24764 nonfinite=2
+metal queries=40380 finite_hits=19686 broad_rejects=9650 division_pairs=24764 nonfinite=2
+No-pruning and lost-sign mutations: return 6 (work-count failure).
+Tight-bounds mutation: return 1 (bit mismatch at tiny negative coordinate).
+Source restored after replay; staged runtime remained parent throughout replay.
