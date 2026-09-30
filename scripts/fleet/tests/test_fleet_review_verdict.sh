@@ -358,6 +358,64 @@ grep -q "not a verdict transition" "$TMPROOT/out" && \
     { PASS=$((PASS+1)); echo "  ok: T18 says 'not a verdict transition'"; } || \
     { FAIL=$((FAIL+1)); echo "  FAIL: T18 says 'not a verdict transition'"; }
 
+# === T19: GraphQL throttled → both guards still read over REST ============
+# lib_gh_stub.py serves both GraphQL subcommands and REST routes from one
+# state file. With GH_STUB_THROTTLE set, every `gh pr view` is refused the
+# way GitHub's GraphQL limiter refuses it; fleet-net.sh (sourced by the
+# wrapper) must answer the claim and head reads over REST.
+echo "T19: GraphQL rate-limited → claim + head guards read over REST"
+BIN2="$TMPROOT/bin-rest"
+mkdir -p "$BIN2"
+cp "$(dirname "$0")/lib_gh_stub.py" "$BIN2/gh"
+printf '@python3 "%%~dp0gh" %%*\r\n' >"$BIN2/gh.bat"
+chmod +x "$BIN2/gh"
+export GH_STUB_STATE="$TMPROOT/stub-state.json" GH_STUB_LOG="$TMPROOT/stub.log"
+export GH_STUB_MISSES="$TMPROOT/stub-misses" FLEET_STATE_DIR="$TMPROOT/fleet-state"
+: >"$GH_STUB_MISSES"
+seed_stub() {  # seed_stub <N> <reviewed-sha> <label...>
+    python3 - "$GH_STUB_STATE" "$@" <<'PY'
+import json, sys
+out, number, reviewed, *labels = sys.argv[1:]
+head = "a" * 40
+json.dump({
+    "repo": "acme/widgets", "issues": {},
+    "labels": {name: {"description": None, "color": "ededed"} for name in labels},
+    "pulls": {number: {"title": "t", "body": "b", "state": "open", "labels": labels,
+                       "comments": [], "created_at": "2026-01-01T00:00:00Z",
+                       "updated_at": "2026-01-01T00:00:00Z", "head": "h", "sha": head,
+                       "base": "master", "draft": False, "merged_at": None,
+                       "mergeable": True}},
+    "reviews": {number: [{"commit_id": head if reviewed == "head" else reviewed,
+                          "state": "COMMENTED"}]},
+}, open(out, "w"), indent=1, sort_keys=True)
+PY
+}
+throttle_arm() {  # throttle_arm <0|1> <N> <reviewed> <label...>: prints "rc|ft-calls"
+    local throttle="$1" num="$2" reviewed="$3" rc=0
+    shift 3
+    reset_logs
+    seed_stub "$num" "$reviewed" "$@"
+    : >"$GH_STUB_LOG"
+    if [[ "$throttle" == 1 ]]; then export GH_STUB_THROTTLE=1; fi
+    PATH="$BIN2:$PATH" "$WRAPPER" verdict-needs-fix "$num" --agent worker-2 \
+        >"$TMPROOT/out" 2>&1 || rc=$?
+    unset GH_STUB_THROTTLE
+    echo "$rc|$(ft_calls)"
+}
+plain=$(throttle_arm 0 400 head fleet:reviewing-mac-worker-2 fleet:wip)
+assert_eq "$plain" "0|1" "T19 unthrottled baseline delegates once"
+assert_eq "$(grep -c '^api repos/{owner}/{repo}/pulls/400 ' "$GH_STUB_LOG" || true)" "0" \
+    "T19 unthrottled run reads no REST pull"
+throttled=$(throttle_arm 1 400 head fleet:reviewing-mac-worker-2 fleet:wip)
+assert_eq "$throttled" "$plain" "T19 throttled: same exit, same delegation"
+assert_eq "$(grep -c '^api repos/{owner}/{repo}/pulls/400 --jq' "$GH_STUB_LOG" || true)" "2" \
+    "T19 throttled: the claim and head reads both went over REST"
+assert_eq "$(throttle_arm 1 401 head fleet:reviewing-mac-worker-9)" "4|0" \
+    "T19 throttled: the misroute guard still fires"
+assert_eq "$(throttle_arm 1 402 stale-sha fleet:reviewing-mac-worker-2)" "5|0" \
+    "T19 throttled: the review-body guard still fires"
+assert_eq "$(cat "$GH_STUB_MISSES")" "" "T19 every stub invocation was modeled"
+
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"
 (( FAIL == 0 ))

@@ -423,6 +423,35 @@ assert_eq "$RC" "0" "--include=<pathspec> runs the suite"
 assert_contains "$OUT" "MEANINGFUL: 1 of 2 assertions fail" "--include=<pathspec> stages the outside path identically"
 rm -f "$INC"
 
+echo "--- a lib_* helper the ref lacks is staged beside the suite ---"
+# The helper is untracked, so no ref can hold it: without the copy-over the
+# suite dies sourcing it and prints no tally. A helper the ref already carries
+# (lib_assert.sh) must stay at the ref's version, so it is never listed.
+HELPER="$SCRIPT_DIR/tests/lib_zz_tmp_helper_2713.sh"
+STRAYS+=("$HELPER")
+echo 'zz_helper_says() { echo "from the new helper"; }' > "$HELPER"
+USES="$SCRIPT_DIR/tests/test_zz_tmp_uses_helper_2713.sh"
+STRAYS+=("$USES")
+cat > "$USES" <<'FIXTURE'
+#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
+source "$(dirname "$0")/lib_assert.sh"
+source "$(dirname "$0")/lib_zz_tmp_helper_2713.sh"
+assert_eq "$(zz_helper_says)" "from the new helper" "the new helper is sourceable"
+assert_eq "x" "y" "a standing failure, so the verdict is MEANINGFUL"
+summarize
+FIXTURE
+chmod +x "$USES"
+run "$WRAPPER" "$USES" HEAD
+assert_eq "$RC" "0" "a suite sourcing a helper the ref lacks reaches a verdict"
+assert_contains "$OUT" "MEANINGFUL: 1 of 2 assertions fail" "the staged helper is the working tree's"
+assert_contains "$OUT" "plus the working tree's scripts/fleet/tests/lib_zz_tmp_helper_2713.sh (absent at HEAD" \
+    "the run names the helper it copied"
+assert_absent "$(grep 'plus the working tree' <<<"$OUT" || true)" "lib_assert.sh" \
+    "a helper the ref carries is not copied over"
+rm -f "$USES" "$HELPER"
+
 echo "--- a suite that aborts before summarize is a setup failure, not a result ---"
 NOTALLY="$SCRIPT_DIR/tests/test_zz_tmp_notally_2713.sh"
 STRAYS+=("$NOTALLY")
