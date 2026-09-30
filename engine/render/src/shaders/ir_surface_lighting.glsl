@@ -8,6 +8,19 @@ float surfaceSunFactor(float ambient, float intensity, float lambert, float visi
     return (ambient + (1.0 - ambient) * lambert * visibility) * intensity;
 }
 
+struct SurfaceSunTerms {
+    vec3 ambient;
+    vec3 direct;
+};
+
+// Unoccluded sun contributions; visibility applies only to direct at presentation.
+SurfaceSunTerms surfaceSunTerms(vec3 material, float ambient, float intensity, float lambert) {
+    SurfaceSunTerms terms;
+    terms.ambient = material * ambient * intensity;
+    terms.direct = material * (1.0 - ambient) * lambert * intensity;
+    return terms;
+}
+
 // Apply exposure and display mapping only after all linear light is composed.
 vec3 surfaceDisplayColor(vec3 linear, float exposure, bool hdr) {
     return hdr ? ACESFilm(linear * exposure) : clamp(linear, 0.0, 1.0);

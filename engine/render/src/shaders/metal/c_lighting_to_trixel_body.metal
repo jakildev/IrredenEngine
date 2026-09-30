@@ -12,6 +12,7 @@
 // c_light_overflow_faces both bind.
 #include "ir_world_lighting.metal"
 #include "ir_surface_light_volume.metal"
+#include "ir_surface_material.metal"
 
 // Mirrors shaders/c_lighting_to_trixel.glsl.
 
@@ -275,25 +276,16 @@ kernel void IR_LIGHTING_KERNEL_NAME(
     const float faceFactor =
         surfaceSunFactor(sunFrameData.sunAmbient, sunFrameData.sunIntensity, lambert, shadow);
 
-    float3 baseRgb;
-    float3 materialRgb;
-    if (frameData.lutEnabled == 0) {
-        materialRgb = src.rgb * ao;
-        baseRgb = materialRgb * faceFactor;
-    } else {
-        constexpr sampler s(filter::nearest, address::clamp_to_edge);
-        const float  luminance = dot(src.rgb, float3(0.299f, 0.587f, 0.114f));
-        const float4 lut       = paletteLUT.sample(s, float2(ao, luminance));
-        materialRgb = src.rgb * lut.rgb;
-        baseRgb = materialRgb * faceFactor;
-    }
+    const float3 materialRgb = surfaceMaterialColor(src.rgb, ao, frameData.lutEnabled != 0, paletteLUT);
+    float3 baseRgb = materialRgb * faceFactor;
 
     if (continuousShadow) {
+        const SurfaceSunTerms sunTerms = surfaceSunTerms(
+            materialRgb, sunFrameData.sunAmbient, sunFrameData.sunIntensity, lambert);
         sourceFaces.faces[sourceIndex].worldCenterAndAO = float4(worldReceivePos, ao);
-        sourceFaces.faces[sourceIndex].directSunAndExposure = float4(
-            materialRgb * (1.0 - sunFrameData.sunAmbient) * lambert * sunFrameData.sunIntensity, frameData.exposure);
+        sourceFaces.faces[sourceIndex].directSunAndExposure = float4(sunTerms.direct, frameData.exposure);
         sourceFaces.faces[sourceIndex].owner.z = frameData.hdrEnabled != 0 ? kSourceLightingHDR : kSourceLightingLinear;
-        baseRgb = materialRgb * sunFrameData.sunAmbient * sunFrameData.sunIntensity;
+        baseRgb = sunTerms.ambient;
     }
 
     // Light-volume bleed: the world / per-axis camera canvases sample the shared

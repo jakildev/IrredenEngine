@@ -24,11 +24,13 @@ int lutEnabled=0,shadowsEnabled=1,lightVolumeEnabled=0,hdrEnabled=0;
 float aoInput=.4f,visibilityInput=0,sunAmbient=.25f,sunIntensity=1.5f,normalZ=-1;
 float exposure=2,skyIntensity=.7f;
 vec3 sunDirection{0,0,-1},skyColor{.2f,.4f,.6f};
-int shadowCalls=0,lightCalls=0,aoCalls=0;
-vec4 unpackColor(uint c){if(c!=7)std::exit(20);return {.2f,.3f,.4f,1};}
+int shadowCalls=0,lightCalls=0,aoCalls=0,paletteCalls=0,albedoCalls=0;
+int paletteLUT=5;
+vec4 unpackColor(uint c){++albedoCalls;if(c!=7)std::exit(20);return {.2f,.3f,.4f,1};}
 float sampleAO(ivec2 p){++aoCalls;if(p.x!=1||p.y!=1)std::exit(21);return aoInput;}
-vec3 samplePalette(float ao,float l){
- if(!near(ao,aoInput)||!near(l,.2815f))std::exit(22);
+vec3 samplePalette(int palette,float ao,float l){
+ ++paletteCalls;
+ if(palette!=5||!near(ao,aoInput)||!near(l,.2815f))std::exit(22);
  return {.7f,.5f,.3f};
 }
 float pos3DtoDistance(vec3 p){return p.x+p.y+p.z;}
@@ -55,11 +57,12 @@ int main(){
   lutEnabled=lut;shadowsEnabled=shadow;lightVolumeEnabled=volume;hdrEnabled=hdr;
   normalZ=z;
   aoInput=ao;sunAmbient=ambient;visibilityInput=vis;receiverShapes[1].flags=flags;
-  shadowCalls=lightCalls=aoCalls=0;
+  shadowCalls=lightCalls=aoCalls=paletteCalls=albedoCalls=0;
   vec3 out=query({1,1},4,{10.25f,-20.5f,30.75f},{float(std::sqrt(1-z*z)),0,z},
                  -81.f,{0,0,0,.7f},{.9f,.8f,.7f});
   if(flags){
-   if(!same(vec4(out,1),{.9f,.8f,.7f,1})||aoCalls||shadowCalls||lightCalls)return 1;
+   if(!same(vec4(out,1),{.9f,.8f,.7f,1})||aoCalls||shadowCalls||lightCalls||
+      paletteCalls||albedoCalls)return 1;
   }else{
    float a[]={.2f,.3f,.4f},palette[]={.7f,.5f,.3f},sky[]={.2f,.4f,.6f};
    float actual[]={out.x,out.y,out.z};
@@ -70,7 +73,8 @@ int main(){
     float skyTerm=hdr?sky[i]*.7f*ao*std::max(0.f,-z):0;
     if(!near(actual[i],expectedDisplay(sunlight+local+skyTerm,hdr)))return 2;
    }
-   if(shadowCalls!=shadow||lightCalls!=volume||aoCalls!=1)return 3;
+   if(shadowCalls!=shadow||lightCalls!=volume||aoCalls!=1||
+      paletteCalls!=lut||albedoCalls!=1)return 3;
   }
   ++checks;
  }
@@ -94,23 +98,30 @@ class ShapeSurfaceLightingTest(unittest.TestCase):
             body = re.sub(r",\s*sun, sunDepthBuf", "", body)
             body = body.replace("texelFetch(surfaceAO, ownerPixel, 0).r", "sampleAO(ownerPixel)")
             body = body.replace("surfaceAO.read(ownerPixel).r", "sampleAO(ownerPixel)")
-            body = body.replace("textureLod(paletteLUT, vec2(ao, luminance), 0.0).rgb",
-                                "samplePalette(ao, luminance)")
-            body = body.replace("paletteLUT.sample(paletteSampler, float2(ao, luminance), "
-                                "level(0.0)).rgb", "samplePalette(ao, luminance)")
             body = re.sub(r"surfaceLightVolume\(position,.*?\)", "localLight(position)",
                           body, flags=re.S)
             body = body.replace(".xyz", "").replace("skyColor.rgb", "skyColor")
             body = body.replace(".rgb", ".rgb()")
             tone = (base / f"ir_tonemap.{suffix}").read_text()
             surface = (base / f"ir_surface_lighting.{suffix}").read_text()
-            helpers = tone + surface.replace(f'#include "ir_tonemap.{suffix}"', "")
+            material = (base / f"ir_surface_material.{suffix}").read_text()
+            material = re.sub(r"constexpr sampler .*?;", "", material)
+            material = material.replace("sampler2D", "int").replace("texture2d<float>", "int")
+            material = material.replace("textureLod(paletteLUT, vec2(ao, luminance), 0.0).rgb",
+                                        "samplePalette(paletteLUT, ao, luminance)")
+            material = material.replace(
+                "paletteLUT.sample(paletteSampler, float2(ao, luminance), level(0.0)).rgb",
+                "samplePalette(paletteLUT, ao, luminance)")
+            helpers = tone + surface.replace(f'#include "ir_tonemap.{suffix}"', "") + material
             helpers = helpers.replace("float3", "vec3").replace("float4", "vec4")
             variants = {
                 "production": body,
                 "lost_material_owner": body.replace("receiverShapes[shapeIndex].color",
                                                     "receiverShapes[0].color"),
                 "lost_procedural_fallback": body.replace("!= 0u", "== 999u"),
+                "lost_palette_toggle": body.replace("lutEnabled != 0", "true"),
+                "lost_material_ao": body.replace("surfaceMaterialColor(albedo, ao,",
+                                                  "surfaceMaterialColor(albedo, 1.0,"),
                 "lost_shadow_toggle": body.replace("shadowsEnabled == 0", "false"),
                 "ignored_lambert": body.replace("sunIntensity, lambert, visibility",
                                                 "sunIntensity, 1.0, visibility"),
@@ -127,7 +138,7 @@ class ShapeSurfaceLightingTest(unittest.TestCase):
                 with (self.subTest(backend=suffix, mutation=name),
                       tempfile.TemporaryDirectory() as tmp):
                     if name != "production":
-                        self.assertNotEqual(candidate, body)
+                        self.assertTrue(candidate != body, f"{name}: missing mutation target")
                     cpp, exe = Path(tmp) / "lighting.cpp", Path(tmp) / "lighting"
                     cpp.write_text(PREAMBLE + ADAPTERS + helpers +
                                    "vec3 query(ivec2 ownerPixel,int ownerWidth,vec3 position,"

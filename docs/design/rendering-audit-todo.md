@@ -46,6 +46,16 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
   margins outside the finite face need an explicit extension policy: the diagnostic
   marks them yellow and skips queries. Beauty integration, dense-index acceptance,
   cardinal transition validation and that margin policy remain pending.
+- Consolidated [surface material preparation and explicit sun terms](../pr-screenshots/codex/surface-lighting-material/README.md)
+  across regular/source, overflow and analytical-fragment lighting. AO/palette
+  preparation is shared; the existing continuous source path names its linear
+  ambient and direct-sun contributions. Ten native normal/sky controls remain
+  pixel-identical. No attached beauty integration or extra GPU storage is added.
+  Next compare retained lighting records with preserving albedo for presentation
+  lighting: a capacity-sized two-vector payload would reserve 32 MiB for the
+  sparse control's overflow lane alone, before its three regular axis regions.
+  Include fog eligibility, margin handling and per-vertex repeated work in that
+  decision rather than expanding buffers by default.
 - [Bounded overflow reference](../perf/bounded-source-face-reference.md) isolates
   the dense analytical-box teeth: identical geometry and tile tables regain
   clean floor edges when incomplete tiles query the complete small face pool.

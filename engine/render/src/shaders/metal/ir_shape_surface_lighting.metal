@@ -1,5 +1,6 @@
 #include "ir_world_lighting.metal"
 #include "ir_surface_light_volume.metal"
+#include "ir_surface_material.metal"
 
 inline float3 shapeSurfaceLighting(uint2 ownerPixel, int ownerWidth, float3 position, float3 normal,
                                    float cascadeDepth, float4 casterRotation, float3 fallbackColor,
@@ -20,12 +21,7 @@ inline float3 shapeSurfaceLighting(uint2 ownerPixel, int ownerWidth, float3 posi
         return fallbackColor;
     const float3 albedo = unpackColor(receiverShapes[shapeIndex].color).rgb;
     const float ao = surfaceAO.read(ownerPixel).r;
-    float3 material = albedo * ao;
-    if (lighting.lutEnabled != 0) {
-        constexpr sampler paletteSampler(filter::nearest, address::clamp_to_edge);
-        const float luminance = dot(albedo, float3(0.299, 0.587, 0.114));
-        material = albedo * paletteLUT.sample(paletteSampler, float2(ao, luminance), level(0.0)).rgb;
-    }
+    const float3 material = surfaceMaterialColor(albedo, ao, lighting.lutEnabled != 0, paletteLUT);
     const float visibility = sun.shadowsEnabled == 0 ? 1.0 :
         worldShapeSurfaceSunShadowFactor(position, normal, cascadeDepth, casterRotation,
                                     sun, sunDepthBuf);
