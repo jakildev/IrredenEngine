@@ -8,6 +8,10 @@ inline float surfaceSunFactor(float ambient, float intensity, float lambert, flo
     return (ambient + (1.0 - ambient) * lambert * visibility) * intensity;
 }
 
+inline float3 surfaceShadowDebugColor(float visibility) {
+    return visibility >= 0.999f ? float3(0.0f) : float3(1.0f, 0.0f, 1.0f);
+}
+
 struct SurfaceSunTerms {
     float3 ambient;
     float3 direct;

@@ -38,6 +38,16 @@ SWEEP_TRAVEL_TOLERANCE_DEG = 0.05
 # IRPerfGrid's frame count for a bare --auto-profile.
 DEFAULT_AUTO_PROFILE_FRAMES = 300
 ENGINE_LOG_MARKERS = ("[EngineLog]", "[ClientLog]")
+# Raw values distinguish presence-based controls from flags requiring exactly "1".
+RENDER_EXPERIMENT_ENV = (
+    "IR_PERAXIS_SURFACE_LIGHTING",
+    "IR_PERAXIS_VISIBILITY_PREPASS",
+    "IR_PERAXIS_VISIBILITY_STATS",
+    "IR_PERAXIS_OVERFLOW_DISABLE",
+    "IR_OVERFLOW_LIGHTING_DISABLE",
+    "IR_OVERFLOW_FOG_DISABLE",
+    "IR_OVERFLOW_COUNT_LOG",
+)
 
 
 def directory_digest(directory: Path) -> str:
@@ -576,6 +586,7 @@ def main() -> int:
         "shader_sha256": directory_digest(binary.parent / "shaders"),
         "runtime_scripts_sha256": directory_digest(binary.parent / "scripts"),
         "command": command,
+        "render_environment": {name: os.environ.get(name) for name in RENDER_EXPERIMENT_ENV},
         "runs": [],
     }
     report = build_dir / "creations/demos" / TARGETS[args.target] / "save_files/profile_report.txt"

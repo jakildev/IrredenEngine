@@ -5,6 +5,45 @@ changed paths and other bottlenecks, consolidating logic and improving robustnes
 against measured costs and the visual controls. Keep the agreed work in this order. A diagnostic experiment is not an implemented
 fix, and a small native scene does not establish fleet-scale rendering throughput.
 
+## Session handoff: stack through #3931
+
+The stack integrates master `d29d1ccef2b791d650c6818013c89ea0c3a5007c`.
+Review fixes add native OpenGL execution of the sun-index readback test, preserve
+analytical-shape cascade depth and PCF bias through shared lighting composition,
+and retain explicit zero-bias voxel queries and their mutation tests. The
+experimental attached lighting and visibility prepass remain default-off.
+The final debug-view correction shades overflow faces in shadow mode instead
+of leaving their albedo visible. Eight Metal CanvasStress references record the
+intentional receiver change; unchanged beauty controls and independent GRID
+center-ray expectations support that refresh.
+
+[Final captures and validation limits](../pr-screenshots/codex/stack-shadow-wrapup/README.md)
+record the integration checks. These checks do not establish universal sharp-edge
+correctness or million-entity throughput. Existing orbit banding and strict
+silhouette deviations remain unresolved; image equality between two modes does
+not make either image geometrically correct.
+
+After merging, resume with these bounded tasks:
+
+1. Diagnose the remaining orbit/face-edge artifacts with signed-face, depth and
+   independent ray expectations; distinguish legitimate occupancy steps from
+   wrong face ownership. Reconcile inherited fog/performance reference drift
+   against intended geometry before changing those baselines.
+2. Validate dense and incomplete sun-index tiles, moving camera/light transitions,
+   local spotlights and native OpenGL presentation. Preserve exact finite
+   footprint tests; the bounded full-pool reference is diagnostic, not a scalable
+   production fallback.
+3. Extend eligible continuous receiving to cardinal GRID and remaining SDF/fog
+   routes while preserving actual voxel or revoxelized occupancy. Resolve shared
+   resource lifetimes before removing the existing fog fallback.
+4. Measure candidate visits, footprint misses and first-blocker position after
+   visibility rejection, then profile proposed changes with counters disabled.
+   Use representative populations, rotation and effective subdivision with
+   separate CPU/GPU timings before selecting defaults or claiming scale.
+
+The detailed entries below retain the implementation evidence and narrower
+acceptance limits for each step.
+
 ## Current shadow investigation
 
 - Implemented [per-axis caster position agreement](../pr-screenshots/codex/peraxis-shadow-caster-position/README.md):
@@ -84,14 +123,28 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
   same-binary Metal controls reduce the zoom-1 GPU envelope from 9.852 to 8.572 ms
   and scatter scope from 5.217 to 3.960 ms. All 26 final image comparisons are
   identical. Zoom 4 reduces the GPU envelope from 4.922 to 4.783 ms, while steady
-  frame ranges overlap. Wider population and subdivision scaling are not
-  established; retained evidence includes the rejected first attempt.
+  frame ranges overlap. Wider population scaling is not established; retained
+  evidence includes the rejected first attempt.
   Storage follows internal framebuffer pixels (3.54 MiB in this fixture), not
   entity or face capacity. Both attached lighting and this extra pass remain
   default-off. Next measure candidate visits and dense/moving-camera workloads,
-  including subdivisions and native OpenGL, before deciding adoption or routing.
-  Validate cardinal transitions, dense/incomplete tiles, overflow and fog before
-  default adoption; exact shadow-query cost remains substantial after this pass.
+  including native OpenGL, before deciding adoption or routing.
+  Added [subdivision and cardinal-lifecycle controls](../pr-screenshots/codex/visibility-subdivision-controls/README.md):
+  nine yaw views at each base density 2, 4 and 8 remain RGB-identical with the
+  prepass off/on. Near-cardinal controls exercise both park/unpark and
+  release/reallocation. These controls cover global effective subdivision and
+  composite depth scaling; per-axis face storage remains at base resolution.
+  The profiler automatically records seven exact rendering-environment values,
+  preserving unset versus empty and zero-valued flags without collecting unrelated
+  environment data. Orbit-shape banding remains visible in both arms; image
+  parity does not accept those existing visual defects. Validate dense/incomplete
+  tiles, overflow and fog before default adoption; exact shadow-query cost remains
+  substantial after this pass. Next instrument actual post-prepass candidate
+  visits, footprint misses and first-blocker ordinal in diagnostic-only runs,
+  then time any change with counters disabled. Consider delaying depth-coordinate
+  loads until the unchanged footprint test accepts only if native evidence shows
+  avoidable work; compilers may already do this. Coordinate shared sampler edits
+  with the separate analytical-box self-shadow work.
 - [Bounded overflow reference](../perf/bounded-source-face-reference.md) isolates
   the dense analytical-box teeth: identical geometry and tile tables regain
   clean floor edges when incomplete tiles query the complete small face pool.

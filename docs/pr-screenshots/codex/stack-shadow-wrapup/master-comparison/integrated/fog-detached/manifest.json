@@ -1,0 +1,15 @@
+{
+  "head": "e10f9fbc020b42c4fee68c4a46220aba692613a0",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "120",
+    "IRFogDemo",
+    "--auto-screenshot",
+    "10",
+    "--detached-edge"
+  ],
+  "clean": true,
+  "count": 3,
+  "binary_sha256": "6784f6006a4f12af0bf0140a12e1af3a0cf7778364ac6a0368b8074e2215c252"
+}

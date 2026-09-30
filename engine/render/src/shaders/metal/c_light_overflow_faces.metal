@@ -41,8 +41,8 @@ kernel void c_light_overflow_faces(
     if (gid >= entryCount) {
         return;
     }
-    // Only the normals diagnostic recolors overflow faces; other overlays retain albedo.
-    if (frameData.lightingEnabled == 0 || (frameData.debugOverlayMode != 0 && frameData.debugOverlayMode != 8)) {
+    // Only the shadow and normals diagnostics recolor overflow faces.
+    if (frameData.lightingEnabled == 0 || (frameData.debugOverlayMode != 0 && frameData.debugOverlayMode != 3 && frameData.debugOverlayMode != 8)) {
         return;
     }
 
@@ -75,6 +75,10 @@ kernel void c_light_overflow_faces(
     const float shadow = sunFrameData.shadowsEnabled != 0
         ? perAxisSunShadowFactor(pos3D, faceId, sunFrameData, sunDepthBuf)
         : 1.0f;
+    if (frameData.debugOverlayMode == 3) {
+        overflowScratch[entryBase + 1u] = packColor(float4(surfaceShadowDebugColor(shadow), albedo.a));
+        return;
+    }
     const float lambert = max(0.0f, dot(worldNormal, sunFrameData.sunDirection.xyz));
     const float faceFactor =
         surfaceSunFactor(sunFrameData.sunAmbient, sunFrameData.sunIntensity, lambert, shadow);

@@ -8,6 +8,10 @@ float surfaceSunFactor(float ambient, float intensity, float lambert, float visi
     return (ambient + (1.0 - ambient) * lambert * visibility) * intensity;
 }
 
+vec3 surfaceShadowDebugColor(float visibility) {
+    return visibility >= 0.999 ? vec3(0.0) : vec3(1.0, 0.0, 1.0);
+}
+
 struct SurfaceSunTerms {
     vec3 ambient;
     vec3 direct;

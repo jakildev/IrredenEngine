@@ -1,0 +1,30 @@
+{
+  "head": "e10f9fbc020b42c4fee68c4a46220aba692613a0",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "120",
+    "IRCanvasStress",
+    "--auto-screenshot",
+    "6",
+    "--only",
+    "gridspin",
+    "--frozen-pose",
+    "0.5235987756",
+    "--no-auto-rotate",
+    "--no-ao",
+    "--pivot-origin",
+    "--zoom",
+    "4",
+    "--debug-overlay",
+    "shadow",
+    "--sun-face-index-probe",
+    "--sweep-yaw",
+    "0.39269908",
+    "0.39269908",
+    "1"
+  ],
+  "clean": true,
+  "count": 1,
+  "binary_sha256": "95adbc973009cf393a65ee224cc2644307300e2ae0e151bc040f8ea25cd5e8dc"
+}

@@ -311,7 +311,7 @@ void main() {
             const float level = ao * shadow;
             debugColor = vec3(level, level, 1.0);
         } else {
-            debugColor = shadow >= 0.999 ? vec3(0.0) : vec3(1.0, 0.0, 1.0);
+            debugColor = surfaceShadowDebugColor(shadow);
         }
         writeLitTrixel(sourceMode, sourceIndex, pixel, vec4(debugColor, src.a));
         return;

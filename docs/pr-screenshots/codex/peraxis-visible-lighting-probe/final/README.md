@@ -63,7 +63,9 @@ its timing is not used below.
 ## Fresh performance runs
 
 Three runs per configuration, 363 frames per run, fixed yaw 73.125°, fixed zoom,
-subdivision 1, with stats unset. Both configurations at both zooms use the same
+base subdivision 1, with stats unset. FULL mode therefore uses global effective
+subdivision 1 at zoom 1 and 4 at zoom 4; per-axis face storage remains at base
+resolution. Both configurations at both zooms use the same
 binary, staged shaders, and runtime scripts. Every run reports 363 valid GPU
 samples, zero invalid samples, fixed camera witnesses, and zero per-axis
 overflow drops. Peak overflow entries are 1,533 at zoom 1 and 111 at zoom 4.
