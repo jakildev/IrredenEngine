@@ -894,12 +894,14 @@ class SliceHostCase(HostSeamCase):
         super().tearDown()
 
     @staticmethod
-    def _pr(number, closes, labels=("fleet:needs-fix",)):
+    def _pr(number, closes, labels=("fleet:needs-fix",), refs=(), head=None):
         return {"number": number, "title": "T: fix",
-                "headRefName": f"claude/{number}", "baseRefName": "master",
+                "headRefName": head or f"claude/{number}",
+                "baseRefName": "master",
                 "labels": sorted(labels), "isDraft": False,
                 "mergeable": "MERGEABLE", "author": "bot",
-                "closes_issues": list(closes), "closes_cross_repo": []}
+                "closes_issues": list(closes), "closes_cross_repo": [],
+                "refs_issues": list(refs)}
 
     @staticmethod
     def _state(prs, in_progress=(), open_tasks=(), game_tasks=()):
@@ -967,6 +969,40 @@ class FeedbackPrInheritsIssueHostPin(SliceHostCase):
                                                needs_host="windows")])
         self.assertNotIn("needs_host", slice_worker(state)["feedback_prs"][0])
         self.assertEqual(self._on("linux", state)[0], "opus high 0 1 0")
+
+    def test_refs_only_pr_inherits_the_pin(self):
+        state = self._state([self._pr(3768, [], refs=[3757])],
+                            in_progress=[_task("#3757", "opus", needs_host="mac")])
+        self.assertEqual(slice_worker(state)["feedback_prs"][0]["needs_host"],
+                         "mac")
+        self.assertEqual(self._on("windows", state), ("defer", []))
+
+    def test_branch_only_pr_inherits_the_pin(self):
+        state = self._state([self._pr(3768, [], head="claude/3757-metal-recapture")],
+                            in_progress=[_task("#3757", "opus", needs_host="mac")])
+        self.assertEqual(slice_worker(state)["feedback_prs"][0]["needs_host"],
+                         "mac")
+        self.assertEqual(self._on("linux", state), ("defer", []))
+
+    def test_branch_prefix_does_not_bleed_into_a_longer_issue_number(self):
+        state = self._state([self._pr(3768, [], head="claude/37570-other")],
+                            in_progress=[_task("#3757", "opus", needs_host="mac")])
+        self.assertNotIn("needs_host", slice_worker(state)["feedback_prs"][0])
+
+    def test_refs_and_branch_disagreeing_pins_leave_the_pr_ungated(self):
+        state = self._state([self._pr(3768, [], refs=[3758],
+                                      head="claude/3757-x")],
+                            in_progress=[_task("#3757", "opus", needs_host="mac"),
+                                         _task("#3758", "opus",
+                                               needs_host="windows")])
+        self.assertNotIn("needs_host", slice_worker(state)["feedback_prs"][0])
+
+    def test_legacy_record_without_refs_issues_still_gates_on_closes(self):
+        pr = self._pr(3768, [3757])
+        del pr["refs_issues"]
+        state = self._state([pr],
+                            in_progress=[_task("#3757", "opus", needs_host="mac")])
+        self.assertEqual(self._on("windows", state), ("defer", []))
 
     def test_other_repo_task_with_the_same_number_is_ignored(self):
         # `closes_issues` is same-repo: a pinned game issue with the same

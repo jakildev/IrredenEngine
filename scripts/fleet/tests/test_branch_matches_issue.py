@@ -27,6 +27,7 @@ from fleet_branch_match import (
     body_closed_issue_refs,
     body_closes_issue,
     body_closes_issue_in,
+    body_referenced_issue_numbers,
     body_would_close_refs,
     branch_matches_issue,
     declared_closing_refs,
@@ -731,6 +732,39 @@ class ClosingKeywordInsideCode(unittest.TestCase):
             with self.subTest(body=body[:40]):
                 nums = body_closed_issue_numbers(body)
                 self.assertEqual(body_closes_issue(body, 2091), 2091 in nums)
+
+
+class ReferencedIssueNumbers(unittest.TestCase):
+    """`Refs #N` is the non-closing link: own-repo only, code-stripped."""
+
+    def test_refs_forms_resolve_to_the_pr_repo(self):
+        for body in ("Refs #7", "refs #7", "Ref #7", "References #7",
+                     "Summary\n\nRefs jakildev/IrredenEngine#7"):
+            with self.subTest(body=body):
+                self.assertEqual(body_referenced_issue_numbers(body, "engine"), [7])
+
+    def test_sorted_deduped_and_multiple(self):
+        self.assertEqual(
+            body_referenced_issue_numbers("Refs #9\nRefs #3\nRefs #9", "engine"),
+            [3, 9])
+
+    def test_other_repo_and_unknown_slug_dropped(self):
+        self.assertEqual(
+            body_referenced_issue_numbers("Refs jakildev/irreden#7", "engine"), [])
+        self.assertEqual(
+            body_referenced_issue_numbers("Refs someone/other#7", "engine"), [])
+        self.assertEqual(
+            body_referenced_issue_numbers("Refs jakildev/irreden#7", "game"), [7])
+
+    def test_closing_keywords_and_code_are_not_refs(self):
+        for body in ("Closes #7", "Prefs #7", "Not `Refs #7` here",
+                     "```\nRefs #7\n```", "", None):
+            with self.subTest(body=body):
+                self.assertEqual(body_referenced_issue_numbers(body, "engine"), [])
+
+    def test_word_bounded_number(self):
+        self.assertEqual(body_referenced_issue_numbers("Refs #75x", "engine"), [])
+        self.assertEqual(body_referenced_issue_numbers("Refs #75.", "engine"), [75])
 
 
 if __name__ == "__main__":

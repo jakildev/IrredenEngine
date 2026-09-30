@@ -511,6 +511,13 @@ class TestReuseGuardSchemaMarker(unittest.TestCase):
             self.assertEqual(pr["schema"], _mod.PR_RECORD_SCHEMA)
             self.assertIn("closes_issues", pr)
 
+    def test_refs_issues_derived_from_the_body_beside_closes_issues(self):
+        pr = _pr(_FIRST_PR)
+        pr["body"] = "Summary\n\nRefs #41\nCloses #42"
+        (record,) = _project([pr])
+        self.assertEqual(record["refs_issues"], [41])
+        self.assertEqual(record["closes_issues"], [42])
+
     def test_pre_trim_prev_is_refetched_and_comes_back_trimmed(self):
         """Acceptance 1: stale records + 304 ⇒ fall through, trimmed output."""
         prev = [self._stale_record(n)

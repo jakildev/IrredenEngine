@@ -56,6 +56,7 @@ from fleet_blocked_by import (
 )
 from fleet_branch_match import (
     PARKED_PR_LABELS,
+    body_referenced_issue_numbers,
     branch_matches_issue,
     split_closed_issue_refs,
 )
@@ -624,7 +625,11 @@ def derive_closes_refs(body, repo):
 # 4 -> 5: checks added. The merger signal withholds merge-ready while the
 # head has a failed or unconcluded check; a schema-4 record lacks the key and
 # would read as clean for every PR until the next ETag flip.
-PR_RECORD_SCHEMA = 5
+#
+# 5 -> 6: refs_issues added. The feedback host pin reads it; a schema-5
+# record lacks the key and would leave every `Refs`-linked feedback PR
+# unpinned until the next ETag flip.
+PR_RECORD_SCHEMA = 6
 
 # statusCheckRollup reduced to the one reading the merger signal needs.
 # mergeStateStatus cannot make this cut: GitHub reports UNSTABLE for a check
@@ -714,6 +719,9 @@ def _fetch_prs_graphql(repo):
         # records. Their presence is also fetch_prs's cache-desync
         # marker.
         pr["closes_issues"], pr["closes_cross_repo"] = derive_closes_refs(
+            pr.get("body", "") or "", repo
+        )
+        pr["refs_issues"] = body_referenced_issue_numbers(
             pr.get("body", "") or "", repo
         )
         # The reuse marker fetch_prs gates the 304 fast path on. Stamped last so
@@ -4029,15 +4037,18 @@ def _task_required_hosts(repo_state):
     return hosts
 
 
-def _feedback_pr_required_host(pr, task_hosts):
+def _feedback_pr_required_host(pr, task_hosts, repo_key):
     # A feedback PR inherits its backing issue's `**Host:**` pin: the residual
     # of a macOS-only task (a Metal re-capture) is no more actionable on a
-    # Windows pane than the task was. Same-repo `closes_issues` only — the
+    # Windows pane than the task was. The backing issue is any same-repo link:
+    # a closing keyword, a `Refs #N` line, or a `claude/<N>-…` branch — the
     # pin is read off this repo's task records. Stamped only when every pinned
     # linked issue agrees; unpinned links don't veto, and disagreeing pins
     # leave the PR ungated (today's behaviour) rather than guess a host.
-    pinned = {task_hosts[n] for n in pr.get("closes_issues") or []
-              if n in task_hosts}
+    linked = set(pr.get("closes_issues") or []) | set(pr.get("refs_issues") or [])
+    head = pr.get("headRefName") or ""
+    linked |= {n for n in task_hosts if branch_matches_issue(head, n, repo_key)}
+    pinned = {task_hosts[n] for n in linked if n in task_hosts}
     return pinned.pop() if len(pinned) == 1 else None
 
 
@@ -4089,7 +4100,8 @@ def slice_worker(state):
                 record = _slice_pr_with_repo(repo_key, pr)
                 # Slice-time only, so the stored PR record (PR_RECORD_SCHEMA)
                 # is unchanged; fleet_task_class._host_incompatible reads it.
-                required_host = _feedback_pr_required_host(pr, task_hosts)
+                required_host = _feedback_pr_required_host(
+                    pr, task_hosts, repo_key)
                 if required_host:
                     record["needs_host"] = required_host
                 out["feedback_prs"].append(record)
