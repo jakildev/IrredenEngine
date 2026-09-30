@@ -249,32 +249,33 @@ class OpenGLRenderDevice final : public RenderDevice {
     }
 
     bool readTimestampPairMs(GpuTimestampHandle handle, float &outMs) override {
+        return pollTimestampPairMs(handle, outMs) == TimestampReadStatus::READY;
+    }
+
+    TimestampReadStatus pollTimestampPairMs(GpuTimestampHandle handle, float &outMs) override {
         auto it = m_timestamps.find(handle);
         if (it == m_timestamps.end()) {
-            return false;
+            return TimestampReadStatus::INVALID;
         }
         const OpenGLTimestampPair &pair = it->second;
         if (!pair.hasStart_ || !pair.hasEnd_) {
-            return false;
+            return TimestampReadStatus::PENDING;
         }
 
         GLint startAvailable = GL_FALSE;
         GLint endAvailable = GL_FALSE;
         ENG_API->glGetQueryObjectiv(pair.startQuery_, GL_QUERY_RESULT_AVAILABLE, &startAvailable);
         ENG_API->glGetQueryObjectiv(pair.endQuery_, GL_QUERY_RESULT_AVAILABLE, &endAvailable);
-        if (startAvailable != GL_TRUE || endAvailable != GL_TRUE) {
-            return false;
-        }
 
         GLuint64 startNs = 0;
         GLuint64 endNs = 0;
-        ENG_API->glGetQueryObjectui64v(pair.startQuery_, GL_QUERY_RESULT, &startNs);
-        ENG_API->glGetQueryObjectui64v(pair.endQuery_, GL_QUERY_RESULT, &endNs);
-        if (endNs < startNs) {
-            return false;
+        if (startAvailable == GL_TRUE && endAvailable == GL_TRUE) {
+            ENG_API->glGetQueryObjectui64v(pair.startQuery_, GL_QUERY_RESULT, &startNs);
+            ENG_API->glGetQueryObjectui64v(pair.endQuery_, GL_QUERY_RESULT, &endNs);
         }
-        outMs = static_cast<float>(endNs - startNs) / 1'000'000.0f;
-        return true;
+        return classifyOpenGLTimestampPair(
+            startAvailable == GL_TRUE, endAvailable == GL_TRUE, startNs, endNs, outMs
+        );
     }
 
   private:
