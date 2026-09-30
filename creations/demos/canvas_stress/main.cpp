@@ -27,6 +27,7 @@
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/render/systems/system_auto_yaw_rotate.hpp>
 #include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
+#include <irreden/render/sun_shadow_probe.hpp>
 #include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
 #include <irreden/render/systems/system_camera_scroll_zoom.hpp>
 #include <irreden/render/systems/system_compute_light_volume.hpp>
@@ -1223,6 +1224,10 @@ void registerArgs() {
     args.flag("--probe-hidden-box", "Hide the detached shadowbox and its cast shadow");
     args.numbers("--probe-box-offset", "Shadowbox translation offset <x> <y> <z>", 3);
     args.flag("--probe-analytic-box", "Use an analytic box for shadowbox");
+    args.flag(
+        "--sun-face-index-probe",
+        "Dump sun face tile counters on auto-screenshot frames (stalls GPU)"
+    );
     args.integer("--analytic-box-span", "Analytic probe X/Y extent, 1..512 (0 keeps default)", 0);
     args.integer("--analytic-box-count", "Analytic probes for index pressure, 1..128", 1);
     args.numbers(
@@ -1777,6 +1782,18 @@ void initSystems() {
         cfg.settleFrames_ = settleFrames;
         cfg.shots_ = g_allShots.data();
         cfg.numShots_ = static_cast<int>(g_allShots.size());
+        if (IREngine::args().getFlag("--sun-face-index-probe")) {
+            cfg.onCaptureFrame_ = [](int shotIndex) {
+                const std::string path = "sun-face-index-" + std::to_string(shotIndex) + ".csv";
+                const bool written = IRPrefab::SunShadow::writeSourceFaceIndexProbe(path);
+                IR_LOG_INFO(
+                    "sun-face-index-probe: shot={} path={} written={}",
+                    shotIndex,
+                    path,
+                    written
+                );
+            };
+        }
         renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(cfg));
     }
     IRVideo::appendAutoRecordIfRequested(renderPipeline, g_autoRecordFrames);
