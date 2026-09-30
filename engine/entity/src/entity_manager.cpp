@@ -605,12 +605,8 @@ EntityId EntityManager::getRelatedEntityFromArchetype(Archetype type, Relation r
 }
 
 EntityId EntityManager::getParentEntityFromArchetype(const Archetype &type) {
-    for (auto relation : type) {
-        if (isChildOfRelation(relation)) {
-            return m_childOfRelations[relation];
-        }
-    }
-    return kNullEntity;
+    const RelationId relation = childOfRelationInType(type);
+    return relation == kNullRelation ? kNullEntity : m_childOfRelations.at(relation);
 }
 
 RelationId EntityManager::registerRelation(Relation relation, EntityId relatedEntity) {
@@ -636,11 +632,17 @@ RelationId EntityManager::registerRelation(Relation relation, EntityId relatedEn
 EntityId
 EntityManager::setRelation(Relation relation, EntityId subjectEntity, EntityId targetEntity) {
     if (relation == CHILD_OF) {
-
+        IR_ASSERT(
+            entityBits(subjectEntity) != entityBits(targetEntity) &&
+                !isAncestor(subjectEntity, targetEntity),
+            "setRelation CHILD_OF: parenting entity={} under entity={} would create a cycle",
+            entityBits(subjectEntity),
+            entityBits(targetEntity)
+        );
         if (!m_parentRelations.contains(entityBits(targetEntity))) {
             registerRelation(CHILD_OF, targetEntity);
         }
-        insertRelation(subjectEntity, m_parentRelations[entityBits(targetEntity)]);
+        setChildOfRelation(subjectEntity, m_parentRelations[entityBits(targetEntity)]);
         return subjectEntity;
     }
 
@@ -648,14 +650,108 @@ EntityManager::setRelation(Relation relation, EntityId subjectEntity, EntityId t
     return kNullEntity;
 }
 
-void EntityManager::insertRelation(EntityId entity, RelationId relation) {
+RelationId EntityManager::childOfRelationInType(const Archetype &type) {
+    for (auto id : type) {
+        if (isChildOfRelation(id)) {
+            return id;
+        }
+    }
+    return kNullRelation;
+}
+
+void EntityManager::setChildOfRelation(EntityId entity, RelationId relation) {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
     EntityRecord &record = getRecord(entity);
-    Archetype newArchetype = record.archetypeNode->type_;
-    newArchetype.insert(relation);
-    ArchetypeNode *toNode = m_archetypeGraph.findCreateArchetypeNode(newArchetype);
-    moveEntityByArchetype(record, record.archetypeNode->type_, record.archetypeNode, toNode);
+    ArchetypeNode *fromNode = record.archetypeNode;
+    const RelationId current = childOfRelationInType(fromNode->type_);
+    if (current == relation) {
+        return;
+    }
+    // Relations carry no column, so the shared type is everything except the
+    // outgoing relation.
+    Archetype kept = fromNode->type_;
+    if (current != kNullRelation) {
+        kept.erase(current);
+    }
+    Archetype target = kept;
+    if (relation != kNullRelation) {
+        target.insert(relation);
+    }
+    ArchetypeNode *toNode = m_archetypeGraph.findCreateArchetypeNode(target);
+    moveEntityByArchetype(record, kept, fromNode, toNode);
     IRE_LOG_DEBUG("Moved entity to new archetype with relation {}", relation);
+}
+
+EntityId EntityManager::getParent(EntityId entity) {
+    return getParentEntityFromArchetype(getRecord(entity).archetypeNode->type_);
+}
+
+void EntityManager::clearParent(EntityId entity) {
+    setChildOfRelation(entity, kNullRelation);
+}
+
+std::vector<EntityId> EntityManager::getChildren(EntityId parent) {
+    std::vector<EntityId> children;
+    auto it = m_parentRelations.find(entityBits(parent));
+    if (it == m_parentRelations.end()) {
+        return children;
+    }
+    for (auto *node : m_archetypeGraph.queryArchetypeNodesSimple(Archetype{it->second})) {
+        for (int row = 0; row < node->length_; ++row) {
+            children.push_back(entityBits(node->entities_[row]));
+        }
+    }
+    return children;
+}
+
+bool EntityManager::isAncestor(EntityId ancestor, EntityId entity) {
+    // A destroyed parent ends the walk: its orphans still name it, but it has
+    // no record to read further up.
+    const EntityRecord *record = findRecord(entity);
+    while (record != nullptr && record->archetypeNode != nullptr) {
+        const EntityId parent = getParentEntityFromArchetype(record->archetypeNode->type_);
+        if (parent == kNullEntity) {
+            return false;
+        }
+        if (entityBits(parent) == entityBits(ancestor)) {
+            return true;
+        }
+        record = findRecord(parent);
+    }
+    return false;
+}
+
+void EntityManager::appendTreePostOrder(EntityId root, std::vector<EntityId> &out) {
+    for (EntityId child : getChildren(root)) {
+        appendTreePostOrder(child, out);
+    }
+    out.push_back(root);
+}
+
+void EntityManager::destroyTree(EntityId root) {
+    IR_ASSERT(isMainThreadForDeferred(), "EntityManager::destroyTree must run on the main thread");
+    std::vector<EntityId> doomed;
+    appendTreePostOrder(root, doomed);
+    // A pre-destroy hook may already have destroyed a later entry.
+    for (EntityId entity : doomed) {
+        if (findRecord(entity) != nullptr) {
+            destroyEntity(entity);
+        }
+    }
+}
+
+void EntityManager::markTreeForDeletion(EntityId root) {
+    std::vector<EntityId> doomed;
+    appendTreePostOrder(root, doomed);
+    for (EntityId entity : doomed) {
+        markEntityForDeletion(entity);
+    }
+}
+
+void EntityManager::detachChildren(EntityId parent) {
+    for (EntityId child : getChildren(parent)) {
+        clearParent(child);
+    }
 }
 
 smart_ComponentData EntityManager::createComponentDataVector(ComponentId component) {

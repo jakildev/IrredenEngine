@@ -371,7 +371,27 @@ class EntityManager {
         return data->dataVector[record.row];
     }
 
+    /// `CHILD_OF` replaces the entity's current parent, if any, in one
+    /// archetype move. A parent that is the entity or one of its descendants
+    /// asserts; probe with `isAncestor` first when the pair is untrusted.
     EntityId setRelation(Relation relation, EntityId entity, EntityId relatedEntity);
+
+    // Parent/child hierarchy over `CHILD_OF`. Children are read through the
+    // inverse view (the archetype nodes carrying the parent's relation), so
+    // `getChildren` is O(archetype nodes), not O(children): keep it out of
+    // per-entity ticks. All mutators here are eager and main-thread-only.
+    EntityId getParent(EntityId entity);
+    void clearParent(EntityId entity);
+    std::vector<EntityId> getChildren(EntityId parent);
+    /// True when `ancestor` is on `entity`'s parent chain (not `entity` itself).
+    bool isAncestor(EntityId ancestor, EntityId entity);
+    /// Destroys every descendant, children before parents, then `root`.
+    void destroyTree(EntityId root);
+    /// Marks `root`'s current descendants, then `root`, for deletion. A child
+    /// parented after this call is not in the set.
+    void markTreeForDeletion(EntityId root);
+    /// Clears the relation on each direct child; grandchildren keep theirs.
+    void detachChildren(EntityId parent);
 
     template <typename... Components>
     void setComponents(EntityId entity, const Components &...components) {
@@ -673,7 +693,12 @@ class EntityManager {
     void destroyComponents(EntityId entity);
     void destroyComponent(ComponentId component, ArchetypeNode *node, unsigned int row);
     void updateRecord(EntityId entity, ArchetypeNode *node, unsigned int row);
-    void insertRelation(EntityId entity, RelationId relation);
+    // Replaces the entity's CHILD_OF relation with `relation`
+    // (`kNullRelation` clears it).
+    void setChildOfRelation(EntityId entity, RelationId relation);
+    RelationId childOfRelationInType(const Archetype &type);
+    // Appends every descendant of `root`, children before parents, then `root`.
+    void appendTreePostOrder(EntityId root, std::vector<EntityId> &out);
 
     template <typename Component, typename... Args>
     int emplaceComponent(IComponentData *dest, Args &&...args) {

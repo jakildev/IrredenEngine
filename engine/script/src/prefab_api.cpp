@@ -274,9 +274,9 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
         IREntity::getComponent<IRComponents::C_LocalTransform>(entity).unbounded_ = true;
     }
 
-    // Track the canvas entity so the setup-error cleanup paths below can
-    // tear it down — the canvas is parented to mainFramebuffer (not the
-    // spawned root), so destroying the root leaves it stranded otherwise.
+    // The error paths tear the canvas down by hand: it is CHILD_OF
+    // mainFramebuffer, not the spawned root, so the root's tree teardown
+    // does not reach it.
     IREntity::EntityId detachedCanvasEntity = IREntity::kNullEntity;
     if (IRPrefab::RotationMode::ownsEntityCanvas(rotationMode)) {
         if (IRRender::g_renderManager != nullptr) {
@@ -297,6 +297,12 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
             );
         }
     }
+    auto destroySpawned = [&]() {
+        if (detachedCanvasEntity != IREntity::kNullEntity) {
+            IREntity::destroyEntity(detachedCanvasEntity);
+        }
+        IREntity::destroyTree(entity);
+    };
 
     if (loadedRig) {
         IREntity::setComponent(entity, IRPrefab::Rig::toComponent(*loadedRig));
@@ -356,10 +362,8 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
     // headless-safe: with an active canvas it allocates from the
     // pool and seeds positions; without one it stages records in
     // `pendingVoxels_` for a later canvas-attach pass.
-    std::vector<IREntity::EntityId> spawnedChildren;
     if (loadedVoxels && (loadedVoxels->mode_ == IRAsset::VoxelSetMode::SHAPES ||
                          loadedVoxels->mode_ == IRAsset::VoxelSetMode::HYBRID)) {
-        spawnedChildren.reserve(loadedVoxels->shapeRecords_.size());
         for (const auto &record : loadedVoxels->shapeRecords_) {
             IRComponents::C_ShapeDescriptor descriptor{
                 static_cast<IRMath::SDF::ShapeType>(record.shapeTypeId_),
@@ -370,7 +374,6 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
             const IREntity::EntityId child =
                 IREntity::createEntity(IRComponents::C_LocalTransform{record.offset_}, descriptor);
             IREntity::setParent(child, entity);
-            spawnedChildren.push_back(child);
         }
     }
 
@@ -394,17 +397,11 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
         for (auto &kv : *componentsOpt) {
             sol::optional<std::string> nameOpt = kv.first.as<sol::optional<std::string>>();
             if (!nameOpt) {
-                for (auto child : spawnedChildren) {
-                    IREntity::destroyEntity(child);
-                }
-                IREntity::destroyEntity(entity);
+                destroySpawned();
                 return makeError(idStr, path, "components keys must be component-name strings");
             }
             if (kv.second.get_type() != sol::type::table) {
-                for (auto child : spawnedChildren) {
-                    IREntity::destroyEntity(child);
-                }
-                IREntity::destroyEntity(entity);
+                destroySpawned();
                 return makeError(
                     idStr,
                     path,
@@ -413,10 +410,7 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
             }
             const ComponentFactory *factory = findComponentFactory(*nameOpt);
             if (!factory) {
-                for (auto child : spawnedChildren) {
-                    IREntity::destroyEntity(child);
-                }
-                IREntity::destroyEntity(entity);
+                destroySpawned();
                 return makeError(
                     idStr,
                     path,
@@ -438,24 +432,15 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
     // silently no-op'ing.
     sol::object setupObj = prefab["setup"];
     if (setupObj.valid() && setupObj.get_type() != sol::type::lua_nil) {
-        auto cleanup = [&]() {
-            for (auto child : spawnedChildren) {
-                IREntity::destroyEntity(child);
-            }
-            if (detachedCanvasEntity != IREntity::kNullEntity) {
-                IREntity::destroyEntity(detachedCanvasEntity);
-            }
-            IREntity::destroyEntity(entity);
-        };
         if (setupObj.get_type() != sol::type::function) {
-            cleanup();
+            destroySpawned();
             return makeError(idStr, path, "setup must be a function");
         }
         sol::protected_function setupFn = setupObj.as<sol::protected_function>();
         sol::protected_function_result setupResult = setupFn(IRScript::LuaEntity{entity});
         if (!setupResult.valid()) {
             sol::error err = setupResult;
-            cleanup();
+            destroySpawned();
             return makeError(idStr, path, std::string{"setup callback failed: "} + err.what());
         }
     }

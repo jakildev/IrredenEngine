@@ -4,7 +4,9 @@
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
 
+#include <stdexcept>
 #include <type_traits>
+#include <vector>
 
 // These canvas components must require an explicit size at
 // construction. Default-construction must be a compile error so a missing
@@ -518,5 +520,95 @@ TEST_F(IREntityTest, ResetGameplayLiveCountIsIdempotentAcrossCycles) {
     // Preserved entities survived every cycle.
     EXPECT_EQ(IREntity::singleton<TestSingleton>().counter_, 1);
     EXPECT_TRUE(IREntity::entityExists(persistent));
+}
+
+// Re-parenting replaces the CHILD_OF relation in the child's archetype; it
+// never stacks a second one.
+TEST_F(IREntityTest, SetParentReplacesExistingParent) {
+    const auto first = IREntity::createEntity();
+    const auto second = IREntity::createEntity();
+    const auto child = IREntity::createEntity();
+    IREntity::setParent(child, first);
+    IREntity::setParent(child, second);
+
+    EXPECT_EQ(m_entity_manager.getParent(child), second);
+    EXPECT_TRUE(m_entity_manager.getChildren(first).empty());
+    EXPECT_EQ(m_entity_manager.getChildren(second), std::vector<IREntity::EntityId>{child});
+    int relations = 0;
+    for (auto id : m_entity_manager.getRecord(child).archetypeNode->type_) {
+        relations += m_entity_manager.isChildOfRelation(id) ? 1 : 0;
+    }
+    EXPECT_EQ(relations, 1);
+
+    m_entity_manager.clearParent(child);
+    EXPECT_EQ(m_entity_manager.getParent(child), IREntity::kNullEntity);
+    EXPECT_TRUE(m_entity_manager.getChildren(second).empty());
+}
+
+TEST_F(IREntityTest, IsAncestorWalksTheParentChain) {
+    const auto root = IREntity::createEntity();
+    const auto mid = IREntity::createEntity();
+    const auto leaf = IREntity::createEntity();
+    IREntity::setParent(mid, root);
+    IREntity::setParent(leaf, mid);
+
+    EXPECT_TRUE(m_entity_manager.isAncestor(root, leaf));
+    EXPECT_TRUE(m_entity_manager.isAncestor(mid, leaf));
+    EXPECT_FALSE(m_entity_manager.isAncestor(leaf, root));
+    EXPECT_FALSE(m_entity_manager.isAncestor(leaf, leaf));
+}
+
+TEST_F(IREntityTest, SetParentAssertsOnCycle) {
+    const auto root = IREntity::createEntity();
+    const auto leaf = IREntity::createEntity();
+    IREntity::setParent(leaf, root);
+
+    EXPECT_THROW(IREntity::setParent(root, leaf), std::runtime_error);
+    EXPECT_THROW(IREntity::setParent(root, root), std::runtime_error);
+    EXPECT_EQ(m_entity_manager.getParent(root), IREntity::kNullEntity);
+    EXPECT_EQ(m_entity_manager.getParent(leaf), root);
+}
+
+// The facade marks the tree; nothing dies until the drain.
+TEST_F(IREntityTest, FacadeDestroyTreeMarksUntilDrain) {
+    const auto root = IREntity::createEntity();
+    const auto child = IREntity::createEntity();
+    const auto grandchild = IREntity::createEntity();
+    const auto bystander = IREntity::createEntity();
+    IREntity::setParent(child, root);
+    IREntity::setParent(grandchild, child);
+
+    IREntity::destroyTree(root);
+    EXPECT_TRUE(IREntity::entityExists(root));
+    EXPECT_TRUE(IREntity::entityExists(grandchild));
+
+    m_entity_manager.destroyMarkedEntities();
+    EXPECT_FALSE(IREntity::entityExists(root));
+    EXPECT_FALSE(IREntity::entityExists(child));
+    EXPECT_FALSE(IREntity::entityExists(grandchild));
+    EXPECT_TRUE(IREntity::entityExists(bystander));
+}
+
+// Children die before their parents, so a pre-destroy hook can still read
+// the parent of the entity it sees.
+TEST_F(IREntityTest, DestroyTreeDestroysChildrenBeforeParents) {
+    const auto root = IREntity::createEntity();
+    const auto child = IREntity::createEntity();
+    const auto grandchild = IREntity::createEntity();
+    IREntity::setParent(child, root);
+    IREntity::setParent(grandchild, child);
+
+    std::vector<IREntity::EntityId> order;
+    std::vector<bool> parentAlive;
+    const auto hook = m_entity_manager.registerPreDestroyHook([&](IREntity::EntityId entity) {
+        order.push_back(entity & IREntity::IR_ENTITY_ID_BITS);
+        const auto parent = m_entity_manager.getParent(entity);
+        parentAlive.push_back(parent == IREntity::kNullEntity || IREntity::entityExists(parent));
+    });
+    m_entity_manager.destroyTree(root);
+    m_entity_manager.unregisterPreDestroyHook(hook);
+
+    EXPECT_EQ(order, (std::vector<IREntity::EntityId>{grandchild, child, root}));
+    EXPECT_EQ(parentAlive, (std::vector<bool>{true, true, true}));
 }
 } // namespace

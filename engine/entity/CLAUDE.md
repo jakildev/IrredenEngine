@@ -41,6 +41,19 @@ The debug assertions are not release-build synchronization.
 The general system-side rule lives in
 [the ECS rules](../../.claude/rules/cpp-ecs.md#deferred-entity-operations-during-tick).
 
+## Parent/child hierarchy
+
+`CHILD_OF` is the only implemented relation, and an entity has at most one
+parent: `setParent` replaces it in one archetype move and asserts on a cycle;
+`clearParent` removes it. Children are read through the inverse view, so
+`getChildren` is O(archetype nodes); keep it out of per-entity ticks.
+
+`destroyEntity` never cascades: a destroyed parent's children survive and
+still name it. `destroyTree` destroys the descendants children-first, then the
+root (`IREntity::destroyTree` marks; the manager method is eager).
+`detachChildren` frees the direct children instead. Every distinct parent owns
+archetype nodes for its children, so many small composites fragment the graph.
+
 ## Component registration
 
 Typed and runtime-defined components share one `ComponentId` space and the
