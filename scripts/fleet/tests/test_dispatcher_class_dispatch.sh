@@ -552,7 +552,7 @@ assert_eq "$(assign opus-reviewer)" "target=planreview:engine:605" "opus-reviewe
 grep -q '^review-claim 605 pool-3$' "$FLEET_CLAIM_LOG" \
     && { PASS=$((PASS+1)); echo "  ok: plan review claims the issue via review-claim"; } \
     || { FAIL=$((FAIL+1)); echo "  FAIL: planreview claim argv: $(cat "$FLEET_CLAIM_LOG")"; }
-assert_eq "$(assign merger)" "target=" "merger is not target-bound (legacy batch pass)"
+assert_eq "$(assign merger)" "target=" "merger with no trigger target does not launch"
 
 echo "T25b: a reviewer lane fans out one pane per candidate and goes quiet on an empty slice"
 write_slice sonnet-reviewer '{"candidate_prs":[{"number":3074,"repo":"engine","labels":[]},{"number":3080,"repo":"engine","labels":[]}]}'
@@ -699,6 +699,17 @@ rm -f "$FLEET_RESERVATIONS_DIR/pool-2.json"
 # needs, the dispatcher must not consume it while pool-2 sits in its cooldown
 # and nothing else is claimable, and the first tick after the cooldown must
 # launch pool-2 — reserved panes go first — without any scout re-arm.
+make_registered_wrap_fixture() {
+    local wt="$1"
+    mkdir -p "$wt"
+    git -C "$wt" init -q
+    git -C "$wt" config user.email test@example.invalid
+    git -C "$wt" config user.name Test
+    printf 'seed\n' > "$wt/seed"
+    git -C "$wt" add seed
+    git -C "$wt" commit -qm seed
+}
+
 echo "T31b: wall death mid-task -> trigger re-armed, held through the cooldown, pool-2 resumed"
 WRAP="$SCRIPT_DIR/fleet-dispatch-wrap"
 rm -f "$FLEET_STATE_DIR/dispatch"/*.json "$FLEET_STATE_DIR/triggers/worker" \
@@ -718,7 +729,7 @@ printf '{"type":"result","subtype":"success","is_error":true,"api_error_status":
 exit 1
 EOF
 chmod +x "$STUB_BIN/claude"
-WT2="$TMPROOT/pool-2"; mkdir -p "$WT2"
+WT2="$TMPROOT/pool-2"; make_registered_wrap_fixture "$WT2"
 ( cd "$WT2" && STUB_RESETS_AT=$(( $(date +%s) + 3600 )) PATH="$STUB_BIN:$SCRIPT_DIR:$PATH" \
     "$WRAP" pane-2 sonnet high worker "" live 2>"$TMPROOT/wrap-stderr.log" >/dev/null ) || true
 grep -q "usage limit on worker (pane-2, rc=1)" "$TMPROOT/wrap-stderr.log" \
@@ -859,7 +870,7 @@ printf '{"type":"result","subtype":"success","is_error":true,"api_error_status":
 exit 1
 EOF
 chmod +x "$STUB_BIN/claude"
-WT1="$TMPROOT/pool-1"; mkdir -p "$WT1"
+WT1="$TMPROOT/pool-1"; make_registered_wrap_fixture "$WT1"
 export STUB_WALL_WRAP="$WRAP" STUB_WALL_WT="$WT1" STUB_WALL_PATH="$STUB_BIN:$SCRIPT_DIR:$PATH" \
     STUB_WALL_LOG="$TMPROOT/wrap-stderr-31d.log"
 : > "$STUB_WALL_LOG"

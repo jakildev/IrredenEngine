@@ -31,15 +31,17 @@ class Transport(unittest.TestCase):
                 self.assertIn("has no dispatch target", text)
                 self.assertNotIn("fleet-runtime stamp", text)
                 self.assertNotIn("Do not discover", text)
-        with self.assertRaisesRegex(ValueError, "empty dispatch target"):
-            codex.prompt("merger", "live", "task:engine:1")
+        merger = codex.prompt("merger", "live", "merge:engine:1")
+        self.assertIn("assigned target is merge:engine:1", merger)
+        self.assertNotIn("fleet-runtime stamp", merger)
 
     def test_batch_role_run_accepts_no_target(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp).resolve()
             worktree = root / ".claude/worktrees/pool-1"
-            args = SimpleNamespace(prepare=False, check=False, doctor=False, role="merger",
-                                   model="gpt-5.6-terra", effort="medium", mode="live",
+            args = SimpleNamespace(prepare=False, check=False, doctor=False,
+                                   role="epic-steward", model="gpt-5.6-sol",
+                                   effort="medium", mode="live",
                                    resume="", interactive=False, print_launch=False)
 
             def launch(*_args, **_kwargs):
@@ -64,6 +66,28 @@ class Transport(unittest.TestCase):
                                clear=True):
                 with self.assertRaisesRegex(ValueError, "explicit dispatch target"):
                     codex.run(args)
+
+    def test_merger_run_requires_and_accepts_target(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp).resolve()
+            worktree = root / ".claude/worktrees/pool-1"
+            args = SimpleNamespace(prepare=False, check=False, doctor=False, role="merger",
+                                   model="gpt-5.6-terra", effort="medium", mode="live",
+                                   resume="", interactive=False, print_launch=True)
+            with patch.object(codex.Path, "cwd", return_value=worktree), \
+                    patch.object(codex, "writable_roots", return_value=[str(worktree)]), \
+                    patch.dict(codex.os.environ, {"FLEET_STATE_DIR": str(root / "state")},
+                               clear=True):
+                with self.assertRaisesRegex(ValueError, "explicit dispatch target"):
+                    codex.run(args)
+            with patch.object(codex.Path, "cwd", return_value=worktree), \
+                    patch.object(codex, "writable_roots", return_value=[str(worktree)]), \
+                    patch.object(codex, "prompt", return_value="merger prompt"), \
+                    patch.object(codex.sys, "stdout", io.StringIO()), \
+                    patch.dict(codex.os.environ,
+                               {"FLEET_STATE_DIR": str(root / "state"),
+                                "FLEET_DISPATCH_TARGET": "merge:engine:1"}, clear=True):
+                self.assertEqual(codex.run(args), 0)
 
     def test_batch_role_policy_allows_only_bare_lease_force_push(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -185,7 +209,7 @@ class Transport(unittest.TestCase):
         # A new role must state whether it launches demos.
         self.assertEqual(set(codex.ROLES),
                          {*codex.DISPLAY_ROLES, *codex.BATCH_ROLES,
-                          "sonnet-reviewer", "opus-reviewer"})
+                          "sonnet-reviewer", "opus-reviewer", "merger"})
 
     def test_display_probe_reads_online_displays_on_macos_only(self):
         self.assertIsNone(doctor.probe_display("linux"))

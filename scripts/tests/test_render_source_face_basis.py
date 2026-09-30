@@ -127,7 +127,7 @@ def source(suffix, directory, mutation=None):
             "int(cascade)*kCascadeTexelCount,")
     if suffix == "metal":
         call += "sunDepthBuf,"
-    call += "100,true,camera)"
+    call += "100,true,camera,{0,0,0})"
     code += extract_function(projection, "sunVoxelFaceMarker")
     code += """
 float basisSample(vec2 uv,float z,uint cascade,vec3 sun,vec3 u,vec3 v,vec4 camera){
