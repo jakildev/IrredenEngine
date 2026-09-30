@@ -1,0 +1,140 @@
+{
+  "before-mixed_vs_disabled-mixed": [
+    {
+      "shot": 0,
+      "changed_rgb_pixels": 0,
+      "maximum_channel_delta": 0,
+      "bounds": null
+    },
+    {
+      "shot": 1,
+      "changed_rgb_pixels": 0,
+      "maximum_channel_delta": 0,
+      "bounds": null
+    },
+    {
+      "shot": 2,
+      "changed_rgb_pixels": 0,
+      "maximum_channel_delta": 0,
+      "bounds": null
+    },
+    {
+      "shot": 3,
+      "changed_rgb_pixels": 0,
+      "maximum_channel_delta": 0,
+      "bounds": null
+    },
+    {
+      "shot": 4,
+      "changed_rgb_pixels": 0,
+      "maximum_channel_delta": 0,
+      "bounds": null
+    }
+  ],
+  "disabled-noshadow_vs_enabled-noshadow": [
+    {
+      "shot": 0,
+      "changed_rgb_pixels": 0,
+      "maximum_channel_delta": 0,
+      "bounds": null
+    },
+    {
+      "shot": 1,
+      "changed_rgb_pixels": 0,
+      "maximum_channel_delta": 0,
+      "bounds": null
+    },
+    {
+      "shot": 2,
+      "changed_rgb_pixels": 0,
+      "maximum_channel_delta": 0,
+      "bounds": null
+    },
+    {
+      "shot": 3,
+      "changed_rgb_pixels": 0,
+      "maximum_channel_delta": 0,
+      "bounds": null
+    },
+    {
+      "shot": 4,
+      "changed_rgb_pixels": 0,
+      "maximum_channel_delta": 0,
+      "bounds": null
+    }
+  ],
+  "before-mixed_vs_enabled-mixed": [
+    {
+      "shot": 0,
+      "changed_rgb_pixels": 0,
+      "maximum_channel_delta": 0,
+      "bounds": null
+    },
+    {
+      "shot": 1,
+      "changed_rgb_pixels": 1604,
+      "maximum_channel_delta": 110,
+      "bounds": [
+        238,
+        108,
+        2282,
+        1256
+      ]
+    },
+    {
+      "shot": 2,
+      "changed_rgb_pixels": 776,
+      "maximum_channel_delta": 101,
+      "bounds": [
+        156,
+        136,
+        2410,
+        1296
+      ]
+    },
+    {
+      "shot": 3,
+      "changed_rgb_pixels": 772,
+      "maximum_channel_delta": 101,
+      "bounds": [
+        162,
+        140,
+        2456,
+        1192
+      ]
+    },
+    {
+      "shot": 4,
+      "changed_rgb_pixels": 932,
+      "maximum_channel_delta": 110,
+      "bounds": [
+        186,
+        162,
+        2010,
+        1218
+      ]
+    }
+  ],
+  "parent_vs_enabled_sky": [
+    {
+      "shot": 0,
+      "changed_rgb_pixels": 0
+    },
+    {
+      "shot": 1,
+      "changed_rgb_pixels": 0
+    },
+    {
+      "shot": 2,
+      "changed_rgb_pixels": 0
+    },
+    {
+      "shot": 3,
+      "changed_rgb_pixels": 0
+    },
+    {
+      "shot": 4,
+      "changed_rgb_pixels": 0
+    }
+  ]
+}

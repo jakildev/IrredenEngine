@@ -1,6 +1,8 @@
 """Independent slab, ownership and nonvacuous shadow-gate controls."""
 
+import contextlib
 import importlib.util
+import io
 import math
 import sys
 import unittest
@@ -61,6 +63,59 @@ class SourceOcclusionTest(unittest.TestCase):
                                    [None, face], True, context)
         self.assertEqual(result["tested_shadow_pixels"], 0)
         self.assertFalse(result["pass"])
+
+    def test_sun_beauty_uses_declared_material_and_rejects_wrong_lighting(self):
+        material = ((200, 100, 50), .2, 1.0, (0, 0, -1))
+        face = self.partial_face()
+        owners, faces = [1] * 200, [None, face]
+        context = ({(0, 0, 0), (.5, 0, -2)}, (0, 0, -1))
+        good = bytes(c for y in range(10) for x in range(20)
+                     for c in ((200, 100, 50) if x < 10 else (40, 20, 10)))
+        result, _ = METRIC.compare(20, 10, 3, good, owners, faces, True, context, material)
+        self.assertTrue(result["pass"])
+        self.assertEqual(result["tested_shadow_pixels"], 180)
+        for lit, shadow in (((200, 100, 50), (0, 0, 0)),
+                            ((200, 100, 50), (200, 100, 50)),
+                            ((40, 20, 10), (200, 100, 50)),
+                            ((100, 50, 25), (40, 20, 10))):
+            with self.subTest(lit=lit, shadow=shadow):
+                wrong = bytes(c for y in range(10) for x in range(20)
+                              for c in (lit if x < 10 else shadow))
+                result, _ = METRIC.compare(20, 10, 3, wrong, owners, faces, True,
+                                           context, material)
+                self.assertFalse(result["pass"])
+        ambiguous = ((200, 100, 50), 1.0, 1.0, (0, 0, -1))
+        result, _ = METRIC.compare(20, 10, 3, bytes((200, 100, 50)) * 200,
+                                   owners, faces, True, context, ambiguous)
+        self.assertFalse(result["pass"])
+        self.assertEqual(result["invalid_overlay_pixels"], 180)
+
+    def test_sun_beauty_cli_rejects_invalid_and_incompatible_inputs(self):
+        base = ["unused.png", "--shape", "frame", "--yaw", "22.5"]
+        for options in (["--sun-beauty-rgb", "nan", "90", "235"],
+                        ["--sun-beauty-rgb", "256", "90", "235"],
+                        ["--sun-beauty-rgb", "-1", "90", "235"],
+                        ["--sun-beauty-rgb", "150", "90", "235", "--sun-ambient", "nan"],
+                        ["--sun-beauty-rgb", "150", "90", "235", "--sun-ambient", "1.1"],
+                        ["--sun-beauty-rgb", "150", "90", "235", "--sun-intensity", "inf"],
+                        ["--sun-beauty-rgb", "150", "90", "235", "--sun-intensity", "-1"],
+                        ["--sun-beauty-rgb", "150", "90", "235", "--shadow-overlay"],
+                        ["--continuous-shadow"]):
+            with self.subTest(options=options), contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as error:
+                    METRIC.main(base + options)
+                self.assertEqual(error.exception.code, 2)
+
+    def test_sun_beauty_signed_normals_and_saturation(self):
+        material = ((200, 100, 50), .2, 2.0, (.6, 0, -.8))
+        self.assertEqual(METRIC.sun_beauty_colors((1, 0, 0), material),
+                         ((255, 136, 68), (80, 40, 20)))
+        self.assertEqual(METRIC.sun_beauty_colors((.6, 0, -.8), material),
+                         ((255, 200, 100), (80, 40, 20)))
+        self.assertEqual(METRIC.sun_beauty_colors((-1, 0, 0), material),
+                         ((80, 40, 20), (80, 40, 20)))
+        self.assertEqual(METRIC.sun_beauty_colors((0, 0, -1), material),
+                         ((255, 168, 84), (80, 40, 20)))
 
     def test_slab_hit_miss_and_parallel_edge(self):
         self.assertEqual(METRIC.ray_box_interval((-2, 0, 0), (1, 0, 0), (0, 0, 0)), (1.5, 2.5))

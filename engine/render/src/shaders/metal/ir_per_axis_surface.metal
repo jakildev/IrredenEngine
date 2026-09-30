@@ -10,4 +10,10 @@ inline float3 perAxisFaceSurfacePoint(float3 faceOrigin, int faceId, float2 quad
     return faceOrigin + eu * quadParam.x + ev * quadParam.y - kVoxelRasterCellAnchor;
 }
 
+// The in-plane axes are orthonormal, so clamping gives the nearest finite-face
+// point for conservative raster margins without extending the shadow receiver.
+inline float3 perAxisFaceClosestPoint(float3 faceOrigin, int faceId, float2 quadParam) {
+    return perAxisFaceSurfacePoint(faceOrigin, faceId, clamp(quadParam, float2(0.0), float2(1.0)));
+}
+
 #endif

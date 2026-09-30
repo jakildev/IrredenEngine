@@ -6,6 +6,7 @@ struct VertexOut {
     float4 color [[flat]];
     float3 faceOrigin [[flat]];
     int faceId [[flat]];
+    int2 ownerPixel [[flat]];
     // Per-fragment PLANAR composite depth + margin classification —
     // mirror of v_/f_peraxis_scatter.glsl. depth is the face plane's exact
     // depth linearly interpolated (no-perspective, w==1) from per-corner

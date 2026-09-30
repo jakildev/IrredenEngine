@@ -13,6 +13,9 @@ A one-screenshot-pixel face boundary is excluded; continuous mode also excludes
 one pixel around independently predicted shadow boundaries. No shadow bias is allowed.
 An occlusion pass requires both lit and shadowed interiors, so blank/disabled
 shadow captures cannot pass. Neither mode validates GPU tile construction.
+--sun-beauty-rgb checks a declared sun-only Lambert material instead of an
+overlay. It requires AO, palette, HDR, sky and local lights disabled; the RGB
+albedo and sun parameters are inputs, never fitted to the captured image.
 """
 
 import argparse
@@ -103,7 +106,17 @@ def expected(width, height, shape, yaw, identity, scale, sun, axis_angle=None):
     return owners, faces, clipped
 
 
-def compare(width, height, bpp, pixels, owners, faces, shadows=False, ray_context=None):
+def sun_beauty_colors(normal, material):
+    albedo, ambient, intensity, direction = material
+    lambert = max(0.0, sum(a * b for a, b in zip(normal, direction)))
+    def color(visibility):
+        factor = intensity * (ambient + (1 - ambient) * lambert * visibility)
+        return tuple(round(min(255.0, max(0.0, channel * factor))) for channel in albedo)
+    return color(1), color(0)
+
+
+def compare(width, height, bpp, pixels, owners, faces, shadows=False, ray_context=None,
+            sun_beauty=None):
     errors = bytearray(width * height * 3)
     missing = extra = wrong_normal = false_shadow = missed_shadow = invalid = 0
     lit = shadowed = interiors = 0
@@ -152,8 +165,15 @@ def compare(width, height, bpp, pixels, owners, faces, shadows=False, ray_contex
                 continue
         lit += visibility
         shadowed += not visibility
-        magenta = all(abs(a - b) <= 1 for a, b in zip(rgb, (255, 0, 255)))
-        black = all(c <= 1 for c in rgb)
+        if sun_beauty is None:
+            magenta = all(abs(a - b) <= 1 for a, b in zip(rgb, (255, 0, 255)))
+            black = all(c <= 1 for c in rgb)
+        else:
+            lit_rgb, shadow_rgb = sun_beauty_colors(face["normal"], sun_beauty)
+            black = all(abs(a - b) <= 1 for a, b in zip(rgb, lit_rgb))
+            magenta = all(abs(a - b) <= 1 for a, b in zip(rgb, shadow_rgb))
+            if black and magenta:
+                black = magenta = False
         if not (magenta or black):
             invalid += 1
         if visibility and magenta:
@@ -192,7 +212,12 @@ def main(argv=None):
     pose.add_argument("--axis-angle", type=float, nargs=4)
     parser.add_argument("--iso-scale", type=float, nargs=2, default=(16, 8))
     parser.add_argument("--sun", type=float, nargs=3, default=SUN)
-    parser.add_argument("--shadow-overlay", action="store_true")
+    shading = parser.add_mutually_exclusive_group()
+    shading.add_argument("--shadow-overlay", action="store_true")
+    shading.add_argument("--sun-beauty-rgb", type=float, nargs=3,
+                         help="known 0..255 albedo; sun-only linear Lambert capture")
+    parser.add_argument("--sun-ambient", type=float, default=.30)
+    parser.add_argument("--sun-intensity", type=float, default=1.0)
     parser.add_argument("--continuous-shadow", action="store_true",
                         help="trace visibility at each screenshot pixel on its original face")
     parser.add_argument("--diagnostic-prefix", type=Path)
@@ -203,8 +228,17 @@ def main(argv=None):
     if args.axis_angle and (not all(math.isfinite(v) for v in args.axis_angle)
                             or not any(args.axis_angle[:3])):
         parser.error("axis-angle must be finite with a nonzero axis")
-    if args.continuous_shadow and not args.shadow_overlay:
-        parser.error("--continuous-shadow requires --shadow-overlay")
+    shadows = args.shadow_overlay or args.sun_beauty_rgb is not None
+    if args.continuous_shadow and not shadows:
+        parser.error("--continuous-shadow requires --shadow-overlay or --sun-beauty-rgb")
+    sun_beauty = None
+    if args.sun_beauty_rgb is not None:
+        if (not all(math.isfinite(v) and 0 <= v <= 255 for v in args.sun_beauty_rgb)
+                or not math.isfinite(args.sun_ambient) or not 0 <= args.sun_ambient <= 1
+                or not math.isfinite(args.sun_intensity) or args.sun_intensity < 0):
+            parser.error("sun beauty requires finite RGB 0..255, ambient 0..1 and intensity >= 0")
+        sun_beauty = (tuple(args.sun_beauty_rgb), args.sun_ambient, args.sun_intensity,
+                      local_sun_direction(args.sun, True))
     try:
         width, height, bpp, pixels = read_png(str(args.image))
         owners, faces, clipped = expected(width, height, args.shape, math.radians(args.yaw),
@@ -215,9 +249,10 @@ def main(argv=None):
             ray_context = (set(source_centers(args.shape)),
                            local_sun_direction(args.sun, args.identity, args.axis_angle))
         result, errors = compare(width, height, bpp, pixels, owners, faces,
-                                 args.shadow_overlay, ray_context)
+                                 shadows, ray_context, sun_beauty)
         result.update(image=str(args.image), clipped=clipped,
-                      scope="source_face_sun" if args.shadow_overlay else "source_face_ownership")
+                      scope="source_face_sun" if shadows else "source_face_ownership",
+                      color_input="sun_beauty" if sun_beauty is not None else "overlay")
         result["shadow_sampling"] = "continuous" if args.continuous_shadow else "face_center"
         result["pass"] &= not clipped
         if args.diagnostic_prefix:
