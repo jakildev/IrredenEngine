@@ -1026,6 +1026,9 @@ int main(int argc, char **argv) {
         script.lua()["fogSelftestEntity"] = []() {
             return static_cast<double>(g_luaFogProbeEntity);
         };
+        script.lua()["fogSelftestEntityHandle"] = []() {
+            return IRScript::LuaEntity{g_luaFogProbeEntity};
+        };
         script.lua()["fogCapSelftestDone"] = []() { g_luaFogCapSelftestDone = true; };
         script.lua()["fogSetupSelftestDone"] = []() { g_luaFogSetupSelftestDone = true; };
     });

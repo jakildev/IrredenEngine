@@ -18,6 +18,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <typeindex>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -199,13 +200,40 @@ class LuaScript {
         m_lua.new_enum<Enum>(name, values);
     }
 
+    // Registers `T` as a Lua usertype. A repeat for an already-registered `T`
+    // (under any name) is refused with a warning: the requested members are
+    // not applied, and the returned handle is the existing registration.
+    // Letting it through would strip `T`'s metatables at the next GC cycle
+    // — see engine/script/CLAUDE.md "Usertype ownership". A `T` registered
+    // through raw `lua().new_usertype` asserts here instead.
     template <typename T, typename... Constructors, typename... KeyValuePairs>
     sol::usertype<T> registerType(const std::string &name, KeyValuePairs... keyValuePairs) {
-        IR_LOG_INFO("Registering lua type {}", name);
         IR_ASSERT(sizeof...(Constructors) > 0, "At least one constructor must be specified");
 
+        if (hasUsertypeStorage<T>()) {
+            auto existing = m_usertypeLuaNames.find(std::type_index{typeid(T)});
+            IR_ASSERT(
+                existing != m_usertypeLuaNames.end(),
+                "registerType(\"{}\"): the C++ type is already registered through raw "
+                "new_usertype; register it through registerType only",
+                name
+            );
+            if (existing != m_usertypeLuaNames.end()) {
+                IRE_LOG_WARN(
+                    "registerType(\"{}\"): the C++ type is already registered as \"{}\"; keeping "
+                    "that registration (a second new_usertype strips its metatables at the next "
+                    "GC)",
+                    name,
+                    existing->second
+                );
+                return m_lua[existing->second];
+            }
+        }
+
+        IR_LOG_INFO("Registering lua type {}", name);
         auto usertype =
             m_lua.new_usertype<T>(name, sol::constructors<Constructors...>(), keyValuePairs...);
+        m_usertypeLuaNames.emplace(std::type_index{typeid(T)}, name);
 
         // Components that have a Lua binding (`*_lua.hpp` specializing
         // `kHasLuaBinding<T> = true`) get their Lua-visible name +
@@ -336,6 +364,10 @@ class LuaScript {
     // Tracked so a second registration raises rather than silently shadowing the prior table.
     std::unordered_set<std::string> m_luaEnumNames;
 
+    // C++ type → Lua name of every usertype `registerType` registered, so a
+    // refused repeat can hand back the existing registration.
+    std::unordered_map<std::type_index, std::string> m_usertypeLuaNames;
+
     // Declared last so it destructs first: lua_close() runs before any
     // closure-captured map (m_prefabSystemIds etc.) is gone. Mirrors the
     // invariant in world.hpp where m_lua leads so EntityManager outlives
@@ -376,6 +408,19 @@ class LuaScript {
     // Lua-visible name recorded for `componentId`, or `component id <N>`
     // when none was recorded. Diagnostics only.
     std::string componentDisplayName(IREntity::ComponentId componentId) const;
+
+    // True once `new_usertype<T>` has run on this state. Keys on sol2's
+    // usertype storage, which only registration creates; the registry
+    // metatable name is not a usable signal, because pushing a
+    // not-yet-registered `T` creates a bare one.
+    template <typename T> bool hasUsertypeStorage() {
+        lua_State *state = m_lua.lua_state();
+        const int top = lua_gettop(state);
+        // The miss path of maybe_get_usertype_storage leaves its probe on the stack.
+        const bool registered = sol::u_detail::maybe_get_usertype_storage<T>(state).has_value();
+        lua_settop(state, top);
+        return registered;
+    }
 
     // Builds the read/replace accessor pair for C++ component types with
     // Lua bindings and records it under the type's `ComponentId`.

@@ -295,6 +295,15 @@ LuaScript::LuaScript()
         LoggerSpd::instance()->getScriptLogger()->info("{}", message);
     });
 
+    // The handle type every engine binding that creates or looks up an entity
+    // returns. Registered here, once, so a creation that binds no ECS surface
+    // can still read `.entity`; see engine/script/CLAUDE.md "Usertype ownership".
+    registerType<IRScript::LuaEntity, IRScript::LuaEntity(IREntity::EntityId)>(
+        "LuaEntity",
+        "entity",
+        &IRScript::LuaEntity::entity
+    );
+
     // Engine-provided utility functions that are available to all Lua creations.
     m_lua["IRMath"] = m_lua.create_table();
     m_lua["IRMath"]["fract"] = [](float value) { return IRMath::fract(value); };
@@ -623,13 +632,6 @@ void LuaScript::bindLuaDrivenEcs() {
             detail::registerLuaEnum(m_lua, m_luaEnumNames, enumName, members)
         );
     };
-
-    m_lua.new_usertype<IRScript::LuaEntity>(
-        "LuaEntity",
-        sol::constructors<IRScript::LuaEntity(IREntity::EntityId)>(),
-        "entity",
-        &IRScript::LuaEntity::entity
-    );
 
     if (!m_lua["IREntity"].valid()) {
         m_lua["IREntity"] = m_lua.create_table();
