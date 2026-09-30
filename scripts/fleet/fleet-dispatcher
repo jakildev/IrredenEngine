@@ -2765,6 +2765,14 @@ role_has_reservation() {
     return 1
 }
 
+role_projection_was_suppressed() {
+    local role="$1"
+    local seen_file="$STATE_DIR/seen-hashes/$role"
+    local suppressed_file="$STATE_DIR/seen-hashes/$role.empty-suppressed"
+    [[ "$role" != "worker" && -s "$seen_file" && -s "$suppressed_file" ]] || return 1
+    [[ "$(<"$seen_file")" == "$(<"$suppressed_file")" ]]
+}
+
 # Returns 0 (should re-arm) iff the resolver would dispatch a CONCRETE class for
 # this worker lane — i.e. there is genuinely claimable work under the full
 # claimability gate (host capability, stackability, inflight_pr, owner, blocked).
@@ -2981,6 +2989,13 @@ dispatch_role() {
                 return
             fi
             over_cap=$cap
+        fi
+        if [[ -n "${CAP_DEFER_LOGGED[$role]+x}" ]] \
+            && role_projection_was_suppressed "$role"; then
+            rm -f "$trigger_file"
+            log "$role: cap freed after the projection drained; standing down"
+            unset "CAP_DEFER_LOGGED[$role]"
+            return
         fi
         unset "CAP_DEFER_LOGGED[$role]"
     fi

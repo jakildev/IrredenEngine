@@ -152,8 +152,7 @@ All derivable →
    dispatcher has no inherited `**Host:**` pin to route on.
 
 Any novel →
-1. `fleet-transition design-propose <PR-#>` — the PR leaves the
-   review/merger/reconcile surfaces until the proposal resolves.
+1. Add `fleet:steward-proposal` to the umbrella (once per package).
 2. Add the novel questions to the iteration's single aggregated proposal
    comment on the umbrella (derivable questions from the same PR are still
    answered inline in `## Steward direction`):
@@ -167,7 +166,8 @@ Any novel →
       Options: <the worker's options, plus the steward's, if any>
       Recommendation: <steward's pick + one-line why, or "none">
    ```
-3. Add `fleet:steward-proposal` to the umbrella (once per package).
+3. `fleet-transition design-propose <PR-#>` — the PR leaves the
+   review/merger/reconcile surfaces until the proposal resolves.
 
 The responder (the human, or **escalation-target**) answers inline on the
 umbrella and removes `fleet:steward-proposal`. That removal re-fires the

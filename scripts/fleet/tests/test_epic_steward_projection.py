@@ -281,6 +281,37 @@ class BackrefScan(unittest.TestCase):
 
 
 class DesignOp(unittest.TestCase):
+    def test_novel_proposal_write_order_never_emits_distribute(self):
+        pre = _state(
+            epics=[_epic(10, checklist=[_entry(13)])],
+            prs=[_pr(101, labels=["fleet:design-blocked"],
+                    head="claude/13-canvas")])
+        after_label = _state(
+            epics=[_epic(10, checklist=[_entry(13)],
+                         labels=["fleet:epic", "fleet:steward-proposal"])],
+            prs=[_pr(101, labels=["fleet:design-blocked"],
+                    head="claude/13-canvas")])
+        after_propose = _state(
+            epics=[_epic(10, checklist=[_entry(13)],
+                         labels=["fleet:epic", "fleet:steward-proposal"])],
+            prs=[_pr(101, labels=["fleet:design-proposed"],
+                    head="claude/13-canvas")])
+        old_order = _state(
+            epics=[_epic(10, checklist=[_entry(13)])],
+            prs=[_pr(101, labels=["fleet:design-proposed"],
+                    head="claude/13-canvas")])
+
+        new_ops = [project_epic_steward(state) for state in
+                   (pre, after_label, after_propose)]
+        old_ops = [project_epic_steward(state) for state in
+                   (pre, old_order, after_propose)]
+        self.assertEqual(
+            [[item["op"] for item in items] for items in new_ops],
+            [["triage"], ["triage"], []])
+        self.assertEqual(
+            [[item["op"] for item in items] for items in old_ops],
+            [["triage"], ["distribute"], []])
+
     def test_design_blocked_child_pr_emits_triage(self):
         items = project_epic_steward(_state(
             epics=[_epic(10, checklist=[_entry(13)])],
