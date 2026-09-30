@@ -27,20 +27,23 @@ int main(){
  const uint guard=32,canary=0xa5c31e79u;
  std::vector<uint> buffer(kSourceFaceBufferWords+2*guard,canary);
  sunDepthBuf={buffer.data()+guard,kSourceFaceBufferWords};
- for(int fixture=0;fixture<7;++fixture){
+ for(int fixture=0;fixture<10;++fixture){
   barrierCalls=0;
   std::fill(buffer.begin(),buffer.end(),canary);
   std::fill(sunDepthBuf.data,sunDepthBuf.data+kSourceFaceBufferWords,0);
   const bool giant=fixture==1||fixture==2;
   const bool offMap=fixture==3,degenerate=fixture==4;
-  const bool exhausted=fixture==5;
+  const bool exhausted=fixture==5||fixture==9;
+  const bool rectangle=fixture>=7;
   if(exhausted)sunDepthBuf[kSourceFaceHeaderOffset]=65536;
   const unsigned repeats=fixture==2?65:3;
   const bool farOnly=fixture==6;
-  const vec3 corner=farOnly?vec3{1200,32,2}:
+  const vec3 corner=rectangle?vec3{16,0,2}:farOnly?vec3{1200,32,2}:
    giant?vec3{-8,-8,2}:(offMap?vec3{-100,-100,2}:vec3{7,7,2});
-  const vec3 u=giant?vec3{4096,0,0}:vec3{3,0,1.5};
-  const vec3 v=degenerate?u:(giant?vec3{0,4096,0}:vec3{0,3,-.75});
+  const vec3 u=rectangle?vec3{fixture==7?23.0f:519.0f,0,1.5}:
+   giant?vec3{4096,0,0}:vec3{3,0,1.5};
+  const vec3 v=rectangle?vec3{0,1023,-.75}:
+   degenerate?u:(giant?vec3{0,4096,0}:vec3{0,3,-.75});
   std::vector<std::thread> workers;
   for(uint lane=0;lane<64;++lane)workers.emplace_back([&,lane]{
    gl_LocalInvocationID.x=lane;
@@ -54,8 +57,11 @@ int main(){
   if(sunDepthBuf[kSourceFaceHeaderOffset]!=records+(exhausted?65536:0))return 1;
   if(barrierCalls!=records*64*2)return 6;
   for(uint tile=0;tile<32768;++tile){
+   const uint x=tile%128,y=(tile%16384)/128;
+   const bool rectangleCovered=tile<16384?
+    (x>=2&&x<=(fixture==7?4:66)):(x>=1&&x<=(fixture==7?2:33)&&y<=42);
    const bool covered=records &&
-    (farOnly?tile==16587:
+    (rectangle?rectangleCovered:farOnly?tile==16587:
      (giant||tile==0||tile==1||tile==128||tile==129||tile==16384||tile==16385));
    const uint base=kSourceFaceTileOffset+tile*65;
    if(sunDepthBuf[base]!=(covered?(exhausted?65:records):0))return 2;
