@@ -100,7 +100,9 @@
 #include <irreden/voxel/systems/system_rebuild_grid_voxels.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 
+#include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -153,12 +155,16 @@ bool g_luaFogSetupSelftestDone = false;
 int g_luaFogProbePhase = 0;
 IREntity::EntityId g_luaFogProbeEntity = IREntity::kNullEntity;
 
-void requireLuaFogSelftest(bool condition, const char *message) {
+void requireFogProbe(const char *tag, bool condition, const char *message) {
     if (condition) {
         return;
     }
-    IR_LOG_ERROR("LUA-FOG-PROBE FAIL: {}", message);
+    IR_LOG_ERROR("{} FAIL: {}", tag, message);
     std::exit(1);
+}
+
+void requireLuaFogSelftest(bool condition, const char *message) {
+    requireFogProbe("LUA-FOG-PROBE", condition, message);
 }
 
 void probeLuaFogUpload() {
@@ -1149,6 +1155,137 @@ void probeOcclusionLineOfSight() {
     );
 }
 
+// --los-query-bench: on one warm frame of the --occlusion ground scene, time
+// the public point-query paths from the ground observer's eye to a grid of
+// targets spanning the ridge, over kLosBenchRounds interleaved rounds of four
+// arms: K `lineOfSight` calls; one `captureLineOfSight` plus K
+// `LineOfSightView::visible`; then fog_los_bench.lua's K `IRFog.lineOfSight`
+// calls and one capture plus one batched `IRFog.lineOfSightCaptured`. Logs one
+// FOG-LOS-BENCH row of per-query means per round, then PASS and exits 0; exits
+// 1 when any arm's verdict differs or the verdicts are not mixed.
+constexpr int kLosBenchFrame = 30;
+constexpr int kLosBenchRounds = 6;
+constexpr int kLosBenchTargetsPerAxis = 16;
+constexpr int kLosBenchTargetCount = kLosBenchTargetsPerAxis * kLosBenchTargetsPerAxis;
+constexpr float kLosBenchTargetSpan = 24.0f;
+constexpr float kLosBenchTargetZ = 4.0f;
+bool g_losQueryBench = false;
+int g_losBenchFrameCount = 0;
+std::array<vec3, kLosBenchTargetCount> g_losBenchTargets{};
+IRPrefab::Fog::LineOfSightView g_losBenchView;
+bool g_losBenchLuaReported = false;
+double g_losBenchLuaPerCallMicros = 0.0;
+double g_losBenchLuaCapturedMicros = 0.0;
+std::array<bool, kLosBenchTargetCount> g_losBenchLuaPerCall{};
+std::array<bool, kLosBenchTargetCount> g_losBenchLuaCaptured{};
+
+vec3 losBenchEye() {
+    return vec3(kOcclusionGroundObserver, kOcclusionGroundZ - kOcclusionEyeHeight);
+}
+
+double losBenchMicros() {
+    return std::chrono::duration<double, std::micro>(
+               std::chrono::steady_clock::now().time_since_epoch()
+    )
+        .count();
+}
+
+void copyLosBenchLuaVerdicts(sol::table verdicts, std::array<bool, kLosBenchTargetCount> &out) {
+    requireFogProbe(
+        "FOG-LOS-BENCH",
+        verdicts.size() == static_cast<std::size_t>(kLosBenchTargetCount),
+        "a Lua arm returned the wrong number of verdicts"
+    );
+    for (int i = 0; i < kLosBenchTargetCount; ++i) {
+        out[static_cast<std::size_t>(i)] = verdicts.get<bool>(i + 1);
+    }
+}
+
+void runLosQueryBench() {
+    if (++g_losBenchFrameCount != kLosBenchFrame) {
+        return;
+    }
+    for (int y = 0; y < kLosBenchTargetsPerAxis; ++y) {
+        for (int x = 0; x < kLosBenchTargetsPerAxis; ++x) {
+            const vec2 t = vec2(static_cast<float>(x), static_cast<float>(y)) /
+                           static_cast<float>(kLosBenchTargetsPerAxis - 1);
+            g_losBenchTargets[static_cast<std::size_t>(y * kLosBenchTargetsPerAxis + x)] =
+                vec3((t - vec2(0.5f)) * kLosBenchTargetSpan, kLosBenchTargetZ);
+        }
+    }
+    const vec3 eye = losBenchEye();
+    const int voxels =
+        IREntity::getComponent<C_VoxelPool>(IRRender::getActiveCanvasEntity()).getLiveVoxelCount();
+    constexpr double kTargets = static_cast<double>(kLosBenchTargetCount);
+    std::array<bool, kLosBenchTargetCount> perCall{};
+    std::array<bool, kLosBenchTargetCount> captured{};
+    double sums[4] = {};
+    int blocked = 0;
+    for (int round = 0; round < kLosBenchRounds; ++round) {
+        double start = losBenchMicros();
+        for (int i = 0; i < kLosBenchTargetCount; ++i) {
+            perCall[static_cast<std::size_t>(i)] =
+                IRPrefab::Fog::lineOfSight(eye, g_losBenchTargets[static_cast<std::size_t>(i)]);
+        }
+        const double cppPerCall = (losBenchMicros() - start) / kTargets;
+
+        start = losBenchMicros();
+        IRPrefab::Fog::captureLineOfSight(g_losBenchView);
+        for (int i = 0; i < kLosBenchTargetCount; ++i) {
+            captured[static_cast<std::size_t>(i)] =
+                g_losBenchView.visible(eye, g_losBenchTargets[static_cast<std::size_t>(i)]);
+        }
+        const double cppCaptured = (losBenchMicros() - start) / kTargets;
+
+        g_losBenchLuaReported = false;
+        IREngine::runScript("fog_los_bench.lua");
+        requireFogProbe("FOG-LOS-BENCH", g_losBenchLuaReported, "fog_los_bench.lua did not report");
+        requireFogProbe(
+            "FOG-LOS-BENCH",
+            perCall == captured && perCall == g_losBenchLuaPerCall &&
+                perCall == g_losBenchLuaCaptured,
+            "the four arms disagree on a target's verdict"
+        );
+        const double luaPerCall = g_losBenchLuaPerCallMicros / kTargets;
+        const double luaCaptured = g_losBenchLuaCapturedMicros / kTargets;
+        IR_LOG_INFO(
+            "FOG-LOS-BENCH round={} voxels={} targets={} cppPerCallUs={:.3f} "
+            "cppCapturedUs={:.3f} luaPerCallUs={:.3f} luaCapturedUs={:.3f}",
+            round,
+            voxels,
+            kLosBenchTargetCount,
+            cppPerCall,
+            cppCaptured,
+            luaPerCall,
+            luaCaptured
+        );
+        sums[0] += cppPerCall;
+        sums[1] += cppCaptured;
+        sums[2] += luaPerCall;
+        sums[3] += luaCaptured;
+        blocked = kLosBenchTargetCount -
+                  static_cast<int>(std::count(perCall.begin(), perCall.end(), true));
+    }
+    requireFogProbe(
+        "FOG-LOS-BENCH",
+        blocked > 0 && blocked < kLosBenchTargetCount,
+        "the targets must include both an occluded and a visible verdict"
+    );
+    IR_LOG_INFO(
+        "FOG-LOS-BENCH rounds={} voxels={} targets={} blocked={} meanCppPerCallUs={:.3f} "
+        "meanCppCapturedUs={:.3f} meanLuaPerCallUs={:.3f} meanLuaCapturedUs={:.3f} PASS",
+        kLosBenchRounds,
+        voxels,
+        kLosBenchTargetCount,
+        blocked,
+        sums[0] / kLosBenchRounds,
+        sums[1] / kLosBenchRounds,
+        sums[2] / kLosBenchRounds,
+        sums[3] / kLosBenchRounds
+    );
+    IRWindow::closeWindow();
+}
+
 OcclusionScene parseOcclusionScene(const std::string &name) {
     if (name == "ground")
         return OcclusionScene::GROUND;
@@ -1301,6 +1438,11 @@ int main(int argc, char **argv) {
         "Drive the engine-owned IRFog binding and verify its observer UBO upload"
     );
     IREngine::args().flag(
+        "--los-query-bench",
+        "Time the C++ and Lua line-of-sight point queries, per call and captured, over the "
+        "--occlusion ground scene; logs FOG-LOS-BENCH rows, then PASS, and exits"
+    );
+    IREngine::args().flag(
         "--world-pan",
         "Camera-anchored fog window over a persisted field: reveal a disc at the origin and "
         "one 2400 cells away, then jump between them (reveal, leave, return); paints "
@@ -1329,6 +1471,31 @@ int main(int argc, char **argv) {
         };
         script.lua()["fogCapSelftestDone"] = []() { g_luaFogCapSelftestDone = true; };
         script.lua()["fogSetupSelftestDone"] = []() { g_luaFogSetupSelftestDone = true; };
+        script.lua()["fogBenchMicros"] = []() { return losBenchMicros(); };
+        script.lua()["fogLosBenchEye"] = [](sol::this_state state) {
+            const vec3 eye = losBenchEye();
+            return sol::state_view(state).create_table_with(1, eye.x, 2, eye.y, 3, eye.z);
+        };
+        script.lua()["fogLosBenchTargets"] = [](sol::this_state state) {
+            sol::table targets = sol::state_view(state).create_table(3 * kLosBenchTargetCount, 0);
+            for (int i = 0; i < kLosBenchTargetCount; ++i) {
+                const vec3 target = g_losBenchTargets[static_cast<std::size_t>(i)];
+                targets[3 * i + 1] = target.x;
+                targets[3 * i + 2] = target.y;
+                targets[3 * i + 3] = target.z;
+            }
+            return targets;
+        };
+        script.lua()["fogLosBenchReport"] = [](double perCallMicros,
+                                               double capturedMicros,
+                                               sol::table perCall,
+                                               sol::table captured) {
+            g_losBenchLuaPerCallMicros = perCallMicros;
+            g_losBenchLuaCapturedMicros = capturedMicros;
+            copyLosBenchLuaVerdicts(perCall, g_losBenchLuaPerCall);
+            copyLosBenchLuaVerdicts(captured, g_losBenchLuaCaptured);
+            g_losBenchLuaReported = true;
+        };
     });
     IREngine::init(argc, argv);
     g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
@@ -1361,6 +1528,11 @@ int main(int argc, char **argv) {
         g_fogDebugColor = true;
     }
     g_occlusion = parseOcclusionScene(IREngine::args().getEnum("--occlusion"));
+    g_losQueryBench = IREngine::args().getFlag("--los-query-bench") && !g_luaFogSelftest &&
+                      !g_worldPan && !g_depthSlab && !g_manySources;
+    if (g_losQueryBench) {
+        g_occlusion = OcclusionScene::GROUND;
+    }
     g_occlusionLosSoftness = IREngine::args().getFloat("--los-softness");
     if (g_luaFogSelftest || g_worldPan || g_depthSlab || g_manySources) {
         g_occlusion = OcclusionScene::NONE;
@@ -1617,6 +1789,16 @@ void initSystems() {
                 "FogOcclusionLineOfSightProbe",
                 [](C_Name &) {},
                 []() { probeOcclusionLineOfSight(); }
+            )
+        );
+    }
+
+    if (g_losQueryBench) {
+        renderPipeline.push_front(
+            IRSystem::createSystem<C_Name>(
+                "FogLosQueryBench",
+                [](C_Name &) {},
+                []() { runLosQueryBench(); }
             )
         );
     }

@@ -20,6 +20,11 @@ assert(IRFog.lineOfSight(-10, 0, 3, 10, 0, 3))
 -- its column from an eye below its top; a ray beside it stays clear.
 assert(not IRFog.lineOfSight(-10, 0, 10, 10, 0, 3))
 assert(IRFog.lineOfSight(-10, 0, 10, 10, 6, 3))
+-- A captured view answers the same three queries without a rebuild each.
+IRFog.captureLineOfSight()
+assert(IRFog.lineOfSightCaptured(-10, 0, 3, {10, 0, 3})[1])
+assert(not IRFog.lineOfSightCaptured(-10, 0, 10, {10, 0, 3})[1])
+assert(IRFog.lineOfSightCaptured(-10, 0, 10, {10, 6, 3})[1])
 
 local before = IRFog.evalReveal(-10, 0, 3)
 local ok = pcall(IRFog.addVision, 0, 0, "bad radius")

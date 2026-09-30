@@ -16,6 +16,7 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/fog_line_of_sight.hpp>
+#include <irreden/system/ir_assert_main_thread.hpp>
 #include <irreden/voxel/components/component_voxel.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 
@@ -283,9 +284,11 @@ inline void setVisionCircleLineOfSight(
 /// field.
 ///
 /// Cost: rebuilds a 2 MiB column view from every live pool voxel and flagged
-/// shape on each call, then one lattice walk — an occasional gameplay query,
-/// not a per-unit per-frame one. Needs no registered vision circle, and agrees
-/// with the built field on the same occluders.
+/// shape on each call, then one lattice walk. A caller issuing many queries
+/// against the same occluders captures a `LineOfSightView` once
+/// (`captureLineOfSight`) and queries that instead. Needs no registered vision
+/// circle, and agrees with the built field and with a view captured on the
+/// same occluders.
 inline bool lineOfSight(IRMath::vec3 from, IRMath::vec3 to) {
     using IRComponents::FogLosColumnField;
     auto *fog = detail::activeFogComponent();
@@ -311,18 +314,31 @@ inline bool lineOfSight(IRMath::vec3 from, IRMath::vec3 to) {
         );
     }
     rasterizeLosColumns(**pool, canvas, activeLosRasterFrame(), fieldMin, fog->losQueryColumnTops_);
-    const FogLosColumnField field{fog->losQueryColumnTops_.data(), fieldMin};
-    const float ownTop =
-        field.topPlane(FogLosColumnField::halfCellOf(to.x), FogLosColumnField::halfCellOf(to.y));
-    float bandClearance = 0.0f;
-    const float minClearance = traceLosClearance(
-        field,
-        from,
-        IRMath::vec3(to.x, to.y, IRMath::min(to.z, ownTop)),
-        IRComponents::kFogLosHardGate,
-        bandClearance
-    );
-    return minClearance >= -IRComponents::kFogLosClearanceTolerance;
+    return losPointVisible(FogLosColumnField{fog->losQueryColumnTops_.data(), fieldMin}, from, to);
+}
+
+/// Capture the active canvas's current occluders into @p view at the frame's
+/// raster lattice and the field `lineOfSight` would anchor now, resolving the
+/// canvas, fog and pool once; `LineOfSightView::visible` then answers with
+/// `lineOfSight`'s verdicts for those occluders at one lattice walk per query.
+/// Without an active fog canvas or a voxel pool the view is reset to empty and
+/// answers true. The snapshot answers for the canvas active at capture even
+/// after the active canvas switches. Main thread only: the rasterize traverses
+/// the pool and the archetype graph.
+inline void captureLineOfSight(LineOfSightView &view) {
+    IR_ASSERT_MAIN_THREAD();
+    auto *fog = detail::activeFogComponent();
+    if (fog == nullptr) {
+        view.reset();
+        return;
+    }
+    const IREntity::EntityId canvas = IRRender::getActiveCanvasEntity();
+    auto pool = IREntity::getComponentOptional<IRComponents::C_VoxelPool>(canvas);
+    if (!pool.has_value()) {
+        view.reset();
+        return;
+    }
+    view.capture(**pool, canvas, activeLosRasterFrame(), fog->losFieldMinForLiveWindow());
 }
 
 /// Drop every live vision source, analytic and field-tier → grid-only fog.

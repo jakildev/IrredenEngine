@@ -396,6 +396,9 @@ publishes the corner with the field for the CPU reveal oracle.
 `IRPrefab::Fog::lineOfSight` follows the same convention independently: it
 rasterizes its one reusable query view at the window's origin, marches to the
 target, and returns unoccluded when the target is outside it.
+`IRPrefab::Fog::captureLineOfSight` rasterizes the same field into a
+caller-owned `LineOfSightView` snapshot and stores the corner with it, so a
+captured query never pairs its columns with a later window.
 
 Per-source column views are rejected because the exact march reads the
 occluders at the eye's own resolution and needs no per-source horizon build;
@@ -457,6 +460,7 @@ on the window.
 | `FOG_TO_TRIXEL` | Binds the same texture and observer block for paint. |
 | `FOG_LOS_BUILD` | Builds the column field at the frame's raster lattice, anchored on the window origin the frame's gather writes, then uploads the packed LOS texture. |
 | `IRPrefab::Fog::lineOfSight` | Fills the standalone query view at the window the last gather uploaded before marching to the target. |
+| `IRPrefab::Fog::captureLineOfSight` / `LineOfSightView` | Snapshots the same field, with its corner, into a caller-owned view that answers every later query until the next capture. |
 | `test/render/fog_line_of_sight_test.cpp` | Pins LOS field edges, indexing, rasterization and march behavior. |
 | `test/render/fog_cross_section_test.cpp` | Mirrors the fog-grid convention for the probe host and the LOS field constants for the LOS arm. |
 

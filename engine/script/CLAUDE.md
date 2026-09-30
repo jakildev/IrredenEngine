@@ -150,9 +150,9 @@ keys, and stays separate from `bindLuaDrivenEcs()`.
   plain XY disc in the field that `getCell` reads); `clearVisions` clears both.
   Defaults: `edge = kFogVisionEdgeDefault`, `observerZ = zCostUp = freeBand =
   0`, `zCostDown = -1` (mirror up-cost).
-- `evalReveal(x,y,z)` evaluates circles (LOS gates included), not grid memory or the
-  hysteretic body verdict; attached fog with no circles returns 0, absent fog 1.
-  `lineOfSight(from...,to...)` rebuilds the column view per call: not per-unit per-frame.
+- `evalReveal(x,y,z)` evaluates circles and LOS gates, not grid memory or the body
+  verdict (no circles 0, no fog 1). `lineOfSight(from...,to...)` rebuilds per call; for
+  many per frame, `captureLineOfSight()` once, then `lineOfSightCaptured(eye..., {x,y,z,...})`.
 - `setEntityGoverned(id, governed?)` defaults true and changes archetypes, so
   defer it during iteration. `getEntityReveal` returns stored body reveal, or 1
   for an ungoverned entity.

@@ -5,7 +5,8 @@
 // pyramid and the exact segment march every consumer shares. The model itself (occluder set,
 // eye, gate, sample mapping) is stated once, in
 // `component_canvas_fog_of_war.hpp`. `FOG_LOS_BUILD`, the reveal oracle and
-// `IRPrefab::Fog::lineOfSight` all reach the rule through `traceLosClearance`,
+// the point queries (`IRPrefab::Fog::lineOfSight`, `LineOfSightView`) all
+// reach the rule through `traceLosClearance`,
 // and the shader twins (`ir_fog_los.{glsl,metal}`) walk the same lattice with
 // the same arithmetic, so a pixel and an entity anchor agree on one column
 // set.
@@ -25,7 +26,10 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <span>
+#include <vector>
 
 namespace IRPrefab::Fog {
 
@@ -502,6 +506,92 @@ inline float losVisibility(
     );
     return losVisibilityFromClearance(minClearance, bandClearance, observers.losSoftness(source));
 }
+
+/// Whether @p to is visible from the eye @p from over the published @p field
+/// at the hard gate, with @p to lifted onto its column's top plane when it
+/// sits below it. True when @p to shares @p from's half-cell or lies outside
+/// the field.
+inline bool
+losPointVisible(const IRComponents::FogLosColumnField &field, IRMath::vec3 from, IRMath::vec3 to) {
+    using IRComponents::FogLosColumnField;
+    const int toX = FogLosColumnField::halfCellOf(to.x);
+    const int toY = FogLosColumnField::halfCellOf(to.y);
+    if (!FogLosColumnField::cellInField(IRMath::ivec2(toX, toY), field.fieldMin_)) {
+        return true;
+    }
+    float bandClearance = 0.0f;
+    const float minClearance = traceLosClearance(
+        field,
+        from,
+        IRMath::vec3(to.x, to.y, IRMath::min(to.z, field.topPlane(toX, toY))),
+        IRComponents::kFogLosHardGate,
+        bandClearance
+    );
+    return minClearance >= -IRComponents::kFogLosClearanceTolerance;
+}
+
+/// A caller-owned, immutable snapshot of the line-of-sight column field for
+/// many point queries against the same occluders: one rasterize per
+/// `capture`, then each `visible` is one lattice walk with no ECS lookup and
+/// no allocation. A snapshot reflects the occluders, the raster lattice and
+/// the field corner at capture time and never changes after; recapture after
+/// occluders move, the camera turns or the fog window pans. An empty view
+/// (never captured, or reset) answers true, the no-occluder fallback
+/// `lineOfSight` uses.
+///
+/// Copies share the snapshot and stay isolated: `capture` rasterizes in place
+/// only while no copy holds the snapshot, and allocates a fresh one otherwise.
+/// `visible` may run on any thread; `capture` and `reset` must not race a
+/// reader of the same view object, so capture before the fan-out or hand each
+/// reader a copy. Cost: 2 MiB per live snapshot.
+class LineOfSightView {
+  public:
+    bool visible(IRMath::vec3 from, IRMath::vec3 to) const {
+        if (m_snapshot == nullptr) {
+            return true;
+        }
+        return losPointVisible(
+            IRComponents::FogLosColumnField{m_snapshot->columnTops_.data(), m_snapshot->fieldMin_},
+            from,
+            to
+        );
+    }
+
+    /// Rasterizations into the current snapshot: 1 after a capture that
+    /// allocated, +1 per in-place recapture, 0 for an empty view.
+    std::uint64_t rasterizeCount() const {
+        return m_snapshot == nullptr ? 0u : m_snapshot->rasterizeCount_;
+    }
+
+    /// Rasterize @p pool and @p canvas's flagged shapes under @p frame into
+    /// the field whose lower corner is @p fieldMin (`rasterizeLosColumns`).
+    void capture(
+        const IRComponents::C_VoxelPool &pool,
+        IREntity::EntityId canvas,
+        const LosRasterFrame &frame,
+        IRMath::ivec2 fieldMin
+    ) {
+        if (m_snapshot == nullptr || m_snapshot.use_count() != 1) {
+            m_snapshot = std::make_shared<Snapshot>();
+            m_snapshot->columnTops_.resize(IRComponents::kFogLosFieldFloatCount);
+        }
+        rasterizeLosColumns(pool, canvas, frame, fieldMin, m_snapshot->columnTops_);
+        m_snapshot->fieldMin_ = fieldMin;
+        ++m_snapshot->rasterizeCount_;
+    }
+
+    void reset() {
+        m_snapshot.reset();
+    }
+
+  private:
+    struct Snapshot {
+        std::vector<float> columnTops_;
+        IRMath::ivec2 fieldMin_{0};
+        std::uint64_t rasterizeCount_ = 0;
+    };
+    std::shared_ptr<Snapshot> m_snapshot;
+};
 
 } // namespace IRPrefab::Fog
 

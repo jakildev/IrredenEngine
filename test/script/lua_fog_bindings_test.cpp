@@ -53,7 +53,7 @@ TEST_F(LuaFogBindingsTest, ExposesCompleteSurfaceAndCppStateValues) {
     EXPECT_TRUE(scriptSucceeds(R"lua(
         local names = {
             'setVision', 'addVision', 'setVisionLineOfSight', 'clearVisions', 'evalReveal',
-            'lineOfSight',
+            'lineOfSight', 'captureLineOfSight', 'lineOfSightCaptured',
             'setEntityGoverned', 'getEntityReveal', 'setCell', 'getCell',
             'revealRadius', 'clear'
         }
@@ -108,6 +108,10 @@ TEST_F(LuaFogBindingsTest, MissingCanvasDefaultsAndOptionalValuesAreAccepted) {
         IRFog.clear()
         assert(IRFog.evalReveal(0, 0, 0) == 1)
         assert(IRFog.lineOfSight(0, 0, 0, 10, 10, 10) == true)
+        IRFog.captureLineOfSight()
+        local verdicts = IRFog.lineOfSightCaptured(0, 0, 0, {1, 2, 3, 4, 5, 6})
+        assert(#verdicts == 2 and verdicts[1] == true and verdicts[2] == true)
+        assert(#IRFog.lineOfSightCaptured(0, 0, 0, {}) == 0)
     )lua"));
 }
 
@@ -140,6 +144,15 @@ TEST_F(LuaFogBindingsTest, RejectsWrongArityTypesAndNonFiniteNumbers) {
         "IRFog.lineOfSight(0, 0, 0, 0, 0)",
         "IRFog.lineOfSight(0, 0, 0, 0, 0, '0')",
         "IRFog.lineOfSight(0, 0, 0, 0, 0, 0, 0)",
+        "IRFog.captureLineOfSight(0)",
+        "IRFog.lineOfSightCaptured(0, 0, 0)",
+        "IRFog.lineOfSightCaptured(0, 0, 0, {}, 0)",
+        "IRFog.lineOfSightCaptured('0', 0, 0, {})",
+        "IRFog.lineOfSightCaptured(0, 0, 0/0, {})",
+        "IRFog.lineOfSightCaptured(0, 0, 0, 1)",
+        "IRFog.lineOfSightCaptured(0, 0, 0, {1, 2})",
+        "IRFog.lineOfSightCaptured(0, 0, 0, {1, 2, '3'})",
+        "IRFog.lineOfSightCaptured(0, 0, 0, {1, 2, math.huge})",
         "IRFog.setEntityGoverned()",
         "IRFog.setEntityGoverned('0')",
         "IRFog.setEntityGoverned(0, true, false)",
@@ -173,6 +186,14 @@ TEST_F(LuaFogBindingsTest, RejectsWrongArityTypesAndNonFiniteNumbers) {
     expectScriptFailsWith("IRFog.setCell(0, 0, 7)", "IRFog.setCell argument 3");
     expectScriptFailsWith("IRFog.revealRadius(0, 0, '1')", "IRFog.revealRadius argument 3");
     expectScriptFailsWith("IRFog.evalReveal(0, false, 0)", "IRFog.evalReveal argument 2");
+    expectScriptFailsWith(
+        "IRFog.lineOfSightCaptured(0, 0, 0, {1, 2})",
+        "IRFog.lineOfSightCaptured argument 4 length must be a multiple of 3"
+    );
+    expectScriptFailsWith(
+        "IRFog.lineOfSightCaptured(0, 0, 0, {1, 2, 3, 4, false, 6})",
+        "IRFog.lineOfSightCaptured argument 4 element 5 must be a number"
+    );
 }
 
 TEST_F(LuaFogBindingsTest, RejectsWrongOptionalTypesWithoutMutatingDefaults) {
