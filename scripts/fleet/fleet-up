@@ -283,6 +283,14 @@ _env_model_sonnet="${FLEET_MODEL_SONNET:-}"
 _env_model_merger="${FLEET_MODEL_MERGER:-}"
 _env_model_opus_reviewer="${FLEET_MODEL_OPUS_REVIEWER:-}"
 _env_model_fable_fallback="${FLEET_MODEL_FABLE_FALLBACK-__unset__}"
+# Same guard for the host-profile knobs. Sourcing the conf over a caller's
+# exported value keeps the export but swaps the value, and both the bootstrap
+# triggers and the dispatcher launch read that exported value.
+# FLEET_DISPATCH_ROLES uses `-` to match fleet-dispatcher's own capture: an
+# explicit empty value asks for the default set.
+_env_dispatch_roles="${FLEET_DISPATCH_ROLES-__unset__}"
+_env_pinned_only="${FLEET_WORKER_HOST_PINNED_ONLY:-}"
+_env_architects="${FLEET_ARCHITECTS:-}"
 if [[ -f "$FLEET_CONF" ]]; then
     # shellcheck disable=SC1090
     source "$FLEET_CONF"
@@ -294,7 +302,13 @@ fi
 # bootstrap triggers on it, and deliberately does not export it — see the
 # FLEET_UP_RESOLVED_KNOBS ratchet in fleet-dispatcher). Neither is a cap: a
 # zero cap means uncapped, which is why the profile is spelled this way.
-FLEET_ARCHITECTS="${FLEET_ARCHITECTS:-1}"
+if [[ "$_env_dispatch_roles" != "__unset__" ]]; then
+    FLEET_DISPATCH_ROLES="$_env_dispatch_roles"
+fi
+if [[ -n "$_env_pinned_only" ]]; then
+    FLEET_WORKER_HOST_PINNED_ONLY="$_env_pinned_only"
+fi
+FLEET_ARCHITECTS="${_env_architects:-${FLEET_ARCHITECTS:-1}}"
 if [[ "$FLEET_ARCHITECTS" != "0" ]]; then
     FLEET_ARCHITECTS=1
 fi
@@ -331,7 +345,8 @@ unset _env_worker _env_opus_worker _env_sonnet_author _env_sonnet_reviewer \
       _env_opus_reviewer _env_merger \
       _env_effort_opus_architect _env_effort_game_architect \
       _env_model_fable _env_model_opus _env_model_sonnet \
-      _env_model_merger _env_model_opus_reviewer _env_model_fable_fallback
+      _env_model_merger _env_model_opus_reviewer _env_model_fable_fallback \
+      _env_dispatch_roles _env_pinned_only _env_architects
 export FLEET_CONCURRENCY_WORKER
 export FLEET_CONCURRENCY_OPUS_WORKER FLEET_CONCURRENCY_SONNET_AUTHOR  # deprecated
 export FLEET_CONCURRENCY_SONNET_REVIEWER FLEET_CONCURRENCY_OPUS_REVIEWER

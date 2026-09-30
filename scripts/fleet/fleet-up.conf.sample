@@ -401,6 +401,10 @@
 # panes unlaunched (their worktrees still exist; the middle row becomes a
 # plain scratch shell). Run your own interactive claude sessions instead.
 #
+# All three follow the file's env > conf precedence: a one-off
+# `FLEET_DISPATCH_ROLES="smoke-worker" fleet-up` outranks the conf for both
+# fleet-up's bootstrap triggers and the dispatcher it launches.
+#
 # The Windows satellite profile, verbatim:
 # FLEET_DISPATCH_ROLES="smoke-worker worker"
 # FLEET_WORKER_HOST_PINNED_ONLY=1

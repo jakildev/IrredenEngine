@@ -11,6 +11,10 @@
 # fleet:needs-windows-smoke and takes `**Host:** windows` tasks, while the
 # merger, reviewer, and unpinned worker lanes stay on the primary fleet.
 #
+# fleet-up sources the same conf before gating its bootstrap triggers and
+# launching the dispatcher; T5 drives it to prove a caller's value outranks
+# the conf on both sides, and FLEET_ARCHITECTS with them.
+#
 # A cap of 0 means UNCAPPED in dispatch_role, so the served-role list is the
 # only way to switch a lane off — T3 is the load-bearing arm: a tick with a
 # standing merger trigger must leave it unread when merger is not served.
@@ -23,7 +27,9 @@ set -uo pipefail
 SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
 source "$(dirname "$0")/lib_preflight.sh"
 DISPATCHER="$SCRIPT_DIR/fleet-dispatcher"
+FLEET_UP="$SCRIPT_DIR/fleet-up"
 [[ -x "$DISPATCHER" ]] || { echo "SKIP: fleet-dispatcher not found at $DISPATCHER" >&2; exit 3; }
+[[ -x "$FLEET_UP" ]] || { echo "SKIP: fleet-up not found at $FLEET_UP" >&2; exit 3; }
 
 # shellcheck source=/dev/null
 source "$SCRIPT_DIR/tests/lib_assert.sh"
@@ -47,6 +53,7 @@ mkdir -p "$FLEET_STATE_DIR/projections" "$FLEET_STATE_DIR/dispatch" \
 # The knobs under test are read from the conf; make sure the pane's own
 # environment cannot pre-empt them.
 unset FLEET_DISPATCH_ROLES FLEET_WORKER_HOST_PINNED_ONLY FLEET_SMOKE_WORKER FLEET_EPIC_STEWARD
+unset FLEET_ARCHITECTS
 unset FLEET_RUNTIMES FLEET_CROSS_PROVIDER_REVIEW FLEET_WORKER_RUNTIME
 # A dispatched pane exports its host's caps (FLEET_CONCURRENCY_WORKER=5 and
 # friends), which outrank the conf; T4c asserts the default cap.
@@ -192,5 +199,67 @@ assert_contains "$(config_line)" "roles=worker smoke-worker pinned-only=1; caps 
 printf 'FLEET_DISPATCH_ROLES="worker smoke-worker"\nFLEET_WORKER_HOST_PINNED_ONLY=1\nFLEET_CONCURRENCY_WORKER=2\n' > "$FLEET_CONF"
 assert_contains "$(config_line)" "roles=worker smoke-worker pinned-only=1; caps worker=2" \
     "a configured worker cap is kept under the pinned-only mode"
+
+# ======================================================================
+# fleet-up launch path. fleet-up sources the same conf before it gates the
+# bootstrap triggers and launches the dispatcher, so a caller's export has to
+# survive that source for both to see it. Driven through the real script to
+# its session-exists exit: this tmux stub records the environment its
+# `has-session` child inherits — the export state the nohup'd dispatcher
+# inherits later in the same boot — and the dispatcher is then run on exactly
+# that environment.
+UP_BIN="$TMPROOT/up-bin"; mkdir -p "$UP_BIN" "$TMPROOT/home"
+UP_ENV_DUMP="$TMPROOT/fleet-up-child-env"
+cat > "$UP_BIN/tmux" <<'TMUXEOF'
+#!/usr/bin/env bash
+if [[ "$1" == "has-session" ]]; then
+    : > "$UP_ENV_DUMP"
+    for k in FLEET_DISPATCH_ROLES FLEET_WORKER_HOST_PINNED_ONLY; do
+        [[ -n "${!k+x}" ]] && printf '%s=%s\n' "$k" "${!k}" >> "$UP_ENV_DUMP"
+    done
+    exit 0
+fi
+exit 0
+TMUXEOF
+printf '#!/usr/bin/env bash\nexit 0\n' > "$UP_BIN/claude"
+chmod +x "$UP_BIN/tmux" "$UP_BIN/claude"
+run_fleet_up() {  # run_fleet_up [VAR=value...] — prints fleet-up's host-profile line
+    rm -f "$UP_ENV_DUMP"
+    env HOME="$TMPROOT/home" PATH="$UP_BIN:$PATH" UP_ENV_DUMP="$UP_ENV_DUMP" "$@" \
+        "$BASH" "$FLEET_UP" 2>&1 | grep '^fleet-up: host profile'
+}
+up_child_env() { [[ -f "$UP_ENV_DUMP" ]] && tr '\n' ' ' < "$UP_ENV_DUMP"; }
+# The dispatcher's config line under the environment fleet-up handed down.
+up_dispatcher_config() {
+    (
+        while IFS= read -r kv; do export "${kv?}"; done < "$UP_ENV_DUMP"
+        config_line
+    )
+}
+
+echo "T5: fleet-up keeps the caller's host-profile knobs across its conf source"
+printf 'FLEET_DISPATCH_ROLES="merger"\nFLEET_WORKER_HOST_PINNED_ONLY=0\nFLEET_ARCHITECTS=1\n' > "$FLEET_CONF"
+out=$(run_fleet_up FLEET_DISPATCH_ROLES="worker" FLEET_WORKER_HOST_PINNED_ONLY=1 FLEET_ARCHITECTS=0)
+assert_contains "$out" "dispatch roles: worker;" "bootstrap gating sees the caller's roles, not the conf's"
+assert_contains "$out" "architect panes: off;" "the caller's FLEET_ARCHITECTS=0 outranks the conf"
+assert_contains "$out" "worker host-pinned-only: 1" "the caller's pinned-only outranks the conf"
+assert_eq "$(up_child_env)" "FLEET_DISPATCH_ROLES=worker FLEET_WORKER_HOST_PINNED_ONLY=1 " \
+    "fleet-up's children inherit the caller's values, not the conf's"
+assert_contains "$(up_dispatcher_config)" "roles=worker pinned-only=1;" \
+    "the dispatcher launched on that environment serves the caller's set"
+
+echo "T5b: with no caller value the conf decides, and the dispatcher re-reads it"
+out=$(run_fleet_up)
+assert_contains "$out" "dispatch roles: merger;" "bootstrap gating sees the conf's roles"
+assert_contains "$out" "architect panes: on;" "conf FLEET_ARCHITECTS=1"
+assert_eq "$(up_child_env)" "" "a conf-sourced knob is not exported to fleet-up's children"
+assert_contains "$(up_dispatcher_config)" "roles=merger pinned-only=0;" \
+    "the dispatcher resolves the same set from the conf itself"
+
+echo "T5c: an explicit empty caller value asks for the default set on both sides"
+out=$(run_fleet_up FLEET_DISPATCH_ROLES=)
+assert_contains "$out" "dispatch roles: <default set>;" "bootstrap gating serves every role"
+assert_contains "$(up_dispatcher_config)" "roles=merger sonnet-reviewer opus-reviewer worker pinned-only=0;" \
+    "the dispatcher serves the default set too"
 
 summarize "fleet-dispatcher host-profile knobs (FLEET_DISPATCH_ROLES / FLEET_WORKER_HOST_PINNED_ONLY)"
