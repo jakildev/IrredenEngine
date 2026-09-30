@@ -976,6 +976,89 @@ class FeedbackPrInheritsIssueHostPin(SliceHostCase):
         self.assertEqual(self._on("windows", state)[0], "opus high 0 1 0")
 
 
+class HostPinnedOnlyMode(HostSeamCase):
+    """`FLEET_WORKER_HOST_PINNED_ONLY=1` — the satellite-host profile. The
+    worker lane elects ONLY items pinned to this host (`needs_host` equal to
+    the host key, or `fleet:needs-macos-host` on mac): unpinned tasks and
+    feedback PRs, semantic conflicts, and needs-plan issues all stay for the
+    primary fleet. With nothing pinned the resolver yields '' (the dispatcher's
+    lane-default gate stands the lane down), never a lane-default class that
+    would launch an unassigned worker to scan for anything."""
+
+    def setUp(self):
+        super().setUp()
+        self._saved_mode = os.environ.get(fleet_task_class.HOST_PINNED_ONLY_ENV)
+        os.environ[fleet_task_class.HOST_PINNED_ONLY_ENV] = "1"
+
+    def tearDown(self):
+        if self._saved_mode is None:
+            os.environ.pop(fleet_task_class.HOST_PINNED_ONLY_ENV, None)
+        else:
+            os.environ[fleet_task_class.HOST_PINNED_ONLY_ENV] = self._saved_mode
+        super().tearDown()
+
+    def _pick_on(self, host, slice_data, cls="opus"):
+        os.environ["FLEET_TEST_HOST"] = host
+        return pick(slice_data, cls, False)
+
+    def test_pinned_task_is_elected_and_picked_on_its_host(self):
+        slice_data = {"tasks_open": [_task("#10", "opus", needs_host="windows")]}
+        self.assertEqual(self._resolve_on("windows", slice_data), "opus high 0 1 0")
+        self.assertEqual(self._pick_on("windows", slice_data), ["task:engine:10"])
+
+    def test_unpinned_task_is_left_for_the_primary_fleet(self):
+        slice_data = {"tasks_open": [_task("#11", "opus")]}
+        self.assertEqual(self._resolve_on("windows", slice_data), "")
+        self.assertEqual(self._pick_on("windows", slice_data), [])
+
+    def test_mixed_slice_counts_only_the_pinned_items(self):
+        slice_data = {"tasks_open": [
+            _task("#12", "opus"),
+            _task("#13", "opus", needs_host="windows"),
+            _task("#14", "opus", needs_host="linux"),
+            _task("#15", "opus", needs_host="windows")]}
+        self.assertEqual(self._resolve_on("windows", slice_data), "opus high 0 2 0")
+        self.assertEqual(self._pick_on("windows", slice_data),
+                         ["task:engine:13", "task:engine:15"])
+        # The same slice on the primary (unpinned) host with the mode on picks
+        # nothing: it is not this host's pinned work either.
+        self.assertEqual(self._pick_on("linux", slice_data), ["task:engine:14"])
+
+    def test_conflicts_and_plans_are_never_satellite_work(self):
+        slice_data = {
+            "semantic_conflict_prs": [{"number": 20, "repo": "engine",
+                                       "labels": ["fleet:approved"]}],
+            "needs_plan": [{"number": 21, "repo": "engine", "labels": ["fleet:opus"]}],
+        }
+        self.assertEqual(self._resolve_on("windows", slice_data), "")
+        self.assertEqual(self._pick_on("windows", slice_data), [])
+        self.assertEqual(plan_pick(slice_data, "opus", False), [])
+
+    def test_feedback_pr_follows_its_inherited_pin(self):
+        pinned = {"number": 30, "repo": "engine", "labels": ["fleet:needs-fix"],
+                  "needs_host": "windows"}
+        unpinned = {"number": 31, "repo": "engine", "labels": ["fleet:needs-fix"]}
+        slice_data = {"feedback_prs": [unpinned, pinned]}
+        self.assertEqual(self._resolve_on("windows", slice_data), "opus high 0 1 0")
+        self.assertEqual(self._pick_on("windows", slice_data), ["feedback:engine:30"])
+
+    def test_macos_residual_label_pins_a_pr_to_mac(self):
+        pr = {"number": 32, "repo": "engine",
+              "labels": ["fleet:needs-fix", "fleet:needs-macos-host"]}
+        slice_data = {"feedback_prs": [pr]}
+        self.assertEqual(self._pick_on("mac", slice_data), ["feedback:engine:32"])
+        self.assertEqual(self._pick_on("windows", slice_data), [])
+
+    def test_unknown_host_is_fail_closed(self):
+        slice_data = {"tasks_open": [_task("#16", "opus", needs_host="windows")]}
+        self.assertEqual(self._pick_on("unknown", slice_data), [])
+
+    def test_mode_off_restores_the_default_election(self):
+        os.environ[fleet_task_class.HOST_PINNED_ONLY_ENV] = "0"
+        slice_data = {"tasks_open": [_task("#17", "opus")]}
+        self.assertEqual(self._resolve_on("windows", slice_data), "opus high 0 1 0")
+
+
 class MacosResidualLabelGate(SliceHostCase):
     """`fleet:needs-macos-host` pins a PR's residual to macOS by label, for the
     shapes the derived pin cannot reach: a `Refs #N`-only PR (no

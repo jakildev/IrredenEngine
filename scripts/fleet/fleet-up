@@ -283,9 +283,24 @@ _env_model_sonnet="${FLEET_MODEL_SONNET:-}"
 _env_model_merger="${FLEET_MODEL_MERGER:-}"
 _env_model_opus_reviewer="${FLEET_MODEL_OPUS_REVIEWER:-}"
 _env_model_fable_fallback="${FLEET_MODEL_FABLE_FALLBACK-__unset__}"
+# Same guard for the host-profile knobs. Sourcing the conf over a caller's
+# exported value keeps the export but swaps the value, and both the bootstrap
+# triggers and the dispatcher launch read that exported value.
+# FLEET_DISPATCH_ROLES uses `-` to match fleet-dispatcher's own capture: an
+# explicit empty value asks for the default set.
+_env_dispatch_roles="${FLEET_DISPATCH_ROLES-__unset__}"
+_env_pinned_only="${FLEET_WORKER_HOST_PINNED_ONLY:-}"
 if [[ -f "$FLEET_CONF" ]]; then
     # shellcheck disable=SC1090
     source "$FLEET_CONF"
+fi
+# Host-profile knobs restored over the conf source; the block after the
+# early arg loop resolves `--satellite` on top of them.
+if [[ "$_env_dispatch_roles" != "__unset__" ]]; then
+    FLEET_DISPATCH_ROLES="$_env_dispatch_roles"
+fi
+if [[ -n "$_env_pinned_only" ]]; then
+    FLEET_WORKER_HOST_PINNED_ONLY="$_env_pinned_only"
 fi
 FLEET_CONCURRENCY_OPUS_WORKER="${_env_opus_worker:-${FLEET_CONCURRENCY_OPUS_WORKER:-2}}"
 FLEET_CONCURRENCY_SONNET_AUTHOR="${_env_sonnet_author:-${FLEET_CONCURRENCY_SONNET_AUTHOR:-2}}"
@@ -319,7 +334,8 @@ unset _env_worker _env_opus_worker _env_sonnet_author _env_sonnet_reviewer \
       _env_opus_reviewer _env_merger \
       _env_effort_opus_architect _env_effort_game_architect \
       _env_model_fable _env_model_opus _env_model_sonnet \
-      _env_model_merger _env_model_opus_reviewer _env_model_fable_fallback
+      _env_model_merger _env_model_opus_reviewer _env_model_fable_fallback \
+      _env_dispatch_roles _env_pinned_only
 export FLEET_CONCURRENCY_WORKER
 export FLEET_CONCURRENCY_OPUS_WORKER FLEET_CONCURRENCY_SONNET_AUTHOR  # deprecated
 export FLEET_CONCURRENCY_SONNET_REVIEWER FLEET_CONCURRENCY_OPUS_REVIEWER
@@ -354,6 +370,10 @@ fi
 # parser further down recognizes the same flags as no-ops so the
 # unknown-arg guard doesn't reject them.
 RESET_USAGE=0
+# HOST_PROFILE: `full` (default) or `satellite` (--satellite). Resolved in
+# the same early loop for the same reason as MODE — the dispatcher launch
+# and the bootstrap heredoc read the knobs it sets.
+HOST_PROFILE="full"
 # MODE is resolved here (not only in the main arg loop below) because the
 # dispatcher launch in step 3f — which writes the dispatch-mode sentinel — runs
 # before that loop. The main loop re-recognizes the mode tokens as no-ops so the
@@ -362,9 +382,29 @@ MODE="dry-run"
 for arg in "$@"; do
     case "$arg" in
         --reset-usage) RESET_USAGE=1 ;;
+        --satellite) HOST_PROFILE="satellite" ;;
         dry-run|live|review-only) MODE="$arg" ;;
     esac
 done
+
+# --- host profile (begin) ---
+# `fleet-up --satellite` is the launch form of the satellite host profile
+# (docs/agents/FLEET-CROSS-HOST-SMOKE.md "Satellite host profile"): this
+# box serves only its own smoke labels and `**Host:**`-pinned tasks, and
+# the architect panes stay up as the interactive sessions that file
+# everything else out to the primary fleet. The flag sets the two
+# dispatcher knobs and outranks the conf; the conf knobs alone are the
+# permanent form. Passed to the dispatcher as launch environment (env wins
+# over conf there) and to the bootstrap heredoc, never exported — see the
+# FLEET_UP_RESOLVED_KNOBS ratchet in fleet-dispatcher. Neither knob is a
+# cap: a zero cap means uncapped, which is why the profile is spelled
+# this way.
+if [[ "$HOST_PROFILE" == "satellite" ]]; then
+    FLEET_DISPATCH_ROLES="smoke-worker worker"
+    FLEET_WORKER_HOST_PINNED_ONLY=1
+fi
+echo "fleet-up: host profile: $HOST_PROFILE — dispatch roles: ${FLEET_DISPATCH_ROLES:-<default set>}; worker host-pinned-only: ${FLEET_WORKER_HOST_PINNED_ONLY:-0}"
+# --- host profile (end) ---
 
 # --reset-usage: wipe ~/.fleet/state/usage/*.json.
 #
@@ -770,8 +810,8 @@ migrate_legacy_worker_worktrees "$ENGINE" \
 # transient role (worker, reviewers, merger, smoke, epic-steward) to any
 # idle pool pane; per-role parallelism is bounded by the
 # FLEET_CONCURRENCY_<ROLE> caps, not by pane topology. FLEET_SMOKE_WORKER /
-# FLEET_EPIC_STEWARD gate whether the dispatcher SERVES those roles, not
-# whether their panes exist.
+# FLEET_EPIC_STEWARD (or the FLEET_DISPATCH_ROLES allowlist) gate whether
+# the dispatcher SERVES a role, not whether its panes exist.
 for _p in 1 2 3 4 5 6 7 8 9; do
     ensure_worktree "$ENGINE" ".claude/worktrees/pool-$_p" "fleet/pool-$_p" "claude/pool-$_p-scratch"
 done
@@ -1593,7 +1633,7 @@ fi
 # claude invocation, while the cost of a missed resume is a permanently
 # stuck queue, merge backlog, or idle worker with real work pending.
 if command -v python3 >/dev/null 2>&1; then
-    python3 - <<'PY' || true
+    FLEET_DISPATCH_ROLES="${FLEET_DISPATCH_ROLES:-}" python3 - <<'PY' || true
 import json
 import os
 import pathlib
@@ -1671,6 +1711,10 @@ def smoke_worker_actionable(p):
 def epic_steward_actionable(p):
     return bool(p.get("triggers"))
 
+# Host profile: the dispatcher serves only FLEET_DISPATCH_ROLES when it is
+# set, so a bootstrap trigger for any other role would sit unread forever.
+served = os.environ.get("FLEET_DISPATCH_ROLES", "").replace(",", " ").split()
+
 for role, predicate in [
     ("merger", merger_actionable),
     ("worker", worker_actionable),
@@ -1679,6 +1723,8 @@ for role, predicate in [
     ("smoke-worker", smoke_worker_actionable),
     ("epic-steward", epic_steward_actionable),
 ]:
+    if served and role not in served:
+        continue
     proj = proj_dir / f"{role}.json"
     if not proj.is_file():
         continue
@@ -1760,6 +1806,9 @@ else
     # before the launch so the daemon never sees a missing sentinel, and rewritten
     # on every boot so it can't go stale.
     printf '%s\n' "$MODE" > "$HOME/.fleet/state/dispatch-mode"
+    # The host profile beside it, for the architect panes (architect-protocol
+    # startup) and fleet-health; rewritten on every boot for the same reason.
+    printf '%s\n' "$HOST_PROFILE" > "$HOME/.fleet/state/host-profile"
     dispatcher_log="$HOME/.fleet/logs/dispatcher.log"
     # Persistent daemon: bash parses its function bodies once at exec, so it
     # self-reloads at its tick boundary when its own source surface advances
@@ -1769,6 +1818,10 @@ else
     _dispatcher_env=()
     if (( _fleet_env_overrides_set )); then
         _dispatcher_env=(FLEET_ENV_OVERRIDES="$_fleet_env_overrides")
+    fi
+    if [[ "$HOST_PROFILE" == "satellite" ]]; then
+        _dispatcher_env+=(FLEET_DISPATCH_ROLES="$FLEET_DISPATCH_ROLES"
+                          FLEET_WORKER_HOST_PINNED_ONLY="$FLEET_WORKER_HOST_PINNED_ONLY")
     fi
     nohup env ${_dispatcher_env[@]+"${_dispatcher_env[@]}"} "$dispatcher_cmd" >>"$dispatcher_log" 2>&1 &
     disown
@@ -1828,11 +1881,14 @@ fi
 # typing in it: "you can stop dry-run mode and start working".
 #
 # Argument parsing:
-#   fleet-up [mode] [--no-attach]
+#   fleet-up [mode] [--no-attach] [--satellite]
 #     mode = dry-run | live | review-only (default: dry-run)
 #     --no-attach: skip the auto-attach (live mode only). Useful for
 #                  headless runs / CI / tests that just need the panes
 #                  spawned but don't want to attach.
+#     --satellite: serve only this host's smoke labels and **Host:**-pinned
+#                  tasks; architects stay up and file the rest out
+#                  (the "host profile" block near the top).
 #
 # See the heredoc below ("mode review-only ...") for the user-facing
 # description of each mode.
@@ -1846,6 +1902,7 @@ for arg in "$@"; do
         dry-run|live|review-only) ;;  # handled in early parse loop near the top
         --no-attach)  ATTACH_LIVE=0 ;;
         --reset-usage) ;;  # handled in early parse loop near the top
+        --satellite) ;;    # handled in early parse loop near the top
         *) echo "fleet-up: unknown argument '$arg'" >&2; exit 2 ;;
     esac
 done
@@ -2081,8 +2138,8 @@ label_pane_id "$OPS_BR" "terminal"
 # Pool overflow panes — pool-8 and pool-9 stack below pool-7 in the ops
 # window's right column. Same generic pool as the fleet-window panes;
 # whether the smoke-worker / epic-steward ROLES dispatch is gated by
-# FLEET_SMOKE_WORKER / FLEET_EPIC_STEWARD in the dispatcher, not by pane
-# existence.
+# FLEET_SMOKE_WORKER / FLEET_EPIC_STEWARD (or FLEET_DISPATCH_ROLES) in the
+# dispatcher, not by pane existence.
 OPS_P8=$(tmux split-window -v -t "$OPS_TR" -l 50% -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/pool-8" \
     "$TRANSIENT_PANE_CMD")

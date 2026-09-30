@@ -401,6 +401,40 @@ the tmux default **`Ctrl+b`** (detach = `Ctrl+b` then `d`). For the
 `Ctrl+a` remap + mouse the rest of this doc assumes, drop in the
 `~/.tmux.conf` from §5a.
 
+### Running Windows as a satellite host
+
+The usual shape for the ship-platform box: the Linux/macOS fleet does
+the merging, reviewing, and unpinned queue work; Windows runs only what
+needs Windows — `fleet:needs-windows-smoke` and tasks filed with
+`**Host:** windows` — and its architect panes are your interactive
+sessions for game development and MIDI work (which needs native hardware
+access anyway). That is one launch flag
+([`FLEET-CROSS-HOST-SMOKE.md`](agents/FLEET-CROSS-HOST-SMOKE.md)
+§ "Satellite host profile"), from an MSYS2 bash shell (tmux lives there):
+
+```bash
+fleet-up --satellite live   # smoke + **Host:** windows tasks only; architects up
+fleet-health                # `host profile: satellite`; `roles=smoke-worker worker pinned-only=1` on the config line
+fleet-down                  # when you want the box quiet
+```
+
+Optional, in `~/.fleet/fleet-up.conf`: `FLEET_CONCURRENCY_WORKER=1` and
+`FLEET_CONCURRENCY_SMOKE_WORKER=1` to keep the box small, the two profile
+knobs themselves to make every plain `fleet-up` a satellite launch, and —
+when another host already polls GitHub for the account — `follower` in
+`~/.config/irreden/host.toml` (§"Cross-device polling" in the conf
+sample).
+
+The architect panes know the profile (they read
+`~/.fleet/state/host-profile`): plan engine and game work in them as
+usual, and they file anything that does not need Windows out to the
+primary fleet, pinning `**Host:** windows` only when it does. Cue
+`/platform-catchup` from an architect pane when the smoke backlog has
+piled up while the fleet was down; the smoke-worker lane clears new
+labels one PR at a time while it is up. Smoke runs need a logged-in
+desktop session — a locked screen still has a display, a signed-out one
+does not (`Discovered 0 display monitors` is the ENV-FAIL symptom).
+
 ---
 
 ## 2. GitHub CLI install + auth

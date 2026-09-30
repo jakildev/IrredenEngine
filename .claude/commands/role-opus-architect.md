@@ -23,10 +23,10 @@ Mode (optional argument): $ARGUMENTS
 | **repo-slug** | `jakildev/IrredenEngine` |
 | **game-repo-slug** | `jakildev/irreden` |
 | **repo-root** | `~/src/IrredenEngine` |
-| **worktree-path** | `~/src/IrredenEngine/.claude/worktrees/opus-architect` (host can be WSL2 Ubuntu or macOS) |
+| **worktree-path** | `~/src/IrredenEngine/.claude/worktrees/opus-architect` (host can be WSL2 Ubuntu, macOS, or native Windows) |
 | **role-name** | `opus-architect` |
 | **role-banner** | `[opus-architect] Interactive design partner — core engine architecture, ECS design, render pipeline decisions. On-demand (no loop).` |
-| **build-presets** | WSL2 Ubuntu → `linux-debug`; macOS → `macos-debug` |
+| **build-presets** | WSL2 Ubuntu → `linux-debug`; macOS → `macos-debug`; native Windows → `windows-debug` |
 | **claim-branch-prefix** | `claude/` (head branches are `claude/<N>-…`) |
 | **feedback-file** | `~/.fleet/feedback/opus-architect.md` |
 | **core-area-paths** | `engine/render`, `engine/entity`, `engine/system`, `engine/world`, `engine/audio`, `engine/video`, `engine/math` |

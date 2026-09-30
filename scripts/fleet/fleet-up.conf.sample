@@ -371,6 +371,51 @@
 
 # FLEET_SMOKE_WORKER=0
 
+# --- Host profile (satellite hosts) ----------------------------------------
+#
+# `fleet-up --satellite` turns a full fleet host into a SATELLITE for that
+# launch: a box that runs only the work no other host can do, whose
+# architect panes stay up as the operator's interactive sessions and file
+# everything else out to the primary fleet. The canonical case is the
+# native-Windows ship-platform machine — it clears fleet:needs-windows-smoke,
+# takes tasks pinned `**Host:** windows` (TASK-FILING.md), and leaves
+# merging, reviewing, and the unpinned queue to the Linux/macOS fleet. See
+# docs/agents/FLEET-CROSS-HOST-SMOKE.md "Satellite host profile". The flag
+# sets the two knobs below and outranks this file; set them here instead to
+# make the profile permanent (every plain `fleet-up` launch).
+#
+# FLEET_DISPATCH_ROLES — the EXACT set of roles this host's dispatcher
+# serves (space- or comma-separated; known names: merger sonnet-reviewer
+# opus-reviewer worker smoke-worker epic-steward). It replaces the default
+# list AND the FLEET_SMOKE_WORKER / FLEET_EPIC_STEWARD opt-ins: naming
+# smoke-worker enables it, omitting merger disables it. This is the only way
+# to switch a lane off — a FLEET_CONCURRENCY_<ROLE>=0 cap means UNCAPPED,
+# not disabled. Unknown names are dropped with a warning; the served set is
+# on every `config:` line in the dispatcher log (`roles=...`).
+#
+# FLEET_WORKER_HOST_PINNED_ONLY=1 — the worker lane elects only items pinned
+# to this host (`needs_host` from the issue's `**Host:**` field, inherited
+# by its feedback PRs; `fleet:needs-macos-host` on mac). Unpinned tasks,
+# semantic-conflict PRs, and needs-plan issues are never elected here. With
+# nothing pinned the lane stands down (no unassigned worker is ever
+# launched to go looking).
+#
+# Both follow the file's env > conf precedence: a one-off
+# `FLEET_DISPATCH_ROLES="smoke-worker" fleet-up` outranks the conf for both
+# fleet-up's bootstrap triggers and the dispatcher it launches, and
+# `fleet-up --satellite` outranks both.
+#
+# What `fleet-up --satellite` sets, verbatim (plus the caps a small box
+# wants):
+# FLEET_DISPATCH_ROLES="smoke-worker worker"
+# FLEET_WORKER_HOST_PINNED_ONLY=1
+# FLEET_CONCURRENCY_WORKER=1
+# FLEET_CONCURRENCY_SMOKE_WORKER=1
+#
+# Smoke-only (no tasks at all): FLEET_DISPATCH_ROLES="smoke-worker" and
+# drop the other two lines. `platform-catchup` (cue-only skill) remains the
+# batch path for an accumulated smoke backlog on any profile.
+
 # --- Epic-steward (umbrella bookkeeper) ------------------------------------
 #
 # FLEET_EPIC_STEWARD=1 tells fleet-dispatcher to serve the epic-steward
