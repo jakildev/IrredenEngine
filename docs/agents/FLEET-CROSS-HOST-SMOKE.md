@@ -20,7 +20,7 @@ exclusively (`scripts/fleet/fleet-up.conf.sample`). To serve smoke and
 *nothing else* — or smoke plus `**Host:**`-pinned tasks only, the
 native-Windows satellite — set `FLEET_DISPATCH_ROLES` instead, which
 names the exact roles the host serves and switches the merger and
-reviewer lanes off ([`FLEET.md`](FLEET.md) § "Satellite host profile").
+reviewer lanes off (§ "Satellite host profile" below).
 
 ---
 
@@ -197,3 +197,30 @@ half-voxel silhouettes), and for shader / render-system diffs runs
 sits for multiple iterations without an opus+ pickup means heavy-class
 capacity is short on that host — surface it in the feedback channel
 ([`FLEET.md § Fleet feedback channel`](FLEET.md)).
+
+---
+
+## Satellite host profile
+
+A host can run a *subset* of the fleet: only the work no other host can
+do, while its operator uses it interactively for everything else. The
+canonical satellite is the native-Windows ship-platform machine, which
+clears `fleet:needs-windows-smoke`, takes tasks pinned `**Host:** windows`
+([`TASK-FILING.md`](TASK-FILING.md) — the pin is the only signal that
+routes a task to a satellite), and leaves merging, reviewing, and the
+unpinned queue to the Linux/macOS fleet. Three `~/.fleet/fleet-up.conf`
+knobs define it (`scripts/fleet/fleet-up.conf.sample` § "Host profile"
+carries the profile verbatim):
+
+| Knob | Effect |
+|---|---|
+| `FLEET_DISPATCH_ROLES="smoke-worker worker"` | the exact set of roles the dispatcher serves; replaces the default list and the `FLEET_SMOKE_WORKER` / `FLEET_EPIC_STEWARD` opt-ins. The only way to switch a lane off — a zero cap means *uncapped*. |
+| `FLEET_WORKER_HOST_PINNED_ONLY=1` | the worker lane elects only items pinned to this host (`needs_host`, inherited by feedback PRs; `fleet:needs-macos-host` on mac); conflicts and plans are never elected; with nothing pinned it stands down rather than launching an unassigned worker. |
+| `FLEET_ARCHITECTS=0` | `fleet-up` launches no architect panes (worktrees stay). |
+
+The served set and the pinned-only flag print on every `config:` line of
+the dispatcher log. A satellite still runs the scout, so its state cache
+and `platform-catchup` (the batch path above) work as on any host; make
+it a poll `follower` in `~/.config/irreden/host.toml` when a primary
+fleet already polls for the account ([`FLEET-CACHE.md`](FLEET-CACHE.md)
+§ "Centralized cross-device polling").

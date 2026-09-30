@@ -219,31 +219,6 @@ PR; parity touching `engine/math/`, dispatch-grid helpers, GPU buffer
 lifetime, or a shared CPU-side feeder struct is opus work
 (`.claude/skills/backend-parity/SKILL.md`).
 
-### Satellite host profile
-
-A host can run a *subset* of the fleet: only the work no other host can
-do, while its operator uses it interactively for everything else. The
-canonical satellite is the native-Windows ship-platform machine, which
-clears `fleet:needs-windows-smoke`, takes tasks pinned `**Host:** windows`
-([`TASK-FILING.md`](TASK-FILING.md)), and leaves merging, reviewing, and
-the unpinned queue to the Linux/macOS fleet. Three `~/.fleet/fleet-up.conf`
-knobs define it (`scripts/fleet/fleet-up.conf.sample` § "Host profile"):
-
-| Knob | Effect |
-|---|---|
-| `FLEET_DISPATCH_ROLES="smoke-worker worker"` | the exact set of roles the dispatcher serves; replaces the default list and the `FLEET_SMOKE_WORKER` / `FLEET_EPIC_STEWARD` opt-ins. The only way to switch a lane off — a zero cap means *uncapped*. |
-| `FLEET_WORKER_HOST_PINNED_ONLY=1` | the worker lane elects only items pinned to this host (`needs_host`, inherited by feedback PRs; `fleet:needs-macos-host` on mac); conflicts and plans are never elected; with nothing pinned it stands down rather than launching an unassigned worker. |
-| `FLEET_ARCHITECTS=0` | `fleet-up` launches no architect panes (worktrees stay). |
-
-The served set and the pinned-only flag print on every `config:` line of
-the dispatcher log. A satellite still runs the scout, so its state cache
-and `platform-catchup` (the cue-only batch path for an accumulated smoke
-backlog) work as on any host; make it a poll `follower` in
-`~/.config/irreden/host.toml` when a primary fleet already polls for the
-account ([`FLEET-CACHE.md`](FLEET-CACHE.md) § "Centralized cross-device
-polling"). Filing work for a satellite is just the `**Host:**` pin;
-nothing else routes to it.
-
 ### Verifying render changes
 
 A PR touching `engine/render/src/shaders/`, `engine/prefabs/irreden/render/systems/`,

@@ -378,8 +378,8 @@
 # for everything else. The canonical case is the native-Windows ship-platform
 # machine — it clears fleet:needs-windows-smoke, takes tasks pinned
 # `**Host:** windows` (TASK-FILING.md), and leaves merging, reviewing, and
-# the unpinned queue to the Linux/macOS fleet. See docs/agents/FLEET.md
-# "Satellite host profile".
+# the unpinned queue to the Linux/macOS fleet. See
+# docs/agents/FLEET-CROSS-HOST-SMOKE.md "Satellite host profile".
 #
 # FLEET_DISPATCH_ROLES — the EXACT set of roles this host's dispatcher
 # serves (space- or comma-separated; known names: merger sonnet-reviewer

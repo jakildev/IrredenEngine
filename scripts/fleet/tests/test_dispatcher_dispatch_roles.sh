@@ -5,8 +5,9 @@
 #   FLEET_WORKER_HOST_PINNED_ONLY — the worker lane elects only items pinned
 #                                   to this host (`**Host:** <key>`)
 #
-# Together they are the "satellite host" profile (docs/agents/FLEET.md
-# § "Satellite host profile"): the native-Windows box that only clears
+# Together they are the "satellite host" profile
+# (docs/agents/FLEET-CROSS-HOST-SMOKE.md § "Satellite host profile"): the
+# native-Windows box that only clears
 # fleet:needs-windows-smoke and takes `**Host:** windows` tasks, while the
 # merger, reviewer, and unpinned worker lanes stay on the primary fleet.
 #

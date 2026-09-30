@@ -409,8 +409,8 @@ needs Windows — `fleet:needs-windows-smoke` and tasks filed with
 `**Host:** windows` — and stays free for interactive sessions (game
 development, MIDI work, which needs native hardware access anyway).
 Add to `~/.fleet/fleet-up.conf`
-([`FLEET.md`](agents/FLEET.md) § "Satellite host profile" for what each
-knob does):
+([`FLEET-CROSS-HOST-SMOKE.md`](agents/FLEET-CROSS-HOST-SMOKE.md)
+§ "Satellite host profile" for what each knob does):
 
 ```bash
 FLEET_DISPATCH_ROLES="smoke-worker worker"   # nothing else is served

@@ -66,7 +66,7 @@ fleet-up — multi-pane tmux fleet + optional scout daemon.
     FLEET_DISPATCH_ROLES="…" / FLEET_WORKER_HOST_PINNED_ONLY=1 /
     FLEET_ARCHITECTS=0 (conf) make this box a satellite host: served roles
                 only, **Host:**-pinned tasks only, no architect panes
-                (FLEET.md "Satellite host profile")
+                (FLEET-CROSS-HOST-SMOKE.md "Satellite host profile")
 
 No --help flag. Full narrative: scripts/fleet/fleet-up (header) and docs/AGENT_FLEET_SETUP.md
 EOF
@@ -207,7 +207,7 @@ Parallel-agent fleet (tmux + Claude)
                                  pane per slug (docs/agents/campaign-protocol.md)
                                  FLEET_DISPATCH_ROLES / FLEET_WORKER_HOST_PINNED_ONLY /
                                  FLEET_ARCHITECTS (conf) = satellite host profile
-                                 (docs/agents/FLEET.md "Satellite host profile")
+                                 (docs/agents/FLEET-CROSS-HOST-SMOKE.md "Satellite host profile")
   fleet-down [--force] [--keep-claims] [--wait] [--summary]
   fleet-babysit …                (normally launched by fleet-up; architects only)
   solo-architect [engine|game] [--campaign <slug>] [--fresh] [--no-scout] [--dry-run]
