@@ -243,7 +243,7 @@ def host_source(suffix, directory, enabled, mutation=None):
             "{0,0},{1,1},int(cascade)*kCascadeTexelCount,")
     if suffix == "metal":
         call += "sunDepthBuf,"
-    call += "maxThrow,surface,{0,0,0,1})"
+    call += "maxThrow,surface,{0,0,0,1},{0,0,0})"
     define = "#define IR_SUN_FACE_OVERFLOW_REFERENCE 1\n" if enabled else ""
     code = PREAMBLE + define + constants[0] + "\n" + layout + helpers + body
     code += f"static_assert(IR_SUN_FACE_OVERFLOW_REFERENCE == {int(enabled)});\n"
