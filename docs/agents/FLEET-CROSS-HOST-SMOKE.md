@@ -202,25 +202,33 @@ capacity is short on that host — surface it in the feedback channel
 
 ## Satellite host profile
 
-A host can run a *subset* of the fleet: only the work no other host can
-do, while its operator uses it interactively for everything else. The
-canonical satellite is the native-Windows ship-platform machine, which
-clears `fleet:needs-windows-smoke`, takes tasks pinned `**Host:** windows`
+`fleet-up --satellite` runs a *subset* of the fleet on a host: only the
+work no other host can do, while its architect panes stay up as the
+operator's interactive sessions. The canonical satellite is the
+native-Windows ship-platform machine, which clears
+`fleet:needs-windows-smoke`, takes tasks pinned `**Host:** windows`
 ([`TASK-FILING.md`](TASK-FILING.md) — the pin is the only signal that
 routes a task to a satellite), and leaves merging, reviewing, and the
-unpinned queue to the Linux/macOS fleet. Three `~/.fleet/fleet-up.conf`
-knobs define it (`scripts/fleet/fleet-up.conf.sample` § "Host profile"
-carries the profile verbatim):
+unpinned queue to the Linux/macOS fleet. The flag sets two dispatcher
+knobs for that launch; the same knobs in `~/.fleet/fleet-up.conf` make
+the profile permanent (`scripts/fleet/fleet-up.conf.sample` § "Host
+profile"):
 
 | Knob | Effect |
 |---|---|
 | `FLEET_DISPATCH_ROLES="smoke-worker worker"` | the exact set of roles the dispatcher serves; replaces the default list and the `FLEET_SMOKE_WORKER` / `FLEET_EPIC_STEWARD` opt-ins. The only way to switch a lane off — a zero cap means *uncapped*. |
 | `FLEET_WORKER_HOST_PINNED_ONLY=1` | the worker lane elects only items pinned to this host (`needs_host`, inherited by feedback PRs; `fleet:needs-macos-host` on mac); conflicts and plans are never elected; with nothing pinned it stands down rather than launching an unassigned worker. |
-| `FLEET_ARCHITECTS=0` | `fleet-up` launches no architect panes (worktrees stay). |
 
-The served set and the pinned-only flag print on every `config:` line of
-the dispatcher log. A satellite still runs the scout, so its state cache
-and `platform-catchup` (the batch path above) work as on any host; make
-it a poll `follower` in `~/.config/irreden/host.toml` when a primary
+`fleet-up` writes the profile to `~/.fleet/state/host-profile` (`full` or
+`satellite`; `fleet-down` removes it), which the architect panes read at
+startup ([`architect-protocol.md`](architect-protocol.md) § "Startup
+actions"): on a satellite they plan engine and game work as usual, file
+everything that does not need this OS as ordinary tasks for the primary
+fleet, pin `**Host:**` only when it does, and never claim unpinned queue
+work — the pane is where the human iterates on creations, scenes, and
+MIDI. The served set and the pinned-only flag print on every `config:`
+line of the dispatcher log. A satellite still runs the scout, so its state
+cache and `platform-catchup` (the batch path above) work as on any host;
+make it a poll `follower` in `~/.config/irreden/host.toml` when a primary
 fleet already polls for the account ([`FLEET-CACHE.md`](FLEET-CACHE.md)
 § "Centralized cross-device polling").

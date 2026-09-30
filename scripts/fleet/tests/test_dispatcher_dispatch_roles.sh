@@ -13,7 +13,7 @@
 #
 # fleet-up sources the same conf before gating its bootstrap triggers and
 # launching the dispatcher; T5 drives it to prove a caller's value outranks
-# the conf on both sides, and FLEET_ARCHITECTS with them.
+# the conf on both sides, and that `--satellite` outranks both.
 #
 # A cap of 0 means UNCAPPED in dispatch_role, so the served-role list is the
 # only way to switch a lane off — T3 is the load-bearing arm: a tick with a
@@ -53,7 +53,6 @@ mkdir -p "$FLEET_STATE_DIR/projections" "$FLEET_STATE_DIR/dispatch" \
 # The knobs under test are read from the conf; make sure the pane's own
 # environment cannot pre-empt them.
 unset FLEET_DISPATCH_ROLES FLEET_WORKER_HOST_PINNED_ONLY FLEET_SMOKE_WORKER FLEET_EPIC_STEWARD
-unset FLEET_ARCHITECTS
 unset FLEET_RUNTIMES FLEET_CROSS_PROVIDER_REVIEW FLEET_WORKER_RUNTIME
 # A dispatched pane exports its host's caps (FLEET_CONCURRENCY_WORKER=5 and
 # friends), which outrank the conf; T4c asserts the default cap.
@@ -223,10 +222,15 @@ exit 0
 TMUXEOF
 printf '#!/usr/bin/env bash\nexit 0\n' > "$UP_BIN/claude"
 chmod +x "$UP_BIN/tmux" "$UP_BIN/claude"
-run_fleet_up() {  # run_fleet_up [VAR=value...] — prints fleet-up's host-profile line
+run_fleet_up() {  # run_fleet_up [VAR=value...] [fleet-up arg...] — prints fleet-up's host-profile line
     rm -f "$UP_ENV_DUMP"
-    env HOME="$TMPROOT/home" PATH="$UP_BIN:$PATH" UP_ENV_DUMP="$UP_ENV_DUMP" "$@" \
-        "$BASH" "$FLEET_UP" 2>&1 | grep '^fleet-up: host profile'
+    local a envs=() args=()
+    for a in "$@"; do
+        if [[ "$a" == *=* ]]; then envs+=("$a"); else args+=("$a"); fi
+    done
+    env HOME="$TMPROOT/home" PATH="$UP_BIN:$PATH" UP_ENV_DUMP="$UP_ENV_DUMP" \
+        ${envs[@]+"${envs[@]}"} "$BASH" "$FLEET_UP" ${args[@]+"${args[@]}"} 2>&1 \
+        | grep '^fleet-up: host profile'
 }
 up_child_env() { [[ -f "$UP_ENV_DUMP" ]] && tr '\n' ' ' < "$UP_ENV_DUMP"; }
 # The dispatcher's config line under the environment fleet-up handed down.
@@ -238,10 +242,10 @@ up_dispatcher_config() {
 }
 
 echo "T5: fleet-up keeps the caller's host-profile knobs across its conf source"
-printf 'FLEET_DISPATCH_ROLES="merger"\nFLEET_WORKER_HOST_PINNED_ONLY=0\nFLEET_ARCHITECTS=1\n' > "$FLEET_CONF"
-out=$(run_fleet_up FLEET_DISPATCH_ROLES="worker" FLEET_WORKER_HOST_PINNED_ONLY=1 FLEET_ARCHITECTS=0)
+printf 'FLEET_DISPATCH_ROLES="merger"\nFLEET_WORKER_HOST_PINNED_ONLY=0\n' > "$FLEET_CONF"
+out=$(run_fleet_up FLEET_DISPATCH_ROLES="worker" FLEET_WORKER_HOST_PINNED_ONLY=1)
+assert_contains "$out" "host profile: full" "no flag: the full profile"
 assert_contains "$out" "dispatch roles: worker;" "bootstrap gating sees the caller's roles, not the conf's"
-assert_contains "$out" "architect panes: off;" "the caller's FLEET_ARCHITECTS=0 outranks the conf"
 assert_contains "$out" "worker host-pinned-only: 1" "the caller's pinned-only outranks the conf"
 assert_eq "$(up_child_env)" "FLEET_DISPATCH_ROLES=worker FLEET_WORKER_HOST_PINNED_ONLY=1 " \
     "fleet-up's children inherit the caller's values, not the conf's"
@@ -251,7 +255,6 @@ assert_contains "$(up_dispatcher_config)" "roles=worker pinned-only=1;" \
 echo "T5b: with no caller value the conf decides, and the dispatcher re-reads it"
 out=$(run_fleet_up)
 assert_contains "$out" "dispatch roles: merger;" "bootstrap gating sees the conf's roles"
-assert_contains "$out" "architect panes: on;" "conf FLEET_ARCHITECTS=1"
 assert_eq "$(up_child_env)" "" "a conf-sourced knob is not exported to fleet-up's children"
 assert_contains "$(up_dispatcher_config)" "roles=merger pinned-only=0;" \
     "the dispatcher resolves the same set from the conf itself"
@@ -261,5 +264,11 @@ out=$(run_fleet_up FLEET_DISPATCH_ROLES=)
 assert_contains "$out" "dispatch roles: <default set>;" "bootstrap gating serves every role"
 assert_contains "$(up_dispatcher_config)" "roles=merger sonnet-reviewer opus-reviewer worker pinned-only=0;" \
     "the dispatcher serves the default set too"
+
+echo "T5d: --satellite outranks both the conf and the caller's own knobs"
+out=$(run_fleet_up FLEET_DISPATCH_ROLES="merger" --satellite)
+assert_contains "$out" "host profile: satellite" "the flag names the profile on the boot line"
+assert_contains "$out" "dispatch roles: smoke-worker worker;" "the satellite served set"
+assert_contains "$out" "worker host-pinned-only: 1" "the satellite pinned-only mode"
 
 summarize "fleet-dispatcher host-profile knobs (FLEET_DISPATCH_ROLES / FLEET_WORKER_HOST_PINNED_ONLY)"

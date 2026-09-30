@@ -24,7 +24,7 @@ a stretch of autonomous running:
 
 Sources (all read-only; nothing here mutates fleet state):
   ~/.fleet/logs/dispatcher.log, fleet-rebase.log, state-scout.log
-  ~/.fleet/state/{dispatcher.pid,scout.pid,dispatch-mode,dispatch/,
+  ~/.fleet/state/{dispatcher.pid,scout.pid,dispatch-mode,host-profile,dispatch/,
                   empty-streak/,runtime-cooldown/,runtime-problems/,state.json}
   ~/.fleet/sessions/*.session.json, ~/.fleet/alerts/, ~/.fleet/fleet-up.conf
 
@@ -560,6 +560,7 @@ def render_text(report):
         x = d[name]
         o.append(f"  {name:11s} pid={x['pid'] or '-'} {'alive' if x['alive'] else 'DEAD'}")
     o.append(f"  mode        {d['mode']}")
+    o.append(f"  profile     {d.get('profile', 'full')}")
     o.append("")
     o.append("## Dispatches (per role)")
     roles = report["roles"]
@@ -675,8 +676,13 @@ def build_report(args):
         mode = (state_dir / "dispatch-mode").read_text().strip()
     except OSError:
         mode = "?"
+    try:
+        profile = (state_dir / "host-profile").read_text().strip() or "full"
+    except OSError:
+        profile = "full"
     daemons = {"dispatcher": {"pid": dpid, "alive": dalive},
-               "scout": {"pid": spid, "alive": salive}, "mode": mode}
+               "scout": {"pid": spid, "alive": salive}, "mode": mode,
+               "profile": profile}
     alerts = collect_alerts(alerts_dir)
     report = {
         "window": {"since": since.strftime("%Y-%m-%dT%H:%M:%SZ"), "label": args.since or "boot"},

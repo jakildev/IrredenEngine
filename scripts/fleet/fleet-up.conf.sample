@@ -373,13 +373,16 @@
 
 # --- Host profile (satellite hosts) ----------------------------------------
 #
-# Three knobs turn a full fleet host into a SATELLITE: a box that runs only
-# the work no other host can do, while its operator uses it interactively
-# for everything else. The canonical case is the native-Windows ship-platform
-# machine — it clears fleet:needs-windows-smoke, takes tasks pinned
-# `**Host:** windows` (TASK-FILING.md), and leaves merging, reviewing, and
-# the unpinned queue to the Linux/macOS fleet. See
-# docs/agents/FLEET-CROSS-HOST-SMOKE.md "Satellite host profile".
+# `fleet-up --satellite` turns a full fleet host into a SATELLITE for that
+# launch: a box that runs only the work no other host can do, whose
+# architect panes stay up as the operator's interactive sessions and file
+# everything else out to the primary fleet. The canonical case is the
+# native-Windows ship-platform machine — it clears fleet:needs-windows-smoke,
+# takes tasks pinned `**Host:** windows` (TASK-FILING.md), and leaves
+# merging, reviewing, and the unpinned queue to the Linux/macOS fleet. See
+# docs/agents/FLEET-CROSS-HOST-SMOKE.md "Satellite host profile". The flag
+# sets the two knobs below and outranks this file; set them here instead to
+# make the profile permanent (every plain `fleet-up` launch).
 #
 # FLEET_DISPATCH_ROLES — the EXACT set of roles this host's dispatcher
 # serves (space- or comma-separated; known names: merger sonnet-reviewer
@@ -397,18 +400,15 @@
 # nothing pinned the lane stands down (no unassigned worker is ever
 # launched to go looking).
 #
-# FLEET_ARCHITECTS=0 — fleet-up leaves the opus-architect / game-architect
-# panes unlaunched (their worktrees still exist; the middle row becomes a
-# plain scratch shell). Run your own interactive claude sessions instead.
-#
-# All three follow the file's env > conf precedence: a one-off
+# Both follow the file's env > conf precedence: a one-off
 # `FLEET_DISPATCH_ROLES="smoke-worker" fleet-up` outranks the conf for both
-# fleet-up's bootstrap triggers and the dispatcher it launches.
+# fleet-up's bootstrap triggers and the dispatcher it launches, and
+# `fleet-up --satellite` outranks both.
 #
-# The Windows satellite profile, verbatim:
+# What `fleet-up --satellite` sets, verbatim (plus the caps a small box
+# wants):
 # FLEET_DISPATCH_ROLES="smoke-worker worker"
 # FLEET_WORKER_HOST_PINNED_ONLY=1
-# FLEET_ARCHITECTS=0
 # FLEET_CONCURRENCY_WORKER=1
 # FLEET_CONCURRENCY_SMOKE_WORKER=1
 #

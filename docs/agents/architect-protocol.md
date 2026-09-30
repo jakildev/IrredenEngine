@@ -78,7 +78,15 @@ action (filing a plan, citing merge state, touching core code).
    `gh pr list --repo <repo-slug> --label "fleet:needs-<this-host>-smoke" --state merged --json number --jq length`
    — at ≥ 5, note it so the human can decide on `/platform-catchup`; never
    auto-invoke it.
-7. Print `<role-name> standing by` (`… standing by (dry-run)` in dry-run).
+7. **Host profile:** read `~/.fleet/state/host-profile` (absent → `full`).
+   `satellite` ([`FLEET-CROSS-HOST-SMOKE.md § Satellite host profile`](FLEET-CROSS-HOST-SMOKE.md))
+   means this box serves only its own smoke labels and `**Host:**`-pinned
+   tasks, and this pane is the human's interactive session here: iterate
+   on creations, scenes, and MIDI work with them, plan engine and game work
+   as usual, and file everything that does not need this OS as an ordinary
+   task for the primary fleet — pin `**Host:** <key>` only when the work
+   truly needs it. Print `host profile: satellite` in the summary.
+8. Print `<role-name> standing by` (`… standing by (dry-run)` in dry-run).
 
 ## Loop behavior
 
@@ -88,7 +96,8 @@ worker handles autonomous `Model: opus` execution and `fleet:needs-plan`
 planning. Workers ignore any "reserved for the architect" hint in prose; to
 take a task, hold its lock (`fleet-claim claim <issue-#> <role-name>`).
 
-When you do pick a task:
+When you do pick a task (on a `satellite` host, only one pinned to this
+host — the rest is the primary fleet's):
 
 1. Re-read `~/.fleet/state/state.json` if it is no longer in context and
    skip any task whose issue appears in `repos.<repo>.prs[].title` or
