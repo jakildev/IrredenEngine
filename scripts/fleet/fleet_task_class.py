@@ -97,6 +97,11 @@ pending smoke label names THIS host (`HOST_SMOKE_LABELS` / `smoke_pr_for_host`);
 the slice spans both repos, so the bare number is ambiguous. Empty output
 means this host owes no smoke work, and the dispatcher stands the lane down
 instead of spending a pane on another host's backlog.
+
+Environment: ``FLEET_WORKER_HOST_PINNED_ONLY=1`` (exported by fleet-dispatcher
+from ``~/.fleet/fleet-up.conf``) narrows the worker lane to items pinned to
+this host — see `HOST_PINNED_ONLY_ENV` — for a satellite host that covers
+only the work no other host can do.
 """
 
 import calendar
@@ -178,6 +183,46 @@ HOST_SMOKE_LABELS = {
 }
 
 
+# Satellite-host mode for the worker lane. A host that exists to cover work
+# only it can do — the native-Windows box that the ship-platform smoke and
+# `**Host:** windows` tasks need, while the operator uses it interactively for
+# everything else — sets this to `1` in `~/.fleet/fleet-up.conf`
+# (fleet-dispatcher exports it into this module's environment). The lane then
+# elects ONLY items pinned to this host: tasks and feedback PRs whose
+# `needs_host` (scout-derived from the `**Host:**` body field, inherited by a
+# feedback PR from its Closes issue) names this host, or a
+# `fleet:needs-macos-host` PR on mac. Semantic-conflict PRs and needs-plan
+# issues carry no host and are never host-specific work, so the mode skips
+# them outright. Everything unpinned stays for the primary fleet.
+#
+# The filter lives in `_candidates`, the one seam `resolve` (class election)
+# and `pick` (the dispatcher's claim walk) both read, so a satellite can never
+# be handed an unpinned target. With nothing pinned claimable, `resolve` falls
+# through to '' exactly as an empty slice does, and the dispatcher's
+# lane-default gate stands the lane down (or resumes a reservation, which is
+# a pane's own interrupted task, never a fresh claim). Fail-closed on an
+# `unknown` host: nothing is pinned to a host that has no key.
+HOST_PINNED_ONLY_ENV = "FLEET_WORKER_HOST_PINNED_ONLY"
+
+
+def _host_pinned_only():
+    return os.environ.get(HOST_PINNED_ONLY_ENV, "").strip() == "1"
+
+
+def _required_host(item):
+    """The one host an item is pinned to (`mac` | `linux` | `windows`), or
+    None when it is unpinned. The macOS residual label wins over the derived
+    field, the same precedence `_host_incompatible` applies."""
+    if MACOS_HOST_LABEL in (item.get("labels") or []):
+        return "mac"
+    return item.get("needs_host") or None
+
+
+def _pinned_to_host(item, host):
+    required = _required_host(item)
+    return bool(required) and host != "unknown" and required == host
+
+
 def smoke_pr_for_host(labels, host):
     """True when a smoke-pending PR's label names ``host``.
 
@@ -231,10 +276,7 @@ def _host_incompatible(item, host):
     # reads the body, refuses, and exits. Fail-closed on `unknown`, like the
     # GL gate. A `MACOS_HOST_LABEL` on the record is the same pin read from a
     # label, and it wins over the derived field.
-    if MACOS_HOST_LABEL in (item.get("labels") or []):
-        required_host = "mac"
-    else:
-        required_host = item.get("needs_host")
+    required_host = _required_host(item)
     if required_host and host != required_host:
         return True
     # A GL-only item on a non-GL host (macOS/Metal, or unknown) can never be
@@ -517,11 +559,16 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False):
     # A PR in its sweep cooldown is withheld exactly like a declined one: it
     # neither counts toward the election nor reaches the claim walk
     # (`--sweep-cooldowns` reports it to the dispatcher's log).
-    for pr in slice_data.get("semantic_conflict_prs", []) or []:
-        if _sweep_cooldown_age(pr) is not None:
-            continue
-        if not _declined("conflict", pr, "worker"):
-            yield "opus", CLASS_DEFAULT_EFFORT["opus"], "work", _target("conflict", pr)
+    # Satellite host (HOST_PINNED_ONLY_ENV): only items pinned to THIS host
+    # are candidates. Conflicts and plans carry no pin, so the mode yields
+    # none of either; the primary fleet serves them.
+    pinned_only = _host_pinned_only()
+    if not pinned_only:
+        for pr in slice_data.get("semantic_conflict_prs", []) or []:
+            if _sweep_cooldown_age(pr) is not None:
+                continue
+            if not _declined("conflict", pr, "worker"):
+                yield "opus", CLASS_DEFAULT_EFFORT["opus"], "work", _target("conflict", pr)
     for pr in slice_data.get("feedback_prs", []) or []:
         # Same host gate tasks get via `_task_claimable`: a
         # `fleet:needs-gl-host` feedback PR has GL-only work left, so
@@ -534,6 +581,8 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False):
         # concurrency cap.
         if _host_incompatible(pr, host):
             continue
+        if pinned_only and not _pinned_to_host(pr, host):
+            continue
         if _declined("feedback", pr, "worker") or _sweep_cooldown_age(pr) is not None:
             continue
         cls = feedback_pr_class(pr.get("labels", []))
@@ -543,6 +592,8 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False):
     # dispatcher's claim walk. (A numberless record still counts — the
     # dispatcher simply has nothing to claim for it, target None.)
     tasks = slice_data.get("tasks_open", []) or []
+    if pinned_only:
+        tasks = [task for task in tasks if _pinned_to_host(task, host)]
     for task in tasks:
         if (_task_claimable(task, host) and not task.get("blocked")
                 and not _declined("task", task, "worker")):
@@ -553,7 +604,8 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False):
             base = (task.get("stackable_blocker_pr") or {}).get("number")
             yield (*_class_effort(task), "work", _target("stack", task, base))
     seen_plan_classes = set()
-    for issue in slice_data.get("needs_plan") or []:
+    plans = [] if pinned_only else (slice_data.get("needs_plan") or [])
+    for issue in plans:
         if _declined("plan", issue, "worker"):
             continue
         pcls = _plan_class(issue, fable_blocked)
@@ -701,6 +753,8 @@ def plan_pick(slice_data, cls, fable_blocked):
     to the next, so a lost race assigns the *next* issue instead of burning
     the dispatch.
     """
+    if _host_pinned_only():
+        return []  # plans carry no host pin; a satellite never authors one
     picks = [_target("plan", issue) for issue in slice_data.get("needs_plan") or []
              if _plan_class(issue, fable_blocked) == cls and not _declined("plan", issue, "worker")]
     return [p for p in picks if p is not None]

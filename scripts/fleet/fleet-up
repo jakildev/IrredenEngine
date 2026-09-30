@@ -287,6 +287,18 @@ if [[ -f "$FLEET_CONF" ]]; then
     # shellcheck disable=SC1090
     source "$FLEET_CONF"
 fi
+# Host profile (fleet-up.conf.sample "Host profile"). FLEET_ARCHITECTS=0
+# leaves the architect panes unlaunched — the operator runs interactive
+# sessions on this host themselves — and FLEET_DISPATCH_ROLES narrows the
+# roles the dispatcher serves (it re-reads the conf; fleet-up only gates the
+# bootstrap triggers on it, and deliberately does not export it — see the
+# FLEET_UP_RESOLVED_KNOBS ratchet in fleet-dispatcher). Neither is a cap: a
+# zero cap means uncapped, which is why the profile is spelled this way.
+FLEET_ARCHITECTS="${FLEET_ARCHITECTS:-1}"
+if [[ "$FLEET_ARCHITECTS" != "0" ]]; then
+    FLEET_ARCHITECTS=1
+fi
+echo "fleet-up: host profile — dispatch roles: ${FLEET_DISPATCH_ROLES:-<default set>}; architect panes: $([[ "$FLEET_ARCHITECTS" == 1 ]] && echo on || echo off); worker host-pinned-only: ${FLEET_WORKER_HOST_PINNED_ONLY:-0}"
 FLEET_CONCURRENCY_OPUS_WORKER="${_env_opus_worker:-${FLEET_CONCURRENCY_OPUS_WORKER:-2}}"
 FLEET_CONCURRENCY_SONNET_AUTHOR="${_env_sonnet_author:-${FLEET_CONCURRENCY_SONNET_AUTHOR:-2}}"
 FLEET_CONCURRENCY_SONNET_REVIEWER="${_env_sonnet_reviewer:-${FLEET_CONCURRENCY_SONNET_REVIEWER:-4}}"
@@ -770,8 +782,8 @@ migrate_legacy_worker_worktrees "$ENGINE" \
 # transient role (worker, reviewers, merger, smoke, epic-steward) to any
 # idle pool pane; per-role parallelism is bounded by the
 # FLEET_CONCURRENCY_<ROLE> caps, not by pane topology. FLEET_SMOKE_WORKER /
-# FLEET_EPIC_STEWARD gate whether the dispatcher SERVES those roles, not
-# whether their panes exist.
+# FLEET_EPIC_STEWARD (or the FLEET_DISPATCH_ROLES allowlist) gate whether
+# the dispatcher SERVES a role, not whether its panes exist.
 for _p in 1 2 3 4 5 6 7 8 9; do
     ensure_worktree "$ENGINE" ".claude/worktrees/pool-$_p" "fleet/pool-$_p" "claude/pool-$_p-scratch"
 done
@@ -1593,7 +1605,7 @@ fi
 # claude invocation, while the cost of a missed resume is a permanently
 # stuck queue, merge backlog, or idle worker with real work pending.
 if command -v python3 >/dev/null 2>&1; then
-    python3 - <<'PY' || true
+    FLEET_DISPATCH_ROLES="${FLEET_DISPATCH_ROLES:-}" python3 - <<'PY' || true
 import json
 import os
 import pathlib
@@ -1671,6 +1683,10 @@ def smoke_worker_actionable(p):
 def epic_steward_actionable(p):
     return bool(p.get("triggers"))
 
+# Host profile: the dispatcher serves only FLEET_DISPATCH_ROLES when it is
+# set, so a bootstrap trigger for any other role would sit unread forever.
+served = os.environ.get("FLEET_DISPATCH_ROLES", "").replace(",", " ").split()
+
 for role, predicate in [
     ("merger", merger_actionable),
     ("worker", worker_actionable),
@@ -1679,6 +1695,8 @@ for role, predicate in [
     ("smoke-worker", smoke_worker_actionable),
     ("epic-steward", epic_steward_actionable),
 ]:
+    if served and role not in served:
+        continue
     proj = proj_dir / f"{role}.json"
     if not proj.is_file():
         continue
@@ -1983,10 +2001,20 @@ set_fleet_role "$TOP_LEFT" "pool"
 pane_stagger
 
 # Split bottom 2/3 off — that becomes the middle row's leftmost pane.
-MID_LEFT=$(tmux split-window -v -t "$TOP_LEFT" -l 67% -P -F "#{pane_id}" \
-    -c "$ENGINE/.claude/worktrees/opus-architect" \
-    "$(launch_cmd "$FLEET_MODEL_FABLE" opus-architect)")
-label_pane_id "$MID_LEFT" "opus-architect [$FABLE_TAG]"
+# FLEET_ARCHITECTS=0: the row is a plain scratch shell instead (no
+# fleet-babysit, no @fleet-role tag, so no dispatch lands there and
+# fleet-down's architect summary path skips it by label).
+if [[ "$FLEET_ARCHITECTS" == 1 ]]; then
+    MID_LEFT=$(tmux split-window -v -t "$TOP_LEFT" -l 67% -P -F "#{pane_id}" \
+        -c "$ENGINE/.claude/worktrees/opus-architect" \
+        "$(launch_cmd "$FLEET_MODEL_FABLE" opus-architect)")
+    label_pane_id "$MID_LEFT" "opus-architect [$FABLE_TAG]"
+else
+    MID_LEFT=$(tmux split-window -v -t "$TOP_LEFT" -l 67% -P -F "#{pane_id}" \
+        -c "$ENGINE" \
+        "$TRANSIENT_PANE_CMD")
+    label_pane_id "$MID_LEFT" "scratch [architects off]"
+fi
 pane_stagger
 
 # Split bottom 1/2 of the middle off — that becomes bottom row leftmost.
@@ -2016,9 +2044,9 @@ set_fleet_role "$TOP_RIGHT" "pool"
 pane_stagger
 
 # Middle row: split MID_LEFT horizontally for game-architect (only if
-# the game worktree exists). 50/50 split since architects coexist as
-# equals (engine + game).
-if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
+# the game worktree exists and architect panes are on). 50/50 split since
+# architects coexist as equals (engine + game).
+if [[ "$FLEET_ARCHITECTS" == 1 && -d "$GAME/.claude/worktrees/game-architect" ]]; then
     MID_RIGHT=$(tmux split-window -h -t "$MID_LEFT" -l 50% -P -F "#{pane_id}" \
         -c "$GAME/.claude/worktrees/game-architect" \
         "$(launch_cmd "$FLEET_MODEL_FABLE" game-architect)")
@@ -2081,8 +2109,8 @@ label_pane_id "$OPS_BR" "terminal"
 # Pool overflow panes — pool-8 and pool-9 stack below pool-7 in the ops
 # window's right column. Same generic pool as the fleet-window panes;
 # whether the smoke-worker / epic-steward ROLES dispatch is gated by
-# FLEET_SMOKE_WORKER / FLEET_EPIC_STEWARD in the dispatcher, not by pane
-# existence.
+# FLEET_SMOKE_WORKER / FLEET_EPIC_STEWARD (or FLEET_DISPATCH_ROLES) in the
+# dispatcher, not by pane existence.
 OPS_P8=$(tmux split-window -v -t "$OPS_TR" -l 50% -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/pool-8" \
     "$TRANSIENT_PANE_CMD")

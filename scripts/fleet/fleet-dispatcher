@@ -242,6 +242,11 @@ _env_model_epic_steward="${FLEET_MODEL_EPIC_STEWARD:-}"
 _env_model_fable_fallback="${FLEET_MODEL_FABLE_FALLBACK-__unset__}"
 _env_fable_cap="${FLEET_CONCURRENCY_MODEL_FABLE:-}"
 _env_cap_mode="${FLEET_CAP_MODE:-}"
+# Host-profile knobs (fleet-up.conf.sample "Host profile"): the served-role
+# allowlist and the worker lane's pinned-only mode. Same capture-before-source
+# precedence as the caps above.
+_env_dispatch_roles="${FLEET_DISPATCH_ROLES-__unset__}"
+_env_pinned_only="${FLEET_WORKER_HOST_PINNED_ONLY:-}"
 # Preserve explicit environment overrides while exporting config to the adapters.
 declare -A _runtime_env=()
 _runtime_keys=(FLEET_RUNTIMES FLEET_CROSS_PROVIDER_REVIEW FLEET_WORKER_RUNTIME
@@ -277,9 +282,20 @@ fi
 # budget throttle. Counted across all panes via dispatch records, not
 # per role. 0 disables fable dispatch entirely.
 FABLE_CONCURRENCY_CAP="${_env_fable_cap:-${FLEET_CONCURRENCY_MODEL_FABLE:-1}}"
+if [[ "$_env_dispatch_roles" != "__unset__" ]]; then
+    FLEET_DISPATCH_ROLES="$_env_dispatch_roles"
+fi
+# Exported: fleet_task_class.py reads it on every --pick / resolve call
+# (resolve_worker_class, assign_for_pane), and a conf-sourced value is a
+# plain shell variable until it is.
+FLEET_WORKER_HOST_PINNED_ONLY="${_env_pinned_only:-${FLEET_WORKER_HOST_PINNED_ONLY:-0}}"
+if [[ "$FLEET_WORKER_HOST_PINNED_ONLY" != "1" ]]; then
+    FLEET_WORKER_HOST_PINNED_ONLY=0
+fi
+export FLEET_WORKER_HOST_PINNED_ONLY
 unset _env_model_fable _env_model_opus _env_model_sonnet \
       _env_model_merger _env_model_opus_reviewer _env_model_epic_steward \
-      _env_model_fable_fallback _env_fable_cap
+      _env_model_fable_fallback _env_fable_cap _env_dispatch_roles _env_pinned_only
 # Unified worker cap (P2). FLEET_CONCURRENCY_WORKER wins (env > conf); when
 # it's unset, sum the deprecated per-lane caps if an operator set either
 # (so a pre-P2 conf with OPUS_WORKER=2 + SONNET_AUTHOR=2 keeps a cap of 4);
@@ -702,6 +718,34 @@ fi
 if [[ "${FLEET_EPIC_STEWARD:-0}" == "1" ]]; then
     DISPATCHED_ROLES+=("epic-steward")
 fi
+# Host profile: FLEET_DISPATCH_ROLES (conf or env; space- or comma-separated)
+# is the EXACT set of roles this host serves, replacing the default list and
+# the two opt-in flags above — naming smoke-worker here enables it, omitting
+# worker disables it. A satellite host (the native-Windows box that only
+# smokes and takes `**Host:** windows` tasks) sets "smoke-worker worker" so
+# the merger and reviewer lanes stay on the primary fleet. The canonical
+# service order is kept whatever order the list names them in. Unknown names
+# are dropped with a warning; an empty result serves nothing, visible as
+# `roles=none` on every `config:` line rather than failing the boot. A cap
+# of 0 means UNCAPPED (dispatch_role), so this list — not a zero cap — is
+# how a lane is switched off.
+ALL_DISPATCHABLE_ROLES=(merger sonnet-reviewer opus-reviewer worker smoke-worker epic-steward)
+if [[ -n "${FLEET_DISPATCH_ROLES:-}" ]]; then
+    _wanted=" ${FLEET_DISPATCH_ROLES//,/ } "
+    _kept=()
+    for _r in "${ALL_DISPATCHABLE_ROLES[@]}"; do
+        if [[ "$_wanted" == *" $_r "* ]]; then
+            _kept+=("$_r")
+            _wanted="${_wanted// $_r / }"
+        fi
+    done
+    for _r in $_wanted; do
+        printf '[%s dispatcher] FLEET_DISPATCH_ROLES names unknown role %q (known: %s); dropped\n' \
+            "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$_r" "${ALL_DISPATCHABLE_ROLES[*]}" >&2
+    done
+    DISPATCHED_ROLES=(${_kept[@]+"${_kept[@]}"})
+    unset _wanted _kept _r
+fi
 # queue-manager is not LLM-dispatched: ingestion (new issues → queue) fires
 # on its own scout-driven trigger when human:approved-not-yet-queued issues
 # appear.
@@ -884,7 +928,9 @@ describe_config() {
     for role in worker sonnet-reviewer opus-reviewer merger smoke-worker epic-steward queue-manager; do
         caps+=" $role=${ROLE_CONCURRENCY[$role]}"
     done
-    printf 'caps%s fable=%s mode=%s; models fable=%s opus=%s sonnet=%s fallback=%s merger=%s opus-reviewer=%s\n' \
+    local roles="${DISPATCHED_ROLES[*]:-}"
+    printf 'roles=%s pinned-only=%s; caps%s fable=%s mode=%s; models fable=%s opus=%s sonnet=%s fallback=%s merger=%s opus-reviewer=%s\n' \
+        "${roles:-none}" "$FLEET_WORKER_HOST_PINNED_ONLY" \
         "$caps" "$FABLE_CONCURRENCY_CAP" "$CAP_MODE" \
         "${CLASS_MODEL[fable]}" "${CLASS_MODEL[opus]}" "${CLASS_MODEL[sonnet]}" \
         "${FABLE_FALLBACK:-none}" "${ROLE_MODEL[merger]}" "${ROLE_MODEL[opus-reviewer]}"

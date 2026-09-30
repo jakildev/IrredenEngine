@@ -401,6 +401,43 @@ the tmux default **`Ctrl+b`** (detach = `Ctrl+b` then `d`). For the
 `Ctrl+a` remap + mouse the rest of this doc assumes, drop in the
 `~/.tmux.conf` from §5a.
 
+### Running Windows as a satellite host
+
+The usual shape for the ship-platform box: the Linux/macOS fleet does
+the merging, reviewing, and unpinned queue work; Windows runs only what
+needs Windows — `fleet:needs-windows-smoke` and tasks filed with
+`**Host:** windows` — and stays free for interactive sessions (game
+development, MIDI work, which needs native hardware access anyway).
+Add to `~/.fleet/fleet-up.conf`
+([`FLEET.md`](agents/FLEET.md) § "Satellite host profile" for what each
+knob does):
+
+```bash
+FLEET_DISPATCH_ROLES="smoke-worker worker"   # nothing else is served
+FLEET_WORKER_HOST_PINNED_ONLY=1              # worker: **Host:** windows items only
+FLEET_ARCHITECTS=0                           # no architect panes
+FLEET_CONCURRENCY_WORKER=1
+FLEET_CONCURRENCY_SMOKE_WORKER=1
+```
+
+and, when another host already polls GitHub for the account, make this
+one a `follower` in `~/.config/irreden/host.toml` (§"Cross-device
+polling" in the conf sample). Then the daily ritual is:
+
+```bash
+fleet-up live          # from an MSYS2 bash shell (tmux lives there)
+fleet-health           # `roles=smoke-worker worker pinned-only=1` on the config line
+fleet-down             # when you want the box quiet
+```
+
+Interactive work happens in your own `claude` session in a separate
+clone or worktree, never in a pool pane. `platform-catchup` (cue it from
+that session) is the batch path when the smoke backlog has piled up
+while the fleet was down; the smoke-worker lane clears new labels one
+PR at a time while it is up. Smoke runs need a logged-in desktop
+session — a locked screen still has a display, a signed-out one does
+not (`Discovered 0 display monitors` is the ENV-FAIL symptom).
+
 ---
 
 ## 2. GitHub CLI install + auth

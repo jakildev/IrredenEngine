@@ -16,7 +16,11 @@ an outstanding `fleet:needs-<host>-smoke` label is not safe to merge.
 **Dedicated smoke-only host.** `FLEET_SMOKE_WORKER=1` in
 `~/.fleet/fleet-up.conf` (then restart `fleet-up`) dispatches
 `role-smoke-worker` into idle pool panes to claim smoke labels
-exclusively (`scripts/fleet/fleet-up.conf.sample`).
+exclusively (`scripts/fleet/fleet-up.conf.sample`). To serve smoke and
+*nothing else* — or smoke plus `**Host:**`-pinned tasks only, the
+native-Windows satellite — set `FLEET_DISPATCH_ROLES` instead, which
+names the exact roles the host serves and switches the merger and
+reviewer lanes off ([`FLEET.md`](FLEET.md) § "Satellite host profile").
 
 ---
 

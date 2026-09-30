@@ -42,7 +42,10 @@ Optional:
   another host; `fleet-claim` does not enforce it, so a hand-picked claim
   on the wrong host is refused only by the pane's own read of the body.
   Finer than `fleet:needs-gl-host`, which
-  lets linux and windows stand in for each other.
+  lets linux and windows stand in for each other. It is also the only
+  thing that routes a task to a satellite host
+  ([`FLEET.md`](FLEET.md) § "Satellite host profile"): a Windows-only
+  task with no `**Host:** windows` pin is never elected there.
 
 ### File with a plan
 
