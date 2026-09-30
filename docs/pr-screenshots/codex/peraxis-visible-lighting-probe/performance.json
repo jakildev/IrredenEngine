@@ -1,0 +1,121 @@
+{
+  "source": "Initial candidate; rounded summary.md values, three runs per configuration. Per-run reports retained under perf/. Native parity failed at some views.",
+  "configurations": {
+    "off": {
+      "measurements": {
+        "steady frame avg": {
+          "mean_ms": 13.53,
+          "min_ms": 13.4,
+          "max_ms": 13.67
+        },
+        "GPU frame envelope": {
+          "mean_ms": 9.921,
+          "min_ms": 9.795,
+          "max_ms": 9.996
+        },
+        "GPU perAxisScatter": {
+          "mean_ms": 5.161,
+          "min_ms": 5.133,
+          "max_ms": 5.179
+        }
+      },
+      "host_load_1m": [
+        3.32,
+        3.37,
+        3.42
+      ],
+      "host_battery_percent": [
+        64,
+        64,
+        64
+      ]
+    },
+    "on": {
+      "measurements": {
+        "steady frame avg": {
+          "mean_ms": 12.35,
+          "min_ms": 12.21,
+          "max_ms": 12.57
+        },
+        "GPU frame envelope": {
+          "mean_ms": 8.618,
+          "min_ms": 8.508,
+          "max_ms": 8.779
+        },
+        "GPU perAxisScatter": {
+          "mean_ms": 3.874,
+          "min_ms": 3.859,
+          "max_ms": 3.887
+        }
+      },
+      "host_load_1m": [
+        3.17,
+        3.32,
+        3.29
+      ],
+      "host_battery_percent": [
+        63,
+        63,
+        63
+      ]
+    },
+    "off-z4": {
+      "measurements": {
+        "steady frame avg": {
+          "mean_ms": 9.053,
+          "min_ms": 9.04,
+          "max_ms": 9.08
+        },
+        "GPU frame envelope": {
+          "mean_ms": 5.14,
+          "min_ms": 5.101,
+          "max_ms": 5.209
+        },
+        "GPU perAxisScatter": {
+          "mean_ms": 1.09,
+          "min_ms": 1.081,
+          "max_ms": 1.105
+        }
+      },
+      "host_load_1m": [
+        4.16,
+        4.71,
+        4.73
+      ],
+      "host_battery_percent": [
+        58,
+        58,
+        57
+      ]
+    },
+    "on-z4": {
+      "measurements": {
+        "steady frame avg": {
+          "mean_ms": 9.443,
+          "min_ms": 9.12,
+          "max_ms": 9.86
+        },
+        "GPU frame envelope": {
+          "mean_ms": 5.091,
+          "min_ms": 4.776,
+          "max_ms": 5.528
+        },
+        "GPU perAxisScatter": {
+          "mean_ms": 0.974,
+          "min_ms": 0.871,
+          "max_ms": 1.179
+        }
+      },
+      "host_load_1m": [
+        9.0,
+        9.0,
+        9.0
+      ],
+      "host_battery_percent": [
+        56,
+        56,
+        56
+      ]
+    }
+  }
+}

@@ -1,0 +1,15 @@
+ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/canvas_stress/IRCanvasStress --only shadowocclusion,orbit,floor --probe-grid --probe-staircase --no-spin --no-auto-rotate --pivot-origin --subdivisions 1 --probe-sky --zoom 1 --auto-profile --auto-screenshot 6 --sweep-yaw 0 5.10508806 5 (timeout: 120s)
+[2026-09-28 15:57:54.002] [EngineLog] [info] Metal device: Apple M4 Max
+[2026-09-28 15:57:54.081] [EngineLog] [warning] REBUILD_GRID_VOXELS span cap: dropped 12 of 1740 covered dest cells (span=1728, surface=610) — new high-water for this run
+[2026-09-28 15:57:54.159] [ClientLog] [info] AutoScreenshot 1/5: sweep_yaw_0 (zoom=1, cam=(0,0), yaw=0, cull=0)
+[2026-09-28 15:57:54.788] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003199.png
+[2026-09-28 15:57:54.798] [ClientLog] [info] AutoScreenshot 2/5: sweep_yaw_1 (zoom=1, cam=(0,0), yaw=1.276272, cull=0)
+[2026-09-28 15:57:55.509] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003200.png
+[2026-09-28 15:57:55.527] [ClientLog] [info] AutoScreenshot 3/5: sweep_yaw_2 (zoom=1, cam=(0,0), yaw=2.552544, cull=0)
+[2026-09-28 15:57:56.154] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003201.png
+[2026-09-28 15:57:56.176] [ClientLog] [info] AutoScreenshot 4/5: sweep_yaw_3 (zoom=1, cam=(0,0), yaw=3.8288162, cull=0)
+[2026-09-28 15:57:56.804] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003202.png
+[2026-09-28 15:57:56.825] [ClientLog] [info] AutoScreenshot 5/5: sweep_yaw_4 (zoom=1, cam=(0,0), yaw=5.105088, cull=0)
+[2026-09-28 15:57:57.451] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003203.png
+ir-run: IRCanvasStress exited cleanly after 4s
+ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0

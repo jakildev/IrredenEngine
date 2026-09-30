@@ -78,6 +78,7 @@ flat out vec4 vColor;
 flat out vec3 vFaceOrigin;
 flat out int vFaceId;
 flat out ivec2 vOwnerPixel;
+flat out ivec3 vVisibilityExtent;
 // Per-fragment PLANAR composite depth: linear (no-perspective, w==1)
 // interpolation of the exact yawed plane depth sampled at each (dilated)
 // corner reproduces the face plane's affine depth field at every fragment —
@@ -212,6 +213,7 @@ vec3 faceSpanCorner(int axis, vec3 origin, vec2 cornerSel) {
 }
 
 void main() {
+    vVisibilityExtent = ivec3(scatterFbResolution.xyz);
     const ivec2 canvasSize = textureSize(triangleDistances, 0);
     ivec2 ij;
     vec4 color;

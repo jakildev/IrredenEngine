@@ -1,0 +1,21 @@
+{
+  "configurations": [
+    "frame",
+    "mixed",
+    "sky",
+    "mixed-off",
+    "off",
+    "on",
+    "stats",
+    "off-z4",
+    "on-z4"
+  ],
+  "all_candidate_runtime_hashes_match": true,
+  "runtime_fingerprints": {
+    "binary_sha256": "56d7a6c2779e3a3adced9bac3a10461c93d31ef7c132fd020254a5e3c6a32446",
+    "shader_sha256": "4116e38a05a3215b719f94b1aa1a675fdefd88cfd29827a018216b918952f599",
+    "runtime_scripts_sha256": "c3ab47543e58c89b874850315b06881210a2dc81013b1524233269e9f7edad5b"
+  },
+  "dirty_base": "44352414ef8046651bfadf1c923d4224c380f365",
+  "note": "Initial candidate. Includes zoom1 and zoom4 profiles, image sweeps and counter proof. Source metadata retained as recorded; these are dirty-base runs, not clean-commit runs."
+}

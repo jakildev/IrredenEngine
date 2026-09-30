@@ -1,3 +1,6 @@
+#ifndef IR_PER_AXIS_VISIBILITY
+#define IR_PER_AXIS_VISIBILITY 0
+#endif
 #ifndef IR_PER_AXIS_SURFACE_SHADOW
 #define IR_PER_AXIS_SURFACE_SHADOW 0
 #endif
@@ -15,6 +18,9 @@ static inline float3 hsvToRgb(float3 c) {
 
 fragment FragmentOut IR_PER_AXIS_FRAGMENT_NAME(
     VertexOut in [[stage_in]]
+#if IR_PER_AXIS_VISIBILITY
+    , device atomic_uint* visibilityCodes [[buffer(26)]]
+#endif
 #if IR_PER_AXIS_SURFACE_SHADOW || IR_PER_AXIS_SURFACE_LIGHTING
     , constant FrameDataSun& sunFrameData [[buffer(29)]]
     , device const uint* sunDepthBuf [[buffer(28)]]
@@ -49,6 +55,56 @@ fragment FragmentOut IR_PER_AXIS_FRAGMENT_NAME(
     // conservative-dilation margin and only fill pixels no exact footprint
     // claims — mirror of f_peraxis_scatter.glsl.
     const bool inMargin = any(in.quadParam < float2(0.0)) || any(in.quadParam > float2(1.0));
+    // Penetration past the exact [0,1]^2 footprint (per axis, >= 0). A margin
+    // fragment yields by the flat bias PLUS penetration * per-axis yield slope so a
+    // cell-deep margin yields the shared ridge to the neighbor face's exact
+    // footprint while a sub-pixel gap-fill still wins — mirror of
+    // f_peraxis_scatter.glsl.
+    const float2 outside = max(max(-in.quadParam, in.quadParam - float2(1.0)), float2(0.0));
+    // Interior-edge yield floor: a margin that penetrated an INTERIOR
+    // edge is extending over the adjacent visible face — floor its yield
+    // slope at the cross-face divergence bound so it always loses to that
+    // face's exact fragments. The penetrated side
+    // is u/v-low when quadParam < 0, u/v-high when > 1; edgeInterior packs
+    // (u-low, u-high, v-low, v-high).
+    const float interiorU =
+        (in.quadParam.x < 0.5f) ? in.edgeInterior.x : in.edgeInterior.y;
+    const float interiorV =
+        (in.quadParam.y < 0.5f) ? in.edgeInterior.z : in.edgeInterior.w;
+    const float gradU = (interiorU > 0.5f)
+        ? max(in.marginYieldGradU, in.marginYieldGradFloor)
+        : in.marginYieldGradU;
+    const float gradV = (interiorV > 0.5f)
+        ? max(in.marginYieldGradV, in.marginYieldGradFloor)
+        : in.marginYieldGradV;
+    // The flat interior term (marginInteriorYieldBias) covers the
+    // penetration-INDEPENDENT (flip<<2)|slot key gap between adjacent faces;
+    // the floored slope covers the penetration-proportional plane divergence.
+    const bool interiorPen = (outside.x > 0.0f && interiorU > 0.5f) ||
+                             (outside.y > 0.0f && interiorV > 0.5f);
+    const float yieldBias = in.marginBias + outside.x * gradU + outside.y * gradV +
+        (interiorPen ? in.marginInteriorYieldBias : 0.0f);
+    // Band-quantize + cell-code injection — mirror of f_peraxis_scatter.glsl
+    // (exact power-of-two float ops on both backends).
+    const float scatterDepth = in.depth + (inMargin ? yieldBias : 0.0f);
+    const float finalDepth =
+        scatterFinalDepth(scatterDepth, in.cellTieOffset, inMargin);
+#if IR_PER_AXIS_VISIBILITY
+    const int2 pixel = int2(in.position.xy);
+    if (any(pixel < int2(0)) || any(pixel >= in.visibilityExtent.xy)) discard_fragment();
+    const uint index = uint(pixel.y) * uint(in.visibilityExtent.x) + uint(pixel.x);
+    const uint pixels = uint(in.visibilityExtent.x) * uint(in.visibilityExtent.y);
+    const bool validDepth = finalDepth >= 0.0 && finalDepth <= 1.0;
+    if ((in.visibilityExtent.z & 2) != 0) {
+        if ((in.visibilityExtent.z & 1) != 0) atomic_fetch_add_explicit(&visibilityCodes[pixels], 1u, memory_order_relaxed);
+        if (validDepth) atomic_fetch_min_explicit(&visibilityCodes[index], scatterVisibilityCode(finalDepth), memory_order_relaxed);
+        discard_fragment();
+    } else {
+        const bool rejected = validDepth && scatterVisibilityReject(scatterVisibilityCode(finalDepth), atomic_load_explicit(&visibilityCodes[index], memory_order_relaxed));
+        if ((in.visibilityExtent.z & 1) != 0) atomic_fetch_add_explicit(&visibilityCodes[pixels + (rejected ? 2u : 1u)], 1u, memory_order_relaxed);
+        if (rejected) discard_fragment();
+    }
+#endif
 #if IR_PER_AXIS_SURFACE_SHADOW
     // A conservative margin has no point on the finite face to query.
     if (inMargin) {
@@ -84,39 +140,6 @@ fragment FragmentOut IR_PER_AXIS_FRAGMENT_NAME(
         out.color = in.color;
     }
 #endif
-    // Penetration past the exact [0,1]^2 footprint (per axis, >= 0). A margin
-    // fragment yields by the flat bias PLUS penetration * per-axis yield slope so a
-    // cell-deep margin yields the shared ridge to the neighbor face's exact
-    // footprint while a sub-pixel gap-fill still wins — mirror of
-    // f_peraxis_scatter.glsl.
-    const float2 outside = max(max(-in.quadParam, in.quadParam - float2(1.0)), float2(0.0));
-    // Interior-edge yield floor: a margin that penetrated an INTERIOR
-    // edge is extending over the adjacent visible face — floor its yield
-    // slope at the cross-face divergence bound so it always loses to that
-    // face's exact fragments. The penetrated side
-    // is u/v-low when quadParam < 0, u/v-high when > 1; edgeInterior packs
-    // (u-low, u-high, v-low, v-high).
-    const float interiorU =
-        (in.quadParam.x < 0.5f) ? in.edgeInterior.x : in.edgeInterior.y;
-    const float interiorV =
-        (in.quadParam.y < 0.5f) ? in.edgeInterior.z : in.edgeInterior.w;
-    const float gradU = (interiorU > 0.5f)
-        ? max(in.marginYieldGradU, in.marginYieldGradFloor)
-        : in.marginYieldGradU;
-    const float gradV = (interiorV > 0.5f)
-        ? max(in.marginYieldGradV, in.marginYieldGradFloor)
-        : in.marginYieldGradV;
-    // The flat interior term (marginInteriorYieldBias) covers the
-    // penetration-INDEPENDENT (flip<<2)|slot key gap between adjacent faces;
-    // the floored slope covers the penetration-proportional plane divergence.
-    const bool interiorPen = (outside.x > 0.0f && interiorU > 0.5f) ||
-                             (outside.y > 0.0f && interiorV > 0.5f);
-    const float yieldBias = in.marginBias + outside.x * gradU + outside.y * gradV +
-        (interiorPen ? in.marginInteriorYieldBias : 0.0f);
-    // Band-quantize + cell-code injection — mirror of f_peraxis_scatter.glsl
-    // (exact power-of-two float ops on both backends).
-    const float scatterDepth = in.depth + (inMargin ? yieldBias : 0.0f);
-    out.depth =
-        scatterFinalDepth(scatterDepth, in.cellTieOffset, inMargin);
+    out.depth = finalDepth;
     return out;
 }

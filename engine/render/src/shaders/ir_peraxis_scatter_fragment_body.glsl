@@ -1,3 +1,6 @@
+#ifndef IR_PER_AXIS_VISIBILITY
+#define IR_PER_AXIS_VISIBILITY 0
+#endif
 #ifndef IR_PER_AXIS_SURFACE_SHADOW
 #define IR_PER_AXIS_SURFACE_SHADOW 0
 #endif
@@ -9,6 +12,7 @@ flat in vec4 vColor;
 flat in vec3 vFaceOrigin;
 flat in int vFaceId;
 flat in ivec2 vOwnerPixel;
+flat in ivec3 vVisibilityExtent;
 // Per-fragment planar depth + margin-yield classification: vDepth is
 // the face plane's exact depth at this fragment (linear interpolation of
 // per-corner planar keys); fragments outside the exact [0,1]^2 footprint are
@@ -71,6 +75,53 @@ void main() {
     }
     const bool inMargin = any(lessThan(vQuadParam, vec2(0.0))) ||
                           any(greaterThan(vQuadParam, vec2(1.0)));
+    // Penetration past the exact [0,1]^2 footprint (per axis, >= 0). A margin
+    // fragment yields by the flat bias PLUS penetration * per-axis yield slope, so
+    // a cell-deep margin (whose plane extrapolation gained a real depth advantage)
+    // yields the shared ridge to the neighbor face's exact footprint, while a
+    // sub-pixel gap-fill yields almost nothing and still wins.
+    const vec2 outside = max(max(-vQuadParam, vQuadParam - vec2(1.0)), vec2(0.0));
+    // Interior-edge yield floor: a margin that penetrated an INTERIOR edge
+    // is extending over the adjacent visible face — floor its yield slope at the
+    // cross-face divergence bound so it always loses to that face's exact
+    // fragments. The penetrated side is u/v-low when
+    // vQuadParam < 0, u/v-high when > 1; vEdgeInterior packs (u-low, u-high,
+    // v-low, v-high).
+    const float interiorU = (vQuadParam.x < 0.5) ? vEdgeInterior.x : vEdgeInterior.y;
+    const float interiorV = (vQuadParam.y < 0.5) ? vEdgeInterior.z : vEdgeInterior.w;
+    const float gradU = (interiorU > 0.5)
+        ? max(vMarginYieldGradU, vMarginYieldGradFloor)
+        : vMarginYieldGradU;
+    const float gradV = (interiorV > 0.5)
+        ? max(vMarginYieldGradV, vMarginYieldGradFloor)
+        : vMarginYieldGradV;
+    // The flat interior term (vMarginInteriorYieldBias) covers the
+    // penetration-INDEPENDENT (flip<<2)|slot key gap between adjacent faces; the
+    // floored slope covers the penetration-proportional plane divergence.
+    const bool interiorPen =
+        (outside.x > 0.0 && interiorU > 0.5) || (outside.y > 0.0 && interiorV > 0.5);
+    const float yieldBias = vMarginDepthBias + outside.x * gradU + outside.y * gradV +
+        (interiorPen ? vMarginInteriorYieldBias : 0.0);
+    // Final ties prefer exact coverage when face/cell priorities coincide.
+    const float scatterDepth = vDepth + (inMargin ? yieldBias : 0.0);
+    const float finalDepth =
+        scatterFinalDepth(scatterDepth, vCellTieOffset, inMargin);
+#if IR_PER_AXIS_VISIBILITY
+    const ivec2 pixel = ivec2(gl_FragCoord.xy);
+    if (any(lessThan(pixel, ivec2(0))) || any(greaterThanEqual(pixel, vVisibilityExtent.xy))) discard;
+    const uint index = uint(pixel.y) * uint(vVisibilityExtent.x) + uint(pixel.x);
+    const uint pixels = uint(vVisibilityExtent.x) * uint(vVisibilityExtent.y);
+    const bool validDepth = finalDepth >= 0.0 && finalDepth <= 1.0;
+    if ((vVisibilityExtent.z & 2) != 0) {
+        if ((vVisibilityExtent.z & 1) != 0) atomicAdd(visibilityCodes[pixels], 1u);
+        if (validDepth) atomicMin(visibilityCodes[index], scatterVisibilityCode(finalDepth));
+        discard;
+    } else {
+        const bool rejected = validDepth && scatterVisibilityReject(scatterVisibilityCode(finalDepth), visibilityCodes[index]);
+        if ((vVisibilityExtent.z & 1) != 0) atomicAdd(visibilityCodes[pixels + (rejected ? 2u : 1u)], 1u);
+        if (rejected) discard;
+    }
+#endif
 #if IR_PER_AXIS_SURFACE_SHADOW
     // A conservative margin has no point on the finite face to query.
     if (inMargin) {
@@ -105,35 +156,5 @@ void main() {
         FragColor = vColor;
     }
 #endif
-    // Penetration past the exact [0,1]^2 footprint (per axis, >= 0). A margin
-    // fragment yields by the flat bias PLUS penetration * per-axis yield slope, so
-    // a cell-deep margin (whose plane extrapolation gained a real depth advantage)
-    // yields the shared ridge to the neighbor face's exact footprint, while a
-    // sub-pixel gap-fill yields almost nothing and still wins.
-    const vec2 outside = max(max(-vQuadParam, vQuadParam - vec2(1.0)), vec2(0.0));
-    // Interior-edge yield floor: a margin that penetrated an INTERIOR edge
-    // is extending over the adjacent visible face — floor its yield slope at the
-    // cross-face divergence bound so it always loses to that face's exact
-    // fragments. The penetrated side is u/v-low when
-    // vQuadParam < 0, u/v-high when > 1; vEdgeInterior packs (u-low, u-high,
-    // v-low, v-high).
-    const float interiorU = (vQuadParam.x < 0.5) ? vEdgeInterior.x : vEdgeInterior.y;
-    const float interiorV = (vQuadParam.y < 0.5) ? vEdgeInterior.z : vEdgeInterior.w;
-    const float gradU = (interiorU > 0.5)
-        ? max(vMarginYieldGradU, vMarginYieldGradFloor)
-        : vMarginYieldGradU;
-    const float gradV = (interiorV > 0.5)
-        ? max(vMarginYieldGradV, vMarginYieldGradFloor)
-        : vMarginYieldGradV;
-    // The flat interior term (vMarginInteriorYieldBias) covers the
-    // penetration-INDEPENDENT (flip<<2)|slot key gap between adjacent faces; the
-    // floored slope covers the penetration-proportional plane divergence.
-    const bool interiorPen =
-        (outside.x > 0.0 && interiorU > 0.5) || (outside.y > 0.0 && interiorV > 0.5);
-    const float yieldBias = vMarginDepthBias + outside.x * gradU + outside.y * gradV +
-        (interiorPen ? vMarginInteriorYieldBias : 0.0);
-    // Final ties prefer exact coverage when face/cell priorities coincide.
-    const float scatterDepth = vDepth + (inMargin ? yieldBias : 0.0);
-    gl_FragDepth =
-        scatterFinalDepth(scatterDepth, vCellTieOffset, inMargin);
+    gl_FragDepth = finalDepth;
 }

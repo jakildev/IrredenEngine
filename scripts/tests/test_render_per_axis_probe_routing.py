@@ -24,7 +24,7 @@ struct Scene {
  int canvas=-1;DebugOverlayMode mode=DebugOverlayMode::NONE;
 } scene;
 int findSystem(int name){return (name==COMPUTE_SUN_SHADOW?scene.compute:scene.shapes)?name:-1;}
-int uniforms[32]{},storage[32]{},binds=0,used=0,lookups=0;
+int uniforms[32]{},storage[32]{},binds=0,used=0,lookups=0,surfaceBinds=0;
 struct Buffer {
  int id;
  void bindBase(BufferTarget target,int slot){
@@ -68,13 +68,14 @@ struct Adapter {
  Buffer *shapeProbeFallbackBuf_=nullptr,*shapeProducerFrameBuf_=nullptr;
  Buffer *animationParamsBuf_=nullptr;
  bool scatterProbeEnabled_=false,shapeProbeEnabled_=false,shapeLightingEnabled_=false;
- bool scatterLightingEnabled_=false;
+ bool scatterLightingEnabled_=false,visibilityPrepass=false;
  int perAxisCanvasEntity_=-1;
  Axes *perAxisCanvases_=nullptr;
- ShaderProgram beauty{1},probe{2},surfaceLighting{3};
+ ShaderProgram beauty{1},probe{2},surfaceLighting{3},visibleLighting{4};
  ShaderProgram *scatterProgram_=&beauty,*scatterProbeProgram_=&probe;
  ShaderProgram *scatterLightingProgram_=&surfaceLighting;
- void bindSurfaceLightingResources(){std::exit(24);}
+ ShaderProgram *visibleLightingProgram_=&visibleLighting;
+ void bindSurfaceLightingResources(){++surfaceBinds;}
 """
 
 CASES = r"""
@@ -96,15 +97,24 @@ int main(){
   for(bool allocated:{false,true})for(bool main:{false,true})for(bool present:{false,true}){
    Axes axes{allocated};adapter.perAxisCanvases_=present?&axes:nullptr;
    uniforms[29]=-29;storage[28]=-28;uniforms[23]=123;storage[25]=125;
-   used=binds=0;adapter.draw(main&&canvas?scene.canvas:9);
+   used=binds=surfaceBinds=0;adapter.draw(main&&canvas?scene.canvas:9);
    const bool drawn=canvas&&main&&present&&allocated;
-   if(used!=(drawn?(expected?2:1):0)||binds!=(drawn&&expected?2:0))return 4;
+   if(used!=(drawn?(expected?2:1):0)||binds!=(drawn&&expected?2:0)||surfaceBinds)return 4;
    if(uniforms[23]!=123||storage[25]!=125)return 5;
    if(!(drawn&&expected)&&(uniforms[29]!=-29||storage[28]!=-28))return 6;
   }
   scene.mode=DebugOverlayMode::NONE;adapter.resolve();
   if(adapter.scatterProbeEnabled_||adapter.shapeProbeEnabled_||lookups!=firstLookups)return 7;
   ++cases;
+ }
+ for(bool probe:{false,true})for(bool lighting:{false,true})for(bool visible:{false,true}){
+  Adapter adapter;Buffer frame{29},depth{28};Axes axes{true};
+  adapter.sunFrameBuf_=&frame;adapter.sunDepthBuf_=&depth;
+  adapter.scatterProbeEnabled_=probe;adapter.scatterLightingEnabled_=lighting;
+  adapter.visibilityPrepass=visible&&lighting;
+  used=binds=surfaceBinds=0;adapter.drawPerAxisScatter(0,axes,0,0);
+  const int expected=visible&&lighting?4:lighting?3:probe?2:1;
+  if(used!=expected||surfaceBinds!=int(lighting)||binds!=((probe||lighting)?2:0))return 4;
  }
  return cases==48?0:8;
 }
@@ -122,7 +132,8 @@ def adapter_source():
     binding = source[start:source.index("\n    }", start) + len("\n    }")]
     start = re.search(
         r"if\s*\(scatterProbeEnabled_\s*\|\|\s*scatterLightingEnabled_\)", source).start()
-    selection = source[start:source.index("        IRRender::device()->setPolygonMode", start)]
+    selection_end = re.search(r"if\s*\(visibilityPrepass\)", source[start:]).start()
+    selection = source[start:start + selection_end]
     route = re.search(
         r"        if \(entity == perAxisCanvasEntity_ &&.*?drawPerAxisScatter\(.*?\);",
         source, re.DOTALL)
