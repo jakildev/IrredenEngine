@@ -612,6 +612,37 @@ class SliceWorkerSkipLabelsDropPR(unittest.TestCase):
         self.assertEqual(result[0]["number"], 101)
 
 
+class SliceWorkerFeedbackPrHostPinLinkage(unittest.TestCase):
+    """A feedback PR inherits its backing issue's `**Host:**` pin however the
+    PR links the issue: a closing keyword, a `Refs #N` line (the acceptance
+    downgrade of `Closes`), or a `claude/<N>-…` branch with no body mention.
+    The dispatcher's host gate reads the slice's `needs_host` stamp."""
+
+    def _needs_host(self, *, closes=(), refs=(), head="claude/feat"):
+        pr = dict(_pr(3768, labels=["fleet:needs-fix"], head=head),
+                  closes_issues=list(closes), closes_cross_repo=[],
+                  refs_issues=list(refs))
+        tasks = {"open": [], "done": [],
+                 "in_progress": [{"issue": "#3757", "model": "opus",
+                                  "needs_host": "mac"}]}
+        [record] = slice_worker(_state([pr], tasks=tasks))["feedback_prs"]
+        return record.get("needs_host")
+
+    def test_closes_link_inherits_the_pin(self):
+        self.assertEqual(self._needs_host(closes=[3757]), "mac")
+
+    def test_refs_only_link_inherits_the_pin(self):
+        self.assertEqual(self._needs_host(refs=[3757]), "mac")
+
+    def test_branch_only_link_inherits_the_pin(self):
+        self.assertEqual(self._needs_host(head="claude/3757-metal-recapture"),
+                         "mac")
+
+    def test_unlinked_pr_stays_ungated(self):
+        self.assertIsNone(self._needs_host(refs=[3758],
+                                           head="claude/37570-other"))
+
+
 class SliceWorkerSkipsGatedNeedsPlan(unittest.TestCase):
     """slice_worker drops human-gated needs-plan issues so the dispatcher's
     class resolver doesn't count them as plannable and spin a no-op worker
