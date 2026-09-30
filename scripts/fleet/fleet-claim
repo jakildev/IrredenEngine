@@ -1259,7 +1259,7 @@ check_blockers() {
 
     BODY_B64="$body_b64" SKIP_IDS="$skip_ids" REPO=$(repo_from_ns) ISSUE_NUM="$issue_num" \
     python3 <<'PYEOF'
-import os, subprocess, sys, base64
+import os, shutil, subprocess, sys, base64
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
 # Shared blocker parser — one routine for scout/ingest/claim so the
 # three can't disagree. parse_blocked_by handles canonical / inline-bold
@@ -1271,6 +1271,10 @@ issue_num = os.environ.get("ISSUE_NUM", "")
 body = base64.b64decode(os.environ["BODY_B64"]).decode("utf-8", errors="replace")
 skip_ids = set(os.environ.get("SKIP_IDS", "").split())
 repo = os.environ.get("REPO", "")
+# Resolve gh through PATH: on native-Windows python CreateProcess appends only
+# ".exe" to a bare name, skipping an extensionless PATH `gh` stub for the
+# real gh.exe. shutil.which honors PATH order and PATHEXT (POSIX passthrough).
+GH = shutil.which("gh") or "gh"
 
 # `(none)` / absent / sentinel-only → no gate.
 field_value = parse_blocked_by(body)
@@ -1292,7 +1296,7 @@ for ref_repo_slug, ref, requires_merge in issue_refs:
     disp = f"#{ref}" if ref_repo_slug == repo else f"{ref_repo_slug}#{ref}"
     try:
         r = subprocess.run(
-            ["gh", "pr" if requires_merge else "issue", "view", ref,
+            [GH, "pr" if requires_merge else "issue", "view", ref,
              "--repo", ref_repo_slug,
              "--json", "state", "--jq", ".state"],
             capture_output=True, text=True, timeout=10,
@@ -2097,7 +2101,7 @@ cmd_find_stackable_blockers() {
 
     local blocker
     blocker=$(BODY_B64="$body_b64" REPO="$repo" python3 <<'PYEOF'
-import base64, json, os, re, subprocess, sys
+import base64, json, os, re, shutil, subprocess, sys
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
 from fleet_branch_match import branch_matches_issue
 # Shared blocker parser — same value the scout / ingest /
@@ -2106,6 +2110,10 @@ from fleet_blocked_by import parse_blocked_by
 
 body = base64.b64decode(os.environ["BODY_B64"]).decode("utf-8", errors="replace")
 repo = os.environ.get("REPO", "")
+# Resolve gh through PATH: on native-Windows python CreateProcess appends only
+# ".exe" to a bare name, skipping an extensionless PATH `gh` stub for the
+# real gh.exe. shutil.which honors PATH order and PATHEXT (POSIX passthrough).
+GH = shutil.which("gh") or "gh"
 
 value = parse_blocked_by(body)
 if not value:
@@ -2121,7 +2129,7 @@ merged_heads = []
 if repo:
     try:
         r = subprocess.run(
-            ["gh", "pr", "list", "--repo", repo, "--state", "merged",
+            [GH, "pr", "list", "--repo", repo, "--state", "merged",
              "--limit", "30", "--json", "headRefName",
              "--jq", "[.[].headRefName]"],
             capture_output=True, text=True, timeout=15,
@@ -2144,7 +2152,7 @@ def is_satisfied(ref):
         return False
     try:
         r = subprocess.run(
-            ["gh", "issue", "view", ref, "--repo", repo,
+            [GH, "issue", "view", ref, "--repo", repo,
              "--json", "state", "--jq", ".state"],
             capture_output=True, text=True, timeout=10,
         )
@@ -2170,7 +2178,7 @@ PYEOF
     # output.
 
     BLOCKER="$blocker" REPO="$repo" python3 <<'PYEOF'
-import json, os, subprocess, sys
+import json, os, shutil, subprocess, sys
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
 from fleet_branch_match import body_closes_issue_in, branch_matches_issue
 # Same reject-state predicate the scout's offer and the claim gate use,
@@ -2180,9 +2188,13 @@ from fleet_branch_match import body_closes_issue_in, branch_matches_issue
 from fleet_stack_base import unsafe_base_reason
 blocker = os.environ["BLOCKER"]
 repo = os.environ["REPO"]
+# Resolve gh through PATH: on native-Windows python CreateProcess appends only
+# ".exe" to a bare name, skipping an extensionless PATH `gh` stub for the
+# real gh.exe. shutil.which honors PATH order and PATHEXT (POSIX passthrough).
+GH = shutil.which("gh") or "gh"
 try:
     r = subprocess.run(
-        ["gh", "pr", "list", "--repo", repo, "--state", "open",
+        [GH, "pr", "list", "--repo", repo, "--state", "open",
          "--json", "url,headRefName,author,number,body,labels",
          "--limit", "200"],
         capture_output=True, text=True, timeout=15,

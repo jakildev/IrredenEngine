@@ -81,213 +81,169 @@ STUB_DIR="$TMPROOT/bin"
 mkdir -p "$STUB_DIR"
 
 cat >"$STUB_DIR/gh" <<'GHSTUB'
-#!/usr/bin/env bash
+#!/usr/bin/env python3
 # Stub for check_blockers tests.
 #
 # Recognised invocations:
-#   gh issue view <N> --repo R --json state,labels,body         → full info
-#   gh issue view <N> --repo R --json state --jq .state         → state only
-#   gh pr view <N> --repo R --json state --jq .state            → state only
-#   gh pr list --repo R --state open --json ... --jq ...        → []
-#   gh api repos/.../issues/N/labels --method POST -f labels[]= → echo back
-#   gh issue edit ... / gh label ...                            → no-op
+#   gh issue view <N> --repo R --json state,labels,body         -> full info
+#   gh issue view <N> --repo R --json state --jq .state         -> state only
+#   gh pr view <N> --repo R --json state --jq .state            -> state only
+#   gh pr list --repo R --state open --json ... --jq ...        -> no output
+#   gh api repos/.../issues/N/labels --method POST -f labels[]= -> echo back
+#   gh issue edit ... / gh label ...                            -> no-op
 #
 # Argument parsing scans for the first bare positive integer rather than
-# trusting positional `$3`. fleet-claim today calls `gh issue view N --repo
-# R --json …`, but the stub stays valid if the call form ever shifts (e.g.
-# `gh issue view --repo R N …`) — otherwise the stub silently falls
+# trusting positional args. fleet-claim today calls `gh issue view N --repo
+# R --json ...`, but the stub stays valid if the call form ever shifts (e.g.
+# `gh issue view --repo R N ...`) - otherwise the stub silently falls
 # through to the default `OPEN` branch and the tests pass for the wrong
 # reason.
+import os
+import re
+import sys
 
-has_jq=0
-issue_num=""
-pr_url=""
-repo=""        # captured from `--repo R` so cross-repo refs can be
-prev=""        # routed-checked: the same #N resolves differently per repo.
-for arg in "$@"; do
-    [[ "$arg" == "--jq" ]] && has_jq=1
-    [[ "$prev" == "--repo" ]] && repo="$arg"
-    if [[ -z "$issue_num" && "$arg" =~ ^[0-9]+$ ]]; then
-        issue_num="$arg"
-    fi
-    if [[ -z "$pr_url" && "$arg" == https://github.com/*/pull/* ]]; then
-        pr_url="$arg"
-    fi
-    prev="$arg"
-done
+args = sys.argv[1:]
+has_jq = False
+issue_num = ""
+pr_url = ""
+repo = ""  # captured from `--repo R` so cross-repo refs can be
+prev = ""  # routed-checked: the same #N resolves differently per repo.
+for arg in args:
+    if arg == "--jq":
+        has_jq = True
+    if prev == "--repo":
+        repo = arg
+    if not issue_num and re.fullmatch(r"[0-9]+", arg):
+        issue_num = arg
+    if not pr_url and re.fullmatch(r"https://github\.com/.*/pull/.*", arg):
+        pr_url = arg
+    prev = arg
 
-case "$1 $2" in
-    "issue view")
-        if [[ "$has_jq" -eq 1 ]]; then
-            # check_blockers state-only lookup for `#N` references.
-            case "$issue_num" in
-                100) echo "CLOSED" ;;   # issue, resolved
-                101) echo "OPEN" ;;     # issue, still open
-                200) echo "MERGED" ;;   # PR, merged
-                201) echo "OPEN" ;;     # PR, still open
-                202) echo "CLOSED" ;;   # PR, abandoned (closed without merge)
-                125)
-                    # cross-repo routing probe: CLOSED only when the check
-                    # is routed to the *game* repo (the referenced repo); OPEN
-                    # if it's mis-routed to the issue's own (engine) repo.
-                    case "$repo" in
-                        jakildev/irreden) echo "CLOSED" ;;
-                        *)                 echo "OPEN" ;;
-                    esac ;;
-                126) echo "OPEN" ;;     # cross-repo (game) ref, still open
-                *)   echo "OPEN" ;;
-            esac
-            exit 0
-        fi
-        # fetch_issue_info: full state+labels+body for the target issue.
-        case "$issue_num" in
-            2001)
-                # Parenthetical PR ref, both resolved.
-                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"## Scope\n\n**Blocked by:** #100 (PR #200 must merge — context)\n"}'
-                ;;
-            2002)
-                # Same shape but the PR is still open.
-                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** #100 (PR #201 must merge — context)\n"}'
-                ;;
-            2003)
-                # `(none …)` form — no blocker.
-                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** (none — independent task)\n"}'
-                ;;
-            2004)
-                # PR-URL form, MERGED.
-                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** https://github.com/jakildev/IrredenEngine/pull/200\n"}'
-                ;;
-            2005)
-                # PR-URL form, OPEN.
-                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** https://github.com/jakildev/IrredenEngine/pull/201\n"}'
-                ;;
-            2022)
-                # PR-URL form, CLOSED without merge.
-                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** https://github.com/jakildev/IrredenEngine/pull/202\n"}'
-                ;;
-            2006)
-                # Bare `#N` issue ref, still open.
-                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** #101\n"}'
-                ;;
-            2007)
-                # No Blocked-by line at all.
-                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"## Scope\n\nIndependent task.\n"}'
-                ;;
-            2008)
-                # Parenthetical PR ref, PR closed without merging.
-                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** #100 (PR #202 abandoned)\n"}'
-                ;;
-            2009)
-                # Dependency declared only as `## Blocked on #N` header
-                # prose (no **Blocked by:** field), the referenced issue OPEN.
-                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"## Scope\n\n## Blocked on #101\n\nWork.\n"}'
-                ;;
-            2010)
-                # Header prose, referenced issue CLOSED → no longer a blocker.
-                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"Blocked on #100\n"}'
-                ;;
-            2011)
-                # Header prose with no #N / PR reference → not a real blocker.
-                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"## Blocked on the redesign\n"}'
-                ;;
-            2012)
-                # Canonical field wins over header prose: field says (none),
-                # so the `## Blocked on` header must be ignored.
-                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** (none — independent)\n\n## Blocked on #101\n"}'
-                ;;
-            2013)
-                # Two separate **Blocked by:** lines — the gate unions them;
-                # the second issue is still OPEN so the claim must be blocked.
-                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** #100\n**Blocked by:** #101\n"}'
-                ;;
-            2014)
-                # Inline-bold form — **Blocked by: #N (label)** mid-line,
-                # the referenced issue still OPEN → claim must be blocked.
-                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Part of epic:** #104 · **Phase 3 of 4** · **Blocked by: #101 (Phase 2)**\n"}'
-                ;;
-            2015)
-                # Inline-bold form, referenced issue CLOSED → pass.
-                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Part of epic:** #104 · **Phase 3 of 4** · **Blocked by: #100 (Phase 2)**\n"}'
-                ;;
-            2016)
-                # Inline-bold form with no #N/PR ref — must not gate.
-                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Part of epic:** #104 · **Blocked by: the redesign**\n"}'
-                ;;
-            2017)
-                # Cross-repo blocker in another repo (owner-qualified),
-                # CLOSED there → claim succeeds once routed to the right repo.
-                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** jakildev/irreden#125\n"}'
-                ;;
-            2018)
-                # Cross-repo blocker (bare repo qualifier), still OPEN in
-                # the referenced repo → claim fails.
-                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** irreden#126\n"}'
-                ;;
-            2019)
-                # Plain mid-line `Blocked by: #N` form, the referenced issue
-                # OPEN → claim fails. Also guards that the epic ref in the
-                # prose is NOT mistaken for a blocker — only the
-                # `Blocked by:` ref-list is captured.
-                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"Part of epic #174 (Phase D). [opus] Blocked by: #101.\n"}'
-                ;;
-            2020)
-                # Plain form, referenced issue CLOSED → pass.
-                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"Part of epic #174. Blocked by: #100.\n"}'
-                ;;
-            2021)
-                # False-positive guard: prose "not blocked by anything"
-                # has no `#N` after the colon → not a blocker → claim succeeds.
-                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"## Scope\n\nThis task is not blocked by anything yet.\n"}'
-                ;;
-            *)
-                printf '%s' '{"state":"OPEN","labels":[],"body":""}'
-                ;;
-        esac
-        exit 0
-        ;;
-    "pr view")
-        case "${pr_url:-$issue_num}" in
-            200|*pull/200) echo "MERGED" ;;
-            201|*pull/201) echo "OPEN" ;;
-            202|*pull/202) echo "CLOSED" ;;
-            *)         echo "OPEN" ;;
-        esac
-        exit 0
-        ;;
-    "pr list")
-        # Open-PR sanity check after the blocker gate clears. The caller
-        # passes `--jq ".[] | select(...) | .number" | head -1`; an empty
-        # array filtered by that jq produces no output, so emit nothing.
-        exit 0
-        ;;
-    "api "*)
-        # Cross-host claim-label acquire — echo back the requested label so
-        # the lex-min tie-break sees us as the sole holder.
-        label=""
-        while [[ $# -gt 0 ]]; do
-            case "$1" in
-                -f) shift
-                    case "$1" in
-                        labels\[\]=*) label="${1#labels[]=}" ;;
-                    esac
-                    ;;
-            esac
-            shift || true
-        done
-        if [[ -n "$label" ]]; then
-            printf '[{"name":"%s"}]\n' "$label"
-        else
-            printf '[[{"name":"%s"}]]\n' "${FLEET_CLAIM_CANDIDATE:-}"
-        fi
-        exit 0
-        ;;
-    "issue edit"|"label "*)
-        exit 0
-        ;;
-esac
-exit 0
+
+def emit(text):
+    sys.stdout.buffer.write(text.encode("utf-8"))
+    sys.stdout.flush()
+
+
+STATE_ONLY = {
+    # check_blockers state-only lookup for `#N` references.
+    "100": "CLOSED",  # issue, resolved
+    "101": "OPEN",  # issue, still open
+    "200": "MERGED",  # PR, merged
+    "201": "OPEN",  # PR, still open
+    "202": "CLOSED",  # PR, abandoned (closed without merge)
+}
+
+ISSUE_INFO = {
+    # Parenthetical PR ref, both resolved.
+    "2001": r'{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"## Scope\n\n**Blocked by:** #100 (PR #200 must merge — context)\n"}',
+    # Same shape but the PR is still open.
+    "2002": r'{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** #100 (PR #201 must merge — context)\n"}',
+    # `(none …)` form — no blocker.
+    "2003": r'{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** (none — independent task)\n"}',
+    # PR-URL form, MERGED.
+    "2004": r'{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** https://github.com/jakildev/IrredenEngine/pull/200\n"}',
+    # PR-URL form, OPEN.
+    "2005": r'{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** https://github.com/jakildev/IrredenEngine/pull/201\n"}',
+    # PR-URL form, CLOSED without merge.
+    "2022": r'{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** https://github.com/jakildev/IrredenEngine/pull/202\n"}',
+    # Bare `#N` issue ref, still open.
+    "2006": r'{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** #101\n"}',
+    # No Blocked-by line at all.
+    "2007": r'{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"## Scope\n\nIndependent task.\n"}',
+    # Parenthetical PR ref, PR closed without merging.
+    "2008": r'{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** #100 (PR #202 abandoned)\n"}',
+    # Dependency declared only as `## Blocked on #N` header
+    # prose (no **Blocked by:** field), the referenced issue OPEN.
+    "2009": r'{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"## Scope\n\n## Blocked on #101\n\nWork.\n"}',
+    # Header prose, referenced issue CLOSED → no longer a blocker.
+    "2010": r'{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"Blocked on #100\n"}',
+    # Header prose with no #N / PR reference → not a real blocker.
+    "2011": r'{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"## Blocked on the redesign\n"}',
+    # Canonical field wins over header prose: field says (none),
+    # so the `## Blocked on` header must be ignored.
+    "2012": r'{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** (none — independent)\n\n## Blocked on #101\n"}',
+    # Two separate **Blocked by:** lines — the gate unions them;
+    # the second issue is still OPEN so the claim must be blocked.
+    "2013": r'{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** #100\n**Blocked by:** #101\n"}',
+    # Inline-bold form — **Blocked by: #N (label)** mid-line,
+    # the referenced issue still OPEN → claim must be blocked.
+    "2014": r'{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Part of epic:** #104 · **Phase 3 of 4** · **Blocked by: #101 (Phase 2)**\n"}',
+    # Inline-bold form, referenced issue CLOSED → pass.
+    "2015": r'{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Part of epic:** #104 · **Phase 3 of 4** · **Blocked by: #100 (Phase 2)**\n"}',
+    # Inline-bold form with no #N/PR ref — must not gate.
+    "2016": r'{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Part of epic:** #104 · **Blocked by: the redesign**\n"}',
+    # Cross-repo blocker in another repo (owner-qualified),
+    # CLOSED there → claim succeeds once routed to the right repo.
+    "2017": r'{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** jakildev/irreden#125\n"}',
+    # Cross-repo blocker (bare repo qualifier), still OPEN in
+    # the referenced repo → claim fails.
+    "2018": r'{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** irreden#126\n"}',
+    # Plain mid-line `Blocked by: #N` form, the referenced issue
+    # OPEN → claim fails. Also guards that the epic ref in the
+    # prose is NOT mistaken for a blocker — only the
+    # `Blocked by:` ref-list is captured.
+    "2019": r'{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"Part of epic #174 (Phase D). [opus] Blocked by: #101.\n"}',
+    # Plain form, referenced issue CLOSED → pass.
+    "2020": r'{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"Part of epic #174. Blocked by: #100.\n"}',
+    # False-positive guard: prose "not blocked by anything"
+    # has no `#N` after the colon → not a blocker → claim succeeds.
+    "2021": r'{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"## Scope\n\nThis task is not blocked by anything yet.\n"}',
+}
+ISSUE_INFO_DEFAULT = r'{"state":"OPEN","labels":[],"body":""}'
+
+PR_STATE = {"200": "MERGED", "201": "OPEN", "202": "CLOSED"}
+
+verb = " ".join(args[:2])
+if verb == "issue view":
+    if has_jq:
+        if issue_num == "125":
+            # cross-repo routing probe: CLOSED only when the check is routed
+            # to the *game* repo (the referenced repo); OPEN if it is
+            # mis-routed to the issue's own (engine) repo.
+            emit("CLOSED\n" if repo == "jakildev/irreden" else "OPEN\n")
+        else:
+            emit(STATE_ONLY.get(issue_num, "OPEN") + "\n")
+        sys.exit(0)
+    # fetch_issue_info: full state+labels+body for the target issue.
+    emit(ISSUE_INFO.get(issue_num, ISSUE_INFO_DEFAULT))
+    sys.exit(0)
+if verb == "pr view":
+    number = (pr_url or issue_num).rsplit("/", 1)[-1]
+    emit(PR_STATE.get(number, "OPEN") + "\n")
+    sys.exit(0)
+if verb == "pr list":
+    # Open-PR sanity check after the blocker gate clears. The caller passes
+    # `--jq ".[] | select(...) | .number" | head -1`; an empty array
+    # filtered by that jq produces no output, so emit nothing.
+    sys.exit(0)
+if args[:1] == ["api"]:
+    # Cross-host claim-label acquire - echo back the requested label so the
+    # lex-min tie-break sees us as the sole holder.
+    label = ""
+    i = 0
+    while i < len(args):
+        if args[i] == "-f" and i + 1 < len(args):
+            i += 1
+            if args[i].startswith("labels[]="):
+                label = args[i][len("labels[]="):]
+        i += 1
+    if label:
+        emit('[{"name":"%s"}]\n' % label)
+    else:
+        emit('[[{"name":"%s"}]]\n' % os.environ.get("FLEET_CLAIM_CANDIDATE", ""))
+    sys.exit(0)
+sys.exit(0)
 GHSTUB
 chmod +x "$STUB_DIR/gh"
+# Native-Windows twin: fleet-claim's Blocked-by resolvers reach `gh` from
+# PYTHON (subprocess), which resolves it through shutil.which() and finds this
+# `.bat` (a bare extensionless script is skipped). Inert on POSIX hosts.
+# See scripts/fleet/CLAUDE.md's native-Windows PATHEXT rule.
+cat > "$STUB_DIR/gh.bat" <<'BATEOF'
+@echo off
+python3 "%~dp0gh" %*
+BATEOF
 
 export PATH="$STUB_DIR:$PATH"
 
