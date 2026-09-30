@@ -289,11 +289,18 @@ std::unique_ptr<RenderImpl> createRenderer() {
     return std::make_unique<OpenGLRenderImpl>();
 }
 
+RenderDevice *bootstrapHeadlessRenderDevice() {
+    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
+        return nullptr;
+    }
+    setDevice(&g_openGLRenderDevice);
+    return &g_openGLRenderDevice;
+}
+
 void OpenGLRenderImpl::init() {
     IRE_LOG_INFO("Initializing OpenGL renderer implementation.");
-    int status = gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
-    IR_ASSERT(status, "Failed to initalize GLAD");
-    setDevice(&g_openGLRenderDevice);
+    auto *renderDevice = bootstrapHeadlessRenderDevice();
+    IR_ASSERT(renderDevice != nullptr, "Failed to initalize GLAD");
     IRWindow::getWindow().setCallbackFramebufferSize(openGLCallback_framebuffer_size);
 }
 

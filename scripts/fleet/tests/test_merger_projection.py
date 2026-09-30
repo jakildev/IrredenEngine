@@ -13,9 +13,11 @@ This harness locks in the behavior:
   - Merge-ready churn does not: an approved MERGEABLE PR appearing, or
     leaving the list when the human merges it, is not merger work and
     must never arm the lane.
-  - Skip-labels (wip, blocker, needs-linux-smoke, etc.) drop a PR
-    from the projection entirely so the merger isn't woken to find
-    nothing to do.
+  - Skip-labels (wip, blocker, etc.) drop a PR from the projection
+    entirely so the merger isn't woken to find nothing to do.
+  - A pending cross-host smoke label never hides a conflict: the human
+    merges without waiting for smoke, so an approved conflicting PR is
+    merger work whatever smoke it still owes.
   - The slice's `merger_candidates` names every PR tier-0 could hand to
     the LLM pass as a `merge:<repo>:<N>` target.
 """
@@ -176,20 +178,49 @@ class SkipLabelsRemovedFromProjection(unittest.TestCase):
                          f"{label} PRs should be invisible to merger")
         self.assertEqual(project_merger(flagged), [])
 
-    def test_needs_linux_smoke_dropped(self):
-        # PR with fleet:approved + fleet:needs-linux-smoke is a smoke-runner's
-        # job, not the merger's. Should NOT appear in the projection.
-        self._dropped("fleet:needs-linux-smoke")
-
-    def test_needs_macos_smoke_dropped(self):
-        self._dropped("fleet:needs-macos-smoke")
-
-    def test_needs_windows_smoke_dropped(self):
-        # The third smoke label must behave identically to linux/macos.
-        self._dropped("fleet:needs-windows-smoke")
-
     def test_wip_dropped(self):
         self._dropped("fleet:wip")
+
+
+class SmokePendingConflictIsMergerWork(unittest.TestCase):
+    """An approved PR that owes a cross-host smoke and goes CONFLICTING is
+    still merger work. The smoke skip used to hide it from the trigger and
+    the slice, so it sat until a host of that tier smoked a head that could
+    not merge. A smoke-pending PR that is merely MERGEABLE stays off
+    merge-ready: the smoke-runner, not the merger, clears that label."""
+
+    SMOKE = ("fleet:needs-linux-smoke", "fleet:needs-macos-smoke",
+             "fleet:needs-windows-smoke")
+
+    def test_conflict_projects_and_flips_the_hash(self):
+        for label in self.SMOKE:
+            with self.subTest(label=label):
+                flagged = _state([_pr(101, labels=["fleet:approved", label],
+                                      mergeable="CONFLICTING")])
+                self.assertEqual(project_merger(flagged),
+                                 [{"repo": "engine", "pr": 101,
+                                   "signal": "needs-resolve"}])
+                self.assertNotEqual(_hash(_state([])), _hash(flagged))
+
+    def test_conflict_is_a_merge_candidate(self):
+        # tier-0 hands a target to the LLM pass only from this table; a PR
+        # missing from it is dropped as "left the candidate set".
+        for label in self.SMOKE:
+            with self.subTest(label=label):
+                out = slice_merger(_state([_pr(101, labels=["fleet:approved", label],
+                                               mergeable="CONFLICTING")]))
+                self.assertEqual([c["number"] for c in out["merger_candidates"]],
+                                 [101])
+
+    def test_unapproved_conflict_is_an_llm_candidate(self):
+        out = slice_merger(_state([_pr(101, labels=["fleet:needs-windows-smoke"],
+                                       mergeable="CONFLICTING")]))
+        self.assertEqual([c["number"] for c in out["merger_candidates"]], [101])
+
+    def test_mergeable_smoke_pending_is_not_merge_ready(self):
+        for label in self.SMOKE:
+            with self.subTest(label=label):
+                self.assertIsNone(_signal(_pr(101, labels=["fleet:approved", label])))
 
 
 class HumanOwesFixLabelsDropped(unittest.TestCase):

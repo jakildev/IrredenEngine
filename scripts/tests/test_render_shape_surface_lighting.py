@@ -1,4 +1,4 @@
-"""Execute finite-fragment lighting with independent composition expectations."""
+"""Execute shape and per-axis lighting with their distinct shadow policies."""
 
 import re
 import subprocess
@@ -25,7 +25,7 @@ float aoInput=.4f,visibilityInput=0,sunAmbient=.25f,sunIntensity=1.5f,normalZ=-1
 float exposure=2,skyIntensity=.7f;
 vec3 sunDirection{0,0,-1},skyColor{.2f,.4f,.6f};
 vec3 expectedLocalPosition{10.25f,-20.5f,30.75f};
-int shadowCalls=0,lightCalls=0,aoCalls=0,paletteCalls=0,albedoCalls=0;
+int shapeShadowCalls=0,worldShadowCalls=0,lightCalls=0,aoCalls=0,paletteCalls=0,albedoCalls=0;
 int paletteLUT=5;
 vec4 unpackColor(uint c){++albedoCalls;if(c!=7)std::exit(20);return {.2f,.3f,.4f,1};}
 float sampleAO(ivec2 p){++aoCalls;if(p.x!=1||p.y!=1)std::exit(21);return aoInput;}
@@ -35,10 +35,16 @@ vec3 samplePalette(int palette,float ao,float l){
  return {.7f,.5f,.3f};
 }
 float pos3DtoDistance(vec3 p){return p.x+p.y+p.z;}
-float worldSurfaceSunShadowFactor(vec3 p,vec3 n,float d,vec4 r){
- ++shadowCalls;
+float worldShapeSurfaceSunShadowFactor(vec3 p,vec3 n,float d,vec4 r){
+ ++shapeShadowCalls;
  if(!near(p.x,10.25f)||!near(p.y,-20.5f)||!near(p.z,30.75f)||
-    !near(n.z,normalZ)||!near(d,20.5f)||!near(r.w,.7f))std::exit(23);
+    !near(n.z,normalZ)||!near(d,-81.f)||!near(r.w,.7f))std::exit(23);
+ return visibilityInput;
+}
+float worldSurfaceSunShadowFactor(vec3 p,vec3 n,float d,vec4 r){
+ ++worldShadowCalls;
+ if(!near(p.x,10.25f)||!near(p.y,-20.5f)||!near(p.z,30.75f)||
+    !near(n.z,normalZ)||!near(d,20.5f)||!near(r.w,.7f))std::exit(25);
  return visibilityInput;
 }
 vec3 localLight(vec3 p){
@@ -57,19 +63,21 @@ float expectedDisplay(float x,bool hdr){
 int main(){
  int checks=0;
  for(int lut:{0,1})for(int shadow:{0,1})for(int volume:{0,1})for(int hdr:{0,1})
- for(float ao:{0.f,.4f,1.f})for(float ambient:{0.f,.25f,std::nextafter(1.f,0.f),1.f})
+ for(float ao:{0.f,.4f,1.f})
+ for(float ambient:{0.f,.25f,std::nextafter(1.f,0.f),1.f})
  for(float intensity:{0.f,0x1p-20f,1.5f})for(float vis:{0.f,1.f})
- for(uint flags:{0u,32u,64u})for(float z:{-1.f,-.6f,-0x1p-20f,0.f,0x1p-20f,1.f}){
+ for(uint flags:{0u,32u,64u})
+ for(float z:{-1.f,-.6f,-0x1p-20f,0.f,0x1p-20f,1.f}){
   lutEnabled=lut;shadowsEnabled=shadow;lightVolumeEnabled=volume;hdrEnabled=hdr;
   normalZ=z;
   aoInput=ao;sunAmbient=ambient;sunIntensity=intensity;
   visibilityInput=vis;receiverShapes[1].flags=flags;
   expectedLocalPosition=vec3(10.25f,-20.5f,30.75f);
-  shadowCalls=lightCalls=aoCalls=paletteCalls=albedoCalls=0;
+  shapeShadowCalls=worldShadowCalls=lightCalls=aoCalls=paletteCalls=albedoCalls=0;
   vec3 out=query({1,1},4,{10.25f,-20.5f,30.75f},{float(std::sqrt(1-z*z)),0,z},
-                 {0,0,0,.7f},{.9f,.8f,.7f});
+                 -81.f,{0,0,0,.7f},{.9f,.8f,.7f});
   if(flags){
-   if(!same(vec4(out,1),{.9f,.8f,.7f,1})||aoCalls||shadowCalls||lightCalls||
+   if(!same(vec4(out,1),{.9f,.8f,.7f,1})||aoCalls||shapeShadowCalls||worldShadowCalls||lightCalls||
       paletteCalls||albedoCalls)return 1;
   }else{
    float a[]={.2f,.3f,.4f},palette[]={.7f,.5f,.3f},sky[]={.2f,.4f,.6f};
@@ -81,21 +89,16 @@ int main(){
     float skyTerm=hdr?sky[i]*.7f*ao*std::max(0.f,-z):0;
     if(!near(actual[i],expectedDisplay(sunlight+local+skyTerm,hdr)))return 2;
    }
-   const double directEnergy=(1.-double(ambient))*double(intensity)*std::max(0.,-double(z));
-   const int expectedQueries=shadow && directEnergy>0;
-   if(shadowCalls!=expectedQueries||lightCalls!=volume||aoCalls!=1||
-      paletteCalls!=lut||albedoCalls!=1){
-    std::cerr<<"query count "<<shadowCalls<<" expected "<<expectedQueries
-             <<" shadow="<<shadow<<" ambient="<<ambient<<" intensity="<<intensity
-             <<" normalZ="<<z<<"\n";
-    return 3;
-   }
+   const int expectedQueries=shadow&&z<0.f&&intensity!=0.f&&ambient!=1.f;
+   if(shapeShadowCalls!=expectedQueries||worldShadowCalls||lightCalls!=volume||aoCalls!=1||
+      paletteCalls!=lut||albedoCalls!=1)return 3;
    expectedLocalPosition=vec3(7.25f,-2.5f,4.75f);
-   shadowCalls=lightCalls=paletteCalls=0;
+   shapeShadowCalls=worldShadowCalls=lightCalls=paletteCalls=0;
    const vec3 separateLocal=worldSurfaceLighting(vec3(.2f,.3f,.4f),ao,
        vec3(10.25f,-20.5f,30.75f),vec3(float(std::sqrt(1-z*z)),0,z),
        vec4(0,0,0,.7f),expectedLocalPosition);
-   if(!same(vec4(separateLocal,1),vec4(out,1))||shadowCalls!=expectedQueries||
+   if(!same(vec4(separateLocal,1),vec4(out,1))||shapeShadowCalls||
+      worldShadowCalls!=expectedQueries||
       lightCalls!=volume||paletteCalls!=lut)return 4;
   }
   ++checks;
@@ -106,18 +109,25 @@ int main(){
 
 
 def function_body(source, name):
-    start = re.search(r"\b" + name + r"\s*\([^{}]*\)\s*\{", source)
-    if start is None:
+    match = re.search(r"\b" + name + r"\s*\([^{}]*\)\s*\{", source)
+    if match is None:
         raise ValueError(f"missing function {name}")
-    return source[start.end():source.rindex("}")]
+    depth = 1
+    end = match.end()
+    while depth:
+        depth += (source[end] == "{") - (source[end] == "}")
+        end += 1
+    return source[match.end():end - 1]
 
 
 def host_body(body):
     body = re.sub(r"constexpr sampler .*?;", "", body)
     body = body.replace("float3", "vec3").replace("float4", "vec4")
     body = body.replace("lighting.", "").replace("sun.", "")
-    body = re.sub(r",\s*lighting\s*,\s*volumeParams\s*,\s*sun\s*,\s*sunDepthBuf\s*,"
-                  r"\s*lights\s*,\s*paletteLUT\s*,\s*lightVolume\s*,\s*lightVolumeId", "", body)
+    body = body.replace("worldSurfaceNeedsSunShadow(lambert, sun)",
+                        "worldSurfaceNeedsSunShadow(lambert)")
+    body = re.sub(r",\s*lighting\s*,\s*volumeParams\s*,\s*sun\s*,\s*lights\s*,"
+                  r"\s*paletteLUT\s*,\s*lightVolume\s*,\s*lightVolumeId", "", body)
     body = re.sub(r",\s*sunFrameData\s*,\s*sunDepthBuf", "", body)
     body = re.sub(r",\s*sun\s*,\s*sunDepthBuf", "", body)
     body = re.sub(r"texelFetch\(surfaceAO\s*,\s*ownerPixel\s*,\s*0\).r",
@@ -134,13 +144,20 @@ class ShapeSurfaceLightingTest(unittest.TestCase):
         for suffix, folder in (("glsl", ""), ("metal", "metal/")):
             base = SHADERS / folder
             source = (base / f"ir_shape_surface_lighting.{suffix}").read_text()
-            body = host_body(function_body(source, "shapeSurfaceLighting"))
             shared = (base / f"ir_world_surface_lighting.{suffix}").read_text()
-            shared = host_body(function_body(shared, "worldSurfaceLighting"))
-            body = ("vec3 worldSurfaceLighting(vec3 albedo,float ao,vec3 position,vec3 normal,"
-                    "vec4 casterRotation,vec3 localLightPosition){" + shared + "}\n"
-                    "vec3 query(ivec2 ownerPixel,int ownerWidth,vec3 position,"
-                    "vec3 normal,vec4 casterRotation,vec3 fallbackColor){" + body + "}\n")
+            body = (
+                "bool worldSurfaceNeedsSunShadow(float lambert){" +
+                host_body(function_body(shared, "worldSurfaceNeedsSunShadow")) + "}\n"
+                "vec3 composeWorldSurfaceLighting(vec3 albedo,float ao,vec3 normal,"
+                "float lambert,float visibility,vec3 localLightPosition){" +
+                host_body(function_body(shared, "composeWorldSurfaceLighting")) + "}\n"
+                "vec3 worldSurfaceLighting(vec3 albedo,float ao,vec3 position,vec3 normal,"
+                "vec4 casterRotation,vec3 localLightPosition){" +
+                host_body(function_body(shared, "worldSurfaceLighting")) + "}\n"
+                "vec3 query(ivec2 ownerPixel,int ownerWidth,vec3 position,vec3 normal,"
+                "float cascadeDepth,vec4 casterRotation,vec3 fallbackColor){" +
+                host_body(function_body(source, "shapeSurfaceLighting")) + "}\n"
+            )
             tone = (base / f"ir_tonemap.{suffix}").read_text()
             surface = (base / f"ir_surface_lighting.{suffix}").read_text()
             material = (base / f"ir_surface_material.{suffix}").read_text()
@@ -161,35 +178,27 @@ class ShapeSurfaceLightingTest(unittest.TestCase):
                 "lost_palette_toggle": body.replace("lutEnabled != 0", "true"),
                 "lost_material_ao": body.replace("surfaceMaterialColor(albedo, ao,",
                                                   "surfaceMaterialColor(albedo, 1.0,"),
-                "lost_shadow_toggle": body.replace("shadowsEnabled == 0", "false"),
+                "shape_uses_generic_query": body.replace(
+                    "worldShapeSurfaceSunShadowFactor(position, normal, cascadeDepth,",
+                    "worldSurfaceSunShadowFactor(position, normal, cascadeDepth,"),
+                "lost_shadow_toggle": body.replace("shadowsEnabled != 0", "true"),
+                "skip_grazing_light": body.replace("lambert != 0.0", "lambert > 0.00001"),
+                "skip_tiny_intensity": body.replace(
+                    "sunIntensity != 0.0", "sunIntensity > 0.00001"),
+                "skip_near_full_ambient": body.replace("sunAmbient != 1.0", "sunAmbient < 0.99999"),
                 "ignored_lambert": body.replace("sunIntensity, lambert, visibility",
                                                 "sunIntensity, 1.0, visibility"),
                 "lost_local_light": body.replace("localLight(localLightPosition)", "vec3(0.0)"),
                 "local_uses_shadow_point": body.replace("localLight(localLightPosition)",
-                                                        "localLight(position)"),
-                "shape_local_position": re.sub(
-                    r"casterRotation\s*,\s*position", "casterRotation, vec3(0.0)", body),
+                                                        "localLight(vec3(0.0))"),
                 "wrong_sky_normal": body.replace("surfaceSkyLight(normal,",
                                                  "surfaceSkyLight(vec3(0,0,1),"),
+                "shape_uses_world_depth": body.replace(
+                    "normal, cascadeDepth, casterRotation",
+                    "normal, pos3DtoDistance(position), casterRotation"),
                 "tone_before_composition": body.replace("return surfaceDisplayColor(linearColor",
                                                         "return surfaceDisplayColor(material"),
             }
-            query_mutations = {
-                "unconditional_shadow_query": re.sub(
-                    r"(\bconst\s+float\s+visibility\s*=\s*)[^?;]+\?", r"\1false ?", body),
-                "query_back_facing": re.sub(r"\|\|\s*lambert\s*==\s*0\.0f?\b", "", body),
-                "query_zero_intensity": re.sub(
-                    r"\|\|\s*sunIntensity\s*==\s*0\.0f?\b", "", body),
-                "query_full_ambient": re.sub(
-                    r"\|\|\s*sunAmbient\s*==\s*1\.0f?\b", "", body),
-                "skip_grazing_light": re.sub(
-                    r"\blambert\s*==\s*0\.0f?\b", "lambert <= 0.00001", body),
-                "skip_tiny_intensity": re.sub(
-                    r"\bsunIntensity\s*==\s*0\.0f?\b", "sunIntensity <= 0.00001", body),
-                "skip_near_full_ambient": re.sub(
-                    r"\bsunAmbient\s*==\s*1\.0f?\b", "sunAmbient >= 0.99999", body),
-            }
-            variants.update(query_mutations)
             for name, candidate in variants.items():
                 with (self.subTest(backend=suffix, mutation=name),
                       tempfile.TemporaryDirectory() as tmp):
@@ -204,9 +213,6 @@ class ShapeSurfaceLightingTest(unittest.TestCase):
                     if name == "production":
                         self.assertEqual(run.returncode, 0, run.stderr)
                         print(suffix, run.stdout.strip())
-                    elif name in query_mutations:
-                        self.assertEqual(run.returncode, 3, run.stderr)
-                        self.assertIn("query count", run.stderr)
                     else:
                         self.assertNotEqual(run.returncode, 0)
 

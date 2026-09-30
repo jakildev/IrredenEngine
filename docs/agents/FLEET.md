@@ -397,6 +397,12 @@ implementation and thresholds: `scripts/fleet/fleet-dispatcher`
 - **GitHub API quota** — `github-{core,graphql,search}.json`: graphql from its
   own `rateLimit` self-report (a refused sample latches `rejected`), core from the `X-RateLimit-*` headers on the scout's own conditional REST reads (a follower sends none, so writes no core file), search
   from `/rate_limit`; core and graphql gate at 90 % (`FLEET_DISPATCHER_USAGE_GATE_GITHUB_{CORE,GRAPHQL}`), search never.
+- **GraphQL refusal** — a `gh pr|issue` refusal (`GraphQL: API rate limit already
+  exceeded`, self-report healthy, REST answering) seen by the scout or `fleet-net.sh`'s
+  `gh()` latches `github-graphql.rejected.json` at 100 % until the graphql reset (else
+  15 min); that `gh()` re-runs the call over REST (modeled shapes: `fleet_gh_fallback.py`
+  docstring). An agent's own `gh` gets no fallback: use `gh api repos/<slug>/issues/<N>`
+  (`/labels`, `/comments -F body=@<file>`).
 - **Per-pane cooldown** — a launch that died at the wall (`claude` exit 1
   with a stream-flagged rejection; legacy exit 2) excludes the pane for
   `FLEET_DISPATCHER_LIMIT_DELAY` seconds (900). The exit is a provider

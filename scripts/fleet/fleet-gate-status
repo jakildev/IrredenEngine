@@ -70,7 +70,9 @@ reset). This command only visualises state — it does NOT trigger resume.
 
 State sources (read-only):
   ~/.fleet/state/usage/*.json         (Anthropic: fleet-claude-stream;
-                                        GitHub: fleet-state-scout)
+                                        GitHub: fleet-state-scout, plus
+                                        github-graphql.rejected.json from any
+                                        refused GraphQL call)
   ~/.fleet/state/rate-limit/*.ts      (written by fleet-dispatch-wrap)
 
 A window that meters one model family (the Fable-only weekly limit,
@@ -436,7 +438,8 @@ else:
         cmp_text = f"(>= {thr_pct}%)" if o["breaching"] else f"(< {thr_pct}%)"
         prefix = "breaching:" if o["breaching"] else "other:"
         pool = o["rateLimitType"].removeprefix("github_")
-        # The scout latches "rejected" when the limiter refused its sample.
+        # "rejected": the limiter refused the scout's sample (github-graphql.json)
+        # or a real GraphQL call (github-graphql.rejected.json).
         status_part = " REJECTED" if o.get("status") == "rejected" else ""
         remaining, limit = o.get("remaining"), o.get("limit")
         quota_text = f"remaining={remaining}/{limit}" if limit else f"util={pct}%"
