@@ -1,17 +1,15 @@
 name: Comment Refs
 
 # Issue and PR numbers do not belong in code comments (.claude/rules/comments.md).
-# scripts/lint_comment_refs.py is a per-file ratchet against
-# scripts/lint_comment_refs_baseline.json: a file may lose references, never
-# gain them. Unfiltered on purpose — the population is every code file class
-# in the tree, so any push can regress it.
+# scripts/lint_comment_refs.py bans issue and PR references in comments.
+# Unfiltered on purpose — the population is every code file class in the tree,
+# so any push can regress it.
 #
 # Every run is measured against the tree it was built on — a pull request
 # against its merge commit's first parent, a push against the previous tip —
-# with that tree's baseline, so a baseline edit in the same change cannot buy
-# budget, and fails only on an offender it introduced; earlier offenders print
-# as inherited. A red master would otherwise turn every later run red and
-# hide the one that adds a regression. The flat tree reading is
+# and fails only on an offender it introduced; earlier offenders print as
+# inherited. A red master would otherwise turn every later run red and hide
+# the one that adds a regression. The flat tree reading is
 # `workflow_dispatch`, or the script run with no flag.
 
 on:
@@ -51,12 +49,7 @@ jobs:
             fi
           fi
           if [ -n "$against" ]; then
-            if git show "$against:scripts/lint_comment_refs_baseline.json" > "$RUNNER_TEMP/base-baseline.json" 2>/dev/null; then
-              echo "RATCHET_ARGS=--baseline $RUNNER_TEMP/base-baseline.json --against $against" >> "$GITHUB_ENV"
-            else
-              echo "RATCHET_ARGS=--against $against" >> "$GITHUB_ENV"
-              echo "$against has no baseline yet; checking against the committed one"
-            fi
+            echo "RATCHET_ARGS=--against $against" >> "$GITHUB_ENV"
           fi
 
       - name: Comment reference ratchet
