@@ -15,6 +15,8 @@
 #   - a timeout or a non-rate-limit failure => prior latch byte-identical
 #   - the refused latch carries the last good reset only while it is ahead
 #   - refusal logging is transition-only
+#   - a refused GraphQL call in run_capture latches github-graphql.rejected.json
+#     at the sampled reset, and a later good self-report leaves it untouched
 
 set -euo pipefail
 
@@ -82,6 +84,10 @@ if [[ "$#" -eq 4 && "$1" == api && "$2" == graphql && "$3" == -f \
             echo "HTTP 502: Bad Gateway (https://api.github.com/graphql)" >&2
             exit 1 ;;
     esac
+fi
+if [[ "$1" == pr && "$2" == list ]]; then
+    echo "GraphQL: API rate limit already exceeded for user ID 1234567." >&2
+    exit 1
 fi
 echo "stub gh: unmodelled invocation: $*" | tee -a "$d/misses" >&2
 exit 1
@@ -218,6 +224,46 @@ graphql_mode error
 sample
 assert_eq "$(ls "$USAGE" | tr '\n' ' ')" "github-search.json " \
     "/rate_limit half writes search only"
+
+echo "T9: a refused pr list in run_capture latches github-graphql.rejected.json"
+REJECTED="$USAGE/github-graphql.rejected.json"
+rm -f "$USAGE"/*.json
+: > "$TMPROOT/scout.log"
+rest_fixture 0
+graphql_good 1100
+sample
+GH_STUB_DIR="$STUB_DIR" GH_STUB_QUERY="$QUERY" PATH="$STUB_DIR/bin:$PATH" \
+python3 - "$SCOUT" "$USAGE" >> "$TMPROOT/scout.log" 2>&1 <<'PY'
+import importlib.machinery, importlib.util, sys
+from pathlib import Path
+loader = importlib.machinery.SourceFileLoader("fleet_state_scout", sys.argv[1])
+spec = importlib.util.spec_from_loader("fleet_state_scout", loader)
+mod = importlib.util.module_from_spec(spec)
+loader.exec_module(mod)
+mod.USAGE_DIR = Path(sys.argv[2])
+mod.GH_TIMEOUT_SECONDS = 5
+for _ in range(2):
+    assert mod.run_capture(["gh", "pr", "list", "--json", "number"]) is None
+PY
+rejected_field() {
+    python3 -c 'import json, sys; v = json.load(open(sys.argv[1])).get(sys.argv[2]); print("<absent>" if v is None else v)' "$REJECTED" "$1" 2>/dev/null \
+        || echo "<no latch>"
+}
+assert_eq "$(rejected_field status)" "rejected" "refused pr list latches status=rejected"
+assert_eq "$(rejected_field resetsAt)" "$FUTURE_RESET" "latch carries the sampled future reset"
+assert_contains "$(rejected_field reason)" "gh pr list: GraphQL: API rate limit already exceeded" \
+    "latch reason names the refused call"
+assert_eq "$(latch_field utilization)" "0.22" "the self-report latch is not touched"
+log=$(cat "$TMPROOT/scout.log")
+assert_eq "$(grep -c 'usage gate latched closed' <<<"$log" || true)" "1" \
+    "two refused calls log one latch line"
+before=$(cat "$REJECTED" 2>/dev/null || echo "<no latch>")
+sleep 1
+graphql_good 1100
+sample
+assert_eq "$(cat "$REJECTED" 2>/dev/null || echo "<no latch>")" "$before" "a later good self-report leaves the refusal latch byte-unchanged"
+assert_eq "$(gate)" "closed:github_graphql rejected util=100% (>= 90%) resets=$FUTURE_RESET" \
+    "dispatcher gate stays closed while the self-report reads 22%"
 
 echo "T8: every gh invocation was modelled by the stub"
 assert_eq "$(cat "$STUB_DIR/misses")" "" "no unmodelled gh calls"
