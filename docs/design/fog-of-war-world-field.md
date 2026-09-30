@@ -381,6 +381,18 @@ no LOS path retains a world-centred half-extent test once the window moves.
 Sampling outside the field remains unoccluded, and an occluder outside it is
 unknown.
 
+The field's lower-corner half-cell is `FogLosColumnField::fieldMinForWindow`:
+the window's centre (`origin + W / 2`, in half-cells) less the field's half
+extent, snapped down to a block of the coarsest pyramid level, so every
+pyramid block keeps its world-aligned corner and the march's block arithmetic
+is unchanged. The snap leaves at least 96 cells of field around the window's
+centre on each axis. The shaders derive it from `windowOriginX_` /
+`windowOriginY_` and the fog texture's edge (`fogLosFieldMin`). `FOG_LOS_BUILD`
+runs before the frame's gather writes those lanes, so it computes the origin
+the gather is about to write from the same camera state
+(`IRPrefab::Fog::detail::cameraWindowOrigin`, which the gather also calls) and
+publishes the corner with the field for the CPU reveal oracle.
+
 `IRPrefab::Fog::lineOfSight` follows the same convention independently: it
 rasterizes its one reusable query view at the window's origin, marches to the
 target, and returns unoccluded when the target is outside it.
@@ -409,13 +421,15 @@ source expresses visibility now, not explored memory.
 
 ## Consumer audit
 
-The current fixed-window convention has these direct consumers. The window
-phase changes all of them together.
+The window convention has these direct consumers. The window phase changed
+all of them together: every tap addresses the toroidal window through the
+observer block's origin lanes, and every LOS path anchors its column field
+on the window.
 
 | Consumer | Window dependency |
 |---|---|
-| `engine/render/src/shaders/c_fog_to_trixel.glsl` | Paint lookup uses the fixed half-extent. |
-| `engine/render/src/shaders/metal/c_fog_to_trixel.metal` | Metal twin of the paint lookup. |
+| `engine/render/src/shaders/ir_fog_common.glsl` | Paint lookup shared by `c_fog_to_trixel` and `c_fog_overflow_faces`. |
+| `engine/render/src/shaders/metal/ir_fog_common.metal` | Metal twin of the paint lookup. |
 | `engine/render/src/shaders/c_voxel_to_trixel_stage_1_body.glsl` | Stage-1 column keep/drop lookup. |
 | `engine/render/src/shaders/metal/c_voxel_to_trixel_stage_1_body.metal` | Metal twin of the stage-1 lookup. |
 | `engine/render/src/shaders/c_voxel_visibility_compact.glsl` | Compact-pass fog cull and 1x1 placeholder path. |
@@ -429,15 +443,22 @@ phase changes all of them together.
 | `component_canvas_fog_of_war.hpp` — `FogLosColumnField::cellInField` / `columnIndex` | CPU visibility and column indexing use field-local half-cell coordinates. |
 | `VOXEL_TO_TRIXEL_STAGE_1::gatherFogWindow` | Gathers before the per-canvas early return and again through the world-fog `beginTick` resolve; the second call finds nothing pending in the same frame. |
 | `FOG_TO_TRIXEL` | Binds the same texture and observer block for paint. |
-| `FOG_LOS_BUILD` | Builds the column field at the frame's raster lattice, then uploads the packed LOS texture. |
-| `IRPrefab::Fog::lineOfSight` | Fills the standalone query view before marching to the target. |
+| `FOG_LOS_BUILD` | Builds the column field at the frame's raster lattice, anchored on the window origin the frame's gather writes, then uploads the packed LOS texture. |
+| `IRPrefab::Fog::lineOfSight` | Fills the standalone query view at the window the last gather uploaded before marching to the target. |
 | `test/render/fog_line_of_sight_test.cpp` | Pins LOS field edges, indexing, rasterization and march behavior. |
 | `test/render/fog_cross_section_test.cpp` | Mirrors the fog-grid convention for the probe host and the LOS field constants for the LOS arm. |
 
 Fog-attached demo coverage is `fog_demo`, `perf_grid`, `lua_perf_grid`,
 `skeletal_demo` and the `lighting/main_combined` configuration. Their existing
 content lies inside the legacy window; the pre-existing reference rows are the
-OFF-path parity gate while the field and moving-window phases land.
+OFF-path parity gate. The window phase adds `fog_demo --world-pan` (reveal,
+leave and return over a persisted field; the `FOG-WORLD-PAN` probe) and
+`fog_demo --depth-slab` (D10's coverage at yaw 0 and π/4; the
+`FOG-DEPTH-SLAB` probe), and the `IRPerfGrid` arms `--fog-world-pan`,
+`--fog-world-pan-persist` and `--fog-teleport` for D12's frame budgets,
+reported as the `FogWindowGather` CPU phase. The perf grids reveal
+`max(128, ⌈half-diagonal of the grid's XY extent⌉ + 1)` so a large grid keeps
+rendering every voxel under D10.
 
 ## D9 — Phase map
 

@@ -35,11 +35,6 @@ static bool fogLosSourceGated(int losSourceMask, int source) {
     return ((losSourceMask >> source) & 1) != 0;
 }
 
-static bool fogLosCellInField(int2 halfCell) {
-    return halfCell.x >= -kFogLosFieldHalfExtent && halfCell.x < kFogLosFieldHalfExtent &&
-        halfCell.y >= -kFogLosFieldHalfExtent && halfCell.y < kFogLosFieldHalfExtent;
-}
-
 static int fogLosLevelRowOffset(int level) {
     return 2 * kFogLosTextureSize - ((2 * kFogLosTextureSize) >> level);
 }
@@ -48,19 +43,33 @@ static int2 fogLosBlockMin(int level, int2 halfCell) {
     return (((halfCell + int2(kFogLosLevelBias)) >> level) << level) - int2(kFogLosLevelBias);
 }
 
+static int2 fogLosFieldMin(int2 windowOrigin, int windowEdge) {
+    const int2 corner = (windowOrigin + int2(windowEdge / 2)) * kFogLosCellsPerUnit -
+        int2(kFogLosFieldHalfExtent);
+    return fogLosBlockMin(kFogLosLevelCount - 1, corner);
+}
+
+static bool fogLosCellInField(int2 halfCell, int2 fieldMin) {
+    const int2 local = halfCell - fieldMin;
+    return local.x >= 0 && local.x < 2 * kFogLosFieldHalfExtent && local.y >= 0 &&
+        local.y < 2 * kFogLosFieldHalfExtent;
+}
+
 static float fogLosBlockTop(
-    int level, int2 blockMin, texture2d<float, access::read> fogLineOfSight
+    int level, int2 blockMin, int2 fieldMin, texture2d<float, access::read> fogLineOfSight
 ) {
-    if (!fogLosCellInField(blockMin)) {
+    if (!fogLosCellInField(blockMin, fieldMin)) {
         return kFogLosColumnEmpty;
     }
-    const int2 block = (blockMin + int2(kFogLosFieldHalfExtent)) >> level;
+    const int2 block = (blockMin - fieldMin) >> level;
     const int2 texel = int2(block.x >> 1, fogLosLevelRowOffset(level) + (block.y >> 1));
     return fogLosTexel(texel, fogLineOfSight)[(block.x & 1) + 2 * (block.y & 1)];
 }
 
-static float fogLosTopPlane(int2 halfCell, texture2d<float, access::read> fogLineOfSight) {
-    return fogLosBlockTop(0, halfCell, fogLineOfSight);
+static float fogLosTopPlane(
+    int2 halfCell, int2 fieldMin, texture2d<float, access::read> fogLineOfSight
+) {
+    return fogLosBlockTop(0, halfCell, fieldMin, fogLineOfSight);
 }
 
 static float fogLosReach(float4 circle) {
@@ -76,6 +85,7 @@ static float fogLosTraceClearance(
     float3 eye,
     float3 target,
     float softness,
+    int2 fieldMin,
     thread float &bandClearance,
     texture2d<float, access::read> fogLineOfSight
 ) {
@@ -108,7 +118,7 @@ static float fogLosTraceClearance(
         const float tExit = min(min(tEdge.x, tEdge.y), 1.0);
         const float top = (level == 0 && cell.x == eyeCell.x && cell.y == eyeCell.y)
             ? kNever
-            : fogLosBlockTop(level, blockMin, fogLineOfSight);
+            : fogLosBlockTop(level, blockMin, fieldMin, fogLineOfSight);
         if (top != kNever) {
             const float tLow = rise > 0.0 ? tExit : t;
             const float clearance = top - (eye.z + tLow * rise);
@@ -167,11 +177,12 @@ static float fogLosVisibility(
     float3 eye,
     float3 target,
     float softness,
+    int2 fieldMin,
     texture2d<float, access::read> fogLineOfSight
 ) {
     float bandClearance;
     const float minClearance =
-        fogLosTraceClearance(eye, target, softness, bandClearance, fogLineOfSight);
+        fogLosTraceClearance(eye, target, softness, fieldMin, bandClearance, fogLineOfSight);
     return fogLosVisibilityFromClearance(minClearance, bandClearance, softness);
 }
 

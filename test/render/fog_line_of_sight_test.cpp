@@ -13,6 +13,7 @@
 #include <irreden/render/fog_line_of_sight.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 
+#include <algorithm>
 #include <cstddef>
 #include <fstream>
 #include <regex>
@@ -41,6 +42,9 @@ using IRMath::vec3;
 using IRMath::vec4;
 using IRPrefab::Fog::LosRasterFrame;
 
+// The field corner a window centred on the world origin anchors.
+const ivec2 kWorldFieldMin(-kFogLosFieldHalfExtent);
+
 std::vector<float> emptyField() {
     return std::vector<float>(IRComponents::kFogLosFieldFloatCount, kFogLosColumnEmpty);
 }
@@ -55,16 +59,23 @@ LosRasterFrame subdividedFrame() {
     return frame;
 }
 
-void stampVoxel(std::vector<float> &field, vec3 position, const LosRasterFrame &frame) {
+void stampVoxel(
+    std::vector<float> &field,
+    vec3 position,
+    const LosRasterFrame &frame,
+    ivec2 fieldMin = kWorldFieldMin
+) {
     vec3 boxMin;
     vec3 boxMax;
     IRPrefab::Fog::losVoxelBox(position, frame, boxMin, boxMax);
-    IRPrefab::Fog::stampLosBox(field, vec2(boxMin), vec2(boxMax), boxMin.z);
+    IRPrefab::Fog::stampLosBox(field, fieldMin, vec2(boxMin), vec2(boxMax), boxMin.z);
     IRPrefab::Fog::buildLosPyramid(field);
 }
 
-float topAt(const std::vector<float> &field, int halfCellX, int halfCellY) {
-    return FogLosColumnField{field.data()}.topPlane(halfCellX, halfCellY);
+float topAt(
+    const std::vector<float> &field, int halfCellX, int halfCellY, ivec2 fieldMin = kWorldFieldMin
+) {
+    return FogLosColumnField{field.data(), fieldMin}.topPlane(halfCellX, halfCellY);
 }
 
 // The fog_demo --occlusion scene as the subdivided raster draws it: slab top
@@ -77,22 +88,32 @@ constexpr float kRidgeTop = -0.5f;
 const vec3 kGroundEye(-6.0f, 0.0f, 3.0f);
 const vec3 kRidgeEye(0.0f, 0.0f, -2.0f);
 
-std::vector<float> ridgeField(float shift = 0.0f) {
+// The ridge scene raised by @p shift and translated by @p offset in XY, in the
+// field whose lower corner is @p fieldMin.
+std::vector<float>
+ridgeField(float shift = 0.0f, vec2 offset = vec2(0.0f), ivec2 fieldMin = kWorldFieldMin) {
     std::vector<float> field = flatField(kGroundTop + shift);
     const LosRasterFrame frame = subdividedFrame();
     for (int row = -7; row <= 8; ++row) {
-        const float y = static_cast<float>(row) - 0.5f;
-        stampVoxel(field, vec3(-0.5f, y, kRidgeTop + shift), frame);
-        stampVoxel(field, vec3(0.5f, y, kRidgeTop + shift), frame);
+        const float y = static_cast<float>(row) - 0.5f + offset.y;
+        stampVoxel(field, vec3(-0.5f + offset.x, y, kRidgeTop + shift), frame, fieldMin);
+        stampVoxel(field, vec3(0.5f + offset.x, y, kRidgeTop + shift), frame, fieldMin);
     }
-    stampVoxel(field, vec3(-2.0f, 5.0f, kGroundTop - 10.0f + shift), frame);
+    stampVoxel(
+        field,
+        vec3(offset + vec2(-2.0f, 5.0f), kGroundTop - 10.0f + shift),
+        frame,
+        fieldMin
+    );
     return field;
 }
 
-bool clear(const std::vector<float> &field, vec3 eye, vec3 target) {
+bool clear(
+    const std::vector<float> &field, vec3 eye, vec3 target, ivec2 fieldMin = kWorldFieldMin
+) {
     float bandClearance = 0.0f;
     const float minClearance = IRPrefab::Fog::traceLosClearance(
-        FogLosColumnField{field.data()},
+        FogLosColumnField{field.data(), fieldMin},
         eye,
         target,
         kFogLosHardGate,
@@ -126,10 +147,11 @@ float visibility(
     const std::vector<float> &field,
     const FrameDataFogObservers &observers,
     int source,
-    vec3 position
+    vec3 position,
+    ivec2 fieldMin = kWorldFieldMin
 ) {
     return IRPrefab::Fog::losVisibility(
-        FogLosColumnField{field.data()},
+        FogLosColumnField{field.data(), fieldMin},
         observers,
         source,
         position
@@ -180,12 +202,24 @@ TEST(FogLineOfSightTest, FlatGroundRemainsVisible) {
 TEST(FogLineOfSightTest, EyeCellNeverOccludes) {
     std::vector<float> field = flatField(kGroundTop);
     const vec3 eye(-2.3f, -3.4f, 2.0f);
-    IRPrefab::Fog::stampLosBox(field, vec2(-2.5f, -3.5f), vec2(-2.0f, -3.0f), -20.0f);
+    IRPrefab::Fog::stampLosBox(
+        field,
+        kWorldFieldMin,
+        vec2(-2.5f, -3.5f),
+        vec2(-2.0f, -3.0f),
+        -20.0f
+    );
     IRPrefab::Fog::buildLosPyramid(field);
     EXPECT_TRUE(clear(field, eye, vec3(3.0f, -3.4f, kGroundTop)))
         << "the eye's own half-cell occluded the ray";
 
-    IRPrefab::Fog::stampLosBox(field, vec2(-2.0f, -3.5f), vec2(-1.5f, -3.0f), -20.0f);
+    IRPrefab::Fog::stampLosBox(
+        field,
+        kWorldFieldMin,
+        vec2(-2.0f, -3.5f),
+        vec2(-1.5f, -3.0f),
+        -20.0f
+    );
     IRPrefab::Fog::buildLosPyramid(field);
     EXPECT_FALSE(clear(field, eye, vec3(3.0f, -3.4f, kGroundTop)))
         << "control: a tower one half-cell along the ray must occlude";
@@ -232,6 +266,65 @@ TEST(FogLineOfSightTest, RidgeHidesWhatIsBehindItFromTheGround) {
 
     EXPECT_TRUE(clear(flatField(kGroundTop), kGroundEye, vec3(6.0f, 0.0f, kGroundTop)))
         << "control: without the ridge the far ground is visible";
+}
+
+// The field anchored with a fog window: a window centred on the world origin
+// anchors the world-centred field, and every window's field is aligned to the
+// coarsest pyramid block and holds at least 96 cells around the window's
+// snapped centre on each axis.
+TEST(FogLineOfSightTest, FieldAnchorsOnTheWindowCentre) {
+    constexpr int kCoarsestBlock = 1 << (IRComponents::kFogLosLevelCount - 1);
+    constexpr int kHeldHalfCells = 192;
+    for (const int edge : {1152, 1472, 4096}) {
+        EXPECT_EQ(FogLosColumnField::fieldMinForWindow(ivec2(-edge / 2), edge), kWorldFieldMin)
+            << "edge " << edge;
+        for (int y = -5000; y <= 5000; y += 997) {
+            for (int x = -5000; x <= 5000; x += 1231) {
+                const ivec2 origin = IRPrefab::Fog::detail::windowOriginForCentre(
+                    vec2(static_cast<float>(x) + 0.3f, static_cast<float>(y) - 0.4f),
+                    edge
+                );
+                const ivec2 centre = (origin + edge / 2) * IRComponents::kFogLosCellsPerUnit;
+                const ivec2 fieldMin = FogLosColumnField::fieldMinForWindow(origin, edge);
+                EXPECT_EQ(IRMath::floorMod(fieldMin.x, kCoarsestBlock), 0);
+                EXPECT_EQ(IRMath::floorMod(fieldMin.y, kCoarsestBlock), 0);
+                EXPECT_TRUE(FogLosColumnField::cellInField(centre - kHeldHalfCells, fieldMin))
+                    << "centre (" << x << ", " << y << ") edge " << edge;
+                EXPECT_TRUE(FogLosColumnField::cellInField(centre + kHeldHalfCells - 1, fieldMin))
+                    << "centre (" << x << ", " << y << ") edge " << edge;
+            }
+        }
+    }
+}
+
+// The window re-anchor: with the ridge scene translated far past the
+// world-centred field and the window centred on it, the ridge still hides the
+// slab behind it, through the march and through the source's gated factor.
+// Control: the same stamps into the world-centred field fall outside it, so
+// there the ridge is unknown and occludes nothing.
+TEST(FogLineOfSightTest, OffOriginRidgeOccludesInTheWindowAnchoredField) {
+    constexpr int kWindowEdge = 1152;
+    const vec2 offset(640.0f, -392.0f);
+    const ivec2 fieldMin = FogLosColumnField::fieldMinForWindow(
+        IRPrefab::Fog::detail::windowOriginForCentre(offset, kWindowEdge),
+        kWindowEdge
+    );
+    const vec3 eye = kGroundEye + vec3(offset, 0.0f);
+    const vec3 nearSlab(offset.x - 3.0f, offset.y, kGroundTop);
+    const vec3 behindRidge(offset.x + 6.0f, offset.y, kGroundTop);
+
+    const std::vector<float> anchored = ridgeField(0.0f, offset, fieldMin);
+    EXPECT_TRUE(clear(anchored, eye, nearSlab, fieldMin));
+    EXPECT_FALSE(clear(anchored, eye, behindRidge, fieldMin))
+        << "the ridge hides nothing in the field anchored on the window";
+    const FrameDataFogObservers observers =
+        gatedSources({vec4(eye.x, eye.y, 14.0f, 0.0f)}, kGroundTop + 0.5f, 1.5f);
+    EXPECT_FLOAT_EQ(visibility(anchored, observers, 0, nearSlab, fieldMin), 1.0f);
+    EXPECT_FLOAT_EQ(visibility(anchored, observers, 0, behindRidge, fieldMin), 0.0f);
+
+    const std::vector<float> worldCentred = ridgeField(0.0f, offset);
+    EXPECT_TRUE(clear(worldCentred, eye, behindRidge))
+        << "control: a world-centred field must not hold the off-origin ridge";
 }
 
 // The shadow's edges are straight lines: along the ridge's flank the verdict
@@ -489,6 +582,7 @@ class FogLineOfSightEcsTest : public testing::Test {
     IREntity::EntityManager m_entityManager{};
     C_VoxelPool m_pool{ivec3(4, 4, 4)};
     std::vector<float> m_field = emptyField();
+    ivec2 m_fieldMin = kWorldFieldMin;
     LosRasterFrame m_frame{};
 
     IREntity::EntityId makeWall(bool blocksLos, vec3 centre = vec3(0.5f, 0.5f, 1.5f)) {
@@ -505,11 +599,17 @@ class FogLineOfSightEcsTest : public testing::Test {
     }
 
     void rasterize() {
-        IRPrefab::Fog::rasterizeLosColumns(m_pool, IREntity::kNullEntity, m_frame, m_field);
+        IRPrefab::Fog::rasterizeLosColumns(
+            m_pool,
+            IREntity::kNullEntity,
+            m_frame,
+            m_fieldMin,
+            m_field
+        );
     }
 
     float top(int halfCellX, int halfCellY) const {
-        return topAt(m_field, halfCellX, halfCellY);
+        return topAt(m_field, halfCellX, halfCellY, m_fieldMin);
     }
 };
 
@@ -591,6 +691,30 @@ TEST_F(FogLineOfSightEcsTest, PoolVoxelsOccludeExceptCarvedAndGoverned) {
     EXPECT_FLOAT_EQ(top(3, 0), kFogLosColumnEmpty);
     EXPECT_FLOAT_EQ(top(10, 10), kFogLosColumnEmpty) << "a carved voxel must not occlude";
     EXPECT_FLOAT_EQ(top(14, 14), kFogLosColumnEmpty) << "a governed voxel must not occlude";
+}
+
+// The raster stamps into the field anchored with the window: a voxel far from
+// the origin falls outside the world-centred field and lands in a field
+// anchored on a window centred near it.
+TEST_F(FogLineOfSightEcsTest, RasterFillsTheWindowAnchoredField) {
+    IRRender::VoxelPoolAllocation allocation = m_pool.allocateVoxels(1);
+    allocation.positionGlobals_[0].pos_ = vec3(642.0f, -390.0f, -3.0f);
+    allocation.voxels_[0].color_.alpha_ = 255;
+    rasterize();
+    EXPECT_TRUE(std::all_of(m_field.begin(), m_field.end(), [](float columnTop) {
+        return columnTop == kFogLosColumnEmpty;
+    })) << "a voxel outside the world-centred field stamped into it";
+
+    constexpr int kWindowEdge = 1152;
+    m_fieldMin = FogLosColumnField::fieldMinForWindow(
+        IRPrefab::Fog::detail::windowOriginForCentre(vec2(640.0f, -392.0f), kWindowEdge),
+        kWindowEdge
+    );
+    rasterize();
+    EXPECT_FLOAT_EQ(top(1284, -780), -3.0f) << "the voxel fills x 642..643, y -390..-389";
+    EXPECT_FLOAT_EQ(top(1285, -779), -3.0f);
+    EXPECT_FLOAT_EQ(top(1283, -780), kFogLosColumnEmpty);
+    EXPECT_FLOAT_EQ(top(1284, -778), kFogLosColumnEmpty);
 }
 
 // Slot authoring: addVisionCircle hands back the slot it filled (or -1), a new

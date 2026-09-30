@@ -6,7 +6,9 @@
 // is down; kFogLosColumnEmpty = no occluder), and the field's pyramid follows
 // from each level's texel row (fogLosLevelRowOffset): per block of 2^level
 // half-cells on a side, the highest top plane in the block, packed the same
-// way. A
+// way. The field is anchored with the fog window: its lower-corner half-cell
+// (fogLosFieldMin) derives from the observer block's window origin and the fog
+// texture's edge exactly as FogLosColumnField::fieldMinForWindow does. A
 // sample's visibility is the exact segment march from a source's eye to the
 // sample's canonical position over that lattice, stepping over the pyramid
 // blocks that cannot change its verdict. Out-of-field columns are empty.
@@ -62,11 +64,6 @@ bool fogLosSourceGated(int losSourceMask, int source) {
     return ((losSourceMask >> source) & 1) != 0;
 }
 
-bool fogLosCellInField(ivec2 halfCell) {
-    return halfCell.x >= -kFogLosFieldHalfExtent && halfCell.x < kFogLosFieldHalfExtent &&
-        halfCell.y >= -kFogLosFieldHalfExtent && halfCell.y < kFogLosFieldHalfExtent;
-}
-
 // The first packed texel row of pyramid level `level`.
 int fogLosLevelRowOffset(int level) {
     return 2 * kFogLosTextureSize - ((2 * kFogLosTextureSize) >> level);
@@ -77,21 +74,38 @@ ivec2 fogLosBlockMin(int level, ivec2 halfCell) {
     return (((halfCell + ivec2(kFogLosLevelBias)) >> level) << level) - ivec2(kFogLosLevelBias);
 }
 
+// The field's lower-corner half-cell for the fog window at `windowOrigin` of
+// edge `windowEdge`: the window's centre less the field's half extent, snapped
+// down to a coarsest-level block so every block keeps its world-aligned
+// corner. Mirrors FogLosColumnField::fieldMinForWindow.
+ivec2 fogLosFieldMin(ivec2 windowOrigin, int windowEdge) {
+    const ivec2 corner = (windowOrigin + ivec2(windowEdge / 2)) * kFogLosCellsPerUnit -
+        ivec2(kFogLosFieldHalfExtent);
+    return fogLosBlockMin(kFogLosLevelCount - 1, corner);
+}
+
+bool fogLosCellInField(ivec2 halfCell, ivec2 fieldMin) {
+    const ivec2 local = halfCell - fieldMin;
+    return local.x >= 0 && local.x < 2 * kFogLosFieldHalfExtent && local.y >= 0 &&
+        local.y < 2 * kFogLosFieldHalfExtent;
+}
+
 // The highest top plane (the smallest Z) among the half-cells of the
-// level-`level` block with lower corner `blockMin`; empty outside the field.
-// A block is inside or outside the field whole.
-float fogLosBlockTop(int level, ivec2 blockMin) {
-    if (!fogLosCellInField(blockMin)) {
+// level-`level` block with lower corner `blockMin` of the field at
+// `fieldMin`; empty outside the field. A block is inside or outside the field
+// whole.
+float fogLosBlockTop(int level, ivec2 blockMin, ivec2 fieldMin) {
+    if (!fogLosCellInField(blockMin, fieldMin)) {
         return kFogLosColumnEmpty;
     }
-    const ivec2 block = (blockMin + ivec2(kFogLosFieldHalfExtent)) >> level;
+    const ivec2 block = (blockMin - fieldMin) >> level;
     const ivec2 texel = ivec2(block.x >> 1, fogLosLevelRowOffset(level) + (block.y >> 1));
     return fogLosTexel(texel)[(block.x & 1) + 2 * (block.y & 1)];
 }
 
 // The top plane of a half-cell; empty outside the field.
-float fogLosTopPlane(ivec2 halfCell) {
-    return fogLosBlockTop(0, halfCell);
+float fogLosTopPlane(ivec2 halfCell, ivec2 fieldMin) {
+    return fogLosBlockTop(0, halfCell, fieldMin);
 }
 
 // Mirrors IRPrefab::Fog::losReach: past this distance from the disc's centre
@@ -118,7 +132,9 @@ vec3 fogLosEye(vec4 circle, float observerZ, float eyeHeight) {
 // block ahead is new; a block that might is entered a level finer, and a
 // level-0 cell is evaluated exactly. So each result is exact below its
 // threshold and otherwise at least it.
-float fogLosTraceClearance(vec3 eye, vec3 target, float softness, out float bandClearance) {
+float fogLosTraceClearance(
+    vec3 eye, vec3 target, float softness, ivec2 fieldMin, out float bandClearance
+) {
     const float kCells = float(kFogLosCellsPerUnit);
     const float kNever = kFogLosColumnEmpty;
     const int kMaxLevel = kFogLosLevelCount - 1;
@@ -148,7 +164,7 @@ float fogLosTraceClearance(vec3 eye, vec3 target, float softness, out float band
         const float tExit = min(min(tEdge.x, tEdge.y), 1.0);
         const float top = (level == 0 && cell.x == eyeCell.x && cell.y == eyeCell.y)
             ? kNever
-            : fogLosBlockTop(level, blockMin);
+            : fogLosBlockTop(level, blockMin, fieldMin);
         if (top != kNever) {
             const float tLow = rise > 0.0 ? tExit : t;
             const float clearance = top - (eye.z + tLow * rise);
@@ -204,9 +220,9 @@ float fogLosVisibilityFromClearance(float minClearance, float bandClearance, flo
     return smoothstep(0.0, softness, bandClearance);
 }
 
-float fogLosVisibility(vec3 eye, vec3 target, float softness) {
+float fogLosVisibility(vec3 eye, vec3 target, float softness, ivec2 fieldMin) {
     float bandClearance;
-    const float minClearance = fogLosTraceClearance(eye, target, softness, bandClearance);
+    const float minClearance = fogLosTraceClearance(eye, target, softness, fieldMin, bandClearance);
     return fogLosVisibilityFromClearance(minClearance, bandClearance, softness);
 }
 

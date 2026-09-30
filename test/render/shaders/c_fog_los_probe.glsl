@@ -7,7 +7,8 @@
 // reveal the fog kernel's source loop computes for source 0, and the
 // canonical sample the cardinal route would evaluate for a face pixel at that
 // position — so a one-sided edit to the gate changes what this kernel
-// returns.
+// returns. The field is anchored with the fog window named in the header, as
+// the fog kernel anchors it.
 
 #version 450 core
 #include "../../../engine/render/src/shaders/ir_iso_common.glsl"
@@ -16,15 +17,19 @@
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
-// std430: vec4 at 0, vec4 at 16, four ints at 32, the sample array at 48.
+// std430: vec4 at 0, vec4 at 16, eight ints at 32, the sample array at 64.
 layout(std430, binding = 2) readonly buffer FogLosProbeIn {
     vec4 circle;
     // (observerZ, eyeHeight, softness, subdivisions)
     vec4 source;
     int losSourceMask;
     int sampleCount;
+    int windowOriginX;
+    int windowOriginY;
+    int windowEdge;
     int _probePad0;
     int _probePad1;
+    int _probePad2;
     // (x, y, z, faceId) — a negative faceId probes the point itself.
     vec4 samples[];
 };
@@ -52,8 +57,9 @@ void main() {
         ? probed.xyz
         : fogLosCanonicalSample(probed.xyz, faceId, kFogLosRouteCardinal, int(source.w));
     const vec3 eye = fogLosEye(circle, source.x, source.y);
+    const ivec2 fieldMin = fogLosFieldMin(ivec2(windowOriginX, windowOriginY), windowEdge);
     float bandClearance;
-    const float clearance = fogLosTraceClearance(eye, target, source.z, bandClearance);
+    const float clearance = fogLosTraceClearance(eye, target, source.z, fieldMin, bandClearance);
     const float visibility = fogLosVisibilityFromClearance(clearance, bandClearance, source.z);
     const bool gated = fogLosSourceGated(losSourceMask, 0) &&
         length(target.xy - circle.xy) <= fogLosReach(circle);

@@ -41,8 +41,17 @@ std::vector<float> emptyField() {
     );
 }
 
-void stampWall(std::vector<float> &field, IRMath::vec2 minXY, IRMath::vec2 maxXY, float top) {
-    IRPrefab::Fog::stampLosBox(field, minXY, maxXY, top);
+// The field corner a window centred on the world origin anchors.
+const IRMath::ivec2 kWorldFieldMin(-IRComponents::kFogLosFieldHalfExtent);
+
+void stampWall(
+    std::vector<float> &field,
+    IRMath::vec2 minXY,
+    IRMath::vec2 maxXY,
+    float top,
+    IRMath::ivec2 fieldMin = kWorldFieldMin
+) {
+    IRPrefab::Fog::stampLosBox(field, fieldMin, minXY, maxXY, top);
     IRPrefab::Fog::buildLosPyramid(field);
 }
 
@@ -109,6 +118,46 @@ TEST(FogRevealEvalTest, OccludedSampleIsUnrevealedRegardlessOfCost) {
     EXPECT_FLOAT_EQ(IRPrefab::Fog::evalVisionReveal(observers, field, IRMath::vec3(3, 4, 0)), 1.0f);
 }
 
+// The window re-anchor: a gated source and a wall several field half extents
+// from the world origin, inside the field anchored on a window centred near
+// them, hide the sample behind the wall. Control: the world-centred field
+// cannot hold the wall, so there the sample keeps its full reveal.
+TEST(FogRevealEvalTest, OffOriginOccluderHidesInTheWindowAnchoredField) {
+    constexpr int kWindowEdge = 1152;
+    const IRMath::vec2 offset(600.0f, -400.0f);
+    const IRMath::ivec2 fieldMin = FogLosColumnField::fieldMinForWindow(
+        IRPrefab::Fog::detail::windowOriginForCentre(offset, kWindowEdge),
+        kWindowEdge
+    );
+    FrameDataFogObservers observers = gated(oneCircle(10.0f, 0.0f));
+    observers.visionCircles_[0] = IRMath::vec4(offset.x, offset.y, 10.0f, 0.0f);
+    const IRMath::vec3 behind(offset.x + 3.0f, offset.y + 4.0f, 0.0f);
+
+    std::vector<float> anchored = emptyField();
+    stampWall(
+        anchored,
+        offset + IRMath::vec2(1.0f),
+        offset + IRMath::vec2(2.0f, 3.0f),
+        -5.0f,
+        fieldMin
+    );
+    EXPECT_FLOAT_EQ(
+        IRPrefab::Fog::evalVisionReveal(
+            observers,
+            FogLosColumnField{anchored.data(), fieldMin},
+            behind
+        ),
+        0.0f
+    ) << "the off-origin wall hides nothing in the field anchored on the window";
+
+    std::vector<float> worldCentred = emptyField();
+    stampWall(worldCentred, offset + IRMath::vec2(1.0f), offset + IRMath::vec2(2.0f, 3.0f), -5.0f);
+    EXPECT_FLOAT_EQ(
+        IRPrefab::Fog::evalVisionReveal(observers, FogLosColumnField{worldCentred.data()}, behind),
+        1.0f
+    ) << "control: a world-centred field must not hold the off-origin wall";
+}
+
 // An unoccluded sample takes the unchanged cost curve: over an empty field
 // the gated reveal equals the cost-only overload, height penalty included.
 TEST(FogRevealEvalTest, UnoccludedSampleTakesTheCostCurve) {
@@ -165,7 +214,7 @@ TEST(FogRevealEvalTest, UnpublishedFieldRevealsNothingThroughAGatedSource) {
 // set re-authored after the build never pairs with the old columns.
 TEST(FogRevealEvalTest, SnapshotPairsPublishedSourcesWithTheirField) {
     const std::vector<float> columns = emptyField();
-    const FogLosColumnField published{columns.data()};
+    const FogLosColumnField published{columns.data(), IRMath::ivec2(1024, -1152)};
     FrameDataFogObservers built = gated(oneCircle(10.0f, 0.0f));
     FrameDataFogObservers live = built;
     live.visionCircles_[0] = IRMath::vec4(50.0f, 0.0f, 3.0f, 0.0f);
@@ -175,6 +224,7 @@ TEST(FogRevealEvalTest, SnapshotPairsPublishedSourcesWithTheirField) {
     IRPrefab::Fog::selectRevealSnapshot(live, built, published, observers, los);
     EXPECT_EQ(observers.visionCircles_[0], built.visionCircles_[0]);
     EXPECT_EQ(los.tops_, columns.data());
+    EXPECT_EQ(los.fieldMin_, published.fieldMin_) << "the field travels with its anchor";
 
     IRPrefab::Fog::selectRevealSnapshot(live, built, FogLosColumnField{}, observers, los);
     EXPECT_EQ(observers.visionCircles_[0], live.visionCircles_[0]);

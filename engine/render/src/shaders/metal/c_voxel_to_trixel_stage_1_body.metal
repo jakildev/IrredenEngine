@@ -324,11 +324,8 @@ static float fogColumnRevealZ(
     if (fogSize.x <= 1) {
         return 1.0f;
     }
-    const int2 cell = col + int2(kFogOfWarHalfExtent);
-    if (cell.x < 0 || cell.x >= fogSize.x || cell.y < 0 || cell.y >= fogSize.y) {
-        return 1.0f;
-    }
-    if (fog.read(uint2(cell)).r >= kFogExploredThreshold) {
+    const int2 cell = fogWindowTexel(col, int2(obs.windowOriginX, obs.windowOriginY), fogSize);
+    if (cell.x >= 0 && fog.read(uint2(cell)).r >= kFogExploredThreshold) {
         return 1.0f;
     }
     float reveal = 0.0f;

@@ -110,18 +110,18 @@ layout(std430, binding = 26) buffer IndirectDispatchParamsBuf {
     uint params[];
 };
 
-// Fog-of-war column cull. The world fog canvas binds its 256² fog visibility texture here;
-// every other canvas (detached, GUI, non-fog creations) binds a 1×1 all-visible placeholder.
-// A voxel whose RAW world (x,y) column is unexplored is dropped from BOTH the single-list and
-// the per-axis appends, so it never rasterizes and FOG_TO_TRIXEL has no pixel of it to
-// hard-black. The `imageSize().x <= 1` short-circuit makes the placeholder path a true no-op.
+// Fog-of-war column cull. The world fog canvas binds its camera-anchored fog window texture
+// here; every other canvas (detached, GUI, non-fog creations) binds a 1×1 all-visible
+// placeholder. A voxel whose RAW world (x,y) column is unexplored is dropped from BOTH the
+// single-list and the per-axis appends, so it never rasterizes and FOG_TO_TRIXEL has no pixel
+// of it to hard-black. The `imageSize().x <= 1` short-circuit makes the placeholder path a true
+// no-op.
 layout(rgba8, binding = 0) readonly uniform image2D canvasFogOfWar;
 
 // Mirrors C_CanvasFogOfWar + c_fog_to_trixel.glsl. The fog `.r` channel reads
 // back in normalized space: unexplored 0.0, explored ≈0.5, visible 1.0 — so
 // `state < kFogExploredThreshold` selects ONLY unexplored columns. Explored
 // columns still rasterize (FOG_TO_TRIXEL desaturates them as "memory").
-const int kFogOfWarHalfExtent = 128;
 const float kFogExploredThreshold = 0.25;
 
 // Live analytic fog vision circles (aliases binding 27; uploaded by VOXEL_TO_TRIXEL_STAGE_1
@@ -129,30 +129,54 @@ const float kFogExploredThreshold = 0.25;
 // FogObserverData UBO in c_fog_to_trixel.glsl. canvasFogOfWar carries only coarse
 // explored/voxelized memory; these discs carry the smooth "currently visible". The compact
 // keeps a column covered by any disc EVEN when its grid cell is unexplored, so a voxel-floor
-// scene driven purely by setVisionCircle keeps its floor.
+// scene driven purely by setVisionCircle keeps its floor. The tail after the count is the
+// line-of-sight mask (unread here) and the field column at texel (0, 0) of the fog window.
 const int kMaxFogVisionCircles = 8; // mirror of component_canvas_fog_of_war.hpp kMaxFogVisionCircles — must stay in sync
 layout(std140, binding = 27) uniform FogObserverData {
     vec4 visionCircles[kMaxFogVisionCircles]; // (centerX, centerY, radius, edgeSoftness)
     int visionCircleCount;
+    int losSourceMask;
+    int windowOriginX;
+    int windowOriginY;
 };
+
+// Texel of world column `col` in the fog window, or (-1, -1) when the column
+// is outside it. Column `c` lives at texel floorMod(c, W) with W the window
+// edge (imageSize); the window covers [origin, origin + W) per axis. Every
+// modulo takes non-negative operands only (GLSL leaves the negative case
+// undefined). Mirrors fogWindowTexel in ir_voxel_face_select.glsl; Metal
+// twin in metal/c_voxel_visibility_compact.metal.
+ivec2 fogWindowTexel(ivec2 col, ivec2 origin, ivec2 fogSize) {
+    const ivec2 rel = col - origin;
+    if (rel.x < 0 || rel.x >= fogSize.x || rel.y < 0 || rel.y >= fogSize.y) {
+        return ivec2(-1);
+    }
+    ivec2 base;
+    base.x = origin.x >= 0 ? origin.x % fogSize.x : fogSize.x - 1 - (-(origin.x + 1)) % fogSize.x;
+    base.y = origin.y >= 0 ? origin.y % fogSize.y : fogSize.y - 1 - (-(origin.y + 1)) % fogSize.y;
+    ivec2 texel = rel + base;
+    if (texel.x >= fogSize.x) {
+        texel.x -= fogSize.x;
+    }
+    if (texel.y >= fogSize.y) {
+        texel.y -= fogSize.y;
+    }
+    return texel;
+}
 
 // True iff this voxel's raw world column is unexplored on the bound fog
 // texture. Uses voxelPosRaw (the pre-cardinal-rotation world position) because
-// the fog grid is world-space; out-of-range columns and the 1×1 placeholder
-// both return false (visible → no cull), matching c_fog_to_trixel's bounds
-// convention.
+// the fog grid is world-space. The 1×1 placeholder returns false (visible → no
+// cull); a column outside the window reads unexplored (true), matching every
+// other tap, so only a live circle keeps it.
 bool fogColumnUnexplored(ivec3 voxelPosRaw) {
     ivec2 fogSize = imageSize(canvasFogOfWar);
     if (fogSize.x <= 1) {
         return false;
     }
-    ivec2 fogCell = ivec2(
-        voxelPosRaw.x + kFogOfWarHalfExtent,
-        voxelPosRaw.y + kFogOfWarHalfExtent
-    );
-    if (fogCell.x < 0 || fogCell.x >= fogSize.x ||
-        fogCell.y < 0 || fogCell.y >= fogSize.y) {
-        return false;
+    ivec2 fogCell = fogWindowTexel(voxelPosRaw.xy, ivec2(windowOriginX, windowOriginY), fogSize);
+    if (fogCell.x < 0) {
+        return true;
     }
     return imageLoad(canvasFogOfWar, fogCell).r < kFogExploredThreshold;
 }
