@@ -3199,7 +3199,7 @@ SEMANTIC_CONFLICT_SKIP_PREFIXES = WORKER_SKIP_PREFIXES + (
 # either.
 WORKER_SKIP_LABELS = frozenset({
     "fleet:needs-opus-recheck", "fleet:design-blocked", "fleet:design-proposed",
-    "fleet:awaiting-infra",
+    "fleet:awaiting-infra", "fleet:needs-human",
 })
 # Only the fleet-owned tiers are suppressible by transient lane state.
 # human:needs-fix / human:blocker outrank that state, but persistent PR

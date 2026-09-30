@@ -285,6 +285,37 @@ class WorkerFeedbackLabelsSuppressedWhileDesignParked(unittest.TestCase):
         )
 
 
+class NeedsHumanParkSkipsWorkerFeedback(unittest.TestCase):
+    """A dispatch-breaker park suppresses fleet-owned feedback tiers.
+
+    project_worker decides whether to wake a worker and slice_worker supplies
+    its candidates. Both use worker_feedback_labels(), so these assertions
+    keep a parked PR out of the immediate subsequent worker tick.
+    """
+
+    def _both(self, labels):
+        state = _state([_pr(101, labels=labels)])
+        projected = [item for item in project_worker(state)
+                     if item["kind"] == "pr"]
+        return projected, slice_worker(state)["feedback_prs"]
+
+    def test_parked_fleet_tiers_are_absent_from_both_sites(self):
+        for tier in ("fleet:needs-fix", "fleet:has-nits",
+                     "fleet:design-unblocked"):
+            with self.subTest(tier=tier):
+                projected, sliced = self._both([tier, "fleet:needs-human"])
+                self.assertEqual(projected, [])
+                self.assertEqual(sliced, [])
+
+    def test_park_does_not_suppress_human_needs_fix(self):
+        projected, sliced = self._both([
+            "human:needs-fix", "fleet:needs-human",
+        ])
+        self.assertEqual(len(projected), 1)
+        self.assertEqual(projected[0]["labels"], ["human:needs-fix"])
+        self.assertEqual(len(sliced), 1)
+
+
 class WorkerFeedbackLabelsSuppressedWhileAwaitingInfra(unittest.TestCase):
     """A PR parked with fleet:awaiting-infra (an open blocker named in its
     own `Parked-until: #N` line) is not worker feedback work even when it
