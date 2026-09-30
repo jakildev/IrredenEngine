@@ -1,7 +1,9 @@
--- lua_widgets: build a panel + label + two buttons ENTIRELY from Lua,
--- with a Lua onClick that fires on click (via WIDGET_LUA_DISPATCH) and a
--- polling button read with IRGui.wasClicked from a Lua system. No per-creation
--- C++ widget binding — every widget comes from the engine IRGui surface.
+-- lua_widgets: build a panel + labels + two buttons ENTIRELY from Lua,
+-- with a Lua onClick that fires on click (via WIDGET_LUA_DISPATCH), a
+-- polling button read with IRGui.wasClicked from a Lua system, and a hover
+-- label written by IRInput.onEntityHovered / onEntityUnhovered handlers (via
+-- ENTITY_HOVER_DETECT). No per-creation C++ binding — every widget and handler
+-- comes from the engine IRGui / IRInput surface.
 --
 -- Coords are in GUI-canvas trixels. The C++ GUI-test harness clicks at the
 -- buttons' screen-px centers (see main_lua.cpp kOnClickEvents / kPollEvents).
@@ -24,8 +26,18 @@ end)
 -- Button B — NO onClick; proven via a Lua system that polls IRGui.wasClicked.
 local pollButton = IRGui.makeButton(340, 140, 200, 100, "POLL ME")
 
+-- Hover label — names the button under the cursor, empty when none is.
+local hoverLabel = IRGui.makeLabel(60, 280, "")
+local hoverNames = { [onClickButton] = "CLICK ME", [pollButton] = "POLL ME" }
+IRInput.onEntityHovered(function(id)
+    IRGui.setLabelText(hoverLabel, "HOVERING " .. (hoverNames[id] or "?"))
+end)
+IRInput.onEntityUnhovered(function()
+    IRGui.setLabelText(hoverLabel, "")
+end)
+
 -- Hand the widget ids back to the C++ GUI-test harness for its assertions.
-IRTest.setButtons(onClickButton, pollButton)
+IRTest.setButtons(onClickButton, pollButton, hoverLabel)
 
 -- A pure-polling Lua creation: a singleton-backed system that ticks once per
 -- frame and polls wasClicked on the poll button — no onClick callback.

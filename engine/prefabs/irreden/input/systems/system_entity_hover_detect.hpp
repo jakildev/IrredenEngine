@@ -159,12 +159,12 @@ template <> struct System<ENTITY_HOVER_DETECT> {
             handlers->fireRightClick();
             if (currentHovered != IREntity::kNullEntity) {
                 IRE_LOG_DEBUG("[Click] Entity {} clicked (right button)", currentHovered);
-                handlers->fireClicked(currentHovered, 1);
+                handlers->fireClicked(currentHovered, IRComponents::EntityClickButton::RIGHT);
             }
         }
         if (leftPressed) {
             IRE_LOG_DEBUG("[Click] Entity {} clicked (left button)", currentHovered);
-            handlers->fireClicked(currentHovered, 0);
+            handlers->fireClicked(currentHovered, IRComponents::EntityClickButton::LEFT);
         }
     }
 };

@@ -61,7 +61,20 @@ systems that populate button state. The underlying polling lives in
   iso depth** across world hitboxes and the trixel readback. Hitboxes are
   scanned once per frame via `forEachComponent` (no per-entity
   `getComponent`); exact ties retain archetype-iteration order. Callbacks are
-  `sol::protected_function`s registered from Lua.
+  `sol::protected_function`s registered from Lua through the `IRInput`
+  surface `LuaScript::bindLuaCommands()` binds:
+
+  | Lua | Handler signature |
+  |---|---|
+  | `IRInput.onEntityHovered(fn)` / `onEntityUnhovered(fn)` | `fn(entityId)` |
+  | `IRInput.onEntityClicked(fn)` | `fn(entityId, button)` — compare `button` against `IRInput.MouseButton.{LEFT,RIGHT}` |
+  | `IRInput.onRightClick(fn)` | `fn()` — every right press, hovered entity or not |
+  | `IRInput.removeEntityHandler(id)` | takes the id any registrar returned |
+
+  Register from the main script state only (a coroutine-thread function
+  would be called through that thread later). `IRInput.MouseButton` is the
+  click-dispatch code (`EntityClickButton`), not an `IRInput.Key` value.
+  `creations/demos/lua_widgets/main.lua` is the reference hover label.
 
 ## Pipeline order
 
@@ -117,6 +130,8 @@ and falls through to the next priority tier.
 - **Hover callbacks are Lua-only.** `SYSTEM_ENTITY_HOVER_DETECT` stores
   `sol::protected_function`. C++ callers need to round-trip through a
   Lua registration path, or you have to add a new handler type.
+- **Handlers run inside the system's `beginTick`.** A handler that creates
+  or destroys entities uses the deferred `IREntity.deferred*` ops.
 - **An unhover for a `resetGameplay()`-destroyed entity is suppressed,
   not delivered.** `previousHoveredEntity_` is an event payload, and a
   `System<N>` member survives the reset (systems are never destroyed), so

@@ -64,8 +64,10 @@ class LuaScript {
     void bindLuaDrivenEcs();
 
     // Bind the input + command surface — IRCommand.{bindPrefab,
-    // createCommand, fire, fireByName, CommandName} and IRInput.{InputType,
-    // ButtonStatus, Key, Modifier, GamepadButton, GamepadAxis}. Idempotent
+    // createCommand, fire, fireByName, CommandName}, IRInput.{InputType,
+    // ButtonStatus, Key, Modifier, GamepadButton, GamepadAxis}, and the
+    // entity hover/click handlers IRInput.{onEntityHovered, onEntityUnhovered,
+    // onEntityClicked, onRightClick, removeEntityHandler, MouseButton}. Idempotent
     // (each detail bind helper guards on its own bound-table key). Required
     // for any creation that wants to declare commands or bind input from
     // Lua. See docs/design/lua-input-commands.md and engine/script/CLAUDE.md

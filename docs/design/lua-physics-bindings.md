@@ -133,18 +133,14 @@ Mouse-driven point-vs-rectangle tests with callback dispatch.
   `IRSystem::getEntityEventHandlers()` — the `C_EntityEventHandlers`
   singleton component since #2582 — stores `sol::protected_function`
   and fires Lua-style with handler-id
-  bookkeeping — but the **C++ entry points
-  `addOnHovered` / `addOnClicked` / etc. are not bound to Lua
-  yet**. A creation can't subscribe without dropping to a custom
-  binding lambda.
+  bookkeeping. `LuaScript::bindLuaCommands()` binds the registrars as
+  `IRInput.onEntityHovered` / `onEntityUnhovered` / `onEntityClicked` /
+  `onRightClick` / `removeEntityHandler`.
 
-**Lua reachability today:** none of the hover surface is bound to
-Lua. The system fires correctly, but registration is C++-only.
-The two hitbox component types also lack `_lua.hpp` siblings.
+**Lua reachability today:** handler registration is bound; the two
+hitbox component types still lack `_lua.hpp` siblings.
 **Missing:** `_lua.hpp` for both hitbox component types so
-configuration (size, position) is settable from Lua, and a stable
-Lua spelling for the handler-registry entry points
-(`IRInput.registerHoverHandler(entity, { onHovered = fn, ... })`).
+configuration (size, position) is settable from Lua.
 
 ### 4. CPU raycast + mouse-to-world (`engine/prefabs/irreden/render/picking.hpp`)
 
@@ -237,7 +233,7 @@ sol2 lambda, that's a "no".
 |---|---|---|---|
 | Velocity integration | `C_Velocity3D` (bound) | `VELOCITY_3D`, `ACCELERATION_3D`, `GRAVITY_3D`, `VELOCITY_DRAG` (all bound) | **Yes** |
 | AABB collision | `C_ColliderIso3DAABB` (bound), `C_CollisionLayer` (bound), `C_ContactEvent` (bound) | `COLLISION_NOTE_PLATFORM`, `COLLISION_EVENT_CLEAR` (both bound) | **Yes** for the per-frame all-pairs path. **No** for "did this point/ray overlap that AABB" ad-hoc query. |
-| Hover / hitbox | `C_HitBox2D`, `C_HitBox2DGui` — **no `_lua.hpp` binding** | `HITBOX_MOUSE_TEST*` (both bound) | **No.** Hitbox components have no Lua binding, and the hover-detect handler registry (`addOnHovered` / `addOnClicked` / ...) has no Lua entry point — `sol::protected_function` is the parameter type but a creation can't reach `addOnHovered` from Lua. |
+| Hover / hitbox | `C_HitBox2D`, `C_HitBox2DGui` — **no `_lua.hpp` binding** | `HITBOX_MOUSE_TEST*` (both bound) | **Partly.** The hover-detect handlers are bound (`IRInput.onEntityHovered` / `onEntityClicked` / ...), but the hitbox components have no Lua binding, so hitboxes are still attached from C++. |
 | CPU raycast | n/a (free function) | n/a | **No** |
 | Mouse → world | n/a (renderer free functions) | n/a | **No** |
 | GPU entity-at-cursor | n/a | n/a | **No** |
@@ -320,6 +316,13 @@ they exist because the C++ side has render/update pipeline rate
 asymmetries that Lua callers don't observe in the same way.
 
 ### 3. `IRInput.registerHoverHandler` — first-class hover callback registration
+
+**Superseded.** The shipped surface is per-event, not per-entity:
+`IRInput.onEntityHovered(fn)` / `onEntityUnhovered(fn)` /
+`onEntityClicked(fn)` / `onRightClick(fn)`, each returning an id for
+`IRInput.removeEntityHandler(id)` — handlers receive the entity id and
+filter themselves (`engine/prefabs/irreden/input/CLAUDE.md`). The original
+proposal follows.
 
 The hover-detect system already accepts Lua callbacks via
 `sol::protected_function` (`system_entity_hover_detect.hpp`); the

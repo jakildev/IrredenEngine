@@ -5,8 +5,8 @@
 // command bindings and fire them from Lua. The locked design lives at
 // `docs/design/lua-input-commands.md`.
 //
-// Three idempotent bind helpers, each populating a slice of the Lua
-// namespace. The public `LuaScript::bindLuaCommands()` calls all three.
+// Four idempotent bind helpers, each populating a slice of the Lua
+// namespace. The public `LuaScript::bindLuaCommands()` calls all four.
 // Each guard checks for the bound-table key it owns so a second call is a
 // no-op (matching the `bindIRTimeEvents` / `bindSystemNameEnum` pattern).
 //
@@ -20,7 +20,9 @@
 
 #include <irreden/common/command_suite_registry.hpp>
 #include <irreden/ir_command.hpp>
+#include <irreden/ir_entity.hpp>
 #include <irreden/ir_input.hpp>
+#include <irreden/input/components/component_entity_event_handlers.hpp>
 #include <irreden/script/lua_script.hpp>
 
 #include <string>
@@ -518,6 +520,56 @@ inline void bindCommandFunctions(LuaScript &script) {
 
     lua["IRCommand"]["fireByName"] = [](lua_Integer commandName) {
         IRCommand::fireByName(static_cast<IRCommand::CommandNames>(commandName));
+    };
+}
+
+// Expose `IRInput.{onEntityHovered, onEntityUnhovered, onEntityClicked,
+// onRightClick, removeEntityHandler}` over the world's
+// `C_EntityEventHandlers` registry, which `ENTITY_HOVER_DETECT` dispatches, plus
+// `IRInput.MouseButton` — the values an `onEntityClicked` handler's `button`
+// argument compares against. Handler signatures: hovered / unhovered
+// `fn(entityId)`, clicked `fn(entityId, button)`, right-click `fn()` (fires on
+// every right press, hovered or not). Each registrar returns the handler id
+// `removeEntityHandler` takes.
+//
+// Register from the main script state only — the registry keeps the function
+// as a `sol::protected_function` ref for the world's lifetime, and a function
+// captured on a coroutine thread would later be called through that thread.
+//
+// Idempotent — the guard checks `IRInput.MouseButton`, the one key here no
+// creation binds for itself.
+inline void bindEntityEvents(LuaScript &script) {
+    sol::state &lua = script.lua();
+    if (!lua["IRInput"].valid()) {
+        lua["IRInput"] = lua.create_table();
+    }
+    if (lua["IRInput"]["MouseButton"].valid()) {
+        return;
+    }
+
+    sol::table mouseButton = lua.create_table();
+#define IR_BIND_CLICK_BTN(name)                                                                    \
+    mouseButton[#name] = static_cast<lua_Integer>(IRComponents::EntityClickButton::name)
+    IR_BIND_CLICK_BTN(LEFT);
+    IR_BIND_CLICK_BTN(RIGHT);
+#undef IR_BIND_CLICK_BTN
+    lua["IRInput"]["MouseButton"] = mouseButton;
+
+    using IRComponents::C_EntityEventHandlers;
+    lua["IRInput"]["onEntityHovered"] = [](sol::protected_function fn) -> lua_Integer {
+        return IREntity::singleton<C_EntityEventHandlers>().addOnHovered(std::move(fn));
+    };
+    lua["IRInput"]["onEntityUnhovered"] = [](sol::protected_function fn) -> lua_Integer {
+        return IREntity::singleton<C_EntityEventHandlers>().addOnUnhovered(std::move(fn));
+    };
+    lua["IRInput"]["onEntityClicked"] = [](sol::protected_function fn) -> lua_Integer {
+        return IREntity::singleton<C_EntityEventHandlers>().addOnClicked(std::move(fn));
+    };
+    lua["IRInput"]["onRightClick"] = [](sol::protected_function fn) -> lua_Integer {
+        return IREntity::singleton<C_EntityEventHandlers>().addOnRightClick(std::move(fn));
+    };
+    lua["IRInput"]["removeEntityHandler"] = [](lua_Integer handlerId) {
+        IREntity::singleton<C_EntityEventHandlers>().removeHandler(static_cast<int>(handlerId));
     };
 }
 

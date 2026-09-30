@@ -10,6 +10,11 @@
 
 namespace IRComponents {
 
+// The `button` argument `fireClicked` hands an `onEntityClicked` handler.
+// Mirrored to Lua as `IRInput.MouseButton` — a click-dispatch code, not an
+// `IRInput.Key` value (`IRInput.Key.MOUSE_LEFT` is a different number).
+enum class EntityClickButton : int { LEFT = 0, RIGHT = 1 };
+
 // World-scoped registry of Lua callbacks for entity hover/click events, held
 // as a singleton component (`IREntity::singleton<C_EntityEventHandlers>()`)
 // rather than a process static — the sanctioned pattern for world-scoped
@@ -103,8 +108,8 @@ struct C_EntityEventHandlers {
         fireAll(onUnhovered_, "onEntityUnhovered", entityId);
     }
 
-    void fireClicked(IREntity::EntityId entityId, int button) {
-        fireAll(onClicked_, "onEntityClicked", entityId, button);
+    void fireClicked(IREntity::EntityId entityId, EntityClickButton button) {
+        fireAll(onClicked_, "onEntityClicked", entityId, static_cast<int>(button));
     }
 
     void fireRightClick() {
