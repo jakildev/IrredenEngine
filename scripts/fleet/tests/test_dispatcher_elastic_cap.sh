@@ -57,6 +57,7 @@ export FLEET_RESERVATIONS_DIR="$TMPROOT/reservations"
 export FLEET_ALERTS_DIR="$TMPROOT/alerts"
 export FLEET_SESSION="fleet-test-$$"
 mkdir -p "$FLEET_STATE_DIR/projections" "$FLEET_STATE_DIR/dispatch" \
+    "$FLEET_STATE_DIR/seen-hashes" \
     "$FLEET_STATE_DIR/triggers" "$FLEET_SESSIONS_DIR" "$FLEET_RESERVATIONS_DIR" \
     "$FLEET_ALERTS_DIR"
 : > "$FLEET_CONF"
@@ -132,6 +133,15 @@ case "$sub" in
         done
         if [[ "$fmt" == *pane_current_path* ]]; then
             echo "/fake/worktrees/pool-${pane#%}"
+            if [[ "$pane" == "%3" && -n "${DROP_DISPATCH_ON_SECOND_PANE3_LOOKUP:-}" ]]; then
+                count=0
+                [[ -f "$PANE3_LOOKUP_COUNT" ]] && count=$(<"$PANE3_LOOKUP_COUNT")
+                count=$((count + 1))
+                printf '%s\n' "$count" > "$PANE3_LOOKUP_COUNT"
+                if (( count == 2 )); then
+                    rm -f "$FLEET_STATE_DIR/dispatch/pane-3.json"
+                fi
+            fi
         elif [[ "$fmt" == *pane_pid* ]]; then
             echo "1"
         fi
@@ -160,7 +170,8 @@ inflight() { # $1 = role, $2 = class, $3 = target, $4 = pane number
 # on %3 — which is what holds the cap=1 worker lane AT its cap.
 reset() {
     rm -f "$FLEET_STATE_DIR/dispatch"/*.json "$FLEET_STATE_DIR/triggers"/* \
-        "$FLEET_STATE_DIR/projections"/*.json
+        "$FLEET_STATE_DIR/projections"/*.json "$FLEET_STATE_DIR/seen-hashes"/* \
+        "$FLEET_RESERVATIONS_DIR"/*.json
     : > "$FLEET_CONF"
     POOL_PANES=3
     inflight worker opus task:engine:10 3
@@ -457,7 +468,43 @@ out=$(tick_role merger BUSY_PANES='')
 assert_contains "$out" "dispatching merger -> %1 [target=merge:engine:78]" \
     "the held line launches once the cap frees (the hold was the cap, not an unroutable line)"
 
-echo "T17: no tick reached gh"
+echo "T17: role_projection_was_suppressed consumes a deferred empty projection"
+reset
+inflight epic-steward opus "" 3
+: > "$FLEET_STATE_DIR/triggers/epic-steward"
+printf '%s\n' '4f53cda18c2baa0c' > "$FLEET_STATE_DIR/seen-hashes/epic-steward"
+printf '%s\n' '4f53cda18c2baa0c' \
+    > "$FLEET_STATE_DIR/seen-hashes/epic-steward.empty-suppressed"
+export PANE3_LOOKUP_COUNT="$TMPROOT/pane3-lookups"
+rm -f "$PANE3_LOOKUP_COUNT"
+out=$(env BUSY_PANES='%3' FLEET_EPIC_STEWARD=1 \
+    DROP_DISPATCH_ON_SECOND_PANE3_LOOKUP=1 \
+    "$DISPATCHER" --dispatch-role epic-steward 2 2>&1 >/dev/null)
+assert_eq "$(count_dispatches "$out")" "0" \
+    "the deferred trigger does not launch after its projection drains"
+assert_contains "$out" "epic-steward at concurrency cap" \
+    "the first tick defers at the cap"
+assert_contains "$out" "epic-steward: cap freed after the projection drained; standing down" \
+    "the second tick consumes the stale trigger"
+[[ ! -f "$FLEET_STATE_DIR/triggers/epic-steward" ]] \
+    && ok "the stale steward trigger is removed" \
+    || bad "the stale steward trigger remains"
+
+echo "T18: a cap-deferred live projection still dispatches"
+reset
+inflight epic-steward opus "" 3
+: > "$FLEET_STATE_DIR/triggers/epic-steward"
+printf '%s\n' 'live-projection' > "$FLEET_STATE_DIR/seen-hashes/epic-steward"
+printf '%s\n' 'empty-projection' \
+    > "$FLEET_STATE_DIR/seen-hashes/epic-steward.empty-suppressed"
+rm -f "$PANE3_LOOKUP_COUNT"
+out=$(env BUSY_PANES='%3' FLEET_EPIC_STEWARD=1 \
+    DROP_DISPATCH_ON_SECOND_PANE3_LOOKUP=1 \
+    "$DISPATCHER" --dispatch-role epic-steward 2 2>&1 >/dev/null)
+assert_eq "$(count_dispatches "$out")" "1" \
+    "a changed projection launches once the cap frees"
+
+echo "T19: no tick reached gh"
 assert_eq "$(wc -l < "$GH_LOG" | tr -d ' ')" "0" \
     "the suite never called gh (every reach is logged by the stub)"
 
