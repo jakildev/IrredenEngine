@@ -188,11 +188,18 @@ LOCK_CONTENDED_RETRY_SECONDS="${FLEET_REBASE_LOCK_RETRY_SECONDS:-60}"
 # needs-info belong to other agents or the human; wip/amending branches
 # are being actively rewritten by their author; the needs-fix/blocker
 # family means a review owes a change and a surprise force-push mid-fix
-# is hostile; design-blocked PRs are parked under an architect; a pending
-# smoke verification would be invalidated by a rebase; fork-of-other-pr
-# is coordinated manually; the dispatch circuit breaker's fleet:needs-human
-# park means re-entry is the human removing the label, not a rebase that
-# re-arms the same target it just parked.
+# is hostile; design-blocked PRs are parked under an architect;
+# fork-of-other-pr is coordinated manually; the dispatch circuit breaker's
+# fleet:needs-human park means re-entry is the human removing the label,
+# not a rebase that re-arms the same target it just parked.
+#
+# The cross-host smoke labels (`fleet:needs-<host>-smoke`) are
+# intentionally NOT skipped. A pending smoke has verified nothing yet, the
+# human merges without waiting for it, and the smoke should run on the head
+# that will merge: a rebased one, not a stale or conflicting one. Skipping
+# them parked every approved conflict until a host of that tier smoked a
+# head that could not merge. The scout's `_merger_action_signal` makes the
+# same call for the trigger.
 #
 # `fleet:human-deferred` is intentionally NOT skipped.
 # A deferred PR is approved and idle — its *review feedback* is parked in
@@ -204,7 +211,7 @@ LOCK_CONTENDED_RETRY_SECONDS="${FLEET_REBASE_LOCK_RETRY_SECONDS:-60}"
 #
 # Single source: the python triage below reads this via
 # FLEET_REBASE_SKIP_RE and the pre-push re-verify greps it directly.
-SKIP_LABEL_RE='fleet:semantic-conflict|fleet:wip|human:wip|fleet:needs-fix|human:needs-fix|human:blocker|human:re-review|fleet:design-blocked|fleet:amending-|fleet:claim-|fleet:needs-info|fleet:fork-of-other-pr|fleet:needs-human|fleet:needs-linux-smoke|fleet:needs-macos-smoke|fleet:needs-windows-smoke'
+SKIP_LABEL_RE='fleet:semantic-conflict|fleet:wip|human:wip|fleet:needs-fix|human:needs-fix|human:blocker|human:re-review|fleet:design-blocked|fleet:amending-|fleet:claim-|fleet:needs-info|fleet:fork-of-other-pr|fleet:needs-human'
 export FLEET_REBASE_SKIP_RE="$SKIP_LABEL_RE"
 
 # Paths that no longer exist on master by policy — a plan lives on its issue

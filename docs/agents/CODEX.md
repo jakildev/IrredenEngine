@@ -199,12 +199,13 @@ Every host must enable cross-provider review; a Claude-only host declares
 `FLEET_RUNTIMES="claude"` and waits when the required reviewer is Codex. A
 PR last amended by Codex goes to Claude and vice versa.
 
-Target-less batch roles (`merger` and `epic-steward`) stay on Claude while
-its usage gate is open and fall back to Codex when that gate closes. Setting
-`FLEET_WORKER_RUNTIME=claude` pins them to Claude and makes them wait at a
-closed gate; setting it to `codex` moves them to Codex even while Claude is
-available. These roles do not stamp author provenance: the merger may only
-rebase another author's PR, and the steward does not author PRs.
+The target-less `epic-steward` stays on Claude while its usage gate is open
+and falls back to Codex when that gate closes. `FLEET_WORKER_RUNTIME=claude`
+pins it to Claude and makes it wait at a closed gate; `codex` moves it to
+Codex even while Claude is available. The target-bound merger normally keeps
+the PR author's provider, but a merge target assigned to Claude falls back to
+Codex while the Claude gate is closed. Neither role stamps author provenance:
+a rebase is not authorship, and the steward opens no PR.
 
 Claims stay the cross-host authority; provider choice precedes claim and
 launch. Reservations resume the original Codex target, model, effort, and

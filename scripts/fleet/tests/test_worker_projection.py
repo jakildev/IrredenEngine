@@ -36,6 +36,7 @@ project_sonnet_reviewer = _mod.project_sonnet_reviewer
 slice_worker = _mod.slice_worker
 stable_hash = _mod.stable_hash
 worker_feedback_labels = _mod.worker_feedback_labels
+_review_skipped = _mod._review_skipped
 
 
 def _state(prs, tasks=None, needs_plan=None):
@@ -284,6 +285,30 @@ class WorkerFeedbackLabelsSuppressedWhileDesignParked(unittest.TestCase):
         )
 
 
+class WorkerFeedbackLabelsSuppressedWhileAwaitingInfra(unittest.TestCase):
+    """A PR parked with fleet:awaiting-infra (an open blocker named in its
+    own `Parked-until: #N` line) is not worker feedback work even when it
+    still carries a fleet verdict tier — the reviewer path re-flags the
+    unchanged head on every pass, and nothing else clears the tier until the
+    blocker closes. human:needs-fix / human:blocker outrank the park and
+    keep dispatching, mirroring the design-park carve-out above."""
+
+    def test_needs_fix_suppressed_while_awaiting_infra(self):
+        self.assertEqual(
+            worker_feedback_labels({"fleet:needs-fix", "fleet:awaiting-infra"}),
+            frozenset(),
+        )
+
+    def test_human_needs_fix_still_dispatches_while_awaiting_infra(self):
+        self.assertEqual(
+            worker_feedback_labels({"human:needs-fix", "fleet:awaiting-infra"}),
+            frozenset({"human:needs-fix"}),
+        )
+
+    def test_review_skipped_true_for_awaiting_infra(self):
+        self.assertTrue(_review_skipped({"fleet:awaiting-infra"}))
+
+
 def _sc_pr(num, **kwargs):
     kwargs.setdefault("labels", ["fleet:semantic-conflict"])
     kwargs.setdefault("mergeable", "CONFLICTING")
@@ -356,7 +381,6 @@ class SemanticConflictDispatch(unittest.TestCase):
         # worker never wakes to a conflict it would refuse on sight.
         for label in ("fleet:wip", "human:wip", "human:needs-fix",
                       "human:blocker", "fleet:awaiting-base",
-                      "fleet:awaiting-upstream-review",
                       "fleet:fork-of-other-pr"):
             prs = [_sc_pr(2417, labels=["fleet:semantic-conflict", label])]
             self.assertEqual(self._items(prs), [], label)
@@ -389,6 +413,39 @@ class SemanticConflictDispatch(unittest.TestCase):
         self.assertEqual([i["pr"] for i in items], [2417])
         self.assertEqual([p["number"] for p in self._slice([base, child])],
                          [2417])
+
+    def _gated_child(self, base_labels=None, base_open=True):
+        child = _sc_pr(2418, head="claude/child-feat", base="claude/base-feat",
+                       labels=["fleet:semantic-conflict",
+                               "fleet:awaiting-upstream-review"])
+        prs = [child]
+        if base_open:
+            prs.insert(0, _pr(2417, head="claude/base-feat", labels=base_labels))
+        return prs
+
+    def test_upstream_review_gate_holds_while_upstream_unapproved(self):
+        # The upstream's next amend would redo the resolution.
+        prs = self._gated_child(base_labels=["fleet:needs-fix"])
+        self.assertEqual(self._items(prs), [])
+        self.assertEqual(self._slice(prs), [])
+
+    def test_upstream_review_gate_is_stale_once_upstream_approved(self):
+        # No reviewer admits a semantic-conflicted PR, so nothing lifts the
+        # gate on a conflicted child; an approved upstream makes it stale.
+        for label in ("fleet:approved", "human:approved"):
+            prs = self._gated_child(base_labels=[label])
+            self.assertEqual([i["pr"] for i in self._items(prs)], [2418], label)
+            self.assertEqual([p["number"] for p in self._slice(prs)], [2418], label)
+
+    def test_upstream_review_gate_is_stale_once_upstream_gone(self):
+        # Upstream merged (no open PR owns the base branch).
+        prs = self._gated_child(base_open=False)
+        self.assertEqual([i["pr"] for i in self._items(prs)], [2418])
+
+    def test_upstream_review_gate_on_master_based_pr_is_stale(self):
+        prs = [_sc_pr(2418, labels=["fleet:semantic-conflict",
+                                    "fleet:awaiting-upstream-review"])]
+        self.assertEqual([i["pr"] for i in self._items(prs)], [2418])
 
     def test_stacked_child_with_clean_base_is_claimable(self):
         # A conflicted child whose base PR is NOT semantic-conflicted is

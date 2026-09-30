@@ -95,6 +95,12 @@ fades the far edge of a plateau's shadow; the flank of a shadow, where the
 segment leaves an occluder's footprint, stays a crisp line. The model is
 stated in `component_canvas_fog_of_war.hpp`; `IRPrefab::Fog::losVisibility`
 is the CPU oracle, and `ir_fog_los.{glsl,metal}` carry the same march.
+Both evaluators march only where the march can change their result. The CPU
+oracle marches gated sources strongest first, and only while one could still
+raise the maximum. The paint pass stops evaluating sources once a sample is
+fully revealed, and skips a gated source that can neither raise the reveal
+nor move a rim distance the colour reads, so ground the grid already reveals
+costs the paint pass no march.
 
 ### Unpainted-route FIELD deviations
 

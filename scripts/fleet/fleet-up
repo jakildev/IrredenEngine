@@ -80,10 +80,12 @@ unset _FLEET_CLONE_FRESHNESS_SH
 # freshly-added tool is not `command not found` on first use. Sourced by-dir,
 # same as fleet-clone-freshness.sh above (both are symlinked into ~/bin).
 _FLEET_COMMON_SH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fleet-common.sh"
+FLEET_WORKTREE_HEAL_AVAILABLE=0
 if [[ -f "$_FLEET_COMMON_SH" ]]; then
     # shellcheck source=/dev/null
     source "$_FLEET_COMMON_SH"
     _FLEET_UP_LOADED+=("$_FLEET_COMMON_SH")
+    FLEET_WORKTREE_HEAL_AVAILABLE=1
 else
     fleet_install_maybe_refresh() { :; }  # helper not installed yet — no-op
     fleet_model_tag() { printf '%s' "$1"; }  # raw-id label fallback
@@ -544,15 +546,96 @@ FABLE_TAG="$(fleet_model_tag "$FLEET_MODEL_FABLE")"
 # Step 1: ensure all worktrees exist
 # ----------------------------------------------------------------------
 
+# $1 = main repo, $2 = worktree subpath, $3 = scratch branch; non-zero leaves it untouched.
+heal_worktree_registration() {
+    local repo="$1" subpath="$2" scratch="$3" wt="$repo/$subpath"
+    local dotgit admin suffix main_spelling expected_main worktree_name alert tracked status prune_output
+    dotgit="$wt/.git"
+    worktree_name=$(basename "$wt")
+    alert="${FLEET_ALERTS_DIR:-$HOME/.fleet/alerts}/fleet-up-healed-dirty-$worktree_name"
+
+    [[ -f "$dotgit" ]] || return 1
+    admin=$(sed -n 's/^gitdir: //p' "$dotgit" | head -1)
+    [[ -n "$admin" && ! -e "$admin" ]] || return 1
+    if (( ! FLEET_WORKTREE_HEAL_AVAILABLE )); then
+        echo "fleet-up: cannot heal $wt — fleet-common.sh is unavailable" >&2
+        return 1
+    fi
+    suffix="/.git/worktrees/$worktree_name"
+    if [[ "$admin" != *"$suffix" ]]; then
+        echo "fleet-up: cannot heal $wt — gitdir is not $suffix: $admin" >&2
+        return 1
+    fi
+    main_spelling="${admin%"$suffix"}"
+    expected_main=$(canonicalize_path_spelling "$repo")
+    if [[ "$(canonicalize_path_spelling "$main_spelling")" != "$expected_main" ]]; then
+        echo "fleet-up: cannot heal $wt — gitdir belongs to another clone: $admin" >&2
+        return 1
+    fi
+    if ! git -C "$repo" show-ref --verify --quiet "refs/heads/$scratch"; then
+        git -C "$repo" branch "$scratch" origin/master || return 1
+    fi
+    if ! mkdir -p "$admin" \
+        || ! printf 'ref: refs/heads/%s\n' "$scratch" > "$admin/HEAD" \
+        || ! printf '../..\n' > "$admin/commondir" \
+        || ! printf '%s/%s/.git\n' "$main_spelling" "$subpath" > "$admin/gitdir" \
+        || ! git -C "$wt" reset -q; then
+        echo "fleet-up: failed to heal worktree registration $wt — could not rebuild the admin directory" >&2
+        rm -rf "$admin"
+        return 1
+    fi
+    if ! fleet_worktree_registered "$wt"; then
+        echo "fleet-up: failed to heal worktree registration $wt — $FLEET_WORKTREE_ERROR" >&2
+        rm -rf "$admin"
+        return 1
+    fi
+    prune_output=$(git -C "$repo" worktree prune --dry-run -v 2>&1) || {
+        echo "fleet-up: failed to verify worktree registration $wt — $prune_output" >&2
+        rm -rf "$admin"
+        return 1
+    }
+    if [[ "$prune_output" == *"worktrees/$(basename "$admin"):"* ]]; then
+        echo "fleet-up: failed to heal worktree registration $wt — prune still names the pane" >&2
+        rm -rf "$admin"
+        return 1
+    fi
+
+    status=$(git -C "$wt" status --porcelain 2>/dev/null || true)
+    tracked=$(printf '%s\n' "$status" | awk 'NF && substr($0,1,2) != "??" {n++} END {print n+0}')
+    if (( tracked > 0 )); then
+        mkdir -p "$(dirname "$alert")" 2>/dev/null || true
+        printf 'fleet-up healed dirty worktree: pane=%s tracked_paths=%s pre_break_branch=unknown\n' \
+            "$worktree_name" "$tracked" > "$alert" 2>/dev/null || true
+        echo "fleet-up: healed worktree registration $wt (HEAD $scratch; tree dirty: $tracked tracked path(s); pre-break branch unknown)"
+    else
+        rm -f "$alert" 2>/dev/null || true
+        echo "fleet-up: healed worktree registration $wt (HEAD $scratch)"
+    fi
+}
+
 ensure_worktree() {
     # $1 = repo root, $2 = worktree subpath relative to repo root,
-    # $3 = branch name to create or attach
+    # $3 = branch name to create or attach, $4 = scratch branch for a heal
     local repo="$1"
     local subpath="$2"
     local branch="$3"
+    local scratch="${4:-$branch}"
     local wt="$repo/$subpath"
 
     if [[ -d "$wt" ]]; then
+        if [[ -z "$(find "$wt" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]]; then
+            echo "fleet-up: creating worktree $wt (branch $branch)"
+            (cd "$repo" && git worktree add "$wt" -b "$branch" origin/master 2>&1 \
+                || git worktree add "$wt" "$branch")
+            return
+        fi
+        if [[ -f "$wt/.git" ]]; then
+            local admin
+            admin=$(sed -n 's/^gitdir: //p' "$wt/.git" | head -1)
+            if [[ -n "$admin" && ! -e "$admin" ]]; then
+                heal_worktree_registration "$repo" "$subpath" "$scratch" || true
+            fi
+        fi
         return 0
     fi
     echo "fleet-up: creating worktree $wt (branch $branch)"
@@ -679,7 +762,7 @@ for _slug in ${FLEET_CAMPAIGNS//,/ }; do
 done
 unset _slug
 
-ensure_worktree "$ENGINE" .claude/worktrees/opus-architect    fleet/opus-architect
+ensure_worktree "$ENGINE" .claude/worktrees/opus-architect fleet/opus-architect claude/opus-arch-scratch
 migrate_legacy_worker_worktrees "$ENGINE" \
     "${ENGINE_MIGRATE_OLD[@]}" "${ENGINE_MIGRATE_NEW[@]}"
 # Generic pane pool: pool-1..pool-9 are role-agnostic worktrees, each
@@ -690,11 +773,11 @@ migrate_legacy_worker_worktrees "$ENGINE" \
 # FLEET_EPIC_STEWARD gate whether the dispatcher SERVES those roles, not
 # whether their panes exist.
 for _p in 1 2 3 4 5 6 7 8 9; do
-    ensure_worktree "$ENGINE" ".claude/worktrees/pool-$_p" "fleet/pool-$_p"
+    ensure_worktree "$ENGINE" ".claude/worktrees/pool-$_p" "fleet/pool-$_p" "claude/pool-$_p-scratch"
 done
 unset _p
-ensure_worktree "$ENGINE" .claude/worktrees/queue-manager        fleet/queue-manager
-ensure_worktree "$ENGINE" .claude/worktrees/queue-manager-ingest fleet/queue-manager-ingest
+ensure_worktree "$ENGINE" .claude/worktrees/queue-manager fleet/queue-manager claude/queue-manager-scratch
+ensure_worktree "$ENGINE" .claude/worktrees/queue-manager-ingest fleet/queue-manager-ingest claude/queue-manager-ingest-scratch
 for _slug in ${FLEET_CAMPAIGN_SLUGS[@]+"${FLEET_CAMPAIGN_SLUGS[@]}"}; do
     ensure_worktree "$ENGINE" ".claude/worktrees/campaign-$_slug" "fleet/campaign-$_slug"
 done
@@ -704,7 +787,7 @@ if [[ -d "$GAME/.git" ]]; then
     (cd "$GAME" && git fetch origin --quiet) || {
         echo "fleet-up: game git fetch failed (continuing without game panes)" >&2; }
     restore_main_clone_to_master "$GAME"  # game main clone back on current master too
-    ensure_worktree "$GAME" .claude/worktrees/game-architect  fleet/game-architect
+    ensure_worktree "$GAME" .claude/worktrees/game-architect fleet/game-architect claude/game-arch-scratch
     # Pool panes cover both engine and game queues; each pool pane gets its
     # own game worktree — SAME basename as its engine twin (claims,
     # reservations, and heartbeats all key on that shared basename) — to cd
@@ -713,7 +796,7 @@ if [[ -d "$GAME/.git" ]]; then
     migrate_legacy_worker_worktrees "$GAME" \
         "${GAME_MIGRATE_OLD[@]}" "${GAME_MIGRATE_NEW[@]}"
     for _p in 1 2 3 4 5 6 7 8 9; do
-        ensure_worktree "$GAME" ".claude/worktrees/pool-$_p" "fleet/game-pool-$_p"
+        ensure_worktree "$GAME" ".claude/worktrees/pool-$_p" "fleet/game-pool-$_p" "claude/game-pool-$_p-scratch"
     done
     unset _p
 else
