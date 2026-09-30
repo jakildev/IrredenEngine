@@ -21,11 +21,18 @@ a stretch of autonomous running:
     route while cross-provider review is on — CODEX.md).
   * Standing alerts, empty-exit streaks / stand-down backoffs, and the
     iterations running right now.
+  * Who spends the GitHub quota? GitHub CLI command attempts per actor in
+    the window (fleet_github's accounting events), split into GraphQL reads,
+    GraphQL writes, explicit `gh api graphql`, REST `gh api`, and other.
+    Attempts, not API points: pagination and GitHub's per-query cost are not
+    visible at the CLI, and the scout's direct urllib REST polling is not a
+    CLI attempt at all.
 
 Sources (all read-only; nothing here mutates fleet state):
   ~/.fleet/logs/dispatcher.log, fleet-rebase.log, state-scout.log
   ~/.fleet/state/{dispatcher.pid,scout.pid,dispatch-mode,dispatch/,
-                  empty-streak/,runtime-cooldown/,runtime-problems/,state.json}
+                  empty-streak/,runtime-cooldown/,runtime-problems/,state.json,
+                  gh-accounting/}
   ~/.fleet/sessions/*.session.json, ~/.fleet/alerts/, ~/.fleet/fleet-up.conf
 
 The window defaults to the current dispatcher boot (the last `started (pid=`
@@ -52,7 +59,10 @@ import sys
 import time
 from pathlib import Path
 
-RE_LOG = re.compile(r"^\[(\S+) (dispatcher|fleet-rebase|state-scout)\] (.*)$")
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import fleet_github  # noqa: E402
+
+RE_LOG =re.compile(r"^\[(\S+) (dispatcher|fleet-rebase|state-scout)\] (.*)$")
 RE_DISPATCH = re.compile(
     r"^dispatching (\S+) -> (%\d+)(?: \[(.*?)\])?(?: runtime=(\S+))?$"
 )
@@ -495,6 +505,14 @@ def collect_live(dispatch_dir, sessions_dir):
     return out
 
 
+def collect_github(event_root, since, until):
+    """Per-actor GitHub CLI attempt counts in [since, until)."""
+    rows = fleet_github.summarize(fleet_github.iter_events(event_root, since, until))
+    totals = {b: sum(r[b] for r in rows.values()) for b in (*fleet_github.BUCKETS, "total")}
+    return {"event_root": str(event_root), "recording": Path(event_root).is_dir(),
+            "units": "gh CLI command attempts", "rows": rows, "totals": totals}
+
+
 # --- Warnings ----------------------------------------------------------------
 
 NO_OP_MIN_SAMPLE = 3
@@ -617,6 +635,20 @@ def render_text(report):
                 if u["open_prs_unstamped"] else ""))
     for p in u["problems"]:
         o.append(f"  routing problem: {p['key']}: {p['reason']} (x{p['count']})")
+    g = report["github"]
+    o.append("")
+    o.append("## GitHub CLI commands (attempts, not API points)")
+    if not g["recording"]:
+        o.append(f"  (no accounting events under {g['event_root']} — accounting is off)")
+    else:
+        cols = (("graphql_read", "gql-read"), ("graphql_write", "gql-write"),
+                ("graphql_api", "gql-api"), ("rest", "rest"), ("other", "other"),
+                ("total", "total"))
+        o.append(f"  {'actor':16s}" + "".join(f"{label:>10s}" for _, label in cols))
+        for actor in sorted(g["rows"]):
+            row = g["rows"][actor]
+            o.append(f"  {actor:16s}" + "".join(f"{row[key]:10d}" for key, _ in cols))
+        o.append(f"  {'(all)':16s}" + "".join(f"{g['totals'][key]:10d}" for key, _ in cols))
     live = report["live"]
     o.append("")
     o.append("## Running now")
@@ -694,6 +726,7 @@ def build_report(args):
         "live": collect_live(dispatch_dir, sessions_dir),
         "streaks": collect_streaks(state_dir),
         "alerts": alerts,
+        "github": collect_github(state_dir / "gh-accounting", since, now_utc()),
     }
     report["warnings"] = derive_warnings(roles, triggers, rebase, runtimes, daemons, alerts)
     return report
@@ -703,7 +736,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser(
         prog="fleet-health",
         description="Read-only fleet health report: dispatch outcomes per role, trigger "
-                    "churn, the merger ladder, provider usage, standing alerts.")
+                    "churn, the merger ladder, provider usage, GitHub CLI attempts per "
+                    "actor, standing alerts.")
     ap.add_argument("--since", default="boot",
                     help="window start: boot (default, the current dispatcher boot), "
                          "<N>m|h|d, or an ISO-8601 timestamp")

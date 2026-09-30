@@ -99,6 +99,19 @@ if ! command -v tmux >/dev/null 2>&1; then
     exit 1
 fi
 
+# fleet-up seeds GitHub CLI accounting into the tmux SERVER's global
+# environment, which outlives the session. Clear it first, session or not, so
+# a later non-fleet window never inherits it. Keep this list in step with
+# seed_tmux_pane_env in fleet-up (test_fleet_up_gh_accounting.sh diffs them).
+clear_tmux_gh_accounting() {
+    local name
+    for name in FLEET_GH_ACCOUNTING FLEET_GH_REAL FLEET_GH_PYTHON FLEET_GH_LAUNCHER \
+                FLEET_GH_EVENT_ROOT; do
+        tmux set-environment -g -u "$name" 2>/dev/null || true
+    done
+}
+clear_tmux_gh_accounting
+
 if ! tmux has-session -t "$SESSION" 2>/dev/null; then
     echo "fleet-down: no '$SESSION' tmux session is running. Nothing to do."
     exit 0

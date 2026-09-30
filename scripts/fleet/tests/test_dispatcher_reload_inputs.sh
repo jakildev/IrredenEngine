@@ -67,7 +67,7 @@ assert_absent "$names" "OTHER_T" "T1d: omits a variable outside the knob namespa
 # exported copy would reach every pane, where a dispatcher started by hand
 # would drop the operator's own `FLEET_X=… fleet-dispatcher` as unlisted.
 fleet_up_src=$(<"$FLEET_UP")
-assert_contains "$fleet_up_src" '_dispatcher_env=(FLEET_ENV_OVERRIDES="$_fleet_env_overrides")' \
+assert_contains "$fleet_up_src" '_dispatcher_env+=(FLEET_ENV_OVERRIDES="$_fleet_env_overrides")' \
     "T1e: fleet-up passes the list on the dispatcher launch"
 assert_contains "$fleet_up_src" 'nohup env ${_dispatcher_env[@]+"${_dispatcher_env[@]}"} "$dispatcher_cmd"' \
     "T1f: ...and that launch is the one that starts the daemon"

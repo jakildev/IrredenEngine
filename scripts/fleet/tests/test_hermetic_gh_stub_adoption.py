@@ -30,10 +30,10 @@ FLEET_DIR = Path(__file__).resolve().parent.parent
 TESTS_DIR = FLEET_DIR / "tests"
 
 GH_SUBPROCESS_RE = re.compile(r"subprocess\.(run|Popen|call|check_output)\(\s*\[?\s*[\"']gh[\"']")
-# A fixed subject resolves gh once via shutil.which("gh") and reuses the
-# result (see fleet-plan-lint's precedent) instead of passing the literal
-# "gh" to each subprocess.run — match either shape.
-GH_RESOLVED_RE = re.compile(r"""shutil\.which\(\s*["']gh["']\s*\)""")
+# A fixed subject launches gh through the shared resolver (fleet_github)
+# instead of passing the literal "gh" to each subprocess.run — match either
+# shape.
+GH_RESOLVED_RE = re.compile(r"""\bfleet_github\.(?:run|argv)\(""")
 GH_STUB_FILE_RE = re.compile(r"""["'][^"'\n]*[/\\]gh["']""")
 
 # Scope of this pass's actual fix. See module docstring for why this isn't

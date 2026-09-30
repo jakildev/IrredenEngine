@@ -45,17 +45,11 @@ issues=$(gh issue list --repo "$REPO" --label "fleet:queued" --state open \
 }
 
 BACKFILL_SELF="${BASH_SOURCE[0]}" python3 - "$issues" "$REPO" "$DRY_RUN" << 'PYEOF'
-import json, os, shutil, subprocess, sys
+import json, os, sys
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(os.environ["BACKFILL_SELF"])))
+import fleet_github
 from fleet_model_field import declared_class
-
-# Resolve gh through PATH ourselves: on a native-Windows python (os.name ==
-# "nt") CreateProcess appends only ".exe" to a bare name, so a PATH-shim
-# `gh`/`gh.bat` earlier in PATH is silently skipped in favor of the real
-# gh.exe — shutil.which honors PATH order and PATHEXT, and is a no-op
-# passthrough on POSIX.
-GH = shutil.which("gh") or "gh"
 
 issues = json.loads(sys.argv[1])
 repo = sys.argv[2]
@@ -83,8 +77,8 @@ for issue in issues:
     if dry_run:
         print(f"  would add {label} to #{num}")
     else:
-        r = subprocess.run(
-            [GH, "issue", "edit", str(num), "--repo", repo, "--add-label", label],
+        r = fleet_github.run(
+            ["issue", "edit", str(num), "--repo", repo, "--add-label", label],
             capture_output=True, text=True, timeout=15,
         )
         if r.returncode == 0:

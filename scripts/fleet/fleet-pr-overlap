@@ -6,14 +6,22 @@ closing `VERDICT: clean|overlap|block` line.
 
 Exit: 0 clean, 1 overlap (informational), 3 block (do not publish),
 2 the tool could not grade (usage, environment, or a population that moved).
+
+`--check-git-version [TEXT]` only grades a git against the merge-tree floor
+this tool needs (exit 0 ok, 1 too old, 2 unreadable). It is the single owner
+of that floor: `setup-windows.sh` feeds it the version a Git Bash pane runs.
 """
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
 from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import fleet_github  # noqa: E402
 
 REPO_SLUGS = {
     "engine": "jakildev/IrredenEngine",
@@ -36,6 +44,8 @@ SLUG_RES = (
 NET_TIMEOUT = 60
 MERGE_TREE_MIN_VERSION = "2.38"
 MERGE_TREE_USAGE_RE = re.compile(r"^usage: git merge-tree <base-tree> <branch1> <branch2>")
+GIT_VERSION_RE = re.compile(r"^git version (\d+)\.(\d+)(?:\.(\d+))?\S*\s*$")
+EXIT_GIT_TOO_OLD, EXIT_GIT_UNREADABLE = 1, 2
 
 EXIT_CLEAN, EXIT_OVERLAP, EXIT_ERROR, EXIT_BLOCK = 0, 1, 2, 3
 
@@ -126,7 +136,7 @@ class Gh:
     def call(self, *args):
         if self.pr_json is not None:
             raise OverlapError(f"gh call under --pr-json: gh {' '.join(args)}")
-        result = run(["gh", *args])
+        result = run(fleet_github.argv(args))
         if result.returncode != 0:
             raise OverlapError(f"gh {' '.join(args[:2])}: {result.stderr.strip()}")
         try:
@@ -255,6 +265,44 @@ def installed_git_version():
     if rc != 0 or not out.strip():
         return f"unknown ({err or 'git --version produced no output'})"
     return out.strip().removeprefix("git version ")
+
+
+def parse_git_version(text):
+    """(major, minor, patch) from one `git --version` line, or None.
+
+    Vendor suffixes after the numeric triple (`2.34.1.windows.1`,
+    `2.39.3 (Apple Git-146)`) are accepted and ignored.
+    """
+    lines = [line for line in text.replace("\r", "").splitlines() if line.strip()]
+    if len(lines) != 1:
+        return None
+    match = GIT_VERSION_RE.match(lines[0].split(" (", 1)[0])
+    if not match:
+        return None
+    return tuple(int(part or 0) for part in match.groups())
+
+
+def check_git_version(text):
+    """The side-effect-free floor check: `text` is captured `git --version`
+    output (a pane's, possibly another host shell's); None reads this
+    process's own git. Prints the requirement and the reading; exits
+    0 (meets the floor), EXIT_GIT_TOO_OLD, or EXIT_GIT_UNREADABLE."""
+    if text is None:
+        rc, out, err = git_status("--version")
+        text = out if rc == 0 else ""
+    reading = text.strip().replace("\r", "") or "(no output)"
+    print(f"required: git >= {MERGE_TREE_MIN_VERSION} (git merge-tree --write-tree)")
+    print(f"installed: {reading}")
+    version = parse_git_version(text)
+    if version is None:
+        print("verdict: unreadable")
+        return EXIT_GIT_UNREADABLE
+    floor = tuple(int(part) for part in MERGE_TREE_MIN_VERSION.split("."))
+    if version[:len(floor)] < floor:
+        print("verdict: too-old")
+        return EXIT_GIT_TOO_OLD
+    print("verdict: ok")
+    return EXIT_CLEAN
 
 
 def blob_oid_at(commit, path):
@@ -430,7 +478,17 @@ def main():
     parser.add_argument("--pr-json", help="open-PR rows from a file instead of gh (tests)")
     parser.add_argument("--self-pr", type=int, help="this branch's own open PR number")
     parser.add_argument("--no-self", action="store_true", help="treat no open PR as self")
+    parser.add_argument(
+        "--check-git-version", nargs="?", const=None, default=argparse.SUPPRESS,
+        metavar="VERSION_TEXT",
+        help="only check a git against the merge-tree floor: the given `git --version` "
+             "output, or this process's own git when omitted; exit 0 ok, 1 too old, "
+             "2 unreadable; no network, no repository access",
+    )
     args = parser.parse_args()
+
+    if hasattr(args, "check_git_version"):
+        return check_git_version(args.check_git_version)
 
     if args.repo is not None and args.repo not in REPO_SLUGS and not re.fullmatch(
         r"[^/\s]+/[^/\s]+", args.repo

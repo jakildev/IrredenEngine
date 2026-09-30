@@ -11,6 +11,8 @@ import tempfile
 import time
 from pathlib import Path
 
+import fleet_github
+
 RUNTIMES = ("claude", "codex")
 CODEX_MODELS = {"fable": "gpt-6-astra", "opus": "gpt-5.6-sol", "sonnet": "gpt-5.6-terra"}
 BATCH_ROLES = ("epic-steward",)
@@ -233,9 +235,10 @@ def stamp(pr, repo, runtime):
         raise ValueError("expected positive PR number and supported runtime")
     if os.environ.get("FLEET_ROLE", "") in ("sonnet-reviewer", "opus-reviewer", "smoke-worker"):
         raise ValueError("reviewers must not change author provenance")
-    subprocess.run(["gh", "pr", "edit", pr, "--repo", repo,
-                    "--remove-label", f"fleet:author-{'claude' if runtime == 'codex' else 'codex'}",
-                    "--add-label", f"fleet:author-{runtime}"], check=True, timeout=30)
+    other = "claude" if runtime == "codex" else "codex"
+    fleet_github.run(["pr", "edit", pr, "--repo", repo,
+                      "--remove-label", f"fleet:author-{other}",
+                      "--add-label", f"fleet:author-{runtime}"], check=True, timeout=30)
 
 
 def ready(state):
