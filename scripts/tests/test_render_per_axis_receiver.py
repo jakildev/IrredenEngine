@@ -53,16 +53,17 @@ FrameDataSun sunFrameData{1,{0,0,0,1}};
 int shadowsEnabled=1;
 vec4 sunCasterViewToWorld(0,0,0,1);
 float worldSunShadowFactorImpl(vec3 position,vec3 normal,float depth,
-                              bool surface,vec4 quaternion) {
+                              bool surface,vec4 quaternion,float pcfNormalBias) {
+    if(pcfNormalBias!=0.f)std::abort();
     ++calls;sampledPosition=position;sampledNormal=normal;sampledDepth=depth;
     sampledSurface=surface;sampledQuaternion=quaternion;
     return .3125f;
 }
 float worldSunShadowFactorImpl(vec3 position,vec3 normal,float depth,
                               const FrameDataSun& frame,const uint* buffer,
-                              bool surface,vec4 quaternion) {
+                              bool surface,vec4 quaternion,float pcfNormalBias) {
     sampledFrame=&frame;sampledBuffer=buffer;
-    return worldSunShadowFactorImpl(position,normal,depth,surface,quaternion);
+    return worldSunShadowFactorImpl(position,normal,depth,surface,quaternion,pcfNormalBias);
 }
 int verifySample(const char* route,float result,vec3 expected,vec3 normal,vec4 quaternion) {
     if(calls!=1 || result!=.3125f || !sampledSurface) {
