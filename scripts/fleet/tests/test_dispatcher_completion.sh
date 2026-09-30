@@ -204,9 +204,16 @@ git -C "$WT" rebase master >/dev/null 2>&1 || true
 rebase_dir=$(git -C "$WT" rev-parse --git-path rebase-merge)
 [[ -d "$rebase_dir" ]] && ok "fixture has an interrupted rebase" \
     || bad "fixture did not enter rebase state"
+printf 'resolved work in progress\n' > "$WT/tracked.txt"
+printf 'rebase scratch\n' > "$WT/rebase-untracked.txt"
 handle conflict:engine:55 pool-3 >/dev/null
 [[ ! -d "$rebase_dir" ]] && ok "salvage aborts the interrupted rebase" \
     || bad "salvage left rebase state behind"
+patch=$(ls "$FLEET_STATE_DIR"/salvage/conflict-engine-55-engine-*.patch 2>/dev/null | head -n 1 || true)
+[[ -n "$patch" ]] && grep -q '^+resolved work in progress$' "$patch" \
+    && grep -q '^+rebase scratch$' "$patch" \
+    && ok "rebase salvage patch holds the resolution edit and untracked file" \
+    || bad "rebase salvage patch missing or incomplete: ${patch:-none}"
 
 echo "T6: marker-vouched lane claims release on their first abandonment"
 while IFS='|' read -r target expected_release; do
