@@ -26,7 +26,9 @@ import importlib.util  # noqa: E402
 
 spec = importlib.util.spec_from_loader("fleet_health", loader=None)
 fleet_health = importlib.util.module_from_spec(spec)
+fleet_health.__file__ = str(SUBJECT)
 exec(compile(SUBJECT.read_text(), str(SUBJECT), "exec"), fleet_health.__dict__)  # noqa: S102
+fleet_github = fleet_health.fleet_github
 
 
 def _line(ts, source, msg):
@@ -416,6 +418,92 @@ class DaemonsAndWindow(Env):
         self.assertIn("## Merger ladder", res.stdout)
         self.assertIn("merger: 4 of 4 completed dispatches did no work", res.stdout)
         self.assertIn("witness-roster.stuck", res.stdout)
+
+
+GH_NOW = "2026-09-29T12:00:00Z"
+
+
+def _epoch(iso):
+    return dt.datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp()
+
+
+class GitHubCommands(Env):
+    """`--since 1h`: per-actor GitHub CLI attempts from fleet_github's events."""
+
+    # (minutes before GH_NOW, actor env, gh argv tail)
+    EVENTS = [
+        (30, {"FLEET_ROLE": "worker", "FLEET_RUNTIME": "claude"}, ["pr", "view", "1"]),
+        (29, {"FLEET_ROLE": "worker", "FLEET_RUNTIME": "claude"}, ["issue", "edit", "2"]),
+        (20, {"FLEET_ROLE": "sonnet-reviewer"}, ["api", "graphql", "-f", "query=q"]),
+        (19, {"FLEET_ROLE": "sonnet-reviewer"}, ["api", "repos/o/r/pulls?per_page=100"]),
+        (10, {"FLEET_GH_ACTOR": "scout", "FLEET_ROLE": "worker"}, ["pr", "list"]),
+        (9, {"FLEET_GH_ACTOR": "dispatcher"}, ["api", "-X", "PATCH", "repos/o/r/issues/3"]),
+        (5, {}, ["auth", "token"]),
+        (60, {"FLEET_ROLE": "worker"}, ["pr", "view", "4"]),       # window's first instant
+        (61, {"FLEET_ROLE": "worker"}, ["pr", "view", "5"]),       # just outside
+    ]
+
+    def setUp(self):
+        super().setUp()
+        self.events = self.root / "state" / "gh-accounting"
+        for minutes, env, args in self.EVENTS:
+            fleet_github.record(args, {**env, "FLEET_GH_EVENT_ROOT": str(self.events)},
+                                now=_epoch(GH_NOW) - minutes * 60)
+        hour = next(p for p in self.events.iterdir() if p.is_dir())
+        (hour / ".1-2-3.json.tmp").write_text('{"ts": "2026-09-29T11:59:00Z", "actor": "scout"')
+        (hour / "torn.json").write_text('{"ts": "2026-09-29T11:59:00Z", "act')
+
+    def test_one_hour_rows_are_exact(self):
+        rc, rep = self.run_report_at(GH_NOW, "--since", "1h")
+        rows = rep["github"]["rows"]
+        z = dict.fromkeys(("graphql_read", "graphql_write", "graphql_api", "rest", "other"), 0)
+        self.assertEqual(rows, {
+            "worker": {**z, "graphql_read": 2, "graphql_write": 1, "total": 3},
+            "sonnet-reviewer": {**z, "graphql_api": 1, "rest": 1, "total": 2},
+            "scout": {**z, "graphql_read": 1, "total": 1},
+            "dispatcher": {**z, "rest": 1, "total": 1},
+            "unknown": {**z, "other": 1, "total": 1},
+        })
+        self.assertEqual(rep["github"]["totals"]["total"], 8)
+        self.assertEqual(rep["github"]["units"], "gh CLI command attempts")
+
+    def test_text_table_matches_json(self):
+        _, rep = self.run_report_at(GH_NOW, "--since", "1h")
+        out = io.StringIO()
+        with pinned_clock(GH_NOW), redirect_stdout(out):
+            fleet_health.main(["--fleet-dir", str(self.root), "--since", "1h"])
+        text = out.getvalue()
+        section = text.split("## GitHub CLI commands (attempts, not API points)\n", 1)[1]
+        table = {}
+        for line in section.splitlines()[1:]:
+            if not line.startswith("  ") or line.startswith("  actor"):
+                break
+            name, *nums = line.split()
+            table[name] = [int(n) for n in nums]
+        keys = ("graphql_read", "graphql_write", "graphql_api", "rest", "other", "total")
+        expect = {a: [r[k] for k in keys] for a, r in rep["github"]["rows"].items()}
+        expect["(all)"] = [rep["github"]["totals"][k] for k in keys]
+        self.assertEqual(table, expect)
+
+    def test_window_edge_moves_with_the_clock(self):
+        later = (dt.datetime.fromisoformat(GH_NOW.replace("Z", "+00:00"))
+                 + dt.timedelta(minutes=31)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        _, rep = self.run_report_at(later, "--since", "1h")
+        worker = rep["github"]["rows"]["worker"]
+        self.assertEqual(worker["graphql_read"], 0, "the 30-minute read is one minute outside")
+        self.assertEqual(worker["graphql_write"], 1, "the 29-minute write sits on the window start")
+        self.assertEqual(worker["total"], 1)
+
+    def test_accounting_off_is_named_not_empty(self):
+        import shutil
+        shutil.rmtree(self.events)
+        _, rep = self.run_report_at(GH_NOW, "--since", "1h")
+        self.assertFalse(rep["github"]["recording"])
+        self.assertEqual(rep["github"]["rows"], {})
+        out = io.StringIO()
+        with pinned_clock(GH_NOW), redirect_stdout(out):
+            fleet_health.main(["--fleet-dir", str(self.root), "--since", "1h"])
+        self.assertIn("accounting is off", out.getvalue())
 
 
 if __name__ == "__main__":

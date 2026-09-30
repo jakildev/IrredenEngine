@@ -51,6 +51,7 @@ WARMUP="${3:-80}"
 
 EXE_DIR="$BUILD_DIR/creations/demos/perf_grid"
 SS_DIR="$EXE_DIR/save_files/screenshots"
+FLEET_RUN="${FLEET_RUN:-$ROOT/scripts/fleet/fleet-run}"
 
 echo "[1/4] building IRPerfGrid ($BUILD_DIR) ..."
 cmake --build "$BUILD_DIR" --target IRPerfGrid -j "$(nproc)" >/dev/null || { echo "BUILD FAILED"; exit 1; }
@@ -63,8 +64,8 @@ run_ramp() {
     # Scoped find -delete, never an unguarded `rm <dir>/*.png` glob (the dir may
     # be empty, which trips the dangerous-rm guard).
     find "$SS_DIR" -maxdepth 1 -type f -name '*.png' -delete
-    ( cd "$EXE_DIR" && ./IRPerfGrid --mode "$MODE" --yaw-ramp --no-overlay \
-        --auto-screenshot "$WARMUP" "$@" ) >"$logfile" 2>&1 \
+    "$FLEET_RUN" --build-dir "$BUILD_DIR" IRPerfGrid --mode "$MODE" --yaw-ramp --no-overlay \
+        --auto-screenshot "$WARMUP" "$@" >"$logfile" 2>&1 \
         || { echo "RUN FAILED (see $logfile)"; tail -5 "$logfile"; exit 1; }
 }
 
@@ -159,8 +160,9 @@ run_wave_ramp() {
     local logfile="$1"
     mkdir -p "$WAVE_SS_DIR"
     find "$WAVE_SS_DIR" -maxdepth 1 -type f -name '*.png' -delete
-    ( cd "$EXE_DIR" && ./IRPerfGrid --mode voxel_set --wave-freeze --grid-size 32 --zoom 0.8 \
-        --yaw-ramp --yaw-ramp-wave --no-overlay --auto-screenshot "$WARMUP" ) >"$logfile" 2>&1 \
+    "$FLEET_RUN" --build-dir "$BUILD_DIR" IRPerfGrid --mode voxel_set --wave-freeze \
+        --grid-size 32 --zoom 0.8 --yaw-ramp --yaw-ramp-wave --no-overlay \
+        --auto-screenshot "$WARMUP" >"$logfile" 2>&1 \
         || { echo "RUN FAILED (see $logfile)"; tail -5 "$logfile"; exit 1; }
 }
 

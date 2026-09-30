@@ -169,6 +169,7 @@ pattern example or an actionable gotcha, clutter when they list what exists.
 | System-state smells (machine-checkable) | `.claude/rules/cpp-systems.md` |
 | Global-state patterns · header-global ban (machine-checkable) | `.claude/rules/cpp-globals.md` |
 | Comment policy — explain, never narrate; no issue/PR numbers (ratcheted) | `.claude/rules/comments.md` |
+| Engine executables launch only through `ir-run` / `fleet-run` (machine-checkable) | `.claude/rules/engine-process-launches.md` |
 | Running a rules detector tree-wide · the `creations/` sweep trap | `.claude/rules/README.md` |
 | Tick-function signatures · INPUT → UPDATE → RENDER ordering | `engine/system/CLAUDE.md` |
 | Component-method tier rules | `engine/prefabs/CLAUDE.md` |

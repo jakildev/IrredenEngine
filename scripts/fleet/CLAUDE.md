@@ -32,8 +32,8 @@ subjects; `ctest` never sees them. Validator index: [`VALIDATION.md`](../../docs
   transport or gains its first network call, re-point every suite covering it
   in the same PR; prefer obviously synthetic fixtures to plausible real IDs.
 - **An extensionless PATH stub is invisible to native-Windows Python
-  `subprocess`**: the subject resolves `shutil.which("gh") or "gh"`, and the
-  suite poisons the real binary's environment — recipe: `tests/lib_hermetic.sh`.
+  `subprocess`**: launch `gh` via `fleet_github.run()` (`lint_gh_launches.py`
+  ratchets it); the suite poisons the real gh's env — `tests/lib_hermetic.sh`.
 - **A CLI stub models the tool's argument parsing, not just its endpoint.**
   Transcribe the accepted flag set from the real tool's `--help` and fail the
   way it fails; a stub that emulates `--jq` evaluates the program against

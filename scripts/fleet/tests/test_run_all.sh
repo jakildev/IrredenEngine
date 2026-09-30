@@ -450,4 +450,33 @@ assert_contains "$out" "FAIL  test_mutator.sh (mutated host worktree)" \
 assert_contains "$out" "failed: test_mutator.sh" \
     "T22 summary retains the responsible suite name"
 
+echo "T23: live GitHub CLI accounting never reaches a suite"
+fixture_gh_probe() {
+    printf '%s\n' '#!/usr/bin/env bash' \
+        'fn=none; declare -F gh >/dev/null && fn=function' \
+        'echo "acct=${FLEET_GH_ACCOUNTING-unset} root=${FLEET_GH_EVENT_ROOT-unset} actor=${FLEET_GH_ACTOR-unset} fn=$fn keep=${UNRELATED_KEEP-unset}"' \
+        'exit 1' > "$1/test_ghprobe.sh"
+}
+run_with_live_accounting() {  # $1 = runner
+    (
+        gh() { echo "live gh"; }
+        export -f gh
+        FLEET_GH_ACCOUNTING=1 FLEET_GH_EVENT_ROOT="$TMPROOT/live-events" FLEET_GH_ACTOR=scout \
+            UNRELATED_KEEP=yes bash "$1" 2>&1
+    )
+}
+d="$TMPROOT/t23a/tests"
+mkdir -p "$d"
+cp "$RUNNER" "$d/run_all.sh"
+cp "$SCRIPT_DIR/../fleet_github.py" "$TMPROOT/t23a/fleet_github.py"
+fixture_gh_probe "$d"
+out=$(run_with_live_accounting "$d/run_all.sh")
+assert_contains "$out" "acct=unset root=unset actor=unset fn=none keep=yes" \
+    "T23 FLEET_GH_* names (read from fleet_github.py) and the gh function are scrubbed"
+d=$(new_sandbox t23b)
+fixture_gh_probe "$d"
+out=$(run_with_live_accounting "$d/run_all.sh")
+assert_contains "$out" "acct=1 root=$TMPROOT/live-events actor=scout fn=none" \
+    "T23 negative control: without fleet_github.py beside it only the function is dropped"
+
 summarize "run_all.sh tests"

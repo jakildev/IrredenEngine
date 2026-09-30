@@ -136,7 +136,7 @@ unset _fleet_claim_self
 # python3's ModuleNotFoundError propagating through a pipefail command substitution.
 # A missing module would otherwise fail OPEN in the --stackable-on guard below
 # (empty reason -> claim proceeds), so fail loud here instead.
-for _fleet_lib in fleet_branch_match.py fleet_stack_base.py fleet_blocked_by.py fleet_model_field.py fleet_claim_liveness.py fleet-common.sh; do
+for _fleet_lib in fleet_branch_match.py fleet_stack_base.py fleet_blocked_by.py fleet_model_field.py fleet_claim_liveness.py fleet_github.py fleet-common.sh; do
     if [[ ! -f "$FLEET_LIB_DIR/$_fleet_lib" ]]; then
         echo "fleet-claim: $_fleet_lib not found in FLEET_LIB_DIR=$FLEET_LIB_DIR" >&2
         echo "             Ensure fleet-claim's real script dir is scripts/fleet/ in the engine repo." >&2
@@ -1261,6 +1261,7 @@ check_blockers() {
     python3 <<'PYEOF'
 import os, subprocess, sys, base64
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
+import fleet_github
 # Shared blocker parser — one routine for scout/ingest/claim so the
 # three can't disagree. parse_blocked_by handles canonical / inline-bold
 # / plain / `Blocked on` header + the rich no-blocker sentinel;
@@ -1291,8 +1292,8 @@ for ref_repo_slug, ref, requires_merge in issue_refs:
         continue
     disp = f"#{ref}" if ref_repo_slug == repo else f"{ref_repo_slug}#{ref}"
     try:
-        r = subprocess.run(
-            ["gh", "pr" if requires_merge else "issue", "view", ref,
+        r = fleet_github.run(
+            ["pr" if requires_merge else "issue", "view", ref,
              "--repo", ref_repo_slug,
              "--json", "state", "--jq", ".state"],
             capture_output=True, text=True, timeout=10,
@@ -2099,6 +2100,7 @@ cmd_find_stackable_blockers() {
     blocker=$(BODY_B64="$body_b64" REPO="$repo" python3 <<'PYEOF'
 import base64, json, os, re, subprocess, sys
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
+import fleet_github
 from fleet_branch_match import branch_matches_issue
 # Shared blocker parser — same value the scout / ingest /
 # check_blockers see, including the plain `Blocked by: #N` form.
@@ -2120,8 +2122,8 @@ if not issue_refs or pr_urls:
 merged_heads = []
 if repo:
     try:
-        r = subprocess.run(
-            ["gh", "pr", "list", "--repo", repo, "--state", "merged",
+        r = fleet_github.run(
+            ["pr", "list", "--repo", repo, "--state", "merged",
              "--limit", "30", "--json", "headRefName",
              "--jq", "[.[].headRefName]"],
             capture_output=True, text=True, timeout=15,
@@ -2143,8 +2145,8 @@ def is_satisfied(ref):
         _resolve_cache[ref] = False
         return False
     try:
-        r = subprocess.run(
-            ["gh", "issue", "view", ref, "--repo", repo,
+        r = fleet_github.run(
+            ["issue", "view", ref, "--repo", repo,
              "--json", "state", "--jq", ".state"],
             capture_output=True, text=True, timeout=10,
         )
@@ -2172,6 +2174,7 @@ PYEOF
     BLOCKER="$blocker" REPO="$repo" python3 <<'PYEOF'
 import json, os, subprocess, sys
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
+import fleet_github
 from fleet_branch_match import body_closes_issue_in, branch_matches_issue
 # Same reject-state predicate the scout's offer and the claim gate use,
 # so the finder doesn't advertise a base the gate would then refuse — a worker
@@ -2181,8 +2184,8 @@ from fleet_stack_base import unsafe_base_reason
 blocker = os.environ["BLOCKER"]
 repo = os.environ["REPO"]
 try:
-    r = subprocess.run(
-        ["gh", "pr", "list", "--repo", repo, "--state", "open",
+    r = fleet_github.run(
+        ["pr", "list", "--repo", repo, "--state", "open",
          "--json", "url,headRefName,author,number,body,labels",
          "--limit", "200"],
         capture_output=True, text=True, timeout=15,

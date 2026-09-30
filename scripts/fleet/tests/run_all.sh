@@ -27,6 +27,10 @@
 # FLEET_ENGINE_ROOT and FLEET_GAME_ROOT are scrubbed too, wrapper or not: a
 # subject that mutates the clone they name (fleet-rebase's scratch worktree)
 # would otherwise reach a live clone from a suite that pinned only HOME.
+# So is GitHub CLI accounting (fleet_github.py's FLEET_GH_* names and the
+# exported `gh` function): with it live, a subject's gh call would write an
+# event into the fleet's real event root. Accounting suites opt back in with a
+# temp root.
 #
 # Usage:
 #   run_all.sh [--only <substring>] [--list] [--timeout <seconds>]
@@ -68,6 +72,14 @@ if [[ -f "$dispatch_wrap" ]]; then
         [[ -n "$scrub_name" ]] && scrub_args+=(-u "$scrub_name")
     done < <(grep -oE '(^|[^A-Za-z0-9_])FLEET_[A-Z0-9_]+=' "$dispatch_wrap" \
                  | sed -E 's/^[^F]*//; s/=$//' | sort -u)
+fi
+scrub_args+=(-u 'BASH_FUNC_gh%%')
+gh_accounting="$TESTS_DIR/../fleet_github.py"
+if [[ -f "$gh_accounting" ]]; then
+    while IFS= read -r scrub_name; do
+        [[ -n "$scrub_name" ]] && scrub_args+=(-u "$scrub_name")
+    done < <(grep -oE '^ENV_[A-Z_]+ = "FLEET_GH_[A-Z0-9_]+"' "$gh_accounting" \
+                 | sed -E 's/^[^"]*"//; s/"$//' | sort -u)
 fi
 
 die_usage() {
