@@ -186,13 +186,15 @@ TEST_F(LuaFogBindingsTest, RejectsWrongOptionalTypesWithoutMutatingDefaults) {
     expectScriptsFail(kBadCalls);
 }
 
-// The vision entries author a test-owned payload through bindFog's resolver,
-// so the slot returns and the line-of-sight entry are checked without an
-// active canvas.
+// The vision entries author a test-owned payload and field through bindFog's
+// resolver, so the slot returns, the field tier and the line-of-sight entry
+// are checked without an active canvas.
 class LuaFogVisionSlotsTest : public testing::Test {
   protected:
     LuaFogVisionSlotsTest() {
-        IRScript::detail::bindFog(m_lua, [this]() { return &m_observers; });
+        IRScript::detail::bindFog(m_lua, [this]() {
+            return IRScript::detail::FogVisionTarget{&m_observers, &m_field};
+        });
     }
 
     std::string scriptError(const char *source) {
@@ -205,6 +207,7 @@ class LuaFogVisionSlotsTest : public testing::Test {
     IRScript::LuaScript m_lua;
     IREntity::EntityManager m_entityManager;
     IRComponents::FrameDataFogObservers m_observers{};
+    IRPrefab::Fog::WorldField m_field;
 };
 
 TEST_F(LuaFogVisionSlotsTest, AddAndSetVisionReturnTheSlot) {
@@ -220,6 +223,36 @@ TEST_F(LuaFogVisionSlotsTest, AddAndSetVisionReturnTheSlot) {
     )lua")
                     .valid());
     EXPECT_EQ(m_observers.visionCircleCount_, 2);
+}
+
+TEST_F(LuaFogVisionSlotsTest, SourcesPastTheCapReachTheFieldAndClearWithTheSet) {
+    ASSERT_TRUE(m_lua.lua()
+                    .safe_script(R"lua(
+        for i = 1, 9 do
+            IRFog.addVision(i * 20, 0, 2)
+        end
+    )lua")
+                    .valid());
+    EXPECT_EQ(m_observers.visionCircleCount_, IRComponents::kMaxFogVisionCircles);
+    EXPECT_EQ(m_field.getCell({180, 0}), IRComponents::kFogStateVisible);
+    EXPECT_EQ(m_field.getCell({160, 0}), IRComponents::kFogStateUnexplored)
+        << "an analytic source must not stamp the field";
+
+    ASSERT_TRUE(m_lua.lua().safe_script("IRFog.clearVisions()").valid());
+    EXPECT_EQ(m_observers.visionCircleCount_, 0);
+    EXPECT_EQ(m_field.getCell({180, 0}), IRComponents::kFogStateUnexplored);
+
+    ASSERT_TRUE(m_lua.lua()
+                    .safe_script(R"lua(
+        for i = 1, 9 do
+            IRFog.addVision(i * 20, 0, 2)
+        end
+        IRFog.setVision(0, 0, 2)
+    )lua")
+                    .valid());
+    EXPECT_EQ(m_observers.visionCircleCount_, 1);
+    EXPECT_EQ(m_field.getCell({180, 0}), IRComponents::kFogStateUnexplored)
+        << "setVision must clear the field tier with the analytic slots";
 }
 
 TEST_F(LuaFogVisionSlotsTest, LineOfSightEntrySetsMaskEyeAndSoftness) {

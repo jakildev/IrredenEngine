@@ -1,9 +1,10 @@
 #ifndef IR_CHUNKED_FIELD_H
 #define IR_CHUNKED_FIELD_H
 
-// PURPOSE: Sparse storage for integer-valued 2D cell fields. Dense field chunk
-//   buffers are retained across clear() and eraseChunk() while logical presence
-//   remains map membership. See docs/design/chunked-field-placement-kit.md.
+// PURPOSE: Sparse storage for integer-valued 2D cell fields. Field chunks — map
+//   node and dense buffer — are retained across clear() and eraseChunk() while
+//   logical presence remains map membership. See
+//   docs/design/chunked-field-placement-kit.md.
 
 #include <irreden/ir_math.hpp>
 
@@ -76,11 +77,7 @@ template <typename T> class ChunkedField2D {
     /// inserted field chunk counts as a change even when @p value is zero.
     bool setCell(IRMath::ivec2 cell, T value) {
         const FieldChunkKey key = packFieldChunkKey(fieldChunkOf(cell));
-        auto [it, inserted] = m_fieldChunks.try_emplace(key);
-        FieldChunk &fieldChunk = it->second;
-        if (inserted) {
-            fieldChunk.m_cells = acquireBuffer();
-        }
+        auto [fieldChunk, inserted] = acquireChunk(key);
 
         const int index = fieldChunkLocalIndex(fieldChunkLocal(cell));
         const T oldValue = fieldChunk.m_cells[index];
@@ -99,8 +96,8 @@ template <typename T> class ChunkedField2D {
         return true;
     }
 
-    /// Removes a present field chunk, keeping its buffer for reuse. False
-    /// when the field chunk is absent.
+    /// Removes a present field chunk, keeping it for reuse. False when the
+    /// field chunk is absent.
     bool eraseChunk(IRMath::ivec2 chunkCoord) {
         const FieldChunkKey key = packFieldChunkKey(chunkCoord);
         auto it = m_fieldChunks.find(key);
@@ -108,8 +105,7 @@ template <typename T> class ChunkedField2D {
             return false;
         }
         m_dirtyKeys.push_back(key);
-        m_freeBuffers.push_back(std::move(it->second.m_cells));
-        m_fieldChunks.erase(it);
+        m_freeChunks.push_back(m_fieldChunks.extract(it));
         return true;
     }
 
@@ -117,11 +113,8 @@ template <typename T> class ChunkedField2D {
     /// chunk was inserted or any cell differs.
     bool assignChunk(IRMath::ivec2 chunkCoord, std::span<const T, kFieldChunkCells> cells) {
         const FieldChunkKey key = packFieldChunkKey(chunkCoord);
-        auto [it, inserted] = m_fieldChunks.try_emplace(key);
-        FieldChunk &fieldChunk = it->second;
-        if (inserted) {
-            fieldChunk.m_cells = acquireBuffer();
-        } else if (std::equal(cells.begin(), cells.end(), fieldChunk.m_cells.get())) {
+        auto [fieldChunk, inserted] = acquireChunk(key);
+        if (!inserted && std::equal(cells.begin(), cells.end(), fieldChunk.m_cells.get())) {
             return false;
         }
 
@@ -146,11 +139,7 @@ template <typename T> class ChunkedField2D {
             const int localX = fieldChunkLocal(cell).x;
             const int run = IRMath::min(remaining, kFieldChunkEdge - localX);
             const FieldChunkKey key = packFieldChunkKey(fieldChunkOf(cell));
-            auto [it, inserted] = m_fieldChunks.try_emplace(key);
-            FieldChunk &fieldChunk = it->second;
-            if (inserted) {
-                fieldChunk.m_cells = acquireBuffer();
-            }
+            auto [fieldChunk, inserted] = acquireChunk(key);
 
             T *row = fieldChunk.m_cells.get() + fieldChunkLocalIndex(fieldChunkLocal(cell));
             int runChanged = 0;
@@ -183,11 +172,11 @@ template <typename T> class ChunkedField2D {
     }
 
     void clear() {
-        for (auto &[key, fieldChunk] : m_fieldChunks) {
-            m_dirtyKeys.push_back(key);
-            m_freeBuffers.push_back(std::move(fieldChunk.m_cells));
+        while (!m_fieldChunks.empty()) {
+            auto it = m_fieldChunks.begin();
+            m_dirtyKeys.push_back(it->first);
+            m_freeChunks.push_back(m_fieldChunks.extract(it));
         }
-        m_fieldChunks.clear();
     }
 
     void update() {
@@ -251,19 +240,39 @@ template <typename T> class ChunkedField2D {
     }
 
   private:
-    std::unordered_map<FieldChunkKey, FieldChunk> m_fieldChunks;
-    std::vector<FieldChunkKey> m_dirtyKeys;
-    std::vector<std::unique_ptr<T[]>> m_freeBuffers;
+    using FieldChunkMap = std::unordered_map<FieldChunkKey, FieldChunk>;
 
-    std::unique_ptr<T[]> acquireBuffer() {
-        if (m_freeBuffers.empty()) {
-            return std::make_unique<T[]>(kFieldChunkCells);
+    FieldChunkMap m_fieldChunks;
+    std::vector<FieldChunkKey> m_dirtyKeys;
+    // Detached map nodes, each still owning its dense buffer. Reinserting one
+    // allocates neither, so a working set rebuilt every frame stops
+    // allocating once its peak has been seen.
+    std::vector<typename FieldChunkMap::node_type> m_freeChunks;
+
+    /// The field chunk at @p key and whether it was just inserted; an
+    /// inserted field chunk is all zero, clean, and reuses a free chunk when
+    /// one is available.
+    std::pair<FieldChunk &, bool> acquireChunk(FieldChunkKey key) {
+        auto it = m_fieldChunks.find(key);
+        if (it != m_fieldChunks.end()) {
+            return {it->second, false};
+        }
+        if (m_freeChunks.empty()) {
+            FieldChunk &fieldChunk = m_fieldChunks.try_emplace(key).first->second;
+            fieldChunk.m_cells = std::make_unique<T[]>(kFieldChunkCells);
+            return {fieldChunk, true};
         }
 
-        std::unique_ptr<T[]> buffer = std::move(m_freeBuffers.back());
-        m_freeBuffers.pop_back();
-        std::fill_n(buffer.get(), kFieldChunkCells, T{});
-        return buffer;
+        typename FieldChunkMap::node_type node = std::move(m_freeChunks.back());
+        m_freeChunks.pop_back();
+        node.key() = key;
+        FieldChunk &recycled = node.mapped();
+        std::fill_n(recycled.m_cells.get(), kFieldChunkCells, T{});
+        recycled.min_ = T{};
+        recycled.max_ = T{};
+        recycled.nonZeroCount_ = 0;
+        recycled.dirty_ = false;
+        return {m_fieldChunks.insert(std::move(node)).position->second, true};
     }
 
     void markDirty(FieldChunkKey key, FieldChunk &fieldChunk) {
