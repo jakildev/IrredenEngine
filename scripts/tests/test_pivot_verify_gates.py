@@ -65,11 +65,12 @@ class _Harness:
     """
 
     def __init__(self, readings=None, default_reading=0.5, scale=2.0,
-                 focus_result="PASS"):
+                 focus_result="PASS", composite_delta_raw=0):
         self.readings = readings or {}
         self.default_reading = default_reading
         self.scale = scale
         self.focus_result = focus_result
+        self.composite_delta_raw = composite_delta_raw
         self.captures = []          # (block, sdf, zoom) per run_pass call
         self.scores = []            # (block, sdf, zoom, max_deviation, dev)
         self._current = None
@@ -80,8 +81,18 @@ class _Harness:
         zoom = float(cmd[cmd.index("--zoom") + 1])
         self._current = (block, sdf, zoom)
         self.captures.append(self._current)
-        output = "\n".join(_ASSERT_LINE.format(result=self.focus_result)
-                           for _ in range(9))
+        lines = [_ASSERT_LINE.format(result=self.focus_result) for _ in range(9)]
+        if block == "center-axis":
+            eff_sub = int(zoom)
+            for shot in range(9):
+                raw_iso = 400 + shot
+                if sdf:
+                    raw_iso += self.composite_delta_raw
+                lines.append(
+                    f"[pivot-composite-depth] block=center-axis shot={shot} yaw=0 "
+                    f"subject={'sdf' if sdf else 'voxel'} valid=1 tier=0 "
+                    f"raw_iso={raw_iso} eff_sub={eff_sub}")
+        output = "\n".join(lines)
         frames = [Path(f"shot_{i:03d}.png") for i in range(9)]
         return 0, output, frames
 
@@ -184,12 +195,11 @@ class SdfTwinGate(unittest.TestCase):
 class CensusEveryPassCanFail(unittest.TestCase):
 
     def test_t4_maximally_bad_reading_fails_every_pass(self):
-        # 8 blocks + the focus-ctr and center-column twins, acquire-continuity
-        # once per base yaw, every silhouette 200px off and every
-        # [pivot-focus-assert] FAIL: all 12 passes fail.
+        # 8 blocks + three SDF twins, acquire-continuity once per base yaw,
+        # every silhouette 200px off and every [pivot-focus-assert] FAIL.
         h = _Harness(default_reading=200.0, focus_result="FAIL")
         rc, verdicts = _run(h, [])
-        self.assertEqual(len(verdicts), 12)
+        self.assertEqual(len(verdicts), 14)
         self.assertEqual(rc, 1)
         self.assertEqual(verdicts, {
             "focus-ctr@z4": "DRIFT",
@@ -200,6 +210,8 @@ class CensusEveryPassCanFail(unittest.TestCase):
             "center-depth@z4": "FOCUS-BAD",
             "background-center@z4": "FOCUS-BAD",
             "center-axis@z4": "FOCUS-BAD",
+            "center-axis-sdf@z4": "FOCUS-BAD",
+            "center-axis-cosort@z4": "CO-SORT",
             "cursor-latch@z4": "FOCUS-BAD",
             "acquire-continuity@z4@y0": "FOCUS-BAD",
             "acquire-continuity@z4@y22.5": "FOCUS-BAD",
@@ -333,6 +345,28 @@ class PerBlockBoundSurvives(unittest.TestCase):
         rc, verdicts = _run(h, ["--blocks", "center-axis"])
         self.assertEqual(verdicts["center-axis@z4"], "DRIFT")
         self.assertEqual(rc, 1)
+
+
+class CompositeCosortGate(unittest.TestCase):
+
+    def test_prefix_style_one_point_five_unit_mismatch_fails(self):
+        h = _Harness(composite_delta_raw=6)
+        rc, verdicts = _run(h, ["--blocks", "center-axis"])
+        self.assertEqual(verdicts["center-axis-cosort@z4"], "KEY-MISMATCH")
+        self.assertEqual(rc, 1)
+
+    def test_one_micro_face_pair_passes(self):
+        h = _Harness(composite_delta_raw=2)
+        rc, verdicts = _run(h, ["--blocks", "center-axis"])
+        self.assertEqual(verdicts["center-axis-cosort@z4"], "CO-SORT")
+        self.assertEqual(rc, 0)
+
+    def test_subdivision_one_lattice_control_keeps_its_existing_span(self):
+        h = _Harness(composite_delta_raw=3)
+        rc, verdicts = _run(h, ["--blocks", "center-axis", "--zoom", "1"])
+        self.assertEqual(verdicts["center-axis-sdf@z1"], "LATTICE")
+        self.assertEqual(verdicts["center-axis-cosort@z1"], "LATTICE")
+        self.assertEqual(rc, 0)
 
 
 if __name__ == "__main__":

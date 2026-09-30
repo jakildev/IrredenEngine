@@ -3,9 +3,6 @@
 
 #include <irreden/ir_math.hpp>
 
-#include <array>
-#include <optional>
-
 namespace IRRender {
 
 // The pose one main-framebuffer composite drew with — everything needed to
@@ -34,59 +31,6 @@ struct DefaultPivotSourceFrame {
     // different zoom than the frame that reads it back.
     int effectiveSubdivisions_ = 1;
 };
-
-// Estimate of the main-canvas texel the crosshair displayed in @p frame — the
-// hover path's cursor→texel mapping (`IRRender::mouseCanvasTexelWorld`, then
-// the gather's `+ trixelOriginOffsetZ1 + cameraTrixelOffset`) evaluated with
-// the cursor at the canvas center and the frame's own camera and subdivisions.
-// Measured exact on Metal. The subject of the sample is read off every texel
-// in the 3×3 block around this estimate that holds its key
-// (defaultPivotSampledSubjectIsVoxelStore), so a displayed texel one off the
-// estimate classifies too.
-inline IRMath::ivec2
-defaultPivotCrosshairCanvasTexel(const DefaultPivotSourceFrame &frame, IRMath::ivec2 canvasSize) {
-    const float subdivisions = static_cast<float>(IRMath::max(1, frame.effectiveSubdivisions_));
-    const IRMath::vec2 cursorTexel = IRMath::floor(
-        (frame.canvasCenterIso_ - frame.effectiveCameraIso_) * subdivisions + IRMath::vec2(1.0f)
-    );
-    return IRMath::ivec2(
-        IRMath::floor(
-            cursorTexel + IRMath::vec2(IRMath::trixelOriginOffsetZ1(canvasSize)) +
-            frame.effectiveCameraIso_ * subdivisions
-        )
-    );
-}
-
-// Whether the fragment a cardinal depth sample came from belongs to the voxel
-// store, read off a 3×3 block of main-canvas texels centered on the crosshair
-// estimate: @p distances holds each texel's stored key and @p voxelStoreTexels
-// whether its winning entity is a voxel-store one — nullopt for an entity that
-// is neither store's or both (RenderManager::texelSubjectIsVoxelStore). On the
-// cardinal path the composite copies the canvas distance texel for texel, so
-// the texels holding @p sampledEncodedDepth are the ones the sample can have
-// come from.
-//
-// nullopt when the subject is not established — no texel holds the key, one
-// that does names no known store, or the texels that do disagree on subject.
-// The latch holds its anchor then rather than branch on a guess.
-inline std::optional<bool> defaultPivotSampledSubjectIsVoxelStore(
-    const std::array<int, 9> &distances,
-    const std::array<std::optional<bool>, 9> &voxelStoreTexels,
-    int sampledEncodedDepth
-) {
-    std::optional<bool> subject;
-    for (std::size_t i = 0; i < distances.size(); ++i) {
-        if (distances[i] != sampledEncodedDepth) {
-            continue;
-        }
-        if (!voxelStoreTexels[i].has_value() ||
-            (subject.has_value() && *subject != *voxelStoreTexels[i])) {
-            return std::nullopt;
-        }
-        subject = voxelStoreTexels[i];
-    }
-    return subject;
-}
 
 // Update policy and state of the depth-aware default pivot: when
 // RenderManager may pay a composite-depth readback, and what the sample it
@@ -134,10 +78,10 @@ class DefaultPivotLatch {
     // keyed on the lower-corner lattice `[p, p + 1]` of view space rather than
     // on the authored cube `[p - 1/2, p + 1/2]`: a (1/2, 1/2, 1/2) shift along
     // the view axis, invisible on screen, that puts every cardinal voxel key 1.5
-    // units deeper than the surface the pixel shows. The per-axis (non-cardinal)
-    // store and the SDF shape store key without it. Removing it from a cardinal
-    // voxel sample makes the acquired point the surface itself, to within one
-    // micro-face.
+    // units deeper than the surface the pixel shows. The subdivided cardinal
+    // SDF store uses the same displacement; the per-axis store does not.
+    // Removing it from a cardinal sample makes the acquired point the surface
+    // itself, to within one micro-face.
     static constexpr float kCardinalStoreLatticeDepth = 1.5f;
 
     // Record the pose the main composite is drawing this frame with, or — when
@@ -191,23 +135,14 @@ class DefaultPivotLatch {
     // its yaw and its effective camera — so it projects to the pixel it was
     // read from, and the new state leaves the effective camera of the source
     // pose unchanged: acquisition never moves the view. A cardinal source's
-    // sample is first moved off the voxel store's lattice onto the visible
-    // surface (kCardinalStoreLatticeDepth) when @p voxelStoreWinner says a
-    // voxel-pool fragment won the sampled texel, and taken as it stands when
-    // an SDF shape did. A cardinal source whose winner is unestablished
-    // (nullopt) holds the previous anchor, as a background sample does; a
-    // non-cardinal source never reads the subject.
-    void acquire(float framebufferIsoDepth, std::optional<bool> voxelStoreWinner = true) {
+    // sample is first moved off the shared store lattice onto the visible
+    // surface (kCardinalStoreLatticeDepth). A non-cardinal sample is used as-is.
+    void acquire(float framebufferIsoDepth) {
         const DefaultPivotSourceFrame &source = m_source;
         float yawedIsoDepth =
             framebufferIsoDepth / static_cast<float>(IRMath::max(1, source.effectiveSubdivisions_));
         if (source.residualYaw_ == 0.0f) {
-            if (!voxelStoreWinner.has_value()) {
-                return;
-            }
-            if (*voxelStoreWinner) {
-                yawedIsoDepth -= kCardinalStoreLatticeDepth;
-            }
+            yawedIsoDepth -= kCardinalStoreLatticeDepth;
         }
         m_hasAcquired = true;
         if (IRMath::abs(source.visualYaw_) <= kYawSettleDelta) {

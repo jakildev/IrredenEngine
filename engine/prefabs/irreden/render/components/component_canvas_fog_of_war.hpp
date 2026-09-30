@@ -80,8 +80,9 @@
 //     that lattice (`fogLosCanonicalSample`): the cardinal voxel raster
 //     recovers a face's pixels up to a micro cell off the face plane, so
 //     their face-axis coordinate snaps onto it; a per-axis cell and an
-//     analytic pixel (the shape raster's carrier bit) are already on their
-//     surface. Every sample then steps a hair out along its face normal. The
+//     analytic pixel (the shape raster's carrier bit) resolve to their authored
+//     surfaces after the analytic cardinal key's raster-lattice displacement
+//     is removed. Every sample then steps a hair out along its face normal. The
 //     CPU oracle (`IRPrefab::Fog::losVisibility`) evaluates an entity at its
 //     ground anchor, lifted onto its column's top plane when it sits below it.
 // `FOG_LOS_BUILD` rebuilds the column field each RENDER frame and uploads

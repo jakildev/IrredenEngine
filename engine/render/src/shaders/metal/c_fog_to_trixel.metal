@@ -14,6 +14,7 @@ static float3 fogPixelToWorld(
     int encoded,
     int faceId,
     int2 size,
+    int cardinalDepth,
     constant FrameDataVoxelToTrixel& frameData
 ) {
     if (frameData.perAxisRoute != 0) {
@@ -38,7 +39,7 @@ static float3 fogPixelToWorld(
     }
     return trixelCanvasPixelToWorld3D(
         pixel,
-        decodeDepthSingle(encoded),
+        cardinalDepth,
         frameData.trixelCanvasOffsetZ1,
         frameData.frameCanvasOffset,
         frameData.voxelRenderOptions,
@@ -94,15 +95,22 @@ kernel void c_fog_to_trixel(
     const int slot = decodeSlot(encoded);
     const int faceId =
         frameData.visibleFaceIds[slot] ^ decodeFlipRoute(encoded, frameData.perAxisRoute);
-    const float3 pos3D = fogPixelToWorld(pixel, encoded, faceId, size, frameData);
+    const int scale = effectiveTrixelSubdivisionScale(frameData.voxelRenderOptions);
+    const uint2 rawId = triangleCanvasEntityIds.read(uint2(pixel)).xy;
+    const bool analyticCardinal = frameData.perAxisRoute == 0 &&
+        frameData.residualYaw == 0.0f && scale > 1 && decodeAnalyticSurface(rawId);
+    const int rasterDepth = decodeDepthSingle(encoded);
+    const int cardinalDepth = analyticCardinal
+        ? rasterDepth - cardinalRasterLatticeDepthOffset(scale)
+        : rasterDepth;
+    const float3 pos3D = fogPixelToWorld(pixel, encoded, faceId, size, cardinalDepth, frameData);
     float aaFloor = 0.0f;
     bool fogWholeBody = false;
     float3 losSample = pos3D;
     if (fogObservers.visionCircleCount > 0) {
-        const float3 neighbor =
-            fogPixelToWorld(pixel + int2(1, 0), encoded, faceId, size, frameData);
+        const float3 neighbor = fogPixelToWorld(
+            pixel + int2(1, 0), encoded, faceId, size, cardinalDepth, frameData);
         aaFloor = length(neighbor.xy - pos3D.xy);
-        const uint2 rawId = triangleCanvasEntityIds.read(uint2(pixel)).xy;
         fogWholeBody = decodeFogWholeBody(rawId);
         if (fogObservers.losSourceMask != 0) {
             int losRoute = kFogLosRouteAnalytic;
@@ -115,7 +123,7 @@ kernel void c_fog_to_trixel(
                 pos3D,
                 faceId,
                 losRoute,
-                effectiveTrixelSubdivisionScale(frameData.voxelRenderOptions)
+                scale
             );
         }
     }

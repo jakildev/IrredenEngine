@@ -134,6 +134,32 @@ int main() {
 
 @unittest.skipUnless(COMPILER, "SDF surface controls require a C++ compiler")
 class SdfSurfaceContractTest(unittest.TestCase):
+    def test_cardinal_raster_lattice_offset_rounds_odd_subdivisions_up(self):
+        expected = {1: 2, 2: 3, 3: 5, 4: 6, 5: 8, 8: 12}
+        for suffix, directory in (("glsl", ""), ("metal", "metal/")):
+            path = (ROOT / "engine/render/src/shaders" / directory /
+                    f"ir_iso_common.{suffix}")
+            function = extract_function(
+                path.read_text(), "cardinalRasterLatticeDepthOffset")
+            function = function.replace("inline ", "")
+            checks = "\n".join(
+                f"if(cardinalRasterLatticeDepthOffset({sub})!={offset}) return {sub};"
+                for sub, offset in expected.items())
+            with (
+                self.subTest(backend=suffix),
+                tempfile.TemporaryDirectory() as tmp,
+            ):
+                cpp, binary = Path(tmp) / "offset.cpp", Path(tmp) / "offset"
+                cpp.write_text(function + "\nint main(){\n" + checks + "\nreturn 0;\n}")
+                build = subprocess.run(
+                    [COMPILER, "-std=c++17", str(cpp), "-o", str(binary)],
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(build.returncode, 0, build.stderr)
+                run = subprocess.run([str(binary)], capture_output=True, text=True)
+                self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+
     def test_shader_intervals_and_lossy_depth(self):
         for suffix, directory in (("glsl", ""), ("metal", "metal/")):
             path = (ROOT / "engine/render/src/shaders" / directory /

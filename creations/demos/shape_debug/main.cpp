@@ -39,6 +39,7 @@
 #include <irreden/render/components/component_light_source.hpp>
 #include <irreden/render/components/component_light_blocker.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
+#include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/camera.hpp>
 
@@ -553,13 +554,6 @@ float pivotVerifyCardinalTolerance(int effectiveSubdivisions, float rayStepWorld
     return 2.0f / static_cast<float>(effectiveSubdivisions) * rayStepWorld;
 }
 
-// A cardinal source on the SDF probe grades the latch's subject branch, not the
-// SDF key's accuracy against the surface: half the store lattice, which a
-// misbranch that subtracts the lattice from an SDF key always exceeds.
-float pivotVerifySdfCardinalBound(float rayStepWorld) {
-    return 0.5f * IRRender::DefaultPivotLatch::kCardinalStoreLatticeDepth * rayStepWorld;
-}
-
 // A per-axis (non-cardinal) source's key is its face origin's yawed depth,
 // stored quantized. The target is the ray point level with the winning cell's
 // center, and a face origin sits at most `0.5 * (|c - s| + |c + s| + 1)` depth
@@ -938,11 +932,36 @@ bool g_cursorLatchResolved = false;
 bool g_cursorPivotIndicator = false;
 IREntity::EntityId g_cursorLatchIndicator = IREntity::kNullEntity;
 
+void logPivotCompositeDepth(int shotIndex) {
+    if (g_pivotVerifyBlock != "center-axis") {
+        return;
+    }
+    const auto &framebuffer = IREntity::getComponent<IRComponents::C_TrixelCanvasFramebuffer>(
+        IRRender::getRenderManager().getMainFramebuffer()
+    );
+    const IRMath::ivec2 resolution = framebuffer.getResolutionPlusBuffer();
+    const IRRender::CompositeDepthSample sample = IRRender::readbackCompositeDepth(resolution / 2);
+    const IRRender::DecodedCompositeDepth decoded = IRRender::decodeCompositeDepth(sample.rawDist_);
+    IR_LOG_INFO(
+        "[pivot-composite-depth] block={} shot={} yaw={} subject={} valid={} tier={} "
+        "raw_iso={} eff_sub={}",
+        g_pivotVerifyBlock,
+        shotIndex,
+        IRPrefab::Camera::getYaw(),
+        g_pivotVerifySdf ? "sdf" : "voxel",
+        sample.valid_ ? 1 : 0,
+        decoded.tier_,
+        decoded.iso_,
+        IRRender::getVoxelRenderEffectiveSubdivisions()
+    );
+}
+
 void logPivotFocusAssert(int shotIndex) {
     const bool cursorLatch = g_pivotVerifyBlock == "cursor-latch";
     if (!pivotVerifyIsDefaultBlock() && !cursorLatch) {
         return;
     }
+    logPivotCompositeDepth(shotIndex);
     // `view_held` reports whether the camera pan/zoom still matches the first
     // capture's — a precondition for the sweep blocks, whose shot tables hold
     // the view fixed; acquire-continuity pans by design.
@@ -1100,12 +1119,10 @@ void logPivotFocusAssert(int shotIndex) {
     oracle.sourceIso_ = crosshairIso;
     oracle.sourceFootprint_ = pivotVerifyCrosshairFootprint(yaw, crosshairIso, zoom.x);
     oracle.sourceCardinal_ = IRPrefab::Camera::computeYawSplit(yaw).second == 0.0f;
-    if (!oracle.sourceCardinal_) {
-        oracle.sourceTolerance_ = pivotVerifyPerAxisBound(yaw, effectiveSubdivisions, rayStepWorld);
-    } else if (g_pivotVerifySdf) {
-        oracle.sourceTolerance_ = pivotVerifySdfCardinalBound(rayStepWorld);
-    } else {
+    if (oracle.sourceCardinal_) {
         oracle.sourceTolerance_ = pivotVerifyCardinalTolerance(effectiveSubdivisions, rayStepWorld);
+    } else {
+        oracle.sourceTolerance_ = pivotVerifyPerAxisBound(yaw, effectiveSubdivisions, rayStepWorld);
     }
     oracle.latchMoves_ = 0;
 }

@@ -16,8 +16,6 @@
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
-#include <irreden/voxel/components/component_shape_descriptor.hpp>
-#include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 
 #include <irreden/common/components/component_position_2d_iso.hpp>
@@ -27,7 +25,6 @@
 #include <irreden/render/components/component_camera.hpp>
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 
 namespace IRRender {
@@ -373,58 +370,7 @@ void RenderManager::updateDefaultRotationPivotFocus() {
         decoded.tier_ != 0) {
         return;
     }
-    m_defaultPivotLatch.acquire(
-        static_cast<float>(decoded.iso_),
-        crosshairWinnerIsVoxelStore(decoded.enc_)
-    );
-}
-
-std::optional<bool> RenderManager::crosshairWinnerIsVoxelStore(int sampledEncodedDepth) const {
-    // Only a cardinal source subtracts the voxel store's lattice, so only there
-    // does the winning subject matter — and only there does the main canvas
-    // hold the frame the depth came from (the per-axis canvases draw the rest).
-    const DefaultPivotSourceFrame &source = m_defaultPivotLatch.sourceFrame();
-    if (source.residualYaw_ != 0.0f) {
-        return std::nullopt;
-    }
-    // The winner's subject, read at the canvas texels around the crosshair
-    // estimate whose stored key IS the sampled one. Called right after the
-    // depth readback, which already waited on the device, and the canvas still
-    // holds the source frame: nothing has cleared it since that frame's
-    // composite. Both stores write the winning entity id at the same texel as
-    // its depth, so the id names the subject the depth came from. A block past
-    // the canvas edge establishes no subject, like a block with no matching
-    // texel.
-    //
-    // The SDF shape store keys a cardinal fragment on the surface, not on the
-    // voxel store's lattice. This branch exists only for that disagreement,
-    // tracked in docs/design/camera-yaw-pivot.md §"Known deviations": the
-    // change that co-sorts the two stores deletes it, and the latch subtracts
-    // for every winner.
-    const auto &textures = IREntity::getComponent<C_TriangleCanvasTextures>(m_mainCanvas);
-    std::array<int, 9> distances{};
-    std::array<IREntity::EntityId, 9> entityIds{};
-    if (!textures.readTexelBlock3x3(
-            defaultPivotCrosshairCanvasTexel(source, getMainCanvasSizeTriangles()),
-            distances,
-            entityIds
-        )) {
-        return std::nullopt;
-    }
-    std::array<std::optional<bool>, 9> voxelStoreTexels{};
-    for (std::size_t i = 0; i < entityIds.size(); ++i) {
-        voxelStoreTexels[i] = texelSubjectIsVoxelStore(entityIds[i]);
-    }
-    return defaultPivotSampledSubjectIsVoxelStore(distances, voxelStoreTexels, sampledEncodedDepth);
-}
-
-std::optional<bool> RenderManager::texelSubjectIsVoxelStore(EntityId entityId) {
-    const bool isShape = IREntity::getComponentOptional<C_ShapeDescriptor>(entityId).has_value();
-    const bool isVoxelSet = IREntity::getComponentOptional<C_VoxelSetNew>(entityId).has_value();
-    if (isShape == isVoxelSet) {
-        return std::nullopt;
-    }
-    return isVoxelSet;
+    m_defaultPivotLatch.acquire(static_cast<float>(decoded.iso_));
 }
 
 void RenderManager::setVoxelRenderSubdivisions(int subdivisions) {

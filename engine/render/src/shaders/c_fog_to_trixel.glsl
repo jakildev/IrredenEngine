@@ -56,7 +56,13 @@ const uint kPerAxisCellComputeTile = 256u;
 // from the cardinal-rotated raster frame; while the camera turns, the single
 // canvas holds only smooth-yaw content (voxels scatter per axis), recovered
 // with the matching smooth inverse.
-vec3 fogPixelToWorld(ivec2 pixel, int encoded, int faceId, ivec2 size) {
+vec3 fogPixelToWorld(
+    ivec2 pixel,
+    int encoded,
+    int faceId,
+    ivec2 size,
+    int cardinalDepth
+) {
     if (perAxisRoute != 0) {
         return perAxisCellToWorld3DSubCell(
             pixel,
@@ -79,7 +85,7 @@ vec3 fogPixelToWorld(ivec2 pixel, int encoded, int faceId, ivec2 size) {
     }
     return trixelCanvasPixelToWorld3D(
         pixel,
-        decodeDepthSingle(encoded),
+        cardinalDepth,
         trixelCanvasOffsetZ1,
         frameCanvasOffset,
         voxelRenderOptions,
@@ -112,21 +118,29 @@ void main() {
 
     const int slot = decodeSlot(encoded);
     const int faceId = visibleFaceIds[slot] ^ decodeFlipRoute(encoded, perAxisRoute);
-    const vec3 pos3D = fogPixelToWorld(pixel, encoded, faceId, size);
+    const int scale = effectiveTrixelSubdivisionScale(voxelRenderOptions);
+    const uvec2 rawId = imageLoad(triangleCanvasEntityIds, pixel).xy;
+    const bool analyticCardinal =
+        perAxisRoute == 0 && residualYaw == 0.0 && scale > 1 && decodeAnalyticSurface(rawId);
+    const int rasterDepth = decodeDepthSingle(encoded);
+    const int cardinalDepth = analyticCardinal
+        ? rasterDepth - cardinalRasterLatticeDepthOffset(scale)
+        : rasterDepth;
+    const vec3 pos3D = fogPixelToWorld(pixel, encoded, faceId, size, cardinalDepth);
     float aaFloor = 0.0;
     bool fogWholeBody = false;
     vec3 losSample = pos3D;
     if (visionCircleCount > 0) {
         // Local world-units-per-pixel from the +x neighbour at the same depth:
         // floors the disc's AA rim at ~1 canvas px at any zoom.
-        const vec3 neighbor = fogPixelToWorld(pixel + ivec2(1, 0), encoded, faceId, size);
+        const vec3 neighbor = fogPixelToWorld(
+            pixel + ivec2(1, 0), encoded, faceId, size, cardinalDepth);
         aaFloor = length(neighbor.xy - pos3D.xy);
-        const uvec2 rawId = imageLoad(triangleCanvasEntityIds, pixel).xy;
         fogWholeBody = decodeFogWholeBody(rawId);
         if (losSourceMask != 0) {
             // A per-axis cell and a cardinal voxel pixel sit on the raster's
-            // lower-corner lattice; a shape pixel and the smooth-yaw canvas's
-            // content are exact world points.
+            // lower-corner lattice. Analytic cardinal pixels are restored to
+            // their authored surface above; smooth-yaw content is exact.
             int losRoute = kFogLosRouteAnalytic;
             if (perAxisRoute != 0) {
                 losRoute = kFogLosRoutePerAxis;
@@ -137,7 +151,7 @@ void main() {
                 pos3D,
                 faceId,
                 losRoute,
-                effectiveTrixelSubdivisionScale(voxelRenderOptions)
+                scale
             );
         }
     }

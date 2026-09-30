@@ -1,13 +1,8 @@
 #include <gtest/gtest.h>
 
-#include <irreden/ir_entity.hpp>
 #include <irreden/render/camera.hpp>
 #include <irreden/render/default_pivot_latch.hpp>
-#include <irreden/render/render_manager.hpp>
-#include <irreden/voxel/components/component_shape_descriptor.hpp>
-#include <irreden/voxel/components/component_voxel_set.hpp>
 
-#include <array>
 #include <optional>
 
 // ---------------------------------------------------------------------------
@@ -39,9 +34,6 @@ using IRMath::vec2;
 using IRMath::vec3;
 using IRRender::DefaultPivotLatch;
 using IRRender::DefaultPivotSourceFrame;
-// Per-texel store of a 3×3 block's winners; nullopt names neither store.
-using TexelSubjects = std::array<std::optional<bool>, 9>;
-
 // One frame of a real rotation, comfortably above kYawSettleDelta.
 constexpr float kYawStep = 0.05f;
 constexpr float kYawSettleDelta = DefaultPivotLatch::kYawSettleDelta;
@@ -462,16 +454,8 @@ TEST(DefaultPivotLatch, YawZeroAcquisitionsLeaveTheViewOffsetBitExact) {
 }
 
 // The anchor a latch holds after acquiring @p framebufferIsoDepth from a
-// source frame drawn at @p yaw with effective camera @p effectiveCameraIso,
-// sampled off a fragment of the voxel store or, with @p voxelStoreWinner false,
-// of the SDF shape store.
-vec3 acquiredAnchor(
-    float yaw,
-    vec2 cameraIso,
-    vec2 effectiveCameraIso,
-    float framebufferIsoDepth,
-    bool voxelStoreWinner = true
-) {
+// source frame drawn at @p yaw with effective camera @p effectiveCameraIso.
+vec3 acquiredAnchor(float yaw, vec2 cameraIso, vec2 effectiveCameraIso, float framebufferIsoDepth) {
     constexpr int kEffSub = 4;
     DefaultPivotLatch latch;
     latch.stampSourceFrame(
@@ -486,12 +470,12 @@ vec3 acquiredAnchor(
         true
     );
     latch.observeFrame(yaw, true);
-    latch.acquire(framebufferIsoDepth * static_cast<float>(kEffSub), voxelStoreWinner);
+    latch.acquire(framebufferIsoDepth * static_cast<float>(kEffSub));
     return latch.focus(kCanvasCenterIso - cameraIso);
 }
 
-TEST(DefaultPivotLatch, ACardinalSourceLatchesTheVisibleSurfaceNotTheStoreKey) {
-    // The cardinal store keys a fragment kCardinalStoreLatticeDepth behind the
+TEST(DefaultPivotLatch, ACardinalSourceLatchesTheSharedVisibleSurface) {
+    // Every cardinal store keys a fragment kCardinalStoreLatticeDepth behind the
     // surface it shows. At every cardinal the latch lands on the surface: the
     // point on the source frame's crosshair ray at the key minus the lattice.
     const vec2 cameraIso = vec2(64.0f, -12.0f);
@@ -532,292 +516,6 @@ TEST(DefaultPivotLatch, ANonCardinalSourceKeepsTheStoreKey) {
     }
 }
 
-TEST(DefaultPivotLatch, ACardinalSdfWinnerLatchesItsKeyAsItStands) {
-    // The SDF shape store keys a cardinal fragment on the surface, with no
-    // lattice, so an SDF winner's sample is the surface already. Positive fire
-    // for the subject branch: the voxel-store subtraction applied here would
-    // put the anchor the lattice depth in front of the surface.
-    const vec2 cameraIso = vec2(64.0f, -12.0f);
-    const float cardinals[] = {0.0f, IRMath::kHalfPi, kPi, -IRMath::kHalfPi};
-    for (const float yaw : cardinals) {
-        const vec2 effectiveCameraIso = yaw == 0.0f ? cameraIso : vec2(61.5f, -9.25f);
-        const vec3 anchor =
-            acquiredAnchor(yaw, cameraIso, effectiveCameraIso, kDepthAfterPan, false);
-        const vec3 key = IRMath::isoPixelToPos3DYawed(
-            kCanvasCenterIso - effectiveCameraIso,
-            kDepthAfterPan,
-            yaw
-        );
-        EXPECT_NEAR(anchor.x, key.x, 1e-3f) << "yaw=" << yaw;
-        EXPECT_NEAR(anchor.y, key.y, 1e-3f) << "yaw=" << yaw;
-        EXPECT_NEAR(anchor.z, key.z, 1e-3f) << "yaw=" << yaw;
-    }
-}
-
-TEST(DefaultPivotLatch, TheCrosshairTexelIsTheCanvasCenterUpToTheCameraFraction) {
-    // The main canvas is placed at the whole-texel part of the effective
-    // camera and the gather shifts it by the rest, so on each axis the crosshair
-    // displays the canvas center texel where the camera term is on the texel
-    // lattice and the texel one lower where it is not. Measured on macOS/Metal
-    // against the canvas depth at that texel: (24, 0) at effSub 4 reads
-    // (321, 361) and (3.0645, -27.041) reads (320, 360) on a 642 x 722 canvas.
-    // OpenGL displays (320, 361) at the fractional camera; the block search
-    // covers that.
-    const IRMath::ivec2 canvasSize = IRMath::ivec2(642, 722);
-    const IRMath::ivec2 centerTexel = IRMath::trixelOriginOffsetX1(canvasSize);
-    const IRMath::ivec2 lowerTexel = IRMath::trixelOriginOffsetZ1(canvasSize);
-    struct Case {
-        vec2 effectiveCameraIso_;
-        int effectiveSubdivisions_;
-        IRMath::ivec2 texel_;
-    };
-    const Case cases[] = {
-        {vec2(24.0f, 0.0f), 4, centerTexel},
-        {vec2(-7.25f, 13.5f), 4, centerTexel},
-        {vec2(3.0645046f, -27.041023f), 4, lowerTexel},
-        {vec2(-24.01165f, -6.0203533f), 8, lowerTexel},
-    };
-    for (const Case &c : cases) {
-        DefaultPivotSourceFrame frame;
-        frame.effectiveCameraIso_ = c.effectiveCameraIso_;
-        frame.effectiveSubdivisions_ = c.effectiveSubdivisions_;
-        const IRMath::ivec2 texel = IRRender::defaultPivotCrosshairCanvasTexel(frame, canvasSize);
-        EXPECT_EQ(texel, c.texel_)
-            << "camera=(" << c.effectiveCameraIso_.x << ", " << c.effectiveCameraIso_.y << ")";
-    }
-}
-
-TEST(DefaultPivotLatch, TheSubjectIsReadOffTheBlockTexelsHoldingTheSampledKey) {
-    // Stored canvas distances around the crosshair estimate (index 4), one key
-    // per row, the sample holding the key of the estimate's +y row (a pi/2
-    // cardinal source with a fractional camera, measured on Windows/OpenGL).
-    // That row is an SDF winner and the estimate a voxel one, so the row
-    // decides.
-    const std::array<int, 9> glBlock = {-662, -662, -662, -670, -670, -670, -678, -678, -678};
-    const TexelSubjects voxelBelowSdf = {true, true, true, true, true, true, false, false, false};
-    EXPECT_EQ(
-        IRRender::defaultPivotSampledSubjectIsVoxelStore(glBlock, voxelBelowSdf, -678),
-        std::optional<bool>(false)
-    );
-
-    // Each texel decides when it alone holds the key, whichever subject it is.
-    for (std::size_t i = 0; i < 9; ++i) {
-        std::array<int, 9> block{};
-        block.fill(1000);
-        block[i] = 2;
-        for (const bool voxel : {true, false}) {
-            TexelSubjects subjects{};
-            subjects.fill(!voxel);
-            subjects[i] = voxel;
-            SCOPED_TRACE(testing::Message() << "texel " << i << " voxel=" << voxel);
-            EXPECT_EQ(
-                IRRender::defaultPivotSampledSubjectIsVoxelStore(block, subjects, 2),
-                std::optional<bool>(voxel)
-            );
-        }
-    }
-
-    // Every texel holding the key agrees: the subject is established.
-    const std::array<int, 9> flatBlock = {186, 186, 186, 186, 186, 186, 186, 186, 186};
-    TexelSubjects allSdf{};
-    allSdf.fill(false);
-    EXPECT_EQ(
-        IRRender::defaultPivotSampledSubjectIsVoxelStore(flatBlock, allSdf, 186),
-        std::optional<bool>(false)
-    );
-}
-
-TEST(DefaultPivotLatch, KeyMatchingTexelsThatDisagreeOnSubjectHold) {
-    // A voxel/SDF seam at the crosshair with a bit-equal key on both sides: the
-    // sample cannot say which store it came from, so no subject is established,
-    // wherever in the block the disagreeing texel sits.
-    const std::array<int, 9> flatBlock = {186, 186, 186, 186, 186, 186, 186, 186, 186};
-    for (std::size_t i = 0; i < 9; ++i) {
-        if (i == 4) {
-            continue;
-        }
-        TexelSubjects subjects{};
-        subjects.fill(true);
-        subjects[i] = false;
-        SCOPED_TRACE(testing::Message() << "texel " << i);
-        EXPECT_EQ(
-            IRRender::defaultPivotSampledSubjectIsVoxelStore(flatBlock, subjects, 186),
-            std::nullopt
-        );
-    }
-    // Texels that do not hold the key take no part, whatever their subject.
-    std::array<int, 9> block = flatBlock;
-    block[7] = 190;
-    TexelSubjects subjects{};
-    subjects.fill(true);
-    subjects[7] = false;
-    EXPECT_EQ(
-        IRRender::defaultPivotSampledSubjectIsVoxelStore(block, subjects, 186),
-        std::optional<bool>(true)
-    );
-}
-
-TEST(DefaultPivotLatch, ABlockWithNoTexelHoldingTheSampledKeyHolds) {
-    // The estimate's own subject is no evidence for a key it does not hold.
-    const std::array<int, 9> glBlock = {-662, -662, -662, -670, -670, -670, -678, -678, -678};
-    TexelSubjects allVoxel{};
-    allVoxel.fill(true);
-    EXPECT_EQ(
-        IRRender::defaultPivotSampledSubjectIsVoxelStore(glBlock, allVoxel, 10),
-        std::nullopt
-    );
-}
-
-TEST(DefaultPivotLatch, AKeyMatchingTexelNamingNoKnownStoreHolds) {
-    // A texel holding the key whose entity is neither store's — dead since the
-    // frame was drawn, or a producer the classifier does not know — leaves the
-    // sample's store unproven, even when every other matching texel agrees.
-    const std::array<int, 9> flatBlock = {186, 186, 186, 186, 186, 186, 186, 186, 186};
-    for (std::size_t i = 0; i < 9; ++i) {
-        for (const bool voxel : {true, false}) {
-            TexelSubjects subjects{};
-            subjects.fill(voxel);
-            subjects[i] = std::nullopt;
-            SCOPED_TRACE(testing::Message() << "texel " << i << " voxel=" << voxel);
-            EXPECT_EQ(
-                IRRender::defaultPivotSampledSubjectIsVoxelStore(flatBlock, subjects, 186),
-                std::nullopt
-            );
-        }
-    }
-    // One that does not hold the key takes no part.
-    std::array<int, 9> block = flatBlock;
-    block[2] = 190;
-    TexelSubjects subjects{};
-    subjects.fill(false);
-    subjects[2] = std::nullopt;
-    EXPECT_EQ(
-        IRRender::defaultPivotSampledSubjectIsVoxelStore(block, subjects, 186),
-        std::optional<bool>(false)
-    );
-}
-
-// A latch that acquired kDepthStart off a voxel winner at yaw 0, then acquires
-// kDepthAfterPan from a source frame at @p yaw whose winner's subject is
-// @p voxelStoreWinner.
-DefaultPivotLatch latchReacquiredFrom(float yaw, std::optional<bool> voxelStoreWinner) {
-    const vec2 cameraIso = vec2(64.0f, -12.0f);
-    DefaultPivotLatch latch;
-    const auto acquireFrom = [&](float sourceYaw, float depth, std::optional<bool> subject) {
-        latch.stampSourceFrame(
-            DefaultPivotSourceFrame{
-                sourceYaw,
-                IRPrefab::Camera::computeYawSplit(sourceYaw).second,
-                cameraIso,
-                sourceYaw == 0.0f ? cameraIso : vec2(61.5f, -9.25f),
-                kCanvasCenterIso,
-                1
-            },
-            true
-        );
-        latch.observeFrame(sourceYaw, true);
-        latch.acquire(depth, subject);
-    };
-    acquireFrom(0.0f, kDepthStart, true);
-    acquireFrom(yaw, kDepthAfterPan, voxelStoreWinner);
-    return latch;
-}
-
-TEST(DefaultPivotLatch, ACardinalSourceWithAnUnestablishedSubjectHoldsItsAnchor) {
-    // The classifier's nullopt at a cardinal source — no key match, disagreeing
-    // texels, or a block past the canvas edge — keeps the previous anchor, as a
-    // background sample does, rather than branch on an unproven subject.
-    const float held = kDepthStart - DefaultPivotLatch::kCardinalStoreLatticeDepth;
-    const float cardinals[] = {0.0f, IRMath::kHalfPi, kPi, -IRMath::kHalfPi};
-    for (const float yaw : cardinals) {
-        const DefaultPivotLatch latch = latchReacquiredFrom(yaw, std::nullopt);
-        EXPECT_EQ(latch.isoDepth(), held) << "yaw=" << yaw;
-        EXPECT_EQ(latch.viewOffsetIso(), vec2(0.0f)) << "yaw=" << yaw;
-
-        // Positive fire: an established subject re-acquires from the same frame.
-        for (const bool voxel : {true, false}) {
-            EXPECT_NE(latchReacquiredFrom(yaw, voxel).isoDepth(), held)
-                << "yaw=" << yaw << " voxel=" << voxel;
-        }
-    }
-
-    // A non-cardinal source never reads the subject, so nullopt acquires.
-    const DefaultPivotLatch perAxis = latchReacquiredFrom(IRMath::kQuarterPi, std::nullopt);
-    EXPECT_NE(perAxis.isoDepth(), held);
-    EXPECT_NE(perAxis.viewOffsetIso(), vec2(0.0f));
-}
-
-// The per-texel store read (`RenderManager::texelSubjectIsVoxelStore`) against a
-// live EntityManager. No RenderManager: the read touches only the ECS.
-class DefaultPivotTexelSubject : public testing::Test {
-  protected:
-    IREntity::EntityManager m_entityManager;
-};
-
-TEST_F(DefaultPivotTexelSubject, OnlyALiveStoreEntityEstablishesItsStore) {
-    const IREntity::EntityId sdf = IREntity::createEntity(IRComponents::C_ShapeDescriptor{});
-    const IREntity::EntityId voxel = IREntity::createEntity(IRComponents::C_VoxelSetNew{});
-    const IREntity::EntityId neither = IREntity::createEntity();
-    EXPECT_EQ(IRRender::RenderManager::texelSubjectIsVoxelStore(sdf), std::optional<bool>(false));
-    EXPECT_EQ(IRRender::RenderManager::texelSubjectIsVoxelStore(voxel), std::optional<bool>(true));
-    EXPECT_EQ(IRRender::RenderManager::texelSubjectIsVoxelStore(neither), std::nullopt);
-    EXPECT_EQ(
-        IRRender::RenderManager::texelSubjectIsVoxelStore(IREntity::kNullEntity),
-        std::nullopt
-    );
-}
-
-TEST_F(DefaultPivotTexelSubject, AnEntityInBothStoresHolds) {
-    // Either store can write the id of an entity carrying both components, so
-    // the id does not establish which one won the texel.
-    const IREntity::EntityId both =
-        IREntity::createEntity(IRComponents::C_ShapeDescriptor{}, IRComponents::C_VoxelSetNew{});
-    const std::optional<bool> subject = IRRender::RenderManager::texelSubjectIsVoxelStore(both);
-    EXPECT_EQ(subject, std::nullopt);
-
-    TexelSubjects subjects{};
-    subjects.fill(subject);
-    const std::array<int, 9> flatBlock = {186, 186, 186, 186, 186, 186, 186, 186, 186};
-    const std::optional<bool> classified =
-        IRRender::defaultPivotSampledSubjectIsVoxelStore(flatBlock, subjects, 186);
-    EXPECT_EQ(classified, std::nullopt);
-
-    const float held = kDepthStart - DefaultPivotLatch::kCardinalStoreLatticeDepth;
-    for (const float yaw : {0.0f, IRMath::kHalfPi, kPi, -IRMath::kHalfPi}) {
-        const DefaultPivotLatch latch = latchReacquiredFrom(yaw, classified);
-        EXPECT_EQ(latch.isoDepth(), held) << "yaw=" << yaw;
-        EXPECT_EQ(latch.viewOffsetIso(), vec2(0.0f)) << "yaw=" << yaw;
-    }
-}
-
-TEST_F(DefaultPivotTexelSubject, APriorFrameSdfWinnerDestroyedBeforeAcquisitionHolds) {
-    // The canvas still holds the frame the SDF entity won, key and id at every
-    // texel of the block; UPDATE destroys the entity before beginFrame reads
-    // them back. Its dead id must not read as the voxel store — that would
-    // subtract the voxel lattice from an SDF surface key.
-    const IREntity::EntityId sdf = IREntity::createEntity(IRComponents::C_ShapeDescriptor{});
-    const std::array<int, 9> flatBlock = {186, 186, 186, 186, 186, 186, 186, 186, 186};
-    const auto classify = [&] {
-        TexelSubjects subjects{};
-        for (auto &subject : subjects) {
-            subject = IRRender::RenderManager::texelSubjectIsVoxelStore(sdf);
-        }
-        return IRRender::defaultPivotSampledSubjectIsVoxelStore(flatBlock, subjects, 186);
-    };
-    ASSERT_EQ(classify(), std::optional<bool>(false));
-
-    IREntity::destroyEntity(sdf);
-    m_entityManager.destroyMarkedEntities();
-    const std::optional<bool> afterDestroy = classify();
-    EXPECT_EQ(afterDestroy, std::nullopt);
-
-    const float held = kDepthStart - DefaultPivotLatch::kCardinalStoreLatticeDepth;
-    for (const float yaw : {0.0f, IRMath::kHalfPi, kPi, -IRMath::kHalfPi}) {
-        const DefaultPivotLatch latch = latchReacquiredFrom(yaw, afterDestroy);
-        EXPECT_EQ(latch.isoDepth(), held) << "yaw=" << yaw;
-        EXPECT_EQ(latch.viewOffsetIso(), vec2(0.0f)) << "yaw=" << yaw;
-    }
-}
 
 TEST(DefaultPivotLatch, AStampIsDecodedWithItsOwnSubdivisions) {
     // The composite stores depth × effective subdivisions, and the divisor is

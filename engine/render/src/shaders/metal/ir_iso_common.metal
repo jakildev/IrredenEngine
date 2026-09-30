@@ -796,6 +796,11 @@ inline float2 pos3DtoPos2DIsoYawed(float3 worldPos, float visualYaw) {
 // quantization steps the whole layer at rounding crossings during a yaw sweep.
 constant float3 kVoxelRasterCellAnchor = float3(0.5f);
 
+// Mirror of cardinalRasterLatticeDepthOffset in ir_iso_common.glsl.
+inline int cardinalRasterLatticeDepthOffset(int subdivisions) {
+    return (3 * subdivisions + 1) / 2;
+}
+
 inline float2 pos3DtoPos2DIsoYawedCellAnchor(float3 rasterPos, float visualYaw) {
     return pos3DtoPos2DIsoYawed(rasterPos - kVoxelRasterCellAnchor, visualYaw);
 }
