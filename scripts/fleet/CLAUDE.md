@@ -162,7 +162,7 @@ subjects; `ctest` never sees them. Validator index: [`VALIDATION.md`](../../docs
 
 ## Lane and loop contracts
 
-- **A role launch starts from a clean pane or does not start.**
+- **A dispatcher launch into a `pool-<N>` worktree starts from a clean pane or does not start; nothing else is ever cleaned** (the pane record is the capability).
 - **A new consumer of a PR label excludes PRs claimable by other lanes.**
   Disjoint claim-label namespaces (`fleet:amending-*`, `fleet:resolving-*`,
   `fleet:reviewing-*`) give no mutual exclusion on their own. Every

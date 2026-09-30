@@ -1174,19 +1174,26 @@ write_dispatch_record() {
     # after one item) and derive_dispatch_outcome (productive by
     # assignment). A `plan` target is also stamped as `plan_issue` for
     # readers that predate targets.
-    # $5 = the pane's worktree basename the claim was taken under — the
-    # completion contract at exit needs it to name the claim label.
+    # $5 = the pane's worktree basename, stamped on every record: the
+    # completion contract at exit names a target's claim label with it, and
+    # fleet-dispatch-wrap grants its pre-launch cleanup only to a record
+    # naming its own worktree.
     local role="$1" pane_id="$2" class="${3:-}" target="${4:-}" agent="${5:-}"
     # $6 = provider the iteration launches on (claude | codex), so the
     # completion line and fleet-health can attribute work per runtime.
     local runtime="${6:-claude}"
+    # $7 = the class passed as the wrapper's 9th argument, empty when the
+    # wrapper derives its class from the model. Not `class`: that is the
+    # concurrency-cap key, which a routed launch can legitimately differ from.
+    local launch_class="${7:-}"
     local ts epoch extra=""
     ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
     epoch=$(date +%s)   # read back by cleanup_stale_dispatches for the empty-exit streak
     extra=$(printf ',"runtime":"%s"' "$runtime")
+    [[ -n "$agent" ]] && extra+=$(printf ',"agent":"%s"' "$agent")
+    [[ -n "$launch_class" ]] && extra+=$(printf ',"launch_class":"%s"' "$launch_class")
     if [[ -n "$target" ]]; then
         extra+=$(printf ',"target":"%s"' "$target")
-        [[ -n "$agent" ]] && extra+=$(printf ',"agent":"%s"' "$agent")
         [[ "$target" == plan:* ]] && extra+=$(printf ',"plan_issue":"%s"' "${target#plan:}")
     fi
     mkdir -p "$DISPATCH_DIR"
@@ -3363,7 +3370,11 @@ dispatch_role() {
         # remains as defense-in-depth.
         # Publish the record before send-keys so the wrapper can stamp its PID
         # immediately; writing it afterward races a fast-starting pane.
-        write_dispatch_record "$role" "$pane_id" "$(dispatch_class_key "$role")" "$target_arg" "$pane_basename" "$launch_runtime"
+        # Only the target-bound branch above resolves the basename; every
+        # record carries it, so a targetless launch resolves it here.
+        [[ -n "$pane_basename" ]] || pane_basename=$(pane_worktree_basename "$pane_id") || true
+        write_dispatch_record "$role" "$pane_id" "$(dispatch_class_key "$role")" "$target_arg" \
+            "$pane_basename" "$launch_runtime" "${ASSIGN_RUNTIME:+$ASSIGN_CLASS}"
         if ! dispatch_send_keys -t "$pane_id" C-u "$cmd" C-m; then
             log "send-keys timeout/failed for $role -> $pane_id; trying next idle pane"
             rm -f "$(dispatch_record "$pane_id")"

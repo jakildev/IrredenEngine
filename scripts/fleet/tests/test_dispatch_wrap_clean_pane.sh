@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Tests for fleet-dispatch-wrap's pre-launch clean-pane arm: a role launch
-# starts from a clean pane or does not start. Uses a real temporary git
-# worktree (not a git stub), since the arm's own `git diff`/`checkout` must
-# actually run; only claude/codex/tmux/fleet-claude-stream/fleet-claim are
-# stubbed. Checked through the FLEET_DISPATCH_PRINT_LAUNCH hook, which exits
-# after the launch decision and before any agent spawns.
+# Tests for fleet-dispatch-wrap's pre-launch clean-pane arm: a dispatcher
+# launch into a pool worktree starts from a clean pane or does not start, and
+# nothing else is ever cleaned. Uses a real temporary linked git worktree (not
+# a git stub), since the arm's own `git diff`/`checkout` must actually run;
+# only claude/codex/tmux/fleet-claude-stream/fleet-claim are stubbed. Checked
+# through the FLEET_DISPATCH_PRINT_LAUNCH hook, which exits after the launch
+# decision and before any agent spawns.
 
 set -uo pipefail
 SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
@@ -58,11 +59,19 @@ git -C "$SEED" commit --quiet -m "seed"
 git -C "$SEED" remote add origin "$ORIGIN"
 git -C "$SEED" push --quiet origin master
 
+# The pane is a linked worktree of a main clone, as fleet-up lays pool panes
+# out; the main clone's HEAD is detached so the pane can hold master.
+MAIN="$TMPROOT/main"
+git clone --quiet "$ORIGIN" "$MAIN"
+git -C "$MAIN" config user.email "test@example.com"
+git -C "$MAIN" config user.name "test"
+git -C "$MAIN" checkout --quiet --detach
 WT="$TMPROOT/pool-4"
-git clone --quiet "$ORIGIN" "$WT"
-git -C "$WT" config user.email "test@example.com"
-git -C "$WT" config user.name "test"
+git -C "$MAIN" worktree add --quiet "$WT" master
+WT_GITDIR=$(git -C "$WT" rev-parse --absolute-git-dir)
 SIDECAR="$FLEET_SESSIONS_DIR/pool-4.session.json"
+RECORD="$FLEET_STATE_DIR/dispatch/pane-4.json"
+mkdir -p "$FLEET_STATE_DIR/dispatch"
 
 reset_pane() {
   git -C "$WT" checkout --quiet master
@@ -72,7 +81,7 @@ reset_pane() {
     | grep -vx master | xargs -r git -C "$WT" branch --quiet -D
   : > "$FLEET_CLAIM_RESV_FILE"
   rm -f "$FLEET_RESERVATIONS_DIR"/pool-4.json
-  rm -f "$SIDECAR"
+  rm -f "$SIDECAR" "$RECORD"
 }
 
 write_resv() {  # $1 = task id, $2 = recorded branch (optional)
@@ -81,10 +90,20 @@ write_resv() {  # $1 = task id, $2 = recorded branch (optional)
   echo "$1" > "$FLEET_CLAIM_RESV_FILE"
 }
 
-seed_dirty() {
-  echo "modified" > "$WT/tracked.txt"
-  printf '\x00\x01\xff\xfe\x00CHANGED\x00' > "$WT/image.bin"
-  echo "loop" > "$WT/.retry-verdict.sh"
+seed_dirty() {  # $1 = worktree (default: the pool pane)
+  local wt="${1:-$WT}"
+  echo "modified" > "$wt/tracked.txt"
+  printf '\x00\x01\xff\xfe\x00CHANGED\x00' > "$wt/image.bin"
+  echo "loop" > "$wt/.retry-verdict.sh"
+  echo "draft" > "$wt/.pr-body.md"
+}
+
+# Everything a launch that may not clean must leave byte-identical.
+pane_state() {  # $1 = worktree
+  git -C "$1" rev-parse HEAD
+  git -C "$1" symbolic-ref -q HEAD || echo "(detached)"
+  git -C "$1" status --porcelain --untracked-files=all
+  cat "$1/tracked.txt" "$1/image.bin" "$1/.retry-verdict.sh" "$1/.pr-body.md" 2>&1 | cksum
 }
 
 tracked_dirty_present() {
@@ -93,8 +112,24 @@ tracked_dirty_present() {
 
 latest_patch() { ls "$FLEET_LEFTOVERS_DIR"/pool-4-*.patch 2>/dev/null | head -1; }
 
+# The dispatcher's pane record for pane-4, before the wrapper stamps its PID.
+# $1 = role, $2 = runtime, $3 = argv class, $4 = agent, $5 = wrapper_pid.
+write_record() {
+  local extra=""
+  [[ -n "$3" ]] && extra=",\"launch_class\":\"$3\""
+  printf '{"role":"%s","pane":"%%4","class":"sonnet","dispatched_at":"x","dispatched_epoch":1,"wrapper_pid":%s,"claim_marker":1,"runtime":"%s","agent":"%s"%s}\n' \
+    "$1" "${5:-0}" "$2" "$4" "$extra" > "$RECORD"
+}
+
+# A dispatcher launch: the record matches the argv (role, runtime, class) and
+# the worktree. launch_bare runs the wrapper with whatever record is on disk.
+# LAUNCH_WT overrides the worktree the wrapper runs in.
 launch() {  # args: model effort role [fallback] [mode] [target] [runtime] [class]
-  ( cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-4 "$@" 2>>"$TMPROOT/stderr.log" )
+  write_record "$3" "${7:-claude}" "${8:-}" "$(basename "${LAUNCH_WT:-$WT}")"
+  launch_bare "$@"
+}
+launch_bare() {
+  ( cd "${LAUNCH_WT:-$WT}" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-4 "$@" 2>>"$TMPROOT/stderr.log" )
 }
 
 # =============================================================================
@@ -110,6 +145,7 @@ tracked_dirty_present && bad "T1: tracked modifications survived" || ok "T1: wor
 [[ "$(git -C "$WT" rev-parse --abbrev-ref HEAD)" == "claude/pool-4-scratch" ]] \
   && ok "T1: branch reset to claude/pool-4-scratch" || bad "T1: branch is $(git -C "$WT" rev-parse --abbrev-ref HEAD)"
 [[ -f "$WT/.retry-verdict.sh" ]] && bad "T1: retry script survived" || ok "T1: retry script removed"
+[[ -f "$WT/.pr-body.md" ]] && bad "T1: scratch body survived" || ok "T1: scratch body removed"
 patch=$(latest_patch)
 [[ -n "$patch" ]] && ok "T1: leftover patch written" || bad "T1: no leftover patch found"
 if [[ -n "$patch" ]]; then
@@ -235,10 +271,10 @@ grep -q "could not back up" "$TMPROOT/stderr.log" && ok "T5: stderr names the fa
 echo "T8: reset failure — a held index lock fails closed with the backup kept"
 reset_pane; seed_dirty
 rm -f "$FLEET_LEFTOVERS_DIR"/pool-4-*.patch
-touch "$WT/.git/index.lock"
+touch "$WT_GITDIR/index.lock"
 : > "$TMPROOT/stderr.log"
 out=$(launch sonnet high worker "" live); rc=$?
-rm -f "$WT/.git/index.lock"
+rm -f "$WT_GITDIR/index.lock"
 assert_no_launch "T8" "$out" "$rc"
 grep -q "could not reset" "$TMPROOT/stderr.log" && ok "T8: stderr names the failed reset" || bad "T8: stderr: $(cat "$TMPROOT/stderr.log")"
 patch=$(latest_patch)
@@ -247,11 +283,11 @@ tracked_dirty_present && ok "T8: tracked diff still on disk" || bad "T8: tracked
 
 echo "T9: status failure — a corrupt index fails closed"
 reset_pane; seed_dirty
-cp "$WT/.git/index" "$TMPROOT/index.good"
-printf 'not an index' > "$WT/.git/index"
+cp "$WT_GITDIR/index" "$TMPROOT/index.good"
+printf 'not an index' > "$WT_GITDIR/index"
 : > "$TMPROOT/stderr.log"
 out=$(launch sonnet high worker "" live); rc=$?
-cp "$TMPROOT/index.good" "$WT/.git/index"
+cp "$TMPROOT/index.good" "$WT_GITDIR/index"
 assert_no_launch "T9" "$out" "$rc"
 grep -q "git status failed" "$TMPROOT/stderr.log" && ok "T9: stderr names the failed status" || bad "T9: stderr: $(cat "$TMPROOT/stderr.log")"
 assert_eq "$(cat "$WT/tracked.txt")" "modified" "T9: text modification survives"
@@ -266,5 +302,74 @@ git -C "$WT" remote set-url origin "$ORIGIN"
 [[ "$out" == resumed=0* && "$rc" == 0 ]] && ok "T10: launches after a failed fetch" || bad "T10: rc=$rc out=$out"
 tracked_dirty_present && bad "T10: tracked dirt survived" || ok "T10: worktree clean"
 grep -q "fetch origin master failed" "$TMPROOT/stderr.log" && ok "T10: stderr names the failed fetch" || bad "T10: stderr: $(cat "$TMPROOT/stderr.log")"
+
+# --- Authorization: only a matching record for a pool worktree cleans ------
+# Every fixture below is dirty and carries a scratch body and a retry script,
+# so a refusal cannot pass vacuously; T1 and T6 are the authorized twins.
+
+echo "T11: no dispatch record — a direct call launches and cleans nothing"
+for target in "" "target=task:engine:9001"; do
+  label="T11 (${target:-targetless})"
+  reset_pane; seed_dirty
+  [[ -n "$target" ]] && write_resv 9001
+  rm -f "$FLEET_LEFTOVERS_DIR"/pool-4-*.patch
+  before=$(pane_state "$WT")
+  : > "$TMPROOT/stderr.log"
+  out=$(launch_bare sonnet high worker "" live "$target"); rc=$?
+  [[ "$out" == resumed=0* && "$rc" == 0 ]] && ok "$label: launch decision reached" || bad "$label: rc=$rc out=$out"
+  assert_eq "$(pane_state "$WT")" "$before" "$label: HEAD, ref, status and scratch files byte-identical"
+  [[ -z "$(latest_patch)" ]] && ok "$label: no patch written" || bad "$label: a patch was written"
+done
+
+echo "T12: a record naming a different invocation fails closed and cleans nothing"
+# what | record role | record runtime | record class | record agent | record pid | argv class
+for row in "agent|worker|claude||pool-9|0|" \
+           "wrapper pid|worker|claude||pool-4|1|" \
+           "role|sonnet-reviewer|claude||pool-4|0|" \
+           "runtime|worker|codex||pool-4|0|" \
+           "record class|worker|claude|opus|pool-4|0|" \
+           "argv class|worker|claude|opus|pool-4|0|sonnet"; do
+  IFS='|' read -r what r_role r_runtime r_class r_agent r_pid argv_class <<< "$row"
+  label="T12 ($what)"
+  reset_pane; seed_dirty
+  rm -f "$FLEET_LEFTOVERS_DIR"/pool-4-*.patch
+  write_record "$r_role" "$r_runtime" "$r_class" "$r_agent" "$r_pid"
+  before=$(pane_state "$WT")
+  : > "$TMPROOT/stderr.log"
+  out=$(launch_bare sonnet high worker "" live "" claude "$argv_class"); rc=$?
+  assert_no_launch "$label" "$out" "$rc"
+  assert_eq "$(pane_state "$WT")" "$before" "$label: HEAD, ref, status and scratch files byte-identical"
+  [[ -z "$(latest_patch)" ]] && ok "$label: no patch written" || bad "$label: a patch was written"
+done
+
+echo "T12b: a record matching an argv class authorizes the reset"
+reset_pane; seed_dirty
+out=$(launch sonnet high worker "" live "" claude sonnet)
+[[ "$out" == resumed=0* ]] && ok "T12b: launch decision reached" || bad "T12b: launch decision: $out"
+tracked_dirty_present && bad "T12b: tracked dirt survived" || ok "T12b: worktree clean"
+
+# A matching record outside a pool worktree grants nothing: the launch goes
+# ahead untouched.
+not_a_pool() {  # $1 = label, $2 = worktree
+  local before out rc
+  seed_dirty "$2"
+  rm -f "$FLEET_LEFTOVERS_DIR"/*.patch
+  before=$(pane_state "$2")
+  : > "$TMPROOT/stderr.log"
+  out=$(LAUNCH_WT="$2" launch sonnet high worker "" live); rc=$?
+  [[ "$out" == resumed=0* && "$rc" == 0 ]] && ok "$1: launch decision reached" || bad "$1: rc=$rc out=$out"
+  assert_eq "$(pane_state "$2")" "$before" "$1: HEAD, ref, status and scratch files byte-identical"
+  [[ -z "$(ls "$FLEET_LEFTOVERS_DIR")" ]] && ok "$1: no patch written" || bad "$1: a patch was written"
+}
+
+echo "T13: an interactive linked worktree (opus-architect) is never cleaned"
+ARCH="$TMPROOT/opus-architect"
+git -C "$MAIN" worktree add --quiet -b claude/uncommitted-change "$ARCH" origin/master
+not_a_pool "T13" "$ARCH"
+
+echo "T14: a standalone clone named like a pool pane is never cleaned"
+LONE="$TMPROOT/pool-5"
+git clone --quiet "$ORIGIN" "$LONE"
+not_a_pool "T14" "$LONE"
 
 summarize "fleet-dispatch-wrap clean-pane pre-launch arm"

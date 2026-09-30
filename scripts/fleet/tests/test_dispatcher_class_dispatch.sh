@@ -385,12 +385,17 @@ case "$sub" in
         printf '%s\n' "$*" >> "$SEND_LOG"
         # T31c: run the real wrap to completion inside the launching tick's
         # send-keys, the way a pane whose claude dies at the wall in under a
-        # tick exits before dispatch_role reaches its trigger consume.
+        # tick exits before dispatch_role reaches its trigger consume. The
+        # wrap gets the exact argv the dispatcher sent: it authenticates
+        # against the pane record, which carries what that argv asserts.
         if [[ -n "${STUB_WALL_WRAP_ON_PANE:-}" && "$*" == *"-t $STUB_WALL_WRAP_ON_PANE "* ]]; then
-            pane_key="pane-${STUB_WALL_WRAP_ON_PANE#%}"
-            ( cd "$STUB_WALL_WT" && PATH="$STUB_WALL_PATH" \
-                "$STUB_WALL_WRAP" "$pane_key" sonnet high worker "" live \
-                2>>"$STUB_WALL_LOG" >/dev/null ) || true
+            for arg in "$@"; do
+                [[ "$arg" == *fleet-dispatch-wrap* ]] || continue
+                eval "wrap_argv=($arg)"
+                ( cd "$STUB_WALL_WT" && PATH="$STUB_WALL_PATH" \
+                    "$STUB_WALL_WRAP" "${wrap_argv[@]:1}" \
+                    2>>"$STUB_WALL_LOG" >/dev/null ) || true
+            done
         fi
         exit 0
         ;;
@@ -449,6 +454,12 @@ esac
 grep -q '"runtime":"claude"' "$FLEET_STATE_DIR/dispatch/pane-1.json" \
     && { PASS=$((PASS+1)); echo "  ok: dispatch record stamped with the runtime"; } \
     || { FAIL=$((FAIL+1)); echo "  FAIL: record lacks runtime: $(cat "$FLEET_STATE_DIR"/dispatch/*.json)"; }
+# fleet-dispatch-wrap authenticates its pre-launch cleanup against the record:
+# the agent it names and the argv class it asserts (none on an unrouted launch).
+assert_contains "$(<"$FLEET_STATE_DIR/dispatch/pane-1.json")" '"agent":"pool-1"' \
+    "target-bound record names the pane's worktree"
+assert_absent "$(<"$FLEET_STATE_DIR/dispatch/pane-1.json")" '"launch_class"' \
+    "unrouted record asserts no argv class"
 
 echo "T21: a refused head yields to the next class in the SAME tick"
 out=$(tick worker 1 STUB_REFUSE='engine:10')
@@ -635,6 +646,10 @@ if grep -q 'target=' "$SEND_LOG"; then
 else
     PASS=$((PASS+1)); echo "  ok: dry-run launch carries no target"
 fi
+assert_absent "$(<"$FLEET_STATE_DIR/dispatch/pane-1.json")" '"target"' \
+    "targetless record carries no target"
+assert_contains "$(<"$FLEET_STATE_DIR/dispatch/pane-1.json")" '"agent":"pool-1"' \
+    "targetless record still names the pane's worktree"
 
 echo "T26: --dispatch-role argument validation"
 "$DISPATCHER" --dispatch-role >/dev/null 2>&1 \
@@ -1017,6 +1032,8 @@ write_slice worker '{"tasks_open":[{"issue":"#910","model":"fable","owner":"free
 out=$(tick worker 1)
 assert_contains "$(cat "$SEND_LOG")" "gpt-6-astra xhigh worker" "Astra receives design-class work"
 assert_contains "$(cat "$SEND_LOG")" "target=task:engine:910 codex fable" "target, provider and class reach wrapper"
+assert_contains "$(<"$FLEET_STATE_DIR/dispatch/pane-1.json")" '"launch_class":"fable"' \
+    "record stamps the class the wrapper's argv asserts"
 assert_contains "$(cat "$FLEET_CLAIM_LOG")" "claim 910" "concrete job claimed first"
 
 echo "T37: Codex cooldown preserves the trigger without taking a claim"
