@@ -157,6 +157,7 @@ def criteria_from_thread(issue):
     comments = issue["comments"]
     selected = None
     source = None
+    plan_error = None
     plan_index = -1
     for index, comment in enumerate(comments):
         comment_body = comment["body"]
@@ -165,8 +166,14 @@ def criteria_from_thread(issue):
         plan_index = index
         section = section_after_heading(comment_body, "acceptance criteria")
         if section is not None:
-            selected = parse_criteria(section, f"issue #{issue['number']} plan")
-            source = "plan"
+            try:
+                selected = parse_criteria(section, f"issue #{issue['number']} plan")
+                source = "plan"
+                plan_error = None
+            except LintInputError as exc:
+                selected = None
+                source = None
+                plan_error = exc
 
     if plan_index >= 0:
         for comment in comments[plan_index + 1 :]:
@@ -180,6 +187,8 @@ def criteria_from_thread(issue):
 
     if selected is not None:
         return selected, source
+    if plan_error is not None:
+        raise plan_error
 
     section = body_acceptance_section(body)
     if section is None:
